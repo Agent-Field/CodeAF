@@ -79,24 +79,34 @@ func TestAnUnfocusedWindowDoesNotAnswerTheQuestionForYou(t *testing.T) {
 	}
 	advance(2 * time.Second)
 	drive(t, a, frameMsg{})
-	if len(agent.answers) != 1 || agent.answers[0] != (answered{id: 7, allow: false, scope: session.ConsentOnce}) {
-		t.Fatalf("a question in front of a person never expired: %+v", agent.answers)
+	if len(agent.answers) != 0 {
+		t.Fatalf("the refocused countdown answered on the person's behalf: %+v", agent.answers)
+	}
+	if !a.asking() {
+		t.Fatal("the question went away when the refocused countdown ran out")
+	}
+	if got := plain(frame(a)); !strings.Contains(got, "paused") {
+		t.Fatalf("the refocused countdown did not pause at expiry:\n%s", got)
 	}
 }
 
-// The expiry itself is untouched where there IS somebody to read it. This is
-// the guard against fixing the countdown by removing it: a window with the
-// keyboard still denies at ten seconds, and the row still says who said so.
-func TestAFocusedWindowStillExpiresTheQuestion(t *testing.T) {
+// The clock still runs where there IS somebody to read it, and at ten seconds
+// it PAUSES rather than denies: silence is never a no (F41), so the question
+// stays up and unanswered, the row says paused, and the engine waits for a
+// real keypress.
+func TestAFocusedWindowPausesTheQuestionAtExpiry(t *testing.T) {
 	agent, a, advance := awayAsk(t)
 
 	advance(11 * time.Second)
 	drive(t, a, frameMsg{})
-	if len(agent.answers) != 1 || agent.answers[0].allow {
-		t.Fatalf("the countdown stopped denying in front of a person: %+v", agent.answers)
+	if len(agent.answers) != 0 {
+		t.Fatalf("the clock answered on the person's behalf: %+v", agent.answers)
 	}
-	if got := plain(frame(a)); !strings.Contains(got, consentExpiredWord) {
-		t.Fatalf("the row does not say the clock answered:\n%s", got)
+	if !a.asking() {
+		t.Fatal("the question went away at expiry instead of waiting")
+	}
+	if got := plain(frame(a)); !strings.Contains(got, "paused") {
+		t.Fatalf("the expired row does not say it paused:\n%s", got)
 	}
 }
 

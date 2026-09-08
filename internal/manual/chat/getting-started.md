@@ -208,6 +208,21 @@ exactly as the setup's does. The crew and the budget are read live too: the next
 aforge makes on its own behalf uses the new crew, and the rail is checked against the
 new ceiling.
 
+## The first prompt hung — still waiting, /model switches
+
+The model you talk to is not chosen on the setup screen. A first run opens on this
+build's default, and `/model` is the door that moves it. If that first prompt's lane
+goes quiet before a word arrives, aforge does not sit silent until the ninety-second
+cut: it tries another lane and says so, naming the door —
+
+```
+still no answer — trying another lane · /model switches
+```
+
+The line is a rescue of this answer, not a choice you made. Your model is untouched
+until you run `/model`. The status row says `switching` while the second request is
+out. If the default keeps stalling, `/model` is how you move for good.
+
 ## Set your terminal up for aforge — the font, and Option on macOS
 
 Two settings live in your terminal rather than in aforge, and both are worth the minute.

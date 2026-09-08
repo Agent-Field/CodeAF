@@ -686,15 +686,14 @@ func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err e
 	}
 	if outcome != nil {
 		s.addUsage(outcome.Usage)
-		node.Turns = outcome.Turns
-		node.Tokens = outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens
-		node.Cost = outcome.Usage.Cost
-		node.Stop = string(outcome.Stop)
-		node.Verdict = outcome.Verdict
-		node.Artifacts = outcome.Artifacts
-		node.Result = outcome.Text
-		node.Checked = outcome.Account.Summary()
 	}
+	// aforge plan run (cmd/aforge/run.go) is this scheduler's only caller. Its
+	// nodes are minted under no store namespace, so there is nowhere durable to
+	// journal into and nothing that would read one; that is why nil is passed
+	// instead of carrying a hook no door sets. Reaching the seam anyway keeps the
+	// ending's fields from drifting between the two doors, and a surface that
+	// does have a namespace adds an argument here rather than a second copy.
+	Settle(node, outcome, err, nil)
 	// A leaf that failed in a way a stronger model might fix is worth one more
 	// run. It is expressed by putting the node back to pending rather than by
 	// launching from here: the scheduler's own ready-and-launch path is the only
@@ -737,8 +736,7 @@ func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err e
 			Elapsed: time.Since(started)})
 		return
 	}
-	if err != nil || outcome == nil || strings.TrimSpace(node.Result) == "" {
-		node.State = plan.StateFailed
+	if node.State == plan.StateFailed {
 		node.Failure = "produced no result"
 		if err != nil {
 			node.Failure = err.Error()
@@ -746,7 +744,6 @@ func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err e
 		s.emit(Event{NodeID: nodeID, Title: node.Title, State: plan.StateFailed, Detail: node.Failure, Elapsed: time.Since(started)})
 		return
 	}
-	node.State = plan.StateDone
 	detail := fmt.Sprintf("%d turns, %dk tok", outcome.Turns, node.Tokens/1000)
 	if outcome.Decayed > 0 {
 		detail += fmt.Sprintf(", %d observations faded", outcome.Decayed)

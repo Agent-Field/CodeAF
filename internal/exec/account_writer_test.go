@@ -307,6 +307,20 @@ func TestALandingThatChangedNothingLeavesNoAccount(t *testing.T) {
 	}
 }
 
+// COMMANDS RIDE AN ACCOUNT THAT ALREADY EXISTS. A leaf that changed no file
+// and had no finished-tree reading still leaves no account, however many shell
+// commands it issued, because nobody looking is not a claim that nothing was
+// found.
+func TestALeafWithNothingToAccountForStillLeavesTheAccountNil(t *testing.T) {
+	workspace := accountWorkspace(t, t.TempDir())
+	outcome := &Outcome{Commands: []string{"go test ./..."}, CommandsRun: 1}
+	AccountFor(context.Background(), workspace,
+		Task{Goal: t.Name(), NodeKey: "task-1"}, "", false, outcome)
+	if outcome.Account != nil {
+		t.Fatalf("commands created an account where nothing was measured: %+v", outcome.Account)
+	}
+}
+
 // A CHECK THAT WAS ALREADY RED IS NOT THIS WORK'S FAILURE, and one this run
 // turned red is. Both halves of that sentence are what [Account.Verified] is
 // asked, and a reader that got the first one wrong is the measured way correct

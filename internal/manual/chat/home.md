@@ -836,7 +836,8 @@ Fix the nil-map                          3h
 ```
 
 - **The first line is what the task was called**, and how long ago it landed, hard against
-  the right edge.
+  the right edge. Work that has not landed — anything on the `◐ running` lines below — has
+  nothing at that right edge, because there is no landing to measure from.
 - **The second line is what it came to**, indented under the name and clipped to one line —
   it never wraps. The file count and the cost join it, each **only when it is not zero**.
 

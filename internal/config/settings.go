@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -144,16 +145,15 @@ const (
 	// model standing in for them — and grouping it with the rule rows would file
 	// it as one more exception in a list of exceptions.
 	KeyGuardian = "approval.guardian"
-	// KeyConsentTimeout is how long an approval question waits for a keystroke
-	// before it answers itself. It answers DENY — never allow — so the clock can
-	// only ever be the cautious one, and it stops the moment a key is pressed,
-	// because a person who has started reading is a person who is going to
-	// answer.
+	// KeyConsentTimeout is how long an approval question counts down before it
+	// PAUSES and keeps waiting. It never answers for the person — silence is
+	// not a no (F41) — and it stops the moment a key is pressed, because a
+	// person who has started reading is a person who is going to answer.
 	//
 	// Seconds, not a duration string, for the reason [KeyTaskAutoApprove] is
 	// spelled that way: the number is small and read at a glance off a line that
-	// is counting it down. 0 turns the clock off and the question waits forever,
-	// which is what a person who reads every prompt wants.
+	// is counting it down. 0 turns the clock off and the question waits from
+	// the start, which is what a person who reads every prompt wants.
 	KeyConsentTimeout = "approval.timeout_seconds"
 	KeyTierLowModel   = "models.tiers.low"
 	KeyTierHighModel  = "models.tiers.high"
@@ -749,6 +749,28 @@ func LanePinned(profileDir, slot string) (string, bool) {
 	return value, true
 }
 
+// LanePinAt is one slot's lane row resolved into the answer the transport
+// takes. The three states of the row are the three states of the pin, and a row
+// nobody has written is `auto` — the belief chooses per answer.
+func LanePinAt(profileDir, slot string) provider.LanePin {
+	if name, pinned := LanePinned(profileDir, slot); pinned {
+		return provider.LanePin{Lane: name, Borrow: LaneBorrowAt(profileDir, slot)}
+	}
+	if strings.EqualFold(LaneAt(profileDir, slot), LaneOpenRouter) {
+		return provider.LanePin{OpenRouter: true}
+	}
+	return provider.LanePin{}
+}
+
+// InstallLaneRows hands this profile's lane rows to the process-wide knobs the
+// transport reads them from. It uses the RESOLVER'S entrance so loading a row
+// already in force never forgets a retirement the wire earned; only a person's
+// own act belongs at [provider.RepinLane].
+func InstallLaneRows(profileDir string) {
+	provider.SetLanePin(LanePinAt(profileDir, LaneSlotTalk))
+	provider.SetLaneGuard(LaneGuardAt(profileDir))
+}
+
 // SetLane writes one slot's lane. An empty word clears the row back to auto,
 // which is the same thing said two ways and both of them arrive here.
 func SetLane(profileDir, slot, value string) error {
@@ -1185,14 +1207,13 @@ const (
 	// developer's machine is usually theirs.
 	DefaultTaskMinFreeMB = 1536
 
-	// DefaultConsentTimeout is ten seconds, and it is a different number from
-	// the one above because it is a different KIND of clock. The task countdown
-	// runs toward the permissive answer, so it is kept short enough to notice.
-	// This one runs toward the refusal: at expiry the call is denied, the model
-	// is handed a refusal it can act on, and nothing has happened to the disk.
-	// So it can afford to be the longer of the two — ten seconds is long enough
-	// to read a command and a rule — and its cost when it fires is one call the
-	// model has to ask for again.
+	// DefaultConsentTimeout is ten seconds of reminder, and it is a different
+	// number from the one above because it is a different KIND of clock. The
+	// task countdown runs toward the permissive answer, so it is kept short
+	// enough to notice. This one used to run toward the refusal (F41) and
+	// does not: at expiry the question pauses and keeps waiting. Ten seconds
+	// is long enough to read a command and a rule; after that the card stays
+	// up until somebody answers.
 	DefaultConsentTimeout = 10
 
 	// DefaultSearchProvider pins nothing. Auto is the only default that stays
@@ -1817,9 +1838,9 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyConsentTimeout, Category: CategorySafety, Kind: SettingCount,
 			Label: "approval countdown", Unit: "s",
-			Hint: "how many seconds an approval question waits for you before it answers itself. " +
-				"It answers no — the call is refused and the model is told, never approved — " +
-				"and the clock stops the moment you press any key. 0 waits for you forever.",
+			Hint: "how many seconds an approval question counts down before it pauses and keeps waiting. " +
+				"It never answers no for you — the call stays blocked until you answer — " +
+				"and the clock stops the moment you press any key. 0 waits from the start.",
 			read:  func() string { return strconv.Itoa(ConsentTimeoutAt(dir)) },
 			write: func(raw string) error { return writeProfileCount(dir, KeyConsentTimeout, raw) },
 		},
@@ -1847,12 +1868,12 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeChoice(dir, KeyRouting, raw, RoutingModes) },
 		},
 		// AND THE ROW UNDER IT NAMES A MACHINE. Routing says what a request
-		// prefers; this says which endpoint the conversation actually goes to,
-		// for the person who has watched the numbers and knows.
+		// prefers; this says which endpoint requests from this home actually go
+		// to, for the person who has watched the numbers and knows.
 		Setting{
 			Key: LaneSettingKey(LaneSlotTalk), Category: CategoryModels, Kind: SettingText,
 			Label: "lane", EmptyLabel: LaneAuto,
-			Hint: "which machine behind your model answers you. One model id is served by " +
+			Hint: "which machine behind your model answers requests from this home. One model id is served by " +
 				"a dozen endpoints that differ by seven times on the wait before the first " +
 				"word, so this is often a bigger change than switching model. auto lets aforge " +
 				"pick the fastest one each answer; a name — `cloudflare` — pins it and nothing " +
@@ -3728,7 +3749,8 @@ func TaskModelAt(profileDir string) string {
 }
 
 // ConsentTimeoutAt resolves the approval countdown, in seconds. 0 is a clock
-// that is off: the question waits for an answer and never answers itself.
+// that is off: the question waits from the start. A positive number is how
+// long the reminder runs before the card pauses; it never answers no.
 //
 // It tests ok before it tests the number for the reason [TaskAutoApproveAt]
 // does: a persisted 0 is a person who turned the clock off, not an absence.

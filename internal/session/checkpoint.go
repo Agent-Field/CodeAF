@@ -1425,6 +1425,13 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 	if a.markReaderAbsent() {
 		return checkpointRead{}
 	}
+	// A REDIRECT AFTER ESC ALREADY SAYS WHAT CHANGED. Re-reading the
+	// conversation to sketch what is left is the 57-message stall (F13): the
+	// person's next words are the decision, and a second mind asked to
+	// rediscover them is the duplicate planner pass.
+	if a.interrupt.redirecting() {
+		return checkpointRead{}
+	}
 	// AN ACCOUNT OF THE WORK AND NOT THE CONVERSATION, for the price
 	// [checkpointDigestTokens] states: the reader is asked about the SHAPE of what
 	// is left, and nothing inside a tool result changes that shape.
@@ -1620,6 +1627,9 @@ const (
 	// the two send whoever reads the file to different places — one to a writer
 	// that produced nothing, this one to a turn that was only ever coordinating.
 	checkpointCeilingHeldWork = "dropped:work-already-out"
+	// checkpointCeilingTrivial is the spawn floor (spawnfloor.go): the ask
+	// itself is one command, so nothing moves, whatever the work has cost.
+	checkpointCeilingTrivial = "dropped:trivial-ask"
 )
 
 // THE LAW: ONE ENDING ROW PER ENDING, WRITTEN AT THE SEAM THAT TOOK IT.
@@ -1704,6 +1714,7 @@ const (
 	carryNoSentence  = "the person's own words were empty"
 	carryDraftLooped = "the draft had stopped saying new things"
 	carryHeldWork    = "it assigned work this conversation is still holding"
+	carryRedirect    = "a redirect after stop does not re-read the conversation"
 )
 
 // And what the PERSON is told, which is the same fact in the register every dim
@@ -2350,10 +2361,12 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 //     deadline and its own checker (task_run.go) — so a second ceiling over the
 //     top of those would be the harness governing the governed, and the task it
 //     started would be a third level of a tree that is two deep by law.
-//   - A SCREENLESS SESSION NEVER CHECKPOINTS. `--once` and anything else running
-//     with nobody watching has no one to read the line, and a ceiling there would
-//     end a turn somebody is waiting on the answer of with a task nobody will see
-//     land.
+//   - A SCREENLESS SESSION WITH NOBODY LEFT IN CHARGE NEVER CHECKPOINTS. A
+//     headless session that holds a [Person] has no one to read the line, and a
+//     ceiling there would end a turn somebody is waiting on the answer of with a
+//     task nobody will see land. A screenless session with a goal owner has
+//     exactly the reader an unattended ending needs, so it takes the same road as
+//     a watched conversation.
 //   - AND NOT A LINE THE SESSION WROTE THAT NOBODY OWES AN ANSWER FOR. An ambient
 //     note — a standing run's own instruction, a delta nobody has to reply to — is
 //     the session talking to itself, and ending one of those with a task would be
@@ -2388,13 +2401,26 @@ func (a *Agent) checkpointRound(ctx context.Context, hub *eventHub, user userMes
 // stands in front of the meter and therefore in front of every call this file
 // makes.
 func (a *Agent) checkpoints(ctx context.Context, user userMessage) bool {
-	if a.config.InTask || !a.config.AskConsent {
+	if a.config.InTask {
+		return false
+	}
+	// A SCREENLESS SESSION WITH NOBODY LEFT IN CHARGE HAS NO ONE TO READ THE
+	// LINE, while a screenless session with a goal owner has exactly the reader
+	// an unattended ending needs and checkpoints like a watched conversation.
+	if !a.config.AskConsent && a.steward() == nil {
 		return false
 	}
 	if user.authored && !user.wake {
 		return false
 	}
 	if ctx.Err() != nil {
+		return false
+	}
+	// A TRIVIAL ASK IS NEVER LOOKED AT FOR CONVERSION. The write seam, the
+	// marks and the ceiling all start a task through this gate; a commit
+	// that has already staged five files is still a commit, and looking at
+	// the work is how F26 converted it.
+	if trivialAsk(a.taskRequest()) {
 		return false
 	}
 	a.mu.Lock()
@@ -3113,6 +3139,16 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 			Reason: over.reason, TaskID: over.taskID, Carry: over.carry,
 		})
 	}()
+	// THE FLOOR STANDS IN FRONT OF EVERYTHING. A caller that reached here
+	// through [Agent.checkpoints] already asked, but looped.go's looping
+	// handoff and any future door share this function, and a handover that
+	// paid for the goal owner's reading, a name and a brief before being
+	// declined would still have converted the ask in every way that costs
+	// money. So the ask is read first and nothing is spent: the ending row
+	// above writes the drop, and the turn carries on.
+	if trivialAsk(a.taskRequest()) {
+		return checkpointHandover{decision: checkpointCeilingTrivial}
+	}
 	// A HANDOVER IS AN ENDING, AND AN UNATTENDED SESSION'S PRINCIPAL READS EVERY
 	// ENDING (see [Agent.endTurnUnderSteward]). It is asked FIRST, before the
 	// name, the phase clock and the two model calls below, because the whole
@@ -3853,6 +3889,12 @@ func (a *Agent) decideHandover(ctx context.Context, reader readerLine, said stri
 // two facts rather than one: falling back to the person's ask and dropping the
 // handover are opposite answers to opposite failures.
 func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) (string, bool, carryStep) {
+	// DO NOT RE-READ THE CONVERSATION FOR A REDIRECT. The measured stall sent
+	// fifty-seven messages to write a brief the person had just spoken in one
+	// sentence (F13). Their words stand as the brief; the draft rung is skipped.
+	if a.interrupt.redirecting() {
+		return "", true, carryStep{rung: carryRungDraft, outcome: carrySkipped, reason: carryRedirect}
+	}
 	messages := append(a.snapshot(), textMessage("user", checkpointHandoffAsk))
 	// WITHOUT THE TURN'S STREAM, for the reason every errand in this package is
 	// made without it (auxiliary.go's [Agent.callRole]): the loop installed an
@@ -3965,6 +4007,12 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 // leave a mastermind-priced line on the bill with nothing beside it saying what
 // it bought.
 func (a *Agent) writeHandoff(ctx context.Context, asked, digest, draft string) (string, carryStep) {
+	// THE REDIRECT IS THE BRIEF. A mastermind asked to rewrite the conversation
+	// after Esc is the 36-second stall (F14) and the second of the two planner
+	// passes one keystroke used to buy (F17).
+	if a.interrupt.redirecting() {
+		return "", carryStep{rung: carryRungHandoff, outcome: carrySkipped, reason: carryRedirect}
+	}
 	if strings.TrimSpace(digest) == "" {
 		digest = checkpointDigest(asked, a.snapshot())
 	}

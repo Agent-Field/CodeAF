@@ -112,6 +112,28 @@ has. A scope written in words no arithmetic reaches is not weighed at all, and t
 is left to the planner's own judgment. So lanes that each own one block of one big file
 are not refused for the size of the file.
 
+## Why it broke my job into stages, or planned it in full instead of just doing it
+
+The same measurement that can refuse a node is also stated to the planner before it draws
+anything. When the run has a folder (`-w`), the files the **goal itself** names by name are
+weighed against how much one worker holds at once, and the figure goes into the planner's
+brief as a fact — `MEASURED — the material this goal names by name is 2 files, 165.4 KB in
+all. One worker holds 32.0 KB of material at a time, so what is named is 5.2 times what one
+worker can hold.` Context pressure is the one reason for a stage the planner is no longer
+asked to guess at: told that sentence, it must lay the work out so each stage's worker
+carries its own share; not told it, it may not invent a size for anything.
+
+Two shortcuts are bound by the same reading. A goal that names more than one worker holds is
+never handed whole to a single worker — the plan that says "one stage, just do it" is set
+aside while any plan with stages is on the table, and a short chain of one-sitting steps is
+not folded back into one. When work is picked up again after a worker ran out of room, the
+replan is **planned in full** rather than handed straight back to one fresh worker, which is
+the same exhaustion bought twice.
+
+None of this happens without a folder to weigh in. A run with no `-w`, or a goal that names
+no file that exists, is not treated as small — it is treated as unmeasured, and every one of
+these passes behaves exactly as it did before any of it was read.
+
 ## Running one task without the screen — aforge do, headless, from a script: what flags it takes, what it prints, and what its exit code means
 
 ```
@@ -797,6 +819,34 @@ The wording you see on the work's own record when nothing in the review can buy 
 `everything still missing here has already had two rounds of work aimed straight at it, so
 this is handed over with it named rather than repaired`.
 
+## When a worker says it is done and never ran the check — a done that names nothing it ran
+
+A worker's account names the shell commands that worker issued itself, under
+`What the work ran itself:`, in the order it ran them. They are kept apart from the reading
+aforge takes of the finished tree: a command the worker ran is a fact about what it did,
+and its output was never read as proof that a check passed. The list is bounded, and where
+its beginning was left out it says how many earlier commands are in the run's own record.
+
+Where the work changed files and nothing was ever asked of the finished tree, the account
+says exactly `no check was run on the finished tree`, and the same words are the one clause
+the plan carries for that node. It does not leave the block out: a deliverable naming no
+check otherwise reads exactly like one whose checks had nothing to report, which is the
+same claim with the evidence taken out of it.
+
+That covers a project that declares no way of checking itself, and a wall too short to
+afford a reading worth taking: nothing was going to be read, and the account says so.
+
+Where a reading WAS taken and the finished tree could not be read, you get that reason
+instead — the check that could not be started a second time, the suite that failed to
+collect, the command killed at its ceiling before it named anything. Those are not the same
+fact and aforge does not spell them the same way: nobody looked is not everything passed,
+and a reading that broke is not a tree that went unchecked.
+
+A red that aforge's own reading finds on the finished tree does not stop there either when
+the worker had already been told to land and so was never asked to settle it. The finding
+is handed to whoever picks the work up, so the next worker starts from what the reading
+found rather than paying to discover it again.
+
 ## When a worker runs out of its tokens mid-work — ⏳, and the work is picked up again
 
 A worker is given a token budget. When it crosses it, aforge does not kill it: it is told
@@ -1045,6 +1095,17 @@ An ordinary word is not a name. A finding built out of your vocabulary but askin
 something you never asked for — "March refers to any calendar year present in the data" —
 names nothing distinctive, so it is refused, and the run tells you so rather than quietly
 redoing work against it.
+
+## It said I only changed one file and I changed none — why did it name a file I only told it to read or never wrote
+
+When a run changed files, the review is shown those files and any finding about the change
+must name one of them. When the run changed nothing, the review is shown the worker's own
+answer instead, and any finding is about that answer.
+
+A file you only told the run to read is never counted as a change. The review can therefore
+never say that a file you asked it to read is the only file the run changed. If you asked
+for a file that was already there, it still answers the ask: the review is told that the
+file is there and that this run did not write it.
 
 ## When the work broke something that was working — checks that passed before and fail after
 
@@ -1437,10 +1498,12 @@ dies. That used to end the run: exit 1, the provider's own sentence printed as t
 deliverable, and nothing anywhere had looked at the work sitting on disk.
 
 **A worker cut off on the wire is judged on the tree.** Where the last attempt ended because
-a CALL failed rather than because the WORK failed, and the worker left files behind, what is
-on disk is put to the same review a delivered worker faces: the reading of your project's own
-checks first, then the one question — *is this request, as stated, satisfied by what is in
-hand?* A yes ends the run finished, under the same ✓ every satisfied run gets:
+a CALL failed rather than because the WORK failed, whatever the RUN left on the tree — this
+worker's files or an earlier attempt's — is put to the same review a delivered worker faces:
+the reading of your project's own checks first, then the one question — *is this request, as
+stated, satisfied by what is in hand?* A repair round whose first call was refused can die
+instantly, before it reaches a tool; that retry is judged on the fix already on disk. A yes
+ends the run finished, under the same ✓ every satisfied run gets:
 
 ```
   ✓ fix the pager tempfile mode — the request was met as stated
@@ -1457,9 +1520,9 @@ message from the model never arrived, and what is on the tree does not do what w
 — …`. Anything measured decides it before the question is even asked — a check this work
 turned red, a name nothing in the tree binds, a rule you stated and the work broke.
 
-**It widens nothing else.** A worker cut off having written no file still fails as it did;
-so does one whose own work errored, and one whose clock ran out; and where the review itself
-could not be reached, the failure stands rather than being passed.
+**It widens nothing else.** A worker whose own work errored still fails, as does one whose
+clock ran out; where the review itself could not be reached, the failure stands rather than
+being passed; and a run that left nothing anywhere still fails without a review.
 
 ## When a check names what you asked for and asserts nothing about it
 

@@ -3,8 +3,9 @@
 You were handed one brief and one acceptance. By default you work in the task
 folder, which is your own copy of the material this work is about — a worktree
 cut from the repository, or a copy of the folder when there is no repository;
-when the person explicitly named another place, your working directory is that
-place instead. Nobody is watching this happen. There is
+when the person explicitly named another plain folder, your working directory is that
+place instead. A named path inside a repository with a commit still gives you a branch of that
+repository, unless the person's own word on that place was to edit it in place. Nobody is watching this happen. There is
 nobody to ask: a question you would have asked is a decision you make and write
 down in your report. What reaches the person is what you leave on disk and the
 few lines you finish with.
@@ -93,8 +94,10 @@ tight. Whatever is cut is still in your journal, and the files hold the rest.
 
 ## What comes home
 
-What lands on the person's branch is WHAT YOU WROTE — every path you passed to
-`write` or `edit`, and nothing else. The copy you work in is yours to make
+What lands on an ordinary checked-out branch is WHAT YOU WROTE — every path you passed to
+`write` or `edit`, and nothing else. When their checkout is on a protected branch or they
+moved its branch or commit after your copy was cut, your finished work is kept on your
+branch instead and they are told where it is. The copy you work in is yours to make
 a mess in: install what the tests need, build, cache, leave a virtualenv in it.
 None of that is your deliverable and none of it follows you home. You do not
 stage anything, you do not commit anything, and you never run `git add`.

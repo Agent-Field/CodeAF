@@ -109,7 +109,8 @@ const (
 	EventReasoning
 	// EventConsentRequest asks the person whether one tool call may run
 	// (consent.go). It carries the call's ID, Tool, Args and gloss in Hint, and
-	// the policy's own phrasing of why it is asking in Rule.
+	// the policy's own phrasing of why it is asking in Rule. Wait is
+	// ConsentWaiting: silence is not a no.
 	//
 	// It is a QUESTION, not a report: the call is blocked inside the tool batch
 	// until [Agent.ResolveConsent] answers it or the turn's context dies, and a
@@ -715,6 +716,12 @@ type Event struct {
 	// (internal/approval) so that every surface says the same sentence about the
 	// same rule instead of deriving one.
 	Rule string
+
+	// Wait is how silence is held on EventConsentRequest: ConsentWaiting means
+	// the question stays up. A surface clock that recorded "denied" after a
+	// few seconds was F41, and this field is how the engine says that is not
+	// the mode. Empty on every other kind.
+	Wait string
 
 	// Memo says whether a ConsentToolSession answer to this question WOULD DO
 	// ANYTHING. It is set on EventConsentRequest and false everywhere else.
@@ -2170,8 +2177,14 @@ type Agent struct {
 	// workspace, and the whole of the write seam's state (writeseam.go). It is
 	// minted at episode-init and read at the step boundary, and it is nil in a
 	// session that has never opened an episode.
-	writes  *writeMeter
-	running bool
+	writes *writeMeter
+	// handWrites is every landed write call a hand has brought home since the
+	// write seam last took them. Hands can outlive the turn that forked them, so
+	// these groups belong to the session until whichever turn next reaches the
+	// seam drains them into its own meter. Each group is one call, because calls
+	// as well as distinct paths spend the allowance (writeseam.go).
+	handWrites [][]string
+	running    bool
 	// turnFloor is where the running turn's WORK begins in a.messages: the
 	// index just past the message that opened the turn, stamped by
 	// [Agent.startTurnLocked] and meaningful only while running is true. It is
@@ -2182,6 +2195,11 @@ type Agent struct {
 	// never has to, because a cut is refused while a turn is in flight.
 	turnFloor int
 	cancel    context.CancelFunc
+	// interrupt is ONE ESC'S WORTH of planner and title spend (interrupt_fan.go).
+	// It sits outside mu and holds its own lock: Interrupt is the one call that
+	// must always be answerable, and the handlers it serializes must never need
+	// the session lock to ask whether they may fire.
+	interrupt interruptFan
 	// generation is the CURRENT provider request, independently cancellable from
 	// the turn around it (steer.go). A steer cuts this context and leaves cancel
 	// alone, so the same turn can record the partial answer, land the person's

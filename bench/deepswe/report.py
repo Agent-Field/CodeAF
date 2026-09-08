@@ -73,6 +73,8 @@ def row(d):
     return {
         "dir": os.path.basename(d),
         "task": meta.get("task", os.path.basename(d)),
+        "door": meta.get("door", "do"),
+        "ended": meta.get("ended", ""),
         "lang": meta.get("language", ""),
         "reward": score,
         "partial": partial,
@@ -91,9 +93,9 @@ def main(dirs):
         dirs = [os.path.join(RESULTS, e) for e in sorted(os.listdir(RESULTS))
                 if os.path.isdir(os.path.join(RESULTS, e)) and not e.endswith("-gold")]
     rows = [row(d) for d in dirs]
-    print(f"{'TASK':46} {'LANG':11} {'REWARD':>6} {'PARTIAL':>8} {'COST$':>8} "
-          f"{'WALL(s)':>8} {'EXIT':>5}  NOTE")
-    print("-" * 128)
+    print(f"{'TASK':46} {'DOOR':5} {'LANG':11} {'REWARD':>6} {'PARTIAL':>8} {'COST$':>8} "
+          f"{'WALL(s)':>8} {'EXIT':>5} {'ENDED':13} NOTE")
+    print("-" * 140)
     solved = graded = 0
     total = 0.0
     for r in rows:
@@ -101,8 +103,8 @@ def main(dirs):
             graded += 1
             solved += r["reward"] == "1"
         total += r["cost"]
-        print(f"{r['task'][:46]:46} {r['lang'][:11]:11} {r['reward']:>6} {r['partial']:>8} "
-              f"{r['cost']:>8.3f} {str(r['wall']):>8} {str(r['exit']):>5}  {r['note'][:44]}")
+        print(f"{r['task'][:46]:46} {r['door'][:5]:5} {r['lang'][:11]:11} {r['reward']:>6} {r['partial']:>8} "
+              f"{r['cost']:>8.3f} {str(r['wall']):>8} {str(r['exit']):>5} {r['ended'][:13]:13} {r['note'][:44]}")
     print()
     print(f"solved {solved}/{graded} graded; {len(rows) - graded} did not grade; "
           f"total ${total:.2f}")

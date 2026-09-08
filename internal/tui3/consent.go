@@ -187,22 +187,22 @@ func (a *app) pauseAsk() {
 // turning (app.go's [app.paint]) — no ticker of its own, exactly as the task
 // proposal's countdown has none.
 //
-// AT EXPIRY IT DENIES, and this is the one clock on this surface that answers a
-// question rather than stopping asking it. The two are the same act here: the
-// engine is BLOCKED on this answer, so a surface that merely stopped drawing the
-// question would leave a tool call parked forever on a prompt nobody can see.
-// Denying is the only expiry that is safe in both directions — the call does not
-// run, and the model is handed a refusal it can act on and try something else.
+// AT EXPIRY IT PAUSES. Silence is not a no. The clock used to deny here — F41,
+// a hidden ~10s timer recorded "denied" and killed work nobody refused — and
+// that is the one answer this surface must never give on a person's behalf.
+// The engine is BLOCKED on this question (session's ConsentWaiting) and stays
+// blocked: the call does not run, and it is not refused either. The offer tail
+// says paused, and the work waits.
 //
 // AND IT DOES NOT RUN ON A WINDOW NOBODY IS LOOKING AT. Ten seconds is "long
 // enough to read a command and a rule" (config's DefaultConsentTimeout says so
 // in those words), which is a claim about a person READING — and there is
 // nobody reading a terminal that does not have the keyboard. A person who
 // starts a turn in one window and steps over to another is the ordinary way
-// this surface is used, and until this line existed every call that turn made
-// through the gate was refused ten seconds later by a clock they could not have
-// beaten. From where they were sitting the unfocused session simply stopped
-// working, and the reason was on a screen behind them.
+// this surface is used, and until the focus gate existed every call that turn
+// made through the gate was refused ten seconds later by a clock they could
+// not have beaten. From where they were sitting the unfocused session simply
+// stopped working, and the reason was on a screen behind them.
 //
 // So the countdown is HELD while the window is blurred and starts again whole
 // when the keyboard comes back ([app.refocusAsk]) — the same bargain
@@ -219,7 +219,7 @@ func (a *app) tickAsk() {
 	if a.now().Before(a.askAt.Add(a.askWait)) {
 		return
 	}
-	a.answerWith(false, session.ConsentOnce, consentExpiredWord)
+	a.pauseAsk()
 }
 
 // refocusAsk hands a waiting question its whole countdown back, because the
@@ -241,9 +241,8 @@ func (a *app) refocusAsk() {
 	a.touch()
 }
 
-// consentExpiredWord is what the row keeps when the clock answered. It says
-// "denied" first, because that is what happened to the call, and then says who
-// said so — which is nobody.
+// consentExpiredWord is what a PREVIOUS build wrote on the row when the clock
+// answered no for the person (F41). This build never writes it: expiry pauses.
 const consentExpiredWord = "denied · no answer"
 
 // askLeft is how much of the countdown is left, and whether there is a clock at
@@ -556,13 +555,11 @@ func (a *app) alwaysWord() string {
 	return "always, this tool"
 }
 
-// answerWith is [app.answer] with the word the ROW keeps spelled out, and the
-// clock is the only caller that spells it differently.
+// answerWith is [app.answer] with the word the ROW keeps spelled out.
 //
-// The distinction is the transcript's honesty and nothing else: the engine gets
-// the same deny either way, but "denied" and "denied · no answer" are different
-// things to read six screens later. One is a decision somebody made about a
-// call; the other is a call that went past somebody who was not there.
+// The clock used to be the only caller that spelled the word differently —
+// "denied · no answer" when nobody had pressed a key. Expiry no longer answers
+// (F41); a deny on the row is always a key somebody pressed.
 func (a *app) answerWith(allow bool, scope session.ConsentScope, word string) {
 	if len(a.asks) == 0 {
 		return
@@ -669,8 +666,7 @@ const (
 //
 // esc cancels, and cancelling is denying. A modal that cannot be left by the
 // dismiss key would be a trap; the safe reading of "get this off my screen" is
-// no, and it is the same answer the clock gives when nobody says anything at
-// all.
+// no. The clock no longer says that for them (F41): expiry pauses.
 func (a *app) consentKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// BUT NOT BEHIND HOME. A QUESTION NOBODY CAN SEE IS A QUESTION NOBODY CAN
 	// ANSWER, and home is the whole frame — the card, its command, its rule and
@@ -956,16 +952,18 @@ func (a *app) consentShapes(width int) string {
 	return a.paintOffer(parts, "", width)
 }
 
-// consentClock is the countdown's tail on the offer line — " · 7s", or
-// " · paused" once a key has been pressed, or nothing at all when the setting
-// turned the clock off.
+// consentClock is the offer's tail — how silence is being held, which is the
+// approval mode the card used to hide (F41). " · 7s" while the reminder is
+// running, " · paused" once a key has been pressed or the reminder expired,
+// " · waiting" when the countdown is off. It is never empty on a live
+// question: a missing tail was how a deny timer stayed hidden.
 //
-// It is spelled in WHOLE SECONDS where the proposal's meter spells tenths, and
-// the difference is what the two clocks are for. The proposal's is a bar the eye
-// reads as a proportion, and the tenth is what proves the bar is moving. This is
-// a word on a line of words: a digit changing ten times a second beside three
-// answers would be the loudest thing in a block whose whole job is to be read
-// once and answered.
+// The countdown is spelled in WHOLE SECONDS where the proposal's meter spells
+// tenths, and the difference is what the two clocks are for. The proposal's is
+// a bar the eye reads as a proportion, and the tenth is what proves the bar is
+// moving. This is a word on a line of words: a digit changing ten times a
+// second beside three answers would be the loudest thing in a block whose
+// whole job is to be read once and answered.
 func (a *app) consentClock() string {
 	if word := a.consentClockWord(); word != "" {
 		return " · " + word
@@ -973,18 +971,20 @@ func (a *app) consentClock() string {
 	return ""
 }
 
-// consentClockWord is that countdown without the separator that joins it to a
-// line of words — "7s", or "paused", or nothing. The sheet spells it alone in a
-// corner, where a leading middot would be a middot with nothing on its left.
+// consentClockWord is that tail without the separator that joins it to a line
+// of words. The sheet spells it alone in a corner, where a leading middot
+// would be a middot with nothing on its left.
 func (a *app) consentClockWord() string {
-	left, running := a.askLeft()
-	if !running {
+	if !a.asking() {
 		return ""
 	}
 	if a.askPaused {
 		return "paused"
 	}
-	return countdownWord(left)
+	if left, running := a.askLeft(); running {
+		return countdownWord(left)
+	}
+	return session.ConsentWaiting
 }
 
 // ── the phone sheet ─────────────────────────────────────────────────────────

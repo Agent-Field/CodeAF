@@ -75,8 +75,8 @@ func TestTheCadenceIsTheLocalOneUntilThereIsALink(t *testing.T) {
 // A SLOWER CLOCK IS NOT A SLOWER SURFACE. Everything on this screen with a
 // deadline is measured against the wall clock, so the only thing fewer frames
 // can cost a countdown is the fraction of a frame between the deadline and the
-// next tick.
-func TestACountdownStillExpiresOnWallTimeAtTheSlowCadence(t *testing.T) {
+// next tick — and at the deadline it pauses and waits, never answers.
+func TestACountdownPausesOnWallTimeAtTheSlowCadence(t *testing.T) {
 	at := time.Now()
 	agent, a := wired([]session.Event{
 		toolBegin("bash", "bash rm -rf build"),
@@ -95,18 +95,24 @@ func TestACountdownStillExpiresOnWallTimeAtTheSlowCadence(t *testing.T) {
 	// The frames are delivered at the cadence the link earns, and the clock
 	// moves with them — which is what a real ten seconds looks like from here.
 	deadline := at.Add(a.askWait)
-	for frames := 0; a.asking() && frames < 200; frames++ {
+	for frames := 0; !a.askPaused && frames < 200; frames++ {
 		at = at.Add(a.frameEvery())
 		drive(t, a, frameMsg{})
 	}
-	if len(agent.answers) != 1 || agent.answers[0].allow {
-		t.Fatalf("the countdown resolved %+v at the slow cadence, want a deny", agent.answers)
+	if len(agent.answers) != 0 {
+		t.Fatalf("the countdown answered %+v at the slow cadence, want a pause", agent.answers)
+	}
+	if !a.askPaused {
+		t.Fatal("the countdown never paused at the slow cadence")
+	}
+	if !a.asking() {
+		t.Fatal("the question went away at the deadline instead of waiting")
 	}
 	if late := at.Sub(deadline); late > a.frameEvery() {
-		t.Fatalf("the deny landed %s past the deadline, want inside one frame", late)
+		t.Fatalf("the pause landed %s past the deadline, want inside one frame", late)
 	}
-	if !strings.Contains(plain(frame(a)), consentExpiredWord) {
-		t.Fatalf("the expired row is not annotated:\n%s", plain(frame(a)))
+	if !strings.Contains(plain(frame(a)), "paused") {
+		t.Fatalf("the paused row is not annotated:\n%s", plain(frame(a)))
 	}
 }
 

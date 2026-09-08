@@ -1394,11 +1394,11 @@ func (c *partCompleter) CompleteWithMessages(_ context.Context, messages []ai.Me
 			return textResponse("VERIFIED — beta.go is there and declares Beta"), nil
 		}
 		return textResponse("REFUTED — nothing declares Alpha: the file was never written"), nil
-	case strings.Contains(text, "write beta.go") && !tooled:
+	case partScope(messages, "write beta.go") && !tooled:
 		return writeResponse("call-beta", "beta.go", "package taskaudit\n\nfunc Beta() string { return \"beta\" }\n"), nil
-	case strings.Contains(text, "write beta.go"):
+	case partScope(messages, "write beta.go"):
 		return textResponse("Wrote beta.go."), nil
-	case strings.Contains(text, "write alpha.go"):
+	case partScope(messages, "write alpha.go"):
 		// THE PART THAT DOES NOT DO THE WORK still says it did, which is the whole
 		// reason a checker stands in front of the word "done".
 		return textResponse("Alpha is done."), nil
@@ -1406,6 +1406,22 @@ func (c *partCompleter) CompleteWithMessages(_ context.Context, messages []ai.Me
 	// Everything else — the division review among it — gets nothing it can read,
 	// which is the fail-open path and the division exactly as the worker wrote it.
 	return textResponse("(unscripted)"), nil
+}
+
+// partScope reports which part this transcript belongs to, read off the one
+// line only the part's own brief carries: its "WHAT THIS PART WORKS ON" scope.
+// Matching the whole transcript instead reads a sibling's brief too — every
+// part's message names the others under "THE OTHER PARTS ARE IN SOMEBODY
+// ELSE'S HANDS", and the parent's division JSON names them all — so alpha's
+// turn was being handed beta's write call, and beta's file landed on the
+// wrong branch or never at all.
+func partScope(messages []ai.Message, scope string) bool {
+	for _, message := range messages {
+		if message.Role == "user" && strings.Contains(messageText(message), "WHAT THIS PART WORKS ON\n"+scope) {
+			return true
+		}
+	}
+	return false
 }
 
 // audits is how many checkers were handed one particular done-condition.
@@ -2074,6 +2090,14 @@ func TestOneFileNamedTwoWaysIsStillOneFileAndProseIsNotAClaim(t *testing.T) {
 		{"words that are nobody's file", []dividePart{
 			{Acceptance: "the northern regions are decided."},
 			{Acceptance: "the southern regions are decided."},
+		}, nil},
+		{"a named output shared by two parts remains a collision", []dividePart{
+			{Acceptance: "report.md holds the northern figures"},
+			{Acceptance: "report.md holds the southern figures"},
+		}, []string{"report.md"}},
+		{"a prose slash shared by two parts is not a claim", []dividePart{
+			{Acceptance: "the header renders / no regression"},
+			{Acceptance: "the header renders / no regression"},
 		}, nil},
 		{"a file outside the family tree is not this division's to own", []dividePart{
 			{Acceptance: "/usr/bin/python3 reports the version"},

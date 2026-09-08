@@ -73,11 +73,8 @@ const theCeiling = 15
 // `runTaskChild` was the worst of them at 56 and is not here: it is [childRun]
 // now (task_child_run.go), and every one of its phases is under the ceiling.
 //
-// THE NUMBERS ARE THE ONES MEASURED WHERE THE GATE WAS FITTED, which is why
-// `taskNote` reads 19 here and 18 in #260's own table: #277 gave it the arm for
-// a landing that saved nothing, before this test existed to have an opinion. A
-// ledger cannot refuse the debt it was built to hold; it can only refuse the
-// next one.
+// THE NUMBERS ARE THE ONES MEASURED WHERE THE GATE WAS FITTED. A ledger cannot
+// refuse the debt it was built to hold; it can only refuse the next one.
 var complexityDebt = map[string]int{
 	"decodeTasks":           28,
 	"taskSegments":          26,
@@ -87,7 +84,6 @@ var complexityDebt = map[string]int{
 	"declaredInvalidations": 21,
 	"groundLint":            21,
 	"pathTokens":            21,
-	"taskNote":              19,
 	"Agent.proposeTask":     16,
 	"auditDoor.admitsFile":  16,
 	"copyOriginal":          16,
@@ -114,9 +110,6 @@ var whyTheDebtIsStillThere = map[string]string{
 		"one-worker-or-two loop and the gate's three verdicts, which is its own issue.",
 	"declaredInvalidations": "a worker's claim read for the beliefs it says it moved " +
 		"(task_claims.go): several shapes of sentence, each with its own reading.",
-	"taskNote": "one landing turned into the sentence its parent reads, and every " +
-		"kind of ending spells that sentence differently — including, since #277, the one " +
-		"whose work was saved nowhere and has no branch to offer.",
 	"auditDoor.admitsFile": "one path weighed against what a checker may open, which is a " +
 		"question with that many separate answers.",
 	"copyOriginal": "the original of a file fetched for a check, from whichever of the " +

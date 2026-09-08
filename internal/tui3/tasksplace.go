@@ -1025,8 +1025,9 @@ func tasksAgeField(item tasksItem, now time.Time) rowField {
 // files an undated row at the moment of the reading rather than dropping it off
 // the page. This one answers a person, and a person told `now` about work that
 // nothing is doing has been told something false. The three silences here are a
-// node nothing has started, a row whose window died, and work replayed out of a
-// checkpoint that kept how long it ran and never when it began.
+// node nothing has started, a row whose window died, and work replayed out of an
+// older checkpoint whose record genuinely never carried its landing time. A
+// current record carries that fact and the surface reads it directly.
 func tasksEntryStamp(item tasksItem, now time.Time) time.Time {
 	if item.entry.Live() {
 		if tasksWorking(item) {

@@ -108,6 +108,10 @@ not a list of what the parts said back to you. A part that failed is still a
 report: say what is missing, integrate everything that did land, and retry the
 missing part only when that is the right way to finish the whole.
 
+The person's protected branch does not change where a part lands: each part comes
+back into your working tree. Only the whole task's final branch can be kept for the
+person to merge when they are ready.
+
 DIVIDE FOR WIDTH, NEVER FOR LENGTH. A long sequence is not wide. Two parts that
 write the same file are not independent, and are refused. A part that needs what
 another part learned is a second step, not a second worker. When you are unsure,

@@ -99,6 +99,12 @@ type StandingTree struct {
 	// the repository it merges back into. Both are empty for a copy.
 	Branch string `json:"branch,omitempty"`
 	Root   string `json:"root,omitempty"`
+	// Home is the root checkout's branch when this conversation cut its branch,
+	// so a later /land cannot follow a checkout that moved underneath it.
+	Home string `json:"home,omitempty"`
+	// HomeSha is the commit Home named at that cut, so /land can tell the same
+	// branch moving to a different world from the branch staying where it was.
+	HomeSha string `json:"homeSha,omitempty"`
 	// Cut is when the copy was made, which is the moment everything in the
 	// folder was still true.
 	Cut time.Time `json:"cut,omitempty"`
@@ -145,7 +151,9 @@ type FolderLanding struct {
 	Files []string
 	// Merged is the outcome once it has happened: [mergeMerged] for a branch
 	// that went home, [mergeConflicted] for one that would not and was kept,
-	// [mergeInPlace] for a copy laid back by name. It is empty in a preview.
+	// [mergeKept] for one deliberately left on a protected, moved or detached
+	// checkout, and [mergeInPlace] for a copy laid back by name. It is empty in a
+	// preview.
 	Merged string
 	// Note is the sentence that only exists when something needs explaining —
 	// a conflict, files nobody wrote, a copy that could not be laid back. The
@@ -160,7 +168,20 @@ type FolderLanding struct {
 // It is a method rather than a comparison a surface makes for itself, because
 // the strings [taskTree.comeHome] answers with are this package's and a surface
 // reading one of them by hand is the second copy of a fact that will drift.
-func (l FolderLanding) Kept() bool { return l.Merged != "" && !cameHome(l.Merged) }
+func (l FolderLanding) Kept() bool {
+	return l.Merged == mergeKept || l.Merged != "" && !cameHome(l.Merged)
+}
+
+// KeptByPolicy reports the ONE kind of keep that is not a failure: the landing
+// worked exactly as designed and the branch was left alone because writing this
+// checkout is something aforge will not do.
+//
+// IT EXISTS BECAUSE [FolderLanding.Kept] ANSWERS TWO DIFFERENT QUESTIONS. Every
+// other keep is something that went wrong — a merge git could not settle, a
+// landing that could not save the work at all — and a surface is right to
+// phrase those as a failure. This one is a policy honoured, and phrasing it the
+// same way tells somebody their work did not land when it did.
+func (l FolderLanding) KeptByPolicy() bool { return l.Merged == mergeKept }
 
 // Places whose folder the conversation may not stage into, answered once.
 //
@@ -381,7 +402,7 @@ func (a *Agent) cutStandingTree(place PlaceRef) (StandingTree, error) {
 		if err != nil {
 			return StandingTree{}, err
 		}
-		tree.Dir, tree.Mode, tree.Branch, tree.Root = cut.dir, TaskModeWorktree, branch, root
+		tree.Dir, tree.Mode, tree.Branch, tree.Root, tree.Home, tree.HomeSha = cut.dir, TaskModeWorktree, branch, root, cut.home, cut.homeSha
 	} else {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return StandingTree{}, err
@@ -538,12 +559,14 @@ func (a *Agent) Land(folder string) (FolderLanding, error) {
 	// StandingTree is the record, and taskTree is the shape [taskTree.comeHome]
 	// reads. Keeping one of each would be the two drifting.
 	work := taskTree{
-		dir:    tree.Dir,
-		root:   tree.Root,
-		branch: tree.Branch,
-		place:  a.config.Place,
-		ground: tree.Folder,
-		mode:   tree.Mode,
+		dir:     tree.Dir,
+		root:    tree.Root,
+		branch:  tree.Branch,
+		home:    tree.Home,
+		homeSha: tree.HomeSha,
+		place:   a.config.Place,
+		ground:  tree.Folder,
+		mode:    tree.Mode,
 	}
 	if tree.Mode != TaskModeWorktree {
 		// A copy has no branch to merge, and [taskTree.comeHome] reads that from

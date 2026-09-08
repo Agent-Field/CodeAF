@@ -1,7 +1,11 @@
 package manual
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -100,6 +104,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I pressed escape and it is still running", "keys"},
 		{"how long does stop take", "keys"},
 		{"what happens if it will not stop", "keys"},
+		{"what happens if I kill the aforge process", "keys"},
+		{"I closed the terminal window while a task was running", "keys"},
+		{"does kill -INT stop my tasks", "keys"},
 		// A machine that refused the work, asked in the word the screen puts on
 		// the row: the provider named in the refusal, the model nothing will
 		// serve, and why that word is not the one for slow.
@@ -256,6 +263,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
+		// C14: repository placement, protected landings and kept dependency
+		// inheritance are reachable in the words a person uses after meeting them.
+		{"why didn't my task merge", "how-tasks-run"},
+		{"aforge committed to dev", "how-tasks-run"},
+		{"my checkout is on main where did the work go", "how-tasks-run"},
+		{"I said in place but it made a branch", "how-tasks-run"},
+		{"does a task that depends on kept work see it", "how-tasks-run"},
+		{"which branches does aforge refuse to write", "how-tasks-run"},
 		// WHAT A WORKER'S BELT DOES NOT CARRY, asked the way people meet it: as a
 		// thing they want done from inside a task, and as the sentence a worker
 		// says back when it cannot.
@@ -442,6 +457,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is my table cut off", "screen"},
 		{"why does the receipt say the compiler supplied no reading", "adaptive-runs"},
 		{"the run said empty goal and did nothing", "adaptive-runs"},
+		// A file the review called a change even though the run only read it,
+		// asked in the three ways the person meets the false account.
+		{"it said I only changed one file and I changed none", "adaptive-runs"},
+		{"why did it name a file I only told it to read", "adaptive-runs"},
+		{"the review complained about a file I never wrote", "adaptive-runs"},
 		// A rule the person stated about what the run may DO, asked the four ways
 		// somebody meets it: before they run, and after the run broke it.
 		{"I said change no files and it changed files", "adaptive-runs"},
@@ -480,6 +500,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it move my work to a task after five minutes", "starting-aforge"},
 		{"it kept running tests for ten minutes and then handed the work over", "starting-aforge"},
 		{"it says nothing has been finished yet but it did the work itself", "starting-aforge"},
+		// The headless door of the same unattended posture (#535), asked as the
+		// budget, the missing start and the screenless carry-on somebody meets.
+		{"can I leave a headless run going with a budget", "starting-aforge"},
+		{"my --once yolo run never started a task", "starting-aforge"},
+		{"does a run with no screen carry its own work on", "starting-aforge"},
 		{"it says needs your look but I ran it with yolo", "tasks"},
 		{"what does taken as it stands mean", "tasks"},
 		{"it says it could not be brought home", "tasks"},
@@ -518,6 +543,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"set up my api key", "getting-started"},
 		{"openrouter key", "getting-started"},
 		{"change what I picked during setup", "getting-started"},
+		{"first prompt hung", "getting-started"},
+		{"/model switches", "getting-started"},
 
 		// The empty screen, asked the ways somebody meets it: an opening frame
 		// with nothing on it, a column they expected and cannot see, a box that
@@ -558,6 +585,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how long did that call take in the task", "reading-a-task-page"},
 		{"why does the task page say the model went quiet mid-reply", "reading-a-task-page"},
 		{"guardian allowed on my task page", "reading-a-task-page"},
+		// This pair separates one task's own clock from the machine-wide tasks
+		// place row whose age a person is reading.
+		{"when did this task start", "reading-a-task-page"},
+		{"an old task says now", "tasks"},
 		// THE CLAUSE ON A CORRECTION, asked by somebody who has just watched it
 		// appear and fade (#252). They are not looking for "steering" — the word
 		// on their screen is `delivered`, and it is beside words they typed
@@ -615,7 +646,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where is a job's log path", "tasks"},
 		{"stop a job from its page", "tasks"},
 		{"do you ask before running rm", "permissions"},
+		{"why did it say denied by the person when I did not deny", "permissions"},
+		{"does git status need approval", "permissions"},
 		{"what is yolo mode", "permissions"},
+		{"does --yolo show on the status line", "screen"},
 		{"how do I make it stop asking every time", "permissions"},
 		{"what model is it using right now", "models-and-cost"},
 		{"how do I give it a longer context", "models-and-cost"},
@@ -840,12 +874,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happens to a run if aforge restarts", "adaptive-runs"},
 		{"the run said it wrote a file but there is nothing there", "adaptive-runs"},
 		{"why did it keep spawning the same worker over and over", "adaptive-runs"},
+		{"why did it break my job into stages", "adaptive-runs"},
+		{"why did it plan the whole thing again instead of just doing it", "adaptive-runs"},
+		{"how does it know the work is too big for one worker", "adaptive-runs"},
 		{"the run said the brief could not be written, what happened", "adaptive-runs"},
 		// The run that had the answer and kept going, asked the two ways it was
 		// actually reported: as time and money spent after the fact, and as the
 		// word `partial` printed over tests that were green.
 		{"why did it keep going after it had the answer", "adaptive-runs"},
 		{"it said partial but the tests were green", "adaptive-runs"},
+		{"it said done but never ran the tests", "adaptive-runs"},
 		{"the request was met as stated", "adaptive-runs"},
 		// And the same ending arriving the other way round: the work is done,
 		// the checks are green, and the run reports a failure because the
@@ -854,6 +892,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// provider's own sentence.
 		{"it failed but the tests were green", "adaptive-runs"},
 		{"the model dropped out after finishing", "adaptive-runs"},
+		{"the retry died instantly but my fix is already on disk", "adaptive-runs"},
 		{"why did it run the whole test suite when I asked about one package", "adaptive-runs"},
 		{"why did it run the tests nine times", "adaptive-runs"},
 		// A person reading a column of workers all called the same thing, and a
@@ -1103,6 +1142,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// old work went the way it did — so the words somebody says in front of a
 		// landed task they do not understand have to reach the page that says
 		// this is a question they may simply ask.
+		// Continue is a verb on a settled task, not a narration and not a new
+		// proposal. People say the number they saw on the roster; the page has
+		// to name those words, and the honest miss when this conversation
+		// never held that graph.
+		{"continue task 1", "tasks"},
+		{"keep going on task 4", "tasks"},
+		{"can I continue a task from another conversation", "tasks"},
+		{"No task 1 in this project", "tasks"},
+
 		{"why did the auth task pin the clock", "tasks"},
 		{"what exactly did that task change", "tasks"},
 		{"can I ask you about old work", "tasks"},
@@ -1203,6 +1251,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"aforge started work I did not ask for", "tasks"},
 		{"how do I stop it starting tasks by itself", "tasks"},
 		{"what happened to the card asking whether to run it", "tasks"},
+		// The spawn floor: a one-command ask that used to become a task and
+		// drop the deliverable. Asked in the words the person typed.
+		{"why did commit become a task", "tasks"},
+		{"undo started a task", "tasks"},
+		{"fix this one line became a task", "tasks"},
 
 		// And the shape that reads strangest of all, because the reply had
 		// already started: a reply can stop halfway and hand itself over, when a
@@ -1814,6 +1867,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// is whether a pin is honoured — and reading the line that says which
 		// machine actually answered.
 		{"will it send my work to a different lane than the one I pinned", "lanes"},
+		{"does aforge do use the lane I pinned", "lanes"},
+		{"is my pinned provider used when I run from a terminal", "lanes"},
 		// And the one thing that ends a pin without the person: the router
 		// saying that machine cannot serve that model at all (issue #456). It
 		// is asked as somebody reads it on the screen and wants to know what it
@@ -1851,6 +1906,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// gate that would have caught the omission is
 		// TestTheChatManualMentionsEveryVerbTheCommandLineAnswersTo.
 		{"can I run this without the chat", "running-from-the-terminal"},
+		// The ending #593 added, in the words somebody meets it in: on the
+		// stderr line they have just read, on the word in `--json`, and on the
+		// exit code they are staring at with a perfectly good answer above it.
+		// The page had none, and a page whose retrieval nothing holds is a page
+		// the chat talks over the top of — see the lanes page and #453.
+		{"what does it mean when a run says it was delivered without a check", "running-from-the-terminal"},
+		{"what does stop unchecked mean", "running-from-the-terminal"},
+		{"why did my headless run exit 2 when the answer looks fine", "running-from-the-terminal"},
 		{"what does aforge wake do", "running-from-the-terminal"},
 		// "how do I see what a task did" is deliberately NOT here: in the chat a
 		// task's own room is that question's answer, and how-tasks-run rightly
@@ -1921,6 +1984,56 @@ func TestNoChatPageSpeaksTheHarnessesOwnVocabulary(t *testing.T) {
 		if found := banned.FindString(scanned); found != "" {
 			t.Errorf("%s · %q says %q, which is the harness's own vocabulary and not the person's",
 				section.Page, section.Title, found)
+		}
+	}
+}
+
+// C14: the manual's protected-name list is held against the engine's one policy
+// list, so changing a branch name cannot leave the person reading stale advice.
+func TestC14TheChatManualNamesEveryProtectedBranch(t *testing.T) {
+	const source = "../session/task_branch_protection.go"
+	parsed, err := parser.ParseFile(token.NewFileSet(), source, nil, 0)
+	if err != nil {
+		t.Fatalf("%s: %v", source, err)
+	}
+	var names []string
+	for _, decl := range parsed.Decls {
+		block, ok := decl.(*ast.GenDecl)
+		if !ok || block.Tok != token.VAR {
+			continue
+		}
+		for _, item := range block.Specs {
+			value, ok := item.(*ast.ValueSpec)
+			if !ok || len(value.Names) != 1 || value.Names[0].Name != "protectedBranchNames" || len(value.Values) != 1 {
+				continue
+			}
+			literal, ok := value.Values[0].(*ast.CompositeLit)
+			if !ok {
+				t.Fatalf("%s: protectedBranchNames is not one literal list", source)
+			}
+			for _, element := range literal.Elts {
+				word, ok := element.(*ast.BasicLit)
+				if !ok || word.Kind != token.STRING {
+					t.Fatalf("%s: protectedBranchNames contains a non-string entry", source)
+				}
+				name, err := strconv.Unquote(word.Value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				names = append(names, name)
+			}
+		}
+	}
+	if len(names) == 0 {
+		t.Fatalf("%s: protectedBranchNames was not found", source)
+	}
+	page, ok := Chat().Page("how-tasks-run")
+	if !ok {
+		t.Fatal("the chat manual has no how-tasks-run page")
+	}
+	for _, name := range names {
+		if !strings.Contains(page, "`"+name+"`") {
+			t.Errorf("how-tasks-run does not name protected branch %q", name)
 		}
 	}
 }

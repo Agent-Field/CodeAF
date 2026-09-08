@@ -54,6 +54,7 @@ package session
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -85,6 +86,11 @@ type taskStand struct {
 	ask string
 	// refusal is an honest sentence about work that cannot be placed at all.
 	refusal string
+	// redirect is the one sentence owed when a model asked to work in a
+	// repository directly and the repository law put the work on a branch
+	// instead. It rides only as far as the door's receipt; the node's ground and
+	// mode are the durable account of where the work actually went.
+	redirect string
 	// frozen is THE FAMILY'S OWN WORLD, when this stand belongs to a part of one:
 	// the commit the parent froze the family tree at when it handed the work out
 	// (task_divide_wip.go). The ground ladder cuts from it and does not seal the
@@ -141,18 +147,36 @@ const taskGroundPathsRead = 400
 // answer to the one question this file exists to have one answer to.
 func (a *Agent) resolveTaskGround(spec taskSpec) taskStand {
 	workspace := canonicalPath(strings.TrimSpace(a.config.Workspace))
-	// THE PERSON'S OWN PLACEMENT COMES FIRST, and it is not a rung of the ladder
-	// — it is the whole ladder skipped. `where` says where the work happens, and
-	// work that happens in a named directory is work about that directory.
+	redirect := ""
+	// A MODEL'S PLACEMENT IS EVIDENCE, NOT AUTHORITY, INSIDE A REPOSITORY. A
+	// branch is the repository's isolation boundary even when `where` asked for
+	// the checkout itself; only a mode the person put on a referred place is a
+	// said instruction, and that enters below through [placeStand].
 	if where := strings.TrimSpace(spec.where); where != "" {
-		if strings.EqualFold(where, "in place") {
+		if root, ok := whereInsideRepository(where, workspace); ok {
+			if strings.EqualFold(where, "in place") {
+				// IN PLACE DOES NOT NAME THE GROUND. Once its unsafe placement has
+				// been declined, the ordinary ladder still decides what this task is
+				// about and [groundMode] still distinguishes work that writes there
+				// from work that only needs a reference.
+				redirect = whereRedirectSentence(where, root)
+			} else {
+				return taskStand{
+					dir: root, mode: TaskModeWorktree, rung: taskGroundNamed,
+					redirect: whereRedirectSentence(where, root),
+				}
+			}
+		}
+		if redirect == "" && strings.EqualFold(where, "in place") {
 			return taskStand{dir: workspace, mode: TaskModeInPlace, rung: taskGroundHere}
 		}
-		dir, err := resolveTaskWhere(where, workspace)
-		if err != nil {
-			return taskStand{refusal: "this task names a folder it cannot work in: " + where}
+		if redirect == "" {
+			dir, err := resolveTaskWhere(where, workspace)
+			if err != nil {
+				return taskStand{refusal: "this task names a folder it cannot work in: " + where}
+			}
+			return taskStand{dir: dir, mode: TaskModeInPlace, rung: taskGroundNamed}
 		}
-		return taskStand{dir: dir, mode: TaskModeInPlace, rung: taskGroundNamed}
 	}
 	stand := a.groundLadder(spec, workspace)
 	if stand.ask != "" || stand.refusal != "" {
@@ -168,15 +192,87 @@ func (a *Agent) resolveTaskGround(spec taskSpec) taskStand {
 	} else if reground != "" {
 		stand.dir, stand.rung = reground, taskGroundSaid
 	}
-	// A MODE THE PERSON SAID IS NOT RECOMPUTED. Every rung leaves this blank and
-	// the mode falls out of the deliverable, which is the law above — except for
-	// a referred place carrying the person's own word about how work happens
-	// there ([PlaceRef.Mode]), and their word is the one thing this file obeys
-	// rather than reads.
-	if stand.mode == "" {
-		stand.mode = groundMode(stand, spec, workspace)
-	}
+	stand.mode, redirect = groundModeAfterPlacement(stand, spec, workspace, redirect)
+	stand.redirect = redirect
 	return stand
+}
+
+// groundModeAfterPlacement is the mode phase of [Agent.resolveTaskGround]. It
+// keeps the person's referred-place word authoritative while letting a model's
+// declined `in place` request become ordinary evidence for [groundMode].
+func groundModeAfterPlacement(stand taskStand, spec taskSpec, workspace, redirect string) (TaskMode, string) {
+	// A MODE THE PERSON SAID IS NOT RECOMPUTED. Every ordinary rung leaves this
+	// blank; a referred place may carry the person's own word about how work
+	// happens there ([PlaceRef.Mode]), and that word is obeyed rather than read.
+	if stand.mode != "" {
+		if stand.mode == TaskModeInPlace {
+			// Nothing was corrected when the person had already said in place, so
+			// no correction sentence is owed.
+			redirect = ""
+		}
+		return stand.mode, redirect
+	}
+	modeStand := stand
+	if redirect != "" && modeStand.rung == taskGroundStandingIn {
+		// THE MODEL DID NOT SAY THE TASK WRITES HERE. The usual standing-in
+		// default is a branch for repository work, but once `in place` has become
+		// evidence the deliverable decides: a contract naming no file gets a
+		// reference, exactly as it would on every other ladder rung.
+		modeStand.rung = ""
+	}
+	return groundMode(modeStand, spec, workspace), redirect
+}
+
+// whereInsideRepository reports the committed repository a model-authored
+// placement points into. It is THE ONE READING used by both task doors: the
+// resolved-ground road above and the older direct preparation road in
+// task_run.go.
+//
+// A path that does not exist yet is walked up to its nearest existing parent.
+// That is what makes `notes/out` inside a repository work without
+// creating the folder merely to decide where it belongs. A repository with no
+// commit answers false because it has no point from which a branch can be cut;
+// that road deliberately keeps working in place and says so.
+func whereInsideRepository(where, workspace string) (string, bool) {
+	where = strings.TrimSpace(where)
+	target := workspace
+	if !strings.EqualFold(where, "in place") {
+		resolved, err := resolveTaskWhere(where, workspace)
+		if err != nil {
+			return "", false
+		}
+		target = resolved
+	}
+	target = canonicalPath(strings.TrimSpace(target))
+	if target == "" {
+		return "", false
+	}
+	for {
+		if info, err := os.Stat(target); err == nil {
+			if !info.IsDir() {
+				return "", false
+			}
+			break
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", false
+		}
+		parent := filepath.Dir(target)
+		if parent == target {
+			return "", false
+		}
+		target = parent
+	}
+	root, ok := repositoryRoot(target)
+	return root, ok && hasCommit(root)
+}
+
+// whereRedirectSentence is said once by the door that accepted a model's
+// placement. The path is kept in the model's own spelling while the repository
+// is canonical, so the sentence explains both what was asked and what governs
+// it without naming the working-copy machinery.
+func whereRedirectSentence(where, root string) string {
+	return strings.TrimSpace(where) + " was asked for, and " + root +
+		" is a repository — the work goes on a branch cut from it instead"
 }
 
 // taskGroundOrStandingIn is [Agent.resolveTaskGround] for a door with NOBODY TO
@@ -770,12 +866,23 @@ func pathTokens(text string) []string {
 	return out
 }
 
-// looksLikePath is the one judgement pathTokens makes: a separator, or a name
-// with a suffix on it.
+// looksLikePath is the one judgement pathTokens makes: a named place carrying a
+// separator, or a name with a suffix on it.
 func looksLikePath(token string) bool {
+	if !pathTokenNamesSomething(token) {
+		return false
+	}
 	if strings.ContainsRune(token, '/') {
 		return true
 	}
 	dot := strings.LastIndex(token, ".")
 	return dot > 0 && dot < len(token)-1 && !strings.ContainsAny(token, " =")
+}
+
+// pathTokenNamesSomething keeps punctuation alone from becoming a place. A
+// PATH MUST NAME SOMETHING after its home shorthand is removed; a separator
+// root and the two relative roots name no component a task could work on.
+func pathTokenNamesSomething(token string) bool {
+	name := filepath.Clean(strings.TrimPrefix(token, "~"))
+	return name != string(filepath.Separator) && name != "." && name != ".."
 }

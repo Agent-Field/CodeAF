@@ -198,13 +198,15 @@ const (
 	waitingOnItsParts = "its parts"
 )
 
-// The three merge outcomes, and the fourth that says a branch never came home.
+// The three merge outcomes, the kept landing, and the mark that says a run
+// stopped before its branch came home.
 // They are the strings [TaskNotice.Merge] carries, spelled once.
 const (
 	mergeMerged     = "merged"
 	mergeConflicted = "conflicted"
 	mergeInPlace    = "inplace"
 	mergeAborted    = "aborted"
+	mergeKept       = "kept"
 )
 
 // ── the graph ───────────────────────────────────────────────────────────────
@@ -297,6 +299,14 @@ type TaskNode struct {
 	// guarded by the graph's lock and written once.
 	Ground string
 	Mode   TaskMode
+	// Home is the branch the root checkout was on when this node's branch was
+	// cut. It is the fixed side of the moved-checkout question at landing time;
+	// absence is ordinary for a checkpoint written before this field existed.
+	Home string
+	// HomeSha is the commit Home named at the cut. The branch name answers which
+	// destination the person chose, but only this commit answers which world that
+	// name held before they and the task went on working independently.
+	HomeSha string
 	// Rung is which rung of the ground ladder made this node's world and Seal is
 	// the one string that names that world — furrow's sealed snapshot, or the
 	// machine commit's sha (groundladder.go). They are written beside Ground and
@@ -403,9 +413,10 @@ type TaskNode struct {
 	state      TaskState
 	// report, changed, branch, worktree and merge are the node's leavings,
 	// written by the goroutine that ran it and read by everybody else. worktree
-	// is where it worked, and it is kept for one reader only: a recovery that has
+	// is where it worked, and it is kept for two readers: a recovery that has
 	// to tell the person where an interrupted node's half-finished work is
-	// (task_store.go).
+	// (task_store.go), and a continuation that re-arms the same node
+	// ([Agent.ContinueTask]).
 	report  string
 	changed []string
 	// wrote is every path this node has written SO FAR, in the order it first
@@ -431,9 +442,13 @@ type TaskNode struct {
 	worktree string
 	merge    string
 	started  time.Time
+	// ended is the instant this node last landed. It is stamped at the live
+	// transition and kept on the checkpoint, so a rebuilt row reads the record's
+	// fact instead of dating old work with the clock that happened to read it.
+	ended time.Time
 	// elapsed is the node's age FROZEN at the moment it landed. While it runs it
-	// is zero and the age is measured from started; a node rehydrated from a
-	// checkpoint has no started to measure from and this is the age it had.
+	// is zero and the age is measured from started; after a restore this is the
+	// duration the record carried beside its original start and landing stamps.
 	elapsed time.Duration
 	// cost is what this node's agents have spent, in dollars, ACCUMULATED where
 	// each of them is closed ([Agent.foldTaskUsage]). While the node runs it is
@@ -472,6 +487,15 @@ type TaskNode struct {
 	// interrupt a recovery has consumed. It is history, and it is written down so
 	// that exactly one recovery ever consumes it.
 	interrupted bool
+	// continuing marks a node a person (or the model) re-armed after it
+	// settled, so [TaskNode.resumeTree] reuses the kept branch instead of
+	// cutting a fresh working copy ([Agent.ContinueTask]; F23/F25).
+	continuing bool
+	// finding is what a continuation adds THIS ROUND: the last attempt's
+	// report and any words sent with continue. It is not the assignment —
+	// spec.brief stays the original — and a second continue replaces it
+	// rather than wrapping it.
+	finding string
 	// offer is a finished harness page waiting on the person, held for exactly
 	// as long as its card is up so the checkpoint can carry it across a restart
 	// ([TaskNode.carryOffer], task_store.go's harnessOfferRecord). Nil on every
@@ -1137,6 +1161,7 @@ func (g *TaskGraph) runFrontier() {
 		ready, blocked := g.readinessLocked(node)
 		if blocked != "" {
 			node.state = TaskFailed
+			node.ended = time.Now()
 			node.report = blocked
 			node.held = ""
 			failing = append(failing, node)
@@ -1431,6 +1456,9 @@ func (g *TaskGraph) readinessLocked(node *TaskNode) (bool, string) {
 // resolved ONCE per frontier pass outside this lock.
 func (g *TaskGraph) briefLocked(node *TaskNode, orders string) string {
 	brief := g.inheritedLocked(node)
+	if finding := strings.TrimSpace(node.finding); finding != "" {
+		brief += "\n\n" + finding
+	}
 	if orders != "" {
 		// The section is rendered with a trailing newline for the block the
 		// conversation wraps it in; a brief is prose and ends where it ends.
@@ -1595,11 +1623,12 @@ func shareReports(reports []string, pot int) []string {
 func (g *TaskGraph) complete(node *TaskNode, state TaskState) {
 	g.mu.Lock()
 	node.state = state
+	node.ended = time.Now()
 	if !node.started.IsZero() {
 		// The age stops here. A finished node's elapsed is a fact about how long
 		// the work took, and a checkpoint that recomputed it from `started` would
 		// have finished work ageing on disk.
-		node.elapsed = time.Since(node.started)
+		node.elapsed = node.ended.Sub(node.started)
 	}
 	g.handBackSlotLocked(node)
 	g.mu.Unlock()
@@ -1655,6 +1684,7 @@ func (g *TaskGraph) handBackSlotLocked(node *TaskNode) {
 func (g *TaskGraph) resettle(node *TaskNode, state TaskState) {
 	g.mu.Lock()
 	node.state = state
+	node.ended = time.Now()
 	g.mu.Unlock()
 
 	g.checkpoint()
@@ -1954,6 +1984,43 @@ func taskCopyFor(tree taskTree) taskCopy {
 		return newTaskCopy(tree.ground, tree.dir)
 	}
 	return taskCopy{}
+}
+
+// checkTexts hands [declaredChecks] each account in a node's document beside
+// its source because a prompt line in the person's pasted words is a story
+// about seeing the bug, while the same line in the work's account is a promise
+// about how to check it. An acceptance nobody could write is those same words
+// with a sentence in front of them, and that sentence does not turn a pasted
+// transcript into a promise. The work's half still uses [composeBrief] so this
+// reader cannot invent a second layout for the worker's document.
+func (n *TaskNode) checkTexts() []checkText {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	ask := briefAskText(n.spec.request)
+	work := briefWorkText(ask, n.brief)
+	// THE DONE-CONDITION IS THE ONE THE WORKER READS, family checks and all
+	// ([withFamilyChecks]), because a document that harvested a different
+	// sentence from the one it hands out would be two documents.
+	acceptance := withFamilyChecks(n.spec.acceptance, n.Family)
+	texts := make([]checkText, 0, 3)
+	if ask != "" {
+		texts = append(texts, checkText{text: ask, from: checksFromAsk})
+	}
+	if acceptanceIsAsk(n.spec.acceptance) {
+		// The frame carries the person's words and the family's checks carry the
+		// work's, so only the first half moves across; the checks stay in the
+		// account below, where they were written.
+		texts = append(texts, checkText{text: n.spec.acceptance, from: checksFromAsk})
+		acceptance = withFamilyChecks("", n.Family)
+	}
+	// THE ZERO COPY, for [TaskNode.instruction]'s reason: the harvest resolves
+	// against the clean restore rather than against any worker's own folder.
+	account := composeBrief("", work, n.spec.deliverable, acceptance,
+		expectsSection(n.spec.expects), n.spec.origin, taskCopy{})
+	if account != "" {
+		texts = append(texts, checkText{text: account, from: checksFromWork})
+	}
+	return texts
 }
 
 // request is the person's own words, frozen with the rest of the spec. It is
@@ -2260,6 +2327,7 @@ func (n *TaskNode) ladderRecord(tree taskTree) taskTree {
 	defer n.graph.mu.Unlock()
 	tree.rung, tree.seal, tree.base, tree.universe = n.Rung, n.Seal, n.Base, n.Universe
 	tree.checkBase = n.CheckBase
+	tree.home, tree.homeSha = n.Home, n.HomeSha
 	return tree
 }
 
@@ -2590,6 +2658,7 @@ func (n *TaskNode) setTree(tree taskTree) {
 	if tree.ground != "" {
 		n.Ground, n.Mode = tree.ground, tree.mode
 	}
+	n.Home, n.HomeSha = tree.home, tree.homeSha
 	// AND WHICH RUNG OF THE GROUND LADDER MADE THE WORLD (groundladder.go). It
 	// travels with the ground because it is the other half of the same fact: the
 	// ground says which folder the work is about, and this says which copy of it
@@ -2737,18 +2806,28 @@ func (n *TaskNode) notice() TaskNotice {
 	return n.noticeLocked(cost)
 }
 
+// ageLocked is this node's elapsed age, with the graph held.
+//
+// A SETTLED NODE'S AGE IS THE FROZEN FACT ITS RECORD CARRIES. Measuring again
+// from its recorded start would count every hour the process was closed as work,
+// so only an unsettled node with a start and no frozen age consults the moving
+// clock. Keeping that rule here prevents checkpoint, index, and notice readers
+// from giving one recorded run three different ages.
+func (n *TaskNode) ageLocked() time.Duration {
+	elapsed := n.elapsed
+	if !n.state.settled() && elapsed == 0 && !n.started.IsZero() {
+		elapsed = time.Since(n.started)
+	}
+	return elapsed
+}
+
 // noticeLocked is [TaskNode.notice] for a caller already holding the graph
 // lock, with the spend read before that lock was taken (notice says why that
 // order is the only one). It exists for [Agent.replayTaskRoster], which builds
 // every row of the roster inside ONE hold of the lock so the batch is a single
 // instant of the graph rather than a smear across a node landing mid-walk.
 func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
-	// A landed node's age is frozen, and a rehydrated one has only the age its
-	// checkpoint recorded; only a node that is still running is measured.
-	elapsed := n.elapsed
-	if elapsed == 0 && !n.started.IsZero() {
-		elapsed = time.Since(n.started)
-	}
+	elapsed := n.ageLocked()
 	changed := make([]string, len(n.changed))
 	copy(changed, n.changed)
 	// The three halves of Waiting, and no two of them can be true of one node:
@@ -2788,6 +2867,8 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		Parent:    n.parent,
 		State:     n.state,
 		Elapsed:   elapsed,
+		StartedAt: n.started,
+		EndedAt:   n.ended,
 		Report:    n.report,
 		Changed:   changed,
 		Branch:    n.branch,
@@ -3146,6 +3227,28 @@ func haltedVerb(ending TaskEnding) string {
 	return ""
 }
 
+// landingTruth is the merge outcome's veto over the sentence the model reads.
+// State can say done and the worker's report can say the work arrived; if the
+// branch did not fasten, none of that is a landing. F31/F32: the model read a
+// success-shaped note and told the person a commit had arrived that sat on no
+// branch. The mark is the only fact; the state cannot override it. An empty
+// mark is not a refusal — that is a node that never had a branch, and
+// [cameHome] treats it as home already.
+func landingTruth(notice TaskNotice, verb string) (string, string) {
+	report := notice.Report
+	if notice.Merge == "" || cameHome(notice.Merge) {
+		return verb, report
+	}
+	if verb == "finished" {
+		verb = "needs your look"
+	}
+	// "finished, but needs your look" is the card's lead for work that ran and
+	// is sitting on a branch ([needsLookLead]). On a merge that did not fasten
+	// it is a success claim the model then relays. The card keeps the lead; the
+	// note the model reads does not.
+	return verb, strings.TrimPrefix(report, needsLookLead)
+}
+
 func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address landingAddress) string {
 	var note strings.Builder
 	verb := "finished"
@@ -3173,12 +3276,13 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 		// harness's vocabulary — this says whose problem it now is.
 		verb = "needs your look"
 	}
+	verb, report := landingTruth(notice, verb)
 	fmt.Fprintf(&note, "task %d %s: %s", notice.ID, verb, notice.Title)
 	if transcript != "" {
 		note.WriteString(" · transcript " + transcript)
 	}
-	if notice.Report != "" {
-		note.WriteString("\n" + notice.Report)
+	if report != "" {
+		note.WriteString("\n" + report)
 	}
 	if notice.State == TaskUnverified {
 		note.WriteString(settleClause(notice.ID, settle))
@@ -3197,9 +3301,22 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 	if len(notice.Changed) > 0 {
 		note.WriteString("\nchanged: " + strings.Join(notice.Changed, ", "))
 	}
+	note.WriteString(taskMergeNote(notice))
+	return note.String()
+}
+
+// taskMergeNote is the landing's one branch sentence, kept outside [taskNote]
+// because adding an outcome must not make the already-long delivery road grow.
+func taskMergeNote(notice TaskNotice) string {
 	switch notice.Merge {
 	case mergeMerged:
-		note.WriteString("\nits branch " + notice.Branch + " merged into yours")
+		return "\nits branch " + notice.Branch + " merged into yours"
+	case mergeKept:
+		// THE REASON IS ALREADY THE REPORT'S FIRST SENTENCE. Protected, moved and
+		// detached checkouts each need different words, and comeHome wrote the one
+		// it observed before the node settled; repeating a generic branch line here
+		// would say the same landing twice.
+		return ""
 	case mergeConflicted:
 		// A FOLDER FAMILY HAS NO BRANCH TO OFFER. Its landing refuses the same way
 		// a merge does and for the same reason — the same file changed on both
@@ -3208,8 +3325,9 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 		// of this report. The emptiness law is why nothing is written here rather
 		// than a line with a hole where a branch name would go.
 		if notice.Branch != "" {
-			note.WriteString("\nits branch " + notice.Branch + " did not merge cleanly and was kept — merge it yourself when you are ready")
+			return "\nits branch " + notice.Branch + " did not merge cleanly and was kept — merge it yourself when you are ready"
 		}
+		return ""
 	case mergeAborted:
 		// WHAT IT MADE IS ON THAT BRANCH, and saying so is the difference
 		// between a person going to look and a person assuming an ending they
@@ -3223,16 +3341,17 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 		// a branch would send the person past it (task_land_unsaved.go).
 		switch {
 		case unsavedLanding(notice.Report):
+			return ""
 		case len(notice.Changed) > 0:
-			note.WriteString("\nit was stopped; what it made is committed on its branch " +
-				notice.Branch + ", which was kept — merge that branch to take the work")
+			return "\nit was stopped; what it made is committed on its branch " +
+				notice.Branch + ", which was kept — merge that branch to take the work"
 		default:
-			note.WriteString("\nit was stopped; its branch " + notice.Branch + " was kept")
+			return "\nit was stopped; its branch " + notice.Branch + " was kept"
 		}
 	case mergeInPlace:
-		note.WriteString("\nit worked directly in the workspace: there was no repository to branch")
+		return "\nit worked directly in the workspace: there was no repository to branch"
 	}
-	return note.String()
+	return ""
 }
 
 // emitTaskUpdate puts one update in front of whoever is watching.
@@ -3739,7 +3858,7 @@ func (a *Agent) openTaskWorld(ctx context.Context, node *TaskNode, log io.Writer
 	tree, resumed := node.resumeTree(place, a.config.Workspace)
 	var err error
 	if !resumed {
-		tree, err = prepareTaskTreeOn(ctx, place, a.config.Workspace, a.journalID(), node.id, node.title(), node.stand())
+		tree, err = prepareTaskTreeForNode(ctx, place, a.config.Workspace, a.journalID(), node)
 	}
 	if err != nil {
 		node.end(TaskEndingError)
@@ -4334,41 +4453,44 @@ func (a *Agent) landConflicted(node *TaskNode, tree taskTree, changed []string, 
 	return TaskUnverified
 }
 
-// resumeTree reuses the durable working copy after a process interruption.
+// resumeTree reuses the durable working copy after a process interruption, and
+// after a person asked to continue a settled node ([Agent.ContinueTask]).
 func (n *TaskNode) resumeTree(place Place, workspace string) (taskTree, bool) {
 	n.graph.mu.Lock()
-	dir, branch, merge, interrupted := n.worktree, n.branch, n.merge, n.interrupted
+	dir, branch, merge, interrupted, continuing := n.worktree, n.branch, n.merge, n.interrupted, n.continuing
 	n.graph.mu.Unlock()
-	if !interrupted || strings.TrimSpace(dir) == "" {
-		return taskTree{}, false
-	}
-	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-		return taskTree{}, false
-	}
-	ground, mode := n.groundNow()
-	if merge == mergeInPlace {
-		// AND A RESUMED FAMILY REVALIDATES ITS TREE THROUGH THE ONE CALL THAT
-		// MAKES IT (task_tree_mirror.go). A mirror opened by the run that died is
-		// found already open and is left exactly as it is; one that was never
-		// opened gets the second chance a restart is — the disk may be writable
-		// now — and, failing that, recomputes the sentence its parts' sharing of
-		// this directory has to be said out loud in. Recomputing beats persisting
-		// it: the checkpoint would carry an answer about a machine that has since
-		// been rebooted, and there would be two accounts of one fact.
-		return openFamilyTree(taskTree{dir: dir, merge: mergeInPlace, ground: ground, mode: mode}), true
-	}
-	// THE BRANCH CAME OFF THE GROUND, so the repository it merges back into is the
-	// ground and not whatever this process happens to be standing in. A node
-	// resumed against the wrong repository is a branch that cannot be found, and
-	// before the ground was recorded that was every node whose conversation was
-	// opened outside the project it was working on.
-	root, ok := repositoryRoot(ground)
-	if !ok {
-		if root, ok = repositoryRoot(workspace); !ok {
-			return taskTree{}, false
+	if interrupted && strings.TrimSpace(dir) != "" {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			ground, mode := n.groundNow()
+			if merge == mergeInPlace {
+				// AND A RESUMED FAMILY REVALIDATES ITS TREE THROUGH THE ONE CALL THAT
+				// MAKES IT (task_tree_mirror.go). A mirror opened by the run that died is
+				// found already open and is left exactly as it is; one that was never
+				// opened gets the second chance a restart is — the disk may be writable
+				// now — and, failing that, recomputes the sentence its parts' sharing of
+				// this directory has to be said out loud in. Recomputing beats persisting
+				// it: the checkpoint would carry an answer about a machine that has since
+				// been rebooted, and there would be two accounts of one fact.
+				return openFamilyTree(taskTree{dir: dir, merge: mergeInPlace, ground: ground, mode: mode}), true
+			}
+			// THE BRANCH CAME OFF THE GROUND, so the repository it merges back into is the
+			// ground and not whatever this process happens to be standing in. A node
+			// resumed against the wrong repository is a branch that cannot be found, and
+			// before the ground was recorded that was every node whose conversation was
+			// opened outside the project it was working on.
+			root, ok := repositoryRoot(ground)
+			if !ok {
+				if root, ok = repositoryRoot(workspace); !ok {
+					return taskTree{}, false
+				}
+			}
+			return n.ladderRecord(taskTree{dir: dir, root: root, branch: branch, place: place, ground: ground, mode: mode}), true
 		}
 	}
-	return n.ladderRecord(taskTree{dir: dir, root: root, branch: branch, place: place, ground: ground, mode: mode}), true
+	if continuing {
+		return n.resumeContinuedTree(place, workspace)
+	}
+	return taskTree{}, false
 }
 
 // withReport joins the runner's own sentence and the child's words, dropping
@@ -5792,6 +5914,13 @@ type taskTree struct {
 	root string
 	// branch is the node's branch, empty in place.
 	branch string
+	// home is the root checkout's branch at the moment this task branch was cut.
+	// The landing compares it with the branch there now so work never follows a
+	// person who moved their checkout somewhere else while the task ran.
+	home string
+	// homeSha is the commit that name held at the cut. The name alone answers
+	// which branch the person chose, never which world that branch still names.
+	homeSha string
 	// merge is the outcome so far: "inplace" for a non-repository, and empty
 	// while a branch is still out.
 	merge string
@@ -5883,6 +6012,9 @@ func prepareTaskTree(place Place, workspace, session string, id uint64, title st
 // that is not a part, which is almost every task.
 func prepareTaskTreeAt(ctx context.Context, place Place, workspace, session string, id uint64, title, where, frozen string) (taskTree, error) {
 	where = strings.TrimSpace(where)
+	if root, ok := whereInsideRepository(where, workspace); where != "" && ok {
+		return cutTaskWorktree(ctx, place, root, session, id, title, frozen)
+	}
 	if strings.EqualFold(where, "in place") {
 		return taskTree{dir: workspace, merge: mergeInPlace, ground: canonicalPath(workspace), mode: TaskModeInPlace}, nil
 	}
@@ -6006,6 +6138,8 @@ func cutWorktreeAt(place Place, root, dir, branch string, mode os.FileMode) (tas
 // asks for HEAD and gets exactly what it always got.
 func cutWorktreeFrom(place Place, root, dir, branch string, mode os.FileMode, from string) (taskTree, error) {
 	defer lockGitRoot(place, root)()
+	home := currentBranch(root)
+	homeSha := branchCommit(root, home)
 	if err := os.MkdirAll(filepath.Dir(dir), mode); err != nil {
 		return taskTree{}, err
 	}
@@ -6031,12 +6165,12 @@ func cutWorktreeFrom(place Place, root, dir, branch string, mode os.FileMode, fr
 		return taskTree{}, fmt.Errorf("git worktree add: %s", firstLine(out))
 	}
 	// The cut's commit remains the baseline even if the worker commits its own
-	// edits later. The seal already travels through checkpoints and repairs.
+	// edits later. The check base travels through checkpoints and repairs.
 	start, err := git(dir, "rev-parse", "HEAD")
 	if err != nil {
 		return taskTree{}, fmt.Errorf("read task base: %w", err)
 	}
-	return taskTree{dir: dir, root: root, branch: branch, place: place, ground: root, mode: TaskModeWorktree, checkBase: strings.TrimSpace(start)}, nil
+	return taskTree{dir: dir, root: root, branch: branch, home: home, homeSha: homeSha, place: place, ground: root, mode: TaskModeWorktree, checkBase: strings.TrimSpace(start)}, nil
 }
 
 // prepareTaskTreeOn gives one node a place to work ON ITS GROUND, which is the
@@ -6340,6 +6474,21 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string, landin
 		return mergeConflicted, withReport(withReport(unreachedSentence(t.branch, t.dir, out), stranded),
 			leftBehindSentence(left, true)), refusedByTheWork
 	}
+	// A TASK NEVER WRITES A PROTECTED, MOVED OR DETACHED CHECKOUT. The branch is
+	// already committed and present in the ground repository at this point, so
+	// keeping it gives the person a durable result and gives the working copy
+	// back without changing a byte of the checkout they are using.
+	if t.landsInThePersonsRepository() {
+		if kept := t.keptLandingSentence(); kept != "" {
+			t.releaseKeptLocked()
+			// refusedNothing: the landing was not refused, it was HONOURED. The
+			// work is committed on its branch and the person has been told which
+			// one — a refusal here would put a policy keep on the unsaved road
+			// (task_land_unsaved.go) and offer to try it again, which is the one
+			// thing that must not happen to a checkout aforge will not write.
+			return mergeKept, withReport(withReport(kept, stranded), leftBehindSentence(left, true)), refusedNothing
+		}
+	}
 	// AND THE MERGE IS THE CARRY-OR-REFUSE ONE (groundcarry.go). The ground a
 	// task was carved from is the ground it merges into: work of the person's own
 	// standing in the way is set aside for the merge and put back afterwards, and
@@ -6347,6 +6496,18 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string, landin
 	// branch is kept with the files NAMED. It never fails with a sentence that
 	// names nothing, which is what this used to do.
 	landed, said := t.mergeIntoGround()
+	if landed && !branchFastened(t.root, t.branch) {
+		// A MERGE THAT EXITED ZERO DID NOT NECESSARILY FASTEN THE BRANCH.
+		// git merge --no-edit can succeed (already up to date against a stale
+		// ref, a fetch that did not move the tip) while the node's commits stay
+		// off HEAD. releaseLanded then deletes the branch, and the notice says
+		// the work arrived — F31, a commit on no branch. The mark the notice
+		// reads is this one: not fastened is not a landing.
+		landed = false
+		if said == "" {
+			said = unfastenedSentence(t.branch)
+		}
+	}
 	if !landed {
 		// The committed branch is the durable recovery point. Keeping the failed
 		// worktree registered would leave the person's repository pointing into a
@@ -6406,6 +6567,28 @@ func (t taskTree) landMirror(wrote []string) (string, string, landingRefusal) {
 		return mergeAborted, unlaidSentence(t.dir, t.ground, problem), refusedByTheTree
 	}
 	return mergeInPlace, "", refusedNothing
+}
+
+// branchFastened reports that the task branch's tip is an ancestor of HEAD in
+// the ground repository — the one fact that means the work actually landed.
+//
+// [taskTree.mergeIntoGround] answers from git merge's exit code, and that is
+// not the same question: a merge can exit zero without the node's commits
+// being reachable from the person's branch. The notice may not claim a
+// landing until this is true.
+func branchFastened(root, branch string) bool {
+	if strings.TrimSpace(root) == "" || strings.TrimSpace(branch) == "" {
+		return false
+	}
+	_, err := git(root, "merge-base", "--is-ancestor", branch, "HEAD")
+	return err == nil
+}
+
+// unfastenedSentence is what a person reads when a merge reported success and
+// the branch still is not on theirs. It names the kept branch and does not
+// say the work arrived.
+func unfastenedSentence(branch string) string {
+	return "its branch " + branch + " did not land on yours and was kept"
 }
 
 // conflictSentence is what a person reads when a branch would not merge: which
@@ -6672,9 +6855,8 @@ func commitTaskWorkAs(dir, message string, wrote []string) ([]string, string, la
 		// what it always held.
 		return nil, "", refusedNothing, nil
 	}
-	if out, err := git(dir,
-		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
-		"commit", "--no-verify", "-m", message); err != nil {
+	if out, err := git(dir, append(aforgeGitIdentity(),
+		"commit", "--no-verify", "-m", message)...); err != nil {
 		// A COMMIT THAT WOULD NOT GO IS USUALLY ABOUT THE COMMIT — a signature it
 		// could not make, a ref it could not lock, a rule the repository holds —
 		// and those are refusals a second answer can get past. Which of the two

@@ -120,7 +120,7 @@ been shown what changed and said so. See `## /land` below.
 are standing in and touches whatever it names, including files in a folder you chose. Only
 the model's `read`, `write` and `edit` go through the copy.
 
-## /land — merge what you did into my folder, put the changes in, land the work
+## /land — merge what you did into my folder, put the changes in, land the work, I committed or rebased before landing
 
 `/land` on its own shows what is waiting and moves nothing:
 
@@ -134,11 +134,22 @@ changes for agentfield · 2 files · shared.txt, notes.md · type /land now to p
 agentfield now has the changes · 2 files
 ```
 
-For a repository the work is committed on a branch of its own and merged into your
-checkout — your uncommitted changes are left alone, and if the merge cannot settle you get
-`could not put it all into agentfield ·` and the sentence naming the files that clashed,
-with the branch kept so nothing is lost. For a plain folder the files are copied back over
-it by name, **whole or not at all**: if any one of them cannot be placed, your folder is
+For a repository the work is committed on a branch of its own, and merged into your
+checkout only where aforge is willing to write it — your uncommitted changes are left
+alone, and if the merge cannot settle you get `could not put it all into agentfield ·` and
+the sentence naming the files that clashed, with the branch kept so nothing is lost.
+
+**Where your checkout is on a protected branch, the branch is kept instead and your
+checkout is not touched.** `main`, `master`, `dev`, `develop`, `development`, `staging`,
+`stage`, `trunk`, `production`, `prod`, `release` and any remote's default branch are never
+written by aforge. You get the sentence on its own — `its branch chat/agentfield-b22fb8 was
+kept: your checkout is on dev, which aforge never writes to — merge it when you are ready`
+— and it is not a failure: the work is finished and on that branch, and `git merge` takes
+it whenever you want it. The same keep happens when you are on a different branch than when
+the work was cut, when you moved that branch to another commit yourself after the cut, or
+when you are on no branch at all. Commits written by aforge's own landings do not count as
+you moving it. For a plain folder the files are copied back over it by name, **whole or not
+at all**: if any one of them cannot be placed, your folder is
 left exactly as it was and you get `could not put it all into agentfield ·` with the reason.
 The changes stay waiting, so `/land` is still there to try again once the way is clear.
 

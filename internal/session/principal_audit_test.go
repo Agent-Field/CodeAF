@@ -95,6 +95,131 @@ func TestAnEditToAFileTheProjectAlreadyHadIsWorkTheSessionMade(t *testing.T) {
 	}
 }
 
+// A FILE THE RUN CREATED AND THEN EMPTIED IS NOT WORK THE SESSION MADE (C1-C4).
+//
+// The created ledger records that a file was made, not what remains in it. A
+// later step could blank that file and leave the path behind, and the door
+// would still say the work was made over a tree holding an empty file. Content
+// makes it work; emptiness does not. The file remains somebody's deliverable
+// either way.
+func TestAFileTheRunCreatedAndThenEmptiedIsNotWorkTheSessionMade(t *testing.T) {
+	tree := t.TempDir()
+	path := filepath.Join(tree, "fix.py")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.rememberChange(fileChange{path: path, shown: "fix.py", created: true})
+
+	if err := os.WriteFile(path, []byte("def fix(): return 1\n"), 0o644); err != nil {
+		t.Fatalf("writing the created file: %v", err)
+	}
+	if !agent.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a created file with content was not counted as work the session made")
+	}
+
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatalf("emptying the created file: %v", err)
+	}
+	remains := agent.remainsFor("fixed", readerLine{})
+	if remains.Made {
+		t.Fatal("an empty file counted as work the session made")
+	}
+	if remains.finishedSomething() {
+		t.Fatal("a session with only an empty created file was said to have finished something")
+	}
+	if unmet := strings.Join(remains.unmet(), "\n"); !strings.Contains(unmet, "nothing has been finished yet") {
+		t.Fatalf("the run was not told to carry on after its created file was emptied: %q", unmet)
+	}
+
+	// SCRATCH IS WHAT [sweepScratch] REMOVES. Made may answer false without
+	// moving an in-tree file into that set: emptiness never gives the harness
+	// leave to delete somebody's deliverable.
+	found := reconcile(agent.createdList(), tree)
+	if len(found.kept) != 1 || found.kept[0] != "fix.py" {
+		t.Fatalf("the empty deliverable was not kept: %+v", found.kept)
+	}
+	if len(found.scratch) != 0 {
+		t.Fatalf("the empty deliverable was offered to the sweep: %+v", found.scratch)
+	}
+
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatalf("writing the created file again: %v", err)
+	}
+	if !agent.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a created file edited to hold content was not counted as work the session made")
+	}
+}
+
+// A CREATED FILE OUTSIDE THE DELIVERABLE IS STILL NOT THE WORK (C5-C6).
+//
+// Content does not widen the deliverable tree, and with no tree there is no
+// created half of Made to answer at all. Reconciliation keeps its older job:
+// scratch made outside a real tree is still scratch.
+func TestACreatedFileOutsideTheDeliverableIsStillNotTheWork(t *testing.T) {
+	tree := t.TempDir()
+	path := filepath.Join(t.TempDir(), "notes.md")
+	if err := os.WriteFile(path, []byte("notes\n"), 0o644); err != nil {
+		t.Fatalf("writing the outside file: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.rememberChange(fileChange{path: path, shown: path, created: true})
+	if agent.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a created file outside the deliverable counted as work on it")
+	}
+	found := reconcile(agent.createdList(), tree)
+	if len(found.scratch) != 1 || found.scratch[0] != path {
+		t.Fatalf("the created file outside the deliverable was not scratch: %+v", found.scratch)
+	}
+
+	withoutTree, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	withoutTree.config.Workspace = ""
+	withoutTree.rememberChange(fileChange{path: path, shown: path, created: true})
+	if withoutTree.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a created file counted as work when there was no deliverable tree")
+	}
+}
+
+// A CREATED PATH THAT BECAME A DIRECTORY IS NOT WORK THE SESSION MADE (C7).
+//
+// The directory is neither the regular file the run wrote nor scratch the
+// sweep may remove, so both readings leave it alone.
+func TestACreatedPathThatBecameADirectoryIsNotWorkTheSessionMade(t *testing.T) {
+	tree := t.TempDir()
+	path := filepath.Join(tree, "fix.py")
+	if err := os.WriteFile(path, []byte("def fix(): return 1\n"), 0o644); err != nil {
+		t.Fatalf("writing the created file: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.rememberChange(fileChange{path: path, shown: "fix.py", created: true})
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("removing the created file: %v", err)
+	}
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatalf("making a directory at the created path: %v", err)
+	}
+
+	if agent.remainsFor("fixed", readerLine{}).Made {
+		t.Fatal("a created path that became a directory counted as work the session made")
+	}
+	found := reconcile(agent.createdList(), tree)
+	if len(found.kept) != 0 || len(found.scratch) != 0 {
+		t.Fatalf("a directory at a created path reached the keep or sweep set: %+v", found)
+	}
+}
+
 // NOTHING HARVESTED FROM THE ASK IS EXECUTED AGAINST THE TREE. A pasted
 // reproduction says how the person saw the bug, while the acceptance is the
 // work's own promise about what proves it.
@@ -127,6 +252,96 @@ func TestAStepOutOfThePastedReproductionIsNeverASessionCheck(t *testing.T) {
 	promised.steward().setAcceptance("the fix passes:\n$ chmod 000 tox.ini")
 	if checks := promised.sessionChecks(); !containsWord(checks, "chmod 000 tox.ini") {
 		t.Fatalf("the same step declared by the acceptance is not a session check: %v", checks)
+	}
+}
+
+// A DONE-CONDITION THAT IS THE PERSON'S PASTED ASK CARRIES NO CHECK INTO THE
+// SESSION'S CHECKS, IN EITHER SPELLING.
+//
+// When no one could write a done-condition, the person's words arrive behind
+// [routeAskAcceptance]. The measured tox reproduction must still remain a
+// story about seeing the bug rather than become a command run against the
+// deliverable tree. A second session keeps the control honest: the same words
+// in a done-condition somebody wrote still name checks.
+func TestASessionWhoseDoneWhenIsThePastedAskRunsNoStepOutOfIt(t *testing.T) {
+	tree := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tree, "tox.ini"), []byte("[tox]\n"), 0o644); err != nil {
+		t.Fatalf("writing tox.ini: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tree, "run_tests.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("writing run_tests.sh: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.steward().setAcceptance(routeAskAcceptance +
+		"check it with `run_tests.sh`\nthe reproduction ends with:\n$ chmod 000 tox.ini")
+
+	checks := agent.sessionChecks()
+	backticked := checkCommand(tree, "run_tests.sh")
+	if backticked == "" {
+		t.Fatal("the tree's run_tests.sh is not invocable, so the source boundary cannot be exercised")
+	}
+	for _, command := range []string{backticked, "chmod 000 tox.ini"} {
+		if containsWord(checks, command) {
+			t.Errorf("%q out of the ask-fallback done-condition became a session check: %v", command, checks)
+		}
+	}
+
+	// THE ACCEPTANCE IS IMMUTABLE FOR THE SESSION, so the work's side of the
+	// law is read off a second session whose written done-condition names both
+	// commands in the same spellings.
+	written, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	written.steward().setAcceptance(
+		"check it with `run_tests.sh`\nthe done-condition also requires:\n$ chmod 000 tox.ini")
+	writtenChecks := written.sessionChecks()
+	for _, command := range []string{backticked, "chmod 000 tox.ini"} {
+		if !containsWord(writtenChecks, command) {
+			t.Errorf("the written done-condition did not keep %q as a session check: %v", command, writtenChecks)
+		}
+	}
+}
+
+// A SETTLED UNIT'S DOOR CARRIES NO PROMPT STEP OUT OF THE PERSON'S PASTED ASK
+// INTO THE SESSION'S CHECKS.
+//
+// The node door is the only path from a landing into the terminal check list;
+// this pins the full path that would otherwise run the measured tox
+// reproduction against the deliverable tree.
+func TestASettledNodeNeverContributesAStepOutOfThePastedAsk(t *testing.T) {
+	tree := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tree, "tox.ini"), []byte("[tox]\n"), 0o644); err != nil {
+		t.Fatalf("writing tox.ini: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tree, "run_tests.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("writing run_tests.sh: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.steward().setAcceptance("the tox configuration remains readable")
+	node := landOne(agent, TaskDone, "repair tox", "done")
+	node.graph.mu.Lock()
+	node.spec.request = "the reproduction ends with:\n$ chmod 000 tox.ini"
+	node.spec.brief = "repair the tox configuration"
+	node.brief = node.spec.brief
+	node.spec.acceptance = "the tox configuration remains readable and `run_tests.sh` passes"
+	node.graph.mu.Unlock()
+
+	checks := agent.sessionChecks()
+	if containsWord(checks, "chmod 000 tox.ini") {
+		t.Fatalf("a settled node carried a pasted reproduction step into the session checks: %v", checks)
+	}
+	if want := checkCommand(tree, "run_tests.sh"); want == "" || !containsWord(checks, want) {
+		t.Fatalf("the settled node's own check did not reach the session checks: want %q in %v", want, checks)
 	}
 }
 

@@ -82,8 +82,10 @@ const (
 // person's account of what they saw; a pasted reproduction is evidence about
 // the bug, not a promise that repeating it proves the work. In one measured tox
 // session the baseline check harvested and ran `chmod 000 tox.ini` from the
-// pasted issue. Only the acceptance is read with [declaredChecks]; the nodes'
-// own doors are gathered below.
+// pasted issue. When nobody could write an acceptance, [routeAcceptance] frames
+// the person's words as one; that fallback is still read as the ask rather than
+// allowed through in the acceptance's coat. The nodes' own doors are gathered
+// below.
 //
 // AND EVERY UNIT OF WORK THAT LANDED CONTRIBUTES ITS OWN DOOR, which is BOTH of
 // task_checks.go's sources at once ([auditDoorFor]): the checks that node's
@@ -107,7 +109,12 @@ func (a *Agent) sessionChecks() []string {
 	// of these, so it is the directory a declared check has to be runnable in —
 	// the same tree, asked the same question, as the one the checks are run in.
 	tree := a.deliverableTree()
-	checks := invocableChecks(tree, declaredChecks(principal.Acceptance(), tree))
+	acceptance := principal.Acceptance()
+	from := checksFromWork
+	if acceptanceIsAsk(acceptance) {
+		from = checksFromAsk
+	}
+	checks := invocableChecks(tree, declaredChecks(acceptance, tree, from))
 	graph := a.tasker()
 	if graph == nil {
 		return trimChecks(checks)
@@ -130,6 +137,22 @@ func (a *Agent) sessionChecks() []string {
 			invocableChecks(tree, auditDoorFor(node, auditPlace{ground: tree, ran: tree}).checks))
 	}
 	return trimChecks(checks)
+}
+
+// acceptanceIsAsk recognizes the one frame [routeAcceptance] writes when no
+// one could compose a done-condition and the person's own words have to stand.
+// The frame is the source of truth, so this reading cannot drift from its only
+// writer into treating a pasted reproduction as the work's promise.
+//
+// THE PREFIX IS LOAD-BEARING. Every writer of an acceptance either hands the
+// frame over untouched or trims its whitespace, so the frame is still at the
+// front by the time this reads it — [Steward.setAcceptance] only trims, the
+// node's own path is verbatim, restore is verbatim, and [TaskNode.checkTexts]
+// deliberately tests the raw acceptance rather than the composed one. A future
+// composer that puts ANYTHING in front of the frame turns this silently false
+// and puts the pasted reproduction back on the door.
+func acceptanceIsAsk(acceptance string) bool {
+	return strings.HasPrefix(acceptance, routeAskAcceptance)
 }
 
 // invocableChecks turns one source's declared spans into the commands that
@@ -343,6 +366,45 @@ func (a *Agent) rememberChanged(change fileChange) {
 		}
 	}
 	a.changedFiles = append(a.changedFiles, change)
+}
+
+// createdInDeliverable says whether a file this session created is under the
+// deliverable tree, is still a regular file there, AND HAS CONTENT IN IT. A
+// path outside the tree is scratch, not the work; a path that has since gone or
+// become a directory is not the file the session made; and an empty file holds
+// none of the work the run meant to put there.
+//
+// ── THE MEASURED FAILURE ────────────────────────────────────────────────────
+//
+// A run wrote `fix.py`, and a later one of its own steps blanked it. The
+// created ledger still held the path, so Made was true and the door said the
+// work was made over a tree holding an empty file.
+//
+// A CREATED FILE IS MEASURED BY SIZE, NOT BY ITS BEFORE-DIGEST. Its before is
+// "" because it was absent, while the digest of an empty regular file is the
+// sha256 of zero bytes rather than "" ([fileDigest]); comparing those values
+// would call the empty file changed and silently restore this failure.
+func (a *Agent) createdInDeliverable() bool {
+	tree := a.deliverableTree()
+	if tree == "" {
+		return false
+	}
+	for _, change := range a.createdList() {
+		if !change.created || !underTree(tree, change.path) {
+			continue
+		}
+		// THE PATH IS RESOLVED BEFORE IT IS READ for the same reason as in
+		// [Agent.changedInDeliverable]: a link under the workspace to an in-tree
+		// regular file is the file it points at, while [underTree] has already
+		// excluded a link that points out of the workspace.
+		resolved := canonicalPath(change.path)
+		info, err := os.Stat(resolved)
+		if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // changedInDeliverable says whether a file this session modified is under the

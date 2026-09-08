@@ -564,6 +564,7 @@ class Workbench:
         self.install = None
         self.python = None
         self.constraints = None
+        self.version = None
         self.last_line = ""
 
     def py(self):
@@ -621,7 +622,30 @@ class Workbench:
         # pytest, so that a fresh pick and a --remeasure capture it from ONE
         # code path: whatever a base was measured in is what a cell rebuilds.
         self.constraints = self.freeze()
+        # The version the project installed as is captured from the same one
+        # code path and for the same reason: this clone has the repository's
+        # tags and a cell's work tree has none, so the version measured here is
+        # the only version a cell can be told to build.
+        self.version = self.measure_version()
         return None
+
+    def measure_version(self):
+        """The version the project installed as in this venv, read with the
+        venv's own python, or None when nothing can be read — a version is a
+        convenience for the cells and never a reason to drop a validated pick,
+        so the failure is one printed line and an absent field."""
+        own = project_dist_name(self.dir)
+        if not own:
+            log("  version not read: the project does not name itself in pyproject.toml or setup.cfg")
+            return None
+        proc = run([self.py(), "-c",
+                    "import importlib.metadata as md, sys; print(md.version(sys.argv[1]))", own],
+                   cwd=self.dir, timeout=60)
+        version = proc.stdout.strip()
+        if proc.returncode != 0 or not version:
+            log("  version could not be read for %s: %s" % (own, last_line_of(proc.stderr)))
+            return None
+        return version
 
     def freeze(self):
         """Write this venv's third-party resolution to `lib/constraints/<repo
@@ -784,6 +808,13 @@ def entry_for(cand, wb, record, source="fresh"):
     # the old way: unpinned, and saying so in its own record.
     if wb.constraints:
         entry["constraints"] = wb.constraints
+    # The version the project was measured at, so a cell can build the same
+    # one: a cell's work tree is fetched without tags and a project versioned
+    # from VCS metadata would otherwise build as a placeholder. Absent when the
+    # version could not be read, and a cell then installs the rung as it always
+    # did — with whatever version the tagless tree produces.
+    if wb.version:
+        entry["version"] = wb.version
     entry.update(record)
     entry["picked_at"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return entry
@@ -861,6 +892,12 @@ def remeasure_entry(entry, scratch, keep):
     # this measurement than no pin at all.
     if wb.constraints:
         entry["constraints"] = wb.constraints
+    # The version follows the same rule as the constraints: this remeasure
+    # rebuilt the environment, so the version it read is the one this base now
+    # belongs to, and a read that failed leaves the standing field alone rather
+    # than blanking a version the base still has.
+    if wb.version:
+        entry["version"] = wb.version
     entry["base_suite"] = record["base_suite"]
     # The cap's note is rewritten with the number beside it: a measurement that
     # no longer hits the cap must not leave the old note standing over a count.

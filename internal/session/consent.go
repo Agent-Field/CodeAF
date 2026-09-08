@@ -80,6 +80,12 @@ const (
 	ConsentRule ConsentScope = "rule"
 )
 
+// ConsentWaiting is the only silence the gate has: an unanswered question
+// stays a question. A surface clock that recorded "denied" after ~10s and
+// cancelled the call was F41; the engine never does that, and every
+// EventConsentRequest says so in Wait.
+const ConsentWaiting = "waiting"
+
 // consentAnswer is one resolution travelling from the surface to the blocked
 // call.
 type consentAnswer struct {
@@ -285,12 +291,27 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 
 	allowed, err := a.ask(ctx, hub, call, decision)
 	if err != nil {
-		return refusal("the turn ended before this call was approved: " + decision.Rule), false
+		// A WAIT THAT ENDED IS NOT A NO. ctx.Done — a timeout, an interrupt,
+		// the agent closing — means nobody answered. Saying "denied by the
+		// person" here is how a late Esc and a ten-second clock used to
+		// write a refusal nobody gave (F41, R2).
+		return refusal(notApprovedWording(err)), false
 	}
 	if !allowed {
 		return refusal("denied by the person: " + decision.Rule), false
 	}
 	return toolResult{}, true
+}
+
+// notApprovedWording is what the model is told when the wait ended without
+// anybody answering. The two sentences are the two truths: the question ran
+// out of time, or the turn (or the agent) ended first. Neither is a person's
+// no, and the words must not say it was.
+func notApprovedWording(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "not approved: the question timed out"
+	}
+	return "not approved: ended before an answer"
 }
 
 // ask emits one request for a CALL and waits for the answer or for the turn to
@@ -370,6 +391,9 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 		// And whether the memo is even available, so a surface can leave the
 		// "always" key off a question it would be dropped on (see Event.Memo).
 		Memo: memo,
+		// Silence is not a no. The card draws this so the wait mode is not a
+		// hidden deny timer (F41).
+		Wait: ConsentWaiting,
 	})
 
 	select {

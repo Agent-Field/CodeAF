@@ -151,6 +151,56 @@ func TestACompletedCallLeavesOneRowWithTheShapeItActuallyHad(t *testing.T) {
 	}
 }
 
+// TestAPinnedCallLogsTheEffortThatTravelled is C3: the row and the body name
+// the same pinned word, with no override reading when the pin itself travelled.
+func TestAPinnedCallLogsTheEffortThatTravelled(t *testing.T) {
+	read := loggingTo(t)
+	client, recorded := newTestClient(t, Config{
+		Effort: EffortHigh,
+		SupportsParameter: func(string, string) (bool, bool) {
+			return true, true
+		},
+	})
+	ctx := WithConfiguredReasoningEffort(context.Background(), EffortOff)
+	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
+		t.Fatal(err)
+	}
+
+	reasoning, _ := recorded.body(0)["reasoning"].(map[string]any)
+	if reasoning["effort"] != "high" {
+		t.Fatalf("wire reasoning = %#v, want the pinned high effort", reasoning)
+	}
+	done := ended(read())
+	if len(done) != 1 || done[0].Effort != "high" || done[0].EffortPin != "" {
+		t.Fatalf("the pinned call's row should read high with no displaced pin: %+v", done)
+	}
+}
+
+// TestARequiredCallOutranksAndNamesThePin is C5 and C4 together: the answer's
+// own correctness bound wins, and the row says which seat pin did not travel.
+func TestARequiredCallOutranksAndNamesThePin(t *testing.T) {
+	read := loggingTo(t)
+	client, recorded := newTestClient(t, Config{
+		Effort: EffortHigh,
+		SupportsParameter: func(string, string) (bool, bool) {
+			return true, true
+		},
+	})
+	ctx := WithRequiredReasoningEffort(context.Background(), EffortOff)
+	if _, err := client.CompleteWithMessages(ctx, userMessages("hello")); err != nil {
+		t.Fatal(err)
+	}
+
+	reasoning, _ := recorded.body(0)["reasoning"].(map[string]any)
+	if disabled, present := reasoning["enabled"].(bool); !present || disabled {
+		t.Fatalf("wire reasoning = %#v, want the required disable", reasoning)
+	}
+	done := ended(read())
+	if len(done) != 1 || done[0].Effort != "off" || done[0].EffortPin != "high" {
+		t.Fatalf("the required call's row should read off and name pinned high: %+v", done)
+	}
+}
+
 func TestARepairedRefusalLeavesTheRefusedShapeAndThenTheAnswer(t *testing.T) {
 	read := loggingTo(t)
 	// A model that will not have its thinking turned off: the first request is

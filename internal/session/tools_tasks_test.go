@@ -171,6 +171,14 @@ func TestTasksToolRefusesWhatItCannotDo(t *testing.T) {
 		!strings.Contains(text, "say needs an id") {
 		t.Fatalf("say without an id was not refused:\n%s", text)
 	}
+	if text, isError := runTool(t, agent, "tasks", `{"continue":true}`); !isError ||
+		!strings.Contains(text, "continue needs an id") {
+		t.Fatalf("continue without an id was not refused:\n%s", text)
+	}
+	if text, isError := runTool(t, agent, "tasks", fmt.Sprintf(`{"id":%d,"continue":true}`, id)); !isError ||
+		!strings.Contains(text, "still running") {
+		t.Fatalf("continue on a running node was not refused:\n%s", text)
+	}
 	if text, isError := runTool(t, agent, "tasks", fmt.Sprintf(`{"id":%d}`, id+7)); !isError ||
 		!strings.Contains(text, "No task") {
 		t.Fatalf("an unknown id was not refused:\n%s", text)

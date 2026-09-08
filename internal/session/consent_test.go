@@ -283,6 +283,144 @@ func TestConsentIsNeverJournaled(t *testing.T) {
 	}
 }
 
+// An unanswered approval is not a no. The surface used to arm a hidden ~10s
+// clock that recorded "denied" and cancelled the call (F41). The engine never
+// does that: silence keeps the question up, the work stays blocked — not
+// refused — and a late yes still runs it.
+func TestAnUnansweredApprovalPastTheTimeoutDoesNotDeny(t *testing.T) {
+	completer := &scriptedCompleter{steps: toolCallTurn("touch")}
+	agent, runs := consentAgent(t, completer, promptAll(), true)
+
+	stream := mustSubmit(t, agent, "touch the file")
+	var seen []Event
+	var request Event
+	deadline := time.After(2 * time.Second)
+	for request.Kind != EventConsentRequest {
+		select {
+		case event, open := <-stream:
+			if !open {
+				t.Fatalf("the turn ended unanswered; events: %v", kinds(seen))
+			}
+			seen = append(seen, event)
+			if event.Kind == EventToolFailed {
+				t.Fatalf("silence recorded a denial: %q", event.Output)
+			}
+			if event.Kind == EventConsentRequest {
+				request = event
+			}
+		case <-deadline:
+			t.Fatalf("no consent request; events: %v", kinds(seen))
+		}
+	}
+	if request.Wait != ConsentWaiting {
+		t.Fatalf("Wait = %q, want %q — the question must say silence is not a no", request.Wait, ConsentWaiting)
+	}
+	if len(runs) != 0 {
+		t.Fatal("the tool ran before anyone answered")
+	}
+
+	// Past any instant deny, and past a slice of the old hidden timer, with
+	// nobody answering: the engine has no such clock.
+	time.Sleep(50 * time.Millisecond)
+	select {
+	case event, open := <-stream:
+		if !open {
+			t.Fatal("silence ended the turn")
+		}
+		seen = append(seen, event)
+		if event.Kind == EventToolFailed || event.Kind == EventTurnDone {
+			t.Fatalf("silence cancelled the work: %v %q", event.Kind, event.Output)
+		}
+	default:
+	}
+	pending := agent.PendingConsent()
+	if len(pending) != 1 || pending[0] != request.ID {
+		t.Fatalf("pending = %v, want the unanswered question still registered", pending)
+	}
+	if len(runs) != 0 {
+		t.Fatal("the unanswered call ran")
+	}
+
+	// The work is still there to approve.
+	agent.ResolveConsent(request.ID, true)
+	rest := drainAnswering(t, stream, nil)
+	seen = append(seen, rest...)
+	if len(runs) != 1 {
+		t.Fatalf("the tool ran %d times after the late yes, want 1", len(runs))
+	}
+	if failed, ok := firstOfKind(seen, EventToolFailed); ok {
+		t.Fatalf("the late yes still recorded a denial: %q", failed.Output)
+	}
+}
+
+// A wait that ends without an answer is not a person's no. A timeout and a
+// cancelled turn must say so in those words; "denied by the person" is a lie
+// about a click that never happened (R2).
+func TestAConsentTimeoutIsNotWordedAsDeniedByThePerson(t *testing.T) {
+	agent, _ := consentAgent(t, &scriptedCompleter{}, promptAll(), true)
+	hub := newEventHub()
+	call := ai.ToolCall{ID: "c1"}
+	call.Function.Name = "touch"
+	call.Function.Arguments = "{}"
+
+	timedOut, cancelTimeout := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancelTimeout()
+	result, allowed := agent.approve(timedOut, hub, call)
+	if allowed {
+		t.Fatal("a timed-out call ran")
+	}
+	if strings.Contains(result.text, "denied by the person") {
+		t.Fatalf("timeout refusal = %q, which blames a person who was not asked", result.text)
+	}
+	if !strings.Contains(result.text, "not approved: the question timed out") {
+		t.Fatalf("timeout refusal = %q, want it to say the question timed out", result.text)
+	}
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	result, allowed = agent.approve(cancelled, hub, call)
+	if allowed {
+		t.Fatal("a cancelled call ran")
+	}
+	if strings.Contains(result.text, "denied by the person") {
+		t.Fatalf("cancel refusal = %q, which blames a person who was not asked", result.text)
+	}
+	if !strings.Contains(result.text, "not approved: ended before an answer") {
+		t.Fatalf("cancel refusal = %q, want it to say the wait ended before an answer", result.text)
+	}
+}
+
+// In default (prompt) mode a look is not a question. read / ls / grep / find,
+// a tasks look, and `git status` run without a card; a write still asks.
+func TestAReadOnlyCallIsNotGated(t *testing.T) {
+	agent, _ := consentAgent(t, &scriptedCompleter{}, promptAll(), true)
+	ctx := context.Background()
+	// No hub: a prompt would refuse "no resolver"; an allow runs. That is
+	// the whole assertion — a look must never reach ask().
+	looks := []ai.ToolCall{
+		gateCall("read", `{"path":"x"}`),
+		gateCall("ls", `{"path":"."}`),
+		gateCall("grep", `{"pattern":"x"}`),
+		gateCall("find", `{"pattern":"*.go"}`),
+		gateCall("tasks", `{"id":1}`),
+		gateCall(approval.ToolBash, `{"command":"git status"}`),
+	}
+	for _, call := range looks {
+		result, allowed := agent.approve(ctx, nil, call)
+		if !allowed {
+			t.Fatalf("%s was gated: %q", call.Function.Name, result.text)
+		}
+	}
+
+	result, allowed := agent.approve(ctx, nil, gateCall("write", `{"path":"x"}`))
+	if allowed {
+		t.Fatal("write ran without a person in default mode")
+	}
+	if !strings.Contains(result.text, "needs approval but no resolver is attached") {
+		t.Fatalf("write refusal = %q, want the no-resolver sentence", result.text)
+	}
+}
+
 func lastToolMessage(t *testing.T, a *Agent) ai.Message {
 	t.Helper()
 	a.mu.Lock()

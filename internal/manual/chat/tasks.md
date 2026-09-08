@@ -321,6 +321,9 @@ different about it: a row, a room, a report, and everything else on this page.
   asking whether work should have been work has no useful answer.
 - **Nothing on a short message.** Under six words it is not read at all — "thanks", "run
   the tests", "what does this key do" are answered in words by construction.
+- **Nothing on a one-command ask.** A commit, an undo, a one-line or one-file edit, a
+  single read: those stay in the conversation, whatever a judge would have said. See
+  *A commit or an undo is never a task*.
 - **Nothing where there is no screen.** `--once`, a task's own worker, and a session with
   no router model to ask are all silent.
 - **Two models have to agree.** The cheap one can only screen; the thinking model confirms
@@ -666,7 +669,8 @@ saved cut from `edit_video`, and a shell command that names what it would change
 just looking. A `cd` inside the command is followed, so a write into somewhere else is
 somewhere else. **Reads are never counted**, in any number: `read`, `grep`, `ls`, `git log`,
 `git diff`, running your tests. Neither is a write that FAILED, and neither is anything
-outside this folder — a scratch file in `/tmp` is not your work.
+outside this folder — a scratch file in `/tmp` is not your work. A hand does not bypass this
+count; see *Do hands get around the file limit* below.
 
 **It can still decide not to move.** The move goes through the same road as the third point,
 which means it can be dropped when the model writing your answer says nothing is left AND the
@@ -677,6 +681,26 @@ And it happens **once** in a reply: past it, the three points above are the gove
 reply for seven minutes and forty-six seconds — forty-eight tool calls, `sed -i` edits in
 somebody's live checkout — before the round ceiling finally moved it. Nothing in between was
 watching what those rounds did to the disk.
+
+**A commit, an undo, a one-line edit or a single read is never moved**, whatever the write
+count. Those stay in the conversation — see *A commit or an undo is never a task*.
+
+## A commit or an undo is never a task — commit became a task, undo started a task, why did a small ask become a task, fix this one line, commit everything
+
+**A one-command ask is never handed to a task.** "commit everything", "undo that", "fix this
+one line", a single file read: those are answered here, in this conversation. They are not
+converted mid-reply, they are not proposed with `propose_task`, and they do not start a task
+on their own — even if the reply has already staged several files, even if a judge said the
+message looked like work.
+
+**Why.** "commit everything with a sensible message" was measured becoming task 5, and the
+commit then never happened. Handing a one-command ask to a worktree is how the deliverable
+gets dropped. The floor is the words you typed, not how much the reply has already touched.
+
+**What still becomes a task.** Several independent pieces in one message, a sweep across
+many files, a rewrite you would sit and watch: those can still be handed over, proposed, or
+started with `/task`. Typing `/task commit everything` still starts a task, because you
+asked for one.
 
 ## An answer that stops before your question is finished is carried on — my reply stopped halfway, it said it would do the rest and then stopped, aforge kept going without me
 
@@ -977,26 +1001,34 @@ another window has work out in this project · it has not said which files yet
 
 ## Can I keep editing while a task is running — who may write while work is out
 
-**Almost always, yes.** A task gets its own checkout of the repository on its own branch, so
-you and it are in different directories: keep editing, keep saving, keep running things.
-Anything you change lands in yours and anything it changes lands in its own, and the two
-meet only when the work comes home.
+**Yes, except the files a running task has already written, and except a task running in
+place.** A task gets its own checkout of the repository on its own branch, so you and it
+are in different directories. A file it has not touched yet is still yours: keep editing,
+keep saving. A file it has already written is **held by that task** until it lands. A chat
+`edit` or `write` of that file is refused with the task named:
 
-**The one exception is a task running in place.** When the directory is not a git repository
-— or is one with nothing to branch from — there is no second checkout to give the task, so
-it works in your directory. While that is happening the chat becomes a **reader** of that
-directory: it can read anything, and a `write` or an `edit` there is refused with the task
-named:
+```
+cart.py is held by task 2 (discount code entry), so nothing was written.
+```
+
+The hold is that one file, not the directory. The write is not routed into the task. You
+are not stopped from editing the file yourself in your own editor or shell — this is a
+rule about what the chat's own tools will do on your behalf.
+
+**A task running in place is the other exception.** When the directory is not a git
+repository — or is one with nothing to branch from — there is no second checkout to give
+the task, so it works in your directory. While that is happening the chat becomes a
+**reader** of that directory: it can read anything, and a `write` or an `edit` there is
+refused with the task named:
 
 ```
 src/analysis.rs is in the working copy task 4 (repair the parser) is using right now, so
 nothing was written.
 ```
 
-You are not stopped from doing anything yourself in your own editor or shell — this is a
-rule about what the chat's own tools will do on your behalf, not a lock on the files. It
-ends when the task lands, fails or is stopped. *How work runs* has the whole of it, under
-*A task working in place holds the directory*.
+Either hold ends when the task lands, fails or is stopped. *How work runs* has the whole of
+it, under *A task that has written a file holds that file* and *A task working in place
+holds the directory*.
 
 ## What the other-window warning can and cannot see — and why it stayed quiet
 
@@ -1058,8 +1090,9 @@ The three reasons a queued task gives for waiting are `slot`, `machine busy` and
 `rate limited`. A named prerequisite outranks any of them, because a name is something you
 can act on and a queue clears itself.
 
-How a branch came home is spelled `merged`, `in your own folder` (there was no branch to
-bring home — the work edited your own files), or `conflicted · <branch>`.
+How a branch came home is spelled `merged`, `branch kept · <branch>`, `in your own folder`
+(there was no branch to bring home — the work edited your own files), or
+`conflicted · <branch>`.
 
 ## A task that was cut off while its work was being checked — interrupted work, killed mid-check, why did my task fail when nothing was wrong with it
 
@@ -1087,7 +1120,7 @@ work.
 **And it is not the same as a task you stopped yourself.** Stopping a task from `ctrl+c`,
 the roster or `jobs kill` is your decision and is drawn as `stopped`, with the branch kept.
 
-## How work lands — what the card means by merged, in your own folder, or conflicted
+## How work lands — what the card means by merged, branch kept, in your own folder, or conflicted
 
 Every landing writes a card into the conversation, with a blank row on each side, and moves
 the task's row on the roster.
@@ -1107,9 +1140,10 @@ made the reason it was asking read as part of a duration.
 
 **`started 14:02` is when the work began**, and the word is `started` — it said `spawned`
 until 2026-09-03, which is the machinery's own verb for launching a process and not a word
-anybody reads on a screen here. Where nothing knows when the work started — a task
-replayed out of a checkpoint, which keeps how long it ran and not when it began — the
-stamp is **absent** rather than invented.
+anybody reads on a screen here. A task replayed out of a checkpoint carries the instant it
+began, so it says the same `started 14:02` after a restart that it said before one. Where
+nothing knows when the work started — a checkpoint written before the record carried the
+instant — the stamp is **absent** rather than invented.
 
 - **`done`** — a tick, muted. It is settled work on the roster.
 - **`incomplete`** — a `!` in the warn hue. A check did not accept the claim, and the
@@ -1125,6 +1159,12 @@ stamp is **absent** rather than invented.
 After the name the card carries the span, the file count, and how the branch came home:
 `merged`, `in your own folder`, `conflicted · <branch>`, `stopped — branch kept · <branch>`,
 or `branch kept · <branch>`.
+
+`branch kept · <branch>` on a **done** task means the work finished but your checkout was
+on a protected branch, was on a different branch than when the work was cut, moved to a
+different commit by your own work after the cut, or was detached. The branch named
+there holds the finished work; the how-tasks-run page explains the exact reason and how to
+merge it where you want it.
 
 Click anywhere on the card, or press `ctrl+o` with it selected, to expand it: `changed`, the
 branch, `model`, `cost`, `ran`, `done when`, the report, then the brief. `enter` on the
@@ -1613,6 +1653,12 @@ work that was interrupted comes back saying so on its card — and the `jobs` se
 redraws the jobs this conversation started, settled. Tasks and jobs are not lost when the
 terminal closes; the column is rebuilt, not carried.
 
+The rebuilt row reads its start and landing times from that same record. Work that landed
+in a previous session therefore keeps the time it actually landed instead of taking the
+time you reopened the conversation. A record made before those times were kept still
+reopens; its row leaves the age absent and its completion card omits the entire
+`started 14:02` segment.
+
 **Only this window's own work comes back.** Everything else stays behind the
 `ctrl+. earlier` door, exactly as the section above says, and a task is never drawn
 twice — a row on the column is not also an `earlier` row.
@@ -1736,7 +1782,10 @@ cell or the root's `▸ +N` badge to toggle the family; click its title to open 
 A click that hits no task still belongs to the column and does nothing. A click moves the
 cursor but does not hand the roster the keyboard.
 
-## What did we do last week — seeing every task: task history, old and past tasks, work from other sessions
+## What did we do last week — why is my old task not on the tasks page, an old task says now, and a task from a previous session is missing from the tasks page
+
+This is where **task history** lives — every **old and past task**, and **work from other
+sessions**, on one page.
 
 `/history`, or `ctrl+.`, opens the machine-wide **tasks** place holding work from every project
 run** — this conversation's and every conversation's before it. It is the answer the roster
@@ -1802,6 +1851,17 @@ says `incomplete` and **carries no age at all** — nobody judged the work, the 
 went, and nothing in the record dates a row that never landed. Work that failed says the
 same word its own page says, with the reason after it: `failed · the package manager
 refused the archive`.
+
+**How long ago a settled row landed is what that row's own record says.** Work reopened
+from a previous session is dated when it LANDED, not when you sat down and reopened it. It
+therefore stays in the time window it belongs to instead of being filed in the future and
+going missing from the page, and it does not say `now` merely because this is your first
+look at it today.
+
+A row whose older record never recorded a landing time **carries no age at all**. The row
+is still on the tasks page: for deciding whether to include it, the page files that undated
+row at the moment of the reading. For the words you see, it draws nothing where the age
+would go. It never turns an unknown time into `now`.
 
 **The sections are in time order, newest first**, and a family stays whole: the root is
 placed by its own stamp and the workers stand under it in theirs.
@@ -2223,7 +2283,9 @@ which the outcome above is the first sentence.
 
 - **Anything aforge does not know is not drawn at all.** A task that spent nothing has no
   money line, one that wrote nothing has no file count, one still claiming to be running
-  has no clock. Nothing here appears as a zero.
+  has no clock. That includes a run that plans itself: while it is running its card carries
+  its state word and no `landed` clause at all; the clock appears when the run ends. Nothing
+  here appears as a zero.
 - **The first address is labelled with what that directory was**, in plain words and never
   in git's: `a branch of your repository`, `its own copy of the folder`, `your own folder`,
   or `where` when aforge's record does not say. *Does a task touch my working copy?* in
@@ -3135,6 +3197,22 @@ your answer being worked on, not work that left.
 Do not confuse it with `this one wants more hands · handing it over with everything found so
 far`, which is the opposite move — that one is your answer **leaving** to become a task.
 
+## Do hands get around the file limit — my reply changed six files through hands and never became a task, does forking count against the allowance
+
+**No. What a hand changes counts against the same allowance as an edit the reply makes
+itself.** The same calls count in both places: an `edit`, `write` or saved `edit_video` cut
+under this folder, and a shell command that names what it changes. Reads do not count. A
+refused write changed nothing and counts nothing, and neither does anything outside the
+folder this conversation is open on.
+
+A hand is a stream, so this count can arrive after the reply that called `fork` has already
+ended. It arrives when the hand reports back. The reply at the next step boundary reads it:
+that may be the reply already running when the report lands, or the reply the report wakes.
+If the allowance has been spent, that reply says
+`this is changing more than a quick edit · moving it to a task that is watched and can split`
+and moves what remains onto the same one-task road as an inline edit. Each hand's landed call
+is counted once.
+
 ## A hand is a stream, not a wait — the answer keeps working while its hands are out
 
 `fork` **comes straight back**, naming the hands. Each hand's report then arrives on its own,
@@ -3209,7 +3287,8 @@ hand as each report lands.
 
 **They cannot write outside their part.** An `edit` or `write` aimed anywhere but that hand's
 declared files comes back refused, naming the files it does own. So a fork cannot leave your
-repository in a state two of them fought over.
+repository in a state two of them fought over. They also cannot get around the reply's write
+allowance: what they change spends the same allowance when their reports come home.
 
 **They cannot fork again.** One level, and it is not a rule they are asked to keep — a hand
 simply does not have the tool.
@@ -3490,7 +3569,8 @@ What else you can do yourself, on a task that is running:
 | refer to it in conversation | `@<slug>` |
 | leave it | `esc`, `←`, or `←←` — the work keeps running |
 | stop it | `x`, or the `✕` in its room's header — one confirmation card, always |
-| change its brief or its done-condition | **cannot** — frozen; propose the work again |
+| change its brief or its done-condition | **cannot** — frozen; continue with your words as a finding, or propose new work |
+| continue a failed or finished one | say `continue task 7`, or `tasks` with `id` and `continue` — same node, same copy |
 
 Steering sends your words into the task's own loop verbatim, and they land in its room as
 your own line. If nobody is listening any more — it landed, it was stopped, its worker is
@@ -3511,6 +3591,21 @@ Nothing is thrown away: on every ending except a clean merge the branch is kept 
 and what the task made is committed onto that branch before it lands — so the files it
 produced are listed under `changed:` and `git merge task/…` brings them over. The merge is
 never done for you, because only work that was checked reaches your branch.
+
+## Continue task N — keep going on a failed or finished task, No task 1 in this project
+
+When you say `continue task 7` or `keep going on task 7`, the model calls `tasks` with that
+id and `continue`. That re-arms the **same** task — same id, same brief, same working copy
+and journal, the last report as this round's finding — rather than proposing a new one.
+
+It only works for a task **this conversation** still holds. A task from another
+conversation or another window, an unknown id (`No task 1 in this project` on a read), or a
+task that is still running cannot be continued here. The tool then says there is no graph
+left to continue it in, and names where the work is — its branch or working copy — so it
+can be read. The model should relay that, not narrate progress it did not make.
+
+Starting the same brief again with `/task` or `propose_task` is new work with a new id, and
+it is the wrong door when you mean keep going.
 
 ## Why is the task waiting for me — finished but needs your look, a sub-task needs my look, a nested task waiting on me
 
@@ -3570,8 +3665,9 @@ question: answer in either and both show the receipt.
 
 ## What accept, look again and not right each do
 
-- **`[a] accept`** — you looked and you are taking the work. Its branch merges into yours
-  exactly as checked work does, and everything queued behind it unblocks. The report leads
+- **`[a] accept`** — you looked and you are taking the work. Its branch follows the same
+  landing as checked work: it merges into an ordinary checked-out branch, or is kept off a
+  protected, moved or detached checkout. Everything queued behind it unblocks. The report leads
   `you looked at this yourself and took it as done`. If that merge conflicts nothing is
   forced: your checkout is left exactly as it was, the branch is kept, and the task stays
   waiting on you with the clashing files named.
@@ -3709,7 +3805,8 @@ front of you:
 | **at the landing card** in the conversation | walk to the card with `↑`/`↓` so it is selected, then the same four keys — or click a chip on its answers row |
 | **anywhere**, typing | say it: "accept task 7", "that one isn't finished", "have another look at task 7" |
 
-Accepting merges the task's branch into yours and unblocks everything queued behind it.
+Accepting lands the task by the same merge-or-keep rule as checked work and unblocks
+everything queued behind it.
 Whichever door is used first wins; the other two find the question already gone and show
 `already answered` rather than raising an error.
 
@@ -3776,7 +3873,9 @@ The **tasks** place is the machine-wide history of work aforge ran, grouped by w
 next: `needs your look`, `running`, `parked`, `done today`, then `earlier` — where
 `parked` is admitted work nothing is doing, drawn with no age on it. Each task row can include
 its conversation or project, activity, kind (`adaptive`, `saved shape`, or `job`), measured
-cost, and age. Zero or unknown cost is left blank. A section with nothing in it is absent.
+cost, and age from the landing time its own record carries. Zero or unknown cost is left
+blank, and so is an age whose older record never carried that landing time. A section with
+nothing in it is absent.
 
 **Nothing is folded.** Every row the time window holds has a line of its own and the list
 scrolls — there is no `▸ N more` and no fold to open. The window's own edge is said once, in
@@ -3831,7 +3930,10 @@ only then does `s` mean anything, which is two deliberate presses with the verb 
 you. The card is also not available here: it is drawn in the conversation's chrome, and a
 question raised over a full-screen place would be one nobody could see.
 
-**There is no `run it again`, and no key is bound to one.** Nothing on this machine re-runs
-a finished task — a row here is an account of work that happened — and starting the same
-brief again is `/task <brief>`, which is new work with a new id. A capability that cannot
-work is left off rather than drawn dead, so the verb is named nowhere.
+**`continue` re-arms the same task.** There is still no `run it again` key on this place —
+a row here is an account of work that happened — but a failed or finished task is
+continued by saying `continue task 7`, or by the `tasks` tool with `id` and `continue`.
+That is the same node: same id, same brief, same working copy and journal, the last
+report as this round's finding. Starting the same brief again with `/task` or
+`propose_task` is new work with a new id, and it is the wrong door when the person
+means keep going.

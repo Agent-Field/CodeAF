@@ -727,10 +727,9 @@ func TestConflictingMergeKeepsTheBranch(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(tree.dir, "shared.txt"), "the node's line\n")
 
-	// The person's branch moves under the node, on the same line.
+	// The person's uncommitted work stands in the merge's way on the same line.
+	// Their branch has not moved, so the merge itself still gets to answer.
 	writeFile(t, filepath.Join(repo, "shared.txt"), "the person's line\n")
-	mustGit(t, repo, "add", "-A")
-	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "person")
 
 	merge, detail, _ := tree.comeHome("edit the shared file", []string{"shared.txt"})
 	if merge != mergeConflicted {
@@ -751,8 +750,9 @@ func TestConflictingMergeKeepsTheBranch(t *testing.T) {
 	}
 }
 
-// END TO END: the node writes a file in its own worktree, and the work comes
-// home as a merge on the person's branch with the branch cleaned up after it.
+// C6: END TO END, the node writes a file in its own worktree, and the work
+// comes home as a merge on the person's feature branch with the branch and
+// working copy cleaned up after it.
 func TestTaskNodeWorkMergesIntoThePersonsBranch(t *testing.T) {
 	repo := newTestRepo(t)
 	t.Setenv("HOME", t.TempDir())
@@ -778,6 +778,7 @@ func TestTaskNodeWorkMergesIntoThePersonsBranch(t *testing.T) {
 	}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.Workspace = repo
+		config.Place = Place{Dir: t.TempDir(), Workspace: repo}
 		config.AskConsent = false
 		config.TaskAutoApproveSeconds = 0
 	})
@@ -847,6 +848,82 @@ func TestTaskNodeWorkMergesIntoThePersonsBranch(t *testing.T) {
 
 	// And the standing subscription carried the node's life, ending in done.
 	if final := lastTaskUpdate(t, updates); final.State != TaskDone || final.Merge != mergeMerged {
+		t.Fatalf("the update lane's last word = %+v", final)
+	}
+}
+
+// C7: END TO END, verified work cut from main finishes done but leaves main
+// byte-for-byte where it was; the task branch is the durable finished result.
+func TestTaskNodeWorkIsKeptOffThePersonsProtectedBranch(t *testing.T) {
+	repo := newTestRepo(t)
+	mustGit(t, repo, "checkout", "-b", "main")
+	t.Setenv("HOME", t.TempDir())
+	before := strings.TrimSpace(gitOut(t, repo, "rev-parse", "main"))
+	beforeStatus := gitOut(t, repo, "status", "--porcelain")
+
+	completer := &routedCompleter{
+		parent: []step{
+			proposeCall("Add the protected greeting", "write protected.txt containing safe"),
+			finalText("handed off"),
+		},
+		child: []step{
+			func(context.Context, []ai.Message) (*ai.Response, error) {
+				return toolResponse("call-write", "write",
+					`{"path":"protected.txt","content":"safe\n"}`), nil
+			},
+			finalText("Wrote protected.txt with the greeting."),
+		},
+		audit: []step{
+			bashCall("call-diff", "git diff --cached"),
+			verdictFromEvidence("protected.txt", "VERIFIED — protected.txt added", "REFUTED — no such change"),
+		},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.Place = Place{Dir: t.TempDir(), Workspace: repo}
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	graph := agent.graph()
+	updates := agent.TaskUpdates()
+	events, err := agent.Submit(context.Background(), "add a protected greeting")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+
+	node := graph.node(1)
+	if node == nil {
+		t.Fatal("no node was admitted")
+	}
+	waitDoneNode(t, node)
+	notice := node.notice()
+	if notice.State != TaskDone || notice.Merge != mergeKept {
+		t.Fatalf("settled notice = %+v, want done with kept branch", notice)
+	}
+	if got := strings.TrimSpace(gitOut(t, repo, "rev-parse", "main")); got != before {
+		t.Fatalf("main moved from %s to %s", before, got)
+	}
+	if got := gitOut(t, repo, "status", "--porcelain"); got != beforeStatus {
+		t.Fatalf("checkout status changed from %q to %q", beforeStatus, got)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "protected.txt")); !os.IsNotExist(err) {
+		t.Fatalf("protected.txt reached the live checkout: %v", err)
+	}
+	if got := gitOut(t, repo, "show", notice.Branch+":protected.txt"); got != "safe\n" {
+		t.Fatalf("kept branch contains %q", got)
+	}
+	if branches := gitOut(t, repo, "branch", "--list", notice.Branch); !strings.Contains(branches, notice.Branch) {
+		t.Fatalf("finished branch was not kept: %q", branches)
+	}
+	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Contains(list, notice.Where) {
+		t.Fatalf("finished working copy stayed registered:\n%s", list)
+	}
+	want := "its branch " + notice.Branch + " was kept: your checkout is on main, which aforge never writes to — merge it when you are ready"
+	if !strings.Contains(notice.Report, want) {
+		t.Fatalf("report = %q, want protected sentence %q", notice.Report, want)
+	}
+	if final := lastTaskUpdate(t, updates); final.State != TaskDone || final.Merge != mergeKept {
 		t.Fatalf("the update lane's last word = %+v", final)
 	}
 }
@@ -1601,7 +1678,9 @@ func TestRefutingAnUnverifiedNodeCascades(t *testing.T) {
 // THE BELT IS THE SAFETY ARGUMENT. An auditor has no hand that writes, and its
 // bash runs the repository's verification and refuses everything else —
 // including a destructive command, a command that runs the node's own code, and
-// a verification with a second command chained onto it.
+// a verification with a second command chained onto it. A trailing redirect
+// on an allowed check is not that: it is the first stage, and it is run
+// (task_audit_waste_test.go).
 func TestAuditBeltIsReadOnly(t *testing.T) {
 	// The door is built the way a real audit builds it: the checks the work
 	// itself named, and the always-safe reading commands under them
@@ -1636,7 +1715,6 @@ func TestAuditBeltIsReadOnly(t *testing.T) {
 		{"go generate ./...", "runs the code it is judging"},
 		{"go run ./cmd/thing", "runs the code it is judging"},
 		{"go test ./... && rm -rf /", "a second command chained onto a verification"},
-		{"go test ./... > /tmp/out", "a redirect"},
 		{"echo $(rm -rf .)", "a substitution"},
 		{"", "nothing at all"},
 	} {
@@ -1824,7 +1902,10 @@ func TestNewInformationResetsTheNoProgressClock(t *testing.T) {
 			config.TaskAudit = false
 		})
 		graph := agent.graph()
-		collect(t, mustSubmit(t, agent, "read"))
+		// THE ASK READS THE WHOLE DOCUMENT, not one page: the spawn floor
+		// (spawnfloor.go) keeps a one-page read in the conversation, and a
+		// node exists here because the person asked for the sweep.
+		collect(t, mustSubmit(t, agent, "read every line of the long document"))
 		node := graph.node(1)
 		waitDoneNode(t, node)
 		if notice := node.notice(); notice.State != TaskDone {
