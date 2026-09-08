@@ -202,6 +202,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			attempt: attempts, began: attemptBegan, phase: calllog.PhaseStart,
 		})
 		response, err := httpClient.Do(httpRequest)
+		// Custom transports may omit Request; retain the exact sent object so
+		// refusal learning never reconstructs it from mutable routing state.
+		if response != nil && response.Request == nil {
+			response.Request = httpRequest
+		}
 		if err != nil {
 			sharedLimiter.release(false, 0)
 			cancelAttempt()

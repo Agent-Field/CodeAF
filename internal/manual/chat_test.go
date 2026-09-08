@@ -115,6 +115,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// And the refusal that is about no machine at all, asked in the router's
 		// own sentence and in the words somebody reaches for after reading it.
 		{"all providers have been ignored", "lanes"},
+		{"I switched off some providers in my openrouter account", "lanes"},
+		{"does aforge know which providers my account has turned off", "lanes"},
 		{"why did every provider get ignored", "lanes"},
 		{"why does it say refused instead of slow", "models-and-cost"},
 		{"why does it say paid model training violation", "models-and-cost"},

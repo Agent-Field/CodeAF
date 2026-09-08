@@ -520,15 +520,18 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// ([velocityLedger.keepTheSetServable]), so the second request for this
 	// model is shaped right rather than paying the same instant refusal again.
 	//
-	// AND ONLY WHEN A VETO OF OURS WAS IN PLAY. The router says this same
-	// sentence when the ignored providers on somebody's ACCOUNT empty the set,
-	// and a refusal we had no hand in teaches us nothing about our own list. The
-	// ledger is asked rather than the object rebuilt, because rebuilding it here
-	// would expire cooldowns and redraw a sampled choice on the way back
-	// ([velocityLedger.holdsVetoes]).
-	if c.velocity != nil && ignoredEverything(peek) && c.velocity.holdsVetoes(model) {
+	// Only a veto actually carried on this request can teach us about our
+	// contribution. Concurrent calls and expiring cooldowns may have changed
+	// the shared ledger by the time the refusal returns.
+	sent := refusedWirePreferences(response)
+	if c.velocity != nil && ignoredEverything(peek) && sent != nil && len(sent.Ignore) > 0 {
 		c.velocity.refuseCoveringIgnore(model)
+		// A demand defines its own set and says nothing about other machines.
+		if len(sent.Only) == 0 {
+			c.velocity.learnUnreachable(model, sent.Ignore)
+		}
 	}
+
 	// AND THE SECOND IS A PERSON'S OWN PIN (lanepin.go, issue #456). A pin the
 	// router says it cannot serve for this model is stood down for that model,
 	// once, and the person is told in a sentence that stays.
@@ -2282,4 +2285,25 @@ func clipRaw(raw json.RawMessage) string {
 		text = strings.TrimSpace(text[:maxRawClip]) + "…"
 	}
 	return text
+}
+
+// refusedWirePreferences reads the object that actually left. Cooldowns can
+// expire while a refusal travels back, so rebuilding this from the live ledger
+// would turn our own transmitted veto into an account exclusion.
+func refusedWirePreferences(response *http.Response) *providerPrefs {
+	if response == nil || response.Request == nil || response.Request.GetBody == nil {
+		return nil
+	}
+	body, err := response.Request.GetBody()
+	if err != nil {
+		return nil
+	}
+	defer body.Close()
+	var sent struct {
+		Provider *providerPrefs `json:"provider"`
+	}
+	if json.NewDecoder(body).Decode(&sent) != nil {
+		return nil
+	}
+	return sent.Provider
 }
