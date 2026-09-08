@@ -558,18 +558,24 @@ func hopRestNote(row switcherRow) string {
 func (a *app) hopKept(held *kept, now time.Time) hopRow {
 	agent := held.conv.Agent
 	running := runningTasks(agent)
+	turning := held.watch != nil && held.watch.turning.Load()
 	row := hopRow{
 		file:    held.conv.SessionFile,
 		title:   hopTitle(agent, held.side),
 		project: hopProject(held.conv.Place, held.conv.Workspace),
 		needs:   needsPerson(agent),
-		moving:  running > 0,
+		moving:  running > 0 || turning,
 		open:    true,
 	}
 	if held.side != nil {
 		row.age = sinceAt(held.side.since, now)
 	}
 	row.note = hopNote(row.needs, running, held.watch.landedSince())
+	// A reply can be working without having started any tasks. The watcher
+	// owns that fact, and Chats must keep hidden running replies discoverable.
+	if turning && !row.needs && running == 0 {
+		row.note = tabSignalWord(tabWorking)
+	}
 	return row
 }
 

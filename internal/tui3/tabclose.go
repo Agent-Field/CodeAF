@@ -331,15 +331,16 @@ func (a *app) tabCloseKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.moveTabClose(-1)
 	case "right":
 		a.moveTabClose(1)
+	case "k":
+		return a.tabCloseTake(tabCloseKeepAt), true
 	case "enter":
 		return a.tabCloseTake(a.tabClose.pick), true
 	case "esc":
 		a.dropTabClose()
 	case tabCloseStopKey:
 		// The one answer with a letter of its own, for the hand that already
-		// knows it. `k` and `c` are deliberately NOT bound: enter is keep and esc
-		// is cancel, and a second spelling of an answer that already has a key
-		// everyone knows is one more thing to learn.
+		// knows it. The smallest frame shows k, s and esc as its complete
+		// answers; those same shortcuts work at every width.
 		return a.tabCloseTake(tabCloseStopAt), true
 	}
 	return nil, true
@@ -394,13 +395,17 @@ func (a *app) tabCloseRows(width int) []string {
 	rows := []string{a.pal.askBold(glyphAsk) + a.pal.ask(fit(" "+head, width-ansi.StringWidth(glyphAsk)))}
 
 	card.spans = card.spans[:0]
-	line, at := stopAnswerPad, len(stopAnswerPad)
-	for i, word := range tabCloseAnswers {
+	words, pad, gap, cursor := a.tabCloseLayout(width)
+	line, at := pad, len(pad)
+	for i, word := range words {
 		if i > 0 {
-			line += stopAnswerGap
-			at += len(stopAnswerGap)
+			line += gap
+			at += len(gap)
 		}
-		lead := a.orchLead(i == card.pick)
+		lead := ""
+		if cursor {
+			lead = a.orchLead(i == card.pick)
+		}
 		text := lead + "[" + word + "]"
 		cols := ansi.StringWidth(text)
 		painted := a.pal.ask(text)
@@ -418,6 +423,37 @@ func (a *app) tabCloseRows(width int) []string {
 	}
 	rows = append(rows, fit(line, width))
 	return append(rows, a.pal.dim(fit(stopAnswerPad+a.tabCloseSays(card), width)))
+}
+
+// tabCloseLayout shortens complete answers before giving up their spacing.
+// Every answer remains visible and clickable on a narrow terminal; truncating
+// the painted row would leave invisible hit targets for destructive actions.
+func (a *app) tabCloseLayout(width int) ([]string, string, string, bool) {
+	words := tabCloseAnswers[:]
+	pad, gap, cursor := stopAnswerPad, stopAnswerGap, true
+	cells := func() int {
+		n := len(pad) + (len(words)-1)*len(gap)
+		for _, word := range words {
+			n += ansi.StringWidth(word) + 2
+		}
+		if cursor {
+			n += len(words) * ansi.StringWidth(a.orchLead(false))
+		}
+		return n
+	}
+	if cells() > width {
+		words = []string{"keep", "stop", "cancel"}
+	}
+	if cells() > width {
+		pad, gap = "", ""
+	}
+	if cells() > width {
+		words = []string{"k", "s", "esc"}
+	}
+	if cells() > width {
+		cursor = false
+	}
+	return words, pad, gap, cursor
 }
 
 // ── the pointer ─────────────────────────────────────────────────────────────

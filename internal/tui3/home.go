@@ -5001,7 +5001,7 @@ func homeFacts(row session.SessionRow, now time.Time) string {
 func (a *app) homeHolding(row session.SessionRow) string {
 	word := ""
 	switch {
-	case row.Transcript == a.file:
+	case a.holding(row.Transcript):
 		word = "open here"
 	case row.Open || row.Live:
 		word = homeHeldWord

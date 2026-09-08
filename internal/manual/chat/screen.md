@@ -247,8 +247,14 @@ answer the cursor is on will actually do:
 | `stop work` | Ends the turn in **that** conversation, and then closes the tab. Nothing in any other chat is touched, and nothing is deleted |
 | `cancel` | Nothing happens. The tab stays, the work stays, your draft stays |
 
+Chats marks a hidden reply `working` even when it has no tasks. A reply that
+finishes while held there says `it finished while you were away`.
+
+Narrow terminals shorten the answers to `keep`, `stop`, and `cancel`; the smallest
+frames show their keys `k`, `s`, and `esc`. Each visible answer remains clickable.
+
 The cursor opens on **keep running**, so `enter` is the safe answer. `←` and `→` walk the
-three and stop at the ends rather than wrapping; `esc` is `cancel`, `s` is `stop work`,
+three and stop at the ends rather than wrapping; `k` keeps running, `esc` is `cancel`, `s` is `stop work`,
 and clicking an answer takes it. `ctrl+c` puts the card away and goes on to do what it
 normally does — leaving is never something you get stuck inside.
 
