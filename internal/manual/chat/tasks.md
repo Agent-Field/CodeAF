@@ -3052,6 +3052,9 @@ even if it previously ended a settled phase. It uses the quieter work styling an
 can supply the next step’s caption. The trailing reply keeps answer styling; a
 message or correction from you preserves the reply before that boundary.
 
+The caption is a short summary. Open it to read any narration left out of the
+heading alongside that step’s calls; shortening a heading does not discard text.
+
 ## The long brief at the top of a task's page — `▸ …N more lines`, view more, expanding and collapsing the instruction, a task description that fills the whole screen
 
 **A long task description no longer takes over the page. It shows its first three lines,

@@ -125,10 +125,7 @@ func stampCaptions(es []entry, captions []caption) {
 		if c.source != captionSaid || c.head < 0 || c.head >= len(es) {
 			continue
 		}
-		cut := len(es[c.head].text)
-		if at := strings.IndexByte(es[c.head].text, '\n'); at >= 0 {
-			cut = at + 1
-		}
+		_, cut := captionSpan(es[c.head].text)
 		heads[c.head] = cut
 	}
 	for i := range es {

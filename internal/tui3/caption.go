@@ -137,8 +137,25 @@ func deriveCaptions(es []entry, runningTurn int) []caption {
 }
 
 func captionWords(text string) string {
-	line := strings.TrimSpace(firstLine(text))
-	return shortCaption(line)
+	title, _ := captionSpan(text)
+	return title
+}
+
+// captionSpan consumes a source line only when the caption represents it whole.
+// An abbreviated heading keeps the complete narration in the expanded body;
+// preserving sentences is safer than resuming partway through a clipped clause.
+func captionSpan(text string) (title string, cut int) {
+	line := firstLine(text)
+	title = shortCaption(strings.TrimSpace(line))
+	whole := strings.Join(strings.Fields(strings.TrimRight(strings.TrimSpace(line), ".!?;:")), " ")
+	if title == "" || title != whole {
+		return title, 0
+	}
+	cut = len(line)
+	if cut < len(text) && text[cut] == '\n' {
+		cut++
+	}
+	return title, cut
 }
 
 // shortCaption keeps ONE short sentence for the step title. Same rules as

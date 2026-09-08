@@ -8,7 +8,12 @@ import (
 
 func readingFoldJournal(t *testing.T, earlierPhase, laterTurn bool) string {
 	t.Helper()
-	lines := []string{`{"type":"message","role":"user","content":"Fix cancellation of a parser worker without losing pending requests."}`}
+	// A follow-up constraint adds an entry without adding a work phase. Keep
+	// phase keys distinct from entry indexes even when narration joins its fold.
+	lines := []string{
+		`{"type":"message","role":"user","content":"Fix cancellation of a parser worker without losing pending requests."}`,
+		`{"type":"message","role":"user","content":"Preserve the callers' public API while fixing the worker."}`,
+	}
 	if earlierPhase {
 		lines = append(lines,
 			`{"type":"message","role":"assistant","content":"Checking the module boundary.","toolCalls":[{"id":"earlier-call","function":{"name":"read","arguments":"{\"path\":\"go.mod\"}"}}]}`,
