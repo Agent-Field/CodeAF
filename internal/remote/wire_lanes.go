@@ -13,6 +13,15 @@ const (
 	// buys exactly what [MethodTaskWatch] buys: "design" frames from then on.
 	// It is sent once per conversation the surface takes up, never on a frame.
 	MethodDesignWatch = "Design.Watch"
+
+	// MethodTitleWatch is the surface saying it draws the far conversation's
+	// name, and it buys exactly what the two above buy: "title" frames from then
+	// on, including the name already minted replayed the moment the
+	// subscription opens (internal/session's [Agent.WatchTitle]). That replay is
+	// the whole reason this is a lane and not a fact push — a conversation names
+	// itself while nobody is attached to it, and a surface that came back would
+	// otherwise wait for a name that was chosen an hour ago.
+	MethodTitleWatch = "Title.Watch"
 	// MethodSubharnessResolve answers one intake card — whether the saved
 	// program runs, and on which input. The design card's own answer has been
 	// [MethodHarness] since version 1; this is the OTHER question that arrives

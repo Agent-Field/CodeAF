@@ -208,6 +208,7 @@ func (c *Client) lost(cause error) bool {
 		return false
 	}
 	c.reconcile(left, welcome)
+	c.retakeTitle(left, welcome)
 	return true
 }
 

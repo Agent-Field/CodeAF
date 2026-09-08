@@ -2658,8 +2658,31 @@ type Agent struct {
 	// title is the session's name and titleTried marks the one attempt at
 	// generating it (title.go). A resumed session loads its name from the
 	// journal, so it never re-names itself.
+	// Metadata patches serialize disk transactions independently of agent reads.
+	metaMu sync.Mutex
+
 	title      string
 	titleTried bool
+
+	// titleCtx is the lifetime of the naming errand and titleJobs counts the one
+	// that may be running. They are memoryCtx's bargain above, for the same
+	// reason and with the same two lines: the namer now runs BESIDE the turn
+	// that triggered it (title.go), so it cannot ride the turn's context — a
+	// quick answer would cancel a name that is still being written — and it may
+	// not outlive the session either.
+	//
+	// The context is written once at construction and cancelled once by Close;
+	// both are read under mu, because the one thing that must be atomic is
+	// "closed, therefore no new errand" ([Agent.startTitleJob]).
+	titleCtx  context.Context
+	titleStop context.CancelFunc
+	titleJobs sync.WaitGroup
+	// titleWatchers is the standing subscription to the name this session gives
+	// itself, and it exists because THE NAME NOW ARRIVES AFTER THE TURN THAT
+	// BOUGHT IT MAY HAVE ENDED. It is [Agent.harnessWatchers]' shape exactly
+	// (harness_build.go), for its stated reason: an event about work that
+	// outlives its turn has no turn stream left to land on.
+	titleWatchers []*eventStream
 
 	// approvalPolicy is the gate as it stands NOW, when a surface has replaced
 	// the one this session launched on ([Agent.SetApprovalPolicy], and the prose

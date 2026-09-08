@@ -39,6 +39,10 @@ import (
 // boundary's own defaults ARE these two.
 const retryBaseDelay = taxonomy.DefaultTransportBackoff
 
+// detachedFromTurn is [Agent.addDetachedUsageAs]'s argument spelled as a word,
+// because `true` at a call site says nothing about which of two booleans it is.
+const detachedFromTurn = true
+
 // truncationContinuations gives a cut-off answer two chances to finish in
 // smaller pieces. The bound matters because a model that ignores the note can
 // otherwise turn one bad output ceiling into an unbounded, silent spend.
@@ -3827,11 +3831,32 @@ func (a *Agent) addAuxiliaryUsageAs(response *ai.Response, model string, calls i
 	a.addUsageAs(response, model, calls, role, true, false)
 }
 
+// addDetachedUsageAs is [Agent.addAuxiliaryUsageAs] for an errand that is NOT
+// ON ANY TURN'S CLOCK — one started beside a turn, on the session's own
+// lifetime, that may land while a different turn is running or while none is
+// (title.go).
+//
+// The money is the session's and the machine's exactly as any errand's is; what
+// it must not move is a.turnSpend, which is the figure an abandoned turn is
+// journaled with. A name bought by the first turn and paid for during the
+// third would otherwise appear as the third turn's cost, and a title that
+// landed during a turn that was then abandoned would be journaled as money that
+// turn spent. That is the `late` bit at [bankedCall], said the other way round:
+// late means "the turn that spent this has ended", and detached means "no turn
+// ever owned it".
+func (a *Agent) addDetachedUsageAs(response *ai.Response, model string, calls int, role string) {
+	a.addUsageAs(response, model, calls, role, true, false, detachedFromTurn)
+}
+
 // addUsageAs is the body both auxiliary doors share, with one bit of difference:
 // whether this tally is a CALL THIS AGENT MADE — and therefore a line in the
 // machine's ledger — or a fold of work that already wrote its own
 // ([Agent.addFoldedUsage]).
-func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role string, ledger, emptyReflex bool) {
+//
+// detached, when it is passed, keeps the tally off the RUNNING turn's share —
+// see [Agent.addDetachedUsageAs]. It is variadic so that the thirty callers that
+// are on a turn's clock say nothing and mean it.
+func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role string, ledger, emptyReflex bool, detached ...bool) {
 	if response == nil || response.Usage == nil {
 		return
 	}
@@ -3852,7 +3877,7 @@ func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role 
 	// AN ERRAND'S ROW CARRIES NO LANE. Nothing timed this call — the witness
 	// watches the turn's own stream — and the turn's figures on this row would be
 	// a measurement of one request filed against another.
-	a.bank(bankedCall{used: aux, model: model, role: role, ledger: ledger})
+	a.bank(bankedCall{used: aux, model: model, role: role, ledger: ledger, late: len(detached) > 0 && detached[0]})
 	// The write is outside the lock for the reason [Agent.sealTurn]'s is: the
 	// file has its own, and holding the agent's across a disk write would put
 	// every reader of the session's totals behind it.

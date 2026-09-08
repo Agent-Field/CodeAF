@@ -1662,7 +1662,7 @@ func TestNewOnAUsedConversationAddsOneAndClearsTheTranscript(t *testing.T) {
 	})
 	a.width, a.height = 60, 20
 	a.pal = newPalette(tokens.ANSI256, false)
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	typeLine(t, a, "something old")
 	drive(t, a, streamClosedMsg{gen: a.gen})
 

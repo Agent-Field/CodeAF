@@ -45,10 +45,10 @@ func (b *blockRecorder) CompleteWithMessages(ctx context.Context, messages []ai.
 		_ = option(&request)
 	}
 	b.mu.Lock()
-	// The narrator arms half a second into every tool batch and is no fixture's
-	// business (agent_test.go states this at length); answering it here keeps it
-	// off the step counter.
-	if isCaptionCall(messages) {
+	// Background narration and session naming are separate from the turn whose
+	// tool definitions this fixture records. Naming starts beside the first
+	// request, so neither errand may consume a scripted foreground step.
+	if isCaptionCall(messages) || isTitleCall(messages) {
 		b.mu.Unlock()
 		return textResponse(""), nil
 	}

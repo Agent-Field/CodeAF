@@ -149,6 +149,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		agent.memory = newMemoryBrain(config.Memory)
 		agent.memoryCtx, agent.memoryStop = context.WithCancel(context.Background())
 	}
+	// AND THE NAMER'S OWN LIFETIME, minted for every session because every
+	// session may name itself and the errand starts on the first message rather
+	// than at the end of a turn (title.go).
+	agent.titleCtx, agent.titleStop = context.WithCancel(context.Background())
 	// And the block a task node was OPENED with, if it was opened with one: the
 	// parent routed it at the spawn seam and handed it down here, because a node
 	// has no turn of its own to route against (task_run.go).
@@ -1494,6 +1498,12 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.done = done
 	if !user.empty() {
 		a.recordUserLocked(user)
+		// AND THE SESSION STARTS NAMING ITSELF NOW, on the person's own words,
+		// beside the answer rather than behind it (title.go). The message is in
+		// the transcript on the line above, which is the only thing the namer
+		// needs; it is started under this lock so that two Submits racing to be
+		// the first cannot buy two names.
+		a.startTitleLocked()
 	}
 	// THEIR NEXT WORDS ARE WHAT CHANGED. A generation Interrupt minted waits
 	// here for the sentence that follows Esc, and that sentence is the one
@@ -1951,6 +1961,11 @@ func (a *Agent) Close() error {
 	// on a provider; the wait below is what lets one that is already writing
 	// reach the store (memory.go).
 	memoryStop := a.memoryStop
+	// No naming errand outlives the session either, on memoryStop's terms: the
+	// cancel is what stops one waiting on a provider or sleeping out a backoff,
+	// and the wait below is what lets one that has already earned a name write
+	// it (title.go).
+	titleStop := a.titleStop
 	file := a.file
 	cancel := a.cancel
 	done := a.done
@@ -1969,6 +1984,12 @@ func (a *Agent) Close() error {
 		close(lane)
 	}
 	a.wakeLanes = nil
+	// And a surface watching for the name: no name will be minted now, and a
+	// lane left open is a pump waiting on a session that has left (title.go).
+	for _, watcher := range a.titleWatchers {
+		watcher.close()
+	}
+	a.titleWatchers = nil
 	// And an adaptive run: it holds a context of its own precisely because its
 	// turn ended, so this is the only thing that can reach it (orchestrate.go).
 	// A harness being designed is a task now, so what ends it is the graph's own
@@ -1989,12 +2010,25 @@ func (a *Agent) Close() error {
 	// beat holds no write anybody is waiting for.
 	a.stopLaneBeat()
 
-	if memoryStop != nil {
-		a.waitForMemory(memoryStop)
+	// EVERY CANCEL FIRST, THEN THE JOINS. The naming errand may be asleep in a
+	// backoff or parked on a provider, and it is the one thing here that owes
+	// the quit nothing: cutting it before the memory join — rather than after
+	// it, on its own grace — is what keeps a title from putting itself in front
+	// of the turn's own cancellation (title.go).
+	if titleStop != nil {
+		titleStop()
 	}
 	if cancel != nil {
 		cancel()
 	}
+	if memoryStop != nil {
+		a.waitForMemory(memoryStop)
+	}
+	// AND THE NAME IS JOINED AFTER THE CANCEL RATHER THAN WAITED FOR BEFORE IT.
+	// The join is bounded and it is the only reason to wait at all: an errand
+	// that has already earned a name owes the journal one line, and cutting the
+	// process between the answer and the append would lose it (title.go).
+	a.waitForTitle()
 	if done != nil {
 		timer := time.NewTimer(closeGrace)
 		select {

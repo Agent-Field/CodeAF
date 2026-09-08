@@ -43,8 +43,11 @@ func (c *Client) laneFrame(name laneName, payload json.RawMessage) {
 // laneLocked is the stream one lane is delivering onto, called with c.mu held.
 // One lane crosses today; the switch is where a second would join it.
 func (c *Client) laneLocked(name laneName) *stream {
-	if name == laneDesign {
+	switch name {
+	case laneDesign:
 		return c.designs
+	case laneTitle:
+		return c.titles
 	}
 	return nil
 }
@@ -52,8 +55,11 @@ func (c *Client) laneLocked(name laneName) *stream {
 // setLaneLocked points one lane at a stream and answers the one it replaced.
 func (c *Client) setLaneLocked(name laneName, lane *stream) *stream {
 	previous := c.laneLocked(name)
-	if name == laneDesign {
+	switch name {
+	case laneDesign:
 		c.designs = lane
+	case laneTitle:
+		c.titles = lane
 	}
 	return previous
 }
@@ -62,11 +68,13 @@ func (c *Client) setLaneLocked(name laneName, lane *stream) *stream {
 // learns it is over rather than waiting on a channel nobody will write.
 func (c *Client) buryLanes() {
 	c.mu.Lock()
-	lane := c.designs
-	c.designs = nil
+	ending := []*stream{c.designs, c.titles}
+	c.designs, c.titles = nil, nil
 	c.mu.Unlock()
-	if lane != nil {
-		lane.finish()
+	for _, lane := range ending {
+		if lane != nil {
+			lane.finish()
+		}
 	}
 }
 
@@ -116,6 +124,23 @@ func (a *Agent) watchLane(name laneName, method string) (<-chan session.Event, f
 	}
 }
 
+// WatchTitle is this surface's subscription to the far conversation's name.
+//
+// THE REPLICA IS MOVED BEFORE THE EVENT IS DELIVERED, and that is done at the
+// frame rather than here (client.go's reader): a surface woken by this lane
+// draws [Agent.Title] on the very next frame, and a cached name a beat behind
+// the event announcing it is the whole defect this lane exists to avoid.
+func (a *Agent) WatchTitle() (<-chan session.Event, func()) {
+	return a.watchLane(laneTitle, MethodTitleWatch)
+}
+
+// TitleChanges is the same lane for a caller with no way to leave it, which is
+// the shape internal/tui3's own door asks for.
+func (a *Agent) TitleChanges() <-chan session.Event {
+	lane, _ := a.WatchTitle()
+	return lane
+}
+
 // WatchHarnessDesigns is this surface's subscription to the far conversation's
 // harness lane: the design being written, the card that asks whether to keep
 // it, and the intake card of a saved program the session is offering.
@@ -144,4 +169,59 @@ func (a *Agent) ResolveSubharness(id uint64, run bool, input json.RawMessage) {
 		defer guard.Recover("remote/subharness resolve")
 		_, _ = c.call(nil, MethodSubharnessResolve, args)
 	}()
+}
+
+// factsFrame accepts a complete fact set before announcing a changed name.
+// A newer status push may overtake the dedicated title frame. In that order the
+// title frame is correctly refused as stale, so this push must also wake the
+// title reader; otherwise the cache is named while the visible tab stays empty.
+func (c *Client) factsFrame(payload json.RawMessage) {
+	var push FactsPush
+	if json.Unmarshal(payload, &push) != nil {
+		return
+	}
+	before := c.facts.read().Title
+	if c.facts.takePush(push) && push.Facts.Title != before {
+		c.announceTitle(push.Facts.Title)
+	}
+}
+
+// titleFrame carries a revision as well as a name. The revision rejects an old
+// conversation's delayed frame after a swap, and prevents an older snapshot
+// from undoing a title already learned through a newer ordinary facts push.
+func (c *Client) titleFrame(payload json.RawMessage) {
+	var named FactsPush
+	if json.Unmarshal(payload, &named) != nil {
+		return
+	}
+	if c.facts.takePush(named) {
+		c.announceTitle(named.Facts.Title)
+	}
+}
+
+func (c *Client) announceTitle(title string) {
+	if title == "" {
+		return
+	}
+	payload, err := json.Marshal(WireEvent(session.Event{Kind: session.EventTitleChanged, Text: title}))
+	if err == nil {
+		c.laneFrame(laneTitle, payload)
+	}
+}
+
+// retakeTitle preserves the standing name subscription across a repaired link.
+// The welcome restores the cache, but the UI also needs a notification if the
+// name arrived during the gap. If it is still pending, the new server needs its
+// own subscription; the old pipe's subscription was closed with that pipe.
+func (c *Client) retakeTitle(left string, welcome Welcome) {
+	c.mu.Lock()
+	watching := c.titles != nil
+	c.mu.Unlock()
+	if !watching || left != welcome.SessionFile {
+		return
+	}
+	if welcome.Facts != nil {
+		c.announceTitle(welcome.Facts.Facts.Title)
+	}
+	guard.Go("remote/title rewatch", func() { _, _ = c.call(nil, MethodTitleWatch, nil) })
 }

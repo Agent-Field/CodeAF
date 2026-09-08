@@ -645,6 +645,16 @@ type (
 		ev  session.Event
 	}
 	designLaneClosedMsg struct{ gen int }
+
+	// titleEventMsg is one event off the STANDING naming subscription
+	// (names.go's [app.watchTitles]): the name this conversation gave itself,
+	// arriving after the turn that bought it had ended. gen is the lane's
+	// generation, on designEventMsg's own terms.
+	titleEventMsg struct {
+		gen int
+		ev  session.Event
+	}
+	titleLaneClosedMsg struct{ gen int }
 	// orchEventMsg is one event off the STANDING adaptive-run subscription
 	// (the run lane below), which is a lane of its own for the design lane's
 	// reason: a run's notes, its gauge and its fuel gate all arrive long after
@@ -1136,7 +1146,7 @@ type app struct {
 	// stirs is the one lane that belongs to no conversation: a key, from the
 	// watcher of a conversation nobody is drawing, saying "look at this agent
 	// again" (keeper.go's [behindStirMsg]).
-	stirs chan string
+	stirs chan behindStirMsg
 
 	// lastDelta is when text last arrived. The live reply's own markdown clock
 	// sits beside the block it belongs to ([feed.mdAt]).
@@ -1421,7 +1431,11 @@ type app struct {
 	// to. It is a lane of its own rather than the turn's stream because a design
 	// outlives the turn that asked for it, exactly as a task node does.
 	designLane <-chan session.Event
-	designGen  int
+	// titleLane is the standing subscription to the name this conversation gives
+	// itself, and titleGen numbers it, both on designLane's terms (names.go).
+	titleLane <-chan session.Event
+	titleGen  int
+	designGen int
 	// orchLane is the standing subscription to the ADAPTIVE RUNS this session is
 	// driving (roomorch.go draws them) and orchGen the generation it belongs to.
 	// It is a third standing lane for the design lane's reason and one more: a
@@ -2643,7 +2657,7 @@ func (a *app) Init() tea.Cmd {
 	// legend needs before it may name the switcher (hop.go), and it is asked off
 	// the loop for the reason every other reading on this list is: the walk opens
 	// every project's index, and the paint path may never pay for one.
-	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(),
+	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
 		a.watchRuns(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
 		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor}
 	if a.welcome.animating() {
@@ -2960,7 +2974,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// A conversation this process holds and is not drawing has something to
 		// say about itself. The message carries no content — the surface reads
 		// the agent it already has a pointer to (keeper.go).
-		return a, a.behindStir(msg.key)
+		return a, a.behindStir(msg)
 
 	case startRecentsMsg:
 		// This directory's earlier conversations, read off the loop for the
@@ -3613,6 +3627,21 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		return a, a.designEvent(msg.ev)
+
+	case titleEventMsg:
+		if msg.gen != a.titleGen {
+			return a, nil
+		}
+		// THE SAME HANDLER THE TURN'S OWN STREAM REACHES. A name that arrived on
+		// both roads — a turn still running when it landed — is one idempotent
+		// assignment, which is why nothing here dedupes.
+		return a, tea.Batch(a.applyEvent(msg.ev, false), waitTitle(a.titleLane, a.titleGen))
+
+	case titleLaneClosedMsg:
+		if msg.gen == a.titleGen {
+			a.titleLane = nil
+		}
+		return a, nil
 
 	case designLaneClosedMsg:
 		// The agent this lane belonged to is gone, on the task lane's own terms:

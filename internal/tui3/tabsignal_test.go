@@ -150,7 +150,7 @@ func TestTheMarksAskNeitherTheDiskNorTheAgentsLock(t *testing.T) {
 // was already computing these two facts writes them down.
 func TestTheWatcherRecordsWhatTheStripReads(t *testing.T) {
 	waiting := &countingAgent{fakeAgent: &fakeAgent{model: "m"}, waiting: true}
-	out := make(chan string, stirDepth)
+	out := make(chan behindStirMsg, stirDepth)
 	watch := startBehindWatch("/tmp/lab/two.jsonl", waiting, out)
 	defer watch.stop()
 	deadline := time.Now().Add(2 * time.Second)
@@ -417,7 +417,7 @@ func TestAnUnreadableNoticeLeavesTheReadingAlone(t *testing.T) {
 func TestTheWatcherFoldsTaskNoticesOffTheLaneItAlreadyDrains(t *testing.T) {
 	lane := make(chan session.Event, 4)
 	agent := &taskLaneAgent{fakeAgent: &fakeAgent{model: "m"}, lane: lane}
-	out := make(chan string, stirDepth)
+	out := make(chan behindStirMsg, stirDepth)
 	watch := startBehindWatch("/tmp/lab/two.jsonl", agent, out)
 	defer watch.stop()
 
@@ -434,9 +434,9 @@ func TestTheWatcherFoldsTaskNoticesOffTheLaneItAlreadyDrains(t *testing.T) {
 	}
 	await(t, true, "its conversation has work running behind the turn")
 	select {
-	case key := <-out:
-		if key != "/tmp/lab/two.jsonl" {
-			t.Fatalf("the stir named %q", key)
+	case note := <-out:
+		if note.key != "/tmp/lab/two.jsonl" {
+			t.Fatalf("the stir named %q", note.key)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("work starting behind a finished turn never asked the surface to look")

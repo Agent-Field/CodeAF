@@ -2121,3 +2121,32 @@ Host attachment compares a build identity captured at process initialization,
 including timestamp precision beyond the minute shown on screen. This adds one
 string to the existing local-socket handshake and no executable hashing or extra
 network round trip. A mismatched busy host remains alive.
+
+## Conversation titles run independently of foreground turns
+
+`startTitleLocked` starts one naming job when the first user message is accepted into
+an unnamed journal-backed session. `titleTried` is marked under the agent lock before
+launch; later turns and end-of-turn fallback calls cannot launch duplicates. The job
+uses session lifetime, not a turn context. Neither Submit nor turn-stream closure waits
+for it. Closing cancels the job before joins and uses the existing `closeGrace` bound.
+
+`titleAttempts = 3` bounds the automatic retry ladder; `titleWindow = 2 minutes` covers
+all attempts and backoff. Transient transport failures and individual auxiliary deadlines
+retry while the overall context remains live. Backoff uses `retryBaseDelay` (2 seconds),
+doubling to 4 seconds before the third attempt. Empty/invalid names, permanent failures,
+and cancellation do not retry. Each attempt retains the role ladder's existing maximum
+of two provider rungs, so the outer job permits at most six role-level calls, subject to
+the shared deadline and the provider adapter's existing transport policy. Prompt input
+remains clipped by `titleClip`; returned names by `titleLimit`.
+
+The session title no longer consumes the interrupt generation's task-naming allowance:
+its lifetime gate already prevents duplicate jobs, while retries must survive Escape.
+Task naming and planner limits are unchanged. Detached title usage enters session totals
+and the usage ledger but cannot change a later or abandoned turn's spend.
+
+Title subscriptions are conversation-owned, stopped on detach/close, and replay the saved
+name. Hosted title frames reuse revisioned `FactsPush`; newer ordinary facts also notify
+changed names so overtaking cannot lose the visible update. Reconnect reopens an existing
+title subscription once, without polling or model work. Background title redraws neither
+consume completion flags nor raise attention banners. Metadata read-modify-write is
+serialized per agent, with owned-field patches so stale spend snapshots preserve titles.

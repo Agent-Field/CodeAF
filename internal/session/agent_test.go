@@ -115,6 +115,29 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 		s.mu.Unlock()
 		return textResponse(""), nil
 	}
+	// AND SO IS THE SESSION'S OWN NAMER, for the narrator's reason and one
+	// stronger: since #653 it is started when the person's FIRST MESSAGE is
+	// accepted rather than when the turn ends (title.go), so it is in flight
+	// beside the first scripted step of every fixture whose config names a
+	// session file. There is no ordering between that goroutine and the turn, so
+	// no positional script can hold a slot for it — a fixture that tried would be
+	// a coin toss between the turn eating the namer's step and the namer eating
+	// the turn's.
+	//
+	// A fixture that is ABOUT the name installs an aside, consulted above, which
+	// wins ([titleAside], title_test.go). Everything else gets silence, which
+	// leaves the session unnamed and is what a namer nobody could reach has
+	// always given its caller.
+	if isTitleCall(snapshot) {
+		s.asides = append(s.asides, snapshot)
+		s.mu.Unlock()
+		// AND IT COSTS NOTHING. A namer no fixture scripted did not happen as
+		// far as that fixture is concerned, and a usage block here is a row on
+		// the ledger and tokens on the meter that the test's own arithmetic
+		// knows nothing about — [Agent.addDetachedUsageAs] banks nothing for a
+		// response that carries none (loop.go).
+		return &ai.Response{Choices: []ai.Choice{{Message: textMessage("assistant", "")}}}, nil
+	}
 	index := len(s.seen)
 	s.seen = append(s.seen, snapshot)
 	s.models = append(s.models, request.Model)

@@ -160,30 +160,25 @@ the selected row.
 
 ## Why does my tab say Untitled — when does a chat get its name, my new chat has no title, the tab says Untitled instead of the conversation name
 
-**A conversation names itself once, off the end of its first completed turn.** Until that
-name arrives its tab reads `Untitled`, and then it changes to the name by itself — you do
-not press anything and nothing is re-sent.
+**Naming starts when your first message is accepted.** The title model works in the
+background alongside the answer. The answer does not wait for a title, and the title does
+not wait for the answer to finish.
 
-The order is exactly this:
+1. `+` opens the `New chat` page. A newly created conversation starts as `Untitled`.
+2. Sending your first message starts both the conversation and background naming.
+3. When the name arrives, the tab, breadcrumb root, status line and terminal window title
+   update automatically. This also works after the answer has finished or you have switched
+   to another tab. Returning to the conversation keeps its saved name.
 
-1. `+` opens a `New chat` start page. Once a new conversation is created, its tab
-   reads `Untitled`.
-2. You send your first message. It still reads `Untitled` — the name is derived from the
-   first exchange, and the reply is half of that exchange.
-3. The reply finishes. A small, cheap model is asked for a name in eight lowercase words,
-   once, and the tab, the status line and your terminal's window title all change to it a
-   moment later.
+**Temporary failures retry automatically.** There are up to three naming attempts, with
+short increasing delays, within a two-minute overall window. You do not need to send
+another message. A failed title never interrupts the answer or changes its working state.
+If those attempts fail, or the model returns an empty or invalid name, the tab remains
+`Untitled`; an unnamed saved conversation can try again on its next message after reopening.
 
-**It happens once per conversation and never again.** A chat you resume already has its
-name and is not renamed, and a name that is already there is never replaced by `Untitled`.
-If the naming fails — the model was down, or it answered with the instruction it was given
-instead of a name — the conversation simply stays `Untitled`, nothing is said about it, and
-it is asked for again the next time you open that conversation and finish a turn.
-
-**There is no way to rename a conversation from inside aforge.** No command, no key, no
-click on the tab — the name is the one the conversation gave itself, and the only thing
-that ever changes it is a conversation that was left unnamed being asked again on its next
-finished turn.
+**An existing name wins.** Naming runs once per session lifetime, and a chat that already
+has a name is not named again. Closing the session cancels unfinished naming. There is no
+command or tab action to rename a conversation manually.
 
 **`Untitled` labels an unnamed tab and its breadcrumb root.** Elsewhere it is named
 after the folder it is in: the status line and the window title say the project, home and

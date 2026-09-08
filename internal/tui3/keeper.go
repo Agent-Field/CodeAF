@@ -81,7 +81,23 @@ type kept struct {
 // names a key, the surface looks it up, and a stir for a conversation that has
 // since been closed finds nothing in the map and does nothing at all — the same
 // shape a stale generation has, needing no new rule.
-type behindStirMsg struct{ key string }
+type behindStirMsg struct {
+	key string
+	// quiet is a stir that is ONLY a redraw: the conversation said something
+	// that changes what it is CALLED and nothing about what it is doing. It is a
+	// separate bit rather than a second lane because the banner rules
+	// ([app.behindStir]) are the thing it has to skip, and skipping them is one
+	// branch there.
+	//
+	// WITHOUT IT A LATE NAME RAISES AN ATTENTION BANNER. behindStir re-reads the
+	// agent and announces `waiting on you` whenever the conversation needs the
+	// person — which is right for a stir that means "something happened" and
+	// wrong for one that means "it is called this now": a held conversation
+	// sitting on a question would raise that banner again every time it named
+	// itself, and consume the landed flag that the finished banner is counted
+	// from.
+	quiet bool
+}
 
 // behindWatch is one conversation's stir watcher, and it exists for a reason
 // that must not be deleted by a future lane trying to save memory.
@@ -110,7 +126,7 @@ type behindStirMsg struct{ key string }
 type behindWatch struct {
 	key   string
 	agent Agent
-	out   chan<- string
+	out   chan<- behindStirMsg
 	quit  chan struct{}
 	once  sync.Once
 	// armed is the "at most one outstanding" rule. A watcher that sent a stir
@@ -225,13 +241,32 @@ func (w *behindWatch) stir() {
 		return
 	}
 	select {
-	case w.out <- w.key:
+	case w.out <- behindStirMsg{key: w.key}:
 	default:
 		// The stir lane is full, which means the surface is already owed more
 		// wakeups than it has folded in. Dropping this one is right: what it
 		// would have said is "read the agent", and the wakeups already queued
 		// will say it.
 		w.armed.Store(false)
+	}
+}
+
+// stirName asks the surface to redraw a conversation that has just been NAMED,
+// and asks for nothing else.
+//
+// IT DOES NOT TOUCH THE ARM. The arm is [behindWatch.stir]'s dedup — one
+// outstanding "read the agent" per conversation — and a name is not that
+// question: taking the arm here would swallow a real stir queued behind it, and
+// clearing it would let two through. A session names itself once
+// (session's [Agent.titleTried]), so there is nothing here to dedupe.
+func (w *behindWatch) stirName() {
+	select {
+	case w.out <- behindStirMsg{key: w.key, quiet: true}:
+	default:
+		// The lane is full, and a redraw is the one stir worth losing: the next
+		// wakeup for any reason reads the agent's name off the agent
+		// (chattabs.go's [hopRawTitle]), so the tab catches up on the frame
+		// after that.
 	}
 }
 
@@ -256,7 +291,7 @@ func (w *behindWatch) landedSince() int {
 func (w *behindWatch) stop() { w.once.Do(func() { close(w.quit) }) }
 
 // startBehindWatch subscribes to everything this agent has and drains it.
-func startBehindWatch(key string, agent Agent, out chan<- string) *behindWatch {
+func startBehindWatch(key string, agent Agent, out chan<- behindStirMsg) *behindWatch {
 	w := &behindWatch{key: key, agent: agent, out: out, quit: make(chan struct{})}
 	go w.run()
 	return w
@@ -303,6 +338,16 @@ func (w *behindWatch) run() {
 	if door, ok := w.agent.(leavableRunner); ok {
 		lane, stop := door.WatchOrchestrations()
 		runs = lane
+		keep(stop)
+	}
+	// AND THE NAME, WHICH A HELD CONVERSATION EARNS WHILE NOBODY IS LOOKING AT
+	// IT. The tab is drawn from the agent ([hopRawTitle]) and the agent knows the
+	// name the moment it lands, so all this lane buys is the frame that redraws
+	// the tab — which is why it stirs quietly (names.go, session's title.go).
+	var titles <-chan session.Event
+	if door, ok := w.agent.(leavableNamer); ok {
+		lane, stop := door.WatchTitle()
+		titles = lane
 		keep(stop)
 	}
 
@@ -355,6 +400,12 @@ func (w *behindWatch) run() {
 			if w.noteTask(ev.Task) {
 				w.stir()
 			}
+		case _, ok := <-titles:
+			if !ok {
+				titles = nil
+				break
+			}
+			w.stirName()
 		case _, ok := <-designs:
 			if !ok {
 				designs = nil
@@ -416,13 +467,13 @@ const stirDepth = 8
 // waitStir takes one conversation's stir off the shared lane and asks for the
 // next. It is the pump every other standing lane on this surface uses, in the
 // one shape that belongs to no conversation at all.
-func waitStir(lane <-chan string) tea.Cmd {
+func waitStir(lane <-chan behindStirMsg) tea.Cmd {
 	return func() tea.Msg {
-		key, ok := <-lane
+		note, ok := <-lane
 		if !ok {
 			return nil
 		}
-		return behindStirMsg{key: key}
+		return note
 	}
 }
 
@@ -431,7 +482,7 @@ func (a *app) stirLane() tea.Cmd {
 	if a.stirs != nil {
 		return nil
 	}
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	return waitStir(a.stirs)
 }
 
@@ -441,10 +492,20 @@ func (a *app) stirLane() tea.Cmd {
 // is what makes the message able to say nothing. A key that is no longer in the
 // keeper is a conversation that has since been closed, and the honest answer to
 // a stir about it is to do nothing.
-func (a *app) behindStir(key string) tea.Cmd {
+func (a *app) behindStir(note behindStirMsg) tea.Cmd {
 	next := waitStir(a.stirs)
-	held := a.behind[key]
+	held := a.behind[note.key]
 	if held == nil {
+		return next
+	}
+	// A CONVERSATION THAT HAS JUST NAMED ITSELF IS A REDRAW AND NOTHING ELSE.
+	// The tab reads the name off the agent on the frame ([hopRawTitle]), so the
+	// frame IS the whole of the refresh; every line below is about work landing,
+	// and running them for a name would announce `waiting on you` again for a
+	// question the person has already been told about, and spend the landed flag
+	// the finished banner is counted from.
+	if note.quiet {
+		a.touch()
 		return next
 	}
 	// LETTING GO COMES BEFORE ANYTHING ELSE IS READ. A conversation another
@@ -453,7 +514,7 @@ func (a *app) behindStir(key string) tea.Cmd {
 	// that is leaving (takeover.go). The agent is asked as well as the flag, for
 	// the surface that woke on a stir raised by something else.
 	if held.watch.takeover.Load() || takenOver(held.conv.Agent) {
-		return tea.Batch(next, a.takeOverKept(key, held))
+		return tea.Batch(next, a.takeOverKept(note.key, held))
 	}
 	landed := held.watch.took()
 	// The count on the status line and home's own rows are both read from the

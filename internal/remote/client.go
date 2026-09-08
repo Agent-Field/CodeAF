@@ -163,6 +163,12 @@ type Client struct {
 	// draws no cards or a connection that has ended (clientlanes.go).
 	designs *stream
 
+	// titles is the naming lane, held on exactly the terms designs is: one at a
+	// time, replaced rather than added to, and nil for a surface that does not
+	// draw the conversation's name or a connection that has ended
+	// (clientlanes.go).
+	titles *stream
+
 	// following carries the turns this surface did not start, so the screen can
 	// draw one. It is BUFFERED AND DROPS WHEN FULL: the reader goroutine must
 	// never block, and a surface that is not draining this is one that does not
@@ -747,6 +753,8 @@ func (c *Client) read() {
 			if err := json.Unmarshal(frame.Payload, &note); err == nil {
 				c.drives(note)
 			}
+		case string(laneTitle):
+			c.titleFrame(frame.Payload)
 		case string(laneDesign):
 			// One event off the harness lane: a design card, a subharness intake
 			// card, or a note about one. Queued for the surface's loop for the
@@ -762,11 +770,9 @@ func (c *Client) read() {
 			c.taskFrame(frame.Payload)
 		case "facts":
 			// The engine stating something nobody asked for. It is taken on the
-			// reader goroutine and never handed to the surface as an event: the
-			// surface reads a replica, and a fact delivered as something to be
-			// processed would put a frame's freshness behind however far the
-			// update loop had got through its queue.
-			c.facts.take(frame.Payload)
+			// reader goroutine before the surface is notified of a changed name.
+			// Reading the replica never waits for the update loop to catch up.
+			c.factsFrame(frame.Payload)
 		case "fatal":
 			c.bury(spokenError{reason: frame.Error})
 			return

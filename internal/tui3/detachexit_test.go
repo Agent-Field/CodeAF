@@ -56,7 +56,7 @@ func TestQuittingDetachesFromHostedWorkInsteadOfEndingIt(t *testing.T) {
 	hosted := &hostedAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(hosted)
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 
 	a.leaveEverything()
 
@@ -80,7 +80,7 @@ func TestQuittingStillClosesAnInProcessConversation(t *testing.T) {
 	local := &fakeAgent{model: "m"}
 	a := newTestApp(local)
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 
 	a.leaveEverything()
 
@@ -95,7 +95,7 @@ func TestQuittingHandlesAMixOfHostedAndLocalConversations(t *testing.T) {
 	hosted := &hostedAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(hosted)
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	behind := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	stowOne(t, a, behind, "/tmp/lab/two/transcript.jsonl")
 
@@ -118,7 +118,7 @@ func TestTheArmedHintSaysHostedWorkKeepsRunning(t *testing.T) {
 	hosted := &hostedAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(hosted)
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	a.tasks = map[uint64]*taskNode{1: {id: 1, state: session.TaskRunning}}
 	a.taskOrder = []uint64{1}
 
@@ -145,7 +145,7 @@ func TestTheArmedHintSeparatesWorkThatEndsFromWorkThatSurvives(t *testing.T) {
 	// and the hosted one with a node of its own is the one on screen.
 	a := newTestApp(&busyAgent{fakeAgent: &fakeAgent{model: "m"}})
 	a.file = "/tmp/lab/two/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	hosted := &hostedAgent{fakeAgent: &fakeAgent{model: "m"}}
 	stowAgent(t, a, hosted, "/tmp/lab/one/transcript.jsonl")
 	a.tasks = map[uint64]*taskNode{1: {id: 1, state: session.TaskRunning}}
@@ -171,7 +171,7 @@ func TestQuittingSavesTheDraftAndLeavesAQuestionStanding(t *testing.T) {
 	hosted := &hostedAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(hosted)
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	a.draftFile = t.TempDir() + "/draft"
 	a.input.setText("half a sentence")
 	a.parks = []parked{{text: "and one waiting"}}
@@ -199,7 +199,7 @@ func TestASignalDetachesFromHostedWorkToo(t *testing.T) {
 	hosted := &hostedAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(hosted)
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	a.draftFile = t.TempDir() + "/draft"
 	a.input.setText("half a sentence")
 
@@ -222,7 +222,7 @@ func TestASignalStillClosesAnInProcessConversation(t *testing.T) {
 	local := &fakeAgent{model: "m"}
 	a := newTestApp(local)
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 
 	drive(t, a, sigQuitMsg{})
 
@@ -240,7 +240,7 @@ func TestAOneShotRemoteIsWarnedAboutHonestly(t *testing.T) {
 	oneShot := &hostedAgent{fakeAgent: &fakeAgent{model: "m"}, oneShot: true}
 	a := newTestApp(oneShot)
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	a.tasks = map[uint64]*taskNode{1: {id: 1, state: session.TaskRunning}}
 	a.taskOrder = []uint64{1}
 
@@ -302,7 +302,7 @@ func remoteFront(t *testing.T, persistent bool) (*app, *remote.Agent) {
 	agent := client.Agent()
 	a := newTestApp(agent)
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	a.tasks = map[uint64]*taskNode{1: {id: 1, state: session.TaskRunning}}
 	a.taskOrder = []uint64{1}
 	return a, agent
