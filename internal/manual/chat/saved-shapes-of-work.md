@@ -84,6 +84,13 @@ One row appears under the connect offer and above the message box:
 Every other key does nothing while the row is up. It is modal, because the session is
 holding a turn on your answer.
 
+**The three chat chords are the exception**, as they are for the permission question one
+rung above it: `ctrl+t` opens the New chat page, `ctrl+w` the close card and `ctrl+k`
+opens Chats. They move you; they never answer. The offer is not drawn on the New chat
+page — its keys cannot be honoured there, and every key on that page belongs to its
+first message — and it is still standing, unanswered, when `esc` brings you back to this
+chat.
+
 A click works too. Each key chip **and the word beside it** are one target. A press
 anywhere else on the row is swallowed rather than falling through to what is underneath.
 

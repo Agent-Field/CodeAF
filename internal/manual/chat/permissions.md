@@ -46,6 +46,24 @@ When more than one question is queued a `N more` line appears. Questions are
 answered oldest first, and each gets its own countdown when it reaches the
 front. While a question is up your draft is suspended and the typed lists close.
 
+## I pressed ctrl+t while it was asking — where did the question go, and did my typing answer it
+
+The question stays up and unanswered in the chat you came from. The **New chat**
+start page owns every key while it is on screen: letters go into its first-message
+box, `enter` starts the new conversation, and `esc` returns to the chat behind it.
+Nothing you type on that page can allow, deny or cancel the waiting question.
+
+The permission block is not drawn on the start page because its answer keys do
+nothing there. The chat that is asking keeps `?` on its tab, and **Chats** says
+`asking you something`. Press `esc` or select that chat to go back; its
+`allow? [y] yes · [n] no · [a] always, this command · [esc] cancel` offer returns
+with all of those keys live.
+
+Walking away does not turn silence into a no. If the approval countdown reaches
+expiry while the question is behind the start page, it pauses instead of denying
+the call. The unanswered question is still there when you return, with `paused`
+on its offer.
+
 ## Why did it ask my permission before running that — the dim line under the offer
 
 The dim line beneath the offer is the rule that produced the question, in the

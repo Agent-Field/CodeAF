@@ -237,7 +237,9 @@ ends that task; `/quit` ends the program.
 A tool permission question does not trap you in its tab. `ctrl+w` offers the same
 close actions while leaving the question unanswered; `ctrl+k` opens Chats and
 `ctrl+t` opens another chat. A hidden chat waiting on your answer is marked
-with `?`; Chats says `asking you something`. Reopen it to answer the original question. Cancel on the close card
+with `?`; Chats says `asking you something`. The question's answer keys do nothing
+while another chat or the **New chat** page is in front of you. Reopen the asking
+chat to see the offer and answer the original question. Cancel on the close card
 leaves both the tab and permission untouched; `stop work` cancels that reply.
 
 
@@ -313,6 +315,10 @@ conversations under it. A selected **New chat** tab labels this page. The other 
 | `enter` on a chosen row | Opens that conversation. It sends nothing |
 | click a recent row | The same |
 | `ctrl+t` or `+` again | Reuses the page you already have |
+
+The start page's box takes every key. If the chat behind it is waiting on a
+question, typing here cannot answer it; go back to that chat to see the offer and
+use its answer keys.
 
 **A picture on its own is a message.** Drop or paste one and press `enter` with nothing
 typed and the conversation starts on the picture.
