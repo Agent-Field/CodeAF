@@ -157,7 +157,10 @@ the old one is still answering, which is how you can be told to update something
 updated an hour ago.
 
 So before it hands your window over, `aforge engine` asks whatever is already holding that
-workspace which build it is. The check includes the source/build stamp even when the wire protocol has not changed; a host too old to report a build stamp is treated as an older copy. Three things can be true:
+workspace which build it is. The check asks which source the running engine was built from,
+so building the same commit twice is the same build and your window attaches to it without
+a word; a build from a changed working tree, or one too old to report a stamp at all, counts
+as another build. Three things can be true:
 
 - **It is this build.** Your window attaches to it exactly as before. This is the ordinary
   case, and it costs one question on a local socket.
