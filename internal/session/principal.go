@@ -850,6 +850,10 @@ type Steward struct {
 	acceptance string
 	checks     []string
 	delivery   deliveryContract
+	// deliveryReading is the one in-flight destination reading shared by both
+	// ending seams. The network call runs outside this lock; closing the channel
+	// publishes the frozen result to every waiter.
+	deliveryReading chan struct{}
 
 	// wall and money are the CEILINGS; started and spent are how the figures
 	// against them are read. spent is a closure onto the session's own

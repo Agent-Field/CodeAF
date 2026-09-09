@@ -55,6 +55,20 @@ func TestTheSessionAcceptanceFreezesTheOriginalAskWithoutACall(t *testing.T) {
 	}
 }
 
+func TestTheSessionAcceptanceKeepsTheTailOfALongOriginalAsk(t *testing.T) {
+	const tail = "FINAL REQUIREMENT: include the signed decision table"
+	ask := strings.Repeat("context ", briefAskLimit) + tail
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	agent.steward().hear(ask)
+	agent.openAcceptance(context.Background(), nil)
+	if got := agent.steward().Acceptance(); !strings.Contains(got, tail) {
+		t.Fatalf("the frozen whole-request contract lost its tail: %q", got[len(got)-100:])
+	}
+}
+
 // AND A SESSION NOBODY GAVE A GOAL OWNER NEVER ASKS THE QUESTION, which is the
 // whole of what this costs an ordinary conversation: one nil check per turn.
 func TestAnAttendedSessionNeverWritesAnAcceptance(t *testing.T) {
