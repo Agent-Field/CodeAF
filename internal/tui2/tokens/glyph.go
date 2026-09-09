@@ -39,6 +39,17 @@ const (
 	// Attention and blocking.
 	GlyphNeedsHuman = "?" // always amber (5.16)
 	GlyphWaitsOn    = "⚑" // waiting on a sibling (waits-on edge)
+	// GlyphWithdrawn is a question that STOPPED BEING A QUESTION — its subject
+	// went away, the plan changed, or another answer made it moot, so the asker
+	// took it back (docs/design/questions/DESIGN.md's WITHDRAWN, WITH A REASON).
+	//
+	// It is deliberately none of the three marks it sits nearest. A tick says
+	// somebody decided; a cross says the answer was no; a filled square says a
+	// person ended it. Nobody decided anything here and nobody ended anything —
+	// the decision simply stopped needing to be made — and the circled slash is
+	// the one shape in the geometric register that says "this does not apply"
+	// without claiming an outcome.
+	GlyphWithdrawn = "⊘"
 
 	// Disclosure and navigation.
 	GlyphCollapsed = "▸"
@@ -313,6 +324,7 @@ func Glyphs() []GlyphInfo {
 		{"Paused", GlyphPaused, '=', false},
 		{"NeedsHuman", GlyphNeedsHuman, '?', false},
 		{"WaitsOn", GlyphWaitsOn, '⚑', false},
+		{"Withdrawn", GlyphWithdrawn, '⊘', false},
 		{"Collapsed", GlyphCollapsed, '▸', false},
 		{"Expanded", GlyphExpanded, '▾', false},
 		{"ScopeUp", GlyphScopeUp, '‹', false},

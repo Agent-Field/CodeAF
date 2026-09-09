@@ -95,6 +95,13 @@ type chromeKind uint8
 
 const (
 	chromeNone chromeKind = iota
+	// chromeQuestion is one row of THE QUESTION BLOCK (question.go), the one
+	// renderer for every decision this engine hands a person. Every row of it
+	// carries the kind and its own index, because the block's forms put their
+	// answers on different rows — the line's are on its head row, the card's on
+	// its foot — and the press resolves the row before the column, so one kind
+	// with an honest index is what lets it hit-test either.
+	chromeQuestion
 	// chromeChoices is the consent block's offer line, which is interactive by
 	// keyboard and hoverable by pointer.
 	chromeChoices
@@ -712,6 +719,16 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 		// no room for a label.
 		add(a.legend(width), chromeRow{kind: chromeLegend})
 	}
+	// THE QUESTION BLOCK IS THE FIRST OF THE PINNED BLOCKS, because it is the
+	// one every other block on this ladder is being folded into
+	// (docs/design/questions/DESIGN.md). It carries the receipts of what was
+	// just answered as well as what is still open, so it sits ABOVE the older
+	// blocks rather than under them: a receipt is about a question that has
+	// gone, and a receipt drawn below a question that is still up would read as
+	// an answer to the wrong one.
+	for i, line := range a.questionRows(width) {
+		add(line, a.questionRowMark(i))
+	}
 	for i, line := range a.consentRows(width) {
 		// The offer is the second row of the block, and it is the only row of it
 		// a pointer can be over — the call above it is a transcript row that
@@ -930,7 +947,7 @@ func (a *app) chromeHeight() int {
 	// layout to learn how tall the bottom of the frame is), the input block, and
 	// whatever the two optional blocks, the open list and the welcome box are
 	// holding.
-	n := a.statusHeight(width) + a.overlayHeight() + a.consentHeight() +
+	n := a.statusHeight(width) + a.overlayHeight() + a.questionHeight() + a.consentHeight() +
 		a.connectAskHeight() + a.harnessAskHeight() + a.roomApprovalHeight() + a.guardHeight() +
 		a.followHeight() + a.landHeight() + a.parkedHeight() + a.welcomeHeight() + a.spellHeight()
 	// THE GREETING'S ROWS ALREADY HOLD THE BOX while it holds the box, and the
