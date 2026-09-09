@@ -299,15 +299,22 @@ func TestTheStripAnswersAQuestionInItsOwnWords(t *testing.T) {
 	if len(verbs) == 0 {
 		t.Fatal("a waiting row offered no verbs")
 	}
+	// THE KEY IS THE OPTION'S OWN AND IS NEVER POSITIONAL (switcher.go's
+	// [switcherQuestionVerbs]). The fixture's first answer is `1 do it`, so
+	// `1` is the key the strip draws for it — this used to assert `y`, which
+	// was the strip inventing a key that meant whatever happened to be first.
 	found := false
 	for _, v := range verbs {
-		if v.key == 'y' {
+		if v.key == '1' {
 			v.do()
 			found = true
 		}
 	}
 	if !found {
 		t.Fatalf("the strip did not carry the question's own first option: %+v", verbs)
+	}
+	if left[0] != "1" {
+		t.Fatalf("the strip sent %q, not the option's own key", left[0])
 	}
 	if len(left) == 0 {
 		t.Fatal("the strip's answer never reached the answer seam")
