@@ -211,8 +211,21 @@ func runOrganizationJourney(t *testing.T, scenario organizationJourney) {
 		proxy.ServeHTTP(rw, r)
 	}))
 	defer observed.Close()
-	outsider, _ := w.open(t.TempDir(), func(cfg *session.Config) { orgSeam(w)(cfg); cfg.BaseURL = observed.URL })
+	outsiderDir := t.TempDir()
+	outsider, _ := w.open(outsiderDir, func(cfg *session.Config) { orgSeam(w)(cfg); cfg.BaseURL = observed.URL })
 	organizationSay(t, w, outsider, "Write scope.json containing {\"status\":\"unavailable\"} if no shared context was supplied for this work; otherwise include that context's title. Do not discover unrelated collections or records.")
+	// Absence from the prompt and a usable report are separate promises. A
+	// model once wrote literal backslashes around these JSON keys; the input
+	// isolation check passed while the requested file was not valid JSON.
+	rawScope, scopeErr := os.ReadFile(filepath.Join(outsiderDir, "scope.json"))
+	var scope struct {
+		Status string `json:"status"`
+	}
+	if scopeErr != nil {
+		t.Errorf("unrelated chat did not deliver scope.json: %v", scopeErr)
+	} else if err := json.Unmarshal(rawScope, &scope); err != nil || scope.Status != "unavailable" {
+		t.Errorf("unrelated chat delivered an invalid scope report: %s (error: %v)", rawScope, err)
+	}
 	if requests.Load() == 0 {
 		t.Fatal("no real model request crossed the observation point")
 	}
