@@ -2823,6 +2823,14 @@ its own: raising `no_progress` for work that is legitimately repetitive moves bo
 Both step limits are recorded in the checkpoint, so they survive a restart along with the
 rest of the task.
 
+## Does a long request lose requirements when work is checked or handed off?
+
+The checkpoint and completion readers receive the complete original request. A request
+that cannot fit inside the usual work summary is carried separately from that bounded
+summary, so requirements in its middle or at its end are not cut. Handoff carries the
+complete request once as well. This adds no extra model call; unusually long requests
+cost more input tokens because their words still have to be read.
+
 ## Which checks can the main conversation repeat?
 
 The main conversation uses the same explicit `checks` contract as task checking. A command mentioned in a done-condition, a pasted request, or a tool receipt is evidence, not permission to run it again. An unattended session freezes the complete original request itself as its whole-request acceptance without first asking another model to rewrite it. If finished work is retained outside the requested workspace, a later reading may settle only whether the person requested a branch, a report, or integration into the workspace; it cannot add checks after work has begun. Without an opening declaration, the completion reader assesses existing evidence and does not invent a shell command from prose. Normal workers can still run the tests needed to do their work.
