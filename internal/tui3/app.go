@@ -2202,14 +2202,15 @@ type app struct {
 	// other direction entirely from [app.remote] one line above: that one is
 	// about the terminal reading the frame, this one is about the session
 	// answering it. Empty is an ordinary local conversation. localRoot is this
-	// machine's own directory, which is where a path the person types is
-	// anchored while the workspace belongs to somebody else's disk. Both are
-	// read once, at construction — see host.go for the whole law.
+	// machine's own directory: [app.pathRoot] anchors typed paths there over a
+	// connection, and [app.contextStart] opens an owned local conversation's
+	// chooser there instead of in aforge's state. Both are read once, at
+	// construction — see host.go for the whole law.
 	host      string
 	localRoot string
 	// owned says the workspace is this session's own work/ directory rather
 	// than a project somebody opened aforge inside of (Options.Owned). It is
-	// read by [app.placeWord] and by nothing else.
+	// read by [app.placeWord] and [app.contextStart].
 	owned bool
 	// handedApproval is the tool-approval posture this launch knows the
 	// surface's own profile cannot answer, carried in Options.ApprovalMode. Over
@@ -2426,6 +2427,11 @@ func newApp(ctx context.Context, opts Options) *app {
 	// does with an event is a fact about the page, so the page says which it is.
 	a.feed = newFeed(a.feedHooks(participantLens))
 	a.gitProbe = gitHead
+	// This machine's own directory anchors local things over a connection and
+	// keeps an owned local conversation's chooser out of aforge's state folder.
+	if cwd, err := os.Getwd(); err == nil {
+		a.localRoot = cwd
+	}
 	if a.hosted() {
 		// THE BRANCH PROBE IS OFF OVER A CONNECTION, and off rather than wrong:
 		// `git` would run HERE, in a directory named by the OTHER machine's path,
@@ -2436,11 +2442,6 @@ func newApp(ctx context.Context, opts Options) *app {
 		// remote probe is a wire question and belongs to the lane that owns the
 		// contract, not to a guess made here.
 		a.gitProbe = nil
-		// And this machine's own directory, which is where /image and the
-		// completion walk are anchored while the workspace is elsewhere (host.go).
-		if cwd, err := os.Getwd(); err == nil {
-			a.localRoot = cwd
-		}
 	}
 	if home, err := os.UserHomeDir(); err == nil {
 		a.tilde = home

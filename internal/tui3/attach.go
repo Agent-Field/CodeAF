@@ -339,7 +339,15 @@ func (a *app) attachFilePath(raw string) {
 	// dropped on the window is a gesture nobody typed, and turning it into a
 	// choice about where this conversation is would be inferring a lot from a
 	// mouse (dropkeys.go).
+	//
+	// Over a connection, a directory typed here is a directory on the machine
+	// the person is sitting at and the conversation is on the other one. The one
+	// folder refusal therefore comes before the seam can register it remotely.
 	if info.IsDir() {
+		if word := a.placeRefusal(); word != "" {
+			a.note(word)
+			return
+		}
 		a.referPlace(chosenPlace{Path: path, Door: placeFromAttach})
 		return
 	}
