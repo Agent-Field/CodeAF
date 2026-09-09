@@ -71,7 +71,10 @@ type HostSelf struct {
 	// it.
 	Version int `json:"version"`
 	// Build identifies the running executable even when its protocol is unchanged.
-	// An empty stamp identifies a host predating this check, not a matching build.
+	// It is the source the executable was built from, so rebuilding the same commit
+	// answers with the same word and only a real source change reads as another
+	// build. An empty stamp identifies a host predating this check, not a matching
+	// build.
 	Build string `json:"build,omitempty"`
 	// Busy is work in flight: a surface attached, a turn running, or a question
 	// waiting for somebody to come back and answer it.
