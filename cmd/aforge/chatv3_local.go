@@ -144,13 +144,33 @@ func openChatV3Local(launch localLaunch) error {
 	// conversation with no far machine in it — no `via` segment, no machine in
 	// front of a path, and `another window` where a connection would name a
 	// host.
-	client, err := remote.Roam("", remote.Hello{
+	hello := remote.Hello{
 		Workspace: launch.workspace,
 		Session:   launch.session,
 		Model:     launch.model,
 		Level:     launch.level,
 		Launch:    launch.shape,
-	}, remote.Roaming{Dial: link.dial})
+	}
+	client, err := remote.Roam("", hello, remote.Roaming{Dial: link.dial})
+	// A HOST REFUSAL NEVER PUSHES THE WINDOW IN-PROCESS. The engine answered,
+	// and it answered that the conversation this launch asked for is held by
+	// something else — a window on an older build, one that has stopped
+	// answering, a `--no-host` terminal in the same folder. That is a fact about
+	// ONE JOURNAL and not about the engine, so the road stays: this launch opens
+	// a conversation of its own THROUGH the engine and lands on home with the
+	// held row armed, which is the same landing the in-process door gives
+	// ([v3TakeOverInstead]) and a better one, because a window on this road has
+	// [tui3.Options.EngineAnswers] wired and one enter on that row moves the
+	// conversation at once rather than asking a window to let go of it.
+	//
+	// Falling to the in-process door here is exactly the defect: that door mints
+	// a fresh conversation with no engine behind it, so the armed row's enter
+	// took the asking road and a daemon never answers it.
+	takeOver, again := localAskAgainAfterRefusal(launch, err)
+	if again {
+		hello.New = true
+		client, err = remote.Roam("", hello, remote.Roaming{Dial: link.dial})
+	}
 	if err != nil {
 		// A host that cannot be reached or started is not the end of the
 		// launch: the in-process door is the floor, and the reason travels with
@@ -196,6 +216,11 @@ func openChatV3Local(launch localLaunch) error {
 	// own defer hands the job over rather than closing the client twice.
 	closeClient = fleet.closeAll
 	options := hostOptions(fleet, welcome, launch.pick)
+	// AND THE CONVERSATION THIS LAUNCH COULD NOT HAVE, POINTED AT AND ARMED.
+	// It is "" on every ordinary launch; it is set only by the refusal above,
+	// and the surface lands on home with that row under the cursor
+	// (internal/tui3's takeover.go).
+	options.TakeOver = takeOver
 	// AND WHAT THE DIAL FOUND ON THE WAY IN, on the same line the engine's own
 	// welcome speaks (chatv3_host.go's [hostEntryNotice]). It is joined here
 	// rather than inside that function because it is a fact about THIS ROAD's
@@ -221,6 +246,38 @@ func openChatV3Local(launch localLaunch) error {
 		options.DraftFile = tui3.DraftFile(dir, welcome.Workspace)
 	}
 	return runSurface(context.Background(), options)
+}
+
+// localAskAgainAfterRefusal is that decision, on its own so it can be asked
+// without a socket: whether this launch dials the engine a SECOND time asking
+// for a conversation of its own, and which transcript the surface should then
+// point at.
+//
+// The three launches that do not: one the engine answered (err is nil), one it
+// refused for any other reason — unreachable, a wrong wire version, a stale
+// host, all of which are the in-process door's own floor — and `--once`, which
+// has no screen to land an offer on and says the sentence instead
+// ([sessionHeldElsewhereSentence]).
+func localAskAgainAfterRefusal(launch localLaunch, err error) (string, bool) {
+	if err == nil || launch.once != "" || !hostHeldRefusal(err) {
+		return "", false
+	}
+	// Read BEFORE anything else is opened: the boot on the other side may reap
+	// empty folders on its way past, and this is the journal that was refused.
+	// It is [v3LatestTranscript], the same reading the engine's own key takes
+	// (engine.go's [engineHelloKey]), so the row this points at is the row the
+	// refusal was about.
+	named := strings.TrimSpace(launch.session)
+	if named == "" {
+		return v3LatestTranscript(launch.workspace), true
+	}
+	// Spelled the way the surface's own rows spell it, or there would be no row
+	// to point at.
+	path, pathErr := engineSessionPath(named)
+	if pathErr != nil {
+		return named, true
+	}
+	return path, true
 }
 
 // joinNotice puts two entry-notice clauses on one line in the separator the

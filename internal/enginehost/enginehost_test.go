@@ -438,3 +438,92 @@ func TestAskingWhetherAHostIsThereLeavesNothingBehind(t *testing.T) {
 		t.Fatalf("Dir did not make the directory a host lives in: %v", err)
 	}
 }
+
+// A PLAIN HELLO NEVER COLLIDES WITH THE HOST'S OWN CONVERSATION, and this is
+// the shape that made it: the conversation a nameless hello landed on ends —
+// moved to another window, left behind by /new, closed — while the host goes on
+// holding a different one. The next plain launch used to find nothing under the
+// empty key and BOOT, the boot resolved this workspace's latest, and that is a
+// journal this very process holds the flock on; the host then refused its own
+// conversation with "this conversation is open in another window".
+//
+// The door answers "which conversation does a hello that named nothing want"
+// with the workspace's latest, spelled as a transcript path (cmd/aforge's
+// [engineHelloKey]), and `newest` below is that reading — moved by hand exactly
+// as the disk would move it.
+func TestAPlainHelloJoinsTheConversationThisHostStillHolds(t *testing.T) {
+	workspace := "/home/somebody/api"
+	first := filepath.Join(workspace, "first.jsonl")
+	second := filepath.Join(workspace, "second.jsonl")
+
+	newest, mints, boots := "", first, 0
+	h := &Host{
+		workspace: workspace,
+		opts: Options{
+			Boot: func(hello remote.Hello) (*remote.Engine, error) {
+				boots++
+				file := strings.TrimSpace(hello.Session)
+				if file == "" {
+					// A hello that named nothing gets whatever the workspace's
+					// resume law would open, which is what the door resolves.
+					file = mints
+				}
+				return &remote.Engine{Agent: stubAgent{}, Workspace: workspace, SessionFile: file}, nil
+			},
+			Key: func(hello remote.Hello) string {
+				if named := strings.TrimSpace(hello.Session); named != "" {
+					return named
+				}
+				return newest
+			},
+		},
+		sessions: map[string]*remote.Session{},
+		done:     make(chan struct{}),
+	}
+
+	// The first plain hello, in a workspace with nothing in it yet: the door has
+	// no latest to name, so this one boots.
+	one, err := h.open(remote.Hello{Version: remote.Version})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	newest = first
+
+	// A second conversation beside it, opened by name, and now the newest.
+	two, err := h.open(remote.Hello{Version: remote.Version, Session: second})
+	if err != nil {
+		t.Fatalf("open a second conversation: %v", err)
+	}
+	if two == one {
+		t.Fatal("a named session opened the same conversation as the plain one")
+	}
+	newest = second
+	if boots != 2 {
+		t.Fatalf("%d boots for two conversations", boots)
+	}
+
+	// And the first one ends, while this host goes on holding the second.
+	if !one.RetireIfIdle(0) {
+		t.Fatal("the first conversation would not end")
+	}
+
+	// THE WHOLE POINT: a plain hello now lands on the conversation this host is
+	// still holding, and opens nothing.
+	again, err := h.open(remote.Hello{Version: remote.Version})
+	if err != nil {
+		t.Fatalf("open again: %v", err)
+	}
+	if again != two {
+		t.Fatal("a plain hello was handed a conversation this host was not holding")
+	}
+	if boots != 2 {
+		t.Fatalf("a plain hello booted a %d conversation onto a journal this host already holds", boots)
+	}
+
+	// And nothing is ever filed under what a hello did not say.
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if _, found := h.sessions[""]; found {
+		t.Fatal("a conversation is filed under the empty string")
+	}
+}

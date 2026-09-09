@@ -1031,6 +1031,15 @@ sentence in the other window's box arrives in yours.
 one silently. It opens home with that row pointed at, so one `enter` continues where you
 left off and `esc` gets on with a new conversation instead.
 
+**And it stays on the engine road while it does.** The fresh conversation it lands you in is
+opened *through* the engine rather than inside this terminal, so the armed row's `enter` is
+the instant move described above and not a request to a window. A plain `aforge` in a folder
+whose engine is already holding a conversation simply **sits down in the one the engine
+has** — it does not mint a second chat on top of it, and it never says
+`open in another window` about a conversation its own engine is holding. It did once, and
+only after the first conversation that engine opened had ended: the launch dropped back into
+this terminal with a brand-new chat, and `enter` on the held row then had no engine to ask.
+
 **The one road where it still takes two enters** is a window with no engine behind it —
 `aforge chat --no-host`, `--debug`, or a build old enough to predate the engine. There is no
 engine to ask, so the only thing anybody can do is ask that window to let go, and moving the

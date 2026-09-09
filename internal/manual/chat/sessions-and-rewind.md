@@ -621,7 +621,7 @@ machine's session host, so a second terminal in this folder joins that conversat
 than meeting a lock. Harness building and subharness intake cards work in a hosted
 conversation; the adaptive runner is the one thing still switched off in one.
 
-## It used to start a new conversation in the second terminal — why it doesn't now
+## It used to start a new conversation in the second terminal — why it doesn't now, aforge started a new conversation instead of the one that was running
 
 Opening a conversation takes a non-blocking exclusive lock on its file before anything is
 replayed, so a second window meets that lock at the door. It used to quietly name a new
@@ -637,6 +637,22 @@ away, and you were handed a different one instead, with no way back to it. A sec
 still opens a fresh conversation — that is what `esc` leaves you in, and nothing about it is
 lost — but it opens **on home with the held row armed**, so the conversation you actually
 came for is one keystroke away instead of nowhere.
+
+**The fresh conversation is opened through the engine, not in this terminal.** That is what
+makes the armed row worth arming: a window on the engine road can ask the engine for the
+held conversation and get it back instantly, while a window that had fallen back into this
+terminal could only ask the *other window* to let go — and an engine holding the journal
+never answers that. So a refusal moves you sideways into a new chat on the same road; it
+never drops you off it. The one launch that still meets the bare sentence is a headless
+`--once`, below.
+
+**And the engine never refuses you its own conversation.** A plain launch in a folder the
+engine is holding sits down in the conversation it holds. That broke for a while in one
+shape — once the first conversation the engine opened had ended (you moved it, `/new`d past
+it, closed it) while the engine went on holding another, the next plain launch was told
+`this conversation is open in another window` by the very engine holding it, and landed in a
+new chat in this terminal instead. It does not happen now: which conversation "nothing
+named" means is read the same way at the door as it is when one is opened.
 
 **Where nobody can press anything, you get a sentence instead.** A headless `--once` run has
 no screen to offer a row on, so it refuses and says what to do:
