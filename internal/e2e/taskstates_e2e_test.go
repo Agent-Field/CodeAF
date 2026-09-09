@@ -473,20 +473,39 @@ func statesPastTheDoor(t *testing.T, r *rig) {
 // question it came to read.
 func statesAnswerKey(t *testing.T, r *rig, key, want string) bool {
 	t.Helper()
-	for attempt := 1; attempt <= 3; attempt++ {
+	for attempt := 1; attempt <= 2; attempt++ {
 		r.lit(".")
 		r.keys("C-u")
 		time.Sleep(400 * time.Millisecond)
-		r.keys("Up")
-		r.lit(key)
-		if _, ok := r.glimpse(20*time.Second, want); ok {
-			t.Logf("the %q was spent on attempt %d", key, attempt)
-			return true
+		// AND ↑ IS WALKED RATHER THAN PRESSED ONCE. The letters answer the SELECTED
+		// card, the selection starts at the foot of the conversation, and what sits
+		// at the foot is whatever the window wrote last — the note the greeting
+		// leaves on its way out, a line the model added, the card itself. A single
+		// ↑ therefore lands on the card only when the card happens to be last, and
+		// a key refused on the wrong row falls through and types itself, which is
+		// exactly what a person watching the box would see and correct by pressing
+		// ↑ again.
+		for up := 1; up <= statesWalkUp; up++ {
+			r.keys("Up")
+			r.lit(key)
+			if _, ok := r.glimpse(6*time.Second, want); ok {
+				t.Logf("the %q was spent on attempt %d, %d rows up", key, attempt, up)
+				return true
+			}
+			// Whatever the letter typed instead, so the next ↑ is read as a walk
+			// and not as a list being filtered.
+			r.keys("C-u")
 		}
-		t.Logf("attempt %d: %q left no %q on:\n%s", attempt, key, want, r.capture())
+		t.Logf("attempt %d: %q left no %q anywhere in %d rows of the conversation:\n%s",
+			attempt, key, want, statesWalkUp, r.capture())
 	}
 	return false
 }
+
+// statesWalkUp is how far up the conversation one answer is looked for. Six rows
+// is every entry these fixtures write and then some; a card further up than that
+// is a conversation this suite did not build.
+const statesWalkUp = 6
 
 // statesAwait is [rig.waitForAny] WITHOUT THE FAILURE: it answers which of
 // several strings arrived and "" when none did.
