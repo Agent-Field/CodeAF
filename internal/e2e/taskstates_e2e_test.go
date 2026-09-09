@@ -240,14 +240,26 @@ func testStatesConflict(t *testing.T) {
 		}
 		statesNoDeletedWords(t, asking)
 	case say(t, "taskDoneWord"):
-		// THE MERGE ROUND WON, which is the outcome the ruling prefers and the
-		// reason the round exists at all. What must be true then is that nobody was
-		// asked: the card is `over`, not `your call`.
-		if head := statesHeadLine(screen, say(t, "taskDoneGlyph"), say(t, "taskDoneWord")); head != "" {
-			t.Logf("the merge round resolved the clash and nobody was asked. HEAD · %s", head)
-		} else {
+		// A LANDING, AND THE MERGE FACT SAYS WHETHER THERE WAS EVER A CLASH.
+		head := statesHeadLine(screen, say(t, "taskDoneGlyph"), say(t, "taskDoneWord"))
+		if head == "" {
 			t.Skipf("the word `done` is on the screen but not on a landing head — no conflict was reached:\n%s", screen)
 		}
+		t.Logf("HEAD · %s", head)
+		if strings.Contains(head, say(t, "taskBranchKeptFact")) {
+			// THE BRANCH NEVER CAME HOME, so nothing was ever merged and nothing
+			// could clash. This is NOT the merge round winning and it must not be
+			// reported as one: the person's commit and the task's edit are still
+			// sitting on two branches that have never met.
+			t.Skipf("the landing kept its branch (%q) rather than merging it, so the person's commit "+
+				"was never merged against and no clash was reached. FINDING: docs/design/task-states/"+
+				"DESIGN.md says a done row carries `branch kept` only when keeping was asked for, and "+
+				"nothing asked here — an ordinary `/task solo` landing on a repository draws it anyway:\n\t%s",
+				say(t, "taskBranchKeptFact"), head)
+		}
+		// It merged, so the clash either never happened or one round closed it —
+		// and either way nobody was asked, which is what the round exists for.
+		t.Logf("the branch came home and nobody was asked")
 		statesNoDeletedWords(t, screen)
 	default:
 		t.Skipf("neither a conflict nor a landing arrived in eight minutes:\n%s", screen)
