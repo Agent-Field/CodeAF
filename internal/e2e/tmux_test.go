@@ -217,16 +217,40 @@ func start(t *testing.T, name, home, ws string, cols, rows int, args ...string) 
 // exists to read would be skipping the test.
 func (r *rig) skipSetup(t *testing.T) {
 	t.Helper()
-	for press := 0; press < 5; press++ {
-		screen := r.capture()
-		if !strings.Contains(screen, setupSkipKeysWord) && !strings.Contains(screen, setupTitleWord) {
+	// IT WAITS FOR THE SCREEN BEFORE IT PRESSES AT IT. [startWithEnv] gives the
+	// app three seconds to reach its first frame, and the first-run flow is not
+	// always on it yet — so a door that captured once and found no setup returned
+	// happily and left every scenario behind it typing into a screen that arrived
+	// a second later. The wait is short because the flow is the FIRST thing this
+	// binary draws when it is going to draw it at all.
+	appears := time.Now().Add(setupPatience)
+	for !r.setupIsUp() {
+		if time.Now().After(appears) {
+			// No setup on this machine, which is an ordinary state root with the
+			// marker already in it.
 			return
 		}
+		time.Sleep(pollEvery)
+	}
+	for press := 0; press < 6; press++ {
 		r.keys("Escape")
 		time.Sleep(900 * time.Millisecond)
+		if !r.setupIsUp() {
+			return
+		}
 	}
-	t.Logf("the setup was still on screen after five escapes:\n%s", r.capture())
+	t.Logf("the setup was still on screen after six escapes:\n%s", r.capture())
 }
+
+// setupIsUp reports whether the first-run flow is on the frame right now.
+func (r *rig) setupIsUp() bool {
+	screen := r.capture()
+	return strings.Contains(screen, setupSkipKeysWord) || strings.Contains(screen, setupTitleWord)
+}
+
+// setupPatience is how long [rig.skipSetup] waits for the flow to draw before
+// deciding this machine is not going to show one.
+const setupPatience = 8 * time.Second
 
 // The two sentences that say the first-run flow is up. They are the SUITE'S OWN
 // copies of internal/tui3's [setupSkipKeysWord] and the setup title, and they are
