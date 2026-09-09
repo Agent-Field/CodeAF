@@ -15,9 +15,15 @@ stays local and the far machine keeps the conversation journal. If redialling
 ends, run the same command to reopen that conversation. The sections below
 explain what happens to a reply that was still arriving.
 
-## My wifi died in the middle of a reply
+## My wifi died in the middle of a reply — the internet dropped mid-answer, my connection went down while it was replying
 
-The surface redials the machine by itself. You do not have to do anything.
+Which connection went down is the whole answer. In an ordinary chat on this machine, it
+is the model request: the line says `waiting for connection`, and aforge waits for up to
+two minutes, subject to the request's own deadline. You can cancel that wait. A
+conversation opened with `--host` has a second connection, and that link to the other
+machine is the one the surface redials for up to five minutes.
+
+Over `--host`, the surface redials the machine by itself. You do not have to do anything.
 
 A conversation opened with `--host` runs on the other machine; the link between the two is
 the only part a café's wifi, a VPN flap or a sleeping laptop can take away. When the link

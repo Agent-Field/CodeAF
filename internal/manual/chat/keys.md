@@ -1656,7 +1656,7 @@ the tab you are in. See *Conversation tabs* and
 | `enter` / click a row | Open that conversation |
 | `→` | Open the fold — every other conversation on this machine |
 | `←` | Fold them away again |
-| `ctrl+w` | Dismiss the conversation under the cursor from this window's tab row. If it is working you are asked once — `keep running`, `stop work` or `cancel` — and the conversation goes on running unless you chose to stop it. See *Closing a tab* on the screen page |
+| `ctrl+w` | Dismiss the conversation under the cursor from this window's tab row. An open row that is not the conversation you are in is dismissed at once with no question, and the card says `tab closed · <the conversation's name>`. Only the conversation you are in raises `keep running` / `stop work` / `cancel` when it is working. A row that is not open in this window answers `that one is not open here — enter opens it`. See *Closing a tab* on the screen page |
 | `esc` | Take it all back: the card goes and you are in the conversation you started from, however many presses ago that was |
 | any other key | While the card is fading, it is typing — the card goes and the key lands in your message. On the holding card it puts the card away and is swallowed |
 

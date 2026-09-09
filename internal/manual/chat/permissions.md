@@ -450,7 +450,7 @@ underneath whatever you wrote:
 - **Reads of this machine** — `read`, `grep`, `find`, `ls`.
 - **`jobs`**, whose list and output are reads of processes you already started.
   Its kill is **not** on the floor; that inherits the blanket mode, which asks.
-- **The agent's own bookkeeping** — `note`, `track`, `recall`, `forget`. These
+- **The agent's own bookkeeping** — `remember`, `track` and `recall`. These
   write to and read from the working state aforge keeps for itself.
 - **`manual`**, which reads pages compiled into this binary and touches no disk
   at all. Asking you to approve aforge looking up its own documentation would be

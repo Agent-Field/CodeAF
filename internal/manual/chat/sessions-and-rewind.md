@@ -472,7 +472,7 @@ your home directory as `~/…` so it can be pasted straight into a shell.
 `/resume`, which swaps the conversation you are in for another one, notes `resumed <path>`
 in the older spelling.
 
-## Why does the line above my box say something I did not type — who names this conversation, and can I rename it
+## Why does the line above my box say something I did not type — who names this conversation, how long can a conversation name be, and can I rename it
 
 The name is written by a model, once, and appears in the status line below the message
 box: `porting the parser · gpt-4.1-mini:high`.
@@ -490,10 +490,12 @@ leaves the conversation usable with its existing placeholder; an existing name i
 overwritten. Title calls remain billed to the session and cost history, separately from
 an unrelated turn that happens to be running when the name arrives.
 
-The full name is capped at **80 characters** in both its journal and folder metadata. The
-stable compact label is capped at **32 characters** in both places, and the tab strip fits
-it to its available cells. Old saved conversations
-have no separate compact label and use their full title in the tab, exactly as before.
+The full name is capped at **80 bytes** in both its journal and folder metadata. The
+stable compact label is capped at **32 bytes** in both places, and the tab strip fits it
+to its available cells. A name written in Chinese or Japanese costs three bytes per
+character, so the full name fits about 26 characters and its compact label about 10. Old
+saved conversations have no separate compact label and use their full title in the tab,
+exactly as before.
 
 **There is no command to rename a conversation.** The name lives in the transcript as its
 own appended line, and the last one wins when the file is read back — but nothing on this

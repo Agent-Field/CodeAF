@@ -40,6 +40,26 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it asked me the same thing twice", "questions"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},
+		// THE MANUAL'S PERSON-FACING TRUTHS, asked in the words that exposed
+		// stale claims about the switcher, approvals, and remote build versions.
+		{"what does ctrl+w do on the switcher", "keys"},
+		{"which tools never ask me for approval", "permissions"},
+		{"the remote machine says its protocol does not match", "running-on-another-machine"},
+		// A DROPPED CONNECTION, asked without assuming whether the ordinary model
+		// request or a second --host connection is the one that went away.
+		{"my wifi died in the middle of a reply", "when-the-connection-drops"},
+		// THE FOLDER PREVIEW AND ITS BOUND, asked the way somebody meets each one:
+		// before attaching a file, and after a very large directory stops short.
+		{"how do I preview a file before attaching it", "choosing-a-folder"},
+		{"what happens when a folder is too big to show every file", "choosing-a-folder"},
+		// THE CHAT STRIP ON A SMALL OR CROWDED FRAME. These words distinguish it
+		// from the seven-place bar and make the terminal floor discoverable.
+		{"scroll the tab bar", "screen"},
+		{"why did my tabs disappear on a small terminal", "screen"},
+		// SAVED CONVERSATION IDENTITIES, asked for the two bounds the pages owe:
+		// how long a generated name is and where a command-line id comes from.
+		{"how long can a conversation name be", "sessions-and-rewind"},
+		{"where do I get a conversation id", "collections"},
 		// Lanes behind a base of the person's own: the question the hostname gate
 		// (issue #373) used to answer wrongly, in the three ways it gets asked.
 		{"do lanes work with a custom base url", "lanes"},

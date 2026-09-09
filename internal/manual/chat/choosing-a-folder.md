@@ -256,7 +256,7 @@ A fact aforge has not established draws nothing at all rather than a blank or a 
 facts are read in the background as your cursor lands on a row, so a big repository may
 take a beat to say whether it is dirty — the keys never wait for it.
 
-## An empty folder, and one you are not allowed to read
+## An empty folder, one you are not allowed to read, and a folder too big to show every file
 
 They are different things and the browser says which is which, where the rows would have
 been. A folder that **was** read and has nothing inside it says `nothing below here` — and
@@ -282,13 +282,16 @@ this file is empty
 this is not text · nothing to show here
 only the first part of this file was read
 more of this file is not shown
-more of this folder is not shown
 this terminal cannot draw pictures
 this picture could not be opened
 this document is pages of pictures · there is no text in it
 this document could not be read
 this document is too large to read here
 ```
+
+A folder with more in it than the browser will draw is listed only as far as five
+thousand directories and five thousand files. Nothing on the pane says today that the
+bound was reached, so a folder of that size is one where the column simply stops.
 
 - A file that is **not text** — an executable, an archive, a video, a compiled object — says
   so rather than showing you its bytes. Its size and kind are named on the pane's foot
@@ -644,7 +647,7 @@ putting changes into a folder is not available over --host yet — the conversat
   (`no such file: <path>`, `<name> is already attached`); `/attach` with nothing after it
   opens this browser instead of correcting you.
 
-## Finding preview controls while a path is typed
+## Finding preview controls while a path is typed — preview a file before attaching it, see what is in a file before I send it, look at a file first
 
 Every chord the sheet owns is named exactly once, across **two lines**, so neither is a
 wall of shortcuts.

@@ -130,15 +130,18 @@ When the **far** machine is the older one it refuses first, and what you see is 
 sentence rather than that one:
 
 ```
-error: engine: this build speaks protocol 3 and the surface speaks 4 — the two halves have to be the same build
+error: engine: this build speaks protocol <n> and the surface speaks <m> — the two halves have to be the same build
 ```
+
+The two numbers are the two builds' own protocol versions. They change with releases; what
+matters is only that they differ.
 
 If something on that machine is still holding a conversation from the older build, that
 same sentence gains a clause naming it, because then the machine — not the binary — is
 what is behind:
 
 ```
-error: engine: this build speaks protocol 3 and the surface speaks 4 — the two halves have to be the same build, and this machine is still running the older one — run aforge engine --stop here to retire it
+error: engine: this build speaks protocol <n> and the surface speaks <m> — the two halves have to be the same build, and this machine is still running the older one — run aforge engine --stop here to retire it
 ```
 
 Either way the fix is one command: update aforge on the machine that is behind. Nothing is

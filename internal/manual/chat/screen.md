@@ -99,7 +99,7 @@ close mark; Home, `+`, and the scroll arrows gain a pointer dot, and Chats chang
 tab you are already in does nothing while you are in the conversation itself, and takes you
 back out to it from a task page.
 
-## Many open conversation tabs — horizontal scrolling, overflow, and readable names
+## Many open conversation tabs — horizontal scrolling, overflow, readable names, the tab bar, and how to scroll the tab bar
 
 **The order never changes as you switch.** Tabs sit in the order this window first entered
 them, so the one you reached for a minute ago is still in the same place. At most 32 are
@@ -141,9 +141,9 @@ in that state.
 the conversation it was written for and comes back when you return to it, including on a
 door that had to close the conversation to leave it.
 
-**It stands down on a small frame** — under 12 columns wide, or on a terminal too short
-for a blank row above the message box — for the same reason the room header does. The
-rule under the tabs goes first, on a terminal shorter than twenty rows: it is a seam, and
+**It stands down on a small frame** — under 12 columns wide, or under 16 rows tall — for
+the same reason the room header does. The rule under the tabs goes first, on a terminal
+shorter than twenty rows: it is a seam, and
 a seam is the cheapest thing on the frame to give up.
 
 On frames at least 48 columns wide, a blank row above the tabs appears at 32 rows,
