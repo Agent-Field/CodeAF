@@ -172,19 +172,24 @@ title does not wait for the answer to finish.
 
 1. `+` opens the `New chat` page. A newly created conversation starts as `Untitled`.
 2. Sending your first message starts both the conversation and background naming.
-3. One response supplies a full conversation title and a compact tab label. The tab strip
+3. One response supplies a full conversation title and a one- or two-word tab label. The tab strip
    uses the compact label; breadcrumbs, the status line, Home, the switcher, recent sessions,
    and the terminal window title keep the full title. This also works after the answer has
    finished or you have switched to another tab.
 
-**Temporary failures retry automatically.** There are up to three naming attempts, with
+Hover over a tab to reveal its full title beneath it. Long titles wrap; the tab and
+conversation stay in place, and the preview disappears when the pointer leaves.
+
+**Temporary failures and unusable names retry automatically.** There are up to three naming attempts, with
 short increasing delays, within a two-minute overall window. You do not need to send
 another message. A failed title never interrupts the answer or changes its working state.
-If those attempts fail, or the model returns an empty or invalid name, the tab remains
+Empty answers, instruction echoes and placeholders are rejected, and the next configured
+naming model can answer within the same budget. If those attempts fail, the tab remains
 `Untitled`; an unnamed saved conversation can try again on its next message after reopening.
 
 **An existing name wins.** Naming runs once per session lifetime, and a chat that already
-has a name is not named again. Closing the session cancels unfinished naming. There is no
+has a name is not named again. Older saved names with a leaked `Full:` label are cleaned
+when read, and saved tab labels are limited to two words. Closing the session cancels unfinished naming. There is no
 command or tab action to rename a conversation manually.
 
 **`Untitled` labels an unnamed tab and its breadcrumb root.** Elsewhere it is named

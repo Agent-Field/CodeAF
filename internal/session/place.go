@@ -291,6 +291,8 @@ func LoadMeta(dir string) (Meta, error) {
 	if strings.TrimSpace(meta.Title) != "" && healedTitle(meta.Title) == "" {
 		meta.Title = openingPlaceholder(dir)
 	}
+	meta.Title = healedTitle(meta.Title)
+	meta.ShortTitle = compactTitle(healedTitle(meta.ShortTitle))
 	return meta, nil
 }
 

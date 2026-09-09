@@ -136,6 +136,8 @@ type chatTab struct {
 	// drawn at all rather than drawn as a path — a tab keyed on a file name is a
 	// tab nobody can read.
 	word string
+	// full is the conversation name revealed on hover without widening its tab.
+	full string
 	// here says this is the conversation in front. It is the ONE tab that is
 	// lit, whatever page of it is on screen.
 	here bool
@@ -396,9 +398,11 @@ func (a *app) tabAs(tab chatTab, held *kept, front string) chatTab {
 		if name := a.sessionName(); name != "" || strings.TrimSpace(tab.word) == "" {
 			tab.word = a.chatTabDisplayName()
 		}
+		tab.full = a.chatDisplayName()
 		tab.file, tab.where = a.file, a.workspace
 	case held != nil:
 		tab.word = chatTabName(shortTitleWithSide(held.conv.Agent, held.side))
+		tab.full = chatTabName(hopRawTitle(held.conv.Agent, held.side))
 		tab.file, tab.where = held.conv.SessionFile, held.conv.Workspace
 	}
 	if strings.TrimSpace(tab.file) == "" {

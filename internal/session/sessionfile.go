@@ -1851,7 +1851,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// written down under one.
 			if named := healedTitle(entry.Title); named != "" {
 				title = named
-				shortTitle = healedTitle(entry.ShortTitle)
+				shortTitle = compactTitle(healedTitle(entry.ShortTitle))
 			}
 		}
 	}

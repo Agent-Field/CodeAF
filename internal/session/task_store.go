@@ -1337,6 +1337,13 @@ func (a *Agent) recoverTasks() {
 	// whose prerequisites are done starts now; one whose prerequisite was
 	// interrupted fails through the cascade that already exists.
 	graph.runFrontier()
+	// A saved naming failure is not an earned name. Retry only those rows from
+	// their saved briefs; reopening never renames valid work or reruns a task.
+	for _, record := range document.Nodes {
+		if unusableName(record.Title) || namesTheInstruction(record.Title) {
+			graph.nameNode(graph.node(record.ID))
+		}
+	}
 }
 
 // rehydrate rebuilds the graph from a checkpoint and reconciles it with the
@@ -1504,6 +1511,17 @@ func (g *TaskGraph) owedNotes(unannounced []*TaskNode, settle TaskSettle, addres
 // never going to happen — and open for a queued one, which is genuinely still
 // waiting.
 func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
+	// Keep a readable fallback while the normal naming lane repairs old failures.
+	if unusableName(record.Title) || namesTheInstruction(record.Title) {
+		subject := record.Summary
+		if strings.TrimSpace(subject) == "" {
+			subject = record.Request
+		}
+		if strings.TrimSpace(subject) == "" {
+			subject = record.Brief
+		}
+		record.Title = taskPersonTitle(subject)
+	}
 	node := &TaskNode{
 		graph:     graph,
 		id:        record.ID,
