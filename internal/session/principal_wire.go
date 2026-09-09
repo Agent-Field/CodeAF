@@ -226,8 +226,11 @@ func (a *Agent) landings() ([]Landing, bool, taskFlight) {
 		if !state.settled() {
 			continue
 		}
-		settled++
-		report, changed, _, merge := node.leavings()
+		if node.parent == a.config.taskID {
+			settled++
+		}
+		report, changed, branch, merge := node.leavings()
+		retained := a.retainedDelivery(node, changed, branch, merge)
 		out = append(out, Landing{
 			ID:     node.id,
 			Title:  node.title(),
@@ -237,10 +240,15 @@ func (a *Agent) landings() ([]Landing, bool, taskFlight) {
 			// tell a gap in the ask from a sibling that died on the wire, and
 			// from one whose work somebody else has since brought home
 			// ([Landing.aboutTheWork], [Remains.absorbedBy]).
-			Ending:  node.endingNow(),
-			Files:   changed,
-			Merged:  merge == mergeMerged,
-			Checked: node.checkAnswer() == provider.VerdictVerifiedSuccess,
+			Ending:    node.endingNow(),
+			Files:     changed,
+			Merged:    merge == mergeMerged,
+			Retained:  retained,
+			InPlace:   merge == mergeInPlace,
+			Delivered: merge == mergeKept && branch != "" && len(changed) > 0 && retained == "",
+			Elsewhere: node.parent != a.config.taskID,
+			Produced:  node.producedResult(),
+			Checked:   node.checkAnswer() == provider.VerdictVerifiedSuccess,
 			// The signature is the failure's own first line, which is what the
 			// audit wrote when it said what was missing. IT IS A STAND-IN AND
 			// SAYS SO: the classification lane at the provider boundary is where
@@ -414,6 +422,9 @@ func (a *Agent) remainsFor(said string, reader readerLine) Remains {
 		Landed:     landed,
 		Running:    flight.moving,
 		Blocked:    flight.stuck,
+	}
+	if steward := a.steward(); steward != nil {
+		remains.Delivery = steward.declaredDelivery()
 	}
 	// AND WHAT THIS SESSION MADE WITH ITS OWN HANDS. A session that did the whole
 	// job inline never settles a task, so [Remains.Landed] — which is a reading of

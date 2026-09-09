@@ -4572,3 +4572,19 @@ as main remain untouched; their task branch is kept instead.
 Task header pricing uses regular body ink so spending stays readable. The model
 uses a quieter secondary text color; separators and ancillary details remain dim.
 The same hierarchy applies when the header fits its compact layout.
+
+## The task finished, but its branch was kept — is my work done?
+
+A completed task can still have changes only on its retained branch. When an
+unattended request needs those changes in your workspace, the conversation keeps
+that delivery unfinished; a worker saying done cannot replace the missing
+integration. A child merged into its parent task is not yet a change in your
+checkout. Protected branches still do not receive automatic task merges.
+
+The original request's done-condition also records whether you asked for changes
+in the workspace, a retained branch, or a report. An explicitly requested branch
+can be the finished result without a merge. A report must actually contain the
+answer. This destination is recorded before work starts, and worker messages
+cannot change it. Missing or invalid destination information does not excuse
+changed files left on another branch. If the branch's changes later reach the
+workspace explicitly, the next completion check reads that content again.

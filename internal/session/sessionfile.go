@@ -320,16 +320,17 @@ type sessionEntry struct {
 // IT IS EVIDENCE AND NEVER SPEND, for [journalCall]'s reason: what the
 // acceptance call cost is already on its own call line.
 type journalPrincipal struct {
-	Who        string   `json:"who,omitempty"`
-	Event      string   `json:"event,omitempty"`
-	Acceptance string   `json:"acceptance,omitempty"`
-	Decision   string   `json:"decision,omitempty"`
-	Reason     string   `json:"reason,omitempty"`
-	Brief      string   `json:"brief,omitempty"`
-	Checks     []string `json:"checks,omitempty"`
-	Failed     []string `json:"failed,omitempty"`
-	Removed    []string `json:"removed,omitempty"`
-	Kept       []string `json:"kept,omitempty"`
+	Delivery   *deliveryContract `json:"delivery,omitempty"`
+	Who        string            `json:"who,omitempty"`
+	Event      string            `json:"event,omitempty"`
+	Acceptance string            `json:"acceptance,omitempty"`
+	Decision   string            `json:"decision,omitempty"`
+	Reason     string            `json:"reason,omitempty"`
+	Brief      string            `json:"brief,omitempty"`
+	Checks     []string          `json:"checks,omitempty"`
+	Failed     []string          `json:"failed,omitempty"`
+	Removed    []string          `json:"removed,omitempty"`
+	Kept       []string          `json:"kept,omitempty"`
 	// Stashed is how many entries `git stash list` named at the terminal
 	// reading, and it rides the `checked` row: work the session took out of the
 	// tree and never put back is part of what that reading found, and a run
