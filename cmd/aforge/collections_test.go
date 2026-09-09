@@ -96,10 +96,11 @@ func TestCollectionsCommandOrganizesExistingRecordsWithoutMovingWork(t *testing.
 
 func TestCollectionsRejectBadRequestsBeforeCreatingStorage(t *testing.T) {
 	for _, args := range [][]string{
-		{"create"}, {"create", " bad "}, {"rename", "missing"}, {"show"}, {"unknown"},
+		{"create"}, {"create", " bad "}, {"rename", "missing"}, {"show"}, {"show", ""}, {"unknown"},
 		{"add", "c", "task", "1"}, {"add", "c", "task", "01", "--session", "s"},
 		{"find", "conversation", "chat", "--session", "s"}, {"list", "--session", "s"},
 		{"add", "c", "made-up", "record"},
+		{"add", "c", "artifact", ""},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			db := filepath.Join(t.TempDir(), "unused", "collections.db")
