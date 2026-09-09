@@ -4606,3 +4606,8 @@ answer. This destination is recorded before work starts, and worker messages
 cannot change it. Missing or invalid destination information does not excuse
 changed files left on another branch. If the branch's changes later reach the
 workspace explicitly, the next completion check reads that content again.
+That check has to find at least one listed changed path on the retained branch
+or among the workspace's tracked files. When none of those paths exists on
+either side, nothing was compared; silence is not proof of delivery, so the task
+stays on its retained branch and the conversation continues to say its changes
+have not reached the requested workspace.
