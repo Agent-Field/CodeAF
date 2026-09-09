@@ -1292,6 +1292,14 @@ transcript and the journal keep every byte (`internal/session/toolcompact.go`).
 | all consumed results together | **5,000 tokens** (`checkpointDigestBytes`) | the same account the checkpoint digest is held to. Over it, the oldest shrink to stub.go's one-line account, oldest first. It is a ceiling to walk towards: several hundred calls weigh more than it even as single lines. |
 | the walk itself | one pass, running total | re-adding every old result on every iteration is quadratic in the call count, on the hot path of every request. The call-id→tool-name index is built once for the same reason. |
 
+The newest completed write/edit may retain its whole argument object up to
+**1,600 bytes** (`checkpointWriteArgumentBytes = 4 * checkpointResultBytes`),
+within the existing whole-digest budget. Larger objects are marked omitted rather
+than sliced into misleading partial JSON; only one input rides, so a write batch
+cannot evict older failures with all its payloads. Admission materializes a full
+result pointer only for selected evidence, at most `admissionHandlesKept` results;
+if the pointer does not fit, the existing journal reference stays.
+
 The checkpoint readers keep ordinary requests inside that same **5,000-token** digest.
 Only an original request too large to fit there with its heading is sent as a complete
 separate section, once, with the work evidence independently held to the existing bound.

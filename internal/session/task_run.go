@@ -4949,7 +4949,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// kept here because this is the last moment the worker's transcript is
 		// open — `retire` closes it — and because everything downstream that needs
 		// the work rather than the card reads the node (task_result.go).
-		node.keepResultNoting(said, log)
+		node.keepWorkerConclusion(said, log)
 		// AND WHAT IT ACTUALLY RAN, kept for the judge that never watched it happen.
 		// The check a worker runs last is usually the most expensive thing in the
 		// task, and an auditor made to rediscover and repeat it from nothing is an
