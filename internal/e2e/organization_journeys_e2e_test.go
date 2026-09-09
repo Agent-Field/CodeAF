@@ -78,6 +78,9 @@ func organizationSay(t *testing.T, w *world, a *session.Agent, prompt string) tu
 	// These are information/drafting requests. A task, standing responsibility,
 	// connector action or command execution is outside their delegated scope.
 	for _, c := range out.Calls {
+		if c.Name == "stand" && organizationListsStanding(c.Args) {
+			continue
+		}
 		switch c.Name {
 		case "propose_task", "divide_work", "stand", "connect", "exec", "run_harness":
 			t.Fatalf("unexpected action %s: %s", c.Name, c.Args)
