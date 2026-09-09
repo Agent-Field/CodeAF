@@ -112,3 +112,28 @@ Preserve `2a02ac0bb` from `origin/codex/conversation-execution`, including its
 run uses `scripts/one-suite.sh`, `GOMAXPROCS=4`, `GOFLAGS=-p=2`, and a 20-minute
 timeout. No dev/main/staging update, Mac access, installed-binary replacement,
 engine restart, or readiness marker is authorized here.
+
+## Checkpoint review — worker `f324f98c8`
+
+The first two worker commits are a meaningful modal conversion but are not yet
+acceptable as the finished visual correction:
+
+- `contextModalOver` currently writes `left spaces + sheet` for covered rows and
+  drops the faded suffix to the right. That is the asymmetric backdrop defect
+  called out in the latest review; compositing must preserve the faded left and
+  right slices around the bounded sheet (or intentionally paint one coherent
+  opaque backdrop).
+- `folderpane.go` still documents and implements the older "no borders, no rules
+  between columns, no colour behind anything" direction. That cannot constrain
+  this correction. The rendered evidence must decide whether light separators
+  and restrained row backgrounds are needed for pane identity and selection.
+- No purposeful file-type cue or selected-item metadata is evident at this
+  checkpoint. The final pass needs cell-safe glyph/fallback coverage and must
+  keep unknown metadata absent.
+- The late-preview identity guard now in the worker tree is the right shape: a
+  row hit map cannot be reused after the preview key changes. It still needs the
+  real SGR/resize evidence promised above.
+
+These are review findings against an active worker tree, not coordinator edits
+to picker implementation. Merge waits for a clean, pushed worker checkpoint and
+the promised rendered captures.
