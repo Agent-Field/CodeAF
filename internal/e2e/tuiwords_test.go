@@ -75,6 +75,9 @@ const tui3Pkg = "internal/tui3"
 // order — the suite's own file header states the law and this table is where it
 // is kept. Nothing here was remembered.
 var tuiWords = map[string]tuiWord{
+	"roomKinSpawnedWord": {screen: "handed out: ", why: "the waiting parent's child summary is visible"},
+	"roomBackWord":       {screen: "esc/← main", why: "the task room offers its way back"},
+
 	// ── the bounded stop ─────────────────────────────────────────────────────
 	"stoppingWord": {
 		screen: "stopping",

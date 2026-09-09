@@ -58,11 +58,11 @@ const (
 	// tuiCardAt is the first screen column the card's own text stands in at
 	// [tuiWide], and it is arithmetic rather than a guess: homeColumns gives the
 	// card thirty-six cells plus half of everything past the tier's floor —
-	// 36 + (180-160)/2 = 46 — with a four-cell gutter before it, so the list ends
-	// at 130 and the card begins at 134. A subtest that reads the pane fails
+	// 36 + (180-136)/2 = 58 — with a four-cell gutter before it, so the list ends
+	// at 118 and the card begins at 122. A subtest that reads the pane fails
 	// loudly rather than quietly if that ever moves, because the pane comes back
 	// empty.
-	tuiCardAt = 134
+	tuiCardAt = 122
 )
 
 // tuiShortRows is a deliberately SHORT terminal, and it is a fixture rather than
@@ -346,6 +346,8 @@ func testRealConversation(t *testing.T) {
 	// without anything being walked to.
 	card := r.waitFor(20*time.Second, say(t, "homeFootWord"), say(t, "homeVerbsWord"))
 	t.Logf("home, with the conversation's card up:\n%s", card)
+	// Repository facts arrive asynchronously after the card's first frame.
+	card = r.waitFor(20*time.Second, "main,", "dirty")
 	pane := rightPane(card)
 
 	// The repository, on the card's place line. It must agree with the
