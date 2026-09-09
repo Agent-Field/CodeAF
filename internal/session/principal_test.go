@@ -780,13 +780,11 @@ func TestARedCheckWhoseBaselineWasUnreadIsNotCounted(t *testing.T) {
 	}
 }
 
-// AND THE SENTENCES ABOUT THE CHECKS RIDE A READER'S BRIEF TOO.
+// AND THE SENTENCES ABOUT THE CHECKS RIDE THE ADMITTED BRIEF.
 //
-// Where the mark reader supplied the brief, this package's own two sentences
-// used to be skipped — so a worker was handed a line about the work with no word
-// about which red was already there, and went and fixed somebody else's bug. A
-// reader's line is about the WORK and cannot know that.
-func TestTheAlreadyRedSentenceRidesAReaderSuppliedBrief(t *testing.T) {
+// A reader's unrelated line cannot replace a failed task, while the worker must
+// still hear which visible red was already there.
+func TestTheAlreadyRedSentenceRidesTheAdmittedBrief(t *testing.T) {
 	steward := budgetLeft(t)
 	decision := steward.Decide(Remains{
 		Reader:       "the scopes are still parsed case-sensitively",
@@ -800,8 +798,8 @@ func TestTheAlreadyRedSentenceRidesAReaderSuppliedBrief(t *testing.T) {
 	if decision.Verb != DecideCarryOn {
 		t.Fatalf("a unit the check refused was called finished: %+v", decision)
 	}
-	if !strings.Contains(decision.Brief, "the scopes are still parsed case-sensitively") {
-		t.Fatalf("the brief is not the reader's own line:\n%s", decision.Brief)
+	if strings.Contains(decision.Brief, "the scopes are still parsed case-sensitively") || !strings.Contains(decision.Brief, "fix it did not finish") {
+		t.Fatalf("reader prose replaced the failed task fact:\n%s", decision.Brief)
 	}
 	if !strings.Contains(decision.Brief,
 		"1 check was already failing before this work; that does not show the requested result works: tox -e py") {
@@ -817,7 +815,7 @@ func TestTheAlreadyRedSentenceRidesAReaderSuppliedBrief(t *testing.T) {
 		Checks:     []CheckRun{{Command: "tox -e py", Passed: false, Ran: true}},
 	})
 	if !strings.Contains(early.Brief, baselineStillReading) {
-		t.Fatalf("a reader's brief never says the reading is still going:\n%s", early.Brief)
+		t.Fatalf("the admitted brief never says the reading is still going:\n%s", early.Brief)
 	}
 }
 
@@ -1199,17 +1197,16 @@ func TestALandingThatCoversTheAskOutranksTheReadersLine(t *testing.T) {
 	if got := budgetLeft(t).Decide(settled); got.Verb != DecideDone {
 		t.Fatalf("a landed, checked ask was carried on over a reader's line: %+v", got)
 	}
-	// AND A LANDING THAT DID NOT FINISH IS EXACTLY AS IT WAS: the work says
-	// something is left, and the reader's own words are what the next attempt
-	// opens on because they are the more specific account of it.
+	// AND A LANDING THAT DID NOT FINISH CARRIES ITS CONCRETE FACT. The reader's
+	// prose cannot replace it with a new obligation.
 	unfinished := settled
 	unfinished.Landings = []Landing{{ID: 1, Title: "merge the ledger home", State: TaskFailed}}
 	got := budgetLeft(t).Decide(unfinished)
 	if got.Verb != DecideCarryOn {
 		t.Fatalf("a unit of work that did not finish was called finished: %+v", got)
 	}
-	if got.Brief != reader {
-		t.Fatalf("the carry-on lost the reader's own words:\n got %q\nwant %q", got.Brief, reader)
+	if strings.Contains(got.Brief, reader) || !strings.Contains(got.Brief, "merge the ledger home did not finish") {
+		t.Fatalf("the carry-on did not preserve the admitted task fact:\n%s", got.Brief)
 	}
 }
 
@@ -1332,5 +1329,58 @@ func TestADoneAnswerForgetsWhatWasLeftLastTime(t *testing.T) {
 	// reading of it stops, exactly as the first stretch's did.
 	if got := steward.Decide(stuck); got.Verb != DecideStop {
 		t.Fatalf("the floor did not come back under the new stretch: %+v", got)
+	}
+}
+
+func TestAReaderCannotReplaceARetainedDeliveryGap(t *testing.T) {
+	steward := budgetLeft(t)
+	got := steward.Decide(Remains{
+		Acceptance: "the requested account is in this workspace",
+		Landed:     true,
+		Reader:     "also prepare a separate background report",
+		Delivery:   deliveryContract{Kind: "workspace"},
+		Landings: []Landing{{ID: 1, Title: "write the account", State: TaskDone,
+			Files: []string{"account.txt"}, Retained: "task/account"}},
+	})
+	if got.Verb != DecideCarryOn || !strings.Contains(got.Brief, "retained branch task/account") {
+		t.Fatalf("the retained delivery fact was not the continuation: %+v", got)
+	}
+	if strings.Contains(got.Brief, "background report") {
+		t.Fatalf("reader prose replaced the concrete delivery gap:\n%s", got.Brief)
+	}
+}
+
+func TestAnUnknownRedCheckDoesNotHideARetainedDeliveryGap(t *testing.T) {
+	got := budgetLeft(t).Decide(Remains{
+		Acceptance:   "the requested account is in this workspace",
+		Landed:       true,
+		Reader:       "prepare a separate background report",
+		Checks:       []CheckRun{{Command: "false", Passed: false, Ran: true}},
+		Unread:       []string{"false"},
+		BaselineRead: true,
+		Delivery:     deliveryContract{Kind: "workspace"},
+		Landings: []Landing{{ID: 1, Title: "write the account", State: TaskDone,
+			Files: []string{"account.txt"}, Retained: "task/account"}},
+	})
+	if got.Verb != DecideCarryOn || !strings.Contains(got.Brief, "retained branch task/account") {
+		t.Fatalf("unknown check displaced the retained delivery gap: %+v", got)
+	}
+	if !strings.Contains(got.Brief, "no usable before-reading") || strings.Contains(got.Brief, "false does not pass") {
+		t.Fatalf("unknown red was not reported without becoming work:\n%s", got.Brief)
+	}
+	if strings.Contains(got.Brief, "background report") {
+		t.Fatalf("reader prose became a new obligation:\n%s", got.Brief)
+	}
+}
+
+func TestAnInlineReaderGapRemainsAuthoritative(t *testing.T) {
+	steward := budgetLeft(t)
+	got := steward.Decide(Remains{
+		Acceptance: "the table includes every region",
+		Made:       true,
+		Reader:     "the north-region row is missing",
+	})
+	if got.Verb != DecideCarryOn || !strings.Contains(got.Brief, "the north-region row is missing") {
+		t.Fatalf("the inline reader's admitted gap was discarded: %+v", got)
 	}
 }

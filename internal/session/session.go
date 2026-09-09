@@ -1840,6 +1840,10 @@ type Agent struct {
 	// reads as no red at all ([Agent.openBaseline]).
 	baselineRed      []string
 	baselineFailures map[string][]string
+	// baselineDeclared is every command the before-reading was asked to cover,
+	// including commands it could not read. A task may declare a new check after
+	// this photograph; without this set that late red looks falsely new.
+	baselineDeclared []string
 	baselineTaken    bool
 	// baselineRead says the reading has LANDED, which is not the same as it
 	// having been started ([Agent.openBaseline] runs it in the background) and

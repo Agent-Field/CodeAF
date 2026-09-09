@@ -387,9 +387,9 @@ type Remains struct {
 	// keyed by the exact declared command both readings ran.
 	WasFailingTests map[string][]string
 
-	// Unread is the declared checks the before-reading COULD NOT READ: one that
-	// changed the tree and had its answer thrown away, one the shell could not
-	// run, one the window never reached.
+	// Unread is the current checks with no usable before-reading: one declared
+	// after that reading, one that changed the tree and had its answer thrown
+	// away, one the shell could not run, one the window never reached.
 	//
 	// A CHECK WHOSE READING WAS THROWN AWAY DOES NOT MAKE EVERY RED LOOK NEW.
 	// With WasFailing alone, a baseline that discarded its ONLY check came back
@@ -1093,10 +1093,10 @@ func stewardReason(landing Landing) string {
 //     measured run had a task merged home with twenty-two checks green, and was
 //     carried on past it for the rest of its wall on a line somebody's sidecar
 //     wrote about the transcript.
-//  4. WITH SOMETHING GENUINELY LEFT, THE READER'S OWN WORDS ARE THE BRIEF where
-//     there are any: the unmet set says THAT work remains and the reader is
-//     usually more specific about WHAT, and a brief is read by a model that has to
-//     act on it.
+//  4. WITH SOMETHING GENUINELY LEFT, THE ADMITTED UNMET FACTS ARE THE BRIEF. A
+//     reader's words enter those facts for inline work, where there is no task
+//     landing to outrank them; they cannot replace an independent task, delivery
+//     or check fact with a fresh obligation.
 //  5. WORK STILL IN FLIGHT IS NEITHER OF THE TWO ENDINGS. An ask with a unit of
 //     work still going is not finished, and it is not going round in a circle
 //     either — it is waiting, so the floor below is not asked about it and what it
@@ -1130,19 +1130,13 @@ func (s *Steward) Decide(r Remains) Decision {
 		if r.stoodInForTheReader() {
 			brief = checksStoodInForTheReader
 		}
+		brief = withUnknownRedChecks(brief, r)
 		return done(brief)
 	}
-	brief := strings.TrimSpace(r.Reader)
-	if brief == "" {
-		brief = stewardBrief(r, unmet)
-	} else {
-		// AND WHAT IS KNOWN ABOUT THE CHECKS RIDES EVERY BRIEF, not only the one
-		// this package wrote. A reader's line is about the WORK and says nothing
-		// about which red was already there — so a worker handed it alone can see
-		// red it was never told to leave alone, and goes and fixes somebody else's
-		// bug. The two sentences are the same two [stewardBrief] appends.
-		brief = withWhatIsKnownAboutTheChecks(brief, r)
-	}
+	// THE UNMET SET IS THE AUTHORITY. Reader prose is admitted into that set on
+	// the inline road above; it must not replace an independent task, delivery or
+	// check fact with a new obligation of its own.
+	brief := stewardBrief(r, unmet)
 	// AND NOTHING IS A STANDSTILL WHILE SOMETHING IS STILL MOVING. An unmet set
 	// that has not changed because the work has not come home yet is a session
 	// waiting, not a session repeating itself, and what the floor remembers from
@@ -1230,8 +1224,8 @@ func stewardBrief(r Remains, unmet []string) string {
 	return withWhatIsKnownAboutTheChecks(out.String(), r)
 }
 
-// withWhatIsKnownAboutTheChecks appends the sentences a brief owes about the
-// declared checks, and it is ONE function because both briefs owe them.
+// withWhatIsKnownAboutTheChecks appends the sentences a continuation brief owes
+// about the declared checks.
 //
 // WHEN THE CHECKS STOOD IN FOR AN UNREACHED READER, THE BRIEF SAYS SO. A worker
 // handed a red check without that account would know what failed and not why
@@ -1252,9 +1246,33 @@ func withWhatIsKnownAboutTheChecks(brief string, r Remains) string {
 		return brief + "\n\n" + baselineStillReading
 	}
 	if already := r.alreadyRed(); len(already) > 0 {
-		return brief + "\n\n" + alreadyRedSentence(already)
+		brief += "\n\n" + alreadyRedSentence(already)
 	}
-	return brief
+	return withUnknownRedChecks(brief, r)
+}
+
+func withUnknownRedChecks(brief string, r Remains) string {
+	unread := make(map[string]bool, len(r.Unread))
+	for _, command := range r.Unread {
+		unread[command] = true
+	}
+	var checks []string
+	for _, command := range r.redChecks() {
+		if unread[command] {
+			checks = append(checks, command)
+		}
+	}
+	if len(checks) == 0 {
+		return brief
+	}
+	line := "one check has no usable before-reading, so its current result cannot establish a regression from this work: "
+	if len(checks) > 1 {
+		line = fmt.Sprintf("%d checks have no usable before-reading, so their current results cannot establish regressions from this work: ", len(checks))
+	}
+	if brief == "" {
+		return line + strings.Join(checks, ", ")
+	}
+	return brief + "\n\n" + line + strings.Join(checks, ", ")
 }
 
 // baselineStillReading is what a brief says while the before-reading of the

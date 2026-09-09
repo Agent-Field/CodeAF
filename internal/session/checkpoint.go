@@ -2943,7 +2943,7 @@ func (a *Agent) decideOverTheChecks(ctx context.Context, remains Remains) (Decis
 	// one account of that nobody in this session can take for themselves
 	// ([Remains.Stashed]).
 	remains.Stashed = stashed
-	remains.WasFailing, remains.Unread, remains.BaselineRead = a.baselineRedChecks()
+	remains.WasFailing, remains.Unread, remains.BaselineRead = a.baselineRedChecksFor(checks)
 	remains.WasFailingTests = a.baselineFailureNames()
 	return a.who().Decide(remains), found
 }
