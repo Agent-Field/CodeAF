@@ -273,7 +273,7 @@ furrow keeps its own ids in. aforge adds that name to your repository's
 file is local to your checkout — it is not committed, not pushed, and nobody else working
 on the project sees it.
 
-## A task that never started — its world did not match, stale ground, my task failed before it did anything, expects
+## A task that never started — its brief went stale, its world did not match, stale ground, my task failed before it did anything, expects
 
 A brief can name files and symbols of a world that is not in the folder the task gets: a
 file that moved, a folder somebody renamed, a change that was still uncommitted somewhere
@@ -306,7 +306,7 @@ way.
 spent either time, because the whole check is a look at the folder. The second attempt
 exists for the ordinary case where another window has landed the missing work in the
 meantime; when it does not hold the second time either, the row reads
-`its world did not match`. The report names every assumption that failed, what was found
+`incomplete · its brief went stale`. The report names every assumption that failed, what was found
 instead, and what can be done about it:
 
 ```
@@ -474,7 +474,7 @@ what the task itself produced.
 `[a] resolve it · [n] drop it · [s] tell it`, and the report names the files that changed
 on both sides:
 
-`finished, but needs your look — its branch task/edit-the-parser-9c1a2f did not merge cleanly and was kept: internal/auth/session.go changed on both sides`
+`conflicts with your branch — its branch task/edit-the-parser-9c1a2f did not merge cleanly and was kept: internal/auth/session.go changed on both sides`
 
 The landing note the model reads does **not** say the work finished or that the branch
 merged. It names the kept branch. A merge that did not fasten the branch to yours is not
@@ -551,7 +551,7 @@ copy of it, and the task lands as **`your call`** with the report naming that fo
 quoting whatever went wrong — a disk that filled, a read-only mount, a permission somebody
 changed:
 
-`finished, but needs your look — its work is in ~/.aforge/sessions/<id>/trees/7 and could not be saved to its branch: fatal: Unable to create '…/index.lock': Permission denied`
+`nobody could check it — its work is in ~/.aforge/sessions/<id>/trees/7 and could not be saved to its branch: fatal: Unable to create '…/index.lock': Permission denied`
 
 Nothing of the task's working copy is given back: the branch is kept, the copy is left
 registered where it is, and your own branch is untouched — no empty merge, no commit that
@@ -564,7 +564,7 @@ when every one of them can be placed does anything move. A lay that cannot happe
 your folder **exactly as it was** — not one file of the half that would have fitted — and
 says so:
 
-`finished, but needs your look — its work is in ~/.aforge/sessions/<id>/trees/7 and could not be saved into ~/notes: the work could not be laid into a clean copy: mkdir ~/notes/sub: not a directory`
+`nobody could check it — its work is in ~/.aforge/sessions/<id>/trees/7 and could not be saved into ~/notes: the work could not be laid into a clean copy: mkdir ~/notes/sub: not a directory`
 
 The task's copy is kept, so everything the family made is still in the folder that sentence
 names.
@@ -1821,11 +1821,18 @@ the six on the tasks page — `nobody could check it`, `the check did not pass i
 `conflicts with your branch: <files>`, `design ready to approve`, `starts on your word`,
 `paused at the <amount> cap` — and each carries its own two answers.
 
-The report under a landing nobody could judge still leads
-`finished, but needs your look — ` and then what was said, or
-`finished, but needs your look — nobody could say whether it holds` when nothing was said.
-That lead is the **report's** own opening sentence, written when the check gave up; the
-word on the row above it, and in the note, is `your call`.
+The report under a landing nobody could judge leads with **the same question the row is
+asking** and then what was said — `nobody could check it — ` and the checker's own
+sentence, or `nobody could check it — the checker never answered` when nothing was said.
+A landing whose branch would not merge leads `conflicts with your branch — ` the same way.
+The word on the row above it, and in the note, is `your call`; the report's lead is that
+row's reason sentence, written once in each place so the two cannot disagree. There is no
+`finished, but needs your look — ` any more: that lead was deleted with the state it named.
+
+**It is never said twice.** Several of the checker's own sentences already open with that
+same question — `nobody could check it in 5m0s`, `nobody could check it — asked twice, and
+neither call answered` — and where one of them does, that sentence IS the lead and nothing
+is put in front of it.
 
 The sentences you may see when nobody could say are written plainly:
 `the checker could not start: <err>`, `the checker could not be asked: <err>`,
@@ -1932,7 +1939,7 @@ It is found by the same `mastermind` model that reads a task's parts before it s
 tasks page, *when a task turns out to be too wide for one worker*). That reading happens
 **before the task's worker is asked anything**, and when it comes back saying nobody here
 can do this, the task stops there rather than starting one. The report is that reading's own
-sentence, in its words — `finished, but needs your look — an approving review GitHub will
+sentence, in its words — `nobody could check it — an approving review GitHub will
 only accept from a human who isn't the author`, say — so what you are being asked to do is
 the first line on the card.
 
@@ -1976,8 +1983,8 @@ changed them. Landed work and a window that is still going get separate sentence
 they are different facts:
 
 ```
-finished, but needs your look — "rail permanence" changed internal/tui3/home.go while this ran
-finished, but needs your look — "drop-up nearest" is also working in internal/tui3/home.go
+nobody could check it — "rail permanence" changed internal/tui3/home.go while this ran
+nobody could check it — "drop-up nearest" is also working in internal/tui3/home.go
 ```
 
 Work nothing ever named is called `another window is also working in internal/tui3/home.go`.
@@ -2012,7 +2019,7 @@ it wrote back over your folder by name when it lands. **A file you changed there
 while it worked is never written over.** Nothing at all is laid, the task keeps its whole
 copy where it is, and it lands `your call`:
 
-`finished, but needs your look — its work is in /Users/you/.aforge/sessions/…/trees/11 and was not laid over /Users/you/notes: notes.md changed there while this ran`
+`nobody could check it — its work is in /Users/you/.aforge/sessions/…/trees/11 and was not laid over /Users/you/notes: notes.md changed there while this ran`
 
 Both versions survive that: yours in your folder exactly as you left it, the task's in the
 directory the sentence names, so you can read the two and take what you want. The first few
@@ -2486,15 +2493,17 @@ one long command.
 from then on. A process that is killed removes nothing, so a heartbeat left behind is
 believed only by its age — the same bargain the session's presence file makes.
 
-## What the words and the ! exclamation mark under a stopped task mean — lost the connection, the model provider refused it, went in circles, out of steps, blocked by another task, would not write its notes down
+## What the words under a stopped task mean — lost the connection, the model provider refused it, went in circles, ran out of steps, blocked by another task, would not write its notes down, and what does the exclamation mark next to a task mean now
 
 A task that did not finish keeps its branch, and the row under its name says **why** it
 stopped: the word `incomplete`, and one plain sentence beside it. The same words lead the
 task's card. They are three kinds of news:
 
-- `stopped — branch kept`, with a `■` — **you stopped it** (`x` on its room, `jobs kill`).
-  Nothing is wrong with the work; it is on that branch, and `stopped` is never `incomplete`.
-- `!` and one of these — **it was halted, and nothing is known to be wrong**. The work can go
+- `stopped`, with a `■` — **you stopped it** (`x` on its room, `jobs kill`). Nothing is
+  wrong with the work; it is on its branch, and `stopped` is never `incomplete`.
+- `✕ incomplete · <one of these>` — **it was halted, and nothing is known to be wrong**, so
+  the row is drawn **dim** rather than in the bad colour. `branch kept` rides beside the
+  word as a fact of its own; it is not part of the sentence. The work can go
   on from its branch: say `continue task 7` or `keep going on task 7`. That is how
   you continue a task instead of running it again: it re-arms the **same** task —
   same id, same brief, same working copy, the last report handed back as this
@@ -2504,52 +2513,61 @@ task's card. They are three kinds of news:
   there is no graph, and names the branch or working copy so it can be read.
   Start a new task that builds on that branch only if the objective itself
   changed.
-  - `lost the connection — branch kept`: the connection to the model dropped (a reset, a
+  - `lost the connection`: the connection to the model dropped (a reset, a
     closed socket). The call was retried, then one more worker was run on the same model in
     the same working copy, and then the whole task was run **once more from the branch it
     had already made**; this row means all of that was spent.
-  - `the model provider refused it — branch kept`: the provider could not **serve** the
+  - `the model provider refused it`: the provider could not **serve** the
     request at all — the service was down, the route had no provider left, a rate limit was
     still refusing after the retries, or the account could not be served. Nothing was found
     out about the work, and on a run with a budget this does **not** count as part of what
     is still left to do, and the task is run **once more from its branch** before this row
     is written. A model that read the request and **refused** it, and a rejection of what
     the request itself contained, are the provider *answering* — those read
-    `ended with an error` and do still count.
-  - `went in circles — branch kept`: the worker **repeated itself** and its own loop guard
+    `a fault: <what broke>` and do still count.
+  - `went in circles`: the worker **repeated itself** and its own loop guard
     ended the turn (its last words are `this turn is going in circles · stopping here
     with anything remaining left undone`). Repetition is the whole of it: the same call
     three times in a row, the same failure three times, the same argument refused twice,
     or five rounds that read nothing new.
-  - `blocked by another task — branch kept`: the calls it kept making were writes into a
+  - `was blocked by another task`: the calls it kept making were writes into a
     working copy another task holds, and every one was refused. Wait for that task's report,
     then run this one again on top of it.
-  - `out of steps — branch kept`: a step, no-progress or time limit fired and the work did
+  - `ran out of steps`: a step, no-progress or time limit fired and the work did
     not hold when it was checked.
-  - `would not write its notes down — branch kept`: the worker was asked twice to write down
+  - `would not write its notes down`: the worker was asked twice to write down
     what it was doing, its tool calls were **held** until it did, and it sent three more
     replies with nothing visible in them — so the turn ended. Whatever it had already done
     is on the branch; the thinking behind it was never written anywhere, which is why the
     run stopped rather than carried on.
 ## Why does it say not accepted under my task — the check named gaps, or you said it was not right
 
-Two endings wear a `✕` rather than the `!` the halted ones wear, and both mean **something
-was found**. The report says what:
+Two endings mean **something was found**, rather than something having happened to the
+work. The report says what:
 
-- `not accepted — branch kept`: **the check named gaps**, or you said it was not right on
-  its card. This is the one ending that is somebody's finding about the work rather than
-  something that happened to it, so the report carries what is still missing, in the
-  check's own words, and the branch is kept for you to finish from.
-- `ended with an error — branch kept`: a working copy could not be made, the worker would
-  not start, or an error nobody classified. **This is the only ending drawn as something
-  having broken.** Everything else that did not finish is drawn dim, because running out of
-  steps or losing the connection is not a fault.
+- `the check found gaps: <what is still missing>`: **the check named gaps**, or you said it
+  was not right on its card. This is the one ending that is somebody's finding about the
+  work, so the report carries what is missing in the check's own words, and the branch is
+  kept for you to finish from. Where the worker refused a step rather than falling short,
+  the same ending reads `would not take a step it was asked to`.
+- `a fault: <the first line of the error>`: a working copy could not be made, the worker
+  would not start, or an error nobody classified. **This is the only ending drawn in the
+  bad colour.** Everything else that did not finish is dim, because running out of steps or
+  losing the connection is not a thing going wrong.
 
 Neither of them is `failed` in anything you read: a task that did not finish says
 `incomplete`, and these two sentences are the why.
 
-`not accepted` is also what the record that grades models writes down for the same ending,
-which is why the same two words turn up when you ask what a model is good at.
+`not accepted` is the word the record that grades models writes down for the first of
+them — that file keeps its own short vocabulary (`landed`, `not accepted`, `did not
+finish`, `your call`, `stopped`), which is why the phrase turns up when you ask what a
+model is good at and nowhere on a row.
+
+**And the `!` is off every row of work.** A halted task used to wear it, which made a
+fourth cell for a question that has three answers; work that did not finish is `✕` now, dim
+unless something actually broke. The mark survives in two places that are not rows: the
+warning on a landing card whose work could not be delivered, and a task **mentioned** in
+prose.
 
 ## Being quiet is not going in circles — the [silent] notes, held tool calls, and why a quiet worker is not stopped for it
 
@@ -2565,10 +2583,10 @@ visible — every call in the reply is answered `[held] Nothing was run this ste
 of them runs — and if it sends only tool calls three more times its turn ends with
 `stopped here · would not write its notes down, so what this turn worked out is not on the record`.
 That is not circling, and the row does not say it is. **It is written up in its own
-words**: the rail reads `would not write its notes down — branch kept`, with the same `!`
-every halted task wears; the landing note reads
-`task 7 would not write its notes down: <title>`; and the record that grades the model on
-the work says it was `stopped`, not that it did not finish. The run settles on whatever it
+words**: the rail reads `incomplete · would not write its notes down`, dim like every
+other halted row; the landing note reads
+`task 7 incomplete: <title> · would not write its notes down`; and the record that grades
+the model on the work says it was `stopped`, not that it did not finish. The run settles on whatever it
 had actually done and the branch is kept like any other. The keys page has the whole ladder
 under "Why did aforge stop running tool calls, and what is a [held] answer?".
 
@@ -2576,10 +2594,10 @@ If a row says `went in circles`, the worker had genuinely stopped making progres
 transcript shows what it kept repeating.
 
 The first cause wins: a check that refuses a run which had already given up is written as
-`went in circles`, because that is what happened first. A task that lands as `!` is not
-`failed` in what it asks of you — it is not asking whether the work is right, it is asking
-you to pick it up. A task from before these words existed reads `stopped — branch kept`
-whatever ended it.
+`went in circles`, because that is what happened first. A halted task **asks nothing of
+you** — it is not `your call` and there is no question on it; the branch is there to pick
+up when you want it. A task from before these words existed simply reads `stopped`,
+whatever ended it, because its record never carried a reason.
 
 ## What happens when a task fails — my task's world could not be sealed, no working copy could be made
 
@@ -2597,8 +2615,8 @@ Endings are checked in a fixed order, and the first match wins:
 | 6b | The model provider refused the request — an API error, a model that is not there | `it ended with an error: <err>`, and the row reads `the model provider refused it` |
 | 6c | The run errored | `it ended with an error: <err>` |
 | 7 | Stopped while its work was being looked at | `stopped while its work was being checked` |
-| 8 | Nobody could say | `finished, but needs your look — …` |
-| 8b | The work held, and a file it wrote changed elsewhere while it ran | `finished, but needs your look — "…" changed <path> while this ran` |
+| 8 | Nobody could say | `nobody could check it — …` |
+| 8b | The work held, and a file it wrote changed elsewhere while it ran | `nobody could check it — "…" changed <path> while this ran` |
 | 9 | Gaps left after the correction rounds | `incomplete — …` |
 | 10 | Otherwise | done: the evidence first, then the task's words |
 
@@ -2609,7 +2627,7 @@ why — no repository behind the folder, a locked index, a disk it could not wri
 was wrong with the brief and nothing of the work was attempted: this is the first thing
 that happens to a task, before one model call, so **nothing was started and nothing was
 spent**. (A brief that describes a world the folder does not have is a different landing —
-`its world did not match` — and it has its own section on this page.)
+`incomplete · its brief went stale` — and it has its own section on this page.)
 
 Row 3 is checked before it is written down: a task that hit a limit is judged against its
 acceptance one more time, and if the work holds it lands **done** at row 10 instead, merged,

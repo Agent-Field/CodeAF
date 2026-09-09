@@ -41,7 +41,7 @@ import (
 // floor forever — a literal cannot know which repertoire the terminal is on —
 // which is how a person with a patched font came to see a proper icon beside
 // every tool call and a bare geometric shape beside every task
-// (docs/design/icons/DESIGN.md). icons_test.go fails the build on a state mark
+// (docs/design/icons/DESIGN.md). iconvocab_test.go fails the build on a state mark
 // spelled anywhere in this package.
 
 // glyphRunASCII is the screen reader's own working mark, for the rows that draw

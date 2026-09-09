@@ -1437,8 +1437,8 @@ Always available: `enter` submits a typed answer or takes the focused option ove
 an empty box, `esc` says no, and `ctrl+e` opens the brief over an empty box. Over
 an **empty box only**: `left`/`right` move the focus, and `1`–`4` pick the model.
 Bare letters are ordinary answer text, not immediate shortcuts. Typing the first
-character stops the countdown and changes the meter to `waiting on you`; deleting
-the draft does not restart it. On
+character stops the countdown and changes the meter to `starts on your word`;
+deleting the draft does not restart it. On
 `enter`, a bare `no`, `nope`, `n`, `stop`, `cancel`, `don't` or `dont` declines,
 while a bare `yes`, `y`, `ok`, `okay`, `go` or `sure` approves. Longer text is a
 redirect. Clicking `no` or pressing `esc` always declines, whatever is in the
@@ -2828,9 +2828,9 @@ Nothing is handed to a task — the same model under the same rule would be as q
 whatever the turn had already saved is on disk where it left it.
 
 **When the turn that stopped belongs to a task worker, the task says so.** Its row on the
-rail reads `would not write its notes down — branch kept`, it wears the `!` that asks you to
-pick it up rather than the cross that reports a fault, and the branch is kept. How tasks run
-has it under "What the words and the ! exclamation mark under a stopped task mean".
+rail reads `incomplete · would not write its notes down`, drawn **dim** rather than in the
+bad colour — nothing was found wrong with the work — with `branch kept` beside it as a fact
+of its own. How tasks run has it under "What the words under a stopped task mean".
 
 The loop also notices command variants that keep returning information already seen. After
 **5 consecutive tool rounds in which every result contains no fresh line**, a `[stuck]`

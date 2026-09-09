@@ -179,9 +179,9 @@ func (a *Agent) divideFromSketch(ctx context.Context) (string, string) {
 // [Agent.landShifted] with a different reason (task_run.go), which is itself the
 // unverified landing reached by a third road. The branch is committed and kept
 // ([keptWork]) exactly as it is for the landing nobody could judge, the report
-// leads with [needsLookLead] in the same person's words, and everything
-// downstream — the settle card, the rail's mark, the note's "needs your look"
-// verb, the bubbling of a still-undecided child up to whoever is left to decide
+// leads with [yourCallLead] in the same person's words, and everything
+// downstream — the settle card, the rail's mark, the note's `your call` word,
+// the bubbling of a still-undecided child up to whoever is left to decide
 // ([Agent.bubbleUnverifiedChildren]) — is machinery that was already there.
 // Nothing about this landing has to know why it was asked for.
 //
@@ -203,7 +203,7 @@ func (a *Agent) divideFromSketch(ctx context.Context) (string, string) {
 func (a *Agent) landNeedsPerson(node *TaskNode, tree taskTree, why string, log io.Writer) TaskState {
 	merge, kept := keptWork(tree, node.title(), nil)
 	fmt.Fprintf(log, "no worker was started: %s\n", why)
-	node.finish(needsLookLead+why, kept, tree.branch, merge)
+	node.finish(withYourCallLead(TaskFacts{Merge: merge}, why), kept, tree.branch, merge)
 	return TaskUnverified
 }
 
