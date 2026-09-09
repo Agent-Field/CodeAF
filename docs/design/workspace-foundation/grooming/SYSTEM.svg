@@ -15,6 +15,8 @@
     .peer { fill:none; stroke:#526b7a; stroke-width:1.8; marker-start:url(#back); marker-end:url(#arrow); }
     .label { paint-order:stroke; stroke:#fafaf8; stroke-width:7px; stroke-linejoin:round; font-size:18px; }
     .rule { stroke:#c5ced1; stroke-width:1; }
+    .topic { fill:#304b5b; stroke:#fafaf8; stroke-width:3; }
+    .topic-number { fill:#ffffff; font-size:18px; font-weight:600; text-anchor:middle; }
   </style>
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L8 4 L0 8 Z" fill="#526b7a"/></marker>
@@ -22,7 +24,7 @@
   </defs>
 
   <text x="30" y="38" class="heading">Aforge · personal AI work environment</text>
-  <text x="30" y="66" class="small">Logical design · these boxes are existing concepts and responsibilities, not new services</text>
+  <text x="30" y="66" class="small">Logical design · numbered discussion areas · existing concepts, not new services</text>
 
   <rect x="470" y="91" width="260" height="66" rx="8" class="node"/>
   <text x="600" y="132" text-anchor="middle" class="name">You</text>
@@ -118,4 +120,13 @@
   <text x="30" y="1045" class="small">*Scope, automatic reaction, cross-chat consultation</text>
   <text x="30" y="1072" class="small">and learning/adoption still need decisions or integration.</text>
   <text x="30" y="1097" class="small">Folders organize work; they do not become agents.</text>
+  <g aria-label="Numbered discussion areas">
+    <g><circle cx="48" cy="410" r="15" class="topic"/><text x="48" y="416" class="topic-number">1</text></g>
+    <g><circle cx="326" cy="570" r="15" class="topic"/><text x="326" y="576" class="topic-number">2</text></g>
+    <g><path d="M634 651 V659" class="rule"/><circle cx="634" cy="675" r="15" class="topic"/><text x="634" y="681" class="topic-number">3</text></g>
+    <g><circle cx="696" cy="410" r="15" class="topic"/><text x="696" y="416" class="topic-number">4</text></g>
+    <g><circle cx="696" cy="748" r="15" class="topic"/><text x="696" y="754" class="topic-number">5</text></g>
+    <g><circle cx="696" cy="981" r="15" class="topic"/><text x="696" y="987" class="topic-number">6</text></g>
+    <g><circle cx="360" cy="205" r="15" class="topic"/><text x="360" y="211" class="topic-number">7</text></g>
+  </g>
 </svg>

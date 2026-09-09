@@ -23,6 +23,10 @@ records from activation/execution, labels the main relationships and marks open
 integration/design. It is not a UI mockup, a deployment topology, a new set of
 services, or a claim that every shown path works today.
 
+[Numbered discussion map](DISCUSSION.md) matches the diagram's seven anchors,
+records the current implementation checkpoint and groups the remaining product
+and engineering questions without introducing a new delivery roadmap.
+
 ## The product we are preserving
 
 Aforge is one personal AI work environment for development, research, marketing,
