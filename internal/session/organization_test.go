@@ -459,3 +459,22 @@ func TestSharedContextIdentityReadSeparatesExistenceFromCurrentApplicability(t *
 	read(2, false, "NEW")
 	read(0, false, "NEW")
 }
+
+func TestSharedContextLongReadKeepsScopeInTheDisplayReceipt(t *testing.T) {
+	a, s, _ := organizationFixture(t)
+	ctx := context.Background()
+	r, err := s.CreateContext(ctx, "Outside scope", strings.Repeat("界", 4000), a.organizationSource(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args, _ := json.Marshal(map[string]any{"action": "read", "id": r.ID})
+	raw, failed, err := a.sharedContextTool(ctx, args)
+	if err != nil || failed {
+		t.Fatalf("%s %v", raw, err)
+	}
+	// The live event display keeps only the first 4,000 bytes. Provenance about
+	// applicability must survive that clipping even for a multi-byte body.
+	if !strings.Contains(raw[:min(4000, len(raw))], `"applicable_here":false`) || !strings.Contains(raw[:min(4000, len(raw))], "Reading it does not restore applicability") {
+		t.Fatal("the long body displaced applicability from the display receipt")
+	}
+}
