@@ -452,7 +452,7 @@ func standUpdateGlyph(update string) string {
 //
 //	◦ every Monday at 9 · set up
 //	◦ every Monday at 9 · said: the weekly update is in notes/week-34.md
-//	▲ keep main green · needs your look: the fix touches migrations
+//	▲ keep main green · your call: the fix touches migrations
 //	∙ remind me at 6 to leave · stopped
 //
 // FOUR SHAPES AND NO FIFTH. Everything an item can do maps onto one of them,
@@ -498,10 +498,14 @@ func standUpdateWord(update, text string) string {
 		}
 		return "said: " + text
 	case "needs-you":
+		// ONE WORD FOR ONE READING, AND IT IS THE SURFACE'S ONE WORD. `needs your
+		// look` was this file's own name for the fact every task row now calls
+		// `your call` (tasktier.go's [tierYourCallWord]), and a standing item that
+		// wanted somebody is the same news as a piece of work that does.
 		if text == "" {
-			return "needs your look"
+			return tierYourCallWord
 		}
-		return "needs your look: " + text
+		return tierYourCallWord + ": " + text
 	case "paused":
 		return "paused"
 	case "resumed":

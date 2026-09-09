@@ -287,7 +287,7 @@ var settingUI = map[string]settingMeta{
 	// And under the check, the row that says what happens when the check came
 	// back with nothing. It reads as a question about WHO — you, or the chat —
 	// because that is the thing a person is deciding here; the state it is about
-	// is spelled the way the card and the roster spell it, "needs your look",
+	// is spelled the way the card and the roster spell it, "your call",
 	// rather than as the machinery that could not answer.
 	config.KeyTaskSettle: {
 		tab: tabSafety, label: "who settles work that needs a look", widget: widgetCycle,

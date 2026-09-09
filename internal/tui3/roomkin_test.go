@@ -158,7 +158,7 @@ func TestAHandedOutPieceWaitingOnAnotherSaysParkedInTheColumnsWord(t *testing.T)
 
 // WORK THAT NEEDS A PERSON SAYS SO IN THE SURFACE'S OWN WORDS, and never in the
 // machinery's: this row is read by a person, so "unverified" and the checking
-// apparatus behind it are not its vocabulary (task.go's [taskUnverifiedWord]).
+// apparatus behind it are not its vocabulary (tasktier.go).
 func TestASpawnedPieceThatNeedsALookSaysSoInPlainWords(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railRun(a)
@@ -168,7 +168,7 @@ func TestASpawnedPieceThatNeedsALookSaysSoInPlainWords(t *testing.T) {
 	// The handed-out line is the block's FIRST row now: the parent moved to the
 	// trail and took its own row with it (roomcrumbs.go).
 	row := kinRows(a)[0]
-	if !strings.Contains(row, "Cut the goldens"+roomKinStateSep+taskUnverifiedWord) {
+	if !strings.Contains(row, "Cut the goldens"+roomKinStateSep+tierYourCallWord) {
 		t.Fatalf("the piece does not ask for a look:\n%s", row)
 	}
 	for _, banned := range []string{"unverified", "auditor", "verdict", "refuted"} {

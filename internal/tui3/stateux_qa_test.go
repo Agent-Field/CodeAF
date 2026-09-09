@@ -101,11 +101,17 @@ func TestHandingReviewToTheModelStopsAskingTheUser(t *testing.T) {
 		t.Fatal("handoff did not reach the engine")
 	}
 	status := a.taskStatus(node)
-	if status.Attention || status.On != session.TaskWaitMachine || a.railGroupOf(node) != railParked {
+	if status.Attention || a.railGroupOf(node) != railParked {
 		t.Fatalf("a handed-off review still needs the user: %+v", status)
 	}
-	if word, _ := a.stateWord(); word != taskReviewPendingWord {
-		t.Fatalf("room footer says %q", word)
+	// AND THE QUESTION IS STILL THE QUESTION. What the hand-off changes is WHO is
+	// holding it — the row keeps its tier, its word and its reason, because a
+	// person watching it is owed both (docs/design/task-states/DESIGN.md).
+	if status.Ask.Owner != session.TaskAskOwnerModel {
+		t.Fatalf("the hand-off did not reach the reading: %+v", status.Ask)
+	}
+	if status.Tier != session.TaskTierYourCall || status.RowWord() != tierYourCallWord+" · nobody could check it" {
+		t.Fatalf("a handed-off row stopped saying what it is asking: %+v", status)
 	}
 	// THE HEAD IS NEVER REWRITTEN AFTER LANDING — the receipt is what changes,
 	// and it says what the person did rather than what the machine reached.

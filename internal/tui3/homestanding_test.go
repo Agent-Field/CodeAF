@@ -233,7 +233,7 @@ func TestTheStandingBandKeepsItsThreeRowsAndItsDoorOnAPhone(t *testing.T) {
 	if !strings.Contains(joined, "…3"+homeItemsFoldWord) {
 		t.Fatalf("the fold does not count what it is hiding:\n%s", joined)
 	}
-	if !strings.Contains(joined, "needs your look") {
+	if !strings.Contains(joined, tierYourCallWord) {
 		t.Fatalf("the row that needs somebody lost its rollup:\n%s", joined)
 	}
 	// AND THE DOOR OPENS. enter on the fold line shows the rest.
@@ -282,7 +282,7 @@ func TestAStandingRowSaysOnlyWhatItKnows(t *testing.T) {
 
 	stuck := bandItem("n", "keep main green", "/w", standing.WhenProbe, "when CI goes red")
 	stuck.NeedsPerson = "the fix touches migrations"
-	if got := standRollup(StandingItemView{Item: stuck}, now); got != "needs your look · the fix touches migrations" {
+	if got := standRollup(StandingItemView{Item: stuck}, now); got != tierYourCallWord+" · the fix touches migrations" {
 		t.Fatalf("a stopped item reads %q", got)
 	}
 }

@@ -156,12 +156,7 @@ type taskDone struct {
 const (
 	// doneWord is the record page's own reading of a landed row (taskstatus.go)
 	// and no longer this card's head: the head takes its word from the reading.
-	doneWord = "done"
-	// doneFailWord is the record page's word for a fault and belongs to the rail
-	// lane, which is the last reader of it (taskstatus.go). It is NOT on this
-	// card: `failed` is deleted as person-facing text for a landing, which reads
-	// `incomplete` plus its reason.
-	doneFailWord  = "failed"
+	doneWord      = "done"
 	doneOutputKey = "ctrl+o output"
 	// doneStartWord IS THE WORD FOR WHEN THE WORK BEGAN, and it said `spawned`
 	// until this wave. That is the machinery's own verb for starting a process,

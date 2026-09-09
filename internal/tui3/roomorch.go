@@ -1742,7 +1742,12 @@ func orchNodeWord(node orchestrate.NodeStatus) string {
 	case orchestrate.Done:
 		return orchDoneWord
 	case orchestrate.Failed:
-		return "failed"
+		// `failed` IS NOT A WORD THIS SURFACE SAYS ANY MORE. It sends somebody
+		// looking for a fault, and most of the ways a node ends this way are not
+		// one — so a run's node reads what every other piece of work on this
+		// surface reads (taskview.go's [taskRecordStoppedWord], and
+		// docs/design/task-states/DESIGN.md).
+		return taskRecordStoppedWord
 	case orchestrate.Cancelled:
 		return orchStoppedWord
 	}

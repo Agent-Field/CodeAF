@@ -61,7 +61,7 @@ func TestTheTasksPageGroupsByWhatYouDoNext(t *testing.T) {
 	reading := readTasks(world, tasksMine{}, win, now.Add(-time.Hour), now)
 	rows := reading.rows(120, newPalette(tokens.NoColor, false))
 	page := strings.Join(rows, "\n")
-	wants := []string{"needs your look", "waiting"}
+	wants := []string{tierYourCallWord, "waiting"}
 	last := -1
 	for _, want := range wants {
 		at := strings.Index(page, want)
@@ -834,7 +834,7 @@ func TestARunningRunHasNoEndingOnItsRecordCard(t *testing.T) {
 		Kind: session.TaskKindAdaptive, Status: string(session.TaskRunning),
 	}
 	a.tasks = map[uint64]*taskNode{7: {id: 7, title: entry.Title, state: session.TaskRunning}}
-	if line := plain(a.taskCardWhenLine(entry)); line != "running" || strings.Contains(line, "landed") || strings.Contains(line, "stopped") {
+	if line := plain(a.taskCardWhenLine(entry)); line != "working" || strings.Contains(line, "landed") || strings.Contains(line, "stopped") {
 		t.Fatalf("the running run's record reads %q, want its state and no ending", line)
 	}
 

@@ -3210,7 +3210,10 @@ func TestTheRailStandsWhileWorkIsAliveAndGoesWhenItLands(t *testing.T) {
 		// A STOPPED NODE DID NOT CRASH. session marks its branch "aborted"; the
 		// rail says what that is — it stopped, and the work is still on the branch
 		// named beside it.
-		taskStoppedKept, "task/collect"} {
+		// A NODE WHOSE BRANCH NEVER CAME HOME DID NOT CRASH. session marks it
+		// "aborted"; the rail says the reading's own sentence about it and names
+		// the branch the work is still on beside it.
+		"task/collect"} {
 		if !strings.Contains(rail, want) {
 			t.Fatalf("the rail is missing %q:\n%s", want, rail)
 		}
@@ -3320,7 +3323,7 @@ func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 			t.Fatalf("the kept-branch card does not carry %q:\n%s", want, taskText(a))
 		}
 	}
-	for _, never := range []string{mergeWordAborted, taskStoppedKept} {
+	for _, never := range []string{mergeWordAborted, "stopped — branch kept"} {
 		if strings.Contains(taskText(a), never) {
 			t.Fatalf("the card says %q, which is not a card's word any more:\n%s", never, taskText(a))
 		}
@@ -3485,8 +3488,13 @@ func TestTheRosterPricesAMergeAndLeavesTheActionableRowsAlone(t *testing.T) {
 	}{
 		{2, "waits: Collect sources"},
 		{3, mergeWordConflicted + " · task/fix-nil-map"},
-		{4, taskStoppedKept + " · task/render"},
-		{5, taskUnverifiedWaits},
+		// A LANDING THAT NAMED NO ENDING AND NOBODY STOPPED is a fault as far as
+		// anyone can tell, and the row says so rather than claiming a stop nobody
+		// made ([session.TaskReasonOf]).
+		{4, taskRecordStoppedWord + " · " + session.TaskReasonOf("", "") + " · task/render"},
+		// A your-call row reads the QUESTION and its reason, never a bare word:
+		// the reason is the half a person can act on (tasktier.go).
+		{5, tierYourCallWord + " · nobody could check it"},
 	} {
 		if got := plain(strings.Join(a.railUnder(a.tasks[tc.id], width), " ")); got != tc.want {
 			t.Fatalf("node %d says %q, want %q", tc.id, got, tc.want)

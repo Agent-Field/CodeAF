@@ -47,7 +47,7 @@ func TestAHomeRowSaysWhichLifeAnotherWindowsTaskIsIn(t *testing.T) {
 	// THE WORDS ARE THE ONES THE LIVE WINDOW DRAWS, from the one place they are
 	// spelled (taskphase.go) — a second wording here would be this surface
 	// telling two windows two different things about one node.
-	want := homeLiveGlyph + " running" + railSep + taskCheckingWord
+	want := homeLiveGlyph + " working" + railSep + taskCheckingWord
 	if cardLine(card, want) < 0 {
 		t.Fatalf("the card does not say which life the task is in (want %q):\n%s", want, strings.Join(card, "\n"))
 	}

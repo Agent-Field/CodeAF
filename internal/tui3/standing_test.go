@@ -318,7 +318,7 @@ func TestAStandingUpdateIsExactlyOneLine(t *testing.T) {
 		{"fired", "the standup note is in notes/standup.md",
 			standWaitGlyph + " every Monday at 9, post the · said: the standup note is in"},
 		{"needs-you", "the fix touches migrations",
-			homeAskGlyph + " every Monday at 9, post the · needs your look: the fix"},
+			homeAskGlyph + " every Monday at 9, post the · " + tierYourCallWord + ": the fix"},
 		{"stopped", "", standOffGlyph + " every Monday at 9, post the · stopped"},
 	} {
 		a, _, _ := standApp(t)
@@ -646,7 +646,7 @@ func TestAFiringThatNeedsSomebodyIsDrawnWithTheAskGlyph(t *testing.T) {
 	}}
 	drive(t, a, runCmd(cmd)...)
 
-	want := homeAskGlyph + " every Monday at 9, post the · needs your look: the fix touches migrations"
+	want := homeAskGlyph + " every Monday at 9, post the · " + tierYourCallWord + ": the fix touches migrations"
 	if body := standText(a); !strings.Contains(body, want) {
 		t.Fatalf("the firing was never drawn.\nwant a row %q\ngot:\n%s", want, body)
 	}
@@ -672,7 +672,7 @@ func TestWhatFiredWhileTheWindowWasShutIsDrawnWhenTheLaneOpens(t *testing.T) {
 	body := standText(a)
 	for _, want := range []string{
 		standWaitGlyph + " tell me when CI goes red · said: the last run on main failed",
-		homeAskGlyph + " keep main green · needs your look: the fix touches migrations",
+		homeAskGlyph + " keep main green · " + tierYourCallWord + ": the fix touches migrations",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the fold is missing %q:\n%s", want, body)

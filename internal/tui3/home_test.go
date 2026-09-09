@@ -421,7 +421,7 @@ func TestHomeCallsARowRunningWhenTheSessionSaysItHasThatNodeOut(t *testing.T) {
 	// line carries `open in another window · working` (place_home.go's
 	// [app.homeCardPlace]).
 	card := strings.Join(homeCardFor(t, a, row.Transcript), "\n")
-	for _, want := range []string{"Port the thing", homeLiveGlyph + " running",
+	for _, want := range []string{"Port the thing", homeLiveGlyph + " working",
 		homeHeldWord + " · working"} {
 		if !strings.Contains(card, want) {
 			t.Fatalf("the card does not say %q:\n%s", want, card)
