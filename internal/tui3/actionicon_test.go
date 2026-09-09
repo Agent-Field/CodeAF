@@ -498,6 +498,7 @@ func TestRichActionIconsAreNormalAndFallbackIsExplicit(t *testing.T) {
 			a := newTestApp(&fakeAgent{model: "m"})
 			a.actionAuto, _ = tokens.DetectGlyphSet(envOf(tc.env))
 			a.iconMode = config.IconsAuto
+			a.settleIcons()
 			run := actionMarks[session.ActionRun]
 			want := tokens.Plain.Glyph(run)
 			if tc.rich {
@@ -507,10 +508,12 @@ func TestRichActionIconsAreNormalAndFallbackIsExplicit(t *testing.T) {
 				t.Fatalf("auto=%q want %q", got, want)
 			}
 			a.iconMode = config.IconsPlain
+			a.settleIcons()
 			if got := a.actionMarkFor(session.ActionRun); got != tokens.Plain.Glyph(run) {
 				t.Fatal("plain override ignored")
 			}
 			a.iconMode = config.IconsRich
+			a.settleIcons()
 			if got := a.actionMarkFor(session.ActionRun); got != tokens.NerdFont.Glyph(run) {
 				t.Fatal("rich override ignored")
 			}
@@ -527,6 +530,7 @@ func TestTheStepIconSettingChangesTheLiveGutterAndPersists(t *testing.T) {
 	a.profileDir = t.TempDir()
 	a.actionAuto = tokens.NerdFont
 	a.iconMode = config.IconsAuto
+	a.settleIcons()
 	registry := config.NewSettings(config.SettingsOptions{ProfileDir: a.profileDir})
 	a.sheet.registry = registry
 	setting, ok := registry.Row(config.KeyIcons)

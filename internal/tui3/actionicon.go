@@ -77,16 +77,24 @@ func (a *app) iconSet() tokens.GlyphSet {
 // be changed apart.
 func (a *app) adoptIcons() {
 	a.iconMode = config.IconsAt(a.profileDir)
+	a.settleIcons()
+}
+
+// settleIcons puts the tier onto the palette, and it is the ONE assignment:
+// [app.icon] and [palette.glyph] both read it there, so the app's own marks and
+// the marks drawn by a function holding nothing but a palette cannot come out of
+// two different repertoires on one frame.
+func (a *app) settleIcons() {
 	a.pal.icons = a.iconSet()
 }
 
 // icon is [palette.glyph] with the linear tier folded in, for the app methods
 // that hold the screen-reader flag themselves.
 func (a *app) icon(id tokens.GlyphID) string {
-	if a.linear || a.pal.ascii {
+	if a.linear {
 		return tokens.ASCII.Glyph(id)
 	}
-	return a.iconSet().Glyph(id)
+	return a.pal.glyph(id)
 }
 
 // actionGutter is the fixed cost of the mark: the cell it stands in, and the
