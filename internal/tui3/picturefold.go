@@ -69,8 +69,7 @@ func (a *app) mediaRows(e *entry, entryIndex, width int, lead string) []row {
 		}
 		text := prefix + fit(label, room)
 		start := ansi.StringWidth(text)
-		text += suffix
-		control := row{text: fit(a.pal.dim(prefix+fit(label, room))+a.pal.muted(suffix), width), entry: entryIndex, hit: hitPictures, pictureIndex: i}
+		control := row{text: fit(a.pal.dim(text)+a.pal.muted(suffix), width), entry: entryIndex, hit: hitPictures, pictureIndex: i}
 		if suffix != "" {
 			control.pictureOpen = hudSpan{from: start + 2, to: min(width, start+ansi.StringWidth(suffix))}
 		}
