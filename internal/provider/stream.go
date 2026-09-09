@@ -98,6 +98,15 @@ const (
 	// It is raised BEFORE the stream opens, so a surface may receive notices on a
 	// turn that goes on to produce no StreamStarted at all.
 	StreamNotice
+	// StreamReplaced says the answer the person has been reading is being
+	// REPLACED, and carries in Delta the one line telling them so.
+	//
+	// It is StreamNotice's sibling and deliberately not StreamNotice itself: a
+	// notice is a line to print, while a replacement is that line AND an
+	// instruction to throw away what is above it. It is raised only when text
+	// had actually been shown. Everything the consumer drew or buffered for this
+	// response is void, and the response the call returns is the replacement's.
+	StreamReplaced
 )
 
 // StreamEvent carries provider text as it arrives. Delta is populated only

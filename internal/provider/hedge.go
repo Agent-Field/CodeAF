@@ -75,9 +75,9 @@ const maxArms = 4
 // right way round.
 const heldEvents = 512
 
-// hedgeNotice is what a person is told when the answer changes lanes mid-flow.
-// It is shown only when there was text on the screen to replace: a rescue that
-// fires before the first token replaces nothing and says nothing.
+// hedgeNotice is the line a replacement carries when an answer changes lanes
+// mid-flow. It is shown only when there was text on the screen to replace: a
+// rescue that fires before the first token replaces nothing and says nothing.
 const hedgeNotice = "that lane went quiet — this answer is coming from another one"
 
 // firstPromptNotice is the missing half of that silence. A first prompt has
@@ -1091,9 +1091,10 @@ func (r *hedgeRace) flip(to int) {
 	}
 	r.speaker = to
 	if r.spoken {
-		// There was text on the screen and it is being replaced. A person is
-		// told that in the one channel that reaches the room in order.
-		r.observer(StreamEvent{Kind: StreamNotice, Delta: hedgeNotice, Session: r.session})
+		// There was text on the screen and one voice means withdrawing it rather
+		// than leaving it above its replacement. The replacement kind tells the
+		// room to discard that voice and carries the one line explaining why.
+		r.observer(StreamEvent{Kind: StreamReplaced, Delta: hedgeNotice, Session: r.session})
 	}
 	held := r.held[to]
 	// EVERY OTHER ARM'S HELD TEXT IS DROPPED HERE AND NOT LATER. It is an

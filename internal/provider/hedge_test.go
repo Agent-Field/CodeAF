@@ -470,10 +470,13 @@ func TestALaneThatStallsMidAnswerIsHedgedAndTheAnswerArrivesWhole(t *testing.T) 
 		t.Fatalf("the answer is %d tokens, want B's whole answer of 24", tokens)
 	}
 	// THE PERSON WAS TOLD. Thirty tokens of A were already on the screen, so
-	// the change of lane is a notice and not a silent swap.
-	told := watched.kinds(StreamNotice)
+	// the change of lane replaces that answer and is not a silent swap.
+	told := watched.kinds(StreamReplaced)
 	if len(told) != 1 || told[0].Delta != hedgeNotice {
-		t.Fatalf("notices = %+v, want the one line about the answer changing lanes", told)
+		t.Fatalf("replacements = %+v, want the one line about the answer changing lanes", told)
+	}
+	if notices := watched.kinds(StreamNotice); len(notices) != 0 {
+		t.Fatalf("plain notices = %+v, want the replacement to withdraw the dead answer", notices)
 	}
 	// And both lanes were measured, because a hedge is a measurement.
 	if _, ok := rig.ledger.sightingFor("A"); !ok {
@@ -495,6 +498,44 @@ func TestALaneThatStallsMidAnswerIsHedgedAndTheAnswerArrivesWhole(t *testing.T) 
 	if seen["A"] != 1 || seen["B"] != 1 {
 		t.Fatalf("sightings per lane = %+v, want one each: %+v", seen, rig.ledger.noted())
 	}
+}
+
+// A rescue that wins before the first lane says a word is a silent swap. There
+// is nothing on the page to withdraw and nobody watched the answer change, so
+// neither the replacement line nor a plain notice is owed.
+func TestARescueBeforeTheFirstWordIsASilentSwap(t *testing.T) {
+	rig := newLaneRig(t, "late/silent-swap",
+		lanestub.Lane{Name: "A", Profile: lanestub.Profile{TTFT: 300 * time.Millisecond, Rate: 2000, Tokens: 24}},
+		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
+	)
+	rig.believes("A", 20, 2000)
+
+	watched := &notices{}
+	report := &HedgeReport{}
+	ctx := WithHedgeReport(talking(), report)
+	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 12*time.Millisecond))
+	ctx = WithStreamObserver(ctx, watched.observe)
+
+	response, err := rig.client.CompleteWithMessages(ctx, userMessages("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Hedged() {
+		t.Fatal("the late first token was not rescued")
+	}
+	if winner, loser := report.Lanes(); winner != "B" || loser != "" {
+		t.Fatalf("winner %q, loser %q; want B to win before A says a word", winner, loser)
+	}
+	if tokens := answerTokens(response); tokens != 24 {
+		t.Fatalf("the answer is %d tokens, want B's whole answer of 24", tokens)
+	}
+	if replacements := watched.kinds(StreamReplaced); len(replacements) != 0 {
+		t.Fatalf("silent swap replacements = %+v, want none", replacements)
+	}
+	if notices := watched.kinds(StreamNotice); len(notices) != 0 {
+		t.Fatalf("silent swap notices = %+v, want none", notices)
+	}
+	waitFor(t, func() bool { return rig.server.Cancels("A") == 1 })
 }
 
 func TestAnAlmostFinishedAnswerIsNeverAbandoned(t *testing.T) {
