@@ -311,6 +311,34 @@ func TestHiddenEntriesAppearOnlyWhenTheyWereAskedFor(t *testing.T) {
 	}
 }
 
+// THE DEFECT THIS EXISTS FOR. The pane listed `vendor/` and `node_modules/`
+// while the middle column pruned them, so pressing one of those rows walked
+// into the directory and asked the columns to seat the cursor on a name they
+// do not hold — which landed on the first row instead, silently. A row the
+// columns will never hold is a row the pane must not offer.
+func TestThePaneOffersOnlyRowsTheColumnsWillHold(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "vendor/x.go", "package x\n")
+	writeFixture(t, dir, "node_modules/y/index.js", "1\n")
+	writeFixture(t, dir, "src/z.go", "package z\n")
+	writeFixture(t, dir, "vendor.txt", "not a folder\n")
+
+	var names []string
+	for _, entry := range readOne(t, dir, false).Entries {
+		names = append(names, entry.Name)
+	}
+	want := []string{"src", "vendor.txt"}
+	if strings.Join(names, ",") != strings.Join(want, ",") {
+		t.Fatalf("entries = %v, want %v", names, want)
+	}
+	// Asking for the hidden things asks for all of them, in the pane exactly as
+	// in the columns (folderfiles.go).
+	shown := loadPreview(context.Background(), previewRequest{Path: dir, Hidden: true})
+	if len(shown.Entries) != 4 {
+		t.Fatalf("hidden asked for: %d entries, want 4", len(shown.Entries))
+	}
+}
+
 func TestAFolderTooFullToListSaysHowManyAreNotShown(t *testing.T) {
 	dir := t.TempDir()
 	for at := 0; at < previewEntriesMax+7; at++ {
@@ -322,6 +350,13 @@ func TestAFolderTooFullToListSaysHowManyAreNotShown(t *testing.T) {
 	}
 	if pv.Shown != previewEntriesMax+7 {
 		t.Fatalf("shown = %d, want %d", pv.Shown, previewEntriesMax+7)
+	}
+}
+
+func TestAnEmptyFolderPreviewSaysItIsEmpty(t *testing.T) {
+	pv := readOne(t, t.TempDir(), false)
+	if pv.Kind != previewFolder || len(pv.Entries) != 0 || pv.Note != folderLeafWord {
+		t.Fatalf("empty folder preview = %+v, want the browser's empty-folder word", pv)
 	}
 }
 

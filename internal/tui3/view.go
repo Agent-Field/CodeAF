@@ -382,6 +382,30 @@ func (a *app) frameBody() (string, int, int) {
 			return strings.Join(lines, "\n"), caretX, caretY
 		}
 	}
+	// AND THE CONTEXT CHOOSER OVER THE WHOLE OF IT (contextmodal.go). It is the
+	// LAST of these because it is the only one that keeps what is underneath on
+	// the screen: the conversation is composed exactly as it would have been and
+	// then faded, so a person choosing a folder can still see the message they
+	// were writing — and cannot touch it. Everything above this line is a surface
+	// that REPLACES the conversation; this one covers it.
+	if a.contextModalShowing() {
+		under, _, _ := a.chatFrameLines(width, height)
+		lines, caretX, caretY := a.contextModalOver(under, width, height)
+		return strings.Join(lines, "\n"), caretX, caretY
+	}
+	lines, caretX, caretY := a.chatFrameLines(width, height)
+	return strings.Join(lines, "\n"), caretX, caretY
+}
+
+// chatFrameLines is the ordinary conversation frame — the transcript, its rail,
+// the chrome under it and the status line — as LINES rather than as one string.
+//
+// It was the tail of [app.frameBody] and is its own function for one caller: the
+// context chooser draws over a finished frame and has to be handed one
+// (contextmodal.go). Splitting a joined frame back apart would have been the
+// same rows measured twice, and a sheet composited onto a second measurement is
+// a sheet one row away from where the pointer thinks it is.
+func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 	// The body decides who owns activity before the footer is drawn. This
 	// uses the same cached rows that the frame places below; status painting
 	// never rebuilds a hidden transcript to infer ownership.
@@ -476,7 +500,7 @@ func (a *app) frameBody() (string, int, int) {
 		// them while the roster is up, which is right — the roster is over them.
 		liftedAt := len(rows)
 		rows = append(rows, lifted...)
-		return a.frameOut(rows, chrome, height, caretX, caretRow, lift, liftedAt)
+		return a.frameLines(rows, chrome, height, caretX, caretRow, lift, liftedAt)
 	}
 	rail := a.railRows(view)
 	railAt := func(i int) string {
@@ -563,7 +587,7 @@ func (a *app) frameBody() (string, int, int) {
 	for i := above; i < pad; i++ {
 		rows = append(rows, a.railJoin("", railAt(len(body)+i)))
 	}
-	return a.frameOut(rows, chrome, height, caretX, caretRow, lift, liftedAt)
+	return a.frameLines(rows, chrome, height, caretX, caretRow, lift, liftedAt)
 }
 
 // welcomeAbove is how much of the body's slack goes ABOVE the lifted greeting:
@@ -593,6 +617,16 @@ func welcomeAbove(lift, pad int) int {
 // in it is the arithmetic this replaced, and it put the terminal's cursor on the
 // status row for as long as the greeting was up.
 func (a *app) frameOut(rows, chrome []string, height, caretX, caretRow, lift, liftedAt int) (string, int, int) {
+	lines, caretX, caretY := a.frameLines(rows, chrome, height, caretX, caretRow, lift, liftedAt)
+	return strings.Join(lines, "\n"), caretX, caretY
+}
+
+// frameLines is [app.frameOut] with the rows still apart, for the one caller
+// that draws OVER a finished frame rather than beside it: the context chooser
+// composites its sheet onto these lines and needs them as lines
+// (contextmodal.go). Joining and re-splitting would be the same arithmetic done
+// twice, and the second copy is the one that would be wrong.
+func (a *app) frameLines(rows, chrome []string, height, caretX, caretRow, lift, liftedAt int) ([]string, int, int) {
 	rows = append(rows, chrome...)
 	// A frame taller than the terminal loses rows from the TOP: the chrome is
 	// the tail, and everything the caret's row is counted back through is in it.
@@ -611,7 +645,7 @@ func (a *app) frameOut(rows, chrome []string, height, caretX, caretRow, lift, li
 	if caretY >= height {
 		caretY = height - 1
 	}
-	return strings.Join(rows, "\n"), caretX, caretY
+	return rows, caretX, caretY
 }
 
 // chrome is everything below the conversation: the rows, what each row is for

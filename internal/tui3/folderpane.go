@@ -7,9 +7,9 @@ package tui3
 // list of what you are standing in, and a LARGE preview on the right — with the
 // sizes right-aligned, one unmistakable selection, and compact controls at the
 // foot. This file is the arithmetic of that, adapted to this surface's own
-// tokens: no borders, no rules between the columns, no colour behind anything,
-// and the columns told apart by the gaps and by the ink the way every other
-// block down here is.
+// tokens inside the framed context modal: quiet ancestry, readable names, a
+// column-wide selection band, compact type cues and aligned previews. Gaps
+// separate the columns without taking cells away from their names.
 //
 // THE PREVIEW TAKES THE THIRD COLUMN'S PLACE AND IT IS AN IMPROVEMENT ON IT
 // rather than an addition. The browse used to draw the CHILDREN of the row
@@ -153,6 +153,14 @@ func folderDivide(width int, pane folderPane) folderLayout {
 // preview instead.
 const folderHereWant = 56
 
+// paneWide reports whether the preview is DRAWN BESIDE THE LIST at this width.
+// It is the question the foot row asks before it decides whether to name the
+// preview's own door ([folderPick.controlLegend]), and it takes the legend's own
+// room rather than the sheet's — one cell of arithmetic in one place.
+func (f *folderPick) paneWide(room int) bool {
+	return folderDivide(room+folderPadCells, f.pane).pane > 0
+}
+
 // paneShown reports whether the preview has any cells on this frame, which is
 // what decides whether the sheet asks for a preview at all.
 func (f *folderPick) paneShown(width int) bool {
@@ -185,7 +193,7 @@ func (f *folderPick) paneBox(width, rows int) previewBox {
 // the box: how wide the pane is and how many rows it was given are answers about
 // the frame, and a key handler that had to be told the frame's size to move a
 // pane one row would be a second layout that could disagree with this one.
-func (f *folderPick) paneRows(pal palette, st *tokens.Styler, width, rows int) []string {
+func (f *folderPick) paneRows(pal palette, st *tokens.Styler, width, rows, hot int) []string {
 	box := f.paneBox(width, rows)
 	if box.Width < 1 || box.Height < 1 {
 		return nil
@@ -194,7 +202,78 @@ func (f *folderPick) paneRows(pal palette, st *tokens.Styler, width, rows int) [
 	body.Top = f.paneTop
 	f.paneTop = previewClampTop(f.preview, body)
 	box.Top = f.paneTop
-	return previewPad(f.canvas.rows(pal, st, f.preview, box), box)
+	out := previewPad(f.canvas.rows(pal, st, f.preview, box), box)
+	// THE MAP FROM A ROW TO THE ENTRY ON IT IS WRITTEN BY THE FUNCTION THAT DRAWS
+	// THE ROWS, which is the whole of why it is here rather than beside the press:
+	// the scroll offset and the height the foot left over are answers about THIS
+	// frame, and a press resolved against a second copy of that arithmetic is a
+	// press on the row above the one somebody aimed at.
+	//
+	// It is filled ONLY for a folder preview. A file's source and a picture are
+	// read-only over there and stay that way — the pane is not a fake list of
+	// things to click (steering-02 §5, and the brief this wave answers).
+	f.geom.paneDir, f.geom.paneFrom, f.geom.paneBody = "", 0, 0
+	if f.preview.Kind == previewFolder && len(f.preview.Entries) > 0 {
+		f.geom.paneDir = f.preview.Key.Path
+		f.geom.paneFrom = box.Top
+		f.geom.paneBody = min(body.Height, len(f.preview.Entries)-box.Top)
+	}
+	// AND ONLY AN ENTRY ROW LIGHTS. The foot under the listing states a fact and
+	// is not a target, so a band across it would be the sheet offering a press
+	// that does nothing (hover.go's law).
+	if hot < 0 || hot >= f.geom.paneBody || hot >= len(out) {
+		return out
+	}
+	// THE HOVERED ROW IS PAINTED HERE AND NOT IN THE PREVIEW'S OWN DRAW, because
+	// the draw goes through a one-entry memo keyed on what is VISIBLE and the
+	// pointer is not part of that key — painting inside it would either poison the
+	// cache or add the pointer to a key that changes on every mouse motion. The
+	// slice is copied for the same reason: the rows it holds belong to the memo.
+	lit := make([]string, len(out))
+	copy(lit, out)
+	lit[hot] = pal.cursor(lit[hot], 0)
+	return lit
+}
+
+// paneEntry is the RAW name of the folder-preview entry drawn on one body row
+// of the pane, and false where that row holds no entry — a file's source, a
+// picture, a refusal, the foot, or a row past the end of a short listing.
+//
+// IT ANSWERS THE RAW NAME AND NEVER THE DRAWN ONE. [previewEntry.Name] has been
+// through [drawableLine] on the way in, which is what makes it safe to paint and
+// exactly what makes it unsafe to navigate with: a file called `ok\e[2Jgone` is
+// a legal name on every filesystem this program runs on, and joining the
+// scrubbed label back onto a directory would open a path nobody has.
+func (f *folderPick) paneEntry(row int) (string, bool) {
+	entry, ok := f.paneEntryInfo(row)
+	return entry.Raw, ok
+}
+
+// paneEntryInfo keeps the filesystem identity and kind together for the press
+// that acts on a painted preview row. The label remains display-only.
+func (f *folderPick) paneEntryInfo(row int) (previewEntry, bool) {
+	if f.geom.paneDir == "" || row < 0 || row >= f.geom.paneBody {
+		return previewEntry{}, false
+	}
+	// AND THE PREVIEW BEING HELD NOW MUST BE THE ONE THAT WAS DRAWN. A preview
+	// arrives off the loop and the row map is written by the paint, so there is a
+	// frame in which a new folder's entries sit behind the last folder's
+	// geometry — and a press landing in it would join one directory's row number
+	// onto another directory's path. The identity is what tells them apart, and it
+	// is the same identity every cache on this path is keyed by
+	// (contextpreview.go's [previewKey]).
+	if f.preview.Kind != previewFolder || f.preview.Key.Path != f.geom.paneDir {
+		return previewEntry{}, false
+	}
+	at := f.geom.paneFrom + row
+	if at < 0 || at >= len(f.preview.Entries) {
+		return previewEntry{}, false
+	}
+	entry := f.preview.Entries[at]
+	if entry.Raw == "" {
+		return previewEntry{}, false
+	}
+	return entry, true
 }
 
 // paneStep moves the preview by whole rows. The ceiling belongs to the draw

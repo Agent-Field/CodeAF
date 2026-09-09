@@ -339,10 +339,11 @@ func TestAFolderRowNamesTheThingAndAlignsItsSize(t *testing.T) {
 	}}
 	rows := previewRows(pal, st, pv, previewBox{Width: 30, Height: 6})
 	dir, file := ansi.Strip(rows[0]), ansi.Strip(rows[1])
-	if dir != "src/" {
-		t.Fatalf("a folder row = %q, want a trailing slash and no size", dir)
+	// Each row leads with its type mark (foldertype.go), then the name.
+	if dir != folderGlyphDir+" src/" {
+		t.Fatalf("a folder row = %q, want a type mark, a trailing slash and no size", dir)
 	}
-	if !strings.HasPrefix(file, "main.go") || !strings.HasSuffix(file, "2.0 KB") {
+	if !strings.HasPrefix(file, folderGlyphSource+" main.go") || !strings.HasSuffix(file, "2.0 KB") {
 		t.Fatalf("a file row = %q", file)
 	}
 	if ansi.StringWidth(file) != 30 {
@@ -507,5 +508,60 @@ func TestTheKeptRowsAreGivenUpWhenAnythingThatDecidesThemMoves(t *testing.T) {
 	canvas.drop()
 	if canvas.kept != nil {
 		t.Error("drop kept the rows")
+	}
+}
+
+// ── the highlighter sees the FILE, not one row of it ────────────────────────
+
+// A BLOCK COMMENT IS ONE COMMENT ALL THE WAY DOWN.
+//
+// The preview used to hand chroma one line at a time, so the first line of a
+// `/* … */` opened a comment and every line under it was re-lexed from nothing —
+// which coloured the middle of somebody's comment as keywords and operators, a
+// claim about their source that is simply false. The whole file goes through the
+// lexer once now ([prose.HighlightBlock]).
+func TestAMultiLineCommentIsPaintedAsOneComment(t *testing.T) {
+	pal, st := drawPalette(), drawStyler()
+	pv := textPreview("C",
+		"int main(void) {",
+		"\t/* return is a keyword and this line",
+		"\t   says return and const and int",
+		"\t   and none of them are code */",
+		"\treturn 0;",
+		"}",
+	)
+	rows := previewRows(pal, st, pv, previewBox{Width: 60, Height: 6})
+	if len(rows) < 5 {
+		t.Fatalf("the preview drew %d rows", len(rows))
+	}
+	// The two lines INSIDE the comment carry one paint from end to end: whatever
+	// tier chroma gave the comment, and nothing that says `return` is a keyword.
+	for _, at := range []int{2, 3} {
+		if strings.Count(rows[at], "\x1b[") > 2 {
+			t.Fatalf("row %d of the comment is painted in pieces — the lexer was "+
+				"handed one line at a time:\n%q", at, rows[at])
+		}
+	}
+	// And the real `return`, outside the comment, is still lit.
+	if rows[4] == ansi.Strip(rows[4]) {
+		t.Fatalf("the keyword outside the comment lost its paint: %q", rows[4])
+	}
+}
+
+// AND THE PAINT SURVIVES A SIDEWAYS SLIDE, because the clip is escape-aware:
+// a cut that counted bytes would land inside a sequence and spill the rest of
+// the file's colour onto the screen.
+func TestAPaintedRowSurvivesTheSidewaysSlide(t *testing.T) {
+	pal, st := drawPalette(), drawStyler()
+	pv := textPreview("Go", "func main() { const n = 42 }")
+	rows := previewRows(pal, st, pv, previewBox{Width: 20, Height: 1, Left: 6})
+	if len(rows) != 1 {
+		t.Fatalf("the preview drew %d rows", len(rows))
+	}
+	if got := ansi.Strip(rows[0]); strings.HasPrefix(got, "func m") {
+		t.Fatalf("the slide moved nothing: %q", got)
+	}
+	if w := ansi.StringWidth(rows[0]); w > 20 {
+		t.Fatalf("the slid row is %d cells wide: %q", w, rows[0])
 	}
 }
