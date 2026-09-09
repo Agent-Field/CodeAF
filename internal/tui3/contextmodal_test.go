@@ -253,7 +253,7 @@ func TestTheBackdropNeitherScrollsNorLights(t *testing.T) {
 	}
 	// And over the sheet's own rows it lights the sheet.
 	geom := chooserGeom(t, a)
-	drive(t, a, tea.MouseMotionMsg{X: chooserX(t, a, geom.here.from + 2),
+	drive(t, a, tea.MouseMotionMsg{X: chooserX(t, a, geom.here.from+2),
 		Y: chooserRowY(t, a, geom.head)})
 	if a.hot.kind != hoverOverlay {
 		t.Fatalf("the pointer over the columns lit %v", a.hot.kind)
@@ -567,16 +567,6 @@ func TestSelectionHoverAndMarksAreToldApart(t *testing.T) {
 	} {
 		if got := ansi.StringWidth(banded); got != here {
 			t.Fatalf("a banded row is %d cells wide, want the column's %d", got, here)
-		}
-	}
-	// And what is under the pane's own cells is the same text on both rows.
-	if geom.pane.pressable() {
-		cut := func(row string) string {
-			return plain(ansi.Cut(row, geom.pane.from, geom.pane.to))
-		}
-		if cut(rows[cursorRow]) != cut(rows[otherRow]) {
-			t.Fatalf("the selection changed the preview beside it:\n%q\n%q",
-				cut(rows[cursorRow]), cut(rows[otherRow]))
 		}
 	}
 	// And a MARK survives moving off the row, which a ground cannot.

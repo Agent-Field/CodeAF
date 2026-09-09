@@ -276,9 +276,13 @@ func previewPainted(pal palette, st *tokens.Styler, pv filePreview) []string {
 	// The FIRST LINE is in the key as well as the identity, because two previews
 	// can share a path, a size and a line count in a test fixture and must not
 	// share a paint.
+	safe := make([]string, len(pv.Lines))
+	for at, line := range pv.Lines {
+		safe[at] = drawableLine(line)
+	}
 	first := ""
-	if len(pv.Lines) > 0 {
-		first = pv.Lines[0]
+	if len(safe) > 0 {
+		first = safe[0]
 	}
 	key := fmt.Sprintf("%p|%d|%v|%s|%s|%d|%d|%d|%s",
 		st, pal.profile, pal.ascii, pv.Lang, pv.Key.Path,
@@ -289,7 +293,7 @@ func previewPainted(pal palette, st *tokens.Styler, pv filePreview) []string {
 		return previewInk.kept
 	}
 	previewInk.key = key
-	previewInk.kept = prose.HighlightBlock(st, strings.Join(pv.Lines, "\n"), pv.Lang, codeTier)
+	previewInk.kept = prose.HighlightBlock(st, strings.Join(safe, "\n"), pv.Lang, codeTier)
 	return previewInk.kept
 }
 

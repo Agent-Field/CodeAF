@@ -192,7 +192,7 @@ func TestTheBreadcrumbSaysWhereYouAreAndClicksBackToIt(t *testing.T) {
 	if back.name != "here" {
 		t.Fatalf("the segment before deep is %q", back.name)
 	}
-	drive(t, a, tea.MouseClickMsg{X: back.span.from, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: chooserX(t, a, back.span.from), Y: y, Button: tea.MouseLeft})
 	if a.folder.cols.dir != filepath.Join(root, "here") {
 		t.Fatalf("the breadcrumb landed on %s", a.folder.cols.dir)
 	}
@@ -223,18 +223,16 @@ func TestASearchResultOpensForBrowsingWithoutBeingRetyped(t *testing.T) {
 	if !a.folder.browsing || a.folder.cols.dir != filepath.Join(root, "sibling") {
 		t.Fatalf("→ left the browser on %q (browsing=%v)", a.folder.cols.dir, a.folder.browsing)
 	}
-	// THE BOX HOLDS A PATH THAT RESOLVES, whole, with only `~` abbreviated —
-	// anything else and the next keystroke would look up a directory that is not
-	// there ([folderPick.writeBack]).
-	if want := tildePath(filepath.Join(root, "sibling"), a.tilde) + "/"; a.folder.filter.String() != want {
-		t.Fatalf("the box says %q, want %q — a path nobody had to type", a.folder.filter.String(), want)
-	}
-	if a.resolvePath(strings.TrimSuffix(a.folder.filter.String(), "/")) != filepath.Join(root, "sibling") {
-		t.Fatalf("what the box holds does not resolve back: %q", a.folder.filter.String())
+	// THE BOX IS SEARCH, while the breadcrumb and title carry the location. A
+	// path copied into the box here made the next typed word continue a path the
+	// person never typed instead of beginning a new search.
+	if got := a.folder.filter.String(); got != "" {
+		t.Fatalf("opening the result left %q in the search box", got)
 	}
 
 	// And a click on a list row does the same thing.
 	settleFolder(t, a, a.openFolderPick(""))
+	typeFolder(t, a, "sibl")
 	y := chooserRowY(t, a, 0)
 	if y < 0 {
 		t.Fatal("the list drew no rows")
