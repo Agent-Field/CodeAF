@@ -509,15 +509,6 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// where it is known.
 	refusal := c.refusalObject(request, knobs, apiError(status, peek))
 	c.strikeRefusal(model, refusal)
-	carriedCeiling := c.carriedCeiling(model, knobs, request)
-	// THE MEMO IS WRITTEN AT THE REFUSAL, BEFORE ITS RECOVERIES PART.
-	// A funded walk may keep this arm out of the ladder, but its very next arm is
-	// still a request to the same model and must not repeat the ceiling the router
-	// has already refused. The router's STRUCTURED refusal is the evidence; its
-	// sentence is never a gate on this behaviour.
-	if c.velocity != nil && carriedCeiling {
-		c.velocity.refuseCeiling(model)
-	}
 	// AND THE SAME MEMO IS TAKEN FOR THE IGNORE LIST, from the only authority on
 	// how many machines serve a model. This process holds the lanes it has timed
 	// and no denominator, so it cannot tell a veto that narrowed a set of five
@@ -575,7 +566,7 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 			Body:       rewound(peek, io.NopCloser(strings.NewReader(""))),
 		}, nil
 	}
-	return c.recoverFromRefusal(ctx, request, knobs, stream, peek, carriedCeiling)
+	return c.recoverFromRefusal(ctx, request, knobs, stream, peek)
 }
 
 // sendRepaired encodes the request and sends it, recovering once from the 400s

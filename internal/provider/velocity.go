@@ -353,12 +353,10 @@ func (c *Client) providerPreferences(model string, knobs callKnobs, request *ai.
 		// on top of it could only ever take endpoints away without changing which
 		// one is chosen.
 		//
-		// AND IT IS NOT SENT TWICE TO A MODEL THAT REFUSED IT. The ladder
-		// (endpoints.go) drops the ceiling on its first rung and the call lands,
-		// but a ladder is a recovery, not a routing policy: without the ledger's
-		// memo every call to that model would pay a 404 round trip before doing
-		// any work. The first refusal teaches the process and the second call
-		// is shaped right from the start.
+		// AND IT IS NOT SENT AGAIN ONCE THE PRICE RUNG IS REACHED. The ladder
+		// (endpoints.go) first widens endpoint membership under this same ceiling;
+		// only another refusal drops it and teaches the process. A later call is
+		// then shaped right from the start instead of paying those refusals again.
 		prefs.MaxPrice = c.priceCeiling(model)
 	}
 	if c.velocity != nil {
@@ -419,26 +417,32 @@ func (c *Client) wirePreferences(model string, knobs callKnobs, request *ai.Requ
 	if knobs.relaxed.has(relaxEndpointFilter) {
 		prefs = relaxedPreferences(prefs)
 	}
+	if knobs.relaxed.has(relaxPriceCeiling) && prefs != nil {
+		uncapped := *prefs
+		uncapped.MaxPrice = nil
+		prefs = &uncapped
+	}
 	// AND THE LAW READS WHAT IS ACTUALLY GOING OUT, after every hand that
 	// narrows the set has had its say ([velocityLedger.keepTheSetServable]).
 	c.velocity.keepTheSetServable(model, prefs)
 	return prefs
 }
 
-// narrowing reports whether this preference object carries anything that can
-// leave the router with NO endpoint to send to.
+// membershipNarrowing reports whether this preference object carries a
+// membership restriction the first ladder rung can remove. max_price is
+// deliberately separate: a wider set is tried under the same ceiling before
+// aforge authorizes a dearer endpoint.
 //
 // It is the whole membership rule of the ladder's first rung, written once, so
 // that the rung is offered exactly when it would do something
 // ([Client.relaxationPlan]) and takes off exactly what it was offered for
 // ([relaxedPreferences]). Two lists that had to agree were two lists that
 // disagreed for a whole run: `only` could empty the set and was on neither.
-func (p *providerPrefs) narrowing() bool {
+func (p *providerPrefs) membershipNarrowing() bool {
 	if p == nil {
 		return false
 	}
-	return p.RequireParameters != nil || len(p.Ignore) > 0 || p.MaxPrice != nil ||
-		len(p.Only) > 0 || p.AllowFallbacks != nil
+	return p.RequireParameters != nil || len(p.Ignore) > 0 || len(p.Only) > 0 || p.AllowFallbacks != nil
 }
 
 // keepTheSetServable is the one place AN IGNORE LIST NEVER EMPTIES THE SET THE
@@ -593,8 +597,8 @@ func (p *providerPrefs) dropEmptyIgnore() {
 	}
 }
 
-// relaxedPreferences is the preference object with everything that can EXCLUDE
-// an endpoint taken out of it, leaving only what orders the ones that remain.
+// relaxedPreferences is the preference object with every membership
+// restriction taken out of it, leaving the ranking and price ceiling intact.
 //
 // It is the first rung of the endpoint-refusal ladder (endpoints.go), and it is
 // the one rung that costs the answer nothing: the model is asked the identical
@@ -607,13 +611,7 @@ func relaxedPreferences(prefs *providerPrefs) *providerPrefs {
 	relaxed := *prefs
 	relaxed.RequireParameters = nil
 	relaxed.Ignore = nil
-	// The price ceiling is the third thing that can empty the endpoint set: a
-	// model whose every endpoint charges above its own list price has no lane
-	// left once the ceiling is applied, and "no endpoints found" is a worse
-	// answer than a dear one. It comes off with the rest of the filter, and the
-	// sort still asks for the fastest of whatever remains.
-	relaxed.MaxPrice = nil
-	// AND THE DEMAND COMES OFF WITH THEM, which is the fourth and was the one
+	// AND THE DEMAND COMES OFF WITH THEM, which was the field
 	// that mattered. `only` names the machines this request may go to and
 	// `allow_fallbacks: false` forbids any other — together they are the
 	// narrowest filter this process ever sends, and the refusal they earn is
@@ -629,7 +627,7 @@ func relaxedPreferences(prefs *providerPrefs) *providerPrefs {
 	// between a wider request and no answer at all.
 	relaxed.Only = nil
 	relaxed.AllowFallbacks = nil
-	if relaxed.Sort == "" && len(relaxed.Order) == 0 {
+	if relaxed.Sort == "" && len(relaxed.Order) == 0 && relaxed.MaxPrice == nil {
 		return nil
 	}
 	return &relaxed

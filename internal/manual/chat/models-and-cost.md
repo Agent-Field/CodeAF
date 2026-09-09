@@ -2201,7 +2201,7 @@ One model id is served by many endpoints, and they differ in two ways at once: h
 
 So, with the **routing** row on the Providers tab left alone, aforge asks for two different things depending on who is waiting. **Your own turns** ask for the fastest endpoint, capped at **a quarter over the model's published list price**: an endpoint 25% dearer buys a head start you can feel, and one four times dearer buys nothing you would notice on a five-minute task. **Work you are not waiting on** — task workers, a divided part, the check on a piece of work, the model that names a task or a conversation, the memory pass — asks for the cheapest endpoint instead, because speed is worth nothing to a call nobody is watching.
 
-Where a model publishes no price, no cap is sent at all rather than one guessed from something else. If no endpoint can serve a request under the cap, aforge lifts the cap rather than failing the turn, and says so on the attempt line.
+Where a model publishes no price, no cap is sent at all rather than one guessed from something else. If the router refuses a request, aforge first widens the endpoint set while keeping the cap. Only if that wider request is refused too does aforge lift the cap rather than fail the turn. Each change has its own attempt line.
 
 **One thing about background work is not quite "speed is worth nothing".** Work you are not watching still asks the router for the cheapest endpoint — that part is unchanged — but among the machines behind that model, aforge will pay a little for a quicker one **while your window is open**, because you are there to read what the work lands. With no window open on this machine it will not: the cheapest machine wins outright, however slowly it writes. Nothing about this is a setting; it follows whether you are here.
 
@@ -2218,11 +2218,12 @@ then excluded that endpoint under your OpenRouter account's privacy setting beca
 provider may train on prompts. It does not mean the model disappeared or that your prompt
 was rejected.
 
-aforge drops the cap and asks the same model again on the same turn. The attempt line says
-`dropped the price ceiling and relaxed the endpoint filter`. A rescue request or a request
-pinned to one lane never carries the cap, because that lane has already passed aforge's
-price choice. Once a capped request to this model is refused, the cap stays off that model
-for the rest of this session, including the next rescue.
+aforge first relaxes the endpoint filter and asks again under the same cap. If the router
+still refuses that wider request, aforge drops the cap and asks the same model a third time.
+The attempt lines say `relaxed the endpoint filter` and then `dropped the price ceiling`.
+A rescue request or a request pinned to one lane never carries the cap, because that lane
+has already passed aforge's price choice. Once the price rung is reached, the cap stays off
+that model for the rest of this session, including the next rescue.
 
 You can change the account policy at `https://openrouter.ai/settings/privacy`, choose
 another model, or pin a lane that serves this model. Pinning chooses the provider for this
