@@ -198,6 +198,62 @@ func TestATakeBackThatFailedIsSaidAndNotSwallowed(t *testing.T) {
 
 // ── the turns this window did not start ─────────────────────────────────────
 
+// A REPLY THAT STARTS ON ITS OWN STILL REACHES THE SCREEN AFTER THE PERSON HAS
+// TYPED ONCE. The standing wait is armed when the window opens, before that
+// ordinary turn moves the turn generation, and must remain a window onto the
+// conversation rather than becoming deaf from then on.
+func TestASelfStartedTurnAfterATypedTurnReachesTheScreen(t *testing.T) {
+	a, _ := watched(t, Driving{Yours: true})
+	turns := make(chan Following, 1)
+	a.link.Follow = func() <-chan Following { return turns }
+	standing := a.watchFollowing()
+
+	typed := make(chan session.Event)
+	close(typed)
+	drive(t, a, runCmd(a.takeStream(typed))...)
+
+	events := make(chan session.Event, 2)
+	events <- session.Event{Kind: session.EventTextDelta, Text: "THE-FIRST-WAKE-ARRIVED"}
+	events <- session.Event{Kind: session.EventTurnDone}
+	close(events)
+	turns <- Following{Events: events}
+	drive(t, a, runCmd(standing)...)
+
+	if got := plain(frame(a)); !strings.Contains(got, "THE-FIRST-WAKE-ARRIVED") {
+		t.Fatalf("the first reply after a typed turn never reached the screen:\n%s", got)
+	}
+}
+
+// AND THE NEXT TWO REPLIES THAT START ON THEIR OWN REACH THE SCREEN TOO. Each
+// arrival must arm the connection lane again, or the first answer works and the
+// window silently loses every one after it.
+func TestEverySelfStartedTurnAfterATypedTurnReachesTheScreen(t *testing.T) {
+	a, _ := watched(t, Driving{Yours: true})
+	turns := make(chan Following, 2)
+	a.link.Follow = func() <-chan Following { return turns }
+	standing := a.watchFollowing()
+
+	typed := make(chan session.Event)
+	close(typed)
+	drive(t, a, runCmd(a.takeStream(typed))...)
+
+	for _, words := range []string{"THE-SECOND-WAKE-ARRIVED", "THE-THIRD-WAKE-ARRIVED"} {
+		events := make(chan session.Event, 2)
+		events <- session.Event{Kind: session.EventTextDelta, Text: words}
+		events <- session.Event{Kind: session.EventTurnDone}
+		close(events)
+		turns <- Following{Events: events}
+	}
+	drive(t, a, runCmd(standing)...)
+
+	got := plain(frame(a))
+	for _, want := range []string{"THE-SECOND-WAKE-ARRIVED", "THE-THIRD-WAKE-ARRIVED"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("the repeated replies lost %q:\n%s", want, got)
+		}
+	}
+}
+
 // A WINDOW THAT IS NOT TYPING IS STILL A WINDOW ONTO THE WORK. Driven over a
 // real connection, a watcher sat on a still frame while the other machine's turn
 // ran to completion — attached, and showing nothing. The turn is drawn here by
@@ -304,5 +360,73 @@ func TestAHostedTurnWaitsForThePreviousStreamTail(t *testing.T) {
 	drive(t, a, streamClosedMsg{gen: a.gen})
 	if got := plain(frame(a)); !strings.Contains(got, "the later answer") || !strings.Contains(got, "another question") {
 		t.Fatalf("queued hosted turn was not drawn:\n%s", got)
+	}
+}
+
+// A REPLY FROM THE CONVERSATION THIS WINDOW WALKED AWAY FROM STAYS OFF THE
+// SCREEN. It must neither queue behind the new conversation nor arm another
+// wait on the old connection.
+func TestASelfStartedTurnFromTheConversationLeftBehindIsDiscarded(t *testing.T) {
+	a, _ := watched(t, Driving{Yours: true})
+	turns := make(chan Following)
+	a.link.Follow = func() <-chan Following { return turns }
+	old := a.linkGen
+	if a.watchFollowing() == nil {
+		t.Fatal("the conversation's follow lane was not armed")
+	}
+	_ = a.detachConversation()
+
+	events := make(chan session.Event, 1)
+	events <- session.Event{Kind: session.EventTextDelta, Text: "FROM-THE-CONVERSATION-LEFT-BEHIND"}
+	if cmd := a.followTurn(followingMsg{turn: Following{Events: events}, gen: old}); cmd != nil {
+		t.Fatal("a stale turn armed work on the conversation now in front")
+	}
+	if len(a.follows) != 0 || a.stream != nil {
+		t.Fatalf("the stale turn survived: follows=%d stream=%v", len(a.follows), a.stream != nil)
+	}
+	if got := plain(frame(a)); strings.Contains(got, "FROM-THE-CONVERSATION-LEFT-BEHIND") {
+		t.Fatalf("the stale turn was drawn under the wrong conversation:\n%s", got)
+	}
+}
+
+// A KEYBOARD HAND-OVER ON ANOTHER MACHINE STILL REDRAWS THIS WINDOW AFTER THE
+// PERSON HAS TYPED ONCE. The connection wait re-arms for the next hand-over,
+// while one parked on a connection already left behind does neither.
+func TestAKeyboardHandOverSurvivesATypedTurnAndRejectsAStaleConnection(t *testing.T) {
+	a, _ := watched(t, Driving{Machine: "spark"})
+	changed := make(chan struct{})
+	arms := 0
+	a.link.DrivingChanged = func() <-chan struct{} {
+		arms++
+		return changed
+	}
+	standing := a.watchDriving()
+	old := a.linkGen
+
+	typed := make(chan session.Event)
+	close(typed)
+	drive(t, a, runCmd(a.takeStream(typed))...)
+	close(changed)
+	msgs := runCmd(standing)
+	if len(msgs) != 1 {
+		t.Fatalf("the keyboard lane answered with %d messages", len(msgs))
+	}
+	a.painting = false
+	cmd := a.drivingMoved(msgs[0].(drivingMsg))
+	if cmd == nil || !a.painting {
+		t.Fatalf("the hand-over did not redraw and re-arm: cmd=%v painting=%v arms=%d", cmd != nil, a.painting, arms)
+	}
+	_ = runCmd(cmd)
+	if arms != 2 {
+		t.Fatalf("the hand-over armed the keyboard lane %d times", arms)
+	}
+
+	_ = a.detachConversation()
+	a.painting = false
+	if cmd := a.drivingMoved(drivingMsg{gen: old, lane: true}); cmd != nil {
+		t.Fatal("a hand-over from a stale connection redrew or re-armed")
+	}
+	if a.painting || arms != 2 {
+		t.Fatalf("the stale hand-over survived: painting=%v arms=%d", a.painting, arms)
 	}
 }
