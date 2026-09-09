@@ -147,7 +147,7 @@ func TestAGroundedTaskLandsWithoutMergingItsInheritance(t *testing.T) {
 		t.Fatalf("prepareTaskTree: %v", err)
 	}
 	writeFile(t, filepath.Join(tree.dir, "done.txt"), "what the node made\n")
-	merge, detail, _ := tree.comeHome("land the work", []string{"done.txt"})
+	merge, detail, _, _ := tree.comeHome("land the work", []string{"done.txt"})
 	if merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
 	}
@@ -319,7 +319,7 @@ func TestAUniverseGroundedRepositoryLandsOnItsTaskBranch(t *testing.T) {
 		t.Fatalf("rung = %q, want %q", tree.rung, GroundRungUniverse)
 	}
 	writeFile(t, filepath.Join(tree.dir, "done.txt"), "what the node made\n")
-	merge, detail, _ := tree.comeHome("land the work", []string{"done.txt"})
+	merge, detail, _, _ := tree.comeHome("land the work", []string{"done.txt"})
 	if merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
 	}
@@ -481,7 +481,7 @@ func TestARealFurrowGroundsARepositoryTaskAndItComesHome(t *testing.T) {
 		t.Fatalf("the child's tree is not clean:\n%s", status)
 	}
 	writeFile(t, filepath.Join(tree.dir, "done.txt"), "what the node made\n")
-	if merge, detail, _ := tree.comeHome("the real thing", []string{"done.txt"}); merge != mergeMerged {
+	if merge, detail, _, _ := tree.comeHome("the real thing", []string{"done.txt"}); merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
 	}
 	if got := readFile(t, filepath.Join(repo, "done.txt")); !strings.Contains(got, "what the node made") {

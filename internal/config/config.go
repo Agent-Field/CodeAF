@@ -60,41 +60,34 @@ const (
 	// OCR ladder. The other accepted values pin one rung and never fall through.
 	DefaultDocumentEngine = "auto"
 
-	// DefaultMaxTokens has to cover reasoning tokens, not just the visible
-	// answer. This model routinely spends more of its budget thinking than
-	// writing, and a cap that only fits the answer produces an empty reply
-	// rather than a short one. 16k was still not enough once the executor ran
-	// with reasoning restored: a hard turn thinks past it, gets truncated, and
-	// returns an empty message with no tool calls. The cap is a ceiling, not a
-	// spend — room costs nothing on the turns that do not use it. Load takes
-	// the live value from ctxbudget.CompletionReserve (AFORGE_COMPLETION_RESERVE,
-	// default 65536); this constant remains the floor no configuration may
-	// sink below.
-	DefaultMaxTokens = 32768
-
 	// DefaultTimeout is generous because a reasoning pass can run for minutes on
 	// a wide task even when the answer is short.
 	DefaultTimeout = 300 * time.Second
 
-	// DefaultReasoning is off — for planning calls only. Planning is structuring
-	// work, not thinking work: with reasoning on, an outline that is 150 tokens
-	// of answer costs 2,400 tokens of deliberation and twenty seconds of wall
-	// clock, for an outline of the same shape. Set AFORGE_REASONING=low|medium|
-	// high to buy it back for a plan that genuinely needs it.
-	DefaultReasoning = provider.EffortOff
+	// DefaultReasoning IS ABSENCE, and so is [DefaultExecReasoning]. Nothing
+	// about how hard a model thinks travels on a request this harness was not
+	// told to shape: [provider.EffortNone] sends no `reasoning` object at all
+	// and the model answers at its own published default.
+	//
+	// It used to be [provider.EffortOff], which is not silence but a REQUEST —
+	// `{"reasoning":{"enabled":false}}` — chosen here on a latency argument
+	// about planning and on an executor ablation about convergence. Both were
+	// measurements of two models on two task shapes, and neither is a fact
+	// about the model an operator points this binary at today: the same field
+	// is a 400 on an endpoint that cannot switch thinking off, and a silent
+	// downgrade on one that can. A harness that has not been asked for a level
+	// asks for none.
+	//
+	// AFORGE_REASONING and AFORGE_EXEC_REASONING are unchanged and still take
+	// off|low|medium|high — including `off`, which is how somebody who wants
+	// the thinking pass actually suppressed says so and gets exactly the
+	// request this default used to make on their behalf.
+	DefaultReasoning = provider.EffortNone
 
-	// DefaultExecReasoning is off, and unlike the planning default this one was
-	// settled by a controlled experiment rather than a latency argument. The
-	// same real coding task, same model, same limits: reflex mode finished in
-	// 6 minutes with the suite green both with and without a contract, while
-	// reasoning mode was 3x slower, 4x dearer, and finished worse or not at
-	// all. An earlier run had blamed reasoning-off for a 139-turn zero-file
-	// disaster; the ablation proved the harness was at fault — memory decay
-	// was erasing the agent's only state, and once observations survive, the
-	// loop does not need a thinking pass to converge. Set
-	// AFORGE_EXEC_REASONING=low|medium|high to buy deliberation back for a
-	// task class that turns out to need it.
-	DefaultExecReasoning = provider.EffortOff
+	// DefaultExecReasoning is absence for the reason above: planning and
+	// execution are different calls, and neither of them is a call this harness
+	// has an opinion about the depth of.
+	DefaultExecReasoning = provider.EffortNone
 
 	// DefaultSpineSamples draws the spine more than once. It is the only call
 	// whose framing every later pass inherits, so an unlucky draw does not
@@ -208,6 +201,21 @@ const (
 )
 
 // Config is the resolved runtime configuration.
+//
+// IT CARRIES NO GENERATION KNOB IT WAS NOT GIVEN. There is no output cap here
+// and no sampling field: a request this config builds names the model, the
+// messages and what the call needs to work, and every generation parameter the
+// operator did not ask for is ABSENT from the body, so the provider's own
+// default answers. The one field that looks like an exception is not one —
+// [Config.Reasoning] and [Config.ExecReasoning] default to
+// [provider.EffortNone], which sends nothing, and carry a level only when
+// AFORGE_REASONING or AFORGE_EXEC_REASONING said so.
+//
+// AN OPERATOR OR EMBEDDER MAY STILL SIZE A CALL, with ai.WithMaxTokens on that
+// one request — the seam is open and the adapter honours it (internal/provider).
+// What is gone is this file deciding a ceiling for every call in the process,
+// and, with it, every errand in this tree that used to reach for that option on
+// the harness's behalf.
 type Config struct {
 	APIKey  string
 	BaseURL string
@@ -226,7 +234,6 @@ type Config struct {
 	VideoModel        string
 	VisionModel       string
 	DocumentEngine    string
-	MaxTokens         int
 	Timeout           time.Duration
 	Reasoning         provider.Effort
 	ExecReasoning     provider.Effort
@@ -347,7 +354,6 @@ func load(requireKey bool) (Config, error) {
 		BaseURL:           firstNonEmpty(os.Getenv("AFORGE_BASE_URL"), DefaultBaseURL),
 		Model:             firstNonEmpty(os.Getenv(ModelEnv), DefaultModel),
 		PlanModel:         strings.TrimSpace(os.Getenv(PlanModelEnv)),
-		MaxTokens:         DefaultMaxTokens,
 		Timeout:           DefaultTimeout,
 		Reasoning:         DefaultReasoning,
 		ExecReasoning:     DefaultExecReasoning,
@@ -405,11 +411,13 @@ func load(requireKey bool) (Config, error) {
 	config.VoiceModel = firstNonEmpty(MediaSlotModelAt(config.ProfileDir, "voice"), DefaultVoiceModel)
 	config.Attribution = AttributionAt(config.ProfileDir)
 	// The context law's knobs, handed to the one package that spends them.
-	// The reserve also floors the wire ceiling: a reasoning pass that thinks
-	// past a small MaxTokens returns an empty reply, so the ceiling is never
-	// allowed below the room the law promised.
+	//
+	// THE RESERVE IS ROOM IN THE CONTEXT WINDOW AND NEVER A FIELD ON THE WIRE.
+	// It used to also floor an output cap this file put on every request; the
+	// cap is gone (nothing here sends max_tokens — see the Config type), and
+	// the reserve goes on doing the one job it was written for: keeping the
+	// prompt small enough that the answer and its reasoning still fit.
 	ctxbudget.Configure(contextLaw(config.ProfileDir))
-	config.MaxTokens = max(config.MaxTokens, ctxbudget.CompletionReserve())
 	if config.PracticeIdle, err = PracticeIdleAt(config.ProfileDir); err != nil {
 		return Config{}, err
 	}
@@ -792,9 +800,8 @@ func (c Config) VisionClient() (*provider.Client, error) {
 // second router substitution would make both capability and cost opaque.
 func (c Config) DocumentClient() (*provider.Client, error) {
 	configured := c.providerConfig(c.Model)
-	// The document path builds its own raw body with no reasoning object and
-	// sizes its ceiling for that exact shape. Clear a seat pin here so the raw
-	// request, its ceiling and the model-call row continue to describe the same
+	// The document path builds its own raw body with no reasoning object. Clear
+	// a seat pin here so the raw request and model-call row describe the same
 	// call; document extraction has no effort-pin request path of its own.
 	configured.Effort = provider.EffortNone
 	return provider.NewClient(configured)
@@ -817,12 +824,11 @@ func (c Config) providerConfig(model string) provider.Config {
 	model, level := roles.SplitEffort(model)
 	effort, _ := provider.ParseEffort(level)
 	return provider.Config{
-		APIKey:    c.APIKey,
-		BaseURL:   c.BaseURL,
-		Model:     model,
-		Effort:    effort,
-		MaxTokens: c.MaxTokens,
-		Timeout:   c.Timeout,
+		APIKey:  c.APIKey,
+		BaseURL: c.BaseURL,
+		Model:   model,
+		Effort:  effort,
+		Timeout: c.Timeout,
 		// The published answer to "does this model take this field", from rows
 		// already in memory. A nil catalog and a catalog still warming both say
 		// "unknown", which the adapter treats as "send nothing on your own

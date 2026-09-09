@@ -4803,7 +4803,7 @@ func quorumVerify(ctx context.Context, settings config.Config, clients *messageC
 			said := verdict{accept: false, reason: "REJECT: the check did not finish"}
 			defer func() { ch <- said }()
 			vctx := pool.WithSpendNode(errandContext(ctx, settings, "quorum", lane.RoleJudge), nodeID)
-			resp, err := client.CompleteWithMessages(vctx, messages, ai.WithMaxTokens(200))
+			resp, err := client.CompleteWithMessages(vctx, messages)
 			if err != nil || resp == nil || len(resp.Choices) == 0 || len(resp.Choices[0].Message.Content) == 0 {
 				said = verdict{true, ""} // fail-open
 				return
@@ -5970,7 +5970,7 @@ func reflectAcrossJobs(settings config.Config, client *liveClient, graph *store.
 		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "reflect", lane.RoleAuxiliary), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: reflectorSystemPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
-		}, ai.WithMaxTokens(500))
+		})
 		if err != nil || response == nil {
 			return nil, err
 		}
@@ -5998,7 +5998,7 @@ func digestTerritory(settings config.Config, client *liveClient) resident.Territ
 		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "reflect", lane.RoleAuxiliary), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: territoryDigestSystemPrompt + voice}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
-		}, ai.WithMaxTokens(300))
+		})
 		if err != nil || response == nil {
 			return "", err
 		}
@@ -6025,16 +6025,17 @@ func checkSentinel(settings config.Config, client *liveClient) resident.Sentinel
 			}
 		}
 		system := sentinelSystemPrompt + prompt.Voice
-		// Sixty tokens is a yes, a no, and a line of reason — and nothing at all
-		// on a model that reasons first, because the thinking is spent out of
-		// this same budget before the verdict is written. That reads here as
-		// "sentinel returned no clear yes" on every wake forever. A cap is a cap
-		// and not a purchase, so the number has to hold what the reply can
-		// legitimately need; head/scribe.go carries the full accounting.
+		// NO CEILING TRAVELS. This call used to carry one — sixty tokens, then a
+		// thousand and twenty-four once a model that reasons first spent the
+		// whole sixty thinking and left "sentinel returned no clear yes" on every
+		// wake forever. Both figures were the same mistake in different sizes:
+		// guessing how much room somebody else's model needs to say yes. The
+		// prompt asks for a verdict and a line of reason, and the model's own
+		// default is what bounds it.
 		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "sentinel", lane.RoleJudge), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: system}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
-		}, ai.WithMaxTokens(1024))
+		})
 		if err != nil {
 			return resident.SentinelVerdict{}, err
 		}
@@ -6069,16 +6070,16 @@ Judge a good name by one test: someone who asked for this work yesterday must re
 // root node per job that would otherwise show a paragraph.
 func titleGoal(settings config.Config, client *liveClient) resident.TitleFunc {
 	return func(ctx context.Context, goal string) (string, error) {
-		// A CAP IS NOT A PURCHASE, and 30 was arithmetic on the answer: five
-		// words are ten tokens, so thirty looked generous. On a model that
-		// reasons before it speaks the thinking is spent out of this same budget
-		// first and the call returns nothing at all — the same failure that left
-		// every room in the rail untitled (head/scribe.go, where the mechanism
-		// and its one escalation are written out).
+		// NO CEILING TRAVELS, and the history of this line is why. It was 30 —
+		// arithmetic on the answer, five words being ten tokens — and on a model
+		// that reasons before it speaks the thinking took all thirty and the call
+		// returned nothing, which is what left every room in the rail untitled.
+		// The fix was a bigger guess; the fix now is no guess. The prompt says
+		// "ONLY a name of 3 to 5 words" and that is the whole of the ask.
 		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "title", lane.RoleAuxiliary), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: titleGoalPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: firstLine(goal)}}},
-		}, ai.WithMaxTokens(512))
+		})
 		if err != nil || response == nil {
 			return "", err
 		}
@@ -6112,12 +6113,15 @@ func distillFacts(settings config.Config, client *liveClient, graph *store.Store
 			input += "\n\n" + refused
 		}
 		// The same call may now carry a whole workflow file, which is worth
-		// several times what five one-line memories are: the ceiling is what
-		// keeps a craft from being truncated into an invalid file.
+		// several times what five one-line memories are — and the old ceiling
+		// here was sized by hand for exactly that. It is gone with the rest of
+		// them: a craft truncated into an invalid file is what the parser and its
+		// one repair round below are for, and neither of them needs this file to
+		// have guessed a number first.
 		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "distill", lane.RoleAuxiliary), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: distillerSystemPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
-		}, ai.WithMaxTokens(1500))
+		})
 		if err != nil || response == nil {
 			return nil, err
 		}
@@ -6166,7 +6170,7 @@ func repairCraft(settings config.Config, client *liveClient) resident.CraftRepai
 		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "craft-repair", lane.RoleDesign), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: craftRepairSystemPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
-		}, ai.WithMaxTokens(1500))
+		})
 		if err != nil || response == nil {
 			if err == nil {
 				err = fmt.Errorf("craft repair returned no response")
@@ -6218,7 +6222,7 @@ func fillCraftParams(settings config.Config, client *liveClient) resident.CraftP
 		}
 		input := fmt.Sprintf("Request:\n%s\n\nWorkflow: %s — %s\n\nValues it needs:\n%s",
 			instruction, workflow.Name, workflow.Description, wanted.String())
-		options := []ai.Option{ai.WithMaxTokens(300)}
+		var options []ai.Option
 		// The schema is built per workflow because the values are: a fixed one
 		// would either name nothing or name another craft's holes.
 		if client.Routed() {
@@ -6327,7 +6331,7 @@ func consolidateFacts(settings config.Config, client *liveClient, graph *store.S
 		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "consolidate", lane.RoleMemory), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: consolidatorSystemPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input.String()}}},
-		}, ai.WithMaxTokens(700))
+		})
 		if err != nil || response == nil {
 			return resident.Consolidation{}, err
 		}

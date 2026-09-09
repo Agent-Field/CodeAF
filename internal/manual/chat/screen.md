@@ -172,19 +172,24 @@ title does not wait for the answer to finish.
 
 1. `+` opens the `New chat` page. A newly created conversation starts as `Untitled`.
 2. Sending your first message starts both the conversation and background naming.
-3. One response supplies a full conversation title and a compact tab label. The tab strip
+3. One response supplies a full conversation title and a one- or two-word tab label. The tab strip
    uses the compact label; breadcrumbs, the status line, Home, the switcher, recent sessions,
    and the terminal window title keep the full title. This also works after the answer has
    finished or you have switched to another tab.
 
-**Temporary failures retry automatically.** There are up to three naming attempts, with
+Hover over a tab to reveal its full title beneath it. Long titles wrap; the tab and
+conversation stay in place, and the preview disappears when the pointer leaves.
+
+**Temporary failures and unusable names retry automatically.** There are up to three naming attempts, with
 short increasing delays, within a two-minute overall window. You do not need to send
 another message. A failed title never interrupts the answer or changes its working state.
-If those attempts fail, or the model returns an empty or invalid name, the tab remains
+Empty answers, instruction echoes and placeholders are rejected, and the next configured
+naming model can answer within the same budget. If those attempts fail, the tab remains
 `Untitled`; an unnamed saved conversation can try again on its next message after reopening.
 
 **An existing name wins.** Naming runs once per session lifetime, and a chat that already
-has a name is not named again. Closing the session cancels unfinished naming. There is no
+has a name is not named again. Older saved names with a leaked `Full:` label are cleaned
+when read, and saved tab labels are limited to two words. Closing the session cancels unfinished naming. There is no
 command or tab action to rename a conversation manually.
 
 **`Untitled` labels an unnamed tab and its breadcrumb root.** Elsewhere it is named
@@ -1827,6 +1832,88 @@ The icon stays still and only the step's words shimmer while its tools run.
 Between calls the separate waiting dot moves; its response clock starts with
 the request, not with the preceding tool. Task pages never borrow this clock
 from the main conversation.
+
+## The two figures on the right while it works — the up arrow and down arrow, upload and download tokens, how many tokens is it using right now, is anything actually happening
+
+While a turn is running, the right edge of the working block carries two figures:
+
+```
+▸ Working · ctrl+e                                        ↑ 63.6k  ↓ 12
+  reading 2 files in internal/tui3
+· running go test ./internal/session · 41s               ↑ 78.2k  ↓ 486
+```
+
+`↑` is what this turn has **sent** to the model, and `↓` is what has **come
+back** from it, both in tokens. Between them they answer the question the
+shimmer cannot: not "is this alive" but "is anything moving, and how fast". A
+`↓` climbing steadily is a model writing; a `↓` that has stopped is a stream
+that has gone quiet, and the line beside it will say so within ten seconds.
+
+**They count up rather than jumping.** Both figures walk toward each new reading
+over a couple of tenths of a second — the same ease as the reply writing itself
+in. The books behind them stay exact; only what is painted is in motion.
+
+**They belong to this turn and they leave with it.** They open at nothing when
+you send a message and they are gone the moment the answer settles, because they
+are a sign that something is moving rather than a total. The session's running
+totals stay on the status line, where they never go away.
+
+**Only one row carries them.** The row that stands for the whole turn — the
+compact block's newest line, or `▾ working · ctrl+e` once you have opened the
+work — is the one with both figures on it. A step that has finished carries
+nothing.
+
+**An opened step shows its own `↓`.** Press `ctrl+e` and each running step's
+caption carries what the model wrote inside it, after its clock: `2s · ↓ 486`.
+There is no `↑` on a step: one request carries the whole conversation rather
+than the step it happens to be in, so a share of it per step would be arithmetic
+nobody performed.
+
+**A figure nobody has earned yet is not drawn.** Before anything comes back
+there is no `↓`, not a zero. On a narrow terminal the words win and the figures
+are dropped — `↑` first, because `↓` is the one that says something is arriving.
+
+**On a screen-reader or plain terminal** the arrows are spelled `^` and `v` and
+nothing eases: the exact figure is drawn each time.
+
+**They are quiet on purpose.** The figures wear the same dim grey as every other
+fact at the right edge of a row — the step clock, `189 lines`, `⠋ 2s / 30s` — and
+the arrow is fainter still. A number that moves does not also need to be bright;
+the words on the row are what it is for.
+
+**A turn that was split** — a correction you typed into it, or a step kept out of
+the compact view because a call in it failed — draws a door above the split and
+the working block below it. The figures ride the lower block only, the one where
+the work is now; the door above is machinery that is over.
+
+## Do the up and down token figures show inside a task room — tokens on a task's own page
+
+Yes. A task's page (a room, opened from the task column) draws the same column on
+its own live work, counted from the task's own lane: `↑` and `↓` are what THAT
+task has sent and received, summed over the steps its page has heard, never the
+conversation's figures. A room opened on a task that was already running shows
+`↓` from the moment the task writes anything and `↑` from its next finished step
+— the page cannot know what it did not hear, so it draws nothing rather than a
+guess. The column leaves when the task finishes, as it does in the conversation.
+
+A run's read-only transcript inside an adaptive run's page draws no column: it
+is a journal being read back, not work being watched.
+
+## How exact are the up and down token figures — is the upload figure what I am billed for
+
+`↓` is the provider's own count as soon as a step reports one. In between, while
+the model is still writing, it is estimated from the text already on your screen
+at about four bytes to the token — the same estimate aforge uses everywhere else
+it has to guess — and the exact figure takes over the moment it lands.
+
+`↑` is the same shape the other way round: the tokens this turn has actually
+been billed for, and, before the first step of the turn has reported anything,
+the weight of the conversation being sent. It steps up rather than climbing
+smoothly, because that is what really happens — a request goes out whole each
+time a tool result joins the conversation.
+
+Neither figure changes what you are charged, and neither is what `/cost` prints.
+`/cost` and `/status` print the exact books.
 
 ## The symbol beside each step — the little icons in the working block, what the mark in front of a step means
 

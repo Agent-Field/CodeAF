@@ -145,10 +145,17 @@ func TestCrewAppliesAPresetAndConfirmsInOneLine(t *testing.T) {
 	if strings.Count(text, "\n") != 0 {
 		t.Fatalf("the confirmation is more than one line:\n%s", text)
 	}
-	for _, part := range []string{"crew → max", "brain kimi-k3:high", "hands glm-5.3", "checks kimi-k3"} {
+	for _, part := range []string{"crew → max", "brain kimi-k3", "hands glm-5.3", "checks kimi-k3"} {
 		if !strings.Contains(text, part) {
 			t.Errorf("the confirmation is missing %q: %q", part, text)
 		}
+	}
+	// AND NO RUNG RIDES A SHIPPED PRESET. A preset buys a bigger planning model
+	// and leaves its generation behaviour to the provider (#665); the `:high`
+	// the max crew used to carry on its brain is an instruction only a person's
+	// own class value may add.
+	if strings.Contains(text, ":high") {
+		t.Errorf("a shipped preset carried a rung: %q", text)
 	}
 }
 
@@ -318,11 +325,14 @@ func TestStatusNamesTheCrewUnderTheModel(t *testing.T) {
 	// The preset word first, then the same three class names the confirmation
 	// prints — base names, in [config.CrewClasses]'s own order.
 	for _, want := range []string{
-		config.CrewMax, "brain kimi-k3:high", "hands glm-5.3", "checks kimi-k3",
+		config.CrewMax, "brain kimi-k3", "hands glm-5.3", "checks kimi-k3",
 	} {
 		if !strings.Contains(lines[at], want) {
 			t.Errorf("the crew line lost %q: %q", want, lines[at])
 		}
+	}
+	if strings.Contains(lines[at], ":high") {
+		t.Errorf("/status shows a rung on a shipped preset's brain: %q", lines[at])
 	}
 	// AND IT IS THE LINE UNDER THE MODEL, because the two are read together or
 	// not at all: one is what the conversation talks to, the other is what aforge

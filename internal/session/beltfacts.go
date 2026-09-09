@@ -200,7 +200,12 @@ var beltFacts = []beltFact{{
 		// carries it word for word ([tasksDescription]), and the prefix is a
 		// budget: what pays for the handoff law in prompts/system.md is this
 		// second copy of a law the model already holds whenever it holds the verb.
-		"- `needs your look`: not done or failed, branch kept; settle with `tasks` id and `resolve`. If the tool says there is no graph, say so and point at the row's branch or working copy.",
+		// THE FOUR WORDS ARE THE SURFACE'S OWN (task_status.go's tier words), so a
+		// model relaying a landing says what the person is already looking at. The
+		// verbs are the three the tool's schema takes ([TaskResolutions]) with the
+		// person's words for two of them beside, because "not right" is what the
+		// card says and `refute` is what the call takes.
+		"- A LANDED TASK SAYS `done`, `stopped`, `incomplete` (with the reason) or `your call`. On `your call` your verbs are `tasks` id `resolve` with accept, refute (say it is not right) or reaudit (have it checked again), plus `forward` to steer it; a CONFLICT is never yours to accept — say what clashes and leave the merge to them. If the tool says there is no graph, say so and point at the row's branch or working copy.",
 	absent: "- THE RECORD OF EARLIER WORK IS NOT REACHABLE FROM HERE and none of this work goes to anybody else: answer from the brief and from what is in front of you, and say plainly when something earlier is referred to that you cannot see. A `[Task reference: ...]` block you were handed carries transcript URIs, and `read` takes one exactly as printed, `file://` and all: `grep` a journal or `read` it with `offset`/`limit`, and never expand an outcome line into work you did not read.",
 }, {
 	tools:   []string{"search_conversations"},

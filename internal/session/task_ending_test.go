@@ -83,19 +83,22 @@ func TestAnEndingIsWrittenOnceAndAStopOutranksIt(t *testing.T) {
 }
 
 // THE LANDING NOTE SAYS WHAT HAPPENED, NOT "FAILED": the model reads this line
-// and tells the person, and a wire that dropped is not a fault in the work.
-func TestAHaltedLandingNoteNamesTheEndingAndARefusedOneStillSaysFailed(t *testing.T) {
+// and tells the person, and a wire that dropped is not a fault in the work. The
+// word is `incomplete` for every one of them and the REASON is what tells them
+// apart, which is the one word and the one table every surface now draws from
+// (task_status.go's [TaskReasonOf]).
+func TestAHaltedLandingNoteNamesTheEndingAndNeverSaysFailed(t *testing.T) {
 	note := func(ending TaskEnding) string {
 		return taskNote(TaskNotice{ID: 7, Title: "port the parser", State: TaskFailed, Ending: ending}, "", TaskSettleAsk, landingAddress{})
 	}
 	for ending, want := range map[TaskEnding]string{
-		TaskEndingWire:     "task 7 lost the connection: port the parser",
-		TaskEndingCircling: "task 7 went in circles: port the parser",
-		TaskEndingBlocked:  "task 7 was blocked by another task: port the parser",
-		TaskEndingSteps:    "task 7 ran out of steps: port the parser",
-		TaskEndingRefused:  "task 7 failed: port the parser",
-		TaskEndingError:    "task 7 failed: port the parser",
-		"":                 "task 7 failed: port the parser",
+		TaskEndingWire:     "task 7 incomplete: port the parser · lost the connection",
+		TaskEndingCircling: "task 7 incomplete: port the parser · went in circles",
+		TaskEndingBlocked:  "task 7 incomplete: port the parser · was blocked by another task",
+		TaskEndingSteps:    "task 7 incomplete: port the parser · ran out of steps",
+		TaskEndingRefused:  "task 7 incomplete: port the parser · would not take a step it was asked to",
+		TaskEndingError:    "task 7 incomplete: port the parser · a fault",
+		"":                 "task 7 incomplete: port the parser · a fault",
 	} {
 		if got := note(ending); !strings.HasPrefix(got, want) {
 			t.Errorf("%q: note opens %q, want %q", ending, firstLines(got, 1), want)
@@ -151,12 +154,12 @@ func TestTheProcessRuleStopIsForgottenWhenTheNextTurnOpens(t *testing.T) {
 }
 
 // THE LANDING NOTE SAYS WHAT THE ROW SAYS. A worker stopped for its notes is
-// halted news — nothing was found wrong with the work — so the note names it
-// rather than saying "failed".
+// halted news — nothing was found wrong with the work — so the note names the
+// reason beside `incomplete` rather than saying "failed".
 func TestAWorkerStoppedForItsNotesLandsAsHaltedNews(t *testing.T) {
 	note := taskNote(TaskNotice{ID: 7, Title: "port the parser", State: TaskFailed, Ending: TaskEndingNotes},
 		"", TaskSettleAsk, landingAddress{})
-	if want := "task 7 would not write its notes down: port the parser"; !strings.HasPrefix(note, want) {
+	if want := "task 7 incomplete: port the parser · would not write its notes down"; !strings.HasPrefix(note, want) {
 		t.Fatalf("the note opens %q, want %q", firstLines(note, 1), want)
 	}
 }

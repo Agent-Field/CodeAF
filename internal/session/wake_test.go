@@ -110,7 +110,7 @@ func TestSettledTaskWakesAnIdleSession(t *testing.T) {
 		if !strings.Contains(userTextIn(messages), "wrote the comparison to ~/oauth.md") {
 			t.Fatalf("the woken turn did not carry the outcome:\n%s", userTextIn(messages))
 		}
-		if !strings.Contains(userTextIn(messages), "task 1 finished") {
+		if !strings.Contains(userTextIn(messages), "task 1 done") {
 			t.Fatalf("the woken turn did not carry the settle itself:\n%s", userTextIn(messages))
 		}
 	case <-time.After(10 * time.Second):

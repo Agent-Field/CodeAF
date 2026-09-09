@@ -74,13 +74,13 @@ func TestThePrecedenceRunsTurnConversationTaskRoleDefault(t *testing.T) {
 		},
 		{
 			what:  "the work beats the role and the default",
-			scope: Scope{Task: High, Role: RoleSentinel, Default: Max},
+			scope: Scope{Task: High, Role: RoleErrand, Default: Max},
 			rung:  High,
 		},
 		{
 			what:  "the role decides when nothing more specific spoke",
-			scope: Scope{Role: RoleSentinel, Default: Max},
-			rung:  Low,
+			scope: Scope{Role: RoleErrand, Default: Max},
+			rung:  None,
 		},
 		{
 			what:  "and the install's default is the answer to and otherwise",
@@ -96,12 +96,19 @@ func TestThePrecedenceRunsTurnConversationTaskRoleDefault(t *testing.T) {
 	}
 }
 
-// THE THREE ROLES THAT ANSWER FOR THEMSELVES, AND THE TWO THAT DO NOT.
+// THE ONE ROLE THAT ANSWERS FOR ITSELF, AND THE FOUR THAT DO NOT.
 //
-// A standing firing and its sentinel run cheap however high the install is
-// dialled, because they run unattended and forever. An errand asks for nothing
-// at all. A person's turn and the work they hand out get what they configured.
-func TestTheRoleFloorsAreTheOnesTheInstallDefaultCannotRaise(t *testing.T) {
+// An errand asks for nothing at all: the person's dial is not spent on naming
+// their own conversation. Everybody else — a turn, the work handed out, a
+// standing firing, the sentinel in front of it — gets what was configured, and
+// on an install that configured NOTHING that is nothing.
+//
+// The two rows that moved here are standing and sentinel. They used to hold a
+// floor of `low`, which was a rung this harness chose for a model it knew
+// nothing about; what keeps a firing from inheriting a conversation's depth is
+// now that the conversation's dial does not reach it at all (internal/session's
+// standing_run.go sets DefaultEffort to None).
+func TestOnlyAnErrandAnswersForItselfAndTheRestTakeWhatWasConfigured(t *testing.T) {
 	for _, want := range []struct {
 		role Role
 		rung Rung
@@ -109,17 +116,23 @@ func TestTheRoleFloorsAreTheOnesTheInstallDefaultCannotRaise(t *testing.T) {
 		{RoleChat, Max},
 		{RoleWorker, Max},
 		{RoleErrand, None},
-		{RoleStanding, Low},
-		{RoleSentinel, Low},
+		{RoleStanding, Max},
+		{RoleSentinel, Max},
 	} {
 		if got := Resolve(Scope{Role: want.role, Default: Max}); got != want.rung {
 			t.Fatalf("with the install dialled to max, %q resolves to %q, want %q", want.role, got, want.rung)
 		}
 	}
-	// And a role floor is a FLOOR AND NOT A CEILING: something set closer to the
-	// work still wins, which is what makes a deliberately deep standing item
-	// possible at all.
-	if got := Resolve(Scope{Task: Max, Role: RoleSentinel, Default: Low}); got != Max {
+	// And with nothing dialled anywhere, every one of them is absence — no
+	// reasoning field on the wire, whoever the call is for.
+	for _, role := range []Role{RoleChat, RoleWorker, RoleErrand, RoleStanding, RoleSentinel} {
+		if got := Resolve(Scope{Role: role}); got != None {
+			t.Fatalf("with nothing configured, %q resolves to %q, want absence", role, got)
+		}
+	}
+	// A rung set closer to the work still wins over the errand's silence, which
+	// is what makes a deliberately deep standing item possible at all.
+	if got := Resolve(Scope{Task: Max, Role: RoleErrand, Default: Low}); got != Max {
 		t.Fatalf("a rung set on the work resolved to %q, want max — the role is a fallback, not a cap", got)
 	}
 }

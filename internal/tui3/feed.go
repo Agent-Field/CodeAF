@@ -74,6 +74,12 @@ type feed struct {
 	settledTurn int
 	// pendingReplyTags arrived before the first words of the answer they label.
 	pendingReplyTags []session.TaskReplyTag
+	// col is this page's live token column — the books its lane has heard,
+	// and the pair in motion (tokencol.go). It is HERE and not on the surface
+	// because it is a fact about the transcript being grown: the conversation
+	// and a task room each carry one, opened with the work and read by the same
+	// drawing through [deck.col].
+	col tokenCol
 	// hooks is what this view asked the reducer to do on its behalf, and is the
 	// only thing in here that differs between one surface and another.
 	hooks feedHooks

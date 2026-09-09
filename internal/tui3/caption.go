@@ -543,7 +543,7 @@ func captionText(c caption) string {
 // captionRows draws the step title. IT WRAPS; IT NEVER ELLIPSIS-CUTS. A
 // person-facing caption is short (5–10 words), and on a narrow frame those
 // words still show in full across lines rather than ending in `…`.
-func (a *app) captionRows(c caption, live, open bool, width int) []row {
+func (a *app) captionRows(c caption, live, open bool, width int, d deck) []row {
 	mark := a.linearMark("▾ ", "v ")
 	if !open {
 		mark = a.linearMark("▸ ", "> ")
@@ -554,6 +554,19 @@ func (a *app) captionRows(c caption, live, open bool, width int) []row {
 		tail = ""
 		if !c.began.IsZero() {
 			tail = countUpWord(a.now().Sub(c.began))
+		}
+		// AND A STEP THAT IS WRITING SAYS HOW MUCH IT HAS WRITTEN. This row
+		// stands for one step, so it carries one step's figure and never the
+		// turn's — the door above it carries that (tokencol.go states the rule
+		// both rows obey). The dot is the surface's own separator between two
+		// facts about the same thing: how long it has been going, and what has
+		// come back from it.
+		if word := a.stepTokenWord(c, d); word != "" {
+			if tail == "" {
+				tail = word
+			} else {
+				tail += " · " + word
+			}
 		}
 	}
 	room := width - workIndentCols(width)
@@ -602,8 +615,8 @@ func (a *app) captionRows(c caption, live, open bool, width int) []row {
 
 // captionRow is the single-row form tests still call; live drawing uses
 // [captionRows] so a narrow frame wraps instead of clipping.
-func (a *app) captionRow(c caption, live, open bool, width int) row {
-	rows := a.captionRows(c, live, open, width)
+func (a *app) captionRow(c caption, live, open bool, width int, d deck) row {
+	rows := a.captionRows(c, live, open, width, d)
 	if len(rows) == 0 {
 		return row{entry: c.start, hit: hitCaption, turn: c.start}
 	}

@@ -1051,11 +1051,12 @@ func (a *Agent) carefulModel(fallback string) string {
 // ── the plan, read once by the tier that thinks ─────────────────────────────
 
 const (
-	// divideReviewTokens is the reviewer's budget, and it is large because the
-	// answer is the PARTS THEMSELVES: up to [taskFanLimit] briefs written out in
-	// full. A cap that truncated the last part's brief would hand a worker half
-	// a world.
-	divideReviewTokens = 4000
+	// The reviewer sends no budget. It used to send 4000 — large because the
+	// answer is the PARTS THEMSELVES, up to [taskFanLimit] briefs written out in
+	// full, and a cap that truncated the last part's brief would hand a worker
+	// half a world. That reasoning is exactly why there is no figure now: this
+	// file cannot know what "the parts themselves" costs on a model it has never
+	// seen, and being wrong about it is silent.
 	// divideReviewPatience bounds the wait. The tier's own bound is ten minutes
 	// (roles.Patience) and that is the right figure for a planner nobody is
 	// waiting on; here a worker is mid-turn with its own steps ticking and its
@@ -1238,8 +1239,7 @@ func (a *Agent) reviewDivision(ctx context.Context, parent *TaskNode, parsed div
 		[]ai.Message{
 			textMessage("system", divideReviewBrief),
 			textMessage("user", divideReviewQuestion(parent, parsed, thin)),
-		},
-		ai.WithMaxTokens(divideReviewTokens))
+		})
 	if err != nil || response == nil {
 		why := "unreached"
 		if err != nil {

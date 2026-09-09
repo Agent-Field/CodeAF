@@ -838,6 +838,26 @@ func taskRowsTextLimit(rows []TaskIndexEntry, query string, limit int) string {
 
 func taskFamilyKey(session, id string) string { return session + "\x00" + id }
 
+// taskEntryWord is the word a row wears, in the SAME vocabulary the person
+// reading over the model's shoulder is looking at: `done`, `stopped`,
+// `incomplete` with its reason, `your call` (task_status.go's tier words). The
+// engine's own state word is what this used to print, and a model that read
+// `failed` off a row told somebody their work had failed when a connection had
+// dropped.
+//
+// A ROW THE READING CANNOT PLACE KEEPS THE STATE IT CLAIMS. A record written by
+// a build this one does not know is still a row, and printing nothing for it
+// would lose the only thing it says about itself.
+func taskEntryWord(entry TaskIndexEntry) string {
+	// held: the record is not an authority on whether anything is behind a
+	// live-looking row, and answering false here would call every running row in
+	// the file dead (task_status.go's [TaskIndexEntry.StatusFacts]).
+	if word := ProjectTask(entry.StatusFacts(true)).RowWord(); word != "" {
+		return word
+	}
+	return entry.Status
+}
+
 func taskNodeCount(count int) string {
 	if count == 1 {
 		return "1 node"
@@ -846,7 +866,7 @@ func taskNodeCount(count int) string {
 }
 
 func taskChildRowText(entry TaskIndexEntry, withURI bool) string {
-	parts := []string{entry.Title, entry.Status}
+	parts := []string{entry.Title, taskEntryWord(entry)}
 	if word := taskWhenWord(entry); word != "" {
 		parts = append(parts, word)
 	}
@@ -879,7 +899,7 @@ func taskChildRowText(entry TaskIndexEntry, withURI bool) string {
 // row reading "· 0 files · · $0.00" is three facts this build does not have,
 // stated as though it did.
 func taskRowText(entry TaskIndexEntry) string {
-	parts := []string{entry.ID, entry.Name, entry.Status}
+	parts := []string{entry.ID, entry.Name, taskEntryWord(entry)}
 	if word := taskWhenWord(entry); word != "" {
 		parts = append(parts, word)
 	}

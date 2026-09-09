@@ -276,7 +276,7 @@ preset:
 | small work | `deepseek/deepseek-v4-flash-0731` |
 | worker | `z-ai/glm-5.3-flash` |
 | careful work | `qwen/qwen3.8-27b` |
-| mastermind | `z-ai/glm-5.3:high` |
+| mastermind | `z-ai/glm-5.3` |
 
 They are all open-weight models, and none of them is the model you are talking to. A crew
 that followed your conversation would put the most expensive model in the build on the
@@ -309,7 +309,7 @@ say rather than the default.
 | small work | `deepseek-v4-flash-0731` | `deepseek-v4-flash-0731` | `deepseek-v4-flash-0731` |
 | worker | `deepseek-v4-flash-0731` | `glm-5.3-flash` | `glm-5.3` |
 | careful work | `glm-5.3-flash` | `qwen3.8-27b` | `kimi-k3` |
-| mastermind | `glm-5.3-flash:high` | `glm-5.3:high` | `kimi-k3:high` |
+| mastermind | `glm-5.3-flash` | `glm-5.3` | `kimi-k3` |
 
 - **frugal** — deepseek works, glm-flash thinks · pennies a day
 - **balanced** — glm-flash works, glm-5.3 thinks, qwen checks
@@ -413,7 +413,7 @@ running keeps the model it was admitted on.
 **Where to read the crew back:**
 
 - `/status` prints a `crew` line directly under `model`:
-  `crew     max · brain kimi-k3:high · hands glm-5.3 · checks kimi-k3`. The word is
+  `crew     max · brain kimi-k3 · hands glm-5.3 · checks kimi-k3`. The word is
   the preset, or `custom` when the five classes are your own arrangement. **brain** is the
   mastermind, **hands** is the worker, **checks** is the careful class.
 - `/settings` → Providers has the **crew** row above the five class rows.
@@ -477,7 +477,7 @@ was silently lost the moment the same brain ran from a script.
 Each of those runs opens by saying which voice answered, so nothing has to be guessed at:
 
 ```
-models: work deepseek/deepseek-v4-flash-0731 (crew frugal) · plan z-ai/glm-5.3-flash:high (crew frugal)
+models: work deepseek/deepseek-v4-flash-0731 (crew frugal) · plan z-ai/glm-5.3-flash (crew frugal)
 ```
 
 Two details worth knowing. A crew answers only once you have actually set one — a profile
@@ -581,7 +581,7 @@ No. `/crew max` moves the five crew seats and leaves the model you talk to exact
 was. The confirmation names it:
 
 ```
-crew → max · brain kimi-k3:high · hands glm-5.3 · checks kimi-k3 · you are still talking to deepseek-v4-flash — /model changes that
+crew → max · brain kimi-k3 · hands glm-5.3 · checks kimi-k3 · you are still talking to deepseek-v4-flash — /model changes that
 ```
 
 `/model`, `/model <name>` or the model row in `/settings` are the only ways to change the
@@ -601,7 +601,7 @@ A class value may carry a thinking level as well as a model:
 moonshotai/kimi-k3:high
 ```
 
-`:low`, `:medium` and `:high` are the three, and the shipped **mastermind** carries `:high`.
+`:low`, `:medium` and `:high` are the three. No shipped crew preset adds one; a level travels only when you add it.
 The level is not part of the model id. It travels as its own request option, exactly as
 the picker's **ctrl+t** effort does, so the example sends model `moonshotai/kimi-k3` and
 asks for high thinking separately.
@@ -924,11 +924,49 @@ The **thinking** row in `/settings` defaults to `auto`. It omits the reasoning o
 entirely, leaving the selected model's defaults to OpenRouter. It does not disable
 thinking or force a token budget, and the model may still spend time reasoning.
 Existing explicit conversation, task, model and install levels remain in force.
-Older `off` settings mean the same thing as auto and remain readable.
+On the chat dial, the legacy word `off` clears the override just like `auto`.
+The headless environment settings `AFORGE_REASONING=off` and
+`AFORGE_EXEC_REASONING=off` retain their existing meaning: they explicitly ask
+the provider to disable reasoning.
 
 `--reasoning auto` clears the launch override and inherits the conversation or install
 setting; choose auto in `/settings` to change the install default. Scoped overrides
-still take precedence. Standing work and its checks keep their existing low role default.
+still take precedence.
+
+**Standing work and its checks no longer carry a level of their own.** A standing item's
+firing and the yes-or-no check in front of it used to be sent at `low` whatever anybody
+had chosen, because they run unattended and forever. That level is gone: the only rung
+that reaches a firing is the one written on the item's own card, and an item that was
+never dialled sends no reasoning field at all. The conversation you set the item up in
+still does not reach it — that is what keeps an install dialled to `max` from turning
+every check on the machine into a deep pass.
+
+## What a request carries when nobody has chosen anything
+
+Nothing about how the model generates. A turn you have not dialled goes out with the
+model, your conversation, the tools on the belt and the usage receipt — and **no output
+cap, no temperature, no `top_p`, and no reasoning object**. Every one of those is
+optional upstream, and leaving it out is what makes the model answer at its own published
+default rather than at a number this program picked for it.
+
+That is true of the headless doors too (`aforge run`, `aforge do`), which used to impose
+a 32,768-token output ceiling and send `reasoning: off` on planning and execution.
+Neither happens now.
+
+What still travels is what somebody asked for: a level you dialled, an explicit
+`--reasoning` level, `AFORGE_REASONING` and `AFORGE_EXEC_REASONING` at a headless
+door, a crew class value like `moonshotai/kimi-k3:high`, and a rung on a task or
+a standing card. `off` on the headless environment settings really does send the
+disable; `off` on the chat dial is the legacy spelling of `auto`. Errands the
+session runs for itself — naming a conversation, judging a route — still ask for
+nothing, because your dial is not spent on a title.
+
+Aforge also leaves generation defaults alone on its own auxiliary calls: task and
+conversation names, reflex sorting, memory upkeep, task planning and checks, standing
+work, document parsing, saved harness execution, and resident work all omit output and
+sampling controls unless an operator-facing option supplied one. Context reserves,
+response byte limits, task budgets and deadlines still bound the local process; they are
+not sent as instructions for how the provider should generate.
 
 ## What low, medium, high, xhigh and max actually ask the model for
 
@@ -1385,7 +1423,7 @@ which is the whole machine's ledger rather than this conversation's — it was a
 | `tokens` | `48.1k in · 3.2k out`, or one half alone, or the combined figure |
 | `cache` | `31.2k read · saved $0.0180` — the money half only when a price pair was published |
 | `model calls` | **requests to the provider**, deliberately not "turns" |
-| `empty reflex answers` | paid memory-routing or extraction requests that reached their output ceiling without returning any answer |
+| `empty reflex answers` | paid memory-routing or extraction requests that returned no answer |
 | `time` | how long |
 
 `conversation` and `tasks` are dropped together unless the work has spent something, so a
@@ -1675,7 +1713,7 @@ The `crew` line sits directly under `model` and reads the preset word — or `cu
 the three classes after it:
 
 ```
-crew     max · brain kimi-k3:high · hands glm-5.3 · checks kimi-k3
+crew     max · brain kimi-k3 · hands glm-5.3 · checks kimi-k3
 ```
 
 On the live status line the crew is one short segment — `crew max`, or `crew custom` — at
@@ -2163,7 +2201,7 @@ One model id is served by many endpoints, and they differ in two ways at once: h
 
 So, with the **routing** row on the Providers tab left alone, aforge asks for two different things depending on who is waiting. **Your own turns** ask for the fastest endpoint, capped at **a quarter over the model's published list price**: an endpoint 25% dearer buys a head start you can feel, and one four times dearer buys nothing you would notice on a five-minute task. **Work you are not waiting on** — task workers, a divided part, the check on a piece of work, the model that names a task or a conversation, the memory pass — asks for the cheapest endpoint instead, because speed is worth nothing to a call nobody is watching.
 
-Where a model publishes no price, no cap is sent at all rather than one guessed from something else. If no endpoint can serve a request under the cap, aforge lifts the cap rather than failing the turn, and says so on the attempt line.
+Where a model publishes no price, no cap is sent at all rather than one guessed from something else. If the router refuses a request, aforge first widens the endpoint set while keeping the cap. Only if that wider request is refused too does aforge lift the cap rather than fail the turn. Each change has its own attempt line.
 
 **One thing about background work is not quite "speed is worth nothing".** Work you are not watching still asks the router for the cheapest endpoint — that part is unchanged — but among the machines behind that model, aforge will pay a little for a quicker one **while your window is open**, because you are there to read what the work lands. With no window open on this machine it will not: the cheapest machine wins outright, however slowly it writes. Nothing about this is a setting; it follows whether you are here.
 
@@ -2180,11 +2218,12 @@ then excluded that endpoint under your OpenRouter account's privacy setting beca
 provider may train on prompts. It does not mean the model disappeared or that your prompt
 was rejected.
 
-aforge drops the cap and asks the same model again on the same turn. The attempt line says
-`dropped the price ceiling and relaxed the endpoint filter`. A rescue request or a request
-pinned to one lane never carries the cap, because that lane has already passed aforge's
-price choice. Once a capped request to this model is refused, the cap stays off that model
-for the rest of this session, including the next rescue.
+aforge first relaxes the endpoint filter and asks again under the same cap. If the router
+still refuses that wider request, aforge drops the cap and asks the same model a third time.
+The attempt lines say `relaxed the endpoint filter` and then `dropped the price ceiling`.
+A rescue request or a request pinned to one lane never carries the cap, because that lane
+has already passed aforge's price choice. Once the price rung is reached, the cap stays off
+that model for the rest of this session, including the next rescue.
 
 You can change the account policy at `https://openrouter.ai/settings/privacy`, choose
 another model, or pin a lane that serves this model. Pinning chooses the provider for this

@@ -219,7 +219,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// about the conversation in the file, and re-deriving it from the same
 		// opening exchange would pay for an answer we already have.
 		agent.title = file.Title()
-		agent.shortTitle = file.ShortTitle()
+		agent.shortTitle = compactTitle(file.ShortTitle())
+		if agent.shortTitle == "" {
+			agent.shortTitle = compactTitle(agent.title)
+		}
 		// And it keeps its cache lineage for the same reason, which matters
 		// more: a session resumed tomorrow re-sends the transcript it built
 		// today, and a key that changed with the process would ask the router
@@ -1556,6 +1559,14 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		defer cancel()
 		defer hub.close()
 		defer func() {
+			// A TASK NEVER STAYS UNOWNED PAST THE END OF A TURN. Anything the settle
+			// policy or the person handed to the model comes back to the person here,
+			// and the card draws its chips again (task_run.go's
+			// [Agent.handBackUnsettled] states the law). It runs before the lock
+			// because it asks this agent for its graph, which takes a.mu itself, and
+			// it is safe to run twice — a disowned turn hands back nothing, because
+			// the turn that replaced it has already handed back whatever was owed.
+			a.handBackUnsettled()
 			a.mu.Lock()
 			// A DISOWNED TURN CLEANS UP NOTHING. [Agent.Abandon] has already done
 			// every act below — drained the queues, cleared running, closed the

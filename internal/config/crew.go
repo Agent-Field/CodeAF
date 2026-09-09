@@ -62,10 +62,10 @@ const DefaultCrew = CrewBalanced
 // per preset — deepseek-v4-flash, glm-5.3-flash, glm-5.3 — because it is the
 // seat that pays most of a task's bill, and a preset that moved every other seat
 // while leaving it alone would change everything about a task except its cost.
-// The mastermind column carries the level and buys the rung rather than a bigger
-// model: its calls are few, so `:high` costs little there. The careful column is
-// always a DIFFERENT VENDOR from the worker and always sees images (the vision
-// role rides it). The reflex and low columns never vary: they are the same
+// The mastermind column buys a bigger planning model without choosing its
+// generation behavior. The careful column is always a DIFFERENT VENDOR from
+// the worker and always sees images (the vision role rides it). The reflex and
+// low columns never vary: they are the same
 // near-free models in all three presets, and a column that never varies is not
 // a dial.
 //
@@ -79,21 +79,21 @@ var crewModels = map[string]map[string]string{
 		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
 		ModelTierWorker:     "deepseek/deepseek-v4-flash-0731",
 		ModelTierHigh:       "z-ai/glm-5.3-flash",
-		ModelTierMastermind: "z-ai/glm-5.3-flash:high",
+		ModelTierMastermind: "z-ai/glm-5.3-flash",
 	},
 	CrewBalanced: {
 		ModelTierReflex:     "mistralai/mistral-nemo",
 		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
 		ModelTierWorker:     "z-ai/glm-5.3-flash",
 		ModelTierHigh:       "qwen/qwen3.8-27b",
-		ModelTierMastermind: "z-ai/glm-5.3:high",
+		ModelTierMastermind: "z-ai/glm-5.3",
 	},
 	CrewMax: {
 		ModelTierReflex:     "mistralai/mistral-nemo",
 		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
 		ModelTierWorker:     "z-ai/glm-5.3",
 		ModelTierHigh:       "moonshotai/kimi-k3",
-		ModelTierMastermind: "moonshotai/kimi-k3:high",
+		ModelTierMastermind: "moonshotai/kimi-k3",
 	},
 }
 
@@ -186,7 +186,7 @@ func writeCrew(profileDir, raw string) error {
 
 // CrewSummary is the one line a crew change confirms itself with:
 //
-//	crew → balanced · brain glm-5.3:high · hands glm-5.3-flash · checks qwen3.8-27b
+//	crew → balanced · brain glm-5.3 · hands glm-5.3-flash · checks qwen3.8-27b
 //
 // The three names are the classes a person actually asked about — what thinks,
 // what works, what checks — and HANDS IS THE WORKER: the seat that does the
@@ -201,7 +201,7 @@ func CrewSummary(profileDir string) string {
 
 // CrewClasses is the three class names alone:
 //
-//	brain glm-5.3:high · hands glm-5.3-flash · checks qwen3.8-27b
+//	brain glm-5.3 · hands glm-5.3-flash · checks qwen3.8-27b
 //
 // It is the tail of [CrewSummary] lifted out because a second surface prints the
 // crew now — /status, where the word already has a label of its own and "crew →"
@@ -217,7 +217,7 @@ func CrewClasses(profileDir string) string {
 // CrewClassModels is the three ids [CrewClasses] names, in that order and
 // without the role words in front of them:
 //
-//	glm-5.3:high, glm-5.3-flash, qwen3.8-27b
+//	glm-5.3, glm-5.3-flash, qwen3.8-27b
 //
 // It exists because a surface drawing the crew line has to be able to say which
 // runs of it are the ANSWER — the ids a person typed /crew to change — and which

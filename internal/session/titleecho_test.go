@@ -145,23 +145,18 @@ func TestASessionNamedWithTheInstructionKeepsThePlaceholder(t *testing.T) {
 	}
 }
 
-// A REFUSED NAME COSTS ONE CALL AND NOT TWO. ONE CALL, ONCE is the law in
-// title.go's header, and the attempt is marked before the call is made.
-func TestARefusedNameIsNotRetriedWithinTheSession(t *testing.T) {
+// Invalid replies have bounded retries, and later turns do not reset the budget.
+func TestARefusedNameHasBoundedRetriesWithinTheSession(t *testing.T) {
 	completer := naming(&scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("first"), nil },
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("second"), nil },
 	}}, namerReply{title: titlePrompt})
 	agent, _ := titleAgent(t, completer, nil)
-
 	collect(t, mustSubmit(t, agent, "why is the tokenizer slow?"))
-	completer.waitAsks(t, 1, "the namer never ran")
+	agent.titleJobs.Wait()
 	collect(t, mustSubmit(t, agent, "and the parser?"))
-
-	// A REFUSED ANSWER IS NOT THE WIRE, so the ladder does not ask again — and
-	// the second turn does not start a second naming either.
-	if got := completer.asks(); got != 1 {
-		t.Fatalf("the namer was asked %d times, want 1", got)
+	if got := completer.asks(); got != titleAttempts {
+		t.Fatalf("asks = %d, want %d", got, titleAttempts)
 	}
 	if got := agent.Title(); got != "" {
 		t.Fatalf("Title() = %q", got)

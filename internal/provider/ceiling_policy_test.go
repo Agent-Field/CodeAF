@@ -18,10 +18,9 @@ import (
 // [endpointRefusalPhrases], so the ladder built to drop the ceiling never
 // fired and a headless run died on three identical retries (2026-08-28).
 //
-// Two things are held here. The ladder now recognises the sentence and lands
-// the call on its first rung, ceiling gone. And the ledger remembers: the
-// second call to the same model carries no ceiling from the start, so it costs
-// one request and not a 404 plus a retry.
+// Two things are held here. The ladder recognises the sentence, first widens
+// endpoint membership under the same ceiling, and only then drops the ceiling.
+// The ledger remembers that price rung, so the second call carries no ceiling.
 func TestADataPolicyRefusalDropsTheCeilingAndTeachesTheLedger(t *testing.T) {
 	const policyBody = `{"error":{"message":"No endpoints available matching your guardrail ` +
 		`restrictions and data policy. Configure: https://openrouter.ai/settings/privacy","code":404}}`
@@ -58,16 +57,19 @@ func TestADataPolicyRefusalDropsTheCeilingAndTeachesTheLedger(t *testing.T) {
 
 	var notices []string
 	if _, err := client.CompleteWithMessages(noticeContext(context.Background(), &notices), userMessages("hi")); err != nil {
-		t.Fatalf("the first rung should have landed the call: %v", err)
+		t.Fatalf("the refusal ladder should have landed the call: %v", err)
 	}
-	if got := len(recorded.bodies); got != 2 {
-		t.Fatalf("first call made %d requests, want 2: the refused one and the relaxed retry", got)
+	if got := len(recorded.bodies); got != 3 {
+		t.Fatalf("first call made %d requests, want the original and two distinct relaxation rungs", got)
 	}
 	if prefs, _ := recorded.body(0)["provider"].(map[string]any); prefs == nil || prefs["max_price"] == nil {
 		t.Fatal("the first request did not carry a ceiling, so this test proves nothing")
 	}
-	if prefs, _ := recorded.body(1)["provider"].(map[string]any); prefs != nil && prefs["max_price"] != nil {
-		t.Fatal("the retry still carried the ceiling — the first rung did not take it off")
+	if prefs, _ := recorded.body(1)["provider"].(map[string]any); prefs == nil || prefs["max_price"] == nil {
+		t.Fatal("the endpoint-only retry dropped the ceiling")
+	}
+	if prefs, _ := recorded.body(2)["provider"].(map[string]any); prefs != nil && prefs["max_price"] != nil {
+		t.Fatal("the price rung still carried the ceiling")
 	}
 	if len(notices) == 0 || !strings.Contains(notices[0], "relaxed the endpoint filter") {
 		t.Fatalf("notices = %#v, want the endpoint filter relaxed first", notices)
@@ -77,10 +79,10 @@ func TestADataPolicyRefusalDropsTheCeilingAndTeachesTheLedger(t *testing.T) {
 	if _, err := client.CompleteWithMessages(context.Background(), userMessages("again")); err != nil {
 		t.Fatalf("second call: %v", err)
 	}
-	if got := len(recorded.bodies); got != 3 {
-		t.Fatalf("second call made %d requests, want exactly 1 — the ledger should have dropped the ceiling", got-2)
+	if got := len(recorded.bodies); got != 4 {
+		t.Fatalf("second call made %d requests, want exactly 1 — the ledger should have dropped the ceiling", got-3)
 	}
-	if prefs, _ := recorded.body(2)["provider"].(map[string]any); prefs != nil && prefs["max_price"] != nil {
+	if prefs, _ := recorded.body(3)["provider"].(map[string]any); prefs != nil && prefs["max_price"] != nil {
 		t.Fatal("the second call carried the ceiling the router already refused")
 	}
 }

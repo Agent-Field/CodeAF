@@ -56,16 +56,22 @@ import (
 )
 
 // mergeIntoGround merges the node's branch into the ground and answers whether
-// the work went in, plus the one sentence a person is owed about how.
+// the work went in, the one sentence a person is owed about how, and — where it
+// did not go in — the names of the files it was about.
 //
 // A merge that goes straight in says nothing: the outcome is already on the card
 // and in the completion note, and a third telling would be the same fact three
 // times. It speaks only when the person's own uncommitted work had to be moved
 // out of the way, and when the branch was kept.
-func (t taskTree) mergeIntoGround() (bool, string) {
+//
+// THE NAMES TRAVEL AS A LIST AND NOT ONLY AS PROSE. The sentence is what a person
+// reads on the landing; the list is what a row says out loud ("conflicts with your
+// branch: parser.go") and what a resolver round is aimed at, and reading it back
+// out of the sentence afterwards would be this program parsing its own writing.
+func (t taskTree) mergeIntoGround() (bool, string, []string) {
 	out, err := mergeTaskBranch(t.root, t.branch)
 	if err == nil {
-		return true, ""
+		return true, "", nil
 	}
 	// THE ONE SHAPE WHERE THE INDEX KNOWS NOTHING. A merge git refused before it
 	// started never touched the index, so [conflictedPaths] is legitimately
@@ -74,7 +80,8 @@ func (t taskTree) mergeIntoGround() (bool, string) {
 	if len(blocked) == 0 || untracked {
 		// Either an ordinary conflict — the index has the names — or an untracked
 		// clash, which is the one this may not carry.
-		return false, t.refuseMerge(blocked, out)
+		said, clashing := t.refuseMerge(blocked, out)
+		return false, said, clashing
 	}
 	return t.carryGroundWork(blocked)
 }
@@ -88,13 +95,13 @@ func (t taskTree) mergeIntoGround() (bool, string) {
 // It names the files whichever way git said no: from the index when there was
 // one, and out of git's own message when the merge was refused before it ever
 // touched the index.
-func (t taskTree) refuseMerge(blocked []string, out string) string {
+func (t taskTree) refuseMerge(blocked []string, out string) (string, []string) {
 	clashing := conflictedPaths(t.root)
 	abandonMerge(t.root)
 	if len(blocked) > 0 {
-		return dirtyGroundSentence(t.branch, blocked)
+		return dirtyGroundSentence(t.branch, blocked), blocked
 	}
-	return conflictSentence(t.branch, clashing, out)
+	return conflictSentence(t.branch, clashing, out), conflictNames(clashing, out)
 }
 
 // carryGroundWork is the carry half of the law: the person's own uncommitted
@@ -106,10 +113,11 @@ func (t taskTree) refuseMerge(blocked []string, out string) string {
 // that would have written markers both end at `reset --hard` onto it with the
 // set-aside work applied cleanly on top — which is the same state the person was
 // in before the landing started, to the byte.
-func (t taskTree) carryGroundWork(blocked []string) (bool, string) {
+func (t taskTree) carryGroundWork(blocked []string) (bool, string, []string) {
 	stood, err := git(t.root, "rev-parse", "HEAD")
 	if err != nil {
-		return false, t.refuseMerge(blocked, stood)
+		said, clashing := t.refuseMerge(blocked, stood)
+		return false, said, clashing
 	}
 	stood = strings.TrimSpace(stood)
 	// THE STASH IS PROVED TO HAVE HAPPENED, and this is not belt-and-braces. `git
@@ -119,10 +127,12 @@ func (t taskTree) carryGroundWork(blocked []string) (bool, string) {
 	// reset. The ref before and after is the only honest test.
 	held := stashTop(t.root)
 	if out, err := git(t.root, "stash", "push", "-m", groundStashMessage(t.branch)); err != nil {
-		return false, t.refuseMerge(blocked, out)
+		said, clashing := t.refuseMerge(blocked, out)
+		return false, said, clashing
 	}
 	if stashTop(t.root) == held {
-		return false, t.refuseMerge(blocked, "")
+		said, clashing := t.refuseMerge(blocked, "")
+		return false, said, clashing
 	}
 	if out, err := mergeTaskBranch(t.root, t.branch); err != nil {
 		// The names are read while the conflicted index still holds them, exactly
@@ -130,10 +140,10 @@ func (t taskTree) carryGroundWork(blocked []string) (bool, string) {
 		clashing := conflictedPaths(t.root)
 		abandonMerge(t.root)
 		t.putGroundWorkBack(stood)
-		return false, conflictSentence(t.branch, clashing, out)
+		return false, conflictSentence(t.branch, clashing, out), conflictNames(clashing, out)
 	}
 	if _, err := git(t.root, "stash", "pop"); err == nil {
-		return true, carriedGroundSentence(blocked)
+		return true, carriedGroundSentence(blocked), nil
 	}
 	// A RESTORE THAT CONFLICTS IS NEVER LEFT STANDING. `git stash pop` leaves
 	// `<<<<<<<` in files the person has open and keeps the entry, which is the
@@ -141,7 +151,7 @@ func (t taskTree) carryGroundWork(blocked []string) (bool, string) {
 	// undone, their work goes back over the commit it was taken at — where it
 	// applies with no merge at all — and the branch is kept for them to look at.
 	t.putGroundWorkBack(stood)
-	return false, dirtyGroundSentence(t.branch, blocked)
+	return false, dirtyGroundSentence(t.branch, blocked), blocked
 }
 
 // putGroundWorkBack returns the ground to the commit it stood at and puts the

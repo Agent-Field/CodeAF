@@ -85,7 +85,7 @@ func TestUnderAutoTheNoteTellsTheModelToDecide(t *testing.T) {
 	// decides, not about what happened, so the facts a person reads are identical
 	// either way.
 	ask := taskNote(settleNotice(), "", TaskSettleAsk, landingAddress{person: true})
-	for _, shared := range []string{"task 9 needs your look: Port the parser", needsLookLead} {
+	for _, shared := range []string{"task 9 your call: Port the parser · nobody could check it", "the checker answered neither way"} {
 		if !strings.Contains(ask, shared) || !strings.Contains(note, shared) {
 			t.Fatalf("the two notes disagree about %q", shared)
 		}

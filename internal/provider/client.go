@@ -22,10 +22,10 @@ import (
 // Config configures the adapter. It is deliberately the same shape the
 // AgentField SDK client takes, plus the two resolvers that let the adapter
 // decide a request's economics without ever performing I/O on the hot path —
-// and minus Temperature: an absent sampling parameter is omitted upstream and
-// the provider's own default applies, so the field is absent rather than
-// carried and always sent (withoutSampling covers the SDK's own loop, which
-// injects one).
+// and minus generation controls: absent sampling and output parameters are
+// omitted upstream and the provider's own defaults apply. The SDK's plain
+// OpenAI loop injects config defaults of its own; [withoutInjectedDefaults]
+// clears those before applying the caller's explicit options.
 // It carries no attribution fields on purpose: who this binary reports itself
 // as is a constant (attribution.go), and a config field for it is exactly how a
 // caller ends up sending a different app — or none.
@@ -40,9 +40,8 @@ type Config struct {
 	// one call's correctness wins over it. A router copies the pin to every
 	// fallback model because the seat keeps doing the same job after a fallback.
 	// Zero is the ordinary unpinned case, and the level is NEVER part of Model.
-	Effort    Effort
-	MaxTokens int
-	Timeout   time.Duration
+	Effort  Effort
+	Timeout time.Duration
 
 	// SupportsParameter answers "does this model accept this request field?"
 	// from data already in memory. It must not block or perform I/O; an unknown
@@ -241,13 +240,12 @@ func (c *Client) SetAPIKey(key string) error {
 	var base *ai.Client
 	if key != "" {
 		built, err := ai.NewClient(&ai.Config{
-			APIKey:    key,
-			BaseURL:   c.config.BaseURL,
-			Model:     c.config.Model,
-			MaxTokens: c.config.MaxTokens,
-			Timeout:   c.config.Timeout,
-			SiteURL:   AppURL,
-			SiteName:  AppName,
+			APIKey:   key,
+			BaseURL:  c.config.BaseURL,
+			Model:    c.config.Model,
+			Timeout:  c.config.Timeout,
+			SiteURL:  AppURL,
+			SiteName: AppName,
 		})
 		if err != nil {
 			return err
@@ -322,20 +320,19 @@ func (c *Client) ExecuteToolCallLoop(
 	if base == nil {
 		return nil, nil, ErrNoAPIKey
 	}
-	// The SDK builds every round's request with its configured temperature —
-	// its config supplies one even when nobody asked — so the option that
-	// undoes the injection goes on LAST, after anything a caller passed: a
-	// sampling decision this adapter has promised not to make.
-	return base.ExecuteToolCallLoop(ctx, messages, tools, config, call, append(options, withoutSampling)...)
+	// The SDK installs generation defaults before applying options. Clear those
+	// first, so a caller's explicit choice, including zero temperature, survives.
+	cleanOptions := make([]ai.Option, 0, len(options)+1)
+	cleanOptions = append(cleanOptions, withoutInjectedDefaults)
+	cleanOptions = append(cleanOptions, options...)
+	return base.ExecuteToolCallLoop(ctx, messages, tools, config, call, cleanOptions...)
 }
 
-// withoutSampling removes the one sampling parameter the SDK's request
-// builders always set. The SDK is read-only here and its temperature cannot
-// be configured AWAY — a zero would be sent as zero — so the answer is an
-// option that takes the field back off, leaving the provider's own default
-// to answer. Everything else the SDK injects stays.
-func withoutSampling(request *ai.Request) error {
+// withoutInjectedDefaults removes fields supplied by the SDK's config. It runs
+// before caller options; provenance comes from that order, not a field's value.
+func withoutInjectedDefaults(request *ai.Request) error {
 	request.Temperature = nil
+	request.MaxTokens = nil
 	return nil
 }
 
@@ -512,15 +509,6 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	// where it is known.
 	refusal := c.refusalObject(request, knobs, apiError(status, peek))
 	c.strikeRefusal(model, refusal)
-	carriedCeiling := c.carriedCeiling(model, knobs, request)
-	// THE MEMO IS WRITTEN AT THE REFUSAL, BEFORE ITS RECOVERIES PART.
-	// A funded walk may keep this arm out of the ladder, but its very next arm is
-	// still a request to the same model and must not repeat the ceiling the router
-	// has already refused. The router's STRUCTURED refusal is the evidence; its
-	// sentence is never a gate on this behaviour.
-	if c.velocity != nil && carriedCeiling {
-		c.velocity.refuseCeiling(model)
-	}
 	// AND THE SAME MEMO IS TAKEN FOR THE IGNORE LIST, from the only authority on
 	// how many machines serve a model. This process holds the lanes it has timed
 	// and no denominator, so it cannot tell a veto that narrowed a set of five
@@ -578,7 +566,7 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 			Body:       rewound(peek, io.NopCloser(strings.NewReader(""))),
 		}, nil
 	}
-	return c.recoverFromRefusal(ctx, request, knobs, stream, peek, carriedCeiling)
+	return c.recoverFromRefusal(ctx, request, knobs, stream, peek)
 }
 
 // sendRepaired encodes the request and sends it, recovering once from the 400s
@@ -730,14 +718,9 @@ func (c *Client) newRequest(messages []ai.Message, options []ai.Option) (*ai.Req
 		Messages: messages,
 		Model:    c.config.Model,
 	}
-	// NO SAMPLING PARAMETER IS SET, here or anywhere else: an absent
-	// temperature is omitted upstream and the provider applies its own
-	// default, which is the behavior every call through this adapter wants —
-	// nothing here chooses a temperature for somebody else's model.
-	if c.config.MaxTokens > 0 {
-		maxTokens := c.config.MaxTokens
-		request.MaxTokens = &maxTokens
-	}
+	// NO GENERATION PARAMETER IS SET HERE. An absent temperature or output cap
+	// is omitted upstream and the provider applies its own default. Explicit
+	// caller options below still travel unchanged.
 	for _, option := range options {
 		if err := option(request); err != nil {
 			return nil, fmt.Errorf("apply option: %w", err)

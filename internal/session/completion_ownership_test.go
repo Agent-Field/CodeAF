@@ -62,10 +62,12 @@ func awaitingAgent(t *testing.T, completer Completer) *Agent {
 	return agent
 }
 
-// revisionScript is the trace's turn: two workspace writes, the `(waiting)`
-// sketch its mark reader actually drew, and whatever the case wants said to the
-// dowry ask. Every round after the writes answers in words, so a turn that is
-// NOT moved ends the way the live one did — by stopping with the job still out.
+// revisionScript is the trace's turn: the workspace writes that spend the write
+// allowance ([writeAllowanceCalls] of them, which is what the seam counts), the
+// `(waiting)` sketch its mark reader actually drew, and whatever the case wants
+// said to the dowry ask. Every round after the writes answers in words, so a turn
+// that is NOT moved ends the way the live one did — by stopping with the job
+// still out.
 func revisionScript(count int, dowry func() string) []step {
 	var writes atomic.Int64
 	steps := make([]step, count)
@@ -84,7 +86,7 @@ func revisionScript(count int, dowry func() string) []step {
 				return textResponse(checkpointNothingLeft), nil
 			}
 			round := writes.Add(1)
-			if round > writeAllowanceFiles {
+			if round > writeAllowanceCalls {
 				return textResponse("report.csv is written and report.md is gone; the build is still running."), nil
 			}
 			arguments, _ := json.Marshal(struct {
@@ -576,7 +578,7 @@ func TestTheAwaitedCommandsEndingWakesTheConversation(t *testing.T) {
 				return toolResponseWithText("start-build", "bash", string(arguments),
 					"Starting the build in the background."), nil
 			}
-			if round := writes.Add(1); round <= writeAllowanceFiles {
+			if round := writes.Add(1); round <= writeAllowanceCalls {
 				arguments, _ := json.Marshal(struct {
 					Path string `json:"path"`
 					Text string `json:"content"`

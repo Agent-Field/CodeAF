@@ -16,14 +16,26 @@ package session
 // ── THE RULING (owner, 2026-09-01, issue #272) ──
 //
 // A turn may make A SMALL BOUNDED EDIT INLINE — of the order of
-// [writeAllowanceFiles] files or [writeAllowanceCalls] write calls — and then
-// the next workspace write promotes it to a task through the road the ceiling
-// already takes. READS STAY FREE, in any number: a turn that spends forty rounds
-// looking at a repository has cost the person a wait and nothing else, and the
-// checkpoint's own argument that slow-to-interrupt is the honest direction holds
+// [writeAllowanceCalls] write calls — and then the next workspace write promotes
+// it to a task through the road the ceiling already takes. READS STAY FREE, in
+// any number: a turn that spends forty rounds looking at a repository has cost
+// the person a wait and nothing else, and the checkpoint's own argument that
+// slow-to-interrupt is the honest direction holds
 // for exactly that turn. It fails for a writing one, because what is at stake
 // there is not the wait — it is unreviewed edits in a directory somebody is
 // standing in.
+//
+// ── WHY IT COUNTS CALLS AND NOT FILES ──
+//
+// The allowance was once TWO COUNTS, and the second of them was how many DISTINCT
+// files under the workspace the turn had touched. Two files is not a grind; it is
+// the commonest shape of one small finished piece of work. A turn that writes a
+// script and then the output the script produces has touched two files and done
+// ONE thing, and it was moved onto a task for the breadth alone — a fresh worktree,
+// a brief, and a person waiting on a handover for what was already finishing in
+// front of them. Breadth is not the harm the ruling names: HOW OFTEN A TURN
+// REACHES FOR THE DISK is, because that is what the measured run was made of and
+// that is what nobody is watching. So there is one count, and it is the calls.
 //
 // ── WHY THE COUNTER IS ITS OWN THING AND NOT ANOTHER MARK ──
 //
@@ -39,10 +51,10 @@ package session
 // The seam fires ONCE in a turn. Past it the ceiling is the governor again, as
 // it always was. That is not a softness: the handover it opens is the ordinary
 // one, which can be DECLINED when the running model and the mark's own reader
-// both say nothing remains ([Agent.handOverRunningTurn]) — and a turn that wrote
-// its two files and finished is exactly that turn. A seam that re-fired every
-// round would ask the reader and the model the same question over and over and charge the
-// person for each of them.
+// both say nothing remains ([Agent.handOverRunningTurn]) — and a turn that made
+// its handful of edits and finished is exactly that turn. A seam that re-fired
+// every round would ask the reader and the model the same question over and over
+// and charge the person for each of them.
 
 import (
 	"context"
@@ -56,30 +68,24 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-const (
-	// writeAllowanceFiles is how many DISTINCT files under the workspace a turn
-	// may change before the next write moves the work. Two, because the shape the
-	// ruling protects is "fix the typo in this file and the test beside it" — one
-	// obvious edit and the thing that goes with it — and a third file is where
-	// somebody would have wanted to watch.
-	writeAllowanceFiles = 2
-	// writeAllowanceCalls is the same allowance measured the other way, for the
-	// turn that edits one file over and over. Five, because a single small edit
-	// is one or two calls and a re-read-and-retry of it is three or four; a sixth
-	// is a turn that has started working rather than finishing.
-	//
-	// BOTH ARE CHECKED AND EITHER ONE SPENDS IT. The measured run crossed both
-	// inside its first two minutes, and a rule that only counted files would have
-	// let forty-eight calls against one file through.
-	writeAllowanceCalls = 5
-)
+// writeAllowanceCalls is HOW MANY WRITE-SHAPED CALLS a turn may land under the
+// workspace before the next one moves the work. It is the whole allowance and the
+// only number this seam has.
+//
+// FIVE, because a single small edit is one or two calls and a re-read-and-retry
+// of it is three or four; a sixth is a turn that has started working rather than
+// finishing. It is the count that catches the shape the ruling was written from —
+// forty-eight calls in somebody's live checkout — whether those calls landed on
+// one file or on forty, and it leaves alone the turn that made a few edits across
+// a few files and stopped.
+const writeAllowanceCalls = 5
 
 // writeSeamNote is the ONE LINE a person reads when a writing turn is moved.
 //
 // It is in the register every line in this house is held to (checkpoint.go's
 // [inTheHouseRegister] states it): an observation, a middle dot, a promise. It
 // says what was noticed rather than naming a counter, because a person who has
-// just watched two files change does not need to be told a threshold's name.
+// just watched their files change does not need to be told a threshold's name.
 const writeSeamNote = "this is changing more than a quick edit · moving it to a task that is watched and can split"
 
 // writeMeter is ONE TURN'S account of what it has written under the workspace.
@@ -90,10 +96,11 @@ const writeSeamNote = "this is changing more than a quick edit · moving it to a
 // The batch's calls run in parallel, so it holds its own lock.
 type writeMeter struct {
 	mu sync.Mutex
-	// calls is how many write-shaped calls have landed, and files is which paths
-	// they landed on. A path is counted once however many times it is written.
+	// calls is how many write-shaped calls have landed under the workspace. WHICH
+	// paths they landed on is deliberately not kept: the allowance asks how often
+	// this turn reached for the disk, and a call that changed three files is one
+	// reach exactly as a call that changed one is.
 	calls int
-	files map[string]bool
 	// spent says the seam has already opened its door in this turn, so that a
 	// handover this road declined is not asked for again every round after.
 	spent bool
@@ -103,9 +110,12 @@ type writeMeter struct {
 	held bool
 }
 
-func newWriteMeter() *writeMeter { return &writeMeter{files: map[string]bool{}} }
+func newWriteMeter() *writeMeter { return &writeMeter{} }
 
-// wrote records one landed write-shaped call and the paths it changed.
+// wrote records ONE landed write-shaped call, and the paths are what says there
+// was one: an empty list is a call that changed nothing under the workspace
+// ([workspaceWrites]), and it is the workspace filtering rather than the paths
+// themselves that this counter keeps.
 func (m *writeMeter) wrote(paths []string) {
 	if m == nil || len(paths) == 0 {
 		return
@@ -113,9 +123,6 @@ func (m *writeMeter) wrote(paths []string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.calls++
-	for _, path := range paths {
-		m.files[path] = true
-	}
 }
 
 // pastAllowance reports whether this turn has spent the allowance, AND CLAIMS
@@ -146,12 +153,9 @@ func (m *writeMeter) past() bool {
 	return !m.spent && m.pastLocked()
 }
 
-// pastLocked is the allowance itself, in the one place — BOTH HALVES, EITHER ONE
-// SPENDS IT — so the three readers above cannot come to disagree about where the
-// line is. The caller holds m.mu.
-func (m *writeMeter) pastLocked() bool {
-	return m.calls >= writeAllowanceCalls || len(m.files) >= writeAllowanceFiles
-}
+// pastLocked is the allowance itself, in the one place, so the three readers
+// above cannot come to disagree about where the line is. The caller holds m.mu.
+func (m *writeMeter) pastLocked() bool { return m.calls >= writeAllowanceCalls }
 
 // heldForDelivery reports, ONCE per turn, that the allowance was passed while
 // the door was held shut for a delivery. It spends nothing: the counter goes on
@@ -399,7 +403,7 @@ func writesAimedAt(cwd, program string, rest []string) []string {
 // commit. Task 1 did the repair and landed: 29 independent checks passed, the
 // protected files were untouched, the branch existed. Its report woke this
 // conversation, and the turn that read it did what the request still owed —
-// cherry-picked the work across and staged it. That is several files under the
+// cherry-picked the work across and staged it. That is a run of writes under the
 // workspace, so THIS COUNTER FIRED, and the delivery was handed to a second
 // task in a FRESH WORKTREE: a working copy with none of the staged index, none
 // of the cherry-pick, and a brief written from a turn that was integrating
@@ -429,9 +433,9 @@ func writesAimedAt(cwd, program string, rest []string) []string {
 //   - THE ROUND CEILING AND THE WALL STILL GOVERN THIS TURN, both of them, on
 //     the same ladder as any other woken turn. That reversal was measured
 //     (checkpoint.go: a wake that ran 127 calls over 46 minutes ungoverned) and
-//     nothing here gives it back. What stands down is the WRITE-BREADTH trigger
-//     alone, because breadth of writes is the expected shape of an integration
-//     and is evidence of nothing there.
+//     nothing here gives it back. What stands down is THIS COUNTER alone, because
+//     a run of writes is the expected shape of an integration and is evidence of
+//     nothing there.
 //   - A PERSON'S OWN NEW SENTENCE CLOSES IT IMMEDIATELY. A turn that owes
 //     anything the person typed — a new request, a correction steered into this
 //     one — is not a delivery, and the seam protects it exactly as it did.
@@ -508,7 +512,7 @@ func (g *TaskGraph) resultsThisAgentOwns(owner *Agent, ids []uint64) (uint64, bo
 // writeSeamFires is the seam's whole gate: has this turn written past the
 // allowance, and may that move the work.
 //
-// THE ORDER IS THE POINT. The counter is read first because it is two integers
+// THE ORDER IS THE POINT. The counter is read first because it is one integer
 // and is false at almost every boundary of almost every turn; the ownership
 // question behind it costs two locks and a copy, and is asked only where the
 // answer could change anything.
@@ -550,13 +554,13 @@ func (a *Agent) writeSeamFires(rounds int) bool {
 // gap, the sealed turn — is [Agent.handOverRunningTurn]'s and is not restated
 // here. The two are the LINE, which says what was noticed, and the VERDICT,
 // which is NOT armed to split: the ceiling arms one because a turn that outran
-// forty rounds is measured evidence of breadth, and three files changed is
-// evidence of nothing of the sort.
+// forty rounds is measured evidence of breadth, and six write calls is evidence
+// of nothing of the sort.
 //
 // THE MARK'S OWN READER IS ASKED, and that is what makes this safe to fire on a
 // counter: a drawing with independent parts in it is what refuses the
 // continuation's claim that nothing is left ([Agent.handOverRunningTurn]).
-// Without the reading at all, a turn that made its two edits and finished would
+// Without the reading at all, a turn that made its few edits and finished would
 // be weighed on the counter alone.
 func (a *Agent) checkpointWriting(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, meter *checkpointMeter, taken *Decision) bool {
 	read := a.readMark(ctx)

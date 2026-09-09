@@ -46,27 +46,22 @@ func wholeReply(text string) *ai.Response {
 	return &ai.Response{Choices: []ai.Choice{{Message: ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: text}}}, FinishReason: "stop"}}}
 }
 
-// A planning call asks for a form, and it is sized for one. Left to the
-// client's default the ceiling was the leaf completion reserve, and a model
-// that looped inside the schema ran to it: four minutes and $0.013 for
-// fifty-seven characters, twice in one plan.
-func TestAStructuredCallIsSizedForOneFormsWorth(t *testing.T) {
+// A planning call asks for a form through its schema and adds no generation
+// ceiling of its own.
+func TestAStructuredCallLeavesGenerationToTheProvider(t *testing.T) {
 	client := &ceilingClient{replies: []*ai.Response{wholeReply(`{"mode":"ensemble","reason":"fine"}`)}}
 	var panel Panel
 	if _, err := structured(context.Background(), client, nil, json.RawMessage(`{}`), &panel); err != nil {
 		t.Fatalf("structured: %v", err)
 	}
-	if want := shaped.ObjectRoom(); client.ceilings[0] != want {
-		t.Fatalf("ceiling = %d, want %d — a form's worth, never the leaf reserve", client.ceilings[0], want)
+	if client.ceilings[0] != 0 {
+		t.Fatalf("structured call carried max_tokens = %d", client.ceilings[0])
 	}
 }
 
-// THE FAN-OUT'S CEILING IS THE FAN-OUT'S OWN WIDTH. A stage may come back as up
-// to fanOutWidth parts, each with a title, a summary and its own source list,
-// and it was being given the room for one verdict. That is what killed the s4
-// sweep's textual run: cut at the ceiling, cut again on the retry, exit 1 with
-// zero nodes on a task that had scored 17/20 a sweep earlier.
-func TestAFanOutIsSizedForTheWidthItsPromptPermits(t *testing.T) {
+// The fan-out width remains one source for the prompt and repair accounting,
+// but it no longer becomes a generation parameter.
+func TestAFanOutStatesItsWidthWithoutSendingACeiling(t *testing.T) {
 	client := &ceilingClient{replies: []*ai.Response{wholeReply(`{"parts":[]}`)}}
 	var decoded struct {
 		Parts []Node `json:"parts"`
@@ -74,13 +69,13 @@ func TestAFanOutIsSizedForTheWidthItsPromptPermits(t *testing.T) {
 	if _, err := structuredParts(context.Background(), client, nil, fanoutSchema, fanOutWidth, &decoded); err != nil {
 		t.Fatalf("structuredParts: %v", err)
 	}
-	if one := shaped.ObjectRoom(); client.ceilings[0] <= one {
-		t.Fatalf("a %d-part ask got %d, the room for one object (%d)", fanOutWidth, client.ceilings[0], one)
+	if client.ceilings[0] != 0 {
+		t.Fatalf("a %d-part ask carried max_tokens = %d", fanOutWidth, client.ceilings[0])
 	}
 	// And the number the model is told is the number the room is sized for.
 	// Two spellings of one figure is the drift this interpolation prevents.
 	if !strings.Contains(fanoutPrompt, "Give 1 to "+fanOutWidthWord+" parts") {
-		t.Fatal("the fan-out prompt no longer states the width its ceiling is derived from")
+		t.Fatal("the fan-out prompt no longer states the width its accounting is derived from")
 	}
 }
 

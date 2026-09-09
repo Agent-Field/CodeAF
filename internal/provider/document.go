@@ -12,14 +12,18 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
+// THIS ROUTE SENDS NO max_tokens EITHER. It used to send two figures of its
+// own — 8 for a parser-backed acknowledgement, 16k for a native extraction —
+// and both were the same kind of thing the chat route stopped sending: a
+// ceiling this adapter chose for somebody else's model. The 8 in particular was
+// a bet that the model would say "received" in eight tokens, which on a model
+// that thinks first is eight tokens of thinking and no acknowledgement at all.
+// The prompt already asks for what the route wants; what bounds the reply now is
+// the model's own default, and what bounds this PROCESS is the byte cap below.
 const (
-	// A parser-backed request needs a completion only so OpenRouter returns the
-	// parsed annotations. Keeping the acknowledgement tiny prevents the model
-	// from echoing a document we already receive losslessly in metadata.
-	documentParserMaxTokens = 8
-	// Native file handling has no annotation channel, so the model itself must
-	// emit the extracted text. This is a ceiling rather than expected spend.
-	documentNativeMaxTokens  = 16 << 10
+	// maxDocumentResponseBytes bounds what one parse reply may be believed to
+	// be. It is a safety cap on what is read off a socket, never a generation
+	// parameter: nothing about it travels in the request body.
 	maxDocumentResponseBytes = 128 << 20
 )
 
@@ -73,12 +77,10 @@ type documentPlugin struct {
 }
 
 type documentWireRequest struct {
-	Model               string                `json:"model"`
-	Messages            []documentWireMessage `json:"messages"`
-	Plugins             []documentPlugin      `json:"plugins"`
-	MaxTokens           *int                  `json:"max_tokens,omitempty"`
-	MaxCompletionTokens *int                  `json:"max_completion_tokens,omitempty"`
-	Usage               ai.RequestUsage       `json:"usage"`
+	Model    string                `json:"model"`
+	Messages []documentWireMessage `json:"messages"`
+	Plugins  []documentPlugin      `json:"plugins"`
+	Usage    ai.RequestUsage       `json:"usage"`
 }
 
 type documentAnnotation struct {
@@ -108,10 +110,13 @@ type documentWireResponse struct {
 	} `json:"error"`
 }
 
-// ParseDocument performs the deliberately-small completion that activates
-// OpenRouter's file parser and harvests text from file annotations. Native is
-// the sole exception: OpenRouter produces no annotations for native files, so
-// the model is explicitly asked to return extracted text.
+// ParseDocument performs the completion that activates OpenRouter's file parser
+// and harvests text from file annotations. Native is the sole exception:
+// OpenRouter produces no annotations for native files, so the model is
+// explicitly asked to return extracted text.
+//
+// The acknowledgement is kept small by the PROMPT — "Acknowledge receipt." —
+// and no longer by a ceiling this file picked (see the const block).
 func (c *Client) ParseDocument(ctx context.Context, request DocumentRequest) (*DocumentResponse, error) {
 	if c == nil {
 		return nil, fmt.Errorf("document client is nil")
@@ -136,15 +141,10 @@ func (c *Client) ParseDocument(ctx context.Context, request DocumentRequest) (*D
 	}
 
 	prompt := "Acknowledge receipt."
-	maxTokens := documentParserMaxTokens
 	if request.Engine == DocumentParseNative {
 		prompt = "Extract all readable document text. Preserve headings, lists, and table contents. Return only the extracted text."
 		if question := strings.TrimSpace(request.Question); question != "" {
 			prompt += "\nThe downstream worker will answer this question from the extraction: " + question
-		}
-		maxTokens = documentNativeMaxTokens
-		if c.config.MaxTokens > 0 {
-			maxTokens = c.config.MaxTokens
 		}
 	}
 
@@ -162,20 +162,14 @@ func (c *Client) ParseDocument(ctx context.Context, request DocumentRequest) (*D
 		Plugins: []documentPlugin{plugin},
 		Usage:   ai.RequestUsage{Include: true},
 	}
-	// The same room the chat route leaves (thinking.go): this route sends no
-	// reasoning word, so on a model that thinks regardless the pass runs at
-	// the row's default, and the ceiling makes room for it.
-	ceiling := c.wireCeiling(model, EffortNone, 0, maxTokens)
-	if needsMaxCompletionTokens(model) && isVouchedRewriteEndpoint(c.config.BaseURL) {
-		wire.MaxCompletionTokens = &ceiling
-	} else {
-		wire.MaxTokens = &ceiling
-	}
 	body, err := json.Marshal(wire)
 	if err != nil {
 		return nil, fmt.Errorf("marshal document request: %w", err)
 	}
-	metadata := &ai.Request{Model: model, MaxTokens: &maxTokens}
+	// No ceiling on the metadata either. It is what the model-call log and the
+	// transport read the request's shape from, and a figure here that is not on
+	// the wire is a receipt describing a request nobody sent.
+	metadata := &ai.Request{Model: model}
 	httpResponse, err := c.send(ctx, metadata, callKnobs{}, body, false)
 	if err != nil {
 		return nil, err

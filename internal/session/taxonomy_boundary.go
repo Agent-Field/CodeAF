@@ -302,6 +302,38 @@ func (a *Agent) escalateNodeModel(node *TaskNode) (string, bool) {
 	return a.nextNodeModel(node)
 }
 
+// failoverCheckerModel is where a CHECK goes when the model judging a node's
+// work came back with neither word: the ADAPTER'S OWN CHAIN, the same one a
+// conversation's turn hops along and the same one a node's run walks
+// ([Agent.nextNodeModel]). One spelling of "the next model" for the whole
+// binary — a list of this file's own would be the second answer to drift from
+// it.
+//
+// IT IS NOT A PURCHASE, which is why the boundary lets it past rather than
+// asking the taxonomy about it. What buys a stronger tier is a verdict about the
+// WORK; this is the same question asked in another lane after one lane answered
+// nothing at all, and no evidence about the deliverable has been read either
+// way. It is bounded at one by its caller ([Agent.auditNode]).
+//
+// Empty is A MOVE THAT IS ABSENT rather than one that fails: an install with no
+// chain, and `--one-model` — under which every text call this session makes
+// rides the conversation's model by the door's own promise ([Config.OneModel]) —
+// both ask the fresh checker on the model the check already had.
+func (a *Agent) failoverCheckerModel(model string) (string, bool) {
+	if a.config.OneModel {
+		return "", false
+	}
+	chain, ok := a.client.(modelChain)
+	if !ok {
+		return "", false
+	}
+	options := chain.FallbackModels(model)
+	if len(options) == 0 {
+		return "", false
+	}
+	return options[0], true
+}
+
 // ── the gate ────────────────────────────────────────────────────────────────
 
 // readFinding is what the repair loop asks after a check has found gaps: does

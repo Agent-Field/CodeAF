@@ -161,6 +161,11 @@ field in an answer aforge was already paying for and already waiting on.
 all — only the sentence it was started from: a `/task` whose shaping could not run, work
 that started on its own after a words-only turn, an adaptive run's own row. That title is
 handed to the cheap `taskname` role, which reads the work and answers with two or three lowercase words.
+Empty replies, instruction echoes and placeholders such as `nothing to name` are refused.
+The next configured naming model may answer within the same time limit; if it cannot,
+the existing fallback stays. A previously saved placeholder such as `nothing to name`
+is named again from its saved brief when you reopen the conversation; the work itself
+is not rerun.
 
 **Work a model already named is left alone.** A task the conversation proposed with
 `propose_task` carries the name the model wrote as an argument to that tool; a `/task` whose
@@ -670,12 +675,17 @@ handed out — waiting for it, reading what comes back, accepting it — that li
 time, and a drawing whose every part is a wait or a bare `accept`/`review` is read the same
 way even when it is not written as that word.
 
-**And when only half of what is left is a wait, the other half still moves.** If a reply
-crosses one of the lines above while pieces you handed out are still running, what is left is
-divided first. The self-contained work becomes the task; everything about the pieces already
-out — waiting for them, integrating their branches, reviewing them, opening the pull request
-over them — stays with this conversation, and the line announcing the move ends
-` · the rest stays here for when the pieces already out land`.
+## When only part of a handover can move while other tasks are still out
+
+When only half of what is left is a wait, the other half still moves when its whole instruction
+stands alone. If a reply crosses one of the lines above while pieces you handed out are still
+running, what is left is divided first. The self-contained work becomes the task; everything
+about the pieces already out — waiting for them, integrating their branches, reviewing them,
+opening the pull request over them — stays with this conversation, and the line announcing the
+move ends ` · the rest stays here for when the pieces already out land`.
+The check covers the brief, the request above it and the done-condition below it, after the
+reader's drawing has been added. If any of those still names a piece already out, nothing
+moves: your original words are kept here rather than rewritten into a different request.
 
 What stayed is written into the conversation under `WHAT STAYS HERE, FOR WHEN THE PIECES
 ALREADY OUT LAND:`, so the turn that wakes when those pieces land opens on the integration,
@@ -725,7 +735,7 @@ never the fact that something is running.
 wait for; a reply that stops "until the watch fires" is the other question — see *Waiting on
 something, and the limit on carrying on*.
 
-## A reply that starts changing files becomes a task — why did my edit become a task, it started a task instead of just editing, how many files can a reply change, small edits inline
+## A reply that starts changing files becomes a task — why did my edit become a task, it started a task instead of just editing, how many files can a reply change, how many edits can a reply make, small edits inline
 
 **Reading is free. Writing is not.** The three points above count tool ROUNDS, which is the
 right unit for a reply that is looking things up and the wrong one for a reply that is
@@ -734,11 +744,14 @@ unreviewed changes in the folder you are sitting in. So there is a second, much 
 count, and it counts only the calls that CHANGE something under the folder this conversation
 is open on.
 
-**The allowance is two files, or five write calls, whichever comes first.** A reply may make
-a small, obvious edit inline — fix the typo, change the one line, write the note beside it —
-and that is the whole point of leaving one at all. The write that would cross the allowance
-is not made in the reply. The answer ends where it is, what is left moves onto one task, and
-the same two dim lines go into the transcript as at the third point above:
+**The allowance is five write calls.** A reply may make a small, obvious edit inline — fix
+the typo, change the one line, write the note beside it and the file it needs — and that is
+the whole point of leaving one at all. What is counted is HOW MANY TIMES the reply reaches
+for the disk, never how many different files it touched: a reply that writes a short script
+and then the file the script produces has done one small thing, and it stays here. The write
+that would cross the allowance is not made in the reply. The answer ends where it is, what
+is left moves onto one task, and the same two dim lines go into the transcript as at the
+third point above:
 
 ```
 this is changing more than a quick edit · moving it to a task that is watched and can split
@@ -752,7 +765,7 @@ just looking. A `cd` inside the command is followed, so a write into somewhere e
 somewhere else. **Reads are never counted**, in any number: `read`, `grep`, `ls`, `git log`,
 `git diff`, running your tests. Neither is a write that FAILED, and neither is anything
 outside this folder — a scratch file in `/tmp` is not your work. A hand does not bypass this
-count; see *Do hands get around the file limit* below.
+count; see *Do hands get around the write limit* below.
 
 **It can still decide not to move.** The move goes through the same road as the third point,
 which means it can be dropped when the model writing your answer says nothing is left AND the
@@ -3668,7 +3681,7 @@ your answer being worked on, not work that left.
 Do not confuse it with `this one wants more hands · handing it over with everything found so
 far`, which is the opposite move — that one is your answer **leaving** to become a task.
 
-## Do hands get around the file limit — my reply changed six files through hands and never became a task, does forking count against the allowance
+## Do hands get around the write limit — my reply changed six files through hands and never became a task, does forking count against the allowance
 
 **No. What a hand changes counts against the same allowance as an edit the reply makes
 itself.** The same calls count in both places: an `edit`, `write` or saved `edit_video` cut
@@ -4235,7 +4248,8 @@ there your row stands, and a blank row still means aforge asks you.
 On a headless run with a budget — `--once --yolo` **and** `--max-hours` or `--max-cost` —
 there is nobody to put a card in front of, so a task nobody could check is not put to
 anybody. The check is asked twice first: one checker, then a **fresh** one with the same
-evidence and not a word about what the last one said. Only when the second try says nothing
+evidence and not a word about what the last one said — **on another model** where this
+install has one to move to. Only when the second try says nothing
 either does the work land as it stands, and the landing says so, under the task's own
 account of what it did:
 
@@ -4258,7 +4272,7 @@ the worker that commissioned it, which reads the diff and settles it.
 
 **And a check that hung is not a check that ran.** No single call may spend the whole
 checking window: a stream that answers nothing is abandoned about half way and the check is
-asked again inside what is left. When the second call answers, the landing carries
+asked again, on another model where there is one, inside what is left. When the second call answers, the landing carries
 `checked on the second try`. Before that, one hung stream could eat all five minutes and the
 check was never asked twice at all.
 
@@ -4276,9 +4290,10 @@ task waits for you. Which failure it was decides what happens when you answer.
   `task 7 is done, and only a task that needs a look is waiting on somebody to decide`.
   Asking again cannot change a disk, and a measured run accepted the same task three times
   and got the same refusal three times.
-- **The same file changed on both sides** — a real merge conflict — is yours to decide, so
-  the task goes back to `needs your look` with the clashing files named. Sort the file out
-  and accept it again.
+- **The same file changed on both sides** — a real merge conflict. One round is spent
+  bringing the two versions together first, inside the task's own working copy and never in
+  your checkout; only when that round cannot do it does the task go back to
+  `needs your look` with the clashing files named. Sort the file out and accept it again.
 
 The how-tasks-run page has the sentences each of those lands with, under *My task could not
 save what it wrote*.

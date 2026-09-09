@@ -73,11 +73,13 @@ const (
 // a local job they want doing now, and — in their own words, misspelling and all
 // left out only because the seam reads no keywords — the request that the rest be
 // parallelized, with the coordination of the two pieces already out spelled after
-// it. It has to do BOTH: three distinct files under the workspace is what crosses
-// the write allowance (writeseam.go's writeAllowanceFiles) and opens the road at
-// all.
-const custodyAsk = "put a two-sentence header at the top of docs/one.md, docs/two.md and " +
-	"docs/three.md saying what each file is for. then parallelize others as well please — " +
+// it. It has to do BOTH: the headers are six documents, so the turn reaches for
+// the disk more times than the write allowance leaves it
+// (writeseam.go's writeAllowanceCalls, which is five), and that is what opens the
+// road at all.
+const custodyAsk = "put a two-sentence header at the top of docs/one.md, docs/two.md, " +
+	"docs/three.md, docs/four.md, docs/five.md and docs/six.md saying what each file is " +
+	"for. then parallelize others as well please — " +
 	"once tasks 1 and 2 are back, integrate their branches, run the reviews and open the " +
 	"pull request."
 
@@ -711,8 +713,9 @@ func custodyConfig(w *world) func(*session.Config) {
 	}
 }
 
-// newCustodyGround is the person's disposable checkout: one commit, three
-// documents with a little material in them, and an identity of their own.
+// newCustodyGround is the person's disposable checkout: one commit, the six
+// documents the ask names, with a little material in each, and an identity of
+// their own.
 func newCustodyGround(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "picker")
@@ -727,7 +730,10 @@ func newCustodyGround(t *testing.T) string {
 		"docs/one.md":   "# one\n\nthe folder picker rail, as it stands today.\n",
 		"docs/two.md":   "# two\n\nthe settings pane copy, as it stands today.\n",
 		"docs/three.md": "# three\n\nwhat the two of them share.\n",
-		"README.md":     "# the folder picker\n\nthree documents, one rewrite.\n",
+		"docs/four.md":  "# four\n\nthe settings row the rail reads.\n",
+		"docs/five.md":  "# five\n\nthe keys the pane and the rail both answer.\n",
+		"docs/six.md":   "# six\n\nwhat is left over once those two agree.\n",
+		"README.md":     "# the folder picker\n\nsix documents, one rewrite.\n",
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 			t.Fatalf("seed %s: %v", name, err)

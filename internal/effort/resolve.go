@@ -34,26 +34,47 @@ const (
 	// thought about would be an odd thing to spend on titling it.
 	RoleErrand Role = "errand"
 
-	// RoleStanding is one firing of a standing item, running unattended.
+	// RoleStanding is one firing of a standing item, running unattended. It
+	// carries no floor of its own: what keeps a firing from inheriting a depth
+	// nobody meant it to have is that the conversation's dial does not reach it
+	// (see [roleFloor]).
 	RoleStanding Role = "standing"
 
 	// RoleSentinel is the yes-or-no in front of a firing: has the thing the
 	// person asked about happened? It is a judgment on evidence already
-	// gathered, it runs on every check of every item forever, and it is the one
-	// call here where deliberation buys nothing.
+	// gathered and it runs on every check of every item forever — so the item's
+	// own rung is the only thing that ever asks it to think, and an item that
+	// asked for nothing sends nothing.
 	RoleSentinel Role = "sentinel"
 )
 
 // roleFloor is the rung a role falls back to when nothing above it was set.
 //
 // A ROLE MISSING FROM THIS MAP FALLS THROUGH TO THE INSTALL'S DEFAULT, which is
-// the whole difference between the two halves of the table: chat and worker are
-// absent on purpose, because their answer is whatever the person configured, and
-// the three that are present are present because their answer is NOT.
+// where every role but one now lands: chat, worker, standing and sentinel all
+// answer "whatever the person configured", and an install that configured
+// nothing asks for nothing.
+//
+// STANDING AND SENTINEL USED TO SIT AT [Low], and that entry is the reason this
+// comment is longer than the map. The argument for it was real — a check that
+// runs unattended, on a schedule, forever should not inherit a deep pass
+// somebody dialled in a conversation months ago — but the mechanism was wrong
+// in both directions. It was a rung this harness CHOSE, so an install that had
+// asked for nothing still sent `reasoning: {effort: "low"}` on every firing of
+// every item, to models whose own defaults it knew nothing about; and it was a
+// floor rather than a cap, so on a model that thinks less than "low" by default
+// it bought deliberation nobody wanted. The half of it that was worth keeping
+// is kept where it belongs and by a different mechanism: a standing run does
+// not inherit the conversation's dial at all (internal/session's standing_run.go
+// sets DefaultEffort to None), so the only rung that reaches a firing is the one
+// written on the item's own card.
+//
+// ERRAND STAYS, and it is the one entry that is not a choice about depth: [None]
+// is ABSENCE, the one value that puts no field on the wire. It says the person's
+// dial is not spent on naming their own conversation — never that this harness
+// has an opinion about how hard a title should be thought about.
 var roleFloor = map[Role]Rung{
-	RoleErrand:   None,
-	RoleStanding: Low,
-	RoleSentinel: Low,
+	RoleErrand: None,
 }
 
 // Scope is everything that has an opinion about one call's depth, most specific

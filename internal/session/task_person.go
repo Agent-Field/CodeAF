@@ -14,7 +14,6 @@ import (
 
 const (
 	taskJudgeTimeout = 3 * time.Second
-	taskJudgeTokens  = 120
 )
 
 // taskJudgePrompt sizes one piece of work. WHAT IT DECIDES IS NARROWER THAN IT
@@ -194,8 +193,7 @@ func (a *Agent) judgeDecomposable(ctx context.Context, brief string) (bool, []st
 	a.mu.Unlock()
 	messages := []ai.Message{textMessage("system", taskJudgePrompt), textMessage("user", strings.TrimSpace(brief))}
 	for attempt := 0; attempt < 2; attempt++ {
-		response, judge, callErr := a.callRole(ctx, roles.RolePlanner, model, messages,
-			ai.WithMaxTokens(taskJudgeTokens))
+		response, judge, callErr := a.callRole(ctx, roles.RolePlanner, model, messages)
 		if callErr != nil || response == nil {
 			return false, nil, ""
 		}

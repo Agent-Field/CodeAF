@@ -910,11 +910,9 @@ const (
 	// catches what the first family's blind spots let through, and the vision
 	// role rides this row.
 	DefaultHighModel = "qwen/qwen3.8-27b"
-	// The mastermind ships with a LEVEL on it, which no other tier does. The
-	// balanced crew's whole shape is "one model that thinks, cheaper ones that
-	// work", and a mastermind with no level asked for is the thinking half not
-	// actually thinking.
-	DefaultMastermindModel = "z-ai/glm-5.3:high"
+	// The mastermind names a capable planning model. Its generation behavior is
+	// left to the provider unless an operator adds a level to the model id.
+	DefaultMastermindModel = "z-ai/glm-5.3"
 )
 
 // DocumentEngines are the four rungs AFORGE_DOC_ENGINE accepts.

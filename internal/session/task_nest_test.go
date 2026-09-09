@@ -342,7 +342,7 @@ func TestAParentIsReEnteredWithItsPiecesReport(t *testing.T) {
 		t.Fatalf("the model was asked %d times, want a turn for the piece's report", got)
 	}
 	last := userTextIn(completer.request(completer.requests() - 1))
-	for _, want := range []string{"the law is in section four", "finished"} {
+	for _, want := range []string{"the law is in section four", "done"} {
 		if !strings.Contains(last, want) {
 			t.Fatalf("the report the parent was re-entered with reads %q, want %q in it", last, want)
 		}
