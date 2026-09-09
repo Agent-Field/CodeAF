@@ -8,17 +8,24 @@ dim line saying why it is being asked now, the answers it will take, what is
 waiting on it, and what an answer costs — whether it can be taken back, whether
 it costs money or time, or whether it cannot be undone at all.
 
-They are never a box that takes the keyboard away from you. You can go on typing
-while one is up, and you can leave one alone; what is waiting on it stays waiting
-and says so.
+**A question is never lost and never ages out.** It waits until it is answered,
+however long that is, and nothing more happens to whatever is stopped on it.
 
-Every one of them is answerable from more than the window it was asked in. The
-conversation that raised it can answer it, and so can home, another window on the
-same machine, and a window attached over `--host`.
+Not every one of them can be answered from somewhere else yet. The approval
+question, a task proposal and a standing card reach home, another window on this
+machine, and a window attached over `--host`; the rest are answered in the
+conversation that raised them. What is written down about all of them is the
+same either way.
+
+While the approval question is up, the keys belong to it: typing under it does
+nothing until it is answered. That is the one place a question takes the
+keyboard, and it is the older shape rather than the one being built.
 
 ## The kinds of question
 
-Eight shapes, and the shape sets how it is drawn and what a safe answer is.
+Eight shapes. The shape is what says whether anything but you may answer it and
+what a safe answer would be. Not all eight are raised today — nothing yet asks
+you to strike an assumption or to unwind something already done.
 
 - **permission** — may this happen. The approval gate before a command runs, an
   offer to connect one of your accounts, an offer to run a saved program. The
@@ -63,9 +70,12 @@ The record is read BEFORE anything is asked. A question you have already answere
 about the same thing is refused with `already decided:` and what you decided, so
 you are not asked the same thing twice.
 
-An answer that was not yours — a proposal whose clock ran out, an answer a
-setting gave — is written down as exactly that, rather than as something you
-said.
+Every line says WHO decided, and where that was not you it says so rather than
+reading as something you said.
+
+**What is not in it yet: a question nobody answered.** A proposal whose clock
+ran out started the work without anybody saying anything, and there was no answer
+to write down; the record holds decisions, and silence is not one.
 
 ## A finished task waiting on your word counts as needing you
 
@@ -83,6 +93,11 @@ conversation and look.
 Home lists what a conversation is waiting on and lets you answer it there. So
 does another window on the same machine, and a window attached to this machine
 over `--host`.
+
+**Three of them travel that way today**: the approval question before a command
+runs, a task proposal, and a standing card. A connect offer, a page waiting to be
+approved and a question a saved program asked are answered in the conversation
+that raised them.
 
 The keys are the ones the question wrote down and nothing else — a window never
 offers an answer the conversation would drop. **The first answer wins.** If two

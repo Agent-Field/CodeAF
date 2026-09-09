@@ -9,6 +9,9 @@ invalidates:
   - "session.Answer used to be four fields: At, Kind, ID, Key. Those four are unchanged and AnswerFromKey still answers from a bare key alone, so an older window's answers.jsonl line still reads — but an answer now also carries Picked, Change, Comments, AskedBack, Blanks, Dial, Reframe, DecidedBy, Scope and Why."
   - "session.AnswerOption used to be Key and Label. Those two are unchanged; it also carries Body, Consequence, Safe, Widening, Blocks and Dimensions now, all omitempty."
   - "Agent.ResolveConflict, Agent.TakeBackDecision and Agent.AnswerSubharness had no caller anywhere in the product — work could stop on a question nothing could draw, let alone answer. They are reachable through Agent.ResolveQuestion now."
+  - "There was no standing subscription for questions. Agent.WatchQuestions() is one now: EventQuestion, EventQuestionWithdrawn and EventQuestionAnswered ride it, and it replays every question already open when a surface attaches. They deliberately do NOT ride the turn's stream (whose readers walk a strict sequence to its close) or the standing task lane (which is the roster's)."
+  - "session.PresenceQuestion used to be four fields — Kind, ID, Text, Options — and still is for any reader that only knows those. It also carries Full *Question now, the whole question the lane raised."
+  - "Agent.NeedsPerson() did not count a landed task's `your call'. It does now, so home, the switcher and the tab signal stop saying a conversation is idle while work waits on somebody's word about it."
   - "A session kept no record of what had been decided. It keeps decisions.jsonl in its own folder now; Agent.Decisions() reads it back, and Question.Check refuses a question a record already answers with `already decided: …'."
 ---
 
