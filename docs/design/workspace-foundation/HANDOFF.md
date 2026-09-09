@@ -249,7 +249,8 @@ separate model completion reliability failure; read [COMPLEX-TESTS.md](COMPLEX-T
 before relying on the earlier nine-case evidence. The scope repair is confirmed by the long sequence and a forced identity-read
 case. The complete working-day run remains red for completion/report corruption,
 tracked in [#672](https://github.com/Agent-Field/aforge-v2/issues/672). That is the
-next reliability investigation; do not describe all complex journeys as passing.
+current reliability repair; the captured evidence, repair and pending full rerun
+are recorded in COMPLEX-TESTS.md. Do not describe all complex journeys as passing.
 Production code was verified at `a216cdcf5`; `6ce8be8bd` then clarified one live
 test assertion and strengthened the deterministic collection-name lookup test.
 No production behavior changed in that follow-up. See

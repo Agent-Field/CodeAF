@@ -22,11 +22,19 @@ ORGANIZATION_TEST_RUN='^TestOrganizationE2E$/api_contract$' make test-organizati
 prints a fresh temporary path. Missing credentials fail the explicit runner.
 A skipped test or empty selection is not live verification. Ordinary tagged
 package runs retain the existing harness's missing-credential skip convention.
-Tests run sequentially because profile selection is process-wide.
+Organization cases run sequentially because profile selection is process-wide.
+The separate session-package completion probes may run concurrently; each package
+has its own process and disposable home.
 
 Receipts contain generated fixture IDs, tool arguments/results, structured
 artifacts, model IDs, durations and spending. Assertions inspect stored revisions,
 actual tool calls and files, not exact assistant prose or a second LLM's score.
+`TestRealCompletionEvidence` separately exercises the actual completion reader on
+controlled transcripts: a correct report, a wrong revision type, a wrong source,
+and a failed write. These are live reader probes, not full user journeys. The
+normal live runner always includes them, even with a narrowed organization case.
+Each probe keeps the production reader deadline and checks a $0.05 spend ceiling.
+For diagnosis alone: `go test -tags e2e -count=1 -run '^TestRealCompletionEvidence$' ./internal/session`.
 The out-of-scope case observes the real outgoing provider request through a local
 forwarding proxy; it does not replace the provider with a model stub.
 

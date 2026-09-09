@@ -2230,3 +2230,17 @@ content-addressed `writeStub` path; their bounded preview names the saved file.
 This adds no model call or separate retention cache. A single line larger than
 the native reader's content limit retains the reader's explicit long-line
 response; line paging does not claim to split it.
+
+## Completion write evidence
+
+The checkpoint digest now retains a write/edit call's raw arguments beside its
+matching tool result when they fit `checkpointWriteArgumentBytes` (**1,600 bytes**,
+four times `checkpointResultBytes`). Larger inputs are explicitly omitted whole;
+partial JSON must not masquerade as a complete report. Unmatched calls carry no
+input evidence. All entries compete in the existing **5,000-token** digest budget
+with its existing newest-first result retention. No files are opened, no model
+summarizer is added, and completion call counts and deadlines are unchanged.
+The completion reader no longer borrows the 300-token sketch generation ceiling:
+it uses provider/operator defaults, matching the generation-control direction
+already merged upstream in #665. The shared
+context block retains its separately documented six-record bound.

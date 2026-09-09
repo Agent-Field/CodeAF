@@ -129,3 +129,35 @@ Earlier failed runs remain in the diagnostic directory. This wave does not
 establish model reliability across repeated days or all supported providers.
 The shared-context mechanism is more accurately reported now; the full
 regular-use scenario still has an open completion failure.
+
+## Completion repair investigation — follow-up on #672
+
+A fresh baseline at `ca2a59d5a` captured actual model requests and carry-on
+messages with the built-in call log. The reader repeatedly claimed fields were
+missing from valid reports. It saw a write label clipped inside the JSON and a
+byte-count receipt, but not the complete submitted object. Its objection then
+rode as an asserted instruction. The baseline ended red after repeated extra
+work led to a task owning the directory and the final requested review report
+being absent; it is not a green baseline.
+
+The repair pairs bounded, whole write/edit arguments with their matching tool
+results. The ledger names attempts rather than claiming success. Larger inputs
+are explicitly omitted, never presented as complete partial JSON. Reader and
+carry-on instructions distinguish observations from established facts: inspect
+missing evidence and preserve correct work when an objection is mistaken.
+No domain-specific provenance comparator or skipped completion check is added.
+
+The first live negative probes still accepted a wrong source and a failed write.
+An actual comparison also exhausted the inherited 300-token sketch limit. The
+completion call now uses provider/operator generation defaults, consistent with
+upstream #665, and the prompt explicitly prioritizes results over claims. All
+four probes then passed in 12.76 seconds: correct report accepted, wrong numeric
+type, wrong source and failed write rejected. This is controlled reader evidence,
+not a substitute for the complete working-day rerun. Deterministic tests failed
+before the repair and pass after, including input/result pairing and size bounds.
+
+Evidence is retained under `/Users/santoshkumar/af-completion-evidence-20260909/`:
+`before-workday.jsonl`, `before-calls.jsonl`, `before-completion-pages.json`,
+`reader-check.jsonl` (first negative probe failures), and `reader-v2.jsonl`.
+The full repaired journeys and final regression checks are pending in this
+checkpoint; keep #662 draft and unmerged until their receipts are recorded.
