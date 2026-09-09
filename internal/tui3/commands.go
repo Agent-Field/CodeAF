@@ -66,7 +66,7 @@ var commands = []command{
 	// are NOT four more rows here. The list is how somebody finds a command,
 	// not where they learn its grammar; the manual's model page has the four
 	// forms in a table ([modelArg] at the foot of this file).
-	{name: "model", args: "<slug>", desc: "switch the model"},
+	{name: "model", args: "<slug>", desc: "switch the model for the conversation or open task"},
 	{name: "image", args: "<path>", desc: "attach a picture · tab completes the path"},
 	// /set and /config were already answered by the dispatch before aliases
 	// existed, and /connections and /sessions with them. They are written here
@@ -83,6 +83,7 @@ var commands = []command{
 	{name: "new", desc: "start another conversation in this project", alias: []string{"clear", "clean", "reset"}},
 	{name: "resume", desc: "open an earlier conversation", alias: []string{"sessions"}},
 	{name: "compact", desc: "summarize the conversation now"},
+	{name: "stop", desc: "stop the open task or selected work · asks first"},
 	// A project-less conversation needs this once, while /compact is a daily
 	// command everywhere. Keep the one-shot anchor immediately below the eight
 	// always-visible rows so adding it does not hide /compact behind a scroll.

@@ -224,31 +224,28 @@ A slug the catalog has never carried is still **taken at its word**, exactly as 
 aforge may be offline, or you may be naming a model this build has never listed. In that
 case the context window is left alone.
 
-## I changed the model but my task is still on the old one — /model does not move a running task's model
+## I changed the model but my task is still on the old one — change the model inside a task
 
-`/model` moves the **conversation**. Work already handed over is not moved: a task's model
-is settled the moment the task is admitted and kept for its whole life, so a task that was
-running when you switched carries on in the voice it started in. That is deliberate — the
-switch you made mid-thought does not silently change the terms of work you already
-approved.
+In the conversation, `/model` changes the model you talk to. Inside an ordinary task, `/model` opens the picker for **that task only**, and
+`/model <slug>` changes that task. Clicking its model in the status line or
+**Task setup** opens the same picker. A filtered `/model` search keeps that
+same task scope. The change takes effect on the task's next turn; a response
+already in progress keeps its model. Other tasks and the conversation stay as
+before.
 
-When you switch while tasks are running, the note in the conversation says so in the same
-line that names the new model:
+For a completed, incomplete or `your call` ordinary task, the picker saves the
+model for when you continue. It does not restart work or change the completed
+attempt's recorded model. A queued task takes the choice when it starts.
 
-```
-model · anthropic/claude-opus-5 — tasks already running keep the model they started on
-```
+An adaptive run or its nodes, and a task being read through
+another conversation cannot use this model-changing door. `/model` says
+`this task's model cannot be changed here` instead of changing the conversation
+behind that page. Provider pinning with `@provider` or `auto` remains available
+from the conversation's `/model`.
 
-With nothing running, the note is just `model · <the model>`.
-
-**To move one running task**, walk into its room and press the `task <model>` part of the
-status line — the ordinary picker opens aimed at that task, and the change takes effect on
-the task's next turn. That room is the only door; there is no command or setting that
-re-models running work from outside.
-
-**New tasks follow the switch.** Work admitted after `/model` runs on the model the
-conversation is now on — unless you have set `task.model` in settings, which always wins,
-or you name a model for that one task in words.
+Changing the conversation model does not move existing tasks. New tasks resolve
+their model from an explicit choice, the task model setting, the crew's worker
+class, then the conversation model when that worker class is blank.
 
 ## The crew — which models aforge uses on my behalf, and /crew
 
@@ -920,6 +917,17 @@ that reaches a firing is the one written on the item's own card, and an item tha
 never dialled sends no reasoning field at all. The conversation you set the item up in
 still does not reach it — that is what keeps an install dialled to `max` from turning
 every check on the machine into a deep pass.
+
+## Thinking between tool calls
+
+A completed model reply keeps the reasoning supplied by that model alongside its
+tool calls, so the next step can continue from the same work. Streamed pieces of
+one text or summary block are joined before that history is sent back. Separate
+blocks stay separate, and encrypted reasoning is retained without rewriting it.
+
+This does not choose a thinking level or add a token budget. An unfinished attempt
+does not supply a completed reasoning continuation, and switching models does not
+send one model's private reasoning to another.
 
 ## What a request carries when nobody has chosen anything
 

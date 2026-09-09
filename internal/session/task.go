@@ -307,8 +307,8 @@ type taskSpec struct {
 	// the conversation reaches the conversation and no work already handed over —
 	// and one thing explicit does: a person picking a model inside this node's
 	// own room, which moves this node from its next turn on and nothing else in
-	// the session ([Agent.RetargetTask], task_room.go). A node that has settled
-	// is refused there, so a landed row's model is a fact and stays one.
+	// the session ([Agent.RetargetTask], task_room.go). A settled node saves its
+	// continuation choice separately, so its last model remains a historical fact.
 	//
 	// modelOptions is the shortlist a word that fits more than one model raises.
 	// It is on the proposal the person is shown and is empty by the time the node

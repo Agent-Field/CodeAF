@@ -683,6 +683,16 @@ type (
 		ev  session.Event
 	}
 	orchLaneClosedMsg struct{ gen int }
+	// questionEventMsg is one event off THE QUESTION LANE (question.go): a
+	// decision raised, withdrawn, or answered — here or in another window. It
+	// is a lane of its own for the reason [app.watchQuestions] states: a
+	// question outlives the turn that raised it, and half the lanes that raise
+	// one are not in a turn at all.
+	questionEventMsg struct {
+		gen int
+		ev  session.Event
+	}
+	questionLaneClosedMsg struct{ gen int }
 	// wokenMsg is one turn THE SESSION STARTED ON ITS OWN, arriving as the
 	// stream it will speak on (followup.go). It is the turn stream's shape and
 	// not the standing lane's: what comes off the wake lane is a channel, and
@@ -1407,6 +1417,58 @@ type app struct {
 	farRecord     func(uri string, tail int) (session.TaskRecord, error)
 	farRoomRecord func(id uint64, tail int) (session.TaskRecord, error)
 	farTasks      func() ([]session.TaskIndexEntry, bool)
+	// THE QUESTION BLOCK (question.go). questions are every decision this
+	// surface is waiting on somebody for, whoever raised it — the engine's own
+	// lanes through [questionAgent.WatchQuestions], and the ones this program
+	// asks about itself (the stop card, the tab-close card) with their own
+	// answer door on them. It is ONE list because they are one kind of thing,
+	// and a person answering down a queue does not care which side of the
+	// engine boundary each came from.
+	questions []questionShown
+	// questionLane is the standing subscription itself, and questionGen the
+	// generation that tells an event from a REPLACED agent's lane apart from
+	// one from the live agent's — the same guard every other lane on this
+	// surface keeps ([app.orchGen]).
+	questionLane <-chan session.Event
+	questionGen  int
+	// questionWatch stops that subscription. It is held rather than deferred
+	// because the surface outlives any one turn and the watch is not a turn's:
+	// it replays what is already open every time a surface attaches.
+	questionWatch func()
+	// questionFolded is which of them somebody pressed `esc` on. THEY ARE STILL
+	// OPEN — esc is later and cancels nothing — so they stay on the list above,
+	// keep the work paused, and keep being counted by the chip; what folding
+	// takes away is the rows, so the box underneath is free.
+	questionFolded map[string]bool
+	// questionRecords is what answered and withdrawn questions leave behind: the
+	// dim line that stays where the question was. Bounded and faded by
+	// [app.questionRecordsShown] — a receipt is news, and news that never goes
+	// is furniture.
+	questionRecords []questionRecord
+	// questionYeses counts the same-shaped yeses per shape, which is the whole
+	// of the rule offer: the third one puts `r make it a rule` on the row
+	// ([app.questionRule]). It is this window's own count and is deliberately
+	// not persisted — a rule offered on the strength of something somebody did
+	// last week is a rule offered about a habit they may not have.
+	questionYeses map[string]int
+	// questionTyped is when a key last landed anywhere on this surface, and it
+	// is the near end of THE BOX IS NEVER MOVED UNDER A HAND: a question that
+	// arrives on top of a half-typed sentence waits until the box is clear or
+	// the hands have been still for [questionQuiet] ([app.questionQuieted]).
+	//
+	// It is stamped on EVERY key rather than on the ones that type, because
+	// what it measures is whether somebody is at the keyboard mid-thought —
+	// walking a cursor through a sentence and pressing backspace are both that
+	// person, and a question that took their rows between two of those presses
+	// would be exactly the defect the law names.
+	questionTyped time.Time
+	// questionSpans is where the head question's answers landed in columns, and
+	// questionSpanRow which row of the block they are on. Written by the draw
+	// and read by the press, which is [app.askTaps]'s own bargain: a hit-test
+	// that recomputed the geometry would be measuring a block the frame has not
+	// drawn.
+	questionSpans   []choiceSpan
+	questionSpanRow int
 	// asks are the approval questions waiting for an answer, oldest first
 	// (consent.go). While one is up it owns the keyboard: the draft below is
 	// suspended untouched, exactly as the model picker suspends it.
@@ -2718,7 +2780,7 @@ func (a *app) Init() tea.Cmd {
 	// the loop for the reason every other reading on this list is: the walk opens
 	// every project's index, and the paint path may never pay for one.
 	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
-		a.watchRuns(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
+		a.watchRuns(), a.watchQuestions(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
 		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor,
 		// AND THE SETUP SCREEN'S EXAMPLE PANEL, when the setup is the first frame
 		// and the controls screen is its first step. It answers nil in every other
@@ -2857,6 +2919,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() != "ctrl+c" {
 			a.disarmQuit()
 		}
+		// AND THE HAND IS STAMPED HERE, for the same reason the line above is:
+		// this is the only line every keypress passes through, and what the
+		// question block needs to know is whether somebody is at the keyboard
+		// at all (question.go's [app.questionQuieted]).
+		a.questionTyped = a.now()
 		// A KEY INSIDE AN OPEN PASTE BRACKET IS TEXT, and it is read here, before
 		// anything else, because the first key of a leaked paste is usually the
 		// one that would do the damage (see [app.pasteKey]). It can also hand the
@@ -3213,6 +3280,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the rows a person was reaching for stood still while the paragraph they
 		// were not looking at moved. It is claimed here, above the room, because
 		// the room is the BODY region and the column is beside it, not under it.
+		if a.roomPanelWheel(msg) {
+			return a, nil
+		}
 		if a.railWheelAt(msg.Mouse().X, msg.Mouse().Y) {
 			switch msg.Mouse().Button {
 			case tea.MouseWheelUp:
@@ -3347,6 +3417,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// expanded a call nobody can see (expand.go).
 			if a.expandShowing() {
 				a.expandPress(msg.Mouse().Y)
+				return a, nil
+			}
+			// THE QUESTION BLOCK IS READ FIRST OF THE FRAME'S OWN ROWS, which is
+			// the pointer's half of the keyboard's order (input.go's rungs):
+			// the block is drawn above every other pinned block, so a press
+			// inside it is a press on it. It claims only the columns an answer
+			// was actually drawn in and lets everything else fall through,
+			// which is the block's own not-modal law said to the pointer
+			// (question.go's [app.questionPress]).
+			if a.questionPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
 			// THE APPROVAL QUESTION IS READ FIRST OF THE FRAME'S OWN ROWS, which
@@ -3779,6 +3859,19 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The agent this lane belonged to is gone, on the other two lanes' terms.
 		if msg.gen == a.orchGen {
 			a.orchLane = nil
+		}
+		return a, nil
+
+	case questionEventMsg:
+		if msg.gen != a.questionGen {
+			return a, nil
+		}
+		return a, a.questionEvent(msg.ev)
+
+	case questionLaneClosedMsg:
+		// The agent this lane belonged to is gone, on every other lane's terms.
+		if msg.gen == a.questionGen {
+			a.questionLane, a.questionWatch = nil, nil
 		}
 		return a, nil
 
@@ -4321,6 +4414,10 @@ func (a *app) paint() tea.Cmd {
 	// must not depend on a second fact staying true.
 	if a.state == stateWorking || a.welcome.animating() || a.tasksAnimating() ||
 		a.askAnimating() ||
+		// The question block's own clock, on the same terms: a policy line
+		// counting down is the one thing on that block that changes without a
+		// key being pressed (question.go).
+		a.questionAnimating() ||
 		// AND THE STANDING SIDE IS THE NINTH: a card's meter draining toward a
 		// decline, and the status segment breathing while a firing is in flight.
 		// The second of them is the only thing on this list that is happening in
@@ -6192,7 +6289,19 @@ func (a *app) slash(line string) tea.Cmd {
 		a.openFiles()
 		return nil
 
+	case "stop":
+		if target := a.stopHere(); !target.empty() {
+			a.raiseStop(target)
+		} else {
+			a.note("open a running task to stop it")
+		}
+		return nil
+
 	case "model":
+		if a.roomOpen() {
+			a.roomModelCommand(rest)
+			return nil
+		}
 		// Bare /model is a question — "which ones are there" — and the picker
 		// is the answer. A slug is an instruction, and an instruction that
 		// opened a list to confirm itself would be the surface asking a person

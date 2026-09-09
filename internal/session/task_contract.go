@@ -343,6 +343,8 @@ func settleOrAsk(word string) TaskSettle {
 // the top half, an update the bottom, and no surface reads a field its kind
 // did not set.
 type TaskNotice struct {
+	// Thinking is the effective setup, including a saved continuation choice.
+	Thinking string
 	// ID is the proposal's token: a surface hands it back to
 	// [Agent.ResolveTask]. On updates it names the node the update is about.
 	ID uint64
@@ -601,6 +603,8 @@ type TaskNotice struct {
 	// outlives the question — a card that lands twenty minutes later still says
 	// whose hands did it.
 	Model string
+	// NextModel is a saved continuation choice; Model still names the last attempt.
+	NextModel string
 	// CostUSD is what this node's own agent has spent, live while it runs and
 	// frozen once it lands. Zero means nobody published a price — an unpriced
 	// model, or a node that has not started — and it is NOT the same claim as

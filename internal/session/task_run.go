@@ -264,9 +264,12 @@ const (
 // brief is assembled once at start (runFrontier's JIT assembly) from spec.brief
 // plus prerequisites' reports and is not the spec.
 type TaskNode struct {
-	graph     *TaskGraph
-	id        uint64
-	dependsOn []uint64
+	// Continuation choices preserve the completed attempt until work is reopened.
+	nextModel  string
+	nextEffort *string
+	graph      *TaskGraph
+	id         uint64
+	dependsOn  []uint64
 	// parent is the node this one was handed out BY, and 0 for the work a
 	// conversation proposed. It is the family seam [TaskNotice.Parent] carries,
 	// and it is not an edge: dependsOn says what must finish first, this says
@@ -2065,6 +2068,11 @@ func (n *TaskNode) model() string {
 func (n *TaskNode) retarget(model string) {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
+	n.retargetLocked(model)
+}
+
+// The caller holds the graph lock while choosing the attempt this model belongs to.
+func (n *TaskNode) retargetLocked(model string) {
 	n.spec.model = model
 	n.spec.modelWord = model
 	if n.ran != "" {
@@ -3339,11 +3347,20 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 	// downstream because a notice is copied into every watcher's lane and held by
 	// whoever draws a row.
 	delivery := n.carriedResultLocked()
+	thinking := n.spec.effort.String()
+	if n.nextEffort != nil {
+		thinking = *n.nextEffort
+	}
 	return TaskNotice{
-		ID:    n.id,
-		Title: n.spec.title,
-		Kind:  n.kind,
-		Where: where,
+		Thinking: thinking,
+		ID:       n.id,
+		Title:    n.spec.title,
+		// Reopened task pages need the contract even when no proposal card survives.
+		Brief:      n.spec.brief,
+		Summary:    n.spec.summary,
+		Acceptance: n.spec.acceptance,
+		Kind:       n.kind,
+		Where:      where,
 		// AND WHICH PROJECT THAT DIRECTORY IS A COPY OF, on every update and not
 		// only on the proposal: a row drawn from a checkpoint, a roster replayed
 		// after a resize and a card watching work land all ask the same question,
@@ -3391,8 +3408,9 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		// WHAT IT IS RUNNING ON, WHICH IS THE SPEC'S UNLESS SOMETHING SWAPPED IT.
 		// See [TaskNode.ran] for why the swap is a second field rather than an
 		// edit to the frozen spec.
-		Model:   n.runModelLocked(),
-		CostUSD: cost,
+		Model:     n.runModelLocked(),
+		NextModel: n.nextModel,
+		CostUSD:   cost,
 	}
 }
 

@@ -186,8 +186,10 @@ type taskNode struct {
 	// (session's TaskNotice.Model). Empty means nobody said — a scripted agent,
 	// an older engine — and every row that draws it draws nothing instead, the
 	// way the spend does.
-	model string
-	state session.TaskState
+	model     string
+	nextModel string
+	thinking  string
+	state     session.TaskState
 	// dependsOn is the structural half of this file (see the header): stored
 	// always, drawn only when a prerequisite is unmet.
 	dependsOn []uint64
@@ -3331,6 +3333,10 @@ func (a *app) bodyWidth() int {
 // to the roster, because two would be a click that opened the node above the one
 // under the pointer.
 type railLine struct {
+	// roomAction and roomSection share the drawn rows with pointer routing.
+	roomAction  string
+	roomSection int
+
 	text string
 	// entry indexes [app.railEntries], or -1 for the padding and the footer.
 	entry int
@@ -3437,6 +3443,9 @@ func (a *app) railLines(entries []railEntry, width int) []railLine {
 func (a *app) railView(height int) ([]railLine, int) {
 	if height <= 0 || !a.railStanding() {
 		return nil, -1
+	}
+	if a.roomPanelShowing(height) {
+		return a.roomPanelView(height)
 	}
 	room := a.railRoom()
 	entries := a.railEntries()
@@ -3701,6 +3710,8 @@ func (a *app) railRows(height int) []string {
 			node = entries[line.entry].node
 		}
 		switch {
+		case line.roomAction != "" && a.hot.kind == hoverRoomControl && a.hot.key == line.roomAction:
+			text = a.hoverRow(text, room)
 		case a.roomStandingOn(node):
 			text = a.pal.selected(text, room)
 		case node != nil && a.hoveringRail(node):
@@ -4515,7 +4526,9 @@ func (a *app) railOffersResize() bool {
 	if !a.railCanWiden() {
 		return false
 	}
-	return a.railCramped || a.railHold || a.hoveringRailArea()
+	// The task panel reserves its footer before laying out the tree. Hover may
+	// recolor that footer, but must never add a row and move the controls.
+	return a.roomOrganized() || a.railCramped || a.railHold || a.hoveringRailArea()
 }
 
 // railSigma opens the footer's first line, and it is the whole of what makes the
@@ -4615,7 +4628,19 @@ func (a *app) railEntryRows(e railEntry, width int) ([]string, hudSpan, hudSpan)
 	if node == nil {
 		return nil, hudSpan{}, hudSpan{}
 	}
+	// Deep ancestry keeps its full navigation identity, but its indentation must
+	// leave room for a name and the under-row's child stem. The ellipsis marks
+	// omitted outer connectors; only this drawing copy is shortened.
+	depthRoom := max((width-railTitleFloor-2-treeIndentCols)/treeIndentCols, 1)
+	compressed := len(e.stems) > depthRoom
+	if compressed {
+		e.stems = e.stems[len(e.stems)-depthRoom:]
+	}
 	prefix, at := a.railPrefix(e.stems)
+	if compressed {
+		tail, _ := a.railPrefix(e.stems[1:])
+		prefix = a.pal.dim(a.linearMark("…", "~")+strings.Repeat(" ", treeIndentCols-1)) + tail
+	}
 	glyph, lead, folds := a.railLead(e)
 	room := width - at - ansi.StringWidth(lead)
 	// The trailing slot: a folded root says how much it is standing for, every
@@ -5641,7 +5666,9 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		if node == nil || (notice.CostUSD <= node.cost &&
 			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node) &&
 			!taskRenamesContext(notice, node) && !taskStops(notice, node) &&
-			!taskPauses(notice, node) && notice.Decider == node.decider) {
+			!taskPauses(notice, node) && notice.Decider == node.decider && notice.NextModel == node.nextModel && notice.Thinking == node.thinking &&
+			(notice.Brief == "" || notice.Brief == node.brief) &&
+			(notice.Acceptance == "" || notice.Acceptance == node.acceptance)) {
 			return nil
 		}
 	}
@@ -5683,6 +5710,16 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		}
 		a.tasks[notice.ID] = node
 		a.taskOrder = append(a.taskOrder, notice.ID)
+	}
+	// Replayed engine updates carry the original contract without a proposal card.
+	if notice.Brief != "" {
+		node.brief = notice.Brief
+	}
+	if notice.Acceptance != "" {
+		node.acceptance = notice.Acceptance
+	}
+	if notice.Summary != "" {
+		node.assignment = notice.Summary
 	}
 	a.takeTypedTaskBrief(node)
 	if title := strings.TrimSpace(notice.Title); title != "" {
@@ -5778,6 +5815,8 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	if model := strings.TrimSpace(notice.Model); model != "" {
 		node.model = model
 	}
+	node.nextModel = strings.TrimSpace(notice.NextModel)
+	node.thinking = notice.Thinking
 	if len(notice.Changed) > 0 {
 		node.changed = notice.Changed
 	}

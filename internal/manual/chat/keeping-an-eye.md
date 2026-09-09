@@ -602,6 +602,12 @@ row on home.** It comes up here, mid-reply, in well under a second. The row says
 it here, and the terminal that had it steps back and says so. See
 *Continue a conversation from another terminal* on the home page.
 
+**A plain `aforge` in that folder sits straight down in it**, with nothing to press
+at all. A launch that names no conversation is asking for this folder's latest,
+and the engine hands back the one it is already holding — mid-reply, with its
+tasks still running. It never opens a second chat on top of one it holds, and
+never says `open in another window` about its own conversation.
+
 The engine lets go on its own when there is nothing left to hold: a conversation
 with no window, no turn and no waiting question is kept for half an hour and then
 closed, and an engine holding nothing at all exits. `aforge engine --stop` in the

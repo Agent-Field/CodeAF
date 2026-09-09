@@ -1479,7 +1479,7 @@ func (a *app) openPickerFiltered(query string) {
 func (a *app) openTaskPicker(id uint64) {
 	current := ""
 	if node := a.tasks[id]; node != nil {
-		current = node.model
+		current = firstNonEmpty(node.nextModel, node.model)
 	}
 	a.pick.startFor(a.modelList(), current, chatModel)
 	a.pick.task = id
@@ -1851,7 +1851,7 @@ func (a *app) overlayHeight() int {
 	// frame. The two reserved rows are the status line and one row of
 	// conversation — a list that left neither would be a list that took the
 	// screen.
-	room := height - 2 - a.inputHeight() - a.consentHeight() - a.connectAskHeight() -
+	room := height - 2 - a.inputHeight() - a.questionHeight() - a.consentHeight() - a.connectAskHeight() -
 		a.harnessAskHeight() - a.followHeight() - a.landHeight() - a.parkedHeight()
 	if commands {
 		want = a.menu.height(width, room)

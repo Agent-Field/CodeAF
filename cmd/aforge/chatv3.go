@@ -334,7 +334,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// too would be a second copy of a decision that is made correctly one
 		// layer down, and it would take the `/subharness` list away from a door
 		// that may yet grow one.
-		return runChatV3Once(ctx, cfg, text, level, resumed)
+		return runChatV3Once(ctx, cfg, launch.Project, text, level, resumed)
 	}
 	// Interactive: there is a surface, and it answers (internal/tui3's
 	// consent.go). This is the ONLY path that sets it.
@@ -349,7 +349,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// carries rather than in what two files remembered to say.
 	cfg, open := v3Shape(cfg, v3LanesHere())
 
-	agent, cfg, notice, err := openV3Agent(cfg, workspace, open)
+	agent, cfg, notice, err := openV3Agent(cfg, launch.Project, open)
 	// LAUNCH-ON-LOCK. The conversation this terminal asked for is open in
 	// another window, and this door has a screen — so it offers that
 	// conversation rather than refusing or, as it once did, quietly handing over
@@ -738,6 +738,16 @@ type v3Launch struct {
 	Workspace   string
 	SessionFile string
 	Resumed     bool
+	// Project is the DIRECTORY THIS CONVERSATION IS ABOUT, which is not always
+	// Workspace above: an OWNED conversation works in its own private work/
+	// folder under ~/.aforge/v3/projects, and Workspace is that folder.
+	//
+	// It is carried because two things are keyed by the project and not by the
+	// tools root — the engine host that holds this workspace's conversations
+	// (internal/enginehost), and therefore the `aforge engine --stop --workspace
+	// X` in [sessionHeldElsewhereSentence]. Handing that sentence Workspace
+	// spelled a command that pointed at a host which does not exist.
+	Project string
 	// Place is the session folder this launch opened (internal/session's
 	// place.go), and Bucket the project directory it sits in. The surface keeps
 	// both after the launch: the folder is what /new mints a sibling of, and the
@@ -1003,6 +1013,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		Config:       cfg,
 		Model:        chosen,
 		Workspace:    workspace,
+		Project:      project,
 		SessionFile:  transcript,
 		Resumed:      resumed,
 		Place:        found.Place,
@@ -1201,9 +1212,28 @@ func v3TakeOverInstead(cfg session.Config, workspace string) (*session.Agent, se
 // to a person who met one of them last week.
 func sessionHeldElsewhereSentence(workspace string) string {
 	if strings.TrimSpace(workspace) == "" {
-		return "this conversation is open in another window — open aforge here and press enter on it to move it here, or run aforge engine --stop to let go of it"
+		return sessionHeldElsewhereOpening + " — open aforge here and press enter on it to move it here, or run aforge engine --stop to let go of it"
 	}
-	return fmt.Sprintf("this conversation is open in another window — open aforge here and press enter on it to move it here, or run aforge engine --stop --workspace %s to let go of it", workspace)
+	return fmt.Sprintf("%s — open aforge here and press enter on it to move it here, or run aforge engine --stop --workspace %s to let go of it", sessionHeldElsewhereOpening, workspace)
+}
+
+// sessionHeldElsewhereOpening is the first clause of that sentence, spelled
+// once so that the CLIENT SIDE OF THE SOCKET CAN RECOGNISE IT.
+//
+// A refusal made inside the engine reaches the surface as a sentence and
+// nothing else: internal/remote carries a boot failure as `engine: ` plus the
+// text ([remote.spokenError]), which is right — a person reads it unchanged —
+// and leaves the dialler with a string to read. So the one place the wording
+// lives is here, and the one reader of it is [hostHeldRefusal]. A second
+// spelling anywhere would be a road that silently stopped recognising the
+// refusal it is written to answer.
+const sessionHeldElsewhereOpening = "this conversation is open in another window"
+
+// hostHeldRefusal reports whether an engine refused a hello because the journal
+// it was asked for is held by something else — [session.ErrSessionLocked] as it
+// looks after a trip over a socket.
+func hostHeldRefusal(err error) bool {
+	return err != nil && strings.Contains(err.Error(), sessionHeldElsewhereOpening)
 }
 
 // ── governance: what a session may do, on whose models, for how much ────────
@@ -2157,7 +2187,7 @@ func warmV3Models(models *catalog.Catalog, agent *session.Agent, started string)
 // terminal ownership. Everything the surface would draw as chrome goes to
 // stderr and only what the model said goes to stdout, so a probe can compare
 // stdout with the sentence it asked for.
-func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, resumed bool) error {
+func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, level string, resumed bool) error {
 	// The leaving road stands before session opening because opening can take
 	// time, and a signal there would otherwise take the default disposition and
 	// skip every defer — the whole of #471. Cancelling the turn is all the
@@ -2186,7 +2216,14 @@ func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, 
 	if resumed && cfg.SessionFile != "" {
 		fmt.Fprintln(os.Stderr, "resumed "+cfg.SessionFile)
 	}
-	agent, cfg, notice, err := openV3Agent(cfg, cfg.Workspace, v3OpenSession)
+	// THE SENTENCE NAMES THE PROJECT AND NOT THE SESSION'S OWN WORK DIRECTORY.
+	// [sessionHeldElsewhereSentence] spells `aforge engine --stop --workspace X`
+	// and X has to be the directory a host is keyed by, or the command it hands
+	// a person points at a host that does not exist. cfg.Workspace is not that
+	// directory for an OWNED conversation — there it is the session's private
+	// work folder under ~/.aforge/v3/projects — so the launch's own workspace is
+	// carried in rather than read back off the config.
+	agent, cfg, notice, err := openV3Agent(cfg, workspace, v3OpenSession)
 	if err != nil {
 		return reported(err)
 	}

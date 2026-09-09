@@ -178,3 +178,24 @@ func TestContextReplayOnlySelectedEvidenceFilesResults(t *testing.T) {
 		t.Fatalf("unselected filing or exceeded budget: %d files, %d handles, %d spent", files, len(handles), spent)
 	}
 }
+
+// The completion reader was removed, but its evidence invariant belongs to
+// every remaining history consumer: duplicate and orphan results cannot attach
+// to another occurrence of the same provider call ID.
+func TestContextReplayBatchPairingIgnoresOrphanResults(t *testing.T) {
+	first := contextReplayCall("call_0", "read", `{"path":"first.txt"}`)
+	second := contextReplayCall("call_0", "write", `{"path":"second.txt","content":"right"}`)
+	messages := []ai.Message{
+		first,
+		contextReplayResult("call_0", "first content"),
+		contextReplayResult("call_0", "DUPLICATE RESULT"),
+		textMessage("assistant", "Between batches."),
+		contextReplayResult("call_0", "ORPHAN RESULT"),
+		second,
+		contextReplayResult("call_0", "Successfully wrote 5 bytes"),
+	}
+	results := toolResults(messages)
+	if len(results) != 2 || results[&first.ToolCalls[0]] != "first content" || results[&second.ToolCalls[0]] != "Successfully wrote 5 bytes" {
+		t.Fatalf("history paired duplicate or orphan evidence with a call: %#v", results)
+	}
+}
