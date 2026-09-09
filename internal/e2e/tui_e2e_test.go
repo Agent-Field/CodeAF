@@ -167,7 +167,7 @@ func testNestedGate(t *testing.T) {
 	home := newHome(t, map[string]any{"task.settle": "ask"})
 	ws := newWorkspace(t, "gatews", false)
 	seedDecidedFamily(t, home, ws)
-	r := start(t, "afe2e_gate", home, ws, tuiWide, 40)
+	r := start(t, "afe2e_gate", home, ws, tuiWide, 40, "chat", "--one-model")
 
 	// WHICHEVER DOOR THE LAUNCH TOOK. A machine with no conversation for this
 	// workspace opens home; one that has the seeded conversation opens straight
@@ -345,7 +345,7 @@ func testRealConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 	ws = short
-	r := start(t, "afe2e_talk", home, ws, tuiWide, 40)
+	r := start(t, "afe2e_talk", home, ws, tuiWide, 40, "chat", "--one-model")
 
 	r.lit("what is 2+2, one word")
 	r.keys("Enter")
@@ -1571,7 +1571,7 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	ws := newWorkspace(t, "roomws", false)
 
 	// ── the window that does the work ────────────────────────────────────────
-	first := start(t, "afe2e_room1", home, ws, tuiPlain, tuiShortRows)
+	first := start(t, "afe2e_room1", home, ws, tuiPlain, tuiShortRows, "chat", "--one-model")
 	// Whichever door the launch took. On a state root built one minute ago it is
 	// the setup, whose own foot says `esc skips setup`, and esc is what the rest
 	// of this file presses at this rung anyway.
@@ -1617,7 +1617,7 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	// node and a reader of its record at the same time — the only combination
 	// the record card exists for.
 	fresh := filepath.Join(bucket, "read-it-back", "transcript.jsonl")
-	r := start(t, "afe2e_room2", home, ws, tuiPlain, tuiShortRows, "chat", "--session", fresh)
+	r := start(t, "afe2e_room2", home, ws, tuiPlain, tuiShortRows, "chat", "--session", fresh, "--one-model")
 	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "landingKeysWord"))
 	r.keys("Escape")
 	r.lit("/history")
