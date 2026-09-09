@@ -391,6 +391,9 @@ func (a *app) clearConversation() {
 	a.roomGen++
 	a.pilotGen++
 	a.wakeGen++
+	// The connection waits must discard an arrival from the conversation left
+	// behind, including when the conversation replacing it is local and arms none.
+	a.linkGen++
 	a.state = stateIdle
 	a.resetMeters()
 	a.endRecall()
@@ -550,7 +553,8 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// connection, who holds the keyboard and which turns another window started
 	// are facts about THIS conversation's connection; the waits the previous one
 	// armed are parked on the previous one's channels and discard themselves by
-	// generation (watching.go's [followingMsg]).
+	// the connection lanes' own generation (watching.go's [followingMsg]), not
+	// the turn generation that moves once per turn and made those waits deaf.
 	cmds := []tea.Cmd{a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(), a.watchRuns(), a.watchQuestions(), a.loadTasks(),
 		a.askHeld(), a.watchDriving(), a.watchFollowing()}
 

@@ -1671,6 +1671,11 @@ type app struct {
 	// replaced must not start a turn in the one that replaced it.
 	wakeLane <-chan (<-chan session.Event)
 	wakeGen  int
+	// linkGen is the generation of the two lanes a CONNECTION carries: the
+	// turns another window started and who holds the keyboard (watching.go). It
+	// is not the turn generation, because starting a turn must not deafen a
+	// window to its own conversation's turns.
+	linkGen int
 
 	// THE TASK SIDE (task.go). task is the proposal that owns the answer lane,
 	// or nil; tasks and taskOrder are the rail's nodes, keyed by id and kept in

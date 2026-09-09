@@ -218,13 +218,14 @@ type Following struct {
 
 // followingMsg is one of them reaching the loop.
 //
-// IT CARRIES A GENERATION for the reason every other lane on this surface does
-// (app.go's generation law), and it did not need one until a window could hold
-// several conversations on several connections. This wait blocks on ONE
-// connection's channel; a switch rebinds [app.link] to another one and leaves
-// that wait parked on the old one, so a turn started in the conversation this
-// window walked away from would arrive here and be adopted into the conversation
-// now on screen — somebody else's reply, drawn under the wrong name.
+// IT CARRIES THE CONNECTION LANES' OWN GENERATION, and it did not need one
+// until a window could hold several conversations on several connections. This
+// wait blocks on ONE connection's channel; a switch rebinds [app.link] to
+// another one and leaves that wait parked on the old one, so a turn started in
+// the conversation this window walked away from would otherwise be adopted
+// into the conversation now on screen — somebody else's reply, drawn under the
+// wrong name. It used to carry the turn generation, which moves once per turn,
+// so the first typed turn made the standing wait stale and the window deaf.
 type followingMsg struct {
 	turn Following
 	gen  int
@@ -241,7 +242,7 @@ func (a *app) watchFollowing() tea.Cmd {
 	if follow == nil {
 		return nil
 	}
-	gen := a.gen
+	gen := a.linkGen
 	return func() tea.Msg {
 		turn, ok := <-follow()
 		if !ok {
@@ -259,7 +260,7 @@ func (a *app) followTurn(msg followingMsg) tea.Cmd {
 	// DISCARDED, AND THE WAIT IS NOT RE-ARMED. The conversation it belongs to has
 	// its own wait, armed when it came forward; re-arming here would leave two of
 	// them on one channel.
-	if msg.gen != a.gen {
+	if msg.gen != a.linkGen {
 		return nil
 	}
 	next := a.watchFollowing()
@@ -282,7 +283,8 @@ func (a *app) followTurn(msg followingMsg) tea.Cmd {
 
 // drivingMsg is the keyboard having moved, on its way back to the loop. said is
 // a take-back that failed and has something to report, and gen is the
-// conversation it is about ([followingMsg] holds the whole of why it is here).
+// connection-lane generation it is about ([followingMsg] holds the whole of why
+// it is here).
 //
 // A TAKE-BACK CARRIES NO GENERATION and is always heard: it is the answer to a
 // keystroke the person made a moment ago, and a refusal worth saying is worth
@@ -308,15 +310,16 @@ func (a *app) watchDriving() tea.Cmd {
 	if changed == nil {
 		return nil
 	}
-	gen := a.gen
+	gen := a.linkGen
 	return func() tea.Msg {
 		<-changed()
 		return drivingMsg{gen: gen, lane: true}
 	}
 }
 
-// drivingMoved is what the loop does with one: say anything that failed, redraw,
-// and go back to waiting.
+// drivingMoved is what the loop does with one: say anything that failed,
+// discard a hand-over from an old connection by the connection lanes' own
+// generation, redraw, and go back to waiting.
 func (a *app) drivingMoved(msg drivingMsg) tea.Cmd {
 	var said tea.Cmd
 	if msg.said != "" {
@@ -325,7 +328,7 @@ func (a *app) drivingMoved(msg drivingMsg) tea.Cmd {
 	// A HAND-OVER ON A CONNECTION THIS WINDOW HAS WALKED AWAY FROM MOVES NOTHING
 	// AND RE-ARMS NOTHING ([followingMsg] states why). The conversation it is
 	// about armed its own wait when it came forward.
-	if msg.lane && msg.gen != a.gen {
+	if msg.lane && msg.gen != a.linkGen {
 		return said
 	}
 	return tea.Batch(said, a.wake(), a.watchDriving())
