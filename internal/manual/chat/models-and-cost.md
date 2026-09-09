@@ -938,6 +938,17 @@ never dialled sends no reasoning field at all. The conversation you set the item
 still does not reach it — that is what keeps an install dialled to `max` from turning
 every check on the machine into a deep pass.
 
+## Thinking between tool calls
+
+A completed model reply keeps the reasoning supplied by that model alongside its
+tool calls, so the next step can continue from the same work. Streamed pieces of
+one text or summary block are joined before that history is sent back. Separate
+blocks stay separate, and encrypted reasoning is retained without rewriting it.
+
+This does not choose a thinking level or add a token budget. An unfinished attempt
+does not supply a completed reasoning continuation, and switching models does not
+send one model's private reasoning to another.
+
 ## What a request carries when nobody has chosen anything
 
 Nothing about how the model generates. A turn you have not dialled goes out with the
