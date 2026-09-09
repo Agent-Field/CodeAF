@@ -2368,8 +2368,11 @@ func (a *app) roomHeadRows(width int) []string {
 	if rows == 1 {
 		return []string{a.roomTrailRow(width)}
 	}
-	head := []string{a.roomTrailRow(width), a.roomTitleRow(width), a.roomFactsLine(width)}
-	if rows > roomHeadRowCount {
+	head := []string{a.roomTrailRow(width), a.roomFactsLine(width)}
+	if a.roomOrganized() {
+		head = []string{a.roomTrailRow(width), a.roomTitleRow(width), a.roomFactsLine(width)}
+	}
+	if rows > a.roomHeadCount() {
 		if a.roomOrganized() {
 			head = append(head, a.rule(width))
 			return head
@@ -2383,6 +2386,14 @@ func (a *app) roomHeadRows(width int) []string {
 // height to spare: the trail, and the facts under it. The tab strip above and
 // the kin rows below are counted separately.
 const roomHeadRowCount = 3
+
+// Compact frames already name the task in their navigation row.
+func (a *app) roomHeadCount() int {
+	if a.roomOrganized() {
+		return roomHeadRowCount
+	}
+	return 2
+}
 
 // roomHeadHeight is how many of those rows this frame can actually afford.
 //
@@ -2404,7 +2415,7 @@ func (a *app) roomHeadHeight(width int) int {
 	if a.breathingRows() < 2 {
 		return 1
 	}
-	return roomHeadRowCount + a.roomHeaderPad()
+	return a.roomHeadCount() + a.roomHeaderPad()
 }
 
 // roomTrailRow is the ancestry, the way out, and nothing else.

@@ -306,7 +306,7 @@ func (a *app) roomAncestorParts(width int) (string, []crumbHit) {
 
 // Rendering and height accounting share the recipient row's one predicate.
 func (a *app) roomRecipientHeight() int {
-	if a.roomOpen() && a.breathingRows() > 0 && !a.welcomeHolds() {
+	if a.roomOrganized() && a.breathingRows() > 0 && !a.welcomeHolds() {
 		return 1
 	}
 	return 0

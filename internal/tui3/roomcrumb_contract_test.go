@@ -492,15 +492,15 @@ func TestTheTrailAndTheFactsDegradeOnTheirOwnRows(t *testing.T) {
 		a.width = width
 		a.touch()
 		rows := a.roomHeadRows(width)
-		if len(rows) != a.roomHeadHeight(width) || len(rows) < roomHeadRowCount {
+		if len(rows) != a.roomHeadHeight(width) || len(rows) < a.roomHeadCount() {
 			t.Fatalf("at %d columns the header is %d rows", width, len(rows))
 		}
-		for _, row := range rows[roomHeadRowCount:] {
+		for _, row := range rows[a.roomHeadCount():] {
 			if !a.roomOrganized() && strings.TrimSpace(plain(row)) != "" {
 				t.Fatalf("at %d columns the header padding contains content: %q", width, plain(row))
 			}
 		}
-		trail, facts := plain(rows[0]), plain(rows[roomHeadRowCount-1])
+		trail, facts := plain(rows[0]), plain(rows[a.roomHeadCount()-1])
 		// THE TRAIL ROW CARRIES NO TELEMETRY AT ANY WIDTH. That is the whole of the
 		// separation: a path with a state word threaded into it is a path nobody
 		// reads as a path.
