@@ -17,6 +17,7 @@ package session
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -287,4 +288,162 @@ func reattachKeptWorktree(place Place, root, dir, branch, ground string, mode Ta
 		return taskTree{}, false
 	}
 	return taskTree{dir: dir, root: root, branch: branch, place: place, ground: ground, mode: mode}, true
+}
+
+// ── THE ONE RERUN THE ENGINE SPENDS BEFORE ANYTHING IS A PERSON'S CALL ───────
+//
+// Three endings say NOTHING WHATEVER ABOUT THE WORK. The connection dropped
+// ([TaskEndingWire]), the provider would not serve the request
+// ([TaskEndingUpstream]), or the brief was measured against a world that had
+// moved before a single call was bought ([TaskEndingStale]). A person reading a
+// card for any of those is being asked to press a key that means "do it again",
+// which is a question the harness can answer for itself — and the answer is the
+// same door a person would have reached for: run it again, from the branch it
+// already has ([TaskGraph.reopen]).
+//
+// EXACTLY ONCE, AND THE SECOND ONE LANDS. A provider that is down stays down for
+// the second attempt, and a brief whose world moved is still standing in the same
+// world; a node that reran on every such ending would spend a person's money to
+// be told the same thing until its deadline collected it.
+
+// rerunLimit is how many attempts one node buys itself for an ending that is not
+// about its work. ONE — the whole of the argument is above, and a number here is
+// what the engine's own retries are bounded by everywhere else in this package.
+const rerunLimit = 1
+
+// taskRerunFromBranch is NOT A STATE A NODE IS EVER IN. It is the answer a run
+// gives when the ending it reached buys one more attempt, and [Agent.runTaskNode]
+// is its only reader: it turns this into the one transition below, from running
+// straight back to queued, without the node ever passing through a final state.
+//
+// It is written as a state for [taskRunAgain]'s reason — the roads that settle a
+// run already answer in this type — and it is a SECOND sentinel rather than a
+// reuse of that one because the two transitions are different facts. That one is
+// the person's own words arriving before a landing could claim the boundary and
+// spends a directed round; this one is the engine noticing that nobody learned
+// anything about the work and spending its own.
+const taskRerunFromBranch TaskState = "rerun-from-branch"
+
+// rerunsFromItsBranch answers whether this ending buys one more attempt, and
+// takes it where it does.
+//
+// The ending is asked rather than the error, because by this point the run has
+// already classified what happened to it (task_run.go's [Agent.settleUnfinished],
+// [Agent.briefMatchesItsWorld]) and a second reading of the same failure here
+// would be the second answer the response boundary exists to forbid.
+// IT DECIDES AND DOES NOT TRANSITION. The re-arming happens one frame out, in
+// [Agent.runTaskNode], for the reason the directed round is written that way
+// too: this node's worker is still open and its parts are still running down
+// here, and a frontier pass that started the next attempt beside them would be
+// two attempts at one node in one working copy.
+func (a *Agent) rerunsFromItsBranch(node *TaskNode, ending TaskEnding, log io.Writer) bool {
+	switch ending {
+	case TaskEndingWire, TaskEndingUpstream, TaskEndingStale:
+	default:
+		return false
+	}
+	if node == nil || !node.rerunLeft() {
+		return false
+	}
+	// ONE PLAIN LINE IN THE NODE'S JOURNAL, which is the whole record this
+	// attempt owes: what ended it, and that the engine is spending the rerun
+	// rather than asking anybody.
+	fmt.Fprintf(log, "running it again from its branch: %s\n", rerunBecause(ending))
+	return true
+}
+
+// rerunLeft reports whether this node still has its one engine-bought attempt.
+// It is read here and spent in [TaskGraph.runAgainFromItsBranch]; the two are
+// one goroutine's reading of one counter, because the only caller is the runner
+// that owns this node.
+func (n *TaskNode) rerunLeft() bool {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.reruns < rerunLimit && !n.graph.quitting
+}
+
+// rerunBecause is why the last attempt bought this one, in the same plain words
+// the row will read. It is a sentence about the ATTEMPT and never about the
+// work, which is the whole reason a rerun is worth buying at all.
+func rerunBecause(ending TaskEnding) string {
+	switch ending {
+	case TaskEndingWire:
+		return "it lost the connection"
+	case TaskEndingUpstream:
+		return "the model provider refused it"
+	case TaskEndingStale:
+		return "its brief went stale"
+	}
+	return string(ending)
+}
+
+// runAgainFromItsBranch is [TaskGraph.reopen]'s transformation reached by the
+// ENGINE, mid-run, for an attempt that learned nothing: same id, same spec, same
+// working copy and branch, the last attempt's account handed back as this
+// round's finding.
+//
+// IT IS NOT A SETTLE-AND-REOPEN, for the reason [TaskGraph.runAgainForDirections]
+// states beside it: a node that settled first would publish a terminal state that
+// is not true — `done` closed, the parent woken with an answer that is about to
+// be worked on again — and contradict it a moment later. So the node goes from
+// running straight back to queued and never leaves the graph.
+//
+// ONE WRITER AT A TIME. It is called from [Agent.runTaskNode] after the run
+// goroutine has finished with the node, which is what makes the frontier pass at
+// the end safe.
+func (g *TaskGraph) runAgainFromItsBranch(node *TaskNode) bool {
+	if g == nil || node == nil {
+		return false
+	}
+	g.mu.Lock()
+	if node.graph != g || g.nodes[node.id] != node || g.quitting {
+		g.mu.Unlock()
+		return false
+	}
+	if node.reruns >= rerunLimit {
+		g.mu.Unlock()
+		return false
+	}
+	node.reruns++
+	// THE LAST ATTEMPT'S ACCOUNT IS THIS ONE'S FINDING, composed by the same
+	// function a person's continue composes with and with no words of anybody's
+	// beside it: nobody asked for this attempt, so there is nothing said to
+	// carry into it ([composeContinueFinding]).
+	node.finding = composeContinueFinding(node.deliveredLocked(), "", 0)
+	node.publishing = false
+	node.continuing = true
+	node.state = TaskQueued
+	node.claimed = false
+	node.stopped = false
+	node.ending = ""
+	// A NEW LIFE OF THE WORK TAKES THE SAME BOOKKEEPING A CONTINUE TAKES: the
+	// attempt counter rises and the announcement marks are cleared in the same
+	// locked step, so a delivery of the ending that just closed cannot record
+	// this attempt as already announced ([TaskNode.claimNote]).
+	node.attempt++
+	node.noted = false
+	node.notedRead = false
+	node.notedState = ""
+	node.noting = false
+	node.notingClaim = noteClaim{}
+	node.queuedSaid = false
+	node.held = ""
+	node.parked = false
+	node.checked = ""
+	node.repairs = 0
+	node.blockedBy = ""
+	node.ctx = nil
+	node.cancel = nil
+	// THE LANE GOES BACK because the goroutine that held it is on its way out,
+	// exactly as it does on the settling road and on the directed one
+	// ([TaskGraph.handBackSlotLocked]). `done` is left alone: it is closed when
+	// this node reaches a final state, and this is the transition that says it
+	// has not.
+	g.handBackSlotLocked(node)
+	g.mu.Unlock()
+
+	g.checkpoint()
+	g.announce(node)
+	g.runFrontier()
+	return true
 }

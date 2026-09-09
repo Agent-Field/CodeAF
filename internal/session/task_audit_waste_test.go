@@ -162,7 +162,7 @@ func TestAnAuditDoesNotSpendTheAuditorOnNamingOrASelfRefusedCommand(t *testing.T
 		graph := &TaskGraph{nodes: map[uint64]*TaskNode{}}
 		node := &TaskNode{graph: graph, id: 1, spec: taskSpec{title: "the greeting"}}
 		graph.nodes[1] = node
-		auditor, err := parent.newAuditAgent(dir, node, plainDoor(auditReadCommands))
+		auditor, err := parent.newAuditAgent(dir, node, plainDoor(auditReadCommands), "")
 		if err != nil {
 			t.Fatalf("newAuditAgent: %v", err)
 		}

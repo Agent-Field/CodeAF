@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"io"
 )
@@ -139,7 +140,7 @@ func keepHome(node *TaskNode, tree taskTree, changed []string) (string, []string
 // for the ordinary one. The person's report never carries it: a threshold that
 // fired is machinery, and a reader of a card that says done has no use for it
 // ([Agent.landStopped] states the whole of that argument).
-func (a *Agent) landFinished(node *TaskNode, tree taskTree, changed []string, head, tail, note string, log io.Writer) TaskState {
+func (a *Agent) landFinished(ctx context.Context, node *TaskNode, tree taskTree, changed []string, head, tail, note string, log io.Writer) TaskState {
 	// ── THE PUBLICATION BOUNDARY, TAKEN BEFORE ANYTHING LEAVES THIS PROCESS ──
 	//
 	// This is the one road on which a task's work is PUBLISHED: it merges onto
@@ -186,7 +187,7 @@ func (a *Agent) landFinished(node *TaskNode, tree taskTree, changed []string, he
 	// two apart. Testing for a conflict by hand is exactly how the second reason
 	// walked past all five of these roads (#255).
 	if !cameHome(merge) {
-		return a.landConflicted(node, tree, landed, withReport(head, tail), merge, detail, log)
+		return a.landConflicted(ctx, node, tree, landed, withReport(head, tail), merge, detail, log)
 	}
 	// THE WORK'S OWN ACCOUNT LEADS, AND WHAT IT WAS CHECKED ON STANDS UNDER IT.
 	// Everything downstream reads this report from the top: the settle card quotes

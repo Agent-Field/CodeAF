@@ -229,7 +229,7 @@ func TestAConflictedMergeNeedsYourLookRatherThanDone(t *testing.T) {
 
 	tree := taskTree{dir: filepath.Join(repo, "tree"), root: repo, branch: "task/edit-the-shared-file"}
 	detail := conflictSentence(tree.branch, []string{"shared.txt"}, "")
-	state := agent.landConflicted(node, tree, []string{"shared.txt"},
+	state := agent.landConflicted(context.Background(), node, tree, []string{"shared.txt"},
 		"the parser now takes the shared line", mergeConflicted, detail, io.Discard)
 
 	if state != TaskUnverified {

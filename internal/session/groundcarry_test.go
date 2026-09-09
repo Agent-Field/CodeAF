@@ -11,6 +11,7 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -175,7 +176,7 @@ func TestAReplayThatWouldNotGoIsSaidRatherThanSwallowed(t *testing.T) {
 	graph.mu.Unlock()
 
 	var log bytes.Buffer
-	state := agent.landFinished(node, tree, []string{"shared.txt"},
+	state := agent.landFinished(context.Background(), node, tree, []string{"shared.txt"},
 		"the shared file now reads the one way", "", "", &log)
 
 	if journaled := log.String(); !strings.Contains(journaled, "still carries your own uncommitted work") {

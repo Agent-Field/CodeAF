@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -35,7 +36,7 @@ func TestEveryRoadHomeComposesTheSameReport(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "parser.py"), "def parse():\n    return 1\n")
 
 	agent := &Agent{}
-	state := agent.landFinished(node, tree, []string{"parser.py"},
+	state := agent.landFinished(context.Background(), node, tree, []string{"parser.py"},
 		"the parser reads the shared line", "checked against the acceptance", " (unaudited)", io.Discard)
 
 	if state != TaskDone {
@@ -78,7 +79,7 @@ func TestTheOneRoadHomeStillRefusesToCallAConflictDone(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "shared.txt"), "the node's line\n")
 
 	agent := &Agent{}
-	state := agent.landFinished(node, tree, []string{"shared.txt"},
+	state := agent.landFinished(context.Background(), node, tree, []string{"shared.txt"},
 		"the shared line now carries the flag", "checked against the acceptance", "", io.Discard)
 
 	if state != TaskUnverified {
@@ -114,7 +115,7 @@ func TestAConflictedMergeNoticeNamesTheBranchAndDoesNotClaimSuccess(t *testing.T
 	writeFile(t, filepath.Join(tree.dir, "shared.txt"), "the node's line\n")
 
 	agent := &Agent{}
-	state := agent.landFinished(node, tree, []string{"shared.txt"},
+	state := agent.landFinished(context.Background(), node, tree, []string{"shared.txt"},
 		"the shared line now carries the flag", "checked against the acceptance", "", io.Discard)
 	if state != TaskUnverified {
 		t.Fatalf("a conflicted landing is %q, want it to need a look", state)
