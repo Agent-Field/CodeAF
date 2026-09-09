@@ -202,7 +202,7 @@ func TestRungOneDropsTheDemandWhenThereIsNowhereLeftToWalk(t *testing.T) {
 		t.Fatalf("the first ask demanded %v, want Ghost", asks[0].Only)
 	}
 	if len(asks[1].Only) != 0 {
-		t.Fatalf("the retry still demanded %v — rung one is supposed to take the whole provider object off", asks[1].Only)
+		t.Fatalf("the retry still demanded %v — rung one is supposed to remove the demand", asks[1].Only)
 	}
 	if rig.server.Requests("Haven") != 1 {
 		t.Fatal("the relaxed retry did not reach the machine that serves the model")
@@ -268,16 +268,16 @@ func namesLane(list []string, lane string) bool {
 
 // ── THE LADDER'S FIRST RUNG, AS A RULE RATHER THAN AS AN ACCIDENT ───────────
 
-// EVERY FIELD THAT CAN EMPTY THE ENDPOINT SET COMES OFF ON RUNG ONE, and the
-// two that could not were the two that made the reported outage: `only` names
-// the machines a request may go to and `allow_fallbacks: false` forbids every
-// other, which together are the narrowest filter this process ever sends.
+// EVERY MEMBERSHIP RESTRICTION COMES OFF ON RUNG ONE, while the ranking and
+// price ceiling remain. The two missing membership fields caused the reported
+// outage: `only` names the machines a request may go to and
+// `allow_fallbacks: false` forbids every other.
 //
 // It is asserted with a sort word and an order still on the object, because
 // those are what make the difference visible: a preference with nothing left in
 // it is dropped whole, and a rung that only worked through THAT path would go
 // on working right up until somebody left a sort word on a pinned request.
-func TestRungOneTakesOffEveryFieldThatCanEmptyTheEndpointSet(t *testing.T) {
+func TestRungOneTakesOffEveryMembershipRestriction(t *testing.T) {
 	no, yes := false, true
 	prefs := &providerPrefs{
 		Sort:              "latency",
@@ -288,15 +288,18 @@ func TestRungOneTakesOffEveryFieldThatCanEmptyTheEndpointSet(t *testing.T) {
 		RequireParameters: &yes,
 		MaxPrice:          &maxPrice{Prompt: 1, Completion: 2},
 	}
-	if !prefs.narrowing() {
+	if !prefs.membershipNarrowing() {
 		t.Fatal("an object carrying every filter there is says it narrows nothing")
 	}
 	relaxed := relaxedPreferences(prefs)
 	if relaxed == nil {
 		t.Fatal("a preference that still ranks was dropped whole")
 	}
-	if relaxed.narrowing() {
-		t.Fatalf("rung one left %+v behind, and every field on it can empty the set", relaxed)
+	if relaxed.membershipNarrowing() {
+		t.Fatalf("rung one left a membership restriction behind: %+v", relaxed)
+	}
+	if relaxed.MaxPrice == nil {
+		t.Fatalf("rung one took off the price ceiling before the wider set refused: %+v", relaxed)
 	}
 	if relaxed.Sort != "latency" || len(relaxed.Order) != 1 {
 		t.Fatalf("rung one took the ranking off too: %+v", relaxed)

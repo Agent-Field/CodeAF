@@ -52,7 +52,7 @@ func ceilingRaceLanes(excludeFirstRescue bool) []lanestub.Lane {
 	return lanesOffered
 }
 
-func TestACeilingRefusalTeachesBeforeTheRaceWalksToARescue(t *testing.T) {
+func TestARaceWalkDoesNotMistakeAnEndpointRefusalForAPriceRefusal(t *testing.T) {
 	rig := newPricedLaneRig(t, "ceiling/walk", ceilingRaceLanes(false)...)
 	SetHedgeBudget(lanes.NewBudget(6, 0))
 	ctx := WithLaneChoice(talking(), ceilingRaceChoice(rig.model))
@@ -78,17 +78,18 @@ func TestACeilingRefusalTeachesBeforeTheRaceWalksToARescue(t *testing.T) {
 		t.Fatalf("the first rescue repeated the refused ceiling: %+v", asks[1].MaxPrice)
 	}
 
-	// THE MEMO SURVIVES THE RACE. The walk kept the primary out of the ladder,
-	// so a later ordinary request proves the refusal itself taught the ledger.
+	// THE WALK PROVES ONLY THAT ANOTHER LANE ANSWERED. It does not prove price
+	// emptied the set, so the next ordinary request keeps its ceiling and may
+	// walk again if the capped endpoint set is still unavailable.
 	if _, err := rig.client.CompleteWithMessages(ctx, userMessages("again")); err != nil {
 		t.Fatalf("the next request to the model failed: %v", err)
 	}
 	asks = rig.server.Asks()
-	if got := len(asks); got != 3 {
-		t.Fatalf("the next turn made %d requests, want one", got-2)
+	if got := len(asks); got != 4 {
+		t.Fatalf("the next turn made %d requests, want its capped primary and rescue", got-2)
 	}
-	if asks[2].MaxPrice != nil {
-		t.Fatalf("the next turn repeated the ceiling the router refused: %+v", asks[2].MaxPrice)
+	if asks[2].MaxPrice == nil || asks[3].MaxPrice != nil {
+		t.Fatalf("the next turn carried ceilings primary=%+v rescue=%+v, want capped then uncapped", asks[2].MaxPrice, asks[3].MaxPrice)
 	}
 }
 
@@ -106,19 +107,20 @@ func TestARefusedCeilingClimbsTheLadderWhenThePurseFundsNoWalk(t *testing.T) {
 		t.Fatalf("the answer is %d tokens, want Fireworks' 17", got)
 	}
 	asks := rig.server.Asks()
-	if len(asks) != 2 {
-		t.Fatalf("%d requests went out, want the refused primary and its relaxed retry", len(asks))
+	if len(asks) != 3 {
+		t.Fatalf("%d requests went out, want the original and two distinct relaxation rungs", len(asks))
 	}
-	if asks[0].MaxPrice == nil || asks[1].MaxPrice != nil {
-		t.Fatalf("ceilings were first=%+v retry=%+v, want present then absent", asks[0].MaxPrice, asks[1].MaxPrice)
+	if asks[0].MaxPrice == nil || asks[1].MaxPrice == nil || asks[2].MaxPrice != nil {
+		t.Fatalf("ceilings were first=%+v wider=%+v uncapped=%+v", asks[0].MaxPrice, asks[1].MaxPrice, asks[2].MaxPrice)
 	}
 	for _, ask := range asks {
 		if ask.Model != rig.model {
 			t.Fatalf("asked model %q, want the one the person chose (%q)", ask.Model, rig.model)
 		}
 	}
-	if len(notices) == 0 || !strings.Contains(notices[0], "dropped the price ceiling and relaxed the endpoint filter") {
-		t.Fatalf("notices = %#v, want the price-ceiling retry line", notices)
+	if len(notices) != 2 || !strings.Contains(notices[0], "relaxed the endpoint filter") ||
+		!strings.Contains(notices[1], "dropped the price ceiling") {
+		t.Fatalf("notices = %#v, want separate endpoint and price retry lines", notices)
 	}
 }
 

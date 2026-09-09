@@ -16,9 +16,9 @@ import (
 // endpoints.go's ladder used to be entered on a list of sentences the router had
 // been seen to say, and on 2026-08-28 the router said a new one: "No endpoints
 // available matching your guardrail restrictions and data policy". The ladder
-// whose FIRST rung is the exact recovery — drop provider.max_price — never
-// fired, three identical 404s went out, and a headless task died. Adding the
-// sentence to the list bought one sentence of coverage.
+// whose price rung is the exact recovery never fired, three identical 404s
+// went out, and a headless task died. Adding the sentence to the list bought
+// one sentence of coverage.
 //
 // These tests hold the gate that does not go out of date, and — just as
 // importantly — the four things that must still NOT enter it. Rule 1 of
@@ -269,16 +269,13 @@ func TestPacingFaultsAndTimeoutsDoNotEnterTheLadder(t *testing.T) {
 	}
 }
 
-// THE CEILING MEMO FIRES ON THE STRUCTURAL CLASS.
+// THE CEILING MEMO FIRES AFTER TWO STRUCTURAL REFUSALS.
 //
 // The router names the LAST filter that emptied the set, and it is under no
-// obligation to name the price. A memo that waited to hear "max price" is the
-// same defect one layer in, so what it waits for is the CLASS plus a ceiling
-// having been on the wire.
+// obligation to name the price. The memo therefore waits for the structural
+// class twice: once before widening endpoint membership under the same ceiling,
+// and once before taking that ceiling off.
 func TestTheCeilingMemoFiresOnASentenceThatNeverMentionsThePrice(t *testing.T) {
-	if ceilingRefusal([]byte(unseenRefusal)) {
-		t.Fatal("the sentence this test is built on names the price; it proves nothing")
-	}
 	recorded, handler := countingRouter(t, http.StatusNotFound, unseenRefusal, func(body map[string]any) bool {
 		prefs, _ := body["provider"].(map[string]any)
 		return prefs == nil || prefs["max_price"] == nil
@@ -291,8 +288,8 @@ func TestTheCeilingMemoFiresOnASentenceThatNeverMentionsThePrice(t *testing.T) {
 	if prefs, _ := recorded.body(0)["provider"].(map[string]any); prefs == nil || prefs["max_price"] == nil {
 		t.Fatal("the first request carried no ceiling, so this test proves nothing")
 	}
-	if got := len(recorded.bodies); got != 2 {
-		t.Fatalf("first call made %d requests, want 2: the refused one and the relaxed retry", got)
+	if got := len(recorded.bodies); got != 3 {
+		t.Fatalf("first call made %d requests, want the original and two distinct relaxation rungs", got)
 	}
 	if !client.velocity.ceilingRefused("sim/model") {
 		t.Fatal("the ledger learnt nothing from a refusal that did not name the price")
@@ -302,20 +299,18 @@ func TestTheCeilingMemoFiresOnASentenceThatNeverMentionsThePrice(t *testing.T) {
 	if _, err := client.CompleteWithMessages(context.Background(), userMessages("again")); err != nil {
 		t.Fatalf("second call: %v", err)
 	}
-	if got := len(recorded.bodies); got != 3 {
-		t.Fatalf("second call made %d requests, want exactly 1", got-2)
+	if got := len(recorded.bodies); got != 4 {
+		t.Fatalf("second call made %d requests, want exactly 1", got-3)
 	}
-	if prefs, _ := recorded.body(2)["provider"].(map[string]any); prefs != nil && prefs["max_price"] != nil {
+	if prefs, _ := recorded.body(3)["provider"].(map[string]any); prefs != nil && prefs["max_price"] != nil {
 		t.Fatal("the second call carried the ceiling the router already refused")
 	}
 }
 
-// AND WHEN THE ROUTER DID NAME THE PRICE OR THE POLICY, THE PERSON IS TOLD SO.
-//
-// This is the whole of what the phrase list still decides: the wording of a
-// line somebody reads. "relaxed the endpoint filter" does not tell them they
-// were being routed under a price ceiling at all.
-func TestARefusalThatNamedThePolicySaysSoOnTheFirstRung(t *testing.T) {
+// EVEN WHEN THE ROUTER NAMES PRICE OR POLICY, THE TWO CHANGES STAY SEPARATE.
+// The refusal's words do not authorize dropping the cap on the membership
+// rung; the next structural refusal does.
+func TestARefusalThatNamedThePolicyStillUsesTheSeparatePriceRung(t *testing.T) {
 	const policyBody = `{"error":{"message":"No endpoints available matching your guardrail ` +
 		`restrictions and data policy.","code":404}}`
 	_, handler := countingRouter(t, http.StatusNotFound, policyBody, func(body map[string]any) bool {
@@ -327,10 +322,11 @@ func TestARefusalThatNamedThePolicySaysSoOnTheFirstRung(t *testing.T) {
 	var notices []string
 	if _, err := client.CompleteWithMessages(
 		noticeContext(context.Background(), &notices), userMessages("hi")); err != nil {
-		t.Fatalf("the first rung should have landed the call: %v", err)
+		t.Fatalf("the refusal ladder should have landed the call: %v", err)
 	}
-	if len(notices) == 0 || !strings.Contains(notices[0], "dropped the price ceiling") {
-		t.Fatalf("notices = %#v, want the first rung to name the ceiling it took off", notices)
+	if len(notices) != 2 || strings.Contains(notices[0], "price ceiling") ||
+		!strings.Contains(notices[1], "dropped the price ceiling") {
+		t.Fatalf("notices = %#v, want endpoint widening before the price-ceiling rung", notices)
 	}
 
 	// A request that carried NO ceiling never claims to have dropped one, even
