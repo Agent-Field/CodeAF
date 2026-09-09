@@ -2272,7 +2272,7 @@ func countdownWord(d time.Duration) string {
 //     is at the bottom, whole, one row deep.
 //   - FOLDING IS THE PERSON'S, PER FAMILY, AND IT HAS A DEFAULT WORTH HAVING. A
 //     family with anything live in it opens; a family that is entirely settled —
-//     or entirely parked — opens as one row wearing the worst thing that
+//     or entirely waiting — opens as one row wearing the worst thing that
 //     happened under it and a count of what it is standing for. The map is the
 //     person's correction of that default and it sticks ([app.railShut]).
 //   - THE COLUMN IS A WINDOW. What shows is a slice of the line list around the
@@ -2521,7 +2521,7 @@ const (
 	railIdle
 	// railParked is admitted and BLOCKED — its prerequisites are unfinished, so
 	// nothing about it will change until other work does. That is what makes it
-	// the group that folds: a parked node is a promise, not a happening.
+	// the group that folds: waiting work is a promise, not a happening.
 	railParked
 	// railDone is over and delivered.
 	railDone
@@ -2639,7 +2639,7 @@ func (a *app) taskParentDeciding(node *taskNode) bool {
 // follow the default even as the work under it moves. A family with anything
 // live in it — running, waiting on a person, or waiting for a slot — is open,
 // because that is the shape somebody is watching; a family that has entirely
-// settled, or that is entirely parked behind other work, is one row with a count
+// settled, or that is entirely waiting behind other work, is one row with a count
 // on it.
 func (a *app) railShut(node *taskNode) bool {
 	if open, said := a.railOpen[node.id]; said {
@@ -3283,7 +3283,7 @@ func (a *app) railGripRows(height int) []string {
 //
 // TWO STATES EARN IT AND NO OTHERS. Something WAITING ON A PERSON outranks
 // something running, because it is the only one of the two that is asking for a
-// hand; anything else — idle, parked, done, and a session that has run nothing
+// hand; anything else — queued, waiting, done, and a session that has run nothing
 // at all — says nothing, which is the emptiness law in one cell.
 //
 // The marks are home's own ([homeAskGlyph] and [homeLiveGlyph]), which is this
@@ -4300,7 +4300,7 @@ const railFootMax = 3
 //
 //	Σ $1.42 · 312k tok
 //	3 running · 1 needs you
-//	148 parked · 12 done
+//	148 waiting · 12 done
 //
 // THE MONEY IS THE SESSION'S, AND THAT IS THE HONEST SUM. Per-node spend is not
 // on the seam and cannot be: internal/session folds a finished node's usage into

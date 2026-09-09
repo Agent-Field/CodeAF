@@ -341,12 +341,13 @@ it. The roster keeps the family whole and draws three-cell tree connectors:
 ```
 
 The family's fold behaves like every other roster family: live families start open;
-settled or parked-only families start folded with an aggregate glyph and `▸ +N` badge on
+settled or waiting-only families start folded with an aggregate glyph and `▸ +N` badge on
 the root. The fullscreen roster below the column's width floor draws this same tree.
 
-The states are the ones every other row on the roster speaks: a node waiting on its
-prerequisites or on a lane is **queued**, a node working is **running**, and a node that
-finished is **done** or **failed**. A node the planner took back — work it decided against
+The states are the ones every other row on the roster speaks: **queued** means nothing is
+in a node's way but a slot, while a node blocked behind prerequisites or other work is
+**waiting**. A node working is **running**, and a node that finished is **done** or
+**failed**. A node the planner took back — work it decided against
 before anything started — settles as **stopped**, because nothing went wrong with it and
 nobody made a finding about it. The row carries the node's own spend, and a landed node's
 row carries its digest.

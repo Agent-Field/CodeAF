@@ -2711,7 +2711,7 @@ The right-hand task column is read at a glance, so it is drawn as one bright thi
 lot of quiet ones. (This is its `tasks` section. The same column's other section,
 `standing`, is described under *What is that column on the right*.)
 
-- A **running** task's name is in ink, the body colour. **Idle, parked and finished**
+- A **running** task's name is in ink, the body colour. **Queued, waiting and finished**
   names are muted — a step quieter — and the room you are standing in is the one name in
   the accent and bold, with a colour band across its whole row.
 - The tree connectors (`├─ `, `└─ `, `│  `), the id at the end of a row (`#7`), every

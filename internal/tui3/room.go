@@ -2834,12 +2834,12 @@ func (a *app) roomKinRows(width int) []string {
 // and which of them are still moving; what a piece is behind is on its own row
 // in the roster and in its own header the moment they walk in.
 //
-// AND THAT ONE WORD IS `parked` AND NOT `queued`. "queued" says a scheduler will
-// get to this child, and nothing is coming: its prerequisite is the piece of work
-// whose room this is, sitting there waiting on the person reading this very page.
-// The column has called these children `parked` the whole time
-// ([railGroupWords], [railParked] — "admitted and BLOCKED"), so the word is read
-// out of the column's own table rather than spelled a second time here.
+// AND THAT ONE WORD IS `waiting` AND NOT `queued`. `queued`
+// ([railGroupWords], [railIdle]) says nothing is in this child's way but a slot,
+// and no slot is coming: its prerequisite is the piece of work whose room this
+// is, sitting there waiting on the person reading this very page. The column's
+// `waiting` group ([railParked] — admitted and BLOCKED) is the honest answer, so
+// the word is read out of that table rather than spelled a second time here.
 func (a *app) roomKinWord(node *taskNode) string {
 	if node.state == session.TaskQueued && !node.stopped && a.railWaits(node) != "" {
 		return railGroupWords[railParked]
