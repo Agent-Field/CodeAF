@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: the six task-state shapes are measured on a real screen, and the tmux suite gets past its own front door again
+title: the six task-state shapes are measured on a real screen, and the tmux suite gets past its front door
 pr: 698
 surface: [chat, build]
 invalidates:
