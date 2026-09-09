@@ -423,7 +423,7 @@ func taskGradeOutcome(state TaskState, ending TaskEnding, stopped bool) string {
 	case state == TaskDone:
 		return "landed"
 	case state == TaskUnverified:
-		return "needs your look"
+		return taskWordYourCall
 	case state == TaskFailed && ending == TaskEndingRefused:
 		return "not accepted"
 	case state == TaskFailed && stoppedByProcessRule(ending):

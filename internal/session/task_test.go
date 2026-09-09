@@ -1351,7 +1351,7 @@ func TestAuditNonVerdictRetriesAndLandsUnverified(t *testing.T) {
 	if notice.State != TaskUnverified {
 		t.Fatalf("state = %q, want unverified — a non-verdict is not a failure (report %q)", notice.State, notice.Report)
 	}
-	if !strings.HasPrefix(notice.Report, needsLookLead) {
+	if !strings.HasPrefix(notice.Report, yourCallLead(TaskFacts{Merge: notice.Merge})) {
 		t.Fatalf("report = %q, want it to lead with the plain non-answer", notice.Report)
 	}
 	if strings.HasPrefix(notice.Report, incompleteLead) {

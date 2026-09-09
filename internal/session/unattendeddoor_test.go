@@ -650,7 +650,7 @@ func TestAcceptingWorkOverAMergeConflictStillNeedsALook(t *testing.T) {
 	if merge != mergeConflicted {
 		t.Fatalf("merge = %q, want %q", merge, mergeConflicted)
 	}
-	if !strings.HasPrefix(report, needsLookLead) {
+	if !strings.HasPrefix(report, yourCallLead(TaskFacts{Merge: merge})) {
 		t.Fatalf("the report leads with %q, want the words a person reads for a landing nobody could finish", report)
 	}
 	if strings.Contains(report, keptWhereItIsLead) {
@@ -1076,7 +1076,7 @@ func TestAWindowOneStallClosedIsDecidedByThePosture(t *testing.T) {
 				if notice.State != TaskUnverified {
 					t.Fatalf("state = %q, want it waiting on somebody (report %q)", notice.State, notice.Report)
 				}
-				if !strings.HasPrefix(notice.Report, needsLookLead) {
+				if !strings.HasPrefix(notice.Report, yourCallLead(TaskFacts{Merge: notice.Merge})) {
 					t.Fatalf("a watched run stopped asking:\n%s", notice.Report)
 				}
 				return
@@ -1100,7 +1100,7 @@ func TestAWindowOneStallClosedIsDecidedByThePosture(t *testing.T) {
 			if strings.Contains(notice.Report, "nobody could check it in") {
 				t.Fatalf("the landing says nobody was asked, and two checkers were:\n%s", notice.Report)
 			}
-			if strings.Contains(notice.Report, needsLookLead) {
+			if strings.Contains(notice.Report, yourCallLead(TaskFacts{Merge: notice.Merge})) {
 				t.Fatalf("an unattended run still asks somebody who is not there:\n%s", notice.Report)
 			}
 			// AND THE VOCABULARY LAW HOLDS ON THE NEW SENTENCE.

@@ -414,7 +414,7 @@ func TestAnUnattendedSessionNeverEndsTheLadderOnAPerson(t *testing.T) {
 		ID:     4,
 		Title:  "the deliverable",
 		State:  TaskUnverified,
-		Report: needsLookLead + "nobody could say whether it holds",
+		Report: yourCallLead(TaskFacts{}) + "the checker never answered",
 	}
 
 	unattended := &Agent{config: Config{AskConsent: false}}

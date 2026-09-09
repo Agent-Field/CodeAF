@@ -163,7 +163,7 @@ func TestAcceptingWorkThatCannotBeSavedSettlesWhereItStands(t *testing.T) {
 	if !strings.HasPrefix(report, keptWhereItIsLead) {
 		t.Fatalf("the report leads with %q, want the words a person reads for work that stayed where it is", report)
 	}
-	if strings.Contains(report, needsLookLead) {
+	if strings.Contains(report, yourCallLead(TaskFacts{Merge: merge})) {
 		t.Fatalf("the report still asks somebody to look at a decision they already made:\n%s", report)
 	}
 	if !strings.Contains(report, tree.dir) {

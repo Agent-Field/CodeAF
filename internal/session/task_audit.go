@@ -122,7 +122,8 @@ package session
 //	verified          the work's own account, with the evidence sentence under it
 //	                  — the state already says done
 //	refuted out       "incomplete — " and the plain gaps, every round of them
-//	nobody could say  "finished, but needs your look — " and what the checker said
+//	nobody could say  the question the row is asking ([yourCallLead]) and what
+//	                  the checker said
 //
 // The reason is not squeamishness. The person did not ask for an audit; they
 // asked for a report on eleven companies. "REFUTED" tells them about the
@@ -391,10 +392,10 @@ const (
 	// not say who looked, because from the person's chair it does not matter:
 	// the news is that the work is not finished and here is what is missing.
 	incompleteLead = "incomplete — "
-	// needsLookLead opens the node nobody could judge. "Finished, but" is the
-	// honest half nobody else says: the work RAN, it is sitting on a branch, and
-	// the only thing missing is somebody's eyes.
-	needsLookLead = "finished, but needs your look — "
+	// yourCallDash joins a your-call landing's question to the detail under it,
+	// and it is the only part of that lead spelled in this file: the question
+	// itself is [yourCallLead]'s, read off the projection.
+	yourCallDash = " — "
 	// repairedAgainLead opens the second and later rounds' gaps, so that a
 	// report carrying three sets of evidence reads as three attempts rather than
 	// as one auditor repeating itself.
@@ -404,7 +405,7 @@ const (
 	// [treeRefused]). It says the two things that are true and nothing else: the
 	// decision stands, and the work is still where the sentence after it names.
 	//
-	// IT IS NOT [needsLookLead]. That lead asks somebody a question, and the
+	// IT IS NOT [yourCallLead]. That lead asks somebody a question, and the
 	// whole of this landing is that the question has been answered and asking it
 	// again would get the same refusal from the same disk (#513).
 	keptWhereItIsLead = "taken as it stands, and it could not be brought home, so the work stays where it is — "
@@ -436,6 +437,25 @@ const (
 		"it was stopped while its work was being checked, so nothing finished checking it — " +
 		"what it wrote is on its branch"
 )
+
+// yourCallLead opens the report of a landing SOMEBODY HAS TO DECIDE, and it is
+// the question that landing's own row will be asking — [taskAskOf]'s sentence,
+// read off the projection rather than spelled a second time here
+// (task_status.go). A report that opened with one question while the card beside
+// it asked another would be two accounts of one landing, which is the whole
+// defect the three tiers were drawn to end.
+//
+// `finished, but needs your look — ` WAS THIS LEAD AND IT IS DELETED as
+// person-facing text (docs/design/task-states/DESIGN.md). It named a state no
+// surface calls that any more, and it said the same sentence for a branch that
+// would not merge as for work nobody could check.
+//
+// It takes the facts rather than a question because the caller is holding the
+// facts and not the question: what came of the merge decides which of the six
+// this landing is asking, and every road here already knows that much.
+func yourCallLead(facts TaskFacts) string {
+	return taskAskOf(facts).Reason + yourCallDash
+}
 
 // machineryWords is the vocabulary that must never reach a person, and what to
 // say instead. The order is LONGEST-STEM-FIRST and it has to be: "unverified"
@@ -599,12 +619,12 @@ func (v auditVerdict) checkedSoFar() string {
 // lookOutcome is what the node nobody could judge says: it FINISHED, and it
 // needs eyes. The checker's own words follow, in plain form, because they are
 // the whole basis on which somebody is being asked to decide.
-func (v auditVerdict) lookOutcome() string {
+func (v auditVerdict) lookOutcome(facts TaskFacts) string {
 	lines := plainLines(v.evidence)
 	if len(lines) == 0 {
-		return needsLookLead + "nobody could say whether it holds"
+		return yourCallLead(facts) + "the checker never answered"
 	}
-	return needsLookLead + strings.Join(lines, "\n")
+	return yourCallLead(facts) + strings.Join(lines, "\n")
 }
 
 // takenAsItStands is [auditVerdict.lookOutcome]'s counterpart for a run with
@@ -2450,7 +2470,7 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 			node.graph.resettle(node, TaskDone)
 			return nil
 		}
-		node.finish(withReport(needsLookLead+detail, withReport(acceptedLine(why), report)),
+		node.finish(withReport(yourCallLead(TaskFacts{Merge: merge})+detail, withReport(acceptedLine(why), report)),
 			changed, tree.branch, merge)
 		node.graph.resettle(node, TaskUnverified)
 		return nil
@@ -2574,7 +2594,7 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		// asked to resolve this node needs both halves (task_contract.go's
 		// TaskUnverified) — the index row, the brief a dependent is handed, and
 		// the accept that carries it into TaskDone all read this string.
-		node.finish(withReport(verdict.lookOutcome(), claim), changed, branch, merge)
+		node.finish(withReport(verdict.lookOutcome(TaskFacts{Merge: merge}), claim), changed, branch, merge)
 		node.graph.resettle(node, TaskUnverified)
 	case !verdict.verified:
 		// A re-audit that finds something is a landing, not a loop. The repair
@@ -2603,7 +2623,7 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 				node.graph.resettle(node, TaskDone)
 				return
 			}
-			node.finish(withReport(needsLookLead+detail, withReport(claim, verdict.doneOutcome())),
+			node.finish(withReport(yourCallLead(TaskFacts{Merge: merged})+detail, withReport(claim, verdict.doneOutcome())),
 				changed, tree.branch, merged)
 			node.graph.resettle(node, TaskUnverified)
 			return
@@ -2611,7 +2631,7 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		// THE CLAIM, NOT THE CARRIED REPORT — and the claim LEADS, exactly as it
 		// does on the gate's own landing (task_run.go's workTaskNode). The carried
 		// report opens with the line that said nobody could judge this work, and a
-		// card stacking a fresh answer over "finished, but needs your look — …"
+		// card stacking a fresh answer over the question the last landing asked
 		// contradicts itself in two lines. What the person and the model want first
 		// is what the work found; what it was checked on follows.
 		node.finish(withReport(claim, withReport(verdict.doneOutcome(), detail)), changed, tree.branch, merged)

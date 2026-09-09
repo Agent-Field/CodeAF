@@ -48,7 +48,7 @@ import (
 // disagreeing with this one about what happened.
 //
 // The vocabulary law reaches every line either stream carries: work is running,
-// finishing, done, incomplete, or needs your look. A run that did not finish is
+// finishing, done, incomplete, or your call. A run that did not finish is
 // INCOMPLETE and is never called a failure — not on stderr, not in the usage
 // text, not in the flag help.
 

@@ -79,7 +79,7 @@ func TestTaskNoteSaysWhichOfTheThreeItIs(t *testing.T) {
 		what: "a landing nobody could judge",
 		notice: TaskNotice{
 			ID: 9, Title: "Collect sources", State: TaskUnverified,
-			Report: needsLookLead + checkerAskedTwice,
+			Report: yourCallLead(TaskFacts{}) + checkerAskedTwice,
 		},
 		// NOT "FAILED", and it says what is waiting on whom: the state exists
 		// because "the work is wrong" and "nobody could tell me whether the work

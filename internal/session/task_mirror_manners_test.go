@@ -270,7 +270,7 @@ func TestARunningFolderFamilyLandsNeedingALookWhenTheFolderMoved(t *testing.T) {
 	if notice.State != TaskUnverified {
 		t.Fatalf("state = %q, report = %q", notice.State, notice.Report)
 	}
-	if !strings.HasPrefix(notice.Report, needsLookLead) {
+	if !strings.HasPrefix(notice.Report, yourCallLead(TaskFacts{Merge: notice.Merge})) {
 		t.Fatalf("the report does not lead with the person's look: %q", notice.Report)
 	}
 	if !strings.Contains(notice.Report, "notes.md changed there while this ran") {
@@ -336,7 +336,7 @@ func TestARunningFolderFamilyOverAnUntouchedFolderStillLands(t *testing.T) {
 		t.Fatalf("merge = %q, want a folder landing to stay in place", notice.Merge)
 	}
 	if strings.Contains(notice.Report, "changed there while this ran") ||
-		strings.Contains(notice.Report, needsLookLead) {
+		strings.Contains(notice.Report, yourCallLead(TaskFacts{Merge: notice.Merge})) {
 		t.Fatalf("the report gained a sentence over an untouched folder: %q", notice.Report)
 	}
 	if got := readFile(t, filepath.Join(ground, "notes.md")); got != "the line the task wrote\n" {
@@ -370,7 +370,7 @@ func TestAnAcceptedFolderFamilyRefusesAFolderThatMovedUnderIt(t *testing.T) {
 
 	// IT LANDS NEEDING A LOOK, WHICH LAYS NOTHING.
 	kept, ledger := keepHome(family, tree, []string{"notes.md"})
-	family.finish(needsLookLead+"nobody could judge this", ledger, "", kept)
+	family.finish(yourCallLead(TaskFacts{Merge: kept})+"nobody could judge this", ledger, "", kept)
 	graph.complete(family, TaskUnverified)
 
 	// AND THE PERSON SPENDS THE MORNING IN THE SAME FILE.
@@ -383,7 +383,7 @@ func TestAnAcceptedFolderFamilyRefusesAFolderThatMovedUnderIt(t *testing.T) {
 	if notice.State != TaskUnverified {
 		t.Fatalf("the accepted family is %q: %s", notice.State, notice.Report)
 	}
-	if !strings.HasPrefix(notice.Report, needsLookLead) ||
+	if !strings.HasPrefix(notice.Report, yourCallLead(TaskFacts{Merge: notice.Merge})) ||
 		!strings.Contains(notice.Report, "notes.md changed there while this ran") {
 		t.Fatalf("the accept did not say which file moved: %q", notice.Report)
 	}
