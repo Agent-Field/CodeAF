@@ -796,6 +796,10 @@ func TestTheLaneRaisesOnlyWhatThisBlockHasTakenOver(t *testing.T) {
 		// nothing now and what is left there is the lane's three surface-side
 		// facts (the row, the widening write, the reading clock's length).
 		session.QuestionConsent,
+		// AND THE TASK PROPOSAL, whose choices row, meter and keyboard lane are
+		// deleted: task.go draws the ASSIGNMENT in the transcript, which is what
+		// the question is about rather than a second copy of the asking.
+		session.QuestionTask,
 	} {
 		if !a.questionDrawnHere(session.Question{Kind: kind}) {
 			t.Fatalf("%s has no other block and is not drawn here either", kind)
@@ -803,7 +807,7 @@ func TestTheLaneRaisesOnlyWhatThisBlockHasTakenOver(t *testing.T) {
 	}
 	for _, kind := range []session.QuestionKind{
 		session.QuestionConnect, session.QuestionHarness,
-		session.QuestionStanding, session.QuestionTask,
+		session.QuestionStanding,
 	} {
 		if a.questionDrawnHere(session.Question{Kind: kind}) {
 			t.Fatalf("%s is drawn here AND by its own block; one decision, two rows", kind)

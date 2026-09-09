@@ -61,10 +61,12 @@ Most of them wait. A wait that ended is not a no: an approval question, a
 standing card and a page waiting to be approved carry no clock at all, and they
 stay up until somebody answers them.
 
-**A task proposal and a reversible recommendation may carry a clock.** The card says how long is left, and
-when the time runs out the work STARTS — the card is your chance to redirect it,
-not a gate the work waits on. A proposal you hold loses its deadline and then
-waits like everything else.
+**A task proposal and a reversible recommendation may carry a clock.** The answers
+row says which answer is about to be taken and when — `start it in 9s` — and when
+the time runs out the work STARTS. It is your chance to correct it, not a gate the
+work waits on. Any key you press stops that clock, and a proposal you hold loses
+its deadline and then waits like everything else, with `waiting` on the end of the
+row instead of a countdown.
 
 **Nothing that cannot be taken back ever runs on a clock**, and only you ever answer
 one. aforge refuses to raise a question that says otherwise.

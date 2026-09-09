@@ -510,7 +510,7 @@ func TestTheFormingBlockArmsTheFrameClockFromAStillSurface(t *testing.T) {
 		{"approved", func(a *app) {
 			a.task = &taskCard{id: 41, title: "index the adapters", name: "adapter index"}
 			a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: a.task})
-			a.answerTask(true, "")
+			a.taskAnswered(a.task.id, session.Answer{Key: "1", Picked: []string{"1"}})
 		}},
 	} {
 		t.Run(road.name, func(t *testing.T) {
@@ -598,7 +598,7 @@ func TestAnApprovedProposalRaisesTheFormingBlockUntilItsTaskExists(t *testing.T)
 	a := newTestApp(&taskCommandFake{Agent: &fakeAgent{model: "m"}})
 	a.task = &taskCard{id: 41, title: "index the adapters", name: "adapter index"}
 	a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: a.task})
-	a.answerTask(true, "")
+	a.taskAnswered(a.task.id, session.Answer{Key: "1", Picked: []string{"1"}})
 	frame := plainRowsText(a.preflightRows(60))
 	if !strings.Contains(frame, "▏ task") || !strings.Contains(frame, "▏ adapter index") {
 		t.Fatalf("the approved proposal raised no forming block:\n%s", frame)
@@ -629,7 +629,7 @@ func TestADeclinedProposalRaisesNoFormingBlock(t *testing.T) {
 	a := newTestApp(&taskCommandFake{Agent: &fakeAgent{model: "m"}})
 	a.task = &taskCard{id: 42, title: "index the adapters", name: "adapter index"}
 	a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: a.task})
-	a.answerTask(false, "")
+	a.taskAnswered(a.task.id, session.Answer{Key: "2", Picked: []string{"2"}})
 	if a.waiting() {
 		t.Fatal("a declined proposal left a forming block on screen")
 	}

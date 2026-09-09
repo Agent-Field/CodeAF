@@ -44,6 +44,11 @@ func awayAsk(t *testing.T) (*wiredAgent, *app, func(time.Duration)) {
 	// never ran the boot that reads it (app.go's [app.consentWait]).
 	a.askWait = 10 * time.Second
 	startAskClock(a, at, false)
+	// AND IT HAS BEEN ON SCREEN. The block takes no key from a question it has
+	// never drawn (question.go's [app.questionKey]), and a harness that fed keys
+	// at one without a frame in between would be testing that guard rather than
+	// the clock.
+	settleAsk(a)
 	return agent, a, func(d time.Duration) { at = at.Add(d) }
 }
 

@@ -1447,6 +1447,23 @@ func (a *Agent) applyToLane(answer Answer) error {
 		wait <- answer
 		return nil
 	case QuestionConsent, QuestionTask, QuestionStanding:
+		if answer.Kind == QuestionTask && key == "" && words != "" {
+			// A PROPOSAL ANSWERED IN WORDS IS APPROVED, AND THE WORDS ARE THE
+			// REDIRECT. It is the one lane on this door where a sentence is a
+			// whole answer rather than a note beside one: the most valuable
+			// thing a person can do with a groomed piece of work is CORRECT
+			// it, and correcting it is saying yes to the corrected version.
+			// The words are appended to the brief by the runner
+			// ([TaskAnswer.Redirect]), so what travels is verbatim.
+			//
+			// IT IS NOT A HIDDEN DIALECT. The surface that raised this door
+			// used to read a bare "no" typed into the box as a decline and
+			// anything longer as a redirect, which meant one of the two
+			// answers was reachable by a word nothing on screen had named.
+			// The answers are on the row with their keys; the box is words.
+			a.ResolveTask(answer.ID, TaskAnswer{Approved: true, Redirect: words})
+			return nil
+		}
 		// The three lanes answers.go already mapped, through the mapping it
 		// already wrote: [AnswerFromKey] says what a key MEANS, and a key the
 		// kind does not take is applied to nothing.
@@ -1860,7 +1877,7 @@ func (a *Agent) proposalQuestion(id uint64, notice TaskNotice) Question {
 		Ask:      AskPermission,
 		Form:     FormCard,
 		Asker:    Asker{Kind: AskerModel},
-		Head:     taskProposalLead + strings.TrimSpace(notice.Title),
+		Head:     TaskProposalLead + strings.TrimSpace(notice.Title),
 		Reason:   strings.TrimSpace(notice.Summary),
 		Subject:  SubjectRef{Kind: SubjectNode, ID: id, Name: strings.TrimSpace(notice.Title)},
 		Options:  AnswerOptions(QuestionTask),
@@ -1869,16 +1886,27 @@ func (a *Agent) proposalQuestion(id uint64, notice TaskNotice) Question {
 		Deadline: notice.Deadline,
 	}
 	if !notice.Deadline.IsZero() {
-		built.Pick = &Pick{Key: "1", Reason: "it starts on its own unless you say otherwise", Confidence: ConfidenceFairly}
+		built.Pick = &Pick{Key: "1", Reason: TaskProposalPickReason, Confidence: ConfidenceFairly}
 		built.Policy = Policy{Kind: PolicyRecommendThenAuto, After: time.Until(notice.Deadline)}
 	}
 	return a.said(QuestionTask, token, built)
 }
 
-// taskProposalLead opens the sentence a task proposal asks with, and it is
+// TaskProposalLead opens the sentence a task proposal asks with, and it is
 // task.go's own lead repeated here so the card, the presence file and this
 // object cannot become three accounts of one proposal.
-const taskProposalLead = "wants to start a task: "
+//
+// IT IS EXPORTED BECAUSE THE SURFACE BUILDS THE SAME QUESTION. A window that
+// draws the proposal has the notice before the questions lane reaches it and
+// raises the question from that, so the two objects must be one sentence — the
+// block keys a question by its lane and its id, and two builders that drifted
+// would put two questions on screen about one proposal.
+const TaskProposalLead = "wants to start a task: "
+
+// TaskProposalPickReason is why the clock recommends starting it, in the words
+// the recommendation is made in. It is exported for [TaskProposalLead]'s
+// reason.
+const TaskProposalPickReason = "it starts on its own unless you say otherwise"
 
 // subharnessOfferQuestion is an intake card chat raised for a saved program.
 func (a *Agent) subharnessOfferQuestion(id uint64, card Event) Question {

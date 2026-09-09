@@ -140,20 +140,9 @@ func (a *app) gutterCards(d deck, width int) {
 	lead := textGutterCols(width)
 	for i := range d.entries {
 		e := &d.entries[i]
-		gutTaskCard(e.card, lead)
 		gutStandingCard(e.stand, lead)
 		gutDoneCard(e.done, lead)
 	}
-}
-
-func gutTaskCard(card *taskCard, lead int) {
-	if card == nil || card.gut == lead {
-		return
-	}
-	by := lead - card.gut
-	shiftChoiceSpans(card.spans, by)
-	shiftChoiceSpans(card.modelSpans, by)
-	card.gut = lead
 }
 
 func gutStandingCard(card *standingCard, lead int) {

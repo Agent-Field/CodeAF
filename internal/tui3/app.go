@@ -3636,14 +3636,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.railPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
-			// AND THE PROPOSAL'S CHOICES ROW IS THE THIRD, for the same reason
-			// again: three answers share one line, so which was pressed is a
-			// question about x (task.go). It is read before the body because a
-			// click on that row answers the question rather than opening the
-			// brief — which is what the rest of the card does with a press.
-			if cmd, took := a.choicePress(msg.Mouse().X, msg.Mouse().Y); took {
-				return a, cmd
-			}
 			// AND THE STANDING CARD'S ANSWERS ROW, which is the same gesture over
 			// the same shape of row and is resolved against ITS OWN spans
 			// (standing.go's [app.standingPress]).
@@ -6062,11 +6054,10 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		// (harnesscard.go), so whatever door it parked has to be handed on — a
 		// room whose lane was never started is a page that never updates.
 		cmd = a.takeRoomPump()
-	case hitChoice, hitModel, hitStandChoice:
-		// All three rows were offered this click before the body and took it (see
-		// [app.choicePress] and [app.standingPress]); reaching here means the
-		// pointer was in a column no option occupies, and empty space on this
-		// surface does nothing.
+	case hitStandChoice:
+		// The row was offered this click before the body and took it (see
+		// [app.standingPress]); reaching here means the pointer was in a column
+		// no option occupies, and empty space on this surface does nothing.
 	}
 	// THE NAMED RESULT, AND NOT nil. This used to end `return nil`, which threw
 	// away the one command this switch parks — the design room's pump above —
@@ -6178,49 +6169,6 @@ func (a *app) statusPress(x, y int) bool {
 	}
 	a.openPicker()
 	return true
-}
-
-// choicePress resolves a click on a proposal's choices row to the option under
-// the pointer, and reports whether it took the click.
-//
-// A press anywhere on that ROW is the row's, whether or not it landed on an
-// option: the alternative is a click in the gap between two answers falling
-// through to the card and collapsing the brief, which would make the row a place
-// where missing costs you the thing you were reading.
-func (a *app) choicePress(x, y int) (tea.Cmd, bool) {
-	if a.roomOpen() || a.welcome.open {
-		return nil, false
-	}
-	r, ok := a.rowAt(y)
-	if !ok || r.entry < 0 || r.entry >= len(a.entries) {
-		return nil, false
-	}
-	if r.hit != hitChoice && r.hit != hitModel {
-		return nil, false
-	}
-	card := a.entries[r.entry].card
-	// The open question is the only one that can be answered, and it is the one
-	// the lane holds: an older card still on screen has already settled.
-	if card == nil || card != a.task || card.settled() {
-		return nil, true
-	}
-	// Each row is resolved against ITS OWN spans: the models row settles which
-	// model, the choices row settles the question (task.go).
-	if r.hit == hitModel {
-		for _, span := range card.modelSpans {
-			if x >= span.from && x < span.to {
-				a.takeModel(span.at)
-				break
-			}
-		}
-		return nil, true
-	}
-	for _, span := range card.spans {
-		if x >= span.from && x < span.to {
-			return a.takeChoice(span.at), true
-		}
-	}
-	return nil, true
 }
 
 // selectTool moves the selection through the tool calls that are actually on
@@ -7768,8 +7716,8 @@ func (a *app) paste(text string) tea.Cmd {
 	// a typed rune. Compare the box rather than the clipboard so settings, home,
 	// key boxes, refused drops, and other overlays do not hold a proposal they
 	// never edited; folded pastes and image tokens do because they changed it.
-	if a.input.String() != before {
-		a.holdTask()
+	if a.input.String() != before && a.task != nil {
+		a.holdTask(a.task.id)
 	}
 	cmd := a.edited()
 	// A QUESTION SUSPENDS THE LISTS, and it suspends them against the clipboard

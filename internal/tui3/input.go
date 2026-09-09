@@ -381,14 +381,18 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
-	// THE TASK PROPOSAL AND THE STANDING CARD ARE READ HERE, on the terms the
-	// approval question was read on before the block took it over: each is a
-	// question the SESSION is blocked on, so it outranks every overlay below it,
-	// and neither is modal — the box under both is a lane of its own (task.go's
-	// redirect, standing.go's correction).
+	// AND THE ONE KEY THE PROPOSAL STILL OWNS, which is not an answer: ctrl+e
+	// unfolds the assignment in the transcript (task.go). It is below the block
+	// because the block is where the proposal is answered and a key it draws
+	// must reach it first.
 	if cmd, taken := a.taskKey(msg); taken {
 		return cmd
 	}
+	// THE STANDING CARD IS READ HERE, on the terms the approval question and the
+	// task proposal were read on before the block took them over: it is a
+	// question the SESSION is blocked on, so it outranks every overlay below it,
+	// and it is not modal — the box under it is the correction lane
+	// (standing.go).
 	if cmd, taken := a.standingKey(msg); taken {
 		return cmd
 	}
@@ -1296,8 +1300,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.editTags(at, at, len([]rune(text)))
 		// THE FIRST RUNE HOLDS AN OPEN TASK PROPOSAL. This is the typed-character
 		// door; app.paste applies the same hold after the clipboard changes this
-		// box, so both roads share the engine-owned clock policy.
-		a.holdTask()
+		// box, so both roads share the engine-owned clock policy. The question
+		// block holds it too, off any key it reads (question.go's
+		// [app.holdQuestionClocks]) — this is the half that fires for a rune the
+		// question never sees, which is every rune once the box has words in it.
+		if a.task != nil {
+			a.holdTask(a.task.id)
+		}
 		// AND THE ENGINE IS TOLD SOMEBODY IS WRITING (internal/session's Typing).
 		// It is here, on the one line every typed character passes through,
 		// because that is exactly what it is for: seconds before a request is

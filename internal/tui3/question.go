@@ -221,6 +221,17 @@ type questionShown struct {
 	// so ([session.AnswerBanked]) rather than letting a second, wider one be
 	// written beside it.
 	answered func(session.Answer) session.Answer
+	// held is the lane's own hand on the first evidence that somebody is AT THE
+	// KEYBOARD, and it is called once per question.
+	//
+	// IT EXISTS FOR THE ONE CLOCK ON THIS BLOCK THAT ANSWERS. Every other is a
+	// reading clock, which holds by itself and never decides anything (F41 is
+	// why, and [app.tickQuestion] is where). A task proposal's silence STARTS
+	// the work, so the moment a key lands the lane tells the engine to stop
+	// counting — and it is a hook rather than a line in the block because
+	// stopping that clock is a call over a connection, which is a lane's
+	// business and not a renderer's (task.go's [app.holdTask]).
+	held func()
 	// clockAt is when the reading time on this question started and clockFor how
 	// long it runs; clockHeld says it has stopped for good.
 	//
@@ -701,7 +712,13 @@ const questionAllowWord = "allow? "
 func (a *app) questionCardRows(q questionShown, width int) []string {
 	out := make([]string, 0, 8)
 	out = append(out, a.questionMark()+" "+a.pal.ask(fit(strings.TrimSpace(q.question.Head), width-2)))
-	if line := a.questionAttribution(q.question); line != "" {
+	// THE REASON IS NOT SAID TWICE ON ONE SCREEN. Where the transcript is
+	// already drawing the thing this question is about — a task proposal's own
+	// block, three rows up, with the summary under its head — repeating that
+	// sentence here is the two-renderings defect this block exists to end, one
+	// size smaller. What is left is who asked, which the block above cannot say.
+	drawn := a.questionSubjectAt(q.question) >= 0
+	if line := a.questionAttribution(q.question, !drawn); line != "" {
 		out = append(out, a.pal.dim(fit("  "+line, width)))
 	}
 	options := q.question.Options
@@ -713,7 +730,17 @@ func (a *app) questionCardRows(q questionShown, width int) []string {
 		options = nil
 	}
 	for i, option := range options {
+		// EVERY ANSWER ROW IS PRESSABLE ALONG ITS WHOLE WIDTH, which is the
+		// sheet's own bargain applied to the card ([questionBand] says why it is
+		// a row and not a span). The card puts each answer on a row of its own,
+		// so a press is resolved BY ROW — and a pointer that could reach the
+		// answers on the line form and the sheet but not on the card would be an
+		// affordance the middle form quietly dropped.
+		row := len(out)
 		out = append(out, a.questionOptionRow(q, i, option, width))
+		a.questionBands = append(a.questionBands, questionBand{
+			row: row, span: hudSpan{from: 0, to: width}, at: i,
+		})
 	}
 	a.questionSpans, a.questionSpanRow = nil, len(out)
 	if len(q.beat) > 0 {
@@ -786,6 +813,17 @@ func (a *app) questionSubjectRow(q questionShown, width int) (string, bool) {
 // otherwise attach to the first bash row on screen — three questions annotating
 // one line and two calls the person never saw asked about.
 func (a *app) questionSubjectAt(q session.Question) int {
+	if q.Subject.Kind == session.SubjectNode {
+		// A NODE'S SUBJECT IS ITS OWN BLOCK IN THE TRANSCRIPT (task.go). It is
+		// paired on the id, which the engine minted before anybody was asked, so
+		// there is no walk-by-name arm to fall back to and none is wanted.
+		for i := range a.entries {
+			if e := &a.entries[i]; e.kind == entryTask && e.card != nil && e.card.id == q.Subject.ID {
+				return i
+			}
+		}
+		return -1
+	}
 	if q.Subject.Kind != session.SubjectCall {
 		return -1
 	}
@@ -849,12 +887,17 @@ func questionOlder(one, two session.Question) bool {
 // questionAttribution is the dim line under a card's head: why now, and who is
 // asking, in that order and joined by the surface's own separator.
 //
+// reason is whether the WHY belongs on this line at all. It is false where the
+// transcript is already drawing the thing the question is about and has that
+// sentence under it ([app.questionCardRows] says which case); the asker is
+// still said, because who asked is a fact no block in the conversation carries.
+//
 // THE EMPTINESS LAW. No reason and no named asker is no row at all — not an
 // empty one, and never the word "unknown".
-func (a *app) questionAttribution(q session.Question) string {
+func (a *app) questionAttribution(q session.Question, reason bool) string {
 	parts := make([]string, 0, 2)
-	if reason := strings.TrimSpace(q.Reason); reason != "" {
-		parts = append(parts, reason)
+	if line := strings.TrimSpace(q.Reason); reason && line != "" {
+		parts = append(parts, line)
 	}
 	if who := questionAskerWord(q.Asker); who != "" {
 		parts = append(parts, who)
@@ -1465,6 +1508,15 @@ func (a *app) tickQuestion() {
 // mid-decision, which is the one moment it must not.
 func (a *app) holdQuestionClocks() {
 	for i := range a.questions {
+		// AND THE LANE'S OWN CLOCK STOPS WITH IT. A reading clock holds by
+		// itself; a clock that ANSWERS — the task proposal's, whose silence
+		// starts the work — has to be stopped where it runs, which is in the
+		// engine ([questionShown.held]). It is called once and then dropped,
+		// because a key is evidence about a person and not about a key.
+		if held := a.questions[i].held; held != nil {
+			a.questions[i].held = nil
+			held()
+		}
 		if a.questions[i].clockFor <= 0 || a.questions[i].clockHeld {
 			continue
 		}
@@ -1814,7 +1866,16 @@ func (a *app) questionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// sheet has the rows, so the sheet has the keyboard (questionsheet.go).
 		return a.questionSheetKey(msg)
 	}
-	if head.shown.IsZero() && !a.questionQuieted() {
+	if head.shown.IsZero() {
+		// A QUESTION THAT HAS NEVER BEEN DRAWN TAKES NO KEYS. The stamp is
+		// written by the DRAW ([app.markQuestionShown]), so a zero one means one
+		// of the two things that keep the block off the screen: the box has a
+		// half-typed sentence in it and the rows have not been taken out from
+		// under it ([app.questionQuieted]), or a fullscreen page is up and the
+		// chrome is not being drawn at all. Either way the person is looking at
+		// something else, and a block that answered for them from behind it —
+		// or swallowed the letters they were typing into what they CAN see —
+		// would be modal in the one place nobody could tell.
 		return nil, false
 	}
 	key := msg.String()
@@ -2514,6 +2575,13 @@ func (a *app) questionDrawnHere(q session.Question) bool {
 		// is left there is the lane's own three things — the row, the widening
 		// write, the reading clock's length — and they ride on the question this
 		// block draws.
+		return true
+	case session.QuestionTask:
+		// THE TASK PROPOSAL, whose own choices row, draining meter and keyboard
+		// lane are deleted (task.go). What is left there is the assignment in
+		// the transcript — the brief, where the work will run, what it will run
+		// on — which is what the question is ABOUT rather than a second copy of
+		// the asking.
 		return true
 	}
 	return false

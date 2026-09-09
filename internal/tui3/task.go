@@ -4,7 +4,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -66,23 +65,20 @@ type taskCard struct {
 	dependsOn []uint64
 	// model is the model this work will run on, and it is a FACT rather than a
 	// question: the engine resolved it before anybody was asked (session's
-	// taskmodel.go), and the card states it because a proposal that did not say
+	// taskmodel.go), and the block states it because a proposal that did not say
 	// whose hands the work is going into would be hiding the one thing about it
 	// nobody can find out afterwards.
 	//
-	// options is the exception: one word that fitted more than one model, which
-	// the engine will not choose between. Then the card OFFERS them — model is
-	// whichever is picked, and the leading one is what silence takes — and the
-	// chosen id travels back on the answer.
-	model   string
-	options []string
-	// pick is which of options has the keyboard, and modelRow/modelSpans are
-	// where that row landed and what each chip occupies, for the click. They are
-	// the choices row's own machinery ([app.taskCardRows]) for the same reason:
-	// one layout, one set of targets.
-	pick       int
-	modelRow   int
-	modelSpans []choiceSpan
+	// THE SHORTLIST IS NOT DRAWN ANY MORE, and this one field is all that is
+	// left of it. A word that fitted more than one model used to raise a row of
+	// chips here, answered by digits — and the digits are the question block's
+	// answers now, one grammar for every decision on this surface, so a second
+	// reader for the same keystroke is exactly what this wave exists to end.
+	// What runs is what the engine already resolved (session's firstTaskModel),
+	// which is what those chips opened on; CORRECTING IT FROM THE PROPOSAL IS
+	// OWED, and until it lands the way to ask for another is to say so in the
+	// words `c change` takes.
+	model string
 	// elsewhere is the one dim line saying which of this brief's files another
 	// window's work is already in, as the engine wrote it (session's
 	// TaskNotice.Elsewhere), and "" when there was nothing to say.
@@ -97,44 +93,20 @@ type taskCard struct {
 	// or held (session's TaskNotice.Deadline). A zero deadline draws no countdown:
 	// a number counting down to nothing is a promise the engine did not make.
 	deadline time.Time
-	// born is when this phase of the card arrived. While it forms, the count-up
-	// measures from the call's first fragment. Once the question lands, the
-	// replacement card uses it for the METER: a bar that drains needs both ends
-	// of the span, and the notice carries only the far one. Both are taken from
-	// the surface's own clock at the moment the phase first becomes visible.
+	// born is when this phase of the card arrived: the call's first fragment
+	// while it forms, which is what the count-up on that row measures from.
 	born time.Time
 	// open says the brief and the acceptance are showing, behind the same
 	// expand mechanic a tool row's detail is behind.
 	open bool
-	// choice is which of [taskChoiceWords] has the keyboard — the row's own
-	// cursor, and the thing enter acts on.
-	choice int
-	// typing says the redirect lane has the focus: the person asked for the box,
-	// so the letters that would otherwise answer the question are text again.
-	typing bool
 	// verdict is what was decided, in the words the row keeps afterwards. It is
 	// empty for exactly as long as the question is open.
 	verdict string
-	// answer is the OPTION that settled it — "yes", "redirect", "no" — kept
-	// beside the verdict the way a consent row keeps "allowed". It is empty when
-	// nobody chose: a clock that ran out and a turn that ended chose nothing.
+	// answer is the ANSWER that settled it, in the question's own word for it —
+	// `start it`, `no`, `change` — kept beside the verdict the way a consent row
+	// keeps "allowed". It is empty when nobody chose: a clock that ran out and a
+	// turn that ended chose nothing.
 	answer string
-
-	// choiceRow is where the choices row sits inside this card's rendered rows,
-	// or -1, and spans are the columns each option occupies on it. Both are
-	// written by [app.taskCardRows] and read by the hit-testing (app.go's
-	// [app.choicePress]) — one layout, one set of targets, because a row whose
-	// drawing and whose clicks disagreed would answer a question the person did
-	// not ask.
-	choiceRow int
-	spans     []choiceSpan
-	// gut is how many columns of the READING GUTTER are already in the two span
-	// sets above (gutter.go). The card is drawn at the transcript's own left
-	// edge, which is no longer screen column zero, and the shift is applied to
-	// finished spans by one pass — so the pass has to know what it has already
-	// paid, or a card whose rows came back from the entry cache would be moved
-	// again on every frame until its chips walked off the end of the row.
-	gut int
 
 	// forming says this card is a propose_task call that is STILL ARRIVING —
 	// the block drawn from the first fragment of the call, before there is a
@@ -1044,7 +1016,7 @@ func (a *app) formTask(ev session.Event) {
 	card := a.formingCard()
 	if card == nil {
 		card = &taskCard{
-			forming: true, callID: ev.CallID, born: a.now(), choiceRow: -1, modelRow: -1,
+			forming: true, callID: ev.CallID, born: a.now(),
 		}
 		a.closeLive()
 		a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: card})
@@ -1141,17 +1113,44 @@ func (a *app) refuseFormingCard() {
 	a.touch()
 }
 
+// proposeTask takes one session.EventTaskProposal.
+//
+// THE BLOCK ASKS AND THIS ROW IS WHAT IT IS ABOUT (question.go). The engine
+// sends the proposal twice on purpose — this card, which carries the whole
+// assignment, and the same moment as a [session.Question] on the questions lane
+// — and the two halves are drawn in the two places each belongs: the brief in
+// the transcript, where it is part of what happened and can still be read a
+// week later, and the ASKING above the box, where every other decision on this
+// surface is put. What used to be here as well was a second copy of the asking:
+// a choices row, a draining meter and a keyboard lane, all of them a decision
+// drawn in a place no other decision is drawn.
+//
+// The card is REUSED where the id is one this window already has. Holding the
+// clock is an update to the proposal every surface has ([session.Agent.
+// HoldTask]) and not a second proposal, and the deadline it zeroes travels to
+// the question as well — it is the question that draws the clock now.
 func (a *app) proposeTask(ev session.Event) {
 	notice := ev.Task
 	if notice == nil {
 		return
 	}
-	// Holding a clock is an update to the proposal every surface already has,
-	// not a second proposal. Reusing the card preserves its draft and focus while
-	// the zero deadline changes the meter to the engine's new state.
-	if a.task != nil && !a.task.settled() && a.task.id == notice.ID {
-		a.task.deadline = notice.Deadline
-		a.markCardStale(a.task)
+	// A PROPOSAL THIS WINDOW HAS ALREADY SEEN IS AN UPDATE, NEVER A SECOND
+	// PROPOSAL, and the id is the whole of the test — not "the id AND still
+	// open", which is what this asked before a real screen showed what that
+	// costs. The engine rebroadcasts the notice whenever the clock is held
+	// ([session.Agent.HoldTask]), and the block holds it on the first key a
+	// question reads — so the rebroadcast arrives a moment AFTER the answer that
+	// caused it, and a window that took it for a new proposal drew the card a
+	// second time, raised the question a second time, and then wrote a second
+	// receipt when the engine's answer came back to a question that was open
+	// again. One proposal, two blocks, two receipts, all from one keystroke.
+	if card := a.cardFor(notice.ID); card != nil {
+		if card.settled() {
+			return
+		}
+		card.deadline = notice.Deadline
+		a.setTaskDeadline(notice.ID, notice.Deadline)
+		a.markCardStale(card)
 		a.touch()
 		return
 	}
@@ -1174,42 +1173,140 @@ func (a *app) proposeTask(ev session.Event) {
 		ident:      identFor(notice.ID),
 		dependsOn:  notice.DependsOn,
 		model:      strings.TrimSpace(notice.Model),
-		options:    notice.ModelOptions,
 		elsewhere:  strings.TrimSpace(notice.Elsewhere),
 		deadline:   notice.Deadline,
 		born:       a.now(),
-		// THE CARD OPENS ON "YES", because that is what the block is proposing and
-		// a cursor parked on the destructive answer is a cursor that makes the
-		// safe answer the one you have to aim at. The clock behind it says the
-		// same thing: silence is approval.
-		choice:    choiceYes,
-		choiceRow: -1,
-		// And on the CLOSEST model, which is the one the engine put first and the
-		// one the countdown will settle on. The models row is a correction, not a
-		// decision the work is waiting behind.
-		pick:     0,
-		modelRow: -1,
 	}
 	a.task = card
 	a.closeLive()
-	// The typed lists follow the draft, and the draft is now the redirect lane:
-	// a completion list left open under it would be answering keys that belong
-	// to the question (consent.go makes the same call for the same reason).
+	// The typed lists follow the draft, and the draft is where the correction
+	// gets typed: a completion list left open under a question answering to
+	// digits is two readers for one keystroke (consent.go makes the same call
+	// for the same reason).
 	a.closeLists()
 	// THE BLOCK THE CALL WAS FORMING INTO BECOMES THIS ONE. The person has been
-	// watching this proposal arrive; the question is that block's next state,
+	// watching this proposal arrive; the assignment is that block's next state,
 	// not a second copy of it underneath ([app.formTask]).
 	if at := a.formingCardAt(); at >= 0 {
 		a.entries[at].card = card
 		a.entries[at].turn = a.turn
 		a.entries[at].stale = true
-		a.follow()
+	} else {
+		a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: card})
+	}
+	// AND THE QUESTION IS RAISED FROM HERE TOO, dressed with the lane's own two
+	// hands. It arrives on the questions lane as well and the block replaces by
+	// token, so whichever gets here first draws and the second is the same
+	// decision rather than a second one — consent.go's own bargain, and it is
+	// what lets this window put the transcript card and the engine's answer
+	// together without a second resolver.
+	a.raiseQuestion(a.taskShown(notice))
+	a.follow()
+	a.touch()
+}
+
+// taskShown is one proposal as the block holds it: the engine's own question
+// object, plus the two things it cannot carry.
+//
+//   - WHAT THIS PROGRAM DOES ABOUT AN ANSWER ([app.taskAnswered]) — the card in
+//     the transcript keeps what was decided, and a yes opens the forming block
+//     the approved brief is shaped in.
+//   - WHAT A KEYSTROKE MEANS TO THE CLOCK ([app.taskHeld]). A proposal is the
+//     one question on this surface whose silence ANSWERS, so the moment there
+//     is somebody at the keyboard the engine is told to stop counting.
+func (a *app) taskShown(notice *session.TaskNotice) questionShown {
+	id := notice.ID
+	return questionShown{
+		question: a.taskQuestion(notice),
+		answered: func(answer session.Answer) session.Answer {
+			return a.taskAnswered(id, answer)
+		},
+		held: func() { a.holdTask(id) },
+	}
+}
+
+// taskQuestion is the proposal as the object every surface draws, and it is the
+// engine's own builder said again (session's [Agent.proposalQuestion]).
+//
+// The two must stay ONE SENTENCE, for consent.go's reason: the block keys a
+// question by its lane and its id, so this one and the one that arrives on the
+// questions lane a moment later are the SAME question, and two builders that
+// drifted would make them two — one replacing the other on screen while
+// somebody was part-way through reading it.
+func (a *app) taskQuestion(notice *session.TaskNotice) session.Question {
+	built := session.Question{
+		ID:       notice.ID,
+		Kind:     session.QuestionTask,
+		Ask:      session.AskPermission,
+		Form:     session.FormCard,
+		Asker:    session.Asker{Kind: session.AskerModel},
+		Head:     session.TaskProposalLead + strings.TrimSpace(notice.Title),
+		Reason:   strings.TrimSpace(notice.Summary),
+		Subject:  session.SubjectRef{Kind: session.SubjectNode, ID: notice.ID, Name: strings.TrimSpace(notice.Title)},
+		Options:  session.AnswerOptions(session.QuestionTask),
+		Stakes:   session.StakesCostly,
+		Blocking: session.Blocking{Turn: true},
+		Deadline: notice.Deadline,
+		Asked:    a.now(),
+	}
+	if !notice.Deadline.IsZero() {
+		built.Pick = &session.Pick{
+			Key:        "1",
+			Reason:     session.TaskProposalPickReason,
+			Confidence: session.ConfidenceFairly,
+		}
+		built.Policy = session.Policy{
+			Kind:  session.PolicyRecommendThenAuto,
+			After: notice.Deadline.Sub(a.now()),
+		}
+	}
+	return built
+}
+
+// setTaskDeadline moves the clock on the question this proposal raised, which
+// is where the clock is drawn.
+//
+// A HELD PROPOSAL STOPS COUNTING EVERYWHERE AT ONCE. The engine rebroadcasts
+// the notice with a zero deadline and nothing else ([session.Agent.HoldTask]),
+// so the question object this window is holding would otherwise go on counting
+// down to a moment nothing is waiting for — which is the one thing a countdown
+// may never do.
+func (a *app) setTaskDeadline(id uint64, deadline time.Time) {
+	for i := range a.questions {
+		q := &a.questions[i]
+		if q.question.Kind != session.QuestionTask || q.question.ID != id {
+			continue
+		}
+		q.question.Deadline = deadline
+		if deadline.IsZero() {
+			// THE CLOCK GOES AND THE RECOMMENDATION STAYS. What a held proposal
+			// stops being is a question that answers itself; what it does not
+			// stop being is one the asker has an opinion about — so the policy
+			// and the deadline are cleared and the pick is not, and `enter` goes
+			// on taking the answer the row is marked with.
+			q.question.Policy = session.Policy{}
+		}
 		a.touch()
 		return
 	}
-	a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: card})
-	a.follow()
-	a.touch()
+}
+
+// dropTaskQuestion takes the proposal's question off the block when the answer
+// came from somewhere that is not an answer: the clock, the end of the turn,
+// another window.
+//
+// IT IS A WITHDRAWAL AND NOT AN ANSWER, which is the whole distinction: nobody
+// decided anything here, so nothing is recorded as though somebody had. The
+// reason is the engine's own sentence for the same event (session's
+// [questionGoneReason]).
+func (a *app) dropTaskQuestion(id uint64, reason string) {
+	for _, open := range a.questions {
+		if open.question.Kind != session.QuestionTask || open.question.ID != id {
+			continue
+		}
+		a.withdrawQuestion(open.question, reason)
+		return
+	}
 }
 
 // formingCardAt is [app.formingCard]'s index, for the one caller that has to
@@ -1241,8 +1338,14 @@ const (
 	taskDeclinedWord = "declined"
 	taskClockWord    = "approved · the clock"
 	taskExpiredWord  = "expired · the turn ended"
-	taskRedirectLane = "redirect this task… (enter sends it, esc declines)"
-	taskProposalHint = "enter answer · esc no"
+	// taskRedirectLane is what the empty box says while a proposal is open: the
+	// one thing the box is for at that moment.
+	//
+	// IT NO LONGER NAMES esc. It used to read `(enter sends it, esc declines)`,
+	// which was true while this block owned the keyboard and is a lie now: esc
+	// is LATER on every question this surface asks (question.go), the work stays
+	// waiting and nothing is decided by making something go away.
+	taskRedirectLane = "say what to change… (enter sends it)"
 	taskExpandHint   = "ctrl+e for the brief"
 	// taskModelTag labels the one fact a proposal carries that nobody can find
 	// out afterwards: whose hands the work is going into.
@@ -1294,266 +1397,72 @@ const (
 	taskFormingRefused = "not started · the call was refused"
 )
 
-// THE THREE ANSWERS, and they are a ROW OF OPTIONS rather than three keys named
-// in a sentence.
+// awaitingTask reports whether a proposal is open in this window.
 //
-// The lane underneath was the whole interface until this wave: bare enter
-// approved, esc declined, and the only thing on screen that said so was a hint
-// in the legend, forty rows away from the question. A decision moment with
-// nothing to point at is a decision moment a person answers by guessing — so the
-// options are drawn where the question is, in the consent block's own bracket
-// idiom, and every one of them is reachable by pointer or by ←/→ and enter.
-// A bare letter cannot name one: the empty box is also the start of the redirect
-// lane, so its first letter has to remain a letter.
-const (
-	choiceYes = iota
-	choiceRedirect
-	choiceNo
-)
-
-var taskChoiceWords = [...]string{"yes", "redirect", "no"}
-
-// awaitingTask reports whether a proposal owns the answer lane.
+// IT NO LONGER MEANS "OWNS THE KEYBOARD". The proposal is answered on the
+// question block like every other decision on this surface, and the block is
+// never modal (question.go's THE NEVER MODAL law) — so what this says is that
+// something is being asked, which is what its readers actually want to know.
 func (a *app) awaitingTask() bool { return a.task != nil && !a.task.settled() }
 
-// taskKey is the proposal's claim on the keyboard, and it is deliberately NOT
-// modal.
+// taskKey is the ONE key the proposal still owns, and it is not an answer.
 //
-// The consent question suspends the draft because there is nothing useful to
-// type at it. A proposal is the opposite: the most valuable thing a person can
-// do with a groomed piece of work is CORRECT it, so the input box stays live and
-// becomes the redirect lane.
+// The three answers and the clock went to the question block with every other
+// decision on this surface (question.go), and what is left here is the key that
+// opens the assignment in the transcript: `ctrl+e` is what this surface means
+// "show me the rest of this" by, and the brief is the rest of a proposal. It
+// belongs to the lane rather than to the block because it acts on the BLOCK IN
+// THE TRANSCRIPT — the question above the box has nothing to unfold.
 //
-// THE KEYS ARE TAKEN IN TWO TIERS, and the tier is decided by what is in the
-// box:
-//
-//	always      enter answers the focused option · esc declines · ctrl+e the brief
-//	empty box   ←/→ move the focus · 1–4 pick a model when offered
-//
-// The second tier is given back the moment there is a sentence in the box, and
-// the moment the redirect lane has been asked for. Bare letters are never in
-// that tier: "run tests first" begins with an r, and a surface that read it as
-// the redirect-focus shortcut would silently drop the first letter. ←/→ survive
-// the redirect lane because there is no caret to move in an empty box, and
-// because a focus a person can enter and not leave is a trap.
+// A LETTER-LESS KEY IS STILL THE BOX'S THE MOMENT THERE IS A LINE TO END. That
+// is the rule input.go applies to the thinking block, and it is applied here for
+// the same reason: ctrl+e is end-of-line in every shell a person has used.
 func (a *app) taskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
-	if !a.awaitingTask() {
+	if !a.awaitingTask() || msg.String() != "ctrl+e" {
 		return nil, false
 	}
-	card := a.task
-	switch msg.String() {
-	case "enter":
-		return a.submitTaskAnswer(), true
-	case "esc":
-		// esc is the dismiss key everywhere on this surface, so it stays the
-		// outright no — from the lane as well as from the row.
-		a.answerTask(false, "")
-		return nil, true
-	case "ctrl+e":
-		// end-of-line keeps the key the moment there is a line to end: the same
-		// rule input.go applies to the thinking block.
-		if !a.input.empty() {
-			return nil, false
-		}
-		a.toggleCard()
-		return nil, true
-	}
-	// The model picker is the one overlay that can be up over a proposal with an
-	// empty box, and its filter answers to the same letters.
-	if a.chordsStandDown() || a.pick.open {
+	if !a.input.empty() {
 		return nil, false
 	}
-	switch msg.String() {
-	case "left":
-		a.moveChoice(-1)
-		return nil, true
-	case "right":
-		a.moveChoice(1)
-		return nil, true
-	}
-	if card.typing {
-		return nil, false
-	}
-	// THE DIGITS BELONG TO THE MODELS ROW, on the one card that has one, and they
-	// are taken in the empty-box tier and under its guard:
-	// a person writing "3 files should change" is writing, not choosing.
-	if at, ok := taskModelKey(msg.String()); ok && at < len(card.options) {
-		a.takeModel(at)
-		return nil, true
-	}
-	return nil, false
+	a.toggleCard()
+	return nil, true
 }
 
-// taskModelKey reads a digit as one of the models on offer, zero-indexed. Only
-// the four the shortlist can hold are keys; anything else is not this row's.
-func taskModelKey(key string) (int, bool) {
-	switch key {
-	case "1":
-		return 0, true
-	case "2":
-		return 1, true
-	case "3":
-		return 2, true
-	case "4":
-		return 3, true
-	}
-	return 0, false
-}
-
-// takeModel moves the choice of model. It ANSWERS NOTHING: the question is
-// still whether the work goes at all, and picking the model it goes on is a
-// correction to the proposal rather than a verdict on it.
-func (a *app) takeModel(at int) {
-	card := a.task
-	if card == nil || card.settled() || at < 0 || at >= len(card.options) {
-		return
-	}
-	card.pick = at
-	card.model = card.options[at]
-	a.markCardStale(card)
-	a.touch()
-}
-
-// submitTaskAnswer is the only door that reads the proposal's box. A pointer or
-// focused choice means exactly the visible option it names; enter instead means
-// the sentence the person finished typing when there is one.
-func (a *app) submitTaskAnswer() tea.Cmd {
-	text := a.input.String()
-	if strings.TrimSpace(text) == "" {
-		return a.takeChoice(a.task.choice)
-	}
-	approve, redirect := taskAnswerFromText(a.pastesUnfolded(text))
-	a.answerTask(approve, redirect)
-	a.pastes = nil
-	return a.edited()
-}
-
-// takeChoice acts on one explicit option, whether a key, an arrow's enter or a
-// click asked for it.
+// taskAnswered is the lane's own hand on an answer, on its way to the engine's
+// door: the card in the transcript keeps what was decided, and a yes opens the
+// block the approved brief is shaped in.
 //
-// REDIRECT IS THE ONE OPTION THAT DOES NOT ANSWER. It is a request for the box —
-// the placeholder is already down there saying what the box is for — so it takes
-// the focus and waits; the enter that follows carries the words. The other two
-// options answer exactly what they say even when the box holds a draft: only
-// enter submits that draft.
-func (a *app) takeChoice(at int) tea.Cmd {
+// THE ENGINE'S OWN MAPPING SAYS WHAT THE ANSWER MEANS ([session.AnswerFromKey])
+// rather than a second reading of the keys here, and the one case that mapping
+// does not cover is the one the box carries: WORDS ARE A YES WITH A CORRECTION.
+// The most valuable thing a person can do with a groomed piece of work is
+// correct it, and correcting it is saying yes to the corrected version — which
+// is what the engine's door does with the same answer (session's applyToLane).
+func (a *app) taskAnswered(id uint64, answer session.Answer) session.Answer {
 	card := a.task
-	if card == nil || card.settled() || at < 0 || at >= len(taskChoiceWords) {
-		return nil
+	if card == nil || card.id != id || card.settled() {
+		return answer
 	}
-	card.choice = at
-	if at == choiceNo {
-		a.answerTask(false, "")
-		return nil
-	}
-	if at == choiceRedirect {
-		card.typing = true
-		a.markCardStale(card)
-		a.touch()
-		return nil
-	}
-	a.answerTask(true, "")
-	return a.edited()
-}
-
-// taskBareAnswers is the whole vocabulary that can answer a proposal without
-// using its choice row. Keeping both yes and no in one table prevents the input
-// lane and its tests from growing separate dialects.
-var taskBareAnswers = []struct {
-	word    string
-	approve bool
-}{
-	{word: "no"},
-	{word: "nope"},
-	{word: "n"},
-	{word: "stop"},
-	{word: "cancel"},
-	{word: "don't"},
-	{word: "dont"},
-	{word: "yes", approve: true},
-	{word: "y", approve: true},
-	{word: "ok", approve: true},
-	{word: "okay", approve: true},
-	{word: "go", approve: true},
-	{word: "sure", approve: true},
-}
-
-// taskAnswerFromText reserves only a complete bare answer. Any longer sentence
-// is a correction to the brief, even when its first word happens to be no.
-func taskAnswerFromText(text string) (bool, string) {
-	answer := strings.ToLower(strings.TrimRightFunc(strings.TrimSpace(text), func(r rune) bool {
-		return unicode.IsSpace(r) || r == '.' || r == '!'
-	}))
-	for _, bare := range taskBareAnswers {
-		if answer == bare.word {
-			return bare.approve, ""
+	redirect := answer.Words()
+	approve := redirect != ""
+	word := questionKeyWord(questionCommentKey)
+	if key := answer.FirstKey(); key != "" {
+		action, ok := session.AnswerFromKey(session.QuestionTask, key)
+		approve = ok && action.Task.Approved
+		word = key
+		if option, ok := a.taskOption(id, key); ok && strings.TrimSpace(option.Label) != "" {
+			word = strings.TrimSpace(option.Label)
 		}
-	}
-	return true, text
-}
-
-// moveChoice walks the row and STOPS at its ends rather than wrapping. Three
-// options are a row a person reads at a glance, and a cursor that reappeared at
-// the far end would put "no" under a key pressed to reach "yes".
-func (a *app) moveChoice(delta int) {
-	card := a.task
-	if card == nil || card.settled() {
-		return
-	}
-	at := card.choice + delta
-	switch {
-	case at < 0:
-		at = 0
-	case at >= len(taskChoiceWords):
-		at = len(taskChoiceWords) - 1
-	}
-	card.choice = at
-	// Landing on redirect is asking for the box, exactly as pressing r is.
-	card.typing = at == choiceRedirect
-	a.markCardStale(card)
-	a.touch()
-}
-
-// answerTask resolves the open proposal and annotates its row.
-//
-// The redirect is APPENDED to the brief by the engine (session's TaskAnswer), so
-// what travels is the person's words verbatim and what stays here is the fact
-// that they said them. The draft is cleared either way: the sentence in the box
-// was about this question, and leaving it there would make the next enter send
-// it to the model.
-func (a *app) answerTask(approve bool, redirect string) {
-	card := a.task
-	if card == nil || card.settled() {
-		return
 	}
 	switch {
 	case approve && redirect != "":
-		card.verdict, card.answer = taskRedirectWord, taskChoiceWords[choiceRedirect]
+		card.verdict = taskRedirectWord
 	case approve:
-		card.verdict, card.answer = taskApprovedWord, taskChoiceWords[choiceYes]
+		card.verdict = taskApprovedWord
 	default:
-		card.verdict, card.answer = taskDeclinedWord, taskChoiceWords[choiceNo]
+		card.verdict = taskDeclinedWord
 	}
-	// A CARD THAT ASKED WHICH MODEL KEEPS THE ANSWER. The block collapses to its
-	// verdict line, and on this one card that line is the only place the choice
-	// the person just made is written down — everywhere else states the model the
-	// work RAN on, which is the same fact only until somebody wonders whether it
-	// was the one they picked.
-	if approve && len(card.options) > 1 && card.model != "" {
-		card.verdict += " · " + card.model
-	}
-	card.typing = false
-	if agent, ok := a.tasker(); ok {
-		// The model travels with the answer only when there was a choice to make:
-		// on every ordinary proposal the engine already resolved it, and a surface
-		// naming it back would be answering a question nobody asked (session's
-		// TaskAnswer says the same in its own words).
-		chosen := ""
-		if len(card.options) > 1 {
-			chosen = card.model
-		}
-		agent.ResolveTask(card.id, session.TaskAnswer{Approved: approve, Redirect: redirect, Model: chosen})
-	}
+	card.answer = word
 	// A YES OPENS THE SAME WAIT THE TYPED COMMAND STANDS IN. The engine shapes
 	// the approved brief before the task exists, and the person who just said
 	// yes is owed the same forming block a person who typed /task gets — one
@@ -1563,26 +1472,67 @@ func (a *app) answerTask(approve bool, redirect string) {
 	if approve && redirect == "" {
 		a.beginProposalWait(card)
 	}
-	a.input.reset()
 	a.endRecall()
 	a.closeLists()
 	a.markCardStale(card)
 	a.touch()
+	return answer
 }
 
-// holdTask makes the first typed rune visible locally before it crosses any
-// connection, then tells the engine once. A zero deadline is also the memory
-// that deleting the draft must not restart the clock.
-func (a *app) holdTask() {
+// taskOption is one answer's option on the question this id names, read back
+// off the block rather than rebuilt — consent.go's own reason: the answers a
+// person saw are the ones the block actually drew.
+func (a *app) taskOption(id uint64, key string) (session.AnswerOption, bool) {
+	for _, open := range a.questions {
+		if open.question.Kind != session.QuestionTask || open.question.ID != id {
+			continue
+		}
+		return open.question.Option(key)
+	}
+	return session.AnswerOption{}, false
+}
+
+// answerTaskWith answers the open proposal on the block with one key, and
+// reports whether it found one to answer.
+//
+// IT IS THE BLOCK'S OWN ANSWER and not a second one beside it, exactly as
+// consent's [app.answerWith] is: the same receipt, the same record and the same
+// annotated card as the same key pressed in front of the question. The one
+// caller is home's errand band, where a person answers a question from the page
+// rather than from the conversation it was asked in (homeband_answer.go).
+func (a *app) answerTaskWith(id uint64, key string) bool {
+	for _, open := range a.questions {
+		if open.question.Kind != session.QuestionTask || open.question.ID != id {
+			continue
+		}
+		if _, ok := open.question.Option(key); !ok {
+			return false
+		}
+		a.answerQuestion(open, session.Answer{Key: key, Picked: []string{key}})
+		return true
+	}
+	return false
+}
+
+// holdTask is what a keystroke means to a clock that ANSWERS.
+//
+// Every other clock on this block holds by itself and never answers anything
+// (question.go's [app.tickQuestion], and F41 is why). The proposal's does the
+// opposite — silence starts the work — so the moment there is evidence of
+// somebody at the keyboard the engine is told to stop counting, and this window
+// zeroes its own copy of the deadline first: the person pressed a key here, and
+// the countdown may not go on draining while the news crosses a connection.
+func (a *app) holdTask(id uint64) {
 	card := a.task
-	if card == nil || card.settled() || card.deadline.IsZero() {
+	if card == nil || card.id != id || card.settled() || card.deadline.IsZero() {
 		return
 	}
 	card.deadline = time.Time{}
+	a.setTaskDeadline(id, time.Time{})
 	a.markCardStale(card)
 	a.touch()
 	if agent, ok := a.tasker(); ok {
-		agent.HoldTask(card.id)
+		agent.HoldTask(id)
 	}
 }
 
@@ -1654,9 +1604,23 @@ func (a *app) tickTasks() {
 		return
 	}
 	a.task.verdict = taskClockWord
+	// AND THE QUESTION GOES WITH IT. Nobody answered — the clock did what the
+	// row said it would — so it is withdrawn rather than answered, and the
+	// sentence is the engine's own for this event (session's questionGoneReason).
+	a.dropTaskQuestion(a.task.id, taskStartedItselfReason)
 	a.markCardStale(a.task)
 	a.touch()
 }
+
+// taskStartedItselfReason and taskTurnEndedReason are why a proposal stopped
+// being a question when nobody answered it. They are internal/session's own two
+// sentences for the same two endings (its [questionGoneReason]), said here
+// because this window learns of both from the card's lane rather than from the
+// questions lane and must retire the question in the same words.
+const (
+	taskStartedItselfReason = "it started on its own, as the card said it would"
+	taskTurnEndedReason     = "the work is no longer waiting on it"
+)
 
 // syncTaskAsk drops a card about a question nobody is asking any more.
 //
@@ -1687,11 +1651,12 @@ func (a *app) syncTaskAsk() {
 	}
 	// The deadline is what distinguishes the two honest stories: a clock that
 	// ran out approved it, and anything else ended with the turn.
-	word := taskExpiredWord
+	word, reason := taskExpiredWord, taskTurnEndedReason
 	if !a.task.deadline.IsZero() && !a.now().Before(a.task.deadline) {
-		word = taskClockWord
+		word, reason = taskClockWord, taskStartedItselfReason
 	}
 	a.task.verdict = word
+	a.dropTaskQuestion(a.task.id, reason)
 	a.markCardStale(a.task)
 	a.touch()
 }
@@ -1720,17 +1685,29 @@ func taskAsksOpen(agent taskAgent) ([]uint64, bool) {
 // THE PROPOSAL IS A CONTAINED BLOCK, and it is contained because of what it sits
 // between. Every other entry on this surface is a paragraph in a conversation:
 // it begins where the last one ended and nothing is lost when the eye runs from
-// one into the next. A question is not a paragraph. It has a top, three answers
-// and a clock, and when its rows flowed into the reply underneath it the result
-// was a decision a person had to reconstruct the boundaries of before they could
-// make it.
+// one into the next. An assignment is not a paragraph. It has a top, a brief and
+// a set of facts about where the work will run, and when its rows flowed into
+// the reply underneath it the result was a block a person had to reconstruct the
+// boundaries of before they could read it.
+//
+// THE ANSWERS ARE NOT ON IT ANY MORE (question.go). What was here was a decision
+// drawn in a place no other decision on this surface is drawn — its own choices
+// row, its own draining meter, its own claim on the keyboard — and every law it
+// needed had to be argued here separately from the eight other blocks that
+// needed the same ones. So the ASKING is above the box with every other
+// question, and the block in the transcript is what the question is ABOUT:
 //
 //	╭─ ? ◆ Fix nil-map crash ───────────────────────────────────────────────
 //	│ The parser drops a key on an empty map.
-//	│ [ yes ]  [ redirect ]  [ no ]
-//	│ ███████████████░░░░░  auto-starts in 3.2s
-//	│ ctrl+e for the brief
+//	│ from your folder as it stands — unsaved edits included
+//	│ model deepseek/deepseek-v4-flash · ctrl+e for the brief
 //	╰──────────────────────────────────────────────────────────────────────
+//
+//	? wants to start a task: Fix nil-map crash
+//	  the parser drops a key on an empty map · aforge
+//	  ▸ 1  start it
+//	    2  no
+//	  [enter] take the pick · [esc] later · [c] change · start it in 9s
 //
 // COLLAPSED IS A NAME AND A SENTENCE, and that is the card law this surface now
 // applies to all three of a task's cards — the proposal, the rail's presence and
@@ -1756,17 +1733,7 @@ func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 	if card == nil || width < 4 {
 		return nil
 	}
-	// The hit targets are rebuilt with the rows that carry them, and cleared
-	// first: a settled card has no options, and a stale span is a click that
-	// answers a question nobody is asking.
-	card.choiceRow, card.spans = -1, nil
-	card.modelRow, card.modelSpans = -1, nil
-	// AND THE GUTTER IS UNPAID AGAIN, because these spans are about to be minted
-	// against the row's own columns from zero. The pass that moves them into the
-	// transcript's gutter reads this to know what it already owes (gutter.go).
-	card.gut = 0
-	// STILL ARRIVING: three rows, nothing to answer, and no hit targets — which
-	// the two lines above have just made true for this frame.
+	// STILL ARRIVING: three rows, and the only rows on this block that move.
 	if card.forming && !card.settled() {
 		return a.taskFormingRows(card, width, sel)
 	}
@@ -1813,26 +1780,11 @@ func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 		out = append(out, stem+a.pal.dim(fit("where: "+card.where, room)))
 	}
 	if point := a.taskBranchPoint(); point != "" {
-		// The branch point sits with the assignment and above the answers, because
-		// it is a fact about the work rather than a fact about answering: it is the
-		// last thing read before the eye reaches the options, and the one thing on
-		// the card a person cannot find out afterwards without reading a merge.
+		// The branch point is the last of the facts about the work, and it is the
+		// one thing on the card a person cannot find out afterwards without
+		// reading a merge.
 		out = append(out, stem+a.pal.dim(fit(point, room)))
 	}
-	// THE MODELS ROW ONLY EXISTS WHEN THERE IS A CHOICE. One word, one model is
-	// every ordinary proposal, and that model is said on the meta line below —
-	// where it costs no row at all.
-	if len(card.options) > 1 {
-		models, spans := a.taskModels(card, ansi.StringWidth(a.blockStem()), room)
-		if models != "" {
-			card.modelRow, card.modelSpans = len(out), spans
-			out = append(out, stem+models)
-		}
-	}
-	choices, spans := a.taskChoices(card, ansi.StringWidth(a.blockStem()), room)
-	card.choiceRow, card.spans = len(out), spans
-	out = append(out, stem+choices)
-	out = append(out, stem+a.taskMeter(card, room))
 	if meta := a.taskMetaWord(card, room); meta != "" {
 		out = append(out, stem+a.pal.dim(meta))
 	}
@@ -2011,49 +1963,6 @@ func (a *app) taskFoot(card *taskCard, width int) string {
 	return paint(corner+" ") + a.pal.dim(fit(word, width-ansi.StringWidth(corner)-1))
 }
 
-// taskChoices draws the row of options and reports what each one occupies, in
-// screen columns, so a click can be resolved to the option under it.
-//
-// An option that does not fit is DROPPED rather than truncated, which is the
-// rule the consent offer follows for the same reason (consent.go): half an
-// answer is an answer somebody presses by mistake.
-func (a *app) taskChoices(card *taskCard, left, width int) (string, []choiceSpan) {
-	var line string
-	var spans []choiceSpan
-	at := left
-	end := left + width
-	for i, word := range taskChoiceWords {
-		chip := "[ " + word + " ]"
-		gap := 0
-		if i > 0 {
-			gap = 2
-		}
-		if at+gap+ansi.StringWidth(chip) > end {
-			break
-		}
-		if gap > 0 {
-			line += strings.Repeat(" ", gap)
-			at += gap
-		}
-		line += a.taskChip(word, i == card.choice)
-		spans = append(spans, choiceSpan{from: at, to: at + ansi.StringWidth(chip), at: i})
-		at += ansi.StringWidth(chip)
-	}
-	return line, spans
-}
-
-// taskChip is one option. The focused one takes the question hue and the weight
-// together; the others keep the hue and spend the weight on their INITIAL, which
-// is the key that picks them — the same trick the consent offer plays with its
-// bracketed letters, minus the brackets nobody needs when the letter is already
-// the first thing in the word.
-func (a *app) taskChip(word string, focus bool) string {
-	if focus {
-		return a.pal.askBold("[ " + word + " ]")
-	}
-	return a.pal.dim("[ ") + a.pal.askBold(word[:1]) + a.pal.ask(word[1:]) + a.pal.dim(" ]")
-}
-
 // taskBranchPoint is the branch-point line for this conversation, or nothing at
 // all.
 //
@@ -2097,118 +2006,6 @@ func (a *app) taskMetaWord(card *taskCard, width int) string {
 	}
 	return fit(strings.Join(parts, " · "), width)
 }
-
-// taskModels draws the row of models this work could run on, and reports what
-// each one occupies so a click can be resolved to the model under it.
-//
-// IT IS A CORRECTION, NOT A GATE. The card arrives with the closest match
-// already picked and the countdown already running, because the alternative is
-// work that stops for a question the person did not ask — one word fitting two
-// models is the harness's ambiguity, not theirs. What the row buys is the
-// thirty seconds in which the choice is free to change.
-//
-// An option that does not fit is DROPPED rather than truncated, which is the
-// rule [app.taskChoices] follows for the same reason: half a model id is a model
-// somebody picks by mistake.
-func (a *app) taskModels(card *taskCard, left, width int) (string, []choiceSpan) {
-	words := taskModelWords(card.options)
-	var line string
-	var spans []choiceSpan
-	at, end := left, left+width
-	for i, word := range words {
-		chip := "[ " + itoa(i+1) + " " + word + " ]"
-		gap := 0
-		if i > 0 {
-			gap = 2
-		}
-		if at+gap+ansi.StringWidth(chip) > end {
-			break
-		}
-		if gap > 0 {
-			line += strings.Repeat(" ", gap)
-			at += gap
-		}
-		line += a.taskModelChip(itoa(i+1), word, i == card.pick)
-		spans = append(spans, choiceSpan{from: at, to: at + ansi.StringWidth(chip), at: i})
-		at += ansi.StringWidth(chip)
-	}
-	if len(spans) < 2 {
-		// One chip is not a choice, and a row that offers one option is a row that
-		// asks a question it has already answered.
-		return "", nil
-	}
-	return line, spans
-}
-
-// taskModelChip is one model. The picked one takes the question hue and the
-// weight together, and the others spend the weight on the DIGIT that picks
-// them — the choices row's own trick, with a number where the initial would be:
-// two model ids from one vendor share every letter that could have been a key.
-func (a *app) taskModelChip(key, word string, focus bool) string {
-	if focus {
-		return a.pal.askBold("[ " + key + " " + word + " ]")
-	}
-	return a.pal.dim("[ ") + a.pal.askBold(key) + a.pal.ask(" "+word+" ]")
-}
-
-// taskModelWords is how the options are SPELLED on the row: the part after the
-// vendor, which is the part that differs, unless two vendors carry the same one
-// — in which case the vendor is the whole distinction and every chip keeps its
-// full id. The meta line under the row always names the picked model in full.
-func taskModelWords(options []string) []string {
-	tails := make([]string, 0, len(options))
-	seen := map[string]bool{}
-	for _, option := range options {
-		tail := option
-		if slash := strings.LastIndex(option, "/"); slash >= 0 {
-			tail = option[slash+1:]
-		}
-		if tail == "" || seen[strings.ToLower(tail)] {
-			return append([]string(nil), options...)
-		}
-		seen[strings.ToLower(tail)] = true
-		tails = append(tails, tail)
-	}
-	return tails
-}
-
-// taskMeter is THE COUNTDOWN, AS A COUNTDOWN.
-//
-// What stood here was the string "4s", redrawn every frame — a number that a
-// person had to read, twice, a second apart, before it told them anything. A
-// draining bar is the same fact in a channel that needs no reading at all: the
-// question "how much of my time to decide is left" is answered by how much of
-// the row is still filled, and the number beside it is there for the person who
-// wants the figure rather than the shape.
-//
-// It is recomputed from the DEADLINE on every frame ([app.tickTasks] runs on the
-// same clock), never stepped: a bar that advanced itself would drift from the
-// clock the engine is actually holding the proposal against.
-func (a *app) taskMeter(card *taskCard, width int) string {
-	if card.deadline.IsZero() {
-		return a.pal.dim(fit(taskWaitingWord, width))
-	}
-	left := card.deadline.Sub(a.now())
-	word := taskAutoWord + countdownFine(left)
-	cells := taskMeterCells
-	if room := width - ansi.StringWidth(word) - 2; cells > room {
-		cells = room
-	}
-	if cells < 1 {
-		return a.pal.dim(fit(word, width))
-	}
-	span := card.deadline.Sub(card.born)
-	frac := 0.0
-	if span > 0 {
-		frac = float64(left) / float64(span)
-	}
-	return a.progress(frac, cells) + "  " + a.pal.dim(word)
-}
-
-// taskMeterCells is the meter's widest. Twenty cells is a bar a person reads as
-// a proportion; past that it is a progress dialog, and this surface does not
-// have those.
-const taskMeterCells = 20
 
 // countdownFine spells the time LEFT beside the meter, and it spells the last
 // ten seconds in tenths.
@@ -5884,6 +5681,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// this surface, was the thing that said yes.
 	if a.task != nil && a.task.id == notice.ID && !a.task.settled() {
 		a.task.verdict = taskClockWord
+		a.dropTaskQuestion(a.task.id, taskStartedItselfReason)
 		a.markCardStale(a.task)
 	}
 	var pilot tea.Cmd

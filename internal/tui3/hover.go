@@ -548,16 +548,14 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// which is what the row carries in place of an entry.
 			return hoverAt{kind: hoverForming, index: r.turn}
 		case r.hit == hitTool, r.hit == hitMore, r.hit == hitTask, r.hit == hitDone,
-			r.hit == hitHarness, r.hit == hitChoice, r.hit == hitModel:
-			// THE THREE THAT WERE MISSING FROM THIS LIST, and every one of them is
+			r.hit == hitHarness:
+			// THE ONES THAT WERE MISSING FROM THIS LIST, and every one of them is
 			// a row [app.press] already acts on. A sub-harness card opens the same
-			// way a landed task's does (harnesscard.go), and a proposal's answers
-			// and models rows are pressable along their whole width
-			// (app.go's [app.choicePress]) — so a card that lit up and then went
-			// dark the moment the pointer reached the row a person was aiming for
-			// was the surface withdrawing the affordance at the exact cell where it
-			// mattered. The whole block lights, because the block is what the press
-			// belongs to.
+			// way a landed task's does (harnesscard.go) — so a card that lit up
+			// and then went dark the moment the pointer reached the row a person
+			// was aiming for was the surface withdrawing the affordance at the
+			// exact cell where it mattered. The whole block lights, because the
+			// block is what the press belongs to.
 			return hoverAt{kind: hoverEntry, entry: r.entry}
 		case r.entry >= 0 && r.entry < len(a.bodyDeck().entries) &&
 			a.bodyDeck().entries[r.entry].kind == entryThinking:

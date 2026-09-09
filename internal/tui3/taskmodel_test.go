@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -20,7 +18,7 @@ func modelProposal(a *app, id uint64, countdown time.Duration, model string, opt
 	return event
 }
 
-// A PROPOSAL SAYS WHOSE HANDS THE WORK IS GOING INTO, on the card's one meta
+// A PROPOSAL SAYS WHOSE HANDS THE WORK IS GOING INTO, on the block's one meta
 // line and beside the key that opens the brief — no extra row for it.
 func TestAProposalNamesTheModelItWillRunOn(t *testing.T) {
 	a, _, _ := taskApp(t)
@@ -33,118 +31,47 @@ func TestAProposalNamesTheModelItWillRunOn(t *testing.T) {
 	if !strings.Contains(text, taskExpandHint) {
 		t.Fatalf("the model line took the expand hint's place:\n%s", text)
 	}
-	// One model is not a choice, so nothing is offered and nothing is asked.
-	if strings.Contains(text, "[ 1 ") {
-		t.Fatalf("an unambiguous proposal drew a models row:\n%s", text)
-	}
-	if a.task.modelRow != -1 {
-		t.Fatalf("a card with nothing to pick kept a models row at %d", a.task.modelRow)
-	}
 }
 
-// A proposal the engine could not resolve to one model OFFERS them, with the
-// closest already picked: the countdown keeps running, because an ambiguity the
-// harness raised is not a reason for the work to stop.
-func TestAnAmbiguousProposalOffersTheModelsAndPicksTheClosest(t *testing.T) {
+// A PROPOSAL THE ENGINE COULD NOT RESOLVE TO ONE MODEL STATES THE ONE IT PICKED
+// AND ASKS NOTHING ABOUT IT.
+//
+// THE SHORTLIST IS NOT DRAWN ANY MORE, and this test is what is left of it. A
+// word that fitted several models used to raise a row of chips on the card,
+// answered by the digits 1–4 — and the digits are the question block's answers
+// now (question.go's ONE KEY GRAMMAR), so a second reader for the same keystroke
+// is exactly what this wave exists to end. What runs is the closest match, which
+// is what those chips opened on and what the clock would have taken.
+//
+// CORRECTING IT FROM THE PROPOSAL IS OWED. Until it lands, the way to ask for
+// another model is to say so in the words `c change` takes, which the engine
+// appends to the brief verbatim.
+func TestAnAmbiguousProposalStatesTheModelAndDoesNotAskAboutIt(t *testing.T) {
 	a, agent, _ := taskApp(t)
 	agent.pending = []uint64{7}
 	options := []string{"anthropic/claude-opus-5", "anthropic/claude-opus-4.8"}
 	drive(t, a, streamEventMsg{gen: a.gen, ev: modelProposal(a, 7, 4*time.Second, options[0], options)})
+	taskText(a)
+	settleAsk(a)
 
 	text := taskText(a)
-	for _, want := range []string{
-		"[ 1 claude-opus-5 ]  [ 2 claude-opus-4.8 ]",
-		taskModelTag + "anthropic/claude-opus-5",
-		"auto-starts in 4.0s",
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("the ambiguous proposal is missing %q:\n%s", want, text)
+	if !strings.Contains(text, taskModelTag+"anthropic/claude-opus-5") {
+		t.Fatalf("the proposal does not name the model it resolved to:\n%s", text)
+	}
+	for _, gone := range []string{"[ 1 claude-opus-5 ]", "claude-opus-4.8", "auto-starts in"} {
+		if strings.Contains(text, gone) {
+			t.Fatalf("the card still draws the shortlist (%q):\n%s", gone, text)
 		}
 	}
-
-	// THE DIGIT IS THE KEY, and it moves the choice without answering the
-	// question: the work has not been approved by picking a model for it.
+	// THE DIGITS ARE THE QUESTION'S. `2` is the decline and nothing else, which
+	// is the whole point of one grammar: a person who has learnt what a digit
+	// does on one question has learnt it on all of them.
 	drive(t, a, key("2"))
-	if a.task.model != "anthropic/claude-opus-4.8" {
-		t.Fatalf("2 picked %q", a.task.model)
+	if len(agent.answered) != 1 || agent.answered[0].answer.Approved {
+		t.Fatalf("2 did not answer the question: %+v", agent.answered)
 	}
-	if !strings.Contains(taskText(a), taskModelTag+"anthropic/claude-opus-4.8") {
-		t.Fatalf("the meta line did not follow the choice:\n%s", taskText(a))
-	}
-	if len(agent.answered) != 0 {
-		t.Fatalf("picking a model answered the proposal: %+v", agent.answered)
-	}
-
-	// And the answer carries it, so the node is admitted on what was picked.
-	drive(t, a, key("enter"))
-	if len(agent.answered) != 1 {
-		t.Fatalf("the proposal was not answered: %+v", agent.answered)
-	}
-	got := agent.answered[0].answer
-	if !got.Approved || got.Model != "anthropic/claude-opus-4.8" {
-		t.Fatalf("the answer = %+v, want approved on the picked model", got)
-	}
-	// The settled card keeps it: this is the only place the choice is recorded.
-	if !strings.Contains(taskText(a), "anthropic/claude-opus-4.8") {
-		t.Fatalf("the settled card forgot which model was chosen:\n%s", taskText(a))
-	}
-}
-
-// A CLICK ON THE MODELS ROW IS THAT ROW'S, and it lands on the option under the
-// pointer rather than on the card's expansion.
-func TestClickingAModelPicksItRatherThanOpeningTheBrief(t *testing.T) {
-	a, agent, _ := taskApp(t)
-	agent.pending = []uint64{7}
-	options := []string{"anthropic/claude-opus-5", "anthropic/claude-opus-4.8"}
-	drive(t, a, streamEventMsg{gen: a.gen, ev: modelProposal(a, 7, 4*time.Second, options[0], options)})
-
-	// The layout is what writes the row and its targets, so the frame is taken
-	// first and the columns are read off it — one layout, one set of targets.
-	body, _ := a.window(a.width, a.viewHeight())
-	y := -1
-	for i, r := range body {
-		if r.hit == hitModel {
-			y = a.bodyTop() + i
-			break
-		}
-	}
-	if y < 0 {
-		t.Fatalf("no visible row answers to the models row:\n%s", taskText(a))
-	}
-	card := a.task
-	if len(card.modelSpans) != 2 {
-		t.Fatalf("the models row has %v targets, want one per option", card.modelSpans)
-	}
-	// The second chip's own columns.
-	span := card.modelSpans[1]
-	drive(t, a, tea.MouseClickMsg{X: span.from + 1, Y: y, Button: tea.MouseLeft})
-	drive(t, a, tea.MouseReleaseMsg{X: span.from + 1, Y: y, Button: tea.MouseLeft})
-
-	if a.task.model != "anthropic/claude-opus-4.8" {
-		t.Fatalf("the click picked %q", a.task.model)
-	}
-	if a.task.open {
-		t.Fatal("the click on the models row opened the brief as well")
-	}
-	if len(agent.answered) != 0 {
-		t.Fatalf("the click answered the proposal: %+v", agent.answered)
-	}
-}
-
-// A DIGIT IS A DIGIT WHILE SOMEBODY IS WRITING. The redirect lane is the same
-// trap bare answer shortcuts once made, and the models row is not exempt from it.
-func TestADigitIsTextOnceTheRedirectLaneHasTheFocus(t *testing.T) {
-	a, agent, _ := taskApp(t)
-	agent.pending = []uint64{7}
-	options := []string{"anthropic/claude-opus-5", "anthropic/claude-opus-4.8"}
-	drive(t, a, streamEventMsg{gen: a.gen, ev: modelProposal(a, 7, 4*time.Second, options[0], options)})
-
-	drive(t, a, key("right"), key("enter"), key("2"))
-	if a.task.model != "anthropic/claude-opus-5" {
-		t.Fatalf("a digit typed into the redirect lane moved the model to %q", a.task.model)
-	}
-	if got := a.input.String(); got != "2" {
-		t.Fatalf("the redirect lane holds %q, want the digit as text", got)
+	if agent.answered[0].answer.Model != "" {
+		t.Fatalf("the answer named a model nobody was asked about: %+v", agent.answered[0].answer)
 	}
 }
 

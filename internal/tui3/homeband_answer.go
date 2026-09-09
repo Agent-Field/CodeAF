@@ -378,8 +378,7 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 			return nil, true
 		}
 	case session.QuestionTask:
-		if card := a.task; card != nil && card.id == question.ID && !card.settled() {
-			a.answerTask(action.Task.Approved, "")
+		if a.answerTaskWith(question.ID, key) {
 			return nil, true
 		}
 		if agent, ok := a.tasker(); ok {
