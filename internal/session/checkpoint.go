@@ -2719,7 +2719,7 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// IT IS THE ADMISSION'S OWN FACT AND NOT A READING OF WHAT WAS SAID, and it is
 	// qualified to THIS turn's handoff: an old task, a failed one, and a worker's
 	// own turn all leave this gate shut (turnhandoff.go).
-	if a.turnHandedItsAskOff() {
+	if a.turnHandedItsAskOff() || a.backgroundWorkOwner() != 0 {
 		return false, false
 	}
 	// A WOKEN TURN OUTRANKS THE PRICE, WHICH IS THE WHOLE OF WHAT THE MEASURED RUN
@@ -3369,6 +3369,16 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// above writes the drop, and the turn carries on.
 	if trivialAsk(a.turnAsk()) {
 		return checkpointHandover{decision: checkpointCeilingTrivial}
+	}
+	// A RESULT NOTICE DOES NOT REASSIGN WORK THAT STILL HAS AN OWNER. End this
+	// reporting turn before the global goal reader can turn unfinished work into
+	// a fresh brief. The existing owner remains live and its result wakes us.
+	if id := a.backgroundWorkOwner(); id != 0 {
+		note := backgroundOwnerNote(id)
+		hub.send(Event{Kind: EventNotice, Text: note})
+		a.record(textMessage("assistant", note))
+		hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(*turn, started, model)})
+		return checkpointHandover{moved: true, decision: checkpointCeilingAwaiting, reason: note}
 	}
 	// A HANDOVER IS AN ENDING, AND AN UNATTENDED SESSION'S PRINCIPAL READS EVERY
 	// ENDING (see [Agent.endTurnUnderSteward]). It is asked FIRST, before the

@@ -42,6 +42,9 @@ const spawnFloorRefusal = "this ask is one command — do it here. A commit, an 
 // [Agent.proposeTask]; they are here so that road does not grow (the
 // complexity ratchet holds it at 16).
 func (a *Agent) refuseProposedTask(spec taskSpec) string {
+	if id := a.backgroundWorkOwner(); id != 0 {
+		return backgroundOwnerNote(id)
+	}
 	if !a.config.InTask && trivialAsk(a.taskRequest()) {
 		return spawnFloorRefusal
 	}

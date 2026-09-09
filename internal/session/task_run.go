@@ -282,6 +282,9 @@ type TaskNode struct {
 	// that stopped short of it.
 	admitBy *Agent
 	admitAt requestEpoch
+	// admitRequest is the human message identity, which survives background wakes.
+	// admitBy scopes this counter to one session lifetime; restored nodes claim none.
+	admitRequest uint64
 	// depth is how many tasks deep this node sits — 1 for the conversation's
 	// own, 2 for a sub-task — and it is what taskDepthLimit bounds.
 	depth int
@@ -1185,8 +1188,9 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 		// WHOSE REQUEST HANDED THIS OUT, stamped at the one door every task in
 		// this package comes through so no road has to remember to do it
 		// (turnhandoff.go).
-		admitBy: admitter,
-		admitAt: requestEpochAt(admitter),
+		admitBy:      admitter,
+		admitAt:      requestEpochAt(admitter),
+		admitRequest: requestIdentityAt(admitter),
 		// WHERE THE WORK STANDS, carried from the door that resolved it
 		// (taskstands.go). A door that resolved none — a design, a subharness run,
 		// a scripted graph — admits with nothing here and the working copy fills it

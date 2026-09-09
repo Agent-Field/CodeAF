@@ -2898,3 +2898,16 @@ pending names before closing its records. Those calls share up to two seconds
 of shutdown time, in addition to the existing waits for the current turn, task
 graph and background jobs. A provider that ignores cancellation can outlast
 that grace; this is a bounded wait, not a guarantee about every external process.
+
+## A background job finishes while a task is still working on my request
+
+A background result asks the conversation to report what happened. It does not
+start the same request again while a task already owns it. The conversation can
+report the result, then wait for that task. If it tries to hand the request out
+again, it says `task N is still working on this request · keeping its work there
+and waiting for its result` and keeps the existing task.
+
+This wait ends the reporting turn, not your request. The task continues and its
+result wakes the conversation. New words from you, and a task's own result needing
+repair or delivery, remain actionable. An older task for a different request does
+not prevent your newer work from running alongside it.
