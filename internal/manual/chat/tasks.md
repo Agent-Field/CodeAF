@@ -2830,8 +2830,8 @@ the instruction the task was given, the sentence naming what the work is doing w
 engine has published one, and `loading this task's conversation…` while the read is on
 the wire — then replaces the whole of that with the bounded end of the task's transcript
 when it arrives. Where there is no read on the wire the loading line is not drawn at all;
-the page says `nothing on this page yet — it fills in as the task works` instead, and a
-read that failed says `couldn't read this task's conversation · retrying` and keeps
+the page says `nothing on this page yet — it fills in as the task works` instead.
+Waiting reasons use the roster’s wording, such as `waiting · its parts`. A read that failed says `couldn't read this task's conversation · retrying` and keeps
 beating. While work runs, the room reads that bounded tail on its own beat and the
 `nothing on this page yet` line lasts only until the first block arrives. The calls, results, reasoning, and
 messages use the ordinary room renderer. `enter` steers the far worker; `x` raises the
@@ -2926,7 +2926,8 @@ or on very short terminals, the bar gives its row back to the transcript; `esc` 
 leaves.
 
 Actionable waiting work retains its answer row. The parent sentence no longer repeats
-the breadcrumb ancestry; a compact `handed out:` row still names children.
+the breadcrumb ancestry; a compact `handed out:` row still names children and stays within
+the task column, clear of the roster.
 
 ## Typing in a task's room — the up arrow, editing what you sent, and escape
 
@@ -3870,8 +3871,11 @@ is this reply, it wants hands.
 Two hard bounds, and they behave differently on purpose.
 
 **Depth: two levels.** The conversation proposes a task; that task may propose pieces; a
-piece may not. The tool is simply not on a second-level task's belt — it does not have the
-verb, so it cannot try and be told no.
+piece may not. Neither `propose_task` nor `tasks` is on a second-level task's belt.
+`propose_task` creates children; `tasks` lets a task inspect and manage only its own
+children, not its parent, siblings, or unrelated tasks. Both tools share the depth gate.
+A child saying the `tasks` tool is unavailable is therefore describing a capability
+limit; it does not mean the model chose to avoid delegation.
 
 **Fan-out: five pieces per task**, counting both ways a task hands work out — parts it saw in
 its brief and parts it found once it opened the material. A task that asks for a sixth gets
@@ -3882,11 +3886,9 @@ its call answered with:
 
 It reads that as an instruction and does the rest itself.
 
-Neither bound is a setting. They are there because the third level and the sixth piece cost
-more than they save: every piece pays for its own working copy, its own check and
-its own wait, so past a few of them fanning out is slower than working. A task is told the
-same thing in its own words — split only what is genuinely independent, and never shard
-work that fits in its own hands.
+Neither bound is a setting. These are chosen limits on the cost of working copies,
+checks, and coordination. A three-level tree has not been benchmarked here; the depth
+cap is not evidence that deeper delegation cannot be useful.
 
 `task.parallel` still applies to the whole session: pieces queue behind it exactly as
 top-level tasks do.
