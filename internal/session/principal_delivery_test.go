@@ -246,7 +246,7 @@ func TestCheckpointKeepsProtectedBranchDeliveryUnfinished(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(tree.dir, "fix.txt"), "the fix\n")
-	merge, detail, _ := tree.comeHome("write the fix", []string{"fix.txt"})
+	merge, detail, _, _ := tree.comeHome("write the fix", []string{"fix.txt"})
 	if merge != mergeKept {
 		t.Fatalf("protected landing=%s: %s", merge, detail)
 	}

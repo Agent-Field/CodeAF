@@ -1236,11 +1236,15 @@ func (r taskRecovery) note() string {
 	if r.done > 0 {
 		parts = append(parts, strconv.Itoa(r.done)+" done")
 	}
+	// THE WORDS ARE THE TIER WORDS AND NOT THE STATES' OWN (task_status.go).
+	// `failed` sent a person looking for a fault in work nobody had judged, and
+	// `unverified` was the machinery describing itself; the counts are the same
+	// counts, said in the words every other place a task is drawn now uses.
 	if r.failed > 0 {
-		parts = append(parts, strconv.Itoa(r.failed)+" failed")
+		parts = append(parts, strconv.Itoa(r.failed)+" "+taskWordIncomplete)
 	}
 	if r.unverified > 0 {
-		parts = append(parts, strconv.Itoa(r.unverified)+" unverified")
+		parts = append(parts, strconv.Itoa(r.unverified)+" "+taskWordYourCall)
 	}
 	if r.interrupted > 0 {
 		parts = append(parts, strconv.Itoa(r.interrupted)+" interrupted ("+keptBranches(r.branches)+")")

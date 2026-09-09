@@ -48,7 +48,7 @@ func TestALandingBringsHomeOnlyWhatTheWorkerWrote(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(tree.dir, ".pytest_cache", "CACHEDIR.TAG"), "cache\n")
 
-	merge, detail, _ := tree.comeHome("add the parser", []string{"parser.py", "parser_test.py"})
+	merge, detail, _, _ := tree.comeHome("add the parser", []string{"parser.py", "parser_test.py"})
 	if merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
 	}
@@ -190,7 +190,7 @@ func TestAConflictedMergeLeavesHomeCleanAndNamesTheFile(t *testing.T) {
 	mustGit(t, repo, "add", "-A")
 	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "person")
 
-	merge, detail, _ := tree.comeHome("edit the shared file", []string{"shared.txt"})
+	merge, detail, _, _ := tree.comeHome("edit the shared file", []string{"shared.txt"})
 	if merge != mergeConflicted {
 		t.Fatalf("merge = %q (%s), want conflicted", merge, detail)
 	}

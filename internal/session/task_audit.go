@@ -2319,9 +2319,52 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 	if state := node.stateNow(); state != TaskUnverified {
 		return settledAlready(id, state)
 	}
+	// AND THE NODE RECORDS WHO IS HOLDING IT, so that the card in front of the
+	// person stops offering them chips they have just handed over and says who is
+	// deciding instead. It is the same mark `task.settle = auto` makes at the
+	// landing (task_run.go's [Agent.handToModelOnAuto]) and the same floor hands it
+	// back when the model's turn ends without an answer (agent.go).
+	node.holdsDecision(TaskAskOwnerModel)
 	notice := node.notice()
 	a.enqueueSteering(handOverLead + "\n" +
 		taskNote(notice, taskURI(node.journalPath()), TaskSettleAuto, a.quietAddress()))
+	a.emitTaskUpdate(notice)
+	return nil
+}
+
+// holdsDecision writes who is holding one node's question. It is the graph's
+// lock and one field, and it is here rather than beside the door because both
+// doors that move a decision — this one and the settle policy's — have to write
+// exactly the same thing.
+func (n *TaskNode) holdsDecision(owner TaskAskOwner) {
+	if n == nil || n.graph == nil {
+		return
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	n.decider = owner
+}
+
+// TakeBackDecision is [Agent.HandUnverifiedToModel] in reverse: the person
+// deciding, after all, to decide. It is what the card's "take it back" presses,
+// and it is what the floor does by itself at the end of a turn (task_run.go's
+// [Agent.handBackUnsettled]).
+//
+// IT RESOLVES NOTHING EITHER. The node stays exactly as it is and what changes is
+// who is holding the question, so the card stops saying aforge is deciding and
+// draws its chips again. A line already on the steering queue is left where it
+// is: the model may still say what it thinks, and what it may no longer do is
+// have the last word.
+func (a *Agent) TakeBackDecision(id uint64) error {
+	node := a.taskNode(id)
+	if node == nil {
+		return fmt.Errorf("no task %d in this session", id)
+	}
+	if state := node.stateNow(); state != TaskUnverified {
+		return settledAlready(id, state)
+	}
+	node.holdsDecision(TaskAskOwnerPerson)
+	a.emitTaskUpdate(node.notice())
 	return nil
 }
 
