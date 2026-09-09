@@ -4338,17 +4338,35 @@ In those sessions aforge takes the decision itself, with the same escape to say 
 tell. This never applies to a session you are sitting in front of: there your row stands,
 and a blank row still means aforge asks you.
 
-## Why is there no check again — the engine has it checked again by itself
+## Why is there no check again — what the engine tries before anything is your call
 
 You are never offered `check again` on a card, and that is deliberate: **the engine has
-already done it.** A check that never answers, or answers with neither word, is asked a
-second time before anything reaches you. Only when that second try says nothing either does
-the work land as `your call · nobody could check it`, and by then asking for one more look
-is asking for the thing that has just been tried twice.
+already done it.** Three things are tried automatically, each exactly once, each written as
+one plain line in the task's journal, before anything is put to you:
 
-The verb still exists for the model — it can have a landing checked again through its
-`tasks` tool — and you can ask for it in words: "have another look at task 7". What is gone
-is the chip, because on a card it read as one of the two answers when it was neither.
+1. **The check is asked again, on another model.** A checker that never answers, or answers
+   with neither word, is asked a second time with the same evidence and not a word about
+   what the first one said — on the next model in this install's fallback chain where there
+   is one (`--one-model`, and an install with no chain, ask the second on the model it
+   already had). Only when that says nothing either does the work land as
+   `your call · nobody could check it`.
+2. **One round is spent on a conflict.** Your branch is merged into the task's branch,
+   inside the task's own working copy, a worker brings the two versions together with the
+   brief and both sides in front of it, the check runs again, and the landing is retried.
+   Only a round that fails reaches you.
+3. **The task is run once more from its branch** for a dropped connection, a provider that
+   would not serve the request, and a brief whose world had moved — before the row is
+   written as `incomplete`.
+
+So by the time a card is in front of you, the thing a `check again` chip would have done
+has already been spent. The verb still exists for the model — it can have a landing checked
+again through its `tasks` tool — and you can ask for it in words: "have another look at
+task 7". What is gone is the chip, because on a card it read as one of the two answers when
+it was neither.
+
+`[a] resolve it` on a conflict spends **one more** of round 2 on demand. Where there is no
+working copy left, or a round is already running, it says so in one line rather than
+looking as though it did something.
 
 ## Your call on a run I left going with --yolo — a check that could not run, and what taken as it stands means
 
