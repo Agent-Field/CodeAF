@@ -246,7 +246,7 @@ func TestGlyphInventoryIsComplete(t *testing.T) {
 	// the width gate has a hole in it.
 	declared := []string{
 		GlyphQueued, GlyphWorking, GlyphSettled, GlyphFailed, GlyphPaused,
-		GlyphNeedsHuman, GlyphWaitsOn, GlyphCollapsed, GlyphExpanded,
+		GlyphNeedsHuman, GlyphWaitsOn, GlyphWithdrawn, GlyphCollapsed, GlyphExpanded,
 		GlyphScopeUp, GlyphTruncated, GlyphCut, GlyphPromptChat, GlyphPromptSteer,
 		GlyphReplyIn,
 		GlyphThought, GlyphShell, GlyphSearch, GlyphWrite,

@@ -74,6 +74,10 @@ const (
 	formsCard
 	formsRatify
 	formsRoom
+	// formsSheet is the batch form (questionsheet.go). Its two own keys are in
+	// this table for the reason every other key is: the manual's page and the
+	// row a person reads have to be spelt from one place.
+	formsSheet
 )
 
 // formsBlock is the three forms THIS lane draws — the pinned block above the
@@ -168,6 +172,18 @@ const (
 	// the room became the first form to route this key, and a comparison against
 	// the byte matched nothing at all.
 	questionToggleKey = "space"
+	// questionSendKey and questionAlikeKey are the sheet's, and they are LETTERS
+	// where a question's answers are digits because a sheet's digits are already
+	// its answers: `1`-`9` answer the row the cursor is on, so the two acts that
+	// are about the WHOLE batch cannot also be digits.
+	//
+	// AND IT IS `g` RATHER THAN THE ROOM'S `=` ([questionSameKey]) because the
+	// two are not the same act. The room's `=` says "this pair keeps coming up,
+	// answer it the same way from now on" — a rule about the future. The sheet's
+	// `g` says "these rows in front of me take the answer I just gave" — one
+	// batch, now, nothing written down.
+	questionSendKey  = "s"
+	questionAlikeKey = "g"
 	// questionWalkKey is the PAIR of arrow keys, and it is spelled as the pair
 	// because that is how it is drawn and how it is learnt: `←→ pick` is one
 	// affordance, and a row that listed two keys for one act would be a row
@@ -203,8 +219,15 @@ const (
 // on it, and let the person type. Nothing is cancelled, so the word may not say
 // cancelled.
 var questionKeys = []questionVerb{
-	{key: questionEnterKey, word: "take the pick", forms: formsBlock | formsRoom, needs: needPick, giveUp: 1},
-	{key: questionLaterKey, word: "later", forms: formsBlock | formsRoom},
+	{key: questionEnterKey, word: "take the pick", forms: formsBlock | formsRoom | formsSheet, needs: needPick, giveUp: 1},
+	// THE SHEET'S TWO SIT WHERE A PERSON REACHES FOR THEM — beside `enter`,
+	// because answering a batch is open-one, answer, send — and only `g` is ever
+	// given up: `s` is the reason the sheet exists (a batch answered row by row
+	// and then not sent is a batch nobody answered), so it is ranked zero beside
+	// `esc`.
+	{key: questionSendKey, word: questionSheetSendWord, forms: formsSheet},
+	{key: questionAlikeKey, word: questionSheetSameWord, forms: formsSheet, giveUp: 2},
+	{key: questionLaterKey, word: "later", forms: formsBlock | formsRoom | formsSheet},
 	{key: questionOpenKey, word: "open it", forms: formsLine | formsCard, needs: needRoom, giveUp: 3},
 	{key: questionCommentKey, word: "change", forms: formsBlock | formsRoom, needs: needWords, giveUp: 5},
 	{key: questionCompareKey, word: "compare", forms: formsRoom, giveUp: 4},
@@ -255,6 +278,22 @@ func questionVerbFor(key string) (questionVerb, bool) {
 		}
 	}
 	return questionVerb{}, false
+}
+
+// questionSheetKeyWord is one key's word ON A SHEET, which is the table's word
+// for every key but `enter`.
+//
+// `enter` IS ONE KEY WITH ONE MEANING AND TWO SENTENCES. It always means "act on
+// what the cursor is on"; on the block that is the answer the asker recommends,
+// and on a sheet the cursor is on a ROW rather than an answer, so acting on it
+// opens that row. The substitution is done here for the same reason `r`'s is
+// done in [app.questionVerbParts] — the table holds one row per key, and a word
+// that depends on what is being drawn is filled in by the drawer.
+func questionSheetKeyWord(verb questionVerb) string {
+	if verb.key == questionEnterKey {
+		return questionSheetOpenWord
+	}
+	return verb.word
 }
 
 // questionKeyWord is one key's word, or "" where the table does not have it.

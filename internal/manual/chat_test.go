@@ -64,6 +64,26 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I just let it decide", "questions"},
 		{"stop asking me this kind of thing", "questions"},
 		{"none of the answers it offered are right", "questions"},
+		// Reach (docs/design/questions/DESIGN.md's PRESENCE-AWARE DELIVERY,
+		// BATCHED AT THE BOUNDARY, WITHDRAWN WITH A REASON and FIRST ANSWER
+		// WINS), asked the way somebody meets each of them: answering somewhere
+		// else, coming back to a window nobody was at, a pile of them arriving
+		// together, one vanishing, two windows racing, and the setting that
+		// governs the whole thing.
+		{"how do I answer from home", "questions"},
+		{"it asked while I was away", "questions"},
+		{"why did several questions arrive at once", "questions"},
+		{"answer a whole batch of questions at once", "questions"},
+		{"same answer for all of these", "questions"},
+		{"the question disappeared", "questions"},
+		{"a question vanished without me answering", "questions"},
+		{"the other window answered it", "questions"},
+		{"two windows answered at the same time", "questions"},
+		{"what does /autonomy do", "questions"},
+		{"stop it deciding things while I am away", "questions"},
+		{"why is there a countdown on this question", "questions"},
+		{"what does your rule mean on a question", "questions"},
+		{"can I answer a question over --host", "questions"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},
 		// Lanes behind a base of the person's own: the question the hostname gate

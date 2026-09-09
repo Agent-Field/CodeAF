@@ -124,16 +124,17 @@ type aside struct {
 // agent in a test that never heard of the Watch… variants. Calling through this
 // struct is always safe.
 type laneStops struct {
-	tasks   func()
-	wakes   func()
-	designs func()
-	runs    func()
-	titles  func()
+	tasks     func()
+	wakes     func()
+	designs   func()
+	runs      func()
+	titles    func()
+	questions func()
 }
 
 // leave gives every standing lane back and forgets the stops.
 func (l *laneStops) leave() {
-	for _, stop := range []func(){l.tasks, l.wakes, l.designs, l.runs, l.titles} {
+	for _, stop := range []func(){l.tasks, l.wakes, l.designs, l.runs, l.titles, l.questions} {
 		if stop != nil {
 			stop()
 		}

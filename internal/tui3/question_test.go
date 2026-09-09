@@ -791,6 +791,7 @@ func TestTheLaneRaisesOnlyWhatThisBlockHasTakenOver(t *testing.T) {
 	a := newTestApp(&fakeAgent{})
 	for _, kind := range []session.QuestionKind{
 		session.QuestionSubharnessAsk, session.QuestionFuel, session.QuestionConflict,
+		session.QuestionAsk,
 	} {
 		if !a.questionDrawnHere(session.Question{Kind: kind}) {
 			t.Fatalf("%s has no other block and is not drawn here either", kind)

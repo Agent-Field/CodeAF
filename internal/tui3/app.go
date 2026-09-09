@@ -2299,6 +2299,35 @@ type app struct {
 	// not need to be told what they are looking at.
 	focused   bool
 	seenFocus bool
+	// lastQuestionKey is the last proof somebody was at this keyboard. Question
+	// delivery alone reads it, against awayAfter, so every arrival agrees on
+	// when this window became unattended.
+	lastQuestionKey time.Time
+	// questionReach is PRESENCE-AWARE DELIVERY and BATCHED AT THE BOUNDARY in
+	// the ONE place both are decided (questiondelivery.go). It holds the quiet
+	// questions a step is still gathering and remembers which blocking question
+	// has already rung, so neither fact can be re-derived differently by home,
+	// by the phone or by a second page.
+	questionReach questionDeliveryRule
+	// questionBatch is the sheet a step's boundary released, or nil
+	// (questionsheet.go). It is APART FROM [app.questions] rather than a flag on
+	// them, because a question in a sheet is not a question on the block: it has
+	// no settle stamp, no cursor and no rule offer, and the moment `enter` takes
+	// one out it gains all three.
+	questionBatch *questionSheet
+	// questionBatchFolded is `esc` on the sheet. It is THE SAME `later` the
+	// block's fold is — the questions stay open, the chip keeps counting them —
+	// and [app.raiseFolded] brings it back.
+	questionBatchFolded bool
+	// questionStepAt names the step quiet questions are being gathered under.
+	// It moves when the model speaks again or the turn ends, which is the
+	// boundary this surface can honestly see (questiondelivery.go).
+	questionStepAt int
+	// autonomyRules is this project's stored question rules as this surface last
+	// read them, or nil for "not read yet" (autonomysheet.go). Nil rather than
+	// an empty map is the difference between a project with no rules and a file
+	// nobody has opened.
+	autonomyRules map[session.AskKind]session.Policy
 
 	// landedAway is a turn that finished while the window was blurred and has
 	// not been looked at since — the tab's ✓ (windowtitle.go). It is the
@@ -2491,7 +2520,9 @@ func newApp(ctx context.Context, opts Options) *app {
 		// is the quiet assumption: the cost of getting it wrong is a notification
 		// nobody got, and the cost of the other default is a notification every
 		// turn on a screen somebody is watching (notify.go).
-		focused: true,
+		focused:         true,
+		lastQuestionKey: time.Now(),
+		questionReach:   newQuestionDeliveryRule(),
 	}
 	a.copy.mark = -1
 	// AND THE REDUCER IS BUILT WITH WHAT THIS PAGE IS, which is the whole of the
@@ -2914,6 +2945,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// already holds the news, and a frame is the only thing this can add.
 		return a, nil
 
+	case questionGatherMsg:
+		// The step's own clock, going off (questionsheet.go). It releases the
+		// batch it was armed for and never a later one.
+		return a, a.questionBoundaryFor(msg.step)
+
 	case sigQuitMsg:
 		// A REAL SIGNAL, forwarded by this package's own handler (tui3.go's
 		// [forwardSignals]) because Bubble Tea answers an interrupt by returning
@@ -2925,6 +2961,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.quit()
 
 	case tea.KeyPressMsg:
+		a.lastQuestionKey = time.Now()
 		// THE DOOR DISARMS ON ANY KEY BUT ITS OWN, and it is done HERE rather
 		// than at the top of [app.key] — where the pointer handover is — because
 		// this is the only line every keypress passes through. The stop
@@ -4834,6 +4871,23 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 	switch ev.Kind {
 	case session.EventTextDelta, session.EventThinking, session.EventReasoning:
 		a.lastDelta = time.Now()
+		// THE STEP'S BOUNDARY IS THE MODEL SPEAKING AGAIN. Quiet questions
+		// raised while the tools were running arrive here, together, as the
+		// sheet (questionsheet.go's [app.questionBoundary]). It is a no-op on
+		// the overwhelmingly common delta, which is one with nothing gathered.
+		if cmd := a.questionBoundary(); cmd != nil {
+			after = tea.Batch(after, cmd)
+		}
+
+	case session.EventQuestion, session.EventQuestionWithdrawn, session.EventQuestionAnswered:
+		// THE OBJECT ALSO RIDES THE TURN'S OWN STREAM, and this is where a
+		// window that has no standing subscription meets it — a `--host` window,
+		// whose events cross the wire and whose lane does not. The fold is
+		// idempotent ([app.raiseQuestion] replaces by token), so a window with
+		// BOTH roads sees one question rather than two.
+		if cmd := a.questionFold(ev); cmd != nil {
+			after = tea.Batch(after, cmd)
+		}
 
 	case session.EventConsentRequest:
 		// A question outranks a panel. The consent block is drawn above the
@@ -5034,6 +5088,12 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		a.retrying = true
 
 	case session.EventTurnDone:
+		// AND A TURN ENDING IS THE LAST BOUNDARY THERE IS. A question the model
+		// raised in its final step has no next sentence to wait for, and one
+		// held past the end of the turn would be held forever.
+		if cmd := a.questionBoundary(); cmd != nil {
+			after = tea.Batch(after, cmd)
+		}
 		// Both notes go in BEFORE the turn settles, so they land under the reply
 		// they are about rather than above whatever is said next. What was
 		// CHANGED comes first and what it COST second: the files are the work,
@@ -6258,6 +6318,14 @@ func (a *app) slash(line string) tea.Cmd {
 	// The unknown-command hint below says back what was typed and not what it
 	// resolved to, so the name as written is kept.
 	switch canonicalCommand(name) {
+	case "autonomy":
+		if rest != "" {
+			a.noteBlock(a.changeAutonomy(rest))
+			return nil
+		}
+		a.noteBlock(a.autonomySheetText())
+		return nil
+
 	case "quit":
 		// /quit CLOSES THE CONVERSATION IN FRONT, and leaves only when it was the
 		// last one this terminal was holding (keeper.go's [app.closeFront]). It
