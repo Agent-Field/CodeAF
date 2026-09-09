@@ -96,6 +96,46 @@ const (
 	// QuestionStanding is a standing card: should this be kept an eye on
 	// (tools_standing.go).
 	QuestionStanding QuestionKind = "standing"
+
+	// ── the lanes below were added with question.go, and every one of them
+	// already existed as a wait with a resolver; what they had never had was a
+	// NAME another window could put on an answer. They are listed here rather
+	// than beside their own lanes for this file's third law: the mapping from a
+	// key to what it MEANS is written once, in one place, or a surface and a
+	// session end up meaning two things by "2".
+
+	// QuestionConnect is a connect offer: may one of the person's accounts be
+	// connected, and where the account needs one, the key or address it is
+	// missing (connect.go, [Agent.ResolveConnect] and
+	// [Agent.ResolveConnectKey]).
+	QuestionConnect QuestionKind = "connect"
+	// QuestionHarness is a sub-harness offer or a written design waiting to be
+	// approved (harness.go, [Agent.ResolveHarness]).
+	QuestionHarness QuestionKind = "harness"
+	// QuestionSubharness is an intake card chat raised for a saved program
+	// (tools_subharness.go, [Agent.ResolveSubharness]).
+	QuestionSubharness QuestionKind = "subharness"
+	// QuestionSubharnessAsk is a RUNNING sub-harness putting its own question to
+	// the person (subharness_env.go, [Agent.AnswerSubharness]). The audit found
+	// this lane drawn by nothing at all: the run waited, and no surface in the
+	// product had a door onto it.
+	QuestionSubharnessAsk QuestionKind = "subharness-ask"
+	// QuestionLanding is a landed task's `your call` — work that finished and
+	// that nobody could check (task_audit.go, [Agent.ResolveUnverified],
+	// [Agent.HandUnverifiedToModel] and [Agent.TakeBackDecision]).
+	QuestionLanding QuestionKind = "landing"
+	// QuestionConflict is a branch that would not fasten onto the person's
+	// (task_merge_round.go, [Agent.ResolveConflict]). It is the lane the audit
+	// found with a door and no card anywhere.
+	QuestionConflict QuestionKind = "conflict"
+	// QuestionFuel is an adaptive run standing at its fuel gate
+	// (orchestrate.go, [Agent.ResolveOrchestrate]).
+	QuestionFuel QuestionKind = "fuel"
+	// QuestionRecovery is a turn caught going in circles, asking what to do
+	// about ITSELF (recovery.go, [Agent.ResolveRecovery]). It borrows the
+	// consent lane's wait and is deliberately answerable only in the window
+	// that raised it, so it is never offered to another one.
+	QuestionRecovery QuestionKind = "recovery"
 )
 
 // AnswerOption is one answer a question will take: the key that gives it and
@@ -106,6 +146,40 @@ type AnswerOption struct {
 	Key string `json:"key"`
 	// Label is the answer in the words the card uses for it.
 	Label string `json:"label"`
+
+	// ── the fields below arrived with question.go, and every one of them is
+	// `omitempty`: a chip row that only ever read Key and Label reads exactly
+	// what it always did, and a form with room for more finds more here.
+
+	// Body is what this answer MEANS, in a sentence or two — what the room
+	// draws under the word when the answer is opened. Empty is an answer whose
+	// word says the whole of it.
+	Body string `json:"body,omitempty"`
+	// Consequence is what happens if this one is taken, in the future tense and
+	// in one line: "the file is overwritten", "nothing runs". It is the line a
+	// card draws beside the word, and it is the difference between choosing and
+	// guessing.
+	Consequence string `json:"consequence,omitempty"`
+	// Safe marks THE ANSWER THAT CHANGES NOTHING. A confirmation starts its
+	// cursor on it and a destructive answer never shares a key with it
+	// (tabclose.go's law, stated once for every kind). At most one answer on a
+	// question is safe; where none is, none is marked, because inventing one
+	// would put a person's cursor on an act.
+	Safe bool `json:"safe,omitempty"`
+	// Widening marks an answer that grants MORE than the question asked about —
+	// "always", "every command like this". It is drawn apart from the others so
+	// that a person who meant "yes, this once" cannot land on it by muscle
+	// memory.
+	Widening bool `json:"widening,omitempty"`
+	// Blocks are this answer's own evidence: the diff it would produce, the
+	// layout it would draw, the rows it would write.
+	Blocks []Block `json:"blocks,omitempty"`
+	// Dimensions are the axes the asker wants these answers compared on —
+	// "speed", "what it costs", "what it breaks" — keyed by the axis and valued
+	// with this answer's reading of it. A question whose answers all carry the
+	// same axes can be laid side by side; one whose answers do not is drawn as
+	// a list, and no axis is ever invented to fill the table.
+	Dimensions map[string]string `json:"dimensions,omitempty"`
 }
 
 // AnswerOptions is what one kind of question may be answered with, in the order
@@ -145,8 +219,14 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 	case QuestionConsent:
 		return []AnswerOption{
 			{Key: "1", Label: "allow once"},
-			{Key: "2", Label: "always"},
-			{Key: "3", Label: "deny"},
+			// `always` GRANTS MORE THAN THE QUESTION ASKED ABOUT — every later
+			// call of that tool, for the rest of this session — so it is marked
+			// widening and drawn apart from its neighbours (question.go's
+			// [AnswerOption.Widening]). It is also the one answer a question
+			// may not offer at all: the stuck-turn question borrows this lane
+			// to ask about a TURN, where the memo would do nothing.
+			{Key: "2", Label: "always", Widening: true},
+			{Key: "3", Label: "deny", Safe: true},
 		}
 	case QuestionTask:
 		return []AnswerOption{
@@ -159,9 +239,65 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 			{Key: StandingOnceKey, Label: "just once"},
 			{Key: StandingNoKey, Label: "not set up"},
 		}
+	case QuestionConnect:
+		return []AnswerOption{
+			{Key: "1", Label: "connect"},
+			{Key: "2", Label: "not now", Safe: true},
+		}
+	case QuestionHarness, QuestionSubharness:
+		return []AnswerOption{
+			{Key: "1", Label: "run it"},
+			{Key: "2", Label: "not now", Safe: true},
+		}
+	case QuestionFuel:
+		return []AnswerOption{
+			{Key: "1", Label: "add more", Consequence: "the run carries on"},
+			{Key: "2", Label: "finish on what is done", Consequence: "it writes up what it already has"},
+			{Key: "3", Label: "stop", Consequence: "the run ends where it stands"},
+		}
+	case QuestionLanding, QuestionConflict:
+		// THE LANDING KEYS ARE TASK-STATES' OWN, LETTER FOR LETTER
+		// (docs/design/task-states/DESIGN.md): `[a] <yes> · [n] <no> · [s] tell
+		// it`, always the same three columns in the same order. The words
+		// beside them are the row's own — [TaskAsk] carries them, and
+		// [landingOptions] is what fills them in for one node. This list is the
+		// kind's shape and the fallback for a row that offered none.
+		return []AnswerOption{
+			{Key: LandingYesKey, Label: "accept"},
+			{Key: LandingNoKey, Label: "not right", Safe: true},
+			{Key: LandingTellKey, Label: "tell it"},
+		}
 	}
 	return nil
 }
+
+// The keys a landed task's `your call` is answered with, and the two beside
+// them that are not on the row.
+//
+// THEY ARE LETTERS AND NOT DIGITS, which is the one place this package parts
+// company with [AnswerOptions]' rule that a key is a digit — because
+// docs/design/task-states/DESIGN.md fixed `a`, `n` and `s` on that card before
+// this file existed, and a hand that learned them there must find them here.
+// Home draws them as chips, so the letters cost nothing there either.
+const (
+	// LandingYesKey accepts the work on the person's word.
+	LandingYesKey = "a"
+	// LandingNoKey says it does not hold.
+	LandingNoKey = "n"
+	// LandingTellKey sends words to the work and LEAVES THE QUESTION OPEN — a
+	// steer never resolves a task by itself (docs/design/task-states/DESIGN.md).
+	LandingTellKey = "s"
+	// LandingAgainKey sends a fresh look at the same working copy.
+	LandingAgainKey = "r"
+	// LandingDecideKey hands this one decision to the model. It is the
+	// one-time `let aforge decide this one`, and it is never a standing
+	// setting.
+	LandingDecideKey = "d"
+	// LandingTakeBackKey takes back a decision that was settled without the
+	// person. It is on a record rather than on a question, which is why it is
+	// not among the three the row draws.
+	LandingTakeBackKey = "u"
+)
 
 // StandingOnceKey is the digit "once, not standing" is answered with, on the
 // card and on home alike. It is spelled once, here, because two surfaces and
@@ -330,7 +466,20 @@ func AnswerFromKey(kind QuestionKind, key string) (AnswerAction, bool) {
 	return action, true
 }
 
-// Answer is one line of the file: an answer somebody gave, from somewhere else.
+// Answer is what somebody said to a question: one line of answers.jsonl, and
+// the value every resolver in this engine is reached through
+// ([Agent.ResolveQuestion]).
+//
+// IT GREW RATHER THAN BEING REPLACED, and the four fields it started with are
+// still the four an older window writes: At, Kind, ID and Key. Everything below
+// them is `omitempty`, so a build of any age reads a line written by a build of
+// any other — [AnswerFromKey] still answers from a bare key alone, which is
+// exactly what home has always sent.
+//
+// WHAT THE NEW FIELDS ARE FOR is the half of an answer a key could never
+// carry: several picks rather than one, the sentence somebody added beside
+// their pick, the blanks they filled, what they asked back, and — the one that
+// makes the record worth keeping — WHO decided and how long it lasts.
 type Answer struct {
 	// At is when it was given. It orders a drain and is the only thing here a
 	// reader could use to notice an answer that sat on the doorstep for a week
@@ -347,6 +496,95 @@ type Answer struct {
 	// so a later reader can tell an answer somebody gave on another screen from
 	// one a machine gave, without guessing from a timestamp.
 	From string `json:"from,omitempty"`
+
+	// Ref names the question where its lane's token is a STRING rather than a
+	// number — a connect account, an adaptive run. Exactly one of ID and Ref is
+	// set, exactly as on [Question].
+	Ref string `json:"ref,omitempty"`
+	// Ask is the shape of the decision this answered ([AskKind]). It is
+	// carried so a record can be read without the question beside it, and it is
+	// empty on a line an older window wrote.
+	Ask AskKind `json:"ask,omitempty"`
+	// Picked are the answers given, by key. It is one key on most questions,
+	// several on a checklist, and one per row on pairs. Key above is the FIRST
+	// of these, kept filled so an older reader — and [Agent.applyAnswer]'s own
+	// mapping — goes on working unchanged; [Answer.Keys] is how this package
+	// reads either.
+	Picked []string `json:"picked,omitempty"`
+	// Change is what was said BESIDE the pick: "2, but keep the sqlite file as
+	// the source of truth". It is the half of an answer that carries the
+	// person's intent, and a lane that can take words does something with it —
+	// the connect lane reads it as the key it asked for, the landing lane sends
+	// it to the work as a steer, and the rest keep it in the record.
+	Change string `json:"change,omitempty"`
+	// Comments are what was said about ONE answer or ONE blank, keyed by its
+	// key or its label. They are notes on the parts and never the answer
+	// itself.
+	Comments map[string]string `json:"comments,omitempty"`
+	// AskedBack are the rounds of asking back, bounded at one per answer
+	// ([Exchange] says why).
+	AskedBack []Exchange `json:"askedBack,omitempty"`
+	// Blanks are the fields of a small form, keyed by [Blank.Label].
+	Blanks map[string]string `json:"blanks,omitempty"`
+	// Dial is the number a dial was left on, and nil where there was no dial —
+	// which is not the same as a dial left at zero.
+	Dial *float64 `json:"dial,omitempty"`
+	// Reframe is an answer that is not a pick at all: "the real question is…".
+	// It resolves nothing by itself; it goes back to the asker.
+	Reframe string `json:"reframe,omitempty"`
+	// DecidedBy is who answered. It is the field that makes the record worth
+	// keeping, and its zero value is empty rather than [DecidedByPerson] —
+	// claiming a person pressed a key nobody pressed is the one thing a record
+	// must never do.
+	DecidedBy DecidedBy `json:"decidedBy,omitempty"`
+	// Scope is how long this answer lasts, and it is only ever one the question
+	// offered. Empty is [ScopeOnce].
+	Scope AnswerScope `json:"scope,omitempty"`
+	// Why is the person's own reason, asked for softly when they answered
+	// against the pick. It is what a preference is later written from, and it
+	// is empty far more often than not.
+	Why string `json:"why,omitempty"`
+	// TakingOver says a question a running sub-harness asked was answered by
+	// the person taking the work over rather than by an answer to it. It is
+	// meaningful on [QuestionSubharnessAsk] alone.
+	TakingOver bool `json:"takingOver,omitempty"`
+}
+
+// Keys is what was picked, however the answer spelled it: [Answer.Picked] where
+// it is filled, and the single [Answer.Key] where an older window wrote one.
+//
+// IT IS THE ONE READER OF BOTH, so no lane has to know which shape it was
+// handed. An answer with neither is a real answer on the kinds that take words
+// instead of keys — a clarification, a question a sub-harness asked — and comes
+// back empty rather than as a guess.
+func (a Answer) Keys() []string {
+	if len(a.Picked) > 0 {
+		return a.Picked
+	}
+	if key := strings.TrimSpace(a.Key); key != "" {
+		return []string{key}
+	}
+	return nil
+}
+
+// FirstKey is the single key a two-or-three-answer question was answered with,
+// and "" for an answer given in words.
+func (a Answer) FirstKey() string {
+	keys := a.Keys()
+	if len(keys) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(keys[0])
+}
+
+// Words is everything the person typed, in one string: the change they said
+// beside their pick, or the reframe where they gave one instead. It is what a
+// lane that takes a typed answer is handed.
+func (a Answer) Words() string {
+	if change := strings.TrimSpace(a.Change); change != "" {
+		return change
+	}
+	return strings.TrimSpace(a.Reframe)
 }
 
 // answerFromHome is what home writes in [Answer.From].
@@ -481,16 +719,15 @@ func (a *Agent) drainAnswers() {
 // waiting on falls through those resolvers untouched, which is what makes a
 // stale answer a no-op rather than a special case here.
 func (a *Agent) applyAnswer(answer Answer) {
-	action, ok := AnswerFromKey(answer.Kind, answer.Key)
-	if !ok {
-		return
+	// AND IT GOES THROUGH THE ONE DOOR, which is what keeps that law literally
+	// true rather than nearly true. [Agent.ResolveQuestion] is the only thing
+	// in this package that knows which resolver a lane's answer belongs to;
+	// this file used to be a second, shorter copy of that knowledge, covering
+	// three lanes of the eleven. An answer for a lane the door does not take
+	// comes back with a refusal and is dropped here, because a file on a
+	// doorstep has nobody left to tell.
+	if answer.From == "" {
+		answer.From = answerFromHome
 	}
-	switch action.Kind {
-	case QuestionConsent:
-		a.ResolveConsentRemember(answer.ID, action.Allow, action.Scope)
-	case QuestionTask:
-		a.ResolveTask(answer.ID, action.Task)
-	case QuestionStanding:
-		a.ResolveStanding(answer.ID, action.Standing)
-	}
+	_ = a.ResolveQuestion(answer)
 }

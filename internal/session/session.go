@@ -552,6 +552,46 @@ const (
 	// the one subscription that outlives every turn, and a move happens most
 	// often in the middle of one.
 	EventMoved
+	// EventQuestion carries one whole [Question] in Question: a decision this
+	// engine is handing to the person, with its evidence, its answers, the
+	// asker's own pick, what is waiting on it and what an answer costs
+	// (question.go).
+	//
+	// IT ARRIVES AFTER THE ROWS IT IS ABOUT, exactly as EventConsentRequest
+	// already orders itself against its batch's EventToolBegin rows, and for
+	// the same reason: a question attaches to a row a surface has already
+	// drawn, and one that arrived first would be a question about nothing.
+	//
+	// IT IS A SECOND DESCRIPTION AND NEVER A REPLACEMENT. Every lane goes on
+	// emitting the event it always emitted — EventConsentRequest,
+	// EventTaskProposal, EventStandingProposal and the rest — so a surface that
+	// ignores this kind is exactly what it was. A surface that draws it draws
+	// one object for every lane instead of thirteen cards.
+	//
+	// IT RIDES THE TURN IT WAS RAISED IN, AND [Agent.WatchQuestions] BESIDE IT —
+	// never the standing TASK lane, which is the roster's and whose readers walk
+	// a strict sequence of rows.
+	EventQuestion
+	// EventQuestionWithdrawn says a question stopped being one: the subject
+	// settled, the clock took it, the plan changed, another answer made it
+	// moot. Question carries the same object with [Question.Withdrawn] filled
+	// in, so a surface has the head it drew and the sentence to retire it with.
+	//
+	// A QUESTION IS NEVER SIMPLY GONE. A count that drops for no reason a
+	// person can see is a count they stop believing, so the reason travels with
+	// the withdrawal and is drawn once, dim.
+	EventQuestionWithdrawn
+	// EventQuestionAnswered carries the whole [Answer] in Answer: what was
+	// picked, what was said beside it, who decided and how long it lasts.
+	//
+	// THIS ONE IS KEPT. It is written to the session's own decisions.jsonl as
+	// it is emitted ([Agent.Decisions] reads it back), because it is the
+	// DECISION RECORD — the first rung of the ladder, the thing an asker reads
+	// before it puts anything to anybody. Consent is deliberately not journaled
+	// (a question about work that has not happened yet); an ANSWER is the
+	// opposite of that: it is the one thing about a question that stays true
+	// afterwards.
+	EventQuestionAnswered
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -863,6 +903,18 @@ type Event struct {
 	// points at is this event's own copy — nothing else holds it, and answering
 	// the question is what decides whether it is ever written down.
 	Harness *subharness.Harness
+
+	// Question is the whole decision on EventQuestion and
+	// EventQuestionWithdrawn, and nil on every other kind (question.go). It is
+	// a POINTER so that "no question here" is spelled once, and the value it
+	// points at is this event's own copy — nothing else holds it, and the
+	// answer is what decides whether it is ever written down.
+	Question *Question
+
+	// Answer is the whole answer on EventQuestionAnswered, and nil on every
+	// other kind. It is the same value [Agent.ResolveQuestion] was handed, after
+	// the door filled in what the caller left out.
+	Answer *Answer
 
 	// ModelNote is why a model the turn NAMED is not in Model: a word no model
 	// here answers to, a word too many of them answer to. It is set on
@@ -2599,7 +2651,7 @@ type Agent struct {
 	// question would mean a second thing to answer about work that has not moved.
 	// So the node's number is the token, which is also the number on the roster
 	// row, the number in the ✕, and the number a person says out loud.
-	subharnessAsks map[uint64]chan subharnessReply
+	subharnessAsks map[uint64]*subharnessQuestion
 
 	// subharnessOffers is the intake cards chat has raised and nobody has
 	// answered yet, keyed by the id the EventSubharnessProposal carried, and
@@ -2715,6 +2767,31 @@ type Agent struct {
 	// reserved, nothing is admitted, and the only thing the number has to do is
 	// name one outstanding question until it is answered (tools_standing.go).
 	standingSeq uint64
+	// questionWords is THE WORDS of the questions this session has put, keyed by
+	// lane and token (question.go's [questionToken]).
+	//
+	// IT IS NOT A REGISTRY OF WHAT IS OPEN, and the difference is the whole of
+	// why it is allowed to exist beside pending.go's law. Whether a question is
+	// still a question is the LANE's own fact — the consent map still holds a
+	// channel, the proposal is still in taskAnswers, the node is still
+	// unverified — and [Agent.OpenQuestions] walks those waits and asks this map
+	// only what the question SAID. An entry with no wait behind it is never
+	// returned, and is swept on the next beat.
+	//
+	// It exists because the words were being thrown away. A consent wait is a
+	// bare channel; the sentence the person is reading — the tool, the rule the
+	// policy matched, the gloss of the call — went out on the event and was kept
+	// nowhere, so a second window, home, or the phone had at best the one line
+	// the presence file carried and at worst nothing at all.
+	questionWords map[string]Question
+
+	// questionWatchers are the standing subscriptions to questions
+	// ([Agent.WatchQuestions]), and they are a lane of their own rather than a
+	// share of [Agent.taskWatchers] for the reason that door states: the task
+	// lane is the roster's, its readers walk a strict sequence of rows, and a
+	// question is not a row.
+	questionWatchers []*eventStream
+
 	// taskWatchers are the standing subscriptions to task updates
 	// ([Agent.TaskUpdates]). They are not the turn's hub and do not close with
 	// it: a node's most important event lands minutes after the turn that

@@ -1085,14 +1085,20 @@ func (a *Agent) askStanding(ctx context.Context, notice *StandingNotice) (Standi
 	// The line is the PERSON'S OWN SENTENCE, which is the anchor every surface
 	// leads this item with ([standing.Item.Words]) — the when and the cost are
 	// the card's to show, in the window where there is room to read them.
-	defer a.presenceAskingOptions(QuestionStanding, id,
-		"wants to keep an eye on: "+strings.TrimSpace(notice.Item.Words), StandingOptions(notice.Item))()
+	//
+	// AND IT IS BANKED WHOLE (question.go), with the ONE item's answers rather
+	// than the kind's — a one-off reminder offers no `just once`, and a list
+	// that said otherwise would be a chip the session drops.
+	standing := a.standingAsk(id, *notice)
+	defer a.presenceAskingWhole(standing)()
 	// SET TO ZERO AND NOT MERELY LEFT ZERO. The field is on the card's shape
 	// and a caller could have filled it; this is the one place the law lives,
 	// so it is applied here rather than trusted upstream.
 	notice.Deadline = time.Time{}
 	card := *notice
 	hub.send(Event{Kind: EventStandingProposal, Tool: "stand", Standing: &card})
+	// AFTER the card, on EventQuestion's own ordering law.
+	a.emitQuestion(EventQuestion, standing, nil)
 
 	select {
 	case answer := <-answers:
@@ -1461,3 +1467,36 @@ func (a *Agent) standingNamed(parsed standArguments) (standing.Item, string) {
 	}
 	return standing.Item{}, out.String()
 }
+
+// standingAsk is one standing card as [Question].
+//
+// NOTHING STANDS UNTIL THE ANSWER IS YES (standing_contract.go), which is why
+// this question carries NO clock and NO policy at all: its zero [Policy] waits,
+// and the card waits with it for as long as it takes. The stakes are reversible
+// because everything a standing card sets up can be taken down again, and the
+// scopes it offers are the two that are true of one — this once, or from now on.
+func (a *Agent) standingAsk(id uint64, notice StandingNotice) Question {
+	return Question{
+		ID:      id,
+		Kind:    QuestionStanding,
+		Ask:     AskChoice,
+		Form:    FormCard,
+		Asker:   Asker{Kind: AskerModel},
+		Head:    standingAskLead + strings.TrimSpace(notice.Item.Words),
+		Reason:  standingAskReason,
+		Options: StandingOptions(notice.Item),
+		Stakes:  StakesReversible,
+		Scope:   []AnswerScope{ScopeOnce, ScopeAlways},
+	}
+}
+
+// standingAskLead opens the sentence a standing card asks with, and the
+// PERSON'S OWN WORDS close it ([standing.Item.Words]) — the anchor every
+// surface leads this item with. It is a constant so the card, the presence file
+// and the question object cannot become three accounts of one item.
+const standingAskLead = "wants to keep an eye on: "
+
+// standingAskReason is why the card is up, in the one sentence that is true of
+// every standing card there is. The when and the cost are the card's to show, in
+// the window where there is room to read them.
+const standingAskReason = "nothing is set up until you say so"

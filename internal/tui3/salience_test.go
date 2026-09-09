@@ -154,6 +154,23 @@ var salienceTable = []salienceCase{
 		"typed", ev: session.Event{Kind: session.EventTakeover}},
 	{name: "EventMoved", chatOnly: "a conversation walking to another terminal is a fact about this WINDOW, " +
 		"and a task room draws work rather than windows", ev: session.Event{Kind: session.EventMoved}},
+	{name: "EventQuestion", chatOnly: "a question is a decision handed to the PERSON, and the person is in the " +
+		"conversation; a node is never asked one (internal/session's question.go, and this table's own reading " +
+		"of EventConsentRequest and EventTaskProposal, which this is the wider description of)",
+		ev: session.Event{Kind: session.EventQuestion, ID: 1, Question: &session.Question{
+			ID: 1, Kind: session.QuestionConsent, Ask: session.AskPermission,
+			Head: "needs your ok to run bash", Reason: "bash always asks", Stakes: session.StakesCostly,
+		}}},
+	{name: "EventQuestionWithdrawn", chatOnly: "the other end of the same question's life, drawn where the " +
+		"question was", ev: session.Event{Kind: session.EventQuestionWithdrawn, ID: 1, Question: &session.Question{
+		ID: 1, Kind: session.QuestionConsent, Head: "needs your ok to run bash",
+		Withdrawn: &session.Withdrawal{Reason: "the turn moved on without it"},
+	}}},
+	{name: "EventQuestionAnswered", chatOnly: "the answer belongs beside the question it settled, and the " +
+		"question was the conversation's; the record it leaves is read by the model rather than drawn in a room",
+		ev: session.Event{Kind: session.EventQuestionAnswered, ID: 1, Question: &session.Question{
+			ID: 1, Kind: session.QuestionConsent, Head: "needs your ok to run bash",
+		}, Answer: &session.Answer{Kind: session.QuestionConsent, ID: 1, Key: "1"}}},
 }
 
 // errSalience is the engine failing, in the one shape both pumps read.
