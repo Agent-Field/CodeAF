@@ -11,11 +11,13 @@ invalidates:
   - "Tool-call IDs were treated as unique across a transcript. Reused IDs now resolve within their assistant batch through model context, admission evidence, runtime outcomes, compaction and restored history."
   - "Task checks could receive a clipped or stale conclusion and assume changes were staged. They now receive the bounded current conclusion, actual directory being checked and rollback context; selected admission evidence can point to its existing full result file."
   - "After its last repetition warning the observer stopped reading results because the turn used to be forcibly ended. It now keeps observing progress while bounding repeated advice, so new work can restore an opportunity to explain a later error."
+  - "After twelve quiet tool replies, aforge injected a user-role demand for a progress note, held later tool calls, and could stop useful work that did not narrate itself. Quiet work now runs normally; concise progress updates remain prompt guidance, while actual repetition, refusals and no-new-information evidence retain their bounded recovery notes."
 ---
 
 This includes the live context-fidelity repairs from #717 and supersedes its
 completion-reader digest changes because that reader no longer exists. It also
-supersedes the automatic handoff assumptions documented in #622, #635 and #664.
+supersedes the automatic handoff assumptions documented in #622, #635 and #664,
+and the mandatory progress-note gate documented in #154 and #182.
 
 CRITICAL comments and behavioral regressions protect the context and completion
 invariants. Provider generation defaults are unchanged. Real-task quality, cost

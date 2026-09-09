@@ -45,13 +45,13 @@ func TestAMidStreamConnectionResetIsRetryableAndIsTheWire(t *testing.T) {
 // this package writes rather than the worker, and a worker whose every write was
 // refused by another task's copy was queued, not circling.
 func TestTheLoopGuardsSentenceIsACirclingEndingUnlessSomebodyHeldTheFiles(t *testing.T) {
-	if got := endingOfClaim("done: the parser is fixed", "", ""); got != "" {
+	if got := endingOfClaim("done: the parser is fixed", ""); got != "" {
 		t.Fatalf("a finished claim ended as %q", got)
 	}
-	if got := endingOfClaim(loopLeftUndoneNote, "", ""); got != TaskEndingCircling {
+	if got := endingOfClaim(loopLeftUndoneNote, ""); got != TaskEndingCircling {
 		t.Fatalf("the loop guard's sentence ended as %q, want circling", got)
 	}
-	if got := endingOfClaim(loopLeftUndoneNote, "task 2 (slash parity)", ""); got != TaskEndingBlocked {
+	if got := endingOfClaim(loopLeftUndoneNote, "task 2 (slash parity)"); got != TaskEndingBlocked {
 		t.Fatalf("a refused writer ended as %q, want blocked", got)
 	}
 }
@@ -110,53 +110,9 @@ func TestAHaltedLandingNoteNamesTheEndingAndNeverSaysFailed(t *testing.T) {
 	}
 }
 
-// THE STOP IS A FACT, NOT A SENTENCE. A worker the write-your-notes rule ended
-// is recognised by the answer the loop wrote down at the moment it stopped the
-// turn (processrule.go's [ruleStopWitness]) — never by matching the line the
-// person reads, which is prose somebody will one day improve.
-func TestAWorkerStoppedByTheNotesRuleIsNamedByTheFactAndNotByItsWords(t *testing.T) {
-	notes := (writeNotesRule{}).ending()
-	if notes == "" {
-		t.Fatal("the write-your-notes rule names no ending, so a worker it stops has nothing to wear")
-	}
-	if got := endingOfClaim("done: the parser is fixed", "", notes); got != notes {
-		t.Fatalf("ending = %q, want %q: the fact did not name the ending", got, notes)
-	}
-	// AND IT OUTRANKS THE LAST WORDS. The stopped turn writes its landing line
-	// into the transcript, so a run stopped here and one that circled are two
-	// claims; the one the loop knows is the one that wins.
-	if got := endingOfClaim(loopLeftUndoneNote, "task 2 (slash parity)", notes); got != notes {
-		t.Fatalf("ending = %q, want %q", got, notes)
-	}
-	// AND THE PROSE IS NEVER THE EVIDENCE FOR IT: the very sentence a stopped
-	// turn lands on names nothing on its own.
-	if got := endingOfClaim((writeNotesRule{}).stopped(), "", ""); got != "" {
-		t.Fatalf("the landing sentence was read as %q; the words are being matched", got)
-	}
-}
-
-// A TURN THE RULE NEVER STOPPED SAYS SO, and a turn that was held once and then
-// complied is a turn that complied: the witness is about ONE turn, so the next
-// episode opens with nothing written on it.
-func TestTheProcessRuleStopIsForgottenWhenTheNextTurnOpens(t *testing.T) {
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
-	if got := agent.stoppedOnProcessRule(); got != "" {
-		t.Fatalf("a fresh agent reports the ending %q", got)
-	}
-	agent.ruleStop.stopped(writeNotesRule{})
-	if got := agent.stoppedOnProcessRule(); got != TaskEndingNotes {
-		t.Fatalf("ending = %q after the rule stopped the turn, want %q", got, TaskEndingNotes)
-	}
-	agent.newEpisode()
-	if got := agent.stoppedOnProcessRule(); got != "" {
-		t.Fatalf("the next turn opened carrying %q from the turn before it", got)
-	}
-}
-
-// THE LANDING NOTE SAYS WHAT THE ROW SAYS. A worker stopped for its notes is
-// halted news — nothing was found wrong with the work — so the note names the
-// reason beside `incomplete` rather than saying "failed".
-func TestAWorkerStoppedForItsNotesLandsAsHaltedNews(t *testing.T) {
+// AN OLD NOTES ENDING KEEPS ITS PERSON-FACING WORDS. Reopening a historical row
+// must not turn its recorded reason into a generic failure.
+func TestAHistoricalNotesEndingKeepsItsLandingWords(t *testing.T) {
 	note := taskNote(TaskNotice{ID: 7, Title: "port the parser", State: TaskFailed, Ending: TaskEndingNotes},
 		"", TaskSettleAsk, landingAddress{})
 	if want := "task 7 incomplete: port the parser · would not write its notes down"; !strings.HasPrefix(note, want) {

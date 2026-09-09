@@ -308,7 +308,7 @@ func TestTheStuckNoteSaysWhenTheWorkLastChanged(t *testing.T) {
 
 	write := ai.ToolCall{ID: "w", Function: ai.ToolCallFunction{
 		Name: "write", Arguments: `{"path":"notes.md","content":"first"}`}}
-	if _, ok := watch.observe([]ai.ToolCall{write}, []toolResult{{text: "wrote notes.md"}}, false); ok {
+	if _, ok := watch.observe([]ai.ToolCall{write}, []toolResult{{text: "wrote notes.md"}}); ok {
 		t.Fatal("one write nudged")
 	}
 
@@ -317,7 +317,7 @@ func TestTheStuckNoteSaysWhenTheWorkLastChanged(t *testing.T) {
 	var note string
 	for round := 1; round <= 4; round++ {
 		result := toolResult{text: strings.Join(sameRunNewClock(round), "\n")}
-		if looping, ok := watch.observe([]ai.ToolCall{measure}, []toolResult{result}, false); ok {
+		if looping, ok := watch.observe([]ai.ToolCall{measure}, []toolResult{result}); ok {
 			note = nudgeNote(looping)
 		}
 	}

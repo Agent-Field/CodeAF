@@ -40,7 +40,7 @@ func touchThrough(t *testing.T, ep *episode, workspace string, call ai.ToolCall,
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	ep.postFeedback(ctx, nil, []ai.ToolCall{call}, []toolResult{{text: "wrote it"}}, false)
+	ep.postFeedback(ctx, nil, []ai.ToolCall{call}, []toolResult{{text: "wrote it"}})
 }
 
 // gitRepo makes a workspace that is a repository, with one committed file.
@@ -126,11 +126,11 @@ func TestTheLedgerIgnoresFailedAndReadOnlyCalls(t *testing.T) {
 
 	failed := revertWriteCall("c1", "never.md")
 	episode.preAction(ctx, nil, failed)
-	episode.postFeedback(ctx, nil, []ai.ToolCall{failed}, []toolResult{{text: "permission denied", isError: true}}, false)
+	episode.postFeedback(ctx, nil, []ai.ToolCall{failed}, []toolResult{{text: "permission denied", isError: true}})
 
 	read := ai.ToolCall{ID: "c2", Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"old.md"}`}}
 	episode.preAction(ctx, nil, read)
-	episode.postFeedback(ctx, nil, []ai.ToolCall{read}, []toolResult{{text: "the file"}}, false)
+	episode.postFeedback(ctx, nil, []ai.ToolCall{read}, []toolResult{{text: "the file"}})
 
 	if changes := episode.changes.list(); len(changes) != 0 {
 		t.Fatalf("the ledger recorded %+v, want nothing", changes)

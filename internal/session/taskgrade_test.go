@@ -527,13 +527,9 @@ func TestWithNoProfileTheLoopIsAbsentRatherThanBroken(t *testing.T) {
 	}
 }
 
-// A WORKER THE NOTES RULE STOPPED IS `stopped` IN THE RECORD, NOT `did not
-// finish`. The two words are read by somebody deciding whether this model can be
-// trusted with this kind of work, and they say different things: "did not
-// finish" is a run that ran out, while this run was ended from outside by a rule
-// the worker would not follow (processrule.go). Grading it as the first would
-// quietly count a refusal to write notes as evidence about the work.
-func TestAWorkerStoppedForItsNotesIsGradedStoppedRatherThanUnfinished(t *testing.T) {
+// A HISTORICAL NOTES ENDING stays `stopped` in the record rather than changing
+// meaning when reopened by a build that no longer emits that ending.
+func TestAHistoricalNotesEndingRemainsGradedStopped(t *testing.T) {
 	nest := newGradeNest(t, &scriptedCompleter{})
 
 	nest.settleWith(t, "tests for the rail", "cheap/model", "", 0, TaskFailed,
@@ -558,9 +554,8 @@ func TestAWorkerStoppedForItsNotesIsGradedStoppedRatherThanUnfinished(t *testing
 			t.Errorf("%q graded %q, want %q", ending, got, want)
 		}
 	}
-	// AND A NODE THAT LANDED IS NEVER STOPPED, however its worker behaved on the
-	// way there: a worker held once that then wrote its note and finished is a
-	// worker that complied.
+	// AND A HISTORICAL NODE THAT LANDED IS NEVER STOPPED, whatever older ending
+	// value remained beside its successful state.
 	if got := taskGradeOutcome(TaskDone, TaskEndingNotes, false); got != "landed" {
 		t.Errorf("a finished node graded %q, want landed", got)
 	}

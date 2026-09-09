@@ -759,38 +759,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 
 		assistant := ai.Message{Role: "assistant", Content: assistantContent(response), ToolCalls: calls}
 		a.recordAssistant(assistant, reasoning.snapshot())
-		visibleText := strings.TrimSpace(messageContentText(assistant)) != ""
 		partial.reset()
-
-		// ── THE ENFORCED RUNG OF A PROCESS RULE (processrule.go) ──
-		//
-		// THIS IS THE ONE BOUNDARY WHERE BOTH FACTS ARE IN HAND: the batch the
-		// model wants run, and whether it wrote anything visible beside it. The
-		// assistant message is already in the transcript and nothing has reached
-		// the world yet, so a rule that has been advised and ignored can answer
-		// the submission with its demand INSTEAD of executing it — which is the
-		// difference between a rule and a suggestion, and the thing the second
-		// silent note had been promising in words it could not keep.
-		//
-		// A COMPLYING MODEL NEVER REACHES THE CALL. Every rule passes a
-		// submission that meets it, and the write-your-notes rule only holds
-		// anything after its advisory has been said twice into an unbroken
-		// silence — so this is a map lookup on the ordinary path.
-		//
-		// The loop owns stopping a turn; its feedback hooks only record evidence.
-		if hold, held := episode.holdSubmission(submission{calls: calls, visibleText: visibleText}); held {
-			if hold.stop {
-				return a.stopForProcessRule(ctx, hub, calls, hold, &turn, started, model)
-			}
-			a.withholdSubmission(hub, calls, hold)
-			// The reads this response started early are dropped exactly as a
-			// provider retry drops them, and for the same reason the early-start
-			// law admits read-only calls only: a discarded read costs the work and
-			// nothing else, and the model must not be handed the answer to a call
-			// the harness has just refused to run.
-			warm.reset()
-			continue
-		}
+		// CRITICAL: VISIBLE PROSE IS NOT AN EXECUTION PRECONDITION. The
+		// model may work through a long sequence of distinct useful calls without
+		// narrating every step; actual repetition, refusal and no-progress evidence
+		// below still produce bounded recovery notes. A mandatory progress-note
+		// request displaced the original work in benchmark traces; the quiet-work
+		// Submit regression keeps tool execution independent of status prose.
 
 		results := a.runToolsWarm(toolCtx, episode, calls, hub, warm)
 		// AND A TURN THIS SESSION HAS ALREADY LET GO OF STOPS HERE, WRITING
@@ -829,7 +804,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// going in circles (recovery.go, looped.go). The batch is recorded, the
 		// next request has not been assembled, and a note dropped here rides into
 		// it exactly as a person's steering does.
-		episode.postFeedback(ctx, hub, calls, results, visibleText)
+		episode.postFeedback(ctx, hub, calls, results)
 		// Recovery feedback stays in the conversation. Counts of rounds, writes
 		// or repeated observations do not move this work to another agent.
 

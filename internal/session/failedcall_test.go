@@ -325,8 +325,8 @@ func brokenSteps(rounds int, asks *atomic.Int64, ending step) []step {
 			return textResponse("NOTHING LEFT TO DO"), nil
 		}
 		if call := done.Add(1); call <= int64(rounds) {
-			return toolResponseWithText(fmt.Sprintf("call-%d", call), "ls",
-				fmt.Sprintf(`{"path":"./%d"}`, call), scriptedWorkingNote), nil
+			return toolResponse(fmt.Sprintf("call-%d", call), "ls",
+				fmt.Sprintf(`{"path":"./%d"}`, call)), nil
 		}
 		return ending(ctx, messages)
 	})

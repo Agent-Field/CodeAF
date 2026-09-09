@@ -112,6 +112,64 @@ func TestSimpleLoopManyWritesStayWithTheCurrentAgent(t *testing.T) {
 	}
 }
 
+// Quiet useful work is ordinary work. The loop may offer concise progress
+// guidance in its prompt, but visible prose must never become a precondition for
+// running a tool or another paid completion inserted to satisfy the harness.
+func TestSimpleLoopRunsLongQuietWorkWithoutAProgressProseGate(t *testing.T) {
+	const quietRounds = 18
+	c := &simpleLoopCompleter{answer: func(_ context.Context, messages []ai.Message, round int) (*ai.Response, error) {
+		for _, message := range messages {
+			text := messageContentText(message)
+			if (message.Role == "user" && strings.HasPrefix(text, "[silent]")) ||
+				(message.Role == "tool" && strings.HasPrefix(text, "[held]")) {
+				return nil, fmt.Errorf("round %d received a synthetic progress demand: %q", round, text)
+			}
+		}
+		for completed := 1; completed < round && completed <= quietRounds; completed++ {
+			found := false
+			for _, message := range messages {
+				if message.Role == "tool" && message.ToolCallID == fmt.Sprintf("inspect-%d", completed) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil, fmt.Errorf("round %d lacks result inspect-%d", round, completed)
+			}
+		}
+		switch {
+		case round <= quietRounds:
+			return toolResponse(fmt.Sprintf("inspect-%d", round), "inspect", fmt.Sprintf(`{"item":%d}`, round)), nil
+		case round == quietRounds+1:
+			return toolResponseWithText("write-summary", "write", `{"path":"summary.txt","content":"all evidence reviewed"}`, "I have finished the review and am writing the result."), nil
+		default:
+			for _, message := range messages {
+				if message.Role == "tool" && message.ToolCallID == "write-summary" {
+					return textResponse("The review and summary are complete."), nil
+				}
+			}
+			return nil, fmt.Errorf("final request lacks the write result")
+		}
+	}}
+	agent, workspace := simpleLoopAgent(t, c)
+	agent.tools = append(agent.tools, freshTool("inspect"))
+	events := collect(t, mustSubmit(t, agent, "Inspect every supplied item, write the complete summary, and finish here."))
+	for _, event := range events {
+		if event.Kind == EventNudge || (event.Kind == EventToolFailed && event.HarnessMade) {
+			t.Fatalf("quiet useful work was interrupted by the harness: %+v", event)
+		}
+	}
+	body, err := os.ReadFile(filepath.Join(workspace, "summary.txt"))
+	if err != nil || string(body) != "all evidence reviewed" {
+		t.Fatalf("summary: %q %v", body, err)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.rounds != quietRounds+2 || c.sideCalls != 0 {
+		t.Fatalf("work used %d calls and %d side calls, want %d and 0", c.rounds, c.sideCalls, quietRounds+2)
+	}
+}
+
 // Removing automatic handoffs must not swallow a note queued while a request
 // is in flight. The next ordinary model request receives it with the tool result.
 func TestSimpleLoopCarriesQueuedResultsIntoTheNextRequest(t *testing.T) {

@@ -344,13 +344,6 @@ func handoffSteps(count int, sketch, draft, written string) []step {
 // end of a turn rather than for the ceiling. remains answers the question a
 // turn's end puts to the reader, and is a function so a test can say something
 // different the second time it is asked.
-// scriptedWorkingNote is the sentence a scripted long turn writes beside its
-// calls. It exists because a turn of twenty tool calls with NOTHING visible
-// between them is now held rather than run (processrule.go), and a test about
-// the checkpoint ladder must not accidentally be a test of that rule. A model
-// that says one line per step is the ordinary shape these tests mean to script.
-const scriptedWorkingNote = "looking at the next piece, then I will say what I found"
-
 func stoppingSteps(rounds int, stopped string, remains func() string) []step {
 	var done atomic.Int64
 	steps := make([]step, rounds+40)
@@ -369,8 +362,8 @@ func stoppingSteps(rounds int, stopped string, remains func() string) []step {
 				return textResponse(remains()), nil
 			}
 			if call := done.Add(1); call <= int64(rounds) {
-				return toolResponseWithText(fmt.Sprintf("call-%d", call), "ls",
-					fmt.Sprintf(`{"path":"./%d"}`, call), scriptedWorkingNote), nil
+				return toolResponse(fmt.Sprintf("call-%d", call), "ls",
+					fmt.Sprintf(`{"path":"./%d"}`, call)), nil
 			}
 			return textResponse(stopped), nil
 		}

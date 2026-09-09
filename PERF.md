@@ -1237,6 +1237,12 @@ checking. At an unattended ending, running work, failed landings, undelivered re
 explicitly declared checks can still keep the goal open; file-activity metadata and a shortened
 model opinion cannot certify or veto the main model's completion.
 
+Visible progress prose is not an execution gate. The former silence ladder injected notes after
+6 and 12 quiet tool replies, then withheld three later submissions before stopping the turn;
+all three fixed bounds and their journal registry are removed. Long, distinct useful calls run
+without synthetic user messages or extra provider rounds. The loop still bounds advice for
+actual repeated calls, repeated failures, refused arguments and rounds that read nothing new.
+
 Completion also performs no implicit path sweep. A file is not disposable merely because the
 session created it outside the current workspace; an absolute output path may be the requested
 deliverable. Explicit model cleanup and runtime-owned temporary storage keep their own rules.

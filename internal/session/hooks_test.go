@@ -65,7 +65,7 @@ func (r *recorder) saw(where string) bool {
 
 func (r *recorder) EpisodeInit(*episode)                  { r.mark("init") }
 func (r *recorder) PreDecision(context.Context, *episode) { r.mark("decision") }
-func (r *recorder) PostFeedback(context.Context, *episode, *eventHub, []ai.ToolCall, []toolResult, bool) {
+func (r *recorder) PostFeedback(context.Context, *episode, *eventHub, []ai.ToolCall, []toolResult) {
 	r.mark("feedback")
 }
 
@@ -79,11 +79,11 @@ func (r *recorder) PreAction(_ context.Context, _ *episode, _ *eventHub, call ai
 
 // ── the registry ────────────────────────────────────────────────────────────
 
-// The four mechanisms that existed before the plane are its four citizens, and
-// the two orders that matter are the two the plane's own doc claims: the gate
+// The mechanisms registered on the plane preserve the two orders its own doc
+// claims: the gate
 // runs before the ledger at pre-action, the ledger runs before the detector at
 // post-feedback.
-func TestTheControlPlaneRegistersTheFourMechanismsInOrder(t *testing.T) {
+func TestTheControlPlaneRegistersTheMechanismsInOrder(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	plane := agent.controlPlaneFor()
 
@@ -92,11 +92,10 @@ func TestTheControlPlaneRegistersTheFourMechanismsInOrder(t *testing.T) {
 		got  []string
 		want []string
 	}{
-		// The error→fix lane is the third piece of turn state (fixrecall.go), and
-		// the process rules the loop enforces are the fourth (processrule.go).
-		// episode-init is the one hook whose order carries no argument: every
+		// The error→fix lane is the third piece of turn state (fixrecall.go).
+		// Episode-init is the one hook whose order carries no argument: every
 		// citizen there writes its own field on a struct nobody has read yet.
-		{"episode-init", planeNames(plane.episodeInit), []string{"changes", "loop", "fixes", "process-rules"}},
+		{"episode-init", planeNames(plane.episodeInit), []string{"changes", "loop", "fixes"}},
 		{"pre-decision", planeNames(plane.preDecision), []string{"stub", "turn-fold"}},
 		// The write scope and the tree claim are the two citizens that are inert
 		// for an ordinary agent: both are registered on every plane and refuse
@@ -290,7 +289,7 @@ func TestTheLoopDetectorRunsThroughPostFeedback(t *testing.T) {
 	hub := newEventHub()
 	events := hub.subscribe()
 	for attempt := 1; attempt <= 3; attempt++ {
-		episode.postFeedback(context.Background(), hub, []ai.ToolCall{call}, results, true)
+		episode.postFeedback(context.Background(), hub, []ai.ToolCall{call}, results)
 	}
 	hub.close()
 

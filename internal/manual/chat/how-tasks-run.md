@@ -2566,35 +2566,21 @@ unless something actually broke. The mark survives in two places that are not ro
 warning on a landing card whose work could not be delivered, and a task **mentioned** in
 prose.
 
-## Being quiet is not going in circles — the [silent] notes, held tool calls, and why a quiet worker is not stopped for it
+## Can a quiet worker be stopped for not writing progress notes?
 
-**Being quiet is not going in circles**, and a task that was working cannot land here for
-it. A worker committing, pushing and writing files says very little, and the `[silent]`
-notes that ask it to write its plan down spend none of the loop guard's limit, so no number
-of them can make a row say `went in circles`. Neither does a shell command that changed the
-working folder: that is counted as work, the same as an `edit` or a `write`.
+No. A task worker may inspect, write, commit and finish through a long sequence of tool calls
+without putting visible prose between them. Aforge does not inject `[silent]` demands, hold
+the worker's tools, or stop the task merely because the work was quiet. Progress notes are
+useful when they carry news, but they are not a gate the worker must pass.
 
-A worker that ignores those notes twice over is a different story, and it is not this row.
-After the second `[silent]` note its tool calls are **held** until it writes something
-visible — every call in the reply is answered `[held] Nothing was run this step…` and none
-of them runs — and if it sends only tool calls three more times its turn ends with
-`stopped here · would not write its notes down, so what this turn worked out is not on the record`.
-That is not circling, and the row does not say it is. **It is written up in its own
-words**: the rail reads `incomplete · would not write its notes down`, dim like every
-other halted row; the landing note reads
-`task 7 incomplete: <title> · would not write its notes down`; and the record that grades
-the model on the work says it was `stopped`, not that it did not finish. The run settles on whatever it
-had actually done and the branch is kept like any other. The keys page has the whole ladder
-under "Why did aforge stop running tool calls, and what is a [held] answer?".
+A row that says `went in circles` comes from execution evidence instead: repeated calls,
+repeated failures, an argument sent again after the tool refused it, or several rounds that
+read nothing new. A successful write or a shell command that changed the working folder is
+progress and can restore one bounded recovery note. The transcript shows the `[stuck]` note
+that named the actual repetition.
 
-If a row says `went in circles`, the worker had genuinely stopped making progress, and its
-transcript shows what it kept repeating.
-
-The first cause wins: a check that refuses a run which had already given up is written as
-`went in circles`, because that is what happened first. A halted task **asks nothing of
-you** — it is not `your call` and there is no question on it; the branch is there to pick
-up when you want it. A task from before these words existed simply reads `stopped`,
-whatever ended it, because its record never carried a reason.
+Historical task records may still say `incomplete · would not write its notes down`; current
+runs do not create that ending, but old rows keep their original words.
 
 ## What happens when a task fails — my task's world could not be sealed, no working copy could be made
 

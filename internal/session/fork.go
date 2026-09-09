@@ -1210,7 +1210,7 @@ func (l *handLeash) arm(stop context.CancelFunc) {
 	l.mu.Unlock()
 }
 
-func (l *handLeash) PostFeedback(context.Context, *episode, *eventHub, []ai.ToolCall, []toolResult, bool) {
+func (l *handLeash) PostFeedback(context.Context, *episode, *eventHub, []ai.ToolCall, []toolResult) {
 	l.mu.Lock()
 	l.rounds++
 	spent, stop := l.rounds >= l.limit, l.stop

@@ -176,5 +176,5 @@ func cutThrough(t *testing.T, agent *Agent, ep *episode, call ai.ToolCall) {
 	if isError {
 		t.Fatalf("%s: %s", call.Function.Arguments, text)
 	}
-	ep.postFeedback(ctx, nil, []ai.ToolCall{call}, []toolResult{{text: text}}, false)
+	ep.postFeedback(ctx, nil, []ai.ToolCall{call}, []toolResult{{text: text}})
 }
