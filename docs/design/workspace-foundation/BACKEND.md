@@ -59,7 +59,8 @@ inspect other targets: these are relevance defaults, not information-access ACLs
 
 Snapshots carry source and revision, label truncated text, and replace earlier
 shared-context snapshots. They use the existing volatile tail, preserving the
-cached system prefix. Withdrawal or retargeting can be detected from history;
+cached system prefix. The completion reader receives the same bounded snapshot,
+so an old tool receipt does not become its account of current applicability. Withdrawal or retargeting can be detected from history;
 a small session metadata bit remembers exposure after collection membership
 removal, including reopen. The bit contains no finding text. Changes refresh at
 the next turn, not halfway through an existing provider request. Storage errors

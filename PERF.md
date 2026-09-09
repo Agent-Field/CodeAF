@@ -2212,6 +2212,10 @@ recreate a missing database. Work resolution receives only the requested page,
 uses the existing open store, and reads the owner world once per batch. Collection
 metadata list/find still enumerate their small index before paging; they do not
 scan transcripts. Ordinary workers inherit the read seam and cannot mutate it.
+The completion reader receives the same bounded snapshot beside its existing
+bounded evidence digest. This adds no lookup or model call; the per-reader
+input can grow by one `organizationContextLimit`/`organizationTextLimit`
+snapshot. Old tool receipts must not override current applicability.
 ## Checker observations remain bounded and recoverable
 
 The checker keeps its existing **8,000-byte** per-result ceiling
