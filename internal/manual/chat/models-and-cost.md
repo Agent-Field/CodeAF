@@ -2698,6 +2698,19 @@ before the answer began, which is the one failure a larger ceiling actually fixe
 attempts get their own lines, so a call that was rate limited four times before it landed
 is five lines rather than one slow one.
 
+## Why did a provider error keep the same endpoint?
+
+A provider can accept a request and later end its reply with
+`finish_reason=error`. aforge treats that as a failed request, including when
+the provider sends no separate error message. It releases the automatic cache
+preference, records the failure, and leaves recovery to the existing bounded
+retry policy. That failed generation does not teach a successful provider
+speed. Any usage the provider reports is still counted.
+
+This does not guarantee a different endpoint: your routing settings, available
+providers and recovery budget still apply. A valid tool call or a normal
+reasoning response keeps its existing handling.
+
 ## Does losing my connection change provider ratings?
 
 No. The connection wait pauses provider-switch timers. Once the endpoint is

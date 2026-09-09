@@ -873,6 +873,16 @@ func (c *Client) completionInOnePiece(
 	// has never heard of.
 	var reasoningTokens int
 	response.Usage, reasoningTokens = decoded.Usage.mergeInto(response.Usage, 0)
+	served := servedProvider(decoded.Provider)
+	if err := c.terminalResponseError(ctx, request, knobs, &response, served); err != nil {
+		c.record(recordFacts{
+			ctx: ctx, request: request, knobs: knobs, stream: stream,
+			began: logBegan, status: status, served: served, err: err,
+			response: &response, reasoningTokens: reasoningTokens, responseBody: payload,
+		})
+		c.settle(ctx, c.modelFor(request), &response, receiptRefusalReason, len(responseText(&response)))
+		return nil, false, err
+	}
 	// AND THE SAME SPLIT THE STREAM TAKES, taken over the whole body (answer.go).
 	// A gateway that fences its working in `<think>` does it whether or not the
 	// request asked for a stream, and an answer that carried the model's private
@@ -886,7 +896,6 @@ func (c *Client) completionInOnePiece(
 	// ONE NAME, read off the decode above rather than from a second pass over
 	// the payload, and handed to both readers of it: the affinity that keeps a
 	// conversation on the endpoint holding its prompt cache, and the rating.
-	served := servedProvider(decoded.Provider)
 	// A completion teaches the lane its longest reply just as a stream does;
 	// without this line a lane that only ever answered whole — every headless
 	// worker's — never earned a wall at all.
@@ -1767,6 +1776,22 @@ func (c *Client) completeWithMessagesStreaming(
 			}
 		}
 	}
+	response.Choices = []ai.Choice{{Index: 0, FinishReason: finishReason, Message: ai.Message{
+		Role:      "assistant",
+		Content:   []ai.ContentPart{{Type: "text", Text: content.String()}},
+		ToolCalls: tools.assembled(),
+	}}}
+	// An explicit failure is not the clean end below: do not promote its
+	// reasoning to an answer or announce its last tool as a complete instruction.
+	if err := c.terminalResponseError(ctx, request, knobs, response, served); err != nil {
+		c.record(recordFacts{
+			ctx: ctx, request: request, knobs: knobs, stream: true,
+			began: logBegan, status: httpResponse.StatusCode, served: served, err: err,
+			response: response, reasoningTokens: reasoningTokens,
+		})
+		c.settle(ctx, c.modelFor(request), response, receiptRefusalReason, content.Len())
+		return nil, false, err
+	}
 	// The last call has no successor to close it, so the clean end of the stream
 	// does. This runs only past the decode loop's error returns: a stream that
 	// died mid-call announces nothing, because the fragment it stopped on may be
@@ -1799,12 +1824,7 @@ func (c *Client) completeWithMessagesStreaming(
 		content.WriteString(promoted)
 		observer(StreamEvent{Kind: StreamDelta, Delta: promoted, Session: session})
 	}
-	message := ai.Message{
-		Role:      "assistant",
-		Content:   []ai.ContentPart{{Type: "text", Text: content.String()}},
-		ToolCalls: tools.assembled(),
-	}
-	response.Choices = []ai.Choice{{Index: 0, Message: message, FinishReason: finishReason}}
+	response.Choices[0].Message.Content[0].Text = content.String()
 	// The rate is measured over the GENERATION window — first token to last —
 	// and not over the call, so the wait to be served is charged to TTFT once
 	// rather than to both figures. A stream that never produced a token is
@@ -2134,10 +2154,11 @@ func adaptiveCompletionTimeout(maxTokens int, configuredFloor time.Duration) tim
 // somebody and the refusal are both in the JSON it sent: `error.metadata`
 // carries `provider_name` and `raw`, and this client threw them away.
 type APIError struct {
-	// Status is the HTTP status the refusal arrived under.
+	// Status is the refusal's HTTP status, or the normalized gateway failure
+	// for an in-band error that supplied no status of its own.
 	Status int
-	// Message is the provider's own words, decoded out of the error body. Empty
-	// when the body did not decode, in which case Body carries it whole.
+	// Message is the provider's error text or a description of its terminal
+	// failure marker. When it could not be decoded, Body carries it whole.
 	Message string
 	// Body is the undecoded payload, kept so nothing is lost when the provider
 	// answered with something this client does not know the shape of.
