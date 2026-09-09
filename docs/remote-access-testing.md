@@ -244,10 +244,11 @@ keeps a 4MB CSV out of the context window.
 Refusals to try:
 
 ```
-/attach                                  → /attach takes a path · try /attach server.log
-/attach /some/directory                  → <name> is a folder · attach a file
 /attach <a 20MB file>                    → <name> is 17MB and over the 16MB file limit
 ```
+
+A bare `/attach` now opens the **add context** sheet, and `/attach <a directory>` registers
+that folder with the conversation; neither is a refusal.
 
 Ceilings: **16MB per file, 32MB per message**. They apply only over a connection — a local
 `/attach` names a path the engine can already see and copies nothing.
