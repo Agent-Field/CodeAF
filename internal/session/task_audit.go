@@ -156,7 +156,6 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
-	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // The auditor is a ROLE, registered from the file that makes the call, exactly
@@ -940,6 +939,7 @@ func (v auditVerdict) twice() auditVerdict {
 // than a blip, and a third call would only spend the person's money to write
 // down the same absence.
 func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, changed []string, claim string, log io.Writer) auditVerdict {
+	claim = checkerConclusion(node, claim)
 	// THE NODE'S PULSE SAYS WHICH OF ITS THREE LIVES THIS IS (task_beat.go), AND
 	// SO DOES THE CARD ([EventTaskPhase]). A node under check is running —
 	// nothing landed, nothing was undone — so a reader watching only the state
@@ -1413,7 +1413,7 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 	// here for the receipts' reason — the transcript closes on the way out
 	// (task_result.go).
 	said := lastSaid(child)
-	node.keepResult(said)
+	node.keepWorkerConclusion(said, log)
 	return wrote, firstLines(said, taskReportLines)
 }
 
@@ -1518,6 +1518,32 @@ func alsoChanged(changed, more []string) []string {
 	return changed
 }
 
+// keepWorkerConclusion replaces the current attempt's answer, including an
+// empty answer. Keeping an earlier success when a newer worker says nothing
+// would give the checker a claim about the previous attempt's work.
+func (n *TaskNode) keepWorkerConclusion(said string, log io.Writer) {
+	if strings.TrimSpace(said) != "" {
+		n.keepResultNoting(said, log)
+		return
+	}
+	n.graph.mu.Lock()
+	n.produced = taskResult{}
+	n.graph.mu.Unlock()
+}
+
+// checkerConclusion gives every checking path the worker's kept answer instead
+// of its display summary. Rechecking does not inherit an earlier checker's
+// decision, and older nodes without a kept result still use their supplied claim.
+func checkerConclusion(node *TaskNode, fallback string) string {
+	kept := node.result()
+	if strings.TrimSpace(kept.text) == "" {
+		return fallback
+	}
+	return resultBlock(resultDelivery{
+		body: kept.text, where: kept.whereWhole(), cut: kept.bytes > len(kept.text),
+	})
+}
+
 // auditQuestion is what the auditor is asked: the frozen acceptance, the work's
 // own claim, and where to look.
 //
@@ -1573,23 +1599,20 @@ func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door audit
 	out.WriteString(claimsBlock(open))
 	out.WriteString(auditReceiptBlock(node.lastReceipts(), ground.restored))
 
-	// WHERE IT IS STANDING IS TOLD TRUTHFULLY, WHICHEVER GROUND IT GOT. The
-	// restored sentence is a claim the auditor cannot check for itself — it cannot
-	// see the tree it is not in — so it may only be made when it is true
-	// ([auditGround]).
+	// The current directory and the worker's old addresses are different facts.
+	// Receipt paths name where evidence was produced, never where to check now.
+	out.WriteString("CHECK THESE FILES HERE: " + ground.dir + "\n")
+	out.WriteString("You are already in this directory. Paths in worker receipts name its earlier copy; use this directory for the files under review.\n")
 	if ground.restored {
-		out.WriteString("WHERE YOU ARE: a CLEAN RESTORE of what would ship. It is the repository as it stood before " +
-			"this work began, with exactly the files listed above laid over it, and NOTHING else the work left in its " +
-			"own copy — no installs, no build output, no file it moved, linked or created by hand. Install and build " +
-			"whatever the verification needs here; that is expected and it is what your time is for. If a check needs " +
-			"something that is not in those files and you cannot make it yourself from them, that is the finding.\n")
+		out.WriteString("WHERE YOU ARE: a CLEAN RESTORE of the selected work. It starts from the restored repository or folder and overlays the selected files. Committed work may already be in that starting state.\n")
 	} else {
-		out.WriteString("WHERE YOU ARE: the working copy where the work was done, so everything the run left around it " +
-			"is still here. A check that passes only because of something the work did not WRITE — a file it moved, a " +
-			"link it made, a path it created by hand — has not passed; look for that before you accept one.\n")
+		out.WriteString("WHERE YOU ARE: the working copy where the work was done. Files or dependencies left by the worker may still be present; distinguish those from the files this task produced.\n")
 	}
 	if tree.root != "" {
-		out.WriteString("Its changes are staged, so `git diff --cached` shows all of them, new files included.\n")
+		out.WriteString("`git diff --cached` shows the currently staged delta, which may be empty when the work is already committed. An empty delta does not say the requested work is absent or complete; read the relevant files.\n")
+		if tree.checkBase != "" {
+			out.WriteString("The task's starting commit is " + tree.checkBase + "; compare against it when checking changes that are already committed.\n")
+		}
 	} else {
 		out.WriteString("This workspace is not a repository, so there is no diff to read: check the files themselves.\n")
 	}
@@ -2206,15 +2229,7 @@ func lastToolReceipts(child *Agent, most int) []toolReceipt {
 		return nil
 	}
 	messages := child.snapshot()
-	// The call is in an ASSISTANT message and the result is in the tool message
-	// that answers it, so the two are joined by the provider's own call id — the
-	// only thing that survives a batch of four calls answered out of order.
-	calls := make(map[string]ai.ToolCall)
-	for _, message := range messages {
-		for _, call := range message.ToolCalls {
-			calls[call.ID] = call
-		}
-	}
+	calls := toolResultCalls(messages)
 	var out []toolReceipt
 	for index := len(messages) - 1; index >= 0 && len(out) < most; index-- {
 		message := messages[index]
@@ -2226,7 +2241,7 @@ func lastToolReceipts(child *Agent, most int) []toolReceipt {
 			continue
 		}
 		receipt := toolReceipt{result: clip(result, auditReceiptLimit)}
-		if call, ok := calls[message.ToolCallID]; ok {
+		if call, ok := calls[index]; ok {
 			receipt.tool = call.Function.Name
 			// The arguments are JSON and a pretty-printed call would spend six lines
 			// of the packet saying what one says (tools_standing.go's [oneLine]).
@@ -2248,9 +2263,6 @@ func lastToolReceipts(child *Agent, most int) []toolReceipt {
 // the reason the claim works the same way ([TaskNode.keepClaim]): a repair
 // round's check is the one that describes the tree the auditor is about to read.
 func (n *TaskNode) keepReceipts(receipts []toolReceipt) {
-	if len(receipts) == 0 {
-		return
-	}
 	n.graph.mu.Lock()
 	n.receipts = receipts
 	n.graph.mu.Unlock()
@@ -2562,11 +2574,8 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 		defer cancel()
 		defer node.releaseSettle()
 		defer listed.settle(0)
-		// NO CLAIM IS PASSED. The first audit was given the node's own last
-		// words as the thing under audit; this one is given the acceptance and
-		// the diff, and nothing about the answer that was not an answer — a
-		// fresh auditor primed with "the last one could not decide" is a fresh
-		// auditor that has been told what to conclude.
+		// The node supplies its worker's kept conclusion at the common check
+		// boundary. No earlier checker's decision is passed as a claim.
 		verdict := a.auditNode(ctx, node, tree, changed, "", taskLog(listed))
 		if ctx.Err() != nil {
 			// KILLED IS NOT A VERDICT. The node is left exactly as it was —

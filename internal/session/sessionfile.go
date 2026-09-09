@@ -2134,18 +2134,11 @@ func repairTranscript(messages []ai.Message) []ai.Message {
 		break
 	}
 
-	seen := make(map[string]bool)
+	paired := toolResultCalls(messages)
 	repaired := messages[:0]
-	for _, message := range messages {
-		if message.Role == "tool" {
-			if message.ToolCallID == "" || !seen[message.ToolCallID] {
-				continue
-			}
-			repaired = append(repaired, message)
+	for index, message := range messages {
+		if message.Role == "tool" && paired[index] == nil {
 			continue
-		}
-		for _, call := range message.ToolCalls {
-			seen[call.ID] = true
 		}
 		repaired = append(repaired, message)
 	}

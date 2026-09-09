@@ -2250,12 +2250,12 @@ type Agent struct {
 	// person is not currently saying under their live authority
 	// (task_forward.go).
 	personHeard uint64
-	// callOutcomes is whether a finished call came back a failure, by call id
+	// callOutcomes is whether a finished call came back a failure, by call occurrence
 	// (admission_compile.go). It is recorded at the batch's own fan-out because
 	// the flag the tool returned does not survive into the transcript, and it is
 	// per-process: after a restart the outcome of an older call is unknown and
 	// the admission context says so rather than assuming it went well.
-	callOutcomes map[string]callOutcome
+	callOutcomes map[*ai.ToolCall]callOutcome
 	// replyTags are finished-task identities placed in the transcript but not
 	// yet handed to the surface. They persist across the turn-end seam.
 	replyTags []TaskReplyTag

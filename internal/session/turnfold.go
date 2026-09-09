@@ -69,7 +69,7 @@ type turnFoldReplacement struct {
 // reaches its headroom target. An observation becomes consumed only after work
 // made from it lands. Assistant text, calls and their arguments, mutating tool
 // batches, and every observation not yet acted upon remain verbatim.
-func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[string]bool, hub *eventHub) {
+func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]bool, hub *eventHub) {
 	line := turnWorkingSet(a.window())
 	if line <= 0 {
 		return
@@ -267,15 +267,16 @@ func transcriptBytes(messages []ai.Message) int {
 // partial batch at the horizon is left whole, because rewriting one sibling and
 // not another would make one model decision carry two different histories of
 // the observation it received.
-func turnFoldBatches(messages []ai.Message, start, limit int, consumedReads map[string]bool) []turnFoldBatch {
+func turnFoldBatches(messages []ai.Message, start, limit int, consumedReads map[*ai.ToolCall]bool) []turnFoldBatch {
 	var batches []turnFoldBatch
 	for index := start; index < limit; index++ {
 		if messages[index].Role != "assistant" || len(messages[index].ToolCalls) == 0 {
 			continue
 		}
 		readBatch := true
-		for _, call := range messages[index].ToolCalls {
-			if !earlyTools[call.Function.Name] || !consumedReads[call.ID] {
+		for callIndex := range messages[index].ToolCalls {
+			call := &messages[index].ToolCalls[callIndex]
+			if !earlyTools[call.Function.Name] || !consumedReads[call] {
 				readBatch = false
 				break
 			}
