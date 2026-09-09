@@ -52,8 +52,14 @@ func TestParseDocumentUsesExplicitEngineTinyCompletionAndHarvestsAnnotations(t *
 		response.Usage == nil || response.Usage.Cost == nil || *response.Usage.Cost != 0.004 {
 		t.Fatalf("response = %+v", response)
 	}
-	if body["model"] != "cheap/model" || body["max_tokens"] != float64(documentParserMaxTokens) {
-		t.Fatalf("model/tiny completion = %#v", body)
+	// NO CEILING TRAVELS ON THIS ROUTE EITHER. It used to send max_tokens 8 —
+	// enough for "received" and not for a model that thinks first — and what
+	// keeps the acknowledgement small now is the prompt.
+	if body["model"] != "cheap/model" {
+		t.Fatalf("model = %#v", body)
+	}
+	if _, capped := body["max_tokens"]; capped {
+		t.Fatalf("the parser route sent an output cap: %#v", body)
 	}
 	plugins, _ := body["plugins"].([]any)
 	plugin, _ := plugins[0].(map[string]any)
@@ -92,7 +98,7 @@ func TestParseDocumentNativePassesQuestionAndReturnsModelExtraction(t *testing.T
 		_, _ = io.WriteString(writer, `{"choices":[{"message":{"role":"assistant","content":"Native extracted text with enough detail."}}],"usage":{"cost":0.02}}`)
 	}))
 	adapter, err := NewClient(Config{
-		APIKey: "document-key", BaseURL: "https://openrouter.ai/api/v1", Model: "native/model", MaxTokens: 321, HTTPClient: client,
+		APIKey: "document-key", BaseURL: "https://openrouter.ai/api/v1", Model: "native/model", HTTPClient: client,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -107,8 +113,16 @@ func TestParseDocumentNativePassesQuestionAndReturnsModelExtraction(t *testing.T
 	plugins, _ := body["plugins"].([]any)
 	plugin, _ := plugins[0].(map[string]any)
 	pdf, _ := plugin["pdf"].(map[string]any)
-	if pdf["engine"] != "native" || body["max_tokens"] != float64(321) {
+	// The native route sends no ceiling at all. Extraction has to fit a whole
+	// document's text, and the old 16k figure was this file guessing how much of
+	// somebody's PDF a model it has never seen would need to write out.
+	if pdf["engine"] != "native" {
 		t.Fatalf("native body = %#v", body)
+	}
+	for _, knob := range []string{"max_tokens", "max_completion_tokens"} {
+		if _, capped := body[knob]; capped {
+			t.Fatalf("the native route sent %s: %#v", knob, body)
+		}
 	}
 	messages, _ := body["messages"].([]any)
 	message, _ := messages[0].(map[string]any)

@@ -129,11 +129,6 @@ const (
 	taskNameSummaryClip = 400
 	taskNameBriefClip   = 1500
 
-	// taskNameTokens is the ceiling on the answer. Three words is a handful of
-	// tokens; this is that with room for a model that says "Title: …" first,
-	// which [cleanTitle] strips.
-	taskNameTokens = 32
-
 	// taskNameWindow is how long the call is given. Nobody is waiting for it —
 	// the node is already running — so this is not a person's patience but a
 	// bound on a goroutine holding a provider slot for work that has stopped
@@ -350,15 +345,15 @@ func (a *Agent) taskNameWithin(ctx context.Context, subject string, window time.
 		}
 	}
 
-	// NO EFFORT IS PUT ON THE REQUEST, and that is the reflex law rather than an
-	// omission: the calls that are told not to think are the ones that sort and
-	// name in a few words, and this is one of them.
+	// NO EFFORT AND NO CEILING ARE PUT ON THE REQUEST. Both used to be here and
+	// both were this harness deciding how somebody else's model answers a
+	// question; the clips above are what keep this call small, and the prompt is
+	// what keeps the answer to three words.
 	response, named, callErr := a.callRole(ctx, roles.RoleTaskName, floor,
 		[]ai.Message{
 			textMessage("system", taskNameSystem),
 			textMessage("user", subject+"\n\n"+taskNamePrompt),
-		},
-		ai.WithMaxTokens(taskNameTokens))
+		})
 	if callErr != nil || response == nil {
 		return ""
 	}

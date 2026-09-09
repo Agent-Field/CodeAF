@@ -121,11 +121,6 @@ const (
 	// than the row it replaced.
 	consolidateInputRunes = 20000
 
-	// consolidateTokens is the ceiling on the plan. Eight operations carrying a
-	// title and a line of text each is roughly twelve hundred tokens of JSON,
-	// and this is that with room to finish the object.
-	consolidateTokens = 2000
-
 	// consolidateWindow bounds the whole pass. It sits inside the tick's own
 	// [standing.TickWindow], so a provider that never answers costs one pass and
 	// not the reminders the pass had not reached yet.
@@ -365,8 +360,7 @@ func consolidateAsk(ctx context.Context, client Completer, model string, batch [
 			textMessage("system", consolidatePrompt),
 			textMessage("user", consolidateListing(batch)),
 		},
-		ai.WithModel(model),
-		ai.WithMaxTokens(consolidateTokens))
+		ai.WithModel(model))
 	if err != nil {
 		return consolidatePlan{}, 0, err
 	}

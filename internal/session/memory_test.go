@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/reflex"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -806,7 +805,7 @@ func TestTheReflexCallsAreOnTheSessionsBill(t *testing.T) {
 	}
 }
 
-func cappedReflexResponse(tokens int) *ai.Response {
+func emptyReflexResponse(tokens int) *ai.Response {
 	response := textResponse(" \n")
 	response.Choices[0].FinishReason = "length"
 	response.Usage = &ai.Usage{
@@ -815,17 +814,14 @@ func cappedReflexResponse(tokens int) *ai.Response {
 	return response
 }
 
-func TestAnEmptyReflexRetriesFallsBackAndLeavesOneHonestTrail(t *testing.T) {
+func TestAnEmptyReflexFallsBackAndLeavesOneHonestTrail(t *testing.T) {
 	const primary = "test/reflex-silent"
 	const low = "test/low"
 	sessionPath := filepath.Join(t.TempDir(), "session.jsonl")
 	ledgerPath := filepath.Join(t.TempDir(), UsageLedgerName)
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return cappedReflexResponse(reflex.AnswerTokens), nil
-		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return cappedReflexResponse(reflex.ThinkingAnswerTokens), nil
+			return emptyReflexResponse(200), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) {
 			return textResponse(`{"inject":["memory-id"],"cmd":null}`), nil
@@ -845,7 +841,7 @@ func TestAnEmptyReflexRetriesFallsBackAndLeavesOneHonestTrail(t *testing.T) {
 	memory := remember(t, brain, "the useful memory", "the useful remembered text")
 	// The scripted answer needs the store's real id, which is minted only after
 	// the agent exists.
-	completer.steps[2] = func(context.Context, []ai.Message) (*ai.Response, error) {
+	completer.steps[1] = func(context.Context, []ai.Message) (*ai.Response, error) {
 		return textResponse(`{"inject":["` + memory.ID + `"],"cmd":null}`), nil
 	}
 
@@ -878,47 +874,48 @@ func TestAnEmptyReflexRetriesFallsBackAndLeavesOneHonestTrail(t *testing.T) {
 	models := append([]string(nil), completer.models...)
 	ceilings := append([]int(nil), completer.max...)
 	completer.mu.Unlock()
-	if got := strings.Join(models, ","); got != primary+","+primary+","+low+","+low {
-		t.Fatalf("models = %s, want the primary twice and then the low tier", got)
+	if got := strings.Join(models, ","); got != primary+","+low+","+low {
+		t.Fatalf("models = %s, want the primary once and then the low tier", got)
 	}
-	if ceilings[0] != reflex.AnswerTokens || ceilings[1] != reflex.ThinkingAnswerTokens {
-		t.Fatalf("ceilings = %v, want %d then %d", ceilings, reflex.AnswerTokens, reflex.ThinkingAnswerTokens)
+	for call, ceiling := range ceilings {
+		if ceiling != 0 {
+			t.Fatalf("call %d carried max_tokens = %d", call+1, ceiling)
+		}
 	}
 
 	used := agent.Usage()
-	if used.EmptyReflex != 2 || used.Calls != 4 {
-		t.Fatalf("usage = %+v, want four reflex calls and two empty answers", used)
+	if used.EmptyReflex != 1 || used.Calls != 3 {
+		t.Fatalf("usage = %+v, want three reflex calls and one empty answer", used)
 	}
 	if err := agent.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
 	lines := journalUsageLines(t, sessionPath)
-	if len(lines) != 4 {
+	if len(lines) != 3 {
 		t.Fatalf("journal has %d usage rows, want one per paid request", len(lines))
 	}
 	for index, line := range lines {
 		if !line.Aux || line.Role != string(roles.RoleReflex) {
 			t.Fatalf("row %d = %+v, want an auxiliary reflex row", index+1, line)
 		}
-		if line.Empty != (index < 2) {
-			t.Fatalf("row %d empty = %v, want %v", index+1, line.Empty, index < 2)
+		if line.Empty != (index == 0) {
+			t.Fatalf("row %d empty = %v, want %v", index+1, line.Empty, index == 0)
 		}
 	}
 	replayed, err := replaySessionFile(sessionPath)
 	if err != nil {
 		t.Fatalf("replay: %v", err)
 	}
-	if replayed.usage.EmptyReflex != 2 {
-		t.Fatalf("replayed usage = %+v, want both empty reflex answers", replayed.usage)
+	if replayed.usage.EmptyReflex != 1 {
+		t.Fatalf("replayed usage = %+v, want the empty reflex answer", replayed.usage)
 	}
 	FlushUsage()
 	ledger, err := ReadUsage(ledgerPath, time.Time{})
 	if err != nil {
 		t.Fatalf("read usage ledger: %v", err)
 	}
-	if len(ledger) != 4 || !ledger[0].Empty || !ledger[1].Empty ||
-		ledger[2].Empty || ledger[3].Empty {
-		t.Fatalf("usage ledger = %+v, want only the two wasted requests marked empty", ledger)
+	if len(ledger) != 3 || !ledger[0].Empty || ledger[1].Empty || ledger[2].Empty {
+		t.Fatalf("usage ledger = %+v, want only the wasted request marked empty", ledger)
 	}
 }
 

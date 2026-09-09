@@ -83,11 +83,6 @@ const (
 	// because every lane is a whole child agent with its own context.
 	orchestrateLanes = 4
 
-	// The planner's own budget. It writes an amendment, not a page, and the
-	// answer to most completions is `{}` — what the tokens are actually for is
-	// a reasoning model's thinking.
-	orchestratePlanTokens = 4000
-
 	// A node's digest: what its dependents and the planner see instead of its
 	// work. Both bounds are here because BOTH are the point — the planner is
 	// the one big-context call in the system and every digest rides in it.
@@ -716,8 +711,7 @@ func (p *orchestratePlanner) ask(ctx context.Context, messages []ai.Message) (st
 		// be right rather than soon (internal/lane's roles.go).
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleDesign),
 		messages,
-		ai.WithModel(p.call.model),
-		ai.WithMaxTokens(orchestratePlanTokens))
+		ai.WithModel(p.call.model))
 	if err != nil {
 		return "", err
 	}

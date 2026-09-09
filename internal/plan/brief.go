@@ -9,7 +9,6 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/shaped"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -516,11 +515,11 @@ func writeBrief(ctx context.Context, client Completer, shared string, node Node,
 	}
 
 	system := briefPrompt
-	// A brief is a few paragraphs of instruction for one worker; it travels
-	// under the same ceiling as every other planning call, because left unset
-	// the ceiling is the leaf completion reserve and a model that loops runs
-	// to it (see structuredReplyTokens).
-	options := []ai.Option{ai.WithMaxTokens(shaped.ObjectRoom())}
+	// NO CEILING TRAVELS. A brief used to go out under the same derived room as
+	// every other planning call; that room is no longer a request this harness
+	// makes of anybody's model (internal/shaped), and a brief is prose the
+	// prompt already bounds.
+	var options []ai.Option
 	if Criterion {
 		system = briefWithCriterion
 		options = append(options, ai.WithSchema(briefSchema))

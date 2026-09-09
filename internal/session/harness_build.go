@@ -98,34 +98,20 @@ const (
 	// then is a whole attempt spent re-reading the guide.
 	harnessDesignRetries = 2
 
-	// The two completion budgets, from the rig that measured them. The design
-	// turn writes a whole page; the review turn writes findings and a PATCH and
-	// never re-emits the page, but on a reasoning model its thinking comes out of
-	// the same budget — a critic that cannot afford its own answer is the most
-	// expensive kind of nothing, because the design is already paid for.
-	//
-	// THE DESIGN BUDGET IS THE CRITIC'S LESSON, LEARNED TWICE. 8000 was measured
-	// against a model that answers straight, and the page it has to write is only
-	// about fifteen hundred tokens. But the guide's own PART TWO orders the pair
-	// table walked "PAIR BY PAIR, IN WRITING, BEFORE YOU DRAW A SINGLE EDGE" —
-	// that is a request for long thinking, and on a reasoning model the thinking
-	// is metered from this same number. Ceiling reached, a reasoning model comes
-	// back EMPTY: the content is null, the whole completion went into the
-	// thinking, and the attempt is spent for nothing. The rig has named that
-	// failure for a while (cmd/harness-design's openrouter.go) and it was
-	// measured again here — deepseek-v4-flash, rendered against this belt,
-	// answering with nothing twice in three attempts.
-	//
-	// HEADROOM IS NOT THE WHOLE ANSWER, and the number should not be raised
-	// again without measuring. A model determined to deliberate will use whatever
-	// it is given, and the room bought here is also latency: a design turn is
-	// bounded by the session's own providerTimeout, so a budget large enough to
-	// fund an unbounded deliberation buys a transport timeout instead of a page.
-	// The other half of the fix is in the guide, which now says plainly that the
-	// thinking and the answer come out of one budget and the derivation belongs
-	// IN the reply.
-	harnessDesignTokens = 16000
-	harnessReviewTokens = 10000
+	// THERE ARE NO COMPLETION BUDGETS HERE ANY MORE, and the two that were are
+	// the argument against ever writing a third. The design turn had 8000,
+	// measured against a model that answers straight, for a page of about
+	// fifteen hundred tokens. Then the guide's own PART TWO began ordering the
+	// pair table walked "PAIR BY PAIR, IN WRITING, BEFORE YOU DRAW A SINGLE
+	// EDGE" — a request for long thinking, metered on a reasoning model out of
+	// that same number — and the ceiling was reached with content null, the whole
+	// completion spent thinking, the attempt spent for nothing: measured on
+	// deepseek-v4-flash, twice in three attempts. It was raised to 16000, with a
+	// note saying headroom is not the whole answer and the number should not be
+	// raised again without measuring. It is not raised again; it is gone. What
+	// bounds a design turn is [harnessDesignWindow] and the session's own
+	// provider timeout, and the other half of the old fix stands: the guide says
+	// plainly that the derivation belongs IN the reply.
 
 	// harnessToolAbout bounds one tool's line in the belt the guide is shown. The
 	// wire descriptions are paragraphs — they are written for a model deciding
@@ -676,7 +662,7 @@ func (a *Agent) writeHarness(ctx context.Context, history []ai.Message, reviewer
 // in the chat, and the seat is the room the designer thinks into and the journal
 // its caller writes this attempt's outcome to ([designSeat]).
 func (a *Agent) designHarnessOnce(ctx context.Context, history []ai.Message, model, goal string, attempt int, seat designSeat) (harnessDesign, subharness.Harness, string, error) {
-	data, raw, err := a.harnessJSON(ctx, history, model, harnessDesignTokens, harnessProgressCall{seat: seat, goal: goal, phase: "designing", attempt: attempt, attempts: harnessDesignRetries + 1})
+	data, raw, err := a.harnessJSON(ctx, history, model, harnessProgressCall{seat: seat, goal: goal, phase: "designing", attempt: attempt, attempts: harnessDesignRetries + 1})
 	if err != nil {
 		return harnessDesign{}, subharness.Harness{}, raw, err
 	}
@@ -721,7 +707,7 @@ func (a *Agent) reviewHarnessOnce(ctx context.Context, goal string, draft harnes
 	// that a critic's JSON did not parse would be the machinery talking about
 	// itself. The event still goes, because the model call finished
 	// ([designSeat.noted] says why that matters).
-	data, _, err := a.harnessJSON(ctx, history, model, harnessReviewTokens, harnessProgressCall{seat: seat, goal: goal, phase: "reviewing", attempt: 1, attempts: 1})
+	data, _, err := a.harnessJSON(ctx, history, model, harnessProgressCall{seat: seat, goal: goal, phase: "reviewing", attempt: 1, attempts: 1})
 	if err != nil {
 		return harnessAccepted{}, false
 	}
@@ -786,8 +772,8 @@ func harnessCues(draft harnessDesign, revised harnessRevision) []string {
 // a reply that never finished. A repair turn cannot put back text a model never
 // emitted, so a cut-off reply skips it and is answered with the truth instead
 // (see below).
-func (a *Agent) harnessJSON(ctx context.Context, history []ai.Message, model string, maxTokens int, progress harnessProgressCall) ([]byte, string, error) {
-	raw, cut, err := a.harnessComplete(ctx, history, model, maxTokens, progress)
+func (a *Agent) harnessJSON(ctx context.Context, history []ai.Message, model string, progress harnessProgressCall) ([]byte, string, error) {
+	raw, cut, err := a.harnessComplete(ctx, history, model, progress)
 	if err != nil {
 		return nil, "", err
 	}
@@ -812,7 +798,7 @@ func (a *Agent) harnessJSON(ctx context.Context, history []ai.Message, model str
 	// answer, which meant the ceiling systematically punished exactly the
 	// complex designs a person asks for on purpose.
 	if cut {
-		if data, whole, ok := a.harnessContinue(ctx, history, raw, model, maxTokens, progress); ok {
+		if data, whole, ok := a.harnessContinue(ctx, history, raw, model, progress); ok {
 			return data, whole, nil
 		}
 		return nil, raw, errors.New(harnessRanOut(raw))
@@ -829,7 +815,7 @@ func (a *Agent) harnessJSON(ctx context.Context, history []ai.Message, model str
 			"\n\nReply with ONLY the corrected JSON — the same content, nothing added, nothing dropped, no prose, no code fence. "+
 			"JSON delimiters and syntax are ASCII: every key and string value is wrapped in \" (U+0022). Prose inside a string value stays exactly as it is."),
 	}
-	second, cut, err := a.harnessComplete(ctx, repair, model, maxTokens, progress)
+	second, cut, err := a.harnessComplete(ctx, repair, model, progress)
 	if err != nil {
 		return nil, raw, err
 	}
@@ -865,7 +851,7 @@ func (a *Agent) harnessJSON(ctx context.Context, history []ai.Message, model str
 // A REPLY THAT NEVER ARRIVED CANNOT BE CONTINUED. The empty case is the
 // reasoning model that spent its whole budget thinking — there is no partial to
 // hand back, and "continue" from nothing is just the same request again.
-func (a *Agent) harnessContinue(ctx context.Context, history []ai.Message, raw, model string, maxTokens int, progress harnessProgressCall) ([]byte, string, bool) {
+func (a *Agent) harnessContinue(ctx context.Context, history []ai.Message, raw, model string, progress harnessProgressCall) ([]byte, string, bool) {
 	if strings.TrimSpace(raw) == "" {
 		return nil, "", false
 	}
@@ -874,7 +860,7 @@ func (a *Agent) harnessContinue(ctx context.Context, history []ai.Message, raw, 
 		textMessage("user", "Your reply was CUT OFF by the transport mid-object — it was not rejected. "+
 			"Continue it from the exact character it stopped at: reply with ONLY the remaining characters of that same JSON object, "+
 			"no repetition of what you already wrote, no prose, no code fence, until the object is closed."))
-	rest, cut, err := a.harnessComplete(ctx, asked, model, maxTokens, progress)
+	rest, cut, err := a.harnessComplete(ctx, asked, model, progress)
 	// The call finished and had nothing to say to a person; the room's catch-up
 	// still has to be told the step is over ([designSeat.noted]).
 	progress.seat.noted("")
@@ -1006,7 +992,7 @@ func harnessPartialHint(raw string) string {
 	return "thinking"
 }
 
-func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, model string, maxTokens int, call harnessProgressCall) (string, bool, error) {
+func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, model string, call harnessProgressCall) (string, bool, error) {
 	progress := &harnessProgress{a: a, call: call, last: time.Now()}
 	streamCtx := provider.WithStreamObserver(ctx, func(event provider.StreamEvent) {
 		if event.Kind == provider.StreamDelta || event.Kind == provider.StreamReasoning {
@@ -1043,8 +1029,7 @@ func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, mode
 	response, err := a.client.CompleteWithMessages(
 		provider.WithRole(streamCtx, lane.RoleDesign),
 		messages,
-		ai.WithModel(model),
-		ai.WithMaxTokens(maxTokens))
+		ai.WithModel(model))
 	close(done)
 	if err != nil {
 		call.seat.broke(err)
