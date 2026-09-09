@@ -152,11 +152,10 @@ the cursor, and a second click on the row you are already on walks into it when 
 folder. A click in the left-hand column walks back out. A click on the breadcrumb goes back
 to that level.
 
-**A click in the right-hand column moves the selection there** when what it is showing is a
-folder's contents: the columns walk into that folder and the cursor lands on the row you
-clicked, so a folder is one more click from being opened and a file is previewed at once.
-It is the middle column's own rule, one column to the right, so there is one click scheme on
-the sheet and no double-click timing anywhere. When the right-hand column is showing a
+**A click in the right-hand column acts on that row** when it is showing a folder's
+contents. A directory opens in one click. A file becomes the current selection and its
+source, prose or picture is previewed at once; neither gesture adds anything until you use
+the action row. There is no double-click timing anywhere. When the right-hand column is showing a
 **file** — source, prose, a picture — there is nothing there to select and a click does
 nothing: it is a pane you read, and `shift` plus an arrow or the wheel is how you read past
 the bottom of it.

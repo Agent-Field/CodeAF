@@ -653,15 +653,15 @@ func TestAPressInAFilePreviewMovesNothing(t *testing.T) {
 	}
 }
 
-// A PRESS IN A FOLDER'S PREVIEW MOVES THE SELECTION ONTO WHAT IT IS ON, which is
+// A PRESS IN A FOLDER'S PREVIEW OPENS THE DIRECTORY IT IS ON, which is
 // the whole of the dead-column defect this wave was opened for: the pane drew a
 // directory's contents in rows that looked exactly like the column beside them
 // and answered to no pointer at all.
 //
-// The rule is the middle column's own rule one column to the right — the press
-// selects, and pressing what is now the cursor row opens it — so there is one
-// click scheme on the sheet and no double-click timing anywhere.
-func TestAPressInAFolderPreviewSelectsTheRowItIsOn(t *testing.T) {
+// The preview row is already a fully specified navigation target, so one press
+// drills down. A file row instead becomes the selected preview subject and
+// neither gesture attaches anything.
+func TestAPressInAFolderPreviewOpensTheDirectoryItIsOn(t *testing.T) {
 	a, _, root := mixedLab(t)
 	// Something for the pane to LIST. A directory row whose preview is empty has
 	// no rows to press, which is a different fact and is tested elsewhere.
@@ -689,11 +689,8 @@ func TestAPressInAFolderPreviewSelectsTheRowItIsOn(t *testing.T) {
 		t.Fatalf("the pointer over the first preview row lit %d", a.folder.paneHot)
 	}
 	drive(t, a, tea.MouseClickMsg{X: chooserX(t, a, a.folder.geom.pane.from+1), Y: body, Button: tea.MouseLeft})
-	if a.folder.cols.dir != filepath.Join(root, "here", "inner") {
+	if a.folder.cols.dir != filepath.Join(root, "here", "inner", want) {
 		t.Fatalf("the press left the columns on %s", a.folder.cols.dir)
-	}
-	if got, _ := a.folder.here(); got != filepath.Join(root, "here", "inner", want) {
-		t.Fatalf("the press seated the cursor on %q, want %q", got, want)
 	}
 	// AND IT CHOSE NOTHING. Navigating and choosing are two acts with two
 	// gestures, in the preview exactly as in the columns.

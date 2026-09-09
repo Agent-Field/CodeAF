@@ -353,6 +353,13 @@ func TestAFolderTooFullToListSaysHowManyAreNotShown(t *testing.T) {
 	}
 }
 
+func TestAnEmptyFolderPreviewSaysItIsEmpty(t *testing.T) {
+	pv := readOne(t, t.TempDir(), false)
+	if pv.Kind != previewFolder || len(pv.Entries) != 0 || pv.Note != folderLeafWord {
+		t.Fatalf("empty folder preview = %+v, want the browser's empty-folder word", pv)
+	}
+}
+
 func TestAFolderThatCannotBeReadIsNotAFolderThatIsEmpty(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root can read anything")

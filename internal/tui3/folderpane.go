@@ -245,8 +245,15 @@ func (f *folderPick) paneRows(pal palette, st *tokens.Styler, width, rows, hot i
 // a legal name on every filesystem this program runs on, and joining the
 // scrubbed label back onto a directory would open a path nobody has.
 func (f *folderPick) paneEntry(row int) (string, bool) {
+	entry, ok := f.paneEntryInfo(row)
+	return entry.Raw, ok
+}
+
+// paneEntryInfo keeps the filesystem identity and kind together for the press
+// that acts on a painted preview row. The label remains display-only.
+func (f *folderPick) paneEntryInfo(row int) (previewEntry, bool) {
 	if f.geom.paneDir == "" || row < 0 || row >= f.geom.paneBody {
-		return "", false
+		return previewEntry{}, false
 	}
 	// AND THE PREVIEW BEING HELD NOW MUST BE THE ONE THAT WAS DRAWN. A preview
 	// arrives off the loop and the row map is written by the paint, so there is a
@@ -256,17 +263,17 @@ func (f *folderPick) paneEntry(row int) (string, bool) {
 	// is the same identity every cache on this path is keyed by
 	// (contextpreview.go's [previewKey]).
 	if f.preview.Kind != previewFolder || f.preview.Key.Path != f.geom.paneDir {
-		return "", false
+		return previewEntry{}, false
 	}
 	at := f.geom.paneFrom + row
 	if at < 0 || at >= len(f.preview.Entries) {
-		return "", false
+		return previewEntry{}, false
 	}
-	name := f.preview.Entries[at].Raw
-	if name == "" {
-		return "", false
+	entry := f.preview.Entries[at]
+	if entry.Raw == "" {
+		return previewEntry{}, false
 	}
-	return name, true
+	return entry, true
 }
 
 // paneStep moves the preview by whole rows. The ceiling belongs to the draw

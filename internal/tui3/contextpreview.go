@@ -461,7 +461,16 @@ func loadFolderPreview(ctx context.Context, key previewKey, hidden bool) filePre
 		rows[at].Raw = rows[at].Name
 		rows[at].Name = drawableLine(rows[at].Name)
 	}
-	return filePreview{Key: key, Kind: previewFolder, Entries: rows, Shown: shown}
+	note := ""
+	if shown == 0 {
+		// THE TWO COLUMNS USE THE SAME WORD FOR THE SAME FACT. An empty folder is
+		// still useful context, but a blank preview looked like a read that had
+		// not finished and left most of the modal unexplained. folderLeafWord is
+		// the browser's established sentence and keeps that distinction from a
+		// refused read without inventing a second spelling here.
+		note = folderLeafWord
+	}
+	return filePreview{Key: key, Kind: previewFolder, Entries: rows, Shown: shown, Note: note}
 }
 
 // ── a picture ───────────────────────────────────────────────────────────────

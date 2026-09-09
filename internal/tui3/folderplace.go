@@ -440,14 +440,10 @@ const folderGoneWord = "no such folder · "
 // second opens, which is the gesture every file browser has taught, without this
 // surface having to measure the gap between two clicks.
 //
-// AND A PRESS IN THE PREVIEW COLUMN MOVES THE SELECTION THERE, when the preview
-// is a folder listing. That column used to consume presses and do nothing at
-// all — a list of directory names, drawn exactly like the column beside it,
-// answering to no pointer — which is the defect this wave exists for. The rule
-// is the SAME rule the middle column keeps, one column to the right: the press
-// selects, and a second press on what is now the cursor row opens it. So the
-// scheme is one scheme in both columns and there is no double-click timing
-// anywhere on this sheet.
+// AND A PRESS IN THE PREVIEW COLUMN ACTS ON THE ROW THERE, when the preview is
+// a folder listing. That column used to consume presses and do nothing at all.
+// A directory is already an explicit navigation target and opens in one press;
+// a file becomes the current selected preview subject. Neither act attaches it.
 func (a *app) folderRowPress(x, row int) (tea.Cmd, bool) {
 	if !a.folder.open {
 		return nil, false
@@ -514,11 +510,20 @@ func (a *app) folderRowPress(x, row int) (tea.Cmd, bool) {
 		//
 		// A file's source, a picture and every refusal are read-only over here and
 		// take no press: they have no rows to select.
-		name, ok := a.folder.paneEntry(at)
+		entry, ok := a.folder.paneEntryInfo(at)
 		if !ok {
 			return nil, true
 		}
-		a.folder.openAt(a.folder.geom.paneDir, name)
+		if entry.Dir {
+			// A directory in the preview is already the explicit navigation target.
+			// Opening it in one press is the cross-column contract: a second press
+			// should not be required merely because the row started one pane right.
+			a.folder.openAt(filepath.Join(a.folder.geom.paneDir, entry.Raw), "")
+		} else {
+			// A file becomes the current selection so its readable preview replaces
+			// the directory listing; attaching remains a separate explicit action.
+			a.folder.openAt(a.folder.geom.paneDir, entry.Raw)
+		}
 		a.touch()
 		return a.folderWork(), true
 	}
