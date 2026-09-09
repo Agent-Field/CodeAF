@@ -372,6 +372,12 @@ const (
 	// that it had failed.
 	checkpointResultBytes = 400
 
+	// Small write/edit inputs travel whole beside their result, because a
+	// receipt alone cannot establish which bytes were submitted (#672). Larger
+	// inputs are explicitly omitted, not cut into a misleading partial JSON
+	// object. These entries compete within the existing whole-digest budget.
+	checkpointWriteArgumentBytes = 4 * checkpointResultBytes
+
 	// checkpointSaidBytes is how much of the turn's last words the reader is
 	// shown. It is the one part of the digest that is the model's own account of
 	// where it has got to, and a paragraph of it is the whole of what a reader
@@ -395,14 +401,14 @@ const (
 // answer about the emptiness.
 const (
 	checkpointDigestAsked = "WHAT WAS ASKED"
-	checkpointDigestDone  = "WHAT HAS BEEN DONE SO FAR, ONE LINE PER STEP"
+	checkpointDigestDone  = "TOOLS CALLED, ONE LINE PER STEP"
 	// checkpointDigestFound heads the results, and its heading SAYS THE ORDER
 	// because the order is not the one a reader would assume. The newest call is
 	// printed first, so a reader that runs out of attention has spent it on the
 	// evidence in front of the turn rather than on the evidence behind it — and
 	// the same order is what the fitting drops from, oldest end first.
 	checkpointDigestFound   = "WHAT CAME BACK, NEWEST FIRST"
-	checkpointDigestWritten = "WHAT HAS BEEN WRITTEN OR CHANGED"
+	checkpointDigestWritten = "FILES TARGETED BY WRITE OR EDIT (CHECK THE RESULTS)"
 	// checkpointDigestMoved heads ONE LINE: when the work last changed, and what
 	// has come back since (novelty.go's [workClock]). It is the fact a reader of
 	// a ledger cannot get from the ledger — ninety lines of activity look the
@@ -635,7 +641,12 @@ const checkpointHandoffWriteAsk = "[write the handoff] The work above is being h
 // AND IT NAMES NOTHING ABOUT THE KIND OF WORK, by the law [checkpointSketchAsk]
 // is held to.
 const checkpointRemainsAsk = "[still asked] Above is what the person asked for and what has been done towards it. " +
-	"The model working on it has just stopped. In one line, say what of the ASK is still not done. " +
+	"The model working on it has just stopped. This is a bounded account, not a fresh inspection of the files. " +
+	"Submitted write/edit arguments show intended changes; their tool results say whether they succeeded. " +
+	"Tool failures and exact data mismatches outweigh an assistant claim of success. " +
+	"Abbreviated or omitted content is unknown, not evidence of a defect. " +
+	"Ground any claimed defect in the evidence shown; if a necessary check is missing, name that check instead of inventing its result. " +
+	"In one line, say what of the ASK is still not done. " +
 	"If everything they asked for is done, answer with the single line " + checkpointNothingLeft +
 	" and write nothing else at all. Otherwise write that one line and nothing else: no preamble, " +
 	"no list, no question."
@@ -729,9 +740,10 @@ func checkpointCarriedOnNote(observed []string) string {
 // next request, and anything reading a request's last message to tell the ask
 // apart from the answer read the continuation as the question. Two lanes, two
 // markers.
-const checkpointCarryOnLead = "[carry on] You stopped, but what was asked is not finished. " +
-	"Somebody reading the work against the request says this is what is left. " +
-	"Carry on with it, and do not summarise what you have already done:\n"
+const checkpointCarryOnLead = "[carry on] A reader of a bounded account of the work raised the observation below. " +
+	"Check it against the actual current work and the person's request before changing anything. " +
+	"Fix any confirmed gap. If the observation is mistaken or already satisfied, preserve the correct work, " +
+	"explain the evidence briefly, and finish; do not invent a change to satisfy the observation.\n"
 
 // ── the meter ───────────────────────────────────────────────────────────────
 
@@ -2166,6 +2178,7 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 	// The line each call wrote, by id, so its result can be printed under the same
 	// words the ledger used and a reader can match the two.
 	calls := make(map[string]string)
+	writeArguments := make(map[string]string)
 	for _, message := range messages {
 		for _, call := range message.ToolCalls {
 			name := strings.TrimSpace(call.Function.Name)
@@ -2181,6 +2194,16 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 			if id := strings.TrimSpace(call.ID); id != "" {
 				calls[id] = line
 				at[id] = moved.steps
+				if checkpointWriters[name] {
+					// Keep the raw object, including append/edit options and
+					// JSON types. A payload is an attempted input until its
+					// matching result arrives; it is never a success receipt.
+					if len(call.Function.Arguments) <= checkpointWriteArgumentBytes {
+						writeArguments[id] = "\nsubmitted arguments: " + call.Function.Arguments
+					} else {
+						writeArguments[id] = fmt.Sprintf("\nsubmitted arguments omitted (%d bytes); inspect the current file before judging its contents", len(call.Function.Arguments))
+					}
+				}
 			}
 			if !checkpointWriters[name] {
 				continue
@@ -2216,7 +2239,7 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 			moved.read(fresh, weighed)
 		}
 		if tail := checkpointResultTail(came.String()); tail != "" {
-			results = append(results, line+checkpointResultArrow+tail)
+			results = append(results, line+checkpointResultArrow+tail+writeArguments[id])
 		}
 	}
 	return ledger, written, results, moved
@@ -3097,8 +3120,10 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 	ctx, done := context.WithTimeout(ctx, checkpointSketchWindow)
 	defer done()
 	messages := []ai.Message{textMessage("user", page+"\n\n"+checkpointRemainsAsk)}
-	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages,
-		ai.WithMaxTokens(checkpointSketchTokens))
+	// A short verdict still needs room to reason about the evidence. The
+	// sketch's 300-token generation ceiling cut off a real comparison (#672).
+	// Keep the existing wall deadline and provider/operator generation defaults.
+	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages)
 	if err != nil || response == nil {
 		return readerLine{unreachable: true}
 	}

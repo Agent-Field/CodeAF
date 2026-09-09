@@ -828,7 +828,10 @@ ten-hour request ended with hours of it never touched.
 **So at the end of a reply that has already run long enough to be looked at once — the first
 of the three points above — the same second reader is asked one question**: is what you asked
 for finished? It is shown the same short account of the work —
-your message, the steps, what came back — and it answers either the single line
+your message, the steps, what came back, and bounded write/edit inputs paired with
+their results. Inputs show what was attempted; the result says whether it worked.
+Large inputs are marked as omitted, so missing detail is not evidence of an error.
+It answers either the single line
 `NOTHING LEFT TO DO`, or one line saying what of your request is still not done.
 
 - **Finished** — the reply ends, exactly as it always did. Nothing is said and nothing is
@@ -839,8 +842,10 @@ your message, the steps, what came back — and it answers either the single lin
   the ask is not finished · carrying on rather than stopping here
   ```
 
-  and the model is handed the reader's one line as the thing still to do. It picks up from
-  where it stopped rather than starting again.
+  and the model checks the reader's observation against the actual current work and
+  your request before making a change. It repairs a confirmed gap; if the observation
+  was mistaken or already satisfied, it preserves the correct work and explains the
+  evidence briefly. This is a model-based check, not a guarantee of correctness.
 
 **A reply that ends by asking you something is never carried on.** If the last thing it said
 finishes with a question mark, it is waiting on you, and carrying it on would be aforge
