@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -56,28 +57,37 @@ func TestATurnThatWritesPastTheAllowanceIsMovedToATask(t *testing.T) {
 		t.Fatalf("the turn did not end on its own line; the transcript ends with a %s saying %q",
 			last.Role, messageText(last))
 	}
-	// AND THE ALLOWANCE WAS A SMALL EDIT AND NOT A SESSION. The script writes one
-	// file per round; what is on the disk when the turn ends is the allowance and
-	// the round that crossed it, never the twelve the script would have run.
+	// AND THE ALLOWANCE WAS A SMALL EDIT AND NOT A SESSION. The script makes one
+	// write call per round; what is on the disk when the turn ends is the
+	// allowance and the round that crossed it, never the twelve the script would
+	// have run.
 	wrote := 0
 	for round := range 12 {
 		if _, err := os.Stat(filepath.Join(workspace, fmt.Sprintf("file%d.txt", round))); err == nil {
 			wrote++
 		}
 	}
-	if wrote > writeAllowanceFiles+1 {
-		t.Fatalf("%d files were written inline, want the allowance (%d) and the one that crossed it",
-			wrote, writeAllowanceFiles)
+	if wrote > writeAllowanceCalls+1 {
+		t.Fatalf("%d writes landed inline, want the allowance (%d) and the one that crossed it",
+			wrote, writeAllowanceCalls)
 	}
 }
 
 // THE CALLS THREE HANDS LAND ARE THE CALLER'S OWN WRITES. A hand writes in the
 // caller's directory by construction, so crossing the same unchanged allowance
 // opens the same one road and says the same one line.
+//
+// EACH HAND MAKES TWO WRITES, so the six calls that come home are past the
+// allowance on the count that is left — and what is asserted is the DELIVERED
+// FILES, on the disk, rather than any bookkeeping the seam happens to keep.
 func TestTheWritesThreeHandsLandAreTheCallersAndMoveItToOneTask(t *testing.T) {
 	const asked = "change the three independent settings and finish the integration"
-	paths := []string{"one.txt", "two.txt", "three.txt"}
-	completer := newForkCompleter(len(paths))
+	parts := [][]string{
+		{"one-setting.txt", "one-note.txt"},
+		{"two-setting.txt", "two-note.txt"},
+		{"three-setting.txt", "three-note.txt"},
+	}
+	completer := newForkCompleter(len(parts))
 	var callerMeter *writeMeter
 	handsMayWrite := make(chan struct{})
 	releaseHands := func() {
@@ -91,9 +101,9 @@ func TestTheWritesThreeHandsLandAreTheCallersAndMoveItToOneTask(t *testing.T) {
 	completer.caller = []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
 			return toolResponse("fork-three", "fork", forkCall(
-				forkPartJSON("the first setting", paths[0]),
-				forkPartJSON("the second setting", paths[1]),
-				forkPartJSON("the third setting", paths[2]),
+				forkPartJSON("the first setting", parts[0]...),
+				forkPartJSON("the second setting", parts[1]...),
+				forkPartJSON("the third setting", parts[2]...),
 			)), nil
 		},
 	}
@@ -101,10 +111,13 @@ func TestTheWritesThreeHandsLandAreTheCallersAndMoveItToOneTask(t *testing.T) {
 		callerMeter = agent.writeMeterNow()
 	})
 	completer.hand = func(index, turn int, _ []ai.Message) (*ai.Response, error) {
-		if turn == 1 {
-			<-handsMayWrite
-			return toolResponse(fmt.Sprintf("hand-%d-write", index), "write",
-				fmt.Sprintf(`{"path":%q,"content":%q}`, paths[index-1], fmt.Sprintf("hand %d\n", index))), nil
+		if turn <= 2 {
+			if turn == 1 {
+				<-handsMayWrite
+			}
+			path := parts[index-1][turn-1]
+			return toolResponse(fmt.Sprintf("hand-%d-write-%d", index, turn), "write",
+				fmt.Sprintf(`{"path":%q,"content":%q}`, path, fmt.Sprintf("hand %d\n", index))), nil
 		}
 		return textResponse(fmt.Sprintf("hand %d finished its setting", index)), nil
 	}
@@ -122,15 +135,25 @@ func TestTheWritesThreeHandsLandAreTheCallersAndMoveItToOneTask(t *testing.T) {
 	events := collect(t, mustSubmit(t, agent, asked))
 	ran.await(t)
 
-	calls, files := writeMeterSnapshot(callerMeter)
-	if calls != len(paths) || len(files) != len(paths) {
-		t.Fatalf("the caller's meter has %d calls over %d files, want %d of each: %v",
-			calls, len(files), len(paths), files)
+	// SIX CALLS CAME HOME ON THE CALLER, which is one more than the allowance and
+	// is the reason the road below opened at all.
+	wanted := 0
+	for _, part := range parts {
+		wanted += len(part)
 	}
-	for _, path := range paths {
-		absolute := filepath.Join(workspace, path)
-		if !files[absolute] {
-			t.Errorf("the caller's meter is missing %s: %v", absolute, files)
+	if calls := writeMeterCalls(callerMeter); calls != wanted {
+		t.Fatalf("the caller's meter has %d calls, want the %d its hands landed", calls, wanted)
+	}
+	if wanted <= writeAllowanceCalls {
+		t.Fatalf("the fixture lands %d calls, which no longer crosses the allowance of %d",
+			wanted, writeAllowanceCalls)
+	}
+	// AND EVERY ONE OF THEM IS REALLY ON THE DISK, in the caller's own directory.
+	for _, part := range parts {
+		for _, path := range part {
+			if _, err := os.Stat(filepath.Join(workspace, path)); err != nil {
+				t.Errorf("a hand's write never reached the caller's directory: %v", err)
+			}
 		}
 	}
 	if !saidSomething(noticeTexts(events), writeSeamNote) {
@@ -148,6 +171,86 @@ func TestTheWritesThreeHandsLandAreTheCallersAndMoveItToOneTask(t *testing.T) {
 	}
 	if count := admitted(graph); count != 1 {
 		t.Fatalf("%d tasks were admitted, want exactly one", count)
+	}
+}
+
+// ── the two shapes the one count tells apart ────────────────────────────────
+
+// A SCRIPT, THE FILE IT NEEDS, AND THEN RUNNING IT, FINISHES HERE.
+//
+// This is the ordinary small piece of work the allowance exists to leave alone,
+// and it is the shape that used to be moved for its BREADTH alone: three writes
+// land on three different paths, and the round after them runs what was written.
+// Nothing about it is a grind — the turn reaches for the disk three times, under
+// the allowance — so no line is said, no task is started, and the person gets the
+// answer in the conversation they asked it in.
+//
+// IT IS DRIVEN THROUGH THE REAL LOOP and the assertions are taken off THE DISK,
+// including the file the SHELL wrote rather than the model: a fixture that only
+// counted calls could pass while the work never happened.
+func TestAFewWritesAndRunningTheirResultFinishInline(t *testing.T) {
+	const asked = "write the service list and a script that totals it, then run the script"
+
+	completer := &scriptedCompleter{steps: scriptAndRunSteps(12)}
+	agent, workspace := writeSeamAgent(t, completer)
+	graph := stubbedGraph(agent, func(*TaskNode) {})
+
+	collected := collect(t, mustSubmit(t, agent, asked))
+
+	// NOTHING MOVED, and the person was not told anything had.
+	if count := admitted(graph); count != 0 {
+		t.Fatalf("%d tasks were admitted for a few writes and a run of them", count)
+	}
+	if saidSomething(noticeTexts(collected), writeSeamNote) {
+		t.Fatalf("the seam moved a small finished piece of work; notices were %q", noticeTexts(collected))
+	}
+	if text := transcriptText(agent); strings.Contains(text, writeSeamNote) {
+		t.Fatalf("the seam's line reached the transcript of a turn that was never moved:\n%s", text)
+	}
+	// AND THE WORK IS ALL THERE: the three files the turn wrote, and the fourth
+	// one the script it wrote produced when it was run.
+	for _, name := range []string{"services.csv", "ports.csv", "totals.sh", "totals.txt"} {
+		if _, err := os.Stat(filepath.Join(workspace, name)); err != nil {
+			t.Errorf("the inline turn did not deliver %s: %v", name, err)
+		}
+	}
+	// AND THE COUNT IS WHAT SAYS WHY. Three reaches for the disk, under the
+	// allowance; running the script names nothing it changes and costs nothing.
+	if calls := writeMeterCalls(agent.writeMeterNow()); calls != 3 {
+		t.Fatalf("the meter charged %d calls, want the three writes and nothing for the run", calls)
+	}
+}
+
+// AND THE SAME NUMBER OF FILES WRITTEN OVER AND OVER IS STILL MOVED, at the
+// unchanged call budget — which is the half of the ruling this file has always
+// been about, and the one the measured run was made of.
+func TestRepeatedWritesToOneFileStillHandOverAtTheCallBudget(t *testing.T) {
+	const asked = "fix the totals in report.md"
+	const brief = "Finish the report\nwhat is left, and everything this turn already found out"
+
+	completer := &scriptedCompleter{steps: oneFileWritingSteps(12, "report.md",
+		checkpointChainSketch, brief)}
+	agent, workspace := writeSeamAgent(t, completer)
+	ran := make(ranNodes, 2)
+	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+
+	collected := collect(t, mustSubmit(t, agent, asked))
+	ran.await(t)
+
+	if count := admitted(graph); count != 1 {
+		t.Fatalf("%d tasks were admitted, want exactly one", count)
+	}
+	if !saidSomething(noticeTexts(collected), writeSeamNote) {
+		t.Fatalf("the seam never said its line; notices were %q", noticeTexts(collected))
+	}
+	// AND ONE PATH IS ALL THAT EVER CHANGED, so nothing about breadth can be what
+	// moved this turn.
+	entries, err := os.ReadDir(workspace)
+	if err != nil {
+		t.Fatalf("reading the workspace: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "report.md" {
+		t.Fatalf("the workspace holds %v, want only the one file the turn wrote over", entries)
 	}
 }
 
@@ -183,14 +286,15 @@ func TestAHandsRefusedWriteCountsNothingAndTheOneThatLandedCounts(t *testing.T) 
 	completer.drive(agent)
 	collect(t, mustSubmit(t, agent, "split the adapters and docs changes"))
 
-	calls, files := writeMeterSnapshot(agent.writeMeterNow())
 	landed := filepath.Join(workspace, "adapters", "mine.md")
 	refused := filepath.Join(workspace, "docs", "stolen.md")
-	if calls != 1 || len(files) != 1 || !files[landed] {
-		t.Fatalf("the meter has %d calls and files %v, want only %s", calls, files, landed)
+	if calls := writeMeterCalls(agent.writeMeterNow()); calls != 1 {
+		t.Fatalf("the meter has %d calls, want only the one that landed", calls)
 	}
-	if files[refused] {
-		t.Fatalf("the refused path reached the caller's meter: %v", files)
+	// AND THE DISK IS THE OTHER HALF OF THE SAME CLAIM: the allowed change is
+	// there and the refused one is not.
+	if _, err := os.Stat(landed); err != nil {
+		t.Fatalf("the allowed change never landed: %v", err)
 	}
 	if _, err := os.Stat(refused); !os.IsNotExist(err) {
 		t.Fatalf("the refused path changed on disk: %v", err)
@@ -245,23 +349,23 @@ func TestAHandsWritesCarryToTheNextBoundaryAndAreCountedOnce(t *testing.T) {
 
 	agent.stashHandWrites([][]string{{first}, {second}})
 	seam.EpisodeInit(nil)
-	if calls, files := writeMeterSnapshot(agent.writeMeterNow()); calls != 2 || len(files) != 2 {
-		t.Fatalf("episode-init carried %d calls over %d files, want two of each: %v", calls, len(files), files)
+	if calls := writeMeterCalls(agent.writeMeterNow()); calls != 2 {
+		t.Fatalf("episode-init carried %d calls, want the two that were waiting", calls)
 	}
 	seam.PostFeedback(context.Background(), nil, nil, nil, nil, false)
-	if calls, files := writeMeterSnapshot(agent.writeMeterNow()); calls != 2 || len(files) != 2 {
-		t.Fatalf("a second drain counted the opening stash again: %d calls over %v", calls, files)
+	if calls := writeMeterCalls(agent.writeMeterNow()); calls != 2 {
+		t.Fatalf("a second drain counted the opening stash again: %d calls", calls)
 	}
 
 	seam.EpisodeInit(nil)
 	agent.stashHandWrites([][]string{{first}, {second}})
 	seam.PostFeedback(context.Background(), nil, nil, nil, nil, false)
-	if calls, files := writeMeterSnapshot(agent.writeMeterNow()); calls != 2 || len(files) != 2 {
-		t.Fatalf("post-feedback carried %d calls over %d files, want two of each: %v", calls, len(files), files)
+	if calls := writeMeterCalls(agent.writeMeterNow()); calls != 2 {
+		t.Fatalf("post-feedback carried %d calls, want the two that were waiting", calls)
 	}
 	seam.PostFeedback(context.Background(), nil, nil, nil, nil, false)
-	if calls, files := writeMeterSnapshot(agent.writeMeterNow()); calls != 2 || len(files) != 2 {
-		t.Fatalf("a second boundary counted the live stash again: %d calls over %v", calls, files)
+	if calls := writeMeterCalls(agent.writeMeterNow()); calls != 2 {
+		t.Fatalf("a second boundary counted the live stash again: %d calls", calls)
 	}
 }
 
@@ -298,8 +402,8 @@ func TestAForkWhoseHandsOnlyReadIsNeverMovedByTheWriteSeam(t *testing.T) {
 	graph := stubbedGraph(agent, func(*TaskNode) {})
 	events := collect(t, mustSubmit(t, agent, "read these two files in parallel and report"))
 
-	if calls, files := writeMeterSnapshot(agent.writeMeterNow()); calls != 0 || len(files) != 0 {
-		t.Fatalf("the read-only fork charged %d calls over %v", calls, files)
+	if calls := writeMeterCalls(agent.writeMeterNow()); calls != 0 {
+		t.Fatalf("the read-only fork charged %d calls", calls)
 	}
 	if saidSomething(noticeTexts(events), writeSeamNote) {
 		t.Fatalf("the read-only fork said the seam's line; notices were %q", noticeTexts(events))
@@ -342,26 +446,37 @@ func TestTheWriteSeamLineIsTheLineAndCarriesNoMachinery(t *testing.T) {
 	inTheHouseRegister(t, writeSeamNote)
 }
 
-// THE COUNTER ITSELF: either half of the allowance spends it, and the door opens
-// once.
-func TestTheAllowanceIsSpentByEitherFilesOrCalls(t *testing.T) {
-	byFiles := newWriteMeter()
-	for index := range writeAllowanceFiles {
-		byFiles.wrote([]string{fmt.Sprintf("/w/file%d.go", index)})
-	}
-	if !byFiles.pastAllowance() {
-		t.Fatalf("%d files did not spend the allowance", writeAllowanceFiles)
-	}
-	if byFiles.pastAllowance() {
-		t.Fatal("the door opened twice in one turn")
-	}
-
+// THE COUNTER ITSELF: the allowance is spent by the CALLS and by nothing else,
+// and the door opens once.
+func TestTheAllowanceIsSpentByTheCallsAlone(t *testing.T) {
 	byCalls := newWriteMeter()
 	for range writeAllowanceCalls {
 		byCalls.wrote([]string{"/w/one.go"})
 	}
 	if !byCalls.pastAllowance() {
 		t.Fatalf("%d calls against one file did not spend the allowance", writeAllowanceCalls)
+	}
+	if byCalls.pastAllowance() {
+		t.Fatal("the door opened twice in one turn")
+	}
+
+	// AND BREADTH ALONE SPENDS NOTHING. A turn that wrote a script and then the
+	// file the script produced has touched two paths and done one thing; every
+	// call under the allowance stays in the conversation however far apart the
+	// paths are.
+	across := newWriteMeter()
+	for index := range writeAllowanceCalls - 1 {
+		across.wrote([]string{fmt.Sprintf("/w/apart/file%d.go", index)})
+	}
+	if across.pastAllowance() {
+		t.Fatalf("%d writes to %d different files spent the allowance; breadth is not the count",
+			writeAllowanceCalls-1, writeAllowanceCalls-1)
+	}
+	// AND ONE CALL THAT CHANGED SEVERAL PATHS IS STILL ONE REACH FOR THE DISK.
+	wide := newWriteMeter()
+	wide.wrote([]string{"/w/a.go", "/w/b.go", "/w/c.go", "/w/d.go", "/w/e.go", "/w/f.go"})
+	if wide.pastAllowance() {
+		t.Fatal("a single call was charged once per path it named")
 	}
 
 	under := newWriteMeter()
@@ -451,19 +566,15 @@ func keepWorkingThroughHandReports(completer *forkCompleter, closing string, rel
 	}
 }
 
-// writeMeterSnapshot reads a meter under its own lock so assertions made while
+// writeMeterCalls reads a meter under its own lock so assertions made while
 // background hand goroutines are settling cannot race the account they inspect.
-func writeMeterSnapshot(meter *writeMeter) (int, map[string]bool) {
+func writeMeterCalls(meter *writeMeter) int {
 	if meter == nil {
-		return 0, nil
+		return 0
 	}
 	meter.mu.Lock()
 	defer meter.mu.Unlock()
-	files := make(map[string]bool, len(meter.files))
-	for path := range meter.files {
-		files[path] = true
-	}
-	return meter.calls, files
+	return meter.calls
 }
 
 // writeSeamAgent is [checkpointAgent] with the tools allowed to run, because
@@ -518,6 +629,93 @@ func writingSteps(count int, sketch, brief string) []step {
 			}{Path: fmt.Sprintf("file%d.txt", round), Text: fmt.Sprintf("round %d\n", round)})
 			return toolResponseWithText(fmt.Sprintf("write-%d", round), "write", string(arguments),
 				"Writing the next file."), nil
+		}
+	}
+	return steps
+}
+
+// scriptAndRunSteps is the small finished piece of work: two data files, the
+// script that reads them, the round that RUNS it, and then the answer in words.
+//
+// The run is a real `sh`, and it is what puts `totals.txt` on the disk — so the
+// case above can assert that the work happened and not merely that a counter
+// stayed low. A command that only NAMES a script is not a write
+// ([bashWritesInside]), which is why the fourth round costs nothing.
+func scriptAndRunSteps(count int) []step {
+	const script = "#!/bin/sh\nwc -l < services.csv > totals.txt\n"
+	written := map[string]string{
+		"services.csv": "kestrel\nlinnet\n",
+		"ports.csv":    "8431\n8432\n",
+		"totals.sh":    script,
+	}
+	order := []string{"services.csv", "ports.csv", "totals.sh"}
+	var done atomic.Int64
+	steps := make([]step, count)
+	for index := range steps {
+		steps[index] = func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			if askedForSketch(messages) {
+				if done.Load() < int64(len(order)+1) {
+					return textResponse(checkpointChainSketch), nil
+				}
+				return textResponse(checkpointDoneSketch), nil
+			}
+			if askedForHandoff(messages) || askedForRemains(messages) {
+				if done.Load() < int64(len(order)+1) {
+					return textResponse("The script still needs to run and produce totals.txt."), nil
+				}
+				return textResponse(checkpointNothingLeft), nil
+			}
+			if askedToWriteHandoff(messages) {
+				return textResponse("Finish the totals."), nil
+			}
+			round := int(done.Add(1))
+			switch {
+			case round <= len(order):
+				name := order[round-1]
+				arguments, _ := json.Marshal(struct {
+					Path string `json:"path"`
+					Text string `json:"content"`
+				}{Path: name, Text: written[name]})
+				return toolResponseWithText(fmt.Sprintf("write-%s", name), "write", string(arguments),
+					"Writing "+name+"."), nil
+			case round == len(order)+1:
+				arguments, _ := json.Marshal(struct {
+					Command string `json:"command"`
+				}{Command: "sh totals.sh"})
+				return toolResponseWithText("run-totals", "bash", string(arguments),
+					"Running the script."), nil
+			}
+			return textResponse("The list is written and the script has run; totals.txt has the count."), nil
+		}
+	}
+	return steps
+}
+
+// oneFileWritingSteps is [writingSteps] aimed at ONE path, which is the turn that
+// edits the same file over and over — the shape the call budget is for.
+func oneFileWritingSteps(count int, path, sketch, brief string) []step {
+	var round atomic.Int64
+	steps := make([]step, count)
+	for index := range steps {
+		steps[index] = func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			if askedForSketch(messages) {
+				return textResponse(sketch), nil
+			}
+			if askedForHandoff(messages) {
+				return textResponse(brief), nil
+			}
+			if askedToWriteHandoff(messages) {
+				return toolResponse("no-writer", "ls", `{"path":"."}`), nil
+			}
+			if askedForRemains(messages) {
+				return textResponse(checkpointNothingLeft), nil
+			}
+			arguments, _ := json.Marshal(struct {
+				Path string `json:"path"`
+				Text string `json:"content"`
+			}{Path: path, Text: fmt.Sprintf("attempt %d\n", round.Add(1))})
+			return toolResponseWithText(fmt.Sprintf("write-%d", round.Load()), "write", string(arguments),
+				"Writing the file again."), nil
 		}
 	}
 	return steps

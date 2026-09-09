@@ -670,12 +670,17 @@ handed out — waiting for it, reading what comes back, accepting it — that li
 time, and a drawing whose every part is a wait or a bare `accept`/`review` is read the same
 way even when it is not written as that word.
 
-**And when only half of what is left is a wait, the other half still moves.** If a reply
-crosses one of the lines above while pieces you handed out are still running, what is left is
-divided first. The self-contained work becomes the task; everything about the pieces already
-out — waiting for them, integrating their branches, reviewing them, opening the pull request
-over them — stays with this conversation, and the line announcing the move ends
-` · the rest stays here for when the pieces already out land`.
+## When only part of a handover can move while other tasks are still out
+
+When only half of what is left is a wait, the other half still moves when its whole instruction
+stands alone. If a reply crosses one of the lines above while pieces you handed out are still
+running, what is left is divided first. The self-contained work becomes the task; everything
+about the pieces already out — waiting for them, integrating their branches, reviewing them,
+opening the pull request over them — stays with this conversation, and the line announcing the
+move ends ` · the rest stays here for when the pieces already out land`.
+The check covers the brief, the request above it and the done-condition below it, after the
+reader's drawing has been added. If any of those still names a piece already out, nothing
+moves: your original words are kept here rather than rewritten into a different request.
 
 What stayed is written into the conversation under `WHAT STAYS HERE, FOR WHEN THE PIECES
 ALREADY OUT LAND:`, so the turn that wakes when those pieces land opens on the integration,
@@ -725,7 +730,7 @@ never the fact that something is running.
 wait for; a reply that stops "until the watch fires" is the other question — see *Waiting on
 something, and the limit on carrying on*.
 
-## A reply that starts changing files becomes a task — why did my edit become a task, it started a task instead of just editing, how many files can a reply change, small edits inline
+## A reply that starts changing files becomes a task — why did my edit become a task, it started a task instead of just editing, how many files can a reply change, how many edits can a reply make, small edits inline
 
 **Reading is free. Writing is not.** The three points above count tool ROUNDS, which is the
 right unit for a reply that is looking things up and the wrong one for a reply that is
@@ -734,11 +739,14 @@ unreviewed changes in the folder you are sitting in. So there is a second, much 
 count, and it counts only the calls that CHANGE something under the folder this conversation
 is open on.
 
-**The allowance is two files, or five write calls, whichever comes first.** A reply may make
-a small, obvious edit inline — fix the typo, change the one line, write the note beside it —
-and that is the whole point of leaving one at all. The write that would cross the allowance
-is not made in the reply. The answer ends where it is, what is left moves onto one task, and
-the same two dim lines go into the transcript as at the third point above:
+**The allowance is five write calls.** A reply may make a small, obvious edit inline — fix
+the typo, change the one line, write the note beside it and the file it needs — and that is
+the whole point of leaving one at all. What is counted is HOW MANY TIMES the reply reaches
+for the disk, never how many different files it touched: a reply that writes a short script
+and then the file the script produces has done one small thing, and it stays here. The write
+that would cross the allowance is not made in the reply. The answer ends where it is, what
+is left moves onto one task, and the same two dim lines go into the transcript as at the
+third point above:
 
 ```
 this is changing more than a quick edit · moving it to a task that is watched and can split
@@ -752,7 +760,7 @@ just looking. A `cd` inside the command is followed, so a write into somewhere e
 somewhere else. **Reads are never counted**, in any number: `read`, `grep`, `ls`, `git log`,
 `git diff`, running your tests. Neither is a write that FAILED, and neither is anything
 outside this folder — a scratch file in `/tmp` is not your work. A hand does not bypass this
-count; see *Do hands get around the file limit* below.
+count; see *Do hands get around the write limit* below.
 
 **It can still decide not to move.** The move goes through the same road as the third point,
 which means it can be dropped when the model writing your answer says nothing is left AND the
@@ -3663,7 +3671,7 @@ your answer being worked on, not work that left.
 Do not confuse it with `this one wants more hands · handing it over with everything found so
 far`, which is the opposite move — that one is your answer **leaving** to become a task.
 
-## Do hands get around the file limit — my reply changed six files through hands and never became a task, does forking count against the allowance
+## Do hands get around the write limit — my reply changed six files through hands and never became a task, does forking count against the allowance
 
 **No. What a hand changes counts against the same allowance as an edit the reply makes
 itself.** The same calls count in both places: an `edit`, `write` or saved `edit_video` cut
