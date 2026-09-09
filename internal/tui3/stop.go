@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // STOPPING WORK, AND ASKING FIRST.
@@ -454,7 +455,8 @@ func (a *app) stopRows(width int) []string {
 		return nil
 	}
 	head := card.target.question()
-	rows := []string{a.pal.askBold(glyphAsk) + a.pal.ask(fit(" "+head, width-ansi.StringWidth(glyphAsk)))}
+	ask := a.icon(tokens.GNeedsHuman)
+	rows := []string{a.pal.askBold(ask) + a.pal.ask(fit(" "+head, width-ansi.StringWidth(ask)))}
 
 	card.spans = card.spans[:0]
 	line, at := stopAnswerPad, len(stopAnswerPad)
@@ -630,14 +632,11 @@ func (a *app) roomStopWord() string {
 
 // ── what a stopped thing looks like afterwards ──────────────────────────────
 
-// glyphStopped marks work a PERSON ended. It is not [glyphBad]: a cross is a
-// finding, and nobody found anything wrong with work that was stopped — the
-// circle with a bar through it is the mark every device a person owns uses for
-// "not permitted to continue", which is exactly what a stop is.
-const (
-	glyphStopped      = "⊘"
-	glyphStoppedASCII = "/"
-)
+// The mark work a PERSON ended wears is tokens.GStopped, and it is NOT the
+// failure cross: a cross is a finding, and nobody found anything wrong with
+// work that was stopped. It is the filled square every device a person owns
+// stops with. The slot is the shared vocabulary's, drawn through
+// tasktier.go's one door like every other state.
 
 // taskStoppedByPerson is the word the header and the roster spell a stopped
 // node with. It is the same word internal/session uses on the wire and the same

@@ -21,50 +21,88 @@ import (
 // BEFORE THIS FILE THE SURFACE HAD FOUR TABLES. The rail worked a cell out of
 // the state and the merge word, the roster worked one out of the presence, home
 // worked out a third, and the record page spelled its own words for all of them
-// — so a task a person stopped drew ⊘ on the roster and ✗ on its own page, and
-// one landing was called `needs your look`, `awaiting review` and `unverified`
-// on three screens a keypress apart. The tables disagreed because there were
-// four of them. There is one now, and it reads [session.TaskStatus.Tier]: NO
-// SURFACE WORKS A TIER OUT OF A STATE FOR ITSELF.
+// — so a task a person stopped drew one mark on the roster and another on its
+// own page, and one landing was called `needs your look`, `awaiting review` and
+// `unverified` on three screens a keypress apart. The tables disagreed because
+// there were four of them. There is one now, and it reads
+// [session.TaskStatus.Tier]: NO SURFACE WORKS A TIER OUT OF A STATE FOR ITSELF.
 //
 // The words are internal/session's and are never respelled here. What belongs to
 // this file is the DRAWING: which cell, which hue, and how a row that will not
 // fit gives ground.
 
-// tierGlyph is the tier in one cell, in both glyph tiers — the Unicode mark and
-// the stand-in a terminal with no Unicode gets.
+// The task-state marks, and THE ONE PLACE THIS SURFACE NAMES THEM. Each is a
+// slot in the shared vocabulary (internal/tui2/tokens), which is where the
+// three spellings of every mark live: the Font Awesome 4 icon a patched font
+// draws, the geometric floor every terminal draws, and the one ASCII character
+// a screen reader can name.
 //
-// FIVE CELLS AND NO SIXTH. Moving is `◌` while nothing is turning and `▸` while
-// something is; over is `✓`, `⊘` or `✗` for the three ways work ends; your call
-// is `?` and only ever `?`. The `!` this surface used to draw for unfinished
-// work is gone: it was a fourth answer to a question that has three, and it left
-// a person deciding whether a `!` was louder than a `✗`.
-func tierGlyph(status session.TaskStatus) (glyph, ascii string) {
+// NOTHING HERE IS A CHARACTER. A mark spelled as a literal draws the plain
+// floor forever — a literal cannot know which repertoire the terminal is on —
+// which is how a person with a patched font came to see a proper icon beside
+// every tool call and a bare geometric shape beside every task
+// (docs/design/icons/DESIGN.md). icons_test.go fails the build on a state mark
+// spelled anywhere in this package.
+
+// glyphRunASCII is the screen reader's own working mark, for the rows that draw
+// their own spinner and need nothing from the table but the still stand-in the
+// linear tier gets ([tokens.ASCII] never animates). It is the vocabulary's, not
+// a character spelled here.
+var glyphRunASCII = tokens.ASCII.Glyph(tokens.GWorking)
+
+// tierSlot is the tier in one SLOT, and it is the whole of what this file
+// decides about which shape a row wears.
+//
+// SEVEN SLOTS AND NO EIGHTH. Moving is `○` while nothing is turning, `⚑` while
+// it is waiting on something else and `◐` while something is happening; over is
+// `✓`, `■` or `✕` for the three ways work ends; your call is `?` and only ever
+// `?`. The `!` this surface used to draw for unfinished work is gone: it was a
+// fourth answer to a question that has three, and it left a person deciding
+// whether a `!` was louder than a `✕`.
+//
+// THE SHAPE ALONE SAYS THE STATE. Not one of the seven needs its hue to be told
+// from the others, which is the test a mark has to pass to enter this table:
+// the roster is read by people who have turned colour off, and by people who
+// cannot see it.
+func tierSlot(status session.TaskStatus) tokens.GlyphID {
 	switch status.Tier {
 	case session.TaskTierYourCall:
-		// "?" is already a character a screen with no Unicode has, so there is
-		// nothing for the linear tier to stand in for.
-		return glyphAsk, glyphAsk
+		return tokens.GNeedsHuman
 	case session.TaskTierOver:
 		switch status.Presence {
 		case session.TaskPresenceDone:
-			return glyphDone, glyphDoneASCII
+			return tokens.GSettled
 		case session.TaskPresenceStopped:
-			// ⊘ AND NOT THE CROSS. A cross is a finding, and nobody found anything
-			// wrong with work the person ended themselves (stop.go states it).
-			return glyphStopped, glyphStoppedASCII
+			// THE SQUARE AND NOT THE CROSS. A cross is a finding, and nobody
+			// found anything wrong with work the person ended themselves
+			// (stop.go states it); the filled square is what every device a
+			// person owns stops with.
+			return tokens.GStopped
 		}
-		return glyphBad, glyphBadASCII
+		return tokens.GFailed
 	case session.TaskTierMoving:
 		switch status.Presence {
 		case session.TaskPresenceWorking, session.TaskPresenceFinishing:
-			return glyphRunning, glyphRunningASCII
+			return tokens.GWorking
+		case session.TaskPresenceWaiting:
+			// THE FLAG IS THE VOCABULARY'S OWN "WAITING ON A SIBLING", and it is
+			// the one moving state a person can act on: a row held behind task 4
+			// or behind a busy machine is not queued, it is blocked, and the two
+			// were one shape until this wave.
+			return tokens.GWaitsOn
 		}
-		return glyphQueued, glyphQueuedASCII
+		return tokens.GQueued
 	}
 	// A reading with no tier at all is a node this build has heard nothing about,
 	// which is the hollow circle: nothing has started, and nothing is claimed.
-	return glyphQueued, glyphQueuedASCII
+	return tokens.GQueued
+}
+
+// tierGlyph is that slot as this terminal draws it — rich, plain or the screen
+// reader's own character, decided once in [app.iconSet] and carried on the
+// palette.
+func tierGlyph(pal palette, status session.TaskStatus) string {
+	return pal.glyph(tierSlot(status))
 }
 
 // tierInk is the hue that cell is said in — the paint half of [tierGlyph], asked
@@ -106,25 +144,19 @@ func tierInk(pal palette, status session.TaskStatus) func(string) string {
 	return pal.dim
 }
 
-// tierMark is [tierGlyph] as this surface draws it right now, UNPAINTED: the
-// stand-in on the linear tier, and THE SPINNER on the rows that animate today.
+// tierMark is [tierGlyph] as this surface draws it right now, UNPAINTED: THE
+// SPINNER on the rows that animate today, and the still mark everywhere else.
 //
-// The spinner is not a sixth cell — it is `▸` moving, which is this surface's
-// one promise that something is happening this instant. A page that is redrawn
-// only when something changes has no business claiming that, so the static
-// glyph is what a roster row and a record row wear.
+// The spinner is not an eighth cell — it is the working mark moving, which is
+// this surface's one promise that something is happening this instant. A page
+// that is redrawn only when something changes has no business claiming that, so
+// the still glyph is what a roster row and a record row wear, and the linear
+// tier never animates at all.
 func (a *app) tierMark(status session.TaskStatus) string {
-	glyph, ascii := tierGlyph(status)
-	if glyph == glyphRunning {
-		if a.linear {
-			return glyphRunASCII
-		}
+	if tierSlot(status) == tokens.GWorking && !a.linear && !a.pal.ascii {
 		return tokens.Spinner(a.paints / spinnerStep)
 	}
-	if a.linear || a.pal.ascii {
-		return ascii
-	}
-	return glyph
+	return a.icon(tierSlot(status))
 }
 
 // tierCell is that mark in its own hue: the whole of what one cell says.
@@ -145,9 +177,9 @@ const tierTitleFloor = 8
 // tierRow is the whole of what one row of work says, unpainted:
 //
 //	✓ Port the parser · done
-//	▸ Port the parser · working
+//	◐ Port the parser · working
 //	? Port the parser · your call · conflicts with your branch: parser.go
-//	✗ Port the parser · incomplete · ran out of steps
+//	✕ Port the parser · incomplete · ran out of steps
 //
 // IT IS CUT FROM THE RIGHT AND THE VERB IS NEVER WHAT GOES. A row is read to
 // find out whether it needs anything, so the half that answers that is the half
@@ -156,11 +188,7 @@ const tierTitleFloor = 8
 // word itself. A sentence that trails off before the one instruction a person
 // needs has spent its cells saying nothing (docs/design/task-states/DESIGN.md).
 func tierRow(pal palette, status session.TaskStatus, title string, width int) string {
-	glyph, ascii := tierGlyph(status)
-	if pal.ascii {
-		glyph = ascii
-	}
-	lead := glyph + " "
+	lead := tierGlyph(pal, status) + " "
 	room := width - ansi.StringWidth(lead)
 	if room <= 0 {
 		return fit(lead, width)

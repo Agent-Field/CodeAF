@@ -41,13 +41,13 @@ import (
 //     held at full strength over fading text would make the marks the loudest
 //     thing in the block, which is the opposite of what they are for.
 //
-// ── WHY THESE CHARACTERS ──
+// ── WHERE THE CHARACTERS LIVE ──
 //
-// THE NORMAL PRESENTATION USES PROPER ICONS. The rich repertoire uses the
-// stable Font Awesome 4 BMP addresses shipped in Nerd Fonts, the same family
-// included by icons-in-terminal. Search, pencil and terminal reuse the shared
-// token vocabulary. No font is installed or changed by this surface.
-// https://github.com/FortAwesome/Font-Awesome/blob/v4.7.0/css/font-awesome.css
+// NOT HERE. Every mark is a SLOT in internal/tui2/tokens' vocabulary, and the
+// three spellings of each — the Font Awesome 4 icon a patched font draws, the
+// geometric floor every terminal draws, and the one ASCII character a screen
+// reader can name — are that table's (docs/design/icons/DESIGN.md). This file
+// holds the map from a family of work to a slot, and nothing else.
 //
 // FALLBACK IS A CAPABILITY DECISION, NOT THE DESIGN BASELINE. The existing
 // tokens.DetectGlyphSet vetoes terminals and locales that need plain symbols;
@@ -56,65 +56,74 @@ import (
 // patched font on a conservatively detected terminal. Linear and ASCII modes
 // keep their accessible spelling even when rich is selected.
 
+// iconSet is WHERE THE TIER IS DECIDED, and it is decided once: the Display
+// setting when a person has said something, and [tokens.DetectGlyphSet]'s
+// answer when they have not. Nothing else on this surface detects — every
+// drawing site asks [palette.glyph] or [app.icon] for a slot and is handed the
+// character this terminal draws it as.
+func (a *app) iconSet() tokens.GlyphSet {
+	switch a.iconMode {
+	case config.IconsRich:
+		return tokens.NerdFont
+	case config.IconsPlain:
+		return tokens.Plain
+	}
+	return a.actionAuto
+}
+
+// adoptIcons settles the repertoire onto the palette. It is called at boot,
+// at every turn end and the moment the Display row changes, because the two
+// halves of one fact — the setting and the palette that draws by it — may not
+// be changed apart.
+func (a *app) adoptIcons() {
+	a.iconMode = config.IconsAt(a.profileDir)
+	a.pal.icons = a.iconSet()
+}
+
+// icon is [palette.glyph] with the linear tier folded in, for the app methods
+// that hold the screen-reader flag themselves.
+func (a *app) icon(id tokens.GlyphID) string {
+	if a.linear {
+		return tokens.ASCII.Glyph(id)
+	}
+	return a.pal.glyph(id)
+}
+
 // actionGutter is the fixed cost of the mark: the cell it stands in, and the
 // space after it. It is a constant rather than a measurement because the whole
 // point is that it does not depend on which family a step turned out to be.
 const actionGutter = 2
 
-// actionMark holds the rich icon and both fallback spellings for one family.
-type actionMark struct {
-	// rich is the normal icon, one stable BMP private-use cell.
-	rich string
-	// glyph is the ordinary-terminal mark, one cell.
-	glyph string
-	// ascii is the screen-reader and no-Unicode tier's mark, also one cell, so
-	// flipping the tier moves no column. Each is a character a shell already
-	// gives a meaning to where one exists — `$` a prompt, `?` a search, `+` a
-	// new thing, `@` addressing somebody, `|` things running side by side —
-	// because in the tier with no shapes left, familiarity is the only thing a
-	// mark has.
-	ascii string
-}
-
-// actionMarks is the table, and it is exhaustive over [session.ActionCategories]
-// — a test walks the engine's list and fails on a family with no mark, so the
-// vocabulary and the gutter cannot drift apart.
-var actionMarks = map[session.ActionCategory]actionMark{
-	// ⌕ U+2315: the vocabulary's own search slot.
-	session.ActionSearch: {tokens.NerdFont.Glyph(tokens.GSearch), tokens.GlyphSearch, "?"},
-	// ▤ U+25A4: a box with lines in it — a page of text, opened.
-	session.ActionRead: {"\uf15c", "▤", "<"},
-	// ✎ U+270E: the vocabulary's own write slot, and the pencil the owner
-	// picked out of Octicons.
-	session.ActionEdit: {tokens.NerdFont.Glyph(tokens.GWrite), tokens.GlyphWrite, "*"},
-	// + : something that was not there is. It is the vocabulary's diff-add byte
-	// and it is ASCII, which the table has never claimed exclusively.
-	session.ActionCreate: {"\uf067", tokens.GlyphDiffAdd, "+"},
-	// $ : the vocabulary's shell slot — the prompt a person types a command at.
-	session.ActionRun: {tokens.NerdFont.Glyph(tokens.GShell), tokens.GlyphShell, "$"},
-	// ◎ U+25CE: a target being aimed at. NEVER a checkmark: this is the act of
-	// checking, and the block draws no verdicts.
-	session.ActionTest: {"\uf0c3", "◎", "!"},
-	// ↗ U+2197: out of here and onto a page somewhere else — the link, drawn as
-	// the thing a link does.
-	session.ActionBrowse: {"\uf0ac", "↗", "^"},
-	// ⇄ U+21C4: bytes going the other way as well.
-	session.ActionTransfer: {"\uf0ec", "⇄", "&"},
-	// » U+00BB: the guillemet, which is a quotation mark in half of Europe —
-	// something being SAID, to a person, and one cell in every font ever made.
-	session.ActionCommunicate: {"\uf075", "»", "@"},
-	// ⇉ U+21C9: two arrows travelling side by side — work handed out, or this
-	// mind copied to run beside itself.
-	session.ActionCoordinate: {"\uf126", "⇉", "|"},
-	// ≡ U+2261: three level lines, an outline. It is the safe cousin of ☰,
-	// which the shared table BANS for measuring two cells.
-	session.ActionPlan: {"\uf0ae", "≡", "#"},
-	// ◷ U+25F7: a quarter of a clock face, still. The hourglasses are banned —
-	// two cells, and they lie about liveness on a row that is not moving.
-	session.ActionWait: {"\uf017", "◷", ","},
-	// ▪ U+25AA: a small square. The bucket's mark is the quietest one in the
-	// table on purpose — it says "a step", which is all it knows.
-	session.ActionWork: {"\uf013", "▪", "."},
+// actionMarks is the map from a family to its SLOT in the shared vocabulary,
+// and it is all this file holds: the characters — rich, plain and ASCII — are
+// internal/tui2/tokens' (nerdfont.go's action-family block), where they are
+// measured by the width gate, checked against the pinned Nerd Fonts release and
+// held to the one-meaning law like every other mark on the surface.
+//
+// THIS TABLE USED TO BE THE CHARACTERS THEMSELVES, and that is the bug it was
+// changed for: ten private-use codepoints and ten plain glyphs spelled inline
+// here were a second vocabulary nothing could gate, and the task states one
+// file over had a third. Four families reuse a slot the table already owned —
+// searching is the search mark, editing the pencil, a command the shell prompt,
+// and a thing that was not there the plus.
+//
+// It is exhaustive over [session.ActionCategories] — a test walks the engine's
+// list and fails on a family with no mark, so the vocabulary and the gutter
+// cannot drift apart.
+var actionMarks = map[session.ActionCategory]tokens.GlyphID{
+	session.ActionSearch:      tokens.GSearch,
+	session.ActionRead:        tokens.GActionRead,
+	session.ActionEdit:        tokens.GWrite,
+	session.ActionCreate:      tokens.GActionCreate,
+	session.ActionRun:         tokens.GShell,
+	session.ActionTest:        tokens.GActionTest,
+	session.ActionBrowse:      tokens.GActionBrowse,
+	session.ActionTransfer:    tokens.GActionTransfer,
+	session.ActionCommunicate: tokens.GActionCommunicate,
+	session.ActionCoordinate:  tokens.GActionCoordinate,
+	session.ActionPlan:        tokens.GActionPlan,
+	session.ActionWait:        tokens.GActionWait,
+	session.ActionWork:        tokens.GActionWork,
 }
 
 // actionMarkFor is the mark for one family, in this terminal's tier.
@@ -124,17 +133,11 @@ var actionMarks = map[session.ActionCategory]actionMark{
 // exists so they do not move; a family this build has never heard of is a step,
 // and a step is [session.ActionWork].
 func (a *app) actionMarkFor(category session.ActionCategory) string {
-	mark, known := actionMarks[category]
+	slot, known := actionMarks[category]
 	if !known {
-		mark = actionMarks[session.ActionWork]
+		slot = actionMarks[session.ActionWork]
 	}
-	if a.linear || a.pal.linear || a.pal.ascii {
-		return mark.ascii
-	}
-	if a.iconMode == config.IconsRich || (a.iconMode != config.IconsPlain && a.actionAuto == tokens.NerdFont) {
-		return mark.rich
-	}
-	return mark.glyph
+	return a.icon(slot)
 }
 
 // actionLead is the whole gutter for one line of a step: the mark and its space

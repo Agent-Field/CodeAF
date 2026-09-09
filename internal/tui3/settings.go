@@ -2033,7 +2033,7 @@ func (a *app) applySetting(item sheetItem, raw string) {
 		a.touch()
 	}
 	if item.row.Key == config.KeyIcons {
-		a.iconMode = config.IconsAt(a.profileDir)
+		a.adoptIcons()
 		a.touch()
 	}
 	// THE TWO LANE ROWS LAND ON THE LIVE TRANSPORT, not at the next launch.
