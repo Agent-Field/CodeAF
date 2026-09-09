@@ -600,3 +600,13 @@ The product goals, staged comparison protocol, holdout requirement, and proposed
 Once a scenario's work-start marker exists, the terminal driver keeps observing until its work-finish marker or the cap, even if the composer becomes idle. Otherwise an agent that correctly frees the chat can have its background action killed by the rig. The `idlework` counterexample stages exactly that shape; the previous driver failed it. This fixes the observation boundary, not a product runtime. Interactive evidence collected before this correction must be adjudicated before comparing it.
 
 Create `STOP` in a campaign's output directory to stop after the current cell finishes. The runner preserves completed cells and does not begin another. Remove that file before explicitly resuming. The per-cell cap still bounds a cell already in flight.
+
+## File timestamps on macOS and Linux
+
+The timing helpers select the native `stat` syntax before reading a file's
+modification time. Trying BSD flags on GNU stat can print a filesystem report
+even when the command fails, corrupting a subsequent timestamp comparison.
+`test/test_common.py` covers both dialects and that noisy failure. If an older
+run has this defect, preserve its original verdicts and replay only the affected
+timing assertion from retained timestamps; record the corrected helper and input
+hashes. Do not silently discard the assertion or rerun model work.

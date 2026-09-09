@@ -18,12 +18,10 @@ package session
 //
 // ── IT IS THE JUDGE'S OWN MACHINERY, NOT A SECOND ONE ───────────────────────
 //
-// The wire is [routeVerdictContract], the ladder that falls back to the
-// person's own words is [routeAcceptance], and the bound is the shaper's
-// ([taskShapeAcceptanceLimit]). What is new here is one brief and one moment:
-// the question is asked about the ASK rather than about a finished turn, and it
-// is asked once, at the start of the first turn, before any of the work has had
-// a chance to argue for a definition of done that suits it.
+// [routeAcceptance]'s lower rung frames the person's own words as the whole
+// done-condition. No model rewrites a concrete request before the working model
+// sees it. This keeps writing, data and code requests equally direct, and takes
+// one synchronous call off the front of every unattended run.
 //
 // ── AND IT IS FROZEN ────────────────────────────────────────────────────────
 //
@@ -46,19 +44,13 @@ import (
 // this package rather than two — the drift that ends with one door writing an
 // acceptance nobody can check is exactly what that const exists to prevent. The
 // `work` field is answered true here by construction: somebody has already
-// asked for this and it is already being done. The acceptance and any explicit
-// verification checks are frozen together against that original ask.
-const sessionAcceptanceBrief = `You are given ONE ask, in the person's own words, at the moment somebody started working on it. Nobody will be watching while it is worked on.
+// asked for this and it is already being done. This late reading supplies only
+// a destination; it cannot add commands after the baseline was taken.
+const sessionAcceptanceBrief = `You are given ONE ask, in the person's own words, after finished work was retained outside the requested workspace.
 
-You write ONE thing: the DONE WHEN sentence for the WHOLE of that ask — the observable condition that says the whole thing is finished, not the part that was easiest to reach.
+Read only the requested final destination. Declare delivery: {"kind":"workspace|branch|report", "quote":"<verbatim words from the person's ask>"}. Use workspace when changed files must reach the person's requested working copy or when uncertain. Use branch only when the person explicitly wants a retained branch as the final result without integration. Use report only when the requested final result is the answer/report itself, not implementation elsewhere. For branch/report quote the original words establishing that destination, including any constraint about integration. Do not choose branch merely because workers use worktrees, and do not convert an implementation request into a report about implementation.
 
-Write it so that somebody who cannot see this ask, cannot see the work, and cannot ask anybody anything can stand in front of the result and say yes or no. Name what must exist and the check that shows it.
-
-Declare repeatable verification commands only in the optional checks field. An action the person asked to happen once is not permission to repeat it as verification.
-
-Also declare delivery: {"kind":"workspace|branch|report", "quote":"<verbatim words from the person's ask>"}. Use workspace when changed files must reach the person's requested working copy or when uncertain. Use branch only when the person explicitly wants a retained branch as the final result without integration. Use report only when the requested final result is the answer/report itself, not implementation elsewhere. For branch/report quote the original words establishing that destination, including any constraint about integration. Do not choose branch merely because workers use worktrees, and do not convert an implementation request into a report about implementation.
-
-Answer {"work": true, "goal": "<the ask, self-contained>", "acceptance": "<done when>", "checks": ["<explicit repeatable verification command>"], "delivery": {"kind":"workspace", "quote":""}, "why": "<one line>"}. Use an empty checks list when none is declared.
+Answer {"work": true, "goal": "<the ask, self-contained>", "acceptance": "delivery matches the original request", "checks": [], "delivery": {"kind":"workspace", "quote":""}, "why": "<one line>"}. Do not declare commands.
 
 ` + routeVerdictContract
 
@@ -67,26 +59,110 @@ Answer {"work": true, "goal": "<the ask, self-contained>", "acceptance": "<done 
 // anything has happened — which is the whole difference from
 // [routeJudgeQuestion].
 func sessionAcceptanceQuestion(ask string) string {
-	return "WHAT THE PERSON ASKED FOR:\n" + clip(ask, routeAskBytes) +
-		"\n\nWrite the DONE WHEN sentence for the whole of it. Answer with one JSON object."
+	return "WHAT THE PERSON ASKED FOR:\n" + ask +
+		"\n\nDeclare only its requested final destination. Answer with one JSON object."
+}
+
+// completeRetainedContract asks the old acceptance writer only when a finished
+// task left changed work somewhere other than the requested workspace. That is
+// the one ending where `workspace`, `branch` and `report` produce different
+// answers, so it is the one place where paying for the distinction can change
+// what happens. The writer still sees only the original ask. Its rewritten
+// acceptance and checks are discarded; only its structured destination may
+// complete the contract frozen before work began.
+func (a *Agent) completeRetainedContract(ctx context.Context, remains Remains) Remains {
+	steward := a.steward()
+	if steward == nil {
+		return remains
+	}
+	needed := false
+	for _, landing := range remains.Landings {
+		if landing.needsDelivery() {
+			needed = true
+			break
+		}
+	}
+	if !needed {
+		return remains
+	}
+	ask := steward.Ask()
+	if ask == "" {
+		return remains
+	}
+	leader, ready := steward.beginDeliveryReading(ask)
+	if !leader {
+		if ready != nil {
+			select {
+			case <-ready:
+			case <-ctx.Done():
+				return remains
+			}
+		}
+		remains.Delivery = steward.declaredDelivery()
+		return remains
+	}
+	a.mu.Lock()
+	model := a.model
+	a.mu.Unlock()
+	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, model,
+		sessionAcceptanceBrief, sessionAcceptanceQuestion(ask), ask)
+	delivery := routeDelivery(verdict, ask)
+	if !ok || delivery.Kind == "" {
+		// UNKNOWN IS CONSERVATIVE, AND IT IS SETTLED ONCE. A writer that could
+		// not answer must not be bought again at every later ending, and treating
+		// its silence as workspace delivery keeps retained work unfinished.
+		delivery = deliveryContract{Kind: "workspace"}
+	}
+	if steward.finishDeliveryReading(ask, delivery) {
+		a.journalDelivery(steward)
+	}
+	remains.Delivery = steward.declaredDelivery()
+	return remains
+}
+
+// beginDeliveryReading elects one caller to take the lazy reading. Other
+// endings wait on the same result without holding the Steward lock over I/O.
+func (s *Steward) beginDeliveryReading(ask string) (bool, <-chan struct{}) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if ask != s.ask || s.acceptance == "" || s.delivery.Kind != "" {
+		return false, nil
+	}
+	if s.deliveryReading != nil {
+		return false, s.deliveryReading
+	}
+	s.deliveryReading = make(chan struct{})
+	return true, s.deliveryReading
+}
+
+// finishDeliveryReading freezes the conservative result and releases every
+// ending waiting for it. It never changes the existing command authority.
+func (s *Steward) finishDeliveryReading(ask string, delivery deliveryContract) bool {
+	delivery = validDelivery(ask, delivery)
+	if delivery.Kind == "" {
+		delivery = deliveryContract{Kind: "workspace"}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ready := s.deliveryReading
+	written := ask == s.ask && s.acceptance != "" && s.delivery.Kind == ""
+	if written {
+		s.delivery = delivery
+	}
+	s.deliveryReading = nil
+	if ready != nil {
+		close(ready)
+	}
+	return written
 }
 
 // openAcceptance writes this session's acceptance, once, at the start of the
 // first turn a [Steward] runs.
 //
-// EVERY WAY IT CAN FAIL LEAVES THE SESSION WITH NO ACCEPTANCE, and that is a
-// working session rather than a broken one: [Steward.Decide] falls back on the
-// landings and the checks, which is less than it would have had and is still
-// more than the engine ever had. A run must not fail to start because a
-// sidecar model was unreachable.
-//
-// IT IS BILLED TO THE ERRAND POCKET, for [Agent.readMark]'s reason: it is a
-// side-call to a different model that the person did not ask for.
-//
-// AND IT IS ASKED ON THE MASTERMIND TIER. This one sentence is what the whole
-// unattended run is measured against for its entire life, it is written once,
-// and it costs one call — the cheapest place in this whole road to be right.
-func (a *Agent) openAcceptance(ctx context.Context, hub *eventHub) {
+// IT GRANTS NO COMMAND AUTHORITY. A command in prose remains evidence, not
+// permission to execute it again. The existing structured writer is deferred
+// until a retained result makes its delivery distinction necessary.
+func (a *Agent) openAcceptance(_ context.Context, hub *eventHub) {
 	steward := a.steward()
 	if steward == nil || steward.Acceptance() != "" {
 		return
@@ -95,19 +171,7 @@ func (a *Agent) openAcceptance(ctx context.Context, hub *eventHub) {
 	if ask == "" {
 		return
 	}
-	a.mu.Lock()
-	model := a.model
-	a.mu.Unlock()
-	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, model,
-		sessionAcceptanceBrief, sessionAcceptanceQuestion(ask), ask)
-	if !ok {
-		// The ladder's lower rungs still say something true about a whole ask —
-		// "everything asked for below is actually done" over the person's own
-		// words — so a writer that could not be reached costs the sharpness of
-		// the sentence and not the sentence.
-		verdict = routeVerdict{}
-	}
-	if !steward.setAcceptanceDelivery(ask, routeAcceptance(verdict, ask), routeChecks(verdict, ask), routeDelivery(verdict, ask)) {
+	if !steward.setAcceptanceDelivery(ask, sessionAcceptance(ask), nil, deliveryContract{}) {
 		return
 	}
 	a.journalAcceptance(steward)
@@ -115,7 +179,16 @@ func (a *Agent) openAcceptance(ctx context.Context, hub *eventHub) {
 	// notice line on the turn that wrote it, drawn exactly where a task's own
 	// "done when" is drawn — and on a session nobody is watching, the hub is nil
 	// and the line is simply not drawn (tools_settings.go states the law).
-	hub.send(Event{Kind: EventNotice, Text: sessionAcceptanceLead + steward.Acceptance()})
+	hub.send(Event{Kind: EventNotice, Text: sessionAcceptanceLead + clip(steward.Acceptance(), briefAskLimit)})
+}
+
+// sessionAcceptance keeps the complete original request as the internal
+// contract. Display and prompt surfaces apply their own bounds separately.
+func sessionAcceptance(ask string) string {
+	if ask == "" {
+		return routeFallbackAcceptance
+	}
+	return routeAskAcceptance + ask
 }
 
 // sessionAcceptanceLead opens the one line a person reads about what this
@@ -137,5 +210,19 @@ func (a *Agent) journalAcceptance(steward *Steward) {
 		Acceptance: steward.Acceptance(),
 		Checks:     steward.declaredChecks(),
 		Delivery:   steward.deliveryReceipt(),
+	})
+}
+
+// journalDelivery records the late destination reading separately from the
+// acceptance that was already frozen and shown before any work began.
+func (a *Agent) journalDelivery(steward *Steward) {
+	a.mu.Lock()
+	file := a.file
+	a.mu.Unlock()
+	file.appendPrincipal(journalPrincipal{
+		Who:      "steward",
+		Event:    "delivery",
+		Checks:   steward.declaredChecks(),
+		Delivery: steward.deliveryReceipt(),
 	})
 }

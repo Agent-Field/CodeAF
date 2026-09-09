@@ -25,9 +25,10 @@ import (
 // holds only commands that ran to an answer and answered red; unread holds the
 // commands no answer can safely be drawn from.
 type checkPhotograph struct {
-	red    []string
-	unread []string
-	read   bool
+	red      []string
+	unread   []string
+	failures map[string][]string
+	read     bool
 }
 
 // checkGround is the pair a node's checking is judged against: what the checks
@@ -51,7 +52,18 @@ func (g checkGround) turnedRed() []string {
 	if !g.before.read {
 		return nil
 	}
-	return verify.NewFailures(g.before.red, g.attributable(g.after))
+	old := make(map[string]bool, len(g.before.red))
+	for _, command := range g.before.red {
+		old[command] = true
+	}
+	var turned []string
+	for _, command := range g.attributable(g.after) {
+		_, changed := verify.NewCommandFailure(old[command], g.before.failures[command], g.after.failures[command])
+		if changed {
+			turned = append(turned, command)
+		}
+	}
+	return turned
 }
 
 // alreadyRed names only checks that were red on both sides. It is the other
@@ -61,8 +73,7 @@ func (g checkGround) alreadyRed() []string {
 	if !g.before.read {
 		return nil
 	}
-	red := g.attributable(g.after)
-	return verify.Subtract(red, verify.NewFailures(g.before.red, red))
+	return verify.Subtract(g.attributable(g.after), g.turnedRed())
 }
 
 // readChecksOn photographs one tree with one window, and makes the same three
@@ -73,7 +84,7 @@ func readChecksOn(ctx context.Context, dir string, checks []string) checkPhotogr
 	ctx, done := context.WithTimeout(ctx, auditDeadline)
 	defer done()
 
-	photograph := checkPhotograph{read: true}
+	photograph := checkPhotograph{read: true, failures: make(map[string][]string)}
 	for index, check := range checks {
 		if ctx.Err() != nil {
 			photograph.unread = append(photograph.unread, checks[index:]...)
@@ -87,6 +98,9 @@ func readChecksOn(ctx context.Context, dir string, checks []string) checkPhotogr
 		}
 		if !run.Passed {
 			photograph.red = append(photograph.red, check)
+			if len(run.Failures) > 0 {
+				photograph.failures[check] = append([]string(nil), run.Failures...)
+			}
 		}
 	}
 	return photograph
@@ -107,9 +121,10 @@ const (
 // as a finished one. Closing ready publishes both fields; read false means the
 // checkout itself could not be made and no conclusion may be cached from it.
 type baseCheckReading struct {
-	ready  chan struct{}
-	answer baseCheckAnswer
-	read   bool
+	ready    chan struct{}
+	answer   baseCheckAnswer
+	failures []string
+	read     bool
 }
 
 // baseCheckClaim is one cache entry this caller is responsible for filling.
@@ -198,6 +213,7 @@ func publishBaseChecks(sha string, claims []baseCheckClaim, photograph checkPhot
 	for _, claim := range claims {
 		claim.entry.read = photograph.read
 		claim.entry.answer = answerForCheck(claim.command, photograph)
+		claim.entry.failures = append([]string(nil), photograph.failures[claim.command]...)
 		if !photograph.read {
 			key := sha + "\x00" + claim.command
 			if sharedBaseChecks.byKey[key] == claim.entry {
@@ -228,7 +244,7 @@ func answerForCheck(command string, photograph checkPhotograph) baseCheckAnswer 
 // photograph in the door's order. A window that closes while a sibling is
 // reading leaves the commands it did not reach unread for this node.
 func awaitBaseChecks(ctx context.Context, checks []string, entries []*baseCheckReading) checkPhotograph {
-	photograph := checkPhotograph{read: true}
+	photograph := checkPhotograph{read: true, failures: make(map[string][]string)}
 	for index, entry := range entries {
 		select {
 		case <-entry.ready:
@@ -242,6 +258,9 @@ func awaitBaseChecks(ctx context.Context, checks []string, entries []*baseCheckR
 		switch entry.answer {
 		case baseCheckRed:
 			photograph.red = append(photograph.red, checks[index])
+			if len(entry.failures) > 0 {
+				photograph.failures[checks[index]] = append([]string(nil), entry.failures...)
+			}
 		case baseCheckUnread:
 			photograph.unread = append(photograph.unread, checks[index])
 		}
@@ -405,11 +424,10 @@ func checkGroundBlock(checks checkGround) string {
 	var out strings.Builder
 	out.WriteString("\nWHAT THE CHECKS SAID BEFORE THIS WORK:\n")
 	for _, command := range already {
-		fmt.Fprintf(&out, "- `%s` was already failing before this work began. It is not this work's to answer for.\n", command)
+		fmt.Fprintf(&out, "- `%s` was red before this work and remains red. This comparison found no newly named failure; it is not proof that the requested behavior works.\n", command)
 	}
 	if len(already) > 0 {
-		out.WriteString("An acceptance saying the suite passes is met when everything this work could have broken " +
-			"is green and the rest is exactly as it was found.\n")
+		out.WriteString("Judge the requested acceptance from the work and its evidence; unparsed red output remains uncertain.\n")
 	}
 	for _, command := range turned {
 		fmt.Fprintf(&out, "- `%s`: this work turned it red. That is a finding.\n", command)

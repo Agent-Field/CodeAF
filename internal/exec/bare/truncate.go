@@ -80,8 +80,13 @@ func splitLinesForCounting(content string) []string {
 // the previous one (i>0), exactly as pi does — the newline is real output
 // the model sees and counts against the budget.
 func truncateHead(content string) truncateHeadResult {
-	maxLines := defaultMaxLines
-	maxBytes := defaultMaxBytes
+	return truncateHeadAt(content, defaultMaxLines, defaultMaxBytes)
+}
+
+// truncateHeadAt is truncateHead with a caller-owned byte budget. The ordinary
+// tools always use pi's defaults; a composed belt may reserve room for the
+// continuation footer while keeping the same line and offset semantics.
+func truncateHeadAt(content string, maxLines, maxBytes int) truncateHeadResult {
 	totalBytes := byteLength(content)
 	lines := splitLinesForCounting(content)
 	totalLines := len(lines)

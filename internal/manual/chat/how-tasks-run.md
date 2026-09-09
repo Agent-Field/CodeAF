@@ -1338,7 +1338,13 @@ What it may touch: `read`, `grep`, `find`, `ls`, and a `bash` restricted to an a
 built for **that one task** — see the next section. It cannot edit, write, install, fetch or
 paint. Shell composition is refused outright: any of `; | & < > $ ( ) { }`, a backtick or a
 newline in the command is turned away before the allowlist is even consulted. Every result
-it reads is capped at 8000 bytes.
+it reads is capped at 8000 bytes. `read` reserves room inside that bound for its ordinary
+`Use offset=… to continue.` footer. When another tool returns more, the result names the
+content-addressed file holding the whole output; the checker opens that path with `read` and
+uses the same line offsets as any other file. Those saved results are aforge's expiring
+droppings beside the commissioning conversation, never files in the work being checked.
+If the full output cannot be saved, the result says so and asks for a narrower path, pattern,
+or range; it does not claim the missing bytes are available.
 
 Before the check, new files are staged so the diff shows everything including brand-new
 files. Staging happens once, so every look judges the same tree. In a workspace that is
@@ -1541,10 +1547,12 @@ branch tip is never substituted for the missing history.
 Before a task's work is checked, aforge runs the task's named checks on the **base commit
 its copy was cut from**. That is the before-reading: it says which checks were already red
 before the task began. The check of what would ship is then compared with it. A check that
-was already failing and is still failing is not this task's to answer for; an acceptance
-that says the suite passes is met when everything this task could have broken is green and
-the rest is exactly as it was found. A check that was passing before the task and is red
-after it **is** this task's.
+was already failing and still names the same failure is unchanged baseline evidence. It is
+not proof that the requested behavior works: the checker still judges the request from the
+work and its evidence. When both readings name individual failures, aforge compares those
+names, so one old failure cannot hide a different new failure under the same command. A
+check that was passing before the task and is red after it **is** new red. Output that does
+not name individual failures stays uncertain rather than being guessed different.
 
 The checker is told that distinction before it reads which commands it may run. If the base
 was clean, it is told every check was passing before the work began, so any red it finds is
@@ -1563,7 +1571,7 @@ When old red remains under work that finishes, its report keeps the checker's ow
 first and then says exactly:
 
 ```
-1 check was already failing before this work and is not counted: go test ./...
+1 check was already failing before this work; that does not show the requested result works: go test ./...
 ```
 
 ## What the checker is shown of what the task already ran
@@ -2815,11 +2823,19 @@ its own: raising `no_progress` for work that is legitimately repetitive moves bo
 Both step limits are recorded in the checkpoint, so they survive a restart along with the
 rest of the task.
 
+## Does a long request lose requirements when work is checked or handed off?
+
+The checkpoint and completion readers receive the complete original request. A request
+that cannot fit inside the usual work summary is carried separately from that bounded
+summary, so requirements in its middle or at its end are not cut. Handoff carries the
+complete request once as well. This adds no extra model call; unusually long requests
+cost more input tokens because their words still have to be read.
+
 ## Which checks can the main conversation repeat?
 
-The main conversation uses the same explicit `checks` contract as task checking. A command mentioned in a done-condition, a pasted request, or a tool receipt is evidence, not permission to run it again. An unattended session can also freeze explicit `checks` with its initial whole-request acceptance. These use the same command validation as a task and stay tied to that original ask; later model output cannot replace them. Without either declaration, the completion reader assesses existing evidence and does not invent a shell command from prose. Normal workers can still run the tests needed to do their work.
+The main conversation uses the same explicit `checks` contract as task checking. A command mentioned in a done-condition, a pasted request, or a tool receipt is evidence, not permission to run it again. An unattended session freezes the complete original request itself as its whole-request acceptance without first asking another model to rewrite it. If finished work is retained outside the requested workspace, a later reading may settle only whether the person requested a branch, a report, or integration into the workspace; it cannot add checks after work has begun. Without an opening declaration, the completion reader assesses existing evidence and does not invent a shell command from prose. Normal workers can still run the tests needed to do their work.
 
-Each proposal or assignment revision accepts at most eight non-empty check commands. A longer list is refused rather than silently losing a required check. A goal revision drops earlier checks unless it declares new ones. Legacy tasks with no declared checks are assessed by reading; do not interpret that as a claim that their tests were executed. Session acceptance receipts record the declared checks, but reopening still creates a fresh goal owner: historical receipts do not grant a new ask permission to execute old commands.
+Each proposal or assignment revision accepts at most eight non-empty check commands. A longer list is refused rather than silently losing a required check. A goal revision drops earlier checks unless it declares new ones. Legacy tasks with no declared checks are assessed by reading; do not interpret that as a claim that their tests were executed. A late session delivery receipt preserves any checks already declared at opening, but cannot declare new ones; reopening still creates a fresh goal owner, so historical receipts do not grant a new ask permission to execute old commands.
 
 ## A background command finishes after we changed the subject
 

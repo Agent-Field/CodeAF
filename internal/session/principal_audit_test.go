@@ -528,6 +528,7 @@ func TestAnUnreachedReaderOverARedCheckCarriesOnWithTheRedNamed(t *testing.T) {
 	steward := agent.steward()
 	steward.hear("port the parser; check it with `false`")
 	steward.setAcceptanceContract(steward.Ask(), "the parser builds and `false` passes", []string{"false"})
+	recordCoveredBaseline(agent, "false")
 	agent.rememberCreated(fileChange{path: made, shown: "parser.go", created: true})
 
 	got := agent.decideRemains(context.Background(), readerLine{unreachable: true}, "That completes the port.")
@@ -626,6 +627,7 @@ func TestAGoalOwnersMetAskIsCheckedAgainstTheTree(t *testing.T) {
 	// is under test here is the reading taken after one has already landed.
 	node := landOne(agent, TaskDone, "port the parser", "")
 	node.Checks = []string{"false"}
+	recordCoveredBaseline(agent, "false")
 
 	got := agent.decideRemains(context.Background(), readerLine{answered: true, nothingLeft: true}, "That completes the port.")
 	if got.Verb != DecideCarryOn {
@@ -633,6 +635,60 @@ func TestAGoalOwnersMetAskIsCheckedAgainstTheTree(t *testing.T) {
 	}
 	if !strings.Contains(got.Brief, "false does not pass") {
 		t.Fatalf("the brief does not name the check:\n%s", got.Brief)
+	}
+}
+
+// A CHECK DECLARED BY A LATE TASK HAS NO BEFORE-READING. The terminal door may
+// run it and show its red result, but cannot turn that result into fresh work.
+func TestALateTaskCheckIsUnreadAtTheTerminalDoor(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = t.TempDir()
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	steward := agent.steward()
+	steward.hear("write a short account of the city council vote")
+	steward.setAcceptance("the account states the result")
+	agent.openBaseline(context.Background())
+
+	node := landOne(agent, TaskDone, "write the account", "the account states the result")
+	node.Checks = []string{"false"}
+	got := agent.decideRemains(context.Background(), readerLine{answered: true, nothingLeft: true}, "The account is complete.")
+	if got.Verb != DecideDone {
+		t.Fatalf("an uncovered late check became a new requirement: %+v", got)
+	}
+	if !strings.Contains(got.Brief, "no usable before-reading") || !strings.Contains(got.Brief, "false") {
+		t.Fatalf("the done path hid the unknown red check:\n%s", got.Brief)
+	}
+	if strings.Contains(got.Brief, "false does not pass") {
+		t.Fatalf("the unknown red check was called a regression:\n%s", got.Brief)
+	}
+}
+
+func TestADeclaredGreenBaselineThatTurnsRedStillCarriesOn(t *testing.T) {
+	tree := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = tree
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	steward := agent.steward()
+	steward.hear("write a short account and keep the workspace healthy")
+	const check = "test ! -f regression.flag"
+	steward.setAcceptanceContract(steward.Ask(), "the account is written and the workspace remains healthy", []string{check})
+	agent.openBaseline(context.Background())
+	agent.awaitBaseline(context.Background())
+	if err := os.WriteFile(filepath.Join(tree, "regression.flag"), []byte("red\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	landOne(agent, TaskDone, "write the account", "the account is complete")
+
+	got := agent.decideRemains(context.Background(), readerLine{answered: true, nothingLeft: true}, "The account is complete.")
+	if got.Verb != DecideCarryOn || !strings.Contains(got.Brief, check+" does not pass") {
+		t.Fatalf("a check read green before and red after was not preserved as a regression: %+v", got)
+	}
+	if strings.Contains(got.Brief, "no usable before-reading") {
+		t.Fatalf("a covered check was described as unknown:\n%s", got.Brief)
 	}
 }
 
@@ -653,6 +709,7 @@ func TestADoneAtAHandoverIsCheckedAgainstTheTreeFirst(t *testing.T) {
 	steward.setAcceptance("the parser builds and `false` passes")
 	node := landOne(agent, TaskDone, "port the parser", "")
 	node.Checks = []string{"false"}
+	recordCoveredBaseline(agent, "false")
 
 	got := agent.decideHandover(context.Background(), readerLine{answered: true, nothingLeft: true}, "That completes the port.")
 	if got.Verb != DecideCarryOn {
@@ -661,6 +718,17 @@ func TestADoneAtAHandoverIsCheckedAgainstTheTreeFirst(t *testing.T) {
 	if !strings.Contains(got.Brief, "false does not pass") {
 		t.Fatalf("the brief does not name the check:\n%s", got.Brief)
 	}
+}
+
+// recordCoveredBaseline states the full before-reading fact needed by tests
+// whose terminal command is deliberately red. An empty old-red list alone no
+// longer implies that an undeclared command was read green.
+func recordCoveredBaseline(agent *Agent, commands ...string) {
+	agent.mu.Lock()
+	agent.baselineTaken = true
+	agent.baselineRead = true
+	agent.baselineDeclared = append([]string(nil), commands...)
+	agent.mu.Unlock()
 }
 
 // landOne puts one settled node into a session's graph, the way a landing would

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -295,6 +296,38 @@ func TestReadByteTruncation(t *testing.T) {
 	// Byte truncation footer includes "(50.0KB limit)" — formatSize(51200).
 	if !strings.Contains(text, "(50.0KB limit). Use offset=") {
 		t.Errorf("missing byte truncation footer in:\n...%s", text[len(text)-120:])
+	}
+}
+
+func TestReadWithAComposedBudgetKeepsItsContinuation(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "quarterly reviews 界")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var body strings.Builder
+	for index := range 300 {
+		body.WriteString(strings.Repeat("界,data,prose;", 5))
+		body.WriteString(strconv.Itoa(index))
+		body.WriteByte('\n')
+	}
+	mustWriteFile(t, dir, "review.sql", body.String())
+	tool := ReadTool(dir, 7500)
+	first, _ := runTool(t, tool, map[string]any{"path": "review.sql"})
+	if len(first) > 8000 {
+		t.Fatalf("composed read = %d bytes, want room for its footer under 8000", len(first))
+	}
+	marker := strings.LastIndex(first, "Use offset=")
+	if marker < 0 {
+		t.Fatalf("composed read lost its continuation:\n%s", first)
+	}
+	digits := strings.TrimSpace(strings.TrimSuffix(first[marker+len("Use offset="):], "to continue.]"))
+	next, err := strconv.Atoi(digits)
+	if err != nil {
+		t.Fatalf("continuation offset %q: %v", digits, err)
+	}
+	second, _ := runTool(t, tool, map[string]any{"path": "review.sql", "offset": next})
+	if strings.HasPrefix(second, "界,data,prose;0") || !strings.Contains(second, strconv.Itoa(next-1)) {
+		t.Fatalf("continuation repeated the first page or skipped its next line:\n%s", second)
 	}
 }
 

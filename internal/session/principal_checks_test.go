@@ -2,27 +2,20 @@ package session
 
 import (
 	"context"
-	"encoding/json"
 	"path/filepath"
-	"slices"
 	"testing"
 	"time"
 )
 
-// The actual acceptance writer's structured field reaches the inline verifier
-// without creating a task or mining a command from the acceptance sentence.
-func TestTheSessionAcceptanceFreezesItsExplicitChecks(t *testing.T) {
+// A command in the original prose is evidence and never execution authority.
+// The deterministic opening freezes the words without asking a model to turn
+// part of them into a command declaration.
+func TestTheSessionAcceptanceDoesNotMintChecksFromProse(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
-	const ask = "port the parser"
+	const ask = "port the parser and run go test ./..."
 	const check = "go test ./..."
-	payload, err := json.Marshal(map[string]any{
-		"work": true, "goal": ask, "acceptance": "the parser accepts all fixtures",
-		"checks": []string{check}, "why": "verify the parser",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{finalText(string(payload))}}, func(c *Config) {
+	completer := &scriptedCompleter{}
+	agent, _ := newTestAgent(t, completer, func(c *Config) {
 		c.Unattended = true
 		c.Budget = Budget{Wall: time.Hour}
 		c.SessionFile = path
@@ -30,18 +23,19 @@ func TestTheSessionAcceptanceFreezesItsExplicitChecks(t *testing.T) {
 	steward := agent.steward()
 	steward.hear(ask)
 	agent.openAcceptance(context.Background(), nil)
-	if got := agent.sessionChecks(); !slices.Equal(got, []string{check}) {
-		t.Fatalf("structured checks did not reach inline verification: %v", got)
+	if got := agent.sessionChecks(); len(got) != 0 {
+		t.Fatalf("request prose granted command authority: %v", got)
+	}
+	if completer.requests() != 0 {
+		t.Fatalf("opening the request made %d model calls", completer.requests())
 	}
 	if agent.tasker() != nil {
 		t.Fatal("declaring a session verifier invented a task graph")
 	}
-	copy := steward.declaredChecks()
-	copy[0] = "false"
 	if steward.setAcceptanceContract(ask, "a replacement", []string{"false"}) {
 		t.Fatal("a later contract replaced the frozen verifier")
 	}
-	if got := steward.declaredChecks(); !slices.Equal(got, []string{check}) {
+	if got := steward.declaredChecks(); len(got) != 0 {
 		t.Fatalf("the frozen declaration was mutated: %v", got)
 	}
 	if err := agent.Close(); err != nil {
@@ -53,8 +47,8 @@ func TestTheSessionAcceptanceFreezesItsExplicitChecks(t *testing.T) {
 			recorded = entry.Principal.Checks
 		}
 	}
-	if !slices.Equal(recorded, []string{check}) {
-		t.Fatalf("acceptance receipt lost its declared verifier: %v", recorded)
+	if len(recorded) != 0 {
+		t.Fatalf("acceptance receipt invented a declared verifier: %v", recorded)
 	}
 
 	// Principal receipts are historical evidence. Reopening creates a fresh

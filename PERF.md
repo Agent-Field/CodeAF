@@ -1269,6 +1269,12 @@ transcript and the journal keep every byte (`internal/session/toolcompact.go`).
 | all consumed results together | **5,000 tokens** (`checkpointDigestBytes`) | the same account the checkpoint digest is held to. Over it, the oldest shrink to stub.go's one-line account, oldest first. It is a ceiling to walk towards: several hundred calls weigh more than it even as single lines. |
 | the walk itself | one pass, running total | re-adding every old result on every iteration is quadratic in the call count, on the hot path of every request. The call-id→tool-name index is built once for the same reason. |
 
+The checkpoint readers keep ordinary requests inside that same **5,000-token** digest.
+Only an original request too large to fit there with its heading is sent as a complete
+separate section, once, with the work evidence independently held to the existing bound.
+Those extra request tokens are required so a constraint in the middle or at the end cannot
+be removed from a completion or handoff question; the ask is not duplicated.
+
 Every reduction names where the whole result can be read, and **one resolver
 answers for all three passes** — this view, the end-of-turn stub and the
 current-turn fold (`Agent.fullResultPointer`). It answers with the result's own
@@ -2179,3 +2185,14 @@ changed names so overtaking cannot lose the visible update. Reconnect reopens an
 title subscription once, without polling or model work. Background title redraws neither
 consume completion flags nor raise attention banners. Metadata read-modify-write is
 serialized per agent, with owned-field patches so stale spend snapshots preserve titles.
+
+## Checker observations remain bounded and recoverable
+
+The checker keeps its existing **8,000-byte** per-result ceiling
+(`auditResultLimit`). Its native reader uses **7,500 bytes** for page content
+(`auditReadContentLimit`), reserving the remainder for the exact line range and
+continuation footer. Other oversized observations use the existing atomic,
+content-addressed `writeStub` path; their bounded preview names the saved file.
+This adds no model call or separate retention cache. A single line larger than
+the native reader's content limit retains the reader's explicit long-line
+response; line paging does not claim to split it.
