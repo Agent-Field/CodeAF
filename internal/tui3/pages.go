@@ -1098,7 +1098,16 @@ func placeFrameWithBar(a *app, width, height int,
 	box := a.placeBox()
 	var draftRows []string
 	var draftCX, draftCY int
-	if box != nil && !box.empty() {
+	switch {
+	case a.targetPickShowing():
+		// THE BOX IS THE LIST'S FILTER WHILE THE TARGET'S MODEL LIST IS UP, exactly
+		// as the conversation's box is the picker's (input.go's [app.inputBlock]):
+		// what a person types narrows the rows above, and the row has to show
+		// them the letters they typed rather than the resting sentence. The
+		// picker's own hint stands in while nothing is typed.
+		draftRows, draftCX, draftCY = draftBlock(&a.target.pick.filter, pal, width-2, 1,
+			pickerHintAt(width-2-ansi.StringWidth(prompt)), "")
+	case box != nil && !box.empty():
 		draftRows, draftCX, draftCY = draftBlock(box, pal, width-2, homeDraftRows, "", "")
 	}
 	draftHeight := len(draftRows)
