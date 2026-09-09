@@ -199,34 +199,58 @@ func tierRow(pal palette, status session.TaskStatus, title string, width int) st
 // tierRowBody is that row without its cell: the title, the word, and the giving
 // of ground between them.
 func tierRowBody(status session.TaskStatus, title string, width int) string {
+	title, word, both := tierRowParts(status, title, width, tierTitleFloor)
+	switch {
+	case !both && word != "":
+		// A ROW THIS NARROW CANNOT SAY BOTH, and of the two the word is the one
+		// that answers the question the row is read for.
+		return fit(word, width)
+	case word == "":
+		return fit(title, width)
+	}
+	return title + tierSep + word
+}
+
+// tierRowParts is THE GIVING OF GROUND ITSELF, and the reason it is its own
+// function is that the two lists of work this surface draws paint the halves
+// differently: a landing card says the title in the node's own ink and the
+// reading in the tier's, and the column beside the conversation says the title
+// in the hue of the room a person is standing in. A builder that answered with
+// one string would have handed both of them a sentence they then had to take
+// apart to paint.
+//
+// IT IS CUT FROM THE RIGHT AND THE VERB IS NEVER WHAT GOES. The files a conflict
+// names give way first, then the title down to the floor the caller names, and a
+// row with room for neither answers `both == false` — which is where the two
+// lists part company, because what to do then is not the same question in both
+// places (see [tierRowBody] and task.go's [app.railRowParts]).
+func tierRowParts(status session.TaskStatus, title string, width, floor int) (string, string, bool) {
 	title = strings.TrimSpace(title)
 	word := strings.TrimSpace(status.RowWord())
 	switch {
 	case word == "":
-		return fit(title, width)
+		return fit(title, width), "", true
 	case title == "":
-		return fit(word, width)
+		return "", word, false
 	}
-	if row := title + tierSep + word; ansi.StringWidth(row) <= width {
-		return row
+	if ansi.StringWidth(title+tierSep+word) <= width {
+		return title, word, true
 	}
 	// THE FILE LIST IS THE FIRST THING TO GO. `conflicts with your branch:
 	// parser.go, parser_test.go` names the files as a courtesy and says what to
 	// do as its whole point, and the card one keypress away has the list in full.
 	if shed := tierWordShed(word); shed != word {
-		if row := title + tierSep + shed; ansi.StringWidth(row) <= width {
-			return row
+		if ansi.StringWidth(title+tierSep+shed) <= width {
+			return title, shed, true
 		}
 		word = shed
 	}
 	// THEN THE TITLE, DOWN TO ITS FLOOR. The word keeps whatever it needs; what
-	// is left over, down to one word, is the title's.
-	if room := width - ansi.StringWidth(tierSep+word); room >= tierTitleFloor {
-		return fit(title, room) + tierSep + word
+	// is left over, down to the floor, is the title's.
+	if room := width - ansi.StringWidth(tierSep+word); room >= floor {
+		return fit(title, room), word, true
 	}
-	// AND ONLY THEN THE ROW ITSELF. A column this narrow cannot say both, and of
-	// the two the word is the one that answers the question the row is read for.
-	return fit(word, width)
+	return title, word, false
 }
 
 // tierWordShed drops the list a reason carries after its colon — the files a

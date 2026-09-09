@@ -130,10 +130,14 @@ func testFreshInstallSetup(t *testing.T) {
 		say(t, "setupTitleWord"), say(t, "setupConnectHeading"), say(t, "setupConnectSentence"))
 	t.Logf("a fresh install, launched the ordinary way, is shown the door:\n%s", screen)
 
-	// AND IT IS ASKING FOR ALL THREE. A machine with nothing on it has answered
-	// no part of the setup, so the count is the count of what is missing.
-	if !strings.Contains(screen, say(t, "setupTitleWord")+" · 1 of 3") {
-		t.Errorf("the title does not count three missing answers on a machine with nothing on it:\n%s", screen)
+	// AND IT IS ASKING FOR BOTH. A machine with nothing on it has answered no
+	// part of the setup, so the count is the count of what is missing — and
+	// internal/tui3's [setupStepsFor] builds at most two: the provider key, and
+	// the crew-and-spending step that carries the rest. It counted three before
+	// those were folded together, and a needle nobody moved would have waited
+	// twenty seconds for a title this door has stopped drawing.
+	if !strings.Contains(screen, say(t, "setupTitleWord")+" · 1 of 2") {
+		t.Errorf("the title does not count both missing answers on a machine with nothing on it:\n%s", screen)
 	}
 
 	// AND ITS EXIT IS REAL TOO. `esc` says not now, and the conversation under it
@@ -199,28 +203,26 @@ func testNestedGate(t *testing.T) {
 // right, the engine keeps its failed plus refused state, and the built surface
 // must call that result incomplete rather than turning the useful finding into
 // a generic failure.
-// ── KNOWN RED, AND WHAT WAS MEASURED ABOUT IT (issue #706) ──────────────────
+// ── AND IT IS THE ONE THAT CAUGHT #706, WHICH IS WORTH KEEPING WRITTEN DOWN ──
 //
-// This subtest does not pass on dev today, and the reason is NOT the setup screen
-// or the greeting that were fixed for its two neighbours. It waits for the card's
-// answers row and the row is not drawn at all: the landing reads
+// This subtest waited twenty seconds for `[n] not right` and never saw it: the
+// card drew its tier and its reason and NO ANSWERS ROW AT ALL. The fixture in
+// taskstates_e2e_test.go, which is the same state, the same merge and the same
+// one changed file, drew all four chips in the same run — so for a while this
+// read as a difference between two fixtures that do not differ.
 //
-//	? ◆ Review the pull request diff · your call · 42s · 1 file
-//	  nobody could check it
+// THE DIFFERENCE WAS THE LENGTH OF THE TEMPORARY HOME. A conversation opens
+// against an engine host where one can be reached, and a host is reachable only
+// where its socket path fits (internal/enginehost's socketLimit) — so the
+// subtest with the shorter name got a host and the one with the longer name fell
+// back to the in-process engine. internal/remote's agent had none of the four
+// doors that decide a landing, the surface's assertion failed, and the absence
+// law removed the row: a control with nothing behind it is left off rather than
+// offered and failing. Which is why it also passed on every laptop, where the
+// temporary root is long enough that neither subtest ever reaches a host.
 //
-// and there is no third row under it — no `[a] accept`, no `[n] not right`, no
-// `[s] tell it`. The tier is right, the reason is right, and the answers are
-// missing, which is the shape docs/design/task-states/DESIGN.md exists to close.
-//
-// WHAT WAS RULED OUT, by measurement rather than by reading: it is not the
-// keyboard (the row is absent from the frame, not merely unanswered), not the
-// setup or the greeting ([rig.skipSetup], [statesAnswerKey]), and not the node
-// naming no changed file — that was the one structural difference from the
-// fixture in taskstates_e2e_test.go that DOES draw all four chips, and adding a
-// changed file put ` · 1 file` on the head and left the answers row absent.
-//
-// It is left standing rather than skipped: the suite is the place this is
-// visible, and a skip here is a defect nobody would meet again.
+// The doors cross now (internal/remote's tasksettle.go), and this is the subtest
+// that says so on a real screen.
 func testRefusedLanding(t *testing.T) {
 	home := newHome(t, map[string]any{"task.settle": "ask"})
 	ws := newWorkspace(t, "refusedgatews", false)

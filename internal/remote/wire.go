@@ -833,6 +833,17 @@ type Welcome struct {
 	SteerOwner bool `json:"steerOwner,omitempty"`
 	// TaskSetup advertises task-scoped model and thinking controls.
 	TaskSetup bool `json:"taskSetup,omitempty"`
+	// TaskSettle says this engine can be ASKED TO DECIDE A LANDING — accept, not
+	// right, one more merge round, the hand-over and the take-back
+	// ([MethodTaskSettle]).
+	//
+	// IT IS CARRIED FOR [Welcome.Folders]'S REASON, and the cost of not carrying
+	// it was measured: internal/tui3 asserts these doors on the agent it holds and
+	// draws no answers row at all where the assertion fails, so a window on an
+	// engine host drew a landing card with its reason and nothing to press (#706).
+	// Every *Agent has the methods; only the welcome knows whether the machine at
+	// the far end does.
+	TaskSettle bool `json:"taskSettle,omitempty"`
 
 	// Folders says this engine CAN HOLD THE FOLDERS A CONVERSATION IS ABOUT —
 	// that its agent answers [MethodPlacesRefer] and [MethodPlacesRemove] rather

@@ -978,6 +978,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// ([Session.agentOf]), so the answer is about the wire and not the agent.
 		SteerOwner: true,
 		TaskSetup:  taskSetupKnown(sess.agent),
+		TaskSettle: taskSettleKnown(sess.agent),
 	}
 }
 
@@ -1850,6 +1851,12 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			Approved: args.Approved, Redirect: args.Redirect, Model: args.Model,
 		})
 		return nil, nil
+	case MethodTaskSettle:
+		args, err := arg[TaskSettleArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		return settleTask(agent, args)
 	case MethodTaskHold:
 		args, err := arg[TaskHoldArgs](call)
 		if err != nil {
