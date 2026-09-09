@@ -81,10 +81,12 @@ caption whenever its words and the work appear to disagree.
 The short status line over a batch is its **caption** — one sentence of about
 5 to 10 words naming what the step is doing and where. A collapsed stack of
 those lines is the **outline**. On a narrow window a caption wraps; it is never
-cut mid-sentence with an ellipsis. It says what each step is trying to settle
-rather than repeating commands the rows already name. A live caption may shimmer
-while its rows are folded; opening it stops the shimmer and shows the running
-calls.
+cut mid-sentence with an ellipsis. A caption ends only where its sentence ends,
+so a filename, version number or path keeps its whole self: `reading livesteps.go`
+is not shortened to `reading livesteps`, and a caption never begins in the middle
+of a word. It says what each step is trying to settle rather than repeating commands
+the rows already name. A live caption may shimmer while its rows are folded; opening
+it stops the shimmer and shows the running calls.
 
 Use **`ctrl+e` on an empty box** to open the newest `▸ worked` chip onto the outline.
 Then click the caption, select it and press `enter`, or press **`ctrl+o` on the live
