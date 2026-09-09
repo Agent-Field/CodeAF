@@ -36,7 +36,9 @@ normal live runner always includes them, even with a narrowed organization case.
 Each probe keeps the production reader deadline and checks a $0.05 spend ceiling.
 For diagnosis alone: `go test -tags e2e -count=1 -run '^TestRealCompletionEvidence$' ./internal/session`.
 The out-of-scope case observes the real outgoing provider request through a local
-forwarding proxy; it does not replace the provider with a model stub.
+forwarding proxy; it does not replace the provider with a model stub. It also
+reads and parses the unrelated chat's `scope.json`, requiring status
+`unavailable`. Prompt isolation alone cannot establish a valid delivered file.
 
 ## Cases and limits of their claims
 

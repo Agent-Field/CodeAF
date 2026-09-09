@@ -175,3 +175,68 @@ landed changes into the review branch, resolving one completion-call conflict
 and retaining both our evidence repair and upstream #665 generation defaults.
 This is not a merge of #662 into `dev`. Final acceptance must be taken on the
 combined branch; the separate repair-only receipts remain historical evidence.
+
+## Completion follow-up receipts and limits
+
+The following supersedes the pending-rerun status above. Receipts remain under
+`/Users/santoshkumar/af-completion-evidence-20260909/`; portable commands use the
+committed fixtures and never require those private paths.
+
+| Revision / receipt | Result and meaning |
+| --- | --- |
+| `fa9f1fe64`, `after-complex.jsonl` | The 12-chat working day passed in 665.99s. The combined selection was red: conflict checks rejected both a genuine mistyped path attempt and macOS symlink aliases. |
+| `53dd6443f`, `integrated-all.jsonl` | Removed-scope read and large retrieval passed. Working day missed reports after the model dropped `_day` from two absolute destinations. Completion probes falsely accepted wrong type/source. A separate cleanup deleted the active integration checkout mid-run; binary failure/interruption is infrastructure damage, not full acceptance. |
+| `743f70866`, `presentation-v2-reader.jsonl` | Clearer ledger labels did not establish reliable judgment: a correct report was rejected and a failed write accepted. Keep these negative results. |
+| `743f70866`, `final-remaining.jsonl` | The rebuilt binary's real-model test passed. This run was interrupted later; it is not a complete suite. |
+| `8a104b169`, `resumed-remaining.jsonl` | The conflict fixture rejected read-only `stand/list`; task workers created shell output without carrying it home. Later reruns below address these cases. Historical domain passes here predate the stricter scope-file assertion. |
+| `3f678b893`, `path-workday.jsonl` | All selected cases passed: removed-scope read 33.10s, large retrieval 28.51s, working day 561.86s. Complete selection 623.47s, plus all four real reader probes. |
+| `fb95cd197`, `path-worker-conflict.jsonl` | Conflict/local-choice 91.96s and actual task workers 106.42s passed, including returned artifacts and independent task addresses. All four real reader probes also passed. |
+| `c9b9ff388`, `strict-scope.jsonl` | The two-bug journey passed with the newly required valid unrelated-chat JSON report. The remaining domain reruns use the same stronger assertion. |
+
+Two test corrections preserve the requested boundaries: compare actual file
+identity so `/var` and `/private/var` can name the same artifact, while rejecting
+missing/different files; allow exactly `stand` with `op:"list"`, while rejecting
+all its mutations and malformed operations. A new assertion now reads and parses
+`scope.json`, separately from checking that no unrelated context entered the
+model request. Earlier domain receipts did not establish that output guarantee.
+
+The worker failure's actual trace showed a shell redirect creating the file in
+the task copy, then an empty delivered-file list. The full-path instruction was
+broader than intended: file tools already resolve relative paths. The narrowed
+instruction preserves final absolute references, supplied paths and approval
+rules. The worker rerun returned both files without changing the fixture brief
+or allowing a missing artifact.
+
+Local full `internal/session`, `internal/manual` and untagged `internal/e2e`
+suites passed on `3f678b893` (265.285s, 2.059s, 0.413s). The new assertion helpers
+passed their untagged suite. Build and size passed: 52,033,090 bytes against the
+54,600,000-byte budget on `fb95cd197`. PR gate 34387315191 passed on `743f70866`;
+later head checks must be read independently. Earlier local regressions suffered
+full disk, removed cache objects, deleted logs and interruption; they are not
+claimed as green. Final evidence is kept outside `/tmp` to preserve receipts.
+
+Alternative reader presentations were investigated in standalone diagnostics.
+Unescaping the displayed content still missed a wrong source; asking for a short
+evidence statement before a structured result falsely rejected correct content.
+Neither experimental presentation was installed. Those experiments did not
+justify another parser or a second model call. #672 remains open for the observed
+reliability gap; no claim of universal model reliability follows from the latest
+passing cases. The branch remains draft and unmerged.
+
+### Final strict domain reruns
+
+All five domain journeys passed the strengthened `scope.json` assertion on
+`c9b9ff388`: `two_bugs` 139.56s (`strict-scope.jsonl`), `api_contract` 102.74s,
+`maintenance` 83.71s, `research_marketing` 97.49s and `travel_calendar` 93.86s
+(`strict-<case>.jsonl`). The last four ran in separate processes with independent
+profiles and disposable homes, so process-global test environment changes could
+not cross cases. All four process exits were zero; `strict-domains-results.json`
+records the revision and exits. No model assertions were skipped or weakened.
+
+The combined historical `resumed-remaining.jsonl` run is still red for its
+pre-fix worker and standing-list failures. Its other cases passed. The targeted
+reruns above are the repair evidence, not a rewrite of that full-run result.
+The latest production code has passing working-day, worker, conflict and domain
+evidence across the recorded runs; there has not been one final all-thirteen
+invocation after every test refinement. #672 still records earlier inconsistent
+reader judgments, and paid CI still lacks credentials. Keep the draft open.

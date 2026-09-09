@@ -246,29 +246,46 @@ brief informed the functional cases. Do not overwrite its documents.
 
 ## Current checkpoint and next action
 
-The first integrated backend slice is implemented and pushed to draft #662.
-A later regular-use test wave found a real scope/readability failure and a
-separate model completion reliability failure; read [COMPLEX-TESTS.md](COMPLEX-TESTS.md)
-before relying on the earlier nine-case evidence. The scope repair is confirmed by the long sequence and a forced identity-read
-case. The complete working-day run remains red for completion/report corruption,
-tracked in [#672](https://github.com/Agent-Field/aforge-v2/issues/672). That is the
-current reliability repair; the captured evidence, repair and pending full rerun
-are recorded in COMPLEX-TESTS.md. Do not describe all complex journeys as passing.
-Production code was verified at `a216cdcf5`; `6ce8be8bd` then clarified one live
-test assertion and strengthened the deterministic collection-name lookup test.
-No production behavior changed in that follow-up. See
-[TEST-RESULTS.md](TEST-RESULTS.md) for exact results, limitations and local receipt
-locations. All nine live scenarios have passing evidence across the reviewed run
-and the corrected assertion's targeted rerun; the original full run was **not**
-green. The complete touched-package regression passed on the production commit.
+The integrated backend and the completion follow-up are pushed on draft #662;
+none of this draft was merged into `dev`. The current production changes are
+through `3f678b893`; later commits strengthen functional assertions. The complete
+session/manual/untagged E2E regression passes on that production revision.
+The earlier ordinary PR gate at `743f70866` passed all touched packages and laws;
+check the latest head separately before relying on CI status.
 
-The paid CI workflow is installed but its repository credential is unavailable,
-so that job reports **NOT RUN**. Local real-model evidence is separate from the
-ordinary PR gates. Do not describe skipped paid CI as a successful live run.
-Build and test instructions are in [FUNCTIONAL-TESTS.md](FUNCTIONAL-TESTS.md).
+The follow-up captured and repaired missing write evidence in the completion
+reader. The newest completed write/edit carries bounded whole arguments beside
+its own result, without evicting earlier failures. Completion objections are
+observations to check, not instructions to alter correct work blindly. File-tool
+arguments now prefer existing workspace-relative resolution; full absolute
+paths remain the rule for references shown to the person. Explicit paths and
+approval boundaries retain their meaning.
 
-Keep #662 draft and unmerged. Continue later slices only after their own grooming
-and scope agreement. The first follow-on discussion should settle addressed
-consultation and its authority, then activation/idempotency and discovery; do not
-jump to a dashboard or add a second scheduler to compensate for missing backend
-behavior. The separate product-grooming draft #663 remains independently owned.
+The new complete working-day run passed on `3f678b893`: twelve chats, concurrent
+submissions, eight long review turns, revisions, idle behavior, reopening,
+membership removal/rejoin and withdrawal. The worker and conflicting-source
+reruns passed on `fb95cd197`, including both requested task artifacts returning.
+Read [COMPLEX-TESTS.md](COMPLEX-TESTS.md) for immutable receipts, earlier failures,
+interrupted runs and the distinction between model judgments and backend state.
+
+**Reliability is still an open item.** [#672](https://github.com/Agent-Field/aforge-v2/issues/672)
+remains open because real completion probes have both passed and falsely judged
+controlled evidence on the repaired code. A green working day is valuable but
+not proof that every later model judgment will be correct. Keep positive and
+negative probes strict; do not replace actual delivered-file assertions with
+assistant claims. `c9b9ff388` additionally parses the unrelated chat's scope JSON:
+old domain receipts proved prompt isolation but did not validate that file.
+All five domain journeys then passed this stronger assertion on `c9b9ff388`;
+their individual receipts and limits are recorded in COMPLEX-TESTS.md.
+
+The paid CI workflow remains **NOT RUN** when its repository credential is
+unavailable. Local real-model runs are recorded separately; skipped paid CI is
+not a passing live suite. Commands are in [FUNCTIONAL-TESTS.md](FUNCTIONAL-TESTS.md).
+
+Keep #662 draft and unmerged. The next reliability work is grounded completion
+judgment and usable delivered artifacts, followed by a full strict live run on
+one reviewed revision. The remaining product slices in the table above are
+still pending: addressed consultation, ongoing activation integration,
+discovery beyond links, and learning/proposed work. Groom each before expanding
+implementation. Do not add a second scheduler or jump to the dashboard to cover
+missing backend behavior. Product-grooming draft #663 remains independently owned.
