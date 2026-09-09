@@ -392,29 +392,31 @@ func testStatesRailAndRoster(t *testing.T) {
 	t.Logf("the landing, before the column is asked for:\n%s", screen)
 
 	// THE COLUMN, whichever side of the toggle this window opened on. `ctrl+g`
-	// closes the roster's column or brings it back and the setting is remembered,
-	// so a window that opened without one needs the key and a window that opened
-	// with one must not be sent it — the column is looked for first and the key is
-	// spent only if it is not there.
-	rail := statesRail(t, r, say(t, "unverifiedGlyph"), say(t, "taskLookWord"))
+	// closes the roster's column or brings it back and the answer is remembered,
+	// so the column is looked for FIRST and the key is spent only when there is no
+	// column at all — a press on a window that already has one takes it away, and
+	// the first measured run of this subtest did exactly that and then reported
+	// the empty frame it had just made.
+	rail := statesRail(t, r, say(t, "unverifiedGlyph"))
 	if rail == "" {
-		t.Fatalf("no rail row carries both %q and %q:\n%s", say(t, "unverifiedGlyph"), say(t, "taskLookWord"), r.capture())
+		t.Fatalf("no row of the column carries %q at all:\n%s", say(t, "unverifiedGlyph"), r.capture())
 	}
 	t.Logf("RAIL · %s", rail)
 
-	// AND WHAT THE ROW GAVE UP IS ITSELF THE RULING. Thirty columns cannot hold a
-	// title and a reason and a word, and of the three the WORD is the one that
-	// answers the question the row is read for — so a column that kept only
-	// `your call` has given ground exactly where the design says it must, and one
-	// that trailed off before the word has not. Both are logged; neither is a
-	// failure, and a row cut through the word itself would be.
+	// AND THE ROW SAYS THE WORD. `<tier glyph> <title> · <word or reason>`, cut
+	// from the right, and THE VERB IS NEVER WHAT GOES: the title gives ground down
+	// to about one word and the reason's file list goes before either, because the
+	// row is read to find out whether it needs anything and the word is the half
+	// that answers that (docs/design/task-states/DESIGN.md).
 	switch {
 	case strings.Contains(rail, say(t, "settleAskWord")):
 		t.Logf("the column was wide enough for the reason as well as the word")
-	case strings.Contains(rail, "Port the parser"):
+	case strings.Contains(rail, say(t, "taskLookWord")):
 		t.Logf("the column kept the title and the word; the reason gave ground first, as the ruling says it does")
 	default:
-		t.Logf("the column kept the word alone, which is the last thing it gives up")
+		t.Errorf("the column's row says neither %q nor %q — it names the work and stops, "+
+			"which leaves the one question every row is read to answer unanswered:\n\t%s\n%s",
+			say(t, "taskLookWord"), say(t, "settleAskWord"), rail, r.capture())
 	}
 
 	// AND THE ROSTER SAYS THE SAME WORD. `/history` is the door; the chord the
@@ -609,18 +611,22 @@ func statesNoDeletedWords(t *testing.T, screen string) {
 // a fact about what each row IS rather than about where it happens to sit, so it
 // holds whichever side of the frame the column is on and at every width.
 //
-// AND THE COLUMN IS ASKED FOR ONLY IF IT IS NOT ALREADY THERE. `ctrl+g` closes
-// the roster's column or brings it back and the answer is remembered, so a press
-// on a window that already has one would take it away.
-func statesRail(t *testing.T, r *rig, glyph, word string) string {
+// IT IS FOUND BY THE TIER CELL ALONE, and that is deliberate. Looking for the
+// cell AND the word would make a column that has stopped saying the word
+// indistinguishable from a column that is not there — and those are two different
+// findings, one of which is answered by pressing ctrl+g and the other of which is
+// the defect this subtest exists to catch.
+func statesRail(t *testing.T, r *rig, glyph string) string {
 	t.Helper()
-	if row := statesRailRow(t, r.capture(), glyph, word); row != "" {
+	if row := statesRailRow(t, r.capture(), glyph); row != "" {
 		return row
 	}
+	// No column at all, so ask for it back. The answer is remembered per machine
+	// and a fresh state root has none recorded either way.
 	r.keys("C-g")
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		if row := statesRailRow(t, r.capture(), glyph, word); row != "" {
+		if row := statesRailRow(t, r.capture(), glyph); row != "" {
 			return row
 		}
 		time.Sleep(pollEvery)
@@ -628,12 +634,12 @@ func statesRail(t *testing.T, r *rig, glyph, word string) string {
 	return ""
 }
 
-// statesRailRow is one line of the column: the tier cell and the word, on a row
-// that is not a landing card's head.
-func statesRailRow(t *testing.T, screen, glyph, word string) string {
+// statesRailRow is one line of the column: the tier cell on a row that is not a
+// landing card's head and not the person's own.
+func statesRailRow(t *testing.T, screen, glyph string) string {
 	t.Helper()
 	for _, line := range strings.Split(screen, "\n") {
-		if !strings.Contains(line, glyph) || !strings.Contains(line, word) {
+		if !strings.Contains(line, glyph) {
 			continue
 		}
 		if strings.Contains(line, say(t, "taskCardKindGlyph")) {
@@ -641,7 +647,9 @@ func statesRailRow(t *testing.T, screen, glyph, word string) string {
 			// about.
 			continue
 		}
-		return strings.TrimSpace(line)
+		if text := strings.TrimSpace(line); text != "" && strings.HasPrefix(text, glyph) {
+			return text
+		}
 	}
 	return ""
 }
