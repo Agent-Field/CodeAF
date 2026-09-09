@@ -207,3 +207,28 @@ SHA. Only then reconcile onto current `origin/dev`, retarget PR #658, validate
 the combined affected source and normal gates, merge with expected-head
 protection, verify target ancestry, rebuild in this owned worktree, and write
 both success markers.
+
+## Pass 9 checkpoint
+
+- Steering revision 04 and the coordinated destination decision remain active.
+  A fresh read-only check finds PR #653 still open and draft against `dev`, with
+  no merge commit or merged timestamp. This observation does not authorize a
+  retarget or merge, and no protected branch was written.
+- Draft PR #658 remains open, cleanly mergeable, and based on
+  `codex/conversation-execution`. Its exact pushed head is
+  `5956e951622135bcedc37d3cc2060f922594150d`; remote `dev` remains
+  `65f060d338ec5d01eded666b420ec533319f35ac`, and the conversation branch and
+  PR #653 head remain `2a02ac0bb9c4d085a345805fd809ac9539f2d896`.
+- No duplicate heavy run was launched. The frozen candidate evidence remains
+  the controlled 564.32s to 402.60s uncached tui3 improvement, the 4,385-pass
+  affected report with four skips and no failures/cache labels/incomplete
+  packages, followed by green `make test-quick` and `make build`.
+- `reports/READY` and `reports/QUALITY_READY` remain absent. The next useful
+  expensive validation is on the explicitly authorized post-PR653 `origin/dev`
+  source, not another run of the unchanged held candidate.
+
+Outstanding: wait for the root's explicit hold release and verified PR #653
+merge SHA. Then reconcile onto the current `origin/dev`, retarget PR #658, run
+the affected suite and normal gates on that exact candidate, merge through the
+PR with expected-head protection, verify ancestry, rebuild here, and only then
+write both success markers.
