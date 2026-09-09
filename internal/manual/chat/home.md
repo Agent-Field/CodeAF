@@ -270,7 +270,7 @@ machine with nothing waiting has no accent on it at all.
 ## What opens when I press a landed row on home — I clicked a needs you row and it opened the chat
 
 **It opens the conversation, and that is now all it does.** Home no longer draws a row of
-its own for a task that landed and needs your look: a row on this list is a conversation
+its own for a task that landed as `your call`: a row on this list is a conversation
 or a standing item, and pressing `enter` opens it — whatever project it belongs to, with
 the conversation you were in left running behind it.
 
@@ -286,18 +286,19 @@ task:
 A conversation another terminal is holding is not refused: `enter` offers to MOVE it here,
 and a second `enter` does it — see *Continue a conversation from another terminal*.
 
-## How do I clear a needs your look row — settling work that landed
+## How do I clear a your call row — settling work that landed
 
-Work that landed needing a look **waits until you decide about it**, however many days that
+Work that landed as `your call` **waits until you decide about it**, however many days that
 is. It is not stale and it does not age out: nothing more happens to that work until
-somebody accepts it or sends it back.
+somebody answers it.
 
 Three ways to settle it, and they are the same door:
 
-- **the landing card in the conversation** — `[a] accept`, `[l] look again`, `[n] not
-  right`, `[d] decide these for me`;
-- **the task's room** — enter on its roster row opens it, and the same four choices stand
-  at the foot of the page; `a`, `l`, `n`, `d` over an empty box answer it with nothing
+- **the landing card in the conversation** — `[a] <yes>` and `[n] <no>`, whose words are
+  whatever that row is asking (`accept`/`not right`, `resolve it`/`drop it`), plus
+  `[s] tell it` and a dimmer `[d] let aforge decide this one`;
+- **the task's room** — enter on its roster row opens it, and the same chips stand at the
+  foot of the page; `a`, `n`, `s` and `d` over an empty box answer it with nothing
   selected;
 - **just say so.** "accept task 7", "that one isn't finished", "have another look at task
   7" — aforge settles it through its `tasks` tool. Whichever is used first wins; the other
@@ -858,11 +859,13 @@ leads the second line instead, with the glyph it wears everywhere else here:
   connection or a threshold ended, a brief whose world had moved, or work that was under
   way when the window went; home shares this empty-circle shape with queued work and
   distinguishes it with the state word and warn hue
-- `? needs your look · <what it came to>` — brought up out of the dim, because it is asking
+- `? your call · <what it is asking>` — brought up out of the dim, because it is asking
 - `⊘ stopped · <what it came to>` — **you** ended it. Nothing was found wrong with it.
-- `✗ failed · <what stopped it>` — and only this: a working copy that could not be made, a
-  worker that would not start, an error nobody classified. A run the wire or a limit ended
-  reads `incomplete`, because nothing was found out about the work.
+- `✗ incomplete · a fault: <what broke>` — and only this shape is coloured bad: a working
+  copy that could not be made, a worker that would not start, an error nobody classified. A
+  run the wire or a limit ended is `incomplete` too, drawn dim, because nothing went wrong
+  with the work. **The word `failed` is nowhere on home** — it is the engine's own name for
+  a state and never a word you read.
 
 ## How do I see more tasks on the right — ▸ …5 more tasks
 

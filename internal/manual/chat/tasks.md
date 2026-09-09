@@ -1220,31 +1220,49 @@ The check runs at the moment work is proposed and never again. Nothing re-checks
 while it runs, and nothing waits: two windows that decide to work the same file both work
 it, and the merge is still yours.
 
-## The states a task passes through
+## The states a task passes through — the three tiers, one glyph each, what the word on a task row means
+
+Every task row, card, rail line and roster entry answers **one question before it says
+anything else: do I need to do anything?** There are exactly three answers, each with its
+own glyph and its own word, and the glyph is the tier and nothing else. Learn three glyphs
+and you have learned the whole system.
+
+| Tier | Glyph | The word on the row | What it means |
+| --- | --- | --- | --- |
+| **moving** | `◌` still, `▸` running | `queued` · `working` · `waiting on …` · `auto-starts in …` · `finishing` | nothing for you |
+| **over** | `✓` · `⊘` · `✗` | `done` · `stopped` · `incomplete` | nothing for you |
+| **your call** | `?`, in the accent colour, always | `your call` | the machine has done what it can, and the card carries the reason and the answers |
+
+**A row never reads a bare `waiting` or a bare `your call`.** The reason travels with the
+word, because the reason is the half you can act on: `waiting on task 4`,
+`your call · conflicts with your branch`, `incomplete · ran out of steps`.
+
+A run that is standing at its spend gate wears `⏸` in front of its tier glyph.
 
 These are the exact words on screen.
 
 | what is happening | the word you see |
 | --- | --- |
 | the proposal is still arriving | `⠙ forming… · 6s` after six seconds; under one second there is no clock |
-| the proposal is waiting, with no clock | `waiting on you` |
+| the proposal is waiting, with no clock | `your call · starts on your word` on the roster and the rail; the card's own meter reads `waiting on you` |
 | the proposal is waiting, with a clock | `auto-starts in <time>` |
-| queued behind something | `waiting · <reason>` |
-| queued behind named work | `waits: <title of the work it needs>` |
-| running | a turning spinner, and what it is doing this second |
+| queued behind something | `queued`, with the reason after it |
+| queued behind named work | `waiting on <title of the work it needs>` |
+| running | `working`, a turning spinner, and what it is doing this second |
 | running and closing a gap | `finishing · <what it is closing>` |
-| stopped by you | `stopped`, with `⊘` on the roster in place of the failure cross |
+| stopped by you | `stopped`, with `⊘` on the roster |
 | stopped before it ever ran | `stopped before it started` |
-| stopped | `stopped` |
-| stopped, with work on a branch | `stopped — branch kept` |
+| stopped, with work on a branch | `stopped`, and `branch kept` as a fact beside it |
 | landed clean | `done` |
-| checked and not accepted | `incomplete`, with what is still missing |
-| broke while running | `failed`, with what went wrong |
-| landed, but nobody could judge it | `needs your look` |
-| cut off while it was being checked | `needs your look`, with `incomplete — it was stopped while its work was being checked` |
-| …the same thing on the roster | `finished — look it over` |
-| …the same thing when there was no report | `finished, but needs your look` |
-| …its branch, on the card | `branch kept` |
+| ended without finishing | `incomplete · <the reason, in one plain sentence>` |
+| the machine took it as far as it could | `your call · <what it is asking>` |
+| cut off while it was being checked | `your call`, over `incomplete — it was stopped while its work was being checked` |
+
+**There is no `failed` and no `needs your look`.** Both were the machine's own words for
+things that now have plainer ones: work that ended without finishing says `incomplete` and
+why, and work waiting on a decision says `your call` and what it is asking. `awaiting
+review` and `unverified` are gone the same way. The engine still calls one of its states
+`failed` inside itself; you never read that word.
 
 `finishing` is not a separate state — the work is still running, and the sentence after the
 word names the gap it is tying off.
@@ -1253,9 +1271,38 @@ The three reasons a queued task gives for waiting are `slot`, `machine busy` and
 `rate limited`. A named prerequisite outranks any of them, because a name is something you
 can act on and a queue clears itself.
 
-How a branch came home is spelled `merged`, `branch kept · <branch>`, `in your own folder`
-(there was no branch to bring home — the work edited your own files), or
-`conflicted · <branch>`.
+How a branch came home is a **fact**, not a state: `merged`, `branch kept · <branch>`,
+`in your own folder` (there was no branch to bring home — the work edited your own files),
+or `conflicted · <branch>`. It rides beside the word, never in place of it.
+
+## Why does it say incomplete — what incomplete means, what incomplete means vs stopped, and the reason beside it
+
+`incomplete` is work that **ended without finishing**, and it never stands alone: one plain
+sentence says why. The sentences are a closed set, written down once and read the same on
+the card, the rail, the roster and in the chat:
+
+| What happened | What you read |
+| --- | --- |
+| the connection to the model dropped | `incomplete · lost the connection` |
+| the provider would not serve the request | `incomplete · the model provider refused it` |
+| the worker repeated itself and its loop guard ended the turn | `incomplete · went in circles` |
+| the work it depended on did not land | `incomplete · was blocked by another task` |
+| it used up the steps it was given | `incomplete · ran out of steps` |
+| it would not write its notes down | `incomplete · would not write its notes down` |
+| its brief no longer described the world | `incomplete · its brief went stale` |
+| it would not take a step it was asked to | `incomplete · would not take a step it was asked to` |
+| a check looked and named what is missing | `incomplete · the check found gaps: <the gaps>` |
+| something broke | `incomplete · a fault: <the first line of the error>` |
+
+**`incomplete` is not `stopped`.** `stopped` is *you* ending the work and means nothing else
+— no threshold, no loop guard, no rule a worker would not follow is drawn as a stop, and a
+task you stopped is never coloured as something having broken. Only the last row of that
+table — a fault — is coloured bad; every other `incomplete` row is dim, because running out
+of steps is not a thing going wrong.
+
+**`incomplete` is not `your call` either.** `incomplete` is over and asks nothing of you;
+the branch it wrote is kept and `continue task N` is the door onto carrying it on.
+`your call` is a question with two answers on it.
 
 ## A task that was cut off while its work was being checked — interrupted work, killed mid-check, why did my task fail when nothing was wrong with it
 
@@ -1268,7 +1315,7 @@ parts keeps the existing pause rule. An unfinished check is never a passing chec
 **A cancel is an interruption, never a finding about the work.** When aforge quits, a
 deadline on the whole session fires, or something outside the task ends it while the check
 is running, nobody has looked at the deliverable and nobody has said anything about it. So
-the task does **not** land as `failed`. It lands as **`needs your look`**, with the plain
+the task does **not** land as broken. It lands as **`your call`**, with the plain
 sentence:
 
 ```
@@ -1282,9 +1329,9 @@ tree, and the branch is kept, so the work is still there to read, finish or thro
 
 **This is not the same as a task that was checked and came back short.** That one *is* a
 finding — somebody looked and said what is missing — and it lands `incomplete` with the
-gaps in front of it. The difference is whether anybody actually looked: `needs your look`
-means nobody could judge it; `incomplete` means the check did judge it and named the next
-work.
+gaps in front of it. The difference is whether anybody actually looked: `your call ·
+nobody could check it` means nobody could judge it; `incomplete · the check found gaps: …`
+means the check did judge it and named the next work.
 
 **And it is not the same as a task you stopped yourself.** Stopping a task from `ctrl+c`,
 the roster or `jobs kill` is your decision and is drawn as `stopped`, with the branch kept.
@@ -1304,8 +1351,8 @@ first sentence, quoted because they are its words and not aforge's.
 
 **Every fact on the head is joined by ` · `, the state word included.** It used to read
 `done 4m12s`, with the state and the clock fused into one phrase while `3 files` beside
-them was properly separated — so on a card asking for a hand, `needs your look 12m00s`
-made the reason it was asking read as part of a duration.
+them was properly separated — so on a card asking for a hand, the word and the clock ran
+together and the reason it was asking read as part of a duration.
 
 **`started 14:02` is when the work began**, and the word is `started` — it said `spawned`
 until 2026-09-03, which is the machinery's own verb for launching a process and not a word
@@ -1314,16 +1361,17 @@ began, so it says the same `started 14:02` after a restart that it said before o
 nothing knows when the work started — a checkpoint written before the record carried the
 instant — the stamp is **absent** rather than invented.
 
-- **`done`** — a tick, muted. It is settled work on the roster.
-- **`incomplete`** — a `!` in the warn hue. A check did not accept the claim, and the
-  report says exactly what is still missing. Its branch is kept.
-- **`failed`** — a cross, in the bad hue, drawn with the word `failed`. It is settled too,
-  and means the run actually broke rather than that a check found unfinished work.
-- **`needs your look`** — a `?` in the warn hue. Its family rises above running work on
-  the roster. The `?` is deliberately neither a tick nor a cross: it claims neither a
-  finding nor a judgement nobody made. This card carries two more rows —
-  `finished, but nobody has checked it — your call` and the choices under it — unless you
-  have set `task.settle` to `auto`, in which case aforge is deciding and the card is quiet.
+- **`done`** — a tick, `✓`, muted. It is settled work on the roster.
+- **`stopped`** — `⊘`. You ended it, and that is all it means.
+- **`incomplete`** — `✗`, with the reason beside it: `incomplete · ran out of steps`,
+  `incomplete · the check found gaps: …`. Its branch is kept. The row is dim unless
+  something actually broke, in which case it reads `incomplete · a fault: <the error>` and
+  is coloured bad. **There is no `failed` on any card** — that word is the engine's own.
+- **`your call`** — a `?` in the accent colour. Its family rises above running work on the
+  roster. The `?` is deliberately neither a tick nor a cross: it claims neither a finding
+  nor a judgement nobody made. The card carries the reason it is asking on its own row and
+  the answers under that — unless you have set `task.settle` to `auto`, in which case the
+  reason row says `aforge is deciding` and the answers are one press away.
 
 After the name the card carries the span, the file count, and how the branch came home:
 `merged`, `in your own folder`, `conflicted · <branch>`, `stopped — branch kept · <branch>`,
@@ -1347,8 +1395,8 @@ the same labels the settled card uses, listed under *Does a task touch my workin
 
 More than two landings in a row become one rollup — `✓ 3 tasks done · 9m14s` with a compact
 row per task under it. Any failure in the batch swaps the header to `✗ N tasks landed`; any
-`needs your look` swaps it to `? N tasks landed`. A failed delivery also keeps a warning
-on the batch and its individual row. The header's span is wall-clock, first
+`your call` swaps it to `? N tasks landed`. A delivery that did not land also keeps a
+warning on the batch and its individual row. The header's span is wall-clock, first
 spawn to last landing, not the sum of the parts, because tasks run at the same time.
 
 ## What an expanded landing card shows — why is the task answer in asterisks, Markdown, the delivery warning, the facts
@@ -1844,7 +1892,7 @@ ctrl+. earlier
 
 - **It is a door and not a note.** Press `ctrl+.`, or click that line, and the full-screen
   tasks place opens with every task this machine has run on it, grouped by what you do next
-  — `needs your look`, `running`, `waiting`, `finished today`, `earlier`. `/history` is the same page.
+  — `your call`, `running`, `waiting`, `finished today`, `earlier`. `/history` is the same page.
 - **It says what is behind it.** With a record behind it the line reads `ctrl+. earlier`;
   with no record, on a column that has merely folded a family away, the same line reads
   `ctrl+. view more`. There is only ever one such line.
@@ -2091,7 +2139,7 @@ window the four shift-arrows move, so a page that replaced it with the teaching 
 would have swallowed the way back. The teaching prose is for a machine that has run
 nothing IN ANY WINDOW, which is a different screen.
 
-Under it, **five sections, in the order you act on them**: `needs your look`, `running`,
+Under it, **five sections, in the order you act on them**: `your call`, `running`,
 `waiting`, `finished today`, then `earlier`. `running` is work a worker is actually inside;
 `waiting` is work that has been admitted and that nothing is doing — behind the piece that
 needs a person, or behind a slot. A waiting row **carries no age at all**: it has not
@@ -2166,7 +2214,7 @@ At the bottom: one dim line counting THE WORK THE WINDOW HOLDS, section by secti
 not the rows drawn, which is why it can read a larger number than you can count on the
 screen when a family is folded. The section heading is where that difference is said. It
 reads such as
-`2 needs your look · 3 running · 12 finished today · 148 earlier` — a section with nothing in it
+`2 your call · 3 running · 12 finished today · 148 earlier` — a section with nothing in it
 is not counted at all — and under it the keys.
 
 **Every door onto this place opens it, on a machine that has run nothing too.** `/history`,
@@ -2493,7 +2541,7 @@ conversation; a task's children hang beneath that task, including deeper levels.
 Chats in the selected time window appear even before they delegate any work.
 
 ```
-needs your look
+your call
   ▾ Repair the parser                  aforge
       ▾ Update the parser
         ├ Port the lexer
@@ -2851,13 +2899,13 @@ it can afford — the header keeps the name first and drops facts off the end as
 terminal narrows, and only a name that cannot fit the trail row **alone** is cut, in which
 case it takes that whole row — the facts are on the row underneath either way.
 
-**And the hint slot under a room asking for your look shortens rather than vanishing.**
-At sixty columns `a accept · l look again · n not right` is a few cells too long for what
-the foot has left beside `room · esc/←← main`, and the slot used to go empty — so the
-narrowest terminal was the one that named none of the keys answering the question it was
-standing on. It now reads `a accept · l look again · +1`, and `a accept · +2` narrower
-still: the same answers in the same order, with a count of the ones that did not fit. All
-three letters keep working whether or not they are printed.
+**And the hint slot under a room asking for your call shortens rather than vanishing.**
+At sixty columns the whole answers row is a few cells too long for what the foot has left
+beside `room · esc/←← main`, and the slot used to go empty — so the narrowest terminal was
+the one that named none of the keys answering the question it was standing on. It now drops
+chips off the end and says how many went, `a accept · n not right · +1` and then
+`a accept · +2`: the same answers in the same order, with a count of the ones that did not
+fit. Every letter keeps working whether or not it is printed.
 
 **`ctrl+v` inside a room moves that task's thinking rung**, one step up each press and back
 round to `low` from `max`. It is the same chord home uses on the machine's own default and
@@ -3803,7 +3851,7 @@ running, a hand is the answer itself) and closing the window. A task that forked
 **Each has a budget of 15 rounds of tool calls.** A hand that runs out reports it **leading**
 with `OUT OF ROUNDS`, names the files it wrote, and **quotes its last sentence back verbatim**
 — because that sentence is the only description in existence of the change it was halfway
-through. Those files are called unverified: nothing built or ran them and the change may be
+Nothing built or ran those files, so the change may be
 half made. The answer is told plainly that this part is not done — it is never quietly treated
 as finished.
 
@@ -4105,140 +4153,204 @@ can be read. The model should relay that, not narrate progress it did not make.
 Starting the same brief again with `/task` or `propose_task` is new work with a new id, and
 it is the wrong door when you mean keep going.
 
-## Why is the task waiting for me — finished but needs your look, a sub-task needs my look, a nested task waiting on me
+## Why is the task waiting for me — what does your call mean, a sub-task needs my look, a nested task waiting on me
 
-Some work lands with `needs your look`: it finished, but nobody could say whether it holds —
-or it finished and held, and one of the files it wrote was changed by other work while it
-was running — or it finished and held and its branch would not merge cleanly, because the
-same file changed on both sides. The how-tasks-run page covers the last two on their own.
-It is neither done nor failed. Nothing has merged, the branch is kept, and anything waiting
-on it stays waiting until somebody decides. Its family rises to the top of the roster, and
-its row reads `finished — look it over`.
+`your call` is the one tier that wants something from you: **the machine has done what it
+can, and the rest is a decision only you can make.** It is neither done nor incomplete.
+Nothing has merged, the branch is kept, and anything waiting on that task stays waiting
+until somebody answers.
+
+The word never stands on its own. The reason is on the row beside it, in a plain sentence —
+`your call · nobody could check it`, `your call · conflicts with your branch: parser.go` —
+and the card under it carries the same sentence and the two answers.
 
 Read it first. Its room holds the whole of it, and its landing card expands to the changed
 files, the branch, the model, the cost, the done-condition and the report.
 
 **A nested task asks the same way — a sub-task needs my look, a piece of a bigger task
 nobody checked.** Depth changes nothing about whether you are asked: the card, the roster
-row and the sub-task's own room all offer the four answers from the moment it lands. What
+row and the sub-task's own room all offer the same answers from the moment it lands. What
 depth changes is how LOUD it is. While the task above it is still running, the sub-task
 **folds** under its family head, because that task's own agent is the one being asked and
 has the diff to read; when the head settles, one line says the question changed hands
 (`task 4 has finished, and the piece of work it handed out that nobody could check — task
 6, Port the parser — is now waiting on you rather than on it.`). It is never filed under
-`done`. A sub-task like that used to draw no answers row anywhere at all, so a nested
-question could sit through a whole run with nobody able to see it.
+`done`.
 
 **It also stands on home**, in the `needs you` strip, named after the task and saying
 `landed` and how long it has been waiting — from any project, in any conversation, whether
 or not that conversation is open. Pressing that row opens the conversation that ran the
-work **with the task's own record card in front of it**, so you land on the thing you
-pressed rather than at the live edge of the transcript. It stays on the strip for as long
+work **with the task's own record card in front of it**. It stays on the strip for as long
 as it takes: nothing ages it out, and only your decision moves it.
 
-The landing card then asks, in as many words, and offers the answers under it:
+## What your call can be asking — the six questions, and what [a] and [n] mean on each
+
+There are exactly six things a `your call` row can be asking, and each one has its own two
+answers. The chips are always the same three columns, in the same order, with the same
+keys — what changes is the words on them:
 
 ```
-finished, but nobody has checked it — your call
-[a] accept · [l] look again · [n] not right · [d] decide these for me
+[a] <yes> · [n] <no> · [s] tell it
 ```
 
-Every one of the four is a key **and** a click. The keys work on the **selected** card — walk
-to it with `↑`/`↓` — and only over an **empty** message box, exactly like `x`: a letter typed
-into a sentence stays a letter. Clicking a choice presses it; clicking anywhere else on that
+| The reason on the row | `[a]` | `[n]` |
+| --- | --- | --- |
+| `starts on your word` — a proposal with no clock on it | `start` | `don't` |
+| `design ready to approve` — a subharness wrote its design | `approve` | `decline` |
+| `conflicts with your branch: <files>` | `resolve it` | `drop it` |
+| `nobody could check it` | `accept` | `not right` |
+| `the check did not pass it: <gaps>` | `accept anyway` | `not right` |
+| `paused at the $5.00 cap` | `raise the cap` | `stop it` |
+
+So `[a]` is always **yes to what the row is asking** and `[n]` is always **no to it**, and
+you can read either off the chip rather than remembering a rule.
+
+Every one is a key **and** a click. The keys work on the **selected** card — walk to it
+with `↑`/`↓` — and only over an **empty** message box, exactly like `x`: a letter typed
+into a sentence stays a letter. Clicking a chip presses it; clicking anywhere else on that
 row does nothing rather than expanding the card under your hand.
 
-**On a narrow terminal the row drops `[d]` and says so.** The three answers are the
-question and the fourth is a preference, so the preference is what goes first — and the
-row then ends in a dim `· +1`, the same count every other fold on this surface draws
-(`▸ +1`, `holds 3 more`). `[d]` still works unprinted. It reads:
+**No sentence on a card ends in `…` hiding the thing you need.** Where a reason is too long
+for the width, the list of files is what gets cut — never the verb.
 
-```
-[a] accept · [l] look again · [n] not right · +1
-```
-
-**The task's room asks the same question** at the foot of its page, and in there the four
-keys need no selection — see *How do I approve a task* below. Room and card are one
-question: answer in either and both show the receipt.
-
-## What accept, look again and not right each do
+## How do I accept a task — what accept and not right actually do
 
 - **`[a] accept`** — you looked and you are taking the work. Its branch follows the same
   landing as checked work: it merges into an ordinary checked-out branch, or is kept off a
-  protected, moved or detached checkout. Everything queued behind it unblocks. The report leads
-  `you looked at this yourself and took it as done`. If that merge conflicts nothing is
-  forced: your checkout is left exactly as it was, the branch is kept, and the task stays
-  waiting on you with the clashing files named.
-- **`[l] look again`** — a fresh check runs against the same working copy. It answers on its
-  own, minutes later, and until it does the task **still** needs a look: what goes away is
-  the choices, not the state. If `check task work` is off there is no checker to ask, so
-  this answer cannot be taken; the card keeps its choices and says
-  `that one could not be taken — try another`. The same line appears for any answer that
-  could not be spent — a working copy that has gone, for instance.
+  protected, moved or detached checkout. Everything queued behind it unblocks. The report
+  leads `you looked at this yourself and took it as done`. If that merge conflicts nothing
+  is forced: your checkout is left exactly as it was, the branch is kept, and the task comes
+  back as `your call · conflicts with your branch` with the clashing files named.
 - **`[n] not right`** — you looked and it is not finished. The task becomes `incomplete`,
   its branch is kept, and its previous report is kept under the refusal. Its dependents do
-  not advance and still land `failed`, as before, saying the work they waited on did not
-  finish. The report leads `incomplete — you looked at this yourself and said so`.
-- **`[d] decide these for me`** — the escape hatch, described in the next section.
+  not advance and land `incomplete · was blocked by another task`. The report leads
+  `incomplete — you looked at this yourself and said so`.
+- **`[s] tell it`** — you have something to say rather than an answer to give; the next
+  section is about that.
 
-**Answered means the choices are gone, not greyed.** The two rows are replaced by one dim
-line saying what you did: `you took this as done`, `sent back to be checked again`,
-`you said it is not finished`, or `already answered` when somebody got there first — the
-model's own settling, a re-check that finally answered, another window.
+**Answered means the chips are gone, not greyed.** They are replaced by one dim line in
+your own voice saying what you did: `you took this as done`, `you said it is not finished`,
+`sent to be resolved`, or `already answered` when somebody got there first — the model's
+own settling, or another window.
 
 The card's own head is **not** rewritten — it is the record of how the work came home, kept
-branch and all. What follows is: the task re-settles into `done` or `incomplete`, a state it
-has not been in, so a **second** landing card is drawn saying what became of the work. The
-transcript then reads as what happened: this landed needing a look → you took it as done →
-`task 7 done · merged`.
+branch and all. What follows is a **second** card, when the task re-settles into `done` or
+`incomplete`, saying what became of the work. The transcript then reads as what happened:
+this landed as your call → you took it as done → `task 7 done · merged`.
 
-**You can also just say so.** "accept task 7", "that one isn't finished", "have another look
-at task 7" all work: aforge holds the same door through its `tasks` tool, and whichever of
-the two is used first wins. The other finds the question already gone and says `already
-answered` rather than raising an error.
+**You can also just say so.** "accept task 7", "that one isn't finished" both work: aforge
+holds the same door through its `tasks` tool, and whichever of the two is used first wins.
+The other finds the question already gone and says `already answered` rather than raising
+an error.
 
-The `need you` footer count covers only work that will not move without you: a landing
-nobody could judge, and finished work still sitting on a branch that never came home.
-Work that ran in your own tree, or that ended before there was a branch, is not
-undelivered — it is over, and its settled family starts folded.
+## The task has a conflict — conflicts with your branch, resolve it or drop it
+
+When the same file changed on both sides, nothing is forced onto your branch: the merge is
+abandoned, your checkout is left exactly as it was — no `<<<<<<<` markers in your files —
+and the task comes back to you reading
+
+```
+? ◆ Port the parser · your call · 6m40s · 2 files · branch kept · task/parser
+  conflicts with your branch: parser.go, parser_test.go
+  [a] resolve it · [n] drop it · [s] tell it
+```
+
+- **`[a] resolve it`** tries to bring the two versions together and land the work.
+- **`[n] drop it`** says the work is not to be taken. The task settles as not finished and
+  **its branch is kept**, so nothing is thrown away and you can still read what it wrote.
+
+Where git would not say which files it was about, the sentence simply stops after
+`conflicts with your branch` rather than trailing off after a bare colon.
+
+**A conflict is never handed to the model, whatever `task.settle` says.** It cannot merge
+by decree: which of two versions of your own file survives is yours to say, and no verb the
+model has merges anything. A landing that conflicts tells the model as much in as many
+words — `its branch conflicts with the person's and that is not yours to accept` — so what
+it does with one is describe the clash and leave the choice with you.
+
+## Tell it something instead of answering — [s] tell it, and why saying looks good does not accept
+
+`[s] tell it` is the third chip on **every** `your call` card, and it is not a third answer.
+It puts the message box into steer mode addressed to that task: the composer shows the
+address as a chip, and what you type is sent to the task as a correction.
+
+**A steer never resolves a task by itself.** The model or a worker reads what you said and
+spends a verb, or does not — so "looks good" typed on a card is words the work receives,
+never a silent accept. If you mean accept, press `[a]` or say "accept task 7".
+
+The card keeps its chips while a steer is in flight, because nothing about the question has
+changed yet.
+
+## Why did it stop asking me — it says aforge is deciding, and how do I take a task back
+
+If a card shows no chips, `task.settle` is set to `auto` and aforge is deciding this one.
+**The card says so rather than going quiet**, on the reason row, with the way back on it:
+
+```
+nobody could check it · aforge is deciding · [t] take it back
+```
+
+Pressing `t` hands the question back to you and draws the chips again. **It resolves
+nothing** — the task is exactly where it was, and what changed is who is holding the
+question. Anything the model was about to say it may still say; what it may no longer do is
+have the last word.
+
+**A task never stays unowned past the end of a turn.** If aforge's turn ends with a task it
+was handed still unanswered, the question comes back to you by itself and the card draws
+its chips — you do not have to notice it. And where the model's last message asked you
+about that task, the chips are the answer surface for that question: its words above, the
+chips under them, one ask rather than two.
 
 ## Can aforge decide on its own — stop asking me about tasks that need a look
 
 Yes. The setting is **`task.settle`**, in `/settings` under Session as
 `who settles work that needs a look`, and it takes two words:
 
-| Value | What happens when a task lands needing a look |
+| Value | What happens when a task lands as `your call` |
 | --- | --- |
-| `ask` | **the default** — you decide. The card offers the four choices above, and aforge says what it thinks and leaves the choice with you |
+| `ask` | **the default** — you decide. The card offers the chips above, and aforge says what it thinks and leaves the choice with you |
 | `auto` | aforge decides. It is told to read the report and the work itself — the transcript, the diff on the branch — and settle the task, and to come back to you only when it genuinely cannot tell |
 
-Under `auto` the card draws **no** choices while aforge is deciding; it shows the outcome
-once the task re-settles, like any other landing. Which of the two a card follows is fixed
-when it lands, so changing the row does not reach back and take the choices off a card that
-was already asking.
+Which of the two a card follows is fixed when it lands, so changing the row does not reach
+back and take the chips off a card that was already asking.
 
-**`[d] decide these for me` is the same switch, pressed where the annoyance is.** It flips
-`task.settle` to `auto` for good **and** hands the card you are looking at to aforge on the
-way past — it does not settle it for you, it asks aforge to. The card then reads
-`handed to the chat — it decides these from now on · saved`, and the ` · saved` is only there
-when the preference actually reached your profile.
+**`[d] let aforge decide this one` is on the card and changes no setting.** It is drawn
+dimmer than the three columns, because it is not one of the answers: it hands **this one
+card** to aforge and leaves `task.settle` exactly where it was. It used to be spelled
+`decide these for me` and it used to flip the setting for good — a persistent preference
+disguised as an answer, and the reason a card could end up with no choices on it and no
+explanation of why.
 
-Neither value takes anything away. Under `auto` you can still say "actually that one isn't
-finished"; under `ask` you can still say "you decide this one". The row changes **who is
-asked first**, and nothing else about the landing: either way the task is neither done nor
-failed until somebody answers, its branch is kept, and anything waiting on it waits.
+Neither value takes anything away. Under `auto` you can still take a task back with `t` or
+say "actually that one isn't finished"; under `ask` you can still say "you decide this
+one". The row changes **who is asked first**, and nothing else: either way the task is
+neither done nor incomplete until somebody answers, its branch is kept, and anything
+waiting on it waits.
 
-To undo it, set the row back to `ask` in `/settings`, or say so — "ask me about these again".
+To undo it, set the row back to `ask` in `/settings`, or say so — "ask me about these
+again".
 
 **A run with nobody watching reads as `auto` whatever the row says.** `aforge --once` and
 the other headless doors have no card to press, no `/settings` to open and nobody to read a
-landing that says it is waiting on somebody, so a task that needs a look there would stop
-the run until the wall clock ran out — which was measured happening on a ten-hour run. In
-those sessions aforge takes the decision itself, by the same road `[d]` takes, with the same
-escape to say it cannot tell. This never applies to a session you are sitting in front of:
-there your row stands, and a blank row still means aforge asks you.
+landing that says it is waiting on somebody, so a task that needed a decision there would
+stop the run until the wall clock ran out — which was measured happening on a ten-hour run.
+In those sessions aforge takes the decision itself, with the same escape to say it cannot
+tell. This never applies to a session you are sitting in front of: there your row stands,
+and a blank row still means aforge asks you.
 
-## Needs your look on a run I left going with --yolo — a check that could not run, and what taken as it stands means
+## Why is there no check again — the engine has it checked again by itself
+
+You are never offered `check again` on a card, and that is deliberate: **the engine has
+already done it.** A check that never answers, or answers with neither word, is asked a
+second time before anything reaches you. Only when that second try says nothing either does
+the work land as `your call · nobody could check it`, and by then asking for one more look
+is asking for the thing that has just been tried twice.
+
+The verb still exists for the model — it can have a landing checked again through its
+`tasks` tool — and you can ask for it in words: "have another look at task 7". What is gone
+is the chip, because on a card it read as one of the two answers when it was neither.
+
+## Your call on a run I left going with --yolo — a check that could not run, and what taken as it stands means
 
 On a headless run with a budget — `--once --yolo` **and** `--max-hours` or `--max-cost` —
 there is nobody to put a card in front of, so a task nobody could check is not put to
@@ -4288,21 +4400,21 @@ task waits for you. Which failure it was decides what happens when you answer.
 - **The same file changed on both sides** — a real merge conflict. One round is spent
   bringing the two versions together first, inside the task's own working copy and never in
   your checkout; only when that round cannot do it does the task go back to
-  `needs your look` with the clashing files named. Sort the file out and accept it again.
+  `your call · conflicts with your branch` with the clashing files named, and its chips read
+  `[a] resolve it · [n] drop it`.
 
 The how-tasks-run page has the sentences each of those lands with, under *My task could not
 save what it wrote*.
 
 ## How do I approve a task — accept a finished task from the room, the card, or by saying so
 
-A task that landed `needs your look` (`finished — look it over` on the roster) is approved
-by **accepting** it, and there are three doors onto the same decision. Use whichever is in
-front of you:
+A task that landed as `your call` is approved by **accepting** it, and there are three doors
+onto the same decision. Use whichever is in front of you:
 
 | Where you are | What to do |
 | --- | --- |
-| **inside the task's room** (enter on the roster row, or click its landing card) | press `a` over an empty message box — no selection needed, the room is the task. `l` looks again, `n` says it is not right, `d` hands these to aforge from now on. The same four are chips at the foot of the page |
-| **at the landing card** in the conversation | walk to the card with `↑`/`↓` so it is selected, then the same four keys — or click a chip on its answers row |
+| **inside the task's room** (enter on the roster row, or click its landing card) | press `a` over an empty message box — no selection needed, the room is the task. `n` says no to what the row is asking, `s` steers it, `d` hands this one card to aforge. The same chips are at the foot of the page |
+| **at the landing card** in the conversation | walk to the card with `↑`/`↓` so it is selected, then the same keys — or click a chip on its answers row |
 | **anywhere**, typing | say it: "accept task 7", "that one isn't finished", "have another look at task 7" |
 
 Accepting lands the task by the same merge-or-keep rule as checked work and unblocks
@@ -4310,23 +4422,21 @@ everything queued behind it.
 Whichever door is used first wins; the other two find the question already gone and show
 `already answered` rather than raising an error.
 
-## Task needs my look but there is no button — where the answers are
+## Task says your call but there is no button — where the answers are
 
-If a landed task is asking and you cannot see anything to press, you are on a row that
-only reports the state: the roster's `finished — look it over`, home's `needs you` strip,
-or the card's own head. The answers are in exactly two places on screen:
+If a landed task is asking and you cannot see anything to press, you are on a row that only
+reports the tier: a roster row, home's `needs you` strip, or the card's own head. The
+answers are in exactly two places on screen:
 
-- **the foot of the task's room** — `finished, but nobody has checked it — your call` and
-  `[a] accept · [l] look again · [n] not right · [d] decide these for me`. Enter on the
-  roster row opens the room; the answers are at the bottom of the page and the hint slot
-  under the message box names the three keys;
-- **the landing card in the conversation**, under the outcome line, once the card is
-  selected.
+- **the foot of the task's room** — the reason it is asking, and under it
+  `[a] <yes> · [n] <no> · [s] tell it`. Enter on the roster row opens the room; the chips
+  are at the bottom of the page and the hint slot under the message box names the keys;
+- **the landing card in the conversation**, under the reason row, once the card is selected.
 
 Both need an **empty** message box: the letters are held to the same rule `x` is, so a
-letter typed into a sentence stays a letter. If neither place shows the rows, the task is
-under `task.settle = auto` and aforge is deciding it — say "you decide" or "ask me about
-these again" to change who is asked.
+letter typed into a sentence stays a letter. If neither place shows the chips, the reason
+row says `aforge is deciding` and `[t] take it back` is how you get them — that is
+`task.settle = auto`, and "ask me about these again" changes it for good.
 
 ## Stopping an adaptive run
 
@@ -4370,7 +4480,7 @@ Pressing `x` on a run that has already finished does nothing but say so.
 ## The tasks place — grouped work, folds, filtering and time-window keys, my cursor jumped to another task while I was reading
 
 The **tasks** place lists main chats and their nested work across projects, grouped by what you do
-next: `needs your look`, `running`, `waiting`, `finished today`, then `earlier` — where
+next: `your call`, `running`, `waiting`, `finished today`, then `earlier` — where
 `waiting` is admitted work nothing is doing, drawn with no age on it, and `finished today`
 is everything that ended today however it ended. The main chat names its project once. Child rows can include
 activity, age from the landing time their own records carry, and last their
@@ -4579,7 +4689,7 @@ If aforge released the task's Git registration while retaining its files, a late
 restores that registration before bringing the work home. This is not a folder that was
 never a repository. The actual branch name is retained even if the task renamed it.
 
-If the registration cannot be restored, the task still needs your look and names the
+If the registration cannot be restored, the task stays `your call` and names the
 saved folder and the cause. Its files remain in place, and acceptance can be retried
 after repair. It does not claim a missing branch holds the work. Protected branches such
 as main remain untouched; their task branch is kept instead.
