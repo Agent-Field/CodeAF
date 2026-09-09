@@ -433,32 +433,20 @@ func testStatesRailAndRoster(t *testing.T) {
 // ── the doors this file shares ──────────────────────────────────────────────
 
 // statesPastTheDoor is the launch every subtest here begins with: whichever
-// screen this state root opens on, and esc off it.
+// screen this state root opens on, waited for so that the keystrokes after it
+// land on a window that has finished drawing.
 //
-// A STATE ROOT BUILT ONE MINUTE AGO OPENS ON THE SETUP even when the profile it
-// copied has every answer in it, because the marker that says the setup has been
-// SEEN is a file in the state root and a fresh one has none. A machine with other
-// projects opens home, and a project with a conversation opens straight into it —
-// all of them are the product behaving, so the wait is for any of them.
-//
-// AND ESC IS PRESSED UNTIL THE SETUP IS ACTUALLY GONE, not once. The setup is
-// several steps and a single esc leaves the one under it, which is how the first
-// measured run of this file spent its keystrokes on a screen it thought it had
-// already left.
+// THE SETUP IS ALREADY BEHIND IT. [start] presses past the first-run flow for
+// every rig in this package ([rig.skipSetup] says why), so what is waited for
+// here is the screen under it — home on a machine with other projects, the
+// greeting on a fresh conversation, or the landing itself where a graph has
+// already been replayed into one. All three are the product behaving.
 func statesPastTheDoor(t *testing.T, r *rig) {
 	t.Helper()
+	r.skipSetup(t)
 	r.waitForAny(25*time.Second,
 		say(t, "homeFootWord"), say(t, "starterTaskWord"), say(t, "setupTitleWord"),
 		say(t, "setupSkipWord"), say(t, "landingKeysWord"), say(t, "taskLookWord"))
-	for press := 0; press < 4; press++ {
-		screen := r.capture()
-		if !strings.Contains(screen, say(t, "setupSkipWord")) && !strings.Contains(screen, say(t, "setupTitleWord")) {
-			return
-		}
-		r.keys("Escape")
-		time.Sleep(900 * time.Millisecond)
-	}
-	t.Logf("the setup was still on screen after four escapes:\n%s", r.capture())
 }
 
 // statesAnswerKey presses one of the card's letters and waits for what it

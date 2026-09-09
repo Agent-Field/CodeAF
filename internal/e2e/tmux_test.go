@@ -194,9 +194,49 @@ func workspaceAt(t *testing.T, ws string, dirty bool) string {
 // outright and is the one that always lands.
 func start(t *testing.T, name, home, ws string, cols, rows int, args ...string) *rig {
 	t.Helper()
-	return startWithEnv(t, []string{"OPENROUTER_API_KEY=" + strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))},
+	r := startWithEnv(t, []string{"OPENROUTER_API_KEY=" + strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))},
 		name, home, ws, cols, rows, args...)
+	r.skipSetup(t)
+	return r
 }
+
+// skipSetup presses esc until the first-run flow is off the screen, and it is
+// part of [start] rather than of any one scenario because EVERY SCENARIO HERE IS
+// ABOUT WHAT IS BEHIND IT.
+//
+// A STATE ROOT BUILT ONE MINUTE AGO OPENS ON THE SETUP HOWEVER COMPLETE THE
+// PROFILE IT COPIED IS. The marker that says the setup has been seen is a file in
+// that root ([newHome] writes a config.json and nothing else), so every rig here
+// meets the flow — and the flow is SEVERAL STEPS, so one esc leaves the one under
+// it and whatever the scenario types next goes into that step's own box. That is
+// how a suite came to record a model answering "" to `what is 2+2`, a home with
+// no foot rule, and a task brief typed into a daily-limit field.
+//
+// [startFresh] deliberately does NOT go through this door: a machine that has
+// never run aforge is the subject of its own subtest, and skipping the screen it
+// exists to read would be skipping the test.
+func (r *rig) skipSetup(t *testing.T) {
+	t.Helper()
+	for press := 0; press < 5; press++ {
+		screen := r.capture()
+		if !strings.Contains(screen, setupSkipKeysWord) && !strings.Contains(screen, setupTitleWord) {
+			return
+		}
+		r.keys("Escape")
+		time.Sleep(900 * time.Millisecond)
+	}
+	t.Logf("the setup was still on screen after five escapes:\n%s", r.capture())
+}
+
+// The two sentences that say the first-run flow is up. They are the SUITE'S OWN
+// copies of internal/tui3's [setupSkipKeysWord] and the setup title, and they are
+// spelled here rather than reached through [say] because tuiwords_test.go's own
+// gate reads this file and every other one for the names it hands out — a door
+// used by [start] itself has to stand before any scenario asks for a word.
+const (
+	setupSkipKeysWord = "esc skips setup"
+	setupTitleWord    = "setting up"
+)
 
 // keylessEnv is every variable a fresh-install run must not inherit: the two the
 // key resolution reads in order (internal/config's APIKeyAt), the three capability
