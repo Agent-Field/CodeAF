@@ -207,7 +207,7 @@ func TestAHeldNodeSaysWhatIsHoldingItAtEveryWidth(t *testing.T) {
 			// AND THE COLUMN ITSELF DRAWS IT, at both widths the roster has.
 			for _, width := range []int{200, 110} {
 				a.width = width
-				if roster := rosterText(a, 12); !strings.Contains(roster, a.taskStatus(node).RowWord()) {
+				if roster := rosterText(a, 12); !strings.Contains(roster, a.taskStatus(node).Word+" · ") {
 					t.Fatalf("the roster at %d columns does not say the node is held:\n%s", width, roster)
 				}
 			}
