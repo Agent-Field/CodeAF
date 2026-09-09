@@ -33,6 +33,12 @@ func main() {
 		os.Exit(2)
 	}
 	fmt.Fprintf(os.Stderr, "test-report: wrote %s; %d passed, %d failed, %d skipped\n", *out, report.TestsPassed, report.TestsFailed, report.TestsSkipped)
+	if len(report.Incomplete) > 0 {
+		fmt.Fprintln(os.Stderr, "test-report: packages that did not finish:")
+		for _, pkg := range report.Incomplete {
+			fmt.Fprintf(os.Stderr, "  %s\n", pkg)
+		}
+	}
 	limit := 10
 	if len(report.Tests) < limit {
 		limit = len(report.Tests)
@@ -42,5 +48,9 @@ func main() {
 		for _, test := range report.Tests[:limit] {
 			fmt.Fprintf(os.Stderr, "  %.3fs %s %s\n", test.Seconds, test.Package, test.Name)
 		}
+	}
+	if report.Truncated {
+		fmt.Fprintln(os.Stderr, "test-report: the go test stream ended mid-line; the run did not finish")
+		os.Exit(2)
 	}
 }
