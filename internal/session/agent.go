@@ -219,7 +219,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// about the conversation in the file, and re-deriving it from the same
 		// opening exchange would pay for an answer we already have.
 		agent.title = file.Title()
-		agent.shortTitle = file.ShortTitle()
+		agent.shortTitle = compactTitle(file.ShortTitle())
+		if agent.shortTitle == "" {
+			agent.shortTitle = compactTitle(agent.title)
+		}
 		// And it keeps its cache lineage for the same reason, which matters
 		// more: a session resumed tomorrow re-sends the transcript it built
 		// today, and a key that changed with the process would ask the router
