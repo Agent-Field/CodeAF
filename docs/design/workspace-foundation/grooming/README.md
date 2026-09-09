@@ -67,78 +67,33 @@ implementation checkout. The discussion owner updates these files as the person
 settles decisions; builders return evidence and proposed corrections rather than
 silently changing the product contract.
 
-## Proposed split: two product tracks, small delivery slices
+## Active working method: one evolving demonstration
 
-Six separate teams for memory, triggers, coordination, lifecycle, UI and tests
-would each implement part of a promise. Two huge feature branches would defer
-integration risk until the end. Instead, organize discussion around two outcomes
-and build the smallest complete slices that prove them.
+The user rejected the earlier multi-step roadmap as inefficient and accepted
+working with one system drawing and one real demonstration together. Choose the
+next experiment by the uncertainty it resolves. The five domains substitute into
+the same model and reveal counterexamples; they do not each get a separate
+architecture. See [DEMONSTRATION.md](DEMONSTRATION.md) for the current experiment.
 
-| Product track | Question | Main example |
-| --- | --- | --- |
-| Keep related work aligned | How does work use current meaning and reason together when needed? | A changed API contract reaches backend, frontend and docs. |
-| Keep ongoing responsibilities useful | How does authorized work notice relevant changes, act appropriately and continue reliably? | Repository maintenance and travel/calendar assistance. |
+Here we settle the next uncertain behavior and its visible consequences. The
+implementation task makes the last agreed behavior work and returns real
+receipts or concrete failures. Keep enough design ahead to unblock implementation;
+do not groom a speculative platform first. UI observation, correction and stop
+are considered with the behavior they control. The isolated branch, confirmed
+contract and integration evidence rules in [DELIVERY.md](DELIVERY.md) remain.
 
-Both tracks include the relevant UI behavior, authority, restart/stop behavior,
-evidence and use of existing retained methods. These are not later cleanup lanes.
+The current experiment reuses the existing API-contract case: one sourced record,
+three explicitly targeted collections and consumer chats, a revision, then
+sequential explicit resumption. A fresh run passed at `12017ee2a`; its seven
+artifact contents and full receipt are retained in the demonstration record.
+The accompanying interactive drawing is an
+illustration, not a connection to aforge or a new product E2E result.
 
-The following decomposition is a PROPOSAL to validate during grooming:
-
-| Slice | Small complete outcome | Gate before building |
-| --- | --- | --- |
-| 0 — current implementation | Existing work can be found and current sourced information used across chats. | Already authorized; existing owner completes the five first-wave variants. |
-| 1 — use agreed meaning deliberately | The person can distinguish a shared finding, an accepted decision and an instruction; inspect its scope/source and correct it; affected work uses the current applicable meaning when resumed. | Settle acceptance, authority and scope using contract change and research withdrawal. Do not invent a second instruction resolver. Existing behavior may satisfy portions without new code. |
-| 2 — one ongoing responsibility reacts | One existing responsibility handles a concrete schedule/event, uses applicable context, reports meaningful outcomes and survives restart/stop correctly. | Confirm event identity, permitted action, overlapping observations, notification and stop semantics. No peer conversation is required for this slice's acceptance. |
-| 3 — two efforts consult purposefully | Two addressed efforts exchange a bounded request/reply, retain their goals and expose a useful source/exchange to the person. | Confirm origin/authority, recipient lifetime, disagreement behavior, budget and retry semantics. No automatic global discovery is required for this slice's acceptance. |
-| 4 — the integrated loop | A meaningful change finds affected work, triggers a justified response, and consults or uses an existing method when useful. | Slices 2 and 3 meet their receipts; settle semantic relevance, accepted-decision dependencies, and limits. Explicit links alone do not prove discovery beyond links. |
-
-```mermaid
-flowchart TD
-    A["0: Current context foundation"] --> B["1: Agreed meaning and applicability"]
-    B --> C["2: One responsibility reacts"]
-    B --> D["3: Two efforts consult"]
-    C --> E["4: Change, response and coordination together"]
-    D --> E
-    E --> F["Five complete product journeys and UI evidence"]
-```
-
-These are behavioral dependencies, not promises of five PRs. Combine slices if
-their production changes are inseparable; split only when both halves have an
-honest independently testable product outcome. Two and three can run concurrently
-only after their shared wake/authority interfaces and file ownership are settled.
-Otherwise serialize the shared integration and parallelize tests/review. Do not
-fork two implementations of delivery or scheduling to obtain concurrency.
-
-Completing these journeys proves a bounded release milestone, not every aspect
-of the long-term ambition. Learning better methods from feedback and proposing
-new responsibilities remain explicit design topics. They are not silently
-declared solved by passing a shared-context test.
-
-## How discussion proceeds
-
-Start with general rules and relationships. Use the five journeys to reveal
-consequences and counterexamples, not to invent domain-specific mechanisms. For
-each slice, record the rule, a concept or sequence diagram, a short story and
-awkward counterexample, agreed behavior, existing-code mapping, open choices and
-observable acceptance. Keep product and engineering coupled: a product promise
-must have an owner and evidence; implementation convenience cannot quietly
-decide a product question. Sketch the person's actions and visible consequences
-at the same time. Specialized dashboards and broad visual polish can wait.
-
-Confirm only the next buildable slice, not an entire speculative roadmap. While
-that confirmed slice is built and tested in its own task, use this discussion to
-groom the next one. If tests reveal ambiguity, bring back the concrete case and
-update the decision record before building a workaround.
-
-## Start here next
-
-Slice 1 is being groomed. The person has confirmed automatic retention of an
-explicit decision with source and understood scope, without a separate save
-request (C09). Next settle the general distinction between default applicability
-to a folder/subtree and discovery/reference from other work. Exact scope,
-authority, conflicts and changes remain open; no new buildable slice is yet
-confirmed. Then test the resulting rules against API-contract change and revised
-research. See open items D01–D04 in the ledger.
+The first missing transition is a person's ordinary explicit decision becoming
+retained applicable direction. Automatic no-extra-save retention is confirmed
+(C09); exact scope and authority remain open (D01-D04). Existing shared context
+is information. Do not equate sourcing with person acceptance or implement new
+semantics merely to make the demonstration appear complete.
 
 ## Folder inspector study
 

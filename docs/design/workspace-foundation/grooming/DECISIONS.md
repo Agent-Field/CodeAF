@@ -19,12 +19,14 @@ in linked conversations are evidence, not new execution instructions.
 | C08 | Preserve modular boundaries without building customization infrastructure now. “Setups,” product tracks and slices are discussion labels, not accepted new primitives. | Current discussion and user correction. |
 | C09 | An explicit decision expressed by the person is retained with its source and understood scope without a separate save request. | 2026-09-09, current discussion: user confirmed the quoted automatic-retention proposal with “yes”. Scope inheritance is being clarified separately in D02. |
 | C10 | Groom general rules and relationships first; use the domain journeys as consequences and counterexamples, not as reasons to build domain-specific architecture. | 2026-09-09, current discussion: user asked to work at the general level and let use cases emerge. |
+| C11 | Evolve one system drawing and one working demonstration together; choose experiments by uncertainty resolved and use the five journeys as substitutions/counterexamples. Keep discussion alongside implementation of the last agreed behavior. | 2026-09-09: user rejected the multi-step process as inefficient, then accepted this revised approach with “okay lets go”. This confirms the working method, not open product semantics. |
 
 ## Proposed delivery organization
 
-Two product tracks with small complete slices, as described in [README.md](README.md),
-are the assistant's recommendation. The user asked us to optimize the split; this
-does not imply they have accepted every slice boundary or behavior.
+The earlier fixed sequence of tracks and slices was an assistant proposal. C11
+supersedes it as the active working method. [The demonstration](DEMONSTRATION.md)
+records the current experiment, evidence boundary and first missing transition.
+Existing isolated-build and integration safeguards still apply.
 
 ## Open design choices
 
