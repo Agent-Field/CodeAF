@@ -32,6 +32,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/config"
 )
 
 // pollEvery is how often waitFor reads the screen. It is a quarter second
@@ -115,6 +117,16 @@ func newHome(t *testing.T, overrides map[string]any) string {
 	// The model this suite is about, and the gate posture every scenario but
 	// the consent one wants.
 	rows["model.talk"] = "deepseek/deepseek-v4-flash"
+	// AND THE MARKS ARE PINNED TO THE PLAIN TIER, for the same reason
+	// [newWorld] pins them: tokens.DetectGlyphSet turns the nerd-font tier ON
+	// for any terminal it cannot veto, and tmux under TERM=xterm-256color is
+	// none of the three it vetoes — so a landing head that the vocabulary
+	// spells `✓` comes back off capture-pane as U+F00C, a private-use byte no
+	// needle in tuiwords_test.go could honestly pin and nobody reading this
+	// suite would recognise. The plain floor is a designed tier rather than a
+	// degradation, a person reaches it by choosing `plain` in the same Display
+	// row, and it is the one this suite asserts against.
+	rows[config.KeyIcons] = config.IconsPlain
 	if _, ok := rows["tools.approvalMode"]; !ok {
 		rows["tools.approvalMode"] = "allow"
 	}
@@ -194,9 +206,73 @@ func workspaceAt(t *testing.T, ws string, dirty bool) string {
 // outright and is the one that always lands.
 func start(t *testing.T, name, home, ws string, cols, rows int, args ...string) *rig {
 	t.Helper()
-	return startWithEnv(t, []string{"OPENROUTER_API_KEY=" + strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))},
+	r := startWithEnv(t, []string{"OPENROUTER_API_KEY=" + strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))},
 		name, home, ws, cols, rows, args...)
+	r.skipSetup(t)
+	return r
 }
+
+// skipSetup presses esc until the first-run flow is off the screen, and it is
+// part of [start] rather than of any one scenario because EVERY SCENARIO HERE IS
+// ABOUT WHAT IS BEHIND IT.
+//
+// A STATE ROOT BUILT ONE MINUTE AGO OPENS ON THE SETUP HOWEVER COMPLETE THE
+// PROFILE IT COPIED IS. The marker that says the setup has been seen is a file in
+// that root ([newHome] writes a config.json and nothing else), so every rig here
+// meets the flow — and the flow is SEVERAL STEPS, so one esc leaves the one under
+// it and whatever the scenario types next goes into that step's own box. That is
+// how a suite came to record a model answering "" to `what is 2+2`, a home with
+// no foot rule, and a task brief typed into a daily-limit field.
+//
+// [startFresh] deliberately does NOT go through this door: a machine that has
+// never run aforge is the subject of its own subtest, and skipping the screen it
+// exists to read would be skipping the test.
+func (r *rig) skipSetup(t *testing.T) {
+	t.Helper()
+	// IT WAITS FOR THE SCREEN BEFORE IT PRESSES AT IT. [startWithEnv] gives the
+	// app three seconds to reach its first frame, and the first-run flow is not
+	// always on it yet — so a door that captured once and found no setup returned
+	// happily and left every scenario behind it typing into a screen that arrived
+	// a second later. The wait is short because the flow is the FIRST thing this
+	// binary draws when it is going to draw it at all.
+	appears := time.Now().Add(setupPatience)
+	for !r.setupIsUp() {
+		if time.Now().After(appears) {
+			// No setup on this machine, which is an ordinary state root with the
+			// marker already in it.
+			return
+		}
+		time.Sleep(pollEvery)
+	}
+	for press := 0; press < 6; press++ {
+		r.keys("Escape")
+		time.Sleep(900 * time.Millisecond)
+		if !r.setupIsUp() {
+			return
+		}
+	}
+	t.Logf("the setup was still on screen after six escapes:\n%s", r.capture())
+}
+
+// setupIsUp reports whether the first-run flow is on the frame right now.
+func (r *rig) setupIsUp() bool {
+	screen := r.capture()
+	return strings.Contains(screen, setupSkipKeysWord) || strings.Contains(screen, setupTitleWord)
+}
+
+// setupPatience is how long [rig.skipSetup] waits for the flow to draw before
+// deciding this machine is not going to show one.
+const setupPatience = 8 * time.Second
+
+// The two sentences that say the first-run flow is up. They are the SUITE'S OWN
+// copies of internal/tui3's [setupSkipKeysWord] and the setup title, and they are
+// spelled here rather than reached through [say] because tuiwords_test.go's own
+// gate reads this file and every other one for the names it hands out — a door
+// used by [start] itself has to stand before any scenario asks for a word.
+const (
+	setupSkipKeysWord = "esc skips setup"
+	setupTitleWord    = "setting up"
+)
 
 // keylessEnv is every variable a fresh-install run must not inherit: the two the
 // key resolution reads in order (internal/config's APIKeyAt), the three capability
@@ -280,8 +356,17 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	}
 	// The local engine connection can outlast a fixed launch delay. Wait for
 	// an interactive surface before typing, or the first request is lost.
+	//
+	// THE SETUP IS ONE OF THOSE SURFACES AND IT IS FOUR STEPS, NOT A TITLE. Only
+	// the FIRST step is headed `setting up`; the three after it wear their own
+	// headings (`Models and spending` is step three), so a list that recognised
+	// the flow by its title alone declared a terminal dead the moment the door
+	// opened on a later step — which is exactly what a state root whose profile
+	// is complete does now. The flow's FOOT is on every step of it, and the
+	// greeting's foot is the other screen a launch lands on, so both are here.
 	if hit, _ := r.waitForAny(45*time.Second, say(t, "homeFootWord"),
-		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "landingKeysWord")); hit == "" {
+		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "setupSkipWord"),
+		say(t, "landingKeysWord"), say(t, "welcomeStarterKeysWord")); hit == "" {
 		t.Fatal("the terminal never reached an interactive surface")
 	}
 	return r
@@ -558,9 +643,14 @@ func seedDecidedFamily(t *testing.T, home, ws string) string {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("seed family: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"), nil, 0o644); err != nil {
-		t.Fatalf("seed family: %v", err)
-	}
+	// THE JOURNAL HAS SOMEBODY'S WORDS IN IT, and an empty one is not a cheaper
+	// fixture — it is a different screen. A conversation with nothing in it opens
+	// on the greeting, which on the machine's FIRST conversation stands through
+	// typing (welcome.go's welcomeStandsThroughTyping) and stands the chord keys
+	// down while it is up (stop.go), so the card's own answer letters are refused.
+	// It is also nothing like the shape this fixture is for: a landing that is
+	// somebody's call arrives in a conversation they started the work from.
+	statesSeedTranscript(t, dir, sid, ws, "rebuild the index and port the parser")
 	at := time.Now().Add(-3 * time.Minute)
 	meta := map[string]any{
 		"id": sid, "title": "The nested gate", "workspace": ws,
@@ -599,9 +689,8 @@ func seedUndecidedRoot(t *testing.T, home, ws string) string {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("seed undecided root: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"), nil, 0o644); err != nil {
-		t.Fatalf("seed undecided root: %v", err)
-	}
+	// With the person's own words in it, for [seedDecidedFamily]'s reason.
+	statesSeedTranscript(t, dir, sid, ws, "review the pull request diff")
 	at := time.Now().Add(-3 * time.Minute)
 	writeJSON(t, filepath.Join(dir, "meta.json"), map[string]any{
 		"id": sid, "title": "The review gate", "workspace": ws,
@@ -612,8 +701,9 @@ func seedUndecidedRoot(t *testing.T, home, ws string) string {
 		"nodes": []map[string]any{{
 			"id": 1, "title": "Review the pull request diff", "brief": "review it", "acceptance": "the diff is correct",
 			"state": "unverified", "merge": "inplace",
-			"report": "finished, but needs your look — nobody could check it in 5m0s",
-			"ground": ws, "groundMode": "folder", "elapsed_ms": 42000,
+			"report":  "finished, but needs your look — nobody could check it in 5m0s",
+			"changed": []string{"diff-review.md"},
+			"ground":  ws, "groundMode": "folder", "elapsed_ms": 42000,
 		}},
 	})
 	return dir

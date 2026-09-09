@@ -66,6 +66,12 @@ type tuiWord struct {
 	why string
 }
 
+// tokensPkg is the SHARED GLYPH VOCABULARY, and it is where every mark on this
+// surface is now spelled: the icons wave took the literals out of internal/tui3
+// and put one slot table behind one door, so a needle that looked for a glyph in
+// the surface would be looking where the surface no longer writes one.
+const tokensPkg = "internal/tui2/tokens"
+
 // tui3Pkg is where the surface's own words live, and the default for [tuiWord.pkg].
 const tui3Pkg = "internal/tui3"
 
@@ -475,6 +481,110 @@ var tuiWords = map[string]tuiWord{
 			"the frame it is read in is held together by the sentences beside it",
 	},
 
+	// ── the three tiers, one glyph and one word each (task-states) ───────────
+	//
+	// docs/design/task-states/DESIGN.md is the ruling and these are its words on a
+	// real screen. THE WORDS ARE THE ENGINE'S and the KEYS ARE THE SURFACE'S,
+	// which is why several rows here are composed at the draw and name a `source`
+	// in internal/session: a card that read `[a] resolve it` on the same column
+	// where another reads `[a] accept` is one constant in each place and not two
+	// spellings of one answer.
+	"taskDoneGlyph": {
+		screen: "✓",
+		pkg:    tokensPkg,
+		why: "the `over` tier's cell for work that ran to the end — the shared vocabulary's GlyphSettled " +
+			"slot, drawn through tasktier.go. It is the PLAIN tier's spelling, which is what this suite " +
+			"sees: a patched terminal draws the private-use icon instead and a capture-pane of one is not " +
+			"a thing a needle could honestly assert",
+	},
+	"taskBadGlyph": {
+		screen: "✕",
+		pkg:    tokensPkg,
+		why: "the `over` tier's cell for work that did not finish — GlyphFailed. It is NOT the cell a " +
+			"person's own stop wears, which is GlyphStopped, because nobody found anything wrong with work " +
+			"somebody ended. It was `✗` in internal/tui3 until the icons wave moved every mark into one " +
+			"vocabulary (docs/design/icons/DESIGN.md)",
+	},
+	"taskDoneWord": {
+		screen: " · done",
+		source: "done",
+		pkg:    "internal/session",
+		why: "the tier word on the head of a landing that finished, hung off the title by the one separator " +
+			"this surface joins facts with. It is the engine's spelling (task_status.go's taskWordDone)",
+	},
+	"taskOneFileWord": {
+		screen: " · 1 file",
+		source: " file",
+		pkg:    tui3Pkg,
+		why: "the file count on the head, SINGULAR. Both spellings exist in the source because `1 files` is " +
+			"the surface being sloppy about the one number on the row",
+	},
+	"taskMergedFact": {
+		screen: " · merged",
+		source: "merged",
+		pkg:    tui3Pkg,
+		why: "where the work ended up, as a FACT and never as a state. `delivery needs attention` and " +
+			"`stopped — branch kept` fused the two into one phrase and are deleted",
+	},
+	"taskBranchKeptFact": {
+		screen: " · branch kept",
+		source: "branch kept",
+		pkg:    tui3Pkg,
+		why: "the other half of the same fact: a branch that never came home, named on the head so the " +
+			"person has a handle back to work that is not on screen. It replaced `stopped — branch kept`, " +
+			"which fused a state and a source-control fact into one phrase on the row that says the state",
+	},
+	"settleAnswersRow": {
+		screen: "[a] accept · [n] not right · [s] tell it",
+		source: " tell it",
+		why: "THE WHOLE ANSWERS ROW, in the one order every card draws it. It is waited for as one string " +
+			"because three separate searches would pass on a card that drew the columns on two rows, or in " +
+			"the other order, or without the third — and the third is the one the ruling is emphatic about",
+	},
+	"settleHandRow": {
+		screen: "[d] let aforge decide this one",
+		source: " let aforge decide this one",
+		why: "the one-time hand-over, drawn dimmer beside the answers. It replaced `decide these for me`, " +
+			"which was a standing preference disguised as an answer and changed a setting on the way past",
+	},
+	"settleConflictAnswers": {
+		screen: "[a] resolve it · [n] drop it",
+		source: "resolve it",
+		pkg:    "internal/session",
+		why: "a conflict's own two verbs on the same two columns. A conflict's yes is NOT an accept: it " +
+			"spends one more merge round, which is why the word is the ask's and not the card's",
+	},
+	"settleConflictNo": {
+		screen: "[n] drop it",
+		source: "drop it",
+		pkg:    "internal/session",
+		why: "the half of that row that stands even on an engine with no resolver door — the absence law " +
+			"drops each column on its own rather than taking the row down with it",
+	},
+	"taskConflictReason": {
+		screen: "conflicts with your branch",
+		pkg:    "internal/session",
+		why: "the reason sentence of the one your-call question that is never the model's to answer. The " +
+			"files are named after a colon, and the sentence stops here when git would not say which",
+	},
+	"taskStepsReason": {
+		screen: "ran out of steps",
+		pkg:    "internal/session",
+		why: "the incomplete reason for a spent step threshold. `failed` is gone as a landing's word: what " +
+			"a person reads is `incomplete` plus one of these sentences",
+	},
+	"taskAutoDecidingWord": {
+		screen: "aforge is deciding",
+		why: "the auto-settle floor's own row. A card with no chips MUST say why it has none — that defect, " +
+			"a card with no choices and no explanation, is what the whole wave exists to close",
+	},
+	"taskTakeItBackWord": {
+		screen: "[t] take it back",
+		source: " take it back",
+		why: "the way back on that row, and the last thing it gives up at a narrow width: the reason is on " +
+			"the rail and in the record, and this key is only here",
+	},
+
 	// ── the front door, on a machine that has never run aforge ───────────────
 	"setupTitleWord": {
 		screen: "setting up",
@@ -489,6 +599,27 @@ var tuiWords = map[string]tuiWord{
 		why: "the sentence under that heading, which is what makes the step answerable rather than " +
 			"a bare box; the constant runs on past this into what it will and will not send, and the " +
 			"block wraps it, so the needle is the clause the reader meets first",
+	},
+	"taskCardKindGlyph": {
+		screen: "◆",
+		why: "the node's own ident mark, beside the tier cell on a LANDING CARD's head (internal/tui3's " +
+			"taskIdentGlyph). It is waited for as an EXCLUSION: a rail row is the tier cell, the title and " +
+			"the word and nothing else, so this is how the suite tells the column's row from the card's head " +
+			"whichever side of the frame the column is on",
+	},
+	"welcomeStarterKeysWord": {
+		screen: "\u2191\u2193 choose \u00b7 enter fills the box \u00b7 or just type",
+		why: "the greeting's own foot, and the door this suite has to recognise: a conversation nobody has " +
+			"typed in yet stands on its starting points (internal/tui3's welcome.go), and on the machine's " +
+			"FIRST conversation it stands through typing. A subtest that waits only for the home foot or the " +
+			"landing keys is waiting for a row this screen is covering",
+	},
+	"setupSkipWord": {
+		screen: "esc skips setup",
+		why: "the setup's own foot, on EVERY step of it. A state root built a minute ago opens on the setup " +
+			"whatever the profile it copied holds, because the marker that says it has been seen is a file in " +
+			"that root — so a suite that seeds a graph and reads it back has to know it is standing on this " +
+			"screen and press past it",
 	},
 	"setupNotConnectedNote": {
 		screen: "openrouter is not connected",
