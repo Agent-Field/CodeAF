@@ -131,21 +131,26 @@ func TestFrecencyWeighsRecencyAgainstFrequency(t *testing.T) {
 	}
 }
 
-// Free words filter; a path browses. The morph is the same surface, so what a
-// person typed stays in the box either way.
+// Free words filter; a path browses. The sheet OPENS on the columns
+// ([app.contextStart]) and a word is what puts the ranked list in front of them.
 func TestTypingAPathMorphsTheListIntoColumns(t *testing.T) {
 	a, root := folderLab(t)
-	if cmd := a.openFolderPick(""); cmd == nil {
+	cmd := a.openFolderPick("")
+	if cmd == nil {
 		t.Fatal("opening the picker asks for the store and the facts")
 	}
+	// The command is RUN, because the sheet opens browsing now and the level it
+	// opened on is asked for by that command — dropping it would leave the
+	// columns marked as being read and never read.
+	settleFolder(t, a, cmd)
 	if !a.folder.open {
 		t.Fatal("/folder opened nothing")
 	}
-	if a.folder.browsing {
-		t.Fatal("an empty box is a list, not a browse")
+	if !a.folder.browsing {
+		t.Fatal("the chooser opens on the columns, not on a list")
 	}
 
-	// A word narrows the list and leaves it a list.
+	// A word puts the list up, and narrows it.
 	typeFolder(t, a, "sibl")
 	if a.folder.browsing {
 		t.Fatal("a bare word turned into a browse")
@@ -188,7 +193,7 @@ func TestTypingAPathMorphsTheListIntoColumns(t *testing.T) {
 	// And the columns draw as columns: no borders, the names, and nothing wider
 	// than the frame. The measure is CELLS and not bytes — the sheet's own
 	// punctuation is multibyte, so a byte count would fail a row that fits.
-	for _, line := range a.folder.rows(a.width, a.overlayHeight(), a.pal, a.styler(), -1, "") {
+	for _, line := range chooserRows(t, a, -1, "") {
 		if ansi.StringWidth(line) > a.width {
 			t.Fatalf("a column row runs past the frame: %q", plain(line))
 		}

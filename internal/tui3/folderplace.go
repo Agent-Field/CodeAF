@@ -31,6 +31,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/reltime"
 )
 
 // placeDoor is WHICH ROAD a directory came in by. It is carried rather than
@@ -180,11 +181,13 @@ func (a *app) canReferPlace() bool {
 // list that lies.
 const folderRemoteWord = "choosing a folder is not available over --host yet — the folders here are this machine's, not the ones the conversation is on."
 
-// folderEmptyWord is /folder on a machine with nothing to offer yet: no project
-// home knows about, nothing touched, and an index that has not answered. It
-// names the way through rather than apologising, because typing a path is the
-// answer and always was.
-const folderEmptyWord = "nothing to offer yet · type a path after /folder, or use the picker's box"
+// THERE IS NO LONGER A REFUSAL FOR AN EMPTY MACHINE. `folderEmptyWord` said
+// `nothing to offer yet · type a path after /folder` on a profile whose
+// remembered places were empty — a fresh install, which is the one person least
+// able to type the path — and it was reached because the sheet opened on a LIST
+// of remembered places rather than on the tree. It opens on the tree now
+// ([app.contextStart]), and a machine with nothing remembered has a home
+// directory like every other machine, so there is nothing left to refuse.
 
 // openFolderPick is /folder: the ONE context browser, opened with FOLDER
 // INTENT. openContextPick is the same sheet opened by a bare /attach, with file
@@ -233,39 +236,63 @@ func (a *app) openContextPick(query string, folders bool) tea.Cmd {
 	// Home has its own composer. Reveal the conversation's browser without
 	// changing the unsent draft suspended underneath that page.
 	a.closeHome()
-	candidates := a.folderCandidates()
-	if len(candidates) == 0 && strings.TrimSpace(query) == "" {
-		// A BARE /attach STILL HAS SOMEWHERE TO START. Its business is the files
-		// under the directory this conversation is standing in, so it opens the
-		// columns there rather than refusing for want of a candidate list — which
-		// is a list of PLACES and has nothing to do with what it was asked for.
-		if !folders {
-			if root := a.pathRoot(); root != "" {
-				a.folder.start(nil, a.tilde)
-				a.markFolderHeld()
-				a.folder.openAt(root, "")
-				a.touch()
-				return tea.Batch(a.askFolderStore(), a.folderWork())
-			}
-		}
-		a.note(folderEmptyWord)
-		return nil
-	}
-	a.folder.start(candidates, a.tilde)
+	a.folder.start(a.folderCandidates(), a.tilde)
 	a.markFolderHeld()
 	if query = strings.TrimSpace(query); query != "" {
+		// A QUERY SEEDS THE SHEET AND DECIDES NOTHING ELSE. A path opens the
+		// columns on it and a word puts the ranked list up, which is
+		// [folderPick.rank]'s one question asked once.
 		a.folder.filter.setText(query)
 		a.folder.rank()
 		if a.folder.browsing {
 			a.folder.browseSync(a.resolvePath)
 		}
-	} else if !folders {
-		if root := a.pathRoot(); root != "" {
-			a.folder.openAt(root, "")
-		}
+	} else if root := a.contextStart(); root != "" {
+		// BOTH DOORS OPEN BROWSING, AT THE SAME DIRECTORY, AND THIS IS THIS
+		// WAVE'S OWN REPAIR.
+		//
+		// They used to open differently and the owner met the difference: `/attach`
+		// browsed the columns immediately and `/folder` showed a flat list of
+		// remembered PLACES, so one command answered "what is here" and the other
+		// answered "where have you been" — two surfaces behind one sheet. On a
+		// machine with nothing remembered `/folder` refused outright rather than
+		// showing a person the folder they were standing in.
+		//
+		// The list is not gone: it is what the box shows the moment there is a word
+		// in it rather than a path, and ctrl+u clears the path to reach it. So the
+		// remembered places, the projects and the index are still one keystroke
+		// away — they are simply no longer the first thing a person meets instead
+		// of their own tree.
+		a.folder.openAt(root, "")
 	}
 	a.touch()
 	return tea.Batch(a.askFolderStore(), a.folderWork())
+}
+
+// contextStart is WHERE THE CHOOSER OPENS, and it is one answer for both doors.
+//
+// The ladder is what a person most likely means: the folder this conversation is
+// already about, then the directory this window is working in, then home. Every
+// rung is somewhere they have already been — the sheet never opens on `/`, which
+// is a place nobody was and every walk away from it is four keystrokes.
+//
+// NOTHING HERE STATS ANYTHING. A directory that has been moved since it was
+// remembered opens a column that says it cannot be read, which is the honest
+// answer and costs one row; a stat on a disconnected mount is exactly the wait
+// this surface must never take on the way to its first frame.
+func (a *app) contextStart() string {
+	for _, path := range a.referredPlaces() {
+		if strings.TrimSpace(path) != "" {
+			return path
+		}
+	}
+	if root := a.pathRoot(); root != "" {
+		return root
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return home
+	}
+	return ""
 }
 
 // folderKey routes one keypress while the picker owns the keyboard. The input
@@ -394,12 +421,11 @@ const folderGoneWord = "no such folder · "
 
 // ── the pointer ─────────────────────────────────────────────────────────────
 
-// folderPress resolves a click on the browser, and reports whether it took one.
-//
-// IT IS NOT MODAL TO THE POINTER, which is [app.harnessPickPress]'s own bargain
-// and it is kept for that reason: this sheet hangs over a draft somebody is
-// still writing, so a press anywhere else is a press on whatever is there rather
-// than a way of closing a list they did not ask to close.
+// folderRowPress resolves a press on ONE ROW OF THE SHEET, in the sheet's own
+// coordinates: row counted from [folderPick.rows]' first row and x counted from
+// its first cell. Where that row landed on the screen is the modal's business
+// and only the modal's ([contextWin], contextmodal.go) — this function is the
+// browser's own layout answering about itself, which is what keeps one hit map.
 //
 // THE GESTURES ARE FINDER'S, and they are two and not one. A click on a NAME
 // walks — into the list row's folder, along the breadcrumb, out to the parent —
@@ -410,19 +436,23 @@ const folderGoneWord = "no such folder · "
 // ITSELF.
 //
 // A SECOND PRESS ON THE ROW YOU ARE ALREADY ON OPENS IT, when it is a folder.
-// That is how the pointer walks INTO a tree now that the old column of children
-// has become the preview pane: the first press selects and the second opens,
-// which is the gesture every file browser has taught, without this surface
-// having to measure the gap between two clicks.
-func (a *app) folderPress(x, y int) (tea.Cmd, bool) {
+// That is how the pointer walks INTO a tree: the first press selects and the
+// second opens, which is the gesture every file browser has taught, without this
+// surface having to measure the gap between two clicks.
+//
+// AND A PRESS IN THE PREVIEW COLUMN MOVES THE SELECTION THERE, when the preview
+// is a folder listing. That column used to consume presses and do nothing at
+// all — a list of directory names, drawn exactly like the column beside it,
+// answering to no pointer — which is the defect this wave exists for. The rule
+// is the SAME rule the middle column keeps, one column to the right: the press
+// selects, and a second press on what is now the cursor row opens it. So the
+// scheme is one scheme in both columns and there is no double-click timing
+// anywhere on this sheet.
+func (a *app) folderRowPress(x, row int) (tea.Cmd, bool) {
 	if !a.folder.open {
 		return nil, false
 	}
-	mark, ok := a.chromeAt(y)
-	if !ok || mark.kind != chromeOverlay {
-		return nil, false
-	}
-	row, geom := mark.index, a.folder.geom
+	geom := a.folder.geom
 	if row == geom.action {
 		return a.folderConfirm(), true
 	}
@@ -463,11 +493,11 @@ func (a *app) folderPress(x, y int) (tea.Cmd, bool) {
 	}
 	switch {
 	case geom.up.holds(x):
-		// The ancestry column: the row pressed is counted from the one we are
-		// standing in, exactly as it was drawn ([folderPick.upText]). Only a
+		// The ancestry column: the row pressed is counted from the parent column's
+		// own window, exactly as it was drawn ([folderGeom.upFrom]). Only a
 		// DIRECTORY over there is somewhere to go — a file in the parent is drawn
 		// for context and pressing it would leave the columns nowhere.
-		want := at + a.folder.cols.top - a.folder.cols.cursor + a.folder.cols.upAt
+		want := at + geom.upFrom
 		up := a.folder.cols.up
 		if a.folder.cols.upAt < 0 || !up.isDir(want) {
 			return nil, true
@@ -476,11 +506,21 @@ func (a *app) folderPress(x, y int) (tea.Cmd, bool) {
 		a.touch()
 		return a.folderWork(), true
 	case geom.pane.holds(x) && a.folder.pane != folderPaneOff:
-		// THE PREVIEW TAKES ITS OWN PRESSES AND DOES NOTHING WITH THEM. It is a
-		// read-only pane: there is nothing over there to select, and letting the
-		// press fall through to the middle column's arithmetic would move the
-		// cursor to whatever row happened to be beside the line somebody clicked.
-		return nil, true
+		// THE PREVIEW COLUMN, when what it is previewing is a FOLDER. The row
+		// pressed is the entry drawn on it, and the entry's RAW name is what is
+		// joined onto the previewed directory — never the drawn one, which has been
+		// through [drawableLine] and is a label rather than a path
+		// ([previewEntry.Raw] states this at length).
+		//
+		// A file's source, a picture and every refusal are read-only over here and
+		// take no press: they have no rows to select.
+		name, ok := a.folder.paneEntry(at)
+		if !ok {
+			return nil, true
+		}
+		a.folder.openAt(a.folder.geom.paneDir, name)
+		a.touch()
+		return a.folderWork(), true
 	}
 	// The middle column, and every column-less frame: the press moves the cursor,
 	// or — on the row the cursor is already on — walks into it (this function's
@@ -528,6 +568,7 @@ func (a *app) folderHoverColumn(x, row int) (string, bool) {
 		return folderColTray, true
 	}
 	a.folder.trayHot = -1
+	a.folder.paneHot = -1
 	if !a.folder.browsing || row == geom.action {
 		return folderColRow, true
 	}
@@ -538,6 +579,14 @@ func (a *app) folderHoverColumn(x, row int) (string, bool) {
 	case geom.up.holds(x):
 		return folderColUp, true
 	case geom.pane.holds(x):
+		// WHICH ROW OF THE PANE, and not merely which column, wherever that row is
+		// a thing a press acts on. The pane keeps answering for its own column
+		// either way — the wheel scrolls a file's source over there and a source
+		// has no rows to light — so the column is the answer and the row is the
+		// extra fact (hover.go's law: what lights is what a press acts on).
+		if at := row - geom.head; at >= 0 && at < geom.paneBody {
+			a.folder.paneHot = at
+		}
 		return folderColPane, true
 	}
 	return folderColHere, true
@@ -553,35 +602,6 @@ const (
 	folderColPane  = "pane"
 	folderColTray  = "tray"
 )
-
-// folderWheel turns the wheel over the browser into a walk of whichever surface
-// is up, and reports whether it took the gesture. The window follows the cursor
-// here rather than an offset of its own, so scrolling and selecting are one act
-// — which is what the other cursor-followed lists on this surface do.
-// THE WHEEL FOLLOWS THE POINTER AND NOT A FOCUS [steering-02 §5: "Mouse hit
-// targets, wheel focus, keyboard navigation ... must agree"]. Turned over the
-// PREVIEW it scrolls the preview; turned over the names it walks the names.
-// That is the same rule the keyboard keeps — the pane the gesture acts on is the
-// pane the gesture is on — and it needs no state at all.
-func (a *app) folderWheel(y, delta int) (tea.Cmd, bool) {
-	if !a.folder.open || delta == 0 {
-		return nil, false
-	}
-	// OVER ITS OWN ROWS AND NOWHERE ELSE, for the reason the press keeps: the
-	// sheet is not modal to the pointer, and a wheel turned over the transcript
-	// belongs to the transcript.
-	if mark, ok := a.chromeAt(y); !ok || mark.kind != chromeOverlay {
-		return nil, false
-	}
-	if a.hot.key == folderColPane && a.folder.pane != folderPaneOff {
-		a.folder.paneStep(delta)
-		a.touch()
-		return nil, true
-	}
-	a.folder.move(delta)
-	a.touch()
-	return a.folderWork(), true
-}
 
 // ── the candidates, in layers ───────────────────────────────────────────────
 
@@ -821,6 +841,10 @@ func (a *app) askFolderKids() tea.Cmd {
 
 // The three facts, and the words they are said in. They are constants because
 // each is quoted in the manual exactly as it is spelled here.
+// folderChangedWord leads a file's modification time on the action row. It is a
+// constant because the manual quotes it exactly as it is spelled here.
+const folderChangedWord = "changed "
+
 const (
 	folderRepoWord  = "repository"
 	folderPlainWord = "folder"
@@ -842,8 +866,28 @@ const folderAgentsFile = "AGENTS.md"
 // draw a zero, a blank or an "unknown".
 func folderFactsOf(dir string) []string {
 	info, err := os.Stat(dir)
-	if err != nil || !info.IsDir() {
+	if err != nil {
 		return nil
+	}
+	if !info.IsDir() {
+		// A FILE'S FACTS ARE THE TWO A CHOOSER CAN ANSWER: how big it is, and when
+		// it last changed. They ride the same right end of the action row a
+		// directory's do [owner review 2026-09-08 §4: metadata answers the SELECTED
+		// item rather than cluttering every row], and neither is drawn where the
+		// disk had nothing to say — a zero-byte file says its size and a file with
+		// no modification time says nothing at all [design-law §EMPTINESS].
+		//
+		// IT IS THE MODIFICATION TIME AND IT IS NAMED AS ONE. It is not "last
+		// opened": atime is a lie on every filesystem mounted `relatime`, and
+		// aforge keeps no record of opening a file it merely previewed.
+		var lines []string
+		if size := byteWord(int(info.Size())); size != "" {
+			lines = append(lines, size)
+		}
+		if when := reltime.Short(info.ModTime(), time.Now()); when != "" {
+			lines = append(lines, folderChangedWord+when)
+		}
+		return lines
 	}
 	var lines []string
 	if branch, dirty, ok := folderRepoOf(dir); ok {

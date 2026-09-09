@@ -159,7 +159,13 @@ type previewEntry struct {
 	// [drawableLine] on the way in and cannot be joined back onto a directory to
 	// reach the file. Navigation is the browser's own listing's business.
 	Name string
-	Dir  bool
+	// Raw is the name AS THE FILESYSTEM SPELLS IT, and it is never drawn. It is
+	// carried because the pane is navigable now — a press on a directory row over
+	// there walks into it (folderpane.go's [folderPick.paneEntry]) — and the only
+	// safe thing to join onto a directory is the name the directory actually has.
+	// Name is a label; this is the path.
+	Raw string
+	Dir bool
 	// Bytes is the file's size. It is left at zero for a directory, whose size
 	// on disk is not the number anybody means by it, and the renderer draws
 	// nothing there rather than a `0 B` [design-law §EMPTINESS].
@@ -410,6 +416,14 @@ func loadFolderPreview(ctx context.Context, key previewKey, hidden bool) filePre
 		if !hidden && strings.HasPrefix(name, ".") {
 			continue
 		}
+		// THE PRUNING RULE IS THE COLUMNS' RULE. A row the middle column will
+		// never hold is a row this pane must not draw either: a press on it
+		// walks into this directory and asks the columns to seat the cursor on
+		// a name they pruned, which lands on whatever happens to be first. One
+		// list of names, one rule for it ([skipDirs], folderfiles.go).
+		if !hidden && entry.IsDir() && skipDirs[name] {
+			continue
+		}
 		rows = append(rows, previewEntry{Name: name, Dir: entry.IsDir()})
 	}
 	// Directories first, then files, each half by name. It is the order Finder,
@@ -441,7 +455,10 @@ func loadFolderPreview(ctx context.Context, key previewKey, hidden bool) filePre
 			}
 		}
 		// LAST, so the sort and the stat above both used the real name: what is
-		// kept is what may be drawn, and it is no longer a path.
+		// kept is what may be drawn, and it is no longer a path. THE PATH IS KEPT
+		// BESIDE IT — the pane is navigable and the navigation needs the name the
+		// filesystem has, not the one a person may safely read ([previewEntry.Raw]).
+		rows[at].Raw = rows[at].Name
 		rows[at].Name = drawableLine(rows[at].Name)
 	}
 	return filePreview{Key: key, Kind: previewFolder, Entries: rows, Shown: shown}
