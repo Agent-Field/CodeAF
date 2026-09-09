@@ -200,6 +200,9 @@ func TestRetargetTaskSavesContinuationWithoutRewritingTheAttempt(t *testing.T) {
 	land()
 	waitDoneNode(t, node)
 	before := node.notice()
+	if before.Brief != "b" || before.Acceptance != "a" {
+		t.Fatal("task snapshot omitted its original contract")
+	}
 	if err := agent.RetargetTask(node.id, "claude-sonnet-5"); err != nil {
 		t.Fatal(err)
 	}

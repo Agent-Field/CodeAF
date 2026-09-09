@@ -5670,7 +5670,9 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		if node == nil || (notice.CostUSD <= node.cost &&
 			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node) &&
 			!taskRenamesContext(notice, node) && !taskStops(notice, node) &&
-			!taskPauses(notice, node) && notice.Decider == node.decider && notice.NextModel == node.nextModel) {
+			!taskPauses(notice, node) && notice.Decider == node.decider && notice.NextModel == node.nextModel &&
+			(notice.Brief == "" || notice.Brief == node.brief) &&
+			(notice.Acceptance == "" || notice.Acceptance == node.acceptance)) {
 			return nil
 		}
 	}
@@ -5712,6 +5714,16 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		}
 		a.tasks[notice.ID] = node
 		a.taskOrder = append(a.taskOrder, notice.ID)
+	}
+	// Replayed engine updates carry the original contract without a proposal card.
+	if notice.Brief != "" {
+		node.brief = notice.Brief
+	}
+	if notice.Acceptance != "" {
+		node.acceptance = notice.Acceptance
+	}
+	if notice.Summary != "" {
+		node.assignment = notice.Summary
 	}
 	a.takeTypedTaskBrief(node)
 	if title := strings.TrimSpace(notice.Title); title != "" {

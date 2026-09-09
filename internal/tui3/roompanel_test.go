@@ -332,3 +332,19 @@ func TestContinuationModelUpdateChangesSetupWithoutChangingThePastModel(t *testi
 		t.Fatal("completed task model row is not clickable")
 	}
 }
+
+func TestReopenedTaskReceivesItsBriefWithoutAProposalCard(t *testing.T) {
+	a, _ := taskControlApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(77, "Reopened task", session.TaskUnverified, session.TaskNotice{Brief: "The original saved assignment.", Acceptance: "The original acceptance criteria."})})
+	a.openRoom(77, "Reopened task")
+	a.room.entries = []entry{{kind: entryAssistant, text: "Work already completed.", turn: 1}}
+	a.room.dirty = true
+	var lines []string
+	for _, r := range a.roomRows(a.bodyWidth()) {
+		lines = append(lines, plain(r.text))
+	}
+	body := strings.Join(lines, "\n")
+	if !strings.Contains(body, "The original saved assignment.") || !strings.Contains(body, "The original acceptance criteria.") {
+		t.Fatalf("restored task lost its contract: %s", body)
+	}
+}

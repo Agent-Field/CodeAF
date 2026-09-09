@@ -3345,8 +3345,12 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 	return TaskNotice{
 		ID:    n.id,
 		Title: n.spec.title,
-		Kind:  n.kind,
-		Where: where,
+		// Reopened task pages need the contract even when no proposal card survives.
+		Brief:      n.spec.brief,
+		Summary:    n.spec.summary,
+		Acceptance: n.spec.acceptance,
+		Kind:       n.kind,
+		Where:      where,
 		// AND WHICH PROJECT THAT DIRECTORY IS A COPY OF, on every update and not
 		// only on the proposal: a row drawn from a checkpoint, a roster replayed
 		// after a resize and a card watching work land all ask the same question,
