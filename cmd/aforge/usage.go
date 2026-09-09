@@ -337,6 +337,11 @@ var longerCommands = []string{"cache clean", "devices revoke"}
 // flag anybody added, which is the same defect the environment table's
 // interpolated dollar figures were fixed for.
 func usageForCommand(name string) string {
+	// Collection editing has its own short reference page so the front page
+	// can introduce organization without listing every membership operation.
+	if name == "collections" {
+		return collectionsUsage
+	}
 	lines := strings.Split(usageText, "\n")
 	var blocks []string
 	for index := 0; index < len(lines); index++ {
@@ -466,7 +471,7 @@ func nearestCommand(typed string) string {
 // reason they are absent from the usage text: nothing types them.
 var knownCommands = []string{
 	"chat", "resume", "serve", "devices", "do", "plan", "revise", "run", "exec",
-	"show", "models", "notebook", "competence", "services", "wake", "doctor",
+	"show", "models", "notebook", "collections", "competence", "services", "wake", "doctor",
 	"logs", "cache", "rebuild", "why", "manual", "version", "help",
 }
 
