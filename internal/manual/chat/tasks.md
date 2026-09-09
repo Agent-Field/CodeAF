@@ -4700,8 +4700,8 @@ conversation**. Opening another conversation dials another connection and closes
 the chat you came from keeps writing its reply, keeps running its tasks, and its output is
 all there when you go back to it. The same is true of `aforge chat --no-host`, which runs
 its conversations inside this process instead. The switcher lists them with `working`,
-`needs you` or nothing against each, and must not show a new chat under a previous chat's
-name.
+`needs you` or nothing against each, from the same reading that draws the mark on that
+conversation's tab, and must not show a new chat under a previous chat's name.
 
 The entry line `closed · <previous chat> — a connection holds one conversation at a time`
 belongs to a door that has no way to dial a second connection, and is not something any

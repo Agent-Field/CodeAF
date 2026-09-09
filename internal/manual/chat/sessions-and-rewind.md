@@ -486,7 +486,7 @@ no refresh or follow-up message is needed.
 Each ask is bounded to twenty seconds so a slow cheap endpoint yields to the existing
 fallback promptly. Temporary provider failures get up to three attempts within the
 two-minute parent window, using short increasing delays. Closing the session cancels this work. Failed or invalid naming
-leaves the conversation usable with its existing placeholder; an existing name is never
+leaves the conversation usable with its existing `new conversation` placeholder; an existing name is never
 overwritten. Title calls remain billed to the session and cost history, separately from
 an unrelated turn that happens to be running when the name arrives.
 

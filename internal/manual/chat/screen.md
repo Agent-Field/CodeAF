@@ -163,14 +163,14 @@ change what Enter opens. Without color both markers remain visible; ASCII mode u
 straight corners and a plain dot. Short windows give up inner vertical space before
 the selected row.
 
-## Why does my tab say Untitled — when does a chat get its name, my new chat has no title, the tab says Untitled instead of the conversation name
+## What is my chat called before it has a name — unnamed tab, why it no longer says Untitled
 
 **Naming starts when your first message is accepted.** The small model on the `title`
 role works in the background alongside the answer. Each naming ask has twenty seconds to
 reach an answer or its existing fallback. The answer does not wait for a title, and the
 title does not wait for the answer to finish.
 
-1. `+` opens the `New chat` page. A newly created conversation starts as `Untitled`.
+1. `+` opens the `New chat` page. A newly created conversation starts as `new conversation`.
 2. Sending your first message starts both the conversation and background naming.
 3. One response supplies a full conversation title and a one- or two-word tab label. The tab strip
    uses the compact label; breadcrumbs, the status line, Home, the switcher, recent sessions,
@@ -185,18 +185,18 @@ short increasing delays, within a two-minute overall window. You do not need to 
 another message. A failed title never interrupts the answer or changes its working state.
 Empty answers, instruction echoes and placeholders are rejected, and the next configured
 naming model can answer within the same budget. If those attempts fail, the tab remains
-`Untitled`; an unnamed saved conversation can try again on its next message after reopening.
+`new conversation`; an unnamed saved conversation can try again on its next message after reopening.
 
 **An existing name wins.** Naming runs once per session lifetime, and a chat that already
 has a name is not named again. Older saved names with a leaked `Full:` label are cleaned
 when read, and saved tab labels are limited to two words. Closing the session cancels unfinished naming. There is no
 command or tab action to rename a conversation manually.
 
-**`Untitled` labels an unnamed tab and its breadcrumb root.** Elsewhere it is named
-after the folder it is in: the status line and the window title say the project, home and
-the `ctrl+k` switcher say `new conversation`. And `Untitled` is not `main` — `main` is
-where you are, the conversation you get back to from a task page, which is what `esc/←
-main` and `say it to main` both mean.
+**`new conversation` is the one name placeholder.** The tab, its breadcrumb root and the
+`ctrl+k` switcher row all use it, and no conversation-name surface calls the same unnamed
+chat `Untitled`. The project in the status line is a separate fact. The placeholder is not
+`main` either — `main` is the conversation as a place, the one you get back to from a task
+page, which is what `esc/← main` and `say it to main` both mean.
 
 ## Closing a tab — the × on a tab, Ctrl+W, where do I go next
 
@@ -360,13 +360,17 @@ circle — and it carries at most one:
 | Mark | Means |
 | --- | --- |
 | `?` | That conversation is **waiting on you** — an approval, a sign-in, a proposal with no clock on it, or work out of fuel |
-| `◐` | A turn or task is **running** in it |
+| `◐` | A queued or running piece of work, a turn, or a background job is **running** in it |
 | nothing | At rest, or nothing is known about it |
 
 **`?` outranks `◐`** when both are true, because it is the one you can act on. The cell is
 the same width in all three states, so a name never moves sideways when a turn starts. On a
 terminal with no box characters `◐` is drawn `*`; `?` is already plain text, so the three
 stay apart with color off.
+
+**The `ctrl+k` switcher rows carry the same two marks from the same reading.** A tab and
+its row cannot disagree, including the row for the conversation you are standing on. A
+queued or running piece of work, a turn, or a background job wears `◐` in both places.
 
 **A countdown is not a question.** A task proposal that will go ahead on its own wears the
 working mark or none — only something that will wait forever for your answer gets `?`.

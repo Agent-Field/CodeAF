@@ -1685,6 +1685,7 @@ Every row says **what changed since you last looked**, not what the conversation
 | The row says | What happened |
 | --- | --- |
 | `asking you something` | it is waiting on you — a question or an approval |
+| `working` | something is turning in it — a reply, a task node, or a background command — and it wears `◐` |
 | `3 tasks running` | that many pieces of work are turning in it right now |
 | `it finished while you were away` | a turn ended in there after you left |
 | `nothing new` | it has been quiet since you left it |
@@ -1696,6 +1697,10 @@ Every row says **what changed since you last looked**, not what the conversation
 Then the project it is in and how long ago you left it. That is what makes the switcher
 double as the catch-up: after twenty minutes in one chat, one key says what the other seven
 did.
+
+The mark on each row is the mark on that conversation's tab, taken from the same reading.
+That includes `you are here`: work in the conversation in front wears `◐`, and a question
+there wears `?`, without replacing the note that says where you are.
 
 The card is **frozen the moment it opens**. A conversation that finishes a turn while you
 are looking at the card does not re-rank the list under your finger.
