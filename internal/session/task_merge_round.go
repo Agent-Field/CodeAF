@@ -85,20 +85,21 @@ type mergeRoundOutcome struct {
 }
 
 // mergeRoundFailedSentence is what a person reads under a conflict the round
-// could not settle: that it was tried, which files stood in the way, and where
-// the branch as the node left it can still be found.
+// could not settle: that it was tried, and where the branch as the node left it
+// can still be found.
 //
-// IT NAMES THE REF, because the ref is the only part of this a person cannot
-// discover by looking. The files are on the row already; `task/…-before-merge`
-// is a thing this round made, and a ref nobody was told about is a ref that
-// looks like litter in six weeks.
+// IT NAMES THE REF AND NOT THE FILES. The files are the ROW's, spelled once by
+// the reading every surface draws from (task_status.go's [taskConflictReason]),
+// and a report that listed them again would be the card arguing with itself
+// about which copy is the answer. What only this round knows is that a round
+// happened at all and that `<branch>-before-merge` exists — and a ref nobody was
+// told about is a ref that looks like litter in six weeks.
 func mergeRoundFailedSentence(branch string, files []string) string {
 	if len(files) == 0 {
 		return ""
 	}
-	return "a round was spent trying to bring the two versions of " +
-		namedFew(files, conflictNamesShown) + " together and could not; " + branch +
-		" as this task left it is kept on " + beforeMergeRef(branch)
+	return "a round was spent trying to bring the two versions together and could not; " +
+		branch + " as this task left it is kept on " + beforeMergeRef(branch)
 }
 
 // mergeRoundAtLanding is the automatic round: it is asked at the moment a
