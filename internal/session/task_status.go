@@ -189,6 +189,13 @@ type TaskFacts struct {
 	// which files it was about, and the sentence simply stops after "conflicts
 	// with your branch".
 	Conflicts []string
+	// Shifted says the names in [TaskFacts.Conflicts] are there because THE GROUND
+	// MOVED and not because the merge was refused (TaskNotice.Shifted): the branch
+	// would have fastened, and the person's own changed the same files while the
+	// work ran. It asks the conflict's question — two versions of these files,
+	// which survives — with the conflict's two answers, and only the reason
+	// sentence differs ([taskShiftReason]).
+	Shifted bool
 	// Decider is WHO HOLDS THE DECISION right now (TaskNotice.Decider). The zero
 	// value reads as the person, which is the only safe reading of a caller that
 	// said nothing: work whose owner nobody recorded is work waiting on whoever is
@@ -571,6 +578,7 @@ func (n TaskNotice) StatusFacts() TaskFacts {
 		Report:    n.Report,
 		Held:      n.ResultHeld,
 		Conflicts: n.Conflicts,
+		Shifted:   n.Shifted,
 		Decider:   n.Decider,
 	}
 }
@@ -651,11 +659,17 @@ const (
 	taskAskStartReason    = "starts on your word"
 	taskAskApproveReason  = "design ready to approve"
 	taskAskConflictReason = "conflicts with your branch"
-	taskAskCheckReason    = "nobody could check it"
-	taskAskHeldReason     = "the check did not pass it"
-	taskAskCapReason      = "paused at the "
-	taskAskCapTail        = " cap"
-	taskAskCapPlain       = "paused at the cap"
+	// taskAskShiftReason is the SECOND ROAD TO THE SAME QUESTION: the branch would
+	// have fastened, and the person's own changed the same files while the work
+	// ran (taskground.go). It is one question with two true sentences, and this
+	// one has to say what happened — work that held its check and read `nobody
+	// could check it` was the card lying about both halves.
+	taskAskShiftReason = "your branch changed the same files while it worked"
+	taskAskCheckReason = "nobody could check it"
+	taskAskHeldReason  = "the check did not pass it"
+	taskAskCapReason   = "paused at the "
+	taskAskCapTail     = " cap"
+	taskAskCapPlain    = "paused at the cap"
 
 	taskAskStartYes    = "start"
 	taskAskStartNo     = "don't"
@@ -799,8 +813,13 @@ func taskAskOf(facts TaskFacts) TaskAsk {
 	case facts.Kind == TaskKindHarness && facts.Phase == HarnessPhaseAsking:
 		ask.Kind, ask.Reason = TaskAskApprove, taskAskApproveReason
 		ask.Yes, ask.No = taskAskApproveYes, taskAskApproveNo
-	case taskChangesOf(facts.Merge) == TaskChangesConflicted:
-		ask.Kind, ask.Reason = TaskAskConflict, taskConflictReason(facts.Conflicts)
+	case facts.Shifted || taskChangesOf(facts.Merge) == TaskChangesConflicted:
+		// TWO ROADS, ONE QUESTION. A branch that would not fasten and a ground that
+		// moved under one that would are the same shape — two versions of the same
+		// files, one on the task's branch and one on the person's — so they close
+		// with the same two answers and differ only in the sentence that says what
+		// happened ([taskShiftReason], task_run.go's [Agent.landShifted]).
+		ask.Kind, ask.Reason = TaskAskConflict, taskShiftReason(facts)
 		ask.Yes, ask.No = taskAskConflictYes, taskAskConflictNo
 		// AND A CONFLICT IS NEVER THE MODEL'S. It cannot merge by decree, and no
 		// settle policy hands it one: whatever a caller says about who is deciding,
@@ -826,10 +845,26 @@ func taskDeciderOf(facts TaskFacts) TaskAskOwner {
 	return TaskAskOwnerPerson
 }
 
+// taskShiftReason picks WHICH OF THE TWO SENTENCES this landing gets, off the
+// fact and never off the prose: a ground that moved says so, and everything else
+// on this road is a branch that would not fasten.
+func taskShiftReason(facts TaskFacts) string {
+	if facts.Shifted {
+		return taskNamedFiles(taskAskShiftReason, facts.Conflicts)
+	}
+	return taskConflictReason(facts.Conflicts)
+}
+
 // taskConflictReason names the files that clash, and stops after the branch when
 // git would not say which they were — a sentence ending in a bare colon has told
 // nobody anything (task_run.go's [conflictSentence] states the same law).
 func taskConflictReason(files []string) string {
+	return taskNamedFiles(taskAskConflictReason, files)
+}
+
+// taskNamedFiles is that law, written once for both sentences: the files after a
+// colon where there are any, and the sentence alone where there are not.
+func taskNamedFiles(said string, files []string) string {
 	named := make([]string, 0, len(files))
 	for _, one := range files {
 		if one = strings.TrimSpace(one); one != "" {
@@ -837,9 +872,9 @@ func taskConflictReason(files []string) string {
 		}
 	}
 	if len(named) == 0 {
-		return taskAskConflictReason
+		return said
 	}
-	return taskAskConflictReason + ": " + strings.Join(named, ", ")
+	return said + ": " + strings.Join(named, ", ")
 }
 
 // taskHeldReason is the check's own finding, where the report carries one.

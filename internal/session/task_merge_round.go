@@ -464,6 +464,14 @@ func (n *TaskNode) releaseResolving() {
 // ResolveConflict spends ONE MORE merge round on a node whose branch would not
 // fasten, on the person's word — the `[a] resolve it` of the card.
 //
+// AND ON A NODE WHOSE GROUND MOVED, which reaches the same card by the other
+// road (task_run.go's [Agent.landShifted]). The round is exactly the right verb
+// there and it needs nothing added: the person's branch is merged into the
+// task's branch — often with nothing at all to resolve, since the branch would
+// have fastened — the check runs again over the two changes together, and the
+// landing is retried. Nothing here asks whether a marker was ever written, so
+// the shift road was never refused; what it lacked was a card that offered it.
+//
 // IT RETURNS BEFORE THE ROUND DOES, for [Agent.reauditTask]'s reason: a round
 // buys a model call, and a keypress that blocked on one would be a wedged
 // surface. The node stays exactly where it is — needing a look — until the round

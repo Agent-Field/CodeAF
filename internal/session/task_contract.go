@@ -577,6 +577,14 @@ type TaskNotice struct {
 	// empty on one where git would not say which files it was about, which is the
 	// emptiness law and not a claim that nothing clashed.
 	Conflicts []string
+	// Shifted says THE GROUND MOVED rather than the merge failing: the branch
+	// would have fastened, and the person's own branch changed the same files
+	// while this node worked (taskground.go, task_run.go's [Agent.landShifted]).
+	// The question is the conflict's question either way — two versions of these
+	// files, which survives — and this is the fact that decides which of the two
+	// sentences a row reads, so that nothing has to tell them apart by their
+	// prose.
+	Shifted bool
 	// Decider is WHO HOLDS THIS NODE'S DECISION right now ([TaskAskOwner]). It is
 	// the person on every ordinary landing; `task.settle = auto` and a person
 	// pressing "let aforge decide this one" ([Agent.HandUnverifiedToModel]) are the
