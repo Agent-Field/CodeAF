@@ -448,7 +448,21 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		// (livesteps.go). It is read after the clock and before the cluster for the
 		// chip's reason: the block stands exactly where the work stands, so it takes
 		// the blank the work's first block would have taken.
-		if w, ok := lives[i]; ok {
+		//
+		// AND THERE IS ONE WORKING DOOR PER TURN. A turn split by a kept row can
+		// leave a run above the split holding nothing but settled reasoning — no
+		// step of its own — and a window with no steps in it draws itself as a
+		// `▸ Work · ctrl+e` door (livesteps.go's [app.liveStepBlock]). Two doors
+		// with the same key on one page read as the same turn running twice, which
+		// is the exact thing [liveWork.last] took the token column off every run
+		// but the frontier to stop saying. So a run that is neither the frontier
+		// nor holding a step of its own is drawn through the ordinary path below,
+		// where its reasoning becomes the `thought for …` row a finished turn
+		// draws — the chip a reader already knows, with its own door onto the
+		// working. The frontier keeps everything it has, and a non-frontier run
+		// that DOES hold steps still draws its block: those steps are work with
+		// nothing else on the page to say it.
+		if w, ok := lives[i]; ok && (w.last || len(w.steps) > 0) {
 			if !a.workFoldOpen(d, w.key) {
 				// The block owns its activity door before the first caption,
 				// and spends the ordinary gap only when it actually draws.
