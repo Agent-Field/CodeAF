@@ -121,7 +121,8 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// call that has been held from the start does not.
 	var pacedSince time.Time
 	attempts := 0
-	var recoveryCtx context.Context
+	var recovery connectionRetry
+	defer recovery.release()
 	reconnected := false
 	// The body this call is carrying, kept for the model-call log and ONLY when
 	// somebody asked for bodies (calllog.go). On every ordinary run this is nil
@@ -242,25 +243,12 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				if knobs.trace != nil {
 					knobs.trace.connectionRecovered = true
 				}
-				// A DNS or dial failure precedes accepted generation. Wait for
-				// the origin, not another provider behind that same origin. The
-				// whole recovery is bounded even if connectivity keeps flapping.
-				if recoveryCtx == nil {
-					var cancelRecovery context.CancelFunc
-					recoveryCtx, cancelRecovery = context.WithTimeout(ctx, connectionRecoveryWindow)
-					defer cancelRecovery()
+				if err := c.recoverBeforeSend(ctx, &recovery, c.modelFor(request), httpRequest.URL.String()); err != nil {
+					return nil, err
 				}
-				if _, waitErr := c.waitConnection(recoveryCtx, c.modelFor(request), httpRequest.URL.String(), true); waitErr != nil {
-					if ctx.Err() != nil {
-						return nil, ctx.Err()
-					}
-					if recoveryCtx.Err() != nil {
-						return nil, &ConnectionUnavailableError{}
-					}
-					return nil, waitErr
-				}
-				// Connectivity probes do not spend provider retries. A fresh
-				// connection gets the request immediately, without old backoff.
+				// Connectivity probes do not spend provider retries. The first
+				// recovered pass sends immediately; further passes wait because a
+				// check that answers while the send fails is another fault.
 				attempt--
 				reconnected = true
 				continue

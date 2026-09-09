@@ -24,7 +24,32 @@ const (
 	connectionRecoveryWindow = 2 * time.Minute
 	connectionProbeTimeout   = 2 * time.Second
 	connectionProbeInterval  = time.Second
+	// connectionRetryPasses bounds how many times ONE request may be sent again
+	// after a reachability check answered. It is the arithmetic backstop and not
+	// the policy: connectionRecoveryWindow is what ends a real outage, and the
+	// growing pause below is what a portal meets. It exists for the degenerate
+	// case the window cannot bound — an origin that answers a check in microseconds
+	// while refusing every send, where the wall clock barely moves and only a count
+	// is finite. Twelve passes of backoffFor already exceed the window, so this
+	// changes nothing about an ordinary recovery.
+	connectionRetryPasses = 12
 )
+
+// connectionRetry is one call's whole recovery: the bounded window it may spend
+// and how many times it has come back for another send. It is a value on the
+// caller's stack because the bound belongs to the CALL — two conversations
+// losing the same router share the probe, never the patience.
+type connectionRetry struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	passes int
+}
+
+func (r *connectionRetry) release() {
+	if r.cancel != nil {
+		r.cancel()
+	}
+}
 
 // ConnectionUnavailableError ends automatic recovery without inviting a model
 // or endpoint ladder to spend another window on the same unreachable origin.
@@ -39,6 +64,50 @@ func (*ConnectionUnavailableError) Error() string {
 func IsConnectionUnavailable(err error) bool {
 	var unavailable *ConnectionUnavailableError
 	return errors.As(err, &unavailable)
+}
+
+// recoverBeforeSend waits for the origin on behalf of one send that failed
+// before it left, and reports whether the caller may try again. A nil error
+// means send; anything else is this call's ending. A DNS or dial failure
+// precedes accepted generation, so what is waited for is the ORIGIN and never
+// another provider behind that same origin, and the whole of it stays bounded
+// even while connectivity keeps flapping.
+//
+// THE PAUSE IS THE WHOLE POINT. A check that answers while the send keeps
+// failing — a captive portal, a transparent proxy — is a fault and not a
+// recovery, and a fault backs off. The first recovered pass is still immediate
+// because a connection that genuinely came back should not wait out an old
+// delay; every pass after it waits backoffFor its own count, which is the same
+// ladder every other fault on this client climbs.
+func (c *Client) recoverBeforeSend(ctx context.Context, recovery *connectionRetry, model, target string) error {
+	if recovery.ctx == nil {
+		recovery.ctx, recovery.cancel = context.WithTimeout(ctx, connectionRecoveryWindow)
+	}
+	recovery.passes++
+	if recovery.passes > connectionRetryPasses {
+		return &ConnectionUnavailableError{}
+	}
+	if _, err := c.waitConnection(recovery.ctx, model, target, true); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if recovery.ctx.Err() != nil {
+			return &ConnectionUnavailableError{}
+		}
+		return err
+	}
+	if recovery.passes > 1 {
+		if err := c.wait(recovery.ctx, backoffFor(recovery.passes-1, 0)); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if recovery.ctx.Err() != nil {
+				return &ConnectionUnavailableError{}
+			}
+			return err
+		}
+	}
+	return nil
 }
 
 // connectionFailure only admits failures before an HTTP exchange. A stream

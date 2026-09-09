@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/calllog"
 	"github.com/Agent-Field/aforge-v2/internal/lane/control"
 	"github.com/Agent-Field/aforge-v2/internal/lane/lanestub"
 )
@@ -59,6 +60,219 @@ func TestConnectionRecoveryProbesWithoutGenerationAndResumes(t *testing.T) {
 	}
 	if posts.Load() != 2 || heads.Load() != 4 || waits.Load() != 3 {
 		t.Fatalf("posts=%d heads=%d waits=%d; want only one failed send and one accepted generation", posts.Load(), heads.Load(), waits.Load())
+	}
+}
+
+func TestMediaConnectionRecoveryNamesTheRequestedModel(t *testing.T) {
+	const model = "image/test-model"
+	var news []PhaseNews
+	previous := OnPhase(func(got PhaseNews) { news = append(news, got) })
+	defer OnPhase(previous)
+
+	client, err := NewMediaClient(Config{APIKey: "k", BaseURL: "https://router.test/api/v1",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if r.Method == http.MethodHead {
+				return &http.Response{StatusCode: http.StatusMethodNotAllowed, Body: io.NopCloser(strings.NewReader(""))}, nil
+			}
+			return nil, disconnectedDNS()
+		})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var probes atomic.Int32
+	client.connection.connectionProbe = func(context.Context, string) error {
+		if probes.Add(1) <= 2 {
+			return disconnectedDNS()
+		}
+		return nil
+	}
+	client.connection.wait = func(context.Context, time.Duration) error { return nil }
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	response, err := client.doEndpoint(ctx, http.MethodPost,
+		"https://router.test/api/v1/images", []byte(`{"prompt":"a cat"}`), true, model)
+	if response != nil {
+		response.Body.Close()
+	}
+	if !IsConnectionUnavailable(err) {
+		t.Fatalf("recovery error = %v, want connection unavailable", err)
+	}
+	if len(news) == 0 {
+		t.Fatal("media recovery posted no phase news")
+	}
+	lost := false
+	for _, got := range news {
+		if got.Model != model {
+			t.Errorf("phase model = %q, want %q", got.Model, model)
+		}
+		if got.Phase == PhaseConnectionLost {
+			lost = true
+		}
+	}
+	if !lost {
+		t.Fatalf("media recovery phases = %+v, want %q", news, PhaseConnectionLost)
+	}
+}
+
+func TestConnectionRecoveryBacksOffAndBoundsChatRequests(t *testing.T) {
+	var posts atomic.Int32
+	client, err := NewClient(Config{APIKey: "k", BaseURL: "https://router.test/api/v1", Model: "test/model",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			posts.Add(1)
+			return nil, disconnectedDNS()
+		})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.connectionProbe = func(context.Context, string) error { return nil }
+	var delays []time.Duration
+	client.wait = func(_ context.Context, delay time.Duration) error {
+		delays = append(delays, delay)
+		return nil
+	}
+
+	_, err = client.CompleteWithMessages(context.Background(), userMessages("hello"))
+	if !IsConnectionUnavailable(err) {
+		t.Fatalf("recovery error = %v, want connection unavailable", err)
+	}
+	assertBoundedConnectionPauses(t, int(posts.Load()), delays)
+}
+
+func TestMediaConnectionRecoveryBacksOffAndBoundsRequests(t *testing.T) {
+	var posts atomic.Int32
+	client, err := NewMediaClient(Config{APIKey: "k", BaseURL: "https://router.test/api/v1",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			posts.Add(1)
+			return nil, disconnectedDNS()
+		})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.connection.connectionProbe = func(context.Context, string) error { return nil }
+	var delays []time.Duration
+	client.connection.wait = func(_ context.Context, delay time.Duration) error {
+		delays = append(delays, delay)
+		return nil
+	}
+	var phases atomic.Int32
+	previous := OnPhase(func(PhaseNews) { phases.Add(1) })
+	defer OnPhase(previous)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	response, err := client.doEndpoint(ctx, http.MethodPost,
+		"https://router.test/api/v1/images", []byte(`{"prompt":"a cat"}`), true, "image/test-model")
+	if response != nil {
+		response.Body.Close()
+	}
+	if !IsConnectionUnavailable(err) {
+		t.Fatalf("recovery error = %v, want connection unavailable", err)
+	}
+	assertBoundedConnectionPauses(t, int(posts.Load()), delays)
+	if phases.Load() >= 100 {
+		t.Fatalf("media recovery posted %d phase reports", phases.Load())
+	}
+}
+
+func TestConnectionRecoveryWritesOneLogPairPerSend(t *testing.T) {
+	read := loggingTo(t)
+	var posts atomic.Int32
+	client, err := NewClient(Config{APIKey: "k", BaseURL: "https://router.test/api/v1", Model: "test/model",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			posts.Add(1)
+			return nil, disconnectedDNS()
+		})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.connectionProbe = func(context.Context, string) error { return nil }
+	client.wait = func(context.Context, time.Duration) error { return nil }
+
+	_, err = client.CompleteWithMessages(context.Background(), userMessages("hello"))
+	if !IsConnectionUnavailable(err) {
+		t.Fatalf("recovery error = %v, want connection unavailable", err)
+	}
+	records := read()
+	if got, want := len(records), 2*int(posts.Load()); got != want {
+		t.Fatalf("log rows = %d, want %d for %d sends", got, want, posts.Load())
+	}
+	starts := 0
+	for _, record := range records {
+		if record.Phase == calllog.PhaseStart {
+			starts++
+		}
+	}
+	if starts != int(posts.Load()) {
+		t.Fatalf("start rows = %d, want one for each of %d sends", starts, posts.Load())
+	}
+}
+
+func TestConnectionRecoveryPauseHonorsCallerCancellation(t *testing.T) {
+	client, err := NewClient(Config{APIKey: "k", BaseURL: "https://router.test/api/v1", Model: "test/model",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, disconnectedDNS()
+		})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.connectionProbe = func(context.Context, string) error { return nil }
+	paused := make(chan struct{})
+	client.wait = func(ctx context.Context, _ time.Duration) error {
+		select {
+		case <-paused:
+		default:
+			close(paused)
+		}
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := client.CompleteWithMessages(ctx, userMessages("hello"))
+		done <- err
+	}()
+	select {
+	case <-paused:
+	case <-time.After(time.Second):
+		t.Fatal("request did not enter its recovery pause")
+	}
+	began := time.Now()
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("cancel error = %v, want context canceled", err)
+		}
+		if elapsed := time.Since(began); elapsed > time.Second {
+			t.Fatalf("cancel took %s to end the request", elapsed)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cancelled request remained in its recovery pause")
+	}
+}
+
+func assertBoundedConnectionPauses(t *testing.T, posts int, delays []time.Duration) {
+	t.Helper()
+	if posts > connectionRetryPasses+1 || posts >= 100 {
+		t.Fatalf("connection recovery sent %d requests", posts)
+	}
+	// The initial send and first recovered pass have no recovery pause. The
+	// final send meets the arithmetic bound before another pause is started.
+	if got, want := len(delays), posts-2; got != want {
+		t.Fatalf("recovery pauses = %d, want %d for %d sends", got, want, posts)
+	}
+	if len(delays) < 2 {
+		t.Fatalf("recovery pauses = %v, want a growing ladder", delays)
+	}
+	for i := 1; i < len(delays); i++ {
+		if delays[i] < delays[i-1] {
+			t.Fatalf("recovery pauses did not grow: %v", delays)
+		}
+		if delays[i] == delays[i-1] && delays[i] != maxProviderWait {
+			t.Fatalf("recovery pauses stopped growing before their cap: %v", delays)
+		}
 	}
 }
 
@@ -202,7 +416,7 @@ func TestMediaConnectionRecoveryDoesNotResubmitAnAcceptedJob(t *testing.T) {
 			}
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"id":"one-job"}`))}, nil
 		})}})
-		response, err := client.doEndpoint(context.Background(), http.MethodPost, "https://router.test/api/v1/videos", []byte(`{"prompt":"a scene"}`), true)
+		response, err := client.doEndpoint(context.Background(), http.MethodPost, "https://router.test/api/v1/videos", []byte(`{"prompt":"a scene"}`), true, "video/test-model")
 		if response != nil {
 			response.Body.Close()
 		}
@@ -255,7 +469,7 @@ func TestMediaRedirectDNSFailureDoesNotReplayOriginalSubmission(t *testing.T) {
 		t.Error("a redirected accepted request entered pre-send recovery")
 		return nil
 	}
-	_, err := client.do(context.Background(), "/videos", []byte(`{"prompt":"scene"}`))
+	_, err := client.do(context.Background(), "/videos", []byte(`{"prompt":"scene"}`), "video/test-model")
 	if err == nil || accepted.Load() != 1 {
 		t.Fatalf("err=%v accepted=%d", err, accepted.Load())
 	}
