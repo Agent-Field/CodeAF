@@ -166,6 +166,12 @@ type deck struct {
 	// the session's clock runs over this list (lens.go).
 	lens        lens
 	runningTurn int
+	// col is the live token column this page carries, or nil for a page
+	// with none to carry — a run's read-only transcript (roomorch.go). It is a
+	// pointer to the feed's own so the drawing reads the pair in motion, and it
+	// is on the deck rather than found through the lens because WHICH page is
+	// being drawn is the deck's whole job (tokencol.go).
+	col *tokenCol
 }
 
 // foldWindow is how many of a folded cluster's calls this deck keeps on screen: the
@@ -191,7 +197,7 @@ func (a *app) conversation() deck {
 		running = a.turn
 	}
 	return deck{entries: a.entries, unfolded: a.unfolded, workOpen: a.workOpen, capOpen: a.capOpen,
-		lens: participantLens, runningTurn: running}
+		lens: participantLens, runningTurn: running, col: &a.col}
 }
 
 // bodyDeck is the deck the BODY REGION is drawing right now — the room's page
@@ -414,7 +420,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				}
 				drewCaption = true
 				capOpen := a.captionCallsOpen(d, c)
-				out = append(out, a.captionRows(c, false, capOpen, width)...)
+				out = append(out, a.captionRows(c, false, capOpen, width, d)...)
 				if capOpen {
 					out = append(out, a.captionBody(d, c, width)...)
 					for at := toolsFrom; at < toolsTo; at++ {
@@ -465,7 +471,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			// own calls. The reasoning blocks inside the window are drawn where they
 			// happened — a person who opened the work asked for the machinery, and
 			// the model's working is machinery this surface has always shown.
-			out = append(out, a.liveWorkDoor(w))
+			out = append(out, a.liveWorkDoor(w, width, d))
 			// THE STEPS ARE WALKED WITH A CURSOR AND THE SPANS ARE STEPPED OVER.
 			// The window already knows its own steps in order ([liveWork.steps]),
 			// so a block between two of them is one that belongs to no step and is
@@ -485,7 +491,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				// is the caption's to draw, so the walk resumes past it.
 				at = c.end - 1
 				capOpen := a.captionCallsOpen(d, c)
-				out = append(out, a.captionRows(c, c.ended.IsZero(), capOpen, width)...)
+				out = append(out, a.captionRows(c, c.ended.IsZero(), capOpen, width, d)...)
 				if !capOpen {
 					continue
 				}
@@ -523,7 +529,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			}
 			if c, ok := captionAt(d.captions, i); ok {
 				open := a.captionCallsOpen(d, c)
-				out = append(out, a.captionRows(c, c.ended.IsZero(), open, width)...)
+				out = append(out, a.captionRows(c, c.ended.IsZero(), open, width, d)...)
 				toolsFrom, toolsTo := captionTools(c, es)
 				if open {
 					out = append(out, a.captionBody(d, c, width)...)
@@ -1888,10 +1894,34 @@ const (
 	segCount
 )
 
-// hudPart is one assembled segment: what it says, and which clock it is on.
+// hudPart is one assembled segment: what it says, which clock it is on, and —
+// for the segments whose painted form is not simply their text in a hue — the
+// painting itself, TAKEN AT THE SAME INSTANT AS THE TEXT.
+//
+// THE PAINT IS CARRIED RATHER THAN ASKED FOR AGAIN, AND THAT IS THE WHOLE OF
+// WHY THIS FIELD EXISTS. Every width decision this row makes is made from the
+// PLAIN cluster ([app.paintParts] says so out loud): the gap between the two
+// clusters, the right-aligned row's indent, and the columns the keeping and
+// money doors are pressed on (standdoor.go, moneydoor.go) are all arithmetic on
+// what the plain string measured. So a painted segment that measures one cell
+// more than the text it was measured as makes a row a cell wider than the
+// frame — and the renderer under us composes into a cell grid exactly the
+// terminal's width, so what happens is not a wrap but a QUIET CUT: the last
+// cell of the row is dropped, and `⠋ working · 10s` is drawn `⠋ working · 10`.
+// The two doors are meanwhile one column left of where they are drawn.
+//
+// The state word is where that happened. It carries the turn's count-up clock,
+// [app.stateSegment] reads [app.now] to build it, and `now` is `time.Now()` in
+// the running program — so the layout's reading and the paint's reading are two
+// reads of a moving clock a few microseconds apart, and a turn that crosses
+// `9s` → `10s` between them is drawn one cell wider than it was measured.
 type hudPart struct {
 	kind hudSeg
 	text string
+	// paint is the segment as it will be DRAWN, or "" for the segments whose
+	// painting is decided at paint time from state that cannot change the width
+	// (the pointer, the fade ramp, the meter's heat).
+	paint string
 }
 
 // status is the HUD's status row, or both of its rows joined, which is what a
@@ -2516,8 +2546,13 @@ func (a *app) telemetry(width int) []hudPart {
 	// frame gives up the telemetry around it rather than the one segment that
 	// explains why none of those numbers are moving (hostlink.go).
 	add(segLink, a.linkSegment())
-	word, _ := a.stateSegment()
-	add(segState, word)
+	// THE STATE WORD IS TAKEN PLAIN AND PAINTED IN ONE READING. Asking for the
+	// painting again at paint time is asking the clock again, and the two
+	// answers are not always the same width ([hudPart] states the defect that
+	// cost).
+	if word, painted := a.stateSegment(); word != "" {
+		parts = append(parts, hudPart{kind: segState, text: word, paint: painted})
+	}
 	return parts
 }
 
@@ -2707,11 +2742,14 @@ func (a *app) paintParts(parts []hudPart) (string, string) {
 // paintPart is where the hue budget is spent, and the order of these branches
 // IS the priority of the three things paint is allowed to mean.
 func (a *app) paintPart(part hudPart) string {
+	// THE PAINTING THAT CAME WITH THE TEXT IS THE PAINTING THAT IS DRAWN. A
+	// segment whose painted form was decided when its text was — the state word
+	// and its clock — hands it over here rather than being asked to build it a
+	// second time from a clock that has moved on ([hudPart]).
+	if part.paint != "" {
+		return part.paint
+	}
 	switch part.kind {
-	case segState:
-		// ALIVENESS AND THE DECISION, both of which the state word owns.
-		_, painted := a.stateSegment()
-		return painted
 	case segKeeping:
 		// DIM, ALWAYS, AND THE ONE SEGMENT THAT MOVES WITHOUT CHANGING. It is
 		// re-derived here rather than taken from part.text because its glyph

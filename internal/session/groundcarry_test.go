@@ -11,6 +11,7 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -31,7 +32,7 @@ func TestALandingIntoADirtyGroundNamesTheFilesOrGoesIn(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "shared.txt"),
 		"the original line\nand the parent's own\nand what the node wrote\n")
 
-	merge, detail, _ := tree.comeHome("touch the shared file", []string{"shared.txt"})
+	merge, detail, _, _ := tree.comeHome("touch the shared file", []string{"shared.txt"})
 	if strings.HasSuffix(strings.TrimSpace(detail), ":") {
 		t.Fatalf("the report ends in a bare colon and names nothing:\n%s", detail)
 	}
@@ -70,7 +71,7 @@ func TestALandingSetsTheirOwnWorkAsideAndPutsItBack(t *testing.T) {
 	// the state git refuses the merge in.
 	writeFile(t, filepath.Join(repo, "long.txt"), "the person's line\ntwo\nthree\nfour\nfive\nsix\nseven\neight\n")
 
-	merge, detail, _ := tree.comeHome("work at the bottom", []string{"long.txt"})
+	merge, detail, _, _ := tree.comeHome("work at the bottom", []string{"long.txt"})
 	if merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want the landing to carry their work and go in", merge, detail)
 	}
@@ -117,7 +118,7 @@ func TestARefusedLandingLeavesTheGroundExactlyAsItWas(t *testing.T) {
 	writeFile(t, filepath.Join(repo, "shared.txt"), theirs)
 	stood := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
 
-	merge, detail, _ := tree.comeHome("rewrite the shared line", []string{"shared.txt"})
+	merge, detail, _, _ := tree.comeHome("rewrite the shared line", []string{"shared.txt"})
 	if merge != mergeConflicted {
 		t.Fatalf("merge = %q (%s), want the branch kept", merge, detail)
 	}
@@ -175,7 +176,7 @@ func TestAReplayThatWouldNotGoIsSaidRatherThanSwallowed(t *testing.T) {
 	graph.mu.Unlock()
 
 	var log bytes.Buffer
-	state := agent.landFinished(node, tree, []string{"shared.txt"},
+	state := agent.landFinished(context.Background(), node, tree, []string{"shared.txt"},
 		"the shared file now reads the one way", "", "", &log)
 
 	if journaled := log.String(); !strings.Contains(journaled, "still carries your own uncommitted work") {

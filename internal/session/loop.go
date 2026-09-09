@@ -3688,7 +3688,7 @@ func (a *Agent) estimateTokensLocked() int {
 	for _, message := range a.messages {
 		total += messageBytes(message)
 	}
-	estimate := total / bytesPerToken
+	estimate := EstimateTokens(total)
 	if a.contextTokens > estimate {
 		return a.contextTokens
 	}
@@ -3763,9 +3763,9 @@ func (a *Agent) addAuxiliaryUsage(response *ai.Response, model string, calls int
 	a.addAuxiliaryUsageAs(response, model, calls, "")
 }
 
-// addEmptyReflexUsage is the paid-call door for a reflex request that consumed
-// its whole output ceiling without answering. The tokens and price stay in the
-// ordinary totals; the extra count says what that spend failed to buy.
+// addEmptyReflexUsage is the paid-call door for a reflex request that returned
+// no answer. The tokens and price stay in the ordinary totals; the extra count
+// says what that spend failed to buy.
 func (a *Agent) addEmptyReflexUsage(response *ai.Response, model string) {
 	a.addUsageAs(response, model, 1, string(roles.RoleReflex), true, true)
 }

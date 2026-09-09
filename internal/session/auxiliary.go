@@ -76,6 +76,14 @@ func (a *Agent) callRole(
 	messages []ai.Message,
 	options ...ai.Option,
 ) (*ai.Response, string, error) {
+	return a.callRoleChecked(ctx, role, sessionDefault, messages, nil, options...)
+}
+
+// callRoleChecked lets naming refuse an unusable answer before the next rung
+// is abandoned. The check accounts for rejected replies, because those still cost.
+func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDefault string,
+	messages []ai.Message, accept func(*ai.Response, string) bool, options ...ai.Option,
+) (*ai.Response, string, error) {
 	a.mu.Lock()
 	source, client := a.config.RolesSource, a.client
 	// ONE MODEL MEANS ONE MODEL AT EVERY RUNG. A crew-only caller passes an empty
@@ -207,7 +215,14 @@ func (a *Agent) callRole(
 			// mastermind. See [journalCall] for why that is a record worth
 			// nothing and why the role rides the line.
 			a.journalRoleCall(response, role, rung.Model, served.Name())
-			return response, rung.Model, nil
+			if accept == nil || accept(response, rung.Model) {
+				return response, rung.Model, nil
+			}
+			lastErr = errInvalidName
+			if ctx.Err() != nil {
+				return nil, rung.Model, ctx.Err()
+			}
+			continue
 		}
 		lastErr = callErr
 		if lastErr == nil {

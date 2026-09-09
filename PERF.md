@@ -1118,54 +1118,50 @@ and `outOfWall` both — was told there was no limit. The errand's wall is now t
 run context's deadline. It changes no timing on a run that finishes inside its
 wall; what it changes is that a run approaching one can act on it.
 
-## The shaped answer's room, which is derived and never named
+## Provider-owned generation defaults and local bounds
 
-Every call that asks a model for a JSON object goes through `internal/shaped`,
-and the ceiling it goes out with is **derived from the ask**. Before the seam
-existed each pass named its own: 8192 in the planner, a reserve-eighth in the
-delivery gate, eight thousand plus an echo in the intent compiler. Each was
-right about the call in front of its author and wrong about the next one — and
-wrong in the direction that costs a whole run, because a fan-out asking for five
-parts was given the room for one verdict, cut off mid-part, and the run exited
-with zero nodes (`bench/deepswe/AUTOPSY.md`, s4, `textual-richlog-follow-state`).
+A request with no operator choice sends **no generation control**. Aforge omits
+`max_tokens`, `max_completion_tokens`, `temperature`, `top_p` and `reasoning`
+from ordinary chat, headless work, auxiliary roles, structured calls, document
+parsing, saved harness execution and resident work. The provider and selected
+model therefore supply their own generation defaults.
 
-```
-room = one object × how many objects the ask asks for + what the answer echoes
-```
+This applies to retries and continuations too. A shaped request still carries
+its schema or JSON mode, and a document request still carries its parser plug;
+neither functional field implies a generation ceiling. The plain OpenAI SDK
+loop is the one request builder Aforge does not own. Its config defaults are
+cleared **before** caller options are applied, so the same omission holds there
+and an explicit zero temperature or output limit is preserved.
 
-| term | value | where |
+Explicit choices remain explicit. `AFORGE_REASONING`,
+`AFORGE_EXEC_REASONING`, a model or crew value with `:low`, `:medium` or
+`:high`, a saved task or standing-work rung, and an embedder's `ai.Option` still
+travel. The three shipped crew presets contain bare model ids and add no effort
+level. `cmd/harness-design` is a development command with explicit CLI-sized
+requests and retains its caps.
+
+The local process remains bounded independently of provider generation:
+
+| bound | purpose | where |
 | --- | --- | --- |
-| one object | `CompletionReserve() / 8`, floored at **4096** | `objectShare`, `objectFloor`, `internal/shaped/ceiling.go` |
-| how many | the ask's own figure — `fanOutWidth` (**5**) for a fan-out, `sequenceDepth` (**4**) for the stage question a sequence is divided by, the node count for the per-node passes, **1** everywhere else | `Ask.Answers` |
-| the echo | `2 × len(material) / 3` — tokens ≈ bytes/3, twice, because the compiled goal restates the request and then quotes it | `Ask.Echo` |
-| the memo | the widest cut this model has been watched taking on this lane, **doubled** | `provider.WidestAnswerCut`, `model-quirks.json` |
-| the bound | never past `CompletionReserve()` | `reserve()` |
+| completion reserve | context-window allocation, compaction and structured-repair accounting | `internal/ctxbudget`, `internal/shaped/ceiling.go` |
+| response byte limits | cap what one socket response may place in memory | `internal/provider/client.go`, `internal/provider/document.go` |
+| task and node budgets | bound graph growth and total work | `internal/session`, `internal/resident` |
+| request and run deadlines | bound elapsed work | `internal/provider/client.go`, callers' contexts |
 
-Two properties are the whole reason this is safe to adopt everywhere.
+`internal/shaped.Room` is now an accounting unit only. Repairs use it to make
+progress toward the completion reserve even when a provider reports no usage;
+it is never encoded as `max_tokens`. A response with no requested ceiling keeps
+the existing adaptive total-timeout floor: five minutes, or a longer configured
+timeout. Explicit output limits can still scale that timeout up to its existing
+fifteen-minute maximum. Removing generation defaults does not lengthen those
+operational deadlines.
 
-**Every one-object ask comes out with exactly the ceiling it already had.** The
-share and the floor are the delivery gate's own measured numbers, moved rather
-than changed, so nothing anybody measured moves. Only an ask for MORE than one
-object gets more room, which is the finding.
-
-**Nothing here is a clock and nothing here is a retry count.** A repair
-continues while the last round added text and the answer is still an unterminated
-object, bounded by the reserve — both quantities move one way, so the loop ends
-on what happened rather than on a number somebody guessed. A reply that never
-began an object is asked again exactly once, at doubled room, which is the same
-arithmetic `plan.retryTokenBudget` and `revision.retryVerdictTokens` each wrote
-separately and which is now written here alone.
-
-The width the fan-out prompt states and the width its ceiling is derived from
-are one constant, interpolated into the prompt (`fanOutWidth`,
-`internal/plan/fanout.go`). `TestAFanOutIsSizedForTheWidthItsPromptPermits` fails
-if they ever become two. The stage question that divides a node no worker can
-carry to an end is the same arrangement one constant along (`sequenceDepth`,
-`internal/plan/sequence.go`), pinned by
-`TestTheStagePromptAsksTheSizePromptsSecondQuestion`.
-
-`internal/shaped/shaped_test.go` pins the derivation, the operator's reserve
-never being outrun, and the three repairs.
+The width a fan-out prompt states and the accounting room derived for its repair
+loop still share one constant (`fanOutWidth`, `internal/plan/fanout.go`). The
+stage question uses `sequenceDepth` in the same way. `internal/shaped` tests pin
+that accounting derivation and the repair loop; provider and config wire tests
+pin both default omission and explicit operator options.
 
 ## What a gated task inherits from the work before it
 
@@ -1237,6 +1233,33 @@ another completion decline. Watching existing work does not advance this count;
 a new direction changes the request. This adds no classifier or model call to
 an ordinary tool round. `internal/session/completion_stale_test.go` pins the
 bound, revised direction, and survival of commands already owned by the turn.
+
+## The write allowance on an inline turn
+
+A turn that is changing files under the workspace is bounded by **five landed
+write calls** (`writeAllowanceCalls`, internal/session/writeseam.go). The next
+workspace write takes the same handover road the round ceiling takes, once per
+turn, and that road can still decline.
+
+**The count is calls, and only calls.** A second trigger on the number of
+DISTINCT files a turn had touched (two) has been removed. Breadth is not what the
+allowance prices: writing a helper and then the output it produces is two paths
+and one small piece of work, and a turn moved onto a task for that spends a fresh
+worktree and a brief on work that was already finishing inline. What the seam is
+for is how often a turn reaches for the disk unwatched — the run it was written
+from made forty-eight write calls — and the call count catches that whether those
+calls land on one file or on forty. One call is one reach however many paths it
+names.
+
+Nothing else moves: reads are still free in any number, a failed write and
+anything outside the workspace still count nothing, a forked hand's landed calls
+are still counted on the caller, and the delivery of a result this conversation
+owns still holds the door. The round ceiling (`checkpointPrice`, 10) and the
+turn-wall share are unchanged, so a turn that crossed the old file trigger at its
+second write now runs to its fifth write call or to whichever of those governors
+comes first. `internal/session/writeseam_test.go` pins both shapes: a few writes
+across different files followed by running their result finishes inline, and
+repeated writes to one file still hand over at the fifth call.
 
 ## The in-turn working-set ceiling
 

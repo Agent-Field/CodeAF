@@ -32,44 +32,26 @@ import (
 //     There is no "named" flag to keep in step with the thing it describes: a
 //     titled room is a named room, and the check is the same read the rail does.
 //   - It costs pennies. The scribe role (5.23's ladder) resolves the model — a
-//     labeller, not a judge — and the call carries two clipped messages under a
-//     ceiling. The ceiling is a CAP AND NOT A PURCHASE, which is exactly what
-//     the first version of this file got wrong: see [scribeMaxTokens].
+//     labeller, not a judge — and the call carries two clipped messages. What
+//     keeps it small is the clipping and the prompt; see the const block below
+//     for the ceiling that used to be here and why it is not.
 //   - The title goes through the same normalizer every other title in this
 //     package goes through, so a model that answers `"Billing audit."` and one
 //     that answers `Billing audit` land on the same row.
+
+// THE NAMING CALL CARRIES NO CEILING, and the two numbers that used to be here
+// are the argument for that. The first was 32 — arithmetic on the ANSWER, "a
+// 2-5 word title is under ten tokens, leave room for a preamble" — and on a
+// model that reasons before it speaks the thinking took all 32 before the first
+// character of the title was written: measured live against the owner's own
+// endpoint, `finish_reason:"length"` with `content:null` every single time, and
+// every room in the rail wore the placeholder. The second was 512, plus an 8192
+// relief retry when 512 did the same thing. Each was a better guess at a
+// quantity this file has no way to know, on a model an operator picked and this
+// file has never heard of. The prompt asks for a name and two lines; what
+// bounds the reply is the model's own default, and there is nothing left for a
+// relief round to relieve.
 const (
-	// scribeMaxTokens is the ceiling on the naming call.
-	//
-	// IT WAS 32, AND 32 IS WHY NOTHING WAS EVER NAMED. The old number was
-	// arithmetic on the ANSWER — "a 2-5 word title is under ten tokens, leave
-	// room for a preamble" — and it was correct arithmetic about a world that
-	// stopped existing. On a model that reasons before it speaks, the thinking
-	// is spent out of this same budget BEFORE the first character of the title
-	// is written: measured live against the owner's own endpoint, the naming
-	// call came back `finish_reason:"length"` with `content:null` every single
-	// time. roomTitle("") is empty, nameRoom returned in silence, and the room
-	// was handed back to the scribe after the next turn to fail identically
-	// forever. Every room in the rail wore the placeholder.
-	//
-	// A max_tokens cap is a CAP AND NOT A PURCHASE — a call that stops early is
-	// billed for what it wrote — so the number that matters is what the reply
-	// can legitimately need, not what four words usually cost. The same
-	// correction was made for the same reason on the standing compiler
-	// (standing.go) and the ordinary one beside it. Several hundred is the
-	// honest floor for a labeller in a reasoning world, and it is the register
-	// the small calls around here already sit in (aside.go's 600).
-	scribeMaxTokens = 512
-	// scribeReliefTokens is the one escalation. A reply that came back with no
-	// visible text and a length-shaped finish is a model that ran out of room
-	// mid-thought, and that is the ONE failure a bigger ceiling can actually
-	// fix — so it gets exactly one more try with room to spare.
-	//
-	// It is a mechanism rather than a bigger magic number. The next model whose
-	// reasoning appetite exceeds the default corrects itself here on the second
-	// call instead of waiting for somebody to notice every room is untitled
-	// again and edit a constant. It is not a loop: once, and then silence.
-	scribeReliefTokens = 8192
 	// scribeExcerptBytes is how much of each side of the first exchange the
 	// scribe is shown. A room is named for what it is ABOUT, and what it is
 	// about is in the opening sentences — paying for the whole of a long
@@ -234,52 +216,15 @@ func (h *Head) nameRoom(ctx context.Context, sessionID string) {
 		textMessage("system", scribePrompt),
 		textMessage("user", "Them:\n"+ask+"\n\nYou:\n"+answer),
 	}
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithMaxTokens(scribeMaxTokens))
+	response, err := client.CompleteWithMessages(ctx, messages)
 	if err != nil || response == nil {
 		return
-	}
-	if spentOnThinking(response) {
-		// The whole ceiling went on reasoning and nothing was said. One more
-		// try with room to spare, and then silence — see [scribeReliefTokens].
-		response, err = client.CompleteWithMessages(ctx, messages, ai.WithMaxTokens(scribeReliefTokens))
-		if err != nil || response == nil {
-			return
-		}
 	}
 	title, tags := roomLabel(response.Text())
 	if title == "" {
 		return
 	}
 	_, _ = h.store.RenameSessionTagged(sessionID, title, tags)
-}
-
-// spentOnThinking reports the one failure shape a bigger ceiling can fix: a
-// reply that said nothing visible and stopped because it ran out of room.
-//
-// The finish reason is the honest signal and the provider layer surfaces it —
-// `ai.Choice.FinishReason`, which internal/plan already reads for the same
-// question about truncated JSON. Both spellings are accepted because both are
-// in the wild ("length" from the OpenAI shape, "max_tokens" from the Anthropic
-// one) and neither is a model name.
-//
-// A finish reason that is ABSENT counts, because a provider that reports none
-// has told us nothing and empty-text-on-a-successful-call is then the only
-// signal there is. A finish reason that is present and says something else —
-// the model stopped of its own accord, a filter cut it off — does NOT count: a
-// model that chose to say nothing will choose it again with eight thousand
-// tokens, and paying twice to hear the same silence is a loop with a bill.
-func spentOnThinking(response *ai.Response) bool {
-	if response == nil || strings.TrimSpace(response.Text()) != "" {
-		return false
-	}
-	if len(response.Choices) == 0 {
-		return true
-	}
-	switch strings.ToLower(strings.TrimSpace(response.Choices[0].FinishReason)) {
-	case "", "length", "max_tokens":
-		return true
-	}
-	return false
 }
 
 // roomLabel splits the clerk's two-line answer into the name and the subjects.

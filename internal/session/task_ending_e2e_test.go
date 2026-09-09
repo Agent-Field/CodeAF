@@ -91,7 +91,8 @@ func TestATaskWhoseStreamResetOnceIsRetriedAndLandsDone(t *testing.T) {
 func TestATaskWhoseConnectionStaysDownLandsAsLostTheConnection(t *testing.T) {
 	completer := &routedCompleter{
 		parent: []step{proposeCall("Add the greeting", "write greet.go with a greeting"), finalText("handed off")},
-		child:  []step{wireError(), wireError(), wireError(), wireError(), wireError(), wireError()},
+		child: []step{wireError(), wireError(), wireError(), wireError(),
+			wireError(), wireError(), wireError(), wireError(), wireError(), wireError()},
 	}
 	agent, graph := endingAgent(t, completer)
 	notice := landedNode(t, agent, graph)
@@ -101,12 +102,16 @@ func TestATaskWhoseConnectionStaysDownLandsAsLostTheConnection(t *testing.T) {
 	if !strings.HasPrefix(notice.Report, "lost the connection to the model: ") {
 		t.Fatalf("report = %q, want it to lead with the connection", notice.Report)
 	}
-	// THE LADDER WAS WALKED TWICE: two attempts for the first worker, two for the
-	// second built in the same working copy.
-	if asked := completer.seen.child; asked != 4 {
-		t.Fatalf("the model was asked %d times, want 4 (two attempts × two workers)", asked)
+	// THE LADDER WAS WALKED TWICE PER ATTEMPT, AND THE NODE GETS TWO ATTEMPTS.
+	// Two calls for the first worker and two for the second built in the same
+	// working copy is one attempt; the wire is then an ending that says nothing
+	// about the work, so the engine buys the node its one rerun from the branch
+	// before landing it (task_continue.go's [Agent.rerunsFromItsBranch]) and the
+	// second attempt spends the same four.
+	if asked := completer.seen.child; asked != 8 {
+		t.Fatalf("the model was asked %d times, want 8 (two attempts × two workers × two runs)", asked)
 	}
-	if note := taskNote(notice, "", TaskSettleAsk, landingAddress{}); !strings.HasPrefix(note, "task 1 lost the connection: ") {
+	if note := taskNote(notice, "", TaskSettleAsk, landingAddress{}); !strings.Contains(note, "task 1 incomplete: ") || !strings.Contains(note, "· lost the connection") {
 		t.Fatalf("the landing note opens %q", firstLines(note, 1))
 	}
 	if notice.Branch == "" || notice.Merge == mergeMerged {
@@ -135,7 +140,7 @@ func TestATaskThatGoesInCirclesLandsAsCircling(t *testing.T) {
 	if notice.State != TaskFailed || notice.Ending != TaskEndingCircling {
 		t.Fatalf("state = %q, ending = %q, report %q", notice.State, notice.Ending, notice.Report)
 	}
-	if note := taskNote(notice, "", TaskSettleAsk, landingAddress{}); !strings.HasPrefix(note, "task 1 went in circles: ") {
+	if note := taskNote(notice, "", TaskSettleAsk, landingAddress{}); !strings.Contains(note, "task 1 incomplete: ") || !strings.Contains(note, "· went in circles") {
 		t.Fatalf("the landing note opens %q", firstLines(note, 1))
 	}
 }
@@ -255,7 +260,7 @@ func TestATaskWhoseWorkerWillNotWriteItsNotesLandsSayingSo(t *testing.T) {
 	}
 	// THE ROW SAYS WHY, and the landing note the conversation is handed says the
 	// same thing in a sentence.
-	if note := taskNote(notice, "", TaskSettleAsk, landingAddress{}); !strings.HasPrefix(note, "task 1 would not write its notes down: ") {
+	if note := taskNote(notice, "", TaskSettleAsk, landingAddress{}); !strings.Contains(note, "task 1 incomplete: ") || !strings.Contains(note, "· would not write its notes down") {
 		t.Fatalf("the landing note opens %q", firstLines(note, 1))
 	}
 	// AND THE WORK IS KEPT. Nothing was found wrong with it: the turn was ended
