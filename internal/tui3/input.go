@@ -549,7 +549,11 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			// conversation's standing lanes (welcome.go's [app.resumeSession]).
 			return cmd
 		}
-		if !welcomeKeeps(msg.String()) {
+		// AND THE FIRST CONVERSATION'S GREETING IS THE THIRD CONTRACT AT THIS
+		// RUNG. It stands through typing — the composer stays where the person
+		// aimed at it, and the three starting points stay readable — and it is
+		// spent by the send instead (welcome.go's [app.welcomeStandsThroughTyping]).
+		if !welcomeKeeps(msg.String()) && !a.welcomeStandsThroughTyping() {
 			a.dismissWelcome()
 		}
 	}
@@ -1262,6 +1266,12 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 		return a.edited()
 	}
 	a.stick = true
+	// AND THE FIRST CONVERSATION'S GREETING IS SPENT HERE, at the send and not at
+	// the first keystroke. Every other greeting goes on the first key, which drops
+	// the composer to the foot of the frame; the first one stands through typing
+	// so the box a person aimed at does not move out from under them mid-word
+	// (welcome.go's [app.spendWelcome]).
+	a.spendWelcome()
 	// Everything the person pressed enter on is remembered, commands included:
 	// "/model anthropic/…" is exactly the kind of line nobody wants to type
 	// twice, and a recall list that held only the sentences would be a shell

@@ -134,7 +134,7 @@ func quotedFacts(t *testing.T) []quotedFact {
 			{"commands", "sets the %s and confirms"},
 			{"commands", "each of the %s classes funds"},
 			{"commands", "of the %s classes are **select** rows"},
-			{"getting-started", "these %s are the models aforge uses on its own behalf"},
+			{"getting-started", "the %s models aforge uses on its own behalf"},
 			{"getting-started", "The crew is the %s class rows"},
 			{"screen", "the preset the %s models aforge"},
 			{"permissions", "one of the %s crew classes"},
@@ -397,7 +397,9 @@ func TestEverySeatListInTheChatManualNamesEverySeat(t *testing.T) {
 func TestEveryPageQuotingAShippedSentenceQuotesItWhole(t *testing.T) {
 	pages := flatChatPages(t)
 	for _, quoted := range []struct{ page, file, name string }{
-		{"getting-started", "../tui3/firstrun.go", "setupCrewWord"},
+		{"getting-started", "../tui3/onboarding.go", "controlLimitWord"},
+		{"getting-started", "../tui3/onboarding.go", "controlModelWord"},
+		{"getting-started", "../tui3/onboarding.go", "controlCrewWord"},
 		{"commands", "../tui3/crew.go", "crewScopeLine"},
 		{"commands", "../tui3/crew.go", "crewPinLine"},
 		{"commands", "../tui3/crew.go", "crewCustomLine"},

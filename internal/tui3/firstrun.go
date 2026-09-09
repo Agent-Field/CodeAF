@@ -16,23 +16,24 @@ import (
 //
 // A fresh install used to open on an empty chat and the first thing the product
 // said was a provider error. Now the door lets that launch open with no key
-// (cmd/aforge's chatv3.go) and this screen asks for the three facts a first day
-// needs, one at a time: the key every model call rides, the crew of models
-// aforge uses on its own behalf, and THE RAILS — what aforge may spend, per day,
-// per plan and per conversation. Under a minute; enter accepts each default; esc
-// skips the whole thing.
+// (cmd/aforge's chatv3.go) and this screen asks for what a first day needs, in
+// TWO steps: the key every model call rides, and then one screen of controls —
+// the day's spending limit, the model you talk to, and the crew aforge works
+// with. Under a minute; every control opens on the value already in force; the
+// way out is `Start a conversation`.
 //
-// THE RAILS STEP ASKS THREE ROWS AND NOT ONE. It asked the day's ceiling alone
-// for four waves, and the other rails were then discovered when they tripped —
-// which is the worst possible moment to meet a limit for the first time
-// (docs/design/spending/DESIGN.md). Three is the count a new person can answer:
-// the day (the bill), the plan (the question aforge will ask), and this
-// conversation (the window in front of them). The rest start where
-// docs/LIMITS.md says and are changed later with /budget.
+// THE SECOND STEP IS ONE SCREEN AND NOT THREE QUESTIONS. It used to be a crew
+// chooser followed by a rails screen carrying three money rows, which is five
+// answers from somebody who has not yet run the program once — and four of them
+// about limits they cannot have an opinion on yet. The rule that decided what
+// survived is in docs/design/onboarding/DESIGN.md, and onboarding.go holds the
+// screen itself. The rails this no longer asks about — the per-plan question and
+// the conversation ceiling — keep the defaults docs/LIMITS.md states and are
+// changed with /budget, beside the spending page that explains them.
 //
 // Four rules, and each is a thing the person is protected from:
 //
-//   - THE CREW AND RAILS SHOW ONCE. A marker in the profile says they were shown
+//   - THE CONTROLS SHOW ONCE. A marker in the profile says they were shown
 //     (internal/config's firstrun.go), and skipping counts as shown. The key is
 //     different because it is not a preference: with no key the default model
 //     provider cannot work, so its one-step connection returns on a later local
@@ -57,27 +58,13 @@ import (
 // byte-for-byte what /settings, /crew and a hand edit would have landed, and
 // changing any of it later is those three doors.
 
-// setupStep is one of the three questions.
+// setupStep is one of the two questions.
 type setupStep int
 
 const (
 	setupKey setupStep = iota
-	setupCrew
-	setupBudget
+	setupControls
 )
-
-// setupRails is the three rows the budget step asks, in the order it asks them,
-// and each is a REGISTRY ROW rather than a number this screen knows: what this
-// screen lands in the profile is byte-for-byte what /settings and /budget land,
-// because it is the same writer.
-var setupRails = []struct {
-	key   string
-	label string
-}{
-	{config.KeyDailyBudget, "per day"},
-	{config.KeyPlanConsent, "per plan"},
-	{config.KeySpendRail, "per conversation"},
-}
 
 // setupFlow is the screen's whole state. The zero value is a surface that never
 // had one, which is every launch but the first.
@@ -87,21 +74,54 @@ type setupFlow struct {
 	// the one on screen.
 	steps []setupStep
 	at    int
-	// text is what has been typed into the key box or the budget box. It is
-	// the raw string and nothing else: the key is masked at draw time, and the
-	// budget is parsed by the row's own writer on enter.
+	// text is what has been typed into the key box. It is the raw string and
+	// nothing else: the key is masked at draw time and checked for shape on
+	// enter.
 	text string
-	// rail is which of [setupRails] the budget step is on, and railText what has
-	// been typed against each of the three. They are a slice and an index rather
-	// than three steps because the design draws ONE screen with three rows on it
-	// — a person answering "what may this spend" answers it once, looking at all
-	// three figures together.
-	rail     int
-	railText [3]string
-	// crew is the chooser the crew step draws — the same three rows /crew
-	// draws, from the same type (crew.go), so a person meets one picture of
-	// the crew and not two.
-	crew crewPicker
+	// The controls screen's own state, which onboarding.go owns entirely.
+	//
+	//   - control is the row with the focus, and detail whether `?` has been
+	//     pressed on it. The detail belongs to the field and goes when the focus
+	//     does, so the screen a person arrives at is three sentences long however
+	//     much they read on the way.
+	//   - limitText and limitTyped are the day's ceiling as it is being edited,
+	//     with limitTyped telling an untouched field — which writes back the
+	//     figure it drew — from one somebody has cleared on purpose.
+	//   - modelOpen, modelAt, modelTop and modelFind are the model list: a
+	//     viewport and a filter over the WHOLE catalog rather than a truncation
+	//     of it, because a form with five rows must still reach two hundred
+	//     models.
+	//   - crewOpen and crewAt are the crew chooser's cursor, which is
+	//     PROVISIONAL; crewPick is the preset a person actually accepted with
+	//     enter, and is empty until they do. That is what makes esc out of the
+	//     chooser choose nothing, and what stops `Start a conversation` writing a
+	//     preset over somebody's hand-pinned tiers.
+	//   - reviewOpen is the optional reading of the settings this screen
+	//     deliberately does not ask about, example is which illustration the
+	//     right-hand column is showing, and seeded says the screen has already
+	//     been read from the profile once — so coming back from the step behind
+	//     it does not throw away what was typed.
+	control    setupControl
+	detail     bool
+	limitText  string
+	limitTyped bool
+	modelOpen  bool
+	modelAt    int
+	modelTop   int
+	modelFind  string
+	crewOpen   bool
+	crewAt     int
+	crewPick   string
+	reviewOpen bool
+	example    int
+	seeded     bool
+	// The example panel's one-shot demonstration (onboarding.go): demoAt is
+	// which beat it has reached, demoGen stamps the beats so one left over from
+	// a previous example is dropped, and demoTicking says a beat is already in
+	// flight so a second clock cannot be started beside the first.
+	demoAt      int
+	demoGen     int
+	demoTicking bool
 	// refusal is the one line the screen says under the box when enter was
 	// pressed on something it will not write. Any other key clears it.
 	refusal string
@@ -118,20 +138,25 @@ type setupFlow struct {
 	skipped bool
 }
 
-// setupStepsFor is which of the three questions this profile still needs
+// setupStepsFor is which of the two questions this profile still needs
 // answered, in the order they are asked. Each predicate is internal/config's
 // own, so the screen cannot ask for a key Load would have found or a crew /crew
 // would already report.
+//
+// THE CONTROLS SCREEN IS ONE STEP AND SO IT IS ASKED AS ONE. It carries three
+// controls and it opens when EITHER of the two persisted ones is still unwritten
+// — a profile that has a crew and no limit is shown both, with the crew already
+// on the value it chose, because a screen that dropped the row a person had
+// answered would read as a different screen every time it opened. The chat model
+// is not in the condition: it resolves from the build and from AFORGE_MODEL until
+// somebody chooses, so a profile is never MISSING one.
 func setupStepsFor(profileDir string) []setupStep {
-	steps := make([]setupStep, 0, 3)
+	steps := make([]setupStep, 0, 2)
 	if !config.APIKeyConfigured(profileDir) {
 		steps = append(steps, setupKey)
 	}
-	if !config.CrewConfigured(profileDir) {
-		steps = append(steps, setupCrew)
-	}
-	if !config.DailyBudgetConfigured(profileDir) {
-		steps = append(steps, setupBudget)
+	if !config.CrewConfigured(profileDir) || !config.DailyBudgetConfigured(profileDir) {
+		steps = append(steps, setupControls)
 	}
 	return steps
 }
@@ -170,7 +195,7 @@ func (a *app) openSetup(allowed bool) {
 	if !providerMissing && !firstRun {
 		return
 	}
-	steps := make([]setupStep, 0, 3)
+	steps := make([]setupStep, 0, 2)
 	if providerMissing {
 		steps = append(steps, setupKey)
 	}
@@ -190,12 +215,10 @@ func (a *app) openSetup(allowed bool) {
 		return
 	}
 	a.setup = setupFlow{open: true, steps: steps}
-	// The inherited line is asked for here too, and on a genuine first run it is
-	// empty because a profile with no rows has nothing to inherit from. It is
-	// not hard-coded empty: this screen also opens on a profile that has rows
-	// and no setup marker, and a person answering the crew question is exactly
-	// the person the line is for (crew.go's [app.crewInheritedLine]).
-	a.setup.crew.start(config.CrewAt(dir), a.crewInheritedLine())
+	// The controls are seeded from the profile rather than from zero values, so
+	// every row on that screen opens on the value that is actually in force
+	// (onboarding.go's [app.startSetupControls]).
+	a.startSetupControls()
 	a.touch()
 }
 
@@ -295,12 +318,14 @@ const setupLaterWord = "still yours to set"
 // thing a person would do rather than as the name of a step. The key step has
 // none: a machine with no key says so in [setupNoKeyWord] already, and two lines
 // about one absence is one too many.
+//
+// THE CONTROLS SCREEN NAMES ITS THREE DOORS AND NOT ITS OWN NAME. "the controls
+// screen" is a thing a person cannot go back to; /budget, /model and /crew are
+// three things they can type, and between them they are every choice that screen
+// was going to offer.
 func setupStepLater(step setupStep) string {
-	switch step {
-	case setupCrew:
-		return "/crew picks the five models " + product + " works with"
-	case setupBudget:
-		return "/budget sets what it may spend"
+	if step == setupControls {
+		return "/budget sets what " + product + " may spend · /model and /crew pick the models"
 	}
 	return ""
 }
@@ -336,11 +361,18 @@ func (a *app) setupKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if name != "enter" {
 		s.refusal = ""
 	}
+	// THE CONTROLS SCREEN OWNS ITS OWN KEYBOARD. It is a form with five rows, two
+	// choosers and a browsable column, and none of that is the key box's
+	// vocabulary — so it is routed whole rather than grown as arms on the switch
+	// below (onboarding.go).
+	if s.step() == setupControls {
+		return a.setupControlsPress(name, msg.Key().Text)
+	}
 	switch name {
 	case "esc":
 		return a.endSetup(true), true
 	case "enter":
-		if s.step() == setupKey && strings.TrimSpace(s.text) == "" && a.routerConnect != nil {
+		if strings.TrimSpace(s.text) == "" && a.routerConnect != nil {
 			return a.beginOpenRouter(), true
 		}
 		if !a.setupCommit() {
@@ -348,26 +380,6 @@ func (a *app) setupKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return nil, true
 		}
 		return a.advanceSetup(), true
-	case "up", "ctrl+p":
-		if s.step() == setupCrew {
-			s.crew.move(-1)
-		}
-		// AND ON THE RAILS SCREEN THE ARROWS WALK THE THREE ROWS, writing
-		// nothing: a person who has just typed a figure into the second row and
-		// wants to change the first should not have to finish the form to reach
-		// it. Only enter writes.
-		if s.step() == setupBudget && s.rail > 0 {
-			s.rail--
-			s.text = ""
-		}
-	case "down", "ctrl+n":
-		if s.step() == setupCrew {
-			s.crew.move(1)
-		}
-		if s.step() == setupBudget && s.rail+1 < len(setupRails) {
-			s.rail++
-			s.text = ""
-		}
 	case "backspace":
 		if runes := []rune(s.text); len(runes) > 0 {
 			s.text = string(runes[:len(runes)-1])
@@ -375,12 +387,55 @@ func (a *app) setupKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "ctrl+u":
 		s.text = ""
 	default:
-		if text := msg.Key().Text; text != "" && s.step() != setupCrew {
+		if text := msg.Key().Text; text != "" {
 			s.text += text
 		}
 	}
 	a.touch()
 	return nil, true
+}
+
+// setupControlsPress is the controls screen's half of [app.setupKeyPress]: the
+// two keys the FLOW owns — enter on the way out and esc on the way back — and
+// everything else handed to the screen itself.
+//
+// ESC IS TWO DIFFERENT ACTS AND IT IS HONEST ABOUT WHICH. With something open
+// under a row it closes that; with a step before this one it goes back to it,
+// which is what makes a browser sign-in something a person can return to; and on
+// a flow where this screen is the whole of the setup it does what esc has always
+// done here — stamps the marker and leaves, with the line naming the doors onto
+// what it walked past ([app.endSetup]).
+func (a *app) setupControlsPress(name, text string) (tea.Cmd, bool) {
+	s := &a.setup
+	switch name {
+	case "enter":
+		if a.setupControlsEnter() {
+			return a.endSetup(false), true
+		}
+		a.touch()
+		return nil, true
+	case "esc":
+		if a.setupControlsKey(name, text) {
+			a.touch()
+			return nil, true
+		}
+		if s.at > 0 {
+			s.at--
+			s.text = ""
+			s.refusal = ""
+			a.touch()
+			return nil, true
+		}
+		return a.endSetup(true), true
+	}
+	a.setupControlsKey(name, text)
+	a.touch()
+	// AND THE EXAMPLE PANEL'S CLOCK IS ARMED FROM HERE, once, after the key has
+	// been dealt with. [app.setupDemoCmd] answers nil in every state that should
+	// not have a beat — finished, already ticking, off this screen, or the
+	// screen-reader tier — so this line is safe on every key rather than only on
+	// the two that start it (onboarding.go).
+	return a.setupDemoCmd(), true
 }
 
 // advanceSetup moves past one answered step and closes the screen after the
@@ -393,6 +448,14 @@ func (a *app) advanceSetup() tea.Cmd {
 	s.refusal = ""
 	if s.at >= len(s.steps) {
 		return a.endSetup(false)
+	}
+	// The controls are re-seeded from the profile on arrival, so a key that has
+	// just landed — and with it a catalog this process can now read — is what the
+	// model row opens on rather than whatever was resolved before the connection.
+	if s.step() == setupControls {
+		a.startSetupControls()
+		a.touch()
+		return a.setupDemoCmd()
 	}
 	a.touch()
 	return nil
@@ -409,11 +472,22 @@ func (a *app) setupPaste(text string) bool {
 	if a.setup.authStarting || a.setup.authFlow != nil {
 		return true
 	}
-	if a.setup.step() != setupCrew {
-		a.setup.text += strings.TrimSpace(text)
-		a.setup.refusal = ""
-		a.touch()
+	// A PASTE LANDS IN WHICHEVER BOX IS TAKING TEXT, and on the controls screen
+	// that is the day's limit and only when it has the focus. A pasted line
+	// arriving in a form whose focus is on a chooser would be text a person
+	// cannot see and cannot delete.
+	if a.setup.step() == setupControls {
+		if a.setup.control == controlLimit && !a.setup.anyOpen() {
+			a.setup.limitText += strings.TrimSpace(text)
+			a.setup.limitTyped = true
+			a.setup.refusal = ""
+			a.touch()
+		}
+		return true
 	}
+	a.setup.text += strings.TrimSpace(text)
+	a.setup.refusal = ""
+	a.touch()
 	return true
 }
 
@@ -542,76 +616,22 @@ const setupConnectCancelledWord = "openrouter connection cancelled · enter trie
 // routing catches that enter first and begins OpenRouter instead.
 func (a *app) setupCommit() bool {
 	s := &a.setup
-	registry := a.registry()
-	switch s.step() {
-	case setupKey:
-		key := strings.TrimSpace(s.text)
-		if key == "" {
-			return true
-		}
-		if !config.LooksLikeAPIKey(key) {
-			s.refusal = setupKeyShapeWord
-			return false
-		}
-		row, ok := registry.Row(config.KeyAPIKey)
-		if !ok {
-			return true
-		}
-		if err := row.Apply(key); err != nil {
-			s.refusal = setupSaid(err, setupSaveFailedWord)
-			return false
-		}
-		return true
-	case setupCrew:
-		row, ok := registry.Row(config.KeyCrew)
-		if !ok {
-			return true
-		}
-		if err := row.Apply(config.CrewPresets[s.crew.cursor]); err != nil {
-			s.refusal = setupSaid(err, setupSaveFailedWord)
-			return false
-		}
-		a.refreshSettings()
-		return true
-	case setupBudget:
-		// ENTER COMMITS THE ROW UNDER THE CURSOR AND WALKS TO THE NEXT, and on
-		// the last one the step is answered. Blank keeps the default, which is
-		// what the foot line says enter will do — a screen whose enter accepted
-		// something other than the figure on it would be a form that lies.
-		if !a.setupRail(s.rail) {
-			return false
-		}
-		if s.rail+1 < len(setupRails) {
-			s.rail++
-			s.text = ""
-			a.touch()
-			return false
-		}
+	key := strings.TrimSpace(s.text)
+	if key == "" {
 		return true
 	}
-	return true
-}
-
-// setupRail writes one of the three rails, and reports whether it landed.
-func (a *app) setupRail(at int) bool {
-	s := &a.setup
-	if at < 0 || at >= len(setupRails) {
-		return true
+	if !config.LooksLikeAPIKey(key) {
+		s.refusal = setupKeyShapeWord
+		return false
 	}
-	row, ok := a.registry().Row(setupRails[at].key)
+	row, ok := a.registry().Row(config.KeyAPIKey)
 	if !ok {
 		return true
 	}
-	raw := strings.TrimSpace(s.text)
-	if raw == "" {
-		raw = setupRailDefault(at)
-	}
-	if err := row.Apply(raw); err != nil {
+	if err := row.Apply(key); err != nil {
 		s.refusal = setupSaid(err, setupSaveFailedWord)
 		return false
 	}
-	s.railText[at] = raw
-	a.refreshSettings()
 	return true
 }
 
@@ -682,52 +702,20 @@ func setupSaid(err error, instead string) string {
 // four sentences above.
 const setupKeyShapeWord = "not the shape of an openrouter key — they start with sk-or-"
 
-// setupBudgetDefault is the ceiling enter accepts, spelled from the one
-// constant every other reader of the rail resolves to ([config.DefaultDailyBudgetUSD]).
+// setupBudgetDefault is the ceiling a profile that has chosen nothing opens on,
+// spelled from the one constant every other reader of the rail resolves to
+// ([config.DefaultDailyBudgetUSD]). IT IS NOT A NEW DEFAULT AND THIS WAVE DID NOT
+// MOVE IT: the onboarding design study drew $10 to keep its illustration short,
+// and choosing a smaller backstop for new installs is a product decision nobody
+// has made.
 func setupBudgetDefault() string {
 	return strconv.FormatFloat(config.DefaultDailyBudgetUSD, 'f', -1, 64)
 }
 
-// setupRailDefaults are the three figures enter accepts, each spelled from the
-// one constant its own rail resolves to. A rail whose default is zero is spelled
-// `none` — the word this screen offers in its header and the word every writer
-// takes — rather than a `0` that reads as its own opposite.
-func setupRailDefault(at int) string {
-	switch at {
-	case 1:
-		return strconv.FormatFloat(config.DefaultPlanConsentUSD, 'f', -1, 64)
-	case 2:
-		if config.DefaultSpendRailUSD == 0 {
-			return setupNoneWord
-		}
-		return strconv.FormatFloat(config.DefaultSpendRailUSD, 'f', -1, 64)
-	}
-	return setupBudgetDefault()
-}
-
-// setupNoneWord is the word the header offers and the word a default of zero is
-// written with. It is one of [config]'s own accepted spellings, so what this
-// screen writes is what a person could have typed.
+// setupNoneWord is the word a limit of zero is written with. It is one of
+// [config]'s own accepted spellings, so what this screen writes is what a person
+// could have typed, and the row then READS `no limit` back.
 const setupNoneWord = "none"
-
-// setupRailWord is one row of the rails screen as it reads before it is
-// answered: the default, in the words the Spending tab uses for it.
-func (a *app) setupRailWord(at int) string {
-	if at < 0 || at >= len(setupRails) {
-		return ""
-	}
-	raw := setupRailDefault(at)
-	if raw == setupNoneWord {
-		return config.NoLimitWord
-	}
-	if row, ok := a.registry().Row(setupRails[at].key); ok {
-		switch row.Key {
-		case config.KeyPlanConsent:
-			return "asks first above $" + raw
-		}
-	}
-	return "$" + raw
-}
 
 // ── the drawing ─────────────────────────────────────────────────────────────
 
@@ -740,6 +728,14 @@ func (a *app) setupRailWord(at int) string {
 func (a *app) setupFrame(width, height int) ([]string, int, int) {
 	pal := a.pal
 	s := &a.setup
+	// THE CONTROLS SCREEN IS A DIFFERENT COMPOSITION AND SAYS SO HERE. It is a
+	// form with a heading, five rows and a legend, laid out from the top with an
+	// example column beside it on a wide window — where this block is one
+	// question floating in the middle of an empty screen. Two shapes, one for
+	// each kind of thing being asked (onboarding.go).
+	if s.step() == setupControls {
+		return a.setupControlsFrame(width, height)
+	}
 	// ── ONE RULE, ONE MEASURE, FOR THE TWO SCREENS THE WORDMARK IS DRAWN ON ───
 	//
 	// This block and the greeting that replaces it are the ONLY two screens that
@@ -791,8 +787,7 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 	add(pal.dim(setupTitle(s)))
 	add("")
 
-	switch s.step() {
-	case setupKey:
+	{
 		switch {
 		case s.authStarting:
 			add(pal.ink("connecting openrouter"))
@@ -827,52 +822,6 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 			shown := maskTyped(s.text)
 			caretX = len(setupLead) + ansi.StringWidth(shown)
 			add(pal.accent(setupLead) + pal.ink(shown))
-		}
-	case setupCrew:
-		add(pal.ink("the crew"))
-		for _, line := range wrap(setupCrewWord, inner) {
-			addSoft(pal.dim(line))
-		}
-		add("")
-		for _, line := range s.crew.rows(inner, s.crew.height(), pal, -1, a) {
-			add(line)
-		}
-	case setupBudget:
-		// THE RAILS SCREEN: three rows, the same three the Spending tab leads
-		// with, in the same words, written through the same registry rows.
-		add(pal.ink(setupRailsTitle))
-		for _, line := range wrap(setupRailsWord, inner) {
-			addSoft(pal.dim(line))
-		}
-		add("")
-		for at, rail := range setupRails {
-			label := fit(rail.label, setupRailLabel)
-			label += strings.Repeat(" ", max(setupRailLabel-ansi.StringWidth(label), 0))
-			switch {
-			case at < s.rail:
-				// ANSWERED ROWS KEEP THEIR ANSWER ON THE SCREEN. A form that
-				// scrolled its own answers away would be a form a person cannot
-				// check before they finish it.
-				add("  " + pal.dim(label) + " " + pal.muted(setupRailAnswer(s.railText[at])))
-			case at > s.rail:
-				add("  " + pal.dim(label) + " " + pal.dim(a.setupRailWord(at)))
-			default:
-				caretRow = len(body)
-				if s.text == "" {
-					// The default is drawn where the answer goes, dim, so what
-					// enter accepts is on the screen and not in a sentence about it.
-					add(pal.accent(setupLead) + pal.ink(label) + " " + pal.dim(a.setupRailWord(at)))
-					caretX = len(setupLead) + ansi.StringWidth(label) + 1
-				} else {
-					typed := setupTyped(s.text)
-					add(pal.accent(setupLead) + pal.ink(label) + " " + pal.ink(typed))
-					caretX = len(setupLead) + ansi.StringWidth(label) + 1 + ansi.StringWidth(typed)
-				}
-			}
-		}
-		addSoft("")
-		for _, line := range wrap(setupRailsRest, inner) {
-			addSoft(pal.dim(line))
 		}
 	}
 	if s.refusal != "" {
@@ -970,9 +919,9 @@ func setupTitle(s *setupFlow) string {
 	return "setting up · " + itoa(s.at+1) + " of " + itoa(len(s.steps))
 }
 
-// The three questions' own sentences. Each is one calm line about what the
-// answer does — the person's real question here is about money and about
-// which model is which, and both are answered before anything is asked.
+// The connection step's own sentences. Each is one calm line about what the
+// answer does — the person's real question here is who is billing them, and it
+// is answered before anything is asked.
 //
 // AND EVERY ONE OF THEM NAMES THE PRODUCT FROM [product] AND NEVER FROM A
 // LITERAL. The wordmark three rows above this prose is drawn from that same
@@ -987,92 +936,37 @@ const (
 		product + " stores it on this machine. no prompt is sent and no model is called."
 	setupConnectStartingWord = "opening a private return address on this machine…"
 	setupConnectWaitingWord  = "finish signing in in your browser. this page will continue when openrouter sends you back."
-	// THE CREW STEP SAYS WHAT IT IS NOT. People conflate the crew with the model
-	// they talk to, and /crew's own confirmation already has to say the same
-	// thing after the fact (crew.go's applyCrew). Here it is said before.
-	setupCrewWord = "these five are the models " + product + " uses on its own behalf — the work " +
-		"inside every task, planning, checking, reading every turn. the model you talk to is a separate choice, " +
-		"made with /model."
-	// THE RAILS SCREEN'S OWN WORDS. `none` is offered in the header on purpose:
-	// no limits is a choice a person should SEE, rather than a trick they learn
-	// later from a `0` that reads as its own opposite.
-	setupRailsTitle = "what may " + product + " spend?"
-	setupRailsWord  = "enter keeps a default · type a number · none means no limit"
-	setupRailsRest  = "the rest — a task, a standing run, " + product + "'s own practice — start with " +
-		"a small limit or none. change any of them later with /budget."
 )
-
-// setupRailLabel is the width the three row names are laid out in, so the
-// figures beside them line up in one column.
-const setupRailLabel = 17
-
-// setupTyped is what is being typed, shown as money.
-//
-// THE DOLLAR SIGN IS DRAWN AND NOT TYPED, which is right for a figure and wrong
-// for a word: `$none` is not an amount, and the screen's own header offers
-// `none` as an answer. So the mark goes in front of a number and nowhere else.
-func setupTyped(text string) string {
-	if text == "" {
-		return ""
-	}
-	if _, err := strconv.ParseFloat(text, 64); err != nil {
-		return text
-	}
-	return "$" + text
-}
-
-// setupRailAnswer is an answered row, said back the way it was taken: `none`
-// becomes the word the row itself reads.
-func setupRailAnswer(raw string) string {
-	if raw == "" || raw == setupNoneWord {
-		return config.NoLimitWord
-	}
-	return "$" + raw
-}
-
-// setupBudgetWord is the daily ceiling's sentence, read off its own settings
-// row rather than written a second time here: the row's hint is what /settings
-// shows beside the number, and two sentences about one rail would drift.
-func setupBudgetWord(registry *config.Settings) string {
-	if row, ok := registry.Row(config.KeyDailyBudget); ok && strings.TrimSpace(row.Hint) != "" {
-		return strings.ToLower(row.Hint[:1]) + row.Hint[1:]
-	}
-	return "what " + product + " may spend on your work in a day."
-}
 
 // setupKeysWord is the foot: what enter does RIGHT NOW, and that esc leaves.
 // It names the default enter would take, because the default is the whole of
 // what a person pressing enter is agreeing to.
+//
+// THE CONTROLS SCREEN WRITES ITS OWN, because its keys change with the row a
+// person is standing on and with whether a chooser is open under it
+// (onboarding.go's [app.setupControlsKeys]).
 func (a *app) setupKeysWord() string {
 	s := &a.setup
-	switch s.step() {
-	case setupKey:
-		if s.authStarting || s.authFlow != nil {
-			return "esc cancels"
-		}
-		if strings.TrimSpace(s.text) == "" {
-			if a.routerConnect != nil {
-				// `esc skips setup`, IN THE SAME WORDS AS THE OTHER FIVE
-				// BRANCHES. It read `esc not now` here alone, which is a promise
-				// about a later — and what esc actually does is stamp
-				// `setup_seen_at` and retire the crew and budget questions for
-				// good ([app.endSetup]). The key is named for what it does, and
-				// the note it leaves behind says where those two questions live
-				// afterwards.
-				return "enter connects in browser · paste a key · " + setupSkipKeysWord
-			}
-			return "enter goes on without a key · " + setupSkipKeysWord
-		}
-		return "enter saves it · " + setupSkipKeysWord
-	case setupCrew:
-		return "↑↓ choose · enter takes " + config.CrewPresets[s.crew.cursor] + " · " + setupSkipKeysWord
-	case setupBudget:
-		if strings.TrimSpace(s.text) == "" {
-			return "enter keeps " + a.setupRailWord(s.rail) + " · " + setupSkipKeysWord
-		}
-		return "enter sets " + setupTyped(strings.TrimSpace(s.text)) + " · " + setupSkipKeysWord
+	if s.step() == setupControls {
+		width, _ := a.size()
+		return a.setupControlsKeys(max(width-2*setupMargin, 1))
 	}
-	return setupSkipKeysWord
+	if s.authStarting || s.authFlow != nil {
+		return "esc cancels"
+	}
+	if strings.TrimSpace(s.text) == "" {
+		if a.routerConnect != nil {
+			// `esc skips setup`, IN THE SAME WORDS AS EVERY OTHER BRANCH. It read
+			// `esc not now` here alone, which is a promise about a later — and
+			// what esc actually does is stamp `setup_seen_at` and retire the
+			// controls screen for good ([app.endSetup]). The key is named for what
+			// it does, and the note it leaves behind says where those choices live
+			// afterwards.
+			return "enter connects in browser · paste a key · " + setupSkipKeysWord
+		}
+		return "enter goes on without a key · " + setupSkipKeysWord
+	}
+	return "enter saves it · " + setupSkipKeysWord
 }
 
 // maskTyped is the key as it is being typed: one bullet per character and the

@@ -11,32 +11,42 @@ import (
 // Five of the flow's six feet said `esc skips setup` and the sixth — the browser
 // connect step, which is the FIRST thing a new install sees — said `esc not
 // now`. That is a promise about a later: esc stamps `setup_seen_at`, and the
-// crew and budget questions never open again. One spelling, and it is the true
-// one.
+// controls screen never opens again. So a foot may not say `not now`, and it may
+// not say `skips` about an esc that goes BACK either — the controls screen with a
+// connection behind it returns to it rather than leaving.
 func TestEveryStepOfSetupNamesEscForWhatItDoes(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.routerConnect = func(context.Context) (OpenRouterFlow, error) { return nil, nil }
 	a.setup.open = true
-	a.setup.steps = []setupStep{setupKey, setupCrew, setupBudget}
+	a.setup.steps = []setupStep{setupKey, setupControls}
 
-	seen := 0
 	for at := range a.setup.steps {
 		a.setup.at = at
 		a.setup.text = ""
 		foot := a.setupKeysWord()
-		if !strings.Contains(foot, setupSkipKeysWord) {
-			t.Fatalf("step %d's foot reads %q, want it to name esc as %q", at, foot, setupSkipKeysWord)
-		}
 		if strings.Contains(foot, "not now") {
 			t.Fatalf("step %d's foot reads %q — `not now` promises the question comes back, and it does not", at, foot)
 		}
-		seen++
+		// The first step leaves the setup; a step with something before it goes
+		// back to it. Both are said in the words that are true of them.
+		want := setupSkipKeysWord
+		if at > 0 {
+			want = "esc back"
+		}
+		if !strings.Contains(foot, want) {
+			t.Fatalf("step %d's foot reads %q, want it to name esc as %q", at, foot, want)
+		}
 	}
-	if seen != 3 {
-		t.Fatalf("only %d steps were read, want the whole flow", seen)
+	// AND THE CONTROLS SCREEN STANDING ALONE — a key already in the shell — SKIPS
+	// rather than promising a back that has nowhere to go.
+	a.setup.steps = []setupStep{setupControls}
+	a.setup.at = 0
+	if foot := a.setupKeysWord(); !strings.Contains(foot, setupSkipKeysWord) {
+		t.Fatalf("the lone controls screen's foot reads %q, want %q", foot, setupSkipKeysWord)
 	}
 	// AND THE BROWSER-CONNECT FOOT IS THE ONE THIS ROW IS ABOUT: it is the first
 	// screen of a fresh install, and it is the branch that disagreed.
+	a.setup.steps = []setupStep{setupKey, setupControls}
 	a.setup.at, a.setup.text = 0, ""
 	if foot := a.setupKeysWord(); !strings.Contains(foot, "enter connects in browser") {
 		t.Fatalf("the connect step's foot reads %q, want the browser offer this test is about", foot)
@@ -57,17 +67,17 @@ func TestSkippingSetupNamesTheQuestionsItRetired(t *testing.T) {
 		want  []string
 		unfit []string
 	}{
-		{"esc on the very first step", 0, []string{"/crew", "/budget"}, nil},
-		// The crew question is ON SCREEN and unanswered, so it is named: esc
-		// walked past the step it was standing on as well as the ones under it.
-		{"esc on the crew question itself", 1, []string{"/crew", "/budget"}, nil},
-		// And here the crew HAS been answered, so naming it would be the screen
-		// offering somebody a door back to a question they just closed.
-		{"esc on the last step, the crew answered", 2, []string{"/budget"}, []string{"/crew"}},
+		{"esc on the very first step", 0, []string{"/crew", "/budget", "/model"}, nil},
+		// The controls screen is ON SCREEN and unanswered, so its doors are
+		// named: esc walked past the step it was standing on.
+		{"esc on the controls screen itself", 1, []string{"/crew", "/budget", "/model"}, nil},
+		// And here every step has been answered, so naming a door back would be
+		// the screen offering somebody a question they just closed.
+		{"esc past the last step", 2, nil, []string{"/budget", "/crew"}},
 	} {
 		a := newTestApp(&fakeAgent{model: "m"})
 		a.setup.open = true
-		a.setup.steps = []setupStep{setupKey, setupCrew, setupBudget}
+		a.setup.steps = []setupStep{setupKey, setupControls}
 		a.setup.at = c.at
 		before := len(a.entries)
 		a.endSetup(true)
@@ -82,7 +92,7 @@ func TestSkippingSetupNamesTheQuestionsItRetired(t *testing.T) {
 				t.Errorf("%s left %q, which offers %q over a question already answered", c.what, note, gone)
 			}
 		}
-		if !strings.Contains(note, setupLaterWord) {
+		if len(c.want) > 0 && !strings.Contains(note, setupLaterWord) {
 			t.Errorf("%s left %q, want it led by %q", c.what, note, setupLaterWord)
 		}
 	}
@@ -94,7 +104,7 @@ func TestSkippingSetupNamesTheQuestionsItRetired(t *testing.T) {
 func TestFinishingSetupLeavesNoLineAboutQuestionsItAsked(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.setup.open = true
-	a.setup.steps = []setupStep{setupKey, setupCrew, setupBudget}
+	a.setup.steps = []setupStep{setupKey, setupControls}
 	a.setup.at = len(a.setup.steps)
 	before := len(a.entries)
 	a.endSetup(false)
