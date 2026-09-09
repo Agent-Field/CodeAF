@@ -558,24 +558,23 @@ func hopRestNote(row switcherRow) string {
 func (a *app) hopKept(held *kept, now time.Time) hopRow {
 	agent := held.conv.Agent
 	running := runningTasks(agent)
-	turning := held.watch != nil && (held.watch.turning.Load() || held.watch.jobbing.Load())
+	// THE CARD READS THE WATCHER'S CACHED ANSWER rather than asking the agent a
+	// second live question. The watcher recomputes it after every event this
+	// conversation produces, and a second question here is exactly how the tab
+	// and card came to disagree about one conversation on one frame.
+	sig := held.watch.signal()
 	row := hopRow{
 		file:    held.conv.SessionFile,
 		title:   hopTitle(agent, held.side),
 		project: hopProject(held.conv.Place, held.conv.Workspace),
-		needs:   needsPerson(agent),
-		moving:  running > 0 || turning,
+		needs:   sig == tabNeedsPerson,
+		moving:  sig == tabWorking,
 		open:    true,
 	}
 	if held.side != nil {
 		row.age = sinceAt(held.side.since, now)
 	}
-	row.note = hopNote(row.needs, running, held.watch.landedSince())
-	// A reply can be working without having started any tasks. The watcher
-	// owns that fact, and Chats must keep hidden running replies discoverable.
-	if turning && !row.needs && running == 0 {
-		row.note = tabSignalWord(tabWorking)
-	}
+	row.note = hopNote(sig, running, held.watch.landedSince())
 	return row
 }
 
@@ -583,6 +582,10 @@ func (a *app) hopKept(held *kept, now time.Time) hopRow {
 // title, same project, same age — because a ring with a hole in it is a ring a
 // person has to count their way around.
 func (a *app) hopFront(now time.Time) hopRow {
+	// THE ROW A PERSON IS STANDING ON IS A ROW LIKE ANY OTHER. The mark it wears
+	// is therefore the mark its own tab is wearing this instant, while its note
+	// remains the ring's statement that this is where the person is.
+	sig := a.frontSignal()
 	return hopRow{
 		file: a.file,
 		// THE SURFACE'S OWN SPELLING FOR THE ONE ON SCREEN. It is what the status
@@ -594,6 +597,8 @@ func (a *app) hopFront(now time.Time) hopRow {
 		note:    hopHereWord,
 		age:     sinceAt(a.frontAt, now),
 		here:    true,
+		needs:   sig == tabNeedsPerson,
+		moving:  sig == tabWorking,
 		open:    true,
 	}
 }
@@ -631,10 +636,10 @@ func hopRawTitle(agent Agent, side *aside) string {
 	return title
 }
 
-// hopNewWord is a conversation nothing has been said in yet. It is the phrase
-// the entry line already uses for the same fact (app.go's `new conversation ·
-// <place>`), because one thing has one name.
-const hopNewWord = "new conversation"
+// hopNewWord is the switcher's name for a conversation nothing has been said
+// in yet. It is the same source as every other surface's spelling, because one
+// thing has one name.
+const hopNewWord = unnamedConversationWord
 
 // hopFrontName is that spelling with the empty case answered.
 func hopFrontName(name string) string {
@@ -660,18 +665,29 @@ func hopProject(place, workspace string) string {
 // first — which is the order home's own rows are ranked in (switcher.go's
 // [switcherRank]) and the order a person needs them in.
 //
+// IT IS THE SAME READING THE ROW'S MARK CAME FROM, which is why the state
+// arrives here as a [tabSignal] rather than as a second yes-or-no this function
+// works out for itself. A row that drew `◐` and said `nothing new` beside it was
+// exactly that second reading (#708), and the only way it comes back is somebody
+// deciding the words apart from the glyph. The count refines the working word
+// where there is one — `3 tasks running` is the same sentence with a figure in
+// it — and never contradicts it: work the project index cannot count, a queued
+// node or a background job, still says `working`.
+//
 // IT NEVER GUESSES AT A QUESTION'S WORDS. Home can say "asks: …" because it
 // reads the presence file the conversation wrote, which carries the question's
 // text; this card is asking a live agent pointer a yes-or-no question and has
 // nothing but the yes. Naming the tool it wants would mean a door onto the
 // engine that does not exist, and inventing a sentence for it would be worse
 // than the short true one.
-func hopNote(needs bool, running, landed int) string {
+func hopNote(sig tabSignal, running, landed int) string {
 	switch {
-	case needs:
+	case sig == tabNeedsPerson:
 		return hopAskingWord
-	case running > 0:
+	case sig == tabWorking && running > 0:
 		return itoa(running) + " " + plural("task", running) + " running"
+	case sig == tabWorking:
+		return tabSignalWord(tabWorking)
 	case landed > 0:
 		return hopLandedWord
 	}
@@ -856,9 +872,14 @@ func (a *app) hopSlide() tea.Cmd {
 		return a.hopTick()
 	}
 	// The row being left gets the note it would have been built with had the
-	// card opened here — asked of the agent NOW, while it is still on this side
-	// of the attach and there is still an agent on the loop to ask.
-	wasNote := hopNote(needsPerson(a.agent), runningTasks(a.agent), 0)
+	// card opened here — asked NOW, while it is still on this side of the attach
+	// and there is still an agent on the loop to ask.
+	//
+	// AND IT IS ASKED OF THE SAME READING ITS MARK CAME FROM ([app.frontSignal],
+	// which is what [app.hopFront] built this row with). The row keeps the glyph
+	// it was drawn with and gains a sentence, so the two halves of one row cannot
+	// be about two different moments.
+	wasNote := hopNote(a.frontSignal(), runningTasks(a.agent), 0)
 	cmd, ok := a.bringForward(row.file)
 	if !ok {
 		// The conversation went away mid-burst. The card stops fading and says
