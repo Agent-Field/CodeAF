@@ -11,21 +11,17 @@ resolution, sourced information with revision/withdrawal, context on explicit
 resumption and ordinary workers have bounded functional evidence. The fresh
 three-consumer API case passed at `12017ee2a`.
 
-The expanded workday exposed existence being confused with applicability after
-membership removal. The owner's final handoff is `ca2a59d5a`, with scope repair
-`c43119be5` and receipt-display clarification `3a6140a72`. It reports the forced
-identity-read test passing against unchanged production `3a6140a72`; scope
-removal/rejoin/withdrawal, large retrieval and conflicting-source cases now have
-passing live evidence. Full deterministic regression also passed. The complete
-workday remains RED: completion challenged a correct numeric revision and the
-agent changed it to a string, failing the artifact contract (issue #672).
-Ordinary final CI was pending in that report; paid CI has no secret. Preserve
-the original failures. See [DEMONSTRATION.md](DEMONSTRATION.md).
-
-Later checkpoint: the implementation owner pushed completion repair `fa9f1fe64`.
-Its focused real-reader checks accept a correct report and reject a wrong revision
-type, wrong source and failed write. Full repaired complex journeys and affected
-suites are still running. This does not yet clear the complete-workday failure.
+The scope-removal repair has bounded live evidence, including remembered-ID
+reading where content remains readable but no longer applies. See
+[DEMONSTRATION.md](DEMONSTRATION.md) for identified commits and original failures.
+The latest owner update is pushed repair `743f70866`, draft #662 unmerged. It
+repairs deterministic completion evidence handling, but real-reader negative
+checks remain inconsistent, so #672 stays open. The owner reports the 12-chat
+workday passed once; a later run failed on model-typed absolute destinations.
+An external cleanup deleted the active temporary integration checkout and logs;
+retained evidence/source commits are safe and recovery checks are in progress.
+This is owner-reported progress, not a new root rerun or an all-green completion
+claim. Final ownership and identified-commit acceptance remain pending.
 
 The complete agreed model is not implemented merely because records exist.
 Accepted-decision semantics, general scope, activation with new context,
@@ -42,13 +38,21 @@ behavior; "evidence" concerns what the implementation has actually demonstrated.
 
 | Area | What is clear | What keeps the area open |
 | --- | --- | --- |
-| 1 — Folders | C12/C15: start anywhere, automatic reversible discovery, a stable way back, correcting associations without deleting content. | Explicit folder/subtree rule behavior, actual moves versus references, correction persistence and concrete retrieval quality. |
-| 2 — Decisions and memory | C09/C15: no extra save for explicit decisions, retain source and understood scope, explicit trip direction survives unlinking. | Exceptions/conflicts, moving work, inferred context versus accepted direction, forgetting and memory-off semantics. |
+| 1 — Folders | C12/C15/C16: start anywhere, reversible discovery, stable return, correction persists against unchanged inference, actual moves differ from references. | Concrete retrieval quality, ambiguity in membership and views, and implementing the agreed behavior. |
+| 2 — Decisions and memory | C09/C15/C16: retain explicit direction with source/scope, local exceptions preserve compatible guidance, current-folder rules follow actual membership for future work while item-specific direction persists. | General conflicts and unclear intent, inferred context versus accepted direction, forgetting, memory-off semantics and implementation. |
 | 3 — Current context | Explicit targets, revision/withdrawal and resumed consumers have bounded live evidence. | Discover unlinked relevance; identify affected outputs; define response of running, idle and completed work. |
 | 4 — Activation | Direct requests, schedules/events and retained work have places in the model. | Connect current decisions to real activation; duplicates/restarts, quiet checks, budgets and stop semantics. |
 | 5 — Cooperation | Existing executions can perform parallel work; sourced information has explicit consumers. | Bounded live cross-chat consultation, disagreement, ownership and shared work under retry/restart. |
 | 6 — Actions and outputs | Tools perform work; artifacts and sources persist; C15 distinguishes a current artifact from historical messages. | Actual connector effects, uncertain outcomes, global artifact identity, reuse/adoption and end-to-end proof. |
 | 7 — Human view/control | Find, inspect, correct and stop are required; current output and original discussion serve distinct return intentions. | Concrete TUI behavior for arrival, change, scope, history and correction; demonstrate usability through the real surface. |
+
+The table is updated through C16, which settles explicit local exceptions, correction against
+unchanged rereading, later purpose-specific reuse and current-folder guidance after
+actual moves. Broader memory and conflict behavior remain open. We now discuss 3/4/6/7 together: how a
+changed accepted decision reaches running work, completed outputs and ongoing
+responsibilities, and what the person sees or can stop. Round 4 distinguishes a
+completed subtask within a continuing feature goal from a finished standalone task;
+the lifetime of an output is not the lifetime of authorization to maintain it.
 
 The model accommodates the intended direct-work, parallel-team and ongoing-helper
 patterns using existing concepts. This does not establish a practical superset of

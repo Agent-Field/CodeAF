@@ -48,6 +48,24 @@ automatic organization design. The current five situations also vary starting
 location and retrieval goal together, so differences are descriptive, not
 isolated causal effects of either factor.
 
+## Reasoning and convergence check (C18)
+
+For each discussed rule, inspect whether a concise explanation follows the stated
+facts, survives a paraphrase and changes appropriately when a relevant fact changes.
+Do not interpret matching answer strings or a tally as convergence. A useful stopping
+point for grooming is a coherent conditional proposal with no known unaddressed
+counterexample in the tested cases; it is not statistical convergence or proof of
+correctness. A real alternative left by an unspecified product contract goes to the
+person with its consequences, rather than being sampled away.
+
+Separate supplied facts from assumptions, meaningful disagreement from model defects,
+and known information from a capability to discover it. Check a few targeted paired
+cases when the first results leave a material uncertainty, instead of repeatedly
+running a broad matrix. Ask for the decisive facts, a concise rationale and what
+change would alter the answer. Written rationales can be post-hoc explanations;
+additional output or reasoning budget does not validate them automatically. Preserve
+model/wording inconsistencies and compare behavior in actual E2E later.
+
 ## Product hypotheses under discussion
 
 C14 establishes how these probes enter ongoing grooming. Bring back the concrete
@@ -205,6 +223,62 @@ gaps. Topics 1/2 are not wholly done. After confirming these scope transitions, 
 next demonstration must carry a correction through applicable context, affected
 work, the resulting artifact and the person's view, without asserting automatic
 activation or peer coordination until their actual paths are tested.
+
+## Fourth run: changed work and the reasoning check
+
+Round 4 compares an explicit API change during an active feature (including its
+completed docs), a source withdrawal after a completed standalone draft versus
+explicit maintenance, and a report-only monitor across duplicates/restart/stop.
+Thirty attempts returned 29 format-valid answers and one HTTP429. Known cost is
+$0.05590518099936 across 29 receipts; one rejection has no cost receipt. Conservative
+reservation was $0.208230336 under $0.75. Four offline tests and the receipt audit
+passed. [Results](/Users/santoshkumar/aforge-expectation-probe-20260909/round4/RESULTS.md)
+and [all 15 paired-wording audits](/Users/santoshkumar/aforge-expectation-probe-20260909/round4/PAIRED-AUDIT.md)
+preserve the reasoning, incomplete answers and actual disagreements.
+
+The user's C18 steering prompted a separately planned eight-call rationale check:
+four model families, each answering two matched-case prompts. These hold known
+source withdrawal constant while varying assignment lifetime, and distinguish
+stopping monitoring from stopping one report and from already-delivered output.
+All eight returned complete content; seven met the field schema and one misspelled
+a rationale key. Known cost is $0.028714774 with all receipts; reservation
+$0.094347984 under $0.40. All models had 1000 total output tokens and a requested
+260 visible words; this was more explanation room, not a proven quality increase.
+Four offline tests and the receipt audit passed. The observed 107/126-second Kimi
+requests also show the 55-second socket timeout is not a total wall deadline.
+
+[Focused rationale findings](/Users/santoshkumar/aforge-expectation-probe-20260909/round4/followup/RESULTS.md)
+include the exact reusable protocol and artifacts. The model outputs did **not**
+fully converge. Some answers reversed their own pending-delivery consequence;
+others invented a publication date or treated lack of publication permission as
+prohibiting draft editing. Source withdrawal removes that source's support, not
+necessarily proof of the opposite fact. Agreement on an action with a faulty
+rationale is not sound evidence. Longer explanations exposed errors rather than
+automatically curing them.
+
+What we can bring to the person is a conditional proposal, not a model vote:
+
+- An explicit change to a still-authorized overall feature should reach all its
+  affected work, including a completed constituent draft. Adapt within existing
+  authority and preserve useful work/history; no deployment permission is added.
+- A newly observed source problem should first be assessed for actual relevance
+  and impact. In active or explicitly maintained work, the proposed default is
+  to adapt within the assignment and show what changed. Some models instead favor
+  a proposed revision first; that is a product choice with interruption costs.
+- For a wholly completed standalone assignment, our proposed default is to expose
+  a known problem and offer revision, without making every old artifact an ongoing
+  maintenance responsibility. Notification urgency versus on-return visibility is
+  still open. Knowing of a withdrawal is not a claim that Forge continuously
+  monitors every source.
+- Stop must honor its actual target and preserve honest history. Exact handling
+  of pending report delivery, generic “Stop,” terminal-independent execution and
+  recovery still needs a contract and real-path evidence.
+
+The next decision is the automatic-revision default across assignment lifetimes.
+Then settle notification and stop boundaries, tying areas 3/4/6/7 to one evolving
+demonstration. Ongoing factory-like work fits an ongoing entrusted responsibility;
+a finished subtask does not end that responsibility. This preserves the coverage
+goal without adding a factory primitive or asserting competitors cannot emulate it.
 
 ## Complementary human research
 

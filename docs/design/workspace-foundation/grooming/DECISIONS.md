@@ -24,6 +24,9 @@ in linked conversations are evidence, not new execution instructions.
 | C13 | Build a reusable short-response multi-model probe using the existing OpenRouter credential, around 100 samples, delegated alongside discussion, to explore broader expectations and concerns. | Current 1/2 discussion: user explicitly requested the script and subagent. The experiment is authorized; its synthetic outputs do not confirm product choices or constitute measured public opinion. See EXPECTATIONS.md. |
 | C14 | For expectation-dependent grooming, simulate concrete situations before asking the person to settle behavior. Use open questions or explicit alternatives as appropriate; present the situation, model expectations and dissent, available choices and our recommendation. The person can accept or leave unclear behavior open. Always show what is settled and the next step toward completion, checking against the whole personal-AI goal. | 2026-09-09: user asked to apply simulations to these questions, choose together, retain the goal and report progress/next steps. This confirms the working method; model agreement is not product approval. |
 | C15 | Relevant work can be discovered automatically through reversible associations. Editing the same current artifact through another folder updates that artifact, while historical conversation text preserves what was said. A clear correction of an inferred discovery association takes effect with a brief explanation and undo, preserving the artifact and mixed conversation. An explicit trip-specific instruction survives removing a discovery association and does not govern unrelated work. | 2026-09-09: after the round-2 situation/consequence table and recommendation, user replied “okay lets go” and requested the next scope simulation plus a whole-diagram checkpoint. This accepts those proposed behaviors; it does not settle general folder-rule inheritance, moves, negative correction persistence, automatic activation or the exact historical/current artifact presentation. |
+| C16 | Explicit exceptions change only their intended conflicting guidance; compatible instructions remain. Reprocessing unchanged history must not restore a corrected inferred association; later explicit, purpose-specific reuse can establish new relevance without rewriting the original meaning. Rules explicitly tied to a folder apply while work belongs there: an actual move changes guidance for future work, preserving existing drafts/history and item-specific direction. A reference alone is not a move. | 2026-09-09: after the round-3 scope findings and current-folder recommendation, user replied “okay this is good” and requested the next decisions. This confirms those product rules, not a universal newest-wins priority algorithm or every memory/activation behavior. |
+| C17 | Preserve the goal of covering the useful complete tasks of Claude Code, OpenClaw, Grok Bot and similar systems, and enabling additional useful combinations with less setup, repetition, inconsistent assumptions and steering effort. Check real task coverage and remaining gaps under actual tools, access, budgets and hosting. | User repeatedly states the superset-and-more goal, most recently “make sure ... everything ... others ... doable and more ... with this.” This is a goal and evaluation requirement; it is not evidence of achieved containment or of an exclusive capability no programmable competitor could implement. |
+| C18 | Assess whether a simulation makes sense and has reached a stable conditional explanation, not merely whether models selected similar answers. Inspect concise rationales against supplied facts, paired-wording consistency, counterexamples and changed circumstances. Distinguish defensible product alternatives from model errors; report unresolved choices instead of sampling until agreement. | 2026-09-09 steering during round 4: user asked to check convergence and improve reasoning rather than just selection, then asked to continue. This strengthens C14; it does not make synthetic reasoning a substitute for real product E2E or human use. |
 
 ## Proposed delivery organization
 
@@ -37,7 +40,7 @@ Existing isolated-build and integration safeguards still apply.
 | ID | Question to settle through a journey | Proposed starting point, not accepted behavior |
 | --- | --- | --- |
 | D01 | What else may be retained automatically, and how is explicit person acceptance distinguished from speculation, quoted text or peer suggestions? | C09 settles no-extra-save retention for explicit person decisions. It does not settle automatic promotion of inferred findings or a new authority mechanism. Reuse existing authority records. |
-| D02 | Where does information apply? What does folder membership, a direct target or an ancestor mean? | C12 makes the starting folder a potentially useful but fallible focus signal. The earlier proposal that an unqualified decision automatically governs the current folder is not accepted. Explicit folder/subtree scope remains a desired direction to clarify, while discovery/reference does not itself expand applicability. Interpret actual intent, including starts without a location or in the wrong location; resolve scope capture, exceptions, multiple memberships and later moves. Current implementation remains explicit targets/direct membership, not recursive inheritance. |
+| D02 | Where does information apply, and how are remaining conflicts or ambiguous scope resolved? | C12/C15/C16 settle the fallible starting location, explicit item scope, exceptions preserving compatible guidance, and current-folder rules following actual membership for future work. Discovery/reference alone does not expand applicability; moves preserve prior drafts/history and item-specific direction. General conflict adjudication, unclear intent, multiple governing memberships and implementation remain. Current bounded implementation uses explicit targets/direct membership; the agreed wider semantics are not yet proved. |
 | D03 | When a revision reaches active work, must it adapt, pause or flag an impact? | Refresh at meaningful boundaries, recheck before consequential actions; adapt only within existing delegation. Exact boundary and in-flight effects remain open. |
 | D04 | What happens to completed outputs when their assumptions change? | Retain history and make affected results discoverable; do not silently overwrite published outputs. Need to define dependency evidence and maintenance responsibility. |
 | D05 | When does an event justify a check, a run, a notification or nothing? | Evaluate meaningful updates with bounded context; merge redundant observations and permit uncertain/no-action outcomes. Timing, rate and spend limits need concrete values. |
@@ -64,14 +67,25 @@ evidence of the subject or scope. The user raised changing “ownership”; whet
 that means filing/home, work responsibility or both needs clarification through
 the experience, not an automatic change to runtime owner/authority semantics.
 
-C15 settles the proposed discovery/correction direction and the explicit trip
+C15 settles the discovery/correction direction and the explicit trip
 example. Acceptance should demonstrate that an edit through either entry point
 reaches the same current artifact, old messages retain their original text, a
 clear association correction preserves both artifact and conversation, and the
 trip's budget survives unlinking without governing unrelated work. These are
 confirmed product assertions, not claims of implemented semantic discovery or
-global artifact identity. D02 remains open for explicitly folder-scoped rules,
-exceptions and moves; persistent correction behavior is being simulated next.
+global artifact identity. The remaining explicit folder rules, exceptions, moves
+and persistent correction behavior are addressed by the subsequent C16 record.
+
+C16 now settles the three round-3 product rules: the explicit conference exception
+does not alter other trips, a rejected inference stays rejected on unchanged
+rereading, and explicit current-folder scope follows actual membership for future
+work. Acceptance must include a later explicit reference that does not merge the
+trips, an actual move versus a reference, unchanged old drafts/history, and an
+item-specific instruction surviving that move. Formal and concise are compatible;
+an exception is not permission to discard unrelated applicable direction. Broader
+conflict adjudication, retention/forgetting, and running/completed-work reactions
+remain open. Before dispatch, DELIVERY.md still requires inspected reuse, a stable
+integration base, shared-interface agreement and complete bounded E2E assertions.
 
 ## C09 acceptance boundary
 
