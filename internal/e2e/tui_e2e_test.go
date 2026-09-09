@@ -1561,8 +1561,11 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	// Whichever door the launch took. On a state root built one minute ago it is
 	// the setup, whose own foot says `esc skips setup`, and esc is what the rest
 	// of this file presses at this rung anyway.
-	first.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "landingKeysWord"))
-	first.keys("Escape")
+	// Whichever door the launch took, and esc UNTIL THE SETUP IS ACTUALLY GONE. On
+	// a state root built one minute ago it is the setup, which is several steps —
+	// so one esc leaves the one under it, and the brief typed next goes into that
+	// step's own box instead of into the composer.
+	statesPastTheDoor(t, first)
 	first.lit("/task solo write a file called hello.txt containing the word hello")
 	first.keys("Enter")
 
@@ -1597,8 +1600,7 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	// the record card exists for.
 	fresh := filepath.Join(bucket, "read-it-back", "transcript.jsonl")
 	r := start(t, "afe2e_room2", home, ws, tuiPlain, tuiShortRows, "chat", "--session", fresh, "--one-model", "--no-host")
-	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "landingKeysWord"))
-	r.keys("Escape")
+	statesPastTheDoor(t, r)
 	r.lit("/history")
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
