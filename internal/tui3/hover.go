@@ -84,6 +84,8 @@ const (
 	// expand" and wrong here: the three lines above the door are the person's own
 	// words and a press on them does nothing.
 	hoverBrief
+	// hoverPictures lights only the attachment expansion control.
+	hoverPictures
 	// hoverChoices is the consent block's offer line.
 	hoverChoices
 	// hoverConnectAsk is the connect offer's answers line (connect.go). It is a
@@ -534,6 +536,8 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			return hoverAt{kind: hoverCaption, turn: r.turn}
 		case r.hit == hitWorkFold:
 			return hoverAt{kind: hoverWorkFold, turn: r.turn}
+		case r.hit == hitPictures:
+			return hoverAt{kind: hoverPictures, entry: r.entry, index: r.pictureIndex}
 		case r.hit == hitBrief:
 			return hoverAt{kind: hoverBrief, entry: r.entry}
 		case r.hit == hitForming:

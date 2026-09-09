@@ -493,7 +493,7 @@ func (a *app) filesKey(msg tea.KeyPressMsg) tea.Cmd {
 		// leaves this screen exactly as it was, and "open the picture and then
 		// the report it goes with" is one errand, not two.
 		if row, ok := s.live(); ok {
-			a.openDeliverable(row.path)
+			return a.openMediaOriginal(mediaItem{path: row.path})
 		}
 
 	case filesRevealKey:
@@ -502,7 +502,7 @@ func (a *app) filesKey(msg tea.KeyPressMsg) tea.Cmd {
 		// everywhere, and a directory that opens with the file in it answers the
 		// same question on every desktop this surface runs on.
 		if row, ok := s.live(); ok {
-			a.openDeliverable(filepath.Dir(row.path))
+			return a.openMediaOriginal(mediaItem{path: filepath.Dir(row.path)})
 		}
 
 	case filesCopyKey:
@@ -546,19 +546,6 @@ func (a *app) filesCopyKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	a.touch()
 	return nil
-}
-
-// openDeliverable hands a path to the platform: `open` on a Mac, `xdg-open` on
-// Linux, detached, exactly as a sign-in link is handed over (opener.go).
-//
-// A FAILURE IS ONE QUIET LINE AND NOT THE PLATFORM'S SENTENCE. What comes back
-// from the handoff is written about a browser, which is not what was being
-// opened, and a person who pressed enter on a row wants to know that the row
-// did not open — not which executable was missing.
-func (a *app) openDeliverable(path string) {
-	if err := processOpener(path); err != nil {
-		a.note(filesOpenFailedWord + shortPath(path, a.tilde, 0))
-	}
 }
 
 // copiedMsg is the copy coming back to the loop. The path travels with it so
