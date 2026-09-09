@@ -687,6 +687,19 @@ func (a *app) consentKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if a.at(pageHome) {
 		return nil, false
 	}
+	// AND NOT BEHIND THE NEW-CHAT START PAGE. These questions belong to the
+	// conversation behind that page and are answered when somebody goes back to
+	// it; the letters on the page are aimed at its first-message box instead —
+	// `hello there` must not lose its `t` to "always, this tool". Unlike home, an
+	// arriving question does NOT take this page down: it may be holding a
+	// half-written first message, so the question is not drawn here and the
+	// asking chat's tab wears `?` until the person returns.
+	//
+	// The proposal and standing card are read from this hook below, so they live
+	// under this guard on the same terms.
+	if a.startingChat() {
+		return nil, false
+	}
 	// A TASK PROPOSAL IS THE OTHER QUESTION on this surface, and it is read from
 	// the same hook because it is the same rung: a question the session is
 	// blocked on outranks every overlay below it (input.go's key order). It is
@@ -773,7 +786,7 @@ const consentOfferRow = 1
 // width [app.chrome] is drawn at — so the count and the drawing are the same
 // arithmetic on the same number.
 func (a *app) consentHeight() int {
-	if !a.asking() {
+	if !a.consentShown() {
 		return 0
 	}
 	if width, _ := a.size(); a.consentSheeted(width) {
@@ -795,7 +808,7 @@ func (a *app) consentRows(width int) []string {
 	// The targets are rewritten by every layout and by nothing else: a stale
 	// span is a tap that answers about the previous question (see [app.askTaps]).
 	a.askTaps = nil
-	if !a.asking() {
+	if !a.consentShown() {
 		return nil
 	}
 	if a.consentSheeted(width) {
@@ -1045,9 +1058,14 @@ const (
 	consentBandPad = " "
 )
 
+// consentShown reports whether a question is drawn where it can be answered.
+// The New-chat start page owns every key in its first-message box, so a question
+// belonging to the conversation behind it is drawn there and nowhere else.
+func (a *app) consentShown() bool { return a.asking() && !a.startingChat() }
+
 // consentSheeted reports whether the question is drawn as the phone sheet.
 func (a *app) consentSheeted(width int) bool {
-	return a.asking() && width >= consentSheetFloor && layoutTier(width) == tierPhone
+	return a.consentShown() && width >= consentSheetFloor && layoutTier(width) == tierPhone
 }
 
 // consentTap is one answer's columns on one row of the block. A press inside

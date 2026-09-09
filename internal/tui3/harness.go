@@ -382,6 +382,12 @@ func (a *app) harnessAskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if a.at(pageHome) {
 		return nil, false
 	}
+	// AND NOT BEHIND THE NEW-CHAT START PAGE, for the reason consent.go states
+	// in full: this offer belongs to the conversation behind the page, and the
+	// page's first-message box owns its keys.
+	if a.startingChat() {
+		return nil, false
+	}
 	if msg.String() == "ctrl+c" {
 		// Leaving is never modal, and mid-turn ctrl+c is the interrupt — which
 		// releases the held turn the honest way.
@@ -409,7 +415,7 @@ func (a *app) harnessAskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // person who answers one question and gets another must have been told it was
 // coming.
 func (a *app) harnessAskHeight() int {
-	if !a.asksHarness() {
+	if !a.asksHarness() || a.startingChat() {
 		return 0
 	}
 	rows := 1
@@ -424,7 +430,7 @@ func (a *app) harnessAskRows(width int) []string {
 	// The targets are rewritten by every layout and by nothing else: a stale
 	// span is a press that answers about the previous offer.
 	a.harnessTaps = nil
-	if !a.asksHarness() {
+	if !a.asksHarness() || a.startingChat() {
 		return nil
 	}
 	head := a.harnessAsks[0]

@@ -344,9 +344,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
-	// Pending permission and account input hold their work, not navigation.
-	// These chords never answer either question or edit a partly typed key.
-	if (a.asking() && !a.shaping()) || a.asksConnect() {
+	// Pending questions hold their work, not navigation. These chords never
+	// answer any of the three modal questions or edit a partly typed account key.
+	if (a.asking() && !a.shaping()) || a.asksConnect() || a.asksHarness() {
 		switch msg.String() {
 		case closeTabChord:
 			cmd, _ := a.closeTabKey(msg)
@@ -639,11 +639,12 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// AND `ctrl+t` IS A NEW TAB AT THIS RUNG (chatstart.go's [app.newChatKey]).
 	// It is read here — under every modal, panel and page above, and over the
 	// draft below — because that is exactly what a new tab is worth: it must not
-	// outrank a question the session is blocked on, a place that has taken the
-	// whole frame, or the model picker, whose own ctrl+t walks a row's thinking
-	// effort; and it must outrank the box, because a chord is never a letter of
-	// anybody's sentence. The start page it opens takes the key back on its own
-	// terms — pressing the chord again keeps what is typed there.
+	// outrank a place that has taken the whole frame or the model picker, whose
+	// own ctrl+t walks a row's thinking effort; and it must outrank the box,
+	// because a chord is never a letter of anybody's sentence. A pending question
+	// hands this navigation chord down at the earlier rung above. The start page
+	// it opens takes the key back on its own terms — pressing the chord again
+	// keeps what is typed there.
 	if cmd, taken := a.newChatKey(msg); taken {
 		return cmd
 	}

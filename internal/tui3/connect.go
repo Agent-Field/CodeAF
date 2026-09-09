@@ -326,6 +326,12 @@ func (a *app) connectAskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if a.at(pageHome) {
 		return nil, false
 	}
+	// AND NOT BEHIND THE NEW-CHAT START PAGE, for the reason consent.go states
+	// in full: this offer belongs to the conversation behind the page, and the
+	// page's first-message box owns its keys.
+	if a.startingChat() {
+		return nil, false
+	}
 	if msg.String() == "ctrl+c" {
 		// Leaving is never modal, and mid-turn ctrl+c is the interrupt — which
 		// releases the blocked call the honest way.
@@ -383,7 +389,7 @@ const connectOfferRow = 2
 // connectAskHeight is how many rows the block takes: the service, the sentence,
 // the offer, and the count of the offers behind it when there are any.
 func (a *app) connectAskHeight() int {
-	if !a.asksConnect() {
+	if !a.asksConnect() || a.startingChat() {
 		return 0
 	}
 	if len(a.connAsks) > 1 {
@@ -399,7 +405,7 @@ func (a *app) connectAskRows(width int) []string {
 	// The targets are rewritten by every layout and by nothing else: a stale
 	// span is a tap that answers about the previous offer.
 	a.connTaps = nil
-	if !a.asksConnect() {
+	if !a.asksConnect() || a.startingChat() {
 		return nil
 	}
 	head := a.connAsks[0]

@@ -694,8 +694,12 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	// the frame ([welcomeLift]). While it is drawn, the rule, the breathing rows
 	// and the box at the foot are not: the unit is centred in the slack, and a
 	// legend under nothing is a seam between two things that are not there.
-	// The status row still closes the frame, and any question the session
-	// raises before the first sentence still stacks above it.
+	// The status row still closes the frame, and a question the session raises
+	// before the first sentence still stacks above the greeting. The NEW-CHAT
+	// page is the one unit that draws no question: the conversation behind it is
+	// still asking, but the page's box owns every key while it is on screen, so
+	// an offer naming letters it could not honour would be a lie on the frame
+	// (consent.go's [app.consentShown]).
 	unit, _, unitX, unitRow := a.welcomeUnit(width)
 	greeted := len(unit) > 0
 	for i, line := range unit {
