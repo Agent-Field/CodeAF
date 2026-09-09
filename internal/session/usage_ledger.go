@@ -168,7 +168,7 @@ type UsageLine struct {
 	Reconciled bool `json:"reconciled,omitempty"`
 	// Unbilled marks a missing provider receipt, never a measured zero price.
 	Unbilled bool `json:"unbilled,omitempty"`
-	// Empty marks a paid request that returned no answer at its output ceiling.
+	// Empty marks a paid request that returned no answer.
 	// The role beside it names the reflex, so the row remains useful even to a
 	// reader that does not know this build's aggregate counters.
 	Empty bool `json:"empty,omitempty"`

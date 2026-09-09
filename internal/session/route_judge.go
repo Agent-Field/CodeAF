@@ -155,14 +155,14 @@ const (
 	// tokens are actually for is the two things it WRITES when the answer is
 	// yes: the goal, and the done-condition the work is finished against.
 	//
-	// IT GREW WITH THE SECOND FIELD. A judge that runs out of budget halfway
-	// through its object produces JSON nothing can salvage, which this file reads
-	// as a no and says nothing about — so a ceiling that fit one written field
-	// and not two would have turned the feature off quietly on exactly the
-	// requests worth starting. Nine hundred is both fields at their bounds
-	// ([routeGoalBytes], taskShapeAcceptanceLimit) with the object around them,
-	// and it is still a fraction of what the task it decides costs.
-	routeJudgeTokens = 900
+	// NO CEILING IS SENT FOR IT. There was one — 900, grown from a smaller
+	// figure when the second written field arrived, because a judge that runs
+	// out of budget halfway through its object produces JSON nothing can salvage
+	// and this file reads that as a no. Growing it twice was the tell: the room
+	// a judge needs is a fact about the model, and guessing it once more would
+	// have turned the feature off quietly on exactly the requests worth
+	// starting. The bounds below are what this file actually enforces, on the
+	// answer it gets back.
 	// routeShapeLines is how much of the assistant's answer the judge is shown.
 	// TWO LINES IS THE SHAPE AND NOT THE ANSWER: what the judge is deciding is
 	// whether the person's request needed work, and a judge handed the whole reply
@@ -557,8 +557,7 @@ func (a *Agent) putRouteQuestion(ctx context.Context, role roles.Role, model, br
 		[]ai.Message{
 			textMessage("system", brief),
 			textMessage("user", question),
-		},
-		ai.WithMaxTokens(routeJudgeTokens))
+		})
 	if err != nil || response == nil {
 		return routeVerdict{}, false
 	}

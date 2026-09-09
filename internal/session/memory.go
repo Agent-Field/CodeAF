@@ -204,7 +204,11 @@ func (b billedCompleter) CompleteWithMessages(ctx context.Context, messages []ai
 				continue
 			}
 		}
-		if reflex.EmptyAtCeiling(response, request.MaxTokens) {
+		// The predicate is reflex's own, for the reason it is exported: a call
+		// the reflex could not use and a call the bill calls empty must be the
+		// same call. It used to mean "empty at the ceiling we sent"; nothing
+		// sends a ceiling now, so it means empty.
+		if reflex.AnsweredNothing(response) {
 			b.agent.addEmptyReflexUsage(response, request.Model)
 		} else {
 			b.agent.addAuxiliaryUsageAs(response, request.Model, 1, string(roles.RoleReflex))

@@ -13,9 +13,8 @@ import (
 )
 
 // scripted is one model with its answers written down, and a record of what
-// each call actually went out with — the ceiling it was given and the messages
-// it carried. Those two are the whole of what this package does, so they are the
-// whole of what these tests read.
+// each call actually went out with — whether a ceiling was present, the
+// messages, and the requested response format.
 type scripted struct {
 	replies  []*ai.Response
 	ceilings []int
@@ -172,10 +171,10 @@ func TestProseWithNoObjectIsAskedAgainOnceWithItsOwnWordsQuoted(t *testing.T) {
 	if !strings.Contains(asked, partsSchema) {
 		t.Fatalf("the re-ask did not carry the shape:\n%s", asked)
 	}
-	// A re-ask is the one place the doubling law still applies: the first
-	// attempt may have run out of room as well as out of shape.
-	if client.ceilings[1] <= client.ceilings[0] {
-		t.Fatalf("the re-ask got no more room: %v", client.ceilings)
+	for call, ceiling := range client.ceilings {
+		if ceiling != 0 {
+			t.Fatalf("call %d carried max_tokens = %d", call+1, ceiling)
+		}
 	}
 }
 
@@ -240,12 +239,10 @@ func TestARepairWithNoJournalIsStillARepair(t *testing.T) {
 	}
 }
 
-// ── the ceiling ──────────────────────────────────────────────────────────────
+// ── repair accounting ───────────────────────────────────────────────────────
 
-// THE DERIVATION, AND THE PROPERTY THAT MAKES IT SAFE TO ADOPT EVERYWHERE: a
-// one-object ask comes out of it with exactly the ceiling every one-object call
-// in the system already had. Nothing anybody measured moves; only the asks that
-// ask for MORE than one object get more room, which is the whole finding.
+// THE DERIVATION IS AN ACCOUNTING UNIT. It bounds repairs without becoming a
+// generation parameter on the wire.
 func TestOneObjectGetsTheShareTheGateMeasuredAndAListGetsMore(t *testing.T) {
 	reserve := ctxbudget.CompletionReserve()
 	one := Room(Ask{Lane: "gate"}, "")
@@ -318,13 +315,9 @@ func TestAnAnswerThatNeverClosesStillEndsInAFault(t *testing.T) {
 
 // THE MEMO HAS THE LAST WORD, AND IT IS SOURCED FROM WHAT HAPPENED.
 //
-// A derivation is an argument; a cut is a measurement. A model this profile has
-// watched overrun a lane's ceiling is never sent that ceiling again, and what it
-// is sent instead is what it actually spent, doubled — the same arithmetic every
-// retry in this tree has always used. Nothing here shrinks a ceiling: a model
-// that answered inside its room teaches nothing, and forgetting a cut buys the
-// same failure twice.
-func TestAModelWatchedOverrunningALaneIsNeverSentThatCeilingAgain(t *testing.T) {
+// A derivation is an argument; a cut is a measurement. A measured cut raises
+// the accounting unit for that model and lane without changing the wire.
+func TestAModelWatchedOverrunningALaneRaisesOnlyItsAccountingRoom(t *testing.T) {
 	const model = "vendor/model-that-cuts"
 	before := Room(Ask{Lane: "fan-out-memo", Answers: 1}, model)
 	provider.NoteAnswerCut(model, "fan-out-memo", before)
