@@ -2229,11 +2229,15 @@ similarly named conversations apart is the whole job.
 ## Where does this repository stand — branch and dirty files on home
 
 **On the card's place line, under the title**, where the address it is about is:
-`~/aforge-v2 · master · 1 file dirty · open here`. A changed branch can read
-`feature/home · 2 files dirty · ahead 1 · behind 3`. Every unknown or zero clause
-disappears, so a clean repository on main reads only the path and `master`; a folder that is
+`~/aforge-v2 · main, 1 file dirty · here`. A changed branch can read
+`feature/home, 2 files dirty, ahead 1, behind 3`. Every unknown or zero clause
+disappears, so a clean repository on main keeps only `main` in its repository clause; a folder that is
 not a repository adds nothing to the line. Home refreshes this reading for a workspace at
 most once every five seconds, and a failed or timed-out Git check draws nothing.
+The reading arrives after the card opens. If the path, repository clause and door word
+cannot all fit, the repository clause disappears whole so the address and door stay readable.
+A long folder path can therefore hide Git details even in a wide terminal: the card has
+a maximum width.
 
 The branch is on the place line rather than in a band of its own because a branch and a
 dirty count are facts **about that address**, and a band between the address and them would
