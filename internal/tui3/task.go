@@ -833,6 +833,12 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 		// pump is deliberately NOT re-armed below: the agent it was reading is
 		// about to be closed.
 		return a.takeOver()
+	case session.EventMoved:
+		// AND THE OTHER ROAD: the engine holding this conversation has told this
+		// window that another one has opened it (takeover.go's [app.movedAway]).
+		// The lane pump is deliberately NOT re-armed below for [session.EventTakeover]'s
+		// reason — the agent it was reading is about to be let go of.
+		return a.movedAway(ev.Text)
 	case session.EventStandingUpdate:
 		// AN ITEM FIRES WITH NOBODY IN THE ROOM, which is the whole of the
 		// ambient side — so a FIRING reaches this surface here and only here,

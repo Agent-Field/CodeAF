@@ -587,14 +587,31 @@ says `off` — it cannot tell you the checks are running when they are not.
 `keeping watch  while a window is open`, or
 `keeping watch  nothing is checking · background checks are off · /settings`.
 
-## Does aforge keep running when my terminal is closed — closing the terminal app
+## Does aforge keep running when my terminal is closed — if I close this window does the chat stop, closing the terminal app, is it still running in the other shell
 
-Half of it does. **The aforge you are talking to does not run when the terminal
-is closed**: close the terminal and that conversation ends, mid-answer work
-stops, and nothing of the chat stays resident.
+**Yes.** Your conversation does not live inside the terminal you started it in.
+`aforge chat` runs the conversation in this folder's **engine** — a process with
+no terminal of its own — and the window you type into is a view onto it. Close the
+window, kill the shell, `ctrl+c` out of it: the reply goes on arriving, the tasks
+go on running, and the engine keeps the transcript.
 
-What does run with the terminal closed is the **standing side** — reminders,
-watches, rules, overnight work — and only that. Every 5 minutes, terminal closed
+**To get back to it, open aforge again and press `enter` on that conversation's
+row on home.** It comes up here, mid-reply, in well under a second. The row says
+`open in the engine` when the engine has it with no window anywhere, and
+`another window` when a terminal is sitting in it; either way one `enter` brings
+it here, and the terminal that had it steps back and says so. See
+*Continue a conversation from another terminal* on the home page.
+
+The engine lets go on its own when there is nothing left to hold: a conversation
+with no window, no turn and no waiting question is kept for half an hour and then
+closed, and an engine holding nothing at all exits. `aforge engine --stop` in the
+folder ends it now.
+
+Three launches keep the old arrangement, where the conversation really does live
+in the window and ends with it: `--no-host`, `--debug`, and `--once`.
+
+The other half of running with the terminal closed is the **standing side** —
+reminders, watches, rules, overnight work — and it is separate machinery. Every 5 minutes, terminal closed
 or not, the timer runs `aforge tick`, which takes a few seconds, does whatever is
 due, and exits. There is no daemon sitting in memory between those moments, and
 closing the terminal app changes nothing about it.
