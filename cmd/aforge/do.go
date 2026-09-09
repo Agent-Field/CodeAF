@@ -508,8 +508,8 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	}
 
 	// The workspace is resolved once at this door rather than inside
-	// headlessBrain, so this process's ending can name it without taking a second
-	// reading. A task handed to a resident deliberately leaves it unnamed below.
+	// headlessBrain, so the ending can name it even when headlessBrain returns
+	// early to a resident. Resolving it again would make a second answer.
 	workspaceRoot, err := errandWorkspace(request.workspace)
 	if err != nil {
 		return headlessOutcome{}, err
