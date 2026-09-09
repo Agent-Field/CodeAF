@@ -61,11 +61,10 @@ PR #662, in `/Users/santoshkumar/af-personal-ai-backend`. It stays unmerged into
 `main`, `dev`, `staging`, or publishing a release.
 
 The existing implementation task is **Ideate seamless home chat UX**,
-`01a0839c-a6c1-7a93-94f2-be0e4c528f64`. Its recorded checkpoint covers production
-commit `a216cdcf5` and test clarification `6ce8be8bd`: touched-package regression
-passed and all nine live cases have evidence across two runs, not one entirely
-green full-suite run. Paid CI reports NOT RUN because its key is absent. See the
-integration branch's `TEST-RESULTS.md`; this is read evidence, not our rerun.
+`01a0839c-a6c1-7a93-94f2-be0e4c528f64`. The current evidence checkpoint is kept in
+[DISCUSSION.md](DISCUSSION.md) and [DEMONSTRATION.md](DEMONSTRATION.md), including
+the unresolved complete-workday regression. Consult those records rather than
+interpreting an earlier bounded pass as proof of the whole product.
 
 Its first wave owns collections, resolved owner state, explicit sourced context,
 revision/withdrawal, ordinary chat/task context refresh and memory-off behavior.

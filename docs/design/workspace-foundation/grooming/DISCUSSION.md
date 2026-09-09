@@ -60,6 +60,15 @@ The implementation owner can continue testing the existing part of 3 while we
 do that. Broaden to activation and collaboration when the next concrete
 experiment requires them, rather than trying to finalize all seven in advance.
 
+For expectation-dependent choices, C14 makes the next discussion concrete before
+asking the person to decide: present a situation, synthetic expectations and
+counterexamples, viable alternatives and a reasoned recommendation. Open prompts
+explore expectations; option prompts compare stated behaviors and must be labeled
+as such. A clear reply settles the stated behavior; uncertainty leaves it open.
+Do not repeat a paid probe for unchanged questions or turn simulation into another
+mandatory phase. Keep settled/open/next checkpoints short. The second probe tests
+automatic discovery, correcting a wrong association and trip-specific scope.
+
 Across every area, assess completed outcomes, human explanation/correction,
 inconsistent assumptions, recovery effort, latency and cost. Modularity means
 preserving useful boundaries, not building an add-on platform now. Software and

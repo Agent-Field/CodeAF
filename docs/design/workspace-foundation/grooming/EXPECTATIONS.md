@@ -50,6 +50,19 @@ isolated causal effects of either factor.
 
 ## Product hypotheses under discussion
 
+C14 establishes how these probes enter ongoing grooming. Bring back the concrete
+situation, expectations and dissent, meaningful alternatives, and our proposed
+behavior. The person can confirm what is clear and leave the rest open. Do not
+ask them to supply an architecture alone or infer acceptance from model output.
+Every checkpoint states what is settled, what remains open, and the next step.
+
+Keep the whole goal visible: one personal AI environment for direct creation,
+delegated work and ongoing assistance across domains, with less repeated
+explanation, inconsistent assumptions and effort to find or steer work. The
+aspiration to encompass competing systems' useful task space is a goal, not a
+claim established by a folder experiment. Compare proposals by those consequences
+and existing conceptual boundaries, not the number of mechanisms they add.
+
 The user's return expectation was to find the travel plan under Travel and
 launch-related work under Launch, while remaining uncertain whether another
 combined place would be necessary. This does not confirm creating that place,
@@ -111,6 +124,50 @@ durable artifacts. Clarifying and demonstrating those behaviors is more useful
 than treating the response counts as votes. The proposed stable-conversation,
 multiple-entry-point interpretation remains unconfirmed. Discoverability in a
 folder must also remain distinct from applicability or authority there.
+
+## Second run: concrete behavior and alternatives
+
+Following C14, round 2 sampled five models × three situations × two question
+modes: open consequences and explicit alternatives. It stopped at 30 attempts,
+returning 24 schema-compliant answers, five rate-limit rejections and one schema
+failure. Receipts report $0.05071750499936 across 25 responses; five rejection
+costs are unavailable. Conservative reservation was $0.197674776 against the
+$0.75 ceiling. Four offline tests and the complete receipt audit passed. No
+additional paid judge calls were made.
+
+[Round 2 results](/Users/santoshkumar/aforge-expectation-probe-20260909/round2/RESULTS.md)
+and [reusable configuration/usage](/Users/santoshkumar/aforge-expectation-probe-20260909/round2/README.md)
+retain exact prompts, outputs, model/mode coverage and limitations.
+
+The concrete situations and proposed interpretation are:
+
+- Editing the hotel through Travel updates the one current itinerary reached
+  through either folder. Prior conversation messages retain what was said;
+  reaching the current output must not require treating old prose as current.
+- “This holiday has nothing to do with Launch” corrects the mistaken association
+  without deleting the plan or erasing the mixed conversation. How to represent
+  the correction so it is not immediately inferred again remains to groom.
+- “Keep this trip under $2000” remains about that trip after a discovery link is
+  removed; it does not become a budget for other trips or launch work.
+
+Meaningful dissent: Kimi call 26 favored confirmation before unlinking; GLM call
+12 favored immediate reversible correction with an acknowledgment. The proposed
+default is the latter when the person's correction has a clear referent and the
+change concerns organization alone. Ambiguous targets or changes to underlying
+work require resolving that ambiguity, not a blanket confirmation ceremony.
+
+Do not mistake the experiment for independent support for automatic discovery.
+Case 1 explicitly supplies that candidate contract, even in open mode. GLM call
+29 rejects manual filing partly because it conflicts with the supplied contract;
+that is not an unbiased preference comparison. Some outputs invent features or
+overstate uncertainty in the explicit phrase “this trip.” Such simulation defects
+are not product requirements. These results refine proposals, not settled D02 or
+D10 behavior, and do not establish any new implementation capability.
+
+Next: present these concrete consequences, the automatic/suggested/manual
+discovery alternatives and a reasoned recommendation to the person. Once behavior
+is clear, tick only that contract and examine explicit folder/subtree rules versus
+trip-specific rules, including corrections that must persist across later work.
 
 ## Complementary human research
 
