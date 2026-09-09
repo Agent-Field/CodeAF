@@ -514,6 +514,9 @@ func cleanConversationTitle(raw string) conversationTitle {
 	for _, line := range strings.Split(raw, "\n") {
 		line = stripMarkup(strings.TrimSpace(line))
 		line = strings.Trim(line, `"'“”`)
+		// The labels are how a paired answer is read, and a model that says
+		// "Sure!" before one has still answered rather than changed the label.
+		line = stripInterjection(line)
 		lower := strings.ToLower(line)
 		switch {
 		case strings.HasPrefix(lower, "full:"):
@@ -612,17 +615,39 @@ func unusableName(name string) bool {
 // was measured on the rail, and the same emphasis rides a session's name whenever
 // a namer decides a heading is what was asked for.
 //
-// THE THREE MARKS ARE THE THREE A MODEL USES FOR A LABEL: emphasis, a code span,
-// and a heading. Emphasis and code are markup wherever they stand, so they come
-// out of the middle as well as the ends; a hash and a quote's angle bracket mean
-// nothing except at the FRONT of a line, so they are trimmed only there and a
-// name that is about `#4` keeps it. The underscore is deliberately left alone —
-// it is a character inside identifiers a person may genuinely have named, and
+// THE MARKS ARE THE ONES A MODEL USES FOR A LABEL: emphasis, a code span, a
+// heading and a list marker. Emphasis and code are markup wherever they stand,
+// so they come out of the middle as well as the ends; a hash, a quote's angle
+// bracket and a list marker mean nothing except at the FRONT of a line, so they
+// are trimmed only there and a name that is about `#4` keeps it. A dash, plus or
+// numbered marker is markup only when a space separates it from the words, which
+// keeps real names such as `-v flag handling` and `v1.2.3 release notes` whole.
+// An asterisk marker already comes out with emphasis rather than needing the
+// same rule in a second place. The underscore is deliberately left alone — it
+// is a character inside identifiers a person may genuinely have named, and
 // [cleanTitle] already unwelds the one case where it is a separator.
 func stripMarkup(title string) string {
 	title = strings.TrimLeft(title, "#> \t")
 	title = strings.NewReplacer("*", "", "`", "").Replace(title)
+	title = stripListMarker(title)
 	return strings.TrimSpace(title)
+}
+
+// stripListMarker removes one list marker because a name is one line rather
+// than a nested list. The separating space is the evidence that punctuation is
+// a marker instead of the first character of the name itself.
+func stripListMarker(title string) string {
+	if strings.HasPrefix(title, "- ") || strings.HasPrefix(title, "+ ") {
+		return title[2:]
+	}
+	digits := 0
+	for digits < len(title) && title[digits] >= '0' && title[digits] <= '9' {
+		digits++
+	}
+	if digits > 0 && digits+1 < len(title) && (title[digits] == '.' || title[digits] == ')') && title[digits+1] == ' ' {
+		return title[digits+2:]
+	}
+	return title
 }
 
 // ── an answer that is not a name ────────────────────────────────────────────
@@ -715,13 +740,7 @@ const (
 // name on the next line has not answered this call — firstLine has already
 // taken the only line the answer is read from.
 func stripOpener(title string) string {
-	// A "Sure," or "Okay!" with no colon after it is the same throat-clearing
-	// without the punctuation the label rule keys on.
-	if cut := strings.IndexAny(title, ",!"); cut > 0 && cut <= openerLimit {
-		if words := normalizedWords(title[:cut]); len(words) == 1 && isInterjection(words[0]) {
-			title = strings.TrimSpace(title[cut+1:])
-		}
-	}
+	title = stripInterjection(title)
 	// Twice, because "Sure: Title: porting the parser" is two announcements and
 	// stopping after the first would keep half of one.
 	for range 2 {
@@ -740,6 +759,18 @@ func stripOpener(title string) string {
 	// name". A name has a word in it that is about the conversation.
 	if words := normalizedWords(title); len(words) > 0 && len(words) <= openerWords && allOpenerWords(words) {
 		return ""
+	}
+	return title
+}
+
+// stripInterjection removes the one-word agreement a model may put before an
+// answer. The paired label reader and the plain-name reader share this exact
+// rule so their idea of "Sure," and "Okay!" cannot drift apart.
+func stripInterjection(title string) string {
+	if cut := strings.IndexAny(title, ",!"); cut > 0 && cut <= openerLimit {
+		if words := normalizedWords(title[:cut]); len(words) == 1 && isInterjection(words[0]) {
+			title = strings.TrimSpace(title[cut+1:])
+		}
 	}
 	return title
 }
