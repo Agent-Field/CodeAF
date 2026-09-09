@@ -25,3 +25,7 @@ The session-host connection now carries task model and thinking changes, bound t
 the task's conversation. Previously those optional methods existed only on the
 in-process agent, leaving the normal hosted launch with read-only setup rows.
 Older hosts explicitly advertise no support until updated.
+
+The task Thinking click and keyboard cycle includes `auto` after `max`, so a
+person can clear an explicit override again. Completed tasks save that reset
+for continuation, with an explicit `auto` receipt.

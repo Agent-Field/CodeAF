@@ -127,7 +127,12 @@ func (a *app) cycleNodeEffort(node *taskNode) bool {
 		a.note(taskEffortUnavailableWord)
 		return true
 	}
-	next := effortNext(a.taskRung(node.id))
+	current := a.taskRung(node.id)
+	next := effortNext(current)
+	// Auto clears this task's override and must remain reachable after a full cycle.
+	if current == effort.Rungs[len(effort.Rungs)-1] {
+		next = effort.None
+	}
 	if err := door.SetTaskEffort(node.id, next.String()); err != nil {
 		// THE ENGINE'S OWN SENTENCE IS KEPT on a refusal, the way a stop's and a
 		// retarget's are: "task 7 is done, not running" is the answer, and a
@@ -135,14 +140,15 @@ func (a *app) cycleNodeEffort(node *taskNode) bool {
 		a.note(err.Error())
 		return true
 	}
-	word := taskIDWord(node.id) + " · " + strings.TrimSpace(effortClauseWord) + " · " + next.String()
+	label := firstNonEmpty(next.String(), "auto")
+	word := taskIDWord(node.id) + " · " + strings.TrimSpace(effortClauseWord) + " · " + label
 	if node.state == session.TaskRunning && !node.stopped {
 		word += " · " + taskEffortNextCallWord
 	}
 	if taskSetupLater(node) {
 		word += " · saved for when you continue"
 	}
-	a.noteFacts(word, taskIDWord(node.id), next.String())
+	a.noteFacts(word, taskIDWord(node.id), label)
 	if a.room != nil && a.room.id == node.id {
 		a.roomNote(word)
 	}

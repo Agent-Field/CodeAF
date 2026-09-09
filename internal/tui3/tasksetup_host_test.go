@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,5 +72,47 @@ func TestCompletedTaskSetupThroughTheRealHostedAgent(t *testing.T) {
 	}
 	if calls := client.CallsMade() - before; calls != 0 {
 		t.Fatalf("frame/hover made %d network calls", calls)
+	}
+}
+
+func TestTaskThinkingClickReturnsToAutoThroughTheHost(t *testing.T) {
+	a, client, engine := hostedTaskSetupApp(t)
+	if err := client.Agent().SetTaskEffort(7, "max"); err != nil {
+		t.Fatal(err)
+	}
+	a.roomNode().thinking = "max"
+	y := panelRow(t, a, "effort")
+	drive(t, a, tea.MouseClickMsg{X: a.width - 2, Y: y, Button: tea.MouseLeft})
+	if got := engine.TaskEffort(7); got != "" {
+		t.Fatalf("max should cycle to auto, got %q", got)
+	}
+	raw, err := os.ReadFile(filepath.Join(filepath.Dir(a.file), "tasks.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved struct {
+		Nodes []struct {
+			ID         uint64
+			State      string
+			NextEffort *string `json:"next_effort"`
+		}
+	}
+	if err := json.Unmarshal(raw, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if len(saved.Nodes) != 1 || saved.Nodes[0].NextEffort == nil || *saved.Nodes[0].NextEffort != "" || saved.Nodes[0].State != "done" {
+		t.Fatalf("auto was not saved separately: %s", raw)
+	}
+	a.roomNode().thinking = ""
+	var rows []string
+	for _, row := range a.roomControlRows(a.railRoom()) {
+		rows = append(rows, plain(row.text))
+	}
+	if !strings.Contains(strings.Join(rows, "\n"), "Thinking · auto") {
+		t.Fatal("auto is not visible")
+	}
+	drive(t, a, tea.MouseClickMsg{X: a.width - 2, Y: panelRow(t, a, "effort"), Button: tea.MouseLeft})
+	if got := engine.TaskEffort(7); got != "low" {
+		t.Fatalf("auto should cycle to low, got %q", got)
 	}
 }
