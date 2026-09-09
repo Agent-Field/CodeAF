@@ -38,6 +38,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it refuse to ask me something", "questions"},
 		{"can I answer a question from another window", "questions"},
 		{"it asked me the same thing twice", "questions"},
+		{"why did it not ask me", "questions"},
+		{"it went ahead by itself", "questions"},
+		{"make it ask me every time", "questions"},
+		{"it assumed something wrong", "questions"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},
 		// Lanes behind a base of the person's own: the question the hostname gate
