@@ -82,9 +82,15 @@ applicability to the current consumer.
 
 The reported failing receipt is
 `/Users/santoshkumar/af-personal-ai-complex-evidence-20260909/working-day-confirm.jsonl`.
-The owner is tracing a minimal correction; repair and a complete passing workday
-remain pending. The earlier API-contract pass remains a narrower result and does
-not establish this long-history/membership-removal behavior.
+The owner's later handoff `ca2a59d5a` records a repair at `c43119be5` plus
+receipt-display clarification `3a6140a72`. Forced remembered-ID reading passed
+against unchanged production `3a6140a72`: the old body remained readable,
+`applicable_here=false`, final current value empty, and no membership restored.
+The longer repaired workday also exercised removal/rejoin/withdrawal correctly.
+The COMPLETE workday remains red for a separate completion-driven numeric-to-string
+artifact regression, recorded as issue #672. Large retrieval and conflicting
+sources passed. The bundle README distinguishes these results; original failures
+remain preserved. This is the owner's report, not a new root rerun.
 
 Keep global reads available. A source can be current and discoverable while not
 applying to this chat. Acceptance for the repair must cover the whole turn,

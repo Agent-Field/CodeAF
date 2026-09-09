@@ -27,6 +27,10 @@ services, or a claim that every shown path works today.
 records the current implementation checkpoint and groups the remaining product
 and engineering questions without introducing a new delivery roadmap.
 
+[Expectation probes](EXPECTATIONS.md) records the user-requested reusable
+multi-model experiment, its evidence limits and the navigation hypotheses under
+discussion. Synthetic answers expand our questions; they do not settle them.
+
 ## The product we are preserving
 
 Aforge is one personal AI work environment for development, research, marketing,

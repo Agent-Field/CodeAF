@@ -12,11 +12,15 @@ resumption and ordinary workers have bounded functional evidence. The fresh
 three-consumer API case passed at `12017ee2a`.
 
 The expanded workday exposed existence being confused with applicability after
-membership removal. The owner reports a repair pushed at `c43119be5`, passing
-focused deterministic checks. A subsequent receipt-display clarification keeps
-applicability visible when text is truncated. At this checkpoint the full
-complex live tests, conflict case and regressions are NOT established green.
-Keep the original failing evidence. See [DEMONSTRATION.md](DEMONSTRATION.md).
+membership removal. The owner's final handoff is `ca2a59d5a`, with scope repair
+`c43119be5` and receipt-display clarification `3a6140a72`. It reports the forced
+identity-read test passing against unchanged production `3a6140a72`; scope
+removal/rejoin/withdrawal, large retrieval and conflicting-source cases now have
+passing live evidence. Full deterministic regression also passed. The complete
+workday remains RED: completion challenged a correct numeric revision and the
+agent changed it to a string, failing the artifact contract (issue #672).
+Ordinary final CI was pending in that report; paid CI has no secret. Preserve
+the original failures. See [DEMONSTRATION.md](DEMONSTRATION.md).
 
 The complete agreed model is not implemented merely because records exist.
 Accepted-decision semantics, general scope, activation with new context,
