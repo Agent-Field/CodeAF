@@ -366,3 +366,11 @@ func TestSharedContextRevisionCannotAccidentallyClearOmittedTargets(t *testing.T
 		t.Fatalf("explicit clearing failed: %+v %v", cleared, err)
 	}
 }
+
+func TestOrganizationFindNameDoesNotSilentlySearchMembership(t *testing.T) {
+	a, _, g := organizationFixture(t)
+	out, failed, err := a.collectionsTool(context.Background(), json.RawMessage(`{"action":"find","name":"MARKET"}`))
+	if failed || err != nil || !strings.Contains(out, g.ID) {
+		t.Fatalf("%s %v", out, err)
+	}
+}
