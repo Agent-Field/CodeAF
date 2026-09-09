@@ -413,10 +413,8 @@ func TestTheWindowResetsEachTurn(t *testing.T) {
 
 // ── the escalation ──────────────────────────────────────────────────────────
 
-// Past two nudges the turn ends. This fixture has no consent surface, so it
-// exercises the honest fallback instead of asking the scripted model for a
-// checkpoint brief: the tenth scripted response must never be requested.
-func TestTheThirdNudgeEndsTheTurnAndSaysWhatWasLeft(t *testing.T) {
+// Repetition advice remains visible without deciding when the turn ends.
+func TestTheThirdNudgeLeavesTheCurrentAgentInControl(t *testing.T) {
 	var steps []step
 	for _, name := range []string{"alpha", "beta", "gamma"} {
 		steps = append(steps, repeatedCalls(name, `{"path":"a.md"}`, 3)[:3]...)
@@ -437,16 +435,14 @@ func TestTheThirdNudgeEndsTheTurnAndSaysWhatWasLeft(t *testing.T) {
 	}
 	collected := collect(t, events)
 
-	if fired := nudgeEvents(collected); len(fired) != 3 {
-		t.Fatalf("nudges: got %d, want 3", len(fired))
+	if fired := nudgeEvents(collected); len(fired) != loopNudgeCeiling {
+		t.Fatalf("nudges: got %d, want %d", len(fired), loopNudgeCeiling)
 	}
-	if completer.requests() != 3*loopRepeats {
-		t.Fatalf("provider requests = %d, want %d; the turn did not end at the ceiling",
-			completer.requests(), 3*loopRepeats)
+	if completer.requests() != 3*loopRepeats+1 {
+		t.Fatalf("provider requests = %d, want the nine tool calls and final answer", completer.requests())
 	}
-	left, ok := firstOfKind(collected, EventNotice)
-	if !ok || left.Text != loopLeftUndoneNote {
-		t.Fatalf("left-undone notice = %q, present=%v", left.Text, ok)
+	if got := messageContentText(lastMessage(agent)); got != "done" {
+		t.Fatalf("the repetition detector replaced the final answer: %q", got)
 	}
 	if collected[len(collected)-1].Kind != EventTurnDone {
 		t.Fatalf("last event = %v, want EventTurnDone", collected[len(collected)-1].Kind)
@@ -492,12 +488,12 @@ func TestLoopWatchNamesASignatureThenClimbsOnRepeatedEvidence(t *testing.T) {
 		t.Fatal("the ladder climbed on a single repetition after escalating")
 	}
 	third, fired := watch.observe([]ai.ToolCall{call}, ok(call), true)
-	if !fired || third.nth != 3 {
-		t.Fatalf("the third rung: fired=%v nth=%d, want true/3", fired, third.nth)
+	if fired {
+		t.Fatalf("repetition advice exceeded its bound: %+v", third)
 	}
 	for attempt := 0; attempt < 3; attempt++ {
 		if _, fired := watch.observe([]ai.ToolCall{call}, ok(call), true); fired {
-			t.Fatal("the watch produced a fourth nudge after its terminal signal")
+			t.Fatal("the watch exceeded its repetition advice bound")
 		}
 	}
 }
@@ -686,7 +682,7 @@ func TestSilenceAroundVisibleWorkNeverEndsTheTurn(t *testing.T) {
 // AND THE RULES THAT DO MEAN STUCK STILL END A TURN, after any amount of
 // silence. This is the guard on the change above: making silence free must not
 // make a real loop free with it.
-func TestARealLoopStillHandsOverAfterASilentRun(t *testing.T) {
+func TestARealLoopStillProducesEvidenceAfterASilentRun(t *testing.T) {
 	watch := newLoopWatch()
 	for round := range 3 * silentStreakLimit {
 		call := ai.ToolCall{ID: fmt.Sprintf("q%d", round), Function: ai.ToolCallFunction{
@@ -708,9 +704,8 @@ func TestARealLoopStillHandsOverAfterASilentRun(t *testing.T) {
 			highest = looping.nth
 		}
 	}
-	if highest <= loopNudgeCeiling {
-		t.Fatalf("the highest nudge was %d; a real loop after silence must still pass %d",
-			highest, loopNudgeCeiling)
+	if highest != loopNudgeCeiling {
+		t.Fatalf("repetition after silence used %d advice slots, want %d", highest, loopNudgeCeiling)
 	}
 }
 
@@ -817,8 +812,8 @@ func TestMaterialProgressGivesOneSpentNoteBack(t *testing.T) {
 		t.Fatalf("third loop after progress: fired=%v nth=%d, want %d", fired, third.nth, loopNudgeCeiling)
 	}
 	fourth, fired := loop("delta")
-	if !fired || fourth.nth <= loopNudgeCeiling {
-		t.Fatalf("fourth loop: fired=%v nth=%d, want past %d", fired, fourth.nth, loopNudgeCeiling)
+	if fired {
+		t.Fatalf("further repetition exceeded the restored advice allowance: %+v", fourth)
 	}
 }
 

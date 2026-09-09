@@ -208,9 +208,8 @@ func (f divisionFamily) siblings(index int) string {
 // where there is no scope at all.
 //
 // THE TITLE IS DROPPED WHERE THE SCOPE ALREADY SAYS IT. A title is frequently the
-// scope's own words cut to [TaskNameWords] — that is exactly what the sketch road
-// mints (task_divide_sketch.go's [sketchName]) — and "the http client major: the
-// http client major version" is one name said twice with a colon in it.
+// scope's own opening words. "The http client major: the http client major
+// version" is one name said twice with a colon in it.
 //
 // AND THE WHOLE LABEL IS BOUNDED, title included. Every field here was written by
 // a model, so any of them can arrive at any length; a bound on one of the two

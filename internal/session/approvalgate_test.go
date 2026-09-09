@@ -55,19 +55,6 @@ func TestAPushedGateAnswersTheNextCall(t *testing.T) {
 	}
 }
 
-// The loop detector asks the same standing gate whether anybody is expected to
-// be answering questions, so it has to move with it.
-func TestThePushedGateIsWhatPromptModeReads(t *testing.T) {
-	agent := gateAgent(t, promptAll())
-	if !agent.promptMode() {
-		t.Fatal("a prompt-by-default session is not in prompt mode")
-	}
-	agent.SetApprovalPolicy(&approval.Policy{Default: approval.ActionAllow})
-	if agent.promptMode() {
-		t.Fatal("prompt mode survived a push that stopped asking")
-	}
-}
-
 // A session that launched ungated is ungated until somebody says otherwise, and
 // a push is a thing that can say otherwise.
 func TestAnUngatedSessionStaysUngatedUntilSomethingIsPushed(t *testing.T) {
@@ -133,7 +120,7 @@ func TestTheGateIsSafeToReplaceWhileItIsBeingRead(t *testing.T) {
 			defer group.Done()
 			for round := 0; round < 200; round++ {
 				agent.decide(gateCall("edit", `{"path":"x"}`))
-				agent.promptMode()
+				agent.approvalGate()
 			}
 		}()
 	}

@@ -2403,25 +2403,7 @@ type Agent struct {
 	// before the call" — because that ledger is dropped at the end of every turn
 	// and the question this answers is asked once, at the end of the session.
 	createdFiles []fileChange
-	// changedFiles is EVERY FILE THIS SESSION MODIFIED THAT WAS THERE BEFORE, in
-	// first-touch order (principal_audit.go). It is kept apart from createdFiles
-	// on purpose: that ledger is what the tidy may remove, and nothing in this
-	// build may remove a file the session did not make. This one is only ever
-	// READ, to answer whether the session put work on the deliverable with its
-	// own hands ([Remains.Made]).
-	changedFiles []fileChange
-	// writes is THE RUNNING TURN'S account of what it has changed under the
-	// workspace, and the whole of the write seam's state (writeseam.go). It is
-	// minted at episode-init and read at the step boundary, and it is nil in a
-	// session that has never opened an episode.
-	writes *writeMeter
-	// handWrites is every landed write call a hand has brought home since the
-	// write seam last took them. Hands can outlive the turn that forked them, so
-	// these groups belong to the session until whichever turn next reaches the
-	// seam drains them into its own meter. Each group is one call, because calls
-	// as well as distinct paths spend the allowance (writeseam.go).
-	handWrites [][]string
-	running    bool
+	running      bool
 	// turnFloor is where the running turn's WORK begins in a.messages: the
 	// index just past the message that opened the turn, stamped by
 	// [Agent.startTurnLocked] and meaningful only while running is true. It is
@@ -2673,21 +2655,6 @@ type Agent struct {
 	// started to collect (harness.go). It is a take-over between two halves of
 	// one call and never state: the turn takes it, clears it, and runs it.
 	harnessPick *harnessRoute
-
-	// routeTurns counts the turns this session has begun and routeOffered is the
-	// one the route judge last started work on (route_judge.go). They are the
-	// whole of that feature's memory: the judge starts at most one task every
-	// few turns, and "a few turns ago" is a number that only means anything if
-	// something is counting. Both are zero for the life of a session nothing is
-	// ever started in, which is most of them.
-	//
-	// ONE PAIR SERVES BOTH MOMENTS THE JUDGE LOOKS AT — before a message is
-	// answered and after a words-only answer — because the limit is about how
-	// often WORK may begin over the top of a conversation, which is one question
-	// however it was noticed. The count is stepped at the front of a turn, where
-	// every turn passes.
-	routeTurns   uint64
-	routeOffered uint64
 
 	// harnessWatchers are the standing subscriptions to the design lane
 	// ([Agent.HarnessDesigns]), and harnessAdded is what this session has

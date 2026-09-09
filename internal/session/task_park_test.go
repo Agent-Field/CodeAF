@@ -498,25 +498,6 @@ func (c *fakeClock) timer(after time.Duration) (<-chan time.Time, func()) {
 	}
 }
 
-// AND THE HARNESS'S OWN CEILING NEVER STOOD OVER A NODE AT ALL, parked or
-// working. Work inside a task already lives under its own step cap, its own
-// no-progress counter and its own deadline, and a second meter over the top of
-// those would be the harness governing the governed ([Agent.checkpoints]). This
-// is the half of "the wait costs nothing" that is true by construction, and it is
-// written down here so a change that quietly turned the ceiling on inside tasks
-// is caught by the lane that would be hurt by it.
-func TestTheCeilingNeverMetersANodeParkedOnItsParts(t *testing.T) {
-	nest := newNest(t, nil, nil)
-	nest.parent.park()
-	defer nest.parent.unpark()
-	if !nest.parent.waitingOnItsPieces() {
-		t.Fatal("the node did not park")
-	}
-	if nest.node.checkpoints(context.Background(), userText("get on with it")) {
-		t.Fatal("the harness ceiling meters a task node; a node has its own thresholds and no second one may stand over them")
-	}
-}
-
 // ── the nursery law ─────────────────────────────────────────────────────────
 
 // NO PART OUTLIVES THE COORDINATION IT WAS CUT OUT OF, and the order is the

@@ -2,16 +2,10 @@ package session
 
 import (
 	"context"
-	"encoding/json"
-	"os"
 	"path/filepath"
-	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
-
-	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 func TestDeliveryContractRejectsMissingInvalidAndStaleAuthority(t *testing.T) {
@@ -22,10 +16,6 @@ func TestDeliveryContractRejectsMissingInvalidAndStaleAuthority(t *testing.T) {
 		if got := validDelivery(ask, d); got.acceptsRetained() {
 			t.Fatalf("invalid declaration relaxed delivery: %+v", got)
 		}
-	}
-	v := routeVerdict{checksRequest: "worker says this is done", Delivery: deliveryContract{Kind: "branch", Quote: ask}}
-	if routeDelivery(v, ask).acceptsRetained() {
-		t.Fatal("worker or stale request supplied delivery authority")
 	}
 	s := NewSteward(ask, Budget{Wall: time.Hour}, nil)
 	if !s.setAcceptanceDelivery(ask, "the branch holds the fix", nil, deliveryContract{Kind: "branch", Quote: ask}) {
@@ -42,175 +32,6 @@ func TestDeliveryContractRejectsMissingInvalidAndStaleAuthority(t *testing.T) {
 	}
 }
 
-func TestARetainedResultReadsAndRecordsTheOriginalDeliveryRequest(t *testing.T) {
-	const ask = "make the fix and leave the result on a branch without merging"
-	path := filepath.Join(t.TempDir(), "session.jsonl")
-	payload, _ := json.Marshal(map[string]any{"work": true, "goal": ask, "acceptance": "the retained branch holds the tested fix", "checks": []string{"true"}, "delivery": deliveryContract{Kind: "branch", Quote: "leave the result on a branch without merging"}})
-	completer := &scriptedCompleter{steps: []step{finalText(string(payload))}}
-	a, _ := newTestAgent(t, completer, func(c *Config) { c.Unattended = true; c.Budget = Budget{Wall: time.Hour}; c.SessionFile = path })
-	a.steward().hear(ask)
-	a.openAcceptance(context.Background(), nil)
-	if completer.requests() != 0 {
-		t.Fatalf("opening the request made %d model calls", completer.requests())
-	}
-	remains := Remains{Landed: true, ReaderSaysDone: true, Landings: []Landing{{ID: 1, Title: "fix", State: TaskDone,
-		Files: []string{"fix.go"}, Retained: "task/fix"}}}
-	remains = a.completeRetainedContract(context.Background(), remains)
-	d := remains.Delivery
-	if d.Kind != "branch" || d.Quote == "" {
-		t.Fatalf("acceptance wire lost delivery: %+v", d)
-	}
-	if got := a.steward().declaredChecks(); len(got) != 0 {
-		t.Fatalf("the delivery-only reading granted late command authority: %v", got)
-	}
-	if decision := a.steward().Decide(remains); decision.Verb != DecideDone {
-		t.Fatalf("the requested retained branch did not complete: %+v", decision)
-	}
-	if err := a.Close(); err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, e := range journaledEntries(t, path, "principal") {
-		if e.Principal != nil && e.Principal.Event == "delivery" && e.Principal.Delivery != nil {
-			found = *e.Principal.Delivery == d
-		}
-	}
-	if !found {
-		t.Fatal("principal receipt lost delivery")
-	}
-	resumed, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.Unattended = true; c.Budget = Budget{Wall: time.Hour}; c.SessionFile = path })
-	resumed.steward().hear("integrate the fix into this workspace")
-	if resumed.steward().declaredDelivery().acceptsRetained() {
-		t.Fatal("old branch acceptance became a new ask's authority")
-	}
-}
-
-func TestALazyDeliveryReadingNeverInstallsOrRunsLateChecks(t *testing.T) {
-	const ask = "make the fix and leave it on a branch"
-	dir := t.TempDir()
-	marker := filepath.Join(dir, "late-check-ran")
-	payload, _ := json.Marshal(map[string]any{"work": true, "goal": ask,
-		"acceptance": "done", "checks": []string{"touch " + marker},
-		"delivery": deliveryContract{Kind: "branch", Quote: "leave it on a branch"}})
-	a, _ := newTestAgent(t, &scriptedCompleter{steps: []step{finalText(string(payload))}}, func(c *Config) {
-		c.Workspace = dir
-		c.Unattended = true
-		c.Budget = Budget{Wall: time.Hour}
-	})
-	a.steward().hear(ask)
-	if !a.steward().setAcceptanceDelivery(ask, sessionAcceptance(ask), []string{"true"}, deliveryContract{}) {
-		t.Fatal("could not install the opening structured check")
-	}
-	a.openBaseline(context.Background())
-	remains := Remains{Landed: true, Landings: []Landing{{ID: 1, State: TaskDone,
-		Files: []string{"fix.go"}, Retained: "task/fix"}}}
-	remains = a.completeRetainedContract(context.Background(), remains)
-	if got := a.steward().declaredChecks(); !slices.Equal(got, []string{"true"}) {
-		t.Fatalf("late destination reading changed opening command authority: %v", got)
-	}
-	_, _, _ = a.terminalAudit(context.Background())
-	if _, err := os.Stat(marker); !os.IsNotExist(err) {
-		t.Fatalf("late check ran at the ending: %v", err)
-	}
-}
-
-func TestALazyDeliveryReadingSeesTheTailOfTheOriginalAsk(t *testing.T) {
-	const tail = "leave the final result on a branch without merging"
-	ask := strings.Repeat("background ", routeAskBytes) + tail
-	payload, _ := json.Marshal(map[string]any{"work": true, "goal": ask,
-		"acceptance": "done", "delivery": deliveryContract{Kind: "branch", Quote: tail}})
-	completer := &scriptedCompleter{steps: []step{finalText(string(payload))}}
-	a, _ := newTestAgent(t, completer, func(c *Config) { c.Unattended = true; c.Budget = Budget{Wall: time.Hour} })
-	a.steward().hear(ask)
-	a.openAcceptance(context.Background(), nil)
-	remains := Remains{Landed: true, Landings: []Landing{{ID: 1, State: TaskDone,
-		Files: []string{"fix.go"}, Retained: "task/fix"}}}
-	remains = a.completeRetainedContract(context.Background(), remains)
-	if !remains.Delivery.acceptsRetained() {
-		t.Fatalf("delivery permission at the request tail was lost: %+v", remains.Delivery)
-	}
-	sent := completer.request(0)
-	if len(sent) == 0 || !strings.Contains(messageText(sent[len(sent)-1]), tail) {
-		t.Fatal("the lazy destination reader did not receive the full original ask")
-	}
-}
-
-func TestConcurrentEndingsShareOneLazyDeliveryReading(t *testing.T) {
-	const ask = "make the fix and leave it on a branch"
-	payload, _ := json.Marshal(map[string]any{"work": true, "goal": ask,
-		"acceptance": "done", "delivery": deliveryContract{Kind: "branch", Quote: "leave it on a branch"}})
-	entered := make(chan struct{})
-	release := make(chan struct{})
-	var once sync.Once
-	completer := &scriptedCompleter{steps: []step{func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
-		once.Do(func() { close(entered) })
-		select {
-		case <-release:
-			return textResponse(string(payload)), nil
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}}}
-	a, _ := newTestAgent(t, completer, func(c *Config) { c.Unattended = true; c.Budget = Budget{Wall: time.Hour} })
-	a.steward().hear(ask)
-	a.openAcceptance(context.Background(), nil)
-	input := Remains{Landed: true, Landings: []Landing{{ID: 1, State: TaskDone,
-		Files: []string{"fix.go"}, Retained: "task/fix"}}}
-	results := make(chan Remains, 2)
-	for range 2 {
-		go func() { results <- a.completeRetainedContract(context.Background(), input) }()
-	}
-	<-entered
-	close(release)
-	first, second := <-results, <-results
-	if completer.requests() != 1 {
-		t.Fatalf("concurrent endings bought %d destination readings", completer.requests())
-	}
-	if first.Delivery != second.Delivery || !first.Delivery.acceptsRetained() {
-		t.Fatalf("concurrent endings disagreed: first=%+v second=%+v", first.Delivery, second.Delivery)
-	}
-}
-
-func TestAnUnreadableRetainedDestinationDefaultsToWorkspaceOnce(t *testing.T) {
-	const ask = "make the requested change"
-	completer := &scriptedCompleter{steps: []step{finalText("not a structured answer")}}
-	a, _ := newTestAgent(t, completer, func(c *Config) {
-		c.Unattended = true
-		c.Budget = Budget{Wall: time.Hour}
-	})
-	a.steward().hear(ask)
-	a.openAcceptance(context.Background(), nil)
-	remains := Remains{Landed: true, Landings: []Landing{{ID: 1, Title: "change", State: TaskDone,
-		Files: []string{"change.txt"}, Retained: "task/change"}}}
-	first := a.completeRetainedContract(context.Background(), remains)
-	second := a.completeRetainedContract(context.Background(), first)
-	if first.Delivery.Kind != "workspace" || second.Delivery.Kind != "workspace" {
-		t.Fatalf("unreadable destination was not conservative: first=%+v second=%+v", first.Delivery, second.Delivery)
-	}
-	if completer.requests() != 1 {
-		t.Fatalf("unreadable destination was asked %d times", completer.requests())
-	}
-}
-
-func TestARequestedRetainedReportDeliversItsProducedAnswer(t *testing.T) {
-	const ask = "give me a written report and leave its source on a branch"
-	payload, _ := json.Marshal(map[string]any{"work": true, "goal": ask,
-		"acceptance": "the written report answers the request",
-		"delivery":   deliveryContract{Kind: "report", Quote: "give me a written report"}})
-	a, _ := newTestAgent(t, &scriptedCompleter{steps: []step{finalText(string(payload))}}, func(c *Config) {
-		c.Unattended = true
-		c.Budget = Budget{Wall: time.Hour}
-	})
-	a.steward().hear(ask)
-	a.openAcceptance(context.Background(), nil)
-	remains := Remains{Landed: true, Landings: []Landing{{ID: 1, Title: "report", State: TaskDone,
-		Files: []string{"report.md"}, Retained: "task/report", Produced: true}}}
-	remains = a.completeRetainedContract(context.Background(), remains)
-	if decision := a.steward().Decide(remains); decision.Verb != DecideDone {
-		t.Fatalf("the requested produced report did not complete: %+v", decision)
-	}
-}
-
 func TestRetainedDeliveryDecisionMatrix(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -219,14 +40,14 @@ func TestRetainedDeliveryDecisionMatrix(t *testing.T) {
 		want     DecisionVerb
 	}{
 		{"workspace kept", deliveryContract{Kind: "workspace"}, "task/fix", DecideCarryOn},
-		{"unknown kept", deliveryContract{}, "task/fix", DecideCarryOn},
+		{"unknown kept", deliveryContract{}, "task/fix", DecideDone},
 		{"branch requested", validDelivery("leave a branch", deliveryContract{Kind: "branch", Quote: "leave a branch"}), "task/fix", DecideDone},
 		{"report requested", validDelivery("give me a report", deliveryContract{Kind: "report", Quote: "give me a report"}), "task/report", DecideDone},
 		{"merged", deliveryContract{Kind: "workspace"}, "", DecideDone},
 		{"shared", deliveryContract{Kind: "workspace"}, "", DecideDone},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			r := Remains{Landed: true, Delivery: tc.delivery, ReaderSaysDone: true, Landings: []Landing{{ID: 1, Title: "fix", State: TaskDone, Retained: tc.retained, Files: []string{"fix.txt"}, Merged: tc.name == "merged", InPlace: tc.name == "shared", Produced: tc.name == "report requested"}}}
+			r := Remains{Delivery: tc.delivery, Landings: []Landing{{ID: 1, Title: "fix", State: TaskDone, Retained: tc.retained, Files: []string{"fix.txt"}, Merged: tc.name == "merged", InPlace: tc.name == "shared", Produced: tc.name == "report requested"}}}
 			got := budgetLeft(t).Decide(r)
 			if got.Verb != tc.want {
 				t.Fatalf("decision=%+v want %v", got, tc.want)
@@ -261,7 +82,7 @@ func TestCheckpointKeepsProtectedBranchDeliveryUnfinished(t *testing.T) {
 	g.nodes[2] = &TaskNode{graph: g, id: 2, parent: 1, state: TaskDone, spec: taskSpec{title: "part"}, merge: mergeMerged}
 	g.order = []uint64{1, 2}
 	g.mu.Unlock()
-	got := a.decideRemains(context.Background(), readerLine{answered: true, nothingLeft: true}, "everything is done")
+	got := a.decideRemains(context.Background(), "everything is done")
 	if got.Verb != DecideCarryOn || !strings.Contains(got.Brief, "retained branch") {
 		t.Fatalf("checkpoint falsely finished: %+v", got)
 	}
@@ -270,7 +91,7 @@ func TestCheckpointKeepsProtectedBranchDeliveryUnfinished(t *testing.T) {
 	}
 	// Explicit integration by the person resolves the retained-delivery fact.
 	mustGit(t, repo, "merge", "--ff-only", tree.branch)
-	if r := a.remainsFor("", readerLine{}); r.Landings[0].Retained != "" {
+	if r := a.remainsFor(""); r.Landings[0].Retained != "" {
 		t.Fatalf("actual integrated content still blocked: %+v", r.Landings)
 	}
 }
@@ -295,7 +116,7 @@ func TestMergedChildOnlyDeliversToItsOwnParentSession(t *testing.T) {
 }
 
 func TestAReportDeclarationNeedsAnActualAnswer(t *testing.T) {
-	r := Remains{Landed: true, Delivery: validDelivery("give me a report", deliveryContract{Kind: "report", Quote: "give me a report"}), Landings: []Landing{{ID: 1, Title: "report", State: TaskDone, Files: []string{"report.md"}, Retained: "task/report"}}}
+	r := Remains{Delivery: validDelivery("give me a report", deliveryContract{Kind: "report", Quote: "give me a report"}), Landings: []Landing{{ID: 1, Title: "report", State: TaskDone, Files: []string{"report.md"}, Retained: "task/report"}}}
 	if got := budgetLeft(t).Decide(r); got.Verb == DecideDone {
 		t.Fatal("empty report waived retained work")
 	}
@@ -319,7 +140,7 @@ func TestAReportAlreadyPrintedInItsLandingStillCountsAsProduced(t *testing.T) {
 	g.nodes[1] = n
 	g.order = []uint64{1}
 	g.mu.Unlock()
-	r := a.remainsFor(answer, readerLine{answered: true, nothingLeft: true})
+	r := a.remainsFor(answer)
 	if !r.Landings[0].Produced {
 		t.Fatal("presentation dedupe erased evidence of the actual answer")
 	}

@@ -30,7 +30,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
-	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -352,39 +351,18 @@ func TestASteerCutsEvenTheLastGenerationBeforeItCanSeal(t *testing.T) {
 type happyFallThroughCompleter struct {
 	mu           sync.Mutex
 	conversation [][]ai.Message
-	judgeEntered chan struct{}
-	releaseJudge chan struct{}
-	judgeOnce    sync.Once
+	sealEntered  chan struct{}
+	releaseSeal  chan struct{}
+	sealOnce     sync.Once
 }
 
-func (c *happyFallThroughCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+func (c *happyFallThroughCompleter) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
 	system := ""
 	if len(messages) > 0 {
 		system = messageText(messages[0])
 	}
-	if system == routeAheadBrief {
-		return textResponse(routeConfirmNo), nil
-	}
-	if system == routeJudgeBrief {
-		wait := false
-		c.judgeOnce.Do(func() {
-			close(c.judgeEntered)
-			wait = true
-		})
-		if wait {
-			select {
-			case <-c.releaseJudge:
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			}
-		}
-		return textResponse(routeConfirmNo), nil
-	}
-	if len(messages) > 0 && strings.Contains(messageText(messages[len(messages)-1]), "[still asked]") {
-		return textResponse(checkpointNothingLeft), nil
-	}
 	if system != "SYSTEM" {
-		return textResponse(routeConfirmNo), nil
+		return textResponse(""), nil
 	}
 	c.mu.Lock()
 	snapshot := append([]ai.Message(nil), messages...)
@@ -406,24 +384,30 @@ func (c *happyFallThroughCompleter) requests() [][]ai.Message {
 func TestASteerAfterTheLastBoundaryFallsThroughIntoOneFreshTurn(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	completer := &happyFallThroughCompleter{
-		judgeEntered: make(chan struct{}),
-		releaseJudge: make(chan struct{}),
+		sealEntered: make(chan struct{}),
+		releaseSeal: make(chan struct{}),
 	}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.SessionFile = path
 		config.AskConsent = true
-		config.RolesSource = tierSettings(map[string]string{
-			roles.TierKey(roles.TierLow): routeScreenModel,
-		})
+		// The existing build observation runs while sealing a completed turn,
+		// after its last model boundary and before the stream closes.
+		config.newerBuild = func() string {
+			completer.sealOnce.Do(func() {
+				close(completer.sealEntered)
+				<-completer.releaseSeal
+			})
+			return ""
+		}
 	})
 	turn := mustSubmit(t, agent, "explain how parser state flows across every package")
 	select {
-	case <-completer.judgeEntered:
+	case <-completer.sealEntered:
 	case <-time.After(10 * time.Second):
 		t.Fatal("the successful turn never passed its last model boundary")
 	}
 	steered := mustSteer(t, agent, "fix the parser instead")
-	close(completer.releaseJudge)
+	close(completer.releaseSeal)
 	collect(t, turn)
 	fromSteer := collect(t, steered)
 

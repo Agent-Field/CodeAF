@@ -498,9 +498,9 @@ load as you scroll up. Open the chip with `ctrl+e` or a click to see its outline
 then open a caption to read its calls. Set `ui.work` to `open` to start with the
 work expanded instead.
 
-The internal `[carry on]` continuation is guidance to the model, not a message
-you sent. It is omitted when reopening saved conversations, including older
-records that stored it as a user message.
+Older records may contain an internal `[carry on]` continuation written by the retired
+completion reader. It is omitted when reopening saved conversations and is never presented as
+a message you sent.
 
 ## Scrolling a reopened conversation back to its first message
 
@@ -3093,12 +3093,11 @@ same clock:
 | The word | What is happening |
 |---|---|
 | `running <tool>` | one call on the belt is executing |
-| `checking` | a reader is deciding whether the answer finished the ask, or whether it should have been work |
-| `taking stock` | the work stopped mid-round and a second model is being shown an account of it and asked what is left of what you asked for — ten to thirty seconds |
 | `tidying` | the conversation is being compacted |
-| `briefing a worker` | your turn is being handed to a task, and the instruction it opens on is being written — fifteen to thirty seconds is normal (see *How tasks run*) |
 
-Each of them is taken off the screen the moment the wait ends.
+Each is taken off the screen the moment the wait ends. Older transcripts and manuals may
+mention `checking`, `taking stock`, or `briefing a worker` for automatic answer review and
+handoff; ordinary turns no longer enter those stages.
 
 ## A stage that lasts minutes keeps drawing — the phase went blank, the status line disappeared while it was still working, does a slow stage stop being shown
 

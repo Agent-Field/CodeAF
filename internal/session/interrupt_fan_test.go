@@ -14,97 +14,76 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// ONE ESC PRODUCES AT MOST ONE PLANNER PASS AND ONE TITLE CALL.
-//
-// F13/F17: one Escape, then a redirect, fired two mastermind replans, two
-// identical title calls, and a 57-message handoff re-read in the same second.
-// The handlers that used to race — the mark reader, the brief writer, two
-// namers, the conversation-wide draft — now share one "what changed" decision
-// (interrupt_fan.go). This drives those handlers concurrently after one Esc
-// and a typed redirect, which is the measured shape.
-
+// Concurrent calls made after a stop share the existing auxiliary-call guard.
+// The obsolete automatic checkpoint participants are gone; exercise the common
+// role call path that explicit work still uses.
 func TestOneEscProducesAtMostOnePlannerPassAndOneTitleCall(t *testing.T) {
-	var planner, title, handoffMsgs atomic.Int32
-	completer := &scriptedCompleter{
-		aside: func(messages []ai.Message) (*ai.Response, bool) {
-			switch {
-			case isNameCall(messages) || isSessionTitleCall(messages):
-				title.Add(1)
-				return textResponse("error handling"), true
-			case askedForSketch(messages) || askedToWriteHandoff(messages):
-				planner.Add(1)
-				if askedForSketch(messages) {
-					return textResponse("A | B"), true
-				}
-				return textResponse("finish the error handling the person just asked for"), true
-			default:
-				return nil, false
-			}
-		},
-		steps: []step{
-			func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
-				if askedForHandoff(messages) {
-					handoffMsgs.Store(int32(len(messages)))
-					planner.Add(1)
-					return textResponse("finish the error handling"), nil
-				}
-				return textResponse("(unscripted)"), nil
-			},
-		},
-	}
-	agent, _ := newTestAgent(t, completer, func(config *Config) {
-		config.AskConsent = true
-		config.RolesSource = tierSettings(map[string]string{
-			roles.TierKey(roles.TierMastermind): "test/planner",
-			roles.TierKey(roles.TierLow):        "test/namer",
-		})
-	})
-	seedLongConversation(agent, 57)
-
-	const asked = "wait, never mind the big-number part. Just do the error handling"
+	var calls atomic.Int32
+	completer := &scriptedCompleter{aside: func([]ai.Message) (*ai.Response, bool) {
+		calls.Add(1)
+		return textResponse("error handling"), true
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
 	agent.Interrupt()
-	agent.interrupt.note(asked)
-
+	agent.interrupt.note("finish the error handling")
 	var wg sync.WaitGroup
-	wg.Add(5)
-	go func() { defer wg.Done(); _ = agent.readMark(context.Background()) }()
-	go func() {
-		defer wg.Done()
-		_, _ = agent.writeHandoff(context.Background(), asked, "", "")
-	}()
-	go func() { defer wg.Done(); _ = agent.nameAhead(asked) }()
-	go func() { defer wg.Done(); _ = agent.nameAhead(asked) }()
-	go func() {
-		defer wg.Done()
-		_, _, _, _ = agent.checkpointBrief(context.Background(), &Usage{}, "test/model")
-	}()
+	for _, role := range []roles.Role{roles.RolePlanner, roles.RolePlanner, roles.RolePlanner, roles.RoleTaskName, roles.RoleTaskName} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _, _ = agent.callRole(context.Background(), role, "test/model", []ai.Message{textMessage("user", "finish the error handling")})
+		}()
+	}
 	wg.Wait()
-	// nameAhead lands on a goroutine; give the one allowed call a moment to
-	// finish so the count is of completed requests, not of launches.
-	waitFor(t, "the one allowed title call to land", func() bool {
-		return title.Load() > 0 || completer.asideRequests() > 0
-	})
-	time.Sleep(50 * time.Millisecond)
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("concurrent stop handlers made %d calls, want one planner and one name", got)
+	}
+	agent.interrupt.finishTurn()
+	if err := agent.interrupt.allow(roles.RolePlanner); err != nil {
+		t.Fatalf("a later turn still refuses explicit planning: %v", err)
+	}
+	if err := agent.interrupt.allow(roles.RoleTaskName); err != nil {
+		t.Fatalf("a later turn still refuses task naming: %v", err)
+	}
+}
 
-	if got := planner.Load(); got > 1 {
-		t.Fatalf("one Esc produced %d planner passes, want at most one", got)
-	}
-	if got := title.Load(); got > 1 {
-		t.Fatalf("one Esc produced %d title calls, want at most one", got)
-	}
-	if got := handoffMsgs.Load(); got > 3 {
-		t.Fatalf("a redirect re-read %d messages, want the conversation left unread", got)
-	}
-
-	t.Run("a later turn is not capped", func(t *testing.T) {
-		agent.interrupt.finishTurn()
-		if err := agent.interrupt.allow(roles.RoleMarkReader); err != nil {
-			t.Fatalf("a later turn was still refused a planner pass: %v", err)
+// The real Submit boundary cancels the in-flight provider call. A redirect then
+// receives its own answer without buying a replacement orchestration pass.
+func TestAnInterruptCancelsTheWorkingCallAndAllowsTheRedirect(t *testing.T) {
+	entered := make(chan struct{})
+	cancelled := make(chan struct{})
+	c := &simpleLoopCompleter{answer: func(ctx context.Context, _ []ai.Message, round int) (*ai.Response, error) {
+		if round == 1 {
+			close(entered)
+			<-ctx.Done()
+			close(cancelled)
+			return nil, ctx.Err()
 		}
-		if err := agent.interrupt.allow(roles.RoleTaskName); err != nil {
-			t.Fatalf("a later turn was still refused a title call: %v", err)
-		}
-	})
+		return textResponse("The redirected answer."), nil
+	}}
+	agent, _ := simpleLoopAgent(t, c)
+	events := mustSubmit(t, agent, "Inspect the outstanding work and explain what remains to be done.")
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("working call never started")
+	}
+	agent.Interrupt()
+	collect(t, events)
+	select {
+	case <-cancelled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("interrupt did not cancel the provider call")
+	}
+	collect(t, mustSubmit(t, agent, "Instead, answer this replacement request directly."))
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.rounds != 2 || c.sideCalls != 0 {
+		t.Fatalf("redirect used %d working and %d auxiliary calls", c.rounds, c.sideCalls)
+	}
+	if messageContentText(lastMessage(agent)) != "The redirected answer." {
+		t.Fatal("redirect did not answer")
+	}
 }
 
 func isSessionTitleCall(messages []ai.Message) bool {
@@ -201,8 +180,14 @@ func (w *interruptCallWatch) CompleteWithMessages(ctx context.Context, messages 
 	switch {
 	case isNameCall(messages) || isSessionTitleCall(messages):
 		w.title.Add(1)
-	case askedForSketch(messages) || askedToWriteHandoff(messages):
-		w.planner.Add(1)
+	default:
+		var request ai.Request
+		for _, option := range options {
+			_ = option(&request)
+		}
+		if len(request.Tools) == 0 {
+			w.planner.Add(1)
+		}
 	}
 	return w.inner.CompleteWithMessages(ctx, messages, options...)
 }

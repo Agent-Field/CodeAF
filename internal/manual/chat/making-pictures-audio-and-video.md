@@ -46,7 +46,7 @@ and folder; an existing file there is overwritten, exactly as `write` would.
 `aspect_ratio` (for example `16:9`) and `size` (for example `1024x1024`) are
 passed to the image model untouched. Leave them out for its own default.
 
-## Do I only get a file path, or can I see the image you made?
+## Do I only get a file path, can I see the image you made, and how do I find the file for an image you generated?
 
 **You see it, in colour, in the terminal, without doing anything at all.**
 

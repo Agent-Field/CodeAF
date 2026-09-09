@@ -1248,9 +1248,8 @@ func TestAHandOutOfRoundsLeadsWithItAndQuotesWhatItWasDoing(t *testing.T) {
 	}
 }
 
-// AND THE BUDGET IS COUNTED AT THE ROUND BOUNDARY, which is the same boundary
-// the turn's own price is counted at (checkpoint.go). One batch is one round
-// however many calls are in it.
+// A hand's own budget counts completed tool batches, regardless of how many
+// calls execute concurrently inside each batch.
 func TestTheHandLeashCountsRoundsAndThenEndsTheTurn(t *testing.T) {
 	stopped := false
 	leash := &handLeash{limit: 3}
@@ -1267,11 +1266,8 @@ func TestTheHandLeashCountsRoundsAndThenEndsTheTurn(t *testing.T) {
 	}
 }
 
-// THE FORK CALL ITSELF IS ONE ROUND AND IT IS A CHEAP ONE. The meter prices a
-// turn in FINISHED TOOL ROUNDS ([checkpointMeter.round], counted once per batch
-// at the step boundary), and `fork` is one call in one batch that returns in the
-// time it takes to spawn — so the hands' own sixty rounds of work are not the
-// caller's rounds, and the caller does not stop being able to spend its own.
+// The caller can continue after one fork call while all its children are still
+// working. Their independent tool rounds do not block the caller's next step.
 func TestTheForkCallIsOneCheapRoundOfTheCallersOwnPrice(t *testing.T) {
 	completer := newForkCompleter(0)
 	release := make(chan struct{})
@@ -1312,11 +1308,6 @@ func TestTheForkCallIsOneCheapRoundOfTheCallersOwnPrice(t *testing.T) {
 		t.Fatalf("the hands only made %d requests between them, so the test proved nothing", handRequests)
 	}
 
-	// And the meter itself, at the unit it counts in: one batch, one round.
-	meter := &checkpointMeter{}
-	if meter.round(true); meter.rounds != 1 {
-		t.Fatalf("one finished batch counted as %d rounds", meter.rounds)
-	}
 }
 
 // A HAND OUTLIVES THE TURN, AND THE PERSON'S INTERRUPT IS WHAT ENDS IT.
@@ -1377,9 +1368,7 @@ func TestTheCallersInterruptStopsItsHands(t *testing.T) {
 
 // ── the line the person reads ───────────────────────────────────────────────
 
-// PINNED AS AN EXACT STRING, exactly as the ceiling and split lines are: it is
-// read on a turn nobody asked to be interrupted on, and the wording IS the
-// feature.
+// The explicit fork announces its concurrent work with one stable sentence.
 func TestTheForkLineIsTheLineAndCarriesNoMachinery(t *testing.T) {
 	const want = "three hands on it · each one folds in as it lands"
 	if got := forkNote(3); got != want {
@@ -1394,9 +1383,7 @@ func TestTheForkLineIsTheLineAndCarriesNoMachinery(t *testing.T) {
 			t.Errorf("the line has a numeral in it: %q", line)
 		}
 	}
-	if forkNote(3) == checkpointSplitNote || forkNote(3) == checkpointCeilingNote {
-		t.Error("the fork says what a handoff says, and they are opposite moves")
-	}
+
 }
 
 // AND IT IS THE ONE THING THE PERSON GETS, said once, before the wait.

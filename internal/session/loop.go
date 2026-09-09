@@ -271,48 +271,9 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		return completed
 	}
 
-	// AND ONE MORE QUESTION ABOUT THE SAME SENTENCE, ASKED BEFORE THE MODEL IS
-	// SENT ANYTHING AND ANSWERED WHILE IT IS THINKING: is what they just typed
-	// WORK? A cheap judge reads the REQUEST — not an answer, because there isn't
-	// one yet — and a both-yes converts this turn into a task at the next step
-	// boundary below (route_judge.go).
-	//
-	// IT IS ASKED HERE BECAUSE THE MODEL WILL NOT ASK IT LATER. The prompt teaches
-	// mid-turn escalation and the belt carries propose_task, and a measured chat
-	// message with four independent pieces of work in it was still ground out
-	// inline over ninety tool rounds, twice: a model deep in tool momentum does
-	// not stop to reach for a verb it rarely uses. So the decision is made at this
-	// seam, where it is the harness's to make.
-	//
-	// AND IT IS ASKED WITHOUT STOPPING ANYTHING, which is the difference between
-	// this line and the one above it. It used to hold the turn against a deadline
-	// shorter than the judge's own floor latency, so it answered nothing and cost
-	// every message the wait; now it RACES the turn and the loop simply carries the
-	// handle. A no is free because nobody ever waits for it, and the turn below
-	// runs exactly as it did before this existed.
-	race := a.routeAhead(ctx, user)
-	// AND THE RACE DIES WITH THE TURN. A verdict that lands after the answer has
-	// is a verdict nobody may spend — the post-turn judge has already read that
-	// turn, and a task starting on top of a finished answer is the surprise this
-	// whole road is built to avoid — so the end of the turn, by any of its exits,
-	// is the end of the question too.
-	defer race.end()
+	// Explicit tools decide when work is delegated. An ordinary request does
+	// not start a second model pass to classify itself before the answer.
 
-	// AND THOSE TWO ARE THE ONLY QUESTIONS ASKED HERE. A turn used to be able to
-	// be a request for an ADAPTIVE RUN — the planned graph of nodes in
-	// orchestrate.go — read off an anchored cue at the head of what somebody
-	// typed, and that cue was routed from exactly here. IT IS GONE, AND NO CHAT DOOR REACHES THE PLANNED DAG
-	// ANY MORE. Somebody who types `orchestrate the migration` gets an ordinary
-	// turn: the model answers it, and if it reads as work the route judge starts
-	// a task on the one road every other piece of work takes (route_judge.go).
-	// That is ABSENCE AND NOT REFUSAL — nothing special-cases those words,
-	// nothing says no to them, and there is no phrasing that gets a run instead.
-	//
-	// THE ENGINE ITSELF IS UNTOUCHED, and its chat-side wiring is kept
-	// deliberately rather than ripped out: [Agent.RunOrchestrate], the roster
-	// family, the fuel gate, the snapshot and steering seams a run's page is
-	// drawn from, and [Config.OrchestrateRunner] all stand. What drives
-	// internal/orchestrate today is cmd/harness-design, on a driver of its own.
 	// A saved program from /subharness is NOT a run — it is a task node started
 	// by its own runner (subharness_contract.go) — so nothing in a conversation
 	// enters that package by any road. The pieces of orchestrate.go that no chat
@@ -546,12 +507,6 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// while something is already being done about it.
 	a.watchLaneRescue(model, hedge)
 
-	// usedTools says this turn touched the belt at all. It is the one fact the
-	// route judge cannot see from outside the loop (route_judge.go): a turn that
-	// called tools was already work of some size, and asking whether work should
-	// have been work is a question with no useful answer.
-	usedTools := false
-
 	// overflowCompacted bounds the compact-and-retry answer to a context
 	// overflow at one pass per turn. A second overflow after a successful
 	// compaction is not a context problem this loop can fix by shrinking
@@ -574,13 +529,6 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// fifteen seconds — and because the ladder it is walked against is the
 	// transport ladder, which is a budget for a piece of work and not for a line.
 	emptyReplies := 0
-
-	// meter is what this turn has COST, in finished tool rounds, priced against
-	// what handing it over would cost (checkpoint.go). It belongs to the turn for
-	// the reason the loop window and the change ledger do: it is a fact about one
-	// answer, and a meter that remembered yesterday's rounds would move work out
-	// of a conversation on the strength of a conversation that already ended.
-	meter := &checkpointMeter{}
 
 	// TOOL COMPACTION MAY ONLY TOUCH HISTORY THAT WAS FROZEN BEFORE THIS TURN'S
 	// FIRST REQUEST. Every result appended below will have appeared verbatim in
@@ -781,57 +729,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// check that follows weighs what the next request will actually carry.
 			episode.preDecision(ctx)
 			a.maybeCompact(ctx, hub)
-			// AND BEFORE THE TURN IS ALLOWED TO END: DID THE ASK END WITH IT?
-			//
-			// A turn stops when the model emits no tool call, and until this line
-			// nothing anywhere checked whether that stop meant the work was finished.
-			// It very often does not — "I've finished the parser, next I'll wire the
-			// handlers" ends a turn exactly as firmly as a finished job does — and on
-			// a measured ten-hour run every harness in the comparison, this one
-			// included, stopped with hours of the ask unused.
-			//
-			// So the same reader the marks use is shown the same account of the work
-			// and asked the same remains question the ceiling asks (checkpoint.go). A
-			// turn whose last words put a question to the PERSON is never re-opened,
-			// because it is waiting rather than stopping; everything else that is not
-			// finished is re-opened with one line saying what is left, ON THE SAME
-			// METER — so the ceiling still bounds it and a re-opened turn that reaches
-			// the ceiling hands off exactly as any other does.
-			//
-			// AND A TURN THAT BROKE IS NOT A TURN THAT STOPPED SHORT. The whole
-			// response goes down rather than its text, because the question this
-			// answers is about how the step ENDED and not about what it said
-			// ([turnBroke]). The other way a turn ends badly — a call that
-			// errored — never arrives here at all: the error path above returns
-			// before the loop reaches this line, and that is deliberate.
-			//
-			// AND THE PERSON IS TOLD IT IS HAPPENING. Everything from the
-			// model's last word to the end of the turn is a gate reading an
-			// answer, and every one of those gates is another model call: a
-			// recon watched this gap run for minutes with the surface drawing
-			// nothing but a pulse, because the request the phase clock was
-			// following had finished and the ones underneath these lines are
-			// made without the turn's stream (checkpoint.go, route_judge.go).
-			a.tellPhase(provider.PhaseChecking, "whether the work is finished", time.Now())
-			again, over := a.checkpointReopen(ctx, hub, user, meter, &turn, started, model, response)
-			a.endPhase()
-			if over {
-				return true
-			} else if again {
+			// Declared checks and work already running can still require a follow-up.
+			// A completed answer itself needs no second model's certification.
+
+			if a.continueAfterExecutionFacts(ctx, hub, response) {
 				continue
 			}
-			// AND THE LAST QUESTION OF THE TURN, asked only of a turn that answered
-			// in words alone: should that have been WORK? It is the same judge the
-			// front of this function asked about the request, reading what the
-			// request alone could not have told it. A second small model reads
-			// what was asked and the shape of what came back, and a yes STARTS it as
-			// a task and says so on the transcript (route_judge.go). It is silent
-			// when it cannot work, it is rate-limited to one start every few turns,
-			// and it is asked before the turn is sealed so that the work it starts is
-			// on the rail by the time the person reads the answer.
-			a.tellPhase(provider.PhaseChecking, "whether that should be work", time.Now())
-			a.routeJudge(ctx, hub, user, usedTools, response.Text())
-			a.endPhase()
+
 			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
 			// The name comes after the turn is done and before the hub closes:
 			// the person is not kept waiting on a title, and the event still has
@@ -857,7 +761,6 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		a.recordAssistant(assistant, reasoning.snapshot())
 		visibleText := strings.TrimSpace(messageContentText(assistant)) != ""
 		partial.reset()
-		usedTools = true
 
 		// ── THE ENFORCED RUNG OF A PROCESS RULE (processrule.go) ──
 		//
@@ -874,9 +777,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// anything after its advisory has been said twice into an unbroken
 		// silence — so this is a map lookup on the ordinary path.
 		//
-		// IT IS A LINE HERE RATHER THAN A PRE-ACTION HOOK for [Agent.checkpointRound]'s
-		// reason: it may STOP something, and hooks.go's law reserves that for the
-		// loop that owns the turn's usage, request and meter.
+		// The loop owns stopping a turn; its feedback hooks only record evidence.
 		if hold, held := episode.holdSubmission(submission{calls: calls, visibleText: visibleText}); held {
 			if hold.stop {
 				return a.stopForProcessRule(ctx, hub, calls, hold, &turn, started, model)
@@ -929,54 +830,9 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// next request has not been assembled, and a note dropped here rides into
 		// it exactly as a person's steering does.
 		episode.postFeedback(ctx, hub, calls, results, visibleText)
-		// A THIRD LOOP SIGNAL ENDS THE TURN. Post-feedback can observe the
-		// trajectory but does not own the request, usage or checkpoint meter, so it
-		// leaves this bit on the episode and the turn spends it here through the
-		// same governed hand-off as the ordinary checkpoint ceiling. If that road
-		// is unavailable, the helper still seals the turn with an honest line about
-		// what was left rather than letting a fourth warning disappear into it.
-		if episode.loopHandoff && a.handOverLoopingTurn(ctx, hub, user, meter, &turn, started, model) {
-			return true
-		}
+		// Recovery feedback stays in the conversation. Counts of rounds, writes
+		// or repeated observations do not move this work to another agent.
 
-		// AND THE RACE STARTED AT THE FRONT OF THE TURN IS ASKED WHETHER IT HAS
-		// ANSWERED YET (route_judge.go). It is a non-blocking read: a question still
-		// in flight costs this boundary nothing and gets asked again at the next one.
-		// A both-yes ENDS NOTHING — it tightens the meter below, so the reading of
-		// the work happens at this boundary rather than after the full handoff
-		// price. It stands above that line because it feeds it, and because a
-		// verdict read after the meter had already counted this round would arrive
-		// one boundary too late to move the mark it is pulling down.
-		a.routeTriage(race, meter)
-
-		// AND THE PRICE OF THE ANSWER IS READ, at the same boundary and against
-		// what handing it over would cost instead (checkpoint.go). The two prior
-		// answers to a grinding turn both decide BEFORE there is any evidence —
-		// the prompt teaches a judgement the model forgets under momentum, and the
-		// route judge reads a request nobody has worked on yet — so this is the
-		// one reading taken while the cost is a fact. At each geometric mark a
-		// sidecar on the tier that thinks is shown the transcript and asked to
-		// sketch what is left; a sketch with independent parts in it ends the turn
-		// there, and past the last mark the harness stops reading, ends the turn,
-		// and moves what is left onto the one road, where the work runs supervised.
-		//
-		// NOTHING OF THAT REACHES THE RUNNING MODEL. The question is asked beside
-		// the turn and never inside it, which is the whole of the wave that measured
-		// it: a model deep in tool momentum answers a mid-turn question with a tool
-		// call up to half the time.
-		//
-		// IT IS A LINE HERE RATHER THAN A HOOK because it may STOP something, and
-		// the control plane's law is that pre-action is the only hook that may
-		// (hooks.go). It is the one seam left in this loop that can end a turn out
-		// of a judgement, and a false is the turn carrying on exactly as it would
-		// have.
-		if a.checkpointRound(ctx, hub, user, meter, &turn, started, model, calls, nil) {
-			return true
-		}
-
-		// The ordinary stub citizen remains an end-of-turn pass: running it here
-		// would rewrite old turns in the middle of this one and change its cache
-		// economics. Only the current-turn fold belongs at every step boundary.
 		a.foldTurnOutputs(episode.seenThrough, episode.consumedReads, hub)
 		a.maybeCompact(ctx, hub)
 	}
@@ -3830,13 +3686,6 @@ const (
 	// line ([Agent.addFoldedUsageAs]) — the tag is for the transcript, where the
 	// question "which of this turn's tokens were the hands'" is asked.
 	auxRoleHand = "hand"
-	// auxRoleHandoff is the fifth, and it is the one that names REAL MONEY ON THE
-	// MASTERMIND TIER. The brief a handed-over turn gives its worker is written by
-	// a second model at the end of a turn the person did not ask for a second model
-	// on (checkpoint.go's [Agent.writeHandoff]); without the tag its line is an
-	// anonymous errand at the dearest price in the catalog, which is precisely the
-	// shape of bill the mark reader's own journal line exists because of.
-	auxRoleHandoff = "handoff"
 )
 
 // addAuxiliaryUsageAs is [Agent.addAuxiliaryUsage] with the role named. It is a

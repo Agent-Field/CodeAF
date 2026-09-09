@@ -245,36 +245,26 @@ var beltFacts = []beltFact{{
 // handoffFacts is `## Work or words`: the ways work leaves this turn, one row
 // per verb, so that the list a model reads is the list of verbs it has.
 //
-// THE LEAD-IN RIDES `propose_task` AND NOT THE LIST. "Launch first, then
-// answer" is the instruction of an agent that has somewhere to launch at; on
-// the floor of the tree there is nowhere, and the truth there is the opposite
-// instruction — the work is yours, so open it. Everything else in the section
-// names no verb and stays in the page for everybody: what a hand-off costs,
-// that the question is asked again while you work, and that what you learned
-// goes with it.
+// THE DELEGATION VERB RIDES ITS OWN PREDICATE. A conversation and a worker that
+// may fan out can name `propose_task`; a floor worker and a standing check cannot.
+// The absent case still teaches ownership of the work without promising a verb
+// that shape does not carry. The general completion rule remains in system.md
+// because every shape owns the answer it is producing.
 var handoffFacts = []beltFact{{
 	tools: []string{"propose_task"},
 	holds: Config.mayProposeTask,
-	present: "WORK — research across sources, changes across files, anything with several\n" +
-		"independent parts, anything they would otherwise watch a spinner for — is NOT\n" +
-		"yours to do inline. Launch first, then answer:\n" +
-		"  - WIDE WORK — a sweep across many files, research across many sources, the\n" +
-		"    same change over many independent items: ONE `propose_task` with `wide`\n" +
-		"    set. That is the default road: the worker opens the material and hands the\n" +
-		"    real parts out under itself, each a worker in a copy of its own,\n" +
-		"    folding their reports into one deliverable. Do not decompose it\n" +
-		"    here, since the parts are only visible from inside, and never split related\n" +
-		"    work, which shards the context it shares.\n" +
-		"  - One self-contained linear job: `propose_task`, without `wide`.",
-	absent: "WORK IS YOURS TO DO HERE. There is nowhere to launch it at from where you\n" +
-		"stand, so a sweep across many files, research across many sources or the same\n" +
-		"change over many items is work you open and carry yourself, in the order that\n" +
-		"finishes it.",
+	present: "Material can reveal wider work after you begin. When independent work benefits\n" +
+		"from its own watched room, use `propose_task` deliberately and carry what you\n" +
+		"have learned below with it. The work in front of you decides; no keyword, size\n" +
+		"label or automatic reader decides for you.",
+	absent: "Material can reveal wider work after you begin. There is no separate task door\n" +
+		"here, so complete it with the tools you have; do not stop merely because part\n" +
+		"of it would benefit from its own room.",
 }, {
 	tools: []string{"fork"},
 	holds: Config.mayFork,
-	present: "  - SEVERAL PARTS OF THE REPLY YOU ARE ALREADY WRITING, on files that do not\n" +
-		"    touch: `fork`, mid-work only, once you can name the slices.",
+	present: "When independent parts can be completed concurrently inside this answer, use\n" +
+		"`fork` deliberately once you can name the slices and then integrate their findings.",
 	// A hand is told nothing, because the fork is one deep and there is no
 	// second-best road to point it at (fork.go's forkTools).
 	absent: "",

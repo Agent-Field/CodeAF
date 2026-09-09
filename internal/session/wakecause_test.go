@@ -28,17 +28,23 @@ const (
 	markerLine   = "task 1 finished: the marker value is QUARTZLINE"
 )
 
-// asksSeen collects every digest a remains-reader was actually shown, which is
-// the only place the ask a turn was judged against can be observed from outside.
+// asksSeen records the latest result context supplied to the main model.
 type asksSeen struct {
-	mu   sync.Mutex
-	seen []string
+	mu     sync.Mutex
+	seen   []string
+	latest string
 }
 
 func (a *asksSeen) add(messages []ai.Message) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.seen = append(a.seen, messageText(messages[len(messages)-1]))
+	var context strings.Builder
+	for _, message := range messages {
+		context.WriteString(messageText(message))
+		context.WriteString("\n")
+	}
+	a.seen = append(a.seen, context.String())
+	a.latest = messageText(messages[len(messages)-1])
 }
 
 func (a *asksSeen) all() []string {
@@ -58,21 +64,18 @@ func (a *asksSeen) lastAsk() string {
 
 // delegateThenAnswerSteps is the measured shape as a script: hand the build off,
 // answer the unrelated question inline, and report the marker when the landing
-// wakes a turn. Everything else is the sidecar's.
-func delegateThenAnswerSteps(reader *asksSeen, remains func() string) []step {
+// wakes a turn. No completion sidecar participates.
+func delegateThenAnswerSteps(reader *asksSeen) []step {
 	steps := make([]step, 60)
 	for index := range steps {
 		steps[index] = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
-			if askedForRemains(messages) {
-				reader.add(messages)
-				return textResponse(remains()), nil
-			}
-			if answer, handled := checkpointSidecar(messages, remains); handled {
-				return answer, nil
-			}
 			asked := userTextIn(messages)
 			switch {
+			case strings.Contains(asked, "exited 127"):
+				reader.add(messages)
+				return textResponse("The requested build failed: ./slow-build.sh exited 127."), nil
 			case strings.Contains(asked, "QUARTZLINE"):
+				reader.add(messages)
 				return textResponse("Task 1's report landed: the marker is QUARTZLINE."), nil
 			case strings.Contains(asked, "checksum word"):
 				return textResponse("CINNABAR spelled backwards in capitals: " + reversedWord), nil
@@ -109,9 +112,7 @@ func landNode(node *TaskNode, state TaskState, report string) {
 // ANSWERED A TURN EARLIER.
 func TestAWokenTurnIsReadAgainstTheRequestItsResultBelongsTo(t *testing.T) {
 	var reader asksSeen
-	completer := &scriptedCompleter{steps: delegateThenAnswerSteps(&reader, func() string {
-		return checkpointNothingLeft
-	})}
+	completer := &scriptedCompleter{steps: delegateThenAnswerSteps(&reader)}
 	agent := checkpointAgent(t, completer)
 	graph := stubbedGraph(agent, func(node *TaskNode) {})
 
@@ -152,9 +153,11 @@ func TestAWokenTurnIsReadAgainstTheRequestItsResultBelongsTo(t *testing.T) {
 	// AND NOT THE QUESTION THAT WAS ALREADY ANSWERED. This is the negative half:
 	// with the ask taken from the newest thing typed, the checksum question is
 	// what a reader is handed and what it reports as undone.
-	head, _, _ := strings.Cut(shown, checkpointDigestDone)
-	if strings.Contains(head, "checksum") {
-		t.Errorf("the reader was asked about an unrelated question answered a turn earlier:\n%s", head)
+	reader.mu.Lock()
+	latest := reader.latest
+	reader.mu.Unlock()
+	if strings.Contains(latest, "checksum") {
+		t.Errorf("the reader was asked about an unrelated question answered a turn earlier:\n%s", latest)
 	}
 	if strings.Contains(transcriptText(agent), checkpointCarryOnLead) {
 		t.Errorf("the woken turn was carried on:\n%s", transcriptText(agent))
@@ -166,20 +169,8 @@ func TestAWokenTurnIsReadAgainstTheRequestItsResultBelongsTo(t *testing.T) {
 
 // A FAILED RESULT IS STILL READ AGAINST ITS OWN REQUEST, AND STILL REMEDIATED.
 func TestAFailedResultIsReadAgainstTheRequestItWasFor(t *testing.T) {
-	const left = "the build never produced a marker, so nothing has been reported"
-
 	var reader asksSeen
-	var readings int
-	var mu sync.Mutex
-	completer := &scriptedCompleter{steps: delegateThenAnswerSteps(&reader, func() string {
-		mu.Lock()
-		defer mu.Unlock()
-		readings++
-		if readings == 1 {
-			return left
-		}
-		return checkpointNothingLeft
-	})}
+	completer := &scriptedCompleter{steps: delegateThenAnswerSteps(&reader)}
 	agent := checkpointAgent(t, completer)
 	graph := stubbedGraph(agent, func(node *TaskNode) {})
 
@@ -200,9 +191,12 @@ func TestAFailedResultIsReadAgainstTheRequestItWasFor(t *testing.T) {
 	waitFor(t, "the failure to be read for what remains", func() bool {
 		return reader.lastAsk() != ""
 	})
-	waitFor(t, "the turn to be carried on", func() bool {
-		return strings.Contains(transcriptText(agent), checkpointCarryOnLead+left)
+	waitFor(t, "the failure to be reported", func() bool {
+		return strings.Contains(transcriptText(agent), "The requested build failed:")
 	})
+	if !strings.Contains(reader.lastAsk(), "exited 127") {
+		t.Fatalf("the actual failure was omitted: %s", reader.lastAsk())
+	}
 
 	if shown := reader.lastAsk(); !strings.Contains(shown, node.request()) {
 		t.Errorf("a failed result was not read against its own request.\nwant to contain: %q\ngot:\n%s",

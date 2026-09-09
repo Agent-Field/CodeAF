@@ -86,10 +86,6 @@ func TestTheLedgerTellsCreatedFromModified(t *testing.T) {
 	if err := os.WriteFile(old, []byte("original\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// What the file held BEFORE the turn, digested here while it is still there
-	// to digest — which is the whole reason the ledger takes its own copy at
-	// pre-action ([changeLedger.PreAction]).
-	original := fileDigest(old)
 	episode := agent.newEpisode()
 
 	touchThrough(t, episode, workspace, revertWriteCall("c1", "old.md"), "edited\n")
@@ -105,73 +101,18 @@ func TestTheLedgerTellsCreatedFromModified(t *testing.T) {
 	if changes[1].shown != "new.md" || !changes[1].created {
 		t.Errorf("new.md recorded as %+v, want a creation", changes[1])
 	}
-	// AND THE DIGEST IS THE ONE FROM BEFORE THE WRITE. Taken a moment later it
-	// would be a digest of the session's own work, and every file the session
-	// touched would read as unchanged forever after.
-	if changes[0].before != original {
-		t.Errorf("old.md's before-digest is %q, want the content from before the write (%q)", changes[0].before, original)
-	}
-	if changes[0].before == fileDigest(old) {
-		t.Errorf("old.md's before-digest is the content the write left behind: %q", changes[0].before)
-	}
-	// A FILE THAT WAS NOT THERE DIGESTS AS NOTHING, which is what makes a created
-	// file differ from whatever it holds now.
-	if changes[1].before != "" {
-		t.Errorf("new.md was digested before it existed: %q", changes[1].before)
-	}
 }
 
-// TWO WRITES TO ONE PATH KEEP THE DIGEST FROM BEFORE THE FIRST OF THEM.
-//
-// A batch's calls run in parallel, so two writes to one path are two pre-actions
-// racing. The measurement is taken inside [fileLedger.note], under the ledger's
-// own lock and only on the first sighting, so the second call cannot record what
-// the first one left behind however the two interleave — and the "before" the
-// terminal reading compares against is the content the TURN opened on rather
-// than the content the previous call wrote.
-func TestTwoWritesToOnePathKeepTheDigestFromBeforeTheFirst(t *testing.T) {
+// The first existence measurement stands across repeated writes. Otherwise a
+// second edit could relabel a newly created file as modified and defeat revert.
+func TestTwoWritesToOnePathKeepTheOriginalOwnership(t *testing.T) {
 	agent, workspace := newTestAgent(t, &scriptedCompleter{}, nil)
-	path := filepath.Join(workspace, "_make.py")
-	if err := os.WriteFile(path, []byte("def make(): ...\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	opened := fileDigest(path)
 	episode := agent.newEpisode()
-
-	// The interleaving that has to hold: the first call is sighted and writes,
-	// and only THEN is the second call sighted — so its own stat would see the
-	// first call's output.
-	touchThrough(t, episode, workspace, revertWriteCall("c1", "_make.py"), "def make(): return 1\n")
-	touchThrough(t, episode, workspace, revertWriteCall("c2", "_make.py"), "def make(): return 2\n")
-
+	touchThrough(t, episode, workspace, revertWriteCall("c1", "new.md"), "first\n")
+	touchThrough(t, episode, workspace, revertWriteCall("c2", "new.md"), "second\n")
 	changes := episode.changes.list()
-	if len(changes) != 1 {
-		t.Fatalf("the ledger holds %d changes for one path, want 1 (%+v)", len(changes), changes)
-	}
-	if changes[0].before != opened {
-		t.Fatalf("the before-digest is %q, want the content the turn opened on (%q)", changes[0].before, opened)
-	}
-	if changes[0].created {
-		t.Fatalf("a file the project already had was recorded as created: %+v", changes[0])
-	}
-	// AND THE SECOND SIGHTING CHANGES NOTHING, whichever order it arrives in: a
-	// note taken after both writes still finds the path known and returns.
-	episode.changes.note(path)
-	if again := episode.changes.list(); again[0].before != opened {
-		t.Fatalf("a later sighting overwrote the before-digest: %q", again[0].before)
-	}
-
-	// AND THE WORK IS STILL IN THE TREE, so the session made something; put the
-	// file back and it has not.
-	agent.rememberChange(changes[0])
-	if !agent.remainsFor("fixed", readerLine{}).Made {
-		t.Fatal("two edits that left the file different were not counted as work the session made")
-	}
-	if err := os.WriteFile(path, []byte("def make(): ...\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if agent.remainsFor("fixed", readerLine{}).Made {
-		t.Fatal("a file written back to what the turn opened on counted as work the session made")
+	if len(changes) != 1 || !changes[0].created {
+		t.Fatalf("the first creation was relabeled: %+v", changes)
 	}
 }
 
@@ -350,10 +291,8 @@ func TestTheOfferNamesHowManyFilesWouldBeReverted(t *testing.T) {
 	}
 }
 
-// The old third-rung recovery question must not survive the checkpoint hand-off
-// law. With no consent surface the turn ends honestly and, most importantly,
-// does not spend the dormant revert offer against work on disk.
-func TestTheThirdRungEndsWithoutRevertingTheTurn(t *testing.T) {
+// Repetition feedback cannot revert the caller's work or replace its answer.
+func TestRepeatedCallsDoNotRevertTheTurn(t *testing.T) {
 	completer := &scriptedCompleter{steps: repeatedCalls("write", `{"path":"a.md","content":"loop\n"}`, 7)}
 	agent, workspace := newTestAgent(t, completer, func(config *Config) {
 		config.AskConsent = false
@@ -365,14 +304,14 @@ func TestTheThirdRungEndsWithoutRevertingTheTurn(t *testing.T) {
 	}
 	collected := collect(t, events)
 
-	if fired := nudgeEvents(collected); len(fired) != 3 {
-		t.Fatalf("nudges: got %d, want 3 — at the third, fifth and seventh call", len(fired))
+	if fired := nudgeEvents(collected); len(fired) != loopNudgeCeiling {
+		t.Fatalf("nudges: got %d, want %d bounded advice events", len(fired), loopNudgeCeiling)
 	}
 	if _, err := os.Stat(filepath.Join(workspace, "a.md")); err != nil {
 		t.Fatalf("the loop ceiling reverted the turn without consent: %v", err)
 	}
-	if notice, ok := firstOfKind(collected, EventNotice); !ok || notice.Text != loopLeftUndoneNote {
-		t.Fatalf("left-undone notice = %q, present=%v", notice.Text, ok)
+	if got := messageContentText(lastMessage(agent)); got != "done" {
+		t.Fatalf("the detector replaced the final answer: %q", got)
 	}
 	if notes := transcriptNotes(agent); len(notes) != loopNudgeCeiling {
 		t.Fatalf("notes: got %d, want %d before the ceiling", len(notes), loopNudgeCeiling)

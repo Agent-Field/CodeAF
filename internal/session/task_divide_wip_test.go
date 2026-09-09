@@ -834,41 +834,30 @@ func TestAFamilyWhoseWorkWillNotCommitHandsNothingOut(t *testing.T) {
 	}
 }
 
-// ── the sketch road ─────────────────────────────────────────────────────────
-
-// THE ROAD WHERE NOTHING HAS BEEN WRITTEN YET. A division drawn before the
-// worker's first request is submitted by the harness on its behalf
-// (task_divide_sketch.go), and there is nothing on disk to check point — so the
-// commit is a no-op by construction rather than by a special case written for
-// it. The world is still pinned, because a parent that writes AFTER this would
-// otherwise reach the parts that start late and not the ones that start early.
-func TestASketchRoadDivisionWritesNoCommit(t *testing.T) {
-	family := newWipFamilyFrom(t, TaskModeWorktree, drawnSpec(countedSketch("A | B | C",
-		"A is the flaking auth test, B is the http client major version, C is the release notes for 2.4")), nil)
+// A worker dividing before its first write still pins the current world, but
+// has no changed files to commit. This reaches the same explicit division door.
+func TestAnExplicitDivisionBeforeAnyWritesCreatesNoCommit(t *testing.T) {
+	family := newWipFamily(t, TaskModeWorktree, nil)
 	// Nothing runs: what is under test is the door, and a part landing would move
 	// the family branch under the assertion below.
 	family.graph.run = func(*TaskNode) {}
 	before := strings.TrimSpace(gitOut(t, family.tree.dir, "rev-parse", "HEAD"))
 
-	said, person := family.worker.divideFromSketch(context.Background())
-	if person != "" {
-		t.Fatalf("the sketch road came back with a person's own job: %q", person)
-	}
-	if said == "" {
-		t.Fatal("the harness submitted the drawing and nothing was handed out")
+	if answer := family.divide(t); !strings.Contains(answer, "split into 2 parts:") {
+		t.Fatalf("the explicit division did not admit its parts: %s", answer)
 	}
 	if kids := family.graph.children(family.parent.id); len(kids) == 0 {
-		t.Fatal("the drawing produced no parts at all, so this proves nothing about the commit")
+		t.Fatal("the division produced no parts at all, so this proves nothing about the commit")
 	}
 	if now := strings.TrimSpace(gitOut(t, family.tree.dir, "rev-parse", "HEAD")); now != before {
 		t.Fatalf("the family branch moved from %s to %s with nothing written to commit", before, now)
 	}
 	line := onlyDivision(t, family.journal)
 	if line.Checkpoint != "" {
-		t.Fatalf("a division drawn before the first request wrote checkpoint %q", line.Checkpoint)
+		t.Fatalf("a division before any writes wrote checkpoint %q", line.Checkpoint)
 	}
 	if line.Frozen != before {
-		t.Fatalf("the sketch road froze %q, want the family tree's own HEAD %q", line.Frozen, before)
+		t.Fatalf("the explicit division froze %q, want the family tree's own HEAD %q", line.Frozen, before)
 	}
 }
 

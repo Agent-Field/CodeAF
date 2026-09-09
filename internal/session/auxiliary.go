@@ -98,7 +98,7 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	//
 	// THE FLOOR IS a.model AND NOT THE TURN'S LATCHED MODEL, because it is the
 	// same live conversation model every other errand already passes as its own
-	// floor (title.go, taskname.go, route_judge.go all read it live). A /model
+	// floor (title.go and taskname.go read it live). A /model
 	// typed mid-turn lands at the next Submit either way ([Agent.SetModel]), so
 	// reading it here moves the crew-only rungs WITH the rest of the errands
 	// rather than one turn apart from them.
@@ -335,8 +335,7 @@ func (e errStr) Error() string { return string(e) }
 // ledger.
 func errandRole(role roles.Role) lane.Role {
 	switch role {
-	case roles.RoleRouter, roles.RoleRouterConfirm, roles.RoleMarkReader,
-		roles.RoleGuardian, roles.RoleAuditor:
+	case roles.RoleGuardian, roles.RoleAuditor:
 		return lane.RoleJudge
 	case roles.RoleReflex, roles.RoleConsolidate:
 		return lane.RoleMemory

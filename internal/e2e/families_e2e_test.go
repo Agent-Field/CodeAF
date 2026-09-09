@@ -123,8 +123,7 @@ func pinEveryTextModel(t *testing.T) {
 var textRoles = []roles.Role{
 	roles.RoleTitle, roles.RoleCompaction, roles.RoleConsolidate, roles.RoleGuardian,
 	roles.RolePlanner, roles.RoleDesigner, roles.RoleWorker, roles.RoleAuditor,
-	roles.RoleReflex, roles.RoleRouter, roles.RoleRouterConfirm, roles.RoleMarkReader,
-	roles.RoleHandoff, roles.RoleTaskName, roles.RoleShaper, roles.RoleIntake,
+	roles.RoleReflex, roles.RoleTaskName, roles.RoleShaper, roles.RoleIntake,
 	roles.RoleDivision, roles.RoleCareful,
 }
 

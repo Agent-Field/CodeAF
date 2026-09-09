@@ -480,7 +480,8 @@ and its whole tick history stays at `jobs output <id>`.
 
 A background command exiting, a video or music render landing and a forked hand
 coming home wake a reply the same way. The tasks page has the rest of it under
-*Waiting on something, and the limit on carrying on*.
+*Waiting on something, and the limit on carrying on*. Those wakes remain; the retired
+completion-reader carry-on loop does not.
 
 ## Can you tell me when something has finished — how do I know it went quiet or stopped changing?
 

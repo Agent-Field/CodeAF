@@ -470,6 +470,8 @@ the settings pair is two tools rather than one with a read action and a write
 action: a rule is written per **tool name**, so a single tool could not have been
 free to read and asked about to write.
 
+## How a written rule changes these read defaults
+
 A rule you write about one of these tools still wins for that tool. What the
 floor removes is only the silent part: a rule written about one tool now says
 nothing whatsoever about any other.

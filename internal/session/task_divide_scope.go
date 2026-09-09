@@ -703,3 +703,9 @@ func withFamilyChecks(acceptance string, family []string) string {
 // familyChecksRule is that sentence, written down once because it is read by a
 // worker and pinned by a test, and two spellings of it would be two contracts.
 const familyChecksRule = "AND THESE CHECKS ARE THE WHOLE FAMILY'S RATHER THAN ANY ONE PART'S. They are yours to run ONCE, after every part's work has come home — not before, because until then the tree does not hold what the parts wrote:"
+
+// A missing part-specific acceptance still names the part's own scope and asks
+// for a checkable report. The division reviewer can supply a sharper condition.
+func divisionStandInDone(scope string) string {
+	return scope + " is done, and the report says how anybody else could check it"
+}

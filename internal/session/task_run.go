@@ -4824,7 +4824,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	//
 	// IT IS NOT PART OF retire, which also runs mid-loop when a provider fault
 	// sends this node round again on another model — and that node is the SAME node
-	// with the SAME parts still working for it (see `handedOut` below).
+	// with the same already-admitted children still working for it.
 	defer node.graph.stopChildren(node.id)
 
 	var (
@@ -4841,13 +4841,6 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// being the model it is running on. Empty is the ordinary case, and it is
 		// seeded below rather than declared empty.
 		movedFrom string
-		// handedOut is the receipt for the parts the harness gave away on this
-		// node's behalf before it started, and an empty string is every node that
-		// was not handed a division (task_divide_sketch.go). It is kept OUTSIDE the
-		// loop because a second worker built after a provider fault is the same node
-		// with the same parts already running: it must read the same sentence, and
-		// the division must not be put a second time.
-		handedOut string
 		// wireRetried says the second worker a wire death buys has been built,
 		// and the next one ends the node.
 		wireRetried bool
@@ -4884,43 +4877,11 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		room.speaking(child)
 		room.bill(child)
 
-		// AND THE DIVISION SOMEBODY ALREADY DREW IS PUT HERE, BEFORE THE FIRST
-		// REQUEST. A turn handed over on a mark's sketch arrives with its parts
-		// already named by a mastermind, and waiting for a cheap worker to re-derive
-		// them was measured never happening at all — so the harness submits the
-		// drawing on this worker's behalf, through the same verb and the same gates
-		// the worker's own division goes through (task_divide_sketch.go). It lands
-		// the node in the coordinating state a mid-run division lands it in, by the
-		// same road: the parts are children, so the tail of [runTaskChild] holds this
-		// node open and folds their reports.
-		//
-		// A NODE WITH NOTHING DRAWN, A ROAD THAT IS OFF, AND A DIVISION THE GATES OR
-		// THE REVIEWER REFUSED ALL ANSWER THE SAME EMPTY STRING, and the node then
-		// runs as one worker — which is what every task did before this existed.
-		//
-		// EXCEPT FOR THE ONE ANSWER THAT IS NOT ABOUT THE DIVISION. The reviewer
-		// that reads a drawn division may come back saying the work left over is
-		// not work for any worker at all, and it says so having read the parts, the
-		// brief and the evidence together, before this node has spent anything. It
-		// was measured being thrown away: a task whose whole remainder was an
-		// approving review GitHub only takes from a human ran anyway for nine
-		// minutes and $1.24, fixed a file in an empty repository looking for
-		// something it could do, and was failed by the check. So it lands here
-		// instead, needing a person, with the reader's own sentence as its report
-		// ([Agent.landNeedsPerson]) — and this line is where the saving is, because
-		// everything past it is the run, the check and the repair round.
-		if handedOut == "" {
-			var person string
-			if handedOut, person = child.divideFromSketch(ctx); person != "" {
-				return a.landNeedsPerson(node, tree, person, log)
-			}
-		}
-
 		var wrote []string
 		// AND THE CONTRACT IS BOUND TO THE COPY IT IS ABOUT TO BE ASKED IN. This
 		// is one of the two moments a worker is spoken to, and the tree is right
 		// here ([TaskNode.instructionOn]).
-		wrote, stopped, runErr = runTaskChild(ctx, child, node, withReport(node.instructionOn(tree), withReport(tree.note, handedOut)), tree.dir, a.taskLimits(node), room, log)
+		wrote, stopped, runErr = runTaskChild(ctx, child, node, withReport(node.instructionOn(tree), tree.note), tree.dir, a.taskLimits(node), room, log)
 		// The files SURVIVE the worker that wrote them. A second run starts in
 		// the same working copy, so what the first one saved is still on disk and
 		// still the node's leavings.

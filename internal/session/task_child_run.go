@@ -166,27 +166,9 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 	return run.changed, run.stopped, run.failure
 }
 
-// open is THE FIRST REQUEST, OR NONE AT ALL.
-//
-// A node that was handed a drawn division before it started has ALREADY given
-// its work away: the parts were submitted on its behalf between the worker
-// being built and this line (task_divide_sketch.go), and they are running now.
-// Asking it anything before their reports are in is buying a turn about
-// waiting — which is exactly what was measured: thirty-one requests at a five
-// second cadence, none of them able to write a line the parts were not already
-// writing, ending in the no-progress counter killing the one node that could
-// have folded them together.
-//
-// SO THE BRIEF IS QUEUED RATHER THAN ASKED. It sits on the steering queue with
-// nobody having read it, [childRun.foldParts] parks, and the turn that reads it
-// is the turn the last report starts — one request holding the brief, the
-// drawing's own "AND THIS IS YOURS, ONCE THEIR REPORTS ARE IN"
-// ([drawnDivision.afterParts]) and every part's news at once, which is the
-// integration the division was drawn for.
-//
-// EVERY OTHER NODE OPENS EXACTLY AS IT ALWAYS DID. A node with no parts out —
-// which is nearly all of them, including one that divides mid-run and is
-// already talking when it does — submits its brief here and runs.
+// open submits the brief unless this worker already has running children.
+// Existing children keep ownership across a resumed attempt; queue its brief
+// until their reports arrive rather than buying requests about waiting.
 func (r *childRun) open(instruction string) error {
 	if r.child.childrenOutstanding() {
 		r.child.enqueueNote(briefNote(instruction))

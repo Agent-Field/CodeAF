@@ -279,7 +279,7 @@ func TestCallLinesAreNotReadBackAsSpend(t *testing.T) {
 // "which errand cost this" is the whole question the aux mark could never answer.
 func TestAnErrandWritesACallLineCarryingItsRoleAndItsCost(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
-	// The measured read: a mastermind shown a whole transcript at one mark.
+	// A planner receipt uses the same accounting path as any other errand.
 	cost := 0.262
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
@@ -295,7 +295,7 @@ func TestAnErrandWritesACallLineCarryingItsRoleAndItsCost(t *testing.T) {
 			roles.TierKey(roles.TierMastermind): "vendor/mastermind",
 		})
 	})
-	if _, _, err := agent.callRole(context.Background(), roles.RoleMarkReader, "",
+	if _, _, err := agent.callRole(context.Background(), roles.RolePlanner, "",
 		[]ai.Message{textMessage("user", "what is left of this?")}); err != nil {
 		t.Fatalf("callRole: %v", err)
 	}
@@ -308,8 +308,8 @@ func TestAnErrandWritesACallLineCarryingItsRoleAndItsCost(t *testing.T) {
 		t.Fatalf("journal holds %d errand call lines, want exactly one", len(errands))
 	}
 	line := errands[0]
-	if line.Role != string(roles.RoleMarkReader) {
-		t.Errorf("the errand's line names role %q, want %q", line.Role, roles.RoleMarkReader)
+	if line.Role != string(roles.RolePlanner) {
+		t.Errorf("the errand's line names role %q, want %q", line.Role, roles.RolePlanner)
 	}
 	if line.CostUSD != cost {
 		t.Errorf("the errand's line cost %v, want the provider's own figure %v", line.CostUSD, cost)

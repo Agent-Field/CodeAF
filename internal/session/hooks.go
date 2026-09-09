@@ -205,7 +205,6 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 	// while nobody was watching it. It is registered next to the ledger because
 	// they share the episode-init/post-feedback shape and neither of them ever
 	// vetoes anything.
-	plane.register(&writeSeam{agent: a})
 	plane.register(loopDetector{agent: a})
 	plane.register(stubPass{agent: a})
 	plane.register(turnFoldPass{agent: a})
@@ -287,9 +286,6 @@ type episode struct {
 
 	// watch is the loop detector's window over this turn's calls (looped.go).
 	watch *loopWatch
-	// loopHandoff is the post-feedback detector's terminal observation. The hook
-	// cannot end a turn; loop.go reads this immediately after the chain returns.
-	loopHandoff bool
 	// changes is what this turn's successful edits and writes touched
 	// (recovery.go), and what a revert would restore.
 	changes *fileLedger

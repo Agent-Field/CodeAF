@@ -480,14 +480,10 @@ over on the world walk and is still true, and only that one read failed.
 
 ## When a turn should have been work — a run is never what starts
 
-A turn answered in words when the honest answer was work does get caught: a second small
-model reads it afterwards and can start the work for you, with one line on the transcript
-saying it did. **What it starts is always a task and never a run** — this judge has no
-planner to reach for any more, and no card either. It is *Why a task started on its own* in
-*work that runs on its own*.
-
-This is also what happens to a message that begins `orchestrate …`: it is read by the model
-like any other sentence, and the judge behind it starts a **task** if there is work in it.
+Aforge no longer asks a background judge to turn an ordinary words-only answer into a task.
+A run starts only through its own explicit command or tool, and an ordinary task starts
+through `/task`, an accepted `propose_task`, or a task worker's own task door. The main model
+chooses among words, tools, tasks, and runs from the request and the work it finds.
 
 ## What a run's planner and its nodes are told — does the run see what I said?
 

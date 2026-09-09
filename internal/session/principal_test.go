@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -71,7 +70,7 @@ func TestTheSameFailureThreeTimesStopsWithAReport(t *testing.T) {
 	if brief := steward.Report(landing); brief != "" {
 		t.Fatalf("the third identical failure still asked for another go: %q", brief)
 	}
-	decision := steward.Decide(Remains{Landed: true})
+	decision := steward.Decide(Remains{})
 	if decision.Verb != DecideStop {
 		t.Fatalf("the guard fired and the goal owner did not stop: %+v", decision)
 	}
@@ -81,7 +80,7 @@ func TestTheSameFailureThreeTimesStopsWithAReport(t *testing.T) {
 	}
 	// AND IT STAYS STOPPED. A principal that changed its mind after saying stop
 	// would be a rail with a hole in it.
-	if again := steward.Decide(Remains{Reader: "there is plenty left to do", Landed: true}); again.Verb != DecideStop {
+	if again := steward.Decide(Remains{}); again.Verb != DecideStop {
 		t.Fatalf("a stopped goal owner was talked back into working: %+v", again)
 	}
 }
@@ -99,7 +98,7 @@ func TestThreeDifferentFailuresDoNotStopTheRun(t *testing.T) {
 			t.Fatalf("%q was refused a go of its own", signature)
 		}
 	}
-	if decision := steward.Decide(Remains{Landed: true}); decision.Verb == DecideStop {
+	if decision := steward.Decide(Remains{}); decision.Verb == DecideStop {
 		t.Fatalf("three different problems stopped the run: %+v", decision)
 	}
 }
@@ -123,13 +122,11 @@ func TestAnUnsignedFailureIsNeverCountedByTheGuard(t *testing.T) {
 // the old rule ended the run here, on the strength of what the session said
 // about itself. The goal owner carries on, and the brief names both the
 // acceptance and the gap.
-func TestAnUnmetCheckCarriesTheRunOnEvenWhenTheReaderIsSilent(t *testing.T) {
+func TestAnUnmetCheckCarriesTheRunOnAfterModelCompletion(t *testing.T) {
 	steward := budgetLeft(t)
 	decision := steward.Decide(Remains{
 		Said:       "That completes the port. Everything is wired up.",
-		Reader:     "",
 		Acceptance: "the parser handles every fixture and `go build ./...` passes",
-		Landed:     true,
 		Landings:   []Landing{{ID: 1, Title: "port the parser", State: TaskDone}},
 		Checks:     []CheckRun{{Command: "go build ./...", Passed: false, Tail: "undefined: parseHeader"}},
 		// The baseline landed and the tree was clean, so this red is this run's
@@ -153,7 +150,6 @@ func TestAnUnfinishedLandingCarriesTheRunOn(t *testing.T) {
 	steward := budgetLeft(t)
 	decision := steward.Decide(Remains{
 		Acceptance: "everything asked for is done",
-		Landed:     true,
 		Landings: []Landing{
 			{ID: 1, Title: "port the parser", State: TaskDone},
 			{ID: 2, Title: "wire the handlers", State: TaskFailed},
@@ -168,148 +164,24 @@ func TestAnUnfinishedLandingCarriesTheRunOn(t *testing.T) {
 	}
 }
 
-// ── a session that changed the deliverable has finished something (#513) ────
-
-// TestAReaderNobodyCouldReachIsNotAWitnessThatWorkIsUnfinished proves C1, C3
-// and C4: completed declared checks may witness inline work only after a reader
-// call failed; silence with no reader and an unreachable reader with no check
-// both leave the original witness law standing.
-func TestAReaderNobodyCouldReachIsNotAWitnessThatWorkIsUnfinished(t *testing.T) {
-	checked := Remains{
-		Made:              true,
-		ReaderUnreachable: true,
-		Checks:            []CheckRun{{Command: "go test ./...", Ran: true, Passed: true}},
-	}
-	if !checked.finishedSomething() {
-		t.Fatal("green checks that ran did not stand in for the reader nobody could reach")
-	}
-	if unmet := checked.unmet(); len(unmet) != 0 {
-		t.Fatalf("green checked inline work still had something left: %v", unmet)
-	}
-
-	absent := Remains{Made: true}
-	if absent.finishedSomething() {
-		t.Fatal("an install with nobody to ask treated silence as a witness")
-	}
-	if unmet := absent.unmet(); len(unmet) != 1 || unmet[0] != nothingFinishedYet {
-		t.Fatalf("silence with no reader changed what is left: %v", unmet)
-	}
-
-	unanswered := Remains{Made: true, ReaderUnreachable: true}
-	if unanswered.finishedSomething() {
-		t.Fatal("an unreachable reader with no check became a witness")
-	}
-	if unmet := unanswered.unmet(); len(unmet) != 1 || unmet[0] != nothingFinishedYet {
-		t.Fatalf("an unreachable reader with no check changed what is left: %v", unmet)
-	}
-
-	unread := Remains{
-		Made:              true,
-		ReaderUnreachable: true,
-		Checks:            []CheckRun{{Command: "missing-check", Ran: false, Passed: false}},
-	}
-	if unread.finishedSomething() {
-		t.Fatal("a declared check that never ran became a witness")
-	}
-}
-
-// TestAReaderThatNamedAGapIsStillWhatIsLeft proves C5: a reader that answered
-// with a gap was reached, so green checks never stand in for it or erase what it
-// found.
-func TestAReaderThatNamedAGapIsStillWhatIsLeft(t *testing.T) {
-	const gap = "the scopes are still parsed case-sensitively"
-	remains := Remains{
-		Made:   true,
-		Reader: gap,
-		Checks: []CheckRun{{Command: "go test ./...", Ran: true, Passed: true}},
-	}
-	if remains.finishedSomething() {
-		t.Fatal("green checks overruled a reader that named a gap")
-	}
-	unmet := remains.unmet()
-	if !strings.Contains(strings.Join(unmet, "\n"), gap) {
-		t.Fatalf("the reader's gap is not what remains: %v", unmet)
-	}
-}
-
-// WORK THIS SESSION DID WITH ITS OWN HANDS IS FINISHED WORK, WITH THE READER
-// AGREEING.
-//
-// The reef cell did the whole fix inline — the change, a 196-line test file, 43
-// tests green — and never started a task. [Remains.Landed] is a reading of the
-// task graph, so it stayed false over that tree, "nothing has been finished yet"
-// was the first line of both briefs, and the standstill compared two identical
-// briefs and stopped the run over green work one second after tidying up.
-//
-// THE READER IS THE WITNESS AND IT IS REQUIRED. A session's own files are not
-// evidence about themselves; what makes inline work count is somebody who did
-// not write them saying nothing is left.
-func TestInlineWorkWithTheReaderAgreeingIsFinishedWork(t *testing.T) {
-	steward := budgetLeft(t)
-	decision := steward.Decide(Remains{
-		Said:           "The scheme parsing is fixed and the tests pass.",
-		Acceptance:     "the bearer scheme is case-insensitive and the suite passes",
-		Made:           true,
-		ReaderSaysDone: true,
-	})
-	if decision.Verb != DecideDone {
-		t.Fatalf("a session that wrote the whole fix itself was told it had finished nothing: %+v", decision)
-	}
-
-	// AND WITHOUT THE WITNESS IT IS NOT. A reader that was never asked is silence,
-	// and silence is not agreement. A failed call is carried separately now, but
-	// without a declared check that actually ran it is no stronger.
-	alone := steward.Decide(Remains{
-		Said:       "The scheme parsing is fixed and the tests pass.",
-		Acceptance: "the bearer scheme is case-insensitive and the suite passes",
-		Made:       true,
-	})
-	if alone.Verb != DecideCarryOn {
-		t.Fatalf("a session graded its own inline work with nobody agreeing: %+v", alone)
-	}
-	if !strings.Contains(alone.Brief, "nothing has been finished yet") {
-		t.Fatalf("the brief does not say what is missing:\n%s", alone.Brief)
-	}
-}
-
-// AND A READER NAMING A GAP IN A SESSION WITH NOTHING ON THE RAIL IS A GAP.
-//
-// #468's law — a settled landing outranks a reading of the transcript — stands
-// where there IS a landing. With none, the reader is the only account of the work
-// anybody has, so what it says is left is left.
-func TestAReaderNamingAGapWithNoTasksCarriesTheRunOn(t *testing.T) {
-	steward := budgetLeft(t)
-	decision := steward.Decide(Remains{
-		Said:       "I have fixed the parsing.",
-		Reader:     "the scopes are still parsed case-sensitively",
-		Acceptance: "the bearer scheme is case-insensitive and the suite passes",
-		Made:       true,
-	})
-	if decision.Verb != DecideCarryOn {
-		t.Fatalf("a gap the reader named was passed over: %+v", decision)
-	}
-	if !strings.Contains(decision.Brief, "the scopes are still parsed case-sensitively") {
-		t.Fatalf("the brief does not carry the reader's own words:\n%s", decision.Brief)
-	}
-}
-
-// AND A SESSION THAT MADE NOTHING IS STILL A SESSION THAT HAS FINISHED NOTHING.
-//
-// The control, and the sentence people actually read: no task, no files, nothing
-// to point at. Whatever the transcript sounds like, the answer is the one it
-// always was.
-func TestASessionWithNothingMadeAndNothingLandedHasFinishedNothing(t *testing.T) {
-	steward := budgetLeft(t)
-	decision := steward.Decide(Remains{
-		Said:           "That completes the port. Everything is wired up.",
-		Acceptance:     "the parser handles every fixture",
-		ReaderSaysDone: true,
-	})
-	if decision.Verb != DecideCarryOn {
-		t.Fatalf("a session that finished nothing was called finished: %+v", decision)
-	}
-	if !strings.Contains(decision.Brief, "nothing has been finished yet") {
-		t.Fatalf("the brief does not say what is missing:\n%s", decision.Brief)
+// A model's completed turn needs no file mutation or second model's approval.
+// These outcomes include work a file-tool ledger cannot describe at all.
+func TestCompletedTurnsNeedNoGenericFileWitness(t *testing.T) {
+	for _, said := range []string{
+		"The requested analysis is above; no files changed.",
+		"The remote operation finished successfully.",
+		"The obsolete file has been deleted.",
+		"The generated JSON is saved by the Python script.",
+		"Inspection found the existing behavior already correct; no change made.",
+	} {
+		t.Run(said, func(t *testing.T) {
+			s := budgetLeft(t)
+			for attempt := 0; attempt < 2; attempt++ {
+				if got := s.Decide(Remains{Said: said}); got.Verb != DecideDone || len(got.Observed) != 0 {
+					t.Fatalf("finished turn acquired a synthetic obligation: %+v", got)
+				}
+			}
+		})
 	}
 }
 
@@ -328,7 +200,6 @@ func TestASiblingThatDiedOnTheWireIsNotWorkThatIsLeft(t *testing.T) {
 	steward := budgetLeft(t)
 	decision := steward.Decide(Remains{
 		Acceptance: "the bearer scheme is case-insensitive and the suite passes",
-		Landed:     true,
 		Landings: []Landing{
 			{
 				ID: 1, Title: "bearer case sensitivity", State: TaskDone, Merged: true, Checked: true,
@@ -353,7 +224,6 @@ func TestASiblingThatDiedOnTheWireIsNotWorkThatIsLeft(t *testing.T) {
 	// out either, so it is not a gap in the ask on its own account.
 	dropped := steward.Decide(Remains{
 		Acceptance: "the bearer scheme is case-insensitive and the suite passes",
-		Landed:     true,
 		Landings: []Landing{
 			{ID: 1, Title: "bearer case sensitivity", State: TaskDone, Merged: true, Checked: true},
 			{
@@ -438,7 +308,6 @@ func TestAUnitThatFailedAtTheWorkIsStillLeft(t *testing.T) {
 	steward := budgetLeft(t)
 	decision := steward.Decide(Remains{
 		Acceptance: "the bearer scheme is case-insensitive and the suite passes",
-		Landed:     true,
 		Landings: []Landing{
 			{ID: 1, Title: "bearer case sensitivity", State: TaskDone, Merged: true},
 			{
@@ -466,7 +335,6 @@ func TestAUnitThatFailedAtTheWorkIsStillLeft(t *testing.T) {
 // silently, so the absorption is a line of its own.
 func TestAUnitWhoseWorkCameHomeAnywayIsAbsorbedAndSaidSo(t *testing.T) {
 	remains := Remains{
-		Landed: true,
 		Landings: []Landing{
 			{
 				ID: 1, Title: "bearer case sensitivity", State: TaskDone, Merged: true, Checked: true,
@@ -499,6 +367,7 @@ func TestAUnitWhoseWorkCameHomeAnywayIsAbsorbedAndSaidSo(t *testing.T) {
 	nothingChanged.Landings[1].Files = []string{"tests/reef_service/test_auth.py"}
 
 	neverCameHome := remains
+	neverCameHome.Delivery = deliveryContract{Kind: "workspace"}
 	neverCameHome.Landings[0].Merged = false
 	if left := neverCameHome.unmet(); len(left) != 2 || !strings.Contains(left[0], "changes have not reached the requested workspace") || left[1] != "Add focused tests did not finish" {
 		t.Fatalf("missing delivery and the unfinished sibling must both remain: %q", left)
@@ -564,7 +433,6 @@ func TestOnlyTheRedThisWorkTurnedRedIsWhatIsLeft(t *testing.T) {
 			steward := budgetLeft(t)
 			decision := steward.Decide(Remains{
 				Acceptance:   "the existing test suite passes (run `tox -e py`)",
-				Landed:       true,
 				Landings:     []Landing{{ID: 1, Title: "fix the subclass init", State: TaskDone, Merged: true}},
 				Checks:       tc.after,
 				WasFailing:   tc.before,
@@ -594,7 +462,6 @@ func TestACheckTheBaselineCouldNotRunIsNotAlreadyRed(t *testing.T) {
 	// COULD NOT RUN, AND RED NOW: it is left.
 	left := steward.Decide(Remains{
 		Acceptance:   "the suite passes",
-		Landed:       true,
 		Landings:     []Landing{{ID: 1, Title: "fix it", State: TaskDone, Merged: true, Checked: true}},
 		Checks:       []CheckRun{{Command: "tox -e py", Passed: false, Ran: true}},
 		WasFailing:   nil,
@@ -609,7 +476,6 @@ func TestACheckTheBaselineCouldNotRunIsNotAlreadyRed(t *testing.T) {
 	// RAN RED, AND RED NOW: it is the project's and is not left.
 	done := steward.Decide(Remains{
 		Acceptance:   "the suite passes",
-		Landed:       true,
 		Landings:     []Landing{{ID: 1, Title: "fix it", State: TaskDone, Merged: true, Checked: true}},
 		Checks:       []CheckRun{{Command: "tox -e py", Passed: false, Ran: true}},
 		WasFailing:   []string{"tox -e py"},
@@ -683,7 +549,6 @@ func TestWithNoBaselineYetNoCheckIsCountedAsNewRed(t *testing.T) {
 	steward := budgetLeft(t)
 	decision := steward.Decide(Remains{
 		Acceptance: "the suite passes",
-		Landed:     true,
 		Landings: []Landing{
 			{ID: 1, Title: "fix it", State: TaskDone, Merged: true, Checked: true},
 			{ID: 2, Title: "write the repro", State: TaskFailed, Ending: TaskEndingRefused},
@@ -704,7 +569,6 @@ func TestWithNoBaselineYetNoCheckIsCountedAsNewRed(t *testing.T) {
 	// either, so what the checks say simply is not part of this answer yet.
 	if quiet := steward.Decide(Remains{
 		Acceptance: "the suite passes",
-		Landed:     true,
 		Landings:   []Landing{{ID: 1, Title: "fix it", State: TaskDone, Merged: true, Checked: true}},
 		Checks:     []CheckRun{{Command: "tox -e py", Passed: false, Ran: true}},
 	}); quiet.Verb != DecideDone {
@@ -758,7 +622,6 @@ func TestARedCheckWhoseBaselineWasUnreadIsNotCounted(t *testing.T) {
 	steward := budgetLeft(t)
 	decision := steward.Decide(Remains{
 		Acceptance:   "the suite passes",
-		Landed:       true,
 		Landings:     []Landing{{ID: 1, Title: "fix it", State: TaskDone, Merged: true, Checked: true}},
 		Checks:       []CheckRun{{Command: "python -m pytest tests/", Passed: false, Ran: true}},
 		BaselineRead: true,
@@ -770,7 +633,6 @@ func TestARedCheckWhoseBaselineWasUnreadIsNotCounted(t *testing.T) {
 	// AND THE SAME RED WITH A READING BEHIND IT IS THIS RUN'S OWN.
 	ours := steward.Decide(Remains{
 		Acceptance:   "the suite passes",
-		Landed:       true,
 		Landings:     []Landing{{ID: 1, Title: "fix it", State: TaskDone, Merged: true, Checked: true}},
 		Checks:       []CheckRun{{Command: "python -m pytest tests/", Passed: false, Ran: true}},
 		BaselineRead: true,
@@ -787,9 +649,7 @@ func TestARedCheckWhoseBaselineWasUnreadIsNotCounted(t *testing.T) {
 func TestTheAlreadyRedSentenceRidesTheAdmittedBrief(t *testing.T) {
 	steward := budgetLeft(t)
 	decision := steward.Decide(Remains{
-		Reader:       "the scopes are still parsed case-sensitively",
 		Acceptance:   "the suite passes",
-		Landed:       true,
 		Landings:     []Landing{{ID: 1, Title: "fix it", State: TaskFailed, Ending: TaskEndingRefused}},
 		Checks:       []CheckRun{{Command: "tox -e py", Passed: false, Ran: true}},
 		WasFailing:   []string{"tox -e py"},
@@ -808,9 +668,7 @@ func TestTheAlreadyRedSentenceRidesTheAdmittedBrief(t *testing.T) {
 
 	// AND THE STILL-READING SENTENCE TOO, on the same road.
 	early := steward.Decide(Remains{
-		Reader:     "the scopes are still parsed case-sensitively",
 		Acceptance: "the suite passes",
-		Landed:     true,
 		Landings:   []Landing{{ID: 1, Title: "fix it", State: TaskFailed, Ending: TaskEndingRefused}},
 		Checks:     []CheckRun{{Command: "tox -e py", Passed: false, Ran: true}},
 	})
@@ -828,7 +686,6 @@ func TestTheBriefSaysWhatWasAlreadyFailingBeforeTheWork(t *testing.T) {
 	steward := budgetLeft(t)
 	decision := steward.Decide(Remains{
 		Acceptance: "the suite passes and the repro prints without error",
-		Landed:     true,
 		Landings: []Landing{
 			{ID: 1, Title: "fix the subclass init", State: TaskDone, Merged: true},
 			{ID: 2, Title: "write the repro", State: TaskFailed, Ending: TaskEndingRefused},
@@ -860,7 +717,6 @@ func TestAcceptanceMetWithEveryCheckPassingIsDone(t *testing.T) {
 	steward := budgetLeft(t)
 	decision := steward.Decide(Remains{
 		Acceptance: "the parser handles every fixture and `go build ./...` passes",
-		Landed:     true,
 		Landings:   []Landing{{ID: 1, Title: "port the parser", State: TaskDone}},
 		Checks: []CheckRun{
 			{Command: "go build ./...", Passed: true},
@@ -872,28 +728,21 @@ func TestAcceptanceMetWithEveryCheckPassingIsDone(t *testing.T) {
 	}
 }
 
-// (g) A SESSION THAT HAS FINISHED NOTHING HAS NOT FINISHED THE ASK.
-//
-// The eighteen-minute ending, in one assertion: a conversation that talked and
-// landed nothing read as met, and there was nothing anywhere to disagree.
-func TestASessionThatLandedNothingIsNeverDone(t *testing.T) {
-	steward := budgetLeft(t)
-	decision := steward.Decide(Remains{
-		Said:       "I have looked at the repository and I think the plan is sound.",
-		Acceptance: "the parser handles every fixture",
+// A read-only answer needs no task landing or local file-change witness.
+func TestAReadOnlyCompletionNeedsNoTaskLanding(t *testing.T) {
+	decision := budgetLeft(t).Decide(Remains{
+		Said:       "The repository uses a single parser entry point.",
+		Acceptance: "Explain how the parser is organized.",
 	})
-	if decision.Verb == DecideDone {
-		t.Fatalf("a session that finished nothing declared the ask met: %+v", decision)
-	}
-	if !strings.Contains(decision.Brief, "nothing has been finished yet") {
-		t.Fatalf("the brief does not say what is missing:\n%s", decision.Brief)
+	if decision.Verb != DecideDone {
+		t.Fatalf("read-only answer required a landing: %+v", decision)
 	}
 }
 
 // A BUDGET THAT IS SPENT STOPS THE RUN, AND SAYS WHICH CEILING.
 func TestAnExhaustedBudgetStopsWithAReason(t *testing.T) {
 	steward := NewSteward("port the parser", Budget{Wall: time.Hour, USD: 20}, func() float64 { return 25 })
-	decision := steward.Decide(Remains{Reader: "there is plenty left", Landed: true})
+	decision := steward.Decide(Remains{})
 	if decision.Verb != DecideStop {
 		t.Fatalf("a spent budget did not stop the run: %+v", decision)
 	}
@@ -917,7 +766,7 @@ func TestABudgetNobodySetIsNeverExhausted(t *testing.T) {
 func TestTheWallClockStopsARunThatSpentNothing(t *testing.T) {
 	steward := NewSteward("port the parser", Budget{Wall: time.Hour}, nil)
 	steward.now = func() time.Time { return steward.started.Add(90 * time.Minute) }
-	decision := steward.Decide(Remains{Reader: "there is plenty left", Landed: true})
+	decision := steward.Decide(Remains{})
 	if decision.Verb != DecideStop {
 		t.Fatalf("a run past its hours did not stop: %+v", decision)
 	}
@@ -953,49 +802,6 @@ func TestTheStewardsGoalIsTheFirstThingAsked(t *testing.T) {
 	}
 }
 
-// ── (e) what the session left lying about ───────────────────────────────────
-
-// THE SWEEP REMOVES SCRATCH AND NOTHING ELSE, and every clause of that sentence
-// is a separate way this could do damage.
-func TestTheSweepRemovesOnlyWhatTheSessionCreatedOutsideTheDeliverable(t *testing.T) {
-	tree := t.TempDir()
-	elsewhere := t.TempDir()
-
-	deliverable := filepath.Join(tree, "parser.go")
-	scratch := filepath.Join(elsewhere, "fixtures.jsonl")
-	modified := filepath.Join(elsewhere, "somebody-elses.txt")
-	gone := filepath.Join(elsewhere, "already-removed.txt")
-	for _, path := range []string{deliverable, scratch, modified} {
-		if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	found := sweepScratch(reconcile([]fileChange{
-		{path: deliverable, shown: "parser.go", created: true},
-		{path: scratch, shown: scratch, created: true},
-		// A file the session only CHANGED never reaches the ledger at all, and
-		// this row is here to prove the sweep would not take it if it did.
-		{path: modified, shown: modified, created: false},
-		{path: gone, shown: gone, created: true},
-	}, tree))
-
-	if len(found.removed) != 1 || found.removed[0] != scratch {
-		t.Fatalf("the sweep removed the wrong set: %+v", found.removed)
-	}
-	if len(found.kept) != 1 || found.kept[0] != "parser.go" {
-		t.Fatalf("the deliverable was not kept: %+v", found.kept)
-	}
-	for _, path := range []string{deliverable, modified} {
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("%s was removed and must not have been: %v", path, err)
-		}
-	}
-	if _, err := os.Stat(scratch); err == nil {
-		t.Fatalf("%s is still there", scratch)
-	}
-}
-
 // A MODIFIED FILE NEVER ENTERS THE LEDGER, which is the sweep's first line of
 // defence and the one that does not depend on anything downstream being right.
 func TestTheSessionLedgerHoldsOnlyFilesItCreated(t *testing.T) {
@@ -1010,36 +816,6 @@ func TestTheSessionLedgerHoldsOnlyFilesItCreated(t *testing.T) {
 		t.Fatalf("the ledger is not what the session created: %+v", list)
 	}
 }
-
-// A PATH THAT IS NOT UNDER THE TREE IS NOT UNDER THE TREE, and a string prefix
-// says otherwise for exactly the directory names that are most likely to exist.
-func TestUnderTreeIsNotAStringPrefix(t *testing.T) {
-	for _, c := range []struct {
-		tree, path string
-		want       bool
-	}{
-		{"/work", "/work/parser.go", true},
-		{"/work", "/work/deep/parser.go", true},
-		{"/work", "/work-2/parser.go", false},
-		{"/work", "/tmp/fixtures.jsonl", false},
-		{"/work", "/work", true},
-	} {
-		if got := underTree(c.tree, c.path); got != c.want {
-			t.Fatalf("underTree(%q, %q) = %v, want %v", c.tree, c.path, got, c.want)
-		}
-	}
-
-	real := t.TempDir()
-	alias := filepath.Join(t.TempDir(), "tree")
-	if err := os.Symlink(real, alias); err != nil {
-		t.Fatal(err)
-	}
-	if path := filepath.Join(real, "not-made-yet.go"); !underTree(alias, path) {
-		t.Fatalf("the canonical tree %q did not cover its symlinked spelling %q", real, alias)
-	}
-}
-
-// ── (f) no budget is today's session, and one line saying so ────────────────
 
 func TestWithoutABudgetTheSessionKeepsTodaysPrincipalAndSaysSo(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.Unattended = true })
@@ -1181,13 +957,11 @@ func standingProbe() *StandingNotice {
 // about the TRANSCRIPT sat above the work in the order of the decision. The line
 // is still worth having when something really is left; it is not evidence about
 // work that is done.
-func TestALandingThatCoversTheAskOutranksTheReadersLine(t *testing.T) {
+func TestCompletedLandingsAndChecksNeedNoFurtherCompletionWitness(t *testing.T) {
 	const reader = "the ledger files still look unfinished to me"
 	settled := Remains{
 		Said:       "The port is merged and the suite is green.",
-		Reader:     reader,
 		Acceptance: "the ledger merges home and its own tests pass",
-		Landed:     true,
 		Landings:   []Landing{{ID: 1, Title: "merge the ledger home", State: TaskDone}},
 		Checks:     []CheckRun{{Command: "go test ./ledger", Passed: true}},
 		// A green suite is a suite whose before-reading has landed; without it the
@@ -1220,7 +994,6 @@ func TestTheSameThingLeftTwiceRunningStopsTheRun(t *testing.T) {
 	steward := budgetLeft(t)
 	stuck := Remains{
 		Acceptance: "every handler answers",
-		Landed:     true,
 		Landings:   []Landing{{ID: 1, Title: "wire the handlers", State: TaskFailed}},
 	}
 	if first := steward.Decide(stuck); first.Verb != DecideCarryOn {
@@ -1251,7 +1024,6 @@ func TestSomethingNewLeftIsNotAStandstill(t *testing.T) {
 	steward := budgetLeft(t)
 	stuck := Remains{
 		Acceptance: "every handler answers",
-		Landed:     true,
 		Landings:   []Landing{{ID: 1, Title: "wire the handlers", State: TaskFailed}},
 	}
 	steward.Decide(stuck)
@@ -1278,7 +1050,6 @@ func TestWorkStillRunningIsNeitherDoneNorAStandstill(t *testing.T) {
 	steward := budgetLeft(t)
 	inFlight := Remains{
 		Acceptance: "the parser is ported and the tests are written",
-		Landed:     true,
 		Landings:   []Landing{{ID: 1, Title: "port the parser", State: TaskDone}},
 		Running:    []string{"write the tests"},
 	}
@@ -1313,13 +1084,12 @@ func TestADoneAnswerForgetsWhatWasLeftLastTime(t *testing.T) {
 	steward := budgetLeft(t)
 	stuck := Remains{
 		Acceptance: "every handler answers",
-		Landed:     true,
 		Landings:   []Landing{{ID: 1, Title: "wire the handlers", State: TaskFailed}},
 	}
 	if got := steward.Decide(stuck); got.Verb != DecideCarryOn {
 		t.Fatalf("the first reading of something unfinished did not carry on: %+v", got)
 	}
-	if got := steward.Decide(Remains{Landed: true, Landings: []Landing{{ID: 2, State: TaskDone}}}); got.Verb != DecideDone {
+	if got := steward.Decide(Remains{Landings: []Landing{{ID: 2, State: TaskDone}}}); got.Verb != DecideDone {
 		t.Fatalf("a finished ask was not allowed to finish: %+v", got)
 	}
 	if got := steward.Decide(stuck); got.Verb != DecideCarryOn {
@@ -1332,13 +1102,12 @@ func TestADoneAnswerForgetsWhatWasLeftLastTime(t *testing.T) {
 	}
 }
 
-func TestAReaderCannotReplaceARetainedDeliveryGap(t *testing.T) {
+func TestAnExplicitWorkspaceDeliveryStillRequiresIntegration(t *testing.T) {
 	steward := budgetLeft(t)
 	got := steward.Decide(Remains{
-		Acceptance: "the requested account is in this workspace",
-		Landed:     true,
-		Reader:     "also prepare a separate background report",
 		Delivery:   deliveryContract{Kind: "workspace"},
+		Acceptance: "the requested account is in this workspace",
+
 		Landings: []Landing{{ID: 1, Title: "write the account", State: TaskDone,
 			Files: []string{"account.txt"}, Retained: "task/account"}},
 	})
@@ -1352,13 +1121,11 @@ func TestAReaderCannotReplaceARetainedDeliveryGap(t *testing.T) {
 
 func TestAnUnknownRedCheckDoesNotHideARetainedDeliveryGap(t *testing.T) {
 	got := budgetLeft(t).Decide(Remains{
+		Delivery:     deliveryContract{Kind: "workspace"},
 		Acceptance:   "the requested account is in this workspace",
-		Landed:       true,
-		Reader:       "prepare a separate background report",
 		Checks:       []CheckRun{{Command: "false", Passed: false, Ran: true}},
 		Unread:       []string{"false"},
 		BaselineRead: true,
-		Delivery:     deliveryContract{Kind: "workspace"},
 		Landings: []Landing{{ID: 1, Title: "write the account", State: TaskDone,
 			Files: []string{"account.txt"}, Retained: "task/account"}},
 	})
@@ -1373,14 +1140,10 @@ func TestAnUnknownRedCheckDoesNotHideARetainedDeliveryGap(t *testing.T) {
 	}
 }
 
-func TestAnInlineReaderGapRemainsAuthoritative(t *testing.T) {
-	steward := budgetLeft(t)
-	got := steward.Decide(Remains{
-		Acceptance: "the table includes every region",
-		Made:       true,
-		Reader:     "the north-region row is missing",
-	})
-	if got.Verb != DecideCarryOn || !strings.Contains(got.Brief, "the north-region row is missing") {
-		t.Fatalf("the inline reader's admitted gap was discarded: %+v", got)
+// Acceptance describes the task; it is not evidence that an unstated gap exists.
+func TestAcceptanceAloneDoesNotInventMissingWork(t *testing.T) {
+	got := budgetLeft(t).Decide(Remains{Acceptance: "the table includes every region"})
+	if got.Verb != DecideDone || len(got.Observed) != 0 {
+		t.Fatalf("acceptance became a synthetic missing result: %+v", got)
 	}
 }

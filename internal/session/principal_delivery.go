@@ -23,13 +23,6 @@ func validDelivery(ask string, d deliveryContract) deliveryContract {
 	return deliveryContract{}
 }
 
-func routeDelivery(v routeVerdict, ask string) deliveryContract {
-	if ask == "" || v.checksRequest != ask {
-		return deliveryContract{}
-	}
-	return validDelivery(ask, v.Delivery)
-}
-
 func (d deliveryContract) acceptsRetained() bool {
 	return d.Kind == "branch" && d.Quote != ""
 }

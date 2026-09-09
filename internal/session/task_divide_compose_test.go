@@ -2,11 +2,10 @@ package session
 
 // WHAT A PART IS TOLD, AS TESTS. The composer is the harness's half of a part's
 // world (task_divide_compose.go), and what these drive is the real door: a worker
-// calling `divide_work` and a harness putting a drawing to the same body, both
+// calling `divide_work`, with the resulting family instructions
 // read back off the node the graph actually admitted.
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -129,40 +128,6 @@ func TestAPartInheritsWhatTheWorkBeforeItsParentLearned(t *testing.T) {
 		if !strings.Contains(kid.instruction(), finding) {
 			t.Fatalf("part %d was sent to find out again what the work before its parent already wrote down: %q",
 				kid.id, kid.instruction())
-		}
-	}
-}
-
-// AND THE TWO ROADS COMPOSE THE SAME FAMILY, BYTE FOR BYTE. A part drawn out of a
-// sketch and a part a worker wrote are the same kind of thing, so the half of
-// their world the harness writes cannot depend on which road put them in the
-// graph — that difference is the whole bug (#233), and the way it stays fixed is
-// that there is one composer with two callers.
-func TestASketchPartAndAWorkerWrittenPartGetTheSameFamilyContext(t *testing.T) {
-	spec := drawnSpec(countedSketch("A | B",
-		"A is the flaking auth test, B is the release notes"))
-
-	drawn := newDivideNestFrom(t, spec, 0, &scriptedCompleter{}, nil)
-	drawn.node.divideFromSketch(context.Background())
-
-	// The same two parts as the drawing bore, said by a worker instead: the
-	// legend's words as the scope, and the name the sketch road mints from it.
-	written := newDivideNestFrom(t, spec, 0, &scriptedCompleter{}, nil)
-	written.divide(t, divideWrittenArgs(wideEvidence,
-		dividePart{Title: "the flaking auth", Summary: "the flaking auth test", Brief: "A: the flaking auth test"},
-		dividePart{Title: "the release notes", Summary: "the release notes", Brief: "B: the release notes"}))
-
-	sketched, authored := drawn.graph.children(drawn.parent.id), written.graph.children(written.parent.id)
-	if len(sketched) != 2 || len(authored) != 2 {
-		t.Fatalf("the two roads bore %d and %d parts, want 2 each", len(sketched), len(authored))
-	}
-	for index := range sketched {
-		one, other := familyBlock(sketched[index].assembledBrief()), familyBlock(authored[index].assembledBrief())
-		if one == "" {
-			t.Fatalf("part %d was composed with no family context at all", index+1)
-		}
-		if one != other {
-			t.Fatalf("part %d reads a different world on the two roads:\n  drawn:  %q\n  worker: %q", index+1, one, other)
 		}
 	}
 }

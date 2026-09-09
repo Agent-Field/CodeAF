@@ -119,10 +119,9 @@ func TestATaskWhoseConnectionStaysDownLandsAsLostTheConnection(t *testing.T) {
 	}
 }
 
-// (3) A WORKER THAT KEEPS MAKING THE SAME CALL IS ENDED BY ITS OWN LOOP GUARD, and
-// the row says "went in circles" — first cause — even though the check then
-// refuses the empty work.
-func TestATaskThatGoesInCirclesLandsAsCircling(t *testing.T) {
+// (3) Repeated reads meet the worker's declared no-progress boundary. The
+// landing reports that actual limit even when the later check refuses the work.
+func TestRepeatedReadsLandAtTheNoProgressBoundary(t *testing.T) {
 	var same []step
 	for range 16 {
 		same = append(same, bashCall("call-same", "git status --porcelain"))
@@ -137,10 +136,10 @@ func TestATaskThatGoesInCirclesLandsAsCircling(t *testing.T) {
 	}
 	agent, graph := endingAgent(t, completer)
 	notice := landedNode(t, agent, graph)
-	if notice.State != TaskFailed || notice.Ending != TaskEndingCircling {
+	if notice.State != TaskFailed || notice.Ending != TaskEndingSteps {
 		t.Fatalf("state = %q, ending = %q, report %q", notice.State, notice.Ending, notice.Report)
 	}
-	if note := taskNote(notice, "", TaskSettleAsk, landingAddress{}); !strings.Contains(note, "task 1 incomplete: ") || !strings.Contains(note, "· went in circles") {
+	if note := taskNote(notice, "", TaskSettleAsk, landingAddress{}); !strings.Contains(note, "task 1 incomplete: ") || !strings.Contains(note, "· ran out of steps") {
 		t.Fatalf("the landing note opens %q", firstLines(note, 1))
 	}
 }

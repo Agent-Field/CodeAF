@@ -2845,10 +2845,10 @@ failure three times**, **the same argument refused twice**, and **five rounds th
 nothing new**. They share one warning limit. After two `[stuck]` notes, a third such signal
 ends the turn instead of adding a third ineffective note.
 
-In an interactive conversation, aforge uses the same checkpoint hand-off as any other
-overlong turn and moves the remains to a watched task. If that hand-off cannot be made —
-for example inside a task or without a consent surface — it ends the turn with
+In an interactive conversation, the third warning ends the turn with
 `this turn is going in circles · stopping here with anything remaining left undone`.
+It does not create a task automatically. The model can still use `propose_task` before that
+point when independent watched work is the right next step.
 
 Two things soften that limit. **`[silent]` notes spend none of it**, so a quiet turn cannot
 be ended for being quiet; being held for not writing its notes down is a separate road with

@@ -100,9 +100,10 @@ For a fixed unattended goal, use the one-message door with a budget:
 
 ## Does a run with no screen carry its own work on · headless --once checkpoints
 
-Yes, when launched with `--once`, `--yolo` and a time or cost budget. A headless
-unattended run checkpoints long replies at the same points. Its decisions are
-kept in the transcript, where a run without a screen can still be inspected.
+Yes, when launched with `--once`, `--yolo` and a time or cost budget. The main
+model completes the ordinary reply; concrete task, delivery, and declared-check results can
+start a follow-up when they require one. Its decisions are kept in the transcript, where a
+run without a screen can still be inspected.
 
 Either limit alone is enough; both means whichever runs out first. The defaults can
 come from `AFORGE_MAX_HOURS` and `AFORGE_MAX_COST`; explicit flags take precedence.
@@ -125,118 +126,47 @@ states which launch limit was reached.
 The local persistent host carries these launch settings. Explicit `--host` still
 refuses the budget flags at its door; configure that machine's launch instead.
 
-## What changes when you give it a budget — done when, carrying on by itself, tidying up after itself
+## What changes when you give it a budget — done when, carrying on by itself, does it tidy up after itself
 
-For a fixed headless goal (`--once --yolo` with a budget), five things change:
+For a fixed headless goal (`--once --yolo` with a budget), the main model still owns the
+answer and decides when it has completed the original request. Aforge does not ask a routine
+second model to approve that ending, and it does not move the turn to a task because of file
+writes, tool-round counts, or a share of the wall.
 
-- **It writes down what finished means.** At the start it turns your ask into one
-  `done when` sentence and shows it to you on a dim line. That sentence is fixed
-  for the whole session — nothing it does later can rewrite it. It is context for
-  the work and never evidence about it: what says the work is done is the work.
-- **A stopped turn is looked at rather than taken at its word.** When it stops
-  talking, it checks whether any piece of work came home unfinished, and whether
-  the checks your work names passed when they ran. If any of that is unmet it
-  carries on by itself instead of going quiet — and if none of it is, the ask is
-  finished, whatever else was said about it.
-- **A piece of work that came home unfinished starts its own next go.** You used
-  to be offered a follow-up in your own words — with nobody there, that offer went
-  nowhere. Now what was missing becomes the next brief. If the same thing stops it
-  three times in a row it stops for good and says so.
-- **It tidies up after itself before it says it is done.** It re-runs the checks
-  in a fresh shell, then looks at every file it made: anything inside the folder
-  it is working in is part of the answer and is left alone, and anything it wrote
-  outside that folder is scratch and is deleted. It never touches a file it did
-  not create, and it never touches one it only changed.
-- **The hours end the run even while its work is out.** The run cannot continue
-  past the hours you gave it, whether work is out or not: the wall is read while
-  the conversation is idle as well as at the end of a reply. If time runs out
-  with a task still running, that task is stopped through the usual stop: its row
-  settles, and its branch, working copy and everything it did are kept. Nothing
-  starts after the wall. If a reply is still speaking, the wall waits; that reply
-  reaches its own ending and stops there instead of being sealed from outside.
+The unattended owner still enforces concrete execution facts. Work that is running remains
+open. A task that lands incomplete, a delivery that could not be made, or an explicitly
+declared check that fails is carried into the next turn. Repeating the same concrete gap can
+still stop the run instead of looping forever. Before a successful end, declared checks run
+through their existing gate.
+
+Completion does not sweep files merely because the session created them outside its working
+folder. A requested report at an absolute output path is part of the result and stays there.
+The model can explicitly remove temporary material it created when the request calls for
+cleanup, and aforge's own runtime directories retain their own lifecycle; neither makes every
+outside path disposable.
+
+The money and hour ceilings are unchanged. Nothing new starts after a ceiling is exhausted;
+a speaking turn reaches its boundary, and task work is stopped or retained through the same
+budget and cancellation rules described on the task pages.
 
 ## Why did it stop at a task that was finished
 
-If it ended without starting more work, or did not hand the work over, the
-budgeted run checked whether anything remained before starting another task.
+A finished task landing is evidence for the main model's next answer. If no running work,
+failed landing, delivery problem, or declared check remains, the main model can finish the
+original request without another model reading its conclusion.
 
 ## It ended without starting more work · why did it not hand the work over
 
-With a budget, **every** way a turn ends is read, not just the ones where the model stops
-talking. A long turn can also end by having its work moved onto a task — when a second
-reader says the work has parts, when the turn has changed enough files, when it has run
-past its own price, or — only with a budget — when it has had its share of the hours you
-gave the run. Each of those seals the turn, and until this they sealed it without
-asking anything: the run then had no way back at all, because the only thing that could end
-it was a landing waking a turn that moved its work onto another task, and so on until the
-hours ran out. Three measured runs finished their work, went green, and still ran to the
-wall that way.
+Current builds do not automatically hand an ordinary turn to a task. Aforge does not create a
+handoff from a second reader's sketch, a write count, a tool-round count, or one third of the
+run's wall. The model can still use `propose_task` when separate watched work is useful, and a
+task can still divide its own work. If neither explicit door is used, the answer remains with
+the main model until it completes or a real budget, cancellation, provider failure, or other
+execution boundary ends it.
 
-So before the work moves, the same reading a stopped turn gets is taken:
-
-- **Something of yours is still running** — the work moves onto a task exactly as it always
-  did, and you read the same line about it.
-- **Nothing is left and nothing is running** — the run ends there, on the line
-  `finishing here · what was asked is done`, and **no task is started**. It used to hand the
-  work over anyway, on the grounds that the reply had not yet read its last results; measured,
-  that started two tasks nineteen seconds after the run had already read the tree, the checks
-  and the second reader and said the ask was met, and both ran to the wall. Being finished is
-  read from those, not from the reply's own words, so nothing a further reply said could change
-  it. If a piece of work is still running when that happens, it is not ended there: the work
-  moves onto a task as usual and the same answer is read again at the next ending.
-- **The same thing is left as last time** — it stops for good with the reason, on the same
-  `stopping here · ` line every other stop uses. If a piece of work is still running when
-  that happens, it does **not** stop there: the work moves onto a task as usual and the same
-  stop is said again at the next ending, once nothing is in flight.
-- **The hours or the money ran out** — this is the one stop that does not buy another
-  reply. Waiting is more of exactly what ran out, so a reply already speaking reaches its
-  own ending even with work still going, and says so on the end of its line:
-  `· work was still going and was left where it was`. A money-only ceiling leaves that
-  work where it is. If the hours ran out, the wall reader then stops the work through its
-  usual stop and says `· work was still going, so it was stopped and what it did was kept`.
-  Nothing is thrown away, and its branch and working copy are kept.
-
-**And a handover it asked for is never dropped.** A long turn can normally talk its own
-handover out of happening: if the model says nothing is left and the second reader's sketch
-does not name independent parts still to do, the work stays where it is and the turn
-finishes. It gets that **once per request**, whether or not the sketch agreed — a turn that
-says it is done and then keeps working is met by the next look with the claim already spent.
-On a run with a budget that
-only holds while the run's own owner agrees — and when it has just read the ending and said
-the ask is **not** finished, the work moves anyway, on its account of what is left rather
-than on your bare sentence. A run measured before this said "not yet confirmed" at its
-write seam and again at its ceiling, had both handovers thrown away by the two readers, and
-ended eight hundred seconds later inside a `git stash` with the fix uncommitted.
-
-**And for a fixed headless goal, one reply may spend at most a third of the wall.** *Why did it move my
-work to a task after five minutes; it kept running tests for ten minutes and then handed it
-over; why did it not hand over sooner.* The other three ways above all COUNT something —
-parts in a sketch, files changed, rounds spent — and a reply that spends its time reading
-and running tests crosses none of them. A measured run did exactly that: a fifteen-minute
-wall, the fix working in the checkout at five minutes, twelve and a half minutes of reading
-and tests inline, the work finally moved with 147 seconds left, sixty of which went on
-opening the task's working copy — and the wall came down on a task that had committed
-nothing, checked nothing and landed nothing. So a reply that has been running for a third of
-the hours you gave the run hands over, and you read:
-
-```
-this has taken a third of the time · moving it to a task that can be checked before the wall
-```
-
-**A third, because the other two thirds are what the work needs after it moves** — a working
-copy opened, the job run, and somebody who is not the model that did it reading the result,
-which is the whole difference between work that happened and work that landed. **And it hands over only what can still be checked before the wall**: once less of the
-wall remains than a task needs to open its working copy and be checked — the two waits a
-task is already held to, added — a reply is not moved at all, and nothing is spent asking,
-because a task started then could not be set up, let alone checked; a measured run started
-one with six seconds to go. It happens
-**once** in a reply; rounds spent only watching work you already handed out do not count
-towards it; and it needs a wall, so `--max-cost` on its own never triggers it.
-
-None of this applies to a session you are sitting in front of: your turn's work moves onto a
-task exactly as it always has, nothing is decided for you, and a reply that says nothing is
-left still leaves your answer where it is. There is no wall on your session, so there is no share
-of one either, however long your reply runs.
+If an older run moved work to a task after five minutes, or ran tests for ten minutes and then
+handed the work over, that was the retired wall-share policy. Elapsed time alone no longer
+causes either move.
 
 ## What counts as still left · a task that died on the wire · it kept working after everything was finished
 
@@ -259,40 +189,29 @@ Measured before this: a task died on an API 404 an hour before its parent wrote 
 file it was for, went green and merged. The run read the dead sibling as a gap in the ask
 and carried on over a finished tree until its wall ran out.
 
-## Inline work is finished with a witness · the reader timed out · it did the work twice · it says nothing has been finished yet after editing or creating a file
+## Does inline work need a completion witness · the reader timed out · it did the work twice · it says nothing has been finished yet after editing or creating a file
 
-**Work aforge did itself counts as finished work with a second opinion.** A session that
-made the change and wrote the tests **inline**, with no task at all, has finished something
-when the second reader agrees nothing is left. That includes one edit to an existing file;
-older runs counted only new files and could stop themselves over a green fix while saying
-`nothing has been finished yet`. If the reader names a gap, the run carries on into that gap
-whatever the checks say.
+Inline work no longer needs a second-model witness. When the main model completes the original
+request, aforge does not require a `Made` file-activity mark or a completion reader before it
+can finish. Explicitly declared checks and concrete task or delivery failures can still
+contradict a successful ending; absence from a write ledger cannot.
 
-**If the second reader could not be reached, silence is not treated as a gap.** On an
-unattended run aforge actually runs your declared checks over the tree and lets a green
-reading stand in, saying `the reader could not be reached, so the checks stood in for it`.
-A red check carries the run on with that command named. At least one declared check must
-start and finish: with no check declared, or none that ran, nothing can stand in and the run
-carries on exactly as before. An install with no reader is different from a failed call;
-that absence runs no check on its own.
+The old lines `nothing has been finished yet` and `the reader could not be reached, so the
+checks stood in for it` belong to the retired witness gate. They should not appear on a new
+ordinary run.
 
 ## A changed file counts only while its content differs · a reverted or stashed edit is not finished work
 
-**A file is your work only while its content still differs from what it was before the
-edit.** A change put back the way it was, a revert, or a fix pushed onto `git stash` and
-never popped leaves the path written and nothing in the tree, so none of them counts as
-finished work. A stash the run took itself and never popped is said out loud as well —
-`1 stash entry holds work that is not in the tree` — and the run carries on rather than
-finishing over it; a stash you already had before the run started is yours and is never
-counted, and neither is the one a landing takes to set your uncommitted work aside.
+File-change tracking no longer decides whether the main model may finish. A reverted edit is
+simply the current tree, and a changed file is evidence the model should inspect and report.
+A stash created during an unattended run still matters when it holds requested work outside
+the delivered tree; that concrete delivery gap can keep the run from claiming completion.
 
 ## An emptied, blank or zero-byte created file does not count as finished work
 
-**A file the run created counts as its work only while there is something in it.** A
-rewrite that produced nothing, a generator that wrote no bytes, or a `> file` in a shell
-step can leave it emptied, blank, or at zero bytes; none of those empty files counts as
-finished work. It is still your file: nothing inside the folder aforge is working in is
-ever deleted, whatever is in it.
+A blank file has no special role in the completion decision. The main model must judge whether
+it satisfies the request, while declared checks and actual task or delivery failures retain
+their existing authority.
 
 ## The git an unattended run left on its own will not run · why it refused to stash, checkout, pull or reset --hard
 
@@ -383,32 +302,13 @@ counts as work left to do.
 
 ## It stopped and said the same thing was still left · why did it keep saying carry on · it kept repeating the same thing
 
-An unattended run with a budget looks at the work at the end of every reply: which
-pieces of work came home finished, and what the checks your work names said when
-they ran. If something is left, it carries on by itself with that as the brief.
+An unattended run can carry on from a concrete unmet result: a task came home incomplete, a
+delivery failed, or a declared check did not pass. If the same concrete gap survives the next
+turn unchanged, the run can stop with that reason instead of repeating it until the wall.
 
-That brief names the concrete gap: unfinished work, missing delivery or a new check
-failure. A second reader's explanation cannot replace that gap with another obligation.
-For an answer made directly in the conversation with no task result, the reader can
-still identify a missing part of the requested answer.
-
-**The same thing left twice running stops the run.** The evidence that a run is
-getting anywhere is that what is left CHANGES. When it reaches the end of a reply
-holding exactly the list it held last time, it stops and tells you, on one line:
-
-```
-stopping here · nothing moved since the last look and what is left is the same — wire the handlers did not finish · saying it again would not change it
-```
-
-That is the whole message: what is still left, and that it stopped rather than say
-it again. Nothing crashed and nothing is wrong with your machine — the list in the
-middle is where to pick the work up.
-
-**It holds for the rest of the session.** The floor belongs to the thing that
-decides, not to the reply it stopped, so a piece of work landing and waking a fresh
-reply cannot start the loop over. There is no number to raise and no setting for
-it. Before this, a run in that state repeated one identical line until its hours
-ran out.
+This standstill guard does not ask a second model what remains and does not invent a gap from
+the main answer. It compares execution facts already held by the run. Task and job wakes reset
+the picture when new results arrive.
 
 ## A task waiting on one that did not finish · work that will never start · it says something is still running
 
@@ -453,9 +353,9 @@ have found. And if the tree holds it but nothing can start it, nothing is run at
 all: running a different program of the same name would be worse than running
 nothing.
 
-**What came home outranks what was said about it.** A piece of work that finished
-and covers what you asked for, with every check that ran passing, is finished — a
-reader's opinion about the transcript cannot carry the run on over the top of it.
+**What came home is concrete evidence.** A piece of work that finished and covers
+what you asked for, with every declared check that ran passing, can support the main
+model's completion account without another model judging the transcript.
 
 ## Which folder does aforge work in, and where do my files go
 

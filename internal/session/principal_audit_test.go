@@ -11,191 +11,12 @@ import (
 
 // Neither a composed acceptance nor a pasted request grants execution rights.
 func TestSessionAcceptanceDoesNotDeclareExecutableChecks(t *testing.T) {
-	for _, acceptance := range []string{"every fixture passes `go test ./parser`", "run `./deploy.sh` once", "finish:\n$ sh ./deploy.sh", routeAskAcceptance + "run `./deploy.sh`"} {
+	for _, acceptance := range []string{"every fixture passes `go test ./parser`", "run `./deploy.sh` once", "finish:\n$ sh ./deploy.sh", "Original request: " + "run `./deploy.sh`"} {
 		agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.Unattended = true; c.Budget = Budget{Wall: time.Hour} })
 		agent.steward().setAcceptance(acceptance)
 		if got := agent.sessionChecks(); len(got) != 0 {
 			t.Fatalf("prose granted execution: %q => %v", acceptance, got)
 		}
-	}
-}
-
-// AN EDIT TO A FILE THE PROJECT ALREADY HAD IS WORK THE SESSION MADE.
-//
-// [Remains.Made] read the created ledger alone, so a session whose whole fix was
-// one edit to an existing file — the commonest shape of a fix there is — was
-// told `nothing has been finished yet` at every ending until the standstill
-// stopped it over green work (#513, the tox cell). The changed ledger answers
-// it, and it stays apart from the created one: only what the session made may
-// ever be swept.
-func TestAnEditToAFileTheProjectAlreadyHadIsWorkTheSessionMade(t *testing.T) {
-	tree := t.TempDir()
-	existing := filepath.Join(tree, "discover.py")
-	if err := os.WriteFile(existing, []byte("def discover(): ...\n"), 0o644); err != nil {
-		t.Fatalf("writing the project's file: %v", err)
-	}
-	// The digest the ledger takes at pre-action, which is what makes the edit
-	// below a change rather than a path somebody wrote to.
-	before := fileDigest(existing)
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
-		c.Workspace = tree
-		c.Unattended = true
-		c.Budget = Budget{Wall: time.Hour}
-	})
-	if agent.remainsFor("fixed", readerLine{}).Made {
-		t.Fatal("a session that has written nothing was said to have made something")
-	}
-
-	if err := os.WriteFile(existing, []byte("def discover(): return 1\n"), 0o644); err != nil {
-		t.Fatalf("editing the project's file: %v", err)
-	}
-	agent.rememberChange(fileChange{path: existing, shown: "discover.py", created: false, before: before})
-	if !agent.remainsFor("fixed", readerLine{}).Made {
-		t.Fatal("an edit to the project's own file was not counted as work the session made")
-	}
-	if created := agent.createdList(); len(created) != 0 {
-		t.Fatalf("a modified file reached the ledger the tidy may sweep: %+v", created)
-	}
-
-	// AND A FILE CHANGED OUTSIDE THE TREE IS NOT THE WORK: a note the session
-	// kept for itself somewhere else says nothing about the deliverable.
-	aside, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
-		c.Workspace = tree
-		c.Unattended = true
-		c.Budget = Budget{Wall: time.Hour}
-	})
-	elsewhere := filepath.Join(t.TempDir(), "notes.md")
-	if err := os.WriteFile(elsewhere, []byte("notes\n"), 0o644); err != nil {
-		t.Fatalf("writing the note: %v", err)
-	}
-	aside.rememberChange(fileChange{path: elsewhere, shown: elsewhere, created: false})
-	if aside.remainsFor("fixed", readerLine{}).Made {
-		t.Fatal("a file changed outside the deliverable was counted as work on it")
-	}
-}
-
-// A FILE THE RUN CREATED AND THEN EMPTIED IS NOT WORK THE SESSION MADE (C1-C4).
-//
-// The created ledger records that a file was made, not what remains in it. A
-// later step could blank that file and leave the path behind, and the door
-// would still say the work was made over a tree holding an empty file. Content
-// makes it work; emptiness does not. The file remains somebody's deliverable
-// either way.
-func TestAFileTheRunCreatedAndThenEmptiedIsNotWorkTheSessionMade(t *testing.T) {
-	tree := t.TempDir()
-	path := filepath.Join(tree, "fix.py")
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
-		c.Workspace = tree
-		c.Unattended = true
-		c.Budget = Budget{Wall: time.Hour}
-	})
-	agent.rememberChange(fileChange{path: path, shown: "fix.py", created: true})
-
-	if err := os.WriteFile(path, []byte("def fix(): return 1\n"), 0o644); err != nil {
-		t.Fatalf("writing the created file: %v", err)
-	}
-	if !agent.remainsFor("fixed", readerLine{}).Made {
-		t.Fatal("a created file with content was not counted as work the session made")
-	}
-
-	if err := os.WriteFile(path, nil, 0o644); err != nil {
-		t.Fatalf("emptying the created file: %v", err)
-	}
-	remains := agent.remainsFor("fixed", readerLine{})
-	if remains.Made {
-		t.Fatal("an empty file counted as work the session made")
-	}
-	if remains.finishedSomething() {
-		t.Fatal("a session with only an empty created file was said to have finished something")
-	}
-	if unmet := strings.Join(remains.unmet(), "\n"); !strings.Contains(unmet, "nothing has been finished yet") {
-		t.Fatalf("the run was not told to carry on after its created file was emptied: %q", unmet)
-	}
-
-	// SCRATCH IS WHAT [sweepScratch] REMOVES. Made may answer false without
-	// moving an in-tree file into that set: emptiness never gives the harness
-	// leave to delete somebody's deliverable.
-	found := reconcile(agent.createdList(), tree)
-	if len(found.kept) != 1 || found.kept[0] != "fix.py" {
-		t.Fatalf("the empty deliverable was not kept: %+v", found.kept)
-	}
-	if len(found.scratch) != 0 {
-		t.Fatalf("the empty deliverable was offered to the sweep: %+v", found.scratch)
-	}
-
-	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
-		t.Fatalf("writing the created file again: %v", err)
-	}
-	if !agent.remainsFor("fixed", readerLine{}).Made {
-		t.Fatal("a created file edited to hold content was not counted as work the session made")
-	}
-}
-
-// A CREATED FILE OUTSIDE THE DELIVERABLE IS STILL NOT THE WORK (C5-C6).
-//
-// Content does not widen the deliverable tree, and with no tree there is no
-// created half of Made to answer at all. Reconciliation keeps its older job:
-// scratch made outside a real tree is still scratch.
-func TestACreatedFileOutsideTheDeliverableIsStillNotTheWork(t *testing.T) {
-	tree := t.TempDir()
-	path := filepath.Join(t.TempDir(), "notes.md")
-	if err := os.WriteFile(path, []byte("notes\n"), 0o644); err != nil {
-		t.Fatalf("writing the outside file: %v", err)
-	}
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
-		c.Workspace = tree
-		c.Unattended = true
-		c.Budget = Budget{Wall: time.Hour}
-	})
-	agent.rememberChange(fileChange{path: path, shown: path, created: true})
-	if agent.remainsFor("fixed", readerLine{}).Made {
-		t.Fatal("a created file outside the deliverable counted as work on it")
-	}
-	found := reconcile(agent.createdList(), tree)
-	if len(found.scratch) != 1 || found.scratch[0] != path {
-		t.Fatalf("the created file outside the deliverable was not scratch: %+v", found.scratch)
-	}
-
-	withoutTree, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
-		c.Unattended = true
-		c.Budget = Budget{Wall: time.Hour}
-	})
-	withoutTree.config.Workspace = ""
-	withoutTree.rememberChange(fileChange{path: path, shown: path, created: true})
-	if withoutTree.remainsFor("fixed", readerLine{}).Made {
-		t.Fatal("a created file counted as work when there was no deliverable tree")
-	}
-}
-
-// A CREATED PATH THAT BECAME A DIRECTORY IS NOT WORK THE SESSION MADE (C7).
-//
-// The directory is neither the regular file the run wrote nor scratch the
-// sweep may remove, so both readings leave it alone.
-func TestACreatedPathThatBecameADirectoryIsNotWorkTheSessionMade(t *testing.T) {
-	tree := t.TempDir()
-	path := filepath.Join(tree, "fix.py")
-	if err := os.WriteFile(path, []byte("def fix(): return 1\n"), 0o644); err != nil {
-		t.Fatalf("writing the created file: %v", err)
-	}
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
-		c.Workspace = tree
-		c.Unattended = true
-		c.Budget = Budget{Wall: time.Hour}
-	})
-	agent.rememberChange(fileChange{path: path, shown: "fix.py", created: true})
-	if err := os.Remove(path); err != nil {
-		t.Fatalf("removing the created file: %v", err)
-	}
-	if err := os.Mkdir(path, 0o755); err != nil {
-		t.Fatalf("making a directory at the created path: %v", err)
-	}
-
-	if agent.remainsFor("fixed", readerLine{}).Made {
-		t.Fatal("a created path that became a directory counted as work the session made")
-	}
-	found := reconcile(agent.createdList(), tree)
-	if len(found.kept) != 0 || len(found.scratch) != 0 {
-		t.Fatalf("a directory at a created path reached the keep or sweep set: %+v", found)
 	}
 }
 
@@ -238,7 +59,7 @@ func TestAStepOutOfThePastedReproductionIsNeverASessionCheck(t *testing.T) {
 // THE SESSION'S CHECKS — NOT A PROMPT STEP, AND NOT A BACKTICKED COMMAND.
 //
 // When no one could write a done-condition, the person's words arrive behind
-// [routeAskAcceptance], and a request is not a contract. The measured tox
+// the original ask, and a request is not a contract. The measured tox
 // reproduction must remain a story about seeing the bug rather than become
 // `chmod 000 tox.ini` run against the deliverable tree — and the same is true of
 // a command the request names, because the commands in a request are the WORK:
@@ -257,7 +78,7 @@ func TestASessionWhoseDoneWhenIsThePastedAskRunsNoStepOutOfIt(t *testing.T) {
 		c.Unattended = true
 		c.Budget = Budget{Wall: time.Hour}
 	})
-	agent.steward().setAcceptance(routeAskAcceptance +
+	agent.steward().setAcceptance("Original request: " +
 		"check it with `run_tests.sh`\nthe reproduction ends with:\n$ chmod 000 tox.ini")
 
 	checks := agent.sessionChecks()
@@ -349,59 +170,6 @@ func TestAFailedChecksOutputIsKeptFromItsEnd(t *testing.T) {
 	}
 }
 
-// A PERSON'S SESSION NEVER DELETES ANYTHING. The list is worked out exactly as
-// it is for a goal owner — that is what lets the same road be offered to them —
-// and the removal is the half that belongs to nobody but a session with nobody
-// in it.
-func TestAPersonsSessionIsOfferedTheScratchAndNeverLosesIt(t *testing.T) {
-	tree := t.TempDir()
-	elsewhere := t.TempDir()
-	scratch := filepath.Join(elsewhere, "fixtures.jsonl")
-	if err := os.WriteFile(scratch, []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.Workspace = tree })
-	agent.rememberCreated(fileChange{path: scratch, shown: scratch, created: true})
-
-	_, found, _ := agent.terminalAudit(context.Background())
-	if len(found.scratch) != 1 || found.scratch[0] != scratch {
-		t.Fatalf("the scratch was not found: %+v", found.scratch)
-	}
-	found = agent.sweepSession(found)
-	if len(found.removed) != 0 {
-		t.Fatalf("a person's session deleted %v", found.removed)
-	}
-	if _, err := os.Stat(scratch); err != nil {
-		t.Fatalf("a person's file was removed: %v", err)
-	}
-}
-
-// AND AN UNATTENDED ONE PICKS UP AFTER ITSELF, which is the ending two measured
-// runs were zeroed for not having.
-func TestAnUnattendedSessionPicksUpItsOwnScratch(t *testing.T) {
-	tree := t.TempDir()
-	elsewhere := t.TempDir()
-	scratch := filepath.Join(elsewhere, "fixtures.jsonl")
-	if err := os.WriteFile(scratch, []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
-		c.Workspace = tree
-		c.Unattended = true
-		c.Budget = Budget{Wall: time.Hour}
-	})
-	agent.rememberCreated(fileChange{path: scratch, shown: scratch, created: true})
-
-	_, found, _ := agent.terminalAudit(context.Background())
-	found = agent.sweepSession(found)
-	if len(found.removed) != 1 || found.removed[0] != scratch {
-		t.Fatalf("the scratch was not picked up: %+v", found)
-	}
-	if _, err := os.Stat(scratch); err == nil {
-		t.Fatalf("%s is still there", scratch)
-	}
-}
-
 // THE SECOND READING IS TAKEN ONLY WHERE IT CAN CHANGE ANYTHING.
 //
 // A [Person] holds no acceptance, so a session of theirs never runs a check, never
@@ -413,7 +181,7 @@ func TestAPersonsStoppedTurnTakesNoSecondReading(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.Workspace = tree })
 	agent.hearAsk("write the parser; check it with `touch " + marker + "`")
 
-	if got := agent.decideRemains(context.Background(), readerLine{answered: true, nothingLeft: true}, "all done"); got.Verb != DecideDone {
+	if got := agent.decideRemains(context.Background(), "all done"); got.Verb != DecideDone {
 		t.Fatalf("a person's stopped turn did not end: %+v", got)
 	}
 	if _, err := os.Stat(marker); err == nil {
@@ -421,32 +189,24 @@ func TestAPersonsStoppedTurnTakesNoSecondReading(t *testing.T) {
 	}
 }
 
-// TestAnUnreachedReaderOnAWatchedSessionChangesNothing proves C12: a session
-// somebody is sitting in front of does not buy or run a declared check because
-// the mark reader's call could not be reached.
-func TestAnUnreachedReaderOnAWatchedSessionChangesNothing(t *testing.T) {
+// TestAWatchedCompletionRunsNoUndeclaredChecks preserves the declared-check boundary without a completion reader.
+func TestAWatchedCompletionRunsNoUndeclaredChecks(t *testing.T) {
 	tree := t.TempDir()
 	marker := filepath.Join(tree, "the-check-ran")
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.Workspace = tree })
 	agent.hearAsk("write the parser; check it with `touch " + marker + "`")
 
-	got := agent.decideRemains(context.Background(), readerLine{unreachable: true}, "all done")
+	got := agent.decideRemains(context.Background(), "all done")
 	if got.Verb != DecideDone {
-		t.Fatalf("an unreached reader changed a watched session's ending: %+v", got)
+		t.Fatalf("a watched session's ordinary completion changed: %+v", got)
 	}
 	if _, err := os.Stat(marker); err == nil {
-		t.Fatal("a watched session ran a check on the strength of an unreached reader")
+		t.Fatal("a watched session ran an undeclared check")
 	}
 }
 
-// AND A SESSION THAT DID THE WHOLE JOB INLINE REACHES THE CHECK AT ALL.
-//
-// The reef cell wrote the fix and its tests itself and never started a task, so
-// the reading said "nothing has been finished yet" over a green tree and the run
-// stopped at a standstill. With the reader agreeing that nothing is left, the
-// work it MADE is finished work — and what that buys is not a done answer taken
-// on trust but the second reading: the session's declared checks are run against
-// the tree, and they are what actually settles it.
+// Inline work reaches the same declared-check boundary as delegated work.
+// A command pasted into prose remains prose, not authority to run it again.
 func TestInlineWorkIsAssessedWithoutInventingARepeatableCheck(t *testing.T) {
 	tree := t.TempDir()
 	made := filepath.Join(tree, "test_auth.py")
@@ -465,8 +225,7 @@ func TestInlineWorkIsAssessedWithoutInventingARepeatableCheck(t *testing.T) {
 	// The session's own hands: one file, made by this session, under the tree.
 	agent.rememberCreated(fileChange{path: made, shown: "test_auth.py", created: true})
 
-	got := agent.decideRemains(context.Background(), readerLine{answered: true, nothingLeft: true},
-		"The scheme parsing is fixed and the tests pass.")
+	got := agent.decideRemains(context.Background(), "The scheme parsing is fixed and the tests pass.")
 
 	if got.Verb != DecideDone {
 		t.Fatalf("a session that wrote the whole fix itself was carried on: %+v", got)
@@ -476,11 +235,8 @@ func TestInlineWorkIsAssessedWithoutInventingARepeatableCheck(t *testing.T) {
 	}
 }
 
-// TestAnUnreachedReaderIsAnsweredByTheChecks proves C1, C2 and C6: when the
-// failed reader call is the only missing witness for inline work, a declared
-// check is really run over the tree and a green reading ends done with its
-// reason carried in the brief.
-func TestAnUnreachedReaderIsAnsweredByTheChecks(t *testing.T) {
+// TestDeclaredChecksRunAtCompletedInlineTurns preserves the declared-check boundary without a completion reader.
+func TestDeclaredChecksRunAtCompletedInlineTurns(t *testing.T) {
 	tree := t.TempDir()
 	made := filepath.Join(tree, "test_auth.py")
 	if err := os.WriteFile(made, []byte("def test_scheme():\n    assert True\n"), 0o600); err != nil {
@@ -497,24 +253,18 @@ func TestAnUnreachedReaderIsAnsweredByTheChecks(t *testing.T) {
 	steward.setAcceptanceContract(steward.Ask(), "the scheme is case-insensitive and `touch "+marker+"` passes", []string{"touch " + marker})
 	agent.rememberCreated(fileChange{path: made, shown: "test_auth.py", created: true})
 
-	got := agent.decideRemains(context.Background(), readerLine{unreachable: true},
-		"The scheme parsing is fixed and the tests pass.")
+	got := agent.decideRemains(context.Background(), "The scheme parsing is fixed and the tests pass.")
 
 	if got.Verb != DecideDone {
-		t.Fatalf("green checked inline work was carried on after the reader could not be reached: %+v", got)
+		t.Fatalf("green checked inline work was carried on after the model finished: %+v", got)
 	}
 	if _, err := os.Stat(marker); err != nil {
-		t.Fatalf("the stand-in check never ran over the tree: %v", err)
-	}
-	if !strings.Contains(got.Brief, checksStoodInForTheReader) {
-		t.Fatalf("the done brief does not say why the checks were used:\n%s", got.Brief)
+		t.Fatalf("the declared check never ran over the tree: %v", err)
 	}
 }
 
-// TestAnUnreachedReaderOverARedCheckCarriesOnWithTheRedNamed proves C7: a red
-// stand-in reading carries on with the command it actually ran and never claims
-// that the inline work finished nothing.
-func TestAnUnreachedReaderOverARedCheckCarriesOnWithTheRedNamed(t *testing.T) {
+// TestACompletedTurnNamesItsActualFailedCheck preserves the declared-check boundary without a completion reader.
+func TestACompletedTurnNamesItsActualFailedCheck(t *testing.T) {
 	tree := t.TempDir()
 	made := filepath.Join(tree, "parser.go")
 	if err := os.WriteFile(made, []byte("package parser\n"), 0o600); err != nil {
@@ -531,56 +281,20 @@ func TestAnUnreachedReaderOverARedCheckCarriesOnWithTheRedNamed(t *testing.T) {
 	recordCoveredBaseline(agent, "false")
 	agent.rememberCreated(fileChange{path: made, shown: "parser.go", created: true})
 
-	got := agent.decideRemains(context.Background(), readerLine{unreachable: true}, "That completes the port.")
+	got := agent.decideRemains(context.Background(), "That completes the port.")
 	if got.Verb != DecideCarryOn {
-		t.Fatalf("a red stand-in check did not carry on: %+v", got)
+		t.Fatalf("a red declared check did not carry on: %+v", got)
 	}
 	if !strings.Contains(got.Brief, "false does not pass") {
 		t.Fatalf("the brief does not name the red command:\n%s", got.Brief)
 	}
-	if strings.Contains(got.Brief, nothingFinishedYet) {
+	if strings.Contains(got.Brief, "nothing has been finished yet") {
 		t.Fatalf("the brief says no work finished instead of naming the red check:\n%s", got.Brief)
 	}
-	if !strings.Contains(got.Brief, checksStoodInForTheReader) {
-		t.Fatalf("the carry-on brief does not say why the checks were used:\n%s", got.Brief)
-	}
 }
 
-// TestAnUnreachedReaderIsAnsweredByTheChecksAtAHandoverToo proves C8: the
-// handover ending takes the same real stand-in reading and carries the same
-// reason as a stopped turn.
-func TestAnUnreachedReaderIsAnsweredByTheChecksAtAHandoverToo(t *testing.T) {
-	tree := t.TempDir()
-	made := filepath.Join(tree, "parser.go")
-	if err := os.WriteFile(made, []byte("package parser\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	marker := filepath.Join(tree, "the-check-ran")
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
-		c.Workspace = tree
-		c.Unattended = true
-		c.Budget = Budget{Wall: time.Hour}
-	})
-	steward := agent.steward()
-	steward.hear("port the parser; check it with `touch " + marker + "`")
-	steward.setAcceptanceContract(steward.Ask(), "the parser builds and `touch "+marker+"` passes", []string{"touch " + marker})
-	agent.rememberCreated(fileChange{path: made, shown: "parser.go", created: true})
-
-	got := agent.decideHandover(context.Background(), readerLine{unreachable: true}, "That completes the port.")
-	if got.Verb != DecideDone {
-		t.Fatalf("the handover did not finish over its green stand-in check: %+v", got)
-	}
-	if _, err := os.Stat(marker); err != nil {
-		t.Fatalf("the handover's stand-in check never ran: %v", err)
-	}
-	if !strings.Contains(got.Brief, checksStoodInForTheReader) {
-		t.Fatalf("the handover's done brief does not carry the stand-in reason:\n%s", got.Brief)
-	}
-}
-
-// TestAnEndingAsksTheGoalOwnerOnce proves C11: an unreachable reader over
-// inline work with no declared check carries on without showing the standstill
-// floor the same unmet set twice inside one ending.
+// An ordinary ending is done on the first reading and cannot latch standstill
+// merely because the model made no explicit file-tool calls.
 func TestAnEndingAsksTheGoalOwnerOnce(t *testing.T) {
 	tree := t.TempDir()
 	made := filepath.Join(tree, "parser.go")
@@ -597,9 +311,9 @@ func TestAnEndingAsksTheGoalOwnerOnce(t *testing.T) {
 	steward.setAcceptance("the parser accepts every fixture")
 	agent.rememberCreated(fileChange{path: made, shown: "parser.go", created: true})
 
-	got := agent.decideRemains(context.Background(), readerLine{unreachable: true}, "That completes the port.")
-	if got.Verb != DecideCarryOn {
-		t.Fatalf("one ending stopped after asking the goal owner more than once: %+v", got)
+	got := agent.decideRemains(context.Background(), "That completes the port.")
+	if got.Verb != DecideDone {
+		t.Fatalf("ordinary completion was reopened: %+v", got)
 	}
 	steward.mu.Lock()
 	stopped := steward.stopped
@@ -609,8 +323,7 @@ func TestAnEndingAsksTheGoalOwnerOnce(t *testing.T) {
 	}
 }
 
-// AND A GOAL OWNER'S IS, WHICH IS THE WHOLE POINT: the reader said the ask was
-// met, the check says the tree does not hold, and the turn carries on.
+// A declared failing check remains a reason to continue after a completed turn.
 func TestAGoalOwnersMetAskIsCheckedAgainstTheTree(t *testing.T) {
 	tree := t.TempDir()
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
@@ -629,7 +342,7 @@ func TestAGoalOwnersMetAskIsCheckedAgainstTheTree(t *testing.T) {
 	node.Checks = []string{"false"}
 	recordCoveredBaseline(agent, "false")
 
-	got := agent.decideRemains(context.Background(), readerLine{answered: true, nothingLeft: true}, "That completes the port.")
+	got := agent.decideRemains(context.Background(), "That completes the port.")
 	if got.Verb != DecideCarryOn {
 		t.Fatalf("a tree that fails its own check was allowed to finish: %+v", got)
 	}
@@ -653,7 +366,7 @@ func TestALateTaskCheckIsUnreadAtTheTerminalDoor(t *testing.T) {
 
 	node := landOne(agent, TaskDone, "write the account", "the account states the result")
 	node.Checks = []string{"false"}
-	got := agent.decideRemains(context.Background(), readerLine{answered: true, nothingLeft: true}, "The account is complete.")
+	got := agent.decideRemains(context.Background(), "The account is complete.")
 	if got.Verb != DecideDone {
 		t.Fatalf("an uncovered late check became a new requirement: %+v", got)
 	}
@@ -683,40 +396,12 @@ func TestADeclaredGreenBaselineThatTurnsRedStillCarriesOn(t *testing.T) {
 	}
 	landOne(agent, TaskDone, "write the account", "the account is complete")
 
-	got := agent.decideRemains(context.Background(), readerLine{answered: true, nothingLeft: true}, "The account is complete.")
+	got := agent.decideRemains(context.Background(), "The account is complete.")
 	if got.Verb != DecideCarryOn || !strings.Contains(got.Brief, check+" does not pass") {
 		t.Fatalf("a check read green before and red after was not preserved as a regression: %+v", got)
 	}
 	if strings.Contains(got.Brief, "no usable before-reading") {
 		t.Fatalf("a covered check was described as unknown:\n%s", got.Brief)
-	}
-}
-
-// AND THE SAME READING IS TAKEN AT A HANDOVER. Done seals a handover now
-// (checkpoint.go's [Agent.endTurnUnderSteward]), so a done reached there has to
-// survive the declared checks exactly as one reached at a stopped turn does — or
-// a run could finish on a done nobody checked, on the one road that used to skip
-// the reading because done did not end it.
-func TestADoneAtAHandoverIsCheckedAgainstTheTreeFirst(t *testing.T) {
-	tree := t.TempDir()
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
-		c.Workspace = tree
-		c.Unattended = true
-		c.Budget = Budget{Wall: time.Hour}
-	})
-	steward := agent.steward()
-	steward.hear("port the parser; check it with `false`")
-	steward.setAcceptance("the parser builds and `false` passes")
-	node := landOne(agent, TaskDone, "port the parser", "")
-	node.Checks = []string{"false"}
-	recordCoveredBaseline(agent, "false")
-
-	got := agent.decideHandover(context.Background(), readerLine{answered: true, nothingLeft: true}, "That completes the port.")
-	if got.Verb != DecideCarryOn {
-		t.Fatalf("a handover over a tree that fails its own check was allowed to finish: %+v", got)
-	}
-	if !strings.Contains(got.Brief, "false does not pass") {
-		t.Fatalf("the brief does not name the check:\n%s", got.Brief)
 	}
 }
 
@@ -895,7 +580,7 @@ func principalLines(t *testing.T, mutate func(*Config)) string {
 		}
 	})
 	agent.hearAsk("port the parser")
-	agent.decideRemains(context.Background(), readerLine{said: "the handlers are still unwired", answered: true}, "I have made a start.")
+	agent.decideRemains(context.Background(), "I have made a start.")
 	if err := agent.Close(); err != nil {
 		t.Fatalf("closing: %v", err)
 	}
@@ -904,37 +589,6 @@ func principalLines(t *testing.T, mutate func(*Config)) string {
 		t.Fatalf("reading the journal: %v", err)
 	}
 	return string(content)
-}
-
-// A RUN THAT STOPPED STILL PICKS UP AFTER ITSELF.
-//
-// The budget running out is the ending most likely to leave a mess, and it goes
-// nowhere near the "is the ask met" reading — so the tidy is owed to whoever
-// comes to look at the tree afterwards however the run ended.
-func TestARunThatStoppedOnItsBudgetStillPicksUpAfterItself(t *testing.T) {
-	tree := t.TempDir()
-	elsewhere := t.TempDir()
-	scratch := filepath.Join(elsewhere, "fixtures.jsonl")
-	if err := os.WriteFile(scratch, []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
-		c.Workspace = tree
-		c.Unattended = true
-		c.Budget = Budget{USD: 1}
-	})
-	agent.mu.Lock()
-	agent.usage.CostUSD = 5
-	agent.mu.Unlock()
-	agent.rememberCreated(fileChange{path: scratch, shown: scratch, created: true})
-
-	got := agent.decideRemains(context.Background(), readerLine{said: "there is plenty left to do", answered: true}, "I have made a start.")
-	if got.Verb != DecideStop {
-		t.Fatalf("a spent budget did not stop the run: %+v", got)
-	}
-	if _, err := os.Stat(scratch); err == nil {
-		t.Fatalf("the run stopped and left %s behind", scratch)
-	}
 }
 
 // AND A RUN THAT IS CARRYING ON DOES NOT, which is the failure the split
@@ -952,9 +606,10 @@ func TestARunThatIsCarryingOnKeepsItsOwnWorkingMaterial(t *testing.T) {
 		c.Unattended = true
 		c.Budget = Budget{Wall: time.Hour}
 	})
+	landOne(agent, TaskRunning, "finish the analysis", "")
 	agent.rememberCreated(fileChange{path: working, shown: working, created: true})
 
-	got := agent.decideRemains(context.Background(), readerLine{said: "the handlers are still unwired", answered: true}, "I have made a start.")
+	got := agent.decideRemains(context.Background(), "I have made a start.")
 	if got.Verb != DecideCarryOn {
 		t.Fatalf("the run did not carry on: %+v", got)
 	}
@@ -1045,237 +700,6 @@ func TestTheSessionDoesNotRerunAnActionADeliveredTaskAlreadyPerformed(t *testing
 	}
 }
 
-// ── #468: A CHECK IS A COMMAND, NEVER A PATH ────────────────────────────────
-
-// A SPAN THAT CANNOT BE INVOKED IS NOT A FAILING CHECK, IT IS NOT A CHECK.
-//
-// Prose names a source file in backticks as readily as it names a build, and the
-// harvest used to admit any backticked span the tree happened to hold — then run
-// it under a shell. A file with no executable bit and no line saying what starts
-// it exits 126 every time, so the session reported "does not pass" about it on
-// every round of a whole evening and could never finish. A file the tree can
-// really start is opened the way the FILE says it opens, which is the same fact a
-// node's own door already reads off it (task_checks.go's [fileFacts]).
-func TestASessionsCheckIsACommandAndNeverABarePath(t *testing.T) {
-	tree := t.TempDir()
-	// The file the acceptance quotes: it is there, and nothing about it says that
-	// starting it is a thing that happens.
-	if err := os.WriteFile(filepath.Join(tree, "version.py"), []byte("VERSION = \"1.0\"\n"), 0o644); err != nil {
-		t.Fatalf("writing the source file: %v", err)
-	}
-	// And one that does say: its first line names the program that runs it.
-	script := filepath.Join(tree, "checks.sh")
-	if err := os.WriteFile(script, []byte("#!/bin/sh\nexit 0\n"), 0o644); err != nil {
-		t.Fatalf("writing the script: %v", err)
-	}
-
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
-		c.Workspace = tree
-		c.Unattended = true
-		c.Budget = Budget{Wall: time.Hour}
-	})
-	steward := agent.steward()
-	steward.hear("bump the version")
-	steward.setAcceptance("`version.py` reads 1.1 and `checks.sh` passes")
-	node := landOne(agent, TaskDone, "bump the version", "")
-	node.Checks = []string{"version.py", "checks.sh"}
-
-	checks := agent.sessionChecks()
-	for _, check := range checks {
-		if strings.Contains(check, "version.py") {
-			t.Fatalf("a file nothing can start was harvested as a check: %v", checks)
-		}
-	}
-	want := "sh " + shellQuoted(script)
-	if !containsWord(checks, want) {
-		t.Fatalf("the script was not opened the way its own first line says:\n got %v\nwant %q", checks, want)
-	}
-	// AND THE WHOLE ROAD ENDS AT DONE. The one unit of work finished, the one
-	// check that can be run passes, and there is no permanent failure left over
-	// from a span nobody could ever have typed.
-	got := agent.decideRemains(context.Background(), readerLine{answered: true, nothingLeft: true}, "The version is bumped.")
-	if got.Verb != DecideDone {
-		t.Fatalf("a finished ask was carried on: %+v", got)
-	}
-	if strings.Contains(got.Brief, "does not pass") {
-		t.Fatalf("something that never ran was reported as not passing:\n%s", got.Brief)
-	}
-}
-
-// ── #468: RUNNING MEANS IN FLIGHT ───────────────────────────────────────────
-
-// WORK QUEUED BEHIND WORK THAT SETTLED SHORT IS STUCK, NOT MOVING.
-//
-// An unverified prerequisite deliberately does not cascade: its dependent stays
-// queued, waiting on a person to resolve it (task_run.go's
-// [TaskGraph.readinessLocked]). In an unattended run there is no person, so that
-// node waits for ever — and counted as work in flight it held the floor under
-// carrying on open on every single turn, which is a session that can never stop.
-func TestQueuedBehindWorkThatSettledShortIsStuckAndNotMoving(t *testing.T) {
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
-		c.Unattended = true
-		c.Budget = Budget{Wall: time.Hour}
-	})
-	graph := stubbedGraph(agent, func(node *TaskNode) {
-		node.finish("nobody could say whether the port holds", nil, "", "")
-		node.graph.complete(node, TaskUnverified)
-	})
-	first := graph.reserve()
-	second := graph.reserve()
-	graph.admit(first, taskSpec{title: "port the parser", brief: "b", acceptance: "a"})
-	graph.admit(second, taskSpec{title: "wire the handlers", brief: "b", acceptance: "a",
-		dependsOn: []uint64{first}})
-	waitDoneNode(t, graph.node(first))
-
-	_, _, flight := agent.landings()
-	if len(flight.moving) != 0 {
-		t.Fatalf("work that will never start was called moving: %+v", flight)
-	}
-	if len(flight.stuck) != 1 {
-		t.Fatalf("the work that will not start was not said at all: %+v", flight)
-	}
-	if want := "wire the handlers is waiting on port the parser, which is your call"; flight.stuck[0] != want {
-		t.Fatalf("the stuck work does not say what it waits on:\n got %q\nwant %q", flight.stuck[0], want)
-	}
-
-	// AND WHAT IS STUCK IS PART OF WHAT IS LEFT, so the same reading twice
-	// running is a standstill and the run stops — which is the whole defect.
-	remains := agent.remainsFor("That completes the port.", readerLine{})
-	steward := agent.steward()
-	if got := steward.Decide(remains); got.Verb != DecideCarryOn {
-		t.Fatalf("an ask with work that will not start was not carried on: %+v", got)
-	}
-	got := steward.Decide(remains)
-	if got.Verb != DecideStop {
-		t.Fatalf("a run that cannot get anywhere carried on again: %+v", got)
-	}
-	if !strings.Contains(got.Reason, "wire the handlers is waiting on port the parser") {
-		t.Fatalf("the stop does not name what is stuck: %q", got.Reason)
-	}
-}
-
-// AND THE SAME READING OF A FAILED PREREQUISITE, WHICH IS THE RACED WINDOW.
-//
-// The frontier fails the dependent of a failed node rather than leaving it queued
-// (task_test.go's TestFrontierFailsDependentsOfAFailedNode), so this shape lives
-// only in the moment between the landing and the cascade — and a stopped turn can
-// be read inside it. The graph is built by hand for that reason: what is under
-// test is the READING, and the frontier would have taken the shape away.
-func TestQueuedBehindWorkThatDidNotFinishIsStuckToo(t *testing.T) {
-	graph := newTaskGraph()
-	graph.nodes[1] = &TaskNode{graph: graph, id: 1, spec: taskSpec{title: "port the parser"}, state: TaskFailed}
-	// The edges live on the NODE and not on the spec — [TaskGraph.admit] copies
-	// them across on the way in — and this graph never went through that door.
-	graph.nodes[2] = &TaskNode{graph: graph, id: 2, state: TaskQueued,
-		dependsOn: []uint64{1}, spec: taskSpec{title: "wire the handlers"}}
-	graph.order = []uint64{1, 2}
-
-	graph.mu.Lock()
-	flight := graph.flightLocked()
-	graph.mu.Unlock()
-
-	if len(flight.moving) != 0 {
-		t.Fatalf("work behind a failure was called moving: %+v", flight)
-	}
-	if want := "wire the handlers is waiting on port the parser, which did not finish"; len(flight.stuck) != 1 ||
-		flight.stuck[0] != want {
-		t.Fatalf("the stuck work does not say what it waits on:\n got %+v\nwant %q", flight.stuck, want)
-	}
-	// AND WORK QUEUED BEHIND WORK THAT IS MOVING IS MOVING, which is the other
-	// half of the same rule: it has a turn coming.
-	graph.mu.Lock()
-	graph.nodes[1].state = TaskRunning
-	flight = graph.flightLocked()
-	graph.mu.Unlock()
-	if len(flight.stuck) != 0 || len(flight.moving) != 2 {
-		t.Fatalf("work queued behind something that is moving was called stuck: %+v", flight)
-	}
-}
-
-// A FILE WRITTEN BACK TO WHAT IT WAS IS NOT WORK THE SESSION MADE.
-//
-// [Remains.Made] used to turn on the PATH being in the changed ledger, and a
-// path is not a change. Measured on the canary of 2026-09-03: the attrs cell
-// edited the file that held the fix, ran the suite, then ran `git stash` to
-// compare its work against the baseline and never popped it — and the door said
-// `finishing here · what was asked is done` over a tree with zero changed files.
-// A revert and an edit that puts a file back the way it was fail identically.
-func TestAFileWrittenBackToWhatItWasIsNotMade(t *testing.T) {
-	tree := t.TempDir()
-	existing := filepath.Join(tree, "_make.py")
-	original := "def make(): ...\n"
-	if err := os.WriteFile(existing, []byte(original), 0o644); err != nil {
-		t.Fatalf("writing the project's file: %v", err)
-	}
-	before := fileDigest(existing)
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
-		c.Workspace = tree
-		c.Unattended = true
-		c.Budget = Budget{Wall: time.Hour}
-	})
-
-	if err := os.WriteFile(existing, []byte("def make(): return 1\n"), 0o644); err != nil {
-		t.Fatalf("editing the project's file: %v", err)
-	}
-	agent.rememberChange(fileChange{path: existing, shown: "_make.py", created: false, before: before})
-	if !agent.remainsFor("fixed", readerLine{}).Made {
-		t.Fatal("an edit whose content is in the tree was not counted as work the session made")
-	}
-
-	// AND THE WORK GOES BACK OUT OF THE TREE. The ledger still holds the path and
-	// the file is still there; what is gone is the difference.
-	if err := os.WriteFile(existing, []byte(original), 0o644); err != nil {
-		t.Fatalf("putting the project's file back: %v", err)
-	}
-	if agent.remainsFor("fixed", readerLine{}).Made {
-		t.Fatal("a file written back to exactly what it was counted as work the session made")
-	}
-
-	// A CREATED FILE COUNTS AS IT ALWAYS DID: there was no content before it for
-	// its content to be the same as.
-	fresh := filepath.Join(tree, "test_make.py")
-	if err := os.WriteFile(fresh, []byte("def test_make(): ...\n"), 0o644); err != nil {
-		t.Fatalf("writing the new file: %v", err)
-	}
-	agent.rememberChange(fileChange{path: fresh, shown: "test_make.py", created: true})
-	if !agent.remainsFor("fixed", readerLine{}).Made {
-		t.Fatal("a file the session created was not counted as work it made")
-	}
-
-	// AND A WRITE THROUGH A LINK INSIDE THE TREE IS A WRITE TO WHAT IT POINTS AT.
-	// The ledger's digest is taken through the link (os.Stat and os.Open follow
-	// one), so the reading has to resolve the path too — an Lstat here answered
-	// "not a regular file" and never counted the work at all.
-	linked := t.TempDir()
-	target := filepath.Join(linked, "real.py")
-	if err := os.WriteFile(target, []byte("def real(): ...\n"), 0o644); err != nil {
-		t.Fatalf("writing the link's target: %v", err)
-	}
-	link := filepath.Join(linked, "linked.py")
-	if err := os.Symlink(target, link); err != nil {
-		t.Skipf("this filesystem has no symlinks: %v", err)
-	}
-	through, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
-		c.Workspace = linked
-		c.Unattended = true
-		c.Budget = Budget{Wall: time.Hour}
-	})
-	linkBefore := fileDigest(link)
-	if err := os.WriteFile(link, []byte("def real(): return 1\n"), 0o644); err != nil {
-		t.Fatalf("writing through the link: %v", err)
-	}
-	through.rememberChange(fileChange{path: link, shown: "linked.py", created: false, before: linkBefore})
-	if !through.remainsFor("fixed", readerLine{}).Made {
-		t.Fatal("a write through a link inside the tree was not counted as work the session made")
-	}
-	if err := os.WriteFile(target, []byte("def real(): ...\n"), 0o644); err != nil {
-		t.Fatalf("putting the link's target back: %v", err)
-	}
-	if through.remainsFor("fixed", readerLine{}).Made {
-		t.Fatal("a link whose target was written back counted as work the session made")
-	}
-}
-
 // A STASH HOLDS WORK THAT IS NOT IN THE TREE, AND THE READING SAYS SO — BUT
 // ONLY THE ENTRIES THIS RUN PUT THERE.
 //
@@ -1337,16 +761,12 @@ func TestAStashedFixIsNotDone(t *testing.T) {
 	if got := agent.stashedWork(); got != 1 {
 		t.Fatalf("the reading found %d stash entries of this run's own, want 1", got)
 	}
-	reader := readerLine{answered: true, nothingLeft: true}
-	remains := agent.remainsFor("fixed", reader)
-	if !remains.Made || !remains.ReaderSaysDone {
-		t.Fatalf("the fixture is not the case under test: %+v", remains)
-	}
+	remains := agent.remainsFor("fixed")
 	if got := agent.who().Decide(remains); got.Verb != DecideDone {
 		t.Fatalf("the first reading, which has not looked at the tree, answered %+v", got)
 	}
 
-	decision, _ := agent.decideOverTheChecks(context.Background(), remains)
+	decision := agent.decideOverTheChecks(context.Background(), remains)
 	if decision.Verb != DecideCarryOn {
 		t.Fatalf("a done was decided over a stashed fix: %+v", decision)
 	}
@@ -1523,11 +943,11 @@ func TestANonRepositoryWorkspaceSaysNothingAboutStashes(t *testing.T) {
 	}
 	agent.openBaseline(context.Background())
 
-	_, _, stashed := agent.terminalAudit(context.Background())
+	_, stashed := agent.terminalAudit(context.Background())
 	if stashed != 0 {
 		t.Fatalf("the terminal reading reported %d stash entries over a plain directory", stashed)
 	}
-	remains := agent.remainsFor("fixed", readerLine{answered: true, nothingLeft: true})
+	remains := agent.remainsFor("fixed")
 	remains.Stashed = stashed
 	for _, line := range remains.unmet() {
 		if strings.Contains(line, "stash") {

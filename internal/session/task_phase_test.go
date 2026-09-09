@@ -1,7 +1,6 @@
 package session
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
@@ -298,86 +297,5 @@ func TestADivisionRefusedWithoutAReadingDrawsNoPhaseAtAll(t *testing.T) {
 			t.Fatalf("a free refusal announced the phase %q", event.TaskPhase.Phase)
 		}
 	case <-time.After(200 * time.Millisecond):
-	}
-}
-
-// THE HANDOVER SAYS IT IS WRITING THE BRIEF, FOR THE WHOLE OF IT.
-//
-// This is the other silence and it is the harder one, because it happens BEFORE
-// there is a task to point at: the turn writes down what it found and a
-// mastermind turns that into an instruction, and only then does a node exist. So
-// it rides the turn's own clock (phasenews.go) — which says what is true while it
-// is true and takes itself off the screen when the stage ends, whichever way the
-// handover goes.
-func TestTheHandoverSaysItIsBriefingAWorkerWhileItWritesTheBrief(t *testing.T) {
-	log := watchPhases(t)
-	completer := &scriptedCompleter{steps: handoffSteps(checkpointMarkAt(checkpointMarks)+checkpointSlack,
-		checkpointChainSketch, "Finish the currency module.", "Finish the currency module; the suite is the done-condition.")}
-	agent := checkpointAgent(t, completer)
-	ran := make(ranNodes, 2)
-	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
-
-	events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
-	if err != nil {
-		t.Fatalf("Submit: %v", err)
-	}
-	collect(t, events)
-	ran.await(t)
-
-	// IT WAS SAID, AND IT NAMED WHO THE BRIEF IS FOR. "briefing" alone is the
-	// harness naming its own paperwork; the noun is what makes the row a sentence
-	// somebody watching their turn stop can act on.
-	said := 0
-	starts := map[time.Time]bool{}
-	for _, one := range log.all() {
-		if one.Phase != PhaseBriefing {
-			continue
-		}
-		said++
-		starts[one.Since] = true
-		if one.Detail != checkpointBriefingWho {
-			t.Fatalf("the briefing phase named %q, want %q", one.Detail, checkpointBriefingWho)
-		}
-		if one.Since.IsZero() {
-			t.Fatal("the briefing phase carries no start, so nothing can count up from it")
-		}
-	}
-	if said == 0 {
-		t.Fatal("the handover never said it was briefing anybody")
-	}
-	// AND IT IS ONE STAGE WITH ONE CLOCK ON IT, over both model calls.
-	//
-	// This used to be posted TWICE, once per call, because a surface drops a
-	// phase it has not heard again for [provider.PhaseWindow] and nothing in this
-	// package beat. It beats now (phasenews.go's [phaseHeldBeat]), so the stage
-	// is opened once and held — and what a repeat means has changed with it: a
-	// beat says the SAME sentence from the SAME start, and a second start would
-	// be the clock a person is reading going back to zero halfway through.
-	if len(starts) != 1 {
-		t.Fatalf("the briefing was said from %d different starts, want one stage with one clock",
-			len(starts))
-	}
-
-	// AND IT IS CLOSED. A phase left open is a clock a surface goes on drawing for
-	// work that ended, which is the defect this lane exists to prevent.
-	words := phaseWords(log.all())
-	last := -1
-	for index, one := range log.all() {
-		if one.Phase == PhaseBriefing {
-			last = index
-		}
-	}
-	if last < 0 {
-		t.Fatalf("no briefing phase at all; phases were %v", words)
-	}
-	closed := false
-	for _, one := range log.all()[last+1:] {
-		if one.Phase == "" {
-			closed = true
-			break
-		}
-	}
-	if !closed {
-		t.Fatalf("the briefing clock was never taken off the screen; phases were %v", words)
 	}
 }

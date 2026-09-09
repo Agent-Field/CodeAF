@@ -1,56 +1,16 @@
 package session
 
-// THE TERMINAL AUDIT: the last thing an unattended session does before it is
-// allowed to say the ask is finished.
-//
-// ── WHAT WAS MISSING ────────────────────────────────────────────────────────
-//
-// Every reading this engine takes of "is it done" is a reading of what the
-// SESSION SAID. The mark reader is shown a digest of the transcript; a task's
-// auditor is shown that node's own acceptance and that node's own claim. Nobody
-// ever looked at the tree afterwards, and nobody ever looked at what the session
-// had left lying around it. Two measured runs held a good result and were
-// zeroed at the end by scratch data files the session had written beside the
-// deliverable and never picked up; a third ended on a tree that did not build,
-// with the conversation confidently finished.
-//
-// So a Steward gets two readings a person would have taken for themselves:
-//
-//   - THE CHECKS THE WORK ITSELF NAMED, RE-RUN FROM CLEAN. Not a list this file
-//     knows — task_checks.go already settled that law, and the same
-//     [auditDoorFor] contract is used here so a session and its nodes can never
-//     disagree about what a check is. "From clean" means A FRESH PROCESS IN THE
-//     DELIVERABLE TREE: no shell the turn had open, no environment a tool call
-//     had edited, nothing cached from the run. It is what a person typing the
-//     command in a new terminal would get, which is exactly the reading that was
-//     never taken.
-//
-//   - AND A RECONCILIATION OF EVERYTHING THE SESSION CREATED. Every path is
-//     either inside the deliverable tree — where it is part of the answer — or
-//     it is scratch, and scratch is removed and written down.
-//
-// ── THE LAW THIS FILE MUST NOT BREAK ────────────────────────────────────────
-//
-// NOTHING THE SESSION DID NOT CREATE IS EVER TOUCHED. Not a file it modified,
-// not a file it read, not a directory it happened to write into. The ledger
-// this walks holds only paths whose non-existence was MEASURED before the call
-// that made them (recovery.go's [fileLedger] takes that measurement, and it is
-// the only moment it can be taken); a path with no such measurement is recorded
-// as modified and never reaches here.
-//
-// AND A PERSON'S SESSION DELETES NOTHING. [Person] is offered the list and that
-// is all: somebody who is sitting there can see their own directory, and a
-// harness quietly removing files behind them is the opposite of what the
-// emptiness of that implementation means everywhere else.
+// The terminal audit runs explicitly declared checks and reads actual Git stash
+// state. Completion does not classify files outside the workspace as scratch:
+// a requested report may live at an absolute path, and location alone cannot
+// authorize deleting it. Explicit cleanup and episode recovery own removals.
 
 import (
 	"context"
 	"errors"
 	"io/fs"
-	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -69,8 +29,7 @@ const (
 	sessionCheckCount = auditCheckCount
 	// sessionCheckTail is how much of a failed check's output is kept. It is
 	// read by a model as the reason to carry on, so it is the END of the output
-	// ([checkpointResultTail]'s law: what a check concluded is in its last
-	// lines).
+	// (what a check concluded is in its last lines).
 	sessionCheckTail = 1200
 )
 
@@ -216,9 +175,8 @@ func checkActuallyRan(ctx context.Context, err error) bool {
 }
 
 // checkTail keeps the END of what a check printed, bounded. It is
-// [checkpointResultTail]'s rule with this file's own bound: a check kept from
-// the head would show a reader that a suite had started and never that it had
-// failed.
+// this file's own bound: a check kept from the head would show a reader that
+// a suite had started and never that it had failed.
 func checkTail(output string) string {
 	output = strings.TrimSpace(output)
 	if len(output) <= sessionCheckTail {
@@ -274,144 +232,10 @@ func (a *Agent) createdList() []fileChange {
 	return append([]fileChange(nil), a.createdFiles...)
 }
 
-// rememberChange folds one write the turn's ledger saw into the session's own:
-// a file that was not there before goes to the created ledger the tidy may act
-// on, a file that was goes to the changed ledger nothing acts on.
+// rememberChange retains creation facts for the session journal. Episode
+// recovery owns reverting tracked mutations; completion never deletes outputs.
 func (a *Agent) rememberChange(change fileChange) {
-	if change.created {
-		a.rememberCreated(change)
-		return
-	}
-	a.rememberChanged(change)
-}
-
-// rememberChanged keeps one modified file — AND WHAT WAS IN IT BEFORE
-// ([fileChange.before]) — so the session knows it put work on the deliverable
-// with its own hands, and can still tell later whether that work is there.
-//
-// THE FIRST SIGHTING OF A PATH IS THE ONE THAT STANDS, which is why the loop
-// below returns rather than overwriting. A turn's ledger is minted fresh at
-// episode-init, so the second turn to edit a file digests the FIRST turn's
-// result as its before; keeping the earliest entry keeps the digest that was
-// taken before this session had written anything there at all.
-//
-// IT IS NEVER WRITTEN TO THE JOURNAL'S CREATED LINE, whose whole value is the
-// word created ([journalCreated]), and it is not journaled at all: the only
-// question it answers is asked of the running session ([Remains.Made]), and a
-// session resumed from its file has a tree and a graph to read instead.
-//
-// Measured (#513): a cell fixed its issue with one edit to a file the project
-// already had, went green, and was told `nothing has been finished yet` at every
-// ending until the standstill stopped it — the created ledger was empty, because
-// nothing had been created.
-func (a *Agent) rememberChanged(change fileChange) {
-	if change.created || strings.TrimSpace(change.path) == "" {
-		return
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for _, known := range a.changedFiles {
-		if known.path == change.path {
-			return
-		}
-	}
-	a.changedFiles = append(a.changedFiles, change)
-}
-
-// createdInDeliverable says whether a file this session created is under the
-// deliverable tree, is still a regular file there, AND HAS CONTENT IN IT. A
-// path outside the tree is scratch, not the work; a path that has since gone or
-// become a directory is not the file the session made; and an empty file holds
-// none of the work the run meant to put there.
-//
-// ── THE MEASURED FAILURE ────────────────────────────────────────────────────
-//
-// A run wrote `fix.py`, and a later one of its own steps blanked it. The
-// created ledger still held the path, so Made was true and the door said the
-// work was made over a tree holding an empty file.
-//
-// A CREATED FILE IS MEASURED BY SIZE, NOT BY ITS BEFORE-DIGEST. Its before is
-// "" because it was absent, while the digest of an empty regular file is the
-// sha256 of zero bytes rather than "" ([fileDigest]); comparing those values
-// would call the empty file changed and silently restore this failure.
-func (a *Agent) createdInDeliverable() bool {
-	tree := a.deliverableTree()
-	if tree == "" {
-		return false
-	}
-	for _, change := range a.createdList() {
-		if !change.created || !underTree(tree, change.path) {
-			continue
-		}
-		// THE PATH IS RESOLVED BEFORE IT IS READ for the same reason as in
-		// [Agent.changedInDeliverable]: a link under the workspace to an in-tree
-		// regular file is the file it points at, while [underTree] has already
-		// excluded a link that points out of the workspace.
-		resolved := canonicalPath(change.path)
-		info, err := os.Stat(resolved)
-		if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
-			continue
-		}
-		return true
-	}
-	return false
-}
-
-// changedInDeliverable says whether a file this session modified is under the
-// deliverable tree, still a file there, AND STILL HOLDING DIFFERENT CONTENT
-// FROM WHAT IT HELD BEFORE THE WRITE. A path outside the tree is a note or a
-// scratch file, not the work; a path that has since gone is not work anybody
-// can point at; and a path whose content is back where it started is not work
-// either, whatever the ledger remembers about it having been written.
-//
-// ── THE MEASURED FAILURE ────────────────────────────────────────────────────
-//
-// This used to ask about the PATH alone, and a path is not a change. The attrs
-// cell (canary 2026-09-03) edited `src/attr/_make.py`, ran the suite, then ran
-// `git stash` to compare its work against the baseline and never popped it. The
-// tree at the end held none of the fix; the ledger still held the path; Made was
-// true; the door said `finishing here · what was asked is done` over zero changed
-// files. A revert and an edit that writes a file back to what it was fail the
-// same way, silently, and always did.
-//
-// A FILE WITH NO BEFORE-DIGEST IS STILL COUNTED, which is the conservative side
-// and the deliberate one. "" is what an absent file, an unreadable one and a
-// path no pre-action ever saw all digest as ([fileDigest]), and a file that has
-// content now differs from all three. The reading this must never give is a
-// session that really did the work being told it made nothing.
-func (a *Agent) changedInDeliverable() bool {
-	tree := a.deliverableTree()
-	if tree == "" {
-		return false
-	}
-	a.mu.Lock()
-	changed := append([]fileChange(nil), a.changedFiles...)
-	a.mu.Unlock()
-	for _, change := range changed {
-		// THE SAME CONTAINMENT THE CREATED LEDGER USES ([underTree]): canonical
-		// paths, so a symlink under the workspace pointing out of it is not
-		// counted as work on the deliverable.
-		if !underTree(tree, change.path) {
-			continue
-		}
-		// AND THE PATH IS RESOLVED BEFORE IT IS READ, because the ledger's own
-		// digest was taken through any link there is: os.Stat and os.Open follow
-		// one, so a write through an in-tree symlink to an in-tree regular file
-		// has a perfectly good before-digest, and an Lstat here rejected it as
-		// "not a regular file" and never counted it. CONTAINMENT IS STILL
-		// UNAFFECTED: [underTree] canonicalises both sides, so a link under the
-		// workspace pointing OUT of it was already excluded above.
-		resolved := canonicalPath(change.path)
-		info, err := os.Stat(resolved)
-		if err != nil || !info.Mode().IsRegular() {
-			continue
-		}
-		if fileDigest(resolved) == change.before {
-			continue
-		}
-		return true
-	}
-	return false
+	a.rememberCreated(change)
 }
 
 // stashEntry is one line of `git stash list` as this reading needs to read it:
@@ -566,111 +390,6 @@ func isGroundStash(subject string) bool {
 	return strings.HasPrefix(subject, groundStashMessage(""))
 }
 
-// reconciliation is what the sweep found: what belongs to the answer, and what
-// was left lying beside it.
-//
-// Both lists name files as a person reads them, sorted, because the only reader
-// of either is a person or a model reading over their shoulder.
-type reconciliation struct {
-	kept    []string
-	scratch []string
-	removed []string
-	failed  []string
-}
-
-// reconcile sorts everything the session created into the deliverable and the
-// scratch, and it TOUCHES NOTHING.
-//
-// Three questions per path, in this order, and a no to any of them leaves the
-// file exactly where it is:
-//
-//  0. DID THIS SESSION CREATE IT? The ledger this is handed already holds only
-//     created files ([Agent.rememberCreated]), and it is asked again here
-//     anyway. This is the last function before os.Remove, the fact it turns on
-//     can only be measured at a moment that has already passed, and a defence
-//     that lives in one place is a defence one refactor away from being gone.
-//
-//  1. IS IT STILL THERE? A path the session made and then removed itself is not
-//     scratch and is not anybody's business; a path that has become a directory
-//     is not the file we wrote and is left alone.
-//
-//  2. IS IT INSIDE THE DELIVERABLE TREE? If it is, it is part of the answer,
-//     whatever it looks like — a harness deciding which of somebody's files are
-//     really deliverables is exactly the judgement it must not make. If it is
-//     not, it is scratch: this session put a file somewhere nobody will look for
-//     it, and leaving it there is the failure that zeroed two measured runs.
-func reconcile(created []fileChange, tree string) reconciliation {
-	var out reconciliation
-	tree = strings.TrimSpace(tree)
-	for _, change := range created {
-		if !change.created {
-			continue
-		}
-		info, err := os.Lstat(change.path)
-		if err != nil || info.IsDir() {
-			continue
-		}
-		name := change.shown
-		if strings.TrimSpace(name) == "" {
-			name = change.path
-		}
-		if tree != "" && underTree(tree, change.path) {
-			out.kept = append(out.kept, name)
-			continue
-		}
-		out.scratch = append(out.scratch, change.path)
-	}
-	sort.Strings(out.kept)
-	sort.Strings(out.scratch)
-	return out
-}
-
-// underTree reports that a path sits inside a directory. It is a comparison of
-// canonical paths and never a prefix test on strings: `/work-2` is not inside
-// `/work`, and a string prefix says it is. Resolving both sides also keeps a
-// task tree reached through a symlink from having its deliverables mistaken for
-// scratch and removed.
-func underTree(tree, path string) bool {
-	relative, err := filepath.Rel(canonicalPath(tree), canonicalPath(path))
-	if err != nil {
-		return false
-	}
-	return relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
-}
-
-// sweepScratch removes what the sweep found outside the deliverable, and says
-// what it removed and what it could not.
-//
-// A REMOVAL THAT FAILS IS REPORTED AND NEVER RETRIED. Whatever stopped it — a
-// permission, a mount that went away — is not something this file can fix, and
-// a sweep that fought the filesystem would be a session ending on an error
-// about its own tidying rather than on its work.
-func sweepScratch(found reconciliation) reconciliation {
-	for _, path := range found.scratch {
-		if err := os.Remove(path); err != nil {
-			found.failed = append(found.failed, path)
-			continue
-		}
-		found.removed = append(found.removed, path)
-	}
-	return found
-}
-
-// terminalAudit is the whole of the last reading, taken at the one moment its
-// answer can change anything: after the principal has said the ask is met.
-//
-// IT RETURNS THE READINGS AND LEAVES THE DECIDING TO THE PRINCIPAL. This file
-// takes readings; whether an unmet check means carry on or stop is
-// [Steward.Decide]'s to say, and putting that judgement here would be a second
-// policy over the same facts.
-//
-// THE SWEEP IS SORTED HERE AND CARRIED OUT ELSEWHERE ([Agent.sweepSession]),
-// and the seam is not tidiness. A stopped turn is not necessarily an ENDING —
-// the principal may read the checks and carry on — and a session that is about
-// to carry on may be about to read the very file this pass is looking at. A
-// sweep on every stopped turn would be this feature deleting the run's own
-// working material halfway through, which is a worse failure than the one it
-// was built to fix.
 // openBaseline reads WHAT WAS ALREADY RED before this session did any work,
 // once, in the background, at the start of an unattended run.
 //
@@ -1003,35 +722,18 @@ func (a *Agent) journalBaseline(red, unread, moved []string) {
 
 // AND IT READS THE STASH, which is the third thing a person would have looked
 // at. Work the session pushed onto `git stash` is work that is not in the tree,
-// and every other reading here — the checks, the reconciliation, the ledger —
+// and every other reading here — the checks and the ledger —
 // reads a tree it is missing from without noticing ([stashedWork]).
-func (a *Agent) terminalAudit(ctx context.Context) ([]CheckRun, reconciliation, int) {
+func (a *Agent) terminalAudit(ctx context.Context) ([]CheckRun, int) {
 	// THE BEFORE-READING IS WAITED FOR HERE AND NOWHERE ELSE. What these checks
 	// answer is about to be compared with it. A command outside its coverage is
 	// carried as unread, while a covered command that turned red remains work
 	// ([Agent.awaitBaseline]).
 	a.awaitBaseline(ctx)
 	ran := a.runSessionChecks(ctx, a.sessionChecks())
-	tree := a.deliverableTree()
-	found := reconcile(a.createdList(), tree)
 	stashed := a.stashedWork()
 	a.journalChecks(ran, stashed)
-	return ran, found, stashed
-}
-
-// sweepSession carries out what [reconcile] sorted, and it is called at the END
-// — the turn on which the principal said done, or said stop.
-//
-// A PERSON'S SESSION SWEEPS NOTHING. They are offered the list and that is all:
-// somebody who is sitting there can see their own directory, and a harness
-// quietly removing files behind them is the opposite of what the emptiness of
-// [Person] means everywhere else.
-func (a *Agent) sweepSession(found reconciliation) reconciliation {
-	if a.steward() != nil {
-		found = sweepScratch(found)
-	}
-	a.journalReconciliation(found)
-	return found
+	return ran, stashed
 }
 
 // journalChecks writes down what the tree said about itself, because a session
@@ -1055,23 +757,6 @@ func (a *Agent) journalChecks(ran []CheckRun, stashed int) {
 		}
 	}
 	a.journalFile().appendPrincipal(moment)
-}
-
-// journalReconciliation writes down what the session left behind and what
-// became of it, because a run that ended clean and a run that ended after
-// deleting eleven files read identically in the journal before this line
-// existed.
-func (a *Agent) journalReconciliation(found reconciliation) {
-	if len(found.kept) == 0 && len(found.scratch) == 0 {
-		return
-	}
-	a.journalFile().appendPrincipal(journalPrincipal{
-		Who:     principalWord(a.who()),
-		Event:   "reconciled",
-		Kept:    found.kept,
-		Removed: found.removed,
-		Failed:  found.failed,
-	})
 }
 
 // journalFile is this session's journal, or nil. Every append door in

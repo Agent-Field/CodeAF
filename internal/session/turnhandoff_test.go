@@ -9,7 +9,7 @@ package session
 // task, said it had started and that the conversation stayed free, and stopped.
 // The end-of-turn reader was asked whether the ASK was finished, said no —
 // truthfully, the build was still running — and the turn was re-opened with
-// [checkpointCarryOnNote]. With nothing left to do the model polled `tasks` and
+// an automatic continuation. With nothing left to do the model polled `tasks` and
 // started a watch over its own running task.
 //
 // The cases below drive [Agent.Submit] rather than calling the gate, because
@@ -19,6 +19,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -29,22 +31,13 @@ import (
 
 // ── the fixture ─────────────────────────────────────────────────────────────
 
-// handedOffSteps is [waitingSteps] with the wait replaced by a HANDOFF: the turn
-// works for `rounds` calls, hands the outcome to one task on the last of them,
-// and then says what it started.
-//
-// The rounds are there so the turn is past the first rung and the reader is
-// armed: what these cases are about is a turn the reader WOULD have re-opened.
-// The live shape reached the same gate on fewer rounds, because a message that
-// reads like work pulls the first rung down ([checkpointMeter.firstAt]).
-func handedOffSteps(rounds int, said string, remains func() string) []step {
+// The caller performs several ordinary rounds, explicitly starts a task, then
+// reports that its work is running independently.
+func handedOffSteps(rounds int, said string) []step {
 	var done atomic.Int64
 	steps := make([]step, rounds+40)
 	for index := range steps {
 		steps[index] = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
-			if answer, handled := checkpointSidecar(messages, remains); handled {
-				return answer, nil
-			}
 			call := done.Add(1)
 			switch {
 			case call < int64(rounds):
@@ -66,22 +59,6 @@ const (
 		"keep this conversation available while it runs"
 	slowBuildSaid = "I've started task 1 for the build. This conversation stays free while it runs."
 )
-
-// checkpointSidecar answers every ask this road makes of a model that is not
-// the turn itself, so a fixture's own script never has to think about them.
-func checkpointSidecar(messages []ai.Message, remains func() string) (*ai.Response, bool) {
-	switch {
-	case askedForSketch(messages):
-		return textResponse(checkpointChainSketch), true
-	case askedForHandoff(messages):
-		return textResponse("a draft of what is left"), true
-	case askedToWriteHandoff(messages):
-		return textResponse("a brief somebody could work from, written by the mastermind"), true
-	case askedForRemains(messages):
-		return textResponse(remains()), true
-	}
-	return nil, false
-}
 
 // proposeAs is [proposeCall] with the call id given, because a turn that
 // proposes twice must not answer two calls under one id.
@@ -175,11 +152,7 @@ func theRunningNode(t *testing.T, graph *TaskGraph) *TaskNode {
 // ended it — so there is no round in which a model with nothing to do polls the
 // task it just started or opens a watch over it.
 func TestATurnThatHandedItsAskToATaskIsNotCarriedOn(t *testing.T) {
-	var remainsAsks atomic.Int64
-	completer := &scriptedCompleter{steps: handedOffSteps(checkpointMarkAt(1), slowBuildSaid, func() string {
-		remainsAsks.Add(1)
-		return "the marker has not been reported and the build has not finished"
-	})}
+	completer := &scriptedCompleter{steps: handedOffSteps(10, slowBuildSaid)}
 	agent := checkpointAgent(t, completer)
 	// The runner never lands the node, so the work is still out when the turn
 	// ends — which is the whole of the shape being tested.
@@ -193,9 +166,6 @@ func TestATurnThatHandedItsAskToATaskIsNotCarriedOn(t *testing.T) {
 
 	if count := admitted(graph); count != 1 {
 		t.Fatalf("%d tasks were admitted, want the one the person asked for", count)
-	}
-	if got := remainsAsks.Load(); got != 0 {
-		t.Errorf("a turn that handed its ask to a live task was read %d times for what remains", got)
 	}
 	if saidSomething(noticeTexts(collected), checkpointCarryOnNote) {
 		t.Errorf("a turn that handed its ask off was carried on: %q", noticeTexts(collected))
@@ -224,17 +194,13 @@ func TestTheHandedOffTaskWakesTheConversationOnceWhenItLands(t *testing.T) {
 	const answer = "the build finished and the marker is BUILD-OK-42"
 
 	var woke atomic.Int64
-	var remainsAsks atomic.Int64
-	steps := handedOffSteps(checkpointMarkAt(1), slowBuildSaid, func() string {
-		remainsAsks.Add(1)
-		return checkpointNothingLeft
-	})
+	steps := handedOffSteps(10, slowBuildSaid)
 	// The woken turn is told apart by the news it carries, and answers the
 	// person the way the manual says a landing is answered.
 	for index := range steps {
 		inner := steps[index]
 		steps[index] = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
-			if strings.Contains(userTextIn(messages), marker) && !askedForRemains(messages) {
+			if strings.Contains(userTextIn(messages), marker) {
 				woke.Add(1)
 				return textResponse(answer), nil
 			}
@@ -274,13 +240,11 @@ func TestANewQuestionIsAnsweredWhileTheHandedOffTaskRuns(t *testing.T) {
 	const asked = "while that runs — what does the -j flag in that script do?"
 	const answered = "-j sets how many compile jobs run at once"
 
-	steps := handedOffSteps(checkpointMarkAt(1), slowBuildSaid, func() string {
-		return checkpointNothingLeft
-	})
+	steps := handedOffSteps(10, slowBuildSaid)
 	for index := range steps {
 		inner := steps[index]
 		steps[index] = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
-			if strings.Contains(userTextIn(messages), "-j flag") && !askedForRemains(messages) {
+			if strings.Contains(userTextIn(messages), "-j flag") {
 				return textResponse(answered), nil
 			}
 			return inner(ctx, messages)
@@ -313,145 +277,46 @@ func TestANewQuestionIsAnsweredWhileTheHandedOffTaskRuns(t *testing.T) {
 
 // ── and the three shapes the gate must NOT open for ─────────────────────────
 
-// AN OLD TASK DOES NOT ANSWER FOR A NEW REQUEST.
-//
-// The gate is qualified to the turn that made the handoff. A conversation with
-// something running from an earlier ask is an ordinary conversation, and a turn
-// of its own that stops short is read and carried on exactly as before.
-func TestAnOldRunningTaskDoesNotExcuseTheNextRequestFromTheReading(t *testing.T) {
-	const rounds = 10
-	const stopped = "I've read the tree; next I'd wire the handlers"
-	const remains = "the handlers are not wired and the golden tests have never been run"
-
-	var remainsAsks atomic.Int64
-	var done atomic.Int64
-	steps := make([]step, 4*rounds+40)
-	for index := range steps {
-		steps[index] = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
-			answer, handled := checkpointSidecar(messages, func() string {
-				if remainsAsks.Add(1) == 1 {
-					return remains
-				}
-				return checkpointNothingLeft
-			})
-			if handled {
-				return answer, nil
-			}
-			call := done.Add(1)
-			switch {
-			// The first turn: work, hand the build off, say so.
-			case call < int64(rounds):
-				return toolResponseWithText(fmt.Sprintf("call-%d", call), "ls",
-					fmt.Sprintf(`{"path":"./%d"}`, call), "Looking at the next path."), nil
-			case call == int64(rounds):
-				return proposeCall(slowBuildTitle, slowBuildBrief)(ctx, messages)
-			case call == int64(rounds)+1:
-				return textResponse(slowBuildSaid), nil
-			// The second turn: a different ask, worked on and left unfinished
-			// here, with nothing handed to anybody.
-			case call <= int64(2*rounds)+1:
-				return toolResponseWithText(fmt.Sprintf("call-%d", call), "ls",
-					fmt.Sprintf(`{"path":"./b%d"}`, call), "Reading the handlers."), nil
-			}
-			return textResponse(stopped), nil
-		}
-	}
-	completer := &scriptedCompleter{steps: steps}
-	agent := checkpointAgent(t, completer)
-	stubbedGraph(agent, func(node *TaskNode) {})
-
-	events, err := agent.Submit(context.Background(), slowBuildAsk)
-	if err != nil {
-		t.Fatalf("Submit: %v", err)
-	}
-	approveTasks(t, agent, events)
-
-	// The readings are counted from HERE, so what is asserted below is the
-	// SECOND turn's own, whatever the first turn did with its handoff.
-	readBefore := remainsAsks.Load()
-	second, err := agent.Submit(context.Background(), "port the language server and get the golden tests passing")
-	if err != nil {
-		t.Fatalf("second Submit: %v", err)
-	}
-	collected := collect(t, second)
-
-	if remainsAsks.Load() == readBefore {
-		t.Fatal("a new request that stopped short was never read, because an older task was still running")
-	}
-	if !strings.Contains(transcriptText(agent), checkpointCarryOnLead+remains) {
-		t.Errorf("the new request was not carried on:\n%s", transcriptText(agent))
-	}
-	if !saidSomething(noticeTexts(collected), checkpointCarryOnNote) {
-		t.Errorf("nobody said why the turn kept going; notices were %q", noticeTexts(collected))
-	}
-}
-
 // AND A HANDOFF MADE BEFORE THEIR NEXT SENTENCE DOES NOT ANSWER FOR IT.
 //
 // A steer does not start a new turn: it lands at the running turn's next
 // boundary, so the turn number alone cannot tell the two requests apart. The
 // person adds independent work here after the build is already out with a task,
-// and the turn must be read exactly as it would have been with no handoff at
-// all.
+// and the next model request must carry and complete that new instruction.
 func TestAHandoffMadeBeforeTheirNextSentenceDoesNotAnswerForIt(t *testing.T) {
 	const steered = "while that runs, the dates in NOTES.md are wrong — fix them"
-	const stopped = "the build is running; I've read NOTES.md but not corrected the dates"
-	const remains = "the dates in NOTES.md have not been corrected"
-
-	rounds := checkpointMarkAt(1)
 	begun := make(chan struct{})
-	var remainsAsks atomic.Int64
-	var done atomic.Int64
-	steps := make([]step, rounds+40)
-	for index := range steps {
-		steps[index] = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
-			answer, handled := checkpointSidecar(messages, func() string {
-				if remainsAsks.Add(1) == 1 {
-					return remains
-				}
-				return checkpointNothingLeft
-			})
-			if handled {
-				return answer, nil
+	completer := &scriptedCompleter{steps: []step{
+		proposeAs("build", slowBuildTitle, slowBuildBrief), steerHere(begun),
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			if !strings.Contains(userTextIn(messages), steered) {
+				return nil, fmt.Errorf("the new request never reached the worker")
 			}
-			call := done.Add(1)
-			switch {
-			case call < int64(rounds):
-				return toolResponseWithText(fmt.Sprintf("call-%d", call), "ls",
-					fmt.Sprintf(`{"path":"./%d"}`, call), "Looking at the next path."), nil
-			case call == int64(rounds):
-				return proposeAs("call-task-1", slowBuildTitle, slowBuildBrief)(ctx, messages)
-			case call == int64(rounds)+1:
-				return steerHere(begun)(ctx, messages)
-			}
-			return textResponse(stopped), nil
-		}
-	}
-	completer := &scriptedCompleter{steps: steps}
+			return toolResponse("dates", "write", `{"path":"NOTES.md","content":"Updated release dates."}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("The release dates are updated; the build is still running."), nil
+		},
+	}}
 	agent := checkpointAgent(t, completer)
-	stubbedGraph(agent, func(node *TaskNode) {})
-
-	events, err := agent.Submit(context.Background(), slowBuildAsk)
-	if err != nil {
-		t.Fatalf("Submit: %v", err)
-	}
-	drained := approvingInBackground(agent, events)
+	graph := stubbedGraph(agent, func(*TaskNode) {})
+	drained := approvingInBackground(agent, mustSubmit(t, agent, slowBuildAsk))
 	select {
 	case <-begun:
-	case <-time.After(20 * time.Second):
-		t.Fatal("the turn never reached the step the steer was to land in")
+	case <-time.After(5 * time.Second):
+		t.Fatal("turn never reached steer boundary")
 	}
 	mustSteer(t, agent, steered)
-	collected := turnEvents(t, drained)
-
-	if remainsAsks.Load() == 0 {
-		t.Fatal("the person's new words were never read for what remains: an older handoff answered for them")
+	turnEvents(t, drained)
+	if admitted(graph) != 1 {
+		t.Fatal("the correction created an unrequested task")
 	}
-	if !saidSomething(noticeTexts(collected), checkpointCarryOnNote) {
-		t.Errorf("the steered request was not carried on; notices were %q", noticeTexts(collected))
+	data, err := os.ReadFile(filepath.Join(agent.config.Workspace, "NOTES.md"))
+	if err != nil || string(data) != "Updated release dates." {
+		t.Fatalf("new request not completed: %q %v", data, err)
 	}
-	if !strings.Contains(transcriptText(agent), checkpointCarryOnLead+remains) {
-		t.Errorf("the turn was not re-opened on what the reader said is left:\n%s", transcriptText(agent))
+	if theRunningNode(t, graph).stateNow() != TaskRunning {
+		t.Fatal("the independent build did not remain running")
 	}
 }
 
@@ -464,20 +329,12 @@ func TestWorkHandedOutAfterTheirNextSentenceQualifiesAgain(t *testing.T) {
 	const steered = "while that runs, the dates in NOTES.md are wrong — fix them"
 	const said = "both are out with tasks now; I'll report when they land"
 
-	rounds := checkpointMarkAt(1)
+	rounds := 10
 	begun := make(chan struct{})
-	var remainsAsks atomic.Int64
 	var done atomic.Int64
 	steps := make([]step, rounds+40)
 	for index := range steps {
 		steps[index] = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
-			answer, handled := checkpointSidecar(messages, func() string {
-				remainsAsks.Add(1)
-				return "the dates in NOTES.md have not been corrected"
-			})
-			if handled {
-				return answer, nil
-			}
 			call := done.Add(1)
 			switch {
 			case call < int64(rounds):
@@ -513,9 +370,6 @@ func TestWorkHandedOutAfterTheirNextSentenceQualifiesAgain(t *testing.T) {
 	if count := admitted(graph); count != 2 {
 		t.Fatalf("%d tasks were admitted, want the build and the steered work", count)
 	}
-	if got := remainsAsks.Load(); got != 0 {
-		t.Errorf("a turn that handed the steered work off too was read %d times for what remains", got)
-	}
 	if saidSomething(noticeTexts(collected), checkpointCarryOnNote) {
 		t.Errorf("the turn was carried on after handing the person's new words off: %q", noticeTexts(collected))
 	}
@@ -527,68 +381,43 @@ func TestWorkHandedOutAfterTheirNextSentenceQualifiesAgain(t *testing.T) {
 // turn holding that report is a turn with news to answer rather than one waiting
 // for it. Nothing here may read as "the outcome is somebody's now".
 func TestAHandoffThatFailedInsideItsOwnTurnIsStillRead(t *testing.T) {
-	const remains = "the build never ran, so no marker was ever written"
-
 	failed := make(chan struct{})
-	var remainsAsks atomic.Int64
-	steps := handedOffSteps(checkpointMarkAt(1), slowBuildSaid, func() string {
-		if remainsAsks.Add(1) == 1 {
-			return remains
-		}
-		return checkpointNothingLeft
-	})
-	// The failure must precede the turn's closing prose. Merely launching a
-	// goroutine that fails immediately does not establish that ordering on CI.
-	for i, next := range steps {
-		steps[i] = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
-			answer, err := next(ctx, messages)
-			if answer != nil && len(answer.Choices) > 0 {
-				for _, part := range answer.Choices[0].Message.Content {
-					if part.Text == slowBuildSaid {
-						select {
-						case <-failed:
-						case <-ctx.Done():
-							return nil, ctx.Err()
-						case <-time.After(5 * time.Second):
-							return nil, fmt.Errorf("the fixture task never failed")
-						}
-					}
-				}
+	completer := &scriptedCompleter{steps: []step{
+		proposeAs("build", slowBuildTitle, slowBuildBrief),
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			select {
+			case <-failed:
+			case <-ctx.Done():
+				return nil, ctx.Err()
 			}
-			return answer, err
-		}
-	}
-	completer := &scriptedCompleter{steps: steps}
+			return toolResponse("inspect", "ls", `{"path":"."}`), nil
+		},
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			if !strings.Contains(userTextIn(messages), "script exited 127") {
+				return nil, fmt.Errorf("the failed task's result was not carried")
+			}
+			return textResponse("The build failed because its script was not found."), nil
+		},
+	}}
 	agent := checkpointAgent(t, completer)
-	stubbedGraph(agent, func(node *TaskNode) {
+	graph := stubbedGraph(agent, func(node *TaskNode) {
 		node.finish("the script exited 127: ./slow-build.sh not found", nil, "", "")
 		node.graph.complete(node, TaskFailed)
 		close(failed)
 	})
-
-	events, err := agent.Submit(context.Background(), slowBuildAsk)
-	if err != nil {
-		t.Fatalf("Submit: %v", err)
+	approveTasks(t, agent, mustSubmit(t, agent, slowBuildAsk))
+	if admitted(graph) != 1 {
+		t.Fatal("failed result unexpectedly admitted duplicate work")
 	}
-	collected := approveTasks(t, agent, events)
-
-	if got := remainsAsks.Load(); got == 0 {
-		t.Fatal("a turn whose only handoff failed was never read; a dead task counted as work in flight")
-	}
-	if !saidSomething(noticeTexts(collected), checkpointCarryOnNote) {
-		t.Errorf("the ask was not carried on after its task failed; notices were %q", noticeTexts(collected))
-	}
-	if !strings.Contains(transcriptText(agent), checkpointCarryOnLead+remains) {
-		t.Errorf("the turn was not re-opened on what the reader said is left:\n%s", transcriptText(agent))
+	if !strings.Contains(transcriptText(agent), "The build failed because its script was not found.") {
+		t.Fatal("failed task result never received an answer")
 	}
 }
 
 // A WORKER'S OWN TURN IS NEVER GATED HERE.
 //
-// A node handing a piece out still owes its own report and is still judged
-// against its acceptance. The checkpoint does not run inside a node at all
-// ([Agent.checkpoints]), and this gate says the same thing in its own code so
-// that stays true wherever it is asked from.
+// A node handing a piece out still owes its own report and checks. Its child
+// admission is distinct from a conversation handing its request to a task.
 func TestAWorkerThatHandsAPieceOutKeepsItsOwnChecks(t *testing.T) {
 	completer := &scriptedCompleter{}
 	worker, _ := newTestAgent(t, completer, func(config *Config) { config.InTask = true })

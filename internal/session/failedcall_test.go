@@ -126,7 +126,7 @@ func TestACallThatAnsweredNothingIsAFailureAndIsNotReadForWhatRemains(t *testing
 	var remainsAsks atomic.Int64
 	// Past the ladder's first rung, so the reader is armed and the ONLY thing
 	// that can be keeping it quiet is the turn having broken.
-	completer := &scriptedCompleter{steps: brokenSteps(checkpointMarkAt(2), &remainsAsks,
+	completer := &scriptedCompleter{steps: brokenSteps(20, &remainsAsks,
 		func(context.Context, []ai.Message) (*ai.Response, error) { return emptyResponse(), nil })}
 	agent := checkpointAgent(t, completer, func(config *Config) { config.SessionFile = path })
 	stubbedGraph(agent, func(node *TaskNode) {})
@@ -167,7 +167,7 @@ func TestACallThatAnsweredNothingIsAFailureAndIsNotReadForWhatRemains(t *testing
 func TestATurnWhoseLastCallErroredIsNotReopened(t *testing.T) {
 	var remainsAsks atomic.Int64
 	refusal := refusalOf(400, "the request was turned away", "Baidu", "upstream said no")
-	completer := &scriptedCompleter{steps: brokenSteps(checkpointMarkAt(2), &remainsAsks,
+	completer := &scriptedCompleter{steps: brokenSteps(20, &remainsAsks,
 		func(context.Context, []ai.Message) (*ai.Response, error) { return nil, refusal })}
 	agent := checkpointAgent(t, completer)
 	stubbedGraph(agent, func(node *TaskNode) {})
@@ -322,7 +322,7 @@ func brokenSteps(rounds int, asks *atomic.Int64, ending step) []step {
 		}
 		if askedForRemains(messages) {
 			asks.Add(1)
-			return textResponse(checkpointNothingLeft), nil
+			return textResponse("NOTHING LEFT TO DO"), nil
 		}
 		if call := done.Add(1); call <= int64(rounds) {
 			return toolResponseWithText(fmt.Sprintf("call-%d", call), "ls",

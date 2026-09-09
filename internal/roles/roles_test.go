@@ -345,7 +345,7 @@ func TestRegisteredIsSortedAndComplete(t *testing.T) {
 
 	want := []Role{
 		Role("advisor"), RoleCaption, Role("commit"), RoleCompaction,
-		RoleDesigner, RolePlanner, RoleReflex, RoleRouter, RoleTitle, RoleWorker,
+		RoleDesigner, RolePlanner, RoleReflex, RoleTitle, RoleWorker,
 	}
 	for range 5 { // map order varies per iteration; the answer must not
 		got := Registered()
@@ -411,5 +411,19 @@ func TestKeys(t *testing.T) {
 	}
 	if got := TierKey(TierLow); got != "tiers.low" {
 		t.Fatalf("TierKey(low) = %q, want tiers.low", got)
+	}
+}
+
+// Retired automatic decisions must not remain selectable as active roles.
+func TestAutomaticTurnDecisionRolesAreAbsent(t *testing.T) {
+	for _, name := range []Role{"router", "routerconfirm", "markreader", "handoff"} {
+		if _, ok := TierOf(name); ok {
+			t.Errorf("retired role %q remains registered", name)
+		}
+		for _, role := range Registered() {
+			if role == name {
+				t.Errorf("retired role %q is listed", name)
+			}
+		}
 	}
 }

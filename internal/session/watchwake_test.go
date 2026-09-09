@@ -242,10 +242,10 @@ func TestASessionWaitingOnAWatchIsWokenWhenItFires(t *testing.T) {
 	)
 
 	var remainsAsks atomic.Int64
-	completer := &scriptedCompleter{steps: watchWaitingSteps(checkpointMarkAt(1),
+	completer := &scriptedCompleter{steps: watchWaitingSteps(10,
 		waiting, "until matched", answer, func() string {
 			remainsAsks.Add(1)
-			return checkpointNothingLeft
+			return "NOTHING LEFT TO DO"
 		})}
 	agent := checkpointAgent(t, completer)
 	stubbedGraph(agent, func(node *TaskNode) {})

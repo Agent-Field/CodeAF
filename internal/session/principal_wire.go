@@ -51,8 +51,7 @@ func newPrincipalFor(a *Agent) Principal {
 	// AND ONLY A CONVERSATION MAY HAVE ONE, WHICH IS THE GUARD AND NOT A
 	// PREFERENCE.
 	//
-	// A goal owner holds the WHOLE ask, spends a budget against it, and sweeps
-	// what the session left behind. None of those is a thing a worker owns: a
+	// A goal owner holds the WHOLE ask and spends a budget against it. None of those is a thing a worker owns: a
 	// node has a brief and an auditor of its own, a fork's hand has a scope, an
 	// errand is forty cells that close with home. Every one of them is built
 	// from a fresh Config literal today and would inherit none of this — but two
@@ -98,14 +97,9 @@ func (a *Agent) who() Principal {
 
 // steward answers the [Steward] this session works for, or nil.
 //
-// IT IS THE ONE TYPE ASSERTION IN THIS PACKAGE and it is deliberate rather than
-// a shortcut round the interface. Four things belong to an unattended session
-// alone and to no principal that could be written later: writing a session
-// acceptance, re-running the checks from clean before saying done, deleting
-// what the session left lying about, and letting a woken turn start work. Each
-// of them is a decision somebody made about THIS implementation, and spelling
-// them as interface methods would put four answers on [Person] whose only
-// honest value is "never".
+// The unattended-only paths use its typed check and delivery state. Keeping
+// these details off Principal avoids giving the attended implementation methods
+// that can never do anything.
 func (a *Agent) steward() *Steward {
 	steward, _ := a.who().(*Steward)
 	return steward
@@ -411,55 +405,24 @@ func landingSignature(state TaskState, report string) string {
 	return strings.TrimSpace(firstLine(report))
 }
 
-// remainsFor assembles what the principal decides on at the end of a turn: the
-// reader's line, this session's acceptance, and how the work landed.
-//
-// THE CHECKS ARE NOT IN IT AND THAT IS THE POINT. Running the session's checks
-// costs a process each and takes as long as the checks take, so they are run
-// once, at the one moment their answer can change anything: after a principal
-// has said the ask is met (principal_audit.go). Everything here is a read of
-// what the session already holds.
-func (a *Agent) remainsFor(said string, reader readerLine) Remains {
-	landings, landed, flight := a.landings()
+// remainsFor assembles the execution facts already known when the model ends
+// its turn. Declared checks run separately only when no existing fact already
+// requires more work; the principal then receives that one combined reading.
+func (a *Agent) remainsFor(said string) Remains {
+	landings, _, flight := a.landings()
 	remains := Remains{
 		Said:       said,
-		Reader:     reader.said,
 		Acceptance: a.who().Acceptance(),
 		Landings:   landings,
-		Landed:     landed,
 		Running:    flight.moving,
 		Blocked:    flight.stuck,
 	}
 	if steward := a.steward(); steward != nil {
 		remains.Delivery = steward.declaredDelivery()
 	}
-	// AND WHAT THIS SESSION MADE WITH ITS OWN HANDS. A session that did the whole
-	// job inline never settles a task, so [Remains.Landed] — which is a reading of
-	// the graph and nothing else — stays false over a tree it has just written, and
-	// "nothing has been finished yet" was the first line of both briefs the
-	// standstill then compared (#513). What it made is read from the session's two
-	// ledgers against the deliverable tree as it stands now. It counts only WITH
-	// A WITNESS: the reader agreeing, or declared checks that actually run when
-	// that reader could not be reached ([Remains.finishedSomething]).
-	//
-	// IT IS NON-EMPTY REGULAR FILES THIS SESSION CREATED, OR FILES IT CHANGED,
-	// under the tree. The two are kept in separate ledgers because only the
-	// created ones may ever be swept ([Agent.rememberCreated]); the changed ones
-	// are read and never acted on ([Agent.rememberChanged]). A fix that is one
-	// edit to a file the project already had is the commonest shape of finished
-	// work there is, and a Made that counted only new files read it as nothing
-	// (#513).
-	//
-	// AND EACH LEDGER ANSWERS FROM CONTENT, not merely that its path was once
-	// written. A created file must still have something in it
-	// ([Agent.createdInDeliverable]); a modified file must still differ from the
-	// digest taken before the write ([Agent.changedInDeliverable]).
-	remains.Made = a.createdInDeliverable() || a.changedInDeliverable()
-	remains.ReaderSaysDone = reader.nothingLeft
-	remains.ReaderUnreachable = reader.unreachable
 	// AND WHAT WAS ALREADY RED BEFORE THE WORK, which is read here — before any
 	// decision — rather than beside the checks themselves: the checks are run
-	// once, after a principal has said the ask is met, and a baseline attached at
+	// at a completed turn, and a baseline attached at
 	// that moment would be a baseline of a tree this session has already changed
 	// ([Agent.openBaseline]). The reading runs in the background, so it may not
 	// have landed; a reading with no baseline counts nothing as this run's own.

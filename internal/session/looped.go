@@ -25,7 +25,7 @@ package session
 //     remains distinct. The notes arrive after six batches and after twelve, the
 //     second stronger than the first, and progress resets the ladder.
 //     SILENCE IS HYGIENE AND NOT STUCKNESS, so its notes are the only ones that
-//     cannot end a turn through the hand-off below. THE SECOND RUNG IS WHERE THE
+//     do not spend the repetition-advice budget. THE SECOND RUNG IS WHERE THE
 //     ADVICE STOPS BEING ADVICE: from there the loop withholds a submission that
 //     carries only tool calls until a note lands, and ends the turn on its own
 //     honest line if the model will not write one (processrule.go).
@@ -90,53 +90,9 @@ package session
 //     is fine and slow to escalate against it, because escalating costs the
 //     person's attention and being wrong about progress costs nothing.
 //
-// ── AND THEN THE HAND-OFF, WHICH SILENCE HAS NO PART IN ──
-//
-// Past two nudges the notes have stopped working, and a third one is the harness
-// talking to itself. The third signal therefore ends the turn through the same
-// checkpoint hand-off that governs any other overlong turn. When that road is
-// unavailable — inside a task, without a consent surface, or when no brief can
-// be carried — the turn still ends and says plainly that its remains were left.
-//
-// FOUR RULES CAN SPEND THAT COUNT, AND SILENCE IS NOT ONE OF THEM: identity, the
-// repeated error, the argument refusal, and the round that read nothing new.
-// Each of those is a claim that the turn is not moving. Silence is a claim about
-// the RECORD — that reasoning is being lost between steps — and a turn can be
-// entirely silent while committing, pushing and landing real work.
-//
-// The measured case: a worker's last six calls before it was stopped were
-// `commit-tree`, `write-tree`, a second commit, a ref update, a log and a
-// cleanup — all distinct, all succeeding, with three visible notes written in
-// the minute before. Two early silence notes plus one late one added up to a
-// hand-off, and the row it left said the turn "went in circles" when the turn
-// had been working the whole time. So a silent note keeps its rung and its
-// wording and books nothing, and no rung of it promises a hand-off it cannot
-// make.
-//
-// AND MATERIAL PROGRESS GIVES THE COUNT BACK, ONE RUNG AT A TIME. The two
-// ledgers this file keeps take different evidence, on purpose:
-//
-//   - THE PER-SIGNATURE STREAKS take the weak kind — any successful call this
-//     turn has not been nudged about — and clear to NOTHING. They are evidence
-//     about one repetition, and evidence that the turn is working destroys the
-//     backward case outright. That is the hysteresis law above, unchanged.
-//   - THE NUDGE COUNT takes only the strong kind: a file written, or a shell
-//     command that left the tree different from how it found it — and neither of
-//     them from a call this turn has already been nudged about, because a loop
-//     that paid its own refund would put the ceiling out of reach. It steps DOWN
-//     BY ONE rather than clearing.
-//
-// Both halves of that are load-bearing. VISIBLE TEXT CANNOT BUY THE COUNT BACK,
-// because a model narrating its own loop is still looping — text is the cure for
-// the silent ladder and for nothing else. NOR CAN THE WEAK KIND: the first two
-// calls of a turn's SECOND loop are by construction calls nobody has been nudged
-// about yet, so a turn-wide budget refunded by them is no budget at all.
-//
-// And it steps down rather than zeroing because the count is not evidence — it
-// is the person's attention, already spent, and attention already spent does not
-// un-spend. Zeroing would mean a turn that loops, is nudged, does one token of
-// real work and loops again can never be handed over however long it runs.
-// Stepping down says: forgiven quickly, and still remembered.
+// Repeated observations produce bounded advice, never an automatic delegation.
+// Material progress gives one advisory opportunity back, so a later unrelated
+// loop can still be named without repeating the same warning indefinitely.
 
 import (
 	"context"
@@ -144,9 +100,7 @@ import (
 	"hash/fnv"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -179,13 +133,7 @@ const (
 	// ladder's first rung without treating a short verification sequence as spin.
 	noNewInformationLimit = 5
 
-	// loopNudgeCeiling is how many notes a turn gets before the work is handed
-	// off instead. Two, because a third note would be the third time advice failed
-	// to change anything.
-	//
-	// IT COUNTS THE RULES THAT CLAIM THE TURN IS NOT MOVING and no others, which
-	// is why [silentRungs] is its own number rather than this one reused: the
-	// two ladders answer different questions and only one of them may stop work.
+	// loopNudgeCeiling bounds repeated advice without ending the working turn.
 	loopNudgeCeiling = 2
 
 	// silentRungs is how many notes ONE silent stretch earns: two, at six batches
@@ -289,8 +237,8 @@ type loopWatch struct {
 	// streak; either fresh information or a successful write rearms it.
 	noNewStreak int
 	noNewNudged bool
-	// nudges is how many STOPPING nudges this turn has produced — the count the
-	// hand-off ceiling is read against. Silent notes never touch it, and a batch
+	// nudges is how many repetition nudges this turn has produced — the count the
+	// advisory ceiling is read against. Silent notes never touch it, and a batch
 	// of forward progress gives one of them back.
 	nudges int
 	// dir is the directory whose worktree answers "did anything actually change"
@@ -348,12 +296,6 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	// The third signal is terminal. loop.go spends it at this same boundary, but
-	// keeping the cap here makes the watch's own contract true even for a caller
-	// that inspects it directly: there is no fourth nudge after a hand-off signal.
-	if w.nudges > loopNudgeCeiling {
-		return nudge{}, false
-	}
 	worldCalls := 0
 	for index := range calls {
 		if index < len(results) && results[index].harness {
@@ -500,9 +442,14 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 		return nudge{}, false
 	}
 	// AND A SILENT NOTE BOOKS NOTHING. It keeps its rung, it says its piece, and
-	// the hand-off ceiling never hears about it: nth stays zero, which is what
+	// the advisory ceiling never hears about it: nth stays zero, which is what
 	// [Agent.nudgeIfLooping] reads as "this one cannot end the turn".
 	if !found.silent {
+		// Keep observing after advice is exhausted: material progress above
+		// rearms one note, and silent-record hygiene has its own accounting.
+		if w.nudges >= loopNudgeCeiling {
+			return nudge{}, false
+		}
 		w.nudges++
 		found.nth = w.nudges
 	}
@@ -571,7 +518,7 @@ func (w *loopWatch) silentLadderRung() int {
 // AND A CALL THIS TURN HAS ALREADY BEEN NUDGED ABOUT COUNTS FOR NOTHING, however
 // well it went — [loopWatch.sawProgress]'s rule, and it has to hold here too. A
 // model writing the same file with the same content seven times is looping, and
-// a refund the loop paid itself would put the hand-off ceiling out of reach.
+// a refund the loop paid itself would put the advisory ceiling out of reach.
 func (w *loopWatch) materialProgress(calls []ai.ToolCall, results []toolResult) bool {
 	shell := false
 	for index, call := range calls {
@@ -823,10 +770,8 @@ func loopRule(n nudge) string {
 // are in the transcript and before the next request is assembled — the one
 // moment a note can ride into the next request the way a person's steering does.
 //
-// The first two stopping nudges are asides, and every silent note is one
-// forever. Past the ceiling the episode is marked for the main loop to end
-// through checkpointing, because only that caller owns the turn usage and the
-// person's original request needed by the hand-off.
+// Repeated warnings are bounded, while recovery observations and events remain
+// available. The detector does not own the work or decide to delegate it.
 func (a *Agent) nudgeIfLooping(ctx context.Context, hub *eventHub, ep *episode, calls []ai.ToolCall, results []toolResult, visibleText bool) {
 	// WAITING ON HANDED-OUT PARTS IS NEITHER WORKING NOR SPINNING. A parent with
 	// pieces outstanding has no new information because those pieces are still
@@ -857,59 +802,11 @@ func (a *Agent) nudgeIfLooping(ctx context.Context, hub *eventHub, ep *episode, 
 	// enforcement, and no turn-shaped counter could ever have said so.
 	a.countProcessRuleAdvice(looping)
 
-	// Past the ceiling no fourth message is useful. The hook cannot end a turn,
-	// so it leaves the decision on the episode for loop.go to spend immediately.
-	// A SILENT NOTE CARRIES nth 0 AND NEVER REACHES THIS. What it is about is the
-	// record, not the work, and taking a turn away from a worker that is landing
-	// commits because it landed them quietly is the defect this guard caused.
-	if looping.nth > loopNudgeCeiling {
-		ep.loopHandoff = true
-		return
-	}
 	// The AMBIENT lane (agent.go): a nudge belongs to the turn it is about and
 	// nobody is waiting to be told about it, so it never starts one.
 	a.enqueueAmbientNote(nudgeNote(looping))
 }
 
-// loopLeftUndoneNote is the sentence a handed-over turn leaves behind, and the
-// one this package rather than a worker wrote — task_run.go's [endingOfClaim]
-// reads it back to say a node "went in circles". ONLY THE RULES THAT CLAIM THE
-// TURN IS NOT MOVING can reach it: a silent note books no nudge, so no amount of
-// quiet work can put these words on a row.
+// loopLeftUndoneNote remains readable in historical task conclusions. The
+// working loop no longer emits it or delegates on a repetition count.
 const loopLeftUndoneNote = "this turn is going in circles · stopping here with anything remaining left undone"
-
-// handOverLoopingTurn spends the terminal signal at the one point that owns all
-// of checkpointing's inputs. A capable conversation uses the ordinary ceiling
-// road; every other shape still ends, records an honest line, and leaves disk
-// exactly as the turn left it.
-func (a *Agent) handOverLoopingTurn(ctx context.Context, hub *eventHub, user userMessage, meter *checkpointMeter, turn *Usage, started time.Time, model string) bool {
-	if a.checkpoints(ctx, user) {
-		rounds := meter.rounds + 1
-		read := a.readMark(ctx)
-		a.journalMarkRead(read, checkpointMarks, rounds, read.sketch.carryOnDecision())
-		// NO READING HAS BEEN TAKEN FOR THIS ENDING YET — this is a step boundary
-		// and not a stopped turn — so the ceiling takes one of its own
-		// ([Agent.endTurnUnderSteward]).
-		if a.checkpointCeiling(ctx, hub, turn, started, model, rounds, meter, meter.raced, read, nil) {
-			return true
-		}
-	}
-	hub.send(Event{Kind: EventNotice, Text: loopLeftUndoneNote})
-	a.record(textMessage("assistant", loopLeftUndoneNote))
-	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(*turn, started, model)})
-	a.maybeTitle(ctx, hub)
-	return true
-}
-
-// promptMode reports whether this session's blanket answer is "ask me".
-//
-// Approval tests use this policy reading independently of the loop ceiling. It
-// reads the DEFAULT rather than one tool's answer because it asks whether this
-// is a session where somebody is expected to answer questions.
-func (a *Agent) promptMode() bool {
-	policy := a.approvalGate()
-	if policy == nil {
-		return false
-	}
-	return policy.Default == approval.ActionPrompt || policy.Default == ""
-}

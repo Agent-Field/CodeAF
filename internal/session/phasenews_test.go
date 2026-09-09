@@ -108,16 +108,12 @@ func TestATurnsPhasesArriveInOrderAndEveryOneIsClosed(t *testing.T) {
 		t.Fatal("the running phase carries no start, so nothing can count up from it")
 	}
 
-	// AND THE GATES BETWEEN THE LAST WORD AND THE END OF THE TURN. They make
-	// model calls of their own and used to draw nothing at all.
-	checking := 0
+	// A plain answer closes directly; it does not buy another model call to
+	// certify itself or advertise a checking phase that never ran.
 	for _, one := range news {
 		if one.Phase == provider.PhaseChecking {
-			checking++
+			t.Fatalf("a plain answer started an unrequested check; phases were %v", phaseWords(news))
 		}
-	}
-	if checking == 0 {
-		t.Fatalf("nothing said the turn was checking its answer; phases were %v", phaseWords(news))
 	}
 
 	// EVERY PHASE IS CLOSED, AND NONE IS OPENED OVER ANOTHER. A post with no

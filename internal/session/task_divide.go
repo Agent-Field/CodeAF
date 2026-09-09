@@ -581,7 +581,6 @@ func (a *Agent) judgedDivisible(text string) bool {
 // those from a task that is now sitting on a person.
 const (
 	divisionByWorker = "worker"
-	divisionBySketch = "sketch"
 
 	divisionAdmitted         = "admitted"
 	divisionRefusedMalformed = "refused:arguments"
@@ -633,15 +632,14 @@ const (
 	// any worker — the approving review only a person may give, the credential
 	// nobody here holds, the decision that is the person's to make. It is a
 	// SEPARATE WORD FROM `review` because it has a separate ending: an ordinary
-	// refusal leaves one worker carrying on, and this one stops a worker being
-	// spent at all ([Agent.landNeedsPerson]).
+	// refusal leaves one worker carrying on, and this one tells the worker to
+	// report the human action that prevents further progress.
 	divisionRefusedNobody = "refused:nobody"
 )
 
 // divideWork is the tool's whole life, and it is a WRAPPER because the life is
-// shared: the same request, the same gates and the same admission are reached by
-// a worker calling the verb and by the harness submitting a drawing on a worker's
-// behalf (task_divide_sketch.go). One body, so there is exactly one set of rules
+// shared with the internal division result path. One body keeps the request,
+// gates, and admission under exactly one set of rules
 // about what a division costs and what it is allowed to do.
 //
 // EVERY ANSWER IS AN ORDINARY TOOL RESULT and never a Go error, the way every

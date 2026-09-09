@@ -48,7 +48,7 @@ func TestTheSessionAcceptanceFreezesTheOriginalAskWithoutACall(t *testing.T) {
 			}
 
 			agent.openAcceptance(context.Background(), newEventHub())
-			if completer.requests() != 0 || steward.Acceptance() != routeAcceptance(routeVerdict{}, ask) {
+			if completer.requests() != 0 || steward.Acceptance() != ask {
 				t.Fatalf("the frozen acceptance moved: %q", steward.Acceptance())
 			}
 		})

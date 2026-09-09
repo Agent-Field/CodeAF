@@ -11,7 +11,6 @@ import (
 func completedRemains(command string, after CheckRun) Remains {
 	return Remains{
 		Acceptance:   "finish the requested behavior and run `" + command + "`",
-		Landed:       true,
 		Landings:     []Landing{{ID: 1, Title: "implement the request", State: TaskDone, Merged: true}},
 		Checks:       []CheckRun{after},
 		BaselineRead: true,

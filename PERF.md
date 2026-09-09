@@ -1223,43 +1223,23 @@ hits, latency or bills. Loading changes the prefix once; repeat loading leaves
 it unchanged. Reopening restores load calls still in saved history; a load
 compacted away may be needed again.
 
-## Following through on a completion claim
+## Ordinary turn completion
 
-A turn may decline handoff once per request when its own continuation says no
-work remains and the other reader names no independent parts. Agreement does
-not grant another decline. The meter asks again after **10 additional rounds
-of real work**, using `checkpointPrice`, and does not grant the same request
-another completion decline. Watching existing work does not advance this count;
-a new direction changes the request. This adds no classifier or model call to
-an ordinary tool round. `internal/session/completion_stale_test.go` pins the
-bound, revised direction, and survival of commands already owned by the turn.
+An ordinary turn ends when the main model completes its answer. The request path does not buy
+a routine second-model reading of what remains, and it does not move work to a task at fixed
+write-call counts, tool-round counts, or a share of an unattended wall. Those policies added
+provider calls and could duplicate work whose result was already correct.
 
-## The write allowance on an inline turn
+This removes decision calls, not operational safeguards. Provider retries, command and stream
+deadlines, spending and hour ceilings, context compaction, and the loop's ineffective-call
+guards remain. Explicit `propose_task`, task division and `fork` retain their own budgets and
+checking. At an unattended ending, running work, failed landings, undelivered results and
+explicitly declared checks can still keep the goal open; file-activity metadata and a shortened
+model opinion cannot certify or veto the main model's completion.
 
-A turn that is changing files under the workspace is bounded by **five landed
-write calls** (`writeAllowanceCalls`, internal/session/writeseam.go). The next
-workspace write takes the same handover road the round ceiling takes, once per
-turn, and that road can still decline.
-
-**The count is calls, and only calls.** A second trigger on the number of
-DISTINCT files a turn had touched (two) has been removed. Breadth is not what the
-allowance prices: writing a helper and then the output it produces is two paths
-and one small piece of work, and a turn moved onto a task for that spends a fresh
-worktree and a brief on work that was already finishing inline. What the seam is
-for is how often a turn reaches for the disk unwatched — the run it was written
-from made forty-eight write calls — and the call count catches that whether those
-calls land on one file or on forty. One call is one reach however many paths it
-names.
-
-Nothing else moves: reads are still free in any number, a failed write and
-anything outside the workspace still count nothing, a forked hand's landed calls
-are still counted on the caller, and the delivery of a result this conversation
-owns still holds the door. The round ceiling (`checkpointPrice`, 10) and the
-turn-wall share are unchanged, so a turn that crossed the old file trigger at its
-second write now runs to its fifth write call or to whichever of those governors
-comes first. `internal/session/writeseam_test.go` pins both shapes: a few writes
-across different files followed by running their result finishes inline, and
-repeated writes to one file still hand over at the fifth call.
+Completion also performs no implicit path sweep. A file is not disposable merely because the
+session created it outside the current workspace; an absolute output path may be the requested
+deliverable. Explicit model cleanup and runtime-owned temporary storage keep their own rules.
 
 ## The in-turn working-set ceiling
 
@@ -1274,9 +1254,9 @@ whole cold prefix one tool round later.
 The pass changes only tool-result messages, in whole oldest-first batches. The
 person's message, assistant text and the newest batch the model has not seen are
 never candidates; every replaced result remains readable through its stub path.
-`TestALongTurnsToolWorkingSetStaysBounded` pins the 60-round request ceiling and
-the readable bytes, while the other `turnfold_test.go` cases pin the no-op below
-the line and the unseen-result horizon.
+`TestALongTurnsToolWorkingSetStaysBounded` uses a 60-round fixture to pin the
+readable bytes, while the other `turnfold_test.go` cases pin the no-op below the
+line and the unseen-result horizon.
 
 ## The frozen tool history, rebuilt per request
 
@@ -1287,7 +1267,7 @@ transcript and the journal keep every byte (`internal/session/toolcompact.go`).
 
 | bound | value | why |
 | --- | --- | --- |
-| what one reduced result keeps | head **200** (`checkpointResultBytes/2`) + tail **400** (`checkpointResultBytes`) | the tail is the verdict the checkpoint reader already proved is enough; the head is what ran, and where `no such file` and a compiler's banner land. Both are derived from the one bound rather than written twice. |
+| what one reduced result keeps | head **200** (`checkpointResultBytes/2`) + tail **400** (`checkpointResultBytes`) | the tail keeps a command's conclusion; the head says what ran and is where `no such file` and a compiler's banner land. Both are derived from the one bound rather than written twice. |
 | left verbatim below | **600 bytes** (`compactViewBytes`) | a view of a result that small repeats most of it and then charges a header for having done so. |
 | all consumed results together | **5,000 tokens** (`checkpointDigestBytes`) | the same account the checkpoint digest is held to. Over it, the oldest shrink to stub.go's one-line account, oldest first. It is a ceiling to walk towards: several hundred calls weigh more than it even as single lines. |
 | the walk itself | one pass, running total | re-adding every old result on every iteration is quadratic in the call count, on the hot path of every request. The call-id→tool-name index is built once for the same reason. |
@@ -1300,11 +1280,11 @@ cannot evict older failures with all its payloads. Admission materializes a full
 result pointer only for selected evidence, at most `admissionHandlesKept` results;
 if the pointer does not fit, the existing journal reference stays.
 
-The checkpoint readers keep ordinary requests inside that same **5,000-token** digest.
-Only an original request too large to fit there with its heading is sent as a complete
+Bounded task and compaction views keep ordinary requests inside that same **5,000-token**
+digest. Only an original request too large to fit there with its heading is sent as a complete
 separate section, once, with the work evidence independently held to the existing bound.
-Those extra request tokens are required so a constraint in the middle or at the end cannot
-be removed from a completion or handoff question; the ask is not duplicated.
+Those extra request tokens keep constraints in the middle or at the end available when an
+explicit task needs them; the ask is not duplicated.
 
 Every reduction names where the whole result can be read, and **one resolver
 answers for all three passes** — this view, the end-of-turn stub and the

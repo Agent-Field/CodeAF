@@ -1046,10 +1046,10 @@ request, the line shows its identity mark and name alone rather than an empty qu
 If several tasks arrive before one answer, their lines are stacked in arrival order above
 that answer.
 
-**That reply is priced exactly like one you typed.** It climbs the same three points, has the
-same ceiling, and is handed to a task the same way — see *An answer that runs long is read and
-moved* in *Tasks*. It used to be exempt, and a measured run had one such reply grind for 46
-minutes with nobody watching and then leave the session idle for seven and a half hours.
+**That reply is an ordinary main-model turn.** It receives the task result and the original
+request, then completes the work without a routine second-model reading or an automatic
+handoff based on rounds, writes, or elapsed time. It can still deliberately call
+`propose_task` when separate work is warranted.
 
 ## Which task is this answer about
 
@@ -1187,7 +1187,7 @@ limit that fired, so nobody reading it — you, or the conversation that started
 takes those last edits for finished work. It says nothing about whether they are right,
 only that nothing looked at them.
 
-## What counts as progress, and what gets a task stopped as stuck
+## What counts as progress, what gets a task stopped as stuck, and why is my task waiting on its parts
 
 The `no_progress` counter resets on any one of three things, and only fires when a step is
 none of them:
@@ -1259,6 +1259,8 @@ call. Those steps do not advance the counter, do not reset it, and do not earn t
 `[stuck]` note telling it to stop repeating itself. The reason is the run that produced this
 rule: a task was disarmed mid-flight, answered `Unknown tool` eight times, and was then
 nudged three times for the retries the harness had just manufactured.
+
+## Why is my task waiting on its parts
 
 **A task that handed parts of its work out waits for them, and that wait is never counted
 as being stuck.** While any part is still running the counter does not advance, nothing is
@@ -1341,12 +1343,10 @@ acceptance you set, the task's full bounded conclusion (labelled as a claim, not
 of files written, and where to look. **The brief is deliberately withheld** so it grades
 the contract, not the effort.
 
-**On work that started itself, the acceptance is your own message.** Nobody groomed a
-done-condition for a task aforge started out of a reply, so what the checker is held against
-is your request in full, framed as "everything asked for below is actually done — all of it,
-not the part that was easiest to reach". Before that it was a generic line pointing at the
-task's name, and on a long piece of work that meant a request being accepted as met the moment
-the small piece the reply happened to be holding was finished.
+**The original request remains separate from the shaped brief.** An explicit task keeps your
+request in full, so a summary or generated done-condition cannot silently remove a constraint
+from the middle or end. The checker reads that request together with the task's declared
+acceptance and evidence; it does not grade only the easiest part a worker happened to mention.
 
 What it may touch: `read`, `grep`, `find`, `ls`, and a `bash` restricted to an allowlist
 built for **that one task** — see the next section. It cannot edit, write, install, fetch or
@@ -1441,11 +1441,10 @@ the no.
 
 ## Does an automatic handoff keep the declared verification checks
 
-Automatic routing and a whole-request handoff carry their declared checks into the task,
-using the same validation as an explicit proposal. A changed request drops the earlier
-route's checks. When a handoff leaves work with the conversation, whole-request checks are
-not assigned to that partial task. Commands mentioned only in prose or past results do not
-become executable checks.
+Ordinary turns are no longer handed off automatically. An explicit `propose_task` carries
+the checks declared for that task through the same validation as `/task`; commands mentioned
+only in prose or past results do not become executable checks. A task's checks stay scoped to
+that task, and changing its assignment requires declaring the checks that still apply.
 
 ## Why the checker does not re-run what the task already ran
 
@@ -1733,12 +1732,12 @@ working task from a hung one.
 `sizing the work` is the one life a task can be in **before its worker has said a word**,
 and it is the answer to "a task appeared, the clock is going, and nothing is happening".
 
-It means a model is reading the job and deciding **whether it is handed out in parts, and
+It means a model is reading the task and deciding **whether it is handed out in parts, and
 how**. It happens in two places:
 
-- **Just after the task appears**, when the work was moved out of a reply that had parts
-  in it (`this has parts · handing it to a task that can take them side by side`). Somebody
-  has already drawn the parts, and this reading is what decides whether they are admitted.
+- **Just after an explicit task appears**, when its accepted proposal already describes
+  independent parts. Somebody has drawn the parts, and this reading decides whether they
+  are admitted.
 - **Mid-run**, when a worker has opened the material, found the job wider than one pair of
   hands, and asked to hand it out.
 
@@ -1759,27 +1758,10 @@ so only the reading is said.
 
 ## What briefing a worker means — briefing a worker, the wait before a handed-over turn becomes a task, aforge froze for thirty seconds, nothing appeared on the rail
 
-When your turn is handed over, the **status line at the bottom says `briefing a worker`**
-with a clock counting up beside it, and no task exists yet.
-
-That is the harness writing the instruction the task will open on, and it is two model runs
-back to back: the model that spent the turn writes down what it found out, and a second
-model turns that into the brief. **Fifteen to thirty seconds is normal.** Nothing is frozen
-and `esc` still works. The task appears on the rail the moment the writing ends.
-
-It is worth the wait, and that is the whole reason it exists: a task started without it
-opens on your bare sentence and re-derives everything the conversation already knew. What
-the writing produces is what the worker reads first — what is left, what is already known,
-what has been ruled out, and how anybody could tell when it is done.
-
-**It is a live line, not a note.** It says only what is true while it is true and takes
-itself off the screen when the writing ends, because this road can still decide the work
-was already finished and leave the turn exactly where it was — in which case no task starts
-and no line claims one did.
-
-**It stays up for the whole wait.** The line keeps saying itself while the writing runs, so
-a brief that takes thirty seconds is drawn for thirty seconds with one clock counting the
-whole of it. It does not go blank partway through and it does not restart at zero.
+`briefing a worker` was the phase shown while an automatic handoff asked extra models to
+summarize a long turn. Current builds do not perform that handoff, so an ordinary answer does
+not enter this phase. An explicit task proposal has its own forming card and starts only after
+the proposal is accepted; task shaping and naming use the task states described on this page.
 
 ## The four words a task can land with — done, stopped, incomplete, your call
 
@@ -2906,17 +2888,24 @@ rest of the task.
 
 ## Does a long request lose requirements when work is checked or handed off?
 
-The checkpoint and completion readers receive the complete original request. A request
-that cannot fit inside the usual work summary is carried separately from that bounded
-summary, so requirements in its middle or at its end are not cut. Handoff carries the
-complete request once as well. This adds no extra model call; unusually long requests
-cost more input tokens because their words still have to be read.
+Explicit tasks receive the complete original request separately from their bounded brief, so
+a constraint in the middle or at the end is not removed by summary clipping. Task checking
+uses that request and the task's declared checks. Ordinary completion stays with the main
+model and adds no completion-reader call.
 
 ## Which checks can the main conversation repeat?
 
-The main conversation uses the same explicit `checks` contract as task checking. A command mentioned in a done-condition, a pasted request, or a tool receipt is evidence, not permission to run it again. An unattended session freezes the complete original request itself as its whole-request acceptance without first asking another model to rewrite it. If finished work is retained outside the requested workspace, a later reading may settle only whether the person requested a branch, a report, or integration into the workspace; it cannot add checks after work has begun. Without an opening declaration, the completion reader assesses existing evidence and does not invent a shell command from prose. Normal workers can still run the tests needed to do their work.
+The main conversation uses the same explicit `checks` contract as task checking. A command
+mentioned in a done-condition, pasted request, or tool receipt is evidence, not permission to
+run it again. An unattended session freezes the complete original request and may run checks
+that were explicitly declared at opening; it does not ask a completion reader to invent a
+shell command from prose. Normal workers can still run the tests needed to do their work.
 
-Each proposal or assignment revision accepts at most eight non-empty check commands. A longer list is refused rather than silently losing a required check. A goal revision drops earlier checks unless it declares new ones. Legacy tasks with no declared checks are assessed by reading; do not interpret that as a claim that their tests were executed. A late session delivery receipt preserves any checks already declared at opening, but cannot declare new ones; reopening still creates a fresh goal owner, so historical receipts do not grant a new ask permission to execute old commands.
+Each proposal or assignment revision accepts at most eight non-empty check commands. A longer
+list is refused rather than clipped. A goal revision drops earlier checks unless it declares
+new ones. Legacy tasks with no declared checks are assessed by reading; do not interpret that
+as a claim that tests ran. A late delivery receipt can preserve checks already declared at
+opening, but cannot add new ones.
 
 ## A background command finishes after we changed the subject
 
@@ -2980,13 +2969,13 @@ is unknown. An unanswered call never borrows another call's successful result.
 The checker is told its actual working directory and comparison. A completed committed
 change is not described as an uncommitted staged diff. With no declared executable check,
 it reads the available files and evidence; it is not told to install dependencies it
-cannot install. Existing current checks travel through a handoff of the whole request;
+cannot install. Existing current checks travel with an explicit task's whole request;
 checks for a larger request do not automatically become a smaller part's checks.
 
 ## Can the completion reader see what I just wrote?
 
-The completion reader sees the newest completed write or edit's small submitted argument
-object beside its matching tool result, within the existing context budget. A larger
-input is explicitly marked omitted, rather than shown as a partial object. Earlier
-failures remain part of the evidence. The model continuing the work is told to check a
-reader's objection against the actual work before changing an already-correct result.
+There is no routine completion reader on an ordinary turn. The main model sees its own tool
+calls and results in the conversation, while the existing context reducers keep recent writes
+and point to full results when older output is folded. It must inspect and check its work
+before reporting completion. Explicit task checking still reads the task's current answer,
+working tree, declared checks, and matching tool evidence.

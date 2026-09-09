@@ -1,14 +1,11 @@
 package session
 
-// THE THIRD MOMENT: work handed over from INSIDE the answer that began it.
+// EXPLICIT DELEGATION FROM INSIDE THE ANSWER THAT BEGAN THE WORK.
 //
-// Chat could already escalate before the work started — the route judge reading
-// a tool-less turn (route_judge.go), and a model proposing a task on the first
-// step of a turn. Neither of those covers the moment the material reveals its
-// own size: several calls in, with the findings in hand. Nothing here is a new
-// road. The teaching lives in prompts/system.md, the findings ride in the brief
-// propose_task already takes, and the only thing the code adds is the one line a
-// person reads when it happens ([taskEscalationNote]).
+// The main model may discover independent work after it begins. The teaching is
+// conditional on the task door actually being on its belt, and the findings ride
+// in the brief propose_task already takes. Nothing here makes delegation automatic
+// or classifies the request from a numeric or domain-specific rule.
 //
 // So these tests pin the three things that could quietly stop being true: that
 // the prompt still teaches the PRINCIPLE rather than a rule, that a
@@ -31,19 +28,22 @@ import (
 // halves — the sentences that carry the principle, and the vocabulary that would
 // narrow it back down to code.
 func TestTheSystemPromptTeachesTheHandoffFromInsideTheWork(t *testing.T) {
+	page := promptWithBeltFacts(Config{})
 	for _, want := range []string{
-		"THE QUESTION IS ASKED AGAIN WHILE YOU WORK.",
-		"the moment you can NAME the scale in front of you",
+		"Use delegation deliberately when independent work benefits",
+		"Material can reveal wider work after you begin.",
+		"use `propose_task` deliberately",
+		"use\n`fork` deliberately",
 		"AND WHAT YOU HAVE ALREADY LEARNED GOES WITH IT.",
 		"The brief is the dowry",
 	} {
-		if !strings.Contains(systemPrompt, want) {
-			t.Errorf("prompts/system.md does not say %q, so nothing teaches the model to hand work over mid-answer", want)
+		if !strings.Contains(page, want) {
+			t.Errorf("the rendered system prompt does not say %q, so nothing teaches the model to delegate deliberately mid-answer", want)
 		}
 	}
 
-	teaching := passageBetween(t, systemPrompt,
-		"THE QUESTION IS ASKED AGAIN WHILE YOU WORK.", "never that you looked.")
+	teaching := passageBetween(t, page,
+		"Use delegation deliberately when independent work benefits", "never that you looked.")
 
 	// THE NARROWING VOCABULARY. Each of these would read as an instruction about
 	// programming to a model in the middle of a literature review, and the

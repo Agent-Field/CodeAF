@@ -7,18 +7,9 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
 
-// ONE ESC, ONE DECISION.
-//
-// Measured (F13/F17): one Escape mid-think, then a redirect, fired six model
-// calls in the same second — two mastermind replans, two identical title
-// calls, a 57-message handoff re-read, and a reflex. The handlers that answer
-// an interrupt (the leftover race, the next turn's route, the mark reader, the
-// brief writer, the namer) each decided independently what had changed.
-//
-// SO THEY SHARE ONE GENERATION. Interrupt mints it. The person's next words
-// are what changed. Each generation may spend one planner pass and one title
-// call; a second claim is silence. A redirect does not re-read the whole
-// conversation to write a brief — the new words are the brief.
+// Concurrent explicit planning and naming calls after one interruption share
+// a small allowance. A later turn releases it; ordinary answers no longer buy
+// automatic planning or completion calls.
 
 type interruptFan struct {
 	mu      sync.Mutex
@@ -102,7 +93,7 @@ const (
 //
 // THE SESSION'S OWN NAMER IS NOT ON THIS LIST, and that is the one exception
 // here worth stating. Everything gated above is FOREGROUND WORK bought by the
-// turn the person just stopped — a planner, a mark reader, the two words a task
+// turn the person just stopped — a planner or the two words a task
 // is called — and the allowance exists so that a leftover and a redirect racing
 // inside one generation cannot each buy one.
 //
@@ -121,7 +112,7 @@ const (
 // written about.
 func interruptRoleKind(role roles.Role) int {
 	switch role {
-	case roles.RoleMarkReader, roles.RoleHandoff, roles.RolePlanner, roles.RoleRouterConfirm:
+	case roles.RolePlanner:
 		return interruptPlanner
 	case roles.RoleTaskName:
 		return interruptTitle

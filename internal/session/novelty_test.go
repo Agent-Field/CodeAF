@@ -338,50 +338,6 @@ func TestTheStuckNoteSaysWhenTheWorkLastChanged(t *testing.T) {
 	}
 }
 
-// AND THE DIGEST THE MARK'S READER SEES CARRIES IT TOO, on one line, beside the
-// ledger that cannot say it.
-func TestTheDigestSaysWhenTheWorkLastChanged(t *testing.T) {
-	t.Parallel()
-	// One measurement, then the write, then four re-runs of the same
-	// measurement: everything counted "since" is a re-run, which is the loop.
-	messages := []ai.Message{
-		{Role: "assistant", ToolCalls: []ai.ToolCall{{ID: "m0",
-			Function: ai.ToolCallFunction{Name: "bash", Arguments: `{"command":"./measure.sh"}`}}}},
-		{Role: "tool", ToolCallID: "m0", Content: []ai.ContentPart{
-			{Type: "text", Text: strings.Join(sameRunNewClock(0), "\n")}}},
-		{Role: "assistant", ToolCalls: []ai.ToolCall{{ID: "w",
-			Function: ai.ToolCallFunction{Name: "write", Arguments: `{"path":"notes.md","content":"first"}`}}}},
-		{Role: "tool", ToolCallID: "w", Content: []ai.ContentPart{{Type: "text", Text: "wrote notes.md"}}},
-	}
-	for round := 1; round <= 4; round++ {
-		id := fmt.Sprintf("m%d", round)
-		messages = append(messages,
-			ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{ID: id,
-				Function: ai.ToolCallFunction{Name: "bash", Arguments: `{"command":"./measure.sh"}`}}}},
-			ai.Message{Role: "tool", ToolCallID: id, Content: []ai.ContentPart{
-				{Type: "text", Text: strings.Join(sameRunNewClock(round), "\n")}}},
-		)
-	}
-	digest := checkpointDigest("measure it", messages)
-	if !strings.Contains(digest, checkpointDigestMoved) {
-		t.Fatalf("digest has no moved section:\n%s", digest)
-	}
-	if !strings.Contains(digest, "work last changed: step 2") {
-		t.Fatalf("digest does not say when the work last changed:\n%s", digest)
-	}
-	if !strings.Contains(digest, "results since: 4") {
-		t.Fatalf("digest does not count the results since:\n%s", digest)
-	}
-	// Four re-runs of sixteen lines with one new clock line each: 4 of 64.
-	if !strings.Contains(digest, "new lines since: 6%") {
-		t.Fatalf("digest does not measure what those results brought:\n%s", digest)
-	}
-	// AN EMPTY TURN STILL SAYS NOTHING AT ALL.
-	if got := checkpointDigest("", nil); got != "" {
-		t.Fatalf("an empty turn produced a digest: %q", got)
-	}
-}
-
 // ── (vii) and the ordinary way of working is never touched ──────────────────
 
 // READ → EDIT → MEASURE, THIRTY STEPS, AND NOTHING FIRES. The measure step in

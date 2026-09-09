@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -64,14 +65,31 @@ func TestARewriteOfIdenticalContentLandsWellUnderTheStepCap(t *testing.T) {
 		Deliverable: "d", Acceptance: "a", MaxSteps: 200, NoProgress: 3,
 	})
 
-	// Forty identical writes are far past anything this test expects to happen,
-	// so a landing here is the leash ending the run rather than the script
-	// running out of steps.
+	// The event observer is asynchronous. Hold the next model response once
+	// four writes have supplied the first effect and three identical repeats,
+	// so this tests the declared guard rather than how far a zero-latency fake
+	// can outrun the observer. The guard must cancel that request; a landing
+	// request may only report what is already in hand.
 	var child []step
 	for index := 0; index < 40; index++ {
-		child = append(child, writeCall(fmt.Sprintf("call-%d", index), "note.md", "the same words\n"))
+		child = append(child, func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
+			for _, message := range messages {
+				if message.Role == "user" && strings.HasPrefix(messageText(message), "LAND NOW.") {
+					return textResponse("landed from what I had"), nil
+				}
+			}
+			if index >= 4 {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(3 * time.Second):
+					t.Error("the declared repetition guard did not cancel the active worker request")
+					return textResponse("guard did not stop the work"), nil
+				}
+			}
+			return writeCall(fmt.Sprintf("call-%d", index), "note.md", "the same words\n")(ctx, messages)
+		})
 	}
-	child = append(child, finalText("the active turn drained"), finalText("landed from what I had"))
 
 	spy := &checkpointSpy{working: false, reason: "CIRCLING — note.md is what it was three writes ago"}
 	completer := &routedCompleter{
@@ -103,12 +121,12 @@ func TestARewriteOfIdenticalContentLandsWellUnderTheStepCap(t *testing.T) {
 	if rounds := spy.rounds(); len(rounds) != 1 {
 		t.Fatalf("the reader was asked %d times, want exactly one — the first CIRCLING lands the work", len(rounds))
 	}
-	// AND IT HAPPENED EARLY. The budget was two hundred steps; a run of six
-	// effects that changed nothing takes seven writes to make.
+	// Four writes, at most one canceled request, and the landing report are
+	// the entire run. The two-hundred-step allowance is never approached.
 	completer.mu.Lock()
 	spent := completer.seen.child
 	completer.mu.Unlock()
-	if spent > 20 {
+	if spent > 6 {
 		t.Fatalf("the node was asked %d times before it landed, want it stopped well under its 200-step budget", spent)
 	}
 }

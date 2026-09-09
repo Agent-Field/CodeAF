@@ -6,63 +6,19 @@ import (
 	"time"
 )
 
-// THE PERSON ADDS NOTHING, AND THIS IS THE PART A BUILD FAILS ON.
-//
-// [Person] exists so that an interactive session cannot tell that any of this
-// arrived. That is a claim about behaviour, so it is written down as behaviour:
-// a golden table of every end-of-turn a session can reach, and the answer the
-// engine gave to each one BEFORE the interface existed, spelled out here rather
-// than derived from the implementation under test.
-//
-// THE GOLDEN RULE IS [Agent.readRemains]'S OWN, verbatim: a reader with
-// something to say re-opens the turn on exactly that line, and an empty reading
-// ends the turn. Nothing else was ever consulted, so every row below carries
-// landings, checks and an acceptance that would change a [Steward]'s mind and
-// must change nothing here.
-func TestThePersonDecidesExactlyWhatTheEngineDecidedBefore(t *testing.T) {
-	// The evidence a Steward would act on, in the shapes that most want acting
-	// on: work that did not finish, a tree that does not build, a session that
-	// finished nothing at all.
-	loaded := Remains{
-		Acceptance: "every fixture parses and `go build ./...` passes",
-		Landings: []Landing{
-			{ID: 1, Title: "port the parser", State: TaskFailed, Report: "incomplete", Signature: "incomplete"},
-		},
-		Checks: []CheckRun{{Command: "go build ./...", Passed: false}},
-	}
-
-	for _, c := range []struct {
-		what   string
-		in     Remains
-		verb   DecisionVerb
-		brief  string
-		reason string
-	}{
-		{what: "a reader with nothing to say ends the turn",
-			in: Remains{}, verb: DecideDone},
-		{what: "a reader with a line re-opens on exactly that line",
-			in: Remains{Reader: "the handlers are still unwired"}, verb: DecideCarryOn, brief: "the handlers are still unwired"},
-		{what: "whitespace is not a line",
-			in: Remains{Reader: "   \n "}, verb: DecideDone},
-		{what: "a line is trimmed, as the reader's own clip already trimmed it",
-			in: Remains{Reader: "  finish the writer  "}, verb: DecideCarryOn, brief: "finish the writer"},
-		{what: "a landing that did not finish changes nothing for a person",
-			in: withReader(loaded, ""), verb: DecideDone},
-		{what: "a tree that does not build changes nothing for a person",
-			in: withReader(loaded, "the handlers are still unwired"), verb: DecideCarryOn, brief: "the handlers are still unwired"},
-		{what: "a session that landed nothing changes nothing for a person",
-			in: Remains{Said: "I think the plan is sound.", Acceptance: "every fixture parses"}, verb: DecideDone},
+// The person steering the session decides whether to ask for more work.
+// Ending a model turn neither certifies every artifact nor spends on a second
+// model to reopen the conversation.
+func TestThePersonEndsTheModelsTurnWithoutAnotherReader(t *testing.T) {
+	for _, remains := range []Remains{
+		{},
+		{Said: "The explanation is above."},
+		{Landings: []Landing{{ID: 1, State: TaskFailed}}, Checks: []CheckRun{{Command: "false", Ran: true}}},
 	} {
-		got := NewPerson().Decide(c.in)
-		if got.Verb != c.verb || got.Brief != c.brief || got.Reason != c.reason {
-			t.Fatalf("%s:\n got %+v\nwant {Verb:%s Brief:%q Reason:%q}", c.what, got, c.verb, c.brief, c.reason)
+		if got := NewPerson().Decide(remains); got.Verb != DecideDone || got.Brief != "" {
+			t.Fatalf("person's completed turn was reopened: %+v", got)
 		}
 	}
-}
-
-func withReader(remains Remains, reader string) Remains {
-	remains.Reader = reader
-	return remains
 }
 
 // AND THE OTHER FOUR ANSWERS ARE EMPTY, WHICH IS THE CONTRACT AND NOT A STUB.

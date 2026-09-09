@@ -50,7 +50,7 @@ type scriptedCompleter struct {
 	//
 	// The incident was #392. #333 made the two roads that start work nobody typed
 	// ask for the name the moment they decide to, ahead of the node
-	// (taskname.go's [nameAhead]) — so the namer's call now lands in the middle
+	// (taskname.go) — so the namer's call now lands in the middle
 	// of a scripted handover. Landing on the slot holding the final answer, the
 	// turn ran off the end of the script and ended on "(unscripted)"; landing on
 	// a grinding step, the namer was answered with that round's tool call and the
@@ -157,16 +157,6 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 		// Past the script: answer without a tool call so a loop that ran one
 		// step further than the test expected terminates instead of hanging.
 		//
-		// AND THE ONE ASK THAT WOULD KEEP THE LOOP GOING IS ANSWERED PROPERLY.
-		// The end of a turn now asks a reader whether the person's ask is
-		// finished, and re-opens the turn when it is not (checkpoint.go's
-		// [Agent.checkpointReopen]) — so an unscripted answer of prose to THAT
-		// question is a test running to the meter's ceiling rather than
-		// terminating. The remains contract's own token is what "nothing more to
-		// do here" is spelled as, which is what this branch has always meant.
-		if len(snapshot) > 0 && strings.Contains(messageText(snapshot[len(snapshot)-1]), "[still asked]") {
-			return textResponse(checkpointNothingLeft), nil
-		}
 		return textResponse("(unscripted)"), nil
 	}
 	return next(ctx, snapshot)

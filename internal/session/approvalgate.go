@@ -55,12 +55,10 @@ func (a *Agent) SetApprovalPolicy(policy *approval.Policy) {
 // approvalGate is the policy as it stands right now: the pushed one if there is
 // one, otherwise the one the session launched on.
 //
-// EVERY READ OF THE POLICY GOES THROUGH HERE — consent.go's decide, looped.go's
-// promptMode, and anything either of them grows. Both used to reach
-// a.config.ApprovalPolicy directly and without a lock, which was correct only
-// while nothing in the tree could ever write it; the moment
-// [Agent.SetApprovalPolicy] existed, a single unguarded read became a race the
-// detector finds in a second and a person would never reproduce.
+// Every policy reader uses this synchronized snapshot. A pushed policy can
+// change while a tool is being considered, so reading the launch config alone
+// would miss the latest decision and reading the current pointer unlocked
+// would race with SetApprovalPolicy.
 func (a *Agent) approvalGate() *approval.Policy {
 	a.mu.Lock()
 	defer a.mu.Unlock()

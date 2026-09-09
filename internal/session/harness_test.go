@@ -538,3 +538,7 @@ func TestAHarnessRunNobodyPricedAddsNothingToTheSessionTotal(t *testing.T) {
 		t.Fatalf("session usage = %+v, want nothing from a run nobody priced", session)
 	}
 }
+
+func ordinaryRequests(completer *scriptedCompleter) int {
+	return completer.requests()
+}

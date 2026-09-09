@@ -252,13 +252,11 @@ func TestNothingInANodesProseBecomesACheckerDoor(t *testing.T) {
 }
 
 // A DONE-CONDITION THAT IS THE PERSON'S PASTED ASK CARRIES NOTHING ONTO A DOOR
-// EITHER. The auto-started road puts [routeAskAcceptance] in front of the request
-// when nobody could write a separate done-condition, and the measured tox
-// transcript stays the person's account while it sits in the acceptance field.
+// EITHER. Pasted reproduction text remains context, not an executable check
+// declaration, even when carried in the acceptance field.
 func TestANodesDoneWhenThatIsThePastedAskCarriesNoStepOutOfIt(t *testing.T) {
 	tree := checkedTree(t, "tox.ini", "run_tests.sh")
-	node := checkedNode("repair the tox configuration", routeAskAcceptance+
-		"check it with `run_tests.sh`\nthe reproduction ends with:\n$ chmod 000 tox.ini")
+	node := checkedNode("repair the tox configuration", "check it with `run_tests.sh`\nthe reproduction ends with:\n$ chmod 000 tox.ini")
 	door := auditDoorFor(node, tree)
 
 	if len(door.checks) != 0 {

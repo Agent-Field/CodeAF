@@ -233,14 +233,7 @@ type taskSpec struct {
 	// paying a second call to rename it would be the harness disagreeing with
 	// its own answer. False is the honest default, so a new door that says
 	// nothing gets a name made for it.
-	named bool
-	// ahead is a name that was asked for before this node existed and has not
-	// landed yet (taskname.go's [nameAhead]). A road that starts work on its own
-	// asks at the moment it decides to, and hands the call over here so that
-	// [TaskGraph.nameNode] waits for its answer instead of asking a second time.
-	// It is never written to the checkpoint: a name that lands is written into
-	// title like any other, and one that never lands leaves the title as it was.
-	ahead   *nameAhead
+	named   bool
 	summary string
 	// request is THE PERSON'S OWN MESSAGE, captured by the code that admits this
 	// proposal rather than asked of the model (task_brief.go). It is the first
@@ -412,24 +405,6 @@ type taskSpec struct {
 	//     told from a task that was never allowed any (task_index.go's
 	//     [TaskIndexEntry.MaySplit]).
 	armed string
-	// drawn is A DIVISION SOMEBODY ALREADY WROTE FOR THIS WORK: the shape a
-	// checkpoint mark's second reader drew of what was left of a turn, and the
-	// account it drew it from (checkpoint.go's [drawnDivision]). It is empty on
-	// every other door, and on every mark whose shape said one job.
-	//
-	// IT IS THE ONE FIELD OF THIS SPEC THAT IS AN INSTRUCTION TO THE HARNESS
-	// rather than to the worker. The parts are already at the head of the brief,
-	// where they read as a paragraph; this is the same parts in a shape the divide
-	// road can be handed, so that the worker starts with them ALREADY handed out
-	// instead of being asked to find them again (task_divide_sketch.go).
-	//
-	// IT IS NOT IN THE CHECKPOINT, deliberately, and the two ways a restored node
-	// can be holding one are both answered by leaving it out. A node restored
-	// AFTER its division has its parts back as nodes of their own, and a spec that
-	// still proposed them would divide the same work twice; a node restored BEFORE
-	// it ever ran comes back as one worker, which is what a task whose reviewer
-	// refused already is. Neither is a loss worth a second way to spawn work.
-	drawn drawnDivision
 }
 
 // taskOrigin is the pointer a worker is handed so it can find the person's
@@ -964,9 +939,8 @@ func (a *Agent) announceTask(hub *eventHub, question *taskQuestion) {
 	// is [EventNotice] — the dim one-liner a surface already draws for
 	// something it did not stop to ask about — rather than a kind of its own.
 	// THE CARD IS NOT REPLACED BY IT: this work was groomed by the model, and
-	// the countdown is the consent for exactly that (route_judge.go's
-	// [Agent.launchRouteTask] states the other half of the same law, for work
-	// nobody groomed). Silence still starts it, so the person is told and the
+	// the countdown is the consent for exactly that. Silence still starts it,
+	// so the person is told and the
 	// work opens; what the card adds is a window to redirect, which is more
 	// than an auto-start could give them and not less.
 	if a.alreadyWorking() {

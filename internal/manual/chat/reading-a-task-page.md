@@ -208,9 +208,9 @@ Every word it draws:
 - A sub-harness being designed says what it is doing in its own words — `designing`, and
   `awaiting your look` while its page sits waiting on you.
 
-**`briefing a worker` is not one of them.** That one is on the status line under the message
-box in the conversation while your turn is being handed to a task — before the task, and its
-page, exist at all.
+**`briefing a worker` is not a current task phase.** Older builds used it on the
+conversation status line during an automatic handoff. Explicit proposals now use their
+forming card, followed by the task states above once accepted.
 
 ## Can't scroll in a task — the wheel and pgup do nothing
 

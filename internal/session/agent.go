@@ -3875,7 +3875,7 @@ func entryRows(msg ai.Message) int {
 		// The continuation's full reserved lead identifies older journals too:
 		// they wrote it as an unmarked user message even though nobody typed it.
 		// Keep the model's record intact; only its display projection omits it.
-		if isVolatileNote(text) || strings.HasPrefix(text, checkpointCarryOnLead) || strings.HasPrefix(text, legacyCheckpointCarryOnLead) {
+		if isVolatileNote(text) || strings.HasPrefix(text, checkpointCarryOnLead) || strings.HasPrefix(text, legacyCheckpointCarryOnLead) || strings.HasPrefix(text, legacyBoundedCheckpointCarryOnLead) {
 			return 0
 		}
 	}

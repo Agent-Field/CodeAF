@@ -406,7 +406,6 @@ func (a *Agent) startHand(index int, part forkPart) (*job, context.Context, erro
 // posted is the same half-delivery a divided part's report would be, and it costs
 // the same wasted turn.
 func (a *Agent) handIsHome(listed *job, index int, parsed forkArguments, result forkResult) {
-	a.stashHandWrites(result.landedWrites)
 	if listed == nil {
 		return
 	}
@@ -704,24 +703,8 @@ type forkResult struct {
 	// wrote is the files it actually changed, workspace-relative, in the order
 	// it changed them.
 	wrote []string
-	// landedWrites is the write seam's reading of each successful call, one
-	// group per call. It stays separate from wrote because the person's report
-	// and the turn's allowance deliberately count different sets of tools.
-	landedWrites [][]string
 	// outcome is one of the words above.
 	outcome string
-}
-
-// landedHandWrites reads one finished hand call through the write seam's own
-// predicate. A failed event changed nothing, and keeping that distinction here
-// makes the event kind rather than the hand's intention decide what landed.
-func landedHandWrites(workspace string, event Event) []string {
-	if event.Kind != EventToolEnd {
-		return nil
-	}
-	return workspaceWrites(workspace, ai.ToolCall{Function: ai.ToolCallFunction{
-		Name: event.Tool, Arguments: event.Args,
-	}})
 }
 
 // runHand builds one hand, gives it its charge, and stays until it is finished
@@ -769,11 +752,10 @@ func (a *Agent) runHand(ctx context.Context, index int, parsed forkArguments, se
 	}
 
 	var (
-		wrote        []string
-		landedWrites [][]string
-		seen         = map[string]bool{}
-		failure      error
-		said         strings.Builder
+		wrote   []string
+		seen    = map[string]bool{}
+		failure error
+		said    strings.Builder
 	)
 	for event := range events {
 		switch event.Kind {
@@ -790,9 +772,6 @@ func (a *Agent) runHand(ctx context.Context, index int, parsed forkArguments, se
 			// And what it is DOING, in the same words the person's own row uses.
 			writeHandLine(listed, event.Hint)
 		case EventToolEnd:
-			if paths := landedHandWrites(a.config.Workspace, event); len(paths) > 0 {
-				landedWrites = append(landedWrites, paths)
-			}
 			// The same reading the task runner takes of the same events
 			// ([changedPath]): the path is in the CALL's arguments, because that
 			// is the record of what was asked for.
@@ -806,9 +785,8 @@ func (a *Agent) runHand(ctx context.Context, index int, parsed forkArguments, se
 	}
 
 	result := forkResult{
-		say:          clip(strings.TrimSpace(lastSaid(hand)), forkSayLimit),
-		wrote:        wrote,
-		landedWrites: landedWrites,
+		say:   clip(strings.TrimSpace(lastSaid(hand)), forkSayLimit),
+		wrote: wrote,
 		// THE ORDER OF THESE THREE IS THE TRUTH. A spent leash cancels the hand,
 		// so the cancellation it causes must be read as the budget rather than as
 		// an interrupt; and the person's own interrupt kills every hand at once,

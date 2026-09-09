@@ -109,7 +109,7 @@ func TestATurnWaitingOnItsOwnBackgroundJobIsNotCarriedOn(t *testing.T) {
 	var remainsAsks atomic.Int64
 	// Past the first rung, so the price gate is not what is keeping the turn
 	// shut, and the reader would say there is work left if anybody asked it.
-	completer := &scriptedCompleter{steps: waitingSteps(checkpointMarkAt(1), waiting, func() string {
+	completer := &scriptedCompleter{steps: waitingSteps(10, waiting, func() string {
 		remainsAsks.Add(1)
 		return "the checks have not landed and neither pull request is merged"
 	})}
@@ -139,101 +139,4 @@ func TestATurnWaitingOnItsOwnBackgroundJobIsNotCarriedOn(t *testing.T) {
 	}
 }
 
-// AND A TURN WITH NOTHING OF ITS OWN RUNNING IS CARRIED ON EXACTLY AS BEFORE.
-//
-// It is the same fixture with the job taken away, because a gate that closed the
-// carry-on for every turn would pass the case above and lose the thing the
-// carry-on was built for.
-func TestATurnWithNothingRunningOfItsOwnIsStillCarriedOn(t *testing.T) {
-	const stopped = "I've finished the parser, next I'll wire the handlers"
-	const remains = "the handlers are not wired and the golden tests have never been run"
-
-	var remainsAsks atomic.Int64
-	completer := &scriptedCompleter{steps: waitingSteps(checkpointMarkAt(1), stopped, func() string {
-		if remainsAsks.Add(1) == 1 {
-			return remains
-		}
-		return checkpointNothingLeft
-	})}
-	agent := checkpointAgent(t, completer)
-	stubbedGraph(agent, func(node *TaskNode) {})
-
-	events, err := agent.Submit(context.Background(), "port the language server and get the golden tests passing")
-	if err != nil {
-		t.Fatalf("Submit: %v", err)
-	}
-	collected := collect(t, events)
-
-	if agent.turnIsWaitingOnItsOwnWork() {
-		t.Fatal("a session that started nothing reads as waiting on its own work")
-	}
-	if got := remainsAsks.Load(); got != 2 {
-		t.Fatalf("the ask was read %d times; want one that re-opened and one that let the turn end", got)
-	}
-	if !strings.Contains(transcriptText(agent), checkpointCarryOnLead+remains) {
-		t.Errorf("the turn was not re-opened on what the reader said is left:\n%s", transcriptText(agent))
-	}
-	if !saidSomething(noticeTexts(collected), checkpointCarryOnNote) {
-		t.Errorf("nobody said why the turn kept going; notices were %q", noticeTexts(collected))
-	}
-}
-
 // ── and carrying on has a ceiling ───────────────────────────────────────────
-
-// THE SAME READING ABOUT THE SAME STOPPED TURN IS BELIEVED A FIXED NUMBER OF
-// TIMES AND THEN IT IS NOT.
-//
-// A reader that answers "not finished" to every one of a turn's endings has
-// stopped being evidence and started being an echo, and the measured run is what
-// says so: twenty of them, five minutes, no progress at all. So the ask is
-// carried on [checkpointCarryOnCap] times, and the person is told once, in the
-// register the other notes on this road use.
-func TestCarryingOnAnAskHasACeilingOfItsOwn(t *testing.T) {
-	var remainsAsks atomic.Int64
-	// What the reader says every time, kept as one string because the note the
-	// person is shown at the cap now QUOTES IT — the line names what was read
-	// rather than asserting that the ask is unfinished (#468).
-	const readerSays = "the checks have not landed and neither pull request is merged"
-	// Past the first rung so the reader is armed, and a reader that never says
-	// the ask is finished — the exact shape the measured conversation was in.
-	completer := &scriptedCompleter{steps: waitingSteps(checkpointMarkAt(1),
-		"still waiting on the checks; nothing actionable until then", func() string {
-			remainsAsks.Add(1)
-			return readerSays
-		})}
-	agent := checkpointAgent(t, completer)
-	stubbedGraph(agent, func(node *TaskNode) {})
-
-	events, err := agent.Submit(context.Background(), "merge both pull requests once the checks are green")
-	if err != nil {
-		t.Fatalf("Submit: %v", err)
-	}
-	collected := collect(t, events)
-	notices := noticeTexts(collected)
-
-	if got := saidHowOften(notices, checkpointCarryOnNote); got != checkpointCarryOnCap {
-		t.Errorf("the ask was carried on %d times, want %d; notices were %q",
-			got, checkpointCarryOnCap, notices)
-	}
-	if got := strings.Count(transcriptText(agent), checkpointCarryOnLead); got != checkpointCarryOnCap {
-		t.Errorf("%d continuations were written into the turn, want %d", got, checkpointCarryOnCap)
-	}
-	// AND THE PERSON IS TOLD ONCE, IN WORDS THAT SAY WHAT WAS SEEN: the line
-	// quotes the reading that came back every time and promises the harness will
-	// stop pushing rather than push again.
-	if got := saidHowOften(notices, checkpointCarriedOnNote([]string{readerSays})); got != 1 {
-		t.Errorf("the ceiling on carrying on said its line %d times, want once; notices were %q", got, notices)
-	}
-	// AND THE READER IS SPENT ONE MORE TIME THAN THE CAP AND NOT TWENTY. The cap
-	// is asked AFTER the reading so the line a person reads is true, which costs
-	// exactly the one call that proves the ask is still open.
-	if got := remainsAsks.Load(); got != int64(checkpointCarryOnCap)+1 {
-		t.Errorf("the reader was spent %d times on one stuck ask, want %d",
-			got, checkpointCarryOnCap+1)
-	}
-	// AND THE TURN DID NOT REACH THE CEILING ON CARRY-ONS ALONE, which is the
-	// third half of the measured failure: the wait must never become a task.
-	if saidSomething(notices, checkpointCeilingNote) {
-		t.Errorf("carrying on drove the turn to the ceiling by itself: %q", notices)
-	}
-}

@@ -10,7 +10,6 @@ package session
 // there for those three words to be cut out of:
 //
 //	/task with no shaper   the person's own first eight words   "read /Users…"
-//	the route judge        the judge's goal, first line          "Look into why the…"
 //	an adaptive run's root the goal, first line                  "/var/folders/j7/…"
 //	a resumed node         whatever the checkpoint kept of those
 //
@@ -76,7 +75,6 @@ package session
 import (
 	"context"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
@@ -136,16 +134,6 @@ const (
 	// then and a name arriving after that is a column changing under somebody's
 	// eyes for no reason they can see.
 	taskNameWindow = 20 * time.Second
-
-	// taskNameAheadWindow is how long a name asked for AHEAD of its node is
-	// given ([nameAhead]). It is longer than the window above because nobody is
-	// drawing a fallback under it: the call runs beside the stage that writes
-	// the brief, which is measured at fifteen to thirty seconds, and a name that
-	// lands anywhere inside that stage costs the person nothing to wait for. A
-	// cheap model on a slow endpoint has been measured at twenty tokens a second,
-	// and a pass it insists on running in front of three words is a few hundred
-	// of them.
-	taskNameAheadWindow = 45 * time.Second
 )
 
 // nameNode gives one freshly admitted node a name, if it needs one.
@@ -166,113 +154,19 @@ func (g *TaskGraph) nameNode(node *TaskNode) {
 	if home == nil || kind == TaskKindHarness || spec.named || !taskNameNeeded(spec.title) {
 		return
 	}
-	subject, ahead := taskNameSubject(spec), spec.ahead
-	if subject == "" && ahead == nil {
+	subject := taskNameSubject(spec)
+	if subject == "" {
 		return
 	}
 	// IT DOES NOT RIDE THE TURN'S CONTEXT. The turn that admitted this node ends
 	// in a moment and the node outlives it by minutes; a namer cancelled with the
 	// turn would only ever land for work admitted at the very end of one.
 	//
-	// A NAME ALREADY ASKED FOR IS WAITED ON, NOT ASKED FOR AGAIN ([nameAhead]).
-	// Only when that call came back with nothing — a timeout, an answer that was
-	// a path — is the ordinary call made, off the brief this door was handed,
-	// which is a different question and may well answer.
 	go func() {
-		if name := ahead.wait(); name != "" {
-			g.rename(node, name)
-			return
-		}
-		if subject == "" {
-			return
-		}
 		if name := home.taskName(context.Background(), subject); name != "" {
 			g.rename(node, name)
 		}
 	}()
-}
-
-// ── a name asked for ahead of its node ──────────────────────────────────────
-//
-// WHEN THE HARNESS STARTS WORK ON ITS OWN, THE NAME IS ASKED FOR THE MOMENT IT
-// DECIDES TO, NOT WHEN THE NODE EXISTS. Both roads that start a task nobody
-// typed — the judge's (route_judge.go) and the ceiling's handover
-// (checkpoint.go) — know the person's sentence before they know anything else,
-// and the handover then spends fifteen to thirty seconds writing the brief. The
-// namer used to start after that, at admission, so the told-after line and the
-// first row on the rail carried the sentence, and the name replaced it a second
-// or eight later — or never: measured, a task announced as
-// "https://github.com/…/252 Can you look at this and …" failed before its name
-// arrived, and the failure was reported under the same sentence. Asked at the
-// decision, the name is in hand by the time there is a node to put it on, and
-// the first line a person reads is the name.
-//
-// IT IS STILL ONE CALL, ONCE, PER NODE. A name that has landed is written into
-// the spec as a name a model wrote ([taskSpec.named]), so [TaskGraph.nameNode]
-// leaves it alone; one still in flight rides the spec ([taskSpec.ahead]) and
-// nameNode waits for it instead of asking again. Only a road that declined
-// after asking pays for a name nobody used, and it cancels the call the moment
-// it declines ([nameAhead.release]).
-//
-// EVERY METHOD IS SAFE ON NIL, because a road that had nothing to name from
-// hands the doors a nil and the doors do not branch on it.
-type nameAhead struct {
-	done    chan struct{}
-	cancel  context.CancelFunc
-	name    string
-	claimed atomic.Bool
-}
-
-// nameAhead starts the call, off the person's own words, and answers at once.
-func (a *Agent) nameAhead(subject string) *nameAhead {
-	subject = strings.TrimSpace(clip(strings.TrimSpace(subject), taskNameBriefClip))
-	if a == nil || subject == "" {
-		return nil
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	ahead := &nameAhead{done: make(chan struct{}), cancel: cancel}
-	go func() {
-		defer close(ahead.done)
-		ahead.name = a.taskNameWithin(ctx, subject, taskNameAheadWindow)
-	}()
-	return ahead
-}
-
-// ready is the name if it has landed, and whether it has, without waiting.
-func (n *nameAhead) ready() (string, bool) {
-	if n == nil {
-		return "", false
-	}
-	select {
-	case <-n.done:
-		return n.name, true
-	default:
-		return "", false
-	}
-}
-
-// wait blocks until the call answers or gives up, and is the name or "".
-func (n *nameAhead) wait() string {
-	if n == nil {
-		return ""
-	}
-	<-n.done
-	return n.name
-}
-
-// claim says a node took this name, so a release afterwards leaves it running.
-func (n *nameAhead) claim() {
-	if n != nil {
-		n.claimed.Store(true)
-	}
-}
-
-// release lets an unclaimed call go: the road that asked declined to start
-// anything, and a name nobody will use is a provider slot held for nothing.
-func (n *nameAhead) release() {
-	if n != nil && !n.claimed.Load() {
-		n.cancel()
-	}
 }
 
 // taskNameNeeded reports whether a title still wants a name made for it.
@@ -311,13 +205,6 @@ func taskNameSubject(spec taskSpec) string {
 // taskName asks the cheap model for the name. Every failure answers "", and the
 // caller's only response to that is to leave the title where it was.
 func (a *Agent) taskName(ctx context.Context, subject string) string {
-	return a.taskNameWithin(ctx, subject, taskNameWindow)
-}
-
-// taskNameWithin is [Agent.taskName] with the window as a parameter, because a
-// name asked for ahead of its node has a stage to answer in and one asked for at
-// admission has a row already drawn under it ([taskNameAheadWindow]).
-func (a *Agent) taskNameWithin(ctx context.Context, subject string, window time.Duration) string {
 	a.mu.Lock()
 	model, closed, client := a.model, a.closed, a.client
 	source := a.config.RolesSource
@@ -330,7 +217,7 @@ func (a *Agent) taskNameWithin(ctx context.Context, subject string, window time.
 	// provider slot held for the life of the session. Twenty seconds is a fact
 	// about THIS call — two or three words off a brief — and it is tighter than
 	// the low tier's own bound, so it is the one in force (auxiliary.go).
-	ctx, cancel := context.WithTimeout(ctx, window)
+	ctx, cancel := context.WithTimeout(ctx, taskNameWindow)
 	defer cancel()
 
 	// NAMING NEVER FALLS THROUGH ONTO THE AUDITOR TIER. The floor is the

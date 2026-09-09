@@ -349,7 +349,6 @@ under the class answering it, saying which model comes out. As shipped:
 | `title` | small work | the name a session gives itself |
 | `worker` | worker | one node of an adaptive run, and the worker of every task |
 | `guardian` | small work | is this one tool call plainly safe |
-| `router` | small work | whether a turn should have been work |
 | `consolidate` | small work | tidies what is remembered while nobody is here |
 | `taskname` | small work | the two or three words a task is called |
 | `compaction` | careful work | the summary that survives a compaction |
@@ -360,9 +359,6 @@ under the class answering it, saying which model comes out. As shipped:
 | `repair` | careful work | the second go at work a check found gaps in |
 | `planner` | mastermind | the plan that steers an adaptive run |
 | `designer` | mastermind | writes and reviews a harness page |
-| `routerconfirm` | mastermind | a second look before work starts itself |
-| `markreader` | mastermind | what is left of a long answer, and whether it has parts |
-| `handoff` | mastermind | the instruction a handed-over turn gives whoever finishes it |
 | `division` | mastermind | the parts a worker hands its own work out in |
 
 The list is built from what is registered in the running binary, so it is the truth about
@@ -374,19 +370,10 @@ calls do.** `planner` and `designer` used to sit on careful work beside the comp
 summary, which made one model id answer two unrelated bills: the careful calls are many and
 short, and these are few. A planner that cuts badly spends a whole run on work nobody wanted;
 a designer that writes badly puts a wrong answer on the menu with a name on it;
-`routerconfirm` stands between a cheap model's "that should have been work" and a task
-starting itself, and it is asked on nothing else, so it costs a call only where something was
-about to be spent; `division` reads a task's parts before any of them exists, and every turn
-every part ever takes runs on the brief it leaves behind.
-
-`markreader` and `handoff` are the two calls a long answer makes (*Tasks*). `markreader` is
-asked at most three times, and only on an answer that has already spent ten rounds of tool
-calls, plus once at the end of any answer that touched a tool at all — it reads the account of
-the work and says what is left of your question. `handoff` writes the instruction the task
-opens on when an answer is handed over. Both sit on mastermind for the same measured reason:
-a cheap model asked "is this finished" answered `(done)` about half-finished work 15 times out
-of 18, and that is the one answer that quietly drops a handover you were owed. There is no
-cheaper reading of that question — there is only a wrong one.
+`division` reads a task's proposed parts before any of them exists, and every turn every
+part takes runs on the brief it leaves behind. Ordinary conversation answers no longer use
+`router`, `routerconfirm`, `markreader`, or `handoff`: the main model decides how to complete
+the request and calls an explicit task door when separate work is useful.
 
 **`careful` is not a call at all** — it is the model a *part* of a divided task runs on when
 the worker graded that part careful (*Tasks*). It sits on careful work beside the audit for
@@ -760,7 +747,7 @@ Several aforge windows write to it at once and it is kept across restarts.
 ## What happens when a crew model is down, or a pinned model stops answering — the ladder falls through one rung
 
 The calls aforge makes on its own — the session's name, the two or three words a task is
-called, the judge that reads a turn, the planner sizing a piece of work — used to be
+called, a task's checker, the planner sizing a piece of work — used to be
 abandoned outright when the model the ladder picked could not answer: a role pinned to a
 small model that was down cost you the name and said nothing, while the model you were
 talking to sat there able to do it.
@@ -802,13 +789,6 @@ not on a reply that keeps stalling, not on rate limiting that will not clear —
 run whose cost is being attributed to one model cannot have finished a single reply on
 another. That includes the catalog's own guess: with no `fallback models` row written, an
 ordinary run falls back to the nearest same-class model, and this flag withholds that too.
-
-**The two calls that ordinarily refuse the conversation's model ride it too.** The reader that
-decides whether a long answer is moved to a task, and the writer of the brief that task opens
-on, normally run on the thinking tier and on nothing else: with no crew they are skipped
-rather than handed to the model that just wrote the answer. Under this flag they run on your
-model like everything else, because you have said your model is the crew. Without the flag and
-without a thinking-tier row, a move that needs them says `no second model is set`.
 
 **It changes no setting and writes nothing.** Your crew rows and pins are untouched, `/crew`
 still says what it said, and the next session without the flag reads them exactly as before.
@@ -1225,12 +1205,9 @@ longer treats it as one. Two endings count as broken: the provider said it stopp
 error, and a reply that came back completely empty — no words, no tool call, nothing
 counted.
 
-Neither is read by the second reader that carries a reply on (see *How tasks and adaptive
-runs work*), because there is nothing left to carry on *to*: the failure is what is left,
-and the retry above already owns it. A measured run read a broken reply three times in
-fifteen seconds, paid a thinking-tier model each time, and re-opened a reply that could not
-move. An empty reply is also written down as a **failed request** rather than as an empty
-answer from the model, so what is on the file matches what happened.
+The provider retry path owns that failure. An empty reply is written down as a **failed
+request** rather than as an empty answer from the model, so what is on the file matches what
+happened; no completion reader is called afterwards.
 
 **An empty reply is asked again, straight away, and your turn carries on.** An endpoint that
 answers with nothing did not answer, so aforge sends the same request again — up to four
@@ -1496,10 +1473,9 @@ function, and if you ever see them differ, that is a bug worth reporting.
 the provider — every step of a turn is its own request — so this figure is normally larger
 than the number of times you have spoken.
 
-It counts **every** request, not only the ones in your turns: naming the session, a judge
-deciding where something should be routed, looking at a picture, every request a task's
-own agent made on its own lane, and every request a harness run made while it walked its
-program. That is deliberate, because the `spend` line above it is the
+It counts **every** request, not only the ones in your turns: naming the session, looking
+at a picture, every request a task's own agent made on its own lane, and every request a
+harness run made while it walked its program. That is deliberate, because the `spend` line above it is the
 sum over exactly those requests — a smaller count beside it would be a bill divided by the
 wrong number.
 
