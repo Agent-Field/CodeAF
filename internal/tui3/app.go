@@ -995,6 +995,12 @@ type app struct {
 	// finished turn is a rate nobody is watching.
 	turnBegan    time.Time
 	turnOutStart int
+	// turnInStart is [app.inputTokens] at the same instant, and it is the other
+	// half of the live token column's subtraction: what this turn has SENT is
+	// the session's input total less this mark, exactly as what it has written
+	// is the output total less the one above (tokencol.go). It is cleared with
+	// the pair beside it, because a turn that has settled sends nothing.
+	turnInStart int
 	// turnCostAt is what the session had spent when the turn now running
 	// started, and it is the other end of the subtraction a turn footer's price
 	// is (timestamps.go). It is kept beside the burn window's pair because it is
@@ -5020,7 +5026,8 @@ func (a *app) settle() tea.Cmd {
 	// AND THE RECEIPT IS FROZEN HERE, before the clock it is measured from is
 	// cleared: what the turn took, what it called, what it cost (timestamps.go).
 	a.stampTurn()
-	a.turnBegan, a.turnOutStart, a.turnCostAt = time.Time{}, 0, 0
+	a.turnBegan, a.turnOutStart, a.turnInStart, a.turnCostAt = time.Time{}, 0, 0, 0
+	a.col.open()
 	a.approval = a.approvalPosture()
 	a.mouse = config.MouseEnabledAt(a.profileDir)
 	a.timestamps = config.TimestampsAt(a.profileDir)
@@ -5221,6 +5228,13 @@ func (a *app) take(u session.Usage) {
 	if u.CacheWrite > a.cacheWrite {
 		a.cacheWrite = u.CacheWrite
 	}
+	// THE CONVERSATION'S COLUMN READS ITS BOOKS HERE, turn-scoped: what the
+	// session has been billed since this turn opened its clock ([app.startClock]
+	// takes both marks). A room's column is fed by its own lane instead
+	// (room.go's [app.roomEvent]); the drawing is the same (tokencol.go).
+	if !a.turnBegan.IsZero() {
+		a.col.up, a.col.down = a.inputTokens-a.turnInStart, a.outputTokens-a.turnOutStart
+	}
 	// A JUMP WHILE THE TURN IS RUNNING IS WALKED, not popped. The first
 	// reading of a working turn pins the drawn figures where they were so
 	// the clock has somewhere to ease from; a restore or a switch lands
@@ -5404,6 +5418,10 @@ func (a *app) startClock() {
 		return
 	}
 	a.turnBegan, a.turnOutStart, a.turnCostAt = a.now(), a.outputTokens, a.cost
+	a.turnInStart = a.inputTokens
+	// AND THE COLUMN OPENS AT NOTHING, because the figures it chases are this
+	// turn's rather than the session's (tokencol.go's [tokenCol.open]).
+	a.col.open()
 }
 
 // now is the time, from the seam rather than from the package: see [app.clock].
@@ -7690,7 +7708,8 @@ func (a *app) resetMeters() {
 	// carried across /new would be a graph of somebody else's context, and an
 	// ambient count would be claiming jobs that died with the agent.
 	a.ctxRing, a.ringTurn = nil, 0
-	a.turnBegan, a.turnOutStart, a.turnCostAt = time.Time{}, 0, 0
+	a.turnBegan, a.turnOutStart, a.turnInStart, a.turnCostAt = time.Time{}, 0, 0, 0
+	a.col.open()
 	// The receipts go with the conversation they were written for: turn 1 of the
 	// session that replaced this one is not the turn 1 those figures describe
 	// (timestamps.go).

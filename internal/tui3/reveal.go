@@ -448,6 +448,11 @@ func (a *app) tickReveal(now time.Time) {
 		}
 	}
 	a.tickMeters(slots, snap)
+	// AND THE RUNNING TURN'S OWN PAIR WALKS ON THE SAME SLOTS. It is ticked
+	// beside the meters rather than inside them because it is not armed by a
+	// landing: ↓ moves as bytes arrive, which is most frames of a streaming
+	// turn (tokencol.go's [app.tickTokenCol]).
+	a.tickTokenCol(slots, snap)
 }
 
 // armMeters starts the figures chasing, FROM the readings a person is looking at
