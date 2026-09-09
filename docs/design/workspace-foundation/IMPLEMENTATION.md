@@ -4,6 +4,11 @@ This first implementation separates logical organization from conversation
 storage. The [constraints](CONSTRAINTS.md) describe the broader agreed product;
 this document describes only what this branch implements.
 
+The slice was reconciled onto `dev` commit
+`0daa205df5932e05cf7a044da113b3e91dcf2851`, the accepted squash of conversation
+PR #653. Only the collection commits were replayed; the conversation runtime
+and its final UI fixes remain the upstream implementation.
+
 ## Ownership
 
 ```mermaid
