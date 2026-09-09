@@ -1,0 +1,85 @@
+# Context modal coordinator review
+
+Integration branch `codex/context-modal-20260908`; owner target
+`codex/conversation-execution`. This file records independent acceptance, not the
+modal worker's implementation account.
+
+## Baseline finding
+
+The supplied `screenshot-current.png` confirms the reported product mismatch at
+`b252108d6`: the browser occupies bottom conversation chrome, the earlier chat
+error and status remain visually live around it, the unbounded centre column is
+sparse on a wide terminal, and the right directory listing has no visible or
+functional row target. `/folder` and bare `/attach` enter different modes in
+`openContextPick`; `folderPress` deliberately consumes preview-pane clicks.
+
+The reference image is useful for three qualities, not as a literal skin: a
+bounded object, clear pane ownership, and an unmistakable active row. Acceptance
+requires aforge's own palette, responsive tiers, and a real modal interaction
+boundary.
+
+## Review gates for the worker result
+
+- `/folder`, `/place`, `/dir`, and bare `/attach` open the same bounded chooser
+  in immediate browse mode from the same location rule. An empty recent/project
+  list must not refuse a fresh profile.
+- The chooser is visually separate from the conversation. Its keyboard, mouse,
+  wheel, and backdrop own the interaction until confirm or cancel. Outside
+  presses are inert and cannot switch tabs, scroll chat, or trigger actions.
+- Draw, caret, hover, press, wheel, breadcrumb, tray, and action targets consume
+  geometry recorded by the paint. Review rejects separately reconstructed hit
+  rectangles.
+- Parent rows, current-directory rows, and directory rows in the right pane all
+  hover and activate. A right-pane file becomes the selected preview subject;
+  activation/marking remains distinct from hover. Text/image preview bodies are
+  scrollable content, not pretend directory rows.
+- Raw path bytes remain distinct from scrubbed labels. Late directory/preview
+  results cannot overwrite a newer selection, marks, focus, or location.
+- Escape and Cancel restore a non-empty draft and prior view with no addition.
+  Explicit confirmation alone adds the selected folder/file/mixed context, and
+  the next request contains exactly those selections.
+- Wide, narrow, ASCII, and NO_COLOR views retain readable names and controls.
+  Resize invalidates old screen geometry before another pointer action.
+- Existing explicit `/attach <path>` direct attachment behavior is reported as
+  an intentional separate shortcut unless the implementation truly changes it.
+
+## Native-capable fixture and coordinate protocol
+
+`scripts/context-modal-native-fixture.sh setup ROOT` creates siblings, a nested
+right-pane directory, Go and text files, long scrollable lists, and a portable
+PNG without launching aforge. Its `motion`, `click`, and `wheel` commands emit
+real SGR mouse reports suitable for piping to a dedicated tmux pane.
+
+Coordinates are derived from the *captured frame*, never guessed from terminal
+width. For each wide and narrow capture, record the visible outer sheet
+`left/top/right/bottom`, then read the separators and visible rows from that same
+paint:
+
+1. `parent_x`, `current_x`, and `preview_x` are interior cells midway between
+   the painted vertical separators; `row_y` is the centre of the exact visible
+   entry row being exercised.
+2. Emit motion and assert only that painted target lifts; emit press/release at
+   the identical coordinate and assert the action agrees with the hover.
+3. For the right-pane nested directory, click its captured row and assert the
+   breadcrumb/location changes to `child folder/nested`. For `deep.go`, assert
+   it becomes the preview subject and source lines appear before any mark/add.
+4. Wheel over a list coordinate and a source/image preview coordinate
+   separately, asserting only the pane under the captured pointer moves.
+5. Click one cell outside each sheet edge and over a visible underlying tab/chat
+   target; assert modal state, room, transcript scroll, and draft are unchanged.
+6. After resize, capture again and recompute from new painted separators/rows;
+   never reuse pre-resize coordinates.
+
+Portable native review must retain raw `.ans`/plain captures and rendered PNGs
+for both command doors at wide and narrow sizes, plus before/after captures for
+each cross-column activation. Spark output proves terminal behavior only; root's
+Mac review is the required graphics and pointer gate.
+
+## Integration constraints
+
+Preserve `2a02ac0bb` from `origin/codex/conversation-execution`, including its
+`pulsemoney_test.go` and PR 653 entry. Avoid the test-speed wave's
+`tui3_test.go`, Makefile, and harness scripts. The final full `internal/tui3`
+run uses `scripts/one-suite.sh`, `GOMAXPROCS=4`, `GOFLAGS=-p=2`, and a 20-minute
+timeout. No dev/main/staging update, Mac access, installed-binary replacement,
+engine restart, or readiness marker is authorized here.
