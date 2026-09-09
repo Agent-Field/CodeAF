@@ -74,7 +74,7 @@ type Env interface {
 	// Log raises one visible progress row into the run's journal, in the
 	// program's own words. IT IS THE ONE DOOR TO A PERSON'S ATTENTION that costs
 	// nothing, and the vocabulary law reaches it: work is running, finishing,
-	// done, incomplete, or needs your look.
+	// done, incomplete, or your call.
 	Log(ctx context.Context, status string) error
 }
 

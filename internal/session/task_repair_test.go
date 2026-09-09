@@ -578,9 +578,9 @@ func TestNoMachineryWordReachesAPersonOnAnyPath(t *testing.T) {
 		{"a node that came back short twice", TaskFailed, gapsOutcome([][]string{shortFirst.evidence, shortAgain.evidence})},
 		{"a node with a finding and no evidence", TaskFailed, gapsOutcome(nil)},
 		{"a node cut off mid-check", TaskUnverified, withReport(taskCutMidCheck, held.checkedSoFar())},
-		{"a node nobody could judge", TaskUnverified, essay.lookOutcome()},
-		{"a node nobody could judge twice", TaskUnverified, essay.twice().lookOutcome()},
-		{"a node with no answer at all", TaskUnverified, auditVerdict{}.lookOutcome()},
+		{"a node nobody could judge", TaskUnverified, essay.lookOutcome(TaskFacts{})},
+		{"a node nobody could judge twice", TaskUnverified, essay.twice().lookOutcome(TaskFacts{})},
+		{"a node with no answer at all", TaskUnverified, auditVerdict{}.lookOutcome(TaskFacts{})},
 		{"a node a person accepted", TaskDone, acceptedLine("I read the diff myself and it holds")},
 		{"a node a person turned down", TaskFailed, refutedLine("it is missing the eleventh company")},
 		{"a node nothing checked", TaskDone, "nothing checked this work: the task.audit setting is off"},
@@ -606,7 +606,7 @@ func TestNoMachineryWordReachesAPersonOnAnyPath(t *testing.T) {
 	if outcome := held.doneOutcome(); !strings.Contains(outcome, "go test ./... and it is ok") {
 		t.Fatalf("the plain evidence lost what was run: %q", outcome)
 	}
-	if look := essay.lookOutcome(); !strings.Contains(look, "I read the diff") {
+	if look := essay.lookOutcome(TaskFacts{}); !strings.Contains(look, "I read the diff") {
 		t.Fatalf("the plain non-answer lost what the checker said: %q", look)
 	}
 }

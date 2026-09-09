@@ -60,7 +60,7 @@ func settledNeedingALook(t *testing.T, agent *Agent, node *TaskNode, repo, renam
 		t.Fatalf("the settle did not leave the work on %s", renamed)
 	}
 	node.setTree(tree)
-	node.finish(needsLookLead+"nobody could check it in 5m0s", changed, tree.branch, merge)
+	node.finish(withYourCallLead(TaskFacts{Merge: merge}, "nobody could check it in 5m0s"), changed, tree.branch, merge)
 	if _, _, branch, _ := node.leavings(); branch != renamed {
 		t.Fatalf("first settled notice names stale branch %q, want %q", branch, renamed)
 	}

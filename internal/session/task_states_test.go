@@ -455,7 +455,7 @@ func TestTheLandingNoteWearsTheTierWord(t *testing.T) {
 		name: "work nobody could check is the person's call",
 		notice: TaskNotice{
 			ID: 7, Title: "Port the parser", State: TaskUnverified,
-			Report: needsLookLead + "the checker answered neither way",
+			Report: yourCallLead(TaskFacts{}) + "the checker answered neither way",
 		},
 		head: "task 7 your call: Port the parser · nobody could check it",
 		gone: []string{"needs your look"},

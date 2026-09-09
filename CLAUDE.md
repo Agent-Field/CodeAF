@@ -174,7 +174,8 @@ Violations get rejected in review, and some are pinned by tests.
   do not jump sideways. `/status` and `/cost` drop the line.)
 - **No machinery vocabulary in anything a person reads.** `auditor`, `verdict`,
   `verified`, `refuted` are banned. Work is *running*, *finishing*, *done*, *incomplete*,
-  or *needs your look*.
+  or *your call*. (`needs your look`, `awaiting review` and `unverified` were the old
+  spellings of that last one and are deleted — docs/design/task-states/DESIGN.md.)
 - **A capability that cannot work is absent, not broken.** A tool with nothing behind it
   is left off the belt entirely, so the model does not have the verb — rather than
   present and failing every time it is called. `memoryTools` and the remote harness

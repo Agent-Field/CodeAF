@@ -113,9 +113,12 @@ func (g *TaskGraph) depthLocked(node *TaskNode) int {
 }
 
 // taskUnverifiedNews is what a node on this list is DOING, in the person's own
-// words. The vocabulary law bans the machinery word for this state from anything
-// anybody reads, and this is the one spelling of the replacement in the engine.
-const taskUnverifiedNews = "needs your look"
+// words, and it is the tier's own word (task_status.go's [taskWordYourCall]) so
+// that this list and the card the row draws cannot be two accounts of one node.
+// The vocabulary law bans the machinery word for this state from anything
+// anybody reads, and `needs your look` — the word this list used to spell — is
+// deleted with it (docs/design/task-states/DESIGN.md).
+const taskUnverifiedNews = taskWordYourCall
 
 // ── re-addressing, which is not re-delivering ───────────────────────────────
 

@@ -303,7 +303,7 @@ func TestTheReasonReachesTheModelUnderneathTheSettlePolicy(t *testing.T) {
 		ID:     12,
 		Title:  "port the parser",
 		State:  TaskUnverified,
-		Report: needsLookLead + reason + "\nThe parser now reads the new header.",
+		Report: yourCallLead(TaskFacts{}) + reason + "\nThe parser now reads the new header.",
 	}
 	for _, settle := range []TaskSettle{TaskSettleAsk, TaskSettleAuto} {
 		note := taskNote(notice, "", settle, landingAddress{person: true})
@@ -403,8 +403,8 @@ func TestALandingNobodyIsNearAsksAndHearsNothing(t *testing.T) {
 // project's index keeps as the row's outcome, so the reason has to be in it.
 func TestTheOutcomeALandingKeepsIsTheReasonItself(t *testing.T) {
 	reason := `"rail permanence" changed internal/tui3/home.go while this ran`
-	report := withReport(needsLookLead+reason, "The parser now reads the new header.")
-	if got := taskOutcome(report); got != needsLookLead+reason {
+	report := withReport(yourCallLead(TaskFacts{})+reason, "The parser now reads the new header.")
+	if got := taskOutcome(report); got != yourCallLead(TaskFacts{})+reason {
 		t.Fatalf("the row's outcome is %q, want the reason", got)
 	}
 }
