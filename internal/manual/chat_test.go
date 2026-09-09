@@ -29,6 +29,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"what can you do", "what-i-can-do"},
+		// The questions object (docs/design/questions/DESIGN.md), asked the
+		// six ways somebody meets it: the shapes, the clock, the record, the
+		// refusals, answering from elsewhere, and what is not built.
+		{"what kinds of questions does it ask me", "questions"},
+		{"does a question ever time out", "questions"},
+		{"where are my answers saved", "questions"},
+		{"why did it refuse to ask me something", "questions"},
+		{"can I answer a question from another window", "questions"},
+		{"it asked me the same thing twice", "questions"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},
 		// Lanes behind a base of the person's own: the question the hostname gate
