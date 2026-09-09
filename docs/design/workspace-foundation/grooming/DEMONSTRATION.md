@@ -71,6 +71,30 @@ unlinked discovery, peer consultation, real calendar mutations or a final UI.
 
 ## First missing transition: a person's decision becomes applicable direction
 
+### Counterexample from the expanded workday test
+
+The implementation owner subsequently reported a failure within the EXISTING
+explicit applicability contract. After removing both memberships and reopening
+a long chat, the turn wrote unavailable. Its completion path then read a
+remembered record ID and rewrote the old value as current because the record
+still existed and was not withdrawn. Global record currency was confused with
+applicability to the current consumer.
+
+The reported failing receipt is
+`/Users/santoshkumar/af-personal-ai-complex-evidence-20260909/working-day-confirm.jsonl`.
+The owner is tracing a minimal correction; repair and a complete passing workday
+remain pending. The earlier API-contract pass remains a narrower result and does
+not establish this long-history/membership-removal behavior.
+
+Keep global reads available. A source can be current and discoverable while not
+applying to this chat. Acceptance for the repair must cover the whole turn,
+including completion, and rejoining under existing explicit membership rules.
+This is not a new privacy boundary, recursive inheritance rule or automatic
+accepted-decision feature. It exercises the diagram's “select relevant state”
+arrow and shows why that arrow needs precise semantics.
+
+### The next product behavior beyond that repair
+
 The ordinary request is: “For this project, use operation_id from now on.”
 The current test instead explicitly asks the model to record shared information
 with supplied targets, and the resulting store treats it as information. Therefore
