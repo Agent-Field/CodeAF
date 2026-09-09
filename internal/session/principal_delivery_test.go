@@ -235,6 +235,73 @@ func TestRetainedDeliveryDecisionMatrix(t *testing.T) {
 	}
 }
 
+func TestAnUncomparableChangedListIsNotEvidenceOfDelivery(t *testing.T) {
+	repo := newTestRepo(t)
+	mustGit(t, repo, "checkout", "-b", "main")
+	mustGit(t, repo, "checkout", "-b", "task/x")
+	writeFile(t, filepath.Join(repo, "subproject", "actual.txt"), "the change\n")
+	mustGit(t, repo, "add", "subproject/actual.txt")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "task work")
+	mustGit(t, repo, "checkout", "main")
+
+	a, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.Workspace = repo })
+	node := &TaskNode{parent: a.config.taskID}
+	for _, changed := range [][]string{
+		{"nosuchfile.txt"},
+		{"actual.txt"},
+		{"subproject/actual.txt"},
+	} {
+		if got := a.retainedDelivery(node, changed, "task/x", mergeKept); got != "task/x" {
+			t.Fatalf("retained delivery = %q, want task/x when none of %v can be compared", got, changed)
+		}
+	}
+
+	mustGit(t, repo, "merge", "--ff-only", "task/x")
+	if got := a.retainedDelivery(node, []string{"subproject/actual.txt"}, "task/x", mergeKept); got != "" {
+		t.Fatalf("retained delivery = %q after the branch content reached the workspace, want empty", got)
+	}
+}
+
+func TestAKeptBranchNobodyCanCompareIsNotFinished(t *testing.T) {
+	repo := newTestRepo(t)
+	mustGit(t, repo, "checkout", "-b", "main")
+	tree, err := prepareTaskTree(Place{Dir: t.TempDir(), Workspace: repo}, repo, "delivery", 1, "write the fix")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(tree.dir, "fix.txt"), "the fix\n")
+	merge, detail, _, _ := tree.comeHome("write the fix", []string{"fix.txt"})
+	if merge != mergeKept {
+		t.Fatalf("protected landing=%s: %s", merge, detail)
+	}
+	a, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.Workspace = repo
+		c.Unattended = true
+		c.Budget = Budget{Wall: time.Hour}
+	})
+	s := a.steward()
+	s.hear("implement the fix in this workspace")
+	s.setAcceptanceDelivery(s.Ask(), "fix.txt is in this workspace", nil, deliveryContract{Kind: "workspace"})
+	g := a.graph()
+	g.mu.Lock()
+	g.nodes[1] = &TaskNode{graph: g, id: 1, owner: a, state: TaskDone, spec: taskSpec{title: "fix"}, changed: []string{"nosuchfile.txt"}, branch: tree.branch, merge: merge, report: detail}
+	g.order = []uint64{1}
+	g.mu.Unlock()
+
+	beforeHead := gitOut(t, repo, "rev-parse", "HEAD")
+	beforeStatus := gitOut(t, repo, "status", "--porcelain")
+	got := a.decideRemains(context.Background(), readerLine{answered: true, nothingLeft: true}, "everything is done")
+	if got.Verb != DecideCarryOn || !strings.Contains(got.Brief, "retained branch") {
+		t.Fatalf("checkpoint falsely finished: %+v", got)
+	}
+	if afterHead := gitOut(t, repo, "rev-parse", "HEAD"); afterHead != beforeHead {
+		t.Fatalf("completion check moved HEAD from %s to %s", beforeHead, afterHead)
+	}
+	if afterStatus := gitOut(t, repo, "status", "--porcelain"); afterStatus != beforeStatus {
+		t.Fatalf("completion check changed checkout status from %q to %q", beforeStatus, afterStatus)
+	}
+}
+
 // This exercises real protected-branch landing and the Agent's checkpoint door.
 // The main checkout is deliberately unchanged and every task result says done.
 func TestCheckpointKeepsProtectedBranchDeliveryUnfinished(t *testing.T) {
