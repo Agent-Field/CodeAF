@@ -164,28 +164,29 @@ func TestTheLandingCardDrawsTheFourShapes(t *testing.T) {
 		name  string
 		card  *taskDone
 		head  string
+		glyph string
 		under string
 	}{{
-		name: "done",
+		name: "done", glyph: glyphDone,
 		card: &taskDone{
 			title: "Port the parser", outcome: "the guard is in", span: 400 * time.Second,
 			changed: []string{"a.go", "b.go"},
 			status: doneStatus(session.TaskFacts{
 				State: session.TaskDone, Merge: mergeWordMerged, Branch: "task/parser"}),
 		},
-		head:  "✓ · " + taskDoneStateWord + " · 6m40s · 2 files · merged",
+		head:  " · " + taskDoneStateWord + " · 6m40s · 2 files · merged",
 		under: `"the guard is in"`,
 	}, {
-		name: "stopped",
+		name: "stopped", glyph: glyphStopped,
 		card: &taskDone{
 			title: "Port the parser", span: 122 * time.Second,
 			status: doneStatus(session.TaskFacts{
 				State: session.TaskFailed, Ending: session.TaskEndingStopped, Stopped: true,
 				Merge: mergeWordKept, Branch: "task/parser"}),
 		},
-		head: "⊘ · " + taskStoppedState + " · 2m02s · branch kept · task/parser",
+		head: " · " + taskStoppedState + " · 2m02s · branch kept · task/parser",
 	}, {
-		name: "incomplete",
+		name: "incomplete", glyph: glyphBad,
 		card: &taskDone{
 			title: "Port the parser", span: 242 * time.Second,
 			changed: []string{"a.go"},
@@ -193,21 +194,24 @@ func TestTheLandingCardDrawsTheFourShapes(t *testing.T) {
 				State: session.TaskFailed, Ending: session.TaskEndingSteps,
 				Merge: mergeWordKept, Branch: "task/parser"}),
 		},
-		head:  "✗ · " + taskIncompleteState + " · 4m02s · 1 file · branch kept · task/parser",
+		head:  " · " + taskIncompleteState + " · 4m02s · 1 file · branch kept · task/parser",
 		under: "ran out of steps",
 	}, {
-		name: "your call",
+		name: "your call", glyph: glyphAsk,
 		card: &taskDone{
 			title: "Port the parser", span: 400 * time.Second,
 			changed: []string{"a.go", "b.go"},
 			status: doneStatus(session.TaskFacts{
 				State: session.TaskUnverified, Merge: mergeWordKept, Branch: "task/parser"}),
 		},
-		head: "? · " + taskYourCallWord + " · 6m40s · 2 files · branch kept · task/parser",
+		head: " · " + taskYourCallWord + " · 6m40s · 2 files · branch kept · task/parser",
 	}} {
 		t.Run(shape.name, func(t *testing.T) {
 			a, _ := settleApp(t)
 			head := plain(a.doneHead(shape.card, 200, false))
+			if !strings.HasPrefix(head, shape.glyph+" ") {
+				t.Fatalf("the head reads\n\t%q\nwant it to open with the tier glyph %q", head, shape.glyph)
+			}
 			if !strings.Contains(head, shape.head) {
 				t.Fatalf("the head reads\n\t%q\nwant it to carry\n\t%q", head, shape.head)
 			}
@@ -256,7 +260,7 @@ func TestANarrowReasonRowCutsTheListAndKeepsTheKey(t *testing.T) {
 		report: "something", status: doneStatus(session.TaskFacts{
 			State: session.TaskFailed, Ending: session.TaskEndingSteps}),
 	}
-	row := doneReasonRow("the check found gaps: a.go, b.go, c.go, d.go", doneReasonKey(card), 34)
+	row := doneReasonRow("the check found gaps: a.go, b.go, c.go, d.go", doneReasonKey(card), 45)
 	if !strings.HasSuffix(row, doneOutputKey) {
 		t.Fatalf("the narrow reason row dropped its key:\n\t%q", row)
 	}

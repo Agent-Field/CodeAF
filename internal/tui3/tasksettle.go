@@ -373,12 +373,19 @@ func (a *app) settleRows(out []row, card *taskDone, entry, width, indent int) []
 	if a.settleAuto(card) {
 		return a.settleAutoRow(out, card, entry, indent, room)
 	}
-	if !a.settleAsking(card) {
+	if !card.stillAsking() {
 		return out
 	}
 	// THE REASON IS THE ONE ACCENT ON THIS CARD besides its glyph: it is the half
 	// a person acts on, and the head one row above has already said everything
 	// else in dim.
+	//
+	// IT IS DRAWN WHETHER OR NOT ANYTHING CAN BE ANSWERED. The absence law is
+	// about CAPABILITIES — a chip with no door behind it is left off — and a
+	// reason is not one: `your call` with nothing under it is the card with no
+	// choices and no explanation, which is the defect this whole wave exists to
+	// close. A window that cannot spend an answer can still say what is being
+	// asked, and it must.
 	out = append(out, row{
 		text:  a.pal.ask(pad + "  " + fit(strings.TrimSpace(card.status.Ask.Reason), room)),
 		entry: entry, hit: hitDone,
@@ -923,6 +930,11 @@ func (a *app) settleCard(card *taskDone, answer settleAnswer) {
 			a.settleRefused(card, err)
 			return
 		}
+		// AND THE CARD RECORDS WHO IS HOLDING IT NOW, which is what stops every
+		// other surface asking the person about a node they have just handed over
+		// (taskreviewstate.go reads this). The engine wrote the same thing on the
+		// node; this is the copy the card in front of somebody is drawn from.
+		card.status.Ask.Owner = session.TaskAskOwnerModel
 		card.decided, card.trouble = settleHandedLine, ""
 		a.settleTouched(card)
 		return
