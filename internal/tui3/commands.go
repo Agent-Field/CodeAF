@@ -60,7 +60,7 @@ var commands = []command{
 	// (render.go's [app.identityParts]). It is worth saying because a surface
 	// with the mouse turned off (config's ui.mouse) does not have it, and this
 	// row is then the only one there is.
-	{name: "model", desc: "pick a model · or press its name in the status line"},
+	{name: "model", desc: "pick a model · or press its name above the message box"},
 	// `<slug>` is the whole of what this row offers a person scanning the list,
 	// and the three other shapes it takes — `@lane`, `auto`, a filter query —
 	// are NOT four more rows here. The list is how somebody finds a command,

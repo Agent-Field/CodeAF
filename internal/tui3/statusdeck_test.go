@@ -269,7 +269,7 @@ func TestTheWiderTiersKeepTodaysStatusRow(t *testing.T) {
 		a.width = width
 		a.touch()
 		rows := a.statusRows(width)
-		_, _, wrapped := a.statusLayout(width)
+		_, _, _, wrapped := a.statusLayout(width)
 		want := 1
 		if wrapped {
 			want = 2

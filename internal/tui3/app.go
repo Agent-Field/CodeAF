@@ -1111,6 +1111,14 @@ type app struct {
 	// the layout, read by the click (render.go's [app.identityParts], and
 	// [app.statusPress] below). An empty span means there is nothing to press.
 	modelSpan hudSpan
+	// seamModelSpan is where the model's name was last drawn on the SEAM — the
+	// legend above the box — which is where the conversation's identity lives
+	// now (foot.go's [app.seamIdentity]). modelSpan above is the room chip's
+	// door on the status row; the two are never both drawn.
+	seamModelSpan hudSpan
+	// doors is every pressable segment of the status row, recorded as the row
+	// is laid out and cleared before it (foot.go).
+	doors []statusDoor
 	// keepSpan is where the `keeping an eye on N` segment was last drawn, and
 	// keepRow which of the status row's rows it landed on — the same bargain
 	// modelSpan makes, for the same reason and one more: that cluster is
@@ -3521,6 +3529,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// that rule is a rule, and pressing a rule means nothing (home.go).
 			if cmd, took := a.homeDoorPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
+			}
+			// AND THE MODEL'S NAME IS THE FOURTH, at the left end of the same
+			// legend: the conversation's model is written on the seam and pressing
+			// it opens the picker (foot.go's [app.legendModelPress]).
+			if a.legendModelPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
 			}
 			// THE STOP TARGETS ARE READ BEFORE EVERY OTHER COLUMN-AWARE PRESS
 			// (stop.go). The card's answers sit over the draft, and the ✕ sits at
@@ -6056,9 +6070,11 @@ func (a *app) statusPress(x, y int) bool {
 	if width, _ := a.size(); layoutTier(width) == tierPhone {
 		return a.deckPress(x, mark.index)
 	}
-	// Index zero is the identity's row in both status layouts — the shared row,
-	// and the first of the two when the telemetry wraps onto its own (render.go).
-	if mark.index != 0 || !a.modelSpan.holds(x) {
+	// Index zero is the chip's row in both status layouts — the shared row, and
+	// the first of the two when the right edge wraps onto its own (render.go).
+	// OUT OF A ROOM THERE IS NO NAME ON THIS ROW AT ALL: the conversation's
+	// model is on the seam, and its door is [app.legendModelPress].
+	if !a.roomOpen() || mark.index != 0 || !a.modelSpan.holds(x) {
 		return false
 	}
 	// A ROOM POINTS THE SAME DOOR AT THE NODE THE ROW NAMES, and it does so

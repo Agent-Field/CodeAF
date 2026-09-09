@@ -171,13 +171,16 @@ just say them. The hint is also absent wherever the chord would refuse — a tra
 pictures on it, a picked shape of work, a build with no ambient side.
 
 To check afterwards whether anything actually stands, open `/standing`, or read the
-`◦ keeping an eye on N` count at the foot of the screen.
+`◦ N standing orders` count at the foot of the screen.
 
-## keeping an eye on 2 — the count at the foot of the screen opens the page
+## 2 standing orders — the count at the foot of the screen opens the page (it said keeping an eye on 2 before)
 
-The status line's `◦ keeping an eye on N` segment is a **door**. Click it and the standing
-orders page opens — the same page `/standing` and `/orders` open, showing which N those
-are. It brightens under the pointer, the way the model's name beside it does.
+The status line's `◦ N standing orders` segment (`◦ 1 standing order` for one) is a
+**door**. Click it and the standing orders page opens — the same page `/standing` and
+`/orders` open, showing which N those are. It brightens under the pointer, the way the
+money and the context meter on the same row do. Until 2026-09-09 it read
+`◦ keeping an eye on N`, which named nothing a person could type; the new words are the
+command that opens it.
 
 It counts the active orders reaching **this** window's project, so it is the fastest
 answer to "did that actually stand?". Nothing standing here means no segment at all and
@@ -216,7 +219,7 @@ standing
   twenty-four cells rather than thirty, the tail gives way so the order's own name keeps
   its room. `/standing` says the reach in full whatever the width.
 - **A row breathes while its order is being checked or fired right now** — its mark becomes
-  the spinner, exactly as the `keeping an eye on 2` chip on the status line does. It is
+  the spinner, exactly as the `◦ 2 standing orders` chip on the status line does. It is
   still every other moment.
 - **Orders with a next occasion coming are listed first**, and the rules that merely
   `holds` sit under them: a rule has no "next", so it does not belong in a queue of what

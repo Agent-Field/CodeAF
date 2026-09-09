@@ -104,8 +104,10 @@ const (
 	// in the person's own terms ([standing.Item.RetiredWhy] names this exact
 	// spelling as one of its cases).
 	homeStoppedWhy = "stopped by you"
-	// homeKeepingWord is the status line's segment, with the count after it.
-	homeKeepingWord = " keeping an eye on "
+	// homeKeepingWord is the status line's segment, after the count: `◦ 2
+	// standing orders`. It said `keeping an eye on 2` until 2026-09-09, which
+	// named nothing a person could type — the page it opens is /standing.
+	homeKeepingWord = " standing order"
 	// homeWatchLabel is /status's line, and the things it can say.
 	homeWatchLabel     = "keeping watch"
 	homeWatchInstalled = "installed"
@@ -840,7 +842,7 @@ func (a *app) keepingSegment() string {
 	if a.pal.ascii {
 		glyph = standWaitASCII
 	}
-	return glyph + homeKeepingWord + itoa(count)
+	return glyph + " " + itoa(count) + plural(homeKeepingWord, count)
 }
 
 // keepingWord is that segment as it is DRAWN: the same width, with the glyph
@@ -866,7 +868,7 @@ func (a *app) keepingWord() string {
 	if a.linear || a.pal.ascii {
 		glyph = glyphRunASCII
 	}
-	return glyph + homeKeepingWord + itoa(count)
+	return glyph + " " + itoa(count) + plural(homeKeepingWord, count)
 }
 
 // watchLine is /status's `keeping watch` fact, derived and never asserted.

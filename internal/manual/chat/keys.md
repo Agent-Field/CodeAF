@@ -2359,7 +2359,7 @@ up drops out of it.
 
 `pgup` and `pgdown` move the height of the view minus one row, never fewer than one.
 
-**The jump-to-latest chip** is one dim right-aligned chip reading `↓ latest · ctrl+l`
+**The jump-to-latest chip** is one dim chip at the left edge reading `↓ latest · ctrl+l`
 — `v latest · ctrl+l` on the linear tier — and it appears only when you are parked
 away from the live edge. It is drawn into the first row of the frame's existing
 breathing gap, so it never takes a row of its own; on a window too short to have a

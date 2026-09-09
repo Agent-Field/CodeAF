@@ -593,8 +593,10 @@ func TestTheCrewSegmentYieldsBeforeTheNumbers(t *testing.T) {
 			t.Fatalf("the crowded row lost %q while dropping the crew:\n%q", kept, narrow)
 		}
 	}
-	if dropOrder[1] != segCrew {
-		t.Fatalf("the crew is not second in the drop order: %v", dropOrder)
+	// The crew is not on the line at all any more (foot.go's [groupOff]), so it
+	// is not on the ladder either: the sheet and /status are where it is said.
+	if segGroup(segCrew) != groupOff {
+		t.Fatalf("the crew is drawn on the status row: %v", segGroup(segCrew))
 	}
 }
 

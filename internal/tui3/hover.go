@@ -214,6 +214,12 @@ const (
 	// [hoverKeeping]'s reason: three doors on one row that open three different
 	// things, and what lights has to be what the press acts on.
 	hoverMoney
+	// hoverMeter, hoverOpen and hoverPosture are the three doors the status row
+	// grew when it became a ledger (foot.go): the context meter onto /status,
+	// the open count onto the switcher, the YOLO badge onto /permissions.
+	hoverMeter
+	hoverOpen
+	hoverPosture
 	// hoverTable is the foot under a markdown table that was cut (mdtable.go);
 	// entry is the answer it belongs to and index is which of that answer's
 	// tables. It is a kind of its own rather
@@ -653,6 +659,13 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			if a.jumpSpan.holds(x) {
 				return hoverAt{kind: hoverJump}
 			}
+		case chromeLegend:
+			// THE MODEL'S NAME ON THE SEAM, out of a room (foot.go). The home door
+			// at the other end of the same line lights through its own reading
+			// (home.go's [app.hoverHomeDoor]).
+			if !a.roomOpen() && !a.copy.on && !a.pick.open && a.seamModelSpan.holds(x) {
+				return hoverAt{kind: hoverStatusModel}
+			}
 		case chromeStatus:
 			// THE SAME THREE QUESTIONS [app.statusPress] ASKS, IN THE SAME ORDER,
 			// because this file's law is that the set which lights is the set the
@@ -671,16 +684,15 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			if width, _ := a.size(); layoutTier(width) == tierPhone {
 				return hoverAt{kind: hoverDeck, index: mark.index}
 			}
-			// The two doors on this row, in the order [app.press] reads them
-			// (app.go): the keeping segment onto /standing, then the model's name
-			// onto the picker (standdoor.go).
-			if mark.index == a.keepRow && a.keepSpan.holds(x) {
-				return hoverAt{kind: hoverKeeping}
+			// The doors on this row, in the order [app.press] reads them (app.go):
+			// the ledger's table first (foot.go), then the room chip's model.
+			if door, ok := a.doorAt(x, mark.index); ok {
+				if door.kind == segKeeping && a.at(pageStanding) {
+					return hoverAt{}
+				}
+				return hoverAt{kind: doorHover(door.kind)}
 			}
-			if mark.index == a.moneyRow && a.moneySpan.holds(x) {
-				return hoverAt{kind: hoverMoney}
-			}
-			if mark.index == 0 && a.modelSpan.holds(x) {
+			if a.roomOpen() && mark.index == 0 && a.modelSpan.holds(x) {
 				return hoverAt{kind: hoverStatusModel}
 			}
 		}

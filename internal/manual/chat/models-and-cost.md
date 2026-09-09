@@ -39,16 +39,18 @@ the conversation identity stays the same.
 
 ## Which model am I talking to, which model is it using right now, and how do I switch or change it
 
-The model in use is written in the status line. There are two doors to the picker:
+The model in use is written on the legend line directly above the message box, after the
+conversation's name (`porting the parser · glm-5.3-flash`). There are two doors to the
+picker:
 
 - type `/model` with nothing after it, or
-- press the model's name in the status line.
+- press the model's name on that line above the box.
 
 If you have turned the mouse off (`ui.mouse`), only the command works.
 
 **The name you press is the model you move.** Out in the conversation that is the
-conversation's model. Inside a running task's room the status line names *that task's*
-model — `task <name>` — and pressing it opens the same picker aimed at that task alone,
+conversation's model. Inside a running task's room the status line at the very bottom
+names *that task's* model — `task <name>` — and pressing it opens the same picker aimed at that task alone,
 from its next turn onward. Nothing else moves: not the conversation, not any other task.
 See "Changing the model for one task while it is running" on the tasks page. Inside a
 task that has finished the name is still there to read and cannot be pressed.
@@ -163,8 +165,9 @@ provider would typically serve that model, frozen when the list opened — so a 
 running underneath cannot make the names jump, and the `▲0.5s` and `58t/s` next to them
 stay still too. Close the list and open it again to see the latest.
 
-The status line's `via` is a different fact: that one is who is answering the turn that
-is in flight (`via deepinfra · 92 tok/s`), and it is allowed to move.
+The `via` beside the model above the message box is a different fact: that one is who is
+answering the turn that is in flight, and it is allowed to move. Its rate — `92 tok/s` —
+stands at the right of the status line beside the state word while the turn writes.
 
 ## Why does the model picker keep jumping
 
@@ -396,8 +399,8 @@ That is right, and nothing is broken. **`/crew` does not change the model you ar
 to**, and the readout at the bottom of the frame is that model — the conversation's. The
 only thing that moves it is `/model`, the model row in `/settings`, or naming one with
 `/model <name>`. The confirmation says so by name: `/crew max` ends
-`· you are still talking to deepseek-v4-flash — /model changes that`, and the status line
-now carries `crew max` beside the model so the two dials read as two.
+`· you are still talking to deepseek-v4-flash — /model changes that`, and `/status` prints
+`model` and `crew` on neighbouring lines so the two dials read as two.
 
 The crew is a different dial: the five **classes** aforge makes its own calls on — reflex,
 small work, worker, careful work, mastermind — used for titles, memory, the safety gate,
@@ -416,8 +419,8 @@ running keeps the model it was admitted on.
 - `/settings` → Providers has the **crew** row above the five class rows.
 - Bare `/crew` opens the three presets with yours marked, under a `you talk to · <model>`
   line naming the seat they do not touch.
-- The live status line says `crew max` at the head of the telemetry, across the gap from
-  the model segment — the same word `/status` prints, read from the same five rows.
+- `/status` and the phone status sheet say `crew max` on their own line — the status row
+  itself stopped carrying the crew word on 2026-09-09; it is a setting, not a measurement.
 - The hint line under the model picker says `crew max` beside its keys, so the picker you
   opened looking for the change tells you the crew is a separate thing.
 
@@ -552,7 +555,7 @@ line, so the two surfaces are telling you about one thing.
 ## What are the six models — the one you talk to and the five crew seats
 
 aforge runs **six model seats**. **Seat one is the model you talk to**: it answers every
-message you type, it is the id on the left of the status line, and `/model` is the only thing
+message you type, it is the id written above the message box, and `/model` is the only thing
 that moves it. The other five are the **crew** — the models aforge uses on its own behalf,
 for calls you did not type:
 
@@ -569,8 +572,8 @@ for calls you did not type:
 `max` — and never seat one. Bare `/crew` opens with `you talk to · <model>` above the three
 presets, so the seat the presets do not touch is on the same page as the ones they do.
 `/settings` → Providers pins any one of the five on its own, which turns the crew word to
-`custom`. The live status line says both dials: the model segment on the left is seat one,
-and `crew max` at the head of the telemetry on the right is the other five.
+`custom`. Seat one is the model named above the message box; the other five are the
+`crew` line of `/status`.
 
 ## Does /crew change my chat model — no, and what crew max on the status line means
 
@@ -583,11 +586,11 @@ crew → max · brain kimi-k3 · hands glm-5.3 · checks kimi-k3 · you are stil
 
 `/model`, `/model <name>` or the model row in `/settings` are the only ways to change the
 chat model, and `/crew` never offers to. The two dials also stay separate on the frame: the
-status line shows the chat model on the left and `crew max` — or `crew balanced`,
-`crew frugal`, `crew custom` when you pinned a seat yourself — at the head of the telemetry
-on the right. That segment is a setting, not a measurement, so it is among the first things
-a narrow row gives up; `/status` prints `model` and `crew` on neighbouring lines at any
-width. The one session with no `crew` segment at all is a **remote** one opened with
+chat model is written above the message box, and `crew max` — or `crew balanced`,
+`crew frugal`, `crew custom` when you pinned a seat yourself — is a line of `/status` and of
+the phone status sheet. It is not on the status row: a setting is not a measurement, and
+the row is for numbers now. `/status` prints `model` and `crew` on neighbouring lines at any
+width. The one session with no `crew` line at all is a **remote** one opened with
 `--host`: that crew lives on the other machine.
 
 ## Asking a class to think harder — a level on a class value
@@ -826,8 +829,8 @@ with. They fire on their own clock long after your run ended, and the crew answe
 
 ## What the screen says under `--one-model` — why does the status line say one model, where did my crew word go, no crew receipt when a task starts
 
-**The crew segment names the flag, because the flag is what seats the call.** Under
-`--one-model` the status line's crew segment reads `one model` rather than the preset your four
+**The crew line names the flag, because the flag is what seats the call.** Under
+`--one-model` the crew line of `/status` and the phone sheet reads `one model` rather than the preset your four
 rows derive to, and `/status` answers its crew line with `one model · every call rides the model
 you are talking to`. The model picker's hint slot and the welcome line under the wordmark say
 the same word. All of them read one answer, so none of them can disagree with another.
@@ -1011,7 +1014,7 @@ model that has started writing has finished deciding.
 
 **And the second one gets shorter still on an endpoint aforge has measured.** Forty-five
 seconds is what a stranger gets. Once aforge knows how fast an endpoint writes — the
-`t/s` figure the status line shows you — the gap it will sit through is how long *that*
+`t/s` figure the status line shows you beside the state word while a turn writes — the gap it will sit through is how long *that*
 endpoint would take to write about three and a half thousand tokens: roughly **15 seconds**
 on one sustaining 250 tokens a second, **42** on one sustaining 83. A minute of silence from
 an endpoint that has been writing two hundred and fifty words a second is not patience, it

@@ -25,10 +25,10 @@ shade above the middle. It shows once, arrives with a slow sweep across the lett
 over about a second and a quarter, and is then still.
 
 **Nothing else is drawn.** No column of tasks on the right, no rule with the legend in
-it, no `+ /task` or `+ /standing` doors, no `❯ ctrl+g hide`, no `$0.00` and no token
-count on the status line — only the conversation's name and model on the left of the
-status row and `idle` on the right. Every one of those arrives with the conversation
-rather than before it (see the other headings on this page).
+it — so no conversation name and no model above the box yet — no `+ /task` or
+`+ /standing` doors, no `❯ ctrl+g hide`, no `$0.00` and no token count on the status
+line — only `idle` at the right of the status row. Every one of those arrives with the
+conversation rather than before it (see the other headings on this page).
 
 **The first key, the first submit, or a click anywhere on the group except a recent
 session or the message box puts it away for good.** The message box goes back to the
@@ -110,9 +110,10 @@ key: it starts a new chat, and it works on a fresh screen like anywhere else.
 
 ## Why the status line shows no cost or token count before I type — where is the $0.00
 
-While the greeting is up the status row carries **only identity and state**: the
-conversation's name and its model on the left, `idle` on the right. There is no `$0.00`,
-no `9.4k/1.3M · 1%` context meter, no cache figure. A conversation nobody has typed into
+While the greeting is up the status row carries **only the state**: `idle` on the right,
+and nothing on the left. There is no `$0.00`, no `9.4k/1.3M · 1%` context meter, no cache
+figure. The conversation's name and model arrive on the legend line above the box with
+the conversation itself. A conversation nobody has typed into
 has nothing to bill and nothing but its own prompt to meter, and a row of zeros under a
 greeting was the first thing a person paying with their own card read.
 

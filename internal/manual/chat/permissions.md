@@ -62,7 +62,7 @@ rules' own words. It can read:
 
 The same sentence is what the model is told when a call is refused.
 
-## The countdown: silence waits — why an unanswered approval is not denied
+## The countdown: silence waits — why an unanswered approval is not denied, and whether the question expires while you are in another chat
 
 A question that is not answered stays a question. Silence is never a **no**.
 

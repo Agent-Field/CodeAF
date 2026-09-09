@@ -141,11 +141,11 @@ func TestALinkBeingRedialledPutsItsSentenceOnTheStatusLine(t *testing.T) {
 	// AND IT IS NEVER THE SEGMENT A NARROW FRAME GIVES UP. Everything droppable
 	// is dropped around it, because it is the reason none of those numbers are
 	// moving.
-	parts := a.telemetry(hudWide)
-	for dropSegment(&parts) {
+	ledger, alive := lineParts(a.telemetry(hudWide))
+	for a.shrink(&ledger, &alive, len(dropOrder)) {
 	}
 	found := false
-	for _, part := range parts {
+	for _, part := range alive {
 		found = found || part.kind == segLink
 	}
 	if !found {

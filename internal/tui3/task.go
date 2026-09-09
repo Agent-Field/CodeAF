@@ -4352,12 +4352,11 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 	// whether there is anything to report; the figures themselves come off the
 	// eased readings, so this foot counts up with the status line rather than
 	// jumping beside it (reveal.go).
-	if a.cost > 0 {
-		segs = append(segs, dollars(a.spendDrawn()))
-	}
-	if a.tokens > 0 {
-		segs = append(segs, tokenWord(a.tokensDrawn())+" tok")
-	}
+	// THE MONEY IS NOT HERE ANY MORE. It was the session's whole bill, and so
+	// is the figure at the left of the status row two lines down — one number
+	// drawn twice on one frame, and the second copy cost the column two of its
+	// three lines. The foot counts what the column holds; the bill is the
+	// status row's (foot.go).
 	members := a.railMembers()
 	for _, g := range railFootOrder {
 		if n := len(members[g]); n > 0 {

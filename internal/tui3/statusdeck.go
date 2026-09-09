@@ -528,6 +528,7 @@ var deckSegWords = [segCount]string{
 	segCtx:     "context",
 	segCache:   "cache",
 	segBurn:    "rate",
+	segRate:    "speed",
 	segETA:     "compaction",
 	segYolo:    "approvals",
 	// phone lane: the link's healthy reading fits the row, while its reconnecting

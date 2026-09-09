@@ -788,9 +788,6 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for i, line := range a.parkedRows(width) {
 		add(line, a.parkedMark(i, width))
 	}
-	if roomy && !greeted {
-		addGap()
-	}
 
 	// THE CARET IS IN THE UNIT WHILE THE UNIT HOLDS THE BOX, and at the foot
 	// otherwise. Both are a row counted from the head of this block — the unit's
@@ -827,6 +824,16 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	// Below, because it is not part of the message and being under the sentence
 	// is how a person reads that at a glance; and above the open list, because a
 	// list is the keyboard's and this is only ever text.
+	// THE BLANK IS UNDER THE BOX, NOT OVER IT. The prompt sits on the row
+	// directly beneath the seam, so a person starts writing at the top of the
+	// room the box has rather than at the bottom of it, and the draft grows
+	// DOWN into the blank as it wraps. Until 2026-09-09 the blank stood between
+	// the legend and the prompt, and the cursor rested one row above the status
+	// line. On a window with a single breathing row the jump chip rides this
+	// one, which puts it directly under what you are typing.
+	if roomy && !greeted {
+		addGap()
+	}
 	for _, line := range a.spellRows(width) {
 		add(line, chromeRow{})
 	}
