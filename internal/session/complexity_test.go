@@ -80,7 +80,7 @@ var complexityDebt = map[string]int{
 	"taskSegments":          26,
 	"TaskGraph.rehydrate":   21,
 	"TaskGraph.runFrontier": 19,
-	"Agent.workTaskNode":    21,
+	"Agent.workTaskNode":    19,
 	"declaredInvalidations": 21,
 	"groundLint":            21,
 	"pathTokens":            21,
