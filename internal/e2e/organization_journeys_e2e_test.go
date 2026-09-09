@@ -29,6 +29,9 @@ func TestOrganizationE2E(t *testing.T) {
 	if os.Getenv("OPENROUTER_API_KEY") == "" && os.Getenv(orgRequireLive) != "" {
 		t.Fatal("live organization test requires OPENROUTER_API_KEY")
 	}
+	t.Run("large_retrieval", testOrganizationLargeRetrieval)
+	t.Run("working_day", testOrganizationWorkingDay)
+	t.Run("conflicting_sources", testOrganizationConflictingSources)
 	t.Run("binary_door", testOrganizationBinary)
 	t.Run("task_workers", testOrganizationWorker)
 	t.Run("context_is_information", testOrganizationInformation)

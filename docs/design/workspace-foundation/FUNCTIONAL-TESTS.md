@@ -34,6 +34,9 @@ forwarding proxy; it does not replace the provider with a model stub.
 
 | Case | Functional evidence |
 | --- | --- |
+| `working_day` | Twelve consumer chats, three simultaneous initial turns, eight additional file-review turns in one chat, revision while another stays observed idle, reopen, overlapping membership removal/rejoin, and withdrawal. |
+| `conflicting_sources` | Two independently sourced dates remain contradictory while one conversation follows its person's local draft choice, including after reopen; another conversation still needs a choice. |
+| `large_retrieval` | One requested reference among 31 records is outside the snapshot and first metadata page; its nonced answer requires continued text reads past 8,000 characters. |
 | `binary_door` | The built binary creates a collection and files the current conversation through the production tool assembly. |
 | `existing_owner_state` | A named collection resolves a real conversation, two task #1s in different sessions, and an existing ongoing item. A stale running index with no live owner is incomplete. |
 | `task_workers` | Two actual `Agent.StartTask` workers on separate Git repositories read the same nonced source record and write separate artifacts with its identity, revision and source. The shared record stays unchanged. |
@@ -71,3 +74,29 @@ also supports manual dispatch. It requires the repository's OpenRouter secret.
 When unavailable, CI says **NOT RUN** and skips the paid job; that is not evidence
 of a live pass. Credentials are never installed into GitHub by this change.
 Current verified results belong in [HANDOFF.md](HANDOFF.md).
+
+## Deeper regular-use checks
+
+```sh
+ORGANIZATION_TEST_RUN='^TestOrganizationE2E$/(working_day|conflicting_sources|large_retrieval)$' make test-organization-live
+```
+
+These are registered in the same default suite and existing path-filtered CI
+workflow. Each retains the existing $0.75 case ceiling and normal turn/session
+rails. The working-day case has 12 consumers plus a source chat, 33 real turns
+when complete, and at most three simultaneous submitted turns. It uses synthetic
+review documents read by the real model, not seeded assistant transcripts. It
+asserts a journal exceeding 100 KB; it does not force context-window saturation
+or claim that automatic compaction ran. The idle assertion covers the observed
+revision-and-two-consumer interval only, using output bytes, turn count and a
+wake subscription. It is not a perpetual no-wake proof.
+
+Membership changes and the 31-record library are storage fixtures. The working-day
+author creates, revises and withdraws through real model tools. The conflict case
+separates source disagreement from a person's conversation-local draft choice; it
+does not introduce a structured accepted-decision record. The retrieval case
+requires real list/text pagination, correct provenance and a pinned read revision.
+Display receipts can be truncated, so pagination checks use requested ranges and
+the actual stored ordering, with the secret tail value checked independently.
+
+Results and development failures are recorded in [COMPLEX-TESTS.md](COMPLEX-TESTS.md).

@@ -79,6 +79,9 @@ func OrganizationContext(ctx context.Context, o *Organization, ref workspace.Ref
 }
 
 func organizationScope(ref workspace.Ref) []workspace.Ref {
+	if ref.Kind == "" {
+		return nil
+	}
 	targets := []workspace.Ref{ref}
 	if ref.Kind == workspace.TaskKind {
 		targets = append(targets, workspace.Ref{Kind: workspace.ConversationKind, ID: ref.SessionID})
@@ -89,7 +92,7 @@ func organizationScope(ref workspace.Ref) []workspace.Ref {
 const organizationContextLimit = 6
 const organizationTextLimit = 1200
 const organizationHeading = "Shared context"
-const organizationRetired = "\n\n" + organizationHeading + "\nNo shared context currently applies. Earlier shared-context snapshots no longer apply.\n"
+const organizationRetired = "\n\n" + organizationHeading + "\nNo shared context currently applies. Earlier shared-context snapshots no longer apply. A record may still be readable by ID elsewhere; its existence or latest revision does not make it applicable here.\n"
 
 func renderOrganizationContext(records []workspace.ContextRecord, more bool) string {
 	var b strings.Builder

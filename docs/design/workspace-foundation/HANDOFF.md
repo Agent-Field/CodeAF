@@ -244,6 +244,10 @@ brief informed the functional cases. Do not overwrite its documents.
 ## Current checkpoint and next action
 
 The first integrated backend slice is implemented and pushed to draft #662.
+A later regular-use test wave found a real scope/readability failure and a
+separate model completion reliability failure; read [COMPLEX-TESTS.md](COMPLEX-TESTS.md)
+before relying on the earlier nine-case evidence. The scope repair is implemented
+with deterministic checks; its live confirmation must be checked in that document.
 Production code was verified at `a216cdcf5`; `6ce8be8bd` then clarified one live
 test assertion and strengthened the deterministic collection-name lookup test.
 No production behavior changed in that follow-up. See

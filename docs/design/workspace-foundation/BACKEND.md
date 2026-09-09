@@ -30,7 +30,12 @@ explicit targets and withdrawal state. A pointer identifies the current revision
 Create, revise and withdraw are atomic; stale expected revisions are refused.
 Withdrawal is itself a revision. Explicitly revising a withdrawn record restores
 it. Each revision attributes the chat that wrote it; prior sources remain in
-history. Source identifies a statement, not user acceptance or authority.
+history. Source identifies a statement, not user acceptance or authority. Identity reads
+remain available outside the current scope. Their `applicable_here` field checks
+that the exact revision is current, not withdrawn and explicitly applies here,
+using the same direct-membership predicate as selection. A readable record is
+not automatically applicable; this distinction also reaches the completion reader
+through the retired-context note and the ordinary tool response.
 
 The v1-to-v2 migration adds context tables without changing collection IDs or
 memberships. An unknown or damaged store is refused. Current-schema opens avoid

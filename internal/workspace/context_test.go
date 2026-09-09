@@ -683,3 +683,38 @@ PRAGMA application_id=%d; PRAGMA user_version=1`, versionOneSchema, applicationI
 		t.Fatalf("the racing upgrade kept %d of %d records: %v", len(found), handles, err)
 	}
 }
+
+func TestContextReadApplicabilityUsesTheSameDirectScopeAsSelection(t *testing.T) {
+	ctx := context.Background()
+	s := openTestStore(t, filepath.Join(t.TempDir(), "context.db"))
+	parent := createTestCollection(t, s, "Company")
+	child := createTestCollection(t, s, "Engineering")
+	person := Ref{Kind: ConversationKind, ID: "chat"}
+	if err := s.Add(ctx, parent.ID, Ref{Kind: CollectionKind, ID: child.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Add(ctx, child.ID, person); err != nil {
+		t.Fatal(err)
+	}
+	ancestor := createTestContext(t, s, "Ancestor", "Not inherited", person, Ref{Kind: CollectionKind, ID: parent.ID})
+	direct := createTestContext(t, s, "Direct", "Applies", person, Ref{Kind: CollectionKind, ID: child.ID})
+	task := Ref{Kind: TaskKind, ID: "1", SessionID: "owner"}
+	assigned := createTestContext(t, s, "Task", "Applies only to this owner", person, task)
+	for _, row := range []struct {
+		r         ContextRecord
+		refs      []Ref
+		hop, want bool
+	}{
+		{ancestor, []Ref{person}, true, false},
+		{direct, []Ref{person}, true, true},
+		{direct, []Ref{person}, false, false},
+		{assigned, []Ref{task}, true, true},
+		{assigned, []Ref{{Kind: TaskKind, ID: "1", SessionID: "other"}}, true, false},
+		{direct, nil, true, false},
+	} {
+		got, err := s.ContextApplies(ctx, row.r.ID, row.r.Revision, row.refs, row.hop)
+		if err != nil || got != row.want {
+			t.Fatalf("%s applies=%v want=%v err=%v", row.r.Title, got, row.want, err)
+		}
+	}
+}

@@ -129,3 +129,19 @@ semantic discovery beyond links, or sharing context with a scheduled firing.
 The conversation's completion reader sees the same bounded snapshot as the turn.
 A task's separate read-only checker still uses its existing acceptance and file
 checks; it does not receive the shared-context tool or a separate snapshot.
+
+## Can I still read a record after removing my chat from its collection
+
+Yes. Reading `shared_context` by ID can reach records outside this conversation;
+reading them does not add membership or restore their applicability. A read
+returns `applicable_here`: whether this exact revision is current, not withdrawn,
+and explicitly applies to the current conversation or ordinary worker's scope.
+An old revision, withdrawn record or record outside this scope returns false
+while its text remains readable. `scope_note` explains that distinction.
+
+Use list without explicit targets to inspect what currently applies here. Removing
+one collection link still leaves context available through another matching link.
+Removing the last link retires that context at the next turn, including after
+reopening a chat. Rejoining restores it if the record is still current and active.
+A record's existence is not proof that it applies here, and its information is
+not an instruction or permission.
