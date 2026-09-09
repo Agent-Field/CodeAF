@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -2195,17 +2196,73 @@ func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, 
 		fmt.Fprintln(os.Stderr, notice+": "+cfg.SessionFile)
 	}
 	defer func() { _ = agent.Close() }()
+	var wakes <-chan (<-chan session.Event)
+	if cfg.Unattended && cfg.Budget.Set() {
+		var stopWakes func()
+		wakes, stopWakes = agent.WatchWakes()
+		defer stopWakes()
+	}
 
 	events, err := agent.Submit(ctx, text)
 	if err != nil {
 		return reported(err)
 	}
+	failure := drainOnceEvents(events, os.Stdout, os.Stderr)
+	if wakes == nil {
+		return reported(failure)
+	}
+
+	// ── THE RUN IS OVER WHEN IT HAS BEEN OVER FOR A WHOLE SETTLE TICK ──
+	//
+	// That is the wall reader's own discipline, for the same reason it gives
+	// (internal/session's wallSettleTick): a landing hands its lane back a moment
+	// BEFORE the note that wakes the next reply is queued, so for that instant
+	// nothing is running, nothing is queued and nothing is moving. A door that
+	// believed the first such reading would go home over a reply that was already
+	// coming — and closing the session is what cuts it.
+	settled := false
+	for {
+		if agent.StillGoing() {
+			settled = false
+		} else if settled {
+			return reported(failure)
+		} else {
+			settled = true
+		}
+		select {
+		case stream, open := <-wakes:
+			if !open {
+				// The session has closed under us; there will be no more replies.
+				return reported(failure)
+			}
+			settled = false
+			if streamFailure := drainOnceEvents(stream, os.Stdout, os.Stderr); streamFailure != nil {
+				failure = streamFailure
+			}
+		case <-ctx.Done():
+			return reported(ctx.Err())
+		case <-time.After(unattendedRunSettleTick):
+		}
+	}
+}
+
+// unattendedRunSettleTick is how often an idle one-message door asks whether
+// its run is finished. One second matches the wall reader beside it: it leaves
+// the small landing-to-wake gap room to close without spinning or polling the
+// session more often than the wall itself is read.
+const unattendedRunSettleTick = time.Second
+
+// drainOnceEvents is the one rendering of a headless chat turn, shared by the
+// first turn, every turn the session wakes, and the connected one-message door.
+// Reply text alone goes to stdout; every line the door itself says goes to
+// stderr so stdout remains safe to pipe as the answer.
+func drainOnceEvents(events <-chan session.Event, stdout, stderr io.Writer) error {
 	// wrote tracks whether the reply has begun, so a tool line never opens the
 	// output with a stray blank line and never lands mid-sentence.
 	wrote := false
 	newline := func() {
 		if wrote {
-			fmt.Println()
+			fmt.Fprintln(stdout)
 			wrote = false
 		}
 	}
@@ -2216,12 +2273,12 @@ func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, 
 			if event.Text == "" {
 				continue
 			}
-			fmt.Print(event.Text)
+			fmt.Fprint(stdout, event.Text)
 			wrote = !strings.HasSuffix(event.Text, "\n")
 
 		case session.EventToolBegin:
 			newline()
-			fmt.Fprintln(os.Stderr, "tool: "+tui3.ToolGloss(event.Tool, event.Hint))
+			fmt.Fprintln(stderr, "tool: "+tui3.ToolGloss(event.Tool, event.Hint))
 
 		case session.EventToolFailed:
 			newline()
@@ -2229,11 +2286,15 @@ func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, 
 			if reason == "" && event.Err != nil {
 				reason = event.Err.Error()
 			}
-			fmt.Fprintln(os.Stderr, "tool: "+event.Tool+" failed: "+reason)
+			fmt.Fprintln(stderr, "tool: "+event.Tool+" failed: "+reason)
 
 		case session.EventCompacted:
 			newline()
-			fmt.Fprintln(os.Stderr, "compacted: "+event.Hint)
+			fmt.Fprintln(stderr, "compacted: "+event.Hint)
+
+		case session.EventNotice:
+			newline()
+			fmt.Fprintln(stderr, event.Text)
 
 		case session.EventError:
 			failure = event.Err
@@ -2243,7 +2304,7 @@ func runChatV3Once(ctx context.Context, cfg session.Config, text, level string, 
 		}
 	}
 	newline()
-	return reported(failure)
+	return failure
 }
 
 // v3RecentSessionSlots bounds one listing. Twenty is far more than the four the

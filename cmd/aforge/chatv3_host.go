@@ -1239,43 +1239,7 @@ func runHostOnce(agent *remote.Agent, text string) error {
 	if err != nil {
 		return reported(err)
 	}
-	wrote := false
-	newline := func() {
-		if wrote {
-			fmt.Println()
-			wrote = false
-		}
-	}
-	var failure error
-	for event := range events {
-		switch event.Kind {
-		case session.EventTextDelta:
-			if event.Text == "" {
-				continue
-			}
-			fmt.Print(event.Text)
-			wrote = !strings.HasSuffix(event.Text, "\n")
-		case session.EventToolBegin:
-			newline()
-			fmt.Fprintln(os.Stderr, "tool: "+tui3.ToolGloss(event.Tool, event.Hint))
-		case session.EventToolFailed:
-			newline()
-			reason := event.Hint
-			if reason == "" && event.Err != nil {
-				reason = event.Err.Error()
-			}
-			fmt.Fprintln(os.Stderr, "tool: "+event.Tool+" failed: "+reason)
-		case session.EventCompacted:
-			newline()
-			fmt.Fprintln(os.Stderr, "compacted: "+event.Hint)
-		case session.EventError:
-			failure = event.Err
-			if failure == nil {
-				failure = fmt.Errorf("session: the turn failed without a reason")
-			}
-		}
-	}
-	newline()
+	failure := drainOnceEvents(events, os.Stdout, os.Stderr)
 	_ = agent.Close()
 	return reported(failure)
 }
