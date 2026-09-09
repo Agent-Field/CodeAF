@@ -491,9 +491,20 @@ func (e *subharnessEnv) Ask(ctx context.Context, question string, opts exec.AskO
 		return exec.AskAnswer{}, e.failed(exec.CallAsk, question, input, started, errAgentClosed)
 	}
 	if e.agent.subharnessAsks == nil {
-		e.agent.subharnessAsks = make(map[uint64]chan subharnessReply, 1)
+		e.agent.subharnessAsks = make(map[uint64]*subharnessQuestion, 1)
 	}
-	e.agent.subharnessAsks[id] = replies
+	// AND THE QUESTION ITSELF IS KEPT, not only the channel the answer comes
+	// back on. It used to be neither: the words went out on EventSubharnessAsk
+	// and were held nowhere, so a run stopped on a question was a run no other
+	// surface — home, another window, the phone — could so much as say the
+	// question of. It is taken off the register by the same defer that takes the
+	// channel off ([Agent.forgetSubharnessAsk]).
+	e.agent.subharnessAsks[id] = &subharnessQuestion{
+		replies:  replies,
+		question: question,
+		name:     e.manifest.Name,
+		asked:    time.Now(),
+	}
 	e.agent.mu.Unlock()
 	defer e.agent.forgetSubharnessAsk(id)
 
@@ -577,15 +588,34 @@ func askOutput(answer exec.AskAnswer) json.RawMessage {
 // row move.
 func (a *Agent) AnswerSubharness(id uint64, text string, takingOver bool) {
 	a.mu.Lock()
-	replies := a.subharnessAsks[id]
+	ask := a.subharnessAsks[id]
 	delete(a.subharnessAsks, id)
 	a.mu.Unlock()
-	if replies == nil {
+	if ask == nil || ask.replies == nil {
 		return
 	}
 	// The channel is buffered by one and taken off the map under the lock, so
 	// this never blocks and never delivers twice.
-	replies <- subharnessReply{text: strings.TrimSpace(text), takingOver: takingOver}
+	ask.replies <- subharnessReply{text: strings.TrimSpace(text), takingOver: takingOver}
+}
+
+// subharnessQuestion is one question a running sub-harness is waiting on: the
+// channel its answer arrives on, and THE QUESTION ITSELF.
+//
+// The words are here because every other surface in the product needs them and
+// nothing held them: [Agent.OpenQuestions] builds this lane's [Question] from
+// this struct, and a lane that kept only a channel could describe itself to
+// nobody (question.go's [Agent.subharnessAskQuestion]).
+type subharnessQuestion struct {
+	replies chan subharnessReply
+	// question is the run's own sentence, exactly as it went out on
+	// EventSubharnessAsk.
+	question string
+	// name is the program that is asking, which is the attribution a person
+	// reads beside the question.
+	name string
+	// asked is when, so a surface may draw how long it has stood there.
+	asked time.Time
 }
 
 // PendingSubharnessAsk reports whether a run is waiting on a person right now,
