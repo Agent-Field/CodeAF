@@ -27,6 +27,25 @@ them. See **Places**.
 It still does nothing on its own: no notifications, no charts, no history graphs. You open
 it, you see where things stand, and you either act on something or leave.
 
+## Answer from home — questions use their own options
+
+When a conversation is waiting on a question, its home band shows **that question's own
+answers**, on that question's own keys. Press the key printed beside one. There is no
+home-specific `y`/`n` translation anywhere on this screen — a home that renamed somebody
+else's answers would be offering a key the conversation would drop.
+
+Every kind of question can be answered this way, not a chosen few: the whole question is
+in the file home reads, and the answer goes back through the one door that knows which
+part of the engine is waiting on it.
+
+Home leaves the answer on the other window's doorstep, so the band says
+`answered · waiting for it to pick that up` until that window applies it — a second or
+two. If it could not be left at all, it says
+`could not leave that answer — open the conversation and answer it there`.
+
+**The first answer wins.** When two windows answer one question, the second is told who
+answered and what they chose; it is never merged into a third answer nobody gave.
+
 ## Why did a dashboard open when I started aforge — home greets you
 
 **Home is the first thing you see when you open aforge.** The conversation your launch

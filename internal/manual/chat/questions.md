@@ -13,11 +13,9 @@ answered. A reversible question with `recommend-then-auto` shows the model's
 pick, waits for its stated clock, then takes that pick; `decide` takes it at
 once. Irreversible questions and clarifications always wait for you.
 
-The model can raise one through its `ask` tool. Not every question can be answered from somewhere else yet. The approval
-question, a task proposal and a standing card reach home, another window on this
-machine, and a window attached over `--host`; the rest are answered in the
-conversation that raised them. What is written down about all of them is the
-same either way.
+The model can raise one through its `ask` tool. Questions reach home, another window on this machine, and a window attached over
+`--host` as the same question object. Every surface draws the answers that object
+offered; it never substitutes positional yes/no keys.
 
 Questions come in two shapes on screen right now, and it is worth knowing which
 you are looking at. The **question block** is the new one — it is described
@@ -123,21 +121,144 @@ It did not always. A task on `your call` used to leave every one of those saying
 the conversation was idle, and the only way to find it was to open the
 conversation and look.
 
-## Answering a question from somewhere else
+## Answer from home or another window
 
-Home lists what a conversation is waiting on and lets you answer it there. So
-does another window on the same machine, and a window attached to this machine
-over `--host`.
+Home lists what a conversation is waiting on and lets you answer it there, and so
+does another window on the same machine. **The keys are the ones that question
+wrote down and nothing else** — no window ever offers `y`/`n` on top of somebody
+else's answers, and a key a question did not offer does nothing when you press it
+over its row.
 
-**Three of them travel that way today**: the approval question before a command
-runs, a task proposal, and a standing card. A connect offer, a page waiting to be
-approved and a question a saved program asked are answered in the conversation
-that raised them.
+Every lane can be answered this way, not a chosen few: the session leaves the
+whole question in the file another window reads, and the answer goes back through
+the one door that knows which lane it belongs to.
 
-The keys are the ones the question wrote down and nothing else — a window never
-offers an answer the conversation would drop. **The first answer wins.** If two
-windows answer the same question, the second is simply late, and nothing is said
-about it.
+A window attached over `--host` draws a question the far machine raises, but
+cannot yet answer one — answering across the link is not built (see *What is not
+built yet*). Answer it in a window on the machine holding the conversation.
+
+## The other window answered it, or two windows answered at the same time
+
+The first answer is the decision. A window that finds out somebody else answered
+writes the receipt with **`another window`** on it rather than `you`, so the line
+never claims a key you did not press.
+
+If two windows answer within a second of each other and choose **differently**,
+both lines stay on screen and one sentence says which counted:
+
+```
+  two windows answered that · the first one is the decision
+```
+
+Nothing is merged. A later answer than that is simply late; it is ignored, and
+nothing is said about it.
+
+## It asked while I was away
+
+**Ten minutes with nobody touching this keyboard** makes the window away. It is
+measured from the last key and not from the window being in front, because a
+window can be focused with nobody reading it.
+
+While you are away:
+
+- a question your project's rule may take is taken, and its receipt says
+  `aforge, on your settings` decided it
+- everything else stays open, and the desktop notification says the conversation
+  is `waiting on you`
+- the terminal bell rings **once**, and only for a question something is blocked
+  on. A question nothing is waiting on never rings, and no question rings twice
+
+A rule never takes a question that cannot be taken back, and never takes a
+clarification — the answer to that one is something only you have.
+
+## Stop it deciding things while I am away — /autonomy
+
+`/autonomy` shows what this project does with each kind of question while you are
+away:
+
+```
+questions while you are away
+permission       ask me · change
+choice           recommend, auto in 30s · change
+clarification    ask me · clarification never runs on a clock
+confirmation     ask me · destructive always asks
+```
+
+Change one with `/autonomy <kind> ask`, `/autonomy <kind> recommend 30s` or
+`/autonomy <kind> decide`. `D` on a question does the same thing for that
+question's kind and tells you it did.
+
+Two rows can never be changed: **confirmation always asks**, because it is what
+is asked before something destructive, and **clarification never runs on a
+clock**. Trying to change either says so rather than failing quietly.
+
+The rules live in the project, not in your profile — the same kind of question can
+deserve a different answer in two pieces of work.
+
+## Why is there a countdown on this question, and what is `your rule`?
+
+A question that is going to be taken by a rule says so on its own row, with the
+answer that is about to be taken and how long is left:
+
+```
+  [1] sqlite · [2] memory · [D] decide these from now on · sqlite in 28s · your rule
+```
+
+`your rule` means the clock is running because of something **this project was
+told to do**, not because the question came with one. `D` is the door that
+changes it, and `/autonomy` shows every row at once. **There are no hidden
+rules**: a clock you did not ask for never runs without that word beside it.
+
+## Several questions at once — the sheet, and the same answer for all of them
+
+Quiet questions raised while one step is running do not land on top of each
+other. They wait for that step to end — the moment the model speaks again, or the
+turn finishes — and arrive together, grouped by the kind of decision each one is:
+
+```
+? 4 questions raised together
+  asking permission
+  ▸ ✓  1  read vendor/modernc.org?          allow once
+      ?  2  read vendor/golang.org/x?
+      ?  3  write to .github/workflows?
+  choosing
+      ?  4  which index should this use?
+  [enter] open it · [s] send what is answered · [g] same answer for all like this · [esc] later
+```
+
+`▸` is where you are, `✓` is a row you have answered with the answer you gave
+beside it, `?` is one still waiting.
+
+- `1`–`9` move to that row
+- `enter` opens that one on its own, with everything a question normally draws
+- `g` gives the row you are on the same answer as every other row of that kind
+  **that offers that same answer** — and says how many it reached. Two questions
+  whose second answer is `deny` on one and `always` on the other are not the same
+  answer, and `g` will not treat them as one
+- `s` sends everything you answered and lets each remaining question take its
+  own recommended answer. Anything nobody recommended an answer for stays open,
+  and one line says `still needs you`
+- `esc` puts the whole sheet off; nothing is answered, the count does not drop,
+  and the chip's key brings it back
+
+A question something is blocked on never waits for a boundary. It arrives at
+once, on its own.
+
+## The question disappeared — withdrawal
+
+A question can stop needing an answer: what it was about went away, the plan
+changed, or another answer settled it. It is taken back by whoever asked, and one
+dim line stays where it was:
+
+```
+  ⊘ allow this? — no longer needed · the turn moved on without it
+```
+
+The count in the chip drops, and an open sheet loses that row and re-flows —
+**without moving anybody else's answer**, because an answer belongs to its
+question and not to the position it was drawn in. A question still gathering
+inside a step is dropped from that batch too, so a boundary never delivers a
+decision that stopped needing to be made.
 
 ## Questions aforge refuses to put to you
 
@@ -215,6 +336,12 @@ the row.
 | `r` | make it a rule |
 | `u` | undo, while what was done is still real |
 | `←` `→` | walk the two answers of a confirmation |
+| `s` | on a sheet: send what you answered, and let the rest take their own picks |
+| `g` | on a sheet: same answer for all like this |
+
+On a **sheet** — several questions that arrived together — `1`–`9` move to a row
+instead of answering, because the numbers on screen are the rows; `enter` opens
+the row you are on, and `s` and `g` are the two keys about the whole batch.
 
 **Typing is answering.** The box under the block stays live. While there are
 words in it every ordinary key belongs to the box, and pressing `enter` sends
@@ -512,8 +639,13 @@ Whatever you send goes with everything you did on the way:
 `.aforge/autonomy.json` beside the project AND answers the question in front of
 you; a conversation with no project to keep it in says so.
 
+**Answering over `--host` is not built.** A window attached to another machine
+draws a question that machine raises, but the answer does not cross the link, so
+it has to be given in a window on the machine holding the conversation.
+
 The count of open questions in the status line IS built: that is the chip
-described above.
+described above. So is the sheet, and so is the per-project setting that answers
+a whole kind of question while you are away (`/autonomy`, and `D` on a row).
 
 The older blocks — the approval question, a task proposal, a standing card, a
 connect offer, an offer to run a saved program, and the cards that ask before

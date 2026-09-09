@@ -3,6 +3,8 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -94,6 +96,26 @@ func TestAutonomyPersistsPerProjectAndFillsPolicy(t *testing.T) {
 	}
 	if err := b.SetAutonomy(AskClarification, Policy{Kind: PolicyDecide}); err == nil {
 		t.Fatal("clarification accepted an automatic policy")
+	}
+	// CONFIRMATION ALWAYS ASKS, refused at the same door and for the harder
+	// reason: it is what is asked before something destructive, so a rule that
+	// answered it would be a don't-ask-me-again on exactly the questions
+	// stop.go's law says may never have one.
+	if err := b.SetAutonomy(AskConfirmation, Policy{Kind: PolicyDecide}); err == nil {
+		t.Fatal("confirmation accepted a rule that answers in the person's place")
+	}
+	// And a file edited by hand cannot make either of them run on a clock,
+	// because the READ has the same floor as the write.
+	if err := os.WriteFile(filepath.Join(root, ".aforge", "autonomy.json"),
+		[]byte(`{"confirmation":{"kind":"decide"},"clarification":{"kind":"decide"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := &Agent{config: Config{Workspace: root}}
+	if got := c.autonomyFor(AskConfirmation); got.Kind != PolicyAsk {
+		t.Fatalf("a hand-written confirmation rule was honoured: %+v", got)
+	}
+	if got := c.autonomyFor(AskClarification); got.Kind != PolicyAsk {
+		t.Fatalf("a hand-written clarification rule was honoured: %+v", got)
 	}
 }
 

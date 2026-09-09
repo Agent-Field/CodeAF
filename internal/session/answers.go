@@ -604,11 +604,13 @@ func WriteAnswer(sessionDir string, kind QuestionKind, id uint64, key string) er
 		return errUnknownAnswer
 	}
 	return deliverAnswer(sessionDir, Answer{
-		At:   time.Now(),
-		Kind: kind,
-		ID:   id,
-		Key:  strings.TrimSpace(key),
-		From: answerFromHome,
+		At:        time.Now(),
+		Kind:      kind,
+		ID:        id,
+		Key:       strings.TrimSpace(key),
+		Picked:    []string{strings.TrimSpace(key)},
+		DecidedBy: DecidedByPerson,
+		From:      answerFromHome,
 	})
 }
 

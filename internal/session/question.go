@@ -493,6 +493,13 @@ const (
 	// DecidedByAsker is the asker answering itself, which happens on the
 	// ratify rung: the work was already done and nobody objected.
 	DecidedByAsker DecidedBy = "asker"
+	// DecidedByWindow is ANOTHER WINDOW ON THIS CONVERSATION. It is stamped by
+	// the surface that LEARNS of an answer rather than by the one that gave it
+	// — the giver knows perfectly well it was a person, and the value is there
+	// so the second window's receipt does not say `you` about a key somebody
+	// pressed on a different screen (docs/design/questions/DESIGN.md's FIRST
+	// ANSWER WINS).
+	DecidedByWindow DecidedBy = "window"
 )
 
 // Withdrawal is why a question stopped being a question, and who took it back.
@@ -905,6 +912,8 @@ func decidedByWord(by DecidedBy) string {
 		return "an earlier decision"
 	case DecidedByAsker:
 		return "done and not objected to"
+	case DecidedByWindow:
+		return "another window"
 	}
 	return string(by)
 }
@@ -1190,7 +1199,17 @@ func (a *Agent) AskQuestion(q Question) (func(), error) {
 	if err := a.checkQuestion(q); err != nil {
 		return func() {}, err
 	}
-	forget := a.rememberQuestion(q)
+	// THE DESK ROW GOES UP WITH THE QUESTION, NOT ONLY THE WORD BOOK.
+	//
+	// [Agent.rememberQuestion] alone banks what [Agent.OpenQuestions] reads,
+	// which is enough for the window holding this conversation and nothing at
+	// all for anybody else: home, another window and the `--host` link all read
+	// the PRESENCE file ([Agent.presenceAskingQuestion]). A question that only
+	// reached the word book was a question you could answer in the one place you
+	// were already standing — which is the opposite of what a question object is
+	// for. Observed: three `ask` calls waiting and home drawing the conversation
+	// as `working`.
+	forget := a.presenceAskingWhole(q)
 	a.emitQuestion(EventQuestion, q, nil)
 	return forget, nil
 }

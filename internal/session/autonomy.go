@@ -23,8 +23,19 @@ func (a *Agent) autonomyFile() string {
 
 // SetAutonomy is the one door surfaces use for the D-key promise.
 func (a *Agent) SetAutonomy(kind AskKind, policy Policy) error {
+	// THE TWO ROWS NOBODY MAY CHANGE, refused at the door that writes them so
+	// that no surface has to hold a second copy of the rule.
+	//
+	// CONFIRMATION ALWAYS ASKS. It is what is asked before something
+	// destructive, and stop.go's law — "no bypass key, no modifier that skips
+	// the question, and no don't-ask-me-again" — is that sentence about this
+	// shape. CLARIFICATION NEVER RUNS ON A CLOCK, because the answer is
+	// information only the person has: there is nothing for a clock to take.
+	if kind == AskConfirmation && policy.Kind != PolicyAsk {
+		return errors.New("confirmation is asked before something destructive · it always asks")
+	}
 	if kind == AskClarification && policy.Kind != PolicyAsk {
-		return errors.New("clarification always waits for an answer")
+		return errors.New("clarification never runs on a clock · only you have that answer")
 	}
 	if policy.Kind == "" {
 		policy.Kind = PolicyAsk
@@ -61,8 +72,23 @@ func (a *Agent) readAutonomy() map[AskKind]Policy {
 	return settings
 }
 
+// Autonomy returns this project's explicit rows for a surface. The map is a
+// copy: changing a row still goes through SetAutonomy, where the safety floors
+// and atomic write live.
+func (a *Agent) Autonomy() map[AskKind]Policy {
+	stored := a.readAutonomy()
+	rules := make(map[AskKind]Policy, len(stored))
+	for kind, policy := range stored {
+		rules[kind] = policy
+	}
+	return rules
+}
+
 func (a *Agent) autonomyFor(kind AskKind) Policy {
-	if kind == AskClarification {
+	// The same two rows, read back. A file edited by hand cannot make either of
+	// them run on a clock either — SetAutonomy is the door, and this is the
+	// floor under it.
+	if kind == AskClarification || kind == AskConfirmation {
 		return Policy{Kind: PolicyAsk}
 	}
 	if policy, ok := a.readAutonomy()[kind]; ok {

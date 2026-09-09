@@ -353,7 +353,15 @@ func (a *app) answeringHere(row session.SessionRow) bool {
 func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd, bool) {
 	action, ok := session.AnswerFromKey(question.Kind, key)
 	if !ok {
-		return nil, false
+		// EVERY OTHER LANE GOES THROUGH THE ONE DOOR. [session.AnswerFromKey]
+		// knows the three lanes that were answerable from home before questions
+		// became one object, and it is deliberately not being taught the other
+		// eight: the object the session left in its presence file carries its
+		// own answers, and [session.Agent.ResolveQuestion] reads the lane off
+		// the answer and hands it to that lane's own resolver. So a question
+		// this build has never heard of is still answerable from home, which is
+		// the whole point of there being one object.
+		return a.answerWholeQuestion(question, key)
 	}
 	switch action.Kind {
 	case session.QuestionConsent:
@@ -396,6 +404,35 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 		}
 	}
 	return nil, false
+}
+
+// answerWholeQuestion answers from the object the session left behind, for the
+// lanes home has no older path for.
+//
+// IT DRAWS ITS ANSWER OUT OF THE QUESTION AND NEVER OUT OF THE KEY. The key is
+// looked up in that question's OWN options ([session.Question.Option]), so a
+// digit this question did not offer answers nothing rather than answering
+// whatever the kind's general table says a digit means.
+func (a *app) answerWholeQuestion(question session.PresenceQuestion, key string) (tea.Cmd, bool) {
+	whole := question.Full
+	if whole == nil {
+		return nil, false
+	}
+	if _, ok := whole.Option(key); !ok {
+		return nil, false
+	}
+	doors, ok := a.questionDoors()
+	if !ok {
+		return nil, false
+	}
+	answer := session.Answer{
+		At: time.Now(), Kind: whole.Kind, ID: whole.ID, Ref: whole.Ref, Ask: whole.Ask,
+		Key: key, Picked: []string{key}, DecidedBy: session.DecidedByPerson,
+	}
+	if err := doors.ResolveQuestion(answer); err != nil {
+		return nil, false
+	}
+	return nil, true
 }
 
 // answerConsentWord is what the row in this window keeps.
