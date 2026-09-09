@@ -44,3 +44,10 @@ manual copying of long roots, and live working-day reports landed in mistyped
 sibling folders. Explicit supplied/tool-returned paths and approval boundaries
 are unchanged. The conflict fixture compares file identity, accepting symlink
 aliases while continuing to reject a different or missing report.
+
+The continuation now distinguishes agreed product direction from unresolved
+design. An independent real-model behavioral audit retained false-success and
+watch-recovery findings alongside passing isolation checks. Its exploratory
+fixtures remain on a separate audit branch; they do not establish autonomous
+global watching or alter the existing `/land` contract. No audit findings are
+claimed fixed by this documentation update.
