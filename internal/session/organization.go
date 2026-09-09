@@ -30,6 +30,10 @@ func (o *Organization) open(create bool) (*workspace.Store, error) {
 }
 
 func (a *Agent) organizationSource() workspace.Ref {
+	// Anchoring can update Place while a tool reads its source. Read the saved
+	// address under the same lock, without acquiring it again through journalID.
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.config.taskID != 0 {
 		if a.config.rootSession == "" || a.config.rootSession == "unfiled" {
 			return workspace.Ref{}
@@ -37,8 +41,8 @@ func (a *Agent) organizationSource() workspace.Ref {
 		return workspace.Ref{Kind: workspace.TaskKind, ID: fmt.Sprint(a.config.taskID), SessionID: a.config.rootSession}
 	}
 	id := a.config.Place.ID()
-	if id == "" {
-		id = a.journalID()
+	if id == "" && a.file != nil {
+		id = a.file.ID()
 	}
 	if id == "" {
 		return workspace.Ref{}
@@ -144,4 +148,15 @@ func (a *Agent) refreshOrganization(ctx context.Context) {
 		a.updateMeta(a.config.Place.Dir, a.fillMetaLocked(Meta{}), func(meta *Meta) { meta.SharedContextSeen = true })
 	}
 	a.organizationText = block
+}
+
+// withOrganizationContext gives the completion reader the same bounded snapshot
+// used for the turn, without another lookup that could observe a newer revision.
+func (a *Agent) withOrganizationContext(page string) string {
+	if page == "" {
+		return ""
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return page + a.organizationText
 }

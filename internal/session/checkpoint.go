@@ -3088,6 +3088,9 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 	// THE ASK IS THE ONE THIS TURN OWES, which on a woken turn is the request its
 	// result belongs to and not whatever was typed last (wakecause.go).
 	page := checkpointCompletionPage(a.turnAsk(), a.snapshot())
+	// The digest retains old tool results but does not include volatile notes.
+	// Judge the deliverable against the same current information as its author.
+	page = a.withOrganizationContext(page)
 	if page == "" {
 		return readerLine{}
 	}

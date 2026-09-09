@@ -38,7 +38,7 @@
 //     is the only claim this package will make about a task it cannot find, and
 //     [taskMissing] says exactly that in the sentence a person reads.
 //
-// It is imported BY the runtime and never INTO it. internal/session must not
+// It imports the runtime and is never imported by it. internal/session must not
 // depend on this package — the direction is what keeps organization optional —
 // so the world arrives as a callback the caller supplies ([Resolver.World]).
 package workspaceview

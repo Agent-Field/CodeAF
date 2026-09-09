@@ -374,3 +374,22 @@ func TestOrganizationFindNameDoesNotSilentlySearchMembership(t *testing.T) {
 		t.Fatalf("%s %v", out, err)
 	}
 }
+
+func TestOrganizationCompletionReaderReceivesCurrentAndRetiredContext(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{finalText("(done)"), finalText("(done)")}}
+	a := checkpointAgent(t, completer)
+	workedTurn(a, "write the current contract", 1)
+	for i, block := range []string{renderOrganizationContext([]workspace.ContextRecord{{ID: "shared", Revision: 2, Title: "Current", Text: "CURRENT-FINDING", Source: workspace.Ref{Kind: workspace.ConversationKind, ID: "source"}}}, false), organizationRetired} {
+		a.mu.Lock()
+		a.organizationText = block
+		a.mu.Unlock()
+		a.readRemains(context.Background())
+		if completer.requests() != i+1 {
+			t.Fatal("completion reader was not called")
+		}
+		sent := completer.request(i)
+		if len(sent) != 1 || !strings.Contains(messageText(sent[0]), block) {
+			t.Fatalf("completion reader lost current context: %+v", sent)
+		}
+	}
+}
