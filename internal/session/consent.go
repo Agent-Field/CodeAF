@@ -535,9 +535,12 @@ func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decisi
 	if memo {
 		ask.Scope = append(ask.Scope, ScopeAlways)
 	}
-	if args := strings.TrimSpace(argsText(call)); args != "" {
-		ask.Attach = []Block{{Kind: BlockText, Body: args}}
-	}
+	// AND IT ATTACHES NOTHING. The call's arguments are on the row this question
+	// points at, and consent.go's own law is that IT SHOWS THE ROW THAT IS
+	// ALREADY THERE — two renderings of one call is how a person ends up
+	// approving something other than what they read. Copying them onto the
+	// question would also put a whole file's body into a presence file every
+	// window on the machine re-reads every few seconds.
 	return ask
 }
 
