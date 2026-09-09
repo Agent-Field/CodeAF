@@ -83,6 +83,7 @@ var salienceTable = []salienceCase{
 	{name: "EventError", ev: session.Event{Kind: session.EventError, Err: errSalience}},
 	{name: "EventTitleChanged", ev: session.Event{Kind: session.EventTitleChanged, Text: "porting the parser"}},
 	{name: "EventCaption", ev: session.Event{Kind: session.EventCaption, Text: "working out where the fold is minted"}},
+	{name: "EventAssistantDone", ev: session.Event{Kind: session.EventAssistantDone}},
 
 	// ── THE PARTICIPANT'S OWN ACTS ──────────────────────────────────────────
 	//

@@ -269,6 +269,13 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 		// group, because there is nothing in it that was said TO the person.
 		end := answer
 		eligible := answer >= 0 && es[answer].settled
+		if answer < 0 && confirmedReasoningTail(es[lo:hi]) {
+			// Reasoning attached to an already confirmed response can follow a
+			// queued person without gaining a new answer of its own. Its closed
+			// work chip preserves that person's boundary and keeps private text
+			// behind the same explicit disclosure as other finished work.
+			end, eligible = hi, true
+		}
 		if stopped {
 			end, eligible = hi, true
 			// EXCEPT THE SURFACE'S OWN NEWS AT THE TAIL. An interrupt writes lines
@@ -296,6 +303,23 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 		lo = hi
 	}
 	return out
+}
+
+// Only a settled tail owned by a confirmed response may fold without a later
+// answer. Unknown work, live reasoning, failed tools and new responses cannot.
+func confirmedReasoningTail(es []entry) bool {
+	found := false
+	for i := range es {
+		e := &es[i]
+		if groupBreaks(e) || e.kind == entryDivider || (e.kind == entryAssistant && strings.TrimSpace(e.text) == "") {
+			continue
+		}
+		if e.kind != entryThinking || !e.settled || e.cut || e.confirmed == nil || !e.confirmed.done {
+			return false
+		}
+		found = true
+	}
+	return found
 }
 
 // countWork fills in WHAT A CHIP COUNTS over es[from:to] — where the work it

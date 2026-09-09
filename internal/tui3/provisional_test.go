@@ -205,3 +205,133 @@ func TestCompletedInterleavedAnswerKeepsEverySection(t *testing.T) {
 		})
 	}
 }
+
+// A notice can arrive underneath the still-growing answer without becoming
+// part of that response or moving above it when confirmation arrives.
+func TestConfirmedReplyKeepsSurfaceNoticeBelowTheWholeAnswer(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.state, a.turn, a.linear = stateWorking, 1, true
+	a.event(session.Event{Kind: session.EventTextDelta, Text: "The complete first section. "})
+	a.event(session.Event{Kind: session.EventNotice, Text: "Connection settings updated"})
+	a.event(session.Event{Kind: session.EventTextDelta, Text: "The complete second section."})
+	a.event(session.Event{Kind: session.EventAssistantDone})
+	page := livePage(a)
+	answerAt := strings.Index(page, "complete second section")
+	noteAt := strings.Index(page, "Connection settings updated")
+	if answerAt < 0 || noteAt <= answerAt {
+		t.Fatalf("confirmation moved the notice above the full answer:\n%s", page)
+	}
+	if got := assistantBlocks(a); len(got) != 1 || got[0] != "The complete first section. The complete second section." {
+		t.Fatalf("confirmation changed answer contents: %q", got)
+	}
+}
+
+// A queued message during trailing reasoning still belongs below the response
+// already in flight. The same assembler and ordering law applies in task rooms.
+func TestConfirmedAnswerBeforeQueuedMessageDuringReasoning(t *testing.T) {
+	for _, room := range []bool{false, true} {
+		for _, reasoningFirst := range []bool{false, true} {
+			name := map[bool]string{false: "chat", true: "room"}[room] + map[bool]string{false: "/user-first", true: "/reasoning-first"}[reasoningFirst]
+			t.Run(name, func(t *testing.T) {
+				a, _ := streaming(t, "First answer section. ")
+				a.linear = true
+				if room {
+					a.room = a.newRoom(7, "Review")
+					a.room.done, a.room.turn = false, 1
+					drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{Kind: session.EventTextDelta, Text: "First answer section. "}})
+				}
+				emit := func(ev session.Event) {
+					if room {
+						drive(t, a, roomEventMsg{gen: a.room.gen, ev: ev})
+					} else {
+						drive(t, a, streamEventMsg{gen: a.gen, ev: ev})
+					}
+				}
+				reason := func() { emit(session.Event{Kind: session.EventReasoning, Text: "PRIVATE TRAILING REASONING"}) }
+				if reasoningFirst {
+					reason()
+				}
+				if room {
+					a.roomSaid(entry{kind: entryUser, text: "Queued next question", turn: 1})
+				} else {
+					a.submit("Queued next question")
+				}
+				if !reasoningFirst {
+					reason()
+				}
+				emit(session.Event{Kind: session.EventTextDelta, Text: "Second answer section."})
+				emit(session.Event{Kind: session.EventAssistantDone})
+				emit(session.Event{Kind: session.EventTurnDone})
+				if room {
+					drive(t, a, roomClosedMsg{gen: a.room.gen})
+				}
+				read := func() string {
+					if room {
+						return roomText(a)
+					}
+					return plain(frame(a))
+				}
+				page := read()
+				answerAt, userAt := strings.Index(page, "Second answer section"), strings.Index(page, "Queued next question")
+				if !strings.Contains(page, "First answer section") || answerAt < 0 || userAt <= answerAt || strings.Contains(page, "PRIVATE TRAILING") || strings.Contains(page, "thought for") {
+					t.Fatalf("queued reasoning response order or disclosure is wrong:\n%s", page)
+				}
+				drive(t, a, key("ctrl+e"))
+				a.toggleLatestThought()
+				if page = read(); !strings.Contains(page, "PRIVATE TRAILING") {
+					t.Fatalf("explicit disclosure lost reasoning:\n%s", page)
+				}
+			})
+		}
+	}
+}
+
+func TestReasoningOnlyFoldRequiresAConfirmedOwner(t *testing.T) {
+	for _, state := range []string{"confirmed", "unconfirmed", "new response", "live", "cut", "failed tool"} {
+		t.Run(state, func(t *testing.T) {
+			owner := &responseConfirmation{done: state != "unconfirmed"}
+			es := []entry{{kind: entryUser, turn: 1}, {kind: entryThinking, turn: 1, settled: state != "live", cut: state == "cut", confirmed: owner}}
+			if state == "new response" {
+				es = append(es, entry{kind: entryThinking, turn: 1, settled: true})
+			}
+			if state == "failed tool" {
+				es = append(es, entry{kind: entryTool, turn: 1, status: toolFailed})
+			}
+			got := false
+			for _, fold := range deriveWorkfolds(es, 0) {
+				got = got || !fold.stopped
+			}
+			if got != (state == "confirmed") {
+				t.Fatalf("state %s folded=%v", state, got)
+			}
+		})
+	}
+}
+
+func TestQueuedContinuationCannotSurviveRetryOrToolBoundary(t *testing.T) {
+	for _, retry := range []bool{false, true} {
+		t.Run(map[bool]string{false: "tool", true: "retry"}[retry], func(t *testing.T) {
+			a, _ := streaming(t, "Discarded original preamble. ")
+			a.linear = true
+			a.event(session.Event{Kind: session.EventReasoning, Text: "private work"})
+			a.submit("Queued question")
+			if retry {
+				a.event(session.Event{Kind: session.EventRetrying, Text: "Trying again"})
+			} else {
+				a.event(session.Event{Kind: session.EventToolBegin, Tool: "read", CallID: "next", Args: `{"path":"notes.md"}`})
+				a.event(session.Event{Kind: session.EventToolEnd, Tool: "read", CallID: "next", Output: "read"})
+			}
+			a.event(session.Event{Kind: session.EventTextDelta, Text: "The replacement answer is complete."})
+			a.event(session.Event{Kind: session.EventAssistantDone})
+			for _, e := range a.entries {
+				if e.kind == entryAssistant && e.confirmed != nil && e.confirmed.done && strings.TrimSpace(e.text) != "" && e.text != "The replacement answer is complete." {
+					t.Fatalf("a prior response entered the confirmed answer: %q", e.text)
+				}
+			}
+			page := livePage(a)
+			if !strings.Contains(page, "replacement answer is complete") || !strings.Contains(page, "Queued question") || (retry && strings.Contains(page, "Discarded original")) {
+				t.Fatalf("response boundary lost content or retained retry text:\n%s", page)
+			}
+		})
+	}
+}

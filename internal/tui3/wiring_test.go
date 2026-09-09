@@ -541,6 +541,9 @@ func TestTheThinkingBlockStreamsCollapsesAndExpands(t *testing.T) {
 
 	// The turn's first non-reasoning word collapses it.
 	drive(t, a, streamEventMsg{gen: a.gen, ev: text(session.EventTextDelta, "internal/parse/parse.go")})
+	// A full answer appears once its response is confirmed, while the
+	// thought block retains its independent disclosure underneath work.
+	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventAssistantDone}})
 	at := -1
 	for i := range a.entries {
 		if a.entries[i].kind == entryThinking {

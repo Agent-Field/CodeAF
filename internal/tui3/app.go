@@ -224,8 +224,8 @@ func (s toolState) live() bool { return s == toolQueued || s == toolConsent || s
 // renders when its own content or the width changes, and a frame joins what is
 // already there. Nothing in here holds a blank row — spacing is [app.layout]'s
 // and only [app.layout]'s.
-// A shared response identity keeps interleaved content fragments together.
-// The nonzero-sized value ensures separate responses have distinct addresses.
+// A shared response identity keeps prose and its private reasoning together.
+// It is pending until the response boundary confirms an answer.
 type responseConfirmation struct{ done bool }
 
 type entry struct {
@@ -469,8 +469,8 @@ type entry struct {
 	// Provisional prose has arrived, but the response has not yet confirmed
 	// whether it ends in an answer or a tool call. It stays in the work view.
 	provisional bool
-	// A confirmed reply may be followed by reasoning from that same response.
-	// Settled private blocks must not turn that confirmed reply back into work.
+	// The same identity can be attached while the reply is still pending. Its
+	// done flag confirms ownership before any private tail receives a work fold.
 	confirmed *responseConfirmation
 	// capHead says this demoted block lent its first line to the step heading,
 	// and capCut is the byte immediately after that line. Both are derived with

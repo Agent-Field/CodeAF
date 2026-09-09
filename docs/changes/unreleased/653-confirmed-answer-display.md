@@ -21,3 +21,12 @@ explicit disclosure still makes the streaming source available.
 Interleaved content sections become one complete answer at confirmation, matching
 the saved transcript; private reasoning stays inside work rather than interrupting
 the answer. Joining a task during a retry replays only the replacement attempt.
+
+An answer still being assembled remains above a queued user message or surface
+notice when it is confirmed. Confirmation follows that active response instead of
+misreading the newer row as its endpoint. A late boundary after interruption does
+not restore live emphasis or activity to the stopped turn.
+
+Both queue timings preserve the response: before first reasoning and during it.
+A finished private-work tail below the queued line has its own closed disclosure;
+only reasoning belonging to that confirmed response is eligible for it.

@@ -3562,3 +3562,10 @@ continues later, earlier prose returns to the work hierarchy.
 The same behavior applies inside task rooms. Saved answers remain readable when
 you return, and completion still collapses the intermediate work. Explicitly
 expanded work and `ui.work = open` keep the detailed reading view available.
+
+A message queued beneath a streaming reply, or a notice displayed there, stays
+below the complete answer when its response is confirmed. Stopping the turn keeps
+its partial response dim even if a confirmation was already in flight.
+
+If private work falls below a queued message, its finished work stays behind a
+separate closed `worked` chip. Expanding that chip still reveals its details.
