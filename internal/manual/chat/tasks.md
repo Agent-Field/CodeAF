@@ -4238,7 +4238,8 @@ there your row stands, and a blank row still means aforge asks you.
 On a headless run with a budget — `--once --yolo` **and** `--max-hours` or `--max-cost` —
 there is nobody to put a card in front of, so a task nobody could check is not put to
 anybody. The check is asked twice first: one checker, then a **fresh** one with the same
-evidence and not a word about what the last one said. Only when the second try says nothing
+evidence and not a word about what the last one said — **on another model** where this
+install has one to move to. Only when the second try says nothing
 either does the work land as it stands, and the landing says so, under the task's own
 account of what it did:
 
@@ -4261,7 +4262,7 @@ the worker that commissioned it, which reads the diff and settles it.
 
 **And a check that hung is not a check that ran.** No single call may spend the whole
 checking window: a stream that answers nothing is abandoned about half way and the check is
-asked again inside what is left. When the second call answers, the landing carries
+asked again, on another model where there is one, inside what is left. When the second call answers, the landing carries
 `checked on the second try`. Before that, one hung stream could eat all five minutes and the
 check was never asked twice at all.
 
@@ -4279,9 +4280,10 @@ task waits for you. Which failure it was decides what happens when you answer.
   `task 7 is done, and only a task that needs a look is waiting on somebody to decide`.
   Asking again cannot change a disk, and a measured run accepted the same task three times
   and got the same refusal three times.
-- **The same file changed on both sides** — a real merge conflict — is yours to decide, so
-  the task goes back to `needs your look` with the clashing files named. Sort the file out
-  and accept it again.
+- **The same file changed on both sides** — a real merge conflict. One round is spent
+  bringing the two versions together first, inside the task's own working copy and never in
+  your checkout; only when that round cannot do it does the task go back to
+  `needs your look` with the clashing files named. Sort the file out and accept it again.
 
 The how-tasks-run page has the sentences each of those lands with, under *My task could not
 save what it wrote*.

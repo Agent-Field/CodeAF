@@ -302,9 +302,12 @@ folder it is proposing against, but not always, and work aimed at a project thre
 directories away, or at a folder nothing in this window has opened, goes wrong the same
 way.
 
-**When one does not hold, the task lands at once** — before anything is spent — and its
-row reads `its world did not match`. The report names every assumption that failed, what
-was found instead, and what can be done about it:
+**When one does not hold, the task is tried once more and then lands** — before anything is
+spent either time, because the whole check is a look at the folder. The second attempt
+exists for the ordinary case where another window has landed the missing work in the
+meantime; when it does not hold the second time either, the row reads
+`its world did not match`. The report names every assumption that failed, what was found
+instead, and what can be done about it:
 
 ```
 its world is not what its brief describes, so nothing was spent on it.
@@ -457,8 +460,16 @@ Nothing is forced onto your branch. A merge that hits a conflict is **abandoned*
 checkout is put back exactly as it was: no `<<<<<<<` markers in your files, no half-finished
 merge to get yourself out of.
 
-The task then lands as **needs your look** rather than finished, and the report names the
-files that changed on both sides:
+**One round is spent trying to bring the two versions together before you are asked.** Your
+branch is merged into the *task's* branch, inside the task's own working copy, where a
+conflict marker can be written without touching anything you have open; a worker is put in
+front of the markers with the task's brief and both sides; the check runs again on what it
+leaves; and the landing is retried. When that works you never see the conflict at all —
+the task simply lands. The tip the task's branch stood on before the round is kept as
+`<the task's branch>-before-merge`, so nothing is rewritten in place and you can always read
+what the task itself produced.
+
+Only a round that fails reaches you, and then the report says so and names the files:
 
 `finished, but needs your look — its branch task/edit-the-parser-9c1a2f did not merge cleanly and was kept: internal/auth/session.go changed on both sides`
 
@@ -1861,8 +1872,10 @@ landing goes to whoever holds the decision and they settle it.
 ## The check was asked twice — checked on the second try, one call ran without answering and was abandoned, why the check was re-run
 
 **No single call may spend the whole checking window.** The check is asked at most twice —
-one checker, then a fresh one with the same evidence — so one call may hold at most half the
-window, and a stream that answers nothing is abandoned at that point and the check asked
+one checker, then a fresh one with the same evidence, **on another model** where this
+install has one to move to (the same fallback chain a stalled conversation turn moves
+along; `--one-model` and an install with no chain ask the second on the model it already
+had) — so one call may hold at most half the window, and a stream that answers nothing is abandoned at that point and the check asked
 again inside what is left. You may see this on the card:
 
 ```
@@ -2478,14 +2491,16 @@ A task that did not finish keeps its branch, and the row under its name on the r
   Start a new task that builds on that branch only if the objective itself
   changed.
   - `lost the connection — branch kept`: the connection to the model dropped (a reset, a
-    closed socket). The call was retried, and then one more worker was run on the same
-    model in the same working copy; this row means both were spent.
+    closed socket). The call was retried, then one more worker was run on the same model in
+    the same working copy, and then the whole task was run **once more from the branch it
+    had already made**; this row means all of that was spent.
   - `the model provider refused it — branch kept`: the provider could not **serve** the
     request at all — the service was down, the route had no provider left, a rate limit was
     still refusing after the retries, or the account could not be served. Nothing was found
     out about the work, and on a run with a budget this does **not** count as part of what
-    is still left to do. A model that read the request and **refused** it, and a rejection
-    of what the request itself contained, are the provider *answering* — those read
+    is still left to do, and the task is run **once more from its branch** before this row
+    is written. A model that read the request and **refused** it, and a rejection of what
+    the request itself contained, are the provider *answering* — those read
     `ended with an error` and do still count.
   - `went in circles — branch kept`: the worker **repeated itself** and its own loop guard
     ended the turn (its last words are `this turn is going in circles · stopping here

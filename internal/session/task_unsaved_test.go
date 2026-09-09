@@ -18,6 +18,7 @@ package session
 // #513).
 
 import (
+	"context"
 	"errors"
 	"go/ast"
 	"go/token"
@@ -522,7 +523,7 @@ func TestASettledLandingThatSavedNothingSaysSoInTheJobLog(t *testing.T) {
 	detail := unsavedSentence(tree.dir, "fatal: Unable to create index.lock: Permission denied")
 
 	var log strings.Builder
-	state := agent.landConflicted(node, tree, []string{"parser.py"},
+	state := agent.landConflicted(context.Background(), node, tree, []string{"parser.py"},
 		"it wrote the parser", mergeAborted, detail, &log)
 
 	if state != TaskUnverified {
