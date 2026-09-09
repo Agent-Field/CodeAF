@@ -191,10 +191,10 @@ func TestTheBurnFigureStandsStillLongEnoughToBeRead(t *testing.T) {
 	a.turnBegan, a.turnOutStart = *now, 0
 	*now = now.Add(10 * time.Second)
 
-	a.outputTokens = 600 // 60 tok/s
+	a.outputTokens = 600 // 60 tok/s avg
 	first := a.burnSegment()
-	if first != "60 tok/s" {
-		t.Fatalf("the burn opened at %q, want 60 tok/s", first)
+	if first != "60 tok/s avg" {
+		t.Fatalf("the burn opened at %q, want 60 tok/s avg", first)
 	}
 
 	// Inside the hold the string does not move, however the tokens arrive.

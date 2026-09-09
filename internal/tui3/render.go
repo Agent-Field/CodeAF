@@ -1535,8 +1535,8 @@ const (
 //
 // IT IS ONE FUNCTION BECAUSE TWO ROWS ASK IT. The pulse says "waiting for
 // kimi-k3 · 12s" from it ([app.waitingWords]); the status line's rate says how
-// fast the model is writing ([app.burnSegment], and the served rider's own
-// figure). Those were two readings of one moment, taken from different signals —
+// much output this turn has averaged ([app.burnSegment]), while the served
+// rider carries its separate provider rate. Those were two readings of one moment, taken from different signals —
 // the rate counts a whole turn's output tokens over the whole turn's wall time,
 // so a turn that wrote a paragraph and then went quiet kept drawing `30 tok/s`
 // two rows under this surface saying nothing had come back. A person watching a
@@ -2467,7 +2467,7 @@ func splitReserve(text string) (room, figure string) {
 //	$0.14                what it has cost
 //	12.4k/128k · 10% ▁▂▃ what it is carrying, and where that has been going
 //	⟲ saved $0.02 · 89%  what the cache gave back
-//	1.2k tok/s           how fast it is writing right now
+//	1.2k tok/s avg       output over this turn's elapsed time
 //	compaction in ~3     what is about to happen to it
 //	YOLO                 the gate is open (and nothing when it is not)
 //	⠹ working · 4s       what it is DOING — always last, because it is the one
@@ -2916,9 +2916,10 @@ func (a *app) ctxSpark() string {
 	return barSpark(a.ctxRing, threshold, len(a.ctxRing))
 }
 
-// burnSegment is how fast the model is writing, right now:
+// burnSegment is the output rate averaged over this turn, including tool and
+// model waiting time rather than only time spent generating tokens:
 //
-//	1.2k tok/s
+//	1.2k tok/s avg
 //
 // It is output tokens over the wall time of THIS turn, and it exists because
 // "working" is a boolean and a person watching a long turn wants a rate. It is
@@ -2956,7 +2957,7 @@ func (a *app) burnSegment() string {
 	if rate <= 0 {
 		return a.holdBurn("")
 	}
-	return a.holdBurn(tokenWord(rate) + " tok/s")
+	return a.holdBurn(tokenWord(rate) + " tok/s avg")
 }
 
 // ── THE STEADY FIGURE ───────────────────────────────────────────────────────
