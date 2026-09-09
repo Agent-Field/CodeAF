@@ -143,10 +143,10 @@ func testStatesYourCall(t *testing.T) {
 		t.Errorf("the answers row does not offer %q:\n%s", say(t, "settleHandRow"), screen)
 	}
 
-	// THE KEY, ON THE SELECTED CARD, over an empty box — the door [testNestedGate]
-	// already walks.
-	r.keys("Up")
-	r.lit("a")
+	// THE KEY, ON THE SELECTED CARD, over an empty box — the guards `x` has.
+	if !statesAnswerKey(t, r, "a", say(t, "settleTookLine")) {
+		t.Fatalf("three presses of `a` never left %q on the card:\n%s", say(t, "settleTookLine"), r.capture())
+	}
 	settled := r.waitFor(30*time.Second, say(t, "settleTookLine"))
 	t.Logf("the accept was spent and the card wears the receipt:\n%s", settled)
 
@@ -420,16 +420,69 @@ func testStatesRailAndRoster(t *testing.T) {
 // statesPastTheDoor is the launch every subtest here begins with: whichever
 // screen this state root opens on, and esc off it.
 //
-// A STATE ROOT BUILT ONE MINUTE AGO OPENS ON THE SETUP on a machine whose profile
-// has no crew yet, on home when the machine has other projects, and straight into
-// a conversation when this project already has one — all three are the product
-// behaving, so the wait is for any of them and the key is the same.
+// A STATE ROOT BUILT ONE MINUTE AGO OPENS ON THE SETUP even when the profile it
+// copied has every answer in it, because the marker that says the setup has been
+// SEEN is a file in the state root and a fresh one has none. A machine with other
+// projects opens home, and a project with a conversation opens straight into it —
+// all of them are the product behaving, so the wait is for any of them.
+//
+// AND ESC IS PRESSED UNTIL THE SETUP IS ACTUALLY GONE, not once. The setup is
+// several steps and a single esc leaves the one under it, which is how the first
+// measured run of this file spent its keystrokes on a screen it thought it had
+// already left.
 func statesPastTheDoor(t *testing.T, r *rig) {
 	t.Helper()
 	r.waitForAny(25*time.Second,
-		say(t, "homeFootWord"), say(t, "starterTaskWord"),
-		say(t, "setupTitleWord"), say(t, "landingKeysWord"), say(t, "taskLookWord"))
-	r.keys("Escape")
+		say(t, "homeFootWord"), say(t, "starterTaskWord"), say(t, "setupTitleWord"),
+		say(t, "setupSkipWord"), say(t, "landingKeysWord"), say(t, "taskLookWord"))
+	for press := 0; press < 4; press++ {
+		screen := r.capture()
+		if !strings.Contains(screen, say(t, "setupSkipWord")) && !strings.Contains(screen, say(t, "setupTitleWord")) {
+			return
+		}
+		r.keys("Escape")
+		time.Sleep(900 * time.Millisecond)
+	}
+	t.Logf("the setup was still on screen after four escapes:\n%s", r.capture())
+}
+
+// statesAnswerKey presses one of the card's letters and waits for what it
+// leaves, THROUGH THE GREETING, and retrying the way a person does.
+//
+// THE LETTERS HAVE THREE GUARDS AND ALL THREE ARE ABOUT NOT ANSWERING BY
+// ACCIDENT (tasksettle.go's [app.settleCardKey] keeps the same guards `x` has):
+// the card must be the SELECTED one, the message box must be empty, and no
+// overlay may be up.
+//
+// AND A CONVERSATION NOBODY HAS TYPED IN YET IS STANDING ON ITS GREETING, whose
+// starting-point list holds ↑ and ↓ over an empty box (welcome.go's
+// [app.welcomeStarterKey] — a person cannot pick a row with an arrow if the arrow
+// closes the list). So a blind `↑` there walks the STARTING POINTS and never
+// reaches the card, and the letter after it is read as somebody beginning to
+// type. That is the greeting behaving exactly as it is written to; it is also
+// why this door exists rather than two bare keystrokes.
+//
+// The way through is the greeting's own contract: EVERY OTHER KEY DISMISSES IT.
+// So one harmless character puts the list away, ctrl+u gives the empty box the
+// letters need back, and only then is ↑ the walk through the conversation. The
+// character is a full stop on purpose — `x` is the stop key and a,n,s,d,t are the
+// answers, and a fixture that reached for one of those would be answering the
+// question it came to read.
+func statesAnswerKey(t *testing.T, r *rig, key, want string) bool {
+	t.Helper()
+	for attempt := 1; attempt <= 3; attempt++ {
+		r.lit(".")
+		r.keys("C-u")
+		time.Sleep(400 * time.Millisecond)
+		r.keys("Up")
+		r.lit(key)
+		if _, ok := r.glimpse(20*time.Second, want); ok {
+			t.Logf("the %q was spent on attempt %d", key, attempt)
+			return true
+		}
+		t.Logf("attempt %d: %q left no %q on:\n%s", attempt, key, want, r.capture())
+	}
+	return false
 }
 
 // statesAwait is [rig.waitForAny] WITHOUT THE FAILURE: it answers which of

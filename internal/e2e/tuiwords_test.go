@@ -579,6 +579,13 @@ var tuiWords = map[string]tuiWord{
 			"a bare box; the constant runs on past this into what it will and will not send, and the " +
 			"block wraps it, so the needle is the clause the reader meets first",
 	},
+	"setupSkipWord": {
+		screen: "esc skips setup",
+		why: "the setup's own foot, on EVERY step of it. A state root built a minute ago opens on the setup " +
+			"whatever the profile it copied holds, because the marker that says it has been seen is a file in " +
+			"that root — so a suite that seeds a graph and reads it back has to know it is standing on this " +
+			"screen and press past it",
+	},
 	"setupNotConnectedNote": {
 		screen: "openrouter is not connected",
 		why: "the dim line the conversation says after esc, which is the other half of a front door: " +
