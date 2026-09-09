@@ -95,7 +95,8 @@ type Agent interface {
 	// negative mean "nobody knows", and the session keeps what it had.
 	SetContextWindow(tokens int)
 	// ReasoningFor is how hard one model is asked to think — "", "low",
-	// "medium" or "high" — for any model id, not only the one in use.
+	// "medium", "high", "xhigh" or "max" — for any model id, not only the one
+	// in use.
 	//
 	// The pair is per-model rather than per-session because the picker sets a
 	// level on the row under the cursor, which is usually not the model running:
@@ -104,7 +105,7 @@ type Agent interface {
 	// The session holds the map, so it survives the overlay closing and /new
 	// starts empty (internal/session's agent.go).
 	ReasoningFor(model string) string
-	// SetReasoningFor sets it. An empty level is off, which is "send nothing
+	// SetReasoningFor sets it. An empty level is auto, which is "send nothing
 	// and let the model use its own default".
 	SetReasoningFor(model, level string)
 	// FollowUp queues a message to be asked AFTER the current turn ends and

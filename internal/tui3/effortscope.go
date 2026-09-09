@@ -35,10 +35,9 @@ package tui3
 // reads as nothing (the emptiness law) and the first press lands on the cheapest
 // rung, but no number of further presses ever puts a rung BACK to absence.
 // Clearing one is a deliberate act with real meaning — it hands the scope back
-// to whatever stands above it — and a wheel that could do it by being pressed
-// once too often would clear a rung somebody paid for, silently, on the way
-// past. The scopes that can be cleared are cleared where they are written down:
-// the `thinking` settings row's own `off`, and the item document's empty field.
+// to whatever stands above it. A conversation rung and a standing item's rung
+// therefore keep this wheel; the two scopes the surface itself must be able to
+// clear use [effortNextClearing] below.
 //
 // ── AND THE RUNG IS FURNITURE UNTIL IT MOVES ──
 //
@@ -95,6 +94,24 @@ func effortNext(rung effort.Rung) effort.Rung {
 	// does not: both mean "nobody here has chosen", and the cheapest rung is
 	// where a wheel that has not been turned yet begins.
 	return effort.Rungs[0]
+}
+
+// effortNextClearing is one step of the wheel for a scope a person can CLEAR
+// from the surface: the same climb, except that the top rung comes back to
+// absence instead of to the bottom.
+//
+// TWO SCOPES ARE CLEARABLE AND BOTH ARE CLEARED HERE. A task's own rung and the
+// level dialled onto a model are the two scopes whose absence means something:
+// hand this piece of work, or this model, back to whatever stands above it. The
+// surface is the only door that sets either, so it has to be the door that
+// clears them. The conversation rung above ([effortNext]) is cleared from the
+// settings row instead, which is why it keeps the wheel that never lands on
+// absence.
+func effortNextClearing(rung effort.Rung) effort.Rung {
+	if rung == effort.Rungs[len(effort.Rungs)-1] {
+		return effort.None
+	}
+	return effortNext(rung)
 }
 
 // effortClause is the quiet fact one surface states about its own scope, and ""
