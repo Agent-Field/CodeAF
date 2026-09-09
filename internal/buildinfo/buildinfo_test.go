@@ -100,3 +100,43 @@ func TestBuildIdentityDistinguishesRebuildsWithinOneDisplayMinute(t *testing.T) 
 		t.Fatal("a dirty rebuild retained the prior engine identity")
 	}
 }
+
+// TWO BUILDS OF ONE COMMIT ARE ONE ENGINE. The window that met the engine
+// thirteen seconds after it was linked was told it had met an older aforge, and
+// the difference it read was one nobody had made (#730).
+func TestBuildIdentityKeepsOneCleanRevisionAcrossRebuilds(t *testing.T) {
+	previous := current
+	t.Cleanup(func() { current = previous })
+	current = Info{Revision: "same-revision", BuiltAt: time.Date(2026, 9, 8, 20, 0, 1, 0, time.UTC)}
+	first := Identity()
+	current.BuiltAt = current.BuiltAt.Add(13 * time.Second)
+	if Identity() != first {
+		t.Fatalf("a rebuild of one commit became another engine: %s then %s", first, Identity())
+	}
+}
+
+// And another commit is another engine, which is the whole reason the question
+// is asked before a window is handed to a host.
+func TestBuildIdentityDistinguishesCleanRevisions(t *testing.T) {
+	previous := current
+	t.Cleanup(func() { current = previous })
+	current = Info{Revision: "first-revision", BuiltAt: time.Date(2026, 9, 8, 20, 0, 1, 0, time.UTC)}
+	first := Identity()
+	current.Revision = "second-revision"
+	if Identity() == first {
+		t.Fatal("another clean revision retained the prior engine identity")
+	}
+}
+
+// A build with no source to name keeps the moment it was made, because that is
+// the only thing left that tells one of them from the next.
+func TestBuildIdentityDistinguishesUnstampedRebuilds(t *testing.T) {
+	previous := current
+	t.Cleanup(func() { current = previous })
+	current = Info{BuiltAt: time.Date(2026, 9, 8, 20, 0, 1, 0, time.UTC)}
+	first := Identity()
+	current.BuiltAt = current.BuiltAt.Add(time.Second)
+	if Identity() == first {
+		t.Fatal("an unstamped rebuild retained the prior engine identity")
+	}
+}

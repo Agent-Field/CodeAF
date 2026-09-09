@@ -32,21 +32,46 @@ func String() string {
 	return current.String()
 }
 
-// Identity names the build captured at process startup, including dirty rebuilds.
-// Unlike the display stamp it preserves seconds and is independent of timezone;
-// rereading the executable path would identify a replacement, not this process.
-func Identity() string {
-	return fmt.Sprintf("%s/%t/%s", current.Revision, current.Dirty, current.BuiltAt.UTC().Format(time.RFC3339Nano))
+// Identity names the engine a running process is, as far as a build can be told
+// from another one.
+//
+// A BUILD THAT CAN NAME ITS SOURCE IS THAT SOURCE AND NOTHING ELSE. Two `make
+// build` runs on one unmodified commit produce the same program, so they produce
+// the same engine — and the door that decides whether to attach must not read a
+// difference nobody made. It did: the build moment was in here, so a window built
+// thirteen seconds after the engine it met was told it had met an older aforge.
+//
+// A BUILD THAT CANNOT NAME ITS SOURCE KEEPS THE MOMENT IT WAS MADE. A modified
+// tree spells the same revision before and after an edit, and an unstamped build
+// spells none at all; the moment is then the only thing that tells one rebuild
+// from the next, and somebody rebuilding what they just edited must still get a
+// new engine.
+func (info Info) Identity() string {
+	// The two shapes can never be mistaken for one another: a source names
+	// itself with no slash in it, and the moment always carries two.
+	if source := info.source(); source != "" && !info.Dirty {
+		return source
+	}
+	return fmt.Sprintf("%s/%t/%s", info.source(), info.Dirty, info.BuiltAt.UTC().Format(time.RFC3339Nano))
 }
+
+// Identity names the engine this process is. [Info.Identity] is the rule.
+func Identity() string { return current.Identity() }
 
 // Revision returns the stable source identity without the build-time details.
 func Revision() string {
-	return strings.TrimSpace(current.Revision)
+	return current.source()
+}
+
+// source is the revision as it was written down, and it is read through here by
+// everything in this file so that the trimming is decided in one place.
+func (info Info) source() string {
+	return strings.TrimSpace(info.Revision)
 }
 
 // String formats a build identity without inventing absent facts.
 func (info Info) String() string {
-	revision := strings.TrimSpace(info.Revision)
+	revision := info.source()
 	if revision == "" {
 		revision = "dev"
 	}
