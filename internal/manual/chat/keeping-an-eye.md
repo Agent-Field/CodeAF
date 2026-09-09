@@ -8,6 +8,25 @@ something behind that keeps working after this window is closed.
 The tool behind all of them is `stand`. You never type it; aforge recognises the
 words. Nothing is ever set up without a card you answer.
 
+## It asked while I was away
+
+**Ten minutes with nobody touching the keyboard** makes a window away — measured from the
+last key, not from which window is in front.
+
+After that, a question this project has a rule for may take its own recommended answer,
+and its receipt says `aforge, on your settings` decided it. Only a **reversible** question
+with a recommended answer can go that way. Everything else stays open: it is on home, the
+desktop notification says the conversation is `waiting on you`, and the terminal bell rings
+**once** — only for a question something is blocked on, and never twice for the same one.
+
+Two kinds never run on a clock however you set it up: **confirmation always asks**, because
+it is what is asked before something destructive, and **clarification never runs on a
+clock**, because the answer is something only you have.
+
+`/autonomy` shows and changes those rules, per project. A question that is about to be
+taken by one says `your rule` on its own row while the clock runs — there are no hidden
+rules.
+
 ## Remind me about something
 
 Say it the way you would say it to a person: "remind me at 6 to leave", "remind

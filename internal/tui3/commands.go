@@ -84,6 +84,8 @@ var commands = []command{
 	{name: "resume", desc: "open an earlier conversation", alias: []string{"sessions"}},
 	{name: "compact", desc: "summarize the conversation now"},
 	{name: "stop", desc: "stop the open task or selected work · asks first"},
+	{name: "autonomy", desc: "how questions are handled while you are away"},
+	{name: "autonomy", args: "<kind> <ask|recommend DURATION|decide>", desc: "change one project's question rule"},
 	// A project-less conversation needs this once, while /compact is a daily
 	// command everywhere. Keep the one-shot anchor immediately below the eight
 	// always-visible rows so adding it does not hide /compact behind a scroll.

@@ -493,6 +493,13 @@ const (
 	// DecidedByAsker is the asker answering itself, which happens on the
 	// ratify rung: the work was already done and nobody objected.
 	DecidedByAsker DecidedBy = "asker"
+	// DecidedByWindow is ANOTHER WINDOW ON THIS CONVERSATION. It is stamped by
+	// the surface that LEARNS of an answer rather than by the one that gave it
+	// — the giver knows perfectly well it was a person, and the value is there
+	// so the second window's receipt does not say `you` about a key somebody
+	// pressed on a different screen (docs/design/questions/DESIGN.md's FIRST
+	// ANSWER WINS).
+	DecidedByWindow DecidedBy = "window"
 )
 
 // Withdrawal is why a question stopped being a question, and who took it back.
@@ -905,6 +912,8 @@ func decidedByWord(by DecidedBy) string {
 		return "an earlier decision"
 	case DecidedByAsker:
 		return "done and not objected to"
+	case DecidedByWindow:
+		return "another window"
 	}
 	return string(by)
 }
