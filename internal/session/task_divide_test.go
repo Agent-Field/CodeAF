@@ -1613,8 +1613,8 @@ func TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner(t *testing.T) {
 	// ONE SOURCE OF TRUTH: the prompt may not advertise the planner as the way
 	// to parallelize while the belt says otherwise.
 	rendered := renderSystem(agent.config)
-	if !strings.Contains(rendered, "WIDE WORK") || !strings.Contains(rendered, "with `wide`") {
-		t.Error("prompts/system.md does not route wide work to propose_task")
+	if !strings.Contains(rendered, "use `propose_task` deliberately") {
+		t.Error("the rendered prompt does not explain deliberate task delegation")
 	}
 	// AND THE PROMPT SAYS THE ABSENCE OUTRIGHT. The page used to argue that the
 	// planner was the exception, which is a sentence that only makes sense while
