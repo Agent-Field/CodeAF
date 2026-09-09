@@ -368,10 +368,14 @@ func TestSharedContextRevisionCannotAccidentallyClearOmittedTargets(t *testing.T
 }
 
 func TestOrganizationFindNameDoesNotSilentlySearchMembership(t *testing.T) {
-	a, _, g := organizationFixture(t)
-	out, failed, err := a.collectionsTool(context.Background(), json.RawMessage(`{"action":"find","name":"MARKET"}`))
-	if failed || err != nil || !strings.Contains(out, g.ID) {
-		t.Fatalf("%s %v", out, err)
+	a, s, g := organizationFixture(t)
+	other, err := s.Create(context.Background(), "Research")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, failed, err := a.collectionsTool(context.Background(), json.RawMessage(`{"action":"find","name":"SEARCH"}`))
+	if failed || err != nil || !strings.Contains(out, other.ID) || strings.Contains(out, g.ID) {
+		t.Fatalf("name lookup answered with current membership: %s %v", out, err)
 	}
 }
 

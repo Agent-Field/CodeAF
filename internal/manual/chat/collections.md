@@ -126,3 +126,6 @@ bytes of text and 64 distinct targets. A turn includes at most six records with
 can read shared context but cannot create, revise or withdraw it. This works
 with learned memory disabled. It does not yet implement automatic consultation,
 semantic discovery beyond links, or sharing context with a scheduled firing.
+The conversation's completion reader sees the same bounded snapshot as the turn.
+A task's separate read-only checker still uses its existing acceptance and file
+checks; it does not receive the shared-context tool or a separate snapshot.

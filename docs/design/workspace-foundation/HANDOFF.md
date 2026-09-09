@@ -16,6 +16,8 @@ implementation and testing here until the user changes that instruction.
 - Branch: `codex/personal-ai-backend`, also pushed to `origin`.
 - Local worktree: `/Users/santoshkumar/af-personal-ai-backend`.
 - Starting commit: `7f3ab8bf3046b83918c234cc30bf8cc224f3104a` on `dev`.
+- Integrated later `dev` commit `ebecb2d89` (#660 general-harness improvements)
+  into this branch; this was not a merge of #662 into `dev`.
 - Draft PR: [#662](https://github.com/Agent-Field/aforge-v2/pull/662), targeting
   `dev`. Keep it draft and unmerged.
 - This continuation adds the first integrated organization backend: live owner
@@ -193,8 +195,8 @@ The conversation integration owner is Codex task
 “Continue 01a071d3-509d-79b2 (2)”. It maintains
 `/private/tmp/af-runtime-next`; do not overwrite its binary or checkout.
 The owner has been notified about this separate draft continuation.
-General-harness draft PR #660 may overlap session execution code; inspect its
-current scope and coordinate before changing the same runtime boundaries.
+General-harness PR #660 subsequently merged into `dev` and has been integrated
+here. The owner was notified about the shared-context completion-reader seam.
 
 The user requested Claude Code CLI with Opus on Spark for parallel work. Resolver,
 shared-context storage, worker/E2E and review lanes ran there; Codex integrated

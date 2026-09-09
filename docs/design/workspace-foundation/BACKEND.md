@@ -76,5 +76,7 @@ No autonomous wake, peer consultation protocol, discovery beyond links, event
 idempotency, accepted-decision authority model, shared-context delivery to
 scheduled firings, or new dashboard. Existing ongoing responsibilities can be
 organized and inspected, but this change does not alter how they activate.
-Forked hands and adaptive-run nodes do not receive the new organization seam.
+Forked hands, adaptive-run nodes and the separate task checker do not receive
+the new organization seam. The conversation completion reader does receive its
+turn's bounded snapshot, without another database lookup.
 Those are separate acceptance slices, not hidden claims of these tests.
