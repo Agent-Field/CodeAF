@@ -246,13 +246,15 @@ func (a *Agent) sharedContextTool(ctx context.Context, raw json.RawMessage) (str
 		if end < len(body) {
 			next = &end
 		}
+		// Scope precedes potentially long text so bounded display receipts retain
+		// the distinction even when they cannot show the whole body.
 		result = struct {
-			workspace.ContextRecord
-			TextOffset     int    `json:"text_offset"`
-			Next           *int   `json:"next_text_offset,omitempty"`
 			ApplicableHere bool   `json:"applicable_here"`
 			ScopeNote      string `json:"scope_note"`
-		}{record, p.TextOffset, next, applies, scopeNote}
+			workspace.ContextRecord
+			TextOffset int  `json:"text_offset"`
+			Next       *int `json:"next_text_offset,omitempty"`
+		}{applies, scopeNote, record, p.TextOffset, next}
 	}
 	if err == nil && !read {
 		result = contextSummaries([]workspace.ContextRecord{result.(workspace.ContextRecord)})[0]
