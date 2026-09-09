@@ -10,11 +10,11 @@ invalidates:
 ---
 
 Long child titles are covered by frame regressions and a real tmux run using
-DeepSeek Flash, including opening a child and waiting for the parent to finish.
+DeepSeek Flash, including opening a child and reading the parent’s completed or review state.
 The live run also exposed a negative standing-section row count that crashed a
 short task window with no standing orders; the count now stops at zero.
 
 The terminal harness waits for an interactive surface before typing and preserves
-crashed panes for diagnosis. The home-card test follows the current card columns
-and waits for asynchronous repository facts.
+crashed panes for diagnosis. The task record test follows the current conversation grouping before selecting
+a task and opening its saved record.
 Delegation limits and access to other tasks are unchanged.

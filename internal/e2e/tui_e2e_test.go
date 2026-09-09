@@ -58,11 +58,11 @@ const (
 	// tuiCardAt is the first screen column the card's own text stands in at
 	// [tuiWide], and it is arithmetic rather than a guess: homeColumns gives the
 	// card thirty-six cells plus half of everything past the tier's floor —
-	// 36 + (180-136)/2 = 58 — with a four-cell gutter before it, so the list ends
-	// at 118 and the card begins at 122. A subtest that reads the pane fails
+	// 36 + (180-160)/2 = 46 — with a four-cell gutter before it, so the list ends
+	// at 130 and the card begins at 134. A subtest that reads the pane fails
 	// loudly rather than quietly if that ever moves, because the pane comes back
 	// empty.
-	tuiCardAt = 122
+	tuiCardAt = 134
 )
 
 // tuiShortRows is a deliberately SHORT terminal, and it is a fixture rather than
@@ -331,44 +331,12 @@ func testHomeShape(t *testing.T) {
 func testRealConversation(t *testing.T) {
 	home := newHome(t, nil)
 	ws := newWorkspace(t, "repows", true)
-	// Repository facts intentionally give way to a long workspace address.
-	// Keep this fixture short enough to exercise the facts this test checks.
-	short, err := os.MkdirTemp("/tmp", "afe-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(short) })
-	if err := os.Remove(short); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(ws, short); err != nil {
-		t.Fatal(err)
-	}
-	ws = short
-	r := start(t, "afe2e_talk", home, ws, tuiWide, 40, "chat", "--one-model")
+	r := start(t, "afe2e_talk", home, ws, tuiWide, 40)
 
 	r.lit("what is 2+2, one word")
 	r.keys("Enter")
-	screen := ""
-	answered := false
-	deadline := time.Now().Add(modelPatience)
-	for time.Now().Before(deadline) && !answered {
-		screen = r.capture()
-		for _, line := range strings.Split(screen, "\n") {
-			// The sidebar pads the reply's line and shares its physical row.
-			answer := strings.TrimSpace(strings.SplitN(line, "│", 2)[0])
-			if answer == "4" || strings.EqualFold(answer, "four") {
-				answered = true
-			}
-		}
-		if !answered {
-			time.Sleep(250 * time.Millisecond)
-		}
-	}
-	if !answered {
-		t.Fatalf("the model never answered four:\n%s", screen)
-	}
-	t.Logf("the model answered:\n%s", screen)
+	hit, screen := r.waitForAny(modelPatience, "\n4", " 4\n", "four", "Four")
+	t.Logf("the model answered (%q):\n%s", hit, screen)
 
 	r.lit("/home")
 	time.Sleep(700 * time.Millisecond)
@@ -378,8 +346,6 @@ func testRealConversation(t *testing.T) {
 	// without anything being walked to.
 	card := r.waitFor(20*time.Second, say(t, "homeFootWord"), say(t, "homeVerbsWord"))
 	t.Logf("home, with the conversation's card up:\n%s", card)
-	// Repository facts arrive asynchronously after the card's first frame.
-	card = r.waitFor(20*time.Second, "main,", "dirty")
 	pane := rightPane(card)
 
 	// The repository, on the card's place line. It must agree with the
@@ -1571,7 +1537,7 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	ws := newWorkspace(t, "roomws", false)
 
 	// ── the window that does the work ────────────────────────────────────────
-	first := start(t, "afe2e_room1", home, ws, tuiPlain, tuiShortRows, "chat", "--one-model")
+	first := start(t, "afe2e_room1", home, ws, tuiPlain, tuiShortRows, "chat", "--one-model", "--no-host")
 	// Whichever door the launch took. On a state root built one minute ago it is
 	// the setup, whose own foot says `esc skips setup`, and esc is what the rest
 	// of this file presses at this rung anyway.
@@ -1587,19 +1553,12 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	first.lit("/history")
 	time.Sleep(700 * time.Millisecond)
 	first.keys("Enter")
-	// THE WORK IS REALLY OUT. `enter open its room` stands on the foot only over
-	// a node this window's graph is holding, so waiting for that sentence is
-	// waiting for the task to have actually started rather than for a row to
-	// appear.
-	started := first.waitFor(4*time.Minute, say(t, "tasksEnterRoomWord"))
-	t.Logf("the task is out, and this window is holding it:\n%s", started)
-	// AND THEN THE WORK HAS TO LAND, because the row this test reads back is
-	// written when the node finishes and not when it starts
-	// ([session.appendTaskIndex]). The file is the wait: a window closed a
-	// second too early leaves a project with no record in it, which is what the
-	// fourth measured run of this subtest actually did.
+	// The tasks page selects the conversation group first. Once the task is
+	// recorded, move onto its child row to inspect the task's own door.
 	bucket := waitForRecord(t, home, 5*time.Minute)
-	t.Logf("the project's record was written at %s", filepath.Join(bucket, "tasks.jsonl"))
+	first.keys("Down")
+	started := first.waitFor(30*time.Second, say(t, "tasksEnterRoomWord"))
+	t.Logf("the selected task is held by this window:\n%s", started)
 	first.quit()
 
 	// ── and the window that reads it back ────────────────────────────────────
@@ -1617,7 +1576,7 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	// node and a reader of its record at the same time — the only combination
 	// the record card exists for.
 	fresh := filepath.Join(bucket, "read-it-back", "transcript.jsonl")
-	r := start(t, "afe2e_room2", home, ws, tuiPlain, tuiShortRows, "chat", "--session", fresh, "--one-model")
+	r := start(t, "afe2e_room2", home, ws, tuiPlain, tuiShortRows, "chat", "--session", fresh, "--one-model", "--no-host")
 	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "landingKeysWord"))
 	r.keys("Escape")
 	r.lit("/history")
@@ -1626,7 +1585,8 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	// AND NOW THE OTHER DOOR. No window is holding the node any more, so the
 	// foot offers the record rather than the room — which is the mode this test
 	// is about.
-	roster := r.waitFor(2*time.Minute, say(t, "tasksEnterInsideWord"))
+	r.waitFor(30*time.Second, "finished today")
+	roster := r.waitFor(30*time.Second, say(t, "tasksEnterInsideWord"))
 	t.Logf("the roster is offering the record of work nothing is holding:\n%s", roster)
 
 	// THE ARMING PRESS, AND IT IS THE ORDINARY ONE. A single space on a place

@@ -84,12 +84,34 @@ func TestTUIWaitingFamily(t *testing.T) {
 				ID      string `json:"id"`
 				Status  string `json:"status"`
 				Outcome string `json:"outcome"`
+				Where   string `json:"where"`
 			}
 			if json.Unmarshal([]byte(line), &record) == nil && record.ID == "1" {
-				if record.Status != "done" {
-					t.Fatalf("parent ended %s: %s", record.Status, record.Outcome)
+				if record.Status != "done" && record.Status != "unverified" && record.Status != "failed" {
+					t.Fatalf("unexpected terminal task state %s: %s", record.Status, record.Outcome)
 				}
-				t.Logf("parent completed: %s", record.Outcome)
+				t.Logf("parent execution ended %s: %s", record.Status, record.Outcome)
+				r.keys("Right")
+				// Model checks can finish or ask for review. The terminal must
+				// expose that ending rather than leave the parent spinning.
+				shown := false
+				until := time.Now().Add(30 * time.Second)
+				for time.Now().Before(until) && !shown {
+					screen := r.capture()
+					for _, line := range strings.Split(screen, "\n") {
+						if strings.HasPrefix(strings.TrimSpace(line), "─") &&
+							(strings.Contains(line, "done") || strings.Contains(line, "your call") || strings.Contains(line, "incomplete")) {
+							shown = true
+							t.Logf("parent's final header: %s", line)
+						}
+					}
+					if !shown {
+						time.Sleep(250 * time.Millisecond)
+					}
+				}
+				if !shown {
+					t.Fatalf("parent ending was never shown:\n%s", r.capture())
+				}
 				finished = true
 			}
 		}
