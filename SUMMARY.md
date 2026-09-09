@@ -257,3 +257,33 @@ verified merge SHA. Only then reconcile this follow-up onto current
 `origin/dev`, retarget PR #658, validate that exact candidate, merge through the
 PR with expected-head protection, verify ancestry, rebuild in this owned
 worktree, and write both success markers.
+
+## Pass 11 checkpoint
+
+- Steering revision 04 and the coordinated destination decision remain active.
+  A fresh fetch and GitHub query show PR #653 still open and draft against
+  `dev`, with no merge commit or merged timestamp. Its three current gates are
+  green, but that does not supersede the explicit release requirement.
+- Remote refs remain unchanged: `origin/dev` is
+  `65f060d338ec5d01eded666b420ec533319f35ac`,
+  `origin/codex/conversation-execution` and PR #653's head are
+  `2a02ac0bb9c4d085a345805fd809ac9539f2d896`, and PR #658's pushed head before
+  this checkpoint is `2bc8a94379d414cf942e21ad715c7c6986b76a97`.
+- PR #658 remains open, draft, and cleanly mergeable against the held
+  conversation target. It was not retargeted or merged, and no protected
+  branch was written.
+- The context-modal wave is currently running a full `internal/tui3` affected
+  suite through `scripts/one-suite.sh`. No competing heavy run was launched.
+  The next test-speed full validation remains reserved for the explicitly
+  authorized post-PR653 `origin/dev` candidate.
+- The tested implementation evidence is unchanged: controlled uncached tui3
+  improved from 564.32s to 402.60s (28.7%); the frozen affected report passed
+  4,385 tests with four skips, no failures, cached labels, or incomplete
+  packages; `make test-quick` and `make build` passed. `reports/READY` and
+  `reports/QUALITY_READY` remain absent.
+
+Outstanding: await the root's explicit hold release carrying PR #653's verified
+merge SHA. Then reconcile onto current `origin/dev`, retarget PR #658, validate
+the exact combined head, pass the normal gates, merge through the PR with
+expected-head protection, verify ancestry, rebuild here, and only then write
+both success markers.
