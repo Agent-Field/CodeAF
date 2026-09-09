@@ -16,7 +16,8 @@ implementation and testing here until the user changes that instruction.
 - Branch: `codex/personal-ai-backend`, also pushed to `origin`.
 - Local worktree: `/Users/santoshkumar/af-personal-ai-backend`.
 - Starting commit: `7f3ab8bf3046b83918c234cc30bf8cc224f3104a` on `dev`.
-- Draft PR: creation pending; replace this line once its number is known.
+- Draft PR: [#662](https://github.com/Agent-Field/aforge-v2/pull/662), targeting
+  `dev`. Keep it draft and unmerged.
 - This continuation currently adds documentation only. No additional backend
   capability is implemented yet beyond the merged foundation below.
 - Build this branch with `make build`; its review binary will be
@@ -197,8 +198,8 @@ to understand what was built.
 
 ## Current checkpoint and next action
 
-Only #661's foundation is implemented at this checkpoint. The new branch is
-pushed, and this handoff is being committed before the backend continuation.
+Only #661's foundation is implemented at this checkpoint. The new branch and
+handoff are pushed, and draft PR #662 holds the backend continuation.
 Next: finish runtime seam reconnaissance, choose narrow resolver/shared-context
 interfaces, and implement the first integrated backend slice. Update this
 section and the status table as those changes become real.
