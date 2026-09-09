@@ -301,14 +301,15 @@ func TestAPressOnATrayCellUnchoosesThatThing(t *testing.T) {
 	onFolderRow(t, a, "main.go")
 	drive(t, a, key(folderMarkKey))
 
-	y := chooserRowY(t, a, a.folder.geom.tray)
-	if y < 0 || len(a.folder.geom.trayCells) != 2 {
-		t.Fatalf("the tray drew at row %d with %d cells", a.folder.geom.tray, len(a.folder.geom.trayCells))
+	geom := chooserGeom(t, a)
+	y := chooserRowY(t, a, geom.tray)
+	if y < 0 || len(geom.trayCells) != 2 {
+		t.Fatalf("the tray drew at row %d with %d cells", geom.tray, len(geom.trayCells))
 	}
-	x := a.folder.geom.trayCells[0].from
+	x := geom.trayCells[0].from
 	// It lights before it acts, which is the law that what brightens is what a
 	// press takes off.
-	if got, _ := a.folderHoverColumn(x, a.folder.geom.tray); got != folderColTray || a.folder.trayHot != 0 {
+	if got, _ := a.folderHoverColumn(x, geom.tray); got != folderColTray || a.folder.trayHot != 0 {
 		t.Fatalf("the pointer over the first cell answered %q / %d", got, a.folder.trayHot)
 	}
 	drive(t, a, tea.MouseClickMsg{X: chooserX(t, a, x), Y: y, Button: tea.MouseLeft})
@@ -522,11 +523,19 @@ func TestThePreviewHidesAndTakesTheWholeSheet(t *testing.T) {
 		t.Fatalf("the wide legend reads %q", a.folder.folderHintAt(a.width))
 	}
 	drive(t, a, key(folderWideKey))
-	legend := a.folder.folderHintAt(a.width)
-	for _, want := range []string{folderPaneKey, folderWideKey, folderMarkKey} {
-		if !strings.Contains(legend, want) {
-			t.Fatalf("the legend %q does not name %s", legend, want)
+	// EVERY CHORD THE SHEET OWNS IS NAMED EXACTLY ONCE, across the two lines that
+	// carry them: the box's own placeholder and the foot row under the columns.
+	// Naming them all in both places was the wall of shortcuts the owner's review
+	// asked us to stop drawing (folderpick.go's [folderBrowseHintFields]).
+	said := a.folder.folderHintAt(a.width) + " · " + a.folder.controlLegend(a.width)
+	for _, want := range []string{folderPaneKey, folderWideKey, folderMarkKey, "esc", "enter"} {
+		if !strings.Contains(said, want) {
+			t.Fatalf("nothing on the sheet names %s: %q", want, said)
 		}
+	}
+	if strings.Contains(a.folder.folderHintAt(a.width), folderWideKey) &&
+		strings.Contains(a.folder.controlLegend(a.width), folderWideKey) {
+		t.Fatalf("%s is named twice: %q", folderWideKey, said)
 	}
 }
 
@@ -597,21 +606,22 @@ func TestTheWheelBelongsToWhicheverPaneItIsOver(t *testing.T) {
 	a, _, root := mixedLab(t)
 	openBrowse(t, a, filepath.Join(root, "here"))
 	onFolderRow(t, a, "notes.md")
-	body := chooserRowY(t, a, a.folder.geom.head+1)
+	geom := chooserGeom(t, a)
+	body := chooserRowY(t, a, geom.head+1)
 	if body < 0 {
 		t.Fatal("the sheet drew no body row")
 	}
 
 	was, _ := a.folder.here()
 	// Over the preview: the cursor stays where it is.
-	drive(t, a, tea.MouseMotionMsg{X: chooserX(t, a, a.folder.geom.pane.from+2), Y: body})
-	drive(t, a, tea.MouseWheelMsg{X: chooserX(t, a, a.folder.geom.pane.from+2), Y: body, Button: tea.MouseWheelDown})
+	drive(t, a, tea.MouseMotionMsg{X: chooserX(t, a, geom.pane.from+2), Y: body})
+	drive(t, a, tea.MouseWheelMsg{X: chooserX(t, a, geom.pane.from+2), Y: body, Button: tea.MouseWheelDown})
 	if got, _ := a.folder.here(); got != was {
 		t.Fatalf("a wheel over the preview moved the cursor to %q", got)
 	}
 	// Over the names: it walks.
-	drive(t, a, tea.MouseMotionMsg{X: chooserX(t, a, a.folder.geom.here.from+2), Y: body})
-	drive(t, a, tea.MouseWheelMsg{X: chooserX(t, a, a.folder.geom.here.from+2), Y: body, Button: tea.MouseWheelDown})
+	drive(t, a, tea.MouseMotionMsg{X: chooserX(t, a, geom.here.from+2), Y: body})
+	drive(t, a, tea.MouseWheelMsg{X: chooserX(t, a, geom.here.from+2), Y: body, Button: tea.MouseWheelDown})
 	if got, _ := a.folder.here(); got == was {
 		t.Fatal("a wheel over the names did not walk the cursor")
 	}
@@ -892,13 +902,22 @@ func TestAThingThatVanishedUnderTheConfirmSaysSo(t *testing.T) {
 	}
 }
 
-// Browsing writes a path into the filter, so placeholder-only hints disappear.
-func TestBrowserKeepsPreviewControlsVisibleWhileAPathIsTyped(t *testing.T) {
+// THE WAY OUT AND THE PREVIEW'S OWN DOOR ARE ON THE SHEET AT EVERY WIDTH, and
+// which of the two places names them is contextual.
+//
+// The foot row used to name every chord the sheet owns, at every width, which is
+// the wall of shortcuts the owner's review asked us to stop drawing. `alt+o` is
+// on the foot exactly where the preview is NOT drawn — there it is the only way
+// to read a file at all — and in the box's own placeholder where it is, because
+// the box is empty while browsing now and its placeholder is on screen.
+func TestThePreviewDoorAndTheWayOutAreOnTheSheetAtEveryWidth(t *testing.T) {
 	a, _, root := mixedLab(t)
-	openBrowse(t, a, filepath.Join(root, "here"))
-	for _, width := range []int{52, 170} {
-		rows := a.folder.rows(width, 18, a.pal, a.styler(), -1, "")
-		drawn := ansi.Strip(strings.Join(rows, "\n"))
+	for _, width := range []int{52, 100, 170} {
+		a.width, a.height = width, 32
+		a.touch()
+		openBrowse(t, a, filepath.Join(root, "here"))
+		frame, _, _ := a.frameBody()
+		drawn := ansi.Strip(frame)
 		for _, word := range []string{"alt+o", "esc"} {
 			if !strings.Contains(drawn, word) {
 				t.Fatalf("%d columns hide %q: %s", width, word, drawn)

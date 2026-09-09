@@ -252,8 +252,9 @@ func TestTheBackdropNeitherScrollsNorLights(t *testing.T) {
 		t.Fatalf("the pointer over the backdrop lit %v", a.hot.kind)
 	}
 	// And over the sheet's own rows it lights the sheet.
-	drive(t, a, tea.MouseMotionMsg{X: chooserX(t, a, a.folder.geom.here.from + 2),
-		Y: chooserRowY(t, a, a.folder.geom.head)})
+	geom := chooserGeom(t, a)
+	drive(t, a, tea.MouseMotionMsg{X: chooserX(t, a, geom.here.from + 2),
+		Y: chooserRowY(t, a, geom.head)})
 	if a.hot.kind != hoverOverlay {
 		t.Fatalf("the pointer over the columns lit %v", a.hot.kind)
 	}
@@ -430,5 +431,159 @@ func TestALatePreviewCannotMisrouteAPressInThePane(t *testing.T) {
 	drive(t, a, tea.MouseClickMsg{X: x, Y: body, Button: tea.MouseLeft})
 	if a.folder.cols.dir != at {
 		t.Fatalf("a late preview walked the columns to %s", a.folder.cols.dir)
+	}
+}
+
+// ── the backdrop, on BOTH sides ─────────────────────────────────────────────
+
+// THE SHEET IS WRITTEN INTO THE FADED FRAME, NOT OVER THE ROW.
+//
+// It used to be pasted as `spaces + sheet`, which dropped everything to the
+// RIGHT of it: a window with a rail or a wide status line went blank down one
+// side while the same rows on the left stayed faded. A backdrop dim on one side
+// and absent on the other is not a backdrop.
+func TestTheBackdropSurvivesOnBothSidesOfTheSheet(t *testing.T) {
+	a, _, root := modalLab(t)
+	// A status line is the widest thing this frame draws and it reaches the right
+	// edge, so its rows are the ones that show the defect.
+	openBrowse(t, a, filepath.Join(root, "work"))
+	over := frameOf(t, a)
+	win := a.folder.win
+
+	a.folder.close()
+	a.touch()
+	under := frameOf(t, a)
+
+	if len(over) != len(under) {
+		t.Fatalf("the sheet changed the frame's height: %d against %d", len(over), len(under))
+	}
+	for at := win.top; at < win.top+win.height && at < len(over); at++ {
+		if ansi.StringWidth(over[at]) > a.width {
+			t.Fatalf("row %d runs past the frame: %q", at, over[at])
+		}
+		// Whatever the frame drew past the sheet's right edge is still there.
+		tail := func(row string) string {
+			if ansi.StringWidth(row) <= win.left+win.width {
+				return ""
+			}
+			return strings.TrimRight(ansi.Cut(row, win.left+win.width, a.width), " ")
+		}
+		if want, got := tail(under[at]), tail(over[at]); want != got {
+			t.Fatalf("row %d lost the frame to the right of the sheet: %q became %q", at, want, got)
+		}
+	}
+}
+
+// ── the type marks ──────────────────────────────────────────────────────────
+
+// THE MARK IS ONE CELL, AND IT IS ONE CELL AT BOTH FLOORS.
+//
+// A row's columns line up because every lead is the same width. A Nerd Font
+// private-use codepoint is tofu on a font that does not carry it and an emoji is
+// two cells on some terminals and one on others; either way the sizes stop
+// lining up down the column (foldertype.go states the rule).
+func TestEveryTypeMarkIsOneCellAtBothFloors(t *testing.T) {
+	names := []string{"src", "main.go", "notes.md", "shot.png", "clip.mp4",
+		"bundle.tar.gz", "Makefile", ".gitignore"}
+	for _, ascii := range []bool{false, true} {
+		pal := newThemedPalette(tokens.TrueColor, ascii, themeDark, nil)
+		for _, name := range names {
+			for _, dir := range []bool{false, true} {
+				got := folderTypeGlyph(pal, name, dir)
+				if w := ansi.StringWidth(got); w != 1 {
+					t.Fatalf("ascii=%v %q dir=%v draws %q at %d cells", ascii, name, dir, got, w)
+				}
+				if ascii {
+					for _, r := range got {
+						if r > 127 {
+							t.Fatalf("the ascii floor drew %q for %q", got, name)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// AND THE KIND COMES FROM THE NAME, cheaply, with a dotfile answered before
+// filepath.Ext gets to call the whole of `.gitignore` an extension.
+func TestTheTypeOfAThingIsReadFromItsName(t *testing.T) {
+	for name, want := range map[string]folderKind{
+		"main.go":     folderKindSource,
+		"go.mod":      folderKindSource,
+		"config.yaml": folderKindSource,
+		".gitignore":  folderKindSource,
+		"README.md":   folderKindText,
+		"server.log":  folderKindText,
+		"paper.pdf":   folderKindText,
+		"shot.PNG":    folderKindPicture,
+		"clip.mp4":    folderKindMedia,
+		"song.flac":   folderKindMedia,
+		"src.tar.gz":  folderKindBundle,
+		"Makefile":    folderKindPlain,
+		"aforge":      folderKindPlain,
+	} {
+		if got := folderKindOf(name); got != want {
+			t.Errorf("%q is kind %v, want %v", name, got, want)
+		}
+	}
+}
+
+// THE ROW THE KEYBOARD IS ON, THE ROW THE POINTER IS ON AND THE ROWS A PERSON
+// HAS CHOSEN ARE THREE DIFFERENT STATEMENTS, and the band under the first two
+// is the COLUMN's width and never the terminal's.
+func TestSelectionHoverAndMarksAreToldApart(t *testing.T) {
+	a, _, root := modalLab(t)
+	a.pal = newThemedPalette(tokens.TrueColor, false, themeDark, nil)
+	openBrowse(t, a, filepath.Join(root, "work"))
+
+	rows := chooserRows(t, a, -1, "")
+	geom := a.folder.geom
+	cursorRow := geom.head + (a.folder.cols.cursor - a.folder.cols.top)
+	otherRow := cursorRow + 1
+	if otherRow >= geom.head+geom.body {
+		t.Fatal("the fixture has too few rows to tell two of them apart")
+	}
+	// The selected row carries a ground; the row under it does not.
+	if rows[cursorRow] == ansi.Strip(rows[cursorRow]) {
+		t.Fatalf("the selected row is unpainted: %q", rows[cursorRow])
+	}
+	// Hovering another row paints THAT one differently, and does not move the
+	// selection.
+	hovered := chooserRows(t, a, otherRow, folderColHere)
+	if hovered[otherRow] == rows[otherRow] {
+		t.Fatalf("the pointer over row %d lit nothing", otherRow)
+	}
+	if hovered[cursorRow] != rows[cursorRow] {
+		t.Fatal("hovering one row repainted the selected one")
+	}
+	// THE BAND IS THE MIDDLE COLUMN'S WIDTH AND NOTHING WIDER. A stripe across
+	// the whole frame would light the ancestry and the preview beside a row that
+	// has nothing to do with either.
+	here := folderDivide(a.contextInner(), a.folder.pane).here
+	for _, banded := range []string{
+		folderCellBand("name", here, a.pal, true, false),
+		folderCellBand("name", here, a.pal, false, true),
+	} {
+		if got := ansi.StringWidth(banded); got != here {
+			t.Fatalf("a banded row is %d cells wide, want the column's %d", got, here)
+		}
+	}
+	// And what is under the pane's own cells is the same text on both rows.
+	if geom.pane.pressable() {
+		cut := func(row string) string {
+			return plain(ansi.Cut(row, geom.pane.from, geom.pane.to))
+		}
+		if cut(rows[cursorRow]) != cut(rows[otherRow]) {
+			t.Fatalf("the selection changed the preview beside it:\n%q\n%q",
+				cut(rows[cursorRow]), cut(rows[otherRow]))
+		}
+	}
+	// And a MARK survives moving off the row, which a ground cannot.
+	drive(t, a, key(folderMarkKey))
+	drive(t, a, key("down"))
+	marked := plain(strings.Join(chooserRows(t, a, -1, ""), "\n"))
+	if !strings.Contains(marked, folderMarkGlyph(a.pal)) {
+		t.Fatalf("the mark did not survive the cursor leaving it:\n%s", marked)
 	}
 }

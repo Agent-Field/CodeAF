@@ -31,6 +31,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/reltime"
 )
 
 // placeDoor is WHICH ROAD a directory came in by. It is carried rather than
@@ -840,6 +841,10 @@ func (a *app) askFolderKids() tea.Cmd {
 
 // The three facts, and the words they are said in. They are constants because
 // each is quoted in the manual exactly as it is spelled here.
+// folderChangedWord leads a file's modification time on the action row. It is a
+// constant because the manual quotes it exactly as it is spelled here.
+const folderChangedWord = "changed "
+
 const (
 	folderRepoWord  = "repository"
 	folderPlainWord = "folder"
@@ -861,8 +866,28 @@ const folderAgentsFile = "AGENTS.md"
 // draw a zero, a blank or an "unknown".
 func folderFactsOf(dir string) []string {
 	info, err := os.Stat(dir)
-	if err != nil || !info.IsDir() {
+	if err != nil {
 		return nil
+	}
+	if !info.IsDir() {
+		// A FILE'S FACTS ARE THE TWO A CHOOSER CAN ANSWER: how big it is, and when
+		// it last changed. They ride the same right end of the action row a
+		// directory's do [owner review 2026-09-08 §4: metadata answers the SELECTED
+		// item rather than cluttering every row], and neither is drawn where the
+		// disk had nothing to say — a zero-byte file says its size and a file with
+		// no modification time says nothing at all [design-law §EMPTINESS].
+		//
+		// IT IS THE MODIFICATION TIME AND IT IS NAMED AS ONE. It is not "last
+		// opened": atime is a lie on every filesystem mounted `relatime`, and
+		// aforge keeps no record of opening a file it merely previewed.
+		var lines []string
+		if size := byteWord(int(info.Size())); size != "" {
+			lines = append(lines, size)
+		}
+		if when := reltime.Short(info.ModTime(), time.Now()); when != "" {
+			lines = append(lines, folderChangedWord+when)
+		}
+		return lines
 	}
 	var lines []string
 	if branch, dirty, ok := folderRepoOf(dir); ok {

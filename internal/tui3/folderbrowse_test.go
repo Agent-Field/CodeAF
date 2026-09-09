@@ -107,6 +107,21 @@ func chooserX(t *testing.T, a *app, x int) int {
 	return a.folder.win.bodyX + x
 }
 
+// chooserGeom paints the sheet and answers the hit map that paint wrote.
+//
+// READ THE GEOMETRY ONLY THROUGH THIS. [folderGeom] is recorded BY the draw, so
+// `a.folder.geom` straight after a keystroke is whatever the last frame left
+// behind — the zero value on a sheet this size has never drawn, and -1 for the
+// rows that were not drawn at all. Two tests read a `-1` tray that way and
+// asked the frame for row -1. Go's argument order makes it easy to do by
+// accident: `chooserRowY(t, a, a.folder.geom.tray)` reads the stale field
+// before the helper's own paint refreshes it.
+func chooserGeom(t *testing.T, a *app) folderGeom {
+	t.Helper()
+	a.frameBody()
+	return a.folder.geom
+}
+
 // ── the columns ─────────────────────────────────────────────────────────────
 
 // THE THIRD REGION IS A PREVIEW OF THE THING UNDER THE CURSOR, and on a folder
@@ -246,11 +261,12 @@ func TestTheColumnsWalkUnderThePointer(t *testing.T) {
 	// THE GEOMETRY IS READ AFTER A PAINT AND NEVER BEFORE ONE: it is what the
 	// last layout put on the screen, which is exactly what the pointer resolves
 	// against.
-	body := chooserRowY(t, a, a.folder.geom.head+1)
+	geom := chooserGeom(t, a)
+	body := chooserRowY(t, a, geom.head+1)
 	if body < 0 {
 		t.Fatal("the sheet drew no second body row")
 	}
-	x := chooserX(t, a, a.folder.geom.here.from+folderLeadCells)
+	x := chooserX(t, a, geom.here.from+folderLeadCells)
 	// The first press selects `deep` and does NOT open it.
 	drive(t, a, tea.MouseClickMsg{X: x, Y: body, Button: tea.MouseLeft})
 	if a.folder.cols.dir != filepath.Join(root, "here") {
@@ -265,9 +281,11 @@ func TestTheColumnsWalkUnderThePointer(t *testing.T) {
 		t.Fatalf("a second press on the selected row landed on %s", a.folder.cols.dir)
 	}
 
-	// And back out through the parent column.
-	up := chooserRowY(t, a, a.folder.geom.head)
-	drive(t, a, tea.MouseClickMsg{X: a.folder.geom.up.from, Y: up, Button: tea.MouseLeft})
+	// And back out through the parent column. The geometry is read again because
+	// the walk repainted the sheet.
+	geom = chooserGeom(t, a)
+	up := chooserRowY(t, a, geom.head)
+	drive(t, a, tea.MouseClickMsg{X: chooserX(t, a, geom.up.from), Y: up, Button: tea.MouseLeft})
 	if a.folder.cols.dir != filepath.Join(root, "here") {
 		t.Fatalf("a press in the parent column landed on %s", a.folder.cols.dir)
 	}
@@ -280,7 +298,8 @@ func TestTheColumnsWalkUnderThePointer(t *testing.T) {
 func TestThePointerLightsTheColumnItIsActuallyOver(t *testing.T) {
 	a, _, root := browseLab(t)
 	openBrowse(t, a, filepath.Join(root, "here"))
-	geom, row := a.folder.geom, a.folder.geom.head+1
+	geom := chooserGeom(t, a)
+	row := geom.head + 1
 
 	for _, probe := range []struct {
 		where string
@@ -326,7 +345,7 @@ func TestTheWheelWalksTheBrowserOverItsOwnRows(t *testing.T) {
 	openBrowse(t, a, filepath.Join(root, "here"))
 	before, _ := a.folder.here()
 
-	y := chooserRowY(t, a, a.folder.geom.head)
+	y := chooserRowY(t, a, chooserGeom(t, a).head)
 	drive(t, a, tea.MouseWheelMsg{X: chooserX(t, a, 4), Y: y, Button: tea.MouseWheelDown})
 	after, _ := a.folder.here()
 	if after == before {

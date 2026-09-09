@@ -1177,6 +1177,38 @@ func (f *folderPick) upText(row, room int, pal palette) string {
 // deliberately the same two tiers the preview pane's own folder listing uses
 // ([previewNameAndSize]), so the sheet reads as one thing.
 func (f *folderPick) hereText(row, room int, pal palette, hovered bool) string {
+	return folderCellBand(f.hereInk(row, room, pal), room, pal,
+		row+f.cols.top == f.cols.cursor, hovered)
+}
+
+// folderCellBand puts the ladder's own grounds under a row of the middle
+// column — and under THAT COLUMN'S CELLS AND NOTHING WIDER.
+//
+// THE THREE STATES ARE THREE DIFFERENT THINGS AND THEY ARE TOLD APART. The row
+// the keyboard is on wears the SELECTED step, which is ungated on the linear
+// tier because "which row am I on" is a fact for every reader (styles.go); the
+// row the POINTER is on wears the quieter cursor step, and only where it is not
+// already the selected one, so hover never speaks over selection. What a person
+// has CHOSEN is neither of these — it is the persistent mark in the lead, and it
+// survives moving off the row, which a ground cannot.
+//
+// AND THE BAND IS THE COLUMN'S WIDTH, NEVER THE TERMINAL'S. A stripe across the
+// whole frame would light the ancestry and the preview beside a row that has
+// nothing to do with either [owner review 2026-09-08 §1].
+func folderCellBand(painted string, room int, pal palette, cursor, hovered bool) string {
+	cell := folderCell(painted, room)
+	switch {
+	case cursor:
+		return pal.selected(cell, room)
+	case hovered:
+		return pal.cursor(cell, room)
+	}
+	return cell
+}
+
+// hereInk is one row of the middle column's INK, before any ground goes under
+// it.
+func (f *folderPick) hereInk(row, room int, pal palette) string {
 	at := row + f.cols.top
 	if at < 0 || at >= f.cols.here.rows() {
 		if row == 0 && f.cols.here.rows() == 0 {
@@ -1213,16 +1245,15 @@ func (f *folderPick) hereText(row, room int, pal palette, hovered bool) string {
 	} else {
 		lead += "  "
 	}
-	body := folderNameAndSize(pal, name, size, dir, at == f.cols.cursor, room-folderLeadCells)
-	if hovered && at != f.cols.cursor {
-		body = pal.cursor(body, 0)
-	}
-	return lead + body
+	// AND THE THIRD PAIR IS WHAT KIND OF THING IT IS. It is dim, one cell and a
+	// space, and it is a SHAPE rather than a hue [folderTypeGlyph says why].
+	lead += pal.dim(folderTypeGlyph(pal, name, dir) + " ")
+	return lead + folderNameAndSize(pal, name, size, dir, at == f.cols.cursor, room-folderLeadCells)
 }
 
-// folderLeadCells is what the lead above costs: the cursor mark and the choice
-// mark, each with its own space.
-const folderLeadCells = 4
+// folderLeadCells is what the lead above costs: the cursor mark, the choice
+// mark and the type mark, each with its own space.
+const folderLeadCells = 6
 
 // folderNameAndSize lays one row out: the name, then whatever space is left,
 // then the size against the right edge — the reference screenshot's own
@@ -1627,20 +1658,19 @@ var folderHintFields = []rowField{
 	rowSay("enter adds"), rowSay("esc"),
 }
 
-// folderBrowseHintFields is the same line while the columns are up, where the
-// keys mean something else entirely and saying so is the only honest legend.
+// folderBrowseHintFields is what the SEARCH BOX says while the columns are up:
+// what typing in it does, and the two chords the foot row does not carry.
 //
-// THE PANE'S OWN KEYS ARE ON IT BECAUSE THEY HAVE NOWHERE ELSE TO BE. Every
-// chord on this surface keeps a visible, self-teaching door beside it
-// (docs/DESIGN-LANGUAGE.md), and a preview that could be hidden and expanded by
-// two keys nobody was told about would be two chords with no door at all. The
-// fields go from the RIGHT, whole, on a frame too narrow for all of them
-// (rowfit.go), so the line never draws a key spelled `alt+…`.
+// IT IS FOUR CLAUSES AND IT USED TO BE TEN. The two lines together — this
+// placeholder and [folderPick.controlLegend] under the columns — name every
+// chord the sheet owns exactly once, which is docs/DESIGN-LANGUAGE.md's rule
+// that a chord keeps a visible door beside it; naming them all in BOTH places
+// was the wall of shortcuts the owner's 2026-09-08 review asked us to stop
+// drawing. The fields go from the RIGHT, whole, on a frame too narrow for all of
+// them (rowfit.go), so the line never draws a key spelled `alt+…`.
 var folderBrowseHintFields = []rowField{
 	rowSay("search folders and files"), rowSay("or type a path"),
-	rowSay("←→ walk"), rowSay("↑↓"), rowSay("alt+m chooses"),
-	rowSay("alt+p preview"), rowSay("alt+o wide"), rowSay("alt+h hidden"),
-	rowSay("enter"), rowSay("esc"),
+	rowSay("alt+p preview"), rowSay("alt+h hidden"),
 }
 
 // folderWideHintFields is the legend with the preview alone on the sheet, where
@@ -1669,12 +1699,25 @@ func (f *folderPick) controlLegend(room int) string {
 	if f.pane == folderPaneWide {
 		return rowTail([]rowField{rowSay("esc cancel"), rowSay("alt+o back"), rowSay("↑↓ scroll"), rowSay("←→ slide")}, room)
 	}
-	// `ctrl+u search` LEADS THE OPTIONAL HALF OF THIS LINE, because it is the one
-	// door on the sheet a person cannot guess. The box holds the path while the
-	// columns are up, so the way back to the remembered places, the projects and
-	// the index under `~` is to clear it — and a search that can only be reached
-	// by a gesture nobody was told about is a search that is not there
-	// (folderplace.go's [app.openContextPick] states why both doors now open on
-	// the tree rather than on that list).
-	return rowTail([]rowField{rowSay("esc cancel"), rowSay("ctrl+u search"), rowSay("alt+o preview"), rowSay("alt+m choose"), rowSay("←→ walk"), rowSay("alt+p hide"), rowSay("shift+arrows scroll"), rowSay("alt+h hidden")}, room)
+	// FIVE CLAUSES AND NOT EIGHT. This row used to name every chord the sheet
+	// owns, which made the one line under the columns a wall of shortcuts that
+	// read as noise and taught nothing [owner review 2026-09-08 §5]. What is left
+	// is the four things a person actually reaches for and the way out; the rest
+	// live in the box's own placeholder, which is on screen whenever the box is
+	// empty — which is now its resting state — and in the manual.
+	// THE PREVIEW'S DOOR IS ALWAYS NAMED AND THE WORD FOR IT IS CONTEXTUAL. On a
+	// narrow frame the pane has been given up for the names (folderpane.go) and
+	// `alt+o` is the only way to read a file at all; on a wide one it is the way to
+	// give the file the whole sheet. Either way it is a door a person cannot guess,
+	// and docs/DESIGN-LANGUAGE.md's rule is that every chord keeps a visible one
+	// beside it — so it is one clause here rather than a clause that comes and
+	// goes as the terminal is dragged.
+	door := "alt+o preview"
+	if f.paneWide(room) {
+		door = "alt+o wide"
+	}
+	return rowTail([]rowField{
+		rowSay("esc cancel"), rowSay("enter add"), rowSay(door),
+		rowSay("←→ walk"), rowSay("alt+m choose"), rowSay("ctrl+u search"),
+	}, room)
 }

@@ -107,11 +107,22 @@ Browsing draws three successive regions, the way a file browser does:
   and its own scroll so the folders ABOVE the one you are in are on screen too. It is narrow
   on purpose: it is there to say where you are standing, not to be read down.
 - **middle** — what is inside where you are: the subdirectories first, each with a trailing
-  `/`, then the files with their sizes right-aligned. The cursor lives here.
-- **right** — a **preview of the thing under the cursor**. On a folder that is the folder's
-  own contents, so the next level is on screen before you walk into it. On a file it is the
-  file: source with syntax colour and dim line numbers, a picture drawn in the terminal's
-  own cells, a PDF's text.
+  `/`, then the files with their sizes right-aligned. The cursor lives here, and the row it
+  is on wears a band across **this column only** — never a stripe across the whole window.
+
+  Every row leads with a **one-cell mark saying what kind of thing it is**: `▸` a folder,
+  `◆` source or configuration, `▤` text and documents, `▣` a picture, `▶` audio or video,
+  `▦` an archive, `·` anything else. On a terminal that cannot draw those the same seven
+  are `>` `*` `=` `#` `+` `%` `.` — one character either way, so the sizes stay lined up
+  down the column. The mark is a **shape and not a colour**: nothing here identifies a file
+  by hue alone, and the two ink tiers still mean exactly what they meant, a folder in the
+  body ink with its slash and a file quieter with its size.
+- **right** — a **preview of the thing under the cursor**, with the same type marks on it.
+  On a folder that is the folder's own contents, so the next level is on screen before you
+  walk into it. On a file it is the file: source with syntax colour and dim line numbers, a
+  picture drawn in the terminal's own cells, a PDF's text. The source is coloured by lexing
+  the **whole file at once**, so a comment or a string that runs over several lines is one
+  comment or one string all the way down.
 
 The path above them is a **breadcrumb**, and every segment of it is clickable: press `code`
 and you are back in `~/code` with the cursor on the folder you just left. On a narrow frame
@@ -168,7 +179,18 @@ Hidden folders are out of the way rather than out of reach. Two ways in:
 - **Typing a name that starts with a dot** shows them by itself. `~/.con` finds `.config`
   without your having to think about a toggle first.
 
+The right-hand preview of a folder keeps the same rule as the columns, so what it lists is
+what you can walk into: `.git`, `node_modules` and `vendor` are absent from it until `alt+h`
+is on, and never shown there as a row that would not open.
+
 ## The action row — add this folder
+
+The last row of the sheet is the one thing on it that **chooses** anything, and its right
+end carries what is known about the **thing under the cursor** — `repository · main · clean`
+or `folder · 214 files` for a directory, and `7.7 KB · changed 3d` for a file. Nothing is
+drawn where the disk had nothing to say, and `changed` is the file's modification time: it
+is not "last opened", which no filesystem here answers honestly and aforge keeps no record
+of.
 
 The last row of the sheet is the one thing on it that **chooses** anything:
 
@@ -625,12 +647,19 @@ putting changes into a folder is not available over --host yet — the conversat
 
 ## Finding preview controls while a path is typed
 
-The sheet keeps a control legend above its action row. `esc cancel` closes it;
-`ctrl+u search` empties the box and puts the known folders back in front of you;
-`alt+o preview` opens the full preview at narrow widths. `alt+m choose` marks an
-item. Wider frames also name walking, hiding the preview, scrolling it and
-showing hidden files. A terminal with too few rows gives the legend's row back to
-the file list, and `esc · cancel` stays on the sheet's bottom edge either way.
+Every chord the sheet owns is named exactly once, across **two lines**, so neither is a
+wall of shortcuts.
+
+- The **foot row** above the action carries what you reach for: `esc cancel`, `enter add`,
+  `←→ walk`, `alt+m choose`, `ctrl+u search`, and the preview's own door — spelled
+  `alt+o preview` on a frame too narrow to draw the preview beside the list, and
+  `alt+o wide` on one that is already showing it.
+- The **box's own placeholder**, on screen whenever the box is empty, says what typing does
+  and carries the two remaining chords: `search folders and files · or type a path ·
+  alt+p preview · alt+h hidden`.
+
+A terminal with too few rows gives the foot row back to the file list, and `esc · cancel`
+stays on the sheet's bottom edge either way.
 
 ## Browse while keeping an unsent chat draft
 

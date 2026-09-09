@@ -153,6 +153,14 @@ func folderDivide(width int, pane folderPane) folderLayout {
 // preview instead.
 const folderHereWant = 56
 
+// paneWide reports whether the preview is DRAWN BESIDE THE LIST at this width.
+// It is the question the foot row asks before it decides whether to name the
+// preview's own door ([folderPick.controlLegend]), and it takes the legend's own
+// room rather than the sheet's — one cell of arithmetic in one place.
+func (f *folderPick) paneWide(room int) bool {
+	return folderDivide(room+folderPadCells, f.pane).pane > 0
+}
+
 // paneShown reports whether the preview has any cells on this frame, which is
 // what decides whether the sheet asks for a preview at all.
 func (f *folderPick) paneShown(width int) bool {

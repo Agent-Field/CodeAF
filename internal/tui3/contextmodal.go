@@ -148,9 +148,33 @@ func (a *app) contextModalOver(under []string, width, height int) ([]string, int
 		if at < 0 || at >= len(out) {
 			continue
 		}
-		out[at] = strings.Repeat(" ", win.left) + line
+		out[at] = contextInlay(out[at], line, win.left, win.left+win.width, width)
 	}
 	return out, caretX, caretY
+}
+
+// contextInlay writes one row of the sheet INTO a faded row, keeping whatever
+// the frame drew on either side of it.
+//
+// IT IS NOT A PAD AND A LINE, and the difference was a real defect: pasting
+// `spaces + sheet` over the row dropped everything to the RIGHT of the sheet, so
+// a window with a task rail or a wide status line went blank down one side while
+// the same rows on the left stayed faded. A backdrop that is dim on one side and
+// absent on the other is not a backdrop — and it is the layer this whole file
+// claims to be drawing.
+func contextInlay(under, sheet string, from, to, width int) string {
+	left := ansi.Truncate(under, from, "")
+	if gap := from - ansi.StringWidth(left); gap > 0 {
+		left += strings.Repeat(" ", gap)
+	}
+	// The tail is what the row held past the sheet's right edge, cut at the same
+	// cell the sheet ends on. ansi.Cut keeps the paint of the span it takes, so
+	// the faded ink on that side survives.
+	right := ""
+	if to < width {
+		right = ansi.Cut(under, to, width)
+	}
+	return left + sheet + right
 }
 
 // contextSheet draws the sheet and records where every part of it landed.

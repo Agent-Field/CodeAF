@@ -27,6 +27,7 @@ package tui3
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -197,6 +198,8 @@ func previewTextRows(pal palette, st *tokens.Styler, pv filePreview, box preview
 	if pal.linear {
 		lang = ""
 	}
+	// The whole file, painted once and memoised against its own identity.
+	ink := previewPainted(pal, st, pv)
 	out := make([]string, 0, last-top)
 	for at := top; at < last; at++ {
 		// SCRUBBED AGAIN, AND ON PURPOSE. [previewLines] already did this and is
@@ -206,27 +209,26 @@ func previewTextRows(pal palette, st *tokens.Styler, pv filePreview, box preview
 		// holding it is a law with a caller-shaped hole in it. It costs a string
 		// walk against the highlighter's sixty microseconds a row.
 		line := drawableLine(pv.Lines[at])
-		if box.Left > 0 {
-			// The clip is by CELLS, not by bytes: a pane scrolled four cells past
-			// a line of Japanese must land between characters and not inside one.
-			line = ansi.TruncateLeft(line, box.Left, "")
-		}
-		fitted := fit(line, text)
 		painted := ""
 		switch {
-		case strings.TrimSpace(fitted) == "":
+		case strings.TrimSpace(line) == "":
 			// A blank line is still a row — dropping them would close the gaps a
 			// person reads a file's structure by — and it is a row with nothing
 			// in it to highlight.
-			painted = pal.dim(fitted)
-		case lang == "":
-			painted = pal.dim(fitted)
+			painted = pal.dim(previewClip(line, box.Left, text))
+		case lang == "" || at >= len(ink):
+			painted = pal.dim(previewClip(line, box.Left, text))
 		default:
-			// [codeTier] is the same quiet grey an opened `read` wears, so a
-			// preview and a tool expansion read as the same kind of block, and
-			// [prose.HighlightLine] lights up only where the lexer actually found
-			// something.
-			painted = prose.HighlightLine(st, fitted, lang, codeTier)
+			// THE LINE IS PAINTED AS PART OF THE WHOLE FILE AND CLIPPED AFTERWARDS,
+			// which is the opposite order to the one this loop used to keep and it
+			// is the order that is CORRECT rather than merely cheap. Fitting first
+			// let the highlighter be handed a string that already fit — but it also
+			// handed it ONE LINE, and a lexer given one line of a block comment or
+			// a raw string re-lexes it from nothing and colours the middle of
+			// somebody's comment as keywords [prose.HighlightBlock states this at
+			// length]. The clip is done with ansi's own escape-aware truncation, so
+			// nothing is measured through a sequence.
+			painted = previewClip(ink[at], box.Left, text)
 		}
 		if gutter > 0 {
 			painted = previewNumber(pal, at+1, gutter) + painted
@@ -234,6 +236,61 @@ func previewTextRows(pal palette, st *tokens.Styler, pv filePreview, box preview
 		out = append(out, painted)
 	}
 	return out
+}
+
+// previewClip slides one painted row sideways and cuts it to the pane, through
+// ansi's own escape-aware truncation — a clip that counted bytes would land
+// inside a sequence and put the rest of the file's colour on the screen.
+//
+// The slide is by CELLS, not by bytes: a pane scrolled four cells past a line of
+// Japanese must land between characters and not inside one.
+func previewClip(painted string, left, room int) string {
+	if left > 0 {
+		painted = ansi.TruncateLeft(painted, left, "")
+	}
+	return fit(painted, room)
+}
+
+// previewInk is ONE FILE'S SOURCE, PAINTED WHOLE, so the lexer sees the file
+// rather than a row of it ([prose.HighlightBlock] says why that matters).
+//
+// ONE ENTRY IS THE WHOLE CACHE, exactly as it is for [previewCanvas] and for the
+// same reason: one pane draws one file, so a second slot would never be read.
+// The key is everything that decides the paint — which file at what size and
+// time, which language, and which painter — so a file rewritten under the cursor
+// is repainted and a re-derived palette does not leave stale ink behind.
+//
+// It is guarded because previews are read on worker goroutines even though this
+// paint runs on the model's; the lock is held across the paint, which is one
+// file's worth of lexing at most and only on the frame the file first appears.
+var previewInk struct {
+	mu   sync.Mutex
+	key  string
+	kept []string
+}
+
+func previewPainted(pal palette, st *tokens.Styler, pv filePreview) []string {
+	if pv.Lang == "" || len(pv.Lines) == 0 || pal.linear {
+		return nil
+	}
+	// The FIRST LINE is in the key as well as the identity, because two previews
+	// can share a path, a size and a line count in a test fixture and must not
+	// share a paint.
+	first := ""
+	if len(pv.Lines) > 0 {
+		first = pv.Lines[0]
+	}
+	key := fmt.Sprintf("%p|%d|%v|%s|%s|%d|%d|%d|%s",
+		st, pal.profile, pal.ascii, pv.Lang, pv.Key.Path,
+		pv.Key.Bytes, pv.Key.Mod, len(pv.Lines), first)
+	previewInk.mu.Lock()
+	defer previewInk.mu.Unlock()
+	if key == previewInk.key && previewInk.kept != nil {
+		return previewInk.kept
+	}
+	previewInk.key = key
+	previewInk.kept = prose.HighlightBlock(st, strings.Join(pv.Lines, "\n"), pv.Lang, codeTier)
+	return previewInk.kept
 }
 
 // previewNumber is one subdued line number, right-aligned in its gutter with the
@@ -334,10 +391,20 @@ func previewFolderRows(pal palette, pv filePreview, box previewBox) []string {
 		if !entry.Dir {
 			size = byteWord(int(entry.Bytes))
 		}
-		out = append(out, previewNameAndSize(pal, name, size, entry.Dir, box.Width))
+		// THE SAME TYPE MARK THE LIST BESIDE IT WEARS (foldertype.go). The two
+		// columns show the same kind of thing and a person's eye crosses between
+		// them constantly; two alphabets for one fact would be the sheet arguing
+		// with itself.
+		lead := pal.dim(folderTypeGlyph(pal, name, entry.Dir) + " ")
+		out = append(out, lead+previewNameAndSize(pal, name, size, entry.Dir,
+			max(box.Width-previewLeadCells, 1)))
 	}
 	return out
 }
+
+// previewLeadCells is what the type mark costs a folder row over here: the mark
+// and the space after it.
+const previewLeadCells = 2
 
 // previewNameAndSize lays one folder row out: the name, then whatever space is
 // left, then the size against the right edge.

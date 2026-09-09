@@ -416,6 +416,14 @@ func loadFolderPreview(ctx context.Context, key previewKey, hidden bool) filePre
 		if !hidden && strings.HasPrefix(name, ".") {
 			continue
 		}
+		// THE PRUNING RULE IS THE COLUMNS' RULE. A row the middle column will
+		// never hold is a row this pane must not draw either: a press on it
+		// walks into this directory and asks the columns to seat the cursor on
+		// a name they pruned, which lands on whatever happens to be first. One
+		// list of names, one rule for it ([skipDirs], folderfiles.go).
+		if !hidden && entry.IsDir() && skipDirs[name] {
+			continue
+		}
 		rows = append(rows, previewEntry{Name: name, Dir: entry.IsDir()})
 	}
 	// Directories first, then files, each half by name. It is the order Finder,

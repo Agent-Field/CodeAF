@@ -239,6 +239,63 @@ func HighlightLine(s *tokens.Styler, src, lang string, tier tokens.Token) string
 	return b.String()
 }
 
+// HighlightBlock paints a WHOLE file the way [HighlightLine] paints one row —
+// one painted string per source line, the caller's tier everywhere the lexer
+// found nothing — and it exists because a line is not a unit chroma can reason
+// about.
+//
+// LEXING LINE BY LINE GETS MULTI-LINE CONSTRUCTS WRONG, and it gets them wrong
+// in the most visible way there is. A Go raw string, a C block comment, a
+// docstring in Python: handed to the lexer one line at a time, the opening line
+// is a string and the three under it are re-lexed from nothing — so the middle
+// of a comment is coloured as keywords and operators, which is a claim about
+// somebody's source that is simply false. internal/tui3's file preview draws
+// exactly those files and was doing exactly that.
+//
+// The whole text goes through the lexer ONCE and the rows come back split by
+// [highlightPieces], which already handles a token value that spans rows. The
+// caller is expected to memoise the answer against the file's own identity: this
+// is about sixty microseconds a row and a preview is bounded at a few hundred of
+// them, which is a cost worth paying once per file and not once per frame.
+//
+// A caller that hands over more lines than it will draw gets them all back, in
+// file order, so the row it wants is the row at that index. Nothing here
+// truncates, clips or measures — the caller owns its rectangle, exactly as it
+// does with [HighlightLine].
+func HighlightBlock(s *tokens.Styler, src, lang string, tier tokens.Token) []string {
+	p := newPainter(s)
+	lines := strings.Split(scrubCode(src), "\n")
+	if p.plain() || !tokens.CodeHighlighting(p.profile) || lang == "" {
+		out := make([]string, len(lines))
+		for i, line := range lines {
+			out[i] = p.paint(line, style{tok: tier})
+		}
+		return out
+	}
+	rows := highlightPieces(p, src, lang, style{tok: tier, code: true})
+	out := make([]string, len(lines))
+	for i, line := range lines {
+		if i >= len(rows) {
+			out[i] = p.paint(line, style{tok: tier})
+			continue
+		}
+		var b strings.Builder
+		b.Grow(len(line) + 48)
+		for _, pc := range rows[i] {
+			if pc.st.slot == tokens.CodeText {
+				// Nothing the lexer wanted to name keeps the caller's own voice,
+				// which is [HighlightLine]'s rule and is what makes a preview read
+				// as a quiet block with colour in it rather than as a fenced one.
+				b.WriteString(p.paint(pc.text, style{tok: tier}))
+				continue
+			}
+			b.WriteString(p.paint(pc.text, pc.st))
+		}
+		out[i] = b.String()
+	}
+	return out
+}
+
 // LexerName is chroma's own name for the language a FILE is written in — the
 // word [HighlightLine] takes as its lang — or "" when nothing in chroma's
 // registry claims that filename.
