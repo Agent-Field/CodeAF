@@ -303,6 +303,42 @@ func TestTheClosingTreeAccountIncludesFilesRegisteredDuringShutdown(t *testing.T
 	}
 }
 
+// The watcher may already have grounded the files it saw before shutdown. A
+// refresh adds only the late paths to that prose while keeping the full final
+// record, or the ordinary file footer is repeated at the close.
+func TestTheShutdownRefreshDoesNotGroundAnArtifactTwice(t *testing.T) {
+	workspace := t.TempDir()
+	old := filepath.Join(workspace, "already.txt")
+	late := filepath.Join(workspace, "late.txt")
+	for _, path := range []string{old, late} {
+		if err := os.WriteFile(path, []byte("kept\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	outcome := headlessOutcome{
+		Nodes:       1,
+		workspace:   workspace,
+		stop:        stopDeadline,
+		Artifacts:   []string{old},
+		Deliverable: groundedInArtifacts("The time limit was reached.", []string{old}),
+	}
+	registry := &errandRegistry{}
+	registry.add(old, late)
+	outcome = groundedAfterShutdown(outcome, registry)
+	if len(outcome.Artifacts) != 2 || outcome.Artifacts[0] != old || outcome.Artifacts[1] != late {
+		t.Fatalf("final artifact record = %v, want old and late paths", outcome.Artifacts)
+	}
+	if strings.Count(outcome.Deliverable, old) != 1 {
+		t.Fatalf("already-grounded artifact was repeated: %q", outcome.Deliverable)
+	}
+	if strings.Count(outcome.Deliverable, late) != 1 {
+		t.Fatalf("late artifact was not grounded exactly once: %q", outcome.Deliverable)
+	}
+	if strings.Contains(outcome.Deliverable, keptNothingOpening(t)) {
+		t.Fatalf("artifact-bearing refresh claimed the record was empty: %q", outcome.Deliverable)
+	}
+}
+
 // This drives the actual timeout door: the worker writes before stalling, and
 // its artifact reaches the registry only while the cancelled leaf lands.
 func TestATimeoutAfterWritingKeepsTheFileInTheJSONEnding(t *testing.T) {
