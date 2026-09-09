@@ -27,7 +27,9 @@ Use the smallest proof that answers the current question:
 2. `make test PKGS='./internal/tui3 ./internal/session' TEST_FLAGS='-count=1'`
    runs affected packages through the repository's timeout and known-red ledger.
 3. `make test-quick` mirrors the deterministic light PR checks: build, vet,
-   format, packed manual, and laws. It is quick feedback, not acceptance.
+   format, packed manual, well-formed change entries, manual gates, and laws.
+   Whether the branch adds a change entry needs the pull request's base commit,
+   so only CI checks that half. It is quick feedback, not acceptance.
 4. `make test-report PKGS='./internal/tui3 ./internal/session' REPORT=/tmp/tests.json`
    forces fresh test execution, keeps the separate Go build cache, prints a
    heartbeat and completed slow tests, and writes a machine-readable duration
@@ -40,9 +42,9 @@ cache. Cold compilation and fresh test execution are therefore separate facts
 and should be labeled separately in measurements.
 
 The JSON report is diagnostic evidence, not a replacement gate. A failing test
-command remains failing; malformed or empty JSON also fails. Packages that start
-without a terminal event are listed as incomplete, which makes cancellation or
-abrupt termination visible in a partial stream.
+command remains failing; malformed or empty JSON also fails. A stream cut mid-line
+still writes a report, lists packages without a terminal event as incomplete, and
+exits non-zero, which makes cancellation or abrupt termination visible.
 
 ## Parallelism decision
 
