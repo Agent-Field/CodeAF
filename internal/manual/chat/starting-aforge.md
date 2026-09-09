@@ -356,7 +356,7 @@ What was already broken is not hidden from the work either — the brief it carr
 says so plainly, so nothing goes off to fix it by accident:
 
 ```
-1 check was red before this work and is not counted as identified new red: tox -e py
+1 check was already failing before this work; that does not show the requested result works: tox -e py
 ```
 
 This section describes the session's own end-of-reply reading, which runs only when you

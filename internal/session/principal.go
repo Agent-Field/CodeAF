@@ -1268,5 +1268,5 @@ func alreadyRedSentence(already []string) string {
 	if len(already) > 1 {
 		was = fmt.Sprintf("%d checks were", len(already))
 	}
-	return was + " red before this work and is not counted as identified new red: " + strings.Join(already, ", ")
+	return was + " already failing before this work; that does not show the requested result works: " + strings.Join(already, ", ")
 }

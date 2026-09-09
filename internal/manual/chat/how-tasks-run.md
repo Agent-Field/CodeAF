@@ -1565,7 +1565,7 @@ When old red remains under work that finishes, its report keeps the checker's ow
 first and then says exactly:
 
 ```
-1 check was red before this work and is not counted as identified new red: go test ./...
+1 check was already failing before this work; that does not show the requested result works: go test ./...
 ```
 
 ## What the checker is shown of what the task already ran

@@ -327,7 +327,7 @@ func TestAPreExistingRedDoesNotStandBetweenTheWorkAndItsLanding(t *testing.T) {
 	if notice.State != TaskDone {
 		t.Fatalf("state = %q, report = %q, want done", notice.State, notice.Report)
 	}
-	want := "1 check was red before this work and is not counted as identified new red: go test ./..."
+	want := "1 check was already failing before this work; that does not show the requested result works: go test ./..."
 	if !strings.Contains(notice.Report, want) {
 		t.Fatalf("report = %q, want %q", notice.Report, want)
 	}
