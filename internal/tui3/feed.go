@@ -1259,8 +1259,9 @@ func (f *feed) retry(ev session.Event) {
 	// A retry ends the attempt, including any text closed by interleaved
 	// reasoning. A later confirmation must not adopt those discarded words.
 	end := len(f.entries) - 1
+	var owner *responseConfirmation
 	if e := blockAt(f.entries, f.live); e != nil && e.kind == entryAssistant && e.provisional {
-		end = f.live
+		end, owner = f.live, e.confirmed
 	}
 	for i := end; i >= 0 && f.entries[i].turn == f.turn; i-- {
 		e := &f.entries[i]
@@ -1272,6 +1273,21 @@ func (f *feed) retry(ev session.Event) {
 				break
 			}
 			e.provisional, e.text, e.stale = false, "", true
+		}
+	}
+	// The same unfinished owner labels reasoning that was displaced by a
+	// queued line. The engine discarded it too; keeping it would make live
+	// history differ from a task reopened after the retry.
+	if owner != nil && !owner.done {
+		for i := range f.entries {
+			e := &f.entries[i]
+			if e.kind != entryThinking || e.confirmed != owner {
+				continue
+			}
+			if f.think == i {
+				f.collapseThought()
+			}
+			f.entries[i] = entry{kind: entryAssistant, turn: e.turn, settled: true, stale: true}
 		}
 	}
 	f.dropLive()

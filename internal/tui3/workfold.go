@@ -269,13 +269,6 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 		// group, because there is nothing in it that was said TO the person.
 		end := answer
 		eligible := answer >= 0 && es[answer].settled
-		if answer < 0 && confirmedReasoningTail(es[lo:hi]) {
-			// Reasoning attached to an already confirmed response can follow a
-			// queued person without gaining a new answer of its own. Its closed
-			// work chip preserves that person's boundary and keeps private text
-			// behind the same explicit disclosure as other finished work.
-			end, eligible = hi, true
-		}
 		if stopped {
 			end, eligible = hi, true
 			// EXCEPT THE SURFACE'S OWN NEWS AT THE TAIL. An interrupt writes lines
@@ -294,10 +287,31 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 		if eligible && !blocked && (runningTurn == 0 || es[lo].turn != runningTurn) {
 			// THE CONVERSATION KEYS ITS CHIPS BY THE TURN, which is what
 			// [deck.workOpen], [app.stamps] and every gesture out here already
-			// name (see [workfold.key]). One turn, one chip: nothing to separate.
+			// name (see [workfold.key]). Separated chips share that disclosure.
 			f := workfold{key: es[lo].turn, turn: es[lo].turn, start: -1, answer: end, stopped: stopped}
 			if countWork(es, lo, end, &f); f.start >= 0 {
 				out[f.start] = f
+			}
+		}
+		if !stopped && !blocked && (runningTurn == 0 || es[lo].turn != runningTurn) {
+			// A confirmed response's private tail can sit below a queued user
+			// or notice. Keep those boundaries and any final receipts outside
+			// its own closed disclosure, rather than exposing the thought row.
+			from, to := lo, hi
+			if answer >= 0 {
+				from = answer + 1
+			}
+			for from < to && (groupBreaks(&es[from]) || es[from].kind == entryNote || es[from].kind == entryDivider) {
+				from++
+			}
+			for to > from && (es[to-1].kind == entryNote || es[to-1].kind == entryDivider) {
+				to--
+			}
+			if confirmedReasoningTail(es[from:to]) {
+				f := workfold{key: es[lo].turn, turn: es[lo].turn, start: -1, answer: to}
+				if countWork(es, from, to, &f); f.start >= 0 {
+					out[f.start] = f
+				}
 			}
 		}
 		lo = hi

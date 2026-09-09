@@ -261,7 +261,7 @@ func TestConfirmedAnswerBeforeQueuedMessageDuringReasoning(t *testing.T) {
 				}
 				emit(session.Event{Kind: session.EventTextDelta, Text: "Second answer section."})
 				emit(session.Event{Kind: session.EventAssistantDone})
-				emit(session.Event{Kind: session.EventTurnDone})
+				emit(session.Event{Kind: session.EventTurnDone, Usage: session.Usage{Input: 12000, CacheRead: 9000}})
 				if room {
 					drive(t, a, roomClosedMsg{gen: a.room.gen})
 				}
@@ -272,6 +272,9 @@ func TestConfirmedAnswerBeforeQueuedMessageDuringReasoning(t *testing.T) {
 					return plain(frame(a))
 				}
 				page := read()
+				if !room && !strings.Contains(page, "cached") {
+					t.Fatalf("completion lost cache receipt:\n%s", page)
+				}
 				answerAt, userAt := strings.Index(page, "Second answer section"), strings.Index(page, "Queued next question")
 				if !strings.Contains(page, "First answer section") || answerAt < 0 || userAt <= answerAt || strings.Contains(page, "PRIVATE TRAILING") || strings.Contains(page, "thought for") {
 					t.Fatalf("queued reasoning response order or disclosure is wrong:\n%s", page)
@@ -323,15 +326,36 @@ func TestQueuedContinuationCannotSurviveRetryOrToolBoundary(t *testing.T) {
 			}
 			a.event(session.Event{Kind: session.EventTextDelta, Text: "The replacement answer is complete."})
 			a.event(session.Event{Kind: session.EventAssistantDone})
+			a.event(session.Event{Kind: session.EventTurnDone})
 			for _, e := range a.entries {
 				if e.kind == entryAssistant && e.confirmed != nil && e.confirmed.done && strings.TrimSpace(e.text) != "" && e.text != "The replacement answer is complete." {
 					t.Fatalf("a prior response entered the confirmed answer: %q", e.text)
 				}
 			}
 			page := livePage(a)
-			if !strings.Contains(page, "replacement answer is complete") || !strings.Contains(page, "Queued question") || (retry && strings.Contains(page, "Discarded original")) {
+			if !strings.Contains(page, "replacement answer is complete") || !strings.Contains(page, "Queued question") || (retry && (strings.Contains(page, "Discarded original") || strings.Contains(page, "private work") || strings.Contains(page, "thought for"))) {
 				t.Fatalf("response boundary lost content or retained retry text:\n%s", page)
 			}
 		})
+	}
+}
+
+func TestConfirmedReasoningAfterNoticeHasItsOwnClosedDisclosure(t *testing.T) {
+	a, _ := streaming(t, "The first section. ")
+	a.linear = true
+	a.event(session.Event{Kind: session.EventNotice, Text: "Connection settings updated"})
+	a.event(session.Event{Kind: session.EventReasoning, Text: "PRIVATE AFTER NOTICE"})
+	a.event(session.Event{Kind: session.EventTextDelta, Text: "The second section."})
+	a.event(session.Event{Kind: session.EventAssistantDone})
+	a.event(session.Event{Kind: session.EventTurnDone, Usage: session.Usage{Input: 12000, CacheRead: 9000}})
+	page := livePage(a)
+	answerAt, noteAt := strings.Index(page, "second section"), strings.Index(page, "Connection settings updated")
+	if answerAt < 0 || noteAt <= answerAt || !strings.Contains(page, "cached") || strings.Contains(page, "PRIVATE AFTER") || strings.Contains(page, "thought for") {
+		t.Fatalf("notice or receipt displaced the answer or exposed private work:\n%s", page)
+	}
+	drive(t, a, key("ctrl+e"))
+	a.toggleLatestThought()
+	if page = livePage(a); !strings.Contains(page, "PRIVATE AFTER NOTICE") {
+		t.Fatalf("explicit disclosure lost private work:\n%s", page)
 	}
 }

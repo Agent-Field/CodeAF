@@ -30,3 +30,7 @@ not restore live emphasis or activity to the stopped turn.
 Both queue timings preserve the response: before first reasoning and during it.
 A finished private-work tail below the queued line has its own closed disclosure;
 only reasoning belonging to that confirmed response is eligible for it.
+
+Completion receipts remain outside the private-work disclosure. Retrying also
+withdraws private reasoning attached to the discarded response, so a live task
+and the same task reopened after the retry show the same work.
