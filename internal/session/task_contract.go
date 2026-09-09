@@ -570,6 +570,22 @@ type TaskNotice struct {
 	// gave up going in circles, a check that did not accept the work, and not one
 	// person pressing stop.
 	Ending TaskEnding
+	// Conflicts names the files that CLASH, on a landing whose branch would not
+	// fasten onto the person's — read out of the index while the refused merge
+	// still held them (task_run.go's [conflictSentence] writes the sentence from
+	// the same list). It is empty on every landing that did not conflict, and
+	// empty on one where git would not say which files it was about, which is the
+	// emptiness law and not a claim that nothing clashed.
+	Conflicts []string
+	// Decider is WHO HOLDS THIS NODE'S DECISION right now ([TaskAskOwner]). It is
+	// the person on every ordinary landing; `task.settle = auto` and a person
+	// pressing "let aforge decide this one" ([Agent.HandUnverifiedToModel]) are the
+	// two things that make it the model, and neither of them makes it the model for
+	// long — the floor hands it back when the model's turn ends (agent.go).
+	//
+	// A CONFLICT IS NEVER THE MODEL'S, whatever the policy says: it cannot merge by
+	// decree (task_run.go's [Agent.handToModelOnAuto]).
+	Decider TaskAskOwner
 	// Checked is WHAT THE CHECK SAID about this node's work, and "" on a node no
 	// check ever read. It is narrower than State on purpose: a node taken as it
 	// stands, one landed with the check switched off and one a person accepted

@@ -106,7 +106,7 @@ func TestATaskWhoseConnectionStaysDownLandsAsLostTheConnection(t *testing.T) {
 	if asked := completer.seen.child; asked != 4 {
 		t.Fatalf("the model was asked %d times, want 4 (two attempts × two workers)", asked)
 	}
-	if note := taskNote(notice, "", TaskSettleAsk, landingAddress{}); !strings.HasPrefix(note, "task 1 lost the connection: ") {
+	if note := taskNote(notice, "", TaskSettleAsk, landingAddress{}); !strings.Contains(note, "task 1 incomplete: ") || !strings.Contains(note, "· lost the connection") {
 		t.Fatalf("the landing note opens %q", firstLines(note, 1))
 	}
 	if notice.Branch == "" || notice.Merge == mergeMerged {
@@ -135,7 +135,7 @@ func TestATaskThatGoesInCirclesLandsAsCircling(t *testing.T) {
 	if notice.State != TaskFailed || notice.Ending != TaskEndingCircling {
 		t.Fatalf("state = %q, ending = %q, report %q", notice.State, notice.Ending, notice.Report)
 	}
-	if note := taskNote(notice, "", TaskSettleAsk, landingAddress{}); !strings.HasPrefix(note, "task 1 went in circles: ") {
+	if note := taskNote(notice, "", TaskSettleAsk, landingAddress{}); !strings.Contains(note, "task 1 incomplete: ") || !strings.Contains(note, "· went in circles") {
 		t.Fatalf("the landing note opens %q", firstLines(note, 1))
 	}
 }
@@ -255,7 +255,7 @@ func TestATaskWhoseWorkerWillNotWriteItsNotesLandsSayingSo(t *testing.T) {
 	}
 	// THE ROW SAYS WHY, and the landing note the conversation is handed says the
 	// same thing in a sentence.
-	if note := taskNote(notice, "", TaskSettleAsk, landingAddress{}); !strings.HasPrefix(note, "task 1 would not write its notes down: ") {
+	if note := taskNote(notice, "", TaskSettleAsk, landingAddress{}); !strings.Contains(note, "task 1 incomplete: ") || !strings.Contains(note, "· would not write its notes down") {
 		t.Fatalf("the landing note opens %q", firstLines(note, 1))
 	}
 	// AND THE WORK IS KEPT. Nothing was found wrong with it: the turn was ended
