@@ -1529,7 +1529,13 @@ func (a *app) questionHint() string {
 	if len(head.beat) > 0 {
 		return "1-" + itoa(len(head.beat)) + " shape · " + questionLaterKey + " " + questionBeatBack
 	}
-	parts := make([]string, 0, len(head.question.Options)+3)
+	// THE ANSWERS AND NOT THE VERBS. This slot sits on the seam directly above
+	// the block, and the block's own row is already spelling every key it
+	// offers — so a slot that listed them again would be the same sentence
+	// twice, three rows apart. What it is for is the one thing the row cannot
+	// say from up here: which key ANSWERS, for somebody whose eyes are on the
+	// box rather than on the question.
+	parts := make([]string, 0, len(head.question.Options)+1)
 	for i, option := range head.question.Options {
 		key := strings.TrimSpace(option.Key)
 		if key == "" {
@@ -1541,17 +1547,12 @@ func (a *app) questionHint() string {
 		}
 		parts = append(parts, key+" "+word)
 	}
-	for _, verb := range a.questionAnswerKeys(head, a.questionForm(head.question)) {
-		if verb.key == questionWalkKey {
-			continue
-		}
-		word := verb.word
-		if verb.key == questionRuleKey {
-			word = questionRuleWord(head.question)
-		}
-		parts = append(parts, questionKeySpelling(verb.key)+" "+word)
+	if len(parts) == 0 {
+		return ""
 	}
-	return strings.Join(parts, " · ")
+	// And the way out, which is the one verb a person may need from here and
+	// the one that is never given up on the row either.
+	return strings.Join(append(parts, questionLaterKey+" "+questionKeyWord(questionLaterKey)), " · ")
 }
 
 // questionAnimating reports whether a clock is running down, which is what
@@ -2358,6 +2359,14 @@ func (a *app) questionFold(ev session.Event) tea.Cmd {
 		if ev.Answer == nil {
 			return nil
 		}
+		// AND NEVER TWICE FOR ONE DECISION. This window closes its own question
+		// the moment it sends an answer ([app.closeQuestion]) rather than waiting
+		// for the round trip, so the event that comes back a moment later is
+		// about a question that is already gone here — and recording it again
+		// would put the same receipt above the box twice, which is one decision
+		// drawn as two. [app.foldOthersAnswer] is where that guard lives, along
+		// with the rest of what this event is FOR: an answer given somewhere
+		// else.
 		a.foldOthersAnswer(*ev.Question, *ev.Answer)
 	}
 	return nil
