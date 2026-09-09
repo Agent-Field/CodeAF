@@ -34,6 +34,7 @@ forwarding proxy; it does not replace the provider with a model stub.
 
 | Case | Functional evidence |
 | --- | --- |
+| `removed_scope_read` | A forced read by remembered ID stays globally readable but reports `applicable_here: false`; the completed turn does not restore current applicability or membership. |
 | `working_day` | Twelve consumer chats, three simultaneous initial turns, eight additional file-review turns in one chat, revision while another stays observed idle, reopen, overlapping membership removal/rejoin, and withdrawal. |
 | `conflicting_sources` | Two independently sourced dates remain contradictory while one conversation follows its person's local draft choice, including after reopen; another conversation still needs a choice. |
 | `large_retrieval` | One requested reference among 31 records is outside the snapshot and first metadata page; its nonced answer requires continued text reads past 8,000 characters. |
@@ -78,7 +79,7 @@ Current verified results belong in [HANDOFF.md](HANDOFF.md).
 ## Deeper regular-use checks
 
 ```sh
-ORGANIZATION_TEST_RUN='^TestOrganizationE2E$/(working_day|conflicting_sources|large_retrieval)$' make test-organization-live
+ORGANIZATION_TEST_RUN='^TestOrganizationE2E$/(working_day|conflicting_sources|large_retrieval|removed_scope_read)$' make test-organization-live
 ```
 
 These are registered in the same default suite and existing path-filtered CI

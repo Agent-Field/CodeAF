@@ -246,8 +246,10 @@ brief informed the functional cases. Do not overwrite its documents.
 The first integrated backend slice is implemented and pushed to draft #662.
 A later regular-use test wave found a real scope/readability failure and a
 separate model completion reliability failure; read [COMPLEX-TESTS.md](COMPLEX-TESTS.md)
-before relying on the earlier nine-case evidence. The scope repair is implemented
-with deterministic checks; its live confirmation must be checked in that document.
+before relying on the earlier nine-case evidence. The scope repair is confirmed by the long sequence and a forced identity-read
+case. The complete working-day run remains red for completion/report corruption,
+tracked in [#672](https://github.com/Agent-Field/aforge-v2/issues/672). That is the
+next reliability investigation; do not describe all complex journeys as passing.
 Production code was verified at `a216cdcf5`; `6ce8be8bd` then clarified one live
 test assertion and strengthened the deterministic collection-name lookup test.
 No production behavior changed in that follow-up. See
