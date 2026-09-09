@@ -71,7 +71,7 @@ func clickHead(t *testing.T, a *app, x int) {
 // order, out of the same tree the roster's column is grown from.
 func TestTheTrailNamesEveryStepOfTheActualChain(t *testing.T) {
 	a := crumbApp(t)
-	const chain = "Untitled ▸ Ship the port ▸ Write the tree ▸ Cut the goldens"
+	const chain = unnamedConversationWord + " ▸ Ship the port ▸ Write the tree ▸ Cut the goldens"
 	if got := a.roomTrail(); got != chain {
 		t.Fatalf("the trail is %q, want %q", got, chain)
 	}
@@ -81,7 +81,7 @@ func TestTheTrailNamesEveryStepOfTheActualChain(t *testing.T) {
 	// AND THE PAGE ONE STEP UP IS THE CHAIN WITHOUT ITS LAST STEP: the trail is
 	// the family read upwards and not a history of where this window has been.
 	openRoomThroughRail(t, a, 3)
-	if got, want := a.roomTrail(), "Untitled ▸ Ship the port ▸ Write the tree"; got != want {
+	if got, want := a.roomTrail(), unnamedConversationWord+" ▸ Ship the port ▸ Write the tree"; got != want {
 		t.Fatalf("from the parent's page the trail is %q, want %q", got, want)
 	}
 }
@@ -96,7 +96,7 @@ func TestTheTrailInventsNoStepItCannotName(t *testing.T) {
 	// that never re-published it would leave things.
 	delete(a.tasks, 3)
 	a.touch()
-	if got, want := a.roomTrail(), "Untitled ▸ Cut the goldens"; got != want {
+	if got, want := a.roomTrail(), unnamedConversationWord+" ▸ Cut the goldens"; got != want {
 		t.Fatalf("the trail is %q, want %q — no id, no blank, no guess", got, want)
 	}
 	if head := plain(strings.Join(a.roomHeadRows(a.width), "\n")); strings.Contains(head, "3") && strings.Contains(head, "▸ 3") {
@@ -218,13 +218,31 @@ func TestTheTrailFoldsItsMiddleAndTheFoldOpensTheParent(t *testing.T) {
 			t.Fatalf("at forty columns the trail still spells %q:\n%q", gone, narrow)
 		}
 	}
-	if !strings.Contains(narrow, b.chatCrumbWord()) || !strings.Contains(narrow, "Cut the goldens") {
-		t.Fatalf("at forty columns the trail lost one of its two ends:\n%q", narrow)
+	// AND BOTH ENDS ARE STILL ON IT. Forty columns is not room for the
+	// conversation's own word, so the trail's first cell is that word CUT — which
+	// is the fitter doing its job and is not the same thing as losing an end. The
+	// fixture used to ask for the whole string here, which held only because the
+	// word of the day was eight cells wide; #708 made it `new conversation`
+	// everywhere, at sixteen.
+	if len(b.crumbs) == 0 || !strings.HasPrefix(b.chatCrumbWord(), strings.TrimSuffix(b.crumbs[0].crumb.word, crumbFoldWord)) {
+		t.Fatalf("at forty columns the trail lost the conversation it starts at:\n%q\n%+v", narrow, b.crumbs)
+	}
+	if !strings.Contains(narrow, "Cut the goldens") {
+		t.Fatalf("at forty columns the trail lost the page it ends at:\n%q", narrow)
 	}
 	deep := crumbSpanFor(t, b, crumbFoldWord)
 	clickHead(t, b, deep.from)
 	if roomID(b) != 3 {
 		t.Fatalf("the fold opened %d, want the immediate parent, node 3", roomID(b))
+	}
+
+	// AND WHERE THERE IS ROOM FOR IT, THAT WORD IS SPELLED WHOLE. The cut above
+	// is the narrow frame's answer and must never become the wide one's.
+	c := crumbApp(t)
+	c.width = 100
+	c.touch()
+	if wide := plain(strings.Join(c.roomHeadRows(c.width), "\n")); !strings.Contains(wide, c.chatCrumbWord()) {
+		t.Fatalf("at a hundred columns the trail still cut the conversation's own word:\n%q", wide)
 	}
 }
 
