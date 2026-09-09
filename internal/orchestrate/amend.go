@@ -397,7 +397,11 @@ func (o *Orchestrator) apply(amendment Amendment) {
 	// the scheduler may already have launched them, and what follows is a column
 	// of rows catching up with itself.
 	for _, status := range unnamed {
-		go o.nameNode(status)
+		o.calls.Add(1)
+		go func() {
+			defer o.calls.Done()
+			o.nameNode(status)
+		}()
 	}
 }
 

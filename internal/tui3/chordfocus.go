@@ -3,7 +3,7 @@ package tui3
 // ── ONE SURFACE OWNS THE KEYSTROKES ─────────────────────────────────────────
 //
 // A sentence typed at the message box came out as `riting the port`, `orktree`,
-// `las`. The roster had been handed the keyboard (ctrl+t) and never given it
+// `las`. The roster had been handed the keyboard (alt+t) and never given it
 // back, and its widen binding is the bare letter `w`, read before the box —
 // so every w of every sentence went to the column instead of into the words.
 //

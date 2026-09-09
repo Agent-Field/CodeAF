@@ -217,7 +217,18 @@ type Following struct {
 }
 
 // followingMsg is one of them reaching the loop.
-type followingMsg struct{ turn Following }
+//
+// IT CARRIES A GENERATION for the reason every other lane on this surface does
+// (app.go's generation law), and it did not need one until a window could hold
+// several conversations on several connections. This wait blocks on ONE
+// connection's channel; a switch rebinds [app.link] to another one and leaves
+// that wait parked on the old one, so a turn started in the conversation this
+// window walked away from would arrive here and be adopted into the conversation
+// now on screen — somebody else's reply, drawn under the wrong name.
+type followingMsg struct {
+	turn Following
+	gen  int
+}
 
 // watchFollowing waits for the next turn started somewhere else.
 //
@@ -230,52 +241,57 @@ func (a *app) watchFollowing() tea.Cmd {
 	if follow == nil {
 		return nil
 	}
+	gen := a.gen
 	return func() tea.Msg {
 		turn, ok := <-follow()
 		if !ok {
 			return nil
 		}
-		return followingMsg{turn: turn}
+		return followingMsg{turn: turn, gen: gen}
 	}
 }
 
-// followTurn draws a turn this window did not start, and goes back to waiting.
-//
-// THE SENTENCE GOES IN FIRST WHERE THERE IS ONE. A reply with no question above
-// it is a screen that has lost the thread, and the message that opened this turn
-// was typed on another machine — so the engine sends it and this puts it where
-// the person's own message would have gone ([Turn.Said]).
-//
-// A TURN ALREADY BEING DRAWN WINS. If this window is somehow holding a stream —
-// it took the keyboard a moment ago and its own submit is in flight — the turn
-// it is drawing is the one it knows the whole of, and a second adoption would
-// draw the same reply twice.
+// followTurn queues a hosted turn through the same admission path as a local
+// wake. The previous stream may still be draining on this window even though
+// the engine has started its next turn; dropping that arrival loses the answer.
 func (a *app) followTurn(msg followingMsg) tea.Cmd {
+	// A TURN FROM THE CONNECTION THIS WINDOW HAS SINCE WALKED AWAY FROM IS
+	// DISCARDED, AND THE WAIT IS NOT RE-ARMED. The conversation it belongs to has
+	// its own wait, armed when it came forward; re-arming here would leave two of
+	// them on one channel.
+	if msg.gen != a.gen {
+		return nil
+	}
 	next := a.watchFollowing()
-	if msg.turn.Events == nil || a.stream != nil {
+	if msg.turn.Events == nil || msg.turn.Events == a.stream {
 		return next
 	}
-	// THE GREETING GOES WHEN THE CONVERSATION BEGINS, and a turn started on the
-	// other machine is the conversation beginning. Every other road to this
-	// (welcome.go's [app.dismissWelcome]) is a keystroke, and a watcher presses
-	// none — driven over a real connection, the reply landed in the transcript
-	// with the greeting still sitting on top of it.
-	a.dismissWelcome()
-	if said := strings.TrimSpace(msg.turn.Said); said != "" {
-		a.turn++
-		a.sel = -1
-		a.disarmQuit()
-		a.said(entry{kind: entryUser, text: said, turn: a.turn, began: a.now(), context: a.turnContext()})
-		a.follow()
+	for _, pending := range a.follows {
+		if pending.ch == msg.turn.Events {
+			return next
+		}
 	}
-	return tea.Batch(a.takeStream(msg.turn.Events), next)
+	a.dismissWelcome()
+	said := strings.TrimSpace(msg.turn.Said)
+	a.follows = append(a.follows, queued{text: said, ch: msg.turn.Events, woken: said == ""})
+	a.touch()
+	return tea.Batch(a.startFollow(), next)
 }
 
 // ── learning that it moved, with nobody touching this keyboard ──────────────
 
 // drivingMsg is the keyboard having moved, on its way back to the loop. said is
-// a take-back that failed and has something to report.
-type drivingMsg struct{ said string }
+// a take-back that failed and has something to report, and gen is the
+// conversation it is about ([followingMsg] holds the whole of why it is here).
+//
+// A TAKE-BACK CARRIES NO GENERATION and is always heard: it is the answer to a
+// keystroke the person made a moment ago, and a refusal worth saying is worth
+// saying wherever they now are.
+type drivingMsg struct {
+	said string
+	gen  int
+	lane bool
+}
 
 // watchDriving waits for the next hand-over and wakes the surface for it.
 //
@@ -292,9 +308,10 @@ func (a *app) watchDriving() tea.Cmd {
 	if changed == nil {
 		return nil
 	}
+	gen := a.gen
 	return func() tea.Msg {
 		<-changed()
-		return drivingMsg{}
+		return drivingMsg{gen: gen, lane: true}
 	}
 }
 
@@ -304,6 +321,12 @@ func (a *app) drivingMoved(msg drivingMsg) tea.Cmd {
 	var said tea.Cmd
 	if msg.said != "" {
 		a.note(msg.said)
+	}
+	// A HAND-OVER ON A CONNECTION THIS WINDOW HAS WALKED AWAY FROM MOVES NOTHING
+	// AND RE-ARMS NOTHING ([followingMsg] states why). The conversation it is
+	// about armed its own wait when it came forward.
+	if msg.lane && msg.gen != a.gen {
+		return said
 	}
 	return tea.Batch(said, a.wake(), a.watchDriving())
 }

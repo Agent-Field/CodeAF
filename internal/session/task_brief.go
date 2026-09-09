@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // The section headings, in the order [composeBrief] lays them out. They are
@@ -46,6 +47,46 @@ const (
 // worker handed two accounts of the same job needs to be told which one wins,
 // and it is not the one the model wrote.
 const briefAskRule = "This is the message this work came out of. Where anything below reads differently from it, their words are what was asked for."
+
+// briefRole is whether the person's message above is this worker's WHOLE job or
+// the job one piece of it was cut from. It is one enum rather than a bool
+// because the two readings are different documents, and the caller that knows
+// which is the graph ([TaskNode.spec] carries the parent).
+type briefRole uint8
+
+const (
+	// briefWhole: nobody stands between this worker and the person's ask.
+	briefWhole briefRole = iota
+	// briefPiece: this node was handed out by another task, through
+	// `propose_task` or `divide_work`.
+	briefPiece
+)
+
+// briefPieceRule is [briefAskRule] for a node that owns ONE PIECE of the
+// message above it.
+//
+// THE MEASURED READING IT CLOSES. Every descendant inherits the person's whole
+// message verbatim (task.go's [Agent.taskRequest]) and used to be handed the
+// whole-job rule with it: "where anything below reads differently, their words
+// are what was asked for". A part briefed to run one script, under a message
+// asking for that script AND a count of something else, can read that sentence
+// as instructions to do both — and where the message says the work should go to
+// a task, as licence to hand its own piece out again. Neither is what the person
+// asked THIS worker for, and nothing else in the document said so.
+//
+// WHAT IT MUST NOT DO IS SILENCE THEM. Their words still govern this piece: the
+// paraphrase above is the model's and theirs is not, so a real disagreement
+// about THIS work is still theirs to win, and a piece that cannot be done
+// without going against them is a report and not a quiet widening.
+const briefPieceRule = "This is the message the whole job came out of, and this task is ONE PIECE of it: do what THE WORK and DONE WHEN below name, and leave the rest of that message to whoever kept it — including handing work out, which is not yours to do again. Their words still govern your piece: where anything below reads differently from them about it, theirs are what was asked for, and if your piece cannot be done without going against them, say so in your report rather than widening the work."
+
+// askRule is the rule that opens the document, chosen by the role.
+func (role briefRole) askRule() string {
+	if role == briefPiece {
+		return briefPieceRule
+	}
+	return briefAskRule
+}
 
 // briefOriginRule is the one line that says what the pointer is FOR. The
 // restatement above is bounded; this is where the uncut words live, and the
@@ -86,7 +127,7 @@ const briefAskLimit = 6000
 // a word of it is laid out, and where that leaves two spellings of one folder in
 // the same document — the person's quoted path and the copy's — the mapping is
 // said outright in a section of its own rather than smuggled into the quotation.
-func composeBrief(request, work, deliverable, acceptance, expects string, origin taskOrigin, own taskCopy) string {
+func composeBrief(role briefRole, request, work, deliverable, acceptance, expects string, heard AdmissionContext, origin taskOrigin, own taskCopy) string {
 	request = briefAskText(request)
 	work = briefWorkText(request, work)
 	// THE COPY IS STATED ONLY WHERE THE GROUND WAS NAMED, and it is decided
@@ -94,8 +135,9 @@ func composeBrief(request, work, deliverable, acceptance, expects string, origin
 	// spelled the folder out has nothing to disambiguate and gets the document
 	// it has always got — an unconditional section would rewrite every worktree
 	// brief in the system to answer a question nobody in it had asked.
+	quoted, evidence := admissionQuotesSection(heard), admissionEvidenceSection(heard)
 	stated := ""
-	if own.real() && namesGround(own.ground, request, work, deliverable, acceptance, expects) {
+	if own.real() && namesGround(own.ground, request, work, deliverable, acceptance, expects, quoted, evidence) {
 		stated = own.note()
 	}
 	// AND THE MODEL-AUTHORED HALF IS BOUND TO THE COPY, and only that half. The
@@ -121,13 +163,30 @@ func composeBrief(request, work, deliverable, acceptance, expects string, origin
 		}
 		out.WriteString("\n\n" + body)
 	}
-	section(briefAskHeading, briefAskRule, request)
+	// AND WHOSE JOB THE MESSAGE IS, in the rule over it rather than in a section
+	// of its own: their words are printed once and unedited either way, and what
+	// changes is what this worker is being told they are FOR.
+	section(briefAskHeading, role.askRule(), request)
 	// AND WHICH FOLDER EVERY ADDRESS UNDER IT MEANS, second, because it is what
 	// the reader needs BEFORE the first path rather than after the last one.
 	section(briefCopyHeading, briefCopyRule, stated)
 	section(briefWorkHeading, "", work)
 	section(briefMakeHeading, "", deliverable)
 	section(briefDoneHeading, "", acceptance)
+	// AND WHAT WAS SAID AROUND THE WORK, after the contract and never before it
+	// (admission.go). The order is the whole of the distinction the two rules
+	// draw: what this worker OWES is above, settled and binding; what was SAID is
+	// below, quoted, attributed, and true only of the saying. A document that put
+	// the conversation first would read as instruction with a contract appended.
+	section(admissionQuotesHeading, admissionQuotesRule, quoted)
+	// NEITHER SECTION IS BOUND TO THE COPY, and that is a decision rather than an
+	// oversight. Both are RECORDS OF WHAT HAPPENED SOMEWHERE ELSE: a quote is
+	// somebody's sentence, and a handle names the journal it can be fetched from,
+	// which lives under the ground and has no counterpart inside the worker's
+	// tree — a rewrite would aim it at a file that is not there. The copy is
+	// stated instead, in the section above, which is what [namesGround] is asked
+	// about these two.
+	section(admissionEvidenceHeading, admissionEvidenceRule, evidence)
 	// AND WHAT THE HANDOFF PROMISED ABOUT THE WORLD, last, because it is the
 	// only section that is about the folder rather than about the job
 	// (handoffcontract.go). A handoff that promised nothing has no section, like
@@ -228,20 +287,40 @@ func (c taskCopy) real() bool {
 // `/x/repo` must not match inside `/x/repo-old`, which is a different
 // repository, nor inside `/y/x/repo`, which is a different folder that happens
 // to end with the same name.
+//
+// A FOLDER SPELLED ANOTHER WAY IS STILL THE FOLDER. The comparison above sees
+// only the ground's own spelling, while an address is written the way its author
+// was standing — /var/folders and /private/var/folders are one directory on a
+// Mac — so [groundAliases] resolves the rest and they are rewritten by the same
+// whole-path rule. Without it a contract naming the ground through an alias
+// bound nothing, and the worker was left pointing at the person's checkout.
 func (c taskCopy) bind(text string) string {
-	if !c.real() || !strings.Contains(text, c.ground) {
+	if !c.real() {
 		return text
 	}
+	if strings.Contains(text, c.ground) {
+		text = replaceWholePath(text, c.ground, c.dir)
+	}
+	for _, alias := range groundAliases(c.ground, text) {
+		text = replaceWholePath(text, alias.spelling, filepath.Join(c.dir, alias.under))
+	}
+	return text
+}
+
+// replaceWholePath rewrites every occurrence of one address that stands as a
+// whole path, and nothing else. It is lifted out of [taskCopy.bind] so the
+// ground's own spelling and an alias of it move by one rule.
+func replaceWholePath(text, address, with string) string {
 	var out strings.Builder
 	for rest := text; ; {
-		at := indexWholePath(rest, c.ground)
+		at := indexWholePath(rest, address)
 		if at < 0 {
 			out.WriteString(rest)
 			return out.String()
 		}
 		out.WriteString(rest[:at])
-		out.WriteString(c.dir)
-		rest = rest[at+len(c.ground):]
+		out.WriteString(with)
+		rest = rest[at+len(address):]
 	}
 }
 
@@ -268,11 +347,51 @@ func (c taskCopy) note() string {
 // then handed a section telling it that addresses were mapped when none were.
 func namesGround(ground string, sections ...string) bool {
 	for _, section := range sections {
-		if indexWholePath(section, ground) >= 0 {
+		if indexWholePath(section, ground) >= 0 || len(groundAliases(ground, section)) > 0 {
 			return true
 		}
 	}
 	return false
+}
+
+// groundAlias is one address in a contract that names the ground, or something
+// under it, through a different spelling of the same folder.
+type groundAlias struct {
+	// spelling is the address as the text writes it, which is what a rewrite has
+	// to find; under is the path it names beneath the ground, "." for the ground.
+	spelling string
+	under    string
+}
+
+// groundAliases answers path identity where a byte comparison cannot: the
+// addresses in one text that resolve to the ground or below it while being
+// spelled another way, most often through a symlinked ancestor.
+//
+// The reading is composed out of the helpers that already own each half —
+// [pathTokens] for what could be a path, [canonicalPath] for one spelling of a
+// path that need not exist yet, [insideWorkspace] for a comparison at component
+// boundaries, so a ground of /x/repo never swallows /x/repo-old. A relative name
+// is not an alias: it is already an address in the directory the worker stands
+// in, and resolving it would move a path that was right.
+func groundAliases(ground, text string) []groundAlias {
+	ground = canonicalPath(cleanFolder(ground))
+	if ground == "" || ground == "/" {
+		return nil
+	}
+	var out []groundAlias
+	for _, token := range pathTokens(text) {
+		// The ground's own spelling is not an alias of itself, and both callers
+		// have already asked [indexWholePath] about it without a syscall.
+		if !filepath.IsAbs(token) || indexWholePath(token, ground) >= 0 {
+			continue
+		}
+		under, inside := insideWorkspace(ground, canonicalPath(token))
+		if !inside {
+			continue
+		}
+		out = append(out, groundAlias{spelling: token, under: under})
+	}
+	return out
 }
 
 // indexWholePath is THE ONE READING OF "THIS OCCURRENCE IS A WHOLE PATH", and
@@ -371,6 +490,18 @@ func (a *Agent) rememberAskLocked(user userMessage) {
 	}
 	if text := strings.TrimSpace(user.text()); text != "" {
 		a.personAsk = text
+		// AND WHICH TURN THEY TYPED IT INTO, which is the difference between words
+		// the person is saying now and words they said before the last thing that
+		// woke this session. Only the first can be forwarded into a running task
+		// under their own authority (task_forward.go).
+		a.personHeard = a.turnSeq
+		a.personAt = time.Now()
+		// AND THE TURNS BEFORE THIS ONE ARE KEPT TOO, in the same place, on the
+		// same test (admission.go). A constraint the person typed two turns ago
+		// and never repeated is not in `personAsk` and is not recoverable from
+		// the transcript, where their words and the session's own notes are
+		// both user-role.
+		a.rememberPersonTurnLocked(user.message, text)
 		// AND THE SESSION'S GOAL OWNER IS TOLD THE SAME THING, in the same
 		// place, on the same test (principal.go). It is one writer rather than
 		// two for the reason stated directly below: a second recorder of the

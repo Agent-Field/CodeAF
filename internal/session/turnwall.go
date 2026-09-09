@@ -143,7 +143,7 @@ const checkpointDecisionRanLong = "ran long"
 // AND IT FIRES ONLY WHERE A TASK STILL FITS. Past the share, the wall's remainder
 // is read off the same clock, and under [taskAllowance] the door stays shut: the
 // road behind it can only start a task, a task that cannot be set up and checked
-// is not an offer, and asking the two minds about it would put their calls on
+// is not an offer, and asking the reader and the model about it would put their calls on
 // the bill for nothing. The allowance's own boundary is inside for the share's
 // reason turned around: exactly the allowance left is still enough.
 func (a *Agent) pastTurnWallShare(meter *checkpointMeter, started time.Time) bool {
@@ -176,15 +176,16 @@ func (a *Agent) pastTurnWallShare(meter *checkpointMeter, started time.Time) boo
 // outrunning forty rounds is measured evidence of breadth, and a clock that ran
 // down is evidence of nothing of the sort.
 //
-// THE MARK'S OWN READER IS ASKED, and that is what makes a clock safe to fire on.
-// The handover can only be declined on TWO MINDS agreeing that nothing remains,
-// and the second of them is this reading; without it a turn that was thirty
-// seconds from finishing would be converted for having taken a while.
-func (a *Agent) checkpointOverWallShare(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, verdict routeVerdict, taken *Decision) bool {
+// THE MARK'S OWN READER IS ASKED, and that is what makes a clock safe to fire on:
+// a drawing with independent parts in it is what refuses the continuation's claim
+// that nothing is left ([Agent.handOverRunningTurn]). Without the reading at all
+// a turn that was thirty seconds from finishing would be weighed on the clock
+// alone.
+func (a *Agent) checkpointOverWallShare(ctx context.Context, hub *eventHub, turn *Usage, started time.Time, model string, rounds int, meter *checkpointMeter, taken *Decision) bool {
 	read := a.readMark(ctx)
 	a.journalMarkRead(read, 0, rounds, checkpointDecisionRanLong)
 	return a.handOverRunningTurn(ctx, hub, turn, started, model,
-		turnWallShareNote, checkpointSeamWall, rounds, verdict, read, taken).moved
+		turnWallShareNote, checkpointSeamWall, rounds, meter, meter.raced, read, taken).moved
 }
 
 // wallShareIsAsked reports whether this step boundary is one the share may be

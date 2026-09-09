@@ -132,7 +132,7 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 	// From the moment this function returns, this child never reads again — the
 	// check and the landing are other hands — but it stays OPEN until the
 	// caller's retire, which on a checked node is minutes away. A line steered
-	// in during that window would still be TAKEN ([Agent.enqueueSteeredLine]
+	// in during that window would still be TAKEN ([Agent.enqueueNote]
 	// answers whether the agent is closed, not whether anybody will drain it),
 	// echoed by the room as said, and closed over unread: the #273 swallow. The
 	// tail loop below also withdraws at its own last read, which is earlier on
@@ -155,7 +155,7 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 		seen:          map[string]bool{},
 		ledger:        newProgressLedger(),
 		effects:       newEffectLedger(),
-		deadline:      time.Now().Add(limits.deadline),
+		deadline:      child.taskClockNow().Add(limits.deadline),
 		reportedParts: child.reportedChildren(),
 	}
 	if err := run.open(instruction); err != nil {
@@ -192,10 +192,15 @@ func (r *childRun) open(instruction string) error {
 		r.child.enqueueNote(briefNote(instruction))
 		return nil
 	}
-	events, err := r.child.Submit(r.runCtx, instruction)
+	events, err := r.child.submitUser(r.runCtx, briefNote(instruction))
 	if err != nil {
 		return err
 	}
+	// THE REQUEST HAS GONE, so the words written into this attempt's finding are
+	// in front of the model (assignment.go). Nothing else marks them: an attempt
+	// that never got this far leaves the person's correction pending, which is
+	// what stops a landing publishing over it.
+	r.node.openingCarried()
 	r.drain(events)
 	return nil
 }
@@ -272,16 +277,58 @@ func (r *childRun) checkpoint(threshold string, renew bool) {
 // read that to the end rather than leaving a producer blocked on a channel
 // nobody is taking from.
 func (r *childRun) drain(events <-chan Event) {
-	for event := range events {
-		r.room.publish(event)
-		switch event.Kind {
-		case EventToolBegin:
-			fmt.Fprintf(r.log, "· %s\n", event.Hint)
-		case EventToolEnd, EventToolFailed:
-			r.step(event)
-		case EventError:
-			r.failure = event.Err
+	// A finished tool is not a clock: a silent command, parked job or model
+	// request may never produce the event that used to notice this deadline.
+	// Keep one timer for the current allowance. Renewals rearm it; stopping
+	// disarms it while we continue draining the canceled producer.
+	var expiry <-chan time.Time
+	var stopTimer func()
+	var armed time.Time
+	defer func() {
+		if stopTimer != nil {
+			stopTimer()
 		}
+	}()
+	for {
+		deadline := r.deadline
+		if r.stopped != "" || (r.runCtx != nil && r.runCtx.Err() != nil) {
+			deadline = time.Time{}
+		}
+		if !deadline.Equal(armed) {
+			if stopTimer != nil {
+				stopTimer()
+			}
+			expiry, stopTimer = nil, nil
+			armed = deadline
+			if !deadline.IsZero() {
+				expiry, stopTimer = r.child.taskClockTimer(deadline.Sub(r.now()))
+			}
+		}
+		select {
+		case <-expiry:
+			if r.runCtx == nil || r.runCtx.Err() == nil {
+				r.checkpoint("deadline checkpoint", true)
+			}
+		case event, open := <-events:
+			if !open {
+				return
+			}
+			r.observe(event)
+		}
+	}
+}
+
+// observe publishes and accounts for a worker event, independently of the
+// clock that bounds the wait for its next event.
+func (r *childRun) observe(event Event) {
+	r.room.publish(event)
+	switch event.Kind {
+	case EventToolBegin:
+		fmt.Fprintf(r.log, "· %s\n", event.Hint)
+	case EventToolEnd, EventToolFailed:
+		r.step(event)
+	case EventError:
+		r.failure = event.Err
 	}
 }
 
@@ -482,7 +529,7 @@ func (r *childRun) trip() {
 	switch {
 	case r.steps >= r.limits.maxSteps*(r.extensions+1):
 		r.checkpoint(fmt.Sprintf("%d-step checkpoint", r.limits.maxSteps*(r.extensions+1)), true)
-	case !time.Now().Before(r.deadline):
+	case !r.now().Before(r.deadline):
 		r.checkpoint("deadline checkpoint", true)
 	case r.idle >= r.limits.noProgress:
 		r.stopped = fmt.Sprintf("stopped: %d steps without progress", r.limits.noProgress)
@@ -582,7 +629,7 @@ func (r *childRun) landIfStopped() {
 	restore := r.child.withdrawTools(landingBelt, landingWithdrawal)
 	landing := landingInstruction(r.child.beltTools())
 	savedInLanding := false
-	if events, err := r.child.Submit(r.ctx, landing); err == nil {
+	if events, err := r.child.submitUser(r.ctx, briefNote(landing)); err == nil {
 		savedInLanding = r.drainLanding(events)
 	}
 	lostItsCheck := r.child.landingLostTheCheck()
@@ -674,7 +721,7 @@ func (r *childRun) foldParts() {
 			// From here the child never reads again — the check and the landing
 			// are other hands — but it stays OPEN until [Agent.workTaskNode]'s
 			// retire, which on a checked node is minutes away. A line steered in
-			// during that window would still be TAKEN ([Agent.enqueueSteeredLine]
+			// during that window would still be TAKEN ([Agent.enqueueNote]
 			// answers whether the agent is closed, not whether anybody will
 			// drain it), echoed by the room as said, and then closed over: the
 			// exact swallow the speaker's clearing at close exists to prevent
@@ -693,7 +740,15 @@ func (r *childRun) foldParts() {
 			// who is owed the report). The next pass through this gate takes
 			// the speaker away again.
 			r.room.speaking(nil)
-			if !r.child.steeringHeld() {
+			// BOTH QUEUES ARE ASKED AGAIN. A line said into the room wears the
+			// steering mark; a sub-task's report does not and is owed news
+			// instead ([Agent.deliverTaskNote]), so asking only about the mark
+			// left exactly that report queued on a worker about to stop reading.
+			// A delivery that lost the race is refused at the seat and reaches
+			// the conversation; one that won it is answered by this turn.
+			owed, working = r.child.taskNewsStanding()
+			held = r.child.steeringHeld()
+			if owed == 0 && !held && !working {
 				return
 			}
 			r.room.speaking(r.child)
@@ -771,13 +826,19 @@ func (r *childRun) foldParts() {
 func (r *childRun) park(news <-chan struct{}) {
 	// The lane goes back for exactly as long as the wait lasts
 	// ([TaskGraph.park]).
-	since := time.Now()
+	since := r.now()
 	r.node.park()
 	select {
 	case <-news:
 	case <-r.runCtx.Done():
 	}
 	r.node.unpark()
-	r.deadline = r.deadline.Add(time.Since(since))
+	r.deadline = r.deadline.Add(r.now().Sub(since))
 	r.idle = 0
 }
+
+// now is this run's clock. It is the agent's ([Agent.taskClockNow]) so that the
+// deadline a run is measured against, and the parked stretch deducted from it,
+// move together and can be driven from a test without a sleep standing in for
+// causality. Production leaves the seam nil and takes the real clock.
+func (r *childRun) now() time.Time { return r.child.taskClockNow() }

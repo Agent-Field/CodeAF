@@ -302,7 +302,7 @@ func TestCtrlVOnTheFocusedTaskMovesThatTasksRung(t *testing.T) {
 	if !a.roomOpen() || a.room.id != 7 {
 		t.Fatalf("enter did not open the focused node's room")
 	}
-	if head := plain(a.roomHeadWord(120)); !strings.Contains(head, "thinking low") {
+	if head := plain(roomHeadAll(a, 120)); !strings.Contains(head, "thinking low") {
 		t.Fatalf("the room's header does not state the rung: %q", head)
 	}
 	// And the chord means the same thing from inside the page it opened.
@@ -369,20 +369,11 @@ func TestCtrlVOnAConversationRowChangesNothing(t *testing.T) {
 	// pressed: a chord with a visible door beside it is a promise, and this
 	// surface cannot keep that one.
 	//
-	// THE LAW THAT DIED IS "THE CARD STATES NO RUNG". It used to be asserted here
-	// that `thinking` appeared nowhere on a conversation's card, on the argument
-	// that printing the machine's default beside a chat would be advertising a
-	// fact about the install as a fact about the chat. SCREEN 1d overrules it: it
-	// spells the facts line of a CONVERSATION'S card `spent $1.63 · 3.6M tokens ·
-	// thinking high`, and the owner ordered the design followed exactly
-	// (FIDELITY.md item 8). So the clause is there, it is the INSTALL'S rung —
-	// what work started from this card would think at — and place_home.go's
-	// [app.homeCardFacts] says so in as many words. What survives untouched is the
-	// half this test is really about: no key is offered, because there is nothing
-	// here the key could honestly write.
+	// Auto has no known depth to claim on the card. Explicit settings still
+	// render through effortClause; no key is offered for this read-only scope.
 	card := strings.Join(homeCardFor(t, a, a.file), "\n")
-	if !strings.Contains(card, "thinking "+effort.Ship.String()) {
-		t.Fatalf("the card does not state the rung work started here would think at:\n%s", card)
+	if strings.Contains(card, effortClauseWord) {
+		t.Fatalf("auto invented a thinking level on the card:\n%s", card)
 	}
 	if strings.Contains(card, effortKeyClause) || strings.Contains(card, "ctrl+v") {
 		t.Fatalf("a conversation's card named a key for a rung it cannot move:\n%s", card)

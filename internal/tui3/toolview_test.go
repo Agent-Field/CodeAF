@@ -67,8 +67,20 @@ func toolLineOf(t *testing.T, a *app) string {
 // surface's rows. A FAILED call opens itself (app.go), so this asks for the
 // state rather than toggling it — a toggle would close the one row this helper
 // exists to read.
+//
+// AND IT OPENS THE WORK THE CALL IS INSIDE, because on a running turn that is
+// now part of what "show me this call" means: the conversation stands a running
+// turn's machinery behind three compact lines until somebody asks for it
+// (livesteps.go), so a call expanded inside a shut container would be a row this
+// helper opened and nobody could see. It is a no-op on every finished turn,
+// which is most of this suite.
 func openFirst(t *testing.T, a *app) []string {
 	t.Helper()
+	if d := a.bodyDeck(); a.state == stateWorking {
+		if key, ok := a.liveWorkOf(d); ok {
+			a.setWorkOpen(d, key, true)
+		}
+	}
 	for i := range a.entries {
 		if a.entries[i].kind == entryTool {
 			if !a.entries[i].open {
@@ -501,6 +513,7 @@ func TestARunningCallSpinsAndSaysNothingElse(t *testing.T) {
 	}}}
 	a := newTestApp(agent)
 	typeLine(t, a, "run the tests")
+	showLiveWork(t, a)
 
 	line := toolLineOf(t, a)
 	if strings.Contains(line, "·") || strings.Contains(line, "exit") {

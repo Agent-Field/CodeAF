@@ -128,6 +128,13 @@ type taskCard struct {
 	// not ask.
 	choiceRow int
 	spans     []choiceSpan
+	// gut is how many columns of the READING GUTTER are already in the two span
+	// sets above (gutter.go). The card is drawn at the transcript's own left
+	// edge, which is no longer screen column zero, and the shift is applied to
+	// finished spans by one pass — so the pass has to know what it has already
+	// paid, or a card whose rows came back from the entry cache would be moved
+	// again on every frame until its chips walked off the end of the row.
+	gut int
 
 	// forming says this card is a propose_task call that is STILL ARRIVING —
 	// the block drawn from the first fragment of the call, before there is a
@@ -254,6 +261,27 @@ type taskNode struct {
 	// unpublished price (session's task_contract.go on CostUSD).
 	tokens                int
 	report, branch, merge string
+	// produced is WHAT THE WORK MADE, kept apart from the report above because
+	// internal/session keeps the two apart and for its reason (task_result.go):
+	// the report is the CARD — a landing's own sentences, which a late verdict,
+	// an accept or a re-check rewrites hours afterwards — and the result is the
+	// work's half alone, never composed with any of them. A surface that read
+	// only the report drew a merge refusal, a decision somebody made this morning
+	// and the answer itself as one undifferentiated block, because that is what
+	// the report is once a landing has had a hand in it.
+	//
+	// EMPTY IS NOT "IT PRODUCED NOTHING". The engine omits the result when the
+	// report already carries the answer exactly — every task that finished in two
+	// or three short lines — and a checkpoint written before results existed has
+	// none at all. The card falls back to the report in both cases, which is what
+	// it drew before this field existed (taskdone.go's [taskDone.answerAndAccount]).
+	produced string
+	// producedWhole is where the whole of an answer this reader was handed only
+	// the beginning of can be read, and producedCut says that is what happened.
+	// producedHeld is the third shape: the check did not accept the work, so the
+	// answer is NAMED rather than handed on and producedWhole is where it is.
+	producedWhole             string
+	producedCut, producedHeld bool
 	// rung is WHICH COPY OF THE GROUND this node worked in and mode is what was
 	// promised about it (session's TaskNotice.Rung and .Mode). They are held for
 	// one reason: the landing note has to name the place the work was left, and
@@ -395,6 +423,24 @@ func (n *taskNode) liveLines() taskLive {
 // It can only ever fire ONCE per node: [app.taskUpdate] never un-stops one.
 func taskStops(notice *session.TaskNotice, node *taskNode) bool {
 	return notice.Stopped && !node.stopped
+}
+
+// taskPauses reports whether an update moves this node ON or OFF a gate a person
+// has to open (session's TaskNotice.Paused).
+//
+// IT IS THE DE-DUP'S FIFTH EXCEPTION, and it is one for [taskStops]' reason: the
+// gate does not move the state. An adaptive run whose tank empties goes on
+// publishing `running` — its in-flight workers are still working — so the notice
+// that carries the news is a running row publishing running, which is exactly the
+// shape the guard throws away. Without this the column drew a spinner over a run
+// that had stopped and was waiting to be told what to do, until some later row
+// happened to differ for another reason.
+//
+// Unlike the stop it can fire in BOTH directions: a gate that is answered comes
+// down, and a row still asking after the person answered is the same defect the
+// other way round.
+func taskPauses(notice *session.TaskNotice, node *taskNode) bool {
+	return notice.Paused != node.paused
 }
 
 // taskRenames reports whether an update carries a NAME this node does not have.
@@ -1694,6 +1740,10 @@ func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 	// answers a question nobody is asking.
 	card.choiceRow, card.spans = -1, nil
 	card.modelRow, card.modelSpans = -1, nil
+	// AND THE GUTTER IS UNPAID AGAIN, because these spans are about to be minted
+	// against the row's own columns from zero. The pass that moves them into the
+	// transcript's gutter reads this to know what it already owes (gutter.go).
+	card.gut = 0
 	// STILL ARRIVING: three rows, nothing to answer, and no hit targets — which
 	// the two lines above have just made true for this frame.
 	if card.forming && !card.settled() {
@@ -2215,7 +2265,7 @@ func countdownWord(d time.Duration) string {
 //     one dim block at the bottom of the column, in the group vocabulary the
 //     headings used to carry.
 //
-// THE KEYBOARD IS ASKED FOR, NEVER TAKEN (ctrl+t, esc to give it back). The
+// THE KEYBOARD IS ASKED FOR, NEVER TAKEN (alt+t, esc to give it back). The
 // draft is this surface's rest state and a map that stole keys from it would
 // make typing a thing you check before you do — see the marker law at
 // [app.railRows].
@@ -2332,12 +2382,22 @@ const (
 	railWidenKey   = "w"
 )
 
+// railHoldChord is the key that HANDS THE ROSTER THE KEYBOARD, and it is
+// `alt+t` because ctrl+t is now the new-tab chord this whole surface answers
+// (chatstart.go's [app.newChatKey]) — the key every browser opens a fresh tab
+// with, on a strip that is drawn as tabs. The roster keeps the same letter under
+// the other modifier, which is the smallest move a hand has to make, and it is
+// the modifier [railWidenChord] already spends beside it: a person driving this
+// column is already pressing alt for `alt+w`. macOS composes Option+t into `†`
+// where Option is not meta, which is exactly what [chordDeadKeys] is a table of.
+const railHoldChord = chordAltWord + "t"
+
 // The column's own door, and the two lines that name it.
 //
-// THE KEY IS FREE AND IT IS THE LAST FREE ONE WORTH SPENDING. ctrl+t is the
+// THE KEY IS FREE AND IT IS THE LAST FREE ONE WORTH SPENDING. alt+t is the
 // roster's ([app.railKey]) and every other letter this surface could reach for
 // is a chord the message box already answers — ctrl+a, ctrl+e, ctrl+b, ctrl+f,
-// ctrl+u and ctrl+w are the readline edits a person types without looking, and
+// and ctrl+u are the readline edits a person types without looking, and
 // taking one of those for a sidebar would be a keystroke that deleted a word the
 // first time somebody meant it. ctrl+g is readline's abort, which this surface
 // has always spelled esc, so nothing is lost by binding it.
@@ -2452,115 +2512,63 @@ const (
 // The word each group wears, in the roster's heading and in its footer alike.
 // One vocabulary: a person who reads "needs you" at the top must not have to
 // learn that the bottom calls the same thing "blocked".
-var railGroupWords = [railGroupCount]string{"needs you", "running", "idle", "parked", "done"}
+// `idle` AND `parked` WERE TWO WORDS FOR ONE SHAPE OF FACT, and neither said it.
+// `idle` reads as a machine doing nothing when the node is admitted and about to
+// start, `parked` is the machinery's own word, and the tasks page — which does
+// not split the two — had to pick one of them and so called slot-queued work
+// `parked` while the column called it `idle`. The pair is now `queued` (nothing
+// in its way but a slot) and `waiting` (blocked behind other work), which keeps
+// the distinction the groups exist for and is readable without learning it. The
+// dependency reason still rides on the row ([app.railWaits]).
+var railGroupWords = [railGroupCount]string{"needs you", "running", "queued", "waiting", "done"}
 
-// railGroupOf places one node.
-//
-// A KEPT BRANCH IS ATTENTION, and it is the one placement that is not simply the
-// engine's state read out. session keeps the branch of a node that conflicted or
-// was stopped (task_run.go's mergeConflicted and mergeAborted), and a kept
-// branch is work that is finished and NOT DELIVERED — the one outcome on this
-// surface a person still has to do something about.
-//
-// A FAILURE IS SETTLED NEWS AND NOT A STANDING DEMAND, and this is the law that
-// changed. "needs you" used to hold every failed node forever, and the reason it
-// did was that a failure USED TO BE the moment a person was called in: work came
-// back short and the only thing that could happen next was somebody looking at
-// it. That is no longer where the decision is. The engine exhausts its repair
-// rounds BEFORE a node is allowed to land failed (session's task_audit.go and
-// the mending line it publishes while it runs), so by the time this surface sees
-// the word the question "can this be salvaged automatically" has already been
-// asked and answered. What is left is a report: this piece of work did not come
-// off. That is worth keeping — it is why the roster keeps everything — and it is
-// not worth the top of the column and a group that never folds.
-//
-// SO THE TEST IS "IS THERE SOMETHING TO DO", NOT "DID IT GO WRONG". Four
-// outcomes pass it and nothing else does: work nobody could judge, which moves
-// only when a person decides (session's ResolveUnverified); a branch that
-// was deliberately kept; a branch that conflicted; and a run that stopped with
-// its branch kept. The last three are the same fact — FINISHED WORK THAT IS NOT DELIVERED, sitting on a branch that
-// nobody but a person is going to bring home — and they are read off the merge
-// word rather than off the state, because a failed node and a done node can each
-// wear either one. A failure with NO kept branch left nothing behind to deliver,
-// so it is news, and news lives in the fold with the rest of the record —
-// at the FRONT of that fold, where 8.1.7 puts the work that did not come off
-// ([railFinalOrder]).
+// railGroupOf groups the task's own state. Explicit decisions and conflicts
+// lead, then active and waiting work, then finished reports. A retained branch
+// remains inspectable without demanding an unrequested merge.
 func (a *app) railGroupOf(node *taskNode) railGroup {
-	switch node.state {
-	case session.TaskRunning:
-		// EXCEPT FOR THE ONE PIECE OF RUNNING WORK THAT IS NOT RUNNING. A harness
-		// design at "awaiting your look" has finished everything a machine can do
-		// for it: the page is written and the only remaining step is somebody
-		// saying whether to keep it ([taskAwaitsPerson]). Counted as running it
-		// made the roster's foot say "1 running" about a card that had been sitting
-		// on screen for ten minutes waiting on the person reading that line — and
-		// left the tally that exists to say "something needs you" saying nothing.
-		if taskAwaitsPerson(node) {
-			return railAttention
-		}
-		return railRunning
-	case session.TaskUnverified:
-		// ATTENTION, AND IT IS THE PLAINEST CASE OF IT ON THIS COLUMN. An
-		// unverified node is settled work that nobody can call finished, and the
-		// only thing that moves it is a person deciding. It is named here rather
-		// than left to the merge test below, which would file a node whose branch
-		// went nowhere under "done".
-		//
-		// AND A PARENT'S RUNNING IS A FOLD, NOT A MUTE. This used to answer
-		// [railDone] for a child under a working head, on the argument that the
-		// parent's own agent is the decider while it lives — which is true about
-		// WHO is being asked and says nothing at all about WHETHER anybody is. The
-		// cost of reading it the other way was measured: the footer counted a node
-		// nobody had decided under `done`, and the one column that could have shown
-		// the demand did not (#268). The demand stays visible here; what folds is
-		// how LOUD it is ([app.railGlyphRank] demotes a child whose head is still
-		// holding the question), which is the honest version of the same idea.
+	// The demand is the reading's ([session.TaskStatus.Attention]); whether a node
+	// is queued or running is the scheduler's, and is read from the state so that
+	// a queued node behind a full machine is never filed as work in flight.
+	status := a.taskStatus(node)
+	switch {
+	case status.Attention:
+		// A parent's running is a FOLD, not a mute. While the parent lives it is
+		// the one being asked, so the top of the family is what a person reads
+		// first — but the demand stays visible here, because filing it under
+		// `done` once let a nested question expire with nobody able to see it
+		// (#268). What folds is how loud it is ([app.railGlyphRank]).
 		return railAttention
-	case session.TaskQueued:
-		if a.railWaits(node) != "" {
+	case status.Presence == session.TaskPresenceWaiting:
+		return railParked
+	case status.State == session.TaskQueued:
+		if status.On == session.TaskWaitWork {
 			return railParked
 		}
 		return railIdle
-	}
-	if taskUndelivered(node) {
-		return railAttention
+	case status.State == session.TaskRunning:
+		return railRunning
 	}
 	return railDone
 }
 
-// taskUndelivered reports whether this node's work is FINISHED AND NOT DELIVERED:
-// it lives on a branch that never came home, and nothing but a person is going
-// to bring it home.
-//
-// THE BRANCH IS THE WHOLE OF THE CLAIM. "kept", "conflicted" and "aborted" are
-// the merge words session writes when it keeps a branch (task_run.go's comeHome
-// and abortedMerge), and a node wearing one of them WITH a branch name has real work
-// sitting somewhere a person can go and get. A node that ran in the person's own
-// tree, or one that ended before there was ever a branch, wears no name here and
-// has left nothing behind — so it is not undelivered, it is simply over.
 // taskAwaitsPerson reports whether this node's only remaining step is a
-// PERSON'S. It is the other half of [taskUndelivered]: both name work the
-// machine has finished and cannot take further, and both belong in the tally
-// that says how many things need somebody.
+// PERSON'S. It is one half of the demand the roster counts; the other is edits
+// nobody brought home ([session.TaskStatus.ChangesUnlanded]), and both name work
+// the machine has finished and cannot take further.
 //
-// TODAY IT IS EXACTLY ONE THING, and it is written narrowly on purpose. A
-// harness design holds its node open while its card waits to be answered, which
-// is right — the work genuinely is not over, the room has to stay open, the stop
-// has to keep working — but its STATE is the machinery's word for it, and the
-// state is `running` for the same span in which nothing is running. The phase is
-// the honest fact, so the phase is what this asks, against the engine's own
-// constant (session's HarnessPhaseAsking): the string is spelled once, over
-// there, because a second copy of it here is the copy that would drift.
+// TODAY IT IS EXACTLY ONE THING, and the narrowness is the engine's rather than
+// this file's: a harness design holds its node open while its card waits to be
+// answered — the work genuinely is not over, the room stays open, the stop keeps
+// working — and `running` is the machinery's word for the same span in which
+// nothing is running. Which phases mean that is decided once, in the reading
+// ([session.ProjectTask]), so a surface here never has to guess at the meaning
+// of a phase it was never told about.
 //
-// It is deliberately not a general "is the phase a waiting one" test. Phases are
-// a kind's own vocabulary and only this kind has one; a surface that guessed at
-// the meaning of phases it had never been told about would file the next kind's
-// rows wrong the day it landed.
-func taskAwaitsPerson(node *taskNode) bool {
-	return node != nil &&
-		node.kind == session.TaskKindHarness &&
-		node.state == session.TaskRunning &&
-		node.doing == session.HarnessPhaseAsking
+// It is the RUNNING half of "needs a person": work nobody could check needs one
+// too, and that node has settled ([app.taskStatus] answers both).
+func (a *app) taskAwaitsPerson(node *taskNode) bool {
+	status := a.taskStatus(node)
+	return status.Presence == session.TaskPresenceNeedsLook && status.State == session.TaskRunning
 }
 
 // taskParentDeciding reports whether the node above this one is STILL WORKING,
@@ -2595,14 +2603,6 @@ func (a *app) taskParentDeciding(node *taskNode) bool {
 			continue
 		}
 		return up.state == session.TaskRunning || up.state == session.TaskQueued
-	}
-	return false
-}
-
-func taskUndelivered(node *taskNode) bool {
-	switch node.merge {
-	case mergeWordConflicted, mergeWordAborted, mergeWordKept:
-		return strings.TrimSpace(node.branch) != ""
 	}
 	return false
 }
@@ -2826,6 +2826,28 @@ func (a *app) railKin() (kids map[string][]*taskNode, byKey map[string]*taskNode
 		}
 		kids[up] = append(kids[up], node)
 	}
+	// AND EACH SET OF CHILDREN IS PUT IN THE ORDER THE COLUMN ALREADY PUTS
+	// FAMILIES IN: what will not move without a person first, then what is
+	// running, then what is waiting, then what is over.
+	//
+	// THE FAMILIES WERE SORTED AND THEIR MEMBERS WERE NOT, which showed on exactly
+	// the rows the sort exists for. A run that hands out four pieces finishes them
+	// one at a time, and the finished ones arrived FIRST — so the block under an
+	// open family read `done, done, running, running`, with the only rows anybody
+	// was watching at the bottom of it. The person's own instruction was that
+	// active work be easy to find, and it was easy to find down to the level the
+	// ordering stopped at.
+	//
+	// TIES KEEP ARRIVAL ORDER, which is what makes this safe to do under somebody
+	// who is reading: the slice is already in [app.taskOrder]'s order and the sort
+	// is stable, so two settled siblings never trade places and the block is still
+	// the family in the order the session met it wherever the states agree.
+	for up := range kids {
+		under := kids[up]
+		sort.SliceStable(under, func(i, j int) bool {
+			return a.railGroupOf(under[i]) < a.railGroupOf(under[j])
+		})
+	}
 	return kids, byKey
 }
 
@@ -3021,6 +3043,23 @@ func (a *app) railColumns(width int) int {
 	return railColsFor(width)
 }
 
+// railCanWiden reports whether the third tier is ON OFFER at this frame — the
+// person's own answer reaches [app.railColumns] only from [railFloor] up, and
+// the roster drawn over the body has no column to widen at all.
+//
+// IT IS ONE QUESTION BECAUSE IT IS ASKED BY BOTH HANDS AND BY THE HANDLE. The
+// footer names the chord only where it works ([app.railOffersResize]) and the
+// seam is only a handle where it works (room.go's [app.railSeamAt]) — and the
+// seam is the half that had it wrong: it claimed the two leftmost cells of every
+// row at EVERY width the column stands at, so between [railSlimFloor] and
+// [railFloor], where widening does nothing, those cells swallowed the press and
+// changed nothing on screen. Two dead columns of a twenty-four-column list, down
+// the edge a hand crossing from the conversation reaches first.
+func (a *app) railCanWiden() bool {
+	width, _ := a.size()
+	return a.railShowing() && !a.railFull() && width >= railFloor
+}
+
 // railShowing reports whether the frame has a roster on it right now.
 //
 // THE COLUMN IS PERMANENT. It stands from the session's first frame, before any
@@ -3067,6 +3106,16 @@ func (a *app) railShowing() bool {
 // is on the frame, so nothing here can be pressed ([app.railStowed] asks it
 // too).
 func (a *app) railQuiet() bool {
+	// AND THE NEW-CHAT START PAGE IS THE SECOND ANSWER, for the first one's reason
+	// with the sign flipped (chatstart.go). There the column had nothing to say;
+	// here it has plenty and none of it is about the page on screen — the roster
+	// is THIS CONVERSATION's work, and the page is deliberately not in a
+	// conversation yet. A column left standing beside it would offer doors into
+	// the work of a conversation the person has just stepped away from, drawn
+	// beside a blank box asking for a different one.
+	if a.startingChat() {
+		return true
+	}
 	return a.welcome.open && !a.railAvail() && len(a.marginStanding()) == 0
 }
 
@@ -3074,10 +3123,10 @@ func (a *app) railQuiet() bool {
 //
 // It is the width-free half of [app.railShowing], and the two are different
 // questions now: what the frame lends the roster is a question about columns,
-// and whether there is anything to put a cursor on is not. ctrl+t asks this one.
+// and whether there is anything to put a cursor on is not. alt+t asks this one.
 //
 // THE PROJECT'S RECORD DOES NOT COUNT. It is not on this column — the column is
-// this conversation's work (taskview.go) — so a ctrl+t that took the keyboard on
+// this conversation's work (taskview.go) — so an alt+t that took the keyboard on
 // the strength of it would hand six keys to a list with no rows in it. What a
 // directory with a history behind it has is the footer's door, and that is a
 // press and a chord of its own ([taskSheetPastHint]).
@@ -3099,11 +3148,11 @@ func (a *app) railAvail() bool { return len(a.taskOrder) > 0 || len(a.jobs) > 0 
 // the width it actually has.
 //
 // It is the SAME STATE as the column's focus ([app.railHold]) and not a second
-// flag, because it is the same act: ctrl+t asks for the roster, and what the
+// flag, because it is the same act: alt+t asks for the roster, and what the
 // frame does with the request is a question about its width. One state cannot
 // disagree with itself about whether the roster is up.
 func (a *app) railFull() bool {
-	if !a.railHold || !a.railAvail() || a.railAway {
+	if !a.railHold || !a.railAvail() || a.railAway || a.railQuiet() {
 		return false
 	}
 	width, _ := a.size()
@@ -3263,11 +3312,18 @@ type railLine struct {
 	// head says this is the entry's FIRST line, which is the one a marker goes
 	// on: a two-line node with two markers would read as two nodes.
 	head bool
-	// glyph is the row's STATE CELL in the column's own coordinates, and badge
-	// the ▸ +N a folded root wears. They are written at LAYOUT and read by the
-	// click, which is the bargain the strip's chips make (taskstrip.go): the
-	// geometry is recorded where it is decided, because a hit-test that
-	// recomputed it would be measuring a row the frame has not drawn.
+	// glyph is the row's FOLD CELL in the column's own coordinates, and badge the
+	// ▸ +N a folded root wears. They are written at LAYOUT and read by the click,
+	// which is the bargain the strip's chips make (taskstrip.go): the geometry is
+	// recorded where it is decided, because a hit-test that recomputed it would
+	// be measuring a row the frame has not drawn.
+	//
+	// glyph IS EMPTY ON EVERY FRAME WHERE THAT CELL IS NOT A CONTROL, which is
+	// most of them: the cell holds the row's state until the pointer is on a row
+	// that can fold, and only then does it become ▾ or ▸ ([app.railLead] says
+	// why the press may not work this out for itself). An empty span is a span
+	// that holds no column, so the cells fall to the row and the row is the
+	// node's door.
 	glyph hudSpan
 	badge hudSpan
 	// hint says this line is the footer's widen offer, which is pressable and
@@ -3770,7 +3826,7 @@ func (a *app) railTake(hold bool) {
 		return
 	}
 	if hold {
-		// ASKING FOR THE ROSTER IS ASKING FOR IT TO BE THERE. ctrl+t on a frame
+		// ASKING FOR THE ROSTER IS ASKING FOR IT TO BE THERE. alt+t on a frame
 		// whose column has been put away, and the strip's own +N door, are both
 		// requests for the whole list — and a request that moved a cursor inside a
 		// column nobody can see would be the key doing nothing at all. So the
@@ -3793,7 +3849,7 @@ func (a *app) railTake(hold bool) {
 }
 
 // railKey is the roster's claim on the keyboard, and it is a claim it can only
-// make ONCE IT HAS BEEN GIVEN ONE (ctrl+t on, esc off).
+// make ONCE IT HAS BEEN GIVEN ONE (alt+t on, esc off).
 //
 // The draft is this surface's rest state — a person types at it without looking
 // — so a map that answered ↑ whenever it happened to be on screen would make
@@ -3807,7 +3863,7 @@ func (a *app) railTake(hold bool) {
 // outrank a map of work.
 //
 // TWO KEYS ARE READ WITHOUT THE HOLD, and they are the two that are about the
-// roster rather than inside it: ctrl+t, which asks for it, and ctrl+g, which
+// roster rather than inside it: alt+t, which asks for it, and ctrl+g, which
 // takes the column off the frame and puts it back ([app.railStow]).
 //
 // HOME IS ON THE STAND-DOWN LIST BESIDE THE OTHER FULLSCREEN PAGES, and it was
@@ -3855,7 +3911,7 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// the project's own record rows, or nothing but its label, closes and reopens
 		// like any other. Under [railSlimFloor], where there is no column to close and
 		// nobody has raised the overlay, it still falls through untouched, exactly as
-		// ctrl+t does. A keystroke that silently moved a state nothing is drawing is a
+		// alt+t does. A keystroke that silently moved a state nothing is drawing is a
 		// keystroke a person cannot tell they pressed, and this one would move it into
 		// the NEXT session as well.
 		if !(a.railStanding() || a.railAway) {
@@ -3864,11 +3920,16 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.railStow(!a.railAway)
 		return nil, true
 	}
-	if key == "ctrl+t" {
+	if key == railHoldChord {
 		// ONE KEY AT EVERY WIDTH. With a column on the frame it hands the roster
 		// the keyboard; without one it raises the roster over the body, which is
 		// the same act with the same state behind it ([app.railFull]). Pressed
 		// again — or esc — it puts it away.
+		//
+		// THE CHORD IS alt+t AND NOT ctrl+t ([railHoldChord]). ctrl+t is the
+		// new-tab key now, at every one of these widths and with the roster
+		// holding the keyboard as well — a person on a running task who presses
+		// it gets a fresh conversation, not a column that folds away under them.
 		if !a.railHold && !a.railAvail() {
 			// Nothing to hold. The key falls through rather than being eaten
 			// silently, so a surface that grows another meaning for it later is
@@ -4193,12 +4254,7 @@ func (a *app) railEnter() tea.Cmd {
 	if at < 0 || entries[at].node == nil {
 		return nil
 	}
-	node := entries[at].node
-	if node.run != "" {
-		a.openOrchRoom(node.run, node.node)
-	} else {
-		a.openRoomFor(node.id, node.title)
-	}
+	a.openRailRoom(entries[at].node)
 	return a.takeRoomPump()
 }
 
@@ -4281,7 +4337,7 @@ func (a *app) railFootRows(width, height int) ([]string, int, int, int) {
 	}
 	offer := a.railOffersResize() && ansi.StringWidth(hintText) <= width
 	// THE DOOR IS ONLY DRAWN WHERE THERE IS A COLUMN TO CLOSE. Over the body the
-	// roster is an overlay a person raised with ctrl+t and drops with esc
+	// roster is an overlay a person raised with alt+t and drops with esc
 	// ([app.railFull]), and a second way out named at the bottom of it would be
 	// two exits from a room with one.
 	// The chevron and its space are charged for here, because the door is drawn
@@ -4431,8 +4487,7 @@ func (a *app) railMoreAt(x, y int) bool {
 // title earns the offer on its own; focus and the pointer make it visible while
 // a person is already acting on the roster. The frame still has the final say.
 func (a *app) railOffersResize() bool {
-	width, _ := a.size()
-	if width < railFloor || a.railFull() {
+	if !a.railCanWiden() {
 		return false
 	}
 	return a.railCramped || a.railHold || a.hoveringRailArea()
@@ -4489,7 +4544,7 @@ func railPack(segs []string, width, rooms int, lead string) []string {
 // railEntryRows is one row of the forest: WHAT IT IS on the first line, and what
 // is true of it on the second.
 //
-//	⠙ ◆ Fix nil-map           #7     a node that belongs to no family
+//	⠙ Fix nil-map             #7     a node that belongs to no family
 //	  bash go test ./… · 42s
 //	⠙ Ship the port            #1     and a family, drawn whole
 //	├─ ✓ Read the law          #2
@@ -4499,17 +4554,19 @@ func railPack(segs []string, width, rooms int, lead string) []string {
 //	└─ ◌ Wire the seam         #5
 //	⠙ Port the parser        ▸ +7     the same family, folded
 //
-// A ROOTLESS ROW OPENS WITH TWO GLYPHS AND A TREE ROW WITH ONE. On a flat row
-// the first is the STATE and the second is the node's own identity, which never
-// changes at all (taskident.go) — a person tracking one node out of four tracks
-// the second one, and it is the same mark the proposal card wore. Down a tree
-// the neighbours are already named by the connectors they hang from, and the
-// question left over is which limb is still moving: so the column is a column of
-// STATES and it can be read downward.
+// EVERY ROW OPENS WITH ONE GLYPH AND IT IS THE STATE. A flat row used to lead
+// with two — the state and the node's own ◆ — and the second bought nothing
+// here: it is the same mark on every task, the tree rows never carried it, and
+// this column holds nothing but tasks, so it marked a distinction the column
+// does not contain while spending two of the twenty-two cells the name has
+// ([app.railLead] states the whole of it). Down a tree the neighbours are
+// already named by the connectors they hang from, and the question left over is
+// which limb is still moving: so the column is a column of STATES and it can be
+// read downward, flat rows and family rows alike.
 //
-// THE NAME LEADS AND THE HANDLE TRAILS. The glyphs and the title are what a
-// person reads down this column — the state, the node's own mark, and the words
-// they themselves approved — and the id is what identifies the node to the
+// THE NAME LEADS AND THE HANDLE TRAILS. The glyph and the title are what a
+// person reads down this column — the state, and the words they themselves
+// approved — and the id is what identifies the node to the
 // MACHINE: the number the engine says in its own sentences ("task 7 finished",
 // session's task_run.go), the thing to type when you go looking for the branch,
 // and the least interesting fact on the row. So it is dim, it is at the far end,
@@ -4524,15 +4581,17 @@ func railPack(segs []string, width, rooms int, lead string) []string {
 // PRESENCE list — the question it answers is "what is alive", and a sentence
 // clipped to twenty-two cells answers no question at all.
 //
-// It reports the glyph cell's columns and the badge's alongside the rows,
-// because both are pressable and both are narrower than the row they are on.
+// It reports the FOLD cell's columns and the badge's alongside the rows, because
+// both are pressable and both are narrower than the row they are on — and
+// because everything else on the row is the node's own door, so a target
+// recorded where nothing is drawn is a click the task swallows.
 func (a *app) railEntryRows(e railEntry, width int) ([]string, hudSpan, hudSpan) {
 	node := e.node
 	if node == nil {
 		return nil, hudSpan{}, hudSpan{}
 	}
 	prefix, at := a.railPrefix(e.stems)
-	glyph, lead := a.railLead(e)
+	glyph, lead, folds := a.railLead(e)
 	room := width - at - ansi.StringWidth(lead)
 	// The trailing slot: a folded root says how much it is standing for, every
 	// other row says its handle, and both stand down when the title cannot afford
@@ -4573,7 +4632,17 @@ func (a *app) railEntryRows(e railEntry, width int) ([]string, hudSpan, hudSpan)
 			rows = append(rows, a.railUnderStem(e)+under)
 		}
 	}
-	return rows, hudSpan{from: at, to: at + ansi.StringWidth(glyph)}, badge
+	// THE CELL IS A TARGET ONLY WHERE IT IS DRAWN AS ONE. At rest it holds the
+	// STATE — a spinner, a tick, a demand — and a state is not a control; the
+	// disclosure appears in its place under the pointer and only there
+	// ([app.railLead]). An empty span holds no column ([hudSpan.holds] asks
+	// [hudSpan.pressable] first), so on every other frame these cells belong to
+	// the row, which is the node's door.
+	cell := hudSpan{}
+	if folds {
+		cell = hudSpan{from: at, to: at + ansi.StringWidth(glyph)}
+	}
+	return rows, cell, badge
 }
 
 // railSaysMore reports whether this row is allowed the block under its title.
@@ -4663,7 +4732,8 @@ func (a *app) railNodeRows(node *taskNode, width int) []string {
 	return rows
 }
 
-// railLead is the row's glyph cell and the whole lead it sits in, air included.
+// railLead is the row's glyph cell, the whole lead it sits in, air included, and
+// whether that cell IS A FOLD CONTROL on this frame.
 //
 // THE DISCLOSURE IS THE POINTER'S AND IT REPLACES THE STATE. A family root under
 // the pointer trades its state cell for ▾ or ▸ — one cell, in place, so nothing
@@ -4675,7 +4745,28 @@ func (a *app) railNodeRows(node *taskNode, width int) []string {
 // the same gesture on the same map ([app.railTucks]). One fold vocabulary down
 // the column: what is hiding something says so under the hand, and ▸ opens it
 // whether what it is hiding is a subtree or two lines of its own history.
-func (a *app) railLead(e railEntry) (string, string) {
+//
+// THE THIRD ANSWER IS WHAT THE PRESS READS, and returning it is the whole of the
+// fix: [app.railPress] used to fold whenever a row COULD disclose — a family
+// root, a landed row with a block tucked under it — while the cell only DRAWS
+// the triangle under the pointer. So a press on a root this surface was not
+// holding a hover for folded the family with a STATE glyph on screen, and the
+// task the person was aiming at never opened. Opening a room drops the hover
+// ([app.dropHover]) and a pointer that has not moved since sends no motion to
+// put it back, so the very next click after opening anything landed in exactly
+// that gap. The set that LIGHTS is the set that acts, which is hover.go's own
+// law; this is the one answer both halves now read.
+//
+// AND THE ROW NO LONGER CARRIES THE ◆. It is one marker drawn as furniture,
+// saying "this row is a task" and nothing else (taskident.go) — a distinction
+// this column does not contain, because every node row on it is a task and the
+// tree rows never wore it at all. It cost two cells of NAME on the narrowest
+// surface here, on flat rows only, so two rows of the same kind led differently
+// and the under-block — indented two cells by [app.railUnderCols] — sat two
+// cells to the left of the title it belongs to. Dropping it buys the name those
+// cells and squares the block up under it. Every other place a task is drawn
+// keeps the marker, because those places hold more than tasks.
+func (a *app) railLead(e railEntry) (string, string, bool) {
 	glyph := a.railTreeGlyph(e.node)
 	if e.folded && e.worst != nil {
 		// A FOLDED ROOT WEARS THE WORST THING UNDER IT. The row is standing for a
@@ -4683,17 +4774,15 @@ func (a *app) railLead(e railEntry) (string, string) {
 		// rather than what its root happens to be doing.
 		glyph = a.railTreeGlyph(e.worst)
 	}
-	if a.hoveringRail(e.node) && (e.root || a.railTucks(e)) {
+	fold := a.hoveringRail(e.node) && (e.root || a.railTucks(e))
+	if fold {
 		mark := a.linearMark(glyphOpen, glyphOpenASCII)
 		if e.folded || (!e.root && a.railTuckShut(e.node)) {
 			mark = a.linearMark(glyphShut, glyphShutASCII)
 		}
 		glyph = a.pal.accent(mark)
 	}
-	if e.root || len(e.stems) > 0 {
-		return glyph, glyph + " "
-	}
-	return glyph, glyph + " " + a.taskMark(e.node.ident) + " "
+	return glyph, glyph + " ", fold
 }
 
 // railPrefix is the connectors for one row, painted, and the CELLS they cost. A
@@ -4726,8 +4815,11 @@ func (a *app) railPrefix(stems []bool) (string, int) {
 // would put a gap in the vertical line the eye is following down the family. The
 // row's own elbow becomes a stem — or blank air, where the node was the last of
 // its siblings — and the node's own stem is added when it has children drawn
-// below it. The two cells on the end are the same two the flat row has always
-// used to hold its under-block off its title.
+// below it. The two cells on the end are the flat row's WHOLE lead — the state
+// glyph and its air ([app.railLead]) — so an under-row now starts in the same
+// column as the title it belongs to. It did not while the flat row also carried
+// a ◆: the block sat two cells to its left, and squaring that up is half of why
+// the marker went.
 func (a *app) railUnderStem(e railEntry) string {
 	var out strings.Builder
 	for _, more := range e.stems {
@@ -4781,19 +4873,23 @@ func (a *app) railWorst(t *railTwig) *taskNode {
 // asked, so a family drawn as its root alone must wear the root's own news and
 // not a question its own head is already holding.
 func (a *app) railGlyphRank(node *taskNode) int {
+	status := a.taskStatus(node)
 	switch {
-	case node.Paused(), taskUndelivered(node):
+	case node.Paused(), status.ChangesUnlanded():
 		return 0
-	case node.state == session.TaskUnverified:
-		if a.taskParentDeciding(node) {
+	case status.Presence == session.TaskPresenceNeedsLook:
+		// The fold is for work nobody could check, whose question goes to the
+		// parent's own agent. A design waiting to be approved is asking the
+		// PERSON, and no agent above it can answer for them.
+		if status.State == session.TaskUnverified && a.taskParentDeciding(node) {
 			return 4
 		}
 		return 0
-	case node.state == session.TaskRunning:
+	case status.State == session.TaskRunning:
 		return 1
-	case node.state == session.TaskFailed:
+	case status.State == session.TaskFailed:
 		return 2
-	case node.state == session.TaskQueued:
+	case status.State == session.TaskQueued:
 		return 3
 	}
 	return 4
@@ -4878,6 +4974,9 @@ func (a *app) railTitle(node *taskNode, title string) string {
 // handles back to work that is not on screen, and half of one of those is worth
 // nothing at all.
 func (a *app) railUnder(node *taskNode, width int) []string {
+	if a.taskReviewPending(node) {
+		return []string{a.pal.dim(fit(taskReviewPendingWord, width))}
+	}
 	paint, text := a.pal.dim, ""
 	switch node.state {
 	case session.TaskRunning:
@@ -5056,7 +5155,7 @@ const railSep = " · "
 
 // ── THE ELAPSED CLOCK ───────────────────────────────────────────────────────
 //
-//	⠙ ◆ Fix nil-map
+//	⠙ Fix nil-map
 //	  bash go test ./…            under ten seconds: no number at all
 //	  bash go test ./… · 24s      dim, because it is only slow
 //	  bash go test ./… · 1m 8s    warn, because it is now the reason you are waiting
@@ -5329,20 +5428,17 @@ func railWrap(text string, width int) []string {
 	return out
 }
 
-// railWaits names the prerequisites this node is still blocked on, oldest
-// first. A dependency this surface has never seen an update for is skipped
-// rather than named as an id: a row that says "waits: 7" is a row that has told
-// a person nothing.
+// railWaits is the prerequisite sentence a blocked node wears, and "" for a
+// node that is not waiting on other work. It is the reading's own answer
+// ([session.TaskWaitWork], taskstatus.go) rather than a second walk of the
+// edges, so the row, the group it is filed under and the composer's line about
+// it cannot disagree about whether this node is behind anything.
 func (a *app) railWaits(node *taskNode) string {
-	var names []string
-	for _, id := range node.dependsOn {
-		dep := a.tasks[id]
-		if dep == nil || dep.state == session.TaskDone {
-			continue
-		}
-		names = append(names, dep.title)
+	status := a.taskStatus(node)
+	if status.On != session.TaskWaitWork {
+		return ""
 	}
-	return strings.Join(names, " · ")
+	return status.Reason
 }
 
 // railGlyph is the node's state, in one cell.
@@ -5361,51 +5457,39 @@ func (a *app) railGlyph(node *taskNode) string {
 	return a.taskStateInk(node)(a.taskStateMark(node))
 }
 
-// taskStateMark is a node's state in one cell, UNPAINTED.
+// taskStateMark is a node's state in one cell, UNPAINTED. The cell is the
+// reading's and not the state's: which `failed` is a fault, which is work a
+// check found unfinished, which is a person's own stop and which is a run the
+// wire ended are four marks, decided once in [session.ProjectTask].
 func (a *app) taskStateMark(node *taskNode) string {
-	// ⊘ IS THE ONE MARK THAT OUTRANKS THE STATE, and it is the only one that
-	// does: a node a person stopped settles as `failed` on the wire, because
-	// nothing merged, and drawing it with the failure's cross would report a
-	// finding nobody made about work they ended themselves (stop.go).
-	if mark, stopped := a.stoppedGlyph(node); stopped {
-		return mark
-	}
-	// A CHECK REFUSAL IS UNFINISHED WORK, NOT A FAULT. The engine still holds
-	// the failed state so nothing depending on it advances; the person sees the
-	// steer mark and the report's concrete next move.
-	if mark, incomplete := a.incompleteGlyph(node); incomplete {
-		return mark
-	}
-	// AND ! IS THE NEXT: a node the wire, a threshold, a loop or another task's
-	// copy halted settles as `failed` on the wire too, and the cross would be
-	// the same finding nobody made (taskending.go).
-	if mark, halted := a.haltedGlyph(node); halted {
-		return mark
-	}
-	// AND NOTHING SPINS WHILE IT IS WAITING ON YOU. A spinner is this surface's
-	// one promise that something is happening this instant, and a design at
-	// "awaiting your look" is the one running row where nothing is
-	// ([taskAwaitsPerson]). It wears the same ? the other kind of finished-and-
-	// waiting work wears, in the same warn hue, because it is the same ask: the
-	// machine has done its part and the next move is yours.
-	if taskAwaitsPerson(node) {
+	status := a.taskStatus(node)
+	switch status.Presence {
+	case session.TaskPresenceStopped:
+		// ⊘ outranks the state: a stopped node settles `failed` because nothing
+		// merged, and a cross would report a finding nobody made about work the
+		// person ended themselves.
+		return a.linearMark(glyphStopped, glyphStoppedASCII)
+	case session.TaskPresenceNeedsLook:
+		// ? for both kinds of waiting on you, and no spinner: the spinner is this
+		// surface's promise that something is happening this instant.
 		return glyphUnverified
-	}
-	switch node.state {
-	case session.TaskDone:
-		return a.linearMark(glyphDone, glyphDoneASCII)
-	case session.TaskFailed:
+	case session.TaskPresenceIncomplete:
+		// ! is unfinished work; the cross is kept for the fault, because nobody
+		// found anything wrong with the rest.
+		if !status.Fault {
+			return glyphHalted
+		}
 		return a.linearMark(glyphBad, glyphBadASCII)
-	case session.TaskUnverified:
-		return glyphUnverified
-	case session.TaskRunning:
+	case session.TaskPresenceDone:
+		return a.linearMark(glyphDone, glyphDoneASCII)
+	}
+	if status.State == session.TaskRunning {
 		if a.linear {
 			return glyphRunASCII
 		}
 		return tokens.Spinner(a.paints / spinnerStep)
-	default:
-		return a.linearMark(glyphQueued, glyphQueuedASCII)
 	}
+	return a.linearMark(glyphQueued, glyphQueuedASCII)
 }
 
 // taskStateInk is the hue that state is said in — the paint half of
@@ -5413,26 +5497,21 @@ func (a *app) taskStateMark(node *taskNode) string {
 // never fall out of step. Anything that says a node's name in the colour of what
 // it is doing asks this: the roster's glyph, and the composer's room segment.
 func (a *app) taskStateInk(node *taskNode) func(string) string {
-	if _, stopped := a.stoppedGlyph(node); stopped {
+	status := a.taskStatus(node)
+	switch status.Presence {
+	case session.TaskPresenceStopped:
 		return a.pal.dim
-	}
-	if _, incomplete := a.incompleteGlyph(node); incomplete {
+	case session.TaskPresenceNeedsLook:
 		return a.pal.warn
-	}
-	if _, halted := a.haltedGlyph(node); halted {
-		return a.pal.warn
-	}
-	if taskAwaitsPerson(node) {
-		return a.pal.warn
-	}
-	switch node.state {
-	case session.TaskDone:
-		return a.pal.muted
-	case session.TaskFailed:
+	case session.TaskPresenceIncomplete:
+		if !status.Fault {
+			return a.pal.warn
+		}
 		return a.pal.bad
-	case session.TaskUnverified:
-		return a.pal.warn
-	case session.TaskRunning:
+	case session.TaskPresenceDone:
+		return a.pal.muted
+	}
+	if status.State == session.TaskRunning {
 		return a.pal.accent
 	}
 	return a.pal.dim
@@ -5546,7 +5625,8 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		node := a.tasks[notice.ID]
 		if node == nil || (notice.CostUSD <= node.cost &&
 			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node) &&
-			!taskRenamesContext(notice, node) && !taskStops(notice, node)) {
+			!taskRenamesContext(notice, node) && !taskStops(notice, node) &&
+			!taskPauses(notice, node)) {
 			return nil
 		}
 	}
@@ -5589,6 +5669,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		a.tasks[notice.ID] = node
 		a.taskOrder = append(a.taskOrder, notice.ID)
 	}
+	a.takeTypedTaskBrief(node)
 	if title := strings.TrimSpace(notice.Title); title != "" {
 		node.label = title
 	}
@@ -5658,6 +5739,16 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	if notice.Report != "" {
 		node.report = notice.Report
 	}
+	// AND WHAT THE WORK PRODUCED, kept on the report's own rule — a notice quiet
+	// about it has not unmade the answer — with the two facts that qualify it
+	// taken from the SAME notice that carried the body. Cut and held are
+	// statements about the text beside them, so a later notice's flags over an
+	// older notice's body would be this surface claiming a pointer belongs to an
+	// answer it was never published with (session's TaskNotice.Result).
+	if notice.Result != "" || notice.ResultHeld {
+		node.produced, node.producedWhole = notice.Result, notice.ResultWhole
+		node.producedCut, node.producedHeld = notice.ResultCut, notice.ResultHeld
+	}
 	// The model is kept whenever an update carries one and never overwritten
 	// with an empty: it is a property of the work, settled at admission, and an
 	// update that says nothing about it is not an update that changed it.
@@ -5684,6 +5775,13 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// present that has passed (the same law [taskNode.tool] is held to).
 	live := taskLiveLines(notice)
 	node.doing, node.mending, node.waiting = live.doing, live.mending, live.waiting
+	// AND SO IS THE GATE, on the same law: a run held at its fuel gate is held
+	// until somebody answers, and the row that says the answer landed is a row
+	// that stops carrying it (session's TaskNotice.Paused). It is taken from
+	// every update INCLUDING ITS ABSENCE, so nothing on this surface has to
+	// decide when a gate comes down — the engine stamps every row the run
+	// publishes, and the last one to arrive is the truth.
+	node.paused = notice.Paused
 	// AND SO IS THE LIFE IT WAS IN, on the same law one field over. The phase
 	// arrives on its own event and is cleared here rather than there, because the
 	// event that says a node has stopped checking is the LANDING — a node that
@@ -5822,7 +5920,7 @@ func (a *app) tasksAnimating() bool {
 	// ([taskAwaitsPerson]), so a card that sits unanswered over lunch is no
 	// longer an hour of repaints for a row that never changes.
 	for _, node := range a.tasks {
-		if node != nil && node.state == session.TaskRunning && !taskAwaitsPerson(node) {
+		if node != nil && node.state == session.TaskRunning && !a.taskAwaitsPerson(node) {
 			return true
 		}
 	}
@@ -5839,6 +5937,7 @@ func (a *app) dropTasks() {
 	a.closeRoom()
 	a.task = nil
 	a.tasks = nil
+	a.typedTaskBriefs = nil
 	a.taskOrder = nil
 	a.taskSeen = nil
 	a.taskLane = nil

@@ -100,7 +100,7 @@ var phases = phaseDesk{latest: map[string]PhaseNews{}, waits: map[string]time.Ti
 // long the turn has.
 func phaseWaiting(phase provider.Phase) bool {
 	switch phase {
-	case provider.PhaseConnecting, provider.PhaseFirstWord, provider.PhasePaced,
+	case provider.PhaseConnecting, provider.PhaseConnectionLost, provider.PhaseFirstWord, provider.PhasePaced,
 		provider.PhaseRetrying, provider.PhaseSwitching, provider.PhaseSwitchingModel,
 		session.PhaseAsking, session.PhaseAllSlow:
 		return true
@@ -278,6 +278,8 @@ func phaseFields(news PhaseNews, now time.Time) []rowField {
 	}
 	word := string(news.Phase)
 	switch news.Phase {
+	case provider.PhaseConnectionLost:
+		return []rowField{rowSay(word), rowSay(countUpWord(since))}
 	case provider.PhaseConnecting:
 		return phaseWaitFields(news, tookWord(since), false)
 	case provider.PhaseFirstWord:
@@ -329,7 +331,7 @@ func phaseFields(news PhaseNews, now time.Time) []rowField {
 			return []rowField{rowSay(word)}
 		}
 		return []rowField{rowSay(word+" → "+modelBase(news.Then), word)}
-	case provider.PhaseRunning, provider.PhaseBriefing:
+	case provider.PhaseRunning, provider.PhaseBriefing, provider.PhasePreparing:
 		// THE NOUN IS THE SUBSTANCE AND THE VERB IS THE FRAME, so a narrow row
 		// keeps "running" or "briefing" and lets the noun go before the clock
 		// does. The two phases share this arm because they share the shape: a

@@ -32,7 +32,7 @@ import (
 // So the four laws are:
 //
 //	(a) nothing outside this package talks to a completions or media endpoint
-//	(b) exactly five functions in this package put a request on the wire, and
+//	(b) exactly six functions in this package put a request on the wire, and
 //	    exactly four read an event stream
 //	(c) every role in the table has a call site that names it
 //	(d) only the ladder's last rung changes the model a person asked for
@@ -336,7 +336,7 @@ func TestNothingOutsideTheFunnelTalksToAModelEndpoint(t *testing.T) {
 // ── (b) ONE FUNCTION PUTS A COMPLETION ON THE WIRE ──────────────────────────
 
 // funnelWireSenders is every function in this package that hands a request to
-// an http.Client, and there are five because there are five kinds of thing this
+// an http.Client, and there are six because there are six kinds of thing this
 // adapter fetches.
 //
 //	send         every chat completion, and the only one with the retry loop,
@@ -349,7 +349,10 @@ func TestNothingOutsideTheFunnelTalksToAModelEndpoint(t *testing.T) {
 //	             — it is the belief the choice is made from (lanes.go)
 //	fetchReceipt the bounded background GET for a cut stream's exact generation
 //	             receipt; it creates no model work and never runs on the turn
-var funnelWireSenders = []string{"Fetch", "doEndpoint", "fetchReceipt", "probeLane", "send"}
+//
+// probeConnection is a credential-free HEAD of the configured origin. Its
+// contract tests forbid a prompt, a request body or redirect following.
+var funnelWireSenders = []string{"Fetch", "doEndpoint", "fetchReceipt", "probeConnection", "probeLane", "send"}
 
 // funnelSendCallers is every function that reaches [Client.send].
 //

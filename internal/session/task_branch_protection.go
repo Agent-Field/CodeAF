@@ -12,14 +12,13 @@ const (
 	aforgeGitEmail = "aforge@localhost"
 )
 
-// aforgeGitIdentity is THE ONE SPELLING of the identity every commit and merge
-// the harness writes carries. The moved-tip guard compares against the same
-// email, so a writer and the policy that recognizes its work cannot drift.
+// aforgeGitIdentity marks commits the task system creates so sibling landings
+// can distinguish its own forward progress from a person's intervening work.
 func aforgeGitIdentity() []string {
 	return []string{"-c", "user.name=" + aforgeGitName, "-c", "user.email=" + aforgeGitEmail}
 }
 
-// protectedBranchNames is THE ONE LIST of branch names aforge never writes to.
+// protectedBranchNames is THE ONE LIST of branch names automatic task landing leaves unchanged.
 // The manual names every entry and a structural test holds that page against
 // this value, so changing the policy cannot leave the person reading an older
 // list.
@@ -155,13 +154,13 @@ func (t taskTree) keptLandingSentence() string {
 	current := currentBranch(t.root)
 	switch {
 	case current == "":
-		return "its branch " + t.branch + " was kept: your checkout is not on a branch — check one out and merge it"
+		return "its branch " + t.branch + " was kept: your checkout is not on a branch — inspect the retained task branch without changing this checkout"
 	case t.home != "" && current != t.home:
-		return "its branch " + t.branch + " was kept: your checkout has moved from " + t.home + " to " + current + " since the work was cut — merge it where you want it"
+		return "its branch " + t.branch + " was kept: your checkout has moved from " + t.home + " to " + current + " since the work was cut — inspect the retained task branch before choosing a destination"
 	case protectedBranch(t.root, current):
-		return "its branch " + t.branch + " was kept: your checkout is on " + current + ", which aforge never writes to — merge it when you are ready"
+		return "its branch " + t.branch + " was kept: your checkout is on " + current + ", which tasks do not merge into automatically"
 	case branchMovedByPerson(t.root, current, t.homeSha):
-		return "its branch " + t.branch + " was kept: " + current + " has moved on since the work was cut — merge it where you want it"
+		return "its branch " + t.branch + " was kept: " + current + " has moved on since the work was cut — inspect the retained task branch before choosing a destination"
 	}
 	return ""
 }

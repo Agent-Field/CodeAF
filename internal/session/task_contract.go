@@ -451,8 +451,25 @@ type TaskNotice struct {
 	// when nothing recorded one, and every surface draws that as nothing.
 	EndedAt time.Time
 	// Report is the done/failed story in two or three lines: what it did, or
-	// what stopped it. A dependent node's brief is assembled from these.
+	// what stopped it. It is the card — a row on the roster, the head of a
+	// landing note — and it is cut to fit one.
 	Report string
+	// Result is what the work actually produced, as much of it as one reader's
+	// context is handed ([taskResultCarry]); ResultCut says that is only the
+	// beginning of it, and ResultWhole is where the whole can be read
+	// (task_result.go).
+	//
+	// ResultHeld is the landing that turned the work back: the answer is NAMED
+	// rather than handed on — Result is empty, ResultWhole says where it is, and
+	// nothing recycles an account the check did not accept.
+	//
+	// They are empty on a landing whose report already carries the answer exactly,
+	// which is every task that finished in two or three short lines, and on work
+	// that has not landed. A surface that ignores them draws what it always drew.
+	Result      string
+	ResultWhole string
+	ResultCut   bool
+	ResultHeld  bool
 	// Changed lists the files the node wrote, repo-relative.
 	Changed []string
 	// Branch is the task's branch ("task/fix-nil-map"), kept after a protected
@@ -509,6 +526,28 @@ type TaskNotice struct {
 	// starting and a hold ending are both news that arrives without the state
 	// moving, so an update carrying only this is still one a surface folds in.
 	Waiting string
+	// Paused says this row is HELD AT A GATE only a person can open: an adaptive
+	// run that has spent its tank and stopped launching, waiting to be topped up,
+	// finished or stopped ([EventOrchestratePause], [Agent.ResolveOrchestrate]).
+	//
+	// IT RIDES BESIDE `running` RATHER THAN REPLACING IT, on Stopped's own terms.
+	// The run is running as far as the run is concerned — whatever was in flight
+	// when the tank emptied is still working, and those rows still say so — and it
+	// is not moving as far as a person is concerned, and the second reading is the
+	// one a roster owes them. ONLY THE RUN'S OWN ROW EVER CARRIES IT: a worker
+	// under a paused run is not paused, it is finishing what it started.
+	//
+	// IT IS A REPORT OF RIGHT NOW, like Mending and Waiting, and like them it is
+	// ANNOUNCED ON CHANGE: the gate going up and the gate being answered are both
+	// news that arrives without the state moving. Every row the run publishes
+	// while the gate is up carries it, so a lane that opens late is told exactly
+	// what a live watcher was (orchestrate.go's [orchestrateFamily.publish] is the
+	// one place it is written).
+	//
+	// IT IS A FACT OF THIS PROCESS AND NOT OF THE CHECKPOINT. Nothing resumes a
+	// run across a restart, so a restored row comes back settled and never paused
+	// (task_store.go's [runRecord]).
+	Paused bool
 	// Stopped says a PERSON ended this node ([Agent.Cancel]) rather than the
 	// work ending on its own. It rides beside State rather than replacing it —
 	// a stopped node still settles as `failed`, because nothing merged and its

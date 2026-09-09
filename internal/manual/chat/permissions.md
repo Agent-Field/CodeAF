@@ -56,7 +56,6 @@ rules' own words. It can read:
 - `tool "edit"`
 - `bash pattern "rm -rf *"`
 - `critical command "rm -rf /"`
-- `bash call with no readable command`
 - `<tool> acts in your name outside this machine`
 - `you said yes to "<phrase>"`
 - `"<phrase>" is set to ask first`
@@ -325,8 +324,10 @@ Segments are split on `&&`, `||`, `;`, `|`, a bare `&`, subshells (`$( )`,
 backticks, parentheses) and newlines. Quoted text is literal. `2>&1` and `&>log`
 are not separators, and neither are brace groups.
 
-A bash call whose command cannot be read degrades an allow to a **prompt**, with
-the rule `bash call with no readable command`. A deny or a prompt stands.
+A malformed bash call, or one with no readable non-empty command, is returned to
+the model as `Invalid arguments` so it can correct the call. Nothing executes,
+and no permission card asks you to approve an absent command. A corrected call
+goes through the ordinary shell-command rules, including prompts and denials.
 
 ## `--yolo` — how do I let it run things without asking
 

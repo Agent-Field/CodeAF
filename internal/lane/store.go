@@ -170,10 +170,11 @@ type storeState struct {
 	// first token, ln tokens a second, and ln seconds of a whole thinking
 	// phase. Judged is the quality evidence a provider and a model carry above
 	// any one pair.
-	Wait   chains  `json:"wait,omitzero"`
-	Rate   chains  `json:"rate,omitzero"`
-	Think  chains  `json:"think,omitzero"`
-	Judged tallies `json:"judged,omitzero"`
+	Wait      chains             `json:"wait,omitzero"`
+	Rate      chains             `json:"rate,omitzero"`
+	Think     chains             `json:"think,omitzero"`
+	Judged    tallies            `json:"judged,omitzero"`
+	Workloads []workloadEstimate `json:"workloads,omitempty"`
 }
 
 // decodeState reads either shape of the file.

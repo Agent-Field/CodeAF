@@ -18,8 +18,9 @@ import "strings"
 //     narration — the surface saying what it was about to do — and the proof
 //     arrives the moment the next tool call opens under it. Nothing has to be
 //     guessed and nothing has to be parsed: the entry list's own shape says it.
-//  2. THE TRAILING BLOCK IS PROVISIONALLY THE ANSWER while the turn runs, which
-//     is exactly what the live tier already draws (styles.go's [hueLive]).
+//  2. STREAMED PROSE STAYS COMPACT UNTIL THE RESPONSE CONFIRMS ITS ROLE. The
+//     provider can write a preamble before its tool call arrives. A tool-free
+//     response boundary promotes the reply without waiting for later checks.
 //  3. SETTLE IS THE CONFIRMATION. When the turn ends, whatever is last is the
 //     answer and everything above it in that turn is working material.
 //  4. AN INTERRUPTED TURN PROMOTES NOTHING ([entry.cut]). The turn ended without
@@ -85,9 +86,8 @@ import "strings"
 // Nothing here reads [app.entries]. The stamp runs over whatever deck is being
 // laid out, so the conversation, a task's room and a node's transcript inside a
 // run's page get the same hierarchy from the same rule — which is the guarantee
-// [deck] exists to make. A ROOM FOLDS NOTHING (workfold.go) and still demotes
-// its narration: the chip is an affordance of the conversation, the hierarchy is
-// a property of the prose.
+// [deck] exists to make. Both chat and task rooms use the same response
+// boundary; the hierarchy is a property of the prose, not of its page.
 
 // stampHierarchy writes THE ANSWER HIERARCHY onto the blocks of one deck, before
 // any of them is asked for its rows.
@@ -125,10 +125,7 @@ func stampCaptions(es []entry, captions []caption) {
 		if c.source != captionSaid || c.head < 0 || c.head >= len(es) {
 			continue
 		}
-		cut := len(es[c.head].text)
-		if at := strings.IndexByte(es[c.head].text, '\n'); at >= 0 {
-			cut = at + 1
-		}
+		_, cut := captionSpan(es[c.head].text)
 		heads[c.head] = cut
 	}
 	for i := range es {

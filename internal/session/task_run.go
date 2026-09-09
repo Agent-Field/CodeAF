@@ -164,12 +164,19 @@ const (
 	// decomposition (task.go's fan-out law), and each answers a different way
 	// for it to run away.
 	//
-	// TWO LEVELS, because the third has nothing left to divide. The conversation
-	// grooms a piece of work; that node finds two or three genuinely independent
-	// parts inside it and hands them out; a part of a part is a step, and a step
-	// belongs in the hands that are already holding it. A deeper tree also costs
-	// what nobody sees: every level adds a worktree, an audit and a wait, so the
-	// third level is where fanning out starts being slower than working.
+	// TWO LEVELS IS A CHOSEN BOUND AND NOT A MEASURED FLOOR. The shape it is cut
+	// for: the conversation grooms a piece of work, that node finds two or three
+	// genuinely independent parts inside it and hands them out, and a part of a
+	// part is usually a step — which belongs in the hands already holding it. The
+	// cost is what makes the bound cheap to keep: every level adds a worktree, an
+	// audit and a wait, and it adds them to work that is by then small, so a third
+	// level buys parallelism where there is least of it left to buy.
+	//
+	// NOBODY HAS MEASURED A THREE-LEVEL TREE HERE, and this comment used to read
+	// as though somebody had. What is known is the cost per level above; what is
+	// not known is where the crossover actually falls, and it will not be one
+	// number for every kind of work. Raising the cap is a wave with a measurement
+	// in it, not a constant edit.
 	//
 	// FIVE CHILDREN, because a node handing out more than that has not
 	// decomposed its work, it has shredded it — and it still has to read every
@@ -265,6 +272,16 @@ type TaskNode struct {
 	// and it is not an edge: dependsOn says what must finish first, this says
 	// who asked (task_contract.go states the difference).
 	parent uint64
+	// admitBy and admitAt are WHOSE REQUEST HANDED THIS WORK OUT: the agent that
+	// admitted the node and the request it was working on at the time — its turn
+	// and the person's steers into that turn ([requestEpoch]) — or nil and the
+	// zero epoch for a node nobody's turn opened: a checkpoint restore, a
+	// scripted graph, a `/task` typed between turns. They are written once, at
+	// admission, beside the rest of the node's provenance, and read by
+	// turnhandoff.go so the turn that handed its ask off is not read as a turn
+	// that stopped short of it.
+	admitBy *Agent
+	admitAt requestEpoch
 	// depth is how many tasks deep this node sits — 1 for the conversation's
 	// own, 2 for a sub-task — and it is what taskDepthLimit bounds.
 	depth int
@@ -282,6 +299,13 @@ type TaskNode struct {
 	// done is closed when the node reaches a final state. It is how a waiter —
 	// a test, a future join — waits without polling.
 	done chan struct{}
+	// admit serializes the admission of NAMED corrections to this node, and it
+	// is the whole of how "written down before it is delivered" holds under two
+	// requests at once (task_room.go's admission law). It is not the graph's
+	// lock and must never be taken while holding it: the checkpoint inside this
+	// section takes store.mu and then graph.mu, and the ordering
+	// admit → store.mu → graph.mu is the only one this file uses.
+	admit sync.Mutex
 
 	spec taskSpec
 	// kind is what sort of node this is ([TaskKind]), settled at admission from
@@ -356,9 +380,10 @@ type TaskNode struct {
 	// contract a node was admitted with is the contract it is judged against, and
 	// [TestEachPartCarriesItsOwnDoneConditionAndTheParentKeepsTheOriginal] pins
 	// it. So the repair does not edit `spec.acceptance`; it puts what it lifted
-	// HERE, where the two readers that need it can find it: the worker is told
-	// ([TaskNode.instructionOn]) and its own checking door opens on it
-	// ([auditDoorFor]).
+	// HERE, where the reader that needs it can find it: the worker is TOLD what it
+	// owns ([TaskNode.instructionOn]) and runs it in its own hands. What its
+	// CHECKER may re-run is the narrower [TaskNode.FamilyDeclared], for the reason
+	// stated there.
 	//
 	// IT IS ON THE CHECKPOINT (task_store.go), UNLIKE [TaskNode.sharedTold], and
 	// the two go opposite ways for one reason: the telling is about a
@@ -371,6 +396,60 @@ type TaskNode struct {
 	// it is read by name from more than one place. Like them it is guarded by the
 	// graph's lock.
 	Family []string
+	// FamilyDeclared is the part of [TaskNode.Family] this node's CHECKER may
+	// re-run: the family's checks that a part had DECLARED as verification rather
+	// than ones this package recognised in a part's prose done-condition
+	// ([declaredAmong]).
+	//
+	// THE TWO LISTS ARE TWO PERMISSIONS AND THAT IS WHY THERE ARE TWO. Family is
+	// what the parent's worker is told to run once its parts are home, which is
+	// ordinary work in ordinary hands. This is executable verification, and
+	// lifting must move it rather than mint it: a command nobody ever typed into
+	// `checks` was executable verification nowhere, so making it the parent's door
+	// would be the prose harvest this build removed, arriving by the family road.
+	//
+	// A CHECKPOINT WRITTEN BEFORE THIS FIELD CARRIES NEITHER PROVENANCE NOR THIS
+	// LIST, and it is read as declaring nothing. Old records were filled by a
+	// build that harvested commands out of prose; granting them fresh execution
+	// now, on the strength of a list nobody can tell apart any more, is the one
+	// thing this field exists to prevent.
+	FamilyDeclared []string
+	// FamilyWas is what this node was required to run for its family BEFORE the
+	// goal moved. A revision takes the family's checks off the node — both the
+	// half its checker could run and the half its worker was told to run — because
+	// an instruction written for the old goal standing in front of the new one is
+	// the contradiction a person reading the card would have to resolve. Keeping
+	// them here rather than dropping them means what was required is still legible
+	// afterwards, on the node and on the checkpoint, without being required.
+	FamilyWas []string
+	// Checks is THE REPEATABLE VERIFICATION THIS WORK WAS PUT UNDER CONTRACT WITH:
+	// the commands whoever proposed it declared as the way anybody re-establishes
+	// that it is done, typed into `checks` rather than harvested out of prose
+	// (task.go's schema, task_checks.go's law). They are the ONLY commands this
+	// node's checker may run, beside the reading ones, and an empty list — which is
+	// most nodes, and every node admitted before this field existed — means the
+	// checker judges from what it can see and from the worker's receipts.
+	//
+	// IT IS A NODE FIELD AND NOT ONLY A SPEC ONE for the reason [TaskNode.Family]
+	// is: a check can be moved by something that happens after admission. The spec
+	// carries what the proposal declared, this carries what the node is checked
+	// against NOW, and [TaskNode.reviseChecks] is the one door between them —
+	// because a steering revision that changes the goal must not leave the old
+	// goal's checks standing in front of the new one.
+	//
+	// It is on the checkpoint (task_store.go) for Family's reason: the check is
+	// made when the work comes home, which can be a different process from the one
+	// that admitted it. Like its neighbours it is guarded by the graph's lock.
+	Checks []string
+	// checksRevision is WHICH REVISION OF THE ASSIGNMENT the two lists above were
+	// written for. Admission leaves it 0, which is the revision of a node nobody
+	// has steered; [TaskNode.reviseChecksLocked] writes it in the same hold of the
+	// lock that writes the checks, and [auditDoorForRevision] refuses to build a
+	// door out of checks stamped for a revision other than the one the audit is
+	// judging. It is on the checkpoint beside them, because a stamp that did not
+	// survive a restart would make every restored node's checks read as current
+	// under whatever the assignment says then.
+	checksRevision uint64
 	// Base is the machine commit the parent's world was sealed into and Universe
 	// is furrow's name for the fork, when a rung made either. They are here for
 	// the SAME REASON Rung and Seal are — the landing needs them and the landing
@@ -489,10 +568,37 @@ type TaskNode struct {
 	output     int
 	cacheRead  int
 	cacheWrite int
-	// noted says this node's completion note has been handed to the steering
-	// lane, and it is what stops a resumed session announcing finished work
-	// twice (task_store.go).
-	noted bool
+	// attempt counts the lives of this node's work: 0 for the run it was admitted
+	// for, one more for each time it is re-armed ([TaskGraph.reopen]). It is the
+	// generation half of an announcement's identity, because a delivery of the
+	// last attempt's ending can still be in flight when the next attempt starts
+	// ([TaskNode.claimNote]). Absent from checkpoints written before it existed,
+	// which restore as attempt 0 — the life they were written in.
+	attempt int
+	// noted says this node's completion note is on a live reader's QUEUE, and
+	// notedState the ending it was handed over for: the same landing announced
+	// twice is one piece of news, while a node that later ends somewhere else
+	// ([TaskGraph.resettle]) is news again. It is what a parked parent reads as
+	// "this piece is no longer outstanding" ([TaskNode.reported]), and it is held
+	// in memory only, because a queue does not survive the process it lives in.
+	//
+	// notedRead says the RECIPIENT'S OWN RECORD holds it, and that is the one
+	// that is written down ([taskRecord.Noted]): a note queued onto an idle
+	// conversation nobody is attached to is read at a step boundary that may
+	// never come, and marking it announced on the checkpoint is how a landing
+	// went missing for good ([durableDelivery]).
+	//
+	// Both belong to the CURRENT attempt, because reopening clears them in the
+	// same locked step that raises it. An empty notedState is a checkpoint
+	// written before it existed and reads as "announced, whatever it said".
+	noted      bool
+	notedRead  bool
+	notedState TaskState
+	// noting holds the claim a delivery in flight took, so two deliveries of one
+	// ending cannot both reach the queue. It is in memory only: what is written
+	// down is the completed hand-over, never an intent.
+	noting      bool
+	notingClaim noteClaim
 	// interrupted marks a node that was RUNNING when a session ended and whose
 	// interrupt a recovery has consumed. It is history, and it is written down so
 	// that exactly one recovery ever consumes it.
@@ -506,6 +612,28 @@ type TaskNode struct {
 	// spec.brief stays the original — and a second continue replaces it
 	// rather than wrapping it.
 	finding string
+	// checkedAt is the assignment version the finished work was judged at. The
+	// landing compares it with the version in force at the instant it takes the
+	// publication boundary, so work checked against a condition the person has
+	// since moved cannot be published as meeting it (assignment.go).
+	checkedAt uint64
+	// carried is the receipts written into this attempt's finding and not yet put
+	// in front of a model: the opening request marks them read (assignment.go).
+	carried []uint64
+	// assignment is what this node is working towards NOW: every line said to
+	// it, and the revisions the person's own lines were allowed to make
+	// (assignment.go). The zero value is a node nobody has said anything to,
+	// whose effective assignment is the spec it was admitted with — which is
+	// every node restored from a checkpoint written before this existed.
+	assignment taskAssignment
+	// publishing marks the instant a landing took the publication boundary: from
+	// then until the node settles, a direction is recorded and told it belongs to
+	// the round after this one, because the merge it would have changed is
+	// already going out (assignment.go's [TaskNode.claimPublication]).
+	publishing bool
+	// directedRounds counts how many times the person's own words sent this node
+	// round again inside one run, and is what [directedRoundLimit] bounds.
+	directedRounds int
 	// offer is a finished harness page waiting on the person, held for exactly
 	// as long as its card is up so the checkpoint can carry it across a restart
 	// ([TaskNode.carryOffer], task_store.go's harnessOfferRecord). Nil on every
@@ -728,6 +856,12 @@ type TaskNode struct {
 	// a re-audit replace the audit's half and keep the work's — in both
 	// directions, which is the whole of the defect this field closes.
 	claim string
+	// produced is what the work actually produced, whole up to one cap and with a
+	// pointer to the rest of it (task_result.go). claim above is that same answer
+	// cut to a card's three lines; this is what every reader that needs the work
+	// rather than the card is served from — the dependent's brief, the landing
+	// note a parent or the conversation folds, a continuation's finding.
+	produced taskResult
 }
 
 // TaskGraph is the session's work as a directed acyclic graph, plus the
@@ -777,6 +911,13 @@ type TaskGraph struct {
 	// field for the tests: five real seconds is the right cadence for a machine
 	// and the wrong one for a test suite.
 	pollEvery time.Duration
+	// publishBarrier is called immediately after a landing claims the publication
+	// boundary and before anything leaves this process (assignment.go). It is nil
+	// in the product and it is a field for the tests, for [pollEvery]'s kind of
+	// reason: the far side of that boundary is an instant wide, and a fixture
+	// that tried to reach it by timing would be asserting a race rather than the
+	// rule.
+	publishBarrier func(*TaskNode)
 
 	// claims counts the sub-task slots taken per parent by proposals that have
 	// been made and not yet admitted (see [TaskGraph.claimChild]). It is empty
@@ -919,6 +1060,7 @@ func (a *Agent) graph() *TaskGraph {
 	}
 	if a.tasks == nil {
 		graph := newTaskGraph()
+		graph.quitting = a.closed || a.workStopped
 		graph.home = a
 		graph.run = graph.runOwned
 		graph.report = a.reportTaskNode
@@ -993,6 +1135,9 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	// judge's answer was banked; a scripted graph in a test has no conversation
 	// and gets the honest false ([Agent.armDivision] is nil-safe).
 	spec.armed = g.home.armDivision(spec)
+	// WHOSE TURN HANDED THIS OUT, read once, before the node exists
+	// (turnhandoff.go).
+	admitter := g.admittingAgent(spec)
 	node := &TaskNode{
 		graph:     g,
 		id:        id,
@@ -1004,6 +1149,11 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 		spec:      spec,
 		kind:      spec.kind(),
 		state:     TaskQueued,
+		// WHOSE REQUEST HANDED THIS OUT, stamped at the one door every task in
+		// this package comes through so no road has to remember to do it
+		// (turnhandoff.go).
+		admitBy: admitter,
+		admitAt: requestEpochAt(admitter),
 		// WHERE THE WORK STANDS, carried from the door that resolved it
 		// (taskstands.go). A door that resolved none — a design, a subharness run,
 		// a scripted graph — admits with nothing here and the working copy fills it
@@ -1021,10 +1171,19 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 		// two that ask a model for a handoff, which is the point: the harness
 		// never writes an expectation on anybody's behalf.
 		Expects: spec.expects,
+		// AND THE VERIFICATION IT DECLARED, from the same two doors and on the
+		// same terms: the harness never writes a check on anybody's behalf, and a
+		// node that declared none is checked by reading (task_checks.go).
+		Checks: spec.checks,
 	}
 	g.mu.Lock()
 	if g.nodes == nil {
 		g.nodes = make(map[uint64]*TaskNode, 1)
+	}
+	refused := g.quitting
+	if refused {
+		node.state, node.stopped, node.report = TaskFailed, true, taskStoppedQueuedWord
+		close(node.done)
 	}
 	g.nodes[id] = node
 	g.order = append(g.order, id)
@@ -1037,6 +1196,10 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	// rather than after: a process killed between these two lines still resumes
 	// with the node the person approved, queued.
 	g.checkpoint()
+	if refused {
+		g.announce(node)
+		return TaskFailed
+	}
 	g.runFrontier()
 	// AND THE WORK IS NAMED, on a goroutine of its own, after it has started
 	// (taskname.go). This is the one door every task in this package comes
@@ -1523,6 +1686,7 @@ func (g *TaskGraph) inheritedLocked(node *TaskNode) string {
 		title  string
 		id     uint64
 		report string
+		whole  string
 	}
 	var reports []learned
 	for _, id := range node.dependsOn {
@@ -1530,7 +1694,11 @@ func (g *TaskGraph) inheritedLocked(node *TaskNode) string {
 		if prerequisite == nil {
 			continue
 		}
-		report := strings.TrimSpace(prerequisite.report)
+		// What the prerequisite produced, and not only the card it left: the
+		// report leads and the work's own answer stands under it
+		// (task_result.go). A node gated on work whose answer was on line four of
+		// a five-line message used to inherit the first three.
+		report := strings.TrimSpace(prerequisite.deliveredLocked())
 		if report == "" {
 			continue
 		}
@@ -1538,6 +1706,11 @@ func (g *TaskGraph) inheritedLocked(node *TaskNode) string {
 			title:  prerequisite.spec.title,
 			id:     id,
 			report: report,
+			// Where the whole of that answer is, carried on the header below
+			// rather than in the body: the bodies share one pot and are clipped to
+			// fit it, so a pointer inside a body is one this road can lose. Empty
+			// when the body is the whole answer.
+			whole: prerequisite.resultPointerLocked(),
 		})
 	}
 	brief := node.spec.brief
@@ -1550,7 +1723,7 @@ func (g *TaskGraph) inheritedLocked(node *TaskNode) string {
 	bodies := make([]string, len(reports))
 	overhead := len(brief) + len("\n\n") + len(heading)
 	for i, item := range reports {
-		headers[i] = fmt.Sprintf("\n\n%s (task %d):\n", item.title, item.id)
+		headers[i] = fmt.Sprintf("\n\n%s (task %d)%s:\n", item.title, item.id, item.whole)
 		bodies[i] = item.report
 		overhead += len(headers[i])
 	}
@@ -1936,7 +2109,7 @@ func (n *TaskNode) instruction() string {
 	// THE ZERO COPY IS THE DOCUMENT AS IT HAS ALWAYS BEEN, byte for byte, and
 	// that is what every reader here is for. [TaskNode.instruction] has seven
 	// readers that are NOT the worker — the proposal card, the checkpoint, the
-	// ground ladder, the auditor's packet, [declaredChecks] (which resolves
+	// ground ladder, the auditor's packet, [auditDoorFor] (which resolves
 	// against the clean restore, a third directory that is neither the source
 	// nor the worker's copy), the naming and sizing readers, and the progress
 	// reader — and binding this one body would silently move all of them.
@@ -1965,9 +2138,23 @@ func (n *TaskNode) instructionOn(tree taskTree) string {
 	// why that distinction is a law), and a node that owns none draws nothing —
 	// the emptiness law, applied here as it is to every other section of this
 	// document.
-	return composeBrief(n.spec.request, n.brief, n.spec.deliverable,
-		withFamilyChecks(n.spec.acceptance, n.Family),
-		expectsSection(n.spec.expects), n.spec.origin, taskCopyFor(tree))
+	//
+	// AND THE ASSIGNMENT IS THE ONE THIS WORK IS AT, not only the one it was
+	// admitted with (assignment.go). The person's own request above is still
+	// their original words; what the revision moves is the work, the deliverable
+	// and the done-condition, and the block that says so carries their later
+	// words verbatim, so the worker reads the same account the auditor will.
+	now := n.assignmentLocked()
+	// AND WHETHER THE MESSAGE ABOVE IS THIS WORKER'S WHOLE JOB, which is the
+	// parent and nothing else (task_brief.go's [briefPieceRule]). It is read
+	// here, on the one road that composes a worker's document — the opening
+	// request and every repair round — so a piece reads the same scope rule
+	// however its turn came to start: admitted, restored from a checkpoint,
+	// continued (task_continue.go) or re-entered after a revision.
+	return composeBrief(n.briefRoleLocked(), n.spec.request, now.brief, now.deliverable,
+		withFamilyChecks(now.acceptance, n.Family),
+		expectsSection(n.spec.expects), n.spec.admission.restored(),
+		n.spec.origin, taskCopyFor(tree))
 }
 
 // taskCopyFor is the tree read as a MAP: the folder the work is about onto the
@@ -1997,41 +2184,95 @@ func taskCopyFor(tree taskTree) taskCopy {
 	return taskCopy{}
 }
 
-// checkTexts hands [declaredChecks] each account in a node's document beside
-// its source because a prompt line in the person's pasted words is a story
-// about seeing the bug, while the same line in the work's account is a promise
-// about how to check it. An acceptance nobody could write is those same words
-// with a sentence in front of them, and that sentence does not turn a pasted
-// transcript into a promise. The work's half still uses [composeBrief] so this
-// reader cannot invent a second layout for the worker's document.
-func (n *TaskNode) checkTexts() []checkText {
+// taskVerification is ONE READING of everything that decides what a node's
+// checker may run: its own declared checks, the family's checks it is entitled to
+// re-run, and WHICH REVISION OF THE ASSIGNMENT all of that was written for.
+//
+// THE THREE TRAVEL TOGETHER BECAUSE THE QUESTION IS ONE QUESTION. A reader that
+// took the checks under one hold of the lock and the revision under another could
+// be handed the old goal's verification stamped with the new goal's revision —
+// which is precisely the pass nobody earned that [TaskNode.reviseChecks] exists
+// to prevent. There is one snapshot and it is taken once.
+type taskVerification struct {
+	checks []string
+	family []string
+	// written is the assignment revision these lists were written for, and now is
+	// the revision this node is AT. They are two numbers rather than one boolean
+	// so that a reader can say WHICH goal a stale check belonged to, and they are
+	// filled from the same hold of the lock as the lists above.
+	written uint64
+	now     uint64
+}
+
+// current says whether this verification is an assertion about the goal this
+// node is actually working towards. Stale checks are worse than none: the old
+// goal's command passing under the new goal is a verdict nobody earned, so a
+// checker holding one is told it has nothing to re-run and judges by reading.
+func (v taskVerification) current() bool {
+	return v.written == v.now
+}
+
+// verification is that snapshot, copied out under the lock so a reader cannot be
+// handed a slice the graph is still appending to.
+func (n *TaskNode) verification() taskVerification {
+	if n == nil || n.graph == nil {
+		return taskVerification{}
+	}
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	ask := briefAskText(n.spec.request)
-	work := briefWorkText(ask, n.brief)
-	// THE DONE-CONDITION IS THE ONE THE WORKER READS, family checks and all
-	// ([withFamilyChecks]), because a document that harvested a different
-	// sentence from the one it hands out would be two documents.
-	acceptance := withFamilyChecks(n.spec.acceptance, n.Family)
-	texts := make([]checkText, 0, 3)
-	if ask != "" {
-		texts = append(texts, checkText{text: ask, from: checksFromAsk})
+	return n.verificationLocked()
+}
+
+// verificationLocked is the same snapshot for a caller ALREADY HOLDING THE
+// GRAPH'S LOCK, and it exists for exactly one reader: whoever has to take this
+// and the node's assignment version in ONE hold.
+//
+// THE COMPARISON THIS FEEDS IS ONLY HONEST IF BOTH SIDES CAME FROM ONE MOMENT.
+// Reading the checks under one hold and the assignment's version under another
+// leaves a revision free to land between them, and the answer is then the old
+// goal's verification wearing the new goal's number — which is the pass nobody
+// earned that the stamp exists to prevent.
+func (n *TaskNode) verificationLocked() taskVerification {
+	return taskVerification{
+		checks:  append([]string(nil), n.Checks...),
+		family:  append([]string(nil), n.FamilyDeclared...),
+		written: n.checksRevision,
+		now:     n.assignment.version,
 	}
-	if acceptanceIsAsk(n.spec.acceptance) {
-		// The frame carries the person's words and the family's checks carry the
-		// work's, so only the first half moves across; the checks stay in the
-		// account below, where they were written.
-		texts = append(texts, checkText{text: n.spec.acceptance, from: checksFromAsk})
-		acceptance = withFamilyChecks("", n.Family)
-	}
-	// THE ZERO COPY, for [TaskNode.instruction]'s reason: the harvest resolves
-	// against the clean restore rather than against any worker's own folder.
-	account := composeBrief("", work, n.spec.deliverable, acceptance,
-		expectsSection(n.spec.expects), n.spec.origin, taskCopy{})
-	if account != "" {
-		texts = append(texts, checkText{text: account, from: checksFromWork})
-	}
-	return texts
+}
+
+// repeatableChecks is the node's own declaration alone, for the readers that
+// want it without the family's ([Agent.sessionChecks] and this package's tests).
+func (n *TaskNode) repeatableChecks() []string {
+	return n.verification().checks
+}
+
+// reviseChecksLocked moves everything a revision moves about verification, and
+// it is called from inside the hold that advanced the assignment's version
+// (assignment.go's [TaskNode.reviseAssignment]). There is no second door: a
+// revision is the only thing that moves any of this after admission, and a
+// separately locking version of this would be a window in which the old goal's
+// commands wear the new goal's number.
+//
+// A REVISION THAT NAMES NO CHECKS LEAVES THE WORK JUDGED BY READING. A check is
+// an assertion about a particular goal; the same command against a changed
+// assignment is either a question nobody asked or a pass nobody earned. Naming
+// its own replaces them, which is the narrow option `revise_assignment` carries.
+//
+// AND THE FAMILY'S CHECKS GO TOO — BOTH HALVES OF THEM. The executable half is
+// cleared for the reason above. The half the parent's WORKER was told to run
+// ([TaskNode.Family]) is cleared as well, because leaving it standing would be a
+// mandatory instruction from the old goal contradicting the new one: a parent
+// told "run the family's suite once every part is home" about a suite the person
+// has since moved away from. It is not thrown away — it moves to
+// [TaskNode.FamilyWas], which is on the checkpoint, so what was required before
+// the goal moved is still readable afterwards.
+func (n *TaskNode) reviseChecksLocked(revision uint64, checks []string) {
+	n.Checks = append([]string(nil), checks...)
+	n.FamilyWas = foldedInto(n.FamilyWas, n.Family)
+	n.Family = nil
+	n.FamilyDeclared = nil
+	n.checksRevision = revision
 }
 
 // request is the person's own words, frozen with the rest of the spec. It is
@@ -2043,6 +2284,22 @@ func (n *TaskNode) request() string {
 	return n.spec.request
 }
 
+// briefRoleLocked says whether this node owns the whole of the person's ask or
+// one piece another task cut out of it, for a caller already holding the
+// graph's lock.
+//
+// THE PARENT IS THE WHOLE OF THE QUESTION, and it is on the spec, so it is the
+// same answer for a node admitted a moment ago and for one rebuilt from a
+// checkpoint. Both roads that hand work out set it — `propose_task`
+// (task.go's [Agent.proposeTask]) and `divide_work` (task_divide_wip.go) — so
+// neither can produce a piece that reads the whole-job rule.
+func (n *TaskNode) briefRoleLocked() briefRole {
+	if n.spec.parent != 0 {
+		return briefPiece
+	}
+	return briefWhole
+}
+
 // origin is the pointer to the person's original words, frozen with the rest
 // of the spec. It is read by [Agent.taskOriginRef] so that a sub-task a node
 // hands out still points at the human's journal rather than at its own.
@@ -2052,11 +2309,39 @@ func (n *TaskNode) origin() taskOrigin {
 	return n.spec.origin
 }
 
-// acceptance is the frozen contract, read by the auditor. It is deliberately
-// the SAME field [TaskNode.instruction] hands the child: two readers of one
-// text, so there is no version of this where the work was finished against one
-// acceptance and judged against another.
+// admission is the working context this node was admitted with, frozen with the
+// rest of the spec (admission.go). It is read by [Agent.admissionContext] so
+// that work this node hands out inherits what the conversation above it said,
+// one generation older and bounded.
+func (n *TaskNode) admission() AdmissionContext {
+	if n == nil {
+		return AdmissionContext{}
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.spec.admission
+}
+
+// acceptance is the contract AS IT NOW STANDS, read by the auditor. It is
+// deliberately the same text [TaskNode.instruction] hands the child: two readers
+// of one snapshot, so there is no version of this where the work was finished
+// against one acceptance and judged against another.
+//
+// It moves only with the person's authority and only through a recorded
+// revision (assignment.go). An unrevised node — which is nearly all of them, and
+// every node restored from an older checkpoint — answers exactly the admitted
+// text, byte for byte.
 func (n *TaskNode) acceptance() string {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.assignmentLocked().acceptance
+}
+
+// admittedAcceptance is what this node was ORIGINALLY to be judged by, kept
+// separate because a revised node's record has to be able to say both: the
+// checkpoint keeps the admitted text where it always was, and a reader asking
+// what was first agreed must not be handed a later revision instead.
+func (n *TaskNode) admittedAcceptance() string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	return n.spec.acceptance
@@ -2211,6 +2496,17 @@ func (n *TaskNode) runContext() (context.Context, context.CancelFunc) {
 // finish writes the node's leavings before its state changes, so the update
 // that announces "done" carries them.
 func (n *TaskNode) finish(report string, changed []string, branch, merge string) {
+	// A release records the actual branch before unregistering it. Read that
+	// fact outside the graph lock so the very first settled notice also names
+	// a branch the person can find after the worker renamed it.
+	n.graph.mu.Lock()
+	dir := n.worktree
+	n.graph.mu.Unlock()
+	if dir != "" && merge != mergeInPlace && merge != mergeMerged {
+		if mark, released := rememberedRelease(dir); released && strings.TrimSpace(mark.Branch) != "" {
+			branch = strings.TrimSpace(mark.Branch)
+		}
+	}
 	n.graph.mu.Lock()
 	n.report = strings.TrimSpace(report)
 	n.changed = changed
@@ -2318,6 +2614,16 @@ func (n *TaskNode) workingCopy(place Place, workspace string) (taskTree, error) 
 	}
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 		return taskTree{}, fmt.Errorf("its working copy is gone from %s, so there is nothing left to look at — its branch %s is still there", dir, branch)
+	}
+	// AND THE BRANCH IS THE ONE THE WORK ENDED UP ON. A node may rename the
+	// branch it is standing on, which leaves the name written down at the start
+	// naming nothing at all; what the settle read off HEAD as it gave the copy
+	// back is the last true reading of it, and it is what the merge, the report
+	// and the person's own `git merge` all have to say ([releasedTree]).
+	if mark, released := rememberedRelease(dir); released {
+		if live := strings.TrimSpace(mark.Branch); live != "" {
+			branch = live
+		}
 	}
 	// THE BRANCH CAME OFF THE GROUND, so the repository it merges back into is
 	// the ground's and not whatever this process happens to be standing in — the
@@ -2793,27 +3099,133 @@ func (n *TaskNode) journalPath() string {
 	return n.journal
 }
 
-// markNoted records that this node's completion note has been handed to the
-// steering lane, so no later life of this session says it again.
+// noteClaim identifies one announcement: which life of this node's work reached
+// which ending. The attempt is half of it because a delivery of the last
+// attempt's ending can still be in flight when the next attempt is armed, and
+// the same words about two lives are two pieces of news. Content is not part of
+// the identity: one ending rewritten is still one ending.
+type noteClaim struct {
+	attempt int
+	state   TaskState
+}
+
+// markNoted records this node's completion note as both queued and recorded, for
+// the roads that compose one without claiming it first (task_store.go re-tells
+// the notes an ended session never delivered, into the note a resumed session
+// opens with).
 func (n *TaskNode) markNoted() {
-	if n.noteHandedOver() {
+	claim := n.currentClaim()
+	n.noteQueued(claim)
+	if n.noteRecorded(claim) {
 		n.graph.checkpoint()
 	}
 }
 
-// noteHandedOver turns the mark on and answers whether THIS call is the one that
-// turned it, which is the caller's cue that the checkpoint is still owed.
-//
-// It is split out of [TaskNode.markNoted] because the delivery road makes this
-// mark inside the news handover ([Agent.handOverTaskNews]), where a parked parent
-// may be waiting to read it — and the checkpoint is a file written to disk, which
-// is not something to hold that seam across.
-func (n *TaskNode) noteHandedOver() bool {
+// currentClaim is this node's attempt and state, read together.
+func (n *TaskNode) currentClaim() noteClaim {
 	n.graph.mu.Lock()
-	already := n.noted
-	n.noted = true
+	defer n.graph.mu.Unlock()
+	return noteClaim{attempt: n.attempt, state: n.state}
+}
+
+// attemptNow is the life of the work this node is on.
+func (n *TaskNode) attemptNow() int {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.attempt
+}
+
+// claimNote claims the announcement of the ending this node has reached, for a
+// payload composed against `attempt`. It answers false three ways, and each one
+// is a message that must not be sent: the payload belongs to an earlier life of
+// the node, this ending has already been announced, or another delivery of the
+// same ending is in flight. The claim is in memory only — what is written down
+// is the completed hand-over, never an intent.
+func (n *TaskNode) claimNote(attempt int) (noteClaim, bool) {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	claim := noteClaim{attempt: n.attempt, state: n.state}
+	if attempt != n.attempt || n.notedLocked(claim) || (n.noting && n.notingClaim == claim) {
+		return claim, false
+	}
+	n.noting, n.notingClaim = true, claim
+	return claim, true
+}
+
+// releaseNote gives an unspent claim back, for a delivery that found nobody to
+// read it: nothing is marked, so a resumed session still tells the model about
+// that landing (task_store.go). A claim from an earlier attempt clears nothing,
+// because the claim standing now belongs to somebody else.
+func (n *TaskNode) releaseNote(claim noteClaim) {
+	n.graph.mu.Lock()
+	if n.noting && n.notingClaim == claim {
+		n.noting, n.notingClaim = false, noteClaim{}
+	}
 	n.graph.mu.Unlock()
+}
+
+// notedLocked reports whether this claim's ending has already been handed to a
+// reader. It reads the QUEUED mark, because a second announcement of an ending
+// one reader already has is a duplicate whether or not that reader has read it
+// yet. The mark belongs to the current attempt by construction — reopening
+// clears it in the same locked step that raises the attempt.
+func (n *TaskNode) notedLocked(claim noteClaim) bool {
+	if claim.attempt != n.attempt {
+		return false
+	}
+	return n.noted && (n.notedState == "" || n.notedState == claim.state)
+}
+
+// noteQueued marks this node's news as sitting on a live reader's queue. It is
+// made inside the news handover ([Agent.handOverTaskNews]), between the queue
+// and the wake, because a parent parked on its pieces reads it as "this one is
+// no longer outstanding" and must not see that before the note is there.
+//
+// THE CLAIM STAYS HELD. The delivery is not finished until the recipient's
+// record has it, and until then no second delivery of the same ending may start.
+//
+// A CLAIM FROM AN EARLIER ATTEMPT CHANGES NOTHING. Its words did reach a reader,
+// so they are not lost; what it may not do is speak for the life of the work
+// running now.
+func (n *TaskNode) noteQueued(claim noteClaim) {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if claim.attempt != n.attempt {
+		return
+	}
+	n.noted = true
+	n.notedState = claim.state
+}
+
+// noteRecorded is the delivery finished: the recipient's own record holds the
+// note ([Agent.recordUserLocked]), so this landing is announced and no later
+// life of this session says it again. It answers whether THIS call moved the
+// mark, which is the caller's cue that the checkpoint is still owed — and the
+// checkpoint is what makes it durable, so it is written outside every lock this
+// takes.
+func (n *TaskNode) noteRecorded(claim noteClaim) bool {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if claim.attempt != n.attempt {
+		return false
+	}
+	// The question this answers is whether the RECORD's mark moved, so it is read
+	// off that mark: the queued one is already on by the time a delivery is
+	// acknowledged ([TaskNode.noteQueued]).
+	already := n.notedRead && (n.notedState == "" || n.notedState == claim.state)
+	n.noted = true
+	n.notedRead = true
+	n.notedState = claim.state
+	if n.noting && n.notingClaim == claim {
+		n.noting, n.notingClaim = false, noteClaim{}
+	}
 	return !already
+}
+
+// noteDelivery is the id this node's news travels under, stable across a
+// restart because every part of it is on the checkpoint.
+func (n *TaskNode) noteDelivery(claim noteClaim) deliveryID {
+	return deliveryID(fmt.Sprintf("%s/%d@%d:%s", n.graph.sessionName(), n.id, claim.attempt, claim.state))
 }
 
 // notice copies the node out from under the lock, shaped for an
@@ -2827,6 +3239,20 @@ func (n *TaskNode) notice() TaskNotice {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	return n.noticeLocked(cost)
+}
+
+// resultOf is ONE LANDING, WHOLE: the notice a surface draws, the attempt it
+// describes, and the tag its result is judged and cited by, read under one hold
+// of the graph's lock. A report composed from one and announced against another
+// would be this life of the node being told about the last one, and a target
+// read later would be the goal it has since become (wakecause.go's
+// [TaskNode.resultTagLocked]).
+func (n *TaskNode) resultOf() (TaskNotice, int, TaskReplyTag) {
+	// The spend is read before the lock, for [TaskNode.notice]'s reason.
+	cost := n.spend()
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.noticeLocked(cost), n.attempt, n.resultTagLocked()
 }
 
 // ageLocked is this node's elapsed age, with the graph held.
@@ -2871,6 +3297,10 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 	if where == "" {
 		where = n.spec.where
 	}
+	// And what the work produced (task_result.go). It is bounded here rather than
+	// downstream because a notice is copied into every watcher's lane and held by
+	// whoever draws a row.
+	delivery := n.carriedResultLocked()
 	return TaskNotice{
 		ID:    n.id,
 		Title: n.spec.title,
@@ -2885,23 +3315,27 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		// AND WHAT THAT DIRECTORY IS, which the surface cannot work out for
 		// itself: the same ladder makes a worktree for one node and a fork for
 		// the next, and only the node knows which it got (groundladder.go).
-		Rung:      n.Rung,
-		DependsOn: n.dependsOn,
-		Parent:    n.parent,
-		State:     n.state,
-		Elapsed:   elapsed,
-		StartedAt: n.started,
-		EndedAt:   n.ended,
-		Report:    n.report,
-		Changed:   changed,
-		Branch:    n.branch,
-		Merge:     n.merge,
-		Doing:     n.doing,
-		Context:   n.context,
-		Mending:   n.mend,
-		Waiting:   waiting,
-		Stopped:   n.stopped,
-		Ending:    n.endingLocked(),
+		Rung:        n.Rung,
+		DependsOn:   n.dependsOn,
+		Parent:      n.parent,
+		State:       n.state,
+		Elapsed:     elapsed,
+		StartedAt:   n.started,
+		EndedAt:     n.ended,
+		Report:      n.report,
+		Result:      delivery.body,
+		ResultWhole: delivery.where,
+		ResultCut:   delivery.cut,
+		ResultHeld:  delivery.held,
+		Changed:     changed,
+		Branch:      n.branch,
+		Merge:       n.merge,
+		Doing:       n.doing,
+		Context:     n.context,
+		Mending:     n.mend,
+		Waiting:     waiting,
+		Stopped:     n.stopped,
+		Ending:      n.endingLocked(),
 		// AND WHAT ITS OWN CHECK SAID, which is not the same fact as its state: a
 		// node taken as it stands, one landed with the check switched off and one
 		// a person accepted are all done and none of them was checked
@@ -2989,7 +3423,10 @@ func (n *TaskNode) spend() float64 {
 // guess, and a row written anywhere else would be a second definition of landed
 // (task_index.go).
 func (a *Agent) reportTaskNode(node *TaskNode) {
-	notice := node.notice()
+	// The notice, the attempt it belongs to and the tag its result is judged by
+	// are read together, so a report composed here cannot be announced against a
+	// later life of the node ([TaskNode.claimNote], [TaskNode.resultOf]).
+	notice, attempt, tag := node.resultOf()
 	a.emitTaskUpdate(notice)
 	if notice.State == TaskRunning || notice.State == TaskQueued {
 		return
@@ -3013,10 +3450,21 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 	// (task_store.go). On the delivery road the mark is made INSIDE the handover,
 	// between the queue and the wake, for the reason stated there.
 	if notice.Kind == TaskKindHarness {
-		a.enqueueAmbientNote(note)
-		node.markNoted()
+		// The mark follows the delivery road's law: it is made when a reader took
+		// the line, not when one was written for a session that has closed.
+		claim, claimed := node.claimNote(attempt)
+		if !claimed {
+			return
+		}
+		line := userText(note)
+		line.delivered = []durableDelivery{node.settlesNote(claim)}
+		if a.accept(delivery{origin: fromRuntime, kind: msgNotice, note: line}).accepted() {
+			node.noteQueued(claim)
+			return
+		}
+		node.releaseNote(claim)
 	} else {
-		a.deliverTaskNote(node, note)
+		a.deliverTaskNote(node, attempt, tag, note)
 	}
 }
 
@@ -3030,51 +3478,101 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 // no agent left to read anything, and news with nowhere to go belongs in front
 // of the person rather than nowhere. Sending it to both would tell the person's
 // model that work it never commissioned has just finished.
-func (a *Agent) deliverTaskNote(node *TaskNode, note string) {
-	reader := a
-	if node.parent != 0 {
-		if parent := node.graph.node(node.parent); parent != nil {
-			if child := parent.openRoom().speaker(); child != nil && child.takesNotes() {
-				reader = child
+func (a *Agent) deliverTaskNote(node *TaskNode, attempt int, tag TaskReplyTag, note string) {
+	// SAID ONCE PER ENDING, PER LIFE OF THE WORK. The identity is the attempt and
+	// the state ([noteClaim]), so a repeated announcement of one landing buys no
+	// second model turn, a node that ends somewhere else later is news again, and
+	// a delivery composed before the node was re-armed is refused rather than
+	// announced against the run happening now.
+	claim, claimed := node.claimNote(attempt)
+	if !claimed {
+		return
+	}
+	// AND THE ANNOUNCEMENT IS NOT WRITTEN DOWN UNTIL SOMEBODY HAS IT. The note
+	// carries what settles it ([durableDelivery]): the recipient's own record is
+	// the acknowledgement, and until then this landing stays owed, so a session
+	// that closed with the note unread re-tells it on resume rather than losing
+	// it (task_store.go).
+	got := a.postTaskMessage(node, tag, note, []durableDelivery{node.settlesNote(claim)},
+		func() { node.noteQueued(claim) })
+	if !got.accepted() {
+		// Nobody is left to read it, so the claim goes back and no mark is made.
+		node.releaseNote(claim)
+	}
+}
+
+// settlesNote is this landing's durable delivery: the id it travels under, and
+// what to do when the recipient's record holds it. The checkpoint is written
+// here rather than by the recipient because this is the sender's own fact, and
+// it is written outside the recipient's lock ([Agent.settleDeliveries]).
+func (n *TaskNode) settlesNote(claim noteClaim) durableDelivery {
+	return durableDelivery{
+		id: n.noteDelivery(claim),
+		settled: func() {
+			if n.noteRecorded(claim) {
+				n.graph.checkpoint()
 			}
-		}
+		},
 	}
+}
+
+// postTaskMessage is the delivery itself, shared by the landing announcement
+// above and the re-addressed lead a settled parent leaves behind
+// ([Agent.bubbleUnverifiedChildren]) — a message ABOUT this node rather than the
+// announcement of its ending, which is why that road claims and marks nothing.
+//
+// THE READER IS CHOSEN AT THE INSTANT THE NOTE IS HANDED OVER. It used to be
+// chosen one instant and written to the next: a worker that closed in that gap
+// took nothing and the answer was dropped, and one whose runner withdrew it took
+// the note onto a queue nothing would drain. The seat resolves and appends under
+// the room's own lock ([taskRoom.handIn]), and the conversation is tried when
+// nobody in the room can read it.
+//
+// THEN THE FACT, THEN THE WAKE, AND NEVER IN ANY OTHER ORDER. A parent parked on
+// its pieces asks two questions of this moment — is anything still outstanding
+// ([Agent.childrenOutstanding], which is `noted` read from outside), and is
+// anything owed to the model ([Agent.taskNewsOwed]) — and the answers must not
+// disagree. The mark is made after the queue, so a waiter that sees this child
+// settled also sees a note owed, and before the wake, so a waiter released by it
+// is not parked on a generation nothing will close again. Both writes are made
+// under one lock ([Agent.handOverTaskNews]) because the waiter reads them as one
+// fact ([Agent.taskNewsStanding]). The checkpoint the mark owes the disk is
+// written by the caller, after the seam.
+func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note string, durable []durableDelivery, mark func()) deliveryReceipt {
 	message := wakeNote(note)
-	message.replyTags = []TaskReplyTag{{
-		ID: node.id, Title: node.title(), Request: node.request(),
-	}}
-	reader.enqueueNote(message)
-	// ── THE QUEUE, THEN THE FACT, THEN THE WAKE, AND NEVER IN ANY OTHER ORDER ──
-	//
-	// A parent parked on its pieces asks two questions of this moment and the
-	// answers must not be able to disagree: is anything still outstanding
-	// ([Agent.childrenOutstanding], which is `noted` read from outside), and is
-	// anything owed to the model ([Agent.taskNewsOwed]). Sliding the mark between
-	// the two calls below is what makes both readings safe whichever instant the
-	// waiter took them in.
-	//
-	// MARKED AFTER THE QUEUE, so a waiter that sees this child is no longer
-	// outstanding also sees a note owed and re-enters the model with it. Marked
-	// before the wake, so a waiter that read "still outstanding" a moment ago is
-	// released by the close below rather than parking on a generation that nothing
-	// is ever going to close again. The old order — deliver, wake, mark — left
-	// exactly that gap, and it is a parent asleep for the rest of the run.
-	//
-	// AND THE FACT AND THE WAKE ARE ONE STEP ([Agent.handOverTaskNews]). An order
-	// the writer keeps is only half of the promise: the waiter reads two facts
-	// held under two different locks, so a delivery that could land BETWEEN those
-	// reads is a delivery seen half-done however carefully it was written. Both
-	// sides meet on one lock, and [Agent.taskNewsStanding] is the read.
-	//
-	// THE CHECKPOINT IS WRITTEN AFTER THE SEAM and only by the delivery that
-	// actually moved the mark. It is the same record it always was; what has
-	// changed is that a parked parent is no longer kept waiting on a file while
-	// the two facts it reads disagree.
-	handedOver := false
-	reader.handOverTaskNews(func() { handedOver = node.noteHandedOver() })
-	if handedOver {
-		node.graph.checkpoint()
+	// THE TAG IS THE CALLER'S SNAPSHOT AND IS NOT RE-READ FROM THE NODE HERE.
+	// This delivery happens after a claim is won and a reader is found, and a
+	// node can be re-armed and revised in that gap: composing the tag here would
+	// hand the OLD result the NEW target (wakecause.go's [TaskNode.resultOf]).
+	message.replyTags = []TaskReplyTag{tag}
+	message.delivered = durable
+	got := deliverTo(delivery{origin: fromRuntime, kind: msgResult, note: message}, a.taskNoteReaders(node)...)
+	if !got.accepted() {
+		return got
 	}
+	got.reader.handOverTaskNews(mark)
+	return got
+}
+
+// taskNoteReaders is WHO MAY READ ONE LANDED NODE'S NEWS, in the order they are
+// asked. The parent node's own worker comes first for the reason the header
+// above states — it is the only reader that can fold the piece back into the
+// whole — and the conversation is the fallback rather than a second delivery.
+//
+// A NODE WITH NO PARENT HAS ONE READER and the room is not consulted at all: it
+// was proposed here, and here is where its news is owed.
+func (a *Agent) taskNoteReaders(node *TaskNode) []mailbox {
+	if node.parent == 0 {
+		return []mailbox{a}
+	}
+	parent := node.graph.node(node.parent)
+	if parent == nil {
+		return []mailbox{a}
+	}
+	// openRoom answers nil for a settled parent, and the seat answers "nobody"
+	// for a nil room — the parent has landed, has no agent left to read anything,
+	// and the person's conversation is the honest place for the news.
+	return []mailbox{roomSeat{at: conversationOf(parent), room: parent.openRoom()}, a}
 }
 
 // taskNote is what the model reads when a node lands: the outcome, the report,
@@ -3307,6 +3805,17 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 	if report != "" {
 		note.WriteString("\n" + report)
 	}
+	// And under it, what the work actually produced. The report above is the
+	// card's three lines; this is the answer, and the reader of this note is the
+	// one that has to use it — the parent folding a piece back into the whole, or
+	// the conversation writing the person's reply (task_result.go). It is empty
+	// whenever the report already carries the answer, which is the ordinary short
+	// landing.
+	if block := resultBlock(resultDelivery{
+		body: notice.Result, where: notice.ResultWhole, cut: notice.ResultCut, held: notice.ResultHeld,
+	}); block != "" {
+		note.WriteString("\n" + block)
+	}
 	if notice.State == TaskUnverified {
 		note.WriteString(settleClause(notice.ID, settle))
 	}
@@ -3325,7 +3834,24 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 		note.WriteString("\nchanged: " + strings.Join(notice.Changed, ", "))
 	}
 	note.WriteString(taskMergeNote(notice))
+	note.WriteString(taskBranchFollowup(notice))
 	return note.String()
+}
+
+// A saved artifact does not expand the request. The native repository trial
+// kept an unchecked branch correctly, but its parent read the landing as work
+// to finish by merging into main. Carry the workflow boundary to that reader.
+func taskBranchFollowup(notice TaskNotice) string {
+	if notice.Branch == "" || unsavedLanding(notice.Report) {
+		return ""
+	}
+	if notice.Merge != mergeKept && notice.Merge != mergeConflicted && notice.Merge != mergeAborted {
+		return ""
+	}
+	return "\nThe work remains on task branch " + notice.Branch + ". Inspect and test it there. " +
+		"This completion notice does not expand the person's request: preserve their " +
+		"branch and review instructions. Do not merge or switch the conversation's " +
+		"checkout unless their request calls for it."
 }
 
 // taskMergeNote is the landing's one branch sentence, kept outside [taskNote]
@@ -3348,7 +3874,7 @@ func taskMergeNote(notice TaskNotice) string {
 		// of this report. The emptiness law is why nothing is written here rather
 		// than a line with a hole where a branch name would go.
 		if notice.Branch != "" {
-			return "\nits branch " + notice.Branch + " did not merge cleanly and was kept — merge it yourself when you are ready"
+			return "\nits branch " + notice.Branch + " did not merge cleanly and was kept — inspect the retained branch before deciding what to do next"
 		}
 		return ""
 	case mergeAborted:
@@ -3367,7 +3893,7 @@ func taskMergeNote(notice TaskNotice) string {
 			return ""
 		case len(notice.Changed) > 0:
 			return "\nit was stopped; what it made is committed on its branch " +
-				notice.Branch + ", which was kept — merge that branch to take the work"
+				notice.Branch + ", which was kept for inspection"
 		default:
 			return "\nit was stopped; its branch " + notice.Branch + " was kept"
 		}
@@ -3672,6 +4198,29 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 		node.graph.handBackLane(node)
 		return
 	}
+	// THE PERSON CHANGED THE WORK WHILE IT WAS FINISHING, so this attempt is over
+	// and the node is not (assignment.go). The parts are stopped first, exactly as
+	// they are on the settling road below — a part belongs to the attempt it was
+	// cut out of — and then one transition puts the node back on the frontier with
+	// their words carried. It NEVER settles on the way: no terminal state, no
+	// `done` closed, nothing said to the parent about an answer that is about to
+	// be worked on again.
+	//
+	// A REFUSED TRANSITION FALLS THROUGH TO THE ORDINARY ENDING, which is what a
+	// node past [directedRoundLimit] and a session that is closing both get: the
+	// work lands as it stands and the words wait for a continue.
+	if state == taskRunAgain {
+		node.graph.stopChildren(node.id)
+		if !node.graph.runAgainForDirections(node) {
+			// The graph would not take it — this session is closing under us. The
+			// node keeps TaskRunning and its lane goes back, which is exactly what a
+			// run interrupted by Close does above: recovery turns it back into
+			// queued work and the next process picks it up with the words still on
+			// its record.
+			node.graph.handBackLane(node)
+		}
+		return
+	}
 	// NOTHING OUTLIVES THE WORK IT WAS HANDED OUT FOR. A sub-task's worktree is
 	// branched off its parent's and merges back into it, so a child still
 	// running after its parent has landed is work with nowhere to come home to.
@@ -3724,7 +4273,9 @@ func (a *Agent) bubbleUnverifiedChildren(node *TaskNode) {
 	if len(waiting) == 0 {
 		return
 	}
-	a.deliverTaskNote(node, readdressedLead(node, waiting))
+	// It is not this node's landing being announced — that has already been said
+	// ([Agent.deliverTaskNote]) — so nothing is claimed or marked here.
+	a.postTaskMessage(node, node.resultTag(), readdressedLead(node, waiting), nil, nil)
 }
 
 // park hands a RUNNING node's lane back while it waits on the work it handed
@@ -4164,7 +4715,13 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// the same working copy, so what the first one saved is still on disk and
 		// still the node's leavings.
 		changed = mergePaths(changed, wrote)
-		report = taskReport(child)
+		said := lastSaid(child)
+		report = composeTaskReport(said)
+		// And the answer itself, whole, before the card is cut out of it. It is
+		// kept here because this is the last moment the worker's transcript is
+		// open — `retire` closes it — and because everything downstream that needs
+		// the work rather than the card reads the node (task_result.go).
+		node.keepResultNoting(said, log)
 		// AND WHAT IT ACTUALLY RAN, kept for the judge that never watched it happen.
 		// The check a worker runs last is usually the most expensive thing in the
 		// task, and an auditor made to rediscover and repeat it from nothing is an
@@ -4176,7 +4733,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// folded into the same list on the way past, so everything downstream —
 		// the card, the auditor's packet, the index it stages — reads ONE account
 		// of what this node produced ([declaredFiles]).
-		changed = mergePaths(changed, declaredFiles(lastSaid(child), tree.dir))
+		changed = mergePaths(changed, declaredFiles(said, tree.dir))
 
 		if movedFrom != "" || stopped != "" || ctx.Err() != nil {
 			break
@@ -4232,6 +4789,11 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// loop's own answer where the loop has one — a rule the worker would not
 	// follow — and the worker's last words otherwise ([endingOfClaim]).
 	node.end(endingOfClaim(lastSaid(child), node.blockedByNow(), child.stoppedOnProcessRule()))
+	// WHAT THIS WORK IS ABOUT TO BE JUDGED AT, written down before the gate reads
+	// anything. The landing compares it with the version in force at the boundary
+	// (assignment.go): a revision that lands between here and there means the work
+	// in hand answers a question nobody is asking any more.
+	node.checkAt(node.assignmentVersion())
 
 	// THE GATE. Everything above is the node's own account of itself; what
 	// follows is somebody else's (task_audit.go). Only a VERIFIED verdict
@@ -4571,6 +5133,16 @@ func keptWork(tree taskTree, title string, changed []string) (string, []string) 
 	if tree.merge == mergeInPlace || tree.root == "" || strings.TrimSpace(tree.dir) == "" {
 		return abortedMerge(tree), changed
 	}
+	// A COPY ALREADY GIVEN BACK IS PICKED UP HERE TOO ([taskTree.comeHome] says
+	// why). A node can settle twice — a stop after an accept, a re-audit that
+	// lands late — and the second keeping must commit into a repository rather
+	// than answer "not a git repository" and quietly leave the branch as it was.
+	switch reopened, back, problem := tree.reopenReleased(); {
+	case back:
+		tree = reopened
+	case problem != "":
+		return mergeAborted, changed
+	}
 	saved, problem, _ := commitTaskWork(tree.dir, title, changed)
 	changed = alsoChanged(changed, saved)
 	// THE INHERITANCE COMES BACK OUT OF A KEPT BRANCH TOO, for the reason it does
@@ -4618,6 +5190,15 @@ func (t taskTree) releaseKeptLocked() {
 		t.dropUniverse()
 		return
 	}
+	// AND THE RELEASE IS WRITTEN DOWN BEFORE THE REGISTRATION GOES. This is the
+	// last moment anybody can ask git what this directory was, and two later
+	// readers need the answer: a landing that arrives afterwards has to know a
+	// missing `.git` here is THIS RUNTIME'S DOING and not a workspace that was
+	// never a repository ([taskTree.reopenReleased]), and everybody has to know
+	// which branch the work is actually on, because a node may rename the branch
+	// it is standing on and one did — after which the name the tree was carved
+	// with names nothing at all.
+	rememberReleased(t.dir, t.branchStandingOn(), t.root)
 	// Keep the task folder's uncommitted leavings without keeping a git
 	// registration. Moving it aside lets git remove its administrative record;
 	// removing the pointer file then turns the restored directory into ordinary
@@ -4634,6 +5215,188 @@ func (t taskTree) releaseKeptLocked() {
 	_ = os.Remove(filepath.Dir(t.dir))
 }
 
+// releasedKeptSentence names the retained files when registration recovery
+// fails. It does not claim that a deleted branch still holds them, and the
+// caller keeps the landing answerable so a repaired registration can be retried.
+func releasedKeptSentence(dir, problem string) string {
+	return "its saved working copy at " + dir + " could not be reopened to merge: " + problem
+}
+
+// releasedRecord is what a settle leaves in the working copy it hands back,
+// beside [leftBehindRecord]. It is the one thing that tells a directory THIS
+// RUNTIME unregistered apart from a folder that was never a repository, and
+// those two must never be answered the same way: the second is a fact about the
+// person's disk that will be true again next time, and the first is a state
+// aforge made and can put back.
+const releasedRecord = "released.json"
+
+// releasedTree is that record: the branch the node's work is actually on, and
+// the repository holding it.
+//
+// THE BRANCH IS READ OFF HEAD RATHER THAN COPIED FROM THE TREE. A node may
+// rename the branch it is standing on, and one did — the tree's own `branch`
+// then names nothing, so the audit's fresh checkout asks for a ref that is not
+// there and a later landing has nothing to merge. What HEAD says at the moment
+// the copy is given back is the last true reading of it there will ever be.
+type releasedTree struct {
+	Branch string `json:"branch"`
+	Root   string `json:"root"`
+}
+
+// branchStandingOn is the branch this working copy's HEAD names, and empty for
+// a detached head or a directory that is no longer a repository. It falls back
+// to what the tree was carved with, which is right for both: a copy that cannot
+// be asked has told us nothing that beats the record.
+func (t taskTree) branchStandingOn() string {
+	if live := currentBranch(t.dir); live != "" {
+		return live
+	}
+	return strings.TrimSpace(t.branch)
+}
+
+func rememberReleased(dir, branch, root string) {
+	metadata := filepath.Join(dir, aforgeDroppings)
+	if err := os.MkdirAll(metadata, 0o755); err != nil {
+		return
+	}
+	contents, err := json.Marshal(releasedTree{Branch: strings.TrimSpace(branch), Root: strings.TrimSpace(root)})
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(metadata, releasedRecord), contents, 0o600)
+}
+
+// rememberedRelease answers whether this directory is a working copy a settle
+// gave back, and what it was standing on when that happened.
+func rememberedRelease(dir string) (releasedTree, bool) {
+	contents, err := os.ReadFile(filepath.Join(dir, aforgeDroppings, releasedRecord))
+	if err != nil {
+		return releasedTree{}, false
+	}
+	var record releasedTree
+	if err := json.Unmarshal(contents, &record); err != nil {
+		return releasedTree{}, false
+	}
+	return record, true
+}
+
+// forgetReleased drops the mark once the copy is a registered worktree again,
+// so the record only ever describes the state the directory is actually in.
+func forgetReleased(dir string) {
+	_ = os.Remove(filepath.Join(dir, aforgeDroppings, releasedRecord))
+}
+
+// branchIsThere asks a repository whether it holds a branch by that name, which
+// is the question every road that reaches for a renamed branch has to ask
+// before it uses one.
+func branchIsThere(repo, name string) bool {
+	repo, name = strings.TrimSpace(repo), strings.TrimSpace(name)
+	if repo == "" || name == "" {
+		return false
+	}
+	_, err := git(repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+name)
+	return err == nil
+}
+
+// reopenReleased recreates only the Git registration of a released task copy.
+// The original files never move: a fresh empty worktree supplies its .git pointer,
+// and worktree repair binds that pointer to the retained directory. A failed
+// registration therefore cannot erase or partly relocate the user's leavings.
+func (t taskTree) reopenReleased() (taskTree, bool, string) {
+	mark, released := t.releaseIdentity()
+	if !released {
+		return t, false, ""
+	}
+	root := strings.TrimSpace(t.root)
+	if root == "" {
+		root = strings.TrimSpace(mark.Root)
+	}
+	if branch := strings.TrimSpace(mark.Branch); branch != "" {
+		t.branch = branch
+	}
+	t.root = root
+	if root == "" || strings.TrimSpace(t.branch) == "" {
+		return t, false, "nothing records the branch its work was left on"
+	}
+	defer lockGitRoot(t.place, root)()
+	if !branchIsThere(root, t.branch) {
+		return t, false, "the branch " + t.branch + " is no longer in " + root
+	}
+	// Git must answer for THIS directory. A missing pointer in a directory
+	// under another checkout must never borrow that checkout's index or HEAD.
+	if root, ok := repositoryRoot(t.dir); !ok || root != canonicalPath(t.dir) {
+		if problem := t.restoreReleasedRegistration(); problem != "" {
+			return t, false, problem
+		}
+	}
+	if currentBranch(t.dir) != t.branch {
+		return t, false, "its working copy now stands on a different branch"
+	}
+	// Reset writes only the index, so committed files, edits, deletions and
+	// untracked leavings all remain exactly as they were in the retained copy.
+	if out, err := git(t.dir, "reset", "--quiet", "--mixed", "HEAD"); err != nil {
+		return t, false, "its working copy could not be read against " + t.branch + ": " + firstLine(out)
+	}
+	forgetReleased(t.dir)
+	return t, true, ""
+}
+
+// releaseIdentity reads current or legacy evidence of runtime cleanup. The
+// fallback cannot recover a renamed branch that the old record never named.
+func (t taskTree) releaseIdentity() (releasedTree, bool) {
+	mark, released := rememberedRelease(t.dir)
+	// Older releases wrote only the leavings record. That valid record is also
+	// evidence of runtime cleanup, but cannot recover an unknown renamed branch.
+	if !released && !t.ownRepository() {
+		if data, err := os.ReadFile(filepath.Join(t.dir, aforgeDroppings, leftBehindRecord)); err == nil {
+			var paths []string
+			if json.Unmarshal(data, &paths) == nil {
+				mark = releasedTree{Branch: t.branch, Root: t.root}
+				released = true
+			}
+		}
+	}
+	return mark, released
+}
+
+// restoreReleasedRegistration binds a fresh linked-worktree registration to the
+// retained files. Its caller owns the Git root lock; this phase touches only
+// its own temporary pointer and Git's registration, never the saved contents.
+func (t taskTree) restoreReleasedRegistration() string {
+	temp, err := os.MkdirTemp(filepath.Dir(t.dir), ".aforge-reopen-")
+	if err != nil {
+		return "its working copy could not be prepared: " + err.Error()
+	}
+	// git worktree add needs the reserved path to be absent. Only this empty
+	// directory is removed; no previous recovery directory is ever reused.
+	if err := os.Remove(temp); err != nil {
+		return "its working copy could not be prepared: " + err.Error()
+	}
+	out, err := git(t.root, "worktree", "add", "--no-checkout", temp, t.branch)
+	if err != nil {
+		_ = os.Remove(temp)
+		return "its working copy could not be picked up again: " + firstLine(out)
+	}
+	pointer := filepath.Join(t.dir, ".git")
+	// Link refuses an existing destination, unlike Rename. The source is Git's
+	// new pointer file; no task file is replaced, even after an interrupted retry.
+	if err := os.Link(filepath.Join(temp, ".git"), pointer); err != nil {
+		_, _ = git(t.root, "worktree", "remove", "--force", temp)
+		return "its working copy registration could not be restored: " + err.Error()
+	}
+	if out, err := git(t.root, "worktree", "repair", t.dir); err != nil {
+		_ = os.Remove(pointer)
+		// The repair may have partly updated its administrative backlink. Put it
+		// back at the disposable checkout before releasing that registration.
+		_, _ = git(t.root, "worktree", "repair", temp)
+		_, _ = git(t.root, "worktree", "remove", "--force", temp)
+		return "its working copy registration could not be repaired: " + firstLine(out)
+	}
+	_ = os.Remove(filepath.Join(temp, ".git"))
+	_ = os.Remove(temp)
+	return ""
+}
+
 func (a *Agent) taskProgress(ctx context.Context, node *TaskNode, dir string, evidence []string, log io.Writer) (bool, string) {
 	if check := a.config.TaskProgressCheck; check != nil {
 		return check(node.instruction(), append([]string(nil), evidence...))
@@ -4642,7 +5405,7 @@ func (a *Agent) taskProgress(ctx context.Context, node *TaskNode, dir string, ev
 	// check reads a running tree and decides whether the work is moving; it has
 	// no business with a wider hand than the judge that will grade the result,
 	// and no reason for a narrower one.
-	auditor, err := a.newAuditAgent(dir, node, auditDoorFor(node, auditPlace{ground: dir, ran: dir}))
+	auditor, err := a.newAuditAgent(dir, node, auditDoorFor(node, dir))
 	if err != nil {
 		return false, "the progress check could not start: " + err.Error()
 	}
@@ -5257,7 +6020,7 @@ func cutDeclaration(line string) (string, bool) {
 }
 
 // declarationWord is the one spelling, said once here and once in the node's
-// own prompt (prompts/task.md's "What comes home"), because a prompt that asked
+// own prompt (prompts/worker.md's "What comes home"), because a prompt that asked
 // for a word this did not read would be a promise the harness does not keep.
 const declarationWord = "files:"
 
@@ -6448,6 +7211,14 @@ func standingInOwnSpace(place Place, dir string) bool {
 //
 // IT READS THE DISK AND NEVER WRITES IT, because the proposal card resolves the
 // same words for display before the person has said yes ([taskWhereNotice]).
+//
+// AND IT ANSWERS IN THE ONE SPELLING ([canonicalPath]), because this is where
+// somebody's words become a directory that will be compared against every other
+// directory this engine holds. Kept as typed, a `where` of /var/… made one folder
+// look like two beside the /private/var/… git and the guard use, and a ground
+// stopped matching the copy cut from it. A path still to be made is settled the
+// same way — nearest existing parent resolved, missing suffix put back — before
+// the caller that places work creates it.
 func resolveTaskWhere(where, workspace string) (string, error) {
 	if where == "~" || strings.HasPrefix(where, "~/") {
 		home, err := os.UserHomeDir()
@@ -6473,7 +7244,7 @@ func resolveTaskWhere(where, workspace string) (string, error) {
 	case !info.IsDir():
 		return "", fmt.Errorf("%s is not a directory", dir)
 	}
-	return filepath.Clean(dir), nil
+	return canonicalPath(dir), nil
 }
 
 // taskTreeSession is the path segment that keeps one window's worktrees away
@@ -6526,6 +7297,21 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string, landin
 	}
 	if t.merge == mergeInPlace || t.root == "" {
 		return mergeInPlace, "", refusedNothing
+	}
+	// A COPY A SETTLE ALREADY GAVE BACK IS PICKED UP BEFORE IT IS ASKED TO LAND.
+	// An accept arrives hours after the node stopped needing somebody's look, and
+	// what it finds is a directory this runtime turned into ordinary files
+	// ([taskTree.reopenReleased]). Landing into it committed nothing, merged
+	// nothing, and told the person git's own `fatal: not a git repository` as
+	// though their disk had refused them (#653).
+	switch reopened, back, problem := t.reopenReleased(); {
+	case back:
+		t = reopened
+	case problem != "":
+		// Registration recovery can be retried after its cause is repaired. The
+		// saved files remain in place; this is neither an intentional kept branch
+		// nor a permanent refusal by a workspace that was never a repository.
+		return mergeAborted, releasedKeptSentence(reopened.dir, problem), refusedByTheWork
 	}
 	// A LANDING THAT COULD NOT SAVE THE WORK STOPS HERE. Nothing merges, nothing
 	// is released, and the branch and the working copy both stay exactly where

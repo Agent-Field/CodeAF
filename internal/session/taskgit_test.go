@@ -141,7 +141,7 @@ func TestAWorkerMayUnstageButMayNotDiscardItsWork(t *testing.T) {
 // READING IS ALWAYS ALLOWED. The whole point of the line this guard draws is that
 // it is between knowing and taking: a worker that wants to know what is on main
 // gets the whole answer. `add` and `commit` are left alone too — the brief tells a
-// worker not to stage its own work (prompts/task.md), so refusing them here would
+// worker not to stage its own work (prompts/worker.md), so refusing them here would
 // be the harness answering a question its own prompt already settled.
 func TestAWorkerMayLookAnywhereAndSaveWhatItWrote(t *testing.T) {
 	for _, command := range []string{

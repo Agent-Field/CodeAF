@@ -159,6 +159,40 @@ func TestC3WhereInsideARepositoryIsBranchedAndPlainFoldersStayInPlace(t *testing
 	}
 }
 
+// C3b: a contract that spells its ground another way is still a contract about
+// that ground. Read as bytes, one that named the ground three times looked like
+// one that named nothing under it, so the work became a read-only reference —
+// and a reference binds none of its addresses to the copy it was given, which
+// left the worker writing in the person's own checkout.
+func TestC3bAContractSpellingTheGroundThroughAnAliasStillWritesInIt(t *testing.T) {
+	repo := newTestRepo(t)
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(repo, alias); err != nil {
+		t.Skipf("this filesystem does not make symlinks: %v", err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.Workspace = t.TempDir() })
+
+	writes := agent.resolveTaskGround(taskSpec{
+		ground:      alias,
+		brief:       "change " + filepath.Join(alias, "internal", "widget.go") + " so it says new",
+		deliverable: filepath.Join(alias, "internal", "widget.go"),
+		acceptance:  filepath.Join(alias, "internal", "widget.go") + " says new",
+	})
+	if writes.dir != canonicalPath(repo) || writes.mode != TaskModeWorktree {
+		t.Fatalf("stand = %+v, want a worktree of %s", writes, canonicalPath(repo))
+	}
+	// AND THE READ-ONLY CASE IS UNCHANGED, which is what says the reading above
+	// grew no more generous than the alias: work whose contract names no file in
+	// the ground at all still gets the reference it always got.
+	reads := agent.resolveTaskGround(taskSpec{
+		ground: alias, brief: "say what the widget does", deliverable: "a concise answer",
+		acceptance: "the question is answered",
+	})
+	if reads.dir != canonicalPath(repo) || reads.mode != TaskModeReference {
+		t.Fatalf("stand = %+v, want a reference to %s", reads, canonicalPath(repo))
+	}
+}
+
 // C4: an in-place mode the person put on a referred repository remains the one
 // authority that deliberately writes that repository directly.
 func TestC4APersonsInPlaceModeOnAReferredRepositoryIsHonoured(t *testing.T) {
@@ -406,6 +440,102 @@ func TestATaskNamingAFolderItDoesNotStandInIsRefused(t *testing.T) {
 	graph.mu.Unlock()
 	if admitted != 0 {
 		t.Fatalf("the graph admitted %d nodes for a refused proposal", admitted)
+	}
+}
+
+// A COMMAND IN THE WORKING DIRECTORY IS NOT A FOLDER AT THE ROOT OF THE MACHINE.
+//
+// A live run wrote `./slow-build.sh` in its acceptance and no ground at all, and
+// the reading below it trimmed the leading dot: the refusal named
+// `/slow-build.sh`, a directory nobody had mentioned, and the model paid a round
+// to work out that it had to spell the ground itself.
+func TestATaskNamingACommandInItsOwnDirectoryIsAdmitted(t *testing.T) {
+	workspace := t.TempDir()
+	writeFile(t, filepath.Join(workspace, "slow-build.sh"), "#!/bin/sh\necho building\n")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = workspace
+	})
+	stubbedGraph(agent, func(*TaskNode) {})
+
+	arguments, _ := json.Marshal(taskArguments{
+		Title: "run the build", Summary: "s",
+		Brief:       "In the working directory, run: ./slow-build.sh\nWhen it has exited, read build.log and report what it says.",
+		Deliverable: "a short report of what build.log holds after ./slow-build.sh completed",
+		Acceptance:  "./slow-build.sh has exited and the report states what build.log holds.",
+	})
+	result, isError, err := agent.proposeTask(context.Background(), arguments)
+	if err != nil {
+		t.Fatalf("proposeTask errored the turn: %v", err)
+	}
+	if isError {
+		t.Fatalf("work in the conversation's own directory was refused: %q", result)
+	}
+	node := agent.graph().node(admittedID(t, result))
+	if node == nil {
+		t.Fatal("the receipt names a node the graph does not hold")
+	}
+	graph := agent.graph()
+	graph.mu.Lock()
+	ground := node.recordLocked().Ground
+	graph.mu.Unlock()
+	if ground != canonicalPath(workspace) {
+		t.Fatalf("the task stands on %q, want the conversation's own folder %q", ground, canonicalPath(workspace))
+	}
+
+	// AND THE REFUSAL IS UNMOVED FOR A PATH THAT REALLY IS OUTSIDE. The same
+	// contract with an absolute output somewhere else is still refused, and by
+	// the name of that output rather than of the command beside it.
+	outside := filepath.Join(t.TempDir(), "elsewhere")
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	arguments, _ = json.Marshal(taskArguments{
+		Title: "run the build", Summary: "s", Brief: "run ./slow-build.sh",
+		Deliverable: "the report at " + filepath.Join(outside, "report.md"),
+		Acceptance:  "./slow-build.sh has exited and " + filepath.Join(outside, "report.md") + " holds the report.",
+	})
+	result, isError, err = agent.proposeTask(context.Background(), arguments)
+	if err != nil {
+		t.Fatalf("proposeTask errored the turn: %v", err)
+	}
+	if !isError || !strings.Contains(result, outside) {
+		t.Fatalf("an output outside the ground was answered %q, want it refused by name", result)
+	}
+	if strings.Contains(result, "/slow-build.sh has") || strings.Contains(result, " /slow-build.sh") {
+		t.Fatalf("the refusal names a folder nobody mentioned: %q", result)
+	}
+}
+
+// WHAT A LEADING DOT MEANS, pinned on the reading itself: it is part of the
+// path, and only the punctuation that ended the sentence comes off.
+func TestPathTokensKeepsTheDotsAPathBeginsWith(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		text string
+		want []string
+	}{
+		{"a command in the working directory", "run: ./slow-build.sh", []string{"./slow-build.sh"}},
+		{"a path one folder up is not rooted", "write ../output/file.md", []string{"../output/file.md"}},
+		{"a hidden folder keeps its dot", "update .github/workflows/ci.yml", []string{".github/workflows/ci.yml"}},
+		{"the full stop that ended the sentence still goes", "then read build.log.", []string{"build.log"}},
+		{"quotes and a full stop together", "run `./slow-build.sh`.", []string{"./slow-build.sh"}},
+		{"a trailing colon still goes", "see ./notes:", []string{"./notes"}},
+		{"a label with a colon is nobody's path", "report the MARKER: value", nil},
+		{"an ellipsis is nobody's path", "wait ... then read a.md", []string{"a.md"}},
+		{"an absolute path is unchanged", "write /etc/hosts", []string{"/etc/hosts"}},
+		{"one token twice is one token", "./x.sh runs, then ./x.sh again", []string{"./x.sh"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := pathTokens(test.text)
+			if len(got) != len(test.want) {
+				t.Fatalf("pathTokens(%q) = %v, want %v", test.text, got, test.want)
+			}
+			for i, want := range test.want {
+				if got[i] != want {
+					t.Fatalf("pathTokens(%q) = %v, want %v", test.text, got, test.want)
+				}
+			}
+		})
 	}
 }
 

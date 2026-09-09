@@ -29,69 +29,55 @@ import (
 //     It answers "and what is that" once, where there is width for it (the
 //     cards), and it is deliberately not on the rail, which is 24 columns wide
 //     and is a presence list rather than a page.
-//   - a GLYPH and a HUE, both keyed on the id and on nothing else. This is the
-//     part a person actually navigates by: ◆ teal is task 3 in the rail, in the
-//     note, and on the card that lands eleven minutes later, and it is ◆ teal
-//     on every redraw and every resume because the id is the only thing that
-//     went into it. Nothing about the node's STATE reaches this pair — state is
-//     the state glyph's job, and an identity that changed when the work changed
-//     would be an identity that cannot be used to follow the work.
+//   - a MARKER, one cell, the same for every piece of work. It says "this row is
+//     a task" and nothing else, and it is the same mark in the note and on the
+//     card that lands eleven minutes later. IT IS NOT ON THE RAIL, and that is
+//     the marker's own argument applied to one column: the rail holds nothing
+//     but tasks, so there is nothing there for "this row is a task" to tell
+//     apart, and the two cells are worth more to the name on a surface
+//     twenty-four columns wide (task.go's [app.railLead]).
 //
-// The hue is the identity ring (styles.go's [taskRing]), which is spent on the
-// glyph cell alone. See that comment for why a colour with no meaning is
-// allowed on a surface whose whole colour law is that colour means something.
-
-// taskIdent is one node's identity: the cell it is drawn with, that cell's
-// stand-in where there is no unicode, and which of the ring's hues it takes.
-type taskIdent struct {
-	glyph, ascii string
-	tint         int
-}
-
-// taskGlyphs is the identity alphabet: four shapes, filled and hollow, which is
-// eight marks a person can tell apart at a glance in one column. They are
-// SHAPES rather than letters on purpose — a letter beside a title reads as part
-// of the title, and the one job of this cell is to be read without being read.
-var taskGlyphs = [...]string{"◆", "◇", "●", "○", "■", "□", "▲", "△"}
-
-// taskGlyphsASCII is the same alphabet for a terminal with no unicode and for
-// the linear tier. None of them is a mark this surface already spends: `*`,
-// `o`, `.`, `x`, `?` and `+` all mean something else within a few rows of here
-// (styles.go's stand-ins, the diffstat, the question), and an identity that
-// collided with a state would be worse than no identity at all.
-var taskGlyphsASCII = [...]string{"#", "@", "%", "&", "$", "~", "=", "!"}
-
-// identFor derives a node's identity from its id, and from nothing else.
+// THE MARKER USED TO BE EIGHT SHAPES IN SIX HUES, hashed off the id — a private
+// alphabet in which ◆ teal was task 3 and ▲ amber was task 5. The argument was
+// that a person navigates by it. What they actually navigate by is the NAME and
+// the state, and the alphabet cost more than it paid: it had to be learned, it
+// was learned per session because ids restart, it put arbitrary colour on a
+// surface whose whole colour law is that colour means something, and it changed
+// nothing about the row that a person could act on. Every row that carries it
+// already carries the id in a form a person can say out loud (`#3`) and the
+// state in its own mark and its own word — which is what tells two rows apart on
+// a terminal with no colour at all.
 //
-// The hash is splitmix64's finalizer, which is here for one reason: task ids
-// are SEQUENTIAL. Taking `id % 8` would give the eight glyphs out in order and
-// two tasks proposed one after the other would always be neighbours in the
-// ring; the finalizer is the cheapest function that turns 1, 2, 3 into three
-// unrelated numbers. The glyph is the low end of the hash and the tint the next
-// bits up, so the two vary independently and 48 pairs are reachable.
-func identFor(id uint64) taskIdent {
-	h := taskHash(id)
-	at := int(h % uint64(len(taskGlyphs)))
-	tint := 0
-	if n := len(taskRing); n > 0 {
-		tint = int((h / uint64(len(taskGlyphs))) % uint64(n))
-	}
-	return taskIdent{glyph: taskGlyphs[at], ascii: taskGlyphsASCII[at], tint: tint}
+// So: ONE MARKER, DRAWN AS FURNITURE. What varies between rows is what differs
+// between the work.
+
+// taskIdent is one node's marker: the cell it is drawn with and that cell's
+// stand-in where there is no unicode. It is a type rather than a constant
+// because every row that draws one holds one, and because the zero value is a
+// real case ([app.taskMark] draws it as the space that keeps the column).
+type taskIdent struct{ glyph, ascii string }
+
+// The one marker. `◆` is a filled shape rather than a letter — a letter beside a
+// title reads as part of the title — and `#` is its stand-in, which is also how
+// the tree rows already spell an id, so the two agree rather than collide.
+const (
+	taskIdentGlyph = "◆"
+	taskIdentASCII = "#"
+)
+
+// identFor is that marker, for any node. It takes the id because every call site
+// has one and because the day this cell means something again, this is where it
+// would be decided.
+func identFor(uint64) taskIdent {
+	return taskIdent{glyph: taskIdentGlyph, ascii: taskIdentASCII}
 }
 
-func taskHash(id uint64) uint64 {
-	h := id + 0x9E3779B97F4A7C15
-	h ^= h >> 30
-	h *= 0xBF58476D1CE4E5B9
-	h ^= h >> 27
-	h *= 0x94D049BB133111EB
-	h ^= h >> 31
-	return h
-}
-
-// taskMark is one identity, painted: the glyph in its hue, or its stand-in on a
-// terminal that cannot draw it. It is one cell wide in every tier, which is
+// taskMark is one marker, painted. It is one cell wide in every tier, which is
 // what lets every row that carries one measure itself the same way.
+//
+// IT IS DIM, because it is furniture: it is on every task row, it distinguishes
+// none of them from any other, and the ink on those rows belongs to the name and
+// to the state. This is where the identity ring used to be spent.
 func (a *app) taskMark(ident taskIdent) string {
 	glyph := ident.glyph
 	if a.pal.ascii || a.linear {
@@ -102,7 +88,7 @@ func (a *app) taskMark(ident taskIdent) string {
 		// the column, which is the thing the rows around it are aligned to.
 		return " "
 	}
-	return a.pal.ringPaint(ident.tint, glyph)
+	return a.pal.dim(glyph)
 }
 
 // taskMarkSel is the same cell on a row the keyboard has picked.

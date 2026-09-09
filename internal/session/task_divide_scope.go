@@ -63,7 +63,10 @@ import (
 // THE PATHS ARE NORMALISED BEFORE THEY ARE COMPARED, because `report.md` and
 // `/…/tree/report.md` in two done-conditions are one file and a comparison on
 // the words would say they were two. [resolvePath] is the same reading a shell standing in
-// that directory would make.
+// that directory would make, and [canonicalPath] settles the rest of the
+// spelling: a file reached through a symlinked ancestor — /var and /private/var
+// on a Mac — is one file, so two parts that claim it two ways are one claim.
+// The refusal still quotes each part's own words.
 //
 // It is one pass over the parts with a set, not a comparison of every part
 // against every other: a division may carry a dozen parts and each
@@ -81,7 +84,7 @@ func scopeCollisions(parts []dividePart, tree string) []string {
 			if !groundHolds(tree, token) {
 				continue
 			}
-			path := resolvePath(tree, token)
+			path := canonicalPath(resolvePath(tree, token))
 			first, claimed := owner[path]
 			if !claimed {
 				owner[path] = index
@@ -200,11 +203,8 @@ func scopeClaimedTwice(shared []string) string {
 // sharedCheckCommands is every command more than one part of this division is
 // ordered to run, normalised and in a stable order.
 //
-// IT DOES ITS OWN READING RATHER THAN ASKING [declaredChecks], and that is a fact
-// about where the sentences come from. That door harvests the two conventions
-// PROSE HAS FOR MARKING a command — a backticked span and a `$ `-prefixed line —
-// which is right for a document somebody wrote to be read. A done-condition is
-// not that document: real ones are plain sentences, "rank_test.go passes; go test
+// THIS IS A DUPLICATE-WORK LINT, NOT EXECUTABLE VERIFICATION. The checker only
+// reads typed declarations. This lint also compares done-condition clauses: real ones are plain sentences, "rank_test.go passes; go test
 // ./internal/tui3/... passes", with nothing marked at all, and a reading that
 // waited to be told would see no commands here on the day the waste happens.
 //
@@ -225,7 +225,7 @@ func sharedCheckCommands(parts []dividePart) []string {
 	said := make(map[string]bool, 2)
 	var shared []string
 	for index, part := range parts {
-		for _, command := range orderedChecks(part.Acceptance) {
+		for _, command := range partChecks(part) {
 			first, ordered := owner[command]
 			if !ordered {
 				owner[command] = index
@@ -240,6 +240,21 @@ func sharedCheckCommands(parts []dividePart) []string {
 	}
 	sort.Strings(shared)
 	return shared
+}
+
+// partChecks is every command one part says it is checked by, from both places a
+// part can say it: the `checks` it declared, which is the list its own checker
+// will really run (task_checks.go), and the commands its done-condition orders in
+// prose. Both are normalised by [normalizedCheckCommand], so a check declared by
+// one sibling and written into another's sentence is ONE command here — which is
+// what this rule has to see, because a repeat that hid behind a spelling is a
+// repeat somebody pays for twice.
+func partChecks(part dividePart) []string {
+	out := make([]string, 0, len(part.Checks)+1)
+	for _, command := range part.Checks {
+		out = append(out, normalizedCheckCommand(command))
+	}
+	return append(out, orderedChecks(part.Acceptance)...)
 }
 
 // orderedChecks is one part's done-condition read as the commands it orders,
@@ -483,8 +498,45 @@ func (a *Agent) sharedCheckAnswer(node *TaskNode, parts []dividePart, ending str
 	if node.tellSharedOnce() {
 		return divisionRepeatsOneCheck(shared, ending), parts, shared
 	}
-	node.ownFamilyChecks(shared)
+	node.ownFamilyChecks(shared, declaredAmong(parts, shared))
 	return "", liftSharedChecks(parts, shared), shared
+}
+
+// declaredAmong is which of the family's checks were DECLARED VERIFICATION by a
+// part rather than read out of a part's prose, and it is the whole of what the
+// parent may re-run for the family (task_checks.go).
+//
+// LIFTING MOVES AUTHORITY, IT NEVER MINTS IT. A command a part typed into its
+// `checks` is already something that part's own checker was entitled to run, so
+// handing it up so that it runs ONCE for the family costs nobody a permission
+// they did not have. A command nobody typed — one this rule recognised in two
+// parts' done-condition sentences — was never executable verification anywhere,
+// and turning it into the parent's door would be the prose harvest coming back
+// through the family road: `./deploy.sh` said in two acceptances would become a
+// command the parent's checker may issue.
+//
+// ONE PART IS ENOUGH, and it is asked of every part rather than of all of them,
+// because the question is whether ANYBODY put this command under contract as a
+// repeatable check. A part that typed it and a sibling that merely wrote it in a
+// sentence are one command here, so the sibling's spelling neither adds authority
+// nor takes the other's away.
+func declaredAmong(parts []dividePart, shared []string) []string {
+	if len(shared) == 0 {
+		return nil
+	}
+	typed := make(map[string]bool, 2*len(parts))
+	for _, part := range parts {
+		for _, command := range part.Checks {
+			typed[normalizedCheckCommand(command)] = true
+		}
+	}
+	out := make([]string, 0, len(shared))
+	for _, command := range shared {
+		if typed[command] {
+			out = append(out, command)
+		}
+	}
+	return out
 }
 
 // tellSharedOnce answers whether this is the FIRST time this node has been told
@@ -509,23 +561,54 @@ func (n *TaskNode) tellSharedOnce() bool {
 // NEVER ADDS ONE TWICE — a node may divide more than once, and a family check
 // listed twice would be a run somebody paid for twice and a done-condition that
 // said the same thing to a worker in two places.
-func (n *TaskNode) ownFamilyChecks(shared []string) {
+//
+// THE TWO LISTS ARE TWO DIFFERENT PERMISSIONS AND THEY ARE WRITTEN TOGETHER,
+// under one hold of the lock, because a reader that caught them apart would see a
+// node told to run a check it is not yet entitled to re-run. `shared` is what the
+// parent is TOLD, which is every command that came off its parts; `declared` is
+// the part of that its CHECKER may issue, which is only what a part had typed
+// ([declaredAmong]).
+func (n *TaskNode) ownFamilyChecks(shared, declared []string) {
 	if n == nil || len(shared) == 0 {
 		return
 	}
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	held := make(map[string]bool, len(n.Family))
-	for _, command := range n.Family {
-		held[command] = true
+	n.Family = foldedInto(n.Family, shared)
+	n.FamilyDeclared = foldedInto(n.FamilyDeclared, declared)
+}
+
+// foldedInto adds what is not already held, keeping the order it arrived in. It
+// is one function because both halves of a family's checks are folded the same
+// way and two spellings of "do not list it twice" would drift.
+func foldedInto(held, more []string) []string {
+	if len(more) == 0 {
+		return held
 	}
-	for _, command := range shared {
-		if held[command] {
+	seen := make(map[string]bool, len(held))
+	for _, command := range held {
+		seen[command] = true
+	}
+	for _, command := range more {
+		if seen[command] {
 			continue
 		}
-		held[command] = true
-		n.Family = append(n.Family, command)
+		seen[command] = true
+		held = append(held, command)
 	}
+	return held
+}
+
+// familyChecksWas is what this node owed its family before a revision moved the
+// goal ([TaskNode.FamilyWas]): history a reader can see, and a requirement on
+// nobody.
+func (n *TaskNode) familyChecksWas() []string {
+	if n == nil {
+		return nil
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return append([]string(nil), n.FamilyWas...)
 }
 
 // familyChecks is what this node owns for its family, copied out under the lock
@@ -562,6 +645,18 @@ func liftSharedChecks(parts []dividePart, shared []string) []dividePart {
 	}
 	out := make([]dividePart, 0, len(parts))
 	for _, part := range parts {
+		// THE DECLARED LIST LOSES IT TOO, and it has to: that list is what the
+		// part's own checker will run, so a family check left standing there
+		// would be the whole family's suite run once per part — which is the
+		// waste this rule exists to end, arriving through the typed door.
+		declared := make([]string, 0, len(part.Checks))
+		for _, command := range part.Checks {
+			if lifting[normalizedCheckCommand(command)] {
+				continue
+			}
+			declared = append(declared, command)
+		}
+		part.Checks = declared
 		kept := make([]string, 0, 2)
 		for _, clause := range checkClauses(part.Acceptance) {
 			if ordersWork(clause) && lifting[normalizedCheckCommand(clause)] {

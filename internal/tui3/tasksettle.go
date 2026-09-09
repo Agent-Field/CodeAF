@@ -212,6 +212,10 @@ func (a *app) settlePolicyAsks() bool {
 // frame may not have drawn (the same order [app.roomApprovalRows] keeps).
 func (a *app) settleRows(out []row, card *taskDone, entry, width, indent int) []row {
 	card.chips = nil
+	// AND THE GUTTER IS UNPAID AGAIN, for [app.taskCardRows]'s reason: whatever
+	// this call writes below is written against the row's own columns from zero,
+	// and the transcript's pass moves it from there exactly once (gutter.go).
+	card.gut = 0
 	if !a.settleAsking(card) {
 		if card.decided != "" {
 			pad := strings.Repeat(" ", indent)
@@ -543,9 +547,10 @@ func (a *app) doneCardFor(id uint64) *taskDone {
 // the foot is the plain finished line: the room is on a landed node whose
 // latest card either still asks or wears a receipt. A run's page has no node to
 // decide about, an ordinary landing has nothing to ask, and a card under `auto`
-// is being decided by somebody else — all three are nil here.
+// is being decided by somebody else. A guest belongs to another conversation;
+// its numeric id must never select this conversation's decision card.
 func (a *app) roomSettleCard() *taskDone {
-	if a.room == nil || !a.room.done || a.room.orch != nil {
+	if a.room == nil || !a.room.done || a.room.orch != nil || a.roomIsGuest() {
 		return nil
 	}
 	card := a.doneCardFor(a.room.id)
@@ -766,6 +771,7 @@ func (a *app) settleAlways(doors settleAgent, card *taskDone) {
 		a.settleRefused(card, err)
 		return
 	}
+	card.reviewByModel = true
 	card.decided, card.trouble = settleHandedLine, ""
 	if saved {
 		card.decided += settleSavedLine

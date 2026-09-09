@@ -161,7 +161,7 @@ func TestTheRoomOfAUniverseGroundedTaskNeverSaysWorktree(t *testing.T) {
 	if !a.roomOpen() {
 		t.Fatal("the rail did not open the node's room")
 	}
-	page := roomText(a) + "\n" + plain(a.roomHead(a.width))
+	page := roomText(a) + "\n" + plain(strings.Join(a.roomHeadRows(a.width), "\n"))
 	if strings.Contains(page, "worktree") {
 		t.Fatalf("the room said the machinery's own word:\n%s", page)
 	}

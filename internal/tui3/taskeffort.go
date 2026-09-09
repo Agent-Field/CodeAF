@@ -62,7 +62,11 @@ func (a *app) effortTaskHere() (*taskNode, bool) {
 	if node := a.railFocusNode(); node != nil {
 		return node, true
 	}
-	if a.room == nil || a.orchOpen() {
+	// AND A PAGE READ THROUGH ANOTHER CONVERSATION HAS NO RUNG TO SET. The effort
+	// door is this window's engine and the id is another conversation's
+	// ([app.roomIsGuest]); the roster's own cursor above still answers, because
+	// that is a local row a person is pointing at on purpose.
+	if a.room == nil || a.orchOpen() || a.roomIsGuest() {
 		return nil, false
 	}
 	node, ok := a.tasks[a.room.id]

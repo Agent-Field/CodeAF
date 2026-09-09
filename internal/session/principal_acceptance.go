@@ -46,15 +46,19 @@ import (
 // this package rather than two — the drift that ends with one door writing an
 // acceptance nobody can check is exactly what that const exists to prevent. The
 // `work` field is answered true here by construction: somebody has already
-// asked for this and it is already being done, so the only field that carries
-// anything is the acceptance.
+// asked for this and it is already being done. The acceptance and any explicit
+// verification checks are frozen together against that original ask.
 const sessionAcceptanceBrief = `You are given ONE ask, in the person's own words, at the moment somebody started working on it. Nobody will be watching while it is worked on.
 
 You write ONE thing: the DONE WHEN sentence for the WHOLE of that ask — the observable condition that says the whole thing is finished, not the part that was easiest to reach.
 
 Write it so that somebody who cannot see this ask, cannot see the work, and cannot ask anybody anything can stand in front of the result and say yes or no. Name what must exist and the check that shows it.
 
-Answer {"work": true, "goal": "<the ask, self-contained>", "acceptance": "<done when>", "why": "<one line>"}.
+Declare repeatable verification commands only in the optional checks field. An action the person asked to happen once is not permission to repeat it as verification.
+
+Also declare delivery: {"kind":"workspace|branch|report", "quote":"<verbatim words from the person's ask>"}. Use workspace when changed files must reach the person's requested working copy or when uncertain. Use branch only when the person explicitly wants a retained branch as the final result without integration. Use report only when the requested final result is the answer/report itself, not implementation elsewhere. For branch/report quote the original words establishing that destination, including any constraint about integration. Do not choose branch merely because workers use worktrees, and do not convert an implementation request into a report about implementation.
+
+Answer {"work": true, "goal": "<the ask, self-contained>", "acceptance": "<done when>", "checks": ["<explicit repeatable verification command>"], "delivery": {"kind":"workspace", "quote":""}, "why": "<one line>"}. Use an empty checks list when none is declared.
 
 ` + routeVerdictContract
 
@@ -95,7 +99,7 @@ func (a *Agent) openAcceptance(ctx context.Context, hub *eventHub) {
 	model := a.model
 	a.mu.Unlock()
 	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, model,
-		sessionAcceptanceBrief, sessionAcceptanceQuestion(ask))
+		sessionAcceptanceBrief, sessionAcceptanceQuestion(ask), ask)
 	if !ok {
 		// The ladder's lower rungs still say something true about a whole ask —
 		// "everything asked for below is actually done" over the person's own
@@ -103,7 +107,7 @@ func (a *Agent) openAcceptance(ctx context.Context, hub *eventHub) {
 		// the sentence and not the sentence.
 		verdict = routeVerdict{}
 	}
-	if !steward.setAcceptance(routeAcceptance(verdict, ask)) {
+	if !steward.setAcceptanceDelivery(ask, routeAcceptance(verdict, ask), routeChecks(verdict, ask), routeDelivery(verdict, ask)) {
 		return
 	}
 	a.journalAcceptance(steward)
@@ -131,5 +135,7 @@ func (a *Agent) journalAcceptance(steward *Steward) {
 		Who:        "steward",
 		Event:      "acceptance",
 		Acceptance: steward.Acceptance(),
+		Checks:     steward.declaredChecks(),
+		Delivery:   steward.deliveryReceipt(),
 	})
 }

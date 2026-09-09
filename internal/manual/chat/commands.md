@@ -191,7 +191,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
 | `/compact` | — | — | summarizes the conversation now |
 | `/home` | — | — | every project and conversation on this machine, fullscreen |
-| `/folder` | `/place`, `/dir` | — | opens the folder picker — say which folder this conversation is also about |
+| `/folder` | `/place`, `/dir` | — | opens the add context sheet — say which folder this conversation is also about |
 | `/folder` | `/place`, `/dir` | `<path>` | …opens it with that already in the box: a word filters, a path browses |
 | `/attach` | `/upload` | `<path>` | a file goes on the tray; **a folder** is referred instead, and says `folder · <path>` |
 | `/land` | — | — | says what has been changed for a folder you chose and is waiting to go into it |
@@ -245,7 +245,8 @@ aligned, each row with its alias tail. The first line is the product's own name,
 `aforge` — the one place inside a conversation it names itself.
 
 Under the table `/help` prints the keys that have no slash command, including
-`ctrl+c`, `ctrl+o`, `ctrl+q`, `ctrl+e`, `ctrl+t`, `ctrl+l`, `ctrl+w`, `ctrl+,`, `@path`,
+`ctrl+c`, `ctrl+o`, `ctrl+q`, `ctrl+e`, `ctrl+t` (a new chat), `ctrl+w` (close this tab),
+`alt+t` (the task roster), `ctrl+l`, `alt+backspace` (the word kill), `ctrl+,`, `@path`,
 `alt+enter`, and `d` inside `/permissions`. The keys page covers those in full. The
 `ctrl+c` line reads `ctrl+c         twice quits · mid-turn one press interrupts, like esc`.
 
@@ -262,7 +263,7 @@ On a Mac those read `⌥1…7` and `⌥.`; the substitution happens once, at the
 drawing, and the words are the same.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
-back` — the places row, the task roster on `ctrl+t`, the conversation switcher on `ctrl+k`,
+back` — the places row, the task roster on `alt+t`, the conversation switcher on `ctrl+k`,
 `space space` — and that is the same two words the cards, pickers, the rewind sheet and the
 switcher's own strip already use. The sheet used to say `esc comes back`, `esc goes back`
 and `esc leaves` on four different rows, which read as four gestures on the one screen you
@@ -308,8 +309,10 @@ whole arrangement under *Switch between projects without leaving*.
 
 `ctrl+c` is the other road out and it takes **two presses**, and it closes **everything**:
 the first arms the door and the hint slot reads `ctrl+c again to quit`, with how many
-conversations and what work a second press would stop — `ctrl+c again to quit ·
-3 conversations · 2 tasks and a job will stop`. A second press within 1.5 seconds leaves.
+conversations and what leaving does to the work — `ctrl+c again to quit · 3 conversations ·
+2 tasks and a job will stop` for work running inside this terminal, and `· a task keeps
+running` for work the aforge service is running, which a closed window does not touch. A
+second press within 1.5 seconds leaves.
 While a turn is running `ctrl+c` interrupts the turn instead and does not arm anything. The
 keys page has the whole rule under "Quitting aforge".
 
@@ -1943,3 +1946,13 @@ answer scrolling off the top.
 `aforge do` and `aforge plan new` with nothing after them say `no goal given` and print
 **that command's** line, not every command's. Pipe the task in instead if it is long:
 `echo "the task" | aforge do`.
+
+## Reopening a closed chat is a key rather than a command
+
+There is no slash command that reopens a tab you closed. **`ctrl+shift+t` does it**
+— the last tab you shut comes back, and pressing it again walks further back
+through the ones before it. The keys page has the whole of it under *Reopen a tab
+you closed*, including what a terminal that cannot send the key does instead.
+
+`ctrl+k` is the other way back: it lists every conversation on this machine, closed
+tabs included, and opening a row brings the tab and its draft back too.

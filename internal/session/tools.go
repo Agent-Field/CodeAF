@@ -164,6 +164,13 @@ func (a *Agent) belt() []bare.Tool {
 		tools = append(tools, a.tasksTool())
 	}
 	tools = append(tools, a.taskTools()...)
+	// revise_assignment is a WORKER'S verb and nothing else's (assignment.go): it
+	// folds a direction the person gave this node into what the node is judged by.
+	// A conversation has no assignment to revise and an auditor is handed no
+	// graph, so both are absent by the same gate that decides everything else on
+	// this belt — the capability is not there rather than being there and
+	// refusing.
+	tools = append(tools, a.assignmentTools()...)
 	// divide_work rides beside propose_task and is narrower than it: the one
 	// names parts a worker could see from the start, this one names parts it
 	// only found once it had opened the material. It is absent unless THIS
@@ -240,7 +247,15 @@ func (a *Agent) belt() []bare.Tool {
 	// cannot generate a single frame, where cutting together footage the person
 	// already has is the only video work there is. It rides last because it is
 	// what the other five's output is assembled WITH.
-	return append(tools, a.videoEditTools()...)
+	tools = append(tools, a.videoEditTools()...)
+	// AND THE LAST STEP IS NOT A GATE. Everything above has already decided what
+	// this build can offer; this splits what survived into what the model carries
+	// from the first turn and what waits one call away on a named shelf, and puts
+	// `load_capability` where the shelved groups used to be
+	// (tools_capabilities.go). It removes no capability and adds none: a machine
+	// with no media models still has no media group, and a shelf with nothing on
+	// it puts no verb on this belt at all.
+	return a.shelveDeferred(tools)
 }
 
 // toolDefinitions builds the wire form of the belt, carrying each tool's

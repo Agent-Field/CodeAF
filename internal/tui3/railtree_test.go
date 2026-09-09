@@ -30,11 +30,16 @@ func railKinship(a *app, parent uint64, kids ...uint64) {
 // railRun plants one adaptive run: a root the person started, and the tree its
 // planner spawned under it.
 //
+// THE NODES ARRIVE IN ID ORDER AND THE COLUMN DOES NOT DRAW THEM IN IT. A
+// family's members are ranked by what they need — running, then waiting, then
+// over — with arrival order deciding between two in the same state (task.go's
+// [app.railKin]), so the drawn shape is:
+//
 //	1 Ship the port        running
-//	├─ 2 Read the law      done
 //	├─ 3 Write the tree    running
 //	│  └─ 4 Cut goldens    queued
-//	└─ 5 Wire the seam     queued
+//	├─ 5 Wire the seam     queued
+//	└─ 2 Read the law      done
 func railRun(a *app) {
 	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
 	a.taskUpdate(update(2, "Read the law", session.TaskDone, session.TaskNotice{}))
@@ -56,6 +61,18 @@ func railText(a *app, height int) []string {
 		out[i] = plain(row)
 	}
 	return out
+}
+
+// mustRailRow is [railRowFor] over the whole visible column, for the tests that
+// would be lying if the row were missing.
+func mustRailRow(t *testing.T, a *app, title string) string {
+	t.Helper()
+	row, ok := railRowFor(a, a.viewHeight(), title)
+	if !ok {
+		t.Fatalf("the column has no row for %q:\n%s", title,
+			strings.Join(railText(a, a.viewHeight()), "\n"))
+	}
+	return row
 }
 
 // railRowFor is the drawn row a node's title is on, and whether there is one.
@@ -93,12 +110,22 @@ func TestAFamilyIsDrawnWholeUnderItsRoot(t *testing.T) {
 	want := []string{
 		// The column opens with the margin's own section label (margin.go), and the
 		// family is drawn whole under it.
+		//
+		// AND THE MEMBERS ARE RANKED, which is what changed here. They used to be
+		// drawn in the order the session met them, so a run that finishes its
+		// pieces one at a time put every settled row in front of the ones still
+		// going — `done, done, running, running`, with the only rows anybody was
+		// watching at the bottom of the block. The column already ranked whole
+		// FAMILIES this way and stopped at the family boundary; it now goes all the
+		// way down (task.go's [app.railKin]). Arrival order still separates two
+		// pieces in the same state, so #5 (queued) leads #2 (done) by state and
+		// nothing settled ever trades places with anything else settled.
 		"│ " + marginTasksWord,
 		"│ " + spin + " Ship the port           #1",
-		"│ ├─ " + glyphDone + " Read the law         #2",
 		"│ ├─ " + spin + " Write the tree       #3",
 		"│ │  └─ " + glyphQueued + " Cut the goldens   #4",
-		"│ └─ " + glyphQueued + " Wire the seam        #5",
+		"│ ├─ " + glyphQueued + " Wire the seam        #5",
+		"│ └─ " + glyphDone + " Read the law         #2",
 	}
 	got := railText(a, 12)
 	if len(got) < len(want) {
@@ -115,18 +142,24 @@ func TestAFamilyIsDrawnWholeUnderItsRoot(t *testing.T) {
 			t.Fatalf("row %d is %d cells wide, want at most %d:\n%q", i, w, railCols, row)
 		}
 	}
-	// A NODE IN A TREE WEARS ITS STATE AND NOT ITS IDENTITY: the column of glyphs
-	// is read downward, so the identity cell a flat row carries is not on it.
-	if strings.Contains(got[1], plain(a.taskMark(identFor(2)))) {
-		t.Fatalf("a tree row carries the identity cell as well as the state:\n%q", got[1])
+	// EVERY ROW ON THIS COLUMN WEARS ITS STATE AND NOTHING ELSE: the column of
+	// glyphs is read downward, and the identity ◆ is not spent on any row of it —
+	// tree or flat (task.go's [app.railLead]).
+	for i, row := range got {
+		if strings.Contains(row, plain(a.taskMark(identFor(2)))) {
+			t.Fatalf("row %d carries the identity cell as well as the state:\n%q", i, row)
+		}
 	}
 }
 
-// A FAMILY STANDS WHERE ITS MOST URGENT MEMBER PUTS IT, and inside it nothing is
-// ever re-sorted: the session's own admission order is the shape.
+// A FAMILY STANDS WHERE ITS MOST URGENT MEMBER PUTS IT, and its members stand
+// the same way inside it — the same ladder at both scales, with the session's own
+// admission order breaking ties at each (task.go's [app.railKin] and
+// [app.railForest]). Every family here holds one child, so what this pins is the
+// outer half; [TestAFamilyIsDrawnWholeUnderItsRoot] pins the inner one.
 func TestAFamilyStandsWhereItsMostUrgentMemberPutsIt(t *testing.T) {
 	a, _, _ := taskApp(t)
-	// A settled family, then a running one, then a family with a kept branch in
+	// A settled family, then a running one, then a family with a conflicted branch in
 	// it — planted in that order, which is the opposite of the order they belong
 	// in.
 	a.taskUpdate(update(1, "Cut the trailer", session.TaskDone, session.TaskNotice{Merge: mergeWordMerged}))
@@ -135,7 +168,7 @@ func TestAFamilyStandsWhereItsMostUrgentMemberPutsIt(t *testing.T) {
 	a.taskUpdate(update(4, "Write the tree", session.TaskRunning, session.TaskNotice{}))
 	a.taskUpdate(update(5, "Port the parser", session.TaskDone, session.TaskNotice{Merge: mergeWordMerged}))
 	a.taskUpdate(update(6, "Render titles", session.TaskFailed, session.TaskNotice{
-		Merge: mergeWordAborted, Branch: "task/render",
+		Merge: mergeWordConflicted, Branch: "task/render",
 	}))
 	railKinship(a, 1, 2)
 	railKinship(a, 3, 4)
@@ -237,7 +270,7 @@ func TestAFoldedFamilyWearsItsWorstGlyphAndCountsWhatItHides(t *testing.T) {
 func TestTheTreeGrammarOpensStepsInFoldsAndWalksUp(t *testing.T) {
 	a, _, _ := roomApp(t)
 	railRun(a)
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	railFocusOn(t, a, 1)
 
 	// ← on an open root folds it and leaves the cursor where the family now is.
@@ -257,8 +290,8 @@ func TestTheTreeGrammarOpensStepsInFoldsAndWalksUp(t *testing.T) {
 		t.Fatalf("→ opened the family and moved the cursor to %+v", a.railWhere)
 	}
 	drive(t, a, key("right"))
-	if a.railWhere.id != 2 {
-		t.Fatalf("→ stepped to %+v, want the first child", a.railWhere)
+	if a.railWhere.id != 3 {
+		t.Fatalf("→ stepped to %+v, want the first visible child (running before done)", a.railWhere)
 	}
 
 	// ← FROM A LEAF JUMPS TO THE PARENT ROW. A cursor left pointing at nothing is
@@ -275,9 +308,9 @@ func TestTheTreeGrammarOpensStepsInFoldsAndWalksUp(t *testing.T) {
 	}
 }
 
-// THE GLYPH CELL IS THE FOLD AND THE REST OF THE ROW IS THE DOOR. One row, two
+// THE DISCLOSURE IS THE FOLD AND THE REST OF THE ROW IS THE DOOR. One row, two
 // targets, and which one a press meant is a question about the column it landed
-// in (room.go's [app.railPress]).
+// in AND about what the frame actually drew there (room.go's [app.railPress]).
 func TestPressingTheGlyphCellFoldsAndPressingTheTitleOpensTheRoom(t *testing.T) {
 	a, _, _ := roomApp(t)
 	railRun(a)
@@ -293,7 +326,18 @@ func TestPressingTheGlyphCellFoldsAndPressingTheTitleOpensTheRoom(t *testing.T) 
 	}
 	glyph := a.bodyWidth() + ansi.StringWidth(railSeam)
 
-	// The glyph cell folds the family and opens no room.
+	// THE POINTER IS ON THE ROW FIRST, and that is not fixture ceremony: it is the
+	// only state in which that cell is a disclosure at all. At rest it draws the
+	// root's STATE, and a state is not a control — which is what
+	// [TestTheStateCellOpensTheTaskWhenNoDisclosureIsDrawnOnIt] holds the other
+	// end of.
+	a.setHover(glyph, rootY)
+	if !strings.Contains(mustRailRow(t, a, "Ship the port"), glyphOpen) {
+		t.Fatalf("the cell about to be pressed is not drawn as a disclosure:\n%q",
+			mustRailRow(t, a, "Ship the port"))
+	}
+
+	// The disclosure folds the family and opens no room.
 	drive(t, a, tea.MouseClickMsg{X: glyph, Y: rootY, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: glyph, Y: rootY, Button: tea.MouseLeft})
 	if a.roomOpen() {
@@ -444,7 +488,7 @@ func TestTheWidenHintIsEarnedByTheIndentAndTogglesTheWideTier(t *testing.T) {
 	// other two tiers. It is a chord and no longer the bare letter `w`, because a
 	// bare letter beside a message box is a letter out of somebody's sentence
 	// (chordfocus.go).
-	drive(t, a, ctrlT(), key(railWidenChord))
+	drive(t, a, altT(), key(railWidenChord))
 	if !a.railWide || a.railWidth() != railWideCols {
 		t.Fatalf("%s did not widen the column: wide=%v width=%d", railWidenChord, a.railWide, a.railWidth())
 	}
@@ -490,7 +534,7 @@ func TestTheFullscreenRosterDrawsTheSameTree(t *testing.T) {
 	a.width = 80
 	a.touch()
 	railRun(a)
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	if !a.railFull() {
 		t.Fatal("ctrl+t did not raise the roster over the body")
 	}

@@ -268,10 +268,20 @@ func TestARunningCardLeadsTheRowWithItsState(t *testing.T) {
 	}
 }
 
-// Every node of a family is its own row on the card, root and child alike. The
-// SHAPE of a family — child indented under the root that started it — is the
-// task page's to draw (task.go's roster); this band is a list of things that
-// happened, name first, and it draws them in the index's own order.
+// Every node of a family is its own row on the card, root and child alike — AND
+// THE CHILD HANGS UNDER THE ROOT THAT STARTED IT.
+//
+// THE LAW THAT DIED IS "THE SHAPE OF A FAMILY IS THE TASK PAGE'S TO DRAW". This
+// band was a list of things that happened, name first, in the index's own order,
+// and what that produced on the one screen a person opens twenty times a day was
+// three pieces of ONE run standing beside each other as three peers — with the
+// order deciding which of them a reader thought was the whole story. The owner's
+// instruction is that the conversation is the parent and the work under it is a
+// TREE, at any depth, never a row of strangers.
+//
+// So the roster's own connectors are drawn here too (hometree.go, task.go's
+// [treeLast]) — one vocabulary for one fact — and the rows are still one per
+// node, which is the half of this test that did not change.
 func TestEveryNodeOfAFamilyIsItsOwnRowOnTheCard(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -296,8 +306,15 @@ func TestEveryNodeOfAFamilyIsItsOwnRowOnTheCard(t *testing.T) {
 	if root < 0 || kid < 0 {
 		t.Fatalf("the family is not on the card (root %d, kid %d):\n%s", root, kid, strings.Join(card, "\n"))
 	}
-	if strings.HasPrefix(card[root], " ") || strings.HasPrefix(card[kid], " ") {
-		t.Fatalf("a task name on this band is indented:\n%s", strings.Join(card, "\n"))
+	// THE ROOT IS AT THE MARGIN and the child hangs off it, under it.
+	if strings.HasPrefix(card[root], " ") || strings.HasPrefix(card[root], treeLast) {
+		t.Fatalf("the run's own row is drawn as if something handed it out:\n%s", strings.Join(card, "\n"))
+	}
+	if kid <= root {
+		t.Fatalf("the child is drawn above the run that asked for it:\n%s", strings.Join(card, "\n"))
+	}
+	if !strings.HasPrefix(card[kid], treeLast) {
+		t.Fatalf("the child is drawn as a peer of the run that asked for it:\n%s", strings.Join(card, "\n"))
 	}
 }
 

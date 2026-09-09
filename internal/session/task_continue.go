@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // continueFindingLead opens the section a continued node is handed: what the
@@ -91,13 +92,50 @@ func (g *TaskGraph) reopen(node *TaskNode, words string) error {
 		g.mu.Unlock()
 		return errors.New("this session is closing")
 	}
-	node.finding = composeContinueFinding(node.report, words)
+	// The finding is the last attempt's answer and not only its card: a second
+	// attempt told "wrote the three files" has to rediscover what the first one
+	// produced (task_result.go). The report still leads, because what the check
+	// said is how a continuation knows what to change.
+	// THE WORDS ARE THE PERSON'S OWN AND THEY ARE RECORDED AS SUCH. A continue
+	// that says "CSV instead of JSON" is the same correction the room's steer
+	// carries, arriving at a task that has already stopped — so it goes on the
+	// node's record as a direction the next attempt may fold into the assignment
+	// (assignment.go), rather than being a finding this attempt is handed and the
+	// next check grades against the original request anyway. It is carried into
+	// the finding below either way: recording it is what gives it a road to the
+	// done-condition, not a second copy of the words.
+	if strings.TrimSpace(words) != "" {
+		// It carries no forwarding source: these words were typed at this door,
+		// about this task, so there is no earlier message to order them against
+		// and no repeat of them to recognise (task_forward.go).
+		node.assignment.hear(words, directionFromPerson, time.Now(), spokenSource{})
+	}
+	// The block below carries what was said while the last attempt was finishing
+	// and no worker read; this continue's own words are the finding's own
+	// section, named with the id so the worker can cite it. Both STAY PENDING
+	// until the
+	// attempt's opening request carries them (assignment.go): a continue is a
+	// node queued, not a node that has read anything.
+	said := node.assignment.pendingFrom(directionFromPerson)
+	node.carried = directionIDs(said)
+	node.finding = withReport(composeContinueFinding(node.deliveredLocked(), words, latestDirectionID(said, words)),
+		directionBlock(otherDirections(said, words)))
+	node.publishing = false
 	node.continuing = true
 	node.state = TaskQueued
 	node.claimed = false
 	node.stopped = false
 	node.ending = ""
+	// THE LIFE OF THE WORK MOVES ON HERE, and the announcement marks are cleared
+	// with it in the same locked step: a delivery of the ending that just closed
+	// may still be in flight, and it must not be able to record this new attempt
+	// as already announced ([TaskNode.claimNote]).
+	node.attempt++
 	node.noted = false
+	node.notedRead = false
+	node.notedState = ""
+	node.noting = false
+	node.notingClaim = noteClaim{}
 	node.queuedSaid = false
 	node.held = ""
 	node.parked = false
@@ -119,7 +157,11 @@ func (g *TaskGraph) reopen(node *TaskNode, words string) error {
 // Empty halves are dropped (the emptiness law): a landing that wrote no
 // report and a continue that carried no words compose nothing, and the
 // worker is handed the original assignment alone.
-func composeContinueFinding(report, words string) string {
+// direction is the receipt those words were written onto the node's record as,
+// and 0 when there were none. It is named in the heading because a worker
+// cannot fold a correction into the assignment without an id to cite
+// (assignment.go).
+func composeContinueFinding(report, words string, direction uint64) string {
 	report = strings.TrimSpace(report)
 	words = strings.TrimSpace(words)
 	var parts []string
@@ -127,9 +169,45 @@ func composeContinueFinding(report, words string) string {
 		parts = append(parts, continueFindingLead+"\n"+report)
 	}
 	if words != "" {
-		parts = append(parts, continueAskedLead+"\n"+words)
+		lead := continueAskedLead
+		if direction != 0 {
+			lead = fmt.Sprintf("%s (direction %d — if it changes what this work is FOR, fold it in with revise_assignment citing %d)",
+				lead, direction, direction)
+		}
+		parts = append(parts, lead+"\n"+words)
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// latestDirectionID picks the receipt minted for THIS continue's words out of
+// what was waiting, and 0 when the continue carried none.
+func latestDirectionID(said []taskDirection, words string) uint64 {
+	words = strings.TrimSpace(words)
+	if words == "" {
+		return 0
+	}
+	for index := len(said) - 1; index >= 0; index-- {
+		if said[index].words == words {
+			return said[index].id
+		}
+	}
+	return 0
+}
+
+// otherDirections is everything waiting EXCEPT this continue's own words, which
+// the finding has already set out under their own heading. A document that said
+// them twice would be a document arguing with itself about which copy is the
+// instruction.
+func otherDirections(said []taskDirection, words string) []taskDirection {
+	words = strings.TrimSpace(words)
+	rest := make([]taskDirection, 0, len(said))
+	for _, one := range said {
+		if words != "" && one.words == words {
+			continue
+		}
+		rest = append(rest, one)
+	}
+	return rest
 }
 
 // resumeContinuedTree reattaches the working copy a settled landing left.

@@ -255,6 +255,17 @@ type steerElbow struct {
 	// yesterday — the block's position is what says where it went, which is the
 	// whole of this file's design.
 	receipt string
+	// stalled says NOTHING IS HAPPENING TO THESE WORDS. It belongs to one state
+	// and one only: a crossing to another agent that nobody answered, so it is
+	// unknown whether the task has them (steersend.go).
+	//
+	// IT EXISTS TO TAKE THE SPINNER OFF. An unconsumed row spins, because an
+	// unconsumed row is ordinarily a thing in flight — and a spinner over a send
+	// that is not moving is this surface claiming work is happening when the
+	// truth is that nobody knows anything. The clause stays instead, and it does
+	// not fade: it is not news, it is an unresolved state, and it goes when the
+	// send resolves and not when it gets old.
+	stalled bool
 	// consumed is the fact itself. It is a field beside the instant rather than
 	// `!landed.IsZero()` because a REPLAYED elbow knows it landed and does not
 	// know when the surface would have said so — the journal keeps the SEND's
@@ -449,6 +460,11 @@ func (a *app) elbowMoving(elbow *steerElbow) bool {
 	if elbow == nil {
 		return false
 	}
+	// A stalled row draws the same cells on every frame, so asking for one is
+	// asking the page to rebuild forever for a picture that never changes.
+	if elbow.stalled {
+		return false
+	}
 	if !elbow.consumed {
 		return true
 	}
@@ -561,6 +577,11 @@ func (a *app) elbowClauseWords(elbow steerElbow) (string, string) {
 	word := elbow.landing
 	if word == "" {
 		word = steerPendingWord
+	}
+	// AND A STALLED ROW SPENDS NO MOVING CELL. See [steerElbow.stalled]: nothing
+	// is in flight, so nothing turns.
+	if elbow.stalled {
+		return word, a.pal.dim(word)
 	}
 	spin := a.steerSpin()
 	return spin + " " + word, a.pal.muted(spin) + a.pal.dim(" "+word)

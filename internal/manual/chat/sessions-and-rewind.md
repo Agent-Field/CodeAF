@@ -456,7 +456,7 @@ the page:
 ```
 
 **It names the conversation, not the file.** The name is the one the session gave itself
-from its first exchange; a conversation that has not named itself yet is called by the
+from its opening message; a conversation that has not named itself yet is called by the
 opening of the first thing you said in it. Either way it is one row, at every width.
 
 It used to print the journal's absolute path there instead, which ran to four or five
@@ -477,17 +477,23 @@ in the older spelling.
 The name is written by a model, once, and appears in the status line below the message
 box: `porting the parser · gpt-4.1-mini:high`.
 
-**It arrives one turn in.** As soon as your first exchange finishes, the model on the
-`title` role — small work, so a cheap one — is shown the opening question and answer and
-then asked, at the end of that same message,
-`Name this session in ≤8 words, lowercase, no quotes. Answer with the name only.` That is
-**one call per conversation** — it is never retried inside a conversation, so a provider
-having a bad minute costs you a name and nothing else. Until it lands, the status line
-falls back to the folder's name; nothing says
-"untitled".
+**It starts with your first message.** The small model on the `title` role is shown the
+opening question and asked for a descriptive conversation title plus a compact tab label
+in one response. The answer and the naming request run independently. A late name still
+reaches an idle chat, a background tab, or a hosted chat after the connection is restored;
+no refresh or follow-up message is needed.
 
-The name is capped at **80 characters**, and the status line fits it to the room left by
-the model rather than letting identity push telemetry off the frame.
+Each ask is bounded to twenty seconds so a slow cheap endpoint yields to the existing
+fallback promptly. Temporary provider failures get up to three attempts within the
+two-minute parent window, using short increasing delays. Closing the session cancels this work. Failed or invalid naming
+leaves the conversation usable with its existing placeholder; an existing name is never
+overwritten. Title calls remain billed to the session and cost history, separately from
+an unrelated turn that happens to be running when the name arrives.
+
+The full name is capped at **80 characters** in both its journal and folder metadata. The
+stable compact label is capped at **32 characters** in both places, and the tab strip fits
+it to its available cells. Old saved conversations
+have no separate compact label and use their full title in the tab, exactly as before.
 
 **There is no command to rename a conversation.** The name lives in the transcript as its
 own appended line, and the last one wins when the file is read back — but nothing on this
@@ -515,15 +521,15 @@ survives, so `fix: nil map crash` is kept whole.
 **A refused name is not a blank row.** The conversation simply has no name of its own, and
 the lists that draw a name — home, `/resume`, `recent sessions` — fall back to **your own
 opening words**, the first line you typed, exactly as they do for a conversation whose
-first turn has not finished yet. The legend above the message box shows only the branch
+background naming has not finished yet. The legend above the message box shows only the branch
 until a real name lands.
 
 **The ones already named badly heal themselves.** A transcript or a folder that was written
 down under the instruction is read back as having no name at all, and the folder's row gets
 your opening words back — they are read out of the transcript, where they have been all
 along. Nothing is rewritten: the old line stays in the file, which is append-only. The next
-time you open that conversation the namer gets its one call again, on your next completed
-turn, appending the good name the way every name is appended.
+time you open that conversation, your next message starts another bounded naming attempt
+in the background, appending the good name when it arrives.
 
 ## /resume — opening an earlier conversation
 
@@ -609,9 +615,11 @@ what the two presses do and what they cost.
 `--host` story rather than this one: a conversation held by a session host can have several
 windows attached, one keyboard between them, the newest window typing. That happens locally
 too when a host is already holding this workspace — a `--host` or `--at` connection into this
-machine, or somebody's `aforge engine`. See *Staying on that machine*. A plain `aforge chat`
-never starts a host of its own; it opens in this terminal's own process, which is what keeps
-adaptive runs, harness building and subharness intake cards working in it.
+machine, or somebody's `aforge engine`, or the host `aforge chat` here starts for itself.
+See *Staying on that machine*: an ordinary launch now opens its conversation in this
+machine's session host, so a second terminal in this folder joins that conversation rather
+than meeting a lock. Harness building and subharness intake cards work in a hosted
+conversation; the adaptive runner is the one thing still switched off in one.
 
 ## It used to start a new conversation in the second terminal — why it doesn't now
 

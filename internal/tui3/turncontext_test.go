@@ -9,6 +9,7 @@ package tui3
 // and every word of it comes off the engine rather than out of this package.
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -27,6 +28,11 @@ func designRoomAt(t *testing.T, context string) *app {
 	}}
 	a := newTestApp(agent)
 	a.width, a.height = 100, 30
+	// AND IT NAMES THE CONVERSATION IT IS IN, as every production door does: a
+	// correction is only sent from a conversation this surface could write the
+	// send down for first (steersend.go's [app.steerDurable]).
+	a.file = filepath.Join(t.TempDir(), "conversation.jsonl")
+	a.draftFile = filepath.Join(filepath.Dir(a.file), "draft.txt")
 	a.taskUpdate(update(4, "harness · flake triage", session.TaskRunning, session.TaskNotice{
 		Kind:    session.TaskKindHarness,
 		Doing:   session.HarnessPhaseAsking,
@@ -132,7 +138,10 @@ func TestAnOrdinaryTurnDrawsNoContextMark(t *testing.T) {
 func TestAnOrdinaryTasksRoomNamesNoContext(t *testing.T) {
 	a := designRoomAt(t, "")
 	a.input.setText("try the other parser")
-	a.steer()
+	// THE CROSSING IS A COMMAND NOW (steersend.go), so the receipt this test is
+	// about arrives when the engine answers rather than inside the keypress. The
+	// answer is delivered here; everything the test asserts is unchanged.
+	drive(t, a, runCmd(a.steer())...)
 
 	if got := a.turnContext(); got != "" {
 		t.Fatalf("an unnamed node named a context: %q", got)

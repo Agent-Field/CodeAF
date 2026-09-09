@@ -81,7 +81,23 @@ type kept struct {
 // names a key, the surface looks it up, and a stir for a conversation that has
 // since been closed finds nothing in the map and does nothing at all — the same
 // shape a stale generation has, needing no new rule.
-type behindStirMsg struct{ key string }
+type behindStirMsg struct {
+	key string
+	// quiet is a stir that is ONLY a redraw: the conversation said something
+	// that changes what it is CALLED and nothing about what it is doing. It is a
+	// separate bit rather than a second lane because the banner rules
+	// ([app.behindStir]) are the thing it has to skip, and skipping them is one
+	// branch there.
+	//
+	// WITHOUT IT A LATE NAME RAISES AN ATTENTION BANNER. behindStir re-reads the
+	// agent and announces `waiting on you` whenever the conversation needs the
+	// person — which is right for a stir that means "something happened" and
+	// wrong for one that means "it is called this now": a held conversation
+	// sitting on a question would raise that banner again every time it named
+	// itself, and consume the landed flag that the finished banner is counted
+	// from.
+	quiet bool
+}
 
 // behindWatch is one conversation's stir watcher, and it exists for a reason
 // that must not be deleted by a future lane trying to save memory.
@@ -110,7 +126,7 @@ type behindStirMsg struct{ key string }
 type behindWatch struct {
 	key   string
 	agent Agent
-	out   chan<- string
+	out   chan<- behindStirMsg
 	quit  chan struct{}
 	once  sync.Once
 	// armed is the "at most one outstanding" rule. A watcher that sent a stir
@@ -138,6 +154,90 @@ type behindWatch struct {
 	// reads the content of a lane for: every other event here is a nudge, and
 	// this one is a conversation that is about to end.
 	takeover atomic.Bool
+	// waits and turning are WHAT THIS CONVERSATION IS DOING, cached here so that
+	// a surface drawing a mark on its tab does not have to ask the agent
+	// (tabsignal.go).
+	//
+	// THEY COST NOTHING BECAUSE THE LOOP ALREADY COMPUTES THEM. `waits` is set at
+	// the edge [behindWatch.run] already finds — it compares [needsPerson]
+	// against the last answer on every pass to decide whether to stir — and
+	// `turning` is set at the three places a turn's stream is taken up or given
+	// back. Neither adds a call, a lock or an allocation.
+	//
+	// AND THAT IS THE WHOLE POINT OF THEM BEING HERE. The alternative is asking
+	// each agent on each frame: [session.Agent.NeedsPerson] takes the agent's
+	// mutex and allocates a map (session's taskpresence.go), and the running
+	// count comes from [session.Agent.TaskIndex], which READS A FILE. The tab
+	// strip is laid out on every frame and states its own law in as many words —
+	// it opens no file and crosses no wire (chattabs.go) — so a status read from
+	// either of those would be a world scan thirty times a second, or a call to
+	// another machine over `--host`.
+	//
+	// AN UNSET PAIR IS "NOTHING KNOWN", which the strip draws as nothing at all.
+	// A conversation with no watcher — one over a shared handle, one this window
+	// only remembers — never claims to be running, which is the tab strip's own
+	// law about what a tab is allowed to claim.
+	waits   atomic.Bool
+	turning atomic.Bool
+	// tasking is WORK THIS CONVERSATION STARTED THAT OUTLIVES THE TURN THAT
+	// STARTED IT. A task node runs in its own worktree under its own agent: the
+	// turn that proposed it ends, [behindWatch.turning] goes false, and the node
+	// keeps working for minutes afterwards. A strip that read `turning` alone
+	// drew that conversation at rest while it was the busiest one in the window,
+	// which is the defect this field closes (tabsignal.go).
+	//
+	// IT IS FOLDED FROM THE LANE THIS LOOP ALREADY DRAINS. Every node's state
+	// arrives here as an [session.EventTaskUpdate], and the lane replays the
+	// whole roster to a watcher the moment it subscribes (session's
+	// WatchTaskUpdates), so a conversation left with work already running is
+	// known without asking anything: no [session.Agent.TaskIndex], no file, no
+	// call to another machine over `--host`.
+	tasking atomic.Bool
+	// live is the set of nodes last heard claiming to be running or queued, and
+	// it is the bookkeeping behind the atomic above — a count would be wrong,
+	// because a node publishes `running` many times and settles once.
+	//
+	// The watcher writes it through noteTask; workMu also protects the surface’s
+	// cancellation snapshot. Painting reads only the atomic working flag.
+	live map[uint64]struct{}
+	// The surface snapshots only this conversation’s replayed cancellation IDs.
+	workMu  sync.Mutex
+	jobs    map[int]struct{}
+	jobbing atomic.Bool
+}
+
+// noteTask folds one task notice into [behindWatch.tasking], and reports whether
+// the answer CHANGED — which is the only moment worth a stir, the same shape the
+// needs-a-person edge at the bottom of [behindWatch.run] already uses.
+//
+// THE TWO LIVE STATES AND THE THREE SETTLED ONES ARE NAMED EXPLICITLY, and a
+// state that is neither leaves the reading alone. A proposal arrives on this
+// lane before its node exists and carries no state at all; a word this surface
+// has not heard of is news it cannot interpret. Neither is evidence that work
+// stopped, and treating "not a state I know" as "settled" is how a strip goes
+// dark on a conversation that is still working.
+//
+// A BACKGROUND JOB IS NOT A TASK, and is left out here for the reason the
+// surface leaves it out of its own roster (task.go's [app.taskUpdate]): jobs
+// arrive on their own notice and are counted in their own place.
+func (w *behindWatch) noteTask(notice *session.TaskNotice) bool {
+	if notice == nil || notice.Kind == session.TaskKindJob {
+		return false
+	}
+	w.workMu.Lock()
+	defer w.workMu.Unlock()
+	switch notice.State {
+	case session.TaskRunning, session.TaskQueued:
+		if w.live == nil {
+			w.live = map[uint64]struct{}{}
+		}
+		w.live[notice.ID] = struct{}{}
+	case session.TaskDone, session.TaskFailed, session.TaskUnverified:
+		delete(w.live, notice.ID)
+	default:
+		return false
+	}
+	return w.tasking.Swap(len(w.live) > 0) != (len(w.live) > 0)
 }
 
 // stir asks the surface to look, unless it has already been asked.
@@ -146,13 +246,32 @@ func (w *behindWatch) stir() {
 		return
 	}
 	select {
-	case w.out <- w.key:
+	case w.out <- behindStirMsg{key: w.key}:
 	default:
 		// The stir lane is full, which means the surface is already owed more
 		// wakeups than it has folded in. Dropping this one is right: what it
 		// would have said is "read the agent", and the wakeups already queued
 		// will say it.
 		w.armed.Store(false)
+	}
+}
+
+// stirName asks the surface to redraw a conversation that has just been NAMED,
+// and asks for nothing else.
+//
+// IT DOES NOT TOUCH THE ARM. The arm is [behindWatch.stir]'s dedup — one
+// outstanding "read the agent" per conversation — and a name is not that
+// question: taking the arm here would swallow a real stir queued behind it, and
+// clearing it would let two through. A session names itself once
+// (session's [Agent.titleTried]), so there is nothing here to dedupe.
+func (w *behindWatch) stirName() {
+	select {
+	case w.out <- behindStirMsg{key: w.key, quiet: true}:
+	default:
+		// The lane is full, and a redraw is the one stir worth losing: the next
+		// wakeup for any reason reads the agent's name off the agent
+		// (chattabs.go's [hopRawTitle]), so the tab catches up on the frame
+		// after that.
 	}
 }
 
@@ -177,7 +296,7 @@ func (w *behindWatch) landedSince() int {
 func (w *behindWatch) stop() { w.once.Do(func() { close(w.quit) }) }
 
 // startBehindWatch subscribes to everything this agent has and drains it.
-func startBehindWatch(key string, agent Agent, out chan<- string) *behindWatch {
+func startBehindWatch(key string, agent Agent, out chan<- behindStirMsg) *behindWatch {
 	w := &behindWatch{key: key, agent: agent, out: out, quit: make(chan struct{})}
 	go w.run()
 	return w
@@ -226,6 +345,16 @@ func (w *behindWatch) run() {
 		runs = lane
 		keep(stop)
 	}
+	// AND THE NAME, WHICH A HELD CONVERSATION EARNS WHILE NOBODY IS LOOKING AT
+	// IT. The tab is drawn from the agent ([hopRawTitle]) and the agent knows the
+	// name the moment it lands, so all this lane buys is the frame that redraws
+	// the tab — which is why it stirs quietly (names.go, session's title.go).
+	var titles <-chan session.Event
+	if door, ok := w.agent.(leavableNamer); ok {
+		lane, stop := door.WatchTitle()
+		titles = lane
+		keep(stop)
+	}
 
 	// THE TURN IN FLIGHT AT THE MOMENT OF THE DETACH is joined here, and it is
 	// joined through the same door a person coming back would use: the surface
@@ -237,6 +366,10 @@ func (w *behindWatch) run() {
 		events, running, stop := door.Attach()
 		if running {
 			turn, turnStop = events, stop
+			// A TURN WAS ALREADY IN FLIGHT AT THE DETACH, and that is the one
+			// moment this fact cannot be recovered from anywhere else later
+			// (tabsignal.go).
+			w.turning.Store(true)
 		} else {
 			stop()
 		}
@@ -248,6 +381,7 @@ func (w *behindWatch) run() {
 	}()
 
 	waiting := needsPerson(w.agent)
+	w.waits.Store(waiting)
 	for {
 		select {
 		case <-w.quit:
@@ -264,6 +398,19 @@ func (w *behindWatch) run() {
 			if ev.Kind == session.EventTakeover {
 				w.takeover.Store(true)
 			}
+			// AND EVERY OTHER EVENT ON THIS LANE IS A NODE SAYING WHERE IT IS.
+			// Folding it costs a map write; the stir is raised only when the
+			// conversation as a whole starts or stops having work in flight, so a
+			// graph publishing a node a second does not wake the surface a second.
+			if w.noteTask(ev.Task) || w.noteJob(ev.Job) {
+				w.stir()
+			}
+		case _, ok := <-titles:
+			if !ok {
+				titles = nil
+				break
+			}
+			w.stirName()
 		case _, ok := <-designs:
 			if !ok {
 				designs = nil
@@ -287,6 +434,7 @@ func (w *behindWatch) run() {
 				turnStop = nil
 			}
 			turn = stream
+			w.turning.Store(true)
 		case _, ok := <-turn:
 			if !ok {
 				turn = nil
@@ -298,12 +446,14 @@ func (w *behindWatch) run() {
 				// landed in its own journal and moved nothing on screen; the
 				// banner is the whole of what tells the person.
 				w.landed.Store(true)
+				w.turning.Store(false)
 				w.finished.Add(1)
 				w.stir()
 			}
 		}
 		if now := needsPerson(w.agent); now != waiting {
 			waiting = now
+			w.waits.Store(now)
 			w.stir()
 		}
 	}
@@ -322,13 +472,13 @@ const stirDepth = 8
 // waitStir takes one conversation's stir off the shared lane and asks for the
 // next. It is the pump every other standing lane on this surface uses, in the
 // one shape that belongs to no conversation at all.
-func waitStir(lane <-chan string) tea.Cmd {
+func waitStir(lane <-chan behindStirMsg) tea.Cmd {
 	return func() tea.Msg {
-		key, ok := <-lane
+		note, ok := <-lane
 		if !ok {
 			return nil
 		}
-		return behindStirMsg{key: key}
+		return note
 	}
 }
 
@@ -337,7 +487,7 @@ func (a *app) stirLane() tea.Cmd {
 	if a.stirs != nil {
 		return nil
 	}
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	return waitStir(a.stirs)
 }
 
@@ -347,10 +497,20 @@ func (a *app) stirLane() tea.Cmd {
 // is what makes the message able to say nothing. A key that is no longer in the
 // keeper is a conversation that has since been closed, and the honest answer to
 // a stir about it is to do nothing.
-func (a *app) behindStir(key string) tea.Cmd {
+func (a *app) behindStir(note behindStirMsg) tea.Cmd {
 	next := waitStir(a.stirs)
-	held := a.behind[key]
+	held := a.behind[note.key]
 	if held == nil {
+		return next
+	}
+	// A CONVERSATION THAT HAS JUST NAMED ITSELF IS A REDRAW AND NOTHING ELSE.
+	// The tab reads the name off the agent on the frame ([hopRawTitle]), so the
+	// frame IS the whole of the refresh; every line below is about work landing,
+	// and running them for a name would announce `waiting on you` again for a
+	// question the person has already been told about, and spend the landed flag
+	// the finished banner is counted from.
+	if note.quiet {
+		a.touch()
 		return next
 	}
 	// LETTING GO COMES BEFORE ANYTHING ELSE IS READ. A conversation another
@@ -359,7 +519,7 @@ func (a *app) behindStir(key string) tea.Cmd {
 	// that is leaving (takeover.go). The agent is asked as well as the flag, for
 	// the surface that woke on a stir raised by something else.
 	if held.watch.takeover.Load() || takenOver(held.conv.Agent) {
-		return tea.Batch(next, a.takeOverKept(key, held))
+		return tea.Batch(next, a.takeOverKept(note.key, held))
 	}
 	landed := held.watch.took()
 	// The count on the status line and home's own rows are both read from the
@@ -393,9 +553,44 @@ func (a *app) stow(conv Conversation, side *aside) {
 	if key == "" || conv.Agent == nil {
 		return
 	}
-	if conv.DraftFile != "" {
-		writeDraft(conv.DraftFile, side.draft)
+	// A DOOR WHOSE CONVERSATIONS SHARE ONE HANDLE KEEPS NOTHING HERE, and this is
+	// the one guard rather than a branch at each of the four callers — /new, the
+	// two beside-doors and a switch all end up on this line.
+	//
+	// WHAT WOULD HAPPEN OTHERWISE is not a missing feature, it is a lie on the
+	// screen. Over an engine door [Options.Resume] hands back the SAME agent it
+	// was given, now pointing at the session the engine has just swapped to
+	// (cmd/aforge's chatv3_host.go). Putting that pointer in the map records the
+	// conversation now IN FRONT under the key of the one being left: the switcher
+	// then draws it twice, one of them under the old name, and pressing the held
+	// row opens the body of the conversation already on screen. It would also arm
+	// a [behindWatch] on the agent the surface is itself reading, so one handle's
+	// lanes would have two readers and the drain would eat events the frame is
+	// waiting for.
+	//
+	// AND THE CONVERSATION BEING LEFT IS NOT LOST BY SKIPPING THIS — it is already
+	// gone: the engine interrupts and closes the previous conversation as part of
+	// the swap (internal/remote's Session.swap). There is nothing running to hold.
+	//
+	// WHAT IS KEPT ANYWAY IS THE UNSENT SENTENCE. The agent is not this window's
+	// to hold, but the words in the box were never the agent's — they are the
+	// person's, they are not on the wire, and a switch that dropped them would
+	// lose a paragraph somebody was in the middle of writing every time they
+	// pressed a tab. So the composer goes down under THIS conversation's own
+	// identity exactly as it does below, and comes back through the same reunion
+	// when the conversation is opened again (draftkeep.go's [app.stowDrafts] and
+	// [app.layKeptDrafts]).
+	if a.shared {
+		a.stowDrafts(conv, side)
+		// Retain the outgoing navigation identity even though its agent ended.
+		a.rememberOpen(key)
+		return
 	}
+	// AND IT IS THE WHOLE COMPOSER, not only the box: every page's own unsent line
+	// goes down under THIS conversation's identity (draftkeep.go's
+	// [app.stowDrafts]), because the conversation now in front is about to write
+	// its own record under a different name.
+	a.stowDrafts(conv, side)
 	if a.behind == nil {
 		a.behind = map[string]*kept{}
 	}
@@ -417,6 +612,14 @@ func (a *app) stow(conv Conversation, side *aside) {
 func (a *app) rememberOpen(key string) {
 	a.forget(key)
 	a.prev = append(a.prev, key)
+	// AND A CONVERSATION COMING FORWARD GETS ITS TAB BACK. This is the one door
+	// every road to the front goes through — a switch, a resume, an open beside,
+	// a close bringing the next one up — so a dismissal lifted here cannot be
+	// missed by a road somebody adds later (chattabs.go's [app.tabDismiss]).
+	if a.tabShut[key] {
+		delete(a.tabShut, key)
+		a.chatTabBar = tabBar{}
+	}
 }
 
 // forget takes a key off the previous-stack, every occurrence of it.
@@ -465,7 +668,11 @@ func (a *app) holding(file string) bool {
 // resume picker, the welcome box's rows, /resume by argument — because a
 // conversation in the keeper is not something to open. It is something to look
 // at again.
-func (a *app) bringForward(file string) (tea.Cmd, bool) {
+func (a *app) bringForward(file string) (cmd tea.Cmd, owned bool) {
+	if a.startingChat() {
+		back := a.parkChatStart()
+		defer func() { cmd = tea.Batch(back, cmd) }()
+	}
 	key := a.convKey(file)
 	if key == "" {
 		return nil, false
@@ -484,7 +691,7 @@ func (a *app) bringForward(file string) (tea.Cmd, bool) {
 	held.watch.stop()
 	leaving, side := a.front(), a.detachConversation()
 	a.stow(leaving, side)
-	cmd := a.attachConversation(held.conv, held.side)
+	cmd = a.attachConversation(held.conv, held.side)
 	a.rememberOpen(key)
 	return cmd, true
 }
@@ -500,6 +707,15 @@ func (a *app) bringForward(file string) (tea.Cmd, bool) {
 func (a *app) openBeside(workspace, transcript string) (tea.Cmd, string) {
 	if !a.canOpen() {
 		return nil, resumeUnavailableWord
+	}
+	// IDENTITY IS ASKED BEFORE THE DOOR IS, which is [app.openSession]'s own rule
+	// and was missing here. A row naming the conversation ALREADY IN FRONT is
+	// answered by staying in it: asking the door for it would meet this process's
+	// own flock and refuse `open in another window` about the session on screen,
+	// and over a shared handle it would ask the engine to swap onto the
+	// conversation it already has open. A row the keeper holds is a switch.
+	if cmd, ours := a.bringForward(transcript); ours {
+		return cmd, ""
 	}
 	if a.open == nil {
 		if a.resume == nil {
@@ -537,17 +753,57 @@ func (a *app) startBeside(workspace string) (tea.Cmd, string) {
 // takeBeside is the two lines both doors above end in: the conversation on
 // screen steps aside and goes on running, and the new one takes the surface.
 func (a *app) takeBeside(conv Conversation) tea.Cmd {
+	// The name of what is being left, read while it is still in front, and said
+	// afterwards on a door that could not keep it (below). Notes are cleared by
+	// the detach, so this is remembered rather than written now.
+	closed := a.sessionName()
+	if closed == "" {
+		closed = a.place
+	}
 	leaving, side := a.front(), a.detachConversation()
 	a.stow(leaving, side)
+	if a.shared {
+		// The legacy wire seam returns only an Agent. The local draft store
+		// belongs to this window, with separate owner-scoped slots inside it.
+		if conv.DraftFile == "" {
+			conv.DraftFile = leaving.DraftFile
+		}
+		if conv.History == nil {
+			conv.History = leaving.History
+		}
+	}
 	cmd := a.attachConversation(conv, nil)
+	if a.shared {
+		a.restoreDraft()
+	}
 	if key := a.convKey(conv.SessionFile); key != "" {
 		a.rememberOpen(key)
 	}
 	if conv.Notice != "" {
 		a.note(conv.Notice)
 	}
+	// AND A DOOR THAT DID NOT ACTUALLY OPEN ONE BESIDE SAYS SO. Every caller of
+	// this function promises the conversation on screen goes on running; over a
+	// shared handle it does not, because the engine ended it in the swap
+	// ([Options.SharedAgent]). A person who watched their work vanish off the
+	// switcher is owed the sentence rather than the discovery.
+	if a.shared {
+		if closed != "" {
+			a.note("closed · " + closed + " — " + oneConversationWord)
+		} else {
+			a.note(oneConversationWord)
+		}
+	}
 	return cmd
 }
+
+// oneConversationWord is what a door says when it swapped a conversation in
+// place because this window's engine holds one at a time
+// ([Options.SharedAgent]). It names the connection and not the machine: the
+// limit belongs to the wire's one open session, and the same sentence is true
+// over `--host`, over `--at` and over the socket an ordinary `aforge chat` opens
+// onto this machine's own engine.
+const oneConversationWord = "a connection holds one conversation at a time"
 
 // lastConversation is `tab`: the way back to the conversation that was in front
 // before this one.
@@ -580,6 +836,11 @@ func (a *app) closeFront() (tea.Cmd, bool) {
 	held.watch.stop()
 	leaving, file := a.agent, a.file
 	a.forget(a.convKey(file))
+	// AND THE CORRECTIONS IT WAS STILL WAITING ON GO WITH IT, BEFORE ITS RECORD IS
+	// CLEARED BELOW. A send still waiting on a write must not cross into a
+	// conversation that has been closed, and the cleared record must not be read as
+	// an answer about it either (steersend.go's [app.forgetSteerOwner]).
+	a.forgetSteerOwner(draftOwnerOf(a.host, a.workspace, file))
 	a.detachConversation()
 	if leaving != nil {
 		leaving.Interrupt()
@@ -606,8 +867,21 @@ func (a *app) closeFront() (tea.Cmd, bool) {
 	return cmd, true
 }
 
-// closeEverything closes the conversation in front and every one in the keeper,
-// IN PARALLEL, and is safe to call twice.
+// leaveEverything is what the PROGRAM leaving does to the conversations this
+// terminal holds — the one in front and every one in the keeper — IN PARALLEL,
+// and it is safe to call twice.
+//
+// LEAVING A WINDOW IS NOT ENDING SOMEBODY'S WORK. This used to interrupt and
+// close every agent, which is right for a conversation whose engine is this
+// process and wrong for one that is hosted: a hosted agent's Close is a message
+// to the far side saying the conversation is over ([remote.Agent.Close] sends
+// it), so closing a terminal on a running task paused the task and restarted its
+// worker on the way back. The window going away is a view leaving; the engine
+// keeps the turn, the tasks, the questions and the journal.
+//
+// So each agent is asked which it is ([detachable]) and answers for itself. An
+// in-process conversation still ends here, because there is nothing left to run
+// it once this process is gone.
 //
 // PARALLEL BECAUSE THE GRACES OVERLAP RATHER THAN SUM. [session.Agent.Close] is
 // bounded on every axis and its phases are sequential, so a row of closes is
@@ -615,7 +889,7 @@ func (a *app) closeFront() (tea.Cmd, bool) {
 // quit never waits on somebody else's courtesy. Nothing caps how many
 // conversations a window holds, so a serial quit would get slower the more of
 // them somebody had open; this one does not.
-func (a *app) closeEverything() {
+func (a *app) leaveEverything() {
 	agents := make([]Agent, 0, len(a.behind)+1)
 	if a.agent != nil {
 		agents = append(agents, a.agent)
@@ -633,11 +907,29 @@ func (a *app) closeEverything() {
 		wg.Add(1)
 		go func(agent Agent) {
 			defer wg.Done()
-			agent.Interrupt()
-			_ = agent.Close()
+			leaveAgent(agent)
 		}(agent)
 	}
 	wg.Wait()
+}
+
+// leaveAgent takes this terminal off one conversation: a detach where the work
+// outlives the window, and the ordinary interrupt-and-close where it does not.
+func leaveAgent(agent Agent) {
+	if hosted, ok := agent.(detachable); ok {
+		_ = hosted.Detach()
+		return
+	}
+	agent.Interrupt()
+	_ = agent.Close()
+}
+
+// workOutlivesExit reports whether this conversation's work would keep going
+// after the window closed. It is what the quit warning is written from
+// (quitarm.go), so the sentence and the act cannot disagree.
+func workOutlivesExit(agent Agent) bool {
+	hosted, ok := agent.(detachable)
+	return ok && hosted.WorkOutlivesExit()
 }
 
 // ── what the keeper is asked on a frame ─────────────────────────────────────
@@ -717,6 +1009,9 @@ func (a *app) closeKept(file string) bool {
 	}
 	delete(a.behind, key)
 	a.forget(key)
+	// Its unsettled corrections go before its record is cleared, for
+	// [app.closeFront]'s reason.
+	a.forgetSteerOwner(draftOwnerOf(a.host, held.conv.Workspace, held.conv.SessionFile))
 	held.watch.stop()
 	if held.conv.Agent != nil {
 		held.conv.Agent.Interrupt()

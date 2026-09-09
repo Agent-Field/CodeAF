@@ -12,8 +12,9 @@ forming block is drawn when a task command is not in flight.
 
 ## What the frame draws, top to bottom
 
-aforge draws one screen in a fixed order every frame. From the top: the pinned room
-header (only while a task room is open), the task strip, the conversation, a breathing
+aforge draws one screen in a fixed order every frame. From the top: the row of
+conversation tabs, the pinned room header (only while a task room is open), the task
+strip, the conversation, a breathing
 gap, the rule with the legend in it, the approval question, the connect offer, the
 sub-harness offer, the steer guard, the follow-up row, any message waiting for the
 answer to finish, another gap, the tray row above the box, the draft box where you type,
@@ -67,6 +68,328 @@ hint line last. See the **Places** page.
 The status line is the last row of the frame, not the first. It sits at the bottom so
 you read it in the same glance as the box above it.
 
+## Reading padding — text against the left edge
+
+Conversation text and task transcripts have a two-cell left gutter where the body
+column has room. On very narrow layouts the gutter collapses to preserve reading
+width. Links and buttons move with their text. Copying removes the layout gutter
+while preserving the content's indentation.
+
+## Conversation tabs — switching conversations by clicking, the tab strip over a chat, clicking a chat name
+
+**The header begins with Home and the conversations this window has been in**, drawn as
+tabs in a row of their own, with a thin rule separating navigation from reading:
+
+```
+  Home    openrouter price scrape    Refactor the rail sco…    [Shipping the parser] ×  +  Chats ▾
+  ────────────────────────────────────────────────────────────────────────────────────────
+```
+
+Each tab is a **padded target** separated by quiet space. The filled surface includes
+one blank cell before its status icon and after its close mark; the leading inset
+selects the tab and the trailing inset belongs to the close target. The gaps do nothing.
+Every tab has a filled background. The active tab reverses the surface contrast
+and has stronger text; brackets identify it on
+terminals without background color. **Every tab reacts to the pointer**,
+including the one you are already in, and the highlight it wears as the *chosen* tab stays
+put when the pointer leaves. Without color, hovering adds a dot beside the tab’s
+close mark; Home, `+`, and the scroll arrows gain a pointer dot, and Chats changes to uppercase.
+
+**Clicking a tab goes to that conversation** — the same switch `ctrl+k` makes. Clicking the
+tab you are already in does nothing while you are in the conversation itself, and takes you
+back out to it from a task page.
+
+## Many open conversation tabs — horizontal scrolling, overflow, and readable names
+
+**The order never changes as you switch.** Tabs sit in the order this window first entered
+them, so the one you reached for a minute ago is still in the same place. At most 32 are
+remembered; past that the one you have not been in for longest falls off, and the tab you
+are in never does. This is a presentation limit, not a limit on running work or history.
+
+**Many tabs scroll horizontally instead of shrinking their names.** On a roomy strip,
+`‹` and `›` appear at the edges when more tabs exist in that direction (`<` and `>` in
+ASCII). Click an arrow, or wheel vertically or horizontally over the header, to browse
+the names. This changes neither the conversation, its draft nor the transcript position.
+The selected tab may leave view while you browse; choosing a conversation or closing a
+tab brings the selection back. Narrow frames keep the selected tab and `Chats` fallback
+without spending its name on arrows.
+
+**`+` and `Chats ▾` follow the last visible tab**, with small gaps between their
+targets. They stay beside a short row of tabs; when the row fills, the tabs scroll
+and the controls remain at its edge. **`Chats ▾` opens the switcher** — the same card `ctrl+k` opens, with
+every conversation on this machine in it, its fold already open. Where the row is too
+narrow for every tab the control reads `Chats +3 ▾`, counting the tabs that did not fit.
+On a narrower frame it drops the `▾`, then the count, and keeps the word `Chats`: the
+word is what says it is a door. Where the switcher cannot open at all, the count is drawn
+alone (`+3`) and does nothing, because it is still true.
+
+## What stays alive when switching tabs — running two or three chats at the same time, saved drafts, and Home
+
+**Switching tabs stops nothing.** Every conversation this window holds keeps running
+while you are somewhere else — its turn finishes, its tasks go on, its output accumulates
+and is all there when you come back. That is true over the ordinary socket onto this
+machine's engine, over `--host`, over `--at` and with `aforge chat --no-host`: each tab
+holds its own connection and its own conversation, so nothing you do to one reaches
+another. Going Home stops nothing either, and neither does opening a fourth chat.
+
+The one door that cannot do this is one that has no way to dial a second connection. There
+the surface says `closed · <name> — a connection holds one conversation at a time` as it
+switches, so you are never told work continued when it did not. No door shipped today is
+in that state.
+
+**Your unsent words and caret are kept either way.** A half-written message goes down under
+the conversation it was written for and comes back when you return to it, including on a
+door that had to close the conversation to leave it.
+
+**It stands down on a small frame** — under 12 columns wide, or on a terminal too short
+for a blank row above the message box — for the same reason the room header does. The
+rule under the tabs goes first, on a terminal shorter than twenty rows: it is a seam, and
+a seam is the cheapest thing on the frame to give up.
+
+On frames at least 48 columns wide, a blank row above the tabs appears at 32 rows,
+one below at 36 rows, and one after task metadata at 40 rows. These separate steps
+keep the reading area from shrinking as the window grows. Smaller terminals collapse
+the vertical padding. Blank tab rows and gaps cannot activate the content beneath them.
+
+**Home at the left opens the home page**, keeping your conversation and unsent words.
+It is separate from the tabs and breadcrumbs. Space twice on an empty composer still
+opens Home. Home disappears when the connection cannot open conversations, and on
+very narrow frames the current tab takes priority.
+
+The switcher floats on a separate background inside a rounded outline, with space
+above and below its contents when the window is tall enough. `>` marks the keyboard
+choice; the pointer has a separate dot, so hovering another conversation does not
+change what Enter opens. Without color both markers remain visible; ASCII mode uses
+straight corners and a plain dot. Short windows give up inner vertical space before
+the selected row.
+
+## Why does my tab say Untitled — when does a chat get its name, my new chat has no title, the tab says Untitled instead of the conversation name
+
+**Naming starts when your first message is accepted.** The small model on the `title`
+role works in the background alongside the answer. Each naming ask has twenty seconds to
+reach an answer or its existing fallback. The answer does not wait for a title, and the
+title does not wait for the answer to finish.
+
+1. `+` opens the `New chat` page. A newly created conversation starts as `Untitled`.
+2. Sending your first message starts both the conversation and background naming.
+3. One response supplies a full conversation title and a compact tab label. The tab strip
+   uses the compact label; breadcrumbs, the status line, Home, the switcher, recent sessions,
+   and the terminal window title keep the full title. This also works after the answer has
+   finished or you have switched to another tab.
+
+**Temporary failures retry automatically.** There are up to three naming attempts, with
+short increasing delays, within a two-minute overall window. You do not need to send
+another message. A failed title never interrupts the answer or changes its working state.
+If those attempts fail, or the model returns an empty or invalid name, the tab remains
+`Untitled`; an unnamed saved conversation can try again on its next message after reopening.
+
+**An existing name wins.** Naming runs once per session lifetime, and a chat that already
+has a name is not named again. Closing the session cancels unfinished naming. There is no
+command or tab action to rename a conversation manually.
+
+**`Untitled` labels an unnamed tab and its breadcrumb root.** Elsewhere it is named
+after the folder it is in: the status line and the window title say the project, home and
+the `ctrl+k` switcher say `new conversation`. And `Untitled` is not `main` — `main` is
+where you are, the conversation you get back to from a task page, which is what `esc/←
+main` and `say it to main` both mean.
+
+## Closing a tab — the × on a tab, Ctrl+W, where do I go next
+
+**`×` or `ctrl+w` closes the tab in front.** Closing another tab leaves the
+current chat selected. Closing the current tab selects the most recently used
+remaining tab; only closing the last tab takes you to Home. A destination that
+cannot be opened leaves the current tab and draft in place and explains why.
+
+The close mark appears on the selected tab and on a hovered tab. Its padded
+cells stay reserved on every tab, so hovering cannot move the targets. The close
+cells dismiss; the label beside them selects. With color disabled the newly
+visible `×` also identifies pointer hover.
+
+Unsent drafts, carets and attachments stay with their conversation. Reopen a
+closed tab from Chats, Home or `ctrl+shift+t` to retrieve them. The keyboard
+shortcut needs a terminal that distinguishes Ctrl+Shift+T from Ctrl+T.
+
+**A closed tab's conversation keeps running unless you asked for it to stop**, over
+every door — the ordinary socket, `--host`, `--at` and `--no-host` alike. Selecting the
+next tab replaces nothing: that chat has its own connection and carries on. Closing the
+last tab to Home leaves its connection in place.
+
+**Quitting is a different act from closing a tab.** `ctrl+w` and `×` take a view off the
+row, and a working one is answered by the card below. `/quit` and `ctrl+c` end the whole
+program, ask
+their own question about work in flight, and act on every conversation this window holds
+at once. Closing a tab never quits aforge, and quitting is not what any of the card's
+three answers does.
+
+On the switcher card, `ctrl+w` dismisses a selected background tab while keeping
+its work running. For the current conversation it uses the same close card when
+work is active. On New chat it closes
+the start page and parks its unfinished first message. Stop on a task page
+ends that task; `/quit` ends the program.
+
+## Keep running, stop work or cancel — closing a tab on a chat that is still working
+
+A tool permission question does not trap you in its tab. `ctrl+w` offers the same
+close actions while leaving the question unanswered; `ctrl+k` opens Chats and
+`ctrl+t` opens another chat. A hidden chat waiting on your answer is marked
+with `?`; Chats says `asking you something`. Reopen it to answer the original question. Cancel on the close card
+leaves both the tab and permission untouched; `stop work` cancels that reply.
+
+
+**Closing a tab with work in it asks first.** A card appears above the message box
+naming that conversation and what it is doing — `Close this tab? the tree walk is
+working · 2 tasks running` — with three answers under it and a dim line saying what the
+answer the cursor is on will actually do:
+
+```
+  ? Close this tab? the tree walk is working · 2 tasks running
+    ▌[keep running]   [stop work]   [cancel]
+    it keeps going here; find it under Chats, and ctrl+shift+t brings the tab back
+```
+
+| Answer | What it does |
+| --- | --- |
+| `keep running` | The tab goes; the conversation does not. It keeps writing, its tasks keep running, and you find it again under `Chats`, on Home, or with `ctrl+shift+t`. Reopening it shows everything it did while it was out of sight — the same conversation, not a second run of it |
+| `stop work` | Ends the turn and cancels this conversation’s queued/running tasks, adaptive runs and jobs, then closes the tab. Nothing in any other chat is touched, and nothing is deleted |
+| `cancel` | Nothing happens. The tab stays, the work stays, your draft stays |
+
+Cancellation news cannot start another reply after `stop work`. A fresh message
+starts work again once cancellation finishes. If work is still stopping, the message
+is refused with “this conversation is stopping; wait for its work to finish stopping before sending a new message”.
+Keeping or reopening a tab does not restart stopped work.
+
+Chats marks a hidden reply or background job `working` even when it has no tasks. A reply that
+finishes while held there says `it finished while you were away`.
+
+Narrow terminals shorten the answers to `keep`, `stop`, and `cancel`; the smallest
+frames show their keys `k`, `s`, and `esc`. Each visible answer remains clickable.
+
+The cursor opens on **keep running**, so `enter` is the safe answer. `←` and `→` walk the
+three and stop at the ends rather than wrapping; `k` keeps running, `esc` is `cancel`, `s` is `stop work`,
+and clicking an answer takes it. `ctrl+c` puts the card away and goes on to do what it
+normally does — leaving is never something you get stuck inside.
+
+**The difference between `keep running` and `stop work` is only whether that chat is
+still working afterwards** — both take the tab off the row, and neither deletes anything.
+`stop work` is how you stop the work in one chat and leave every other chat alone.
+
+**An idle tab closes with no card**, because there is nothing to decide; the card is
+raised only for a chat writing a reply, running tasks or holding a question. It does not
+go away when that finishes underneath it, so an answer arriving a moment before your press
+cannot turn `stop work` into a press that lands on nothing.
+
+The selected answer is marked `▌` — `>` where there are no box characters. Where the frame
+is too narrow for all three the row is cut at the right and the keys still answer it;
+under four columns the card draws nothing.
+
+
+Reopening a running chat through this machine’s engine restores the reply so far
+and follows its live output without sending your message again. Background
+status and the open reply each have their own reader. If the connection drops,
+that live view ends; reopen the chat after reconnecting to recover its current
+record and live output. This does not promise that a hidden tab’s status stays
+live across a broken connection.
+
+## Starting a new chat with Ctrl+T or the `+` plus button beside the tabs
+
+**`ctrl+t` or `+` at the tab strip opens a start page. It does not create anything.** No session, no
+agent, no file, nothing on the switcher — pressing it three times and escaping three times
+leaves you exactly where you began. The conversation is made when you **submit the first message or command**.
+
+The page is the launch screen drawn inside the frame you are already in: the wordmark, the
+model and crew line, a blank message box with the caret in it, and this project's recent
+conversations under it. A selected **New chat** tab labels this page. The other chat tabs remain available, with overflow in Chats. The footer belongs to the start page and shows no previous conversation costs. The previous chat’s sidebar and compact task strip are hidden.
+
+| Key or click | What it does |
+| --- | --- |
+| type, then `enter` | Starts the conversation and sends that as its first message |
+| `esc` | Cancels — back to the chat or task page you pressed `+` from, with your draft |
+| `↑` / `↓` | Walk the recent conversations, while the box is empty |
+| `enter` on a chosen row | Opens that conversation. It sends nothing |
+| click a recent row | The same |
+| `ctrl+t` or `+` again | Reuses the page you already have |
+
+**A picture on its own is a message.** Drop or paste one and press `enter` with nothing
+typed and the conversation starts on the picture.
+
+## What happens to your draft when you press `+`
+
+**Nothing. Your unsent message stays in the chat you were in.** Pressing plus does not take
+your draft anywhere: the new chat start page opens with an empty box, an empty attachment
+tray and none of the pasted documents from the chat behind it. Nothing you had attached
+there rides out on the first message you send from the start page.
+
+**`esc` gives the draft back** — the words, the caret where you left it, the files
+and pictures on the tray, the compact pastes, where you were reading in the transcript, and
+the task page you had open if you pressed `+` from one. A task read from another conversation is reopened through a fresh connection to that exact owner; if that connection is unavailable, the existing task card explains why.
+
+**A half-written first message on the start page is parked, not thrown away.** Press `esc`,
+do something else, press `+` again, and it is still in the box. It is kept for as long as
+this window lives; it is **not** written to disk, so a crash loses that one. Your
+conversation's own draft is written down as it always was and comes back after a crash.
+
+**A delivery refusal keeps your words in the new conversation** after it has been created. They are never sent to the chat you came from. Enter on a selected compact paste opens its editor; move beyond the token to send the message.
+
+**If the conversation cannot be made, the words stay.** The reason is said on the page
+itself — `new session failed: …`, or `/new is unavailable here` where this window has no
+door onto new conversations at all — nothing is sent into the chat you came from, and that
+chat is still running behind the page.
+
+**What happens to the chat you were in.** It goes on running and keeps its tab, its draft
+and its work. An unused chat with no draft may be replaced; a conversation with unsent words retains its own draft. If the old conversation has no saved identity yet, first send refuses with `finish or clear the draft in the current chat before starting another`; Escape restores that draft. Sending the first message opens the new conversation on a
+connection of its own, over every door, so the chat you came from is still running and
+still on the tab row. Opening and cancelling the page never touches it either.
+
+**On a window too small for the page** — under 40 columns or 12 rows — the box stays at the
+foot of the frame where it always is and one row reads `new chat · esc keeps the chat you
+were in`. Typing and `enter` still start the conversation.
+
+`/new` is the same act without the page: it starts a conversation immediately and keeps
+your draft with you.
+
+## What the `?` and `◐` marks on a tab mean
+
+A tab can carry one small symbol in front of its name — a question mark, or a half-filled
+circle — and it carries at most one:
+
+| Mark | Means |
+| --- | --- |
+| `?` | That conversation is **waiting on you** — an approval, a sign-in, a proposal with no clock on it, or work out of fuel |
+| `◐` | A turn or task is **running** in it |
+| nothing | At rest, or nothing is known about it |
+
+**`?` outranks `◐`** when both are true, because it is the one you can act on. The cell is
+the same width in all three states, so a name never moves sideways when a turn starts. On a
+terminal with no box characters `◐` is drawn `*`; `?` is already plain text, so the three
+stay apart with color off.
+
+**A countdown is not a question.** A task proposal that will go ahead on its own wears the
+working mark or none — only something that will wait forever for your answer gets `?`.
+Internal waiting, a tool checking something, a dependency, a provider being retried: all of
+those are work.
+
+**Nothing is a mark of its own.** An idle conversation gets no dot and no badge, and a
+conversation this window only remembers rather than holds claims nothing at all rather
+than guessing that it is still live. A conversation you left with `keep running` is held
+rather than merely remembered: its tab is off the row, but it is still on the switcher and
+on Home with `working` or `needs you` against it, and taking it back puts its tab up with
+everything it wrote while it was out of sight.
+The marks change when something actually happens; there is no clock behind them and nothing
+on the strip animates.
+
+## Which tab is waiting on you
+
+**The `?` in front of a tab's name is that conversation asking you something** and waiting for your answer: an approval it needs, a sign-in, a proposal with no clock
+running on it, or an adaptive run that has stopped because it is out of fuel. Click the tab
+to go there and the question is on screen.
+
+**`◐` is the other mark and it is not asking you anything** — that conversation has a turn or task in progress. A proposal that is counting down wears this or
+nothing, because it will go ahead whether or not you look at it.
+
+A tab with neither mark is at rest or is one this window can no longer say anything about.
+For the same question asked about everything on the machine rather than about this window's
+tabs, the switcher's card (`ctrl+k`) and the home page both carry it.
+
 ## The box says which room you are typing into
 
 While a task room is open the draft box carries the room in front of its own `› `: the
@@ -88,10 +411,16 @@ empty or full.
 - In the main conversation there is **no segment at all** — not a dim one, not an empty
   one. There is nowhere else the words could be going.
 
+**And the words in it are that recipient's own.** The segment names who is listening, and
+what is under it is what you last typed to them: the conversation's unsent sentence while
+no room is open, and that task's while one is. Opening a room, leaving it with `esc` and
+going straight from one room to another never carry a word between them (see the task
+page and keys pages).
+
 The same task is marked twice more while you are in it: its row in the roster wears the
 same tint, and its chip on the task strip does too.
 
-The rule above the input is the only horizontal line this surface draws. There are no
+The input rule and header divider separate navigation, reading, and writing. There are no
 borders anywhere else. The draft box is inset one cell.
 
 If the frame is taller than your terminal, rows are lost from the **top**, never from
@@ -155,6 +484,20 @@ Three ways up, and all three go through the same machinery:
 - **The mouse wheel**, if the pointer is switched on for aforge (`ui.mouse`). With it
   off, the wheel does nothing here — aforge runs on the alternate screen, so your
   terminal's own scrollback holds nothing to scroll.
+
+## Reopening a conversation — only my question and the final answer
+
+Completed work starts folded under one `▸ worked` chip, leaving your question and
+the final answer standing. This also applies to long turns whose earlier steps
+load as you scroll up. Open the chip with `ctrl+e` or a click to see its outline,
+then open a caption to read its calls. Set `ui.work` to `open` to start with the
+work expanded instead.
+
+The internal `[carry on]` continuation is guidance to the model, not a message
+you sent. It is omitted when reopening saved conversations, including older
+records that stored it as a user message.
+
+## Scrolling a reopened conversation back to its first message
 
 **A conversation you came back to can be scrolled all the way to its first message.**
 Reopening one draws its last **40** blocks so the first frame is fast rather than
@@ -492,7 +835,7 @@ Twelve segments, right to left of the identity, joined by ` · ` in a fixed orde
 | 4 | cost | `$0.14` | the session's running spend. **It is a door**: press it and the **Spending** tab of `/settings` opens, and it brightens under the pointer to say so. It takes the warm ink once this conversation has spent four fifths of its own `per conversation` limit — a bound about to be reached is not a failure and does not wear the failure hue | never empty |
 | 5 | context | `12.4k/128k · 10% ▁▂▃▅` | tokens the conversation is carrying, the model's window, the percentage, then a 6-reading sparkline | empty when nobody has said what the window is, or tokens are 0 |
 | 6 | cache | `⟲ saved $0.02 · 89% cached` | the session's cache hit rate, and what that share was worth in cash | empty until there is a cached share; on an unpriced model the cash half goes, leaving `⟲ 89% cached` |
-| 7 | burn | `1.2k tok/s` | output tokens over the wall time of **this** turn | empty unless a turn is running and has run for at least 1 second |
+| 7 | burn | `1.2k tok/s avg` | output tokens over the wall time of **this** turn, including tool and model waiting time; the separate `via` provider rate measures generation | empty unless a turn is running and has run for at least 1 second |
 | 8 | eta | `compaction in ~3 turns` | forecast from average growth | empty when the conversation is not growing, when the answer is more than 5 turns out, or when compaction is already due |
 | 9 | yolo | `YOLO` | the `tools.approvalMode` row in your profile is `allow`, or the session was launched with `--yolo`, which forces that posture for the session without writing the row — over `--host` it is the far machine's row, carried once when the connection opens | empty in every other posture — absence is the safe state |
 | 10 | connection | `devbox · 3ms` | a rolling estimate of one empty round trip to the machine a `--host` conversation runs on; while the link is down this is replaced by `reconnecting to devbox — trying for up to 5 minutes` | empty on every local session and on a hosted one until the first measurement answers; never `0ms` |
@@ -637,7 +980,8 @@ words:
 | --- | --- | --- |
 | `idle` | nothing is running | dim |
 | `⠹ working · 1m 4s` | a turn is running; spinner plus a count-up | accent |
-| `waiting · your call` | a consent question or a task proposal is open | the question hue, bold |
+| `starting task` | a task proposal has a countdown and will start automatically | accent |
+| `waiting · your call` | an approval, standing or saved-program question requires an answer, or a task proposal has no countdown | the question hue, bold |
 | `stopping · detaching in 7s` | you pressed `esc` and the turn has not finished letting go yet; the count is what is left of the 10-second bound before aforge detaches | dim |
 | `interrupted` | the last turn was stopped by hand and is over | the bad hue |
 | `COPY` or `COPY · 12 lines` | copy mode | accent |
@@ -819,7 +1163,7 @@ Beyond the four tiers, these are the exact points where parts of the screen give
 | legend loses branch and hint slot; status keeps the conversation's name; no context sparkline | below width 70 |
 | full task rail, 30 columns off the conversation | width 120 |
 | slim task rail, 24 columns | width 100 |
-| no rail column at all — `ctrl+t` overlays the roster instead | below width 100 |
+| no rail column at all — `alt+t` overlays the roster instead | below width 100 |
 | no rail column at any width — you closed it with `ctrl+g` | your choice, remembered |
 | task strip | width 24 **and** height 6 |
 | a room's pinned header | width 12 and a non-zero breathing gap |
@@ -1012,7 +1356,7 @@ status line's `working` word and the elapsed clock are what to read for it.
 
 ## Markdown while a reply is still arriving
 
-The live tail of a streaming answer is plain wrapped text, not markdown.
+Within expanded work, the live tail of streaming prose is plain wrapped text, not markdown.
 
 Every **1500ms** the settled prefix — everything up to the last newline — is promoted to
 rendered markdown and remembered as promoted. Formatting catches up as the answer
@@ -1070,8 +1414,9 @@ Because that part was never the answer. It was aforge saying what it was about t
 
 A turn is usually prose, then tool calls, then more prose. **Any paragraph that had more
 work start under it in the same turn is narration** — "let me check the config first" —
-and the moment the next tool call opens, that paragraph visibly steps back: it moves into
-the same two-column gutter the tool rows use, and drops one shade below the body text.
+and the moment the next tool call opens, that paragraph becomes work. In the compact
+conversation it supplies a step description; inside the opened outline it uses the same
+two-column gutter as the tool rows and drops one shade below the body text.
 
 **The answer is the last thing the turn says, and it is the only flush-left, full-ink
 block in it.** So: scan down the left edge. Text that starts at the margin was said to
@@ -1433,6 +1778,145 @@ shows the same words the closed table showed.
 The header is painted secondary, the hairline tertiary and the body primary — the prose
 renderer's own ramp. The foot is aforge's own chrome and wears its dim.
 
+## The three live steps under my question — compact progress, opening the work
+
+While the main conversation works, recent step descriptions occupy a compact
+window below your question. Older steps are fainter; the newest step shimmers
+while its calls run. A soft highlight sweeps across the text every two seconds,
+reaching ordinary reading brightness; the letters stay still. Thinking, raw tool calls, arguments and call counts stay
+behind this view. The window changes when a new step arrives. Before the first step, a clickable `▸ Working · ctrl+e` door carries the shimmer.
+Between finished calls, the latest description stays readable and still, with a
+softly animated dot beside it. There is no extra Working row. After 10 seconds
+of a known response wait, a dim `awaiting response · 12s` suffix appears when it
+fits. A known connection loss says `waiting for connection` immediately when
+the suffix fits, instead of describing it as a slow model response. When the
+turn is still working after the response has begun, the same place says only
+`still working · 1m 3s`; that clock measures the turn, not the completed step
+whose description remains beside it. Detailed
+phase and retry information stays in the footer and expanded view.
+
+Click a step, or press `ctrl+e` with an empty message box, to open the full
+outline. Each caption then opens its own calls. The live caption keeps its
+existing open default. Click `▾ working · ctrl+e`, or press `ctrl+e` again, to
+return to the compact view. `ctrl+o` can still show all calls.
+
+The window budgets **3 wrapped rows**, admitting whole captions newest first.
+On a narrow screen, a caption that needs two rows leaves room for fewer steps.
+If the current caption alone needs more than three rows, it stays whole rather
+than losing words. Between calls, the latest caption also stays whole. Waiting text uses only spare
+space; when the dot cannot fit after the caption, it occupies the existing icon
+gutter. The description never moves to make room for a timer. Screen-reader and lower-colour terminals (including 256 colours) draw the
+descriptions without motion. Expanding or collapsing the work is immediate.
+
+Your messages, corrections, answers, approval questions and notices remain
+outside the compact work. A failed step keeps its ordinary outline and controls.
+A correction can separate two compact blocks, preserving where you said it.
+Running task pages use the compact treatment too; expanding it restores their
+phase outline and individual tool details.
+
+## A step is taking a while — elapsed time beside a running step
+
+After a tool step has run for 10 seconds, its compact caption shows a dim elapsed
+count such as `12s` or `1m 3s`. It measures time since that batch began, including
+when its caption is renamed. A new step starts its own clock. Completion removes
+the live timer. This counts up; the finish time is unknown.
+
+The time uses spare space after the caption's last line. It never moves the
+words or adds a row; on a narrow terminal with no spare room, it stays hidden.
+The icon stays still and only the step's words shimmer while its tools run.
+Between calls the separate waiting dot moves; its response clock starts with
+the request, not with the preceding tool. Task pages never borrow this clock
+from the main conversation.
+
+## The symbol beside each step — the little icons in the working block, what the mark in front of a step means
+
+Each compact caption carries **one small mark** on its first line,
+in a gutter two columns wide. The mark says what **kind** of work that step is —
+searching, editing, running a command — so you can tell at a glance what is
+happening before you have read which file it is happening to.
+
+| kind | normal icon | plain fallback | what it conveys |
+| --- | --- | --- | --- |
+| **search** | magnifying glass | `⌕` | looking for something |
+| **read** | text document | `▤` | opening or listing information |
+| **edit** | pencil | `✎` | changing content |
+| **create** | plus | `+` | writing content or generating media |
+| **run** | terminal | `$` | running a command |
+| **test** | flask | `◎` | checking work |
+| **browse** | globe | `↗` | visiting a page or service |
+| **transfer** | exchange arrows | `⇄` | moving files or state |
+| **communicate** | speech bubble | `»` | sending a message or speaking |
+| **coordinate** | branching paths | `⇉` | handing work to tasks or forks |
+| **plan** | list | `≡` | keeping track of the work |
+| **wait** | clock | `◷` | waiting for something outside the turn |
+| **work** | gear | `▪` | other work, including unfamiliar connected tools |
+
+## The step marks never move and never say whether a step passed — no tick, no cross, still icons
+
+**The marks never move.** The newest step's *words* shimmer while its calls run;
+its mark holds still. Between tool calls, only a separate dot beside the latest
+finished caption animates. On very narrow lines the dot uses the icon gutter
+instead. Before any caption exists, the Working door carries the shimmer.
+There is only one animated indication.
+
+**They never say how a step went.** There is no tick, no cross and no warning
+mark here. A step that failed is not folded into this block at all — it keeps its
+ordinary rows — so a mark here could only ever mean "nothing has gone wrong yet",
+which is not worth a column. `test` draws a flask (a target in plain mode), not a checkmark, because the
+mark names the *act* of checking and not its result.
+
+**The gutter is a fixed two columns.** Every step spends the same width whatever
+its kind, and a description that wraps onto a second line leaves those two
+columns blank, so all three sentences start in one column and the block does not
+shift as steps arrive.
+
+**The mark fades with its own line.** The oldest step is a faint mark and faint
+words; the newest is at ordinary reading strength. The gutter is never brighter
+than the sentence it belongs to.
+
+## Proper icons, missing icons, empty boxes, Nerd Font and the step icons setting
+
+The normal view uses the Font Awesome icons included in Nerd Fonts. Under
+`/settings` → Display → **step icons** (`ui.icons`), `auto` chooses those icons
+unless terminal detection calls for plain symbols. Known console and locale
+limitations fall back; colour depth alone does not remove icons.
+
+A terminal cannot report which font it uses. If you see empty boxes, select
+`plain`, or select a Nerd Font in your terminal. Choose `rich` to use a patched
+font on a conservatively detected terminal. The setting takes effect immediately.
+No font is installed or changed automatically. Screen-reader and ASCII modes
+keep simple one-character marks with the same fixed gutter.
+
+## Where the marks come from — can the model choose the wrong icon
+
+The kind is named by the same cheap one-line narrator that writes the step
+description. It answers in the form `run | starting the local server`: one word
+from the list above, then the sentence. **It costs no extra call** — the word
+rides the sentence that was already being written, on the same budget of at most
+three narrations per turn.
+
+**A mark is drawn before any narration arrives**, and it is derived from the
+tools the step actually called — `grep` is a search, `edit` is an edit, `bash` is
+a run. When the narrator's answer lands it replaces the description and the mark
+together, in the same repaint, so the two are never out of step. If the narrator
+says nothing, says a word that is not on the list, or the answer arrives after
+the step has finished, the tool-derived mark stands and nothing is retried.
+
+A tool that came from a **connected account** has a name aforge has never seen,
+so its steps draw the generic gear (`▪` in plain mode) rather than a guess.
+
+**A reopened conversation retains saved descriptions and categories.** Older
+conversations without that information derive their icons from the saved tool names. Scrolling a finished turn back into view never changes a
+mark.
+
+## The live work collapses when the answer finishes
+
+When the turn finishes, its work collapses even if you opened it while it ran.
+Your question and the answer remain visible. Open the finished `▸ worked` chip
+to inspect the steps again. Reopening the conversation also starts with completed
+work folded, including long turns whose older history loads as you scroll.
+`ui.work = open` remains the explicit preference for expanded work.
+
 ## Tool cards: a running call against a finished one
 
 A turn's tool calls are one object on screen: a rail down the left, one row per call,
@@ -1470,7 +1954,7 @@ ever — a column of ticks is a column you must read to learn nothing. In the
 screen-reader tier the marks are `o` queued, `*` running, `x` failed, `.` idle; `?` is
 already ASCII.
 
-Calls in one step fold under a short **caption** — one sentence of about 5 to
+Inside the opened work, calls in one step fold under a short **caption** — one sentence of about 5 to
 10 words saying what that step is doing and where, with the honest call count
 at the right. On a narrow window the caption wraps onto the next line; it is
 never cut with an ellipsis mid-sentence. Press `ctrl+o` on the live caption or
@@ -2173,7 +2657,7 @@ you` — and then up to three more dim lines, each of which is a button as well 
 
 ```
 ctrl+. earlier
-w · click seam — widen
+alt+w widen · click seam
 ❯ ctrl+g hide
 ```
 
@@ -2182,8 +2666,10 @@ when the full-screen task page (`/history`) has something this column cannot giv
 words on it say which: `ctrl+. earlier` when the project's record holds work this
 session never ran, and `ctrl+. view more` when the only thing held back is a family the
 column has folded. There is never more than one such line.
-`w · click seam — widen` appears only while a title is actually being cut by its own
-indent. The `❯` door is always there, and its `❯` is drawn in ink rather than dim
+`alt+w widen · click seam` appears only while a title is actually being cut by its own
+indent, **and only from 120 columns up** — that is the only width with a wider tier to
+offer, so on a 100-to-119 column frame there is no line and the column's two leftmost
+cells are part of the row rather than a handle. The `❯` door is always there, and its `❯` is drawn in ink rather than dim
 because it is the control the pointer presses. With no foreground command to keep it
 reads `❯ ctrl+g hide`; while a command owns that chord it reads only `❯ hide`, because
 a hint may name only a key that works on that frame.
@@ -2194,11 +2680,13 @@ A finished task's row is one line, and the line it used to carry underneath is *
 not deleted**. It is the same fold a family of tasks uses, on the same keys and the same
 cell:
 
-- **From the keyboard:** `ctrl+t` hands the column the keyboard, `↑` and `↓` walk to the
+- **From the keyboard:** `alt+t` hands the column the keyboard, `↑` and `↓` walk to the
   row, `→` opens it, `←` folds it away again. `esc` gives the keyboard back.
 - **With the pointer:** hover the row and its state glyph turns into `▸`; click that one
   cell to open it, and `▾` in the same cell to close it. Clicking anywhere else on the
-  row opens that task's room, as it always did.
+  row opens that task's room, as it always did — and so does that same cell on any frame
+  where the triangle is **not** drawn in it, because then it is holding the row's state
+  and a state is not a control.
 - The fold is remembered per row, exactly as a family's fold is, and it lasts as long as
   the conversation does.
 
@@ -2217,7 +2705,7 @@ turned over the conversation still scrolls the conversation. Three rows a notch,
 as everywhere else on this screen. Work that is running is pinned to the top and does not
 scroll away, and the `tasks` label stays with it.
 
-From the keyboard it is `ctrl+t` to take the column, then `↑` `↓` to walk it — the window
+From the keyboard it is `alt+t` to take the column, then `↑` `↓` to walk it — the window
 follows the cursor — `→` `←` to open and fold, `enter` to walk into a task's room, `alt+w` to
 widen the column, and `esc` to give the keyboard back. The column's hint line says the
 same: `↑↓ move · →← tree · enter open · alt+w wide · esc`, and it gains `ctrl+v think harder`
@@ -2246,7 +2734,7 @@ a task, or a standing order — *The empty screen* page says why.) Once it stand
 
 ```
 tasks
-⠙ ◆ Fix the nil-map                                                     #7
+⠙ Fix the nil-map                                                       #7
 + /task
 
 standing
@@ -2586,46 +3074,39 @@ context, and what it costs*.
 
 ## Why the reply is slow to start, why it says "waiting for" a model, and whether it is stuck
 
-Between you pressing enter and the model's first word there is a gap, and it is sometimes
-long — twenty seconds, a minute. A pulsing ellipsis claims exactly as much at second one
-as at second fifty, so past a few seconds it starts saying what it is waiting on.
+The ellipsis and model-name timings below describe the expanded transcript.
+Before any caption exists, the compact Working door can carry the same details.
+After a caption exists, compact progress keeps that description still, animates
+only a separate dot, and adds `awaiting response` after 10 seconds when space
+permits. A known outage says `waiting for connection` immediately.
 
-**This line is the second-best answer.** Where the connection itself is reporting — which
-is most of the time on a router — you get the phase instead: `first word · 3.1s`,
-`thinking · 12s · friendli 38 t/s`. See "what is it doing" above. The `waiting for` line
-below is what is drawn when nothing on the wire has said anything at all.
-
-For the first **4 seconds** the line is the bare ellipsis. A fast reply never shows a
-clock. Past 4 seconds it grows a dim tail naming the model and counting up:
+A reported connection phase takes priority over the generic wait: for example,
+`first word · 3.1s` or `thinking · 12s · friendli 38 t/s`. Without that information,
+the expanded view shows a bare ellipsis for the first **4 seconds**, then a dim
+model name and elapsed time:
 
 ```
   ··· waiting for kimi-k3 · 12s
 ```
 
-Past **30 seconds** it says the plain fact outright:
+After **30 seconds**, it adds `nothing has come back yet`:
 
 ```
   ··· waiting for kimi-k3 · 47s · nothing has come back yet
 ```
 
-The model is its **basename**, the way the status deck's chip spells it — `kimi-k3`, not
-`moonshot/kimi-k3`. When there is no model name to show, the line reads `waiting · 12s`.
+The name is the model's basename (`kimi-k3`). Without a name, it says
+`waiting · 12s`. This generic label means a request is outstanding and no stream
+content has arrived; it does not diagnose a slow network or claim the model is
+thinking. A known phase is shown separately because it has better information.
 
-**What it claims, and what it does not.** It claims only that a request went out and the
-stream has said nothing since. It never says "the network is slow" or "the model is
-thinking" — this screen cannot see the wire and does not pretend to. So
-`waiting for kimi-k3 · 47s` is not a report that anything is broken. It is aforge saying
-it is still there and still waiting, which is the one thing a bare ellipsis could not tell
-you apart from a hung program.
+An advancing clock confirms the view is repainting. A still indicator alone
+does not prove a freeze: reduced-motion views use static marks, and narrow rows
+can omit the clock. `esc` interrupts the turn.
 
-**Is it stuck? Is it frozen?** A clock that is counting up means the program is alive and
-painting; a clock that has stopped means it is not. `esc` interrupts the turn at any point.
-
-**It never runs under a tool call.** A tool that is executing has its own spinner and its
-own count-up, and the ellipsis stands down for it entirely. This clock is only for the
-window between a request going out and the stream first speaking, so after a three-minute
-`go test` the request that follows starts the clock at zero rather than inheriting the
-call's runtime.
+The waiting clock stops when the stream speaks or tools run. A tool uses its own
+activity and elapsed time. The request after a three-minute `go test` starts a
+new response clock rather than inheriting those three minutes.
 
 ## Does it ever ask a second time in parallel, and does that spend twice
 
@@ -2790,6 +3271,17 @@ words, and it is one of:
 | `stopped the running command` | your words plainly told a long-running command to stop, and it was stopped |
 | `kept bash running as job 3`, or `kept bash running as jobs 3, 4` | a bash call running for more than 3 seconds was moved to the background so your correction could land now |
 | `waiting for the running step` | a short tool is being allowed to finish first |
+
+A bash command that was still younger than 3 seconds when you steered gets
+`waiting for the running step`, and it is a wait of at most those few seconds: if the
+command is still running when they are up it is moved to the background exactly as an
+older one is, and your words go to the model then. Those seconds bound the handoff and
+not the reply — the step may hold other tools, and the model still has to answer. The
+clause you were shown is not rewritten, because it was true when it was sent, but the
+transcript's own record of the correction says which of the two actually happened.
+
+`stopped the running command` can appear at any age. A plain stop is never held for the
+three seconds; it reaches the command as soon as you send it.
 | `steering` | the plain working word, used when aforge sent no account at all |
 
 On a narrow frame the clause goes on a row of its own under the sentence rather than
@@ -2913,7 +3405,7 @@ wheel walks the list three rows a turn.
 
 **A few words inside a sentence brighten instead.** A task reference in a reply goes from
 accent to ink and keeps its underline; the `+N` at the end of the task strip, a cut
-table's foot, the jump-to-latest chip, the `✕` on a room's header and the model's name at
+table's foot, the jump-to-latest chip, the `Stop` on a room's facts row and the model's name at
 the foot of the frame all go one step up in ink. A highlighted rectangle mid-paragraph
 would be the one boxed thing on a surface with no boxes.
 
@@ -2984,10 +3476,12 @@ about the same conversation.
 
 ## The dim thought row above a reply — and models that think between their words
 
-Some models put their working on the wire. While it streams you see a dim three-line
-window under a `thinking · N tok` header; the moment the first word of the reply lands it
-collapses to one row — `thought for 6s · 148 tok · ctrl+e` — and `ctrl+e` or a click
-reopens it. The count of tokens on the row is how much working the model wrote, and the
+Some models put their working on the wire. The compact conversation hides this behind
+the work disclosure. Open the work with `ctrl+e` to inspect it, then click the thought
+block to expand or collapse that block. Inside the opened work, or on a task page,
+streaming thinking uses a dim three-line window under a `thinking · N tok` header; the moment the first word of the reply lands it
+collapses to one row — `thought for 6s · 148 tok · ctrl+e`. Clicking the row
+reopens it; `ctrl+e` prioritizes the whole work disclosure when one is available. The count of tokens on the row is how much working the model wrote, and the
 seconds are how long it spent.
 
 Some models keep thinking in between the words of their own answer, a few tokens at a
@@ -3030,3 +3524,48 @@ Two limits worth knowing. The fence is only read as one when it **opens the repl
 `<think>` written in the middle of a paragraph is a model talking about the tag, and your
 answer keeps its own words. And a fence that is opened and never closed leaves a reply with
 no words outside it, which is the case above: the working is the reply.
+
+
+## Task header status, timing, model and cost after breadcrumbs
+
+The task breadcrumb keeps the current task bright and its ancestors quieter. When
+space allows, it reserves a padded Back target by folding middle ancestors first.
+The next row groups the outcome, elapsed time and activity on the left, with model,
+effort and cost on the right. Stop stays at the far right while it is available.
+All known facts fit on this one row on roomy frames; narrow frames use the existing
+priority order and shorter labels. Unknown figures are absent.
+
+When the task rail folds into compact chips, that row shares the task page's
+reading margin. The chips retain their own inner padding; phone windows keep
+the full-row task door.
+
+## Stopped design task has a saved answer but an empty conversation
+
+A finished or stopped design task shows its saved report when there are no
+conversation messages to display. An older progress notice cannot hide that
+answer. While work is still running, the task continues to show its current
+progress and original prompt as they become available.
+
+## Why progress stays compact until the answer is confirmed
+
+While a response streams, its prose stays in the compact work area as a short
+step heading. The same text channel can contain a lead-in to a tool call or the
+answer itself, so the screen does not guess from the wording. Click the work or
+press `ctrl+e` to inspect the complete words while they arrive.
+
+When the response finishes with an answer and no tool calls, the full reply opens
+as formatted text. Questions open at that same boundary, before later completion
+checks finish. This means full answers no longer appear at full size token by
+token in the compact view. A response that calls a tool stays a step. If work
+continues later, earlier prose returns to the work hierarchy.
+
+The same behavior applies inside task rooms. Saved answers remain readable when
+you return, and completion still collapses the intermediate work. Explicitly
+expanded work and `ui.work = open` keep the detailed reading view available.
+
+A message queued beneath a streaming reply, or a notice displayed there, stays
+below the complete answer when its response is confirmed. Stopping the turn keeps
+its partial response dim even if a confirmation was already in flight.
+
+If private work falls below a queued message, its finished work stays behind a
+separate closed `worked` chip. Expanding that chip still reveals its details.

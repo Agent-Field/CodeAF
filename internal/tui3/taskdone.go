@@ -68,13 +68,28 @@ type taskDone struct {
 	// this window actually watched. They are kept because "how long" and "when"
 	// are different questions and the second one is what a person matches against
 	// their own memory of the afternoon.
-	span              time.Duration
-	started, landed   time.Time
-	outcome, report   string
-	changed           []string
-	added, removed    int
-	branch, merge     string
-	brief, acceptance string
+	span            time.Duration
+	started, landed time.Time
+	outcome, report string
+	// result is WHAT THE WORK PRODUCED and report above is the LANDING'S OWN
+	// STORY about it, and the whole hierarchy inside an open card rests on the
+	// two being different things ([taskDone.answerAndAccount]).
+	//
+	// The engine keeps them apart already (internal/session's task_result.go) and
+	// this card had been drawing only the report — so an accepted landing over a
+	// refused merge put the merge refusal, the sentence saying somebody took it
+	// as done, and the answer itself into one grey block in the order they were
+	// composed, with the thing the person delegated the work FOR at the bottom.
+	//
+	// resultWhole is where the whole of a cut answer can be read, resultCut says
+	// this is only the beginning of it, and resultHeld is the landing that turned
+	// the work back: no body at all, and a pointer to where it is.
+	result, resultWhole   string
+	resultCut, resultHeld bool
+	changed               []string
+	added, removed        int
+	branch, merge         string
+	brief, acceptance     string
 	// rung is which copy of the ground the work happened in and mode what was
 	// promised about it, frozen off the node at landing with everything else on
 	// this card (session's TaskNotice.Rung). They are here so the row naming the
@@ -118,6 +133,8 @@ type taskDone struct {
 	// at draw time instead would mean a policy flipped mid-afternoon retroactively
 	// took the choices off a card that was genuinely asking.
 	asks bool
+	// reviewByModel records an automatic policy or successful explicit handoff.
+	reviewByModel bool
 	// trouble is the one dim line a card carries when an answer could NOT be
 	// spent and the question is therefore still standing — no checker to look
 	// again with, a working copy that has gone. It is separate from [decided]
@@ -129,6 +146,12 @@ type taskDone struct {
 	// the proposal's own choices are (task.go's spans): a hit-test that measured
 	// the row itself would be measuring a row this frame may not have drawn.
 	chips []settleChip
+	// gut is how many columns of the READING GUTTER are already in the chips
+	// above (gutter.go), for the reason the proposal's own spans carry one
+	// (task.go's [taskCard]). This card is the one that needs it most: it is
+	// drawn from three places at three indents — the plain card, a rollup, and a
+	// room's foot — and only the last of them nils the chips first.
+	gut int
 }
 
 // The card's words.
@@ -180,12 +203,32 @@ const (
 	doneBriefLabel  = "brief · "
 	doneSpanLabel   = "ran · "
 	doneModelLabel  = "model · "
-	doneCostLabel   = "cost · "
+	// THE PRICE WEARS NO LABEL AND IT USED TO WEAR `cost · `. Whose hands, what
+	// they came to and how long they took are one row now rather than three
+	// ([app.doneFactsRow]), and on one row `$0.75` is the only thing on this
+	// surface that can be a dollar figure — a noun in front of it is a cell spent
+	// saying what the glyph already said, on the row that has to stay under one
+	// line at sixty columns.
+	//
+	// doneMoreAt and doneMoreGone are the pointer under an answer this card was
+	// handed only the beginning of, and doneHeldWord is the landing that turned
+	// the work back — the answer exists, it was not accepted, and where it can be
+	// read is the useful half. All three are internal/session's own facts
+	// (task_result.go's Result, ResultCut, ResultWhole, ResultHeld) said in this
+	// surface's words.
+	doneMoreAt   = "the whole of it is at "
+	doneMoreGone = "the rest of it was not kept"
+	doneHeldWord = "what it produced was not taken as done"
 )
 
-// doneWindow caps the two long fields inside an open card — the report and the
-// brief. Twenty rows is about a screen; past it a person is reading a document
-// in a transcript, and the room (room.go) is where a node's whole life is.
+// doneWindow caps EVERY long field inside an open card — the answer, the tail of
+// the landing's own account, what it was done when, and the brief. Twenty rows
+// is about a screen; past it a person is reading a document in a transcript, and
+// the room (room.go) is where a node's whole life is.
+//
+// The cap is per FIELD and not per card, which is what keeps a landing whose
+// account ran long from pushing the answer off the bottom: each block is bounded
+// where it is drawn, and the marker says which one was cut.
 const doneWindow = 20
 
 // ── landing ─────────────────────────────────────────────────────────────────
@@ -202,31 +245,36 @@ func (a *app) landedCard(node *taskNode) {
 		landed = a.now()
 	}
 	card := &taskDone{
-		id:         node.id,
-		ident:      node.ident,
-		title:      title,
-		subtitle:   taskSubtitleOf(title, node.assignment),
-		failed:     node.state == session.TaskFailed,
-		ending:     node.ending,
-		unverified: node.state == session.TaskUnverified,
-		span:       node.elapsed,
-		started:    node.spawnedAt(),
-		landed:     landed,
-		outcome:    strings.TrimSpace(firstLine(node.report)),
-		report:     strings.TrimSpace(node.report),
-		changed:    node.changed,
-		branch:     node.branch,
-		merge:      node.merge,
-		rung:       node.rung,
-		mode:       node.mode,
-		brief:      node.brief,
-		acceptance: node.acceptance,
-		model:      node.model,
-		cost:       node.spent(),
+		id:          node.id,
+		ident:       node.ident,
+		title:       title,
+		subtitle:    taskSubtitleOf(title, node.assignment),
+		failed:      node.state == session.TaskFailed,
+		ending:      node.ending,
+		unverified:  node.state == session.TaskUnverified,
+		span:        node.elapsed,
+		started:     node.spawnedAt(),
+		landed:      landed,
+		outcome:     strings.TrimSpace(firstLine(node.report)),
+		report:      strings.TrimSpace(node.report),
+		result:      strings.TrimSpace(node.produced),
+		resultWhole: strings.TrimSpace(node.producedWhole),
+		resultCut:   node.producedCut,
+		resultHeld:  node.producedHeld,
+		changed:     node.changed,
+		branch:      node.branch,
+		merge:       node.merge,
+		rung:        node.rung,
+		mode:        node.mode,
+		brief:       node.brief,
+		acceptance:  node.acceptance,
+		model:       node.model,
+		cost:        node.spent(),
 	}
 	// WHO IS BEING ASKED IS SETTLED HERE, ONCE, from the row the engine wrote this
 	// node's landing note under (tasksettle.go's [app.settlePolicyAsks]).
 	card.asks = card.unverified && a.settlePolicyAsks()
+	card.reviewByModel = card.unverified && !card.asks
 	if card.span == 0 && !node.began.IsZero() {
 		card.span = a.now().Sub(node.began)
 	}
@@ -362,6 +410,8 @@ func (a *app) doneHead(card *taskDone, width int, sel bool) string {
 		// THE RAIL'S OWN THIRD MARK (task.go's [glyphUnverified]): the question
 		// this card is, in the hue that says it is not a failure.
 		mark = a.pal.warn(glyphUnverified)
+	case card.deliveryProblem():
+		mark = a.pal.warn(glyphHalted)
 	}
 	lead := mark + " " + a.taskMarkSel(card.ident, sel) + " "
 	tail := a.doneTail(card)
@@ -398,8 +448,12 @@ func (a *app) doneTail(card *taskDone) string {
 		verb = taskRecordStoppedWord
 	case card.failed:
 		verb = doneFailWord
+	case card.unverified && card.reviewByModel:
+		verb = taskReviewPendingWord
 	case card.unverified:
 		verb = taskUnverifiedWord
+	case card.deliveryProblem():
+		verb = doneDeliveryWord
 	}
 	tail := " · " + verb
 	// ONE SEPARATOR MEANS ONE THING ON THIS ROW. The span used to be joined to
@@ -415,6 +469,10 @@ func (a *app) doneTail(card *taskDone) string {
 	}
 	if files := doneFilesWord(len(card.changed), card.added, card.removed); files != "" {
 		tail += " · " + files
+	}
+	// The expanded body names the branch once, beside its delivery details.
+	if card.open {
+		return tail
 	}
 	switch card.merge {
 	case mergeWordKept:
@@ -481,7 +539,17 @@ func doneFilesWord(files, added, removed int) string {
 // failure case rather than rewritten (task.go's landed word did the same). It
 // falls back to the subtitle for a node that landed with nothing to say, which
 // is better than an empty pair of quotes claiming it said nothing.
+//
+// AN OPEN CARD DRAWS NO PREVIEW AT ALL. The quote is the first sentence of what
+// is about to be printed one row lower in full — on a card somebody has just
+// expanded it is the same words twice, and the second copy is the one wearing
+// quotation marks it does not need. The start stamp goes with it and comes back
+// on the facts row ([app.doneFactsRow]), so nothing is lost and the expansion
+// opens on the thing the card was opened for.
 func (a *app) doneUnder(card *taskDone, width int) string {
+	if card.open && card.saysOutcome() {
+		return ""
+	}
 	tail := ""
 	if !card.started.IsZero() {
 		tail += " · " + doneStartWord + card.started.Format("15:04")
@@ -490,6 +558,11 @@ func (a *app) doneUnder(card *taskDone, width int) string {
 		tail += " · " + doneOutputKey
 	}
 	said := firstNonEmpty(card.outcome, card.subtitle)
+	// The synthesized fallback follows the handoff too. Keep actual worker
+	// reports verbatim: they describe what was said when the task landed.
+	if card.reviewByModel && strings.TrimSpace(card.report) == "" && card.outcome == taskUnverifiedGloss {
+		said = taskReviewPendingWord
+	}
 	if said == "" && tail == "" {
 		return ""
 	}
@@ -530,14 +603,112 @@ func (a *app) doneGroundLabel(card *taskDone) string {
 // said everything it has to say, and offering a key that opens nothing is worse
 // than offering none.
 func (a *app) doneHasDetail(card *taskDone) bool {
-	return card.report != "" || len(card.changed) > 0 || card.branch != "" ||
+	return card.report != "" || card.result != "" || card.resultHeld ||
+		len(card.changed) > 0 || card.branch != "" ||
 		card.brief != "" || card.acceptance != "" || card.model != "" ||
 		card.cost > 0
 }
 
+// ── WHAT IT PRODUCED, AND WHAT THE LANDING SAID ABOUT IT ────────────────────
+//
+// THE DEFECT, FROM A REAL CARD. A ten-chapter story was written, its branch
+// would not merge, somebody took it as done anyway, and the expansion drew ONE
+// DIM WALL: the merge refusal, git's own error under it, the sentence recording
+// the decision, the words "finished, but needs your look" from before that
+// decision, and then the answer itself — still in its markdown source, `**` and
+// all — in the same grey as the file count and the price. Five different kinds
+// of thing, one hue, in composition order, with the work the person delegated at
+// the bottom.
+//
+// It is one wall because the card read ONE FIELD. The report is the landing's
+// own story and it is REWRITTEN by everything that happens to a node afterwards
+// — a late verdict, an accept, a merge that would not go all prepend their
+// sentence to it — while what the work produced never moves. internal/session
+// has kept the two apart since task_result.go, on exactly that reasoning, and
+// this card had never read the second one.
+//
+// So: the account leads, in the hue that says whether the work got home; the
+// answer follows in the ink a reply is read in, through the surface's one
+// markdown door; the facts sit under it on one row.
+
+// answerAndAccount splits a landed card in two: what the work PRODUCED, and the
+// landing's own STORY about it.
+//
+// The engine hands both over when they are different things. When it hands over
+// no result the report is all there is, and which of the two roles it plays
+// depends on one question — did the work get home:
+//
+//   - It got home: the report IS the answer, whole, and there is no separate
+//     account to draw. This is every ordinary two-line landing, and it is
+//     byte-for-byte what this card drew before the split existed.
+//   - It did not: the report LEADS with the sentence saying so (the engine
+//     composes it that way, and [taskDone.outcome] is already that first line),
+//     so that sentence is the account and the rest of the report is the answer.
+//
+// Nothing here reads the wording of a report. The question asked is the card's
+// own settled state, which is the same rule internal/session's
+// carriedResultLocked holds itself to and for the same reason: a report can be
+// rewritten hours after the fact, and a state cannot be rewritten quietly.
+func (card *taskDone) answerAndAccount() (answer, account string) {
+	if card.result != "" {
+		return card.result, session.TaskReportAccount(card.report, card.result)
+	}
+	// AND A HELD ANSWER IS NOT AN ANSWER THIS CARD HAS. The check did not accept
+	// the work, so the engine named the result rather than handing it over — every
+	// line of the report is the landing's own, and treating its tail as the answer
+	// would promote a sentence about a branch into the body ink the work's own
+	// words are read in. [doneMoreLine] says where the answer is instead.
+	if card.resultHeld {
+		return "", card.report
+	}
+	if card.undelivered() {
+		return strings.TrimSpace(afterFirstLine(card.report)), card.outcome
+	}
+	return card.report, ""
+}
+
+// saysOutcome reports whether an open card states the landing in its own rows,
+// which is what lets the collapsed preview stand down ([app.doneUnder]).
+func (card *taskDone) saysOutcome() bool {
+	answer, account := card.answerAndAccount()
+	return strings.TrimSpace(answer) != "" || strings.TrimSpace(account) != ""
+}
+
+// undelivered says THE WORK IS NOT IN THE PERSON'S OWN TREE, and it is the one
+// question the hierarchy turns on.
+//
+// A DELIVERY FAILURE IS NEVER FILED UNDER "done". A node can land done — merged
+// by a person's accept, settled by a late verdict — with its branch still
+// sitting unmerged over a conflict, and the expansion's job is to say so at the
+// top, in the warn hue, once. It is asked of the merge word through the same
+// three cases [app.doneTail] draws, plus the two settled states that keep a
+// branch by definition, so a state this build has never heard of is not silently
+// treated as delivered.
+func (card *taskDone) undelivered() bool {
+	switch card.merge {
+	case mergeWordKept, mergeWordConflicted, mergeWordAborted:
+		return true
+	}
+	return card.failed || card.unverified
+}
+
+// afterFirstLine is everything a block says after its first line, and "" when it
+// says nothing else. It is [firstLine]'s other half.
+func afterFirstLine(text string) string {
+	if i := strings.IndexByte(text, '\n'); i >= 0 {
+		return text[i+1:]
+	}
+	return ""
+}
+
 // doneDetail is the full context, and it is the labelled block the proposal's
-// own expansion is (task.go): the facts first, because they are what a person
-// opened the card to check, then the two long fields.
+// own expansion is (task.go).
+//
+// THE ORDER IS THE ORDER SOMEBODY READS IN, and it changed with this wave. It
+// used to be the facts, then the report, then the brief — which put the thing
+// the work was delegated for underneath the price. It is now: what happened to
+// the delivery, what the work produced, and only then the facts a person opens
+// a card to CHECK rather than to read.
 //
 // THE FACTS IT DOES NOT HAVE ARE ABSENT RATHER THAN EMPTY. Which batch a node
 // belonged to is still not on the wire, so no row claims it. The model and the
@@ -564,6 +735,9 @@ func (a *app) doneDetail(card *taskDone, width int) []string {
 			out = append(out, a.pal.dim("  "+line))
 		}
 	}
+	answer, account := card.answerAndAccount()
+	out = append(out, a.doneAccountRows(card, account, room)...)
+	out = append(out, a.doneAnswerRows(card, answer, room)...)
 	if len(card.changed) > 0 {
 		say(wrap(doneChangedLabel+strings.Join(card.changed, " · "), room)...)
 	}
@@ -576,23 +750,165 @@ func (a *app) doneDetail(card *taskDone, width int) []string {
 		}
 		say(fit(a.doneGroundLabel(card)+branch, room))
 	}
-	if card.model != "" {
-		say(fit(doneModelLabel+card.model, room))
-	}
-	if card.cost > 0 {
-		say(fit(doneCostLabel+dollars(card.cost), room))
-	}
-	if !card.started.IsZero() && !card.landed.IsZero() {
-		say(fit(doneSpanLabel+card.started.Format("15:04")+" → "+card.landed.Format("15:04"), room))
-	}
+	out = append(out, a.doneFactsRow(card, room)...)
 	if card.acceptance != "" {
 		say(capField(wrap(doneAcceptLabel+card.acceptance, room))...)
 	}
-	if card.report != "" {
-		say(capField(wrap(card.report, room))...)
-	}
 	if card.brief != "" {
 		say(capField(wrap(doneBriefLabel+card.brief, room))...)
+	}
+	return out
+}
+
+// doneAccountRows is THE LANDING'S OWN SENTENCE, drawn once, at the top.
+//
+// Its first line is the headline and takes the hue: warn behind a `!` when the
+// work is not in the person's tree, dim and unmarked when it is. Everything the
+// account says after that line — git's own words about a refusal, what was left
+// behind, whose decision moved the node — follows underneath in the quiet hue,
+// indented under the mark, capped at [doneWindow] like every long field here.
+//
+// THE DIAGNOSTICS ARE NOT DROPPED, they are RANKED. What a person needs first is
+// the sentence saying where their work is; what they need next, and only
+// sometimes, is the machine's account of why. Both are on the card and neither
+// is repeated: the head says the state, this says the reason, and the answer
+// below says what was made.
+func (a *app) doneAccountRows(card *taskDone, account string, room int) []string {
+	if account = strings.TrimSpace(account); account == "" {
+		return nil
+	}
+	paint, mark := a.pal.dim, ""
+	if card.failed || card.unverified || card.deliveryProblem() {
+		paint, mark = a.pal.warn, glyphHalted+" "
+	}
+	pad := strings.Repeat(" ", ansi.StringWidth(mark))
+	var out []string
+	for i, line := range wrap(firstLine(account), room-ansi.StringWidth(mark)) {
+		lead := mark
+		if i > 0 {
+			lead = pad
+		}
+		out = append(out, paint("  "+lead+line))
+	}
+	if rest := strings.TrimSpace(afterFirstLine(account)); rest != "" {
+		for _, line := range capField(wrap(rest, room-ansi.StringWidth(pad))) {
+			out = append(out, a.pal.dim("  "+pad+line))
+		}
+	}
+	out = capFieldMark(out, a.pal.dim(glyphMore))
+	for i := range out {
+		out[i] = fit(out[i], room+2)
+	}
+	return out
+}
+
+// doneAnswerRows is WHAT THE WORK PRODUCED, and it is the one block on this card
+// that is not furniture.
+//
+// It goes through the surface's own markdown door ([app.renderMarkdown]), which
+// is the same renderer a reply is read in — so a task that answered with
+// headings, a list or a fenced block is read as that rather than as its source.
+// The card used to wrap it as plain text inside [palette.dim], and a person
+// delegating a piece of writing got their writing back as grey `**answer**`.
+//
+// PROSE PAINTS ITS OWN ROWS, BODY INK INCLUDED, so nothing here may wrap them in
+// a second foreground (markdown.go states the law; homeexchange.go's settled
+// reply obeys it in the same words). The two-space indent is the only thing
+// added, and the cap marker is dimmed rather than left in whatever hue the last
+// row ended on.
+func (a *app) doneAnswerRows(card *taskDone, answer string, room int) []string {
+	var out []string
+	if answer = strings.TrimSpace(answer); answer != "" {
+		for _, line := range capFieldMark(trimBlanks(a.renderMarkdown(answer, room)), a.pal.dim(glyphMore)) {
+			out = append(out, "  "+fit(line, room))
+		}
+	}
+	// THE POINTER WRAPS RATHER THAN TRUNCATES, which is the one place on this card
+	// that rule is worth stating: it ends in a PATH, and a path cut short is a
+	// pointer to nothing. Everything else on the block is a label and a short
+	// value, where a cut costs a word.
+	for _, line := range wrap(doneMoreLine(card), room) {
+		if line == "" {
+			continue
+		}
+		out = append(out, a.pal.dim("  "+line))
+	}
+	return out
+}
+
+// doneMoreLine says the answer above is not all of it, and where the rest is.
+//
+// IT IS DRAWN OR THE CARD IS LYING. A result arrives cut when the work said more
+// than one reader is handed (session's taskResultCarry), and a block of text
+// that stops mid-sentence with nothing under it is a card claiming the work
+// stopped there. The held case is the third shape: the check did not accept the
+// work, so nothing was handed over at all — the answer exists, it was not taken
+// as done, and where it can be read is the useful half of that.
+func doneMoreLine(card *taskDone) string {
+	where := doneMoreGone
+	if card.resultWhole != "" {
+		where = doneMoreAt + card.resultWhole
+	}
+	switch {
+	case card.resultHeld:
+		if card.resultWhole == "" {
+			return doneHeldWord
+		}
+		return doneHeldWord + " · " + where
+	case card.resultCut:
+		return glyphMore + " " + where
+	}
+	return ""
+}
+
+// doneFactsRow is whose hands, what they came to, and when — ONE ROW.
+//
+// It was three, stacked under each other in the same grey as everything else on
+// the card, and three rows is what a table looks like when it has three facts
+// that are each four words long. They are secondary by construction: nobody
+// opens a landed card to read the price, they open it to read the work and then
+// check the price.
+//
+// IT WRAPS BY FACT AND NEVER INSIDE ONE. At sixty columns a long model name and
+// a span do not fit on one row together, and a `ran · 14:02 → 14:14` broken
+// across two lines is a fact a person has to reassemble. So the row packs whole
+// facts and starts a new one when the next will not fit, which keeps every fact
+// readable at every width this surface draws at.
+//
+// THE START STAMP FALLS BACK HERE. The collapsed card carries `started 14:02`
+// and an open one does not draw that line at all ([app.doneUnder]), so a card
+// that knows when the work began and not when it ended still says so.
+func (a *app) doneFactsRow(card *taskDone, room int) []string {
+	var facts []string
+	if card.model != "" {
+		facts = append(facts, doneModelLabel+card.model)
+	}
+	// ZERO IS NOBODY PUBLISHED A PRICE and never $0.00 — the emptiness law, kept
+	// here exactly as it was kept when this was a row of its own.
+	if card.cost > 0 {
+		facts = append(facts, dollars(card.cost))
+	}
+	switch {
+	case !card.started.IsZero() && !card.landed.IsZero():
+		facts = append(facts, doneSpanLabel+card.started.Format("15:04")+" → "+card.landed.Format("15:04"))
+	case !card.started.IsZero():
+		facts = append(facts, doneStartWord+card.started.Format("15:04"))
+	}
+	var out []string
+	line := ""
+	for _, fact := range facts {
+		switch {
+		case line == "":
+			line = fact
+		case ansi.StringWidth(line)+ansi.StringWidth(railSep)+ansi.StringWidth(fact) <= room:
+			line += railSep + fact
+		default:
+			out = append(out, a.pal.dim("  "+fit(line, room)))
+			line = fact
+		}
+	}
+	if line != "" {
+		out = append(out, a.pal.dim("  "+fit(line, room)))
 	}
 	return out
 }
@@ -603,11 +919,19 @@ func (a *app) doneDetail(card *taskDone, width int) []string {
 // room, one enter away on the same card, and a second cap-lifting mechanic
 // would be a second answer to "where is the rest".
 func capField(lines []string) []string {
+	return capFieldMark(lines, glyphMore)
+}
+
+// capFieldMark is [capField] against a stated marker, for the one field whose
+// rows paint themselves: an answer comes back from prose with its own colours
+// and its own resets, so a bare `…` appended after the last of them would be the
+// only character on the card in the terminal's default foreground.
+func capFieldMark(lines []string, mark string) []string {
 	if len(lines) <= doneWindow {
 		return lines
 	}
 	lines = lines[:doneWindow]
-	lines[doneWindow-1] += " " + glyphMore
+	lines[doneWindow-1] += " " + mark
 	return lines
 }
 
@@ -666,7 +990,7 @@ func (a *app) rollupRows(d deck, out []row, from, to, width int) []row {
 // reporting a wait nobody had. It is the first spawn to the last landing, which
 // is the thing the person actually lived through.
 func (a *app) rollupHead(d deck, from, to, width int) string {
-	count, failed, unverified := 0, false, false
+	count, failed, unverified, delivery := 0, false, false, false
 	var first, last time.Time
 	for i := from; i < to; i++ {
 		card := d.entries[i].done
@@ -676,6 +1000,7 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 		count++
 		failed = failed || card.failed
 		unverified = unverified || card.unverified
+		delivery = delivery || card.deliveryProblem()
 		if !card.started.IsZero() && (first.IsZero() || card.started.Before(first)) {
 			first = card.started
 		}
@@ -697,6 +1022,8 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 		// question rather than the cross, and the header stops claiming that
 		// everything under it came home.
 		mark, word = a.pal.warn(glyphUnverified), doneRollupMix
+	case delivery:
+		mark, word = a.pal.warn(glyphHalted), doneRollupMix
 	}
 	head := mark + " " + a.pal.ink(itoa(count)+word)
 	if !first.IsZero() && last.After(first) {
@@ -723,6 +1050,9 @@ func (a *app) rollupRow(card *taskDone, width int, sel bool) string {
 		// batch is home, and this row says which of them is not finished being
 		// decided.
 		lead += a.pal.warn(glyphUnverified) + " "
+		used += 2
+	case card.deliveryProblem():
+		lead += a.pal.warn(glyphHalted) + " "
 		used += 2
 	}
 	tail := ""

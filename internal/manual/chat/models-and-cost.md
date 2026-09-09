@@ -1,5 +1,42 @@
 # Models, context, and what it costs
 
+## Lost internet, Wi-Fi disconnected, DNS errors, and waiting for connection
+
+When DNS or a connection attempt fails before the request is accepted, aforge
+shows `waiting for connection`. It pauses requests on that client and checks
+whether the configured endpoint is reachable. This is a small request without
+your prompt or API key; it does not ask a model to generate anything.
+
+Waiting calls share a check. After each failed check, aforge waits about one to
+one and a half seconds before checking again. Each check has a two-second limit.
+When the endpoint answers, your request resumes without waiting through an old
+retry delay. A response proves endpoint reachability, not that every internet
+service is healthy. No separate public ping service is involved.
+
+Connection recovery waits up to two minutes, or less if that call already had
+a shorter deadline. Esc or Stop work cancels your call immediately; other calls
+still waiting keep their shared check. If the connection does not return, aforge
+says `connection is still unavailable; try again when connected`.
+
+Chat, auxiliary requests, document parsing and authenticated media requests use
+this recovery for pre-send connection failures. A cut-off reply still follows
+the existing stream recovery rules. A lost response to an accepted media job
+does not automatically submit that job again. Rate limits keep their existing
+retry policy; invalid credentials, invalid requests and certificate errors are
+not repaired by a connection wait.
+
+## Why a longer conversation does not get a full cache discount
+
+When choosing a provider, aforge can estimate that it still holds some of this
+conversation's earlier input. That estimate is capped at the input length the
+provider previously reported receiving for this conversation, and at the current
+request's estimated length. An unknown earlier length earns no discount. Requests
+running at the same time keep their own conversation identity and usage together.
+
+This affects routing estimates; it is not proof of a cache hit. A provider may
+evict cached input, and compaction or a rewrite can change earlier text even when
+the conversation identity stays the same.
+
 ## Which model am I talking to, which model is it using right now, and how do I switch or change it
 
 The model in use is written in the status line. There are two doors to the picker:
@@ -847,12 +884,12 @@ off → low → medium → high → off; it does not offer `xhigh` or `max`.
 ## Making the model think harder, deeper, or less — the effort ladder from low to max
 
 How hard the model thinks is one dial with five rungs, cheapest first: `low`, `medium`,
-`high`, `xhigh`, `max`. There is also **off**, which is the dial left alone — aforge asks
+`high`, `xhigh`, `max`. There is also **auto**, which is the dial left alone — aforge asks
 for nothing and the model thinks however it thinks.
 
-**The default is `high`.** It is the **thinking** row in `/settings`, among the model rows
-beside the model you talk to, and its choices are `off, low, medium, high, xhigh, max`. The
-row is written to the profile as `effort`.
+**The default is `auto`.** It is the **thinking** row in `/settings`, among the model rows
+beside the model you talk to, and its choices are `auto, low, medium, high, xhigh, max`. The
+row is written to the profile as `effort`. Existing explicit settings remain in force.
 Move it down to make the model think less, which is what gives you faster and cheaper
 answers; move it to `xhigh` or `max` when you would rather wait and get the careful one.
 
@@ -868,7 +905,7 @@ Several things can name a rung, and the most specific one wins:
    it, think at `low`. The errands aforge runs beside your turn — naming a conversation,
    summarising it, judging where a request belongs — ask for nothing at all. Your own turn,
    and the task workers you hand work out to, take the default.
-5. **The default** — the **thinking** row, which is `high` until somebody chooses otherwise.
+5. **The default** — the **thinking** row, which is `auto` until somebody chooses otherwise.
 
 **`ctrl+v` moves the rung of whatever you are standing on.** In the message box it moves
 **this conversation's** rung, which has a chip above the box naming it. On a task — the
@@ -880,6 +917,18 @@ The **thinking** row in `/settings` stays what it is: the answer for every conve
 that has not been dialled by hand. The keys page has the whole of it — see *The thinking
 chip above the message box* and *ctrl+v — how hard the thing you are looking at thinks*.
 There is no slash command for it.
+
+## Auto reasoning — use OpenRouter defaults instead of forcing high
+
+The **thinking** row in `/settings` defaults to `auto`. It omits the reasoning override
+entirely, leaving the selected model's defaults to OpenRouter. It does not disable
+thinking or force a token budget, and the model may still spend time reasoning.
+Existing explicit conversation, task, model and install levels remain in force.
+Older `off` settings mean the same thing as auto and remain readable.
+
+`--reasoning auto` clears the launch override and inherits the conversation or install
+setting; choose auto in `/settings` to change the install default. Scoped overrides
+still take precedence. Standing work and its checks keep their existing low role default.
 
 ## What low, medium, high, xhigh and max actually ask the model for
 
@@ -1736,8 +1785,35 @@ The pass aims below the trigger, at the midpoint between the kept tail and the w
 line. That headroom matters because rewriting a result makes the provider's cached prefix
 cold from that point; one deeper pass is cheaper than another rewrite every round. When it
 runs, the transcript gets one line such as `[folded 8 results · ~24k tokens]`. The full
-result bytes remain in `logs/stubs/` (or the store), the model can `read` the path in each
-stub, and the session journal keeps the original result bytes.
+result bytes remain in `logs/stubs/`, the model can `read` the path in each stub, and the
+session journal keeps the original result bytes.
+
+**Rung 0 — what an old result looks like in the request.** Before any of the rungs below
+fire, the copy of the conversation that goes to the model already carries the tool results
+of *earlier* turns shortened. Your transcript and the session journal keep every byte; only
+the request is shortened, and only for results the model has already worked from — the newest
+batch and everything the running turn has produced go verbatim. A shortened result reads:
+
+```
+[reduced view: bash · 41208 bytes · full: /home/x/.aforge/v3/projects/-you-work/<session>/logs/stubs/9c2f.txt]
+go build ./...
+…[40608 bytes elided]…
+FAIL	./internal/session	0.412s
+```
+
+Both ends are kept — the first 200 bytes, which is what ran and where an error message
+lands, and the last 400, which is what it concluded — with the exact count of what was cut
+between them. The pointer is the same one a stub gives (next section): the result's own
+bytes, filed under `logs/stubs/`, which `read` opens and pages through at any size. Where
+there is nowhere to file them it is the session journal with the call id to grep for — a
+real file, though a journal line is JSON and `grep` clips a long one. **A conversation that
+can name neither says `full: not retrievable`** rather than a path that is not there.
+
+**A `store:` id is never given as a pointer.** It used to be, whenever memory was on, and
+nothing aforge can run fetches a store message by id — `search_conversations` searches words
+and answers with one clipped line per hit. So a stub or a reduced view that named one sent
+the model somewhere it could not go. When a turn has made so many calls that even these views
+are too much, the oldest fall back to the same one-line stub described next.
 
 **Rung 1 — stubbing.** At the end of every completed turn, tool results older than the last
 **4 turns** and larger than **1500 bytes** are replaced *in the live context* by a pointer
@@ -1747,8 +1823,8 @@ line naming the tool, its first line, its size and where the whole of it lives:
 [tool: bash · go build ./... — 0 exit · 41208 bytes · full: ~/.aforge/v3/projects/-you-work/<session>/logs/stubs/<hash>.txt]
 ```
 
-The bytes are written to disk first, named by their own digest — or the pointer is the id of
-the result already posted to the store — and the model can `read` them back at any time.
+The bytes are written to disk first, named by their own digest, and the model can `read`
+them back at any time.
 **They are written in this conversation's own folder, under `logs/stubs/`, and never in your
 project**: a stubbed result is the harness's own droppings, not your work. That holds for a
 task's worker too, however long the files it reads — its stubs are filed with the
@@ -2368,11 +2444,14 @@ Every request in a conversation re-sends the whole conversation. What keeps that
 
 So aforge remembers which endpoint answered your last request and **asks for that same endpoint first on the next one**. It is a preference, not a demand: if that endpoint is busy or gone, the request still goes through somewhere else rather than failing. Nothing extra is sent and nothing is probed to work this out — it is the name that came back on the last answer.
 
-It moves off that endpoint when the endpoint stops earning it, and there are three ways that happens:
+It moves off that endpoint when the endpoint stops earning it:
 
 - **The request failed there** — an error, a refusal, or a reply that went quiet or turned to garbage halfway through. The next request is routed afresh.
-- **The cache was gone anyway.** If a long prompt comes back having read nothing from the cache, there is no warm context left to come back for, so the next request is free to land anywhere.
 - **It charged too much.** The same quarter-over-list price cap described above rides on every one of these requests, and an endpoint that billed above it loses its place. A warm cache is never worth any price.
+
+A successful answer with no reported cache hit keeps its place. The prefix may have changed, the old cache may have expired, or the endpoint may have omitted its cache accounting. That answer can warm the next request; switching immediately would make it cold again. The slow-response monitor still applies.
+
+The same stable identity also travels in OpenRouter's session header so a successful cold request can establish continuity before the first reported cache hit. A changed opening after compaction keeps that identity.
 
 Each of your conversations keeps its own endpoint, and so does each worker on a task, because each of them is sending a different transcript. Background work is kept warm the same way: its first request still asks for the cheapest endpoint, and after that it comes back to whichever one answered. Setting **routing** to `off` turns this off with everything else.
 
@@ -2618,3 +2697,22 @@ marked `empty at the ceiling` is the thinking pass having spent the whole reply 
 before the answer began, which is the one failure a larger ceiling actually fixes. Failed
 attempts get their own lines, so a call that was rate limited four times before it landed
 is five lines rather than one slow one.
+
+## Why did a provider error keep the same endpoint?
+
+A provider can accept a request and later end its reply with
+`finish_reason=error`. aforge treats that as a failed request, including when
+the provider sends no separate error message. It releases the automatic cache
+preference, records the failure, and leaves recovery to the existing bounded
+retry policy. That failed generation does not teach a successful provider
+speed. Any usage the provider reports is still counted.
+
+This does not guarantee a different endpoint: your routing settings, available
+providers and recovery budget still apply. A valid tool call or a normal
+reasoning response keeps its existing handling.
+
+## Does losing my connection change provider ratings?
+
+No. The connection wait pauses provider-switch timers. Once the endpoint is
+reachable, those timers restart, and that call is excluded from learned provider
+speed because the local outage was not time spent generating an answer.

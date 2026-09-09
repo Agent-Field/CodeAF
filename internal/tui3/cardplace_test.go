@@ -20,7 +20,11 @@ func TestTheCardsPlaceLineSpendsTheFactsBeforeTheAddress(t *testing.T) {
 	a := &app{pal: newPalette(tokens.NoColor, false)}
 	const where = "/Users/somebody/code/aforge-v2"
 	a.home.repos = map[string]homeRepoReading{where: {line: "master · 3 files dirty"}}
-	row := session.SessionRow{ID: "one", Title: "Porting the picker", Workspace: where, Open: true, Live: true}
+	// A locally held conversation offers "open here"; an open presence alone
+	// belongs to another window and reserves that longer, truthful door label.
+	file := "/tmp/card-place-held.jsonl"
+	a.behind = map[string]*kept{a.convKey(file): {conv: Conversation{Agent: newAsyncAgent(), SessionFile: file}}}
+	row := session.SessionRow{ID: "one", Transcript: file, Title: "Porting the picker", Workspace: where, Open: true, Live: true}
 
 	// The widths a card actually gets, down to the narrowest that still holds
 	// the address and the door word this line reserves for it.

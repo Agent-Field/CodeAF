@@ -111,6 +111,10 @@ func TestThePhaseClockSpellsEveryStateItIsToldAbout(t *testing.T) {
 		news: PhaseNews{Phase: provider.PhaseRetrying, Since: ago(4 * time.Second)},
 		want: "trying again · 4s",
 	}, {
+		what: "a lost connection is distinct from a slow model",
+		news: PhaseNews{Phase: provider.PhaseConnectionLost, Since: ago(15 * time.Second)},
+		want: "waiting for connection · 15s",
+	}, {
 		what: "a rescue in flight, with the stall that caused it",
 		news: PhaseNews{Phase: provider.PhaseSwitching, Since: ago(time.Second), Detail: "stalled 9s", Then: "Parasail"},
 		want: "stalled 9s · switching to parasail",
@@ -749,5 +753,16 @@ func TestThePhaseWordsAreDrawnOnOneRowAndNeverTwice(t *testing.T) {
 	}
 	if line := plain(a.status(160)); !strings.Contains(line, words) {
 		t.Fatalf("with the pulse gone the phase is on no row at all: %q", line)
+	}
+}
+
+func TestMemoryPreflightNamesItsOwnWaitBeforeTheModelIsAsked(t *testing.T) {
+	now := time.Now()
+	a := phaseApp(t, now)
+	a.awaited = now.Add(-50 * time.Second)
+	PostPhaseNews(PhaseNews{Phase: provider.PhasePreparing, Detail: "saved context", Model: phaseModel, Role: lane.RoleTalk, Since: now.Add(-3 * time.Second), At: now})
+	line, ok := a.ellipsis()
+	if !ok || !strings.Contains(plain(line), "preparing saved context · 3s") || strings.Contains(plain(line), "waiting for") {
+		t.Fatalf("misattributed helper wait: %q", plain(line))
 	}
 }

@@ -84,6 +84,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// A finished task's room after aforge was closed and opened again: the
 		// blank page people met, asked the three ways they meet it.
 		{"task page is empty", "task-rooms-after-restart"},
+		{"a saved task asks me to accept a different task with the same number", "task-rooms-after-restart"},
+		{"I handed a review to the chat why does it still need me", "task-rooms-after-restart"},
+		{"the run is paused but its tasks are still working", "adaptive-runs"},
 		{"task finished but no chat shown", "task-rooms-after-restart"},
 		{"see what a task did after restarting", "task-rooms-after-restart"},
 		// And the same blank met from INSIDE a row that was never a task at all —
@@ -135,11 +138,49 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does ctrl+k do", "keys"},
 		{"why does ctrl+tab do nothing", "keys"},
 		{"what did my other chats do while I was away", "keys"},
+		// AND THE CHORD THAT MOVED. ctrl+t is the new tab now and the task roster
+		// answers alt+t, so both are asked the way a person meets the change: they
+		// press the key they have always pressed and get a page they did not
+		// expect, or they go looking for the roster's key and cannot find it.
+		{"what does ctrl+t do", "keys"},
+		{"ctrl+t used to open the task roster and now it does not", "keys"},
+		{"which key gives the keyboard to the task roster", "keys"},
+		// AND THE `+` BESIDE THE TABS, asked the way somebody meets it: they see a
+		// control they know from a browser and want to know what it costs, they
+		// pressed it and want out, and they are worried about the message they had
+		// half written when they pressed it.
+		{"what does the plus next to the tabs do", "screen"},
+		{"start a new chat", "screen"},
+		{"how do I get out of the new chat page", "screen"},
+		{"does opening a new chat close the one I am in", "screen"},
+		{"I pressed plus and lost my draft", "screen"},
+		{"new chat page recent conversations", "screen"},
+		// AND THE WORD A TAB WEARS BEFORE THE CONVERSATION HAS EARNED A NAME. The
+		// name arrives by itself a moment after the first reply, so the three ways
+		// this is asked are all really one question about timing: what the word
+		// means, when it goes away, and whether the person is supposed to do
+		// something about it.
+		{"why does my tab say Untitled", "screen"},
+		{"when does a chat get its name", "screen"},
+		{"how do I rename this conversation", "screen"},
+		// AND THE MARK A TAB CAN WEAR, asked as a symbol nobody has a name for and
+		// as the worry underneath it.
+		{"what is the question mark on my tab", "screen"},
+		{"why does one of my tabs have a half circle on it", "screen"},
+		{"which tab is waiting on me", "screen"},
 		// And the tasks page's tree, asked by somebody looking at a page that is
 		// hiding rows from them on purpose.
 		{"where did the workers go on the task page", "tasks"},
 		{"what does +3 under mean", "tasks"},
 		{"expand a task to see what ran under it", "tasks"},
+		// AND WHAT AN OPENED LANDING CARD HOLDS, asked the four ways somebody
+		// arrives at it: wanting the writing back, meeting a card that says done
+		// over a branch that never merged, finding the answer cut off, and
+		// wondering why the price and the model moved onto one row.
+		{"where is the story my task wrote", "tasks"},
+		{"the card says done but nothing merged", "tasks"},
+		{"my task's answer stops halfway, where is the rest", "tasks"},
+		{"why is the task answer in asterisks", "tasks"},
 		{"how do I undo my last message", "sessions-and-rewind"},
 		{"does rewind undo my files", "sessions-and-rewind"},
 		{"can I open two terminals in the same folder", "sessions-and-rewind"},
@@ -261,6 +302,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how many tasks can run at once", "tasks"},
 		{"how do I stop a running task", "tasks"},
 		{"how do I start a task", "tasks"},
+		// The navigation wave: opening a task somebody else's conversation is
+		// running, what that page can and cannot say, and the two things about the
+		// tasks place a person meets before any of it — what the box does, and why
+		// the cursor did not stay where they left it.
+		{"I cannot click into a running task", "tasks"},
+		{"open a task another window is running", "tasks"},
+		{"why is that task page read only", "tasks"},
+		{"the task page says it cannot ask what the work is doing", "tasks"},
+		{"can I read another conversation's task over ssh", "tasks"},
+		{"why does the tasks box say type to filter this list", "tasks"},
+		{"my cursor jumped to another task while I was reading", "tasks"},
+		{"why is the finished piece at the bottom of the family", "tasks"},
 		{"can aforge parallelize my task", "tasks"},
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
@@ -693,6 +746,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"one tool call is taking up four rows", "screen"},
 		{"how do I see the whole command of a tool call", "screen"},
 		{"why is the colour from go test output missing", "screen"},
+		// The action marks in the compact working block, asked in the words
+		// somebody actually reaches for. Nobody knows the word "family" or
+		// "category" for this — they say "icon", "symbol", "little mark", or
+		// they describe the character they are looking at.
+		{"what are the little icons next to the steps while it works", "screen"},
+		{"what does the symbol in front of a step mean", "screen"},
+		{"what is the pencil next to the progress line", "screen"},
+		{"do I need a nerd font for the icons", "screen"},
+		{"can the icon beside a step be wrong", "screen"},
 		{"how do I copy text out", "keys"},
 		// The pointer gestures themselves: the one everybody already owns, and
 		// the complaint they arrive with when the sweep took more than they
@@ -1035,6 +1097,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// reach the page that says where it went.
 		{"how do I see what an old task did", "tasks"},
 		{"open a past task", "tasks"},
+		{"my task correction is sending or has no answer", "reading-a-task-page"},
+		{"retry a task correction without sending it twice", "reading-a-task-page"},
+		{"close the window while a correction is pending", "reading-a-task-page"},
+		{"switch conversations while a task correction is sending", "reading-a-task-page"},
 		// "read a finished task's report" is deliberately NOT pinned here. It is
 		// the same question from the other side — a report is a thing a task
 		// WRITES — and it lands on how-tasks-run, whose own section now names the
@@ -1228,6 +1294,31 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"my task is waiting on its pieces", "tasks"},
 		{"why did it warn me about another window", "tasks"},
 		{"two windows working on the same files", "tasks"},
+		// And the two navigation questions the same page now answers. The first
+		// is asked in front of a row noted `another window`, which used to answer
+		// nothing at all when it was pressed; the second by somebody whose page
+		// opened work they did not aim at, which is what a number alone bought.
+		{"the task is running in another window can I open it", "tasks"},
+		{"two tasks numbered 7", "tasks"},
+		// And the one a person asks about a mark they cannot read: the per-task
+		// shape-and-colour alphabet is gone, and the page has to say so or the
+		// chat will go on describing it from a version that no longer exists.
+		{"what is the diamond symbol next to each task", "tasks"},
+
+		// AND THE ONE THE OWNER ACTUALLY ASKED, in their own words: the column of
+		// work on the right, and a press on it that opened nothing. Three cells
+		// answered a click and changed nothing on screen — the seam at a width
+		// with no wider tier, the state glyph on a row that could fold, and every
+		// row of the frame under the column's last one. Somebody meeting any of
+		// them asks about the sidebar, not about a fold.
+		{"the tasks on the right side I am unable to open it", "tasks"},
+		{"clicking a task in the sidebar does nothing", "tasks"},
+		{"what happens if I double-click a task in the sidebar", "tasks"},
+		{"I click a task on the right and the list jumps instead of opening", "tasks"},
+		{"how do I open a task from the column on the right", "tasks"},
+		// And the two organising questions behind it, asked of the same column.
+		{"why is there no diamond on the sidebar tasks", "tasks"},
+		{"can I click the left edge of the task column", "tasks"},
 
 		// And the question the division road left standing on the other page.
 		// A run used to be what broad work reached for; a chat turn cannot open
@@ -1275,6 +1366,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did commit become a task", "tasks"},
 		{"undo started a task", "tasks"},
 		{"fix this one line became a task", "tasks"},
+		// And the other end of the same day: the task finished, and the reply
+		// that was delivering its work became a second task with none of the
+		// first one's staged files. Asked by somebody looking at the commit
+		// they never got.
+		{"it started another task while integrating", "tasks"},
+		{"my cherry-pick became a task", "tasks"},
+		{"the commit after the task finished never happened", "tasks"},
 
 		// And the shape that reads strangest of all, because the reply had
 		// already started: a reply can stop halfway and hand itself over, when a
@@ -1430,7 +1528,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did old tool results turn into pointers during one long answer", "models-and-cost"},
 		{"what does folded results tokens mean", "models-and-cost"},
 
-		// The effort ladder. One dial with five rungs under a default of `high`,
+		// The effort ladder. One dial with five rungs under a default of `auto`,
 		// so every question about it is asked in the words somebody uses for the
 		// *feeling* they want: a deeper answer, a faster one, a model that is
 		// thinking too long for what they asked. The last two are asked by
@@ -1967,6 +2065,20 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"which commands need no api key", "running-from-the-terminal"},
 		{"how do I read a plan file back as a table", "running-from-the-terminal"},
 		{"why does aforge show --help print a file error", "running-from-the-terminal"},
+
+		// THE WAVE THAT GAVE EVERY TAB ITS OWN CONNECTION. Until it landed, a
+		// second conversation on an engine-backed door ENDED the first one, and
+		// the corpus said so on four pages. The words below are the ones somebody
+		// brings to the new behaviour — the worry before they try it, and the
+		// card they are looking at with their finger over ctrl+w.
+		{"can I run two chats at the same time", "screen"},
+		{"does opening another chat stop the one I am in", "screen"},
+		{"will switching tabs cancel my reply", "screen"},
+		{"what happens to a running chat when I close its tab", "screen"},
+		{"what does keep running do", "screen"},
+		{"what is the difference between keep running and stop work", "screen"},
+		{"where did my chat go after I closed its tab", "screen"},
+		{"how do I stop just this chat without touching the others", "screen"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

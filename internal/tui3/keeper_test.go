@@ -25,7 +25,7 @@ func TestAConversationInTheKeeperIsStillOpenAndNeverAnotherWindow(t *testing.T) 
 	first := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(first)
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 
 	second := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	stowOne(t, a, second, "/tmp/lab/two/transcript.jsonl")
@@ -55,7 +55,7 @@ func TestGoingBackToAConversationSwapsThemRatherThanOpeningOne(t *testing.T) {
 	first := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(first)
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	second := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	stowOne(t, a, second, "/tmp/lab/two/transcript.jsonl")
 
@@ -116,7 +116,7 @@ func TestTwoSpellingsOfOneTranscriptAreOneConversation(t *testing.T) {
 // the eight that used to be the cap.
 func TestTheKeeperRefusesNothingHoweverManyAreOpen(t *testing.T) {
 	a := newTestApp(&switchAgent{fakeAgent: &fakeAgent{model: "m"}})
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	a.behind = map[string]*kept{}
 	for i := 0; i < 20; i++ {
 		key := "/tmp/lab/" + itoa(i) + "/transcript.jsonl"
@@ -137,7 +137,7 @@ func TestTheKeeperRefusesNothingHoweverManyAreOpen(t *testing.T) {
 func TestTheKeeperRecordsWhenAConversationWasLeft(t *testing.T) {
 	a := newTestApp(&switchAgent{fakeAgent: &fakeAgent{model: "m"}})
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	stowOne(t, a, &switchAgent{fakeAgent: &fakeAgent{model: "m"}}, "/tmp/lab/two/transcript.jsonl")
 
 	since := a.behindSince("/tmp/lab/one/transcript.jsonl")
@@ -157,7 +157,7 @@ func TestQuitClosesOneConversationAndLeavesOnTheLast(t *testing.T) {
 	first := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(first)
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	second := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	stowOne(t, a, second, "/tmp/lab/two/transcript.jsonl")
 
@@ -186,17 +186,17 @@ func TestQuitClosesOneConversationAndLeavesOnTheLast(t *testing.T) {
 	}
 }
 
-// ctrl+c twice closes everything, and closing everything is idempotent.
+// ctrl+c twice ends every in-process conversation, and leaving is idempotent.
 func TestQuittingClosesEveryConversation(t *testing.T) {
 	first := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(first)
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	second := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	stowOne(t, a, second, "/tmp/lab/two/transcript.jsonl")
 
-	a.closeEverything()
-	a.closeEverything()
+	a.leaveEverything()
+	a.leaveEverything()
 	if !first.closed || !second.closed {
 		t.Fatalf("closed: front=%v behind=%v", second.closed, first.closed)
 	}
@@ -211,7 +211,7 @@ func TestQuittingClosesEveryConversation(t *testing.T) {
 func TestTheArmedLineCountsAcrossEveryConversation(t *testing.T) {
 	a := newTestApp(&switchAgent{fakeAgent: &fakeAgent{model: "m"}})
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 
 	// A quiet single conversation reads exactly the bare sentence.
 	if got := a.quitHint(); got != quitArmWord {
@@ -235,7 +235,7 @@ func TestTheArmedLineCountsAcrossEveryConversation(t *testing.T) {
 func TestTheOpenCountIsAbsentAtOneAndPresentAtTwo(t *testing.T) {
 	a := newTestApp(&switchAgent{fakeAgent: &fakeAgent{model: "m"}})
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	if got := a.openSegment(); got != "" {
 		t.Fatalf("one conversation drew %q", got)
 	}
@@ -251,7 +251,7 @@ func TestTabGoesBackToTheLastConversationAndIsSilentWhenThereIsNone(t *testing.T
 	first := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(first)
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	a.dismissWelcome()
 
 	if cmd := a.lastConversation(); cmd != nil {
@@ -277,7 +277,7 @@ func TestTabIsEatenByTheRailAndNeverDismissesTheWelcomeBox(t *testing.T) {
 	first := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(first)
 	a.file = "/tmp/lab/one/transcript.jsonl"
-	a.stirs = make(chan string, stirDepth)
+	a.stirs = make(chan behindStirMsg, stirDepth)
 	a.welcome = welcome{open: true, sel: -1}
 	second := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	stowOne(t, a, second, "/tmp/lab/two/transcript.jsonl")

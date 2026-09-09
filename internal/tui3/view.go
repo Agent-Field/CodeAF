@@ -57,7 +57,7 @@ import (
 // every geometric question resolves through ([app.viewHeight]).
 //
 // A FRAME TOO NARROW FOR THE RAIL CAN STILL OPEN THE ROSTER, and there it opens
-// over the body instead of beside it (ctrl+t, task.go's [app.railFull]). The
+// over the body instead of beside it (alt+t, task.go's [app.railFull]). The
 // strip is what makes that reachable without a key at all.
 //
 // A terminal too short for all of it gives up its breathing room first — the
@@ -126,6 +126,11 @@ const (
 	// own slot, so the two share a kind's worth of the frame and never a moment
 	// of it.
 	chromeStop
+	// chromeTabClose is one row of the close-a-tab confirmation (tabclose.go);
+	// index is its position within the card, and the answers are on index 1. It
+	// shares the guard's slot with [chromeStop] for the reason those two share
+	// it: they are the same shape of thing and can never be up together.
+	chromeTabClose
 	// chromeParked is one row of a message waiting for the answer to finish
 	// (park.go); index is which parked message that row belongs to, so a press
 	// pulls that one back into the box to be edited. The dim line under the block
@@ -275,6 +280,7 @@ func (a *app) frame() (string, int, int) {
 // frameBody is the frame as every surface in this package builds it, before the
 // one composition pass [app.frame] puts over the whole of it.
 func (a *app) frameBody() (string, int, int) {
+	a.inlineWaitShowing = false
 	width, height := a.size()
 	if a.pasteEdit.open {
 		return a.pasteEditorFrame(width, height)
@@ -376,6 +382,43 @@ func (a *app) frameBody() (string, int, int) {
 			return strings.Join(lines, "\n"), caretX, caretY
 		}
 	}
+	// AND THE CONTEXT CHOOSER OVER THE WHOLE OF IT (contextmodal.go). It is the
+	// LAST of these because it is the only one that keeps what is underneath on
+	// the screen: the conversation is composed exactly as it would have been and
+	// then faded, so a person choosing a folder can still see the message they
+	// were writing — and cannot touch it. Everything above this line is a surface
+	// that REPLACES the conversation; this one covers it.
+	if a.contextModalShowing() {
+		under, _, _ := a.chatFrameLines(width, height)
+		lines, caretX, caretY := a.contextModalOver(under, width, height)
+		return strings.Join(lines, "\n"), caretX, caretY
+	}
+	lines, caretX, caretY := a.chatFrameLines(width, height)
+	return strings.Join(lines, "\n"), caretX, caretY
+}
+
+// chatFrameLines is the ordinary conversation frame — the transcript, its rail,
+// the chrome under it and the status line — as LINES rather than as one string.
+//
+// It was the tail of [app.frameBody] and is its own function for one caller: the
+// context chooser draws over a finished frame and has to be handed one
+// (contextmodal.go). Splitting a joined frame back apart would have been the
+// same rows measured twice, and a sheet composited onto a second measurement is
+// a sheet one row away from where the pointer thinks it is.
+func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
+	// The body decides who owns activity before the footer is drawn. This
+	// uses the same cached rows that the frame places below; status painting
+	// never rebuilds a hidden transcript to infer ownership.
+	view := a.viewHeight()
+	fullRail := a.railFull()
+	var body []row
+	pad := 0
+	if !fullRail {
+		body, pad = a.bodyRows(a.bodyWidth(), view)
+		for _, r := range body {
+			a.inlineWaitShowing = a.inlineWaitShowing || r.inlineWait
+		}
+	}
 	chrome, chromeMarks, caretX, caretRow := a.chrome(width)
 	// The welcome box rides at the top of the frame rather than at the bottom
 	// with the chrome it is built with ([welcomeLift] states why). Splitting it
@@ -389,7 +432,13 @@ func (a *app) frameBody() (string, int, int) {
 	// the window — which page this is, and how to leave it — rather than about
 	// the transcript, so it is not one of the columns the rail borrows from
 	// (room.go).
-	head := a.roomHead(width)
+	// THE TAB STRIP IS THE ROW ABOVE IT, and it is a different question: the
+	// header says where you are INSIDE a conversation, and the strip says which
+	// conversation that is and which others this window can go back to
+	// (chattabs.go). They are two rows because they are two questions — the one
+	// that used to carry both carried neither well.
+	tabs := a.tabsRow(width)
+	head := a.roomHeadRows(width)
 	// AND THE TASK STRIP IS THE ROW UNDER IT, for the same reason and at the same
 	// width: what is running is a fact about the SESSION, not about the
 	// transcript, and it is pinned because a door that scrolls away is a door
@@ -403,11 +452,27 @@ func (a *app) frameBody() (string, int, int) {
 	// hit-testing included, resolves through the same number — and the chrome is
 	// drawn at the FULL width, because the status line and the legend are about
 	// the whole window rather than about the transcript (task.go).
-	view := a.viewHeight()
 
 	rows := make([]string, 0, height)
-	if head != "" {
-		rows = append(rows, head)
+	if tabs != "" {
+		if a.tabsLineRow() > 0 {
+			rows = append(rows, "")
+		}
+		rows = append(rows, tabs)
+		if a.tabsBottomPad() > 0 {
+			rows = append(rows, "")
+		}
+		// AND THE SEAM UNDER THEM OUT IN THE CONVERSATION, where there is no trail
+		// and no facts row to close the panel off (chattabs.go's
+		// [app.chatRuleHeight]). It is charged for by [app.headHeight] on the same
+		// floor, so the row the frame draws and the row the scrolling subtracts are
+		// the same row.
+		if a.chatRuleHeight(width) > 0 {
+			rows = append(rows, a.rule(width))
+		}
+	}
+	if len(head) > 0 {
+		rows = append(rows, head...)
 		// AND THE FAMILY UNDER IT, dim, where this node has one: who handed the
 		// work out and what it handed out itself, which is the fact the roster's
 		// tree carries in its shape and this page had no shape to carry it in
@@ -423,10 +488,11 @@ func (a *app) frameBody() (string, int, int) {
 	// [app.railFull]). The conversation is not drawn under it — an overlay you
 	// read past is an overlay that made the page harder to read — and the chrome
 	// below stays, because the draft is still where this surface types.
-	if a.railFull() {
+	if fullRail {
 		// THE SWITCHER IS DRAWN OVER THE ROSTER TOO. On a frame with no columns
 		// to lend, the roster IS the body, and a card that skipped this branch
 		// would be a key that did nothing at sixty columns (hop.go).
+		a.hop.originY = len(rows)
 		rows = append(rows, a.hopMaybe(a.railRows(view), width)...)
 		// The lifted rows are still part of this frame's height even here, where
 		// the roster has taken the body: dropping them would draw a window short
@@ -434,9 +500,8 @@ func (a *app) frameBody() (string, int, int) {
 		// them while the roster is up, which is right — the roster is over them.
 		liftedAt := len(rows)
 		rows = append(rows, lifted...)
-		return a.frameOut(rows, chrome, height, caretX, caretRow, lift, liftedAt)
+		return a.frameLines(rows, chrome, height, caretX, caretRow, lift, liftedAt)
 	}
-	body, pad := a.bodyRows(a.bodyWidth(), view)
 	rail := a.railRows(view)
 	railAt := func(i int) string {
 		if i < len(rail) {
@@ -483,6 +548,7 @@ func (a *app) frameBody() (string, int, int) {
 				texts[i] = r.text
 			}
 		}
+		a.hop.originY = len(rows)
 		texts = a.hopOver(texts, a.bodyWidth(), a.pal)
 		body, pad = make([]row, len(texts)), 0
 		for i, text := range texts {
@@ -521,7 +587,7 @@ func (a *app) frameBody() (string, int, int) {
 	for i := above; i < pad; i++ {
 		rows = append(rows, a.railJoin("", railAt(len(body)+i)))
 	}
-	return a.frameOut(rows, chrome, height, caretX, caretRow, lift, liftedAt)
+	return a.frameLines(rows, chrome, height, caretX, caretRow, lift, liftedAt)
 }
 
 // welcomeAbove is how much of the body's slack goes ABOVE the lifted greeting:
@@ -551,6 +617,16 @@ func welcomeAbove(lift, pad int) int {
 // in it is the arithmetic this replaced, and it put the terminal's cursor on the
 // status row for as long as the greeting was up.
 func (a *app) frameOut(rows, chrome []string, height, caretX, caretRow, lift, liftedAt int) (string, int, int) {
+	lines, caretX, caretY := a.frameLines(rows, chrome, height, caretX, caretRow, lift, liftedAt)
+	return strings.Join(lines, "\n"), caretX, caretY
+}
+
+// frameLines is [app.frameOut] with the rows still apart, for the one caller
+// that draws OVER a finished frame rather than beside it: the context chooser
+// composites its sheet onto these lines and needs them as lines
+// (contextmodal.go). Joining and re-splitting would be the same arithmetic done
+// twice, and the second copy is the one that would be wrong.
+func (a *app) frameLines(rows, chrome []string, height, caretX, caretRow, lift, liftedAt int) ([]string, int, int) {
 	rows = append(rows, chrome...)
 	// A frame taller than the terminal loses rows from the TOP: the chrome is
 	// the tail, and everything the caret's row is counted back through is in it.
@@ -569,7 +645,7 @@ func (a *app) frameOut(rows, chrome []string, height, caretX, caretRow, lift, li
 	if caretY >= height {
 		caretY = height - 1
 	}
-	return strings.Join(rows, "\n"), caretX, caretY
+	return rows, caretX, caretY
 }
 
 // chrome is everything below the conversation: the rows, what each row is for
@@ -952,6 +1028,26 @@ func (a *app) window(width, height int) ([]row, int) {
 // turn underneath is still streaming into a transcript nobody is looking at —
 // which is what makes esc restore the conversation exactly.
 func (a *app) bodyRows(width, height int) ([]row, int) {
+	// THE NEW-CHAT START PAGE STANDS OVER THE CONVERSATION AND NOT UNDER IT
+	// (chatstart.go). It is the greeting's unit drawn in the middle of the frame,
+	// and the greeting is only ever drawn on an EMPTY surface — over a transcript
+	// it would be centred in whatever slack that transcript left, which on a full
+	// screen is none, and the two would be drawn through each other.
+	//
+	// IT IS ANSWERED HERE AND NOWHERE ELSE because this is the one reading three
+	// things share: the draw, the pointer ([app.chromeAt] asks it again to find
+	// the lifted rows) and the hit-testing ([app.rowAt]). A frame that hid the
+	// transcript in the draw alone would keep answering clicks with rows nobody
+	// can see.
+	if a.startingChat() {
+		if a.welcomeFits() {
+			return nil, height
+		}
+		// A window too small for the unit still gets the page: the box falls back
+		// to the foot of the frame where it lives on every other screen, and this
+		// row is what says which page it belongs to.
+		return []row{{text: a.pal.dim(fit(startTinyWord, width)), entry: -1}}, max(0, height-1)
+	}
 	if a.copy.on {
 		return a.copyRows(width, height)
 	}
@@ -991,6 +1087,15 @@ func (a *app) rowAt(y int) (row, bool) {
 	// list under it to resolve to, so the pointer gets nothing here rather than a
 	// transcript row nobody can see.
 	if a.railFull() {
+		return row{}, false
+	}
+	// AND SO DOES THE NEW-CHAT START PAGE, for the same reason said about a page
+	// rather than a column (chatstart.go): the conversation is not drawn under it
+	// ([app.bodyRows]), and a pointer answered from a transcript nobody can see
+	// would expand tool calls and open task pages belonging to the conversation
+	// the person has just stepped away from. The page's own rows are the
+	// greeting's, and they are hit-tested as chrome ([app.chromeAt]).
+	if a.startingChat() {
 		return row{}, false
 	}
 	// The body starts AT the top of its region and the padding falls below it
@@ -1047,28 +1152,36 @@ func (a *app) topHeight() int { return a.headHeight() + a.stripHeight() }
 // through, rather than at the frame — a header the frame drew and the scrolling
 // did not know about would put the room's last row under the input box.
 func (a *app) headHeight() int {
-	// The same floor the rule and the blank above the draft stand on: a terminal
-	// too short for breathing room is too short for a header, and what is
-	// happening is still on the status line.
-	if a.room == nil || a.breathingRows() == 0 {
-		return 0
-	}
-	// AND THE SAME FLOOR THE HEADER ITSELF STANDS ON. [app.roomHead] draws
-	// nothing at all under [roomHeadFloor] columns — there is not a trail and a
-	// way out's worth of line down there — so a row charged for here would be a
-	// row the frame never drew, and every hit-test on the page would land one line
-	// from where it was aimed.
+	// THE TAB STRIP IS THE FIRST OF THOSE ROWS AND IS CHARGED FOR HERE, on its
+	// own two floors (chattabs.go's [app.tabsHeight]): it is drawn over the
+	// conversation and over every page inside it, because which conversation this
+	// is stays true wherever you have walked to inside one.
 	width, _ := a.size()
-	if width < roomHeadFloor {
-		return 0
+	head := a.tabsHeight(width)
+	if a.room == nil {
+		// AND THE CONVERSATION ITSELF HAS NO TRAIL ROW. `main` with nothing after
+		// it is the tab above it said twice, and the emptiness law is exactly this:
+		// a row that carries no news is a row that is not drawn.
+		//
+		// WHAT IT DOES HAVE IS THE SEAM UNDER THE TABS, which is what closes the
+		// header panel off from the transcript and from the roster beside it on a
+		// terminal whose background this program does not control
+		// (chattabs.go's [app.chatRuleHeight]).
+		return head + a.chatRuleHeight(width)
 	}
+	// A ROOM'S OWN ROWS ARE CHARGED FOR THROUGH THEIR OWN LADDER, which knows the
+	// two floors the header stands on — too narrow for a trail and a way out, too
+	// short for breathing room — and which of its two rows a short frame can
+	// afford (room.go's [app.roomHeadHeight]). It is asked rather than counted off
+	// a rendered slice, because this runs before anything is drawn.
+	//
 	// THE KIN ROWS ARE PART OF THE PINNED REGION AND ARE CHARGED FOR HERE, for
-	// exactly the reason the header's own row is: they are drawn above the body
+	// exactly the reason the header's own rows are: they are drawn above the body
 	// by the frame, and rows the scrolling has not subtracted push the room's
 	// last row under the input box. They are asked at the frame's OWN width,
 	// which is the width [app.view] hands the header, so the count here and the
 	// rows drawn there can never disagree (room.go's [app.roomKinRows]).
-	return 1 + len(a.roomKinRows(width))
+	return head + a.roomHeadHeight(width) + len(a.roomKinRows(width))
 }
 
 // scrollPage is how many rows one pgup or pgdown moves: a screenful less a line

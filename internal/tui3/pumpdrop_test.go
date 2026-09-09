@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
@@ -41,18 +42,21 @@ func TestAClickIntoADesignsRoomKeepsTheFrameClockTurning(t *testing.T) {
 	}
 	card.task = 7
 
-	y := -1
+	y, x := -1, -1
 	for at, row := range strings.Split(plain(frame(a)), "\n") {
-		if strings.Contains(row, harnessCardChange) {
-			y = at
+		if col := strings.Index(row, harnessCardChange); col >= 0 {
+			// THE COLUMN IS READ OFF THE DRAWN ROW rather than counted from the
+			// answers in front of it. The card is inset by the reading gutter
+			// (gutter.go) like everything else a person reads, so a column
+			// counted from zero presses two cells to the left of the word it
+			// names — which is the exact defect the gutter pass exists to not
+			// have, and a test that computed it could never see.
+			y, x = at, ansi.StringWidth(row[:col])+1
 		}
 	}
 	if y < 0 {
 		t.Fatalf("the card drew no actions row:\n%s", plain(frame(a)))
 	}
-	// The middle column — each answer owns its words and the gap after them
-	// (harnesscard.go's [app.harnessCardPress]).
-	x := len(harnessCardSave+harnessCardGap) + 1
 
 	// The clock is stood down first, because the roster this fixture is built on
 	// already has a node running and is therefore already painting — and a wake

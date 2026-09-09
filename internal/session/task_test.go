@@ -62,6 +62,14 @@ type routedCompleter struct {
 }
 
 func (c *routedCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+	// THE ERRANDS BESIDE THE WORK ARE ANSWERED BEFORE THE LANES ARE TOUCHED, for
+	// [scriptedCompleter.aside]'s reason said about this fixture: a namer arms
+	// itself the moment a node is admitted and carries the brief's own mark, so it
+	// lands in the CHILD lane and takes the step the test scripted for the worker.
+	// Answered here it spends none.
+	if isNameCall(messages) || isCaptionCall(messages) || isTitleCall(messages) {
+		return textResponse(""), nil
+	}
 	lane := "parent"
 	if len(messages) > 0 && messages[0].Role == "system" &&
 		strings.Contains(messageText(messages[0]), "You are an AUDITOR") {
@@ -179,13 +187,17 @@ func verdictFromEvidence(marker, verified, refuted string) step {
 }
 
 // proposeCall is the model asking for one task, with the mark in the brief.
-func proposeCall(title, brief string) step {
+func proposeCall(title, brief string, checks ...string) step {
 	arguments, _ := json.Marshal(taskArguments{
 		Title:       title,
 		Summary:     "two lines the person reads",
 		Brief:       brief + "\n" + taskBriefMark,
 		Deliverable: "the file, at the path named in the brief",
 		Acceptance:  "the file is there",
+		// The proposal is where a command becomes something the node's checker may
+		// run, and a test that wants its checker to run one has to declare it here
+		// exactly as a real proposal would (task_checks.go).
+		Checks: checks,
 	})
 	return func(context.Context, []ai.Message) (*ai.Response, error) {
 		return toolResponse("call-task", "propose_task", string(arguments)), nil
@@ -919,7 +931,7 @@ func TestTaskNodeWorkIsKeptOffThePersonsProtectedBranch(t *testing.T) {
 	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Contains(list, notice.Where) {
 		t.Fatalf("finished working copy stayed registered:\n%s", list)
 	}
-	want := "its branch " + notice.Branch + " was kept: your checkout is on main, which aforge never writes to — merge it when you are ready"
+	want := "its branch " + notice.Branch + " was kept: your checkout is on main, which tasks do not merge into automatically"
 	if !strings.Contains(notice.Report, want) {
 		t.Fatalf("report = %q, want protected sentence %q", notice.Report, want)
 	}
@@ -1083,7 +1095,7 @@ func TestAuditOffMergesUnaudited(t *testing.T) {
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeCall("Add the greeting", "write greet.go and its test, and check it with `go test ./...`"),
+			proposeCall("Add the greeting", "write greet.go and its test", "go test ./..."),
 			finalText("handed off"),
 		},
 		child: []step{
@@ -1137,7 +1149,7 @@ func TestAuditVerifiesAChangeThatPassesItsTest(t *testing.T) {
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeCall("Add the greeting", "write greet.go and its test, and check it with `go test ./...`"),
+			proposeCall("Add the greeting", "write greet.go and its test", "go test ./..."),
 			finalText("handed off"),
 		},
 		child: []step{
@@ -1228,7 +1240,7 @@ func TestAuditRefutesANodeThatOnlyClaimsToBeDone(t *testing.T) {
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeCall("Fix the failing test", "make TestHollow pass; the check is `go test ./...`"),
+			proposeCall("Fix the failing test", "make TestHollow pass", "go test ./..."),
 			finalText("handed off"),
 		},
 		child: []step{
@@ -1379,6 +1391,9 @@ func TestAuditNonVerdictRetriesAndLandsUnverified(t *testing.T) {
 	// NOTHING MERGED and nothing was thrown away.
 	if notice.Merge != mergeAborted {
 		t.Fatalf("merge = %q, want aborted — unverified work must not land", notice.Merge)
+	}
+	if note := taskNote(notice, "", TaskSettleAsk, landingAddress{person: true}); !strings.Contains(note, "Do not merge or switch") || !strings.Contains(note, "leave the choice with them") {
+		t.Fatalf("the parent did not receive the review and branch boundaries:\n%s", note)
 	}
 	if branches := gitOut(t, repo, "branch", "--list", notice.Branch); !strings.Contains(branches, notice.Branch) {
 		t.Fatal("an unverified node's branch was deleted: the work is gone")
@@ -2532,4 +2547,23 @@ func TestAProposalWaitingOnFailedWorkIsRefused(t *testing.T) {
 	if !isError || !strings.Contains(result, "already failed") {
 		t.Fatalf("a dependency on failed work was not refused as one: error=%v %q", isError, result)
 	}
+}
+
+// isTitleCall is the SESSION NAMER, which is an errand beside the turn like the
+// two above and reaches this fixture through the child lane: the exchange it is
+// given carries the brief's own mark, because the brief is what the turn said.
+func isTitleCall(messages []ai.Message) bool {
+	return len(messages) > 0 && messages[0].Role == "system" &&
+		messageContentText(messages[0]) == titleSystem
+}
+
+// childAskedAt is one particular request a WORKER was given, which is how a
+// second attempt is told from the first from the outside.
+func (c *routedCompleter) childAskedAt(index int) []ai.Message {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if index < 0 || index >= len(c.childRequests) {
+		return nil
+	}
+	return c.childRequests[index]
 }

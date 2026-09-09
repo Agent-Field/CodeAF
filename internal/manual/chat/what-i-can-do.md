@@ -896,13 +896,15 @@ to a different conversation.
 
 ## Can you hand a piece of work off to run on its own?
 
-Yes. `propose_task` proposes a task with a `title`, `summary`, `brief` and
-`acceptance`, plus optional `depends_on`, `model`, `max_steps` and
-`no_progress`. `tasks` looks at what exists — searching, reading output, sending
+Yes. `propose_task` proposes a task with a `title`, `summary`, `brief`,
+`deliverable` and `acceptance`, plus optional `checks`, `depends_on`, `model`,
+`max_steps` and `no_progress`. `tasks` looks at what exists — searching, reading output, sending
 a message, or resolving one.
 
-Both are available in the conversation only. Inside a running task they are off,
-along with `watch`.
+The main conversation can hand work off. A task can also hand out pieces of its
+assigned work while below the two-level depth limit; a leaf at that limit does
+the remaining work itself. `tasks` inside a task is scoped to the pieces it
+handed out. `watch` remains absent inside tasks.
 
 The tasks pages in this manual cover how a task runs, what it costs and what you
 see while it works.
@@ -1052,6 +1054,36 @@ machine that no transcript ever showed you is the one thing this pair must not b
 able to make. `propose_task` and `tasks` are NOT absent there: a task may hand
 pieces of its own work out, two levels deep at most, and `tasks` shows it those
 pieces and nothing else.
+
+## Why did it say "loaded" before making a picture — load_capability, and the tools it does not carry
+
+Chat keeps everyday tools directly available and loads additional tool descriptions
+when needed. `load_capability` adds one group to the tool list. The full descriptions
+and arguments arrive on the next model request **within the same turn**; aforge
+continues without waiting for another message from you.
+
+There are up to three groups. The catalog lists only tools available on this machine:
+
+- **`media`** — `generate_image`, `speak`, `generate_music`, `generate_video` and
+  `edit_video`, where configured. `edit_video` needs ffmpeg; the generation tools
+  each need a model. `view_image` stays directly available.
+- **`settings`** — `settings` and `change_setting`.
+- **`harnesses`** — the available saved-procedure tools: `build_harness`,
+  `list_harnesses`, `propose_subharness` and `list_subharnesses`.
+
+An empty group is absent. Loading changes the tool list; the original tools retain
+their permission checks and costs. A failed load is reported as a tool error. A task keeps its tools directly available.
+
+**Why load them later?** Full tool descriptions travel with every model request.
+Deferring these descriptions reduces ordinary request size, at the cost of one
+extra model request on first use and a changed provider prefix when a group loads.
+The small catalog still travels with ordinary requests. This saves schema bytes;
+it does not guarantee a lower bill or a faster answer on every task.
+
+**How long it lasts.** Loaded tools remain available while the engine runs. A group
+cannot be unloaded, and loading it again changes nothing. Reopening restores groups
+from the `load_capability` calls in the saved transcript. If those calls have been
+compacted away, aforge loads the group again when needed.
 
 ## What aforge cannot do
 

@@ -51,8 +51,20 @@ cannot accept a tool call with no result.
 If a short tool is running, aforge lets it finish and lands your words at that
 boundary. If a bash command has already been running for 3 seconds, aforge keeps it
 alive as a job and lands your steer immediately. The clause names the job and
-`jobs output N` shows its output. The exact words `stop`, `kill it`, `cancel`,
-`abort`, `ctrl-c` and their tiny variants stop that long command instead.
+`jobs output N` shows its output. A command that is still YOUNGER than 3 seconds when
+you steer is given those few seconds to finish on its own; if it is still running when
+they are up, it is kept alive as a job then. So **a bash command holds your correction
+for about three seconds at most** — never for its own ending and never for the
+background-after clock. That is the bound on the handoff, not on the answer: the step
+may hold other tools as well, and the model's reply then takes as long as the model
+takes.
+
+The exact words `stop`, `kill it`, `cancel`, `abort`, `ctrl-c` and their tiny variants
+stop the command instead, **at any age** — a stop is not asked to wait out those three
+seconds, because they exist to let a short command finish and that is the one thing you
+have just said you do not want. If you then type something else, the model reads both
+lines in the order you sent them; the stopped command is not restarted by the second
+one.
 
 ## Enter, cmd+enter, shift+enter, and the waiting-message keys
 
@@ -432,16 +444,23 @@ keystroke is the one every terminal habit tells you to hit when something seems 
 It could end a session that was running tasks, holding live background jobs, and still
 carrying a message you had typed and pressed `enter` on.
 
-**What is running is named before it stops, across every conversation this terminal
+**What is running is named before you leave, across every conversation this terminal
 holds.** If there is more than one open, the armed line says how many first — a person who
 has forgotten they left something open in another project needs that number before the work
 count means anything:
 
 ```
+ctrl+c again to quit · a task keeps running
 ctrl+c again to quit · a task will stop
 ctrl+c again to quit · 2 tasks and a job will stop
 ctrl+c again to quit · 3 conversations · 2 tasks and a job will stop
 ```
+
+**The verb is the truth about where the work is.** A conversation this machine's aforge
+service is running keeps going after the window closes, so the line says `keeps running`
+and leaving costs nothing. A conversation running inside this terminal — `--no-host`, or a
+host that could not be reached — stops with the window, and the line says `will stop`. A
+terminal holding both says both, what ends first.
 
 Each clause is absent when it is zero: one conversation drops the first, nothing running
 drops the second, and a quiet single conversation reads exactly `ctrl+c again to quit`.
@@ -468,10 +487,16 @@ shows `ctrl+c again to quit`, and the second press leaves with the panel still u
 ## What quitting saves and closes — kill, SIGTERM, SIGHUP, terminal closed, or hung up
 
 **What quitting does.** Your unsent draft is written to disk first, with any message
-still waiting for an answer folded in underneath it, then the turn is interrupted and
-the session is closed. Nothing is lost that was typed. Every conversation this terminal
-holds is closed together, and the ones behind the screen already wrote their own boxes to
-disk when you switched away from them.
+still waiting for an answer folded in underneath it. Then this terminal comes off every
+conversation it holds — the ones behind the screen as well, which already wrote their own
+boxes to disk when you switched away from them. Nothing is lost that was typed.
+
+**Leaving a window is not ending the work.** A hosted conversation is *detached*: the
+window goes and the conversation keeps its turn, its tasks, its questions and its journal,
+and opening the same workspace again rejoins it. A conversation running inside this
+terminal has nowhere else to run, so it is interrupted and closed here. `/close` and a stop
+you type are still the person ending something on purpose, wherever the conversation is
+running.
 
 **Limits.**
 
@@ -490,17 +515,21 @@ disk when you switched away from them.
 
 ## Quitting while a task is running — what happens to tasks and background work when the session closes
 
-Every task this session is running is stopped when the session closes, and aforge waits for
-all of them before it leaves. A task that was only just admitted is stopped before it opens
-anything — no worktree, no log, no model call for a session that has left. Nothing can
-start in the session afterwards: `this session has closed; nothing new starts in it`.
+**A hosted conversation keeps working.** Closing the window, `ctrl+c` twice, `kill -HUP`
+and a terminal that went away all detach: the task goes on running in this machine's aforge
+service, its questions stay waiting for you, and you rejoin it by opening the same
+workspace again. The armed line says `keeps running` when that is what will happen.
 
-Background jobs go the same way, a moment later. What a task wrote is on its branch and
-stays there; a stop is an interruption and never a finding about the work.
+**A conversation running inside this terminal stops with it.** That is `--no-host`, and a
+launch where no host could be reached. Every task the session is running is stopped when it
+closes and aforge waits for all of them before it leaves; a task that was only just admitted
+is stopped before it opens anything — no worktree, no log, no model call for a session that
+has left. Nothing can start in it afterwards: `this session has closed; nothing new starts
+in it`. Background jobs go the same way, a moment later.
 
-An interrupt from outside — including a closed terminal window — stops the session's work
-the same way. A headless `aforge chat --once` leaves by that road too: the turn stops, the
-session closes, and the process exits cleanly.
+Either way, what a task wrote is on its branch and stays there; a stop is an interruption
+and never a finding about the work. A headless `aforge chat --once` leaves by the closing
+road: the turn stops, the session closes, and the process exits cleanly.
 
 ## Keys — what all the keys do, the keyboard keys, keys on the keyboard, key bindings and keyboard shortcuts
 
@@ -556,9 +585,11 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+.` | Open the tasks place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
-| `ctrl+t` | Give the keyboard to the task roster. Press again or `esc` to take it back |
+| `ctrl+t` | Start a **new chat** — the same start page the `+` at the end of the tab strip opens. Nothing is created until you send the first message, `esc` comes back, and the conversation you were in keeps its draft, its attachments and its work |
+| `ctrl+w` | **Close this tab** — the same thing the `✕` on it does. Selects the last-used remaining tab, or Home if none remain. Drafts are kept, and the conversation keeps running; a tab with work in it asks `keep running` / `stop work` / `cancel` first |
+| `alt+t` (`⌥t`) | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
-| `ctrl+e` | Empty box: open or close the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest settled phase's inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
+| `ctrl+e` | Empty box: open or close the running conversation’s compact steps first; otherwise the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest settled phase's inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
 | `pgup` / `pgdown` | Scroll one page — the height of the view minus one, never less than one row |
 | `tab` | Open or commit path completion, over a command's path argument only — and over an **empty** box with no completion showing, go back to the last conversation. Does nothing when this terminal holds only one |
 
@@ -577,7 +608,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `super+right` / `meta+right` | End of the line — one of the two spellings `cmd+→` can arrive as |
 | `home` / `ctrl+a` | Start of the current line |
 | `end` | End of the current line, always |
-| `ctrl+e` | End of the line — unless the box is empty, where it opens the newest `▸ worked` chip onto its caption outline (the latest completed turn's out here, the newest settled phase's inside a task's page), falling through to the most recent thinking block when there is no chip |
+| `ctrl+e` | End of the line — unless the box is empty, where it opens or closes the running conversation’s compact steps, or the newest `▸ worked` chip onto its caption outline (the latest completed turn's out here, the newest settled phase's inside a task's page), falling through to the most recent thinking block when there is no chip |
 | any printing key | Types the character |
 
 `home`, `end`, `up` and `down` work on the logical line — the run between newlines —
@@ -585,8 +616,8 @@ not on the row your terminal wrapped it onto. `up` only reaches history when the
 caret is on the first logical line, and `down` only when it is on the last.
 
 A word jump crosses the same boundary the word kill deletes: spaces first, then
-the run of non-spaces, so `alt+left` then `ctrl+w` always deletes exactly the
-word it just crossed.
+the run of non-spaces, so `alt+left` then `alt+backspace` always deletes exactly
+the word it just crossed.
 
 ## Click to move the cursor — clicking the message box places the caret
 
@@ -650,7 +681,7 @@ memory panel, the connect key box, the connections panel.
 | `alt+right` / `alt+f` / `ctrl+right` | A word forward |
 | `super+left` / `meta+left` / `ctrl+a` | Start of the line |
 | `super+right` / `meta+right` | End of the line |
-| `alt+backspace` / `ctrl+backspace` / `ctrl+w` | Delete the word behind the caret |
+| `alt+backspace` / `ctrl+backspace` | Delete the word behind the caret. `ctrl+w` does it too in every filter and search box — but **not** in the message box, where it closes the tab |
 | `ctrl+u` | Delete to the start of the line |
 
 This did not used to be true: until this wave the jumps were bound in the message
@@ -699,15 +730,49 @@ at and filtered, not edited by pointer.
 | `delete` | Delete the character in front of the caret |
 | `ctrl+u` | Delete to the start of **this line** — not the whole message |
 | `super+backspace` | Same as `ctrl+u` (Mac `cmd+delete`) |
-| `ctrl+w` | Delete the word behind the caret. While the switcher is up it closes the conversation under the cursor instead |
-| `alt+backspace` | Same as `ctrl+w` |
-| `ctrl+backspace` | Same as `ctrl+w` |
+| `alt+backspace` | Delete the word behind the caret. This is the word kill in the message box |
+| `ctrl+backspace` | Same as `alt+backspace` |
+| `ctrl+w` | **Not a deletion here.** It closes the tab in front and keeps its draft — see *Close the tab you are in* below. It still deletes a word in every filter and search box, and on the switcher it puts a conversation away |
 | `ctrl+h` | Deliberately not bound — some terminals send plain `backspace` as `ctrl+h` |
 
-All five of the kills above work the same way in **every** box aforge has, not
-only the message box: the model picker, the sessions roster, the deliverables
-list, the connect key box and panel, the memory panel, the settings filter and
-its value editor, and the task page's filter.
+The kills above work the same way in **every** box aforge has, not only the
+message box: the model picker, the sessions roster, the deliverables list, the
+connect key box and panel, the memory panel, the settings filter and its value
+editor, and the task page's filter. In those boxes `ctrl+w` is a word kill too —
+they are the whole screen while they are up, and no tab could be closed from
+inside one.
+
+## Close the tab you are in — ctrl+w, close a chat, shut this conversation
+
+**`ctrl+w` closes the tab in front, and it is exactly the `✕` on that tab.**
+`ctrl+t` opens a tab and `ctrl+w` shuts one, which is what those two keys do in
+a browser.
+
+Your unsent sentence, caret and attachments stay with the conversation. The
+conversation remains in `ctrl+k` and Home, and reopening restores its tab and draft.
+
+Closing the active tab selects the most recently used remaining open tab. With
+none left, the window goes **Home** with the current session behind it.
+Closing an inactive tab does not switch the current conversation.
+
+Conversations keep working when another tab is selected, over every door: the ordinary
+engine-backed chat, `--host` and `--at` each hold **one connection per conversation**, and
+`aforge chat --no-host` holds them in this process. Selecting another tab ends nothing and
+sends no Stop or Close to either side of the switch. Closing the final tab only opens Home
+and leaves that conversation behind it.
+
+**On the new chat page it closes that page**, exactly as `esc` does: the page
+comes down, the conversation you were in comes back with its draft and its work,
+and the first message you had half typed is parked for the next time you open it.
+
+Ending a conversation for good is a different act, and this key is not it:
+`Stop` on a task's page ends that work, and `/quit` closes the conversation in
+front. See *Put a conversation away from the switcher* below, which is the same
+gesture aimed at a row on the `ctrl+k` card instead of at the tab in front.
+
+The trade is that `ctrl+w` no longer deletes a word in the message box.
+**`alt+backspace` and `ctrl+backspace` still do**, and one of the two reaches
+aforge on every terminal.
 
 ## Why cmd+backspace does nothing — which terminal you are in decides
 
@@ -731,7 +796,9 @@ sitting, that is the key to use instead — nothing is missing and there is noth
 to turn on inside aforge.
 
 The same is true of `alt+backspace` and `ctrl+backspace` for the word kill, and
-`ctrl+w` is *their* everywhere-spelling. On iTerm2's Natural Text Editing preset
+between the two of them every terminal sends one — which is what makes it safe
+for `ctrl+w`, their old third spelling, to close the tab instead. On iTerm2's
+Natural Text Editing preset
 `⌥⌫` is mapped to `esc del`, which arrives as `alt+backspace` and kills a word.
 aforge does not detect what your terminal sends and cannot tell you which of
 these it will deliver; the only test is pressing it.
@@ -865,11 +932,44 @@ rule and nothing else. While the call is out that same slot turns a small spinne
 of the words; when the answer lands the block appears under the box, and the box itself
 has still not moved.
 
+## Every recipient keeps its own message box — I typed something for you and it went to a task
+
+**The box belongs to whoever it is talking to.** The conversation has one unsent
+sentence, and every task page you open has its own. Opening a task's page, pressing
+`esc` to come back, or clicking straight from one task to another never moves a word
+from one of them to another.
+
+What each one keeps: the text, where the caret is in it, its compact `[paste 1 · 42
+lines]` chips with the documents behind them, and anything on its tray. So a
+half-written message for the model is exactly as you left it when you come back from a
+task, caret included, and a correction you started typing at a task is still there when
+you open that task again.
+
+**`enter` sends the box you are looking at, and clears only that one.** Steering a task
+empties that task's box and leaves the conversation's sentence and every other task's
+alone. If steering is refused and you answer the question with `[m]` — send it to the
+main conversation instead — the words that go are the ones you typed at the task, and
+your unsent sentence for the model is still in the box you come back to.
+
+**All of it is kept on disk, per recipient**, and comes back after a crash or a restart:
+the conversation's sentence with its caret, and each task page's own line with its
+documents and tray. A task page's line is never restored into the conversation, and never
+into a different conversation's task that happens to have the same number. The section
+below is the whole of how that is written down.
+
+Before this, there was one box and one set of words in it: typing a message for the
+model, clicking a task and pressing `enter` sent that message to the task, with nothing
+on the screen looking any different at any point.
+
 ## Your unsent draft is kept
 
 The half-written message survives closing the window, a crash, `/new`, and a session
 that has moved on. There is nothing to press; it is automatic.
 
+- **Every recipient's box is kept, each to itself.** Quitting while a task's page is
+  open writes the sentence you had for the model *and* the correction you were typing
+  at the worker; the next launch puts each one back where it was typed. Nothing typed
+  at a task ever comes back in a box pointed at the model.
 - It is written 300ms after you stop typing, and again synchronously on quit before
   anything else happens.
 - **Anything still waiting for an answer is folded in on quit.** A message you parked
@@ -894,8 +994,59 @@ that has moved on. There is nothing to press; it is automatic.
   deleted. A process id that cannot be checked is treated as still alive — aforge
   errs toward leaving your sentence on disk.
 - CR and CRLF in a restored draft are normalised to LF.
-- A failed write is dropped in silence. No draft is kept at all if aforge was started
-  without a draft file.
+- No draft is kept at all if aforge was started without a draft file.
+
+## What a crash does to your draft — what is saved, what comes back, what it will not send
+
+Everything the box is holding is written to one record per conversation, and the plain
+file you can read sits beside it.
+
+- **One record, and a plain file beside it.** `draft-<id>-<n>-<pid>.json` is the record
+  and is what a restore reads: every box's words and caret, the documents behind its
+  `[paste 1 · 42 lines]` chips, its tray, each stamped with the machine, the project and
+  the conversation it belongs to. `draft-<id>-<n>-<pid>.txt` is your sentence in plain
+  text, exactly as it always was — a build that has never heard of the record still reads
+  and writes it, and it is what a restore falls back on where there is no record.
+- **A sent or cleared box stays empty.** The record is the answer even when it has
+  nothing to say. It is written before the plain file, so a crash between the two can
+  leave that file still holding the sentence you just sent; the record is believed
+  instead, and the stale file is cleared away when it is found. An empty record is left
+  behind saying "this box is empty" rather than deleted, and goes when the conversation
+  is closed.
+- **Nothing is dropped to make it fit.** There is no size limit and nothing is
+  truncated: a pasted log of any size is written down with the sentence it belongs to.
+- **A correction sent to a task is in the record too, before it is sent.** `enter` in a
+  task's page writes the words, the caret, the pasted blocks and the name that correction
+  was sent under into that page's slot, and the correction crosses only once that write
+  has landed — so a message waiting for an answer does survive closing the window. The
+  next launch puts it back on that page under the same name, so asking again is a repeat
+  rather than a second correction. If the record cannot be written the correction is not
+  sent at all: `task 7 was not corrected — the draft could not be saved first, and your
+  words are back on its page`. See *I sent a correction and the window closed* on the
+  tasks page.
+- **What comes back is what you left, and what is wrong with it is said.** An attachment
+  whose file was deleted meanwhile is still on the tray, and the conversation says
+  `a restored draft still names a file that is gone · shot.png`; `enter` names it again
+  if you send it anyway. A `[paste 1 · 42 lines]` tag restored from a plain file with no
+  record behind it keeps its place in your sentence, and the conversation says
+  `a pasted block could not be restored · its tag is still in the draft`. Nothing is
+  edited out of your words for you.
+- **And `enter` will not send that message.** With a compact tag whose text is gone, the
+  conversation and a task page both refuse with `a pasted block could not be restored ·
+  the words were not sent`, and your whole line stays in the box: sending would hand the
+  model the tag instead of the document, and deleting the tag would send a different
+  message from the one on your screen. Paste the block again, or delete the tag.
+- **If it cannot be written, you are told**: `this draft could not be saved`, with the
+  reason. A record aforge cannot read — a later build's, or a half-finished write — is
+  never overwritten either; it is moved aside as `<name>.json.unreadable-<number>` and
+  the new one written in its place.
+- **A task page's line follows its conversation, not the window.** Open that
+  conversation tomorrow in a different window and its lines come with it; open a
+  different conversation and they are neither shown to you nor deleted.
+- **Only the newest record for a conversation is read.** If two windows each left
+  one — two crashes — the later one wins outright, so a box you emptied is not
+  refilled by the earlier one. The earlier record is left on disk untouched rather
+  than merged or deleted; nothing in aforge offers it back to you.
 
 ## Getting back something you typed before
 
@@ -953,10 +1104,10 @@ What it changes and what it does not:
   `meta.json` — so it is still there after you close aforge and come back.
 - The rung reaches the work this conversation hands out: task workers start at it too.
 - It does **not** change other conversations. The default for those is the **thinking**
-  row in `/settings`, which ships at `high`.
-- **`off` is not on the chip or in the list.** The five rungs are the ladder; turning
-  thinking off entirely is the `off` choice on the **thinking** settings row.
-- With thinking set to `off` and nothing else asking for any, there is **no chip at all** —
+  row in `/settings`, which ships at `auto` (the provider default).
+- **`auto` is not on the chip or in the list.** The five rungs are the ladder; the
+  **thinking** settings row offers `auto` to use provider defaults. It does not disable thinking.
+- With thinking set to `auto` and no more specific level chosen, there is **no chip at all** —
   there is nothing to report. `ctrl+v` still works and puts the chip back at `low`.
 
 **When the chip will not move.** A thinking level dialled onto the model itself — the
@@ -1264,11 +1415,17 @@ first and last · `enter` opens the row · `backspace`, `ctrl+w` and `ctrl+u` ed
 every section at once and is shown at the foot as `filter · port`. `→` opens the row's
 verbs, and this place has one: `s stop it`, over a task this conversation is holding that is
 still queued or running. Its foot is assembled from what is true of the row under the
-cursor — `enter open its room · → verbs: stop it · type to filter` over a task this window is
-running, `enter go inside it` on a task another conversation ran, which has no room to open,
-no `enter` clause at all where the row under the cursor has no door — which is a page
-holding only work running in other aforge windows — and `esc clear the filter` in place of
-`type to filter` while you are typing one. On a machine that has run **nothing at all**,
+cursor — `enter open its room · → verbs: stop it · type to filter this list` over a task this
+window is running, `enter go inside it` on a task another conversation ran, which has no room to open,
+and one of three clauses on a task another aforge **window** is running:
+`enter go to that conversation` when this terminal is holding that conversation, which
+switches to it standing in that task's room; `enter read it as it runs` when the engine is
+running it and this window can join, which opens that task's own live transcript, read-only;
+and `enter where it is running` when nothing here can reach it, which opens the card that
+says which window has it — and
+`esc clear the filter` in place of `type to filter this list` while you are typing one. The
+clause names the list because the message box is on the same frame two rows above, and while
+this page is up your keystrokes go to the filter and not to that box. On a machine that has run **nothing at all**,
 where the body is teaching what tasks are, the foot drops to `tab next place · esc` alone:
 there is no row to filter, none to open and no verb to press. Clicking a row acts on the first press; the wheel
 walks the cursor. The tasks pages describe what is on it.
@@ -1280,6 +1437,11 @@ message box** and closes the page. Its foot reads
 `m puts it in your message · ↑↓ scroll`; `esc back` is in the head's right corner instead,
 said once. Clicking its head row or its foot goes
 back to the list; its body is read.
+
+**Inside the card over another window's task** (`enter` on a row noted `another window`):
+the same keys, minus the mention. Its foot reads `↑↓ scroll` — with `esc back` beside it
+where the head has no room for its corner — and `m` does nothing: nothing has landed for a
+`@` name to point at. `esc` or `←` backs out to the list.
 
 **Rewind timeline** (`/rewind`, or `tab` from inside the quick `esc` `esc` mode): `esc`
 clears the search first and closes the page second · `up`/`ctrl+p`, `down`/`ctrl+n` move ·
@@ -1340,9 +1502,8 @@ With **three or more** open, that slot says `ctrl+k switch` instead, and `ctrl+k
 card of all of them — see *Switch between open conversations*. `tab` still works and still
 goes to the last one.
 
-It works while a turn is running in either conversation. Nothing is interrupted: the turn
-you leave keeps streaming into its own transcript, and it is redrawn from its first token
-when you come back.
+It works while either conversation is running, over every door: the one you leave keeps
+streaming into its own transcript and is all there when you come back.
 
 **On a place, `tab` is the next place instead.** Home, tasks, standing, memory, spend,
 search and settings are one circle and `tab` walks it; `shift+tab` walks it back. That is
@@ -1367,21 +1528,25 @@ starting work here, so the box is still standing when you come back.
 
 ## Switch to another conversation without going home — ctrl+k, the conversation switcher, switch between my open chats, alt tab between conversations
 
-**Press `ctrl+k` and you are in your previous conversation, at once.** Press it again and
-you are one further back. This is quick switch, the default: the press is the switch, the
-way a browser's `ctrl+tab` changes tabs. A card is drawn over the conversation you just
-landed in — the screen behind it dims — showing **the conversations this terminal has
-open**, and when you stop pressing, the card fades by itself after about a second. `esc`
-takes the whole thing back to where you started. There is nothing to confirm: by the time
-the card fades you are already there.
+**Press `ctrl+k` to choose a conversation without leaving the one you are reading.**
+Press it again, use the arrows, or scroll to move the highlight. The list stays open
+while you read its names; a pause never switches chats or dismisses the list.
+Moving the pointer over a row highlights that row without changing the keyboard
+selection or switching chats. A small dot marks the pointer even without color.
+The “more conversations” control also highlights; headings and borders do not.
+An outside click dismisses the card without activating anything behind it.
+**Enter opens the highlighted row; clicking a row opens that conversation. Escape or
+a click outside the card cancels.** Long selected titles
+get additional reading space below the rows. A click outside the list acts on nothing.
 
-Touch any other key while the card is up — an arrow, `→`, `ctrl+w` — and the card stops
-fading and holds still, so you can look around without switching; `enter` then goes. With
-quick switch turned off in `/settings`, `ctrl+k` always opens this holding card and waits.
+This holds even when the `quick switch` setting is on. That setting applies only to
+`ctrl+tab` on terminals that can send it. Ordinary terminals do not report modifier-key
+releases, so opening a chat waits for an explicit choice rather than guessing when you
+released Ctrl.
 
 ```
 ╭──────────────────────────────────────────────────────────────────────────────╮
-│  open              3 of 12 · tab down · shift+tab up · enter go · esc back   │
+│  open              3 of 12 · enter open · esc cancel · ↑↓ choose   │
 │                                                                              │
 │  1 ? harness dry run on one pub…  asking you something      aforge-v2    4m  │
 │  2 ◐ openrouter price scrape      2 tasks running            research    1d  │
@@ -1397,23 +1562,33 @@ open, of how many this machine has.
 **Everything else on the machine is behind the fold at the foot.** `→` reaches them and
 `←` puts them away again. A conversation below the fold is not open in this terminal;
 taking one opens it beside the one you are in, exactly as `enter` on home does, and the one
-you are in keeps running.
+you are in keeps running — over the ordinary engine socket, over `--host`, over `--at` and
+under `aforge chat --no-host` alike. Each conversation holds its own connection, so
+opening a second, third or fourth closes nothing and cancels nothing.
 
 It works from the **first** session: on a fresh launch you hold one conversation, the card
 has that one row, and the fold has the rest of the machine in it.
 
+**The tabs above a conversation are the same journey with a mouse.** The conversations
+this window has been in are drawn there, the one you are in bright and underlined;
+clicking one switches to it, and the `Chats ▾` control (or `Chats +3 ▾` where the row is
+too narrow for every tab) at its right end opens this card with its fold already open. The
+`×` on a tab dismisses its view, and `ctrl+w` is that `×` on
+the tab you are in. See *Conversation tabs* and
+*Closing a tab* on the screen page.
+
 | Key | What it does |
 | --- | --- |
-| `ctrl+k` | Switch to the previous conversation at once; each further press goes one older. With quick switch off, it opens the card and steps the cursor instead |
-| `ctrl+tab` | The same key, on terminals that can send it. See below |
-| `ctrl+shift+k` / `ctrl+shift+tab` | Up one, on those same terminals |
+| `ctrl+k` | Open the list; each further press moves the highlight without switching |
+| `ctrl+tab` | Switch immediately when quick switch is on, otherwise browse; requires a terminal that sends it |
+| `ctrl+shift+k` / `ctrl+shift+tab` | Reverse their respective forward gestures, on those same terminals |
 | `tab` / `↓` | Down one — cursor only, without switching, and the card stops fading |
 | `shift+tab` / `↑` | Up one. Both wrap round at the ends |
 | `1`…`9` | On the holding card, go to that row outright — the number is drawn on the rows that have one. While the card is fading, digits are typing and land in your message |
-| `enter` | Go to the row you are on |
+| `enter` / click a row | Open that conversation |
 | `→` | Open the fold — every other conversation on this machine |
 | `←` | Fold them away again |
-| `ctrl+w` | Close the conversation under the cursor. See below |
+| `ctrl+w` | Dismiss the conversation under the cursor from this window's tab row. If it is working you are asked once — `keep running`, `stop work` or `cancel` — and the conversation goes on running unless you chose to stop it. See *Closing a tab* on the screen page |
 | `esc` | Take it all back: the card goes and you are in the conversation you started from, however many presses ago that was |
 | any other key | While the card is fading, it is typing — the card goes and the key lands in your message. On the holding card it puts the card away and is swallowed |
 
@@ -1432,8 +1607,8 @@ it. Everywhere else the legend reads `space space home · tab last · ctrl+k swi
 **There is no cap** on what one terminal holds at once: taking a row is never refused for
 having too many open. The card draws the first twelve rows and hands a digit to the first
 nine; past that the cursor is the way, and home is the page that shows every conversation
-you have. Nothing closes one for you — `/quit` closes the one in front, `ctrl+w` here closes
-the one under the cursor.
+you have. Conversations remain alive until you end one — `/quit`, or `stop work` on the
+card that a working tab's `ctrl+w` raises.
 
 ## What did my other chats do while I was away — what each row of the switcher tells you
 
@@ -1459,31 +1634,15 @@ are looking at the card does not re-rank the list under your finger.
 
 ## Switch without pressing enter — quick switch, it goes when I stop pressing, it switched right away
 
-**Quick switch is on by default**: `ctrl+k` switches on the press, the card over the new
-conversation is a receipt, and pausing is what makes it fade — there is no `enter` in the
-gesture at all. `ctrl+shift+k` (where the terminal can send it) cycles the other way, and
-with the card down it enters at the far end of the ring: the open conversation you have
-not looked at for longest.
+The `quick switch` setting controls **`ctrl+tab`**, where the terminal can send that
+chord. It is on by default. Each press switches immediately and shows a brief receipt;
+Escape returns to where the burst started. Typing dismisses the receipt and goes into
+the new chat. An arrow turns the receipt into a list that waits for Enter.
 
-Three things to know about the fast gesture:
-
-- **`esc` is the undo.** However many presses deep you are, `esc` puts you back in the
-  conversation the first press left, with the card down.
-- **`tab` afterwards returns to where you started.** Cycling through two conversations on
-  the way to a third does not make a stepping stone "the last one" — after the card fades,
-  `tab` goes back to the conversation you were actually in before the burst.
-- **You can start typing immediately.** A letter typed while the card is still fading lands
-  in your message; the receipt never eats a keystroke.
-
-**To turn it off**: `/settings`, interface, the row named `quick switch`. Off, `ctrl+k`
-opens the card, the cursor steps, and nothing moves until `enter` — the same card, held
-open, that any non-chord key converts the fading one into.
-
-It commits on the press and never on releasing `ctrl`, deliberately: a terminal only
-reports key releases under an optional protocol that dies inside tmux and most terminals,
-and a gesture that worked at the desk and died over ssh would be worse than one honest
-gesture everywhere. Chrome's `ctrl+tab` commits on the press too — there is no difference
-to feel.
+Turn it off under `/settings`, interface, `quick switch` to make `ctrl+tab` browse too.
+**`ctrl+k` always browses**, regardless of this setting. It never moves the underlying
+chat until Enter, a numbered shortcut, or a row click chooses one. Key releases are not
+available consistently across terminals, so there is no release-to-commit behavior.
 
 ## Why ctrl+k and not ctrl+tab or alt+tab
 
@@ -1508,34 +1667,29 @@ and `ctrl+k` is already "jump to a conversation" in Slack and the switcher in VS
 answered the keyboard query — and it costs nothing that half the terminals in the world
 cannot send it, because **`shift+tab` walks the card back on every one of them**. With the
 card down, `ctrl+shift+k` opens the ring at its far end — the open conversation longest
-unlooked-at — and under quick switch lands you in it at once.
+unlooked-at — and waits for your choice.
 
-## Close a conversation from the switcher — ctrl+w, closing a chat, too many open
+## Put a conversation away from the switcher — ctrl+w, closing a chat, too many open
 
-**`ctrl+w` on the row closes that conversation in this terminal.** The card stays up and
-says `closed · <name>`, so tidying three of them costs three keystrokes rather than three
-openings.
+**`ctrl+w` dismisses the tab under the cursor.** An inactive row leaves the card
+open with `tab closed · <title>`, so several tabs can be put away in succession.
+Its saved conversation and draft remain available; Enter reopens it.
 
-**Closing is not switching.** It ends that conversation's session, and **work running inside
-it stops with it** — the same thing the quit door warns about. So:
-
-- a conversation with nothing running closes on **one** press;
-- a conversation with work in it takes **two**, and the card says what is running in
-  between: `2 tasks running · ctrl+w again to close it anyway`;
-- moving the cursor cancels that warning, so a second press never lands on a row you have
-  walked away from.
-
-`ctrl+w` on the row marked `you are here` closes the conversation you are in and brings the
-next one forward — the same thing `/quit` on it would do. With only one conversation open it
-says `that is the only conversation open — /quit closes aforge`.
+On the row marked `you are here`, the card closes and the window selects the most
+recently used remaining tab, or Home when none remain. This is the same action as
+`ctrl+w` in the conversation and the tab's `×`, and it asks the same question where that
+conversation is working. The work keeps running over every door; selecting another tab
+ends nothing. Closing the final tab opens Home, leaving that conversation behind it.
 
 **`ctrl+w` on a row below the fold does nothing** and says
-`that one is not open here — enter opens it`. There is nothing to close: this terminal is
-not holding it.
+`that one is not open here — enter opens it`. There is nothing here to put away: this
+terminal is not holding it.
 
-Nothing caps how many one terminal holds, so `ctrl+w` is never about making room. It is
-about ending something you are done with: a conversation left open goes on running, holding
-its transcript's lock and its share of this window's memory, until you close it.
+**What actually ends things**: `Stop` on a task's page ends that work, and `/quit` closes
+the conversation in front — leaving aforge when it was the last one this terminal held.
+
+Nothing caps how many one terminal holds, over any door, so `ctrl+w` is never about
+making room — it is about what you want on the row.
 
 ## `tab` still goes straight to the last one
 
@@ -1807,7 +1961,7 @@ ink once this conversation has spent four fifths of its own `per conversation` l
 
 ## Keys in the task roster and inside a room
 
-**While the task roster holds the keyboard** (`ctrl+t`): `esc` gives the keyboard
+**While the task roster holds the keyboard** (`alt+t`, `⌥t`): `esc` gives the keyboard
 back · `up`/`down` move · `right`/`left` open and fold · `enter` opens that row's room ·
 `alt+w` widens the column and narrows it again. Its hint reads exactly
 `↑↓ move · →← tree · enter open · alt+w wide · esc`. On a row whose work is still running or
@@ -1820,10 +1974,12 @@ before the message box: a sentence typed while the roster still held the keyboar
 as `riting the port` and `orktree`. Every bare letter on this surface is either a key on a
 modal page with no message box, or an answer to a question drawn on screen, pressed over an
 empty box — and widening a column is neither, so it took a chord. The bare `w` still works
-on the **full-frame roster** (`ctrl+t` under about 100 columns, where the roster is drawn
+on the **full-frame roster** (`alt+t` under about 100 columns, where the roster is drawn
 over the whole frame and there is no message box on screen). The column's own footer says
-`alt+w widen · click seam` or `alt+w narrow · click seam`, and dragging or clicking the
-seam does the same thing with the pointer.
+`alt+w widen · click seam` or `alt+w narrow · click seam`, and clicking the seam — the
+column's two leftmost cells — does the same thing with the pointer. Both the offer and
+the handle exist only from 120 columns up, which is the only frame that lends the wider
+tier; narrower than that those two cells belong to the row under them and open its task.
 
 **`→` and `←` fold two things, and it is one gesture.** On a family's root row they open
 and close the family. On a row whose **work has finished** they open and close that row's
@@ -1837,9 +1993,9 @@ the bottom rather than carrying on into the project's record. Old tasks from ear
 sessions are on the tasks place, reached from the column's own `ctrl+. earlier` line, from
 `ctrl+.` or from `/history`; `enter` on an `earlier` row there goes inside that task's
 card. In a directory whose earlier sessions ran tasks but where **this** conversation has
-run none and started no jobs, `ctrl+t` falls through — there is nothing on the column to
+run none and started no jobs, `alt+t` falls through — there is nothing on the column to
 put a cursor on. A session that has only started a server still has the jobs section, so
-`ctrl+t` takes it.
+`alt+t` takes it.
 
 **The column's other lines take no cursor.** Its `standing` section, and the two `+` rows
 that close each of those sections (`+ /task`, `+ /standing`), are the pointer's — the walk
@@ -1851,7 +2007,7 @@ on the `jobs` label toggles the section; `enter` on a job row opens that job's p
 
 **Under 60 columns the roster page is a thumb's, not a keyboard's.** Its rows are two-line
 cards a tap opens, its foot is a `‹ back` bar in place of the key legend
-`enter open its room · type to filter`, and the strip that opens it is one full-width door
+`enter open its room · type to filter this list`, and the strip that opens it is one full-width door
 (`▸ 3 tasks · 1 running`) rather than a row of chips. Mouse motion is ignored — a tap opens
 in one gesture. The tasks page describes the phone flow in full.
 
@@ -1860,7 +2016,7 @@ command to keep.** It works from the message
 box, from inside a room, and while the roster holds the keyboard — it is the one key
 here you do not have to ask for the roster first to use. Closing it hands the keyboard
 back to the box. The choice is written to your profile as `ui.task_column`, so the next
-session opens the way you left it, and `ctrl+t` counts as asking for the column back.
+session opens the way you left it, and `alt+t` counts as asking for the column back.
 
 **A closed column leaves a two-column edge down the right of the frame with a `❮` in it,
 drawn in ink, and clicking anywhere on that edge opens the column again. Clicking the
@@ -1929,7 +2085,8 @@ a blank row, the gap beside a paragraph, the slack under a short transcript — 
 nothing at all, exactly as it does in the conversation. Leaving is `esc` and `←`, and
 the pinned header at the top of the page names both: `esc/← main`. That header row is
 also a button — press it anywhere along its width and you are back in the conversation
-— except the `✕` at its right end, which asks to stop the work instead.
+The `Stop` that ends the work is not on that row at all: it is at the right end of the
+quiet facts row underneath, so a press aimed at leaving can never end a task.
 
 **Inside a harness design's room, while its card is waiting on you**, two more chords
 appear above the message box: `ctrl+k` saves the design and `ctrl+x` drops it, and both
@@ -2003,7 +2160,7 @@ at the foot of the page where `this task has finished — say it to main` would 
 and the hint slot reads `a accept · l look again · n not right` while the question stands.
 The room and the card are one question: answer in either and both show the receipt.
 
-**And the roster's row answers them too.** With the roster holding the keyboard (`ctrl+t`)
+**And the roster's row answers them too.** With the roster holding the keyboard (`alt+t`)
 and the cursor on a row that **needs your look**, the hint slot reads
 `a accept · l look again · n not right · esc` in place of the move keys, and those three
 letters answer that row's landing without opening its room. Same card, same answers, same
@@ -2034,9 +2191,10 @@ Only the left button acts. A press is resolved in this order:
    removes it, and the **thinking chip** at the right end of that row opens the five-rung
    ladder (pressing it again closes it). Neither moves the caret in your draft.
 5. The jump-to-latest chip.
-6. A stop target: the confirmation card's two answers while it is up, and the `✕` at
-   the right end of a room's pinned header. On a phone-width terminal the `✕`'s hit
-   box is three rows tall, because a finger is about that wide.
+6. A stop target: the confirmation card's two answers while it is up, and the `Stop`
+   at the right end of a room's **facts row** — the second row of its header, under the
+   breadcrumbs. On a phone-width terminal `Stop`'s hit box is three rows tall,
+   because a finger is about that wide.
 7. A room's **pinned header**, which is the pointer's way back to the conversation.
    The whole row answers, both ends of it, because the row says `esc/← main` and a
    row that named the exits and did nothing when pressed would be dead. The dim
@@ -2112,7 +2270,7 @@ window follows the cursor.
 
 **The task column on the right scrolls under the pointer** and leaves the conversation
 beside it where it is. It moves the column's own window — running work stays pinned at the
-top, and the `tasks` label with it — unless the column is holding the keyboard (`ctrl+t`),
+top, and the `tasks` label with it — unless the column is holding the keyboard (`alt+t`),
 in which case the window is already following the cursor and the wheel walks that instead.
 
 Reaching the bottom **re-arms sticking**, so new replies follow along again. Scrolling
@@ -2330,12 +2488,18 @@ A place takes the whole frame, so while one is standing the conversation's keys 
 under it at all. Where your terminal has not reported that it can send `ctrl+.`, the place
 reading simply does not exist and the chord does nothing there.
 
-**`ctrl+t` — two meanings:**
+**`ctrl+t` — three meanings:**
 
 | Where | What it does |
 |---|---|
-| Message box | Give the keyboard to the task roster. Press again or `esc` to take it back |
+| Message box, or the task roster holding the keyboard | Start a new chat — the start page the tab strip's `+` opens. The roster gives the keyboard back on the way |
+| Home | Start a fresh conversation **in the folder of the row under the cursor** |
 | Model picker only | Cycle the reasoning effort |
+
+It used to hand the keyboard to the task roster everywhere. **That is `alt+t` (`⌥t`) now** —
+the same letter under the other modifier, beside the roster's own `alt+w` widen chord. On
+macOS, `⌥t` types `†` instead unless your terminal is set to send Option as Meta — see
+*getting started*, "Option as meta, on macOS", for the setting and where it lives.
 
 **`ctrl+o` — five meanings:**
 
@@ -2367,10 +2531,10 @@ Two more chords surprise people:
   terminal's selection away, and copy mode is what buys it back.
 - **`ctrl+e` means two things** depending on whether the box is empty: end of line
   when there is text, open the most recent thinking block when there is not.
-- **`ctrl+w` means two things**, and never on the same screen: in the message box it
-  deletes the word behind the caret; while the **switcher** is up it closes the
-  conversation under the cursor. The card has taken the whole keyboard by then, and there
-  is no caret on it to delete a word behind.
+- **`ctrl+w` means two things**, and never on the same screen: in a conversation it closes
+  the tab in front; while the **switcher** is up it puts the conversation under the cursor
+  away. The card has taken the whole keyboard by then. In the message box the word kill it
+  used to be is `alt+backspace`.
 - **`ctrl+k` means two things**, and never on the same screen: it opens the switcher, and
   inside a harness design's room, while its approval row is up, it saves the design. That
   row is modal and takes the key first.
@@ -2386,7 +2550,7 @@ and it moves the rung of **the thing you are standing on**. One chord, three sco
 | Where you are | What moves |
 |---|---|
 | The message box, typing or empty | **This conversation's** rung — the chip above the box, see *The thinking chip above the message box* |
-| The task roster holds the keyboard (`ctrl+t`) and the cursor is on a task | That task's rung |
+| The task roster holds the keyboard (`alt+t`) and the cursor is on a task | That task's rung |
 | You are inside a task's page | That task's rung |
 | Home, with the cursor on a `◦` standing item row or its card | That item's rung |
 
@@ -2404,7 +2568,7 @@ roads always wrote.
 **It climbs and it wraps.** Each press goes one rung up, and `max` wraps back to `low`. It
 never returns to "nobody said" — clearing a rung hands the work back to whatever stands
 over it, which is a decision rather than something a wheel does on its way past. Set a
-thing back to nothing in the place it is written down: the `thinking` row's own `off`.
+thing back to nothing in the place it is written down: the `thinking` row's own `auto`.
 
 **The rung reads as a quiet clause where the thing already states its facts.** A task's is
 on its page's header, after the model — `◆ Fix nil-map · running · 42s · $0.31 · gpt-5 ·
@@ -2505,7 +2669,9 @@ nothing to hand over.
 
 ## Thinking is shown but never saved
 
-Models that stream their working get a dim italic block above the answer, headed
+The compact conversation keeps thinking behind its work disclosure. Open that with
+`ctrl+e`, then click the thought block to inspect it. Inside the opened work, or on
+a task page, models that stream their working get a dim italic block headed
 `⠿ thinking · N tok · ctrl+e`.
 
 While it streams, only the **last 3 wrapped lines** show, each painted a step further
@@ -2513,10 +2679,10 @@ along a fade so the newest reads brightest. The moment the turn says anything th
 not reasoning, the block collapses to one row reading
 `thought for Ns · N tok · ctrl+e`.
 
-Open it with `ctrl+e` over an empty message box — which opens the most recent block —
-or by clicking anywhere on the block. Opening **latches** your choice, so the
-automatic collapse can never close a block you opened. An opened live block shows the
-whole buffer, not the 3-line window.
+Click anywhere on the thought block to open it. `ctrl+e` over an empty message box
+opens the most recent thought only when no whole-work disclosure takes priority.
+Opening **latches** your choice during streaming. An opened live block shows the
+whole buffer, not the 3-line window. Completion still folds the whole turn’s work.
 
 An expanded block is capped at **200 rows**, and says how much is held back. The token
 count is an estimate at 4 bytes per token.
@@ -2638,9 +2804,13 @@ that is the point of the wording. aforge's own lines about the stop (`· stopped
 what it dropped from the queue) stay outside the chip where you can read them.
 
 Click the chip or press `ctrl+e` over an empty message box to open or close it. There is
-no transcript cursor, so the key chooses the latest completed turn's work in the
-conversation. Opening restores the existing bounded views: thinking remains its
-own chip and only the latest 3 tool calls show until those are opened separately.
+no transcript cursor, so the key first chooses the running conversation’s compact
+steps, then the latest completed turn’s work. The running view shows up to three
+wrapped rows of recent captions, with the newest live step shimmering. Opening
+shows the existing outline: click a caption to inspect its calls, or click the
+whole-work door to return to the compact steps. Completion collapses work opened
+during the turn. The newest caption may exceed three rows on a narrow frame so
+its words remain intact.
 Questions, approval prompts, failure lines, text-only turns, and work with no trailing
 answer are never hidden — nor is a second message you sent into a running turn, which
 ends the chip above it and starts a new one. Fold state belongs to this window; resumed
@@ -2672,3 +2842,54 @@ live-applies on the next render; work stays indented in either mode.
 - **Tasks, rooms, proposals and the roster**: the tasks pages.
 - **Rewind**, which `esc` `esc` opens quick and `/rewind` opens whole: the sessions and
   rewind page.
+
+## Starting a new chat with plus
+
+The `+` at the right of the conversation tabs opens a **New chat** start page. Type a first message or choose a recent conversation. Opening the page creates nothing. `esc` or its tab's close control returns to your previous chat or task with its draft. The first message creates the conversation. A draft parked on the start page stays for this window's lifetime. See *Starting a new chat with the `+` plus button beside the tabs* on the screen page.
+
+## Reopen a tab you closed — ctrl+shift+t, undo close tab, get that chat back
+
+**`ctrl+shift+t` puts the last tab you shut back**, and pressing it again walks
+further back through the ones before it, newest first. It is the third key of the
+same grammar: `ctrl+t` opens a tab, `ctrl+w` shuts one, `ctrl+shift+t` undoes the
+shutting.
+
+A held conversation returns with its unsent sentence, caret, attachments and reading
+state — including one you left with `keep running`, which comes back with everything it
+did while its tab was off the row. A remembered one is resumed on a connection of its own,
+which ends nothing that is already open. It never creates a new conversation.
+If reopening fails, the reason is shown and the entry stays first in line for retry.
+
+**It works from home**, which is where shutting your last tab leaves you — that is
+the press this key most often undoes.
+
+What it will not do:
+
+- **A tab you already brought back yourself is skipped.** Reopening a conversation
+  from `ctrl+k` or from home takes it off the list, so the key moves on to the one
+  under it rather than spending a press on the tab in front of you.
+- **The same conversation is never on the list twice.** Shut it, reopen it, shut it
+  again, and it is still one entry.
+- **The New chat page is not on the list.** Nothing was created there, so there is
+  nothing to come back to — and the first message you had half typed was parked
+  when the page closed. `ctrl+t` opens the page again and hands it straight back.
+- With nothing shut, the key does nothing at all, and it never types into your
+  message box.
+
+The window remembers the last **32** tabs you shut, which is as many as the tab row
+itself remembers, and it remembers them only for as long as the window is open.
+
+**Your terminal has to be able to send the key.** aforge answers the event spelled
+`ctrl+shift+t`. Whether it arrives distinctly depends on the terminal and its
+keyboard configuration. A terminal that collapses it to `ctrl+t` sends that instead, and **you get a
+new chat** — the plain chord is never read as a reopen, because a key that opened a
+tab on one terminal and reopened another on the next is a key nobody could predict.
+There is nothing to turn on inside aforge, and the only test is pressing it.
+
+## Switching chats while an account asks for a key
+
+Ctrl+W offers Keep running, Stop work and Cancel while an account asks for typed
+input, just as it does during tool permission. Ctrl+K opens Chats and Ctrl+T
+opens another conversation without answering the question. Cancel leaves the
+pending input untouched. Stop work cancels this conversation's pending question;
+reopening it does not restart the work.

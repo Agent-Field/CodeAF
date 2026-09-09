@@ -423,23 +423,23 @@ line of its report — `files: site/index.html, site/app.css` — and only names
 exist in its checkout are believed. A task that says nothing about them has left them
 behind, and that is the difference between a deliverable and a dropping.
 
-## Why my task's branch was kept — I committed, amended, rebased or reset my branch while it ran, it did not merge, my checkout is on main or dev, aforge never writes to a protected branch, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does aforge refuse to write
+## Why my task's branch was kept — I committed, amended, rebased or reset my branch while it ran, it did not merge, my checkout is on main or dev, tasks do not merge into a protected branch automatically, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does aforge refuse to write
 
 A tag with the same name as a branch does not change which branch is protected
 or which commit the landing compares. Git signature-display settings also do
 not change whether a forward commit belongs to aforge.
 
-A finished task never writes a protected branch. The protected names are `main`, `master`,
+Automatic task landing never merges into a protected branch. The protected names are `main`, `master`,
 `dev`, `develop`, `development`, `staging`, `stage`, `trunk`, `production`, `prod`, and
 `release`; any branch a remote names as its default counts too. The task is still **done**.
 Its branch is kept, its working copy is given back, and the card says `branch kept · task/x`.
 
 You will see one exact reason:
 
-- `its branch task/x was kept: your checkout is on dev, which aforge never writes to — merge it when you are ready`
-- `its branch task/x was kept: your checkout has moved from feat/a to feat/b since the work was cut — merge it where you want it`
-- `its branch task/x was kept: your checkout is not on a branch — check one out and merge it`
-- `its branch task/x was kept: feat/x has moved on since the work was cut — merge it where you want it`
+- `its branch task/x was kept: your checkout is on dev, which tasks do not merge into automatically`
+- `its branch task/x was kept: your checkout has moved from feat/a to feat/b since the work was cut — inspect the retained task branch before choosing a destination`
+- `its branch task/x was kept: your checkout is not on a branch — inspect the retained task branch without changing this checkout`
+- `its branch task/… was kept: feat/x has moved on since the work was cut — inspect the retained task branch before choosing a destination`
 
 Take it with `git merge task/x` on the branch where you want the work. `git branch --list
 'task/*'` lists finished work waiting this way. Or check out a feature branch before
@@ -509,6 +509,25 @@ decide, exactly as with any other task that needs a look.
 Pressing **accept** on the card does not change this. Accepting says the work is good, and
 it is; it cannot make two versions of one file into one, so an accept whose merge conflicts
 leaves the task needing your look with the same sentence.
+
+## Accepting a task after its working copy was released, or after its branch was renamed
+
+A task that stops needing a running checkout can leave its files in place while aforge
+releases their Git registration. Accepting that task later restores the registration
+before saving and bringing the work home. It does not move the saved files, overwrite
+loose edits, or mistake aforge's cleanup for a folder that was never a repository.
+
+If the task renamed its branch, aforge records the actual branch when releasing the
+copy; later acceptance and fresh checks use that name. Older released copies can also
+be recovered when their retained-file record and original branch are still available.
+An old record cannot reconstruct an unknown renamed branch.
+
+When recovery cannot proceed, the task still **needs your look** and names the saved
+folder and the reason: `its saved working copy at <folder> could not be reopened to
+merge: <reason>`. Its files stay there. Repair the cause and accept again. This does not
+claim delivery succeeded or that a deleted branch still holds the work. Protected
+branches such as `main` remain protected: acceptance keeps the task's branch instead
+of writing into your checkout.
 
 ## My task could not save what it wrote — nothing merged, the file is still there, it says it could not be brought home
 
@@ -583,6 +602,14 @@ window is set to 0 rather than reusing a window measured for another model.
 would arrive in a conversation it does not have, and a permanent change to your machine
 that no transcript ever showed you is exactly what a task must not be able to make.
 
+**A piece is told it owns the piece.** Your message travels to every task and sub-task
+verbatim, and a task that was cut out of it opens on one line saying so: do what this brief
+and its `done when` name, and leave the rest of that message to whoever kept it — including
+handing work out, which a piece does not repeat. Your words still win about the piece it was
+given, and where its brief cannot be done without going against you, it says so in its report
+instead of quietly widening the job. A top-level task, with nobody between it and you, still
+reads your message as the whole of what was asked for.
+
 **It keeps `propose_task` and `tasks`, as a pair.** A task may hand pieces of its own work
 out when its brief holds parts that do not need each other — at most **5**, and a piece it
 hands out cannot hand out more — and `tasks` is how it then watches them. Inside a task
@@ -653,6 +680,12 @@ from a worker's belt, and its instructions say what to do instead:
   instructions tell it that the record of earlier work is not reachable from
   where it stands, and to say so plainly when you refer to something it cannot
   see, rather than inventing it.
+
+A worker on the floor still gets the whole of a worker's own instructions — that
+nobody is there to answer a question, that a line you send in arrives in its next
+turn, what its report is for, and that it writes only inside its own copy. What
+it does not get is the page about handing work out, because it has no verb for
+that.
 
 And **it cannot design or offer a saved shape of work.** `build_harness` and
 `list_harnesses` want a store to write the page into, a runner, and somebody
@@ -876,6 +909,11 @@ any non-empty line is left out — or when the report had to close a block the t
 because that closing line is the report's and not the task's — it ends with `…` on a line of
 its own; a report that carries the whole message unaltered has no such mark.
 
+What the task actually produced is kept whole beside this report — up to **16,000
+characters**, and past that the whole text is written to a file next to the task’s
+transcript and the record points at it — so the answer is never only three lines
+anywhere it is used again.
+
 A task is told to make those lines the **substance** of the work — what it found or made,
 the key findings, the decisions it took, with every file named by its full path — and not
 the evidence trail. "`git diff` shows a staged new file", test output, staging and branch
@@ -890,16 +928,33 @@ first line carries the task's transcript URI:
 task 7 finished: <title> · transcript file:///…
 ```
 
-Then the report. Then, when there were changes, `changed: a.go, b.go`, and one line saying
+Then the report. Then, when the report's three lines do not carry the whole of what the
+task said, **the answer itself**, under one of two lines:
+
+- `what it produced, in full:` — all of it follows.
+- `what it produced, the first part of it — the whole of it is at file:///…:` — the
+  beginning of it follows, and the path holds the rest.
+
+That block is left out when the report already carries the answer word for word, which is
+every task that finished in two or three short lines.
+
+A task the check **did not accept** says something different:
+`what it produced was not accepted — the whole of it is at file:///…`. What is missing is
+the news there, so the work's own account is not repeated as though it stood — but it is
+never hidden either, and that line says where to read it. Nothing else changes what is
+delivered: a task that is done, needs your look, was stopped or ran out of steps hands its
+answer over, whatever its report was later rewritten to say.
+
+Then, when there were changes, `changed: a.go, b.go`, and one line saying
 where the branch went:
 
 - `its branch task/… merged into yours`
-- `its branch task/… was kept: your checkout is on dev, which aforge never writes to — merge it when you are ready`
-- `its branch task/… was kept: your checkout has moved from feat/a to feat/b since the work was cut — merge it where you want it`
-- `its branch task/… was kept: your checkout is not on a branch — check one out and merge it`
-- `its branch task/… was kept: feat/x has moved on since the work was cut — merge it where you want it`
-- `its branch task/… did not merge cleanly and was kept — merge it yourself when you are ready`
-- `it was stopped; what it made is committed on its branch task/…, which was kept — merge that branch to take the work`
+- `its branch task/… was kept: your checkout is on dev, which tasks do not merge into automatically`
+- `its branch task/… was kept: your checkout has moved from feat/a to feat/b since the work was cut — inspect the retained task branch before choosing a destination`
+- `its branch task/… was kept: your checkout is not on a branch — inspect the retained task branch without changing this checkout`
+- `its branch task/… did not merge cleanly and was kept — inspect the retained branch before deciding what to do next`
+- `it was stopped; what it made is committed on its branch task/…, which was kept for inspection`
+- `its branch task/… was kept: feat/x has moved on since the work was cut — inspect the retained task branch before choosing a destination`
 - `it was stopped; its branch task/… was kept` (when it made nothing)
 - `it worked directly in the workspace: there was no repository to branch`
 
@@ -964,6 +1019,13 @@ that answers the work, so the answer may appear on its own. Immediately above th
 aforge draws a dim line with the task's identity mark, its name, and the exact words you
 originally asked it to handle. That line is part of the transcript and returns when you
 resume the conversation. The finished-task card still stays above the input as before.
+
+That reply streams onto every window that is open on the conversation — one this terminal
+holds, or one attached through the session host — as it is written, and a window that
+opens while it is running picks it up part-way. It used to be that a conversation held by
+a session host answered in its journal only: the window sat at idle, the task card said
+done, and the answer was waiting in the transcript for whoever opened the conversation
+next. The turn now crosses the wire like any other.
 
 An ordinary reply to something you typed has no such line. If an old task has no recorded
 request, the line shows its identity mark and name alone rather than an empty quotation.
@@ -1257,8 +1319,8 @@ stopped.
 ## How aforge knows a task really finished
 
 A task is never done on its own say-so. When the work finishes, a **separate, fresh,
-read-only checker** is put in a clean restore of what the task wrote, runs the repository's
-own checks, reads the diff, and answers. Only a pass merges.
+read-only checker** is put in a clean restore of what the task wrote, runs the checks the work
+declared, reads the diff, and answers. Only a pass merges.
 
 The checker has no shared context and no memory of the work. Its whole world is the
 acceptance you set, the task's own claim (labelled as a claim, not as evidence), the list
@@ -1329,30 +1391,18 @@ own files and its parts' files are both staged, both restored, and both named to
 parts'. A part that did not land is not counted, because its work is not in the tree. Nothing
 merges upward until that check answers.
 
-## Which commands the checker is allowed — the task's own check, not a fixed list
+## Which commands the checker is allowed — the checks the work declared, not a fixed list
 
-**The checker is allowed the checks the work itself names.** There is no list of build tools
-in aforge, and no setting that holds one. The commands its `bash` will accept come from three
-places, and nothing else gets through:
+**The checker is allowed the verification the work DECLARED, and nothing else it merely
+watched happen.** There is no list of build tools in aforge, and no setting that holds one.
+The commands its `bash` will accept come from two places:
 
-- **the check your task declares** — a command the work names in its own half of the brief or
-  in a `done when` sentence somebody actually wrote. A span in backticks
-  (`` `bash verify.sh` ``, `` `make check` ``) and a shell-prompt line
-  (`$ ./verify --quiet`) both count there and never in your words quoted above it. A pasted
-  terminal session shows how you saw a bug; neither spelling turns it into commands to run
-  against your tree. A wildcard the work names is honoured, so `` `verify.*` `` admits
-  `verify.sh`;
-- **the check the task itself used** — any command its worker issued, taken from the same
-  tool results the checker is shown, read for **the one command that line runs**. A leading
-  `cd <a directory in your tree> &&` is dropped — that only states the directory the task was
-  working in — and so is everything after the first pipe, along with the redirections of output
-  at the end of the line (`2>&1`, `> log`). So
-  `cd /workspace/thing && cargo build --release 2>&1 | tail -3` contributes
-  `cargo build --release`, which the checker then runs as one command, composing nothing. A
-  `cd` to somewhere outside your tree contributes nothing at all, an arrow in the middle of the
-  line leaves it composed and it contributes nothing, and a command that even a
-  permit-everything policy would still stop and ask about — `rm -rf /`, `shutdown`, `mkfs` —
-  never becomes one either;
+- **the `checks` the task was proposed with** — the commands whoever wrote the brief typed
+  into `propose_task`'s, `divide_work`'s or the automatic route's `checks` field: the test, the build, the probe
+  that re-establishes the result. Each is one simple command, run as it was written, and a
+  wildcard you wrote is honoured, so a check written `verify.*` admits `verify.sh`. A check
+  that names nothing the checker could actually run where it stands is dropped rather than
+  offered;
 - **the always-safe reading commands** — `git diff`, `git log`, `git status`, `git show`,
   `pwd`, `wc`, `head`, `cat`. These print and cannot change what is being judged. They are
   not verification, so a checker holding only these can read your work but cannot exercise
@@ -1360,29 +1410,55 @@ places, and nothing else gets through:
 
 ## How a named check matches what the checker runs
 
-A check that names no file is matched as a prefix, field by field, so `make check` admits
-`make check ./...` and does not admit `make checkout`. A check that **names a file in your
-tree** is matched by which file it is instead — see the next section. **Every refusal names
-what this particular check is allowed**, listing the task's own check first and the reading
-commands after it, so the model reads the door in the same breath as the no.
+**Nothing else is a door, and that is deliberate.** Not a command backticked in the brief or
+the done-condition, not a `$ ` line in your pasted reproduction, and **not what the task's own
+worker ran**. A check that names no file is matched as a prefix, field by field, so a declared
+`make check` admits `make check ./...` and does not admit `make checkout`. A check that
+**names a file in your tree** is matched by which file it is instead — see the next section.
+**Every refusal names what this particular check is allowed**, listing the declared checks
+first and the reading commands after them, so the model reads the door in the same breath as
+the no.
 
-**When the work names no check and issued nothing that looks like one**, the checker is told
-so in as many words, told to judge from reading and answer, and given a much shorter window —
-one minute rather than five. There is no slow command for it to wait on, and the failure this
-replaced was a checker spending the full five minutes reaching for a door that was never
-going to open. That was measured on a Rust deliverable: the allowlist used to be a fixed set
-of Go verbs plus git, so on a project that was not Go the checker could confirm nothing at
-all, exhausted its five minutes on all six attempts, and every one of them landed the task
-needing your look.
+## Does an automatic handoff keep the declared verification checks
+
+Automatic routing and a whole-request handoff carry their declared checks into the task,
+using the same validation as an explicit proposal. A changed request drops the earlier
+route's checks. When a handoff leaves work with the conversation, whole-request checks are
+not assigned to that partial task. Commands mentioned only in prose or past results do not
+become executable checks.
+
+## Why the checker does not re-run what the task already ran
+
+This was measured. A task was asked to run a two-minute build script **once** and report the
+marker it wrote. Its worker ran it, exit 0, read the marker back — and the checker, which used
+to be handed every command a worker ran as something it could re-run, ran the same script
+again for another two minutes.
+
+**What a worker ran is evidence of what happened, not permission to make it happen again.**
+The script was allowed, uncomposed and harmless to the tree; the point is the *action*. A
+build, a deploy, a message sent, a counter moved: you asked for it once, and a second run is a
+second effect you are paying for, in a copy of the tree where its result may not even mean the
+same thing. So the receipts stay in front of the checker — whole, verbatim, with what came back
+— and they are how it settles that the requested action was carried out, without carrying it
+out again.
+
+**If you want something re-run, declare it.** That is what `checks` is for, and a task that
+declares none is judged by reading its work and its artifacts, which is a real answer.
+
+**When the work declares no check**, the checker is told so in as many words, told to judge
+from reading and answer, and given a much shorter window — one minute rather than five. There
+is no slow command for it to wait on, and the failure this replaced was a checker spending the
+full five minutes reaching for a door that was never going to open. That was measured on a Rust
+deliverable: the allowlist used to be a fixed set of Go verbs plus git, so on a project that was
+not Go the checker could confirm nothing at all, exhausted its five minutes on all six attempts,
+and every one of them landed the task needing your look.
 
 ## Why did it run chmod or reproduction steps from the issue I pasted
 
-It harvests nothing from your pasted request as a check, whether the command is in backticks
-or on a `$ ` prompt line. That remains true when nobody could write a separate `done when`
-sentence and your words have to stand as that sentence: a terminal transcript is evidence
-of how you saw the bug, not a check to run against the finished tree. A check in either
-spelling still counts when a piece of work names it in its own half of the brief or somebody
-actually writes it into a `done when` sentence.
+It does not, and it no longer harvests commands from prose at all: neither a `$ ` prompt line
+in your pasted request, nor a backticked command in a brief or a `done when` sentence, is
+something the checker may run. A terminal transcript is evidence of how you saw the bug, and a
+sentence naming a command is a sentence. Only the `checks` field puts a command under contract.
 
 ## How the check is spelled — one file, and the ways that really start it
 
@@ -1399,13 +1475,13 @@ same file is the same check, and a wildcard you wrote is resolved the same way �
 names the file it actually matches on disk.
 
 **A file that says nothing about being run** — no `#!` line and no executable bit — gets no
-program word at all. It is run **the way your work ran it**: the exact spelling your brief
-declared, or the exact command its worker issued. The refusal says so, as "the check
+program word at all. It is run **the way the check was declared**: the exact spelling the
+`checks` entry used, and nothing else. The refusal says so, as "the check
 /path/data.txt declares no interpreter; run it the way the work ran it". A file with the
 executable bit but no `#!` line is allowed its own bare spellings and nothing in front of them.
 
 **What is still refused:** a different file (`bash other.sh`), the wrong interpreter
-(`python3 verify.sh` for a bash script), arguments your brief never declared
+(`python3 verify.sh` for a bash script), arguments the check never declared
 (`bash verify.sh --flag` — one word, then the file, and nothing after it), an option where the
 program word should be (`bash -x verify.sh`), and anything composed (`cd x && bash verify.sh`).
 Where a check can be spelled, the refusal spells it out — "the check /path/verify.sh — run it
@@ -1496,10 +1572,11 @@ The checker is also handed the **last few tool results of the task's own worker*
 six, each cut at 1200 bytes: what was called, with what, and what came back. It is the real
 result the worker read, not a display copy.
 
-That exists because a check is often the most expensive thing in the whole task. A checker
-made to rediscover the command and run it twice from scratch spends its whole five minutes
-and the task lands needing your look, which is exactly what was measured. Seeing what
-already happened tells it which command the check even is.
+That exists because **this is how the checker settles what already happened without making it
+happen again**. A task asked to run something once leaves its receipt here — the call, and what
+came back — and reading that is how the checker knows the requested action was carried out. The
+receipts are evidence only: nothing in them becomes a command the checker may issue, however
+plainly it names one.
 
 It is **not** a shortcut to a pass. The checker is told where those results came from: in a
 restore they came from the task's own copy — the one an answer may not rest on — so they can
@@ -1593,7 +1670,8 @@ home row say which of them it is in:
 
 **Another window sees it too.** A conversation says every few seconds which nodes it has
 out and which life each of them is in, so a home row or a switcher row about work running
-in a DIFFERENT window says the same words — `1 task running · checking what it left`. Two
+in a DIFFERENT window says the same words — `1 task running`, with the task's own row
+reading `finishing · checking what it left`. Two
 things it does not carry: the round numbers, which stay on the window running the work
 (another window reads `closing gaps` with no numbers after it), and anything at all from a
 window that is gone — a conversation whose file has gone stale draws the row it always
@@ -1730,7 +1808,9 @@ That sentence used to read `no answer in 5m0s, so nothing was accepted`, which s
 things a clock is not entitled to say — that you had five minutes, and that a decision had
 been made. Nothing is accepted or refused by a window running out; the work waits for you,
 for as long as that takes. When two tries in a row got nothing, the first line is prefixed
-`asked twice and got no answer either time — `.
+`nobody could check it — asked twice, and neither call answered — `.
+If time ran out before a second call could be made, it says that instead; it does not
+claim two attempts. These are checks of the work, not unanswered questions to you.
 
 
 The last line of that landing is the only thing the `task.settle` setting changes. With it
@@ -1751,7 +1831,7 @@ cannot tell. It never goes the other way — a session you are sitting in front 
 row you set, and a blank row still means aforge asks you.
 
 **And a run you left going with a budget goes one step further, for the case where nobody
-could check the work at all.** On `--yolo` with `--max-hours` or `--max-cost`, a landing
+could check the work at all.** On a headless `--once --yolo` run with `--max-hours` or `--max-cost`, a landing
 nobody could say anything about is not put to anybody: the check has already been run twice,
 there is nobody to ask, and the work is taken as it stands. The landing says so and says
 why, under the task's own account of what it did:
@@ -1934,9 +2014,8 @@ without exception:
 - a task that needs your look keeps its branch;
 - a task whose merge conflicted keeps its branch, lands as **needs your look** rather than
   finished, and names the files that changed on both sides. The note adds
-  `its branch task/… did not merge cleanly and was kept — merge it yourself when you are ready`;
-- a finished task on a protected branch, whose branch or commit moved after the cut, or
-  whose checkout became detached,
+  `its branch task/… did not merge cleanly and was kept — inspect the retained branch before deciding what to do next`;
+- a finished task on a protected branch, or whose branch or commit moved after the cut, or whose checkout became detached,
   stays **done** and keeps its branch for you to merge where you choose;
 - a task on a plain folder that would have written over an edit of your own lays **nothing**,
   keeps its whole copy of the folder, lands as **needs your look** and names the files that
@@ -1955,8 +2034,14 @@ in the checkpoint on disk, and in the project's index of landed work.
 
 A task can name `depends_on` — ids that must finish first. When it starts, their reports
 land in `THE WORK` under `What the work before you learned — N reports:`, then
-`<title> (task N):` and the report. `N` is how many are there, so a six-row table can
+`<title> (task N):` and the report, **and under that what the earlier task produced** —
+not only the three lines of its card. `N` is how many are there, so a six-row table can
 count.
+
+When only the beginning of an earlier answer fits, the header says where the whole of it
+is: `<title> (task N) — the whole of it is at file:///…:`. That line is never cut, so the
+worker can always go and read the rest — a task may read any path on the machine; what it
+may only write is its own copy.
 
 **Every earlier task is always represented.** Keeping four of six and saying nothing
 about the other two is how a sink once wrote a confident four-row table. The list is
@@ -2015,6 +2100,33 @@ already `needs you`, and now the question is plainly yours.
 What this means in practice: **the fold is a volume, not a mute.** One job with six pieces
 in it does not read as six demands while it is running, and nothing quietly rots underneath
 a task that went home.
+
+**And a piece that lands when its parent has stopped reading comes to you instead.** The
+parent's worker stops reading a few seconds before the task itself lands — while its work
+is being checked — and a piece finishing in that window has no reader inside the family. Its
+report arrives in this conversation, exactly as a top-level task's does, rather than being
+put on a queue nobody drains. Before this it was queued on the worker that had stopped
+reading and was never said again, in this session or after a restart.
+
+## When the conversation says something to a running task — did the task think that was me
+
+Two different things can send a line into a running task, and the task is told which.
+
+**Your own line** — typed into the task's room, or `m` on the steer guard — arrives in its
+transcript as your words, undecorated, and is kept in its record as your correction. That is
+the one road that speaks for you.
+
+**The conversation's own model can also say something to a task** (you will see it call
+`tasks` with `say`, usually to pass on a fact the worker lacks). That line arrives named as
+the conversation speaking, with a sentence saying plainly that it is not the person, and it
+is recorded in the task's transcript as the session's own line rather than as yours. The
+task's brief and its acceptance are unchanged either way — they were frozen when it started
+— and neither road can hand a task permission you did not give it.
+
+This matters when you reopen a task's transcript later: a line that reads like a decision
+("you may change the schema") shows whether you made it or the conversation did. Before
+this the two were written down identically, and the task's page drew the model's message as
+your own correction.
 
 ## Choosing which model a task runs on
 
@@ -2225,8 +2337,22 @@ that were never delivered appear underneath.
 What comes back is its row in the project's list, closed with `incomplete — aforge closed
 while this was still running`. See *Adaptive runs*.
 
-A completion is announced **exactly once across lives** — a resumed session does not
-re-tell the model about work it already read about.
+A completion is announced **once per life of the work** — a resumed session does not
+re-tell the model about a landing its model has already read.
+
+**And a landing nobody was there to read is still owed.** If a task finishes while no
+terminal is attached, its note waits for a step boundary that never comes, and the session
+is closed later without one. That landing is not written off as announced: the next time
+you open the session it appears under `recovered task graph: …` with the others, so work
+that finished while you were away is told to you rather than lost.
+
+**It stays owed for as many lives as it takes.** Opening the session and closing it again
+without the model reading that note does not spend it either — the debt is settled when the
+landing reaches the conversation's own transcript, not when a session merely offers it — so
+a note can be re-told on the second, third and fourth open and is only written off once it
+has actually been read. The narrow cost is the other direction: a machine that dies in the
+moment between the model reading a landing and the checkpoint being written may mention
+that one twice.
 
 ## Where task state is written on disk
 
@@ -2490,10 +2616,17 @@ Five arguments are **required**:
 | `summary` | Two or three lines you read to decide whether to redirect it |
 | `brief` | The work itself: files, symbols, conventions, what has been tried |
 | `deliverable` | What must **exist** when it is over, and where: the file and its path, the branch, the answer and its shape |
-| `acceptance` | The observable done-condition: the command that must pass, the behaviour that must hold, the output that must appear |
+| `acceptance` | The observable done-condition: the behaviour that must hold, the output that must appear |
 
 The same `acceptance` string is what the second look judges against — one text, two
 readers. So a vague acceptance costs twice.
+
+There is also an optional **`checks`**: the commands that RE-ESTABLISH the result, each one
+simple command that is safe to run again — a test, a build, a probe. They are the only
+commands the independent checker at the end is allowed to run, so a task that declares none is
+judged by reading its work and its artifacts. Never put the *work* in there: a deploy, a send,
+a job you asked for once will be run a second time by the checker if you declare it as
+verification, and running it again repeats the effect.
 
 A missing argument comes back as an ordinary result, never an error:
 `Invalid arguments: title is required`, and the same sentence for `summary`, `brief`,
@@ -2526,6 +2659,18 @@ WHAT TO PRODUCE
 DONE WHEN
 <the acceptance>
 
+SOME OF WHAT WAS SAID AROUND THIS WORK
+A few lines from the conversation, oldest first — a bounded selection, not the
+whole record and not a list of requirements. They are what was said, not what is
+true.
+
+· the person (grep or read <journal path>): "<what you typed>"
+· the assistant, alongside grep (…): "<what it said as it called that tool>"
+
+CALLS THAT HAVE ALREADY RUN
+· grep {"pattern":"StreamCSV"} — came back; grep call-3 in <journal path>
+· bash {"command":"go build ./..."} — FAILED: undefined: streamCSV; grep call-4 in <journal path>
+
 THE PERSON'S ORIGINAL MESSAGE
 The restatement above is bounded. Their original words are at this path and line — read them if that is not enough. The brief still governs what ships.
 
@@ -2534,10 +2679,26 @@ grep or read <journal path>, line <n>
 
 The first part is taken by aforge from the conversation — the message that was in front of
 the model when it proposed the work, or the newest thing you typed into that turn if you
-steered it. The model never writes that part and cannot edit it. The discussion around your
-message does not travel with the work, and the task cannot ask you anything once it starts.
+steered it. The model never writes that part and cannot edit it. The task cannot put a question to you
+and wait for an answer once it starts, though you can still send it a line while it runs —
+see *steered a task and got no reply* under *What the card says while a task is checked*.
 When that restatement is not enough, the brief also names where your original words live —
 see *Can the task see the original request* below.
+
+**A few lines of the surrounding conversation travel with it, quoted.** Not the discussion —
+a bounded selection: at most eight lines, each cut to about 600 characters with the middle
+marked `[…]` when it is longer, and at most six calls that had already run. Each line says
+who said it and names the session journal it came out of, so the worker can grep the words —
+or, for a call, the call id — and read the whole of it. The selection is made newest-first,
+so the last thing you said before the work started is the line that always survives; older
+ones are dropped when the budget runs out. There is no line number: finding one would mean
+reading the whole journal every time a task starts.
+
+**It is context, not a contract.** Those lines are what was *said*, not a list of
+requirements — the brief and the done-condition above them are still what the work is
+graded against. A constraint you typed twenty turns ago, or one buried in the middle of a
+long message, may not be in the selection at all; if it has to bind the work, put it in the
+message that starts the task.
 
 **A part with nothing in it gets no heading.** A task you wrote yourself with `/task` has no
 separate deliverable, so it reads as your words, the work and a done-condition. A task
@@ -2557,9 +2718,31 @@ A task the model hands out from **inside** another task inherits the same words:
 nobody inside a task's own copy to type a new message, so the sentence that started the family is what
 every task under it reads.
 
-Once a task is admitted, its brief and its acceptance are **frozen**. Nothing changes them
-after that — not steering, not a correction round. Steering is talk to the worker, not a
-new target. If the objective itself was wrong, the answer is a new proposal.
+Once a task is admitted, the brief and the acceptance it was admitted with are **kept
+exactly as they were**: nothing rewrites them, and the record of what was agreed stays
+readable for good.
+
+**What you say afterwards can still change what it is judged by, and nothing else can.**
+Steer a running task with a correction — "CSV instead of JSON" — and its worker can fold
+that into the task's own done-condition, citing the line you sent. The task then works to
+the new condition and the checker judges it against the new condition, with your own words
+kept beside it so both of you can see what was actually asked. Everything you did not
+change stays as it was. A correction sent with `continue` on a task that has already
+settled takes the same road.
+
+**A correction also drops the checks the old goal declared.** The commands a task declared as the way its
+work is re-checked are assertions about a particular goal: a test written
+about JSON output proves nothing about CSV, and passing it after the correction would say
+the work is done when nobody checked the thing you asked for. So a revision clears them — its own and any it was carrying for
+parts it handed out — in the same moment the version moves, and what it owed before is kept
+on the task's record as history rather than as a requirement. The worker can name the new
+goal's `checks` in the same call; if it does not, the finished work is judged by reading it,
+which is the honest answer when nobody has said how the new goal is checked. Two things cannot do this: the model's own `tasks id N say`,
+which is one piece of work talking to another, and the worker's own opinion — a revision
+has to name a line **you** sent.
+
+Steering that is not a correction is still just talk to the worker: a fact it needs, a
+question to answer. Most steering is that, and it moves no target.
 
 ## Can the task see the original request — does the task know what I originally said, can a task read my full message when the brief is cut
 
@@ -2611,6 +2794,14 @@ and only then a stop with `stopped: 200 steps and no finish`, the number being t
 checkpoint that was in force. A negative value answers `Invalid arguments: max_steps cannot
 be negative`. Zero or absent means the default.
 
+**`checks`** — the repeatable verification, described in *What propose_task needs from you*
+above. Each entry must be one simple command with no pipes or `&&`, and one that even a
+permit-everything policy would still stop and ask about is refused outright:
+`Invalid arguments: checks must each be ONE command with no shell composition`. The same
+argument is on `divide_work`, where each part declares what its own checker may run — and a
+check every part declares is taken off all of them and given once to the task that divided
+them, which is the only one that can honestly make it after its parts are home.
+
 **`no_progress`** — how many tool calls in a row may teach nothing, ask nothing new, save nothing and leave
 nothing new in its working copy before the task is stopped as spinning. Default **6**. On the
 limit the report is `stopped: 6 steps without progress`, the landing turn runs, and what
@@ -2623,3 +2814,56 @@ its own: raising `no_progress` for work that is legitimately repetitive moves bo
 
 Both step limits are recorded in the checkpoint, so they survive a restart along with the
 rest of the task.
+
+## Which checks can the main conversation repeat?
+
+The main conversation uses the same explicit `checks` contract as task checking. A command mentioned in a done-condition, a pasted request, or a tool receipt is evidence, not permission to run it again. An unattended session can also freeze explicit `checks` with its initial whole-request acceptance. These use the same command validation as a task and stay tied to that original ask; later model output cannot replace them. Without either declaration, the completion reader assesses existing evidence and does not invent a shell command from prose. Normal workers can still run the tests needed to do their work.
+
+Each proposal or assignment revision accepts at most eight non-empty check commands. A longer list is refused rather than silently losing a required check. A goal revision drops earlier checks unless it declares new ones. Legacy tasks with no declared checks are assessed by reading; do not interpret that as a claim that their tests were executed. Session acceptance receipts record the declared checks, but reopening still creates a fresh goal owner: historical receipts do not grant a new ask permission to execute old commands.
+
+## A background command finishes after we changed the subject
+
+A background command or fired watch owes a report of its new outcome. That reply is
+checked against the background news, rather than an unrelated question you asked
+while waiting. Task reports carry their own current assignment. If several outcomes
+arrive together, they keep their separate reply obligations through the combined note.
+
+
+## Does a finished task let the conversation merge its kept branch
+
+A kept branch is the saved result. The completion message tells the conversation
+to inspect and test the work there, preserve your branch and review instructions,
+and merge or switch the conversation's checkout only when your request calls for
+it. A task finishing does not expand your request. Asking for a branch and a
+commit does not by itself ask for a merge into main.
+
+This guidance accompanies the automatic landing protection; it is not a general
+shell restriction. An agent with shell access can still run Git commands. Task
+settlement continues to follow `task.settle`, and existing permission rules still
+apply to commands the agent chooses.
+
+
+## Why does the task shortcut stay when no worker is running
+
+In a narrow terminal, the compact task shortcut stays visible while a task is
+running, queued or needs your attention. Click it to inspect that work; on the
+smallest layout it opens the Tasks page, where Enter or a tap opens a task.
+The phone summary names **needs you** before running work, so a pending decision
+is not hidden behind another worker's progress. The shortcut disappears when
+none of those tasks remain. A wide terminal uses its task list instead.
+
+
+## Does switching task views stop the work
+
+Opening another task changes the task you are viewing. It does not cancel either
+task or its commands. Escape returns to the main conversation without stopping
+work. Updates from the previous view cannot replace the newly opened task. Use
+the task's stop action when you intend to stop execution.
+
+## Closing a session with delegated work still running
+
+Closing the session cancels its delegated runs and waits for their workers and
+pending names before closing its records. Those calls share up to two seconds
+of shutdown time, in addition to the existing waits for the current turn, task
+graph and background jobs. A provider that ignores cancellation can outlast
+that grace; this is a bounded wait, not a guarantee about every external process.

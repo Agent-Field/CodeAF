@@ -5,6 +5,22 @@ import (
 	"testing"
 )
 
+func TestRetainedBranchNoticePreservesRequestedWorkflow(t *testing.T) {
+	for _, merge := range []string{mergeKept, mergeConflicted, mergeAborted} {
+		notice := TaskNotice{ID: 7, Title: "Port the parser", State: TaskUnverified,
+			Branch: "task/parser", Merge: merge, Changed: []string{"parser.go"}}
+		note := taskNote(notice, "", TaskSettleAsk, landingAddress{person: true})
+		if !strings.Contains(note, notice.Branch) || !strings.Contains(note, "unless their request calls for it") {
+			t.Fatalf("%s: missing retained branch or workflow boundary: %s", merge, note)
+		}
+		for _, direction := range []string{"merge it yourself", "merge that branch", "check one out and merge", "merge it where"} {
+			if strings.Contains(note, direction) {
+				t.Fatalf("%s: notice directs an unrequested merge: %s", merge, note)
+			}
+		}
+	}
+}
+
 // WHAT THE MODEL IS TOLD WHEN A NODE LANDS.
 //
 // The note is the model's only account of work it handed off, and it is about to
@@ -63,14 +79,14 @@ func TestTaskNoteSaysWhichOfTheThreeItIs(t *testing.T) {
 		what: "a landing nobody could judge",
 		notice: TaskNotice{
 			ID: 9, Title: "Collect sources", State: TaskUnverified,
-			Report: needsLookLead + "asked twice and got no answer either time",
+			Report: needsLookLead + checkerAskedTwice,
 		},
 		// NOT "FAILED", and it says what is waiting on whom: the state exists
 		// because "the work is wrong" and "nobody could tell me whether the work
 		// is wrong" are different news.
 		want: []string{
 			"task 9 needs your look: Collect sources",
-			needsLookLead + "asked twice",
+			needsLookLead + checkerAskedTwice,
 			"it is neither done nor failed",
 			"tasks id 9 resolve accept|reaudit|refute",
 		},

@@ -7,6 +7,8 @@ package session
 // that nothing outside the copy can be rewritten into something writable.
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -133,8 +135,8 @@ func TestTheBriefStatesTheCopyWhereverTheGroundIsNamedAndNowhereElse(t *testing.
 	own := newTaskCopy("/x/repo", "/s/trees/1")
 
 	// The person typed the path; the model wrote the contract from it.
-	opening := composeBrief("fix /x/repo/internal/widget.go", "change /x/repo/internal/widget.go",
-		"/x/repo/internal/widget.go", "/x/repo/internal/widget.go says new", "", taskOrigin{}, own)
+	opening := composeBrief(briefWhole, "fix /x/repo/internal/widget.go", "change /x/repo/internal/widget.go",
+		"/x/repo/internal/widget.go", "/x/repo/internal/widget.go says new", "", AdmissionContext{}, taskOrigin{}, own)
 	if !strings.Contains(opening, briefCopyHeading) || !strings.Contains(opening, briefCopyRule) {
 		t.Fatalf("the copy was never stated:\n%s", opening)
 	}
@@ -157,7 +159,7 @@ func TestTheBriefStatesTheCopyWhereverTheGroundIsNamedAndNowhereElse(t *testing.
 
 	// AND A BRIEF THAT NEVER SPELLED THE FOLDER OUT GETS THE DOCUMENT IT HAS
 	// ALWAYS GOT — the emptiness law, and the reason this is not unconditional.
-	quiet := composeBrief("make the widget say new", "change internal/widget.go", "internal/widget.go", "it says new", "", taskOrigin{}, own)
+	quiet := composeBrief(briefWhole, "make the widget say new", "change internal/widget.go", "internal/widget.go", "it says new", "", AdmissionContext{}, taskOrigin{}, own)
 	if strings.Contains(quiet, briefCopyHeading) {
 		t.Fatalf("a brief that named no folder got a section about one:\n%s", quiet)
 	}
@@ -167,8 +169,8 @@ func TestTheBriefStatesTheCopyWhereverTheGroundIsNamedAndNowhereElse(t *testing.
 	// leaves every address in this contract exactly as written — and a section
 	// saying the addresses below are the worker's own would be stating a mapping
 	// that did not happen.
-	sibling := composeBrief("fix /x/repo-old/internal/widget.go", "change /x/repo-old/internal/widget.go",
-		"/x/repo-old/internal/widget.go", "/x/repo-old/internal/widget.go says new", "", taskOrigin{}, own)
+	sibling := composeBrief(briefWhole, "fix /x/repo-old/internal/widget.go", "change /x/repo-old/internal/widget.go",
+		"/x/repo-old/internal/widget.go", "/x/repo-old/internal/widget.go says new", "", AdmissionContext{}, taskOrigin{}, own)
 	if strings.Contains(sibling, briefCopyHeading) {
 		t.Fatalf("a brief that named only a sibling repository was told its addresses had moved:\n%s", sibling)
 	}
@@ -179,8 +181,72 @@ func TestTheBriefStatesTheCopyWhereverTheGroundIsNamedAndNowhereElse(t *testing.
 	// AND THE ORIGIN POINTER IS NEVER BOUND: a journal address lives outside
 	// every worktree, so a bound one would name a file that is not there.
 	journal := taskOrigin{journal: "/x/repo/.aforge/v3/sessions/abc.jsonl", line: 12}
-	pointed := composeBrief("", "change /x/repo/internal/widget.go", "", "", "", journal, own)
+	pointed := composeBrief(briefWhole, "", "change /x/repo/internal/widget.go", "", "", "", AdmissionContext{}, journal, own)
 	if !strings.Contains(pointed, "/x/repo/.aforge/v3/sessions/abc.jsonl") {
 		t.Fatalf("the pointer at the person's own journal was moved into the copy:\n%s", pointed)
+	}
+}
+
+// A FOLDER SPELLED THROUGH A SYMLINK IS STILL THE FOLDER. A contract's addresses
+// are spelled the way their author was standing while the ground is spelled the
+// way git resolves it, and a bind comparing bytes alone left the worker pointed
+// at the folder its copy was made of. The link is made by hand rather than
+// borrowed from the machine, so this holds on every platform.
+func TestBindFollowsAnAliasSpellingOfTheGround(t *testing.T) {
+	root := t.TempDir()
+	real := filepath.Join(root, "real")
+	if err := os.MkdirAll(filepath.Join(real, "internal"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A sibling whose name begins the same way, reachable through its own link:
+	// the lookalike rule holds for an alias as it does for the ground's own
+	// spelling, or a rewrite would invent a way into a folder nobody asked about.
+	if err := os.MkdirAll(filepath.Join(root, "real-old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(real, alias); err != nil {
+		t.Skipf("this filesystem does not make symlinks: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(root, "real-old"), alias+"-old"); err != nil {
+		t.Fatal(err)
+	}
+
+	copyDir := filepath.Join(root, "trees", "1")
+	own := newTaskCopy(canonicalPath(real), copyDir)
+	inCopy := func(parts ...string) string {
+		return filepath.Join(append([]string{copyDir}, parts...)...)
+	}
+	for _, one := range []struct {
+		why  string
+		text string
+		want string
+	}{
+		{"the ground through its alias is the copy", alias, copyDir},
+		{"a file that is there", filepath.Join(alias, "internal"), inCopy("internal")},
+		// WHAT A TASK PRODUCES IS NOT THERE YET, which is the ordinary case and
+		// the one a resolver that only answers about existing paths would miss.
+		{"a file the work has still to write", filepath.Join(alias, "internal", "widget.go"), inCopy("internal", "widget.go")},
+		{"a whole directory the work has still to make", filepath.Join(alias, "brand", "new", "report.md"), inCopy("brand", "new", "report.md")},
+		{"a path said mid-sentence is still a path", "change " + filepath.Join(alias, "internal", "widget.go") + " so it says new",
+			"change " + inCopy("internal", "widget.go") + " so it says new"},
+		{"a quoted path is still a path", `read "` + filepath.Join(alias, "go.mod") + `"`, `read "` + inCopy("go.mod") + `"`},
+		{"a sibling reached through a lookalike alias is untouched", filepath.Join(alias+"-old", "go.mod"), filepath.Join(alias+"-old", "go.mod")},
+		{"the sibling's own spelling is untouched", filepath.Join(root, "real-old", "go.mod"), filepath.Join(root, "real-old", "go.mod")},
+		{"a relative name is already the worker's own and is left alone", "internal/widget.go", "internal/widget.go"},
+	} {
+		if got := own.bind(one.text); got != one.want {
+			t.Errorf("%s: bind(%q) = %q, want %q", one.why, one.text, got, one.want)
+		}
+	}
+
+	// AND THE SECTION THAT EXPLAINS THE MAPPING ASKS THE SAME QUESTION. A
+	// contract bound through an alias with no copy stated would be a worker told
+	// nothing about why its addresses are not the ones the person typed.
+	if !namesGround(own.ground, "change "+filepath.Join(alias, "internal", "widget.go")) {
+		t.Error("a contract naming the ground through an alias was read as naming no folder")
+	}
+	if namesGround(own.ground, "change "+filepath.Join(alias+"-old", "go.mod")) {
+		t.Error("a contract naming only a lookalike sibling was read as naming the ground")
 	}
 }

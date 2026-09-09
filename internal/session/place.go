@@ -176,7 +176,8 @@ type Meta struct {
 	ID string `json:"id"`
 	// Title is what a picker row says. Empty until something names the
 	// session; an empty title marks a session the launch groom may reuse.
-	Title string `json:"title,omitempty"`
+	Title      string `json:"title,omitempty"`
+	ShortTitle string `json:"shortTitle,omitempty"`
 	// Workspace is the REAL workspace path — the resolved git root for a
 	// borrowed session, the work/ directory for an owned one. The encoded
 	// bucket directory above the session folder is derived from it and is

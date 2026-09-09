@@ -511,30 +511,32 @@ func TestABargedInTurnFoldsAsStoppedAndTheNextOneAnswersNormally(t *testing.T) {
 	}
 }
 
-// AND NOTHING BRIGHTENS ON THE WAY DOWN. The reply that was arriving wore the
-// live tier — the one rung ABOVE the body ink, which means "still coming"
-// (styles.go's [hueLive]) — and the moment the chord lands that claim is false.
-// The two waves make it false in the same instant from two directions: the stop
-// takes the spinner and the count-up off the line (render.go's [app.stateSegment]
-// stands down outside [stateWorking]) and the cut demotes the block to the
-// working tier, one rung BELOW the body. So the loudest thing on the screen goes
-// quieter at the keypress and nothing on the frame moves until the turn is gone.
+// AND NOTHING BRIGHTENS ON THE WAY DOWN. Unclassified prose is already at the
+// working tier. The stop must keep it there, silence live activity, and refuse
+// a response confirmation that was already in flight when the person stopped.
 func TestNothingOnTheScreenBrightensWhileTheStoppedTurnWindsDown(t *testing.T) {
 	a, _ := bargeable(t, "the first paragraph of the wrong answer. ")
 	a.workMode = config.WorkOpen
 	drive(t, a, frameMsg{})
 
-	if !strings.Contains(frame(a), liveSGR()) {
-		t.Fatal("the arriving reply was not at the live tier to begin with")
+	if !strings.Contains(plain(frame(a)), "first paragraph of the wrong answer") {
+		t.Fatal("the provisional step was not visible before stopping")
 	}
 
 	typeInto(t, a, "no, the other file")
 	drive(t, a, key(bargeKey), frameMsg{})
+	// A buffered provider boundary cannot undo the person's stop.
+	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventReasoning, Text: "late private reasoning"}})
+	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventTextDelta, Text: "late uncut answer must not appear"}})
+	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventAssistantDone}}, frameMsg{})
 
 	if !a.windingDown() {
 		t.Fatal("the chord did not leave the turn winding down")
 	}
 	painted := frame(a)
+	if strings.Contains(plain(painted), "late uncut answer") || strings.Contains(plain(painted), "late private reasoning") {
+		t.Fatal("the stopped turn drew buffered response content")
+	}
 	if strings.Contains(painted, liveSGR()) {
 		t.Fatalf("something is still claiming to be arriving:\n%s", plain(painted))
 	}

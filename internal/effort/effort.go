@@ -57,17 +57,10 @@ const (
 // to displace an existing one, in this slice, in one commit.
 var Rungs = []Rung{Low, Medium, High, XHigh, Max}
 
-// Ship is the rung an install that has chosen nothing runs at.
-//
-// It is HIGH and not medium on purpose: the models this program is pointed at
-// reason well and the work it is pointed at is rarely trivial, so the default
-// that wastes the least of a person's time is the one that thinks before it
-// answers. The two rungs above it exist for the question worth waiting on; the
-// two below it exist for the machinery that must not deliberate at all.
-//
-// It lives here rather than in the settings row so the row, the resolver and the
-// manual all read one number (CLAUDE.md's one-source-of-truth law).
-const Ship = High
+// Ship leaves reasoning to the selected model unless a person chooses a rung.
+// Keeping this as absence lets provider defaults evolve without a local model
+// table or an instruction that enables, disables, or budgets thinking.
+const Ship = None
 
 // Valid reports whether a rung is one of [Rungs]. [None] is not: it is absence,
 // and a caller asking "is this a rung" about absence wants no.
@@ -87,14 +80,15 @@ func (r Rung) String() string { return string(r) }
 
 // Parse normalizes one operator-supplied word and reports whether it is one.
 //
-// "off" and "" both land on [None], because the surface's word for "stop asking
-// for extra thinking" is off and the ladder's word for it is absence. An
-// unrecognized word is refused rather than quietly downgraded: a typo that
+// "auto", the legacy alias "off", and "" land on [None]. At a scoped dial
+// this clears the override; at the install default it leaves reasoning to the
+// provider. An unrecognized word is refused rather than quietly downgraded:
+// a typo that
 // silently drops a rung somebody paid for is worse than a message saying the
 // word is not one.
 func Parse(value string) (Rung, bool) {
 	switch rung := Rung(strings.ToLower(strings.TrimSpace(value))); rung {
-	case None, "off":
+	case None, "auto", "off":
 		return None, true
 	case Low, Medium, High, XHigh, Max:
 		return rung, true

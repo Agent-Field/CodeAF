@@ -92,7 +92,11 @@ func TestTheBriefArgumentAsksForWhatTheTurnAlreadyLearned(t *testing.T) {
 	for _, want := range []string{
 		"WHERE YOU ARE ALREADY MID-WORK",
 		"WHAT YOU HAVE LEARNED IS PART OF THE BRIEF",
-		"cannot see the calls you already made",
+		// The worker is now given a bounded list of the calls that ran and their
+		// inputs (admission.go), and nothing of what they RETURNED — so the
+		// argument asks for the findings on those grounds rather than on the older
+		// "it cannot see them at all".
+		"never what they returned",
 		"IF THIS REPLACES A FAILED TASK",
 		"inherits neither its transcript nor its report",
 	} {

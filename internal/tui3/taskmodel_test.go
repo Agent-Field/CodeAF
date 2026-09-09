@@ -162,8 +162,8 @@ func TestTheModelFollowsTheNodeOntoTheRailAndTheLandedCard(t *testing.T) {
 	if node == nil || node.model != "openai/gpt-5" {
 		t.Fatalf("the node did not keep its model: %+v", node)
 	}
-	// THE MODEL NEVER BUYS ITS CELLS FROM THE NAME. The first line is the two
-	// glyphs, the title and the handle — nothing else — and the model rides the
+	// THE MODEL NEVER BUYS ITS CELLS FROM THE NAME. The first line is the state
+	// glyph, the title and the handle — nothing else — and the model rides the
 	// telemetry row under it (task.go's [app.railTelemetry]), which is a row that
 	// gives up its own tail rather than the title's cells.
 	full := plain(strings.Join(a.railNodeRows(node, railCols), "\n"))

@@ -115,6 +115,7 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[string]bool, 
 	}
 
 	earlier := shapeEntries(a.messages, a.file)
+	place := a.resultPlaceLocked()
 	target := turnWorkingTarget(a.window()) * bytesPerToken
 	batches := turnFoldBatches(a.messages, a.turnFloor, limit, consumedReads)
 	// A pass that cannot buy the whole headroom does not run. Every rewrite
@@ -140,19 +141,12 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[string]bool, 
 		for _, index := range batch.indices {
 			message := a.messages[index]
 			text := messageContentText(message)
-			pointer := a.chatlog.ref(message)
+			// The same pointer the stub pass and the snapshot view give, and for
+			// the same reason: a store ref is not one ([Agent.fullResultPointer]).
+			pointer := a.fullResultPointer(message, place)
 			if pointer == "" {
-				workspace := strings.TrimSpace(a.config.Workspace)
-				if workspace == "" {
-					complete = false
-					break
-				}
-				path, err := writeStub(a.config.droppingsPlace(), workspace, text)
-				if err != nil {
-					complete = false
-					break
-				}
-				pointer = path
+				complete = false
+				break
 			}
 			stub := ai.Message{
 				Role:       message.Role,

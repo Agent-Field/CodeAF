@@ -60,6 +60,8 @@ const (
 	// PhaseConnecting is the handshake: DNS, TLS, and the request going out.
 	// Nothing has been accepted yet.
 	PhaseConnecting Phase = "connecting"
+	// PhaseConnectionLost is a reachability wait, not a slow model response.
+	PhaseConnectionLost Phase = "waiting for connection"
 	// PhaseFirstWord is the wait after the endpoint accepted the request and
 	// before it wrote anything — the queue, the router's own fallback walk, a
 	// cold model loading. It is the phase a hedge deadline belongs to.
@@ -123,6 +125,8 @@ const (
 	// on, before there is a task to point at (internal/session's checkpoint.go).
 	// Detail names who it is for, so the row reads "briefing a worker".
 	PhaseBriefing Phase = "briefing"
+	// PhasePreparing names bounded context lookup before the main request starts.
+	PhasePreparing Phase = "preparing"
 	// PhaseTakingStock is the reading a turn stops for at a mark: a second mind
 	// is shown an account of the work so far and asked what is left of the ask
 	// (internal/session's checkpoint.go, [readMark]). It is a ten-to-thirty
@@ -204,7 +208,7 @@ type PhaseNews struct {
 // kept here so that two surfaces cannot disagree about it.
 func (n PhaseNews) Waiting() bool {
 	switch n.Phase {
-	case PhaseConnecting, PhaseFirstWord, PhasePaced, PhaseRetrying, PhaseSwitching, PhaseSwitchingModel, PhaseAsking, PhaseAllSlow:
+	case PhaseConnecting, PhaseConnectionLost, PhaseFirstWord, PhasePaced, PhaseRetrying, PhaseSwitching, PhaseSwitchingModel, PhaseAsking, PhaseAllSlow:
 		return true
 	}
 	return false

@@ -283,7 +283,7 @@ func TestClickingTheFootOpensAndTucksTheTable(t *testing.T) {
 	if !ok {
 		t.Fatalf("the answer grew no foot:\n%s", strings.Join(plainRows(a), "\n"))
 	}
-	if plain(r.text) != mdOpenWord {
+	if strings.TrimSpace(plain(r.text)) != mdOpenWord {
 		t.Fatalf("the foot says %q", plain(r.text))
 	}
 

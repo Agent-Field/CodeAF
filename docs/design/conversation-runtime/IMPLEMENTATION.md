@@ -1,0 +1,124 @@
+# Conversation runtime implementation
+
+Local integration line: `santosh/conversation-runtime` (2026-09-04 working wave). This is a working record of what has merged into that
+line, what is still open, and what the available evidence does and does not establish. It
+describes the local integration only; nothing here is published or claimed as released.
+
+## Merged
+
+| Boundary | What it does now | Where |
+| --- | --- | --- |
+| Local delivery | One addressed hand-over (`conversationID`, `messageOrigin`, `messageKind`) returning one receipt: nobody / closed / accepted. Progress lands on the ambient queue and cannot start a paid turn. | `internal/session/mailbox.go` |
+| Durable acknowledgement | A sender owed an answer about the recipient's *record* gets one when the recipient's journal holds the line, not when a queue took it. Ids are composed from checkpoint facts so a resume can tell a replay from a second event. | `internal/session/mailbox.go`, `task_store.go` |
+| Assignment revisions | The admitted spec is frozen; corrections land as an overlay. Only a person's direction may move the done-condition; an agent's coordination is recorded but cannot re-aim the work. A landing may not publish while a person's direction is unread. | `internal/session/assignment.go`, `assignment_tool.go` |
+| Admission context | One bounded, attributed selection per admission door: quotes with speaker and source, tool handles with call/input/outcome including an explicit unknown outcome. Versioned and checkpoint-durable. | `internal/session/admission.go`, `admission_compile.go` |
+| Task result | The full answer is kept apart from the compact card, with a bounded excerpt and a retrievable overflow reference; the outcome qualification is retained. | `internal/session/task_result.go` |
+| Tool-result compaction | Older frozen tool results are reduced to a bounded head and tail with the exact count of bytes cut and a pointer the read tool can open (`Agent.fullResultPointer`), falling back to the journal and then to an honest "cannot be read" rather than naming a place that does not exist. A pass folds to a headroom target below the threshold instead of re-firing at every step, and the budget walk carries a running total rather than recomputing it. The live transcript, the system prompt and the running turn are never rewritten, and no result is dropped. | `internal/session/toolcompact.go`, `stub.go`, `turnfold.go` |
+| Status projection | One pure `ProjectTask` over facts, separating presence, wait-on, change disposition, fault and attention, with three-valued liveness. The surfaces adapt to it instead of each deriving meaning. Wire and checkpoint enums unchanged. | `internal/session/task_status.go`, `internal/tui3/taskstatus.go` |
+| Persistent host and truthful detach | `Welcome.Persistent` is the engine's statement about its own lifetime. A window closing (including SIGHUP) detaches; work, standing questions, drafts and parked messages survive. `/close` and an explicit stop remain endings, and the quit hint promises "keeps running" only where it is true. | `internal/remote/client.go`, `internal/tui3/keeper.go`, `quitarm.go` |
+| Foreground handoff | The end-of-turn reader asks whether this request's work went to a live task, so a turn that correctly handed work off is not re-opened into polling its own task. Request-scoped, no polling. | `internal/session/turnhandoff.go` |
+| Workspace ownership | Alternate spellings of the same physical location resolve to one working copy when binding contract paths and checking parallel writable claims. | `internal/session/taskgit.go` and the ground ladder |
+| Evaluation rig | A cross-harness battery with two doors that are never mixed (print and a real TUI in a tmux pane), calibrated screen markers per arm, `unsupported` recorded rather than substituted where no interactive door can be driven, guarded upstream calls pinned to an open model, exact answer checks, and a cost meter that reconciles admitted requests instead of counting missing usage as zero. It spends real money, is on demand, and is outside `make check`; `test/selftest.sh` exercises it with fakes and no network. | `bench/conversation/` (`run.sh`, `lib/`, `scenarios/`, `test/`) |
+
+Each merge has been rebuilt with `make build`, and each boundary above has behavioral tests
+alongside it (`mailbox_test.go`, `assignment_test.go`, `admission_test.go`,
+`task_status_test.go`, `task_result_e2e_test.go`, `turnhandoff_test.go`,
+`internal/remote/detach_test.go`, `internal/tui3/detachexit_test.go`). Focused tests are not
+a substitute for the integrated suite or a live product walkthrough.
+
+## Additional integrated boundaries
+
+- **Explicit verification contract.** `checks` declarations at admission and revision are
+  the only source of executable completion checks, for tasks and the main session.
+  Worker receipts and acceptance prose are evidence, not permission to repeat an action.
+  A revision clears previous check authority unless new checks are explicitly supplied.
+  Unrunnable checks do not become claims that commands passed.
+- **Causal result wake.** A completed result, attempt, and reply obligation are captured
+  together and carried through delivery and journal replay. Completion answers the request
+  that caused the task, including its effective revision, rather than the latest unrelated
+  question in the main conversation.
+- **Worker scope and capabilities.** Every node worker, including a depth-limited leaf,
+  receives its role and assigned scope. Revision and delegation instructions are conditional
+  on the tools actually available. The original request is preserved as overall context,
+  not silently assigned in full to every child.
+- **Main-chat corrections.** `tasks` with `forward: true` sends the real person message
+  attached to the model request to one selected task. `say` remains agent coordination.
+  Forwarding shares the room's delivery and assignment receipt path. Source identity allows
+  retries to be acknowledged without duplicate delivery; newer applied corrections cannot
+  be overwritten by a delayed forward with an earlier recorded speaking time.
+
+## Validation still pending
+
+Final integrated live runs and `make check` are recorded separately below once completed.
+Focused tests are evidence for individual boundaries, not for the complete experience.
+
+## What the live evidence actually shows
+
+From root's `host-live-02` run, two behaviors were observed to pass: the main conversation
+answered an unrelated question in a few seconds while a task ran, with no polling; and a task
+continued with the terminal closed, with no interruption marker and the same start time. The
+same run produced three defects — a path-token trimming bug (since fixed), the audit replay, and the completion-reader causality. All three now have
+code fixes and regression tests. The run's own note stands: **it does not
+prove overall task efficiency or all steering behaviors.**
+
+## Interactive ownership and visible result turns
+
+The launch carries an explicit `Interactive` fact through local-host construction,
+new/resume options and principal selection. Tool approval (`--yolo`) and a budget no
+longer imply that an interactive conversation has a frozen first goal. Fixed headless
+runs retain their original goal behavior; task assignments retain their own revision
+rules. Interactive launch dollar/time limits are enforced at new-turn admission,
+including background wakes, separately from goal ownership. They permit work already
+in flight to finish and do not implement aggregate reservation across concurrent tasks.
+
+Hosted sessions subscribe once to runtime wake turns. The existing numbered stream,
+replay and fan-out path carries them to attached windows. Hosted turn adoption uses
+the same ordered queue as local wakes; a later reply cannot silently reuse the
+previous person's turn or disappear while its last events drain. This closes a display
+failure that unit-only transport testing did not catch. Background commands and fired watches carry their own outcome reply duty through
+batching as well; they do not inherit an unrelated recent question. A visible reply still depends
+on successful model narration; retained results and transport delivery are distinct.
+
+## What is measured, and what is not claimed
+
+Measured and test-backed, in-tree: compaction bounds a long frozen tool history to a
+sub-linear prompt, a pass reaches its headroom target and then leaves the next step alone,
+and the budget walk carries the same total it would recompute. Those are specific
+improvements on specific costs, and they are the only performance claims this document makes.
+
+Not claimed: **no general Pareto superiority over another harness.** The preliminary *print*
+comparison states outright that this system is not consistently cheaper or faster on the
+small tasks measured; it exercised the print door rather than the interactive product, had
+infrastructure and checker failures, undercounted cost before the meter fix, and ran too few
+repetitions to support a claim either way.
+
+The interactive comparison records peer and candidate outcomes, including failures.
+Both peers passed the initial mid-work revision case; both failed the first follow-up
+case. Aforge's early candidate failed both. Further live diagnostics separated model
+quality, display grouping and frozen-goal reruns. See `VALIDATION.md` for the tested
+revisions and final checks. One repetition with differing context sizes, caching and
+provider variability cannot establish a frontier in any direction.
+
+Any future comparison must name the tested door, workload, model, quality checks,
+repetitions, latency and actual cost. Unmeasured cells are not successes.
+
+## Design limits
+
+- **Accepted is not read, and settled is not exactly-once.** Durable acknowledgement bounds
+  re-telling, not re-doing. A session with no journal, or a journal line that never reached
+  disk, is told again on resume. **No mechanism here makes an external effect idempotent.**
+- **Admission context is deliberately partial.** It is not a durable universal constraint
+  ledger and does not guarantee that every relevant earlier statement is selected. A reference
+  is only useful if the recipient can open it.
+- **Steering chooses one task.** Main-chat forwarding is model-addressed, not an automatic
+  classifier or broadcast. The receipt does not prove the worker read or applied it. Task
+  workers cannot forward under the person's authority. Original speaking time means when
+  this session drained the message, not when the key was pressed; ordering across clock
+  changes is not guaranteed. A publication already claimed cannot be recalled.
+- **Attempt identity and assignment revision answer different questions** and must stay
+  distinct.
+- **Cross-session communication is out of scope.** The addressing and origin shape should
+  permit a later authenticated router, but there is no discovery service, no message bus and
+  no cross-session permission model here. See `MODULES.md` §5 for what such a step would still
+  have to add.
+- **The seams are files, not packages.** `internal/session` has not been split.

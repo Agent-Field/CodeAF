@@ -108,25 +108,25 @@ func TestTheStripsOverflowMarkBrightensUnderThePointer(t *testing.T) {
 	}
 }
 
-// ── a room's pinned header, and the ✕ on it ─────────────────────────────────
+// ── a room's pinned header, and the `Stop` under it ─────────────────────────
 
-// THE ROW AND THE ✕ ARE OPPOSITE GESTURES AND NEVER LIGHT TOGETHER. One leaves
-// the page, the other ends the work it is about, and the expensive one wins the
-// cells it is drawn on.
+// THE TRAIL ROW AND `Stop` ARE OPPOSITE GESTURES AND NEVER LIGHT TOGETHER. One
+// leaves the page, the other ends the work it is about — and they are on two
+// rows now, so the separation is geometric rather than an arbitration.
 func TestTheRoomHeaderAndItsMarkLightSeparately(t *testing.T) {
 	a, _ := stopApp(t)
 	a.openRoomFor(7, "Fix the nil-map crash")
 	a.touch()
 	width, _ := a.size()
-	if _ = a.roomHead(width); !a.roomStop.pressable() {
+	if _ = strings.Join(a.roomHeadRows(width), "\n"); !a.roomStop.pressable() {
 		t.Fatal("the header drew no ✕ to aim at")
 	}
 
-	drive(t, a, motionTo(a.roomStop.from, 0))
+	drive(t, a, motionTo(a.roomStop.from, a.roomFactsRow()))
 	if !a.hoveringRoomStop() {
-		t.Fatalf("the pointer on the ✕ recorded %+v", a.hot)
+		t.Fatalf("the pointer on Stop recorded %+v", a.hot)
 	}
-	head := a.roomHead(width)
+	head := strings.Join(a.roomHeadRows(width), "\n")
 	if !strings.Contains(head, a.pal.ink(a.linearMark(roomStopMark, roomStopMarkASCII))) {
 		t.Fatalf("the ✕ did not brighten under the pointer:\n%q", head)
 	}
@@ -134,12 +134,15 @@ func TestTheRoomHeaderAndItsMarkLightSeparately(t *testing.T) {
 		t.Fatalf("the ✕ banded the whole way-out row:\n%q", head)
 	}
 
-	// Anywhere else along the row is the way out, and the way out is the row.
-	drive(t, a, motionTo(2, 0))
+	// Anywhere else along the row is the way out, and the way out is the row. The
+	// probe is the middle of the rule rather than column two: the trail starts at
+	// the label's own column now that the state glyph has moved down a row, so
+	// column two is the root crumb and answers as itself (roomcrumbs.go).
+	drive(t, a, motionTo(a.roomBackSpan.from+1, a.roomHeadRow()))
 	if !a.hoveringRoomBack() {
 		t.Fatalf("the pointer on the header recorded %+v", a.hot)
 	}
-	if head = a.roomHead(width); !strings.Contains(head, hoverBg()) {
+	if head = strings.Join(a.roomHeadRows(width), "\n"); !strings.Contains(head, hoverBg()) {
 		t.Fatalf("the header did not light as the way out:\n%q", head)
 	}
 }

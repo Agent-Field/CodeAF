@@ -198,16 +198,51 @@ import (
 // VERSION 10 CARRIES [MethodTaskHold]. A version-9 engine would reject the
 // first rune's hold while its surface already showed "waiting on you", then
 // admit the task on the deadline the person believed had stopped.
-const Version = 10
+//
+// VERSION 11 CARRIES THE HARNESS LANE. A design card and a subharness intake
+// card are raised on a subscription that outlives the turn (internal/session's
+// emitHarness), and only a running turn's stream crossed this wire — so
+// cmd/aforge built every hosted session with the designer nilled and the cards
+// off, and said so in prose. The delta is one subscription up
+// ([MethodDesignWatch]), its frames down ("design"), and the intake card's
+// answer ([MethodSubharnessResolve]); the design card's own answer has been
+// [MethodHarness] since version 1. A lane without its answer door puts a
+// question on a screen that nothing can close, which is the fault version 8
+// found in the task rail.
+//
+// The adaptive run lane is deliberately NOT part of this delta; lanes.go states
+// exactly what is missing from it.
+//
+// The number moves rather than riding version 10 for [MethodTaskWatch]'s
+// reason: an older engine answers the new subscription with "no such method"
+// and leaves a lane permanently dark with nothing on the screen saying so.
+//
+// VERSION 12 CARRIES [Hello.Join] AND [Hello.Watch], AND THE NUMBER IS THE
+// ENFORCEMENT. Both are SAFETY fields — one says "never start a conversation",
+// the other says "never give me the keyboard" — and both are omitempty booleans,
+// which is exactly the shape a version-11 engine DISCARDS in silence. That
+// engine would then do the two things the fields exist to prevent, before the
+// surface ever sees a welcome to check: boot a whole conversation to answer a
+// question about work that is running, and hand a reader the keyboard off the
+// window that owns the work. Neither is recoverable by a check afterwards.
+//
+// So the guarantee is the door's, not the flag's. The version is compared before
+// [AttachOptions.Open] is called and before [Session.attach] runs, by BOTH
+// builds — and a version-11 engine enforces it against a version-12 surface
+// using code that has been there since version 1. That is the only mechanism in
+// this protocol an old peer can be trusted to run.
+const Version = 12
 
 // Frame is one line on the wire, either direction.
 type Frame struct {
 	// Kind says what this frame is: "hello", "welcome", "call", "result",
-	// "event", "closed", "facts", "task", "turn", "driver", "fatal".
+	// "event", "closed", "facts", "task", "design", "turn", "driver", "fatal".
 	//
-	// "facts" and "task" are the TWO KINDS THAT ANSWER NOTHING. Every other
+	// "facts", "task" and "design" are the KINDS THAT ANSWER NOTHING. The last
+	// is version 11's harness lane and carries one [EventWire], exactly as
+	// "task" does (standinglane.go). Every other
 	// frame from the engine either replies to a call or belongs to a stream a
-	// call opened; these two are the engine saying something the surface did
+	// call opened; these are the engine saying something the surface did
 	// not ask for on that frame, because the whole point of them is that the
 	// surface never has to ask. "facts" carries a [FactsPush]; "task" carries
 	// one [EventWire] off the standing task lane (tasklane.go). Neither has an
@@ -261,6 +296,7 @@ const (
 	MethodSubmitFiles     = "SubmitFiles"            // SubmitFilesArgs → StreamRef, then "event" frames
 	MethodFollowUp        = "FollowUp"               // SubmitArgs → StreamRef, then "event" frames
 	MethodSteer           = "Steer"                  // SubmitArgs → StreamRef, then "event" frames
+	MethodStopWork        = "StopWork"               // nothing → nothing; stop this conversation, retaining history
 	MethodInterrupt       = "Interrupt"              // nothing → nothing
 	MethodCompact         = "Compact"                // nothing → nothing (error carries the failure)
 	MethodClose           = "Close"                  // nothing → nothing
@@ -431,6 +467,38 @@ const (
 	MethodTake = "Take" // nothing → nothing
 )
 
+// LaunchShape is the handful of flags that describe how a session is built
+// rather than what is said in it: --yolo, --no-compact, --one-model and the two
+// unattended ceilings. They are one struct because they are one decision — the
+// shape a conversation was opened with — and because comparing two of them is
+// how a surface tells "the engine built what I asked for" from "I joined
+// somebody else's conversation".
+type LaunchShape struct {
+	Yolo      bool    `json:"yolo,omitempty"`
+	NoCompact bool    `json:"noCompact,omitempty"`
+	OneModel  bool    `json:"oneModel,omitempty"`
+	MaxHours  float64 `json:"maxHours,omitempty"`
+	MaxCost   float64 `json:"maxCost,omitempty"`
+	// Interactive says the surface that opened this conversation is a screen
+	// somebody is typing into, so the session is steered rather than run to a
+	// goal of its own. Only the local dial fills it; a --once probe leaves it
+	// unset, and the engine maps it onto the session's own steering fact.
+	Interactive bool `json:"interactive,omitempty"`
+}
+
+// Same reports whether two shapes describe the same conversation. A nil shape
+// is the engine's defaults, so nil and a zero shape are the same thing.
+func (l *LaunchShape) Same(other *LaunchShape) bool {
+	var mine, theirs LaunchShape
+	if l != nil {
+		mine = *l
+	}
+	if other != nil {
+		theirs = *other
+	}
+	return mine == theirs
+}
+
 // StandingWatchResult keeps "not installed" distinct from "could not read".
 type StandingWatchResult struct {
 	Status standing.WatchStatus `json:"status"`
@@ -458,6 +526,12 @@ type Hello struct {
 	// journal could, and the journal is the record.
 	Model string `json:"model,omitempty"`
 	Level string `json:"level,omitempty"`
+
+	// Launch is how the conversation should be BUILT, when this hello is the
+	// one that opens it. Nil asks for the engine's own defaults, which is what
+	// every remote surface sends: these are settings of the machine the session
+	// runs on, and cmd/aforge refuses them over --host and --at by name.
+	Launch *LaunchShape `json:"launch,omitempty"`
 
 	// Encodings are the optional frame payload encodings this surface can read.
 	// They are negotiated INSIDE one protocol version because absence means the
@@ -504,6 +578,68 @@ type Hello struct {
 	// they are sitting at. So a returning surface drives only if the keyboard is
 	// going spare, and a NEW one always drives.
 	Back bool `json:"back,omitempty"`
+
+	// Join says this hello wants a conversation THAT IS ALREADY OPEN and will
+	// take nothing else. [Session] names the transcript to look for, and a host
+	// that is not running it answers an error rather than starting it.
+	//
+	// IT EXISTS BECAUSE "OPEN OR CREATE" IS THE WRONG VERB FOR A SECOND VIEW. A
+	// surface that wants to READ one task of a conversation running next door is
+	// asking about work that exists; booting a whole session so that the question
+	// has an answer would start a model, take the transcript's lock away from
+	// nobody, and hand back a conversation with none of the work in it. So the
+	// two intentions are two flags rather than one hopeful one.
+	//
+	// AND IT IS MATCHED ON THE TRANSCRIPT AND NOT ON THE KEY. A host keys its
+	// conversations by whatever the FIRST hello said — which for the ordinary
+	// launch is the empty string, meaning "this workspace's latest" — so a second
+	// surface naming the same conversation by its file would miss it and be given
+	// a new one. The file is the identity every other part of this program uses
+	// for a conversation, so it is the one a join is answered on.
+	Join bool `json:"join,omitempty"`
+
+	// New says this hello MINTS A CONVERSATION OF ITS OWN and will not be given
+	// one that is already open. It is the exact opposite of [Join], and the two
+	// are separate flags for the same reason Join is separate from an ordinary
+	// hello: "open or create" is the wrong verb for both intentions.
+	//
+	// IT IS WHAT MAKES A SECOND TAB A SECOND CONVERSATION. An ordinary hello
+	// naming no session means "this workspace's latest-or-new", so two surfaces
+	// that both say nothing are asking for the SAME conversation — which is the
+	// whole of "sit down somewhere else and be in it" and exactly wrong for a
+	// window opening another chat beside the one it already has. Without this
+	// flag the only way to mint one was [MethodSessionNew], which SWAPS the
+	// conversation on the connection that asked and ends the one it replaced
+	// (internal/remote's Session.swap): one connection, one conversation, and the
+	// sentence a person read on screen.
+	//
+	// THE ENGINE CHOOSES THE FILE. This hello carries no session, because the
+	// transcript a new conversation lands on is a question about the engine's own
+	// disk; the welcome names what it opened, and a host keys the conversation by
+	// that answer so a later window can name it and join.
+	//
+	// A REDIAL NEVER SAYS IT TWICE. [Client.helloNow] clears it once a welcome is
+	// in hand, alongside the session and [Back] it already rewrites — a link that
+	// dropped is coming back to the conversation it minted, not asking for
+	// another one.
+	New bool `json:"new,omitempty"`
+
+	// Watch says this surface is HERE TO READ and must never be given the
+	// keyboard — not on arrival, not when the driver leaves, not ever.
+	//
+	// [Back] IS NOT THIS, and reading it as this is the bug that made the flag
+	// necessary. A returning surface takes the keyboard when it is going spare,
+	// which is right for a redial and wrong for a second view somebody opened to
+	// look at one piece of work: the window that owns the conversation may simply
+	// have detached for a moment, and it would come back to find a reader driving
+	// it. A watcher is refused the keyboard even when there is no driver at all,
+	// so the conversation is left with none rather than with the wrong one.
+	//
+	// IT IS THE SURFACE'S OWN DECLARATION AND THE ENGINE STILL DECIDES. Nothing
+	// here is a permission — the engine enforces it, in the one place that owns
+	// who drives (driver.go) — and a watcher that tries to type anyway is refused
+	// with a sentence rather than dropped.
+	Watch bool `json:"watch,omitempty"`
 }
 
 // StreamCursor is one "I have seen this stream through here".
@@ -522,6 +658,7 @@ type Welcome struct {
 	Model       string `json:"model"`
 	Build       string `json:"build,omitempty"`
 	Title       string `json:"title,omitempty"`
+	ShortTitle  string `json:"shortTitle,omitempty"`
 	// Note is a sentence worth showing once — "session open elsewhere, started
 	// a new one" travels here.
 	Note string `json:"note,omitempty"`
@@ -603,6 +740,12 @@ type Welcome struct {
 	// single fact, so it is stated rather than assumed from the transport.
 	Persistent bool `json:"persistent,omitempty"`
 
+	// Launch is the shape the conversation actually has, as the engine built
+	// it. It is an ECHO and not a confirmation: a hello that asked for one
+	// shape and joined a conversation somebody else had already opened gets
+	// that conversation's shape here, and the surface is expected to notice.
+	Launch *LaunchShape `json:"launch,omitempty"`
+
 	// ── version 4 ───────────────────────────────────────────────────────────
 
 	// Driver is who holds the keyboard the moment this surface arrived, told
@@ -615,6 +758,55 @@ type Welcome struct {
 	// drove until told otherwise would draw a composer somebody's keystrokes
 	// would then be refused into.
 	Driver Driver `json:"driver,omitzero"`
+
+	// SteerRepeat says this engine RECOGNISES A SEND IT HAS ALREADY TAKEN: a
+	// correction sent into a task's page again under the same identity
+	// ([TaskSteerArgs]) answers the receipt already on the record and delivers
+	// nothing.
+	//
+	// IT IS CARRIED BECAUSE THE QUESTION IS ASKED BEFORE ANYTHING IS SENT, and
+	// it has to be. A surface holding a send it got no answer to has exactly two
+	// moves — ask again, or keep the words and say so — and which one is honest
+	// depends on a fact about the far machine that no failed call can report:
+	// the call that would have told it is the one that stopped answering.
+	//
+	// ABSENCE IS false AND false IS THE SAFE READING. An engine that predates
+	// this ignores the identity on a send, so a repeat there would be a second
+	// correction; the surface therefore keeps the person's words instead of
+	// asking twice, which is the degradation that costs a keystroke rather than
+	// the one that corrects a worker twice.
+	SteerRepeat bool `json:"steerRepeat,omitempty"`
+
+	// SteerOwner says this engine CHECKS THE CONVERSATION A SEND WAS WRITTEN FOR
+	// ([TaskSteerArgs.Session]) against the one it actually has open, and refuses
+	// rather than delivering to the task with that number over here.
+	//
+	// IT IS A SEPARATE FACT FROM SteerRepeat and may not be inferred from it: an
+	// engine can keep send identities and still have been built before this check
+	// existed, and it would then read Session as an unknown field and deliver.
+	//
+	// ABSENCE IS false, AND false MEANS THE SURFACE MUST NOT SEND A BOUND
+	// CORRECTION AT ALL. An unenforced claim is worse than no claim: the surface
+	// would believe the engine was guarding something nobody is guarding.
+	SteerOwner bool `json:"steerOwner,omitempty"`
+
+	// Folders says this engine CAN HOLD THE FOLDERS A CONVERSATION IS ABOUT —
+	// that its agent answers [MethodPlacesRefer] and [MethodPlacesRemove] rather
+	// than refusing them (wire_places.go).
+	//
+	// IT IS CARRIED BECAUSE THE QUESTION IS ASKED BEFORE ANYTHING IS CHOSEN, and
+	// that is [Welcome.SteerRepeat]'s reason exactly. A surface at this end holds
+	// a *remote.Agent, which ALWAYS has the three methods on it — so the type
+	// assertion a local surface uses to tell a capable agent from an incapable
+	// one answers yes for every connection and says nothing about the machine at
+	// the far end. Without this flag the only honest reading arrives as the
+	// refusal to the call, which is after the person has already picked a folder
+	// out of a list and pressed enter.
+	//
+	// ABSENCE IS false AND false IS THE SAFE READING: an engine that predates
+	// these doors sends no field, and a surface that believed it could attach
+	// would open a picker whose every row ends in an error.
+	Folders bool `json:"folders,omitempty"`
 }
 
 // Driver is who holds the keyboard on one conversation, as told to ONE surface.

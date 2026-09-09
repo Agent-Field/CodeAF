@@ -54,10 +54,33 @@ nothing on this page yet — it fills in as the task works
 Neither of the landed lines would be true there: nothing was lost, and nothing is over.
 This one comes off by itself the moment the task's first block arrives.
 
-**A room never draws a blank body under its header.** If the roster still holds the task's
-report — and it does, for anything that landed in a conversation you have open — the report
-is drawn above that line, so the page tells you what the work came to even when the
-transcript behind it is gone:
+**A room never draws a blank body under its header.** Above that line the page draws what
+it already knows, which is different for work that is still going and work that is over.
+
+For a task that has **not landed**, the page draws **the instruction you gave it** — the
+brief, held since the task was admitted — and then, where the engine has said one, the
+sentence naming what the work is doing right now: what it is held behind (`rate limited`),
+the gap it is closing, or the call it is on. So a task opened the second it starts reads
+like this rather than as a blank:
+
+```
+Widen the import pipe so the nightly run stops timing out.
+rate limited
+nothing on this page yet — it fills in as the task works
+```
+
+Every one of those rows is drawn only while the page has no blocks, so the whole of it is
+replaced — not added to — the moment the transcript arrives. Opening the page starts
+nothing and restarts nothing: it reads work that is already running.
+
+The header above it is saying the state in one word (`working`, `waiting`, `queued`) with
+the clock beside it, so the body never repeats that word — what it adds is the reason
+underneath it, which is the thing the header has no room for.
+
+For a task that **has landed**, the report takes that place. If the roster still holds it —
+and it does, for anything that landed in a conversation you have open — the report is drawn
+above the line, so the page tells you what the work came to even when the transcript behind
+it is gone:
 
 ```
 Added the guard in parseRow and covered it with a test.
@@ -122,3 +145,17 @@ The task's own tool rows never enter the main chat; they go to its journal and i
 only. The landing note in the conversation carries the transcript's URI on its first line
 (`task 7 finished: <title> · transcript file:///…`), which is the same file the room
 replays. Nothing here is a summary: a landed task's room is the whole transcript.
+
+## A saved task asks me to accept a different task with the same number
+
+Task numbers belong to their conversation. A reading view of another conversation's
+finished task never shows or answers the current conversation's accept, check-again,
+or reject controls. Open its owning conversation to make a decision there.
+
+## I handed a review to the chat — why does it still need me?
+
+After a successful handoff, the task card, page footer and sidebar say `awaiting review`.
+That is an internal review, not a request for another answer from you. The same applies
+when automatic task settlement was selected before the task finished. If handing over
+fails, the original choices stay available. A running parent alone does not hide an
+unanswered child decision.

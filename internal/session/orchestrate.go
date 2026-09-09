@@ -132,10 +132,17 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 		return "", errors.New("an adaptive run needs a goal")
 	}
 	a.mu.Lock()
-	if a.closed {
+	if a.closed || a.workStopped {
 		a.mu.Unlock()
 		return "", errAgentClosed
 	}
+	// Admission belongs to the close boundary even before the family has a
+	// registry entry: constructing that family already writes its first row.
+	a.orchestrateWorkers.Add(1)
+	if a.orchestrateContext == nil {
+		a.orchestrateContext, a.orchestrateStop = context.WithCancel(context.Background())
+	}
+	lifetime := a.orchestrateContext
 	a.orchestrateSeq++
 	seq := a.orchestrateSeq
 	named := strings.TrimSpace(model)
@@ -154,6 +161,12 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// them. It reaches the planner above the goal and every node above its own
 	// (task_brief.go). A run nobody typed anything for simply has none, and the
 	// heading is absent rather than empty.
+	launched := false
+	defer func() {
+		if !launched {
+			a.orchestrateWorkers.Done()
+		}
+	}()
 	request := a.taskRequest()
 
 	// The id is the run's number written out. Both spellings name one run: the
@@ -164,7 +177,7 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// THE CONTEXT IS NOT THE TURN'S. The turn that asked for this is over by
 	// the time the first node runs; a run cancelled by the request for it would
 	// never produce anything.
-	runCtx, cancel := context.WithTimeout(context.Background(), orchestrateWindow)
+	runCtx, cancel := context.WithTimeout(lifetime, orchestrateWindow)
 
 	// THE RUN IS TWO KINDS OF CALL AND THEY ARE NOT THE SAME PURCHASE. The
 	// planner is made once per completion and decides what everything else
@@ -184,12 +197,6 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// tree has a root to hang the family off from the moment the run exists
 	// (the family section at the foot of this file).
 	family := a.newOrchestrateFamily(goal, plannerModel, id)
-	// AND THE RUN IS NAMED, if its goal is a sentence rather than a name
-	// (taskname.go). It is asked for HERE, at the door, and not inside the
-	// constructor: the row is published under the goal first, so the roster shows
-	// the run from the moment somebody asked for it, and the name replaces the
-	// sentence when it lands a few seconds later.
-	family.nameRun(goal)
 	// AND THE NODES' MODEL GOES WITH IT, settled here for the run's whole life
 	// the way a task's is settled at admission: every row this family publishes
 	// says which model is doing the work, and the answer must not be able to move
@@ -212,6 +219,14 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 			})
 		},
 		OnPause: func(fuel orchestrate.Fuel) {
+			family.gate.Lock()
+			defer family.gate.Unlock()
+			// THE ROSTER IS TOLD FIRST. The event below opens the question on the
+			// run's own page, which is one surface; the row is what every other
+			// place a person looks reads, and a root still drawing a spinner while
+			// somebody is being asked for money is the column disagreeing with the
+			// question in front of them.
+			family.pauseRun(true)
 			a.emitOrchestrate(Event{
 				Kind: EventOrchestratePause, ID: seq,
 				Text: fuel.Gauge(), Hint: orchestrate.Dollars(fuel.Cap),
@@ -223,13 +238,17 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 		// adds the node, which is the name arriving on a call somebody is already
 		// paying for; this is what happens when it does not, and it is deliberately
 		// not a second namer (taskname.go's [orchestrateFamily.nameWorker]).
-		Name: family.nameWorker,
+		// Names may finish after the run, but never belong to a session that
+		// has left. The scheduler tracks their completion beside its workers.
+		Name: func(_ context.Context, node orchestrate.Node) string {
+			return family.nameWorker(lifetime, node)
+		},
 	})
 	planner.orch = run
 
-	live := &orchestration{run: run, cancel: cancel, born: time.Now()}
+	live := &orchestration{run: run, cancel: cancel, family: family, born: time.Now()}
 	a.mu.Lock()
-	if a.closed {
+	if a.closed || a.workStopped {
 		a.mu.Unlock()
 		cancel()
 		return "", errAgentClosed
@@ -240,8 +259,15 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	a.orchestrations[id] = live
 	a.mu.Unlock()
 
+	// AND THE RUN IS NAMED, if its goal is a sentence rather than a name
+	// (taskname.go). It is asked for HERE, at the door, and not inside the
+	// constructor: the row is published under the goal first, so the roster shows
+	// the run from the moment somebody asked for it, and the name replaces the
+	// sentence when it lands a few seconds later.
+	namedRun := family.nameRun(lifetime, goal)
+	launched = true
 	go func() {
-		defer a.settleOrchestrate(id)
+		defer a.orchestrateWorkers.Done()
 		snap, err := run.Run(runCtx)
 		// The family settles before the write-up is announced: the roster is where
 		// somebody looks when the note lands, and a root still saying "running"
@@ -249,6 +275,11 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 		// the conversation.
 		family.settle(snap, err)
 		a.landOrchestrate(seq, goal, snap, err)
+		// Run deliberately returns promptly on cancellation. Its callbacks and
+		// child journals still belong to this session until they have returned.
+		a.settleOrchestrate(id)
+		run.Wait()
+		<-namedRun
 	}()
 	return id, nil
 }
@@ -290,6 +321,14 @@ func orchestrateRoleCall(source func(key string) (string, bool), role roles.Role
 type orchestration struct {
 	run    *orchestrate.Orchestrator
 	cancel context.CancelFunc
+	// family is this run's rows on the roster (the family seam at the foot of this
+	// file), and it is kept here for ONE reason: the gate's answer arrives through
+	// [Agent.ResolveOrchestrate], which holds the registry rather than the closures
+	// the run was built with. A row that says somebody is being asked has to stop
+	// saying it in the same breath they answer, and this is the only handle that
+	// door has on the row. Nil on a run scripted by a test that built no family,
+	// which [orchestrateFamily.pauseRun] takes as the nothing it is.
+	family *orchestrateFamily
 	// born is when this run was registered, and it is the ONE thing here that is
 	// not a second copy of something on the snapshot: a run's shape, fuel and
 	// write-up are all the orchestrator's own, and its age is not on any of them.
@@ -317,9 +356,22 @@ func (a *Agent) ResolveOrchestrate(id, answer string) (string, error) {
 	if !known {
 		return "", fmt.Errorf("there is no run %q in this session", id)
 	}
+	// Serialize the accepted answer with the next pause publication. A fast
+	// planner can exhaust a top-up before Resolve returns to this goroutine.
+	if live.family != nil {
+		live.family.gate.Lock()
+		defer live.family.gate.Unlock()
+	}
 	if err := live.run.Resolve(answer); err != nil {
 		return "", err
 	}
+	// THE QUESTION IS ANSWERED, SO THE ROW STOPS ASKING. Both answers that reach
+	// here carry the run ON — "stop" left through [Agent.Cancel] above and its
+	// family settles with the run — so the gate is down either way, and a row that
+	// went on wearing it would ask a person a question they have just answered.
+	// A refused answer never gets here: the gate is still up and the row still
+	// says so.
+	live.family.pauseRun(false)
 	if answer == orchestrate.GateFinish {
 		return "finishing on what is already done", nil
 	}
@@ -460,10 +512,32 @@ func (a *Agent) settleOrchestrate(id string) {
 // ended: a run holds its own context precisely because its turn is gone, so
 // nothing else would ever reach it.
 func (a *Agent) cancelOrchestrationsLocked() {
+	if a.orchestrateStop != nil {
+		a.orchestrateStop()
+	}
 	for _, live := range a.orchestrations {
 		live.cancel()
 	}
 	a.orchestrations = nil
+}
+
+// waitOrchestrations gives every accepted run one shared shutdown grace. Close
+// has already refused admission under mu; waiting here holds no engine lock,
+// so a finishing callback can still record its last row. A noncooperative
+// provider can exceed the grace, just as a graph worker can.
+func (a *Agent) waitOrchestrations() {
+	a.mu.Lock()
+	tracked := a.orchestrateContext != nil
+	a.mu.Unlock()
+	if !tracked {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		a.orchestrateWorkers.Wait()
+		close(done)
+	}()
+	waitDone(done, jobShutdownGrace)
 }
 
 // landOrchestrate says what a finished run came to, in the two places it
@@ -863,6 +937,11 @@ func (e *orchestrateExec) model() string {
 // a node that failed is a fact on the next view, and what to do about it is
 // the one judgement this whole design reserves for the planner.
 func (e *orchestrateExec) Exec(ctx context.Context, node orchestrate.Node, deps []orchestrate.NodeStatus) (string, float64, error) {
+	// A node queued immediately before Close must not open a fresh journal
+	// after its cancellation has already arrived.
+	if err := ctx.Err(); err != nil {
+		return "", 0, err
+	}
 	dir, shared := e.workspace(node)
 	child, err := e.newChild(dir, node)
 	if err != nil {
@@ -1113,7 +1192,10 @@ func orchestrateRootBrief(request, goal string) string {
 	// workspace rather than on a tree cut from a ground, so there is no second
 	// spelling of any directory for a brief to be bound to (task_brief.go's
 	// [taskCopy]).
-	return composeBrief(request, clip(strings.TrimSpace(goal), orchestrateRootBriefLimit), "", "", "", taskOrigin{}, taskCopy{})
+	// AND NO ADMISSION CONTEXT: an adaptive run's root is composed from a goal
+	// somebody wrote for it rather than admitted through the graph's doors, so
+	// there is no conversation behind it to quote (admission.go).
+	return composeBrief(briefWhole, request, clip(strings.TrimSpace(goal), orchestrateRootBriefLimit), "", "", "", AdmissionContext{}, taskOrigin{}, taskCopy{})
 }
 
 // orchestrateBrief is a node's whole world: what the run as a whole was asked
@@ -1357,6 +1439,8 @@ func (c Config) WorktreePath(jobID string) string {
 // on every launch, landing, note and steer, and a roster redrawing twelve rows
 // for a note is a roster nobody can read.
 type orchestrateFamily struct {
+	// gate orders pause notifications and their accepted answers.
+	gate  sync.Mutex
 	agent *Agent
 	run   string
 	root  uint64
@@ -1394,6 +1478,14 @@ type orchestrateFamily struct {
 	// that finished from being republished as running because three words landed
 	// a moment after it ended.
 	settled bool
+	// paused says this run is standing at its fuel gate right now
+	// ([orchestrateFamily.pauseRun]), and it is the family's rather than any one
+	// notice's for the same reason `settled` is: the run's own row is published
+	// from four places — the mint, the forming line, the namer that answers late
+	// (taskname.go) and the settle — and three of them know nothing about a gate.
+	// Held here, the door stamps it onto every one of them
+	// ([orchestrateFamily.publish]), so no late row can take it off.
+	paused bool
 	// names is the last goal each node was published with, keyed the way ids is.
 	//
 	// IT EXISTS SO THAT NO ROW OF THIS RUN IS EVER PUBLISHED NAMELESS. A surface
@@ -1482,6 +1574,22 @@ func (f *orchestrateFamily) publish(notice TaskNotice) {
 	f.say.Lock()
 	defer f.say.Unlock()
 	f.mu.Lock()
+	if f.settled && notice.ID == f.root && notice.State == TaskRunning {
+		f.mu.Unlock()
+		return
+	}
+	// THE GATE IS WRITTEN ONTO THE RUN'S OWN ROW HERE AND NOWHERE ELSE, which is
+	// what makes it survive a row published by somebody who has never heard of a
+	// fuel tank: the forming line, the name that lands a second late, a worker
+	// moving. A caller cannot forget a field it does not fill.
+	//
+	// ONLY A RUNNING ROOT WEARS IT. The workers under a paused run are publishing
+	// their own states and are not held at anything; and the settle publishes a
+	// row that is over, where a gate would be a question about work that has
+	// stopped.
+	if notice.ID == f.root && notice.State == TaskRunning {
+		notice.Paused = f.paused
+	}
 	if f.rows == nil {
 		f.rows = make(map[uint64]TaskNotice, 8)
 	}
@@ -1694,6 +1802,45 @@ func (f *orchestrateFamily) sayForming() {
 	})
 }
 
+// pauseRun raises or lowers the run's fuel gate on the roster and republishes
+// the run's own row so a person watching the column learns of it at the same
+// moment the run's page does ([orchestrate.Options.OnPause] raises it,
+// [Agent.ResolveOrchestrate] lowers it).
+//
+// IT SAYS SOMETHING ONLY WHEN THE ANSWER CHANGES, which is the de-dup every
+// other publisher in this file keeps: a gauge crossing its cap sends one pause,
+// and a row redrawn for a fact that did not move is a row a surface has to
+// decide to ignore.
+//
+// AND A SETTLED RUN HAS NO GATE. The flag is refused after [orchestrateFamily.settle]
+// on the rule that closes it: the last row said the run was over, and a "somebody
+// must decide this" arriving afterwards would put a live question over finished
+// work. It is refused rather than merely unpublished so that nothing later — a
+// replay, a checkpoint — can read the flag back out.
+func (f *orchestrateFamily) pauseRun(held bool) {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	if f.settled || f.paused == held {
+		f.mu.Unlock()
+		return
+	}
+	f.paused = held
+	// The phase the row is already in rides with it, for [orchestrateFamily.rename]'s
+	// reason exactly: a tank can empty while the opening planner call is still out,
+	// and a row republished bare here would take the forming line off a run that is
+	// still forming.
+	line, title := f.formingLocked(), f.title
+	f.mu.Unlock()
+	// The gate itself is not named in this notice: [orchestrateFamily.publish]
+	// stamps it from the flag just written, which is what keeps one answer to
+	// "is this run held" rather than one per publisher.
+	f.publish(TaskNotice{
+		ID: f.root, Run: f.run, Title: title, State: TaskRunning, Model: f.model, Doing: line,
+	})
+}
+
 // formingDone ends the forming line once there is at least one worker to look
 // at, and says so exactly once.
 func (f *orchestrateFamily) formingDone() {
@@ -1898,6 +2045,11 @@ func (f *orchestrateFamily) settle(snap orchestrate.Snapshot, err error) {
 	// (taskname.go).
 	f.mu.Lock()
 	f.settled = true
+	// AND THE GATE COMES DOWN WITH IT. A run stopped AT its gate — the third
+	// answer, which ends the run through [Agent.Cancel] — would otherwise leave
+	// the flag standing behind the settled row, where a replay or a checkpoint
+	// could read it back as a question about work that is over.
+	f.paused = false
 	title := f.title
 	f.mu.Unlock()
 	notice := TaskNotice{

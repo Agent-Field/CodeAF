@@ -83,6 +83,7 @@ var salienceTable = []salienceCase{
 	{name: "EventError", ev: session.Event{Kind: session.EventError, Err: errSalience}},
 	{name: "EventTitleChanged", ev: session.Event{Kind: session.EventTitleChanged, Text: "porting the parser"}},
 	{name: "EventCaption", ev: session.Event{Kind: session.EventCaption, Text: "working out where the fold is minted"}},
+	{name: "EventAssistantDone", ev: session.Event{Kind: session.EventAssistantDone}},
 
 	// ── THE PARTICIPANT'S OWN ACTS ──────────────────────────────────────────
 	//
@@ -296,6 +297,9 @@ func TestANodesRowSaysWhatTheCallTook(t *testing.T) {
 	if got := a.room.entries[0].ran; got != 4*time.Second {
 		t.Fatalf("the node's row says the call took %v, want 4s", got)
 	}
+	// Inspect the detailed call through its live outline before checking the
+	// displayed duration; compact activity deliberately omits tool telemetry.
+	openRoomCompactWork(t, a)
 	// The page's own spelling of it (toolstat.go), asserted as a reader meets it
 	// rather than as the field holds it.
 	if page := plain(strings.Join(roomLines(a), "\n")); !strings.Contains(page, "4.0s") {

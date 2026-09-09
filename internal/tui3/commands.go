@@ -1029,7 +1029,23 @@ func helpText(file string, chords chordSpelling) string {
 		helpKeyRow(chords.say(parkKey), "mid-answer: waits above the box · → sends a waiting one"),
 		"ctrl+q         hand this to the session now, to run after the current turn",
 		"ctrl+e         open the model's thinking, streaming or finished",
-		"ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc back",
+		// THE NEW TAB AND THE ROSTER, IN THAT ORDER AND ON TWO ROWS. They used to be
+		// one key: ctrl+t handed the roster the keyboard, and the tab strip's `+` had
+		// no chord at all. The strip is drawn as tabs, so the key every browser opens
+		// a tab with is the one people press at it — and the roster keeps the letter
+		// under the other modifier (task.go's [railHoldChord]), which is the smallest
+		// move a hand has to make and the modifier its own widen chord already uses.
+		helpKeyRow(newChatChord, "a new chat start page · your draft stays put · esc back"),
+		// AND THE OTHER DIRECTION, ON THE ROW UNDER IT. The two chords are one
+		// gesture, so they are read together here as they are in input.go, and the
+		// row says what the key does NOT do — because "close" is the word people
+		// fear on a conversation that has an hour of work in it.
+		// AND THE ROW MAY NOT SPELL `ctrl+k` (escword_test.go finds the switcher's own
+		// row by that prefix, and a second row carrying it is a second answer to the
+		// question that test asks). The card is named by what it is instead.
+		helpKeyRow(closeTabChord, "close this tab · select the last open chat · keep your draft"),
+		helpKeyRow(reopenTabChord, "reopen the last closed tab · when the terminal sends this distinct chord"),
+		helpKeyRow(chords.say(railHoldChord), "the task roster · ↑↓ move · →← fold · enter opens · esc back"),
 		"ctrl+.         every task this project has run · /history · type to filter",
 		"ctrl+g         close the roster's column, or bring it back · remembered",
 		"ctrl+l         back to the latest · the chip above the box says so too",
@@ -1040,7 +1056,7 @@ func helpText(file string, chords chordSpelling) string {
 		// The line is TRUE IN BOTH MODES of ui.quick_switch on purpose: this list
 		// has no reach into the profile, and a clause that named one mode would be
 		// wrong in the other. The card's own head and the manual say the rest.
-		"ctrl+k         switch conversations · tap it like alt+tab · esc back",
+		"ctrl+k         choose a conversation · enter open · esc cancel",
 		"               → reaches every other one on this machine · ctrl+w closes one",
 		"→ ←            over an empty box: into a running task, and back out",
 		// THE WORD "home" USED TO BE HERE AND IS NOW SPENT. This gesture leaves a
@@ -1049,7 +1065,11 @@ func helpText(file string, chords chordSpelling) string {
 		// person pressing ← ← to find out where they end up.
 		"← ←            out of a task room · the conversation, at the live edge",
 		"space space    over an empty box: home · /home · esc back",
-		"ctrl+w         delete the word behind the caret · ctrl+u the line",
+		// THE WORD KILL IS NAMED BY THE KEYS THAT STILL REACH THE BOX. ctrl+w was
+		// on this row until it became the close-tab chord above, and a sheet that
+		// went on offering it would be teaching a keystroke that shuts the window
+		// you are typing in.
+		"alt+backspace  delete the word behind the caret · ctrl+u the line",
 		"ctrl+,         open settings",
 		"d              in /permissions: drop the line under the cursor · press it twice",
 		"p s n          in /standing: pause one · stop it · keep it out of here",

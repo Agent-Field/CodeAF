@@ -31,7 +31,7 @@ func TestRailSeamClickTogglesTheWideTier(t *testing.T) {
 func TestRailFooterHintFollowsFocusAndTogglesBothWays(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railRun(a)
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 
 	rail := strings.Join(railText(a, a.viewHeight()), "\n")
 	if !strings.Contains(rail, railWideHint) {

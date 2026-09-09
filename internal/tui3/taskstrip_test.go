@@ -38,7 +38,10 @@ func TestTheTaskStripStandsWhereTheRosterCannot(t *testing.T) {
 		if !a.railShowing() {
 			t.Fatalf("at %d columns the roster is not standing", width)
 		}
-		if a.stripShowing() || stripText(a) != "" || a.bodyTop() != 0 {
+		// The strip is not drawn and is charged nothing. It is asked of the STRIP's
+		// own height rather than of [app.bodyTop], which counts the conversation's
+		// pinned bar as well now (roomcrumbs.go) and would answer about that.
+		if a.stripShowing() || stripText(a) != "" || a.stripHeight() != 0 {
 			t.Fatalf("at %d columns the strip drew over the roster:\n%q", width, stripText(a))
 		}
 	}
@@ -76,11 +79,14 @@ func TestTheTaskStripStandsWhereTheRosterCannot(t *testing.T) {
 				t.Fatalf("at %d columns the phone strip is not the tasks door:\n%q", width, text)
 			}
 		}
-		if got := plain(strings.Split(frame(a), "\n")[0]); !strings.Contains(got, wantFirst) {
-			t.Fatalf("at %d columns the strip is not the frame's first row:\n%q", width, got)
+		// The strip leads the pinned region: it is the first row under the
+		// conversation's own bar, which is where [app.stripPress] resolves it too
+		// (roomcrumbs.go, taskstrip.go).
+		if got := plain(strings.Split(frame(a), "\n")[a.headHeight()]); !strings.Contains(got, wantFirst) {
+			t.Fatalf("at %d columns the strip is not the first row under the bar:\n%q", width, got)
 		}
 		// Both of the strip's rows are budgeted: the chips and the blank under them.
-		if a.bodyTop() != 2 {
+		if a.bodyTop() != a.headHeight()+2 {
 			t.Fatalf("at %d columns the strip is drawn but not budgeted: top=%d", width, a.bodyTop())
 		}
 	}
@@ -98,11 +104,16 @@ func TestTheTaskStripStandsWhereTheRosterCannot(t *testing.T) {
 	// conversation.
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash", session.TaskDone,
 		session.TaskNotice{Merge: mergeWordMerged})})
-	if a.stripShowing() || stripText(a) != "" {
-		t.Fatalf("the strip outlived the running work:\n%q", stripText(a))
+	if !a.stripShowing() {
+		t.Fatal("queued work lost its navigation shortcut")
 	}
-	if a.bodyTop() != 0 {
-		t.Fatalf("the strip kept its row after it stopped drawing: top=%d", a.bodyTop())
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(8, "Write the auth tests", session.TaskDone,
+		session.TaskNotice{Merge: mergeWordMerged})})
+	if a.stripShowing() || stripText(a) != "" {
+		t.Fatalf("the strip outlived the unfinished work:\n%q", stripText(a))
+	}
+	if a.stripHeight() != 0 {
+		t.Fatalf("the strip kept its row after it stopped drawing: %d", a.stripHeight())
 	}
 }
 
@@ -178,8 +189,11 @@ func TestTheStripCountsWhatItCannotHoldAndOpensTheRoster(t *testing.T) {
 
 	// THE +N IS THE DOOR TO THE WHOLE ROSTER, which on this frame is the roster
 	// over the body (task.go's [app.railFull]).
-	drive(t, a, tea.MouseClickMsg{X: a.stripMore.from, Y: 0, Button: tea.MouseLeft})
-	drive(t, a, tea.MouseReleaseMsg{X: a.stripMore.from, Y: 0, Button: tea.MouseLeft})
+	// The row is pressed WHERE IT WAS DRAWN, which is under the conversation's own
+	// pinned bar (roomcrumbs.go) — the same number [app.stripPress] resolves
+	// through, so the press and the draw cannot drift apart.
+	drive(t, a, tea.MouseClickMsg{X: a.stripMore.from, Y: a.headHeight(), Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: a.stripMore.from, Y: a.headHeight(), Button: tea.MouseLeft})
 	if !a.railHold || !a.railFull() {
 		t.Fatalf("the overflow mark did not open the roster: hold=%v full=%v", a.railHold, a.railFull())
 	}
@@ -243,7 +257,7 @@ func TestTheRosterOpensOverTheBodyOnANarrowFrame(t *testing.T) {
 		t.Fatal("a narrow frame drew a roster nobody asked for")
 	}
 
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	if !a.railFull() {
 		t.Fatal("ctrl+t did not raise the roster on a frame with no column for it")
 	}

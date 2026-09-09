@@ -132,8 +132,10 @@ func openTheOnlyRoom(t *testing.T, r *rig) {
 		r.keys("C-g")
 		r.waitFor(10*time.Second, "ctrl+g hide")
 	}
-	// ctrl+t puts the pointer on the roster; enter opens the row under it.
-	r.keys("C-t")
+	// alt+t puts the pointer on the roster; enter opens the row under it. ctrl+t is
+	// the new-tab chord now (tui3/chatstart.go), and the roster answers the same
+	// letter under the other modifier — which tmux spells `M-t`.
+	r.keys("M-t")
 	r.keys("Enter")
 	r.waitFor(20*time.Second, "room ·")
 }

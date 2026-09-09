@@ -29,9 +29,16 @@ func jobsAgent(t *testing.T) (*Agent, string) {
 	return newTestAgent(t, &scriptedCompleter{}, nil)
 }
 
+// beltTool finds one tool to call it. It resolves against what the build OFFERS
+// — the belt plus the shelf — because the rarely-reached verbs are held back
+// from the tool block until a `load_capability` call fetches them
+// (tools_capabilities.go), and a fixture about what `generate_video` DOES is not
+// a fixture about when its schema is sent. The tests that are about carrying ask
+// [Agent.hasTool] and [Agent.offers] directly, which stay two different
+// questions.
 func beltTool(t *testing.T, agent *Agent, name string) bare.Tool {
 	t.Helper()
-	for _, tool := range agent.tools {
+	for _, tool := range agent.offeredTools() {
 		if tool.Name == name {
 			return tool
 		}

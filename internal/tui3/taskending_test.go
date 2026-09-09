@@ -8,9 +8,10 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-// endedRailText is the rail's rows as one line, because the rail wraps a row's
+// endedRailText expands the finished report and reads its rows as one line, because the rail wraps a row's
 // sentence across its narrow column and a test reads the sentence, not the wrap.
 func endedRailText(a *app) string {
+	a.railSetOpen(a.tasks[7], true)
 	rows := plain(strings.Join(a.railRows(12), "\n"))
 	return strings.Join(strings.Fields(strings.ReplaceAll(rows, "│", " ")), " ")
 }
@@ -57,13 +58,13 @@ func TestAHaltedNodeSaysWhyAndWearsTheSteerMarkNotTheCross(t *testing.T) {
 			t.Fatalf("%s: the card says the node was stopped:\n%s", tc.ending, text)
 		}
 		rail := endedRailText(a)
-		if want := glyphHalted + " " + plain(a.taskMark(identFor(7))) + " Port the parser"; !strings.Contains(rail, want) {
+		if want := glyphHalted + " Port the parser"; !strings.Contains(rail, want) {
 			t.Fatalf("%s: the rail is missing %q:\n%s", tc.ending, want, rail)
 		}
 		if !strings.Contains(rail, tc.word+" — "+taskBranchKept) {
 			t.Fatalf("%s: the rail row does not say why:\n%s", tc.ending, rail)
 		}
-		for _, never := range []string{glyphBad + " " + plain(a.taskMark(identFor(7))), taskStoppedKept} {
+		for _, never := range []string{glyphBad + " Port the parser", taskStoppedKept} {
 			if strings.Contains(rail, never) {
 				t.Fatalf("%s: the rail says %q:\n%s", tc.ending, never, rail)
 			}
@@ -90,7 +91,7 @@ func TestARefusedNodeIsIncompleteAndBrokenOrOldNodesStillFail(t *testing.T) {
 		drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskFailed,
 			endedNotice(tc.ending, "incomplete — the parser still drops the last key"))})
 		rail := endedRailText(a)
-		if want := tc.mark + " " + plain(a.taskMark(identFor(7))) + " Port the parser"; !strings.Contains(rail, want) {
+		if want := tc.mark + " Port the parser"; !strings.Contains(rail, want) {
 			t.Fatalf("%q: the rail is missing %q:\n%s", tc.ending, want, rail)
 		}
 		if !strings.Contains(rail, tc.row+" · task/parser") {
@@ -124,7 +125,7 @@ func TestAStoppedNodeStillWearsTheStopMarkOverItsEnding(t *testing.T) {
 	notice.Stopped = true
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskFailed, notice)})
 	rail := endedRailText(a)
-	if !strings.Contains(rail, glyphStopped+" "+plain(a.taskMark(identFor(7)))+" Port the parser") {
+	if !strings.Contains(rail, glyphStopped+" Port the parser") {
 		t.Fatalf("the rail lost the stop mark:\n%s", rail)
 	}
 	if !strings.Contains(rail, taskStoppedKept+" · task/parser") {
@@ -155,7 +156,7 @@ func TestAWorkerThatWouldNotWriteItsNotesSaysSoOnTheRailAndInTheRoom(t *testing.
 	}
 	// AND IT IS THE STEER MARK, NOT THE CROSS. Nobody found anything wrong with
 	// the work; it is on the branch and the next move is a person's.
-	if rail := endedRailText(a); !strings.Contains(rail, glyphHalted+" "+plain(a.taskMark(identFor(7)))+" Port the parser") {
+	if rail := endedRailText(a); !strings.Contains(rail, glyphHalted+" Port the parser") {
 		t.Fatalf("the rail does not wear the steer mark:\n%s", rail)
 	}
 	// AND NO MACHINERY VOCABULARY REACHES IT (CLAUDE.md's vocabulary law).

@@ -440,27 +440,35 @@ func (g *TaskGraph) rename(node *TaskNode, name string) {
 
 // nameRun gives the run's own row a name, if its goal is a sentence rather than
 // one. The goal itself is what the namer reads: a run has no gloss and no brief
-// of its own, and the goal is what every one of its nodes is cut out of.
-func (f *orchestrateFamily) nameRun(goal string) {
+// of its own, and the goal is what every one of its nodes is cut out of. Its
+// context belongs to the session, so ordinary completion keeps a useful name
+// in flight while Close can cancel and join it through the returned channel.
+func (f *orchestrateFamily) nameRun(ctx context.Context, goal string) <-chan struct{} {
+	done := make(chan struct{})
 	if f == nil || f.agent == nil {
-		return
+		close(done)
+		return done
 	}
 	f.mu.Lock()
 	current := f.title
 	f.mu.Unlock()
 	if !taskNameNeeded(current) {
-		return
+		close(done)
+		return done
 	}
 	subject := clip(strings.TrimSpace(goal), taskNameBriefClip)
 	if subject == "" {
-		return
+		close(done)
+		return done
 	}
 	agent := f.agent
 	go func() {
-		if name := agent.taskName(context.Background(), subject); name != "" {
+		defer close(done)
+		if name := agent.taskName(ctx, subject); name != "" {
 			f.rename(name)
 		}
 	}()
+	return done
 }
 
 // rename writes the run's new name and republishes its row under it.

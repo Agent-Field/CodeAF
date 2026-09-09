@@ -424,6 +424,7 @@ func (a *Agent) groundFromPlaces(spec taskSpec, workspace string, weights []grou
 		}
 	}
 	for _, tier := range [][]PlaceRef{namedSaid, namedKept, said, kept} {
+		tier = distinctPlaceGrounds(tier)
 		switch len(tier) {
 		case 0:
 		case 1:
@@ -434,6 +435,20 @@ func (a *Agent) groundFromPlaces(spec taskSpec, workspace string, weights []grou
 		}
 	}
 	return taskStand{}, false
+}
+
+// distinctPlaceGrounds weighs a repository once within an evidence tier. Several
+// attachments can share its working ground without requiring a two-roots question.
+func distinctPlaceGrounds(places []PlaceRef) []PlaceRef {
+	seen := map[string]bool{}
+	out := make([]PlaceRef, 0, len(places))
+	for _, place := range places {
+		if !seen[place.Path] {
+			seen[place.Path] = true
+			out = append(out, place)
+		}
+	}
+	return out
 }
 
 // placeStand is one referred place as an answer: the SAID rung, and the person's
@@ -724,16 +739,28 @@ func groundNamesWorkUnder(ground string, spec taskSpec) bool {
 }
 
 // groundHolds reports whether one written path lands under the ground. An
-// absolute path is compared as it stands; a relative one is a name inside the
+// absolute path is compared canonically; a relative one is a name inside the
 // project and counts when the file or the directory that would hold it is really
 // there, which keeps ordinary prose from reading as a path.
+//
+// THE ABSOLUTE COMPARISON IS BETWEEN TWO CANONICAL SPELLINGS, as [placeNamedIn]'s
+// is: the ground arrives spelled the way git resolves it while a contract's paths
+// are spelled the way their author was standing, and on macOS the two differ by a
+// `/private` nobody typed. Read as written, a contract that named the ground three
+// times looked like one that named nothing under it, so [groundMode] made the work
+// a reference — and a reference binds no addresses to its copy ([taskCopyFor]),
+// which sent the worker to the person's checkout.
+//
+// Both sides are resolved here rather than left to callers, because some hold a
+// canonical ground and some a raw workspace ([scopeCollisions]); resolving one
+// side only turns paths that agree into paths that do not.
 func groundHolds(ground, token string) bool {
 	if strings.HasPrefix(token, "~") || filepath.IsAbs(token) {
-		full := groundDirOf(token, "")
+		full := canonicalPath(groundDirOf(token, ""))
 		if full == "" {
 			return false
 		}
-		_, inside := insideWorkspace(ground, full)
+		_, inside := insideWorkspace(canonicalPath(ground), full)
 		return inside
 	}
 	full := filepath.Join(ground, filepath.FromSlash(token))
@@ -838,9 +865,9 @@ func sortedKeys(set map[string]bool) []string {
 }
 
 // pathTokens picks the things in a piece of prose that could be paths: a word
-// with a separator in it, or one that ends in an extension. Everything around it
-// — quotes, backticks, brackets, the full stop that ended the sentence — is
-// trimmed off.
+// with a separator in it, or one that ends in an extension. What is around it —
+// quotes, backticks, brackets — is trimmed off, and so is the full stop that
+// ended the sentence, which is why the trimming below has a side to it.
 //
 // IT IS A READING AND NOT A PARSER, and every caller treats it as one: a token
 // only ever matters here when it also turns out to exist under a directory, or
@@ -853,7 +880,13 @@ func pathTokens(text string) []string {
 			r == '`' || r == '"' || r == '\'' || r == '(' || r == ')' || r == '[' || r == ']' ||
 			r == '<' || r == '>' || r == '{' || r == '}'
 	}) {
-		token := strings.Trim(raw, ".:")
+		// THE PUNCTUATION IS TRIMMED OFF THE END ONLY. A leading dot is part of
+		// the path — `./slow-build.sh`, `../out/report.md`, `.github/ci.yml` —
+		// and trimming it turned a name in the working directory into an
+		// absolute path at the root of the machine, which the ground lint then
+		// refused as a folder the task does not stand in. A leading colon is
+		// nobody's filename and still goes.
+		token := strings.TrimLeft(strings.TrimRight(raw, ".:"), ":")
 		if token == "" || !looksLikePath(token) {
 			continue
 		}

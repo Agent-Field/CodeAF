@@ -76,7 +76,7 @@ func TestOneEscProducesAtMostOnePlannerPassAndOneTitleCall(t *testing.T) {
 	go func() { defer wg.Done(); _ = agent.nameAhead(asked) }()
 	go func() {
 		defer wg.Done()
-		_, _, _ = agent.checkpointBrief(context.Background(), &Usage{}, "test/model")
+		_, _, _, _ = agent.checkpointBrief(context.Background(), &Usage{}, "test/model")
 	}()
 	wg.Wait()
 	// nameAhead lands on a goroutine; give the one allowed call a moment to
@@ -164,11 +164,17 @@ func TestLiveInterruptFanoutSpendsAtMostOnePlannerAndTitle(t *testing.T) {
 	agent.Interrupt()
 	collect(t, events)
 
-	redirect, err := agent.Submit(context.Background(), "never mind the count. Reply with the single word ok")
+	// A real provider shares neither the fixture collector's scheduling nor
+	// its ten-second budget. Bound the request itself, so expiry cancels the
+	// paid work instead of merely abandoning its event stream. The assertions
+	// below count fanout and require a completed answer, never a fast answer.
+	ctx, cancel := context.WithTimeout(context.Background(), liveInterruptWindow)
+	defer cancel()
+	redirect, err := agent.Submit(ctx, "never mind the count. Reply with the single word ok")
 	if err != nil {
 		t.Fatalf("redirect: %v", err)
 	}
-	collect(t, redirect)
+	collectLiveInterrupt(t, ctx, redirect)
 
 	if got := watch.planner.Load(); got > 1 {
 		t.Fatalf("live Esc produced %d planner-shaped calls, want at most one", got)
@@ -209,6 +215,52 @@ func seedLongConversation(agent *Agent, n int) {
 			agent.messages = append(agent.messages, textMessage("user", "please do the numbered part and the error handling"))
 		} else {
 			agent.messages = append(agent.messages, textMessage("assistant", "working through the numbered part"))
+		}
+	}
+}
+
+// liveInterruptWindow is a network safety bound, matching the adjacent live
+// compact-history probe. It is not a latency gate; PERF.md records the distinction.
+const liveInterruptWindow = 45 * time.Second
+
+// collectLiveInterrupt requires the redirected turn to answer and close. The
+// ordinary collector deliberately stays strict for deterministic fixtures and
+// for the first turn's cancellation; only this actual provider call needs a
+// network budget. Exact model wording is not the fanout law; errors, an empty
+// answer, and a closed stream without completion are failures,
+// even if neither condition spent an extra planner or title call.
+func collectLiveInterrupt(t *testing.T, ctx context.Context, events <-chan Event) {
+	t.Helper()
+	var answer strings.Builder
+	var done bool
+	var seen []EventKind
+	for {
+		select {
+		case event, open := <-events:
+			if !open {
+				if !done {
+					t.Fatal("live redirect closed without completing")
+				}
+				if strings.TrimSpace(answer.String()) == "" {
+					t.Fatalf("live redirect completed without an answer; events: %v", seen)
+				}
+				return
+			}
+			seen = append(seen, event.Kind)
+			switch event.Kind {
+			case EventTextDelta:
+				answer.WriteString(event.Text)
+			case EventRetrying:
+				// The surface replaces a discarded attempt with the next one.
+				// Its partial text is not part of the completed answer.
+				answer.Reset()
+			case EventTurnDone:
+				done = true
+			case EventError:
+				t.Fatalf("live redirect failed: %v", event.Err)
+			}
+		case <-ctx.Done():
+			t.Fatalf("live redirect did not finish: %v; answer so far: %q", ctx.Err(), answer.String())
 		}
 	}
 }

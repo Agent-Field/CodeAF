@@ -178,7 +178,7 @@ func TestAcceptingWorkThatCannotBeSavedSettlesWhereItStands(t *testing.T) {
 	// is the one a kept branch wears, and the note tells the two apart by the
 	// sentence the report leads with.
 	note := taskNote(node.notice(), "", TaskSettleAsk, landingAddress{person: true})
-	if strings.Contains(note, "merge that branch to take the work") {
+	if strings.Contains(note, "committed on its branch") {
 		t.Fatalf("the note offers a branch nothing was committed to:\n%s", note)
 	}
 	if !strings.Contains(note, tree.dir) {

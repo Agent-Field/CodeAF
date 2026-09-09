@@ -180,6 +180,32 @@ type Agent interface {
 	EarlierHistory() session.EarlierHistory
 }
 
+// detachable is an agent whose conversation OUTLIVES THIS TERMINAL, and it is
+// how this surface tells the two apart without guessing.
+//
+// The distinction cannot be read off a machine name: a conversation hosted by
+// the daemon on this laptop has no machine in front of it (cmd/aforge's
+// chatv3_local.go dials with an empty host on purpose), and it is exactly the
+// one whose work must survive the window. Only the agent knows what it is
+// attached to, so it is asked ([remote.Agent.Detach]).
+//
+// An agent that does not implement it is one whose work is this process — the
+// in-process door — and leaving it is ending it. An agent that DOES implement it
+// still has to be asked whether the work outlives the exit: implementing the
+// interface says only that the agent owns the answer.
+type detachable interface {
+	// WorkOutlivesExit says whether this conversation keeps working after the
+	// view goes. It is a separate question from Detach because the same type
+	// answers both ways: a conversation on a session host outlives the window,
+	// and a one-shot engine on a pipe does not, and the warning a person reads
+	// before they quit has to say which ([app.quitHint]).
+	WorkOutlivesExit() bool
+	// Detach lets go of the view. Where the work outlives it the conversation is
+	// left running; where it does not, this is the ordinary ending. It must be
+	// safe to call twice and safe on a connection that has already died.
+	Detach() error
+}
+
 // Conversation is one live agent and everything the door resolved around it:
 // where it works, what it may keep, and the seams that answer for THAT agent
 // and no other.
@@ -241,6 +267,100 @@ type Conversation struct {
 	SaveApproval     func(tool string) error
 	SaveBashApproval func(command string) error
 	ApplyApprovals   func() error
+
+	// TaskRoom and TaskIndex are [Options.TaskRoom] and [Options.TaskIndex] ABOUT
+	// THIS CONVERSATION, and they are here for the reason the approval trio above
+	// is: they were wired once, at boot, around the conversation the door opened
+	// before the surface existed. That was harmless while an engine door held one
+	// conversation at a time and is wrong the moment it holds several — a window
+	// with three chats open would read every task page and every roster out of the
+	// FIRST one, under the second one's name.
+	//
+	// Nil leaves whatever the surface was already holding, which is what the local
+	// door passes: there both readings are of this process's own disk and neither
+	// needs a per-conversation door.
+	TaskRoom  func(id uint64, tail int) (session.TaskRecord, error)
+	TaskIndex func() ([]session.TaskIndexEntry, bool)
+
+	// Link is [Options.Link] ABOUT THIS CONVERSATION, and it is here because on a
+	// door where each conversation has its own connection every one of those seven
+	// facts is a fact about that connection: the sentence a dropped link says, the
+	// measured round trip, the one-off news a redial found, WHICH QUESTIONS ARE
+	// WAITING, who holds the keyboard, and the turns another window started.
+	//
+	// THE WAITING QUESTIONS ARE WHY THIS IS CORRECTNESS AND NOT TIDINESS. The
+	// engine holds a session's unanswered cards WITH THAT SESSION
+	// (internal/remote's held.go), the surface asks for them again on every switch
+	// (detach.go's [app.attachConversation]), and a surface that asked the wrong
+	// connection would replay one conversation's consent card into another one.
+	//
+	// Nil leaves whatever the surface holds, which is every local door — there is
+	// no link — and every door whose conversations share one connection.
+	Link *LinkSeam
+}
+
+// TaskOwnerAsk names the conversation a task page wants to look into.
+//
+// IT IS THE TRANSCRIPT AND NOT THE SESSION ID, because that is what the wire
+// already carries ([remote.Hello.Session] is "an explicit session file to
+// open") and what every other door on this surface passes around. The id is
+// what the RECORD joins on; the path is what a door opens.
+type TaskOwnerAsk struct {
+	// Session is the owner's transcript, exactly as the record spells it.
+	Session string
+	// Workspace is the project that conversation belongs to, so a door that has
+	// to choose an engine has the same answer the row was read under.
+	Workspace string
+}
+
+// TaskOwnerView is one attached view onto somebody else's conversation.
+//
+// EVERY FIELD IS A CAPABILITY OR THE END OF ONE. There is no agent here and no
+// session: a page that held either would be a second surface, and this is a
+// reader with a way to close itself.
+//
+// IT READS AND DOES NOT WRITE, deliberately. The ask was to be able to SEE work
+// running in another conversation; typing into it needs that conversation's
+// keyboard, a message identity the owning window would recognise, and a draft
+// belonging to the task rather than to the conversation on screen — none of which
+// a reader needs and all of which are somebody else's lane. So the door attaches
+// as a watcher ([remote.Hello.Watch]) and there is no steering field to misuse.
+type TaskOwnerView struct {
+	// Session is the transcript the engine ACTUALLY opened, and the caller
+	// checks it against what it asked for before drawing anything. An engine
+	// that answered about a different conversation — a key that did not match,
+	// a session that had been replaced — would otherwise put one task's
+	// transcript under another task's name, which is the exact failure the
+	// owner check exists to end.
+	Session string
+	// Room reads one task's journal tail on the owner's machine, which is the
+	// same bounded reading a hosted room already makes ([Options.TaskRoom]). It
+	// is the whole capability: nil is a view with nothing to show, which the
+	// surface refuses rather than draws.
+	Room func(id uint64, tail int) (session.TaskRecord, error)
+	// Watch is THE OWNER'S OWN ACCOUNT OF WHAT ITS WORK IS DOING: the standing
+	// task subscription that conversation already publishes
+	// ([remote.MethodTaskWatch]), which replays its whole roster the moment it is
+	// opened and then pushes one notice per change. It hands back the lane and the
+	// way out of it.
+	//
+	// IT EXISTS BECAUSE THE JOURNAL CANNOT ANSWER THE QUESTION. A reading is a
+	// report, a tail and whether the file is still there ([session.TaskRecord] has
+	// no state), and the row the page was opened from is a photograph of one
+	// moment. Without this the page had to GUESS whether the work was still going,
+	// and the only thing near enough to guess from was the presence directory of
+	// the workspace THIS window happens to be in — which does not contain another
+	// project's conversation at all, so a task in one read as finished the instant
+	// it was opened.
+	//
+	// Nil is a door that cannot offer it. The page then says what the row said and
+	// says that it is the last thing this window was told, rather than claiming a
+	// present it cannot see.
+	Watch func() (<-chan session.Event, func())
+	// Close gives back THIS VIEW'S connection and nothing else. The conversation
+	// goes on running, the window that owns it keeps its keyboard, and the
+	// engine is untouched.
+	Close func() error
 }
 
 // OpenRouterFlow is one browser connection that will hand this profile a model
@@ -394,6 +514,38 @@ type Options struct {
 	// what the hosted door and every test that predates this seam are.
 	Open  func(workspace, transcript string) (Conversation, error)
 	Start func(workspace string) (Conversation, error)
+
+	// OpenTaskOwner attaches a SECOND VIEW onto a conversation that is ALREADY
+	// RUNNING, for as long as one task page is on screen: a reader for that
+	// task's journal, and the close that gives the view back.
+	//
+	// IT IS CALLED OFF THE PROGRAM LOOP, always ([app.openOwnerRoom] runs it as a
+	// command and numbers the ask). This is a socket and a round trip, and a
+	// surface that waited for it on the keystroke would stop drawing and stop
+	// answering `esc` for as long as another process took to reply.
+	//
+	// IT IS THE ANSWER TO "I CANNOT CLICK INTO THAT TASK". The tasks place draws
+	// every piece of work this project has run, and the rows a person most wants
+	// are the ones happening right now — in the conversation next door, which
+	// this window has no lane into. The lane exists: `aforge chat` is a SURFACE
+	// talking to this workspace's engine over a socket (cmd/aforge's
+	// chatv3_local.go), and that engine holds every conversation open. So the door
+	// dials the engine it is already talking to, names the conversation with
+	// [remote.Hello.Join] — take the one that is already open, never start one —
+	// and [remote.Hello.Watch], which refuses this view the keyboard by
+	// construction. The work is not restarted, not interrupted and not moved, and
+	// the window that owns it does not lose control of it.
+	//
+	// IT IS A SEPARATE SEAM FROM [Options.Open] BECAUSE IT MUST NOT SWAP
+	// ANYTHING. Open resumes a conversation and, over a socket, tells the engine
+	// which session THIS connection is on — which would take every attached
+	// window with it. This one opens a second connection, uses it, and closes it.
+	//
+	// Nil is a window that cannot do this: an in-process launch, a test, a build
+	// with no engine road. The surface then says one line and offers the card,
+	// which is what a capability that cannot work is owed (a capability that
+	// cannot work is absent, not broken).
+	OpenTaskOwner func(TaskOwnerAsk) (TaskOwnerView, error)
 
 	// AnchorWorkspace gives a project-less conversation the repository or folder
 	// the person named. It returns the resolved path because a repository subdir
@@ -667,6 +819,44 @@ type Options struct {
 	// opening a different session under the name they chose would be the door
 	// answering a question nobody asked.
 	Resume func(file string) (Agent, error)
+
+	// SharedAgent says this door's [Options.Fresh] and [Options.Resume] SELECT A
+	// CONVERSATION IN PLACE on one handle, rather than building a second,
+	// independent agent beside the one the surface is already holding.
+	//
+	// IT IS A STATEMENT ABOUT THE DOOR AND NOT ABOUT THE TRANSPORT, which is why
+	// it is a field rather than something read off [Options.Host]. The engine
+	// doors — `--host`, `--at`, and the ordinary `aforge chat` that talks to this
+	// machine's own engine over a socket — all hand back the SAME [remote.Agent]
+	// from both seams, because that agent holds no state: it is a handle on
+	// whichever conversation the engine currently has open (cmd/aforge's
+	// chatv3_host.go, internal/remote's Agent). The local in-process door builds a
+	// real second agent and leaves this false. One of those three engine doors
+	// names no host at all, so `Host == ""` is not the question.
+	//
+	// TWO THINGS THE SURFACE DOES DIFFERENTLY WHEN IT IS SET, and both are
+	// correctness rather than taste:
+	//
+	//   - NOTHING GOES INTO THE KEEPER (keeper.go's [app.stow]). A conversation
+	//     put there would be the same pointer as the one in front, now naming a
+	//     different session — so the switcher drew the conversation just opened
+	//     twice, under two names, and looking at the held one opened the wrong
+	//     body. It would also leave a second reader draining the lanes of the
+	//     conversation on screen.
+	//   - THE CONVERSATION BEING LEFT IS NOT CLOSED (welcome.go's
+	//     [app.openSession]). The surface opens the next conversation BEFORE
+	//     closing the one it was holding, and on a shared handle those are the
+	//     same object — so the close landed on the session that had just been
+	//     opened. The engine already ends the previous conversation as part of the
+	//     swap (internal/remote's Session.swap interrupts and closes it), so there
+	//     is nothing left here to close.
+	//
+	// WHAT IT COSTS A PERSON is that these doors hold ONE conversation at a time:
+	// opening another from home, the switcher or the search place swaps to it and
+	// closes what was in front, rather than keeping it running beside. The surface
+	// says so on the entry line ([oneConversationWord]) rather than letting
+	// somebody discover it.
+	SharedAgent bool
 
 	// PickSession opens the resume picker over the first frame — `aforge
 	// resume`, which is this same surface asked to start by choosing. It is a

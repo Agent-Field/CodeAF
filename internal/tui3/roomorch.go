@@ -389,6 +389,11 @@ const orchPollEvery = 250 * time.Millisecond
 // paths that return no command of their own, and one drain point is worth more
 // than four return values.
 func (a *app) openOrchRoom(id, goal string) {
+	// A task destination takes the body and composer together. Park an open
+	// start page before retargeting either of them.
+	if a.startingChat() {
+		a.parkChatStart()
+	}
 	if _, ok := a.orchDoors(); !ok {
 		// THE BUILD GUARD, room.go's exactly: the doors are an assertion and not a
 		// compile-time requirement, so a surface driven by an agent that has never
@@ -407,6 +412,11 @@ func (a *app) openOrchRoom(id, goal string) {
 	// zero and draws nothing, which is the honest answer.
 	a.room = a.newRoom(0, firstNonEmpty(goal, id))
 	a.room.orch = run
+	// AND THE BOX STARTS TALKING TO THE PLANNER (recipient.go). It is retargeted
+	// HERE rather than in the constructor because a run's page is only a run's
+	// page from the line above: built with the node id zero, it would otherwise be
+	// keyed as the conversation itself and share the conversation's draft.
+	a.retargetComposer(runRecipient(id))
 	a.orchLive = id
 	a.sel = -1
 	a.dropHover()

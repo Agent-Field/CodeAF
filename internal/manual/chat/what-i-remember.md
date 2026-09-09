@@ -691,3 +691,15 @@ imported 12 memories from memory.md
 ```
 
 After that the file is gone from aforge's view and the store is the only memory.
+
+## Why does it say preparing saved context before answering?
+
+`preparing saved context` means aforge is selecting relevant saved memories before
+asking the conversation model. It is not waiting for that model's first word yet.
+This lookup values response speed and shares the interactive silence limit across
+all its retries. If it cannot finish within that limit, the answer proceeds without
+selected memories. A shorter deadline from the caller wins. Saved memories are not
+deleted by a lookup timeout.
+
+Background memory keeping has the reflex tier's separate total deadline. These
+bounds do not promise that the main answer itself will finish within either limit.

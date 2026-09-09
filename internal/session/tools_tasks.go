@@ -54,7 +54,7 @@ import (
 // comment beside it is free. Every rule the old description stated is still
 // stated; what went is the rhetoric, and the sentences the schema's own fields
 // say better. A rule belongs in the field it governs and appears ONCE.
-const tasksDescription = "Every task this project ever ran, and what runs now. No id searches; an id reads, steers, continues or settles one. \"continue task N\" / \"keep going on task N\" is id plus continue on a settled task — never a narration and never a new propose_task. Use it when the person means earlier work without pointing at it, or to look inside running work. Never to WAIT for handed-off work. A search also lists other windows' live work here, marked `another window`: no id in this conversation, so it cannot be read, steered, continued or resolved. Rows carry artifact and transcript URIs that read takes verbatim."
+const tasksDescription = "Find prior or running tasks. No id searches; an id reads, steers, forwards, continues or settles one. Use it when the person means earlier work without pointing at it, or to look inside running work. Never to WAIT for handed-off work. A search also lists other windows' live work here, marked `another window`: it has no id in this conversation, so none of those operations reach it."
 
 // The schema's `resolve` enum is INTERPOLATED from [TaskResolutions] rather
 // than typed out, because the landing note offers the same three words to the
@@ -70,7 +70,7 @@ const tasksDescription = "Every task this project ever ran, and what runs now. N
 var tasksSchemaJSON = `{"type":"object","properties":{` +
 	`"query":{"type":"string","description":"Matched against titles, ids and outcomes; omit for the newest."},` +
 	`"limit":{"type":"integer","description":"Rows to return (default: ` + strconv.Itoa(taskSearchLimit) + `, maximum: ` + strconv.Itoa(taskSearchCeiling) + `)"},` +
-	`"id":{"type":"string","description":"A task's id (\"7\") or name (\"fix-the-nil-map-crash\"). Running, it answers with its LIVE state."},` +
+	`"id":{"type":"string","description":"A task's id (\"7\") or name (\"fix-the-nil-map-crash\")."},` +
 	// The live answer is read off the running work itself (task_live.go) and
 	// names what it is doing this second, how long it has been at it, its steps,
 	// its spend and its last lines. That list is not spelled in the schema
@@ -80,7 +80,14 @@ var tasksSchemaJSON = `{"type":"object","properties":{` +
 	`"scope":{"type":"string","enum":` + taskScopeEnum + `,"description":"\"` + taskScopeProject + `\" (default) is this project alone; \"` + taskScopeEverywhere + `\" also lists live work in every OTHER project, grouped by project and as unreachable from here. A search only."},` +
 	`"say":{"type":"string","description":"A line into the RUNNING task named by id: a correction, or a fact it lacks. With resolve, it is the REASON; with continue, this round's finding."},` +
 	`"continue":{"type":"boolean","description":"The door for \"continue task N\" / \"keep going on task N\". Re-arm that settled task: same node, brief and working copy. A new propose_task is the wrong door."},` +
-	`"resolve":{"type":"string","enum":` + TaskResolveEnum() + `,"description":"Settles a task nobody could check. accept: done on your own reading, branch merged. reaudit: a fresh checker, task still waiting. refute: it and its dependents fail. Ask accept or refute only on evidence you read; prefer reaudit when the checker never answered."}` +
+	`"resolve":{"type":"string","enum":` + TaskResolveEnum() + `,"description":"Settles a task nobody could check. accept: done on your own reading, branch merged. reaudit: a fresh checker, task still waiting. refute: it and its dependents fail. Ask accept or refute only on evidence you read; prefer reaudit when the checker never answered."},` +
+	// AND THE ONE OP THAT CARRIES SOMEBODY ELSE'S AUTHORITY says in its own
+	// description that the words are not yours to write, because that is the
+	// rule a model has to know BEFORE it reaches for the field. What it cannot
+	// do — supply the text, name a message, forward from a turn the person did
+	// not open — is refused by the runtime with its reason (task_forward.go), so
+	// the schema spends its bytes on the choice rather than on the law.
+	`"forward":{"type":"boolean","description":"Sends what the person just said, verbatim, into the running task named by id, as theirs — the one door by which a correction they type HERE moves what that task is judged by. Their words go, never yours: say is refused with it."}` +
 	`},"additionalProperties":false}`
 
 // tasksArguments is the wire form. The id is RAW because a model that has just
@@ -95,6 +102,7 @@ type tasksArguments struct {
 	ID       json.RawMessage `json:"id"`
 	Lines    int             `json:"lines"`
 	Say      string          `json:"say"`
+	Forward  bool            `json:"forward"`
 	Continue bool            `json:"continue"`
 	Resolve  string          `json:"resolve"`
 }
@@ -145,9 +153,11 @@ func taskScopeWord(raw string) (string, bool) {
 //   - id: that one task. Running, and the answer is read off the GRAPH — the
 //     same live source the surface's rail draws (task_live.go) — never off the
 //     index file, which by construction holds only work that is over.
-//   - id and say: the person's door into a running node ([Agent.SteerTask]),
-//     opened for the model. It is the same door and the same law: talk to the
-//     worker, never a new target.
+//   - id and say: a line into a running node ([Agent.relayToTask]). Same
+//     mechanics as the person's own door and the same law — talk to the worker,
+//     never a new target — but it arrives named as this conversation speaking,
+//     because the model is not the person and a worker that cannot tell them
+//     apart will read coordination as permission.
 //   - id and continue: the same node again ([Agent.ContinueTask]), after it
 //     failed or finished. Same brief, same working copy, last report as this
 //     round's finding. A new propose_task is the wrong door.
@@ -180,6 +190,9 @@ func (a *Agent) tasksTool() bare.Tool {
 				if strings.TrimSpace(parsed.Resolve) != "" {
 					return "Invalid arguments: resolve needs an id — it settles one task that needs a look, not a search", true, nil
 				}
+				if parsed.Forward {
+					return "Invalid arguments: forward needs an id — the person's words go to one running task, not to a search", true, nil
+				}
 				return markTaskLook(ctx, a.taskSearchText(parsed.Query, parsed.Limit, scope)), false, nil
 			}
 			// THE SAME ANSWER TWICE IN ONE TURN SAYS SO (tasklook.go). It is the
@@ -187,7 +200,7 @@ func (a *Agent) tasksTool() bare.Tool {
 			// receipt and the description say the report comes to it, and this
 			// says the same thing again on the answer it is staring at. A refusal
 			// is left alone — it is not a look at anything.
-			answer, failed, err := a.oneTask(token, parsed)
+			answer, failed, err := a.oneTask(ctx, token, parsed)
 			if failed || err != nil {
 				return answer, failed, err
 			}
@@ -455,7 +468,10 @@ func taskToken(raw json.RawMessage) string {
 // RESOLVE IS READ BEFORE SAY, and they are not two ways of doing one thing: say
 // talks to a worker that is still there, resolve decides about work that is
 // over. A call carrying both means the second, and `say` is its reason.
-func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, error) {
+func (a *Agent) oneTask(ctx context.Context, token string, parsed tasksArguments) (string, bool, error) {
+	if parsed.Forward && (parsed.Continue || strings.TrimSpace(parsed.Resolve) != "") {
+		return "forward cannot be combined with continue or resolve; send one action at a time.", true, nil
+	}
 	rows := a.taskRows()
 	entry, found := LookupTask(rows, token)
 	if !found {
@@ -480,13 +496,34 @@ func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, erro
 	if parsed.Continue {
 		return a.continueOneTask(entry, id, here, parsed.Say)
 	}
+	// FORWARD IS READ BEFORE SAY AND REFUSES TO SHARE A CALL WITH IT. They send
+	// two different people's words, and a call carrying both is a call whose
+	// author cannot be answered for (task_forward.go).
+	if parsed.Forward {
+		if strings.TrimSpace(parsed.Say) != "" {
+			return forwardNotYours, true, nil
+		}
+		return a.forwardOneTask(ctx, entry, id, here)
+	}
 	if say := strings.TrimSpace(parsed.Say); say != "" {
 		if !here {
 			return fmt.Sprintf("Task %s ran in an earlier conversation, so there is nobody left to say it to. Propose the work again if it needs doing differently.", entry.ID), true, nil
 		}
-		waiting, err := a.SteerTask(id, say)
+		// THE MODEL IS NOT THE PERSON, AND THE WORKER MUST BE ABLE TO TELL. This
+		// tool call is coordination between two conversations in one session; it
+		// took [Agent.SteerTask] until now, which is the door the person's own
+		// words come through, so the worker journaled the model's sentence as the
+		// person's correction and could read "you may change the schema" as a
+		// grant nobody with authority had given ([Agent.relayToTask]). On the
+		// node's record the same origin is what keeps this line from ever being
+		// cited to move the done-condition (assignment.go).
+		receipt, err := a.relayToTask(id, say)
 		if err != nil {
 			return capitalized(err.Error()) + ".", true, nil
+		}
+		waiting := receipt.Waiting
+		if receipt.Held {
+			return fmt.Sprintf("said to task %s: %s\nIts work is being checked, so nobody read it yet; it is on the task's record and its next round reads it. It cannot change what that task is judged by — only the person's own direction does that.", entry.ID, say), false, nil
 		}
 		// AND WHICH KIND OF WAIT IT LANDED IN. A task that has handed its own
 		// pieces out is parked on their reports and has no step coming
@@ -494,11 +531,17 @@ func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, erro
 		// riding a turn already running — which is the difference between an
 		// answer now and an answer the model would otherwise expect at the next
 		// step of a task that is not taking one.
-		arrival := "It arrives in its loop as the person's own words."
+		//
+		// AND IT ARRIVES AS YOURS. The answer says so plainly, because a model
+		// told its line lands "as the person's own words" will use this tool to
+		// give itself permissions: the worker reads it named as another agent in
+		// this session ([relayNote]), and only the person's own door speaks for
+		// the person.
+		arrival := "It arrives in its loop named as this conversation speaking, not as the person."
 		if waiting {
-			arrival = "It was waiting on the pieces it handed out; your line wakes it, and arrives as the person's own words."
+			arrival = "It was waiting on the pieces it handed out; your line wakes it, and arrives named as this conversation speaking, not as the person."
 		}
-		return fmt.Sprintf("said to task %s: %s\n%s Its brief and its acceptance are unchanged — they were frozen when it started.", entry.ID, say, arrival), false, nil
+		return fmt.Sprintf("said to task %s: %s\n%s Nothing you say here changes what it is allowed to do, and its done-condition is unchanged: only the person's own direction can move that.", entry.ID, say, arrival), false, nil
 	}
 	if !here {
 		// Its row, and the truth about why there is no more: the graph that ran
