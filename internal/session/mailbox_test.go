@@ -718,7 +718,7 @@ func TestProgressNeitherWakesNorAsksAnything(t *testing.T) {
 	}}
 	agent, _ := newTestAgent(t, completer, nil)
 
-	agent.enqueueWatchNote("checks", "watch checks · 2 pending", false)
+	agent.enqueueWatchNote("checks", backgroundResult{text: "watch checks · 2 pending"}, false)
 
 	agent.mu.Lock()
 	steering, ambient := len(agent.steering), len(agent.ambient)

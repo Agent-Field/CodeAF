@@ -155,7 +155,9 @@ const (
 // take at any moment.
 type job struct {
 	// The admission generation rejects work reserved before a conversation stop.
-	epoch   uint64
+	epoch uint64
+	// The request is captured at creation and travels with the final outcome.
+	request uint64
 	id      int
 	command string
 	kind    jobKind
@@ -449,7 +451,7 @@ type jobRegistry struct {
 	// THE NOTE IS THE ENDING AS THIS FILE COMPOSED IT. The lane decides only
 	// whether anybody has to answer; it does not reshape the news first
 	// ([jobNote] states the law).
-	notify func(string)
+	notify func(backgroundResult)
 	// notifyWatch carries a watch's news, and the bool is WHICH KIND OF NEWS IT
 	// IS: false for a periodic tick, true for the tick that ENDED the watch —
 	// `until` matched, the output went quiet, the command failed its way out
@@ -461,7 +463,9 @@ type jobRegistry struct {
 	// to the question the watch was started for, and it is the last thing that
 	// watch will ever say — so it is owed exactly as a process job's exit is, and
 	// agent.go's lane reads this bool to decide which of the two it queues.
-	notifyWatch func(string, string, bool)
+	notifyWatch func(string, backgroundResult, bool)
+	// request captures the originating request before asynchronous work begins.
+	request func() uint64
 	// announce carries one job's row to the roster — the column beside the
 	// conversation, where work this session started shows whatever door started
 	// it (jobrow.go). It is a function for [jobRegistry.notify]'s reason exactly:
@@ -523,7 +527,7 @@ type jobRegistry struct {
 	hands int
 }
 
-func newJobRegistry(workspace string, place Place, notify func(string), watch ...func(string, string, bool)) *jobRegistry {
+func newJobRegistry(workspace string, place Place, notify func(backgroundResult), watch ...func(string, backgroundResult, bool)) *jobRegistry {
 	registry := &jobRegistry{workspace: workspace, place: place, notify: notify}
 	if len(watch) > 0 {
 		registry.notifyWatch = watch[0]
@@ -548,6 +552,17 @@ var errSessionClosed = errors.New("this session has closed; nothing new starts i
 // so that the overwhelmingly common case — a session already closed when the
 // call is made — costs nothing and creates no directory.
 func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
+	var request uint64
+	if r.request != nil {
+		request = r.request()
+	}
+	return r.newJobForRequest(command, kind, request)
+}
+
+// newJobForRequest also admits an already-running foreground command, whose
+// origin was captured before it started. Adoption can hold the agent lock and
+// must not call back into the agent to rediscover that earlier request.
+func (r *jobRegistry) newJobForRequest(command string, kind jobKind, request uint64) (*job, error) {
 	// NOTHING STARTS IN A SESSION THAT HAS LEFT. The refusal is here, ahead of
 	// the directory, because the first thing this function does is CREATE one:
 	// a job claimed during a quit put the jobs folder back the moment after it
@@ -571,6 +586,7 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 	}
 	return &job{
 		epoch:   epoch,
+		request: request,
 		id:      id,
 		command: command,
 		kind:    kind,
@@ -956,7 +972,7 @@ func (r *jobRegistry) finish(done *job, code int, note string) {
 	}
 	// A goroutine's ending is one sentence its caller wrote, so that sentence is
 	// already the whole ending this file composed for it.
-	r.notify(note)
+	r.notify(backgroundResult{text: note, request: done.request})
 }
 
 // adoption is what the road taking a running command over knows about it. Both
@@ -964,6 +980,8 @@ func (r *jobRegistry) finish(done *job, code int, note string) {
 // a clock, a timeout, a person's key or a person's steer all take the same
 // process into the same registry and mean different things by it.
 type adoption struct {
+	// request belongs to the foreground command, captured before it started.
+	request uint64
 	// quiet leaves the person-visible row to the caller, to be published after
 	// the claim: the process and the job id become one fact under bare's adoption
 	// lock, and the row goes out once that lock is released.
@@ -996,7 +1014,7 @@ type adoption struct {
 // WHAT THE CALLER KNOWS AND THIS DOES NOT is [adoption], the two facts about the
 // road the takeover came down.
 func (r *jobRegistry) adopt(taken *bare.BashCall, how adoption) (*job, error) {
-	started, err := r.newJob(taken.Command(), jobKindBash)
+	started, err := r.newJobForRequest(taken.Command(), jobKindBash, how.request)
 	if err != nil {
 		return nil, err
 	}
@@ -1083,7 +1101,7 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 					strconv.Itoa(jobExitTailLines) + " lines · full log: " + watched.logPath + "]"
 			}
 		}
-		r.notify(note)
+		r.notify(backgroundResult{text: note, request: watched.request})
 		return
 	}
 	// A REGISTRY WITH NO LANE TO REPORT INTO HAS NO NOTE FOR THE RELEASE TO RIDE

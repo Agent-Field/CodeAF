@@ -500,7 +500,7 @@ func (r *jobRegistry) runWatch(ctx context.Context, cancel context.CancelFunc, w
 			// knows whether the note is a tick or the ending. A tick waits for a
 			// turn boundary; the firing is owed and starts a turn, exactly as a
 			// background job's exit does (jobs.go's notifyWatch states the law).
-			r.notifyWatch(spec.name, note, fired)
+			r.notifyWatch(spec.name, backgroundResult{text: note, request: watched.request}, fired)
 		}
 		if fired {
 			break

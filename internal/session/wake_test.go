@@ -402,7 +402,7 @@ func TestWatchDeltasWaitForOneBatchAfterAFiveRoundTurn(t *testing.T) {
 		}
 		if round < 3 {
 			agent.jobs.notifyWatch("codex-jobs",
-				watchNote("codex-jobs", "1 line new", []string{fmt.Sprintf("fix %s", []string{"one", "two", "three"}[round])}), false)
+				backgroundResult{text: watchNote("codex-jobs", "1 line new", []string{fmt.Sprintf("fix %s", []string{"one", "two", "three"}[round])})}, false)
 		}
 		close(release[round])
 	}
@@ -461,7 +461,7 @@ func TestOwedJobExitLandsAtTheNextStepBoundaryOnce(t *testing.T) {
 		t.Fatalf("submit: %v", err)
 	}
 	first.wait(t)
-	agent.jobs.notify("job 6 exited 0: BUILD OK\n\nall of the long output")
+	agent.jobs.notify(backgroundResult{text: "job 6 exited 0: BUILD OK\n\nall of the long output"})
 	close(first.release)
 	collect(t, events)
 
@@ -501,7 +501,7 @@ func TestInterruptedTurnKeepsItsAmbientBatchForTheNextTurn(t *testing.T) {
 	}
 	<-inFlight
 	for _, line := range []string{"one", "two", "three"} {
-		agent.jobs.notifyWatch("build", watchNote("build", "1 line new", []string{line}), false)
+		agent.jobs.notifyWatch("build", backgroundResult{text: watchNote("build", "1 line new", []string{line})}, false)
 	}
 	agent.Interrupt()
 	collect(t, events)
@@ -628,9 +628,9 @@ func TestTwoJobNotesInOneWindowAreOneWake(t *testing.T) {
 	// The registry's own reporting seam (jobs.go's reap calls exactly this), so
 	// the two notes land in a known order rather than at the mercy of two
 	// processes exiting.
-	agent.jobs.notify("job 1 exited 1: connection refused")
+	agent.jobs.notify(backgroundResult{text: "job 1 exited 1: connection refused"})
 	<-inFlight
-	agent.jobs.notify("job 2 exited 1: connection refused")
+	agent.jobs.notify(backgroundResult{text: "job 2 exited 1: connection refused"})
 	close(release)
 
 	select {

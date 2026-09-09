@@ -2907,6 +2907,11 @@ report the result, then wait for that task. If it tries to hand the request out
 again, it says `task N is still working on this request · keeping its work there
 and waiting for its result` and keeps the existing task.
 
+The job keeps the request that started it, even if you have since asked another
+question. A batch waits only when every result belongs to work a task still owns;
+unknown origins and results for work kept in the main conversation can continue.
+If a checkpoint ends the reporting turn, it carries the job outcomes into its reply.
+
 This wait ends the reporting turn, not your request. The task continues and its
 result wakes the conversation. New words from you, and a task's own result needing
 repair or delivery, remain actionable. An older task for a different request does

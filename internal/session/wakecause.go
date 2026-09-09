@@ -53,6 +53,9 @@ type owedAsk struct {
 	from owedFrom
 	// task is the node a result came from, and 0 for the person's own words.
 	task uint64
+	// Background receipts carry their original request and complete outcome.
+	request uint64
+	outcome string
 }
 
 // owedFrom is who an owed ask came from.
@@ -82,8 +85,11 @@ func (a *Agent) rememberOwedLocked(user userMessage) {
 	// Jobs, fired watches and other background news have no task tag. They
 	// still owe a report of their outcome, never another answer to whichever
 	// unrelated question the person happened to ask most recently.
-	if user.otherResults {
-		a.oweLocked(owedAsk{text: backgroundReplyObligation, from: owedByBackground})
+	if user.otherResults && len(user.backgroundResults) == 0 {
+		a.oweLocked(owedAsk{text: backgroundReplyObligation, from: owedByBackground, outcome: user.text()})
+	}
+	for _, result := range user.backgroundResults {
+		a.oweLocked(owedAsk{text: backgroundReplyObligation, from: owedByBackground, request: result.request, outcome: result.text})
 	}
 	for _, tag := range user.replyTags {
 		a.oweLocked(owedAsk{text: tag.owed(), from: owedByResult, task: tag.ID})
@@ -122,16 +128,16 @@ func (t TaskReplyTag) owed() string {
 	return t.Request
 }
 
-// oweLocked adds one ask, once. The same text twice — the parts of one division
-// inherit their request — is written a single time, and an empty one (a standing
-// firing has no person's sentence behind it) is not written at all.
+// oweLocked adds one obligation once. Tasks with the same words share their
+// displayed ask; background receipts retain distinct origins and outcomes even
+// when they share a reporting duty. An empty ask is not recorded.
 func (a *Agent) oweLocked(ask owedAsk) {
 	ask.text = strings.TrimSpace(ask.text)
 	if ask.text == "" {
 		return
 	}
 	for _, already := range a.owedAsks {
-		if already.text == ask.text {
+		if already.text == ask.text && already.from == ask.from && already.request == ask.request && already.outcome == ask.outcome {
 			return
 		}
 	}
@@ -176,6 +182,20 @@ const owedAsksLead = "In the order they arrived, oldest first. Where these confl
 
 // owedAsksText renders what a turn owes.
 func owedAsksText(owed []owedAsk) string {
+	// Origins remain distinct in memory while their identical reporting duty is
+	// said once, so a wide batch does not crowd the actual requests off the page.
+	visible := make([]owedAsk, 0, len(owed))
+	background := false
+	for _, ask := range owed {
+		if ask.from == owedByBackground {
+			if background {
+				continue
+			}
+			background = true
+		}
+		visible = append(visible, ask)
+	}
+	owed = visible
 	switch len(owed) {
 	case 0:
 		return ""

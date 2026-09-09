@@ -3374,7 +3374,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// reporting turn before the global goal reader can turn unfinished work into
 	// a fresh brief. The existing owner remains live and its result wakes us.
 	if id := a.backgroundWorkOwner(); id != 0 {
-		note := backgroundOwnerNote(id)
+		note := a.backgroundOwnerReport(id)
 		hub.send(Event{Kind: EventNotice, Text: note})
 		a.record(textMessage("assistant", note))
 		hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(*turn, started, model)})

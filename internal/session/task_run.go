@@ -1190,7 +1190,7 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 		// (turnhandoff.go).
 		admitBy:      admitter,
 		admitAt:      requestEpochAt(admitter),
-		admitRequest: requestIdentityAt(admitter),
+		admitRequest: admitter.requestForWork(),
 		// WHERE THE WORK STANDS, carried from the door that resolved it
 		// (taskstands.go). A door that resolved none — a design, a subharness run,
 		// a scripted graph — admits with nothing here and the working copy fills it

@@ -540,7 +540,7 @@ func TestBackgroundReplyDoesNotInheritTheLatestUnrelatedQuestion(t *testing.T) {
 	a.hearAsk("What is the unrelated checksum?")
 	a.mu.Lock()
 	a.forgetOwedLocked()
-	a.rememberOwedLocked(batchSessionNotes([]userMessage{jobNote("job 1 exited 0: build finished")}))
+	a.rememberOwedLocked(batchSessionNotes([]userMessage{jobNote(backgroundResult{text: "job 1 exited 0: build finished"})}))
 	a.mu.Unlock()
 	if got := a.turnAsk(); got != backgroundReplyObligation {
 		t.Fatalf("job completion inherited unrelated question: %q", got)
@@ -551,7 +551,7 @@ func TestMixedBackgroundBatchPreservesBothReplyDuties(t *testing.T) {
 	a, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	task := wakeNote("task report")
 	task.replyTags = []TaskReplyTag{{ID: 3, Request: "write the report"}}
-	batch := batchSessionNotes([]userMessage{task, jobNote("job 1 exited 0")})
+	batch := batchSessionNotes([]userMessage{task, jobNote(backgroundResult{text: "job 1 exited 0"})})
 	a.mu.Lock()
 	a.rememberOwedLocked(batch)
 	a.mu.Unlock()

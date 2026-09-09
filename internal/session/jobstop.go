@@ -108,7 +108,7 @@ func (a *Agent) cancelJob(id uint64) (string, error) {
 	// It travels as one line because the sentence IS the whole of the news, and
 	// there is no ending to read out of the log that the person did not just ask
 	// for the end of.
-	a.enqueueJobNote(fmt.Sprintf("job %d was stopped", number))
+	a.enqueueJobNote(backgroundResult{text: fmt.Sprintf("job %d was stopped", number), request: target.request})
 	return "stopped " + name + " — its log is kept", nil
 }
 

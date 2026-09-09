@@ -833,6 +833,9 @@ func TestASteerAdoptsAnOldBashAndItsExitArrivesLater(t *testing.T) {
 	agent, _ := newTestAgent(t, completer, nil)
 	turn := mustSubmit(t, agent, "build and inspect")
 	waitFor(t, "foreground bash to start", func() bool { return len(agent.inFlightBash.snapshot()) == 1 })
+	agent.mu.Lock()
+	request := agent.personSeq
+	agent.mu.Unlock()
 	time.Sleep(steerBashAge + 100*time.Millisecond)
 	steered := mustSteer(t, agent, "inspect the parser while that runs")
 	collect(t, turn)
@@ -848,6 +851,11 @@ func TestASteerAdoptsAnOldBashAndItsExitArrivesLater(t *testing.T) {
 	}
 	if got := steerLanding(events); got != "kept bash running as job 1" {
 		t.Fatalf("steer landing = %q", got)
+	}
+	// Adoption runs under the steering lock. It must use the origin captured
+	// when bash started, without re-entering that lock or adopting the correction.
+	if job := agent.jobs.find(1); job == nil || job.request != request || request == 0 {
+		t.Fatalf("adopted job did not retain request %d: %+v", request, job)
 	}
 	waitFor(t, "adopted job exit note", func() bool { return notesContain(agent, "steer-job-finished") })
 	waitFor(t, "owed exit request", func() bool { return completer.requests() >= 3 })

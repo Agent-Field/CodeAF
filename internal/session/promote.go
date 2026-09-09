@@ -152,8 +152,9 @@ func callIDFrom(ctx context.Context) string {
 // foreground bash call, carrying the call's id so the SURFACE can address it
 // while it is still running (internal/tui3's ctrl+g).
 type bashPromotion struct {
-	agent  *Agent
-	callID string
+	agent   *Agent
+	callID  string
+	request uint64
 }
 
 // Started arms the session clock, registers the running call as promotable, and
@@ -161,6 +162,8 @@ type bashPromotion struct {
 // possible at all: a key pressed on a row has to find a process, and the process
 // is only reachable while the call is in flight.
 func (p bashPromotion) Started(call *bare.BashCall) func() {
+	// The origin is registered before any clock or steering can adopt the call.
+	p.agent.holdPromotable(p.callID, call, p.request)
 	var timer *time.Timer
 	if seconds := p.agent.config.BashBackgroundAfterSeconds; seconds > 0 {
 		wait := time.Duration(seconds)*time.Second - call.RunningFor()
@@ -184,19 +187,11 @@ func (p bashPromotion) Started(call *bare.BashCall) func() {
 			}
 		})
 	}
-	if p.callID != "" {
-		p.agent.holdPromotable(p.callID, call)
-	}
-	if timer == nil && p.callID == "" {
-		return nil
-	}
 	return func() {
 		if timer != nil {
 			timer.Stop()
 		}
-		if p.callID != "" {
-			p.agent.releasePromotable(p.callID)
-		}
+		p.agent.releasePromotable(p.callID, call)
 	}
 }
 
@@ -211,7 +206,7 @@ func (p bashPromotion) TimedOut(call *bare.BashCall) bool {
 // promotable returns ctx carrying the door, for the FOREGROUND branch of bash
 // and nowhere else.
 func (a *Agent) promotable(ctx context.Context) context.Context {
-	return bare.WithBashPromoter(ctx, bashPromotion{agent: a, callID: callIDFrom(ctx)})
+	return bare.WithBashPromoter(ctx, bashPromotion{agent: a, callID: callIDFrom(ctx), request: a.requestForWork()})
 }
 
 // ── the in-flight calls a keypress can reach ────────────────────────────────
@@ -224,23 +219,31 @@ func (a *Agent) promotable(ctx context.Context) context.Context {
 // be reachable at the moment the session is busiest — the same argument
 // jobs.go makes for keeping the registry's locks off the turn's.
 type promotableCalls struct {
-	mu    sync.Mutex
-	calls map[string]*bare.BashCall
+	mu       sync.Mutex
+	calls    map[string]*bare.BashCall
+	requests map[*bare.BashCall]uint64
 }
 
-func (p *promotableCalls) hold(id string, call *bare.BashCall) {
+func (p *promotableCalls) hold(id string, call *bare.BashCall, request uint64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.calls == nil {
 		p.calls = map[string]*bare.BashCall{}
 	}
-	p.calls[id] = call
+	if id != "" {
+		p.calls[id] = call
+	}
+	if p.requests == nil {
+		p.requests = make(map[*bare.BashCall]uint64)
+	}
+	p.requests[call] = request
 }
 
-func (p *promotableCalls) release(id string) {
+func (p *promotableCalls) release(id string, call *bare.BashCall) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	delete(p.calls, id)
+	delete(p.requests, call)
 }
 
 func (p *promotableCalls) find(id string) *bare.BashCall {
@@ -259,11 +262,21 @@ func (p *promotableCalls) snapshot() []*bare.BashCall {
 	return calls
 }
 
-func (a *Agent) holdPromotable(id string, call *bare.BashCall) {
-	a.inFlightBash.hold(id, call)
+// requestOf reads immutable producer metadata without taking the agent lock.
+// Steering already holds that lock when it promotes a foreground command.
+func (p *promotableCalls) requestOf(call *bare.BashCall) uint64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.requests[call]
 }
 
-func (a *Agent) releasePromotable(id string) { a.inFlightBash.release(id) }
+func (a *Agent) holdPromotable(id string, call *bare.BashCall, request uint64) {
+	a.inFlightBash.hold(id, call, request)
+}
+
+func (a *Agent) releasePromotable(id string, call *bare.BashCall) {
+	a.inFlightBash.release(id, call)
+}
 
 // ── the adoption itself ─────────────────────────────────────────────────────
 
@@ -300,6 +313,7 @@ func (a *Agent) adoptRunningBash(call *bare.BashCall) (string, bool) {
 // the caller knows about the road it came down and this claim does not.
 func (a *Agent) adoptRunningBashAs(call *bare.BashCall, answerFor func(*job) string, how adoption) (*job, bool) {
 	var started *job
+	how.request = a.inFlightBash.requestOf(call)
 	adopted := call.Adopt(func() (string, bool, bool) {
 		var err error
 		started, err = a.jobs.adopt(call, how)

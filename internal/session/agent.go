@@ -170,6 +170,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// belongs beside the transcript of the conversation that commissioned it, not
 	// in the repository it borrowed to work in (landing.go).
 	agent.jobs = newJobRegistry(config.Workspace, config.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
+	agent.jobs.request = agent.requestForWork
 	// And the registry gets the ROSTER lane as well as the waking one. A job is
 	// work this conversation started, so it shows on the right the way every
 	// other kind of work does — a quiet row while it runs, settled when it ends
@@ -1018,9 +1019,11 @@ type userMessage struct {
 	// replyTags names finished tasks whose reports this message carries. It is
 	// empty on every person's message and every other authored note.
 	replyTags []TaskReplyTag
-	// otherResults preserves untagged background outcomes when a batch also
-	// carries task results. Their reply obligation must not be lost in folding.
+	// otherResults preserves the reporting duty of background outcomes, including
+	// legacy notices with no origin metadata, when a batch also carries tasks.
 	otherResults bool
+	// backgroundResults retains the origin and full outcome of each job notice.
+	backgroundResults []backgroundResult
 
 	// wake marks a note the model OWES AN ANSWER FOR: a task's completion
 	// (task_run.go's reportTaskNode), a background job's exit (jobs.go's reap),
@@ -1182,14 +1185,15 @@ func wakeNote(text string) userMessage {
 // (task_job_park.go), and it stops it so that the command's own ending can be
 // the next thing the work reads. Carrying that ending whole is what makes the
 // wait worth taking.
-func jobNote(text string) userMessage {
-	text = strings.TrimSpace(text)
+func jobNote(result backgroundResult) userMessage {
+	text := strings.TrimSpace(result.text)
 	note := wakeNote(text)
 	// AND EVERY ENDING IS MARKED AS ONE. It is what releases a worker parked on
 	// the command this note is about, in the same locked step as the append
 	// ([userMessage.ending]).
 	note.ending = true
 	note.otherResults = true
+	note.backgroundResults = []backgroundResult{result}
 	return note
 }
 
@@ -2580,14 +2584,19 @@ func batchSessionNotes(notes []userMessage) userMessage {
 	order := make([]string, 0, len(notes))
 	parts := make([]string, 0, len(notes))
 	var (
-		wake         bool
-		otherResults bool
-		tags         []TaskReplyTag
-		delivered    []durableDelivery
+		wake              bool
+		otherResults      bool
+		backgroundResults []backgroundResult
+		tags              []TaskReplyTag
+		delivered         []durableDelivery
 	)
 	for _, note := range notes {
 		wake = wake || note.wake
 		otherResults = otherResults || note.otherResults
+		backgroundResults = append(backgroundResults, note.backgroundResults...)
+		if note.otherResults && len(note.backgroundResults) == 0 {
+			backgroundResults = append(backgroundResults, backgroundResult{text: note.text()})
+		}
 		tags = append(tags, note.replyTags...)
 		// The batch is the record these notes end up in, so it carries what
 		// settles each of them ([durableDelivery]); dropped here, every landing in
@@ -2629,12 +2638,13 @@ func batchSessionNotes(notes []userMessage) userMessage {
 		text = "while you worked:\n\n" + strings.Join(rendered, "\n\n")
 	}
 	return userMessage{
-		message:      textMessage("user", text),
-		replyTags:    tags,
-		otherResults: otherResults,
-		delivered:    delivered,
-		wake:         wake,
-		authored:     true,
+		message:           textMessage("user", text),
+		replyTags:         tags,
+		otherResults:      otherResults,
+		backgroundResults: backgroundResults,
+		delivered:         delivered,
+		wake:              wake,
+		authored:          true,
 	}
 }
 
@@ -2703,8 +2713,8 @@ func (a *Agent) enqueueSteering(text string) {
 // enqueueJobNote is the registry's owed lane, and what it carries is the ending
 // as [jobRegistry.settleExit] composed it. The whole log remains available
 // through `jobs output` for anything past the tail.
-func (a *Agent) enqueueJobNote(text string) {
-	a.enqueueNote(jobNote(text))
+func (a *Agent) enqueueJobNote(result backgroundResult) {
+	a.enqueueNote(jobNote(result))
 }
 
 // enqueueWatchNote is the registry's watch lane, and it is TWO lanes chosen by
@@ -2729,10 +2739,12 @@ func (a *Agent) enqueueJobNote(text string) {
 // of the answer; the batch key that collapses ticks to a count would spend that
 // evidence to save a line, and [userMessage.batchKey] already states that owed
 // news does not carry one.
-func (a *Agent) enqueueWatchNote(name, text string, fired bool) {
+func (a *Agent) enqueueWatchNote(name string, result backgroundResult, fired bool) {
+	text := result.text
 	if fired {
 		note := wakeNote(text)
 		note.otherResults = true
+		note.backgroundResults = []backgroundResult{result}
 		a.enqueueNote(note)
 		return
 	}

@@ -21,7 +21,7 @@ func TestStopWorkDoesNotWakeAndOnlyFreshSubmissionRestarts(t *testing.T) {
 	if err := a.StopWork(); err != nil {
 		t.Fatal(err)
 	}
-	a.enqueueJobNote("a late job completion")
+	a.enqueueJobNote(backgroundResult{text: "a late job completion"})
 	select {
 	case <-wakes:
 		t.Fatal("Stop work started another model turn")
