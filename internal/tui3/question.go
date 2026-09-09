@@ -842,9 +842,10 @@ func questionDropVerb(keys []questionVerb) ([]questionVerb, bool) {
 // bubbletea spells it: the space bar is a key with no visible character, and a
 // row that said `[ ]` would be a row with a hole in it.
 func questionKeySpelling(key string) string {
-	if key == questionToggleKey {
-		return "space"
-	}
+	// Every key in the table is now spelled as the terminal sends it
+	// ([questionToggleKey] says why the space bar was the last exception), so
+	// there is nothing left to translate — and this stays as the ONE place a
+	// translation would go if a key ever needs one again.
 	return key
 }
 
@@ -1428,13 +1429,21 @@ func (a *app) questionUndo(head questionShown) tea.Cmd {
 // asking.
 //
 // THE DIAL'S STORAGE IS LANE E2'S (`autonomy.json`, per project) AND THIS IS
-// THE SEAM ONTO IT. Until that door exists the key is not drawn — a capability
-// that cannot work is absent, not broken — so reaching here at all means the
-// door was wired and the answer goes through it. What this does today is answer
-// THIS question and record that a person asked for the shape to be decided,
-// which is the half of the promise this lane can keep honestly; the standing
-// half is owed.
+// THE SEAM ONTO IT — wired now, through [session.Agent.SetAutonomy] and the wire
+// frame that carries it to an engine in another process (internal/remote's
+// MethodSetAutonomy, which every local chat window goes through).
+//
+// IT DOES BOTH HALVES OF THE PROMISE. The standing half writes the shape into
+// the project's own settings, so the NEXT question of that shape is answered
+// without asking; the immediate half answers the one in front of the person,
+// because `D` is pressed while looking at a question and a key that set a
+// setting and left that question sitting there would read as having done
+// nothing. A session with nowhere to keep the setting still answers this one:
+// losing the standing half is not a reason to lose the answer.
 func (a *app) questionDial(head questionShown) tea.Cmd {
+	if door, ok := a.agent.(questionDialDoor); ok {
+		_ = door.SetAutonomy(head.question.Ask, session.Policy{Kind: session.PolicyDecide})
+	}
 	key := questionDecidedKeyOf(head.question)
 	if key == "" {
 		return nil
@@ -1448,13 +1457,19 @@ func (a *app) questionDial(head questionShown) tea.Cmd {
 
 // openQuestionRoom walks into the room over this question — lane S2's page.
 //
-// THE DOOR IS CALLED AND NEVER RE-IMPLEMENTED. Until the room lands this folds
-// the question to the chip instead of drawing a page that does not exist, which
-// is the honest behaviour rather than a key that does nothing: `o` on a
-// question with more behind it than the block draws takes the block off the
-// screen, and the chip brings it back.
+// THE DOOR IS CALLED AND NEVER RE-IMPLEMENTED. The page is questionroom.go's,
+// and everything it needs travels in the [questionShown] this block was already
+// holding — the question, its resolver, whether a rule is on offer, whether an
+// undo would reach anything — so opening one hands over what is already in hand
+// rather than building a second reading of the same question.
+//
+// THE BLOCK GOES WITH IT. A question drawn twice — pinned above the box and
+// spread over the page — is one question a person could answer in two places
+// with two different sets of keys on screen at once, and the fold is exactly the
+// state the chip already knows how to bring back.
 func (a *app) openQuestionRoom(head questionShown) tea.Cmd {
 	a.foldQuestion(head)
+	a.raiseQuestionRoom(head)
 	return nil
 }
 

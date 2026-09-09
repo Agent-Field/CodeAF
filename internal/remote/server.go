@@ -1795,6 +1795,33 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// including the one it is already carrying (standinglane.go).
 		sess.watchLane(s, laneTitle)
 		return nil, nil
+	case MethodQuestionResolve:
+		args, err := arg[QuestionArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		// THE OPTIONAL-DOOR PATTERN, on the terms the two frames below it keep: an
+		// engine that cannot resolve a question loses the ANSWERING and not the
+		// connection, and the sentence it refuses with is one a person can read.
+		door, ok := agent.(interface {
+			ResolveQuestion(session.Answer) error
+		})
+		if !ok {
+			return nil, errors.New("engine: this session cannot answer questions from here")
+		}
+		return nil, door.ResolveQuestion(args.Answer)
+	case MethodSetAutonomy:
+		args, err := arg[AutonomyArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			SetAutonomy(session.AskKind, session.Policy) error
+		})
+		if !ok {
+			return nil, errors.New("engine: this session keeps no settings about what may answer by itself")
+		}
+		return nil, door.SetAutonomy(args.Kind, args.Policy)
 	case MethodSubharnessResolve:
 		args, err := arg[SubharnessResolveArgs](call)
 		if err != nil {

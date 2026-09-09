@@ -657,7 +657,7 @@ func TestAReplayedQuestionIsOneQuestionAndKeepsItsSettleStamp(t *testing.T) {
 // verbstrip.go's law about it: no key does anything that is not drawn, and
 // nothing is drawn that does nothing.
 func TestTheKeyTableIsOneTableAndEveryKeyOnARowIsRouted(t *testing.T) {
-	seen := map[string]bool{}
+	seen := map[string]questionVerb{}
 	for _, verb := range questionKeys {
 		if verb.key == "" {
 			t.Fatal("a row of the key table has no key")
@@ -665,10 +665,28 @@ func TestTheKeyTableIsOneTableAndEveryKeyOnARowIsRouted(t *testing.T) {
 		if strings.TrimSpace(verb.word) == "" {
 			t.Fatalf("%q has no word; the manual and the row read this field", verb.key)
 		}
-		if seen[verb.key] {
-			t.Fatalf("%q is in the key table twice; one key, one meaning", verb.key)
+		if prior, twice := seen[verb.key]; twice {
+			// Two rows on different FORMS are never on one screen at all, which is
+			// the cheapest exclusion there is: the line, the card, the ratify row
+			// and the room are four places, and a key drawn in one of them cannot
+			// also be drawn in another at the same moment.
+			if prior.forms&verb.forms == 0 {
+				seen[verb.key] = verb
+				continue
+			}
+			// ONE KEY, ONE MEANING AT A TIME. Two rows may share a key only where
+			// their conditions cannot both hold — `a` is "take its suggestion" on a
+			// checklist and "the first one" on a pair, `←→` walks a confirmation's
+			// cursor and moves a dial — because those ARE one instinct at two
+			// shapes, and a key that meant two things on ONE screen would be the
+			// thing this law exists to prevent. The exclusion is proved below
+			// rather than asserted here.
+			if !questionNeedsExclusive(prior.needs, verb.needs) {
+				t.Fatalf("%q is in the key table twice and both rows can be offered at "+
+					"once; one key, one meaning", verb.key)
+			}
 		}
-		seen[verb.key] = true
+		seen[verb.key] = verb
 		if verb.forms == 0 {
 			t.Fatalf("%q belongs to no form and would never be drawn", verb.key)
 		}
@@ -679,10 +697,71 @@ func TestTheKeyTableIsOneTableAndEveryKeyOnARowIsRouted(t *testing.T) {
 		questionRuleKey, questionUndoKey, questionBlankKey, questionToggleKey,
 		questionWalkKey,
 	} {
-		if !seen[want] {
+		if _, ok := seen[want]; !ok {
 			t.Fatalf("the grammar's %q is not in the table every reader reads", want)
 		}
 	}
+}
+
+// questionNeedsExclusive reports whether two conditions can never be true of one
+// question at the same time. It is the proof behind the shared-key exception
+// above, and it is written as the QUESTIONS that would satisfy each rather than
+// as a list of pairs somebody has to keep true: every shape the object can take
+// is tried, and the two conditions must never both answer yes on one of them.
+func questionNeedsExclusive(one, other questionNeed) bool {
+	if one == other {
+		return false
+	}
+	a := newTestApp(&fakeAgent{})
+	for _, shape := range questionShapes() {
+		q := questionShown{question: shape}
+		if a.questionOffers(q, one) && a.questionOffers(q, other) {
+			return false
+		}
+	}
+	return true
+}
+
+// questionShapes is every shape a question can take that the conditions read:
+// each ask kind, each input kind, with and without options, a pick, a dial and a
+// choice blank. It is deliberately generated rather than listed, so a condition
+// added later is tried against all of them without anybody remembering to.
+func questionShapes() []session.Question {
+	asks := []session.AskKind{
+		session.AskPermission, session.AskChoice, session.AskJudgement,
+		session.AskClarification, session.AskConfirmation, session.AskLanding,
+		session.AskAssumption, session.AskRatify,
+	}
+	inputs := []session.InputShape{
+		{},
+		{Kind: session.InputText},
+		{Kind: session.InputChecklist},
+		{Kind: session.InputPairs, Blanks: []session.Blank{{Label: "one", Choices: []string{"a", "b"}}}},
+		{Kind: session.InputDial, Dial: &session.Dial{Max: 1}},
+		{Kind: session.InputBlanks, Blanks: []session.Blank{{Label: "one", Choices: []string{"a", "b"}}}},
+		{Kind: session.InputBlanks, Blanks: []session.Blank{{Label: "one"}}},
+	}
+	options := [][]session.AnswerOption{
+		nil,
+		{{Key: "1", Label: "one"}, {Key: "2", Label: "two"}},
+		{{Key: "1", Label: "one"}, {Key: "2", Label: "two"}, {Key: "3", Label: "three"}},
+	}
+	out := make([]session.Question, 0, len(asks)*len(inputs)*len(options)*2)
+	for _, ask := range asks {
+		for _, input := range inputs {
+			for _, opts := range options {
+				for _, stakes := range []session.Stakes{session.StakesReversible, session.StakesIrreversible} {
+					q := session.Question{Ask: ask, Input: input, Options: opts, Stakes: stakes}
+					out = append(out, q)
+					if len(opts) > 0 {
+						q.Pick = &session.Pick{Key: opts[0].Key}
+						out = append(out, q)
+					}
+				}
+			}
+		}
+	}
+	return out
 }
 
 // TestAnEngineWithNoQuestionsSideDrawsNoneAndBreaksNothing is A CAPABILITY
