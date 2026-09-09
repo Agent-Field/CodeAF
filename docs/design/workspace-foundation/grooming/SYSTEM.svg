@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1110" viewBox="0 0 1200 1110" role="img" aria-labelledby="title desc">
+  <title id="title">Aforge — personal AI system design</title>
+  <desc id="desc">A person uses chats and work views to inspect and organize durable records and to start, steer or stop execution. Folders organize chats and work. Chats provide sources for decisions, whose applicability governs work. Artifacts, methods and remembered context persist. Activation and current context feed agent executions, which may consult each other and act through tools. Results and retained updates return to the durable workspace. This is a conceptual design, not a claim of full implementation.</desc>
+  <style>
+    svg { background:#fafaf8; color:#222b30; font-family:Inter,Arial,sans-serif; }
+    text { fill:#222b30; font-size:20px; }
+    .heading { font-size:24px; font-weight:600; }
+    .name { font-size:22px; font-weight:600; }
+    .small { font-size:18px; fill:#52616b; }
+    .group-name { font-size:19px; font-weight:600; letter-spacing:1px; }
+    .group { fill:none; stroke:#b7c1c5; stroke-width:1.5; }
+    .node { fill:#ffffff; stroke:#667985; stroke-width:1.6; }
+    .run { fill:#eaf1f5; stroke:#667985; stroke-width:1.6; }
+    .edge { fill:none; stroke:#526b7a; stroke-width:1.8; marker-end:url(#arrow); }
+    .peer { fill:none; stroke:#526b7a; stroke-width:1.8; marker-start:url(#back); marker-end:url(#arrow); }
+    .label { paint-order:stroke; stroke:#fafaf8; stroke-width:7px; stroke-linejoin:round; font-size:18px; }
+    .rule { stroke:#c5ced1; stroke-width:1; }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L8 4 L0 8 Z" fill="#526b7a"/></marker>
+    <marker id="back" markerWidth="8" markerHeight="8" refX="1" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M8 0 L0 4 L8 8 Z" fill="#526b7a"/></marker>
+  </defs>
+
+  <text x="30" y="38" class="heading">Aforge · personal AI work environment</text>
+  <text x="30" y="66" class="small">Logical design · these boxes are existing concepts and responsibilities, not new services</text>
+
+  <rect x="470" y="91" width="260" height="66" rx="8" class="node"/>
+  <text x="600" y="132" text-anchor="middle" class="name">You</text>
+  <path d="M600 157 V203" class="edge"/>
+  <text x="620" y="188" class="label">ask · inspect · correct · stop</text>
+  <rect x="360" y="205" width="480" height="78" rx="8" class="node"/>
+  <text x="600" y="237" text-anchor="middle" class="name">Chats and work views</text>
+  <text x="600" y="264" text-anchor="middle" class="small">TUI now · other interfaces can use the same backend</text>
+
+  <path d="M360 243 H275 V348" class="edge"/>
+  <text x="77" y="317" class="label">inspect / organize</text>
+  <path d="M840 243 H930 V348" class="edge"/>
+  <text x="951" y="317" class="label">start / steer / stop</text>
+
+  <rect x="24" y="350" width="550" height="541" rx="9" class="group"/>
+  <text x="45" y="383" class="group-name">WHAT PERSISTS</text>
+  <rect x="48" y="410" width="220" height="94" rx="6" class="node"/>
+  <text x="66" y="442" class="name">Folders</text>
+  <text x="66" y="470">name · membership</text>
+  <text x="66" y="494" class="small">children · references</text>
+  <rect x="326" y="410" width="222" height="94" rx="6" class="node"/>
+  <text x="344" y="442" class="name">Chats</text>
+  <text x="344" y="470">messages · history</text>
+  <text x="344" y="494" class="small">source of discussions</text>
+  <path d="M268 450 H324" class="edge"/>
+  <text x="298" y="429" text-anchor="middle" class="label">holds</text>
+
+  <path d="M158 504 V568" class="edge"/>
+  <text x="174" y="542" class="label">organizes</text>
+  <path d="M438 504 V568" class="edge"/>
+  <text x="454" y="542" class="label">source</text>
+  <rect x="48" y="570" width="220" height="123" rx="6" class="node"/>
+  <text x="66" y="602" class="name">Work</text>
+  <text x="66" y="630">finite or ongoing</text>
+  <text x="66" y="655" class="small">intent · state</text>
+  <text x="66" y="681" class="small">authority · activation</text>
+  <rect x="326" y="570" width="222" height="123" rx="6" class="node"/>
+  <text x="344" y="602" class="name">Decisions*</text>
+  <text x="344" y="630">and instructions</text>
+  <text x="344" y="655" class="small">source · scope</text>
+  <text x="344" y="681" class="small">revision · status</text>
+  <path d="M326 627 H270" class="edge"/>
+  <text x="298" y="606" text-anchor="middle" class="label">apply</text>
+
+  <rect x="48" y="747" width="220" height="116" rx="6" class="node"/>
+  <text x="66" y="780" class="name">Artifacts</text>
+  <text x="66" y="809" class="small">files · reports</text>
+  <text x="66" y="839" class="small">methods · evidence</text>
+  <rect x="326" y="747" width="222" height="116" rx="6" class="node"/>
+  <text x="344" y="777" class="name">Memory</text>
+  <text x="344" y="804">learned context</text>
+  <text x="344" y="828" class="small">source · uncertainty</text>
+  <text x="344" y="852" class="small">inference ≠ permission</text>
+  <text x="48" y="726" class="small">Folders can also organize or reference these ↓</text>
+
+  <rect x="672" y="350" width="504" height="541" rx="9" class="group"/>
+  <text x="694" y="383" class="group-name">HOW WORK RUNS</text>
+  <rect x="696" y="410" width="456" height="94" rx="6" class="node"/>
+  <text x="714" y="442" class="name">Activation</text>
+  <text x="714" y="472">your request · schedule · incoming event</text>
+  <text x="714" y="495" class="small">relevant changes* can activate existing work</text>
+  <path d="M924 504 V568" class="edge"/>
+  <text x="944" y="542" class="label">start or continue</text>
+
+  <rect x="696" y="570" width="456" height="123" rx="6" class="node"/>
+  <text x="714" y="602" class="name">Prepare the execution</text>
+  <text x="714" y="630">current context + applicable direction</text>
+  <text x="714" y="655">existing permissions + budget</text>
+  <text x="714" y="681" class="small">continue directly, or use a retained method</text>
+  <path d="M574 650 H694" class="edge"/>
+  <text x="634" y="598" text-anchor="middle" class="label"><tspan x="634">select</tspan><tspan x="634" dy="24">relevant</tspan><tspan x="634" dy="24">state</tspan></text>
+
+  <path d="M924 693 V746" class="edge"/>
+  <rect x="696" y="748" width="456" height="115" rx="6" class="run"/>
+  <text x="714" y="778" class="name">Existing agent execution</text>
+  <text x="714" y="805" class="small">one run or parallel runs · each with its own context</text>
+  <text x="764" y="839" text-anchor="middle">Run A</text>
+  <text x="1080" y="839" text-anchor="middle">Run B</text>
+  <path d="M810 833 H1032" class="peer"/>
+  <text x="922" y="826" text-anchor="middle" class="label">consult / coordinate*</text>
+
+  <path d="M696 839 H624 V934 H298 V894" class="edge"/>
+  <text x="305" y="962" class="label">results · evidence · retained updates*</text>
+  <path d="M1100 863 V979" class="peer"/>
+  <text x="1130" y="927" text-anchor="end" class="label">observe / act within authority</text>
+  <rect x="696" y="981" width="456" height="92" rx="6" class="node"/>
+  <text x="714" y="1014" class="name">Tools &amp; connected systems</text>
+  <text x="714" y="1043">code · files · browser · calendar · APIs</text>
+  <text x="714" y="1067" class="small">actual integrations determine available actions</text>
+
+  <line x1="30" y1="988" x2="578" y2="988" class="rule"/>
+  <text x="30" y="1016" class="small">Design direction, not a fully implemented system.</text>
+  <text x="30" y="1045" class="small">*Scope, automatic reaction, cross-chat consultation</text>
+  <text x="30" y="1072" class="small">and learning/adoption still need decisions or integration.</text>
+  <text x="30" y="1097" class="small">Folders organize work; they do not become agents.</text>
+</svg>

@@ -17,6 +17,12 @@ claim that aforge is a superset or add new primitives to the product.
 study, defines a practical comparison under resource and authority constraints,
 and compares five requests across all four systems. It is a discussion proposal.
 
+[System design diagram](SYSTEM.svg) is the whole-system logical map requested
+after the user found the step-through presentation unclear. It separates durable
+records from activation/execution, labels the main relationships and marks open
+integration/design. It is not a UI mockup, a deployment topology, a new set of
+services, or a claim that every shown path works today.
+
 ## The product we are preserving
 
 Aforge is one personal AI work environment for development, research, marketing,
