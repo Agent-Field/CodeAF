@@ -609,7 +609,14 @@ key arrives as ordinary `enter` and the message steers instead.
 | `home` / `ctrl+a` | Start of the current line |
 | `end` | End of the current line, always |
 | `ctrl+e` | End of the line — unless the box is empty, where it opens or closes the running conversation’s compact steps, or the newest `▸ worked` chip onto its caption outline (the latest completed turn's out here, the newest settled phase's inside a task's page), falling through to the most recent thinking block when there is no chip |
-| any printing key | Types the character |
+| `shift+←` / `shift+→` | Select a character at a time, the way shift does in any text field. Does nothing over an empty box |
+| `shift+↑` / `shift+↓` | Select a line at a time |
+| `shift+home` / `shift+end` | Select to the start or end of the line |
+| `alt+shift+←` / `alt+shift+→` | Select a word at a time. `ctrl+shift+←` / `ctrl+shift+→` are the same |
+| `cmd+a` | Select the whole message. `ctrl+a` cannot be this — it is the start of the line, here and in every other box |
+| `ctrl+z` | Undo — take back what you just typed, a word at a time |
+| `ctrl+shift+z` | Redo, on a terminal that can tell it from `ctrl+z` |
+| any printing key | Types the character — over a selection it replaces it |
 
 `home`, `end`, `up` and `down` work on the logical line — the run between newlines —
 not on the row your terminal wrapped it onto. `up` only reaches history when the
@@ -619,6 +626,65 @@ A word jump crosses the same boundary the word kill deletes: spaces first, then
 the run of non-spaces, so `alt+left` then `alt+backspace` always deletes exactly
 the word it just crossed.
 
+## How do I select text in the message box — highlight what I typed, drag to select in the input bar, the input box acts like normal text
+
+**Just drag inside the box.** Put the pointer on a character of what you have typed,
+sweep to another with the left button down, and the run between them highlights — the
+same highlight a sweep over the conversation wears. On release that text is **on your
+clipboard**, and the status line says what landed: `copied · 10 chars`, `copied · 1
+word`, `copied · 2 lines`.
+
+**The highlight stays after you let go**, because it is a live selection and not a
+flash: type and the typed character **replaces** it, `backspace` or `delete` removes it
+whole, a paste drops in over it. Any arrow key, any word jump, any line jump puts the
+selection down again.
+
+**Double-click takes the word, triple-click takes the whole line.** A word is what a
+person means by one — a path, a hash, a flag, `go.mod`, a URL are each one word — the
+same boundary a double-click uses in the conversation above.
+
+**It works in every box you type into**: the message box in a conversation, the box at
+the foot of home, and the composer on tasks, standing, memory, spend, search and
+settings. Sweeping out of the box carries the selection to the end of what is in it,
+rather than stopping at the edge.
+
+**With the keyboard**, `shift` with any motion key selects: `shift+←`/`shift+→` by a
+character, `shift+↑`/`shift+↓` by a line, `alt+shift+←`/`alt+shift+→` by a word,
+`shift+home`/`shift+end` to a line's ends, and `cmd+a` takes the whole message. Those
+`shift` chords are the message box's; on the seven places `shift+←→↑↓` are already the
+time window that place is showing, so there they move the window and the pointer is how
+you select.
+
+## Undo what I typed — ctrl+z, redo, ctrl+shift+z, take back what I just wrote, I deleted too much
+
+**`ctrl+z` undoes, `ctrl+shift+z` redoes.** They work in the message box and in every
+other box on the surface — home's box, the errand pane, and every filter and search box
+on every place and panel.
+
+**A step is a word, not a keystroke.** Typing runs together into one step and the step
+breaks where a word does, so one `ctrl+z` takes back the last word rather than the last
+letter. A run of backspaces is one step too, a paste is a step of its own, and switching
+from typing to deleting starts a new one. That is what makes `ctrl+u`, `ctrl+w` and
+`alt+backspace` recoverable: each of those kills is one step, and one `ctrl+z` brings it
+back.
+
+**Sixty-four steps back**, and no further. A very large draft keeps fewer, because the
+history is bounded by how much text it holds as well as by how many steps.
+
+**Sending clears it.** Once a message has gone, `ctrl+z` will not pull it back into the
+box — `↑` walks the history of what you sent, and that is where a sent message lives.
+
+**`ctrl+shift+z` needs a terminal that can report it.** Shift is invisible on a control
+byte: a terminal that has not taken the keyboard-disambiguation protocol sends the same
+thing for `ctrl+z` and `ctrl+shift+z`, so on that terminal the redo arrives as a second
+undo. Ghostty, kitty and WezTerm report it; older terminals do not. There is no second
+redo chord — `ctrl+y` already copies a path on home and in `/files`, and taking a working
+key away would be the worse trade.
+
+**`ctrl+z` does not suspend aforge.** In an ordinary shell that chord stops the program
+and hands you back the prompt; aforge runs the terminal in raw mode, so the key arrives
+as an ordinary keystroke and is the undo instead. To leave, press `ctrl+c` twice.
+
 ## Click to move the cursor — clicking the message box places the caret
 
 A click anywhere on the message box puts the caret under the pointer: on the
@@ -627,7 +693,9 @@ at the start of the text when you click on the prompt's side of it. It works on
 a wrapped, multi-line draft — the row you click is the row the caret lands on.
 
 It is the ordinary text-field gesture, and **the box on every place answers it
-too** — home, tasks, standing, memory, spend, search, settings. While a picker's
+too** — home, tasks, standing, memory, spend, search, settings. Holding the button
+down and sweeping selects instead, and releasing copies what is lit (see "how do I
+select text in the message box" above). While a picker's
 filter box is standing in the box's place — the model picker, `/resume`,
 `/files`, the memory panel — or while the composer layer is up, a click does not
 move that box's caret; those are typed at and filtered, not edited by pointer.
@@ -2319,6 +2387,11 @@ than `copied · 2 lines`, which is how you tell the two apart.
 
 **A wide glyph is never split.** A sweep that starts or ends inside a CJK character
 or an emoji takes the whole glyph, and the highlight covers both of its cells.
+
+**The message box answers the same sweep**, and so does the box at the foot of every
+place. The one difference is that a selection there is live — you can type over it —
+so it stays lit until you move the caret rather than fading with the status line. See
+"how do I select text in the message box" above.
 
 The sweep is drawn in **the same background copy mode's selection wears** — the strongest
 of the three this screen draws, a shade above the one under the pointer. It is the same

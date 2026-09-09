@@ -763,6 +763,21 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// meant it to.
 		{"select a word with the mouse", "keys"},
 		{"why did copying take the whole line instead of the words I dragged over", "keys"},
+		// Selecting inside the BOX, and taking back what was typed there. The
+		// owner asked for both in one sentence — "i am unable to select text
+		// with highlight from input bar in all places … maybe even ctrl+z as
+		// well like undo or redo like shift z" — and the words people reach for
+		// are "input bar", "highlight", "undo", and the chord itself.
+		{"how do I select text in the message box", "keys"},
+		{"I cannot highlight text in the input bar", "keys"},
+		{"can I drag to select what I typed in the input box", "keys"},
+		{"undo what I typed", "keys"},
+		{"ctrl+z", "keys"},
+		{"how do I redo in the message box", "keys"},
+		{"why does ctrl+shift+z just undo again", "keys"},
+		{"does ctrl+z suspend aforge", "keys"},
+		{"I deleted too much with ctrl+u can I get it back", "keys"},
+		{"select all the text in the box", "keys"},
 		{"can I turn off the mouse", "keys"},
 		{"can you look at a screenshot I paste", "keys"},
 		{"do I see my own screenshot in the conversation", "keys"},

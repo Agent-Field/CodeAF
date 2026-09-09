@@ -1138,6 +1138,11 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 	if editorMotion(&ex.box, msg.String()) {
 		return nil
 	}
+	// AND ctrl+z TAKES BACK WHAT WAS TYPED, in every box on this surface and not
+	// only in the message one (editundo.go).
+	if editorUndo(&ex.box, msg.String()) {
+		return nil
+	}
 	if editorWordKill(&ex.box, msg.String()) {
 		return nil
 	}

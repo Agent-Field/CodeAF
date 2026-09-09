@@ -36,7 +36,7 @@ func (a *app) draftPress(x, y int) bool {
 	if !ok || mark.kind != chromeDraft {
 		return false
 	}
-	width, height := a.size()
+	width, _ := a.size()
 	boxWidth := width - len(inputPad)
 	// The tray is the block's first row when there is one (inputBlock). A click
 	// on it is the chips' own business and [app.chipPress] has already had its
@@ -53,6 +53,25 @@ func (a *app) draftPress(x, y int) bool {
 	if len(a.input.value) == 0 {
 		return true
 	}
+	a.input.cursor = a.draftOffsetIn(at, x)
+	if a.openPasteAt(a.input.cursor) {
+		return true
+	}
+	// AND THE PRESS ARMS THE SWEEP (boxselect.go). It is armed here rather than
+	// where the body's drag parks because the box has already taken the press
+	// and returned — which is exactly why a sweep over a draft used to reach
+	// nothing at all.
+	a.boxPressed(&a.input, false, x, y)
+	return true
+}
+
+// draftOffsetIn is the rune offset a pointer names on row `at` of the message
+// box's own rows, at column x of the frame. It is the arithmetic the press and
+// the sweep share, so the two can never disagree about which letter is under
+// the pointer.
+func (a *app) draftOffsetIn(at, x int) int {
+	width, height := a.size()
+	boxWidth := width - len(inputPad)
 	// The same numbers inputBlock laid the block out with, derived the same way.
 	rows := min(draftRows, height-2)
 	if rows < 1 {
@@ -63,13 +82,7 @@ func (a *app) draftPress(x, y int) bool {
 	if room < 4 {
 		room = 4
 	}
-	col := x - len(inputPad) - head
-	a.input.cursor = draftClickIndex(a.input.value, a.input.cursor, at, col, room, rows)
-	if a.openPasteAt(a.input.cursor) {
-		return true
-	}
-	a.touch()
-	return true
+	return draftClickIndex(a.input.value, a.input.cursor, at, x-len(inputPad)-head, room, rows)
 }
 
 // draftClickIndex is the pure inverse of the draft's layout: which rune offset
