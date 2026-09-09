@@ -135,6 +135,74 @@ all four, each with its own furrow artifact staged:
 The budget is 54,600,000, two percent above darwin/amd64, the same headroom
 every figure in this section was given, now over a smaller binary.
 
+It was reset a fifth time on 2026-09-09, and this one is drift and not a
+decision: nobody bought anything with these bytes on purpose, and nobody could
+clear the red from inside their own change. #624 was the last merge that weighed
+in under the cap. By `dev@8d8cd6c8` the binary had grown 1,908,736 bytes and
+crossed a number nobody moved, so `make check` — the end-of-change ritual
+CLAUDE.md sends everybody to — stopped at its last step for every change on
+`dev`, whatever that change touched (#724). linux/amd64, Go 1.26.5, each figure
+a `make build`:
+
+| merged | bytes | added |
+| --- | --- | --- |
+| #624, the last merge under the cap | 53,633,289 | |
+| #653 | 55,234,825 | 1,601,536 |
+| #658 | 55,271,689 | 36,864 |
+| #673 | 55,382,281 | 110,592 |
+| #689 | 55,501,065 | 118,784 |
+| #721 (`8d8cd6c8`) | 55,542,025 | 40,960 |
+
+**#653 is 84% of it and crossed the cap by itself** — a wave of conversation
+navigation, context browsing and task delivery. The rest is the ordinary
+accretion of twenty-odd merges, none of them over 120 KB.
+
+The first of the two honest moves above was looked for and is not there. The
+range added no dependency: the only `go.mod` change moves
+`github.com/rivo/uniseg` from indirect to direct and it was already linked. The
+one embed that grew is `internal/manual/chat.pack.gz`, 707,105 to 782,330, which
+is the manual learning about the features that landed — already packed, already
+gzipped, and required by the manual law in CLAUDE.md. What is left is compiled
+first-party code, which the two binaries say section by section:
+
+| section | bytes |
+| --- | --- |
+| `.text` | +1,030,464 |
+| `.gopclntab` | +592,718 |
+| `.rodata` | +198,176 |
+| `.noptrdata` | +75,200 |
+| everything else | under 7,000 each |
+
+and which the source says the same way: +26,203 net non-test lines in
+`internal/tui3`, +13,011 in `internal/session`, +2,509 in `internal/remote`,
++1,210 in `cmd/aforge`. `.gopclntab` grows with `.text` on its own and is what
+`-s -w` already leaves; there is nothing there for a packer to take back.
+
+The dependencies were weighed too, since dropping one is the other half of that
+first move. Ranked by the file bytes their symbols occupy in `bin/aforge`, the
+three that matter are `modernc.org/sqlite` at 1,807,889, `github.com/dop251/goja`
+at 1,791,194 and `golang.org/x/text` at 1,538,848 — and `x/text/collate` is
+1,267,813 of that last figure, pulled in by goja rather than by anything here.
+Each sits behind a shipped capability: the store, and the JavaScript a saved
+program is written in (`internal/jsrun`). Dropping either is a product decision
+and not a size fix, so it is not this change's to make, and taking all of goja
+and its collation tables would still not put darwin/amd64 under the old cap.
+
+The same tree built for all four platforms, each with its own furrow artifact
+staged:
+
+| platform | bytes |
+| --- | --- |
+| linux/arm64 | 51,052,706 |
+| darwin/arm64 | 52,082,226 |
+| linux/amd64 | 55,542,025 |
+| darwin/amd64 | 56,360,432 |
+
+The budget is 57,488,000, two percent above darwin/amd64, the same headroom
+every figure in this section was given. A reset this size that buys nothing is
+worth saying out loud rather than rounding away: the ratchet did its job, which
+was to make a year of quiet accretion arrive as one line somebody has to sign.
+
 ## Adaptive run shutdown grace
 
 `Agent.Close` cancels adaptive runs and their name calls, then gives all accepted
