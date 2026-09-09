@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: The box at home is a draft, and the rule above it says which conversation
-pr: 740
+pr: 747
 surface: [chat]
 invalidates:
   - "`enter` at home opened a conversation in this window's own workspace and ignored the row under the cursor. It opens one at the TARGET — the folder on the rule above the box, which follows the cursor's row until `alt+w` pins it."
