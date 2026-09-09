@@ -36,3 +36,11 @@ Completion evidence distinguishes attempts from success and retains the existing
 digest budget. Completion comparisons no longer share the sketch's 300-token
 generation ceiling; the existing wall deadline still applies. Real-reader
 positive and negative probes accompany the full organization journeys.
+
+The completion follow-up also distinguishes full paths in person-facing file
+references from workspace-relative file-tool arguments. The tools already
+resolve relative paths; the old blanket full-path instruction encouraged
+manual copying of long roots, and live working-day reports landed in mistyped
+sibling folders. Explicit supplied/tool-returned paths and approval boundaries
+are unchanged. The conflict fixture compares file identity, accepting symlink
+aliases while continuing to reject a different or missing report.
