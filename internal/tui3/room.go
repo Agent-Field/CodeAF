@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // THE ROOM: A TASK IS A PLACE, AND YOU CAN GO THERE.
@@ -2785,6 +2786,10 @@ func (a *app) roomKinRows(width int) []string {
 	if a.roomOrganized() {
 		return nil
 	}
+	// FAMILY DETAILS BELONG TO THE TASK COLUMN. The header spans the window,
+	// but its child summary must stop where the adjacent roster begins. Both
+	// frame drawing and height accounting use this same width decision.
+	width = min(width, a.bodyWidth())
 	// A RUN'S PAGE IS ALREADY ITS OWN FAMILY TREE (roomorch.go): the graph is
 	// drawn there, node by node, with every prerequisite an edge — so a sentence
 	// about kin would be the picture read out loud beside the picture.
@@ -2924,11 +2929,11 @@ func (a *app) roomNode() *taskNode {
 //
 // It is the roster's own cell ([app.taskStateMark]) and not a second table. The
 // copy that used to live here had drifted: it knew the refusal mark but neither
-// the stop's ⊘ nor the halt's !, so a node a person stopped wore a failure's
-// cross on its own page and the roster's ⊘ one keypress away.
+// the stop's mark nor the halt's `!`, so a node a person stopped wore a
+// failure's cross on its own page and the stop's mark one keypress away.
 func (a *app) roomMark(node *taskNode) string {
 	if node == nil {
-		return a.linearMark(glyphQueued, glyphQueuedASCII)
+		return a.icon(tokens.GQueued)
 	}
 	return a.taskStateMark(node)
 }
@@ -3444,13 +3449,9 @@ func (a *app) roomBlankWord() string {
 // that has nothing of its own to draw yet: the difference between a task that
 // has not started writing and a task nothing is happening to.
 //
-// IT NEVER REPEATS THE HEADER. The header spends its one word on the state
-// ([app.roomStateWord]) and collapses two of these to a single word on the way —
-// a paced node reads `waiting` up there and a node closing a gap reads
-// `finishing` — so what is drawn here is the SENTENCE underneath those words,
-// which is the thing the header had no room for. A phase the header prints
-// verbatim (`node.doing`) is deliberately absent: the same string twice, three
-// rows apart, is the one row on the page spent saying nothing.
+// A WAIT USES THE ROSTER'S COMPLETE EXPLANATION. Reasons can be fragments
+// such as "its parts", so dropping the state leaves a sentence without a verb.
+// Named phases already printed verbatim by the header remain absent here.
 //
 // A LANDED PAGE SAYS NONE OF IT. These three fields are reports of RIGHT NOW and
 // the engine clears them at the landing (task.go); drawing a stale one over
@@ -3461,7 +3462,7 @@ func (a *app) roomStartingSay(node *taskNode) string {
 	}
 	switch {
 	case strings.TrimSpace(node.waiting) != "":
-		return strings.TrimSpace(node.waiting)
+		return a.taskStatus(node).RowWord()
 	case strings.TrimSpace(node.mending) != "":
 		return strings.TrimSpace(node.mending)
 	case strings.TrimSpace(node.tool) != "":

@@ -79,14 +79,18 @@ func TestTaskNoteSaysWhichOfTheThreeItIs(t *testing.T) {
 		what: "a landing nobody could judge",
 		notice: TaskNotice{
 			ID: 9, Title: "Collect sources", State: TaskUnverified,
-			Report: needsLookLead + checkerAskedTwice,
+			Report: withYourCallLead(TaskFacts{}, checkerAskedTwice),
 		},
 		// NOT "FAILED", and it says what is waiting on whom: the state exists
 		// because "the work is wrong" and "nobody could tell me whether the work
 		// is wrong" are different news.
+		// AND THE QUESTION IS ON THE HEAD ONCE. The report opens with it, the
+		// head writes it, and the note takes it off the report rather than
+		// saying it twice — so what is left under the head is the rest of the
+		// checker's own sentence (task_run.go's [taskNote]).
 		want: []string{
 			"task 9 your call: Collect sources · nobody could check it",
-			checkerAskedTwice,
+			strings.TrimPrefix(checkerAskedTwice, yourCallLead(TaskFacts{})),
 			"it is neither done nor failed",
 			"tasks id 9 resolve accept|reaudit|refute",
 		},

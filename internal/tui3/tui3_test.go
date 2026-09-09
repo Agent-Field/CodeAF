@@ -612,6 +612,16 @@ func newTestApp(agent Agent) *app {
 	})
 	a.width, a.height = 60, 20
 	a.pal = newPalette(tokens.ANSI256, false)
+	// AND IT PINS THE GLYPH REPERTOIRE, for the fifth time for the same reason.
+	// [tokens.DetectGlyphSet] turns the nerd-font tier ON for any terminal it
+	// cannot rule out, and the pinned TERM above is one of those — so every mark
+	// in the suite would be a private-use codepoint, invisible in the frames
+	// these tests log and impossible to write down in an assertion. The plain
+	// floor is what the suite asserts against; the tests that are ABOUT the tier
+	// set [app.actionAuto] themselves and call [app.settleIcons]
+	// (actionicon_test.go).
+	a.actionAuto = tokens.Plain
+	a.settleIcons()
 	// AND IT PINS THE TASK COLUMN, for the fourth time for the same reason.
 	// [newApp] reads the profile to decide whether the column stands (task.go's
 	// ui.task_column), so a developer who pressed ctrl+g in their own aforge would
@@ -932,7 +942,7 @@ func TestAFailedToolIsMarkedAndSaysWhy(t *testing.T) {
 	runTurn(t, a, agent, "build it")
 
 	got := plain(frame(a))
-	if !strings.Contains(got, "✗") || !strings.Contains(got, "exit 2") {
+	if !strings.Contains(got, glyphBad) || !strings.Contains(got, "exit 2") {
 		t.Fatalf("a failed tool has to say so:\n%s", got)
 	}
 }

@@ -36,7 +36,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -1868,11 +1867,11 @@ func tasksMiddle(entry session.TaskIndexEntry) string {
 // tasksGlyph is one roster row's cell and the hue it is said in, and IT IS THE
 // COLUMN'S OWN TABLE ASKED, not a second one (tasktier.go).
 //
-// This page used to keep a vocabulary of its own — ○ for queued where the rail
-// drew ◌, ◐ for working where the rail drew a spinner, ✕ where the rail drew ✗ —
-// so a person who had learned the marks in the column beside their conversation
-// had to learn them again one keypress away. There are five cells on this
-// surface and this page draws the same five.
+// This page used to keep a vocabulary of its own — one circle for queued where
+// the rail drew another, one cross where the rail drew a different one — so a
+// person who had learned the marks in the column beside their conversation had
+// to learn them again one keypress away. There is one vocabulary now
+// (internal/tui2/tokens) and this page draws out of it.
 //
 // A ROW NOTHING IS RUNNING is the one thing the reading cannot see and this page
 // can: the record is a file and the file cannot correct itself, so a row that
@@ -1886,23 +1885,13 @@ func tasksGlyph(item tasksItem, pal palette) (string, func(string) string) {
 		}
 		return glyphIdle, pal.dim
 	}
-	glyph, ascii := tierGlyph(status)
-	// AND `▸` IS ALREADY SPENT ON THIS PAGE. The tier's cell for work in flight is
-	// the same character the family column shuts a fold with ([tasksFoldShut],
-	// tokens.GlyphCollapsed), and a page that drew it in both columns would be
-	// asking a person to tell "there is more under this" from "this is working" by
-	// position alone. The rail escapes it because a live row there ANIMATES — the
-	// spinner is `▸` moving (tasktier.go's [app.tierMark]) — and this page is
-	// redrawn only when something changes, so it has no spinner to spend. It keeps
-	// the half-filled circle, which is the one cell on this surface that means
-	// nothing else.
-	if glyph == glyphRunning {
-		return tokens.GlyphWorking, tierInk(pal, status)
-	}
-	if pal.ascii {
-		glyph = ascii
-	}
-	return glyph, tierInk(pal, status)
+	// AND THE FOLD MARK IS NO LONGER THE WORKING MARK. This page shuts a family
+	// with `▸` ([tasksFoldShut], tokens.GlyphCollapsed), and while the tier drew
+	// work in flight with the same character a person had to tell "there is more
+	// under this" from "this is working" by position alone. The vocabulary's
+	// working mark is the half-filled circle, which means nothing else on this
+	// surface, and the rail draws it too — the two pages agree now.
+	return tierGlyph(pal, status), tierInk(pal, status)
 }
 
 // step keeps the four time keys in one grammar shared with spend.

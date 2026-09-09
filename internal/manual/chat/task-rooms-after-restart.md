@@ -154,9 +154,12 @@ conversation to make a decision there.
 
 ## I handed a review to the chat — why does it still need me?
 
-**The landing card does not say `awaiting review` any more, and there is no such state.**
-A task handed to aforge is still a task that says `your call`; what changes is who is
-holding the question, and the card says so rather than wearing a fourth word for it.
+**`awaiting review` is gone from every row, and there is no such state.** The card said
+it, then the rail, the roster, the record page and this room's own header said it too —
+four surfaces wearing a fourth word for one reading. A task handed to aforge is still a
+task that says `your call`; what changes is **who is holding the question**, and the card
+says that rather than renaming the state. The room's header now reads the reading's own
+sentence, `your call · nobody could check it`, whoever is deciding it.
 
 After you press `[d] let aforge decide this one` — or when `task.settle` is `auto` — the
 card's reason row reads

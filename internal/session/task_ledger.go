@@ -174,8 +174,8 @@ func (a *Agent) landFinished(ctx context.Context, node *TaskNode, tree taskTree,
 	// was when the node started — so it says nothing at all about a file another
 	// window has landed in since. That is the one question left before a merge,
 	// and taskground.go is where it is asked.
-	if shift := a.groundShift(node, changed); shift != "" {
-		return a.landShifted(node, tree, changed, withReport(head, tail), shift, log)
+	if shift, moved := a.groundShift(node, changed); shift != "" {
+		return a.landShifted(node, tree, changed, moved, withReport(head, tail), shift, log)
 	}
 	landed, merge, detail, _ := landHome(node, tree, changed)
 	fmt.Fprintf(log, "merge: %s %s%s\n", merge, detail, note)
@@ -217,4 +217,17 @@ func (n *TaskNode) clashesWith(files []string) {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	n.clashing = append([]string(nil), files...)
+}
+
+// clashes reads that list back, under the same lock, for the landing that is
+// about to write the question into its report ([yourCallLead]). A copy is
+// handed out rather than the slice itself, because the caller is outside the
+// lock the moment this returns.
+func (n *TaskNode) clashes() []string {
+	if n == nil || n.graph == nil {
+		return nil
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return append([]string(nil), n.clashing...)
 }

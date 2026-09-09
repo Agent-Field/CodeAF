@@ -37,7 +37,7 @@ func TestAStoppedTaskIsNeverDrawnAsAFailure(t *testing.T) {
 	if glyph := plain(a.homeTaskGlyph(entry, row)); glyph == plain(a.pal.badGlyph()) {
 		t.Errorf("home draws a failure's cross at a stop: %q", glyph)
 	}
-	if glyph := taskStatusGlyph(entry, false); glyph != glyphStopped {
+	if glyph := taskStatusGlyph(entry, a.pal); glyph != glyphStopped {
 		t.Errorf("the mention menu draws %q at a stop, want %q", glyph, glyphStopped)
 	}
 

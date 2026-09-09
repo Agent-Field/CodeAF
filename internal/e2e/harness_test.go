@@ -124,6 +124,23 @@ func newWorld(t *testing.T) *world {
 		}
 	}
 
+	// AND THE MARKS ARE PINNED TO THE PLAIN TIER. A default terminal now draws
+	// the vocabulary's Font Awesome icons (internal/tui2/tokens' nerd-font
+	// tier, which tokens.DetectGlyphSet turns on for anything that is not a
+	// Linux console, Apple Terminal or a CJK locale — and tmux's
+	// TERM=xterm-256color is none of those). Those are private-use codepoints:
+	// a capture-pane of one is a byte nobody reading this suite could recognize
+	// and no needle could honestly pin. The plain floor is what this suite
+	// asserts against, and a person can see it by choosing `plain` in the same
+	// Display row.
+	if row, found := registry.Row(config.KeyIcons); found {
+		if err := row.Apply(config.IconsPlain); err != nil {
+			t.Fatalf("write %s: %v", config.KeyIcons, err)
+		}
+	} else {
+		t.Fatalf("the settings registry has no row %q", config.KeyIcons)
+	}
+
 	settings, err := config.Load()
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)

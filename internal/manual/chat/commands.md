@@ -985,7 +985,7 @@ refuses.
 There is no argument form. There are three other ways in: **`alt+1`**, home being the first
 of seven places; **`space` twice** on an empty box; and **`tab`** from any other place. Projects are dim
 headings, one line per conversation under each: a glyph (`?` waiting on you, `◐` running,
-`◌` left unfinished, `○` at rest), the name, what it has going on, and how long since you
+`✕` left unfinished, `○` at rest), the name, what it has going on, and how long since you
 spoke in it. A conversation stopped on a question sorts to the top of its project and the
 right half shows the line it is stopped on. Quiet
 conversations past the first four per project collapse to `▸ 3 more, quiet since 2d`. The

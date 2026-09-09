@@ -1909,7 +1909,7 @@ func (a *app) taskHead(card *taskCard, width int, sel bool) string {
 	// and both are true of this row: somebody is being asked something, and the
 	// thing being asked about is THAT one — the same mark that will be on the
 	// rail in four seconds and on the card that lands in eleven minutes.
-	head := corner + " " + glyphAsk + " "
+	head := corner + " " + a.icon(tokens.GNeedsHuman) + " "
 	mark := a.taskMarkSel(card.ident, sel) + " "
 	title := fit(card.name, width-ansi.StringWidth(head)-3)
 	line := paint(head) + mark
@@ -1943,7 +1943,7 @@ func (a *app) taskFormingRows(card *taskCard, width int, sel bool) []string {
 	room := width - ansi.StringWidth(a.blockStem())
 	mark := tokens.Spinner(a.paints / spinnerStep)
 	if a.linear {
-		mark = glyphRunASCII
+		mark = a.icon(tokens.GWorking)
 	}
 	line := taskFormingWord
 	if word := countUpWord(a.now().Sub(card.born)); word != "" {
@@ -1971,7 +1971,7 @@ func (a *app) taskFormingHead(card *taskCard, width int, sel bool) string {
 		corner = taskCornerASCII
 	}
 	head := corner + " "
-	mark := a.pal.dim(a.linearMark(glyphQueued, glyphQueuedASCII)) + " "
+	mark := a.pal.dim(a.icon(tokens.GQueued)) + " "
 	title := fit(firstNonEmpty(card.name, taskFormingName), width-ansi.StringWidth(head)-3)
 	line := a.pal.dim(head) + mark
 	if sel {
@@ -5373,7 +5373,7 @@ func (a *app) railWaiting(node *taskNode, width int) []string {
 	if node.waiting == "" {
 		return nil
 	}
-	line := fit(taskHeldWord+railSep+node.waiting, width)
+	line := fit(a.taskStatus(node).RowWord(), width)
 	if line == "" {
 		return nil
 	}
@@ -5563,13 +5563,6 @@ func (a *app) taskStateMark(node *taskNode) string {
 func (a *app) taskStateInk(node *taskNode) func(string) string {
 	return tierInk(a.pal, a.taskStatus(node))
 }
-
-// glyphDone marks a node that landed. See [app.railGlyph] for why this surface
-// has one at all.
-const (
-	glyphDone      = "✓"
-	glyphDoneASCII = "+"
-)
 
 // railJoin lays one conversation row beside the rail's column for that row. It
 // is the ONLY place the two columns meet, and it pads through

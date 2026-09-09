@@ -3,6 +3,7 @@ package session
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -303,7 +304,7 @@ func TestTheReasonReachesTheModelUnderneathTheSettlePolicy(t *testing.T) {
 		ID:     12,
 		Title:  "port the parser",
 		State:  TaskUnverified,
-		Report: needsLookLead + reason + "\nThe parser now reads the new header.",
+		Report: yourCallLead(TaskFacts{}) + reason + "\nThe parser now reads the new header.",
 	}
 	for _, settle := range []TaskSettle{TaskSettleAsk, TaskSettleAuto} {
 		note := taskNote(notice, "", settle, landingAddress{person: true})
@@ -363,9 +364,15 @@ func TestALandingAsksTheProjectsOwnFilesAndDropsItsOwnFamily(t *testing.T) {
 		PresenceTask{ID: "9", Title: "the manual pass", State: string(TaskRunning),
 			Files: []string{"internal/tui3/rail.go"}})
 
-	reason := agent.groundShift(parent, []string{
+	reason, moved := agent.groundShift(parent, []string{
 		"internal/tui3/home.go", "internal/tui3/task.go", "internal/tui3/rail.go",
 	})
+	// AND THE FILES COME BACK BESIDE THE SENTENCE, over both sources at once,
+	// because the landing that follows names them on the row it asks its question
+	// on (task_status.go's [taskShiftReason]).
+	if want := []string{"internal/tui3/home.go", "internal/tui3/rail.go"}; !slices.Equal(moved, want) {
+		t.Fatalf("the moved files are %v, not %v", moved, want)
+	}
 	if !strings.Contains(reason, `"rail permanence" changed internal/tui3/home.go while this ran`) {
 		t.Fatalf("the other window's landing is missing:\n%s", reason)
 	}
@@ -394,8 +401,8 @@ func TestALandingNobodyIsNearAsksAndHearsNothing(t *testing.T) {
 	appendTaskIndex(filepath.Join(bucket, taskIndexName),
 		landedRow("4", "theirs", "rail permanence", time.Now().Add(-20*time.Minute), "internal/tui3/home.go"))
 
-	if reason := agent.groundShift(node, []string{"internal/parse/row.go"}); reason != "" {
-		t.Fatalf("a landing nobody was near was flagged: %s", reason)
+	if reason, moved := agent.groundShift(node, []string{"internal/parse/row.go"}); reason != "" || len(moved) > 0 {
+		t.Fatalf("a landing nobody was near was flagged: %s %v", reason, moved)
 	}
 }
 
@@ -403,8 +410,8 @@ func TestALandingNobodyIsNearAsksAndHearsNothing(t *testing.T) {
 // project's index keeps as the row's outcome, so the reason has to be in it.
 func TestTheOutcomeALandingKeepsIsTheReasonItself(t *testing.T) {
 	reason := `"rail permanence" changed internal/tui3/home.go while this ran`
-	report := withReport(needsLookLead+reason, "The parser now reads the new header.")
-	if got := taskOutcome(report); got != needsLookLead+reason {
+	report := withReport(yourCallLead(TaskFacts{})+reason, "The parser now reads the new header.")
+	if got := taskOutcome(report); got != yourCallLead(TaskFacts{})+reason {
 		t.Fatalf("the row's outcome is %q, want the reason", got)
 	}
 }

@@ -75,6 +75,9 @@ const tui3Pkg = "internal/tui3"
 // order — the suite's own file header states the law and this table is where it
 // is kept. Nothing here was remembered.
 var tuiWords = map[string]tuiWord{
+	"roomKinSpawnedWord": {screen: "handed out: ", why: "the waiting parent's child summary is visible"},
+	"roomBackWord":       {screen: "esc/← main", why: "the task room offers its way back"},
+
 	// ── the bounded stop ─────────────────────────────────────────────────────
 	"stoppingWord": {
 		screen: "stopping",
@@ -460,8 +463,12 @@ var tuiWords = map[string]tuiWord{
 	},
 	"unverifiedGlyph": {
 		screen: "?",
-		why: "the one cell that asks the question on the roster row and on the landing card (internal/tui3's " +
-			"glyphAsk); it is one character, so the frame it is read in is held together by the sentences beside it",
+		why: "the one cell that asks the question on the roster row and on the landing card — the shared " +
+			"vocabulary's tokens.GNeedsHuman slot, drawn through tasktier.go's tierSlot. It is the PLAIN " +
+			"tier's spelling, which is what this suite sees: the throwaway profile pins `plain` in the " +
+			"Display row (harness_test.go), because a patched terminal draws the private-use icon and a " +
+			"capture-pane of one is not a thing a needle could honestly assert. It is one character, so " +
+			"the frame it is read in is held together by the sentences beside it",
 	},
 
 	// ── the front door, on a machine that has never run aforge ───────────────

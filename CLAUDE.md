@@ -174,13 +174,22 @@ Violations get rejected in review, and some are pinned by tests.
   do not jump sideways. `/status` and `/cost` drop the line.)
 - **No machinery vocabulary in anything a person reads.** `auditor`, `verdict`,
   `verified`, `refuted` are banned. Work is *running*, *finishing*, *done*, *incomplete*,
-  or *needs your look*.
+  or *your call*. (`needs your look`, `awaiting review` and `unverified` were the old
+  spellings of that last one and are deleted — docs/design/task-states/DESIGN.md.)
 - **A capability that cannot work is absent, not broken.** A tool with nothing behind it
   is left off the belt entirely, so the model does not have the verb — rather than
   present and failing every time it is called. `memoryTools` and the remote harness
   designer are both written this way.
 - **Comments are full-sentence prose** stating the *why*, with ALL-CAPS for a stated law.
   Match the surrounding density; this codebase comments heavily and deliberately.
+- **Every icon comes from the vocabulary, through its one door.** `internal/tui2/tokens`
+  holds every mark a person sees — task states, the step gutter's action families, chrome —
+  each a slot with three spellings (a Font Awesome 4 icon, the geometric floor, one ASCII
+  character for a screen reader), resolved by `tokens.GlyphSet.Glyph(id)` and reached from
+  the surface through `palette.glyph` / `app.icon`. A mark spelled as a literal draws the
+  plain floor forever, because a literal cannot know which repertoire the terminal is on.
+  `internal/tui3/iconvocab_test.go` fails the build on one, on every pull request;
+  [docs/design/icons/DESIGN.md](docs/design/icons/DESIGN.md) is the law and the table.
 - **One source of truth.** A number that appears in two places will drift — interpolate it
   from the constant. `propose_task`'s schema said the step default was 40 while the
   executor applied 200, and every model that read it reasoned from the wrong figure.

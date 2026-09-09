@@ -42,6 +42,7 @@ var vocabulary = []GlyphBinding{
 	{
 		ID: GQueued, Name: "Queued", Meaning: "queued",
 		Plain: GlyphQueued, NerdFont: "\uF10C", NFName: "nf-fa-circle_o",
+		ASCII:     "o",
 		UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
 	},
 	{
@@ -50,23 +51,39 @@ var vocabulary = []GlyphBinding{
 		// the same one, which is what makes the swap invisible as a change of
 		// meaning and visible only as a change of typeface.
 		Plain: GlyphWorking, NerdFont: "\uF042", NFName: "nf-fa-adjust",
+		ASCII:     "*",
 		UsualTint: Cyan, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
 	},
 	{
 		ID: GSettled, Name: "Settled", Meaning: "settled",
 		Plain: GlyphSettled, NerdFont: "\uF00C", NFName: "nf-fa-check",
+		ASCII:     "+",
 		UsualTint: Green, NFAmbiguous: true, AutoUpgrade: true,
 	},
 	{
 		ID: GFailed, Name: "Failed", Meaning: "failed",
 		Plain: GlyphFailed, NerdFont: "\uF00D", NFName: "nf-fa-times",
+		ASCII:     "x",
 		UsualTint: Coral, NFAmbiguous: true, AutoUpgrade: true,
+	},
+	{
+		ID: GStopped, Name: "Stopped", Meaning: "stopped by the person",
+		// THE ICON IS THE TRANSPORT STOP and the plain side is the filled
+		// square that transport bar has always been drawn as, so the two tiers
+		// are the same shape at two weights — which is the whole test of a
+		// binding. nf-fa-stop sits one address along from nf-fa-pause, which
+		// this table already ships and which the gate has already verified, so
+		// the pair a person reads as "held" and "ended" comes from one family.
+		Plain: GlyphStopped, NerdFont: "\uF04D", NFName: "nf-fa-stop",
+		ASCII:     "/",
+		UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
 	},
 	{
 		ID: GPaused, Name: "Paused", Meaning: "paused",
 		// ASCII plain side: "=" is a character a user types, so this slot is
 		// adopted explicitly and never rewritten out from under a line.
 		Plain: GlyphPaused, NerdFont: "\uF04C", NFName: "nf-fa-pause",
+		ASCII:     "=",
 		UsualTint: TextTertiary, NFAmbiguous: true,
 	},
 
@@ -87,11 +104,13 @@ var vocabulary = []GlyphBinding{
 		// The plain side is a bare "?", a stroke and not a blob, so the ring is
 		// also the side that inherits its ink weight.
 		Plain: GlyphNeedsHuman, NerdFont: "\uF29C", NFName: "nf-fa-question_circle_o",
+		ASCII:     "?",
 		UsualTint: Amber, NFAmbiguous: true,
 	},
 	{
 		ID: GWaitsOn, Name: "WaitsOn", Meaning: "waiting on a sibling (waits-on edge)",
 		Plain: GlyphWaitsOn, NerdFont: "\uF024", NFName: "nf-fa-flag",
+		ASCII:     "!",
 		UsualTint: Amber, NFAmbiguous: true, AutoUpgrade: true,
 	},
 
@@ -122,6 +141,7 @@ var vocabulary = []GlyphBinding{
 	{
 		ID: GTruncated, Name: "Truncated", Meaning: "clickable overflow — there is more, ask for it",
 		Plain: GlyphTruncated, NerdFont: "\uF141", NFName: "nf-fa-ellipsis_h",
+		ASCII:     ">",
 		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
 	},
 	{
@@ -184,6 +204,7 @@ var vocabulary = []GlyphBinding{
 	{
 		ID: GThought, Name: "Thought", Meaning: "the model's own words between calls",
 		Plain: GlyphThought, NerdFont: "\uF069", NFName: "nf-fa-asterisk",
+		ASCII:     "\"",
 		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
 	},
 	{
@@ -193,16 +214,103 @@ var vocabulary = []GlyphBinding{
 		// (GSpend), so this slot is adopted explicitly by the one renderer
 		// that owns it and is never rewritten out from under a line.
 		Plain: GlyphShell, NerdFont: "\uF120", NFName: "nf-fa-terminal",
+		ASCII:     "$",
 		UsualTint: Cyan, NFAmbiguous: true,
 	},
 	{
 		ID: GSearch, Name: "Search", Meaning: "a call that went out to the world",
 		Plain: GlyphSearch, NerdFont: "\uF002", NFName: "nf-fa-search",
+		ASCII:     "?",
 		UsualTint: Cyan, NFAmbiguous: true, AutoUpgrade: true,
 	},
 	{
 		ID: GWrite, Name: "Write", Meaning: "a call that wrote something down",
 		Plain: GlyphWrite, NerdFont: "\uF040", NFName: "nf-fa-pencil",
+		ASCII:     "*",
+		UsualTint: Cyan, NFAmbiguous: true, AutoUpgrade: true,
+	},
+
+	// -- the action families (internal/tui3's step gutter) -------------------
+	//
+	// One mark per FAMILY of work, and every one of them a REFUSAL to say how
+	// it went: the gutter is a label, `test` draws a flask and never a
+	// checkmark, and no slot here carries a verdict. Four families are not in
+	// this block because the table already owns their slot — search is
+	// [GSearch], editing is [GWrite], a command is [GShell], and a thing that
+	// was not there reuses the plus.
+	//
+	// The addresses are Font Awesome 4.7, which is B.2's rule: those codepoints
+	// have sat still since Nerd Fonts v1 and are in every patched font,
+	// including a Powerline-only patch.
+	{
+		ID: GActionRead, Name: "ActionRead", Meaning: "a call that read something",
+		Plain: GlyphActionRead, NerdFont: "\uF15C", NFName: "nf-fa-file_text_o",
+		ASCII:     "<",
+		UsualTint: Cyan, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
+	},
+	{
+		ID: GActionCreate, Name: "ActionCreate", Meaning: "a call that made something that was not there",
+		// ASCII plain side, and it is the diff-add byte under another slot's
+		// name: a painted cell that is exactly "+" is a diffstat everywhere
+		// else on the surface, so this one is adopted explicitly and never
+		// rewritten out from under a line.
+		Plain: GlyphActionCreate, NerdFont: "\uF067", NFName: "nf-fa-plus",
+		ASCII:     "+",
+		UsualTint: Cyan, NFAmbiguous: true,
+	},
+	{
+		ID: GActionTest, Name: "ActionTest", Meaning: "a call that checked something",
+		Plain: GlyphActionTest, NerdFont: "\uF0C3", NFName: "nf-fa-flask",
+		ASCII:     "!",
+		UsualTint: Cyan, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
+	},
+	{
+		ID: GActionBrowse, Name: "ActionBrowse", Meaning: "a call that went out to a page somewhere else",
+		Plain: GlyphActionBrowse, NerdFont: "\uF0AC", NFName: "nf-fa-globe",
+		ASCII:     "^",
+		UsualTint: Cyan, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
+	},
+	{
+		ID: GActionTransfer, Name: "ActionTransfer", Meaning: "a call that moved bytes both ways",
+		Plain: GlyphActionTransfer, NerdFont: "\uF0EC", NFName: "nf-fa-exchange",
+		ASCII:     "&",
+		UsualTint: Cyan, NFAmbiguous: true, AutoUpgrade: true,
+	},
+	{
+		ID: GActionCommunicate, Name: "ActionCommunicate", Meaning: "a call that said something to a person",
+		// NOT AUTO-UPGRADED, and the carve-out is 12.7 D.3's rule read for what
+		// it means rather than for the byte it names: the guillemet is
+		// PUNCTUATION half of Europe quotes with, so a painted cell that is
+		// exactly "»" is plausible content in the same way a bare "?" is. The
+		// one surface that draws this family asks for the slot by name.
+		Plain: GlyphActionCommunicate, NerdFont: "\uF075", NFName: "nf-fa-comment",
+		ASCII:     "@",
+		UsualTint: Cyan, NFAmbiguous: true,
+	},
+	{
+		ID: GActionCoordinate, Name: "ActionCoordinate", Meaning: "a call that handed work out",
+		Plain: GlyphActionCoordinate, NerdFont: "\uF126", NFName: "nf-fa-code_fork",
+		ASCII:     "|",
+		UsualTint: Cyan, NFAmbiguous: true, AutoUpgrade: true,
+	},
+	{
+		ID: GActionPlan, Name: "ActionPlan", Meaning: "a call that wrote a plan down",
+		Plain: GlyphActionPlan, NerdFont: "\uF0AE", NFName: "nf-fa-tasks",
+		ASCII:     "#",
+		UsualTint: Cyan, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
+	},
+	{
+		ID: GActionWait, Name: "ActionWait", Meaning: "a call that waited",
+		// A quarter of a clock face, STILL. The hourglasses are banned — two
+		// cells, and they lie about liveness on a row that is not moving.
+		Plain: GlyphActionWait, NerdFont: "\uF017", NFName: "nf-fa-clock_o",
+		ASCII:     ",",
+		UsualTint: Cyan, NFAmbiguous: true, AutoUpgrade: true,
+	},
+	{
+		ID: GActionWork, Name: "ActionWork", Meaning: "a step, which is all this one knows",
+		Plain: GlyphActionWork, NerdFont: "\uF013", NFName: "nf-fa-cog",
+		ASCII:     ".",
 		UsualTint: Cyan, NFAmbiguous: true, AutoUpgrade: true,
 	},
 
@@ -213,6 +321,7 @@ var vocabulary = []GlyphBinding{
 		// had to refuse it because U+26A1 measures two cells and 5.17's own
 		// width law forbids it. nf-fa-bolt is the bolt at one cell.
 		Plain: GlyphBoosted, NerdFont: "\uF0E7", NFName: "nf-fa-bolt",
+		ASCII:     "^",
 		UsualTint: Amber, NFAmbiguous: true, AutoUpgrade: true,
 	},
 	{
@@ -239,6 +348,7 @@ var vocabulary = []GlyphBinding{
 	{
 		ID: GDragHandle, Name: "DragHandle", Meaning: "a reorderable pending row (5.22)",
 		Plain: GlyphDragHandle, NerdFont: "\uF142", NFName: "nf-fa-ellipsis_v",
+		ASCII:     ":",
 		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
 	},
 
@@ -246,22 +356,26 @@ var vocabulary = []GlyphBinding{
 	{
 		ID: GStepDone, Name: "StepDone", Meaning: "plan step done",
 		Plain: GlyphStepDone, NerdFont: "\uF111", NFName: "nf-fa-circle",
+		ASCII:     "#",
 		UsualTint: Green, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
 	},
 	{
 		ID: GStepRunning, Name: "StepRunning", Meaning: "plan step running",
 		// The same rune as Working, by design: one shape for one state.
 		Plain: GlyphStepRunning, NerdFont: "\uF042", NFName: "nf-fa-adjust",
+		ASCII:     "*",
 		UsualTint: Cyan, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
 	},
 	{
 		ID: GStepPending, Name: "StepPending", Meaning: "plan step pending",
 		Plain: GlyphStepPending, NerdFont: "\uF10C", NFName: "nf-fa-circle_o",
+		ASCII:     "o",
 		UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
 	},
 	{
 		ID: GStepBlocked, Name: "StepBlocked", Meaning: "plan step blocked",
 		Plain: GlyphStepBlocked, NerdFont: "\uF024", NFName: "nf-fa-flag",
+		ASCII:     "!",
 		UsualTint: Amber, NFAmbiguous: true, AutoUpgrade: true,
 	},
 
@@ -269,6 +383,7 @@ var vocabulary = []GlyphBinding{
 	{
 		ID: GQueuePill, Name: "QueuePill", Meaning: "one queued item, capped",
 		Plain: GlyphQueuePill, NerdFont: "\uF0DA", NFName: "nf-fa-caret_right",
+		ASCII:     ">",
 		UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
 	},
 
@@ -304,6 +419,7 @@ var vocabulary = []GlyphBinding{
 	{
 		ID: GHome, Name: "Home", Meaning: "home / the task workspace",
 		Plain: GlyphHome, NerdFont: "\uF015", NFName: "nf-fa-home",
+		ASCII:     "~",
 		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
 	},
 	{
@@ -320,6 +436,7 @@ var vocabulary = []GlyphBinding{
 		// covered as the solid one (no coverage is traded for the weight), and
 		// it matches nf-fa-home's line weight two segments to its left.
 		Plain: GlyphFolder, NerdFont: "\uF114", NFName: "nf-fa-folder_o",
+		ASCII:     "/",
 		UsualTint: TextTertiary, NFAmbiguous: true,
 	},
 	{
@@ -331,6 +448,7 @@ var vocabulary = []GlyphBinding{
 		// they are joining chrome that must tile pixel-exactly to look like
 		// anything (12.7 G).
 		Plain: GlyphGitBranch, NerdFont: "\uE0A0", NFName: "nf-pl-branch",
+		ASCII:     ":",
 		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
 	},
 
@@ -338,6 +456,7 @@ var vocabulary = []GlyphBinding{
 	{
 		ID: GModel, Name: "Model", Meaning: "the model the answer came from",
 		Plain: GlyphModel, NerdFont: "\uF2DB", NFName: "nf-fa-microchip",
+		ASCII:     "o",
 		UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
 	},
 	{
@@ -345,6 +464,7 @@ var vocabulary = []GlyphBinding{
 		// ASCII plain side, and the cleanest parity case in the set: one cell
 		// swaps for one cell inside a run that already reads "$8.65".
 		Plain: GlyphSpend, NerdFont: "\uF155", NFName: "nf-fa-dollar",
+		ASCII:     "$",
 		UsualTint: Green, NFAmbiguous: true,
 	},
 
