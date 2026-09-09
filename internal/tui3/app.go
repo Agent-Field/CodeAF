@@ -2471,7 +2471,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	a.timestamps = config.TimestampsAt(a.profileDir)
 	a.workMode = config.WorkAt(a.profileDir)
 	a.actionAuto, _ = tokens.DetectGlyphSet(env)
-	a.iconMode = config.IconsAt(a.profileDir)
+	a.adoptIcons()
 	// AND THE COLUMN'S POSTURE IS READ HERE AND NOWHERE ELSE — at boot, never at
 	// a turn end. The rows above are settings a person changes in the panel, so
 	// re-reading them is how the change arrives; this one is normally changed with
@@ -5077,7 +5077,7 @@ func (a *app) settle() tea.Cmd {
 	a.mouse = config.MouseEnabledAt(a.profileDir)
 	a.timestamps = config.TimestampsAt(a.profileDir)
 	a.workMode = config.WorkAt(a.profileDir)
-	a.iconMode = config.IconsAt(a.profileDir)
+	a.adoptIcons()
 	a.hopQuick = config.QuickSwitchAt(a.profileDir)
 	a.askWait = a.consentWait()
 	a.notices.enabled = config.HintsAt(a.profileDir)

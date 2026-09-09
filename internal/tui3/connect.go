@@ -404,7 +404,7 @@ func (a *app) connectAskRows(width int) []string {
 	}
 	head := a.connAsks[0]
 	out := make([]string, 0, 4)
-	out = append(out, a.pal.askBold(glyphAsk)+" "+a.pal.bold(a.pal.ink(fit(head.name, width-2))))
+	out = append(out, a.pal.askBold(a.icon(tokens.GNeedsHuman))+" "+a.pal.bold(a.pal.ink(fit(head.name, width-2))))
 	// THE SENTENCE IS THE REASON THE BLOCK IS THERE, and over --host the reason
 	// has changed: the session reached for an account and this surface cannot get
 	// one connected, so the row says that instead of asking for something it
@@ -1060,8 +1060,10 @@ func (a *app) connectAnimating() bool {
 // apart is the whole job of the row — which is exactly the case the tool column
 // does not have, where quiet already means fine. So the tick earns its place
 // here, and nowhere else.
+// A CONNECTION THAT CAME OFF IS THE VOCABULARY'S SETTLED MARK and not a second
+// tick: one shape for "this is done", on a row of accounts as on a row of work.
 const (
-	glyphConnected      = "✓"
+	glyphConnected      = tokens.GlyphSettled
 	glyphConnectedASCII = "+"
 )
 
@@ -1086,7 +1088,7 @@ func (a *app) connectRows(e *entry, width int) []string {
 		if a.linear {
 			// A spinner is a claim made thirty times a second, and a surface being
 			// read aloud hears it thirty times a second (toolview.go's objection).
-			mark = glyphRunASCII
+			mark = a.icon(tokens.GWorking)
 		}
 		waiting := "waiting in your browser…"
 		if card.byKey {

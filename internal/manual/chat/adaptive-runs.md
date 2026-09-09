@@ -337,7 +337,7 @@ it. The roster keeps the family whole and draws three-cell tree connectors:
  ⠋ audit the pricing code
 ├─ ✓ read the tariff table
 ├─ ⠋ read the invoice writer
-└─ ◌ write up what disagrees
+└─ ○ write up what disagrees
 ```
 
 The family's fold behaves like every other roster family: live families start open;

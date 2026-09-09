@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // ── CLOSING A TAB THAT IS STILL DOING SOMETHING ─────────────────────────────
@@ -388,7 +389,8 @@ func (a *app) tabCloseRows(width int) []string {
 		return nil
 	}
 	head := card.question()
-	rows := []string{a.pal.askBold(glyphAsk) + a.pal.ask(fit(" "+head, width-ansi.StringWidth(glyphAsk)))}
+	ask := a.icon(tokens.GNeedsHuman)
+	rows := []string{a.pal.askBold(ask) + a.pal.ask(fit(" "+head, width-ansi.StringWidth(ask)))}
 
 	card.spans = card.spans[:0]
 	words, pad, gap, cursor := a.tabCloseLayout(width)

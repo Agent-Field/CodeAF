@@ -2499,9 +2499,9 @@ A task that did not finish keeps its branch, and the row under its name says **w
 stopped: the word `incomplete`, and one plain sentence beside it. The same words lead the
 task's card. They are three kinds of news:
 
-- `stopped`, with a `⊘` — **you stopped it** (`x` on its room, `jobs kill`). Nothing is
+- `stopped`, with a `■` — **you stopped it** (`x` on its room, `jobs kill`). Nothing is
   wrong with the work; it is on its branch, and `stopped` is never `incomplete`.
-- `✗ incomplete · <one of these>` — **it was halted, and nothing is known to be wrong**, so
+- `✕ incomplete · <one of these>` — **it was halted, and nothing is known to be wrong**, so
   the row is drawn **dim** rather than in the bad colour. `branch kept` rides beside the
   word as a fact of its own; it is not part of the sentence. The work can go
   on from its branch: say `continue task 7` or `keep going on task 7`. That is how
@@ -2564,7 +2564,7 @@ finish`, `your call`, `stopped`), which is why the phrase turns up when you ask 
 model is good at and nowhere on a row.
 
 **And the `!` is off every row of work.** A halted task used to wear it, which made a
-fourth cell for a question that has three answers; work that did not finish is `✗` now, dim
+fourth cell for a question that has three answers; work that did not finish is `✕` now, dim
 unless something actually broke. The mark survives in two places that are not rows: the
 warning on a landing card whose work could not be delivered, and a task **mentioned** in
 prose.

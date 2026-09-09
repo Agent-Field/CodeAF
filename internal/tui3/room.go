@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // THE ROOM: A TASK IS A PLACE, AND YOU CAN GO THERE.
@@ -2870,11 +2871,11 @@ func (a *app) roomNode() *taskNode {
 //
 // It is the roster's own cell ([app.taskStateMark]) and not a second table. The
 // copy that used to live here had drifted: it knew the refusal mark but neither
-// the stop's ⊘ nor the halt's !, so a node a person stopped wore a failure's
-// cross on its own page and the roster's ⊘ one keypress away.
+// the stop's mark nor the halt's `!`, so a node a person stopped wore a
+// failure's cross on its own page and the stop's mark one keypress away.
 func (a *app) roomMark(node *taskNode) string {
 	if node == nil {
-		return a.linearMark(glyphQueued, glyphQueuedASCII)
+		return a.icon(tokens.GQueued)
 	}
 	return a.taskStateMark(node)
 }

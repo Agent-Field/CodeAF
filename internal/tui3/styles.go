@@ -1104,6 +1104,29 @@ type palette struct {
 	// gradient is an animation frozen in space and a hover is a pointer's
 	// shadow, and a surface being read aloud has neither.
 	linear bool
+	// icons is WHICH REPERTOIRE this terminal draws the vocabulary's marks in
+	// — [tokens.Plain] or [tokens.NerdFont]. It is settled once, at boot and
+	// whenever the Display row changes ([app.adoptIcons]), and carried on the
+	// palette so that the drawing functions which are handed a palette and
+	// nothing else still get the tier. The ASCII tier is not stored here: it is
+	// [palette.ascii]'s answer, which is already on this struct.
+	icons tokens.GlyphSet
+}
+
+// glyph is THE ONE DOOR EVERY ICON ON THIS SURFACE COMES THROUGH: a slot of the
+// shared vocabulary, resolved into the character this terminal draws it as.
+//
+// THREE TIERS, ONE CALL, AND NO LITERAL ANYWHERE ELSE. A surface that spells a
+// mark itself draws the plain floor forever — it cannot know about the
+// repertoire, so a person with a patched font gets a proper icon beside every
+// tool call and a geometric stand-in beside every task, which is precisely the
+// split the owner found. icons_test.go fails the build on a mark spelled
+// outside internal/tui2/tokens, and docs/design/icons/DESIGN.md is the law.
+func (p palette) glyph(id tokens.GlyphID) string {
+	if p.ascii {
+		return tokens.ASCII.Glyph(id)
+	}
+	return p.icons.Glyph(id)
 }
 
 func newPalette(p tokens.Profile, ascii bool) palette {
@@ -1653,7 +1676,6 @@ const product = "aforge"
 const (
 	glyphYou      = "› "
 	glyphTool     = "↳ " // the fold line's marker, and only the fold line's
-	glyphBad      = "✗"
 	glyphMore     = "…"
 	railMid       = "├─▶ "
 	railLast      = "╰─▶ "
@@ -1667,14 +1689,6 @@ const (
 	// glyphIdle marks a call that was still running when its turn ended. A
 	// frozen spinner would claim the call is alive; a dot claims nothing.
 	glyphIdle = "·"
-	// glyphQueued marks a call the model has asked for and nothing has started:
-	// an EMPTY circle, dim, deliberately not a spinner. A spinner is a claim
-	// that something is turning, and the whole point of this state is that
-	// nothing is.
-	glyphQueued = "◌"
-	// glyphAsk marks the call a person is being asked about. It is the only
-	// glyph on this surface that takes the question hue.
-	glyphAsk = "?"
 	// glyphAdd and glyphDel spell the diffstat. The minus is U+2212, which is
 	// the width of the plus; ASCII '-' is not, and a stat is a pair of numbers
 	// read side by side. The diff BODY keeps ASCII +/- — a diff is a diff, and
@@ -1702,12 +1716,9 @@ const (
 // installer that ever printed a progress line used, and `o` is queued because
 // it is the empty circle spelled in one byte.
 const (
-	glyphYouASCII    = "> "
-	glyphToolASCII   = "-> "
-	glyphBadASCII    = "x"
-	glyphIdleASCII   = "."
-	glyphQueuedASCII = "o"
-	glyphRunASCII    = "*"
+	glyphYouASCII  = "> "
+	glyphToolASCII = "-> "
+	glyphIdleASCII = "."
 )
 
 // youGlyph and toolGlyph are the two markers the transcript opens rows with.
@@ -1727,12 +1738,12 @@ func (p palette) toolGlyph() string {
 	return glyphTool
 }
 
-// badGlyph is the one glyph a failure is allowed to spend.
+// badGlyph is the one glyph a failure is allowed to spend, and it is the
+// vocabulary's own ([tokens.GFailed]) in whichever repertoire this terminal
+// draws — the screen reader's `x` included, since [palette.ascii] is set with
+// the linear tier.
 func (p palette) badGlyph() string {
-	if p.linear {
-		return glyphBadASCII
-	}
-	return glyphBad
+	return p.glyph(tokens.GFailed)
 }
 
 // spinnerStep is how many frame ticks one braille frame lasts. The frame clock

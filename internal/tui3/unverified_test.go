@@ -154,12 +154,12 @@ func TestARollupWithAnUnverifiedNodeStopsSayingDone(t *testing.T) {
 func TestTheMentionListMarksAnUnverifiedRow(t *testing.T) {
 	for _, ascii := range []bool{false, true} {
 		entry := session.TaskIndexEntry{Status: string(session.TaskUnverified)}
-		if got := taskStatusGlyph(entry, ascii); got != glyphAsk {
+		if got := taskStatusGlyph(entry, palOf(ascii)); got != glyphAsk {
 			t.Fatalf("an unverified row is marked %q (ascii=%v), want %q", got, ascii, glyphAsk)
 		}
 	}
 	done := session.TaskIndexEntry{Status: string(session.TaskDone)}
-	if got := taskStatusGlyph(done, false); got != glyphDone {
+	if got := taskStatusGlyph(done, palOf(false)); got != glyphDone {
 		t.Fatalf("a done row is marked %q, want %q", got, glyphDone)
 	}
 }
