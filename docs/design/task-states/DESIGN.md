@@ -84,7 +84,25 @@ reads `incomplete` plus one of these reasons, spelled once in
 faulted row may be coloured bad, every other incomplete row is dim.
 
 A `done` row carries the merge as a FACT LINE, not a state: `merged`,
-`branch kept` (only when keeping was asked for), or nothing for in-place work.
+`branch kept`, or nothing for in-place work.
+
+**`branch kept` appears whenever the landing kept the branch, and asking for it
+is only one of the four ways that happens.** The other three are the landing
+refusing a destination it must not write (`keptLandingSentence`,
+internal/session/task_branch_protection.go): the checkout is on a protected
+name — `main`, `master`, `dev`, `staging`, `trunk`, `production`, `release` and
+the rest of that one list, plus whatever a remote calls its default — the
+checkout is not on a branch at all, or the branch has moved since the work was
+cut and the movement was not aforge's own. Every one of those is the engine
+behaving, and the card's own report says WHICH: `its branch task/parser was
+kept: your checkout is on main, which tasks do not merge into automatically`.
+
+This is worth knowing before you write a test: on the repository a fresh
+checkout gives you, an ordinary `/task` landing keeps its branch and never
+merges, so nothing a person does in that checkout can clash with anything. A
+fixture that wants the conflict shape moves off the trunk first, and leaves its
+clashing change UNCOMMITTED — committing moves the branch, which is the fourth
+reason above (`internal/e2e`'s `testStatesConflict`).
 
 ### your call
 

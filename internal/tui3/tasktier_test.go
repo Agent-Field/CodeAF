@@ -488,3 +488,50 @@ func forEachSurfaceFile(t *testing.T, look func(name string, file *ast.File)) {
 		look(name, file)
 	}
 }
+
+// THE COLUMN ANSWERS THE QUESTION TOO, AND IT ANSWERS IT IN ITS OWN SHAPE.
+//
+// `<tier glyph> <title> · <word or reason>`, cut from the right, is thirty cells
+// of reading in a column that is thirty cells wide, so it is laid over the row
+// and the block under it: the name on the row, the word and the reason wrapped
+// beneath ([app.railUnder]). A reader that took the first line alone and called
+// the rest missing is what filed issue #707 against a column that was saying the
+// word all along, so this asserts the ROWS TOGETHER — the glyph, the name, the
+// word and the reason are on the column or they are not.
+func TestTheColumnSaysTheWordAndTheReasonForALandingThatIsYourCall(t *testing.T) {
+	a, _, _ := taskApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskUnverified,
+		session.TaskNotice{Merge: mergeWordAborted, Branch: "task/parser"})})
+	// THE WRAP IS NOT A GAP IN WHAT WAS SAID, so the column is read as one
+	// sentence: a reason that ran onto the next row has still been said.
+	said := railSaid(a)
+	for _, want := range []string{glyphAsk, "Port the parser", tierYourCallWord, "nobody could check it"} {
+		if !strings.Contains(said, want) {
+			t.Fatalf("the column says nothing about %q:\n%s",
+				want, strings.Join(railText(a, a.viewHeight()), "\n"))
+		}
+	}
+	// AND THE FILE LIST IS WHAT GIVES GROUND FIRST on a conflict, never the verb:
+	// the sentence that says what happened survives the width the names do not.
+	b, _, _ := taskApp(t)
+	drive(t, b, streamEventMsg{gen: b.gen, ev: update(7, "Port the parser", session.TaskUnverified,
+		session.TaskNotice{Merge: mergeWordConflicted, Branch: "task/parser",
+			Conflicts: []string{"parser.go", "parser_test.go"}})})
+	if said := railSaid(b); !strings.Contains(said, askConflictReason) {
+		t.Fatalf("the column stopped naming the clash:\n%s",
+			strings.Join(railText(b, b.viewHeight()), "\n"))
+	}
+}
+
+// railSaid is the whole column as one sentence, with the seam it is drawn
+// behind and the wrapping taken out.
+func railSaid(a *app) string {
+	var out []string
+	for _, row := range railText(a, a.viewHeight()) {
+		if at := strings.Index(row, railSeam); at >= 0 {
+			row = row[at+len(railSeam):]
+		}
+		out = append(out, row)
+	}
+	return strings.Join(strings.Fields(strings.Join(out, " ")), " ")
+}

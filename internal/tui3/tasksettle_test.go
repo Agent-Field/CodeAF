@@ -825,3 +825,96 @@ func TestARootThatNeedsALookIsAlwaysAttention(t *testing.T) {
 		t.Fatalf("a root that needs a look is filed under %q", railGroupWords[group])
 	}
 }
+
+// ── the wire between the card and the engine (#706) ─────────────────────────
+
+// reachFake is [settleFake] with the one extra question an agent that lives on a
+// wire answers (tasksettle.go's [settleReach]).
+type reachFake struct {
+	*settleFake
+	reaches bool
+}
+
+func (f *reachFake) SettleSupported() bool { return f.reaches }
+
+// A REPLAYED LANDING NOBODY RECORDED AN OWNER FOR IS THE PERSON'S, and it draws
+// its chips.
+//
+// THIS IS THE SHAPE THAT REACHES A WINDOW ON ATTACH. A graph the process left
+// behind is replayed as ordinary notices, and a notice written by a build that
+// never heard of [session.TaskAskOwner] carries the zero value — which the
+// engine reads as the person, because work whose owner nobody wrote down is work
+// waiting on whoever is looking at it (task_status.go's [taskDeciderOf]).
+func TestAReplayedLandingWithNoRecordedOwnerAsksThePerson(t *testing.T) {
+	a, _ := settleApp(t)
+	card := landAsk(t, a, session.TaskNotice{
+		Elapsed: 42 * time.Second, Merge: mergeWordAborted, Branch: "task/parser",
+		Report: "the parser is ported and its tests run",
+	})
+	if card.status.Ask.Owner != session.TaskAskOwnerPerson {
+		t.Fatalf("a replayed landing with no recorded owner reads as %q", card.status.Ask.Owner)
+	}
+	text := taskText(a)
+	for _, want := range []string{askCheckReason, settleYesKey + " accept", settleNoKey + " not right"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the replayed landing draws no %q:\n%s", want, text)
+		}
+	}
+}
+
+// AND A WINDOW ON AN ENGINE HOST DRAWS THE SAME ROW, which is #706.
+//
+// The surface asserts its doors on the agent it holds, and an agent that lives
+// on a wire has every method whatever the machine at the far end is — so the
+// assertion is not the question. The welcome is ([settleReach]), and until it
+// was asked a hosted landing card drew its reason with nothing to press.
+func TestALandingOnAnEngineThatCanDecideDrawsItsAnswers(t *testing.T) {
+	agent := &reachFake{settleFake: newSettleFake(), reaches: true}
+	a := newSettleApp(t, agent)
+	landUnverified(t, a)
+	text := taskText(a)
+	if !strings.Contains(text, settleYesKey+" accept") || !strings.Contains(text, settleNoKey+" not right") {
+		t.Fatalf("a landing on a reachable engine draws no answers:\n%s", text)
+	}
+	a.sel = len(a.entries) - 1
+	drive(t, a, key("a"))
+	if len(agent.resolved) != 1 || agent.resolved[0].answer != session.TaskAccept {
+		t.Fatalf("the answer was not spent through the engine: %+v", agent.resolved)
+	}
+}
+
+// AND AN ENGINE THAT CANNOT IS ABSENT RATHER THAN BROKEN. The reason still
+// stands — it says what is being asked, and a window that cannot spend an answer
+// must still say that — and there is nothing on the row to press.
+func TestALandingOnAnEngineThatCannotDecideDrawsItsReasonAndNoChips(t *testing.T) {
+	agent := &reachFake{settleFake: newSettleFake(), reaches: false}
+	a := newSettleApp(t, agent)
+	landUnverified(t, a)
+	text := taskText(a)
+	if !strings.Contains(text, askCheckReason) {
+		t.Fatalf("a landing nobody can answer stopped saying what it is asking:\n%s", text)
+	}
+	for _, gone := range []string{settleYesKey + " accept", settleNoKey + " not right", settleHandKey} {
+		if strings.Contains(text, gone) {
+			t.Fatalf("an engine that cannot decide a landing drew %q:\n%s", gone, text)
+		}
+	}
+}
+
+// AND THE MERGE ROUND GOES WITH THEM. A conflict card on an unreachable engine
+// offers neither its yes nor its no, for the same reason.
+func TestAConflictOnAnEngineThatCannotDecideOffersNothing(t *testing.T) {
+	agent := &reachFake{settleFake: newSettleFake(), reaches: false}
+	a := newSettleApp(t, agent)
+	landAsk(t, a, session.TaskNotice{
+		Elapsed: 42 * time.Second, Merge: mergeWordConflicted, Branch: "task/parser",
+		Conflicts: []string{"parser.go"},
+	})
+	text := taskText(a)
+	if !strings.Contains(text, askConflictReason) {
+		t.Fatalf("a conflict nobody can answer stopped naming the clash:\n%s", text)
+	}
+	if strings.Contains(text, settleYesKey+" resolve it") || strings.Contains(text, settleNoKey+" drop it") {
+		t.Fatalf("an engine that cannot merge offered to:\n%s", text)
+	}
+}
