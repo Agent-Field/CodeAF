@@ -240,6 +240,16 @@ func (f *folderPick) paneEntry(row int) (string, bool) {
 	if f.geom.paneDir == "" || row < 0 || row >= f.geom.paneBody {
 		return "", false
 	}
+	// AND THE PREVIEW BEING HELD NOW MUST BE THE ONE THAT WAS DRAWN. A preview
+	// arrives off the loop and the row map is written by the paint, so there is a
+	// frame in which a new folder's entries sit behind the last folder's
+	// geometry — and a press landing in it would join one directory's row number
+	// onto another directory's path. The identity is what tells them apart, and it
+	// is the same identity every cache on this path is keyed by
+	// (contextpreview.go's [previewKey]).
+	if f.preview.Kind != previewFolder || f.preview.Key.Path != f.geom.paneDir {
+		return "", false
+	}
 	at := f.geom.paneFrom + row
 	if at < 0 || at >= len(f.preview.Entries) {
 		return "", false

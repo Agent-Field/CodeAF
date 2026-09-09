@@ -391,3 +391,44 @@ func TestANarrowTerminalGivesTheSheetTheWholeWindow(t *testing.T) {
 		}
 	}
 }
+
+// ── the late answer ─────────────────────────────────────────────────────────
+
+// A PREVIEW THAT ARRIVES AFTER THE PAINT CANNOT MISROUTE A PRESS.
+//
+// The row map is written by the paint and a preview is read off the loop, so
+// there is a frame in which one folder's entries sit behind another folder's
+// geometry. A press landing in it would join a row number from one directory
+// onto the path of another; the identity check refuses instead
+// ([folderPick.paneEntry]).
+func TestALatePreviewCannotMisrouteAPressInThePane(t *testing.T) {
+	a, _, root := modalLab(t)
+	openBrowse(t, a, filepath.Join(root, "work"))
+	onFolderRow(t, a, "nested")
+	_ = chooserRows(t, a, -1, "")
+	if a.folder.geom.paneDir == "" || a.folder.geom.paneBody < 1 {
+		t.Fatalf("the pane drew no entry rows for `nested`: %+v", a.folder.geom)
+	}
+	at := a.folder.cols.dir
+	// The cell is resolved BEFORE the stale answer lands, because resolving it
+	// paints — and a paint is exactly what closes this window.
+	body := chooserRowY(t, a, a.folder.geom.head)
+	x := chooserX(t, a, a.folder.geom.pane.from+1)
+
+	// Another folder's answer lands with the geometry still describing this one.
+	a.folder.preview = filePreview{
+		Kind: previewFolder,
+		Key:  previewKey{Path: filepath.Join(root, "alpha")},
+		Entries: []previewEntry{
+			{Name: "somewhere", Raw: "somewhere", Dir: true},
+			{Name: "else", Raw: "else", Dir: true},
+		},
+	}
+	if name, ok := a.folder.paneEntry(0); ok {
+		t.Fatalf("a press in the stale pane offered %q", name)
+	}
+	drive(t, a, tea.MouseClickMsg{X: x, Y: body, Button: tea.MouseLeft})
+	if a.folder.cols.dir != at {
+		t.Fatalf("a late preview walked the columns to %s", a.folder.cols.dir)
+	}
+}
