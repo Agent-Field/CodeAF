@@ -398,13 +398,6 @@ func testStatesRailAndRoster(t *testing.T) {
 		t.Logf("the column kept the word alone, which is the last thing it gives up")
 	}
 
-	// AND THE YOUR-CALL ROW IS ORDERED ABOVE EVERYTHING MOVING. There is one node
-	// in this fixture, so what can be measured here is that it is the FIRST row of
-	// the column and not buried under the seam's furniture.
-	if at := statesRailRank(t, r, rail); at >= 0 {
-		t.Logf("the your-call row stands %d rows into the column", at)
-	}
-
 	// AND THE ROSTER SAYS THE SAME WORD. `/history` is the door; the chord the
 	// page names is not one a suite may press (tui_e2e_test.go says why).
 	r.lit("/history")
@@ -586,27 +579,29 @@ func statesNoDeletedWords(t *testing.T, screen string) {
 	}
 }
 
-// statesRail is one row of the roster's COLUMN — not of the whole screen — and
-// the difference is the whole point of the subtest: the landing card in the
+// statesRail is the roster COLUMN'S row for one node — not the landing card's
+// head — and the difference is the whole point of the subtest: the card in the
 // conversation says `your call` too, and a search across the frame would find it
 // there and never look at the column at all.
 //
-// THE COLUMN IS THE RIGHT-HAND [railWideCols] CELLS. internal/tui3 charges the
-// conversation thirty columns for a full rail and forty-six for one somebody
-// widened, so reading the last forty-six is the widest the column can be and
-// costs a few cells of transcript at the left edge — which cannot carry a rail
-// row, because a rail row is drawn against the seam.
+// THE TWO ARE TOLD APART BY THE KIND MARK. A card's head carries the node's own
+// ident glyph beside the tier cell (taskident.go's `◆`); a rail row is the tier
+// cell, the title and the word and nothing else (tasktier.go's tierRow). That is
+// a fact about what each row IS rather than about where it happens to sit, so it
+// holds whichever side of the frame the column is on and at every width.
+//
+// AND THE COLUMN IS ASKED FOR ONLY IF IT IS NOT ALREADY THERE. `ctrl+g` closes
+// the roster's column or brings it back and the answer is remembered, so a press
+// on a window that already has one would take it away.
 func statesRail(t *testing.T, r *rig, glyph, word string) string {
 	t.Helper()
-	if row := statesRailRow(r.capture(), glyph, word); row != "" {
+	if row := statesRailRow(t, r.capture(), glyph, word); row != "" {
 		return row
 	}
-	// The column is stowed, so ask for it back. It is remembered per machine, and
-	// a fresh state root has no answer recorded either way.
 	r.keys("C-g")
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		if row := statesRailRow(r.capture(), glyph, word); row != "" {
+		if row := statesRailRow(t, r.capture(), glyph, word); row != "" {
 			return row
 		}
 		time.Sleep(pollEvery)
@@ -614,48 +609,22 @@ func statesRail(t *testing.T, r *rig, glyph, word string) string {
 	return ""
 }
 
-// statesRailCols is the widest the column can be (internal/tui3's railWideCols).
-const statesRailCols = 46
-
-// statesRailRow is the column's own line for one node.
-func statesRailRow(screen, glyph, word string) string {
-	for _, line := range statesRailLines(screen) {
-		if strings.Contains(line, glyph) && strings.Contains(line, word) {
-			return line
-		}
-	}
-	return ""
-}
-
-// statesRailLines is every line of the frame cut down to its right-hand column.
-func statesRailLines(screen string) []string {
-	var out []string
-	for _, line := range strings.Split(screen, "\n") {
-		runes := []rune(line)
-		if len(runes) > statesRailCols {
-			runes = runes[len(runes)-statesRailCols:]
-		}
-		out = append(out, strings.TrimSpace(string(runes)))
-	}
-	return out
-}
-
-// statesRailRank is how many rows into the column one row stands, counting only
-// rows with something on them — the your-call rows are ordered first, then
-// moving, then over, and a fixture with one node can say that much about it.
-func statesRailRank(t *testing.T, r *rig, want string) int {
+// statesRailRow is one line of the column: the tier cell and the word, on a row
+// that is not a landing card's head.
+func statesRailRow(t *testing.T, screen, glyph, word string) string {
 	t.Helper()
-	seen := 0
-	for _, line := range statesRailLines(r.capture()) {
-		if line == "" {
+	for _, line := range strings.Split(screen, "\n") {
+		if !strings.Contains(line, glyph) || !strings.Contains(line, word) {
 			continue
 		}
-		if line == want {
-			return seen
+		if strings.Contains(line, say(t, "taskCardKindGlyph")) {
+			// The card's own head, which the conversation draws and this is not
+			// about.
+			continue
 		}
-		seen++
+		return strings.TrimSpace(line)
 	}
-	return -1
+	return ""
 }
 
 // seedUnchecked writes one conversation holding a top-level landing NOBODY COULD
@@ -697,29 +666,6 @@ func seedUnchecked(t *testing.T, home, ws string, id uint64) string {
 	return dir
 }
 
-// statesWaitForTaskBranch waits until a task's own branch stands in the person's
-// repository, and answers whether one ever did.
-//
-// IT IS THE SIGNAL A CONFLICT IS TIMED AGAINST, and it is a fact about the work
-// rather than a sentence a model happened to write: a worktree is cut from THIS
-// repository, so the ref lands in its refs/heads the moment the work is really
-// out, which is the only moment at which committing over the same file can still
-// clash with anything.
-func statesWaitForTaskBranch(t *testing.T, ws string, within time.Duration) bool {
-	t.Helper()
-	deadline := time.Now().Add(within)
-	for time.Now().Before(deadline) {
-		command := exec.Command("git", "for-each-ref", "--format=%(refname:short)", "refs/heads/task")
-		command.Dir = ws
-		if out, err := command.Output(); err == nil && strings.TrimSpace(string(out)) != "" {
-			t.Logf("the task branches are %s", strings.Join(strings.Fields(string(out)), " "))
-			return true
-		}
-		time.Sleep(time.Second)
-	}
-	return false
-}
-
 // statesSeedTranscript writes the journal of a conversation SOMEBODY HAS
 // ACTUALLY SPOKEN IN: the header line, the person's sentence, and the answer.
 //
@@ -759,7 +705,30 @@ func statesSeedTranscript(t *testing.T, dir, id, ws, said string) {
 	}
 }
 
-// statesCommit writes one file// statesCommit writes one file in the person's own checkout and commits it — the
+// statesWaitForTaskBranch waits until a task's own branch stands in the person's
+// repository, and answers whether one ever did.
+//
+// IT IS THE SIGNAL A CONFLICT IS TIMED AGAINST, and it is a fact about the work
+// rather than a sentence a model happened to write: a worktree is cut from THIS
+// repository, so the ref lands in its refs/heads the moment the work is really
+// out, which is the only moment at which committing over the same file can still
+// clash with anything.
+func statesWaitForTaskBranch(t *testing.T, ws string, within time.Duration) bool {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for time.Now().Before(deadline) {
+		command := exec.Command("git", "for-each-ref", "--format=%(refname:short)", "refs/heads/task")
+		command.Dir = ws
+		if out, err := command.Output(); err == nil && strings.TrimSpace(string(out)) != "" {
+			t.Logf("the task branches are %s", strings.Join(strings.Fields(string(out)), " "))
+			return true
+		}
+		time.Sleep(time.Second)
+	}
+	return false
+}
+
+// statesCommit writes one file in the person's own checkout and commits it — the
 // person carrying on working while a task is out, which is the only way a real
 // conflict is made.
 func statesCommit(t *testing.T, ws, name, body, message string) {

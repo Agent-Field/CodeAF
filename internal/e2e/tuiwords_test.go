@@ -579,6 +579,13 @@ var tuiWords = map[string]tuiWord{
 			"a bare box; the constant runs on past this into what it will and will not send, and the " +
 			"block wraps it, so the needle is the clause the reader meets first",
 	},
+	"taskCardKindGlyph": {
+		screen: "◆",
+		why: "the node's own ident mark, beside the tier cell on a LANDING CARD's head (internal/tui3's " +
+			"taskIdentGlyph). It is waited for as an EXCLUSION: a rail row is the tier cell, the title and " +
+			"the word and nothing else, so this is how the suite tells the column's row from the card's head " +
+			"whichever side of the frame the column is on",
+	},
 	"setupSkipWord": {
 		screen: "esc skips setup",
 		why: "the setup's own foot, on EVERY step of it. A state root built a minute ago opens on the setup " +
