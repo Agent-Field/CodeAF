@@ -1053,10 +1053,10 @@ before work starts on its own, so `change_setting` refuses it and points you bac
 family — the permissions page lists them.
 
 Set that window to 0 and there is no clock at all: no bar is drawn and the row reads
-`waiting on you`. The card then waits until you answer it, however long that takes.
+`starts on your word`. The card then waits until you answer it, however long that takes.
 
 Typing the first character in the message box also stops a running proposal clock. The
-bar changes to `waiting on you` immediately and the task cannot start while you finish
+bar changes to `starts on your word` immediately and the task cannot start while you finish
 your answer. Deleting everything you typed does not restart the clock: `esc` still says
 no, empty `enter` says yes, and `enter` with words answers from those words.
 
@@ -1102,7 +1102,7 @@ life is in its room instead.
 
 A proposal starts on silence only while its countdown is still moving. The default window
 is 15 seconds. Typing the first character in the message box stops that clock immediately;
-the meter changes to `waiting on you`, and deleting the character does not restart it.
+the meter changes to `starts on your word`, and deleting the character does not restart it.
 Press `esc` to decline, or type a complete no answer and press `enter`.
 
 If nothing was typed before the meter reached zero, the work was already admitted and a
@@ -1123,8 +1123,8 @@ an unconditional no from any proposal.
 
 Press `esc`, choose `no`, or type one of the complete no answers — `no`, `nope`, `n`,
 `stop`, `cancel`, `don't`, `dont` — and press `enter`. Typing the first character stops a
-running countdown and changes the meter to `waiting on you`; erasing your draft does not
-restart it. Set `task.autoapprove_seconds` to 0 in Safety settings if every proposal on a
+running countdown and changes the meter to `starts on your word`; erasing your draft does
+not restart it. Set `task.autoapprove_seconds` to 0 in Safety settings if every proposal on a
 watched session should wait until you answer.
 
 ## Why it warned me another window is already in these files — two windows working on the same files
@@ -1244,11 +1244,12 @@ These are the exact words on screen.
 | what is happening | the word you see |
 | --- | --- |
 | the proposal is still arriving | `⠙ forming… · 6s` after six seconds; under one second there is no clock |
-| the proposal is waiting, with no clock | `your call · starts on your word` on the roster and the rail; the card's own meter reads `waiting on you` |
+| the proposal is waiting, with no clock | `your call · starts on your word` on the roster and the rail, and `starts on your word` where the card's own meter would be |
 | the proposal is waiting, with a clock | `auto-starts in <time>` |
 | queued behind something | `queued`, with the reason after it |
 | queued behind named work | `waiting on <title of the work it needs>` |
 | running | `working`, a turning spinner, and what it is doing this second |
+| running, but its calls are being paced | `waiting · <what is holding it>` — and the still `◌`, because nothing is happening this instant |
 | running and closing a gap | `finishing · <what it is closing>` |
 | stopped by you | `stopped`, with `⊘` on the roster |
 | stopped before it ever ran | `stopped before it started` |
@@ -1374,8 +1375,8 @@ instant — the stamp is **absent** rather than invented.
   reason row says `aforge is deciding` and the answers are one press away.
 
 After the name the card carries the span, the file count, and how the branch came home:
-`merged`, `in your own folder`, `conflicted · <branch>`, `stopped — branch kept · <branch>`,
-or `branch kept · <branch>`.
+`merged`, `in your own folder`, `conflicted · <branch>`, or `branch kept · <branch>` —
+each its own fact, so a task you ended reads `stopped · branch kept · <branch>`.
 
 `branch kept · <branch>` on a **done** task means the work finished but your checkout was
 on a protected branch, was on a different branch than when the work was cut, moved
@@ -2176,11 +2177,11 @@ A row another window is running says `another window`, with that window's own na
 when it has settled on one. A row that still claims `running` with **no** window behind it
 says `incomplete` and **carries no age at all** — nobody judged the work, the window simply
 went, and nothing in the record dates a row that never landed. Work that did not come off
-says the same word its own page says, with the reason after it: `failed · the package
-manager refused the archive` when the run actually broke, `incomplete · …` when a check
-named what is missing or the wire, a limit or a stale brief ended it, and `stopped · …`
-when you ended it yourself. The cross is kept for the fault; the rest wear `!` and `⊘`,
-because nothing was found wrong with them.
+says the same word its own page says, with the reason after it: `incomplete · a fault: the
+package manager refused the archive` when the run actually broke, `incomplete · <the
+reason>` when a check named what is missing or the wire, a limit or a stale brief ended it,
+and `stopped` when you ended it yourself. All of them wear `✗` except the stop, which wears
+`⊘`; **only the fault is coloured bad**, because nothing was found wrong with the rest.
 
 **How long ago a settled row landed is what that row's own record says.** Work reopened
 from a previous session is dated when it LANDED, not when you sat down and reopened it. It
@@ -4133,7 +4134,8 @@ its work is landing. That guard reads `<title> cannot read this right now — [m
 main · [esc] cancel`: no revive, because the work is not over and starting it again would
 make a duplicate. Wait for the check to land, or send the thought to main.
 
-Whenever a task stops for any reason it wears `stopped — branch kept` and its branch name.
+Whenever a task stops for any reason it wears its own word — `stopped` when you ended it,
+`incomplete · <the reason>` otherwise — with `branch kept` and the branch name beside it.
 Nothing is thrown away: on every ending except a clean merge the branch is kept and named,
 and what the task made is committed onto that branch before it lands — so the files it
 produced are listed under `changed:` and `git merge task/…` brings them over. The merge is
