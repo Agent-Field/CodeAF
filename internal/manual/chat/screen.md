@@ -1815,7 +1815,10 @@ descriptions without motion. Expanding or collapsing the work is immediate.
 
 Your messages, corrections, answers, approval questions and notices remain
 outside the compact work. A failed step keeps its ordinary outline and controls.
-A correction can separate two compact blocks, preserving where you said it.
+A correction can separate two compact blocks, preserving where you said it. When
+what is above the split is only the model's reasoning, it draws no second
+`▸ Work · ctrl+e` — it goes behind the ordinary `⠿ thought for 1s · ctrl+e` row,
+so there is one working door per turn.
 Running task pages use the compact treatment too; expanding it restores their
 phase outline and individual tool details.
 
@@ -1882,9 +1885,13 @@ the arrow is fainter still. A number that moves does not also need to be bright;
 the words on the row are what it is for.
 
 **A turn that was split** — a correction you typed into it, or a step kept out of
-the compact view because a call in it failed — draws a door above the split and
-the working block below it. The figures ride the lower block only, the one where
-the work is now; the door above is machinery that is over.
+the compact view because a call in it failed — keeps the thing that split it
+standing where it happened, with the working block under it. There is one
+working door per turn: a run above the split that holds nothing but the model's
+reasoning draws no `▸ Work · ctrl+e` of its own, because two of those on one page
+read as the same turn running twice. That reasoning is behind the ordinary
+`⠿ thought for 1s · ctrl+e` row instead, the same row a finished turn draws. The
+figures ride the working block, the one where the work is now.
 
 ## Do the up and down token figures show inside a task room — tokens on a task's own page
 

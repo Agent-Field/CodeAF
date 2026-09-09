@@ -34,6 +34,14 @@ import (
 //     The same row opens hidden work even before there is a caption to click.
 //   - A NEW CAPTION ARRIVES ONLY WITH WORK. Silence can change the activity
 //     state, but never invents another semantic description.
+//   - IT NEVER SAYS THE TURN TWICE. A kept row splits a turn into runs, and a run
+//     above the split can hold nothing but reasoning that is over — no step of
+//     its own. Such a run draws NO door: a second `▸ Work · ctrl+e` on the same
+//     key is one turn claiming to be two pieces of running work, which is the
+//     reading [liveWork.last] already took the token column off every run but the
+//     frontier to avoid. Its reasoning goes back under the ordinary
+//     `thought for …` row (thinking.go, drawn by render.go's walk), which is the
+//     chip a finished turn draws and carries its own door onto the working.
 //
 // THE MOTION IS THE ONE THIS SURFACE ALREADY OWNS. The newest step shimmers
 // while a call under it is in flight, or only an inline mark moves between calls
