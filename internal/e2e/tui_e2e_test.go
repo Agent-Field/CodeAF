@@ -331,6 +331,20 @@ func testHomeShape(t *testing.T) {
 func testRealConversation(t *testing.T) {
 	home := newHome(t, nil)
 	ws := newWorkspace(t, "repows", true)
+	// Repository facts intentionally give way to a long workspace address.
+	// Keep this fixture short enough to exercise the facts this test checks.
+	short, err := os.MkdirTemp("/tmp", "afe-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(short) })
+	if err := os.Remove(short); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(ws, short); err != nil {
+		t.Fatal(err)
+	}
+	ws = short
 	r := start(t, "afe2e_talk", home, ws, tuiWide, 40)
 
 	r.lit("what is 2+2, one word")

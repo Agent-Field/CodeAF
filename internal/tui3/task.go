@@ -5328,12 +5328,6 @@ func (a *app) railMending(node *taskNode, width int) []string {
 	return []string{a.pal.dim(line)}
 }
 
-// taskWaitingLine gives the roster and an empty task page the same complete
-// explanation, so a reason such as "its parts" never appears as a bare fragment.
-func taskWaitingLine(node *taskNode) string {
-	return taskHeldWord + railSep + strings.TrimSpace(node.waiting)
-}
-
 // railWaiting is the row a node wears while it is HELD — behind a full slot,
 // behind a machine under load, or behind a provider pacing its calls — or nil
 // when nothing is holding it.
@@ -5357,7 +5351,7 @@ func (a *app) railWaiting(node *taskNode, width int) []string {
 	if node.waiting == "" {
 		return nil
 	}
-	line := fit(taskWaitingLine(node), width)
+	line := fit(a.taskStatus(node).RowWord(), width)
 	if line == "" {
 		return nil
 	}

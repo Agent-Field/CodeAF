@@ -3401,7 +3401,7 @@ func (a *app) roomStartingSay(node *taskNode) string {
 	}
 	switch {
 	case strings.TrimSpace(node.waiting) != "":
-		return taskWaitingLine(node)
+		return a.taskStatus(node).RowWord()
 	case strings.TrimSpace(node.mending) != "":
 		return strings.TrimSpace(node.mending)
 	case strings.TrimSpace(node.tool) != "":

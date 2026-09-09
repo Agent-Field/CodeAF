@@ -80,7 +80,7 @@ func TestAStartingRoomSaysWhatTheWorkIsDoingWithoutRepeatingTheHeader(t *testing
 	}
 	// The empty page uses the roster's complete explanation, including its
 	// state, because some reasons are noun fragments such as "its parts".
-	if !strings.Contains(text, taskWaitingLine(node)) {
+	if !strings.Contains(text, a.taskStatus(node).RowWord()) {
 		t.Fatalf("the body omitted the shared waiting explanation:\n%s", text)
 	}
 	// AND A LANDED PAGE SAYS NONE OF IT. These are reports of right now.
