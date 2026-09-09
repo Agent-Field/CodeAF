@@ -8,6 +8,11 @@ interpreting a proposal as accepted behavior. [Journeys](JOURNEYS.md) define the
 product examples and evidence boundaries. [Delivery](DELIVERY.md) governs future
 build tasks, branch ownership and integration.
 
+[Task-space comparison](LANDSCAPE.md) places the aforge design alongside Claude
+Code, OpenClaw and Grok Bot using official documentation. It distinguishes
+expressible behavior, shipped mechanisms and verified outcomes; it does not
+claim that aforge is a superset or add new primitives to the product.
+
 ## The product we are preserving
 
 Aforge is one personal AI work environment for development, research, marketing,
