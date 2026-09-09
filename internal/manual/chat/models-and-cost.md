@@ -732,7 +732,7 @@ Two things worth knowing:
 
 Yes, from the checks it was already running. **Every task that settles is written down**:
 the model it ran on, the name the work was given, how it ended in plain words — `landed`,
-`not accepted`, `did not finish`, `your call`, `stopped` — how many times the work was handed back, what
+`not accepted`, `did not finish`, `needs your look`, `stopped` — how many times the work was handed back, what
 it cost and how long it took. The check at the end of a task had already read the work and
 said whether it holds, so that answer *is* the grade: **nothing extra is spent, and no
 second model is asked to judge anything.** Work nobody could check teaches nothing, which

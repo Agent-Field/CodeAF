@@ -2806,8 +2806,9 @@ same: `↑↓ move · →← tree · enter open · alt+w wide · esc`, and it ga
 before the `esc` while the row under the cursor is work that has not finished — that chord
 moves the task's own thinking rung. And on a row that says **`your call`** the whole slot
 becomes that row's own answers and an `esc` — `a` says yes to what it is asking, `n` says
-no — and those letters answer that landing from the column without opening its room. While the column holds the keyboard
-the wheel walks that cursor instead of the window, so the two never fight.
+no — and those letters answer that landing from the column without opening its room.
+While the column holds the keyboard the wheel walks that cursor instead of the window, so
+the two never fight.
 
 Widen is `alt+w` and not the bare letter `w`: the roster is read before the message box, so
 a bare `w` there ate the `w` out of every sentence somebody typed with the column still
