@@ -33,6 +33,8 @@ func TestSameAnswerForAllLikeThisIsByKeyAndNeverByPosition(t *testing.T) {
 	if !sheet.answerAt(0, "2", now) {
 		t.Fatal("the first row would not take a key it offered")
 	}
+	// `g` spreads the LAST ANSWER GIVEN, wherever the cursor has walked to.
+	sheet.cursor = 1
 	if reached := sheet.sameForAll(now); reached != 1 {
 		t.Fatalf("same answer reached %d rows, want only the one that offers key 2", reached)
 	}
@@ -112,8 +114,9 @@ func TestTheSheetDrawsGroupedRowsWithBothMarksAndItsOwnKeys(t *testing.T) {
 		"3 questions" + questionSheetTogether,
 		questionShapeWord(session.AskPermission),
 		questionShapeWord(session.AskChoice),
-		a.icon(tokens.GSettled) + "  1  read vendor/?  allow once",
-		a.icon(tokens.GNeedsHuman) + "  2  write .github/?",
+		a.icon(tokens.GSettled) + " read vendor/?",
+		a.icon(tokens.GNeedsHuman) + " write .github/?",
+		"1 allow once",
 		"[enter] " + questionSheetOpenWord,
 		"[" + questionSendKey + "] " + questionSheetSendWord + " (1)",
 		"[" + questionSameKey + "] " + questionSheetSameWord,
@@ -162,6 +165,32 @@ func TestEnterTakesOneRowOutOfTheSheetAndOntoTheBlock(t *testing.T) {
 	}
 	if a.questionCount() != 2 {
 		t.Fatalf("the chip counts %d, want the opened row and the one still on the sheet", a.questionCount())
+	}
+}
+
+func TestADigitAnswersTheFocusedRowInItsOwnKeysAndWalksOn(t *testing.T) {
+	a := newTestApp(&fakeAgent{})
+	a.questionBatch = newQuestionSheet([]session.Question{
+		sheetQuestion(1, session.AskPermission, "read vendor/?",
+			session.AnswerOption{Key: "1", Label: "allow once"}, session.AnswerOption{Key: "2", Label: "not now"}),
+		sheetQuestion(2, session.AskPermission, "write .github/?",
+			session.AnswerOption{Key: "7", Label: "allow once"}, session.AnswerOption{Key: "8", Label: "not now"}),
+	})
+	if _, took := a.questionSheetKey(key("1")); !took {
+		t.Fatal("the focused row would not take its own key")
+	}
+	if a.questionBatch.cursor != 1 {
+		t.Fatalf("the cursor stayed on row %d instead of walking to the next one waiting", a.questionBatch.cursor)
+	}
+	// `1` is not an answer to the SECOND question, which offers 7 and 8.
+	if _, took := a.questionSheetKey(key("1")); took {
+		t.Fatal("a key this question never offered was taken as an answer")
+	}
+	if _, took := a.questionSheetKey(key("7")); !took {
+		t.Fatal("the second row would not take its own key")
+	}
+	if a.questionBatch.answeredCount() != 2 {
+		t.Fatalf("%d rows answered, want both", a.questionBatch.answeredCount())
 	}
 }
 

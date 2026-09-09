@@ -101,6 +101,9 @@ type questionDelivery struct {
 	// Bell is the terminal bell, and it is true at most once per question and
 	// only for one something is blocked on.
 	Bell bool
+	// Gather is a question held for its step's boundary. The caller arms the
+	// boundary's own clock on it ([app.gatherQuestions]).
+	Gather bool
 }
 
 // questionDeliveryRule owns presence, the boundary batch and the bell's memory.
@@ -169,7 +172,7 @@ func (d *questionDeliveryRule) deliver(q session.Question, step string, presence
 		// because a question landing on top of the last one is the thing the
 		// sheet replaces.
 		d.pending[step] = appendQuestionOnce(d.pending[step], q)
-		return questionDelivery{}
+		return questionDelivery{Gather: true}
 	}
 	if presence == questionOtherPage {
 		return questionDelivery{Pin: &q, Note: questionWaitingLine(q)}
@@ -301,6 +304,24 @@ func (a *app) deliverQuestion(q session.Question) tea.Cmd {
 	}
 	if out.Note != "" {
 		a.sayWhereQuestionWent(out.Note)
+	}
+	if out.Gather {
+		// AND THE BOUNDARY GETS A CLOCK, WHICH IS NOT BELT AND BRACES BUT THE
+		// ONLY THING THAT MAKES HOLDING SAFE AT ALL.
+		//
+		// A question can be holding open the very tool call whose return would
+		// have been the boundary — the `ask` tool blocks its turn until it is
+		// answered (session's tools_ask.go), so a question held for "the model
+		// speaking again" would be held until the model speaks, which cannot
+		// happen until somebody answers the question nobody can see. That
+		// deadlock was observed on a real run: two `ask` calls waiting, the
+		// status line honestly saying `2 open`, and nothing above the box.
+		//
+		// So the hold is bounded by [questionGatherFor] and the boundary fires
+		// on whichever comes first. Batching is a claim that several questions
+		// arrived AT ONCE, and a few seconds is exactly the window in which
+		// that is true.
+		cmds = append(cmds, a.gatherQuestions())
 	}
 	if out.Phone {
 		cmds = append(cmds, a.notifyAsk())

@@ -192,3 +192,52 @@ func TestAnAnswerThisWindowAlreadyGaveIsNotDrawnTwice(t *testing.T) {
 		t.Fatalf("the lane's echo of this window's own answer wrote a second row")
 	}
 }
+
+// TestAQuestionHoldingItsOwnStepOpenIsStillReleased is the deadlock the gather
+// clock exists to prevent: the `ask` tool blocks its turn until it is answered,
+// so a question held for "the model speaking again" would be held until the
+// model speaks, which cannot happen until the question is answered.
+func TestAQuestionHoldingItsOwnStepOpenIsStillReleased(t *testing.T) {
+	d := newQuestionDeliveryRule()
+	got := d.deliver(deliveryQuestion(1, session.AskPermission, false), "step:1", questionOnPage, time.Now())
+	if !got.Gather {
+		t.Fatal("a held question did not ask for the boundary's clock")
+	}
+	if got.Pin != nil {
+		t.Fatal("a held question was drawn anyway")
+	}
+	// The clock's own release names the step it was armed for, and hands the
+	// batch over exactly once.
+	if held := d.boundary("step:1"); len(held) != 1 {
+		t.Fatalf("the clock released %d questions, want the one that was held", len(held))
+	}
+}
+
+// TestHomeAnswersALaneItHasNoOlderPathFor is the reach law from home's side:
+// the whole question rides in the presence file, so a lane home never learnt
+// about is still answerable there.
+func TestHomeAnswersALaneItHasNoOlderPathFor(t *testing.T) {
+	script := &questionScript{fakeAgent: &fakeAgent{}}
+	var gave []session.Answer
+	script.answer = func(answer session.Answer) error {
+		gave = append(gave, answer)
+		return nil
+	}
+	a := newTestApp(script)
+	whole := deliveryQuestion(9, session.AskChoice, true)
+	whole.Kind = session.QuestionAsk
+	presence := session.PresenceQuestion{
+		Kind: whole.Kind, ID: whole.ID, Text: whole.Head,
+		Options: whole.Options, Full: &whole,
+	}
+	if _, took := a.answerWholeQuestion(presence, "2"); !took {
+		t.Fatal("home would not answer a lane it has no older path for")
+	}
+	if len(gave) != 1 || gave[0].Key != "2" || gave[0].Kind != session.QuestionAsk {
+		t.Fatalf("the one door was handed %#v", gave)
+	}
+	// A KEY THAT QUESTION NEVER OFFERED IS NOT AN ANSWER TO IT.
+	if _, took := a.answerWholeQuestion(presence, "7"); took {
+		t.Fatal("home answered with a key the question never offered")
+	}
+}

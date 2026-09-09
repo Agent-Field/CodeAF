@@ -2945,6 +2945,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// already holds the news, and a frame is the only thing this can add.
 		return a, nil
 
+	case questionGatherMsg:
+		// The step's own clock, going off (questionsheet.go). It releases the
+		// batch it was armed for and never a later one.
+		return a, a.questionBoundaryFor(msg.step)
+
 	case sigQuitMsg:
 		// A REAL SIGNAL, forwarded by this package's own handler (tui3.go's
 		// [forwardSignals]) because Bubble Tea answers an interrupt by returning

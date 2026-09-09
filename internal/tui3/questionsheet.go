@@ -12,17 +12,23 @@ package tui3
 //
 //	? 4 questions raised together
 //	  asking permission
-//	    ✓  1  read vendor/modernc.org?          allow once
-//	    ?  2  read vendor/golang.org/x?
-//	    ?  3  write to .github/workflows?
+//	  ✓ read vendor/modernc.org?        allow once
+//	  ? read vendor/golang.org/x?       1 allow once · 2 not now
+//	▸ ? write to .github/workflows?     1 allow once · 2 not now
 //	  choosing
-//	  ▸ ?  4  which index should this use?
-//	  [enter] open it · [s] send what is answered · [esc] later
+//	  ? which index should this use?    1 sqlite · 2 in memory
+//	  [enter] open it · [s] send what is answered (1) · [esc] later
 //
 // The cursor is the one `▸`; `✓` is a row this person has answered and the word
-// after it is the answer they gave; `?` is a row still waiting. Both marks come
-// from the vocabulary through its one door, and only the waiting mark is amber —
-// a row that has been answered is not waiting on anybody.
+// after it is the answer they gave; `?` is a row still waiting, with the answers
+// it offers. Both marks come from the vocabulary through its one door, and only
+// the waiting mark is amber — a row that has been answered is not waiting on
+// anybody.
+//
+// `1`-`9` answer the row the cursor is on, in THAT question's own keys, and the
+// cursor walks on to the next row still waiting. `↑↓` move without answering,
+// and `g` spreads THE LAST ANSWER GIVEN rather than the focused row's — which is
+// the same row, one keystroke earlier.
 //
 // ── THE FOUR LAWS ───────────────────────────────────────────────────────────
 //
@@ -34,6 +40,9 @@ package tui3
 //     pick, never to a key this file chose. A question the asker named no pick
 //     on is left open, because delegating it would mean inventing an answer
 //     nobody offered.
+//   - EVERY ROW WEARS ITS OWN ANSWERS, because a sheet you have to open every
+//     row of to use is a list of sentences rather than a way to answer. A row
+//     already answered wears the word it was answered with instead.
 //   - "SAME ANSWER FOR ALL LIKE THIS" IS OFFERED PER KEY AND NOT PER POSITION.
 //     `g` gives the focused row's answer to every other row of the same shape
 //     THAT OFFERS THAT KEY under that key. A question whose second option is
@@ -91,8 +100,15 @@ type questionSheet struct {
 	// answers are what this person has given so far, keyed by [questionToken]
 	// (this file's first law).
 	answers map[string]session.Answer
-	// cursor is the row `enter`, `g` and the digits act on.
+	// cursor is the row `enter` and the digits act on.
 	cursor int
+	// last is the row an answer was most recently given to, by token.
+	//
+	// `g` READS THE LAST ANSWER AND NOT THE FOCUSED ROW, because the moment
+	// somebody wants "the same for all of these" is the moment just after they
+	// gave one — and by then the cursor has walked on to the next row still
+	// waiting ([app.answerSheetRow]), which has no answer to copy.
+	last string
 }
 
 // newQuestionSheet builds one from what a step boundary released.
@@ -146,7 +162,22 @@ func (s *questionSheet) answerAt(at int, key string, now time.Time) bool {
 		At: now, Kind: q.Kind, ID: q.ID, Ref: q.Ref, Ask: q.Ask,
 		Key: key, Picked: []string{key}, DecidedBy: session.DecidedByPerson,
 	}
+	s.last = questionToken(q)
 	return true
+}
+
+// lastAnswered is the row an answer was most recently given to, and whether
+// that row is still on the sheet.
+func (s *questionSheet) lastAnswered() (session.Question, session.Answer, bool) {
+	for _, q := range s.questions {
+		if questionToken(q) != s.last {
+			continue
+		}
+		if answer, ok := s.answered(q); ok {
+			return q, answer, true
+		}
+	}
+	return session.Question{}, session.Answer{}, false
 }
 
 // sameForAll is `g`: the focused row's answer given to every other row of the
@@ -154,17 +185,13 @@ func (s *questionSheet) answerAt(at int, key string, now time.Time) bool {
 // which is what the message line says out loud — a key that quietly answered
 // four decisions would be the hidden rule this design refuses.
 func (s *questionSheet) sameForAll(now time.Time) int {
-	if s.cursor < 0 || s.cursor >= len(s.questions) {
-		return 0
-	}
-	focus := s.questions[s.cursor]
-	answer, ok := s.answered(focus)
+	focus, answer, ok := s.lastAnswered()
 	if !ok {
 		return 0
 	}
 	reached := 0
 	for i, q := range s.questions {
-		if i == s.cursor || q.Ask != focus.Ask {
+		if questionToken(q) == questionToken(focus) || q.Ask != focus.Ask {
 			continue
 		}
 		if _, already := s.answered(q); already {
@@ -174,6 +201,10 @@ func (s *questionSheet) sameForAll(now time.Time) int {
 			reached++
 		}
 	}
+	// The last answer stays the one the person GAVE, so pressing `g` twice on a
+	// sheet that grew a row does the same thing rather than spreading whichever
+	// row the loop happened to reach last.
+	s.last = questionToken(focus)
 	return reached
 }
 
@@ -181,16 +212,12 @@ func (s *questionSheet) sameForAll(now time.Time) int {
 // the key is offered under (the emptiness law: a key that would do nothing is
 // not on the row).
 func (s *questionSheet) sameForAllReaches() bool {
-	if s.cursor < 0 || s.cursor >= len(s.questions) {
-		return false
-	}
-	focus := s.questions[s.cursor]
-	answer, ok := s.answered(focus)
+	focus, answer, ok := s.lastAnswered()
 	if !ok {
 		return false
 	}
-	for i, q := range s.questions {
-		if i == s.cursor || q.Ask != focus.Ask {
+	for _, q := range s.questions {
+		if questionToken(q) == questionToken(focus) || q.Ask != focus.Ask {
 			continue
 		}
 		if _, already := s.answered(q); already {
@@ -341,9 +368,18 @@ func (a *app) questionSheetRows(s *questionSheet, width int) []string {
 	return out
 }
 
-// questionSheetRow is one row: the cursor, the state mark, the number that
-// opens it, the asker's own sentence, and — where one has been given — the
-// answer this person gave, dim, on the end.
+// questionSheetRow is one row: the cursor, the state mark, the asker's own
+// sentence, and then either the answers that row offers or the one that was
+// given.
+//
+// EVERY ROW WEARS ITS OWN ANSWERS, and that is what makes the sheet answerable
+// at all. The digits answer the row the cursor is on, and a person cannot press
+// a digit for an answer they cannot see — a sheet that only listed sentences
+// would be a list you had to open every row of to use.
+//
+// AND THE KEYS ARE EACH QUESTION'S OWN. They are read off
+// [session.AnswerOption.Key], never numbered by position, so `2` means what that
+// question says `2` means on the row it is drawn on and nothing else.
 func (a *app) questionSheetRow(s *questionSheet, at int, q session.Question, width int) string {
 	cursor, plainCursor := a.pal.ask("  "), "  "
 	if at == s.cursor {
@@ -356,29 +392,71 @@ func (a *app) questionSheetRow(s *questionSheet, at int, q session.Question, wid
 		plainMark = a.icon(tokens.GSettled)
 		mark = a.pal.dim(plainMark)
 	}
-	key := itoa(at + 1)
 	head := strings.TrimSpace(q.Head)
-	word := ""
+	tail := questionSheetAnswers(q)
 	if given {
+		tail = ""
 		if option, ok := q.Option(answer.Key); ok {
-			word = strings.TrimSpace(option.Label)
+			tail = strings.TrimSpace(option.Label)
 		}
 	}
-	text := "  " + plainCursor + plainMark + "  " + key + "  " + head
-	if word != "" {
-		text += "  " + word
-	}
-	if width < len(text) {
+	text := plainCursor + plainMark + " " + head
+	if tail == "" {
 		return a.pal.ask(fit(text, width))
 	}
+	// THE ANSWERS ARE IN A COLUMN, AND THE COLUMN IS SET BY THE LONGEST
+	// SENTENCE IN THE SHEET RATHER THAN BY THE EDGE OF THE SCREEN.
+	//
+	// The first draft right-aligned them, which is the switcher's arrangement,
+	// and on a 160-column terminal it put `allow once` a hundred cells away from
+	// the question it answered — a column that is scannable and unreadable at
+	// the same time, because the eye cannot carry a row that far. Setting the
+	// column just past the longest head keeps both halves: the keys line up
+	// under each other, and each one is beside its own sentence.
+	column := s.answerColumn() + 2
+	if column+ansi.StringWidth(tail) > width {
+		column = width - ansi.StringWidth(tail)
+	}
+	if column < ansi.StringWidth(text)+2 {
+		return a.pal.ask(fit(text+"  "+tail, width))
+	}
+	gap := column - ansi.StringWidth(text)
 	// Painted in pieces rather than nested, for [app.questionOptionRow]'s
 	// reason: these hues are raw SGR with an explicit reset, so a colour inside
 	// a colour ends the outer one early.
-	line := a.pal.ask("  ") + cursor + mark + a.pal.ask("  ") + a.pal.askBold(key) + a.pal.ask("  "+head)
-	if word != "" {
-		line += a.pal.dim("  " + word)
+	line := cursor + mark + a.pal.ask(" "+head) + strings.Repeat(" ", gap)
+	if given {
+		return line + a.pal.dim(tail)
 	}
-	return line
+	return line + a.pal.ask(tail)
+}
+
+// answerColumn is where every row's answers begin: one cell past the longest
+// sentence on the sheet, counting the cursor and mark cells in front of it.
+func (s *questionSheet) answerColumn() int {
+	widest := 0
+	for _, q := range s.questions {
+		if n := ansi.StringWidth(strings.TrimSpace(q.Head)); n > widest {
+			widest = n
+		}
+	}
+	// two cells of cursor, one of mark, one of space.
+	return widest + 4
+}
+
+// questionSheetAnswers is one row's answers as the row prints them: each key
+// and its own word, joined by the surface's own separator.
+func questionSheetAnswers(q session.Question) string {
+	parts := make([]string, 0, len(q.Options))
+	for _, option := range q.Options {
+		key := strings.TrimSpace(option.Key)
+		word := strings.TrimSpace(option.Label)
+		if key == "" || word == "" {
+			continue
+		}
+		parts = append(parts, key+" "+word)
+	}
+	return strings.Join(parts, " · ")
 }
 
 // questionSheetOffer is the sheet's answers row, built from the one key table
@@ -459,14 +537,44 @@ func (a *app) sheetShowing() bool {
 // sheet drawn over a single row would be three rows of furniture around one
 // decision the line form already says in one.
 func (a *app) questionBoundary() tea.Cmd {
+	return a.questionBoundaryFor(a.questionStep())
+}
+
+// questionGatherFor is the longest a quiet question waits for its step to end.
+// Three seconds is [questionQuiet]'s number and is chosen the same way: it is a
+// pause somebody would notice as one rather than a gap between two things
+// happening. See [app.deliverQuestion] for why the hold must be bounded at all.
+const questionGatherFor = 3 * time.Second
+
+// questionGatherMsg is that clock going off, carrying the step it was armed for
+// so a batch cannot be released by a timer belonging to the step before it.
+type questionGatherMsg struct{ step string }
+
+// gatherQuestions arms it.
+func (a *app) gatherQuestions() tea.Cmd {
 	step := a.questionStep()
 	if step == "" {
 		return nil
 	}
+	return tea.Tick(questionGatherFor, func(time.Time) tea.Msg {
+		return questionGatherMsg{step: step}
+	})
+}
+
+// questionBoundaryFor releases one named step's batch.
+func (a *app) questionBoundaryFor(step string) tea.Cmd {
+	if step == "" {
+		return nil
+	}
 	held := a.questionReach.boundary(step)
-	a.questionStepEnded()
 	if len(held) == 0 {
 		return nil
+	}
+	// THE STEP MOVES ON ONLY WHEN IT HANDED SOMETHING OVER, so a timer that
+	// fired over an empty batch does not push the next question into a step of
+	// its own.
+	if step == a.questionStep() {
+		a.questionStepEnded()
 	}
 	// A QUESTION OUTRANKS A PANEL, on question.go's terms: a batch drawn under
 	// a fullscreen overlay is a batch nobody can see to answer.
@@ -534,27 +642,31 @@ func (a *app) questionSheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case questionSameKey:
 		return a.sameSheetAnswer()
 	}
-	// A DIGIT NAMES A ROW ON A SHEET, never an answer: the rows are what is
-	// numbered on screen, and a digit that answered the focused question would
-	// be a key doing one thing on the block and another here.
-	if at, ok := sheetRowKey(key, len(a.questionBatch.questions)); ok {
-		a.questionBatch.cursor = at
-		a.touch()
+	// A DIGIT ANSWERS THE ROW THE CURSOR IS ON, which is ONE KEY GRAMMAR read
+	// literally: `1`-`9` pick, on every form. The keys are that row's own
+	// ([questionSheet.answerAt] looks them up in its options), so a digit the
+	// focused question never offered is not an answer and falls through.
+	if a.answerSheetRow(key) {
 		return nil, true
 	}
 	return nil, false
 }
 
-// sheetRowKey reads `1`-`9` as a row index that exists.
-func sheetRowKey(key string, rows int) (int, bool) {
-	if len(key) != 1 || key[0] < '1' || key[0] > '9' {
-		return 0, false
+// answerSheetRow takes one digit for the focused row and walks on to the next
+// row still waiting — a person answering down a list does not also want to move
+// down it.
+func (a *app) answerSheetRow(key string) bool {
+	if !a.questionBatch.answerAt(a.questionBatch.cursor, key, a.now()) {
+		return false
 	}
-	at := int(key[0] - '1')
-	if at >= rows {
-		return 0, false
+	for at := a.questionBatch.cursor + 1; at < len(a.questionBatch.questions); at++ {
+		if _, given := a.questionBatch.answered(a.questionBatch.questions[at]); !given {
+			a.questionBatch.cursor = at
+			break
+		}
 	}
-	return at, true
+	a.touch()
+	return true
 }
 
 // moveSheetCursor walks the rows, stopping at both ends rather than wrapping —

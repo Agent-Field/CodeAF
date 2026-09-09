@@ -1199,7 +1199,17 @@ func (a *Agent) AskQuestion(q Question) (func(), error) {
 	if err := a.checkQuestion(q); err != nil {
 		return func() {}, err
 	}
-	forget := a.rememberQuestion(q)
+	// THE DESK ROW GOES UP WITH THE QUESTION, NOT ONLY THE WORD BOOK.
+	//
+	// [Agent.rememberQuestion] alone banks what [Agent.OpenQuestions] reads,
+	// which is enough for the window holding this conversation and nothing at
+	// all for anybody else: home, another window and the `--host` link all read
+	// the PRESENCE file ([Agent.presenceAskingQuestion]). A question that only
+	// reached the word book was a question you could answer in the one place you
+	// were already standing — which is the opposite of what a question object is
+	// for. Observed: three `ask` calls waiting and home drawing the conversation
+	// as `working`.
+	forget := a.presenceAskingWhole(q)
 	a.emitQuestion(EventQuestion, q, nil)
 	return forget, nil
 }
