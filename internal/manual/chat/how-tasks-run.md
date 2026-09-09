@@ -1818,13 +1818,16 @@ do at all, which lands this way before a worker is ever started (*A task that la
 your look without doing anything*). The task is neither done nor incomplete: nothing merges,
 the branch is kept, and nothing waiting on it fails. The reason beside the word is one of
 the six on the tasks page — `nobody could check it`, `the check did not pass it: <gaps>`,
-`conflicts with your branch: <files>`, `design ready to approve`, `starts on your word`,
-`paused at the <amount> cap` — and each carries its own two answers.
+`conflicts with your branch: <files>`, `your branch changed the same files while it worked:
+<files>`, `design ready to approve`, `starts on your word`, `paused at the <amount> cap` —
+and each carries its own two answers.
 
 The report under a landing nobody could judge leads with **the same question the row is
 asking** and then what was said — `nobody could check it — ` and the checker's own
 sentence, or `nobody could check it — the checker never answered` when nothing was said.
-A landing whose branch would not merge leads `conflicts with your branch — ` the same way.
+A landing whose branch would not merge leads `conflicts with your branch — ` the same way,
+and one whose files moved under it leads `your branch changed the same files while it
+worked — `.
 The word on the row above it, and in the note, is `your call`; the report's lead is that
 row's reason sentence, written once in each place so the two cannot disagree. There is no
 `finished, but needs your look — ` any more: that lead was deleted with the state it named.
@@ -1975,16 +1978,28 @@ two things:
   window publishes about the paths its running work has already touched.
 
 When either overlaps, the task lands `your call` instead of `done`. Nothing merges, the
-branch is kept, dependents wait, and the chips on the card are the same ones described in
-the tasks page — `[a] accept` merges it the ordinary way once you have looked.
-
-**What the report says.** The first line names the files and, where it can, the work that
-changed them. Landed work and a window that is still going get separate sentences, because
-they are different facts:
+branch is kept, dependents wait, and the row reads
 
 ```
-nobody could check it — "rail permanence" changed internal/tui3/home.go while this ran
-nobody could check it — "drop-up nearest" is also working in internal/tui3/home.go
+your branch changed the same files while it worked: internal/tui3/home.go
+```
+
+That is the same question a merge conflict asks — two versions of one file, and only you
+know which survives — so it takes the same two answers: **`[a] resolve it`** brings your
+branch into the task's branch, checks the two changes together and lands the work, and
+**`[n] drop it`** keeps the branch and takes nothing. It does **not** read `nobody could
+check it`: this work was checked, and it held.
+
+**It is never handed to the model**, whatever `task.settle` says, for the reason a conflict
+is not: which of two versions of your own file survives is yours to say.
+
+**What the report says.** Under that first line the reason names the files and, where it
+can, the work that changed them. Landed work and a window that is still going get separate
+sentences, because they are different facts:
+
+```
+"rail permanence" changed internal/tui3/home.go while this ran
+"drop-up nearest" is also working in internal/tui3/home.go
 ```
 
 Work nothing ever named is called `another window is also working in internal/tui3/home.go`.

@@ -101,9 +101,19 @@ ALWAYS the same three columns in the same order with the same keys:
 | starts on your word | consent card before the run (`taskWaitingWord` today) | start | don't |
 | design ready to approve | harness asking | approve | decline |
 | conflicts with your branch: <files> | merge conflicted after the merge round failed | resolve it (spends one more merge round) | drop it (refute; branch kept) |
+| your branch changed the same files while it worked: <files> | the ground moved under work that HELD its check (`TaskFacts.Shifted`) | resolve it (spends one more merge round) | drop it (refute; branch kept) |
 | nobody could check it | TaskUnverified, checker gave no answer after failover | accept | not right |
 | the check did not pass it: <gaps> | ResultHeld / held landing | accept anyway | not right |
 | paused at the <cap> cap | fuel gate | raise the cap | stop it |
+
+**Two roads reach the conflict row, and the ask kind stays one.** A branch that
+would not fasten and a ground that moved under one that would are the same
+shape — two versions of the same files, one on the task's branch and one on
+yours — so they close with the same two answers, and only the sentence differs.
+The fact that decides which sentence is `TaskFacts.Shifted`, never the prose:
+the shifted landing keeps the merge word `kept`, because its branch WOULD have
+merged and its check DID pass. It used to fall through to `nobody could check
+it`, which was false in both halves.
 
 `[s] tell it` is the third column on every card. It puts the composer into the
 existing steer mode (steer.go, `glyphSteer`) addressed to that task, the
@@ -134,7 +144,9 @@ decision is back with the person and the card draws its chips. If the model's
 last message asked the person a question about that task, the chips are the
 answer surface for that question: model text above, chips below, one ask.
 
-Conflicts are never handed to the model. It cannot merge by decree.
+Conflicts are never handed to the model. It cannot merge by decree, and a
+ground that moved is the same refusal: the note says `their own branch changed
+the same files while this worked, and that is not yours to accept`.
 
 ## What the engine tries before anything is your call
 
@@ -230,7 +242,7 @@ type TaskAskKind string
 const (
     TaskAskStart    TaskAskKind = "start"     // starts on your word
     TaskAskApprove  TaskAskKind = "approve"   // design ready to approve
-    TaskAskConflict TaskAskKind = "conflict"  // conflicts with your branch
+    TaskAskConflict TaskAskKind = "conflict"  // conflicts with your branch, OR the ground moved
     TaskAskCheck    TaskAskKind = "check"     // nobody could check it
     TaskAskHeld     TaskAskKind = "held"      // the check did not pass it
     TaskAskCap      TaskAskKind = "cap"       // paused at the cap
@@ -241,6 +253,7 @@ const (
 type TaskAsk struct {
     Kind   TaskAskKind
     Reason string   // the row sentence, complete, e.g. "conflicts with your branch: a.go, b.go"
+                    // or "your branch changed the same files while it worked: a.go, b.go"
     Yes    string   // "accept", "resolve it", "start", "approve", "accept anyway", "raise the cap"
     No     string   // "not right", "drop it", "don't", "decline", "stop it"
     Owner  TaskAskOwner // who holds the decision right now

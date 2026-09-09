@@ -115,6 +115,30 @@ func TestProjectTaskTiers(t *testing.T) {
 		no:    "drop it",
 		owner: TaskAskOwnerPerson,
 	}, {
+		// THE OTHER ROAD TO THE SAME QUESTION. The branch would have fastened and
+		// the check passed; what moved was the ground under it, and a row reading
+		// `nobody could check it` here was false in both halves.
+		name: "a ground that moved says so and names the files",
+		facts: TaskFacts{
+			State: TaskUnverified, Merge: mergeAborted, Branch: "task/parser",
+			Shifted: true, Conflicts: []string{"parser.go", "lex.go"},
+		},
+		tier:  TaskTierYourCall,
+		row:   "your call · your branch changed the same files while it worked: parser.go, lex.go",
+		kind:  TaskAskConflict,
+		yes:   "resolve it",
+		no:    "drop it",
+		owner: TaskAskOwnerPerson,
+	}, {
+		name:  "a shift with nothing named stops after the sentence",
+		facts: TaskFacts{State: TaskUnverified, Merge: mergeAborted, Branch: "task/parser", Shifted: true},
+		tier:  TaskTierYourCall,
+		row:   "your call · your branch changed the same files while it worked",
+		kind:  TaskAskConflict,
+		yes:   "resolve it",
+		no:    "drop it",
+		owner: TaskAskOwnerPerson,
+	}, {
 		name:  "a conflict git would not name stops after the branch",
 		facts: TaskFacts{State: TaskUnverified, Merge: mergeConflicted, Branch: "task/parser"},
 		tier:  TaskTierYourCall,
@@ -330,6 +354,45 @@ func TestAConflictUnderAutoStaysWithThePerson(t *testing.T) {
 	}
 }
 
+// AND A GROUND THAT MOVED IS THE SAME REFUSAL. The merge word is `kept` on that
+// road — the branch WOULD have fastened — so nothing about the policy can be
+// read off it, and the mark on the node is what holds the question here.
+func TestAGroundShiftUnderAutoStaysWithThePerson(t *testing.T) {
+	graph, node := floorGraph(mergeAborted)
+	node.shiftedBy([]string{"parser.go"})
+	agent := &Agent{config: Config{tasker: graph}}
+	agent.handToModelOnAuto(node)
+	if node.decider == TaskAskOwnerModel {
+		t.Fatal("a landing whose ground moved was handed to the model")
+	}
+	status := ProjectTask(node.notice().StatusFacts())
+	if status.Ask.Kind != TaskAskConflict || status.Ask.Owner != TaskAskOwnerPerson {
+		t.Fatalf("the shift asks %q of %q", status.Ask.Kind, status.Ask.Owner)
+	}
+	if !strings.HasPrefix(status.Ask.Reason, taskAskShiftReason) {
+		t.Fatalf("the shift reads %q", status.Ask.Reason)
+	}
+}
+
+// ONE QUESTION, TWO TRUE SENTENCES. The two roads close with the same answers
+// and must never be told apart by reading their prose — nor say the same thing,
+// which would leave a person unable to tell what actually happened.
+func TestTheTwoRoadsToTheConflictQuestionSayDifferentThings(t *testing.T) {
+	files := []string{"parser.go"}
+	conflicted := ProjectTask(TaskFacts{State: TaskUnverified, Merge: mergeConflicted, Conflicts: files}).Ask
+	shifted := ProjectTask(TaskFacts{State: TaskUnverified, Merge: mergeAborted, Shifted: true, Conflicts: files}).Ask
+	if conflicted.Kind != shifted.Kind {
+		t.Fatalf("the two roads ask %q and %q", conflicted.Kind, shifted.Kind)
+	}
+	if conflicted.Yes != shifted.Yes || conflicted.No != shifted.No {
+		t.Fatalf("the answers differ: %q/%q against %q/%q",
+			conflicted.Yes, conflicted.No, shifted.Yes, shifted.No)
+	}
+	if conflicted.Reason == shifted.Reason {
+		t.Fatalf("both roads read %q, so nothing says which happened", shifted.Reason)
+	}
+}
+
 // UNDER ASK NOTHING MOVES. A session somebody is watching keeps the decision
 // where they left it.
 func TestUnderAskTheDecisionIsNeverHandedOver(t *testing.T) {
@@ -498,6 +561,36 @@ func TestAConflictedNoteRefusesTheModelTheMerge(t *testing.T) {
 		}
 		if strings.Contains(note, "settle it yourself") {
 			t.Fatalf("under %q the note tells the model to settle a conflict:\n%s", settle, note)
+		}
+	}
+}
+
+// AND THE NOTE FOR A GROUND THAT MOVED SAYS THE SAME THING ABOUT THE MERGE AND
+// A DIFFERENT THING ABOUT THE BRANCH. That landing keeps the merge word `kept`,
+// so a note reading the merge word alone offered the model `accept` while the
+// card beside it offered `resolve it` — one landing, two accounts.
+func TestAShiftedNoteRefusesTheModelTheMergeAndSaysWhatMoved(t *testing.T) {
+	notice := TaskNotice{
+		ID: 7, Title: "Port the parser", State: TaskUnverified,
+		Merge: mergeAborted, Branch: "task/parser", Shifted: true, Conflicts: []string{"parser.go"},
+	}
+	for _, settle := range []TaskSettle{TaskSettleAsk, TaskSettleAuto} {
+		note := taskNote(notice, "", settle, landingAddress{person: true})
+		head := "task 7 your call: Port the parser · " + taskAskShiftReason + ": parser.go"
+		if !strings.HasPrefix(note, head) {
+			t.Fatalf("under %q the note does not open %q:\n%s", settle, head, note)
+		}
+		if !strings.Contains(note, "not yours to accept") {
+			t.Fatalf("under %q the note does not refuse the merge:\n%s", settle, note)
+		}
+		if strings.Contains(note, "resolve "+TaskResolveVerbs()) {
+			t.Fatalf("under %q the note offers the model the settle verbs:\n%s", settle, note)
+		}
+		if strings.Contains(note, "nobody could check it") {
+			t.Fatalf("under %q the note still says nobody could check it:\n%s", settle, note)
+		}
+		if strings.Contains(note, "its branch conflicts with the person's") {
+			t.Fatalf("under %q the note claims a conflict that did not happen:\n%s", settle, note)
 		}
 	}
 }
