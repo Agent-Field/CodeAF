@@ -425,7 +425,7 @@ has nothing coming to start it — nobody is going to look at it while the run i
 unattended. So it is said whole, with what it waits on and what became of that:
 
 ```
-wire the handlers is waiting on port the parser, which needs your look
+wire the handlers is waiting on port the parser, which is your call
 ```
 
 That counts as part of what is left rather than as a reason to keep going, which

@@ -339,7 +339,7 @@ where you are sitting.
 ```
   standing orders
   in this conversation
-› ? keep the tests green         needs your look · the fix touches migrations
+› ? keep the tests green              your call · the fix touches migrations
   for this project
   ◦ draft the weekly update                                  Mondays at 9am
   everywhere
@@ -520,7 +520,7 @@ four.
   conversation you are in. Inside a shelf the order is the same triage home uses: what
   needs you, then what is moving, then everything else.
 - **A row says how much rope the order has, then what home says about it** — its mark, its
-  name, the rope (*How much rope one has* below), and one clause: `needs your look · …`,
+  name, the rope (*How much rope one has* below), and one clause: `your call · …`,
   `checking now`, `paused`, `holds`, `checked 4m ago · …`, or its cadence. There is one
   derivation of that clause for the whole program, so this page and home can never disagree
   about an order in front of you. On a narrow terminal the clause gives way first and the

@@ -56,7 +56,7 @@ row of its own:
 
 ```
 ◦ remind me at 6 to leave · said: time to leave
-? keep main green · needs your look: the fix touches migrations
+? keep main green · your call: the fix touches migrations
 ```
 
 Live — roads 1 and 2, a chat that is open — the row is drawn **the moment the

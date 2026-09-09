@@ -1880,7 +1880,7 @@ The tail on those readings says where an item stands, and it says **only what is
 - `checked 6m ago · nothing` — a watch on the world: when it last looked, and what it
   found. `nothing` is a finding, and the commonest one — it is the whole difference between
   a watch that is working and one that never ran.
-- `needs your look · <what it is stopped on>` — the one line that is not dim.
+- `your call · <what it is stopped on>` — the one line that is not dim.
 - `running · 4m` — it is doing something right now.
 - `paused` — you pressed `ctrl+e` on it.
 
@@ -2109,7 +2109,7 @@ page has the whole order):
 ```
 ◦ every Monday at 9 · set up
 ◦ every Monday at 9 · said: the standup note is in notes/standup.md
-? keep main green · needs your look: the fix touches migrations
+? keep main green · your call: the fix touches migrations
 ∙ remind me at 6 to leave · stopped
 ```
 
