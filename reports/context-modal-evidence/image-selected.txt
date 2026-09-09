@@ -1,0 +1,44 @@
+
+   Home       Untitled  ×   +
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                                                  │ + /task
+    · esc interrupts · ctrl+c twice quits · ? for help                                                                            │
+                                                                                                                                  │
+                                                                                                                                  │
+                ╭─ add context ───────────────────────────────────────────────────────────── /tmp/context-modal-accept.J3FFwS/tree/work/nested ╮
+                │  › search folders and files · or type a path · alt+p preview · alt+h hidden                                                  │
+                │  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────  │
+                │  / › tmp › context-modal-accept.J3FFwS › tree › work › nested                                                                │
+                │  a space/            ▸ also/                                                            ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀               │
+                │  nested/             ▸ deeper/                                                          ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀               │
+                │  notes/              ◆ main.go                                      282 B               ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀               │
+                │  ünïcødé/        ›   ▣ picture.png                                 7.7 KB               ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀               │
+                │                      ▤ readme.md                                     77 B               ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀               │
+                │                                                                                         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀               │
+                │                                                                                         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀               │
+                │                                                                                         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀               │
+                │                                                                                         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀               │
+                │                                                                                         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀               │
+                │                                                                                         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀               │
+                │                                                                           64×64 · png · 7.7 KB                               │
+                │  esc cancel · enter add · alt+o wide · ←→ walk · alt+m choose · ctrl+u search                                                │
+                │  attach this picture · /tmp/context-modal-accept.J3FFwS/tree/work/nested/picture.png                     7.7 KB · changed 2m │
+                ╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────── esc · cancel ─╯
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │ ❯ ctrl+g hide
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── space space home · / commands ─
+
+ ›
+work · deepseek-v4-flash-latest                                                                                      crew balanced ·    $0.00 · 5.1k/1.3M · idle

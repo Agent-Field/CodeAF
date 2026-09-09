@@ -1,0 +1,44 @@
+
+   Home       Untitled  ×   +
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                                                  │ + /task
+    · esc interrupts · ctrl+c twice quits · ? for help                                                                            │
+                                                                                                                                  │
+                                                                                                                                  │
+                ╭─ add context ────────────────────────────────────────────────────── /tmp/context-modal-accept.J3FFwS/tree/work/nested/deeper ╮
+                │  › search folders and files · or type a path · alt+p preview · alt+h hidden                                                  │
+                │  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────  │
+                │  / › tmp › context-modal-accept.J3FFwS › tree › work › nested › deeper                                                       │
+                │  also/           nothing below here                                       nothing below here                                 │
+                │  deeper/                                                                                                                     │
+                │  main.go                                                                                                                     │
+                │  picture.png                                                                                                                 │
+                │  readme.md                                                                                                                   │
+                │                                                                                                                              │
+                │                                                                                                                              │
+                │                                                                                                                              │
+                │                                                                                                                              │
+                │                                                                                                                              │
+                │                                                                                                                              │
+                │                                                                                                                              │
+                │  esc cancel · enter add · alt+o wide · ←→ walk · alt+m choose · ctrl+u search                                                │
+                │  add this folder · /tmp/context-modal-accept.J3FFwS/tree/work/nested/deeper                                           folder │
+                ╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────── esc · cancel ─╯
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │
+                                                                                                                                  │ ❯ ctrl+g hide
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── space space home · / commands ─
+
+ ›
+work · deepseek-v4-flash-latest                                                                                      crew balanced ·    $0.00 · 5.1k/1.3M · idle

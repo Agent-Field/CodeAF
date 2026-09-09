@@ -163,3 +163,73 @@ outside click capture, resize geometry invalidation, draft-preserving cancel,
 mixed next-request context, and background room/timer continuity. ANSI style
 codes and unit assertions are supporting evidence, not a substitute for that
 visual and pointer pass.
+
+## Independent integrated acceptance — `d121363af` plus change entry
+
+The worker's clean `30b472c1f` was merged only after fetching the owner target
+at `2a02ac0bb`; the midnight pulse fixture and its PR 653 entry remain in the
+history. Independent review then found and fixed two product defects that the
+worker evidence had not closed: an empty selected folder left a blank preview,
+and a right-pane directory press merely moved it into the middle column instead
+of drilling down. Empty previews now say `nothing below here`, and one press on
+the painted `deeper/` row changes the breadcrumb to `nested › deeper`. A file
+press remains selection/preview only; confirmation is still separate.
+
+The first locked full `internal/tui3` run exposed four regressions. Three were
+stale new-test assumptions about modal-relative breadcrumb coordinates, the
+search box remaining empty after opening a result, and an empty preview being
+blank. The fourth was real: whole-file Chroma highlighting used a hand-built
+preview's unsanitized source and preserved `[2J` after dropping ESC. The source
+is now made drawable before lexing. The four focused tests and the relevant
+race subset passed, followed by a green locked full suite.
+
+### Visual and pointer receipts
+
+`reports/context-modal-evidence/` preserves each inspected frame as raw ANSI,
+plain text, and a rendered PNG. `folder-wide` and `attach-wide` have matching
+sheet geometry and browse state at 160×44; `folder-mid` is 100×32 and
+`attach-narrow` is 52×26. `right-directory-open-fixed` shows the one-press
+breadcrumb change, `source-before-wheel` and `preview-wheel` show source and
+preview-only scrolling, `image-selected` shows the aspect-fitted half-cell PNG,
+and `empty-fixed` shows the explicit empty state. The selected row band stops at
+its own column, the right and left backdrop survive, and the compact narrow tier
+keeps title, breadcrumb, list, primary action, and cancel legible.
+
+The isolated native fixture is created without launching aforge:
+
+```sh
+scripts/context-modal-native-fixture.sh setup /tmp/aforge-context-native
+```
+
+Build a review-only binary in this worktree with `make build`, launch it from
+the printed `modal project` directory with an isolated `AFORGE_HOME`, and
+capture 160×44, 100×32, and 52×26 frames for `/folder` and bare `/attach`.
+Resolve pointer cells from the freshly painted separators and row labels, then
+emit genuine SGR reports with:
+
+```sh
+scripts/context-modal-native-fixture.sh motion COL ROW
+scripts/context-modal-native-fixture.sh click COL ROW
+scripts/context-modal-native-fixture.sh wheel COL ROW up
+```
+
+Expected native captures mirror the committed PNG names. Root must additionally
+verify real Mac pointer motion/press/release, resize-recomputed coordinates,
+outside click capture, draft-preserving Escape, mixed marks reaching exactly the
+next request, and room/timer/background continuity. Spark proves terminal
+composition only; portable images remain half-cell resolution and no native
+graphics protocol is claimed.
+
+### Checks
+
+- focused modal/manual tests: green
+- relevant `-race` subset: green
+- locked `go test -timeout 20m ./internal/tui3`: green in 568.581s
+- `make test-laws`: green, 55 law files in 16 packages
+- manual, untagged e2e word gate, and `internal/tui2/prose`: green
+- `make test-packed-manual`: green
+- `make changelog-check`: green with PR 659 entry
+- `make build`: green, only this worktree's `bin/aforge`
+
+No known-red entry was added. No Mac path, owner profile, installed binary,
+engine, dev, main, or staging state was touched.

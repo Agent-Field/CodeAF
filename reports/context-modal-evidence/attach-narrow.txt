@@ -1,0 +1,26 @@
+   Home       Untitled  ×   +
+────────────────────────────────────────────────────
+
+· esc interrupts · ctrl+c twice quits · ? for help
+
+   ╭─ add context ─ /tmp/context-modal-accept.… ╮
+   │  › search folders and files                │
+   │  ────────────────────────────────────────  │
+   │  … › tree › work                           │
+   │  ›   ▸ a space/                            │
+   │      ▸ nested/                             │
+   │      ▸ notes/                              │
+   │      ▸ ünïcødé/                            │
+   │  esc cancel · enter add · alt+o preview    │
+   │  add this folder · /tmp/context-modal-acc… │
+   ╰───────────────────────────── esc · cancel ─╯
+
+
+
+
+
+──────────────────── space space home · / commands ─
+
+ ›
+ work                                   $0.00 · 0% ▸
+ deepseek-v4-flash-latest                       idle
