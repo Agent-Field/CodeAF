@@ -161,3 +161,17 @@ Evidence is retained under `/Users/santoshkumar/af-completion-evidence-20260909/
 `reader-check.jsonl` (first negative probe failures), and `reader-v2.jsonl`.
 The full repaired journeys and final regression checks are pending in this
 checkpoint; keep #662 draft and unmerged until their receipts are recorded.
+
+The repair's follow-up review found that retaining every small write input could
+crowd earlier test failures out of the digest. A deterministic 20-write fixture
+reproduced that risk. Only the newest write/edit with a matching result now
+carries its bounded exact input. Existing result tails remain; the fixture keeps
+both the earlier failure and the newest input. Shared mark and handoff readers
+receive the same improved digest. Older inputs remain unavailable rather than
+being represented as fully inspected.
+
+`dev` moved to `4737e7f1` while this was tested. Merge `3526f2b8c` brought those
+landed changes into the review branch, resolving one completion-call conflict
+and retaining both our evidence repair and upstream #665 generation defaults.
+This is not a merge of #662 into `dev`. Final acceptance must be taken on the
+combined branch; the separate repair-only receipts remain historical evidence.

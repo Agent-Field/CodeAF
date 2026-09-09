@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -40,9 +41,7 @@ func TestWriteEvidenceRequiresAMatchingResultAndRemainsBounded(t *testing.T) {
 	messages := []ai.Message{
 		toolCallMessage("pending", "write", `{"path":"pending.json","content":"NOT-CONFIRMED"}`),
 		toolCallMessage("small", "write", small),
-		toolCallMessage("large", "write", string(large)),
 		{Role: "tool", ToolCallID: "small", Content: []ai.ContentPart{{Type: "text", Text: "write succeeded"}}},
-		{Role: "tool", ToolCallID: "large", Content: []ai.ContentPart{{Type: "text", Text: "write failed: quota exceeded"}}},
 	}
 	page := checkpointCompletionPage("Write the files", messages)
 	if !strings.Contains(page, small) {
@@ -50,6 +49,12 @@ func TestWriteEvidenceRequiresAMatchingResultAndRemainsBounded(t *testing.T) {
 	}
 	if strings.Contains(page, "NOT-CONFIRMED") || strings.Contains(page, strings.Repeat("large payload ", 100)) {
 		t.Fatalf("unconfirmed or oversized payload reached the reader:\n%s", page)
+	}
+	page = checkpointCompletionPage("Write the files", append(messages,
+		toolCallMessage("large", "write", string(large)),
+		ai.Message{Role: "tool", ToolCallID: "large", Content: []ai.ContentPart{{Type: "text", Text: "write failed: quota exceeded"}}}))
+	if strings.Contains(page, strings.Repeat("large payload ", 100)) {
+		t.Fatal("oversized input reached reader")
 	}
 	if !strings.Contains(page, "arguments omitted") || !strings.Contains(page, "write failed: quota exceeded") {
 		t.Fatalf("omission or failure was concealed:\n%s", page)
@@ -63,14 +68,37 @@ func TestWriteEvidenceRequiresAMatchingResultAndRemainsBounded(t *testing.T) {
 // write's success. The raw arguments retain append mode and edit structure.
 func TestWriteEvidencePairsEditAndAppendInputsByCallID(t *testing.T) {
 	appended := `{"path":"report.json","content":"append-value","append":true}`
-	edited := `{"path":"report.json","old_text":"1","new_text":"2"}`
+	edited := `{"path":"report.json","edits":[{"oldText":"1","newText":"2"}]}`
 	page := checkpointCompletionPage("Update report", []ai.Message{
 		toolCallMessage("append", "write", appended),
 		toolCallMessage("edit", "edit", edited),
 		{Role: "tool", ToolCallID: "edit", Content: []ai.ContentPart{{Type: "text", Text: "edit failed"}}},
 		{Role: "tool", ToolCallID: "append", Content: []ai.ContentPart{{Type: "text", Text: "append succeeded"}}},
 	})
-	if !strings.Contains(page, "edit failed\nsubmitted arguments: "+edited) || !strings.Contains(page, "append succeeded\nsubmitted arguments: "+appended) {
+	if !strings.Contains(page, "edit failed\nsubmitted arguments: "+edited) || !strings.Contains(page, "append succeeded") || strings.Contains(page, appended) {
 		t.Fatalf("write modes or outcomes crossed calls:\n%s", page)
+	}
+}
+
+// Writing several small files must not evict the test failure that preceded
+// them. Only the newest completed write gets the extra argument allowance.
+func TestWriteEvidenceKeepsEarlierFailureWhenManyFilesWereWritten(t *testing.T) {
+	messages := []ai.Message{
+		toolCallMessage("test", "bash", `{"command":"go test ./..."}`),
+		{Role: "tool", ToolCallID: "test", Content: []ai.ContentPart{{Type: "text", Text: "FAIL: migration broke existing records"}}},
+	}
+	var newest string
+	for i := 0; i < 20; i++ {
+		id := fmt.Sprintf("write-%d", i)
+		raw, _ := json.Marshal(map[string]string{"path": id + ".md", "content": strings.Repeat("bounded data ", 100) + id})
+		newest = string(raw)
+		messages = append(messages, toolCallMessage(id, "write", newest), ai.Message{Role: "tool", ToolCallID: id, Content: []ai.ContentPart{{Type: "text", Text: "write succeeded"}}})
+	}
+	page := checkpointCompletionPage("Fix migration and update the docs", messages)
+	if !strings.Contains(page, "FAIL: migration broke existing records") || !strings.Contains(page, newest) {
+		t.Fatalf("latest write input crowded out the failure it must be weighed against:\n%s", page)
+	}
+	if strings.Count(page, "submitted arguments:") != 1 {
+		t.Fatal("more than the newest completed write carries its input")
 	}
 }

@@ -18,6 +18,9 @@ implementation and testing here until the user changes that instruction.
 - Starting commit: `7f3ab8bf3046b83918c234cc30bf8cc224f3104a` on `dev`.
 - Integrated later `dev` commit `ebecb2d89` (#660 general-harness improvements)
   into this branch; this was not a merge of #662 into `dev`.
+- Integrated later `dev` commit `4737e7f1` through merge `3526f2b8c`, including
+  upstream generation defaults, write allowance, task-state and title fixes.
+  This also brought `dev` into the review branch; #662 remains unmerged.
 - Draft PR: [#662](https://github.com/Agent-Field/aforge-v2/pull/662), targeting
   `dev`. Keep it draft and unmerged.
 - This continuation adds the first integrated organization backend: live owner

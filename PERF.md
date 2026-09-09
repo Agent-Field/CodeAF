@@ -2256,14 +2256,16 @@ response; line paging does not claim to split it.
 
 ## Completion write evidence
 
-The checkpoint digest now retains a write/edit call's raw arguments beside its
+The checkpoint digest retains only the newest write/edit call's raw arguments beside its
 matching tool result when they fit `checkpointWriteArgumentBytes` (**1,600 bytes**,
 four times `checkpointResultBytes`). Larger inputs are explicitly omitted whole;
 partial JSON must not masquerade as a complete report. Unmatched calls carry no
-input evidence. All entries compete in the existing **5,000-token** digest budget
+input evidence. Keeping only one payload prevents a batch of small writes from
+evicting earlier test failures. This shared digest also reaches mark readers and
+handoff/division briefs; no extra read or summarization is introduced there.
+All entries compete in the existing **5,000-token** digest budget
 with its existing newest-first result retention. No files are opened, no model
 summarizer is added, and completion call counts and deadlines are unchanged.
-The completion reader no longer borrows the 300-token sketch generation ceiling:
-it uses provider/operator defaults, matching the generation-control direction
-already merged upstream in #665. The shared
+Upstream #665 removes the sketch and completion generation ceilings; both use
+provider/operator defaults. The shared
 context block retains its separately documented six-record bound.
