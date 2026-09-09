@@ -346,20 +346,33 @@ var tuiWords = map[string]tuiWord{
 		why:    "the first option on that question, which the ENGINE writes and home only relays",
 	},
 
-	// ── a landing that needs somebody's look (#268) ───────────────────────────
+	// ── a landing that is the person's call (#268, docs/design/task-states) ───
 	"settleAskWord": {
-		screen: "finished, but nobody has checked it — your call",
-		why:    "the line above the answers on a landing nobody could check; the gate is only a gate if it is drawn",
+		screen: "nobody could check it",
+		pkg:    "internal/session",
+		why: "the reason row on a landing nobody could check. It is the ENGINE's sentence now, spelled once " +
+			"beside the two verbs that answer it (task_status.go's TaskAsk) — the surface used to write its " +
+			"own, `finished, but nobody has checked it — your call`, which is how one state came to have " +
+			"four names",
 	},
 	"settleAccept": {
 		screen: "[a] accept",
-		source: " accept",
-		why:    "the answer a person presses, drawn from two constants — the key and the word beside it",
+		source: "accept",
+		pkg:    "internal/session",
+		why: "the answer a person presses. The key is the surface's and the WORD is the ask's, so a conflict " +
+			"card can read `[a] resolve it` on the same column without a second constant anywhere",
 	},
 	"settleNotRight": {
 		screen: "[n] not right",
-		source: " not right",
+		source: "not right",
+		pkg:    "internal/session",
 		why:    "the answer that says checked work is not finished, and drives the refused ending",
+	},
+	"settleTellIt": {
+		screen: "[s] tell it",
+		source: " tell it",
+		why: "the third column on every one of these cards: say something to the task rather than answering. " +
+			"It must be drawn, because a person with something to say who finds only yes and no presses one of them",
 	},
 	"settleTookLine": {
 		screen: "you took this as done",
@@ -377,7 +390,8 @@ var tuiWords = map[string]tuiWord{
 	"taskFailedWord": {
 		screen: " · failed",
 		source: "failed",
-		why:    "the state reserved for a runtime error or an older row whose ending is unknown",
+		why: "the word a LANDING may no longer wear: the card says `incomplete` plus its reason, and the suite " +
+			"asserts this is absent from the screen. It is still the record page's word for a fault",
 	},
 	"starterTaskWord": {
 		screen: "/task <brief> starts work",
@@ -438,13 +452,16 @@ var tuiWords = map[string]tuiWord{
 			"the task rail, and the sentence is longer than an ordinary window minus that column",
 	},
 	"taskLookWord": {
-		screen: "needs your look",
-		why:    "the person's own words for a landing nobody could check, on the card's own head line",
+		screen: "your call",
+		pkg:    "internal/session",
+		why: "the tier word on the head of a landing that is waiting on a person. It replaced `needs your look`, " +
+			"`awaiting review` and `unverified` — one word for one state, spelled in the engine and drawn by " +
+			"every surface (docs/design/task-states/DESIGN.md)",
 	},
 	"unverifiedGlyph": {
 		screen: "?",
-		why: "the one cell that asks the question on the roster row (internal/tui3's glyphUnverified); " +
-			"it is one character, so the frame it is read in is held together by the three sentences beside it",
+		why: "the one cell that asks the question on the roster row and on the landing card (internal/tui3's " +
+			"glyphAsk); it is one character, so the frame it is read in is held together by the sentences beside it",
 	},
 
 	// ── the front door, on a machine that has never run aforge ───────────────

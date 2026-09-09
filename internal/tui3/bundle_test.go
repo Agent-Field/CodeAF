@@ -3287,8 +3287,11 @@ func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 		Elapsed: 4 * time.Second, Report: "the tests did not build\nsee the log",
 	})})
 	for _, want := range []string{
-		"Collect sources · " + doneFailWord + " · " + taskSpanWord(4*time.Second),
-		`"the tests did not build"`,
+		// `failed` is deleted as a landing's word: the head reads `incomplete` and
+		// the row under it says why, in the engine's own sentence for a fault
+		// (docs/design/task-states/DESIGN.md).
+		"Collect sources · " + taskIncompleteState + " · " + taskSpanWord(4*time.Second),
+		"a fault: the tests did not build",
 	} {
 		if !strings.Contains(taskText(a), want) {
 			t.Fatalf("the failure card does not carry %q:\n%s", want, taskText(a))
@@ -3298,34 +3301,39 @@ func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 		t.Fatalf("the collapsed card leaked the rest of the report:\n%s", taskText(a))
 	}
 
-	// A NODE THAT STOPPED DID NOT CRASH, and the card says so twice over: the
-	// engine's own "stopped:" sentence survives verbatim, and the branch it kept
-	// is named in this surface's words rather than in "aborted".
+	// A NODE THAT KEPT ITS BRANCH SAYS SO AS A FACT AND NOT AS A STATE. The head
+	// carries the word, the file count and `branch kept · <branch>`; the row under
+	// it carries the engine's own account of what went wrong, and the fused
+	// `stopped — branch kept` is gone from the card altogether
+	// (docs/design/task-states/DESIGN.md).
 	say("and the audio.")
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(11, "Mix audio", session.TaskFailed, session.TaskNotice{
 		Elapsed: 90 * time.Second, Report: "stopped: 40 steps and no finish",
 		Merge: mergeWordAborted, Branch: "task/mix",
 	})})
 	for _, want := range []string{
-		"Mix audio · " + doneFailWord + " · " + taskSpanWord(90*time.Second) +
-			" · " + taskStoppedKept + " · task/mix",
-		`"stopped: 40 steps and no finish"`,
+		"Mix audio · " + taskIncompleteState + " · " + taskSpanWord(90*time.Second) +
+			" · " + taskBranchKept + " · task/mix",
+		"stopped: 40 steps and no finish",
 	} {
 		if !strings.Contains(taskText(a), want) {
-			t.Fatalf("the stopped card does not carry %q:\n%s", want, taskText(a))
+			t.Fatalf("the kept-branch card does not carry %q:\n%s", want, taskText(a))
 		}
 	}
-	if strings.Contains(taskText(a), mergeWordAborted) {
-		t.Fatalf("the card read the engine's own word for a stopped node:\n%s", taskText(a))
+	for _, never := range []string{mergeWordAborted, taskStoppedKept} {
+		if strings.Contains(taskText(a), never) {
+			t.Fatalf("the card says %q, which is not a card's word any more:\n%s", never, taskText(a))
+		}
 	}
-	// And a node that ended with nothing to say still leads with the word: a
-	// failure this surface was told nothing about is a node that stopped.
+	// And a node that ended with nothing to say still says something: an ending
+	// this surface was told nothing about is a fault, in the engine's bare word
+	// for one, rather than an empty row.
 	say("and the titles.")
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(12, "Render titles", session.TaskFailed, session.TaskNotice{
 		Elapsed: 3 * time.Second,
 	})})
-	if !strings.Contains(taskText(a), `"`+taskStoppedWord+`"`) {
-		t.Fatalf("a silent failure does not fall back to %q:\n%s", taskStoppedWord, taskText(a))
+	if !strings.Contains(taskText(a), "Render titles · "+taskIncompleteState) {
+		t.Fatalf("a silent failure does not land as %q:\n%s", taskIncompleteState, taskText(a))
 	}
 }
 

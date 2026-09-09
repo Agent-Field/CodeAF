@@ -258,9 +258,10 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		{"y allow · n deny · a always", []string{"y", "n", "a"}},
 		{"↑↓ move · →← tree · enter open · alt+w wide · esc",
 			[]string{"↑↓", "→←", "enter", "alt+w", "esc"}},
-		// The roster's hold hint on a row that needs your look (tasksettle.go's
-		// [roomSettleHint]): three letters, each lifted out of its own word.
-		{roomSettleHint + " · esc", []string{"a", "l", "n", "esc"}},
+		// The roster's hold hint on a row that is the person's call
+		// (tasksettle.go's [app.roomSettleHintFor]): a letter lifted out of each
+		// chip the card is actually drawing.
+		{"a accept · n not right · s tell it · esc", []string{"a", "n", "s", "esc"}},
 		{"esc stops and sends", []string{"esc"}},
 		{"space space home · tab last · / commands",
 			[]string{"space", "space", "tab", "/"}},

@@ -208,6 +208,17 @@ type taskNode struct {
 	// replacing it — a stopped node still settles as failed — and it is what the
 	// roster's ⊘ and the header's "stopped" are drawn from (stop.go).
 	stopped bool
+	// conflicts names the files that CLASH on a landing whose branch would not
+	// fasten onto the person's (session's TaskNotice.Conflicts). An empty list
+	// under a conflicted merge is the emptiness law and not a claim that nothing
+	// clashed: git does not always say which files it was about.
+	conflicts []string
+	// decider is WHO HOLDS THIS NODE'S QUESTION right now (TaskNotice.Decider),
+	// and it is the whole of what `task.settle = auto`, a person handing one card
+	// over and the floor that hands it back at the end of a turn have to say to
+	// each other. The zero value reads as the person, which is the only safe
+	// reading of a notice that said nothing ([session.TaskAskOwner]).
+	decider session.TaskAskOwner
 	// ending is WHY a failed node stopped where it did, as the engine said it
 	// (session's TaskNotice.Ending), and "" when it gave no reason — which is
 	// every row from an older engine or checkpoint, drawn as it always was
@@ -5622,11 +5633,19 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		// monotonic but the NAMING is not: a row can be published before its title
 		// is known and again after, in the same state, and the second one is the
 		// only chance this surface gets to learn what the work is called.
+		//
+		// AND A DECISION CHANGING HANDS IS THE QUIETEST NEWS OF ALL AND THE ONE
+		// NOBODY MAY MISS. The floor hands an unanswered question back to the person
+		// at the end of the model's turn by publishing a row whose state, span,
+		// branch and report are all exactly what they were and whose only news is
+		// [session.TaskNotice.Decider] — so a guard that only ever looked at the
+		// state would throw away the event that puts the chips back on the card
+		// somebody is waiting in front of (taskdone.go's [app.handedBackCard]).
 		node := a.tasks[notice.ID]
 		if node == nil || (notice.CostUSD <= node.cost &&
 			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node) &&
 			!taskRenamesContext(notice, node) && !taskStops(notice, node) &&
-			!taskPauses(notice, node)) {
+			!taskPauses(notice, node) && notice.Decider == node.decider) {
 			return nil
 		}
 	}
@@ -5749,6 +5768,14 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		node.produced, node.producedWhole = notice.Result, notice.ResultWhole
 		node.producedCut, node.producedHeld = notice.ResultCut, notice.ResultHeld
 	}
+	// THE TWO FACTS A QUESTION IS MADE OF, taken from every update including their
+	// absence. Which files clash and who is holding the decision are both reports
+	// of what is true RIGHT NOW — a merge round that resolved a clash and a floor
+	// that handed a question back both publish a row that stops carrying what the
+	// last one did — so keeping either past the notice that dropped it would be
+	// this surface asking a question somebody has already answered
+	// (docs/design/task-states/DESIGN.md).
+	node.conflicts, node.decider = notice.Conflicts, notice.Decider
 	// The model is kept whenever an update carries one and never overwritten
 	// with an empty: it is a property of the work, settled at admission, and an
 	// update that says nothing about it is not an update that changed it.

@@ -1906,9 +1906,9 @@ func (a *app) roomHint() string {
 		// AND IT IS SPELLED TO THE FRAME. The slot takes a line whole or not at
 		// all ([app.legend]), so the full sentence — four cells too long at sixty
 		// columns — left the narrowest terminal naming none of the keys that
-		// answer the question it was standing on. [roomSettleHintAt] is the
-		// ranked prefix of it that fits.
-		return a.settleHintAt(a.width, "")
+		// answer the question it was standing on. [app.settleHintAt] is the
+		// ranked prefix of it that fits, spelled from the card's own chips.
+		return a.settleHintAt(a.roomSettleCard(), a.width, "")
 	}
 	return ""
 }

@@ -48,14 +48,25 @@ func TestAHaltedNodeSaysWhyAndWearsTheSteerMarkNotTheCross(t *testing.T) {
 		drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskFailed,
 			endedNotice(tc.ending, "lost the connection to the model: read: connection reset by peer"))})
 
+		// THE CARD SAYS THE STATE ONCE AND THE REASON ONCE, on two rows. It used to
+		// fuse them into `lost the connection — branch kept`, which is a state, a
+		// reason and a source-control fact in one phrase; the head carries the word
+		// and the branch and the row under it carries why
+		// (docs/design/task-states/DESIGN.md).
 		text := taskText(a)
-		for _, want := range []string{tc.word + " — " + taskBranchKept + " · task/parser"} {
+		for _, want := range []string{
+			" · " + taskIncompleteState + " · ",
+			" · " + taskBranchKept + " · task/parser",
+			tc.word,
+		} {
 			if !strings.Contains(text, want) {
 				t.Fatalf("%s: the card is missing %q:\n%s", tc.ending, want, text)
 			}
 		}
-		if strings.Contains(text, taskStoppedKept) {
-			t.Fatalf("%s: the card says the node was stopped:\n%s", tc.ending, text)
+		for _, never := range []string{taskStoppedKept, tc.word + " — "} {
+			if strings.Contains(text, never) {
+				t.Fatalf("%s: the card says %q:\n%s", tc.ending, never, text)
+			}
 		}
 		rail := endedRailText(a)
 		if want := glyphHalted + " Port the parser"; !strings.Contains(rail, want) {
@@ -108,12 +119,17 @@ func TestARefusedNodeIsIncompleteAndBrokenOrOldNodesStillFail(t *testing.T) {
 		if got := plain(a.homeTaskGlyph(entry, session.SessionRow{})); got != tc.home {
 			t.Fatalf("%q: home glyph = %q, want %q", tc.ending, got, tc.home)
 		}
-		tail := a.doneTail(&taskDone{failed: true, ending: tc.ending})
-		if !strings.Contains(tail, " · "+tc.state) {
-			t.Fatalf("%q: landed-card tail = %q, want state %q", tc.ending, tail, tc.state)
+		// AND THE LANDING CARD SAYS `incomplete` FOR ALL THREE. `failed` is deleted
+		// as a landing's word: a fault is `incomplete` plus `a fault: <line>` on the
+		// row under it, and the record page above is the last reader that still
+		// tells the two apart in one word (docs/design/task-states/DESIGN.md).
+		tail := a.doneTail(&taskDone{status: doneStatus(session.TaskFacts{
+			State: session.TaskFailed, Ending: tc.ending})})
+		if !strings.Contains(tail, " · "+taskIncompleteState) {
+			t.Fatalf("%q: landed-card tail = %q, want %q", tc.ending, tail, taskIncompleteState)
 		}
-		if tc.ending == session.TaskEndingRefused && strings.Contains(tail, doneFailWord) {
-			t.Fatalf("a refused task still says %q: %q", doneFailWord, tail)
+		if strings.Contains(tail, doneFailWord) {
+			t.Fatalf("%q: a landing still says %q: %q", tc.ending, doneFailWord, tail)
 		}
 	}
 }
@@ -151,8 +167,16 @@ func TestAWorkerThatWouldNotWriteItsNotesSaysSoOnTheRailAndInTheRoom(t *testing.
 	if rail := endedRailText(a); !strings.Contains(rail, row) {
 		t.Fatalf("the rail row does not read %q:\n%s", row, rail)
 	}
-	if room := taskText(a); !strings.Contains(room, row) {
-		t.Fatalf("the room does not read %q:\n%s", row, room)
+	// THE CARD SAYS THE SAME THING ON TWO ROWS, which is its own law: the word and
+	// the branch on the head, the reason under it, and nothing fused
+	// (docs/design/task-states/DESIGN.md).
+	card := taskText(a)
+	for _, want := range []string{
+		" · " + taskIncompleteState + " · ", "would not write its notes down", taskBranchKept,
+	} {
+		if !strings.Contains(card, want) {
+			t.Fatalf("the card is missing %q:\n%s", want, card)
+		}
 	}
 	// AND IT IS THE STEER MARK, NOT THE CROSS. Nobody found anything wrong with
 	// the work; it is on the branch and the next move is a person's.
