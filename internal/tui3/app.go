@@ -1244,6 +1244,9 @@ type app struct {
 	// laid out for.
 	rows      []row
 	rowsWidth int
+	// The current frame records inline activity so footer rendering never
+	// rebuilds the transcript or borrows a hidden conversation's state.
+	inlineWaitShowing bool
 
 	width, height int
 	offset        int

@@ -280,6 +280,7 @@ func (a *app) frame() (string, int, int) {
 // frameBody is the frame as every surface in this package builds it, before the
 // one composition pass [app.frame] puts over the whole of it.
 func (a *app) frameBody() (string, int, int) {
+	a.inlineWaitShowing = false
 	width, height := a.size()
 	if a.pasteEdit.open {
 		return a.pasteEditorFrame(width, height)
@@ -381,6 +382,16 @@ func (a *app) frameBody() (string, int, int) {
 			return strings.Join(lines, "\n"), caretX, caretY
 		}
 	}
+	// The body decides who owns activity before the footer is drawn. This
+	// uses the same cached rows that the frame places below; status painting
+	// never rebuilds a hidden transcript to infer ownership.
+	view := a.viewHeight()
+	body, pad := a.bodyRows(a.bodyWidth(), view)
+	if !a.railFull() {
+		for _, r := range body {
+			a.inlineWaitShowing = a.inlineWaitShowing || r.inlineWait
+		}
+	}
 	chrome, chromeMarks, caretX, caretRow := a.chrome(width)
 	// The welcome box rides at the top of the frame rather than at the bottom
 	// with the chrome it is built with ([welcomeLift] states why). Splitting it
@@ -414,7 +425,6 @@ func (a *app) frameBody() (string, int, int) {
 	// hit-testing included, resolves through the same number — and the chrome is
 	// drawn at the FULL width, because the status line and the legend are about
 	// the whole window rather than about the transcript (task.go).
-	view := a.viewHeight()
 
 	rows := make([]string, 0, height)
 	if tabs != "" {
@@ -465,7 +475,6 @@ func (a *app) frameBody() (string, int, int) {
 		rows = append(rows, lifted...)
 		return a.frameOut(rows, chrome, height, caretX, caretRow, lift, liftedAt)
 	}
-	body, pad := a.bodyRows(a.bodyWidth(), view)
 	rail := a.railRows(view)
 	railAt := func(i int) string {
 		if i < len(rail) {

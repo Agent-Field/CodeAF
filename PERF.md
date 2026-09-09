@@ -2114,8 +2114,12 @@ remain static because nearest palette matches can introduce abrupt hue changes.
 Tests inspect the whole cycle in both themes for visible yet smooth colour,
 a quiet loop boundary, stable width, intact Unicode and elapsed-time behavior
 under skipped frames. An actual paint-handler regression checks that between
-finished calls only the current Working state moves, within the same three-row
-budget. The laid-out activity row suppresses a duplicate footer pulse.
+finished calls only an inline activity dot moves. The latest finished caption
+stays still and whole, sharing the existing oversized-caption exception.
+Waiting labels reuse `stepElapsedAfter` (10 seconds) and the known request
+clock, with no new timer or narrator call. Suffixes use spare columns; at narrow
+widths the dot uses the existing icon gutter. The laid-out activity row suppresses
+a duplicate footer pulse; detailed phase information remains in the footer.
 
 ## Memory lookup before the first response
 

@@ -106,6 +106,9 @@ type row struct {
 	// The footer reads the actual drawing so an opened or absent compact block
 	// cannot suppress the only remaining indication of work.
 	activity bool
+	// Inline waiting owns only a sign of life; detailed phase information stays
+	// with the footer until the reader opens the full transcript.
+	inlineWait bool
 	// links are the task references drawn in this row's own columns
 	// (markdown.go). They are the one thing on the transcript a click resolves
 	// by COLUMN rather than by row, and they are recorded here for the reason
@@ -1664,6 +1667,9 @@ func (a *app) ellipsisShowing() bool {
 // phase up, so no state of a turn is without it. That is the whole rule: ONE
 // HOME AT A TIME, and never the same words on two rows.
 func (a *app) pulseHoldsThePhase(news PhaseNews) bool {
+	if a.inlineWaitShowing {
+		return false
+	}
 	return a.ellipsisShowing() && phaseWords(news, a.now()) != ""
 }
 

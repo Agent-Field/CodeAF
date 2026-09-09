@@ -1780,10 +1780,11 @@ While the main conversation works, recent step descriptions occupy a compact
 window below your question. Older steps are fainter; the newest step shimmers
 while its calls run. A soft highlight sweeps across the text every two seconds,
 reaching ordinary reading brightness; the letters stay still. Thinking, raw tool calls, arguments and call counts stay
-behind this view. The window changes when a new step arrives. Before the first step and between
-finished calls, a separate “Working” line carries the shimmer; it does not make
-finished work look active. Hidden work has a clickable `▸ Working · ctrl+e`
-door even before the first caption. Waiting and retry information remains available.
+behind this view. The window changes when a new step arrives. Before the first step, a clickable `▸ Working · ctrl+e` door carries the shimmer.
+Between finished calls, the latest description stays readable and still, with a
+softly animated dot beside it. There is no extra Working row. After 10 seconds
+of a known response wait, a dim `awaiting response · 12s` suffix appears when it
+fits. Detailed phase and retry information stays in the footer and expanded view.
 
 Click a step, or press `ctrl+e` with an empty message box, to open the full
 outline. Each caption then opens its own calls. The live caption keeps its
@@ -1793,8 +1794,9 @@ return to the compact view. `ctrl+o` can still show all calls.
 The window budgets **3 wrapped rows**, admitting whole captions newest first.
 On a narrow screen, a caption that needs two rows leaves room for fewer steps.
 If the current caption alone needs more than three rows, it stays whole rather
-than losing words. Between calls, the current activity takes priority over a
-finished caption too tall to fit beside it; open the work to read that caption. Screen-reader and lower-colour terminals (including 256 colours) draw the
+than losing words. Between calls, the latest caption also stays whole. Waiting text uses only spare
+space; when the dot cannot fit after the caption, it occupies the existing icon
+gutter. The description never moves to make room for a timer. Screen-reader and lower-colour terminals (including 256 colours) draw the
 descriptions without motion. Expanding or collapsing the work is immediate.
 
 Your messages, corrections, answers, approval questions and notices remain
@@ -1812,8 +1814,10 @@ the live timer. This counts up; the finish time is unknown.
 
 The time uses spare space after the caption's last line. It never moves the
 words or adds a row; on a narrow terminal with no spare room, it stays hidden.
-The icon stays still and only the step's words shimmer. Waiting/retry states
-keep their existing timing information rather than adding a second clock.
+The icon stays still and only the step's words shimmer while its tools run.
+Between calls the separate waiting dot moves; its response clock starts with
+the request, not with the preceding tool. Task pages never borrow this clock
+from the main conversation.
 
 ## The symbol beside each step — the little icons in the working block, what the mark in front of a step means
 
@@ -1841,8 +1845,10 @@ happening before you have read which file it is happening to.
 ## The step marks never move and never say whether a step passed — no tick, no cross, still icons
 
 **The marks never move.** The newest step's *words* shimmer while its calls run;
-its mark holds still. Between tool calls, a short `Working` line keeps that
-sign of activity in the compact block. There is only one animated line.
+its mark holds still. Between tool calls, only a separate dot beside the latest
+finished caption animates. On very narrow lines the dot uses the icon gutter
+instead. Before any caption exists, the Working door carries the shimmer.
+There is only one animated indication.
 
 **They never say how a step went.** There is no tick, no cross and no warning
 mark here. A step that failed is not folded into this block at all — it keeps its

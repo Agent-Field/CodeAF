@@ -28,15 +28,15 @@ import (
 //     machinery, and the machinery is what a person delegated precisely so they
 //     would not have to watch it. All of it is one gesture away and none of it is
 //     lost — the window HIDES rows, it never drops them.
-//   - IT NEVER MANUFACTURES A STEP. Before the first caption and between
-//     finished calls, a separate Working state keeps the window alive. It is
-//     the running turn's state, not a claim that another step has happened.
+//   - IT NEVER MANUFACTURES A STEP. Before the first caption, a Working state keeps
+//     the window alive. Between finished calls, a quiet inline mark carries
+//     activity beside the latest description without inventing another step.
 //     The same row opens hidden work even before there is a caption to click.
 //   - A NEW CAPTION ARRIVES ONLY WITH WORK. Silence can change the activity
 //     state, but never invents another semantic description.
 //
 // THE MOTION IS THE ONE THIS SURFACE ALREADY OWNS. The newest step shimmers
-// while a call under it is in flight, or the Working row moves between calls
+// while a call under it is in flight, or only an inline mark moves between calls
 // (captionmotion.go's [app.shimmer] — the spinner,
 // relocated), and the steps above it step down the fade ladder the thinking
 // window uses (styles.go's [thoughtFade]): faint, then dim, then the live one.
@@ -355,24 +355,12 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 	type step struct {
 		lines    []string
 		live     bool
-		pending  bool
 		age      string
 		category session.ActionCategory
 	}
 	picked := make([]step, 0, liveStepRows)
 	used := 0
-	if w.pending {
-		text := "Working"
-		// The compact state inherits the footer's useful wait information only
-		// while the footer would own it. During streaming reasoning the status
-		// line keeps the phase instead, so no frame says the same fact twice.
-		if d.lens.clock && a.ellipsisShowing() {
-			text = ansi.Strip(a.activityLine(text))
-		}
-		lines := wrap(text, room)
-		picked = append(picked, step{lines: lines, live: true, pending: true, category: session.ActionWork})
-		used += len(lines)
-	}
+
 	for at := len(w.steps) - 1; at >= 0; at-- {
 		lines := wrap(captionText(w.steps[at]), room)
 		if len(lines) == 0 {
@@ -399,19 +387,27 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 	for at := len(picked) - 1; at >= 0; at-- {
 		s := picked[at]
 		stop := first + (len(picked) - 1 - at)
+		waiting := w.pending && at == 0
+		waitTail, inline := "", false
+		if waiting {
+			waitTail, inline = a.compactWaitSuffix(s.lines[len(s.lines)-1], room, d)
+		}
 		for i, line := range s.lines {
 			// ONLY THE STEP THAT IS RUNNING MOVES, and only on its first line: the
 			// shimmer is one band travelling over one line, and a second band on
 			// the wrap under it would be two answers to "what is happening now"
 			// (caption.go's [app.shimmer]).
 			painted := a.pal.fade(line, stop)
+			if waiting {
+				painted = a.pal.narr(line)
+				if i == len(s.lines)-1 && inline {
+					painted += waitTail
+				}
+			}
 			if s.live && at == 0 {
 				painted = a.pal.narr(line)
 				if i == 0 {
 					painted = a.shimmer(line)
-					if s.pending && len(line) >= len("Working") {
-						painted = a.shimmer("Working") + a.pal.dim(line[len("Working"):])
-					}
 				}
 				if i == len(s.lines)-1 {
 					painted = a.stepTimeSuffix(line, painted, s.age, room)
@@ -419,12 +415,17 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 			}
 			// The action icon remains still while its caption carries the sweep.
 			lead := a.actionLead(s.category, i == 0)
-			if s.live && at == 0 {
+			if waiting {
+				lead = a.pal.narr(lead)
+				if !inline && i == 0 {
+					lead = a.compactWaitMark() + " "
+				}
+			} else if s.live && at == 0 {
 				lead = a.pal.narr(lead)
 			} else {
 				lead = a.pal.fade(lead, stop)
 			}
-			out = append(out, row{text: lead + painted, entry: -1, hit: hitWorkFold, turn: w.key, activity: s.live && at == 0})
+			out = append(out, row{text: lead + painted, entry: -1, hit: hitWorkFold, turn: w.key, activity: (s.live && at == 0) || (waiting && ((inline && i == len(s.lines)-1) || (!inline && i == 0))), inlineWait: waiting && ((inline && i == len(s.lines)-1) || (!inline && i == 0))})
 		}
 	}
 	return out

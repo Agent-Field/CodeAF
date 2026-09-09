@@ -1,0 +1,16 @@
+---
+kind: changed
+title: keep useful step descriptions visible between actions
+pr: 653
+surface: [chat, docs]
+invalidates:
+  - "Between tool calls an extra Working row took attention and space from useful captions. The latest completed caption now stays readable and static, with only a separate inline activity dot animated."
+  - "Compact waiting repeated model names and early wait telemetry. A known response wait gains a dim awaiting response label and elapsed age only after the existing 10-second threshold; detailed phase and retry information remains in the footer and expanded view."
+---
+
+Active tool captions still shimmer immediately using the available description;
+the optional narrator improves their wording while work runs. The first-caption
+Working door, expansion controls, task-page isolation, and completion/reopen
+collapse are unchanged. Waiting suffixes never reflow descriptions; when even
+the dot cannot fit it occupies the existing icon gutter. Accessible and
+lower-colour modes keep the dot still. No new model call or timer is introduced.
