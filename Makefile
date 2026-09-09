@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/aforge
 
-.PHONY: all build debug demo-home embed manual-pack-law furrow test test-laws fmt-check test-packed-manual test-remote vet check size clean \
+.PHONY: all build build-check debug demo-home embed manual-pack-law furrow test test-focus test-report test-quick test-laws fmt-check test-packed-manual test-remote vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -111,16 +111,11 @@ debug: furrow embed
 KNOWN_RED := $(shell grep -v -e '^\#' -e '^[[:space:]]*$$' .github/known-red.txt 2>/dev/null | paste -sd'|' -)
 TEST_SKIP := $(if $(KNOWN_RED),-skip '^($(KNOWN_RED))$$')
 
-# THE PER-PACKAGE TIMEOUT IS MEASURED, NOT GUESSED. internal/tui3 is the slowest
-# package at about 485 seconds on a two-core runner or a loaded workstation;
-# ci-full's old 8m cut it off at the finish line and reported whichever test
-# happened to be running as though it had hung. Fifteen minutes is that number
-# with headroom, and a package that really hangs still names itself.
-#
-# THE NUMBER IS PROVISIONAL. Of tui3's 478 seconds, 362 are its harness
-# sleeping 150ms for every command that never returns (#399); once that lands
-# the package is near two minutes and this can come down. Lower it from a new
-# measurement, never raise it to fit a slow run.
+# THE PER-PACKAGE TIMEOUT IS MEASURED, NOT GUESSED. On 2026-09-08 internal/tui3
+# took 563 seconds on the constrained shared runner (GOMAXPROCS=4, -p=2), while
+# internal/session took 210 seconds. Fifteen minutes leaves headroom and still
+# makes a package that really hangs name itself. Lower it only from a new
+# uncached measurement, never from an expected optimization.
 TEST_TIMEOUT := 15m
 TEST_FLAGS ?=
 PKGS ?= ./...
@@ -131,6 +126,28 @@ SUITE_LOCK := $(if $(filter ./...,$(PKGS)),./scripts/one-suite.sh)
 
 test:
 	$(SUITE_LOCK) go test -timeout $(TEST_TIMEOUT) $(TEST_FLAGS) $(TEST_SKIP) $(PKGS)
+
+# One named regression is the fastest trustworthy edit loop. RUN is required:
+# an omitted selector must not silently turn a focused command into a full
+# package run. The ordinary test target still owns the ledger and timeout.
+test-focus:
+	@test -n "$(RUN)" || { echo "usage: make test-focus PKGS=./internal/pkg RUN='^TestName$$'"; exit 2; }
+	$(SUITE_LOCK) go test -timeout $(TEST_TIMEOUT) $(TEST_FLAGS) -run '$(RUN)' $(TEST_SKIP) $(PKGS)
+
+# Keep the Go build cache warm while forcing the tests themselves to execute.
+# REPORT is structured JSON; progress and the slowest completed tests remain
+# visible on stderr during a long package run.
+REPORT ?= test-report.json
+test-report:
+	./scripts/test-report.sh '$(REPORT)' $(MAKE) -s --no-print-directory test PKGS='$(PKGS)' TEST_FLAGS="$(TEST_FLAGS) -count=1 -json"
+
+# This mirrors the deterministic light half of the pull-request gate. It is
+# fast feedback, NOT full acceptance: it does not run touched packages or the
+# whole suite. Use test-report/test with -count=1 before claiming acceptance.
+build-check:
+	go build ./...
+
+test-quick: build-check vet fmt-check test-packed-manual test-laws
 
 # The laws alone — every test that reads the tree itself — in under half a
 # minute. This is what the pull-request gate runs on every change, and
