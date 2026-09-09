@@ -3015,6 +3015,9 @@ unreported, and it thaws at the value it would have had when you leave.
 **A finished task reads like a conversation: its request, a collapsed work chip,
 and its final answer.** This also applies to nested tasks. Intermediate narration
 and tool calls stay inside the work chip; click it or press `ctrl+e` to inspect them.
+Scrolling a finished task, including at the top of its page, keeps those details
+collapsed. Open work shows `▾ worked`; closed work shows `▸ worked`. Click the chip
+or press `ctrl+e` again to collapse the whole outline, including open tool steps.
 Your later messages and corrections remain visible at their original boundaries.
 A stretch with no final reply keeps its available work visible, so an interrupted
 or tool-only record does not pretend to have an answer.

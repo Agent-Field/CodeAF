@@ -436,9 +436,15 @@ func (a *app) workfoldLabel(d deck, f workfold) string {
 			took = stamp.took
 		}
 	}
-	parts := []string{"▸ worked"}
+	// The disclosure reports the effective state, including the reader's
+	// preference, so an expanded outline never advertises a closed door.
+	arrow := "▸"
+	if a.workFoldOpen(d, f.key) {
+		arrow = "▾"
+	}
+	parts := []string{arrow + " worked"}
 	if f.stopped {
-		parts[0] = "▸ stopped by you"
+		parts[0] = arrow + " stopped by you"
 		if word := tookWord(took); word != "" {
 			parts[0] += " at " + word
 		}

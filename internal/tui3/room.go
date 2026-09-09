@@ -3458,7 +3458,7 @@ func (a *app) roomOffsetFor(total, height int) int {
 // roomScroll moves the room's window and re-decides whether the reader is
 // following the node.
 //
-// SCROLLING UP AT THE TOP OPENS THE FOLD. Scroll is the universal read-history
+// SCROLLING UP AT THE TOP OF A RUNNING ROOM OPENS THE FOLD. Scroll is the universal read-history
 // gesture, and a fold is exactly the history a person came into a room to
 // read; a wheel that stopped dead against a line saying "N earlier tool calls"
 // was the gesture unwired from the one thing it is for. So a scroll up that
@@ -3518,6 +3518,11 @@ func (a *app) roomScroll(delta int) {
 // ([app.roomTouched]).
 func (a *app) roomUnfoldAtTop(total, height int) bool {
 	room := a.room
+	// FINISHED WORK OPENS ONLY BY DISCLOSURE. Scrolling back to the request,
+	// including trackpad momentum at the top, must not expose the tool log.
+	if room == nil || room.done {
+		return false
+	}
 	rows := a.roomRows(a.bodyWidth())
 	end := min(height, total)
 	var open func()

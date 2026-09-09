@@ -291,16 +291,8 @@ func TestACorrectionTypedIntoARunningTaskBreaksThePhaseFold(t *testing.T) {
 	}
 }
 
-// EVERY DOOR OPENS A CHIP, because the disclosure ladder may never dead-end:
-// ctrl+e opens the newest, and a scroll up at the top of the page opens the one
-// nearest the top.
-//
-// IT IS ASKED OF BOTH POSTURES, and that is the whole reason it is two subtests
-// now. A room folds by phase while its node runs and by completed stretch once
-// it lands (roomfold.go's [taskRoom.readingLens]), so the chips a door has to
-// find are cut differently on the two pages — and a door proven against one
-// keyspace proves nothing about the other. The gesture is identical in both;
-// only what is behind it differs.
+// Live phase chips retain their scroll door. A completed task requires an
+// explicit disclosure, so reading back to its request cannot expand its tools.
 func TestCtrlEAndScrollUpBothOpenAPhaseChip(t *testing.T) {
 	// WHILE THE NODE RUNS there is a chip per settled phase, and the two doors
 	// reach DIFFERENT ones — which is what makes a room's chips separable at all.
@@ -326,9 +318,8 @@ func TestCtrlEAndScrollUpBothOpenAPhaseChip(t *testing.T) {
 		}
 	})
 
-	// ONCE IT HAS LANDED the stretch is one chip, so both doors reach the same
-	// one — and each still has to reach it. Open is the outline; the calls are
-	// one caption further, exactly as they are out in the conversation.
+	// Once it has landed, Ctrl+E opens the outline and a caption opens its
+	// calls. Scrolling alone preserves the finished reading posture.
 	t.Run("after it lands", func(t *testing.T) {
 		a := openWorked(t)
 		if strings.Contains(roomText(a), "index.html") {
@@ -348,9 +339,8 @@ func TestCtrlEAndScrollUpBothOpenAPhaseChip(t *testing.T) {
 		b := openWorked(t)
 		b.room.offset, b.room.stick = 0, false
 		b.roomScroll(-1)
-		openVisiblePhaseCaption(t, b)
-		if page := roomText(b); !strings.Contains(page, "index.html") {
-			t.Fatalf("scrolling up at the top opened no chip:\n%s", page)
+		if page := roomText(b); strings.Contains(page, "Reading the site first") {
+			t.Fatalf("scrolling expanded finished work:\n%s", page)
 		}
 	})
 }
