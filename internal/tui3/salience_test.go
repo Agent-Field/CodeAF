@@ -152,6 +152,8 @@ var salienceTable = []salienceCase{
 	{name: "EventSubharnessProposalOff", chatOnly: "that proposal withdrawn", ev: session.Event{Kind: session.EventSubharnessProposalOff}},
 	{name: "EventTakeover", chatOnly: "a checkpoint take-over is the session's own act on the turn the person " +
 		"typed", ev: session.Event{Kind: session.EventTakeover}},
+	{name: "EventMoved", chatOnly: "a conversation walking to another terminal is a fact about this WINDOW, " +
+		"and a task room draws work rather than windows", ev: session.Event{Kind: session.EventMoved}},
 }
 
 // errSalience is the engine failing, in the one shape both pumps read.

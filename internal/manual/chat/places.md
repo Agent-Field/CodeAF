@@ -327,7 +327,7 @@ the only one on the line about the thing under the cursor.
 says things like
 
 ```
- open in another window — enter again to move it here (it moves when that window's reply ends; its tasks resume here)
+ open in another window — enter again to move it here (that window's reply stops there; its tasks resume here)
 ```
 
 which has no `·` in it at all. The bracketed gloss goes first, because it explains a clause

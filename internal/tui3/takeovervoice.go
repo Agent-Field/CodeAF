@@ -36,7 +36,7 @@ package tui3
 //	rest         another window has it, and enter would bring it here
 //	armed        one enter is down; the next one moves it, and what that costs
 //	moving       asked, and the far window has nothing in flight
-//	holding      asked, and the far window is mid-reply — the honest reason
+//	holding      asked, and the far window is mid-reply — what it is doing
 //	unanswered   asked, and the request died of old age unanswered
 //	came free    it let go while nobody was on home to walk through the door
 //
@@ -93,10 +93,13 @@ const (
 	// `asked for` would be a fact about a file, and this is a fact about a
 	// conversation that is on its way.
 	takeoverComingWord = "coming here"
-	// takeoverMidReplyWord is the honest reason, and the only one there has
-	// ever been: the far window finishes what it is saying first, because a
-	// reply is never cut (session's takeover.go).
-	takeoverMidReplyWord = "that window is mid-reply — it comes the moment the reply ends"
+	// takeoverMidReplyWord is the honest reason, and it is what the far window is
+	// DOING rather than a wait: it is mid-reply, it stops there, and it hands the
+	// conversation over on its next heartbeat (session's takeover.go). It used to
+	// say `it comes the moment the reply ends`, which was true of a road that
+	// held every request back until the turn ended — and that wait was the defect
+	// the road was reported for.
+	takeoverMidReplyWord = "that window is mid-reply — it stops there and hands it over"
 	// takeoverQuietWord is what a LONG wait says when the far window is not
 	// mid-reply at all. It states the fact and claims nothing about the cause,
 	// because there is nothing here that knows one: a window wedged on a disk,
@@ -123,7 +126,7 @@ const (
 // takeoverCostWords are the two things about this door that surprise people,
 // said on the card while the row is armed. They are two clauses rather than one
 // sentence so a narrow card lays them on two rows instead of clipping one.
-var takeoverCostWords = []string{"its reply finishes first", "its tasks come here"}
+var takeoverCostWords = []string{"its reply stops there", "its tasks come here"}
 
 // takeoverElapsedAfter is how long a move has to have taken before the card
 // says how long it has taken.

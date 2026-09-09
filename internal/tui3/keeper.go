@@ -154,6 +154,15 @@ type behindWatch struct {
 	// reads the content of a lane for: every other event here is a nudge, and
 	// this one is a conversation that is about to end.
 	takeover atomic.Bool
+	// moved says another window has OPENED this conversation through the engine
+	// that holds it ([session.EventMoved], takeover.go).
+	//
+	// IT IS A SECOND FLAG AND NOT THE ONE ABOVE, because the two endings are not
+	// the same ending: a takeover ends the conversation in this process and a
+	// move detaches from one that goes on running elsewhere. A single flag would
+	// make the surface guess which, and the guess it would make is the one that
+	// stops somebody's work.
+	moved atomic.Bool
 	// waits and turning are WHAT THIS CONVERSATION IS DOING, cached here so that
 	// a surface drawing a mark on its tab does not have to ask the agent
 	// (tabsignal.go).
@@ -398,6 +407,13 @@ func (w *behindWatch) run() {
 			if ev.Kind == session.EventTakeover {
 				w.takeover.Store(true)
 			}
+			// AND THE OTHER ONE: the engine holding this conversation has told
+			// this window that another one is in it now. The stir is the same
+			// "let go of it", and the letting go is a detach
+			// (takeover.go's [app.movedKept]).
+			if ev.Kind == session.EventMoved {
+				w.moved.Store(true)
+			}
 			// AND EVERY OTHER EVENT ON THIS LANE IS A NODE SAYING WHERE IT IS.
 			// Folding it costs a map write; the stir is raised only when the
 			// conversation as a whole starts or stops having work in flight, so a
@@ -518,6 +534,14 @@ func (a *app) behindStir(note behindStirMsg) tea.Cmd {
 	// banner about a turn that landed in it would be news about a conversation
 	// that is leaving (takeover.go). The agent is asked as well as the flag, for
 	// the surface that woke on a stir raised by something else.
+	if held.watch.moved.Load() {
+		// A MOVE IS ASKED FIRST BECAUSE IT IS THE GENTLER ANSWER. The two flags
+		// cannot both be true in any road this build has — a conversation is
+		// either held in this process or held by an engine — and if a future one
+		// ever raises both, detaching from work that is still running is the
+		// ending that loses nothing.
+		return tea.Batch(next, a.movedKept(note.key, held))
+	}
 	if held.watch.takeover.Load() || takenOver(held.conv.Agent) {
 		return tea.Batch(next, a.takeOverKept(note.key, held))
 	}
@@ -827,6 +851,44 @@ func (a *app) lastConversation() tea.Cmd {
 // THIS IS THE ONE PLACE AN AGENT IS CLOSED BY A PERSON'S KEYSTROKE, and the
 // close is the whole difference between it and a switch.
 func (a *app) closeFront() (tea.Cmd, bool) {
+	return a.leaveFront(a.endAgent, true)
+}
+
+// stepBackFront is the same act for a window that is NOT ending anything: another
+// window has opened this conversation through the engine that holds it, and this
+// one is getting out of the seat ([app.movedAway]).
+//
+// IT DETACHES WHERE [app.closeFront] CLOSES, and that one line is the whole
+// difference. The engine is still running the turn and still holding the tasks;
+// a close would tell it the conversation is over and undo the very thing the
+// engine road exists for. [leaveAgent] is the same judgement `quit` makes, so a
+// conversation with no engine behind it still ends here, because there would be
+// nothing left to run it.
+//
+// AND IT SAYS NOTHING ABOUT WHAT IT LEFT. `closed · <name>` would be a false
+// sentence — nothing closed — and the true one is said by the caller in the
+// conversation's own vocabulary ([session.MovedWord]).
+func (a *app) stepBackFront() (tea.Cmd, bool) {
+	return a.leaveFront(leaveAgent, false)
+}
+
+// endAgent is a person ending a conversation: interrupt whatever is running and
+// close it, with the failure said where they can see it.
+func (a *app) endAgent(agent Agent) {
+	agent.Interrupt()
+	if err := agent.Close(); err != nil {
+		a.note("close failed: " + err.Error())
+	}
+}
+
+// leaveFront is the act both doors above are: the conversation in front is let
+// go of, and the most recently open one comes forward.
+//
+// THE TWO CALLERS DIFFER IN ONE THING AND IT IS THE ONE THAT MATTERS — what
+// letting go MEANS. Everything else here is the same act, and a second copy of
+// it would be the second answer to whether a steer still waiting on a write may
+// cross into the conversation that replaced this one.
+func (a *app) leaveFront(let func(Agent), say bool) (tea.Cmd, bool) {
 	next, ok := a.lastBehind()
 	if !ok {
 		return nil, false
@@ -843,10 +905,7 @@ func (a *app) closeFront() (tea.Cmd, bool) {
 	a.forgetSteerOwner(draftOwnerOf(a.host, a.workspace, file))
 	a.detachConversation()
 	if leaving != nil {
-		leaving.Interrupt()
-		if err := leaving.Close(); err != nil {
-			a.note("close failed: " + err.Error())
-		}
+		let(leaving)
 	}
 	// THE DRAFT FILE OF A CLOSED CONVERSATION GOES WITH IT. It is crash
 	// insurance for a conversation that is no longer at risk, and leaving it
@@ -861,7 +920,7 @@ func (a *app) closeFront() (tea.Cmd, bool) {
 	}
 	cmd := a.attachConversation(held.conv, held.side)
 	a.rememberOpen(next)
-	if closed != "" {
+	if say && closed != "" {
 		a.note("closed · " + closed)
 	}
 	return cmd, true

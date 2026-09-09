@@ -231,12 +231,36 @@ import (
 // builds — and a version-11 engine enforces it against a version-12 surface
 // using code that has been there since version 1. That is the only mechanism in
 // this protocol an old peer can be trusted to run.
-const Version = 12
+//
+// VERSION 13 IS THE MOVE, AND IT IS A RULING ABOUT WHAT A SECOND WINDOW MEANS.
+// Versions 4 to 12 let several surfaces sit in one conversation and arbitrated
+// between them with a keyboard ([Driver]): the newest arrival typed, the others
+// watched. The ruling is that a person opening a conversation in the terminal
+// they are standing at MEANS TO BE IN IT, and the window they walked away from
+// should say so and step back — one conversation, one window, and the way back
+// is the same keystroke from the other side.
+//
+// The delta is one frame down, and nothing goes up:
+//
+//   - the "moved" frame carries a [Moved] to every OTHER surface in the room
+//     when a window arrives that is neither a watcher ([Hello.Watch]) nor a
+//     link coming back ([Hello.Back]). The surface hearing it DETACHES — the
+//     engine holds the conversation and the work never stops — and lands on
+//     home with that row under the cursor.
+//
+// THE NUMBER MOVES BECAUSE THE OLD BEHAVIOUR WAS A BEHAVIOUR AND NOT A GAP. A
+// version-12 surface joined by a version-13 one never hears the frame and stays
+// attached, watching, exactly as it did before — which is not broken, and is
+// precisely why an engine may not be left to guess: a version-12 ENGINE would
+// leave two windows both believing they are the one in the conversation, and
+// only the door can tell those two builds apart.
+const Version = 13
 
 // Frame is one line on the wire, either direction.
 type Frame struct {
 	// Kind says what this frame is: "hello", "welcome", "call", "result",
-	// "event", "closed", "facts", "task", "design", "turn", "driver", "fatal".
+	// "event", "closed", "facts", "task", "design", "turn", "driver", "moved",
+	// "fatal".
 	//
 	// "facts", "task" and "design" are the KINDS THAT ANSWER NOTHING. The last
 	// is version 11's harness lane and carries one [EventWire], exactly as
@@ -831,6 +855,29 @@ type Driver struct {
 	// Here says the driver is another window on THIS surface's own machine,
 	// which is the case a person reads as a window they forgot rather than as a
 	// machine they walked away from.
+	Here bool `json:"here,omitempty"`
+}
+
+// Moved is the engine telling ONE surface that another window has opened this
+// conversation and is now the one in it.
+//
+// IT IS A FACT ABOUT THE ROOM AND NOT AN INSTRUCTION. The engine goes on holding
+// the conversation, running whatever turn is in flight and keeping every task on
+// its feet; what has changed is who is sitting in front of it. The surface that
+// hears this detaches, which is the road that leaves the work alone
+// (internal/tui3's movedAway), and a surface that ignores the kind is left
+// attached and reading — the honest floor for a build that predates the frame.
+//
+// IT NAMES THE MACHINE FOR [Driver]'s REASON, in [Driver]'s words: `another
+// window` is the true and weaker claim when the name is missing or is this
+// surface's own, and the name is what a person needs when the conversation
+// walked to a different computer.
+type Moved struct {
+	// Machine is the arriving surface's machine name as [Hello.Surface] gave
+	// it, sanitized ([machineLabel]) because it is drawn. Empty is a surface
+	// that sent none.
+	Machine string `json:"machine,omitempty"`
+	// Here says the window that took it is on THIS surface's own machine.
 	Here bool `json:"here,omitempty"`
 }
 

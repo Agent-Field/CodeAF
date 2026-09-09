@@ -9,8 +9,31 @@ package tui3
 // person actually wants: they are AT the second terminal, and the first one is
 // upstairs, or on a laptop that is shut, or simply behind eleven other windows.
 //
-// So the conversation MOVES. This file is the surface's whole half of that, and
-// it has three sides:
+// So the conversation MOVES, and there are TWO ROADS to that because there are
+// two kinds of holder.
+//
+// ── THE ENGINE ROAD, WHICH IS THE ORDINARY ONE ──────────────────────────────
+//
+// A plain `aforge chat` runs its conversation in the workspace's ENGINE
+// (internal/enginehost), and the engine is what holds the journal. So the second
+// terminal does not have to ask anybody for anything: it opens the conversation
+// through the same engine, which hands back the session it is already running —
+// mid-turn, in well under a second, with the work still moving. The window it
+// left is told by the engine ([session.EventMoved]) and STEPS BACK: it detaches,
+// says where the conversation went, and lands on home with that row under the
+// cursor, so one enter brings it back. Nothing is interrupted, nothing pauses,
+// and no keystroke is spent on a confirmation — the whole of what a move costs
+// is one enter to undo it. [app.movedAway] is that half.
+//
+// ── THE IN-PROCESS ROAD, WHICH IS WHAT IS LEFT ──────────────────────────────
+//
+// A window with no engine behind it (`--no-host`, `--debug`, a test) holds the
+// journal in its own process, and nothing outside that process can join it. That
+// is what the rest of this file is: a request on the disk, a holder that lets go,
+// and a window waiting on the flock. It is a two-key door because it really does
+// END the other window, and the work there pauses for a moment and resumes here.
+//
+// The in-process road has three sides:
 //
 //	the asking side   home. One enter on a held row ARMS it and says what the
 //	                  next one will do and what it costs; the second writes the
@@ -26,10 +49,12 @@ package tui3
 //
 // ── THE FOUR THINGS THIS DESIGN PROMISES ───────────────────────────────────
 //
-//   - A REPLY IS NEVER CUT. The holder answers at the first heartbeat AFTER its
-//     running turn ends (internal/session's takeover.go), so the wait here has
-//     no deadline of its own: a long reply is minutes, and the person who walked
-//     to this terminal was not typing in the other one.
+//   - IT IS ANSWERED AT THE NEXT HEARTBEAT, mid-reply or not. It used to wait
+//     for the holder's running turn to end, and that wait was the defect this
+//     road was reported for — `coming here · 4m50s` while a long reply finished
+//     out of sight. The holder interrupts and closes the way /new does, which
+//     leaves its work `paused — it resumes` and its partial reply in the
+//     journal, and the window that asked picks both up.
 //   - NOTHING IS DECIDED BY ONE KEYSTROKE. The first enter is the question and
 //     the second is the answer, because moving a conversation ends the window it
 //     was in, and a person pressing enter down a list must not do that by
@@ -42,6 +67,7 @@ package tui3
 //     keeps [sessionBusyWord] there and says nothing about moving anything.
 
 import (
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -57,14 +83,13 @@ import (
 // person is deciding with.
 //
 // IT STATES THE COST BEFORE THE KEY IS PRESSED. Two things are surprising about
-// this door and both are in the sentence: it does not happen at once when the
-// other window is mid-reply, and the work running over there comes here rather
-// than stopping.
+// this door and both are in the sentence: the other window's reply stops where
+// it is, and the work running over there comes here rather than stopping.
 func takeoverArmedWord(holding string) string {
 	if holding == "" {
 		holding = homeHeldWord
 	}
-	return holding + " — enter again to move it here (it moves when that window's reply ends; its tasks resume here)"
+	return holding + " — enter again to move it here (that window's reply stops there; its tasks resume here)"
 }
 
 // takeoverWaitWord is the foot's ECHO while the claim is out, and it is short
@@ -87,7 +112,7 @@ const takeoverWaitWord = "moving it here — esc stops waiting"
 // made it a guess that happened to be right most of the time; the presence file
 // beside the conversation says which it is (takeovervoice.go's
 // [app.takeoverHeldUp]).
-const takeoverStillWord = "moving it here — that window finishes its reply first · esc stops waiting"
+const takeoverStillWord = "moving it here — that window is stopping its reply · esc stops waiting"
 
 // takeoverPatience is when a wait stops being ordinary. It is not a timeout:
 // this wait has no deadline of its own, because the thing it is waiting for is
@@ -462,7 +487,14 @@ func (a *app) takeOver() tea.Cmd {
 // door puts the conversation it leaves into the KEEPER — which would keep the
 // flock this whole exchange exists to release, and the window waiting for it
 // would wait for ever.
-func (a *app) takeOverFresh() tea.Cmd {
+func (a *app) takeOverFresh() tea.Cmd { return a.freshAfterLeaving(a.endAgent) }
+
+// movedFresh is the same landing on the ENGINE ROAD, and it differs in the one
+// line [app.stepBackFront] differs in: the conversation is detached rather than
+// closed, because the engine is still running it for the window that took it.
+func (a *app) movedFresh() tea.Cmd { return a.freshAfterLeaving(leaveAgent) }
+
+func (a *app) freshAfterLeaving(let func(Agent)) tea.Cmd {
 	if !a.canStart() {
 		a.note(newUnavailableWord)
 		return nil
@@ -474,10 +506,7 @@ func (a *app) takeOverFresh() tea.Cmd {
 	}
 	leaving, side := a.agent, a.detachConversation()
 	if leaving != nil {
-		leaving.Interrupt()
-		if err := leaving.Close(); err != nil {
-			a.note("close failed: " + err.Error())
-		}
+		let(leaving)
 	}
 	if !whole {
 		conv = Conversation{Agent: conv.Agent, SessionFile: conv.SessionFile,
@@ -526,17 +555,116 @@ func takenOver(agent Agent) bool {
 // something else, and a note in the transcript in front of them would be a
 // sentence about a conversation they cannot see.
 func (a *app) takeOverKept(key string, held *kept) tea.Cmd {
+	return a.letGoOfKept(key, held, a.endAgent, session.TakeoverWord)
+}
+
+// movedKept is the ENGINE ROAD's version of the same: a conversation this window
+// is keeping has been opened in another terminal, so this window detaches from
+// it and says where it went. The work is untouched — it never left the engine.
+func (a *app) movedKept(key string, held *kept) tea.Cmd {
+	return a.letGoOfKept(key, held, leaveAgent, session.MovedWord)
+}
+
+func (a *app) letGoOfKept(key string, held *kept, let func(Agent), word string) tea.Cmd {
 	delete(a.behind, key)
 	held.watch.stop()
 	a.forget(key)
 	if held.conv.Agent != nil {
-		held.conv.Agent.Interrupt()
-		if err := held.conv.Agent.Close(); err != nil {
-			a.note("close failed: " + err.Error())
-		}
+		let(held.conv.Agent)
 	}
 	// The draft file is left for [app.takeOver]'s reason: the window taking this
 	// conversation adopts it.
 	a.touch()
-	return a.notifyBehind(held, session.TakeoverWord)
+	return a.notifyBehind(held, word)
+}
+
+// ── the engine road: this window stepping back ──────────────────────────────
+
+// movedAway is this window learning that ANOTHER WINDOW HAS OPENED THE
+// CONVERSATION IN FRONT OF IT, through the engine that holds them both
+// ([session.EventMoved], and internal/remote's tellMoved on the other side).
+//
+// IT IS [app.takeOver]'s ROAD MINUS THE INTERRUPT, and that subtraction is the
+// whole ruling. On this road the conversation does not live in this process: the
+// engine is running the turn, holding the tasks and writing the journal, and it
+// goes on doing all three while the surfaces around it change. So this window
+// DETACHES — it lets go of a view, not of anybody's work — and nothing pauses,
+// nothing resumes, and nothing is lost.
+//
+// THE DRAFT FILE IS LEFT ON DISK for [app.takeOver]'s reason exactly: the window
+// that just opened this conversation adopts it (draft.go's [adoptDraft]), so the
+// half-typed sentence walks to the other terminal with the conversation.
+//
+// AND IT LANDS ON HOME WITH THAT ROW UNDER THE CURSOR, which is what makes the
+// move symmetrical: the way back is the same single keystroke that brought it
+// there, so neither side owes a confirmation for something one enter undoes.
+func (a *app) movedAway(word string) tea.Cmd {
+	if strings.TrimSpace(word) == "" {
+		word = session.MovedWord
+	}
+	moved := a.file
+	a.dropParked()
+	if a.draftFile != "" {
+		// The whole composer, exactly as the takeover road hands it over.
+		a.writeDraftsNow(a.leavingDraft())
+		a.draftFile = ""
+	}
+	cmd, landed := a.stepBackFront()
+	if !landed {
+		cmd = a.movedFresh()
+	}
+	a.note(word)
+	return tea.Batch(cmd, a.landMoved(moved, word))
+}
+
+// landMoved raises home over whatever this window came to rest on, points the
+// cursor at the conversation that left, and says on the foot where it went.
+//
+// A WINDOW ALREADY ON HOME IS LEFT WHERE IT IS, apart from the cursor. Raising
+// home again would rebuild the screen under somebody who is reading it — losing
+// the fold they opened and the row they were on — to arrive at the screen they
+// are already looking at.
+//
+// THE SENTENCE IS SAID HERE AS WELL AS IN THE CONVERSATION. [app.note] puts it
+// in the transcript this window came to rest on, which is the right record and
+// the wrong place to READ it: the person is looking at home. One line on the
+// foot, beside the row it is about.
+//
+// AND THE ROW IS REMEMBERED, because it is very often not on the list yet. Home
+// reads the disk on its own three-second beat and the conversation only stops
+// being this window's the instant this runs, so the cursor is aimed again on the
+// first beat that has the row ([app.pointMovedRow]).
+func (a *app) landMoved(transcript, word string) tea.Cmd {
+	if strings.TrimSpace(transcript) == "" || a.hosted() {
+		return nil
+	}
+	var cmd tea.Cmd
+	if !a.at(pageHome) {
+		cmd = a.openHome()
+	}
+	a.movedFrom = transcript
+	a.pointMovedRow()
+	a.home.say(word, "")
+	return cmd
+}
+
+// pointMovedRow aims the cursor at the conversation that just left. It runs on
+// the event and again on EVERY home beat until the person touches a key.
+//
+// AIMING ONCE IS NOT ENOUGH AND THAT IS NOT A RACE, it is what the beat is for.
+// The row is not on the list at the instant the conversation goes — home reads
+// the disk on its own three-second clock — and each of those readings rebuilds
+// the list with the cursor following THIS window's own conversation
+// ([homeView.build]). So a cursor put on the moved row once is moved off it a
+// beat later, which is the state a person actually met: the row they were told
+// to press enter on, with the cursor somewhere else.
+//
+// IT IS THE KEYBOARD THAT ENDS IT ([app.homeKey]), because a person who has
+// pressed anything at all has taken the cursor back and a screen that kept
+// dragging it away would be the surface arguing with them.
+func (a *app) pointMovedRow() {
+	if a.movedFrom == "" || !a.at(pageHome) {
+		return
+	}
+	a.home.point(a.movedFrom)
 }

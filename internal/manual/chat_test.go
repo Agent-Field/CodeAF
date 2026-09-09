@@ -1673,6 +1673,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// `another window` starts: they are staring at a margin, not at a card.
 		{"the row says another window, how do I get it back", "home"},
 		{"how do I bring a conversation back to this window", "home"},
+		// The move wave: the conversation lives in the engine, so a second
+		// terminal opens it rather than asking anybody for it. The first two are
+		// the owner's own words on the day the old road waited ten minutes.
+		{"why does moving a conversation here take so long", "home"},
+		{"it is still running in the other shell can I bring it here", "home"},
+		{"the row says open in the engine", "home"},
+		{"what happens to the other terminal when I open the conversation here", "home"},
 		{"can I set a reminder from home", "asking-from-home"},
 		{"what is ask here", "asking-from-home"},
 		{"where did that exchange go", "asking-from-home"},
@@ -1752,6 +1759,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// Background checks are on out of the box now, and the two sentences a
 		// person says about that are the plain question and the plain wish.
 		{"does it run when my terminal is closed", "keeping-an-eye"},
+		// And the same question asked as a fear rather than as a feature, which
+		// the page answered wrongly for as long as the engine has existed.
+		{"if I close this window does the chat stop", "keeping-an-eye"},
 		{"turn off background checks", "keeping-an-eye"},
 		{"i have two copies of aforge, which one runs the background checks", "keeping-an-eye"},
 		{"two copies of aforge and my reminders fired twice", "keeping-an-eye"},

@@ -1721,7 +1721,7 @@ func noteFit(note string, room int) string {
 // there was one, in the two shapes the person-facing sentences on this surface
 // are built out of:
 //
-//	a gloss in brackets   `… move it here (it moves when that window's reply ends)`
+//	a gloss in brackets   `… move it here (that window's reply stops there)`
 //	a dash elaboration    `open in another window — enter again to move it here`
 //
 // The bracket goes first because a gloss is the lowest-value thing on the line

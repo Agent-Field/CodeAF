@@ -17,12 +17,15 @@ package session
 //     tasks land "paused — it resumes", and the window that asked resumes them
 //     from the checkpoint. The engine never closes itself from inside a tick.
 //
-//   - A REPLY IS NEVER CUT. A request that arrives while a turn is running is
-//     left where it is and looked at again on the next tick; it is answered at
-//     the first tick after the turn ends. The window that asked is waiting on
-//     the flock and says so, and the person who walked to it was not typing in
-//     the other one — so the cost of waiting is nothing and the cost of cutting
-//     is a reply that was almost finished.
+//   - A REQUEST IS ANSWERED AT ONCE, MID-REPLY OR NOT. It used to be held back
+//     until the running turn ended, on the reasoning that a reply is never cut
+//     — and the cost of that reasoning was the defect this road was reported
+//     for: a person pressed enter, confirmed, and watched `coming here · 4m50s`
+//     while a long reply finished somewhere they could not see. Nothing is lost
+//     by answering now. The holder interrupts and closes the way /new does
+//     (internal/tui3's takeOver), which lands its running work as
+//     `paused — it resumes`, and the window that asked resumes it from the
+//     checkpoint with the partial reply already in the journal.
 //
 //   - A REQUEST IS TAKEN OFF DISK BEFORE IT IS ANNOUNCED, so a holder that is
 //     slow to let go is asked once and never a second time on the next beat,
@@ -83,6 +86,16 @@ const TakeoverStale = 10 * time.Minute
 // TakeoverWord is the one sentence a surface says about a conversation another
 // window took, and the engine spells it so the event and the surface agree.
 const TakeoverWord = "moved to another window"
+
+// MovedWord is that sentence with THE WAY BACK on it, and it belongs to the
+// engine road: a conversation the engine holds is opened in another terminal by
+// one keystroke and comes back by the same one, so the window it left names the
+// key rather than reporting a loss ([EventMoved]).
+//
+// IT IS BUILT ON [TakeoverWord] AND NOT WRITTEN A SECOND TIME. A person meets
+// one of these two sentences on the day their conversation walks to another
+// terminal, and two spellings of that would be two programs.
+const MovedWord = TakeoverWord + " · enter on home brings it back"
 
 // ErrNoSessionDir is [AskTakeover] on a conversation with no folder — a
 // memory-only one, or the legacy flat layout — which nothing could ever read.
@@ -180,10 +193,16 @@ func takeTakeover(sessionDir string) bool {
 // the TICK and never on a nudge, for the reason answers are drained there: a
 // nudge fires under the agent's own lock.
 //
-// A TURN IN FLIGHT LEAVES THE REQUEST WHERE IT IS (the second law above). The
-// running flag is read under the lock and released before anything touches the
-// disk, which is this package's standing rule about holding a.mu across a call
-// that may take a while.
+// A TURN IN FLIGHT NO LONGER HOLDS THE REQUEST BACK (the second law above). The
+// flags are read under the lock and released before anything touches the disk,
+// which is this package's standing rule about holding a.mu across a call that
+// may take a while.
+//
+// THE THREE GUARDS THAT REMAIN ARE ABOUT WHETHER THERE IS ANYBODY TO TELL.
+// A conversation running INSIDE a task has no window of its own and no surface
+// to hear this; a closed one has nothing left to let go of; and one already
+// told is told once, because the announcement is taken off the lane and a
+// second copy would ask a surface to leave a conversation it has already left.
 func (a *Agent) drainTakeover() {
 	if a.config.InTask {
 		return
@@ -193,9 +212,9 @@ func (a *Agent) drainTakeover() {
 		return
 	}
 	a.mu.Lock()
-	running, closed, told := a.running, a.closed, a.takenOver
+	closed, told := a.closed, a.takenOver
 	a.mu.Unlock()
-	if running || closed || told {
+	if closed || told {
 		return
 	}
 	if !takeTakeover(dir) {

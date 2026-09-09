@@ -130,10 +130,15 @@ func (a *app) homeBeat(gen int) tea.Cmd {
 		return nil
 	}
 	a.refreshHome()
+	// AND THE ROW A MOVE LEFT BEHIND IS AIMED AT AGAIN, because the reading above
+	// has just put the cursor back on this window's own conversation and the row
+	// somebody was told to press enter on is the one that matters this minute
+	// (takeover.go's [app.pointMovedRow]).
+	a.pointMovedRow()
 	// THE BEAT REBUILDS THE LIST AND THE CURSOR FOLLOWS ITS CONVERSATION
 	// ([homeView.build]), so the row the card is about may be a row nothing has
 	// read for. It is an arrival like a key (homecardread.go).
-	asked := a.refreshHomeCard(a.now())
+	asked := tea.Batch(a.refreshHomeCard(a.now()), a.askEngines())
 	// A task starting in another window arrives on this beat, and the spinner it
 	// earns needs the fast clock — woken here because this is the only moment
 	// home learns anything ([app.homeAnimating]; paint keeps it turning and lets
@@ -331,6 +336,15 @@ const (
 	// left for the name it is about.
 	homeHeldWord  = "open in another window"
 	homeHeldShort = "another window"
+	// homeEngineWord is what the detail column says instead when the journal is
+	// held by this machine's ENGINE rather than by a window (internal/enginehost).
+	//
+	// A HOST-HELD ROW IS NOT IN ANOTHER WINDOW AND SAYING SO WAS THE DEFECT. The
+	// engine keeps a conversation running with every terminal shut — that is what
+	// the engine road buys — so a row somebody ctrl-c'd an hour ago, still working
+	// four tasks, was drawn as a window to go and find. There is no such window.
+	// The engine is where it is, and enter opens it here.
+	homeEngineWord = "open in the engine"
 	// homeLandedWord trails a count on a quiet row whose work finished since
 	// home was last closed — `2 landed · 3h` — and homeFreshWord is the dim
 	// caption the detail column hangs over those rows. Both are the delta the
@@ -2298,6 +2312,11 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	h := &a.home
+	// A KEY IS THE PERSON TAKING THE CURSOR BACK. Home aims at the row a move
+	// left behind on every beat until this happens, and a screen that went on
+	// dragging the cursor after somebody pressed an arrow would be arguing with
+	// them (takeover.go's [app.pointMovedRow]).
+	a.movedFrom = ""
 	// phone lane: a sheet over the inbox holds the keyboard (homesheet.go).
 	if cmd, took := a.homeSheetKeyFirst(msg); took {
 		return cmd
@@ -3040,17 +3059,64 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 		// wastes a keystroke and a second of somebody's attention on a raw error.
 		//
 		// AND ON THIS MACHINE IT IS NOT THE END OF THE ROAD. The conversation
-		// can be MOVED here — asked for, let go of when the other window's reply
-		// ends, and then opened by the ordinary door below (takeover.go). Over
-		// --host it is: the holder is a window on this laptop and the journal is
-		// on the far machine, so there is nobody to ask.
+		// comes here — instantly where an engine holds it, and by asking the
+		// window that does where one does not ([app.homeHeldEnter]). Over --host
+		// it is the end: the holder is a window on this laptop and the journal is
+		// on the far machine, so there is nobody to ask and nothing to attach to.
 		if !a.hosted() {
-			return a.homeTakeoverEnter(line)
+			return a.homeHeldEnter(line)
 		}
 		h.say(sessionBusyWord, "")
 		return nil
 	}
 	return a.homeOpenDoor(line)
+}
+
+// homeHeldEnter is enter on a row somebody else is holding, and it is where the
+// two roads part.
+//
+// AN ENGINE-HELD CONVERSATION IS SIMPLY OPENED, WITH NO CEREMONY AT ALL. The
+// engine owns the journal and holds the session; the ordinary door asks it for
+// that session and gets it back mid-turn, in well under a second, with the work
+// still moving (internal/enginehost's Host.open — "THE WHOLE PRODUCT IS THIS
+// LINE"). Nothing is taken from anybody: the window that had it is told by the
+// engine and steps back on its own ([app.movedAway]), and the way back is this
+// same keystroke from the other side. A confirmation would be asking somebody to
+// agree to something that costs one enter to undo.
+//
+// AND THE OLD ROAD IS WHAT IS LEFT WHEN THAT FAILS. A window with no engine
+// behind it holds the journal in its own process, and the only thing anybody can
+// do is ask ([app.homeTakeoverEnter]). Two answers land here: no engine
+// answering at all, and an engine that answered and then refused the journal —
+// which is exactly a bare window holding the lock in a workspace that also has
+// an engine. The refusal is read rather than guessed at, because between the
+// question and the open a window can appear.
+func (a *app) homeHeldEnter(line homeLine) tea.Cmd {
+	if !a.engineHolds(homeWhere(line)) {
+		return a.homeTakeoverEnter(line)
+	}
+	cmd, refusal := a.homeWalkIn(line)
+	if refusal == sessionBusyWord {
+		return a.homeTakeoverEnter(line)
+	}
+	if refusal != "" {
+		a.home.say(refusal, "")
+		return nil
+	}
+	return cmd
+}
+
+// engineHolds is [Options.EngineAnswers] asked about one project, and false for
+// every window that has no engine road.
+//
+// IT IS ASKED ON A KEYSTROKE AND NEVER ON A FRAME, which is the same law
+// [app.homeHeldNow] keeps about the flock beside it: this is a connect to a
+// socket, and a row's LABEL may not cost one.
+func (a *app) engineHolds(workspace string) bool {
+	if a.engineAnswers == nil || a.open == nil || strings.TrimSpace(workspace) == "" {
+		return false
+	}
+	return a.engineAnswers(workspace)
 }
 
 // homeOpenDoor is the ORDINARY open, from the folder check onward, and it is on
@@ -3059,7 +3125,24 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 // spellings of "open the row" is two answers to whether a folder that vanished
 // is checked, and the second road is the one where the most time has passed.
 func (a *app) homeOpenDoor(line homeLine) tea.Cmd {
-	h := &a.home
+	cmd, refusal := a.homeWalkIn(line)
+	if refusal != "" {
+		// HOME TAKES THE REFUSAL ITSELF rather than letting it be said in the
+		// conversation. A refusal on this screen belongs to this screen: notes
+		// stack in a transcript, and pressing enter twice on a locked row is
+		// exactly how somebody would find that out.
+		a.home.say(refusal, "")
+		return nil
+	}
+	return cmd
+}
+
+// homeWalkIn is that same door with its refusal HANDED BACK rather than said,
+// because one caller has somewhere else to go with it: a held row whose engine
+// turned out not to be holding the conversation after all falls to the asking
+// road, and reading the refusal is the only way to tell those apart
+// ([app.homeHeldEnter]).
+func (a *app) homeWalkIn(line homeLine) (tea.Cmd, string) {
 	where := homeWhere(line)
 	if !homeFolderThere(where) {
 		// ONE os.Stat, ON THE KEYSTROKE, in the same place the flock probe puts
@@ -3068,23 +3151,17 @@ func (a *app) homeOpenDoor(line homeLine) tea.Cmd {
 		// standing in the folder. It stops being free the moment enter opens
 		// somebody else's: an agent whose tool root does not exist fails every
 		// bash and every relative path in a way nothing on screen explains.
-		h.say(homeGoneWord+" · "+where, "")
-		return nil
+		return nil, homeGoneWord + " · " + where
 	}
 	// AND THE CONVERSATION THIS WINDOW WAS IN GOES ON RUNNING. It is detached
 	// rather than closed and put in the keeper, which is the whole of what makes
 	// home a switcher rather than a list of places to go to in another terminal.
 	cmd, refusal := a.openBeside(where, line.row.Transcript)
 	if refusal != "" {
-		// HOME TAKES THE REFUSAL ITSELF rather than letting it be said in the
-		// conversation. A refusal on this screen belongs to this screen: notes
-		// stack in a transcript, and pressing enter twice on a locked row is
-		// exactly how somebody would find that out.
-		h.say(refusal, "")
-		return nil
+		return nil, refusal
 	}
 	a.closeHome()
-	return tea.Batch(cmd, a.homeLandOnTask(line))
+	return tea.Batch(cmd, a.homeLandOnTask(line)), ""
 }
 
 // homeLandOnTask is the SECOND HALF of a door whose row was named after one
@@ -5027,7 +5104,15 @@ func (a *app) homeHolding(row session.SessionRow) string {
 	case a.holding(row.Transcript):
 		word = "open here"
 	case row.Open || row.Live:
+		// WHICH KIND OF HOLDER IT IS COMES FROM THE LAST ASK AND NEVER FROM THIS
+		// FRAME. The engine is asked over a socket, which is a keystroke's cost
+		// and not a label's ([app.homeHeld] states that law), so home asks about
+		// the held rows on its own beat and this reads the answer
+		// ([app.engineHeld]).
 		word = homeHeldWord
+		if a.engineHeld(row) {
+			word = homeEngineWord
+		}
 	default:
 		return ""
 	}
