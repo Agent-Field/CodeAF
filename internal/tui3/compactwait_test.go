@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/lane"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -63,6 +65,32 @@ func TestCompactWaitUsesOnlyKnownResponseAge(t *testing.T) {
 	a.awaited = time.Time{}
 	if got := a.compactWaitWords(a.conversation()); got != "" {
 		t.Fatalf("unknown wait invented a clock: %q", got)
+	}
+}
+
+func TestCompactWaitDistinguishesLostConnectionFromResponse(t *testing.T) {
+	forgetPhases()
+	t.Cleanup(forgetPhases)
+	a := liveStepsApp(t)
+	a.entries[len(a.entries)-1].status = toolOK
+	a.entries[len(a.entries)-1].ended = liveStepsBase.Add(8 * time.Second)
+	a.awaited = liveStepsBase.Add(8 * time.Second)
+	a.model = phaseModel
+	for _, age := range []time.Duration{time.Second, 15 * time.Second} {
+		a.clock = func() time.Time { return a.awaited.Add(age) }
+		PostPhaseNews(PhaseNews{Model: phaseModel, Role: lane.RoleTalk,
+			Phase: provider.PhaseConnectionLost, Since: a.awaited, At: a.now()})
+		if got := a.compactWaitWords(a.conversation()); got != "waiting for connection" {
+			t.Fatalf("offline at %s drew %q", age, got)
+		}
+		if got := a.compactWaitWords(deck{lens: overseerLens}); got != "" {
+			t.Fatalf("task borrowed its parent's connection state: %q", got)
+		}
+	}
+	PostPhaseNews(PhaseNews{Model: phaseModel, Role: lane.RoleTalk,
+		Phase: provider.PhaseFirstWord, Since: a.awaited, At: a.now()})
+	if got := a.compactWaitWords(a.conversation()); got != "awaiting response · 15s" {
+		t.Fatalf("recovered response wait drew %q", got)
 	}
 }
 

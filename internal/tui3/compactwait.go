@@ -1,6 +1,9 @@
 package tui3
 
-import "github.com/charmbracelet/x/ansi"
+import (
+	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/charmbracelet/x/ansi"
+)
 
 // Waiting belongs to the conversation, not to the completed step beside it.
 // The same feather used by the live caption softly brightens one still dot;
@@ -17,6 +20,11 @@ func (a *app) compactWaitWords(d deck) string {
 	}
 	began := a.awaited
 	if news, ok := a.livePhase(); ok {
+		// A known lost connection is actionable context immediately, not a
+		// slow response that waits for the quiet ten-second label threshold.
+		if news.Phase == provider.PhaseConnectionLost {
+			return string(provider.PhaseConnectionLost)
+		}
 		if !phaseWaiting(news.Phase) {
 			return ""
 		}

@@ -6,6 +6,7 @@ surface: [chat, docs]
 invalidates:
   - "Between tool calls an extra Working row took attention and space from useful captions. The latest completed caption now stays readable and static, with only a separate inline activity dot animated."
   - "Compact waiting repeated model names and early wait telemetry. A known response wait gains a dim awaiting response label and elapsed age only after the existing 10-second threshold; detailed phase and retry information remains in the footer and expanded view."
+  - "The compact response-wait label could misdescribe connection recovery as a slow model. A reported connection loss now says waiting for connection immediately when space permits, while task pages continue to keep their parent's connection state out."
 ---
 
 Active tool captions still shimmer immediately using the available description;

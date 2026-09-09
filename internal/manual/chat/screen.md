@@ -1784,7 +1784,9 @@ behind this view. The window changes when a new step arrives. Before the first s
 Between finished calls, the latest description stays readable and still, with a
 softly animated dot beside it. There is no extra Working row. After 10 seconds
 of a known response wait, a dim `awaiting response · 12s` suffix appears when it
-fits. Detailed phase and retry information stays in the footer and expanded view.
+fits. A known connection loss says `waiting for connection` immediately when
+the suffix fits, instead of describing it as a slow model response. Detailed
+phase and retry information stays in the footer and expanded view.
 
 Click a step, or press `ctrl+e` with an empty message box, to open the full
 outline. Each caption then opens its own calls. The live caption keeps its
