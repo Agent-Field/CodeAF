@@ -105,7 +105,8 @@ flow for instructions or scheduled responsibilities.
 
 `shared_context` supports list, read, history, create, revise and withdraw.
 Read the current revision before changing a record. Revise supplies its replacement
-title, text and complete target set; a stale revision is refused, so simultaneous
+title, text and complete target set; omitting targets is refused (an explicit empty
+array clears them). A stale revision is refused, so simultaneous
 edits do not silently overwrite one another. Withdraw retains its history but
 removes it from applicable-context queries. History preserves earlier text,
 sources and targets.

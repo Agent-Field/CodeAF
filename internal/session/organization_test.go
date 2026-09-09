@@ -339,3 +339,30 @@ func TestOrganizationCollectionToolsResolvePageAndDefaultCurrentRef(t *testing.T
 		t.Fatal("refused worker mutation changed membership")
 	}
 }
+
+func TestSharedContextRevisionCannotAccidentallyClearOmittedTargets(t *testing.T) {
+	a, s, _ := organizationFixture(t)
+	ctx := context.Background()
+	r, err := s.CreateContext(ctx, "Finding", "BEFORE", a.organizationSource(), []workspace.Ref{a.organizationSource()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(map[string]any{"action": "revise", "id": r.ID, "revision": 1, "title": r.Title, "text": "AFTER"})
+	out, failed, err := a.sharedContextTool(ctx, raw)
+	if err != nil || !failed || !strings.Contains(out, "complete targets") {
+		t.Fatalf("%s %v", out, err)
+	}
+	unchanged, err := s.Context(ctx, r.ID)
+	if err != nil || unchanged.Revision != 1 || unchanged.Text != "BEFORE" || len(unchanged.Targets) != 1 {
+		t.Fatalf("omission cleared applicability: %+v %v", unchanged, err)
+	}
+	raw, _ = json.Marshal(map[string]any{"action": "revise", "id": r.ID, "revision": 1, "title": r.Title, "text": "AFTER", "targets": []workspace.Ref{}})
+	_, failed, err = a.sharedContextTool(ctx, raw)
+	if err != nil || failed {
+		t.Fatal("explicit clearing refused")
+	}
+	cleared, err := s.Context(ctx, r.ID)
+	if err != nil || cleared.Revision != 2 || len(cleared.Targets) != 0 {
+		t.Fatalf("explicit clearing failed: %+v %v", cleared, err)
+	}
+}
