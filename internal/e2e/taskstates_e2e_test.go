@@ -414,6 +414,10 @@ func testStatesRailAndRoster(t *testing.T) {
 	case strings.Contains(rail, say(t, "taskLookWord")):
 		t.Logf("the column kept the title and the word; the reason gave ground first, as the ruling says it does")
 	default:
+		// ISSUE #707. The column draws the tier cell and the title and stops, while
+		// the card and the roster both say the word in the same frame — so the one
+		// question a row of work is read to answer first is unanswered on the
+		// surface that exists to answer it at a glance.
 		t.Errorf("the column's row says neither %q nor %q — it names the work and stops, "+
 			"which leaves the one question every row is read to answer unanswered:\n\t%s\n%s",
 			say(t, "taskLookWord"), say(t, "settleAskWord"), rail, r.capture())

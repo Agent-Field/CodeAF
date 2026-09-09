@@ -199,7 +199,7 @@ func testNestedGate(t *testing.T) {
 // right, the engine keeps its failed plus refused state, and the built surface
 // must call that result incomplete rather than turning the useful finding into
 // a generic failure.
-// ── KNOWN RED, AND WHAT WAS MEASURED ABOUT IT ───────────────────────────────
+// ── KNOWN RED, AND WHAT WAS MEASURED ABOUT IT (issue #706) ──────────────────
 //
 // This subtest does not pass on dev today, and the reason is NOT the setup screen
 // or the greeting that were fixed for its two neighbours. It waits for the card's
