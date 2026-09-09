@@ -289,7 +289,7 @@ func (a *Agent) askForName(ctx context.Context, question, answer, model string) 
 		if errors.Is(err, context.DeadlineExceeded) {
 			return conversationTitle{}, true
 		}
-		return conversationTitle{}, errors.Is(err, errInvalidName) || isRetryable(err.Error())
+		return conversationTitle{}, errors.Is(err, errInvalidName) || errors.Is(err, errEmptyAnswer) || isRetryable(err.Error())
 	}
 	if response == nil {
 		return conversationTitle{}, true

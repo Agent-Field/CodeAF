@@ -22,6 +22,11 @@ func (a *app) tabTitlePreview(frame string) string {
 		return frame
 	}
 	rows := strings.Split(frame, "\n")
+	// A modal or another place can hide the strip while its last hit map remains.
+	// Only a frame actually drawing this strip may reveal its title.
+	if at := a.tabsLineRow(); at >= len(rows) || rows[at] != a.chatTabBar.line {
+		return frame
+	}
 	preview := strings.Split(ansi.Wrap(title, width-2*headLabelAt, ""), "\n")
 	for i, line := range preview {
 		at := a.tabsLineRow() + 1 + i
