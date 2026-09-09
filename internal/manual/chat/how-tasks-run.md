@@ -1060,6 +1060,12 @@ everywhere else in the conversation. A relative path like `research/notes.md` is
 would have to work out a root for, and a task that ran in a copy of its own
 makes even that a guess.
 
+File-tool arguments can be relative to the current workspace. The chat is told
+to prefer those for files inside it, letting the tool resolve the directory
+instead of copying a long absolute root. Explicit paths you supply or a tool
+returns keep their meaning, including artifacts outside the workspace. This
+does not change approval rules or the full paths used in replies to you.
+
 ## Does a task proposal expire while I am in another conversation
 
 **Yes, and it starts the work.** A task proposal counts its own deadline down
