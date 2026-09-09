@@ -475,6 +475,95 @@ var tuiWords = map[string]tuiWord{
 			"the frame it is read in is held together by the sentences beside it",
 	},
 
+	// ── the three tiers, one glyph and one word each (task-states) ───────────
+	//
+	// docs/design/task-states/DESIGN.md is the ruling and these are its words on a
+	// real screen. THE WORDS ARE THE ENGINE'S and the KEYS ARE THE SURFACE'S,
+	// which is why several rows here are composed at the draw and name a `source`
+	// in internal/session: a card that read `[a] resolve it` on the same column
+	// where another reads `[a] accept` is one constant in each place and not two
+	// spellings of one answer.
+	"taskDoneGlyph": {
+		screen: "✓",
+		why:    "the `over` tier's cell for work that ran to the end (internal/tui3's glyphDone)",
+	},
+	"taskBadGlyph": {
+		screen: "✗",
+		why: "the `over` tier's cell for work that did not finish (glyphBad). It is NOT the cell a person's " +
+			"own stop wears — that is ⊘, because nobody found anything wrong with work somebody ended",
+	},
+	"taskDoneWord": {
+		screen: " · done",
+		source: "done",
+		pkg:    "internal/session",
+		why: "the tier word on the head of a landing that finished, hung off the title by the one separator " +
+			"this surface joins facts with. It is the engine's spelling (task_status.go's taskWordDone)",
+	},
+	"taskOneFileWord": {
+		screen: " · 1 file",
+		source: " file",
+		pkg:    tui3Pkg,
+		why: "the file count on the head, SINGULAR. Both spellings exist in the source because `1 files` is " +
+			"the surface being sloppy about the one number on the row",
+	},
+	"taskMergedFact": {
+		screen: " · merged",
+		source: "merged",
+		pkg:    tui3Pkg,
+		why: "where the work ended up, as a FACT and never as a state. `delivery needs attention` and " +
+			"`stopped — branch kept` fused the two into one phrase and are deleted",
+	},
+	"settleAnswersRow": {
+		screen: "[a] accept · [n] not right · [s] tell it",
+		source: " tell it",
+		why: "THE WHOLE ANSWERS ROW, in the one order every card draws it. It is waited for as one string " +
+			"because three separate searches would pass on a card that drew the columns on two rows, or in " +
+			"the other order, or without the third — and the third is the one the ruling is emphatic about",
+	},
+	"settleHandRow": {
+		screen: "[d] let aforge decide this one",
+		source: " let aforge decide this one",
+		why: "the one-time hand-over, drawn dimmer beside the answers. It replaced `decide these for me`, " +
+			"which was a standing preference disguised as an answer and changed a setting on the way past",
+	},
+	"settleConflictAnswers": {
+		screen: "[a] resolve it · [n] drop it",
+		source: "resolve it",
+		pkg:    "internal/session",
+		why: "a conflict's own two verbs on the same two columns. A conflict's yes is NOT an accept: it " +
+			"spends one more merge round, which is why the word is the ask's and not the card's",
+	},
+	"settleConflictNo": {
+		screen: "[n] drop it",
+		source: "drop it",
+		pkg:    "internal/session",
+		why: "the half of that row that stands even on an engine with no resolver door — the absence law " +
+			"drops each column on its own rather than taking the row down with it",
+	},
+	"taskConflictReason": {
+		screen: "conflicts with your branch",
+		pkg:    "internal/session",
+		why: "the reason sentence of the one your-call question that is never the model's to answer. The " +
+			"files are named after a colon, and the sentence stops here when git would not say which",
+	},
+	"taskStepsReason": {
+		screen: "ran out of steps",
+		pkg:    "internal/session",
+		why: "the incomplete reason for a spent step threshold. `failed` is gone as a landing's word: what " +
+			"a person reads is `incomplete` plus one of these sentences",
+	},
+	"taskAutoDecidingWord": {
+		screen: "aforge is deciding",
+		why: "the auto-settle floor's own row. A card with no chips MUST say why it has none — that defect, " +
+			"a card with no choices and no explanation, is what the whole wave exists to close",
+	},
+	"taskTakeItBackWord": {
+		screen: "[t] take it back",
+		source: " take it back",
+		why: "the way back on that row, and the last thing it gives up at a narrow width: the reason is on " +
+			"the rail and in the record, and this key is only here",
+	},
+
 	// ── the front door, on a machine that has never run aforge ───────────────
 	"setupTitleWord": {
 		screen: "setting up",

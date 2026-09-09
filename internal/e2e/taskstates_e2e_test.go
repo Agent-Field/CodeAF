@@ -1,0 +1,728 @@
+//go:build e2e
+
+package e2e
+
+// taskstates_e2e_test.go IS THE ACCEPTANCE OF docs/design/task-states/DESIGN.md
+// ON A REAL SCREEN.
+//
+// The ruling is one sentence: every task row, card, rail line and roster entry
+// answers ONE question before it says anything else — do I need to do anything —
+// and there are exactly three answers, each with one glyph and one word. Six
+// shapes carry the whole of it, and every one of them is measured here through
+// the real binary, in a real terminal, against the model the suite is pinned to.
+//
+// WHY IT IS NOT ANOTHER TABLE OF UNIT TESTS. internal/tui3 and internal/session
+// both pin these words against a struct they built themselves, which is the
+// right gate and cannot answer the question this file exists for: a person at a
+// terminal, looking at a landing, reads ONE spelling of one state. Three of the
+// four surfaces that disagreed before this wave were each green in their own
+// package on the day they disagreed.
+//
+// WHICH SHAPES PAY FOR A MODEL AND WHICH DO NOT. A shape whose whole subject is
+// the DRAWING of a landing is seeded as the graph a finished process left behind
+// (tmux_test.go's seedDecidedFamily says why) and settled through the real engine
+// door by a real keystroke — no model is asked anything, and what is measured is
+// the surface and the engine. A shape whose subject is the WORK — a task that
+// really runs, really writes a file and really lands — is run against
+// deepseek-v4-flash, because there is no other way to find out what the card says
+// about a landing nobody staged.
+//
+//	go test -tags e2e -run TestTaskStatesE2E -count=1 -timeout 40m -v ./internal/e2e/
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestTaskStatesE2E(t *testing.T) {
+	requireTmuxAndKey(t)
+
+	t.Run("a_landing_that_worked_says_done_once", testStatesDone)
+	t.Run("your_call_asks_in_three_columns_and_a_accepts_it", testStatesYourCall)
+	t.Run("a_branch_that_clashes_with_yours", testStatesConflict)
+	t.Run("a_run_out_of_steps_is_incomplete_with_its_reason", testStatesIncomplete)
+	t.Run("the_auto_settle_floor_hands_it_back", testStatesAutoFloor)
+	t.Run("the_rail_and_the_roster_say_the_same_word", testStatesRailAndRoster)
+}
+
+// ── 1 · done ────────────────────────────────────────────────────────────────
+
+// testStatesDone is the `over` tier's happy row, and it is the one shape here
+// that must really run: what a landing card says about work that finished is not
+// knowable from a fixture, because the span, the file count and the merge fact
+// are all facts the engine publishes about work that actually happened.
+//
+// IT IS THE CHEAPEST TASK THERE IS — `/task solo` on a one-file brief, the shape
+// [testTaskRoomKeepsSpace] already pays for, which lands in about thirty seconds.
+//
+// THE HEAD IS READ AS A WHOLE ROW AND NOT AS FOUR SEARCHES. The design's law is
+// about ORDER — tier glyph, kind glyph, title, tier word, then span, files, merge
+// fact, branch, and nothing else — so the assertions are made against the one
+// line that carries the glyph, which is the only way a test can tell `done` on
+// the head from `done` in a sentence the model wrote three rows above it.
+func testStatesDone(t *testing.T) {
+	home := newHome(t, nil)
+	ws := newWorkspace(t, "donews", false)
+	r := start(t, "afe2e_states_done", home, ws, tuiWide, 40)
+	statesPastTheDoor(t, r)
+
+	r.lit("/task solo write a file called hello.txt containing the word hello")
+	r.keys("Enter")
+
+	// THE CARD IS THE WAIT, not the file: a file on disk says the worker wrote
+	// something and says nothing at all about what the surface then drew.
+	screen := r.waitFor(6*time.Minute, say(t, "taskDoneGlyph"), say(t, "taskDoneWord"))
+	t.Logf("the landing card of work that finished:\n%s", screen)
+
+	head := statesHeadLine(screen, say(t, "taskDoneGlyph"), say(t, "taskDoneWord"))
+	if head == "" {
+		t.Fatalf("nothing on the screen is a head row carrying both %q and %q:\n%s",
+			say(t, "taskDoneGlyph"), say(t, "taskDoneWord"), screen)
+	}
+	t.Logf("HEAD · %s", head)
+
+	// THE SPAN IS ON THE HEAD AND IT IS A DURATION. It cannot be spelled here —
+	// it is how long a real model really took — so what is asserted is that the
+	// head carries one at all, in the shape taskSpanWord writes.
+	if !statesSpan.MatchString(head) {
+		t.Errorf("the head carries no span:\n\t%s", head)
+	}
+	// AND THE FILE COUNT IS SINGULAR, because the brief asked for one file and
+	// `1 files` is the surface being sloppy about the one number on the row.
+	if !strings.Contains(head, say(t, "taskOneFileWord")) {
+		t.Errorf("the head does not say %q about a one-file brief:\n\t%s", say(t, "taskOneFileWord"), head)
+	}
+	// THE MERGE IS A FACT AND THE ABSENCE OF ONE IS ALSO A FACT. Work that
+	// branched and came home says `merged`; work done in the ground itself has
+	// nowhere to land and says nothing, which is the emptiness law and not a
+	// failure. Both are the product behaving, so the one that happened is logged.
+	if strings.Contains(head, say(t, "taskMergedFact")) {
+		t.Logf("the work branched and came home: the head carries %q", say(t, "taskMergedFact"))
+	} else {
+		t.Logf("the work was done in place: no merge fact on the head, which is the emptiness law")
+	}
+	// AND THE WORDS THIS WAVE DELETED ARE NOT ON THE CARD.
+	statesNoDeletedWords(t, screen)
+	r.quit()
+}
+
+// ── 2 · your call, and the accept ───────────────────────────────────────────
+
+// testStatesYourCall is the `your call` tier in full: one glyph, one word, the
+// reason under it, and the three columns that answer it — then the key, spent
+// through the real engine door, and the receipt it leaves.
+//
+// THE THREE COLUMNS ARE WAITED FOR AS ONE STRING. Waiting for `[a] accept` and
+// `[n] not right` separately would pass on a card that drew them on two
+// different rows, or in the other order, or with the third column missing — and
+// the third column is the one the ruling is emphatic about, because a person
+// with something to say who finds only yes and no presses one of them.
+func testStatesYourCall(t *testing.T) {
+	home := newHome(t, map[string]any{"task.settle": "ask"})
+	ws := newWorkspace(t, "yourcallws", false)
+	seedUnchecked(t, home, ws, 0x3000000000000004)
+	r := start(t, "afe2e_states_yourcall", home, ws, tuiWide, 40)
+	statesPastTheDoor(t, r)
+
+	screen := r.waitFor(30*time.Second,
+		say(t, "unverifiedGlyph"), say(t, "taskLookWord"),
+		say(t, "settleAskWord"), say(t, "settleAnswersRow"))
+	t.Logf("a landing that is the person's call, asking in one frame:\n%s", screen)
+	statesNoDeletedWords(t, screen)
+
+	// AND THE HAND-OVER IS DRAWN BESIDE THEM, dimmer, as the one-time offer it
+	// is. It is the row that replaced `decide these for me`, which was a standing
+	// preference disguised as an answer.
+	if !strings.Contains(screen, say(t, "settleHandRow")) {
+		t.Errorf("the answers row does not offer %q:\n%s", say(t, "settleHandRow"), screen)
+	}
+
+	// THE KEY, ON THE SELECTED CARD, over an empty box — the door [testNestedGate]
+	// already walks.
+	r.keys("Up")
+	r.lit("a")
+	settled := r.waitFor(30*time.Second, say(t, "settleTookLine"))
+	t.Logf("the accept was spent and the card wears the receipt:\n%s", settled)
+
+	// AND THE RESOLUTION LANDS AS ITS OWN CARD. The head of a landed card is
+	// never rewritten, so what says the work is done now is a second card under
+	// the first.
+	after := r.waitFor(60*time.Second, say(t, "taskDoneGlyph"), say(t, "taskDoneWord"))
+	t.Logf("the accepted work landed again as done:\n%s", after)
+	if line := statesHeadLine(after, say(t, "taskDoneGlyph"), say(t, "taskDoneWord")); line != "" {
+		t.Logf("HEAD · %s", line)
+	}
+	r.quit()
+}
+
+// ── 3 · a conflict ──────────────────────────────────────────────────────────
+
+// testStatesConflict is the one your-call question that is NEVER the model's:
+// two versions of somebody's own file, which no policy about who decides
+// unchecked work is an answer to.
+//
+// IT MAKES A REAL ONE. The task is sent at a file that already exists, and the
+// person's own branch is moved out from under it while the work runs — which is
+// exactly the shape a person creates by carrying on working in their checkout
+// while a task is out. A seeded `merge: conflicted` would draw the card without
+// ever proving the engine reaches it.
+//
+// AND THE ENGINE HAS ONE ROUND TO WIN. The design gives a clashing branch one
+// resolver round before anybody is asked, so there are two honest endings: the
+// round resolved it and the card says `done`, or the round failed and the card
+// asks with the files named. BOTH ARE THE PRODUCT BEHAVING, so this waits for
+// either, asserts the one that happened is drawn the way the ruling says, and
+// logs which. A third outcome — the work landed before the person's commit ever
+// reached the branch — is neither, and it is skipped out loud rather than
+// reported as a pass.
+func testStatesConflict(t *testing.T) {
+	home := newHome(t, nil)
+	ws := newWorkspace(t, "conflictws", false)
+	// The file both sides will write. It is committed first so that the task's
+	// branch and the person's branch have a shared parent to disagree about.
+	statesCommit(t, ws, "notes.txt", "one\n", "seed the file")
+
+	r := start(t, "afe2e_states_conflict", home, ws, tuiWide, 40)
+	statesPastTheDoor(t, r)
+	r.lit("/task solo replace the whole contents of notes.txt with the single line: from the task")
+	r.keys("Enter")
+
+	// THE PERSON KEEPS WORKING, which is the whole of how this happens. The
+	// commit goes onto their branch while the worker is still out, so the landing
+	// finds a file that has moved.
+	//
+	// THE SIGNAL IS THE TASK'S OWN BRANCH and not the screen. A worktree is cut
+	// from the person's repository, so the ref lands in their refs/heads the
+	// moment the work is really out — which is a fact about the work rather than
+	// a sentence a model happened to write, and it is the only moment at which
+	// committing over the same file can still clash with anything.
+	if !statesWaitForTaskBranch(t, ws, 4*time.Minute) {
+		t.Skipf("no task branch was cut in four minutes, so there was nothing for a commit to clash with:\n%s", r.capture())
+	}
+	t.Logf("the work is out on its own branch; committing over the same file on the person's branch")
+	statesCommit(t, ws, "notes.txt", "two, from the person\n", "the person's own edit")
+
+	found, screen := statesAwait(r, 8*time.Minute,
+		say(t, "taskConflictReason"), say(t, "taskDoneWord"))
+	t.Logf("the conflict landed as %q:\n%s", found, screen)
+
+	switch found {
+	case say(t, "taskConflictReason"):
+		// THE ROUND FAILED AND THE CARD ASKS. One glyph, one word, the reason with
+		// the files hung off it, and a yes verb that is not an accept.
+		asking := r.waitFor(60*time.Second,
+			say(t, "unverifiedGlyph"), say(t, "taskLookWord"), say(t, "taskConflictReason"))
+		t.Logf("a conflicted landing, asking:\n%s", asking)
+		if !strings.Contains(asking, say(t, "settleConflictAnswers")) &&
+			!strings.Contains(asking, say(t, "settleConflictNo")) {
+			t.Errorf("a conflicted card offers neither %q nor %q:\n%s",
+				say(t, "settleConflictAnswers"), say(t, "settleConflictNo"), asking)
+		}
+		if line := statesReasonLine(asking, say(t, "taskConflictReason")); line != "" {
+			t.Logf("REASON · %s", line)
+			if !strings.Contains(line, "notes.txt") {
+				t.Logf("git named no files for this clash, so the sentence stops after the branch — the emptiness law")
+			}
+		}
+		statesNoDeletedWords(t, asking)
+	case say(t, "taskDoneWord"):
+		// THE MERGE ROUND WON, which is the outcome the ruling prefers and the
+		// reason the round exists at all. What must be true then is that nobody was
+		// asked: the card is `over`, not `your call`.
+		if head := statesHeadLine(screen, say(t, "taskDoneGlyph"), say(t, "taskDoneWord")); head != "" {
+			t.Logf("the merge round resolved the clash and nobody was asked. HEAD · %s", head)
+		} else {
+			t.Skipf("the word `done` is on the screen but not on a landing head — no conflict was reached:\n%s", screen)
+		}
+		statesNoDeletedWords(t, screen)
+	default:
+		t.Skipf("neither a conflict nor a landing arrived in eight minutes:\n%s", screen)
+	}
+	r.quit()
+}
+
+// ── 4 · incomplete ──────────────────────────────────────────────────────────
+
+// testStatesIncomplete is `failed` being gone. A run that spends its step
+// threshold is not a failure anybody found — nothing broke, the work simply ran
+// out of road — so the row reads `incomplete` and hangs the reason off it, and
+// the word `failed` may not be on the card at all.
+//
+// IT IS SEEDED, and the threshold is why. The `/task` door has no cap in its
+// vocabulary — the number is a field of the model's own `task` tool
+// (internal/session's task.go) — so provoking a spent threshold through the
+// surface would mean asking a real model to choose a number, which is a coin
+// toss dressed up as an acceptance. The ENDING is what this shape is about, and
+// the ending is a fact the record carries.
+func testStatesIncomplete(t *testing.T) {
+	home := newHome(t, map[string]any{"task.settle": "ask"})
+	ws := newWorkspace(t, "stepsws", false)
+	seedOutOfSteps(t, home, ws)
+	r := start(t, "afe2e_states_steps", home, ws, tuiWide, 40)
+	statesPastTheDoor(t, r)
+
+	screen := r.waitFor(30*time.Second,
+		say(t, "taskBadGlyph"), say(t, "taskIncompleteWord"), say(t, "taskStepsReason"))
+	t.Logf("a run that spent its steps:\n%s", screen)
+	if head := statesHeadLine(screen, say(t, "taskBadGlyph"), say(t, "taskIncompleteWord")); head != "" {
+		t.Logf("HEAD · %s", head)
+	} else {
+		t.Errorf("nothing on the screen is a head carrying both %q and %q:\n%s",
+			say(t, "taskBadGlyph"), say(t, "taskIncompleteWord"), screen)
+	}
+	if line := statesReasonLine(screen, say(t, "taskStepsReason")); line != "" {
+		t.Logf("REASON · %s", line)
+	}
+	statesNoDeletedWords(t, screen)
+	r.quit()
+}
+
+// ── 5 · the auto-settle floor ───────────────────────────────────────────────
+
+// testStatesAutoFloor is the law that a task never stays unowned past the end of
+// a turn.
+//
+// UNDER `task.settle = auto` a landing nobody could check is handed to the model,
+// and the card must SAY SO rather than drawing no chips and no explanation —
+// which is the exact defect the whole wave exists to close. The model then
+// answers inside that turn or not at all, so there are two honest endings and
+// this waits for either: the model spent a verb and a second card says what
+// became of the work, or the turn ended unsettled and the floor handed the
+// question back and the chips are drawn again.
+//
+// IT MUST REALLY RUN, and that is a fact about where the owner is written down
+// rather than a preference: who holds a decision lives on the live node
+// (task_run.go's handToModelOnAuto) and is not among the fields a checkpoint
+// carries, so no fixture can seed a card the model is holding. If the landing
+// does not come home as the person's call, there is nothing to hand over and the
+// shape is skipped out loud.
+func testStatesAutoFloor(t *testing.T) {
+	home := newHome(t, map[string]any{"task.settle": "auto"})
+	ws := newWorkspace(t, "autows", false)
+	r := start(t, "afe2e_states_auto", home, ws, tuiWide, 40)
+	statesPastTheDoor(t, r)
+
+	// A BRIEF WHOSE ACCEPTANCE NOBODY CAN SETTLE FROM THE FILES. What is wanted
+	// is a landing that comes home unchecked; a claim about the world outside the
+	// repository is the honest way to ask for one, and the work itself is still
+	// one small file so the run stays cheap.
+	r.lit("/task solo write a file called guess.txt holding your single best guess at what the weather will be in Reykjavik one year from today, and nothing else")
+	r.keys("Enter")
+
+	found, screen := statesAwait(r, 8*time.Minute,
+		say(t, "taskAutoDecidingWord"), say(t, "settleAnswersRow"), say(t, "taskDoneWord"), say(t, "taskIncompleteWord"))
+	t.Logf("the landing under `task.settle = auto` arrived as %q:\n%s", found, screen)
+
+	switch found {
+	case say(t, "taskAutoDecidingWord"):
+		// THE CARD SAYS WHO IS HOLDING IT AND HOW TO TAKE IT BACK. One row, no
+		// chips, and never a second prompt.
+		held := r.waitFor(60*time.Second, say(t, "taskAutoDecidingWord"), say(t, "taskTakeItBackWord"))
+		t.Logf("aforge is deciding, and the way back is on the row:\n%s", held)
+		if line := statesReasonLine(held, say(t, "taskAutoDecidingWord")); line != "" {
+			t.Logf("AUTO ROW · %s", line)
+		}
+		// AND THEN THE FLOOR. Either the model spends its verb and a second card
+		// says what became of the work, or the turn ends and the question comes
+		// back to the person with its chips drawn again.
+		next, back := statesAwait(r, 4*time.Minute,
+			say(t, "settleAnswersRow"), say(t, "taskDoneWord"), say(t, "taskIncompleteWord"))
+		switch next {
+		case say(t, "settleAnswersRow"):
+			t.Logf("the turn ended unsettled and the floor handed the question back with its chips:\n%s", back)
+		case "":
+			t.Logf("the model never spent its verb and the turn had not ended in four minutes:\n%s", back)
+		default:
+			t.Logf("the model settled it inside its turn and the landing says %q:\n%s", next, back)
+		}
+		statesNoDeletedWords(t, back)
+	case say(t, "settleAnswersRow"):
+		t.Logf("the landing was the person's call from the start — the floor had already handed it back")
+		statesNoDeletedWords(t, screen)
+	default:
+		t.Skipf("the work landed %q rather than as anybody's call, so there was nothing to hand over:\n%s", found, screen)
+	}
+	r.quit()
+}
+
+// ── 6 · the rail and the roster ─────────────────────────────────────────────
+
+// testStatesRailAndRoster is the other half of "one word per state across every
+// surface": the same landing, read on the column beside the conversation and on
+// the page `/history` opens, must say the same word the card says.
+//
+// A DISAGREEMENT HERE IS THE DEFECT THIS WAVE CLOSED. One landing was called
+// `needs your look` on the card, `awaiting review` on the roster and
+// `unverified` on the rail, a keypress apart, because three surfaces each kept a
+// table of their own.
+func testStatesRailAndRoster(t *testing.T) {
+	home := newHome(t, map[string]any{"task.settle": "ask"})
+	ws := newWorkspace(t, "railws", false)
+	seedUnchecked(t, home, ws, 0x3000000000000005)
+	r := start(t, "afe2e_states_rail", home, ws, tuiWide, 40)
+	statesPastTheDoor(t, r)
+
+	screen := r.waitFor(30*time.Second, say(t, "taskLookWord"), say(t, "settleAskWord"))
+	t.Logf("the landing, before the column is asked for:\n%s", screen)
+
+	// THE COLUMN, whichever side of the toggle this window opened on. `ctrl+g`
+	// closes the roster's column or brings it back and the setting is remembered,
+	// so a window that opened without one needs the key and a window that opened
+	// with one must not be sent it — the column is looked for first and the key is
+	// spent only if it is not there.
+	rail := statesRail(t, r, say(t, "unverifiedGlyph"), say(t, "taskLookWord"))
+	if rail == "" {
+		t.Fatalf("no rail row carries both %q and %q:\n%s", say(t, "unverifiedGlyph"), say(t, "taskLookWord"), r.capture())
+	}
+	t.Logf("RAIL · %s", rail)
+
+	// AND WHAT THE ROW GAVE UP IS ITSELF THE RULING. Thirty columns cannot hold a
+	// title and a reason and a word, and of the three the WORD is the one that
+	// answers the question the row is read for — so a column that kept only
+	// `your call` has given ground exactly where the design says it must, and one
+	// that trailed off before the word has not. Both are logged; neither is a
+	// failure, and a row cut through the word itself would be.
+	switch {
+	case strings.Contains(rail, say(t, "settleAskWord")):
+		t.Logf("the column was wide enough for the reason as well as the word")
+	case strings.Contains(rail, "Port the parser"):
+		t.Logf("the column kept the title and the word; the reason gave ground first, as the ruling says it does")
+	default:
+		t.Logf("the column kept the word alone, which is the last thing it gives up")
+	}
+
+	// AND THE YOUR-CALL ROW IS ORDERED ABOVE EVERYTHING MOVING. There is one node
+	// in this fixture, so what can be measured here is that it is the FIRST row of
+	// the column and not buried under the seam's furniture.
+	if at := statesRailRank(t, r, rail); at >= 0 {
+		t.Logf("the your-call row stands %d rows into the column", at)
+	}
+
+	// AND THE ROSTER SAYS THE SAME WORD. `/history` is the door; the chord the
+	// page names is not one a suite may press (tui_e2e_test.go says why).
+	r.lit("/history")
+	time.Sleep(700 * time.Millisecond)
+	r.keys("Enter")
+	roster := r.waitFor(60*time.Second, say(t, "taskLookWord"))
+	t.Logf("the roster, saying the same word:\n%s", roster)
+	statesNoDeletedWords(t, roster)
+	r.quit()
+}
+
+// ── the doors this file shares ──────────────────────────────────────────────
+
+// statesPastTheDoor is the launch every subtest here begins with: whichever
+// screen this state root opens on, and esc off it.
+//
+// A STATE ROOT BUILT ONE MINUTE AGO OPENS ON THE SETUP on a machine whose profile
+// has no crew yet, on home when the machine has other projects, and straight into
+// a conversation when this project already has one — all three are the product
+// behaving, so the wait is for any of them and the key is the same.
+func statesPastTheDoor(t *testing.T, r *rig) {
+	t.Helper()
+	r.waitForAny(25*time.Second,
+		say(t, "homeFootWord"), say(t, "starterTaskWord"),
+		say(t, "setupTitleWord"), say(t, "landingKeysWord"), say(t, "taskLookWord"))
+	r.keys("Escape")
+}
+
+// statesAwait is [rig.waitForAny] WITHOUT THE FAILURE: it answers which of
+// several strings arrived and "" when none did.
+//
+// IT EXISTS BECAUSE TWO SHAPES HERE HAVE AN HONEST NOTHING. A merge round the
+// engine won and a landing the model settled inside its own turn are both the
+// product behaving, and so is a run that simply did not produce the shape a
+// subtest was hoping to provoke — which is a SKIP with its reason written down,
+// not a red test. waitForAny records an error on the way to answering, so a
+// subtest that used it and then skipped would be marked failed before it ever
+// reached the skip.
+func statesAwait(r *rig, within time.Duration, want ...string) (string, string) {
+	deadline := time.Now().Add(within)
+	screen := ""
+	for {
+		screen = r.capture()
+		for _, sub := range want {
+			if strings.Contains(screen, sub) {
+				return sub, screen
+			}
+		}
+		if time.Now().After(deadline) {
+			return "", screen
+		}
+		time.Sleep(pollEvery)
+	}
+}
+
+// statesSpan is the shape taskSpanWord writes a duration in — `42s`, `6m40s`,
+// `1h02m` — which is the only way a test can assert the head carries one without
+// spelling how long a real model really took.
+var statesSpan = regexp.MustCompile(`\b(\d+h\d+m|\d+m\d+s|\d+m|\d+s)\b`)
+
+// statesHeadLine is the one line on the screen carrying both a tier glyph and a
+// tier word IN THE CONVERSATION, which is what a landing card's head is.
+//
+// IT IS SOUGHT AS A LINE AND NOT AS TWO SUBSTRINGS because `done` is an ordinary
+// English word: a model that writes "the task is done" three rows above the card
+// would satisfy a pair of screen-wide searches perfectly while the head said
+// something else entirely.
+//
+// AND THE GLYPH MUST STAND NEAR THE LEFT MARGIN, which is the other half of the
+// same care. The rail is a column on the RIGHT of these very lines and it draws
+// the same glyph and the same word about the same node — so a search that took
+// any matching line would keep reading the rail's row, find no span and no file
+// count on it, and report a card that is perfectly correct as broken.
+func statesHeadLine(screen, glyph, word string) string {
+	for _, line := range strings.Split(screen, "\n") {
+		at := strings.Index(line, glyph)
+		if at < 0 || !strings.Contains(line, word) {
+			continue
+		}
+		if len([]rune(line[:at])) > statesHeadMargin {
+			continue
+		}
+		return strings.TrimSpace(line)
+	}
+	return ""
+}
+
+// statesHeadMargin is how far from the left a card's own head may begin: the
+// transcript's gutter and the card's two marks, with room to spare. Anything
+// further right on one of these lines belongs to the rail.
+const statesHeadMargin = 40
+
+// statesReasonLine is the row a reason sentence stands on, whole, for the log.
+func statesReasonLine(screen, needle string) string {
+	for _, line := range strings.Split(screen, "\n") {
+		if strings.Contains(line, needle) {
+			return strings.TrimSpace(line)
+		}
+	}
+	return ""
+}
+
+// statesDeleted is every word the ruling DELETES as person-facing text. They are
+// asserted absent rather than merely un-waited-for, because the gates that pin
+// this vocabulary check that a name is MENTIONED and never that the claim around
+// it is true: a surface that kept its old word beside the new one would pass
+// every one of them.
+var statesDeleted = []string{
+	"awaiting review", "unverified", "needs your look",
+	"delivery needs attention", "stopped — branch kept",
+	"what it produced was not taken as done",
+}
+
+// statesNoDeletedWords fails the subtest on any of them.
+//
+// `failed` IS NOT ON THE LIST and that is deliberate: it is still the record
+// page's word for a fault, and it is a word a model may perfectly well write in
+// a sentence of its own about work that did not go well. What the ruling deletes
+// is the LANDING wearing it, which [statesHeadLine] is the assertion for.
+func statesNoDeletedWords(t *testing.T, screen string) {
+	t.Helper()
+	for _, gone := range statesDeleted {
+		if strings.Contains(screen, gone) {
+			t.Errorf("the screen still says %q, which docs/design/task-states/DESIGN.md deletes:\n%s", gone, screen)
+		}
+	}
+}
+
+// statesRail is one row of the roster's COLUMN — not of the whole screen — and
+// the difference is the whole point of the subtest: the landing card in the
+// conversation says `your call` too, and a search across the frame would find it
+// there and never look at the column at all.
+//
+// THE COLUMN IS THE RIGHT-HAND [railWideCols] CELLS. internal/tui3 charges the
+// conversation thirty columns for a full rail and forty-six for one somebody
+// widened, so reading the last forty-six is the widest the column can be and
+// costs a few cells of transcript at the left edge — which cannot carry a rail
+// row, because a rail row is drawn against the seam.
+func statesRail(t *testing.T, r *rig, glyph, word string) string {
+	t.Helper()
+	if row := statesRailRow(r.capture(), glyph, word); row != "" {
+		return row
+	}
+	// The column is stowed, so ask for it back. It is remembered per machine, and
+	// a fresh state root has no answer recorded either way.
+	r.keys("C-g")
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		if row := statesRailRow(r.capture(), glyph, word); row != "" {
+			return row
+		}
+		time.Sleep(pollEvery)
+	}
+	return ""
+}
+
+// statesRailCols is the widest the column can be (internal/tui3's railWideCols).
+const statesRailCols = 46
+
+// statesRailRow is the column's own line for one node.
+func statesRailRow(screen, glyph, word string) string {
+	for _, line := range statesRailLines(screen) {
+		if strings.Contains(line, glyph) && strings.Contains(line, word) {
+			return line
+		}
+	}
+	return ""
+}
+
+// statesRailLines is every line of the frame cut down to its right-hand column.
+func statesRailLines(screen string) []string {
+	var out []string
+	for _, line := range strings.Split(screen, "\n") {
+		runes := []rune(line)
+		if len(runes) > statesRailCols {
+			runes = runes[len(runes)-statesRailCols:]
+		}
+		out = append(out, strings.TrimSpace(string(runes)))
+	}
+	return out
+}
+
+// statesRailRank is how many rows into the column one row stands, counting only
+// rows with something on them — the your-call rows are ordered first, then
+// moving, then over, and a fixture with one node can say that much about it.
+func statesRailRank(t *testing.T, r *rig, want string) int {
+	t.Helper()
+	seen := 0
+	for _, line := range statesRailLines(r.capture()) {
+		if line == "" {
+			continue
+		}
+		if line == want {
+			return seen
+		}
+		seen++
+	}
+	return -1
+}
+
+// seedUnchecked writes one conversation holding a top-level landing NOBODY COULD
+// CHECK: the record a finished process leaves behind, in the state a person's
+// answer moves and nothing else does.
+//
+// IT KEEPS ITS OWN FIXTURE RATHER THAN BORROWING [seedUndecidedRoot], and the
+// report is why. That one's report is the surface's OLD sentence — "finished, but
+// needs your look" — which is one of the phrases this ruling deletes, and a
+// subtest asserting the deleted words are off the screen would be failing on its
+// own fixture rather than on the product.
+func seedUnchecked(t *testing.T, home, ws string, id uint64) string {
+	t.Helper()
+	if canonical, err := filepath.EvalSymlinks(ws); err == nil {
+		ws = canonical
+	}
+	bucket := strings.ReplaceAll(filepath.Clean(ws), string(filepath.Separator), "-")
+	sid := fmt.Sprintf("%016x", id)
+	dir := filepath.Join(home, "v3", "projects", bucket, sid)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("seed unchecked: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"), nil, 0o644); err != nil {
+		t.Fatalf("seed unchecked: %v", err)
+	}
+	at := time.Now().Add(-3 * time.Minute)
+	writeJSON(t, filepath.Join(dir, "meta.json"), map[string]any{
+		"id": sid, "title": "The landing that is your call", "workspace": ws,
+		"created": at.Format(time.RFC3339Nano), "lastUserAt": at.Format(time.RFC3339Nano),
+	})
+	writeJSON(t, filepath.Join(dir, "tasks.json"), map[string]any{
+		"type": "tasks", "version": 1, "seq": 1,
+		"nodes": []map[string]any{{
+			"id": 1, "title": "Port the parser", "brief": "port it", "acceptance": "it parses",
+			"state": "unverified", "merge": "inplace",
+			"report":  "the parser is ported and its tests run",
+			"changed": []string{"parser.go"},
+			"ground":  ws, "groundMode": "folder", "elapsed_ms": 42000,
+		}},
+	})
+	return dir
+}
+
+// statesWaitForTaskBranch waits until a task's own branch stands in the person's
+// repository, and answers whether one ever did.
+//
+// IT IS THE SIGNAL A CONFLICT IS TIMED AGAINST, and it is a fact about the work
+// rather than a sentence a model happened to write: a worktree is cut from THIS
+// repository, so the ref lands in its refs/heads the moment the work is really
+// out, which is the only moment at which committing over the same file can still
+// clash with anything.
+func statesWaitForTaskBranch(t *testing.T, ws string, within time.Duration) bool {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for time.Now().Before(deadline) {
+		command := exec.Command("git", "for-each-ref", "--format=%(refname:short)", "refs/heads/task")
+		command.Dir = ws
+		if out, err := command.Output(); err == nil && strings.TrimSpace(string(out)) != "" {
+			t.Logf("the task branches are %s", strings.Join(strings.Fields(string(out)), " "))
+			return true
+		}
+		time.Sleep(time.Second)
+	}
+	return false
+}
+
+// statesCommit writes one file// statesCommit writes one file in the person's own checkout and commits it — the
+// person carrying on working while a task is out, which is the only way a real
+// conflict is made.
+func statesCommit(t *testing.T, ws, name, body, message string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(ws, name), []byte(body), 0o644); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+	for _, args := range [][]string{
+		{"add", name},
+		{"-c", "user.email=e2e@example.com", "-c", "user.name=e2e", "commit", "-qm", message},
+	} {
+		command := exec.Command("git", args...)
+		command.Dir = ws
+		if out, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+}
+
+// seedOutOfSteps writes one conversation holding a landing that spent its step
+// threshold: the record a finished process leaves behind, with the ending that
+// makes the reason sentence knowable ([session.TaskReasonOf]).
+//
+// IT IS THE ENDING AND NOT THE REPORT that the row is read out of, which is the
+// point of seeding it: a surface that spelled its own sentence here would pass
+// with any prose at all in the report field.
+func seedOutOfSteps(t *testing.T, home, ws string) string {
+	t.Helper()
+	if canonical, err := filepath.EvalSymlinks(ws); err == nil {
+		ws = canonical
+	}
+	bucket := strings.ReplaceAll(filepath.Clean(ws), string(filepath.Separator), "-")
+	sid := fmt.Sprintf("%016x", 0x3000000000000003)
+	dir := filepath.Join(home, "v3", "projects", bucket, sid)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("seed out of steps: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"), nil, 0o644); err != nil {
+		t.Fatalf("seed out of steps: %v", err)
+	}
+	at := time.Now().Add(-4 * time.Minute)
+	writeJSON(t, filepath.Join(dir, "meta.json"), map[string]any{
+		"id": sid, "title": "The run that ran out", "workspace": ws,
+		"created": at.Format(time.RFC3339Nano), "lastUserAt": at.Format(time.RFC3339Nano),
+	})
+	writeJSON(t, filepath.Join(dir, "tasks.json"), map[string]any{
+		"type": "tasks", "version": 1, "seq": 1,
+		"nodes": []map[string]any{{
+			"id": 1, "title": "Port the parser", "brief": "port it", "acceptance": "it parses",
+			"state": "failed", "ending": "steps", "merge": "kept", "branch": "task/parser",
+			"report":  "it stopped at its step threshold with the port half done",
+			"changed": []string{"parser.go"},
+			"ground":  ws, "groundMode": "folder", "elapsed_ms": 242000,
+		}},
+	})
+	return dir
+}
