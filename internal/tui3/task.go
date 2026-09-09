@@ -5351,7 +5351,7 @@ func (a *app) railWaiting(node *taskNode, width int) []string {
 	if node.waiting == "" {
 		return nil
 	}
-	line := fit(taskHeldWord+railSep+node.waiting, width)
+	line := fit(a.taskStatus(node).RowWord(), width)
 	if line == "" {
 		return nil
 	}
