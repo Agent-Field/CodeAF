@@ -129,3 +129,21 @@ to a folder/subtree and discovery/reference from other work. Exact scope,
 authority, conflicts and changes remain open; no new buildable slice is yet
 confirmed. Then test the resulting rules against API-contract change and revised
 research. See open items D01–D04 in the ledger.
+
+## Folder inspector study
+
+The user requested a Finder-like drawing to clarify a folder's contents versus
+its properties. The exploratory interactive study is retained in the discussion's
+artifact directory:
+
+- Editable fragment: `/Users/santoshkumar/.codex/visualizations/2026/09/09/01a08653-1fcf-7880-b64f-dae46f29b86a/folder-inspector.html`.
+- Standalone preview: `/Users/santoshkumar/.codex/visualizations/2026/09/09/01a08653-1fcf-7880-b64f-dae46f29b86a/folder-inspector-preview.html`.
+
+It shows contents and a selected-item inspector. The folder's own proposed
+properties stay small; applicable decisions, memory and connections remain
+inspectable records. Selecting an ongoing responsibility reveals its activation
+and permitted actions, rather than treating these as properties of the folder.
+An alternative places decisions/memory in the contents list instead of the
+inspector. The study is not a finalized TUI layout, implemented capability or
+confirmation of scope inheritance. Selection, both placements, light/dark and
+narrow/wide layouts were checked locally. No product E2E claim follows from that.
