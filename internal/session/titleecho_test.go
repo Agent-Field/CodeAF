@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -73,11 +74,27 @@ func TestTheOpenerIsStrippedAndAnEmptyOneRefused(t *testing.T) {
 // THE INSTRUCTION IS ASKED WHERE A SMALL MODEL READS IT: last in the user
 // message, after the exchange, with the system line saying only who is asked.
 func TestTheNamerAsksAtTheEndOfTheUserMessage(t *testing.T) {
-	completer := &scriptedCompleter{steps: titleTurn("the parser is fine", "tokenizer speed")}
+	// THE NAMER'S REQUEST IS FOUND BY PURPOSE, NEVER BY INDEX. It runs on a
+	// goroutine beside the turn (title.go), so no position in the queue is its
+	// position; the aside keeps it where the fixture can read it back.
+	asks := make(chan []ai.Message, 4)
+	completer := &scriptedCompleter{steps: oneTurn("the parser is fine")}
+	completer.aside = func(messages []ai.Message) (*ai.Response, bool) {
+		if !isTitleCall(messages) {
+			return nil, false
+		}
+		asks <- messages
+		return textResponse("tokenizer speed"), true
+	}
 	agent, _ := titleAgent(t, completer, nil)
 	collect(t, mustSubmit(t, agent, "why is the tokenizer slow?"))
 
-	asked := completer.request(1)
+	var asked []ai.Message
+	select {
+	case asked = <-asks:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the namer never reached the provider")
+	}
 	if len(asked) != 2 {
 		t.Fatalf("the namer sent %d messages, want a system line and a user message", len(asked))
 	}
@@ -97,13 +114,15 @@ func TestTheNamerAsksAtTheEndOfTheUserMessage(t *testing.T) {
 // keeps no title line, and the folder's row still says what they opened with.
 func TestASessionNamedWithTheInstructionKeepsThePlaceholder(t *testing.T) {
 	dir := t.TempDir()
-	completer := &scriptedCompleter{steps: titleTurn("the parser is fine", titlePrompt)}
+	completer := naming(&scriptedCompleter{steps: oneTurn("the parser is fine")},
+		namerReply{title: titlePrompt})
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.SessionFile = filepath.Join(dir, "session.jsonl")
 		config.Place = Place{Dir: dir}
 	})
 
 	events := collect(t, mustSubmit(t, agent, "why is the tokenizer slow?"))
+	completer.waitAsks(t, 1, "the namer never ran")
 
 	if countKind(events, EventTitleChanged) != 0 {
 		t.Fatal("the session announced the instruction as its name")
@@ -129,18 +148,20 @@ func TestASessionNamedWithTheInstructionKeepsThePlaceholder(t *testing.T) {
 // A REFUSED NAME COSTS ONE CALL AND NOT TWO. ONE CALL, ONCE is the law in
 // title.go's header, and the attempt is marked before the call is made.
 func TestARefusedNameIsNotRetriedWithinTheSession(t *testing.T) {
-	completer := &scriptedCompleter{steps: []step{
+	completer := naming(&scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("first"), nil },
-		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse(titlePrompt), nil },
 		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("second"), nil },
-	}}
+	}}, namerReply{title: titlePrompt})
 	agent, _ := titleAgent(t, completer, nil)
 
 	collect(t, mustSubmit(t, agent, "why is the tokenizer slow?"))
+	completer.waitAsks(t, 1, "the namer never ran")
 	collect(t, mustSubmit(t, agent, "and the parser?"))
 
-	if completer.requests() != 3 {
-		t.Fatalf("requests = %d, want 3 (two turns and the one namer)", completer.requests())
+	// A REFUSED ANSWER IS NOT THE WIRE, so the ladder does not ask again — and
+	// the second turn does not start a second naming either.
+	if got := completer.asks(); got != 1 {
+		t.Fatalf("the namer was asked %d times, want 1", got)
 	}
 	if got := agent.Title(); got != "" {
 		t.Fatalf("Title() = %q", got)
@@ -242,20 +263,16 @@ func TestAStoredInstructionGivesTheFoldersRowItsPlaceholderBack(t *testing.T) {
 func TestAHealedSessionNamesItselfOnItsNextTurn(t *testing.T) {
 	dir := t.TempDir()
 	path := echoedJournal(t, dir)
-	completer := &scriptedCompleter{steps: titleTurn("still slow", "tokenizer speed")}
+	completer := namedTurn(t, "still slow", "tokenizer speed")
 	agent, _ := newTestAgent(t, completer, func(config *Config) { config.SessionFile = path })
 
 	if got := agent.Title(); got != "" {
 		t.Fatalf("the resumed session opened titled %q", got)
 	}
-	events := collect(t, mustSubmit(t, agent, "and now?"))
+	collect(t, mustSubmit(t, agent, "and now?"))
 
-	changed, ok := firstOfKind(events, EventTitleChanged)
-	if !ok {
-		t.Fatalf("the healed session did not name itself; got %v", kinds(events))
-	}
-	if changed.Text != "tokenizer speed" {
-		t.Fatalf("the healed session named itself %q", changed.Text)
+	if got := awaitTitle(t, agent); got != "tokenizer speed" {
+		t.Fatalf("the healed session named itself %q", got)
 	}
 	if err := agent.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -276,9 +293,12 @@ func TestAHealedSessionNamesItselfOnItsNextTurn(t *testing.T) {
 // The auxiliary line says WHAT the call was for, so the next bad name can be
 // traced to the model that gave it.
 func TestTheNamersOwnLineSaysItWasTheTitle(t *testing.T) {
-	completer := &scriptedCompleter{steps: titleTurn("the parser is fine", "tokenizer speed")}
+	completer := namedTurn(t, "the parser is fine", "tokenizer speed")
 	agent, path := titleAgent(t, completer, nil)
 	collect(t, mustSubmit(t, agent, "why is the tokenizer slow?"))
+	if got := awaitTitle(t, agent); got == "" {
+		t.Fatal("the session never named itself")
+	}
 	if err := agent.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}

@@ -53,6 +53,18 @@ type taskStartedMsg struct {
 	note string
 	// wait is [taskSizedMsg.wait], for the same reason and on the same terms.
 	wait uint64
+	// brief is THE WORDS THE PERSON TYPED, carried back so the node can keep
+	// them (taskbrief.go says what for). `/task` mints no proposal card — the
+	// person typed the brief, so there was nothing to consent to — and the card
+	// is the only place [app.taskUpdate] has ever read a contract from, so on
+	// this road the surface knew the instruction, sent it, and then held nothing
+	// that could say what the work was for.
+	brief string
+	// conv is the conversation that typed it, captured before the door was
+	// opened. The answer comes back on a goroutine and the window may be sitting
+	// somewhere else by then; the words belong to the conversation they were said
+	// in and to no other ([app.adoptTypedBrief] enforces it).
+	conv string
 }
 
 func (a *app) runTaskCommand(arg string) tea.Cmd {
@@ -144,6 +156,10 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 // another under it ([app.beginPreflight]).
 func (a *app) startTaskDoor(door taskCommandAgent, brief string, seq uint64) tea.Cmd {
 	ctx := a.ctx
+	// WHICH CONVERSATION IS SAYING THIS, read HERE rather than when the answer
+	// lands: the door is opened on a goroutine and the window may have moved on
+	// by the time it answers ([app.adoptTypedBrief] is where that matters).
+	conv := a.taskBriefConv()
 	// WHO ELSE IS ALREADY IN THESE FILES, SAID BEFORE THE SPEND. `/task` shows no
 	// proposal card — the person typed the brief, so there is nothing to consent
 	// to — which means this note is the only place the fact can reach them, and
@@ -205,7 +221,10 @@ func (a *app) startTaskDoor(door taskCommandAgent, brief string, seq uint64) tea
 			}
 		})
 		id, title, note, err := door.StartTask(watched, brief)
-		return taskStartedMsg{"single", strconv.FormatUint(id, 10), title, err, note, seq}
+		return taskStartedMsg{
+			kind: "single", id: strconv.FormatUint(id, 10), title: title,
+			err: err, note: note, wait: seq, brief: brief, conv: conv,
+		}
 	})
 }
 

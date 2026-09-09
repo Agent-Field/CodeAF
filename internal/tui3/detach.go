@@ -54,7 +54,30 @@ type aside struct {
 	// the person's, so they go back where they can see them (quitarm.go's
 	// [app.leavingDraft] assembles exactly this string for the same reason).
 	draft string
-	chips []chip
+	// draftCursor is optional for older sidecars assembled without a caret.
+	draftCursor *int
+	chips       []chip
+	// pastes are the documents the draft's compact tokens stand for
+	// (pastechip.go). They travel with the sentence because the sentence is
+	// meaningless without them: a draft restored with `[paste 1 · 42 lines]` in
+	// it and nothing behind the tag would send the tag to a model as though those
+	// were the words.
+	pastes []pasteChip
+	// sends are the conversation's own messages that have left the box and not
+	// settled (recipient.go's [outboxSnapshot]). They travel with the draft
+	// because a message nobody has answered for is the same kind of fact as one
+	// nobody has sent yet: words the person typed that are still theirs.
+	sends []outboxSnapshot
+	// composers are the unsent lines typed into this conversation's TASK PAGES,
+	// each under its own reader (recipient.go). Main's own box is [aside.draft]
+	// above and is deliberately not in here.
+	//
+	// THEY ARE KEPT WITH THE CONVERSATION AND NEVER WITH THE PERSON, which is the
+	// opposite of the rule the draft follows, and for the reason the room id below
+	// follows the same one: a task id means something only inside the graph that
+	// minted it, so a line typed at task 7 belongs to the conversation task 7 is
+	// running in and to no other.
+	composers map[recipient]composerState
 	// offset is where they were reading and stick whether they were pinned to
 	// the foot of the transcript.
 	offset int
@@ -105,11 +128,12 @@ type laneStops struct {
 	wakes   func()
 	designs func()
 	runs    func()
+	titles  func()
 }
 
 // leave gives every standing lane back and forgets the stops.
 func (l *laneStops) leave() {
-	for _, stop := range []func(){l.tasks, l.wakes, l.designs, l.runs} {
+	for _, stop := range []func(){l.tasks, l.wakes, l.designs, l.runs, l.titles} {
 		if stop != nil {
 			stop()
 		}
@@ -191,6 +215,12 @@ func convKey(path string) string {
 // remembered bundle would then be nine zero fields where the surface is holding
 // nine live ones. What is true is what the surface has.
 func (a *app) front() Conversation {
+	// The connection and the two far readings are copied out the same way: what
+	// the surface is holding IS this conversation's, and it has to travel with it
+	// into the keeper so that coming back does not leave the previous
+	// conversation's connection answering for this one (tui3.go's
+	// [Conversation.Link]).
+	link := a.link
 	return Conversation{
 		Agent:            a.agent,
 		SessionFile:      a.file,
@@ -204,6 +234,9 @@ func (a *app) front() Conversation {
 		SaveApproval:     a.saveApproval,
 		SaveBashApproval: a.saveBashApproval,
 		ApplyApprovals:   a.applyApprovals,
+		TaskRoom:         a.farRoomRecord,
+		TaskIndex:        a.farTasks,
+		Link:             &link,
 	}
 }
 
@@ -217,23 +250,43 @@ func (a *app) front() Conversation {
 // The caller is what decides where the agent goes — the keeper, or
 // [app.closeFront], which closes it for real.
 func (a *app) detachConversation() *aside {
+	main := a.mainComposer()
 	side := &aside{
 		// The box and the parked messages, in the order they would have been
 		// sent (quitarm.go's [app.leavingDraft] is the same assembly the door
 		// out of the program makes, and for the same reason).
+		//
+		// THE THREE ARE READ THROUGH MAIN AND NOT OFF THE SCREEN (recipient.go).
+		// A conversation can be put down while a task's page is in front, and the
+		// box then holds that page's steering line — which is not this
+		// conversation's unsent message and must not come back as one.
 		draft:  a.leavingDraft(),
-		chips:  a.chips,
+		chips:  main.chips,
+		pastes: main.pastes,
+		sends:  main.sends,
 		offset: a.offset,
 		stick:  a.stick,
 		since:  a.now(),
 		title:  a.title,
 	}
+	// Appended parked messages are new text at the end; otherwise a switch
+	// restores the exact insertion point the person left in the main composer.
+	cursor := main.box.cursor
+	if side.draft != main.box.String() {
+		cursor = len([]rune(side.draft))
+	}
+	side.draftCursor = &cursor
 	if left, ok := a.askLeft(); ok {
 		side.askLeft, side.askPaused = left, a.askPaused
 	}
 	if a.room != nil {
 		side.room = a.room.id
 	}
+	// AND EVERY PAGE'S OWN UNSENT LINE GOES WITH THE CONVERSATION ITS PAGES
+	// BELONG TO (recipient.go). It is taken after the box above and before
+	// [app.clearConversation] below forgets the lot, and it includes the line in
+	// the box right now when a page is the thing holding it.
+	side.composers = a.composersAside()
 	// THE DEBOUNCE IS DISARMED HERE AND THE FILE IS THE CALLER'S BUSINESS. A
 	// save armed by this conversation must not fire after the switch and write
 	// this box under the NEXT conversation's name (draft.go's [draftSaveMsg]
@@ -332,6 +385,8 @@ func (a *app) clearConversation() {
 	a.gen++
 	a.taskGen++
 	a.designGen++
+	a.titleGen++
+	a.titleLane = nil
 	a.orchGen++
 	a.roomGen++
 	a.pilotGen++
@@ -342,8 +397,17 @@ func (a *app) clearConversation() {
 	a.offset, a.stick = 0, true
 	// The box goes with the conversation it was typed at: the sidecar is holding
 	// it, and the arriving conversation has its own.
+	//
+	// ALL OF THE BOXES, which is what [app.forgetComposers] adds (recipient.go):
+	// the compact pastes the tokens in the sentence stood for, and every task
+	// page's own unsent line. A stash carried across would be words addressed to
+	// nodes the arriving conversation has never heard of, in a numbering its own
+	// tasks will reuse — the same argument the rail, the folds and the lane
+	// generations are cleared on above.
 	a.input.setText("")
 	a.chips = nil
+	a.pastes = nil
+	a.forgetComposers()
 	a.parks = nil
 	a.touch()
 }
@@ -395,6 +459,11 @@ func (a *app) closeForSwitch() {
 		a.closeRewindSheet(true)
 	}
 	a.closeTaskRecord()
+	// AND THE QUESTION ABOUT CLOSING A TAB, which is a question about a SCREEN
+	// that is being replaced (tabclose.go). It never crosses a switch: answering
+	// it afterwards would act on a tab the person is no longer looking at, and the
+	// gesture is one press away wherever they land.
+	a.dropTabClose()
 }
 
 // attachConversation points the surface at a conversation and hands back the
@@ -414,6 +483,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	if agent != nil {
 		a.model = agent.Model()
 		a.title = strings.TrimSpace(agent.Title())
+		a.shortTitle = shortTitleOf(agent)
 		// THE DIAL BELONGS TO THE AGENT, so what was held about the last one is
 		// dropped and this one's current model is asked about directly — the
 		// third of the three seeded moments (reasoninglevel.go).
@@ -475,7 +545,15 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// outstanding questions with that session, and the list this surface was
 	// handed on the first frame belongs to the one it just left (hostlink.go's
 	// [app.askHeld]).
-	cmds := []tea.Cmd{a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns(), a.loadTasks(), a.askHeld()}
+	// AND THE TWO CONNECTION LANES ARE ARMED AGAIN FOR THE SAME REASON THE HELD
+	// QUESTIONS ARE ASKED AGAIN. On a door where each conversation has its own
+	// connection, who holds the keyboard and which turns another window started
+	// are facts about THIS conversation's connection; the waits the previous one
+	// armed are parked on the previous one's channels and discard themselves by
+	// generation (watching.go's [followingMsg]).
+	cmds := []tea.Cmd{a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(), a.watchRuns(), a.loadTasks(),
+		a.askHeld(), a.watchDriving(), a.watchFollowing()}
+
 	if side != nil {
 		cmds = append(cmds, a.restoreAside(side))
 	}
@@ -523,12 +601,35 @@ func (a *app) adoptTurn(events <-chan session.Event, stop func()) tea.Cmd {
 	return tea.Batch(waitEvent(a.stream, a.gen), a.wake())
 }
 
+// mainBox restores a sidecar's text and bounded insertion point together.
+func (side *aside) mainBox() editor {
+	value := []rune(side.draft)
+	cursor := len(value)
+	if side.draftCursor != nil {
+		cursor = max(0, min(*side.draftCursor, len(value)))
+	}
+	return editor{value: value, cursor: cursor}
+}
+
 // restoreAside puts the person's own readings back.
 func (a *app) restoreAside(side *aside) tea.Cmd {
+	// THE BOX IS LAID OUT ON MAIN FIRST AND THE PAGES' OWN LINES ARE PUT BEHIND
+	// IT (recipient.go), in that order: the room reopened at the foot of this
+	// function goes through the same door a rail click does, and that door is what
+	// lays this conversation's task page back out over the top.
+	a.restoreComposers(side.composers)
+	// AND THE SENDS THOSE PAGES ARE STILL WAITING ON COME BACK WITH THEM. A
+	// conversation this window never put down keeps its own rows in the outbox and
+	// this changes nothing for it ([app.steerKnown] answers for that); one read
+	// back off the record gets them here, under the names they were sent with
+	// (steersend.go's [app.restoreSentDrafts]).
+	a.restoreSentDrafts()
 	if side.draft != "" {
-		a.input.setText(side.draft)
+		a.input = side.mainBox()
 	}
 	a.chips = side.chips
+	a.pastes = side.pastes
+	a.sends = side.sends
 	a.offset, a.stick = side.offset, side.stick
 	// THE COUNTDOWN IS HANDED BACK RATHER THAN RESTAMPED, and only to a question
 	// THE ENGINE STILL HOLDS. It is consumed by [app.startAskClock] when the

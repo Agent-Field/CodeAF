@@ -223,7 +223,9 @@ func TestEscLeavesTheDraftByteIdenticalAndNoTrace(t *testing.T) {
 // A STALE EXPANSION MUST NOT BE ADDED TO A CHANGED SENTENCE, so the block is
 // gone the moment the draft it was made about is.
 func TestEditingTheDraftDismissesTheBlock(t *testing.T) {
-	for _, edit := range []string{"x", "backspace", "ctrl+u", "ctrl+w"} {
+	// The word kill is spelled `alt+backspace` here because that is a name that
+	// still reaches the box: ctrl+w shuts the tab now (tabclosekey.go).
+	for _, edit := range []string{"x", "backspace", "ctrl+u", "alt+backspace"} {
 		a, _ := spellLab(t)
 		typeDraft(t, a, "build me a login page")
 		drive(t, a, key(spellOutKey))

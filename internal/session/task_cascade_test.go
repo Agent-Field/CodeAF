@@ -347,7 +347,7 @@ func TestARefutedNodesRepairRoundRunsOnTheCarefulModel(t *testing.T) {
 
 	watch := &repairWatch{routedCompleter: &routedCompleter{
 		parent: []step{
-			proposeCall("Add the greeting", "write greet.go and a test for it, checked with `go test ./...`"),
+			proposeCall("Add the greeting", "write greet.go and a test for it", "go test ./..."),
 			finalText("handed off"),
 		},
 		child: nodeLane(8, func(repairing, wrote bool) *ai.Response {

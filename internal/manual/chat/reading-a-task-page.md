@@ -7,6 +7,15 @@ right, and a correction if it is not — so settled work opens first to an outli
 caption sentences and the machinery is one expand further. This page is about what is
 folded, how to open it, and what to do when the page seems empty or stuck at the top.
 
+Click the task's name in the right-hand list to open its conversation, including
+in the ordinary local window. While it loads, the page says so. Type a correction
+there and press Enter to send it to that task; Escape returns to the main
+conversation. Refreshing the task keeps opened blocks open and keeps an accepted
+correction visible while its worker catches up with writing the transcript.
+If reading fails, the page keeps any transcript already shown and says it is
+retrying. A temporary read failure does not mean the task's history is gone;
+finished tasks can recover their pages too.
+
 ## What is on this task page — everything a task's page shows, in order
 
 The instruction it was given, folded to three lines with a door. The work it did, folded
@@ -138,12 +147,22 @@ and scrolling the conversation never opens a fold — `ctrl+o` or a click does.
 
 ## What the line at the top of a task's page tells you
 
+**It is drawn under the conversation tabs, not above them.** Those say which conversation
+this task belongs to (see *Conversation tabs* on the screen page); this header says where
+you are inside that conversation.
+
 The pinned header is the whole glance, and it says as much of this as your frame is wide
 enough for, in this order:
 
 ```
 ⠙ main ▸ Port the loader · working · 3m 20s · $0.42 · 14 tool calls · bash
 ```
+
+`main ▸ Port the loader` is the trail — the conversation, then every piece of work
+between it and this page. **Every step of it but the last is a door**: clicking one opens
+that page, clicking `main` comes back out to the conversation, and a `…` stands for steps
+a narrow frame could not spell and opens the nearest one it hid. The last step is the page
+you are standing on and does nothing.
 
 The task's name first — that never gets cut while there is room for it — then what it is
 doing, how long it has been going, what it has cost, how many calls it has made, and what
@@ -224,12 +243,47 @@ Three things that look like the same picture and are not:
   Its row is the one under the `jobs` label.
 
 No task page ever draws an empty body under its header. Whatever is true of the task,
-the page says it in one dim line:
+the page says it in one dim line, above whatever else it already knows:
 
 - a finished task whose transcript is gone from the disk keeps its report and says
   `this task's transcript is not here any more`
 - a task that is queued, or one still working with nothing written for it yet, says
   `nothing on this page yet — it fills in as the task works`
+- a page waiting on a read that is genuinely in flight — which is what opening a task on
+  another machine or in another conversation does — says
+  `loading this task's conversation…`. A page with nothing on the way never says it
+- a read that came back with an error says `couldn't read this task's conversation ·
+  retrying`, which is a different fact from either of the two above and keeps its beat
+
+## Why is a task I just started showing an empty page
+
+It should not, and if it does the version you are on is older than this page. A task
+opened the second it starts has journaled nothing yet — its first message is still being
+written — so there is no transcript to replay for a few seconds.
+
+What the page draws in that gap is what it already holds: **the instruction the task was
+given**, which has been in hand since the task was admitted, and then the sentence naming
+what the work is doing right now where the engine has published one — what it is held
+behind, the gap it is closing, or the call it is on. Then the one line about why there is
+nothing else yet.
+
+```
+Widen the import pipe so the nightly run stops timing out.
+rate limited
+nothing on this page yet — it fills in as the task works
+```
+
+Three things worth knowing about that page:
+
+- **It replaces itself.** Every one of those rows is drawn only while the page has no
+  blocks at all, so the first thing the task writes takes the whole scaffold off at once.
+  There is nothing to dismiss and no second door to press.
+- **Opening it starts nothing.** The page is a reader onto work that is already running;
+  pressing the row again closes the page rather than starting anything, and no task is
+  ever run twice by looking at it.
+- **It does not repeat the header.** The header above is already spending its one word on
+  the state — `working`, `waiting`, `queued` — with the clock beside it. The body gives
+  the reason underneath that word, which is what the header had no room for.
 
 A background job whose log is empty or unreadable draws no tail and no error — a job that
 has written nothing yet is a job that started a second ago — and never the old sentence
@@ -293,6 +347,34 @@ A job that has written nothing yet draws no tail and no error. The old feet
 `this log grows as the job works — say it to main` and
 `a background job keeps a log, not a transcript` are gone: there is no composer to refuse.
 
+## Each task page has its own message box — I opened a task and my typing vanished, whose words are in the box
+
+**What you type at a task stays at that task, and what you typed for the conversation
+stays in the conversation.** Open a task's page and the box is that task's own: empty
+the first time, and holding whatever you last typed there every time after. `esc` brings
+the conversation's box back exactly as you left it, with the caret where it was.
+Clicking from one task straight to another does the same between the two of them.
+
+Each box keeps its text, its caret, its compact `[paste 1 · 42 lines]` chips and its
+tray. `enter` sends the box in front of you and clears only that one — steering a task
+never spends the sentence you were writing for the model, and a message the engine
+refuses leaves its words in the box that holds them.
+
+Two things worth knowing:
+
+- **A task page's line is kept on disk, like the conversation's.** Close the window or
+  crash, open aforge here again, click that task: your half-typed correction is in the
+  box with its documents and its tray. It is never restored into the conversation, and
+  never into another conversation's task with the same number (the keys page has the
+  detail).
+- **A task page's line belongs to that conversation.** `/new` carries the sentence in
+  the conversation's box into the new conversation, as it always has, and leaves the
+  task pages' lines with the conversation they were typed into.
+
+Older builds had one box for everything. Typing a message for the model, clicking a
+task's row and pressing `enter` sent that message to the task — the box never changed,
+so nothing on the screen said anything had.
+
 ## Steer a task from its page — the `└` elbow, the `· delivered` clause, and how corrections read back
 
 `enter` inside a task's page sends what you typed to the task itself. It arrives on the
@@ -308,11 +390,26 @@ the page — and everything you say on the page after that bends that one questi
 page's turn count does not move when you steer.
 
 The clause after your words is what the sending did, and it is news: it is there for a few
-seconds and then fades off the row, leaving the elbow. `· delivered` is the ordinary one
+seconds and then fades off the row, leaving the elbow. While a correction is being saved,
+queued or sent, it says `· sending`; that is not a receipt. The task send runs outside the
+keypress, so you can leave the page while the engine is answering. `· delivered` is the ordinary one
 and says the only thing you cannot see for yourself — the words crossed to the worker and
 did not vanish on the way. `· it was waiting on its pieces — your line wakes it` appears
 instead when the task had handed its work out and was parked on the reports; then nothing
 was running to read your line at its next step, and your line is what starts it moving.
+`· held on the task's record — it is being checked, and it cannot land as done without
+this` is the third: there was nobody inside the task to read you, because its work was
+already in front of the checker. The words are kept on the task, the check is not allowed
+to land it as done over them, and the task takes another round with them instead.
+
+**A correction can change what the task is judged by, and only yours can.** Say "CSV
+instead of JSON" into a running task and the worker can fold it into the task's own
+done-condition, citing the line you sent; from then on that is what the checker judges the
+finished work against, and the first done-condition is history. Your words are kept
+verbatim beside the new condition, so you and the checker both see what you actually said.
+What the model says into a task with `tasks id N say` never does this — that is one part
+of the work talking to another, and it cannot change what somebody else's work is graded
+on.
 
 **Reopen the page and your corrections are still corrections.** Leave and come back, or
 open the task tomorrow, and each line you steered comes back as a `└ ` elbow in the place
@@ -320,10 +417,12 @@ you said it, with no clause on it — the elbow's position is the record of wher
 went. Older builds drew them as fresh `›` questions, so a page read back showed your
 corrections as extra instructions and counted turns nobody had opened.
 
-Steering is refused rather than quietly re-pointed when there is nobody to read it — a
-finished task, a background job, a task being checked — and then a question comes up
-offering to send the words to the main conversation or to ask for the work to be started
-again. Nothing is sent anywhere until you answer it.
+Steering is refused rather than quietly re-pointed when the work is over — a finished
+task, a background job — and then a question comes up offering to send the words to the
+main conversation or to ask for the work to be started again. Nothing is sent anywhere
+until you answer it. A task that is still running is never refused: if nobody is inside it
+to read you — it is being checked, or its worker has just closed — the line is held on the
+task's record instead, which the clause above says out loud.
 
 ## Task page says finished but the work is still running
 
@@ -348,6 +447,10 @@ What each foot means now:
 - `this task has finished — say it to main` — a **task** that is over, whatever kind it
   was. Nothing more is coming; scroll up to read what it did. Where the task has a parent
   the line offers that door too: `…, or open its parent, Ship the port`.
+- `this task has finished — say it in docs pass` — the same landing on a page that is
+  **reading another conversation's task**. The door is the owning conversation, by its
+  name when this window has one and `…say it in the conversation that owns it` when it
+  does not — never `main`, which on that page is the wrong conversation for the words.
 
 **A job's page has no composer, so none of those job feet name a door for typed words.**
 `m` is how a job's ending reaches the conversation. A task's foot still names a door,
@@ -381,6 +484,11 @@ that model and finishes on another, `the reply kept losing its thread —
 finishing this one on <model>`. Before this, a task's page kept the dead
 half-answer above the live one with nothing to explain it.
 
+A failed connection or retryable request also replaces its partial answer before
+trying again, with `the request failed — asking again`. The failed attempt does
+not stay above the replacement. Stopping during the retry wait still keeps the
+partial reply you saw; a retry that never starts discards nothing.
+
 **The dim `· ` lines between calls** are the page saying what its own machinery
 did. Three of them reach a task now:
 
@@ -394,3 +502,61 @@ did. Three of them reach a task now:
 
 None of them is a failure and none of them needs an answer. A task's page is
 still quiet when the work is going well: only failure speaks.
+
+## My task correction is sending or has no answer
+
+A correction is saved with its original recipient before it can be sent. Corrections to
+one task go in the order you typed them. `sending` includes time waiting for that save
+or an earlier correction; it does not establish that the engine received anything.
+
+If the engine refuses the correction, its words are recovered for that task without
+replacing a newer draft. If the connection fails and delivery is uncertain, the row says
+`no answer — it is not known whether this arrived`. The correction remains a pending
+message with its original identity, rather than becoming a fresh message in the box.
+
+If the conversation the correction belongs to was **closed** while it was still crossing,
+there is no page and no record left to keep it, so the answer is said out loud instead:
+`task 7 was not corrected, and its conversation is not open here · these words are only
+in this line: ` followed by the whole sentence, which also joins your `↑` history. It is
+not held for a retry and is never moved to the conversation now in front.
+
+## Retry a task correction without sending it twice
+
+On an unresolved correction, `r` asks again and `esc` leaves it on the page. An engine
+that remembers message identities returns its existing receipt if it already admitted
+that correction. The current engine writes the identity and direction to its task record
+before acknowledging it. A write failure refuses delivery; a failure to undo an already
+saved admission remains uncertain. This protects direction admission, not arbitrary
+external effects of the worker's tools.
+
+If the engine cannot recognize repeated identities, the offer says
+`send it again (it may arrive twice)` and there is no automatic repeat. Two separate
+presses of Enter intentionally create two messages, even when their text is identical.
+
+## Close the window while a correction is pending
+
+Pending corrections survive with their recipient, message identity and original time in
+the same structured record as drafts. Reopening that conversation and task restores the
+unresolved row; retrying uses its retained identity. A definitely refused message is
+recovered for its own task. Closing a conversation for good clears its kept corrections;
+an unsent message waiting for its local save is not released after that close.
+
+The local save must succeed before a new correction crosses to the engine. A missing
+record path or failure to create a message identity refuses sending and keeps the words.
+A failed plain-text export is shown, but does not undo a successful structured save.
+
+## Switch conversations while a task correction is sending
+
+A send keeps the original engine and owning conversation, whatever page is on screen.
+Switching to a conversation held alongside it can leave the original send running.
+Its receipt and recovered draft belong to that original conversation.
+
+If the conversation behind that engine connection was replaced, the engine refuses a
+mismatched recipient with `not sent — that conversation is not open`. It does not send
+the words to another conversation's task with the same number. An engine unable to check
+the intended conversation is refused before the correction crosses the wire.
+
+A task viewed through another conversation's reading connection has no steering door.
+Its editor is separate from the main draft and from any local task with the same number.
+Task corrections carry text; attachments stay in the recipient's tray and the page says
+that those files were not sent with the correction.

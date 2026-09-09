@@ -130,11 +130,16 @@ func TestTasksToolRowsSayWhatARunningNodeIsDoing(t *testing.T) {
 func TestTasksToolSteersARunningNode(t *testing.T) {
 	agent, node, id := runningStubbedNode(t, "Move the config")
 
-	// Nobody is in the room yet: a stubbed runner has no child, and "there is no
-	// worker to talk to" is a better answer than a line queued onto nothing.
+	// Nobody is in the room yet: a stubbed runner has no child. The line is kept
+	// on the task's own record for its next round rather than queued onto nothing
+	// or sent back (assignment.go), and the answer says the one thing a relayed
+	// line must always say — that it is not the person's authority.
 	text, isError := runTool(t, agent, "tasks", fmt.Sprintf(`{"id":%d,"say":"use etc/"}`, id))
-	if !isError || !strings.Contains(text, "nobody in it") {
-		t.Fatalf("steering a node with no worker was not refused:\n%s", text)
+	if isError {
+		t.Fatalf("a line to a running node was refused:\n%s", text)
+	}
+	if !strings.Contains(text, "on the task's record") || !strings.Contains(text, "only the person's own direction") {
+		t.Fatalf("the answer does not say what became of the line:\n%s", text)
 	}
 
 	// A worker arrives — the room's speaker is the agent the words reach.
@@ -146,7 +151,7 @@ func TestTasksToolSteersARunningNode(t *testing.T) {
 	if isError {
 		t.Fatalf("steering a running node failed:\n%s", text)
 	}
-	if !strings.Contains(text, "brief and its acceptance are unchanged") {
+	if !strings.Contains(text, "only the person's own direction can move that") {
 		t.Fatalf("the answer does not state the contract:\n%s", text)
 	}
 	if !steeringContains(worker, "the config lives under etc/, not conf/") {

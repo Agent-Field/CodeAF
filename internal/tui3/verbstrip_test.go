@@ -101,20 +101,20 @@ func TestTheStripCannotOutliveTheRowAWheelWalksOffIt(t *testing.T) {
 	}
 }
 
-// AND THE ROW STAYING PUT IS NOT A MOVE. A key that cannot go anywhere — `home`
-// on the first row — leaves the strip exactly where it is, because the law is
+// AND THE ROW STAYING PUT IS NOT A MOVE. A key that cannot go anywhere — `end`
+// on the last row — leaves the strip exactly where it is, because the law is
 // about the row under the cursor and never about which key was pressed.
 func TestAKeyThatMovesNothingLeavesTheStripStanding(t *testing.T) {
 	a, agent := stripWalkLab(t)
-	drive(t, a, key("home"))
+	drive(t, a, key("end"))
 	drive(t, a, key("right"))
 	if !a.strip.open {
-		t.Fatal("`→` opened no strip on the first row")
+		t.Fatal("`→` opened no strip on the last row")
 	}
-	drive(t, a, key("home"))
+	drive(t, a, key("end"))
 	taskSheetText(a)
 	if !a.strip.open {
-		t.Fatal("`home` on the first row closed a strip whose row had not moved")
+		t.Fatal("`end` on the last row closed a strip whose row had not moved")
 	}
 	drive(t, a, key("s"))
 	if len(agent.asked) != 1 {

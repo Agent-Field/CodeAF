@@ -335,7 +335,7 @@ func TestTheRunsOwnRowIsNamedByTheSameCall(t *testing.T) {
 	feed := agent.TaskUpdates()
 	const goal = "look into the three vendors and tell me where each of them is strongest"
 	family := agent.newOrchestrateFamily(goal, "cheap/model", "run-1")
-	family.nameRun(goal)
+	family.nameRun(context.Background(), goal)
 
 	if !nameLanded(func() bool {
 		family.mu.Lock()

@@ -4,8 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -49,6 +47,7 @@ func thoughtBlockRows(t *testing.T, a *app) []row {
 // the last three, newest at the bottom, under one header row.
 func TestTheStreamingThoughtShowsOnlyItsLastThreeLines(t *testing.T) {
 	a := reasoningLines(t, "one", "two", "three", "four", "five")
+	showLiveWork(t, a)
 
 	block := thoughtBlockRows(t, a)
 	if len(block) != 1+thoughtLive {
@@ -73,10 +72,12 @@ func TestTheStreamingThoughtShowsOnlyItsLastThreeLines(t *testing.T) {
 		}
 	}
 
-	// The window is a live cue only. Once the block settles, ctrl+e opens the
-	// WHOLE think — nothing was thrown away to draw three lines of it.
+	// The window is a live cue only. Once the block settles, its own disclosure
+	// opens the whole thought; nothing was thrown away to draw three lines of it.
 	drive(t, a, streamEventMsg{gen: a.gen, ev: text(session.EventTextDelta, "done")})
-	drive(t, a, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	if !a.toggleLatestThought() {
+		t.Fatal("the thought has no disclosure")
+	}
 	drawn := strings.Join(plainRows(a), "\n")
 	for _, want := range []string{"one", "two", "three", "four", "five"} {
 		if !strings.Contains(drawn, want) {
@@ -89,6 +90,7 @@ func TestTheStreamingThoughtShowsOnlyItsLastThreeLines(t *testing.T) {
 // faint: the gradient says where you are, not how much there is.
 func TestAShortThoughtTakesTheNewestStopFirst(t *testing.T) {
 	a := reasoningLines(t, "just the one")
+	showLiveWork(t, a)
 	a.pal = newPalette(tokens.TrueColor, false)
 	a.markStale(thoughtAt(t, a))
 	a.touch()
@@ -143,6 +145,7 @@ func TestTheWindowFadesInTruecolorAndNotUnderNoColor(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a := reasoningLines(t, "one", "two", "three", "four")
+			showLiveWork(t, a)
 			a.pal = newPalette(tc.profile, false)
 			a.markStale(thoughtAt(t, a))
 			a.touch()
@@ -182,6 +185,7 @@ func TestTheThoughtTokenCounterAccumulatesAndSurvivesTheCollapse(t *testing.T) {
 		text(session.EventReasoning, strings.Repeat("b", 40)),
 	})
 	typeLine(t, a, "count it")
+	showLiveWork(t, a)
 
 	at := thoughtAt(t, a)
 	if got := thoughtCount(&a.entries[at]); got != "20 tok" {

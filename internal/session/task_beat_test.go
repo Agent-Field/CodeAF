@@ -191,7 +191,7 @@ func TestTheHeartbeatSaysWhichPhaseTheNodeIsIn(t *testing.T) {
 	working, checking, repairing := &beatWatch{}, &beatWatch{}, &beatWatch{}
 	completer := &routedCompleter{
 		parent: []step{
-			proposeCall("Add the greeting", "write greet.go and a test for it, checked with `go test ./...`"),
+			proposeCall("Add the greeting", "write greet.go and a test for it", "go test ./..."),
 			finalText("handed off"),
 		},
 		child: nodeLane(8, func(repairs, wrote bool) *ai.Response {

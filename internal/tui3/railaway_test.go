@@ -24,6 +24,12 @@ import (
 // ctrlG is the column's own door (task.go's [railStowKey]).
 func ctrlG() tea.KeyPressMsg { return tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl} }
 
+// altT is the roster's hand-off (task.go's [railHoldChord]). It used to be
+// ctrl+t and moved under the other modifier when ctrl+t became the new-tab
+// chord (chatstart.go's [app.newChatKey]); it is spelled from the constant so
+// the tests below cannot go on pressing a key the surface has stopped binding.
+func altT() tea.KeyPressMsg { return key(railHoldChord) }
+
 // THE KEY CLOSES THE COLUMN, GIVES THE WIDTH BACK, AND OPENS IT AGAIN. Nothing
 // about the roster is lost in between: it is the same list, drawn again.
 func TestTheTaskColumnClosesAndReopensOnItsKey(t *testing.T) {
@@ -201,7 +207,7 @@ func TestTheKeyFallsThroughWhereNoRosterIsOnTheFrame(t *testing.T) {
 		t.Fatal("ctrl+g took away a column the frame was not lending")
 	}
 
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	if !a.railFull() {
 		t.Fatal("ctrl+t did not raise the roster over the body")
 	}

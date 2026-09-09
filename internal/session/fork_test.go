@@ -1060,7 +1060,9 @@ func TestForkRefusesAFanItCannotBe(t *testing.T) {
 			forkPartJSON("a", "a"), forkPartJSON("b", "b"), forkPartJSON("c", "c"),
 			forkPartJSON("d", "d"), forkPartJSON("e", "e"),
 		), "not forked:"},
-		{"a hand with no scope", `{"parts":[{"role":"a","scope":[]},{"role":"b","scope":["b"]}]}`, "Invalid arguments:"},
+		// An empty scope is a READING hand now (forkreadonly_test.go); a MISSING
+		// key is still the slip it always was.
+		{"a hand with no scope key", `{"parts":[{"role":"a"},{"role":"b","scope":["b"]}]}`, "Invalid arguments:"},
 		{"a hand with no role", `{"parts":[{"role":" ","scope":["a"]},{"role":"b","scope":["b"]}]}`, "Invalid arguments:"},
 	} {
 		t.Run(c.name, func(t *testing.T) {

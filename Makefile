@@ -41,7 +41,8 @@ manual-pack-law:
 	fi
 
 embed: manual-pack-law
-	go generate $(PACKED_PKGS)
+	# Generators execute on the build host, even when aforge targets another OS.
+	env -u GOOS -u GOARCH go generate $(PACKED_PKGS)
 
 # ── the furrow that rides inside ────────────────────────────────────────────
 #

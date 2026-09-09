@@ -66,7 +66,7 @@ func (a *app) progressHarnessCard(ev session.Event) {
 // no-op. This row is never appended to entries, so it can never reach a journal.
 func (a *app) progressHarnessRoom(ev session.Event) {
 	c, _ := a.harnessCardOf(ev.ID)
-	if c == nil || c.task == 0 || a.tasks[c.task] == nil || a.room == nil || a.room.id != c.task {
+	if c == nil || c.task == 0 || a.tasks[c.task] == nil || a.room == nil || a.roomIsGuest() || a.room.id != c.task {
 		return
 	}
 	parts := []string{"subharness · " + firstNonEmpty(ev.Phase, "designing")}
@@ -103,7 +103,7 @@ func (a *app) finishHarnessCard(ev session.Event) {
 	// alone it kept saying "subharness · reviewing · …" under a design that was
 	// already awaiting the person's look, because no further progress event was
 	// ever coming to replace it.
-	if a.room != nil && c.task != 0 && a.room.id == c.task {
+	if a.room != nil && !a.roomIsGuest() && c.task != 0 && a.room.id == c.task {
 		a.room.harnessProgress = ""
 	}
 	a.entries[i].stale = true
@@ -390,6 +390,14 @@ func (a *app) harnessCardPress(i, x int) {
 	if c == nil || c.page == nil || c.state != "" {
 		return
 	}
+	// THE COLUMNS THE ROW WAS DRAWN IN COME OFF THE PRESS FIRST. The actions are
+	// laid down behind [harnessCardLead], and the whole card sits inside the
+	// transcript's reading gutter (gutter.go) — neither of which the words below
+	// know anything about. The lead was already missing here before the gutter
+	// existed, which is why `save` answered a press two columns left of the word
+	// and `drop` answered one two columns left of ITS word; the gutter would have
+	// made it four.
+	x -= textGutterCols(a.bodyWidth()) + len(harnessCardLead)
 	// Each answer owns its own words and the gap that follows them, which is the
 	// offer row's rule (harness.go's recordHarnessTaps): a press just past a word
 	// is a person aiming at it.

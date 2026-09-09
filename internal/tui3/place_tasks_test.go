@@ -20,6 +20,13 @@ import (
 // NOTHING IS NAMED THAT IS NOT BOUND. One of the design's two verbs has a seam
 // and one does not, so one is on the strip and in the sentence and the other is
 // on neither.
+//
+// AND THE THIRD CLAUSE MOVED INTO THE BOX. `type to filter` was on this line to
+// correct the composer two rows below it, which said `say what you want done`
+// over a slot that can only ever filter; the composer says the true sentence
+// itself now (place_tasks.go's [placeTasks.resting]), and a foot repeating it
+// would be one frame naming one thing twice. So what these pin is the foot
+// WITHOUT it, and that the box carries it instead.
 
 // tasksFootApp is the tasks place over a session that can END work: one node
 // running, and the door [stopAgent] asserts behind it.
@@ -42,9 +49,24 @@ func TestTheTasksFootIsScreenOneEWordForWord(t *testing.T) {
 	if !ok || item.entry.Label != "Fix the nil-map crash" {
 		t.Fatalf("the cursor is not on this window's running task: %+v", item.entry)
 	}
-	const want = "enter open its room · → verbs: stop it · type to filter"
+	// AND THE FILTER CLAUSE IS NOT ON IT ANY MORE. It was here to correct the box
+	// two rows below, which said `say what you want done` over a slot that only
+	// ever filtered; the box says the true sentence itself now
+	// ([placeTasks.resting]), and one screen may not name one thing twice.
+	const want = "enter open its room · → verbs: stop it"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("the foot reads\n  %q\nwant\n  %q", got, want)
+	}
+	if got := a.taskSheetKeysLine(); strings.Contains(got, tasksTypeWord) {
+		t.Fatalf("the foot repeats the box's own sentence: %q", got)
+	}
+	// AND THE BOX IS THE ONE THAT SAYS IT, in the slot a person is looking at when
+	// they wonder what a letter will do here.
+	if got := a.placeRestWord(); !strings.Contains(got, tasksTypeWord) {
+		t.Fatalf("the tasks box rests on %q, want it to say what typing there does", got)
+	}
+	if got := a.placeRestWord(); strings.Contains(got, placeRestWord) {
+		t.Fatalf("the tasks box still invites a message it cannot send: %q", got)
 	}
 	// AND IT IS THE LAST LINE OF THE FRAME, with the router's own two keys on the
 	// end of it and no second foot under it.
@@ -81,14 +103,14 @@ func TestTheTasksFootSaysOnlyWhatIsTrueOfTheRowUnderIt(t *testing.T) {
 	if !ok || item.entry.Title != "Port the parser" {
 		t.Fatalf("the walk did not reach the earlier conversation's row: %+v", item)
 	}
-	const want = "enter go inside it · type to filter"
+	const want = "enter go inside it"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("over work another conversation ran the foot reads\n  %q\nwant\n  %q", got, want)
 	}
 
-	// AND WHILE A FILTER IS ON, THE CLAUSE THAT MOVED IS THE ONE THAT IS SAID.
-	// `type to filter` would be teaching somebody to do what they are doing; what
-	// they cannot see is that esc now means the filter and not the page.
+	// AND WHILE A FILTER IS ON, THE CLAUSE THE FOOT ADDS IS THE ONE THAT MOVED.
+	// The box cannot say this one: what a person cannot see is that esc now means
+	// the filter and not the page.
 	a.taskSheet.query.setText("port")
 	a.taskSheetTyped()
 	if got := a.taskSheetKeysLine(); !strings.Contains(got, tasksClearFilterWord) {
@@ -187,7 +209,7 @@ func TestTheTasksFootNamesNoVerbWithoutTheEnginesDoor(t *testing.T) {
 	if verbs := a.taskSheet.verbs(a); len(verbs) != 0 {
 		t.Fatalf("a session with no cancel door offered %+v", verbs)
 	}
-	const want = "enter open its room · type to filter"
+	const want = "enter open its room · → what ran under it"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("the foot reads\n  %q\nwant\n  %q", got, want)
 	}
@@ -233,5 +255,8 @@ func TestSOnTheTasksStripStopsThatTaskThroughTheEnginesDoor(t *testing.T) {
 // still need, and it is asked here once rather than in forty places.
 func openTaskPlaceWithRows(a *app) bool {
 	a.showPage(pageTasks)
+	if len(a.taskSheet.reading.items) > 0 {
+		a.taskSheetPointAt(a.taskSheet.reading.items[0].entry)
+	}
 	return a.at(pageTasks) && len(a.taskSheet.reading.items) > 0
 }

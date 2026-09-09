@@ -61,7 +61,7 @@ func TestC16APersonsCommitOnTheBranchKeepsTheTaskBranch(t *testing.T) {
 				return
 			}
 
-			want := "its branch " + tree.branch + " was kept: work has moved on since the work was cut — merge it where you want it"
+			want := "its branch " + tree.branch + " was kept: work has moved on since the work was cut — inspect the retained task branch before choosing a destination"
 			if merge != mergeKept || detail != want {
 				t.Fatalf("landing = %q, %q; want %q, %q", merge, detail, mergeKept, want)
 			}
@@ -127,7 +127,7 @@ func TestC17ARestoredRecordStillReadsTheCommitItWasCutFrom(t *testing.T) {
 
 	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "person moved work")
 	merge, detail, _ := rebuilt.comeHome("write after a restart", []string{"restored.txt"})
-	want := "its branch " + rebuilt.branch + " was kept: work has moved on since the work was cut — merge it where you want it"
+	want := "its branch " + rebuilt.branch + " was kept: work has moved on since the work was cut — inspect the retained task branch before choosing a destination"
 	if merge != mergeKept || detail != want {
 		t.Fatalf("restored landing = %q, %q; want %q, %q", merge, detail, mergeKept, want)
 	}
@@ -165,7 +165,7 @@ func TestC7AProtectedCheckoutKeepsCompletedWorkOnItsTaskBranch(t *testing.T) {
 				t.Fatalf("merge = %q (%s), want %q", merge, detail, mergeKept)
 			}
 			wantSentence := "its branch " + tree.branch + " was kept: your checkout is on " + branch +
-				", which aforge never writes to — merge it when you are ready"
+				", which tasks do not merge into automatically"
 			if !strings.Contains(detail, wantSentence) {
 				t.Fatalf("landing detail does not say why the branch was kept:\n%s", detail)
 			}
@@ -194,6 +194,11 @@ func TestC7AProtectedCheckoutKeepsCompletedWorkOnItsTaskBranch(t *testing.T) {
 			if strings.Count(note, wantSentence) != 1 {
 				t.Fatalf("completion note does not carry the protected sentence once:\n%s", note)
 			}
+			for _, want := range []string{"Inspect and test it there", "preserve their branch and review instructions", "Do not merge or switch"} {
+				if !strings.Contains(note, want) {
+					t.Fatalf("the parent was not told the branch workflow boundary (%q):\n%s", want, note)
+				}
+			}
 		})
 	}
 }
@@ -210,7 +215,7 @@ func TestC8AMovedOrDetachedCheckoutKeepsTheTaskBranch(t *testing.T) {
 		writeFile(t, filepath.Join(tree.dir, "moved.txt"), "kept\n")
 		mustGit(t, repo, "checkout", "-b", "other")
 		merge, detail, _ := tree.comeHome("write after the move", []string{"moved.txt"})
-		want := "its branch " + tree.branch + " was kept: your checkout has moved from work to other since the work was cut — merge it where you want it"
+		want := "its branch " + tree.branch + " was kept: your checkout has moved from work to other since the work was cut — inspect the retained task branch before choosing a destination"
 		if merge != mergeKept || !strings.Contains(detail, want) {
 			t.Fatalf("landing = %q, %q; want moved-checkout keep", merge, detail)
 		}
@@ -228,7 +233,7 @@ func TestC8AMovedOrDetachedCheckoutKeepsTheTaskBranch(t *testing.T) {
 		writeFile(t, filepath.Join(tree.dir, "detached.txt"), "kept\n")
 		mustGit(t, repo, "checkout", "--detach")
 		merge, detail, _ := tree.comeHome("write while detached", []string{"detached.txt"})
-		want := "its branch " + tree.branch + " was kept: your checkout is not on a branch — check one out and merge it"
+		want := "its branch " + tree.branch + " was kept: your checkout is not on a branch — inspect the retained task branch without changing this checkout"
 		if merge != mergeKept || !strings.Contains(detail, want) {
 			t.Fatalf("landing = %q, %q; want detached-checkout keep", merge, detail)
 		}
@@ -251,7 +256,7 @@ func TestC7AndC8EarlierKeptReasonsWinWhenTheTipAlsoMoved(t *testing.T) {
 		writeFile(t, filepath.Join(tree.dir, "kept.txt"), "kept\n")
 		mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "person moved main")
 		merge, detail, _ := tree.comeHome("write while main moves", []string{"kept.txt"})
-		want := "its branch " + tree.branch + " was kept: your checkout is on main, which aforge never writes to — merge it when you are ready"
+		want := "its branch " + tree.branch + " was kept: your checkout is on main, which tasks do not merge into automatically"
 		if merge != mergeKept || detail != want {
 			t.Fatalf("protected landing = %q, %q; want %q, %q", merge, detail, mergeKept, want)
 		}
@@ -267,7 +272,7 @@ func TestC7AndC8EarlierKeptReasonsWinWhenTheTipAlsoMoved(t *testing.T) {
 		mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "person moved work")
 		mustGit(t, repo, "checkout", "-b", "other")
 		merge, detail, _ := tree.comeHome("write before both moves", []string{"kept.txt"})
-		want := "its branch " + tree.branch + " was kept: your checkout has moved from work to other since the work was cut — merge it where you want it"
+		want := "its branch " + tree.branch + " was kept: your checkout has moved from work to other since the work was cut — inspect the retained task branch before choosing a destination"
 		if merge != mergeKept || detail != want {
 			t.Fatalf("moved-name landing = %q, %q; want %q, %q", merge, detail, mergeKept, want)
 		}
@@ -283,7 +288,7 @@ func TestC7AndC8EarlierKeptReasonsWinWhenTheTipAlsoMoved(t *testing.T) {
 		mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "person moved work")
 		mustGit(t, repo, "checkout", "--detach")
 		merge, detail, _ := tree.comeHome("write before detaching", []string{"kept.txt"})
-		want := "its branch " + tree.branch + " was kept: your checkout is not on a branch — check one out and merge it"
+		want := "its branch " + tree.branch + " was kept: your checkout is not on a branch — inspect the retained task branch without changing this checkout"
 		if merge != mergeKept || detail != want {
 			t.Fatalf("detached landing = %q, %q; want %q, %q", merge, detail, mergeKept, want)
 		}
@@ -404,7 +409,7 @@ func TestATagCannotDisguiseAProtectedLandingBranch(t *testing.T) {
 	before := strings.TrimSpace(gitOut(t, repo, "rev-parse", "refs/heads/dev"))
 	writeFile(t, filepath.Join(tree.dir, "node.txt"), "the task's work\n")
 	merge, detail, _ := tree.comeHome("write a note", []string{"node.txt"})
-	if merge != mergeKept || !strings.Contains(detail, "on dev, which aforge never writes to") {
+	if merge != mergeKept || !strings.Contains(detail, "on dev, which tasks do not merge into automatically") {
 		t.Fatalf("tag disguised the protected branch: %q, %q", merge, detail)
 	}
 	if after := strings.TrimSpace(gitOut(t, repo, "rev-parse", "refs/heads/dev")); after != before {

@@ -51,6 +51,9 @@ const (
 	RoleStanding Role = "standing"
 	// RoleMemory is the memory reflex and the consolidation pass.
 	RoleMemory Role = "memory"
+	// RoleRecall prepares a person's next answer. Its output is private, but
+	// its delay is interactive because the main request has not started yet.
+	RoleRecall Role = "recall"
 	// RoleAuxiliary is a side errand of the turn's — a title, a route question,
 	// a fold-up, a reply check. It is the role the reflex tier mostly serves.
 	RoleAuxiliary Role = "auxiliary"
@@ -200,6 +203,7 @@ var roles = map[Role]RoleFacts{
 	RoleLeafAttached:   {Interactive: true, QualityNeed: 0.9, Horizon: 50, Visible: true, Streams: true, Verb: "writing", Patience: 1},
 	RoleLeafUnattended: {Interactive: false, QualityNeed: 0.9, Horizon: 50, Visible: false, Streams: true, Verb: "writing", Patience: 3},
 	RoleStanding:       {Interactive: false, QualityNeed: 0.9, Horizon: 20, Visible: false, Streams: true, Verb: "writing", Patience: 6},
+	RoleRecall:         {Interactive: true, Critical: true, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 1},
 	RoleMemory:         {Interactive: false, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 3},
 	RoleAuxiliary:      {Interactive: false, QualityNeed: 0.8, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 3},
 	RoleJudge:          {Interactive: false, Critical: true, QualityNeed: 0.95, Horizon: 10, Visible: false, Streams: true, Verb: "writing", Patience: 6},

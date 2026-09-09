@@ -52,7 +52,7 @@ func TestABackgroundJobATaskStartedReachesTheAmbientCounts(t *testing.T) {
 	// having: walking away from a server a task started is the same mistake as
 	// walking away from one you started yourself, and the warning is the only
 	// place the surface says so.
-	if word := a.quitWorkWord(); !strings.Contains(word, "job") {
+	if word := quitStoppingWord(a); !strings.Contains(word, "job") {
 		t.Errorf("the quit warning says %q while a task's background job is up", word)
 	}
 }

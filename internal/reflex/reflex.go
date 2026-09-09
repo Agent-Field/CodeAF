@@ -345,24 +345,23 @@ func Route(ctx context.Context, c Completer, userMsg string, index []Stub) (Rout
 	if strings.TrimSpace(userMsg) == "" {
 		return RouteResult{}, nil
 	}
+	// Recall is on the first answer's critical path, so the whole operation,
+	// including repair and model fallback, shares the interactive silence cap.
+	// A deadline here lets the caller proceed without memory when a provider
+	// stalls instead of inheriting the transport's multi-minute safety bound.
+	ctx, cancel := context.WithTimeout(ctx, lane.VisiblePatience)
+	defer cancel()
 	known := make(map[string]bool, len(index))
 	for _, stub := range index {
 		if id := strings.TrimSpace(stub.ID); id != "" {
 			known[id] = true
 		}
 	}
-	// A ROUTE QUESTION IS THE TURN'S SIDE ERRAND, which is exactly what
-	// [lane.RoleAuxiliary] is the table's name for: it runs beside a turn a
-	// person is reading and is none of their business, so it is worth little a
-	// second, it has no claim on the status line, and it can simply be asked
-	// again if the answer is unusable (internal/lane's roles.go holds the four
-	// numbers; this file names none of them).
-	//
-	// It is stamped at the door rather than inside [ask] because the three doors
-	// of this package are not all the same errand — see [Extract] and [Decide],
-	// which serve the memory rather than the turn.
+	// RECALL IS ON THE ANSWER'S CRITICAL PATH. Its output stays private, but
+	// somebody is waiting for it, so the existing chooser values latency and
+	// can recover within the shared cap instead of pricing it as background work.
 	var result RouteResult
-	err := ask(provider.WithRole(ctx, lane.RoleAuxiliary), c, routePrompt, routeInput(userMsg, index), func(reply string) error {
+	err := ask(provider.WithRole(ctx, lane.RoleRecall), c, routePrompt, routeInput(userMsg, index), func(reply string) error {
 		var wire struct {
 			Inject []string `json:"inject"`
 			Cmd    *struct {
@@ -543,6 +542,10 @@ func Decide(ctx context.Context, c Completer, candidate ExtractResult, neighbors
 // again, and a third attempt on a per-turn call is a cost multiplier on a
 // feature whose whole claim is that it is nearly free.
 func ask(ctx context.Context, c Completer, system, user string, read func(reply string) error) error {
+	// Reflex bypasses the session's ordinary auxiliary adapter. It must still
+	// share the same tier patience across retries rather than wait on HTTP caps.
+	ctx, cancel := context.WithTimeout(ctx, roles.PatienceFor(roles.RoleReflex))
+	defer cancel()
 	messages := []ai.Message{message("system", system), message("user", user)}
 	reply, err := call(ctx, c, messages)
 	if err != nil {

@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -129,21 +131,26 @@ func TestFrecencyWeighsRecencyAgainstFrequency(t *testing.T) {
 	}
 }
 
-// Free words filter; a path browses. The morph is the same surface, so what a
-// person typed stays in the box either way.
+// Free words filter; a path browses. The sheet OPENS on the columns
+// ([app.contextStart]) and a word is what puts the ranked list in front of them.
 func TestTypingAPathMorphsTheListIntoColumns(t *testing.T) {
 	a, root := folderLab(t)
-	if cmd := a.openFolderPick(""); cmd == nil {
+	cmd := a.openFolderPick("")
+	if cmd == nil {
 		t.Fatal("opening the picker asks for the store and the facts")
 	}
+	// The command is RUN, because the sheet opens browsing now and the level it
+	// opened on is asked for by that command — dropping it would leave the
+	// columns marked as being read and never read.
+	settleFolder(t, a, cmd)
 	if !a.folder.open {
 		t.Fatal("/folder opened nothing")
 	}
-	if a.folder.browsing {
-		t.Fatal("an empty box is a list, not a browse")
+	if !a.folder.browsing {
+		t.Fatal("the chooser opens on the columns, not on a list")
 	}
 
-	// A word narrows the list and leaves it a list.
+	// A word puts the list up, and narrows it.
 	typeFolder(t, a, "sibl")
 	if a.folder.browsing {
 		t.Fatal("a bare word turned into a browse")
@@ -161,13 +168,13 @@ func TestTypingAPathMorphsTheListIntoColumns(t *testing.T) {
 	if a.folder.cols.dir != filepath.Join(root, "here") {
 		t.Fatalf("the columns are on %s, want %s", a.folder.cols.dir, filepath.Join(root, "here"))
 	}
-	if want := []string{"deep", "other"}; strings.Join(a.folder.cols.here, ",") != strings.Join(want, ",") {
-		t.Fatalf("the middle column is %v, want %v — directories only, dot and skipped ones pruned", a.folder.cols.here, want)
+	if want := []string{"deep", "other"}; strings.Join(a.folder.cols.here.names, ",") != strings.Join(want, ",") {
+		t.Fatalf("the middle column is %v, want %v — directories only, dot and skipped ones pruned", a.folder.cols.here.names, want)
 	}
 	// The parent column is the level above, and it knows which of its rows we
 	// are standing in.
-	if a.folder.cols.upAt < 0 || a.folder.cols.up[a.folder.cols.upAt] != "here" {
-		t.Fatalf("the parent column does not mark `here`: %v at %d", a.folder.cols.up, a.folder.cols.upAt)
+	if a.folder.cols.upAt < 0 || a.folder.cols.up.names[a.folder.cols.upAt] != "here" {
+		t.Fatalf("the parent column does not mark `here`: %v at %d", a.folder.cols.up.names, a.folder.cols.upAt)
 	}
 
 	// → walks in, ← walks back out and leaves the cursor where it came from.
@@ -184,13 +191,14 @@ func TestTypingAPathMorphsTheListIntoColumns(t *testing.T) {
 	}
 
 	// And the columns draw as columns: no borders, the names, and nothing wider
-	// than the frame.
-	for _, line := range a.folder.rows(a.width, a.overlayHeight(), a.pal, -1) {
-		if len(plain(line)) > a.width {
+	// than the frame. The measure is CELLS and not bytes — the sheet's own
+	// punctuation is multibyte, so a byte count would fail a row that fits.
+	for _, line := range chooserRows(t, a, -1, "") {
+		if ansi.StringWidth(line) > a.width {
 			t.Fatalf("a column row runs past the frame: %q", plain(line))
 		}
 	}
-	if !strings.Contains(plain(strings.Join(a.folder.rows(a.width, 6, a.pal, -1), "\n")), "deep") {
+	if !strings.Contains(plain(strings.Join(a.folder.rows(a.width, 6, a.pal, a.styler(), -1, ""), "\n")), "deep") {
 		t.Fatal("the columns are not drawing the directories they read")
 	}
 }
@@ -400,5 +408,20 @@ func typeFolder(t *testing.T, a *app, text string) {
 	t.Helper()
 	for _, r := range text {
 		drive(t, a, key(string(r)))
+	}
+}
+
+// The actual chooser must use the typo-aware ranker, not just carry its helpers.
+func TestTheFolderBrowserFindsATransposedProjectName(t *testing.T) {
+	var picker folderPick
+	picker.start([]folderCand{
+		{path: "/code/aforge", show: "~/code/aforge", layer: folderProject},
+		{path: "/notes", show: "~/notes", layer: folderProject},
+	}, "/home/person")
+	picker.filter.setText("afroge")
+	picker.rank()
+	path, ok := picker.here()
+	if !ok || path != "/code/aforge" {
+		t.Fatalf("transposed query selected %q, %v; want /code/aforge", path, ok)
 	}
 }

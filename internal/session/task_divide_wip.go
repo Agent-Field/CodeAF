@@ -141,6 +141,13 @@ func (a *Agent) startTheParts(node *TaskNode, parts []dividePart, line *journalD
 	// standing firing carries an empty origin on purpose, and every part
 	// under it inherits that emptiness rather than a guessed path.
 	origin := a.taskOriginRef()
+	// AND THE WORKING CONTEXT, COMPILED ONCE FOR THE WHOLE DIVISION
+	// (admission.go), for the reason the model and the ratings are read once
+	// above: the parts of one division must be told one thing. It carries this
+	// worker's own transcript — what it found before it decided to divide — with
+	// its parent's admission inherited one generation older behind it, so a part
+	// opens on the family's history rather than on a paraphrase of it.
+	admission := a.admissionContext()
 	parent := a.config.taskID
 	// AND WHAT EVERY PART IS TOLD ABOUT THE FAMILY IS COMPOSED ONCE, HERE, FOR
 	// THE WHOLE DIVISION (task_divide_compose.go). A part's brief is two halves
@@ -163,13 +170,17 @@ func (a *Agent) startTheParts(node *TaskNode, parts []dividePart, line *journalD
 			summary:    part.Summary,
 			request:    request,
 			origin:     origin,
+			admission:  admission,
 			brief:      family.partBrief(index, part.Brief),
 			acceptance: part.Acceptance,
 			expects:    part.Expects,
-			model:      a.partModel(part, model, careful, grades, line),
-			parent:     parent,
-			depth:      a.config.taskDepth + 1,
-			owner:      a,
+			// AND WHAT THIS PART IS CHECKED BY, minus whatever turned out to be
+			// the whole family's rather than this part's ([liftSharedChecks]).
+			checks: part.Checks,
+			model:  a.partModel(part, model, careful, grades, line),
+			parent: parent,
+			depth:  a.config.taskDepth + 1,
+			owner:  a,
 			// AND THE WORLD IT STARTS IN, carried on the spec so that it is written
 			// onto the node and checkpointed in the same breath the node is admitted
 			// in ([TaskGraph.admit]). A part that existed for an instant without

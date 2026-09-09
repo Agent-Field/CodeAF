@@ -110,9 +110,16 @@ func (sess *Session) takeLocked(s *server) bool {
 // not have to learn two. When the machine they walked away from closes its
 // window, the keyboard should land where they went most recently — which is the
 // most recent arrival that is still here.
+// A WATCHER IS NOT IN THE RUNNING. It said on arrival that it is here to read
+// ([Hello.Watch]), and a room whose only remaining surfaces are readers is left
+// with NO driver — which is the honest state and the one every door already
+// handles, rather than handing the keyboard to a window that will not use it.
 func (sess *Session) handOnLocked() {
 	var newest *server
 	for surface := range sess.surfaces {
+		if surface.watching {
+			continue
+		}
 		if newest == nil || surface.arrived > newest.arrived {
 			newest = surface
 		}
@@ -124,6 +131,16 @@ func (sess *Session) handOnLocked() {
 // why the answer depends on who is asking.
 func (sess *Session) driverForLocked(s *server) Driver {
 	driving := sess.driver
+	// A WATCHER IS NEVER TOLD THE KEYBOARD IS ITS OWN, and the empty room is why
+	// this is here rather than folded into the line below: with no driver at all
+	// `Yours` would be true for everybody, which is the right answer for a window
+	// that may type and a lie to one that may not ([Hello.Watch]).
+	if s.watching {
+		if driving == nil {
+			return Driver{}
+		}
+		return Driver{Machine: driving.name, Here: driving.name == "" || driving.name == s.name}
+	}
 	if driving == nil || driving == s {
 		return Driver{Yours: true}
 	}
@@ -175,6 +192,13 @@ func (sess *Session) tellDriver(except *server) {
 func (s *server) take() Driver {
 	sess := s.session
 	sess.mu.Lock()
+	// EXCEPT FOR A WATCHER, which is the one surface that asked not to be given
+	// this. It is told who does drive, and nothing moves ([Hello.Watch]).
+	if s.watching {
+		mine := sess.driverForLocked(s)
+		sess.mu.Unlock()
+		return mine
+	}
 	moved := sess.takeLocked(s)
 	mine := sess.driverForLocked(s)
 	sess.mu.Unlock()
@@ -201,11 +225,60 @@ func (s *server) mayDrive() error {
 	sess := s.session
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
+	// A WATCHER IS REFUSED EVEN WITH THE KEYBOARD GOING SPARE, because it never
+	// held it and an empty seat is not an invitation ([Hello.Watch]). The sentence
+	// is its own: `press enter to take it back` would be advice about a key this
+	// surface deliberately does not have.
+	if s.watching {
+		return errors.New(watchingWord)
+	}
 	if sess.driver == nil || sess.driver == s {
 		return nil
 	}
 	return errors.New(notDrivingWord(sess.driverForLocked(s)))
 }
+
+// watchingWord is what a reading surface is told if it tries to change anything.
+// It states the surface's own posture rather than blaming the conversation,
+// because nothing about the conversation is in the way.
+const watchingWord = "this window is reading this conversation, not typing into it"
+
+// watcherReads is EVERYTHING a [Hello.Watch] connection may ask for, and the
+// list is short because the one thing such a connection exists to do is read one
+// task's journal (internal/tui3's taskowner.go).
+//
+// IT IS AN ALLOW-LIST AND NOT A DENY-LIST, which is the whole of its safety. The
+// methods that mutate a conversation without typing into it are numerous and
+// keep arriving — a model, an effort rung, a permission, a resolve, a revive, a
+// start, a stop, opening another session in this one, closing it — and a
+// deny-list is a list somebody forgets to add to. This one refuses anything it
+// has not heard of, so a method landing next year is read-only here by default
+// and its author decides deliberately to add it.
+//
+// MethodDetach is on it because leaving on purpose is not a change to the
+// conversation: it is the difference between a window closing and a pipe
+// breaking, and a reader that could not say it would look like a crash.
+//
+// MethodPing is on it because it is the one call on this wire that is DEFINED as
+// changing nothing: an empty frame out and an empty frame back, timed by the
+// surface's own clock (wire.go says why the engine contributes no timestamp). A
+// link that could not ask it would be a link that cannot measure itself, and the
+// refusal would arrive as a fault on a connection that is working perfectly.
+//
+// AND THE TASK ROSTER SUBSCRIPTION IS ON IT BECAUSE THE OWNER'S GRAPH IS THE
+// ONLY TRUTHFUL SOURCE FOR WHAT THE WORK IS DOING. [MethodTaskWatch] opens a
+// standing read — the engine replays its roster and then pushes one frame per
+// change (tasklane.go) — and it is what a reading page asks INSTEAD of guessing
+// from files on the machine it happens to be running on
+// (internal/tui3's taskowner.go).
+var watcherReads = map[string]bool{
+	MethodTaskRoom:  true,
+	MethodTaskWatch: true,
+	MethodDetach:    true,
+	MethodPing:      true,
+}
+
+func watcherMay(method string) bool { return watcherReads[method] }
 
 // notDrivingWord is what a surface without the keyboard is told when it tries to
 // type anyway. `another window` is the word aforge already uses at home for a

@@ -238,6 +238,12 @@ func frontierFor(beliefs []Belief, req Request, opts gateOptions, cached func(ID
 	}
 	sorted = pricedPessimistically(sorted, sortedFacts)
 	sorted = underPriceCeiling(sorted, sortedFacts, req)
+	// Unknown generation is not free generation. Until the request has an
+	// output estimate, prompt cost alone cannot prove another endpoint worse
+	// for the whole answer. Keep eligible alternatives for learning and rescue.
+	if req.Visible+req.Hidden <= 0 {
+		return sorted
+	}
 	return paretoFront(sorted, req.QualityNeed)
 }
 
@@ -293,6 +299,12 @@ func pricedPessimistically(candidates []Scored, facts []Facts) []Scored {
 // reason the transport's own ceiling has none: refusing lanes on a number
 // nobody published is worse than paying an unknown price.
 func underPriceCeiling(candidates []Scored, facts []Facts, req Request) []Scored {
+	// With someone waiting and no output estimate, there is no denominator
+	// for trading output tariff against saved time. The transport's published
+	// price cap still applies; do not invent a stricter relative cap here.
+	if valueOfTime(req) > 0 && req.Visible+req.Hidden <= 0 {
+		return candidates
+	}
 	cheapest := 0.0
 	cheapestIndex := -1
 	for index, lane := range facts {

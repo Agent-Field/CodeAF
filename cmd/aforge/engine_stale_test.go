@@ -20,6 +20,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"github.com/Agent-Field/aforge-v2/internal/enginehost"
 	"github.com/Agent-Field/aforge-v2/internal/remote"
 )
@@ -136,7 +137,7 @@ func shortEngineHome(t *testing.T) {
 func TestAHostOfThisBuildIsSplicedOntoWithoutAWord(t *testing.T) {
 	shortEngineHome(t)
 	workspace := "/home/somebody/api"
-	standIn(t, workspace, remote.HostSelf{Version: remote.Version}, false)
+	standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: buildinfo.Identity()}, false)
 
 	if err := clearStaleEngineHost(workspace); err != nil {
 		t.Fatalf("a host of this build was not attached to: %v", err)
@@ -224,4 +225,37 @@ func TestNothingHoldingTheWorkspaceIsNotARefusal(t *testing.T) {
 	if err := clearStaleEngineHost("/home/somebody/api"); err != nil {
 		t.Fatalf("an empty machine answered %v", err)
 	}
+}
+
+// Protocol compatibility cannot establish that a daemon includes today's fixes.
+func TestASameProtocolHostOfAnotherBuildIsRetired(t *testing.T) {
+	for _, stamp := range []string{"previous-build", ""} {
+		t.Run(stamp, func(t *testing.T) {
+			shortEngineHome(t)
+			workspace := "/home/somebody/api"
+			standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: stamp}, false)
+			if err := clearStaleEngineHost(workspace); err != nil {
+				t.Fatal(err)
+			}
+			if conn, err := enginehost.Dial(workspace); err == nil {
+				_ = conn.Close()
+				t.Fatal("stale same-protocol host still answers")
+			}
+		})
+	}
+}
+
+func TestASameProtocolBusyOlderBuildIsNeverRetiredAutomatically(t *testing.T) {
+	shortEngineHome(t)
+	workspace := "/home/somebody/api"
+	standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: "previous-build", Busy: true}, false)
+	var stale *staleHost
+	if err := clearStaleEngineHost(workspace); !errors.As(err, &stale) {
+		t.Fatalf("wanted explicit busy refusal, got %v", err)
+	}
+	conn, err := enginehost.Dial(workspace)
+	if err != nil {
+		t.Fatalf("busy host was stopped: %v", err)
+	}
+	_ = conn.Close()
 }

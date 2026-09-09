@@ -39,6 +39,10 @@ import (
 // boundary's own defaults ARE these two.
 const retryBaseDelay = taxonomy.DefaultTransportBackoff
 
+// detachedFromTurn is [Agent.addDetachedUsageAs]'s argument spelled as a word,
+// because `true` at a call site says nothing about which of two booleans it is.
+const detachedFromTurn = true
+
 // truncationContinuations gives a cut-off answer two chances to finish in
 // smaller pieces. The bound matters because a model that ignores the note can
 // otherwise turn one bad output ceiling into an unbounded, silent spend.
@@ -736,6 +740,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// end a turn (taxonomy_boundary.go's [Agent.readEmptyReply]). The
 			// transcript is untouched either way, so the retry re-sends exactly
 			// the messages the empty attempt was sent.
+			assistantDone := false
 			if turnBroke(response) {
 				a.journalFailedCall(ctx, model, "", errEmptyAnswer, emptyReplies+1, a.requestEstimate())
 				emptyReplies++
@@ -747,6 +752,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 				}
 			} else {
 				a.recordAssistant(ai.Message{Role: "assistant", Content: assistantContent(response)}, reasoning.snapshot())
+				assistantDone = true
 			}
 			// The step's text is in the transcript now. Resetting here rather
 			// than at the top of the next iteration is what keeps an interrupt
@@ -759,6 +765,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 					continue
 				}
 				a.markTurnTruncated()
+				assistantDone = false
+			}
+			if assistantDone {
+				// THE WORDS ARE DURABLE BEFORE THEIR BOUNDARY IS VISIBLE. A room
+				// joining after this event reads the response from the journal and
+				// must not replay the same streamed text from its catch-up lane.
+				hub.send(Event{Kind: EventAssistantDone})
 			}
 			// `pre-decision` (hooks.go): the last chance to shape what the model
 			// will be sent next. Its two citizens are the cross-turn stub and the
@@ -1205,8 +1218,13 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// transcript keeps them whole — the journal is the record — and the
 		// request the model is about to read does not. compactToolHistory leaves
 		// the system prompt, the newest frozen batch and everything this turn
-		// has already sent verbatim (toolcompact.go).
-		messages = compactToolHistory(messages, frozenToolHistory)
+		// has already sent verbatim, and every result it reduces names where the
+		// whole of it can be read back (toolcompact.go).
+		// The place a pointer may name is read ONCE for the whole request, under
+		// the lock an anchor takes to move it (toolcompact.go).
+		place := a.resultPlaceNow()
+		messages = compactToolHistory(messages, frozenToolHistory,
+			func(message ai.Message) string { return a.fullResultPointer(message, place) })
 		attemptCtx = provider.WithMessageReasoning(attemptCtx, carried)
 		attemptCtx, generation := a.beginGeneration(attemptCtx)
 		response, err := a.client.CompleteWithMessages(attemptCtx, messages,
@@ -1237,6 +1255,9 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// in this loop — a guard cut and a refusal of our own bytes — are more
 		// specific than any class and must keep their own arms.
 		verdict := a.readCallFailure(err, model, "", attempt+1)
+		if provider.IsConnectionUnavailable(err) {
+			return nil, model, err
+		}
 		// THE GUARD'S CUT, ANSWERED HERE. The three resets at the top of this
 		// loop are exactly what a cut needs — the soup that was streamed, the
 		// reads it started, the calls it was half-way through asking for — so a
@@ -1314,6 +1335,14 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			if waitErr != nil {
 				return nil, model, waitErr
 			}
+		}
+		// THE PAGE DISCARDS THE SAME ATTEMPT AS THE JOURNAL. The next loop
+		// resets partial, reasoning and forming before requesting a replacement;
+		// a phase-clock update alone cannot remove the old streamed answer.
+		// Say this only after the wait succeeds and another attempt exists: a
+		// stop during backoff or an exhausted ladder keeps its partial reply.
+		if attempt+1 < attempts && hub != nil {
+			hub.send(Event{Kind: EventRetrying, Text: "the request failed — asking again"})
 		}
 	}
 	return nil, model, fmt.Errorf("after %d retries: %w", attempts-1, lastErr)
@@ -1847,10 +1876,11 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 	for index, call := range calls {
 		rendered[index] = argsText(call)
 		hub.send(Event{
-			Kind: EventToolBegin,
-			Tool: call.Function.Name,
-			Hint: a.gloss(call),
-			Args: rendered[index],
+			Kind:   EventToolBegin,
+			Tool:   call.Function.Name,
+			Hint:   a.gloss(call),
+			Args:   rendered[index],
+			CallID: call.ID,
 		})
 	}
 
@@ -1943,11 +1973,20 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 	}()
 	results := slots.taken(waitBatch(ctx, finished))
 
-	// The end events carry Args as well as Output. Carrying the arguments rather
-	// than making the surface remember the begin event costs nothing — the
-	// rendering is the one done above — and buys an end event that is
+	// WHETHER EACH CALL CAME BACK A FAILURE IS RECORDED HERE AND NOWHERE ELSE
+	// (admission.go). The flag the tool returned does not survive into the
+	// transcript — a result there is a string — so work handed out later in this
+	// turn could otherwise only guess at it from the words, which is exactly the
+	// invention the admission context refuses to make.
+	a.noteCallOutcomes(calls, results)
+
+	// The end events carry Args, Output, and the provider's call ID. Carrying
+	// them rather than making the surface remember the begin event costs nothing
+	// — the rendering is the one done above — and buys an end event that is
 	// self-contained, which is what a surface that renders a finished row from
-	// one event needs.
+	// one event needs. The ID remains necessary when one batch calls the same
+	// tool more than once, because neither its name nor completion order identifies
+	// the row.
 	for index, call := range calls {
 		if results[index].isError {
 			hub.send(Event{
@@ -1956,6 +1995,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 				Hint:   clip(firstLine(results[index].text), hintLimit),
 				Args:   rendered[index],
 				Output: capOutput(results[index].text),
+				CallID: call.ID,
 				// WHOSE FAILURE THIS WAS travels with it. Everything counting
 				// steps out of band — the runner's no-progress ledger above all —
 				// reads events and not results, so a fact kept only on the result
@@ -1972,6 +2012,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 			Tool:   call.Function.Name,
 			Args:   rendered[index],
 			Output: capOutput(results[index].text),
+			CallID: call.ID,
 		})
 	}
 	return results
@@ -2010,6 +2051,9 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 	for _, tool := range a.beltTools() {
 		if tool.Name != call.Function.Name {
 			continue
+		}
+		if invalid := invalidBashArguments(call.Function.Name, json.RawMessage(call.Function.Arguments)); invalid != "" {
+			return a.finishToolResult(ep, call, toolResult{text: invalid, isError: true})
 		}
 		running, refused, allowed := ep.preAction(ctx, hub, call)
 		if !allowed {
@@ -3234,7 +3278,8 @@ func (p compactionPass) empty() bool { return p.stubbed == 0 && p.folded == 0 }
 //     its own bytes (stub.go). Nothing is described, nothing is decided, and the
 //     bytes stay readable — in the store's thread, or in this session's logs/.
 //
-//  2. THE FOLD. If the transcript is still over threshold, the oldest ASSISTANT
+//  2. THE FOLD. If the transcript is still above [compactTarget] — the headroom
+//     line, not the trigger the pass fired on — the oldest ASSISTANT
 //     work is replaced by one marker line naming how much went and where it can
 //     be read, and the fold runs down to [compactTarget] — below the threshold
 //     by half a reserve, so the pass that just ran is not the pass that runs
@@ -3300,7 +3345,14 @@ func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 
 	pass := compactionPass{stored: a.chatlog != nil}
 	pass.stubbed = a.stubOldOutputsLocked()
-	if a.estimateTokensLocked() > a.compactThreshold() {
+	// THE FOLD IS ASKED FOR AGAINST THE TARGET, NOT THE TRIGGER. The pass fires
+	// at the threshold, and the stub pass alone routinely lands the estimate just
+	// under it — below the trigger, above the target, with no headroom at all. The
+	// gate was the threshold, so the fold was skipped, the next step's few
+	// thousand tokens crossed the line again, and the session was back in exactly
+	// the once-per-step thrash [compactTarget] exists to end. What buys the
+	// headroom is the same figure the fold already stops at.
+	if a.estimateTokensLocked() > a.compactTargetTokens() {
 		pass.folded, pass.marker = a.foldLocked()
 	}
 	a.compacting = false
@@ -3796,11 +3848,32 @@ func (a *Agent) addAuxiliaryUsageAs(response *ai.Response, model string, calls i
 	a.addUsageAs(response, model, calls, role, true, false)
 }
 
+// addDetachedUsageAs is [Agent.addAuxiliaryUsageAs] for an errand that is NOT
+// ON ANY TURN'S CLOCK — one started beside a turn, on the session's own
+// lifetime, that may land while a different turn is running or while none is
+// (title.go).
+//
+// The money is the session's and the machine's exactly as any errand's is; what
+// it must not move is a.turnSpend, which is the figure an abandoned turn is
+// journaled with. A name bought by the first turn and paid for during the
+// third would otherwise appear as the third turn's cost, and a title that
+// landed during a turn that was then abandoned would be journaled as money that
+// turn spent. That is the `late` bit at [bankedCall], said the other way round:
+// late means "the turn that spent this has ended", and detached means "no turn
+// ever owned it".
+func (a *Agent) addDetachedUsageAs(response *ai.Response, model string, calls int, role string) {
+	a.addUsageAs(response, model, calls, role, true, false, detachedFromTurn)
+}
+
 // addUsageAs is the body both auxiliary doors share, with one bit of difference:
 // whether this tally is a CALL THIS AGENT MADE — and therefore a line in the
 // machine's ledger — or a fold of work that already wrote its own
 // ([Agent.addFoldedUsage]).
-func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role string, ledger, emptyReflex bool) {
+//
+// detached, when it is passed, keeps the tally off the RUNNING turn's share —
+// see [Agent.addDetachedUsageAs]. It is variadic so that the thirty callers that
+// are on a turn's clock say nothing and mean it.
+func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role string, ledger, emptyReflex bool, detached ...bool) {
 	if response == nil || response.Usage == nil {
 		return
 	}
@@ -3821,7 +3894,7 @@ func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role 
 	// AN ERRAND'S ROW CARRIES NO LANE. Nothing timed this call — the witness
 	// watches the turn's own stream — and the turn's figures on this row would be
 	// a measurement of one request filed against another.
-	a.bank(bankedCall{used: aux, model: model, role: role, ledger: ledger})
+	a.bank(bankedCall{used: aux, model: model, role: role, ledger: ledger, late: len(detached) > 0 && detached[0]})
 	// The write is outside the lock for the reason [Agent.sealTurn]'s is: the
 	// file has its own, and holding the agent's across a disk write would put
 	// every reader of the session's totals behind it.

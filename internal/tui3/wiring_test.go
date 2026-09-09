@@ -532,6 +532,7 @@ func TestTheThinkingBlockStreamsCollapsesAndExpands(t *testing.T) {
 		text(session.EventReasoning, "so read that first"),
 	})
 	typeLine(t, a, "where is the parser?")
+	showLiveWork(t, a)
 
 	got := plain(frame(a))
 	if !strings.Contains(got, glyphThought) || !strings.Contains(got, "probably under internal/") {
@@ -540,6 +541,9 @@ func TestTheThinkingBlockStreamsCollapsesAndExpands(t *testing.T) {
 
 	// The turn's first non-reasoning word collapses it.
 	drive(t, a, streamEventMsg{gen: a.gen, ev: text(session.EventTextDelta, "internal/parse/parse.go")})
+	// A full answer appears once its response is confirmed, while the
+	// thought block retains its independent disclosure underneath work.
+	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventAssistantDone}})
 	at := -1
 	for i := range a.entries {
 		if a.entries[i].kind == entryThinking {
@@ -568,14 +572,18 @@ func TestTheThinkingBlockStreamsCollapsesAndExpands(t *testing.T) {
 		t.Fatalf("the answer is missing:\n%s", got)
 	}
 
-	// ctrl+e opens it, and closes it again.
-	drive(t, a, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	// The block's own door opens it, and closes it again. It is called rather
+	// than pressed as `ctrl+e`, because over a running turn that key belongs to
+	// the whole work the block sits inside (workfold.go's
+	// [app.toggleLatestWorkfold]); a click on the block reaches this one
+	// (thinking.go).
+	a.toggleLatestThought()
 	if !strings.Contains(plain(frame(a)), "probably under internal/") {
-		t.Fatalf("ctrl+e did not expand the block:\n%s", plain(frame(a)))
+		t.Fatalf("the block's own door did not expand it:\n%s", plain(frame(a)))
 	}
-	drive(t, a, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	a.toggleLatestThought()
 	if strings.Contains(plain(frame(a)), "probably under internal/") {
-		t.Fatalf("ctrl+e did not close it again:\n%s", plain(frame(a)))
+		t.Fatalf("the block's own door did not close it again:\n%s", plain(frame(a)))
 	}
 
 	// With a sentence in the box ctrl+e is end-of-line, where the caret is.
@@ -597,6 +605,7 @@ func TestALongThoughtIsCappedAndAClickOpensIt(t *testing.T) {
 	}
 	_, a := wired([]session.Event{text(session.EventReasoning, strings.Join(lines, "\n"))})
 	typeLine(t, a, "think it through")
+	showLiveWork(t, a)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: text(session.EventTextDelta, "done")})
 
 	// Collapsed to one row.

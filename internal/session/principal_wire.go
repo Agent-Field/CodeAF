@@ -26,13 +26,18 @@ import (
 type principalEar interface{ hear(ask string) }
 
 // newPrincipalFor picks this session's principal, and THE BUDGET IS WHAT PICKS
-// IT.
+// IT — unless somebody is steering.
 //
-// Three readings, in order, and each of the first two is a reason a session
+// Four readings, in order, and each of the first three is a reason a session
 // stays exactly as it was:
 //
-//   - A SESSION SOMEBODY IS SITTING IN FRONT OF GETS A [Person]. `--yolo` is
-//     what says otherwise, and it reaches this package as [Config.Unattended].
+//   - A CONVERSATION SOMEBODY IS STEERING GETS A [Person], whatever its
+//     approval posture and whatever ceilings were typed beside it. `--yolo` is
+//     the approval posture and a budget is the goal owner's ceiling, and for a
+//     screen somebody is typing into neither one is a fact about who is
+//     watching — [Config.Interactive] is, and only the door knows it.
+//   - A SESSION NOBODY CONFIGURED GETS A [Person] too, which is every worker
+//     and every agent a test assembled by hand.
 //   - AN UNATTENDED SESSION WITH NO CEILING ALSO GETS A [Person], and the door
 //     says one line about it at launch. This is the rule the whole feature turns
 //     on: carrying a conversation on by itself is spending, and spending
@@ -55,6 +60,13 @@ func newPrincipalFor(a *Agent) Principal {
 	// third written next year will too. The guard belongs here, once, where the
 	// answer is decided, rather than as a line every copier has to remember.
 	if a.config.InTask || a.config.Errand || a.config.inHand {
+		return NewPerson()
+	}
+	// AND A CONVERSATION SOMEBODY IS STEERING WORKS FOR THE PERSON STEERING
+	// IT, whatever its approval posture and ceilings: yolo is approvals and a
+	// budget is the goal owner's ceiling, and neither one says nobody is
+	// watching. [Config.Interactive] does, and it outranks the arming pair.
+	if a.config.Interactive {
 		return NewPerson()
 	}
 	if !a.config.Unattended || !a.config.Budget.Set() {
@@ -125,13 +137,17 @@ func (a *Agent) hearAsk(text string) {
 const unattendedWithoutBudget = "no budget was named, so this session stops when the model stops — " +
 	"give it --max-hours or --max-cost and it carries its own work on until the ask is met or the budget is out"
 
-// UnattendedNotice is the one line a door shows for an unattended session, or
-// "" when there is nothing worth saying.
-//
-// It is a function of the config rather than a field on it so that a door
-// cannot show the wrong one: the same two readings that pick the principal pick
-// the sentence.
+// UnattendedNotice is the one line a door shows about the ceilings this
+// launch was given, or "" when there is nothing worth saying. A steered
+// conversation states its budget rather than silence, so the pair it was
+// given is never mistaken for a goal owner.
 func UnattendedNotice(config Config) string {
+	if config.Interactive {
+		if !config.Budget.Set() {
+			return ""
+		}
+		return "interactive conversation: " + budgetWords(config.Budget)
+	}
 	if !config.Unattended {
 		return ""
 	}
@@ -210,8 +226,11 @@ func (a *Agent) landings() ([]Landing, bool, taskFlight) {
 		if !state.settled() {
 			continue
 		}
-		settled++
-		report, changed, _, merge := node.leavings()
+		if node.parent == a.config.taskID {
+			settled++
+		}
+		report, changed, branch, merge := node.leavings()
+		retained := a.retainedDelivery(node, changed, branch, merge)
 		out = append(out, Landing{
 			ID:     node.id,
 			Title:  node.title(),
@@ -221,10 +240,15 @@ func (a *Agent) landings() ([]Landing, bool, taskFlight) {
 			// tell a gap in the ask from a sibling that died on the wire, and
 			// from one whose work somebody else has since brought home
 			// ([Landing.aboutTheWork], [Remains.absorbedBy]).
-			Ending:  node.endingNow(),
-			Files:   changed,
-			Merged:  merge == mergeMerged,
-			Checked: node.checkAnswer() == provider.VerdictVerifiedSuccess,
+			Ending:    node.endingNow(),
+			Files:     changed,
+			Merged:    merge == mergeMerged,
+			Retained:  retained,
+			InPlace:   merge == mergeInPlace,
+			Delivered: merge == mergeKept && branch != "" && len(changed) > 0 && retained == "",
+			Elsewhere: node.parent != a.config.taskID,
+			Produced:  node.producedResult(),
+			Checked:   node.checkAnswer() == provider.VerdictVerifiedSuccess,
 			// The signature is the failure's own first line, which is what the
 			// audit wrote when it said what was missing. IT IS A STAND-IN AND
 			// SAYS SO: the classification lane at the provider boundary is where
@@ -398,6 +422,9 @@ func (a *Agent) remainsFor(said string, reader readerLine) Remains {
 		Landed:     landed,
 		Running:    flight.moving,
 		Blocked:    flight.stuck,
+	}
+	if steward := a.steward(); steward != nil {
+		remains.Delivery = steward.declaredDelivery()
 	}
 	// AND WHAT THIS SESSION MADE WITH ITS OWN HANDS. A session that did the whole
 	// job inline never settles a task, so [Remains.Landed] — which is a reading of

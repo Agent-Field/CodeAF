@@ -156,14 +156,14 @@ func TestStoppedWorkIsCommittedToTheBranchItsReportNames(t *testing.T) {
 		Report: "stopped: 6 steps without progress", Changed: changed,
 		Branch: tree.branch, Merge: mergeAborted,
 	}, "", TaskSettleAsk, landingAddress{person: true})
-	if !strings.Contains(note, tree.branch) || !strings.Contains(note, "merge that branch to take the work") {
+	if !strings.Contains(note, tree.branch) || !strings.Contains(note, "committed on its branch") {
 		t.Fatalf("the note does not offer the work back:\n%s", note)
 	}
 	// A node that left nothing is not sent after work that does not exist.
 	empty := taskNote(TaskNotice{
 		ID: 2, Title: "read it", State: TaskFailed, Branch: "task/read", Merge: mergeAborted,
 	}, "", TaskSettleAsk, landingAddress{person: true})
-	if strings.Contains(empty, "merge that branch to take the work") {
+	if strings.Contains(empty, "committed on its branch") {
 		t.Fatalf("an empty branch was offered as a deliverable:\n%s", empty)
 	}
 }

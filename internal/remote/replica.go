@@ -2,6 +2,7 @@ package remote
 
 import (
 	"encoding/json"
+	"strings"
 	"sync"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -67,20 +68,34 @@ func (r *replica) fill(push *FactsPush) {
 // [stream.push] drops an unreadable event: one bad line is one lost statement,
 // the next one is complete (a push is never a delta), and the framing was
 // chosen so a torn write costs a line and not the stream.
-func (r *replica) take(payload json.RawMessage) {
+func (r *replica) take(payload json.RawMessage) bool {
 	if len(payload) == 0 {
-		return
+		return false
 	}
 	var push FactsPush
 	if err := json.Unmarshal(payload, &push); err != nil {
-		return
+		return false
 	}
+	return r.takePush(push)
+}
+
+// takePush is [replica.take] for a push that has already been decoded, and it
+// answers WHETHER THIS SET LANDED.
+//
+// The answer is not decoration. The naming lane carries its own fact set so a
+// name and the facts it belongs to cannot be read out of order (client.go), and
+// "this push was refused as old news" is exactly the sentence that must also
+// refuse the name riding with it: a title minted for the conversation this
+// surface was in a moment ago is older than the welcome of the one it is in
+// now, and drawing it would put the previous conversation's name on this tab.
+func (r *replica) takePush(push FactsPush) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if push.Rev <= r.rev {
-		return
+		return false
 	}
 	r.rev, r.facts = push.Rev, push.Facts
+	return true
 }
 
 // read is the whole set as it stands.
@@ -109,6 +124,59 @@ func (r *replica) setModel(model string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.facts.Model = model
+}
+
+// referPlace and removePlace are the same optimism for the folders a person
+// attaches, and they are here for the same reason: the folder indicator is drawn
+// in the frame that follows the keystroke, and a chip that took a round trip to
+// appear would read as a pick that did not land.
+//
+// THE ANSWER THEY WRITE IS ALREADY THE ENGINE'S. Unlike the two above, these run
+// only after the far end has accepted — [Agent.ReferPlace] fails before reaching
+// here, and the ref it writes is the root-snapped path the engine sent back — so
+// what is optimistic is the ORDER of the set and not the fact of it. The push
+// that the engine's own announce is already sending lands over the top with a
+// higher revision, exactly as it does for the model.
+func (r *replica) referPlace(ref session.PlaceRef) {
+	if strings.TrimSpace(ref.Path) == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	places := make([]session.PlaceRef, 0, len(r.facts.Places)+1)
+	places = append(places, ref)
+	for _, place := range r.facts.Places {
+		if place.Path != ref.Path {
+			places = append(places, place)
+		}
+	}
+	r.facts.Places = places
+}
+
+// removePlace drops a row by the path THE CALLER NAMED, which may not be the
+// path the engine holds: a person removing `~/code/repo/internal` is removing
+// the repository the engine snapped that to. A miss here costs nothing and is
+// not worth a second copy of the snapping rule on this side — the engine's push
+// is already on its way and carries the set as it truly stands.
+func (r *replica) removePlace(path string) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	kept := make([]session.PlaceRef, 0, len(r.facts.Places))
+	for _, place := range r.facts.Places {
+		if place.Path != path {
+			kept = append(kept, place)
+		}
+	}
+	if len(kept) == 0 {
+		// Absence is stored as absence, for [replica.setLevel]'s reason.
+		r.facts.Places = nil
+		return
+	}
+	r.facts.Places = kept
 }
 
 func (r *replica) setLevel(model, level string) {

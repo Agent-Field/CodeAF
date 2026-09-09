@@ -105,7 +105,7 @@ import (
 // returns at once, the fan-out a node may make, and the line about files another
 // window is already writing. It is short because it is expensive, never because
 // a rule was dropped — the rules all still stand, in one place each.
-var taskDescription = "Hand self-contained work to a task outside this conversation. Use it for work that would flood the conversation or wants a clean context, never for work needing back-and-forth. ALSO THE ROAD FOR WIDE WORK, which is still ONE task: set `wide`, never several proposals, and do not reach for a planner. The person may redirect or wave it off during a short countdown; silence starts it. The id returns at once; its report starts a turn here when it lands, so never wait or poll. A task may call this for genuinely independent parts of its own work, up to " + strconv.Itoa(taskFanLimit) + ", one level deep; sequential or context-sharing parts are faster in your own hands. Files another aforge window is already writing come back on their own line: plan around them, nothing is blocked or queued and your task has started."
+var taskDescription = "Hand self-contained work to a task outside this conversation: work that would flood it or wants a clean context, never work needing back-and-forth. WIDE WORK IS ONE PROPOSAL with `wide`, never several, and do not reach for a planner. The person may redirect or wave it off during a short countdown; silence starts it. The id returns at once; its report starts a turn here when it lands, so never wait or poll. A task may call this for genuinely independent parts of its own work, up to " + strconv.Itoa(taskFanLimit) + ", one level deep; sequential or context-sharing parts are faster in your own hands. Files another aforge window is already writing come back on their own line: nothing is blocked, so plan around them."
 
 // taskSchemaJSON is the wire schema. depends_on is on it from the first day
 // even though a one-node graph can never fill it: the field is the edge, the
@@ -177,17 +177,18 @@ var taskDescription = "Hand self-contained work to a task outside this conversat
 var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"title":{"type":"string","description":"One line naming the work as a person would say it"},` +
 	`"summary":{"type":"string","description":"Two or three lines the person reads to decide whether to redirect it"},` +
-	`"brief":{"type":"string","description":"THE WORK, self-contained: what to do, files and symbols, conventions, constraints, what was tried. It never sees this conversation and cannot ask you anything, so settle here everything it would stop and ask. Constrain THIS job, not work in general: name the lazy but plausible-looking answer here and forbid it — for prose, what reads as machine-written; for code, that \"working\" means having run it; for research, what counts as a source. \"Be accurate\" constrains nothing; every line must be one the worker could disobey. WHERE YOU ARE ALREADY MID-WORK, WHAT YOU HAVE LEARNED IS PART OF THE BRIEF: what you found, what you ruled out and why, what you would have done next — whoever takes this cannot see the calls you already made, so anything left out is learned again from nothing. IF THIS REPLACES A FAILED TASK, carry that task's useful report findings here; the new worker inherits neither its transcript nor its report."},` +
+	`"brief":{"type":"string","description":"THE WORK, self-contained: what to do, the material and the names in it, conventions, constraints, what was tried. It gets quoted lines of this conversation, never the whole of it, and cannot ask you anything, so settle here everything it would stop and ask. Constrain THIS job, not work in general: name the lazy but plausible-looking answer here and forbid it, in the terms this kind of work is judged by. \"Be accurate\" constrains nothing; every line must be one the worker could disobey. WHERE YOU ARE ALREADY MID-WORK, WHAT YOU HAVE LEARNED IS PART OF THE BRIEF: what you found, what you ruled out and why, what you would have done next — whoever takes this sees which calls you made, never what they returned, so anything left out is learned again from nothing. IF THIS REPLACES A FAILED TASK, carry its useful findings here; the new worker inherits neither its transcript nor its report."},` +
 	`"deliverable":{"type":"string","description":"WHAT MUST EXIST at the end, and where: the file and its path, the branch, the answer and its shape. Name the thing, not the activity"},` +
 	`"where":{"type":"string","description":"Path the person named, or 'in place'; never guess"},` +
 	`"ground":{"type":"string","description":"Optional absolute path: the repository or folder THE WORK IS ABOUT, when it is not this conversation's own. Left out, it is resolved from what this conversation read and edited"},` +
-	`"acceptance":{"type":"string","description":"DONE WHEN: the observable condition somebody else could check without taking the task's word for it — the command that passes, the output that appears. \"It is finished\" is not this"},` +
+	`"acceptance":{"type":"string","description":"DONE WHEN: the observable condition somebody else could check without taking the task's word for it. \"It is finished\" is not this"},` +
 	expectsSchemaJSON + `,` +
+	checksSchemaJSON + `,` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ids propose_task itself returned in this session, never a job, adaptive-run or step number. Its brief is given their reports. An unknown or failed id refuses the proposal rather than queueing it"},` +
-	`"wide":{"type":"boolean","description":"Optional. Set it when the work is WIDER THAN ONE PAIR OF HANDS: many files, many sources, one change repeating over many independent items. The worker may hand parts out under itself once the material shows the width is real, then fold their reports into one deliverable. Say true whenever you judged the work broad, even with no count in hand: a wrong true costs nothing, the worker being refused unless what it finds names enough items. Leave it out for a linear job"},` +
-	`"model":{"type":"string","description":"Optional, ONLY when the person asked for a particular model or class: a catalog id (\"anthropic/claude-opus-5\") or a part of one (\"opus-5\"), never a class word — resolve \"fast\" to a concrete model. Otherwise the configured model is used. A word fitting several is shown to the person to settle, one fitting none returns the nearest ids"},` +
-	`"max_steps":{"type":"integer","description":"Optional. Finished tool calls per progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `); work still advancing is given further allowances, circling work gets one landing turn and stops. Raise it for a wide sweep, lower it for something small"},` +
-	`"no_progress":{"type":"integer","description":"Optional. How many tool calls in a row may add nothing — no new file, no question the work has not asked, no answer it has not been given — before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). It fires only on repeats. Raise it when the work needs much reading before its first edit"}` +
+	`"wide":{"type":"boolean","description":"Optional. Set it when the work is WIDER THAN ONE PAIR OF HANDS: many files, many sources, one change repeating over many independent items. Say true whenever you judged the work broad, even with no count in hand: a wrong true costs nothing, the worker being refused unless what it finds names enough items"},` +
+	`"model":{"type":"string","description":"Optional, ONLY when the person asked for a particular model or class: a catalog id (\"anthropic/claude-opus-5\") or a part of one (\"opus-5\"), never a class word — resolve \"fast\" to a concrete model. Otherwise the configured model is used. A word fitting several is shown to the person to settle"},` +
+	`"max_steps":{"type":"integer","description":"Optional. Finished tool calls per progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `); work still advancing is given further allowances, circling work gets one landing turn and stops."},` +
+	`"no_progress":{"type":"integer","description":"Optional. How many tool calls in a row may add nothing — no new file, no question the work has not asked, no answer it has not been given — before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). Raise it when the work must read a great deal before it produces anything"}` +
 	`},"required":["title","summary","brief","deliverable","acceptance"],"additionalProperties":false}`
 
 // taskArguments is the wire form.
@@ -202,12 +203,16 @@ type taskArguments struct {
 	// Expects is what this brief assumes is already true of the folder the
 	// worker will get, checked before it is allowed to spend anything
 	// (handoffcontract.go). It is optional and the harness never writes one.
-	Expects    []Expectation `json:"expects,omitempty"`
-	DependsOn  []uint64      `json:"depends_on"`
-	Wide       bool          `json:"wide"`
-	Model      string        `json:"model"`
-	MaxSteps   int           `json:"max_steps"`
-	NoProgress int           `json:"no_progress"`
+	Expects []Expectation `json:"expects,omitempty"`
+	// Checks is the repeatable verification this proposal puts the work under:
+	// the only commands its independent checker will be allowed to run
+	// (task_checks.go). Optional, and the harness never writes one either.
+	Checks     []string `json:"checks,omitempty"`
+	DependsOn  []uint64 `json:"depends_on"`
+	Wide       bool     `json:"wide"`
+	Model      string   `json:"model"`
+	MaxSteps   int      `json:"max_steps"`
+	NoProgress int      `json:"no_progress"`
 }
 
 // taskSpec is one node's settled instruction: what the person was shown, and
@@ -250,6 +255,16 @@ type taskSpec struct {
 	// checkpoint written before origins were carried, a test that never set
 	// one — and [composeBrief] draws nothing for it.
 	origin taskOrigin
+	// admission is the WORKING CONTEXT this node was admitted with: bounded
+	// quotations of what was said around the work, with who said them, and
+	// handles to the calls that already ran (admission.go). Every door compiles
+	// it the same way, through [Agent.admissionContext], and no door composes
+	// its own.
+	//
+	// IT IS QUOTATION AND NOT FACT, which is the difference between it and every
+	// other field here. The brief is the contract; this is the record the
+	// contract came out of, and the document says so where the worker reads it.
+	admission AdmissionContext
 	// brief, deliverable and acceptance are the contract the conversation
 	// groomed: the work, what must exist at the end, and how anybody checks it.
 	// [composeBrief] lays all four out as the node's opening message.
@@ -280,7 +295,14 @@ type taskSpec struct {
 	// assumes is already true of the folder the worker will get
 	// (handoffcontract.go). It is written by whoever wrote the brief, never by
 	// the harness, and an empty one is the ordinary case.
-	expects   []Expectation
+	expects []Expectation
+	// checks is the REPEATABLE VERIFICATION this work is put under contract with:
+	// the commands anybody could run again to re-establish that it is done. It is
+	// the only thing the node's independent checker may run (task_checks.go), it
+	// is written by whoever wrote the brief and never by the harness, and an empty
+	// one — the ordinary case — means the checker judges by reading rather than by
+	// repeating anything the worker happened to do.
+	checks    []string
 	dependsOn []uint64
 	// modelWord is the `model` argument as the model wrote it — a word, not an
 	// id — and it lives only until [Agent.resolveTaskModel] has answered for it
@@ -521,6 +543,12 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	// so a nested worker still finds the person's turn, not its parent's
 	// journal.
 	spec.origin = a.taskOriginRef()
+	// AND WHAT WAS SAID AROUND THE WORK, compiled by the one compiler every door
+	// uses (admission.go). A proposal made mid-answer is where this matters most:
+	// the calls this turn has already made and the constraint the person typed
+	// two turns ago are both in hand here and in neither the brief nor the
+	// request.
+	spec.admission = a.admissionContext()
 	// AND WHERE THE WORK STANDS, resolved from the evidence this conversation
 	// already holds (taskstands.go) before anybody is asked anything, so the card
 	// the person answers names the project rather than a folder under a session.
@@ -750,6 +778,15 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		return spec, problem
 	}
 	spec.expects = expects
+	// AND THE VERIFICATION, on the same terms and for the same reason: it is the
+	// other optional half of the contract, and a check nobody could run is worth
+	// saying out loud here where the model can still fix it (task_checks.go's
+	// [declaredCheckList]).
+	checks, problem := declaredCheckList(parsed.Checks)
+	if problem != "" {
+		return spec, problem
+	}
+	spec.checks = checks
 	return spec, ""
 }
 

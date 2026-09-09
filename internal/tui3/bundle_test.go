@@ -562,6 +562,10 @@ func TestCopyModeTakesTheBlockUnderTheCursorAndYanksItClean(t *testing.T) {
 			detail: toolDetail{Output: "line one\nline two"}},
 		entry{kind: entryAssistant, settled: true, text: "Use fmt:\n\n```go\nfmt.Println(\"hi\")\nif ok {\n\tprintln(1)\n}\n```\n\nThat is all."},
 	)
+	// Copying a result starts with that result on screen, so open both the
+	// completed turn and its caption before freezing the copy view.
+	a.openWorkfold(0)
+	a.setCapOpen(a.conversation(), 1, true)
 	a.touch()
 	drive(t, a, ctrlKey('b'))
 
@@ -848,6 +852,7 @@ func TestLinearModeRendersPlain(t *testing.T) {
 	a.welcome = welcome{spent: true}
 	a.touch()
 	typeLine(t, a, "run it")
+	showLiveWork(t, a)
 
 	body := strings.Join(plainRows(a), "\n")
 	for _, glyph := range []string{railMid, railLast, railCont, glyphYou, glyphTool} {
@@ -1166,6 +1171,7 @@ func TestARunningCallCountsUpAndStopsWhenItFinishes(t *testing.T) {
 	base := time.Now()
 	a.clock = func() time.Time { return base }
 	typeLine(t, a, "run the tests")
+	showLiveWork(t, a)
 
 	at := firstTool(t, a)
 	if a.entries[at].began != base {
@@ -2096,10 +2102,10 @@ func TestTheBurnRateIsThisTurnsOutputOverThisTurnsSeconds(t *testing.T) {
 		t.Fatalf("a turn 0s old quoted %q", got)
 	}
 	*now = now.Add(10 * time.Second)
-	if got := a.burnSegment(); got != "1k tok/s" {
-		t.Fatalf("the burn reads %q, want 1k tok/s", got)
+	if got := a.burnSegment(); got != "1k tok/s avg" {
+		t.Fatalf("the burn reads %q, want 1k tok/s avg", got)
 	}
-	if line := plain(a.status(200)); !strings.Contains(line, "1k tok/s") {
+	if line := plain(a.status(200)); !strings.Contains(line, "1k tok/s avg") {
 		t.Fatalf("the burn is not on the line:\n%q", line)
 	}
 
@@ -2575,8 +2581,9 @@ func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
 	for _, want := range []string{
 		// THE HEAD IS THE NAME AND THE NODE'S OWN MARK (taskident.go): the title
 		// the engine wrote is cut to the two-or-three-word name, and the identity
-		// cell that will follow this node onto the rail and onto the card that
-		// lands rides beside the question glyph.
+		// cell that will follow this node onto the card that lands rides beside
+		// the question glyph. The rail does not carry it — that column holds
+		// nothing but tasks, so the mark tells nothing apart there.
 		taskHeadCorner + " " + glyphAsk + " " + plain(a.taskMark(identFor(7))) + " Fix the nil-map",
 		"The parser drops a key",
 		"[ yes ]  [ redirect ]  [ no ]",
@@ -2606,8 +2613,8 @@ func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
 	if !strings.Contains(painted, sgr256(hueAsk)) {
 		t.Fatalf("the proposal is not painted in the question hue:\n%q", painted)
 	}
-	// And the surface says, everywhere it says anything, that it is waiting.
-	if word, _ := a.stateWord(); word != waitingWord {
+	// This proposal has a clock: it starts automatically unless redirected.
+	if word, _ := a.stateWord(); word != taskStartingWord {
 		t.Fatalf("the status word is %q while a proposal is open", word)
 	}
 	if hint := a.hintWord(); hint != taskProposalHint {
@@ -3019,7 +3026,7 @@ func TestTheProposalBlockAndTheLandedCardEndInABlank(t *testing.T) {
 	rows := a.visible(a.bodyWidth())
 	foot := -1
 	for i, r := range rows {
-		if strings.HasPrefix(plain(r.text), taskFootCorner) {
+		if strings.HasPrefix(strings.TrimSpace(plain(r.text)), taskFootCorner) {
 			foot = i
 		}
 	}
@@ -3128,16 +3135,19 @@ func TestTheRailStandsWhileWorkIsAliveAndGoesWhenItLands(t *testing.T) {
 			Elapsed: 130 * time.Second, Merge: mergeWordConflicted, Branch: "task/fix-nil-map",
 		})},
 	)
+	// A retained report expands on request, without demanding a merge.
+	a.railSetOpen(a.tasks[9], true)
 	// A BRANCH NAME IS NEVER ELLIPSIZED: the conflicted sentence wraps inside
 	// the rail rather than losing the one handle back to the work, so the
 	// assertion is on the two halves and not on one line.
-	rail = plain(strings.Join(a.railRows(12), "\n"))
-	// TWO GLYPHS OPEN EVERY ROW: the state mark, then the node's own identity
-	// cell, which is derived from the id alone and never changes (taskident.go).
+	rail = plain(strings.Join(a.railRows(16), "\n"))
+	// ONE GLYPH OPENS EVERY ROW AND IT IS THE STATE. The identity ◆ is not on this
+	// column: it is the same cell on every task, this column holds nothing but
+	// tasks, and the two cells belong to the name here (task.go's [app.railLead]).
 	for _, want := range []string{
-		glyphQueued + " " + plain(a.taskMark(identFor(8))) + " Mix audio",
-		glyphBad + " " + plain(a.taskMark(identFor(9))) + " Collect sources",
-		glyphDone + " " + plain(a.taskMark(identFor(7))) + " Fix the nil-map",
+		glyphQueued + " Mix audio",
+		glyphBad + " Collect sources",
+		glyphDone + " Fix the nil-map",
 		"conflicted ·", "task/fix-nil-map",
 		// A STOPPED NODE DID NOT CRASH. session marks its branch "aborted"; the
 		// rail says what that is — it stopped, and the work is still on the branch
@@ -3476,11 +3486,14 @@ func TestTheRailIsChargedAgainstTheConversationOnly(t *testing.T) {
 		}
 		// AND THE STRIP IS THE ROW ABOVE IT ONLY WHERE THERE IS NO ROSTER: the two
 		// answer the same question, and the wide frame answers it in the column.
-		if tc.rail && top != 0 {
-			t.Fatalf("at %d columns the strip drew over the roster: top=%d", tc.width, top)
+		// It is asked of the STRIP's own height rather than of [app.bodyTop], which
+		// counts the conversation's own pinned bar as well (roomcrumbs.go).
+		if tc.rail && a.stripHeight() != 0 {
+			t.Fatalf("at %d columns the strip drew over the roster: %d rows", tc.width, a.stripHeight())
 		}
-		if !tc.rail && !strings.Contains(lines[0], "Fix the nil-map") {
-			t.Fatalf("at %d columns the task strip is not the frame's first row:\n%q", tc.width, lines[0])
+		if !tc.rail && !strings.Contains(lines[a.headHeight()], "Fix the nil-map") {
+			t.Fatalf("at %d columns the task strip is not the first row under the bar:\n%q",
+				tc.width, lines[a.headHeight()])
 		}
 		// The status row is the whole window's, so it is never under the rail.
 		status := lines[len(lines)-1]
@@ -3514,6 +3527,8 @@ func rosterText(a *app, height int) string {
 
 func TestTheRosterOrdersItsFamiliesByUrgencyAndCountsTheWhole(t *testing.T) {
 	a, _, _ := taskApp(t)
+	// Use the wide tier so this aggregate test can see every count.
+	a.width, a.railWide = 160, true
 	drive(t, a,
 		streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskDone, session.TaskNotice{
 			Merge: mergeWordMerged,
@@ -3523,7 +3538,7 @@ func TestTheRosterOrdersItsFamiliesByUrgencyAndCountsTheWhole(t *testing.T) {
 			DependsOn: []uint64{2},
 		})},
 		streamEventMsg{gen: a.gen, ev: update(4, "Render titles", session.TaskFailed, session.TaskNotice{
-			Report: "the tests did not build", Merge: mergeWordAborted, Branch: "task/render",
+			Report: "the merge conflicted", Merge: mergeWordConflicted, Branch: "task/render",
 		})},
 		streamEventMsg{gen: a.gen, ev: update(5, "Cut the trailer", session.TaskQueued, session.TaskNotice{})},
 		// A FAILURE THAT KEPT NOTHING IS NOT A DEMAND, so it stands with the record
@@ -3558,10 +3573,14 @@ func TestTheRosterOrdersItsFamiliesByUrgencyAndCountsTheWhole(t *testing.T) {
 			t.Fatalf("the roster still draws the %q heading:\n%s", railGroupWords[g], rail)
 		}
 	}
-	// TWO GLYPHS OPEN A ROW WITH NO FAMILY AROUND IT: the state, then the node's
-	// own identity cell (taskident.go).
-	if !strings.Contains(rail, glyphBad+" "+plain(a.taskMark(identFor(4)))+" Render titles") {
-		t.Fatalf("the flat row lost one of its two glyphs:\n%s", rail)
+	// ONE GLYPH OPENS A ROW WITH NO FAMILY AROUND IT, and it is the state — the
+	// same lead a family row has, so the column reads downward as one column of
+	// states (task.go's [app.railLead]).
+	if !strings.Contains(rail, glyphBad+" Render titles") {
+		t.Fatalf("the flat row does not lead with its state:\n%s", rail)
+	}
+	if strings.Contains(rail, plain(a.taskMark(identFor(4)))+" Render titles") {
+		t.Fatalf("the identity ◆ is back on the rail, two cells from the name:\n%s", rail)
 	}
 	// THE ID IS META: the title leads the row and the handle trails it, dim.
 	if !strings.Contains(rail, "#2") || strings.Contains(rail, "#2 Fix") {
@@ -3569,7 +3588,7 @@ func TestTheRosterOrdersItsFamiliesByUrgencyAndCountsTheWhole(t *testing.T) {
 	}
 	// AND THE FOOTER SAYS THE WHOLE, in the group vocabulary.
 	for _, want := range []string{railSigma + "$1.42", "312k tok", "1 running", "1 needs you",
-		"1 parked", "2 done"} {
+		"1 queued", "1 waiting", "2 done"} {
 		if !strings.Contains(rail, want) {
 			t.Fatalf("the footer does not say %q:\n%s", want, rail)
 		}
@@ -3593,7 +3612,7 @@ func TestTheRosterTakesTheKeyboardOnlyWhenItIsHandedIt(t *testing.T) {
 		t.Fatal("an unfocused roster drew a cursor")
 	}
 
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	if !a.railHold {
 		t.Fatal("ctrl+t did not hand the roster the keyboard")
 	}
@@ -3646,25 +3665,25 @@ func TestTheRostersCursorFollowsANodeThatChangesUrgency(t *testing.T) {
 	drive(t, a,
 		streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskRunning, session.TaskNotice{})},
 		streamEventMsg{gen: a.gen, ev: update(2, "Fix the nil-map crash", session.TaskRunning, session.TaskNotice{})},
-		ctrlT(),
+		altT(),
 		key("down"), // the newest running node
 	)
 	if a.railWhere.id != 2 {
 		t.Fatalf("the cursor is on %+v, want the second running node", a.railWhere)
 	}
-	// It finishes with its branch kept, which is the one outcome that needs a
+	// It finishes with its branch conflicted, which is the one outcome that needs a
 	// person — so the row moves to the top group, and the cursor moves with it.
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(2, "Fix the nil-map crash", session.TaskFailed,
-		session.TaskNotice{Merge: mergeWordAborted, Branch: "task/fix-nil-map"})})
+		session.TaskNotice{Merge: mergeWordConflicted, Branch: "task/fix-nil-map"})})
 	entries := a.railEntries()
 	at := a.railFocusIndex(entries)
 	if at < 0 || entries[at].node == nil || entries[at].node.id != 2 {
 		t.Fatalf("the cursor did not follow the node: %+v", entries)
 	}
-	// AND THE ROW ITSELF MOVED: a kept branch is the one outcome that needs a
+	// AND THE ROW ITSELF MOVED: a conflicted branch is the one outcome that needs a
 	// person, so it is the top of the column now (task.go's [app.railGroupOf]).
 	if at != 0 {
-		t.Fatalf("the node with a kept branch is at row %d, want the top of the column", at)
+		t.Fatalf("the node with a conflicted branch is at row %d, want the top of the column", at)
 	}
 }
 
@@ -3690,7 +3709,7 @@ func TestTheRosterWindowsHundredsOfNodesAroundItsFocus(t *testing.T) {
 	}
 
 	// Twenty rows down is past the window, so the window moves.
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	for i := 0; i < 20; i++ {
 		drive(t, a, key("down"))
 	}
@@ -3715,13 +3734,8 @@ func TestTheRosterWindowsHundredsOfNodesAroundItsFocus(t *testing.T) {
 	}
 }
 
-// A FAILURE IS SETTLED NEWS AND A KEPT BRANCH IS A DEMAND. The leading group
-// never folds and never leaves the top of the column, so the only thing that may
-// stand in it is work that will not move without a person: a landing nobody
-// could judge, a branch that conflicted, a run that stopped with its branch
-// kept. A node that simply did not come off has already had the engine's repair
-// rounds spent on it before it landed — it is a report, and reports go into the
-// fold, at the FRONT of it (task.go's [app.railGroupOf] and [railFinalOrder]).
+// Failures and retained branches are reports. A conflict or unresolved review
+// remains actionable; retaining a branch alone is not a request to merge it.
 func TestAPlainFailureIsFiledAsNewsAndNotAsADemand(t *testing.T) {
 	a, _, _ := taskApp(t)
 	drive(t, a,
@@ -3752,7 +3766,7 @@ func TestAPlainFailureIsFiledAsNewsAndNotAsADemand(t *testing.T) {
 		{2, "a failure that kept nothing", railDone},
 		{6, "a failure in the person's own tree", railDone},
 		{1, "a clean merge", railDone},
-		{3, "a run that stopped with its branch kept", railAttention},
+		{3, "a run that stopped with its branch kept", railDone},
 		{4, "a branch that conflicted", railAttention},
 		{5, "a landing nobody could judge", railAttention},
 	} {
@@ -3768,7 +3782,7 @@ func TestAPlainFailureIsFiledAsNewsAndNotAsADemand(t *testing.T) {
 	for _, node := range members[railDone] {
 		order = append(order, node.id)
 	}
-	want := []uint64{6, 2, 1}
+	want := []uint64{6, 3, 2, 1}
 	if len(order) != len(want) {
 		t.Fatalf("the done group holds %v, want %v", order, want)
 	}
@@ -3778,15 +3792,14 @@ func TestAPlainFailureIsFiledAsNewsAndNotAsADemand(t *testing.T) {
 		}
 	}
 
-	// AND THE FOOTER SAYS WHAT THE SESSION HOLDS: three things to do, three things
-	// to know, in the words the headings used to wear.
+	// The footer counts two decisions and four finished reports.
 	rail := rosterText(a, 24)
-	for _, want := range []string{"3 needs you", "3 done"} {
+	for _, want := range []string{"2 needs you", "4 done"} {
 		if !strings.Contains(rail, want) {
 			t.Fatalf("the roster is missing %q:\n%s", want, rail)
 		}
 	}
-	// The three demands lead the column and the record follows them, whole.
+	// The two demands lead the column and the record follows them, whole.
 	demands := strings.Index(rail, "Cut the trailer")
 	for _, news := range []string{"Render titles", "Write the auth", "Collect sources"} {
 		if at := strings.Index(rail, news); at < 0 || at < demands {
@@ -3819,8 +3832,12 @@ type roomFake struct {
 	// steerWaiting is the engine answering that the node was PARKED ON ITS OWN
 	// PIECES when it took the line (internal/session's [Agent.SteerTask]).
 	steerWaiting bool
-	steerErr     error
-	watchErr     error
+	// steerHeld is the third outcome: nobody was inside the node to read the
+	// line, its work is being checked, and the engine kept the words on the
+	// task's own record rather than sending them back.
+	steerHeld bool
+	steerErr  error
+	watchErr  error
 	// retargeted is every explicit model pick this fake was handed, in order, and
 	// retargetErr is the engine refusing one — a node that settled between the
 	// frame and the press (internal/session's [Agent.RetargetTask]).
@@ -3884,14 +3901,29 @@ func (f *roomFake) WatchTask(id uint64) (<-chan session.Event, error) {
 	}
 }
 
-func (f *roomFake) SteerTask(id uint64, text string) (bool, error) {
+func (f *roomFake) SteerTask(id uint64, text string) (session.SteerReceipt, error) {
 	if f.steerErr != nil {
-		return false, f.steerErr
+		return session.SteerReceipt{}, f.steerErr
 	}
 	f.steered = append(f.steered, steerLine{id: id, text: text})
 	// steerWaiting is the engine's own second answer: the node had handed its
 	// pieces out and was parked on their reports, so this line is what wakes it.
-	return f.steerWaiting, nil
+	// The whole receipt travels now, sentence included, because a held line — one
+	// the engine kept while a task's work was being checked — is a third outcome
+	// this fake would otherwise be unable to express.
+	return session.SteerReceipt{
+		Waiting: f.steerWaiting,
+		Held:    f.steerHeld,
+		Landing: f.steerLanding(),
+	}, nil
+}
+
+// steerLanding is the engine's own sentence for what the sending did.
+func (f *roomFake) steerLanding() string {
+	if f.steerHeld {
+		return "held on the task's record — it is being checked, and it cannot land as done without this"
+	}
+	return session.SteerDelivered(f.steerWaiting)
 }
 
 // RetargetTask is the room's fourth door: one running node moved onto another
@@ -3913,6 +3945,12 @@ func roomApp(t *testing.T) (*app, *roomFake, func(time.Duration)) {
 	base, fake, advance := taskApp(t)
 	agent := &roomFake{taskFake: fake, lanes: map[uint64]chan session.Event{}}
 	base.agent = agent
+	// AND IT NAMES THE CONVERSATION AND ITS DRAFT FILE, which every production
+	// door does in one breath (cmd/aforge). A correction is only sent from a
+	// conversation this surface could write the send down for first, so a room
+	// fixture with neither has no ear at all (steersend.go's [app.steerDurable]).
+	base.file = filepath.Join(t.TempDir(), "conversation.jsonl")
+	base.draftFile = filepath.Join(filepath.Dir(base.file), "draft.txt")
 	drive(t, base, streamEventMsg{gen: base.gen, ev: update(7, "Fix the nil-map crash",
 		session.TaskRunning, session.TaskNotice{})})
 	return base, agent, advance
@@ -3972,7 +4010,9 @@ func clickRail(t *testing.T, a *app, node int) {
 		t.Fatalf("the roster has no node row %d", node)
 	}
 	// The press lands on the row's first TEXT cell: the two cells before it are
-	// the seam, which is the column's resize handle now (room.go's railPress).
+	// the seam, which is the column's resize handle at this width (room.go's
+	// railPress). That cell holds the row's STATE, and a state is not a control —
+	// so this is the node's door like every other cell on the row.
 	drive(t, a, tea.MouseClickMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam), Y: at, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam), Y: at, Button: tea.MouseLeft})
 }
@@ -4020,6 +4060,13 @@ func TestARailClickOpensTheNodesRoomOnItsJournal(t *testing.T) {
 	if !a.roomOpen() {
 		t.Fatal("a rail click did not open the node's room")
 	}
+	// The rail opens compact activity; the journal's detailed tool row is
+	// available through the same live disclosure as a newly running call.
+	compact := roomText(a)
+	if !strings.Contains(compact, "I will read the parser first") || strings.Contains(compact, "read internal/parse/keys.go") {
+		t.Fatalf("rail did not open compact journal activity:\n%s", compact)
+	}
+	openRoomCompactWork(t, a)
 	page := roomText(a)
 	for _, want := range []string{"Fix the nil-map crash", "I will read the parser first",
 		"read internal/parse/keys.go"} {
@@ -4056,10 +4103,15 @@ func TestARailClickOpensTheNodesRoomOnItsJournal(t *testing.T) {
 		t.Fatal("the rail went away when the room opened")
 	}
 
-	// A second click on the same row is the way back.
+	// Repeated selection keeps the page open; leaving is a separate action.
+	opened := a.room
 	clickRail(t, a, 0)
+	if a.room != opened {
+		t.Fatal("a second click replaced or closed the selected task")
+	}
+	drive(t, a, key("esc"))
 	if a.roomOpen() {
-		t.Fatal("a second click on the open room's row did not close it")
+		t.Fatal("Escape did not leave the task")
 	}
 }
 
@@ -4131,8 +4183,11 @@ func TestEnterInARoomSteersTheNode(t *testing.T) {
 	// is one question with corrections hanging off it (#252, ruling 2).
 	var said string
 	for _, r := range a.roomRows(a.bodyWidth()) {
-		if strings.HasPrefix(plain(r.text), glyphSteer+"the config lives under etc/") {
-			said = r.text
+		// Past the reading gutter and no further: what is asserted below is the
+		// first style the ROW ITSELF carries (pastGutter).
+		row := pastGutter(a.bodyWidth(), r.text)
+		if strings.HasPrefix(plain(row), glyphSteer+"the config lives under etc/") {
+			said = row
 		}
 	}
 	if said == "" {
@@ -4147,8 +4202,9 @@ func TestEnterInARoomSteersTheNode(t *testing.T) {
 	a.roomTouched()
 	settled := ""
 	for _, r := range a.roomRows(a.bodyWidth()) {
-		if strings.HasPrefix(plain(r.text), glyphSteer+"the config lives under etc/") {
-			settled = r.text
+		row := pastGutter(a.bodyWidth(), r.text)
+		if strings.HasPrefix(plain(row), glyphSteer+"the config lives under etc/") {
+			settled = row
 		}
 	}
 	if !strings.Contains(settled, sgrOf(a.pal.narr)+"the config lives under etc/") {
@@ -4292,10 +4348,22 @@ func TestEveryTaskSteerConfirmsDelivery(t *testing.T) {
 	}
 }
 
-// elbowRowIn is the drawn row a task page's correction is on, plain, or "".
+// pastGutter takes the reading gutter's own cells off the front of a drawn row
+// and NOTHING else (gutter.go). The pass prepends bare spaces to a finished row,
+// ahead of the row's first style, so a test that reads what a row OPENS with —
+// its first glyph, its first SGR — has to step over exactly the air this width
+// bought. It asks [textGutterCols] rather than trimming two, because a frame at
+// the phone tier buys none and a test that assumed two would then eat the row.
+func pastGutter(width int, text string) string {
+	return strings.TrimPrefix(text, strings.Repeat(" ", textGutterCols(width)))
+}
+
+// elbowRowIn is the drawn row a task page's correction is on, plain and past the
+// gutter, or "".
 func elbowRowIn(a *app, words string) string {
-	for _, r := range a.roomRows(a.bodyWidth()) {
-		if line := plain(r.text); strings.HasPrefix(line, glyphSteer+words) {
+	width := a.bodyWidth()
+	for _, r := range a.roomRows(width) {
+		if line := pastGutter(width, plain(r.text)); strings.HasPrefix(line, glyphSteer+words) {
 			return line
 		}
 	}
@@ -4386,6 +4454,34 @@ func TestTheSteerGuardSendsToMainAndRevivesThroughTheHead(t *testing.T) {
 		if !strings.Contains(agent.sent[0], want) {
 			t.Fatalf("the revive request is missing %q: %q", want, agent.sent[0])
 		}
+	}
+}
+
+// A LINE THE ENGINE HELD IS NOT A REFUSAL AND MUST NOT READ LIKE ONE. The task's
+// work was in front of the checker, so nobody was inside it to read the words —
+// and the engine kept them on the task's own record instead of sending them
+// back. The page takes the line, draws the elbow every correction draws, and
+// says what the sending did in the engine's own sentence: "delivered" over words
+// nobody has read would be this surface inventing a fact.
+func TestALineTheEngineHeldIsDrawnAsKeptRatherThanGuarded(t *testing.T) {
+	a, agent, _ := roomApp(t)
+	agent.steerHeld = true
+	clickRail(t, a, 0)
+	a.input.setText("make it CSV instead")
+	drive(t, a, key("enter"))
+
+	if a.guarding() {
+		t.Fatal("a line the engine kept raised the guard, so the person would be asked to send it somewhere else")
+	}
+	if len(agent.steered) != 1 || agent.steered[0].text != "make it CSV instead" {
+		t.Fatalf("the engine was handed %+v, want the person's line once", agent.steered)
+	}
+	if !a.input.empty() {
+		t.Fatal("the box kept words the engine had already taken, which is how one correction gets sent twice")
+	}
+	got := plain(frame(a))
+	if !strings.Contains(got, "cannot land as done without this") {
+		t.Fatalf("the page does not say what became of the line:\n%s", got)
 	}
 }
 

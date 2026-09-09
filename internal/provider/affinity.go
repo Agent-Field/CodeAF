@@ -32,18 +32,6 @@ import (
 // request, no clock. What is remembered is one endpoint name per prompt lineage,
 // and the next request asks for it first.
 
-// pinPrefixFloor is the shortest prompt whose zero cache read is EVIDENCE
-// rather than noise, in prompt tokens.
-//
-// Endpoints report cache reads in blocks — the ledgers showed reads quantized in
-// 256-token steps — so a short prompt honestly reports zero cached tokens even
-// on the machine that just answered it, and unpinning on that would be this
-// process throwing away a warm cache over a rounding rule. Two thousand tokens
-// is an order of magnitude above any block size seen and two orders below the
-// transcripts this is for (the measurement above ran at 94k), so a zero above it
-// means the cache is genuinely not there.
-const pinPrefixFloor = 2048
-
 // endpointPins is which endpoint holds each prompt lineage's cache.
 //
 // THE LINEAGE, NOT THE SESSION AND NOT THE MODEL ALONE, is the unit. A prompt
@@ -57,7 +45,7 @@ const pinPrefixFloor = 2048
 // forgotten. A remote cache dies on its own schedule and no constant here could
 // guess it; a pin that outlives the cache it was for costs nothing to hold — the
 // endpoint is simply one of the ones that could have answered — and the very
-// next answer measures the truth and releases it (see [Client.noteEndpointAffinity]).
+// next successful answer can warm it again (see [Client.noteEndpointAffinity]).
 // A guessed timeout would be a second, worse copy of a fact the wire reports.
 type endpointPins struct {
 	mu   sync.Mutex
@@ -73,6 +61,17 @@ func newEndpointPins() *endpointPins {
 // its endpoints, not to whichever adapter happened to hold the connection, and
 // one session can outlive several clients. A test builds its own and assigns it.
 var sharedPins = newEndpointPins()
+
+// routingSessionID obeys the router protocol's 256-character limit without
+// truncating two long lineages onto the same session. Generated keys already
+// fit; caller-supplied longer keys receive the existing stable identity hash.
+func routingSessionID(key string) string {
+	const sessionIDLimit = 256
+	if len(key) <= sessionIDLimit {
+		return key
+	}
+	return RunCacheKey(key, "")
+}
 
 // pinKey is one lineage's identity for one model. The model is normalized so the
 // same conversation spelled two ways does not hold two pins.
@@ -151,16 +150,13 @@ func (c *Client) heldEndpoint(lineage, model string, ignored []string) string {
 // noteEndpointAffinity folds one answer into the pin ledger and reports which
 // endpoint THIS request asked to come back to, "" when it asked for none.
 //
-// THE FOUR RULES, in the order they apply:
+// THE THREE RULES, in the order they apply:
 //
 //	unnamed    an answer whose server did not identify itself changes nothing —
 //	           the attribution law the ledger keeps (velocity.go's note)
 //	dear       an answer that cost more than the price ceiling would have
 //	           allowed for its own token counts releases the pin: a warm cache
 //	           was never worth any price, which is the whole of latencyPriceCeiling
-//	cold       an answer FROM the pinned endpoint that read zero cached tokens on
-//	           a prompt above the floor releases it — the cache we came back for
-//	           is gone, and coming back again buys nothing
 //	otherwise  the endpoint that just answered is the one that now holds this
 //	           lineage's bytes, so it is held — including the first, always-cold
 //	           request of a lineage, whose whole job is to write the prefix we
@@ -188,9 +184,10 @@ func (c *Client) noteEndpointAffinity(ctx context.Context, model, served string,
 	switch {
 	case c.overPriceCeiling(model, usage):
 		c.pins.release(lineage, model)
-	case asked == served && cacheWasLost(usage):
-		c.pins.release(lineage, model)
 	default:
+		// A CACHE MISS IS NOT A FAILED PROVIDER. Changed prefixes, expiry and
+		// absent accounting can all read as zero. This successful request can
+		// warm the next one, so only failure or the price ceiling releases it.
 		c.pins.hold(lineage, model, served)
 	}
 	return asked
@@ -210,18 +207,6 @@ func (c *Client) releaseEndpoint(ctx context.Context, model string) {
 	if lineage := CacheKeyFrom(ctx); lineage != "" {
 		c.pins.release(lineage, model)
 	}
-}
-
-// cacheWasLost reports that this answer read nothing from the cache on a prompt
-// long enough for that to mean something. Usage the provider did not send is not
-// evidence of anything and answers false — the adapter always opts into usage
-// accounting (wire.go), so a missing count is an endpoint that does not report
-// rather than a cache that missed.
-func cacheWasLost(usage *ai.Usage) bool {
-	if usage == nil {
-		return false
-	}
-	return usage.PromptTokens > pinPrefixFloor && usage.CacheReadTokens() == 0
 }
 
 // overPriceCeiling reports that this answer cost more than the ceiling would

@@ -166,6 +166,7 @@ func plural(n int, word string) string {
 // stream state has been reconciled with what the engine says; false means this
 // client is over and [Client.bury] has already said why.
 func (c *Client) lost(cause error) bool {
+	c.closeObservers()
 	c.mu.Lock()
 	roam, closing, dead := c.roam, c.closing, c.dead
 	left := c.welcome.SessionFile
@@ -208,6 +209,7 @@ func (c *Client) lost(cause error) bool {
 		return false
 	}
 	c.reconcile(left, welcome)
+	c.retakeTitle(left, welcome)
 	return true
 }
 

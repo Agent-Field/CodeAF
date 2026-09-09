@@ -23,7 +23,7 @@ import (
 // product already uses:
 //
 //	tasks
-//	⠙ ◆ Fix nil-map           #7
+//	⠙ Fix nil-map             #7
 //	+ /task
 //
 //	standing

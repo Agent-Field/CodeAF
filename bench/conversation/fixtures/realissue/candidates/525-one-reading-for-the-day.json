@@ -1,0 +1,88 @@
+{
+  "schema": 2,
+  "id": "525-one-reading-for-the-day",
+  "task_kind": "bug-existing-api",
+  "readiness": "rejected",
+  "campaign_ready": false,
+  "why_this_issue": "Two different numbers for one day's money on one frame; the repair reaches five files.",
+  "provenance": {
+    "repo": "Agent-Field/aforge-v2",
+    "visibility": "private",
+    "language": "go",
+    "issue": 525,
+    "issue_url": "https://github.com/Agent-Field/aforge-v2/issues/525",
+    "issue_reported_at": "2026-09-03",
+    "issue_title": "The day's spend on the top line disagrees with the spend place, and changes with where you have walked",
+    "fix_pr": 527,
+    "base_commit": "90a03bc7bc391c51e8d7530d362769fdbb04ca45",
+    "fix_commit": "c300b6eb208397e9e8a61144899c619716d5aa1b",
+    "base_rule": "the first parent of the squash commit the fixing pull request left on dev",
+    "collected": "gh read-only plus this clone's object store; no field is guessed"
+  },
+  "workspace": {
+    "export": "git-archive",
+    "carries_git_history": false,
+    "at": "provenance.base_commit",
+    "notes": ""
+  },
+  "prompt": {
+    "verbatim": false,
+    "text": "You are handed a report from the person who hit this. Reproduce it, find the cause, and fix the source. Do not change any test to agree with the code.\n\n# The day's spend on the top line disagrees with the spend place, and changes with where you have walked\n\n## What happened\n\nOn `dev@5f3f16af` (2026-09-03), the top line of every place and the body of the spend\nplace draw **today's spend as two different numbers on the same frame**, and the top\nline's number changes depending on which places you have walked through.\n\nOne frame of `bin/aforge`, on the spend place, 120x40:\n\n```\n aforge                                            $1.85 / $500.00 · 1 want you · tue 1:11pm\n  home   tasks   standing   memory   spend   search   settings\n ─────────────────────────────────────────────────────────────────────────────────────────\n today $0.13 of $500 · /budget sets the limits\n $2.05 · 326.5k tokens                        shift+← aug 20 – sep 2 →   shift+↑ coarser\n```\n\n`$1.85` on the top line, `$0.13` two rows under it — fourteen times apart, against one\ndenominator, and nothing on the screen says which of the two is the bill.\n\nWalking the tab bar with nothing else happening, the top line reads:\n\n```\nhome       $1.85 / $500.00 · 1 want you · tue 1:11pm\ntasks      $0.37 / $500.00 · tue 1:11pm\nstanding   $0.37 / $500.00 · tue 1:11pm\nmemory     $0.37 / $500.00 · tue 1:11pm\nspend      $1.85 / $500.00 · 1 want you · tue 1:11pm\nsearch     $1.85 / $500.00 · 1 want you · tue 1:11pm\nsettings   $1.85 / $500.00 · 1 want you · tue 1:11pm\n```\n\nSo the day's spend on the first line of the product is a function of navigation history,\nwhich is the one thing it must not be.\n\n## Replication\n\n**Deterministic (no model).** No key, no network, one temporary directory. Write a machine\nledger with four calls dated today, and a task index that records only one of them:\n\n```\ngo test -count=1 -run TestTheMoneyOnTheTopLineIsTheMoneyOnTheSpendPage -timeout 5m ./internal/tui3/\n```\n\nagainst the fixture in `internal/tui3/pulsemoney_test.go` (`oneMoneyLab`): a ledger holding\n$0.42 + $0.13 + $0.93 + $0.37 = **$1.85** of calls dated today, of which one task record\ncarries $0.13. Today, on `dev`, that test fails on its first step with\n\n```\nthe top line reads \"$0.13\" on home after home, want \"$1.85\"\n```\n\nand then again with a different wrong figure on every other place in the walk.\n\n**By hand, in the real binary.** `make build`, then open `bin/aforge` on any machine that\nhas spent money today with at least one call that did not end on a finished task record —\nan interrupted turn will do, and so will a standing firing:\n\n1. read the green figure on the top line of home;\n2. press `tab` to **tasks** and read it again — it drops to the standing-only figure;\n3. press `alt+5` for **spend** and read `today $… of $…` in the body against the top line\n   of the same frame.\n\nThree readings, and at most one of them is the day.\n\n**Field (real models).** Any session that spends money: send one turn, interrupt a second\nturn with `esc`, then walk home → tasks → spend. Roughly a cent, under a minute. The\ninterrupted turn is on the ledger and on no task record, so it is exactly the money the\ntop line cannot see.\n",
+    "sha256": "8d91f4cd6efc483006e1f3751fdc6efe4bd9a1305b224be7ca54ebaa9d3d2bdc",
+    "derivation": {
+      "kept_sections": [
+        "What happened",
+        "Replication"
+      ],
+      "dropped_sections": [
+        "Where",
+        "The fix",
+        "Acceptance"
+      ],
+      "dropped_paragraphs": {},
+      "rule": "ATX sections kept by heading allowlist (symptom, reproduction, stated law); diagnosis, fix and acceptance sections dropped whole",
+      "source_sha256": "05c656bb49f34147cffb74551c6d5e1d701ed11006fe072ee1a40b81d33cd8bc",
+      "source_url": "https://github.com/Agent-Field/aforge-v2/issues/525",
+      "curated_at": "2026-09-05",
+      "curated_by": "bench/conversation/fixtures/realissue/curate.py",
+      "source": "the issue body as fetched with gh on 2026-09-05"
+    }
+  },
+  "acceptance": {
+    "kind": "held-out-test",
+    "held_out_paths": [
+      "internal/tui3/pulsemoney_test.go"
+    ],
+    "held_out_from": "provenance.fix_commit",
+    "fix_paths": [
+      "internal/tui3/home.go",
+      "internal/tui3/homemachine.go",
+      "internal/tui3/place_spend.go",
+      "internal/tui3/pulse.go",
+      "internal/tui3/spendplace.go"
+    ],
+    "guarded_paths": [],
+    "guards_note": "the acceptance command runs only the held-out cases, which are copied in after the harness has stopped; no file in the workspace is an instrument, so nothing is guarded. A regression run over the rest of the package is not in v1.",
+    "command": "go test ./internal/tui3/ -run 'Money|Spend|Figure' -count=1",
+    "run": "after the harness has stopped, from outside the workspace"
+  },
+  "arms": [
+    "aforge",
+    "pi",
+    "omp"
+  ],
+  "doors": {
+    "print": [
+      "aforge",
+      "pi",
+      "omp"
+    ],
+    "interactive": [
+      "aforge",
+      "pi",
+      "omp"
+    ]
+  },
+  "model_pin": "deepseek/deepseek-v4-flash-0731",
+  "rejection": "Even after curation the surviving sections name internal/tui3/pulsemoney_test.go and the test function the fix adds, so the held-out mark is written into the brief. Kept as the worked example of the trait that decides selection here: issues in this repository are engineering reports that prescribe the repair, and curation cannot always separate the two. The fixing pull request also edited internal/tui3/onefigure_test.go, so the suite at base is not the instrument at the fix either."
+}

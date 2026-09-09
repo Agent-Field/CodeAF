@@ -8,7 +8,7 @@ import (
 //
 // The roster and the record were built for a keyboard and they show it at
 // [tierPhone]: the strip is a row of chips three cells apart, the page under
-// `ctrl+t` names its verbs in a dim sentence at the foot, and the card a row
+// `alt+t` names its verbs in a dim sentence at the foot, and the card a row
 // opens does the same. None of those is a thing a finger can do.
 //
 // Nothing new is invented here — the three doors already exist and every one of
@@ -56,10 +56,18 @@ func taskCardPhone(width int) bool { return layoutTier(width) == tierPhone }
 // TWO TARGETS AND NOT THREE. The bar carries what a thumb can do and the card
 // has exactly two of those — the scroll is the screen itself, and a target
 // saying `↑↓ scroll` would be a target that does nothing when it is pressed.
+// AND OVER ANOTHER WINDOW'S WORK IT CARRIES ONE. There is nothing landed for a
+// mention to point at, so the chip is absent rather than drawn dead — the same
+// answer the wide foot gives ([taskAwayCardKeys] says why), on the tier where a
+// dead chip is worst: a thumb has no hover to discover with and finds out by
+// pressing.
 func (a *app) taskCardBar(width int) (string, []hudSpan) {
 	back := homeSheetBackWord
 	if a.pal.ascii {
 		back = homeSheetBackASCII
+	}
+	if a.taskSheet.awayOwner.on {
+		return phoneBar(width, []string{back}, a.pal)
 	}
 	return phoneBar(width, []string{back, taskPhoneMentionWord}, a.pal)
 }
@@ -130,10 +138,13 @@ func (a *app) stripPhoneDoor(width int) (string, bool) {
 
 // stripPhoneState is the most urgent thing among the live nodes, in the same
 // word the roster heads its sections with — `1 running`, or `2 needs you`, or
-// `3 idle`. It walks [stripOrder], running first, and takes the first group with
-// anyone in it, which is the chip the packed row would have led with.
+// `3 idle`. A decision comes first because this compact summary has no other
+// row on which to show it; the expanded strip still names each running task.
 func (a *app) stripPhoneState() string {
 	members := a.railMembers()
+	if n := len(members[railAttention]); n > 0 {
+		return itoa(n) + " " + railGroupWords[railAttention]
+	}
 	for _, g := range stripOrder {
 		if n := len(members[g]); n > 0 {
 			return itoa(n) + " " + railGroupWords[g]

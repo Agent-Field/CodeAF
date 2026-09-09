@@ -97,6 +97,49 @@ import (
 // [standDescription], which owns all three by name). A belt without `stand`
 // loses nothing either — that section opens by saying it is about the tool. The
 // prompt went 21,495 → 20,712 and the prefix is 47,531, which is 469 under.
+// THE HANDOFF LAW PAID FOR ITSELF OUT OF A SENTENCE SAID TWICE (2026-09-04). A
+// live run ended a turn that had handed its work to a task and was told the ask
+// was not finished, so the page now says a handed-off outcome is not work that
+// remains — 210 bytes across `## Work or words` and `# Critical`. Nothing was
+// raised: the belt's `needs your look` bullet lost its "continue task N"
+// sentence, which `tasks` own description already carries word for word
+// (tools_tasks.go's [tasksDescription]), and the page went 21,289 → 20,840. The
+// prefix is 47,920, which is 80 under.
+// AND THE CAUSAL WAVE CAME IN UNDER WHAT IT REPLACED (2026-09-04). A woken turn
+// now answers the request its result belongs to, so the landed-work paragraph
+// says which request that is (+23), and the handoff receipt lost the clause the
+// `# Critical` bullet above already carries (-33). Nothing was raised: the page
+// went 20,840 → 20,830 and the prefix is 47,958, which is 42 under.
+// THE VERIFICATION CONTRACT PAID FOR ITSELF OUT OF THREE SENTENCES SAID TWICE
+// (2026-09-04). `propose_task` and `divide_work` grew a `checks` field — the
+// repeatable verification a piece of work is put under contract with, which is
+// the only thing its checker may run (task_checks.go) — and it landed the prefix
+// 388 over. Nothing was raised. `acceptance` gave up "the command that passes",
+// which is now the field next to it; `wide` gave up the two sentences
+// prompts/system.md's own handoff section already spells; `model`, `max_steps`
+// and `no_progress` gave up their tails about what the harness then does; and the
+// belt's `tasks` bullet lost its `id` sentence, which [tasksDescription] carries
+// in full. The two waves together leave the prefix at the figure the test prints;
+// neither raised the budget and the ledger above is what each of them paid.
+// AND THE FORWARDING DOOR PAID FOR ITSELF OUT OF THREE SECOND COPIES
+// (2026-09-04). The person steering from the main chat needs one more field on
+// `tasks` and one clause on the belt saying when to reach for it (+301, mostly
+// the field's own "their words, never yours"). Nothing was raised: the tool's
+// description lost the "continue task N" sentence and the URI sentence, both of
+// which the `continue` field and the belt's own citation bullet already carry
+// word for word; `id` lost "Running, it answers with its LIVE state", which the
+// belt bullet under it says at greater length; and the belt lost the
+// `scope: "everywhere"` clause the `scope` field governs. The tool block went
+// 27,128 → 27,169, the page 20,830 → 20,797, and the prefix is 47,966, which is
+// 34 under.
+// Specialist discovery (2026-09-05) reduced this fixture's tool block from
+// 27,079 to 23,438 bytes. The widest prompt grew from 20,527 to 20,909 bytes
+// to explain loading, leaving 44,347 combined: 3,259 fewer than the 47,606
+// baseline. The 48,000-byte cap stays unchanged. With every media model and
+// saved procedure configured, the complete tool block is 40,595 bytes and
+// discovery carries 26,740, including its 708-byte loader. Measure whole JSON
+// arrays rather than adding separately encoded array sizes.
+// widestPage weighs the larger direct/deferred wording for each fact.
 const fixedPrefixBudget = 48_000
 
 // widestPage is the page at its heaviest: prompts/system.md with every one of
@@ -109,16 +152,28 @@ const fixedPrefixBudget = 48_000
 // is also the page the person's own conversation reads, which is the one that
 // is paid for on every turn of every day.
 func widestPage() string {
-	widest := func(facts []beltFact, join string) string {
-		lines := make([]string, 0, len(facts))
-		for _, fact := range facts {
-			lines = append(lines, fact.present)
+	page := systemPrompt
+	// THE SAME LIST THE PAGE IS COMPOSED FROM (beltfacts.go's [promptSections]),
+	// walked with every row in its PRESENT case. A section added there is weighed
+	// here without a second edit, so the budget cannot go on measuring a page the
+	// composer stopped building.
+	for _, section := range promptSections {
+		lines := make([]string, 0, len(section.facts))
+		for _, fact := range section.facts {
+			// AND THE HEAVIER OF THE TWO PRESENT CASES. A fact whose tools wait
+			// on a shelf reads one sentence for the conversation that must
+			// fetch them and a shorter one for the worker that carries them
+			// (beltfacts.go), and the page this budget bounds is the widest any
+			// agent can be handed.
+			widest := fact.present
+			if len(fact.shelved) > len(widest) {
+				widest = fact.shelved
+			}
+			lines = append(lines, widest)
 		}
-		return strings.Join(lines, join)
+		page = strings.Replace(page, section.token, strings.Join(lines, section.join), 1)
 	}
-	page := strings.Replace(systemPrompt, beltFactsToken, widest(beltFacts, "\n"), 1)
-	page = strings.Replace(page, handoffFactsToken, widest(handoffFacts, "\n"), 1)
-	return strings.Replace(page, programFactsToken, widest(programFacts, "\n\n"), 1)
+	return page
 }
 
 // TestTheFixedPrefixStaysUnderItsBudget weighs what every request carries before

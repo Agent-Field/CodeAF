@@ -259,7 +259,7 @@ func TestClickingTheHarnessChipDropsIt(t *testing.T) {
 	_, height := a.size()
 	rows, _, _, _ := a.chrome(a.width)
 	at := len(rows) - 1 - a.overlayHeight() - a.inputHeight()
-	if !a.chipPress(len(inputPad), height-len(rows)+at) {
+	if _, took := a.chipPress(len(inputPad), height-len(rows)+at); !took {
 		t.Fatal("the tray row did not answer a press on the chip")
 	}
 	if a.harnChip != "" {

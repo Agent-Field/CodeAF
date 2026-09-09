@@ -754,6 +754,9 @@ type personAsk struct {
 // looking idle while they waited (consent.go, connect.go, harness.go, task.go,
 // tools_standing.go, tools_subharness.go each hold one of these).
 //
+// A task proposal with an active countdown starts automatically and does not
+// require the person. Holding it removes that deadline and makes it a question.
+//
 // THE STANDING CARD IS THE ONE LANE THAT WAITS FOREVER — it carries no clock at
 // all, by law (standing_contract.go) — so a window left on one said "idle" for
 // as long as it stood there, which is the exact opposite of the truth.
@@ -773,7 +776,13 @@ type personAsk struct {
 func (a *Agent) waitingOnPerson() personAsk {
 	a.mu.Lock()
 	asked := len(a.consent) > 0 || len(a.connectAsks) > 0 || len(a.harnessAsks) > 0 ||
-		len(a.taskAnswers) > 0 || len(a.standingAnswers) > 0
+		len(a.standingAnswers) > 0
+	for _, proposal := range a.taskAnswers {
+		if proposal != nil && proposal.notice.Deadline.IsZero() {
+			asked = true
+			break
+		}
+	}
 	// THE SUBHARNESS PROPOSAL IS READ SEPARATELY BECAUSE IT BRINGS ITS OWN
 	// WORDS. It banks no card at the desk — no other window can answer it, so
 	// offering it there would be a chip that does nothing — and a lane counted
@@ -850,16 +859,29 @@ func (a *Agent) WaitingOn() string { return a.waitingOnPerson().reason }
 // sentence about a question this file cannot see, would put words on a surface
 // that nothing in the session ever said.
 func (a *Agent) presenceAsk() PresenceQuestion {
+	// Automatic proposals offer intervention but do not require an answer.
+	// Read deadlines under the same lock HoldTask uses to remove them.
+	a.mu.Lock()
+	automatic := make(map[uint64]bool, len(a.taskAnswers))
+	for id, proposal := range a.taskAnswers {
+		if proposal != nil && !proposal.notice.Deadline.IsZero() {
+			automatic[id] = true
+		}
+	}
+	a.mu.Unlock()
 	desk := a.presence
 	if desk == nil {
 		return PresenceQuestion{}
 	}
 	desk.mu.Lock()
 	defer desk.mu.Unlock()
-	if len(desk.asks) == 0 {
-		return PresenceQuestion{}
+	for _, ask := range desk.asks {
+		if ask.question.Kind == QuestionTask && automatic[ask.question.ID] {
+			continue
+		}
+		return ask.question
 	}
-	return desk.asks[0].question
+	return PresenceQuestion{}
 }
 
 // presenceTasks is the work this session has out, read off the graph WITHOUT

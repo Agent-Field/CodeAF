@@ -345,7 +345,7 @@ func TestANodesRoomKeepsTheSameAnswerHierarchy(t *testing.T) {
 	// and the hierarchy above and below it is untouched — which is the point of
 	// asking it here. A chip is a fold, and the hierarchy is a property of the
 	// prose.
-	if r := find("▸ worked"); r.hit != hitWorkFold {
+	if r := find("▾ worked"); r.hit != hitWorkFold {
 		t.Fatalf("the room drew no phase chip over its settled work: %q", plain(r.text))
 	}
 }

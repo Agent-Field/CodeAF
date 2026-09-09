@@ -341,7 +341,9 @@ func (o *Orchestrator) wasStopped() bool {
 // goroutine parked on a channel nobody will read again is a leak for the life
 // of the process.
 func (o *Orchestrator) think(ctx context.Context, out chan<- thought) {
+	o.calls.Add(1)
 	go func() {
+		defer o.calls.Done()
 		amendment, err := o.planner.Plan(ctx, o.view())
 		select {
 		case out <- thought{amendment: amendment, err: err}:
@@ -452,7 +454,9 @@ func (o *Orchestrator) launch(ctx context.Context, out chan<- completed) int {
 		o.publish()
 	}
 	for _, each := range starts {
+		o.calls.Add(1)
 		go func(n Node, deps []NodeStatus) {
+			defer o.calls.Done()
 			digest, cost, err := o.exec.Exec(ctx, n, deps)
 			out <- completed{id: n.ID, digest: digest, cost: cost, err: err}
 		}(each.node, each.deps)
@@ -721,9 +725,17 @@ func (o *Orchestrator) note(text string) {
 	}
 }
 
+// Wait joins calls launched by this run, including names which may outlive its
+// final snapshot. Call it only AFTER Run has returned and no caller can apply
+// another amendment: that is the point after which no new calls are admitted.
+// It does not change Run's prompt cancellation contract. Owners that must keep
+// shutdown bounded apply their own grace around this join.
+func (o *Orchestrator) Wait() { o.calls.Wait() }
+
 // Orchestrator is one adaptive run. Construct it with [New]; everything below
 // mu is written by the loop and read by whoever is watching.
 type Orchestrator struct {
+	calls   sync.WaitGroup
 	goal    string
 	planner Planner
 	// plannerModel is the word [Options.Planner] carried in, republished on

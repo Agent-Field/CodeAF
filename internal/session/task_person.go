@@ -121,6 +121,12 @@ func (a *Agent) StartTask(ctx context.Context, brief string) (uint64, string, st
 		title: title, named: strings.TrimSpace(shaped.Title) != "",
 		summary: firstLine(brief), request: brief, origin: a.taskOriginRef(), brief: work,
 		acceptance: acceptance, where: shaped.Where, model: a.resolveTaskModel("").model,
+		// AND WHAT WAS SAID AROUND IT, from the one compiler every door uses
+		// (admission.go). A typed task is the door where the person has most
+		// often already settled something in the conversation above it — the
+		// folder, the format, the thing not to touch — and their command names
+		// none of it.
+		admission: a.admissionContext(),
 	}
 	// AND WHERE THE WORK STANDS (taskstands.go). A typed task gets the same
 	// ladder a proposal gets, because a person who opened aforge in their home

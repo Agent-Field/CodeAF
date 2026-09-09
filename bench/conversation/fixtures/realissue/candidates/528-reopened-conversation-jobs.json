@@ -1,0 +1,109 @@
+{
+  "schema": 2,
+  "id": "528-reopened-conversation-jobs",
+  "task_kind": "bug-existing-api",
+  "readiness": "grader-calibrated",
+  "campaign_ready": false,
+  "why_this_issue": "A person reopens yesterday's conversation and the only door to the job log is gone. It is the one candidate whose held-out test has been seen to point both ways — and it is TWELVE lines of repair in one file, so it calibrates the grader and stands for nothing about harder work.",
+  "provenance": {
+    "repo": "Agent-Field/aforge-v2",
+    "visibility": "private",
+    "language": "go",
+    "issue": 528,
+    "issue_url": "https://github.com/Agent-Field/aforge-v2/issues/528",
+    "issue_reported_at": "2026-09-03",
+    "issue_title": "chat: a reopened conversation draws none of the jobs it ran, and the job page becomes unreachable",
+    "fix_pr": 529,
+    "base_commit": "c300b6eb208397e9e8a61144899c619716d5aa1b",
+    "fix_commit": "5765033e07d0de5cf9568acaef2e7348d48ceb20",
+    "base_rule": "the first parent of the squash commit the fixing pull request left on dev",
+    "collected": "gh read-only plus this clone's object store; no field is guessed"
+  },
+  "workspace": {
+    "export": "git-archive",
+    "carries_git_history": false,
+    "at": "provenance.base_commit",
+    "notes": ""
+  },
+  "prompt": {
+    "verbatim": false,
+    "text": "You are handed a report from the person who hit this. Reproduce it, find the cause, and fix the source. Do not change any test to agree with the code.\n\n# chat: a reopened conversation draws none of the jobs it ran, and the job page becomes unreachable\n\n## What happened\n\n2026-09-03, base `dev@f38d6c01a`.\n\nA conversation that ran background jobs yesterday draws **none of them** when it is\nreopened. The column beside the transcript has no `jobs` section at all — not an empty\none, not a `0 jobs`, nothing — and because that section is the **only** door to a job's\npage (there is no `/jobs` command and no key that opens one), the log of the work is no\nlonger reachable from the conversation that produced it. That is precisely the morning\nwhen the log is the only thing left.\n\nThe manual already documents the behaviour that does not happen —\n`internal/manual/chat/tasks.md` says *\"Coming back, or reopening it, redraws the jobs it\nran, settled\"* and *\"the `jobs` section redraws the jobs this conversation started,\nsettled\"*.\n\n## Replication\n\n**Deterministic (no model).** Everything here is in the repository; no key is needed\nbeyond a string the surface will accept, because nothing is ever sent.\n\n1. `make build && make demo-home DEMO_HOME=/tmp/aforge-demo` — quit the surface it opens.\n2. Pick any conversation folder in that home, e.g.\n   `$(find /tmp/aforge-demo/.aforge/v3/projects -name transcript.jsonl -printf '%h\\n' | head -1)`,\n   and write a task checkpoint beside the transcript — this is exactly the shape\n   `internal/session`'s `taskDocument`/`runRecord` writes for a background job that was\n   still going when aforge closed:\n\n   ```json\n   {\"type\":\"tasks\",\"version\":1,\"seq\":40,\n    \"nodes\":[],\n    \"runs\":[\n     {\"id\":31,\"title\":\"npm run dev\",\"kind\":\"job\",\"state\":\"failed\",\"stopped\":true,\n      \"report\":\"job 1 · log <that folder>/logs/jobs/1.log\",\"elapsed_ms\":2280000},\n     {\"id\":32,\"title\":\"make check\",\"kind\":\"job\",\"state\":\"done\",\n      \"report\":\"job 2 · log <that folder>/logs/jobs/2.log\",\"elapsed_ms\":540000}\n    ]}\n   ```\n\n   as `tasks.json` in that folder, and put any two files at those two log paths.\n3. `cd /tmp/aforge-demo/aforge-v2 && HOME=/tmp/aforge-demo OPENROUTER_API_KEY=sk-or-v1-demo <repo>/bin/aforge`,\n   then press enter on the top card to open that conversation.\n\n**What a developer sees today**, in the column: `standing` and its three rows, and then\nnothing. No `jobs` line.\n\n```\n│ standing\n│ ◦ the morning sweep\n│ ? CI on master\n│ ◦ the public API\n│ + /standing\n│\n```\n\n**What they should see** is the section, and the two rows under it when it is opened:\n\n```\n│ ▾ jobs · 2 ran\n│   make check        2 · done\n│   npm run dev    1 · stopped\n```\n\n**Field (real models, needs `OPENROUTER_API_KEY`).** In an ordinary conversation, ask for\nsomething to be run in the background — a dev server, a long build — so the model calls\n`bash` with `background:true` and the row appears in the `jobs` section. Quit with\n`ctrl+c` twice. Reopen the same conversation (`aforge resume`, or picking it off home).\nThe section is gone. A few cents, under a minute.\n",
+    "sha256": "809f629acc225a6d91ca1d3c06e2a69e0659ae39621d4653bbb2025b7feda850",
+    "derivation": {
+      "kept_sections": [
+        "What happened",
+        "Replication"
+      ],
+      "dropped_sections": [
+        "Where",
+        "The fix",
+        "Acceptance"
+      ],
+      "dropped_paragraphs": {
+        "jobrow\\.go`'s own header": 1,
+        "RECORD-ROW SEAM": 1,
+        "replay site says the same thing": 1,
+        "A BACKGROUND JOB GOES OUT ON ITS OWN LANE": 1,
+        "The surface is the half that is missing": 1
+      },
+      "rule": "ATX sections kept by heading allowlist (symptom, reproduction, stated law); diagnosis, fix and acceptance sections dropped whole",
+      "source_sha256": "20545241c6951388738d9f1cea6d486eec748291a7a1091041e47eaefeef65f4",
+      "source_url": "https://github.com/Agent-Field/aforge-v2/issues/528",
+      "curated_at": "2026-09-05",
+      "curated_by": "bench/conversation/fixtures/realissue/curate.py",
+      "source": "the issue body as fetched with gh on 2026-09-05"
+    }
+  },
+  "acceptance": {
+    "kind": "held-out-test",
+    "held_out_paths": [
+      "internal/tui3/jobsreopen_test.go"
+    ],
+    "held_out_from": "provenance.fix_commit",
+    "fix_paths": [
+      "internal/tui3/task.go"
+    ],
+    "guarded_paths": [],
+    "guards_note": "the acceptance command runs only the held-out cases, which are copied in after the harness has stopped; no file in the workspace is an instrument, so nothing is guarded. A regression run over the rest of the package is not in v1.",
+    "command": "go test ./internal/tui3/ -run 'TestAReopenedConversationStillShowsItsJobs|TestAJobReplayedOnTheStandingLaneOpensItsPage' -count=1",
+    "run": "after the harness has stopped, from outside the workspace"
+  },
+  "arms": [
+    "aforge",
+    "pi",
+    "omp"
+  ],
+  "doors": {
+    "print": [
+      "aforge",
+      "pi",
+      "omp"
+    ],
+    "interactive": [
+      "aforge",
+      "pi",
+      "omp"
+    ]
+  },
+  "model_pin": "deepseek/deepseek-v4-flash-0731",
+  "calibration": {
+    "fails_at_base": {
+      "command": "git archive <base_commit> | tar -x -C w; git show <fix_commit>:internal/tui3/jobsreopen_test.go > w/internal/tui3/jobsreopen_test.go; cd w && GOPROXY=off GOFLAGS=-mod=mod go test ./internal/tui3/ -run 'TestAReopenedConversationStillShowsItsJobs|TestAJobReplayedOnTheStandingLaneOpensItsPage' -count=1",
+      "observed_at": "2026-09-05",
+      "exit_code": 1,
+      "build_ok": true,
+      "verification": "manual-recorded",
+      "output_sha256": "ae7c1732e7d4541b8083b65f27e91f5071208630cc61af47888b7bc362ee5292",
+      "result": "2 behavioural failures: the standing lane replayed 3 jobs and the window kept 0; a replayed job could not be looked up by its number"
+    },
+    "passes_on_fix": {
+      "command": "git archive <fix_commit> | tar -x -C w; cd w && GOPROXY=off GOFLAGS=-mod=mod go test ./internal/tui3/ -run 'TestAReopenedConversationStillShowsItsJobs|TestAJobReplayedOnTheStandingLaneOpensItsPage' -count=1",
+      "observed_at": "2026-09-05",
+      "exit_code": 0,
+      "build_ok": true,
+      "verification": "manual-recorded",
+      "output_sha256": "adf250066075d5ef95b83703a3e53e33dbaab43ca3f1e396694b0866c666656b",
+      "result": "ok github.com/Agent-Field/aforge-v2/internal/tui3 0.628s"
+    }
+  }
+}

@@ -146,6 +146,9 @@ func InstallLaneProber(c *Client, waiting lanes.ProbeGate) bool {
 		return false
 	}
 	gate := func(model string) bool {
+		if c.connectionWaiting() {
+			return false
+		}
 		if c.routing() == RoutingOff {
 			// A session that asked not to be steered is not measured either,
 			// and it is certainly not billed for a measurement.
@@ -236,7 +239,7 @@ func (c *Client) ProbeLanes(ctx context.Context, model string) {
 	// probe IS a request whose whole body is a `provider.only`, so a base that
 	// has said it will not carry one has nothing to buy. The frontier below is
 	// the other floor: a base with no lanes names none, and none are probed.
-	if c == nil || !c.carriesPreferences() {
+	if c == nil || !c.carriesPreferences() || c.connectionWaiting() {
 		return
 	}
 	model = strings.TrimSpace(model)

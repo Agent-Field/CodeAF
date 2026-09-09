@@ -184,6 +184,7 @@ func (a *app) adoptFarTaskRows(rows []session.TaskIndexEntry) {
 		if node == nil {
 			node = &taskNode{id: id, ident: identFor(id), met: row.EndedAt}
 			a.tasks[id] = node
+			a.takeTypedTaskBrief(node)
 			a.taskOrder = append(a.taskOrder, id)
 		}
 		node.label = firstNonEmpty(strings.TrimSpace(row.Title), strings.TrimSpace(row.Label))
@@ -389,39 +390,46 @@ func mentionMark(ascii bool) string {
 // taskStatusGlyph is the node's state in one cell, from the vocabulary the rail
 // already spends (task.go) so that a person who has watched a task run
 // recognizes it here.
+//
+// The menu has no liveness to ask: it draws the index alone, so a row claiming
+// to be running is taken at its word rather than guessed at. The surfaces that
+// do have the answer draw the quieter cell.
 func taskStatusGlyph(entry session.TaskIndexEntry, ascii bool) string {
-	switch entry.Status {
-	case string(session.TaskRunning):
+	status := session.ProjectTask(entry.StatusFacts(true))
+	switch status.Presence {
+	case session.TaskPresenceWorking, session.TaskPresenceWaiting, session.TaskPresenceFinishing:
 		if ascii {
 			return glyphRunningASCII
 		}
 		return glyphRunning
-	case string(session.TaskQueued):
+	case session.TaskPresenceQueued:
 		if ascii {
 			return glyphQueuedASCII
 		}
 		return glyphQueued
-	case string(session.TaskFailed):
-		if refused(entry.Ending) {
+	case session.TaskPresenceIncomplete:
+		if !status.Fault {
 			return glyphHalted
 		}
 		if ascii {
 			return glyphBadASCII
 		}
 		return glyphBad
-	case string(session.TaskUnverified):
-		// THE TICK IS NOT THE DEFAULT ANSWER TO "WHAT ELSE IS THERE". An
-		// unverified row would otherwise fall through below and wear the one
-		// success glyph this surface has, which is the single place a person
-		// picking a task by recognition could be told that work nobody could
-		// judge came home (task.go's [glyphUnverified]).
-		return glyphUnverified
-	default:
+	case session.TaskPresenceStopped:
 		if ascii {
-			return glyphDoneASCII
+			return glyphStoppedASCII
 		}
-		return glyphDone
+		return glyphStopped
+	case session.TaskPresenceNeedsLook:
+		// The tick is not the default answer to "what else is there": work nobody
+		// could judge would otherwise wear this surface's one success glyph
+		// (task.go's [glyphUnverified]).
+		return glyphUnverified
 	}
+	if ascii {
+		return glyphDoneASCII
+	}
+	return glyphDone
 }
 
 // taskNoteWord is the age on the right: how long a live task has been going,

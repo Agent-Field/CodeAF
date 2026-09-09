@@ -105,6 +105,8 @@ func callNode(ctx context.Context) string {
 // is the only way the completed record at the end can say the call took three
 // attempts and taught the adapter two things on the way.
 type callTrace struct {
+	// connectionRecovered excludes a locally interrupted call from provider timing.
+	connectionRecovered bool
 	// attempts is how many times the transport actually put this call on the
 	// wire, across every retry and every repaired shape.
 	attempts int

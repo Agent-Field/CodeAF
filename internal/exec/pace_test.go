@@ -59,15 +59,33 @@ func TestWallDurationTextUsesTimeoutSpelling(t *testing.T) {
 
 func TestTheLeafIsPacedAgainstItsWallBeforeTheLandingReserve(t *testing.T) {
 	space := workspace(t)
+	// TWO SCRIPTED CALLS, AND THE SECOND ONE NEVER RETURNS. The fixture's clock
+	// is derived from the constants under test rather than written out as fixed
+	// numbers, and its shape is what keeps it honest on a busy host.
+	//
+	// A leaf that enters its landing swaps its turn context for a clock worth
+	// the reserve — a tenth of the wall — and that clock is the budget for the
+	// WHOLE landing, not for one call of it. So a scripted delay still pending
+	// when the landing begins is guillotined, and a cut landing call is a
+	// returned error by law rather than a landing. A script that walks the
+	// clock forward in several delayed steps therefore has a boundary before
+	// every one of them where a slow host can order the landing early, and it
+	// only takes one.
+	//
+	// This script has exactly one such boundary. The first call crosses the
+	// pacing point with the reserve to spare, which buys the clock reading; the
+	// second is longer than the whole wall, so it is always cut by the lease
+	// with the landing not yet started, which is the arm that hands the leaf its
+	// reserve and its landing instruction. The one thing a slow host could still
+	// break is the first call overrunning by the whole distance between the
+	// pacing point and the landing point — here 3.5s inside a single call.
+	wall := 10 * time.Second
+	reserve := deadlineLandingReserve(wall)
 	client := &scriptedCompleter{
-		turns: [][]ai.ToolCall{
-			{call("first", "sh", `{"cmd":"printf first"}`)},
-			{call("second", "sh", `{"cmd":"printf second"}`)},
-			{call("third", "sh", `{"cmd":"printf third"}`)},
-		},
-		delays: []time.Duration{5100 * time.Millisecond, 1800 * time.Millisecond, 2600 * time.Millisecond},
+		turns:  distinctReadTurns(2),
+		delays: []time.Duration{time.Duration(float64(wall)*wallPaceAt) + reserve/2, wall},
 	}
-	linear := NewLinear(client, space, nil, 10, 1_000_000, 10*time.Second)
+	linear := NewLinear(client, space, nil, 20, 1_000_000, wall)
 	if _, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "work"}); err != nil {
 		t.Fatal(err)
 	}

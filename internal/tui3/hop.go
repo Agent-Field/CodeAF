@@ -66,24 +66,11 @@ import (
 // [switcherLine]) — because a person who has read home once should not have to
 // learn a second list.
 //
-// ── QUICK SWITCHING — the press is the switch ───────────────────────────────
-//
-// By default ([config.DefaultQuickSwitch]) the chord does not open a menu: it
-// SWITCHES, on the spot, the way a browser's ctrl+tab does — and the card is a
-// receipt over the conversation just landed in, fading on its own after
-// [hopSettle]. Pressing again keeps going round the ring; `esc` takes the whole
-// burst back; touching any other key converts the receipt into the browsing
-// card, which holds still and waits for `enter`, because that person has stopped
-// switching and started reading. The setting turns the chord back into a menu.
-//
-// IT COMMITS ON THE PRESS AND NEVER ON A RELEASE, and that is a law rather than
-// a shortcut. Windows commits alt+tab when the modifier comes up, but a key
-// RELEASE only exists on terminals speaking the kitty keyboard protocol with
-// flags this surface deliberately does not request (app.go's enhancements arm
-// states the ruling) — a gesture built on one would work at the desk and die
-// inside tmux. Chrome commits ctrl+tab eagerly on every press and nobody can
-// feel the difference, because there is no difference to feel: by the time a
-// release could have been heard, you are already there.
+// Ctrl+k is a browsing gesture: highlight first, Enter or a click to open.
+// A pause must never dismiss the list while somebody is reading its titles.
+// The optional quick-switch setting applies only to the terminal's distinct
+// ctrl+tab chord. Modifier releases are not delivered by ordinary terminals,
+// so neither gesture guesses that silence means a key was released.
 
 // hopOpenKey is the key that opens the switcher, and it is `ctrl+k` for four
 // reasons stated in the order they were weighed:
@@ -127,13 +114,20 @@ const (
 	hopShutKey = "left"
 )
 
-// hopAwayKey closes a conversation from the card. It is `ctrl+w`, which is the
-// key the grooming drew and the key every browser and editor closes a tab with.
+// hopAwayKey DISMISSES a conversation from the card. It is `ctrl+w`, which is
+// the key the grooming drew and the key every browser and editor closes a tab
+// with — and it now does what that key does everywhere else: it takes the view
+// away and leaves the work alone.
 //
-// IT MEANS SOMETHING ELSE IN THE MESSAGE BOX — delete the word behind the caret
-// (input.go) — and that is not a collision: the card has taken the whole
-// keyboard while it is up, and there is no caret on it to delete a word behind.
-// The manual's page about chords that mean more than one thing carries the pair.
+// IT USED TO END THE CONVERSATION, agent and all, with a two-press arm in front
+// of it when something was running. That was the wrong act under this spelling.
+// A person pressing the tab-close key is putting a row away, not ending an hour
+// of work, and a key that quietly did the second while looking like the first is
+// exactly the shape the arm existed to apologise for. Ending work is `Stop` on a
+// task's own page, and ending the program is `/quit`.
+//
+// Outside the switcher, the same chord closes the current tab. Modal search
+// fields retain their word-delete edit while they own the keyboard.
 const hopAwayKey = chordCtrlWord + "w"
 
 // hopAlias and hopBackAlias are the muscle memory, bound ONLY where the terminal
@@ -212,6 +206,9 @@ type hopRow struct {
 // hopCard is the whole of the switcher's state. The zero value is closed.
 type hopCard struct {
 	open bool
+	// Pointer targets are recorded by the same layout that draws the card.
+	spots                             []hopSpot
+	originY, left, right, top, bottom int
 	// at is the cursor, an index into rows. It opens on ZERO, which is the most
 	// recently open conversation behind this one — the same place `tab` goes —
 	// so the commonest journey is `ctrl+k enter` and the second commonest is one
@@ -318,14 +315,32 @@ func (a *app) hopAvailable() bool {
 func (a *app) hopMayOpen() bool { return !a.composer.open && !a.copy.on }
 
 // hopOpen builds the reading and raises the card.
+// hopOpenAll is [app.hopOpen] with the fold already open: every conversation
+// this machine has, not only the ones this window is holding. It is what the
+// `Chats ▾` control at the right end of the tab row presses (chattabs.go) —
+// the label says every chat, so a list that showed three of somebody's twelve
+// would be the control lying about what it opens.
+func (a *app) hopOpenAll() {
+	rows, rest := a.hopReading(true)
+	if len(rows) < 2 && rest == 0 {
+		return
+	}
+	a.dropHover()
+	a.hop = hopCard{open: true, all: true, rows: rows, rest: rest, total: len(rows) + rest, at: hopFirstStop(rows), armed: -1, from: a.file}
+	a.touch()
+}
+
 func (a *app) hopOpen() {
-	rows, rest := a.hopReading(false)
+	// A shared engine handle can only have one open conversation. Show its
+	// other saved chats immediately; an open-only list would offer no choice.
+	rows, rest := a.hopReading(a.shared)
 	if len(rows) < 2 && rest == 0 {
 		// Nowhere to go. The guard above has already refused this, and this is
 		// the same refusal said where the rows are actually counted.
 		return
 	}
-	a.hop = hopCard{open: true, rows: rows, rest: rest, total: len(rows) + rest, at: hopFirstStop(rows), armed: -1, from: a.file}
+	a.dropHover()
+	a.hop = hopCard{open: true, all: a.shared, rows: rows, rest: rest, total: len(rows) + rest, at: hopFirstStop(rows), armed: -1, from: a.file}
 	a.touch()
 }
 
@@ -343,6 +358,7 @@ func (a *app) hopSpread(all bool) {
 	if all && a.hop.rest == 0 {
 		return
 	}
+	a.dropHover()
 	at := a.hop.at
 	rows, rest := a.hopReading(all)
 	a.hop.rows, a.hop.rest, a.hop.all, a.hop.armed, a.hop.say = rows, rest, all, -1, ""
@@ -381,6 +397,7 @@ func (a *app) hopClose() {
 	if a.hop.live {
 		a.hopSeal()
 	}
+	a.dropHover()
 	a.hop = hopCard{}
 	a.touch()
 }
@@ -541,18 +558,24 @@ func hopRestNote(row switcherRow) string {
 func (a *app) hopKept(held *kept, now time.Time) hopRow {
 	agent := held.conv.Agent
 	running := runningTasks(agent)
+	turning := held.watch != nil && (held.watch.turning.Load() || held.watch.jobbing.Load())
 	row := hopRow{
 		file:    held.conv.SessionFile,
 		title:   hopTitle(agent, held.side),
 		project: hopProject(held.conv.Place, held.conv.Workspace),
 		needs:   needsPerson(agent),
-		moving:  running > 0,
+		moving:  running > 0 || turning,
 		open:    true,
 	}
 	if held.side != nil {
 		row.age = sinceAt(held.side.since, now)
 	}
 	row.note = hopNote(row.needs, running, held.watch.landedSince())
+	// A reply can be working without having started any tasks. The watcher
+	// owns that fact, and Chats must keep hidden running replies discoverable.
+	if turning && !row.needs && running == 0 {
+		row.note = tabSignalWord(tabWorking)
+	}
 	return row
 }
 
@@ -590,6 +613,14 @@ func (a *app) hopFront(now time.Time) hopRow {
 // to a person as the name of their conversation would be worse than saying
 // plainly that it has no name yet.
 func hopTitle(agent Agent, side *aside) string {
+	if title := hopRawTitle(agent, side); title != "" {
+		return readableName(title)
+	}
+	return hopNewWord
+}
+
+// Tabs and the wider switcher share title lookup, with their own empty labels.
+func hopRawTitle(agent Agent, side *aside) string {
 	title := ""
 	if agent != nil {
 		title = strings.TrimSpace(agent.Title())
@@ -597,10 +628,7 @@ func hopTitle(agent Agent, side *aside) string {
 	if title == "" && side != nil {
 		title = strings.TrimSpace(side.title)
 	}
-	if title == "" {
-		return hopNewWord
-	}
-	return readableName(title)
+	return title
 }
 
 // hopNewWord is a conversation nothing has been said in yet. It is the phrase
@@ -703,7 +731,7 @@ func (a *app) hopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			// alt+shift+tab has selected first on every desktop since Windows 3.
 			a.hop.at = hopLastStop(a.hop.rows)
 		}
-		if at := a.hop.at; a.hopQuick && at < len(a.hop.rows) && a.hop.rows[at].open && !a.hop.rows[at].here {
+		if at := a.hop.at; a.hopQuick && (key == hopAlias || key == hopBackAlias) && at < len(a.hop.rows) && a.hop.rows[at].open && !a.hop.rows[at].here {
 			// QUICK SWITCHING: the press IS the switch. The card stays up as a
 			// receipt and fades on its own; there is nothing to commit, because
 			// it already happened. A card with no open row to slide to — one
@@ -715,6 +743,9 @@ func (a *app) hopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		return nil, true
 	}
+	// A delayed sweep must not repaint the old pointer after keyboard navigation.
+	a.ptr.have = false
+	a.dropHover()
 	if key == "ctrl+c" {
 		// Put away, and the key goes on to mean what it always means.
 		a.hopClose()
@@ -730,6 +761,9 @@ func (a *app) hopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// other key is the person changing what they are doing — looking, folding,
 	// closing — and the card converts to the browsing one, which moves without
 	// switching and never fades out from under a reader.
+	if key == hopOpenKey || key == hopBackKey {
+		a.hop.live = false
+	}
 	switch {
 	case a.hopOpens(key):
 		a.hopWalk(1)
@@ -903,7 +937,11 @@ func (a *app) hopWalk(by int) {
 // the card and does nothing else — [app.bringForward] answers the same way for
 // the same reason, and doing it here as well means the card never depends on
 // that agreement holding.
-func (a *app) hopTake() tea.Cmd {
+func (a *app) hopTake() (cmd tea.Cmd) {
+	if a.startingChat() {
+		back := a.parkChatStart()
+		defer func() { cmd = tea.Batch(back, cmd) }()
+	}
 	if a.hop.at < 0 || a.hop.at >= len(a.hop.rows) {
 		a.hopClose()
 		return nil
@@ -987,7 +1025,7 @@ const (
 	// visible past both edges, which is what says the page is still there.
 	hopSideInset = 6
 	// hopPad is the air inside the box, between its border and its rows.
-	hopPad = 2
+	hopPad = 3
 	// The fixed columns, in cells.
 	hopGlyphCol   = 2
 	hopSubjectCol = 34
@@ -1027,6 +1065,8 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 	if !a.hopShowing() || width < 12 || height < 5 {
 		return nil
 	}
+	pal, ground := pal.hopSurfacePalette()
+	surface := func(s string, width int) string { return pal.background(s, width, ground) }
 	inner := width - 2
 	room := inner - 2*hopPad
 	pad := strings.Repeat(" ", hopPad)
@@ -1034,40 +1074,108 @@ func (a *app) hopCardLines(width, height int, pal palette) []string {
 	// rule, a seam, a connector). An accent border would be the box announcing
 	// itself, and what has to be read here is the list inside it.
 	edge := func(left, fill, right string) string {
-		return pal.dim(left + strings.Repeat(fill, inner) + right)
+		return surface(pal.dim(left+strings.Repeat(fill, inner)+right), width)
 	}
 	// The rows a person reads are laid out at `room` and then set inside the
 	// borders whole, so the band on the cursor's row covers the padding too —
 	// which is what makes it read as a row of the card rather than a highlight
 	// floating inside one.
-	inside := func(line string, band bool) string {
+	inside := func(line string, band, hovered bool) string {
 		line = fit(line, room)
 		if w := room - ansi.StringWidth(line); w > 0 {
 			line += strings.Repeat(" ", w)
 		}
-		body := pad + line + pad
+		left := pad
 		if band {
-			body = pal.cursor(body, inner)
+			// Selection remains a position even when the terminal has no color.
+			left = pal.ink(">") + pad[1:]
 		}
-		return pal.dim(box.v) + body + pal.dim(box.v)
+		if hovered {
+			// Hover and selection keep separate cells, so reading another row does
+			// not pretend that Enter has changed its destination. The last padding
+			// cell stays blank so neither marker touches the row number.
+			mark := "·"
+			if pal.ascii {
+				mark = "."
+			}
+			left = ansi.Cut(left, 0, 1) + pal.accent(mark) + pad[2:]
+		}
+		body := left + line + pad
+		switch {
+		case band:
+			body = pal.selected(body, inner)
+		case hovered:
+			body = pal.cursor(body, inner)
+		default:
+			body = surface(body, inner)
+		}
+		return surface(pal.dim(box.v), 1) + body + surface(pal.dim(box.v), 1)
 	}
 
-	lines := []string{edge(box.tl, box.h, box.tr), inside(a.hopHead(room, pal), false), inside("", false)}
-	// The frame's own rows — two borders and whatever foot the card owes — are
-	// taken off the top before a single conversation is drawn, so the last thing
-	// dropped is never the way out.
-	foot := 1
-	if a.hop.rest > 0 || a.hop.say != "" {
+	a.hop.spots = nil
+	// Roomy cards breathe inside the outline. On a short terminal this air
+	// yields first, preserving a visible selected row and the ways out.
+	verticalPad := 0
+	if height >= 9 {
+		verticalPad = 1
+	}
+	lines := []string{edge(box.tl, box.h, box.tr)}
+	if verticalPad > 0 {
+		lines = append(lines, inside("", false, false))
+	}
+	lines = append(lines, inside(a.hopHead(room, pal), false, false), inside("", false, false))
+	footWord := a.hopFoot()
+	foot := 1 + verticalPad
+	if footWord != "" {
 		foot++
 	}
-	for at, row := range a.hop.rows {
-		if len(lines)+foot >= height {
-			break
+	// The selected title gets its own reading space when columns abbreviate it.
+	// It explains the highlighted choice without switching the chat beneath it.
+	var preview []string
+	if a.hop.at >= 0 && a.hop.at < len(a.hop.rows) {
+		title := a.hop.rows[a.hop.at].title
+		if ansi.StringWidth(title) > min(hopSubjectCol, room-hopGlyphCol-2) {
+			preview = railWrap(title, room)
+			maxLines := min(3, max(0, height-len(lines)-foot-2))
+			if len(preview) > maxLines {
+				preview = preview[:maxLines]
+				if maxLines > 0 {
+					preview[maxLines-1] = glyphMore + " " + ansi.Cut(title, max(0, ansi.StringWidth(title)-room+2), ansi.StringWidth(title))
+				}
+			}
 		}
-		lines = append(lines, inside(hopLine(row, at, at == a.hop.at, room, pal), at == a.hop.at))
 	}
-	if word := a.hopFoot(); word != "" && len(lines)+1 < height {
-		lines = append(lines, inside(pal.dim(fit(word, room)), false))
+	previewHeight := len(preview)
+	if previewHeight > 0 {
+		previewHeight++
+	}
+	available := max(1, height-len(lines)-foot-previewHeight)
+	start := max(0, a.hop.at-available+1)
+	end := min(len(a.hop.rows), start+available)
+	for at := start; at < end; at++ {
+		a.hop.spots = append(a.hop.spots, hopSpot{row: len(lines), at: at})
+		hovered := a.hot.kind == hoverHop && a.hot.index == at
+		lines = append(lines, inside(hopLine(a.hop.rows[at], at, at == a.hop.at, hovered, room, pal), at == a.hop.at, hovered))
+	}
+	if len(preview) > 0 {
+		lines = append(lines, inside("", false, false))
+		for _, line := range preview {
+			lines = append(lines, inside(pal.ink(line), false, false))
+		}
+	}
+	if footWord != "" && len(lines)+1+verticalPad < height {
+		hovered := a.hop.say == "" && a.hot.kind == hoverHop && a.hot.index == -1
+		if a.hop.say == "" {
+			a.hop.spots = append(a.hop.spots, hopSpot{row: len(lines), at: -1})
+		}
+		ink := pal.dim
+		if hovered {
+			ink = pal.ink
+		}
+		lines = append(lines, inside(ink(fit(footWord, room)), false, hovered))
+	}
+	if verticalPad > 0 {
+		lines = append(lines, inside("", false, false))
 	}
 	return append(lines, edge(box.bl, box.h, box.br))
 }
@@ -1134,7 +1242,7 @@ func (a *app) hopHead(width int, pal palette) string {
 const hopOpenWord = "open"
 
 // hopClauses are the keys the card owns, in the order a person meets them.
-var hopClauses = []string{"tab down", "shift+tab up", "enter go", hopAwayKey + " put away", "esc back"}
+var hopClauses = []string{"enter open", "esc cancel", "↑↓ choose", hopAwayKey + " put away"}
 
 // hopFootWords is the foot of the FRAME while the card is up — the same clauses
 // from the same list, so a person reading the bottom of the screen and a person
@@ -1142,7 +1250,7 @@ var hopClauses = []string{"tab down", "shift+tab up", "enter go", hopAwayKey + "
 var hopFootWords = strings.Join(hopClauses, " · ")
 
 // hopLine is one conversation, in five fixed columns.
-func hopLine(row hopRow, at int, sel bool, width int, pal palette) string {
+func hopLine(row hopRow, at int, sel, hovered bool, width int, pal palette) string {
 	glyph, glyphInk := tokens.GlyphQueued, pal.dim
 	switch {
 	case row.needs:
@@ -1188,6 +1296,9 @@ func hopLine(row hopRow, at int, sel bool, width int, pal palette) string {
 	name := pal.narr(fitPad(row.title, subject))
 	clause := pal.dim(fitPad(row.note, note))
 	if row.needs || row.moving {
+		name, clause = pal.ink(fitPad(row.title, subject)), pal.narr(fitPad(row.note, note))
+	}
+	if hovered {
 		name, clause = pal.ink(fitPad(row.title, subject)), pal.narr(fitPad(row.note, note))
 	}
 	if sel {
@@ -1242,6 +1353,8 @@ func rightPad(s string, width int) string {
 // the same height it was before the key was pressed, and no place, room or
 // transcript has a single line about being underneath one.
 func (a *app) hopOver(body []string, width int, pal palette) []string {
+	a.hop.spots = nil
+	a.hop.left, a.hop.right, a.hop.top, a.hop.bottom = 0, 0, 0, 0
 	room := width - 2*hopSideInset
 	if room < 24 {
 		// Too narrow for the inset. The box takes the width it can have rather
@@ -1267,6 +1380,8 @@ func (a *app) hopOver(body []string, width int, pal palette) []string {
 	if top+len(card) > len(out) {
 		top = len(out) - len(card)
 	}
+	a.hop.left, a.hop.right, a.hop.top = (width-room)/2, (width+room)/2, top+a.hop.originY
+	a.hop.bottom = a.hop.top + len(card)
 	pad := strings.Repeat(" ", (width-room)/2)
 	for i, line := range card {
 		out[top+i] = pad + line
@@ -1353,59 +1468,50 @@ func (a *app) countConversations() tea.Cmd {
 	}
 }
 
-// hopAway is `ctrl+w`: close the conversation under the cursor, in this terminal.
+// hopAway is `ctrl+w`: put the conversation under the cursor away — off the tab
+// row of this window, and nowhere else.
 //
-// CLOSING IS NOT SWITCHING AND THE CARD SAYS SO PLAINLY. The grooming called
-// this "put away without stopping it", and that sentence is not true of this
-// engine: closing a conversation closes its agent, and work it has running stops
-// with it — which is exactly what the quit door already warns about
-// (quitarm.go). So a conversation with nothing running closes on one press, and
-// one with work in it takes two, with the work named in between.
+// NOTHING IS CLOSED AND NOTHING IS INTERRUPTED. The agent goes on running, the
+// unsent sentence in its box is kept, the transcript is untouched, and the row
+// stays on this very card — which is what makes the gesture safe to repeat and
+// safe to undo: `enter` on the same row brings the conversation, its tab and its
+// draft straight back (chattabs.go's [app.tabDismiss] holds the whole of the
+// law, including where the person lands when the row they dismissed is the one
+// on screen).
 //
-// A ROW THAT IS NOT OPEN HAS NOTHING TO CLOSE, and says so rather than doing
-// nothing: it is below the fold precisely because this terminal is not holding
-// it.
+// SO THERE IS NO ARM AND NO WARNING, and their absence is the point. The two
+// presses existed because the first one used to end work; a gesture that ends
+// nothing is a gesture nobody needs protecting from.
+//
+// A ROW THAT IS NOT OPEN HERE HAS NO TAB TO PUT AWAY, and says so rather than
+// doing nothing: it is below the fold precisely because this terminal is not
+// holding it.
 func (a *app) hopAway() tea.Cmd {
 	if a.hop.at < 0 || a.hop.at >= len(a.hop.rows) {
 		return nil
 	}
 	row := a.hop.rows[a.hop.at]
-	if !row.open {
+	if !row.open && !tabsHold(a.chatTabs, a.convKey(row.file)) {
 		a.hop.say = hopNotOpenWord
 		a.touch()
 		return nil
 	}
-	if running := a.hopRunning(row); running > 0 && a.hop.armed != a.hop.at {
-		// THE ARM, WITH THE WORK NAMED. One keystroke that ends an hour of work
-		// is the shape stop.go's confirmation card exists to refuse.
-		a.hop.armed = a.hop.at
-		a.hop.say = itoa(running) + " " + plural("task", running) + " running · " + hopAwayKey + " again to close it anyway"
-		a.touch()
-		return nil
-	}
 	if row.here {
-		// THE ONE ON SCREEN IS THE KEEPER'S OWN DOOR, and it brings the next
-		// conversation forward as it goes (keeper.go's [app.closeFront]). The
-		// card comes down with it, because the screen underneath is about to be
-		// a different conversation.
+		// THE ONE ON SCREEN GOES THROUGH THE TAB ROW'S OWN DOOR, which either
+		// switches this window to another conversation it is holding or takes it
+		// home with this one still in front. The card comes down with it, because
+		// the screen underneath is about to be a different page.
 		a.hopClose()
-		cmd, ok := a.closeFront()
-		if !ok {
-			a.note(hopLastOneWord)
-		}
-		return cmd
+		return a.tabDismiss(chatTab{key: a.frontTabKey(), file: a.file, where: a.workspace, word: row.title})
 	}
-	a.closeKept(row.file)
-	// THE CARD STAYS UP AND RE-READS ITSELF. Closing is something a person does
-	// two or three of in a row, and a card that dropped after each one would make
-	// tidying up cost three openings.
+	a.tabShutKey(a.convKey(row.file))
+	// THE CARD STAYS UP AND RE-READS ITSELF. Putting conversations away is
+	// something a person does two or three of in a row, and a card that dropped
+	// after each one would make tidying up cost three openings.
 	rows, rest := a.hopReading(a.hop.all)
 	a.hop.rows, a.hop.rest, a.hop.armed = rows, rest, -1
 	a.hop.at = min(a.hop.at, max(0, len(rows)-1))
-	a.hop.say = hopClosedWord + " · " + row.title
-	if len(rows) < 2 && rest == 0 {
-		a.hopClose()
-	}
+	a.hop.say = hopAwayWord + " · " + row.title
 	a.touch()
 	return nil
 }
@@ -1429,5 +1535,48 @@ func (a *app) hopRunning(row hopRow) int {
 const (
 	hopNotOpenWord = "that one is not open here — enter opens it"
 	hopClosedWord  = "closed"
+	// hopAwayWord is what the card says after a tab has been put away, and it
+	// says what actually happened rather than "closed": the conversation is still
+	// running and still on this list, and a word claiming otherwise would be the
+	// surface reporting an act it did not perform.
+	hopAwayWord    = "tab closed"
 	hopLastOneWord = "that is the only conversation open — /quit closes aforge"
 )
+
+// The floating switcher owns the pointer as well as the keyboard. A miss on
+// its dimmed backdrop must not activate an invisible task or stop control.
+type hopSpot struct{ row, at int }
+
+// hopTarget shares the painted interior between clicks and hover. Borders,
+// headings, preview text and refusal messages offer no navigation target.
+func (a *app) hopTarget(x, y int) (int, bool) {
+	if x <= a.hop.left || x >= a.hop.right-1 {
+		return 0, false
+	}
+	for _, spot := range a.hop.spots {
+		if y == a.hop.top+spot.row {
+			return spot.at, true
+		}
+	}
+	return 0, false
+}
+
+func (a *app) hopPress(x, y int) tea.Cmd {
+	// The backdrop dismisses without delivering the press to the chat below.
+	if x < a.hop.left || x >= a.hop.right || y < a.hop.top || y >= a.hop.bottom {
+		return a.hopBack()
+	}
+	at, ok := a.hopTarget(x, y)
+	if !ok {
+		return nil
+	}
+	a.hop.live = false
+	if at < 0 {
+		if a.hop.say == "" {
+			a.hopSpread(!a.hop.all)
+		}
+		return nil
+	}
+	a.hop.at = at
+	return a.hopTake()
+}

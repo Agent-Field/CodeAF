@@ -580,7 +580,7 @@ func (a *app) compactionRuleWord() string {
 
 // deckTaskWord is the roster in one line: what is running, what is waiting, and
 // what needs a person. It is the "watch and queue counts" the deck's second row
-// has no cells for, and the roster is one ctrl+t away for the detail.
+// has no cells for, and the roster is one alt+t away for the detail.
 func (a *app) deckTaskWord() string {
 	members := a.railMembers()
 	var parts []string

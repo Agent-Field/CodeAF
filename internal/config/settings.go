@@ -247,6 +247,8 @@ const (
 	KeyHints = "ui.hints"
 	// KeyWork controls whether completed turn machinery starts folded or open.
 	KeyWork = "ui.work"
+	// KeyIcons selects the step icon repertoire independently of colour.
+	KeyIcons = "ui.icons"
 	// KeyTaskAudit is whether an independent auditor verifies each task node
 	// before its work may merge (internal/session's task_audit.go). It sits
 	// beside the guardian because both spend a model on the person's behalf:
@@ -620,6 +622,16 @@ const (
 )
 
 var WorkModes = []string{WorkFold, WorkOpen}
+
+// IconModes keeps the normal rich presentation and its compatibility floor
+// selectable without changing the terminal's colour or animation settings.
+const (
+	IconsAuto  = "auto"
+	IconsRich  = "rich"
+	IconsPlain = "plain"
+)
+
+var IconModes = []string{IconsAuto, IconsRich, IconsPlain}
 
 const DefaultWork = WorkFold
 
@@ -1230,12 +1242,8 @@ const (
 	// with no column on it (internal/tui3's taskstrip.go).
 	DefaultTaskColumn = true
 
-	// DefaultQuickSwitch makes the switcher's chord SWITCH rather than ask, on a
-	// profile that has never said otherwise. It is the behaviour every window
-	// manager and browser taught: the fast gesture is the default and nobody
-	// opts into it. The slower card is still one arrow key away — touching
-	// anything but the chord converts the fading card into the browsing one —
-	// so the default costs a careful reader nothing but `esc`.
+	// DefaultQuickSwitch controls immediate switching with ctrl+tab where the
+	// terminal can deliver it. Ctrl+k always browses before opening a chat.
 	DefaultQuickSwitch = true
 
 	// DefaultHints shows the v3 chat's tips to a profile that has never said
@@ -1643,7 +1651,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyEffort, Category: CategoryModels, Kind: SettingChoice,
 			Label: "thinking", Choices: EffortChoices,
-			Hint: "how hard the model thinks about your turns and the work you hand out. " +
+			Hint: "how hard the model thinks about your turns and the work you hand out. Auto leaves reasoning to the model. " +
 				"xhigh and max ask for a deeper pass than high, and cost the time they take. " +
 				"Standing items and their checks stay low whatever this says.",
 			read:  func() string { return EffortWord(DefaultEffortAt(dir)) },
@@ -1921,6 +1929,13 @@ func (s *Settings) build() []Setting {
 			Hint:  "fold rolls completed reasoning, calls, results, and intermediate text into one worked chip. open keeps that work visible. The change applies immediately.",
 			read:  func() string { return WorkAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyWork, raw, WorkModes) },
+		},
+		Setting{
+			Key: KeyIcons, Category: CategoryInterface, Kind: SettingChoice,
+			Label: "step icons", Choices: IconModes,
+			Hint:  "auto uses rich icons, with plain symbols on terminals that need them. rich requires a Nerd Font. Choose plain if your font shows empty boxes. The change applies immediately.",
+			read:  func() string { return IconsAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeyIcons, raw, IconModes) },
 		},
 		// Before the audit row, because it comes first in the life of a task: this
 		// says what STARTS when you type /task, the audit row says what has to be
@@ -2287,11 +2302,8 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyQuickSwitch, Category: CategoryInterface, Kind: SettingBool,
 			Label: "quick switch",
-			Hint: "whether ctrl+k switches conversations the moment it is pressed — press " +
-				"again to go further back, pause and the card fades, esc returns to where " +
-				"you started. Turned off, ctrl+k opens the card and waits for enter. Either " +
-				"way, touching the arrow keys holds the card open to look around without " +
-				"switching.",
+			Hint: "whether ctrl+tab switches immediately where the terminal sends it. " +
+				"Off, it waits for enter. Ctrl+k always browses before opening a chat.",
 			read:  func() string { return formatBool(QuickSwitchAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyQuickSwitch, raw) },
 		},
@@ -3305,6 +3317,20 @@ func WorkAt(profileDir string) string {
 		}
 	}
 	return DefaultWork
+}
+
+// IconsAt resolves the step icon preference. Unknown values use detection
+// rather than turning off the normal rich presentation.
+func IconsAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyIcons); ok {
+		value = strings.ToLower(strings.TrimSpace(value))
+		for _, mode := range IconModes {
+			if value == mode {
+				return value
+			}
+		}
+	}
+	return IconsAuto
 }
 
 // RoutingAt resolves the routing row to its word, default latency. An

@@ -380,10 +380,43 @@ func TestACutReadingKeepsTheChecksItNamed(t *testing.T) {
 		"#!/bin/sh\n"+
 			"echo 'ok 1 - opens after five failures'\n"+
 			"echo 'ok 2 - closes on a good probe'\n"+
+			"touch .checks-emitted\n"+
 			"sleep 30\n")
-	reading := photograph(context.Background(), root, Plan{},
-		[]Strategy{{Command: streaming, Read: FormatPlain, Scope: ScopeWhole}},
-		400*time.Millisecond)
+	// Cut only after the fixture has emitted its checks. A deadline measured
+	// from process launch can expire before the shell starts on a busy machine;
+	// that correctly yields no roster and never exercises partial preservation.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	finished := make(chan Reading, 1)
+	go func() {
+		finished <- photograph(ctx, root, Plan{},
+			[]Strategy{{Command: streaming, Read: FormatPlain, Scope: ScopeWhole}},
+			30*time.Second)
+	}()
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	waiting := true
+	for waiting {
+		select {
+		case <-tick.C:
+			if _, err := os.Stat(filepath.Join(root, ".checks-emitted")); err == nil {
+				waiting = false
+			}
+		case <-deadline.C:
+			t.Fatal("the fixture never emitted its checks")
+		case early := <-finished:
+			t.Fatalf("the fixture ended before the requested cut: %#v", early)
+		}
+	}
+	cancel()
+	var reading Reading
+	select {
+	case reading = <-finished:
+	case <-deadline.C:
+		t.Fatal("the reading did not settle after cancellation")
+	}
 	if !reading.Taken {
 		t.Fatalf("a reading that named two checks before its ceiling was thrown away: %q",
 			reading.Unread)

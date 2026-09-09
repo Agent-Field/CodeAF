@@ -54,6 +54,30 @@ const (
 	MethodPlacesSearch  = "Places.Search"  // SearchArgs → []store.ConversationHit
 	MethodPlacesArchive = "Places.Archive" // ArchiveArgs → nothing
 
+	// ── the folders a person attaches ───────────────────────────────────────
+	//
+	// THE PATH IS THE ENGINE MACHINE'S AND WAS ALWAYS GOING TO BE. A folder
+	// attached to a conversation is a folder the WORK can reach, and the work
+	// runs where the engine runs — so these two doors carry a path and the far
+	// end is the one that stats it, snaps it to its repository root and writes
+	// it down. That is not a concession to the remote case: the ordinary local
+	// launch goes through this same wire to this machine's own session host
+	// (cmd/aforge's chatv3_local.go), and before these methods existed the
+	// surface's picker asserted a door onto the agent, found a wire client that
+	// had none, and said `folder · <path>` over a conversation that had gained
+	// nothing.
+	//
+	// THERE IS NO METHOD FOR READING THEM, and that absence is the design. The
+	// set rides [session.Facts] and comes down unasked on every push
+	// (replica.go), because the folder indicator is drawn on a frame and a frame
+	// may not wait on a network. These two are INTENT — a person attaching, a
+	// person removing — which is exactly what still goes up.
+	MethodPlacesRefer = "Places.Refer" // ReferArgs → session.PlaceRef
+	// MethodPlacesRemove takes one folder back off the conversation. It carries
+	// the path and nothing else, and the engine refuses a path its conversation
+	// is not about rather than answering a silent nothing.
+	MethodPlacesRemove = "Places.Remove" // string (path) → nothing
+
 	// ── the memory doors ────────────────────────────────────────────────────
 	//
 	// THE MEMORY PLACE IS THE ONLY PLACE ON THIS SURFACE THAT WRITES, and that is
@@ -125,6 +149,16 @@ type SearchArgs struct {
 type ArchiveArgs struct {
 	Dir      string `json:"dir"`
 	Archived bool   `json:"archived"`
+}
+
+// ReferArgs is one folder, attached. The arrival travels because it is the whole
+// of the difference between the two roads onto a place — somebody's own act,
+// which never expires, and a ground the work resolved, which decays
+// (internal/session's places.go) — and an engine that assumed one of them would
+// be deciding what a person meant on the other end of a pipe.
+type ReferArgs struct {
+	Path    string               `json:"path"`
+	Arrival session.PlaceArrival `json:"arrival,omitempty"`
 }
 
 // MemoryChange is [MethodMemoryChanged]'s pair of figures. It is a struct

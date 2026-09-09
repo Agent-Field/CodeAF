@@ -137,6 +137,8 @@ type ledger struct {
 	rate   chains
 	think  chains
 	judged tallies
+	// workloads learns answer size separately from endpoint speed.
+	workloads map[string]workloadEstimate
 	// shifted names the pairs whose leaf a change point has just reset. It is
 	// read once and cleared, which is what makes it a piece of news rather than
 	// a state somebody has to remember to acknowledge.
@@ -303,6 +305,12 @@ func (l *ledger) readBack() {
 // than the evidence, once per beat, for ever.
 func (l *ledger) rebuild(held storeState, records []record, skipped int) {
 	l.beliefs = map[ID]Belief{}
+	l.workloads = make(map[string]workloadEstimate)
+	for _, row := range held.Workloads {
+		if row.valid() && len(l.workloads) < workloadLimit {
+			l.workloads[workloadKey(row.Model, row.Class)] = row
+		}
+	}
 	l.priors = map[ID]spread{}
 	for _, prior := range held.Priors {
 		prior.ID = prior.ID.key()
@@ -370,6 +378,8 @@ func (l *ledger) replay(entry record) {
 		l.primeRow(*entry.Row, entry.Weight)
 	case entry.Think != nil:
 		l.deliberated(*entry.Think)
+	case entry.Work != nil:
+		l.foldWorkload(*entry.Work)
 	}
 }
 
@@ -561,12 +571,13 @@ func Flush() {
 // snapshot is everything this ledger would have written down.
 func (l *ledger) snapshot() storeState {
 	return storeState{
-		Beliefs: l.held(),
-		Priors:  l.spreads(),
-		Wait:    l.wait,
-		Rate:    l.rate,
-		Think:   l.think,
-		Judged:  l.judged,
+		Beliefs:   l.held(),
+		Priors:    l.spreads(),
+		Wait:      l.wait,
+		Rate:      l.rate,
+		Think:     l.think,
+		Judged:    l.judged,
+		Workloads: l.heldWorkloads(),
 	}
 }
 

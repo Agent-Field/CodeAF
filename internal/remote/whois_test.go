@@ -8,6 +8,7 @@ package remote
 import (
 	"bufio"
 	"encoding/json"
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"io"
 	"net"
 	"strings"
@@ -44,6 +45,9 @@ func TestAHostSaysWhichBuildItIsBeforeAnybodySaysHello(t *testing.T) {
 	}
 	// THE ANSWERING SIDE FILLS IN ITS OWN PROTOCOL. A host that could be told
 	// what version to claim would be no answer at all.
+	if self.Build != buildinfo.Identity() {
+		t.Fatalf("host build = %q", self.Build)
+	}
 	if self.Version != Version {
 		t.Fatalf("the host said it speaks %d, want %d", self.Version, Version)
 	}

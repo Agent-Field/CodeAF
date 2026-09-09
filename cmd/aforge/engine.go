@@ -51,6 +51,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/enginehost"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
@@ -214,7 +215,7 @@ func clearStaleEngineHost(workspace string) error {
 		// Nothing answered at all: no host, or one that has stopped reading.
 		// Both are the ordinary road — Attach starts one.
 		return nil
-	case host.Version == remote.Version:
+	case host.Version == remote.Version && host.Build == buildinfo.Identity():
 		return nil
 	}
 	// Another build, and it is answering, so it can be asked to go.
@@ -346,11 +347,11 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	// asked for — but the session file's first line named the model the session
 	// was BORN on, which was the wrong one. Nobody on the screen could see the
 	// difference. The journal could, and the journal is the record.
-	launch, err := openV3Launch(proc, v3Options{
-		Workspace: workspace,
-		Model:     strings.TrimSpace(hello.Model),
-		Session:   firstEngineWord(hello.Session, sessionFlag),
-	})
+	// The hello's launch shape lands the same way, and for the same reason: the
+	// approval floor, the compaction posture and the one-model settlement are
+	// built INTO the session rather than switched on after it has opened
+	// ([engineLaunchOptions] holds the mapping).
+	launch, err := openV3Launch(proc, engineLaunchOptions(hello, workspace, sessionFlag))
 	if err != nil {
 		return nil, err
 	}
@@ -360,45 +361,40 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	cfg := launch.Config
 	cfg.AskConsent = true
 
-	// BUILDING A HARNESS IS STILL OFF OVER A CONNECTION, AND THE REASON HAS
-	// CHANGED. It used to be "the card would arrive in an empty room", and a
-	// persistent engine retired that sentence: a question raised with nobody
-	// attached now WAITS and is handed to the next surface that arrives
-	// (internal/remote's held.go). That is a real change and it is not enough
-	// here, because the design card never reaches this wire at all.
-	//
-	// THE DESIGN LANE IS A SUBSCRIPTION AND THIS PROTOCOL HAS NO DOOR FOR ONE.
-	// A design outlives the turn that asked for it, so its card is not emitted
-	// on any turn's stream — internal/session's emitHarness sends only to the
-	// watchers of [session.Agent.HarnessDesigns], which is a method
-	// [remote.WrappedAgent] does not carry and a remote handle does not have.
-	// Nothing crosses, so there is nothing to hold; the waiting room can only
-	// keep a question that arrived. A design started here would still run two
-	// model calls and end with a page nobody is ever shown.
-	//
-	// Nil is the honest way to say so rather than a special case: session.Config
-	// already states that A NIL STORE IS BUILDING OFF, on the same terms a nil
-	// RunHarness is detection off, so the designer simply is not among the
-	// things this conversation can do and the model says as much instead of
-	// starting work nobody will ever be shown. RUNNING a harness that already
-	// exists is untouched — that rides Harnesses and RunHarness, which the
-	// shared assembly still fills, and it works over a connection today. What
-	// would light this up is a wire door for the standing lanes, which is a lane
-	// of its own and not a line in this file.
-	cfg.HarnessStore = nil
+	// A HELLO THAT ASKED FOR A CONVERSATION OF ITS OWN GETS A SIBLING FOLDER,
+	// through the very pair [remote.Engine.Fresh] below is written from
+	// ([v3NextSession] then [v3PointAt]). The launch above resolved this
+	// workspace's LATEST conversation, which is the right answer for every other
+	// hello and the wrong one for this: a window opening a second chat beside the
+	// one it already has must not be handed the one it already has
+	// ([remote.Hello.New] holds the whole of why the two intentions are two
+	// flags).
+	if hello.New {
+		place, err := v3NextSession(cfg.Place, workspace)
+		if err != nil {
+			return nil, err
+		}
+		if cfg, err = v3PointAt(cfg, place); err != nil {
+			return nil, err
+		}
+	}
 
-	// AND FOR THE SAME REASON, cfg.HarnessCards IS LEFT FALSE — the one line on
-	// this list that is a silence rather than a statement. It is the door saying
-	// "a surface here holds the harness lane", and no surface here does; so chat
-	// is not given the verb that offers a saved program with an intake card
-	// (internal/session's canProposeSubharness), because that card travels the
-	// same subscription the design card does and reaches this wire no more than
-	// it does. Its answer would not fit either: ResolveSubharness is not on
-	// [remote.WrappedAgent], so even a card that crossed would be a key that
-	// pressed nothing — which is why internal/remote's held.go deliberately
-	// holds four kinds of question and not five.
-	// RUNNING a saved program is untouched: `/subharness` is a surface door, and
-	// the surface on the far end of this wire has no registry to open either.
+	// THE THREE ROAD-DEPENDENT CAPABILITIES ARE DECIDED IN ONE PLACE, and this
+	// door no longer keeps its own answer to any of them (chatv3_lanes.go). Each
+	// is on exactly when the wire carries its lane AND the answer that closes it,
+	// which internal/remote states about itself ([remote.StandingLanes]) rather
+	// than this file guessing.
+	//
+	// TODAY THAT IS: the designer and the intake cards ON — version 11 carries
+	// their subscription and both answers — and the ADAPTIVE RUNNER STILL OFF,
+	// because the run page needs three more doors and the run lane replays
+	// nothing, so a fuel gate raised while nobody was attached would be lost.
+	// internal/remote's lanes.go holds that list; nothing here restates it.
+	//
+	// RUNNING a harness or a saved program was never on this list: that rides
+	// Harnesses and RunHarness, properties of the machine that the shared
+	// assembly fills for every door.
+	cfg, open := v3Shape(cfg, v3LanesOverWire())
 
 	// AND THE AMBIENT SIDE IS ON, which is the one capability on this list that
 	// a connection does not take away. It arrives already filled, from the
@@ -422,23 +418,10 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	// A session that could leave nothing behind over --host would have made the
 	// ambient side a property of which terminal somebody happened to open.
 
-	// AN ADAPTIVE RUN IS OFF OVER A CONNECTION, for the same reason and by the
-	// same road, and its reason has been re-checked rather than inherited. A
-	// run's notes, its gauge and — the one that matters — its FUEL GATE all
-	// arrive on a standing subscription the surface opens on the agent
-	// (internal/session's Orchestrations, asserted by internal/tui3's runAgent),
-	// and a remote handle has no such method. The waiting room does not reach
-	// this one either: the gate's question is
-	// [session.EventOrchestratePause], answered through ResolveOrchestrate, and
-	// neither the event nor the answer has a door on this wire — so a question
-	// held for it would be one nobody could ever say yes to. A run started here
-	// would spend the person's money and stop at its cap in silence, four hours
-	// from now, with nothing on any screen. So this session is built by
-	// session.New rather than by
-	// [v3OpenSession]: nothing fills Config.OrchestrateRunner, which session
-	// already states is orchestration off, and the model is simply not handed the
-	// verb (its tools_harness.go).
-	agent, cfg, notice, err := openV3Agent(cfg, workspace, session.New)
+	// The builder came out of the shape above with the adaptive runner already
+	// decided: "runs are on" and "build it through [v3OpenSession]" are one fact
+	// (chatv3_lanes.go says why they cannot be two).
+	agent, cfg, notice, err := openV3Agent(cfg, workspace, open)
 	if err != nil {
 		return nil, err
 	}
@@ -451,10 +434,11 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		agent.SetReasoning(level)
 	}
 	transcript, resumed := launch.SessionFile, launch.Resumed
-	if notice != "" {
+	if notice != "" || hello.New {
 		// The session file moved under us, so the welcome has to name the new
 		// one — everything the surface prints about this conversation comes off
-		// that frame.
+		// that frame. A minted conversation is the same fact said on purpose: it
+		// was never the launch's file and it was never resumed.
 		transcript, resumed = cfg.SessionFile, false
 	}
 
@@ -466,6 +450,11 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		SessionFile: transcript,
 		Resumed:     resumed,
 		Note:        notice,
+		// The shape this conversation ended up with, for the surface to compare
+		// against what it asked for. It is the shape that was APPLIED, so a
+		// hello that joined a conversation somebody else opened reads the other
+		// person's shape here and can say so.
+		Launch: hello.Launch,
 		// Where a picture arriving on the wire lands: the engine's own session
 		// folder, the same answer the local launch assembly gives its session.
 		Place: cfg.Place,
@@ -493,7 +482,12 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			if err != nil {
 				return nil, "", err
 			}
-			replacement, err := session.New(fresh)
+			// THROUGH THE SAME BUILDER THE BOOT CONVERSATION WAS OPENED WITH, so
+			// a conversation started by /new over a connection is not a lesser
+			// one than the conversation it replaced: the adaptive runner is
+			// bound to the agent that is actually open, which is the whole of
+			// chatv3_orchestrate.go's late binding.
+			replacement, err := open(fresh)
 			if err != nil {
 				return nil, "", err
 			}
@@ -512,7 +506,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			// opening it creates it: a path nobody has written yet is a new
 			// conversation, and the surface says so on its first line.
 			_, statErr := os.Stat(path)
-			replacement, err := session.New(earlier)
+			replacement, err := open(earlier)
 			if err != nil {
 				// Returned unwrapped, the way the local picker returns it: a
 				// locked file's error names the file, and the surface prints
@@ -591,6 +585,36 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			return session.RecentSessions(launch.Bucket, v3RecentSessionSlots)
 		},
 	}, nil
+}
+
+// engineLaunchOptions is the hello, as the shared assembly takes it.
+//
+// A NIL SHAPE IS THE ENGINE'S DEFAULTS, which is what every remote surface
+// sends: --yolo and its neighbours are settings of the machine the session runs
+// on, and cmd/aforge refuses them over --host and --at by name. The local dial
+// is the one caller that fills it (chatv3_local.go).
+func engineLaunchOptions(hello remote.Hello, workspace, sessionFlag string) v3Options {
+	opts := v3Options{
+		Workspace: workspace,
+		Model:     strings.TrimSpace(hello.Model),
+		Session:   firstEngineWord(hello.Session, sessionFlag),
+	}
+	// A HELLO MINTING ITS OWN CONVERSATION NAMES NO TRANSCRIPT, and the host's
+	// --session flag is not an answer for it either: that flag says which
+	// conversation this daemon opens for a hello that did not choose, and this
+	// hello chose "another one". The launch resolves the workspace's latest
+	// anyway and [bootEngine] points the config at a sibling of it.
+	if hello.New {
+		opts.Session = ""
+	}
+	if shape := hello.Launch; shape != nil {
+		opts.Yolo = shape.Yolo
+		opts.NoCompact = shape.NoCompact
+		opts.OneModel = shape.OneModel
+		opts.Budget = chatBudget(shape.MaxHours, shape.MaxCost)
+		opts.Interactive = shape.Interactive
+	}
+	return opts
 }
 
 // engineProcess is the once-per-process half of a v3 launch, opened on the

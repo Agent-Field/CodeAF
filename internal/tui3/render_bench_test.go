@@ -78,6 +78,7 @@ func BenchmarkFrameStreaming(b *testing.B) {
 	for _, turns := range []int{4, 20} {
 		b.Run(fmt.Sprintf("turns=%d", turns), func(b *testing.B) {
 			a := benchApp(turns)
+			a.turn++ // Stream a new turn; the fixture's last turn is settled.
 			a.state = stateWorking
 			a.say(strings.Repeat("a paragraph of the reply so far. ", 60))
 			live := a.entries[a.live].text
@@ -127,6 +128,7 @@ func BenchmarkFrameStreamingPromoted(b *testing.B) {
 	for _, turns := range []int{4, 20} {
 		b.Run(fmt.Sprintf("turns=%d", turns), func(b *testing.B) {
 			a := benchApp(turns)
+			a.turn++ // Stream a new turn; late deltas belong to the settled answer.
 			a.state = stateWorking
 			// A prefix with the structure a real reply has — headings, a list, a
 			// fence — because the promoted half is rendered as markdown and flat
@@ -214,6 +216,7 @@ func BenchmarkAppendText(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				b.StopTimer()
 				a := benchApp(1)
+				a.turn++
 				a.state = stateWorking
 				b.StartTimer()
 				for d := 0; d < deltas; d++ {

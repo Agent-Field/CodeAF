@@ -469,7 +469,10 @@ func writeMeterSnapshot(meter *writeMeter) (int, map[string]bool) {
 // writeSeamAgent is [checkpointAgent] with the tools allowed to run, because
 // this file is about what a turn DOES to the disk and a prompt nobody answers
 // would leave it doing nothing.
-func writeSeamAgent(t *testing.T, completer Completer) (*Agent, string) {
+//
+// AND IT TAKES THE FIXTURE'S OWN MUTATORS AFTER ITS OWN, for the one test that
+// needs a session file to read a decision back out of (writeseam_delivery_test.go).
+func writeSeamAgent(t *testing.T, completer Completer, also ...func(*Config)) (*Agent, string) {
 	t.Helper()
 	// AND IT ANSWERS THE NAMER OFF THE QUEUE for the same reason checkpointAgent
 	// does: the seam moves work to a task, the road asks for its name on a
@@ -483,6 +486,9 @@ func writeSeamAgent(t *testing.T, completer Completer) (*Agent, string) {
 		config.RolesSource = tierSettings(map[string]string{
 			roles.TierKey(roles.TierMastermind): checkpointMarkModel,
 		})
+		for _, mutate := range also {
+			mutate(config)
+		}
 	})
 	return agent, workspace
 }

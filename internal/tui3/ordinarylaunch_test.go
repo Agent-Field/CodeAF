@@ -187,7 +187,7 @@ func TestTheInstallsRungIsReadOnAnOrdinaryLaunch(t *testing.T) {
 	if dir != a.profileDir {
 		t.Fatalf("effortProfile answered %q for a window whose profile is %q", dir, a.profileDir)
 	}
-	if got := effortClause(config.DefaultEffortAt(dir)); got != effortClauseWord+effort.Ship.String() {
+	if got := effortClause(config.DefaultEffortAt(dir)); got != "" {
 		t.Fatalf("the install's rung reads %q on an ordinary launch, want the shipped rung", got)
 	}
 	// AND A ROW MOVED IN THAT PROFILE IS THE ROW READ BACK, which is the whole

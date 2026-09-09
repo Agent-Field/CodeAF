@@ -270,10 +270,10 @@ func TestCheckGroundForRunsOnlyTheReadingsTheContractNeeds(t *testing.T) {
 	}
 }
 
-// proposeTaskWithAcceptance is one proposal whose acceptance names its check.
-// The existing general fixture fixes acceptance to a file-only sentence; these
-// two end-to-end contracts need the check in the frozen contract itself.
-func proposeTaskWithAcceptance(title, brief, acceptance, ground string) step {
+// proposeTaskWithAcceptance declares verification separately from its prose.
+// Acceptance describes the requested result; only Checks grants permission to
+// execute the verifier on the baseline and completed work.
+func proposeTaskWithAcceptance(title, brief, acceptance, ground string, checks []string) step {
 	arguments, _ := json.Marshal(taskArguments{
 		Title:       title,
 		Summary:     "one line the person reads",
@@ -281,6 +281,7 @@ func proposeTaskWithAcceptance(title, brief, acceptance, ground string) step {
 		Deliverable: "the file named in the brief",
 		Acceptance:  acceptance,
 		Ground:      ground,
+		Checks:      checks,
 	})
 	return func(context.Context, []ai.Message) (*ai.Response, error) {
 		return toolResponse("call-task", "propose_task", string(arguments)), nil
@@ -300,7 +301,7 @@ func TestAPreExistingRedDoesNotStandBetweenTheWorkAndItsLanding(t *testing.T) {
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeTaskWithAcceptance("Write the note", "write note.txt", "note.txt exists and `go test ./...` passes", repo),
+			proposeTaskWithAcceptance("Write the note", "write note.txt", "note.txt exists and `go test ./...` passes", repo, []string{"go test ./..."}),
 			finalText("handed off"),
 		},
 		child: []step{
@@ -341,7 +342,7 @@ func TestAGreenCheckTheWorkTurnedRedIsTheWorksOwn(t *testing.T) {
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeTaskWithAcceptance("Add the check", "write work_test.go", "work_test.go exists and `go test ./...` passes", repo),
+			proposeTaskWithAcceptance("Add the check", "write work_test.go", "work_test.go exists and `go test ./...` passes", repo, []string{"go test ./..."}),
 			finalText("handed off"),
 		},
 		child: []step{

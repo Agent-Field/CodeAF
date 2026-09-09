@@ -277,11 +277,11 @@ func TestThePreflightAnswersEveryShapeOfExpectation(t *testing.T) {
 // held up against its folder and held knows how far it can trust the sentences
 // above; one told nothing is the worker that starts by re-reading the folder.
 func TestTheWorkerIsToldWhatItsHandoffAssumed(t *testing.T) {
-	brief := composeBrief("do the thing", "the work", "a file", "it passes",
+	brief := composeBrief(briefWhole, "do the thing", "the work", "a file", "it passes",
 		expectsSection([]Expectation{
 			{Path: "taskchip.go", Holds: "stripKey"},
 			{Path: "taskstrip.go", Absent: true},
-		}), taskOrigin{}, taskCopy{})
+		}), AdmissionContext{}, taskOrigin{}, taskCopy{})
 	for _, want := range []string{briefExpectsHeading, "taskchip.go holds stripKey", "taskstrip.go is gone"} {
 		if !strings.Contains(brief, want) {
 			t.Fatalf("the worker's document does not carry %q:\n%s", want, brief)
@@ -289,7 +289,7 @@ func TestTheWorkerIsToldWhatItsHandoffAssumed(t *testing.T) {
 	}
 	// THE EMPTINESS LAW, applied to a document: no manifest, no heading over
 	// nothing.
-	if plain := composeBrief("do the thing", "the work", "a file", "it passes", "", taskOrigin{}, taskCopy{}); strings.Contains(plain, briefExpectsHeading) {
+	if plain := composeBrief(briefWhole, "do the thing", "the work", "a file", "it passes", "", AdmissionContext{}, taskOrigin{}, taskCopy{}); strings.Contains(plain, briefExpectsHeading) {
 		t.Fatalf("a handoff with no manifest got a heading over nothing:\n%s", plain)
 	}
 }

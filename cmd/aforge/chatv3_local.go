@@ -1,34 +1,21 @@
 package main
 
-// ── `aforge chat` on a conversation this machine is already holding ─────────
+// ── `aforge chat` through this machine's own session host ───────────────────
 //
-// This is the third dialer and the first one with no machine in it. The surface
-// runs here, the session runs in THIS workspace's session host
-// (internal/enginehost), and the pipe between them is a unix socket rather than
-// an ssh child or a relay tunnel.
+// This is the third dialer and the first one with no machine in it: the surface
+// runs here, the session runs in this workspace's session host
+// (internal/enginehost), and between them is a unix socket rather than an ssh
+// child or a relay tunnel.
 //
-// WHY THERE IS A DOOR AT ALL. A conversation held by a host used to be
-// unreachable from the terminal it was started in: `aforge chat` opened the
-// session in-process, met the journal's flock, and quietly started a NEW
-// conversation somewhere else. Nothing on the screen said the chat the person
-// was looking for was still running a few inches away. The road to it already
-// existed in every part but one — the host attaches or spawns under a flock
-// ([enginehost.Attach]), the room has one keyboard that the newest window takes
-// (internal/remote's driver.go), and the surface already knows how to be a
-// watcher (internal/tui3's watching.go). What was missing was a local dial.
+// It is the ordinary road now, which is the whole point — the work a person
+// starts goes on when the terminal closes, and the next `aforge chat` here sits
+// back down in the same conversation. [v3HostRoad] is the rule, and it says
+// which launches keep the in-process door instead: onboarding, --once, --debug
+// and --no-host.
 //
-// IT IS NOT THE DEFAULT AND MUST NOT BECOME ONE HERE. A hosted conversation is
-// built by `session.New` over a wire with no door for the standing lanes, so
-// adaptive runs, harness building and subharness cards are all off in it
-// (engine.go states each one and why). A lone terminal in a workspace nothing
-// else is open on therefore keeps the in-process door and loses nothing;
-// [v3HostRoad] is the whole of when this one is taken instead, and
-// docs/design/multi-attach/PLAN.md is the staging that says why.
-//
-// EVERYTHING BELOW THE DIAL IS THE ssh DOOR'S OWN CODE. The client, the
-// welcome, the surface's options and the headless run are [openChatV3Host]'s,
-// called with an empty machine name — which is the seam this build spells as
-// "linked, local": [tui3.Options.Link] filled and [tui3.Options.Host] empty.
+// Everything below the dial is the ssh door's own code. The client, the welcome,
+// the surface's options and the headless run are [openChatV3Host]'s, called with
+// an empty machine name — the seam this build spells as "linked, local".
 
 import (
 	"context"
@@ -37,6 +24,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/enginehost"
 	"github.com/Agent-Field/aforge-v2/internal/remote"
 	"github.com/Agent-Field/aforge-v2/internal/tui3"
@@ -63,6 +51,12 @@ type localLaunch struct {
 	once string
 	// pick is `aforge resume`: the same surface, opened on the session picker.
 	pick bool
+	// shape is --yolo, --no-compact, --one-model and the two ceilings, carried
+	// so the ENGINE builds the session with them. It is only ever honoured on a
+	// conversation this hello opens; joining one that is already running gets
+	// that conversation's shape back on the welcome and is refused here
+	// ([hostShapeTaken]).
+	shape *remote.LaunchShape
 }
 
 // localLink is the dialer for a conversation on this machine.
@@ -98,6 +92,22 @@ func (l *localLink) dial() (io.ReadWriteCloser, error) {
 	})
 }
 
+// hostShapeTaken is the one refusal this door answers with rather than a
+// failure: the conversation on the socket is already open, and it is not shaped
+// the way this launch asked for. Nothing is overwritten — a running conversation
+// belongs to whoever opened it — so the caller takes the in-process road and
+// says this sentence on the entry notice.
+type hostShapeTaken struct{ sentence string }
+
+func (h *hostShapeTaken) Error() string { return h.sentence }
+
+// hostUnreachable is the floor: no host could be reached or started. The
+// conversation opens in this process instead, carrying the reason so nothing is
+// swallowed.
+type hostUnreachable struct{ reason string }
+
+func (h *hostUnreachable) Error() string { return h.reason }
+
 // openChatV3Local is the launch.
 func openChatV3Local(launch localLaunch) error {
 	if launch.pick && launch.once != "" {
@@ -115,20 +125,58 @@ func openChatV3Local(launch localLaunch) error {
 		Session:   launch.session,
 		Model:     launch.model,
 		Level:     launch.level,
+		Launch:    launch.shape,
 	}, remote.Roaming{Dial: link.dial})
 	if err != nil {
-		return err
+		// A host that cannot be reached or started is not the end of the
+		// launch: the in-process door is the floor, and the reason travels with
+		// the fallback so a stale host's own sentence is still read.
+		return &hostUnreachable{reason: err.Error()}
 	}
-	defer func() { _ = client.Close() }()
+	closeClient := func() { _ = client.Close() }
+	defer func() { closeClient() }()
 
 	agent := client.Agent()
 	welcome := client.Welcome()
+	// The shape the engine built, against the shape that was asked for. They
+	// differ when this hello joined a conversation that was already open, and
+	// the flags are real in this process, so the launch goes there rather than
+	// running under a posture nobody asked for.
+	if !welcome.Launch.Same(launch.shape) {
+		_ = client.Close()
+		return &hostShapeTaken{sentence: hostShapeSentence(launch.shape, welcome.Launch)}
+	}
 	correctHostChoices(agent, hostLaunch{model: launch.model, level: launch.level}, welcome)
 
 	if launch.once != "" {
 		return runHostOnce(agent, launch.once)
 	}
-	options := hostOptions(client, agent, "", welcome, launch.pick)
+	// ANOTHER CONVERSATION IS ANOTHER CONNECTION TO THE SAME HOST, on the same
+	// socket, and the host has always held a map of them rather than one
+	// (internal/enginehost). A conversation of this window's own says so in the
+	// hello ([remote.Hello.New]); one that names a transcript the host is already
+	// running is attached to rather than reopened.
+	//
+	// New tabs carry the same launch settings, including the interactive door.
+	// Omitting them makes a later ordinary launch reject its own conversation
+	// as incompatible and fall back onto the journal the engine still holds.
+	fleet := newEngineFleet("", client, nil, func(ask engineAsk) (*engineConn, error) {
+		beside := &localLink{workspace: ask.workspace}
+		next, err := remote.Roam("", localBesideHello(ask, launch), remote.Roaming{Dial: beside.dial})
+		if err != nil {
+			return nil, err
+		}
+		return &engineConn{client: next}, nil
+	})
+	// The fleet owns every connection now, the boot one included, so the door's
+	// own defer hands the job over rather than closing the client twice.
+	closeClient = fleet.closeAll
+	options := hostOptions(fleet, welcome, launch.pick)
+	// AND THE TASKS PAGE CAN LOOK INTO THE CONVERSATIONS NEXT DOOR. It is bound
+	// here rather than inside [hostOptions] because it is a second DIAL of this
+	// road and not a use of this client's connection, and this is the door that
+	// knows the road (chatv3_taskowner.go says what makes it safe).
+	options.OpenTaskOwner = localTaskOwnerDoor(welcome.Workspace)
 	// The draft this terminal has half-typed is keyed by the workspace and NOT
 	// by a machine, because there is no machine: a person who takes the host
 	// road today and the in-process door tomorrow is in the same place both
@@ -140,52 +188,117 @@ func openChatV3Local(launch localLaunch) error {
 	return runSurface(context.Background(), options)
 }
 
-// ── THE WHEN-TO-TAKE RULE ───────────────────────────────────────────────────
+// v3LaunchShape is the per-launch posture as the wire carries it, or nil for a
+// launch that asked for nothing. Nil rather than a zero struct because nil is
+// what every other door sends and what the engine reads as its own defaults.
+//
+// interactive is the dial's own fact — false for a --once probe, true for a
+// surface somebody is typing into — and it rides the shape because the session
+// it opens lives in the engine, which cannot tell the two apart any other way.
+func v3LaunchShape(yolo, noCompact, oneModel bool, maxHours, maxCost float64, interactive bool) *remote.LaunchShape {
+	shape := remote.LaunchShape{
+		Yolo:        yolo,
+		NoCompact:   noCompact,
+		OneModel:    oneModel,
+		MaxHours:    maxHours,
+		MaxCost:     maxCost,
+		Interactive: interactive,
+	}
+	// A real screen carries its identity even without other flags. Nil remains
+	// the legacy default for callers that supplied no launch facts.
+	if (&shape).Same(nil) {
+		return nil
+	}
+	return &shape
+}
+
+// hostShapeSentence says which posture the conversation on the socket has and
+// which one this terminal asked for. Both halves are named because either alone
+// leaves a person guessing at the other.
+func hostShapeSentence(asked, has *remote.LaunchShape) string {
+	said := launchShapeWords(asked)
+	if said == "" {
+		said = "the default posture"
+	}
+	running := launchShapeWords(has)
+	if running == "" {
+		running = "the default posture"
+	}
+	return fmt.Sprintf("this folder's conversation is already open with %s, so %s was not applied to it — this window opened its own instead, and it ends when this terminal does",
+		running, said)
+}
+
+// launchShapeWords is a shape as a person typed it, or empty for the defaults.
+func launchShapeWords(shape *remote.LaunchShape) string {
+	if shape == nil {
+		return ""
+	}
+	var said []string
+	if shape.Yolo {
+		said = append(said, "--yolo")
+	}
+	if shape.NoCompact {
+		said = append(said, "--no-compact")
+	}
+	if shape.OneModel {
+		said = append(said, "--one-model")
+	}
+	if shape.MaxHours > 0 {
+		said = append(said, "--max-hours")
+	}
+	if shape.MaxCost > 0 {
+		said = append(said, "--max-cost")
+	}
+	// Name the mode when it is the only difference between two launches.
+	if shape.Interactive {
+		said = append(said, "interactive chat")
+	}
+	return strings.Join(said, " ")
+}
+
+// ── the when-to-take rule ───────────────────────────────────────────────────
 
 // v3HostChoice is everything the rule is decided on, gathered at the flag
-// parser so the decision itself reads as one sentence and can be tested without
-// a terminal.
+// parser so the decision reads as one sentence and can be tested without a
+// terminal.
 type v3HostChoice struct {
-	// noHost is --no-host: the escape hatch, and the reason it exists is that a
-	// fallback nobody can ask for is a fallback nobody can use when the host is
-	// the thing that is wrong. It means here exactly what it means on `aforge
-	// engine` — serve this conversation in this process and never dial a socket.
+	// noHost is --no-host: the escape hatch, and it exists because a fallback
+	// nobody can ask for is a fallback nobody can use on the day the host is the
+	// thing that is wrong.
 	noHost bool
-	// shaped says a flag that describes HOW THE SESSION IS BUILT was named:
-	// --yolo, --no-compact, --one-model, --max-hours or --max-cost. None of
-	// them can travel a wire — the ssh door refuses all of them by name
-	// ([hostLaunch.check]) — and a launch that carried one down this road would
-	// drop it in silence, which is the one outcome worse than a refusal. So the
-	// flag keeps this launch in its own process, where the flag is real.
-	shaped bool
+	// once is --once: one message, printed, and the process is done. It never
+	// STARTS a host — a resident process left behind by a headless command is a
+	// surprise — but it joins one that is already there, so a scripted message
+	// lands in the conversation a person is actually in.
+	once bool
+	// debug is --debug: the model-call record is written by the process that
+	// makes the calls, and over a socket that process is the host, which was
+	// never told to record. So the flag keeps the launch here, where it is real.
+	debug bool
+	// setup says this machine may still have to be set up — no key it can find —
+	// and setting one up is a conversation with the person at this terminal
+	// (internal/tui3's firstrun.go). A host has no terminal and cannot have it,
+	// so onboarding happens here and the host road is taken on the next launch.
+	setup bool
 }
 
 // v3HostRoad answers whether `aforge chat` opens its conversation through this
 // workspace's session host, and names the workspace either way.
 //
-// THE RULE IS ONE FACT: A HOST FOR THIS WORKSPACE ALREADY ANSWERS. Something is
-// open in it — a `--host` or `--at` connection into this machine, or somebody's
-// `aforge engine` — and a terminal that opened its own conversation instead
-// would leave a live one unreachable from the machine it is running on. Joining
-// it is the room internal/remote's driver.go already runs: one keyboard, the
-// newest window holding it.
+// The host road is the ordinary one. What it buys is what the in-process door
+// cannot: work that goes on when the terminal closes, and a second window that
+// sits down in the same conversation rather than beside it. A host is started if
+// none is answering, and it retires itself when it is holding nothing.
 //
-// A PLAIN LOCAL LAUNCH NEVER STARTS A HOST, and that is deliberate rather than
-// unfinished. A host cannot open a journal an in-process window is holding —
-// the flock is the flock — so spawning one to reach a locked conversation buys
-// a slower version of the same refusal and a process that lingers for its idle
-// span. What a person wants there is the conversation MOVED to this terminal,
-// which is the hand-off in issue #71 and needs no host at all. Making the host
-// the local default is issue #66, gated on the wire growing doors for the
-// standing lanes (docs/design/multi-attach/PLAN.md).
+// Four launches keep the in-process door, each because something real about them
+// lives in this process: onboarding, --once, --debug and --no-host. The
+// per-launch postures are not among them — --yolo, --no-compact, --one-model and
+// the two ceilings travel in the hello and the engine builds the session with
+// them ([remote.LaunchShape]).
 //
-// OTHERWISE THE IN-PROCESS DOOR RUNS EXACTLY AS IT ALWAYS HAS: a lone terminal
-// keeps adaptive runs, harness building and the subharness cards, none of which
-// a hosted conversation has (engine.go says why for each).
-//
-// A WORKSPACE THAT CANNOT BE RESOLVED IS NO ROAD. Everything here answers
-// "in-process" when it cannot tell, because the in-process door is the floor
-// and reaching a host is the feature.
+// A workspace that cannot be resolved is no road: everything here answers
+// "in-process" when it cannot tell, because that door is the floor and reaching a
+// host is the feature.
 func v3HostRoad(choice v3HostChoice) (string, bool) {
 	workspace, _ := v3Workspace(v3LaunchDir(), "")
 	if workspace == "" {
@@ -196,21 +309,41 @@ func v3HostRoad(choice v3HostChoice) (string, bool) {
 
 // v3TakeHostRoad is the rule itself, asked about one workspace. It is separate
 // from the resolution above because where the person is standing is answered
-// once per process ([v3LaunchDir] is a sync.Once, by design) and the rule is a
-// question about any directory.
+// once per process ([v3LaunchDir] is a sync.Once) and the rule is a question
+// about any directory.
 func v3TakeHostRoad(workspace string, choice v3HostChoice) bool {
-	if strings.TrimSpace(workspace) == "" || choice.noHost || choice.shaped {
+	if strings.TrimSpace(workspace) == "" || choice.noHost || choice.debug || choice.setup {
 		return false
 	}
-	// A host that answers is asked nothing here. Which build it is, and what to
-	// do about an older one, is [localLink.dial]'s question a moment later and
-	// is asked once — this connection is spent on the question "is anybody
-	// there" and closed. Nothing is ever STARTED from this line: [Attach] can
-	// spawn, and it is only ever reached because a host already answered.
+	if choice.once {
+		return v3HostAnswers(workspace)
+	}
+	return true
+}
+
+// v3HostAnswers is whether something is holding this workspace RIGHT NOW. The
+// connection is spent on the question and closed; which build is there, and what
+// to do about an older one, is [localLink.dial]'s question a moment later.
+// Nothing is ever started from here.
+func v3HostAnswers(workspace string) bool {
 	conn, err := enginehost.Dial(workspace)
 	if err != nil {
 		return false
 	}
 	_ = conn.Close()
 	return true
+}
+
+// v3MachineIsSetUp says this machine can already talk to a model. It is the one
+// question the host road must ask before it spawns anything: [config.Load]
+// answers ErrNoAPIKey when there is no key in the environment or the profile,
+// and that launch belongs in this terminal where the browser flow can finish.
+func v3MachineIsSetUp() bool {
+	_, err := config.Load()
+	return err == nil
+}
+
+// localBesideHello carries the ordinary terminal's settings to a sibling chat.
+func localBesideHello(ask engineAsk, launch localLaunch) remote.Hello {
+	return remote.Hello{Workspace: ask.workspace, Session: ask.session, New: ask.mint, Model: launch.model, Level: launch.level, Launch: launch.shape}
 }

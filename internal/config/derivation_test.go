@@ -116,6 +116,7 @@ func TestEveryRowIsGroupedNamedAndReadable(t *testing.T) {
 // spelling of the key.
 var settingReaders = map[string]string{
 	KeyWork:           "workMode",
+	KeyIcons:          "iconMode",
 	KeyDailyBudget:    "DailyBudgetUSD",
 	KeyPlanConsent:    "PlanConsentUSD",
 	KeyPracticeBudget: "PracticeBudgetUSD",

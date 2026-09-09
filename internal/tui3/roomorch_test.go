@@ -259,7 +259,7 @@ func TestPlannerNotesAreGatheredUnderTheirOwnHeading(t *testing.T) {
 func TestTheHeaderCarriesTheGoalTheGaugeAndTheState(t *testing.T) {
 	a, _ := orchApp(t, orchRun4())
 
-	head := plain(a.roomHead(a.width))
+	head := plain(strings.Join(a.roomHeadRows(a.width), "\n"))
 	for _, want := range []string{"answer the retry question", "$0.87 / $2.00", stateWorking.String()} {
 		if !strings.Contains(head, want) {
 			t.Fatalf("the header is missing %q:\n%q", want, head)
@@ -268,7 +268,7 @@ func TestTheHeaderCarriesTheGoalTheGaugeAndTheState(t *testing.T) {
 	// Narrow the frame until the goal cannot fit: the gauge survives it.
 	a.width = 52
 	a.touch()
-	head = plain(a.roomHead(a.width))
+	head = plain(strings.Join(a.roomHeadRows(a.width), "\n"))
 	if !strings.Contains(head, "$0.87 / $2.00") {
 		t.Fatalf("the gauge was cut before the goal was:\n%q", head)
 	}
@@ -371,7 +371,7 @@ func TestANestedRunExpandsAndTheTrailSaysWhereYouAre(t *testing.T) {
 	if !strings.Contains(roomText(a), "rfc9110") {
 		t.Fatalf("the inner snapshot is not drawn:\n%s", roomText(a))
 	}
-	head := plain(a.roomHead(a.width))
+	head := plain(strings.Join(a.roomHeadRows(a.width), "\n"))
 	for _, want := range []string{"answer the retry question", "read the three RFCs", "$0.40 / $1.00"} {
 		if !strings.Contains(head, want) {
 			t.Fatalf("the trail or the inner gauge is missing %q:\n%q", want, head)
@@ -753,8 +753,8 @@ func TestAFinishedRunDrawsItsSynthesis(t *testing.T) {
 			t.Fatalf("a finished run never says %q:\n%s", want, page)
 		}
 	}
-	if !strings.Contains(plain(a.roomHead(a.width)), orchDoneWord) {
-		t.Fatalf("the header does not say the run is done:\n%q", plain(a.roomHead(a.width)))
+	if !strings.Contains(plain(strings.Join(a.roomHeadRows(a.width), "\n")), orchDoneWord) {
+		t.Fatalf("the header does not say the run is done:\n%q", plain(strings.Join(a.roomHeadRows(a.width), "\n")))
 	}
 	// The graph is still above it: an answer with no shape under it is a report,
 	// and this page is a place.
@@ -775,8 +775,8 @@ func TestAPageWithNoSnapshotStillSaysWhatTheLaneSaid(t *testing.T) {
 	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{
 		Kind: session.EventOrchestrateFuel, Text: "$1.60 of $2.00",
 	}})
-	if !strings.Contains(plain(a.roomHead(a.width)), "$1.60 of $2.00") {
-		t.Fatalf("the lane's own gauge is not on the header:\n%q", plain(a.roomHead(a.width)))
+	if !strings.Contains(plain(strings.Join(a.roomHeadRows(a.width), "\n")), "$1.60 of $2.00") {
+		t.Fatalf("the lane's own gauge is not on the header:\n%q", plain(strings.Join(a.roomHeadRows(a.width), "\n")))
 	}
 }
 
@@ -806,7 +806,7 @@ func TestTheRunsHeaderNamesThePlannerModel(t *testing.T) {
 	snap.Planner = "moonshot/kimi-k3"
 	a, _ := orchApp(t, snap)
 
-	head := plain(a.roomHead(a.width))
+	head := plain(strings.Join(a.roomHeadRows(a.width), "\n"))
 	if !strings.Contains(head, "planner: moonshot/kimi-k3 · $0.87 / $2.00") {
 		t.Fatalf("the header does not name the planner beside the gauge:\n%q", head)
 	}
@@ -821,7 +821,7 @@ func TestTheRunsHeaderNamesThePlannerModel(t *testing.T) {
 // a label with nothing behind it is worse than the width it costs.
 func TestARunWithNoPlannerModelDrawsNoSegment(t *testing.T) {
 	a, _ := orchApp(t, orchRun4())
-	head := plain(a.roomHead(a.width))
+	head := plain(strings.Join(a.roomHeadRows(a.width), "\n"))
 	if strings.Contains(head, orchPlannerLead) {
 		t.Fatalf("the header invented a planner:\n%q", head)
 	}
@@ -841,7 +841,7 @@ func TestThePhoneDrawsThePlannerOnThePageInstead(t *testing.T) {
 	a.room.dirty = true
 	a.touch()
 
-	head := plain(a.roomHead(a.width))
+	head := plain(strings.Join(a.roomHeadRows(a.width), "\n"))
 	if strings.Contains(head, orchPlannerLead) {
 		t.Fatalf("the phone header kept the planner segment:\n%q", head)
 	}

@@ -596,8 +596,8 @@ var settingUI = map[string]settingMeta{
 	},
 	config.KeyQuickSwitch: {
 		tab: tabDisplay, label: "quick switch", widget: widgetToggle,
-		about: "ctrl+k switches conversations on the press — pause and the card " +
-			"fades, esc goes back. Off, it opens the card and waits for enter.",
+		about: "ctrl+tab switches on the press where the terminal can send it. " +
+			"Off, it waits for enter. Ctrl+k always opens the list and waits for your choice.",
 	},
 	config.KeyHints: {
 		tab: tabDisplay, label: "hints", widget: widgetToggle,
@@ -632,6 +632,11 @@ var settingUI = map[string]settingMeta{
 	config.KeyWork: {
 		tab: tabDisplay, label: "turn work", widget: widgetCycle,
 		about: "fold completed turn machinery into one worked chip, or keep it open.",
+	},
+	config.KeyIcons: {
+		tab: tabDisplay, label: "step icons",
+		about:  "Rich icons normally; plain symbols when your terminal needs them.",
+		widget: widgetCycle,
 	},
 	config.KeyVisionModel: {
 		tab: tabProviders, label: "looking", widget: widgetSelect,
@@ -2019,6 +2024,10 @@ func (a *app) applySetting(item sheetItem, raw string) {
 	}
 	if item.row.Key == config.KeyWork {
 		a.workMode = config.WorkAt(a.profileDir)
+		a.touch()
+	}
+	if item.row.Key == config.KeyIcons {
+		a.iconMode = config.IconsAt(a.profileDir)
 		a.touch()
 	}
 	// THE TWO LANE ROWS LAND ON THE LIVE TRANSPORT, not at the next launch.

@@ -308,10 +308,10 @@ answer the card on.
 
 | What | Where |
 | --- | --- |
-| the row | the activity strip, and the roster on `ctrl+t` |
+| the row | the activity strip, and the roster on `alt+t` |
 | the room | press the row, or open it from the roster; `esc` comes back out |
 | the thread | the room's journal — the brief, the milestones in plain words (a draft written, an attempt refused, what the review changed), the card, and what became of it — kept on disk with the rest of the session's tasks |
-| stopping it | `x` on its row, or the `✕` — the same card everything else is stopped by |
+| stopping it | `x` on its row, or `Stop` on its room's facts row — the same card everything else is stopped by |
 | the number | `task 4`, which is what you and aforge both call it afterwards |
 
 **It is admitted without a countdown**, unlike an ordinary task. There is no "redirect or
@@ -782,7 +782,7 @@ pressing `enter` on it did nothing at all, and the page was gone. If you have an
 whose harness task says it ran out of time, that is what you are looking at; the page is not
 recoverable from it, and asking for the harness again is the way back.
 
-**What can end a waiting card**, then, is only: your answer; `x` on its row or the `✕`,
+**What can end a waiting card**, then, is only: your answer; `x` on its row or `Stop`,
 which settles it `harness design stopped; nothing was saved`; or aforge closing, which
 settles it `harness "triage-flake" was designed; the card went unanswered, so nothing was
 saved`. That last one is a **done** task, not a failed one — the design did its work, and

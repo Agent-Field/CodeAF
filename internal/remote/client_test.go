@@ -19,6 +19,48 @@ import (
 )
 
 // ── A SCRIPTED ENGINE ───────────────────────────────────────────────────────
+func TestTheWelcomeAndReplayDeliverOnePendingQuestion(t *testing.T) {
+	agent := &fakeAgent{}
+	sess := heldSession(agent)
+	first := dialSession(t, sess)
+	first.hello(Hello{Version: Version})
+	first.ok(1, MethodSubmit, SubmitArgs{Text: "run the checks"})
+	turn := agent.stream(0)
+	event := session.Event{Kind: session.EventConsentRequest, ID: 7, Tool: "bash", CallID: "run-tests"}
+	turn <- event
+	first.recv()
+	// The old window is still attached. A fresh client must receive the question
+	// through the same HeldQuestions call the hosted TUI makes, once in total.
+	surface, engine := Pipe()
+	go func() {
+		_ = ServeAttach(engine, engine, AttachOptions{Open: func(Hello) (*Session, error) { return sess, nil }})
+		_ = engine.Close()
+	}()
+	client, err := Dial(surface, "devbox", Hello{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	held, err := client.HeldQuestions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, events := client.Live()
+	turn <- session.Event{Kind: session.EventTextDelta, Text: "following"}
+	agent.finish(turn)
+	questions := len(held)
+	var text string
+	for ev := range events {
+		if ev.Kind == session.EventConsentRequest {
+			questions++
+		}
+		text += ev.Text
+	}
+	if questions != 1 || text != "following" {
+		t.Fatalf("held questions and replay delivered %d questions and text %q", questions, text)
+	}
+}
+
 //
 // Every test in this file drives the client against an engine written here, over
 // a net.Pipe. THERE IS NO SSH ANYWHERE, and there must not be: a unit test that

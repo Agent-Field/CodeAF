@@ -1,0 +1,85 @@
+{
+  "schema": 2,
+  "id": "370-usage-frames-accumulate",
+  "task_kind": "bug-existing-api",
+  "readiness": "rejected",
+  "campaign_ready": false,
+  "why_this_issue": "A split usage frame would zero the call's token counts.",
+  "provenance": {
+    "repo": "Agent-Field/aforge-v2",
+    "visibility": "private",
+    "language": "go",
+    "issue": 370,
+    "issue_url": "https://github.com/Agent-Field/aforge-v2/issues/370",
+    "issue_reported_at": "2026-09-02",
+    "issue_title": "provider: a usage frame replaces the call's usage instead of accumulating it — a split frame would zero the token counts (and the reasoning count)",
+    "fix_pr": 405,
+    "base_commit": "79515001406f2c61bf02613896c78d4ad79b61c0",
+    "fix_commit": "7e54bd070a87a0f82020259de768f82265fa6d6e",
+    "base_rule": "the first parent of the squash commit the fixing pull request left on dev",
+    "collected": "gh read-only plus this clone's object store; no field is guessed"
+  },
+  "workspace": {
+    "export": "git-archive",
+    "carries_git_history": false,
+    "at": "provenance.base_commit",
+    "notes": ""
+  },
+  "prompt": {
+    "verbatim": false,
+    "text": "You are handed a report from the person who hit this. Reproduce it, find the cause, and fix the source. Do not change any test to agree with the code.\n\n# provider: a usage frame replaces the call's usage instead of accumulating it — a split frame would zero the token counts (and the reasoning count)\n\n## Problem (latent, not yet observed on any provider we drive)\n\nIn the streamed read loop in `internal/provider/client.go`, a chunk that carries a\nusage object REPLACES what the response had accumulated:\n\n```go\nif chunk.Usage != nil {\n    response.Usage = chunk.Usage.usage()\n    reasoningTokens = chunk.Usage.reasoningTokens()\n}\n```\n\nA provider that reports token counts in one frame and then sends a later frame\ncarrying only cost — or only a subset of the fields — ends the call with the\nearlier counts **zeroed**. Note this takes `reasoningTokens` with it: the same\nreplace drops a reasoning count an earlier frame carried.\n\nNothing has been seen in the wild because every provider we currently drive\n(DeepSeek, Kimi) sends a single terminal usage frame. That is a property of\ntoday's providers, not of the protocol, so this is a defect waiting for a\nprovider that splits the frame.\n\nLine numbers are deliberately omitted: `client.go` moved twice on 2026-09-02.\nSearch for the `chunk.Usage != nil` branch in the streamed loop.\n\n## The law\n\nUsage ACCUMULATES across the frames of one call. A later frame never zeroes a\ncount an earlier frame carried. What the ledger bills and what the journal\nrecords is the whole of what the wire reported, in whatever order it arrived.\n",
+    "sha256": "6351c10ef111222082f0e32a78f27dabe86c74daa4e19d6df7115a4671c7a669",
+    "derivation": {
+      "kept_sections": [
+        "Problem (latent, not yet observed on any provider we drive)",
+        "The law"
+      ],
+      "dropped_sections": [
+        "The fix, at the seam",
+        "Acceptance (functional, required)",
+        "Provenance"
+      ],
+      "dropped_paragraphs": {},
+      "rule": "ATX sections kept by heading allowlist (symptom, reproduction, stated law); diagnosis, fix and acceptance sections dropped whole",
+      "source_sha256": "b6c2b2b3657b4b08129a0483b3240f02f34aab3c89275bb4661cabba86979f2d",
+      "source_url": "https://github.com/Agent-Field/aforge-v2/issues/370",
+      "curated_at": "2026-09-05",
+      "curated_by": "bench/conversation/fixtures/realissue/curate.py",
+      "source": "the issue body as fetched with gh on 2026-09-05"
+    }
+  },
+  "acceptance": {
+    "kind": "held-out-test",
+    "held_out_paths": [
+      "internal/provider/usageframes_test.go"
+    ],
+    "held_out_from": "provenance.fix_commit",
+    "fix_paths": [
+      "internal/provider/client.go",
+      "internal/provider/music.go"
+    ],
+    "guarded_paths": [],
+    "guards_note": "the acceptance command runs only the held-out cases, which are copied in after the harness has stopped; no file in the workspace is an instrument, so nothing is guarded. A regression run over the rest of the package is not in v1.",
+    "command": "go test ./internal/provider/ -run 'Usage|Frame' -count=1",
+    "run": "after the harness has stopped, from outside the workspace"
+  },
+  "arms": [
+    "aforge",
+    "pi",
+    "omp"
+  ],
+  "doors": {
+    "print": [
+      "aforge",
+      "pi",
+      "omp"
+    ],
+    "interactive": [
+      "aforge",
+      "pi",
+      "omp"
+    ]
+  },
+  "model_pin": "deepseek/deepseek-v4-flash-0731",
+  "rejection": "The held-out test drives mergeUsage and usageWire.mergeInto — UNEXPORTED helpers the fix introduces — so at base it does not build: 'undefined: mergeUsage', 'thinking.mergeInto undefined', observed 2026-09-05 under GOPROXY=off. The refusal is not that a test failed to compile: a feature task may legitimately need a PUBLIC API that does not exist at base, and that is a different task_kind. It is that this test demands a private implementation shape the brief never asks for, so a correct independent repair scores zero."
+}

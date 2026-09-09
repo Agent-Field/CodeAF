@@ -154,6 +154,7 @@ func TestNoTaskStartsOverAReaderThatCouldNotBeReached(t *testing.T) {
 			const asked = "rename the parser and fix everything that calls it"
 			steward.hear(asked)
 			marker := filepath.Join(agent.deliverableTree(), "the-check-ran")
+			check := "touch " + marker
 			acceptance := "the parser is renamed and `touch " + marker + "` passes"
 			redCommand := ""
 			if red {
@@ -162,9 +163,10 @@ func TestNoTaskStartsOverAReaderThatCouldNotBeReached(t *testing.T) {
 				// `false` would correctly be subtracted as a pre-existing failure
 				// and would not exercise this control.
 				redCommand = "test ! -f file0.txt"
+				check = redCommand
 				acceptance = "the parser is renamed and `" + redCommand + "` passes"
 			}
-			if !steward.setAcceptance(acceptance) {
+			if !steward.setAcceptanceContract(steward.Ask(), acceptance, []string{check}) {
 				t.Fatal("the fixture could not set the goal owner's acceptance")
 			}
 			if red {

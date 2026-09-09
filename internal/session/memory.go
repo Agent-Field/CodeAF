@@ -188,7 +188,11 @@ func (b billedCompleter) CompleteWithMessages(ctx context.Context, messages []ai
 	// runs twice a turn, beside an answer somebody is reading, and a surface
 	// that drew whichever call answered last was drawing this one
 	// (internal/lane's roles.go, and phasenews.go for what it decides).
-	ctx = provider.WithRole(ctx, lane.RoleMemory)
+	// Preserve the operation's role: foreground recall and background keeping
+	// have different latency value even though both are billed as memory.
+	if !provider.RoleFrom(ctx).Known() {
+		ctx = provider.WithRole(ctx, lane.RoleMemory)
+	}
 	response, err := b.inner.CompleteWithMessages(ctx, messages, options...)
 	if err == nil {
 		// The active model is read from the same options the provider reads.
@@ -249,7 +253,11 @@ func (a *Agent) refreshMemory(ctx context.Context, hub *eventHub, cue string) {
 		memoryNotice(hub, line)
 	}
 
+	// This lookup precedes the main model call. Keep its own phase visible so
+	// a provider that has not been asked yet is never blamed for the wait.
+	a.tellPhase(provider.PhasePreparing, "saved context", time.Time{})
 	block := a.routedMemory(ctx, cue, hub, true)
+	a.endPhase()
 
 	a.mu.Lock()
 	a.memoryText = block
@@ -986,6 +994,11 @@ func (a *Agent) memoryTools() []bare.Tool {
 // every refresh renders base + current blocks instead of stacking one turn's
 // memories on top of the last one's.
 //
+// THE ATTACHED FOLDERS ARE THE THIRD BLOCK and they are here for the standing
+// orders' reason exactly: a folder somebody attached holds for the life of the
+// conversation until they remove it, so it moves once per deliberate act and
+// otherwise renders byte for byte (placescontext.go).
+//
 // WHAT LIVES HERE IS WHAT HOLDS FOR THE LIFE OF THE CONVERSATION, and that is
 // the whole rule. message[0] sits in front of every message there is, so one
 // changed byte in it re-prices the entire transcript at the uncached rate — five
@@ -1017,7 +1030,7 @@ func (a *Agent) refreshSystemLocked() {
 	if len(a.messages) == 0 {
 		return
 	}
-	a.messages[0] = textMessage("system", a.system+a.standingText+a.memoryText)
+	a.messages[0] = textMessage("system", a.system+a.placesText+a.standingText+a.memoryText)
 }
 
 // refreshCardLocked holds the state card's new text for the note that carries

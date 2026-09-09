@@ -236,6 +236,9 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 	case session.EventTextDelta:
 		f.sayStream(ev.Text, lump)
 
+	case session.EventAssistantDone:
+		f.confirmResponse()
+
 	case session.EventReasoning:
 		f.reasonStream(ev.Text, lump)
 
@@ -285,20 +288,7 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		f.closeTool(ev, toolFailed, firstNonEmpty(ev.Hint, errText(ev.Err)))
 
 	case session.EventCaption:
-		// The narrator speaks about the open step rather than minting a transcript
-		// block. Keeping the override on that step's newest call lets both pages
-		// derive the same caption from the same entry list.
-		for i := len(f.entries) - 1; i >= 0; i-- {
-			e := &f.entries[i]
-			if e.turn != f.turn {
-				break
-			}
-			if e.kind == entryTool {
-				e.caption = strings.TrimSpace(ev.Text)
-				f.touch()
-				break
-			}
-		}
+		f.nameStep(ev)
 
 	case session.EventCompacting:
 		f.openCompaction(firstNonEmpty(ev.Hint, "compacting"))
@@ -310,6 +300,62 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		// close.
 		f.closeLive()
 		f.settleCompaction(firstNonEmpty(ev.Hint, "compacted"))
+	}
+}
+
+// nameStep is the narrator speaking about ONE step (session's caption.go). It
+// mints no transcript block: the sentence and the family it named are written
+// onto the call the batch opened with, and both pages derive the same caption
+// from the same entry list.
+//
+// IT KEYS ON THE ANCHOR AND NEVER ON "THE NEWEST ROW". The engine sends the
+// batch's first call id with the event, and this walks for THAT row. The reason
+// is a race the old keying could not survive: the narrator's goroutine checks
+// that its batch is still open and can then be descheduled, so its answer can
+// arrive after that batch ended, after the next one began, and after the next
+// one's rows are on screen. Keyed by recency, a sentence about the finished step
+// retitled the running one — silently, on the row a person is watching. Keyed by
+// the anchor, an event that names a step this feed is not holding is simply
+// dropped, which is the correct thing to do with news about work that is over.
+//
+// THE ANCHORLESS EVENT IS AN OLDER ENGINE and is served exactly as it always
+// was: a host built before the anchor existed sends captions with no id, and
+// dropping them would silently take the narration away from every mixed-version
+// link. That path keeps the recency rule and therefore keeps the old race; every
+// build that ships the anchor is free of it.
+//
+// BOTH HALVES OR NEITHER. The sentence and the family arrive in one event and
+// are written in one assignment, so no frame can draw the new words beside the
+// old mark. An event with no family CLEARS the field rather than leaving a
+// previous one standing: the mark then comes off the tools, which is right about
+// this batch, where a stale family would be right about the last one.
+func (f *feed) nameStep(ev session.Event) {
+	text := strings.TrimSpace(ev.Text)
+	if text == "" {
+		return
+	}
+	if anchor := strings.TrimSpace(ev.CallID); anchor != "" {
+		for i := len(f.entries) - 1; i >= 0; i-- {
+			e := &f.entries[i]
+			if e.kind != entryTool || e.callID != anchor {
+				continue
+			}
+			e.caption, e.captionCat = text, ev.Category
+			f.touch()
+			return
+		}
+		return
+	}
+	for i := len(f.entries) - 1; i >= 0; i-- {
+		e := &f.entries[i]
+		if e.turn != f.turn {
+			return
+		}
+		if e.kind == entryTool {
+			e.caption, e.captionCat = text, ev.Category
+			f.touch()
+			return
+		}
 	}
 }
 
@@ -577,6 +623,15 @@ func (f *feed) beginTool(ev session.Event) {
 	f.entries = append(f.entries, entry{
 		kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: f.turn,
 		status: toolRunning, began: f.now(), detail: toolDetail{Args: ev.Args},
+		// AND THE ROW MINTED HERE TAKES THE ID TOO. Every other door onto a tool
+		// row records it and this one did not, which left the rows drawn for a
+		// provider that does not stream its calls — and for a surface that
+		// attached mid-batch — as the only rows in the conversation with no
+		// identity. Anything that pairs by id then cannot find them: the end and
+		// the figure fall back to matching by tool name, and a caption, which has
+		// only the id to go on, is dropped outright ([feed.nameStep]). It is the
+		// same string the branch above adopts, from the same field.
+		callID: ev.CallID,
 	})
 	f.follow()
 	f.touch()
@@ -917,7 +972,7 @@ func (f *feed) sayStream(text string, lump bool) {
 		return
 	}
 	if f.live < 0 || f.live >= len(f.entries) || f.entries[f.live].kind != entryAssistant {
-		f.entries = append(f.entries, entry{kind: entryAssistant, turn: f.turn,
+		f.entries = append(f.entries, entry{kind: entryAssistant, turn: f.turn, provisional: true, began: f.now(),
 			replyTags: append([]session.TaskReplyTag(nil), f.pendingReplyTags...)})
 		f.pendingReplyTags = nil
 		f.live = len(f.entries) - 1
@@ -1004,10 +1059,21 @@ func (f *feed) reasonStream(text string, lump bool) {
 	if f.think < 0 || f.think >= len(f.entries) || f.entries[f.think].kind != entryThinking {
 		// The reply in progress is closed first, so the block lands above the
 		// answer rather than splitting a paragraph that is still being written.
-		f.closeLive()
+		// A queued person or notice already sits below this assembler. Keep
+		// its pointer so later answer bytes cannot jump underneath that line.
+		var owner *responseConfirmation
+		if f.queuedBelowLive() {
+			e := &f.entries[f.live]
+			if e.confirmed == nil {
+				e.confirmed = &responseConfirmation{}
+			}
+			owner = e.confirmed
+		} else {
+			f.closeLive()
+		}
 		now := f.now()
 		f.entries = append(f.entries, entry{
-			kind: entryThinking, turn: f.turn, began: now, ended: now,
+			kind: entryThinking, turn: f.turn, began: now, ended: now, confirmed: owner,
 			// A BLOCK OPENED AFTER ITS TURN'S BOUNDARY IS BORN SETTLED (#225,
 			// [feed.settledTurn]). The boundary that would have closed it has
 			// already gone by, and a thought block left open would stay expanded
@@ -1067,6 +1133,7 @@ func (f *feed) takeReplyTags(tags []session.TaskReplyTag) {
 // way: a call lands in place, between two paragraphs, because that is where it
 // happened and the reply is written around it.
 func (f *feed) said(e entry) {
+	f.reserveResponseContinuation()
 	live := f.live
 	f.entries = append(f.entries, e)
 	if live < 0 || live >= len(f.entries)-1 || f.entries[live].kind != entryAssistant {
@@ -1076,6 +1143,54 @@ func (f *feed) said(e entry) {
 		return
 	}
 	f.live = live
+}
+
+// queuedBelowLive recognizes only rows deliberately spliced below an active
+// answer. A real tool or another response ends that ownership interval.
+func (f *feed) queuedBelowLive() bool {
+	e := blockAt(f.entries, f.live)
+	if e == nil || e.kind != entryAssistant || !e.provisional || e.cut || e.turn != f.turn || f.live == len(f.entries)-1 {
+		return false
+	}
+	for i := f.live + 1; i < len(f.entries); i++ {
+		if !groupBreaks(&f.entries[i]) && f.entries[i].kind != entryNote {
+			return false
+		}
+	}
+	return true
+}
+
+// A person can speak while first reasoning has temporarily closed the prose
+// assembler. Reserve its continuation before their line, using the active
+// reasoning pointer and ordinary response barriers rather than crossing users.
+func (f *feed) reserveResponseContinuation() {
+	if f.live >= 0 {
+		return
+	}
+	thought := blockAt(f.entries, f.think)
+	if thought == nil || thought.kind != entryThinking || thought.turn != f.turn {
+		return
+	}
+	for i := f.think - 1; i >= 0; i-- {
+		e := &f.entries[i]
+		if e.turn != f.turn || groupBreaks(e) || e.kind == entryTool || e.kind == entryCompact {
+			return
+		}
+		if e.kind != entryAssistant {
+			continue
+		}
+		if !e.provisional || e.cut || (e.confirmed != nil && e.confirmed.done) {
+			return
+		}
+		if e.confirmed == nil {
+			e.confirmed = &responseConfirmation{}
+		}
+		owner := e.confirmed
+		thought.confirmed = owner
+		f.entries = append(f.entries, entry{kind: entryAssistant, turn: f.turn, provisional: true, confirmed: owner, began: f.now()})
+		f.live, f.mdAt = len(f.entries)-1, f.now()
+		return
+	}
 }
 
 // note appends a surface-side line — a nudge, a notice, a slash command's
@@ -1141,6 +1256,40 @@ func (f *feed) noteWritten(text string, block bool, facts []string) {
 // because a room that had three of the four would be a room drawing an attempt
 // that never ran — which is exactly what a room did, by having none of them.
 func (f *feed) retry(ev session.Event) {
+	// A retry ends the attempt, including any text closed by interleaved
+	// reasoning. A later confirmation must not adopt those discarded words.
+	end := len(f.entries) - 1
+	var owner *responseConfirmation
+	if e := blockAt(f.entries, f.live); e != nil && e.kind == entryAssistant && e.provisional {
+		end, owner = f.live, e.confirmed
+	}
+	for i := end; i >= 0 && f.entries[i].turn == f.turn; i-- {
+		e := &f.entries[i]
+		if (e.kind == entryTool && e.status != toolForming) || groupBreaks(e) || e.kind == entryCompact {
+			break
+		}
+		if e.kind == entryAssistant {
+			if !e.provisional {
+				break
+			}
+			e.provisional, e.text, e.stale = false, "", true
+		}
+	}
+	// The same unfinished owner labels reasoning that was displaced by a
+	// queued line. The engine discarded it too; keeping it would make live
+	// history differ from a task reopened after the retry.
+	if owner != nil && !owner.done {
+		for i := range f.entries {
+			e := &f.entries[i]
+			if e.kind != entryThinking || e.confirmed != owner {
+				continue
+			}
+			if f.think == i {
+				f.collapseThought()
+			}
+			f.entries[i] = entry{kind: entryAssistant, turn: e.turn, settled: true, stale: true}
+		}
+	}
 	f.dropLive()
 	f.dropRetryingFormingTools()
 	f.resolveUnfinished()
@@ -1203,6 +1352,78 @@ func (f *feed) dropRetryingFormingTools() {
 			continue
 		}
 		f.entries[i] = entry{kind: entryAssistant, turn: f.turn, stale: true}
+	}
+	f.touch()
+}
+
+// A provider may end with private reasoning after its last visible words. Walk
+// only this response's tail so confirmation still reaches those words without
+// promoting a tool preamble or another exchange's answer.
+func (f *feed) confirmResponse() {
+	confirmation := &responseConfirmation{}
+	// A person's queued line or a surface notice can sit below the active
+	// assembler while its answer keeps growing. That pointer owns the response;
+	// a tail search would either stop at their line or move the answer below it.
+	end := len(f.entries) - 1
+	anchored := false
+	if e := blockAt(f.entries, f.live); e != nil && e.kind == entryAssistant && e.provisional && e.turn == f.turn {
+		end, anchored = f.live, true
+		if e.confirmed != nil && !e.confirmed.done {
+			confirmation = e.confirmed
+		}
+	}
+	var fragments []int
+	for i := end; i >= 0; i-- {
+		e := &f.entries[i]
+		if e.turn != f.turn || groupBreaks(e) || e.kind == entryTool || e.kind == entryCompact {
+			break
+		}
+		if e.kind != entryAssistant {
+			continue
+		}
+		// A previous response or a discarded attempt cannot become part of
+		// this answer merely because no tool separated the two requests.
+		if !e.provisional || (e.confirmed != nil && e.confirmed.done) {
+			break
+		}
+		if e.cut {
+			return
+		}
+		fragments = append(fragments, i)
+	}
+	if len(fragments) > 0 {
+		confirmation.done = true
+		for _, i := range fragments {
+			e := &f.entries[i]
+			e.provisional, e.confirmed = false, confirmation
+			if f.live == i {
+				f.closeLive()
+			} else {
+				settleBlock(e)
+			}
+		}
+		// THE CONFIRMED ANSWER HAS THE JOURNAL'S SHAPE. Interleaved private
+		// reasoning must not split the final answer or leave a thought row in
+		// its middle. Preserve exact content order in one final prose entry;
+		// empty earlier fragments in place so every existing index stays valid.
+		var text strings.Builder
+		var tags []session.TaskReplyTag
+		for at := len(fragments) - 1; at >= 0; at-- {
+			e := &f.entries[fragments[at]]
+			text.WriteString(e.text)
+			tags = append(tags, e.replyTags...)
+			e.text, e.replyTags, e.stale = "", nil, true
+		}
+		last := fragments[0]
+		if !anchored && last != len(f.entries)-1 {
+			// Some providers finish with reasoning after their visible words.
+			// Put the whole answer after that settled work, as replay does.
+			f.closeLive()
+			f.entries = append(f.entries, f.entries[last])
+			last = len(f.entries) - 1
+		}
+		e := &f.entries[last]
+		e.text, e.replyTags, e.demoted = text.String(), tags, false
 	}
 	f.touch()
 }

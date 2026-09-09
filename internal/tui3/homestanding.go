@@ -708,7 +708,12 @@ func (a *app) homeItemEnter(line homeLine) tea.Cmd {
 		h.say(homeItemNoDoor, "")
 		return nil
 	}
-	if a.resume == nil || filepath.Clean(homeBucketOf(transcript)) != h.bucket {
+	// THE CAPABILITY IS ASKED THROUGH THE ONE PREDICATE, never off a single seam:
+	// a door may answer the whole conversation ([Options.Open]) rather than the
+	// older agent-alone [Options.Resume], and a row that read only the second
+	// would refuse to open a conversation this window can plainly open
+	// (app.go's [app.canOpen]).
+	if !a.canOpen() || filepath.Clean(homeBucketOf(transcript)) != h.bucket {
 		// The same limit a conversation in another project meets, said in the
 		// same words and naming the same place to go (home.go's header).
 		h.say(homeElsewhereWord+" · "+standWhere(line), strings.TrimSpace(line.item.Workspace))

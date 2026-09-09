@@ -64,6 +64,9 @@ func TestEveryRungOfTheLadderReachesTheWireAsItsOwnShape(t *testing.T) {
 func TestTheUnsetRungSendsNoReasoningFieldAtAll(t *testing.T) {
 	client, recorded := newTestClient(t, Config{
 		SupportsParameter: func(string, string) (bool, bool) { return true, true },
+		ReasoningProfile: func(string) (ReasoningProfile, bool) {
+			return ReasoningProfile{Mandatory: true, Default: EffortHigh}, true
+		},
 	})
 	ctx := WithConfiguredEffortRung(context.Background(), effort.None)
 	if _, err := client.CompleteWithMessages(ctx, userMessages("think")); err != nil {

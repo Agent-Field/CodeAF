@@ -25,7 +25,7 @@ import (
 // roomLifeSays is the header and the body of the open page together — the two
 // places a person looks to answer "what is happening".
 func roomLifeSays(a *app) string {
-	return plain(a.roomHeadWord(160)) + "\n" + roomText(a)
+	return plain(roomHeadAll(a, 160)) + "\n" + roomText(a)
 }
 
 func TestATaskRoomWalksItsWholeLifeWithoutAStaleWord(t *testing.T) {
@@ -78,7 +78,7 @@ func TestATaskRoomWalksItsWholeLifeWithoutAStaleWord(t *testing.T) {
 	if !strings.Contains(page, taskCheckingWord) {
 		t.Fatalf("a checked page does not say what is happening:\n%s", page)
 	}
-	if strings.Contains(plain(a.roomHeadWord(160)), stateWorking.String()) {
+	if strings.Contains(plain(roomHeadAll(a, 160)), stateWorking.String()) {
 		t.Fatalf("the header still calls a checked node working:\n%s", page)
 	}
 

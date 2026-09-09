@@ -4,12 +4,12 @@ import "testing"
 
 // ── the ladder ──────────────────────────────────────────────────────────────
 
-func TestParseTakesTheFiveRungsAndOffAndNothingElse(t *testing.T) {
+func TestParseTakesTheFiveRungsAndAutoAndNothingElse(t *testing.T) {
 	for _, ok := range []struct {
 		in   string
 		want Rung
 	}{
-		{"", None}, {"off", None}, {"OFF", None}, {" high ", High},
+		{"auto", None}, {" AUTO ", None}, {"", None}, {"off", None}, {"OFF", None}, {" high ", High},
 		{"low", Low}, {"medium", Medium}, {"XHIGH", XHigh}, {"max", Max},
 	} {
 		got, valid := Parse(ok.in)
@@ -42,8 +42,8 @@ func TestTheLadderIsFiveRungsAndAbsenceIsNotOneOfThem(t *testing.T) {
 			t.Fatalf("%q is in Rungs and reports itself invalid", rung)
 		}
 	}
-	if Ship != High {
-		t.Fatalf("the shipped default is %q; the manual and the settings row both say high", Ship)
+	if Ship != None {
+		t.Fatalf("the shipped default is %q; the default must leave reasoning to the provider", Ship)
 	}
 }
 

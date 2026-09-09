@@ -203,6 +203,12 @@ type Landing struct {
 	// absorb a failed one, because a landing that finished and could not come
 	// home is not the tree holding anything.
 	Merged bool
+	// Retained names changed work kept outside this session's deliverable.
+	Retained  string
+	InPlace   bool
+	Delivered bool
+	Elsewhere bool
+	Produced  bool
 
 	// Checked says this unit's OWN check read the work and accepted it. It is
 	// narrower than done on purpose — a unit taken as it stands, one landed with
@@ -279,6 +285,8 @@ type Remains struct {
 	// reader of its transcript makes of it, and [Steward.Decide] refuses to call
 	// that done.
 	Landed bool
+	// Delivery is frozen from the original ask, never from a worker handback.
+	Delivery deliveryContract
 
 	// Made says this session put work on the deliverable WITH ITS OWN HANDS —
 	// non-empty regular files it created, or files under the tree WHOSE CONTENT
@@ -486,6 +494,13 @@ func (r Remains) unmet() []string {
 		}
 	}
 	for _, landing := range r.Landings {
+		if landing.needsDelivery() && !r.Delivery.acceptsRetained() && !(r.Delivery.Kind == "report" && r.Delivery.Quote != "" && landing.Produced) {
+			where := "its retained task work"
+			if landing.Retained != "" {
+				where = "retained branch " + landing.Retained
+			}
+			out = append(out, workWord(landing.Title, landing.ID)+" is on "+where+"; its changes have not reached the requested workspace")
+		}
 		if !landing.unsatisfied() {
 			continue
 		}
@@ -792,6 +807,8 @@ type Steward struct {
 	mu         sync.Mutex
 	ask        string
 	acceptance string
+	checks     []string
+	delivery   deliveryContract
 
 	// wall and money are the CEILINGS; started and spent are how the figures
 	// against them are read. spent is a closure onto the session's own
@@ -891,17 +908,44 @@ func (s *Steward) Acceptance() string {
 // was built to stop relying on. It reports whether the write landed, so the
 // caller journals a fact rather than an intention.
 func (s *Steward) setAcceptance(text string) bool {
+	return s.setAcceptanceContract(s.Ask(), text, nil)
+}
+
+// setAcceptanceContract freezes the declared verifier beside the acceptance,
+// under the same lock and for the same ask. Prose supplies no commands; an
+// invalid declaration supplies none either. A late answer for another ask or
+// a second contract cannot replace the first one's execution authority.
+func (s *Steward) setAcceptanceContract(ask, text string, declared []string) bool {
+	return s.setAcceptanceDelivery(ask, text, declared, deliveryContract{})
+}
+
+// setAcceptanceDelivery freezes delivery beside the same acceptance and checks.
+func (s *Steward) setAcceptanceDelivery(ask, text string, declared []string, delivery deliveryContract) bool {
+	checks, _ := declaredCheckList(declared)
+	if strings.TrimSpace(ask) == "" {
+		checks = nil
+	}
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.acceptance != "" {
+	if s.acceptance != "" || strings.TrimSpace(ask) != s.ask {
 		return false
 	}
 	s.acceptance = text
+	s.checks = checks
+	s.delivery = validDelivery(ask, delivery)
 	return true
+}
+
+// declaredChecks returns a copy because a caller assembling a checker door
+// cannot be allowed to edit the frozen contract through its backing slice.
+func (s *Steward) declaredChecks() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.checks...)
 }
 
 func (s *Steward) Budget() Budget {

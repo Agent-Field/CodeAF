@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -254,7 +255,7 @@ func TestTheHostDoorWiresTheStandingSeamAndNothingAboutThisMachine(t *testing.T)
 	// recovered nil dereferences per run that the guard swallowed
 	// (chatv3_host_duty_test.go pins the seam that now refuses them).
 	client := hostedClient(t)
-	options := hostOptions(client, nil, "devbox", welcome, false)
+	options := hostOptions(onePipeFleet("devbox", client), welcome, false)
 	if options.Build != welcome.Build {
 		t.Fatalf("the surface says build %q, want the engine's %q", options.Build, welcome.Build)
 	}
@@ -464,9 +465,60 @@ func TestTheConnectionSeamsReachTheSurface(t *testing.T) {
 		t.Fatal("a seam that is not filled is a seam nobody can wire")
 	}
 
-	options := hostOptions(client, nil, "devbox", remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)
+	options := hostOptions(onePipeFleet("devbox", client), remote.Welcome{Version: remote.Version, Workspace: "/srv/app"}, false)
 	if options.Link.Note == nil || options.Link.Ping == nil || options.Link.Notice == nil || options.Link.Held == nil {
 		t.Fatalf("the surface was handed %+v — a seam left nil is a fact nobody is told", options.Link)
+	}
+}
+
+type questionOnArrivalAgent struct {
+	quietAgent
+	events chan session.Event
+}
+
+func (a *questionOnArrivalAgent) Submit(context.Context, string) (<-chan session.Event, error) {
+	return a.events, nil
+}
+
+func TestTheInitialQuestionSnapshotSurvivesAReemission(t *testing.T) {
+	agent := &questionOnArrivalAgent{events: make(chan session.Event)}
+	sess := remote.NewSession(&remote.Engine{Agent: agent, Workspace: "/srv/app"}, true)
+	t.Cleanup(func() { close(agent.events); _ = sess.Close() })
+	dial := func() *remote.Client {
+		surface, engine := remote.Pipe()
+		go func() {
+			_ = remote.ServeAttach(engine, engine, remote.AttachOptions{
+				Open: func(remote.Hello) (*remote.Session, error) { return sess, nil },
+			})
+			_ = engine.Close()
+		}()
+		client, err := remote.Dial(surface, "devbox", remote.Hello{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = client.Close() })
+		return client
+	}
+	first := dial()
+	events, err := first.Agent().Submit(context.Background(), "run the checks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ask := session.Event{Kind: session.EventConsentRequest, ID: 7, Tool: "bash"}
+	agent.events <- ask
+	<-events
+	back := dial()
+	seams := newHostSeams(back)
+	// A repeated event is fully published before the surface asks for its
+	// initial cards. The live registry now considers this window informed.
+	agent.events <- ask
+	<-events
+	held, err := seams.Held()
+	if err != nil || len(held) != 1 || held[0].Event.Unwire().ID != 7 {
+		t.Fatalf("the initial question disappeared: held=%+v err=%v", held, err)
+	}
+	if later, err := seams.Held(); err != nil || len(later) != 0 {
+		t.Fatalf("later reads must use the current registry: held=%+v err=%v", later, err)
 	}
 }
 

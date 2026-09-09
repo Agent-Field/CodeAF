@@ -125,6 +125,10 @@ func (a *Agent) Abandon(reason AbandonReason) (Usage, bool) {
 	// the keypress, and this is the same law said at the second stage, because a
 	// follow-up queued DURING the winding down would otherwise start here.
 	a.dropFollowUpsLocked()
+	// The turn's number has already moved on above, which is what makes an
+	// armed second look inert; this is the same act said as a release
+	// (steer_grace.go).
+	a.stopSteerGraceLocked()
 	a.running = false
 	a.cancel, a.hub, a.done, a.abandon = nil, nil, nil, nil
 	a.turnSpend = Usage{}

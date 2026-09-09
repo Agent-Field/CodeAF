@@ -500,8 +500,8 @@ func TestAUnitWhoseWorkCameHomeAnywayIsAbsorbedAndSaidSo(t *testing.T) {
 
 	neverCameHome := remains
 	neverCameHome.Landings[0].Merged = false
-	if left := neverCameHome.unmet(); len(left) != 1 {
-		t.Fatalf("a landing that never came home absorbed another: %q", left)
+	if left := neverCameHome.unmet(); len(left) != 2 || !strings.Contains(left[0], "changes have not reached the requested workspace") || left[1] != "Add focused tests did not finish" {
+		t.Fatalf("missing delivery and the unfinished sibling must both remain: %q", left)
 	}
 	neverCameHome.Landings[0].Merged = true
 

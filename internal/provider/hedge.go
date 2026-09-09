@@ -86,6 +86,9 @@ const hedgeNotice = "that lane went quiet — this answer is coming from another
 // is the switch a person would otherwise have to discover.
 const firstPromptNotice = "still no answer — trying another lane · /model switches"
 
+// A wait without another request must not claim a rescue or draw switching.
+const firstPromptWaitNotice = "still waiting for an answer · /model switches"
+
 // waitNow is the clock the waiting controller runs on, and it is deliberately
 // NOT the client's seamed [Client.clock].
 //
@@ -215,7 +218,7 @@ type hedgeRace struct {
 // every model somebody picks after launch — produced no routing opinion AND no
 // clock. Routing and waiting are two questions: this call still has a ceiling,
 // still reports, and still writes down what it did.
-func (c *Client) raceFor(ctx context.Context, observer StreamObserver, build control.Factory) (*hedgeRace, bool) {
+func (c *Client) raceFor(ctx context.Context, observer StreamObserver, build control.Factory, model string) (*hedgeRace, bool) {
 	if build == nil || streamWatchFrom(ctx) != nil {
 		return nil, false
 	}
@@ -224,7 +227,7 @@ func (c *Client) raceFor(ctx context.Context, observer StreamObserver, build con
 		client:   c,
 		build:    build,
 		choice:   choice,
-		model:    strings.TrimSpace(c.config.Model),
+		model:    strings.TrimSpace(model),
 		expected: expectedAnswerFrom(ctx),
 		session:  streamSessionFrom(ctx),
 		observer: observer,
@@ -291,6 +294,9 @@ func (r *hedgeRace) run(ctx context.Context, messages []ai.Message, options ...a
 				}
 			}
 			if result.err != nil {
+				if IsConnectionUnavailable(result.err) {
+					return result.response, result.relearned, result.err
+				}
 				// THE VOICE MOVES OFF A DEAD ARM. An arm that has failed will
 				// never speak again, and leaving it as the speaker holds every
 				// other arm's text unreplayed until one of them finishes —
@@ -533,7 +539,7 @@ func (r *hedgeRace) act(from int, act control.Act) {
 		// A FIRST PROMPT STILL OWES THE DOOR even when no second arm can
 		// start. Saying nothing here is the 90s hang: the stream guard is
 		// the next thing that acts, and `/model` is never named.
-		if r.tellFirstPrompt("", quietWords(act.Silence)) {
+		if r.tellFirstPrompt("", quietWords(act.Silence), false) {
 			return
 		}
 		r.tellTheWait(act)
@@ -587,7 +593,7 @@ func (r *hedgeRace) hedge(from int, act control.Act, alt string) {
 	// the second half would not know what it was about (phase.go).
 	quiet := primary.watch.quietFor(waitNow())
 	r.phase.switching(strings.ToLower(alt), quiet)
-	r.tellFirstPrompt(alt, quiet)
+	r.tellFirstPrompt(alt, quiet, true)
 	r.start(index, alt)
 }
 
@@ -646,7 +652,7 @@ func (r *hedgeRace) rescueOnStall(from int, act control.Act) bool {
 	} else {
 		r.report.started(RescueNews{Reason: RescueSlow})
 	}
-	r.tellFirstPrompt(alt, quiet)
+	r.tellFirstPrompt(alt, quiet, true)
 	r.start(index, alt)
 	return true
 }
@@ -654,10 +660,11 @@ func (r *hedgeRace) rescueOnStall(from int, act control.Act) bool {
 // tellFirstPrompt is the visible half of a first-prompt stall. [hedgeNotice]
 // waits for text already on the screen; a first prompt has none, so the
 // rescue has to say itself — and name `/model` — or the person sits through
-// the first-token cut discovering nothing (F42).
+// the first-token cut discovering nothing (F42). A report with no available
+// rescue names that same door while saying only that the original call waits.
 //
 // IT IS ONCE PER QUESTION. A stall that re-announces on every beat is nagging.
-func (r *hedgeRace) tellFirstPrompt(alt, quiet string) bool {
+func (r *hedgeRace) tellFirstPrompt(alt, quiet string, rescuing bool) bool {
 	if r == nil || !firstPromptFrom(r.base) {
 		return false
 	}
@@ -669,17 +676,19 @@ func (r *hedgeRace) tellFirstPrompt(alt, quiet string) bool {
 	if already {
 		return true
 	}
-	then := strings.TrimSpace(alt)
-	if then == "" {
-		then = "/model"
-	}
+	notice := firstPromptWaitNotice
 	// A named alt already moved the phase in the caller. An empty one is
 	// the cold first-run rescue: nowhere named, so the door itself is Then.
-	if strings.TrimSpace(alt) == "" {
-		r.phase.switching(then, quiet)
+	if rescuing {
+		notice = firstPromptNotice
+		if strings.TrimSpace(alt) == "" {
+			r.phase.switching("/model", quiet)
+		}
+	} else {
+		r.phase.allSlow("")
 	}
 	if r.observer != nil {
-		r.observer(StreamEvent{Kind: StreamNotice, Delta: firstPromptNotice, Session: session})
+		r.observer(StreamEvent{Kind: StreamNotice, Delta: notice, Session: session})
 	}
 	return true
 }
@@ -912,6 +921,12 @@ func (r *hedgeRace) walk(from int, cause error) {
 	// lane rather than re-deriving a `provider.only` it wrote itself.
 	dead := r.armLane(from)
 	refusal := r.client.laneRefusalFor(r.model, dead, cause)
+	// A transient fault does not withdraw a person's strict preference. A
+	// router refusal that the pairing cannot serve is the existing retirement
+	// exception; an explicitly accepted rescue may also continue its own walk.
+	if r.plan.Pinned && from == 0 && refusal.Kind != refusalRouting {
+		return
+	}
 	// AND THE CLAIM WE MADE ABOUT IT IS WITHDRAWN FIRST. `trying coreweave…` is
 	// a promise about the present tense; nothing retracted it when coreweave
 	// died, so it sat on the status line until a ten-minute window aged it out,

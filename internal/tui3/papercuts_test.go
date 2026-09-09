@@ -27,9 +27,11 @@ func TestEveryRefusalOnTheTaskSurfacesNamesADoor(t *testing.T) {
 		}
 		// A DOOR IS A PLACE, NOT A KEY. `esc to return` was what the finished
 		// room said for a year, and esc is a way off the page rather than a
-		// destination for a sentence — so a door has to name somewhere this
-		// surface can actually put the words.
-		if !strings.Contains(r.door, roomCrumbRoot) {
+		// destination for a sentence — so a door has to name somewhere the words
+		// can actually go: this window's own conversation, or — on a page read
+		// through somebody else's — the conversation that owns the work, which is
+		// the one place main is NOT (roomrefusal.go's [roomGuestFinishedRefusal]).
+		if !strings.Contains(r.door, roomCrumbRoot) && !strings.Contains(r.door, refusalOwnerPlace) {
 			t.Fatalf("%q names %q, which is not a place words can go", r.what, r.door)
 		}
 		for _, spelling := range []string{r.line(), r.short()} {
@@ -119,7 +121,7 @@ func TestASentenceTypedOverTheRosterArrivesIntact(t *testing.T) {
 	a, _, _ := taskApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskDone,
 		session.TaskNotice{Merge: mergeWordMerged})})
-	drive(t, a, key("ctrl+t"))
+	drive(t, a, key(railHoldChord))
 	if !a.railHold {
 		t.Fatal("the roster was not handed the keyboard")
 	}
@@ -145,7 +147,7 @@ func TestNoBareChordFiresWhileTheBoxHoldsWords(t *testing.T) {
 	a, _, _ := taskApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskRunning,
 		session.TaskNotice{})})
-	drive(t, a, key("ctrl+t"))
+	drive(t, a, key(railHoldChord))
 	typeInto(t, a, "note: ")
 	wide := a.railWide
 
@@ -185,7 +187,7 @@ func TestWidenIsAChordAndNotALetterBesideAColumn(t *testing.T) {
 	a, _, _ := taskApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskDone,
 		session.TaskNotice{Merge: mergeWordMerged})})
-	drive(t, a, key("ctrl+t"))
+	drive(t, a, key(railHoldChord))
 	wide := a.railWide
 
 	drive(t, a, key(railWidenChord))
@@ -212,7 +214,7 @@ func TestWidenIsAChordAndNotALetterBesideAColumn(t *testing.T) {
 func TestARowThatNeedsYourLookShowsItsVerbsBeforeTheRoomIsEntered(t *testing.T) {
 	a, _ := settleApp(t)
 	landUnverified(t, a)
-	drive(t, a, key("ctrl+t"))
+	drive(t, a, key(railHoldChord))
 	if a.railFocusNode() == nil {
 		t.Fatal("the roster has no focused row to ask about")
 	}
@@ -239,7 +241,7 @@ func TestARowThatNeedsYourLookShowsItsVerbsBeforeTheRoomIsEntered(t *testing.T) 
 func TestTheSettleVerbsAnswerFromTheRosterRow(t *testing.T) {
 	a, agent := settleApp(t)
 	landUnverified(t, a)
-	drive(t, a, key("ctrl+t"))
+	drive(t, a, key(railHoldChord))
 
 	drive(t, a, key("a"))
 	if len(agent.resolved) != 1 || agent.resolved[0].answer != session.TaskAccept {
@@ -262,7 +264,7 @@ func TestAnOrdinaryRowIsOfferedNoSettleVerbs(t *testing.T) {
 	a, agent := settleApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskDone,
 		session.TaskNotice{Elapsed: time.Second, Merge: mergeWordMerged})})
-	drive(t, a, key("ctrl+t"))
+	drive(t, a, key(railHoldChord))
 
 	if hint := a.railHoldHintWord(); strings.Contains(hint, roomSettleHint) {
 		t.Fatalf("a merged row offers the answers: %q", hint)
@@ -282,7 +284,7 @@ func TestTheBareWidenLetterKeepsTheFullFrameRoster(t *testing.T) {
 	a.width, a.height = 60, 24
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskRunning,
 		session.TaskNotice{})})
-	drive(t, a, key("ctrl+t"))
+	drive(t, a, key(railHoldChord))
 	if !a.railFull() {
 		t.Fatalf("the roster is not over the body at %d columns", a.width)
 	}

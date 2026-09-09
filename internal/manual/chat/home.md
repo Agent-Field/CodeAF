@@ -450,8 +450,9 @@ the next begins (*How much air is on the card*).
   asked and answer it there, which is what you want when one line is not the whole story.
   The answer keys are amber, the way out is dim, because they are two different offers.
   The band is absent entirely for a conversation nobody is asking anything of;
-- **`work`** — each task with its mark and what it cost, a run that is not done keeping its
-  outcome under it, then `▸ N more tasks` with `tasks` out at the margin. That line **names
+- **`work`** — a compact tree of the conversation's tasks. A child is indented beneath
+  the task that requested it. The preview keeps three task names, with unfinished work
+  keeping its outcome underneath, then `▸ N more tasks` with `tasks` out at the margin. That line **names
   the tasks place** rather than unfolding: a card is not the place that holds them.
   **Clicking a task's own row opens that task's record** — the same card `enter` opens on
   the tasks place;
@@ -846,18 +847,26 @@ a mark means something is *happening*, and done is the absence of one. Every oth
 leads the second line instead, with the glyph it wears everywhere else here:
 
 - `◐ running · <what it is doing>`
-- `◐ running · checking what it left`, `◐ running · closing gaps` — the minutes when the
+- `◐ finishing · checking what it left`, `◐ finishing · closing gaps` — the minutes when the
   node's own worker is not the one at it, said here for another window's node as well as
   for this one's, and never for a window that has gone (the page on how tasks run has both).
-- `◌ incomplete · <what is still missing>` — work a check did not accept, or work that was
-  under way when the window went; home shares this empty-circle shape with queued work and
+  The word is `finishing` rather than `running` because the worker is done and the end of
+  the run is being read; the row is still live and still spinning.
+- `queued` with no mark — the task was admitted and nothing has started it yet. Accepting
+  work and executing it are different receipts, and this row says which one has happened.
+- `◌ incomplete · <what is still missing>` — work a check did not accept, work a dropped
+  connection or a threshold ended, a brief whose world had moved, or work that was under
+  way when the window went; home shares this empty-circle shape with queued work and
   distinguishes it with the state word and warn hue
 - `? needs your look · <what it came to>` — brought up out of the dim, because it is asking
-- `✗ failed · <what stopped it>`
+- `⊘ stopped · <what it came to>` — **you** ended it. Nothing was found wrong with it.
+- `✗ failed · <what stopped it>` — and only this: a working copy that could not be made, a
+  worker that would not start, an error nobody classified. A run the wire or a limit ended
+  reads `incomplete`, because nothing was found out about the work.
 
 ## How do I see more tasks on the right — ▸ …5 more tasks
 
-**The band shows three tasks and folds the rest**, saying how many it is holding back:
+**The phone band shows three task families and folds the rest; desktop cards preview three task names**, saying how many it is holding back:
 
 ```
 ▸ …5 more tasks
@@ -1100,21 +1109,27 @@ terminal hold*.
 
 ## How many conversations can one terminal hold — is there a limit, and why can I not open another
 
-**As many as you open.** Nothing counts them and nothing refuses another: the ninth, the
-twentieth and the fiftieth open exactly like the first, from home's `enter`, from a typed
-sentence, from a typed path, from the switcher (`ctrl+k`), from search and from `/new`.
+**As many as you open, over every door.** Nothing counts them or refuses another: the
+ninth and the fiftieth open like the first, from home's `enter`, a typed path, the
+switcher (`ctrl+k`), search or `/new`. The ordinary engine-backed chat, `--host` and
+`--at` dial a connection per conversation, so opening one closes none of the others;
+`aforge chat --no-host` runs them inside this process instead. The only bound is the
+machine's — memory here, and whatever the engine and your provider will carry.
 
 There used to be a cap of eight, and taking a ninth said `8 open is as many as aforge holds
 — /quit closes this one`. That sentence is gone and nothing says it any more.
 
-What is still true is what an open conversation costs. Each one is fully alive — its turn
-streams, its tasks run, it holds its transcript's lock, it heartbeats a presence file every
-five seconds — and **nothing closes one for you**. So a window with fifty open is holding
-fifty live conversations' worth of memory until you say otherwise. The two ways to say so:
+Each conversation is fully alive whether or not you are looking at it: its turn streams,
+its tasks run, it holds its transcript's lock and heartbeats a presence file every five
+seconds. A window with fifty of them holds fifty conversations' worth of memory, and over
+an engine door fifty connections.
+`/quit` closes the conversation in front and brings the last one forward.
 
-- `/quit` closes the conversation in front and brings the last one forward;
-- `ctrl+w` on the switcher card closes the conversation under the cursor without leaving the
-  one you are in.
+`ctrl+w` and a tab's `×` hide its tab and preserve its draft. Closing the active tab
+selects the most recently used remaining tab; with none left it goes Home. The work stays
+alive over every door — and where that conversation is still working, the press asks first
+(`keep running`, `stop work`, `cancel`). Selecting another tab ends nothing: each
+conversation has its own connection. Closing an inactive tab does not switch.
 
 `2 open · 1 waiting` on the status line is the count, and `ctrl+k` shows the first twelve as
 rows. Home is the page that shows every one of them.
@@ -1215,10 +1230,15 @@ What does not move is where the conversation is **standing**: its own working di
 `AGENTS.md` and its settings stay the folder it was opened in. *Choosing a folder* has both
 halves.
 
-For a genuinely separate conversation — a different project's settings, its own model, its
-own history — one terminal holds **as many as you open**, with no cap on the number. One is
-on screen; the rest are open behind it, fully alive. Nothing closes one for you, so `/quit`
-and `ctrl+w` are how a conversation you are done with actually ends.
+For separate conversations with their own project settings, models and histories, aforge
+holds **as many as you open**, with no cap on the number, over every door. One is on
+screen and the rest stay alive behind it. `/quit` ends one; `ctrl+w` and `×` hide its tab
+and select the most recently used remaining tab, or Home when none remain — and where that
+conversation is still working they ask first, `keep running` or `stop work`. Closing the
+final tab goes Home. Work keeps running and its draft stays with the conversation.
+
+All of the following holds over the ordinary engine socket, `--host`, `--at` and
+`--no-host` alike:
 
 - **`enter` on home** opens any row, in any project, and leaves the one you were in open.
 - **`tab`**, pressed with an empty message box, goes to the conversation you were in before
@@ -1230,7 +1250,9 @@ and `ctrl+w` are how a conversation you are done with actually ends.
 - **`/quit`** closes the one in front and brings the previous one forward. It leaves aforge
   only when that was the last one.
 - **`ctrl+c` twice** closes all of them, and the warm line says how many:
-  `ctrl+c again to quit · 3 conversations · 2 tasks and a job will stop`.
+  `ctrl+c again to quit · 3 conversations · 2 tasks and a job will stop` — and
+  `keeps running` in place of `will stop` for work the aforge service is running, which
+  closing the window leaves alone.
 
 ## How do I switch to my other chat — and is it still running
 
@@ -1255,7 +1277,9 @@ it redraws it from its own transcript, and these come back with it:
 
 - the unsent sentence in the message box, and the pictures attached to it — including any
   message you typed while it was busy, which is folded back into the box rather than
-  dropped;
+  dropped, and the documents behind any compact paste chips in it;
+- anything you had started typing at one of that conversation's **task pages**, kept per
+  task: open the task again after coming back and your line is where you left it;
 - where you were reading;
 - how much of an approval countdown was left, given back to you whole rather than run down
   while you were away — and only if the conversation is still asking;
@@ -1268,8 +1292,10 @@ the model picker, `/history`, the deliverables shelf, a task column focus. Each 
 something you are in the *middle* of, or a door onto something the whole terminal shares.
 
 `/new` is the exception, and deliberately: **the draft goes with you**, not with the
-conversation. `/new` carries the box's text into the new conversation and clears it in the
-old one.
+conversation. `/new` carries the box's text — and the documents behind its paste chips —
+into the new conversation and clears it in the old one. What you had started typing at a
+**task page** does not come with you: those lines belong to the conversation whose tasks
+they were typed at.
 
 ## Searching from home — find an old chat from anywhere
 
@@ -1786,8 +1812,9 @@ Over `--host` home lists **the machine your session is running on**. The project
 conversations in them and the work each of those ran are read on the far end and carried
 here, so what you are looking at is the server's afternoon rather than your laptop's — and
 the right end of the tab bar says `on <machine>` so you can see which. Enter on a row opens
-that conversation the way `aforge resume` opens one locally: the engine swaps to it and this
-window keeps drawing.
+that conversation the way `aforge resume` opens one locally, beside the one you are in
+rather than in place of it: the engine gives it a connection of its own and the chat you
+came from keeps running.
 
 Two things a remote home does not do, and both are silences rather than sentences. **No row
 is ever marked `that folder is gone`** — the folders are on the other machine and a stat here
@@ -2398,3 +2425,16 @@ The bar under the box is the phone's legend: at most three wide targets, drawn l
 answer bands but dim — `open · new · ask here` on the inbox, `‹ back · open · more` on a
 sheet, `‹ back · send · more` on an errand. Tap one, or press the key it names. Below
 width **24** the plain hint line is drawn instead.
+
+## Main chat versus subtasks — why is the work nested on Home?
+
+A Home row is the **main conversation**. Opening that row returns to its chat. The
+work preview beside it belongs to that conversation, and its tasks form a tree under
+their actual parents. Clicking a task opens that task's record. Identical visible task
+names receive their task numbers in the compact preview so each click stays distinct.
+
+A child needing a person brings its family forward; work still moving comes before
+settled work. The compact desktop preview keeps three task names in parent-first order,
+so it never shows a child without its visible ancestry. The `N more tasks` line opens
+the Tasks place, which holds the full conversation tree. The phone's scrollable work
+band folds by family and counts all tasks hidden behind its fold.

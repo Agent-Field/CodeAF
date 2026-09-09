@@ -1,6 +1,6 @@
 package tui3
 
-// ── THE ROOM FOLDS THE PAST AND KEEPS THE PRESENT WIDE ──────────────────────
+// ── THE ROOM FOLDS THE PAST AND COMPACTS THE PRESENT ──────────────────────
 //
 // These tests used to hold the opposite law shut — A ROOM FOLDS NOTHING — and
 // they were right about the defect they were written for and wrong about the
@@ -56,18 +56,33 @@ func workedJournal(t *testing.T) string {
 // is the state every one of these reads the page in unless it says otherwise.
 func openWorked(t *testing.T) *app {
 	t.Helper()
+	a := openRunningWorked(t)
+	drive(t, a, roomClosedMsg{gen: a.room.gen})
+	return a
+}
+
+// openRunningWorked is the same page with the lane STILL OPEN — the posture that
+// folds by phase (roomfold.go's [taskRoom.readingLens]).
+func openRunningWorked(t *testing.T) *app {
+	t.Helper()
 	a, fake, _ := roomApp(t)
 	fake.journal = workedJournal(t)
 	a.workMode = config.WorkFold
 	a.openRoom(7, "Draw two posters")
 	a.touch()
-	drive(t, a, roomClosedMsg{gen: a.room.gen})
 	return a
 }
 
 // A FINISHED ROOM READS AS WHAT THE WORK CAME TO, WITH THE MACHINERY FILED. The
 // paragraphs the node wrote stand, the report stands, and the calls between them
-// are behind chips that say what they cost.
+// are behind a chip that says what they cost.
+//
+// THE CHIP IS SPENT PER COMPLETED STRETCH HERE AND PER PHASE WHILE THE NODE RUNS
+// (roomfold.go's [taskRoom.readingLens]). A page nobody is watching any more is
+// read rather than watched, so the machinery between the person's words and the
+// reply they earned collapses once instead of once every few steps — and the
+// count below moved with it. Everything else this test asserts is unchanged,
+// which is the point: what folded is still folded and every word still stands.
 func TestAFinishedRoomFoldsSettledPhasesAndLeavesTheProseStanding(t *testing.T) {
 	a := openWorked(t)
 	page := roomText(a)
@@ -94,10 +109,10 @@ func TestAFinishedRoomFoldsSettledPhasesAndLeavesTheProseStanding(t *testing.T) 
 		t.Fatalf("the settled calls are still on the page:\n%s", page)
 	}
 	// THE CHIP'S GRAMMAR IS THE CONVERSATION'S, counted and never paraphrased.
-	if n := strings.Count(page, "▸ worked"); n != 2 {
-		t.Fatalf("want one chip per settled phase, got %d:\n%s", n, page)
+	if n := strings.Count(page, "▸ worked"); n != 1 {
+		t.Fatalf("want one chip over the finished stretch, got %d:\n%s", n, page)
 	}
-	if !strings.Contains(page, "1 tool call · ctrl+e") {
+	if !strings.Contains(page, "2 tool calls · ctrl+e") {
 		t.Fatalf("the chip does not count its calls or name its door:\n%s", page)
 	}
 }
@@ -116,10 +131,9 @@ func TestTheFinalReportNeverFolds(t *testing.T) {
 	}
 }
 
-// A RUNNING ROOM FOLDS WHAT IS BEHIND THE FRONTIER AND LEAVES THE FRONTIER WIDE.
-// The person watching NOW is the one reader for whom the machinery is the
-// content, so everything after the last settled paragraph keeps every row.
-func TestARunningRoomFoldsThePastAndKeepsTheFrontierWide(t *testing.T) {
+// A running room keeps settled phases independent and the frontier compact.
+// Opening the current activity reveals its calls without opening the past.
+func TestARunningRoomFoldsThePastAndOffersCompactFrontier(t *testing.T) {
 	a, fake, _ := roomApp(t)
 	fake.journal = workedJournal(t)
 	a.workMode = config.WorkFold
@@ -136,13 +150,15 @@ func TestARunningRoomFoldsThePastAndKeepsTheFrontierWide(t *testing.T) {
 	if !strings.Contains(page, "▸ worked") {
 		t.Fatalf("a running node's settled phases did not fold:\n%s", page)
 	}
-	if !strings.Contains(page, "Still working.") {
+	if !strings.Contains(page, "Still working") {
 		t.Fatalf("the room lost its live edge:\n%s", page)
 	}
-	// THE LIVE CALL IS ON THE PAGE. It arrived after the last settled paragraph,
-	// so no chip may cover it.
-	if !strings.Contains(page, "bash") {
-		t.Fatalf("the frontier's own call was folded away:\n%s", page)
+	if strings.Contains(page, "bash") {
+		t.Fatalf("live call escaped compact activity:\n%s", page)
+	}
+	openRoomCompactWork(t, a)
+	if page := roomText(a); !strings.Contains(page, "bash") {
+		t.Fatalf("opening the frontier lost its call:\n%s", page)
 	}
 }
 
@@ -275,31 +291,58 @@ func TestACorrectionTypedIntoARunningTaskBreaksThePhaseFold(t *testing.T) {
 	}
 }
 
-// EVERY DOOR OPENS A CHIP, because the disclosure ladder may never dead-end:
-// ctrl+e opens the newest, and a scroll up at the top of the page opens the one
-// nearest the top.
+// Live phase chips retain their scroll door. A completed task requires an
+// explicit disclosure, so reading back to its request cannot expand its tools.
 func TestCtrlEAndScrollUpBothOpenAPhaseChip(t *testing.T) {
-	a := openWorked(t)
-	if strings.Contains(roomText(a), "generate_image") {
-		t.Fatalf("the page did not start folded")
-	}
-	if !a.toggleLatestWorkfold() {
-		t.Fatal("ctrl+e found no chip to open")
-	}
-	openFirstCaption(t, a)
-	if page := roomText(a); !strings.Contains(page, "generate_image") {
-		t.Fatalf("ctrl+e did not open the newest chip:\n%s", page)
-	}
+	// WHILE THE NODE RUNS there is a chip per settled phase, and the two doors
+	// reach DIFFERENT ones — which is what makes a room's chips separable at all.
+	t.Run("while the node runs", func(t *testing.T) {
+		a := openRunningWorked(t)
+		if strings.Contains(roomText(a), "generate_image") {
+			t.Fatalf("the page did not start folded")
+		}
+		if !a.toggleLatestWorkfold() {
+			t.Fatal("ctrl+e found no chip to open")
+		}
+		openVisiblePhaseCaption(t, a)
+		if page := roomText(a); !strings.Contains(page, "generate_image") {
+			t.Fatalf("ctrl+e did not open the newest chip:\n%s", page)
+		}
 
-	// The scroll gesture, from the top, opens the chip nearest the top — the one
-	// ctrl+e did not take.
-	b := openWorked(t)
-	b.room.offset, b.room.stick = 0, false
-	b.roomScroll(-1)
-	openFirstCaption(t, b)
-	if page := roomText(b); !strings.Contains(page, "index.html") {
-		t.Fatalf("scrolling up at the top opened no chip:\n%s", page)
-	}
+		b := openRunningWorked(t)
+		b.room.offset, b.room.stick = 0, false
+		b.roomScroll(-1)
+		openVisiblePhaseCaption(t, b)
+		if page := roomText(b); !strings.Contains(page, "index.html") {
+			t.Fatalf("scrolling up at the top opened no chip:\n%s", page)
+		}
+	})
+
+	// Once it has landed, Ctrl+E opens the outline and a caption opens its
+	// calls. Scrolling alone preserves the finished reading posture.
+	t.Run("after it lands", func(t *testing.T) {
+		a := openWorked(t)
+		if strings.Contains(roomText(a), "index.html") {
+			t.Fatalf("the page did not start folded")
+		}
+		if !a.toggleLatestWorkfold() {
+			t.Fatal("ctrl+e found no chip to open")
+		}
+		if page := roomText(a); !strings.Contains(page, "Reading the site first") {
+			t.Fatalf("ctrl+e did not open the finished work onto its outline:\n%s", page)
+		}
+		openVisiblePhaseCaption(t, a)
+		if page := roomText(a); !strings.Contains(page, "index.html") {
+			t.Fatalf("the outline does not open onto its calls:\n%s", page)
+		}
+
+		b := openWorked(t)
+		b.room.offset, b.room.stick = 0, false
+		b.roomScroll(-1)
+		if page := roomText(b); strings.Contains(page, "Reading the site first") {
+			t.Fatalf("scrolling expanded finished work:\n%s", page)
+		}
+	})
 }
 
 // ui.work = open BEHAVES IN A ROOM EXACTLY AS IT DOES IN THE CONVERSATION, which

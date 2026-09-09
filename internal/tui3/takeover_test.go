@@ -687,7 +687,7 @@ func TestAKeptConversationIsLetGoOfOnItsStir(t *testing.T) {
 	kept := held.conv.Agent
 
 	held.watch.takeover.Store(true)
-	a.behindStir(key)
+	a.behindStir(behindStirMsg{key: key})
 
 	if a.behind[key] != nil {
 		t.Fatal("the kept conversation was not let go of")

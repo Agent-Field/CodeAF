@@ -34,6 +34,8 @@ type workfold struct {
 	// last block and the chip is the whole of what is left — which is the fold
 	// saying the same thing the missing flush paragraph says.
 	stopped bool
+	// A phase ends at a settled paragraph; only a turn fold certifies an answer.
+	phase bool
 }
 
 // deckFolds is the chips ONE PAGE draws, resolved through the lens's fold style
@@ -67,9 +69,9 @@ type workfold struct {
 // read is the industry's linear machinery scroll reproduced one level down. The
 // reversal was possible without giving up the audit because the old law's own
 // objection — a chip per TURN swallows a page that is one turn — is answered by
-// folding per PHASE instead ([derivePhaseFolds]): the machinery collapses, every
-// paragraph the node wrote stays standing, and the live frontier never folds at
-// all. And [deck.workOpen] keeps its one meaning: the chips still default shut
+// folding per PHASE instead ([derivePhaseFolds]): settled machinery and its
+// narration collapse together, while the latest paragraph and live frontier
+// remain visible. And [deck.workOpen] keeps its one meaning: chips default shut
 // and the reader's expansion is still the reader's.
 //
 // THE DOORS, all three, because DISCOVERABILITY BEFORE PURITY: `ctrl+e` opens
@@ -89,17 +91,14 @@ func (a *app) deckFolds(d deck) map[int]workfold {
 //
 // derivePhaseFolds is the room's chips. A PHASE is the settled work — thought,
 // calls, compaction, the surface's own notes — that precedes a settled block of
-// the node's prose. The chip hides that machinery and leaves the prose standing,
-// which is exactly what the conversation's chip does with an answer; the only
-// thing that changed is what counts as the end of one, because a node writes a
-// paragraph every few steps and asks a question once.
+// the node's prose. A step's introducing narration belongs to the same chip as
+// its calls. The latest paragraph stays visible; if another step follows it,
+// that paragraph becomes working narration and folds with that next step.
 //
-// THE LIVE FRONTIER NEVER FOLDS. Everything after the last settled paragraph is
-// what the node is doing NOW, and the person watching now is the one reader for
-// whom the machinery is the content — so it is left whole, at the room's own
-// whole-screenful tool tail (lens.go's [lens.toolTail]). It falls out of the
-// walk rather than being tested for: a run with no settled paragraph after it
-// never closes, so no chip is ever minted over it.
+// THE LIVE FRONTIER NEVER BECOMES A SETTLED PHASE. A run with no settled
+// paragraph after it never closes, so this walk mints no chip over it. The
+// independent live policy can compact that unowned frontier (livesteps.go);
+// opening it retains the room's whole-screenful tool tail.
 //
 // WHAT NEVER FOLDS, AND WHY EACH ONE. A run carrying any of these keeps every
 // row it has, exactly as the conversation's `blocked` runs do:
@@ -135,12 +134,12 @@ func derivePhaseFolds(es []entry) map[int]workfold {
 			// The run is abandoned, not emitted: whatever it held, this row is
 			// something a chip may not cover, and a chip that stopped short of it
 			// would be a fold whose reason nobody can see.
-			phase = phaseRun{start: -1, key: phase.key}
+			phase = phaseRun{start: -1, key: phase.key, floor: phase.floor}
 		case e.kind == entryAssistant && e.settled && strings.TrimSpace(e.text) != "":
 			if f, ok := phase.close(es, i); ok {
 				out[f.start] = f
 			}
-			phase = phaseRun{start: -1, key: phase.key}
+			phase = phaseRun{start: -1, key: phase.key, floor: phase.floor}
 		default:
 			phase.open(i)
 		}
@@ -154,6 +153,8 @@ func derivePhaseFolds(es []entry) map[int]workfold {
 // bookkeeping.
 type phaseRun struct {
 	start, key int
+	// The previous phase owns everything before its endpoint.
+	floor int
 }
 
 func (p *phaseRun) open(i int) {
@@ -170,7 +171,7 @@ func (p *phaseRun) close(es []entry, answer int) (workfold, bool) {
 	if p.start < 0 || p.start >= answer {
 		return workfold{}, false
 	}
-	f := workfold{turn: es[p.start].turn, answer: answer}
+	f := workfold{turn: es[p.start].turn, answer: answer, phase: true}
 	// A RUN THAT COUNTED NOTHING IS NOT A PHASE. [countWork] steps over the rows
 	// a fold may not measure, so a run of nothing but dividers leaves no start
 	// behind — and a chip over no work is a chip that hides nothing and offers a
@@ -178,6 +179,26 @@ func (p *phaseRun) close(es []entry, answer int) (workfold, bool) {
 	if countWork(es, p.start, answer, &f); f.start < 0 {
 		return workfold{}, false
 	}
+	// When a phase has actual work, its preceding narration belongs behind
+	// the same door as its calls. Caption derivation lifts that prose into the
+	// step heading; leaving it outside the fold would strand a hidden heading.
+	// A receipt or prose-only stretch must not acquire a fold by this rule.
+	for i := p.start; i < answer; i++ {
+		if es[i].kind != entryTool && es[i].kind != entryThinking && es[i].kind != entryCompact {
+			continue
+		}
+		for at := p.start - 1; at >= p.floor && es[at].turn == f.turn; at-- {
+			e := &es[at]
+			if groupBreaks(e) || phaseKeeps(e) || e.kind == entryTool {
+				break
+			}
+			if e.kind == entryAssistant && e.settled && strings.TrimSpace(e.text) != "" {
+				f.start = at
+			}
+		}
+		break
+	}
+	p.floor = answer
 	p.key++
 	f.key = p.key
 	return f, true
@@ -260,18 +281,59 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 				end--
 			}
 		}
-		if eligible && !blocked && es[lo].turn != runningTurn {
+		// ZERO MEANS NO RUNNING TURN. Replay numbers a window's leading tail
+		// zero and backfills into negative turns, so zero is also real history.
+		// Only a nonzero live turn can hold its work open.
+		if eligible && !blocked && (runningTurn == 0 || es[lo].turn != runningTurn) {
 			// THE CONVERSATION KEYS ITS CHIPS BY THE TURN, which is what
 			// [deck.workOpen], [app.stamps] and every gesture out here already
-			// name (see [workfold.key]). One turn, one chip: nothing to separate.
+			// name (see [workfold.key]). Separated chips share that disclosure.
 			f := workfold{key: es[lo].turn, turn: es[lo].turn, start: -1, answer: end, stopped: stopped}
 			if countWork(es, lo, end, &f); f.start >= 0 {
 				out[f.start] = f
 			}
 		}
+		if !stopped && !blocked && (runningTurn == 0 || es[lo].turn != runningTurn) {
+			// A confirmed response's private tail can sit below a queued user
+			// or notice. Keep those boundaries and any final receipts outside
+			// its own closed disclosure, rather than exposing the thought row.
+			from, to := lo, hi
+			if answer >= 0 {
+				from = answer + 1
+			}
+			for from < to && (groupBreaks(&es[from]) || es[from].kind == entryNote || es[from].kind == entryDivider) {
+				from++
+			}
+			for to > from && (es[to-1].kind == entryNote || es[to-1].kind == entryDivider) {
+				to--
+			}
+			if confirmedReasoningTail(es[from:to]) {
+				f := workfold{key: es[lo].turn, turn: es[lo].turn, start: -1, answer: to}
+				if countWork(es, from, to, &f); f.start >= 0 {
+					out[f.start] = f
+				}
+			}
+		}
 		lo = hi
 	}
 	return out
+}
+
+// Only a settled tail owned by a confirmed response may fold without a later
+// answer. Unknown work, live reasoning, failed tools and new responses cannot.
+func confirmedReasoningTail(es []entry) bool {
+	found := false
+	for i := range es {
+		e := &es[i]
+		if groupBreaks(e) || e.kind == entryDivider || (e.kind == entryAssistant && strings.TrimSpace(e.text) == "") {
+			continue
+		}
+		if e.kind != entryThinking || !e.settled || e.cut || e.confirmed == nil || !e.confirmed.done {
+			return false
+		}
+		found = true
+	}
+	return found
 }
 
 // countWork fills in WHAT A CHIP COUNTS over es[from:to] — where the work it
@@ -341,22 +403,21 @@ func workEntry(es []entry, folds map[int]workfold, i int) bool {
 	if e.kind != entryAssistant {
 		return false
 	}
+	// Streaming content can still be a preamble to an upcoming tool. The
+	// response boundary confirms it before the answer receives full emphasis.
+	if e.provisional && !e.settled {
+		return true
+	}
 	// AN INTERRUPTED TURN PROMOTES NOTHING (hierarchy.go). It is asked first and
-	// asked of the BLOCK rather than of the fold because a room derives no folds
-	// at all (A ROOM FOLDS NOTHING, above) and the law is not the conversation's:
+	// asked of the block because turn and phase folds certify their endpoints
+	// differently, and this law is independent of the lens:
 	// a turn that was stopped reached no answer on any page that draws it.
 	if e.cut {
 		return true
 	}
-	// A BLOCK INSIDE A CHIP IS WORK AND THE BLOCK A CHIP STOPS AT IS THE ANSWER,
-	// and both are asked BY POSITION rather than by turn. The turn was enough
-	// while one turn held one chip; a room's page is one turn holding a chip per
-	// settled phase ([derivePhaseFolds]), and a walk that stopped at the first
-	// fold of this turn would be reading a map in whatever order Go handed it —
-	// the second phase's narration answered by the first phase's boundary. The
-	// two tests are disjoint by construction, so the answer does not depend on
-	// that order; out in the conversation, where a turn has one chip, they give
-	// exactly what the turn test gave.
+	// A block inside a chip is work. A turn fold certifies its final answer,
+	// including when a task card later lands in the same turn. A phase endpoint
+	// still needs the forward scan: it may introduce the next tool.
 	for _, f := range folds {
 		if f.turn != e.turn {
 			continue
@@ -364,12 +425,12 @@ func workEntry(es []entry, folds map[int]workfold, i int) bool {
 		if i >= f.start && i < f.answer {
 			return true
 		}
-		if i == f.answer {
+		if i == f.answer && !f.phase {
 			return false
 		}
 	}
-	// During a live turn there is no completed fold yet, so the same question is
-	// asked of the list directly: IS THERE MORE WORK AFTER THIS BLOCK BEFORE THE
+	// Outside a fold, including at its endpoint, ask the list directly:
+	// IS THERE MORE WORK AFTER THIS BLOCK BEFORE THE
 	// PERSON SPEAKS AGAIN. The walk stops at the next of their messages for
 	// [deriveWorkfolds]'s reason above — a steer does not open a turn, and prose
 	// answering the question before it was never narration for the one after it —
@@ -384,21 +445,17 @@ func workEntry(es []entry, folds map[int]workfold, i int) bool {
 	// this block" and demoted the answer itself, which is drawn plain: heading,
 	// bold and whole table came back as the characters they were typed as, two
 	// columns into the work column.
-	//
-	// IT ONLY EVER BIT WHERE THIS WALK IS THE CLASSIFIER, and that is the narrow
-	// part worth writing down. A turn that derives a fold is answered by the loop
-	// above instead — `i < f.answer`, and [deriveWorkfolds] already picks the
-	// answer as the group's last assistant block, so a trailing note is outside
-	// the chip and cannot reach it. The walk is reached when NO fold is derived:
-	// a group that is `blocked` (a task, connect or standing card in the turn, a
-	// `cancel…` note, a seam), a group with no work at all before its answer
-	// (no thought, no call), and every room, which folds nothing at all. The
-	// reproduction was the first of those — a turn carrying a task proposal, then
-	// a markdown answer, then its own `⟲ … cached` line — measured against a real
-	// model on this branch's parent.
 	for at := i + 1; at < len(es) && es[at].turn == e.turn; at++ {
 		if groupBreaks(&es[at]) {
 			return false
+		}
+		if e.confirmed != nil && e.confirmed.done {
+			if es[at].kind == entryThinking && es[at].settled {
+				continue
+			}
+			if es[at].kind == entryAssistant && es[at].confirmed == e.confirmed {
+				continue
+			}
 		}
 		if es[at].kind != entryDivider && es[at].kind != entryNote && !entryWithdrawn(&es[at]) {
 			return true
@@ -430,9 +487,15 @@ func (a *app) workfoldLabel(d deck, f workfold) string {
 			took = stamp.took
 		}
 	}
-	parts := []string{"▸ worked"}
+	// The disclosure reports the effective state, including the reader's
+	// preference, so an expanded outline never advertises a closed door.
+	arrow := "▸"
+	if a.workFoldOpen(d, f.key) {
+		arrow = "▾"
+	}
+	parts := []string{arrow + " worked"}
 	if f.stopped {
-		parts[0] = "▸ stopped by you"
+		parts[0] = arrow + " stopped by you"
 		if word := tookWord(took); word != "" {
 			parts[0] += " at " + word
 		}
@@ -491,6 +554,23 @@ func rowIsWork(r row, es []entry, folds map[int]workfold) bool {
 
 func (a *app) toggleLatestWorkfold() bool {
 	d := a.bodyDeck()
+	// THE RUNNING TURN'S WINDOW IS THE NEWEST CHIP THERE IS (livesteps.go), and it
+	// is asked first because it is the one a person watching work is looking at.
+	//
+	// IT CLOSES THE WHOLE OF WHAT IS SHOWING, WHICH IS TWO FACTS AND NOT ONE.
+	// `ctrl+o` over a running turn puts every call of every step on the page
+	// ([app.unfold], read by [deriveLiveWork]); the work chip's own state is the
+	// other. A key that dropped only its own would leave the machinery standing
+	// and read as a dead key, so the raw-call override goes with it — and the same
+	// press from the compact state opens the outline, as it always did.
+	if key, ok := a.liveWorkOf(d); ok {
+		showing := d.workOpen[key] || d.unfolded[d.runningTurn]
+		if showing && d.unfolded != nil {
+			delete(d.unfolded, d.runningTurn)
+		}
+		a.setWorkOpen(d, key, !showing)
+		return true
+	}
 	latest, found := 0, false
 	for _, f := range a.deckFolds(d) {
 		if !found || f.key > latest {
@@ -508,7 +588,12 @@ func (a *app) toggleLatestWorkfold() bool {
 // keyboard's own gesture resolves to.
 func (a *app) toggleWorkfold(key int) {
 	d := a.bodyDeck()
-	a.setWorkOpen(d, key, !d.workOpen[key])
+	showing := d.workOpen[key]
+	if live, ok := a.liveWorkOf(d); ok && key == live {
+		showing = showing || d.unfolded[d.runningTurn]
+		delete(d.unfolded, d.runningTurn)
+	}
+	a.setWorkOpen(d, key, !showing)
 }
 
 // workFoldOpen reports whether one chip is SHOWING ITS WORK: because the reader

@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -130,9 +131,11 @@ const (
 // and false to both, which is the flat row, unchanged — and that is what keeps
 // this a seam rather than a rewrite.
 //
-// Paused has no publisher yet: nothing on TaskNotice says a run is standing at
-// its fuel gate, so the ⏸ is drawn from a fact this surface cannot currently be
-// told. The run's own page is where a paused run says so today.
+// Paused is filled the same way, from session's TaskNotice.Paused: an adaptive
+// run that has spent its tank publishes its OWN row held at the gate until
+// somebody tops it up, finishes it or stops it, and the workers under it keep
+// publishing whatever they are actually doing. The run's page still asks the
+// question; the ⏸ is how the column says the run is standing still while it does.
 //
 // THE KEY IS A STRING AND THE ID IS NOT, on purpose. The thing that will fill
 // it is an orchestrate node id (internal/orchestrate's [orchestrate.Node.ID] —
@@ -145,10 +148,13 @@ func (n *taskNode) ParentID() string { return n.parent }
 
 // Paused reports whether this task is HELD rather than working: an adaptive run
 // stopped at its fuel gate, waiting for a person to top it up or finish it
-// (session's EventOrchestratePause). It is not a state the engine moves a node
-// through, which is why it is a fact of its own — a paused node is still
-// running as far as the run is concerned, and it is not moving as far as a
-// person is concerned, and the second reading is the one a roster owes them.
+// (session's EventOrchestratePause, and TaskNotice.Paused on the row). It is not
+// a state the engine moves a node through, which is why it is a fact of its own
+// — a paused node is still running as far as the run is concerned, and it is not
+// moving as far as a person is concerned, and the second reading is the one a
+// roster owes them. The reading that decides how the ROW is grouped and counted
+// is [session.ProjectTask]'s, which takes the same fact through
+// [app.taskStatus]: work that will not move until a person says something.
 func (n *taskNode) Paused() bool { return n.paused }
 
 // stripKey is a node's own key in the alphabet [taskNode.ParentID] speaks.
@@ -167,8 +173,8 @@ const (
 //
 // The column leads with what is asking for a decision because a person reads it
 // top to bottom looking for work to do. The strip leads with what is RUNNING
-// because it is a presence row: it exists at all only while something is
-// running, and the first chip is the thing a person is waiting on. What is
+// because its expanded chips can name each item. The row stays while work is
+// running, queued or needs attention; the compact phone summary puts attention first. What is
 // parked and what is done are not on it — a strip is the live set, and the
 // roster is where a session's history lives.
 var stripOrder = [...]railGroup{railRunning, railAttention, railIdle}
@@ -191,6 +197,9 @@ type stripSpan struct {
 // and the roster still holds every one of them — and a permanent row that says
 // "nothing is running" is a row of chrome bought with a row of conversation.
 func (a *app) stripShowing() bool {
+	if a.startingChat() {
+		return false
+	}
 	width, height := a.size()
 	// The same floor the pinned header stands on (view.go's [app.headHeight]): a
 	// terminal too short for breathing room spends what it has on the
@@ -220,7 +229,7 @@ func (a *app) stripShowing() bool {
 		return false
 	}
 	for _, id := range a.taskOrder {
-		if node := a.tasks[id]; node != nil && node.state == session.TaskRunning {
+		if node := a.tasks[id]; node != nil && slices.Contains(stripOrder[:], a.railGroupOf(node)) {
 			return true
 		}
 	}
@@ -277,7 +286,19 @@ func (a *app) stripRows(width int) []string {
 	if door, ok := a.stripPhoneDoor(width); ok {
 		return []string{door, ""}
 	}
-	if row := a.stripRowText(width, a.stripNodes()); row != "" {
+	if row := a.stripRowText(gutterInner(width), a.stripNodes()); row != "" {
+		// The chip keeps its own inner padding inside the reading gutter. Its
+		// pointer targets move with the row, and every layout resets them above
+		// so repeated hover reads cannot accumulate an extra indent.
+		lead := textGutterCols(width)
+		if lead > 0 {
+			row = strings.Repeat(" ", lead) + row
+			for i := range a.stripSpans {
+				a.stripSpans[i].span = a.stripSpans[i].span.shift(lead)
+			}
+			a.stripMore = a.stripMore.shift(lead)
+			a.stripHarn = a.stripHarn.shift(lead)
+		}
 		return []string{row, ""}
 	}
 	return nil

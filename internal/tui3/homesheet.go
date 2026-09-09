@@ -412,7 +412,7 @@ func (a *app) homeSheetBand(band homeBand, ctx bandContext) ([]string, []homeShe
 		return a.homeAnswerBands(ctx)
 	case "work":
 		rows := band.draw(a, ctx)
-		return rows, homeSheetTaskHits(rows, ctx.subject.row)
+		return rows, homeSheetTaskHits(rows, ctx)
 	}
 	return band.draw(a, ctx), nil
 }
@@ -458,27 +458,33 @@ func stableSortBands(bands []homeBand, at func(string) int) {
 	}
 }
 
-// homeSheetTaskHits maps the work band's rows onto the tasks they name, so a
-// tap on one opens that task's record.
-//
-// It matches by the row's own TEXT rather than by counting, for
-// [app.bandFoldAt]'s reason: the band folds, wraps its outcome onto following
-// rows and drops what does not fit, and a row number computed against it would
-// be a second answer to where things ended up.
-func homeSheetTaskHits(rows []string, row session.SessionRow) []homeSheetHit {
+// homeSheetTaskHits resolves name rows in the same parent-first order they were
+// drawn. Matching a title independently loses identity when siblings share a
+// name, and can mistake an outcome sentence for a task. The whole rendered
+// block advances the cursor, so continuation rows can never become another door.
+func homeSheetTaskHits(rows []string, ctx bandContext) []homeSheetHit {
+	row := ctx.subject.row
 	hits := make([]homeSheetHit, len(rows))
-	for i, painted := range rows {
-		plain := strings.TrimSpace(ansi.Strip(painted))
-		if plain == "" {
-			continue
+	indices := make(map[string]int, len(row.Tasks.Rows))
+	for i, entry := range row.Tasks.Rows {
+		if _, found := indices[homeTaskKey(entry)]; !found {
+			indices[homeTaskKey(entry)] = i
 		}
-		for at := range row.Tasks.Rows {
-			label := strings.TrimSpace(homeTaskText(row.Tasks.Rows[at]))
-			if label == "" {
+	}
+	next := 0
+	for _, family := range homeWorkFamilies(row) {
+		for _, node := range family {
+			expected := homeWorkNodeRows(node, row, ctx.width, ctx.now, ctx.pal)
+			if len(expected) == 0 {
 				continue
 			}
-			if strings.HasPrefix(plain, fit(label, ansi.StringWidth(plain))) {
-				hits[i] = homeSheetHit{kind: homeSheetHitTask, index: at}
+			name := ansi.Strip(expected[0])
+			for at := next; at < len(rows); at++ {
+				if ansi.Strip(rows[at]) != name {
+					continue
+				}
+				hits[at] = homeSheetHit{kind: homeSheetHitTask, index: indices[homeTaskKey(node.entry)]}
+				next = at + len(expected)
 				break
 			}
 		}

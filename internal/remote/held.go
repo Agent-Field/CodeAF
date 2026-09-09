@@ -14,13 +14,13 @@ package remote
 // and hanging. With a persistent engine the room is no longer empty, it is
 // merely unattended, and the difference is this file.
 //
-// WHAT IS HELD IS EVERY QUESTION THIS WIRE CAN ANSWER, AND NOTHING ELSE. The
-// four kinds below are exactly the four resolve-doors [WrappedAgent] carries,
-// because a question nobody can answer over this connection is not a question
-// worth remembering — it is a card that would be drawn, pressed, and resolve
-// nothing. The subharness intake card is the one that is deliberately absent:
-// its answer goes back through ResolveSubharness, which is not on this wire at
-// all, so holding one would be offering a person a key that does nothing.
+// WHAT IS HELD IS EVERY QUESTION THAT ARRIVES ON A TURN'S STREAM AND CAN BE
+// ANSWERED OVER THIS WIRE. The four kinds below are four of the resolve-doors
+// [WrappedAgent] carries. The harness lane's two cards — a design, a subharness
+// intake — are deliberately absent: they never travel a stream, and the session
+// replays whichever of them is still standing onto every new subscription
+// (standinglane.go), so remembering them here would hand one question over
+// twice.
 
 import (
 	"time"
@@ -41,13 +41,19 @@ const (
 
 // heldSet is one session's outstanding questions, oldest first.
 //
-// EVERY CARD IS TRACKED AND ONLY SOME ARE WAITING. A card raised while somebody
-// is attached is on their screen, and handing it to the next surface as
-// "held" would draw it twice; a card raised into an empty room has never been
-// seen by anybody. So both are remembered, and the second is marked waiting
-// immediately while the first becomes waiting the moment the last surface
-// leaves without answering it — which is the same fact arriving a few minutes
-// later.
+// EVERY CARD IS TRACKED, AND WAITING IS A FACT ABOUT A SURFACE RATHER THAN
+// ABOUT THE ROOM. A card is waiting for the window in front of you when that
+// window has never been sent it: the surfaces the frame actually went to are
+// remembered on the card, and every other surface — including one that dialled
+// a second ago — is owed it. Handing it to the surface that already drew it
+// would draw the same question twice, and that is the only case being excluded.
+//
+// THIS IS DELIBERATELY NOT "IS ANYBODY ATTACHED". A terminal that was killed is
+// still in the room until its socket reports the end, which is a scheduling
+// delay away and not a fact anybody can wait for; a welcome that asked whether
+// the room was empty would tell the window that just replaced that terminal
+// there was nothing to answer. Asking what THIS surface has seen is a question
+// the answer to which cannot be late.
 //
 // It is NOT independently locked. Every door below is called with the owning
 // [Session]'s mutex held, because every one of them is part of a larger
@@ -70,9 +76,10 @@ type heldKey struct {
 
 type heldItem struct {
 	question HeldQuestion
-	// waiting says nobody has ever seen this card, so the next surface to
-	// attach should be handed it.
-	waiting bool
+	// seen is the arrival number of every surface this card's frame was sent
+	// to ([server.arrived], unique per attach). A surface not named here has
+	// never drawn this question and is owed it.
+	seen map[uint64]struct{}
 }
 
 func newHeldSet() *heldSet {
@@ -83,10 +90,10 @@ func newHeldSet() *heldSet {
 // event on every stream, so the cheap answer — this is a text delta — has to be
 // the first one.
 //
-// `alone` is whether the room was empty at the moment it was raised, which is
-// the whole of the difference between a card somebody is looking at and a card
-// nobody is.
-func (h *heldSet) raise(event EventWire, stream uint64, alone bool) {
+// `drawn` is the arrival number of every surface this event's frame is being
+// sent to, which is the whole of the difference between a card somebody is
+// looking at and a card nobody is.
+func (h *heldSet) raise(event EventWire, stream uint64, drawn []uint64) {
 	key, ok := heldKeyOf(event.Event)
 	if !ok {
 		return
@@ -94,11 +101,16 @@ func (h *heldSet) raise(event EventWire, stream uint64, alone bool) {
 	if existing, found := h.items[key]; found {
 		// A question asked twice is one question. The card can legitimately be
 		// re-emitted — a session swap replays nothing, but a lane that retries
-		// its own offer would — and the waiting flag only ever moves toward
-		// waiting, because a card that was once unseen stays unseen until it is
-		// answered.
-		existing.waiting = existing.waiting || alone
+		// its own offer would — and each re-emission only adds to the list of
+		// surfaces that have drawn it.
+		for _, arrived := range drawn {
+			existing.seen[arrived] = struct{}{}
+		}
 		return
+	}
+	seen := make(map[uint64]struct{}, len(drawn))
+	for _, arrived := range drawn {
+		seen[arrived] = struct{}{}
 	}
 	h.order = append(h.order, key)
 	h.items[key] = &heldItem{
@@ -108,15 +120,7 @@ func (h *heldSet) raise(event EventWire, stream uint64, alone bool) {
 			Stream: stream,
 			Since:  time.Now(),
 		},
-		waiting: alone,
-	}
-}
-
-// roomEmptied is the last surface leaving. Everything still outstanding is now
-// a question nobody is looking at, which is what waiting means.
-func (h *heldSet) roomEmptied() {
-	for _, item := range h.items {
-		item.waiting = true
+		seen: seen,
 	}
 }
 
@@ -153,18 +157,29 @@ func (h *heldSet) settleConnect(pending []string) {
 	}
 }
 
-// waiting is what a welcome carries and what Held.Questions answers: the
-// questions nobody has seen, oldest first, because the oldest is the one that
-// has been holding a turn the longest.
-func (h *heldSet) waiting() []HeldQuestion {
+// waitingFor is what a welcome carries and what Held.Questions answers: the
+// questions this surface has not been sent, oldest first, because the oldest is
+// the one that has been holding a turn the longest.
+func (h *heldSet) waitingFor(arrived uint64) []HeldQuestion {
 	var out []HeldQuestion
 	for _, key := range h.order {
-		if item := h.items[key]; item != nil && item.waiting {
-			out = append(out, item.question)
+		item := h.items[key]
+		if item == nil {
+			continue
 		}
+		if _, drawn := item.seen[arrived]; drawn {
+			continue
+		}
+		out = append(out, item.question)
 	}
 	return out
 }
+
+// outstanding is how many questions are unanswered, whoever is or is not
+// looking at them. It is what the idle policy reads: a card nobody has answered
+// is a turn that has stopped, and the conversation holding it is not idle even
+// while somebody has it on screen.
+func (h *heldSet) outstanding() int { return len(h.items) }
 
 // forget drops everything, which is what a session swap does to the questions
 // of the conversation it replaced. A card belongs to the agent that raised it,
@@ -202,14 +217,13 @@ func heldKeyOf(event session.Event) (heldKey, bool) {
 		// they share a kind here (internal/session's harness.go and its
 		// EventHarnessDesignDone both name that method).
 		//
-		// ONLY THE OFFER ACTUALLY ARRIVES HERE TODAY. A design card is sent
-		// through emitHarness, which reaches the watchers of
-		// [session.Agent.HarnessDesigns] and no turn's stream — a lane this wire
-		// has no door for, which is why building a harness is switched off over
-		// a connection at all (cmd/aforge's engine.go says so in prose). The
-		// kind is named beside the offer because the two are ONE QUESTION with
-		// one answer, and a classifier that knew about half of a door would be
-		// the thing that quietly broke on the day the other half arrives.
+		// ONLY THE OFFER ARRIVES HERE. A design card is sent through
+		// emitHarness, which reaches the harness lane's watchers and no turn's
+		// stream, so it never passes this classifier — and it does not need to:
+		// internal/session replays a card that is still standing onto every new
+		// subscription, so the window that comes back is handed it there
+		// (standinglane.go). Holding it here as well would draw one question
+		// twice.
 		if event.ID == 0 {
 			return heldKey{}, false
 		}

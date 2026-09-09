@@ -496,7 +496,7 @@ func TestTheLaneHoldingThePrefixIsCheaperByExactlyTheDiscount(t *testing.T) {
 	request := talk()
 	request.Prefix = "conversation-7"
 	incumbent := ID{Model: testModel, Lane: "Baidu"}
-	RememberPrefix(incumbent, request.Prefix, noon.Add(-time.Minute))
+	RememberPrefix(incumbent, request.Prefix, request.PromptTokens, noon.Add(-time.Minute))
 
 	facts := measuredLanes[5].belief(testModel, 20).Facts
 	cold := PriceOf(facts, request)
@@ -836,5 +836,105 @@ func TestTheBeatFetchesWhatWasWanted(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("the beat never fetched the model that was queued for it")
+	}
+}
+
+// ── THE LENGTH THE LANE ACTUALLY SAW ────────────────────────────────────────
+
+// TestAGrownPromptEarnsNoCreditForTokensTheLaneNeverSaw is the accounting the
+// prefix note was missing. The lane answered this conversation at 14_972 tokens
+// and the next request sends 15_502: the 530 appended since were never on the
+// wire to it and cannot be in its cache, so exactly the seen length is credited.
+//
+// THIS IS THE CASE THAT FAILED BEFORE THE NOTE CARRIED A LENGTH. The old
+// [cachedTokens] returned req.PromptTokens whenever the lineage matched inside
+// the hold, so this assertion read 15_502 — a discount on 530 tokens no lane
+// had ever been sent.
+func TestAGrownPromptEarnsNoCreditForTokensTheLaneNeverSaw(t *testing.T) {
+	ForgetPrefixes()
+	defer ForgetPrefixes()
+	incumbent := ID{Model: testModel, Lane: "Baidu"}
+	RememberPrefix(incumbent, "conversation-7", 14_972, noon.Add(-time.Minute))
+
+	grown := talk()
+	grown.Prefix, grown.PromptTokens = "conversation-7", 15_502
+	if held := cachedTokens(incumbent, grown); held != 14_972 {
+		t.Fatalf("a grown prompt was credited %d cached tokens, want the 14972 the lane actually saw", held)
+	}
+	// And the credit is still real: the incumbent is cheaper than a stranger by
+	// the discount on the part it did serve, which is what the bound preserves.
+	facts := measuredLanes[5].belief(testModel, 20).Facts
+	cold := PriceOf(facts, grown)
+	warm := PriceWithCache(facts, grown, cachedTokens(incumbent, grown))
+	if warm >= cold {
+		t.Fatalf("a partly warm prefix cost %.6f and a cold one %.6f", warm, cold)
+	}
+}
+
+// TestAShrunkPromptIsCreditedNoMoreThanItSends is the other side of the bound.
+// A compaction leaves the lineage alone and makes the prompt shorter; crediting
+// the length the lane once held would discount tokens this request does not
+// contain.
+func TestAShrunkPromptIsCreditedNoMoreThanItSends(t *testing.T) {
+	ForgetPrefixes()
+	defer ForgetPrefixes()
+	incumbent := ID{Model: testModel, Lane: "Baidu"}
+	RememberPrefix(incumbent, "conversation-7", 15_502, noon.Add(-time.Minute))
+
+	compacted := talk()
+	compacted.Prefix, compacted.PromptTokens = "conversation-7", 4_000
+	if held := cachedTokens(incumbent, compacted); held != 4_000 {
+		t.Fatalf("a compacted prompt of 4000 tokens was credited %d", held)
+	}
+}
+
+// TestALengthNobodyReportedEarnsNoDiscount is the honesty half: an answer whose
+// usage frame carried no prompt count leaves a zero, and a zero is UNKNOWN
+// rather than "all of it". Inventing a length here is the fabricated discount
+// the bound exists to end.
+func TestALengthNobodyReportedEarnsNoDiscount(t *testing.T) {
+	ForgetPrefixes()
+	defer ForgetPrefixes()
+	incumbent := ID{Model: testModel, Lane: "Baidu"}
+	request := talk()
+	request.Prefix = "conversation-7"
+
+	for _, unknown := range []int{0, -1} {
+		RememberPrefix(incumbent, request.Prefix, unknown, noon.Add(-time.Minute))
+		if held := cachedTokens(incumbent, request); held != 0 {
+			t.Fatalf("a note of %d prompt tokens earned a discount on %d", unknown, held)
+		}
+		facts := measuredLanes[5].belief(testModel, 20).Facts
+		if warm, cold := PriceWithCache(facts, request, cachedTokens(incumbent, request)), PriceOf(facts, request); warm != cold {
+			t.Fatalf("an unknown length priced at %.6f against a cold %.6f", warm, cold)
+		}
+	}
+}
+
+// TestTheBoundedNoteKeepsLineageAndExpiry pins that the length did not cost the
+// note its other two guards: a different conversation and an expired one are
+// still worth nothing, whatever length was remembered.
+func TestTheBoundedNoteKeepsLineageAndExpiry(t *testing.T) {
+	ForgetPrefixes()
+	defer ForgetPrefixes()
+	incumbent := ID{Model: testModel, Lane: "Baidu"}
+	RememberPrefix(incumbent, "conversation-7", 14_972, noon.Add(-time.Minute))
+
+	other := talk()
+	other.Prefix, other.PromptTokens = "conversation-8", 14_972
+	if held := cachedTokens(incumbent, other); held != 0 {
+		t.Fatalf("another conversation on the same lane was credited %d cached tokens", held)
+	}
+	stale := talk()
+	stale.Prefix, stale.PromptTokens = "conversation-7", 14_972
+	stale.Now = noon.Add(PrefixHold + time.Minute)
+	if held := cachedTokens(incumbent, stale); held != 0 {
+		t.Fatalf("a note older than the hold was credited %d cached tokens", held)
+	}
+	stranger := ID{Model: testModel, Lane: "Alibaba"}
+	fresh := talk()
+	fresh.Prefix, fresh.PromptTokens = "conversation-7", 14_972
+	if held := cachedTokens(stranger, fresh); held != 0 {
+		t.Fatalf("a lane that never served this conversation was credited %d cached tokens", held)
 	}
 }

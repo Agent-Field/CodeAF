@@ -30,7 +30,9 @@ package session
 // for it here would leave fork weighing what a task weighs. What replaces it is
 // DECLARED WRITE SCOPE, enforced deterministically:
 //
-//   - Every hand declares the paths it may write, and [writeGuard] — the
+//   - Every hand declares the paths it may write — or declares [], which is a
+//     hand that only READS and is given no writing verb at all ([forkBelt]) —
+//     and [writeGuard] — the
 //     pre-action citizen the adaptive run already uses (orchestrate.go) —
 //     refuses any call aimed outside them whose target is a path it can read:
 //     `edit`, `write`, and the `edit_video` actions that save a file. Disjoint
@@ -219,7 +221,8 @@ var forkDescription = "Copy yourself into " + strconv.Itoa(forkHandFloor) + "–
 	"no brief, your context IS the brief — and is told only the one line that makes it different from its " +
 	"siblings. Reach for it the moment you can name slices of what you are ALREADY doing that could proceed on " +
 	"what you already know; work you would have to explain from scratch is a task instead. Each hand may write " +
-	"only the paths it declares, so the slices must be genuinely separate. A hand reads, edits and writes; it " +
+	"only the paths it declares, so the slices must be genuinely separate; a hand that declares [] only reads, " +
+	"which is how several sources or files are looked at side by side. A hand reads, edits and writes; it " +
 	"cannot build, test or fork again, and gets " + strconv.Itoa(forkRounds) + " tool rounds. RETURNS AT ONCE, " +
 	"naming them; each report arrives on its own as that hand finishes, and hands still out ride at the foot of " +
 	"every result you read. Never wait or poll — keep working, and build and test each slice as its report lands."
@@ -231,7 +234,7 @@ var forkSchemaJSON = `{"type":"object","properties":{` +
 	`"parts":{"type":"array","minItems":` + strconv.Itoa(forkHandFloor) + `,"maxItems":` + strconv.Itoa(forkFanLimit) +
 	`,"description":"The hands, in order.","items":{"type":"object","properties":{` +
 	`"role":{"type":"string","description":"ONE line saying what THIS hand does, written as the DIFFERENCE from its siblings — never the work or the context, which it has already read."},` +
-	`"scope":{"type":"array","minItems":1,"items":{"type":"string"},"description":"The files and directories this hand may write, workspace-relative. A directory covers everything under it. No two hands may share a path."},` +
+	`"scope":{"type":"array","items":{"type":"string"},"description":"The files and directories this hand may write, workspace-relative. A directory covers everything under it. No two writing hands may share a path. Send [] for a hand that only reads and reports — it gets no edit and no write. Always send the key."},` +
 	`"grade":{"type":"string","enum":["` + gradeMechanical + `","` + gradeCareful + `"],"description":"Leave out for ordinary work. Set to ` + gradeCareful + ` for a hand whose work could look finished and be quietly wrong, which lifts it to the careful tier."}` +
 	`},"required":["role","scope"],"additionalProperties":false}},` +
 	`"note":{"type":"string","description":"Anything EVERY hand must know that is not already in what you have read. Usually empty: they were there."}` +
@@ -265,6 +268,10 @@ type forkPart struct {
 	Scope []string `json:"scope"`
 	Grade string   `json:"grade,omitempty"`
 }
+
+// readOnly reports whether this hand may write nothing at all. It is read after
+// [parseForkArguments], which is where an empty scope stops being ambiguous.
+func (p forkPart) readOnly() bool { return len(p.Scope) == 0 }
 
 // careful reports whether this hand rides the careful tier. It reads exactly as
 // [dividePart.careful] does, because a grade means one thing on this belt.
@@ -474,6 +481,27 @@ func parseForkArguments(workspace string, args json.RawMessage) (forkArguments, 
 			return parsed, fmt.Sprintf("Invalid arguments: hand %d has no role, and a hand that is not told what "+
 				"makes it different from its siblings will do what they are doing.", index+1)
 		}
+		// THE KEY IS REQUIRED, AND AN EMPTY LIST MEANS SOMETHING.
+		// JSON decoding preserves [] as a non-nil empty slice; absent and null
+		// remain nil, so no custom decoder or duplicate presence field is needed. A hand that
+		// declares `"scope": []` is asking to READ and write nothing, which is an
+		// honest thing to want — four sources, four datasets, four files to
+		// compare — and until this it had to invent paths it did not intend to
+		// touch. A MISSING key is not that request: it is a slip, and reading it
+		// as read-only would turn a typo into a hand that silently does half the
+		// work it was told to do.
+		if part.Scope == nil {
+			return parsed, fmt.Sprintf("Invalid arguments: hand %d gives no scope. Every hand needs one: the "+
+				"paths it may write, or [] if it only reads.", index+1)
+		}
+		if part.readOnly() {
+			// A READ-ONLY HAND CLAIMS NOTHING, so there is nothing to normalize
+			// and nothing for the overlap check below to find. What actually
+			// stops it writing is its BELT ([forkBelt]) — an empty write scope
+			// is unrestricted at the guard (orchestrate.go's [writeGuard]), so
+			// the scope could never be the mechanism here.
+			continue
+		}
 		// THE SCOPE IS NORMALIZED BEFORE IT IS JUDGED, and everything below reads
 		// the normalized form: the overlap check, the charge the hand is handed,
 		// and — through [Config.writeScope] — the guard that enforces it. A scope
@@ -484,8 +512,11 @@ func parseForkArguments(workspace string, args json.RawMessage) (forkArguments, 
 			return parsed, fmt.Sprintf("not forked: hand %d's scope cannot be used — %s", index+1, problem)
 		}
 		if len(clean) == 0 {
-			return parsed, fmt.Sprintf("Invalid arguments: hand %d declares no write scope, and a hand with no "+
-				"scope may write nothing at all.", index+1)
+			// A scope of nothing but blanks. It is not the empty list above —
+			// somebody meant to name paths and named none — so it is refused
+			// rather than quietly turned into a read-only hand.
+			return parsed, fmt.Sprintf("Invalid arguments: hand %d's scope names no path. Name the paths it may "+
+				"write, or send [] if it only reads.", index+1)
 		}
 		parsed.Parts[index].Scope = clean
 	}
@@ -986,7 +1017,7 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 		return nil, err
 	}
 
-	belt := forkBelt(hand.beltTools(), parent.Workspace)
+	belt := forkBelt(hand.beltTools(), parent.Workspace, !part.readOnly())
 	definitions, err := toolDefinitions(belt)
 	if err != nil {
 		_ = hand.Close()
@@ -995,6 +1026,11 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 	hand.armMu.Lock()
 	hand.tools, hand.definitions = belt, definitions
 	hand.armMu.Unlock()
+	// AND THE SHELF GOES WITH THE BELT IT WAS BUILT BESIDE. `forkBelt` is an
+	// allowlist and never names `load_capability`, so a hand cannot reach a shelf
+	// in any case; clearing it is what makes the narrowing TOTAL rather than
+	// total-in-the-list-and-not-in-the-cupboard (tools_capabilities.go).
+	hand.clearShelf()
 	// EVERY HAND GETS ITS OWN INDEX OVER THE SAME CONTENT, and this copy is the
 	// "copy" in copy-on-write. What is shared is what the messages POINT AT —
 	// their text, their images — which nothing rewrites and which is where all
@@ -1036,7 +1072,8 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 // ([Agent.forkSeed] states it). That page was composed for the caller's belt —
 // prompts/system.md's facts are rendered from the predicates that build it
 // (beltfacts.go) — and a hand's belt is not that belt: it is the fixed
-// allowlist below, nine verbs, with no `fork`, no task verb and no machine. So
+// allowlist below, with no `fork`, no task verb and no machine — and two verbs
+// fewer again for a hand that only reads. So
 // the page names tools this reader does not have, and the law that every other
 // shape is held to ("the prompt names exactly the tools the call carries")
 // cannot be kept here by rendering: a page rendered for the hand would be a
@@ -1076,6 +1113,14 @@ func handToolTail(belt []bare.Tool) string {
 // forkBelt is a hand's hands: the readers, the two writers the scope guard
 // binds, and a bash that orients and changes nothing.
 //
+// mayWrite is false for a hand that declared an empty scope, and then the two
+// writers are simply ABSENT. That is the mechanism and the scope is not: an
+// empty [Config.writeScope] is UNRESTRICTED at the guard (orchestrate.go's
+// [writeGuard] returns early on a scope of length zero), so a read-only hand
+// that kept `edit` and `write` would be the least bounded hand of all. Absent
+// rather than refusing, for this file's own reason: a model that has the verb
+// plans around having it.
+//
 // IT IS AN ALLOWLIST AND NOT A SUBTRACTION, which is [auditBelt]'s law and is
 // worth more here than it is there: the `switch` has no default, so a verb added
 // to the session's belt next month reaches a hand only when somebody adds its
@@ -1089,12 +1134,16 @@ func handToolTail(belt []bare.Tool) string {
 // mind that made it. bash is the exception and is rebuilt from bare: the
 // session's bash can start a BACKGROUND job, and a job outliving the turn that
 // started it is the one thing the nursery law forbids.
-func forkBelt(belt []bare.Tool, dir string) []bare.Tool {
+func forkBelt(belt []bare.Tool, dir string, mayWrite bool) []bare.Tool {
 	var out []bare.Tool
 	for _, tool := range belt {
 		switch tool.Name {
-		case "read", "grep", "find", "ls", "read_document", "manual", "edit", "write":
+		case "read", "grep", "find", "ls", "read_document", "manual":
 			out = append(out, tool)
+		case "edit", "write":
+			if mayWrite {
+				out = append(out, tool)
+			}
 		}
 	}
 	for _, tool := range bare.AllTools(dir) {
@@ -1207,6 +1256,27 @@ func (l *handLeash) spent() bool {
 
 // ── what a hand is told, and what comes back ────────────────────────────────
 
+// handWriteLine is the charge's account of what this hand may change, and it is
+// TRUE OF THE BELT IT WILL ACTUALLY CARRY. A read-only hand has no `edit` and no
+// `write` ([forkBelt]), so telling it about a refusal it can never meet would be
+// a sentence about machinery that is not there.
+func handWriteLine(part forkPart) string {
+	if part.readOnly() {
+		return "YOU WRITE NOTHING: you have no edit and no write, and this part is finished by SAYING what you " +
+			"found. Whoever forked you does anything that has to be changed.\n"
+	}
+	return "YOU MAY WRITE: " + strings.Join(part.Scope, ", ") + " — and nowhere else. Anything you try to edit " +
+		"or write outside that is refused.\n"
+}
+
+// handOwns is one sibling's claim as the others are told it.
+func handOwns(part forkPart) string {
+	if part.readOnly() {
+		return "reads only"
+	}
+	return strings.Join(part.Scope, ", ")
+}
+
 // forkCharge is the ONE message a hand is handed that its caller never saw, and
 // everything in it is something the transcript above it cannot say.
 //
@@ -1221,8 +1291,7 @@ func forkCharge(index int, parsed forkArguments) string {
 	fmt.Fprintf(&out, "You are hand %d of %d. Everything above is yours — you have already read it, so nothing is "+
 		"repeated here.\n\n", index+1, len(parsed.Parts))
 	fmt.Fprintf(&out, "YOUR PART: %s\n", strings.TrimSpace(part.Role))
-	fmt.Fprintf(&out, "YOU MAY WRITE: %s — and nowhere else. Anything you try to edit or write outside that is "+
-		"refused.\n", strings.Join(part.Scope, ", "))
+	out.WriteString(handWriteLine(part))
 
 	if len(parsed.Parts) > 1 {
 		out.WriteString("\nTHE OTHER HANDS ARE WORKING RIGHT NOW, in this same working copy:\n")
@@ -1231,7 +1300,7 @@ func forkCharge(index int, parsed forkArguments) string {
 				continue
 			}
 			fmt.Fprintf(&out, "  hand %d — %s (%s)\n", other+1, strings.TrimSpace(sibling.Role),
-				strings.Join(sibling.Scope, ", "))
+				handOwns(sibling))
 		}
 		out.WriteString("DO NOT REDO THEIR WORK and do not wait for it: what they own is theirs, and a file of " +
 			"theirs that looks half-written is half-written because they are in it.\n")

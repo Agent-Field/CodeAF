@@ -337,6 +337,9 @@ func (a *Agent) beginHarnessRun(ctx context.Context) (context.Context, uint64, f
 		a.harnessRuns = make(map[uint64]context.CancelFunc, 1)
 	}
 	a.harnessRuns[id] = cut
+	if a.closed || a.workStopped {
+		cut()
+	}
 	a.mu.Unlock()
 	return runCtx, id, func() {
 		a.mu.Lock()

@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -118,6 +120,9 @@ type videoJob struct {
 type MediaClient struct {
 	config Config
 	http   *http.Client
+	// The media adapter uses the same pre-send connection recovery primitive.
+	// Accepted jobs and partial response bodies are never resubmitted here.
+	connection *Client
 
 	// Video generation is synchronous to callers but asynchronous on the wire.
 	// These seams keep the production backoff honest while tests advance a fake
@@ -142,6 +147,7 @@ func NewMediaClient(config Config) (*MediaClient, error) {
 	}
 	return &MediaClient{
 		config: config, http: client, videoNow: time.Now, videoWait: waitContext,
+		connection:       &Client{http: client, wait: waitContext},
 		videoPollInitial: defaultVideoPollInitial, videoPollMaximum: defaultVideoPollMaximum,
 		videoTimeout: defaultVideoTimeout,
 	}, nil
@@ -351,25 +357,54 @@ func (c *MediaClient) do(ctx context.Context, path string, body []byte) (*http.R
 }
 
 func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, body []byte, authenticated bool) (*http.Response, error) {
-	request, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("create media request: %w", err)
+	var recoveryCtx context.Context
+	for {
+		if c.connection != nil && authenticated {
+			if _, err := c.connection.waitConnection(ctx, "", endpoint, false); err != nil {
+				return nil, err
+			}
+		}
+		var sent atomic.Bool
+		requestCtx := httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+			WroteRequest: func(httptrace.WroteRequestInfo) { sent.Store(true) },
+		})
+		request, err := http.NewRequestWithContext(requestCtx, method, endpoint, bytes.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("create media request: %w", err)
+		}
+		if len(body) > 0 {
+			request.Header.Set("Content-Type", "application/json")
+		}
+		if authenticated {
+			request.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+			// Unconditional rather than gated on the router hint: every endpoint this
+			// client speaks to is a router media endpoint, and an attribution header
+			// is inert anywhere it is not read.
+			ApplyAttribution(request.Header)
+		}
+		response, err := c.http.Do(request)
+		if err != nil {
+			if authenticated && c.connection != nil && connectionFailure(err) && !sent.Load() && ctx.Err() == nil {
+				if recoveryCtx == nil {
+					var cancelRecovery context.CancelFunc
+					recoveryCtx, cancelRecovery = context.WithTimeout(ctx, connectionRecoveryWindow)
+					defer cancelRecovery()
+				}
+				if _, waitErr := c.connection.waitConnection(recoveryCtx, "", endpoint, true); waitErr != nil {
+					if ctx.Err() != nil {
+						return nil, ctx.Err()
+					}
+					if recoveryCtx.Err() != nil {
+						return nil, &ConnectionUnavailableError{}
+					}
+					return nil, waitErr
+				}
+				continue
+			}
+			return nil, fmt.Errorf("execute media request: %w", err)
+		}
+		return response, nil
 	}
-	if len(body) > 0 {
-		request.Header.Set("Content-Type", "application/json")
-	}
-	if authenticated {
-		request.Header.Set("Authorization", "Bearer "+c.config.APIKey)
-		// Unconditional rather than gated on the router hint: every endpoint this
-		// client speaks to is a router media endpoint, and an attribution header
-		// is inert anywhere it is not read.
-		ApplyAttribution(request.Header)
-	}
-	response, err := c.http.Do(request)
-	if err != nil {
-		return nil, fmt.Errorf("execute media request: %w", err)
-	}
-	return response, nil
 }
 
 func (c *MediaClient) mediaEndpoint(path string) string {

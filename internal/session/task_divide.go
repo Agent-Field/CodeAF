@@ -199,7 +199,7 @@ var divideSchemaJSON = `{"type":"object","properties":{` +
 	`"brief":{"type":"string","description":"WHAT THIS PART WORKS ON — its scope, and only that. It never sees your conversation and cannot ask you anything, so name the material it works on, the symbols and the conventions, and what you have learned that it would otherwise find out again. Material several parts read is FINE to name here — what a part OWNS is what its done-condition names, and nothing else. Shared material is READ AND NEVER WRITTEN, so say that in the brief of any part you hand some to: what a part would change there goes back in its report instead. The work being divided and what the other parts own are composed around this for you: do not restate either"},` +
 	`"acceptance":{"type":"string","description":"DONE WHEN — the observable done-condition somebody else could check without taking this part's word for it. IT IS ALSO WHERE THIS PART'S OWNERSHIP IS READ: name here everything this part PRODUCES and nothing it merely reads, because two parts whose done-conditions name the same thing are refused outright before anything is handed out"},` +
 	`"grade":{"type":"string","enum":["` + gradeMechanical + `","` + gradeCareful + `"],"description":"HOW THIS PART CAN GO WRONG, which decides how much thinking it is done with. \"` + gradeMechanical + `\", the default and most parts: the failure mode is NOT BEING DONE YET, visible to anybody looking at the result. \"` + gradeCareful + `\": the failure mode is SUBTLE WRONGNESS — a design decision, tricky debugging, a judgement about somebody else's code — where the work can look finished and be quietly wrong. Grade for the failure mode, never size or importance: a long dull part is ` + gradeMechanical + `, a short part that must be RIGHT is ` + gradeCareful + `"},` +
-	expectsSchemaJSON + `},` +
+	expectsSchemaJSON + `,` + checksSchemaJSON + `},` +
 	`"required":["title","summary","brief","acceptance"],"additionalProperties":false}}` +
 	`},"required":["evidence","parts"],"additionalProperties":false}`
 
@@ -224,6 +224,11 @@ type dividePart struct {
 	// the run this road was measured on needed most: the briefs named files and
 	// symbols of a world their workers were never given.
 	Expects []Expectation `json:"expects,omitempty"`
+	// Checks is the repeatable verification THIS PART is checked by — the only
+	// commands its own checker will run (task_checks.go). It is the third
+	// optional field, and a part that declares one its siblings declare too has
+	// named the family's check rather than its own ([sharedCheckCommands]).
+	Checks []string `json:"checks,omitempty"`
 }
 
 // The two grades. They are spelled once, here, because four readers need them:
@@ -1013,6 +1018,14 @@ func parseDivideArguments(args json.RawMessage) (divideArguments, string) {
 			return parsed, fmt.Sprintf("%s (part %d)", problem, i+1)
 		}
 		parsed.Parts[i].Expects = expects
+		// AND SO IS THE VERIFICATION, through the reading the proposal's own door
+		// uses (task_checks.go's [declaredCheckList]), so that a part and a task
+		// cannot come to two opinions about what a declared check may be.
+		checks, problem := declaredCheckList(part.Checks)
+		if problem != "" {
+			return parsed, fmt.Sprintf("%s (part %d)", problem, i+1)
+		}
+		parsed.Parts[i].Checks = checks
 	}
 	return parsed, ""
 }

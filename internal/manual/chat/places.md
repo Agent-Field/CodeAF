@@ -172,6 +172,14 @@ Two keys tell those apart:
   The first press opens the composer layer, where the three facts a task needs are settled;
   the second press is the send. The next section is that layer in full.
 
+**What the empty box SAYS is the place's own sentence where the two readings are not both
+true.** With nothing typed it reads `› say what you want done` on home and on every place
+you can start something from. On the **tasks** place it reads `› type to filter this list`,
+because there is nothing to send from there — `enter` opens the row under the cursor and
+nothing else — so the shared prompt was inviting an instruction into a slot that could only
+ever narrow a list. The moment you type, the box is your text on every place alike, and a
+click puts the caret where you clicked.
+
 At the right of the box is the **scope chip** — the `here ~/aforge-v2` next to the box. It is where what you type
 will land — the project the cursor is on, or this window's own project. It is drawn even
 with nothing typed, because a verb that is always in reach has to always say where it goes.
@@ -387,15 +395,24 @@ rather than `tab`, and home's two `alt+<letter>` keys are **`alt+g` group by pro
 ## tasks — the tasks page, and how to get to it without a command
 
 Everything this machine has run, across every project and every conversation, grouped by
-what you do next: `needs your look`, `running`, `done today`, `earlier`. `/history` and
-`ctrl+.` both open it, and so does `alt+2`.
+what you do next: `needs your look`, `running`, `waiting`, `finished today`, `earlier`.
+`/history` and `ctrl+.` both open it, and so does `alt+2`.
 
-Type to filter. `enter` opens a task's room when this conversation is holding it, and goes
-inside its record card otherwise. `→` opens the row's verbs, and this place has one —
-`s stop it`, over a task this conversation is holding that is still queued or running.
-Nothing is behind a fold; the list scrolls and its tail fades. The count of what is on the
-page sits just above the composer, and the foot names only what is true of the row you are
-on: `enter open its room · → verbs: stop it · type to filter`.
+The groups describe each task's own state. An unrelated approval in its conversation
+does not move running tasks into `needs your look`. A live design approval stays there
+until you answer; a provider or dependency wait belongs under `waiting`. A retained
+branch stays available to inspect and does not, by itself, ask you to merge it.
+
+**Typing here narrows the list.** While this place is up every printable key goes to its
+filter, and **the box at the foot says so itself** — it rests on `› type to filter this list`
+rather than the `› say what you want done` every other place shows. It used to show the
+shared prompt with the correction two rows further down on the foot, which meant the loudest
+row on the screen was inviting a message the page cannot send. `enter` opens a task's room
+when this conversation is holding it, and goes inside its record card otherwise. `→` opens
+the row's verbs, and this place has one — `s stop it`, over a task this conversation is
+holding that is still queued or running. Nothing is behind a fold; the list scrolls and its
+tail fades. The count of what is on the page sits just above the composer, and the foot names
+only what is true of the row you are on: `enter open its room · → verbs: stop it`.
 
 ## standing — what runs without being asked, and where to type on the standing page
 
@@ -674,8 +691,8 @@ at all: a machine name is worth a word only when there is more than one machine 
 
 `space` `space` over `--host` opens the home of the machine your session runs on: its
 projects, its conversations, and what each of those ran. `enter` on a row opens that
-conversation — the engine swaps to it and this window keeps drawing, the same door
-`aforge resume` uses locally.
+conversation beside the one you are in — the engine gives it a connection of its own and
+the chat you came from keeps running, the same door `aforge resume` uses locally.
 
 It used to draw **one dim line** where the rows would be —
 `home shows this machine's projects, and this session is on another` — because the projects

@@ -439,8 +439,11 @@ func (a *app) landTakeover(transcript string) {
 func (a *app) takeOver() tea.Cmd {
 	a.dropParked()
 	if a.draftFile != "" {
-		writeDraft(a.draftFile, a.leavingDraft())
-		// Cleared so the close below leaves the file where it is; the
+		// The whole composer, so the window taking this conversation over takes
+		// its task pages' unsent lines with it and not only the sentence in the
+		// box (draftkeep.go).
+		a.writeDraftsNow(a.leavingDraft())
+		// Cleared so the close below leaves the files where they are; the
 		// conversation arriving brings its own draft file with it.
 		a.draftFile = ""
 	}
@@ -493,6 +496,11 @@ func (a *app) takeOverFresh() tea.Cmd {
 		a.input.setText(side.draft)
 	}
 	a.chips = side.chips
+	// And the documents its compact tokens stand for, for [app.renew]'s reason
+	// exactly (recipient.go): the sentence travels whole or it is not the
+	// sentence. What was typed at this conversation's task pages does not travel
+	// — those pages belong to the conversation this window just let go of.
+	a.pastes = append([]pasteChip(nil), side.pastes...)
 	return cmd
 }
 

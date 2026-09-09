@@ -221,7 +221,10 @@ still no answer — trying another lane · /model switches
 
 The line is a rescue of this answer, not a choice you made. Your model is untouched
 until you run `/model`. The status row says `switching` while the second request is
-out. If the default keeps stalling, `/model` is how you move for good.
+out. When no replacement request can start, the message instead says
+`still waiting for an answer · /model switches`, and the status remains waiting.
+It does not claim to switch. If the default keeps stalling, `/model` is how you
+move for good.
 
 ## Set your terminal up for aforge — the font, and Option on macOS
 

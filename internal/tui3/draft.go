@@ -144,17 +144,35 @@ func (a *app) edited() tea.Cmd {
 		// held it and may not be inherited by the next identical slash word.
 		a.input.demotedTags = nil
 	}
-	lists := a.syncLists()
+	return tea.Batch(a.syncLists(), a.armDraftKeep())
+}
+
+// armDraftKeep asks for the composer to be written down a moment from now, and
+// is the ONE debounce this surface has: every recipient's edit arms it, and the
+// write is the whole composer — the conversation's words, its caret and
+// documents, and every task page's own unsent line (draftkeep.go).
+//
+// IT IS NOT ONLY FOR KEYSTROKES. An answer to a correction arriving changes what
+// a recipient is holding without anybody typing (steersend.go's
+// [app.settleSend]), and a change nothing arms is a change the next launch does
+// not see.
+func (a *app) armDraftKeep() tea.Cmd {
 	if a.draftFile == "" || a.draftPending {
-		return lists
+		return nil
 	}
 	a.draftPending = true
 	file := a.draftFile
-	return tea.Batch(lists, tea.Tick(draftDebounce, func(time.Time) tea.Msg { return draftSaveMsg{file: file} }))
+	return tea.Tick(draftDebounce, func(time.Time) tea.Msg { return draftSaveMsg{file: file} })
 }
 
-// saveDraft writes the box as it stands. The write happens in the command and
-// not in the loop: it is small, but nothing on this surface waits on a disk.
+// saveDraft writes the composer as it stands. The write happens in the command
+// and not in the loop: it is small, but nothing on this surface waits on a disk.
+//
+// WHAT IS WRITTEN IS EVERY RECIPIENT'S STATE AND NEVER JUST THE BOX ON SCREEN
+// (draftkeep.go's [app.keepDrafts]). The same editor draws a task's page, so a
+// debounce that read the editor would put a line meant for a worker into the
+// conversation's own file — and the next launch would restore it into the
+// conversation as though the person had been writing it for the model.
 func (a *app) saveDraft(file string) tea.Cmd {
 	if file != "" && file != a.draftFile {
 		// Armed by a conversation that is no longer the one on screen. It wrote
@@ -163,23 +181,63 @@ func (a *app) saveDraft(file string) tea.Cmd {
 		return nil
 	}
 	a.draftPending = false
-	if a.draftFile == "" {
-		return nil
-	}
-	path, text := a.draftFile, a.input.String()
-	return func() tea.Msg {
-		writeDraft(path, text)
-		return nil
-	}
+	return a.keepDrafts()
 }
 
 // dropDraft is submit: the sentence went somewhere, so the file goes.
+//
+// THE RECORD BESIDE IT IS REWRITTEN AND NOT REMOVED (draftkeep.go). Submit spends
+// the conversation's own sentence; every task page's unsent line is still there,
+// and so is the tray of a message the person has not sent yet.
+//
+// AND IT GOES THROUGH THE SAME ORDERED DOOR AS EVERY OTHER SAVE. A remove that
+// stepped around it would be overtaken by a debounce armed a moment earlier, and
+// the sentence the person watched leave would be on disk again ([draftWrites]).
 func (a *app) dropDraft() {
 	a.draftPending = false
 	if a.draftFile == "" {
 		return
 	}
-	_ = os.Remove(a.draftFile)
+	a.writeDraftsNow("")
+}
+
+// keepMainDraft makes the file agree with MAIN'S BOX — written while there is a
+// sentence in it, and removed when there is not ([writeDraft] is the one that
+// decides which).
+//
+// IT IS [app.dropDraft]'s SIBLING AND NOT ITS REPLACEMENT, because the two answer
+// different questions. Submit knows the conversation's box is empty — it has just
+// been cleared — and a remove is the cheapest true thing to do. The steer guard's
+// `m` does not: it spends a line typed at a TASK on the conversation instead
+// (room.go's [app.guardSend]), and the conversation's own half-written sentence is
+// sitting untouched behind that page. Removing the file there would throw away the
+// crash insurance for words nobody sent anywhere.
+func (a *app) keepMainDraft() {
+	a.draftPending = false
+	a.writeDraftsNow(a.mainDraftText())
+}
+
+// writeDraftsNow is the whole composer on disk, at once and on this goroutine:
+// the record and then the plain export beside it (draftkeep.go's [draftSave]).
+//
+// IT IS THE SYNCHRONOUS DOOR AND ITS CALLERS ARE THE ONES WITH NOWHERE TO PUT A
+// COMMAND — quitting, being taken over, submit, and the steer guard spending a
+// page's line on the conversation. Everything else goes through the debounce
+// ([app.saveDraft]), because nothing on this surface waits on a disk while a
+// person is typing.
+//
+// THE WORDS ARE THE CALLER'S, because they are not always the box: the door out
+// of the program folds every parked message in under the draft (quitarm.go's
+// [app.leavingDraft]), and submit passes the empty string.
+//
+// A FAILURE IS SAID OUT LOUD. This is the write a person's only copy depends on.
+func (a *app) writeDraftsNow(text string) {
+	if a.draftFile == "" {
+		return
+	}
+	if err := a.draftSaveOf(text).commit(); err != nil {
+		a.noteDraftKeepFailed(err)
+	}
 }
 
 // dropDraftFile removes one conversation's draft, named rather than taken off
@@ -187,11 +245,21 @@ func (a *app) dropDraft() {
 // conversation that can no longer crash, and one left behind is somebody's
 // finished sentence waiting to be adopted into the next window that opens on
 // that directory ([adoptDraft]).
+//
+// AND THE RECORD GOES WITH IT, for the same reason and one more: a closed
+// conversation's task pages are pages of work that closed with it, so their
+// unsent lines have no reader left to be delivered to.
+//
+// IT IS AN EMPTY SAVE AND NOT A REMOVE, so that it takes its place in the order
+// with every other write to this name (draftkeep.go's [draftWrites]): a debounce
+// armed a moment before the close must not put the file back afterwards. What is
+// in the record for ANOTHER conversation survives it — [draftKeep.empty] counts a
+// carried slot, so the record is rewritten rather than deleted when one is there.
 func dropDraftFile(path string) {
 	if path == "" {
 		return
 	}
-	_ = os.Remove(path)
+	_ = commitDropped(path)
 }
 
 // draftAdopted is the workspaces this process has already hunted an orphan on.
@@ -224,19 +292,18 @@ func draftFirstHere(own, workspace string) bool {
 	return true
 }
 
-// restoreDraft puts the file back in the box at startup — this window's own if
-// it is somehow still there, and otherwise the sentence a dead window left.
+// restoreDraft puts the composer back at startup.
+//
+// WHAT IT RESTORES FROM IS THE RECORD (draftkeep.go): every recipient's own
+// words, caret, documents and tray, laid out for the recipient they were written
+// for. The plain file below is the fallback for a conversation that has no
+// record — an older build's leftovers, or an orphan adopted from a dead window on
+// this directory — and [app.legacyDraftText] is where it is read.
 func (a *app) restoreDraft() {
 	if a.draftFile == "" {
 		return
 	}
-	text := readDraft(a.draftFile)
-	if text == "" && draftFirstHere(a.draftFile, a.workspace) {
-		text = adoptDraft(a.draftFile, a.workspace)
-	}
-	if text != "" {
-		a.input.setText(text)
-	}
+	a.layKeptDrafts()
 }
 
 // adoptDraft takes over the newest draft on this directory whose window is gone,
@@ -259,6 +326,12 @@ func (a *app) restoreDraft() {
 // would then match only drafts whose ORDINAL matches — so conversation 1 would
 // never see the orphan a dead single-conversation window left as ordinal 0,
 // which is the only case this function exists for.
+//
+// THE WORDS ARE THE WHOLE OF WHAT IS ADOPTED. The record beside an orphan
+// belongs to whatever conversation that window was holding, and this directory
+// matching is not that conversation being opened again — so its documents, its
+// tray and its task pages stay where they are, for the window that opens it
+// (draftkeep.go's [app.reuniteDrafts]).
 func adoptDraft(own, workspace string) string {
 	directory := filepath.Dir(own)
 	if strings.TrimSpace(workspace) == "" {
@@ -292,14 +365,16 @@ func adoptDraft(own, workspace string) string {
 	if text == "" {
 		// An empty file is nobody's sentence, and one left by a window that died
 		// between the remove and the write would otherwise sit there forever.
+		//
+		// ITS RECORD IS LEFT WHERE IT IS. The sentence is empty; the composers
+		// beside it are not, and they belong to a conversation that can still be
+		// opened again (draftkeep.go's [app.reuniteDrafts] is what finds them).
 		_ = os.Remove(newest)
 		return ""
 	}
-	if err := os.Rename(newest, own); err != nil {
-		// The text is in the box either way; the file staying behind only means
-		// the next window will offer it again.
-		return text
-	}
+	// A FAILED RENAME ONLY MEANS THE NEXT WINDOW WILL OFFER THE SAME SENTENCE
+	// AGAIN, which is the harmless half: the words are in this box either way.
+	_ = os.Rename(newest, own)
 	return text
 }
 
@@ -362,18 +437,21 @@ func readDraft(path string) string {
 // drawn over it. It is easy to land in: `ctrl+enter` and `shift+enter` arrive as
 // a bare `ctrl+j` on a terminal that cannot spell them, and `ctrl+j` opens a
 // line.
-func writeDraft(path, text string) {
+// A FAILURE IS RETURNED AND NOT SWALLOWED. This file is the export beside the
+// record (draftkeep.go), and what its caller does with a failure is say so: a
+// disk that cannot be written is the one fact that makes every promise about a
+// kept draft false, and nobody finds out by not being told.
+func writeDraft(path, text string) error {
 	if strings.TrimSpace(text) == "" {
-		_ = os.Remove(path)
-		return
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
 	}
 	if dir := filepath.Dir(path); dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return
+			return err
 		}
 	}
-	// A failed write is dropped in silence, for internal/history's reason: the
-	// draft is a convenience, and nothing about it is worth interrupting a
-	// person mid-sentence for.
-	_ = os.WriteFile(path, []byte(text), 0o600)
+	return os.WriteFile(path, []byte(text), 0o600)
 }

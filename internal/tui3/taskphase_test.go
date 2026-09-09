@@ -175,8 +175,11 @@ func TestTheRoomHeaderSaysWhichLifeTheNodeIsIn(t *testing.T) {
 		t.Fatalf("the header calls a checked node %q, want %q", got, taskCheckingWord)
 	}
 	a.room = a.newRoom(7, "Write the report")
-	head := plain(a.roomHeadWord(120))
-	if !strings.Contains(head, roomCrumbRoot+roomCrumbSep+"Write the report · "+taskCheckingWord) {
+	head := plain(roomHeadAll(a, 120))
+	// The trail is one row and the state is on the row under it, led by the
+	// node's own glyph (room.go), so the two are asserted apart.
+	if !strings.Contains(head, a.chatCrumbWord()+roomCrumbSep+"Write the report") ||
+		!strings.Contains(head, taskCheckingWord) {
 		t.Fatalf("the room header is %q", head)
 	}
 	if strings.Contains(head, stateWorking.String()) {

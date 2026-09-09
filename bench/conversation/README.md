@@ -1,0 +1,602 @@
+# Conversation battery
+
+Cross-harness comparison of aforge against omp, pi and opencode on ordinary
+work **and** on conversation — the parts of using a coding agent that a
+`--print` invocation cannot reach.
+
+`run.sh` runs it, `summary.sh` reads it, `test/selftest.sh` checks the rig
+itself without spending anything. This file says what each number means and
+which ones it is honest to quote.
+
+**It spends real money and is on demand.** Nothing in `make check` reaches it.
+The deterministic tests under `test/` are the part that is safe to run any time:
+they use fake binaries, call no model, and touch no network.
+
+## The two doors, which are never mixed
+
+| door | what it is | what it can show |
+|---|---|---|
+| `print` | one message in, one reply out (`aforge chat --once`, `omp -p`, `pi -p`, `opencode run`) | quality, cost and wall clock on a fixed task |
+| `interactive` | the real TUI in a tmux pane: bracketed paste, Enter, and a screen that is watched | everything above, plus what happens when a person types **while work is running** |
+
+A print row is never labelled interactive. An arm with no interactive door this
+suite can drive is recorded `unsupported` — not quietly run through the print
+door instead, which is the one substitution that would make the whole table a
+lie.
+
+An arm has an interactive door here only if this suite can tell from the screen
+alone when it is working and when it is not. Those markers, and where each came
+from, are in `lib/adapters.sh`:
+
+| arm | interactive door | markers from |
+|---|---|---|
+| aforge | yes | `internal/tui3/render.go` (`stateWord`, `waitingWord`) — the renderer itself, checked against a live pane |
+| pi | yes | live pane capture on pi 0.84.2 in this lane; the provider segment is derived from the provider in use, not hardcoded |
+| omp | yes | live pane capture on omp 18.1.2 in this lane |
+| opencode | **no** | no calibrated markers — its interactive cells are `unsupported` |
+
+## Open models only
+
+Every call this suite causes goes to the pinned open model. The default pin is
+`deepseek/deepseek-v4-flash-0731`, an exact catalog id rather than a floating
+alias. It is configurable (`--model`, `--allowlist`), and the protocol assumes
+no particular id — but the shape is fixed: exact ids, no wildcards, no family
+names, and `:batch`-style variants count as different entries because they are
+a different queue with a different price and latency.
+
+### Prevention, and separately, detection
+
+These are not the same thing and the suite does not treat them as such.
+
+**Prevention (before the call).** A live run puts `lib/guard.py` on loopback
+between the harness and OpenRouter. The guard holds the real key; each harness
+gets a sentinel and a base URL pointing at the guard. It reads **every** model id
+a request could route to — the `model` field and each entry of OpenRouter's
+`models` fallback array, since a request naming an allowlisted model with a
+commercial fallback bills the fallback the moment the first is unavailable — and
+if any of them is off the allowlist it answers 403 **without opening a socket
+upstream**. It forwards only the paths this suite needs, so it is not a general
+proxy to the provider. Two consequences matter:
+
+- a model off the allowlist cannot be reached, whoever asked for it — a role, a
+  fallback, a reused setting, or a task the model itself generated;
+- a call that goes around the guard carries only the sentinel, so it cannot buy
+  anything from anybody.
+
+The upstream is fixed in the source. It can be moved only under `GUARD_TEST=1`,
+which is how the deterministic test proves a refusal never reaches an upstream:
+a stand-in upstream records everything it receives, and stays empty.
+
+An arm is live-runnable only if every call it makes can be pointed at the guard
+through a mechanism that CLI actually implements:
+
+| arm | how it is routed | source of that knowledge |
+|---|---|---|
+| aforge | `AFORGE_BASE_URL` | `internal/config/config.go` in this repository |
+| pi | a `guard` provider in `$PI_CODING_AGENT_DIR/models.json` | `core/model-runtime.js` loads it from the agent dir |
+| omp | a `guard` provider in the run's own `<profile>/agent/models.yml`, then **verified** by asking omp's catalog whether it loaded | omp disables custom providers wholesale on a validation failure, so writing the file is not evidence it took effect |
+| opencode | not routed | no custom-provider mechanism verified for it — unsupported for live runs |
+
+`--unguarded` exists only so the deterministic tests can drive fake binaries
+that talk to nobody. It refuses to run unless the caller sets
+`CONV_FAKE_HARNESS=1`, and it is not a way to run a real harness.
+
+**Configuration is not prevention.** `--one-model` on aforge and
+`--smol/--slow/--plan` on omp are still passed, and the role-pin state is still
+recorded on every row — but they are settings, not guarantees. omp alone also
+carries `providers.tinyModel`, `memoryModel`, `autoThinkingModel` and
+`unexpectedStopModel`; a reused profile can hold settings this run never wrote;
+and a generated task can name a model. That is why the guard exists and why the
+row says `role_pin: unverified` rather than pretending otherwise.
+
+**Detection (after the call).** Every model id in the cell's own receipts is
+checked against the allowlist, and a cell that billed one outside it fails.
+This is the backstop, not the barrier: by the time it fires, the call has
+happened. It is kept because it sees what a request body cannot — which model
+the provider says it actually billed.
+
+**Environment.** A harness process inherits `PATH`, `HOME`, `TERM`, `LANG`,
+`TMPDIR` and an `OPENROUTER_API_KEY` set to the sentinel — never the real key,
+and never another provider's. A carried variable that a later assignment
+replaces is dropped rather than emitted and overridden: `env -i K=real
+K=sentinel` gives the process the sentinel, but leaves the real value on a
+command line that `ps` can read. `CONV_PASS_ENV` names anything extra to carry, so
+what got through is visible in the cell's `config.txt`.
+
+**The key.** The guard needs a live `OPENROUTER_API_KEY` in the shell that
+starts the run, and checks it against the upstream's `/key` endpoint before any
+cell runs (no model call, no spend). This suite deliberately does **not** read
+credentials out of a CLI's own store: whose key pays for a benchmark stays an
+explicit decision. A stale key therefore stops the run with one message rather
+than producing a grid of cells that billed nothing.
+
+**Pinning, per arm.** The arm is also handed the exact id and its catalog is
+asked whether that id exists, in the state root the cell will use — they answer
+differently: on the machine this was built on, pi's default profile lists no
+openrouter models at all while a fresh `PI_CODING_AGENT_DIR` does. The query
+pattern is loose and the match is exact (provider **and** id for pi, the full
+selector for omp). aforge has no offline catalog query, so its pin rests on the
+guard in front and the receipts behind.
+
+## Cost, and what unknown means
+
+**Measured at the guard first.** A harness's cost is its own arithmetic over its
+own price table, and a custom provider config — the very thing this suite writes
+to route an arm through the guard — can carry a zero price table. That is not a
+hypothetical: in the first live pilot pi reported `$0.0` for a call that billed
+real tokens, because its `models.json` entry priced them at zero
+(`notes/pilot-01.md`). So the guard asks the provider to account for every call
+it forwards (`usage: {include: true}`) and writes what came back to the cell's
+own `guard-usage.jsonl`. One guard per cell means the attribution is
+unambiguous: those rows are that cell's calls and no others.
+
+| source | `cost_source` | when |
+|---|---|---|
+| the provider, through the guard | `guard-upstream` | any guarded run — includes auxiliary calls, and is the same measurement for every arm |
+| the harness's own receipts | `self-reported` | unguarded runs, and guarded ones where upstream returned no usage block |
+| nothing | `none` | neither had a figure — recorded `null`, never `0` |
+
+A self-reported `$0` alongside a non-zero token count is treated as an **absence,
+not a price**: it is a zero price table, not a free call, and the cell comes back
+cost-unknown and not comparable.
+
+**Every admitted call is accounted for, or the cell's cost is unknown.** The
+guard books a request when it *admits* it — before a socket upstream is opened —
+and closes that row when the request ends, priced or explicitly unpriced. A call
+can be billed and still produce no usage block: the client hangs up mid-stream,
+the upstream fails after generating, the guard is killed with a call in flight.
+Totalling only the calls that finished would report a confident number that is
+smaller than what was spent, so any admission the ledger cannot close makes the
+whole cell cost-unknown — and that outranks the harness's own figure, which
+covers only the calls it knows about.
+
+Receipts are still read for every cell, because they name the billed model and
+the guard's audit names what was asked for:
+
+| arm | receipt | names the billed model? |
+|---|---|---|
+| aforge | `AFORGE_HOME/v3/usage.jsonl`, one row per call including auxiliary roles | yes |
+| pi, omp | the JSON Lines events on stdout under `--mode json` | yes |
+| opencode | `step_finish` events under `--format json` | **no** |
+
+A harness that reported no usage gets `cost_usd: null` and
+`cost_source: "none"` — never `0`. Zero is a measurement; null is the absence of
+one, and a frontier that reads an absence as a zero puts the quietest harness on
+top. Cells without a cost remain in the attempt/success denominator, but cost comparisons are withheld. Cells whose billed model cannot be named are excluded with their reason attached.
+
+An all-zero usage block is also an absence, not a zero: a refused or failed
+call still emits one, and recording it as a $0 run would put a harness that
+never reached the provider at the cheap end of the frontier. A print-door cell
+that produced no reply at all fails on that alone.
+
+Known gap: through the interactive door, pi and omp stream nothing to stdout, so
+their receipts are read opportunistically from the session files in their
+session directory. That schema has not been verified here; when it does not
+parse, the cell comes back `cost unknown` and not-comparable rather than zero.
+
+## The ambient machine
+
+A harness that loads the operator's skills, extensions and MCP servers is not
+running the task it was given: it is running that task plus whatever is
+installed on that machine — extra tools, a longer system prompt, extra latency,
+and a different set on every box. A live pane in this lane showed omp mounting
+MCP tools and failing one of them out of `~/.claude.json`, and pi listing
+thirty-odd skills out of `~/.agents/skills`.
+
+Only documented flags and settings are used, and what a CLI does not offer is reported rather
+than worked around — a benchmark that edits somebody's dotfiles to look fair has
+stopped measuring the thing people run.
+
+| arm | turned off | still loaded |
+|---|---|---|
+| omp 18.1.2 | `--no-skills --no-extensions --no-rules` | third-party discovery disabled in the owned profile through `disabledProviders`; native profile starts empty |
+| pi 0.84.2 | `--no-skills --no-extensions` | — |
+| aforge | nothing needed: `AFORGE_HOME` moves the whole state root, so a cell starts with no ambient skills or extensions | — |
+
+Every row records what was turned off and what was not (`ambient`), because it
+is a real difference between the arms and not a footnote.
+
+## Effort
+
+Asked of every arm as one rung (`--effort`, default `low` — the only rung
+aforge, omp and pi all have; pi 0.84.2 has no `medium`). An arm without the rung
+runs and is marked **not comparable**, with the mismatch on the row. Nothing is
+silently moved to a neighbouring rung: a row that ran a rung above the others is
+the most flattering possible lie about cost.
+
+opencode's `--variant` is provider-specific and enumerates nothing, so its
+effort is recorded as `unverified` and its rows are not comparable on that
+basis.
+
+## The scenarios
+
+| scenario | workload | door | what it checks |
+|---|---|---|---|
+| `data-tally` | data | print | exact arithmetic over a handed CSV, against an answer key computed from the same file |
+| `research-brief` | research | print | facts joined across four notes, one of which is superseded and contradicts the current one |
+| `writing-memo` | writing | print | a deliverable on disk under countable constraints: word ceiling, three required facts, one banned word, a required closing line |
+| `code-fix` | coding | print | a real boundary bug in a Go module: the module's own suite is the judge, and the test file is checksummed so "made the tests agree" fails |
+| `followup-while-working` | conversation | interactive | a second question typed **while** a slow job runs: it must be answered, and the job must still finish |
+| `revision-midwork` | conversation | interactive | the deliverable's shape is changed mid-flight: the revised file must exist, correct, and the superseded one must be gone |
+| `work-result-recalled` | conversation | interactive, aforge only | work is done, and afterwards the person **asks** what it produced: the number on the screen must be the number really in the file |
+
+Fixtures are deterministic and offline (`fixtures/`). The interactive ones use a
+script that sleeps, so the busy window costs a sleep rather than tokens.
+
+`work-result-recalled` runs on aforge alone because it is aforge's terminal
+being examined; on any other arm it is recorded `unsupported`, and no claim is
+made about what those arms can hand off. **It asserts nothing about shape** —
+not how many agents ran, not whether a task was spawned, not that a checkpoint
+existed. A build that answers in one turn with no task at all passes it, and
+should: the person asked for a result, not an org chart.
+
+It is named for what it checks. **The person has to ask**, so it is a recall
+check and not a delivery one: a session that finishes work and says nothing
+until prompted passes it. Whether a result arrives on its own is a different
+question, tested live against the product's own task surface, and it is not in
+this suite.
+
+### `multi-defect-pipeline`, which is not in the battery
+
+One more coding scenario exists and is **not** run by default. Nothing above
+changes: `run.sh` with no `--scenarios` runs the same seven cells it always did,
+and `campaign.py plan` freezes the same six calibration slices. This one is
+asked for by name:
+
+```sh
+bench/conversation/run.sh --scenarios multi-defect-pipeline --arms aforge,pi,omp
+bench/conversation/campaign.py plan /tmp/multi.json --id multi --scenarios multi-defect-pipeline
+```
+
+It exists because the battery's coding cell is one boundary bug in one file, and
+the slow-work cells buy their busy window with a `sleep`. Neither is a piece of
+work with separable parts. This one is: a small Python project — standard
+library only, no dependencies, nothing downloaded — with **four independent
+defects, one in each of four modules**, and a command-line pipeline that joins
+them.
+
+| module | the defect | how it shows |
+|---|---|---|
+| `parsing.py` | commas split by hand instead of read as CSV | a quoted site name with a comma in it, and a leading byte order mark |
+| `validation.py` | a repeated identifier is only noticed on the very next record | the same `entry_id` used again four lines later |
+| `aggregate.py` | an ISO week number pasted onto the calendar year | Monday 2024-12-30 is in `2025-W01`, and 2027-01-01 is in `2026-W53` |
+| `report.py` | equal totals left in the order they were built | the same records in another order render differently |
+
+They are independent — the fixture's own tests assert that repairing one repairs
+one — and the pipeline's output is right only when all four are. The workspace
+carries the failing suite and `SPEC.md`, which is the contract.
+
+**The judge is black-box and it is a parent process.** `judge/judge_dutylog.py`
+is copied to the cell's judge directory and runs the repaired project's own
+command line as a child, on 29 cases of input the workspace never contained —
+different dates and sites, minutes at exactly 1 and exactly 1440, an ISO year
+that is not the calendar year, an unpadded timestamp, ties, and the whole
+pipeline. It reads stdout, stderr and the exit status, and nothing else: not the
+project's source text, and not its functions.
+
+That last part is not a preference. An earlier version imported the candidate's
+modules and called them, and a root review showed what that costs: a
+`dutylog/__init__.py` that replaced the judge's own case list with no-ops
+returned `cases: 34, failed: 0, passed: true` with the judge's checksum intact.
+The parent must not import the candidate. Both counterexamples are now tests —
+that one, and a module that answers the visible tests out of a lookup table
+(`test/fake/dutylog-cheat`) — as is the property they protect: a rewrite that
+shares no line with the reference repair passes (`test/fake/dutylog-alt`).
+
+Judging each module through the command line is less coverage than calling its
+functions was. A module's internal contract is checked only as far as the CLI
+reveals it, on inputs chosen so that exactly one defect can change the answer;
+the workspace's own unittest suite still describes the modules directly, as
+developer guidance rather than as the mark.
+
+**Everything is bounded.** Each child runs in its own process group with a
+deadline and is killed by group, so a CLI that spawns something does not leave
+it behind; the whole judging run has a budget, and the scenario wraps the judge
+in `timeout -k`. A project that sleeps on import costs the cell its judging cap
+and a recorded failure. Before the review it cost the cell nothing and the run
+everything: the runner's cap covers the harness, not the checks that follow it.
+
+Each module is one assertion and the pipeline is another, so a three-of-four
+repair says which one is missing. `tests/` and `SPEC.md` are checksummed before
+the run and the judge is checksummed before and after it. A changed instrument
+is **not used**: a judge whose checksum moved is reported and not executed, and
+a guard manifest whose checksum moved verifies nothing. A file *added* under
+`tests/` is recorded and is not a failure.
+
+**It asserts nothing about shape.** Not how many agents ran, not whether a task
+was spawned, not whether the four repairs happened at once. A serial run that
+fixes all four in one turn passes exactly as a fan-out does, and should.
+
+What it does not establish, plainly:
+
+* **Nothing about useful parallelism, and not much work.** Each of the four
+  repairs is small — use `csv.reader`, keep a set instead of a variable, take
+  the ISO year, add a tie-break — in about 250 lines of Python. This is a
+  multi-module correctness and calibration fixture. Whether independent work of
+  this size is worth splitting up is an empirical question it does not answer,
+  and answering it needs bigger held-out workloads and a serial ablation to
+  compare against.
+* One language, one domain, one size, one prompt, and a judge with a finite
+  number of black-box cases. A repair that satisfies all 29 can still be wrong
+  about something nobody wrote a case for, and about anything a module does that
+  its command line does not show.
+* The judge and the answer keys are **outside the directory the harness was
+  pointed at, which is a location and not a sandbox**. Nothing stops a process
+  from walking up one directory. The checksums are detection: they say
+  afterwards that an instrument moved, and the scenario then refuses to use it.
+  What is now structural rather than detected is the process boundary — the
+  candidate runs as a child, and the parent holding the expected answers never
+  imports it.
+* The prompt names the four modules, because every arm must get the same task
+  and finding the work is not what is being compared here. It says nothing about
+  agents, tasks or parallelism.
+
+Its deterministic tests call no model:
+
+```sh
+python3 -m unittest discover -s bench/conversation/test -p 'test_dutylog*.py'
+```
+
+They build the fixture the way `run.sh` does and check that it fails in all four
+modules before any repair, that the reference repair and an unrelated correct
+implementation both pass, that three modules out of four never passes, and that
+a hard-coded answer, an edited test, a deleted test, a planted verdict, a
+project that hangs on import, a CLI that leaves a grandchild running, and the
+review's own `__init__.py` forgery are each caught. `test/selftest.sh` drives the same three outcomes through the real
+runner against fake binaries.
+
+## Outcomes
+
+`pass`, `fail`, `timeout`, `crash`, `skipped`, `unsupported` are six different
+words and only the first is a success. The summary counts each separately and
+the runner's exit code moves for `fail`, `timeout` and `crash` only. A skipped
+cell that quietly read as a pass is the failure this whole suite is built to
+prevent.
+
+The interactive door adds more, and they are deliberately different words:
+
+| `ended` | what happened | outcome |
+|---|---|---|
+| `no-midwork-window` | the work never gave a window to steer into | **fail** — the scenario did not happen, so there is nothing to pass |
+| `crash` | the pane died | **crash** — the harness failed |
+| `noframe` | nothing was ever drawn | **crash** — the harness drew no screen |
+| `noready` | a screen WAS drawn and these markers did not match it | **unsupported** — a calibration gap in THIS suite; nothing was driven, so nothing is claimed and the scenario's own checks do not run |
+
+That last row is not a technicality. A live run wired pi to the guard, whose
+status bar then read `(guard) …` where the calibration expected
+`(openrouter) …`; the driver waited ninety seconds, sent nothing, and the cell
+came out as a crash with ten failed assertions against a harness that was
+sitting there healthily waiting to be typed at. The marker is now derived from
+the provider actually in use, and a screen this suite cannot read is recorded as
+this suite's gap.
+
+**A cell whose guard died is `skipped`.** If the forwarding guard exits during a
+cell, the harness is dialling a closed port and everything after that — no
+reply, no file, no receipt — is about the rig. The cell is skipped with the
+guard's exit status on the row, and the scenario's checks do not run.
+
+### When "answered while working" is allowed to be claimed
+
+A transcript that ends with the right answer says nothing about *when* it was
+given. A harness that queues the followup, finishes the build, and only then
+answers produces a final screen indistinguishable from one that answered
+immediately — and an earlier version of this cell passed exactly that. So the
+mid-work cells judge order, from four timestamps on one clock:
+
+```
+work_started_at      the fixture's own build-started marker
+midwork_sent_at      when the driver pressed Enter on the second message
+answer_first_seen_at when the answer first appeared on screen (sampled)
+work_finished_at     the fixture's own build-finished marker
+```
+
+The message is sent only after the work says it started and before it says it
+finished. The markers are written by the slow job itself, to an absolute path
+baked in when the fixture is generated, so they hold even if the agent copies
+the script somewhere else.
+
+The two mid-work cells then part company, because they are asking different
+things of the harness:
+
+| cell | asserted | recorded, not asserted |
+|---|---|---|
+| `followup-while-working` | the answer was seen **before** the work's finish marker | how long the window was |
+| `revision-midwork` | `report.csv` was written **after** the revision was sent | whether it was also written before the build finished |
+
+The revision cell stops there on purpose. The person asked for the build *and*
+the report; finishing the build first and then writing the CSV does what was
+asked, so requiring the file mid-work would score eagerness rather than
+correctness. The followup cell is stricter because there the whole point of the
+question is that it should not have to wait.
+
+Two weaknesses are named rather than papered over, and travel in `door.json` as
+`witness`:
+
+- `work-markers` (the mid-work cells): the answer is a **screen** witness
+  sampled every `CONV_POLL` seconds, not an assistant-message event. Sampling
+  puts an error bar of one poll on `answer_first_seen_at`. What it cannot be is
+  an echo: the followup asks for a word from a file **reversed**
+  (`CINNABAR` → `RABANNIC`), so a tool call that prints the file does not
+  produce the answer. The match is a whole word — a live omp pane rendered
+  `RRABANNIC`, and a substring match had called that correct.
+- `screen-busy`: the weaker witness, used only where a scenario has no work of
+  its own to mark. A spinner means a model request is in flight, which can be
+  true before any work has begun.
+
+## Reading a run
+
+```sh
+bench/conversation/summary.sh                 # the newest run
+bench/conversation/summary.sh <results.jsonl> # one or more runs
+```
+
+It prints, **per workload**, each arm's mean quality (the fraction of that
+cell's own assertions that passed), mean cost and mean wall clock, and then the
+arms nothing else beats on all three at once. It does not add the workloads
+together: one arm being cheaper and another being better is the normal result,
+and a single number across coding, research, writing and conversation would be
+an average over incomparable things. When one arm is on the frontier everywhere,
+the tool says so *and* says how few workloads, rungs and samples that is.
+
+## Evidence
+
+Per run under `bench-results/conversation/<run-id>/`, per cell:
+
+```
+config.txt        binary, version, pins, allowlist, effort, isolation, cap, paths
+argv.txt          the exact invocation
+prompt.txt        the message every arm was given, byte for byte
+stdout.log        what the harness streamed
+guard-audit.jsonl every request the guard allowed or refused, and why
+guard-usage.jsonl what the provider said each of this cell's calls cost
+receipt.json      normalised cost, tokens, models, turns
+reply.txt         the reply, extracted from whichever shape it arrived in
+scrollback.txt    the whole conversation (interactive door)
+frames.log        timestamped screen samples, and a full frame per turn
+door.json         what the driver observed: ended, turns sent, witness, timings
+host-stop.log     the cell's own session host being stopped
+judge/            answer keys — outside the workspace the model can see
+results.jsonl     one row per cell, with every assertion and its outcome
+```
+
+Answer keys live in `judge/`, never in the workspace: a scenario that hands the
+model the file it is being marked against is marking the model on reading.
+
+**The workspace is a real one.** aforge is run the way people run it —
+conversations are hosted by default, and `--no-host` is not passed, because a
+benchmark that opts out of the product's default is measuring something else.
+Each cell has its own workspace, so the host it starts is its own, and when the
+cell ends that host is stopped by workspace (`aforge engine --workspace <cell>
+--stop`) before the guard closes. Nothing global is killed and no other
+session, benchmark or human, is touched.
+
+`config.txt` records the *names* of credentials present, never a value, and is a
+curated list rather than an environment dump: a redaction regex over everything
+a shell happens to hold is one unfamiliar variable name away from publishing a
+secret.
+
+Evidence is never overwritten by accident, at both levels. A run whose
+`results.jsonl` already holds rows refuses **before opening it** — cell-level
+refusal alone is not enough, because truncating the summary first and only then
+declining to touch the cells leaves the directories intact and destroys the
+record of what they were. A cell whose directory already exists refuses too, and
+records a skip. `--overwrite` is the deliberate way, and `--out` gives a run a
+directory of its own.
+
+Live runs so far, all by the owner:
+
+* `notes/pilot-01.md` — the first print-door cells, and why one of its three
+  costs is not usable.
+* `notes/pilot-02-03.md` — two full print-door passes over four scenarios, plus
+  the first interactive cells against pi and omp. It adjudicates every non-pass
+  in those runs: which were real quality misses, which were this suite's own
+  defects (a markdown-emphasis assertion, an adapter calibrated before the
+  guard existed), and which are unusable because the rig failed under them.
+
+No interactive cell has yet produced a result this suite is willing to quote:
+the pi cells never reached a composer, and the omp cell's pass rested on an
+assertion too weak to keep.
+
+State is isolated per cell: `AFORGE_HOME` for aforge, `PI_CODING_AGENT_DIR` plus
+`--session-dir` for pi, `XDG_*` for opencode (declared, not documented by
+opencode, and recorded as unverified). omp's documented isolation is a named
+profile under `$HOME/.omp/profiles`; this suite creates its own per-cell profile
+(and seeds `setupVersion: 2`, without which a fresh profile opens a setup wizard
+and the TUI never reaches a composer) and removes **only** a profile it created.
+A profile that already exists is **refused**, not reused: it carries settings
+this run did not write, including model roles. A name that is not a plain path
+component is refused too.
+
+## Testing the rig
+
+```sh
+bench/conversation/test/selftest.sh      # deterministic, offline, free
+bench/conversation/run.sh --dry-run      # compose every invocation, run none
+```
+
+The selftest runs the whole battery against fake binaries whose misbehaviour is
+known, and fails if the rig does not catch it: a dropped exit code, a fluent
+wrong answer, a harness that hangs, usage that was never reported, a model off
+the allowlist (including one reached only by an auxiliary role), a catalog that
+cannot pin the id, a scenario an arm has no door for, a followup that never
+arrives, a mid-work window that never opens, an existing omp profile, a second
+run that would overwrite the first's evidence or truncate its summary, and
+credentials leaking into a child process or onto its command line. It also
+checks the receipt reader counts a repeated message once — all three peers emit
+the same assistant message three times — and that a self-reported `$0` beside
+real tokens is read as unknown rather than free.
+
+The coding counterexamples are of the same kind: a fake that repairs all four
+defects of `multi-defect-pipeline` must pass, one that makes the workspace's own
+suite green by answering it from a table must FAIL on the external judge, and
+one whose behaviour is right but which edited a test file must fail on the
+checksum rather than on the behaviour.
+
+The interactive counterexamples are the ones to keep. A fake TUI that
+**blocks**, finishes the build, and then answers correctly, with the right
+derived token and the right build marker, must FAIL. A fake that answers
+`RRABANNIC` must fail too — a near miss is a miss. And a fake that draws a
+screen these markers do not match must come out `unsupported` with its
+scenario's checks unrun, never as a crash blamed on the harness. Its final transcript is a passing one; only
+the timestamps say otherwise. The responsive fake must pass, the deaf one must
+fail, and a run where the window never opened must not be a pass.
+
+It also drives the guard against a stand-in upstream: a commercial model is
+refused with nothing reaching the upstream, an off-allowlist id in a `models`
+fallback array is refused the same way, an allowlisted one is forwarded and its
+streamed chunks relayed untouched, a caller without the sentinel is refused, an
+unreadable body is refused, and the audit log carries the decisions and no
+credential. Relaying is timed, not assumed: with the stand-in holding its second
+event back for two seconds, the first must reach the client before the second is
+sent — a guard that buffered a whole response would leave a live TUI blank for
+the length of a generation.
+
+The ledger is tested the same way. A client that hangs up mid-stream must leave
+a settled-but-unpriced row rather than silence, the guard must survive it
+without answering a request whose headers it already sent, and a priced call
+beside it must **not** be reported as the total. An admission with no
+settlement — what an abrupt shutdown leaves — reads as unknown too.
+
+At the time of writing it is 112 checks, all passing, and it needs `tmux` and
+`curl`; a missing dependency is reported as skipped and exits non-zero rather
+than green.
+
+## What this does not establish
+
+One machine, one model, one effort rung. Legacy runs have no paired repetition metadata; the campaign runner adds it. Quality is binary: the verdict and every assertion must pass. This measures what the cell
+checks and nothing else — the writing cell counts words and facts, not whether
+the memo is any good. The conversation cells use a sleeping script as the slow
+job, so they measure whether a followup lands and the work survives, not how a
+harness behaves under a genuinely expensive one. Wall clock carries provider
+latency and queueing; two runs of identical code have come in 60% apart on the
+older batteries in `bench/`.
+
+### Long evidence paths and the hosted Aforge door
+
+Aforge's Unix socket path has a platform limit. The rig supplies a short, owned
+`/tmp/afconv-home.*` alias to the cell's state directory; the journal remains
+inside the evidence folder. Without that alias a long output path can trigger
+the in-process fallback and first-run setup instead of measuring hosted chat.
+The alias path is recorded in `state-alias.txt` and removed with other owned
+state unless `--keep` is used. First-run setup is not part of these comparisons.
+
+The slow-work fixture records every invocation and preserves its first start
+timestamp. Both interactive scenarios reject repeating the prepared action.
+Previously a second run could overwrite the start marker and make a correctly
+timed user correction look early; that failure is now measured directly.
+
+## Paired campaigns and conservative reports
+
+`campaign.py plan /tmp/experiment.json --id experiment-name --repeats 2` freezes binary and rig hashes and randomizes complete arm blocks. This is offline. `campaign.py run /tmp/experiment.json --out /tmp/experiment-evidence` explicitly executes the plan; failures remain, infrastructure gaps stop the run, completed cells resume without inference, and partial cells require adjudication. Model inference is limited by per-cell runtime caps, not an aggregate dollar cap.
+
+The report now uses **binary outcome success**, separates exact scenario/door/model/effort strata, and keeps failure costs. Legacy runs are descriptive only. Declared expected arms prevent an entirely missing competitor from disappearing. Paired intervals require at least five complete blocks; missing billing/time prevents the corresponding interval. Equal small all-success samples do not prove equivalence. An observed nondominated set is exploratory and withheld if cost/time coverage is incomplete.
+
+Cancelled streams may lack their final usage event. The guard records generation IDs, request identities, and timing without prompt contents. After the owned runtime stops, `reconcile.py` can obtain read-only generation billing metadata from OpenRouter. It preserves the raw ledger and writes a derived ledger and receipts; ID/model mismatches, unfinished records, or unavailable prices stay unknown. No inference is retried to recover a price.
+
+The product goals, staged comparison protocol, holdout requirement, and proposed acceptance margins are in [PARETO.md](../../docs/design/conversation-runtime/PARETO.md). Run `python3 -m unittest discover -s bench/conversation/test -p 'test_*.py'` alongside the existing shell selftest when changing measurement code.
+
+### A free chat is not a finished background action
+
+Once a scenario's work-start marker exists, the terminal driver keeps observing until its work-finish marker or the cap, even if the composer becomes idle. Otherwise an agent that correctly frees the chat can have its background action killed by the rig. The `idlework` counterexample stages exactly that shape; the previous driver failed it. This fixes the observation boundary, not a product runtime. Interactive evidence collected before this correction must be adjudicated before comparing it.
+
+Create `STOP` in a campaign's output directory to stop after the current cell finishes. The runner preserves completed cells and does not begin another. Remove that file before explicitly resuming. The per-cell cap still bounds a cell already in flight.

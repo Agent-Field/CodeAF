@@ -565,29 +565,28 @@ var (
 	hueMark = mustHue("#434C5E", flat)
 )
 
-// ── THE IDENTITY RING ───────────────────────────────────────────────────────
+// ── THE IDENTITY RING — NOT SPENT ANY MORE ──────────────────────────────────
 //
-// Six hues that mean NOTHING, and that is the whole of their design.
+// Six hues that mean NOTHING, which was once their design and is now the reason
+// nothing on this surface paints with them.
 //
-// Every other colour on this surface is a ROLE: violet is a question, amber is
-// a bound about to be reached, orange-red is a failure, and the law that makes
-// them readable is that seeing one tells you what kind of thing you are looking
-// at. The ring is the opposite kind of fact. A person running four tasks at
-// once needs to know WHICH ONE a row belongs to — the rail row, the note in the
-// transcript, the card that lands ten minutes later — and "which one" is not a
-// state, has no ordering, and must never be mistaken for one.
+// They were spent on one cell: the marker at the head of a task row, hashed off
+// the id, so that ◆ teal was task 3 everywhere it appeared. The argument was that
+// a person running four tasks needs to know WHICH ONE a row belongs to. What that
+// cost was a private alphabet of eight shapes in six colours which had to be
+// learned, was relearned every session because ids restart, and put arbitrary
+// colour on a surface whose whole colour law is that colour means something —
+// while the row already carried the id in a form a person can say out loud and
+// the state in its own mark and its own word. So the marker is one shape, dim,
+// and the same for every task (taskident.go states the change and why).
 //
-// So the ring is spent on EXACTLY ONE CELL: the task's own glyph, at the head
-// of a task row (taskident.go). No role ever paints that column, so a ring hue
-// cannot be read as a role — the confusion the role law exists to prevent is
-// impossible by construction rather than by choosing distant colours. The title
-// beside it keeps the ordinary ink, the clock keeps the dim, and a failure
-// keeps [hueBad], because those are facts about the work and the ring is a fact
-// about which work.
-//
-// The hues are mid-tone by construction, six steps around the wheel, and they
-// carry NO sixteen-colour tier: below the 256 rung the glyph alphabet carries
-// identity by itself, which is what it was chosen to be able to do.
+// THE HUES ARE LEFT HERE RATHER THAN DELETED because the palettes below are
+// built as complete ramps and every tier declares one; an empty ring would be a
+// hole in three tables to save six lines, and a structural test walks those
+// tables field by field to prove the light ladder is derived from the dark one
+// (adaptive_test.go). THE DOOR IS GONE, which is the half that mattered:
+// `palette.ringPaint` was the only way to spend one of these and it has been
+// removed, so nothing can paint an identity hue by reaching for it.
 var taskRing = []hue{
 	mustHue("#8FBCBB", flat), // teal
 	mustHue("#81A1C1", flat), // steel
@@ -1263,20 +1262,14 @@ func (p palette) data(s string) string { return p.paint(s, p.ramp.data) }
 // [hueViolet] for why it is not the question hue.
 func (p palette) violet(s string) string { return p.paint(s, p.ramp.violet) }
 
-// ringPaint paints one task's glyph in that task's own hue ([taskRing]). The
-// tint is an index off the id's hash and is wrapped here rather than at the
-// call sites, so a ring that grows or shrinks is one line in this file.
-func (p palette) ringPaint(tint int, s string) string {
-	ring := p.ramp.ring
-	if len(ring) == 0 || s == "" {
-		return s
-	}
-	at := tint % len(ring)
-	if at < 0 {
-		at += len(ring)
-	}
-	return p.paint(s, ring[at])
-}
+// THE IDENTITY RING HAS NO DOOR ANY MORE. `ringPaint` stood here and painted a
+// task's marker in a hue hashed off its id; the alphabet it served is gone
+// (taskident.go states the change and why), and a painter with no caller is a
+// capability that cannot work left standing where somebody would reach for it.
+// The HUES survive one rung below because the ramps are complete tables that
+// every tier declares and a structural test walks (adaptive_test.go checks the
+// light theme carries every field of the dark one through) — data with no door
+// is inert; a door with no reason is an invitation.
 
 // underline is the third bare attribute, and it has one job: a PATH inside a
 // highlighted command (shellx.go). A path is the one token in a command line

@@ -37,8 +37,10 @@ func clickRailNode(t *testing.T, a *app, id uint64) {
 	top := a.bodyTop()
 	for y := top; y < top+a.viewHeight(); y++ {
 		if node := a.railNodeAt(y); node != nil && node.id == id {
-			// Past the seam and past the state cell, on the title: the two cells
-			// before it are the column's handle and the one after them folds.
+			// Past the seam and past the state cell, on the title. The two cells
+			// before it are the column's handle at this width, and the one after
+			// them is the fold while the pointer is on it (task.go's
+			// [app.railLead]) — this press wants neither.
 			drive(t, a, tea.MouseClickMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam) + 6,
 				Y: y, Button: tea.MouseLeft})
 			drive(t, a, tea.MouseReleaseMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam) + 6,
@@ -139,21 +141,25 @@ func TestAPressOnNothingInTheConversationDoesNothing(t *testing.T) {
 // that end is inside the roster's own columns. The rail claims every press in
 // those columns, so a header read after it would be dead at exactly the cells
 // carrying the words.
-func TestTheRoomHeaderIsTheWayOutAtBothEnds(t *testing.T) {
+func TestTheRoomHeaderBackLabelOpensAndWhitespaceIsInert(t *testing.T) {
 	a, _, _ := roomApp(t)
-	for _, x := range []int{0, 2, a.width / 2, a.width - 2} {
-		clickRail(t, a, 0)
+	clickRail(t, a, 0)
+	_ = a.roomHeadRows(a.width)
+	if !a.roomBackSpan.pressable() {
+		t.Fatal("header omitted its Back control")
+	}
+	for _, x := range []int{0, a.width / 2, a.width - 1} {
+		drive(t, a, tea.MouseClickMsg{X: x, Y: a.roomHeadRow(), Button: tea.MouseLeft})
+		drive(t, a, tea.MouseReleaseMsg{X: x, Y: a.roomHeadRow(), Button: tea.MouseLeft})
 		if !a.roomOpen() {
-			t.Fatal("the rail did not open a room")
+			t.Fatalf("blank header space at %d navigated", x)
 		}
-		if head := plain(a.roomHead(a.width)); !strings.Contains(head, roomBackWord) {
-			t.Fatalf("the pinned header does not name the way out:\n%q", head)
-		}
-		drive(t, a, tea.MouseClickMsg{X: x, Y: 0, Button: tea.MouseLeft})
-		drive(t, a, tea.MouseReleaseMsg{X: x, Y: 0, Button: tea.MouseLeft})
-		if a.roomOpen() {
-			t.Fatalf("a press on the header at column %d did not return to the conversation", x)
-		}
+	}
+	x := a.roomBackSpan.from + 1
+	drive(t, a, tea.MouseClickMsg{X: x, Y: a.roomHeadRow(), Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: x, Y: a.roomHeadRow(), Button: tea.MouseLeft})
+	if a.roomOpen() {
+		t.Fatal("Back label failed to return to the conversation")
 	}
 }
 
@@ -435,7 +441,7 @@ func TestTheRoomsMarkIsOnTheRosterAtEveryWidth(t *testing.T) {
 	a.railWiden(false)
 
 	// AND OVER THE BODY, which is the roster's third shape.
-	drive(t, a, ctrlT())
+	drive(t, a, altT())
 	if !a.railStanding() {
 		t.Fatal("ctrl+t raised no roster")
 	}

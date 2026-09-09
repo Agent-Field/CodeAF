@@ -2,15 +2,48 @@
 
 ## /folder — choose a folder, pick a directory, say which project you mean
 
-`/folder` opens a picker over the directories aforge already knows about. It also answers
-to `/place` and `/dir`, because people arrive with three different words for the same
-thing.
+`/folder` opens the **add context** sheet — a framed window over the middle of the screen,
+with the folder you are standing in browsable in columns. It also answers to `/place` and
+`/dir`, because people arrive with three different words for the same thing.
 
 ```
-/folder            the picker, opened on what is already known
-/folder aforge     …with `aforge` already typed, so the list is narrowed
+/folder            the sheet, opened on the folder this conversation is about
+/folder aforge     …with `aforge` already searched, so the list of known folders is narrowed
 /folder ~/code/    …with a path already typed, so the columns are open in ~/code
+/attach            the same sheet, opened in exactly the same place
 ```
+
+**Both commands open the same sheet, in the same place, already browsing.** Where it opens
+is the first of these that exists: a folder this conversation has already been given, the
+folder this window is working in, your home directory. It does not matter which of the two
+words you typed, and a brand-new machine that has never chosen a folder gets the same sheet
+as one that has chosen forty.
+
+**It is a window, not a line at the bottom of the chat.** The conversation stays visible
+behind it, dimmed, and is not live while the sheet is up: clicking it, scrolling it or
+turning the wheel over it does nothing at all. The two ways out are `esc` and the **cancel**
+words on the sheet's bottom edge, which you can click. A click on the dimmed area outside
+the sheet does nothing — it will not throw away things you have chosen.
+
+**It browses files as well as folders.** Once the columns are open, the middle column
+lists the subdirectories and then the files inside them, with each file's size against the
+right edge; a large preview of whatever the cursor is on sits beside them. So one sheet
+answers both questions — which project do I mean, and which file do I want to send — and
+`/attach` with no path after it opens the same sheet on the folder this conversation is
+standing in.
+
+The two things do different things when you choose them, and the last row of the sheet
+always says which:
+
+- **A folder** goes to the conversation. It is registered as a scoped reference, appears on
+  the row above your message box, and every later model request carries it. Its contents
+  are never pasted anywhere.
+- **A file** goes onto the next message, on the same tray a pasted screenshot lands on. A
+  picture travels as content to be looked at; anything else travels as a path aforge's
+  `read` tool can open.
+
+**Moving the cursor, opening a folder and reading a preview attach nothing at all.** The
+only gestures that choose anything are `alt+m` and the action row.
 
 It opens **instantly**. Nothing is scanned when you press enter on the command: the rows
 come from what aforge has already seen, in layers, best first.
@@ -19,7 +52,7 @@ come from what aforge has already seen, in layers, best first.
    a task's ground resolved to and the conversation wrote down
 2. the directories **this conversation has been reading and writing in**, most recent first
 3. every **project on this machine** — the same list `alt+w` cycles on the task composer
-4. every **repository under your home directory**, from an index built quietly in the
+4. **repositories and ordinary folders under your home directory**, from an index built quietly in the
    background and refreshed about once a day
 
 Inside a layer the order is how often you have picked that folder here, weighted by how
@@ -29,40 +62,183 @@ whole gesture is `/folder` then `enter`.
 `esc` leaves everything exactly as it was: your half-written message comes back untouched,
 and nothing has been chosen.
 
-## Type a word to filter, type a path to browse
+## Type a word to filter, open a row to browse
 
-The box under the list is one box doing two jobs, and which job it is doing depends only on
-the shape of what you type.
+The box at the top of the sheet is a **search box**, and it is empty when the sheet opens —
+so the first thing you type is a search rather than four more characters on the end of a
+path. Where you are is said in two places you cannot type over: the **breadcrumb** above the
+columns, and the location on the sheet's own top edge.
 
-- **A word filters.** `agent`, `tui3`, `notes` — the list narrows with the same fuzzy
-  matching the `@` file list uses.
+It does two jobs, and which job it is doing depends only on the shape of what is in it.
+
+- **A word filters.** `agent`, `tui3`, `notes` — the list narrows with fuzzy
+  matching of names and path segments, initials and small spelling slips. For example,
+  `afroge` can find `aforge`; stronger literal matches lead typo matches.
 - **A path browses.** Anything starting with `/`, `~/`, `./` or `../` — and a bare `~`,
-  `.` or `..` — turns the list into **columns**: the folder above on the left, the folders
-  inside where you are in the middle, and what aforge knows about the highlighted one on
-  the right.
+  `.` or `..` — turns the list into **columns**.
 
 A bare word is never treated as a path. Typing `agentfield` means "find it for me", not
 "open ./agentfield".
 
-In the columns:
+**You never have to retype a path you can already see.** Press `→` on a row of the list, or
+click it, and the columns open on that folder. The search that found it is spent — the box
+goes empty again, so the next thing you type is a new search rather than an edit of the old
+one. That is what a search result is for: find it by name, then walk into it.
+
+**Clearing the box comes back.** `ctrl+u` empties it, and an empty box means "wherever the
+columns are" — so searching and then clearing puts you back where you were standing rather
+than on a list of everything. That is also how you reach the remembered folders, the
+projects and the index from inside the sheet: clear the box, then type a word.
+
+## The columns — the folder above, where you are, and what is inside the row you are on
+
+Browsing draws three successive regions, the way a file browser does:
+
+```
+  ~ › code › aforge-v2 › internal
+  cmd          ›   session/                    1  package session
+  docs             tui3/                       2
+  internal         agent.go        24.1 KB     3  import (
+                   places.go        6.4 KB     4  	"context"
+  add this folder · ~/code/aforge-v2/internal/session   repository · dev · clean
+```
+
+- **left** — what is in the folder above, with the one you are standing in a shade brighter,
+  and its own scroll so the folders ABOVE the one you are in are on screen too. It is narrow
+  on purpose: it is there to say where you are standing, not to be read down.
+- **middle** — what is inside where you are: the subdirectories first, each with a trailing
+  `/`, then the files with their sizes right-aligned. The cursor lives here, and the row it
+  is on wears a band across **this column only** — never a stripe across the whole window.
+
+  Every row leads with a **one-cell mark saying what kind of thing it is**: `▸` a folder,
+  `◆` source or configuration, `▤` text and documents, `▣` a picture, `▶` audio or video,
+  `▦` an archive, `·` anything else. On a terminal that cannot draw those the same seven
+  are `>` `*` `=` `#` `+` `%` `.` — one character either way, so the sizes stay lined up
+  down the column. Restrained colour reinforces the mark; type never depends on colour alone.
+  Filenames use readable ink, folders keep their slash, and sizes stay quieter.
+  Plain terminals keep the same shapes without colour.
+- **right** — a **preview of the thing under the cursor**, with the same type marks on it.
+  On a folder that is the folder's own contents, so the next level is on screen before you
+  walk into it. On a file it is the file: source with syntax colour and dim line numbers, a
+  picture drawn in the terminal's own cells, a PDF's text. The source is coloured by lexing
+  the **whole file at once**, so a comment or a string that runs over several lines is one
+  comment or one string all the way down.
+
+The path above them is a **breadcrumb**, and every segment of it is clickable: press `code`
+and you are back in `~/code` with the cursor on the folder you just left. On a narrow frame
+the breadcrumb drops levels from the left — `… › tui3` — rather than shrinking the names.
 
 | Key | What it does |
 |---|---|
 | `↑` `↓` | move down the middle column |
-| `→` | walk into the folder under the cursor |
+| `→` | walk into the folder under the cursor. On a file it does nothing — a file is not somewhere to go |
 | `←` | walk out to the folder above, cursor left on the one you came from |
-| `tab` | complete the highlighted folder's name into the box, whole — the columns follow, so it lands where `→` does |
-| `enter` | take the folder under the cursor |
+| `tab` | complete the highlighted name into the box, whole — the columns follow, so a folder lands where `→` does |
+| `alt+m` | choose the thing under the cursor, or unchoose it. Chosen things gather on a tray above the action row |
+| `alt+p` | hide the preview, and show it again |
+| `alt+o` | give the preview the whole sheet, and give the sheet back. With the preview alone, `↑↓` scroll it and `←→` slide it sideways |
+| `shift+↑` `shift+↓` | scroll the preview beside the list, without moving the cursor |
+| `shift+←` `shift+→` | slide the preview sideways, to read past the end of a long line |
+| `alt+h` | show the hidden files and folders, and hide them again |
+| `enter` | do what the action row says |
 | `esc` | leave, having changed nothing |
 
-Only folders are shown. Hidden folders (anything starting with `.`), `.git`, `vendor` and
-`node_modules` are skipped — the same rule the `@` file list follows. One level is read at
-a time; nothing walks deep.
+There is no focus to keep track of: **the pane a key acts on is the pane that is drawn.**
+With a list on screen the plain arrows walk the list and `shift` plus an arrow moves the
+preview; with the preview alone there is no list to walk, so the plain arrows are its own.
 
-## What the right-hand column tells you about a folder
+**The mouse does all of it too, in all three columns.** A click in the middle column moves
+the cursor, and a second click on the row you are already on walks into it when it is a
+folder. A click in the left-hand column walks back out. A click on the breadcrumb goes back
+to that level.
 
-The third column is what the machine already knows about the folder under your cursor, dim,
-one line per fact:
+**A click in the right-hand column acts on that row** when it is showing a folder's
+contents. A directory opens in one click. A file becomes the current selection and its
+source, prose or picture is previewed at once; neither gesture adds anything until you use
+the action row. There is no double-click timing anywhere. When the right-hand column is showing a
+**file** — source, prose, a picture — there is nothing there to select and a click does
+nothing: it is a pane you read, and `shift` plus an arrow or the wheel is how you read past
+the bottom of it.
+
+The wheel follows the pointer: turned over the preview it scrolls the preview, turned over
+the names it walks the names. Clicking is navigation and never a choice; the only things
+that choose are `alt+m` and the action row, below.
+
+One level is read at a time and nothing walks deep. Reading a folder and reading a file for
+the preview both happen in the background, so a directory with forty thousand entries in it
+or one on a network mount never holds a keystroke — and moving off a row cancels the read
+you no longer want.
+
+## Hidden folders — .config, .github, dotfiles
+
+Hidden folders are out of the way rather than out of reach. Two ways in:
+
+- **`alt+h`** shows them — every one of them, `.git`, `node_modules` and `vendor` included —
+  and pressing it again puts them back out of sight.
+- **Typing a name that starts with a dot** shows them by itself. `~/.con` finds `.config`
+  without your having to think about a toggle first.
+
+The right-hand preview of a folder keeps the same rule as the columns, so what it lists is
+what you can walk into: `.git`, `node_modules` and `vendor` are absent from it until `alt+h`
+is on, and never shown there as a row that would not open.
+
+## The action row — add this folder
+
+The last row of the sheet is the one thing on it that **chooses** anything, and its right
+end carries what is known about the **thing under the cursor** — `repository · main · clean`
+or `folder · 214 files` for a directory, and `7.7 KB · changed 3d` for a file. Nothing is
+drawn where the disk had nothing to say, and `changed` is the file's modification time: it
+is not "last opened", which no filesystem here answers honestly and aforge keeps no record
+of.
+
+The last row of the sheet is the one thing on it that **chooses** anything:
+
+```
+add this folder · ~/code/agentfield          repository · main · clean
+```
+
+It names the thing the cursor is on, so what `enter` would do is written down rather than
+remembered — and clicking that row does exactly what `enter` does. Everything else on the
+sheet moves you around; this row is the only thing that commits.
+
+**It uses the verb that belongs to the kind of thing under the cursor**, because adding a
+folder and attaching a file are two different acts on two different objects:
+
+```
+add this folder · ~/code/agentfield          repository · main · clean
+remove this folder · ~/code/agentfield
+attach this file · ~/code/agentfield/server.log
+attach this picture · ~/Desktop/shot.png
+```
+
+**On a folder this conversation is already about, the same row says
+`remove this folder · <path>` and that is what `enter` does** — so taking one off never
+needs a mouse. Removing leaves the sheet open, because clearing two is a tidy-up and the
+list you are tidying is the one in front of you; adding closes it, because the sheet has
+then done its job.
+
+**Several things at once.** `alt+m` chooses the row under the cursor and puts it on a small
+tray one row above the action row, which says how many things are on it and names each of
+them; a click on one of those cells takes it back off. A chosen row wears a `▪` beside the
+cursor mark, so which row you are ON and which rows you have CHOSEN are two facts you can
+see at the same time. The action row then spells out both halves of what `enter` will do:
+
+```
+  3 chosen ·  ▪ docs/  ▪ main.go  ▪ shot.png
+  enter · add 1 folder · attach 2 files
+```
+
+Twenty-four things is as many as one message can carry, and the twenty-fifth press says
+`24 is as many as one message can carry · send these first` rather than silently dropping
+it. You can walk into other folders between choices — the tray is not about one level. A
+folder you choose that the conversation already holds is left alone rather than taken off.
+
+The work a confirm does runs in the background, because registering a folder is a round
+trip when the conversation is on another machine and attaching a file is a look at the
+disk. Nothing on screen claims otherwise, and each thing that fails says so by name:
+`no such file: main.go`, `no such folder · ~/code/gone`.
+
+The dim tail at the right end is what the machine already knows about that folder:
 
 ```
 repository · main · clean
@@ -80,15 +256,113 @@ A fact aforge has not established draws nothing at all rather than a blank or a 
 facts are read in the background as your cursor lands on a row, so a big repository may
 take a beat to say whether it is dirty — the keys never wait for it.
 
+## An empty folder, and one you are not allowed to read
+
+They are different things and the browser says which is which, where the rows would have
+been. A folder that **was** read and has nothing inside it says `nothing below here` — and
+you can still add it; a leaf is a perfectly good choice. A read that **failed** says why:
+
+```
+this folder cannot be read · permission denied
+this folder is no longer here
+this is a file, not a folder
+this folder cannot be read
+```
+
+A permission is never reported as emptiness.
+
+**The preview pane says the same kind of thing about a file it could not show**, in its own
+words, exactly as they are written:
+
+```
+this file cannot be read · permission denied
+this file is no longer here
+this file cannot be read
+this file is empty
+this is not text · nothing to show here
+only the first part of this file was read
+more of this file is not shown
+more of this folder is not shown
+this terminal cannot draw pictures
+this picture could not be opened
+this document is pages of pictures · there is no text in it
+this document could not be read
+this document is too large to read here
+```
+
+- A file that is **not text** — an executable, an archive, a video, a compiled object — says
+  so rather than showing you its bytes. Its size and kind are named on the pane's foot
+  line, which is all there honestly is to say about it.
+- Only the first **256 KB** and the first **400 lines** of a file are read, and the pane says
+  `only the first part of this file was read` when that happened. A file read that far has
+  no line count on its foot, because nobody counted the rest.
+- A `.json` file that was minified is re-indented before it is shown, so a document that is
+  one long line is a shape you can read. A file its author already indented is left exactly
+  as they wrote it.
+- **A picture is drawn in the terminal's own cells** — one cell is two stacked pixels, in
+  colour, with the aspect ratio preserved. It is cell-resolution colour and not Kitty or
+  iTerm graphics; it is coarser than those and it is the only kind that survives a repaint.
+  On a terminal that cannot paint colour at all the pane says
+  `this terminal cannot draw pictures` and names the picture's shape, format and size
+  instead.
+- A **PDF** shows its text. A scanned one, which has no text in it at all, says
+  `this document is pages of pictures · there is no text in it` rather than showing you
+  nothing without explanation.
+- **Nothing is ever run in order to show it.** A preview opens a file for reading and looks
+  at a directory. There is no shell-out, no converter and no network call, and no escape
+  sequence inside somebody's file can reach your terminal — every line is stripped of
+  control bytes twice on the way to the screen.
+
 ## What choosing a folder actually does — this conversation is now about it
 
-`enter` says one line into the conversation:
+`enter` — and the action row, which is the same act — says one line into the conversation:
 
 ```
 folder · ~/code/agentfield
 ```
 
-and two things are then true.
+and three things are then true.
+
+**I am told about it, by its exact path, on the very next thing you say.** The folder is
+written into my own instructions under `Attached folders`: the absolute path, whether it is
+a repository, and — if it has an `AGENTS.md` or a `CLAUDE.md` of its own — that file's rules
+quoted under a heading naming that folder and saying they hold there and nowhere else. So I
+never go hunting for a folder you chose, never ask you which one you meant, and never blend
+two attached projects' house rules together. Instruction excerpts are limited to 4 KiB per
+file and 12 KiB across attached folders; a partly used total leaves only its remaining
+bytes for the next file. A cut excerpt names the file to read for the rest.
+When you select a subfolder in a repository, applicable `AGENTS.md` and `CLAUDE.md`
+files are read from the repository root down to that selected folder. Each excerpt
+names its own directory scope; more specific nested rules take precedence there.
+Sibling folders are not searched for rules, and shared ancestors are quoted once.
+Two subfolders selected in the same repository remain separate attachments. Removing
+one removes only that selected scope and its rules; the other stays attached. They
+still share one repository when work needs an isolated branch.
+
+Choosing a directory **inside a repository** attaches the repository, because a branch is
+cut from a repository and not from a directory in it — and the line you get back says so by
+naming the project rather than what you pointed at. Nothing about that is hidden from
+either of us: the directory you actually pointed at is kept beside the project on the
+record, and I am told both, so I start where you pointed and can still reach the rest.
+
+What I am **not** given is the folder's
+contents: attaching is a reference, not a copy, and I look inside with `ls`, `grep` and
+`read` on the path you chose, the same as anywhere else. A folder that is no longer on disk
+when you attach it is described that way rather than silently.
+
+That line is said **only after the conversation has actually taken the folder**. Where it
+cannot, nothing is added and you get
+`this conversation cannot be given a folder · it has no way to remember one, so nothing
+would reach the next request` instead. The picker does not open at all on such a
+conversation, because a list you cannot choose from is not worth drawing.
+
+**A folder inside a repository is added as the repository**, because work is cut from a
+repository and not from a folder inside one — and the line says so rather than quietly
+printing a folder you did not pick:
+
+```
+folder · ~/code/agentfield · the repository holding ~/code/agentfield/internal/session
+```
 
 **The conversation is about that folder, and it remembers.** The choice is written into the
 conversation's own record, so closing the terminal does not lose it, and the next task you
@@ -142,8 +416,8 @@ the sentence naming the files that clashed, with the branch kept so nothing is l
 **Where your checkout is on a protected branch, the branch is kept instead and your
 checkout is not touched.** `main`, `master`, `dev`, `develop`, `development`, `staging`,
 `stage`, `trunk`, `production`, `prod`, `release` and any remote's default branch are never
-written by aforge. You get the sentence on its own — `its branch chat/agentfield-b22fb8 was
-kept: your checkout is on dev, which aforge never writes to — merge it when you are ready`
+merged into by automatic task landing. You get the sentence on its own — `its branch chat/agentfield-b22fb8 was
+kept: your checkout is on dev, which tasks do not merge into automatically`
 — and it is not a failure: the work is finished and on that branch, and `git merge` takes
 it whenever you want it. The same keep happens when you are on a different branch than when
 the work was cut, when you moved that branch to another commit yourself after the cut, or
@@ -235,12 +509,19 @@ standing. What it does do is tell the work where to go: a path in your own words
 ground ladder's top rung, so "fix the flaky test in ~/code/wisp" sends that work to
 `~/code/wisp` whatever folder this window was opened in.
 
-## Which folders is this conversation about — where can I see them
+## Which folders is this conversation about — where can I see them, remove a folder
 
-Two places, and neither of them is a permanent list sitting on your screen. A folder the
-conversation merely read from shows nothing at all; it is the model looking at the disk,
-which it could always do.
+Three places. A folder the conversation merely read from shows nothing at all; it is the
+model looking at the disk, which it could always do.
 
+- **Above the message box.** A conversation that is about somewhere carries a small dim cell
+  per folder on the same row the attachments ride — `▥ agentfield ✕` — and **clicking one
+  takes that folder off the conversation**, which says `folder removed · ~/code/agentfield`.
+  Three are named and the rest are counted (`+2 more folders`); the counting cell is a
+  sentence and does nothing when pressed. Where a build has no way to take a folder off, the
+  cells are still drawn and simply carry no `✕`. **The keyboard's way to the same thing is
+  `/folder` and `enter` on that folder's row**, where the action row reads
+  `remove this folder · <path>`.
 - **`/folder`** — the first rows are this conversation's own folders, most recently used
   first. That is the whole set, on demand, in one keystroke.
 - **Home** — the row for a conversation that is about somewhere beyond the project it is
@@ -251,6 +532,19 @@ which it could always do.
 
 Sixteen folders is as many as one conversation keeps. Past that the oldest one it worked
 out for itself is dropped; a folder you named yourself is the last thing to go.
+
+**Taking one off again.** A folder you attached can be removed, and removing it is
+complete: it comes off the conversation's record, off the rows `/folder` opens with, and
+out of my instructions, so the next thing you say reaches me with no mention of it. A
+folder that has since been deleted from your disk can still be removed — the record
+outlives the directory on purpose, so that a folder that went away is not stuck on the
+conversation forever. Asking to remove a folder this conversation was never about is
+refused in those words: `this conversation is not about <path>`. Removing a folder does
+**not** touch the folder itself, and it does not throw away changes waiting for `/land`.
+
+A folder I worked out for myself — the project a task turned out to stand in, rather than
+one you chose — is not called attached and is never quoted to me as instructions you gave;
+it is only where work went.
 
 ## Attach a folder — /attach with a directory after it
 
@@ -299,10 +593,18 @@ Exactly as they are written:
 
 ```
 choosing a folder is not available over --host yet — the folders here are this machine's, not the ones the conversation is on.
-nothing to offer yet · type a path after /folder, or use the picker's box
+this conversation cannot be given a folder · it has no way to remember one, so nothing would reach the next request
 no folder matches · type a path to browse
 no such folder · <path>
 nothing below here
+this folder cannot be read · permission denied
+this folder is no longer here
+this is a file, not a folder
+this folder cannot be read
+no such file: <name>
+this is a folder now, not a file · <name>
+these folders are already here
+24 is as many as one message can carry · send these first
 ```
 
 And the two `/land` gives you, exactly as they are written:
@@ -316,11 +618,51 @@ putting changes into a folder is not available over --host yet — the conversat
   read are on the laptop you are sitting at; the conversation is on the other machine, so
   every row it could draw would be somewhere the work cannot go. Type the far machine's
   path into whatever asks for one instead.
-- The second is a brand-new machine with no projects, nothing touched yet and no index —
-  typing a path is the way through.
-- The third is a filter that matched none of the known folders. The folder may still be
+- The second is a conversation that has no way to hold a folder at all. Nothing is added
+  and nothing pretends to be; `/folder` does not open.
+- There is no longer a refusal for a machine with nothing remembered. `nothing to offer yet`
+  used to stand here, and it met the one person least able to type a path; the sheet opens on
+  your own tree instead.
+- The third is a search that matched none of the known folders. The folder may still be
   there; the picker only ranks what it has seen, so type its path.
-- The fourth is `enter` on a row whose folder has since been moved or deleted. The rows
-  come from memory, and one stat at `enter` is what catches that.
-- The last is the middle column of a folder with no folders inside it. You can still press
-  `enter` on it — a leaf is a perfectly good choice.
+- The fourth is the add action on a row whose folder has since been moved or deleted. The
+  rows come from memory, and one stat at that moment is what catches it.
+- `nothing below here` is a folder that was read and has nothing inside it at all. You can
+  still add it — a leaf is a perfectly good choice.
+- The next four are reads that failed: a folder you are not allowed to open, one that has
+  been moved or deleted since the row naming it was drawn, a path that turned out to name a
+  file, and every other way a read can go wrong. None of them is ever reported as an empty
+  folder.
+- `no such file: <name>` and `this is a folder now, not a file · <name>` are a file that
+  changed under you between the row you chose and the moment you pressed enter. The rest of
+  what you chose still goes through; only the thing that moved is refused, by name.
+- `these folders are already here` is a set of chosen folders with nothing left to do,
+  because the conversation already holds every one of them.
+- `24 is as many as one message can carry · send these first` is the choice cap. Nothing is
+  silently dropped when you reach it.
+- `/attach` handed a path is unchanged and still answers its own refusals
+  (`no such file: <path>`, `<name> is already attached`); `/attach` with nothing after it
+  opens this browser instead of correcting you.
+
+## Finding preview controls while a path is typed
+
+Every chord the sheet owns is named exactly once, across **two lines**, so neither is a
+wall of shortcuts.
+
+- The **foot row** above the action carries what you reach for: `esc cancel`, `enter add`,
+  `←→ walk`, `alt+m choose`, `ctrl+u search`, and the preview's own door — spelled
+  `alt+o preview` on a frame too narrow to draw the preview beside the list, and
+  `alt+o wide` on one that is already showing it.
+- The **box's own placeholder**, on screen whenever the box is empty, says what typing does
+  and carries the two remaining chords: `search folders and files · or type a path ·
+  alt+p preview · alt+h hidden`.
+
+A terminal with too few rows gives the foot row back to the file list, and `esc · cancel`
+stays on the sheet's bottom edge either way.
+
+## Browse while keeping an unsent chat draft
+
+Go Home and run `/folder` or bare `/attach` in Home's box. The sheet opens over
+the conversation you were in; its unsent draft stays underneath, dimmed, where you
+can see it and cannot type into it. Escape — or the **cancel** words on the sheet's
+bottom edge — closes the sheet and returns that draft unchanged.

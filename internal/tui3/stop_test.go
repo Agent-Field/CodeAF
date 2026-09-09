@@ -222,19 +222,19 @@ func TestTheHeaderMarkRaisesTheSameCard(t *testing.T) {
 	a.openRoomFor(7, "Fix the nil-map crash")
 	a.touch()
 	width, _ := a.size()
-	head := a.roomHead(width)
+	head := strings.Join(a.roomHeadRows(width), "\n")
 	if !strings.Contains(plain(head), roomStopMark) {
 		t.Fatalf("the header carries no ✕:\n%s", plain(head))
 	}
 	if !a.roomStop.pressable() {
 		t.Fatalf("the ✕ was drawn but answers to no columns")
 	}
-	drive(t, a, press(a.roomStop.from, 0))
+	drive(t, a, press(a.roomStop.from, a.roomFactsRow()))
 	if !a.stopping() {
-		t.Fatalf("the ✕ raised nothing")
+		t.Fatalf("Stop raised nothing")
 	}
 	if a.stop.target.noun != stopTaskNoun {
-		t.Fatalf("the ✕ in a task's room offered to stop a %q", a.stop.target.noun)
+		t.Fatalf("Stop in a task's room offered to stop a %q", a.stop.target.noun)
 	}
 }
 
@@ -292,8 +292,8 @@ func TestTheStripCarriesNoStopMarkWhereTheRosterStands(t *testing.T) {
 	}
 	// AND THE ROOM'S HEADER STILL HAS IT, which is where a pointer ends work.
 	a.openRoom(7, "Fix the nil-map crash")
-	if !strings.Contains(plain(a.roomHead(a.bodyWidth())), roomStopMark) {
-		t.Fatalf("the room's header lost its ✕:\n%q", plain(a.roomHead(a.bodyWidth())))
+	if !strings.Contains(plain(strings.Join(a.roomHeadRows(a.bodyWidth()), "\n")), roomStopMark) {
+		t.Fatalf("the room's header lost its ✕:\n%q", plain(strings.Join(a.roomHeadRows(a.bodyWidth()), "\n")))
 	}
 }
 

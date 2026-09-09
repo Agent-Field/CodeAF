@@ -165,14 +165,25 @@ type standingStore interface {
 // standingItems answers which store this agent writes through: the test's fake
 // when one was handed over, and the door's real one otherwise. A nil answer is
 // a session with no ambient side at all, and the tool is not on its belt.
-func (a *Agent) standingItems() standingStore {
-	if a.config.standingItems != nil {
-		return a.config.standingItems
+//
+// IT IS THE CONFIG'S OWN ANSWER AND NOT A SECOND READING OF IT. The page's
+// standing section is composed from the same availability
+// ([Config.mayStand]) before there is an agent to ask, and two readings of two
+// fields is exactly the drift beltfacts.go exists to prevent: a door that
+// starts handing the store over some other way must not be able to put the
+// tool on the belt and the "there is no scheduling here" sentence on the page.
+func (a *Agent) standingItems() standingStore { return a.config.standingStore() }
+
+// standingStore is that one reading. It is on the config because the prompt is
+// rendered before the agent exists (agent.go's newAgent).
+func (c Config) standingStore() standingStore {
+	if c.standingItems != nil {
+		return c.standingItems
 	}
-	if a.config.Standing == nil || a.config.Standing.Store == nil {
+	if c.Standing == nil || c.Standing.Store == nil {
 		return nil
 	}
-	return a.config.Standing.Store
+	return c.Standing.Store
 }
 
 // standingWatch is this machine's timer, or nil where there is none. It is the

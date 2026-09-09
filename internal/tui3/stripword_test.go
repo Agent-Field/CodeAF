@@ -91,7 +91,8 @@ func TestATeachingPagesFootOffersNoVerbOverABodyWithNoRows(t *testing.T) {
 		bad []string
 	}{
 		{"tasks", func(a *app) string { return (placeTasks{}).hint(a) },
-			[]string{tasksTypeWord, tasksEnterRoomWord, tasksEnterInsideWord, tasksClearFilterWord}},
+			[]string{tasksTypeWord, tasksEnterRoomWord, tasksEnterInsideWord,
+				tasksEnterAwayWord, tasksEnterOpenWord, tasksEnterJoinWord, tasksClearFilterWord}},
 		{"standing", func(a *app) string { return (placeStanding{}).hint(a) },
 			[]string{homeItemEnterWord, homeItemPauseWord, homeItemStopWord, standNotHereWord}},
 		{"memory", func(a *app) string { return (placeMemory{}).hint(a) },

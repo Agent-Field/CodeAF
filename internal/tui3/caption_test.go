@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 func captionFixture() []entry {
@@ -155,17 +156,18 @@ func TestANarrowCaptionWrapsWithoutEllipsis(t *testing.T) {
 
 func TestExpandingACaptionStopsItsShimmerAndStartsTheRowSpinners(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
+	a.pal = newPalette(tokens.TrueColor, false)
 	c := caption{text: "checking the fold", start: 1, calls: 2, began: time.Unix(100, 0)}
 	a.clock = func() time.Time { return time.Unix(104, 0) }
-	a.paints = 0
+	captionTimeAt(a, 0)
 	closed := a.captionRow(c, true, false, 80).text
-	a.paints = shimmerPeriod / 2
+	captionTimeAt(a, shimmerPeriod/4)
 	if next := a.captionRow(c, true, false, 80).text; next == closed {
 		t.Fatal("collapsed live caption did not shimmer")
 	}
-	a.paints = 0
+	captionTimeAt(a, 0)
 	open := a.captionRow(c, true, true, 80).text
-	a.paints = shimmerPeriod / 2
+	captionTimeAt(a, shimmerPeriod/4)
 	if next := a.captionRow(c, true, true, 80).text; next != open {
 		t.Fatal("expanded caption kept shimmering")
 	}
@@ -176,7 +178,7 @@ func TestTheLinearTierDrawsNoShimmer(t *testing.T) {
 	a.linear = true
 	a.paints = 0
 	first := a.shimmer("checking")
-	a.paints = shimmerPeriod / 2
+	captionTimeAt(a, shimmerPeriod/4)
 	if second := a.shimmer("checking"); second != first {
 		t.Fatalf("linear shimmer moved: %q then %q", first, second)
 	}
@@ -211,6 +213,11 @@ func TestALiveTurnKeepsPastCaptionsShutAndTheFrontierOpen(t *testing.T) {
 	a.entries = es
 	a.turn = 1
 	a.state = stateWorking
+	// INSIDE THE OPENED WORK, which is where a running turn's outline lives now:
+	// the conversation draws three compact step lines until somebody asks for the
+	// machinery (livesteps.go), and this law is about what they are shown once
+	// they have — the past steps shut, the step still running open.
+	showLiveWork(t, a)
 	page := strings.Join(plainRows(a), "\n")
 	if !strings.Contains(page, "reading 2 files") {
 		t.Fatalf("past caption missing:\n%s", page)

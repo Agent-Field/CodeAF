@@ -366,7 +366,7 @@ func TestTheArmedHintNamesRunningWorkAndOnlyWhenThereIsSome(t *testing.T) {
 	agent := &fakeAgent{model: "m"}
 	a, _ := quitting(t, agent)
 
-	if got := a.quitWorkWord(); got != "" {
+	if got := quitStoppingWord(a); got != "" {
 		t.Fatalf("an idle surface named %q as running work", got)
 	}
 	if got := a.quitHint(); got != quitArmWord {
@@ -378,12 +378,12 @@ func TestTheArmedHintNamesRunningWorkAndOnlyWhenThereIsSome(t *testing.T) {
 		2: {id: 2, state: session.TaskRunning},
 	}
 	a.taskOrder = []uint64{1, 2}
-	if got := a.quitWorkWord(); got != "2 tasks" {
+	if got := quitStoppingWord(a); got != "2 tasks" {
 		t.Fatalf("two running tasks are %q", got)
 	}
 
 	a.taskOrder = []uint64{1}
-	if got := a.quitWorkWord(); got != "a task" {
+	if got := quitStoppingWord(a); got != "a task" {
 		t.Fatalf("one running task is %q, want the article rather than the digit", got)
 	}
 	if got := a.quitHint(); got != quitArmWord+" · a task will stop" {
@@ -397,7 +397,7 @@ func TestTheArmedHintNamesRunningWorkAndOnlyWhenThereIsSome(t *testing.T) {
 		detail: toolDetail{Args: `{"command":"serve","background":"true"}`, Output: "job 1 started"},
 	})
 	a.hudStale = true
-	if got := a.quitWorkWord(); got != "a task and a job" {
+	if got := quitStoppingWord(a); got != "a task and a job" {
 		t.Fatalf("a task and a job are %q", got)
 	}
 }

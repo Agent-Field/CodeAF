@@ -229,9 +229,10 @@ Two tools are always on the belt when an accounts layer exists.
 - **`use_service`** — picks up one account's tools. An optional `tools` argument names a
   subset.
 
-**The tools `use_service` picks up arrive in the tool list on the next turn, not the
-one it was called on.** So a request that needs an account often takes a beat: aforge
-picks up the account, then uses it.
+**The tools `use_service` picks up arrive in the tool list on the next request, not
+the one it was called on — and that next request is still part of the same turn.** So a
+request that needs an account takes a beat: aforge picks up the account, then uses it,
+without waiting for you to say anything else.
 
 If `use_service` names an account you have not connected, aforge raises a quiet
 question: `? <Name>` / `  <product> wants to connect your <Name> account` /

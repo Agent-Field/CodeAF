@@ -258,3 +258,51 @@ func TestALocalSessionFollowsNoOtherWindowsTurn(t *testing.T) {
 		t.Fatal("a local session waited for a turn another window would start")
 	}
 }
+
+// A hosted wake must not reuse the preceding person's turn. Reusing it makes
+// the new tool work hide that person's answer inside the previous work fold.
+func TestAHostedWakeKeepsThePreviousAnswerVisible(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.turn = 1
+	a.entries = append(a.entries, entry{kind: entryUser, text: "reverse the word", turn: 1})
+	a.say("RABANNIC")
+	a.closeLive()
+	a.settledTurn = 1
+	events := make(chan session.Event, 4)
+	events <- session.Event{Kind: session.EventToolBegin, Tool: "read", ID: 101}
+	events <- session.Event{Kind: session.EventToolEnd, Tool: "read", ID: 101, Output: "BUILD-OK"}
+	events <- session.Event{Kind: session.EventTextDelta, Text: "BUILD-OK marker=QUARTZLINE"}
+	events <- session.Event{Kind: session.EventTurnDone}
+	close(events)
+	drive(t, a, followingMsg{turn: Following{Events: events}})
+	if a.turn != 2 {
+		t.Fatalf("wake inherited previous turn: %d", a.turn)
+	}
+	got := plain(frame(a))
+	for _, want := range []string{"RABANNIC", "BUILD-OK marker=QUARTZLINE"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q after wake:\n%s", want, got)
+		}
+	}
+}
+
+// The engine can open its next turn before this window drains the old tail.
+// Queue the new stream instead of discarding an answer already being produced.
+func TestAHostedTurnWaitsForThePreviousStreamTail(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	old := make(chan session.Event)
+	a.stream = old
+	a.turn = 1
+	next := make(chan session.Event, 2)
+	next <- session.Event{Kind: session.EventTextDelta, Text: "the later answer"}
+	next <- session.Event{Kind: session.EventTurnDone}
+	close(next)
+	a.followTurn(followingMsg{turn: Following{Said: "another question", Events: next}})
+	if len(a.follows) != 1 || a.stream != old {
+		t.Fatal("the later hosted stream was dropped or interrupted the current one")
+	}
+	drive(t, a, streamClosedMsg{gen: a.gen})
+	if got := plain(frame(a)); !strings.Contains(got, "the later answer") || !strings.Contains(got, "another question") {
+		t.Fatalf("queued hosted turn was not drawn:\n%s", got)
+	}
+}

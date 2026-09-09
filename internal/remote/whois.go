@@ -42,6 +42,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/Agent-Field/aforge-v2/internal/buildinfo"
 )
 
 // WhoIs is the question, and it is asked on a connection's FIRST frame in place
@@ -68,6 +70,9 @@ type HostSelf struct {
 	// SOURCE OF TRUTH about a build's protocol is the constant compiled into
 	// it.
 	Version int `json:"version"`
+	// Build identifies the running executable even when its protocol is unchanged.
+	// An empty stamp identifies a host predating this check, not a matching build.
+	Build string `json:"build,omitempty"`
 	// Busy is work in flight: a surface attached, a turn running, or a question
 	// waiting for somebody to come back and answer it.
 	Busy bool `json:"busy,omitempty"`
@@ -144,6 +149,7 @@ func (s *server) whois(frame Frame) error {
 	}
 	self := s.host(ask)
 	self.Version = Version
+	self.Build = buildinfo.Identity()
 	// The connection is over either way, and it is over WITHOUT a session: the
 	// serve loop reads [server.asked] and returns before it waits for a second
 	// line.

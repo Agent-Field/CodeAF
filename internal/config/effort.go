@@ -24,16 +24,11 @@ import "github.com/Agent-Field/aforge-v2/internal/effort"
 // which is exactly what the resolver's last rung means.
 const KeyEffort = "effort"
 
-// EffortChoices is what the settings row offers, cheapest first, with the
-// surface's word for absence in front.
-//
-// "off" and not "" because a choice row is a list somebody reads: an empty
-// first option is a row that looks broken. It parses back to [effort.None]
-// through [effort.Parse], which is the one door that knows the two are the same
-// thing.
+// EffortChoices offers the provider default followed by the five explicit
+// levels. Auto means no reasoning override, not disabled reasoning.
 var EffortChoices = func() []string {
 	choices := make([]string, 0, len(effort.Rungs)+1)
-	choices = append(choices, "off")
+	choices = append(choices, "auto")
 	for _, rung := range effort.Rungs {
 		choices = append(choices, rung.String())
 	}
@@ -43,20 +38,14 @@ var EffortChoices = func() []string {
 // DefaultEffortAt is the rung this profile last settled on, or [effort.Ship]
 // when nobody has chosen one.
 //
-// AN UNCONFIGURED INSTALL IS NOT ABSENCE HERE. Every other row in this file
-// answers an unset key with emptiness and lets the caller pick its own default;
-// this one answers with the shipped rung, because the shipped rung IS the
-// answer to "and otherwise?" and there is nowhere further to fall through to.
-// A person who wants no reasoning asked for at all writes "off", which is a
-// choice and reads back as one.
+// Missing settings use the shipped default; saved choices remain authoritative.
+// Legacy "off" files still mean absence and are displayed as auto.
 func DefaultEffortAt(profileDir string) effort.Rung {
 	value, ok := persistedString(profileDir, KeyEffort)
 	if !ok {
 		return effort.Ship
 	}
-	// A rung this build does not know — an older file, a hand-edited line — is
-	// the shipped rung and not silence. Silence would quietly stop asking a
-	// model to think because somebody mistyped a word in a config file.
+	// Unknown settings fall back to the shipped default.
 	rung, valid := effort.Parse(value)
 	if !valid {
 		return effort.Ship
@@ -64,12 +53,10 @@ func DefaultEffortAt(profileDir string) effort.Rung {
 	return rung
 }
 
-// EffortWord is a rung as the settings row and the config file spell it, with
-// "off" standing in for absence. It is the inverse of [effort.Parse]'s one
-// leniency and the only place the substitution is made.
+// EffortWord names absence as auto in settings and persisted configuration.
 func EffortWord(rung effort.Rung) string {
 	if rung == effort.None {
-		return "off"
+		return "auto"
 	}
 	return rung.String()
 }

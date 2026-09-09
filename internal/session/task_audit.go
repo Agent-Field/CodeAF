@@ -712,6 +712,11 @@ const checkerWindowClosed = "the window closed before a second"
 // separator every other run of evidence on a card already uses.
 const checkerWindowClosedTail = " · " + checkerWindowClosed
 
+// checkerWindowClosedAlone is the same fact with nothing beside it: one call
+// was made, it left no account of itself, and there was no time to ask again.
+// It carries the subject the tail borrows from the sentence it hangs off.
+const checkerWindowClosedAlone = "nobody could check it — " + checkerWindowClosed + " call could be made"
+
 // ── the checking window, and one call inside it ─────────────────────────────
 
 // auditPace is ONE node's checking window and the bound on one call inside it.
@@ -827,7 +832,12 @@ func noVerdict(why, said string) auditVerdict {
 // stands, and the one line that reason quotes is the first ([takenAsItStands]).
 func (v auditVerdict) andTheWindowClosed() auditVerdict {
 	if len(v.evidence) == 0 {
-		return noVerdict(checkerWindowClosed, "")
+		// WITH NOTHING BESIDE IT, THE CLAUSE NEEDS ITS SUBJECT BACK. "the window
+		// closed before a second" is a tail on a call's own account and reads as
+		// half a sentence on its own — and half a sentence about time running out
+		// is one a person takes for a deadline they missed ([checkerAskedTwice]
+		// is the same repair on the same family).
+		return noVerdict(checkerWindowClosedAlone, "")
 	}
 	evidence := append([]string{}, v.evidence...)
 	evidence[0] += checkerWindowClosedTail
@@ -840,17 +850,33 @@ func (v auditVerdict) onTheSecondTry() auditVerdict {
 	return v
 }
 
-// twice re-tells a non-verdict as the SECOND one it is. A person reading "the
-// auditor could not be asked" wants to know whether that happened once or
-// whether the harness tried again and got the same nothing, because only the
-// second is worth their attention.
+// checkerAskedTwice is what a person reads when both calls were made and
+// neither came back, and IT NAMES WHO COULD NOT ANSWER.
+//
+// It used to read "asked twice and got no answer either time", which has no
+// subject in it at all — and a person reading an unattributed clause on their
+// own card reads it as being about themselves: asked twice, by whom, and did I
+// miss it? Nobody was asked anything. Two checking calls were made and neither
+// said a word, which is [checkerRanOut]'s law applied to the one line in this
+// family that never got it: say who could not answer, and stop there.
+const checkerAskedTwice = "nobody could check it — asked twice, and neither call answered"
+
+// twice re-tells a non-verdict as the SECOND one it is. Whether the harness
+// asked once or asked again and got the same nothing is the difference between
+// a blip and a checker that is not answering at all, and only the second is
+// worth somebody's attention.
+//
+// IT IS SAID ONLY WHERE BOTH CALLS HAPPENED ([Agent.auditNode]). A window that
+// closed before a second call could be made has its own clause and does not come
+// through here ([checkerWindowClosed]), so this sentence never claims an attempt
+// nobody made.
 func (v auditVerdict) twice() auditVerdict {
 	if len(v.evidence) == 0 {
-		return noVerdict("asked twice and got no answer either time", "")
+		return noVerdict(checkerAskedTwice, "")
 	}
 	evidence := make([]string, len(v.evidence))
 	copy(evidence, v.evidence)
-	evidence[0] = "asked twice and got no answer either time — " + evidence[0]
+	evidence[0] = checkerAskedTwice + " — " + evidence[0]
 	v.evidence = evidence
 	return v
 }
@@ -938,11 +964,12 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	}
 
 	// AND THE DOOR IS READ OFF THE WORK, ONCE, FOR BOTH ATTEMPTS. What this audit
-	// may run is the checks the node's own document declares and the ones its
-	// worker ran (task_checks.go); a retry that recomputed it could be judging
+	// may run is the current verification contract's declared checks, including
+	// declared family checks (task_checks.go); worker receipts grant no permission.
+	// The baseline reads this same door. A retry that recomputed it could judge
 	// the same tree through a different door, and "the same question asked again"
 	// is the only thing a retry is allowed to be.
-	door := auditDoorFor(node, auditPlace{ground: ground.dir, ran: tree.dir})
+	door := auditDoorFor(node, ground.dir)
 	checks := a.checkGroundFor(ctx, tree, ground, door, log)
 	// AND THE WINDOW IS OPENED ONCE, HERE, FOR THE WHOLE OF THIS NODE'S CHECKING.
 	// Both attempts below spend the same one ([auditPace]), so the figure a
@@ -1326,7 +1353,13 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 	case runErr != nil:
 		fmt.Fprintf(log, "repair %d: ended with an error: %v\n", round, runErr)
 	}
-	return wrote, taskReport(child)
+	// This round's answer replaces the last one's: a repair round is the node
+	// working again, so what it produced is what the node produced. It is kept
+	// here for the receipts' reason — the transcript closes on the way out
+	// (task_result.go).
+	said := lastSaid(child)
+	node.keepResult(said)
+	return wrote, firstLines(said, taskReportLines)
 }
 
 // repairInstruction is what the repairing worker is asked.
@@ -1452,6 +1485,16 @@ func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door audit
 	out.WriteString("The work: " + node.title() + "\n\n")
 	out.WriteString("ACCEPTANCE (this is the contract; judge against this and nothing else):\n")
 	out.WriteString(node.acceptance() + "\n\n")
+	// AND WHERE THE PERSON MOVED IT, THE PACKET SAYS SO AND SAYS WHICH ONE WINS.
+	// A revised task has two done-conditions in its history and exactly one it is
+	// judged by (assignment.go); an auditor handed both without being told that
+	// would look for work satisfying a requirement the person themselves withdrew.
+	// Their own words are here because the acceptance above is a restatement of
+	// them, and a restatement that has drifted is a thing a reader can only catch
+	// with the original beside it.
+	if revised := node.revisionNote(); revised != "" {
+		out.WriteString(revised + "\n\n")
+	}
 
 	if claim = strings.TrimSpace(claim); claim != "" {
 		out.WriteString("What it CLAIMS it did — this is the claim under audit, not evidence:\n")
@@ -1827,7 +1870,23 @@ func restoreFromFolder(tree taskTree, wrote []string) (auditGround, string) {
 func restoreFromBranch(tree taskTree, wrote []string) (auditGround, string) {
 	dir := tree.dir + "-check"
 	holder := tree.branchHolder()
-	remove, problem := detachedWorktree(tree.place, tree.root, holder, dir, tree.branch)
+	// THE CHECKOUT IS CUT FROM THE BRANCH THE WORK IS ACTUALLY ON. A node may
+	// rename the branch it is standing on — one renamed its own task branch to
+	// the name the brief asked for — and the tree's record then names a ref this
+	// repository has never heard of, which came back as `fatal: invalid
+	// reference` and dropped every check into the node's own copy (#653). The
+	// recorded branch stays authoritative while it exists; otherwise the live
+	// checkout names its replacement, with the release record as the last
+	// observation available after the copy was given back.
+	ref := tree.branch
+	if !branchIsThere(holder, ref) {
+		if live := currentBranch(tree.dir); branchIsThere(holder, live) {
+			ref = live
+		} else if mark, released := rememberedRelease(tree.dir); released && branchIsThere(holder, mark.Branch) {
+			ref = mark.Branch
+		}
+	}
+	remove, problem := detachedWorktree(tree.place, tree.root, holder, dir, ref)
 	if problem != "" {
 		return auditGround{}, "a fresh checkout could not be made: " + problem
 	}
@@ -2070,13 +2129,6 @@ type toolReceipt struct {
 	tool   string
 	args   string
 	result string
-	// command is the shell line a bash receipt ran, read out of the call's
-	// arguments BEFORE they were flattened and cut for the packet. It is kept
-	// apart from args because two different readers want two different things:
-	// the packet wants one readable line, and the door wants the command exactly
-	// as it was typed, since a check is only re-runnable verbatim
-	// (task_checks.go's [ranChecks]). It is empty for every other tool.
-	command string
 }
 
 // lastToolReceipts is the tail of what a worker RAN, read off its transcript.
@@ -2124,17 +2176,7 @@ func lastToolReceipts(child *Agent, most int) []toolReceipt {
 			// The arguments are JSON and a pretty-printed call would spend six lines
 			// of the packet saying what one says (tools_standing.go's [oneLine]).
 			receipt.args = clip(oneLine(call.Function.Arguments), taskReportLineLimit)
-			// AND THE SHELL LINE IS KEPT WHOLE, uncut, for the door
-			// ([toolReceipt.command]). A command clipped to fit a packet is a
-			// command nobody can re-run.
-			if strings.EqualFold(call.Function.Name, approval.ToolBash) {
-				var fields struct {
-					Command string `json:"command"`
-				}
-				if json.Unmarshal([]byte(call.Function.Arguments), &fields) == nil {
-					receipt.command = fields.Command
-				}
-			}
+
 		}
 		out = append(out, receipt)
 	}
@@ -2655,6 +2697,10 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agen
 	// label it (F38). The attempt is marked used so maybeTitle is a no-op.
 	auditor.titleTried = true
 	auditor.mu.Unlock()
+	// The shelf goes with the belt it was built beside, for the reason fork.go
+	// states: `auditBelt` is an allowlist, and a narrowing meant to be total has
+	// to empty the cupboard as well as the list (tools_capabilities.go).
+	auditor.clearShelf()
 	return auditor, nil
 }
 

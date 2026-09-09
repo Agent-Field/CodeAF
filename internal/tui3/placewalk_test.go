@@ -89,23 +89,14 @@ func TestThePlaceWithNoStoreOpensAndSaysSoOnTheFrame(t *testing.T) {
 // for. The command reaches the same page: /history on a machine that has run
 // nothing used to answer with one line and no screen, which on a fresh machine
 // was every door onto it.
-func TestTheTasksPlaceOpensOnAMachineThatHasRunNothing(t *testing.T) {
+func TestTheTasksPlaceOpensOnAChatThatHasDelegatedNothing(t *testing.T) {
 	a := placeApp(t)
-	if len(a.takeTaskReading().reading.items) > 0 {
-		t.Skip("this surface has work to show, so the empty place is not what is drawn")
-	}
 	drive(t, a, key("alt+2"))
 	if a.page != pageTasks || !a.at(pageTasks) {
-		t.Fatalf("alt+2 over an empty machine left the router on %q", a.page.word())
+		t.Fatal("the tasks place did not open")
 	}
-	screen := placeFrameText(a)
-	if !strings.Contains(screen, "enter opens") {
-		t.Fatalf("the empty tasks place teaches nothing:\n%s", screen)
-	}
-	// AND THE LAST LINE OF THAT LESSON IS WHAT THE COMMAND USED TO SAY INSTEAD OF
-	// OPENING, moved onto the page it is about.
-	if !strings.Contains(screen, taskSheetEmpty) {
-		t.Fatalf("the empty tasks place does not say what to do about it:\n%s", screen)
+	if _, ok := a.taskSheetChat(); !ok {
+		t.Fatalf("the main chat is absent: %s", placeFrameText(a))
 	}
 }
 

@@ -65,14 +65,8 @@ func (a *Agent) AnchorWorkspace(path string) (string, error) {
 	place.Workspace = resolved
 	place.Owned = false
 	if strings.TrimSpace(place.Dir) != "" {
-		meta, loadErr := LoadMeta(place.Dir)
-		if loadErr != nil {
-			return "", fmt.Errorf("read conversation place: %w", loadErr)
-		}
-		meta.Workspace = resolved
-		meta.Owned = false
-		if saveErr := SaveMeta(place.Dir, meta); saveErr != nil {
-			return "", fmt.Errorf("save conversation place: %w", saveErr)
+		if err := a.anchorMetaLocked(place.Dir, resolved); err != nil {
+			return "", err
 		}
 	}
 
@@ -100,6 +94,22 @@ func (a *Agent) AnchorWorkspace(path string) (string, error) {
 		a.refreshSystemLocked()
 	}
 	return resolved, nil
+}
+
+// The caller holds a.mu; metadata writers never acquire it while holding
+// metaMu, so this transaction can safely wait for a title or spend patch.
+func (a *Agent) anchorMetaLocked(dir, workspace string) error {
+	a.metaMu.Lock()
+	defer a.metaMu.Unlock()
+	meta, err := LoadMeta(dir)
+	if err != nil {
+		return fmt.Errorf("read conversation place: %w", err)
+	}
+	meta.Workspace, meta.Owned = workspace, false
+	if err := SaveMeta(dir, meta); err != nil {
+		return fmt.Errorf("save conversation place: %w", err)
+	}
+	return nil
 }
 
 func resolveWorkspaceAnchor(path, relativeTo string) (string, error) {

@@ -4,26 +4,34 @@ package session
 //
 // ── THE LAW ──
 //
-// THE AUDITOR VERIFIES THE WORK BY THE CHECKS THE WORK ITSELF NAMES, NOT BY A
-// LIST THE HARNESS KNOWS. There are exactly three sources for the commands one
-// audit may run, and none of them is a language, a toolchain, or a build system
-// this file has heard of:
+// THE CHECKER RE-RUNS THE VERIFICATION THE WORK DECLARED, AND NEVER THE WORK
+// ITSELF. There are exactly two sources for the commands one audit may run, and
+// neither is a language, a toolchain, a build system this file has heard of, or
+// a span of prose somebody wrote in backticks:
 //
-//	(a) THE CHECK THE WORK DECLARES — every command the node's own document
-//	    names, read out of the brief and the frozen acceptance the node was
-//	    finished against, and kept only if the checker could really run it where
-//	    it is standing ([declaredChecks], [runnableHere]). A check of either
-//	    spelling is read from the work's own account and never from the person's
-//	    pasted words.
-//	(b) THE CHECK THE WORK RAN — every command the last worker itself ran as one
-//	    command, read off its own tool receipts ([ranChecks]).
-//	(c) THE ALWAYS-SAFE READING COMMANDS — the ones that print and cannot change
+//	(a) THE DECLARED VERIFICATION CONTRACT — the commands the proposal typed into
+//	    its own `checks` field, carried on the node from admission and kept only
+//	    if the checker could really run them where it is standing
+//	    ([TaskNode.verification], [runnableHere]). A division's parts declare
+//	    theirs the same way, and a DECLARED check that turned out to belong to the
+//	    whole family rather than to any one part arrives on the parent by the same
+//	    road ([TaskNode.FamilyDeclared]) — a repeat this package merely RECOGNISED
+//	    in two parts' prose is lifted off them as work and never as a door.
+//	(b) THE ALWAYS-SAFE READING COMMANDS — the ones that print and cannot change
 //	    the thing under judgement ([auditReadCommands]). They are not verification
 //	    and they are here anyway, for the reason stated on the list itself.
 //
 // Everything else is refused, and the refusal NAMES what this audit may run, so
 // a model that reached for the wrong door reads the right one in the same
 // breath (task_audit.go's [refuseOutsideDoor]).
+//
+// AN UNDECLARED CHECK IS NO CHECK, AND THAT IS THE ANSWER RATHER THAN A GAP. A
+// node whose proposal declared nothing — every node admitted before this field
+// existed, and every checkpoint written before it — gets the reading commands
+// alone, is TOLD so, and judges the work from what it can see and from the
+// worker's own receipts, which are in front of it either way ([auditReceiptBlock]
+// in task_audit.go). What it must not do is guess a command out of the document
+// and run it, for the reason the double-run section below is made of.
 //
 // A CHECK IS A FILE OR IT IS A COMMAND, and the two are not matched the same
 // way. A declared check that names a file the tree really holds is admitted
@@ -60,13 +68,9 @@ package session
 //
 // The auditor still has no hand that writes, and its bash still runs ONE command
 // with no shell composition. What changed is where the list of commands comes
-// from, not what a command may be. That matters most for (b): a worker's line
-// like `cd x && cargo build 2>&1 | tail -5` is NOT a door, because it cannot be
-// re-run without composing it, and this gate does not compose. A check is
-// re-run VERBATIM AS THE WORK RAN IT or it is not re-run at all — which is also
-// why a command a blanket-allow policy would still stop and ask about
-// (internal/approval's critical table) never becomes a door however the work
-// spelled it.
+// from, not what a command may be — and a command a blanket-allow policy would
+// still stop and ask about (internal/approval's critical table) never becomes a
+// door however the work spelled it.
 //
 // ── THE SECOND MEASURED FAILURE: ONE FILE, FIVE SPELLINGS, FIVE REFUSALS ──
 //
@@ -85,24 +89,13 @@ package session
 // asks WHICH FILE a command names, not how the model typed it — and then asks the
 // file itself which word is entitled to start it ([fileFacts]).
 //
-// The same run's receipts were every one of them `cd /workspace/rust-java-lsp &&
-// cargo build --release 2>&1 | tail -3`, so source (b) admitted NOTHING while the
-// command the work checked itself with sat in the middle of every line. Two of
-// those three pieces are not commands: the `cd` is the worker STATING THE CWD the
-// auditor already stands in, and the tail is reading the output of the command in
-// front of it. What the line RUNS is its first stage. That is [receiptCheck],
-// and the derived command is put through the same two questions the raw one was —
-// is it one simple command, and would a blanket allow still stop and ask about
-// it — because what changed is which words are read off the receipt, not what the
-// auditor may run.
-//
 // ── THE THIRD MEASURED FAILURE: A DOOR ONTO A WORD THAT IS NOT A PROGRAM ──
 //
-// Source (a) used to admit EVERY backticked span that had the shape of a
-// command, on the reasoning written at [declaredChecks] that a dead entry costs
-// a line of a refusal and a missing check costs a verdict. A real acceptance
-// then backticked the things prose backticks — a remote, a branch, a repository,
-// a rule identifier — and the door read:
+// The declaring source used to admit EVERY backticked span in the document that
+// had the shape of a command, on the reasoning that a dead entry costs a line of
+// a refusal and a missing check costs a verdict. A real acceptance then
+// backticked the things prose backticks — a remote, a branch, a repository, a
+// rule identifier — and the door read:
 //
 //	You may run: origin, main, Agent-Field/agentfield, js/polynomial-redos, …
 //
@@ -113,19 +106,43 @@ package session
 // the whole audit exists to produce, because a model handed a door believes the
 // door.
 //
-// SO A DECLARED SPAN IS A DOOR ONLY IF IT COULD RUN WHERE THE CHECKER STANDS —
-// its first word is a program the shell would find, or the span names a file
-// really sitting in the ground the auditor was put in ([runnableHere]). Both
-// halves are questions asked of the machine the check would run on rather than
-// of a list this package keeps, which is the same law the rest of this file is
-// made of. What the work RAN (source (b)) is not asked: a receipt is the work
-// having already run the thing, which is a better answer than any lookup.
+// SO A DECLARED CHECK IS A DOOR ONLY IF IT COULD RUN WHERE THE CHECKER STANDS —
+// its first word is a program the shell would find, or it names a file really
+// sitting in the ground the auditor was put in ([runnableHere]). Both halves are
+// questions asked of the machine the check would run on rather than of a list
+// this package keeps, which is the same law the rest of this file is made of.
+//
+// ── THE FOURTH MEASURED FAILURE: THE WORK DONE TWICE ──
+//
+// The door used to hold a second source: EVERY COMMAND THE LAST WORKER RAN, read
+// off its own tool receipts, on the reasoning that a worker hammering a build has
+// said what the check is more clearly than any document. A live run then asked
+// one task to run `./slow-build.sh` — two minutes of real work — and report the
+// marker it wrote. The worker ran it once, exit 0, and read the marker back. The
+// checker was handed that receipt as a door, ran the same script AGAIN for
+// another two minutes, and answered a question nobody had asked.
+//
+// WHAT A WORKER RAN IS EVIDENCE OF WHAT HAPPENED, NOT PERMISSION TO MAKE IT
+// HAPPEN AGAIN, and the difference is not about danger: the script was approved,
+// it was uncomposed, it changed nothing a critical policy would have stopped. It
+// is about WHAT THE REQUESTED ACTION WAS. A build, a deploy, a message sent, a
+// counter incremented — the request was that it happen ONCE, and a second run is
+// a second effect the person is paying for and did not ask for, in a copy of the
+// tree where its result may not even mean the same thing.
+//
+// So a receipt is not a door any more. It is still in front of the checker, whole
+// and verbatim, in the packet ([auditReceiptBlock]) — which is where it belongs,
+// because a checker reading "the script ran, exit 0, here is the marker" can
+// settle that the requested action completed WITHOUT MAKING IT HAPPEN TWICE. A
+// command is re-run only where somebody declared, in the contract, that re-running
+// it is how this work is verified.
 
 import (
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -156,7 +173,22 @@ const (
 	auditReadingDeadline = auditDeadline / 5
 )
 
-// auditReadCommands is the third source: commands that PRINT and cannot change
+// checksSchemaJSON is the `checks` property, and BOTH doors that put work under
+// contract carry this one spelling of it — the proposal (task.go) and the
+// division (task_divide.go) — because two doors reading one field must not come
+// to two opinions about what it is for.
+//
+// IT IS WRITTEN FOR DENSITY, like every description that rides in front of every
+// request: what the field is for, what one entry may be, and the one thing that
+// must never go in it. The last clause is the whole of the fourth measured
+// failure above, said in the words a model writing a proposal can act on.
+const checksSchemaJSON = `"checks":{"type":"array","items":{"type":"string"},` +
+	`"description":"Optional. Commands that RE-ESTABLISH the result, each ONE simple command safe to run again: ` +
+	`a test, a build, a probe. The independent checker runs these and nothing else; work declaring none is judged ` +
+	`by reading. NEVER the work itself — a deploy, a send, a job asked for once — re-running that repeats the ` +
+	`effect"}`
+
+// auditReadCommands is source (b): commands that PRINT and cannot change
 // the thing under judgement.
 //
 // They are not verification and they are on the belt anyway, because refusing
@@ -235,20 +267,6 @@ type fileCheck struct {
 	runnable    bool
 }
 
-// auditPlace is the two directories a door is read against, and they are two
-// because THE AUDIT DOES NOT HAPPEN WHERE THE WORK HAPPENED. `ground` is where
-// the auditor will stand — a clean restore beside the node's own checkout
-// (task_audit.go's [auditGroundFor]) — and it is what every spelling of a file is
-// resolved against, since a file check has to name something that is really there
-// under the auditor's own feet. `ran` is where the WORK stood, and it is what a
-// receipt's statement of its own working directory is read against, since that is
-// the directory the worker was talking about. A door that asked one of those
-// questions of the other's directory would answer both of them wrong.
-type auditPlace struct {
-	ground string
-	ran    string
-}
-
 // plainDoor is a door made of a bare list of commands and nothing else: the
 // fork's read-only shell, the reading-only belt, and every test that asks the
 // gate about a list it wrote by hand. There is no ground under it, so there are
@@ -257,9 +275,10 @@ func plainDoor(allowed []string) auditDoor {
 	return auditDoor{allowed: allowed}
 }
 
-// auditDoorFor reads one node's door off the node itself: what its own document
-// declares, what its last worker actually ran, and which of those turn out to
-// name a file sitting in the ground this audit will stand on.
+// auditDoorFor reads one node's door off the node itself: the verification its
+// contract declared, the checks it owns for the family it handed out, and which
+// of those turn out to name a file sitting in the ground this audit will stand
+// on.
 //
 // A NIL NODE STILL GETS THE READING COMMANDS. Every caller here has a node, but
 // a door with no allowlist at all would be a bash that refuses everything, and a
@@ -268,31 +287,43 @@ func plainDoor(allowed []string) auditDoor {
 //
 // THE GROUND IS THE DIRECTORY THE AUDITOR WILL BE PUT IN and not some other one:
 // a file check resolved against a directory the auditor is not standing in would
-// admit spellings that name nothing where it is typing them. The receipts are
-// read against the other directory in [auditPlace], for the reason stated there.
-func auditDoorFor(node *TaskNode, place auditPlace) auditDoor {
+// admit spellings that name nothing where it is typing them.
+//
+// A DECLARED CHECK IS ASKED THE SAME TWO QUESTIONS A DOOR HAS ALWAYS ASKED — is
+// it one command in shape ([commandLike]), and could it run where the checker
+// stands ([runnableHere]) — because a contract is written before the work and a
+// command that names nothing under the auditor's feet is a refusal it will spend
+// a step on rather than a check it can make.
+//
+// AND STALE CHECKS ARE WORSE THAN NO CHECKS. A command declared against one goal,
+// run against the next one and passed, is a verdict nobody earned — so a node
+// whose verification was written for an earlier revision of its assignment gets
+// the reading commands and the sentence that says it has nothing to re-run,
+// exactly as a node that declared nothing does. The verification and the revision
+// it is judged against come out of ONE snapshot ([TaskNode.verification]), taken
+// in one hold of the graph's lock, because two readings could not be compared
+// honestly: a revision landing between them would show the old goal's commands
+// wearing the new goal's number.
+func auditDoorFor(node *TaskNode, ground string) auditDoor {
 	var checks []string
 	if node != nil {
-		var declared []string
-		for _, source := range node.checkTexts() {
-			declared = append(declared, declaredChecks(source.text, place.ground, source.from)...)
+		// THE FAMILY'S DECLARED CHECKS COME THROUGH THE SAME DOOR AS THE NODE'S
+		// OWN ([TaskNode.FamilyDeclared]). They were taken off its parts because a
+		// check that proves the whole proves nothing about a part, and they were
+		// given to this node because it is the only one that can honestly make
+		// them. What was merely RECOGNISED in a part's prose is not here: lifting
+		// moves a permission and never mints one ([declaredAmong]).
+		if held := node.verification(); held.current() {
+			checks = appendChecks(checks, runnableChecks(held.checks, ground))
+			checks = appendChecks(checks, runnableChecks(held.family, ground))
 		}
-		checks = appendChecks(checks, declared)
-		checks = appendChecks(checks, ranChecks(node.lastReceipts(), place.ran))
-		// AND SOURCE (c): THE CHECKS THIS NODE OWNS FOR THE FAMILY IT HANDED OUT
-		// ([TaskNode.Family]). They were taken off its parts because a check that
-		// proves the whole proves nothing about a part, and they were given to
-		// this node because it is the only one that can honestly make them — so
-		// its own door has to open on them, or the node would be told to run a
-		// check its bash refuses.
-		checks = appendChecks(checks, node.familyChecks())
 	}
 	allowed := make([]string, 0, len(checks)+len(auditReadCommands))
 	allowed = append(allowed, checks...)
 	allowed = append(allowed, auditReadCommands...)
-	door := auditDoor{checks: checks, allowed: allowed, ground: place.ground}
+	door := auditDoor{checks: checks, allowed: allowed, ground: ground}
 	for _, check := range checks {
-		door.files = append(door.files, fileChecksIn(place.ground, check)...)
+		door.files = append(door.files, fileChecksIn(ground, check)...)
 	}
 	return door
 }
@@ -453,16 +484,18 @@ func (d auditDoor) window() time.Duration {
 // been told there is no door will keep reaching for one.
 func (d auditDoor) line() string {
 	if len(d.checks) == 0 {
-		return "NOTHING THIS WORK DECLARES OR RAN IS A CHECK YOU CAN RE-RUN. Your bash will run only " +
-			strings.Join(auditReadCommands, ", ") + ", none of which verifies anything. Do not go looking for a " +
-			"command to run: read the files and the change, judge what you can see, and answer now. " +
-			"An answer from reading alone is a real answer; running out of time is not.\n"
+		return "THIS WORK DECLARED NO REPEATABLE CHECK, so there is nothing here for you to re-run. Your bash will " +
+			"run only " + strings.Join(auditReadCommands, ", ") + ", none of which verifies anything. Do not go " +
+			"looking for a command to run, and do not repeat something the worker ran: what it ran is in front of " +
+			"you as a record of what happened, which is how you settle whether the requested action was carried " +
+			"out. Read the files and the change, judge what you can see, and answer now. An answer from reading " +
+			"alone is a real answer; running out of time is not.\n"
 	}
 	said := make([]string, 0, len(d.checks))
 	for _, check := range d.checks {
 		said = append(said, d.spelling(check))
 	}
-	return "THE CHECKS THIS WORK NAMES OR RAN, which are the only verification commands your bash will run:\n" +
+	return "THE CHECKS THIS WORK DECLARED AS ITS VERIFICATION, which are the only commands your bash will run:\n" +
 		"  " + strings.Join(said, "\n  ") + "\n" +
 		"Run them as they are written. Anything else is refused, and the refusal will say what you may run.\n"
 }
@@ -487,89 +520,64 @@ func appendChecks(checks, more []string) []string {
 	return checks
 }
 
-// checkSource states whose account named a candidate check. A check belongs to
-// the work, never to a shell transcript in the person's pasted words.
+// runnableChecks is every command of a DECLARED contract that this checker could
+// really run where it is being put, in the order the contract wrote them.
 //
-// THE ZERO VALUE IS THE RESTRICTIVE ONE, AND THAT ORDER IS THE POINT. Both
-// callers name the account explicitly today, but a third one written later
-// that forgets to will be handed the person's reading rather than the work's —
-// so a forgotten field costs a run one check it could have made, which is
-// recoverable, instead of costing the gate itself, which is how
-// `chmod 000 tox.ini` came out of a pasted reproduction and ran.
-type checkSource int
-
-const (
-	checksFromAsk checkSource = iota
-	checksFromWork
-)
-
-// checkText keeps one part of a node's document beside whose account supplied
-// it, because that provenance decides whether the text names a check at all.
-type checkText struct {
-	text string
-	from checkSource
-}
-
-// declaredChecks is source (a): every command the work's OWN DOCUMENT names.
-//
-// IT READS THE TWO CONVENTIONS PROSE HAS FOR NAMING A COMMAND and no others: a
-// span in backticks, and a line that opens with a shell prompt. Both are how a
-// person, a planner or a benchmark writes down "this is the thing to run", in
-// every language there is, which is exactly why they are the ones read here — a
-// rule that looked for a build system's name would be the constant this file
-// replaced, wearing a regexp.
-//
-// WHOSE ACCOUNT THE TEXT CAME FROM DECIDES WHETHER IT NAMES A CHECK AT ALL.
-// Either convention in the work's own brief or acceptance names a check; either
-// one in the person's pasted words names none. A measured tox run read
-// `chmod 000 tox.ini` out of a pasted reproduction and tried it against the
-// deliverable tree, where success would have made the project's configuration
-// unreadable without tripping the tree-moved guard. Nearly every bug report
-// backticks its reproduction, so exempting backticks was the same hole wearing
-// different punctuation.
-//
-// TWO FILTERS STAND BETWEEN A BACKTICK AND A DOOR, and they ask different
-// questions. [commandLike] asks whether the span has the SHAPE of one command —
-// a path, an option or a sentence fails it. [runnableHere] then asks whether it
-// is a command AT ALL WHERE THE CHECKER WILL BE STANDING, which is the question
-// the third measured failure at the top of this file was made of: prose
-// backticks a branch and a repository as readily as it backticks a build, and
-// every one of those has the shape of a command.
-//
-// THE GROUND IS THE DIRECTORY THE CHECKER WILL BE PUT IN, threaded down from the
-// caller that already knows it. A span resolved against any other directory
-// would be admitted or refused on the strength of a tree nobody is standing in.
-func declaredChecks(text, ground string, from checkSource) []string {
-	// ONLY THE WORK'S ACCOUNT NAMES A CHECK, IN EITHER SPELLING. Every value
-	// not explicitly identified as the work stays restrictive, so a new source
-	// added later cannot read the person's words merely because its caller
-	// forgot to classify it.
-	if from != checksFromWork {
-		return nil
-	}
-
-	var out []string
-	// The odd-numbered pieces of a split on the backtick are what was BETWEEN a
-	// pair of them. A fenced block splits into empty pieces around its own
-	// content, and the content itself carries newlines, so both fail
-	// [commandLike] on their own without a special case for fences.
-	spans := strings.Split(text, "`")
-	for index := 1; index < len(spans); index += 2 {
-		if command, ok := commandLike(spans[index]); ok && runnableHere(ground, command) {
-			out = append(out, command)
-		}
-	}
-	for _, raw := range strings.Split(text, "\n") {
-		line := strings.TrimSpace(raw)
-		if !strings.HasPrefix(line, "$ ") {
+// IT ASKS THE TWO QUESTIONS THE PROSE HARVEST USED TO ASK, and it asks them of
+// the same two functions, so a check that arrives typed and a check that arrives
+// in a session's own acceptance are read one way and not two. What is dropped is
+// what could not be typed at all: a span that is not one command in shape, and a
+// command whose first word is neither a program the shell would find nor a file
+// sitting under the auditor's own feet. A dead entry offered as a door is the
+// third measured failure at the top of this file.
+func runnableChecks(declared []string, ground string) []string {
+	out := make([]string, 0, len(declared))
+	for _, raw := range declared {
+		command, ok := commandLike(raw)
+		if !ok || !runnableHere(ground, command) {
 			continue
 		}
-		command, ok := commandLike(strings.TrimPrefix(line, "$ "))
-		if ok && runnableHere(ground, command) {
-			out = append(out, command)
-		}
+		out = append(out, command)
 	}
 	return out
+}
+
+// declaredCheckList reads the `checks` argument of a proposal — the repeatable
+// verification its author is putting under contract — and says what is wrong with
+// it in the words the model can act on, exactly as the handoff manifest's own
+// parser does (handoffcontract.go).
+//
+// A BAD ENTRY IS REFUSED AT THE DOOR RATHER THAN DROPPED SILENTLY. The checker
+// drops what it cannot run when it builds the door, because by then nobody is
+// listening; here the model is one repair away from a check that works, and a
+// contract quietly emptied of its verification is the whole point of this field
+// gone missing without anybody being told.
+//
+// THE SHAPE IS THE ONLY THING ASKED HERE, and the ground is not: a check is
+// declared before the work exists, so a command naming a file the work has yet to
+// write is a perfectly good check and is settled where the door is built.
+func declaredCheckList(raw []string) ([]string, string) {
+	out := make([]string, 0, len(raw))
+	for _, entry := range raw {
+		said := strings.TrimSpace(entry)
+		if said == "" {
+			continue
+		}
+		command, ok := commandLike(said)
+		if !ok {
+			return nil, "Invalid arguments: checks must each be ONE command with no shell composition — " +
+				strconv.Quote(clip(said, auditCommandLimit)) + " is not"
+		}
+		if !approval.Vouchable(command) || auditAllowed.CheckBash(command).Action != approval.ActionAllow {
+			return nil, "Invalid arguments: checks may not name " + strconv.Quote(command) +
+				", which is not something a read-only checker is allowed to run"
+		}
+		if len(out) >= auditCheckCount {
+			return nil, "Invalid arguments: checks accepts at most " + strconv.Itoa(auditCheckCount) + " commands; combine checks explicitly rather than omitting any"
+		}
+		out = append(out, command)
+	}
+	return out, ""
 }
 
 // checkCommand answers HOW A DECLARED CHECK IS INVOKED where the checker is
@@ -788,92 +796,6 @@ func pathLikeWord(word string) bool {
 // exactly one of it: a list would be the beginning of a grammar over flags, and
 // every flag that is not this one narrows what runs and is kept.
 const cacheDefeatingWord = "-count=1"
-
-// ranChecks is source (b): what the last worker ITSELF ran, read off the
-// receipts the node already carries for the auditor's packet (task_audit.go's
-// [lastToolReceipts]).
-//
-// ONLY WHAT IT RAN AS ONE COMMAND, and [receiptCheck] is the reading that decides
-// which words of a receipt those are. Everything after that reading is what it
-// always was: [approval.Vouchable] is the build's existing answer to "is this one
-// simple command" — the same question a standing approval has to ask before it
-// may speak for a line somebody typed — and asking it here means the two can
-// never drift apart.
-//
-// AND NOT WHAT A BLANKET ALLOW WOULD STILL ASK ABOUT ([auditAllowed]). The work
-// ran with hands this auditor does not have; the fact that it ran something is
-// not a reason to hand the judge a way to destroy the tree it is judging.
-func ranChecks(receipts []toolReceipt, ran string) []string {
-	var out []string
-	for _, receipt := range receipts {
-		if command, ok := receiptCheck(receipt.command, ran); ok {
-			out = append(out, command)
-		}
-	}
-	return out
-}
-
-// receiptCheck reads ONE COMMAND out of one line a worker ran, and it is the
-// answer to the second measured failure at the top of this file: every receipt of
-// that run was `cd <the tree> && <the build> 2>&1 | tail -3`, so the old reading —
-// which asked whether the WHOLE LINE was one simple command and gave up when it
-// was not — handed the auditor nothing at all, while the command the work checked
-// itself with sat in the middle of every one of them.
-//
-// TWO OF THE THREE PIECES OF THAT LINE ARE NOT THE COMMAND:
-//
-//   - A LEADING `<word> <directory> &&` IS THE WORKER STATING WHERE IT IS. The
-//     auditor is handed a working directory of its own, so the statement is
-//     redundant rather than composed, and it is dropped. It is recognised by SHAPE
-//     and not by which verb spells it: one word, then one word that resolves to the
-//     tree the work ran in or to somewhere inside it. A directory anywhere else is
-//     not a statement about this tree, and then the line stays composed and
-//     contributes nothing.
-//   - WHAT A PIPELINE RUNS IS ITS FIRST STAGE. The stages after it only read the
-//     output of the one in front; so do the redirections of stdout and stderr that
-//     trail the end of it. Neither is part of the command being checked, and
-//     neither is re-run.
-//
-// WHAT IS DERIVED IS STILL RUN AS ONE COMMAND WITH NO COMPOSITION. This changes
-// which words are read off a receipt; it changes nothing about what the auditor
-// may type, which is the same single uncomposed command it always was.
-func receiptCheck(line, ran string) (string, bool) {
-	line, ok := dropStandingIn(strings.TrimSpace(line), ran)
-	if !ok {
-		return "", false
-	}
-	line, ok = firstStage(line)
-	if !ok {
-		return "", false
-	}
-	command, ok := commandLike(line)
-	if !ok || !approval.Vouchable(command) {
-		return "", false
-	}
-	if auditAllowed.CheckBash(command).Action != approval.ActionAllow {
-		return "", false
-	}
-	return command, true
-}
-
-// dropStandingIn takes off a leading statement of the working directory the
-// auditor is already standing in. See [receiptCheck] for why that is a redundancy
-// rather than a composition, and why the shape rather than the verb is what is
-// read.
-func dropStandingIn(line, ran string) (string, bool) {
-	head, rest, joined := strings.Cut(line, "&&")
-	if !joined {
-		return line, true
-	}
-	fields := strings.Fields(head)
-	if len(fields) != 2 {
-		return "", false
-	}
-	if _, ok := groundDir(ran, fields[1]); !ok {
-		return "", false
-	}
-	return strings.TrimSpace(rest), true
-}
 
 // preparedAuditCommand is the command the gate will actually run: the first
 // stage of what the model typed, with trailing pipes and redirections taken

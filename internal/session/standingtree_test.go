@@ -221,7 +221,7 @@ func TestC10LandingAReferredRepositoryProtectsMainAndMergesWork(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := "its branch " + branch + " was kept: your checkout is on main, which aforge never writes to — merge it when you are ready"
+		want := "its branch " + branch + " was kept: your checkout is on main, which tasks do not merge into automatically"
 		if landing.Merged != mergeKept || !landing.Kept() || !strings.Contains(landing.Note, want) {
 			t.Fatalf("landing = %+v, want the protected chat branch kept", landing)
 		}
@@ -286,7 +286,7 @@ func TestAStandingTreeLandingKeepsItsBranchWhenTheRecordedTipMoved(t *testing.T)
 	if err != nil {
 		t.Fatalf("Land: %v", err)
 	}
-	want := "its branch " + branch + " was kept: work has moved on since the work was cut — merge it where you want it"
+	want := "its branch " + branch + " was kept: work has moved on since the work was cut — inspect the retained task branch before choosing a destination"
 	if landing.Merged != mergeKept || !landing.Kept() || landing.Note != want {
 		t.Fatalf("landing = %+v, want the moved-tip chat branch kept with %q", landing, want)
 	}

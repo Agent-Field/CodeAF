@@ -82,7 +82,9 @@ func TestAnUnverifiedLandingIsNeitherDoneNorFailed(t *testing.T) {
 	}
 	rail := plain(strings.Join(a.railRows(12), "\n"))
 	for _, want := range []string{
-		glyphUnverified + " " + plain(a.taskMark(identFor(7))) + " Port the parser",
+		// The column leads with the STATE and nothing else — the card's identity
+		// cell is not spent here (task.go's [app.railLead]).
+		glyphUnverified + " Port the parser",
 		taskUnverifiedWaits,
 	} {
 		if !strings.Contains(rail, want) {

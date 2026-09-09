@@ -94,19 +94,37 @@ func TestGenerateImageIsOnTheBeltOnlyWithAClientAndAModel(t *testing.T) {
 			if got := hasTool(agent, "generate_image"); got != testCase.want {
 				t.Fatalf("generate_image on the belt = %v, want %v", got, testCase.want)
 			}
-			// The wire form follows the belt: a tool that is not on one is not
-			// advertised on the other.
-			advertised := false
-			for _, definition := range agent.definitions {
-				if definition.Function.Name == "generate_image" {
-					advertised = true
-				}
+			// AND THE WIRE FORM FOLLOWS THE CARRIED BELT, which is no longer
+			// the same list. `generate_image` waits on the `media` shelf
+			// (tools_capabilities.go), so a build that HAS it does not
+			// advertise it until a `load_capability` call fetches it — and
+			// then it does. A build that lacks it never advertises it at all.
+			if advertises(agent, "generate_image") {
+				t.Fatal("generate_image is advertised before anything loaded the media group")
 			}
-			if advertised != testCase.want {
-				t.Fatalf("generate_image advertised = %v, want %v", advertised, testCase.want)
+			if !testCase.want {
+				return
+			}
+			if said, failed := agent.loadCapability("media"); failed {
+				t.Fatalf("loading the media group reported %q", said)
+			}
+			if !advertises(agent, "generate_image") {
+				t.Fatal("generate_image is still not advertised after the media group was loaded")
 			}
 		})
 	}
+}
+
+// advertises says whether the wire form the model is reading right now carries
+// this tool. It is the CARRIED belt and not what the build offers, because the
+// definitions block is exactly the list a model may call from.
+func advertises(agent *Agent, name string) bool {
+	for _, definition := range agent.beltDefinitions() {
+		if definition.Function.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // ── (2) the bytes go to disk, the path comes back ───────────────────────────

@@ -57,6 +57,9 @@ type streamWatch struct {
 	acted   control.Act
 	silence time.Duration
 	fault   bool
+	// Recovery suspends the controller; recovered calls cannot teach lane timing.
+	recovering bool
+	recovered  bool
 }
 
 type streamWatchContextKey struct{}
@@ -120,6 +123,10 @@ func (w *streamWatch) quiet(now time.Time) {
 		return
 	}
 	w.mu.Lock()
+	if w.recovering {
+		w.mu.Unlock()
+		return
+	}
 	act := w.after(w.control.Quiet(now), now)
 	arm, race := w.arm, w.race
 	w.mu.Unlock()
@@ -231,7 +238,7 @@ func (w *streamWatch) sighting(model string, tokens int) (lanes.Sighting, bool) 
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.served == "" || w.first.IsZero() || w.fault {
+	if w.served == "" || w.first.IsZero() || w.fault || w.recovered {
 		return lanes.Sighting{}, false
 	}
 	if tokens <= 0 {

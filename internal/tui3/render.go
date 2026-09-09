@@ -102,6 +102,13 @@ type row struct {
 	entry int // index into app.entries; -1 for a blank or the fold line
 	hit   hitKind
 	turn  int // the turn a fold line folds
+	// activity says this row already carries the running turn's sign of life.
+	// The footer reads the actual drawing so an opened or absent compact block
+	// cannot suppress the only remaining indication of work.
+	activity bool
+	// Inline waiting owns only a sign of life; detailed phase information stays
+	// with the footer until the reader opens the full transcript.
+	inlineWait bool
 	// links are the task references drawn in this row's own columns
 	// (markdown.go). They are the one thing on the transcript a click resolves
 	// by COLUMN rather than by row, and they are recorded here for the reason
@@ -251,14 +258,19 @@ func (a *app) visible(width int) []row {
 // block asks once, before it draws. Nothing is ever emitted at the top of the
 // transcript.
 func (a *app) layout(width int) []row {
-	out, closed := a.deckRows(a.conversation(), width)
+	// THE READING GUTTER IS TAKEN OUT FIRST AND GIVEN BACK LAST (gutter.go).
+	// Everything between these two lines lays out against the narrower column,
+	// so a block built to the frame's whole width is never shoved past the edge
+	// it was measured for; the pass below moves the finished rows into the air.
+	inner := gutterInner(width)
+	out, closed := a.deckRows(a.conversation(), inner)
 	// THE ONE THING EVER EMITTED AT THE TOP OF THE TRANSCRIPT, and it is emitted
 	// here rather than by any block because it is not one: it says that the
 	// conversation on screen starts part-way through and that scrolling reaches
 	// the rest (replay.go's [app.earlierRow]). It goes while the reader is still
 	// above it — the moment the real beginning is drawn, there is nothing left
 	// to promise and the marker is not laid out at all.
-	if line := a.earlierRow(width); line != "" && len(out) > 0 {
+	if line := a.earlierRow(inner); line != "" && len(out) > 0 {
 		out = append([]row{{text: line, entry: -1}, {entry: -1}}, out...)
 	} else if len(out) > 0 {
 		// AND ONE ROW OF AIR WHERE THE CONVERSATION TRULY BEGINS. When the
@@ -274,16 +286,19 @@ func (a *app) layout(width int) []row {
 	// A TASK COMMAND'S FORMING BLOCK LIVES AT THE TRANSCRIPT TAIL, outside the
 	// notes deck it is deliberately not part of. It takes the ordinary block gap
 	// and no border of its own beyond the one named hairline on each live row.
-	if forming := a.preflightRows(width); len(forming) > 0 {
+	if forming := a.preflightRows(inner); len(forming) > 0 {
 		if len(out) > 0 {
 			out = append(out, row{entry: -1})
 		}
 		out = append(out, forming...)
 		closed = true
 	}
-	line, ok := a.harnessStepRow(width)
-	if !ok {
+	line, ok := a.harnessStepRow(inner)
+	if !ok && !hasCompactActivity(out) {
 		line, ok = a.ellipsis()
+		if ok && !a.workFoldOpen(a.conversation(), a.turn) && !a.unfolded[a.turn] {
+			line = a.activityLine("  " + a.shimmer("Working"))
+		}
 	}
 	if ok {
 		if closed && len(out) > 0 {
@@ -291,6 +306,12 @@ func (a *app) layout(width int) []row {
 		}
 		out = append(out, row{text: line, entry: -1})
 	}
+	// THE GUTTER, BEFORE THE TWO PASSES THAT PAINT THE WHOLE ROW (gutter.go). It
+	// goes here rather than one line later because the wash and the ground below
+	// are statements about the row a person is on, and a band that stopped two
+	// cells short of the frame's edge would say the gutter was not part of it.
+	gutterPass(out, width)
+	a.gutterCards(a.conversation(), width)
 	// THE CUT, SECOND TO LAST. A rewind being chosen is a property of the screen
 	// too — the line between two blocks, and the wash over everything under it —
 	// so it is applied to finished rows here for [app.hoverPass]'s reason, one
@@ -357,6 +378,11 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			wasCluster, wasBlock = false, false
 		}
 	}
+	// THE RUNNING TURN'S OWN WINDOWS (livesteps.go). They are derived here, beside
+	// the folds and off the same captions, because they are the same object one
+	// tense earlier. The lens chooses live compactness independently of its
+	// settled fold policy, and each page owns its disclosure key.
+	lives := deriveLiveWork(d)
 	for i := 0; i < len(es); i++ {
 		e := &es[i]
 		if f, ok := folds[i]; ok {
@@ -410,6 +436,77 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			// that says how long ago that was. Both are drawn HERE — at the seam
 			// between two turns — because that is where a person reads them.
 			clock(i)
+		}
+
+		// THE RUNNING TURN'S MACHINERY IS THREE LINES UNTIL SOMEBODY OPENS IT
+		// (livesteps.go). It is read after the clock and before the cluster for the
+		// chip's reason: the block stands exactly where the work stands, so it takes
+		// the blank the work's first block would have taken.
+		if w, ok := lives[i]; ok {
+			if !a.workFoldOpen(d, w.key) {
+				// The block owns its activity door before the first caption,
+				// and spends the ordinary gap only when it actually draws.
+				rows := a.liveStepBlock(w, width, d)
+				if len(rows) > 0 {
+					if wasUser || wasBlock {
+						gap()
+					}
+					out = append(out, rows...)
+					wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+				}
+				i = w.end - 1
+				continue
+			}
+			if wasUser || wasBlock {
+				gap()
+			}
+			// OPEN IS THE OUTLINE, and it is the outline an open chip draws, one
+			// tense earlier: every step as a caption row with its own door onto its
+			// own calls. The reasoning blocks inside the window are drawn where they
+			// happened — a person who opened the work asked for the machinery, and
+			// the model's working is machinery this surface has always shown.
+			out = append(out, a.liveWorkDoor(w))
+			// THE STEPS ARE WALKED WITH A CURSOR AND THE SPANS ARE STEPPED OVER.
+			// The window already knows its own steps in order ([liveWork.steps]),
+			// so a block between two of them is one that belongs to no step and is
+			// drawn as itself; asking every row which step holds it would be the
+			// same page at the cost of rows times steps.
+			step := 0
+			for at := w.start; at < w.end; at++ {
+				if step >= len(w.steps) || at != w.steps[step].start {
+					for _, text := range a.entryRows(d, at, width) {
+						out = append(out, row{text: text, entry: at})
+					}
+					continue
+				}
+				c := w.steps[step]
+				step++
+				// The rest of the step's own span — its narration and its calls —
+				// is the caption's to draw, so the walk resumes past it.
+				at = c.end - 1
+				capOpen := a.captionCallsOpen(d, c)
+				out = append(out, a.captionRows(c, c.ended.IsZero(), capOpen, width)...)
+				if !capOpen {
+					continue
+				}
+				out = append(out, a.captionBody(d, c, width)...)
+				toolsFrom, toolsTo := captionTools(c, es)
+				// AND AN OPEN STEP KEEPS THE CALL WINDOW IT ALREADY HAD. This is
+				// the same batch the cluster below draws with the same budget
+				// ([app.foldWindow] — the running call and the two it followed);
+				// opening the work asks to see the steps, not to be handed a turn's
+				// whole call log, and a second answer here would make one batch two
+				// lengths depending on which door reached it.
+				if window := a.foldWindow(d); toolsTo-toolsFrom > window && !d.unfolded[w.turn] {
+					toolsFrom = toolsTo - window
+				}
+				for call := toolsFrom; call < toolsTo; call++ {
+					out = append(out, a.toolRows(d, call, call == toolsTo-1, width)...)
+				}
+			}
+			wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+			i = w.end - 1
+			continue
 		}
 
 		// A run of tool entries from one turn is a cluster, and a cluster is
@@ -996,7 +1093,7 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 			pictures[i], pictureDrawn[i] = a.pictureRowsFor(path, e.picturesHere, userBodyCols(width), cap)
 		}
 		pictureDoors := a.pathLinks && a.pal.paintsPictures() && userBodyCols(width) >= pictureColsMin && cap > 0
-		marked, pictureMasks := a.maskPictureMarkers(e.text, e, pictureDoors)
+		marked, pictureMasks := a.maskPictureMarkers(requestDisplayText(e), e, pictureDoors)
 		body := wrap(marked, userBodyCols(width))
 		if strings.TrimSpace(e.text) == "" {
 			body = nil
@@ -1438,8 +1535,8 @@ const (
 //
 // IT IS ONE FUNCTION BECAUSE TWO ROWS ASK IT. The pulse says "waiting for
 // kimi-k3 · 12s" from it ([app.waitingWords]); the status line's rate says how
-// fast the model is writing ([app.burnSegment], and the served rider's own
-// figure). Those were two readings of one moment, taken from different signals —
+// much output this turn has averaged ([app.burnSegment]), while the served
+// rider carries its separate provider rate. Those were two readings of one moment, taken from different signals —
 // the rate counts a whole turn's output tokens over the whole turn's wall time,
 // so a turn that wrote a paragraph and then went quiet kept drawing `30 tok/s`
 // two rows under this surface saying nothing had come back. A person watching a
@@ -1500,7 +1597,12 @@ func (a *app) ellipsis() (string, bool) {
 	if !a.ellipsisShowing() {
 		return "", false
 	}
-	line := a.pal.accent("  " + a.pulse())
+	return a.activityLine(a.pal.accent("  " + a.pulse())), true
+}
+
+// activityLine keeps the same truthful wait information behind either sign of
+// life: the compact text sweep or the detailed transcript's existing pulse.
+func (a *app) activityLine(line string) string {
 	// THREE ANSWERS TO ONE QUESTION, AND THE MOST SPECIFIC ONE WINS. All three
 	// say "nothing is arriving"; they differ in how much they know about why.
 	//
@@ -1514,7 +1616,7 @@ func (a *app) ellipsis() (string, bool) {
 	// already told us.
 	if news, ok := a.livePhase(); ok {
 		if words := phaseWords(news, a.now()); words != "" {
-			return line + a.pal.dim(" "+words), true
+			return line + a.pal.dim(" "+words)
 		}
 	}
 	// THE WAIT OUTRANKS THE SILENCE, and only one of the two is ever on the
@@ -1522,12 +1624,12 @@ func (a *app) ellipsis() (string, bool) {
 	// and the wait is the more specific of them: it names what is being waited
 	// on and how long for, where "still working" only says that something is.
 	if tail := a.waitingWords(); tail != "" {
-		return line + a.pal.dim(tail), true
+		return line + a.pal.dim(tail)
 	}
-	if a.silentFor() >= stillWorking {
+	if a.silentFor() >= stillWorking && strings.TrimSpace(ansi.Strip(line)) != "Working" {
 		line += a.pal.dim(stillWorkingWord)
 	}
-	return line, true
+	return line
 }
 
 // ellipsisShowing reports whether the pulse row is on the frame at all — which
@@ -1565,7 +1667,22 @@ func (a *app) ellipsisShowing() bool {
 // phase up, so no state of a turn is without it. That is the whole rule: ONE
 // HOME AT A TIME, and never the same words on two rows.
 func (a *app) pulseHoldsThePhase(news PhaseNews) bool {
+	if a.inlineWaitShowing {
+		return false
+	}
 	return a.ellipsisShowing() && phaseWords(news, a.now()) != ""
+}
+
+// hasCompactActivity asks the rows that actually drew, rather than re-deriving
+// their visibility from engine state. Expanding a block returns its activity
+// budget to the ordinary tool rows and footer on the very same frame.
+func hasCompactActivity(rows []row) bool {
+	for _, r := range rows {
+		if r.activity {
+			return true
+		}
+	}
+	return false
 }
 
 // harnessStepRow is the live row under a running sub-harness's announcement:
@@ -1801,6 +1918,10 @@ func (a *app) statusRows(width int) []string {
 	// on it, and each of them leaves this cleared.
 	a.keepSpan, a.keepRow = hudSpan{}, 0
 	a.moneySpan, a.moneyRow = hudSpan{}, 0
+	if a.startingChat() {
+		a.modelSpan = hudSpan{}
+		return []string{a.pal.dim(fit("New chat · first message starts the conversation", width))}
+	}
 	if width < 1 {
 		a.modelSpan = hudSpan{}
 		return []string{""}
@@ -1969,6 +2090,9 @@ func (a *app) statusLayout(width int) (string, []hudPart, bool) {
 // statusHeight is how many rows the HUD's status takes: the frame, the chrome
 // height and the pointer's hit-testing all have to agree about it (view.go).
 func (a *app) statusHeight(width int) int {
+	if a.startingChat() {
+		return 1
+	}
 	if width < 1 {
 		return 1
 	}
@@ -2343,7 +2467,7 @@ func splitReserve(text string) (room, figure string) {
 //	$0.14                what it has cost
 //	12.4k/128k · 10% ▁▂▃ what it is carrying, and where that has been going
 //	⟲ saved $0.02 · 89%  what the cache gave back
-//	1.2k tok/s           how fast it is writing right now
+//	1.2k tok/s avg       output over this turn's elapsed time
 //	compaction in ~3     what is about to happen to it
 //	YOLO                 the gate is open (and nothing when it is not)
 //	⠹ working · 4s       what it is DOING — always last, because it is the one
@@ -2792,9 +2916,10 @@ func (a *app) ctxSpark() string {
 	return barSpark(a.ctxRing, threshold, len(a.ctxRing))
 }
 
-// burnSegment is how fast the model is writing, right now:
+// burnSegment is the output rate averaged over this turn, including tool and
+// model waiting time rather than only time spent generating tokens:
 //
-//	1.2k tok/s
+//	1.2k tok/s avg
 //
 // It is output tokens over the wall time of THIS turn, and it exists because
 // "working" is a boolean and a person watching a long turn wants a rate. It is
@@ -2832,7 +2957,7 @@ func (a *app) burnSegment() string {
 	if rate <= 0 {
 		return a.holdBurn("")
 	}
-	return a.holdBurn(tokenWord(rate) + " tok/s")
+	return a.holdBurn(tokenWord(rate) + " tok/s avg")
 }
 
 // ── THE STEADY FIGURE ───────────────────────────────────────────────────────
@@ -2973,6 +3098,11 @@ func (a *app) yoloSegment() string {
 // else.
 func (a *app) stateSegment() (string, string) {
 	word, painted := a.stateWord()
+	// A task page reports its own state. The main conversation's spinner and
+	// clock do not describe the work being read here.
+	if a.room != nil && !a.orchOpen() {
+		return word, painted
+	}
 	if a.state != stateWorking || a.asking() || a.copy.on {
 		return word, painted
 	}
@@ -3102,6 +3232,16 @@ func (a *app) stateWord() (string, string) {
 	if word := a.dragWord(); word != "" {
 		return word, a.pal.accent(word)
 	}
+	if a.room != nil && !a.orchOpen() {
+		if guest := a.roomGuest(); guest != nil && (guest.lost || a.roomGuestStale()) {
+			return "reading", a.pal.dim("reading")
+		}
+		if node := a.roomNode(); node != nil {
+			word := a.roomStateWord(node)
+			return word, a.taskStateInk(node)(word)
+		}
+		return "reading", a.pal.dim("reading")
+	}
 	// AND THE STOP OUTRANKS THE QUESTION, on that same reading turned around. A
 	// card still standing between the esc and the stream's close is asking about
 	// a call the cancellation has already released (session's consent.go), so
@@ -3114,12 +3254,17 @@ func (a *app) stateWord() (string, string) {
 		// deadline, the clock it runs against and the door behind it all do.
 		return a.stoppingSegment()
 	}
-	// A PROPOSAL IS THE SAME MOMENT AS A CONSENT QUESTION from this line's point
-	// of view: the turn is technically working — the propose_task call is parked
-	// inside it — and what is true about it that a person can act on is that it
-	// is waiting for them (task.go).
-	if a.asking() || a.awaitingTask() || a.awaitingStanding() || a.awaitingSubharness() {
+	if run := a.orchOf(); run != nil && run.gate != nil {
 		return waitingWord, a.pal.askBold(waitingWord)
+	}
+	// Required input outranks work. A proposal with a deadline starts on its
+	// own; it offers an intervention, not a question that blocks progress.
+	if a.asking() || a.awaitingStanding() || a.awaitingSubharness() ||
+		(a.awaitingTask() && a.task.deadline.IsZero()) {
+		return waitingWord, a.pal.askBold(waitingWord)
+	}
+	if a.awaitingTask() {
+		return taskStartingWord, a.pal.accent(taskStartingWord)
 	}
 	word := a.state.String()
 	switch a.state {
@@ -3134,6 +3279,8 @@ func (a *app) stateWord() (string, string) {
 
 // waitingWord is the state a person has to answer.
 const waitingWord = "waiting · your call"
+
+const taskStartingWord = "starting task"
 
 // stoppingWord is what the status line says between a person's esc and the
 // engine letting go of the turn ([app.windingDown]).
@@ -3247,6 +3394,10 @@ func (a *app) legend(width int) string {
 	// and which conversation this is is not written anywhere else on a frame
 	// this narrow. A rung whose name did not survive is skipped rather than
 	// drawn, which is what puts the hints on the block before the name.
+	// THE DOOR'S SPAN IS THIS FUNCTION'S TO CLEAR, because this is the ladder that
+	// decides whether the door is drawn at all ([app.legendLine] says why it is
+	// not cleared down there).
+	a.homeDoor = hudSpan{}
 	right := a.legendRight(width)
 	attempts := make([]struct{ left, right string }, 0, 6)
 	// THE RUNNING SLOT IS A LADDER OF CLAUSES. Each pass drops its last clause
@@ -3324,9 +3475,15 @@ func (a *app) legendLine(left, right string, width int, paint func(string) strin
 	// WHERE THE DOOR LANDED, for the press that may follow. It is written HERE,
 	// as the line is laid out, for the reason [app.statusPress] gives about the
 	// model segment: a column read from anywhere else is a column from the
-	// frame before this one. A right end that is not the door records nothing,
-	// which is what makes the span its own answer to "was it drawn".
-	a.homeDoor = hudSpan{}
+	// frame before this one.
+	//
+	// IT IS CLEARED BY THE LEGEND AND NOT BY THIS FUNCTION, which is the fix for
+	// a bug the breadcrumb bar exposed: this line is laid out by the pinned
+	// header as well as by the legend (room.go, roomcrumbs.go), and the header is
+	// drawn AFTER the chrome — so a header clearing the span erased a door the
+	// legend had just recorded, and `space space home` became a label nothing
+	// answered for. What makes the span its own answer to "was it drawn" is
+	// [app.legend] clearing it before its own ladder starts.
 	if strings.HasPrefix(right, homeDoorWord) {
 		at := ansi.StringWidth(head) + fill + 1
 		a.homeDoor = hudSpan{from: at, to: at + ansi.StringWidth(homeDoorWord)}
@@ -3708,7 +3865,7 @@ func (a *app) hintWord() string {
 		}
 		return "y allow · n deny · a always"
 	case a.railHold:
-		// The roster has the keyboard (ctrl+t, task.go) — the one state on this
+		// The roster has the keyboard (alt+t, task.go) — the one state on this
 		// surface where the arrows have left the box entirely. It ranks HERE, under
 		// every overlay and both questions, because that is exactly where
 		// [app.railKey]'s guard stands down; and above the running turn, because

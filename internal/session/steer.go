@@ -24,9 +24,13 @@ package session
 // a user message between tool_calls and their results is a provider-invalid
 // shape, so short tools finish first. A foreground bash call older than
 // [steerBashAge] is adopted as a job instead, making its tool result available
-// immediately without killing its process. An unmistakable stop phrase adopts
-// and kills that job, because preserving work the person just rejected would be
-// the harness overruling them.
+// immediately without killing its process — and one still YOUNGER than that is
+// looked at once more when it crosses the same bound (steer_grace.go), so the
+// handoff waits on the command's age and never on the command's length. An
+// unmistakable stop phrase adopts and kills that command at ANY age, because
+// preserving work the person just rejected would be the harness overruling
+// them, and so would making them wait out a grace that exists to let a command
+// finish.
 //
 // ── PER-BOUNDARY, AND BATCHED WHEN THAT IS WHAT HAPPENED ──
 //
@@ -83,7 +87,7 @@ package session
 //	SteerTask  steers a NODE.  Another agent. Delivery is all it promises — the
 //	           answer is "it arrived", or "it arrived and the node is parked".
 //	           There is no fall-through, because a node that has finished is a
-//	           refusal ([Agent.enqueueSteeredLine] answers false) and never a
+//	           refusal ([taskRoom.handIn] answers nobody) and never a
 //	           queue.
 //	Steer      splices THIS TURN. This agent, this conversation, this question.
 //	           It carries an identity, three outcomes, and a record that says
@@ -102,6 +106,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 )
 
 // ErrNothingToSteer is what [Agent.Steer] answers when no turn is in flight.
@@ -230,8 +236,21 @@ func (a *Agent) Steer(words string) (<-chan Event, error) {
 	if a.generation != nil {
 		steer.note.Landing = "stopped the reply here"
 		a.generation.cancel(errSteerCut)
-	} else if landed, jobs := a.steerRunningBashLocked(words); landed != "" {
+	} else if landed, jobs := a.steerRunningBashLocked(words, a.inFlightBash.snapshot()); landed != "" {
 		steer.note.Landing = landed
+		if steerStopsBash(words) {
+			// A STOP HAS DEALT WITH EVERY COMMAND IN FLIGHT, at every age, so
+			// there is nothing left to come back to — and a watch armed by an
+			// earlier correction is released rather than left to fire into the
+			// wreckage of commands this one just ended (steer_grace.go).
+			a.stopSteerGraceLocked()
+		} else {
+			// AND A SIBLING STILL TOO YOUNG TO ADOPT IS COME BACK TO. Adopting
+			// one call out of a parallel batch leaves the step waiting on the
+			// rest of it, so this road arms the second look for the same reason
+			// the one below does (steer_grace.go).
+			a.armSteerGraceLocked()
+		}
 		defer func() {
 			for _, started := range jobs {
 				a.jobs.announceRow(started)
@@ -241,6 +260,11 @@ func (a *Agent) Steer(words string) (<-chan Event, error) {
 		// Short tools are allowed to finish. The line is still visible now, and
 		// this clause says exactly why its consumed event has not arrived yet.
 		steer.note.Landing = "waiting for the running step"
+		// AND THE AGE IS MEASURED ONCE MORE WHEN IT CAN ANSWER DIFFERENTLY. A
+		// command that is young now may be a build; the person's words must not
+		// wait for its ending or for the background clock because of the instant
+		// they were typed in (steer_grace.go).
+		a.armSteerGraceLocked()
 	}
 	// Adopted under a.mu, for the reason a steering Submit subscribes under it:
 	// the turn's goroutine clears running with this same lock held BEFORE it
@@ -263,12 +287,16 @@ func (a *Agent) Steer(words string) (<-chan Event, error) {
 	return steer.stream.out, nil
 }
 
-// steerRunningBashLocked handles foreground bash calls while Steer holds a.mu.
+// steerRunningBashLocked handles foreground bash calls while a.mu is held.
 // The call and job registries have their own locks precisely so this input path
 // can reach them while the turn is busy. Every old call is handled: adopting
 // only one from a parallel batch would still leave the steer waiting on another.
-func (a *Agent) steerRunningBashLocked(words string) (string, []*job) {
-	calls := a.inFlightBash.snapshot()
+//
+// THE CALLS ARE PASSED IN RATHER THAN READ HERE, because the second look
+// (steer_grace.go) may adopt only the calls it was armed for — a set it holds
+// and this pass has no way to know. [Agent.Steer]'s own road passes the whole
+// registry, which is the same question it used to ask itself.
+func (a *Agent) steerRunningBashLocked(words string, calls []*bare.BashCall) (string, []*job) {
 	if len(calls) == 0 {
 		return "", nil
 	}
@@ -276,7 +304,13 @@ func (a *Agent) steerRunningBashLocked(words string) (string, []*job) {
 	var ids []int
 	var adoptedJobs []*job
 	for _, call := range calls {
-		if call.RunningFor() < steerBashAge {
+		// THE AGE IS A BARGAIN ABOUT LETTING A SHORT COMMAND FINISH, and a stop
+		// is the person saying they do not want it to. So a stop reaches a call
+		// of any age at once — waiting three seconds to obey `stop` would be the
+		// harness holding a cancellation the way it holds a correction — while
+		// every other sentence still lets a young call have its few seconds and
+		// is looked at again when they are up (steer_grace.go).
+		if !stop && call.RunningFor() < steerBashAge {
 			continue
 		}
 		var started *job

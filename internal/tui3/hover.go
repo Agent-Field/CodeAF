@@ -48,6 +48,8 @@ type hoverKind uint8
 
 const (
 	hoverNothing hoverKind = iota
+	// hoverHop identifies a chat-switcher row; -1 is its expansion control.
+	hoverHop
 	hoverPaste
 	// hoverEntry is a conversation row that belongs to an entry — a tool call,
 	// its expansion, its "more" foot, a thinking block.
@@ -102,7 +104,15 @@ const (
 	// file, read the other way round.
 	hoverSettle
 	// hoverOverlay is one row of the open list; index is its row in that list.
+	// While the context chooser is up it is one row of THAT sheet, counted from
+	// the sheet's own first body row rather than from the frame — the sheet is a
+	// modal now and no longer one of the lists in the bottom chrome
+	// (contextmodal.go's [contextWin]).
 	hoverOverlay
+	// hoverContextCancel is the cancel target on the context chooser's foot rule.
+	// It is a kind of its own rather than a row because it is narrower than the
+	// rule it rides, and pressing a rule means nothing (contextmodal.go).
+	hoverContextCancel
 	// hoverSheet is one row of the settings panel; index is its item
 	// (settings.go). The panel is fullscreen, so while it is up this is the
 	// only kind the pointer can produce.
@@ -126,8 +136,11 @@ const (
 	// every row of it reacts — which is this file's own law read the other way
 	// round: the set that lights is the set [app.press] acts on, and in the
 	// roster that is all of it. What the hover buys beyond the background step is
-	// the disclosure triangle a family root reveals in its glyph cell, which is
-	// the whole of the column's fold affordance at rest.
+	// the disclosure triangle a family root reveals in its glyph cell — and that
+	// cell is a fold ONLY on the frames where the triangle is drawn in it, which
+	// is this law read strictly: the press reads the span the layout recorded
+	// (task.go's [app.railLead]), so a state cell nobody is pointing at is the
+	// row's, and the row is the node's door.
 	// hoverForming is a row of the forming block at the transcript tail
 	// (formingblock.go); index is the wait it belongs to. It is a kind of its own
 	// rather than a hoverEntry because that one is keyed by ENTRY and this block
@@ -229,10 +242,29 @@ const (
 	// opposite gestures — so the two never light together, and the expensive one
 	// wins the cells it is drawn on.
 	hoverRoomStop
+	// hoverCrumb is one step of the breadcrumb trail on that same header, and
+	// index is the COLUMN it starts on (roomcrumbs.go). It outranks the row it
+	// rides for [hoverRoomStop]'s reason — a crumb goes to one particular place
+	// and the row goes back to the conversation, so the two never light together
+	// — and it answers only for crumbs that are doors, which is what keeps the
+	// page's own name and another conversation's chain as quiet as they are
+	// inert.
+	hoverCrumb
+	// hoverTab is one conversation on the tab strip above that header, and index
+	// is the COLUMN it starts on (chattabs.go). It is a kind of its own and not a
+	// crumb because the two answer for different rows and mean different things —
+	// a tab is WHICH CONVERSATION, a crumb is where inside it — and, like the
+	// crumbs, it answers only for the pieces that are doors, which is what keeps
+	// the tab already up as quiet as it is inert.
+	hoverTab
 	// hoverStopAnswer is one of the stop card's two answers; index is which
 	// (stop.go). Two presses share that row, so it is a chip and not a row for
 	// [hoverSettle]'s reason.
 	hoverStopAnswer
+	// hoverTabCloseAnswer is one of the close-a-tab card's three answers; index
+	// is which (tabclose.go). It is the card next door's arrangement for the
+	// card next door's reason: three presses share one row.
+	hoverTabCloseAnswer
 	// hoverParked is one MESSAGE waiting for the answer to finish; index is its
 	// place in the queue (park.go). Every row that message wrapped over lights,
 	// because the press pulls the whole message back into the box — and the dim
@@ -342,8 +374,21 @@ func (a *app) setHover(x, y int) {
 // overlap — three regions can be true of one screen row — so a hover resolved
 // differently from a press is a surface that lights one thing and does another.
 func (a *app) hoverTarget(x, y int) hoverAt {
+	if a.hopShowing() {
+		if at, ok := a.hopTarget(x, y); ok {
+			return hoverAt{kind: hoverHop, index: at}
+		}
+		return hoverAt{}
+	}
 	if a.pasteEdit.open {
 		return hoverAt{}
+	}
+	// THE CONTEXT CHOOSER ANSWERS FOR THE WHOLE SCREEN while it is up, and it is
+	// asked before every other target for the reason the switcher above is: it is
+	// a layer, not a row, and a conversation brightening under a modal would be
+	// the surface offering a door it has closed (contextmodal.go).
+	if at, ok := a.contextModalHover(x, y); ok {
+		return at
 	}
 	// THE REWIND MODE ANSWERS FOR THE WHOLE TRANSCRIPT while it is up: every row
 	// is a cut point, and what the pointer is over is WHICH CUT (rewind.go). It is
@@ -372,7 +417,19 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	if a.stopMarkAt(x, y) {
 		return hoverAt{kind: hoverRoomStop}
 	}
-	if a.roomBackAt(y) {
+	// AND THE CRUMBS ARE ASKED BEFORE THE ROW THEY RIDE, in the order
+	// [app.Update] presses them: a crumb goes to one particular page and the rest
+	// of the row goes back to the conversation (roomcrumbs.go).
+	if at, ok := a.crumbHoverAt(x, y); ok {
+		return at
+	}
+	// AND THE TAB STRIP IS ITS OWN ROW ABOVE BOTH OF THEM, asked here for the
+	// order's sake rather than for arbitration: nothing else on this surface
+	// answers for that row (chattabs.go).
+	if at, ok := a.tabHoverAt(x, y); ok {
+		return at
+	}
+	if a.roomBackAt(x, y) {
 		return hoverAt{kind: hoverRoomBack}
 	}
 	if at, ok := a.stripHoverAt(x, y); ok {
@@ -547,6 +604,19 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 					return hoverAt{kind: hoverStopAnswer, index: at}
 				}
 			}
+		case chromeTabClose:
+			// THE SAME SHAPE ONE CARD OVER, and the same reason: three answers
+			// share one row, so which of them the pointer is on is a question
+			// about the column (tabclose.go). The question above them and the
+			// line under them are sentences and light not at all.
+			if a.tabClose == nil || mark.index != 1 {
+				return hoverAt{}
+			}
+			for at, span := range a.tabClose.spans {
+				if span.holds(x) {
+					return hoverAt{kind: hoverTabCloseAnswer, index: at}
+				}
+			}
 		case chromeParked:
 			// One waiting message, whichever of its rows the pointer is on. The dim
 			// line under the block carries no mark and answers to nothing, which is
@@ -557,6 +627,16 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 				return hoverAt{kind: hoverPaste, index: n}
 			}
 		case chromeOverlay:
+			// EVERY LIST DOWN HERE IS ROWS, AND THE FOLDER SHEET IS COLUMNS. Its
+			// three columns do three different things to a press — walk out, move
+			// the cursor, walk in — so a band across the row would offer to do one
+			// of them wherever the pointer happened to be, which is exactly the
+			// claim this file's law forbids. Which column is a question about x,
+			// and the answer rides the key field for the reason that field exists:
+			// a target named in its own alphabet (folderplace.go).
+			if key, ok := a.folderHoverColumn(x, mark.index); ok {
+				return hoverAt{kind: hoverOverlay, index: mark.index, key: key}
+			}
 			return hoverAt{kind: hoverOverlay, index: mark.index}
 		case chromeWelcome:
 			if slot := a.welcomeSlotAt(mark.index); slot >= 0 {
@@ -695,6 +775,12 @@ func (a *app) hoveringRoomStop() bool { return a.hot.kind == hoverRoomStop }
 // card.
 func (a *app) hoveringStopAnswer(at int) bool {
 	return a.hot.kind == hoverStopAnswer && a.hot.index == at
+}
+
+// hoveringTabClose reports whether the pointer is on one answer of the
+// close-a-tab card.
+func (a *app) hoveringTabClose(at int) bool {
+	return a.hot.kind == hoverTabCloseAnswer && a.hot.index == at
 }
 
 // hoveringParked reports whether the pointer is on this waiting message.

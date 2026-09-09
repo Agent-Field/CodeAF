@@ -466,11 +466,11 @@ func (a *app) dragYank(drag dragSelect) tea.Cmd {
 		}
 		var piece string
 		if from == 0 && to >= width {
-			piece = copyClean(plain)
+			piece = copyClean(plain, textGutterCols(width))
 		} else if from, to, ok = snapCells(plain, from, to); ok {
 			piece = ansi.Cut(plain, from, to)
 			if from == 0 {
-				piece = copyClean(piece)
+				piece = copyClean(piece, textGutterCols(width))
 			} else {
 				piece = strings.TrimRight(piece, " ")
 			}

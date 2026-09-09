@@ -32,6 +32,13 @@ func String() string {
 	return current.String()
 }
 
+// Identity names the build captured at process startup, including dirty rebuilds.
+// Unlike the display stamp it preserves seconds and is independent of timezone;
+// rereading the executable path would identify a replacement, not this process.
+func Identity() string {
+	return fmt.Sprintf("%s/%t/%s", current.Revision, current.Dirty, current.BuiltAt.UTC().Format(time.RFC3339Nano))
+}
+
 // Revision returns the stable source identity without the build-time details.
 func Revision() string {
 	return strings.TrimSpace(current.Revision)

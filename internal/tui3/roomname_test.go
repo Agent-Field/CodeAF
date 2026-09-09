@@ -60,7 +60,7 @@ func TestAWideRoomNamesTheWorkBetterThanANarrowRail(t *testing.T) {
 		t.Fatalf("the node's name reached the surface as\n\t%q\nand the engine's own title is\n\t%q\n— the surface is still cutting a name before it knows a width",
 			got, roomLongName)
 	}
-	head := plain(a.roomHeadWord(160))
+	head := plain(roomHeadAll(a, 160))
 	if !strings.Contains(head, roomLongName) {
 		t.Fatalf("a 160-column room header reads\n\t%q\nand it should name the work whole:\n\t%q",
 			head, roomLongName)
@@ -109,23 +109,28 @@ func TestTwoTasksSharingTheirFirstWordsAreToldApartInTheirRooms(t *testing.T) {
 	}
 }
 
-// A NAME THAT CANNOT FIT THE LINE ALONE TAKES THE WHOLE LINE. Law 1's other
-// half: an ellipsis in the name has already spent the one thing the row was
-// drawn to say, and a spend figure beside it would be a second loss.
-func TestARoomTooNarrowForTheNameDrawsNoFactsBesideIt(t *testing.T) {
+// A NAME THAT CANNOT FIT THE TRAIL ROW TAKES THE WHOLE TRAIL ROW, and the facts
+// it used to compete with are on a row of their own now: law 1 is about the row
+// the identity is drawn on, and no figure was ever going to buy back a cut name.
+func TestANarrowRoomGivesTheTrailRowToTheNameAndKeepsTheFactsUnderIt(t *testing.T) {
 	a := roomNamed(t, 3, roomLongName)
-	narrow := plain(a.roomHeadWord(60))
-	if ansi.StringWidth(narrow) > 60-roomHeadFurniture {
-		t.Fatalf("the 60-column header is %d cells wide and has %d:\n\t%q",
-			ansi.StringWidth(narrow), 60-roomHeadFurniture, narrow)
+	trail := plain(a.roomHeadWord(60))
+	if ansi.StringWidth(trail) > 60-roomHeadFurniture {
+		t.Fatalf("the 60-column trail row is %d cells wide and has %d:\n\t%q",
+			ansi.StringWidth(trail), 60-roomHeadFurniture, trail)
 	}
 	for _, never := range []string{"needs your look", "$0.52"} {
-		if strings.Contains(narrow, never) {
-			t.Fatalf("a 60-column header drew %q beside a name it had to cut:\n\t%q\nlaw 1 gives the whole row to a cut name", never, narrow)
+		if strings.Contains(trail, never) {
+			t.Fatalf("the trail row drew the telemetry %q that belongs on the row under it:\n\t%q", never, trail)
 		}
 	}
-	if !strings.HasPrefix(strings.TrimLeft(narrow, "? "), roomCrumbRoot) {
-		t.Fatalf("the 60-column header lost the trail it hangs off:\n\t%q", narrow)
+	if !strings.HasPrefix(trail, a.chatCrumbWord()) {
+		t.Fatalf("the 60-column trail row lost the trail it hangs off:\n\t%q", trail)
+	}
+	// AND THE FACTS ARE STILL THERE, on their own row, ranked.
+	facts, _ := a.roomFactsWord(a.roomNode(), 60)
+	if !strings.Contains(plain(facts), "needs your look") {
+		t.Fatalf("the 60-column facts row lost the state word:\n\t%q", plain(facts))
 	}
 }
 
@@ -148,8 +153,11 @@ func TestTheKinBlockKeepsEveryRelativesStateInsideItsRowBudget(t *testing.T) {
 			t.Fatalf("at %d columns the kin block is %d rows and the cap is %d:\n%q",
 				width, len(rows), roomKinRowCap, rows)
 		}
-		if len(rows) != 2 {
-			t.Fatalf("at %d columns the kin block is\n%q\nand it should be the parent line and the handed-out line", width, rows)
+		// ONE LINE, AND IT IS THE HANDED-OUT ONE. The parent's line left this block
+		// for the breadcrumb the moment the trail started carrying the whole chain
+		// (roomcrumbs.go), so what is budgeted down here is the children.
+		if len(rows) != 1 {
+			t.Fatalf("at %d columns the kin block is\n%q\nand it should be the handed-out line alone", width, rows)
 		}
 		for _, row := range rows {
 			if ansi.StringWidth(row) > width {
@@ -158,11 +166,15 @@ func TestTheKinBlockKeepsEveryRelativesStateInsideItsRowBudget(t *testing.T) {
 		}
 		// THE STATE WORD IS THE LAST THING ON THE HANDED-OUT LINE, and it is the
 		// half that was falling off the bottom of the block.
-		if got := rows[1]; !strings.HasSuffix(got, roomQueuedWord) {
+		if got := rows[0]; !strings.HasSuffix(got, roomQueuedWord) {
 			t.Fatalf("at %d columns the handed-out line is\n\t%q\nand it should end in the child's state, %q", width, got, roomQueuedWord)
 		}
-		if strings.HasSuffix(strings.TrimSpace(rows[0]), strings.TrimSpace(roomKinStateSep)) {
-			t.Fatalf("at %d columns a kin row ends on a dangling separator:\n\t%q", width, rows[0])
+		// AND THE PARENT IT USED TO DRAW IS ON THE TRAIL, CUT TO THE FRAME RATHER
+		// THAN SPILLED DOWN IT.
+		for _, row := range a.roomHeadRows(width) {
+			if got := plain(row); ansi.StringWidth(got) > width {
+				t.Fatalf("at %d columns a header row is %d cells:\n\t%q", width, ansi.StringWidth(got), got)
+			}
 		}
 	}
 }

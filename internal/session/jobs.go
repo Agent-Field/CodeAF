@@ -154,6 +154,8 @@ const (
 // the lock a turn holds, least of all the one Interrupt needs to be able to
 // take at any moment.
 type job struct {
+	// The admission generation rejects work reserved before a conversation stop.
+	epoch   uint64
 	id      int
 	command string
 	kind    jobKind
@@ -505,6 +507,7 @@ type jobRegistry struct {
 	// this closes behind ([TaskGraph.stopAll]); this is the door itself learning
 	// to say no.
 	closed bool
+	epoch  uint64
 	// hands is how many forked hands are OUT — started and not yet reported.
 	//
 	// IT IS COUNTED RATHER THAN READ OFF THE SLICE, and the reason is a race
@@ -551,7 +554,7 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 	// was taken away. Every caller of this already answers an error by carrying
 	// on without a log, which is the honest shape for work that is ending.
 	r.mu.Lock()
-	closed := r.closed
+	closed, epoch := r.closed, r.epoch
 	r.mu.Unlock()
 	if closed {
 		return nil, errSessionClosed
@@ -567,6 +570,7 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 		return nil, err
 	}
 	return &job{
+		epoch:   epoch,
 		id:      id,
 		command: command,
 		kind:    kind,
@@ -636,7 +640,7 @@ func (r *jobRegistry) claimJobLog(directory string) (int, string, *os.File, erro
 // after the quit took it away, which is the visible half of the same bug.
 func (r *jobRegistry) join(started *job) error {
 	r.mu.Lock()
-	if r.closed {
+	if r.closed || started.epoch != r.epoch {
 		r.mu.Unlock()
 		started.sink.close()
 		if started.logPath != "" {

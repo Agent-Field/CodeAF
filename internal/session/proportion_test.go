@@ -40,7 +40,7 @@ func TestTheWorkingStylePromptTeachesProportionateChecking(t *testing.T) {
 	// AND IT IS TAUGHT IN THE SECTION THAT VERIFIES. The prompt is read top to
 	// bottom by a model deciding what to do next; the law belongs beside the
 	// deliverable-proof ladder it qualifies.
-	verify := section(systemPrompt, "## 4. Verify", "## 5.")
+	verify := section(systemPrompt, "## 3. Verify", "## 4.")
 	if !strings.Contains(verify, "DEPTH OF CHECKING FOLLOWS") {
 		t.Error("the proportion law is not in the section where checking is decided")
 	}
@@ -80,8 +80,8 @@ func TestTheTaskPromptTeachesTheNothingToDoReportLeadsWithOneCheck(t *testing.T)
 		"what you went looking for that would have made the work\nnecessary",
 		"The depth\nof your checking follows the size of what your answer changes",
 	} {
-		if !strings.Contains(taskPrompt, want) {
-			t.Errorf("prompts/task.md does not say %q", want)
+		if !strings.Contains(workerPrompt, want) {
+			t.Errorf("prompts/worker.md does not say %q", want)
 		}
 	}
 }
@@ -124,7 +124,7 @@ func TestTheAuditPromptTeachesTheSameProportion(t *testing.T) {
 func TestProportionIsTaughtAsAPrincipleAndNeverAsAThreshold(t *testing.T) {
 	for _, taught := range []struct{ name, text string }{
 		{"prompts/system.md", section(systemPrompt, "- DEPTH OF CHECKING FOLLOWS", "\n- ")},
-		{"prompts/task.md", section(taskPrompt, "WHEN THE ANSWER IS THAT NOTHING NEEDED DOING", "\n\n")},
+		{"prompts/worker.md", section(workerPrompt, "WHEN THE ANSWER IS THAT NOTHING NEEDED DOING", "\n\n")},
 		{"the auditor's prompt", section(auditPrompt, "How deep you look follows", "\n\n")},
 	} {
 		if taught.text == "" {

@@ -14,6 +14,12 @@ stops near **99,200** tokens, about ten thousand under the trigger. Those ten th
 tokens are several steps of ordinary growth, and until the conversation has used them up
 the automatic check after each step finds nothing to do.
 
+A pass turns old tool results into pointers first and folds afterwards, and **the fold is
+measured against the lower line too**. Stubbing on its own often lands the estimate just
+under the trigger and nowhere near the target; a pass that stopped there had bought no room
+at all, and the next step put it straight back over. It now keeps folding down to the target
+whatever the stubbing already saved.
+
 An earlier version stopped folding the moment it dipped under the threshold. One task
 compacted fifteen times in six minutes — after nearly every step, four to six messages a
 pass, with the estimate never once going down — because a step's growth put it straight

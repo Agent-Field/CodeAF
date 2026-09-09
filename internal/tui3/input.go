@@ -266,6 +266,22 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
+	// Pending permission and account input hold their work, not navigation.
+	// These chords never answer either question or edit a partly typed key.
+	if (a.asking() && !a.shaping()) || a.asksConnect() {
+		switch msg.String() {
+		case closeTabChord:
+			cmd, _ := a.closeTabKey(msg)
+			return cmd
+		case "ctrl+k":
+			cmd, _ := a.hopKey(msg)
+			return cmd
+		case newChatChord:
+			cmd, _ := a.newChatKey(msg)
+			return cmd
+		}
+	}
+
 	// An approval question outranks even the model overlay: it is the one state
 	// where the SESSION is blocked on this keyboard — a tool call is parked
 	// mid-batch waiting for the answer — and everything else on this surface can
@@ -334,6 +350,19 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	//
 	// ctrl+c is the one exception, for the reason it is everywhere on this file:
 	// leaving is never modal.
+	// WITH ONE CHORD READ ON HOME ABOVE THAT CLAIM, and it is the one gesture home
+	// is the LANDING for rather than a destination of: shutting the last tab leaves
+	// this window on home with the conversation still alive behind it
+	// (chattabs.go's [app.tabDismiss]), so `ctrl+shift+t` — the undo of exactly
+	// that press — has to be reachable from where the press put you. It is scoped
+	// to home alone and to a chord no place binds, so every other place keeps every
+	// key it had, and the rung below is untouched (tabreopen.go).
+	if a.at(pageHome) {
+		if cmd, taken := a.reopenTabKey(msg); taken {
+			return cmd
+		}
+	}
+
 	if a.pageShowing() && msg.String() != "ctrl+c" {
 		return a.placeKeyPress(msg)
 	}
@@ -505,7 +534,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// ↑/↓ walk the recent sessions, enter opens the one they picked, and
 	// anything else is the person starting work, which puts the box away for
 	// good before the key does whatever it always does.
-	if a.welcome.open {
+	// AND THE NEW-CHAT START PAGE IS THE SAME UNIT WITH THE OPPOSITE CONTRACT
+	// (chatstart.go): it is where the person IS starting work, so typing keeps it
+	// standing and its four keys are esc, ↑/↓ and enter. It is read at this rung
+	// rather than a separate one because it is drawn as this unit and there is
+	// exactly one of them on the frame.
+	if a.startingChat() {
+		if cmd, taken := a.startChatKey(msg.String()); taken {
+			return cmd
+		}
+	} else if a.welcome.open {
 		if cmd, taken := a.welcomeKey(msg.String()); taken {
 			// enter on a recent session opens it, and what comes back is that
 			// conversation's standing lanes (welcome.go's [app.resumeSession]).
@@ -514,6 +552,41 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if !welcomeKeeps(msg.String()) {
 			a.dismissWelcome()
 		}
+	}
+
+	// AND `ctrl+t` IS A NEW TAB AT THIS RUNG (chatstart.go's [app.newChatKey]).
+	// It is read here — under every modal, panel and page above, and over the
+	// draft below — because that is exactly what a new tab is worth: it must not
+	// outrank a question the session is blocked on, a place that has taken the
+	// whole frame, or the model picker, whose own ctrl+t walks a row's thinking
+	// effort; and it must outrank the box, because a chord is never a letter of
+	// anybody's sentence. The start page it opens takes the key back on its own
+	// terms — pressing the chord again keeps what is typed there.
+	if cmd, taken := a.newChatKey(msg); taken {
+		return cmd
+	}
+
+	// AND `ctrl+w` SHUTS ONE AT THE SAME RUNG AND FOR THE SAME REASONS
+	// (tabclosekey.go's [app.closeTabKey]). The two chords are one gesture with two
+	// directions, so they are read side by side: under every modal, panel and page
+	// above — the switcher's own ctrl+w puts a row away and each filterable overlay
+	// edits its search with it, and all of them are looking at the person who
+	// pressed it — and over the box below, because a chord is never a letter of
+	// anybody's sentence. What it takes from the box is readline's spelling of the
+	// word kill; `alt+backspace` and `ctrl+backspace` are the two names a hand
+	// actually presses and both still reach the switch below.
+	if cmd, taken := a.closeTabKey(msg); taken {
+		return cmd
+	}
+
+	// AND `ctrl+shift+t` PUTS THE LAST ONE BACK, at the same rung and for the same
+	// reasons (tabreopen.go's [app.reopenTabKey]). The three keys are one grammar —
+	// open a tab, shut a tab, undo the shutting — so they are read side by side,
+	// and this one is deliberately never spelled `ctrl+t`: a terminal that cannot
+	// tell the two apart sends the plain chord and gets a new chat, which is what
+	// that key has always done here.
+	if cmd, taken := a.reopenTabKey(msg); taken {
+		return cmd
 	}
 
 	// tab is the path completion's key: "/image " with tab after it offers this
@@ -546,7 +619,8 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if !a.input.empty() {
 			return nil
 		}
-		return a.lastConversation()
+		back := a.parkChatStart()
+		return tea.Batch(back, a.lastConversation())
 	}
 	// And enter belongs to the LINE under that list, not to the list. A person
 	// who typed a path out in full would otherwise have it swapped for whatever
@@ -884,12 +958,21 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.input.killToStart()
 		a.editTags(from, to, 0)
 		return a.edited()
-	case "ctrl+w", "alt+backspace", "ctrl+backspace":
-		// DELETE THE WORD BEHIND THE CARET, under all three of its names.
-		// ctrl+w is readline's; alt+backspace is the one both macOS and every
-		// GTK/Qt text field agree on, and it is the one people actually press;
-		// ctrl+backspace is Windows' and the terminals that speak the kitty
-		// protocol send it faithfully.
+	case "alt+backspace", "ctrl+backspace":
+		// DELETE THE WORD BEHIND THE CARET, under both of the names that reach
+		// this box. alt+backspace is the one both macOS and every GTK/Qt text
+		// field agree on, and it is the one people actually press; ctrl+backspace
+		// is Windows' and the terminals that speak the kitty protocol send it
+		// faithfully.
+		//
+		// ctrl+w IS READLINE'S THIRD NAME FOR THIS EDIT AND IT NO LONGER ARRIVES
+		// HERE. It is the chord that shuts the tab in front now, read far above
+		// this switch (tabclosekey.go's [app.closeTabKey]) — the key every browser
+		// closes a tab with, on a strip that is drawn as tabs, beside the ctrl+t
+		// that opens one. Listing it here as well would be a case that can never
+		// run and a comment that says the opposite of what the surface does. It
+		// still edits the FILTER of every overlay that has one, because those boxes
+		// are modal above that rung and read their own keys (editkeys.go).
 		//
 		// ctrl+h is deliberately NOT here. A terminal in backspace-sends-BS mode
 		// delivers a plain backspace as ctrl+h (ultraviolet's key table maps
@@ -1090,6 +1173,9 @@ func (a *app) enter() tea.Cmd { return a.enterLine(false) }
 // recall history, the draft file, the slash, the mentions — and it is one
 // function so it stays that way.
 func (a *app) enterLine(marked bool) tea.Cmd {
+	if a.startingChat() {
+		return a.startChatEnter(marked)
+	}
 	// A WATCHER'S SEND KEY IS THE TAKE-BACK, and nothing below it runs
 	// (watching.go). The router already turns enter into this, so reaching here
 	// means some other road did — the path completion's own enter, a paste that
@@ -1151,6 +1237,15 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 	if !strings.HasPrefix(line, "/") && len(tags) > 1 {
 		a.note(slashTagRefusal)
 		return nil
+	}
+	// AND A COMPACT TAG WITH NOTHING BEHIND IT STOPS THE SEND, by the same law and
+	// for a sharper reason: the tag is not the words (draftkeep.go's
+	// [app.missingPaste]). The whole line stays in the box.
+	if !strings.HasPrefix(line, "/") {
+		if tag := a.missingPaste(line); tag != "" {
+			a.note(draftOrphanSendWord + " · " + tag)
+			return nil
+		}
 	}
 	var tagDoor sendDoor
 	var tagWords string
@@ -1297,14 +1392,6 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	}
 	if a.roster.open {
 		return draftBlock(&a.roster.filter, a.pal, width, 1, resumeHint, "")
-	}
-	// AND THE FOLDER PICKER'S BOX IS TWO BOXES IN ONE POSITION, which is why its
-	// legend is asked for rather than named: free words filter a list and a path
-	// browses columns, and the keys mean different things in the two
-	// (folderpick.go's [folderPick.folderHintAt]).
-	if a.folder.open {
-		return draftBlock(&a.folder.filter, a.pal, width, 1,
-			a.folder.folderHintAt(width-ansi.StringWidth(prompt)), "")
 	}
 	// AND /subharness TAKES IT ON THE SAME TERMS, for whichever of its two boxes
 	// is open: the filter over the list, and the box over one field of the intake

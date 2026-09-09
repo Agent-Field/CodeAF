@@ -128,16 +128,15 @@ func (a *Agent) stubOldOutputs() {
 // stubOldOutputsLocked is the pass itself, and it reports how many results it
 // replaced — the number the compaction row says out loud.
 //
-// THE POINTER IS THE STORE'S FIRST AND THE FILE'S SECOND. A result already
-// posted to the store's thread (chatlog.go) needs no second copy on disk, and
-// the store id is the better pointer besides: it survives a workspace being
-// deleted, which a dropping does not. A session with no store spills to its own
-// logs/ exactly as this always did, and a session that can do neither leaves the
-// result verbatim — a stub pointing at nothing is the one failure this may not
-// have.
+// THE POINTER IS ASKED FOR ONCE, of [Agent.fullResultPointer], which is the same
+// answer the snapshot view and the turn fold get. It used to be the store's ref
+// first — and no verb on this belt fetches a store message by id, so every stub
+// in a session with memory on pointed at a handle nothing could open. A result
+// this session can neither file nor find in a journal is left verbatim: a stub
+// pointing at nothing is the one failure this may not have.
 func (a *Agent) stubOldOutputsLocked() int {
 	a.alignReasoningLocked()
-	workspace := strings.TrimSpace(a.config.Workspace)
+	place := a.resultPlaceLocked()
 	cut := stubCut(a.messages)
 	candidates, reclaim := stubCandidates(a.messages, cut)
 	if len(candidates) == 0 {
@@ -161,20 +160,9 @@ func (a *Agent) stubOldOutputsLocked() int {
 	for _, index := range candidates {
 		message := a.messages[index]
 		text := messageContentText(message)
-		pointer := a.chatlog.ref(message)
+		pointer := a.fullResultPointer(message, place)
 		if pointer == "" {
-			if workspace == "" {
-				continue
-			}
-			// The FAMILY'S folder, which is this agent's own when it is a session
-			// and the commissioning conversation's when it is a worker. A worker
-			// asked for its Place instead, got the zero one, and filed every long
-			// result it read into the repository it borrowed (landing.go).
-			path, err := writeStub(a.config.droppingsPlace(), workspace, text)
-			if err != nil {
-				continue
-			}
-			pointer = path
+			continue
 		}
 		// A NEW content slice, never a write into the old one: a request already
 		// in flight holds a shallow copy of this message (see [Agent.snapshot]),
@@ -266,6 +254,12 @@ func stubCut(messages []ai.Message) int {
 // same result stubbed twice — a re-read of the same file, a resumed session
 // stubbing again — is one file on disk, and a file that is already there is left
 // exactly as it is rather than rewritten.
+//
+// THE WRITE LANDS THROUGH A RENAME, because the reader of this file is a model
+// following a pointer that may already be in a request: two passes filing the
+// same result while a `read` runs must never show half of it. The temporary is
+// minted in the destination directory with a random name for [writeFixDocument]'s
+// reason — a fixed `.tmp` would be two writers on one file.
 func writeStub(place Place, workspace, text string) (string, error) {
 	digest := sha256.Sum256([]byte(text))
 	directory := droppingsDir(place, workspace, droppingStubs)
@@ -276,7 +270,26 @@ func writeStub(place Place, workspace, text string) (string, error) {
 	if info, err := os.Stat(full); err == nil && info.Size() == int64(len(text)) {
 		return stubPath(workspace, full), nil
 	}
-	if err := os.WriteFile(full, []byte(text), 0o600); err != nil {
+	temporary, err := os.CreateTemp(directory, ".stub-*.txt")
+	if err != nil {
+		return "", err
+	}
+	name := temporary.Name()
+	if _, err := temporary.WriteString(text); err != nil {
+		temporary.Close()
+		_ = os.Remove(name)
+		return "", err
+	}
+	if err := temporary.Close(); err != nil {
+		_ = os.Remove(name)
+		return "", err
+	}
+	if err := os.Chmod(name, 0o600); err != nil {
+		_ = os.Remove(name)
+		return "", err
+	}
+	if err := os.Rename(name, full); err != nil {
+		_ = os.Remove(name)
 		return "", err
 	}
 	return stubPath(workspace, full), nil
