@@ -3354,9 +3354,14 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 	// downstream because a notice is copied into every watcher's lane and held by
 	// whoever draws a row.
 	delivery := n.carriedResultLocked()
+	thinking := n.spec.effort.String()
+	if n.nextEffort != nil {
+		thinking = *n.nextEffort
+	}
 	return TaskNotice{
-		ID:    n.id,
-		Title: n.spec.title,
+		Thinking: thinking,
+		ID:       n.id,
+		Title:    n.spec.title,
 		// Reopened task pages need the contract even when no proposal card survives.
 		Brief:      n.spec.brief,
 		Summary:    n.spec.summary,

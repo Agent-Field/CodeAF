@@ -15,7 +15,6 @@ import (
 const (
 	roomPanelFloor    = 18
 	roomDetailsMax    = 8
-	roomPanelPad      = roomLeadPad
 	roomPanelTree     = 1
 	roomPanelDetails  = 2
 	roomPanelControls = 3
@@ -128,20 +127,29 @@ func (a *app) roomDetailRows(width, height int) []railLine {
 
 func (a *app) roomControlRows(width int) []railLine {
 	row := func(word, action string) railLine {
-		return railLine{text: roomPanelPad + a.pal.ink(fit(word, max(width-len(roomPanelPad), 0))), entry: -1, roomAction: action}
+		text := fit(word, width)
+		if label, value, ok := strings.Cut(text, " · "); ok {
+			text = a.pal.dim(label+" · ") + a.pal.ink(value)
+		} else {
+			text = a.pal.ink(text)
+		}
+		return railLine{text: text, entry: -1, roomAction: action}
 	}
 	heading := "Task setup"
 	if taskSetupLater(a.roomNode()) {
 		heading = "Next run setup"
 	}
-	out := []railLine{{entry: -1}, row(heading, "")}
+	out := []railLine{{entry: -1}, {text: a.pal.dim(fit(heading, width)), entry: -1}}
 	if n := a.roomNode(); n != nil && n.model != "" {
 		action, word := "", "Model · "+modelBase(firstNonEmpty(n.nextModel, n.model))
 		if a.roomModelMovable() {
 			action = "model"
-			word += " ▾"
+			word = fit(word, max(width-2, 0)) + " ▾"
 		}
 		out = append(out, row(word, action))
+	}
+	if host, ok := a.agent.(interface{ TaskSetupSupported() bool }); ok && !host.TaskSetupSupported() && !a.roomIsGuest() {
+		out = append(out, railLine{text: a.pal.dim(fit("Engine update needed", width)), entry: -1})
 	}
 	if node := a.roomNode(); node != nil && !a.roomIsGuest() {
 		movable := a.taskRungMovable(node)
@@ -159,7 +167,7 @@ func (a *app) roomControlRows(width int) []railLine {
 		}
 	}
 	if taskSetupLater(a.roomNode()) && a.roomModelMovable() {
-		out = append(out, row("Applies when you continue", ""))
+		out = append(out, railLine{text: a.pal.dim(fit("Applies when you continue", width)), entry: -1})
 	}
 	if run := a.orchOf(); run != nil {
 		if model := run.plannerWord(); model != "" {
@@ -342,32 +350,4 @@ func taskSetupAvailable(node *taskNode) bool {
 		return !node.stopped
 	}
 	return taskSetupLater(node) && node.kind != session.TaskKindHarness && node.kind != session.TaskKindSubharness
-}
-
-// The assignment belongs to the reading column even when the journal has work.
-// A matching opening user entry already carries it and is not drawn twice.
-func (a *app) roomAssignmentRows(width int) []row {
-	node := a.roomNode()
-	if node == nil {
-		return nil
-	}
-	brief := firstNonEmpty(strings.TrimSpace(node.brief), strings.TrimSpace(node.assignment))
-	for _, entry := range a.roomEntries() {
-		if entry.kind == entryUser && strings.TrimSpace(entry.text) == brief {
-			brief = ""
-			break
-		}
-	}
-	var out []row
-	for _, part := range [][2]string{{"Task brief", brief}, {"Acceptance", strings.TrimSpace(node.acceptance)}} {
-		if part[1] == "" {
-			continue
-		}
-		out = append(out, row{text: a.pal.bold(a.pal.ink(part[0])), entry: -1})
-		for _, line := range a.renderMarkdown(part[1], width) {
-			out = append(out, row{text: line, entry: -1})
-		}
-		out = append(out, row{entry: -1})
-	}
-	return out
 }

@@ -53,8 +53,16 @@ continues to be available in the task status line on compact terminals.
 
 ## Where is the original task brief and acceptance
 
-The main reading column shows `Task brief` and `Acceptance` above a task's work
-history when those fields are available. They use the same Markdown formatting
-as the transcript and scroll with the content. A matching user message already
-carrying the brief is not repeated. The right column remains task navigation
-and setup; it does not duplicate the assignment in a narrow Details block.
+The task request keeps its existing three-line preview and clickable disclosure;
+`ctrl+o` expands or collapses it. Its completion criteria and context remain inside
+that request. Completed work keeps its existing `ctrl+e` disclosure. The sidebar
+does not repeat the request or change the transcript's presentation.
+
+## Task setup through the session host
+
+Model and thinking controls work through the normal local session host and remote
+connections as well as in-process sessions. Choices are bound to the open
+conversation and task. Rendering reads thinking settings from task updates.
+An older connected engine shows `Engine update needed` instead of editing controls: update that engine and
+reconnect. An older local host holding work keeps running until it goes quiet;
+rebuilding the terminal binary alone does not replace a busy host.

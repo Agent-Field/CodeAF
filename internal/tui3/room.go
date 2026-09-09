@@ -179,6 +179,9 @@ type taskModelDoor interface {
 // taskModelDoors is that door under this surface, when it has one.
 func (a *app) taskModelDoors() (taskModelDoor, bool) {
 	door, ok := a.agent.(taskModelDoor)
+	if host, hosted := a.agent.(interface{ TaskSetupSupported() bool }); hosted {
+		ok = ok && host.TaskSetupSupported()
+	}
 	return door, ok
 }
 
@@ -3255,9 +3258,6 @@ func (a *app) roomRows(width int) []row {
 	// which is why the branch that returns one does so above this line.
 	inner := gutterInner(width)
 	out, closed := a.deckRows(room.deck(), inner)
-	if len(out) > 0 {
-		out = append(a.roomAssignmentRows(inner), out...)
-	}
 	if room.harnessProgress != "" && !room.done {
 		out = append(out, row{text: a.pal.dim(fit(room.harnessProgress, inner)), entry: -1})
 		closed = false

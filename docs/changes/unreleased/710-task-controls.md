@@ -17,5 +17,11 @@ its recipient and the footer labels conversation totals. Compact frames retain
 the existing rail and header controls. Model changes apply on the next task turn.
 
 The expanded header combines title and live facts into one row below the
-ancestor trail. Task brief and acceptance are shown above nonempty work history
-with transcript Markdown formatting.
+ancestor trail. The existing task-request preview, disclosure and collapsed work
+presentation remain intact. Hover changes only the background; the sidebar footer
+keeps its reserved height.
+
+The session-host connection now carries task model and thinking changes, bound to
+the task's conversation. Previously those optional methods existed only on the
+in-process agent, leaving the normal hosted launch with read-only setup rows.
+Older hosts explicitly advertise no support until updated.

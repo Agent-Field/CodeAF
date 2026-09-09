@@ -188,6 +188,7 @@ type taskNode struct {
 	// way the spend does.
 	model     string
 	nextModel string
+	thinking  string
 	state     session.TaskState
 	// dependsOn is the structural half of this file (see the header): stored
 	// always, drawn only when a prerequisite is unmet.
@@ -4525,7 +4526,9 @@ func (a *app) railOffersResize() bool {
 	if !a.railCanWiden() {
 		return false
 	}
-	return a.railCramped || a.railHold || a.hoveringRailArea()
+	// The task panel reserves its footer before laying out the tree. Hover may
+	// recolor that footer, but must never add a row and move the controls.
+	return a.roomOrganized() || a.railCramped || a.railHold || a.hoveringRailArea()
 }
 
 // railSigma opens the footer's first line, and it is the whole of what makes the
@@ -5663,7 +5666,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		if node == nil || (notice.CostUSD <= node.cost &&
 			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node) &&
 			!taskRenamesContext(notice, node) && !taskStops(notice, node) &&
-			!taskPauses(notice, node) && notice.Decider == node.decider && notice.NextModel == node.nextModel &&
+			!taskPauses(notice, node) && notice.Decider == node.decider && notice.NextModel == node.nextModel && notice.Thinking == node.thinking &&
 			(notice.Brief == "" || notice.Brief == node.brief) &&
 			(notice.Acceptance == "" || notice.Acceptance == node.acceptance)) {
 			return nil
@@ -5813,6 +5816,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		node.model = model
 	}
 	node.nextModel = strings.TrimSpace(notice.NextModel)
+	node.thinking = notice.Thinking
 	if len(notice.Changed) > 0 {
 		node.changed = notice.Changed
 	}

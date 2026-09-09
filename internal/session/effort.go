@@ -155,6 +155,7 @@ func (a *Agent) SetTaskEffort(id uint64, rung string) error {
 	}
 	node.graph.mu.Unlock()
 	node.graph.checkpoint()
+	a.emitTaskUpdate(node.notice())
 	return nil
 }
 

@@ -300,14 +300,19 @@ func TestTaskBriefPrecedesTheWorkAndSavedSetupKeepsItsScope(t *testing.T) {
 	n := a.roomNode()
 	n.brief = "Research **the task** and produce a concise report."
 	n.acceptance = "Include sources and unresolved questions."
-	a.room.entries = []entry{{kind: entryAssistant, text: "The finished report.", turn: 1}}
+	a.room.entries, _ = a.replayBlocks([]session.DisplayEntry{{Role: "aside", Text: "THE WORK\n\n" + n.brief + "\n\nDONE WHEN\n\n" + n.acceptance}, {Role: "assistant", Text: "The finished report."}}, roomReplay(0))
 	a.room.dirty = true
 	var text []string
 	for _, r := range a.roomRows(a.bodyWidth()) {
 		text = append(text, plain(r.text))
 	}
+	a.toggleBriefFold()
+	text = nil
+	for _, r := range a.roomRows(a.bodyWidth()) {
+		text = append(text, plain(r.text))
+	}
 	body := strings.Join(text, "\n")
-	if !strings.Contains(body, "Task brief") || !strings.Contains(body, n.acceptance) || strings.Index(body, "Task brief") > strings.Index(body, "The finished report.") {
+	if !strings.Contains(body, "Task request") || !strings.Contains(body, n.acceptance) || strings.Index(body, "Task request") > strings.Index(body, "The finished report.") {
 		t.Fatalf("missing original assignment: %s", body)
 	}
 	n.state = session.TaskDone
@@ -337,14 +342,67 @@ func TestReopenedTaskReceivesItsBriefWithoutAProposalCard(t *testing.T) {
 	a, _ := taskControlApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(77, "Reopened task", session.TaskUnverified, session.TaskNotice{Brief: "The original saved assignment.", Acceptance: "The original acceptance criteria."})})
 	a.openRoom(77, "Reopened task")
-	a.room.entries = []entry{{kind: entryAssistant, text: "Work already completed.", turn: 1}}
+	a.room.entries, _ = a.replayBlocks([]session.DisplayEntry{{Role: "aside", Text: "THE WORK\n\n" + a.roomNode().brief + "\n\nDONE WHEN\n\n" + a.roomNode().acceptance}, {Role: "assistant", Text: "Work already completed."}}, roomReplay(0))
 	a.room.dirty = true
 	var lines []string
+	for _, r := range a.roomRows(a.bodyWidth()) {
+		lines = append(lines, plain(r.text))
+	}
+	a.toggleBriefFold()
+	lines = nil
 	for _, r := range a.roomRows(a.bodyWidth()) {
 		lines = append(lines, plain(r.text))
 	}
 	body := strings.Join(lines, "\n")
 	if !strings.Contains(body, "The original saved assignment.") || !strings.Contains(body, "The original acceptance criteria.") {
 		t.Fatalf("restored task lost its contract: %s", body)
+	}
+}
+
+func TestTaskPanelHoverNeverMovesContent(t *testing.T) {
+	for _, size := range [][2]int{{100, 38}, {120, 48}, {160, 60}} {
+		a, _ := taskControlApp(t)
+		a.width, a.height = size[0], size[1]
+		normalize := func(rows []string) string {
+			for i := range rows {
+				rows[i] = strings.TrimRight(plain(rows[i]), " ")
+			}
+			return strings.Join(rows, "\n")
+		}
+		before := normalize(a.railRows(a.viewHeight()))
+		for _, action := range []string{"model", "stop"} {
+			y := panelRow(t, a, action)
+			drive(t, a, motionTo(a.width-2, y))
+			after := normalize(a.railRows(a.viewHeight()))
+			if before != after {
+				t.Fatalf("%s hover changed layout at %v\nbefore: %s\nafter: %s", action, size, before, after)
+			}
+			if panelRow(t, a, action) != y {
+				t.Fatal("hover moved its own hit target")
+			}
+			drive(t, a, motionTo(1, 1))
+		}
+	}
+}
+
+func TestExistingTaskRequestKeepsItsFoldAndAppearance(t *testing.T) {
+	a, _ := taskControlApp(t)
+	original := entry{kind: entryUser, text: "THE WORK\n\n" + strings.Repeat("Keep the existing task presentation. ", 30), brief: true, turn: 1}
+	a.room.entries = []entry{original, {kind: entryAssistant, text: "Work result", turn: 1}}
+	a.roomNode().brief = "This must not be duplicated above the real request."
+	a.room.dirty = true
+	rows := a.roomRows(a.bodyWidth())
+	if len(a.room.entries) != 2 || a.room.entries[0].text != original.text {
+		t.Fatal("original task request changed")
+	}
+	var body []string
+	for _, r := range rows {
+		body = append(body, plain(r.text))
+	}
+	if !strings.Contains(strings.Join(body, "\n"), briefFoldKey) {
+		t.Fatal("original request lost its fold")
+	}
+	if !a.toggleBriefFold() || !a.room.entries[0].full {
+		t.Fatal("original request no longer expands")
 	}
 }

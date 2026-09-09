@@ -6,12 +6,15 @@ import "time"
 // engine machine. The surface sends intent; shaping, admission and spending
 // remain with the session agent that owns the conversation.
 const (
-	MethodTaskStart    = "Task.Start"
-	MethodPlannerStart = "Task.StartPlanner"
-	MethodTaskJudge    = "Task.Judge"
-	MethodTaskRoom     = "Task.Room"
-	MethodTaskSteer    = "Task.Steer"
-	MethodTaskStop     = "Task.Stop"
+	MethodTaskStart     = "Task.Start"
+	MethodPlannerStart  = "Task.StartPlanner"
+	MethodTaskJudge     = "Task.Judge"
+	MethodTaskRoom      = "Task.Room"
+	MethodTaskSteer     = "Task.Steer"
+	MethodTaskStop      = "Task.Stop"
+	MethodTaskModel     = "Task.Model"
+	MethodTaskEffort    = "Task.Effort"
+	MethodTaskSetEffort = "Task.SetEffort"
 	// MethodTaskWatch is the surface saying it draws tasks, and it is the only
 	// one of these that asks for nothing back: what it buys is the engine
 	// pushing "task" frames from then on (tasklane.go). It is sent once per
@@ -190,4 +193,11 @@ type TaskResolveArgs struct {
 // TaskHoldArgs names the proposal whose first typed rune stopped its clock.
 type TaskHoldArgs struct {
 	ID uint64 `json:"id"`
+}
+
+// TaskSetupArgs binds a setup change to the conversation whose task was drawn.
+type TaskSetupArgs struct {
+	ID      uint64 `json:"id"`
+	Session string `json:"session"`
+	Value   string `json:"value,omitempty"`
 }

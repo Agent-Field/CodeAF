@@ -2236,3 +2236,7 @@ on tasks, their history or their execution.
 Deep tree rows retain their full navigation ancestry but bound drawn indentation
 by the available width, reserving `railTitleFloor`, the two-cell glyph lead and
 one `treeIndentCols` child stem. An ellipsis marks omitted outer connectors.
+
+Task setup reads thinking levels from the standing task notices on hosted pages.
+Frames and pointer motion make **zero network calls**. The expanded sidebar
+reserves its resize hint even before hover, keeping controls at stable rows.

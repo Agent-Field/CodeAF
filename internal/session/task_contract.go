@@ -348,6 +348,8 @@ func settleOrAsk(word string) TaskSettle {
 // the top half, an update the bottom, and no surface reads a field its kind
 // did not set.
 type TaskNotice struct {
+	// Thinking is the effective setup, including a saved continuation choice.
+	Thinking string
 	// ID is the proposal's token: a surface hands it back to
 	// [Agent.ResolveTask]. On updates it names the node the update is about.
 	ID uint64

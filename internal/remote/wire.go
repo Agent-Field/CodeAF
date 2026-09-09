@@ -813,6 +813,8 @@ type Welcome struct {
 	// CORRECTION AT ALL. An unenforced claim is worse than no claim: the surface
 	// would believe the engine was guarding something nobody is guarding.
 	SteerOwner bool `json:"steerOwner,omitempty"`
+	// TaskSetup advertises task-scoped model and thinking controls.
+	TaskSetup bool `json:"taskSetup,omitempty"`
 
 	// Folders says this engine CAN HOLD THE FOLDERS A CONVERSATION IS ABOUT —
 	// that its agent answers [MethodPlacesRefer] and [MethodPlacesRemove] rather

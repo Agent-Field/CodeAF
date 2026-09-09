@@ -34,6 +34,9 @@ type taskEffortDoor interface {
 // taskEffortDoors is that door under this surface, when it has one.
 func (a *app) taskEffortDoors() (taskEffortDoor, bool) {
 	door, ok := a.agent.(taskEffortDoor)
+	if host, hosted := a.agent.(interface{ TaskSetupSupported() bool }); hosted {
+		ok = ok && host.TaskSetupSupported()
+	}
 	return door, ok
 }
 
@@ -76,6 +79,15 @@ func (a *app) effortTaskHere() (*taskNode, bool) {
 // taskRung is the rung one node is set to, and [effort.None] for one nobody has
 // set — which every surface below draws as nothing at all.
 func (a *app) taskRung(id uint64) effort.Rung {
+	// Hosted frames read the task lane, never a synchronous network getter.
+	if _, hosted := a.agent.(interface{ TaskSetupSupported() bool }); hosted {
+		if node := a.tasks[id]; node != nil {
+			rung, _ := effort.Parse(node.thinking)
+			return rung
+		}
+		return effort.None
+	}
+
 	door, ok := a.taskEffortDoors()
 	if !ok {
 		return effort.None
