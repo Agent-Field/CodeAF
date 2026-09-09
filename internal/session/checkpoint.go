@@ -2170,17 +2170,16 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 	// writer's call is the work moving, a result is lines that were or were not
 	// new (novelty.go).
 	lines := newLineNovelty()
-	// The step each call took, by id, so a result that arrives after a later
-	// batch's write is not counted against it.
-	at := make(map[string]int)
-	// The line each call wrote, by id, so its result can be printed under the same
-	// words the ledger used and a reader can match the two.
-	calls := make(map[string]string)
+	// Steps and labels belong to call occurrences. An orphan or duplicate
+	// result must not borrow a prior batch's label or advance its work clock.
+	at := make(map[*ai.ToolCall]int)
+	calls := make(map[*ai.ToolCall]string)
 	paired := toolResultCalls(messages)
 	writeResult, writeStep := -1, 0
 	var writeInput string
 	for messageIndex, message := range messages {
-		for _, call := range message.ToolCalls {
+		for callIndex := range message.ToolCalls {
+			call := &message.ToolCalls[callIndex]
 			name := strings.TrimSpace(call.Function.Name)
 			if name == "" {
 				continue
@@ -2198,8 +2197,8 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 			ledger = append(ledger, line)
 			moved.step()
 			if id := strings.TrimSpace(call.ID); id != "" {
-				calls[id] = line
-				at[id] = moved.steps
+				calls[call] = line
+				at[call] = moved.steps
 			}
 			if !checkpointWriters[name] {
 				continue
@@ -2221,8 +2220,8 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 		if message.Role != "tool" {
 			continue
 		}
-		id := strings.TrimSpace(message.ToolCallID)
-		line, known := calls[id]
+		call := paired[messageIndex]
+		line, known := calls[call]
 		if !known {
 			continue
 		}
@@ -2230,14 +2229,14 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 		for _, part := range message.Content {
 			came.WriteString(part.Text)
 		}
-		if at[id] > moved.changedAt {
+		if at[call] > moved.changedAt {
 			fresh, weighed := lines.measure(line, stripJobFooter(came.String()))
 			moved.read(fresh, weighed)
 		}
 		if tail := checkpointResultTail(came.String()); tail != "" {
 			results = append(results, line+checkpointResultArrow+tail)
-			if call := paired[messageIndex]; call != nil && checkpointWriters[call.Function.Name] && at[id] > writeStep {
-				writeResult, writeStep = len(results)-1, at[id]
+			if checkpointWriters[call.Function.Name] && at[call] > writeStep {
+				writeResult, writeStep = len(results)-1, at[call]
 				if len(call.Function.Arguments) <= checkpointWriteArgumentBytes {
 					writeInput = "\nsubmitted arguments: " + call.Function.Arguments
 				} else {
