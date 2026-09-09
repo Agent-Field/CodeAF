@@ -272,8 +272,10 @@ session id is 16 hex characters and names both the folder and the transcript's h
 
 Beside the transcript, in the same folder: `meta.json` (what the conversation is called,
 which workspace it is about, when you last spoke in it), `state.json` and `tasks.json`,
-the task transcripts, and — for a conversation with no project of its own — `work/`, the
-directory it works in. Removing one conversation is removing one folder.
+the task transcripts, `meta.lock` (so two windows on one conversation take turns writing
+its identity instead of overwriting each other), and — for a conversation with no project
+of its own — `work/`, the directory it works in. Removing one conversation is removing one
+folder.
 
 The directories are created with mode `0700`; the transcript itself is `0644`. The
 surface's own files — model cache, input history, drafts — sit in `~/.aforge/v3`.
