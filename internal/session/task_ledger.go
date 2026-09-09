@@ -174,8 +174,8 @@ func (a *Agent) landFinished(ctx context.Context, node *TaskNode, tree taskTree,
 	// was when the node started — so it says nothing at all about a file another
 	// window has landed in since. That is the one question left before a merge,
 	// and taskground.go is where it is asked.
-	if shift := a.groundShift(node, changed); shift != "" {
-		return a.landShifted(node, tree, changed, withReport(head, tail), shift, log)
+	if shift, moved := a.groundShift(node, changed); shift != "" {
+		return a.landShifted(node, tree, changed, moved, withReport(head, tail), shift, log)
 	}
 	landed, merge, detail, _ := landHome(node, tree, changed)
 	fmt.Fprintf(log, "merge: %s %s%s\n", merge, detail, note)
