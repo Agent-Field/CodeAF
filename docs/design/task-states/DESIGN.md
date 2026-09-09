@@ -162,6 +162,37 @@ decision is back with the person and the card draws its chips. If the model's
 last message asked the person a question about that task, the chips are the
 answer surface for that question: model text above, chips below, one ask.
 
+**And a process ending is the end of every turn it was holding.** Who is
+deciding rides the checkpoint (`taskRecord.Decider`, task_store.go) with the
+emptiness law — a record that says nothing says the person — so a graph coming
+off the disk carries the fact rather than losing it. The floor then fires on the
+way in: **every node the record says the model was holding is handed to the
+person as the checkpoint is read** (`TaskGraph.handBackOnLoad`, out of
+`rehydrate`), before the frontier turns, before anything is drawn, and before
+the checkpoint is rewritten, so the file stops saying it too. That covers the
+restart, the re-attach and the engine that died mid-turn, and it is what makes
+the shape testable at all: a fixture can now seed a card aforge was deciding,
+which is why the acceptance could not provoke this shape before.
+
+`readsTheDecisionLocked`'s question — is this the turn the decision was handed
+into — is not asked on that road. There are no turns on it; every agent that was
+holding anything died with the process.
+
+**The project index deliberately does not carry the decider.** That file is what
+work *came to*, appended once and never rewritten, and who holds a question
+lasts at most one turn — a row on disk saying `aforge is deciding` about a
+conversation that closed hours ago is a claim nothing can correct. It is
+`TaskIndexEntry.Activity`'s rule about a present that ends seconds after it is
+recorded, said about a second momentary fact.
+
+**One holder, and the questions wave reads it.** A landed `your call` reaches
+`internal/session/question.go` as a derived `Question`, and its `Policy` is read
+off `TaskAsk.Owner` (`landingPolicy`): the model holding it is `PolicyDecide`,
+the person is `PolicyAsk`. There is no second holder and **no second timer** —
+`PolicyRecommendThenAuto` and its deadline belong to the `ask` tool's own timed
+assumptions (`tools_ask.go`), while the floor is the end of a turn rather than a
+clock.
+
 Conflicts are never handed to the model. It cannot merge by decree, and a
 ground that moved is the same refusal: the note says `their own branch changed
 the same files while this worked, and that is not yours to accept`.

@@ -4365,6 +4365,11 @@ its chips — you do not have to notice it. And where the model's last message a
 about that task, the chips are the answer surface for that question: its words above, the
 chips under them, one ask rather than two.
 
+**And closing aforge ends the turn too.** If you quit, crash or come back to the
+conversation later, a task aforge was deciding is yours again the moment the conversation
+opens — the card draws its chips rather than the `aforge is deciding` row, because the turn
+it was going to be decided in is gone and nothing is going to finish that thought.
+
 ## Can aforge decide on its own — stop asking me about tasks that need a look
 
 Yes. The setting is **`task.settle`**, in `/settings` under Session as
