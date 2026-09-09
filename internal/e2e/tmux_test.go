@@ -680,8 +680,9 @@ func seedUndecidedRoot(t *testing.T, home, ws string) string {
 		"nodes": []map[string]any{{
 			"id": 1, "title": "Review the pull request diff", "brief": "review it", "acceptance": "the diff is correct",
 			"state": "unverified", "merge": "inplace",
-			"report": "finished, but needs your look — nobody could check it in 5m0s",
-			"ground": ws, "groundMode": "folder", "elapsed_ms": 42000,
+			"report":  "finished, but needs your look — nobody could check it in 5m0s",
+			"changed": []string{"diff-review.md"},
+			"ground":  ws, "groundMode": "folder", "elapsed_ms": 42000,
 		}},
 	})
 	return dir
