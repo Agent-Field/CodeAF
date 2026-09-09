@@ -4,6 +4,8 @@
 # output is never presented as a successful measurement.
 set -uo pipefail
 
+interval="${TEST_REPORT_HEARTBEAT:-30}"
+
 if [ "$#" -lt 2 ]; then
 	echo 'usage: scripts/test-report.sh REPORT COMMAND [ARG ...]' >&2
 	exit 2
@@ -15,8 +17,12 @@ shift
 rm -f -- "$report"
 
 started=$SECONDS
+parent=$$
 heartbeat() {
-	while sleep 30; do
+	while sleep "$interval"; do
+		# The EXIT trap covers every ordinary ending but not SIGKILL. An orphan
+		# reporting on a run nobody is watching is worse than a missing heartbeat (#735).
+		kill -0 "$parent" 2>/dev/null || exit 0
 		printf 'test-report: still running (%ss)\n' "$((SECONDS - started))" >&2
 	done
 }
