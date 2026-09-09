@@ -343,18 +343,24 @@ const (
 	// which lane it belongs to. The per-lane frames above stay exactly as they
 	// are: they are what an older window on the other end of this wire sends, and
 	// this one is what a window that has the whole object sends.
-	MethodQuestionResolve = "ResolveQuestion"   // QuestionArgs → nothing (or a refusal)
-	MethodHarness         = "ResolveHarness"    // HarnessArgs → nothing
-	MethodConnect         = "ResolveConnect"    // ConnectArgs → nothing
-	MethodConnectKey      = "ResolveConnectKey" // ConnectArgs → nothing
-	MethodNoteConnected   = "NoteConnected"     // ConnectedArgs → nothing
-	MethodTitle           = "Title"             // nothing → string
-	MethodUsage           = "Usage"             // nothing → session.Usage
-	MethodContextTokens   = "ContextTokens"     // nothing → int
-	MethodTranscript      = "Transcript"        // nothing → []session.DisplayEntry
-	MethodEarlier         = "EarlierHistory"    // nothing → session.EarlierHistory
-	MethodRewindPoints    = "RewindPoints"      // nothing → []session.RewindPoint
-	MethodRewindAt        = "RewindAt"          // int → []session.DisplayEntry
+	MethodQuestionResolve = "ResolveQuestion" // QuestionArgs → nothing (or a refusal)
+	// MethodSetAutonomy is `D`: let the engine answer every question of one SHAPE
+	// from now on ([session.Agent.SetAutonomy]). The setting is kept per project
+	// on the engine's side, which is why it is a call and not a local file: a
+	// window attached over `--host` is setting the dial on the machine the work
+	// is happening on.
+	MethodSetAutonomy   = "SetAutonomy"       // AutonomyArgs → nothing (or a refusal)
+	MethodHarness       = "ResolveHarness"    // HarnessArgs → nothing
+	MethodConnect       = "ResolveConnect"    // ConnectArgs → nothing
+	MethodConnectKey    = "ResolveConnectKey" // ConnectArgs → nothing
+	MethodNoteConnected = "NoteConnected"     // ConnectedArgs → nothing
+	MethodTitle         = "Title"             // nothing → string
+	MethodUsage         = "Usage"             // nothing → session.Usage
+	MethodContextTokens = "ContextTokens"     // nothing → int
+	MethodTranscript    = "Transcript"        // nothing → []session.DisplayEntry
+	MethodEarlier       = "EarlierHistory"    // nothing → session.EarlierHistory
+	MethodRewindPoints  = "RewindPoints"      // nothing → []session.RewindPoint
+	MethodRewindAt      = "RewindAt"          // int → []session.DisplayEntry
 
 	// Session doors.
 	MethodSessionsRecent = "Sessions.Recent" // nothing → []session.Summary
@@ -825,6 +831,8 @@ type Welcome struct {
 	// CORRECTION AT ALL. An unenforced claim is worse than no claim: the surface
 	// would believe the engine was guarding something nobody is guarding.
 	SteerOwner bool `json:"steerOwner,omitempty"`
+	// TaskSetup advertises task-scoped model and thinking controls.
+	TaskSetup bool `json:"taskSetup,omitempty"`
 
 	// Folders says this engine CAN HOLD THE FOLDERS A CONVERSATION IS ABOUT —
 	// that its agent answers [MethodPlacesRefer] and [MethodPlacesRemove] rather
@@ -1202,6 +1210,12 @@ type ConsentArgs struct {
 type StandingArgs struct {
 	ID     uint64                 `json:"id"`
 	Answer session.StandingAnswer `json:"answer"`
+}
+
+// AutonomyArgs is one shape of question and what may answer it from now on.
+type AutonomyArgs struct {
+	Kind   session.AskKind `json:"kind"`
+	Policy session.Policy  `json:"policy"`
 }
 
 // QuestionArgs is one answer, whole. It carries [session.Answer] rather than a

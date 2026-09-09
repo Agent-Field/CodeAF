@@ -38,8 +38,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it refuse to ask me something", "questions"},
 		{"can I answer a question from another window", "questions"},
 		{"it asked me the same thing twice", "questions"},
+		{"why did it not ask me", "questions"},
+		{"it went ahead by itself", "questions"},
+		{"make it ask me every time", "questions"},
+		{"it assumed something wrong", "questions"},
 		// And the room form (lane S2): the page a question opens into, and the
-		// seven things a person does on it. Each one is asked in the words
+		// nine things a person does on it. Each one is asked in the words
 		// somebody would actually type rather than in the key's own name.
 		{"can I open a question up to read it properly", "questions"},
 		{"compare the options it gave me", "questions"},
@@ -49,6 +53,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I pick several answers at once", "questions"},
 		{"it is asking me this or that over and over", "questions"},
 		{"can I just let it decide", "questions"},
+		{"stop asking me this kind of thing", "questions"},
 		{"none of the answers it offered are right", "questions"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},

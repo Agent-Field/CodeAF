@@ -165,12 +165,11 @@ func testNestedGate(t *testing.T) {
 	seedDecidedFamily(t, home, ws)
 	r := start(t, "afe2e_gate", home, ws, tuiWide, 40, "chat", "--one-model")
 
-	// WHICHEVER DOOR THE LAUNCH TOOK. A machine with no conversation for this
-	// workspace opens home; one that has the seeded conversation opens straight
-	// into it — both are the product behaving, and esc from the first is the
-	// second.
-	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "settleAskWord"))
-	r.keys("Escape")
+	// WHICHEVER DOOR THE LAUNCH TOOK, and esc until it is actually gone. A state
+	// root built a minute ago stands on the SETUP however complete the profile it
+	// copied is — the marker that says the setup has been seen is a file in that
+	// root — and the setup is several steps, so one esc leaves the one under it.
+	statesPastTheDoor(t, r)
 
 	// ONE FRAME, BOTH HALVES. The roster's `?` and its words for a node waiting
 	// on a person, and the answers row on the card — all on screen at once, which
@@ -184,10 +183,12 @@ func testNestedGate(t *testing.T) {
 	}
 
 	// AND A KEY ANSWERS IT. The letters work on the SELECTED card and only over an
-	// empty message box, exactly as `x` does — so ↑ walks to the card the landing
-	// just wrote, and `a` is the accept.
-	r.keys("Up")
-	r.lit("a")
+	// empty message box, exactly as `x` does — so the greeting is put away first
+	// ([statesAnswerKey] says why), ↑ walks to the card the landing just wrote,
+	// and `a` is the accept.
+	if !statesAnswerKey(t, r, "a", say(t, "settleTookLine")) {
+		t.Fatalf("three presses of `a` never left %q on the card:\n%s", say(t, "settleTookLine"), r.capture())
+	}
 	settled := r.waitFor(20*time.Second, say(t, "settleTookLine"))
 	t.Logf("the accept was spent and the card wears the receipt:\n%s", settled)
 	r.quit()
@@ -198,17 +199,39 @@ func testNestedGate(t *testing.T) {
 // right, the engine keeps its failed plus refused state, and the built surface
 // must call that result incomplete rather than turning the useful finding into
 // a generic failure.
+// ── KNOWN RED, AND WHAT WAS MEASURED ABOUT IT (issue #706) ──────────────────
+//
+// This subtest does not pass on dev today, and the reason is NOT the setup screen
+// or the greeting that were fixed for its two neighbours. It waits for the card's
+// answers row and the row is not drawn at all: the landing reads
+//
+//	? ◆ Review the pull request diff · your call · 42s · 1 file
+//	  nobody could check it
+//
+// and there is no third row under it — no `[a] accept`, no `[n] not right`, no
+// `[s] tell it`. The tier is right, the reason is right, and the answers are
+// missing, which is the shape docs/design/task-states/DESIGN.md exists to close.
+//
+// WHAT WAS RULED OUT, by measurement rather than by reading: it is not the
+// keyboard (the row is absent from the frame, not merely unanswered), not the
+// setup or the greeting ([rig.skipSetup], [statesAnswerKey]), and not the node
+// naming no changed file — that was the one structural difference from the
+// fixture in taskstates_e2e_test.go that DOES draw all four chips, and adding a
+// changed file put ` · 1 file` on the head and left the answers row absent.
+//
+// It is left standing rather than skipped: the suite is the place this is
+// visible, and a skip here is a defect nobody would meet again.
 func testRefusedLanding(t *testing.T) {
 	home := newHome(t, map[string]any{"task.settle": "ask"})
 	ws := newWorkspace(t, "refusedgatews", false)
 	seedUndecidedRoot(t, home, ws)
 	r := start(t, "afe2e_refused_gate", home, ws, tuiWide, 40)
 
-	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "settleAskWord"))
-	r.keys("Escape")
+	statesPastTheDoor(t, r)
 	r.waitFor(20*time.Second, say(t, "settleAskWord"), say(t, "settleNotRight"))
-	r.keys("Up")
-	r.lit("n")
+	if !statesAnswerKey(t, r, "n", say(t, "settleNotRightLine")) {
+		t.Fatalf("three presses of `n` never left %q on the card:\n%s", say(t, "settleNotRightLine"), r.capture())
+	}
 	screen := r.waitFor(20*time.Second, say(t, "settleNotRightLine"), say(t, "taskIncompleteWord"))
 	t.Logf("a refused landing keeps its reason and says incomplete:\n%s", screen)
 	if strings.Contains(screen, say(t, "taskFailedWord")) {
@@ -1560,8 +1583,11 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	// Whichever door the launch took. On a state root built one minute ago it is
 	// the setup, whose own foot says `esc skips setup`, and esc is what the rest
 	// of this file presses at this rung anyway.
-	first.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "landingKeysWord"))
-	first.keys("Escape")
+	// Whichever door the launch took, and esc UNTIL THE SETUP IS ACTUALLY GONE. On
+	// a state root built one minute ago it is the setup, which is several steps —
+	// so one esc leaves the one under it, and the brief typed next goes into that
+	// step's own box instead of into the composer.
+	statesPastTheDoor(t, first)
 	first.lit("/task solo write a file called hello.txt containing the word hello")
 	first.keys("Enter")
 
@@ -1596,8 +1622,7 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	// the record card exists for.
 	fresh := filepath.Join(bucket, "read-it-back", "transcript.jsonl")
 	r := start(t, "afe2e_room2", home, ws, tuiPlain, tuiShortRows, "chat", "--session", fresh, "--one-model", "--no-host")
-	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "landingKeysWord"))
-	r.keys("Escape")
+	statesPastTheDoor(t, r)
 	r.lit("/history")
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")

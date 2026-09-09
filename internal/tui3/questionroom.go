@@ -149,9 +149,13 @@ const (
 	// DESIGN.md's own requirement: the pick and its reason first, then the key
 	// again. Handing a decision back sight-unseen is how a person finds out later
 	// that they agreed to something.
-	questionDecideWord     = "it would take "
-	questionDecideAgain    = "d again to let it · any other key to keep deciding"
-	questionDecideKindGone = "letting it decide a whole kind of question from now on is not built yet"
+	questionDecideWord      = "it would take "
+	questionDecideAgain     = "d again to let it · any other key to keep deciding"
+	questionDecideKindWord  = "it would answer every "
+	questionDecideKindTail  = " like this one from now on, in this project"
+	questionDecideKindAgain = "D again to set it · any other key to leave it alone"
+	questionDecideKindDone  = "it answers questions like this one from now on · this project only"
+	questionDecideKindGone  = "this conversation has nowhere to keep that setting — it is kept per project"
 	// questionAskBackWord is the prompt under an option after `?`. ONE exchange
 	// per option is the bound DESIGN.md sets, and the row says so rather than
 	// letting a person discover it by being refused.
@@ -190,6 +194,19 @@ const questionSettle = 250 * time.Millisecond
 // of what a person opened this for.
 type questionDoor interface {
 	ResolveQuestion(answer session.Answer) error
+}
+
+// questionDialDoor is `D`: let it decide every question of THIS SHAPE from now
+// on ([session.Agent.SetAutonomy], lane E2).
+//
+// IT IS A SECOND OPTIONAL INTERFACE AND NOT A METHOD ON THE ONE ABOVE, for
+// room.go's stated reason about widening an interface: a session that can
+// resolve one question but has no project to keep a setting in must lose the
+// SETTING and not the answering. Where it is absent the key says so plainly
+// rather than doing nothing, because it is in the shared grammar and a key that
+// silently declines is a key a person presses three times.
+type questionDialDoor interface {
+	SetAutonomy(kind session.AskKind, policy session.Policy) error
 }
 
 // questionAsk is the sentence an ask-back sends and the reply it got.
@@ -270,6 +287,9 @@ type questionRoom struct {
 	// deciding is `d` showing its pick and reason, waiting for the second press.
 	// It is cleared by ANY other key, which is what makes the first press safe.
 	deciding bool
+	// decidingKind is `D` on the same terms, for the whole SHAPE of question
+	// rather than this one.
+	decidingKind bool
 	// input is the structured input shape, when the question carries one.
 	input questionInput
 	// shown is when the page was first drawn, and it is the whole of the settle
@@ -782,6 +802,12 @@ func (a *app) questionFootRows(width int) []string {
 			a.pal.dim(fit(questionDecideAgain, width)),
 		}
 	}
+	if room.decidingKind {
+		return []string{
+			a.pal.ask(fit(a.questionDecideKindLine(), width)),
+			a.pal.dim(fit(questionDecideKindAgain, width)),
+		}
+	}
 	if prompt := a.questionPromptWord(); prompt != "" {
 		return []string{
 			a.pal.ask(fit(prompt, width)),
@@ -896,6 +922,63 @@ func (a *app) questionDecideLine() string {
 	return line
 }
 
+// questionDecideKindLine is what `D` shows before the second press: WHICH shape
+// it would answer from now on and where the setting lives. A person handing over
+// a whole class of decision has to be told which class.
+func (a *app) questionDecideKindLine() string {
+	return questionDecideKindWord + questionAskWord(a.qroom.q.Ask) + questionDecideKindTail
+}
+
+// questionAskWord is the shape of a decision in the person's own words. It is
+// the object's own eight kinds, spelled as somebody would say them out loud —
+// the manual's `The kinds of question` section is the same list.
+func questionAskWord(ask session.AskKind) string {
+	switch ask {
+	case session.AskPermission:
+		return "may-this-happen question"
+	case session.AskChoice:
+		return "which-of-these question"
+	case session.AskJudgement:
+		return "is-this-good-enough question"
+	case session.AskClarification:
+		return "what-did-you-mean question"
+	case session.AskConfirmation:
+		return "are-you-sure question"
+	case session.AskLanding:
+		return "your-call row"
+	case session.AskAssumption:
+		return "assumption"
+	case session.AskRatify:
+		return "already-done card"
+	}
+	return "question"
+}
+
+// questionSetDial is the second press of `D`.
+//
+// IT SETS THE SHAPE AND ANSWERS NOTHING. The question on screen stays open and
+// still wants an answer: a person saying "you handle these from now on" has said
+// something about the FUTURE, and applying it retroactively to the one in front
+// of them would be the surface answering a question they were still reading.
+func (a *app) questionSetDial() tea.Cmd {
+	room := a.qroom
+	room.decidingKind = false
+	door, ok := a.agent.(questionDialDoor)
+	if !ok {
+		room.refused = questionDecideKindGone
+		a.questionRoomTouched()
+		return nil
+	}
+	if err := door.SetAutonomy(room.q.Ask, session.Policy{Kind: session.PolicyDecide}); err != nil {
+		room.refused = strings.TrimSpace(err.Error())
+		a.questionRoomTouched()
+		return nil
+	}
+	room.refused = questionDecideKindDone
+	a.questionRoomTouched()
+	return nil
+}
+
 // questionAnsweredWord is the dim line that stays where the foot was, and it is
 // THE ANSWER IS THE RECORD said on this page: what was decided, what was said
 // beside it, and who decided.
@@ -953,6 +1036,12 @@ func (a *app) questionOfferKeys() []questionKey {
 	}
 	if room.q.Pick != nil {
 		acts = append(acts, questionActDecide)
+	}
+	// `D` IS NAMED ONLY WHERE THERE IS SOMEWHERE TO KEEP THE SETTING. It is the
+	// emptiness law on a key rather than on a row, and it is the same reading
+	// [app.questionSetDial] makes when it is pressed.
+	if _, ok := a.agent.(questionDialDoor); ok {
+		acts = append(acts, questionActDecideKind)
 	}
 	acts = append(acts, questionActLater)
 	return questionOffer(acts...)
@@ -1023,6 +1112,17 @@ func (a *app) questionRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		room.deciding = false
 		a.questionRoomTouched()
 	}
+	if room.decidingKind && key != "D" {
+		room.decidingKind = false
+		a.questionRoomTouched()
+	}
+	// A REFUSAL IS SHOWN UNTIL THE NEXT KEY AND NOT A MOMENT LONGER. It stands
+	// where the foot was, so a page that kept one would be a page whose keys are
+	// invisible; and the next keypress is the person having read it.
+	if room.refused != "" {
+		room.refused = ""
+		a.questionRoomTouched()
+	}
 	act := questionKeyOf(key, questionSurface{pairs: room.input.kind == session.InputPairs})
 	if a.questionInputKey(act, key) {
 		a.questionRoomTouched()
@@ -1045,11 +1145,14 @@ func (a *app) questionRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		room.deciding = room.q.Pick != nil
 	case questionActDecideKind:
-		// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN — but a key that is
-		// in the shared grammar has to say why it did nothing here, or a person
-		// presses it three times. The dial lives in E2's autonomy file and this
-		// surface has nothing to write it with yet, so the row says exactly that.
-		room.refused = questionDecideKindGone
+		// TWO PRESSES HERE TOO, AND FOR A SHARPER REASON THAN `d`. That key hands
+		// over ONE decision and this one hands over every decision of a shape from
+		// now on, so the first press says which shape and what it would do with
+		// it, and only the second writes anything down.
+		if room.decidingKind {
+			return a.questionSetDial(), true
+		}
+		room.decidingKind = true
 	case questionActFold, questionActOpen:
 		room.open[room.focus] = !room.open[room.focus]
 	case questionActLater:

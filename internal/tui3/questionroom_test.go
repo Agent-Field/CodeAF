@@ -620,3 +620,76 @@ func TestOnceTheBoxIsPointedAtAPartEveryLetterIsText(t *testing.T) {
 		}
 	}
 }
+
+// dialAgent is a session that can both resolve a question and keep a setting
+// about a whole shape of them — which is what a real engine is, over a wire.
+type dialAgent struct {
+	*answeringAgent
+	set map[session.AskKind]session.Policy
+}
+
+func (g *dialAgent) SetAutonomy(kind session.AskKind, policy session.Policy) error {
+	if g.set == nil {
+		g.set = map[session.AskKind]session.Policy{}
+	}
+	g.set[kind] = policy
+	return nil
+}
+
+// `D` SAYS WHICH SHAPE IT WOULD TAKE OVER BEFORE IT TAKES IT OVER, and the
+// second press SETS THE SHAPE AND ANSWERS NOTHING: a person saying "you handle
+// these from now on" has said something about the future, and applying it to the
+// question they are still reading would be the surface answering for them.
+func TestDecideThisKindShowsTheShapeAndAnswersNothing(t *testing.T) {
+	inner := &answeringAgent{fakeAgent: &fakeAgent{model: "m"}}
+	agent := &dialAgent{answeringAgent: inner}
+	a := newTestApp(agent)
+	a.width, a.height = 92, 30
+	a.openQuestionRoom(demoQuestionReading())
+	a.qroom.shown = a.qroom.shown.Add(-time.Second)
+
+	tap(a, "D")
+	if foot := footText(a); !strings.Contains(foot, questionAskWord(session.AskChoice)) {
+		t.Errorf("the first press should name the shape:\n%s", foot)
+	}
+	if len(agent.set) != 0 {
+		t.Fatalf("the first press must set nothing: %#v", agent.set)
+	}
+	tap(a, "D")
+	if got := agent.set[session.AskChoice].Kind; got != session.PolicyDecide {
+		t.Errorf("the second press should set the shape, got %q", got)
+	}
+	if len(inner.answers) != 0 {
+		t.Errorf("setting the dial must not answer the question in front of you: %#v", inner.answers)
+	}
+	if !a.questionRoomOpen() {
+		t.Error("the question stays open")
+	}
+}
+
+// AND A SESSION WITH NOWHERE TO KEEP THE SETTING DOES NOT OFFER THE KEY. A key
+// named in the shared grammar that this question cannot honour is the emptiness
+// law's own case, one rung down from a row.
+func TestDecideThisKindIsNotOfferedWithNowhereToKeepIt(t *testing.T) {
+	a, _ := standingInAQuestion(t, demoQuestionReading())
+	if foot := footText(a); strings.Contains(foot, "D ") {
+		t.Errorf("a session with no dial door should not name D:\n%s", foot)
+	}
+}
+
+// A REFUSAL STANDS UNTIL THE NEXT KEY AND NOT A MOMENT LONGER — a page that kept
+// one would be a page whose keys are invisible.
+func TestARefusalClearsOnTheNextKey(t *testing.T) {
+	a, _ := standingInAQuestion(t, demoQuestionReading())
+	tap(a, "?")
+	a.input.setText("one thing")
+	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	tap(a, "?")
+	if foot := footText(a); !strings.Contains(foot, questionAskedWord) {
+		t.Fatalf("expected the refusal:\n%s", foot)
+	}
+	tap(a, "2")
+	if foot := footText(a); strings.Contains(foot, questionAskedWord) {
+		t.Errorf("the refusal should be gone after the next key:\n%s", foot)
+	}
+}

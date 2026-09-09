@@ -1685,6 +1685,15 @@ func (a *Agent) ResolveQuestion(answer session.Answer) error {
 	return err
 }
 
+// SetAutonomy is `D`: it says which shape of question may be answered without
+// asking, from now on, in this project. It carries the refusal back for
+// [Agent.ResolveQuestion]'s reason — "clarification always waits for an answer"
+// and "this conversation has no project" are both sentences a person has to read.
+func (a *Agent) SetAutonomy(kind session.AskKind, policy session.Policy) error {
+	_, err := a.c.call(nil, MethodSetAutonomy, AutonomyArgs{Kind: kind, Policy: policy})
+	return err
+}
+
 // ResolveHarness answers one sub-harness offer.
 func (a *Agent) ResolveHarness(id uint64, run bool, model string) {
 	_, _ = a.c.call(nil, MethodHarness, HarnessArgs{ID: id, Run: run, Model: model})

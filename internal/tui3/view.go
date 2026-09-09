@@ -790,6 +790,9 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	// where it drew that half ([app.frameOut]).
 	caretX, caretRow := unitX, unitRow
 	if !a.welcomeHolds() {
+		if a.roomRecipientHeight() > 0 {
+			add(inputPad+a.pal.accent(fit(a.roomRecipientWord(), width-len(inputPad))), chromeRow{})
+		}
 		input, x, row := a.inputBlock(width - len(inputPad))
 		// THE BOX IS THE REDIRECT LANE while a proposal is open: the placeholder
 		// is applied to the block the input already rendered, because the hint
@@ -945,7 +948,7 @@ func (a *app) chromeHeight() int {
 	// are [app.chrome]'s own decisions, read back here so the conversation is
 	// charged exactly what the frame draws.
 	if !a.welcomeHolds() {
-		n += a.inputHeight()
+		n += a.inputHeight() + a.roomRecipientHeight()
 	}
 	if gap := a.breathingRows(); gap > 0 && a.welcomeHeight() == 0 {
 		n += gap + 1 // the breathing room, and the rule standing in it

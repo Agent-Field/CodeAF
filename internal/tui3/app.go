@@ -3239,6 +3239,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the rows a person was reaching for stood still while the paragraph they
 		// were not looking at moved. It is claimed here, above the room, because
 		// the room is the BODY region and the column is beside it, not under it.
+		if a.roomPanelWheel(msg) {
+			return a, nil
+		}
 		if a.railWheelAt(msg.Mouse().X, msg.Mouse().Y) {
 			switch msg.Mouse().Button {
 			case tea.MouseWheelUp:
@@ -6229,7 +6232,19 @@ func (a *app) slash(line string) tea.Cmd {
 		a.openFiles()
 		return nil
 
+	case "stop":
+		if target := a.stopHere(); !target.empty() {
+			a.raiseStop(target)
+		} else {
+			a.note("open a running task to stop it")
+		}
+		return nil
+
 	case "model":
+		if a.roomOpen() {
+			a.roomModelCommand(rest)
+			return nil
+		}
 		// Bare /model is a question — "which ones are there" — and the picker
 		// is the answer. A slug is an instruction, and an instruction that
 		// opened a list to confirm itself would be the surface asking a person

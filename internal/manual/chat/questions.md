@@ -8,10 +8,12 @@ dim line saying why it is being asked now, the answers it will take, what is
 waiting on it, and what an answer costs — whether it can be taken back, whether
 it costs money or time, or whether it cannot be undone at all.
 
-**A question is never lost and never ages out.** It waits until it is answered,
-however long that is, and nothing more happens to whatever is stopped on it.
+Questions that your autonomy setting leaves on `ask` wait until they are
+answered. A reversible question with `recommend-then-auto` shows the model's
+pick, waits for its stated clock, then takes that pick; `decide` takes it at
+once. Irreversible questions and clarifications always wait for you.
 
-Not every one of them can be answered from somewhere else yet. The approval
+The model can raise one through its `ask` tool. Not every question can be answered from somewhere else yet. The approval
 question, a task proposal and a standing card reach home, another window on this
 machine, and a window attached over `--host`; the rest are answered in the
 conversation that raised them. What is written down about all of them is the
@@ -54,7 +56,7 @@ Most of them wait. A wait that ended is not a no: an approval question, a
 standing card and a page waiting to be approved carry no clock at all, and they
 stay up until somebody answers them.
 
-**A task proposal is the one with a clock.** The card says how long is left, and
+**A task proposal and a reversible recommendation may carry a clock.** The card says how long is left, and
 when the time runs out the work STARTS — the card is your chance to redirect it,
 not a gate the work waits on. A proposal you hold loses its deadline and then
 waits like everything else.
@@ -76,9 +78,32 @@ you are not asked the same thing twice.
 Every line says WHO decided, and where that was not you it says so rather than
 reading as something you said.
 
-**What is not in it yet: a question nobody answered.** A proposal whose clock
-ran out started the work without anybody saying anything, and there was no answer
-to write down; the record holds decisions, and silence is not one.
+When the autonomy dial takes a recommendation, the record identifies the answer
+as `aforge, on your settings`; it never makes that answer look like yours.
+
+## Why did it not ask me, or why did it go ahead by itself?
+
+The model is instructed to ask last. It first reads `the record`, then states a
+safe assumption, acts and offers to unwind reversible work, shows outcomes, and
+offers structured choices. A repeated decision may therefore be answered by the
+record, and a reversible choice may be taken by your autonomy setting.
+
+The settings are per project and per kind: `ask`,
+`recommend-then-auto` with a wait, or `decide`. Destructive work never answers
+itself, and clarification never runs on a clock.
+
+## Make it ask me every time
+
+Set that question kind to `ask` in the autonomy controls. This is per project;
+other projects keep their own setting. An irreversible question already behaves
+this way and cannot be changed to automatic.
+
+## It assumed something wrong
+
+Answer against the model's pick and add why. That explanation becomes a durable
+preference when memory is on, is read back with relevant remembered context, and
+can be removed through the existing forget control. The decision itself remains
+in `decisions.jsonl` as the record of what happened.
 
 ## A finished task waiting on your word counts as needing you
 
@@ -197,7 +222,7 @@ about this one` rather than doing nothing. A question that turned into a
 conversation is a question that should have been a conversation, and the way to
 have one is to close this and talk.
 
-## Can I just let it decide this one
+## Can I just let it decide — stop asking me this kind of thing
 
 `d` hands one decision back.
 
@@ -210,8 +235,18 @@ What is written down afterwards says IT decided, not you. That is the whole
 point of the field: a record claiming you chose something you handed over is the
 one thing a record must never do.
 
-`D` would let it decide every question of that shape from now on. That setting
-is not built yet, and pressing it says so.
+`D` hands over the whole SHAPE of question — every may-this-happen question,
+every which-of-these question — from now on, in this project. It takes two
+presses too, and for a sharper reason: the first says which shape it would take
+over, and only the second writes it down.
+
+**Setting it answers nothing.** The question in front of you stays open and still
+wants an answer; what you have said is about the future. The setting lives in
+`.aforge/autonomy.json` beside the project, and a conversation with no project to
+keep it in says so rather than pretending.
+
+**A what-did-you-mean question can never be handed over.** aforge refuses it:
+there is nothing for it to decide, because the whole question is what you meant.
 
 ## None of the answers it offered are right — say what the real question is
 
@@ -283,6 +318,5 @@ Whatever you send goes with everything you did on the way:
 
 ## What is not built yet
 
-There is no count of open questions in the status line, and no setting that
-answers a whole kind of question for you from now on. Those are designed and not
+There is no count of open questions in the status line. That is designed and not
 built; if the chat offers you one, it is improvising.

@@ -977,6 +977,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// This revision checks it in the handler, for every engine behind it
 		// ([Session.agentOf]), so the answer is about the wire and not the agent.
 		SteerOwner: true,
+		TaskSetup:  taskSetupKnown(sess.agent),
 	}
 }
 
@@ -1637,6 +1638,31 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	}
 
 	switch call.Method {
+	case MethodTaskModel, MethodTaskEffort, MethodTaskSetEffort:
+		args, err := arg[TaskSetupArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		want, agreed := steerConversation(s.joined, args.Session)
+		if !agreed || want == "" {
+			return nil, session.ErrNotThatConversation
+		}
+		owner, mine := sess.agentOf(want)
+		if !mine {
+			return nil, session.ErrNotThatConversation
+		}
+		door, ok := owner.(taskSetupDoor)
+		if !ok {
+			return nil, errors.New("task setup is unavailable in this engine; update the engine and reconnect")
+		}
+		switch call.Method {
+		case MethodTaskModel:
+			return nil, door.RetargetTask(args.ID, args.Value)
+		case MethodTaskSetEffort:
+			return nil, door.SetTaskEffort(args.ID, args.Value)
+		default:
+			return json.Marshal(door.TaskEffort(args.ID))
+		}
 	case MethodTaskRoom:
 		args, err := arg[TaskRoomArgs](call)
 		if err != nil {
@@ -1784,6 +1810,18 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, errors.New("engine: this session cannot answer questions from here")
 		}
 		return nil, door.ResolveQuestion(args.Answer)
+	case MethodSetAutonomy:
+		args, err := arg[AutonomyArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			SetAutonomy(session.AskKind, session.Policy) error
+		})
+		if !ok {
+			return nil, errors.New("engine: this session keeps no settings about what may answer by itself")
+		}
+		return nil, door.SetAutonomy(args.Kind, args.Policy)
 	case MethodSubharnessResolve:
 		args, err := arg[SubharnessResolveArgs](call)
 		if err != nil {

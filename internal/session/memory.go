@@ -1034,7 +1034,11 @@ func (a *Agent) refreshSystemLocked() {
 	if len(a.messages) == 0 {
 		return
 	}
-	a.messages[0] = textMessage("system", a.system+a.placesText+a.standingText+a.memoryText)
+	record := DecisionsSection(a.Decisions())
+	if record != "" {
+		record = "\n\n" + record + "\n"
+	}
+	a.messages[0] = textMessage("system", a.system+a.placesText+a.standingText+a.memoryText+record)
 }
 
 // refreshCardLocked holds the state card's new text for the note that carries
