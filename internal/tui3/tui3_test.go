@@ -380,7 +380,10 @@ func runCmd(cmd tea.Cmd) []tea.Msg {
 // about the scheduler, not about the code, and this suite runs beside others on
 // a loaded machine. A budget tuned to that claim turns a delivered event into a
 // drop the day the box is busy, which is a load-shaped red on dev for nobody's
-// change: the exact failure #399 exists to remove.
+// change: the exact failure #399 exists to remove. Ordinary work gets
+// [workBudget] instead: it always answers, so a healthy run never pays that
+// ceiling, and crossing it names a stuck command rather than pretending the
+// command returned nothing.
 //
 // AND THE SEAM THE WAITERS ARE NAMED FOR IS BUILT: harnessdriver_test.go. It
 // does not shorten anything. It takes the wait out of the COUNT instead — the
@@ -400,13 +403,21 @@ func runCmd(cmd tea.Cmd) []tea.Msg {
 // and below the shortest that never does, so it takes back the wait on the polls
 // and changes nothing that arrives.
 const (
-	// cmdBudget is what every command gets that is not a tick, the waiters
-	// included: unchanged, so nothing real is dropped faster than it was before.
+	// cmdBudget is what the waiters [blockingCommands] names get. It is
+	// unchanged, so a fake that never fills their channels still finishes and a
+	// real answer is not dropped faster than it was before.
 	cmdBudget = 150 * time.Millisecond
 	// tickBudget is what bubbletea's tick gets. It clears the 100ms tick — the
 	// longest one this package has that fires — with room for a loaded machine,
 	// and stops short of the 150ms debounce, which the old budget already raced.
 	tickBudget = 120 * time.Millisecond
+	// workBudget belongs to every disk write, folder read and small computation
+	// the waiter table does not name. THEY ALWAYS ANSWER — draftkeep.go's
+	// [app.keepDrafts] states that law for the write this ceiling protects — so a
+	// healthy run does not wait five seconds. Crossing it is a hang, and
+	// [harnessDriver.collect] says which command is stuck instead of silently
+	// returning nothing.
+	workBudget = 5 * time.Second
 )
 
 // teaTickSymbol is bubbletea's tick closure, as the runtime spells it. It is
@@ -417,11 +428,12 @@ const teaTickSymbol = "charm.land/bubbletea/v2.Tick.func1"
 // blockingCommands is THE ONE TABLE. It names every command in this package that
 // parks on a channel a test's fakes usually never write to and never close.
 //
-// IT DOES NOT PRICE ANYTHING — see the note above [cmdBudget] for why shortening
-// a waiter's budget is a bet on the scheduler. WHAT IT DOES IS SAY WHICH
-// COMMANDS MAY RUN BESIDE EACH OTHER: harnessdriver_test.go's [overlappable]
-// reads this table, and a name on it is a command the harness will start and
-// leave running rather than stand over. Two tests hold it in place —
+// IT HAS TWO READERS AND ONE MEANING: these are the commands that may never
+// answer. [budgetFor] gives them [cmdBudget], while harnessdriver_test.go's
+// [harnessDriver.overlappable] starts every safe one and leaves it running
+// rather than standing over it. The two overlap exceptions still get the short
+// budget; they are exceptional only because running them beside another command
+// would call code supplied by the test. Two tests hold the table in place —
 // [TestTheHarnessKnowsEveryCommandThatCannotAnswer] against the surface's own
 // source, so a new waiter cannot be added without landing here, and
 // [TestTheHarnessOverlapsEveryWaiterItNames] against real built commands, so a
@@ -449,13 +461,19 @@ var blockingCommands = []string{
 	"watchWakes",
 }
 
-// budgetFor prices one command. Only the tick is priced apart, by the runtime
-// symbol behind the closure.
+// budgetFor prices a command by what it can do. Bubbletea's tick and the
+// waiters [blockingCommands] names may never answer in a test, so they retain
+// their short ceilings; everything else is work which must finish or be named
+// as stuck after [workBudget].
 func budgetFor(cmd tea.Cmd) time.Duration {
-	if cmdSymbol(cmd) == teaTickSymbol {
+	symbol := cmdSymbol(cmd)
+	if symbol == teaTickSymbol {
 		return tickBudget
 	}
-	return cmdBudget
+	if waiterSymbol(symbol) {
+		return cmdBudget
+	}
+	return workBudget
 }
 
 // cmdSymbol is the fully qualified name of the function behind a command.
@@ -465,6 +483,22 @@ func cmdSymbol(cmd tea.Cmd) string {
 		return ""
 	}
 	return fn.Name()
+}
+
+// waiterSymbol reports whether a runtime symbol belongs to one of the commands
+// [blockingCommands] names. It deliberately includes [overlapExceptions]: those
+// commands park just like every other waiter and differ only in whether it is
+// safe for the harness to run them beside another command.
+func waiterSymbol(symbol string) bool {
+	if symbol == "" {
+		return false
+	}
+	for _, name := range blockingCommands {
+		if strings.Contains(symbol, "."+name+".func") {
+			return true
+		}
+	}
+	return false
 }
 
 // TestTheHarnessKnowsEveryCommandThatCannotAnswer reads the surface's own source

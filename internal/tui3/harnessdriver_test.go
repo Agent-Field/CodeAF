@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -98,15 +99,18 @@ func (d *harnessDriver) overlappable(cmd tea.Cmd) bool {
 	if symbol == teaTickSymbol {
 		return d.ticksAreMessages()
 	}
-	for _, name := range blockingCommands {
-		if overlapExceptions[name] {
-			continue
-		}
+	if !waiterSymbol(symbol) {
+		return false
+	}
+	// The table says this command may never answer; the exceptions say which of
+	// those may not be left running beside another one, and they are the whole
+	// difference between the two readings of it.
+	for name := range overlapExceptions {
 		if strings.Contains(symbol, "."+name+".func") {
-			return true
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 // inlineSpin is how long the harness gives a command it has just started before
@@ -160,9 +164,9 @@ type inflight struct {
 	answer chan tea.Msg
 	// at is when the command answered, written before the send on `answer` and
 	// therefore safe to read after the receive. It is compared against the
-	// deadline so that a command which came back late is dropped exactly as the
-	// old harness dropped it, rather than delivering a message the suite has
-	// never seen.
+	// deadline so that a waiter or tick which came back late is dropped exactly
+	// as the old harness dropped it; ordinary work crossing its larger ceiling
+	// is named as stuck instead of disappearing.
 	at time.Time
 }
 
@@ -288,7 +292,16 @@ func (d *harnessDriver) collect() []tea.Msg {
 				// stopped listening by then and returned nothing, so this
 				// returns nothing too: a message the suite has never been given
 				// is not one to start giving it here.
-				noteCommand(p.cmd, p.at.Sub(p.started), false)
+				//
+				// ONLY A TICK OR A NAMED WAITER CAN REACH HERE, because those are
+				// the only commands [harnessDriver.run] leaves running, and they
+				// are exactly the two kinds allowed to disappear. [droppedWork] is
+				// the guard on that: widening [overlappable] to something that
+				// finishes would otherwise put a silent drop back on this line
+				// without a word.
+				waited := p.at.Sub(p.started)
+				noteCommand(p.cmd, waited, false)
+				droppedWork(p.cmd, waited)
 				continue
 			}
 			noteCommand(p.cmd, p.at.Sub(p.started), true)
@@ -296,8 +309,11 @@ func (d *harnessDriver) collect() []tea.Msg {
 		default:
 			if now.After(p.deadline) {
 				// Dropped, exactly as before, and its goroutine stays parked on
-				// the channel nobody will write to — see [TestMain]'s count.
+				// the channel nobody will write to — see [TestMain]'s count. The
+				// same guard as above: nothing but a tick or a named waiter is
+				// running here today, and [droppedWork] is what keeps that true.
 				noteCommand(p.cmd, budgetFor(p.cmd), false)
+				droppedWork(p.cmd, now.Sub(p.started))
 				continue
 			}
 			kept = append(kept, p)
@@ -353,8 +369,29 @@ func (d *harnessDriver) settle() []tea.Msg {
 	return nil
 }
 
+// droppedWork is the harness admitting that it gave up on real work. Only a
+// tick or a waiter [blockingCommands] names is allowed to disappear at its
+// deadline; every other command is work that finishes, so silence after
+// [workBudget] is a hang whose runtime symbol and actual wait belong in the
+// failure and its goroutine dump.
+//
+// IT IS CALLED FROM EVERY PLACE A COMMAND CAN BE GIVEN UP ON, which today means
+// it fires only out of [runInline] — the two in [harnessDriver.collect] stand
+// over commands that are all ticks and waiters. That is the point of putting it
+// in all three: the silent drop this fixes was not a line anybody wrote on
+// purpose, it was a deadline that had grown to cover more than it was meant to,
+// and a guard on one of the three exits would let the same thing happen again.
+func droppedWork(cmd tea.Cmd, waited time.Duration) {
+	symbol := cmdSymbol(cmd)
+	if symbol == teaTickSymbol || waiterSymbol(symbol) {
+		return
+	}
+	panic(fmt.Sprintf("the harness waited %s for %s and it never answered. Only bubbletea's tick and the waiters blockingCommands names may be given up on — everything else is work that finishes, so this is a command that is stuck. Read the goroutine dump rather than raising workBudget.", waited, symbol))
+}
+
 // runInline is the harness's old body, kept for every command that may not
-// overlap: run it, and give up on it when its budget is gone.
+// overlap. A named waiter is still given up on when its budget is gone; ordinary
+// work receives [workBudget], after which [droppedWork] names it as stuck.
 func runInline(cmd tea.Cmd) tea.Msg {
 	started := time.Now()
 	done := make(chan tea.Msg, 1)
@@ -364,8 +401,129 @@ func runInline(cmd tea.Cmd) tea.Msg {
 		noteCommand(cmd, time.Since(started), true)
 		return msg
 	case <-time.After(budgetFor(cmd)):
-		noteCommand(cmd, time.Since(started), false)
+		waited := time.Since(started)
+		noteCommand(cmd, waited, false)
+		droppedWork(cmd, waited)
 		return nil
+	}
+}
+
+// slowHarnessMsg is what the two tests below send through the harness. It
+// carries a word rather than being empty so that the message can be asserted by
+// VALUE — a count of one proves the harness returned something, and only the
+// value proves it returned the thing the command actually produced.
+type slowHarnessMsg struct{ answer string }
+
+// TestTheHarnessDeliversACommandThatAnsweredHowLongItTook is the law this file's
+// budget is for: A COMMAND THAT ANSWERS IS DELIVERED.
+//
+// The harness used to price every command at [cmdBudget] and return nothing for
+// one that answered later, saying nothing about it. On a busy box that turned a
+// record write — draftkeep.go's [app.keepDrafts], whose own comment is "IT
+// ALWAYS ANSWERS" — into a message the suite never saw, and the test waiting for
+// it went on to accuse the surface of never sending the correction it had in
+// fact sent (#702). Two hundred milliseconds is a scheduler's business; whether
+// the message arrives at all is not.
+func TestTheHarnessDeliversACommandThatAnsweredHowLongItTook(t *testing.T) {
+	want := slowHarnessMsg{answer: "finished"}
+	cmd := func() tea.Msg {
+		time.Sleep(2 * cmdBudget)
+		return want
+	}
+
+	got := runCmd(cmd)
+	if len(got) != 1 {
+		t.Fatalf("the harness returned %d messages for a command that answered, want 1", len(got))
+	}
+	if got[0] != want {
+		t.Fatalf("the harness returned %#v, want %#v", got[0], want)
+	}
+}
+
+// TestTheHarnessStillGivesUpOnTheWaitersItNames is the other half, and it is
+// what keeps the fix above from being a way to hang the suite.
+//
+// A waiter parks on a channel this package's fakes usually never write to and
+// never close, so giving up on it is not a guess — it is the only end it has.
+// That is what [cmdBudget] is for and it does not move. The three prices are
+// asserted together because they are one decision: the tick is a timer, the
+// named waiters may never answer, and everything else finishes.
+func TestTheHarnessStillGivesUpOnTheWaitersItNames(t *testing.T) {
+	waiter := waitEvent(make(chan session.Event), 1)
+	tick := tea.Tick(time.Hour, func(time.Time) tea.Msg { return nil })
+	work := func() tea.Msg { return slowHarnessMsg{} }
+	if got := budgetFor(waiter); got != cmdBudget {
+		t.Fatalf("budgetFor(waitEvent) = %s, want %s", got, cmdBudget)
+	}
+	if got := budgetFor(tick); got != tickBudget {
+		t.Fatalf("budgetFor(tea.Tick) = %s, want %s", got, tickBudget)
+	}
+	if got := budgetFor(work); got != workBudget {
+		t.Fatalf("budgetFor(ordinary work) = %s, want %s", got, workBudget)
+	}
+
+	started := time.Now()
+	got := runCmd(waiter)
+	waited := time.Since(started)
+	if len(got) != 0 {
+		t.Fatalf("the harness returned %d messages for a waiter whose channel nobody writes to, want 0", len(got))
+	}
+	if waited < cmdBudget {
+		t.Errorf("the harness gave up on waitEvent after %s, before its %s budget", waited, cmdBudget)
+	}
+	if waited >= workBudget/2 {
+		t.Errorf("the harness spent %s giving up on waitEvent, want comfortably less than the %s work budget", waited, workBudget)
+	}
+}
+
+// TestTheWaiterMatcherNamesEveryCommandTheTableHolds holds [waiterSymbol] to
+// [blockingCommands], NAME BY NAME AND EXCEPTIONS INCLUDED.
+//
+// The matcher is the one source of truth for "this command may never answer":
+// [budgetFor] asks it what to charge and [harnessDriver.overlappable] asks it
+// what may run beside something else. A name it silently stopped recognising
+// would be a waiter charged [workBudget] — a hundred and fifty milliseconds of
+// waiting turned into five seconds, or a panic naming a command that is doing
+// exactly what it was written to do. [TestTheHarnessOverlapsEveryWaiterItNames]
+// asks the same question of real built commands; this one asks it of every row.
+func TestTheWaiterMatcherNamesEveryCommandTheTableHolds(t *testing.T) {
+	for _, name := range blockingCommands {
+		symbol := "github.com/Agent-Field/aforge-v2/internal/tui3.(*app)." + name + ".func1"
+		if !waiterSymbol(symbol) {
+			t.Errorf("waiterSymbol(%q) = false, and blockingCommands names %s — a waiter the matcher does not recognise is charged the whole %s and named as stuck when it does what it was written to do", symbol, name, workBudget)
+		}
+	}
+}
+
+// TestTheHarnessNamesOrdinaryWorkThatNeverAnswers is the third outcome: a
+// command that is neither a tick nor a waiter and never answers at all.
+//
+// It is a hang, and the harness says which command by name rather than handing
+// the test nothing and letting a later assertion invent a reason. THE SEAM IS
+// CALLED DIRECTLY rather than through [runCmd] on purpose: reaching it the long
+// way costs a real [workBudget] of wall clock, and a five-second test earns
+// nothing here that this one does not already say. The three exits that call it
+// are covered by reading, and named in its own comment.
+func TestTheHarnessNamesOrdinaryWorkThatNeverAnswers(t *testing.T) {
+	cmd := func() tea.Msg { return nil }
+	waited := workBudget + 23*time.Millisecond
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		droppedWork(cmd, waited)
+	}()
+	if recovered == nil {
+		t.Fatal("droppedWork returned after the harness gave up on ordinary work, want a panic")
+	}
+	message, ok := recovered.(string)
+	if !ok {
+		t.Fatalf("droppedWork panicked with %#v, want a sentence", recovered)
+	}
+	if symbol := cmdSymbol(cmd); !strings.Contains(message, symbol) {
+		t.Errorf("droppedWork panic %q does not name command %q", message, symbol)
+	}
+	if !strings.Contains(message, waited.String()) {
+		t.Errorf("droppedWork panic %q does not name waited duration %s", message, waited)
 	}
 }
 
