@@ -469,7 +469,10 @@ the task simply lands. The tip the task's branch stood on before the round is ke
 `<the task's branch>-before-merge`, so nothing is rewritten in place and you can always read
 what the task itself produced.
 
-Only a round that fails reaches you, and then the report says so and names the files:
+**Only a round that fails reaches you.** The task then lands as
+**`your call · conflicts with your branch: <the files>`**, its chips read
+`[a] resolve it · [n] drop it · [s] tell it`, and the report names the files that changed
+on both sides:
 
 `finished, but needs your look — its branch task/edit-the-parser-9c1a2f did not merge cleanly and was kept: internal/auth/session.go changed on both sides`
 
@@ -533,7 +536,7 @@ copy; later acceptance and fresh checks use that name. Older released copies can
 be recovered when their retained-file record and original branch are still available.
 An old record cannot reconstruct an unknown renamed branch.
 
-When recovery cannot proceed, the task still **needs your look** and names the saved
+When recovery cannot proceed, the task stays **`your call`** and names the saved
 folder and the reason: `its saved working copy at <folder> could not be reopened to
 merge: <reason>`. Its files stay there. Repair the cause and accept again. This does not
 claim delivery succeeded or that a deleted branch still holds the work. Protected
@@ -544,7 +547,7 @@ of writing into your checkout.
 
 A landing that cannot put the work away **does not merge, does not tidy anything up, and
 does not say done**. The work stays on disk in the task's own folder, which is then the only
-copy of it, and the task lands as **needs your look** with the report naming that folder and
+copy of it, and the task lands as **`your call`** with the report naming that folder and
 quoting whatever went wrong — a disk that filled, a read-only mount, a permission somebody
 changed:
 
@@ -953,7 +956,7 @@ A task the check **did not accept** says something different:
 `what it produced was not accepted — the whole of it is at file:///…`. What is missing is
 the news there, so the work's own account is not repeated as though it stood — but it is
 never hidden either, and that line says where to read it. Nothing else changes what is
-delivered: a task that is done, needs your look, was stopped or ran out of steps hands its
+delivered: a task that is done, is your call, was stopped or ran out of steps hands its
 answer over, whatever its report was later rewritten to say.
 
 Then, when there were changes, `changed: a.go, b.go`, and one line saying
@@ -987,9 +990,9 @@ task branch is kept instead. Commits written by aforge's own landings do not cou
 person moving it.
 Otherwise the merge is attempted whatever your tree looks like — a dirty checkout is normal. On success
 the working copy is removed and the branch is deleted. A merge that conflicts is abandoned,
-the branch is kept, the working copy is given back, and the task needs your look. A commit
+the branch is kept, the working copy is given back, and the task lands `your call`. A commit
 that could not be made at all stops the landing before the merge — nothing is merged,
-nothing is given back, and the task needs your look (*My task could not save what it wrote*
+nothing is given back, and the task lands `your call` (*My task could not save what it wrote*
 above). Two tasks finishing at
 once are serialized, so a merge is never lost.
 
@@ -1176,7 +1179,7 @@ permission rule turned down are the harness's own answers, not the task working 
 never advance the no-progress counter, never reset it, and never earn a `[stuck]` note. They
 are still steps, they still cost, and they are still in the task's transcript.
 
-**Files saved after a withdrawal are reported as unverified.** If a task had been running
+**Files saved after a withdrawal are reported as never looked at.** If a task had been running
 its work with `bash`, lost it to the landing turn, and then saved something anyway, its
 report says `incomplete — nothing checked the files it saved after its tools were withdrawn
 — they were never built or run`. It stands at the head of the report, directly under the
@@ -1778,41 +1781,51 @@ and no line claims one did.
 a brief that takes thirty seconds is drawn for thirty seconds with one clock counting the
 whole of it. It does not go blank partway through and it does not restart at zero.
 
-## The three ways a task can land
+## The four words a task can land with — done, stopped, incomplete, your call
 
-Every task ends in exactly one of three states, and the words are the same everywhere you
-read them.
+Every task ends wearing exactly one of four words, and the words are the same everywhere
+you read them: the card, the rail, the roster, home, and the note aforge itself reads. Two
+of them say nothing more is coming; the other two carry a reason, which the next section
+sets out in full.
 
-**Finished.** `task 7 finished: <title>`. The second look held. The branch merges into an
-ordinary checked-out branch, or stays on its task branch when the checkout is protected,
-moved or detached. The report leads with the task's own account of the work, with what it
-was checked on under it — no lead word at all.
+**Done.** `task 7 done: <title>`. The check held. The branch merges into an ordinary
+checked-out branch, or stays on its task branch when the checkout is protected, moved or
+detached. The report leads with the task's own account of the work, with what it was
+checked on under it — no lead word at all.
 
-**Halted.** `task 7 lost the connection: <title>`,
-`task 7 the model provider refused it: <title>`, `task 7 went in circles: <title>`,
-`task 7 was blocked by another task: <title>`, `task 7 ran out of steps: <title>`,
-`task 7 would not write its notes down: <title>`. Nothing was found wrong with the work; the
-branch is kept and the task can be run again from it. The rail draws these with `!` (see the
-section on the words under a stopped task).
+**Stopped.** `task 7 stopped: <title>`. **You** ended it, and that is the whole of what the
+word means. No threshold, no loop guard and no rule a worker would not follow is drawn as a
+stop, and a task you stopped is never coloured as something having broken.
 
-**Failed.** `task 7 failed: <title>`. Somebody looked and made a finding — or a limit fired
-and the work did not hold when it was checked afterwards. The branch is kept. Anything
-waiting on it fails with it. A limit firing on its own is no longer enough: work that was
-stopped and then held lands under *finished* above.
+## Why a task landed incomplete or as your call — the reason beside the word
 
-**Needs your look.** `task 7 needs your look: <title>`. Nobody could look, or nobody would
-say — or the work held and one of the files it wrote moved under it while it ran, which is
-its own section below — or the work held and its branch would not merge cleanly, or the
-folder it was going to lay its work back over holds an edit of your own in one of those
-files — or what
-was left of the work turned out to be something no worker can do at all, which lands this
-way before a worker is ever started (*A task that landed needing your look without doing
-anything*). The task is neither done nor failed: nothing merges, the branch is kept, and nothing
-waiting on it fails. The report leads
+**Incomplete.** `task 7 incomplete: <title> · <reason>`. The work ended without finishing,
+and the reason is one plain sentence sitting right beside the word:
+`· lost the connection`, `· the model provider refused it`, `· went in circles`,
+`· was blocked by another task`, `· ran out of steps`, `· would not write its notes down`,
+`· its brief went stale`, `· would not take a step it was asked to`,
+`· the check found gaps: <what is missing>`, or `· a fault: <the first line of the error>`.
+The branch is kept and the work can be carried on from it. **The word `failed` is not one
+of these** — the engine keeps that name for one of its own states and nobody reads it.
+
+**Your call.** `task 7 your call: <title> · <what it is asking>`. The machine took the work
+as far as it could and the rest is a decision only a person can make. Nobody could look, or
+nobody would say — or the work held and one of the files it wrote moved under it while it
+ran, which is its own section below — or the work held and its branch would not merge
+cleanly, or the folder it was going to lay its work back over holds an edit of your own in
+one of those files — or what was left of the work turned out to be something no worker can
+do at all, which lands this way before a worker is ever started (*A task that landed needing
+your look without doing anything*). The task is neither done nor incomplete: nothing merges,
+the branch is kept, and nothing waiting on it fails. The reason beside the word is one of
+the six on the tasks page — `nobody could check it`, `the check did not pass it: <gaps>`,
+`conflicts with your branch: <files>`, `design ready to approve`, `starts on your word`,
+`paused at the <amount> cap` — and each carries its own two answers.
+
+The report under a landing nobody could judge still leads
 `finished, but needs your look — ` and then what was said, or
 `finished, but needs your look — nobody could say whether it holds` when nothing was said.
-The landing then says in as many words that it is neither done nor failed, that its branch
-is kept, and that anything waiting on it waits until somebody decides.
+That lead is the **report's** own opening sentence, written when the check gave up; the
+word on the row above it, and in the note, is `your call`.
 
 The sentences you may see when nobody could say are written plainly:
 `the checker could not start: <err>`, `the checker could not be asked: <err>`,
@@ -1835,7 +1848,7 @@ claim two attempts. These are checks of the work, not unanswered questions to yo
 The last line of that landing is the only thing the `task.settle` setting changes. With it
 on `ask` — the default — the note says the task waits until somebody decides and offers
 `tasks id 7 resolve accept|reaudit|refute`, and tells aforge to say what it thinks and leave
-the choice with you; the four choices on the landed card are the door. With it on `auto` the
+the choice with you; the chips on the landed card are the door. With it on `auto` the
 same note tells aforge to read the report and the work and settle the task itself, and to
 come back to you only when it genuinely cannot tell. Everything else in the landing is
 identical either way.
@@ -1844,7 +1857,7 @@ identical either way.
 and every other headless door run with no surface to raise a card on, no settings panel and
 nobody to read a landing that says it is waiting on somebody — so a task that needs a look
 there would stop the run for good, and that was measured stopping a ten-hour run. Such a
-session takes the same road your own `[d] decide these for me` takes: aforge reads the
+session takes the same road your own `[d] let aforge decide this one` takes: aforge reads the
 report and the work and settles the task itself, with the same standing escape to say it
 cannot tell. It never goes the other way — a session you are sitting in front of keeps the
 row you set, and a blank row still means aforge asks you.
@@ -1909,7 +1922,7 @@ it in five minutes.
 
 ## A task that landed needing your look without doing anything — task did nothing, only I can approve this, my task stopped straight away and says it needs a person
 
-Sometimes a task lands needing your look within seconds, having written nothing, spent
+Sometimes a task lands as `your call` within seconds, having written nothing, spent
 almost nothing and touched no files. That is not a failure and nothing went wrong. It means
 what was left of the work is **not work a worker can do**: an approving review only a named
 person may give, a credential or an account nobody here holds, a decision that is yours to
@@ -1923,8 +1936,8 @@ sentence, in its words — `finished, but needs your look — an approving revie
 only accept from a human who isn't the author`, say — so what you are being asked to do is
 the first line on the card.
 
-Everything else about the landing is the ordinary needs-your-look landing above: nothing
-merges, the branch is kept, nothing waiting on it fails, and the four choices on the card
+Everything else about the landing is the ordinary `your call` landing above: nothing
+merges, the branch is kept, nothing waiting on it fails, and the chips on the card
 are the door. Usually the right one is to do the thing yourself and then accept it, or to
 say what you want done instead and start the work again.
 
@@ -1934,10 +1947,10 @@ run, the check, a repair round and the check again, spent editing a file in an e
 of the repository while it looked for something it could do — and then failed by the check.
 The reading that would have saved all of it had already been paid for.
 
-## Why my task needs my look when it finished fine — another window changed the same file
+## Why my task says your call when it finished fine — another window changed the same file
 
-There is a second reason `needs your look` fires, and it has nothing to do with whether the
-work is any good. **A task that finished, was checked, and passed will still stop short of
+There is a second reason a task lands `your call`, and it has nothing to do with whether
+the work is any good. **A task that finished, was checked, and passed will still stop short of
 merging if somebody else changed one of the same files while it was running.**
 
 This is the case nothing else can catch. A task opens a file, thinks for twenty minutes,
@@ -1954,9 +1967,9 @@ two things:
 - **what other windows on this project are writing right now** — the live claims each open
   window publishes about the paths its running work has already touched.
 
-When either overlaps, the task lands `needs your look` instead of `done`. Nothing merges,
-the branch is kept, dependents wait, and the four choices on the card are the same ones
-described in the tasks page — `accept` merges it the ordinary way once you have looked.
+When either overlaps, the task lands `your call` instead of `done`. Nothing merges, the
+branch is kept, dependents wait, and the chips on the card are the same ones described in
+the tasks page — `[a] accept` merges it the ordinary way once you have looked.
 
 **What the report says.** The first line names the files and, where it can, the work that
 changed them. Landed work and a window that is still going get separate sentences, because
@@ -1997,7 +2010,7 @@ It does not, and this is the folder's half of what a repository ground gets from
 A task whose ground is a **plain folder** works in a private copy of it and lays the files
 it wrote back over your folder by name when it lands. **A file you changed there yourself
 while it worked is never written over.** Nothing at all is laid, the task keeps its whole
-copy where it is, and it lands `needs your look`:
+copy where it is, and it lands `your call`:
 
 `finished, but needs your look — its work is in /Users/you/.aforge/sessions/…/trees/11 and was not laid over /Users/you/notes: notes.md changed there while this ran`
 
@@ -2032,14 +2045,14 @@ without exception:
 - a task you killed with `jobs kill` keeps its branch, and the partial work with it;
 - a task whose work was found incomplete keeps its branch, exactly as a killed one does.
   "Not proven" is not "throw it away";
-- a task that needs your look keeps its branch;
-- a task whose merge conflicted keeps its branch, lands as **needs your look** rather than
-  finished, and names the files that changed on both sides. The note adds
+- a task that landed `your call` keeps its branch;
+- a task whose merge conflicted keeps its branch, lands as **`your call · conflicts with
+  your branch`** rather than finished, and names the files that changed on both sides. The note adds
   `its branch task/… did not merge cleanly and was kept — inspect the retained branch before deciding what to do next`;
 - a finished task on a protected branch, or whose branch or commit moved after the cut, or whose checkout became detached,
   stays **done** and keeps its branch for you to merge where you choose;
 - a task on a plain folder that would have written over an edit of your own lays **nothing**,
-  keeps its whole copy of the folder, lands as **needs your look** and names the files that
+  keeps its whole copy of the folder, lands as **`your call`** and names the files that
   changed there while it ran;
 - a task that left files it did not write keeps them too — in its task folder, named in the
   report, never on your branch, after its working copy is given back;
@@ -2051,7 +2064,7 @@ aborted, because its edits are already in your tree.
 So work is recoverable even when it did not merge. The branch name is in the landing note,
 in the checkpoint on disk, and in the project's index of landed work.
 
-## Work that needs your look holds up what depends on it — did my task see all of the earlier tasks' work, why did my task only see part of the earlier task's report, does the task get everything the previous task found
+## Work that is your call holds up what depends on it — did my task see all of the earlier tasks' work, why did my task only see part of the earlier task's report, does the task get everything the previous task found
 
 A task can name `depends_on` — ids that must finish first. When it starts, their reports
 land in `THE WORK` under `What the work before you learned — N reports:`, then
@@ -2093,10 +2106,10 @@ allows to advance.
 `propose_task` itself returned. A job, an adaptive run, a step count, or a task that
 already failed is refused on the spot:
 `depends_on names task 1 — no task in this session has that id`. The rows above are
-for work that goes wrong after admission. Dependents of work that needs your look wait
+for work that goes wrong after admission. Dependents of work that landed `your call` wait
 indefinitely. Dependencies only point backwards — ids ascend — including on reload.
 
-## A task's own sub-tasks are its problem — can I accept a sub-task before its parent finishes, does a sub-task ask me for a look while the parent is running, nested tasks that need a look
+## A task's own sub-tasks are its problem — can I accept a sub-task before its parent finishes, does a sub-task ask me for a look while the parent is running, nested tasks that are your call
 
 A task that hands part of its work out is the one that reads those pieces back. A sub-task's
 landing report goes to **its parent task's own worker**, not to this conversation — that
@@ -2473,13 +2486,14 @@ one long command.
 from then on. A process that is killed removes nothing, so a heartbeat left behind is
 believed only by its age — the same bargain the session's presence file makes.
 
-## What the words and the ! exclamation mark under a stopped task mean — lost the connection, the model provider refused it, went in circles, out of steps, why does it say not accepted under my task, blocked by another task, would not write its notes down
+## What the words and the ! exclamation mark under a stopped task mean — lost the connection, the model provider refused it, went in circles, out of steps, blocked by another task, would not write its notes down
 
-A task that did not finish keeps its branch, and the row under its name on the rail says
-**why** it stopped. The same words lead the task's card. They are three kinds of news:
+A task that did not finish keeps its branch, and the row under its name says **why** it
+stopped: the word `incomplete`, and one plain sentence beside it. The same words lead the
+task's card. They are three kinds of news:
 
 - `stopped — branch kept`, with a `⊘` — **you stopped it** (`x` on its room, `jobs kill`).
-  Nothing is wrong with the work; it is on that branch.
+  Nothing is wrong with the work; it is on that branch, and `stopped` is never `incomplete`.
 - `!` and one of these — **it was halted, and nothing is known to be wrong**. The work can go
   on from its branch: say `continue task 7` or `keep going on task 7`. That is how
   you continue a task instead of running it again: it re-arms the **same** task —
@@ -2517,10 +2531,27 @@ A task that did not finish keeps its branch, and the row under its name on the r
     replies with nothing visible in them — so the turn ended. Whatever it had already done
     is on the branch; the thinking behind it was never written anywhere, which is why the
     run stopped rather than carried on.
-- `✗` and one of these — **something was found**, and the report says what:
-  - `not accepted — branch kept`: the check named gaps, or you said it was not right on its card.
-  - `ended with an error — branch kept`: a working copy could not be made, the worker would
-    not start, or an error nobody classified.
+## Why does it say not accepted under my task — the check named gaps, or you said it was not right
+
+Two endings wear a `✗` rather than the `!` the halted ones wear, and both mean **something
+was found**. The report says what:
+
+- `not accepted — branch kept`: **the check named gaps**, or you said it was not right on
+  its card. This is the one ending that is somebody's finding about the work rather than
+  something that happened to it, so the report carries what is still missing, in the
+  check's own words, and the branch is kept for you to finish from.
+- `ended with an error — branch kept`: a working copy could not be made, the worker would
+  not start, or an error nobody classified. **This is the only ending drawn as something
+  having broken.** Everything else that did not finish is drawn dim, because running out of
+  steps or losing the connection is not a fault.
+
+Neither of them is `failed` in anything you read: a task that did not finish says
+`incomplete`, and these two sentences are the why.
+
+`not accepted` is also what the record that grades models writes down for the same ending,
+which is why the same two words turn up when you ask what a model is good at.
+
+## Being quiet is not going in circles — the [silent] notes, held tool calls, and why a quiet worker is not stopped for it
 
 **Being quiet is not going in circles**, and a task that was working cannot land here for
 it. A worker committing, pushing and writing files says very little, and the `[silent]`
@@ -2800,7 +2831,7 @@ Four more arguments, all optional. Every bad value is an ordinary result, not an
 
 **`depends_on`** — an array of task ids that must finish first. The task waits for them,
 and their reports are put in front of it when it starts — every one of them, bounded
-and counted as the section above on work that needs your look says. Ids can only point backwards,
+and counted as the section above on work that is your call says. Ids can only point backwards,
 and only ids `propose_task` itself returned count: a job or adaptive-run number is a
 different kind of work, and naming one — or a task that already failed — refuses the
 proposal on the spot instead of queueing work that could never start.

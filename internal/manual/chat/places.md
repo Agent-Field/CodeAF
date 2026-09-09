@@ -395,11 +395,11 @@ rather than `tab`, and home's two `alt+<letter>` keys are **`alt+g` group by pro
 ## tasks — the tasks page, and how to get to it without a command
 
 Everything this machine has run, across every project and every conversation, grouped by
-what you do next: `needs your look`, `running`, `waiting`, `finished today`, `earlier`.
+what you do next: `your call`, `running`, `waiting`, `finished today`, `earlier`.
 `/history` and `ctrl+.` both open it, and so does `alt+2`.
 
-The groups describe each task's own state. An unrelated approval in its conversation
-does not move running tasks into `needs your look`. A live design approval stays there
+The groups describe each task's own tier. An unrelated approval in its conversation
+does not move running tasks into `your call`. A live design approval stays there
 until you answer; a provider or dependency wait belongs under `waiting`. A retained
 branch stays available to inspect and does not, by itself, ask you to merge it.
 

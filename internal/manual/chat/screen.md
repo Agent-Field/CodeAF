@@ -2729,9 +2729,9 @@ held, its row carries the detail lines under its title — what it is doing, wha
 costing, what it waits on, where a job's log is going. Once it is over, the row is its
 glyph, its name and its `#7` and nothing else, so the column's height goes to what is
 still moving rather than to a day's history. Queued work is not finished and keeps its
-`waits: Collect sources` line; a finished task that still **needs you** — `conflicted ·
-task/fix-nil`, `stopped — branch kept · task/fix-nil`, `finished — look it over` — keeps
-its line too, because it is something to act on rather than something that is over.
+`waiting on Collect sources` line; a finished task that is still **your call** —
+`your call · conflicts with your branch`, `your call · nobody could check it` — keeps its
+line too, because it is something to act on rather than something that is over.
 Nothing is thrown away: see *Opening a finished row on the task column*.
 
 **The roster is this conversation's work and nothing else.** No rows of the project's
@@ -2804,10 +2804,11 @@ follows the cursor — `→` `←` to open and fold, `enter` to walk into a task
 widen the column, and `esc` to give the keyboard back. The column's hint line says the
 same: `↑↓ move · →← tree · enter open · alt+w wide · esc`, and it gains `ctrl+v think harder`
 before the `esc` while the row under the cursor is work that has not finished — that chord
-moves the task's own thinking rung. And on a row that **needs your look** the whole slot
-becomes `a accept · l look again · n not right · esc`, and those three letters answer that
-landing from the column without opening its room. While the column holds the keyboard
-the wheel walks that cursor instead of the window, so the two never fight.
+moves the task's own thinking rung. And on a row that says **`your call`** the whole slot
+becomes that row's own answers and an `esc` — `a` says yes to what it is asking, `n` says
+no — and those letters answer that landing from the column without opening its room.
+While the column holds the keyboard the wheel walks that cursor instead of the window, so
+the two never fight.
 
 Widen is `alt+w` and not the bare letter `w`: the roster is read before the message box, so
 a bare `w` there ate the `w` out of every sentence somebody typed with the column still
