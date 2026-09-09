@@ -296,6 +296,9 @@ func TestANodesRowSaysWhatTheCallTook(t *testing.T) {
 	if got := a.room.entries[0].ran; got != 4*time.Second {
 		t.Fatalf("the node's row says the call took %v, want 4s", got)
 	}
+	// Inspect the detailed call through its live outline before checking the
+	// displayed duration; compact activity deliberately omits tool telemetry.
+	openRoomCompactWork(t, a)
 	// The page's own spelling of it (toolstat.go), asserted as a reader meets it
 	// rather than as the field holds it.
 	if page := plain(strings.Join(roomLines(a), "\n")); !strings.Contains(page, "4.0s") {
