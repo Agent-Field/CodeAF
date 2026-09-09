@@ -22,7 +22,7 @@ import (
 func settleNotice() TaskNotice {
 	return TaskNotice{
 		ID: 9, Title: "Port the parser", State: TaskUnverified,
-		Report: needsLookLead + "the checker answered neither way",
+		Report: yourCallLead(TaskFacts{}) + "the checker answered neither way",
 	}
 }
 
@@ -141,7 +141,7 @@ func unverifiedFamily(t *testing.T) (*Agent, *TaskNode, *TaskNode) {
 	childID := graph.reserve()
 	graph.admit(childID, taskSpec{title: "Port the parser", brief: "b", acceptance: "a", parent: parentID})
 	parent, child := graph.node(parentID), graph.node(childID)
-	child.finish(needsLookLead+"the checker answered neither way", nil, "task/parser", mergeAborted)
+	child.finish(yourCallLead(TaskFacts{Merge: mergeAborted})+"the checker answered neither way", nil, "task/parser", mergeAborted)
 	graph.complete(child, TaskUnverified)
 	if state := child.stateNow(); state != TaskUnverified {
 		t.Fatalf("the child landed %q, want unverified", state)

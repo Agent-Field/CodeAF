@@ -474,7 +474,7 @@ what the task itself produced.
 `[a] resolve it · [n] drop it · [s] tell it`, and the report names the files that changed
 on both sides:
 
-`finished, but needs your look — its branch task/edit-the-parser-9c1a2f did not merge cleanly and was kept: internal/auth/session.go changed on both sides`
+`conflicts with your branch — its branch task/edit-the-parser-9c1a2f did not merge cleanly and was kept: internal/auth/session.go changed on both sides`
 
 The landing note the model reads does **not** say the work finished or that the branch
 merged. It names the kept branch. A merge that did not fasten the branch to yours is not
@@ -551,7 +551,7 @@ copy of it, and the task lands as **`your call`** with the report naming that fo
 quoting whatever went wrong — a disk that filled, a read-only mount, a permission somebody
 changed:
 
-`finished, but needs your look — its work is in ~/.aforge/sessions/<id>/trees/7 and could not be saved to its branch: fatal: Unable to create '…/index.lock': Permission denied`
+`nobody could check it — its work is in ~/.aforge/sessions/<id>/trees/7 and could not be saved to its branch: fatal: Unable to create '…/index.lock': Permission denied`
 
 Nothing of the task's working copy is given back: the branch is kept, the copy is left
 registered where it is, and your own branch is untouched — no empty merge, no commit that
@@ -564,7 +564,7 @@ when every one of them can be placed does anything move. A lay that cannot happe
 your folder **exactly as it was** — not one file of the half that would have fitted — and
 says so:
 
-`finished, but needs your look — its work is in ~/.aforge/sessions/<id>/trees/7 and could not be saved into ~/notes: the work could not be laid into a clean copy: mkdir ~/notes/sub: not a directory`
+`nobody could check it — its work is in ~/.aforge/sessions/<id>/trees/7 and could not be saved into ~/notes: the work could not be laid into a clean copy: mkdir ~/notes/sub: not a directory`
 
 The task's copy is kept, so everything the family made is still in the folder that sentence
 names.
@@ -1821,11 +1821,18 @@ the six on the tasks page — `nobody could check it`, `the check did not pass i
 `conflicts with your branch: <files>`, `design ready to approve`, `starts on your word`,
 `paused at the <amount> cap` — and each carries its own two answers.
 
-The report under a landing nobody could judge still leads
-`finished, but needs your look — ` and then what was said, or
-`finished, but needs your look — nobody could say whether it holds` when nothing was said.
-That lead is the **report's** own opening sentence, written when the check gave up; the
-word on the row above it, and in the note, is `your call`.
+The report under a landing nobody could judge leads with **the same question the row is
+asking** and then what was said — `nobody could check it — ` and the checker's own
+sentence, or `nobody could check it — the checker never answered` when nothing was said.
+A landing whose branch would not merge leads `conflicts with your branch — ` the same way.
+The word on the row above it, and in the note, is `your call`; the report's lead is that
+row's reason sentence, written once in each place so the two cannot disagree. There is no
+`finished, but needs your look — ` any more: that lead was deleted with the state it named.
+
+**It is never said twice.** Several of the checker's own sentences already open with that
+same question — `nobody could check it in 5m0s`, `nobody could check it — asked twice, and
+neither call answered` — and where one of them does, that sentence IS the lead and nothing
+is put in front of it.
 
 The sentences you may see when nobody could say are written plainly:
 `the checker could not start: <err>`, `the checker could not be asked: <err>`,
@@ -1932,7 +1939,7 @@ It is found by the same `mastermind` model that reads a task's parts before it s
 tasks page, *when a task turns out to be too wide for one worker*). That reading happens
 **before the task's worker is asked anything**, and when it comes back saying nobody here
 can do this, the task stops there rather than starting one. The report is that reading's own
-sentence, in its words — `finished, but needs your look — an approving review GitHub will
+sentence, in its words — `nobody could check it — an approving review GitHub will
 only accept from a human who isn't the author`, say — so what you are being asked to do is
 the first line on the card.
 
@@ -1976,8 +1983,8 @@ changed them. Landed work and a window that is still going get separate sentence
 they are different facts:
 
 ```
-finished, but needs your look — "rail permanence" changed internal/tui3/home.go while this ran
-finished, but needs your look — "drop-up nearest" is also working in internal/tui3/home.go
+nobody could check it — "rail permanence" changed internal/tui3/home.go while this ran
+nobody could check it — "drop-up nearest" is also working in internal/tui3/home.go
 ```
 
 Work nothing ever named is called `another window is also working in internal/tui3/home.go`.
@@ -2012,7 +2019,7 @@ it wrote back over your folder by name when it lands. **A file you changed there
 while it worked is never written over.** Nothing at all is laid, the task keeps its whole
 copy where it is, and it lands `your call`:
 
-`finished, but needs your look — its work is in /Users/you/.aforge/sessions/…/trees/11 and was not laid over /Users/you/notes: notes.md changed there while this ran`
+`nobody could check it — its work is in /Users/you/.aforge/sessions/…/trees/11 and was not laid over /Users/you/notes: notes.md changed there while this ran`
 
 Both versions survive that: yours in your folder exactly as you left it, the task's in the
 directory the sentence names, so you can read the two and take what you want. The first few
@@ -2597,8 +2604,8 @@ Endings are checked in a fixed order, and the first match wins:
 | 6b | The model provider refused the request — an API error, a model that is not there | `it ended with an error: <err>`, and the row reads `the model provider refused it` |
 | 6c | The run errored | `it ended with an error: <err>` |
 | 7 | Stopped while its work was being looked at | `stopped while its work was being checked` |
-| 8 | Nobody could say | `finished, but needs your look — …` |
-| 8b | The work held, and a file it wrote changed elsewhere while it ran | `finished, but needs your look — "…" changed <path> while this ran` |
+| 8 | Nobody could say | `nobody could check it — …` |
+| 8b | The work held, and a file it wrote changed elsewhere while it ran | `nobody could check it — "…" changed <path> while this ran` |
 | 9 | Gaps left after the correction rounds | `incomplete — …` |
 | 10 | Otherwise | done: the evidence first, then the task's words |
 

@@ -3674,7 +3674,7 @@ func (a *Agent) taskNoteReaders(node *TaskNode) []mailbox {
 // panel to turn `task.settle` to auto in, and nobody to read a landing that says
 // it is waiting on them. A node that landed needing a look in such a session is
 // a run that has stopped, and it was measured stopping: on a ten-hour benchmark
-// the main task landed "finished, but needs your look" and the harness sat there
+// the main task landed as the person's call and the harness sat there
 // until the wall clock ran out.
 //
 // So an unattended session reads as AUTO, which is not a bypass and not a new
@@ -3788,11 +3788,12 @@ type landingAddress struct {
 func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address landingAddress) string {
 	var note strings.Builder
 	status := ProjectTask(notice.StatusFacts())
-	// THE REPORT'S OWN LEAD IS NOT SAID TWICE. "finished, but needs your look — "
-	// was the head of this note and the head of the report under it, in two
-	// vocabularies; the head above now says `your call` and the sentence the
-	// checker wrote is what is left (task_audit.go's [needsLookLead]).
-	report := strings.TrimPrefix(strings.TrimSpace(notice.Report), needsLookLead)
+	// THE REPORT'S OWN LEAD IS NOT SAID TWICE. A your-call landing's report opens
+	// with the question the row is asking (task_audit.go's [yourCallLead]), the
+	// head below writes that question once, and what is left under it is the
+	// sentence the checker or the merge wrote. The prefix is taken off with the
+	// reading's own reason rather than with a copy of it, so the two cannot drift.
+	report := strings.TrimSpace(notice.Report)
 	fmt.Fprintf(&note, "task %d", notice.ID)
 	if status.Word != "" {
 		note.WriteString(" " + status.Word)
@@ -3803,6 +3804,7 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 	// `your call` on its own does not say what they are being asked.
 	if status.Reason != "" {
 		note.WriteString(" · " + status.Reason)
+		report = strings.TrimPrefix(report, status.Reason+yourCallDash)
 	}
 	if transcript != "" {
 		note.WriteString(" · transcript " + transcript)
@@ -5073,7 +5075,7 @@ func (a *Agent) landUnchecked(ctx context.Context, node *TaskNode, tree taskTree
 	// halves, what the work says it did and what the checker said instead of an
 	// answer (task_contract.go's TaskUnverified).
 	merge, changed := keepHome(node, tree, changed)
-	node.finish(withReport(verdict.lookOutcome(), report), changed, tree.branch, merge)
+	node.finish(withReport(verdict.lookOutcome(TaskFacts{Merge: merge}), report), changed, tree.branch, merge)
 	return TaskUnverified
 }
 
@@ -5149,9 +5151,9 @@ func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, 
 //
 // IT IS NOT A NEW ENDING. It is [TaskUnverified]'s ending, reached by a third
 // road: the branch is committed and kept ([keptWork]) exactly as it is for the
-// landing nobody could judge, the report leads with [needsLookLead] in the same
+// landing nobody could judge, the report leads with [yourCallLead] in the same
 // person's words, and everything downstream — the settle card, the rail, the
-// note's "needs your look" verb, the bubbling of a still-undecided child up to
+// note's `your call` word, the bubbling of a still-undecided child up to
 // whoever is left to decide ([Agent.bubbleUnverifiedChildren]) — is the machinery
 // that was already there. Nothing about this landing has to know why it was
 // asked for.
@@ -5171,7 +5173,7 @@ func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, 
 func (a *Agent) landShifted(node *TaskNode, tree taskTree, changed []string, report, shift string, log io.Writer) TaskState {
 	merge, kept := keepHome(node, tree, changed)
 	fmt.Fprintf(log, "not merged: %s\n", shift)
-	node.finish(withReport(needsLookLead+shift, report), kept, tree.branch, merge)
+	node.finish(withReport(withYourCallLead(TaskFacts{Merge: merge}, shift), report), kept, tree.branch, merge)
 	return TaskUnverified
 }
 
@@ -5186,7 +5188,7 @@ func (a *Agent) landShifted(node *TaskNode, tree taskTree, changed []string, rep
 // no reviewable diff, its own report admitting the branch had not merged —
 // while the card read as finished work. Nothing about "done" was true.
 //
-// SO IT ENDS WHERE [Agent.landShifted] ENDS: needs your look, the branch kept
+// SO IT ENDS WHERE [Agent.landShifted] ENDS: the person's call, the branch kept
 // with the work committed on it, the conflicting files named in the report. The
 // person's tree is untouched — no markers, no half-merge ([abandonMerge]) — and
 // merging is a thing they do when they are ready, which is what the completion
@@ -5218,7 +5220,7 @@ func (a *Agent) landConflicted(ctx context.Context, node *TaskNode, tree taskTre
 	// AND WHAT THE ROUND TRIED STANDS BETWEEN THE REFUSAL AND THE WORK'S OWN
 	// ACCOUNT, or is nothing at all where no round ran — the emptiness law, and
 	// [withReport] drops it either way.
-	node.finish(withReport(needsLookLead+detail, withReport(round, report)), changed, tree.branch, merge)
+	node.finish(withReport(withYourCallLead(TaskFacts{Merge: merge, Conflicts: node.clashes()}, detail), withReport(round, report)), changed, tree.branch, merge)
 	return TaskUnverified
 }
 

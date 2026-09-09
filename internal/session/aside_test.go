@@ -34,7 +34,7 @@ func TestASessionsOwnLineReplaysAsAnAsideAndNotAsThePersons(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.SessionFile = path })
 
-	const note = "task 7 could not be verified: finished, but needs your look · transcript file:///tmp/7.jsonl"
+	const note = "task 7 your call: port the parser · nobody could check it · transcript file:///tmp/7.jsonl"
 	entries := enqueuedNote(t, agent, note)
 	if len(entries) != 1 {
 		t.Fatalf("%d entries, want 1: %#v", len(entries), entries)

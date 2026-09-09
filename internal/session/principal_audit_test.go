@@ -1134,7 +1134,7 @@ func TestQueuedBehindWorkThatSettledShortIsStuckAndNotMoving(t *testing.T) {
 	if len(flight.stuck) != 1 {
 		t.Fatalf("the work that will not start was not said at all: %+v", flight)
 	}
-	if want := "wire the handlers is waiting on port the parser, which needs your look"; flight.stuck[0] != want {
+	if want := "wire the handlers is waiting on port the parser, which is your call"; flight.stuck[0] != want {
 		t.Fatalf("the stuck work does not say what it waits on:\n got %q\nwant %q", flight.stuck[0], want)
 	}
 
