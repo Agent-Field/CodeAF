@@ -99,13 +99,20 @@ func testStatesDone(t *testing.T) {
 	if !strings.Contains(head, say(t, "taskOneFileWord")) {
 		t.Errorf("the head does not say %q about a one-file brief:\n\t%s", say(t, "taskOneFileWord"), head)
 	}
-	// THE MERGE IS A FACT AND THE ABSENCE OF ONE IS ALSO A FACT. Work that
-	// branched and came home says `merged`; work done in the ground itself has
-	// nowhere to land and says nothing, which is the emptiness law and not a
-	// failure. Both are the product behaving, so the one that happened is logged.
-	if strings.Contains(head, say(t, "taskMergedFact")) {
+	// THE MERGE IS A FACT, AND THE ABSENCE OF ONE IS ALSO A FACT. `merged` is work
+	// that branched and came home, `branch kept` is a branch still standing, and
+	// nothing at all is work done in the ground itself with nowhere to land — the
+	// emptiness law, not a failure. All three are the product behaving, so which
+	// one arrived is recorded rather than demanded: what the ruling fixes is that
+	// the head says WHERE THE WORK WENT and never says it as a state, and
+	// `delivery needs attention` and `stopped — branch kept` are the phrases that
+	// went (they are on [statesDeleted]).
+	switch {
+	case strings.Contains(head, say(t, "taskMergedFact")):
 		t.Logf("the work branched and came home: the head carries %q", say(t, "taskMergedFact"))
-	} else {
+	case strings.Contains(head, say(t, "taskBranchKeptFact")):
+		t.Logf("the work is on a branch that is still standing: the head carries %q", say(t, "taskBranchKeptFact"))
+	default:
 		t.Logf("the work was done in place: no merge fact on the head, which is the emptiness law")
 	}
 	// AND THE WORDS THIS WAVE DELETED ARE NOT ON THE CARD.

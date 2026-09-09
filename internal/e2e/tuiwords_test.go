@@ -513,6 +513,14 @@ var tuiWords = map[string]tuiWord{
 		why: "where the work ended up, as a FACT and never as a state. `delivery needs attention` and " +
 			"`stopped — branch kept` fused the two into one phrase and are deleted",
 	},
+	"taskBranchKeptFact": {
+		screen: " · branch kept",
+		source: "branch kept",
+		pkg:    tui3Pkg,
+		why: "the other half of the same fact: a branch that never came home, named on the head so the " +
+			"person has a handle back to work that is not on screen. It replaced `stopped — branch kept`, " +
+			"which fused a state and a source-control fact into one phrase on the row that says the state",
+	},
 	"settleAnswersRow": {
 		screen: "[a] accept · [n] not right · [s] tell it",
 		source: " tell it",
