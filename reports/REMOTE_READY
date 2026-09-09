@@ -1,0 +1,17 @@
+Context modal remote acceptance is complete for exact reviewed content head
+6a280a88522b1855441ae7c8d224eb996b1c0815 on codex/context-modal-20260908.
+
+Draft PR: https://github.com/Agent-Field/aforge-v2/pull/659
+Target fetched and preserved: 2a02ac0bb9c4d085a345805fd809ac9539f2d896
+
+Portable fixture and coordinate protocol:
+  scripts/context-modal-native-fixture.sh setup /tmp/aforge-context-native
+  scripts/context-modal-native-fixture.sh motion COL ROW
+  scripts/context-modal-native-fixture.sh click COL ROW
+  scripts/context-modal-native-fixture.sh wheel COL ROW up|down
+
+Expected captures are under reports/context-modal-evidence/. Root must rebuild
+only this isolated worktree, inspect the actual Mac modal and pointer behavior,
+and name the approved exact code head in reports/NATIVE_READY before any final
+merge or install. This marker is REMOTE_READY only; it does not claim native
+graphics or Mac pointer acceptance.
