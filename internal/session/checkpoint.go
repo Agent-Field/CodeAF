@@ -370,10 +370,11 @@ const (
 	// that it had failed.
 	checkpointResultBytes = 400
 
-	// Small write/edit inputs travel whole beside their result, because a
+	// The newest completed write/edit input travels whole beside its result: a
 	// receipt alone cannot establish which bytes were submitted (#672). Larger
 	// inputs are explicitly omitted, not cut into a misleading partial JSON
-	// object. These entries compete within the existing whole-digest budget.
+	// object. Keeping one input prevents a batch of writes from evicting older
+	// test failures. It competes within the existing whole-digest budget.
 	checkpointWriteArgumentBytes = 4 * checkpointResultBytes
 
 	// checkpointSaidBytes is how much of the turn's last words the reader is
@@ -406,7 +407,7 @@ const (
 	// evidence in front of the turn rather than on the evidence behind it — and
 	// the same order is what the fitting drops from, oldest end first.
 	checkpointDigestFound   = "WHAT CAME BACK, NEWEST FIRST"
-	checkpointDigestWritten = "FILES TARGETED BY WRITE OR EDIT (CHECK THE RESULTS)"
+	checkpointDigestWritten = "WRITE OR EDIT ATTEMPTS (CHECK THE RESULTS)"
 	// checkpointDigestMoved heads ONE LINE: when the work last changed, and what
 	// has come back since (novelty.go's [workClock]). It is the fact a reader of
 	// a ledger cannot get from the ledger — ninety lines of activity look the
@@ -2006,9 +2007,9 @@ func carryLine(line, carried string, top carryStep) string {
 //     is. A ledger says a suite was run; a result says it reported `Passed: 0`,
 //     which is the difference between a reader that can subtract the finished part
 //     of the ask and a reader guessing at it.
-//   - WHAT HAS BEEN WRITTEN OR CHANGED, deduplicated out of the same ledger,
-//     because a thing already produced is a part of the ask already discharged and
-//     that is exactly what the reader is being asked to subtract.
+//   - WRITE OR EDIT ATTEMPTS, deduplicated out of the same ledger. The newest
+//     one with a result carries its bounded exact arguments beside that result;
+//     the attempt alone never establishes that the change succeeded.
 //   - THE LAST THING SAID, clipped, which is the running model's own account of
 //     where it has got to and the only part of this a person would recognise.
 //
@@ -2176,6 +2177,8 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 	// words the ledger used and a reader can match the two.
 	calls := make(map[string]string)
 	writeArguments := make(map[string]string)
+	writeResult, writeStep := -1, 0
+	var writeInput string
 	for _, message := range messages {
 		for _, call := range message.ToolCalls {
 			name := strings.TrimSpace(call.Function.Name)
@@ -2236,8 +2239,14 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 			moved.read(fresh, weighed)
 		}
 		if tail := checkpointResultTail(came.String()); tail != "" {
-			results = append(results, line+checkpointResultArrow+tail+writeArguments[id])
+			results = append(results, line+checkpointResultArrow+tail)
+			if input := writeArguments[id]; input != "" && at[id] > writeStep {
+				writeResult, writeStep, writeInput = len(results)-1, at[id], input
+			}
 		}
+	}
+	if writeResult >= 0 {
+		results[writeResult] += writeInput
 	}
 	return ledger, written, results, moved
 }

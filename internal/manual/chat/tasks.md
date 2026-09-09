@@ -841,8 +841,8 @@ ten-hour request ended with hours of it never touched.
 **So at the end of a reply that has already run long enough to be looked at once — the first
 of the three points above — the same second reader is asked one question**: is what you asked
 for finished? It is shown the same short account of the work —
-your message, the steps, what came back, and bounded write/edit inputs paired with
-their results. Inputs show what was attempted; the result says whether it worked.
+your message, the steps, what came back, and the newest completed write/edit input paired with its
+result. The input shows what was attempted; the result says whether it worked.
 Large inputs are marked as omitted, so missing detail is not evidence of an error.
 It answers either the single line
 `NOTHING LEFT TO DO`, or one line saying what of your request is still not done.

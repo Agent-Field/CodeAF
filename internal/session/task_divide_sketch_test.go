@@ -36,7 +36,7 @@ import (
 func batchSketch(shape, legend string) drawnDivision {
 	return drawnDivision{
 		sketch: checkpointSketch{shape: shape, legend: legend, parts: topLevelParts(shape)},
-		digest: "WHAT WAS ASKED\n" + personSentence + "\n\nWHAT HAS BEEN DONE SO FAR, ONE LINE PER STEP\nread cmd/main.go\ngrep flake",
+		digest: checkpointDigestAsked + "\n" + personSentence + "\n\n" + checkpointDigestDone + "\nread cmd/main.go\ngrep flake",
 	}
 }
 
@@ -51,7 +51,7 @@ func batchSketch(shape, legend string) drawnDivision {
 // parts unchanged, and what reaches the graph is exactly what this file built.
 func countedSketch(shape, legend string) drawnDivision {
 	drawn := batchSketch(shape, legend)
-	drawn.digest += "\n\nWHAT HAS BEEN WRITTEN OR CHANGED\n" + wideEvidence
+	drawn.digest += "\n\n" + checkpointDigestWritten + "\n" + wideEvidence
 	return drawn
 }
 

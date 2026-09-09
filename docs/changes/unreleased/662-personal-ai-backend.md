@@ -6,7 +6,7 @@ surface: [chat, engine, docs]
 invalidates:
   - "Collections used to contain bare references reachable only through the CLI. Chats can now find and organize collections and resolve members through their existing owners."
   - "There was no durable sourced-context record or turn integration. Schema v2 adds immutable revisions, withdrawal and explicit targets; chats and ordinary task workers refresh bounded information independently of learned memory."
-  - "The completion reader previously judged report fields from a clipped write label and a byte-count receipt, and its objection was presented as fact. Bounded exact write/edit inputs now accompany results; missing evidence is explicit and objections must be checked against current work before editing."
+  - "The completion reader previously judged report fields from a clipped write label and a byte-count receipt, and its objection was presented as fact. The newest bounded exact write/edit input now accompanies its result; missing evidence is explicit and objections must be checked against current work before editing."
   - "Organization opens no longer reserve the writer for a current schema, and reads cannot recreate a missing database. Task workers can inspect but cannot reorganize or revise shared context."
 ---
 
