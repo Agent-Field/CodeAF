@@ -205,7 +205,8 @@ The **near** machine — the one you are sitting at — owns the surface:
   so what you typed while working on `devbox:code/app` belongs to that place
 - the model picker's cached list
 - the terminal itself
-- **the paths for `/image` and for `@` completion**, which are anchored here
+- **the paths for `/image`, `/attach` and `@` completion**, which are anchored here; a bare
+  `/attach` opens the chooser on this machine
 - **the browser, the viewer and the file door** — the small `127.0.0.1` listener this
   window opens so that a path in a reply, `/files` and `/files <path>` can show you a file
   that is on the other machine (*Opening files from that machine*)
@@ -628,16 +629,28 @@ lost rather than waiting for you.
 own stream, so a turn whose words match a registered harness still asks you, and answering
 `yes` still runs it over there.
 
-## Attaching a picture, and @ paths, over --host
+## Attaching a picture or file, a bare /attach chooser, and @ paths, over --host
 
-`/image` and `@` completion are **local on purpose**. The picture is on the machine you
-are sitting at, and its bytes travel with the message.
+`/image`, `/attach` and `@` completion are **local on purpose**. The picture or file is on
+the machine you are sitting at, and its bytes travel with the message.
 
-So a relative path you type after `/image`, and the `@` completion walk, are both anchored
-**here** — to the directory you launched from — and not to the remote workspace. If you
-want a file that lives on the far machine, that path will not find it. To reach one of
-those, click it where the reply names it, or use `/files` — that is the other direction,
-and *Opening files from that machine* is the page for it.
+So a relative path you type after `/image` or `/attach`, and the `@` completion walk, are
+anchored **here** — to the directory you launched from — and not to the remote workspace.
+A bare `/attach` opens the add context chooser here too, already browsing the machine you
+are sitting at. Files chosen there reach the tray and travel with the next message.
+
+A folder is the one thing that chooser will not take over a connection. Confirming one on
+the sheet, or typing `/attach <a directory>`, registers nothing and says exactly:
+
+```
+choosing a folder is not available over --host yet — the folders here are this machine's, not the ones the conversation is on.
+```
+
+The sheet stays open after a marked folder is refused, with the marks still there. `/folder`
+and its `/place` and `/dir` aliases say the same sentence without opening it. If you want a
+file that lives on the far machine, a local path will not find it; click it where the reply
+names it, or use `/files` — that is the other direction, and *Opening files from that
+machine* is the page for it.
 
 The image size ceilings are applied on this side, with the same words a local session
 uses:

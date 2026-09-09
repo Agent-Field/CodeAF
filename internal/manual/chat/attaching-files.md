@@ -63,16 +63,17 @@ on the tray above the message box, and it goes with the next thing you send.
 /attach                     the browser, so you can find the file and look at it first
 ```
 
-**With nothing after it, `/attach` opens the add context sheet.** It is the same framed
-window `/folder` opens, in the same place and already browsing — the conversation stays
-visible behind it, dimmed, and does not answer a click while it is up. It stands in the
-folder this conversation is about: the subdirectories and then the files
-with their sizes, and a preview of whatever the cursor is on — source with syntax colour, a
-picture drawn in the terminal's own cells, a PDF's text. Moving the cursor shows you a file;
-it does not attach it. `alt+m` chooses one, or several, and the last row of the sheet says
-`attach this file · <path>` — or `attach 2 files` once you have chosen more than one — and
-`enter` does exactly what it says. "Choosing a folder" is the full account of that sheet,
-its keys and its preview.
+**With nothing after it, `/attach` opens the add context sheet, including over `--host`.**
+It is the same framed window `/folder` opens locally, in the same place and already browsing
+— the conversation stays visible behind it, dimmed, and does not answer a click while it is
+up. It stands in the folder this window is working in, unless the conversation already holds
+a folder: the subdirectories and then the files with their sizes, and a preview of whatever
+the cursor is on. aforge's own state folder is never where it opens. Moving the cursor shows
+you a file; it does not attach it. `alt+m` chooses one, or several, and the last row of the
+sheet says `attach this file · <path>` — or `attach 2 files` once you have chosen more than
+one — and `enter` does exactly what it says. Over `--host`, this sheet browses the machine
+you are sitting at and selected files travel with the message. "Choosing a folder" is the
+full account of that sheet, its keys and its preview.
 
 Path rules are `/image`'s: `~` is your home directory, a bare name is under the directory
 this conversation is about, and an absolute path is left alone. Tab completes the path as
@@ -87,7 +88,10 @@ carries no number because there is nothing in the sentence for a number to point
 **A folder after `/attach` is not a refusal.** It used to answer
 `<name> is a folder · attach a file`; now the folder goes to the same place the `/folder`
 picker's `enter` sends one, and says `folder · <path>`. See the "Choosing a folder" page
-for what that does and what it does not.
+for what that does and what it does not. That is the local behavior. Over `--host`, the
+folder is on this machine and the conversation is on the other one, so nothing is registered
+and it says
+`choosing a folder is not available over --host yet — the folders here are this machine's, not the ones the conversation is on.`
 
 ## I dropped a file and nothing happened
 
@@ -393,23 +397,32 @@ no such file: <what you typed>
 the files on this message are over the 32MB limit
 could not read <name>
 this connection cannot carry a file · the words were not sent
+choosing a folder is not available over --host yet — the folders here are this machine's, not the ones the conversation is on.
 ```
 
-The first is a path that is not there. The second means it is on the tray already; the same
-path twice is one chip. The third and fourth are the ceilings, and they only ever appear
-over `--host`. The fifth is a file that vanished or became unreadable between attaching and
-sending. The last means this connection was opened without a door for files; your words
-were **not** sent and your tray is still yours.
+- `no such file` is a path that is not there.
+- `<name> is already attached` means it is on the tray already; the same path twice is one
+  chip.
+- The two size refusals are the ceilings, and they only ever appear over `--host`.
+- `could not read` is a file that vanished or became unreadable between attaching and
+  sending.
+- `this connection cannot carry a file` means the connection was opened without a door for
+  files; your words were **not** sent and your tray is still yours.
+- `choosing a folder is not available over --host yet` is `/attach <a directory>` across a
+  connection. Nothing is registered on the far conversation.
 
 **A bare `/attach` is not on this list any more.** It used to answer
 `/attach takes a path · try /attach server.log`; it now opens the add context sheet on the
 folder this conversation is standing in, so you can find the file rather than being told to
-know its path. See "Choosing a folder".
+know its path. It opens over `--host` too, browsing the machine you are sitting at, because
+files travel. See "Choosing a folder".
 
-**A folder is not on this list any more.** `/attach ~/code/thing` used to answer
-`<name> is a folder · attach a file`; it now goes to the folder door and says
-`folder · ~/code/thing`. Dropping a folder on the window still refuses with that old
-sentence — see "Choosing a folder".
+**A folder is not refused locally any more.** `/attach ~/code/thing` used to answer
+`<name> is a folder · attach a file`; locally it now goes to the folder door and says
+`folder · ~/code/thing`. Over `--host`, it registers nothing and says
+`choosing a folder is not available over --host yet — the folders here are this machine's, not the ones the conversation is on.`
+Dropping a folder on the window still refuses with the old
+`<name> is a folder · attach a file` sentence — see "Choosing a folder".
 
 A few refusals come from the far machine instead and arrive with `engine:` in front of
 them — the file arrived with no usable name, or with a name that was really a path:

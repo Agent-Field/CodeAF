@@ -573,11 +573,12 @@ always the folder of the conversation on screen. See home's page under *Open
 another project from home*.
 
 **You do not need a second conversation to work on a second project, though.** Where a
-conversation stands is fixed and one; what it is **about** is not. Name another folder with
-`/folder` or `/attach <dir>`, or name its path when you ask for the work, and the work goes
-there — same conversation, same window. What a second conversation gets you that this does
-not is a second set of project settings, approval rules, crew and ceiling. *Choosing a
-folder* has the distinction in full.
+conversation stands is fixed and one; what it is **about** is not. On a local session, name
+another folder with `/folder` or `/attach <dir>`, or name its path when you ask for the work,
+and the work goes there — same conversation, same window. Over `--host`, local folders cannot
+be registered on the far conversation; a bare `/attach` still opens the chooser for files.
+What a second conversation gets you that this does not is a second set of project settings,
+approval rules, crew and ceiling. *Choosing a folder* has the distinction in full.
 
 ## Where your conversations are kept
 

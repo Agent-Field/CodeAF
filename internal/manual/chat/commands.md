@@ -191,9 +191,10 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
 | `/compact` | — | — | summarizes the conversation now |
 | `/home` | — | — | every project and conversation on this machine, fullscreen |
-| `/folder` | `/place`, `/dir` | — | opens the add context sheet — say which folder this conversation is also about |
-| `/folder` | `/place`, `/dir` | `<path>` | …opens it with that already in the box: a word filters, a path browses |
-| `/attach` | `/upload` | `<path>` | a file goes on the tray; **a folder** is referred instead, and says `folder · <path>` |
+| `/folder` | `/place`, `/dir` | — | locally opens the add context sheet; over `--host` says the folder chooser is unavailable |
+| `/folder` | `/place`, `/dir` | `<path>` | locally opens it with that in the box; over `--host` gives the same refusal |
+| `/attach` | `/upload` | — | opens the add context sheet for files, including over `--host` |
+| `/attach` | `/upload` | `<path>` | a file goes on the tray; locally a folder is referred, while over `--host` it is refused |
 | `/land` | — | — | says what has been changed for a folder you chose and is waiting to go into it |
 | `/land` | — | `now` | …puts it in: a branch merged for a repository, files copied back for a plain folder |
 | `/land` | — | `<folder>` | …when more than one folder is waiting; `/land <folder> now` puts that one in |

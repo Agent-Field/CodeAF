@@ -10,14 +10,16 @@ with the folder you are standing in browsable in columns. It also answers to `/p
 /folder            the sheet, opened on the folder this conversation is about
 /folder aforge     …with `aforge` already searched, so the list of known folders is narrowed
 /folder ~/code/    …with a path already typed, so the columns are open in ~/code
-/attach            the same sheet, opened in exactly the same place
+/attach            the same sheet; over --host it browses the machine you are sitting at
 ```
 
-**Both commands open the same sheet, in the same place, already browsing.** Where it opens
-is the first of these that exists: a folder this conversation has already been given, the
-folder this window is working in, your home directory. It does not matter which of the two
-words you typed, and a brand-new machine that has never chosen a folder gets the same sheet
-as one that has chosen forty.
+**Locally, both commands open the same sheet, in the same place, already browsing.** Where
+it opens is the first of these that exists: a folder this conversation has already been
+given, the folder this window is working in, your home directory. aforge's own state folder
+is never where it opens. A brand-new machine that has never chosen a folder gets the same
+sheet as one that has chosen forty. Over `--host`, a bare `/attach` still opens that sheet
+on the machine you are sitting at because files travel; `/folder` refuses because a folder
+cannot.
 
 **It is a window, not a line at the bottom of the chat.** The conversation stays visible
 behind it, dimmed, and is not live while the sheet is up: clicking it, scrolling it or
@@ -29,8 +31,8 @@ the sheet does nothing — it will not throw away things you have chosen.
 lists the subdirectories and then the files inside them, with each file's size against the
 right edge; a large preview of whatever the cursor is on sits beside them. So one sheet
 answers both questions — which project do I mean, and which file do I want to send — and
-`/attach` with no path after it opens the same sheet on the folder this conversation is
-standing in.
+`/attach` with no path after it opens the same sheet. Locally it follows the folder ladder;
+over `--host` it browses the machine you are sitting at.
 
 The two things do different things when you choose them, and the last row of the sheet
 always says which:
@@ -61,6 +63,26 @@ whole gesture is `/folder` then `enter`.
 
 `esc` leaves everything exactly as it was: your half-written message comes back untouched,
 and nothing has been chosen.
+
+## The add context sheet over --host — another machine, over ssh
+
+Over `--host`, a bare `/attach` opens the add context sheet on the machine you are sitting
+at. It opens already browsing: first a folder the conversation has already been given, then
+the folder this window is working in, then your home directory. aforge's own state folder is
+never where it opens. Files chosen there go onto the tray and their bytes travel with the
+next message to the conversation on the other machine.
+
+A folder is the one thing that sheet cannot take over the connection. Confirming a folder,
+or typing `/attach <a directory>`, leaves the folder unregistered and says exactly:
+
+```
+choosing a folder is not available over --host yet — the folders here are this machine's, not the ones the conversation is on.
+```
+
+The sheet stays open after a marked folder is refused, with your marks still there, so you
+can unchoose it or choose a file instead. `/folder`, `/place` and `/dir` say the same sentence
+without opening the sheet. A bare `/attach` does open because it is a file door and files
+travel over ssh.
 
 ## Type a word to filter, open a row to browse
 
@@ -233,10 +255,10 @@ Twenty-four things is as many as one message can carry, and the twenty-fifth pre
 it. You can walk into other folders between choices — the tray is not about one level. A
 folder you choose that the conversation already holds is left alone rather than taken off.
 
-The work a confirm does runs in the background, because registering a folder is a round
-trip when the conversation is on another machine and attaching a file is a look at the
-disk. Nothing on screen claims otherwise, and each thing that fails says so by name:
-`no such file: main.go`, `no such folder · ~/code/gone`.
+The work a confirm does runs in the background, because registering a folder can be a round
+trip through the local engine and attaching a file is a look at the disk. Nothing on screen
+claims otherwise, and each thing that fails says so by name: `no such file: main.go`,
+`no such folder · ~/code/gone`.
 
 The dim tail at the right end is what the machine already knows about that folder:
 
@@ -561,6 +583,13 @@ A **file** handed to `/attach` still goes on the tray as a file, exactly as befo
 one command covers both, and you do not have to know in advance which of the two you are
 pointing at.
 
+Over `--host`, the directory is on the machine you are sitting at while the conversation is
+on the other one, so it is not registered and the command says exactly:
+
+```
+choosing a folder is not available over --host yet — the folders here are this machine's, not the ones the conversation is on.
+```
+
 Two things that are deliberately not this:
 
 - **Dragging a folder onto the window still refuses** with
@@ -614,10 +643,11 @@ nothing is waiting · what this conversation writes in the folder it is standing
 putting changes into a folder is not available over --host yet — the conversation is on the other machine.
 ```
 
-- The first is `/folder` on a session opened with `--host`. The folders this program can
+- The first is every road onto a folder on a session opened with `--host`: `/folder`, a
+  folder confirmed on the sheet, and `/attach <a directory>`. The folders this program can
   read are on the laptop you are sitting at; the conversation is on the other machine, so
-  every row it could draw would be somewhere the work cannot go. Type the far machine's
-  path into whatever asks for one instead.
+  none is registered. A bare `/attach` still opens the sheet because files travel; if a
+  marked folder is refused, the sheet stays open with the marks still in your hands.
 - The second is a conversation that has no way to hold a folder at all. Nothing is added
   and nothing pretends to be; `/folder` does not open.
 - There is no longer a refusal for a machine with nothing remembered. `nothing to offer yet`
