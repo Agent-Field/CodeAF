@@ -1871,6 +1871,29 @@ are dropped — `↑` first, because `↓` is the one that says something is arr
 **On a screen-reader or plain terminal** the arrows are spelled `^` and `v` and
 nothing eases: the exact figure is drawn each time.
 
+**They are quiet on purpose.** The figures wear the same dim grey as every other
+fact at the right edge of a row — the step clock, `189 lines`, `⠋ 2s / 30s` — and
+the arrow is fainter still. A number that moves does not also need to be bright;
+the words on the row are what it is for.
+
+**A turn that was split** — a correction you typed into it, or a step kept out of
+the compact view because a call in it failed — draws a door above the split and
+the working block below it. The figures ride the lower block only, the one where
+the work is now; the door above is machinery that is over.
+
+## Do the up and down token figures show inside a task room — tokens on a task's own page
+
+Yes. A task's page (a room, opened from the task column) draws the same column on
+its own live work, counted from the task's own lane: `↑` and `↓` are what THAT
+task has sent and received, summed over the steps its page has heard, never the
+conversation's figures. A room opened on a task that was already running shows
+`↓` from the moment the task writes anything and `↑` from its next finished step
+— the page cannot know what it did not hear, so it draws nothing rather than a
+guess. The column leaves when the task finishes, as it does in the conversation.
+
+A run's read-only transcript inside an adaptive run's page draws no column: it
+is a journal being read back, not work being watched.
+
 ## How exact are the up and down token figures — is the upload figure what I am billed for
 
 `↓` is the provider's own count as soon as a step reports one. In between, while

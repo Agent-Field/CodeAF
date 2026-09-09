@@ -105,6 +105,13 @@ type liveWork struct {
 	// pending is the live frontier between calls. It is a state indicator, never
 	// a caption claiming that a completed call is still doing work.
 	pending bool
+	// last says this is THE FRONTIER RUN — the one furthest down the page. A
+	// turn holds more than one run when a kept row splits it (a correction, a
+	// failed call whose step is kept whole), and only the last of them is where
+	// the work is now; the ones above it are machinery that is over. The live
+	// token column rides this run alone (tokencol.go): a pair drawn on every
+	// run's door read as the same turn running twice.
+	last bool
 }
 
 // deriveLiveWork is the windows drawn by a page whose lens opts in.
@@ -182,6 +189,20 @@ func liveWorkRuns(d deck) map[int]liveWork {
 		}
 		out[lo] = w
 		lo = hi - 1
+	}
+	// THE FRONTIER IS NAMED ONCE THE RUNS ARE KNOWN, because it is the run with
+	// the greatest start and nothing inside the walk can know that until the
+	// walk is over.
+	frontier := -1
+	for lo := range out {
+		if lo > frontier {
+			frontier = lo
+		}
+	}
+	if frontier >= 0 {
+		w := out[frontier]
+		w.last = true
+		out[frontier] = w
 	}
 	return out
 }
@@ -366,7 +387,7 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 			// seconds of a turn — before there is a caption, and while a slow
 			// endpoint is deciding whether to say anything — which is exactly the
 			// stretch a still line says nothing about.
-			if i == 0 {
+			if i == 0 && w.last {
 				drawn += a.turnTokenSuffix(d, ansi.StringWidth(drawn), room)
 			}
 			out = append(out, row{text: drawn, entry: -1, hit: hitWorkFold, turn: w.key, activity: w.pending})
@@ -453,7 +474,7 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 			// it, flush right, where the finished chip carries its receipt
 			// (tokencol.go). The steps above it are work that is over and carry
 			// nothing: the column is a sign of motion and dies with the motion.
-			if at == 0 && i == 0 {
+			if at == 0 && i == 0 && w.last {
 				drawn += a.turnTokenSuffix(d, ansi.StringWidth(drawn), room)
 			}
 			out = append(out, row{text: drawn, entry: -1, hit: hitWorkFold, turn: w.key, activity: (s.live && at == 0) || (waiting && ((inline && i == len(s.lines)-1) || (!inline && i == 0))), inlineWait: waiting && ((inline && i == len(s.lines)-1) || (!inline && i == 0))})
@@ -476,7 +497,7 @@ func (a *app) liveWorkDoor(w liveWork, width int, d deck) row {
 	mark := a.linearMark("▾ ", "v ")
 	text := a.pal.dim(mark + liveWorkWord + " · ctrl+e")
 	room := width - workIndentCols(width) - actionGutter
-	if room > 0 {
+	if room > 0 && w.last {
 		text += a.turnTokenSuffix(d, ansi.StringWidth(text), room)
 	}
 	return row{

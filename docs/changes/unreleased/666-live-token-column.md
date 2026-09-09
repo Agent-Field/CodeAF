@@ -8,6 +8,9 @@ invalidates:
   - "A live token figure was said to be impossible between steps because the books only move when a provider answers. It is drawn: the bytes already on the page are the floor under ↓ until the exact figure lands, through session.EstimateTokens — the package's own divisor, now exported so the surface and the engine cannot disagree about what a token weighs."
   - "captionRows and captionRow take the deck they are drawing (internal/tui3/caption.go). A caller passing only a width no longer compiles."
   - "liveWorkDoor takes the frame width and the deck (internal/tui3/livesteps.go), because the door now carries the turn's pair."
+  - "The column was gated to the conversation's page by its lens. It is not: its state lives on the shared feed (feed.col, a tokenCol) and a deck carries a pointer to it (deck.col), so a task room draws the same column off its own lane's EventTurnDone usage. A page with nothing to carry — a run's read-only transcript — leaves deck.col nil."
+  - "The figures were painted in the payload ink (pal.data). They are dim, with the arrow at the fade ramp's faintest stop: a moving figure is salient by moving, and the payload hue made a number at the right edge outrank the sentence beside it."
+  - "A turn split into several runs by a kept row drew the pair on every run's door, which read as the same turn running twice. Only the frontier run (liveWork.last) carries it."
 ---
 
 The shimmer answered "is this alive" and nothing answered "is anything moving,

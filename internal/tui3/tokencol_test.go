@@ -9,17 +9,22 @@ import (
 )
 
 // tokenColApp is the live-steps fixture with BOOKS on it: a turn that has sent
-// 14.2k and had 512 back, snapped rather than walking, because a test about
-// what is DRAWN should not also be a test about how fast it gets there.
+// 14.2k and had 512 back, folded in through the same door a real reading takes
+// ([app.take]) and snapped rather than walking, because a test about what is
+// DRAWN should not also be a test about how fast it gets there.
 func tokenColApp(t *testing.T) *app {
 	t.Helper()
 	a := liveStepsApp(t)
 	a.width = 100
-	a.inputTokens, a.turnInStart = 14200, 0
-	a.outputTokens, a.turnOutStart = 512, 0
+	a.turnBegan = liveStepsBase
+	a.take(session.Usage{Input: 14200, Output: 512})
 	a.tickTokenCol(0, true)
 	a.touch()
 	return a
+}
+
+func hasColumn(page string) bool {
+	return strings.Contains(page, "↑") || strings.Contains(page, "↓")
 }
 
 func TestTheRunningTurnSaysWhatWentUpAndWhatCameBack(t *testing.T) {
@@ -39,7 +44,7 @@ func TestOnlyTheLiveRowOfTheBlockCarriesTheColumn(t *testing.T) {
 	a := tokenColApp(t)
 	carrying := 0
 	for _, line := range plainRows(a) {
-		if strings.Contains(line, "↑") || strings.Contains(line, "↓") {
+		if hasColumn(line) {
 			carrying++
 		}
 	}
@@ -56,7 +61,7 @@ func TestTheColumnLeavesWithTheTurn(t *testing.T) {
 	a.state = stateIdle
 	a.tickTokenCol(0, true)
 	a.touch()
-	if page := livePage(a); strings.Contains(page, "↑") || strings.Contains(page, "↓") {
+	if page := livePage(a); hasColumn(page) {
 		t.Fatalf("the column outlived the turn:\n%s", page)
 	}
 }
@@ -84,15 +89,15 @@ func TestANarrowFrameKeepsTheWordsAndDropsTheColumn(t *testing.T) {
 // one of the two keeps ↓ and sheds ↑.
 func TestTheColumnShedsWhatWentUpFirst(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
-	both, cells := a.tokenColumn(14200, 512, 40, true)
+	both, cells := a.tokenColumn(14200, 512, 40)
 	if cells == 0 || !strings.Contains(plain(both), "↑") || !strings.Contains(plain(both), "↓") {
 		t.Fatalf("a wide budget drew %q", plain(both))
 	}
-	one, cells := a.tokenColumn(14200, 512, 8, true)
+	one, cells := a.tokenColumn(14200, 512, 8)
 	if cells == 0 || strings.Contains(plain(one), "↑") || !strings.Contains(plain(one), "↓ 512") {
 		t.Fatalf("a tight budget kept the wrong half: %q", plain(one))
 	}
-	if none, cells := a.tokenColumn(14200, 512, 3, true); cells != 0 || none != "" {
+	if none, cells := a.tokenColumn(14200, 512, 3); cells != 0 || none != "" {
 		t.Fatalf("a budget with room for neither drew %q", plain(none))
 	}
 }
@@ -101,10 +106,10 @@ func TestTheColumnShedsWhatWentUpFirst(t *testing.T) {
 // is absent, not a zero.
 func TestNothingKnownDrawsNothing(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
-	if text, cells := a.tokenColumn(0, 0, 40, true); cells != 0 || text != "" {
+	if text, cells := a.tokenColumn(0, 0, 40); cells != 0 || text != "" {
 		t.Fatalf("an unknown pair drew %q", plain(text))
 	}
-	text, cells := a.tokenColumn(14200, 0, 40, true)
+	text, cells := a.tokenColumn(14200, 0, 40)
 	if cells == 0 || strings.Contains(plain(text), "↓") {
 		t.Fatalf("a turn with nothing back yet drew %q", plain(text))
 	}
@@ -113,20 +118,36 @@ func TestNothingKnownDrawsNothing(t *testing.T) {
 	}
 }
 
+// THE COLUMN IS NEVER BRIGHTER THAN THE SENTENCE IT SITS BESIDE. The figure
+// wears the margin's tier and the arrow one stop under it — the datum hue that
+// the first cut used made a number at the right edge outrank the words.
+func TestTheColumnWearsTheMarginsInkAndNotThePayloads(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	text, _ := a.tokenColumn(14200, 512, 40)
+	if strings.Contains(text, a.pal.data("512")) || strings.Contains(text, a.pal.data("14.2k")) {
+		t.Fatalf("a figure took the payload ink: %q", text)
+	}
+	if !strings.Contains(text, a.pal.dim(" 512")) {
+		t.Fatalf("the figure is not on the dim tier: %q", text)
+	}
+	if !strings.Contains(text, a.pal.fade(tokenDownGlyph, 0)) {
+		t.Fatalf("the arrow is not one stop under its figure: %q", text)
+	}
+}
+
 // THE BOOKS MOVE ONCE A STEP AND THE PAGE MOVES CONTINUOUSLY, so the bytes
 // already drawn are the floor under what the provider has not yet reported.
 func TestWhatIsOnThePageFloorsWhatTheBooksHaveNotSeen(t *testing.T) {
 	a := liveStepsApp(t)
-	a.outputTokens, a.turnOutStart = 0, 0
 	a.entries = append(a.entries, entry{kind: entryAssistant, turn: 1,
 		text: strings.Repeat("x", 4000)})
-	_, down := a.turnTokens()
+	_, down := a.col.reading(a.turnWritten())
 	if want := session.EstimateTokens(4000); down < want {
 		t.Fatalf("streamed bytes did not floor the figure: got %d, want at least %d", down, want)
 	}
 	// And the provider's own count takes over the moment it lands.
-	a.outputTokens, a.turnOutStart = 9000, 0
-	if _, down = a.turnTokens(); down != 9000 {
+	a.col.down = 9000
+	if _, down = a.col.reading(a.turnWritten()); down != 9000 {
 		t.Fatalf("the books did not win once they had spoken: %d", down)
 	}
 }
@@ -135,13 +156,13 @@ func TestWhatIsOnThePageFloorsWhatTheBooksHaveNotSeen(t *testing.T) {
 // of the conversation is what it sent.
 func TestWhatOneRequestWeighsFloorsWhatWentUp(t *testing.T) {
 	a := liveStepsApp(t)
-	a.inputTokens, a.turnInStart = 0, 0
 	a.ctxTokens = 63600
-	if up, _ := a.turnTokens(); up != 63600 {
+	a.tickTokenCol(0, true)
+	if up, _ := a.col.reading(0); up != 63600 {
 		t.Fatalf("the request's weight was not the floor: %d", up)
 	}
-	a.inputTokens = 90000
-	if up, _ := a.turnTokens(); up != 90000 {
+	a.col.up = 90000
+	if up, _ := a.col.reading(0); up != 90000 {
 		t.Fatalf("the books did not win once they had spoken: %d", up)
 	}
 }
@@ -150,10 +171,10 @@ func TestWhatOneRequestWeighsFloorsWhatWentUp(t *testing.T) {
 // thousand between two frames reads as a glitch, so it walks.
 func TestTheFiguresWalkTowardTheBooks(t *testing.T) {
 	a := liveStepsApp(t)
-	a.inputTokens, a.turnInStart = 14200, 0
-	a.outputTokens, a.turnOutStart = 512, 0
+	a.turnBegan = liveStepsBase
+	a.take(session.Usage{Input: 14200, Output: 512})
 	a.tickTokenCol(1, false)
-	up, down := a.turnTokensDrawn()
+	up, down := a.col.drawn(a.turnWritten(), true, false)
 	if up <= 0 || up >= 14200 {
 		t.Fatalf("what went up popped rather than walked: %d", up)
 	}
@@ -163,7 +184,7 @@ func TestTheFiguresWalkTowardTheBooks(t *testing.T) {
 	for range 20 {
 		a.tickTokenCol(1, false)
 	}
-	if up, down = a.turnTokensDrawn(); up != 14200 || down != 512 {
+	if up, down = a.col.drawn(a.turnWritten(), true, false); up != 14200 || down != 512 {
 		t.Fatalf("the walk never arrived: ↑%d ↓%d", up, down)
 	}
 }
@@ -172,11 +193,11 @@ func TestTheFiguresWalkTowardTheBooks(t *testing.T) {
 // would spend the first second of this one counting DOWN.
 func TestEveryTurnCountsUpFromNothing(t *testing.T) {
 	a := liveStepsApp(t)
-	a.shownUp, a.shownDown = 14200, 512
+	a.col = tokenCol{up: 14200, down: 512, shownUp: 14200, shownDown: 512}
 	a.turnBegan = time.Time{}
 	a.startClock()
-	if a.shownUp != 0 || a.shownDown != 0 {
-		t.Fatalf("a new turn inherited the last one's pair: ↑%d ↓%d", a.shownUp, a.shownDown)
+	if a.col != (tokenCol{}) {
+		t.Fatalf("a new turn inherited the last one's column: %+v", a.col)
 	}
 }
 
@@ -184,25 +205,25 @@ func TestEveryTurnCountsUpFromNothing(t *testing.T) {
 func TestTheLinearTierDrawsTheExactPair(t *testing.T) {
 	a := liveStepsApp(t)
 	a.linear = true
-	a.inputTokens, a.turnInStart = 14200, 0
-	a.outputTokens, a.turnOutStart = 512, 0
-	if up, down := a.turnTokensDrawn(); up != 14200 || down != 512 {
+	a.turnBegan = liveStepsBase
+	a.take(session.Usage{Input: 14200, Output: 512})
+	if up, down := a.col.drawn(a.turnWritten(), true, a.linear); up != 14200 || down != 512 {
 		t.Fatalf("the linear tier walked a figure: ↑%d ↓%d", up, down)
 	}
 }
 
-// THE SESSION'S FIGURES ARE THE SESSION'S: a page drawing somebody else's work
-// may not quote this conversation's totals over it.
-func TestOnlyThePageThatOwnsTheReceiptsDrawsTheColumn(t *testing.T) {
+// A PAGE WITH NO COLUMN TO CARRY DRAWS NONE: a run's read-only transcript has
+// no lane and no books, and the deck says so by carrying nothing.
+func TestAPageWithNoColumnDrawsNone(t *testing.T) {
 	a := tokenColApp(t)
 	mine := a.conversation()
 	if !a.tokenColumnOn(mine) {
-		t.Fatal("the conversation refused its own figures")
+		t.Fatal("the conversation refused its own column")
 	}
-	theirs := mine
-	theirs.lens = overseerLens
-	if a.tokenColumnOn(theirs) {
-		t.Fatal("a room quoted the conversation's figures")
+	bare := mine
+	bare.col = nil
+	if a.tokenColumnOn(bare) {
+		t.Fatal("a page carrying no column drew one")
 	}
 }
 
@@ -226,5 +247,85 @@ func TestARunningStepCarriesOnlyWhatItWrote(t *testing.T) {
 	settled.ended = liveStepsBase.Add(time.Second)
 	if word := a.stepTokenWord(settled, d); word != "" {
 		t.Fatalf("a finished step kept its figure: %q", word)
+	}
+}
+
+// ONE COLUMN, EVERY PAGE THAT STREAMS. A task room grows its transcript with
+// the same reducer as the conversation, so its live work carries the same
+// column — off its OWN lane's books, never the conversation's.
+func TestATaskRoomCarriesItsOwnColumn(t *testing.T) {
+	a, fake, _ := roomApp(t)
+	fake.journal = midFlightJournal(t)
+	a.openRoom(7, "Fix the nil-map crash")
+	a.width = 100
+	a.touch()
+	// The conversation's own books are loud, and must not reach the node's page.
+	a.turnBegan = liveStepsBase
+	a.take(session.Usage{Input: 999000, Output: 999000})
+
+	// The node's lane reports one finished step.
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
+		Kind: session.EventTurnDone, Usage: session.Usage{Input: 4200, Output: 310},
+	}})
+	if a.room.col.up != 4200 || a.room.col.down != 310 {
+		t.Fatalf("the room's lane did not feed its column: %+v", a.room.col)
+	}
+	a.tickTokenCol(0, true)
+	a.room.dirty = true
+	page := roomText(a)
+	if !strings.Contains(page, "↑ 4.2k") || !strings.Contains(page, "↓ 310") {
+		t.Fatalf("the node's page does not carry its own column:\n%s", page)
+	}
+	if strings.Contains(page, "999k") {
+		t.Fatalf("the conversation's books leaked onto the node's page:\n%s", page)
+	}
+	// And the column leaves with the node's run.
+	a.room.done = true
+	a.tickTokenCol(0, true)
+	a.room.dirty = true
+	if page := roomText(a); hasColumn(page) {
+		t.Fatalf("the column outlived the node's run:\n%s", page)
+	}
+}
+
+// A TURN SPLIT INTO TWO RUNS IS STILL ONE TURN. A kept row — here the first
+// call failed, and its step is kept whole because only failure speaks — splits
+// the running turn's machinery into a run holding only the reasoning above it
+// and a run below, and each run draws its own door. The pair rides the
+// frontier alone: the same figures on both doors read as the turn running
+// twice, which is what the owner's screenshot showed.
+func TestASplitTurnCarriesTheColumnOnItsFrontierAlone(t *testing.T) {
+	a := tokenColApp(t)
+	a.entries[3].status = toolFailed
+	a.touch()
+	d := a.conversation()
+	stampHierarchy(d.entries, a.deckFolds(d))
+	d.captions = deriveCaptions(d.entries, d.runningTurn)
+	if runs := liveWorkRuns(d); len(runs) < 2 {
+		t.Fatalf("the fixture did not split into two runs: %d", len(runs))
+	}
+	page := plainRows(a)
+	carrying := 0
+	for _, line := range page {
+		if hasColumn(line) {
+			carrying++
+		}
+	}
+	if carrying != 1 {
+		t.Fatalf("a split turn drew the column %d times, want once, on the frontier:\n%s",
+			carrying, strings.Join(page, "\n"))
+	}
+	// And the run that carries it is the lowest one on the page.
+	at := -1
+	for i, line := range page {
+		if hasColumn(line) {
+			at = i
+		}
+	}
+	for i := at + 1; i < len(page); i++ {
+		if strings.Contains(page[i], "ctrl+e") {
+			t.Fatalf("a run below the column has its own door — the column is not on the frontier:\n%s",
+				strings.Join(page, "\n"))
+		}
 	}
 }

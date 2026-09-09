@@ -166,6 +166,12 @@ type deck struct {
 	// the session's clock runs over this list (lens.go).
 	lens        lens
 	runningTurn int
+	// col is the live token column this page carries, or nil for a page
+	// with none to carry — a run's read-only transcript (roomorch.go). It is a
+	// pointer to the feed's own so the drawing reads the pair in motion, and it
+	// is on the deck rather than found through the lens because WHICH page is
+	// being drawn is the deck's whole job (tokencol.go).
+	col *tokenCol
 }
 
 // foldWindow is how many of a folded cluster's calls this deck keeps on screen: the
@@ -191,7 +197,7 @@ func (a *app) conversation() deck {
 		running = a.turn
 	}
 	return deck{entries: a.entries, unfolded: a.unfolded, workOpen: a.workOpen, capOpen: a.capOpen,
-		lens: participantLens, runningTurn: running}
+		lens: participantLens, runningTurn: running, col: &a.col}
 }
 
 // bodyDeck is the deck the BODY REGION is drawing right now — the room's page

@@ -303,6 +303,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"upload and download tokens while it works", "screen"},
 		{"what do the up and down arrows next to working mean", "screen"},
 		{"how many tokens is this turn using right now", "screen"},
+		{"do the token arrows show inside a task room", "screen"},
 		{"my click does nothing on the server", "opening-files-from-that-machine"},
 		{"does export save to my laptop", "commands"},
 		{"which machine's settings are these", "commands"},
