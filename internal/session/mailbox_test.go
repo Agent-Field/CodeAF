@@ -258,7 +258,7 @@ func TestANodeThatEndsSomewhereElseIsAnnouncedAgain(t *testing.T) {
 	part.state = TaskUnverified
 	part.graph.mu.Unlock()
 
-	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 needs your look: currency")
+	nest.session.deliverTaskNote(part, part.attemptNow(), part.resultTag(), "task 2 your call: currency")
 	part.graph.mu.Lock()
 	part.state = TaskDone
 	part.graph.mu.Unlock()

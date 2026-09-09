@@ -996,7 +996,7 @@ func TestAnAcceptedFamilyLandsEveryGenerationsWork(t *testing.T) {
 
 	// AND THE FAMILY LANDS NEEDING A LOOK, which merges nothing at all.
 	kept, keptLedger := keepHome(family, tree, []string{"notes.md"})
-	family.finish(needsLookLead+"nobody could judge this", keptLedger, "", kept)
+	family.finish(yourCallLead(TaskFacts{Merge: kept})+"nobody could judge this", keptLedger, "", kept)
 	graph.complete(family, TaskUnverified)
 	if _, err := os.Stat(filepath.Join(ground, "part.md")); !os.IsNotExist(err) {
 		t.Fatal("work that was never accepted was laid over the person's folder")

@@ -242,7 +242,7 @@ func TestAConflictedMergeNeedsYourLookRatherThanDone(t *testing.T) {
 	if branch != tree.branch || !containsString(changed, "shared.txt") {
 		t.Fatalf("the landing lost the branch or the files: %q %v", branch, changed)
 	}
-	if !strings.HasPrefix(report, needsLookLead) {
+	if !strings.HasPrefix(report, yourCallLead(TaskFacts{Merge: mergeConflicted})) {
 		t.Fatalf("the report does not lead with the person's own words:\n%s", report)
 	}
 	if !strings.Contains(report, "shared.txt") {
@@ -596,7 +596,7 @@ func TestWorkOnlyAPersonCanDoLandsNeedingTheirLook(t *testing.T) {
 	}
 	// THE PERSON'S OWN WORDS, in the register every other undecided landing uses,
 	// with the reader's reason as the thing they are being asked to look at.
-	if !strings.HasPrefix(report, needsLookLead) {
+	if !strings.HasPrefix(report, yourCallLead(TaskFacts{})) {
 		t.Fatalf("the report does not lead with the person's own words:\n%s", report)
 	}
 	if !strings.Contains(report, why) {

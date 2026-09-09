@@ -29,7 +29,7 @@ func unverifiedNode(t *testing.T, mutate func(*Config)) (*Agent, *TaskNode) {
 	t.Helper()
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, mutate)
 	graph := stubbedGraph(agent, func(node *TaskNode) {
-		node.finish(withReport(needsLookLead+"the checker could not be asked: dial tcp: connection refused", workClaimSaid),
+		node.finish(withReport(yourCallLead(TaskFacts{})+"the checker could not be asked: dial tcp: connection refused", workClaimSaid),
 			nil, "", "")
 		node.keepClaim(workClaimSaid)
 		node.graph.complete(node, TaskUnverified)
@@ -77,14 +77,14 @@ func TestASecondNonAnswerKeepsTheWorksOwnReport(t *testing.T) {
 	if !strings.Contains(report, workClaimSaid) {
 		t.Fatalf("the re-audit deleted the work's own account:\n%s", report)
 	}
-	if !strings.HasPrefix(report, needsLookLead) {
+	if !strings.HasPrefix(report, yourCallLead(TaskFacts{})) {
 		t.Fatalf("the fresh non-answer is not what the card leads with:\n%s", report)
 	}
 	if !strings.Contains(report, "asked twice") {
 		t.Fatalf("the report does not say this is the second nothing:\n%s", report)
 	}
 	// The stale non-answer is REPLACED, not stacked: one lead line, not two.
-	if n := strings.Count(report, needsLookLead); n != 1 {
+	if n := strings.Count(report, yourCallLead(TaskFacts{})); n != 1 {
 		t.Fatalf("the report carries %d non-answers, want 1:\n%s", n, report)
 	}
 	if state := node.stateNow(); state != TaskUnverified {
@@ -97,7 +97,7 @@ func TestASecondNonAnswerKeepsTheWorksOwnReport(t *testing.T) {
 // The fresh auditor said VERIFIED. The card now leads with the evidence, and the
 // work's claim stands under it — but the line saying nobody could judge this
 // work is GONE, because it has just been judged. A card reading "VERIFIED …"
-// over "finished, but needs your look — …" contradicts itself in two lines.
+// over the question the last landing asked contradicts itself in two lines.
 func TestAReauditThatVerifiesDropsTheStaleNonAnswer(t *testing.T) {
 	agent, node := unverifiedNode(t, nil)
 
@@ -114,7 +114,7 @@ func TestAReauditThatVerifiesDropsTheStaleNonAnswer(t *testing.T) {
 	if !strings.Contains(report, workClaimSaid) {
 		t.Fatalf("the accepted node lost the work's own account:\n%s", report)
 	}
-	if strings.Contains(report, needsLookLead) || strings.Contains(report, auditUnverified) {
+	if strings.Contains(report, yourCallLead(TaskFacts{})) || strings.Contains(report, auditUnverified) {
 		t.Fatalf("a verified card still says nobody could judge it:\n%s", report)
 	}
 	if state := node.stateNow(); state != TaskDone {
