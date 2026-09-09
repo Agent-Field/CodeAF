@@ -49,6 +49,18 @@ const (
 	// upgradable slot, each inheriting its meaning, its tint token and its cell
 	// budget from the plain glyph it replaces.
 	NerdFont
+	// ASCII is the floor UNDER the floor: the spelling for a screen reader and
+	// for a terminal with no Unicode at all, one character a reader can NAME
+	// where the other two tiers draw a shape.
+	//
+	// IT IS NOT SOMETHING [DetectGlyphSet] EVER RETURNS. A font is a guess and
+	// a repertoire is a detection, but "this surface is being read aloud" is a
+	// thing the person said out loud (the linear option) — so the shell asks
+	// for this tier by name and nothing infers it. Only the ICON slots carry an
+	// ASCII spelling; a geometry slot resolves to its plain character here,
+	// because the ASCII spelling of a grid is a RUN of characters ("+-> ") that
+	// belongs to the renderer drawing the run, not one cell in a table.
+	ASCII
 	glyphSetCount
 )
 
@@ -60,6 +72,8 @@ func (g GlyphSet) String() string {
 		return "plain"
 	case NerdFont:
 		return "nerdfont"
+	case ASCII:
+		return "ascii"
 	}
 	return "invalid"
 }
@@ -74,6 +88,8 @@ func ParseGlyphSet(s string) (GlyphSet, bool) {
 		return Plain, true
 	case "nerd", "nerdfont", "nerd-font", "nf", "on", "yes", "1", "true":
 		return NerdFont, true
+	case "ascii", "text", "linear":
+		return ASCII, true
 	}
 	return Plain, false
 }
@@ -89,6 +105,7 @@ const (
 	GWorking
 	GSettled
 	GFailed
+	GStopped
 	GPaused
 	GNeedsHuman
 	GWaitsOn
@@ -104,6 +121,16 @@ const (
 	GShell
 	GSearch
 	GWrite
+	GActionRead
+	GActionCreate
+	GActionTest
+	GActionBrowse
+	GActionTransfer
+	GActionCommunicate
+	GActionCoordinate
+	GActionPlan
+	GActionWait
+	GActionWork
 	GBoosted
 	GSeparator
 	GMissing
@@ -149,6 +176,11 @@ type GlyphBinding struct {
 	// NerdFont is the tier's icon, empty exactly when [GlyphBinding.Geometry]
 	// is true.
 	NerdFont string
+	// ASCII is the [ASCII] tier's spelling: ONE character a screen reader can
+	// name, for a slot whose plain glyph carries its meaning by shape. It is
+	// non-empty for every icon slot and empty for every geometry slot, which
+	// falls back to [GlyphBinding.Plain] — glyphvocab_test.go pins both halves.
+	ASCII string
 	// NFName is the Nerd Fonts class name — "nf-fa-adjust". The NAME is the
 	// contract and the codepoint is a binding verified against the pinned
 	// glyphnames extract in testdata (12.7 B.4).
@@ -231,6 +263,11 @@ func init() {
 			glyphTable[NerdFont][id] = binding.NerdFont
 		} else {
 			glyphTable[NerdFont][id] = binding.Plain
+		}
+		if binding.ASCII != "" {
+			glyphTable[ASCII][id] = binding.ASCII
+		} else {
+			glyphTable[ASCII][id] = binding.Plain
 		}
 	}
 
@@ -388,16 +425,27 @@ func lookupUpgrade(g GlyphSet, r rune) (string, bool) {
 // characters again under a tier name would say the tier drew something it does
 // not draw.
 func GlyphsIn(g GlyphSet) []GlyphInfo {
-	if g != NerdFont {
-		return Glyphs()
-	}
-	out := make([]GlyphInfo, 0, len(vocabulary))
-	for _, b := range vocabulary {
-		if b.NerdFont == "" {
-			continue
+	switch g {
+	case NerdFont:
+		out := make([]GlyphInfo, 0, len(vocabulary))
+		for _, b := range vocabulary {
+			if b.NerdFont == "" {
+				continue
+			}
+			r, _ := utf8.DecodeRuneInString(b.NerdFont)
+			out = append(out, GlyphInfo{Name: b.Name, Glyph: b.NerdFont, Rune: r, AmbiguousWidth: b.NFAmbiguous})
 		}
-		r, _ := utf8.DecodeRuneInString(b.NerdFont)
-		out = append(out, GlyphInfo{Name: b.Name, Glyph: b.NerdFont, Rune: r, AmbiguousWidth: b.NFAmbiguous})
+		return out
+	case ASCII:
+		out := make([]GlyphInfo, 0, len(vocabulary))
+		for _, b := range vocabulary {
+			if b.ASCII == "" {
+				continue
+			}
+			r, _ := utf8.DecodeRuneInString(b.ASCII)
+			out = append(out, GlyphInfo{Name: b.Name, Glyph: b.ASCII, Rune: r})
+		}
+		return out
 	}
-	return out
+	return Glyphs()
 }
