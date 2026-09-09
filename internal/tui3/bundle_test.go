@@ -2446,6 +2446,64 @@ func TestTheChromeHeightCountsTheWrappedStatus(t *testing.T) {
 	}
 }
 
+// THE ROW IS NEVER WIDER THAN THE FRAME, AND THE CLOCK MOVING MID-FRAME MAY NOT
+// MAKE IT ONE CELL WIDER. Every width decision the status row makes is made
+// from the PLAIN cluster (render.go's [app.paintParts]), so a painted segment
+// that measures more than the text it was measured as makes a row wider than
+// the frame — which the renderer does not wrap but CUTS, dropping the last cell
+// of the line and leaving the clock reading "10" instead of "10s", with the
+// keeping and money doors a column left of where they were drawn.
+//
+// The state word is where it happened: it carries the turn's count-up, it is
+// built from [app.now] — which is time.Now() in the running program — and the
+// painting used to be asked for a second time, at paint time, from a clock that
+// had moved on. A turn crossing "9s" into "10s" between the two reads drew a
+// row one cell wider than the row it had measured (render.go's [hudPart]).
+func TestAClockThatTicksMidFrameCannotPushTheStatusRowPastTheFrame(t *testing.T) {
+	a, _, _ := hudApp(t)
+	a.title = "Identifying AI-benefiting stocks for growth and hedging"
+	a.cost, a.ctxWindow, a.ctxTokens = 0.08, 1_300_000, 22_100
+	a.inputTokens, a.cacheRead = 100_000, 42_000
+	a.approval = "allow"
+	a.state = stateWorking
+	began := a.now()
+	a.turnBegan = began
+	a.outputTokens, a.turnOutStart = 1600, 0
+
+	// The clock stands one millisecond short of ten seconds for the first read
+	// of a frame and has crossed it by the next, which is the whole of what
+	// time.Now() does to a turn passing that boundary. The offset walks so that
+	// the crossing lands between every pair of reads the row makes, wherever in
+	// the layout those two happen to fall.
+	reads := 0
+	a.clock = func() time.Time {
+		reads++
+		if reads <= 1 {
+			return began.Add(9999 * time.Millisecond)
+		}
+		return began.Add(10 * time.Second)
+	}
+	for _, width := range []int{210, 160, 120, 100, 80} {
+		for shift := 0; shift < 60; shift++ {
+			reads = -shift
+			for i, row := range a.statusRows(width) {
+				if got := ansi.StringWidth(plain(row)); got > width {
+					t.Fatalf("at %d columns row %d is %d cells wide: %q",
+						width, i, got, plain(row))
+				}
+			}
+			// And the painted cluster measures exactly what the row was laid out
+			// against, which is the law the row's arithmetic rests on.
+			reads = -shift
+			painted, measured := a.paintParts(a.telemetry(width))
+			if drawn, want := ansi.StringWidth(plain(painted)), ansi.StringWidth(measured); drawn != want {
+				t.Fatalf("at %d columns the telemetry draws %d cells and was measured as %d:\n  %q\n  %q",
+					width, drawn, want, plain(painted), measured)
+			}
+		}
+	}
+}
+
 // The repository is asked off the model loop, and its answer lands on the
 // legend. A probe that fails leaves no branch rather than a stale one.
 func TestTheBranchArrivesAsAMessageAndCanGoAway(t *testing.T) {
