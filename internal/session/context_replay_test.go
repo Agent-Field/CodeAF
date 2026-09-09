@@ -2,11 +2,12 @@ package session
 
 import (
 	"context"
-	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 func contextReplayCall(id, name, args string) ai.Message {
@@ -175,5 +176,27 @@ func TestContextReplayOnlySelectedEvidenceFilesResults(t *testing.T) {
 	handles := admissionEvidence(source, &spent)
 	if files != len(handles) || files > admissionHandlesKept || spent > admissionRoom() {
 		t.Fatalf("unselected filing or exceeded budget: %d files, %d handles, %d spent", files, len(handles), spent)
+	}
+}
+
+func TestContextReplayCompletionDigestIgnoresOrphanResults(t *testing.T) {
+	first := contextReplayCall("call_0", "read", `{"path":"first.txt"}`)
+	second := contextReplayCall("call_0", "write", `{"path":"second.txt","content":"right"}`)
+	messages := []ai.Message{
+		first,
+		contextReplayResult("call_0", "first content"),
+		contextReplayResult("call_0", "DUPLICATE RESULT"),
+		textMessage("assistant", "Between batches."),
+		contextReplayResult("call_0", "ORPHAN RESULT"),
+		second,
+		contextReplayResult("call_0", "Successfully wrote 5 bytes"),
+	}
+	_, _, results, _ := checkpointLedger(messages)
+	if len(results) != 2 {
+		t.Fatalf("completion reader received %d results, want only the two matched calls: %q", len(results), results)
+	}
+	if !strings.Contains(results[0], "read first.txt") || !strings.Contains(results[0], "first content") ||
+		!strings.Contains(results[1], "write second.txt") || !strings.Contains(results[1], second.ToolCalls[0].Function.Arguments) {
+		t.Fatalf("completed evidence lost its own label or input: %q", results)
 	}
 }

@@ -236,8 +236,8 @@ func (a *Agent) rewindPointsLocked() []RewindPoint {
 				points = append(points, point)
 			}
 		}
-		for _, call := range message.ToolCalls {
-			if at, ok := answers[call.ID]; ok && at > answered {
+		for callIndex := range message.ToolCalls {
+			if at, ok := answers[&message.ToolCalls[callIndex]]; ok && at > answered {
 				answered = at
 			}
 		}
@@ -246,21 +246,14 @@ func (a *Agent) rewindPointsLocked() []RewindPoint {
 	return points
 }
 
-// toolAnswerPositions indexes where each call's result landed. It is the
-// positional twin of toolResults (agent.go), which indexes the same messages by
-// their TEXT: a cut cares where the answer sits, not what it said. A result with
-// no id is skipped for the same reason there — it is a message no call can
-// claim.
-func toolAnswerPositions(messages []ai.Message) map[string]int {
-	var answers map[string]int
-	for index, message := range messages {
-		if message.Role != "tool" || message.ToolCallID == "" {
-			continue
-		}
-		if answers == nil {
-			answers = make(map[string]int, 8)
-		}
-		answers[message.ToolCallID] = index
+// toolAnswerPositions indexes where each call occurrence was answered. It is
+// the positional twin of toolResults: a cut cares where the answer sits, not
+// what it said, and a reused provider ID must not move an earlier boundary.
+func toolAnswerPositions(messages []ai.Message) map[*ai.ToolCall]int {
+	paired := toolResultCalls(messages)
+	answers := make(map[*ai.ToolCall]int, len(paired))
+	for index, call := range paired {
+		answers[call] = index
 	}
 	return answers
 }
