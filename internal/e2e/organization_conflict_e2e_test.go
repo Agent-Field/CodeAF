@@ -84,7 +84,7 @@ func testOrganizationConflictingSources(t *testing.T) {
 				if !filepath.IsAbs(target) {
 					target = filepath.Join(readers[i].dir, target)
 				}
-				if filepath.Clean(target) != filepath.Join(readers[i].dir, file) {
+				if !organizationSameFile(target, filepath.Join(readers[i].dir, file)) {
 					t.Errorf("report wrote another file: %s", target)
 				}
 			}
