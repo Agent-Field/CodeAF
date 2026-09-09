@@ -415,6 +415,18 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// it reaches the transcript, and the person sees which attempt they
 			// are on and what was taken off to get there.
 			hub.send(Event{Kind: EventNotice, Text: event.Delta})
+		case provider.StreamReplaced:
+			// A rescue on another machine is this step being asked again, so what
+			// the dead machine streamed is void exactly as a cut attempt's is. The
+			// room withdraws it on EventRetrying and the loop must not journal it
+			// either, or an interrupt after the rescue would record both halves as
+			// one answer — the same per-attempt boundary
+			// [completeWithRetryReasoning] resets on a cut.
+			partial.reset()
+			reasoning.reset()
+			warm.reset()
+			forming.reset()
+			hub.send(Event{Kind: EventRetrying, Text: event.Delta})
 		case provider.StreamToolCallForming:
 			// The seconds BEFORE the announcement, which the person used to
 			// watch as silence. Nothing here starts anything and nothing here

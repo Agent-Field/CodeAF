@@ -376,6 +376,8 @@ const (
 	// It fires when the stream guard cut a request (internal/provider's
 	// streamguard.go): the endpoint went quiet, or the reply stopped being
 	// language. It also fires when a transport failure is about to be retried.
+	// A rescue taking over a visible answer on another machine serving the same
+	// model fires it too (internal/provider's hedge.go).
 	// The turn loop discards that attempt's partial text, its early reads and
 	// its half-arrived calls before the next request, so A SURFACE MUST THROW
 	// AWAY WHAT IT DREW FOR THEM TOO — everything after the last thing the person
