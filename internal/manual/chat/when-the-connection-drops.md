@@ -1,5 +1,20 @@
 # When the connection drops
 
+## What do I do when it loses connection
+
+Check which connection the message names. `waiting for connection` means a
+model request could not connect before it was sent. aforge checks reachability
+and waits for up to two minutes, subject to the request's own deadline. You can
+cancel the wait. When the endpoint becomes reachable, the request continues;
+the outage does not spend its generation retries or teach a slower provider
+speed. This recovery does not replay a request already accepted by the model.
+
+For a chat opened with `--host`, a lost link to the other machine has a separate
+reconnection policy: the surface redials for up to five minutes. Your draft
+stays local and the far machine keeps the conversation journal. If redialling
+ends, run the same command to reopen that conversation. The sections below
+explain what happens to a reply that was still arriving.
+
 ## My wifi died in the middle of a reply
 
 The surface redials the machine by itself. You do not have to do anything.
