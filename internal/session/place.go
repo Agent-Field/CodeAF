@@ -32,11 +32,16 @@ import (
 // a folder a person can read is a folder whose parts always have the same
 // names.
 const (
-	placeTranscript   = "transcript.jsonl"
-	placeState        = "state.json"
-	placeCard         = "card.json"
-	placeTasks        = "tasks.json"
-	placeMeta         = "meta.json"
+	placeTranscript = "transcript.jsonl"
+	placeState      = "state.json"
+	placeCard       = "card.json"
+	placeTasks      = "tasks.json"
+	placeMeta       = "meta.json"
+	// The identity lock deliberately has no .json or .jsonl suffix: Recent in
+	// peek.go admits only transcript-shaped .jsonl files, and sweep.go descends
+	// only into directories, so neither conversation scan can mistake it for a
+	// conversation or a thing to reap.
+	placeMetaLock     = "meta.lock"
 	placeNodeJournals = "tasks"
 	placeLogs         = "logs"
 	placeTrees        = "trees"
@@ -302,18 +307,20 @@ func LoadMeta(dir string) (Meta, error) {
 // meta file every other fact about the session rides. A folder with no
 // conversation in it is refused rather than given a meta that claims one.
 func SetArchived(dir string, archived bool) error {
-	meta, err := LoadMeta(dir)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(meta.ID) == "" {
-		return fmt.Errorf("no conversation at %s", dir)
-	}
-	if meta.Archived == archived {
-		return nil
-	}
-	meta.Archived = archived
-	return SaveMeta(dir, meta)
+	return withMetaLock(dir, func() error {
+		meta, err := LoadMeta(dir)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(meta.ID) == "" {
+			return fmt.Errorf("no conversation at %s", dir)
+		}
+		if meta.Archived == archived {
+			return nil
+		}
+		meta.Archived = archived
+		return SaveMeta(dir, meta)
+	})
 }
 
 func SaveMeta(dir string, meta Meta) error {

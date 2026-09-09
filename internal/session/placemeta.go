@@ -143,7 +143,8 @@ func (a *Agent) metaSnapshotAt() (string, Meta) {
 	return a.config.Place.Dir, a.fillMetaLocked(Meta{})
 }
 
-// updateMeta serializes the whole read-modify-write, not just the final rename.
+// updateMeta serializes the whole read-modify-write, not just the final rename,
+// across every Agent and process that writes this conversation folder.
 // Each patch owns its fields; a spend snapshot made before naming cannot write
 // an old title back afterward. Snapshot collection must never run inside patch.
 func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
@@ -151,34 +152,34 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 	if dir == "" {
 		return
 	}
-	a.metaMu.Lock()
-	defer a.metaMu.Unlock()
-	meta, err := LoadMeta(dir)
-	if err != nil {
-		return
-	}
-	// Seed identity when rebuilding a missing file, while retaining current disk
-	// fields that another transaction may have updated since the snapshot.
-	if meta.ID == "" {
-		meta.ID, meta.Owned = snapshot.ID, snapshot.Owned
-	}
-	if meta.Workspace == "" {
-		meta.Workspace = snapshot.Workspace
-	}
-	if meta.Created.IsZero() {
-		meta.Created = snapshot.Created
-	}
-	if meta.Model == "" {
-		meta.Model, meta.Effort = snapshot.Model, snapshot.Effort
-	}
-	if meta.Places == nil {
-		meta.Places = snapshot.Places
-	}
-	if meta.Trees == nil {
-		meta.Trees = snapshot.Trees
-	}
-	patch(&meta)
-	_ = SaveMeta(dir, meta)
+	_ = withMetaLock(dir, func() error {
+		meta, err := LoadMeta(dir)
+		if err != nil {
+			return err
+		}
+		// Seed identity when rebuilding a missing file, while retaining current disk
+		// fields that another transaction may have updated since the snapshot.
+		if meta.ID == "" {
+			meta.ID, meta.Owned = snapshot.ID, snapshot.Owned
+		}
+		if meta.Workspace == "" {
+			meta.Workspace = snapshot.Workspace
+		}
+		if meta.Created.IsZero() {
+			meta.Created = snapshot.Created
+		}
+		if meta.Model == "" {
+			meta.Model, meta.Effort = snapshot.Model, snapshot.Effort
+		}
+		if meta.Places == nil {
+			meta.Places = snapshot.Places
+		}
+		if meta.Trees == nil {
+			meta.Trees = snapshot.Trees
+		}
+		patch(&meta)
+		return SaveMeta(dir, meta)
+	})
 }
 
 // fillMetaLocked fills in everything about a session that does not change while

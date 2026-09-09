@@ -2720,9 +2720,6 @@ type Agent struct {
 	// title is the session's name and titleTried marks the one attempt at
 	// generating it (title.go). A resumed session loads its name from the
 	// journal, so it never re-names itself.
-	// Metadata patches serialize disk transactions independently of agent reads.
-	metaMu sync.Mutex
-
 	title      string
 	titleTried bool
 	shortTitle string
