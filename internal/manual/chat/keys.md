@@ -1300,26 +1300,31 @@ session. If the model you are talking to cannot see, the picture is shown to a m
 that can and its answer comes back prefixed `[vision: <model>]`; if nothing available
 can see, the message is refused before anything is sent and your pictures stay on the
 tray. Once the message is sent, the transcript keeps the numbered marker and draws a
-small thumbnail of each picture under your line.
+compact control for each picture under your line.
 
 A command with a full tray is still a command: `/image` adds a second picture rather
 than sending the first.
 
 ## Do I see my own screenshot in the conversation?
 
-Yes. After you send a message with pictures, each one is drawn under your line in tray
-order. The dim `[#1 shot.png]` marker stays in the sentence above it, numbered to match
-`[image #1]` and still clickable as the file door.
+Yes. After sending, each image has a compact filename row in tray order, with **preview**
+and **open original** actions. The numbered `[#1 shot.png]` marker remains above it.
+Images start collapsed; your words are never folded with them.
 
-Each thumbnail is at most **12 rows**, or **4 rows** at phone width, with no heading,
-border, path line or `… N more lines` foot. It uses half-block colour in TrueColor and
-the 256-colour xterm cube. On a sixteen-colour or colourless terminal, an ASCII-only or
-screen-reader display, a very narrow row, or when the file is missing or unreadable, no
-thumbnail is added and the marker remains exactly as it was.
+Click **preview** to show a low-resolution terminal view, and **collapse** to close it.
+Only one attached picture per message expands at a time. **alt+i** toggles the last
+visible image in chat or a task page. The terminal preview is at most **20 rows**;
+it is not suitable for reading screenshot text.
 
-This applies to a live message, a resumed conversation while the referenced file is
-available, and a task room's journal. A waiting message in the parked block remains its
-words and markers; its picture appears after that message is actually sent.
+Click the expanded picture itself or **[open original]**, or use **alt+o**, for the
+full-quality image in your system's
+viewer. The phone-width detail sheet also accepts **o**. In `--host` sessions,
+engine-owned files are fetched to this machine first. In a plain SSH login, the
+action explains how to use the local client and gives the original path instead
+of opening a viewer on the server.
+The original action works even when the terminal cannot draw pictures. If a requested
+preview is missing, unsupported or unreadable, it says **Preview unavailable · open
+the original**. Replaying a conversation starts its attachments collapsed again.
 
 ## Completing a path with `@`
 

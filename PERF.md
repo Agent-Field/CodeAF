@@ -2248,3 +2248,12 @@ one `treeIndentCols` child stem. An ellipsis marks omitted outer connectors.
 Task setup reads thinking levels from the standing task notices on hosted pages.
 Frames and pointer motion make **zero network calls**. The expanded sidebar
 reserves its resize hint even before hover, keeping controls at stable rows.
+
+## Compact transcript images
+
+Unopened image tools and sent attachments are one text control per image, with no
+pixel rows, file stats or decodes. Explicit expansion retains `pictureRowsMax` (20
+rows). A message expands at most one attachment at a time. The shared media controls
+carry file ownership independently of their label, and original-file opening runs
+outside the paint loop through the existing local or hosted mirror route. Display
+state is not journaled. Folder preview decoding remains on its bounded worker pool.

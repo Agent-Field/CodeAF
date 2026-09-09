@@ -107,6 +107,7 @@ func gutterPass(out []row, width int) {
 		}
 		out[i].foot.span = out[i].foot.span.shift(lead)
 		out[i].keep = out[i].keep.shift(lead)
+		out[i].pictureOpen = out[i].pictureOpen.shift(lead)
 	}
 }
 

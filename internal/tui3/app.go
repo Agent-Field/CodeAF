@@ -278,6 +278,9 @@ type entry struct {
 	// would make the hot entry carry a distinction no renderer can read.
 	pictures     []string
 	picturesHere bool
+	// pictureExpanded is a one-based attachment index; zero keeps every image collapsed.
+	// Only one attachment in a message expands at a time, and replay resets it.
+	pictureExpanded int
 
 	// steer is THE ONE CORRECTION this block is, on [entrySteer] and nil on every
 	// other kind (steerelbow.go). It is a pointer for the reason [entry.card] and
@@ -3123,6 +3126,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.exportDone(msg)
 		return a, nil
 
+	case pictureOpenedMsg:
+		if msg.err != nil {
+			a.note(filesOpenFailedWord + drawableLine(msg.path))
+		}
+		return a, nil
+
 	case copiedMsg:
 		// A deliverable taken out of the session that made it (deliverables.go),
 		// coming back from the disk the way an export does.
@@ -3416,8 +3425,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// fell through to the conversation underneath would be a tap that
 			// expanded a call nobody can see (expand.go).
 			if a.expandShowing() {
-				a.expandPress(msg.Mouse().Y)
-				return a, nil
+				return a, a.expandPress(msg.Mouse().Y)
 			}
 			// THE QUESTION BLOCK IS READ FIRST OF THE FRAME'S OWN ROWS, which is
 			// the pointer's half of the keyboard's order (input.go's rungs):
@@ -5915,6 +5923,13 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.toggleWorkfold(r.turn)
 	case hitMore:
 		a.showAll(r.entry)
+	case hitPictureOriginal:
+		return a.openPictureAt(r.entry, r.pictureIndex)
+	case hitPictures:
+		if r.pictureOpen.holds(x) {
+			return a.openPictureAt(r.entry, r.pictureIndex)
+		}
+		a.togglePictureAt(r.entry, r.pictureIndex)
 	case hitBrief:
 		a.toggleBriefFoldAt(r.entry)
 	case hitForming:

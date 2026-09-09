@@ -301,7 +301,8 @@ this document is too large to read here
   as they wrote it.
 - **A picture is drawn in the terminal's own cells** — one cell is two stacked pixels, in
   colour, with the aspect ratio preserved. It is cell-resolution colour and not Kitty or
-  iTerm graphics; it is coarser than those and it is the only kind that survives a repaint.
+  iTerm graphics. Its foot says `Low-resolution preview`; use the original file for
+  fine detail. The preview scrolls and repaints as ordinary terminal rows.
   On a terminal that cannot paint colour at all the pane says
   `this terminal cannot draw pictures` and names the picture's shape, format and size
   instead.

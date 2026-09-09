@@ -770,9 +770,10 @@ composition, any text verbatim, and anything malformed.
 It reads **png, jpeg, webp and gif**, up to **10MB**. The answer names who
 looked: `seen by <model>: <what it saw>`. The picture itself is **not** added to
 the conversation, so everything you need about one image is worth asking in a
-single call. **You see it too**: the picture is drawn under the `view_image` row
-in colour as soon as the call finishes, and opening the row shows it bigger with
-what the looking model said beneath.
+single call. **You can see it too**: the finished `view_image` row has **preview**
+and **open original** controls. It starts collapsed. Opening the preview shows a
+low-resolution terminal picture with what the looking model said beneath; opening
+the original uses your system viewer for full-quality inspection.
 
 Refusals, in its own words. The last three name the picture by its **whole
 absolute path**, however you spelled it in the call:

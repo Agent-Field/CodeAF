@@ -68,33 +68,31 @@ transfer by name and the path remains the honest answer. The refusal ends with t
 that still has it, exactly: ` · the picture remains on <machine>`.
 
 The line above is what aforge itself reads — a path is all that goes into the
-conversation — but the screen does more with it. The moment the call finishes,
-the picture is drawn under its row as a thumbnail, at most 12 rows tall (4 at
-phone width). No click, no key. That happens in this conversation and in a
-task's room alike.
+conversation. The screen adds a compact **preview** / **open original** control after
+the call finishes. Images start collapsed in both chat and task pages; no mosaic is
+automatically drawn. Attached pictures use the same controls, preserving their
+numbered `[#1 shot.png]` markers.
 
-Pictures you attach to your own message use that same 12-row thumbnail (4 at phone
-width) under your line after it is sent. Their numbered `[#1 shot.png]` markers remain
-above them, so the picture on screen, the clickable file and `[image #1]` still agree.
+Click **preview**, or use **alt+i** for the last visible image, for a terminal preview
+at up to **20 rows**. Attached messages expand one picture at a time. Click **collapse**
+to close it. An image tool's ordinary row also opens with `enter`, and a `view_image`
+expansion retains what the looking model said.
 
-**Open the row** — click it, or select it with `↑`/`↓` and press `enter` — for
-the bigger look: the picture again at up to 20 rows, with one dim line under it
-giving the file's whole absolute path, its pixel size and its size on disk. That
-path is a link — cmd+click it (ctrl+click on Linux) and the picture opens the way
-your desktop would open it. A `view_image` row also shows what the looking model
-said, under the picture.
+Click the expanded image itself or **[open original]**, or use **alt+o**, to open the
+full-resolution file in your
+system's viewer. In `--host` sessions, engine-owned files are fetched and mirrored
+locally first. Local attachments open directly from this machine. A plain SSH login
+cannot launch a viewer on your laptop automatically; use the local `--host` client or
+retrieve the file yourself.
 
-It is drawn from half-block characters, two stacked pixels to a cell, so it needs
-a terminal with **256 colours or better** and a UTF-8 locale — iTerm2,
-Terminal.app, kitty, Alacritty, WezTerm, Ghostty, GNOME Terminal, and tmux or ssh
-over any of them all qualify. Where those are missing, or the file is gone, the
-row shows its result line exactly as before and never an error — and that line
-carries the file's whole absolute path, clickable in the same way, so you can
-still open it yourself. png, jpeg, gif and webp are drawn.
+The optional preview uses half-block characters, two pixels per terminal cell. It is
+explicitly **low resolution**, regardless of terminal brand: use the original to read
+screenshot text or inspect fine detail. PNG, JPEG, GIF and WebP previews require 256
+colours or better and graphical Unicode support. Missing or unsupported previews
+retain the original-file action. Original opening is available on colourless and
+screen-reader displays too.
 
-The "what is on the screen" page has the sizes, the wrapping rule for the path,
-which terminals can open a path and which cannot, and the full list of cases
-where no picture is drawn.
+The "what is on the screen" page has the preview limits and fallback details.
 
 ## Can you edit, restyle or combine images I already have?
 

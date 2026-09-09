@@ -44,6 +44,10 @@ const (
 	// with different things — hitMore lifts a cap and can never put it back,
 	// while a fold is a thing a person opens AND shuts.
 	hitBrief
+	// hitPictures expands the attached pictures without folding the message.
+	hitPictures
+	// hitPictureOriginal makes the preview itself a full-quality file action.
+	hitPictureOriginal
 	hitTask // a task proposal (task.go): click opens its brief
 	// hitDone is a landed task's card (taskdone.go): click opens its full
 	// context, enter opens the node's room, ctrl+o is the key the card itself
@@ -125,6 +129,9 @@ type row struct {
 	// target resolved by column; the one-frame-ahead geometry is what lets a
 	// pointer land straight on the hidden clause and light only those words.
 	keep hudSpan
+	// Picture controls retain their index and original-file action through gutter layout.
+	pictureIndex int
+	pictureOpen  hudSpan
 }
 
 // toolWindow is how many of a turn's tool calls stay on screen. Three is the
@@ -714,6 +721,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				entry: i, hit: hitBrief,
 			})
 		}
+		out = append(out, a.mediaRows(e, i, width, userLead)...)
 		wasCluster = false
 		wasNote = e.kind == entryNote
 		wasBlock = e.kind == entryTask || (e.kind == entryStanding && e.stand != nil && !e.stand.news())
@@ -746,6 +754,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		for i := range out {
 			if rowIsWork(out[i], es, folds) && !strings.HasPrefix(ansi.Strip(out[i].text), "  ") {
 				out[i].text = "  " + out[i].text
+				out[i].pictureOpen = out[i].pictureOpen.shift(workIndentCols(width))
 				if out[i].keep.pressable() {
 					out[i].keep.from += workIndentCols(width)
 					out[i].keep.to += workIndentCols(width)
@@ -808,6 +817,8 @@ func (a *app) isHot(r row) bool {
 		return r.hit == hitCaption && r.turn == a.hot.turn
 	case hoverWorkFold:
 		return r.hit == hitWorkFold && r.turn == a.hot.turn
+	case hoverPictures:
+		return r.hit == hitPictures && r.entry == a.hot.entry && r.pictureIndex == a.hot.index
 	case hoverBrief:
 		// THE DOOR AND NOT THE BLOCK (brieffold.go): the lines above it are the
 		// person's own words, and nothing happens when they are pressed.
@@ -1101,18 +1112,8 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		if e.pending {
 			words = a.pal.narr
 		}
-		// Decide the preview rung once. Besides avoiding a second cache lookup,
-		// this tells the marker pass whether this terminal is on a picture-capable
-		// rung: fallback tiers must remain byte-for-byte ordinary prose. The door
-		// does not depend on decoding succeeding — a hosted file can still be
-		// opened even when its mirror has not arrived or its bytes are malformed.
-		cap := previewCap(layoutTier(width) == tierPhone)
-		pictures := make([][]string, len(e.pictures))
-		pictureDrawn := make([]bool, len(e.pictures))
-		for i, path := range e.pictures {
-			pictures[i], pictureDrawn[i] = a.pictureRowsFor(path, e.picturesHere, userBodyCols(width), cap)
-		}
-		pictureDoors := a.pathLinks && a.pal.paintsPictures() && userBodyCols(width) >= pictureColsMin && cap > 0
+		// The original-file link is independent of the terminal's ability to paint pixels.
+		pictureDoors := a.pathLinks
 		marked, pictureMasks := a.maskPictureMarkers(requestDisplayText(e), e, pictureDoors)
 		body := wrap(marked, userBodyCols(width))
 		if strings.TrimSpace(e.text) == "" {
@@ -1165,19 +1166,6 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		out = a.linkPaths(out)
 		out = a.restorePictureMarkers(out, pictureMasks, e.picturesHere)
 		out = a.turnContextRows(out, e.context, width)
-		// THE PICTURE COMES LAST. The context pass above may append to its final
-		// prose row, and the path pass must never scan the thumbnail's SGR bytes;
-		// appending here makes both relationships structural rather than hopeful.
-		// Each picture is its own stacked block in tray order, fitted to the
-		// sentence's column and to the same unasked-for cap tool rows use.
-		for i, picture := range pictures {
-			if !pictureDrawn[i] {
-				continue
-			}
-			for _, row := range picture {
-				out = append(out, userLead+row)
-			}
-		}
 		return out
 
 	case entrySteer:
