@@ -781,6 +781,13 @@ func TestTheColumnStandsOnAFreshScreenWithAnOrderOverIt(t *testing.T) {
 func TestRecentSessionsRenderRowsOrNothing(t *testing.T) {
 	none, _ := welcomeApp(t, nil)
 	none.welcome.step = welcomeFrames
+	// THE LAW HERE IS ABOUT THE RECENT LIST AND NOT ABOUT WHICH GREETING IS
+	// DRAWN. A profile that has never met the setup gets the FIRST conversation's
+	// unit — a heading, the folder, three starting points — which is taller than
+	// the ordinary greeting whatever its list holds (welcome.go's [welcome.first]).
+	// Comparing that against a returning folder's unit would be comparing two
+	// different screens, so all three fixtures are put on the ordinary one.
+	none.welcome.first = false
 	screen := plain(frame(none))
 	for _, gone := range []string{"recent sessions", "no recent sessions"} {
 		if strings.Contains(screen, gone) {

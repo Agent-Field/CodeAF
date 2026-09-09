@@ -1819,8 +1819,15 @@ func TestTheSurfaceBootsAndQuitsHeadlessly(t *testing.T) {
 		})
 	}()
 
+	// THE STATUS ROW NAMES THE MODEL WITHOUT ITS VENDOR, and that row is what
+	// this test is waiting for. It used to wait for the full routing address,
+	// which reached the frame twice — once on the status row and once on the
+	// greeting's own model line — and the greeting's copy went when the first
+	// conversation stopped repeating what the setup screen had just asked
+	// (welcome.go). The status row is the surface's own claim that it is up.
+	shown := agent.model[strings.LastIndex(agent.model, "/")+1:]
 	deadline := time.Now().Add(10 * time.Second)
-	for !strings.Contains(out.String(), agent.model) {
+	for !strings.Contains(out.String(), shown) {
 		if time.Now().After(deadline) {
 			t.Fatalf("the surface never drew its status line:\n%q", out.String())
 		}

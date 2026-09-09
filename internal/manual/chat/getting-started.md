@@ -3,33 +3,35 @@
 ## Getting started — first time setup, what happens the first time I run aforge
 
 The first time `aforge` opens on a profile with nothing in it, the chat does not open on
-an empty prompt and a provider error. It opens on one centred screen, in the chat itself,
-that asks for three things one at a time — under a minute, no borders, nothing else on
-the frame:
+an empty prompt and a provider error. It opens in the chat itself, on **two screens** —
+under a minute, nothing else on the frame:
 
 1. **connect openrouter** — `enter` signs in in your browser; pasting an existing key also works
-2. **the crew** — `frugal`, `balanced` or `max`, the same three rows `/crew` draws
-3. **the limits** — one screen with three rows on it: `per day`, `per plan`, `per
-   conversation`
+2. **Models and spending** — one screen with three controls on it: **Daily limit**,
+   **Chat model** and **Work crew**, each already showing the value that is in force
 
-`enter` accepts each step's default and goes on. Every step's foot names `esc` the same
-way — `esc skips setup` — because that is what it does on any of them: the flow is marked
-seen and it does not open again. When it is done, or skipped, the ordinary empty
-conversation appears — the wordmark box and the prompt. The crew and limit questions
-never come back, so a skip leaves one dim line naming the doors onto the ones it walked
-past: `still yours to set · /crew picks the five models aforge works with · /budget sets
-what it may spend`. If OpenRouter is still not connected, its one-step screen returns on the
-next local interactive launch because the model cannot work without it.
+The second screen's way out is **`Start a conversation`**. Every control on it opens on
+the value you already have, so pressing `enter` there agrees to exactly what is on the
+screen. Its heading is `Models and spending` and the line under it is
+`Keep these choices or change them.`
 
-The line over the question reads `setting up · 1 of 3`; with only one thing missing it
-reads `setting up`. The foot says what `enter` does right now — `enter takes balanced`,
-`enter keeps $500`, `enter connects in browser` — and what `esc` does now.
+`esc` on the first screen skips the setup: the flow is marked seen and it does not open
+again. `esc` on the controls screen goes **back** to the connection when there is one
+behind it, and skips when the controls are the whole of the setup. A skip leaves one dim
+line naming the doors onto what it walked past: `still yours to set · /budget sets what
+aforge may spend · /model and /crew pick the models`. If OpenRouter is still not
+connected, its one-step screen returns on the next local interactive launch because the
+model cannot work without it.
 
-**On a window too short for the whole block the explanation is what goes**, a line at a
-time from the bottom of the prose up, and the wordmark with it if it comes to that. The
-question, the `›` box you type into and the foot naming `enter` and `esc` are the last
-three rows to be given up, so a twelve-row split pane still shows a screen you can answer
-and leave.
+The header reads `aforge` on the left and `setup · 2 of 2` on the right; with only one
+screen to show there is no count at all. The foot names the keys that work on the row you
+are standing on — `tab` walks the rows, `?` opens a control's detail — and on a narrow
+window it is cut by whole clauses rather than mid-word.
+
+**On a window too short for the whole screen the explanations are what go**, a whole
+sentence at a time and never half of one. The three values, `Start a conversation` and
+the keyboard line are never given up, so a sixteen-row window still shows a screen you
+can answer and leave.
 
 ## Set up my api key — the openrouter key step, and what happens with no key
 
@@ -101,72 +103,86 @@ For a headless run, start bare `aforge` once to connect in a terminal, or export
 The environment outranks the file, always; the setup only asks for what nothing else has
 answered.
 
-## The crew step — the five models aforge uses on its own behalf
+## The daily limit on the setup screen — what may aforge spend in a day
 
-The second step draws the three presets exactly as bare `/crew` does — each preset's
-word, its one-line description and the five class models under it — with the cursor on
-`balanced`. `↑`/`↓` move it, `enter` takes the row under the cursor.
+The first control is **Daily limit**, and it opens on the amount that is actually in
+force — `$500` on a profile that has never chosen one, or your own figure if you have.
+Its one line reads:
 
-The sentence above the rows is the one people most need on their first day:
+> When aforge's spending today reaches this amount, new work waits until midnight or you
+> raise it.
 
-> these five are the models aforge uses on its own behalf — the work inside every
-> task, planning, checking, reading every turn. the model you talk to is a separate
-> choice, made with /model.
+Type a number to change it — the `$` is drawn for you rather than typed — or type
+**`none`** for no limit, which is a first-class answer and makes the row read `no limit`.
+`?` on the row adds the part that matters when the bill arrives: *it counts spending
+aforge records here. Calls already running can carry it a little past. Your provider
+account has its own controls.* It is a backstop against a runaway, not a promise about
+your whole bill. Something that is not a dollar amount is refused in the settings row's
+own words — `that's not a dollar amount — a number, or none for no limit` — and the
+screen stays.
 
-The crew and the model you talk to are **two different settings**. The crew is the five
-class rows (`models.tiers.reflex`, `models.tiers.low`, `models.tiers.worker`,
-`models.tiers.high`, `models.tiers.mastermind`) that aforge's own side-calls run on; the
-model that answers you in the conversation is chosen with `/model` and shown in the status
-line, and the crew never touches it. Choosing a crew here writes those five rows in one go,
-which is exactly what `/crew balanced` does.
+`$500` is **the amount aforge has always shipped** and this screen did not change it.
 
-If any of the five rows is already in your profile — you pinned one by hand, or an
-earlier `/crew` wrote them — this step is not shown.
+What it writes: `daily_budget_usd` in your profile's `config.json`, through **the same
+settings row** the Spending tab and `/budget` write, so what this screen lands is
+byte-for-byte what a settings edit lands. If `AFORGE_DAILY_BUDGET` is set in your shell it
+owns the row: the value is shown with `set by AFORGE_DAILY_BUDGET` beside it and nothing
+is written over it.
 
-## The first-run rails screen — what may aforge spend
+The **per-plan approval amount** and the **per-conversation ceiling** are no longer asked
+here. They keep their shipped defaults — plan approval asks first above `$100`, the
+conversation ceiling is `no limit` — and `/budget` or `/settings` → Spending changes them
+when they start to matter.
 
-The third step is a screen with **three rows on it, not one number**. Its title is
+## The model you talk to and the work crew on the setup screen
 
-```
-what may aforge spend?
-enter keeps a default · type a number · none means no limit
-```
+**Chat model** is the model you talk to, shown by name — `DeepSeek V4 Flash` rather than
+`deepseek/deepseek-v4-flash`. Its line reads *The model you talk to in this
+conversation.*, and `?` adds the exact catalog id and that it also handles this
+conversation's tool use. Opening the row draws the real catalog: five rows at a time,
+`↑`/`↓` scroll the rest past, and **typing narrows it**, so two hundred models are
+reachable from a form with five rows on it. The row under the cursor shows its exact id.
+The model you are already on is always on that list and the cursor opens on it, even with
+no catalog yet, so accepting confirms rather than changes. Choosing one goes through the
+same settings row `/model` writes and is kept for the next launch.
 
-and under that, in this order, the three rows a new person can answer:
+**Work crew** is the five models aforge uses on its own behalf — *Models used to plan,
+run, and check tasks.* Opening it draws the three presets — `Frugal`, `Balanced` and
+`Max` — each with a whole one-line description of **the choice** (how much model goes on
+the work), never a price: this screen makes no claim about what anything will cost you.
+`?` on the row shows the seats the crew is actually made of (`brain … · hands … ·
+checks …`) and that **a crew change leaves the model you talk to alone**. The crew is the five class rows (`models.tiers.reflex`, `models.tiers.low`,
+`models.tiers.worker`, `models.tiers.high`, `models.tiers.mastermind`); the model that
+answers you is the row above it, and neither touches the other.
 
-```
- per day            $500
- per plan           asks first above $100
- per conversation   no limit
-```
+Two rules keep this screen from writing something you did not ask for:
 
-`↑` and `↓` walk between the rows and write nothing — only `enter` writes. The default is
-drawn dim where the answer goes, and `enter` keeps it and walks to the next row; typing a
-number replaces it, and the `$` is drawn for you rather than typed. Typing **`none`** —
-the word the header offers — removes that limit, and the answered row then reads
-`no limit`. An answered row keeps its answer on the screen while you finish the rest.
-Something that is not a dollar amount is refused in the row's own words and the step
-stays. `esc` skips the whole setup.
+- **`esc` out of either list leaves the row exactly as it was.** A cursor inside a list
+  is provisional until you accept it.
+- **A crew you arranged yourself is never overwritten.** If any of the five class rows is
+  already in your profile — you pinned one by hand, or an earlier `/crew` wrote them — the
+  row reads `Custom`, `Start a conversation` writes no preset over it, and the list still
+  says `yours is none of the three — picking one puts all five back` if you want one.
 
-The foot says what `enter` does right now: `enter keeps $500 · esc skips setup`, or
-`enter sets $50 · esc skips setup` once you have typed something.
+If a **task model** is pinned (`task.model`), one dim line under the crew says so —
+`Tasks are pinned to … · /settings changes that` — because that pin takes the worker seat
+out of the preset's hands and a crew row that did not mention it would be selling you a
+dial that is disconnected.
 
-One dim line under the rows says what it is not asking about: *the rest — a task, a
-standing run, aforge's own practice — start with a small limit or none. change any of
-them later with /budget.*
+At **112 columns and wider** a bordered panel stands beside these rows, labelled
+`◌ Example · what you can do` and footed `An illustration. Nothing here has run.` — the
+only bordered surface aforge draws, so it cannot be read as more form. It holds one
+request you could type and what it leads to, and follows the row you are on: beside the
+crew it shows `/task Fix the failing tests and explain the changes.` That request **types
+itself out once** on arriving and on `←`/`→`, then settles; typing settles it at once.
+Under 112 columns it is not drawn and the form is unchanged.
 
-What it writes: `daily_budget_usd`, `plan_consent_usd` and `session.spendRailUSD` in your
-profile's `config.json` — through **the same settings rows** the Spending tab and
-`/budget` write, so what this screen lands is byte-for-byte what a settings edit lands. If
-`AFORGE_DAILY_BUDGET` is set in your shell, this step is not shown — the variable outranks
-the file.
-
-The rails show **once, ever**. The OpenRouter prerequisite above is the only step that may
-return.
+The controls screen shows **once, ever**. The OpenRouter prerequisite above is the only
+step that may return.
 
 ## What appears once — and why the OpenRouter step can return
 
-The **crew and spending questions** are shown once per profile. When the first-run screen
+The **Models and spending screen** is shown once per profile. When the first-run screen
 closes — finished or skipped — `setup_seen_at` is written into `config.json` with the time,
 and no later launch asks those preference questions again. Skipping with `esc` counts as
 shown.
@@ -176,7 +192,7 @@ that marker. It returns as a one-step screen on a later eligible launch while th
 still missing. It can also return in the same launch when an unsent model message reaches
 `enter`; the draft stays in the box.
 
-The once-only crew and spending questions stay away from `--session <path>`, `aforge
+The once-only controls screen stays away from `--session <path>`, `aforge
 resume`, `--once`, `--host`, pipes, existing conversations, and profiles that have already
 seen them. If every answer already exists, the marker is written silently.
 
@@ -185,8 +201,9 @@ shown for local interactive `--session <path>` and `aforge resume` launches too,
 those conversations still need a model. It stays away from `--once`, `--host`, pipes,
 custom endpoints, and profiles whose shell or profile already supplies a key.
 
-A person who has **some** of the three configured sees only the missing steps, and the
-count in the title is the count of those.
+A person who has **some** of it configured sees only what is missing, and the count in
+the header is the count of those: a key already in the shell leaves the controls screen
+alone on the frame, with no `1 of 1` counting to one at anybody.
 
 While it is up it is the whole screen: every keystroke belongs to it except `ctrl+c`,
 which is still the door (twice, as always), and the mouse does nothing. The returning
@@ -200,18 +217,42 @@ Every answer went through a settings row, so every answer has a door:
 | --- | --- |
 | the openrouter key | clear or remove it and the next local interactive launch offers **connect openrouter** again; `/settings`, Providers tab, the **openrouter key** row still accepts a pasted replacement |
 | the crew | `/crew` (bare shows the three, `/crew max` sets one), or the **crew** row on the settings panel |
-| the limits | `/budget` (also `/limits`), or `/settings` → **Spending** — `per day`, `per plan`, `per conversation`. `AFORGE_DAILY_BUDGET` in your shell outranks the day's row |
-| the model you talk to | `/model` — this was never part of the setup |
+| the daily limit | `/budget` (also `/limits`), or `/settings` → **Spending**. `AFORGE_DAILY_BUDGET` in your shell outranks the row |
+| the model you talk to | `/model`, or the **Chat model** row on the setup screen — the same settings row either way |
+| memory, permissions, the task countdown | `/settings`; the setup screen only shows them, under `Other settings` |
 
 A credential changed in the settings row reaches the running conversation at once,
 exactly as the setup's does. The crew and the budget are read live too: the next call
 aforge makes on its own behalf uses the new crew, and the rail is checked against the
 new ceiling.
 
+**The setup asks about three things and no more.** Memory stays on, tool approvals keep
+prompting, and a proposed task keeps its 15-second countdown — none of them becomes a
+question there, because none can be answered usefully before you have seen aforge do
+anything. They are taught where they happen: the countdown is on the task card, and the
+first permission question explains the actual tool that asked for something.
+
+Under the three fields is one row that shows them: **`Other settings use defaults ·
+review`** on a fresh profile, and **`Review other settings`** on a profile that has
+already written any of them down — it never claims your own settings are defaults.
+`enter` on that row opens three read-only rows straight off the settings registry:
+
+```
+  memory              on
+  ask before running  prompt
+  task countdown      15s
+  /settings changes these and every other one.
+```
+
+Per-plan approval, the per-conversation ceiling, individual crew seats, reasoning,
+routing, extra service keys, concurrency and appearance are all deliberately absent from
+the setup. They have doors — `/budget`, `/settings`, `/crew`, `/model` — and they are
+asked about at the moment they matter rather than before you have started.
+
 ## The first prompt hung — still waiting, /model switches
 
-The model you talk to is not chosen on the setup screen. A first run opens on this
-build's default, and `/model` is the door that moves it. If that first prompt's lane
+A first run opens on this build's default unless you picked something else on the setup
+screen's **Chat model** row, and `/model` is the door that moves it afterwards. If that first prompt's lane
 goes quiet before a word arrives, aforge does not sit silent until the ninety-second
 cut: it tries another lane and says so, naming the door —
 

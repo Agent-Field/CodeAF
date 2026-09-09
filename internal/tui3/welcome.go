@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -123,6 +124,27 @@ type welcome struct {
 	//     standing, and while this page is up the transcript is not on the frame
 	//     at all (msg below).
 	start bool
+	// first says this is the FIRST CONVERSATION on this machine — the greeting
+	// that opens the moment the setup screen goes — and it changes three things
+	// about the unit, each stated where it acts (onboarding.go holds the screen
+	// before it, and docs/design/onboarding/DESIGN.md the whole journey):
+	//
+	//   - IT SAYS WHAT THIS BOX IS FOR. A heading, one instruction and the folder
+	//     the conversation is standing in, above three starting points. Every
+	//     later greeting is the model line and the box, because by then the person
+	//     knows what they are looking at.
+	//   - THE COMPOSER DOES NOT MOVE WHEN TYPING BEGINS. The ordinary greeting is
+	//     dismissed by the first keystroke and the box drops to the foot of the
+	//     frame, which on a first conversation moves the one thing the person was
+	//     aiming at, mid-word. This unit stands until the message is SENT
+	//     ([app.spendWelcome]).
+	//   - ITS STARTING POINTS FILL THE BOX AND NEVER SEND IT.
+	first bool
+	// starter is the starting point under the cursor, or -1. Only ↑/↓ over an
+	// EMPTY draft move it, which is the same rule the recent list keeps — and it
+	// is what makes it impossible for a starting point to overwrite something
+	// somebody had already typed.
+	starter int
 	// msg is the one line this page has for the person — a door that could not
 	// open a conversation, said where they are looking rather than into a
 	// transcript underneath the page (chatstart.go's [app.startSay]). It is empty
@@ -157,7 +179,7 @@ func (a *app) openWelcome() {
 	if a.resumed || len(a.entries) > 0 {
 		return
 	}
-	a.welcome = welcome{open: true, sel: -1}
+	a.welcome = welcome{open: true, sel: -1, starter: -1}
 	if a.recentSessions != nil {
 		list := a.recentSessions()
 		if len(list) > welcomeSlots {
@@ -165,6 +187,14 @@ func (a *app) openWelcome() {
 		}
 		a.welcome.recent = list
 	}
+	// A FIRST CONVERSATION IS ONE THIS PROFILE HAS NOT HAD, and it takes BOTH
+	// halves. The marker the setup writes is the one honest record that the setup
+	// has not been met ([config.SetupSeenAt]), read here before [app.openSetup]
+	// stamps it, because this greeting is what stands behind that screen. And a
+	// directory with conversations already in it is not having its first one
+	// whatever the marker says — a profile restored from a backup, a marker
+	// written by an older build — so the recent list has a veto.
+	a.welcome.first = len(a.welcome.recent) == 0 && config.SetupSeenAt(a.profileDir).IsZero()
 }
 
 // dismissWelcome puts the unit away for good, and says the two keys that leave.
@@ -197,6 +227,30 @@ func (a *app) dismissWelcome() {
 	a.touch()
 }
 
+// welcomeStandsThroughTyping reports that this unit is NOT to be dismissed by a
+// keystroke or a paste.
+//
+// IT IS ASKED AT THE TYPING DOORS AND NOT INSIDE [app.dismissWelcome], and the
+// difference matters: home landing, a page opening, a session resuming all
+// dismiss the greeting for reasons that have nothing to do with the keyboard, and
+// a refusal buried in the dismissal itself left the box standing underneath home.
+// What the first conversation changes is one thing — that typing does not move
+// the composer out from under the person — so that is the one place it is said.
+func (a *app) welcomeStandsThroughTyping() bool {
+	return a.welcome.open && a.welcome.first
+}
+
+// spendWelcome is the send putting the first conversation's greeting away, at the
+// moment the person's own words go to a model — which is the moment it has done
+// its job. Every later greeting has been gone since the first keystroke and this
+// finds nothing to do.
+func (a *app) spendWelcome() {
+	if !a.welcome.open || a.welcome.start {
+		return
+	}
+	a.dismissWelcome()
+}
+
 // welcomeKey is the box's claim on the keyboard, and it is deliberately two
 // keys wide.
 //
@@ -214,6 +268,14 @@ func (a *app) dismissWelcome() {
 func (a *app) welcomeKey(name string) (tea.Cmd, bool) {
 	if !a.welcome.open {
 		return nil, false
+	}
+	// THE FIRST CONVERSATION'S STARTING POINTS TAKE ↑/↓ AND ENTER, and they take
+	// them only over an empty box — which is the recent list's own rule, kept for
+	// the reason it was written: a person who has typed something has said what
+	// they want, and a list that could still be walked would be a list that can
+	// overwrite it.
+	if a.welcome.first {
+		return a.welcomeStarterKey(name)
 	}
 	switch name {
 	case "up", "down":
@@ -244,6 +306,104 @@ func (a *app) welcomeKey(name string) (tea.Cmd, bool) {
 		return a.resumeSession(chosen), true
 	}
 	return nil, false
+}
+
+// welcomeStarter is one of the three starting points the first conversation
+// offers. It is a thing to SAY and not a thing to run: `fills` lands in the box
+// with the caret after it, and the person edits it, adds to it, or deletes it.
+type welcomeStarter struct {
+	// word is the row, in the fewest words that still name a kind of work.
+	word string
+	// fills is the sentence it puts in the box. Two of the three are deliberately
+	// UNFINISHED — a starting point that filled the box with a complete request
+	// about somebody else's project would be the surface guessing at the work.
+	fills string
+	// helper is the one line the SELECTED row gets, and it says what actually
+	// happens next. It may not promise anything the program does not do: reading
+	// files is allowed without asking and says so, longer work is proposed as a
+	// task with a countdown that can be stopped, and neither sentence claims a
+	// result.
+	helper string
+}
+
+// welcomeStarters are the three, in the order they are offered: the one nearly
+// everybody wants first, then making a change, then weighing two options.
+var welcomeStarters = []welcomeStarter{
+	{
+		word:   "Understand this folder",
+		fills:  "What is in this folder, and where would I start?",
+		helper: "It reads what is here and answers in the conversation.",
+	},
+	{
+		word:   "Make or fix something",
+		fills:  "Fix this for me: ",
+		helper: "Longer work is proposed as a task first, with a countdown you can stop.",
+	},
+	{
+		word:   "Compare two options",
+		fills:  "Compare these two options: ",
+		helper: "It weighs each one and says which it would pick, with its reasons.",
+	},
+}
+
+// The first conversation's own two lines. The heading is the SHORT one — "What
+// would you like to work on?" — because the box under it is the answer, and the
+// instruction says the two things a person can do with it.
+const (
+	welcomeFirstTitle = "What would you like to work on?"
+	welcomeFirstWord  = "Choose a starting point or type your request."
+)
+
+// welcomeStarterKey is the first conversation's claim on ↑/↓ and enter.
+//
+// ENTER ON A STARTING POINT FILLS THE BOX AND SENDS NOTHING. That is the whole
+// contract: the sentence lands in the composer, the caret goes after it, and the
+// next thing that happens is whatever the person types. An enter with no row
+// selected is an ordinary send and is not taken here.
+func (a *app) welcomeStarterKey(name string) (tea.Cmd, bool) {
+	w := &a.welcome
+	switch name {
+	case "up", "down":
+		if !a.input.empty() {
+			return nil, false
+		}
+		delta := 1
+		if name == "up" {
+			delta = -1
+		}
+		if w.starter < 0 {
+			// From nowhere, either arrow takes the first row: it is the top of the
+			// list and it is the one somebody reaching for this list means.
+			w.starter = 0
+		} else {
+			w.starter = moveCursor(w.starter, delta, len(welcomeStarters))
+		}
+		a.touch()
+		return nil, true
+	case "enter":
+		if w.starter < 0 || w.starter >= len(welcomeStarters) {
+			return nil, false
+		}
+		a.takeStarter(w.starter)
+		return nil, true
+	}
+	// Every other key is the person typing, and the unit stays standing for it.
+	return nil, false
+}
+
+// takeStarter puts a starting point's sentence in the box.
+//
+// IT REFUSES TO OVERWRITE. The selection can only be moved over an empty box, so
+// in practice nothing is ever there — and the guard is here anyway, because a
+// click can reach a row the keyboard could not and a draft is somebody's own
+// words.
+func (a *app) takeStarter(at int) {
+	if at < 0 || at >= len(welcomeStarters) || !a.input.empty() {
+		return
+	}
+	a.welcome.starter = at
+	a.input.setText(welcomeStarters[at].fills)
+	a.touch()
 }
 
 // welcomeKeeps is the one key that goes past the box WITHOUT putting it away.
@@ -418,6 +578,12 @@ func (a *app) welcomeRowPress(row int) tea.Cmd {
 		return nil
 	}
 	if a.welcomeInputRow(row) {
+		return nil
+	}
+	// A STARTING POINT PRESSED DOES WHAT ENTER ON IT DOES, and the greeting stays
+	// standing: it filled the box, which is where the person is now looking.
+	if mark, ok := a.welcomeMarkAt(row); ok && mark.kind == welcomeRowStarter {
+		a.takeStarter(mark.slot)
 		return nil
 	}
 	return a.welcomePress(a.welcomeSlotAt(row))
@@ -646,6 +812,9 @@ const (
 	welcomeRowPlain welcomeRowKind = iota
 	welcomeRowInput
 	welcomeRowRecent
+	// welcomeRowStarter is one of the first conversation's starting points, and
+	// pressing it does what enter on it does: fills the box, sends nothing.
+	welcomeRowStarter
 )
 
 // welcomeMark is one row's kind and, for a recent session, which one.
@@ -764,11 +933,38 @@ func (a *app) welcomeUnit(width int) ([]string, []welcomeMark, int, int) {
 		rows = append(rows, pad+text)
 		marks = append(marks, mark)
 	}
-	for _, row := range wordmarkRows(pal.ascii) {
-		add(w.paintWordmark(row, pal), welcomeMark{})
+	// THE FIRST CONVERSATION LEADS WITH THE QUESTION AND NOT WITH THE LOGO.
+	//
+	// Every later greeting opens on the three-row wordmark and a line naming the
+	// model and the crew, and that is right for them: a person returning to a
+	// conversation is being told which machine they are back in, and the ordinary
+	// screen has no heading competing for the top of the frame.
+	//
+	// It is wrong here, and it was wrong in a way worth writing down. The first
+	// screen after the setup carried FOUR things above `What would you like to
+	// work on?` — a wordmark three rows tall, the raw `~deepseek/… · max crew`
+	// line, and a blank — and then said the same model and the same crew again in
+	// the status row at the foot. The heading a person has never seen before was
+	// the fourth thing on the frame, under a model id they had chosen ninety
+	// seconds earlier on the screen behind this one. So the wordmark shrinks to a
+	// signature and the model line goes: they are both said elsewhere, and this
+	// screen has exactly one job.
+	if w.first {
+		add(pal.dim(product), welcomeMark{})
+		add("", welcomeMark{})
+		add(pal.bold(pal.ink(fit(welcomeFirstTitle, unit))), welcomeMark{})
+		add(pal.muted(fit(welcomeFirstWord, unit)), welcomeMark{})
+		if where := a.welcomeWhereLine(); where != "" {
+			add(pal.dim(fit(where, unit)), welcomeMark{})
+		}
+		add("", welcomeMark{})
+	} else {
+		for _, row := range wordmarkRows(pal.ascii) {
+			add(w.paintWordmark(row, pal), welcomeMark{})
+		}
+		add(pal.dim(fit(a.welcomeModelLine(), unit)), welcomeMark{})
+		add("", welcomeMark{})
 	}
-	add(pal.dim(fit(a.welcomeModelLine(), unit)), welcomeMark{})
-	add("", welcomeMark{})
 
 	caretX, caretRow := 0, 0
 	if a.welcomeHolds() {
@@ -791,7 +987,27 @@ func (a *app) welcomeUnit(width int) ([]string, []welcomeMark, int, int) {
 	if w.msg != "" {
 		add(pal.warn(fit(w.msg, unit)), welcomeMark{})
 	}
-	if line := a.unitStarterLine(unit); line != "" {
+	// THE THREE STARTING POINTS STAND WHERE THE DIM CLAUSE LINE USUALLY IS, and
+	// they replace it rather than joining it: `try "what is in this folder"` and a
+	// row that says the same thing and can be pressed are one idea drawn twice.
+	// A profile with conversations behind it is not having its first one, whatever
+	// the marker says, and keeps the ordinary line (see [welcome.first]).
+	if w.first {
+		add("", welcomeMark{})
+		for i, starter := range welcomeStarters {
+			add(w.starterRow(i, pal, unit), welcomeMark{kind: welcomeRowStarter, slot: i})
+			// ONLY THE SELECTED ROW IS EXPLAINED. Three helper lines under three
+			// rows is a paragraph nobody asked for; one under the row somebody has
+			// stopped on is an answer to the question they are asking.
+			if i != w.starter {
+				continue
+			}
+			for _, line := range wrap(starter.helper, unit-4) {
+				add(strings.Repeat(" ", 4)+pal.dim(line), welcomeMark{})
+			}
+		}
+		add(pal.dim(fit(welcomeStarterKeysWord, unit)), welcomeMark{})
+	} else if line := a.unitStarterLine(unit); line != "" {
 		add(pal.dim(line), welcomeMark{})
 	}
 
@@ -814,6 +1030,54 @@ func (a *app) welcomeUnit(width int) ([]string, []welcomeMark, int, int) {
 	}
 	return rows, marks, caretX, caretRow
 }
+
+// welcomeStarterKeysWord is the line under the three starting points: the two
+// keys that work on them, and the fact that typing is always an option. It says
+// `fills the box` on purpose — a person choosing off a list in a terminal expects
+// enter to RUN the thing, and this one does not.
+const welcomeStarterKeysWord = "↑↓ choose · enter fills the box · or just type"
+
+// starterRow is one starting point as a row of the unit, wearing the same
+// cursor and ground the recent list's rows wear.
+func (w *welcome) starterRow(i int, pal palette, unit int) string {
+	word := fit(welcomeStarters[i].word, unit-2)
+	if i == w.starter {
+		return pal.accent(setupLead) + pal.bold(pal.ink(word))
+	}
+	return "  " + pal.dim(word)
+}
+
+// welcomeWhereLine is the folder this conversation is standing in, drawn on the
+// first conversation and nowhere else — the design's own point that the working
+// folder belongs beside the first message rather than in a setup field.
+//
+// IT IS THE REAL PLACE AND ITS REAL SEMANTICS. A session that owns its workspace
+// says so in the word the whole surface uses for that ([app.placeWord]), and one
+// standing in a directory shows the directory, shortened the way every other path
+// on this surface is shortened. It promises nothing about what is in there:
+// nothing has been read, and the greeting does not pretend it has.
+func (a *app) welcomeWhereLine() string {
+	if a.owned {
+		// AN OWNED SESSION HAS NO FOLDER OF YOURS TO NAME, and saying `in aforge`
+		// would be this line answering with a product name where a person is
+		// looking for a path. [ownedWord] is right for the status line, which has
+		// one word to spend; here there is room to say what it means and to name
+		// the door onto choosing otherwise.
+		return welcomeOwnedWhereWord
+	}
+	if a.workspace == "" {
+		return ""
+	}
+	if where := shortPath(a.workspace, a.tilde, 0); where != "" {
+		return "in " + where
+	}
+	return ""
+}
+
+// welcomeOwnedWhereWord is the folder line for a conversation aforge opened a
+// workspace for, which is what bare `aforge` outside a project does. It says the
+// fact and the door, and it promises nothing about what is in there.
+const welcomeOwnedWhereWord = "in a folder " + product + " keeps for this conversation · /workspace picks another"
 
 // recentNameCap is the most cells a session's name may take on its row. Past
 // it the name is cut, because the age beside it is the half of the row a person

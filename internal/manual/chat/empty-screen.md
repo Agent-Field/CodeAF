@@ -38,6 +38,37 @@ resumed conversation, and it is not drawn at all on a frame under 12 rows or und
 columns, where the prompt simply opens at the foot as it always did. When the home
 screen greets you instead, there is no greeting of this kind at all.
 
+**Your very first conversation on this machine is drawn differently, and it leads with the
+question rather than the logo.** The greeting that follows the first-run setup drops the
+three-row wordmark and the model-and-crew line under it — you chose those on the screen
+behind this one, and the status row still says both — and puts a one-word `aforge`
+signature there instead. Under it: the heading **What would you like to work on?**, the
+line `Choose a starting point or type your request.`, the folder this conversation is
+standing in (`in ~/src/parser`), and three starting points in place of the usual dim try
+line:
+
+```
+  Understand this folder
+  Make or fix something
+  Compare two options
+↑↓ choose · enter fills the box · or just type
+```
+
+`↑`/`↓` walk them over an empty box and only the selected one gets a helper line under
+it saying what actually happens next. **`enter` on a starting point fills the message box
+and sends nothing** — the sentence lands in the composer with the cursor after it, and you
+edit it, add to it or delete it. Two of the three are deliberately unfinished (`Fix this
+for me: `) because a starting point that filled the box with a complete request about
+your project would be guessing at your work.
+
+**On that first conversation the composer does not move when you start typing.** Every
+later greeting is dismissed by the first keystroke and the box drops to the foot of the
+frame; this one stands until you actually send something, so the box you aimed at does
+not move out from under you mid-word and the three starting points stay readable while
+you decide. A starting point can only be selected while the box is empty, so it can never
+overwrite something you had already typed. A folder with earlier conversations in it is
+not having its first one, whatever the profile says, and gets the ordinary greeting.
+
 ## The message box is in the middle of the screen — why did it move, where do I type
 
 On the empty screen the message box inside the centred group **is the real message
@@ -114,6 +145,10 @@ empty box lists every command. On a narrower window the clauses drop from the le
 first the example, then the task door — and the last thing standing is `/ shows
 commands`. The line dissolves with the rest of the greeting on your first keystroke and
 is not drawn again.
+
+On your **first** conversation this line is not drawn at all: the three starting points
+above take its place, because a row you can press and a line telling you to type the same
+sentence are one idea drawn twice.
 
 ## Recent sessions on the empty screen — where did the recent sessions list go
 
