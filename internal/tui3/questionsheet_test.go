@@ -119,7 +119,7 @@ func TestTheSheetDrawsGroupedRowsWithBothMarksAndItsOwnKeys(t *testing.T) {
 		"1 allow once",
 		"[enter] " + questionSheetOpenWord,
 		"[" + questionSendKey + "] " + questionSheetSendWord + " (1)",
-		"[" + questionSameKey + "] " + questionSheetSameWord,
+		"[" + questionAlikeKey + "] " + questionSheetSameWord,
 		"[esc] later",
 	} {
 		if !strings.Contains(text, want) {

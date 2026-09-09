@@ -473,7 +473,7 @@ func (a *app) questionSheetOffer(s *questionSheet, width int) string {
 		if !verb.forms.holds(formsSheet) {
 			continue
 		}
-		if verb.key == questionSameKey && !s.sameForAllReaches() {
+		if verb.key == questionAlikeKey && !s.sameForAllReaches() {
 			continue
 		}
 		verb.word = questionSheetKeyWord(verb)
@@ -639,7 +639,7 @@ func (a *app) questionSheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.openSheetRow()
 	case questionSendKey:
 		return a.sendSheet()
-	case questionSameKey:
+	case questionAlikeKey:
 		return a.sameSheetAnswer()
 	}
 	// A DIGIT ANSWERS THE ROW THE CURSOR IS ON, which is ONE KEY GRAMMAR read

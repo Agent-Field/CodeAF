@@ -172,12 +172,18 @@ const (
 	// the room became the first form to route this key, and a comparison against
 	// the byte matched nothing at all.
 	questionToggleKey = "space"
-	// questionSendKey and questionSameKey are the sheet's, and they are LETTERS
+	// questionSendKey and questionAlikeKey are the sheet's, and they are LETTERS
 	// where a question's answers are digits because a sheet's digits are already
 	// its answers: `1`-`9` answer the row the cursor is on, so the two acts that
 	// are about the WHOLE batch cannot also be digits.
-	questionSendKey = "s"
-	questionSameKey = "g"
+	//
+	// AND IT IS `g` RATHER THAN THE ROOM'S `=` ([questionSameKey]) because the
+	// two are not the same act. The room's `=` says "this pair keeps coming up,
+	// answer it the same way from now on" — a rule about the future. The sheet's
+	// `g` says "these rows in front of me take the answer I just gave" — one
+	// batch, now, nothing written down.
+	questionSendKey  = "s"
+	questionAlikeKey = "g"
 	// questionWalkKey is the PAIR of arrow keys, and it is spelled as the pair
 	// because that is how it is drawn and how it is learnt: `←→ pick` is one
 	// affordance, and a row that listed two keys for one act would be a row
@@ -220,7 +226,7 @@ var questionKeys = []questionVerb{
 	// and then not sent is a batch nobody answered), so it is ranked zero beside
 	// `esc`.
 	{key: questionSendKey, word: questionSheetSendWord, forms: formsSheet},
-	{key: questionSameKey, word: questionSheetSameWord, forms: formsSheet, giveUp: 2},
+	{key: questionAlikeKey, word: questionSheetSameWord, forms: formsSheet, giveUp: 2},
 	{key: questionLaterKey, word: "later", forms: formsBlock | formsRoom | formsSheet},
 	{key: questionOpenKey, word: "open it", forms: formsLine | formsCard, needs: needRoom, giveUp: 3},
 	{key: questionCommentKey, word: "change", forms: formsBlock | formsRoom, needs: needWords, giveUp: 5},

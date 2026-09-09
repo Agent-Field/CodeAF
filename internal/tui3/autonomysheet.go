@@ -75,9 +75,14 @@ var autonomyKinds = []session.AskKind{
 // autonomyAgent is the autonomy half of the agent under this surface, when it
 // has one. It is an optional assertion for [questionAgent]'s reason exactly: an
 // agent that has never heard of question rules keeps everything else it had.
+//
+// IT WIDENS [questionDialDoor] RATHER THAN SITTING BESIDE IT, so `D` and this
+// sheet cannot end up asking two different objects whether this project keeps
+// rules: the room's key needs only the write, and reading the rows back needs
+// both.
 type autonomyAgent interface {
+	questionDialDoor
 	Autonomy() map[session.AskKind]session.Policy
-	SetAutonomy(session.AskKind, session.Policy) error
 }
 
 // autonomySheetText is the whole sheet as one block of prose, which is how a

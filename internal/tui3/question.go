@@ -1477,9 +1477,6 @@ func (a *app) questionUndo(head questionShown) tea.Cmd {
 // nothing. A session with nowhere to keep the setting still answers this one:
 // losing the standing half is not a reason to lose the answer.
 func (a *app) questionDial(head questionShown) tea.Cmd {
-	if door, ok := a.agent.(questionDialDoor); ok {
-		_ = door.SetAutonomy(head.question.Ask, session.Policy{Kind: session.PolicyDecide})
-	}
 	key := questionDecidedKeyOf(head.question)
 	if key == "" {
 		return nil
