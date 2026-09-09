@@ -96,7 +96,7 @@ func TestHandingReviewToTheModelStopsAskingTheUser(t *testing.T) {
 	if !a.taskStatus(node).Attention {
 		t.Fatal("fixture has no human decision")
 	}
-	a.settleCard(card, settleAlways)
+	a.settleCard(card, settleHand)
 	if len(agent.handed) != 1 {
 		t.Fatal("handoff did not reach the engine")
 	}
@@ -107,8 +107,10 @@ func TestHandingReviewToTheModelStopsAskingTheUser(t *testing.T) {
 	if word, _ := a.stateWord(); word != taskReviewPendingWord {
 		t.Fatalf("room footer says %q", word)
 	}
-	if !strings.Contains(a.doneTail(card), taskReviewPendingWord) {
-		t.Fatal("landing card still asks the user")
+	// THE HEAD IS NEVER REWRITTEN AFTER LANDING — the receipt is what changes,
+	// and it says what the person did rather than what the machine reached.
+	if card.decided != settleHandedLine {
+		t.Fatalf("the card's receipt reads %q, want %q", card.decided, settleHandedLine)
 	}
 	if a.roomSettleAsking() {
 		t.Fatal("handed-off decision still accepts another answer")
@@ -119,8 +121,8 @@ func TestFailedReviewHandoffKeepsTheHumanDecision(t *testing.T) {
 	a, agent := roomSettleApp(t, session.TaskUnverified)
 	agent.refuse = errors.New("review unavailable")
 	card := a.doneCardFor(7)
-	a.settleCard(card, settleAlways)
-	if card.reviewByModel || !a.taskStatus(a.tasks[7]).Attention || !a.roomSettleAsking() {
+	a.settleCard(card, settleHand)
+	if card.decided != "" || !a.taskStatus(a.tasks[7]).Attention || !a.roomSettleAsking() {
 		t.Fatal("failed handoff hid the unresolved decision")
 	}
 }

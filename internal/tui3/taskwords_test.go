@@ -521,10 +521,11 @@ func TestNoSurfaceDrawsTheEnginesOwnMergeWord(t *testing.T) {
 		"the room's header": plain(roomHeadAll(a, 160)),
 		"the roster's row":  plain(strings.Join(a.railUnder(node, 60), "\n")),
 	}
-	card := &taskDone{merge: mergeWordInPlace, branch: "work/7", open: true, span: 55 * time.Second}
-	card.open = false
-	said["the settled card's collapsed tail"] = plain(a.doneTail(card))
-	card.open = true
+	card := &taskDone{
+		merge: mergeWordInPlace, branch: "work/7", open: true, span: 55 * time.Second,
+		status: doneStatus(session.TaskFacts{
+			State: session.TaskDone, Merge: mergeWordInPlace, Branch: "work/7"}),
+	}
 	said["the settled card's expansion"] = plain(strings.Join(a.doneDetail(card, 80), "\n"))
 
 	for where, line := range said {
@@ -534,6 +535,16 @@ func TestNoSurfaceDrawsTheEnginesOwnMergeWord(t *testing.T) {
 		if !strings.Contains(line, taskInPlaceLanding) {
 			t.Errorf("%s does not say where the work landed (%q):\n%s", where, taskInPlaceLanding, line)
 		}
+	}
+	// AND THE LANDING CARD'S HEAD SAYS NOTHING AT ALL ABOUT IT. The head carries
+	// the merge as a FACT — `merged`, `branch kept`, or nothing — and work done in
+	// the person's own folder has no delivery to report: it is already where they
+	// are (docs/design/task-states/DESIGN.md). The expansion above still names the
+	// place beside the branch, which is where somebody looks it up.
+	card.open = false
+	if tail := plain(a.doneTail(card)); strings.Contains(tail, taskInPlaceLanding) ||
+		strings.Contains(tail, mergeWordInPlace) {
+		t.Errorf("the settled card's head reports a delivery for work done in place:\n%s", tail)
 	}
 }
 
@@ -603,7 +614,11 @@ func TestC13AKeptLandingSaysBranchKeptEverywhere(t *testing.T) {
 	if got := plain(strings.Join(a.railUnder(node, 60), "\n")); got != want {
 		t.Fatalf("the rail says %q, want %q", got, want)
 	}
-	card := &taskDone{merge: mergeWordKept, branch: "task/protect"}
+	card := &taskDone{
+		merge: mergeWordKept, branch: "task/protect",
+		status: doneStatus(session.TaskFacts{
+			State: session.TaskDone, Merge: mergeWordKept, Branch: "task/protect"}),
+	}
 	if got := plain(a.doneTail(card)); !strings.Contains(got, " · "+want) {
 		t.Fatalf("the settled card says %q, want it to contain %q", got, want)
 	}

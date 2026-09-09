@@ -27,6 +27,7 @@ type roomSettleFake struct {
 	*roomFake
 	resolved []settleCall
 	handed   []uint64
+	back     []uint64
 	refuse   error
 }
 
@@ -43,6 +44,14 @@ func (f *roomSettleFake) HandUnverifiedToModel(id uint64) error {
 		return f.refuse
 	}
 	f.handed = append(f.handed, id)
+	return nil
+}
+
+func (f *roomSettleFake) TakeBackDecision(id uint64) error {
+	if f.refuse != nil {
+		return f.refuse
+	}
+	f.back = append(f.back, id)
 	return nil
 }
 
@@ -71,11 +80,11 @@ func TestTheRoomOfANodeThatNeedsALookAsks(t *testing.T) {
 
 	page := roomText(a)
 	for _, want := range []string{
-		settleAskWord,
-		settleTakeKey + settleTakeWord,
-		settleAgainKey + settleAgainWord,
-		settleNotRightKey + settleNotRightWord,
-		settleAlwaysKey + settleAlwaysWord,
+		askCheckReason,
+		settleYesKey + " accept",
+		settleNoKey + " not right",
+		settleTellKey + settleTellWord,
+		settleHandKey + settleHandWord,
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the room is missing %q:\n%s", want, page)
@@ -84,8 +93,8 @@ func TestTheRoomOfANodeThatNeedsALookAsks(t *testing.T) {
 	if strings.Contains(page, roomFinishedRefusal.what) {
 		t.Fatalf("the room says %q under a question it is asking:\n%s", roomFinishedRefusal.what, page)
 	}
-	if got := a.roomHint(); got != roomSettleHint {
-		t.Fatalf("the hint slot reads %q, want %q", got, roomSettleHint)
+	if got := a.roomHint(); !strings.Contains(got, "a accept") {
+		t.Fatalf("the hint slot reads %q, want it to name the card's own chips", got)
 	}
 }
 
@@ -111,7 +120,7 @@ func TestTheRoomOfANestedDecisionAsks(t *testing.T) {
 		t.Fatalf("the room of a nested decision offers nothing: %+v", card)
 	}
 	page := roomText(base)
-	for _, want := range []string{settleAskWord, settleTakeKey + settleTakeWord} {
+	for _, want := range []string{askCheckReason, settleYesKey + " accept"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the room is missing %q:\n%s", want, page)
 		}
@@ -132,7 +141,7 @@ func TestADoneNodeRoomKeepsThePlainFoot(t *testing.T) {
 	if !strings.Contains(page, roomFinishedRefusal.what) {
 		t.Fatalf("a finished room lost its foot:\n%s", page)
 	}
-	if strings.Contains(page, settleAskWord) || strings.Contains(page, settleTakeKey) {
+	if strings.Contains(page, askCheckReason) || strings.Contains(page, settleYesKey) {
 		t.Fatalf("a finished room asks to be decided about:\n%s", page)
 	}
 	if got := a.roomHint(); got != "" {
@@ -157,7 +166,7 @@ func TestAcceptingFromTheRoomResolvesTheNodeAndTheCard(t *testing.T) {
 	if !strings.Contains(page, settleTookLine) {
 		t.Fatalf("the room does not say what was decided:\n%s", page)
 	}
-	for _, gone := range []string{settleAskWord, settleTakeKey + settleTakeWord, roomFinishedRefusal.what} {
+	for _, gone := range []string{askCheckReason, settleYesKey + " accept", roomFinishedRefusal.what} {
 		if strings.Contains(page, gone) {
 			t.Fatalf("an answered room still shows %q:\n%s", gone, page)
 		}
@@ -182,14 +191,14 @@ func TestAnsweringTheCardMarksTheRoomDecided(t *testing.T) {
 	a, agent := roomSettleApp(t, session.TaskUnverified)
 	_ = roomText(a)
 
-	a.settleCard(a.doneCardFor(7), settleAgain)
+	a.settleCard(a.doneCardFor(7), settleNo)
 
-	if len(agent.resolved) != 1 || agent.resolved[0].answer != session.TaskReaudit {
-		t.Fatalf("the re-check reached the engine as %+v", agent.resolved)
+	if len(agent.resolved) != 1 || agent.resolved[0].answer != session.TaskRefute {
+		t.Fatalf("the refusal reached the engine as %+v", agent.resolved)
 	}
 	page := roomText(a)
-	if !strings.Contains(page, settleAgainLine) || strings.Contains(page, settleAskWord) {
-		t.Fatalf("the room does not read as sent back:\n%s", page)
+	if !strings.Contains(page, settleNotRightLine) || strings.Contains(page, askCheckReason) {
+		t.Fatalf("the room does not read as answered:\n%s", page)
 	}
 }
 
@@ -206,7 +215,7 @@ func TestTheLettersDoNothingWithASentenceInTheRoomBox(t *testing.T) {
 	if got := a.input.String(); got != "ha" {
 		t.Fatalf("the box holds %q, want the letters that were typed", got)
 	}
-	if !strings.Contains(roomText(a), settleAskWord) {
+	if !strings.Contains(roomText(a), askCheckReason) {
 		t.Fatal("the room stopped asking while a sentence was being typed")
 	}
 }
@@ -220,11 +229,11 @@ func TestAClickOnTheRoomsAnswersRowDecides(t *testing.T) {
 	if len(card.chips) != 4 {
 		t.Fatalf("the room's row recorded %d pressable answers, want 4", len(card.chips))
 	}
-	if !a.settlePress(-1, card.chips[2].span.from+1) {
+	if !a.settlePress(-1, card.chips[1].span.from+1) {
 		t.Fatal("a press on the room's answers row was not taken")
 	}
 	if len(agent.resolved) != 1 || agent.resolved[0].answer != session.TaskRefute {
-		t.Fatalf("the third chip answered %+v", agent.resolved)
+		t.Fatalf("the second chip answered %+v", agent.resolved)
 	}
 }
 
@@ -238,7 +247,7 @@ func TestAnAlreadyAnsweredNodeRefreshesQuietlyInTheRoom(t *testing.T) {
 	drive(t, a, key("a"))
 
 	page := roomText(a)
-	if !strings.Contains(page, settleGoneLine) || strings.Contains(page, settleAskWord) {
+	if !strings.Contains(page, settleGoneLine) || strings.Contains(page, askCheckReason) {
 		t.Fatalf("the room does not read as already answered:\n%s", page)
 	}
 	if strings.Contains(page, "waiting on somebody to decide") {
@@ -251,7 +260,7 @@ func TestAnAlreadyAnsweredNodeRefreshesQuietlyInTheRoom(t *testing.T) {
 // on it, so the foot is the plain one — never a dead answers row.
 func TestANodeSettledElsewhereStopsAskingInTheRoom(t *testing.T) {
 	a, _ := roomSettleApp(t, session.TaskUnverified)
-	if !strings.Contains(roomText(a), settleAskWord) {
+	if !strings.Contains(roomText(a), askCheckReason) {
 		t.Fatal("the room is not asking to begin with")
 	}
 
@@ -260,7 +269,7 @@ func TestANodeSettledElsewhereStopsAskingInTheRoom(t *testing.T) {
 	a.room.dirty = true
 
 	page := roomText(a)
-	if strings.Contains(page, settleAskWord) || strings.Contains(page, settleTakeKey) {
+	if strings.Contains(page, askCheckReason) || strings.Contains(page, settleYesKey) {
 		t.Fatalf("the room still asks about work that has settled:\n%s", page)
 	}
 	if !strings.Contains(page, roomFinishedRefusal.what) {

@@ -2200,41 +2200,53 @@ order.
 Nothing is thrown away by stopping: see the tasks page for what a stopped task and a
 stopped run keep.
 
-## Deciding about a landed task from the keyboard — accept, look again, not right
+## Deciding about a landed task from the keyboard — accept, not right, tell it
 
-A landing that **needs your look** is the one card in the transcript that is still a
-question, and four letters answer it. **Any landing that needs a look, at any depth** — a
-task you asked for, or a part of one it handed out itself:
+A landing that reads **your call** is the one card in the transcript that is still a
+question, and the letters below answer it. **Any landing that is your call, at any
+depth** — a task you asked for, or a part of one it handed out itself:
 
 | Key | What it does |
 | --- | --- |
-| `a` | accept — take the work; its branch merges and its dependents unblock |
-| `l` | look again — a fresh check runs; the task keeps waiting until that answers |
-| `n` | not right — the task becomes incomplete and keeps its branch; its dependents still fail because it did not finish |
-| `d` | decide these for me — hands this one to aforge and sets `task.settle` to `auto` |
+| `a` | the ask's own yes — take the work; on a card whose branch clashed with yours it reads `resolve it`, which spends one more merge round and takes nothing as done |
+| `n` | the ask's own no — `not right`, or `drop it` on a conflict; the task becomes incomplete and keeps its branch, and its dependents still fail because it did not finish |
+| `s` | tell it — opens the task's own page with the message box pointed at it. What you type is sent as a correction; **it never answers the question by itself**, so "looks good" typed there does not become an accept |
+| `d` | let aforge decide this one — hands **this card** to aforge and **changes no setting**. The standing choice is `task.settle` in `/settings` under Session |
+| `t` | take it back — only while the card reads `aforge is deciding`. It draws the answers again and resolves nothing |
+
+**The words on `a` and `n` change with the question and the keys never do.** A card whose
+branch clashed with yours reads `[a] resolve it · [n] drop it`; one the check did not pass
+reads `[a] accept anyway`. There is always a third column, `[s] tell it`.
+
+**`check again` is not offered.** aforge retries a check that never answered by itself,
+on another model, before the card ever appears — so there is nothing left for you to
+spend a round on. `l` does nothing here now.
+
+**A key that is not drawn does nothing.** If aforge has no way to spend an answer — no
+merge round behind `resolve it`, for instance — that chip is absent rather than present
+and failing, and its letter is absent with it.
 
 **They are held to the same rule `x` is.** The card must be the **selected** one — walk to
 it with `↑`/`↓`, which steps through tool calls, proposals and landed cards — and the
 message box must be **empty**, with no panel, picker or copy mode up. A letter typed into a
 sentence stays a letter, always.
 
-Once answered the four go away and one dim line takes their place saying what you chose.
-The same four are clickable on the card. See the tasks page for what each answer does to
-the work.
+Once answered the letters go away and one dim line takes their place saying what you chose:
+`you took this as done`, `you said it is not finished`, `sent to be resolved`, or
+`handed to aforge for this one`. The same columns are clickable on the card. See the tasks
+page for what each answer does to the work.
 
-**Inside the task's room the same four keys need no selection.** The room is the task, so
-`a`, `l`, `n` and `d` over an empty message box answer it directly, the answers row stands
+**Inside the task's room the same keys need no selection.** The room is the task, so
+`a`, `n`, `s` and `d` over an empty message box answer it directly, the answers row stands
 at the foot of the page where `this task has finished — say it to main` would otherwise be,
-and the hint slot reads `a accept · l look again · n not right` while the question stands.
+and the hint slot names the same letters while the question stands.
 The room and the card are one question: answer in either and both show the receipt.
 
 **And the roster's row answers them too.** With the roster holding the keyboard (`alt+t`)
-and the cursor on a row that **needs your look**, the hint slot reads
-`a accept · l look again · n not right · esc` in place of the move keys, and those three
-letters answer that row's landing without opening its room. Same card, same answers, same
-receipt — the column, the card and the room cannot disagree, because there is one card
-behind all three. `d` works there too and is left off the hint for the room's own reason:
-it is a preference and not an answer to the question in front of you.
+and the cursor on a row that is **your call**, the hint slot names the same letters in place
+of the move keys, and they answer that row's landing without opening its room. Same card,
+same answers, same receipt — the column, the card and the room cannot disagree, because
+there is one card behind all three.
 
 ## The mouse: what you can click
 
@@ -2296,9 +2308,10 @@ Only the left button acts. A press is resolved in this order:
    `N earlier tool calls` fold; the `… N more lines` foot, which lifts the cap; a
    spawn card, which opens the node's room, or its brief if there is no node yet; and
    a landed card, which opens its full context — except on the answers row of a card
-   that needs your look, where each of `[a] accept`, `[l] look again`, `[n] not right`
-   and `[d] decide these for me` is its own target and a press between them does
-   nothing.
+   that is your call, where each of `[a] accept`, `[n] not right`, `[s] tell it` and
+   `[d] let aforge decide this one` is its own target and a press between them does
+   nothing. On a card that reads `aforge is deciding`, `[t] take it back` is the one
+   target on that row.
 
 **A file path is a different kind of target.** Everything numbered above is a click
 aforge itself answers. A real file path — in a reply, in a note, on a `read`/`edit`/

@@ -180,16 +180,16 @@ func testNestedGate(t *testing.T) {
 	// on a person, and the answers row on the card — all on screen at once, which
 	// is the whole of what "answerable" means here.
 	screen := r.waitFor(20*time.Second,
-		say(t, "settleAskWord"), say(t, "settleAccept"),
+		say(t, "settleAskWord"), say(t, "settleAccept"), say(t, "settleTellIt"),
 		say(t, "taskLookWord"), say(t, "unverifiedGlyph"))
 	t.Logf("a nested landing asking on every surface:\n%s", screen)
 	if !strings.Contains(screen, "Port the parser") {
 		t.Fatalf("the nested part is not named on the screen:\n%s", screen)
 	}
 
-	// AND A KEY ANSWERS IT. The four letters work on the SELECTED card and only
-	// over an empty message box, exactly as `x` does — so ↑ walks to the card the
-	// landing just wrote, and `a` is the accept.
+	// AND A KEY ANSWERS IT. The letters work on the SELECTED card and only over an
+	// empty message box, exactly as `x` does — so ↑ walks to the card the landing
+	// just wrote, and `a` is the accept.
 	r.keys("Up")
 	r.lit("a")
 	settled := r.waitFor(20*time.Second, say(t, "settleTookLine"))

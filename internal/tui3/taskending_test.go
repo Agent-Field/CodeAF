@@ -108,7 +108,8 @@ func TestARefusedNodeIsIncompleteAndBrokenOrOldNodesStillFail(t *testing.T) {
 		if got := plain(a.homeTaskGlyph(entry, session.SessionRow{})); got != tc.home {
 			t.Fatalf("%q: home glyph = %q, want %q", tc.ending, got, tc.home)
 		}
-		tail := a.doneTail(&taskDone{failed: true, ending: tc.ending})
+		tail := a.doneTail(&taskDone{status: doneStatus(session.TaskFacts{
+			State: session.TaskFailed, Ending: tc.ending})})
 		if !strings.Contains(tail, " · "+tc.state) {
 			t.Fatalf("%q: landed-card tail = %q, want state %q", tc.ending, tail, tc.state)
 		}
