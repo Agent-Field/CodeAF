@@ -356,8 +356,17 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	}
 	// The local engine connection can outlast a fixed launch delay. Wait for
 	// an interactive surface before typing, or the first request is lost.
+	//
+	// THE SETUP IS ONE OF THOSE SURFACES AND IT IS FOUR STEPS, NOT A TITLE. Only
+	// the FIRST step is headed `setting up`; the three after it wear their own
+	// headings (`Models and spending` is step three), so a list that recognised
+	// the flow by its title alone declared a terminal dead the moment the door
+	// opened on a later step — which is exactly what a state root whose profile
+	// is complete does now. The flow's FOOT is on every step of it, and the
+	// greeting's foot is the other screen a launch lands on, so both are here.
 	if hit, _ := r.waitForAny(45*time.Second, say(t, "homeFootWord"),
-		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "landingKeysWord")); hit == "" {
+		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "setupSkipWord"),
+		say(t, "landingKeysWord"), say(t, "welcomeStarterKeysWord")); hit == "" {
 		t.Fatal("the terminal never reached an interactive surface")
 	}
 	return r
