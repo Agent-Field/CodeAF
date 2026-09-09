@@ -330,9 +330,15 @@ func sortLanes(views []laneView) {
 	})
 }
 
-// laneTalkTokens is the answer a talk turn is scored against: four hundred
-// tokens a person reads, and nothing they do not.
-const laneTalkTokens = 400
+// laneTalkTokens is the answer a talk turn is scored against: the tokens a
+// person reads, and nothing they do not.
+//
+// IT IS THE CHOOSER'S OWN FIGURE and not a second one. The row's sort and the
+// chooser's price both stand for the same imagined answer — an ordinary turn
+// nobody has measured yet ([lane.AssumedAnswerTokens]) — so a number written
+// out here would be a second answer to "how long is a talk answer", drifting
+// the moment either side moved.
+const laneTalkTokens = lane.AssumedAnswerTokens
 
 // laneFeel is how long a talk answer would feel on this lane, in seconds, and
 // it is scored on the WAIT rather than on the median first token: two lanes are

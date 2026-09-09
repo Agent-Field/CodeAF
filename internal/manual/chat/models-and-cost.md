@@ -2261,7 +2261,7 @@ In the model picker — `/model`, or `enter` on that **your model** row — pres
 
 ```
  deepseek-v4-flash   via cloudflare · ▲0.8s · $0.09/$0.18 per M · 1M · 58t/s
-   ● auto        picks the fastest lane each answer — cloudflare now · recommended
+   ● auto        weighs speed against price each answer — cloudflare now · recommended
      cloudflare    0.8s · 58 t/s · $1.3/M · no tools · 100% · ▁▂▁▃▁▂
      coreweave     0.4s · 24 t/s · $0.28/M · tail 12s · 99% · ▁▁▇▁▂▁
      deepinfra     0.8s · 27 t/s · $0.18/M · out ≤ 65k · 99%
@@ -2463,7 +2463,7 @@ Settings → Providers has two rows under **routing**:
 
 | Value | What it does |
 |---|---|
-| `auto` | aforge picks the fastest lane each answer |
+| `auto` | aforge weighs speed against price on each answer and picks the lane that wins |
 | `pinned: cloudflare` | every request goes to that lane and nowhere else, until the router says that lane cannot serve this model — then this model routes on auto for the rest of the run and aforge says so once |
 | `pinned: cloudflare, borrow when slow` | it goes there, but a slow answer may still be rescued elsewhere |
 | `openrouter` | no lane is asked for; the router balances on price |
