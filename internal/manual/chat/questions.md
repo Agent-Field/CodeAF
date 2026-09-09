@@ -8,10 +8,12 @@ dim line saying why it is being asked now, the answers it will take, what is
 waiting on it, and what an answer costs — whether it can be taken back, whether
 it costs money or time, or whether it cannot be undone at all.
 
-**A question is never lost and never ages out.** It waits until it is answered,
-however long that is, and nothing more happens to whatever is stopped on it.
+Questions that your autonomy setting leaves on `ask` wait until they are
+answered. A reversible question with `recommend-then-auto` shows the model's
+pick, waits for its stated clock, then takes that pick; `decide` takes it at
+once. Irreversible questions and clarifications always wait for you.
 
-Not every one of them can be answered from somewhere else yet. The approval
+The model can raise one through its `ask` tool. Not every question can be answered from somewhere else yet. The approval
 question, a task proposal and a standing card reach home, another window on this
 machine, and a window attached over `--host`; the rest are answered in the
 conversation that raised them. What is written down about all of them is the
@@ -51,7 +53,7 @@ Most of them wait. A wait that ended is not a no: an approval question, a
 standing card and a page waiting to be approved carry no clock at all, and they
 stay up until somebody answers them.
 
-**A task proposal is the one with a clock.** The card says how long is left, and
+**A task proposal and a reversible recommendation may carry a clock.** The card says how long is left, and
 when the time runs out the work STARTS — the card is your chance to redirect it,
 not a gate the work waits on. A proposal you hold loses its deadline and then
 waits like everything else.
@@ -73,9 +75,32 @@ you are not asked the same thing twice.
 Every line says WHO decided, and where that was not you it says so rather than
 reading as something you said.
 
-**What is not in it yet: a question nobody answered.** A proposal whose clock
-ran out started the work without anybody saying anything, and there was no answer
-to write down; the record holds decisions, and silence is not one.
+When the autonomy dial takes a recommendation, the record identifies the answer
+as `aforge, on your settings`; it never makes that answer look like yours.
+
+## Why did it not ask me, or why did it go ahead by itself?
+
+The model is instructed to ask last. It first reads `the record`, then states a
+safe assumption, acts and offers to unwind reversible work, shows outcomes, and
+offers structured choices. A repeated decision may therefore be answered by the
+record, and a reversible choice may be taken by your autonomy setting.
+
+The settings are per project and per kind: `ask`,
+`recommend-then-auto` with a wait, or `decide`. Destructive work never answers
+itself, and clarification never runs on a clock.
+
+## Make it ask me every time
+
+Set that question kind to `ask` in the autonomy controls. This is per project;
+other projects keep their own setting. An irreversible question already behaves
+this way and cannot be changed to automatic.
+
+## It assumed something wrong
+
+Answer against the model's pick and add why. That explanation becomes a durable
+preference when memory is on, is read back with relevant remembered context, and
+can be removed through the existing forget control. The decision itself remains
+in `decisions.jsonl` as the record of what happened.
 
 ## A finished task waiting on your word counts as needing you
 
