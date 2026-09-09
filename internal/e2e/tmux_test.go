@@ -558,9 +558,14 @@ func seedDecidedFamily(t *testing.T, home, ws string) string {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("seed family: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"), nil, 0o644); err != nil {
-		t.Fatalf("seed family: %v", err)
-	}
+	// THE JOURNAL HAS SOMEBODY'S WORDS IN IT, and an empty one is not a cheaper
+	// fixture — it is a different screen. A conversation with nothing in it opens
+	// on the greeting, which on the machine's FIRST conversation stands through
+	// typing (welcome.go's welcomeStandsThroughTyping) and stands the chord keys
+	// down while it is up (stop.go), so the card's own answer letters are refused.
+	// It is also nothing like the shape this fixture is for: a landing that is
+	// somebody's call arrives in a conversation they started the work from.
+	statesSeedTranscript(t, dir, sid, ws, "rebuild the index and port the parser")
 	at := time.Now().Add(-3 * time.Minute)
 	meta := map[string]any{
 		"id": sid, "title": "The nested gate", "workspace": ws,
@@ -599,9 +604,8 @@ func seedUndecidedRoot(t *testing.T, home, ws string) string {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("seed undecided root: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"), nil, 0o644); err != nil {
-		t.Fatalf("seed undecided root: %v", err)
-	}
+	// With the person's own words in it, for [seedDecidedFamily]'s reason.
+	statesSeedTranscript(t, dir, sid, ws, "review the pull request diff")
 	at := time.Now().Add(-3 * time.Minute)
 	writeJSON(t, filepath.Join(dir, "meta.json"), map[string]any{
 		"id": sid, "title": "The review gate", "workspace": ws,

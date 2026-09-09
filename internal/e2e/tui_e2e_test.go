@@ -165,12 +165,11 @@ func testNestedGate(t *testing.T) {
 	seedDecidedFamily(t, home, ws)
 	r := start(t, "afe2e_gate", home, ws, tuiWide, 40, "chat", "--one-model")
 
-	// WHICHEVER DOOR THE LAUNCH TOOK. A machine with no conversation for this
-	// workspace opens home; one that has the seeded conversation opens straight
-	// into it — both are the product behaving, and esc from the first is the
-	// second.
-	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "settleAskWord"))
-	r.keys("Escape")
+	// WHICHEVER DOOR THE LAUNCH TOOK, and esc until it is actually gone. A state
+	// root built a minute ago stands on the SETUP however complete the profile it
+	// copied is — the marker that says the setup has been seen is a file in that
+	// root — and the setup is several steps, so one esc leaves the one under it.
+	statesPastTheDoor(t, r)
 
 	// ONE FRAME, BOTH HALVES. The roster's `?` and its words for a node waiting
 	// on a person, and the answers row on the card — all on screen at once, which
@@ -184,10 +183,12 @@ func testNestedGate(t *testing.T) {
 	}
 
 	// AND A KEY ANSWERS IT. The letters work on the SELECTED card and only over an
-	// empty message box, exactly as `x` does — so ↑ walks to the card the landing
-	// just wrote, and `a` is the accept.
-	r.keys("Up")
-	r.lit("a")
+	// empty message box, exactly as `x` does — so the greeting is put away first
+	// ([statesAnswerKey] says why), ↑ walks to the card the landing just wrote,
+	// and `a` is the accept.
+	if !statesAnswerKey(t, r, "a", say(t, "settleTookLine")) {
+		t.Fatalf("three presses of `a` never left %q on the card:\n%s", say(t, "settleTookLine"), r.capture())
+	}
 	settled := r.waitFor(20*time.Second, say(t, "settleTookLine"))
 	t.Logf("the accept was spent and the card wears the receipt:\n%s", settled)
 	r.quit()
@@ -204,11 +205,11 @@ func testRefusedLanding(t *testing.T) {
 	seedUndecidedRoot(t, home, ws)
 	r := start(t, "afe2e_refused_gate", home, ws, tuiWide, 40)
 
-	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "settleAskWord"))
-	r.keys("Escape")
+	statesPastTheDoor(t, r)
 	r.waitFor(20*time.Second, say(t, "settleAskWord"), say(t, "settleNotRight"))
-	r.keys("Up")
-	r.lit("n")
+	if !statesAnswerKey(t, r, "n", say(t, "settleNotRightLine")) {
+		t.Fatalf("three presses of `n` never left %q on the card:\n%s", say(t, "settleNotRightLine"), r.capture())
+	}
 	screen := r.waitFor(20*time.Second, say(t, "settleNotRightLine"), say(t, "taskIncompleteWord"))
 	t.Logf("a refused landing keeps its reason and says incomplete:\n%s", screen)
 	if strings.Contains(screen, say(t, "taskFailedWord")) {
