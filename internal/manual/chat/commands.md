@@ -434,6 +434,11 @@ on your clipboard, with `copied · 14 chars` or `copied · 3 lines` on the statu
 Double-click takes a word, triple-click a line (see the keys page's *Selecting text
 with your mouse*).
 
+**The message box answers the same drag**, and so does the box at the foot of every
+place: sweep across what you have typed and it highlights, release and it is copied.
+A selection in a box is live — typing replaces it and `backspace` removes it whole
+(the keys page's *how do I select text in the message box*).
+
 `/select` is for when you want your **terminal's own** selection instead: it hands the
 pointer back so a drag selects text natively. It is the same thing ctrl+s does.
 

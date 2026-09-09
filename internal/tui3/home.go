@@ -2388,6 +2388,12 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	if editorMotion(&h.box, msg.String()) {
 		return nil
 	}
+	// AND ctrl+z TAKES BACK WHAT WAS TYPED, in every box on this surface and not
+	// only in the message one (editundo.go).
+	if editorUndo(&h.box, msg.String()) {
+		h.build()
+		return nil
+	}
 	if editorWordKill(&h.box, msg.String()) {
 		h.build()
 		return nil

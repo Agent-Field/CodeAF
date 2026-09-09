@@ -82,3 +82,22 @@ func editorWordKill(e *editor, key string) bool {
 	}
 	return false
 }
+
+// editorUndo takes a step back or forward in e's own history if key is one of
+// the two chords, and reports whether the draft actually changed — so a caller
+// with a filtered list behind the box knows to re-rank, and a chord with
+// nothing to undo does nothing rather than swallowing itself.
+//
+// IT IS HERE, WITH THE OTHER TWO, BECAUSE IT IS THE SAME ARGUMENT (editundo.go
+// holds the machinery and the reasoning about the chords themselves). Undo that
+// worked in the message box and was dead in home's box, the settings filter and
+// the task filter would be the exact defect this file was written for.
+func editorUndo(e *editor, key string) bool {
+	switch key {
+	case "ctrl+z":
+		return e.undo()
+	case "ctrl+shift+z":
+		return e.redo()
+	}
+	return false
+}
