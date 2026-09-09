@@ -202,6 +202,9 @@ func scoredAt(belief Belief, req Request, cached int) Scored {
 // frontierFor is the candidate set for one request: the lanes that could serve
 // it, minus the ones no request could want.
 //
+// The chooser fills an unknown answer length in [chooser.Choose] before it
+// reaches this function, so every candidate is priced for the same answer.
+//
 // cached answers how many of this request's prompt tokens a lane is believed to
 // be holding already, which is what makes the price path-dependent (see
 // [PriceWithCache]). It is a function rather than a map so that the chooser's
@@ -238,12 +241,6 @@ func frontierFor(beliefs []Belief, req Request, opts gateOptions, cached func(ID
 	}
 	sorted = pricedPessimistically(sorted, sortedFacts)
 	sorted = underPriceCeiling(sorted, sortedFacts, req)
-	// Unknown generation is not free generation. Until the request has an
-	// output estimate, prompt cost alone cannot prove another endpoint worse
-	// for the whole answer. Keep eligible alternatives for learning and rescue.
-	if req.Visible+req.Hidden <= 0 {
-		return sorted
-	}
 	return paretoFront(sorted, req.QualityNeed)
 }
 
@@ -295,16 +292,16 @@ func pricedPessimistically(candidates []Scored, facts []Facts) []Scored {
 //     generous, because the score below already pays the difference honestly;
 //     the ceiling is here to refuse the absurd, not to make the decision.
 //
+// THE SECOND HALF NEEDS AN ANSWER LENGTH TO DIVIDE BY, and it always has one:
+// a request that states none is read at [AssumedAnswerTokens] before it reaches
+// here ([chooser.Choose]). It used to be handed the zero instead, and a ceiling
+// with no denominator was skipped whole — so a first turn, which is exactly the
+// turn nobody has measured an answer for, was allowed any tariff at all (#686).
+//
 // A model whose lanes publish no output tariff at all has no ceiling, for the
 // reason the transport's own ceiling has none: refusing lanes on a number
 // nobody published is worse than paying an unknown price.
 func underPriceCeiling(candidates []Scored, facts []Facts, req Request) []Scored {
-	// With someone waiting and no output estimate, there is no denominator
-	// for trading output tariff against saved time. The transport's published
-	// price cap still applies; do not invent a stricter relative cap here.
-	if valueOfTime(req) > 0 && req.Visible+req.Hidden <= 0 {
-		return candidates
-	}
 	cheapest := 0.0
 	cheapestIndex := -1
 	for index, lane := range facts {
