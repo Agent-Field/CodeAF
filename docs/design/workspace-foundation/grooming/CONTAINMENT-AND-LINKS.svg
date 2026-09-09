@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1480" height="1010" viewBox="0 0 1480 1010" role="img" aria-labelledby="title desc"><title id="title">Aforge: what contains what, and what connects</title><desc id="desc">Current backend model. Folder D contains Folder A. Folder A lists a conversation, a task owned by that conversation, an ongoing item with its own trigger and grant, a file, and a child folder. Folder B lists the same conversation by reference. Shared context has a source conversation and explicitly targets Folder A, Folder B and an unfiled conversation. Folder membership is distinct from ownership, source and applicability. No automatic propagation is implied.</desc><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L8 4L0 8Z" fill="#718589"/></marker><marker id="blueArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L8 4L0 8Z" fill="#397e91"/></marker></defs><style>text{font-family:Arial,sans-serif;font-size:21px;fill:#263d40}.title{font-size:30px;font-weight:600}.heading{font-size:25px;font-weight:600}.sub{font-size:18px;fill:#5b7276}.small{font-size:17px;fill:#5b7276}.edge{fill:none;stroke:#718589;stroke-width:1.7;marker-end:url(#arrow)}.context-edge{fill:none;stroke:#397e91;stroke-width:1.7;marker-end:url(#blueArrow)}.label{font-size:18px;fill:#59757d;paint-order:stroke;stroke:#fafbf8;stroke-width:8px;stroke-linejoin:round}.identity{fill:none;stroke:#718589;stroke-width:1.5;stroke-dasharray:5 4}.inside-label{font-size:16px;fill:#5b7276;paint-order:stroke;stroke:#eff4f1;stroke-width:6px}</style><rect width="1480" height="1010" fill="#fafbf8"/>
+<text x="44" y="48" class="title">What contains what — and what connects</text>
+<text x="44" y="80" class="sub">Existing backend structure · example records · layout does not create ownership, permission or activity</text>
+<rect x="44" y="126" width="290" height="80" rx="12" fill="#fff" stroke="#bacbc7" stroke-width="1.5"/>
+<text x="66" y="161" class="heading">Folder D</text>
+<text x="66" y="187" class="sub">Collapsed folder</text>
+<rect x="44" y="278" width="650" height="591" rx="17" fill="#eff4f1" stroke="#92aaa2" stroke-width="1.5"/>
+<text x="68" y="318" class="heading">Folder A</text>
+<text x="68" y="348" class="sub">Own fields: name + identity. Contents are references.</text>
+<rect x="74" y="383" width="260" height="99" rx="12" fill="#fff" stroke="#bacbc7" stroke-width="1.5"/>
+<text x="94" y="419" class="heading">Chat X</text>
+<text x="94" y="451" class="sub">Messages / conversation</text>
+<rect x="390" y="383" width="274" height="99" rx="12" fill="#fff" stroke="#bacbc7" stroke-width="1.5"/>
+<text x="410" y="419" class="heading">Task T</text>
+<text x="410" y="451" class="sub">Objective · state</text>
+<rect x="74" y="549" width="260" height="206" rx="12" fill="#fff" stroke="#bacbc7" stroke-width="1.5"/>
+<text x="94" y="585" class="heading">Ongoing item</text>
+<text x="94" y="619" class="">Original request</text>
+<text x="94" y="650" class="">When to check or run</text>
+<text x="94" y="681" class="">Action · grant · limits</text>
+<text x="94" y="719" class="sub">State · retained activity</text>
+<rect x="390" y="549" width="274" height="90" rx="12" fill="#fff" stroke="#bacbc7" stroke-width="1.5"/>
+<text x="410" y="586" class="heading">Artifact</text>
+<text x="410" y="615" class="sub">File / path reference</text>
+<rect x="390" y="684" width="274" height="71" rx="12" fill="#fff" stroke="#bacbc7" stroke-width="1.5"/>
+<text x="410" y="727" class="heading">Child folder</text>
+<text x="74" y="805" class="sub">These five kinds can be listed in any folder.</text>
+<text x="74" y="835" class="sub">Their original owners keep their state.</text>
+<rect x="840" y="152" width="570" height="195" rx="14" fill="#eef5f7" stroke="#85a9b3" stroke-width="1.5"/>
+<text x="866" y="189" class="heading">Shared context</text>
+<text x="866" y="222" class="">Text · source · revisions · explicit targets</text>
+<text x="866" y="255" class="sub">Targets do not prove acceptance or actual use.</text>
+<text x="866" y="303" class="sub">Associated information; not a folder member.</text>
+<rect x="1030" y="433" width="380" height="176" rx="14" fill="#eff4f1" stroke="#92aaa2" stroke-width="1.5"/>
+<text x="1053" y="470" class="heading">Folder B</text>
+<rect x="1053" y="504" width="333" height="78" rx="12" fill="#fff" stroke="#bacbc7" stroke-width="1.5"/>
+<text x="1072" y="537" class="">Chat X — same record</text>
+<text x="1072" y="562" class="small">Another membership, not a copy</text>
+<rect x="940" y="749" width="470" height="105" rx="12" fill="#fff" stroke="#bacbc7" stroke-width="1.5"/>
+<text x="963" y="786" class="heading">Chat Y · no folder membership</text>
+<text x="963" y="823" class="sub">A normal conversation that can still have links.</text>
+<path d="M183 206 V276" class="edge"/>
+<text x="203" y="251" class="label">contains / lists</text>
+<path d="M334 434 H388" class="edge"/>
+<text x="340" y="408" class="inside-label">owns</text>
+<path d="M74 432 H23 V239 H779 V209 H838" class="context-edge"/>
+<text x="436" y="226" class="label">Chat X is the source</text>
+<path d="M840 318 H696" class="context-edge"/>
+<text x="716" y="303" class="label">targets</text>
+<path d="M1213 347 V431" class="context-edge"/>
+<text x="1233" y="393" class="label">targets</text>
+<path d="M334 453 H355 V515 H1001 V542 H1051" class="identity"/>
+<text x="708" y="502" class="label">same record, two memberships</text>
+<path d="M1410 265 H1452 V694 H1165 V747" class="context-edge"/>
+<text x="1137" y="681" class="label">targets this chat directly</text>
+<text x="44" y="918" class="sub">Containment: folders can have multiple parents; circular containment is rejected.</text>
+<text x="44" y="949" class="sub">Arrows name directed relationships. The dashed line shows two appearances of the same record.</text>
+<text x="44" y="980" class="small">No folder-level goal or trigger is implied. Automatic memory, discovery and causal traces are not shown as implemented.</text>
+</svg>

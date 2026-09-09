@@ -27,6 +27,10 @@ services, or a claim that every shown path works today.
 records the current implementation checkpoint and groups the remaining product
 and engineering questions without introducing a new delivery roadmap.
 
+[Containment and links](CONTAINMENT-AND-LINKS.md) and its [SVG](CONTAINMENT-AND-LINKS.svg)
+are the latest minimal structure explanation: what folders list, what work owns,
+how an unfiled chat still connects, and the scope question exposed by sharing.
+
 [Current-model desktop explorer](CURRENT-MODEL-EXPLORER.md) is the latest
 interactive study: actual backend record shapes and stored links, synthetic
 data, opened in Chrome. The user explicitly excluded mobile work and proposed
