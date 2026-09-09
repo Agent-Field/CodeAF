@@ -198,6 +198,8 @@ func run() error {
 		return runModels(os.Args[2:])
 	case "notebook":
 		return runNotebook(os.Args[2:])
+	case "collections":
+		return runCollections(os.Args[2:])
 	case "competence":
 		return runCompetence(os.Args[2:])
 	case "services":
@@ -375,6 +377,7 @@ Housekeeping — changes state on disk or on the network
   aforge notebook [--db path]
       what it has learned, and what it has been corrected on
   aforge notebook retract|restore <seq> [--db path]
+` + collectionsSummary + `
   aforge competence [--db path] [--model slug]
       what it has been measured as good at
   aforge services [--db path]
