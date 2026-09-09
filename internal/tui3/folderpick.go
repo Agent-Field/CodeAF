@@ -1057,33 +1057,43 @@ func folderGapFor(width int) int {
 // recorded, because every segment is a place a click can go back to.
 func (f *folderPick) crumbRow(width int, pal palette) string {
 	trail := folderTrail(f.cols.dir, f.tilde)
-	// THE TAIL IS WHAT SURVIVES A NARROW FRAME. `~ › code › … › tui3` keeps the
-	// two facts a person needs — the root they are under and where they are
-	// standing — and dropping from the left is what every breadcrumb on this
-	// surface does (roomcrumbs.go).
-	room := width - folderPadCells
-	line, cells := folderPad, folderPadCells
+	// Keep the leaf and as many whole ancestors as fit. Charge the cut marker
+	// only for a shortened trail; its four cells do not replace a three-cell
+	// separator for free. Very small rows give their cells to the leaf instead.
+	pad := min(max(width, 0), folderPadCells)
+	room := max(0, width-pad)
+	line, cells := folderPad[:pad], pad
 	f.geom.crumbs = f.geom.crumbs[:0]
-	from, used := len(trail), 0
+	if len(trail) == 0 || room == 0 {
+		return line
+	}
+	cutCells := ansi.StringWidth(folderCrumbCut)
+	from := len(trail) - 1
+	used := ansi.StringWidth(trail[from].name)
 	for from > 0 {
-		used += ansi.StringWidth(trail[from-1].name) + folderCrumbGapCells
-		if used > room {
+		next := used + folderCrumbGapCells + ansi.StringWidth(trail[from-1].name)
+		cost := next
+		if from > 1 {
+			cost += cutCells
+		}
+		if cost > room {
 			break
 		}
 		from--
+		used = next
 	}
-	if from >= len(trail) && len(trail) > 0 {
-		from = len(trail) - 1
-	}
-	if from > 0 {
-		line, cells = line+pal.dim(folderCrumbCut), cells+ansi.StringWidth(folderCrumbCut)
+	if from > 0 && room > cutCells {
+		line, cells = line+pal.dim(folderCrumbCut), cells+cutCells
 	}
 	for at := from; at < len(trail); at++ {
 		crumb := trail[at]
 		if at > from {
 			line, cells = line+pal.dim(folderCrumbGap), cells+folderCrumbGapCells
 		}
-		name := fit(crumb.name, room)
+		name := fit(crumb.name, width-cells)
+		if name == "" {
+			continue
+		}
 		crumb.span = hudSpan{from: cells, to: cells + ansi.StringWidth(name)}
 		if at == len(trail)-1 {
 			line += pal.bold(pal.ink(name))
@@ -1111,7 +1121,6 @@ const (
 // spelled `~` under a person's home directory and `/` above it, which is how
 // they read it everywhere else on this surface.
 func folderTrail(dir, tilde string) []folderCrumb {
-	dir = strings.TrimSpace(dir)
 	if dir == "" {
 		return nil
 	}
