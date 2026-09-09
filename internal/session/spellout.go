@@ -81,11 +81,6 @@ const (
 	// slipped through, not a second attempt at that rule.
 	spellOutDraftClip = 2000
 
-	// spellOutTokens is the ceiling: six short clauses and the line that opens
-	// them, with room for a model that runs long. Not room for an essay, which
-	// the prompt spends its last paragraph refusing.
-	spellOutTokens = 400
-
 	// spellOutClauses is the most clauses the block may carry, and it is the
 	// prompt's own limit enforced rather than restated ([cleanSpellOut] holds a
 	// model that ignored it to the same number). Past six the block stops being
@@ -184,7 +179,7 @@ func (a *Agent) SpellOut(ctx context.Context, draft string) string {
 			// person has configured, and they answer whatever they read last.
 			textMessage("user", clip(draft, spellOutDraftClip)+"\n\n"+spellOutPrompt),
 		},
-		ai.WithModel(call.Model), ai.WithMaxTokens(spellOutTokens))
+		ai.WithModel(call.Model))
 	if callErr != nil || response == nil {
 		return ""
 	}

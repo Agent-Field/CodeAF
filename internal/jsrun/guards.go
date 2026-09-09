@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec"
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // GUARDS AND DEOPTIMIZATION — the JIT's answer, which is PRD §1's frame for the
@@ -102,11 +101,14 @@ func (r *Runner) holds(guard exec.Guard, input any) bool {
 // precondition held, and the long way is what you do when you cannot say.
 func (r *Runner) judged(ctx context.Context, guard exec.Guard, input any, rec *recorder) bool {
 	started := time.Now()
-	// Effort is off rather than unset: a yes-or-no about material already in
-	// hand is the shape internal/provider's own comment names as worth an order
-	// of magnitude in latency, and a guard that deliberated would stop being
-	// cheap enough to be a guard.
-	answer, err := rec.env.AI(ctx, guard.Question, input, exec.AIOptions{Effort: provider.EffortOff})
+	// EFFORT IS UNSET, and it used to be off: the argument was that a yes-or-no
+	// about material already in hand is worth an order of magnitude in latency,
+	// and a guard that deliberated would stop being cheap enough to be a guard.
+	// The argument is about a model this file has never seen. `off` is not
+	// silence — it is {"reasoning":{"enabled":false}}, a request. This guard
+	// adds no effort of its own; any explicit setting already carried by its Env
+	// remains the Env's decision.
+	answer, err := rec.env.AI(ctx, guard.Question, input, exec.AIOptions{})
 	entry := exec.JournalEntry{
 		Call:    exec.CallAI,
 		Ref:     guard.Question,
