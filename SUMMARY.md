@@ -178,3 +178,32 @@ merge SHA. Then reconcile this separate follow-up onto that `origin/dev`,
 retarget PR #658, rerun affected validation and normal gates on the reconciled
 head, merge through the PR with expected-head protection, verify ancestry, and
 only then write both success markers.
+
+## Pass 8 checkpoint
+
+- Steering revision 04 and the coordinated destination decision remain active.
+  PR #653 is still open and draft against `dev`, with no merge commit recorded;
+  that observation does not release the hold. No target or protected branch was
+  written in this pass.
+- The finished harness evidence was re-read from the shared wave: its controlled
+  uncached-test result remains 564.32s to 402.60s (28.7%), its normal and
+  shuffled full runs passed, and its full race run reported no data races. The
+  one race-mode allocation-law failure reproduces at the base and is outside
+  the normal gate; no known-red entry was added.
+- Draft PR #658 remains open and mergeable against
+  `codex/conversation-execution`, with pushed head
+  `f795606e40c8814ba1bf1d8805dad39b7d2d4127`. Remote `dev` remains
+  `65f060d338ec5d01eded666b420ec533319f35ac`, and PR #653's head remains
+  `2a02ac0bb9c4d085a345805fd809ac9539f2d896`.
+- No duplicate heavy validation was started: the frozen candidate already has
+  4,385 passes, 4 skips, zero failures, no cached labels, and no incomplete
+  packages, followed by green `make test-quick` and `make build`. The next
+  meaningful full run is the required affected validation after reconciliation
+  onto the explicitly authorized post-PR653 `origin/dev`.
+- `reports/READY` and `reports/QUALITY_READY` remain absent.
+
+Outstanding: await an explicit hold release carrying the verified PR #653 merge
+SHA. Only then reconcile onto current `origin/dev`, retarget PR #658, validate
+the combined affected source and normal gates, merge with expected-head
+protection, verify target ancestry, rebuild in this owned worktree, and write
+both success markers.
