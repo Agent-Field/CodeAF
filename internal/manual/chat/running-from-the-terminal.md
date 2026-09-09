@@ -502,7 +502,9 @@ The answer is the thing you would capture: the deliverable, the `--json` object,
 `aforge logs`, the plan `aforge plan show` prints. Everything a person reads *about* the
 run is on stderr: the `goal:` and `models:` preamble, the progress lines, warnings, the
 path a record was kept at, the receipt saying a file was written, and any question the
-command asks you.
+command asks you. For `aforge chat --once`, this includes every handover and ending line:
+`finishing here · what was asked is done`, `stopping here · ` and the line that says a
+reply's work was moved. Landing-woken replies remain on stdout with the first reply.
 
 So these do what you would expect, and nothing has to be filtered out of them:
 

@@ -62,7 +62,7 @@ Four ways, and each of them is you saying which conversation you mean:
 |---|---|
 | `aforge chat --session <path>` | that conversation, no home |
 | `aforge resume` | the session picker, no home |
-| `aforge chat --once "text"` | one reply, printed; no surface at all |
+| `aforge chat --once "text"` | replies printed with no surface; one reply normally, or every landing-woken reply when `--yolo` has a budget |
 | `aforge --host <machine>` | the far machine's session, no greeting — `space` `space` opens that machine's home |
 
 And on a machine with only one conversation — a first run — home does not greet you.

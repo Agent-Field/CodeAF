@@ -75,7 +75,7 @@ there.
 | `--reasoning <level>` | how hard the model is asked to think: `off`, `low`, `medium` or `high` |
 | `--session <path>` | open a particular conversation file instead of the most recent |
 | `--host <host[:path]>` | run the conversation on another machine over ssh |
-| `--once "<text>"` | send one message, print the reply, and exit — no screen, nobody watching |
+| `--once "<text>"` | send one message and print its replies — normally it then exits; with `--yolo` and a budget it stays until handed-over work is home or the limit ends it |
 | `--no-compact` | never shorten the conversation automatically |
 | `--yolo` | run every tool without asking, subject to the limits that nothing lifts |
 | `--max-hours <n>` | with `--yolo`: elapsed-time limit; interactive chat checks before new turns |
@@ -104,6 +104,12 @@ Yes, when launched with `--once`, `--yolo` and a time or cost budget. A headless
 unattended run checkpoints long replies at the same points. Its decisions are
 kept in the transcript, where a run without a screen can still be inspected.
 
+Moving a reply's work onto a task does not end that run. The command stays alive
+while the task is running; when the task lands, its report starts another reply
+on the same command. It exits only when no task is still moving and no reply is
+in flight, or when its limit ends the run. A plain `--once` run, and `--once
+--yolo` with no budget, remain one message, one reply and one exit.
+
 Either limit alone is enough; both means whichever runs out first. The defaults can
 come from `AFORGE_MAX_HOURS` and `AFORGE_MAX_COST`; explicit flags take precedence.
 A headless `--yolo` launch without a budget stops when the model stops.
@@ -127,7 +133,7 @@ refuses the budget flags at its door; configure that machine's launch instead.
 
 ## What changes when you give it a budget — done when, carrying on by itself, tidying up after itself
 
-For a fixed headless goal (`--once --yolo` with a budget), five things change:
+For a fixed headless goal (`--once --yolo` with a budget), six things change:
 
 - **It writes down what finished means.** At the start it turns your ask into one
   `done when` sentence and shows it to you on a dim line. That sentence is fixed
@@ -147,6 +153,12 @@ For a fixed headless goal (`--once --yolo` with a budget), five things change:
   it is working in is part of the answer and is left alone, and anything it wrote
   outside that folder is scratch and is deleted. It never touches a file it did
   not create, and it never touches one it only changed.
+- **It stays for work it hands over, and says every ending.** Moving work onto a
+  task ends that reply, not the run. The command waits while the task is moving,
+  and the task's landing starts the next reply there on its own. Reply text is
+  written to standard output. The handover line and every ending — including
+  `finishing here · what was asked is done` and `stopping here · ` — are written
+  to standard error, so a piped answer contains no commentary.
 - **The hours end the run even while its work is out.** The run cannot continue
   past the hours you gave it, whether work is out or not: the wall is read while
   the conversation is idle as well as at the end of a reply. If time runs out
