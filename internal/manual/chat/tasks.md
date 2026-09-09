@@ -1404,16 +1404,19 @@ spawn to last landing, not the sum of the parts, because tasks run at the same t
 Click a landing card, or press `ctrl+o` with it selected, to expand it. The order is
 **delivery status**, **the answer**, then **supporting details**.
 
-A failed save or integration leads with a warning behind `!`. Its headline says
-`delivery needs attention` even if the work itself was accepted. Diagnostics follow
-in quieter text, once. A branch deliberately kept separate is described without a
-failure warning; keeping a branch can be the requested outcome.
+A save or integration that did not come off leads with a warning behind `!`, and
+diagnostics follow in quieter text, once. It no longer carries a headline of its own:
+`delivery needs attention` was a second account of a state the card's own word already
+gives, and it is gone. A branch deliberately kept separate is described without a warning
+at all; keeping a branch can be the requested outcome.
 
 The answer uses the normal reply renderer: headings, lists, bold, and fenced code
 appear as formatted Markdown in body ink. A shortened result names where the rest
 can be read: `… the whole of it is at <path>`, or `… the rest of it was not kept`.
-If a check turned the result back, the card says `what it produced was not taken
-as done` and points to the retained record instead of presenting an accepted answer.
+If a check turned the result back, the card's reason row already says so — `the check did
+not pass it: <the gaps>` — so this block says only the useful half, which is where the
+answer can be read. The sentence it used to lead with, `what it produced was not taken as
+done`, was a second spelling of the same state and is gone.
 
 Supporting details follow: `changed · <files>`, the branch, then
 `model · <model> · $<cost> · ran · 14:02 → 14:14`. Whole facts wrap onto another
