@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"path/filepath"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -47,7 +48,7 @@ func (a *app) mediaRows(e *entry, entryIndex, width int, lead string) []row {
 		if open {
 			action = "collapse"
 		}
-		suffix := "  open original"
+		suffix := "  [open original]"
 		prefix := lead + bandFoldMark(a.pal, !open) + " "
 		name := drawableLine(filepath.Base(item.path))
 		label := name + railSep + action
@@ -69,7 +70,7 @@ func (a *app) mediaRows(e *entry, entryIndex, width int, lead string) []row {
 		text := prefix + fit(label, room)
 		start := ansi.StringWidth(text)
 		text += suffix
-		control := row{text: a.pal.dim(fit(text, width)), entry: entryIndex, hit: hitPictures, pictureIndex: i}
+		control := row{text: fit(a.pal.dim(prefix+fit(label, room))+a.pal.muted(suffix), width), entry: entryIndex, hit: hitPictures, pictureIndex: i}
 		if suffix != "" {
 			control.pictureOpen = hudSpan{from: start + 2, to: min(width, start+ansi.StringWidth(suffix))}
 		}
@@ -83,9 +84,9 @@ func (a *app) mediaRows(e *entry, entryIndex, width int, lead string) []row {
 			out = append(out, row{text: lead + a.pal.dim(fit("Preview unavailable · open the original", cols)), entry: entryIndex})
 			continue
 		}
-		out = append(out, row{text: lead + a.pal.dim(fit(pictureResolutionWord+" · alt+i collapse · alt+o open", cols)), entry: entryIndex})
+		out = append(out, row{text: lead + a.pal.muted(fit("Click image to open full size · alt+o", cols)), entry: entryIndex, hit: hitPictureOriginal, pictureIndex: i})
 		for _, line := range preview {
-			out = append(out, row{text: lead + line, entry: entryIndex})
+			out = append(out, row{text: lead + line, entry: entryIndex, hit: hitPictureOriginal, pictureIndex: i})
 		}
 	}
 	return out
@@ -174,8 +175,19 @@ type pictureOpenedMsg struct {
 // openMediaOriginal shares the file shelf's platform handoff and the hosted
 // session's fetch-and-mirror flow. It never starts a model turn or blocks paint.
 func (a *app) openMediaOriginal(item mediaItem) tea.Cmd {
+	// The viewer must run beside the person, not on the SSH server.
+	if a.remote {
+		a.note("This terminal is over SSH. Use aforge --host from your computer to open the original, or copy this file: " + drawableLine(item.path))
+		return nil
+	}
 	if !item.here && a.rfiles != nil {
 		return a.openRemotePath(item.path)
 	}
 	return func() tea.Msg { return pictureOpenedMsg{path: item.path, err: processOpener(item.path)} }
+}
+
+// pictureOriginalRow identifies the preview pixels and their explicit action
+// caption. Tool details and the phone sheet use the same pointer contract.
+func pictureOriginalRow(line string) bool {
+	return strings.Contains(line, halfBlock) || strings.Contains(plain(line), "Click image to open full size")
 }

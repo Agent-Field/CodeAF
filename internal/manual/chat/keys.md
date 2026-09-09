@@ -1316,8 +1316,12 @@ Only one attached picture per message expands at a time. **alt+i** toggles the l
 visible image in chat or a task page. The terminal preview is at most **20 rows**;
 it is not suitable for reading screenshot text.
 
-Click **open original**, or use **alt+o**, for the full-quality image in your system's
-viewer. In `--host` sessions, engine-owned files are fetched to this machine first.
+Click the expanded picture itself or **[open original]**, or use **alt+o**, for the
+full-quality image in your system's
+viewer. The phone-width detail sheet also accepts **o**. In `--host` sessions,
+engine-owned files are fetched to this machine first. In a plain SSH login, the
+action explains how to use the local client and gives the original path instead
+of opening a viewer on the server.
 The original action works even when the terminal cannot draw pictures. If a requested
 preview is missing, unsupported or unreadable, it says **Preview unavailable · open
 the original**. Replaying a conversation starts its attachments collapsed again.

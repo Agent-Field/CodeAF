@@ -91,7 +91,7 @@ func (a *app) pictureRows(e *entry, width int) ([]string, bool) {
 	if !drawn {
 		return nil, false
 	}
-	return append(append([]string{a.pal.dim(fit(pictureResolutionWord+" · open the file for detail", width))}, preview.rows...),
+	return append(append([]string{a.pal.muted(fit("Click image to open full size · alt+o", width))}, preview.rows...),
 		picturePathLine(a.linker(), path, preview, width)...), true
 }
 

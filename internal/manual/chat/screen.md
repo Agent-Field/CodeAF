@@ -2420,7 +2420,9 @@ not reduce the image sent to the model. PNG, JPEG, GIF and WebP have terminal pr
 
 ## Opening an image at full quality — open original, zoom, read screenshot text
 
-Click **open original**, or press **alt+o** for the last visible image. The original
+Click the expanded image itself, its **Click image to open full size** caption, or
+**[open original]**. You can also press **alt+o** for the last visible image. The
+phone-width image detail sheet accepts both **alt+o** and **o**. The original
 file opens in your system's viewer, where its full resolution and the viewer's zoom
 controls are available. Opening it does not expand the transcript or send a model turn.
 The `/files` shelf uses the same opening route for pictures and other deliverables.
@@ -2432,7 +2434,8 @@ original-file action stays available on colourless, ASCII and screen-reader disp
 
 A plain SSH login runs the application on the far machine; it cannot launch a viewer
 on your laptop automatically. Use the original path to retrieve the file, or run the
-local client with `--host`. An unavailable system opener reports that the file could
+local client with `--host`. A plain-SSH open action explains this and keeps the
+original path available; it does not launch a viewer on the server. An unavailable system opener reports that the file could
 not be opened. Numbered filename terminal links remain available where supported.
 
 ## When the image preview is not drawn — you only gave me text, it only gave me text, why don't I see the image, and where did my generated picture go?

@@ -46,6 +46,8 @@ const (
 	hitBrief
 	// hitPictures expands the attached pictures without folding the message.
 	hitPictures
+	// hitPictureOriginal makes the preview itself a full-quality file action.
+	hitPictureOriginal
 	hitTask // a task proposal (task.go): click opens its brief
 	// hitDone is a landed task's card (taskdone.go): click opens its full
 	// context, enter opens the node's room, ctrl+o is the key the card itself

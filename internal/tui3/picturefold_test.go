@@ -172,3 +172,70 @@ func TestUnavailableMediaKeepsItsOriginalAction(t *testing.T) {
 		t.Fatalf("missing picture: %#v", rows)
 	}
 }
+
+func TestClickingPreviewPixelsOpensFullQuality(t *testing.T) {
+	for _, tool := range []bool{false, true} {
+		for _, width := range []int{40, 100} {
+			a := newTestApp(&fakeAgent{model: "m"})
+			a.width, a.height = width, 40
+			a.pal = newPalette(tokens.TrueColor, false)
+			path := writePicture(t, t.TempDir(), "original.png", wideTestPicture())
+			a.entries = []entry{{kind: entryUser, text: "look", pictures: []string{path}, picturesHere: true, pictureExpanded: 1}}
+			if tool {
+				a.entries = []entry{{kind: entryTool, tool: "view_image", status: toolOK, detail: toolDetail{Args: `{"path":` + strconvQuote(path) + `}`, Output: "seen"}}}
+				a.openTool(0)
+			}
+			opened := watchOpener(t)
+			clicked := false
+			if a.expandShowing() {
+				lines, hits, _, _ := a.expandFrame(width, 40)
+				for y, line := range lines {
+					if hits[y] == expandHitOriginal && strings.Contains(line, halfBlock) {
+						drive(t, a, tea.MouseClickMsg{X: 3, Y: y, Button: tea.MouseLeft})
+						clicked = true
+						break
+					}
+				}
+			} else {
+				for y := a.bodyTop(); y < a.bodyTop()+a.viewHeight(); y++ {
+					if r, ok := a.rowAt(y); ok && r.hit == hitPictureOriginal && strings.Contains(r.text, halfBlock) {
+						drive(t, a, tea.MouseClickMsg{X: 3, Y: y, Button: tea.MouseLeft})
+						drive(t, a, tea.MouseReleaseMsg{X: 3, Y: y, Button: tea.MouseLeft})
+						clicked = true
+						break
+					}
+				}
+			}
+			if !clicked || len(*opened) != 1 || (*opened)[0] != path {
+				t.Fatalf("width=%d tool=%v clicked=%v opened=%v", width, tool, clicked, *opened)
+			}
+			if a.expandShowing() {
+				drive(t, a, key("alt+o"))
+				if len(*opened) != 2 {
+					t.Fatal("phone sheet swallowed the original shortcut")
+				}
+			}
+		}
+	}
+}
+
+func TestPlainSSHDoesNotLaunchAViewerOnTheServer(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.remote = true
+	opened := watchOpener(t)
+	if cmd := a.openMediaOriginal(mediaItem{path: "/server/shot.png", here: true}); cmd != nil {
+		t.Fatal("plain SSH tried to launch a viewer")
+	}
+	if len(*opened) != 0 {
+		t.Fatal("opened a viewer on the server")
+	}
+	found := false
+	for _, e := range a.entries {
+		if strings.Contains(e.text, "aforge --host") && strings.Contains(e.text, "/server/shot.png") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("SSH original action supplied no recovery path")
+	}
+}

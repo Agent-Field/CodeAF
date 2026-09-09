@@ -78,7 +78,8 @@ at up to **20 rows**. Attached messages expand one picture at a time. Click **co
 to close it. An image tool's ordinary row also opens with `enter`, and a `view_image`
 expansion retains what the looking model said.
 
-Click **open original**, or use **alt+o**, to open the full-resolution file in your
+Click the expanded image itself or **[open original]**, or use **alt+o**, to open the
+full-resolution file in your
 system's viewer. In `--host` sessions, engine-owned files are fetched and mirrored
 locally first. Local attachments open directly from this machine. A plain SSH login
 cannot launch a viewer on your laptop automatically; use the local `--host` client or

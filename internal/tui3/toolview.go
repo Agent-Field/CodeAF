@@ -217,7 +217,11 @@ func (a *app) toolRows(d deck, i int, last bool, width int) []row {
 	out = append(out, a.mediaRows(e, i, width-workIndentCols(width), a.pal.dim(stem))...)
 	body, more := a.toolBlock(e, room, layoutTier(width) == tierPhone)
 	for _, line := range body {
-		out = append(out, row{text: a.pal.dim(stem) + line, entry: i, hit: bodyHit})
+		lineHit := bodyHit
+		if picturesAFile(e.tool) && pictureOriginalRow(line) {
+			lineHit = hitPictureOriginal
+		}
+		out = append(out, row{text: a.pal.dim(stem) + line, entry: i, hit: lineHit})
 	}
 	if more > 0 {
 		out = append(out, a.moreRow(i, stem, more))

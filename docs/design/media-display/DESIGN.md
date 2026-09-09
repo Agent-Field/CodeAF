@@ -20,7 +20,9 @@ the looking model's answer. Both use the same media control builder.
 The actions are distinct: preview shows an explicitly low-resolution cell image;
 open original hands the actual file to the system viewer. The latter is how a
 person reads screenshot text or zooms a photograph. Alt+i toggles the last visible
-image and Alt+o opens its original. Pointer actions use measured spans that move
+image and Alt+o opens its original. Clicking the expanded pixels or their explicit
+full-size caption opens the original too. The phone detail sheet handles these
+clicks and accepts Alt+o or plain o, without closing the sheet. Pointer actions use measured spans that move
 with both the work indent and the transcript gutter. Expanded attachments remain
 keyboard-reachable when the control itself has scrolled offscreen.
 
@@ -41,7 +43,8 @@ cost therefore stays proportional to the number of attachment labels.
 to the platform opener; engine-owned paths use the existing asynchronous fetch,
 content validation, named mirror and local-open flow. No model call is involved.
 A plain SSH login still runs on the remote machine; it cannot magically launch a
-viewer on the laptop. The local `--host` client is the supported local-viewer path.
+viewer on the laptop. The local `--host` client is the supported local-viewer path. A plain SSH terminal
+gets that instruction and the original path instead of launching a remote viewer.
 
 ## Degradation and future renderers
 

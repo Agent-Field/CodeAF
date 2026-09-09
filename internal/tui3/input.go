@@ -480,8 +480,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// person leaves it (expand.go). It is read AFTER the status sheet because
 	// the deck is raised over whatever the body was drawing, this one included.
 	if a.expandShowing() && msg.String() != "ctrl+c" {
-		a.expandKey(msg)
-		return nil
+		return a.expandKey(msg)
 	}
 
 	// The model overlay is modal: while it is up every key belongs to it and

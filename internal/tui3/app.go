@@ -3425,8 +3425,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// fell through to the conversation underneath would be a tap that
 			// expanded a call nobody can see (expand.go).
 			if a.expandShowing() {
-				a.expandPress(msg.Mouse().Y)
-				return a, nil
+				return a, a.expandPress(msg.Mouse().Y)
 			}
 			// THE QUESTION BLOCK IS READ FIRST OF THE FRAME'S OWN ROWS, which is
 			// the pointer's half of the keyboard's order (input.go's rungs):
@@ -5924,6 +5923,8 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.toggleWorkfold(r.turn)
 	case hitMore:
 		a.showAll(r.entry)
+	case hitPictureOriginal:
+		return a.openPictureAt(r.entry, r.pictureIndex)
 	case hitPictures:
 		if r.pictureOpen.holds(x) {
 			return a.openPictureAt(r.entry, r.pictureIndex)

@@ -144,7 +144,8 @@ type expandHit uint8
 const (
 	expandHitNone  expandHit = iota
 	expandHitClose           // the head and the foot: both are the way out
-	expandHitMore            // the "… N more lines" row: lift the cap
+	expandHitOriginal
+	expandHitMore // the "… N more lines" row: lift the cap
 )
 
 // expandFoot is what the sheet spends on its own foot: the rule, and the line
@@ -202,6 +203,13 @@ func (a *app) expandFrame(width, height int) ([]string, []expandHit, int, int) {
 	// same payload, and a second rendering diverges.
 	body, more := a.detailBody(e, width-1)
 	kinds := make([]expandHit, len(body))
+	if picturesAFile(e.tool) {
+		for i, line := range body {
+			if pictureOriginalRow(line) {
+				kinds[i] = expandHitOriginal
+			}
+		}
+	}
 	if more > 0 {
 		body = append(body, pal.dim(glyphMore+" "+itoa(more)+" more lines"))
 		kinds = append(kinds, expandHitMore)
@@ -272,8 +280,10 @@ func clampTop(top, count, height int) int {
 // expandKey routes one keypress while the sheet is up. Everything that is not
 // a way out or a way down is dropped rather than passed under, because there is
 // nothing under it to pass to (input.go's key order).
-func (a *app) expandKey(msg tea.KeyPressMsg) {
+func (a *app) expandKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
+	case "alt+o", "o":
+		return a.openPictureAt(a.expand.entry, 0)
 	case "esc", "q", "left":
 		a.closeExpand()
 	case "enter":
@@ -299,6 +309,7 @@ func (a *app) expandKey(msg tea.KeyPressMsg) {
 	case "ctrl+o":
 		a.showAll(a.expand.entry)
 	}
+	return nil
 }
 
 // expandPage is a screenful of the sheet, one row shy so a page turn keeps a
@@ -321,16 +332,19 @@ func (a *app) expandScroll(delta int) {
 
 // expandPress resolves a tap on the sheet. Every row was laid out with what it
 // answers to, so this is a lookup rather than a second geometry.
-func (a *app) expandPress(y int) {
+func (a *app) expandPress(y int) tea.Cmd {
 	width, height := a.size()
 	_, hits, _, _ := a.expandFrame(width, height)
 	if y < 0 || y >= len(hits) {
-		return
+		return nil
 	}
 	switch hits[y] {
+	case expandHitOriginal:
+		return a.openPictureAt(a.expand.entry, 0)
 	case expandHitClose:
 		a.closeExpand()
 	case expandHitMore:
 		a.showAll(a.expand.entry)
 	}
+	return nil
 }
