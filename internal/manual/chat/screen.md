@@ -219,7 +219,9 @@ their own question about work in flight, and act on every conversation this wind
 at once. Closing a tab never quits aforge, and quitting is not what any of the card's
 three answers does.
 
-On the switcher card, `ctrl+w` closes the selected row. On New chat it closes
+On the switcher card, `ctrl+w` dismisses a selected background tab while keeping
+its work running. For the current conversation it uses the same close card when
+work is active. On New chat it closes
 the start page and parks its unfinished first message. Stop on a task page
 ends that task; `/quit` ends the program.
 
@@ -1823,7 +1825,7 @@ from the main conversation.
 
 ## The symbol beside each step — the little icons in the working block, what the mark in front of a step means
 
-Each of the three compact step lines carries **one small mark** in front of it,
+Each compact caption carries **one small mark** on its first line,
 in a gutter two columns wide. The mark says what **kind** of work that step is —
 searching, editing, running a command — so you can tell at a glance what is
 happening before you have read which file it is happening to.
@@ -3067,46 +3069,39 @@ context, and what it costs*.
 
 ## Why the reply is slow to start, why it says "waiting for" a model, and whether it is stuck
 
-Between you pressing enter and the model's first word there is a gap, and it is sometimes
-long — twenty seconds, a minute. A pulsing ellipsis claims exactly as much at second one
-as at second fifty, so past a few seconds it starts saying what it is waiting on.
+The ellipsis and model-name timings below describe the expanded transcript.
+Before any caption exists, the compact Working door can carry the same details.
+After a caption exists, compact progress keeps that description still, animates
+only a separate dot, and adds `awaiting response` after 10 seconds when space
+permits. A known outage says `waiting for connection` immediately.
 
-**This line is the second-best answer.** Where the connection itself is reporting — which
-is most of the time on a router — you get the phase instead: `first word · 3.1s`,
-`thinking · 12s · friendli 38 t/s`. See "what is it doing" above. The `waiting for` line
-below is what is drawn when nothing on the wire has said anything at all.
-
-For the first **4 seconds** the line is the bare ellipsis. A fast reply never shows a
-clock. Past 4 seconds it grows a dim tail naming the model and counting up:
+A reported connection phase takes priority over the generic wait: for example,
+`first word · 3.1s` or `thinking · 12s · friendli 38 t/s`. Without that information,
+the expanded view shows a bare ellipsis for the first **4 seconds**, then a dim
+model name and elapsed time:
 
 ```
   ··· waiting for kimi-k3 · 12s
 ```
 
-Past **30 seconds** it says the plain fact outright:
+After **30 seconds**, it adds `nothing has come back yet`:
 
 ```
   ··· waiting for kimi-k3 · 47s · nothing has come back yet
 ```
 
-The model is its **basename**, the way the status deck's chip spells it — `kimi-k3`, not
-`moonshot/kimi-k3`. When there is no model name to show, the line reads `waiting · 12s`.
+The name is the model's basename (`kimi-k3`). Without a name, it says
+`waiting · 12s`. This generic label means a request is outstanding and no stream
+content has arrived; it does not diagnose a slow network or claim the model is
+thinking. A known phase is shown separately because it has better information.
 
-**What it claims, and what it does not.** It claims only that a request went out and the
-stream has said nothing since. It never says "the network is slow" or "the model is
-thinking" — this screen cannot see the wire and does not pretend to. So
-`waiting for kimi-k3 · 47s` is not a report that anything is broken. It is aforge saying
-it is still there and still waiting, which is the one thing a bare ellipsis could not tell
-you apart from a hung program.
+An advancing clock confirms the view is repainting. A still indicator alone
+does not prove a freeze: reduced-motion views use static marks, and narrow rows
+can omit the clock. `esc` interrupts the turn.
 
-**Is it stuck? Is it frozen?** A clock that is counting up means the program is alive and
-painting; a clock that has stopped means it is not. `esc` interrupts the turn at any point.
-
-**It never runs under a tool call.** A tool that is executing has its own spinner and its
-own count-up, and the ellipsis stands down for it entirely. This clock is only for the
-window between a request going out and the stream first speaking, so after a three-minute
-`go test` the request that follows starts the clock at zero rather than inheriting the
-call's runtime.
+The waiting clock stops when the stream speaks or tools run. A tool uses its own
+activity and elapsed time. The request after a three-minute `go test` starts a
+new response clock rather than inheriting those three minutes.
 
 ## Does it ever ask a second time in parallel, and does that spend twice
 

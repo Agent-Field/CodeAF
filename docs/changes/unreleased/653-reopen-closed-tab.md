@@ -10,7 +10,8 @@ invalidates:
 
 The window keeps the last 32 closed tabs, reusing the tab row's existing cap.
 Held conversations return through the keeper; remembered conversations resume
-through the existing open door, preserving normal local/shared connection behavior.
+through the existing open door and their own connection, without ending the chat
+currently in front.
 The chord does not create a new conversation. A tab already reopened by hand is
 skipped, a reclosed chat has one entry, and the synthetic New chat page stays out
 of history: its parked first message comes back with `ctrl+t`.
@@ -21,5 +22,5 @@ has to be reachable from where the press put you.
 
 Failed reopen attempts retain the last closure for retry, and remote addresses are
 resolved through the existing connection. Escape from Home exposes the current
-conversation; reopening then skips that already-visible tab. Shared connections
-use normal session-switch semantics instead of claiming outgoing work stays alive.
+conversation; reopening then skips that already-visible tab. Reopening never claims
+another conversation's connection and does not restart work that was explicitly stopped.

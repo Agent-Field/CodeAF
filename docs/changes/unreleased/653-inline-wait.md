@@ -9,8 +9,11 @@ invalidates:
   - "The compact response-wait label could misdescribe connection recovery as a slow model. A reported connection loss now says waiting for connection immediately when space permits, while task pages continue to keep their parent's connection state out."
 ---
 
-Active tool captions still shimmer immediately using the available description;
-the optional narrator improves their wording while work runs. The first-caption
+Active tool captions appear using the existing public narration or a description
+composed from tool targets. The optional cheap narrator starts after a 500 ms
+dwell while the batch runs; short batches can finish before it answers. It is
+limited to three attempts per turn and 80 output tokens per attempt. A late,
+cancelled answer is not installed as a new caption after the batch has ended. The first-caption
 Working door, expansion controls, task-page isolation, and completion/reopen
 collapse are unchanged. Waiting suffixes never reflow descriptions; when even
 the dot cannot fit it occupies the existing icon gutter. Accessible and
