@@ -989,7 +989,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// the other half of the law: a claim is a finding, or it holds, or it is said
 	// out loud — never silently passed ([withOpenClaims]).
 	open := checklist.open()
-	verdict, again := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, open, log)
+	verdict, again := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, open, "", log)
 	verdict.alreadyRed = checks.alreadyRed()
 	switch {
 	case verdict.answered, !again:
@@ -1008,8 +1008,21 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 		fmt.Fprintf(log, "audit: %s\n", checkerWindowClosed)
 		return withOpenClaims(verdict.andTheWindowClosed(), open)
 	}
-	fmt.Fprintf(log, "audit: no verdict — asking a fresh auditor\n")
-	retried, _ := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, open, log)
+	// AND THE SECOND ASK GOES SOMEWHERE ELSE WHERE THERE IS SOMEWHERE ELSE. A
+	// model that read the diff, ran the verification and then said neither word
+	// is a model this question does not fit, and a fresh checker on the same one
+	// is the same question put to the same weights — which is what a person
+	// reading `nobody could check it` had paid for twice. So the retry rides the
+	// adapter's own fallback chain, exactly as a conversation's turn and a node's
+	// run do when a lane stops answering ([Agent.failoverCheckerModel]), and it
+	// is the ONE line the journal owes about it.
+	elsewhere, moved := a.failoverCheckerModel(a.auditorModel())
+	if moved {
+		fmt.Fprintf(log, "audit: no verdict — asking %s instead\n", elsewhere)
+	} else {
+		fmt.Fprintf(log, "audit: no verdict — asking a fresh auditor\n")
+	}
+	retried, _ := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, open, elsewhere, log)
 	retried.alreadyRed = checks.alreadyRed()
 	if retried.answered {
 		// AND THE LANDING SAYS WHICH TRY ANSWERED. A verdict the first call did
@@ -1035,8 +1048,8 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 // ([auditPace]) and the check is asked again inside what is left — where before
 // it, one hung call spent the whole five minutes and the node landed on a
 // sentence claiming nobody could check it (#513).
-func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, pace auditPace, door auditDoor, checks checkGround, files landingFiles, claim string, open []claimFinding, log io.Writer) (auditVerdict, bool) {
-	auditor, err := a.newAuditAgent(ground.dir, node, door)
+func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, pace auditPace, door auditDoor, checks checkGround, files landingFiles, claim string, open []claimFinding, on string, log io.Writer) (auditVerdict, bool) {
+	auditor, err := a.newAuditAgent(ground.dir, node, door, on)
 	if err != nil {
 		return noVerdict("the checker could not start: "+err.Error(), ""), true
 	}
@@ -2636,6 +2649,25 @@ func refutedLine(why string) string {
 
 // ── the auditor's agent ─────────────────────────────────────────────────────
 
+// auditorModel is the model a fresh checker for this session lands on, read the
+// way [Agent.newAuditAgent] reads it and for one purpose: the failover has to
+// know which model it is moving OFF before it can ask the chain what comes after
+// it ([Agent.failoverCheckerModel]).
+//
+// A role that will not resolve answers with the conversation's own model, which
+// is what the checker would have been built on anyway — this is a question about
+// where to go next, and a build with nothing to resolve simply has nowhere.
+func (a *Agent) auditorModel() string {
+	a.mu.Lock()
+	source, model := a.config.RolesSource, a.model
+	a.mu.Unlock()
+	judge, err := roles.Resolve(roles.Source(source), roles.RoleAuditor, model)
+	if err != nil {
+		return model
+	}
+	return judge
+}
+
 // newAuditAgent builds the judge: the same loop and the same package as the
 // node it audits, on the high tier, with a read-only belt and a system prompt
 // that is nothing but the audit contract.
@@ -2653,7 +2685,12 @@ func refutedLine(why string) string {
 // fact about the WORK — the checks its document declares and its worker ran
 // (task_checks.go) — and it is read once by the caller so that both attempts at
 // one node judge it through the same door.
-func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agent, error) {
+// AND WHICH MODEL IT JUDGES ON MAY BE HANDED IN. `on` is empty for every
+// ordinary check, which resolves the judge off the roles ladder below; it is
+// filled only by the one retry that moves a non-answering check onto another
+// lane ([Agent.failoverCheckerModel]), and nothing else about the auditor
+// changes with it — same prompt, same belt, same door, same window.
+func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on string) (*Agent, error) {
 	a.mu.Lock()
 	parent := a.config
 	model := a.model
@@ -2678,6 +2715,13 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agen
 	judge, err := roles.Resolve(roles.Source(parent.RolesSource), roles.RoleAuditor, model)
 	if err != nil {
 		return nil, err
+	}
+	// THE HANDED-IN MODEL WINS OUTRIGHT, and only the failover hands one in. The
+	// ladder has already been asked at that point and answered with a lane this
+	// session would move to; resolving the role again over the top of it would be
+	// this function deciding that the answer did not count.
+	if named := strings.TrimSpace(on); named != "" {
+		judge = named
 	}
 	auditor, err := newAgent(Config{
 		// The auditor reads rather than writes, but reading is what makes a
