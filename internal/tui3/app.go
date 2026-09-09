@@ -3021,6 +3021,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.historyPrefetched(msg)
 
 	case tea.MouseWheelMsg:
+		// THE CONTEXT CHOOSER OWNS THE WHEEL WHILE IT IS UP, and it owns it over
+		// the WHOLE screen: the conversation under a modal is not live, so a wheel
+		// turned over it must move nothing at all (contextmodal.go).
+		if cmd, took := a.contextModalWheel(msg.Mouse().X, msg.Mouse().Y,
+			placeWheelDelta(msg.Mouse().Button)); took {
+			return a, cmd
+		}
 		if a.hopShowing() {
 			a.hop.live = false
 			if msg.Mouse().Button == tea.MouseWheelUp {
@@ -3141,13 +3148,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.tabWheel(msg) {
 			return a, nil
 		}
-		// AND THE FOLDER BROWSER ANSWERS THE WHEEL OVER ITS OWN ROWS. Its window
-		// follows its cursor rather than an offset of its own, so the wheel walks
-		// the cursor — the same bargain the roster and the status sheet make, and
-		// the reason the third column fills as it is turned (folderplace.go).
-		if cmd, took := a.folderWheel(msg.Mouse().Y, placeWheelDelta(msg.Mouse().Button)); took {
-			return a, cmd
-		}
 		// The roster over the body is the same claim one step earlier: while it
 		// is up the transcript is not on screen at all, and the roster's window
 		// follows its focus rather than an offset of its own (task.go's
@@ -3198,6 +3198,18 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseClickMsg:
+		// AND IT OWNS THE PRESS, on the same terms and for a sharper reason: a
+		// press that fell through a modal would switch a tab, open a tool call or
+		// answer a question behind a sheet somebody is looking at
+		// (contextmodal.go's [app.contextModalPress], which takes every press
+		// while the sheet is up and acts only on the sheet's own targets).
+		if msg.Mouse().Button == tea.MouseLeft {
+			if cmd, took := a.contextModalPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
+		} else if a.contextModalShowing() {
+			return a, nil
+		}
 		if a.hopShowing() {
 			if msg.Mouse().Button == tea.MouseLeft {
 				return a, a.hopPress(msg.Mouse().X, msg.Mouse().Y)
@@ -3366,14 +3378,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.effortMenuPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
-			// AND THE FOLDER BROWSER TAKES A PRESS ON ITS OWN ROWS AND NOTHING
-			// ELSE, on the two lists above's terms and for their reason: it hangs
-			// over a draft somebody is still writing, so a press anywhere else is
-			// a press on whatever is there. Its rows walk and its action row adds
-			// (folderplace.go's [app.folderPress]).
-			if cmd, took := a.folderPress(msg.Mouse().X, msg.Mouse().Y); took {
-				return a, cmd
-			}
 			// A chip is the one thing below the conversation a click can take
 			// off, and it is the one thing down there that needs the COLUMN as
 			// well as the row (attach.go).
@@ -3532,6 +3536,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseReleaseMsg:
+		// A RELEASE UNDER THE CHOOSER ENDS NOTHING, because nothing under it was
+		// started: the press it would close was taken by the sheet, and letting
+		// this one through would end a sweep of a transcript nobody swept
+		// (contextmodal.go).
+		if a.contextModalShowing() {
+			return a, nil
+		}
 		if a.hopShowing() {
 			return a, nil
 		}
@@ -3554,6 +3565,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseMotionMsg:
+		// AND THE CHOOSER OWNS MOTION TOO, ahead of the sweep and ahead of every
+		// place: [app.hoverTarget] already answers for the whole screen while the
+		// sheet is up, and this branch is what keeps a drag started under it from
+		// sweeping a transcript that is not live (contextmodal.go).
+		if a.contextModalShowing() {
+			a.setHover(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
 		if a.hopShowing() {
 			a.setHover(msg.Mouse().X, msg.Mouse().Y)
 			if a.hot.kind == hoverHop {

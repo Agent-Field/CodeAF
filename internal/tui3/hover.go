@@ -104,7 +104,15 @@ const (
 	// file, read the other way round.
 	hoverSettle
 	// hoverOverlay is one row of the open list; index is its row in that list.
+	// While the context chooser is up it is one row of THAT sheet, counted from
+	// the sheet's own first body row rather than from the frame — the sheet is a
+	// modal now and no longer one of the lists in the bottom chrome
+	// (contextmodal.go's [contextWin]).
 	hoverOverlay
+	// hoverContextCancel is the cancel target on the context chooser's foot rule.
+	// It is a kind of its own rather than a row because it is narrower than the
+	// rule it rides, and pressing a rule means nothing (contextmodal.go).
+	hoverContextCancel
 	// hoverSheet is one row of the settings panel; index is its item
 	// (settings.go). The panel is fullscreen, so while it is up this is the
 	// only kind the pointer can produce.
@@ -374,6 +382,13 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	}
 	if a.pasteEdit.open {
 		return hoverAt{}
+	}
+	// THE CONTEXT CHOOSER ANSWERS FOR THE WHOLE SCREEN while it is up, and it is
+	// asked before every other target for the reason the switcher above is: it is
+	// a layer, not a row, and a conversation brightening under a modal would be
+	// the surface offering a door it has closed (contextmodal.go).
+	if at, ok := a.contextModalHover(x, y); ok {
+		return at
 	}
 	// THE REWIND MODE ANSWERS FOR THE WHOLE TRANSCRIPT while it is up: every row
 	// is a cut point, and what the pointer is over is WHICH CUT (rewind.go). It is

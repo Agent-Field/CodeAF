@@ -72,6 +72,41 @@ func openBrowse(t *testing.T, a *app, dir string) {
 	}
 }
 
+// ── the sheet, as the frame actually draws it ───────────────────────────────
+//
+// The chooser is a MODAL now (contextmodal.go): it is not one of the lists in
+// the bottom chrome, so [markedRowY] cannot find its rows and the browser is no
+// longer laid out at the terminal's own width. These three helpers ask the frame
+// the same questions the pointer asks it — which is the same rule the rest of
+// this package's tests keep: an arithmetic of their own would be a second copy
+// of the layout for a test to be wrong in.
+
+// chooserRows draws the sheet the way the frame draws it, with a pointer stated
+// where one is wanted, and answers the BROWSER's own rows.
+func chooserRows(t *testing.T, a *app, hover int, col string) []string {
+	t.Helper()
+	a.frameBody()
+	return a.folder.rows(a.contextInner(), a.folder.win.bodyRows, a.pal, a.styler(), hover, col)
+}
+
+// chooserRowY is the SCREEN row one of those rows landed on, or -1.
+func chooserRowY(t *testing.T, a *app, index int) int {
+	t.Helper()
+	a.frameBody()
+	win := a.folder.win
+	if index < 0 || index >= win.bodyRows {
+		return -1
+	}
+	return win.bodyY + index
+}
+
+// chooserX is the SCREEN column one of the browser's own cells landed on.
+func chooserX(t *testing.T, a *app, x int) int {
+	t.Helper()
+	a.frameBody()
+	return a.folder.win.bodyX + x
+}
+
 // ── the columns ─────────────────────────────────────────────────────────────
 
 // THE THIRD REGION IS A PREVIEW OF THE THING UNDER THE CURSOR, and on a folder
@@ -103,7 +138,7 @@ func TestTheColumnsAreParentHereAndAPreviewOfTheCursor(t *testing.T) {
 	if want := []string{"one", "two"}; strings.Join(held, ",") != strings.Join(want, ",") {
 		t.Fatalf("the preview holds %v, want %v", held, want)
 	}
-	drawn := plain(strings.Join(a.folder.rows(a.width, a.overlayHeight(), a.pal, a.styler(), -1, ""), "\n"))
+	drawn := plain(strings.Join(chooserRows(t, a, -1, ""), "\n"))
 	for _, want := range []string{"deep", "one", "two", "here"} {
 		if !strings.Contains(drawn, want) {
 			t.Fatalf("%q is not on the sheet:\n%s", want, drawn)
@@ -123,7 +158,7 @@ func TestTheBreadcrumbSaysWhereYouAreAndClicksBackToIt(t *testing.T) {
 	a, _, root := browseLab(t)
 	openBrowse(t, a, filepath.Join(root, "here", "deep"))
 
-	y := markedRowY(a, chromeOverlay, 0)
+	y := chooserRowY(t, a, 0)
 	if y < 0 {
 		t.Fatal("the sheet drew no rows at all")
 	}
@@ -149,9 +184,11 @@ func TestTheBreadcrumbSaysWhereYouAreAndClicksBackToIt(t *testing.T) {
 	if got, _ := a.folder.here(); got != filepath.Join(root, "here", "deep") {
 		t.Fatalf("the cursor came out onto %q, not the folder it left", got)
 	}
-	// And the box agrees with the columns, so nothing has to be retyped.
-	if !strings.HasSuffix(a.folder.filter.String(), "here/") {
-		t.Fatalf("the box says %q", a.folder.filter.String())
+	// AND THE BOX IS EMPTY, because the box is the search and the breadcrumb is
+	// where you are ([folderPick.browseHold]). It used to hold the path, which is
+	// what made typing a word after a walk a browse of a folder nobody has.
+	if got := a.folder.filter.String(); got != "" {
+		t.Fatalf("walking left %q in the search box", got)
 	}
 }
 
@@ -183,12 +220,12 @@ func TestASearchResultOpensForBrowsingWithoutBeingRetyped(t *testing.T) {
 
 	// And a click on a list row does the same thing.
 	settleFolder(t, a, a.openFolderPick(""))
-	y := markedRowY(a, chromeOverlay, 0)
+	y := chooserRowY(t, a, 0)
 	if y < 0 {
 		t.Fatal("the list drew no rows")
 	}
 	first, _ := a.folder.here()
-	drive(t, a, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: chooserX(t, a, 4), Y: y, Button: tea.MouseLeft})
 	if !a.folder.browsing || a.folder.cols.dir != first {
 		t.Fatalf("a click on the first row left the browser on %q, want %s", a.folder.cols.dir, first)
 	}
@@ -209,12 +246,11 @@ func TestTheColumnsWalkUnderThePointer(t *testing.T) {
 	// THE GEOMETRY IS READ AFTER A PAINT AND NEVER BEFORE ONE: it is what the
 	// last layout put on the screen, which is exactly what the pointer resolves
 	// against.
-	markedRowY(a, chromeOverlay, 0)
-	body := markedRowY(a, chromeOverlay, a.folder.geom.head+1)
+	body := chooserRowY(t, a, a.folder.geom.head+1)
 	if body < 0 {
 		t.Fatal("the sheet drew no second body row")
 	}
-	x := a.folder.geom.here.from + folderLeadCells
+	x := chooserX(t, a, a.folder.geom.here.from+folderLeadCells)
 	// The first press selects `deep` and does NOT open it.
 	drive(t, a, tea.MouseClickMsg{X: x, Y: body, Button: tea.MouseLeft})
 	if a.folder.cols.dir != filepath.Join(root, "here") {
@@ -230,8 +266,7 @@ func TestTheColumnsWalkUnderThePointer(t *testing.T) {
 	}
 
 	// And back out through the parent column.
-	markedRowY(a, chromeOverlay, 0)
-	up := markedRowY(a, chromeOverlay, a.folder.geom.head)
+	up := chooserRowY(t, a, a.folder.geom.head)
 	drive(t, a, tea.MouseClickMsg{X: a.folder.geom.up.from, Y: up, Button: tea.MouseLeft})
 	if a.folder.cols.dir != filepath.Join(root, "here") {
 		t.Fatalf("a press in the parent column landed on %s", a.folder.cols.dir)
@@ -245,7 +280,6 @@ func TestTheColumnsWalkUnderThePointer(t *testing.T) {
 func TestThePointerLightsTheColumnItIsActuallyOver(t *testing.T) {
 	a, _, root := browseLab(t)
 	openBrowse(t, a, filepath.Join(root, "here"))
-	markedRowY(a, chromeOverlay, 0)
 	geom, row := a.folder.geom, a.folder.geom.head+1
 
 	for _, probe := range []struct {
@@ -271,9 +305,9 @@ func TestThePointerLightsTheColumnItIsActuallyOver(t *testing.T) {
 	// And only the middle column's row takes the band.
 	// The band is INK and not text, so the rows are compared unstripped: plain()
 	// would throw away the only thing that changed.
-	cold := a.folder.rows(a.width, a.overlayHeight(), a.pal, a.styler(), -1, "")[row]
+	cold := chooserRows(t, a, -1, "")[row]
 	lit := func(col string) bool {
-		return a.folder.rows(a.width, a.overlayHeight(), a.pal, a.styler(), row, col)[row] != cold
+		return chooserRows(t, a, row, col)[row] != cold
 	}
 	if !lit(folderColHere) {
 		t.Fatal("the pointer over the middle column lights nothing")
@@ -292,16 +326,21 @@ func TestTheWheelWalksTheBrowserOverItsOwnRows(t *testing.T) {
 	openBrowse(t, a, filepath.Join(root, "here"))
 	before, _ := a.folder.here()
 
-	markedRowY(a, chromeOverlay, 0)
-	y := markedRowY(a, chromeOverlay, a.folder.geom.head)
-	drive(t, a, tea.MouseWheelMsg{X: 4, Y: y, Button: tea.MouseWheelDown})
+	y := chooserRowY(t, a, a.folder.geom.head)
+	drive(t, a, tea.MouseWheelMsg{X: chooserX(t, a, 4), Y: y, Button: tea.MouseWheelDown})
 	after, _ := a.folder.here()
 	if after == before {
 		t.Fatalf("the wheel left the cursor on %s", before)
 	}
-	// Off the sheet it takes nothing: the transcript is still a transcript.
-	if _, took := a.folderWheel(0, 3); took {
-		t.Fatal("the browser took a wheel turned over the top of the frame")
+	// AND OFF THE SHEET THE WHEEL MOVES NOTHING AT ALL. It is still taken — the
+	// conversation under a modal is not live — but the cursor stays where it is
+	// (contextmodal.go's [app.contextModalWheel]).
+	held, _ := a.folder.here()
+	if _, took := a.contextModalWheel(0, 0, 3); !took {
+		t.Fatal("a wheel over the backdrop reached the conversation underneath")
+	}
+	if now, _ := a.folder.here(); now != held {
+		t.Fatalf("a wheel over the backdrop walked the browser to %s", now)
 	}
 }
 
@@ -314,18 +353,18 @@ func TestTheActionRowAddsTheFolderTheCursorIsOn(t *testing.T) {
 	openBrowse(t, a, filepath.Join(root, "here"))
 	drive(t, a, key("down")) // onto `deep`
 
-	rows := a.folder.rows(a.width, a.overlayHeight(), a.pal, a.styler(), -1, "")
+	rows := chooserRows(t, a, -1, "")
 	if a.folder.geom.action <= 0 {
 		t.Fatalf("the sheet drew no action row (%d)", a.folder.geom.action)
 	}
 	if got := plain(rows[a.folder.geom.action]); !strings.Contains(got, folderAddWord) || !strings.Contains(got, "deep") {
 		t.Fatalf("the action row says %q", got)
 	}
-	y := markedRowY(a, chromeOverlay, a.folder.geom.action)
+	y := chooserRowY(t, a, a.folder.geom.action)
 	if y < 0 {
 		t.Fatal("the action row is not on the frame")
 	}
-	drive(t, a, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: chooserX(t, a, 4), Y: y, Button: tea.MouseLeft})
 
 	want := filepath.Join(root, "here", "deep")
 	if a.placeChosen != want {
@@ -348,12 +387,18 @@ func TestTheActionRowTakesOffAFolderTheConversationAlreadyHolds(t *testing.T) {
 	agent.places = []session.PlaceRef{{Path: here, Arrival: session.PlaceSaid}}
 	a.entries = nil
 
+	// The chooser opens on the folder the conversation is already about
+	// ([app.contextStart]), so one step OUT stands the cursor on it.
 	settleFolder(t, a, a.openFolderPick(""))
-	// The referred layer leads, so the folder the conversation holds is row one.
-	if got, _ := a.folder.here(); got != here {
-		t.Fatalf("the first row is %q, want the folder this conversation is about", got)
+	if a.folder.cols.dir != here {
+		t.Fatalf("the chooser opened on %s, not the folder this conversation holds", a.folder.cols.dir)
 	}
-	rows := a.folder.rows(a.width, a.overlayHeight(), a.pal, a.styler(), -1, "")
+	drive(t, a, key("left"))
+	settleFolder(t, a, a.folderWork())
+	if got, _ := a.folder.here(); got != here {
+		t.Fatalf("walking out left the cursor on %q, want the folder this conversation is about", got)
+	}
+	rows := chooserRows(t, a, -1, "")
 	if got := plain(rows[a.folder.geom.action]); !strings.Contains(got, folderDropWord) {
 		t.Fatalf("the action row says %q, want it to offer the removal", got)
 	}
@@ -370,7 +415,7 @@ func TestTheActionRowTakesOffAFolderTheConversationAlreadyHolds(t *testing.T) {
 	if !a.folder.open {
 		t.Fatal("removing a folder closed the sheet")
 	}
-	rows = a.folder.rows(a.width, a.overlayHeight(), a.pal, a.styler(), -1, "")
+	rows = chooserRows(t, a, -1, "")
 	if got := plain(rows[a.folder.geom.action]); !strings.Contains(got, folderAddWord) {
 		t.Fatalf("after the removal the action row still says %q", got)
 	}
@@ -395,7 +440,7 @@ func TestAnUnreadableFolderSaysSoRatherThanLookingEmpty(t *testing.T) {
 	if a.folder.cols.here.err == nil {
 		t.Fatal("the refusal was flattened into an empty folder")
 	}
-	drawn := plain(strings.Join(a.folder.rows(a.width, a.overlayHeight(), a.pal, a.styler(), -1, ""), "\n"))
+	drawn := plain(strings.Join(chooserRows(t, a, -1, ""), "\n"))
 	if !strings.Contains(drawn, folderClosedWord) {
 		t.Fatalf("the sheet says nothing about the refusal:\n%s", drawn)
 	}
@@ -405,7 +450,7 @@ func TestAnUnreadableFolderSaysSoRatherThanLookingEmpty(t *testing.T) {
 	// An empty folder IS the other word, on the same sheet.
 	empty := filepath.Join(root, "sibling")
 	openBrowse(t, a, empty)
-	drawn = plain(strings.Join(a.folder.rows(a.width, a.overlayHeight(), a.pal, a.styler(), -1, ""), "\n"))
+	drawn = plain(strings.Join(chooserRows(t, a, -1, ""), "\n"))
 	if !strings.Contains(drawn, folderLeafWord) {
 		t.Fatalf("an empty folder says nothing:\n%s", drawn)
 	}
@@ -812,23 +857,23 @@ func TestTheBrowserFitsANarrowFrame(t *testing.T) {
 		a.width, a.height = width, 20
 		a.touch()
 		openBrowse(t, a, filepath.Join(root, "here"))
-		div := folderDivide(width, a.folder.pane)
+		div := folderDivide(a.contextInner(), a.folder.pane)
 		if div.here < 1 {
 			t.Fatalf("at %d cells the middle column is %d wide", width, div.here)
 		}
-		if width < folderPaneAt && div.pane > 0 {
+		if a.contextInner() < folderPaneAt && div.pane > 0 {
 			t.Fatalf("at %d cells the preview pane was still drawn beside the list", width)
 		}
-		if width < folderWideAt && div.up > 0 {
+		if a.contextInner() < folderWideAt && div.up > 0 {
 			t.Fatalf("at %d cells the parent column was still drawn", width)
 		}
-		rows := a.folder.rows(width, a.overlayHeight(), a.pal, a.styler(), -1, "")
+		rows := chooserRows(t, a, -1, "")
 		if len(rows) == 0 {
 			t.Fatalf("at %d cells the sheet drew nothing", width)
 		}
 		for _, line := range rows {
-			if ansi.StringWidth(line) > width {
-				t.Fatalf("at %d cells a row runs past the frame: %q", width, plain(line))
+			if ansi.StringWidth(line) > a.contextInner() {
+				t.Fatalf("at %d cells a row runs past the sheet: %q", width, plain(line))
 			}
 		}
 	}

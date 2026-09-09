@@ -188,7 +188,7 @@ func TestTypingAPathMorphsTheListIntoColumns(t *testing.T) {
 	// And the columns draw as columns: no borders, the names, and nothing wider
 	// than the frame. The measure is CELLS and not bytes — the sheet's own
 	// punctuation is multibyte, so a byte count would fail a row that fits.
-	for _, line := range a.folder.rows(a.width, a.overlayHeight(), a.pal, a.styler(), -1, "") {
+	for _, line := range chooserRows(t, a, -1, "") {
 		if ansi.StringWidth(line) > a.width {
 			t.Fatalf("a column row runs past the frame: %q", plain(line))
 		}

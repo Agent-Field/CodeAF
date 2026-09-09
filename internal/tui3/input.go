@@ -1393,14 +1393,6 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	if a.roster.open {
 		return draftBlock(&a.roster.filter, a.pal, width, 1, resumeHint, "")
 	}
-	// AND THE FOLDER PICKER'S BOX IS TWO BOXES IN ONE POSITION, which is why its
-	// legend is asked for rather than named: free words filter a list and a path
-	// browses columns, and the keys mean different things in the two
-	// (folderpick.go's [folderPick.folderHintAt]).
-	if a.folder.open {
-		return draftBlock(&a.folder.filter, a.pal, width, 1,
-			a.folder.folderHintAt(width-ansi.StringWidth(prompt)), "")
-	}
 	// AND /subharness TAKES IT ON THE SAME TERMS, for whichever of its two boxes
 	// is open: the filter over the list, and the box over one field of the intake
 	// card (subharness.go). Neither is a widget of its own — both are this

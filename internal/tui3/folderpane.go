@@ -185,7 +185,7 @@ func (f *folderPick) paneBox(width, rows int) previewBox {
 // the box: how wide the pane is and how many rows it was given are answers about
 // the frame, and a key handler that had to be told the frame's size to move a
 // pane one row would be a second layout that could disagree with this one.
-func (f *folderPick) paneRows(pal palette, st *tokens.Styler, width, rows int) []string {
+func (f *folderPick) paneRows(pal palette, st *tokens.Styler, width, rows, hot int) []string {
 	box := f.paneBox(width, rows)
 	if box.Width < 1 || box.Height < 1 {
 		return nil
@@ -194,7 +194,61 @@ func (f *folderPick) paneRows(pal palette, st *tokens.Styler, width, rows int) [
 	body.Top = f.paneTop
 	f.paneTop = previewClampTop(f.preview, body)
 	box.Top = f.paneTop
-	return previewPad(f.canvas.rows(pal, st, f.preview, box), box)
+	out := previewPad(f.canvas.rows(pal, st, f.preview, box), box)
+	// THE MAP FROM A ROW TO THE ENTRY ON IT IS WRITTEN BY THE FUNCTION THAT DRAWS
+	// THE ROWS, which is the whole of why it is here rather than beside the press:
+	// the scroll offset and the height the foot left over are answers about THIS
+	// frame, and a press resolved against a second copy of that arithmetic is a
+	// press on the row above the one somebody aimed at.
+	//
+	// It is filled ONLY for a folder preview. A file's source and a picture are
+	// read-only over there and stay that way — the pane is not a fake list of
+	// things to click (steering-02 §5, and the brief this wave answers).
+	f.geom.paneDir, f.geom.paneFrom, f.geom.paneBody = "", 0, 0
+	if f.preview.Kind == previewFolder && len(f.preview.Entries) > 0 {
+		f.geom.paneDir = f.preview.Key.Path
+		f.geom.paneFrom = box.Top
+		f.geom.paneBody = min(body.Height, len(f.preview.Entries)-box.Top)
+	}
+	// AND ONLY AN ENTRY ROW LIGHTS. The foot under the listing states a fact and
+	// is not a target, so a band across it would be the sheet offering a press
+	// that does nothing (hover.go's law).
+	if hot < 0 || hot >= f.geom.paneBody || hot >= len(out) {
+		return out
+	}
+	// THE HOVERED ROW IS PAINTED HERE AND NOT IN THE PREVIEW'S OWN DRAW, because
+	// the draw goes through a one-entry memo keyed on what is VISIBLE and the
+	// pointer is not part of that key — painting inside it would either poison the
+	// cache or add the pointer to a key that changes on every mouse motion. The
+	// slice is copied for the same reason: the rows it holds belong to the memo.
+	lit := make([]string, len(out))
+	copy(lit, out)
+	lit[hot] = pal.cursor(lit[hot], 0)
+	return lit
+}
+
+// paneEntry is the RAW name of the folder-preview entry drawn on one body row
+// of the pane, and false where that row holds no entry — a file's source, a
+// picture, a refusal, the foot, or a row past the end of a short listing.
+//
+// IT ANSWERS THE RAW NAME AND NEVER THE DRAWN ONE. [previewEntry.Name] has been
+// through [drawableLine] on the way in, which is what makes it safe to paint and
+// exactly what makes it unsafe to navigate with: a file called `ok\e[2Jgone` is
+// a legal name on every filesystem this program runs on, and joining the
+// scrubbed label back onto a directory would open a path nobody has.
+func (f *folderPick) paneEntry(row int) (string, bool) {
+	if f.geom.paneDir == "" || row < 0 || row >= f.geom.paneBody {
+		return "", false
+	}
+	at := f.geom.paneFrom + row
+	if at < 0 || at >= len(f.preview.Entries) {
+		return "", false
+	}
+	name := f.preview.Entries[at].Raw
+	if name == "" {
+		return "", false
+	}
+	return name, true
 }
 
 // paneStep moves the preview by whole rows. The ceiling belongs to the draw
