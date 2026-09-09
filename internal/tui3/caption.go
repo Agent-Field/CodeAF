@@ -158,83 +158,15 @@ func captionSpan(text string) (title string, cut int) {
 	return title, cut
 }
 
-// shortCaption keeps ONE short sentence for the step title. Same rules as
-// session.cleanCaption: prefer a complete sentence under ten words; never
-// ellipsis-cut mid-clause — the row wraps what remains.
-const captionWordMax = 10
-
+// shortCaption is [session.ShortCaption] under the name this file's call sites
+// already use.
+//
+// THE RULE LIVES IN ONE PLACE ON PURPOSE. The narrator cleans the line it wrote
+// with it and the surface titles its steps with it, and for as long as there
+// were two copies a dot inside `livesteps.go` had to be found twice to be fixed
+// once — which is how a caption came to start in the middle of a word.
 func shortCaption(line string) string {
-	line = strings.TrimSpace(line)
-	if line == "" {
-		return ""
-	}
-	var pick string
-	for _, sentence := range captionSentences(line) {
-		words := strings.Fields(strings.TrimSpace(strings.TrimRight(sentence, ".!?;:")))
-		if len(words) == 0 {
-			continue
-		}
-		if len(words) < 3 {
-			if pick == "" {
-				pick = strings.Join(words, " ")
-			}
-			continue
-		}
-		if len(words) > captionWordMax {
-			words = captionTrimDangling(words[:captionWordMax])
-		}
-		return strings.Join(words, " ")
-	}
-	return pick
-}
-
-func captionSentences(line string) []string {
-	line = strings.TrimSpace(line)
-	if line == "" {
-		return nil
-	}
-	var out []string
-	start := 0
-	for i, r := range line {
-		switch r {
-		case '.', '!', '?':
-			piece := strings.TrimSpace(line[start : i+1])
-			if piece != "" {
-				out = append(out, piece)
-			}
-			start = i + 1
-		}
-	}
-	if rest := strings.TrimSpace(line[start:]); rest != "" {
-		out = append(out, rest)
-	}
-	if len(out) == 0 {
-		return []string{line}
-	}
-	return out
-}
-
-func captionTrimDangling(words []string) []string {
-	dangling := map[string]bool{
-		"a": true, "an": true, "the": true, "and": true, "or": true, "but": true,
-		"to": true, "of": true, "in": true, "on": true, "at": true, "for": true,
-		"from": true, "by": true, "with": true, "as": true, "into": true,
-		"which": true, "that": true, "this": true, "these": true, "those": true,
-		"who": true, "whom": true, "whose": true, "where": true, "when": true,
-		"is": true, "are": true, "was": true, "were": true, "be": true, "been": true,
-		"being": true, "have": true, "has": true, "had": true, "do": true, "does": true,
-		"did": true, "will": true, "would": true, "can": true, "could": true,
-		"should": true, "may": true, "might": true, "must": true,
-		"actually": true, "still": true, "also": true, "just": true, "very": true,
-	}
-	for len(words) > 2 {
-		last := strings.ToLower(strings.Trim(words[len(words)-1], ",;:"))
-		if !dangling[last] {
-			break
-		}
-		words = words[:len(words)-1]
-	}
-	return words
+	return session.ShortCaption(line)
 }
 
 // composeCaption is the deterministic floor beneath a model-supplied heading.
