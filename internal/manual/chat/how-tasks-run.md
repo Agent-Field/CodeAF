@@ -2492,7 +2492,7 @@ A task that did not finish keeps its branch, and the row under its name says **w
 stopped: the word `incomplete`, and one plain sentence beside it. The same words lead the
 task's card. They are three kinds of news:
 
-- `stopped — branch kept`, with a `⊘` — **you stopped it** (`x` on its room, `jobs kill`).
+- `stopped — branch kept`, with a `■` — **you stopped it** (`x` on its room, `jobs kill`).
   Nothing is wrong with the work; it is on that branch, and `stopped` is never `incomplete`.
 - `!` and one of these — **it was halted, and nothing is known to be wrong**. The work can go
   on from its branch: say `continue task 7` or `keep going on task 7`. That is how
@@ -2533,7 +2533,7 @@ task's card. They are three kinds of news:
     run stopped rather than carried on.
 ## Why does it say not accepted under my task — the check named gaps, or you said it was not right
 
-Two endings wear a `✗` rather than the `!` the halted ones wear, and both mean **something
+Two endings wear a `✕` rather than the `!` the halted ones wear, and both mean **something
 was found**. The report says what:
 
 - `not accepted — branch kept`: **the check named gaps**, or you said it was not right on

@@ -1,6 +1,13 @@
 package tokens
 
-// The glyph vocabulary (5.17, 5.21). No emoji in chrome: emoji are
+// The glyph vocabulary (5.17, 5.21), and the whole of what a person sees drawn
+// as a mark anywhere in this product. Its law, its three tiers, the table as it
+// landed and how to add to it are docs/design/icons/DESIGN.md; the short of it
+// is that every mark is a SLOT with a plain, a nerd-font and an ASCII spelling,
+// that GlyphSet.Glyph(id) is the one door to them, and that a surface spelling a
+// mark as a literal is a build failure rather than a matter of taste.
+//
+// No emoji in chrome: emoji are
 // double-width, render inconsistently, carry their own untintable colors, and
 // read as notification confetti rather than as an instrument. Everything here
 // is single-width, tintable and metric-safe — and glyph_test.go proves the

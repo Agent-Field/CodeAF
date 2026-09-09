@@ -234,7 +234,7 @@ split has to come off what your brief already spelled out.
 ## The card that asks whether to run the work
 
 While the model is still writing the proposal, a grey block opens in the transcript and
-grows: a still `◌`, the title (or just the word `task` until the title arrives), and one
+grows: a still `○`, the title (or just the word `task` until the title arrives), and one
 row such as `⠙ forming… · 6s`. The mark spins and the clock climbs on the same grid as
 the `/task` block and a running tool row. Under a second the clock is not shown. In the
 plain-text tier the mark is a still `*` and only the clock climbs. It is not a question
@@ -265,7 +265,7 @@ can no longer be answered must stop looking like one.
 ## The forming card is not moving — proposal card frozen
 
 While a proposal is arriving, the card's middle row reads like
-`⠙ forming… · 6s`: the braille mark turns and the elapsed clock climbs. The `◌` in the
+`⠙ forming… · 6s`: the braille mark turns and the elapsed clock climbs. The `○` in the
 head is intentionally still — it is the empty identity slot, not a second animation. Under
 one second there is no number. In the plain-text tier the row uses a still `*`, so only the
 clock moves.
@@ -1229,15 +1229,21 @@ and you have learned the whole system.
 
 | Tier | Glyph | The word on the row | What it means |
 | --- | --- | --- | --- |
-| **moving** | `◌` still, `▸` running | `queued` · `working` · `waiting on …` · `auto-starts in …` · `finishing` | nothing for you |
-| **over** | `✓` · `⊘` · `✗` | `done` · `stopped` · `incomplete` | nothing for you |
+| **moving** | `○` queued, `⚑` waiting on something, `◐` working | `queued` · `working` · `waiting on …` · `auto-starts in …` · `finishing` | nothing for you |
+| **over** | `✓` · `■` · `✕` | `done` · `stopped` · `incomplete` | nothing for you |
 | **your call** | `?`, in the accent colour, always | `your call` | the machine has done what it can, and the card carries the reason and the answers |
 
 **A row never reads a bare `waiting` or a bare `your call`.** The reason travels with the
 word, because the reason is the half you can act on: `waiting on task 4`,
 `your call · conflicts with your branch`, `incomplete · ran out of steps`.
 
-A run that is standing at its spend gate wears `⏸` in front of its tier glyph.
+A run that is standing at its spend gate wears `=` in front of its tier glyph.
+
+**On a terminal with a patched font you get icons rather than shapes.** Every mark above
+is a slot in one vocabulary with three spellings — a Font Awesome icon, the geometric
+character shown here, and one ASCII letter for a screen reader — and aforge picks the tier
+for your terminal. `/settings` → **step icons** is where you choose `plain` if the icons
+draw badly in your font. The state a mark means never changes with the tier.
 
 These are the exact words on screen.
 
@@ -1250,7 +1256,7 @@ These are the exact words on screen.
 | queued behind named work | `waiting on <title of the work it needs>` |
 | running | `working`, a turning spinner, and what it is doing this second |
 | running and closing a gap | `finishing · <what it is closing>` |
-| stopped by you | `stopped`, with `⊘` on the roster |
+| stopped by you | `stopped`, with `■` on the roster |
 | stopped before it ever ran | `stopped before it started` |
 | stopped, with work on a branch | `stopped`, and `branch kept` as a fact beside it |
 | landed clean | `done` |
@@ -1362,8 +1368,8 @@ nothing knows when the work started — a checkpoint written before the record c
 instant — the stamp is **absent** rather than invented.
 
 - **`done`** — a tick, `✓`, muted. It is settled work on the roster.
-- **`stopped`** — `⊘`. You ended it, and that is all it means.
-- **`incomplete`** — `✗`, with the reason beside it: `incomplete · ran out of steps`,
+- **`stopped`** — `■`. You ended it, and that is all it means.
+- **`incomplete`** — `✕`, with the reason beside it: `incomplete · ran out of steps`,
   `incomplete · the check found gaps: …`. Its branch is kept. The row is dim unless
   something actually broke, in which case it reads `incomplete · a fault: <the error>` and
   is coloured bad. **There is no `failed` on any card** — that word is the engine's own.
@@ -1394,7 +1400,7 @@ the same labels the settled card uses, listed under *Does a task touch my workin
 *how tasks run*. A landing whose copy aforge has no record of falls back to `branch`.
 
 More than two landings in a row become one rollup — `✓ 3 tasks done · 9m14s` with a compact
-row per task under it. Any failure in the batch swaps the header to `✗ N tasks landed`; any
+row per task under it. Any failure in the batch swaps the header to `✕ N tasks landed`; any
 `your call` swaps it to `? N tasks landed`. A delivery that did not land also keeps a
 warning on the batch and its individual row. The header's span is wall-clock, first
 spawn to last landing, not the sum of the parts, because tasks run at the same time.
@@ -2179,7 +2185,7 @@ went, and nothing in the record dates a row that never landed. Work that did not
 says the same word its own page says, with the reason after it: `failed · the package
 manager refused the archive` when the run actually broke, `incomplete · …` when a check
 named what is missing or the wire, a limit or a stale brief ended it, and `stopped · …`
-when you ended it yourself. The cross is kept for the fault; the rest wear `!` and `⊘`,
+when you ended it yourself. The cross is kept for the fault; the rest wear `!` and `■`,
 because nothing was found wrong with them.
 
 **How long ago a settled row landed is what that row's own record says.** Work reopened
@@ -2265,7 +2271,7 @@ running
 - The right-hand note is dim and says `another window`, followed by that window's own name
   when it has settled on one. A window nothing has named says only `another window`. A row
   whose conversation **this terminal** is holding says `open in this terminal` instead.
-- The row's glyph is the task's own state, so `▸` is running and `◌` is queued behind
+- The row's glyph is the task's own state, so `◐` is running and `⚑` is waiting behind
   something.
 - **These rows are pressed, and every one of them opens something.** The cursor stands on
   them like any other row of work, `enter` and a click are the same door, and which door it
@@ -4082,7 +4088,7 @@ told its prerequisite will never finish. Either way:
   reached disk is committed onto the branch, and the landing card names the branch and the
   files, exactly as it does for every other early ending.
 - **what it spent is what it spent.** The figure freezes where it was.
-- **it is not a failure.** The roster draws `⊘` rather than the failure cross, the room's
+- **it is not a failure.** The roster draws `■` rather than the failure cross, the room's
   header reads `stopped`, and the model is told the task was *stopped* — so nobody goes
   looking for a fault that is not there.
 
@@ -4498,7 +4504,7 @@ The cursor opens on `keep going`. There is no bypass.
 
 - **nodes in flight are cut** where they stand, and **their partial output is discarded** —
   a half-answer handed on to the next node as though it were a finding is worse than no
-  answer at all. Each of them ends drawn grey with `⊘` and the word `stopped`.
+  answer at all. Each of them ends drawn grey with `■` and the word `stopped`.
 - **queued nodes are dropped instantly**, and stay on the page rather than vanishing: the
   shape you are looking at is the shape the run crystallized into.
 - **nodes that already finished keep everything** — their digests, the planner's notes, the

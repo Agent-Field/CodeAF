@@ -10,14 +10,22 @@ Every task row, card, rail line and roster entry answers ONE question before it
 says anything else: **do I need to do anything?** There are exactly three
 answers, and each has one glyph and one word.
 
-| Tier | Glyph (existing constant) | Word on the row | What it means |
-| --- | --- | --- | --- |
-| moving | `◌` (`glyphQueued`) still, `▸` (`glyphRunning`) running | queued · working · waiting on … · auto-starts in … · finishing | nothing for you |
-| over | `✓` (`glyphDone`) · `⊘` (`glyphStopped`) · `✗` (`glyphBad`) | done · stopped · incomplete | nothing for you; a rerun may be offered |
-| your call | `?` (`glyphAsk`), accent colour, always | your call | the machine has done what it can; the card carries the reason and the answers |
+| Tier | Slot (internal/tui2/tokens) | Plain · nerd-font · ASCII | Word on the row | What it means |
+| --- | --- | --- | --- | --- |
+| moving | `GQueued` · `GWaitsOn` · `GWorking` | `○` nf-fa-circle_o `o` · `⚑` nf-fa-flag `!` · `◐` nf-fa-adjust `*` | queued · working · waiting on … · auto-starts in … · finishing | nothing for you |
+| over | `GSettled` · `GStopped` · `GFailed` | `✓` nf-fa-check `+` · `■` nf-fa-stop `/` · `✕` nf-fa-times `x` | done · stopped · incomplete | nothing for you; a rerun may be offered |
+| your call | `GNeedsHuman` | `?` nf-fa-question_circle_o `?` | your call | the machine has done what it can; the card carries the reason and the answers |
 
-The fuel gate keeps its `⏸` prefix rule exactly as today (taskstrip.go): a
-gated node wears `⏸` in front of the tier glyph.
+The fuel gate keeps its prefix rule exactly as today (taskstrip.go): a gated
+node wears `GPaused` — `=`, nf-fa-pause, `=` — in front of the tier glyph. The
+media-control `⏸` it used to draw is BANNED by `tokens.BannedGlyphs`.
+
+**No mark is a character any surface spells.** Every one is a slot resolved
+through `tokens.GlyphSet.Glyph(id)`, and which tier a terminal is on is decided
+once (`app.iconSet`). The waiting flag is new to this table: a row held behind
+task 4 or behind a busy machine used to wear the queued circle, and it is not
+queued — it is blocked, which is a different answer to "is anything happening?".
+docs/design/icons/DESIGN.md is the vocabulary's own page.
 
 Rules that hold everywhere:
 
