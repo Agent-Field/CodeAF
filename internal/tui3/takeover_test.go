@@ -83,7 +83,7 @@ func TestFirstEnterOnAHeldRowArmsItAndSaysWhatTheNextOneDoes(t *testing.T) {
 	for _, want := range []string{
 		"open in another window",
 		"enter again to move it here",
-		"it moves when that window's reply ends",
+		"that window's reply stops there",
 		"its tasks resume here",
 	} {
 		if !strings.Contains(a.home.msg, want) {

@@ -536,6 +536,22 @@ const (
 	// EventKind as an integer, so inserting a kind above this point would make
 	// an older binary read every later event as a different fact.
 	EventAssistantDone
+	// EventMoved says a WINDOW SOMEWHERE ELSE HAS OPENED THIS CONVERSATION and
+	// is now the one in it. Text carries [MovedWord].
+	//
+	// IT IS NOT [EventTakeover] AND THE DIFFERENCE IS WHAT HAPPENS TO THE WORK.
+	// A takeover is asked for on this machine's disk and answered by a window
+	// that OWNS the engine: it interrupts, closes, and the work lands paused for
+	// the window that asked to resume. A move is announced by an engine that
+	// holds the conversation itself (internal/enginehost) to every other surface
+	// attached to it: nothing is interrupted and nothing pauses, because the
+	// engine goes on running the turn while the surfaces around it change. The
+	// window hearing this DETACHES — it does not close.
+	//
+	// IT RIDES THE STANDING TASK LANE for EventTakeover's reason exactly: it is
+	// the one subscription that outlives every turn, and a move happens most
+	// often in the middle of one.
+	EventMoved
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its

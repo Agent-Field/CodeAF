@@ -191,7 +191,7 @@ func attachEngineHost(workspaceFlag string) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := clearStaleEngineHost(workspace); err != nil {
+	if _, err := clearStaleEngineHost(workspace); err != nil {
 		return nil, err
 	}
 	return enginehost.Attach(workspace, func() error {
@@ -199,10 +199,29 @@ func attachEngineHost(workspaceFlag string) (net.Conn, error) {
 	})
 }
 
-// clearStaleEngineHost is the question and what is done with the answer. Nil
-// means "go ahead and attach": either nothing is holding this workspace, or
-// what is holding it is this build, or what was holding it has gone.
-func clearStaleEngineHost(workspace string) error {
+// clearStaleEngineHost is the question and what is done with the answer. A nil
+// error means "go ahead and attach": either nothing is holding this workspace,
+// or what is holding it is this build, or what was holding it has gone — or it
+// is an older build of the SAME WIRE that would not let go, which is the one
+// case that answers with a sentence AND a nil error.
+//
+// ── A BUSY OLD HOST IS ATTACHED TO, NOT REFUSED ─────────────────────────────
+//
+// It used to be the third refusal here: a host on yesterday's binary, holding a
+// turn or a task, was asked to go, said no, and the person was told to run
+// `aforge engine --stop` — which would have ENDED the very work they were trying
+// to get back on screen. What they wanted was their running conversation, and it
+// was one socket away.
+//
+// SO THE VERSION IS WHAT DECIDES AND THE BUILD IS NOT. A host answering the same
+// [remote.Version] speaks every frame this binary speaks; the difference between
+// the two builds is a difference in what happens NEXT TIME, and it settles
+// itself — a host whose binary has been replaced retires the moment it is
+// holding nothing (internal/enginehost's binary.go). So this attaches, and hands
+// back one line for the entry notice saying which state the machine is in. A
+// DIFFERENT wire version keeps the refusal it has always had, because there is
+// no attaching to a peer whose frames this build cannot read.
+func clearStaleEngineHost(workspace string) (string, error) {
 	host, err := enginehost.Ask(workspace, remote.WhoIs{})
 	switch {
 	case errors.Is(err, remote.ErrNoHostThere):
@@ -210,22 +229,25 @@ func clearStaleEngineHost(workspace string) error {
 		// BEFORE THE EXCHANGE says to a question it has never heard of. It
 		// cannot be asked whether it is busy either, so it is never ended from
 		// here — a person is told, in words, what is true and what to type.
-		return &staleHost{reason: staleEngineHostSentence(false)}
+		return "", &staleHost{reason: staleEngineHostSentence(false)}
 	case err != nil:
 		// Nothing answered at all: no host, or one that has stopped reading.
 		// Both are the ordinary road — Attach starts one.
-		return nil
+		return "", nil
 	case host.Version == remote.Version && host.Build == buildinfo.Identity():
-		return nil
+		return "", nil
 	}
 	// Another build, and it is answering, so it can be asked to go.
 	if err := enginehost.Retire(workspace, false); err != nil {
-		if errors.Is(err, enginehost.ErrHostBusy) {
-			return &staleHost{reason: staleEngineHostSentence(true)}
+		if errors.Is(err, enginehost.ErrHostBusy) && host.Version == remote.Version {
+			return busyEngineHostSentence(), nil
 		}
-		return &staleHost{reason: staleEngineHostSentence(false)}
+		if errors.Is(err, enginehost.ErrHostBusy) {
+			return "", &staleHost{reason: staleEngineHostSentence(true)}
+		}
+		return "", &staleHost{reason: staleEngineHostSentence(false)}
 	}
-	return nil
+	return "", nil
 }
 
 // staleEngineHostSentence is what the person reads, and it is written on the
@@ -246,6 +268,19 @@ func staleEngineHostSentence(busy bool) string {
 		return fmt.Sprintf("engine: %s is still running an older aforge and something is still going in it — let that finish, or run aforge engine --stop on %s", name, name)
 	}
 	return fmt.Sprintf("engine: %s is still holding this conversation on an older aforge — run aforge engine --stop on %s", name, name)
+}
+
+// busyEngineHostSentence is the one line a person reads when their conversation
+// comes back on a host that is one build behind. It is [staleEngineHostSentence]'s
+// voice and its opposite in every other way: nothing is wrong, nothing is owed,
+// and the sentence exists so a surface never quietly runs against a binary that
+// is not the one on disk.
+func busyEngineHostSentence() string {
+	name := remote.MachineName()
+	if strings.TrimSpace(name) == "" {
+		name = "this machine"
+	}
+	return fmt.Sprintf("the engine on %s is an older aforge and is still holding work — it picks up this build the moment it goes quiet", name)
 }
 
 // runEngineStop is `aforge engine --stop`: whatever is holding this workspace

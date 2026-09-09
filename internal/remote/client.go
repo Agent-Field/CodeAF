@@ -778,6 +778,14 @@ func (c *Client) read() {
 			// from it, so it is queued onto the lane and drained by the surface's
 			// loop, exactly as a turn's events are (tasklane.go).
 			c.taskFrame(frame.Payload)
+		case "moved":
+			// ANOTHER WINDOW HAS OPENED THIS CONVERSATION and this one is being
+			// told so it can step back (driver.go's [Session.tellMoved]). It is
+			// turned into an event on the standing task lane rather than given a
+			// lane of its own, for the reason [session.EventMoved] states: that
+			// lane is the one subscription which outlives every turn, and a move
+			// happens most often in the middle of one.
+			c.movedFrame(frame.Payload)
 		case "facts":
 			// The engine stating something nobody asked for. It is taken on the
 			// reader goroutine before the surface is notified of a changed name.

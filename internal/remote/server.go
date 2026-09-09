@@ -1521,6 +1521,11 @@ func (s *server) handshake(line []byte) error {
 	// an older window learning it is a watcher is news about the window that has
 	// arrived, which had better have arrived first.
 	sess.tellDriver(s)
+	// AND THE WINDOWS THIS ONE WALKED AWAY FROM ARE TOLD THAT IT DID. It is the
+	// same ordering and for the same reason as the line above, and it is second
+	// because a window learning it has been left should learn it after the room
+	// already agrees who is typing (driver.go's [Session.tellMoved]).
+	sess.tellMoved(s, hello)
 	return nil
 }
 

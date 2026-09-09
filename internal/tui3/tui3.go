@@ -515,6 +515,29 @@ type Options struct {
 	Open  func(workspace, transcript string) (Conversation, error)
 	Start func(workspace string) (Conversation, error)
 
+	// EngineAnswers reports whether the workspace named has an ENGINE HOLDING IT
+	// RIGHT NOW — a process that owns the journal and can hand a running
+	// conversation to a second window (internal/enginehost).
+	//
+	// IT IS THE ONE QUESTION HOME'S ENTER KEY NEEDS AND CANNOT ASK ITSELF. A row
+	// another window is holding has two completely different doors behind it: a
+	// conversation an engine holds OPENS — [Options.Open] hands back the running
+	// session, mid-turn, and the window that had it steps back — and one a bare
+	// process holds can only be ASKED for (takeover.go). The flock says a window
+	// has it and says nothing about which kind, and only the door that built this
+	// surface knows whether there is an engine road at all.
+	//
+	// IT MUST BE CHEAP AND IT MUST BUILD NOTHING. It is asked on the keystroke
+	// that opens a row, and internal/enginehost states the law it answers under:
+	// ASKING WHETHER SOMEBODY IS THERE MUST NOT BUILD THEM A HOUSE. cmd/aforge's
+	// v3HostAnswers is the shape — one connect to a socket that may not be
+	// there, and closed again.
+	//
+	// Nil is a window with no engine road: the in-process door, a test, and
+	// --host, where the holder is a window on this laptop and the journal is on
+	// the far machine. Every one of them keeps the road it had.
+	EngineAnswers func(workspace string) bool
+
 	// OpenTaskOwner attaches a SECOND VIEW onto a conversation that is ALREADY
 	// RUNNING, for as long as one task page is on screen: a reader for that
 	// task's journal, and the close that gives the view back.

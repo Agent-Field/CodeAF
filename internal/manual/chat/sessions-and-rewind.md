@@ -669,10 +669,13 @@ open in another window — go there, or start a new conversation here
 **No file path is printed.** The path is aforge's bookkeeping and not something you can act
 on; what you can act on is in the sentence.
 
-**Home does something better: it MOVES it.** `enter` on a row marked `another window` offers
-to move that conversation into this terminal, and a second `enter` asks for it — the other
-window finishes its reply, lets go, and the row opens here with its tasks and its unsent
-sentence. See *Continue a conversation from another terminal* on the home page.
+**Home does something better: it BRINGS IT HERE.** `enter` on a row marked `another window`
+or `open in the engine` opens that conversation in this terminal. On the ordinary
+`aforge chat` it is one keystroke and it is instant — the engine holds the conversation and
+hands it over mid-reply, nothing pauses, and the terminal that had it says
+`moved to another window · enter on home brings it back`. Where there is no engine
+(`--no-host`, `--debug`) it takes a second `enter`, and that window's reply stops there. See
+*Continue a conversation from another terminal* on the home page.
 
 A conversation you pick that is NOT held opens normally. And the one time this can still
 surprise you is a lock taken in the instant between the screen being drawn and your

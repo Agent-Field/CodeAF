@@ -23,6 +23,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/enginehost"
@@ -66,7 +67,26 @@ type localLaunch struct {
 // and a unix socket is one. There is no process to hold and no stderr to read —
 // the host is nobody's child, by construction ([enginehost.Spawn] detaches it) —
 // so this type is a workspace and a method.
-type localLink struct{ workspace string }
+type localLink struct {
+	workspace string
+	// mu guards note, which is written by [localLink.dial] and read by the door
+	// after the client has said hello. The redial loop calls dial again from a
+	// goroutine of its own, so the two really can meet.
+	mu sync.Mutex
+	// note is the one line the STALE-HOST question left for the person, and it
+	// is the reason dial has any state at all. A host one build behind that is
+	// still holding work is attached to rather than refused (engine.go says why),
+	// and a surface that never mentioned it would be a window running against a
+	// binary that is not the one on disk with nothing on screen saying so.
+	note string
+}
+
+// said is the note the last dial left, and "" when it left none.
+func (l *localLink) said() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.note
+}
 
 // dial hands back a connection to this workspace's host, starting one when
 // nothing answers. It is called again by the redial loop, which is exactly what
@@ -84,9 +104,13 @@ func (l *localLink) dial() (io.ReadWriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := clearStaleEngineHost(l.workspace); err != nil {
+	note, err := clearStaleEngineHost(l.workspace)
+	if err != nil {
 		return nil, err
 	}
+	l.mu.Lock()
+	l.note = note
+	l.mu.Unlock()
 	return enginehost.Attach(l.workspace, func() error {
 		return enginehost.Spawn(self, "engine", "--daemon", "--workspace", l.workspace)
 	})
@@ -172,11 +196,22 @@ func openChatV3Local(launch localLaunch) error {
 	// own defer hands the job over rather than closing the client twice.
 	closeClient = fleet.closeAll
 	options := hostOptions(fleet, welcome, launch.pick)
+	// AND WHAT THE DIAL FOUND ON THE WAY IN, on the same line the engine's own
+	// welcome speaks (chatv3_host.go's [hostEntryNotice]). It is joined here
+	// rather than inside that function because it is a fact about THIS ROAD's
+	// dial and not about the conversation the engine opened.
+	options.Notice = joinNotice(options.Notice, link.said())
 	// AND THE TASKS PAGE CAN LOOK INTO THE CONVERSATIONS NEXT DOOR. It is bound
 	// here rather than inside [hostOptions] because it is a second DIAL of this
 	// road and not a use of this client's connection, and this is the door that
 	// knows the road (chatv3_taskowner.go says what makes it safe).
 	options.OpenTaskOwner = localTaskOwnerDoor(welcome.Workspace)
+	// AND HOME CAN TELL AN ENGINE FROM A WINDOW. It is bound on THIS road and no
+	// other, which is the absence law rather than an oversight: --host has its
+	// holder on this laptop and its journal on the far machine, and the in-process
+	// door has no engine to ask about. Both keep the road they had
+	// ([tui3.Options.EngineAnswers]).
+	options.EngineAnswers = v3HostAnswers
 	// The draft this terminal has half-typed is keyed by the workspace and NOT
 	// by a machine, because there is no machine: a person who takes the host
 	// road today and the in-process door tomorrow is in the same place both
@@ -186,6 +221,20 @@ func openChatV3Local(launch localLaunch) error {
 		options.DraftFile = tui3.DraftFile(dir, welcome.Workspace)
 	}
 	return runSurface(context.Background(), options)
+}
+
+// joinNotice puts two entry-notice clauses on one line in the separator the
+// notice already uses, and answers with whichever one is there when only one is.
+func joinNotice(said, more string) string {
+	said, more = strings.TrimSpace(said), strings.TrimSpace(more)
+	switch {
+	case said == "":
+		return more
+	case more == "":
+		return said
+	default:
+		return said + " · " + more
+	}
 }
 
 // v3LaunchShape is the per-launch posture as the wire carries it, or nil for a

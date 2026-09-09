@@ -994,60 +994,70 @@ box when that pane holds the keyboard. Pasted newlines are kept, so a pasted par
 fine as an `ask here` question. (It used to fall through to the chat's own draft, which
 home was covering, so pasting looked like it did nothing.)
 
-## Continue a conversation from another terminal — move it here, it says open in another window
+## Continue a conversation from another terminal — move it here, it says open in another window, it is still running in the other shell
 
-A conversation another terminal has open is a **door**, and pressing `enter` on it **moves
+A conversation another terminal has open is a **door**, and pressing `enter` on it **brings
 it here**. Not two windows on one chat — the conversation leaves that terminal and arrives
 in this one, with its work and its half-typed sentence.
 
-**The row itself says so, on the line you are standing on.** Move the cursor onto a held
-conversation and its right margin grows from `another window` into the whole door:
+**On the ordinary `aforge chat`, it is instant and it takes one `enter`.** Your conversation
+does not live inside the terminal you started it in: it lives in this folder's **engine**,
+which is why it keeps working when you close the window. So the second terminal does not
+have to ask anybody for anything. It asks the engine for the conversation and gets it back —
+mid-reply, in well under a second, with the reply still arriving and every task still
+running. Nothing pauses. Nothing is interrupted. There is no confirmation, because there is
+nothing to weigh: the way back is the same single `enter` from the other side.
+
+The row's right margin says where the conversation is. `open in the engine` means the engine
+has it — often with no window anywhere, which is what a conversation you left running looks
+like. `another window` means a terminal is sitting in it. Either way `enter` opens it here,
+and the row under the cursor says so:
 
 ```
-○ The Other Terminal                        alpha another window · enter brings it here
-○ A Third Window                                              alpha another window
+○ The Other Terminal                      alpha open in the engine · working
+○ A Third Window                          alpha another window · enter brings it here
 ```
 
-Only the row under the cursor says it — the others keep the short word, because seven rows
-repeating one instruction is noise and the instruction is only true of the row `enter` would
-act on. On a terminal too narrow to hold the sentence beside the conversation's whole name
-the row hands it back and says `another window` again, rather than cutting it in half; the
-card beside the row carries `enter brings it here` at every width.
+**What the other terminal shows.** One line — `moved to another window · enter on home
+brings it back` — and it lands on **home**, with the row it just lost under the cursor. It
+is not showing an error and it has not lost anything: it stepped out of the seat, and one
+`enter` there brings the conversation straight back. Nothing it was doing stopped, because
+none of it was ever running in that window.
 
-**It takes two enters, and the first one only offers.** The first press arms the row. The
-card beside it says `enter again moves it here`, then `its reply finishes first · its tasks
-come here`, and the foot line says the whole of it once more:
+**What comes with it.** The transcript, whole. Every running task, still running. The unsent
+sentence in the other window's box arrives in yours.
+
+**`aforge chat` in a folder whose conversation is open elsewhere** does not start a second
+one silently. It opens home with that row pointed at, so one `enter` continues where you
+left off and `esc` gets on with a new conversation instead.
+
+**The one road where it still takes two enters** is a window with no engine behind it —
+`aforge chat --no-host`, `--debug`, or a build old enough to predate the engine. There is no
+engine to ask, so the only thing anybody can do is ask that window to let go, and moving the
+conversation really does end it. See *Moving a conversation from a window with no engine*.
+
+**And `--host` is the one place it cannot happen at all.** The holder is a window on this
+laptop and the journal is on the other machine, so there is nobody to ask, and the row says
+`open in another window — go there, or start a new conversation here`.
+
+## Moving a conversation from a window with no engine — why is moving a conversation slow, it says coming here and nothing happens, how do I cancel the move, that window did not answer
+
+This is the road a window takes when there is no engine holding the conversation —
+`--no-host`, `--debug`, a test. On the ordinary `aforge chat` you will not meet it: see
+*Continue a conversation from another terminal*, where one `enter` opens the conversation
+instantly.
+
+**It takes two enters, and the first one only offers**, because this move really does end
+the other window. The first press arms the row. The card beside it says `enter again moves
+it here`, then `its reply stops there · its tasks come here`, and the foot line says the
+whole of it once more:
 
 ```
-open in another window · working — enter again to move it here (it moves when that window's reply ends; its tasks resume here)
+open in another window · working — enter again to move it here (that window's reply stops there; its tasks resume here)
 ```
 
 Anything else — an arrow, a letter, `esc` — disarms it. Nothing has been written and nothing
 in the other window knows you looked.
-
-**What comes with it.** Tasks that were running land `paused — it resumes` and start again
-from their checkpoint in this window. The unsent sentence in the other window's box arrives
-in yours. The transcript is the same transcript, whole.
-
-**What the other window shows.** One line — `moved to another window` — and it lands on
-whatever else it was holding: another conversation you had open there, or a fresh one in the
-same folder. Nothing it was doing is lost.
-
-**`aforge chat` in a folder whose conversation is open elsewhere** does not start a second
-one silently any more. It opens home with that row pointed and already armed, so one `enter`
-continues where you left off, and `esc` gets on with the new conversation instead.
-
-**The one exception is `--host`.** The holder is a window here and the journal is on the
-other machine, so there is nobody to ask, and the row still says
-`open in another window — go there, or start a new conversation here`.
-
-## Why is moving a conversation slow — it says coming here and nothing happens, how do I cancel the move, that window did not answer
-
-**An idle window lets go in well under a second.** It looks for the request four times a
-second, so `enter` and the conversation arriving are one gesture. It used to ride the
-five-second heartbeat that window writes its presence file on, which is why a move felt slow
-even when there was plainly nothing to wait for. If it is slow now, something is genuinely
-being waited for and the card says which.
 
 **The second press asks, and the row says it is coming.** The right margin stops saying
 `another window` and says `coming here`, the row takes the page's one turning cell, and the
@@ -1055,22 +1065,34 @@ card carries the state:
 
 ```
 coming here · 14s
-that window is mid-reply — it comes the moment the reply ends
+that window is mid-reply — it stops there and hands it over
 esc stops waiting
 ```
 
-If that window has nothing in flight the reason line is absent, because there is nothing to
-explain — it lets go within about a second. Past fifteen seconds with still nothing in
-flight over there, the card says `that window has not answered yet` and stops at that: a
-window wedged on a disk, one whose machine went to sleep and one on an older build all look
-identical from here, so it states the fact and invents no cause. The clock only appears once
-the move has taken longer than two seconds. Below a hundred and sixty columns there is no card at all, and the
-foot line carries it instead: `moving it here — esc stops waiting`, or `moving it here —
-that window finishes its reply first · esc stops waiting`.
+**A mid-reply window no longer holds you up.** It used to finish its whole reply before it
+answered, which is what made a move take minutes with nothing on screen to explain it. It
+now stops where it is and hands the conversation over on its next look — four times a
+second — so `enter` and the conversation arriving are one gesture. The reply it had written
+so far is in the transcript that arrives with it.
 
-There is **no time limit** on a wait for a window that is answering — a long reply is
-minutes — and `esc` withdraws the request, leaving the other window untouched. The moment it
-lets go, the row opens here.
+Past fifteen seconds with nothing happening over there, the card says `that window has not
+answered yet` and stops at that: a window wedged on a disk, one whose machine went to sleep
+and one on an older build all look identical from here, so it states the fact and invents no
+cause. The clock only appears once the move has taken longer than two seconds. Below a
+hundred and sixty columns there is no card at all, and the foot line carries it instead:
+`moving it here — esc stops waiting`, or `moving it here — that window is stopping its
+reply · esc stops waiting`.
+
+`esc` withdraws the request, leaving the other window untouched. The moment it lets go, the
+row opens here.
+
+**What comes with it.** Tasks that were running land `paused — it resumes` and start again
+from their checkpoint in this window. The unsent sentence comes too. The transcript is the
+same transcript, whole.
+
+**What the other window shows.** One line — `moved to another window` — and it lands on
+whatever else it was holding: another conversation you had open there, or a fresh one in the
+same folder.
 
 **If nothing ever answers, the wait ends and says so.** A request is only good for ten
 minutes; past that no window will ever pick it up, so this one stops waiting rather than
