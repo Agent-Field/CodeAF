@@ -399,7 +399,7 @@ func previewFolderRows(pal palette, pv filePreview, box previewBox) []string {
 		// columns show the same kind of thing and a person's eye crosses between
 		// them constantly; two alphabets for one fact would be the sheet arguing
 		// with itself.
-		lead := pal.dim(folderTypeGlyph(pal, name, entry.Dir) + " ")
+		lead := folderTypeMark(pal, name, entry.Dir)
 		out = append(out, lead+previewNameAndSize(pal, name, size, entry.Dir,
 			max(box.Width-previewLeadCells, 1)))
 	}
@@ -416,13 +416,11 @@ const previewLeadCells = 2
 // The size is given up before the name is, because the name is what a person
 // came to read. Under [previewWidthMin] the size is not drawn at all.
 func previewNameAndSize(pal palette, name, size string, dir bool, width int) string {
-	ink := pal.muted
+	ink := pal.ink
 	if dir {
-		// A directory is the row a person can go INTO, so it wears the body ink
-		// and a file wears the quieter one. Two tiers is the whole colour scheme
-		// here: a filename coloured by its type is a legend nobody was given
-		// [steering-02 §5].
-		ink = pal.ink
+		// Both browsable columns use the same reading hierarchy. The folder's
+		// slash and type mark remain visible when colour is unavailable.
+		ink = pal.muted
 	}
 	if size == "" || width < previewWidthMin {
 		return ink(fit(name, width))

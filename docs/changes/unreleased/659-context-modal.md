@@ -17,3 +17,5 @@ invalidates:
 
 Directory rows in the right pane open directly, file rows become the preview
 subject, and empty folders say they are empty instead of leaving dead space.
+
+The final Mac review raises ordinary filenames to reading ink and uses restrained colour on the small file-type marks; sizes and ancestry stay quieter. Distinct type shapes and plain-terminal fallbacks remain available without colour.

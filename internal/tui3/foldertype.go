@@ -16,13 +16,10 @@ package tui3
 //     characters and no emoji: a private-use codepoint is tofu on a font that
 //     does not carry it, and an emoji is two cells wide on some terminals and
 //     one on others — either way it is a row whose columns no longer line up.
-//   - A SHAPE AND NOT A HUE. The review asks that type never be carried by
-//     colour alone, and the honest way to meet that is not to carry it by colour
-//     at all: the mark is drawn at [palette.dim] whatever it is, and the two ink
-//     tiers keep meaning exactly what they meant — a directory is body ink with
-//     a trailing slash, a file is quieter and wears its size. A filename
-//     coloured by its extension is a legend nobody was given, and this surface
-//     has refused that once already ([folderNameAndSize]).
+//   - SHAPE FIRST, WITH COLOUR AS A SECOND CUE. A small type mark helps the eye
+//     find a picture or source file in a dense directory. Its restrained colour
+//     reinforces the shape, while the name and extension remain readable without
+//     either. Names stay in reading ink and metadata stays quieter.
 //   - AN ASCII FLOOR THAT IS ASCII. A terminal that cannot be trusted with a
 //     box-drawing character is given a character it can draw rather than
 //     something close (styles.go states this rule for the rail).
@@ -113,6 +110,28 @@ func folderTypeGlyph(pal palette, name string, dir bool) string {
 		return folderGlyphBundle
 	}
 	return folderGlyphPlain
+}
+
+// folderTypeMark paints the same compact type cue in both browsable columns.
+// The palette owns colour capability, so monochrome terminals keep the shape
+// without introducing escape sequences or changing the row's cell width.
+func folderTypeMark(pal palette, name string, dir bool) string {
+	ink := pal.dim
+	if dir {
+		ink = pal.muted
+	} else {
+		switch folderKindOf(name) {
+		case folderKindSource:
+			ink = pal.violet
+		case folderKindText:
+			ink = pal.data
+		case folderKindPicture:
+			ink = pal.accent
+		case folderKindMedia, folderKindBundle:
+			ink = pal.money
+		}
+	}
+	return ink(folderTypeGlyph(pal, name, dir) + " ")
 }
 
 // folderKindOf decides what one FILE is from its name alone.

@@ -1245,9 +1245,8 @@ func (f *folderPick) hereInk(row, room int, pal palette) string {
 	} else {
 		lead += "  "
 	}
-	// AND THE THIRD PAIR IS WHAT KIND OF THING IT IS. It is dim, one cell and a
-	// space, and it is a SHAPE rather than a hue [folderTypeGlyph says why].
-	lead += pal.dim(folderTypeGlyph(pal, name, dir) + " ")
+	// The third pair reinforces the file type with a small shape and colour cue.
+	lead += folderTypeMark(pal, name, dir)
 	return lead + folderNameAndSize(pal, name, size, dir, at == f.cols.cursor, room-folderLeadCells)
 }
 
@@ -1263,7 +1262,7 @@ const folderLeadCells = 6
 // came to read; and a size is drawn only where one was obtained
 // ([folderSizeWord]) [design-law §EMPTINESS].
 func folderNameAndSize(pal palette, name, size string, dir, cursor bool, room int) string {
-	ink := pal.dim
+	ink := pal.ink
 	switch {
 	case cursor:
 		ink = func(s string) string { return pal.bold(pal.ink(s)) }

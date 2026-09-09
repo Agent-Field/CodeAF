@@ -7,9 +7,9 @@ package tui3
 // list of what you are standing in, and a LARGE preview on the right — with the
 // sizes right-aligned, one unmistakable selection, and compact controls at the
 // foot. This file is the arithmetic of that, adapted to this surface's own
-// tokens: no borders, no rules between the columns, no colour behind anything,
-// and the columns told apart by the gaps and by the ink the way every other
-// block down here is.
+// tokens inside the framed context modal: quiet ancestry, readable names, a
+// column-wide selection band, compact type cues and aligned previews. Gaps
+// separate the columns without taking cells away from their names.
 //
 // THE PREVIEW TAKES THE THIRD COLUMN'S PLACE AND IT IS AN IMPROVEMENT ON IT
 // rather than an addition. The browse used to draw the CHILDREN of the row

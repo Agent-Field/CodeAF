@@ -114,9 +114,9 @@ Browsing draws three successive regions, the way a file browser does:
   `◆` source or configuration, `▤` text and documents, `▣` a picture, `▶` audio or video,
   `▦` an archive, `·` anything else. On a terminal that cannot draw those the same seven
   are `>` `*` `=` `#` `+` `%` `.` — one character either way, so the sizes stay lined up
-  down the column. The mark is a **shape and not a colour**: nothing here identifies a file
-  by hue alone, and the two ink tiers still mean exactly what they meant, a folder in the
-  body ink with its slash and a file quieter with its size.
+  down the column. Restrained colour reinforces the mark; type never depends on colour alone.
+  Filenames use readable ink, folders keep their slash, and sizes stay quieter.
+  Plain terminals keep the same shapes without colour.
 - **right** — a **preview of the thing under the cursor**, with the same type marks on it.
   On a folder that is the folder's own contents, so the next level is on screen before you
   walk into it. On a file it is the file: source with syntax colour and dim line numbers, a
