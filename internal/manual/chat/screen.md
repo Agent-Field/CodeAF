@@ -189,7 +189,8 @@ naming model can answer within the same budget. If those attempts fail, the tab 
 
 **An existing name wins.** Naming runs once per session lifetime, and a chat that already
 has a name is not named again. Older saved names with a leaked `Full:` label are cleaned
-when read, and saved tab labels are limited to two words. Closing the session cancels unfinished naming. There is no
+when read — including one written behind a `-` or `1.` list marker — and saved tab labels
+are limited to two words. Closing the session cancels unfinished naming. There is no
 command or tab action to rename a conversation manually.
 
 **`Untitled` labels an unnamed tab and its breadcrumb root.** Elsewhere it is named
