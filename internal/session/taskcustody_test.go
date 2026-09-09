@@ -224,6 +224,72 @@ func TestABriefThatAssignsWorkAlreadyOutIsNotTheBriefAWorkerOpensOn(t *testing.T
 	}
 }
 
+// THE BRIEF IS READ AFTER ITS DRAWING IS PUT BACK ON TOP.
+//
+// A mark is asked for symbols and a legend. The shape parser can read the
+// relationship between A, B and C, but only the legend says what those symbols
+// mean. The measured write-seam run drew the exact six-stage shape below: the
+// draft rung was only a raw tool call and was safe on its own, then the legend
+// was prepended after that rung had passed custody and assigned the worker both
+// pieces already out.
+//
+// This drives the real Submit road. The request deliberately says only "the
+// other two", so the request gate cannot hide a failure to check the composed
+// brief itself.
+func TestASymbolicLegendCannotAddHeldWorkAfterTheDraftPassesCustody(t *testing.T) {
+	const asked = "finish the remaining document header and land everything once the other two report"
+	const sketch = "(A | B | C) > D > E > F\n" +
+		"A: fix the header in three.md; B: start the folder picker rail; " +
+		"C: start the settings pane copy; D: integrate the branches from tasks 1 and 2; " +
+		"E: run the reviews on the integrated changes; F: open the pull request."
+	const draft = `<｜DSML｜tool_calls>
+<｜DSML｜invoke name="read">
+<｜DSML｜parameter name="path" string="true">docs/three.md</｜DSML｜parameter>
+</｜DSML｜invoke>
+</｜DSML｜tool_calls>`
+	const written = "Wait for tasks 1 and 2, integrate their branches, then open the pull request."
+
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	completer := &scriptedCompleter{steps: custodyWritingSteps(12, sketch, draft, written)}
+	agent := custodyAgent(t, completer, func(config *Config) { config.SessionFile = path })
+	graph := stubbedGraph(agent, custodyRunner(t))
+	first := handOutPiece(t, graph, 1, "the folder picker rail")
+	second := handOutPiece(t, graph, 2, "the settings pane copy")
+
+	events, err := agent.Submit(context.Background(), asked)
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	assertCustodyDeclinedAtWrite(t, graph, collect(t, events), path, first.id, second.id)
+}
+
+// THE REQUEST AND DONE-CONDITION ARE PART OF THE SAME ENVELOPE AS THE BRIEF.
+//
+// launchRouteTask adds the person's original request after the handoff has been
+// checked, and routeAcceptance uses those same words when no judge wrote a
+// sharper done-condition. A clean drawing and a clean handoff therefore cannot
+// make a partial task safe when those two later fields name work still out.
+// Nothing edits the person's words; this road declines before admitting them to
+// a worker that cannot see their objects.
+func TestARequestCannotAddHeldWorkAfterTheHandoffPassesCustody(t *testing.T) {
+	const asked = "finish the remaining document header, then integrate tasks 1 and 2 when they report"
+	const sketch = "fix the header in three.md > check that document"
+	const handoff = "Fix the header in three.md and check that document."
+
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	completer := &scriptedCompleter{steps: custodyWritingSteps(12, sketch, handoff, handoff)}
+	agent := custodyAgent(t, completer, func(config *Config) { config.SessionFile = path })
+	graph := stubbedGraph(agent, custodyRunner(t))
+	first := handOutPiece(t, graph, 1, "the folder picker rail")
+	second := handOutPiece(t, graph, 2, "the settings pane copy")
+
+	events, err := agent.Submit(context.Background(), asked)
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	assertCustodyDeclinedAtWrite(t, graph, collect(t, events), path, first.id, second.id)
+}
+
 // AND A CONVERSATION HOLDING NOTHING IS UNTOUCHED, BYTE FOR BYTE.
 //
 // THIS IS THE CONTROL AND IT IS WHY THE OTHER THREE ARE WORTH ANYTHING. The same
@@ -355,6 +421,46 @@ func custodyHandover(t *testing.T, graph *TaskGraph, held ...uint64) *TaskNode {
 		t.Fatalf("no task was admitted; the graph holds %d nodes", len(graph.nodes))
 	}
 	return found
+}
+
+// assertCustodyDeclinedAtWrite reads the three durable facts a refusal owes:
+// no new root, the person's held-work line rather than a moving-work line, and
+// one write-seam ending carrying the existing custody decision and reason.
+func assertCustodyDeclinedAtWrite(t *testing.T, graph *TaskGraph, events []Event, path string, held ...uint64) {
+	t.Helper()
+	heldIDs := make(map[uint64]bool, len(held))
+	for _, id := range held {
+		heldIDs[id] = true
+	}
+	graph.mu.Lock()
+	var admitted []*TaskNode
+	for _, id := range graph.order {
+		if node := graph.nodes[id]; node != nil && node.parent == 0 && !heldIDs[id] {
+			admitted = append(admitted, node)
+		}
+	}
+	graph.mu.Unlock()
+	if len(admitted) > 0 {
+		node := admitted[0]
+		t.Fatalf("task %d was admitted on a contaminated envelope:\nrequest: %s\nbrief: %s\nacceptance: %s",
+			node.id, node.spec.request, node.spec.brief, node.spec.acceptance)
+	}
+	if !saidSomething(noticeTexts(events), checkpointHeldWholeNote) {
+		t.Errorf("the person was not told custody kept the work; notices were %q", noticeTexts(events))
+	}
+	if saidSomething(noticeTexts(events), writeSeamNote) {
+		t.Errorf("the person was told work moved when nothing did; notices were %q", noticeTexts(events))
+	}
+	ceilings := journaledCeilings(t, path)
+	if len(ceilings) != 1 {
+		t.Fatalf("the ending wrote %d rows, want one: %+v", len(ceilings), ceilings)
+	}
+	ending := ceilings[0]
+	if ending.Seam != checkpointSeamWrite || ending.Decision != checkpointCeilingHeldWork ||
+		ending.Reason != carryHeldWork || ending.TaskID != 0 {
+		t.Errorf("the custody ending is %+v, want write/%s/%s with no task",
+			ending, checkpointCeilingHeldWork, carryHeldWork)
+	}
 }
 
 // custodyWritingSteps is [writingSteps] with the mastermind that WRITES the brief

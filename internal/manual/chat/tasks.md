@@ -670,12 +670,17 @@ handed out — waiting for it, reading what comes back, accepting it — that li
 time, and a drawing whose every part is a wait or a bare `accept`/`review` is read the same
 way even when it is not written as that word.
 
-**And when only half of what is left is a wait, the other half still moves.** If a reply
-crosses one of the lines above while pieces you handed out are still running, what is left is
-divided first. The self-contained work becomes the task; everything about the pieces already
-out — waiting for them, integrating their branches, reviewing them, opening the pull request
-over them — stays with this conversation, and the line announcing the move ends
-` · the rest stays here for when the pieces already out land`.
+## When only part of a handover can move while other tasks are still out
+
+When only half of what is left is a wait, the other half still moves when its whole instruction
+stands alone. If a reply crosses one of the lines above while pieces you handed out are still
+running, what is left is divided first. The self-contained work becomes the task; everything
+about the pieces already out — waiting for them, integrating their branches, reviewing them,
+opening the pull request over them — stays with this conversation, and the line announcing the
+move ends ` · the rest stays here for when the pieces already out land`.
+The check covers the brief, the request above it and the done-condition below it, after the
+reader's drawing has been added. If any of those still names a piece already out, nothing
+moves: your original words are kept here rather than rewritten into a different request.
 
 What stayed is written into the conversation under `WHAT STAYS HERE, FOR WHEN THE PIECES
 ALREADY OUT LAND:`, so the turn that wakes when those pieces land opens on the integration,
