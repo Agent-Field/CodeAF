@@ -89,3 +89,30 @@ run the one frozen combined validation and protected merge.
 Outstanding: wait for the harness lane's completed validation and state, review
 the final report/commit, integrate safely, then run one frozen uncached combined
 validation. Preserve the draft PR and evidence during the Steering 03 hold.
+
+## Pass 5 checkpoint
+
+- Steering 03 and the coordinated destination decision remain active. PR #658
+  is still draft against `codex/conversation-execution`; it must not be merged
+  or retargeted until the root explicitly releases the hold and supplies the
+  verified PR #653 merge SHA. No target branch was written in this pass.
+- Harness commit `b463a9b10a1f721eaf86891e788423c0f7bc929d` remains the finished,
+  pushed implementation checkpoint. The lane's full `-race` tui3 run is still
+  active under `scripts/one-suite.sh`, and `state/harness.state` still reads
+  `running`; its report still lists full-race and order/load acceptance as
+  unfinished. The commit therefore remains unmerged here.
+- The coordinator rechecked the workflow on the current feature head
+  `b2fcbe632b34caf4128207b3b2840809b63eca63`: the report parser package passes
+  fresh, `make test-focus` preserves the repository timeout/known-red contract,
+  the harness commit has a clean `git show --check`, and PR #658 points at this
+  exact pushed head. No competing full or quick suite was launched.
+- `reports/READY` and `reports/QUALITY_READY` remain absent. The measured
+  564.32s to 402.60s tui3 result is promising but is not final acceptance until
+  the harness validation finishes, the commit is integrated on the eventual
+  post-PR653 base, the frozen affected suite passes, and the authorized target
+  merge is verified.
+
+Outstanding: consume the harness lane only after its state and report are final;
+then review and integrate its committed history and run the single frozen
+combined validation. Under the current hold, preserve the draft branch and
+evidence without producing either success marker.
