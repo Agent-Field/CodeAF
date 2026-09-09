@@ -332,6 +332,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// open the same way: no folder, no index and no other window each answer an
 	// empty block, and a turn with an empty block is a turn as it always was.
 	a.refreshElsewhere()
+	a.refreshOrganization(ctx)
 
 	// partial accumulates what the model has streamed for the CURRENT step.
 	// It is the transcript's answer for an interrupted step, where no response

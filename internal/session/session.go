@@ -1105,6 +1105,8 @@ type Config struct {
 	// Standing is the ambient side (standing_contract.go, internal/standing).
 	// Nil is off: no belt tool, no card, no ticking from this process.
 	Standing *Standing
+	// Organization is independent of optional learned memory and UI lifetime.
+	Organization *Organization
 
 	// standingItems overrides where [Standing.Store] would be read, and it is
 	// unexported because it exists for THIS PACKAGE'S TESTS and for nothing
@@ -2272,7 +2274,10 @@ type Agent struct {
 	// below for their reason, and it is re-rendered at the start of every turn —
 	// an unchanged set renders the same bytes, so a conversation whose orders
 	// have not moved leaves message[0] exactly as the provider cached it.
-	standingText string
+	standingText           string
+	organizationText       string
+	organizationSeen       bool
+	organizationSeenLoaded bool
 	// placesText is the `# Attached folders` block message[0] currently carries
 	// (placescontext.go): the folders the PERSON attached to this conversation,
 	// named absolutely, with each one's own house rules scoped to it. It sits

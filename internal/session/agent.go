@@ -2311,7 +2311,7 @@ const volatileNoteOpening = "A note from the session, not from the person: where
 // Empty is empty: a conversation with no card and no other window produces no
 // note at all, which is the emptiness law and not an optimisation.
 func (a *Agent) volatileBlockLocked() string {
-	return strings.TrimSpace(a.cardText + a.elsewhereText)
+	return strings.TrimSpace(a.cardText + a.elsewhereText + a.organizationText)
 }
 
 // landVolatileLocked appends the volatile note to the transcript when what it

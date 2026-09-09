@@ -992,6 +992,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// (chatv3_standing.go). It is here, beside [startPlaceSweep], because every
 	// v3 door assembles through this function — and the first pass is a whole
 	// interval away, so a launch that exits immediately has ticked nothing.
+	cfg.Organization = v3Organization(cfg.Standing)
 	if cfg.Standing != nil {
 		startStandingTicks(cfg.Standing.Store)
 	}

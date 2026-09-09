@@ -31,6 +31,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what can you do", "what-i-can-do"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},
+		{"how do I share a decision across chats", "collections"},
+		{"withdraw shared context", "collections"},
 		// Lanes behind a base of the person's own: the question the hostname gate
 		// (issue #373) used to answer wrongly, in the three ways it gets asked.
 		{"do lanes work with a custom base url", "lanes"},

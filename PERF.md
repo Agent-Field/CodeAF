@@ -2179,3 +2179,30 @@ changed names so overtaking cannot lose the visible update. Reconnect reopens an
 title subscription once, without polling or model work. Background title redraws neither
 consume completion flags nor raise attention banners. Metadata read-modify-write is
 serialized per agent, with owned-field patches so stale spend snapshots preserve titles.
+
+## Organization context and reads
+
+`internal/session/organization.go` supplies at most `organizationContextLimit`
+(six) records and `organizationTextLimit` (1,200) Unicode characters per record.
+Omissions and truncation are explicit. The immutable system prefix is unchanged:
+refresh happens outside the agent mutex and the snapshot joins the existing
+volatile tail. A metadata bit remembers previous exposure across reopen, so
+removal from a collection can retire stale context without copying its contents.
+
+`ContextPage` limits identities in SQL before loading bodies; `MaxContextPage`
+is 50. Automatic selection uses six; tool list/history use
+`organizationPageSize` (25). Exact historical reads use `ContextAt`, not a scan
+of all revisions. Read text windows use `organizationReadRunes` (4,000), and
+continuations pin the returned revision. Mutation receipts carry metadata.
+Storage bounds text at 65,536 bytes, titles at 256 bytes, and explicit targets
+at `MaxContextTargets` (64 after deduplication). Direct collection applicability
+uses a SQL membership join, so belonging to many folders does not consume that
+explicit-target limit. Historical applicability uses a separate existence query;
+its cost grows with retained history and should be profiled before large-scale use.
+
+Opening a current database verifies its schema without reserving the writer;
+creation and v1 migration remain atomic. Reads use `OpenExisting` and cannot
+recreate a missing database. Work resolution receives only the requested page,
+uses the existing open store, and reads the owner world once per batch. Collection
+metadata list/find still enumerate their small index before paging; they do not
+scan transcripts. Ordinary workers inherit the read seam and cannot mutate it.
