@@ -111,10 +111,7 @@ func compactToolHistory(messages []ai.Message, frozen int, source resultSource) 
 	if len(old) == 0 {
 		return messages
 	}
-	// The call each result answers, found once for the whole pass: [toolNameFor]
-	// walks back up the transcript per result, which is the same quadratic shape
-	// the running total below removes.
-	names := toolCallNames(messages[:newest])
+	calls := toolResultCalls(messages[:newest])
 	out := append([]ai.Message(nil), messages...)
 
 	// spent is the running weight of the old results in out, carried rather than
@@ -124,7 +121,7 @@ func compactToolHistory(messages []ai.Message, frozen int, source resultSource) 
 	for _, index := range old {
 		text := messageContentText(messages[index])
 		if !compactLeaveVerbatim(text) {
-			view := reducedResultView(names[messages[index].ToolCallID], text, source.of(messages[index]))
+			view := reducedResultView(toolResultName(calls[index]), text, source.of(messages[index]))
 			// A reduction that is not smaller is not a reduction: it would spend
 			// a rewrite, and the cold prefix behind it, to save nothing.
 			if len(view) < len(text) {
@@ -151,7 +148,7 @@ func compactToolHistory(messages []ai.Message, frozen int, source resultSource) 
 		if compactLeaveVerbatim(original) {
 			continue
 		}
-		line := reducedOutcomeLine(names[messages[index].ToolCallID], original, source.of(messages[index]))
+		line := reducedOutcomeLine(toolResultName(calls[index]), original, source.of(messages[index]))
 		reduced := replaceToolText(out[index], line)
 		before, after := messageBytes(out[index]), messageBytes(reduced)
 		if after >= before {
@@ -257,18 +254,13 @@ func (a *Agent) fullResultPointer(message ai.Message, place resultPlace) string 
 	return place.journal
 }
 
-// toolCallNames maps a call id to the tool that was asked for, over one walk of
-// the frozen region.
-func toolCallNames(messages []ai.Message) map[string]string {
-	names := make(map[string]string, 16)
-	for _, message := range messages {
-		for _, call := range message.ToolCalls {
-			if call.ID != "" {
-				names[call.ID] = call.Function.Name
-			}
-		}
+// toolResultName leaves an orphan result unnamed rather than borrowing another
+// batch's tool name.
+func toolResultName(call *ai.ToolCall) string {
+	if call == nil {
+		return ""
 	}
-	return names
+	return call.Function.Name
 }
 
 // reducedResultView is what a consumed result is sent as: a header naming the

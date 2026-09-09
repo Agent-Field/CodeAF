@@ -279,10 +279,11 @@ type episode struct {
 	// request carried. A result at or beyond it has not been seen by the model and
 	// may not be folded, however full the turn has become (turnfold.go).
 	seenThrough int
-	// consumedReads names the read calls the model had received when it last
-	// successfully changed a file. IDs rather than transcript indices keep the
-	// boundary true when a general compaction rebuilds the message slice.
-	consumedReads map[string]bool
+	// consumedReads names the read occurrences the model had received when it
+	// last successfully changed a file. Retained messages share their ToolCalls
+	// backing slices even when compaction moves them. Provider IDs can repeat,
+	// so an ID must never let a later observation inherit this consumption.
+	consumedReads map[*ai.ToolCall]bool
 
 	// watch is the loop detector's window over this turn's calls (looped.go).
 	watch *loopWatch
@@ -421,12 +422,13 @@ func (ep *episode) markSeenReadsConsumed() {
 		end = len(ep.agent.messages)
 	}
 	if ep.consumedReads == nil {
-		ep.consumedReads = make(map[string]bool)
+		ep.consumedReads = make(map[*ai.ToolCall]bool)
 	}
 	for index := ep.agent.turnFloor; index < end; index++ {
-		for _, call := range ep.agent.messages[index].ToolCalls {
+		for callIndex := range ep.agent.messages[index].ToolCalls {
+			call := &ep.agent.messages[index].ToolCalls[callIndex]
 			if call.ID != "" && earlyTools[call.Function.Name] {
-				ep.consumedReads[call.ID] = true
+				ep.consumedReads[call] = true
 			}
 		}
 	}
