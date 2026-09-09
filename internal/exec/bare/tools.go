@@ -227,6 +227,21 @@ var unicodeSpaces = strings.NewReplacer(
 // ── read tool ─────────────────────────────────────────────────────────────
 
 func newReadTool(cwd string) Tool {
+	return readTool(cwd, defaultMaxBytes)
+}
+
+// ReadTool returns the ordinary read hand with a smaller content budget. Its
+// paths, line offsets, errors and continuation footers are otherwise identical.
+// This is for belts that reserve part of their total result bound for the
+// footer; values outside the ordinary range use the ordinary 50KB ceiling.
+func ReadTool(cwd string, maxBytes int) Tool {
+	if maxBytes <= 0 || maxBytes > defaultMaxBytes {
+		maxBytes = defaultMaxBytes
+	}
+	return readTool(cwd, maxBytes)
+}
+
+func readTool(cwd string, maxBytes int) Tool {
 	return Tool{
 		Name:        "read",
 		Description: readDescription,
@@ -279,11 +294,11 @@ func newReadTool(cwd string) Tool {
 				selectedContent = strings.Join(allLines[startLine:], "\n")
 			}
 
-			truncation := truncateHead(selectedContent)
+			truncation := truncateHeadAt(selectedContent, defaultMaxLines, maxBytes)
 
 			if truncation.firstLineExceedsLimit {
 				firstLineSize := formatSize(byteLength(allLines[startLine]))
-				return fmt.Sprintf("[Line %d is %s, exceeds %s limit. Use bash: sed -n '%dp' %s | head -c %d]", startLineDisplay, firstLineSize, formatSize(defaultMaxBytes), startLineDisplay, p.Path, defaultMaxBytes), false, nil
+				return fmt.Sprintf("[Line %d is %s, exceeds %s limit. Use bash: sed -n '%dp' %s | head -c %d]", startLineDisplay, firstLineSize, formatSize(maxBytes), startLineDisplay, p.Path, maxBytes), false, nil
 			}
 
 			if truncation.truncated {
@@ -292,7 +307,7 @@ func newReadTool(cwd string) Tool {
 				if truncation.truncatedBy == "lines" {
 					return truncation.content + fmt.Sprintf("\n\n[Showing lines %d-%d of %d. Use offset=%d to continue.]", startLineDisplay, endLineDisplay, totalFileLines, nextOffset), false, nil
 				}
-				return truncation.content + fmt.Sprintf("\n\n[Showing lines %d-%d of %d (%s limit). Use offset=%d to continue.]", startLineDisplay, endLineDisplay, totalFileLines, formatSize(defaultMaxBytes), nextOffset), false, nil
+				return truncation.content + fmt.Sprintf("\n\n[Showing lines %d-%d of %d (%s limit). Use offset=%d to continue.]", startLineDisplay, endLineDisplay, totalFileLines, formatSize(maxBytes), nextOffset), false, nil
 			}
 
 			if userLimitedLines >= 0 && startLine+userLimitedLines < len(allLines) {

@@ -228,11 +228,6 @@ func TestAStoppedTurnWithNothingLeftEndsTheRun(t *testing.T) {
 	// and a turn whose last call changed the tree and then said nothing is read
 	// whatever it cost ([turnLeftTheTreeUnchecked]).
 	completer := &scriptedCompleter{steps: []step{
-		// A SESSION WITH A CEILING WRITES ITS DONE-WHEN SENTENCE BEFORE ITS FIRST
-		// TURN, on this same lane and out of the ask alone
-		// (principal_acceptance.go). It is one call and it is answered here so the
-		// turn's own script is not read a step out.
-		finalText(`{"acceptance":"the parser is ported and its tests pass"}`),
 		writeCall("call-src", "parser.go", "package parse\n"),
 		finalAnswer("the parser is ported and the tests pass"),
 		finalAnswer("the parser is ported and the tests pass"),
@@ -1049,13 +1044,6 @@ func TestAWindowOneStallClosedIsDecidedByThePosture(t *testing.T) {
 			parent := []step{
 				proposeCall("Add the greeting", "write greet.go"),
 				finalText("handed off"),
-			}
-			if unattended {
-				// A SESSION WITH A CEILING WRITES ITS DONE-WHEN SENTENCE BEFORE
-				// ITS FIRST TURN, on the conversation's own lane and out of the
-				// ask alone (principal_acceptance.go). It is one call and it is
-				// answered here so the turn's own script is not read a step out.
-				parent = append([]step{finalText(`{"acceptance":"greet.go has the greeting"}`)}, parent...)
 			}
 			completer := &routedCompleter{
 				parent: parent,

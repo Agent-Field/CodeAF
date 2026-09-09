@@ -1704,7 +1704,7 @@ func TestAuditBeltIsReadOnly(t *testing.T) {
 		checks:  []string{"go test", "go build", "go vet"},
 		allowed: append([]string{"go test", "go build", "go vet"}, auditReadCommands...),
 	}
-	belt := auditBelt(t.TempDir(), door)
+	belt := auditBelt(t.TempDir(), door, Place{Dir: t.TempDir()})
 
 	byName := map[string]bare.Tool{}
 	for _, tool := range belt {

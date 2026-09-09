@@ -312,7 +312,8 @@ type sessionEntry struct {
 // Every one of those is a thing a person would want to argue with afterwards.
 //
 // Event is what the moment was: `acceptance` when the done-condition for the
-// whole ask was written and frozen, `decided` for the end of a turn that
+// whole ask was written and frozen, `delivery` when a retained result made its
+// requested destination relevant, `decided` for the end of a turn that
 // stopped, `checked` for one run of the session's declared checks from clean,
 // and `reconciled` for the sweep that puts back what the session left lying
 // about. Decision is the verb a `decided` line carries — carry on, done or stop

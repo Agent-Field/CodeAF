@@ -32,7 +32,14 @@ now_s() { date +%s; }
 file_mtime() {
   local path="$1"
   [ -e "$path" ] || return 1
-  stat -f %m "$path" 2>/dev/null || stat -c %Y "$path" 2>/dev/null
+  # BSD and GNU stat reuse -f for different operations. Probing BSD syntax on
+  # GNU prints a filesystem report before failing, so a fallback produces two
+  # records and timestamp comparisons read the first one as zero. Choose the
+  # native spelling before invoking stat; a failed read stays a failed read.
+  case "$(uname -s)" in
+    Darwin|FreeBSD|NetBSD|OpenBSD) stat -f %m "$path" 2>/dev/null ;;
+    *)                             stat -c %Y "$path" 2>/dev/null ;;
+  esac
 }
 
 # quiet_for prints how many seconds ago a file last changed, or the sentinel

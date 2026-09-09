@@ -457,6 +457,7 @@ func (a *Agent) remainsFor(said string, reader readerLine) Remains {
 	// ([Agent.openBaseline]). The reading runs in the background, so it may not
 	// have landed; a reading with no baseline counts nothing as this run's own.
 	remains.WasFailing, remains.Unread, remains.BaselineRead = a.baselineRedChecks()
+	remains.WasFailingTests = a.baselineFailureNames()
 	return remains
 }
 

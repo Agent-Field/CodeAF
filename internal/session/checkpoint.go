@@ -1509,8 +1509,10 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 	// AN ACCOUNT OF THE WORK AND NOT THE CONVERSATION, for the price
 	// [checkpointDigestTokens] states: the reader is asked about the SHAPE of what
 	// is left, and nothing inside a tool result changes that shape.
-	digest := checkpointDigest(a.turnAsk(), a.snapshot())
-	if digest == "" {
+	asked := a.turnAsk()
+	snapshot := a.snapshot()
+	page := checkpointCompletionPage(asked, snapshot)
+	if page == "" {
 		// NOTHING TO READ IS NOT A READING. A turn with no ask, no tool call and
 		// nothing said has nothing for a second mind to be shown, and a call made
 		// on an empty page is a mastermind asked to invent an answer. It cannot
@@ -1527,7 +1529,7 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 	owner := ctx
 	ctx, done := context.WithTimeout(ctx, checkpointSketchWindow)
 	defer done()
-	messages := []ai.Message{textMessage("user", digest+"\n\n"+checkpointSketchAsk)}
+	messages := []ai.Message{textMessage("user", page+"\n\n"+checkpointSketchAsk)}
 	began := time.Now()
 	// AND THE PERSON IS TOLD WHAT THIS SILENCE IS, because it is one: a turn stops
 	// mid-round, a mastermind is shown an account of the work and asked what is
@@ -1584,12 +1586,12 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 	// back. One question, one answer, carried.
 	read.held = a.piecesStillOut()
 	read.sketch, read.ownRemainder = read.sketch.withoutHeldWork(read.held)
-	// AND WHAT THE READER WAS SHOWN RIDES BACK WITH WHAT IT DREW. The drawing is
-	// one line of letters; the account under those letters is the only thing
-	// anybody downstream could weigh as EVIDENCE, and it is honest evidence
-	// because it is exactly the page a mastermind read before it said the work
-	// had parts (task_divide_sketch.go).
-	read.digest = digest
+	// AND THE WORK EVIDENCE THE READER SAW RIDES BACK WITH WHAT IT DREW. The
+	// drawing is one line of letters; this bounded account is what a downstream
+	// writer can weigh beneath it (task_divide_sketch.go). The handoff page adds
+	// the complete ask in its own section, so carrying it here would send the
+	// same request twice.
+	read.digest = checkpointDigest("", snapshot)
 	return read
 }
 
@@ -2873,6 +2875,7 @@ const checkpointStoppedNote = "stopping here · "
 func (a *Agent) decideRemains(ctx context.Context, reader readerLine, said string) Decision {
 	principal := a.who()
 	remains := a.remainsFor(said, reader)
+	remains = a.completeRetainedContract(ctx, remains)
 	a.journalAbsorbed(remains)
 	readChecks := remains.Acceptance != "" && remains.witnessIsTheOnlyGap()
 	var decision Decision
@@ -2940,7 +2943,8 @@ func (a *Agent) decideOverTheChecks(ctx context.Context, remains Remains) (Decis
 	// one account of that nobody in this session can take for themselves
 	// ([Remains.Stashed]).
 	remains.Stashed = stashed
-	remains.WasFailing, remains.Unread, remains.BaselineRead = a.baselineRedChecks()
+	remains.WasFailing, remains.Unread, remains.BaselineRead = a.baselineRedChecksFor(checks)
+	remains.WasFailingTests = a.baselineFailureNames()
 	return a.who().Decide(remains), found
 }
 
@@ -3083,13 +3087,13 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 	}
 	// THE ASK IS THE ONE THIS TURN OWES, which on a woken turn is the request its
 	// result belongs to and not whatever was typed last (wakecause.go).
-	digest := checkpointDigest(a.turnAsk(), a.snapshot())
-	if digest == "" {
+	page := checkpointCompletionPage(a.turnAsk(), a.snapshot())
+	if page == "" {
 		return readerLine{}
 	}
 	ctx, done := context.WithTimeout(ctx, checkpointSketchWindow)
 	defer done()
-	messages := []ai.Message{textMessage("user", digest+"\n\n"+checkpointRemainsAsk)}
+	messages := []ai.Message{textMessage("user", page+"\n\n"+checkpointRemainsAsk)}
 	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages,
 		ai.WithMaxTokens(checkpointSketchTokens))
 	if err != nil || response == nil {
@@ -3113,6 +3117,26 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 	// does with it is hand it to a model as the thing still to do. A reader that
 	// wrote an essay is clipped to its first line rather than argued with.
 	return readerLine{said: clip(firstLine(said), checkpointSketchBytes), answered: true}
+}
+
+// checkpointCompletionPage keeps the person's COMPLETE request in the reader's
+// page. Ordinary asks remain inside [checkpointDigest]; one too large to fit
+// with its heading rides separately from the independently bounded evidence.
+func checkpointCompletionPage(asked string, messages []ai.Message) string {
+	asked = strings.TrimSpace(asked)
+	if len(checkpointDigestAsked)+1+len(asked) <= checkpointDigestBytes {
+		return checkpointDigest(asked, messages)
+	}
+	evidence := checkpointDigest("", messages)
+	var out strings.Builder
+	out.WriteString(checkpointDigestAsked)
+	out.WriteString("\n")
+	out.WriteString(asked)
+	if evidence != "" {
+		out.WriteString("\n\n")
+		out.WriteString(evidence)
+	}
+	return out.String()
 }
 
 // readerLine is what the mark reader answered about what is left, in the four
@@ -4061,6 +4085,7 @@ func (a *Agent) sealTurnWithNothingMoving(spent bool, turn Usage, started time.T
 // ([Agent.endTurnUnderSteward]).
 func (a *Agent) decideHandover(ctx context.Context, reader readerLine, said string) Decision {
 	remains := a.remainsFor(said, reader)
+	remains = a.completeRetainedContract(ctx, remains)
 	a.journalAbsorbed(remains)
 	readChecks := remains.Acceptance != "" && remains.witnessIsTheOnlyGap()
 	var decision Decision
@@ -4381,7 +4406,7 @@ func checkpointHandoffPage(asked, card, digest, draft string) string {
 		out.WriteString("\n")
 		out.WriteString(body)
 	}
-	section(checkpointHandoffAskedHeading, clip(strings.TrimSpace(asked), briefAskLimit))
+	section(checkpointHandoffAskedHeading, strings.TrimSpace(asked))
 	section(checkpointHandoffStateHeading, card)
 	section(checkpointHandoffWorkHeading, digest)
 	section(checkpointHandoffDraftHeading, clip(strings.TrimSpace(draft), taskShapeBriefLimit))

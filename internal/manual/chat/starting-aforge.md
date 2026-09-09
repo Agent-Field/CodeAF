@@ -323,13 +323,14 @@ the work is done then, and your git is your own.
 
 ## It keeps saying the tests fail but they were already failing · red before the work · a check that was broken when I started
 
-**A check is yours only if your run turned it red.** On a run with a budget, aforge runs
+**A check is yours only if your run introduced new red.** On a run with a budget, aforge runs
 the checks its acceptance names once at the start — before it has touched anything — and
 writes down which were already failing. Only the acceptance it wrote for the work and each
 task's own brief supply checks; a command pasted into your ask (the steps you took to see a
 bug, say) is never run as one — `$ chmod 000 tox.ini` in a pasted issue once was, and no
-longer is. At the end it runs them again, and only a check that was
-**green before and red after** counts as work still to do.
+longer is. At the end it runs them again. A check that was **green before and red after**
+counts as work still to do. When a runner names individual failures, a new failure inside
+a command that was already red also counts; unparsed red stays uncertain.
 
 That first reading runs **in the background**, so nothing waits for it: your first turn
 starts straight away. It gets one window for the whole set rather than one per check, and
@@ -343,8 +344,8 @@ itself keeps, so anything your `.gitignore` covers is invisible here and a test 
 **A check the reading could not take is never counted against you — or for you.** Nobody
 knows whose red it is, so it is left out of the arithmetic in both directions rather than
 guessed at. Until the whole reading lands the same is true of every check, and the run says
-so in as many words. At the very end it waits for the reading before deciding, so a run is
-never called finished over red nobody could account for.
+so in as many words. At the very end it waits for the reading before deciding. Missing
+before-evidence remains unknown; waiting does not turn it into a passing check.
 
 That matters because of the sentence people naturally write: *"the existing test suite
 passes"*. Over a project whose suite already has one failing test, that can never become
@@ -355,7 +356,7 @@ What was already broken is not hidden from the work either — the brief it carr
 says so plainly, so nothing goes off to fix it by accident:
 
 ```
-1 check was already failing before this work and is not counted: tox -e py
+1 check was already failing before this work; that does not show the requested result works: tox -e py
 ```
 
 This section describes the session's own end-of-reply reading, which runs only when you
@@ -363,11 +364,33 @@ leave a session working with a budget. A task's checker takes its separate befor
 whether you are watching or away; **The check says my tests fail but they were already
 failing** in *How tasks run* explains that task reading and its limits.
 
+## A task added a check after work started · no before-reading for a late check
+
+A task can name a check after the session has already taken its initial reading. The
+session still runs that check at completion, but cannot tell whether its failure existed
+before the work. It records which commands the initial reading covered; a later command
+stays unknown rather than becoming a new regression just because it has no earlier entry.
+The ending or continuation names that uncertainty, for example:
+
+```
+one check has no usable before-reading, so its current result cannot establish a regression from this work: check-report
+```
+
+An unknown result does not prove the requested result works. A task still running, a
+failed task or work that has not reached its requested destination still keeps the session
+from finishing. A check actually read before work that turns from green to red still
+counts as work left to do.
+
 ## It stopped and said the same thing was still left · why did it keep saying carry on · it kept repeating the same thing
 
 An unattended run with a budget looks at the work at the end of every reply: which
 pieces of work came home finished, and what the checks your work names said when
 they ran. If something is left, it carries on by itself with that as the brief.
+
+That brief names the concrete gap: unfinished work, missing delivery or a new check
+failure. A second reader's explanation cannot replace that gap with another obligation.
+For an answer made directly in the conversation with no task result, the reader can
+still identify a missing part of the requested answer.
 
 **The same thing left twice running stops the run.** The evidence that a run is
 getting anywhere is that what is left CHANGES. When it reaches the end of a reply

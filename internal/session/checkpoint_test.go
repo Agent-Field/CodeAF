@@ -1583,6 +1583,38 @@ func TestTheDigestWritesNoEmptySections(t *testing.T) {
 	}
 }
 
+func TestTheCompletionReaderKeepsTheCompleteAskOutsideItsBoundedEvidence(t *testing.T) {
+	const middle = "MIDDLE REQUIREMENT: preserve the signed source table"
+	ask := strings.Repeat("opening context ", checkpointDigestBytes) + middle +
+		strings.Repeat(" closing context", checkpointDigestBytes)
+	messages := []ai.Message{
+		toolCallMessage("c1", "read", `{"path":"./report.md"}`),
+		{Role: "tool", ToolCallID: "c1", Content: []ai.ContentPart{{Type: "text", Text: strings.Repeat("evidence ", checkpointDigestBytes)}}},
+	}
+
+	page := checkpointCompletionPage(ask, messages)
+	if !strings.Contains(page, middle) || !strings.HasPrefix(page, checkpointDigestAsked+"\n"+ask) {
+		t.Fatal("the completion reader lost part of the original ask")
+	}
+	evidence := checkpointDigest("", messages)
+	if len(evidence) > checkpointDigestBytes || !strings.HasSuffix(page, evidence) {
+		t.Fatalf("the evidence did not keep its independent bound: page=%d evidence=%d", len(page), len(evidence))
+	}
+	handoff := checkpointHandoffPage(ask, "", evidence, "continue from the evidence")
+	if !strings.Contains(handoff, middle) || strings.Count(handoff, middle) != 1 {
+		t.Fatal("the handoff writer lost or duplicated the complete original ask")
+	}
+}
+
+func TestTheCompletionReaderCountsTheAskHeadingBeforeUsingTheDigestBound(t *testing.T) {
+	const tail = "TAIL REQUIREMENT"
+	ask := strings.Repeat("x", checkpointDigestBytes-1-len(tail)) + tail
+	page := checkpointCompletionPage(ask, nil)
+	if !strings.Contains(page, tail) || !strings.HasSuffix(page, ask) {
+		t.Fatal("heading overhead clipped the tail of a near-boundary ask")
+	}
+}
+
 // AND THE WHOLE OF IT IS BOUNDED, WITH THE OLDEST STEPS THE FIRST TO GO.
 //
 // The ledger is the one section that grows without bound, and a turn of ninety
