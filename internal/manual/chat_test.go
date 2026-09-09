@@ -42,6 +42,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it went ahead by itself", "questions"},
 		{"make it ask me every time", "questions"},
 		{"it assumed something wrong", "questions"},
+		// The block (docs/design/questions/DESIGN.md, internal/tui3's
+		// question.go), asked the five ways somebody meets it: putting one off,
+		// finding it again, what happened when nobody pressed anything, taking
+		// an approval back, and making the asking stop.
+		{"how do I answer later", "questions"},
+		{"it asked me something and I pressed esc", "questions"},
+		{"why did it decide by itself", "questions"},
+		{"undo what I just approved", "questions"},
+		{"stop asking me about rm", "questions"},
 		// And the room form (lane S2): the page a question opens into, and the
 		// nine things a person does on it. Each one is asked in the words
 		// somebody would actually type rather than in the key's own name.
@@ -217,6 +226,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// the one they came back for.
 		{"I opened aforge in a second terminal and it started a new conversation", "sessions-and-rewind"},
 		{"why did it start a new conversation", "sessions-and-rewind"},
+		{"aforge started a new conversation instead of the one that was running", "sessions-and-rewind"},
 		// And the same person's actual want, said the way they want it: not two
 		// windows on one chat, but this chat, here, now.
 		{"continue this chat in another terminal", "sessions-and-rewind"},
@@ -1686,6 +1696,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"continue this chat in another terminal", "home"},
 		{"move the conversation to this window", "home"},
 		{"it says open in another window", "home"},
+		// The self-collision wave: the owner's own two sentences on the day a
+		// plain launch was refused by the engine that was holding the
+		// conversation. The first is what the screen said; the second is what
+		// actually happened next.
+		{"I opened aforge and it said open in another window", "home"},
 		// The transfer wave: every state of a move, asked the way somebody
 		// staring at one asks it. The first is the report's own complaint —
 		// nothing appeared to happen — and the rest are the states that used to

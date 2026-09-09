@@ -42,7 +42,7 @@ func (a *app) openDemoQuestion(env func(string) string) {
 	if !known {
 		return
 	}
-	a.openQuestionRoom(build())
+	a.raiseQuestionRoom(questionShown{question: build(), shown: a.now()})
 	// THE SETTLE GUARD IS SPENT BEFORE THE FIRST FRAME on a fixture, and only on
 	// a fixture. It exists to protect a person from a page that appeared under a
 	// hand already moving; a page raised by the launch itself appeared under

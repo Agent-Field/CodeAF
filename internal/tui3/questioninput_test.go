@@ -164,13 +164,18 @@ func TestAPairTakesTheThirdAnswerAndMovesOn(t *testing.T) {
 }
 
 // AND `a` MEANS THE FIRST SIDE ON A PAIR AND THE SUGGESTION ON A CHECKLIST —
-// the one collision in the grammar, resolved by what is on screen.
+// the one collision in the grammar, resolved by what is on screen and never by
+// giving one of them a second key.
 func TestTheOneCollisionInTheGrammarIsResolvedByWhatIsOnScreen(t *testing.T) {
-	if got := questionKeyOf("a", questionSurface{pairs: true}); got != questionActPairA {
-		t.Errorf("on a pair, a is the first side, got %v", got)
+	a, _ := standingInAQuestion(t, demoQuestionPairs())
+	tap(a, questionPairAKey)
+	if got := a.qroom.input.pairs[0].answer; got != "a" {
+		t.Errorf("on a pair, a is the first side, got %q", got)
 	}
-	if got := questionKeyOf("a", questionSurface{}); got != questionActSuggest {
-		t.Errorf("off a pair, a takes the suggestion, got %v", got)
+	b, _ := standingInAQuestion(t, demoQuestionChecklist())
+	tap(b, questionSuggestKey)
+	if !b.qroom.input.ticks[0] {
+		t.Error("off a pair, a takes the suggestion")
 	}
 }
 

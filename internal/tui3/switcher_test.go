@@ -296,7 +296,12 @@ func TestSwitcherStopsAndVerbsCarryTheDoorTheyDescribe(t *testing.T) {
 		}
 		return strings.Join(out, " · ")
 	}
-	if got := words(r.verbs(askingAt)); !strings.Contains(got, "y do it") || !strings.Contains(got, "n leave it") || !strings.Contains(got, "a put it away") || !strings.Contains(got, "c copy path") {
+	// The question's answers wear THEIR OWN KEYS. This read `y do it · n leave
+	// it` until the questions wave, which was the strip putting yes and no on
+	// whichever two answers came first — and on the consent lane, whose answers
+	// are `1 allow once · 2 always · 3 deny`, that put a widening approval
+	// under the key a person presses for yes (switcher.go).
+	if got := words(r.verbs(askingAt)); !strings.Contains(got, "1 do it") || !strings.Contains(got, "2 leave it") || !strings.Contains(got, "a put it away") || !strings.Contains(got, "c copy path") {
 		t.Fatalf("asking verbs are %q", got)
 	}
 	if got := words(r.verbs(standingAt)); !strings.Contains(got, "p "+homeItemPauseWord) {

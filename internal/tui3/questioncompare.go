@@ -75,16 +75,16 @@ func (a *app) questionCompareRows(width int) []string {
 	if room == nil {
 		return nil
 	}
-	axes, cells := questionAxes(room.q)
+	axes, cells := questionAxes(room.head.question)
 	if len(axes) == 0 {
 		word := questionCompareNone
-		if questionHasDimensions(room.q) {
+		if questionHasDimensions(room.head.question) {
 			word = questionCompareSame
 		}
 		return []string{questionIndent + a.pal.dim(fit(word, max(1, width-2)))}
 	}
 	inner := width - len(questionIndent)
-	columns := len(room.q.Options)
+	columns := len(room.head.question.Options)
 	cell := 0
 	if columns > 0 {
 		cell = (inner - questionAxisColumn) / columns
@@ -100,7 +100,7 @@ func (a *app) questionCompareTable(axes []string, cells map[string]map[string]st
 	room := a.qroom
 	out := make([]string, 0, len(axes)+3)
 	head := strings.Repeat(" ", questionAxisColumn)
-	for _, opt := range room.q.Options {
+	for _, opt := range room.head.question.Options {
 		head += questionCell(opt.Key+" "+strings.TrimSpace(opt.Label), cell)
 	}
 	out = append(out, questionIndent+a.pal.dim(fit(head, max(1, width-2))))
@@ -108,7 +108,7 @@ func (a *app) questionCompareTable(axes []string, cells map[string]map[string]st
 		// The axis name is dim and the readings are ink: the name is the index and
 		// the readings are what a person came here to compare.
 		line := a.pal.dim(questionCell(axis, questionAxisColumn))
-		for _, opt := range room.q.Options {
+		for _, opt := range room.head.question.Options {
 			line += a.pal.ink(questionCell(cells[axis][opt.Key], cell))
 		}
 		out = append(out, questionIndent+fit(line, max(1, width-2)))
@@ -122,8 +122,8 @@ func (a *app) questionCompareTable(axes []string, cells map[string]map[string]st
 // a narrow window and the reader tier both get.
 func (a *app) questionCompareStack(axes []string, cells map[string]map[string]string, width int) []string {
 	room := a.qroom
-	out := make([]string, 0, len(axes)*len(room.q.Options)+2)
-	for _, opt := range room.q.Options {
+	out := make([]string, 0, len(axes)*len(room.head.question.Options)+2)
+	for _, opt := range room.head.question.Options {
 		out = append(out, questionIndent+a.pal.ink(fit(opt.Key+" "+strings.TrimSpace(opt.Label), max(1, width-2))))
 		for _, axis := range axes {
 			reading := cells[axis][opt.Key]

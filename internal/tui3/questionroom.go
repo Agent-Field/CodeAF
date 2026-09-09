@@ -110,6 +110,11 @@ const (
 // own vocabulary: DESIGN.md bans "prompt", "modal", "dialog" and "approval
 // gate", and bans the machinery words the task states already banned.
 const (
+	// questionSep is the separator every telemetry row on this surface writes,
+	// and every row this page draws writes it too — a page that punctuated
+	// differently from the status line beside it would read as a different
+	// program.
+	questionSep = " · "
 	// questionBackWord is the crumb out. It names `esc` because a page a person
 	// walked into has to say how they leave it, which is room.go's own rule.
 	questionBackWord = "back"
@@ -172,16 +177,6 @@ const (
 	questionCompareNone = "it did not say what to compare these on"
 	questionCompareOnly = "only what differs is here"
 )
-
-// questionSettle IS THE SETTLE GUARD (DESIGN.md): "A question accepts no key
-// pressed before it had been on screen for questionSettle (250ms); a key that
-// arrived earlier is dropped, never applied."
-//
-// The reason is the one every surface with a sudden block learns the hard way: a
-// page that appears under a hand already moving turns the next keystroke into an
-// answer nobody gave. 250ms is the gap between a key that was already travelling
-// and a key aimed at what is on screen.
-const questionSettle = 250 * time.Millisecond
 
 // questionDoor is the engine's ONE door for an answer (internal/session's
 // [session.Agent.ResolveQuestion]), asserted at the moment an answer is spent
@@ -251,7 +246,12 @@ type questionAsk struct {
 // card out in the conversation and by home, and three readers of one object
 // cannot each hold a different version of it.
 type questionRoom struct {
-	q session.Question
+	// head is the question AND its resolver, exactly as the block was holding it
+	// (question.go's [questionShown]). It travels whole rather than being taken
+	// apart, because who resolves this question — a lane over the wire, or this
+	// surface answering about itself — is a fact about the question and not
+	// something a second reader should re-derive.
+	head questionShown
 	// focus is which option section the reader is on, and it is what `c` and `?`
 	// act on. It is an index into the options rather than a key so an empty
 	// option list is simply focus 0 on nothing.
@@ -316,15 +316,17 @@ type questionRoom struct {
 // [app.roomOpen] is for a node's page.
 func (a *app) questionRoomOpen() bool { return a.qroom != nil }
 
-// openQuestionRoom raises the page over the conversation.
+// raiseQuestionRoom puts the page over the conversation.
 //
 // IT IS THE DOOR THE OTHER FORMS PROMOTE THROUGH (DESIGN.md: "Every form folds
-// down (room → card → line → chip) and opens up (enter/o)"), so a card, a chip
-// and the sheet all call this one method with the object they were already
-// holding rather than each building a page of their own.
-func (a *app) openQuestionRoom(q session.Question) {
+// down (room → card → line → chip) and opens up (enter/o)"), so the line, the
+// card, the chip and the sheet all reach it through question.go's
+// [app.openQuestionRoom] with the object they were already holding, rather than
+// each building a page of their own.
+func (a *app) raiseQuestionRoom(head questionShown) {
+	q := head.question
 	room := &questionRoom{
-		q:        q,
+		head:     head,
 		open:     map[int]bool{},
 		comments: map[string]string{},
 		asks:     map[string]*questionAsk{},
@@ -470,7 +472,7 @@ func (a *app) questionHeadRows(width int) []string {
 	}
 	out := make([]string, 0, 4)
 	mark := a.pal.ask(a.icon(tokens.GNeedsHuman))
-	head := strings.TrimSpace(room.q.Head)
+	head := strings.TrimSpace(room.head.question.Head)
 	lines := wrap(head, max(1, width-2))
 	for i, line := range lines {
 		if i == 0 {
@@ -481,8 +483,8 @@ func (a *app) questionHeadRows(width int) []string {
 	}
 	// The asker and the reason share a row: they are one sentence — who is asking
 	// and why now — and two rows for it would push the answers off a short page.
-	attribution := questionAskerWord(room.q.Asker)
-	if reason := strings.TrimSpace(room.q.Reason); reason != "" {
+	attribution := questionAskerWord(room.head.question.Asker)
+	if reason := strings.TrimSpace(room.head.question.Reason); reason != "" {
 		if attribution != "" {
 			attribution += questionSep
 		}
@@ -493,32 +495,10 @@ func (a *app) questionHeadRows(width int) []string {
 			out = append(out, questionIndent+a.pal.dim(line))
 		}
 	}
-	if blocking := questionBlockingWord(room.q.Blocking); blocking != "" {
+	if blocking := questionBlockingWord(room.head.question.Blocking); blocking != "" {
 		out = append(out, questionIndent+a.pal.dim(fit(blocking, max(1, width-len(questionIndent)))))
 	}
 	return out
-}
-
-// questionAskerWord is who is asking, in the words a person uses for them. The
-// engine and the surface both read as "aforge" because a person does not
-// distinguish them and nothing they could do with the distinction exists.
-func questionAskerWord(asker session.Asker) string {
-	name := strings.TrimSpace(asker.Name)
-	switch asker.Kind {
-	case session.AskerModel:
-		return "the model"
-	case session.AskerTask:
-		if name != "" {
-			return name
-		}
-		return "a task"
-	case session.AskerEngine, session.AskerSurface, session.AskerWindow:
-		return "aforge"
-	}
-	if name != "" {
-		return name
-	}
-	return ""
 }
 
 // questionBlockingWord is the third attribution row: what is paused on this
@@ -563,11 +543,11 @@ func questionTasksWord(ids []string) string {
 // lines, its blocks, and, on the pick, the reason and what would change its mind.
 func (a *app) questionOptionRows(width int) []string {
 	room := a.qroom
-	if room == nil || len(room.q.Options) == 0 {
+	if room == nil || len(room.head.question.Options) == 0 {
 		return nil
 	}
-	out := make([]string, 0, len(room.q.Options)*4)
-	for i, opt := range room.q.Options {
+	out := make([]string, 0, len(room.head.question.Options)*4)
+	for i, opt := range room.head.question.Options {
 		out = append(out, a.questionOptionHead(i, opt, width))
 		if !room.open[i] {
 			continue
@@ -601,9 +581,9 @@ func (a *app) questionOptionHead(i int, opt session.AnswerOption, width int) str
 	// The pick's badge is right-aligned, dim, and cut before the word is: a page
 	// too narrow to say `my pick · fairly sure` still has to say which answers
 	// there are.
-	if room.q.Pick != nil && room.q.Pick.Key == opt.Key {
+	if room.head.question.Pick != nil && room.head.question.Pick.Key == opt.Key {
 		badge := questionPickWord
-		if c := questionConfidenceWord(room.q.Pick.Confidence); c != "" {
+		if c := questionConfidenceWord(room.head.question.Pick.Confidence); c != "" {
 			badge += questionSep + c
 		}
 		row = questionRightAlign(row, a.pal.dim(badge), width)
@@ -655,13 +635,13 @@ func (a *app) questionOptionBody(i int, opt session.AnswerOption, width int) []s
 	for _, block := range opt.Blocks {
 		out = append(out, a.questionBlockRows(block, len(questionBodyIndent), width)...)
 	}
-	if room.q.Pick != nil && room.q.Pick.Key == opt.Key {
-		if why := strings.TrimSpace(room.q.Pick.Reason); why != "" {
+	if room.head.question.Pick != nil && room.head.question.Pick.Key == opt.Key {
+		if why := strings.TrimSpace(room.head.question.Pick.Reason); why != "" {
 			for _, line := range wrap(why, inner) {
 				out = append(out, questionBodyIndent+a.pal.dim(line))
 			}
 		}
-		if change := strings.TrimSpace(room.q.Pick.WouldChange); change != "" {
+		if change := strings.TrimSpace(room.head.question.Pick.WouldChange); change != "" {
 			for _, line := range wrap(questionWouldSwitchWord+change, inner) {
 				out = append(out, questionBodyIndent+a.pal.dim(line))
 			}
@@ -727,11 +707,11 @@ func (a *app) questionNoteRows(part string, indent, width int) []string {
 // answers rather than before.
 func (a *app) questionAttachRows(width int) []string {
 	room := a.qroom
-	if room == nil || len(room.q.Attach) == 0 || room.compare {
+	if room == nil || len(room.head.question.Attach) == 0 || room.compare {
 		return nil
 	}
 	out := []string{""}
-	for _, block := range room.q.Attach {
+	for _, block := range room.head.question.Attach {
 		out = append(out, a.questionBlockRows(block, len(questionIndent), width)...)
 	}
 	return out
@@ -816,7 +796,7 @@ func (a *app) questionFootRows(width int) []string {
 	}
 	return []string{
 		a.questionComposeRow(width),
-		questionOfferRow(a.pal, a.questionOfferKeys(), width),
+		a.questionRoomOfferRow(width),
 	}
 }
 
@@ -840,7 +820,7 @@ func (a *app) questionPromptWord() string {
 // questionSaying is the dim second row under a prompt: what the box holds so
 // far, or the way out of it.
 func (a *app) questionSaying() string {
-	return "esc " + questionKeyWord(questionActLater)
+	return "esc " + questionKeyWord(questionLaterKey)
 }
 
 // questionComposeRow is the first foot row: `pick · with · notes · scope`.
@@ -867,7 +847,7 @@ func (a *app) questionComposeRow(width int) string {
 	// THE SCOPE IS ON THE ROW ONLY WHERE THERE IS A CHOICE OF IT. A question that
 	// offered one scope has no decision to show, and drawing `once` beside every
 	// answer would teach people to stop reading the word.
-	if len(room.q.Scope) > 1 {
+	if len(room.head.question.Scope) > 1 {
 		parts = append(parts, questionScopeWord(room.scope))
 	}
 	line := strings.Join(parts, questionSep)
@@ -883,7 +863,7 @@ func (a *app) questionPickedWord() string {
 	room := a.qroom
 	words := make([]string, 0, len(room.picked))
 	for _, key := range room.picked {
-		if opt, ok := room.q.Option(key); ok && strings.TrimSpace(opt.Label) != "" {
+		if opt, ok := room.head.question.Option(key); ok && strings.TrimSpace(opt.Label) != "" {
 			words = append(words, key+" "+strings.TrimSpace(opt.Label))
 			continue
 		}
@@ -909,14 +889,14 @@ func questionScopeWord(s session.AnswerScope) string {
 // asker's reason for it, so nobody delegates a decision they have not read.
 func (a *app) questionDecideLine() string {
 	room := a.qroom
-	if room.q.Pick == nil {
+	if room.head.question.Pick == nil {
 		return questionDecideKindGone
 	}
-	line := questionDecideWord + room.q.Pick.Key
-	if opt, ok := room.q.Option(room.q.Pick.Key); ok && strings.TrimSpace(opt.Label) != "" {
+	line := questionDecideWord + room.head.question.Pick.Key
+	if opt, ok := room.head.question.Option(room.head.question.Pick.Key); ok && strings.TrimSpace(opt.Label) != "" {
 		line += " " + strings.TrimSpace(opt.Label)
 	}
-	if why := strings.TrimSpace(room.q.Pick.Reason); why != "" {
+	if why := strings.TrimSpace(room.head.question.Pick.Reason); why != "" {
 		line += " — " + why
 	}
 	return line
@@ -926,7 +906,7 @@ func (a *app) questionDecideLine() string {
 // it would answer from now on and where the setting lives. A person handing over
 // a whole class of decision has to be told which class.
 func (a *app) questionDecideKindLine() string {
-	return questionDecideKindWord + questionAskWord(a.qroom.q.Ask) + questionDecideKindTail
+	return questionDecideKindWord + questionAskWord(a.qroom.head.question.Ask) + questionDecideKindTail
 }
 
 // questionAskWord is the shape of a decision in the person's own words. It is
@@ -969,7 +949,7 @@ func (a *app) questionSetDial() tea.Cmd {
 		a.questionRoomTouched()
 		return nil
 	}
-	if err := door.SetAutonomy(room.q.Ask, session.Policy{Kind: session.PolicyDecide}); err != nil {
+	if err := door.SetAutonomy(room.head.question.Ask, session.Policy{Kind: session.PolicyDecide}); err != nil {
 		room.refused = strings.TrimSpace(err.Error())
 		a.questionRoomTouched()
 		return nil
@@ -984,7 +964,7 @@ func (a *app) questionSetDial() tea.Cmd {
 // beside it, and who decided.
 func (a *app) questionAnsweredWord(answer session.Answer) string {
 	room := a.qroom
-	parts := []string{"decided " + strings.TrimSpace(room.q.Head)}
+	parts := []string{"decided " + strings.TrimSpace(room.head.question.Head)}
 	if len(answer.Picked) > 0 {
 		parts = append(parts, "→ "+a.questionPickedWord())
 	}
@@ -1002,49 +982,48 @@ func (a *app) questionAnsweredWord(answer session.Answer) string {
 	return strings.Join(parts, questionSep)
 }
 
-// questionOfferKeys is which of the grammar's keys this question actually
-// offers, and it is the emptiness law's own list: no dimensions, no `x compare`;
-// no pick, no `enter take the pick`; no scope to choose, no `r make it a rule`.
-func (a *app) questionOfferKeys() []questionKey {
-	room := a.qroom
-	acts := make([]questionAct, 0, 8)
-	switch room.input.kind {
-	case session.InputChecklist:
-		acts = append(acts, questionActToggle, questionActSuggest)
-	case session.InputPairs:
-		acts = append(acts, questionActPairA, questionActPairB, questionActSame)
-	case session.InputDial:
-		acts = append(acts, questionActDialUp)
-	case session.InputBlanks:
-		acts = append(acts, questionActNextBlank)
-	default:
-		if len(room.q.Options) > 0 {
-			acts = append(acts, questionActPick)
+// questionOfferKeys is which of the grammar's keys this question offers, and it
+// is question.go's own reading rather than a second one: the block and this page
+// print from one table through one filter, so a key that is on the card is on
+// the page and a key the emptiness law drops is dropped in both.
+func (a *app) questionOfferKeys() []questionVerb {
+	return a.questionAnswerKeys(a.qroom.head, formsRoom)
+}
+
+// questionOfferRow spells that offer as the one row a person reads. The words
+// and the give-up order are the table's; the painting is
+// [app.questionVerbParts]'s, so the foot of a page and the answers row of a card
+// are the same row drawn in two places.
+func (a *app) questionRoomOfferRow(width int) string {
+	head := a.qroom.head
+	keys := a.questionOfferKeys()
+	for {
+		parts := a.questionVerbParts(head, keys, false)
+		line := strings.Join(parts, "")
+		if ansi.StringWidth(line) <= width {
+			return a.questionPaintOffer(parts)
 		}
+		dropped, ok := questionDropVerb(keys)
+		if !ok {
+			return a.pal.dim(fit(line, width))
+		}
+		keys = dropped
 	}
-	switch {
-	case room.input.kind != session.InputNone:
-		acts = append(acts, questionActDone)
-	case room.q.Pick != nil:
-		acts = append(acts, questionActTake)
+}
+
+// questionPaintOffer paints the alternating word/key pairs
+// [app.questionVerbParts] builds: the keys are what a person scans for, so they
+// are the only bold cells on the row.
+func (a *app) questionPaintOffer(parts []string) string {
+	var b strings.Builder
+	for i, part := range parts {
+		if i%2 == 1 {
+			b.WriteString(a.pal.dim(part))
+			continue
+		}
+		b.WriteString(a.pal.ask(part))
 	}
-	if questionHasDimensions(room.q) {
-		acts = append(acts, questionActCompare)
-	}
-	if len(room.q.Options) > 0 {
-		acts = append(acts, questionActComment, questionActAskBack, questionActReframe)
-	}
-	if room.q.Pick != nil {
-		acts = append(acts, questionActDecide)
-	}
-	// `D` IS NAMED ONLY WHERE THERE IS SOMEWHERE TO KEEP THE SETTING. It is the
-	// emptiness law on a key rather than on a row, and it is the same reading
-	// [app.questionSetDial] makes when it is pressed.
-	if _, ok := a.agent.(questionDialDoor); ok {
-		acts = append(acts, questionActDecideKind)
-	}
-	acts = append(acts, questionActLater)
-	return questionOffer(acts...)
+	return b.String()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1087,7 +1066,7 @@ func (a *app) questionRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.closeQuestionRoom()
 		return nil, true
 	case "enter":
-		return a.questionEnter(), true
+		return a.questionRoomEnter(), true
 	case "up", "down":
 		a.questionMoveFocus(map[string]int{"up": -1, "down": 1}[key])
 		return nil, true
@@ -1123,39 +1102,64 @@ func (a *app) questionRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		room.refused = ""
 		a.questionRoomTouched()
 	}
-	act := questionKeyOf(key, questionSurface{pairs: room.input.kind == session.InputPairs})
-	if a.questionInputKey(act, key) {
+	// NO KEY DOES ANYTHING THAT IS NOT DRAWN ON SCREEN RIGHT NOW, which is the
+	// law question.go holds its block to and this page holds itself to through
+	// the same reading: [app.questionAnswerKeys] is what the foot printed, and a
+	// key that is not on it falls through to the box as the letter it is.
+	//
+	// THE DIGITS ARE THE ONE EXCEPTION AND THE TABLE SAYS WHY: `1`–`9` are not in
+	// it, because each answer's own row carries its digit and a table entry
+	// saying "1 — the first answer" would be furniture.
+	if !a.questionRoomOffers(key) {
+		if key >= "1" && key <= "9" {
+			a.questionRoomPick(key)
+			a.questionRoomTouched()
+			return nil, true
+		}
+		return nil, false
+	}
+	if a.questionInputKey(key) {
 		a.questionRoomTouched()
 		return nil, true
 	}
-	switch act {
-	case questionActPick:
-		a.questionPick(key)
-	case questionActCompare:
+	switch key {
+	case questionCompareKey:
 		room.compare = !room.compare
-	case questionActComment:
+	case questionCommentKey:
 		room.commenting, room.asking, room.reframing = a.questionFocusKey(), "", false
-	case questionActAskBack:
+	case questionAskBackKey:
 		a.questionStartAsk()
-	case questionActReframe:
+	case questionReframeKey:
 		room.reframing, room.commenting, room.asking = true, "", ""
-	case questionActDecide:
+	case questionDecideKey:
 		if room.deciding {
+			room.deciding = false
 			return a.questionHandOver(), true
 		}
-		room.deciding = room.q.Pick != nil
-	case questionActDecideKind:
+		room.deciding = true
+	case questionDialKey:
 		// TWO PRESSES HERE TOO, AND FOR A SHARPER REASON THAN `d`. That key hands
 		// over ONE decision and this one hands over every decision of a shape from
 		// now on, so the first press says which shape and what it would do with
 		// it, and only the second writes anything down.
 		if room.decidingKind {
-			return a.questionSetDial(), true
+			room.decidingKind = false
+			head := room.head
+			a.closeQuestionRoom()
+			return a.questionDial(head), true
 		}
 		room.decidingKind = true
-	case questionActFold, questionActOpen:
+	case questionRuleKey:
+		head := room.head
+		a.closeQuestionRoom()
+		return a.questionMakeRule(head), true
+	case questionUndoKey:
+		head := room.head
+		a.closeQuestionRoom()
+		return a.questionUndo(head), true
+	case questionOpenKey:
 		room.open[room.focus] = !room.open[room.focus]
-	case questionActLater:
+	case questionLaterKey:
 		a.closeQuestionRoom()
 		return nil, true
 	default:
@@ -1165,12 +1169,41 @@ func (a *app) questionRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return nil, true
 }
 
+// questionRoomOffers is whether the foot actually printed this key. It is
+// [app.questionAnswerKeys] read a second time rather than a second list, which
+// is what keeps a key drawn and a key taken from coming apart.
+func (a *app) questionRoomOffers(key string) bool {
+	for _, verb := range a.questionAnswerKeys(a.qroom.head, formsRoom) {
+		if verb.key == key {
+			return true
+		}
+		// Two rows of the table are SPELLINGS of a pair of keys each — `←→` and
+		// `shift+↑↓` are one affordance apiece — and the routing reads the
+		// individual keys. `tab` carries its shifted twin for the same reason.
+		switch verb.key {
+		case questionWalkKey:
+			if key == "left" || key == "right" {
+				return true
+			}
+		case questionOrderKey:
+			if key == "shift+up" || key == "shift+down" {
+				return true
+			}
+		case questionBlankKey:
+			if key == "shift+tab" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // questionMoveFocus walks the sections, and it is bounded rather than wrapping:
 // a list that jumps from the last row to the first is a list a person loses
 // their place in.
 func (a *app) questionMoveFocus(delta int) {
 	room := a.qroom
-	n := len(room.q.Options)
+	n := len(room.head.question.Options)
 	if room.input.kind != session.InputNone {
 		n = room.input.count()
 	}
@@ -1198,40 +1231,40 @@ func (a *app) questionFocusKey() string {
 	if room.input.kind != session.InputNone {
 		return room.input.partKey()
 	}
-	if room.focus < 0 || room.focus >= len(room.q.Options) {
+	if room.focus < 0 || room.focus >= len(room.head.question.Options) {
 		return ""
 	}
-	return room.q.Options[room.focus].Key
+	return room.head.question.Options[room.focus].Key
 }
 
-// questionPick takes one of the answers by its digit.
+// questionRoomPick takes one of the answers by its digit.
 //
 // A CHECKLIST ADDS AND EVERY OTHER SHAPE REPLACES. Pressing 2 on a choice means
 // "2, not 1"; pressing 2 on a list of things to tick means "and 2" — and a
 // single rule for both would either make a choice accumulate or make a checklist
 // impossible to fill.
-func (a *app) questionPick(key string) {
+func (a *app) questionRoomPick(key string) {
 	room := a.qroom
-	opt, ok := room.q.Option(key)
+	opt, ok := room.head.question.Option(key)
 	if !ok {
 		return
 	}
-	for i := range room.q.Options {
-		if room.q.Options[i].Key == key {
+	for i := range room.head.question.Options {
+		if room.head.question.Options[i].Key == key {
 			room.focus = i
 		}
 	}
 	if room.input.kind == session.InputChecklist {
-		room.picked = questionToggleKey(room.picked, opt.Key)
+		room.picked = questionToggleOne(room.picked, opt.Key)
 		return
 	}
 	room.picked = []string{opt.Key}
 	room.open[room.focus] = true
 }
 
-// questionToggleKey adds a key or takes it away, keeping the order the person
+// questionToggleOne adds a key or takes it away, keeping the order the person
 // pressed them in — which is the order a checklist that cares about order means.
-func questionToggleKey(keys []string, key string) []string {
+func questionToggleOne(keys []string, key string) []string {
 	for i, k := range keys {
 		if k == key {
 			return append(append([]string{}, keys[:i]...), keys[i+1:]...)
@@ -1257,12 +1290,12 @@ func (a *app) questionStartAsk() {
 	room.asking, room.commenting, room.reframing = part, "", false
 }
 
-// questionEnter spends whatever the box is pointed at.
+// questionRoomEnter spends whatever the box is pointed at.
 //
 // FOUR THINGS ENTER CAN MEAN, and which one it means is never guessed: the page
 // says in its foot which part the box is writing to, so `enter` is always the
 // end of the sentence a person can already see they are writing.
-func (a *app) questionEnter() tea.Cmd {
+func (a *app) questionRoomEnter() tea.Cmd {
 	room := a.qroom
 	said := strings.TrimSpace(a.input.String())
 	switch {
@@ -1301,8 +1334,8 @@ func (a *app) questionEnter() tea.Cmd {
 	// THE EMPTINESS LAW ON THE MOST IMPORTANT KEY ON THE PAGE: `enter` with
 	// nothing chosen and nothing typed does nothing at all, because there is no
 	// answer for it to send. The foot already says `nothing chosen yet`.
-	if len(room.picked) == 0 && room.q.Pick != nil && said == "" {
-		room.picked = []string{room.q.Pick.Key}
+	if len(room.picked) == 0 && room.head.question.Pick != nil && said == "" {
+		room.picked = []string{room.head.question.Pick.Key}
 	}
 	if len(room.picked) == 0 && said == "" && room.input.kind == session.InputNone {
 		return nil
@@ -1324,11 +1357,11 @@ func (a *app) questionEnter() tea.Cmd {
 // pick's digit.
 func (a *app) questionHandOver() tea.Cmd {
 	room := a.qroom
-	if room.q.Pick == nil {
+	if room.head.question.Pick == nil {
 		return nil
 	}
 	return a.questionAnswer(session.Answer{
-		Picked:    []string{room.q.Pick.Key},
+		Picked:    []string{room.head.question.Pick.Key},
 		DecidedBy: session.DecidedByAsker,
 	})
 }
@@ -1341,10 +1374,10 @@ func (a *app) questionAnswer(answer session.Answer) tea.Cmd {
 		return nil
 	}
 	answer.At = a.now()
-	answer.Kind = room.q.Kind
-	answer.ID = room.q.ID
-	answer.Ref = room.q.Ref
-	answer.Ask = room.q.Ask
+	answer.Kind = room.head.question.Kind
+	answer.ID = room.head.question.ID
+	answer.Ref = room.head.question.Ref
+	answer.Ask = room.head.question.Ask
 	answer.Scope = room.scope
 	if len(answer.Picked) > 0 {
 		answer.Key = answer.Picked[0]

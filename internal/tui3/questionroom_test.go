@@ -23,30 +23,36 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
-// answeringAgent is a session that can resolve a question and remembers what it
-// was handed, which is the whole of what these tests need from an engine.
+// answeringAgent is question_test.go's own [questionAgent] fake with the answers
+// it was handed kept beside it. It is that fake and not a second one, because a
+// second reading of "what is an engine to this surface" would be exactly the
+// duplication [questionAgent] exists to prevent.
 type answeringAgent struct {
-	*fakeAgent
+	*questionScript
 	answers []session.Answer
 	refuse  error
 }
 
-func (g *answeringAgent) ResolveQuestion(answer session.Answer) error {
-	if g.refuse != nil {
-		return g.refuse
+func newAnsweringAgent() *answeringAgent {
+	agent := &answeringAgent{questionScript: &questionScript{fakeAgent: &fakeAgent{model: "m"}}}
+	agent.questionScript.answer = func(answer session.Answer) error {
+		if agent.refuse != nil {
+			return agent.refuse
+		}
+		agent.answers = append(agent.answers, answer)
+		return nil
 	}
-	g.answers = append(g.answers, answer)
-	return nil
+	return agent
 }
 
 // standingInAQuestion is a surface with the worked example open and the settle
 // guard already spent.
 func standingInAQuestion(t *testing.T, q session.Question) (*app, *answeringAgent) {
 	t.Helper()
-	agent := &answeringAgent{fakeAgent: &fakeAgent{model: "m"}}
+	agent := newAnsweringAgent()
 	a := newTestApp(agent)
 	a.width, a.height = 92, 30
-	a.openQuestionRoom(q)
+	a.raiseQuestionRoom(questionShown{question: q, shown: a.now()})
 	a.qroom.shown = a.qroom.shown.Add(-time.Second)
 	return a, agent
 }
@@ -98,7 +104,7 @@ func TestTheRoomSaysWhoIsAskingWhyNowAndWhatIsWaiting(t *testing.T) {
 	drawn := pageText(a)
 	for _, want := range []string{
 		"which store should the ledger sit on?",
-		"the model",
+		questionAskerWord(session.Asker{Kind: session.AskerModel}),
 		"a schema change is next and it is cheaper before there are rows",
 		questionWaitsWord,
 	} {
@@ -177,7 +183,7 @@ func TestTheFootOffersNoAnswerUntilThereIsOne(t *testing.T) {
 	if !strings.Contains(foot, questionNoPickWord) {
 		t.Errorf("the foot should say nothing is chosen:\n%s", foot)
 	}
-	if strings.Contains(foot, questionKeyWord(questionActTake)) {
+	if strings.Contains(foot, questionKeyWord(questionEnterKey)) {
 		t.Errorf("a question with no pick must not offer enter as taking one:\n%s", foot)
 	}
 }
@@ -274,7 +280,7 @@ func TestAQuestionWithNothingToCompareDoesNotOfferCompare(t *testing.T) {
 		q.Options[i].Dimensions, q.Options[i].Body = nil, "just this"
 	}
 	a, _ := standingInAQuestion(t, q)
-	if foot := footText(a); strings.Contains(foot, "x "+questionKeyWord(questionActCompare)) {
+	if foot := footText(a); strings.Contains(foot, "x "+questionKeyWord(questionCompareKey)) {
 		t.Errorf("nothing to compare should not offer x:\n%s", foot)
 	}
 }
@@ -430,10 +436,10 @@ func TestReframeComesBackAsTheRealQuestion(t *testing.T) {
 // THE SETTLE GUARD DROPS THE FIRST QUARTER SECOND. A page that appeared under a
 // hand already moving must not turn the next keystroke into an answer.
 func TestTheSettleGuardDropsAKeyThatWasAlreadyTravelling(t *testing.T) {
-	agent := &answeringAgent{fakeAgent: &fakeAgent{model: "m"}}
+	agent := newAnsweringAgent()
 	a := newTestApp(agent)
 	a.width, a.height = 92, 30
-	a.openQuestionRoom(demoQuestionReading())
+	a.raiseQuestionRoom(questionShown{question: demoQuestionReading(), shown: a.now()})
 	tap(a, "2")
 	if got := a.qroom.picked; len(got) != 0 {
 		t.Errorf("a key inside the settle window must be dropped, got %#v", got)
@@ -517,7 +523,7 @@ func TestWordsTypedBesideThePickRideTheAnswer(t *testing.T) {
 func TestAWindowThatCannotResolveSaysSoRatherThanFailingSilently(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width, a.height = 92, 30
-	a.openQuestionRoom(demoQuestionReading())
+	a.raiseQuestionRoom(questionShown{question: demoQuestionReading(), shown: a.now()})
 	a.qroom.shown = a.qroom.shown.Add(-time.Second)
 	tap(a, "1")
 	a.questionRoomKey(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -641,11 +647,11 @@ func (g *dialAgent) SetAutonomy(kind session.AskKind, policy session.Policy) err
 // these from now on" has said something about the future, and applying it to the
 // question they are still reading would be the surface answering for them.
 func TestDecideThisKindShowsTheShapeAndAnswersNothing(t *testing.T) {
-	inner := &answeringAgent{fakeAgent: &fakeAgent{model: "m"}}
+	inner := newAnsweringAgent()
 	agent := &dialAgent{answeringAgent: inner}
 	a := newTestApp(agent)
 	a.width, a.height = 92, 30
-	a.openQuestionRoom(demoQuestionReading())
+	a.raiseQuestionRoom(questionShown{question: demoQuestionReading(), shown: a.now()})
 	a.qroom.shown = a.qroom.shown.Add(-time.Second)
 
 	tap(a, "D")
@@ -659,11 +665,15 @@ func TestDecideThisKindShowsTheShapeAndAnswersNothing(t *testing.T) {
 	if got := agent.set[session.AskChoice].Kind; got != session.PolicyDecide {
 		t.Errorf("the second press should set the shape, got %q", got)
 	}
-	if len(inner.answers) != 0 {
-		t.Errorf("setting the dial must not answer the question in front of you: %#v", inner.answers)
+	// AND IT ANSWERS THE ONE IN FRONT OF YOU TOO. `D` is pressed while looking at
+	// a question, and a key that wrote a setting and left that question sitting
+	// there would read as having done nothing (question.go's [app.questionDial]
+	// holds both halves of the promise).
+	if len(inner.answers) != 1 {
+		t.Fatalf("the second press should also answer this one, got %d", len(inner.answers))
 	}
-	if !a.questionRoomOpen() {
-		t.Error("the question stays open")
+	if a.questionRoomOpen() {
+		t.Error("an answered question takes its page with it")
 	}
 }
 

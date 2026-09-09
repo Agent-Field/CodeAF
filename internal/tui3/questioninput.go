@@ -82,12 +82,6 @@ type questionPair struct {
 	answer string
 }
 
-// questionSameKey is the third answer every pair has, and the one a forced
-// choice takes away. "It does not matter" is a real finding about a decision and
-// the commonest true one; a form that refused it collects a coin-flip and
-// records it as a preference.
-const questionSameKey = "="
-
 // questionInput is the structured shape a question carries, or the zero value
 // for one that carries none. It is a single struct rather than four because the
 // page asks it four questions — how many rows, which one is focused, what a key
@@ -281,37 +275,38 @@ func (in questionInput) dialWord() string {
 // ─────────────────────────────────────────────────────────────────────────────
 // The keys.
 
-// questionInputKey routes an act into the live input shape and reports whether
-// it took it. Every act the shape does NOT own falls through untouched, so the
+// questionInputKey routes one key into the live input shape and reports whether
+// it took it. Every key the shape does NOT own falls through untouched, so the
 // page's own keys keep working over a form.
-func (a *app) questionInputKey(act questionAct, key string) bool {
+//
+// THE KEYS ARE THE SHARED TABLE'S (questionkeys.go) and never spelled here. `a`
+// is the one collision in the grammar — "take its suggestion" on a checklist and
+// "the first one" on a pair — and it is resolved by WHICH SHAPE IS ON SCREEN
+// rather than by giving one of them a second key, because they are the same
+// instinct at two shapes: take the thing on the left.
+func (a *app) questionInputKey(key string) bool {
 	room := a.qroom
 	if room == nil || room.input.kind == session.InputNone {
 		return false
 	}
 	in := &room.input
-	switch act {
-	case questionActNextBlank:
+	switch key {
+	case questionBlankKey:
 		in.focus = questionStep(in.focus, 1, in.count())
-	case questionActPrevBlank:
+	case "shift+tab":
 		in.focus = questionStep(in.focus, -1, in.count())
-	case questionActToggle:
+	case questionToggleKey:
 		if in.kind != session.InputChecklist || in.focus >= len(in.ticks) {
 			return false
 		}
 		in.ticks[in.focus] = !in.ticks[in.focus]
 		a.questionSyncTicks()
-	case questionActSuggest:
-		if in.kind != session.InputChecklist {
-			return false
-		}
-		a.questionTakeSuggestion()
-	case questionActOrderUp, questionActOrderDown:
+	case "shift+up", "shift+down":
 		if in.kind != session.InputChecklist {
 			return false
 		}
 		delta := -1
-		if act == questionActOrderDown {
+		if key == "shift+down" {
 			delta = 1
 		}
 		in.moveOrder(in.focus, delta)
@@ -321,13 +316,17 @@ func (a *app) questionInputKey(act questionAct, key string) bool {
 		// asker's order after a person has changed it is a foot describing a
 		// different answer from the one on screen.
 		a.questionSyncTicks()
-	case questionActPairA, questionActPairB, questionActSame:
+	case questionSuggestKey, questionPairBKey, questionSameKey:
+		if in.kind == session.InputChecklist && key == questionSuggestKey {
+			a.questionTakeSuggestion()
+			return true
+		}
 		if in.kind != session.InputPairs || in.focus >= len(in.pairs) {
 			return false
 		}
-		in.pairs[in.focus].answer = map[questionAct]string{
-			questionActPairA: "a", questionActPairB: "b", questionActSame: questionSameKey,
-		}[act]
+		in.pairs[in.focus].answer = map[string]string{
+			questionPairAKey: "a", questionPairBKey: "b", questionSameKey: questionSameKey,
+		}[key]
 		// A PAIR ANSWERED MOVES ON BY ITSELF. That is the whole reason pairs are
 		// drawn one at a time: the shape is a rhythm — look, press, look, press —
 		// and a cursor a person has to advance themselves halves the speed that
@@ -335,10 +334,10 @@ func (a *app) questionInputKey(act questionAct, key string) bool {
 		if in.focus+1 < len(in.pairs) {
 			in.focus++
 		}
-	case questionActDialDown, questionActDialUp:
+	case "left", "right":
 		if in.kind == session.InputDial {
 			delta := -1
-			if act == questionActDialUp {
+			if key == "right" {
 				delta = 1
 			}
 			in.notch = questionClamp(in.notch+delta, 0, in.notches-1)
@@ -355,7 +354,7 @@ func (a *app) questionInputKey(act questionAct, key string) bool {
 			return false
 		}
 		delta := -1
-		if act == questionActDialUp {
+		if key == "right" {
 			delta = 1
 		}
 		hole.at = questionClamp(hole.at+delta, 0, len(hole.blank.Choices)-1)
@@ -363,7 +362,6 @@ func (a *app) questionInputKey(act questionAct, key string) bool {
 	default:
 		return false
 	}
-	_ = key
 	return true
 }
 
@@ -373,8 +371,8 @@ func (a *app) questionSyncTicks() {
 	room := a.qroom
 	picked := make([]string, 0, len(room.input.ticks))
 	for _, i := range room.input.walk() {
-		if i < len(room.input.ticks) && room.input.ticks[i] && i < len(room.q.Options) {
-			picked = append(picked, room.q.Options[i].Key)
+		if i < len(room.input.ticks) && room.input.ticks[i] && i < len(room.head.question.Options) {
+			picked = append(picked, room.head.question.Options[i].Key)
 		}
 	}
 	room.picked = picked
@@ -391,9 +389,9 @@ func (a *app) questionSyncTicks() {
 // does nothing.
 func (a *app) questionTakeSuggestion() {
 	room := a.qroom
-	for i, opt := range room.q.Options {
+	for i, opt := range room.head.question.Options {
 		suggested := opt.Safe
-		if room.q.Pick != nil && room.q.Pick.Key == opt.Key {
+		if room.head.question.Pick != nil && room.head.question.Pick.Key == opt.Key {
 			suggested = true
 		}
 		if i < len(room.input.ticks) {
@@ -620,10 +618,10 @@ func (a *app) questionChecklistRows(width int) []string {
 		out = append(out, questionIndent+a.pal.ink(fit(in.prompt, inner)))
 	}
 	for at, i := range in.walk() {
-		if i >= len(room.q.Options) {
+		if i >= len(room.head.question.Options) {
 			continue
 		}
-		opt := room.q.Options[i]
+		opt := room.head.question.Options[i]
 		mark := " "
 		if i < len(in.ticks) && in.ticks[i] {
 			mark = a.icon(tokens.GSettled)
@@ -670,7 +668,7 @@ func (a *app) questionPairRows(width int) []string {
 	// of them wants to know it is four and not forty.
 	count := strconv.Itoa(at+1) + " of " + strconv.Itoa(len(in.pairs))
 	if pair.answer == questionSameKey {
-		count += questionSep + questionKeyWord(questionActSame)
+		count += questionSep + questionKeyWord(questionSameKey)
 	}
 	out = append(out, questionIndent+a.pal.dim(fit(count, inner)))
 	out = append(out, a.questionNoteRows(pair.label, len(questionBodyIndent), width)...)
