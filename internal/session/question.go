@@ -743,7 +743,7 @@ func (q Question) Check(records []DecisionRecord) error {
 			return errQuestionAutoOnIrreversible
 		}
 	}
-	if q.Policy.Kind == PolicyRecommendThenAuto && q.Pick == nil {
+	if q.Policy.Kind == PolicyRecommendThenAuto && q.Pick == nil && q.Ask != AskAssumption {
 		return errQuestionAutoWithoutPick
 	}
 	if record, found := decidedAlready(records, q); found {
@@ -1002,6 +1002,9 @@ func (a *Agent) recordDecision(record DecisionRecord) {
 	}
 	if _, err := file.Write(line); err == nil {
 		_ = file.Close()
+		a.mu.Lock()
+		a.refreshSystemLocked()
+		a.mu.Unlock()
 		return
 	}
 	_ = file.Close()
@@ -1373,6 +1376,11 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 	// record whose question cannot be read back is a line nobody can act on.
 	if said {
 		a.recordDecision(decisionRecordOf(q, answer))
+		if strings.TrimSpace(answer.Why) != "" && q.Pick != nil && answer.FirstKey() != q.Pick.Key {
+			// An explained override is a durable preference, not merely a note on
+			// this decision. The existing memory door keeps it forgettable.
+			_, _ = a.RememberScoped("prefers "+strings.TrimSpace(answer.Why), memoryScopeForAnswer(answer.Scope))
+		}
 		a.emitQuestion(EventQuestionAnswered, q, &answer)
 	}
 	return nil
@@ -1407,6 +1415,18 @@ func (a *Agent) applyToLane(answer Answer) error {
 	key := answer.FirstKey()
 	words := answer.Words()
 	switch answer.Kind {
+	case QuestionAsk:
+		a.mu.Lock()
+		wait := a.askWaits[answer.ID]
+		if wait != nil {
+			delete(a.askWaits, answer.ID)
+		}
+		a.mu.Unlock()
+		if wait == nil {
+			return nil
+		}
+		wait <- answer
+		return nil
 	case QuestionConsent, QuestionTask, QuestionStanding:
 		// The three lanes answers.go already mapped, through the mapping it
 		// already wrote: [AnswerFromKey] says what a key MEANS, and a key the
@@ -1553,6 +1573,10 @@ func (a *Agent) OpenQuestions() []Question {
 	var open []Question
 
 	a.mu.Lock()
+	modelAsks := make([]uint64, 0, len(a.askWaits))
+	for id := range a.askWaits {
+		modelAsks = append(modelAsks, id)
+	}
 	consent := make([]uint64, 0, len(a.consent))
 	for id := range a.consent {
 		consent = append(consent, id)
@@ -1595,6 +1619,11 @@ func (a *Agent) OpenQuestions() []Question {
 		runs[id] = live
 	}
 	a.mu.Unlock()
+	for _, id := range modelAsks {
+		if q, ok := a.questionSaid(QuestionAsk, strconv.FormatUint(id, 10)); ok {
+			open = append(open, q)
+		}
+	}
 
 	for _, id := range consent {
 		open = append(open, a.consentQuestion(id))

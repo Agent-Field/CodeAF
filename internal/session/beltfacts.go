@@ -87,6 +87,10 @@ func (c Config) shelvesCapabilities() bool { return !c.InTask }
 // conversation, and a node has none.
 func (c Config) mayWatch() bool { return !c.InTask }
 
+// mayAsk is unconditional; only the conversation shelf changes whether the
+// schema is carried now or loaded on the next request.
+func (c Config) mayAsk() bool { return true }
+
 // mayProposeTask says whether the task pair — `propose_task` and the `tasks`
 // window onto what it started — belongs on this belt: always in a conversation,
 // and in a node only when it was handed the conversation's graph and is not
@@ -170,6 +174,11 @@ type beltFact struct {
 
 // beltFacts is the whole of it, in the order the section reads.
 var beltFacts = []beltFact{{
+	tools:   []string{"ask", loadCapabilityToolName},
+	holds:   Config.mayAsk,
+	present: "- Use `ask` only as the last rung of the decision ladder.",
+	shelved: "- `ask` waits in the `questions` group. When the decision ladder reaches its last rung, call `load_capability`; its full schema arrives on the next request, this same turn.",
+}, {
 	// THE CLOCK, whose second sentence is the one place the session facts named a
 	// conditional verb for everybody. The first sentence is true of every shape —
 	// the `Project` footer is rendered for all of them — and the second was
@@ -512,4 +521,7 @@ func promptWithBeltFacts(config Config) string {
 // The value is the marker the test looks for in the absent case.
 var promptNamesBeyondTheBelt = map[string]string{
 	"remember": "Without `remember`, say plainly that memory is off",
+	// A hand inherits the caller's page but intentionally carries a smaller,
+	// closed belt; its appended tail is the truthful capability account.
+	"ask": "Use `ask` only as the last rung",
 }
