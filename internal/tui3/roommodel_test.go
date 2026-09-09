@@ -230,10 +230,8 @@ func TestPressingTheConversationsModelStillOpensTheSessionsPicker(t *testing.T) 
 	}
 }
 
-// A NODE THAT IS PAST BEING MOVED KEEPS THE NAME AND LOSES THE DOOR — absent
-// affordance, never a failing one. The engine refuses a settled node, so the
-// render records no columns and the press falls through to the row it landed on.
-func TestASettledTasksModelIsNotPressable(t *testing.T) {
+// Ordinary settled tasks keep the model picker for their next continuation.
+func TestASettledTasksModelOpensItsContinuationPicker(t *testing.T) {
 	for _, state := range []session.TaskState{
 		session.TaskDone, session.TaskFailed, session.TaskUnverified, session.TaskQueued,
 	} {
@@ -243,7 +241,7 @@ func TestASettledTasksModelIsNotPressable(t *testing.T) {
 			state, session.TaskNotice{Model: "z-ai/glm-5.2"})})
 		rows := strings.Split(plain(frame(a)), "\n")
 
-		if a.modelSpan.pressable() {
+		if !a.modelSpan.pressable() {
 			t.Fatalf("a %s node's model is still a press target: %+v", state, a.modelSpan)
 		}
 		// The name is still there to be read — this is a door removed, not a fact.
@@ -254,7 +252,7 @@ func TestASettledTasksModelIsNotPressable(t *testing.T) {
 		}
 		drive(t, a, tea.MouseClickMsg{X: at + 1, Y: a.height - 1, Button: tea.MouseLeft})
 		drive(t, a, tea.MouseReleaseMsg{X: at + 1, Y: a.height - 1, Button: tea.MouseLeft})
-		if a.pick.open {
+		if !a.pick.open || a.pick.task != a.room.id {
 			t.Fatalf("pressing a %s node's model opened the picker", state)
 		}
 		if len(fake.retargeted) != 0 {
@@ -296,7 +294,7 @@ func TestTheStatusRowsModelSegmentLightsUnderThePointer(t *testing.T) {
 		t.Fatal("hovering the model segment changed nothing on the frame")
 	}
 
-	// A node past being moved has no span, so nothing lights over its name.
+	// A settled ordinary node lights the same control for its next continuation.
 	a2, _ := roomModelApp(t, "z-ai/glm-5.2")
 	a2.width, a2.height = 120, 24
 	drive(t, a2, streamEventMsg{gen: a2.gen, ev: update(9, "Ship the parser fix",
@@ -304,8 +302,8 @@ func TestTheStatusRowsModelSegmentLightsUnderThePointer(t *testing.T) {
 	rows := strings.Split(plain(frame(a2)), "\n")
 	at := strings.Index(rows[len(rows)-1], "glm-5.2")
 	a2.setHover(at+1, a2.height-1)
-	if a2.hoveringStatusModel() {
-		t.Fatal("a settled node's model lights under the pointer with no door behind it")
+	if !a2.hoveringStatusModel() {
+		t.Fatal("a settled node's continuation picker has no hover")
 	}
 }
 

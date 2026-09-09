@@ -48,6 +48,8 @@ type hoverKind uint8
 
 const (
 	hoverNothing hoverKind = iota
+	// hoverRoomControl uses the same padded row as the corresponding press.
+	hoverRoomControl
 	// hoverHop identifies a chat-switcher row; -1 is its expansion control.
 	hoverHop
 	hoverPaste
@@ -473,6 +475,9 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	// answers to a click (task.go's [app.railMoreAt]).
 	if a.railMoreAt(x, y) {
 		return hoverAt{kind: hoverRailMore}
+	}
+	if action := a.roomPanelActionAt(x, y); action != "" {
+		return hoverAt{kind: hoverRoomControl, key: action}
 	}
 	if a.railAt(x, y) {
 		return hoverAt{kind: hoverRailArea}
