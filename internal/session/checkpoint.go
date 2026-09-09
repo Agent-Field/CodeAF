@@ -3628,8 +3628,11 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// gives and is not a gap to be closed here: what bounds a turn that has passed
 	// its ceiling is the carried-on counter, and ENDING one is its own road (#513).
 	//
-	// IT FIRES ONLY ON WHAT SURVIVED THE LADDER, so a goal that is real work is
-	// handed over exactly as it was before any of this existed.
+	// IT FIRES ON THE WHOLE ENVELOPE THE WORKER WILL RECEIVE. The sketch heads the
+	// chosen rung only after the ladder has been walked, and launchRouteTask adds
+	// the person's request and fallback done-condition after that. Reading the raw
+	// rung alone leaves three later doors through which held work can return. They
+	// are composed here first and read by the same ledger rule as every rung.
 	//
 	// ── AND THE READING OF THE GOAL IS NOT WHAT CLOSES THE FLOOR ──
 	//
@@ -3659,7 +3662,12 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// handover that would have been fine is dropped and the turn carries on. That is
 	// the direction this errs in, deliberately, and it costs a conversation some
 	// parallelism where the other direction cost a worker its whole deadline.
-	saysHeldWork := len(read.held) > 0 && namesHeldWork(goal, read.held)
+	verdict.Work = true
+	verdict.Goal = sketch.head(goal)
+	request := a.taskRequest()
+	saysHeldWork := len(read.held) > 0 && (namesHeldWork(verdict.Goal, read.held) ||
+		namesHeldWork(request, read.held) ||
+		namesHeldWork(routeAcceptance(verdict, request), read.held))
 	bareAskOnADividedDrawing := carried == carryRungAsk && strings.TrimSpace(read.ownRemainder) != ""
 	if saysHeldWork || bareAskOnADividedDrawing {
 		hub.send(Event{Kind: EventNotice, Text: checkpointHeldWholeNote})
@@ -3669,8 +3677,6 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 		// for the reason in a ladder that may not even have one.
 		return checkpointHandover{decision: checkpointCeilingHeldWork, reason: carryHeldWork}
 	}
-	verdict.Work = true
-	verdict.Goal = sketch.head(goal)
 	// A check for the whole request does not become permission to repeat it in
 	// only one remainder. Checks for retained work are not assigned to this child.
 	if len(read.held) > 0 || strings.TrimSpace(read.ownRemainder) != "" {
