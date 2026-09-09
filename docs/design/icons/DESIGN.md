@@ -86,6 +86,29 @@ The gutter says what family a step is and NEVER how it went: `test` draws a
 flask and never a checkmark, because the family is the act of checking and not
 its verdict.
 
+### Destinations
+
+| Meaning | Slot | Plain | Nerd font | ASCII |
+| --- | --- | --- | --- | --- |
+| where the next thing goes | `GTarget` | `→` | — (geometry) | `→` |
+
+One mark, added 2026-09-09 for home's rule
+(`→ new conversation in ~/src/parser · glm-5.3-flash`, internal/tui3's
+homedraft.go). It is the only mark in the table about a **destination** rather
+than a state, and it is deliberately neither `GScopeUp` (a header pointing back
+up a tree) nor `GPromptSteer` (a composer's own prompt).
+
+It is **geometry**: an arrow is already the right character for a grid, and a
+Font Awesome arrow would buy nothing and spend a private-use codepoint. Note the
+consequence, because it is the one cost of taking a character this common —
+U+2192 is now a vocabulary byte, so `internal/tui2/modelui/result.go` needed the
+first entry the `literalExemptions` list has had in a while (a `String()` for a
+log line). `internal/tui3` is held by its own `iconLawRunes` map, which
+deliberately does NOT claim `→`: a dozen hint strings on that surface spell it as
+the name of the **right arrow key** (`→ verbs`, `→ opens`, `→ lanes`), which is a
+key and not a mark, and a gate that failed on those would be a gate people learn
+to ignore.
+
 The rest of the vocabulary — disclosure, prompts, the place line, the status
 line, the spawn tree, the gauges, the prose slots — is in
 `internal/tui2/tokens/nerdfont.go`, one binding each, with its argument at its

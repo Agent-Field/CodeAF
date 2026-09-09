@@ -1,9 +1,12 @@
 package tui3
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // HOME'S COMPOSER ANSWERS A "/" THE WAY CHAT'S DOES: a ranked menu while typing
@@ -174,9 +177,15 @@ func TestHomePlainSentenceStillStarts(t *testing.T) {
 }
 
 // TestHomeSlashSmokeWalks: a handful of commands walked through home's
-// dispatcher, each doing what it does in chat. /home re-opens the screen;
-// /model opens the picker, which is modal over every surface; /help writes the
-// key sheet into the conversation behind the screen.
+// dispatcher, each doing what it does HERE — which is not always what it does
+// in chat, and the difference is the gate (homeslash.go).
+//
+// EVERY KEY GOES THROUGH THE REAL ROUTER. This test used to assert that /model
+// set `a.pick.open` and then drive the list with a direct call to
+// [app.pickerKey] — so the gate was green on a thing a person could not do: the
+// picker was open behind a place that cannot draw it, and every key while a
+// place is showing goes to [app.placeKeyPress], which never asks it. The router
+// is [app.key], and it is what a person's fingers reach.
 func TestHomeSlashSmokeWalks(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
@@ -184,31 +193,349 @@ func TestHomeSlashSmokeWalks(t *testing.T) {
 	a.openHome()
 	runCmd(a.openHome())
 
-	// /model opens the picker, and the picker takes the keys from any surface.
+	// /model opens the list OVER THE TARGET, drawn in home's own body, and the
+	// router drives it: the walk, the filter and the way out are all keys.
 	typeHome(a, "/model")
-	runCmd(a.homeEnter())
-	if !a.pick.open {
-		t.Fatal("typing /model on home did not open the model picker")
+	runCmd(a.key(key("enter")))
+	if a.pick.open {
+		t.Fatal("/model at home opened the conversation's picker, which a place cannot draw")
 	}
-	// The picker is modal over every surface (input.go), so esc belongs to it
-	// while it is up — the router would hand it there, and the test must too.
-	a.pickerKey(key("esc"))
+	if !a.target.pick.open {
+		t.Fatal("typing /model on home did not open the model list over the target")
+	}
+	if text := homeText(a); !strings.Contains(text, targetPickWord) {
+		t.Fatalf("the foot does not name the list's own keys:\n%s", text)
+	}
+	runCmd(a.key(key("esc")))
+	if a.target.pick.open {
+		t.Fatal("esc through the router did not close the model list")
+	}
 
-	// /help answers in the conversation behind the screen, as chat's does.
+	// /help answers with a note, and the note is READ where it was typed.
 	typeHome(a, "/help")
-	runCmd(a.homeEnter())
+	runCmd(a.key(key("enter")))
 	if notes := homeNotes(a); !strings.Contains(notes, "/help") && !strings.Contains(notes, "chord") {
 		t.Fatalf("the key sheet did not land behind home:\n%s", notes)
+	}
+	if a.home.msg == "" {
+		t.Fatal("/help answered on home and said nothing on home's own line")
 	}
 
 	// /home stays home, with the composer emptied by the dispatch.
 	typeHome(a, "/home")
-	runCmd(a.homeEnter())
+	runCmd(a.key(key("enter")))
 	if !a.at(pageHome) {
 		t.Fatal("typing /home on home left the screen")
 	}
 	if text := strings.TrimSpace(a.home.box.String()); text != "" {
 		t.Fatalf("the box still holds %q after /home ran", text)
+	}
+}
+
+// targetPathWord is the folder home's rule actually draws — the same short form
+// every other path on this surface wears (render.go's [shortPath]) — so an
+// assertion is about which folder the rule named rather than about how it was
+// abbreviated.
+func targetPathWord(a *app) string {
+	return a.hostedPath(a.placeWord(shortPath(a.targetWhere(), a.tilde, 0)))
+}
+
+// TestHomesRuleSaysWhereTheNextConversationGoes: the rule above the box is a
+// legend, and its left is the target — the folder and the model — with the two
+// chords that change them on its right.
+func TestHomesRuleSaysWhereTheNextConversationGoes(t *testing.T) {
+	lab := newHomeLab(t)
+	where := lab.workspace("parser")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", where, time.Now())
+	a := lab.app(mine)
+	a.workspace = where
+	openHomeOn(a, mine)
+	runCmd(a.openHome())
+
+	text := homeText(a)
+	if !strings.Contains(text, targetLeadWord+targetPathWord(a)) {
+		t.Fatalf("the rule does not say where the next conversation opens:\n%s", text)
+	}
+	if !strings.Contains(text, targetModelKeyWord) {
+		t.Fatalf("the rule does not name the model chord:\n%s", text)
+	}
+	// AND THE CHIP IS OFF THE BOX ROW. It said the same fact one row down, in
+	// competition with the draft, and it was the reading `enter` did not honour.
+	if strings.Contains(text, placeScopeWord+" "+where) {
+		t.Fatalf("home still draws the scope chip on its box row:\n%s", text)
+	}
+}
+
+// TestHomesRuleGivesUpTheModelBeforeTheFolder is the ladder. The folder is the
+// fact `enter` acts on, so it is the last thing standing — and the keys are
+// never dropped before the label is shortened.
+func TestHomesRuleGivesUpTheModelBeforeTheFolder(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	where := lab.workspace("parser")
+	other := lab.workspace("cafe")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", where, now)
+	lab.session("-tmp-beta", "bbbb000000000001", "the cafe pricing page", other, now.Add(-time.Hour))
+	a := lab.app(mine)
+	a.workspace = where
+	a.model = "zhipu/glm-5.3-flash"
+	openHomeOn(a, mine)
+	runCmd(a.openHome())
+	short := targetPathWord(a)
+
+	wide, _ := a.targetLegend(200, a.pal)
+	if !strings.Contains(ansi.Strip(wide), modelBase(a.model)) {
+		t.Fatalf("a wide rule dropped the model:\n%s", ansi.Strip(wide))
+	}
+	if !strings.Contains(ansi.Strip(wide), targetFolderKeyWord) {
+		t.Fatalf("a wide rule dropped the folder chord:\n%s", ansi.Strip(wide))
+	}
+	// Narrow enough that the model cannot fit beside the folder, wide enough
+	// that the folder can. The keys survive: they are the cheapest true thing on
+	// the line and the label is what has too much to say.
+	room := ansi.StringWidth(targetLeadWord+short) + ansi.StringWidth(targetModelKeyWord) + 12
+	narrow, drew := a.targetLegend(room, a.pal)
+	if !drew {
+		t.Fatalf("a %d-column rule drew nothing at all", room)
+	}
+	stripped := ansi.Strip(narrow)
+	if strings.Contains(stripped, modelBase(a.model)) {
+		t.Fatalf("the model outlived the room for it:\n%s", stripped)
+	}
+	if !strings.Contains(stripped, filepath.Base(where)) {
+		t.Fatalf("the folder went before the model did:\n%s", stripped)
+	}
+	if !strings.Contains(stripped, targetModelKeyWord) {
+		t.Fatalf("the keys were dropped before the label was shortened:\n%s", stripped)
+	}
+}
+
+// TestEnterAtHomeOpensTheConversationInTheRowsFolder: the disagreement this
+// wave exists to end. The cursor rests on another project's row, the rule says
+// so, and `enter` honours it — where it used to open a conversation in this
+// window's own workspace and ignore the row entirely.
+func TestEnterAtHomeOpensTheConversationInTheRowsFolder(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.workspace("alpha")
+	theirs := lab.workspace("beta")
+	one := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", mine, now)
+	two := lab.session("-tmp-beta", "bbbb000000000001", "the cafe pricing page", theirs, now.Add(-time.Hour))
+	_ = two
+	a := lab.app(one)
+	a.workspace = mine
+
+	var opened string
+	next := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+	a.start = func(workspace string) (Conversation, error) {
+		opened = workspace
+		return Conversation{Agent: next, SessionFile: workspace + "/next/transcript.jsonl", Workspace: workspace}, nil
+	}
+	openHomeOn(a, two)
+	runCmd(a.openHome())
+	a.home.point(two)
+	// THE CURSOR'S ROW IS THE TARGET WITH NOTHING TYPED, which is the reading the
+	// scope chip used to draw and `enter` used to ignore.
+	if got := a.targetWhere(); got != theirs {
+		t.Fatalf("the target reads %q with the cursor on the other project's row, want %q", got, theirs)
+	}
+	// AND A PIN IS THAT READING HELD. The action row takes the cursor the moment
+	// a letter lands — it is the last line of the drop-up — so a person who wants
+	// to carry a sentence somewhere else pins it, which is what `alt+w` is for.
+	runCmd(a.key(key("alt+w")))
+	for i := 0; i < len(a.composerDestinations()) && a.targetWhere() != theirs; i++ {
+		runCmd(a.key(key("alt+w")))
+	}
+	if got := a.targetWhere(); got != theirs {
+		t.Fatalf("alt+w never reached %q; it stopped on %q", theirs, got)
+	}
+
+	typeHome(a, "why is the lexer allocating")
+	runCmd(a.homeEnter())
+	if opened != theirs {
+		t.Fatalf("enter opened a conversation in %q, want the row's own folder %q", opened, theirs)
+	}
+	if len(next.sent) != 1 || next.sent[0] != "why is the lexer allocating" {
+		t.Fatalf("the sentence did not reach the conversation that opened: %q", next.sent)
+	}
+	// AND THE FOLDER PIN IS SPENT. It was used; the honest reading from here on
+	// is the cursor's own row again (homedraft.go's owner ruling).
+	if a.target.where != "" {
+		t.Fatalf("the folder pin survived the conversation that spent it: %q", a.target.where)
+	}
+}
+
+// TestModelAtHomePinsTheDraftAndSaysSo: /model at home is about the DRAFT. It
+// used to switch the model of the conversation behind the screen and write the
+// answer into it, where it could not be read.
+func TestModelAtHomePinsTheDraftAndSaysSo(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	a.model = "zhipu/glm-5.3-flash"
+	a.openHome()
+	runCmd(a.openHome())
+
+	typeHome(a, "/model zhipu/glm-5.3")
+	runCmd(a.key(key("enter")))
+	if a.target.model != "zhipu/glm-5.3" {
+		t.Fatalf("the draft's model is %q, want the slug that was typed", a.target.model)
+	}
+	if a.model != "zhipu/glm-5.3-flash" {
+		t.Fatalf("/model at home re-modelled the conversation behind the screen: %q", a.model)
+	}
+	want := "model · " + modelBase("zhipu/glm-5.3") + targetPinnedModelWord
+	if a.home.msg != want {
+		t.Fatalf("home's line reads %q, want %q", a.home.msg, want)
+	}
+	// AND THE RULE WEARS IT, so the pin is visible after the line has gone.
+	if text := homeText(a); !strings.Contains(text, modelBase("zhipu/glm-5.3")) {
+		t.Fatalf("the rule does not say the pinned model:\n%s", text)
+	}
+	// AND IT SURVIVES LEAVING HOME AND COMING BACK (the owner's ruling).
+	a.closeHome()
+	runCmd(a.showPage(pageHome))
+	if a.target.model != "zhipu/glm-5.3" {
+		t.Fatalf("the model pin did not survive a reopen of home: %q", a.target.model)
+	}
+}
+
+// TestAnUnknownCommandRefusesWhereItWasTyped: the one refusal a person most
+// needs to see was the one they could not see.
+func TestAnUnknownCommandRefusesWhereItWasTyped(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	a.openHome()
+	runCmd(a.openHome())
+
+	typeHome(a, "/nonsense")
+	runCmd(a.key(key("enter")))
+	if got := a.home.msg; got != unknownCommandWord("nonsense") {
+		t.Fatalf("home's line reads %q, want %q", got, unknownCommandWord("nonsense"))
+	}
+	if text := homeText(a); !strings.Contains(text, unknownCommandWord("nonsense")) {
+		t.Fatalf("the refusal is not on the frame:\n%s", text)
+	}
+}
+
+// TestModelThenEscLeavesNoPickerOverTheConversation is "it goes to an old
+// chat", pinned. /model opened a bottom-anchored overlay a place cannot draw,
+// nothing closed it, and one `esc` handed the frame to the conversation
+// underneath — with the picker on it.
+func TestModelThenEscLeavesNoPickerOverTheConversation(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	a.openHome()
+	runCmd(a.openHome())
+
+	typeHome(a, "/model")
+	runCmd(a.key(key("enter")))
+	if !a.target.pick.open {
+		t.Fatal("/model did not open the list over the target")
+	}
+	runCmd(a.key(key("esc")))
+	runCmd(a.key(key("esc")))
+	if a.at(pageHome) {
+		t.Fatal("two escapes did not leave home")
+	}
+	if a.pick.open || a.target.pick.open {
+		t.Fatal("a model list is standing over the conversation home was in front of")
+	}
+	if text := ansi.Strip(mustFrame(a)); strings.Contains(text, pickerHintAt(80)) {
+		t.Fatalf("the picker is drawn over the conversation:\n%s", text)
+	}
+}
+
+// TestShowPageClosesEveryModalOnTheWayIn is the other half of the same repair,
+// said about all ten rather than about the one a person met first.
+func TestShowPageClosesEveryModalOnTheWayIn(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+
+	a.pick.open, a.roster.open, a.shelf.open = true, true, true
+	a.crewPick.open, a.effPick.open = true, true
+	a.connPanel.open, a.harnPanel.open, a.permPanel.open, a.subPage.open = true, true, true, true
+	runCmd(a.showPage(pageHome))
+	for name, open := range map[string]bool{
+		"a.pick": a.pick.open, "a.roster": a.roster.open, "a.shelf": a.shelf.open,
+		"a.crewPick": a.crewPick.open, "a.effPick": a.effPick.open,
+		"a.connPanel": a.connPanel.open, "a.harnPanel": a.harnPanel.open,
+		"a.permPanel": a.permPanel.open, "a.subPage": a.subPage.open,
+	} {
+		if open {
+			t.Errorf("%s survived a place standing up; it will appear over whatever esc lands on", name)
+		}
+	}
+}
+
+// TestAltWCyclesWhereTheNextConversationOpens: the chord the router swallows on
+// every other place, claimed by the one place it means something on.
+func TestAltWCyclesWhereTheNextConversationOpens(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	one := lab.workspace("alpha")
+	two := lab.workspace("beta")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", one, now)
+	lab.session("-tmp-beta", "bbbb000000000001", "the cafe pricing page", two, now.Add(-time.Hour))
+	a := lab.app(mine)
+	a.workspace = one
+	openHomeOn(a, mine)
+	runCmd(a.openHome())
+
+	places := a.composerDestinations()
+	if len(places) < 2 {
+		t.Skipf("this lab offered one destination (%v); the chord is correctly absent", places)
+	}
+	was := a.targetWhere()
+	runCmd(a.key(key("alt+w")))
+	if got := a.targetWhere(); got == was {
+		t.Fatalf("alt+w did not move the target off %q", was)
+	}
+	if !strings.HasPrefix(a.home.msg, targetMovedWord) {
+		t.Fatalf("alt+w said %q, want it naming where the next conversation opens", a.home.msg)
+	}
+	if text := homeText(a); !strings.Contains(text, targetLeadWord+targetPathWord(a)) {
+		t.Fatalf("the rule did not follow the chord:\n%s", text)
+	}
+	// Round the cycle and back: a walk with a fixed order, never a lottery. One
+	// press has already been spent, so the round trip is one short of the list.
+	for i := 0; i < len(places)-1; i++ {
+		runCmd(a.key(key("alt+w")))
+	}
+	if got := a.targetWhere(); got != was {
+		t.Fatalf("the cycle came back to %q, want %q", got, was)
+	}
+}
+
+// TestResumeAndFolderAnswerOnHomesOwnLine: two commands whose answer home
+// already IS. Neither opens an overlay this screen cannot draw; each says the
+// gesture that does the thing here.
+func TestResumeAndFolderAnswerOnHomesOwnLine(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	a.openHome()
+	runCmd(a.openHome())
+
+	typeHome(a, "/resume")
+	runCmd(a.key(key("enter")))
+	if a.roster.open {
+		t.Fatal("/resume at home opened the roster over a screen that cannot draw it")
+	}
+	if a.home.msg != homeIsTheResumeWord {
+		t.Fatalf("/resume said %q, want %q", a.home.msg, homeIsTheResumeWord)
+	}
+
+	typeHome(a, "/folder")
+	runCmd(a.key(key("enter")))
+	if a.folder.open {
+		t.Fatal("/folder at home opened the folder picker over a screen that cannot draw it")
+	}
+	if a.home.msg != homeMoveTheTargetWord {
+		t.Fatalf("/folder said %q, want %q", a.home.msg, homeMoveTheTargetWord)
 	}
 }
 

@@ -364,7 +364,8 @@ the pulse, the tab bar, the rule, the rows and the fold:
  ○ Bounty Reward Companies           leadgen                                      3h
  ○ Thor Fight Clip Generation        media                                       13h
  ▸ 17 more
- › say what you want done                                        here ~/aforge-v2
+ ─ → new conversation in ~/aforge-v2 · glm-5.3-flash ── alt+w folder · alt+o model · / commands ─
+ › say what you want done
  type to search or start something new · ↑↓ pick · enter open · tab next place
 ```
 
@@ -982,11 +983,20 @@ out.
 a sentence longer than the frame wraps onto continuation rows — up to three — and past
 that the window scrolls with the caret, marked with `…` where the `›` was. Nothing you
 type is ever truncated out of view. There is no key to open a new line here (that is the
-chat box's `ctrl+j`); on home and on every other place, **`alt+enter` sends what you typed
-off as a task** — which on home is `ask here`. The first press opens the composer layer,
-where the three facts a task needs are settled (the places page, *the composer layer*), and
-the second press is the send. `ctrl+enter` does the same thing on the terminals that can
-send it.
+chat box's `ctrl+j`).
+
+**`alt+enter` is a task and not `ask here`.** On home and on every other place the chord
+opens the **composer layer**, where the three facts a task needs are settled — where, on
+what, how much (the places page, *the composer layer*) — and a second `alt+enter` sends it
+off. It has never been `ask here`, and this page used to say it was.
+
+**`ask here` is one `↑` and then `enter`.** The row is already on the screen while you
+type: `? ask here: "…"` sits directly above `+ start a new conversation: "…"`, and the
+cursor rests on the lower of the two, so the ask is one keystroke up. `ctrl+enter` is still
+bound to it and is no longer named on the foot, because only a terminal that can tell
+`ctrl+enter` from a plain `enter` ever sends it — the kitty keyboard protocol, Windows
+terminals — and a foot naming a key most hands cannot press is a foot advertising a key
+that does not exist.
 
 **A paste lands in home's box.** Paste while home is open and the text goes into the foot
 box — filtering the list, exactly as typing does — or into the ask-here exchange's own
@@ -1432,14 +1442,22 @@ back — sitting directly above the box you are typing into.
 
  ? ask here: "pricing"
  + start a new conversation: "pricing"
- ──────────────────────────────────────────────────────────────────────────────────────────────────
+ ─ → new conversation in ~/aforge-v2 · glm-5.3-flash ────────── alt+w folder · alt+o model ─
  › pricing
- enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · esc clear
+ enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear
 ```
 
 **The cursor rests on the action row by default.** So typing and pressing `enter` starts a
-fresh conversation in this project and sends what you typed, exactly as it always has,
-however many matches are on screen.
+fresh conversation and sends what you typed, however many matches are on screen.
+
+**Where it opens is on the rule above the box, and `enter` honours it.** That line reads
+`→ new conversation in ~/src/parser · glm-5.3-flash`: the folder the conversation will open
+in, and the model it will answer on. With nothing pinned the folder **follows the row your
+cursor is on** — walk onto another project's row and the rule re-points — and with nothing
+under the cursor it is this window's own project. `alt+w` pins it, `alt+o` pins the model,
+and *Change the model before starting* has the whole of both. Until this wave the rule was
+blank, a chip beside the box said `here ~/other-project`, and `enter` ignored it and opened
+in this window's folder anyway.
 
 One `↑` steps off that row **up** onto `ask here: "…"`, which answers the same sentence in
 the pane on the right instead of opening a conversation for it — see *Asking from home*. A
@@ -1458,6 +1476,12 @@ sent. See *Running a slash command from home*, directly below.
 
 With **nothing** typed there is no action row and the list hangs from the top again — see
 *Why did the list jump to the bottom when I typed*.
+
+**`ctrl+t` is `enter` for the row under the cursor.** It pins that row's folder onto the
+rule and then does exactly what `enter` does — carrying whatever is typed into the fresh
+conversation. It used to refuse a half-typed sentence with `clear or send your message
+first · ctrl+t starts fresh in <path>`, which asked you to choose between a target and a
+sentence on the one screen whose job is to carry both. That refusal is gone.
 
 Starting a conversation this way is `/new` followed by your sentence, so everything `/new`
 does applies. On a surface with no fresh-session seam it refuses in `/new`'s own words,
@@ -1496,32 +1520,83 @@ mistyped one.
 
 **Yes. A line that begins with `/` is a command, and `enter` runs it rather than sending
 it.** Typing `/settings` on home and pressing `enter` opens the settings panel; it does not
-start a conversation whose first message is the word `/settings`. Home's box behaves exactly
-as a chat's box does here — same commands, same dispatcher, same rules.
+start a conversation whose first message is the word `/settings`.
 
 **The screen says which `enter` you are about to press, before you press it.** With a command
 in the box the action row reads `+ run /settings` in place of `+ start a new conversation:
-"…"`, and the foot under the box reads `enter runs this command · ctrl+enter ask here ·
-↑ pick a match · esc clear`.
+"…"`, and the foot under the box reads `enter runs this command · ↑ ask here ·
+↑↑ pick a match · esc clear`.
+
+**Every command has one of four fates here, and you can see all four.** Home is not a
+conversation, so a command that is *about* a conversation cannot simply act on one behind
+your back — which is what this used to do, silently, for twenty-six of them.
+
+| What you type | What happens |
+| --- | --- |
+| `/model` · `/model <slug>` | **pins the draft.** The list opens in home's own body; enter says `model · glm-5.3 · for the next conversation you start here`. Nothing behind home is touched. |
+| `/settings` `/set` `/config` · `/home` · `/search` · `/spend` · `/standing` · `/memory` `/memories` · `/history` · `/budget` | **opens that place**, exactly as before. A place replaces a place. |
+| `/resume` `/sessions` | **says `this list is /resume · enter opens a row`** — home *is* that list. |
+| `/folder` `/place` `/dir` (bare) | **says `alt+w moves the next conversation · or type a path`.** |
+| `/folder <path>` | **opens the context browser** at that folder, as it always did. |
+| `/files` · `/attach` · `/crew` (bare) · `/permissions` `/perms` · `/connect` · `/harness` · `/subharness` · `/copy` · `/select` · `/rewind` `/undo` `/back` · `/compact` · `/export` `/save` · `/image` · `/task` · `/standing <words>` | **opens a conversation at the target first** — the folder and model on the rule above the box — then runs there. Home closes, exactly as `enter` closes it. |
+| `/help` · `/manual` · `/status` · `/cost` · `/cache` · `/crew <preset>` · `/budget <n>` · a word nobody defined | **answers with a note**, and the first line of that note is put on home's own line under the box. `there is no command called /pricing · / lists them` is now something you can read. |
+
+**Ten of them used to be dead.** `/model`, `/resume`, `/folder`, `/attach`, `/files`,
+`/crew`, `/permissions`, `/connect`, `/harness` and `/subharness` each opened an overlay
+that home cannot draw and the keyboard cannot reach — so nothing happened, and then the
+overlay appeared over the conversation you landed in when you pressed `esc`. That is what
+"it goes to an old chat" was.
 
 **The command list opens over home's box too.** Typing `/` raises the same ranked drop-up a
 chat shows — best match nearest the box — and `↑` walks up into it, `enter` runs the row
-you land on, and `esc` puts the list away. A command that TAKES words leaves `/model ` in
-the box with the caret after it rather than running on the spot. A slash word in the middle
-of a sentence is a mention and never a dispatch: choosing a row there rewrites the word and
-nothing runs. *Typing a slash to see the command list* has the whole of that behaviour.
+you land on, and `esc` puts the list away. Every command is still offered, because every
+command's fate is now visible. A command that TAKES words leaves `/model ` in the box with
+the caret after it rather than running on the spot. A slash word in the middle of a sentence
+is a mention and never a dispatch: choosing a row there rewrites the word and nothing runs.
+*Typing a slash to see the command list* has the whole of that behaviour.
 
 **A path is not a command.** `/tmp/alpha` is a folder, so the row goes on offering
 `start a new conversation in /tmp/alpha` — see *Start something new from home* for the
 whole of that rule, and for the one word (`/home`) where the table wins.
 
-**Commands that are about a conversation act on the one this window is holding** behind the
-screen — home always has one open behind it, so `/model`, `/rewind` and the rest are not
-refused here.
+**You can ask about a command instead of running it.** Type it and press `↑` then `enter`
+— the `ask here` row — and the answer comes back in the pane on the right without the
+command being run (see *Asking from home*).
 
-**`ctrl+enter` still asks here.** So you can ask a question *about* a command — type it and
-press `ctrl+enter` instead of `enter`, and the answer comes back in the pane on the right
-without the command being run (see *Asking from home*).
+## Change the model before starting — /model on home, alt+o, the arrow line above the box
+
+**The model the next conversation will answer on is written on the rule above home's box**,
+after the folder: `→ new conversation in ~/src/parser · glm-5.3-flash`. With nothing pinned
+that is this window's own model. Two doors change it, and they are the same door:
+
+- **`alt+o`**, or **pressing the model's name on that rule**, opens the model list in home's
+  own body — the same filterable list `/model` opens in a conversation. Type to narrow it,
+  `↑↓` to walk it, `enter` to take the row, `esc` to leave it alone. The foot while it is up
+  reads `↑↓ pick · enter use it · esc back`.
+- **`/model <slug>`** typed into the box pins it straight away, with no list.
+
+Either way home says, on the line under the box:
+`model · glm-5.3 · for the next conversation you start here`. A pinned model that differs
+from this window's own is drawn in the accent on the rule, so you can see you set it after
+the message line has gone.
+
+**It changes the draft and nothing else.** The conversation this window is holding behind
+home keeps the model it had, and nothing is written down until a conversation actually opens
+on the pin — at which point it is an ordinary model switch, note and all, in the new
+conversation. `/model <slug>` at home used to do all three of those at once — re-model a conversation you were not looking at, write
+`model · <slug>` into it where you could not read it, and save the choice as the default for
+the next launch — and say nothing at all on screen.
+
+**The model pin lasts as long as this window does.** `esc` out of home, work in a
+conversation, come back to home: it is still pinned. Starting a conversation from home does
+not spend it either — a model is how you like to work, not a decision about one sentence.
+**The folder pin is spent**, because it was about that sentence: once the conversation has
+opened there, the rule goes back to following the row under your cursor.
+
+**`alt+w` is the same gesture for the folder** — press it, or press the path on the rule, and
+the target walks to the next project on this machine, round again from the last. Home says
+`next conversation opens in ~/work/beta`. On a machine with one project there is nowhere to
+move to, and `alt+w folder` is simply not on the rule.
 
 ## How do I see the collapsed sessions — 13 more
 

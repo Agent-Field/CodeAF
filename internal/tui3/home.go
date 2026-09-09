@@ -2521,21 +2521,29 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "ctrl+t":
 		// A FRESH CONVERSATION IN THE ROW'S OWN FOLDER, on enter's law: a row
 		// from somewhere else starts one THERE and puts the conversation in
-		// front into the keeper (keeper.go's [app.startBeside]). A half-typed
-		// message stays a message: [app.homeStart] carries it into the fresh
-		// conversation here, and for a folder the keeper cannot carry it into,
-		// the key refuses rather than quietly throwing the sentence away.
+		// front into the keeper (keeper.go's [app.startBeside]).
+		//
+		// IT IS `enter` FOR THE ROW UNDER THE CURSOR NOW, and the refusal it used
+		// to answer a typed sentence with is gone. `clear or send your message
+		// first · ctrl+t starts fresh in <path>` was the surface asking a person
+		// to choose between a target and a sentence, on a screen whose whole job
+		// is to carry both — and `enter` carries both, because the row the cursor
+		// is on IS the target (homedraft.go). So this key pins that row's folder
+		// and takes enter's own road.
 		if line, ok := h.previewLine(); ok && line.kind == homeSession {
 			if where := homeWhere(line); where != "" && where != a.workspace {
 				if !homeFolderThere(where) {
 					h.say(homeGoneWord+" · "+where, "")
 					return nil
 				}
-				if !h.box.empty() {
-					h.say("clear or send your message first · ctrl+t starts fresh in "+where, "")
-					return nil
+				// A ROW MAY RECORD A NAME WHERE IT RECORDED NO PATH ([homeWhere]),
+				// and a pin is an ADDRESS or it is nothing — pages.go's
+				// [scopeAddress] states that law about the reading this pin
+				// replaces. The list's own resolver answers the name.
+				if resolved := h.typedPlace(where); resolved != "" {
+					where = resolved
 				}
-				return a.homeStart(where)
+				a.target.where = where
 			}
 			return a.homeStart(strings.TrimSpace(h.box.String()))
 		}
@@ -3353,31 +3361,33 @@ func (a *app) homeStart(text string) tea.Cmd {
 			return nil
 		}
 		a.closeHome()
+		// AND THE PINNED MODEL COMES WITH IT. A path typed into the box is still
+		// a conversation started from home, and the rule above the box said what
+		// it would answer on (homedraft.go).
+		a.applyTargetModel()
 		// AND THE FIRST MESSAGE IS NOT SENT FOR THEM. What was typed named a
 		// place and not a sentence, so there is nothing to send — the pictures
 		// and the files are on the new conversation's tray, in front of the
 		// person, waiting for the words they were dropped to go with.
 		return cmd
 	}
-	a.closeHome()
-	// THE TRAY COMES TOO, and it comes through [app.renew] rather than around it:
-	// the conversation being left hands its chips to the aside and the renew hands
-	// them back, on the law that the draft goes with the PERSON (detach.go).
-	renewed, started := a.renew()
-	// THE SENTENCE IS ONLY SENT INTO A CONVERSATION THE RENEW ACTUALLY OPENED,
-	// which is what remains of this door's repair now that the keeper refuses
-	// nothing. Home used to close itself, ask for a conversation, and submit
-	// whether or not one came back — so a refusal met after the close sent the
-	// words into whatever was already on screen. There is no cap to be refused
-	// by any more, but a door can still fail (a session folder that cannot be
-	// made), and the bool is what tells the two apart.
-	if !started {
-		// The door itself failed — a session folder that could not be made — and
-		// [app.renew] has said so where a person is now standing. The sentence
-		// goes into the box in front of them rather than into a conversation it
-		// was not meant for: it is still theirs to send, and this door has always
-		// promised the words go with the PERSON.
-		a.input.setText(text)
+	// AND EVERYTHING ELSE OPENS AT THE TARGET (homedraft.go). This is the half of
+	// the repair a person actually feels: the rule above the box says `→ new
+	// conversation in ~/src/parser`, and until this wave `enter` opened one in
+	// THIS WINDOW'S workspace and ignored it. The row under the cursor and the
+	// key disagreed about where a sentence went, which is exactly the drift the
+	// scope chip existed to end and could not, because nothing read it.
+	started, opened := a.homeOpenAtTarget()
+	if !opened {
+		// A door that failed has already said so where the person is standing —
+		// [app.renew] into home's own line, [app.startBeside]'s refusal onto it.
+		// Where the screen went with it, the sentence goes into the box in front
+		// of them rather than into a conversation it was not meant for: it is
+		// still theirs to send, and this door has always promised the words go
+		// with the PERSON.
+		if !a.at(pageHome) {
+			a.input.setText(text)
+		}
 		return nil
 	}
 	// A FULL TRAY IS A MESSAGE, which is input.go's law about enter said at the
@@ -3385,9 +3395,74 @@ func (a *app) homeStart(text string) tea.Cmd {
 	// is not an empty message, and the door that carries the pictures is the
 	// tray's own (attach.go's [app.submitImages]).
 	if len(a.chips) > 0 {
-		return tea.Batch(renewed, a.submitImages(text))
+		return tea.Batch(started, a.submitImages(text))
 	}
-	return tea.Batch(renewed, a.submit(text))
+	if strings.TrimSpace(text) == "" {
+		return started
+	}
+	return tea.Batch(started, a.submit(text))
+}
+
+// homeOpenAtTarget is the ONE DOOR onto a conversation started from home: the
+// folder on the rule, the model on the rule, and home closing behind you. It
+// sends nothing — what to send is the caller's question, and there are three
+// callers with three answers ([app.homeStart] sends the sentence, `ctrl+t`
+// sends whatever was typed, and homeslash.go's gate sends a command).
+//
+// TWO ROADS, AND WHICH ONE IS THE TARGET'S OWN ANSWER. A target somewhere other
+// than this window's workspace is [app.startBeside] — a fresh conversation
+// THERE, with the one in front stepped aside into the keeper. The window's own
+// workspace is [app.renew], which additionally TAKES THE PLACE of the
+// conversation behind home when that one is fresh and empty, and that is the
+// behaviour a person has had since before home had a target.
+//
+// THE FOLDER PIN IS SPENT HERE AND THE MODEL PIN IS NOT (homedraft.go's owner
+// ruling). It is spent on the way OUT rather than on the way in, so a door that
+// refused leaves the pin a person set exactly where they set it.
+func (a *app) homeOpenAtTarget() (tea.Cmd, bool) {
+	where := strings.TrimSpace(a.targetWhere())
+	if where != "" && where != strings.TrimSpace(a.workspace) {
+		// THE TRAY GOES WITH THE PERSON, and carrying it means taking it OUT of
+		// the conversation being stepped aside from before the aside is stowed —
+		// the law the typed-path branch above states in full.
+		carried := a.chips
+		a.chips = nil
+		cmd, refusal := a.startBeside(where)
+		a.chips = carried
+		if refusal != "" {
+			a.home.say(refusal, "")
+			return nil, false
+		}
+		a.spendTargetWhere()
+		a.closeHome()
+		a.applyTargetModel()
+		return cmd, true
+	}
+	a.closeHome()
+	// THE TRAY COMES TOO, and it comes through [app.renew] rather than around it:
+	// the conversation being left hands its chips to the aside and the renew hands
+	// them back, on the law that the draft goes with the PERSON (detach.go).
+	renewed, started := a.renew()
+	if !started {
+		return nil, false
+	}
+	a.spendTargetWhere()
+	a.applyTargetModel()
+	return renewed, true
+}
+
+// applyTargetModel puts the pinned model onto the conversation that has just
+// opened, and does nothing at all where nobody pinned one.
+//
+// IT IS CALLED AFTER THE ATTACH AND NEVER BEFORE IT. [app.startBeside] and
+// [app.renew] both swap the agent synchronously, so `a.model` here is the new
+// conversation's — which is what makes "pinned, and different from what this
+// would have used anyway" the honest test ([app.targetModelPinned]).
+func (a *app) applyTargetModel() {
+	if !a.targetModelPinned() {
+		return
+	}
+	a.switchModel(strings.TrimSpace(a.target.model), 0)
 }
 
 // homeDroppedLine is the enter net over home's own box, and it reports whether
@@ -4059,6 +4134,13 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		// placemouse.go's [app.placeBoxPress]). Emptying it here is the same
 		// answer the clamp gives a box it cut off: no rows, no press.
 		a.boxRow, a.boxRows = 0, 0
+		// AND THE RULE'S DOORS GO WITH IT. The phone tier draws the target as a
+		// label and never as two pressable segments — there is no `alt` on a
+		// phone and nothing to press it with — so a span left standing from the
+		// wide frame would be a press answered by a door this frame never drew
+		// (homedraft.go, placemouse.go's [app.placeTargetPress]).
+		a.targetRow = -1
+		a.targetFolderSpan, a.targetModelSpan = hudSpan{}, hudSpan{}
 		return a.homePhoneFrame(width, height)
 	}
 	// EVERYTHING ABOVE AND BELOW THE BODY BELONGS TO THE ROUTER NOW (pages.go).
@@ -5204,6 +5286,13 @@ func homeFilesTouched(row session.SessionRow) int {
 // this is deliberately not. Every other row says what ITS keys do and takes the
 // router's two on the end.
 func (a *app) homeHint() string {
+	// AND THE MODEL LIST OVER THE TARGET NAMES ITS OWN THREE KEYS AND NOTHING
+	// ELSE. It has the whole keyboard while it is up (homedraft.go), so the
+	// router's tail would be two keys that do nothing — which is the one state
+	// this surface may never be in.
+	if a.targetPickShowing() {
+		return targetPickWord
+	}
 	hint := a.homeHintWords()
 	if hint == homeFootWord {
 		return homeRestHint
@@ -5259,17 +5348,24 @@ func (a *app) homeHintWords() string {
 		// true of a "/" line — the words can be asked about as words — so the
 		// clause that changes is the one that stopped being true.
 		//
-		// AND THE ORDER IS THE DROP ORDER. This sentence is a hundred and fourteen
-		// cells with the router's two keys on it, so a hundred-column frame cannot
-		// hold all of it and [hintFit] drops the clause nearest the way out —
-		// `↑ pick a match` — first. That is the right one to lose: ↑↓ walking a
-		// list is the key the resting foot already names (`↑↓ pick`) and the map
-		// names again, while `ctrl+enter` is a chord no other surface spells. A
-		// wide frame still says all three.
+		// `ask here` IS ↑ AND NOT A CHORD ANY MORE. `ctrl+enter` is still bound
+		// (above) and is no longer advertised: most terminals cannot send it at
+		// all, and `alt+enter` — the spelling that survives everywhere — belongs
+		// to the task layer on every place (placekeys.go). What every terminal
+		// CAN do is press the arrow key, and the row is already there: `? ask
+		// here: "…"` sits directly above `+ start a new conversation: "…"` with
+		// the cursor resting on the latter (homeexchange.go), so one ↑ is the ask
+		// and two is the first match. A foot that went on naming a chord a hand
+		// cannot send was the screen advertising a key that does not exist.
+		//
+		// AND THE ORDER IS THE DROP ORDER. [hintFit] drops the clause nearest the
+		// way out — `↑↑ pick a match` — first, which is the right one to lose:
+		// ↑↓ walking a list is the key the resting foot already names (`↑↓ pick`)
+		// and the map names again. A wide frame still says all three.
 		if a.home.runLabel(strings.TrimSpace(a.home.box.String())) != "" {
-			return "enter runs this command · ctrl+enter ask here · ↑ pick a match · esc clear"
+			return "enter runs this command · ↑ ask here · ↑↑ pick a match · esc clear"
 		}
-		return "enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · esc clear"
+		return "enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear"
 	case line.kind == homeQuiet && line.folded:
 		return "enter or → show them · esc close"
 	case line.kind == homeQuiet:

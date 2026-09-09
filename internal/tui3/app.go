@@ -2050,6 +2050,24 @@ type app struct {
 	// pointer — the same arrangement the model segment and the jump chip use
 	// (render.go's [hudSpan]).
 	homeDoor hudSpan
+	// echoHome is raised around the one dispatch home makes on its own behalf
+	// ([app.homeSlash]), and it is what tells a command's answer apart from every
+	// other note this surface writes ([app.noteWritten] holds the argument).
+	echoHome bool
+	// target is the draft home's box is FOR: which folder the next conversation
+	// opens in and which model it answers on (homedraft.go). It lives on the app
+	// rather than on [homeView] because both pins survive `esc` and a reopen of
+	// home — the owner's ruling, and homeView is rebuilt every time the screen is
+	// raised.
+	target homeTarget
+	// targetRow is which row of the frame home's rule was drawn on, and
+	// targetFolderSpan and targetModelSpan are the columns its two doors landed
+	// in. All three are written by the draw and read by the pointer, on
+	// [app.homeDoor]'s own bargain: a press resolves against what was PAINTED,
+	// never against a second computation of what should have been.
+	targetRow        int
+	targetFolderSpan hudSpan
+	targetModelSpan  hudSpan
 	// homeRoot is where that screen looks for the projects, and "" means the
 	// state root under this machine's home ([app.placesRoot]). It exists for
 	// tests, which build a projects directory in a temp dir; nothing on the door
@@ -3359,6 +3377,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// depending on which room you happen to be standing in
 			// (placemouse.go's [app.placeTabPress]).
 			if cmd, took := a.placeTabPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
+			// AND HOME'S RULE IS READ BEFORE HOME'S OWN ROWS, on the tab bar's
+			// argument exactly: it is a row of the FRAME rather than of the list,
+			// and the two facts written into it are doors (placemouse.go's
+			// [app.placeTargetPress]).
+			if cmd, took := a.placeTargetPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// AND THE COMPOSER AT THE FOOT IS READ BEFORE EVERY PLACE'S OWN ROWS
@@ -5433,6 +5458,40 @@ const shapingPreviewField = "brief"
 func shapingPreview(text string) string {
 	preview, _ := session.PartialString(text, shapingPreviewField)
 	return preview
+}
+
+// note is the conversation's own [feed.note] WITH ONE MORE PLACE TO SAY IT, and
+// it shadows the embedded method deliberately: `a.note(…)` is what four hundred
+// call sites already spell, and a second verb for "say this where the person is
+// standing" would be four hundred chances to pick the wrong one.
+func (a *app) note(text string) { a.noteWritten(text, false, nil) }
+
+// noteWritten is the one body behind all three of the app's note doors, and the
+// only thing it adds to the feed's own is THE ECHO ONTO HOME'S MESSAGE LINE.
+//
+// A COMMAND'S ANSWER MUST BE VISIBLE WHERE IT WAS TYPED. Home takes the frame
+// whole, so a note written into the conversation behind it is written where
+// nobody can read it — and the answers that landed there were the ones a person
+// most needed: `there is no command called /x · / lists them`, /help's key
+// sheet, /status, /cost, `crew · frugal`, a budget that was set. Home has had a
+// line for exactly this since it was built (pages.go's [app.placeMsgLine]) and
+// the dispatcher never reached it.
+//
+// IT IS THE FIRST LINE AND NOT THE WHOLE NOTE. The line under the box is one
+// row; a key sheet is thirty. The first line says what happened and the note
+// itself is still in the transcript, whole, one `esc` away.
+//
+// AND ONLY A NOTE THE PERSON ASKED FOR IS ECHOED ([app.echoHome]). Notes arrive
+// on this surface for a dozen reasons that have nothing to do with home — a
+// launch notice, a task landing, a connection dropping — and a line under home's
+// box that filled itself with whichever of those was most recent would be the
+// foot of the resting screen replaced by news, which is exactly what it is not
+// for. The flag is raised around the ONE dispatch home makes on its own behalf.
+func (a *app) noteWritten(text string, block bool, facts []string) {
+	a.feed.noteWritten(text, block, facts)
+	if a.echoHome && a.at(pageHome) {
+		a.home.say(firstLine(text), "")
+	}
 }
 
 // noteFacts is [feed.note] with THE PAYLOAD RULE's data named: the words inside

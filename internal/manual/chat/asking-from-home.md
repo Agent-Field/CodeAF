@@ -2,15 +2,15 @@
 
 ## Can I set a reminder from home
 
-Yes. Type it on the home screen and press `ctrl+enter` — or press `↑` once and then `enter`,
-which lands on the row spelled `ask here: "…"`.
+Yes. Type it on the home screen, press `↑` once — which lands on the row spelled
+`ask here: "…"` — and press `enter`.
 
 ```
  ? ask here: "remind me at 6 to leave"
  + start a new conversation: "remind me at 6 to leave"
- ──────────────────────────────────────────────────────────────────────────────────────────────────
+ ─ → new conversation in ~/aforge-v2 · glm-5.3-flash ────────── alt+w folder · alt+o model ─
  › remind me at 6 to leave
- enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · esc clear
+ enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear
 ```
 
 What you get is **a row at the top of home's list and a pane holding the exchange**. The row
@@ -236,9 +236,13 @@ A click on a card's chip in the pane answers the card, the same way clicking one
 in a conversation. A press anywhere on the row of chips counts as that row's, so missing the
 gap between two answers costs nothing.
 
-`ctrl+enter` only reaches aforge on a terminal that can tell it apart from a plain `enter`
-(the kitty keyboard protocol, Windows terminals). `alt+enter` is bound to the same thing and
-every terminal here sends it, so if `ctrl+enter` does nothing, use `alt+enter`.
+**There is a chord for it and the foot does not name it.** `ctrl+enter` is still bound to
+`ask here`, and it only reaches aforge on a terminal that can tell it apart from a plain
+`enter` — the kitty keyboard protocol, Windows terminals. `alt+enter` is **not** a second
+spelling of it: on home as on every place, that chord opens the composer layer and sends
+what you typed off as a **task** (the places page). So the arrow is the gesture the foot
+names, because the arrow is the one every terminal has. This page used to say `alt+enter` was
+bound to the same thing, and it was not.
 
 If this window was launched with no way to open a second session, the row refuses in one
 line: `this window cannot ask from home`, and nothing is created.
@@ -258,9 +262,9 @@ It is not an unstored chat. The record is the point: "why did I get this reminde
 be able to open the conversation that made it.
 
 Which project the errand belongs to is the project **under the cursor** — walk `↑` onto one
-of its rows and press `ctrl+enter` to say "this one". With the cursor still on the typing
-rows it is the project this window is in, and the home directory `~` when this window is in
-no project at all. A reminder belongs to no repository; a watch on CI belongs to one. Its
+of its rows and press `enter` on the `ask here` row to say "this one". With the cursor still
+on the typing rows it is the project this window is in, and the home directory `~` when this
+window is in no project at all. A reminder belongs to no repository; a watch on CI belongs to one. Its
 row is drawn at the top of the list whichever project it ended up in, and the project it
 belongs to is what the errand's own record says.
 

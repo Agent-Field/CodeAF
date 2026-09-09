@@ -179,6 +179,10 @@ var literalExemptions = map[string]string{
 	"../golden/diff.go": "the invisible-character legend of a TEST diff — `·` there is a SPACE, " +
 		"not the telemetry separator, and the line that draws it also names it. Developer " +
 		"output, never a rendered surface, so the vocabulary does not reach it",
+	"../modelui/result.go": "the ` \u2192 ` inside SetRole.String, which the function's own " +
+		"comment names as \"a log line or a test failure\" — provenance rather than a rendered " +
+		"row. The vocabulary took U+2192 for GTarget on 2026-09-09 (home's rule) and a log " +
+		"line has no repertoire tier to get wrong",
 }
 
 // proseMarks are the vocabulary bytes that are also ordinary punctuation. They
