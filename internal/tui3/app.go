@@ -278,8 +278,9 @@ type entry struct {
 	// would make the hot entry carry a distinction no renderer can read.
 	pictures     []string
 	picturesHere bool
-	// picturesOpen belongs to this page, so replay starts with compact previews.
-	picturesOpen bool
+	// pictureExpanded is a one-based attachment index; zero keeps every image collapsed.
+	// Only one attachment in a message expands at a time, and replay resets it.
+	pictureExpanded int
 
 	// steer is THE ONE CORRECTION this block is, on [entrySteer] and nil on every
 	// other kind (steerelbow.go). It is a pointer for the reason [entry.card] and
@@ -3125,6 +3126,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.exportDone(msg)
 		return a, nil
 
+	case pictureOpenedMsg:
+		if msg.err != nil {
+			a.note(filesOpenFailedWord + drawableLine(msg.path))
+		}
+		return a, nil
+
 	case copiedMsg:
 		// A deliverable taken out of the session that made it (deliverables.go),
 		// coming back from the disk the way an export does.
@@ -5918,7 +5925,10 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 	case hitMore:
 		a.showAll(r.entry)
 	case hitPictures:
-		a.togglePicturesAt(r.entry)
+		if r.pictureOpen.holds(x) {
+			return a.openPictureAt(r.entry, r.pictureIndex)
+		}
+		a.togglePictureAt(r.entry, r.pictureIndex)
 	case hitBrief:
 		a.toggleBriefFoldAt(r.entry)
 	case hitForming:

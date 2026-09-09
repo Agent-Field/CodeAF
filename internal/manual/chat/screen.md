@@ -2399,86 +2399,59 @@ mid-string, which nothing could read, so opening one drew a dim `—` and nothin
 
 ## Seeing the image itself in the terminal, in colour
 
-**You do not have to do anything.** The moment a `generate_image` or `view_image` call
-finishes, the picture is drawn under its row, in colour — no click, no key, no flag. A
-picture you attach is drawn the same way under your own line after you send it, while its
-numbered `[#1 shot.png]` marker stays above it. Both forms are there in the conversation
-as you read it and in a task's room too.
+Images start **collapsed**, with one compact filename row and **preview** and
+**open original** actions. This is the same for attached screenshots, `view_image`,
+and `generate_image`, in chat and task pages. A finished image does not automatically
+paint a mosaic or decode its pixels while you scroll. Your numbered `[#1 shot.png]`
+marker and your words remain intact.
 
-It is drawn out of **half-block characters**: one cell carries two stacked pixels, its
-top colour and its bottom one, which is how a terminal shows a photograph with nothing
-but colour codes. No image protocol is involved and nothing is written outside the
-frame, so the picture survives every repaint, scrolls with the conversation, and works
-over ssh and inside tmux the same as anywhere else.
+Click the filename or **preview** to expand; click **collapse** to close it. Only one
+attached image per message expands at a time. **alt+i** toggles the last visible image;
+it still works when the expanded picture is visible but its control has scrolled away.
+Replaying a conversation or reopening a task starts its attachments collapsed.
+An image tool's normal row also expands with `enter`; at phone width that opens its
+existing full-screen detail sheet, closed with `esc`.
 
-The picture under a row or your own message is a **compact thumbnail**, at most
-**3 rows** tall at every width. It preserves the whole image's proportions. This is
-only a visual cue: screenshot text and fine details cannot be read at terminal-cell
-resolution. It does not change the image sent to the model.
+A terminal preview uses **half-block characters**, at up to **20 rows**. It is explicitly
+low resolution: useful for composition, unsuitable for reading screenshot text. It
+preserves aspect ratio, never enlarges beyond source pixels, and scrolls as ordinary
+text without an image overlay. This applies locally, over SSH, and in tmux. It does
+not reduce the image sent to the model. PNG, JPEG, GIF and WebP have terminal previews.
 
-Attached images have an **expand images** / **collapse images** control beneath them.
-Click it, or press **alt+i** to toggle the last visible attachment control. Expansion
-shows each image at up to **20 rows**. The control belongs to the message, works in chat
-and task pages, and starts compact when the journal is replayed. It never folds your
-words. The numbered filename above it opens the original file through the existing
-file link; use that for full detail. Link handling depends on your terminal, and a
-plain SSH session does not automatically make a remote path a local file.
+## Opening an image at full quality — open original, zoom, read screenshot text
 
-**Open the row for the bigger look** — click it, or select it with `↑`/`↓` and press
-`enter`. There the picture is drawn again at up to **20 rows**, and under it, dim, one
-line: **the file's whole absolute path**, then its size in pixels and on disk —
-`/…/harbour.png · 1024×768 · 1.4 MB`. At phone width the same gesture opens the call
-over the whole frame. A `view_image` expansion also keeps what the looking model said,
-under the picture.
+Click **open original**, or press **alt+o** for the last visible image. The original
+file opens in your system's viewer, where its full resolution and the viewer's zoom
+controls are available. Opening it does not expand the transcript or send a model turn.
+The `/files` shelf uses the same opening route for pictures and other deliverables.
 
-The picture keeps its own shape and is **never enlarged** past its real pixel size: a
-16-pixel icon is drawn 16 cells across, because blowing it up would be sixty columns of
-blur claiming to be detail.
+In a hosted session (`--host`), an engine-owned file is fetched and mirrored locally
+before your local viewer opens it. A just-attached local picture opens directly from
+this machine. This preserves file ownership, including task worktree paths. The
+original-file action stays available on colourless, ASCII and screen-reader displays.
 
-**png, jpeg, gif and webp** are drawn — the same four `view_image` will read.
-
-A picture is **decoded once and kept**, so a row you scroll past, a row you leave open
-and a row that repaints ten times a second all cost the same after the first frame. Tool
-picture rows check the file's modification time when they repaint. Your own settled
-message keeps its ordinary transcript-row cache and refreshes its thumbnail on a resize,
-a theme repaint, or when a mirrored file lands; until one of those, replacing the file at
-the same path may leave the earlier thumbnail on screen.
+A plain SSH login runs the application on the far machine; it cannot launch a viewer
+on your laptop automatically. Use the original path to retrieve the file, or run the
+local client with `--host`. An unavailable system opener reports that the file could
+not be opened. Numbered filename terminal links remain available where supported.
 
 ## When the image preview is not drawn — you only gave me text, it only gave me text, why don't I see the image, and where did my generated picture go?
 
-If a tool row shows only text — something like
-`/home/you/book/cover.jpg — 768×1376 jpeg, 776.9KB, generated on <model>` — then no
-picture could be drawn, and **that line is the answer instead**: it names the file
-**whole and absolute**, so you can open it yourself from anywhere.
+Images are collapsed by default. Choose **preview** to request a terminal preview or
+**open original** for the full-quality file. An expanded attachment whose preview cannot
+be drawn says **Preview unavailable · open the original**. An image tool preserves its
+full path and any answer from the looking model instead. The original action remains.
 
-For a picture you attached, the fallback is the message's existing `[#1 shot.png]`
-marker. No error or empty picture block is added, and an ordinary file marker beside it
-is unchanged.
+A preview may be unavailable on a terminal below 256 colours, an ASCII-only or
+screen-reader display, or a row narrower than 8 columns. It also cannot draw a file
+that is missing, unreadable, over 24MB, over 64 megapixels, or outside PNG/JPEG/GIF/WebP.
+A hosted preview waits for its optional mirror fetch; opening the original can fetch
+it explicitly. A tool still running has no finished-image control yet.
 
-The reasons, in the order they are worth checking:
-
-- **Your terminal is below 256 colours**, or colour is off. The sixteen ANSI colours are
-  your own theme, and a photograph painted out of them would be a lie about both.
-- **Your terminal cannot draw box-drawing characters** — no UTF-8 locale, or no `TERM`
-  at all. The half block is the whole technique.
-- **Screen-reader mode**, where rows of block characters read aloud are rows of nothing.
-- **The row is under 8 columns wide.**
-- **The call has not finished.** A picture is drawn when the file exists, and
-  `generate_image` writes the file last.
-- **The session is over `--host` and the mirror does not hold the bytes yet.** Generated
-  pictures are fetched from the other machine into the local mirror. A picture you have
-  just attached is already read from this machine; after a restart its journal path is on
-  the far machine and the thumbnail appears once an optional mirror fetch lands.
-- **The file is missing, unreadable, over 24MB, over 64 megapixels, or not one of the
-  four types** — a `svg`, a `tiff`, a `pdf`.
-
-In every one of those the tool row is **exactly what it would have been** — its result
-line, or what the looking model said — and never an error. Your own message keeps its
-marker exactly. Opening a tool row in those cases gives you the file's whole absolute
-path on its own rows, wrapped rather than cut, because a path with an ellipsis in it
-cannot be clicked, copied or pasted.
-
-Where the files themselves land is on the "making pictures, audio and video" page.
+Expanded previews are cached by file identity, dimensions and palette. A resize or
+file change can require another decode. Collapsed controls only inspect the recorded
+references and do not stat or decode the picture. The folder browser's deliberately
+opened preview pane also uses cell resolution; use the original for fine detail.
 
 ## Opening a tool call on a phone-width screen
 

@@ -537,7 +537,7 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 		case r.hit == hitWorkFold:
 			return hoverAt{kind: hoverWorkFold, turn: r.turn}
 		case r.hit == hitPictures:
-			return hoverAt{kind: hoverPictures, entry: r.entry}
+			return hoverAt{kind: hoverPictures, entry: r.entry, index: r.pictureIndex}
 		case r.hit == hitBrief:
 			return hoverAt{kind: hoverBrief, entry: r.entry}
 		case r.hit == hitForming:

@@ -1,47 +1,15 @@
 package tui3
 
-// THE PICTURE ITSELF, IN THE EXPANSION.
+// Image previews are an explicit, low-resolution look at a file. The transcript
+// controls live in picturefold.go; this file only resolves and paints pixels.
 //
-// Every other tool's expansion shows the thing the call was about: an edit
-// shows its diff, a bash shows its output, a read shows the chunk it read. The
-// two picture tools showed a file path and a byte count, which is the one place
-// on this surface where opening a row answered a question nobody asked — a
-// person who clicks a `generate_image` row wants to know whether the picture
-// came out right, and no arrangement of the words "1024×1024 png" answers that.
+// The renderer uses foreground/background half cells inside the ordinary text
+// frame. It needs no graphics overlay lifecycle during scrolling, resizing or
+// reconnecting. Full-quality inspection belongs to the original-file action:
+// forty pixel rows cannot make a screenshot's text legible on any terminal.
 //
-// So the expansion draws the picture.
-//
-// THE TECHNIQUE IS HALF-CELL TRUECOLOR, and it is chosen because it survives a
-// repaint. This surface is a framebuffer: every frame is composed as rows of
-// text and handed over whole, so an inline-image escape sequence (iTerm2's OSC
-// 1337, kitty's graphics protocol) written into the middle of one frame is
-// painted over by the next — and there is no place in this program where the
-// terminal is handed away to another process, which is the only context where
-// those protocols are safe to use. What a framebuffer can carry is CELLS, and a
-// cell can hold two colours: U+2580 UPPER HALF BLOCK paints its foreground over
-// the top half and its background over the bottom. One cell is therefore two
-// pixels stacked, which is also very nearly square, because a terminal cell is
-// about twice as tall as it is wide.
-//
-// That is the same trick chafa and timg draw with, it needs nothing but SGR,
-// and it is a real colour picture inside the normal render pipeline rather than
-// a sequence fighting it.
-//
-// WHAT IT COSTS, AND WHERE IT DEGRADES. The rungs are the palette's own
-// (styles.go), because "what can this terminal say" has one answer in this tree:
-//
-//	TrueColor  the picture as it is, 24-bit per half-cell
-//	ANSI256    the picture through the xterm cube — coarser, still a picture
-//	below      NO PICTURE. Sixteen colours are the person's own theme and
-//	           painting a photograph out of them would be a lie about both.
-//
-// A terminal that cannot be trusted with box drawing (palette.ascii) draws no
-// picture either — U+2580 is the whole technique — and neither does the linear
-// tier, because twenty rows of half blocks read aloud is twenty rows of nothing.
-//
-// In every one of those cases, and for a file that is missing, too large, or not
-// a picture this program can decode, the expansion is EXACTLY what it was before
-// this file existed. A preview is an addition to a row that already works.
+// ANSI256 and truecolour terminals can paint the preview. ASCII, screen-reader
+// and lower-colour displays retain the same file controls without painted cells.
 
 import (
 	"image"
@@ -68,6 +36,8 @@ import (
 const halfBlock = "▀"
 
 const (
+	// pictureResolutionWord keeps every cell-based preview honest about its fidelity.
+	pictureResolutionWord = "Low-resolution preview"
 	// pictureRowsMax is how many terminal rows one preview may take. It is the
 	// tallest block this surface draws under a tool row, and it is deliberately
 	// larger than every text window in D11's table: a diff capped at forty lines
@@ -93,13 +63,11 @@ const (
 	// whole, because an eviction order is more machinery than the problem has.
 	//
 	// THE NUMBER IS SIZED AGAINST ONE FRAME'S UNMEMOIZED WORKING SET. Every visible
-	// tool picture row renders on every paint ([app.pictureThumb]), so a cache
+	// tool picture row renders on every paint ([app.pictureRows]), so a cache
 	// smaller than what one frame asks for would be wiped and decoded again ten
-	// times a second. User thumbnails share this cache but settle behind the
-	// transcript row memo; only a hosted-file restyle asks for that whole
-	// transcript population again. More than this many hosted pictures can make
-	// that uncommon restyle decode them again, which is the accepted trade for not
-	// adding visible-window or eviction machinery to the transcript renderer.
+	// times a second. Only explicitly expanded attachments share this cache; collapsed media
+	// never asks it for pixels. More simultaneous expansions than this bound can
+	// require another decode, which is the accepted memory/performance trade.
 	pictureCacheMax = 64
 )
 
@@ -119,11 +87,11 @@ type imagePreview struct {
 // line naming the file. It answers false when there is nothing to draw, and
 // every caller falls back to the words it would have shown.
 func (a *app) pictureRows(e *entry, width int) ([]string, bool) {
-	path, preview, drawn := a.drawPicture(e, width, pictureRowBudget(true))
+	path, preview, drawn := a.drawPicture(e, width, pictureRowsMax)
 	if !drawn {
 		return nil, false
 	}
-	return append(append([]string{a.pal.dim(fit("Low-resolution preview · open the file for detail", width))}, preview.rows...),
+	return append(append([]string{a.pal.dim(fit(pictureResolutionWord+" · open the file for detail", width))}, preview.rows...),
 		picturePathLine(a.linker(), path, preview, width)...), true
 }
 
@@ -149,24 +117,6 @@ func (a *app) drawPicture(e *entry, width, maxRows int) (string, imagePreview, b
 // machine owns it; unlike an expansion it adds no path line or other chrome.
 func (a *app) pictureRowsFor(path string, here bool, cols, maxRows int) ([]string, bool) {
 	preview, drawn := a.picture(path, here, cols, maxRows)
-	if !drawn {
-		return nil, false
-	}
-	return preview.rows, true
-}
-
-// pictureThumb keeps the unrequested picture small in every transcript. The
-// larger rendering is reserved for an explicit expansion, so scrolling a task
-// and scrolling a conversation have the same bounded colour traffic.
-func (a *app) pictureThumb(e *entry, width, budget int) ([]string, bool) {
-	// A CALL THAT HAS NOT FINISHED HAS NO PICTURE. `generate_image` writes the
-	// file last and `view_image` is looking at one the row cannot yet name a
-	// result for, so there is nothing on disk to draw and the row keeps the
-	// spinner it already has.
-	if e == nil || e.status.live() || budget < 1 {
-		return nil, false
-	}
-	_, preview, drawn := a.drawPicture(e, width, min(budget, pictureRowBudget(false)))
 	if !drawn {
 		return nil, false
 	}

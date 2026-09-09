@@ -214,6 +214,7 @@ func (a *app) toolRows(d deck, i int, last bool, width int) []row {
 	if forming {
 		bodyHit = hitNone
 	}
+	out = append(out, a.mediaRows(e, i, width-workIndentCols(width), a.pal.dim(stem))...)
 	body, more := a.toolBlock(e, room, layoutTier(width) == tierPhone)
 	for _, line := range body {
 		out = append(out, row{text: a.pal.dim(stem) + line, entry: i, hit: bodyHit})
@@ -270,10 +271,6 @@ func (a *app) toolBlockRows(e *entry, room int, phone bool) (rows []string, more
 	// everybody wants — but at tierPhone it is bounded HARDER, because twelve
 	// rows nobody asked for is most of a phone frame ([previewPhoneWindow]).
 	if !e.open || phone {
-		// Pictures share the compact attachment budget; expansion is deliberate.
-		if picture, drawn := a.pictureThumb(e, room, previewCap(phone)); drawn {
-			return picture, 0, false
-		}
 		head, body, more := a.previewBody(e, room, previewCap(phone))
 		if head == "" {
 			return nil, 0, true

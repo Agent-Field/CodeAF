@@ -874,6 +874,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// not into it (followup.go). Enter stays steering.
 		return a.followUp()
 
+	case "alt+o":
+		return a.openVisiblePicture()
+
 	case "alt+i":
 		a.toggleVisiblePictures()
 		return nil

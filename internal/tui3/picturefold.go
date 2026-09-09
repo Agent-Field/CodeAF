@@ -1,54 +1,181 @@
 package tui3
 
-// pictureCompactRows keeps an unsolicited image smaller than a paragraph. Both
-// sent attachments and image tools use this cap, independent of terminal width.
-const pictureCompactRows = 3
+import (
+	"path/filepath"
 
-// pictureRowBudget is shared by both transcript image doors. It bounds rendering
-// before pixels are sampled, rather than cropping a completed picture.
-func pictureRowBudget(open bool) int {
-	if open {
-		return pictureRowsMax
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+)
+
+// mediaItem preserves which machine owns a file independently of its display
+// name. Every transcript image reaches the same controls through this value.
+type mediaItem struct {
+	path string
+	here bool
+}
+
+// entryMedia discovers references only. Collapsed media never stats or decodes
+// a file, so a long image-heavy conversation scrolls at the cost of text.
+func (a *app) entryMedia(e *entry) []mediaItem {
+	if e.kind == entryUser {
+		out := make([]mediaItem, 0, len(e.pictures))
+		for _, path := range e.pictures {
+			out = append(out, mediaItem{path, e.picturesHere})
+		}
+		return out
 	}
-	return pictureCompactRows
-}
-
-// pictureDoor exists on the same terminal rungs as its preview. Missing remote
-// bytes do not remove the control; the mirror can arrive after the first paint.
-func (a *app) pictureDoor(e *entry, width int) bool {
-	return e.kind == entryUser && len(e.pictures) > 0 && a.pal.paintsPictures() && userBodyCols(width) >= pictureColsMin
-}
-
-func (a *app) pictureFoldLine(e *entry, width int) string {
-	word := "expand images"
-	if e.picturesOpen {
-		word = "collapse images"
+	if e.kind == entryTool && !e.status.live() {
+		if path, ok := a.picturePath(e); ok {
+			return []mediaItem{{path: path}}
+		}
 	}
-	return a.pal.dim(fit(userLead+bandFoldMark(a.pal, !e.picturesOpen)+" "+word+railSep+"alt+i"+railSep+"low-resolution preview", width))
+	return nil
 }
 
-// togglePicturesAt invalidates both row caches because task pages retain their
-// own assembled transcript independently of the conversation.
-func (a *app) togglePicturesAt(i int) {
+// mediaRows is the shared presentation for sent and tool-produced images in
+// both transcript owners. The original-file action survives every colour and
+// accessibility tier; the cell preview is optional and explicitly requested.
+func (a *app) mediaRows(e *entry, entryIndex, width int, lead string) []row {
+	items := a.entryMedia(e)
+	out := make([]row, 0, len(items))
+	for i, item := range items {
+		open := e.pictureExpanded == i+1
+		if e.kind == entryTool {
+			open = e.open
+		}
+		action := "preview"
+		if open {
+			action = "collapse"
+		}
+		suffix := "  open original"
+		prefix := lead + bandFoldMark(a.pal, !open) + " "
+		name := drawableLine(filepath.Base(item.path))
+		label := name + railSep + action
+		room := width - ansi.StringWidth(prefix) - ansi.StringWidth(suffix)
+		if room < 1 {
+			suffix = "  open"
+			room = width - ansi.StringWidth(prefix) - ansi.StringWidth(suffix)
+		}
+		if room < 1 {
+			room = 1
+			suffix = ""
+		}
+		tail := railSep + action
+		if nameRoom := room - ansi.StringWidth(tail); nameRoom > 0 {
+			label = fit(name, nameRoom) + tail
+		} else {
+			label = fit(action, room)
+		}
+		text := prefix + fit(label, room)
+		start := ansi.StringWidth(text)
+		text += suffix
+		control := row{text: a.pal.dim(fit(text, width)), entry: entryIndex, hit: hitPictures, pictureIndex: i}
+		if suffix != "" {
+			control.pictureOpen = hudSpan{from: start + 2, to: min(width, start+ansi.StringWidth(suffix))}
+		}
+		out = append(out, control)
+		if !open || e.kind == entryTool {
+			continue
+		}
+		cols := max(1, width-ansi.StringWidth(lead))
+		preview, drawn := a.pictureRowsFor(item.path, item.here, cols, pictureRowsMax)
+		if !drawn {
+			out = append(out, row{text: lead + a.pal.dim(fit("Preview unavailable · open the original", cols)), entry: entryIndex})
+			continue
+		}
+		out = append(out, row{text: lead + a.pal.dim(fit(pictureResolutionWord+" · alt+i collapse · alt+o open", cols)), entry: entryIndex})
+		for _, line := range preview {
+			out = append(out, row{text: lead + line, entry: entryIndex})
+		}
+	}
+	return out
+}
+
+// togglePictureAt changes only display state. At most one image per message
+// expands, so opening a second attachment replaces the first preview.
+func (a *app) togglePictureAt(index, picture int) {
 	es := a.bodyDeck().entries
-	if i < 0 || i >= len(es) || !a.pictureDoor(&es[i], a.bodyWidth()) {
+	if index < 0 || index >= len(es) {
 		return
 	}
-	e := &es[i]
-	e.picturesOpen, e.stale = !e.picturesOpen, true
+	e := &es[index]
+	if picture < 0 || picture >= len(a.entryMedia(e)) {
+		return
+	}
+	if e.kind == entryTool {
+		a.openTool(index)
+		return
+	}
+	if e.pictureExpanded == picture+1 {
+		e.pictureExpanded = 0
+	} else {
+		e.pictureExpanded = picture + 1
+	}
+	e.stale = true
 	if a.room != nil {
 		a.room.dirty = true
 	}
 	a.touch()
 }
 
-// toggleVisiblePictures chooses the last visible attachment control, so the key
-// acts on the conversation the person is reading rather than a hidden message.
-func (a *app) toggleVisiblePictures() {
+// visiblePicture chooses the last image intersecting
+// the viewport, including its preview. An expansion taller than the viewport
+// therefore remains keyboard-collapsible when its control scrolls offscreen.
+func (a *app) visiblePicture() (int, int, bool) {
+	es := a.bodyDeck().entries
 	for y := a.bodyTop() + a.viewHeight() - 1; y >= a.bodyTop(); y-- {
-		if r, ok := a.rowAt(y); ok && r.hit == hitPictures {
-			a.togglePicturesAt(r.entry)
-			return
+		r, ok := a.rowAt(y)
+		if !ok || r.entry < 0 || r.entry >= len(es) {
+			continue
 		}
+		e := &es[r.entry]
+		if len(a.entryMedia(e)) == 0 {
+			continue
+		}
+		picture := max(0, e.pictureExpanded-1)
+		if r.hit == hitPictures {
+			picture = r.pictureIndex
+		}
+		return r.entry, picture, true
 	}
+	return 0, 0, false
+}
+
+func (a *app) toggleVisiblePictures() {
+	if index, picture, ok := a.visiblePicture(); ok {
+		a.togglePictureAt(index, picture)
+	}
+}
+
+func (a *app) openVisiblePicture() tea.Cmd {
+	if index, picture, ok := a.visiblePicture(); ok {
+		return a.openPictureAt(index, picture)
+	}
+	return nil
+}
+
+func (a *app) openPictureAt(index, picture int) tea.Cmd {
+	es := a.bodyDeck().entries
+	if index < 0 || index >= len(es) {
+		return nil
+	}
+	items := a.entryMedia(&es[index])
+	if picture < 0 || picture >= len(items) {
+		return nil
+	}
+	return a.openMediaOriginal(items[picture])
+}
+
+type pictureOpenedMsg struct {
+	path string
+	err  error
+}
+
+// openMediaOriginal shares the file shelf's platform handoff and the hosted
+// session's fetch-and-mirror flow. It never starts a model turn or blocks paint.
+func (a *app) openMediaOriginal(item mediaItem) tea.Cmd {
+	if !item.here && a.rfiles != nil {
+		return a.openRemotePath(item.path)
+	}
+	return func() tea.Msg { return pictureOpenedMsg{path: item.path, err: processOpener(item.path)} }
 }
