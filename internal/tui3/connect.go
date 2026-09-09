@@ -1060,8 +1060,10 @@ func (a *app) connectAnimating() bool {
 // apart is the whole job of the row — which is exactly the case the tool column
 // does not have, where quiet already means fine. So the tick earns its place
 // here, and nowhere else.
+// A CONNECTION THAT CAME OFF IS THE VOCABULARY'S SETTLED MARK and not a second
+// tick: one shape for "this is done", on a row of accounts as on a row of work.
 const (
-	glyphConnected      = "✓"
+	glyphConnected      = tokens.GlyphSettled
 	glyphConnectedASCII = "+"
 )
 

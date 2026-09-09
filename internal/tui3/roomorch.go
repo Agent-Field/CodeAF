@@ -331,10 +331,14 @@ const (
 // keeps the surface's own mark, because failure is the one state that is not a
 // point on that ramp.
 const (
-	orchGlyphQueued  = "○"
-	orchGlyphRunning = "◐"
-	orchGlyphDone    = "●"
-	orchGlyphPaused  = "⏸"
+	orchGlyphQueued  = tokens.GlyphQueued
+	orchGlyphRunning = tokens.GlyphWorking
+	orchGlyphDone    = tokens.GlyphStepDone
+	// THE TRANSPORT BAR IS BANNED (tokens.BannedGlyphs: `⏸` is width-unstable
+	// and emoji-presentation in many fonts), and the vocabulary's paused mark
+	// is `=`. A patched font draws nf-fa-pause for it, which is the shape the
+	// old byte was reaching for.
+	orchGlyphPaused = tokens.GlyphPaused
 	// The linear tier's stand-ins, on [glyphQueuedASCII]'s terms: a shape a
 	// screen reader cannot name is replaced by a character it can.
 	orchGlyphQueuedASCII  = "o"

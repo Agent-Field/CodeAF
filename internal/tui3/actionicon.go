@@ -83,10 +83,10 @@ func (a *app) adoptIcons() {
 // icon is [palette.glyph] with the linear tier folded in, for the app methods
 // that hold the screen-reader flag themselves.
 func (a *app) icon(id tokens.GlyphID) string {
-	if a.linear {
+	if a.linear || a.pal.ascii {
 		return tokens.ASCII.Glyph(id)
 	}
-	return a.pal.glyph(id)
+	return a.iconSet().Glyph(id)
 }
 
 // actionGutter is the fixed cost of the mark: the cell it stands in, and the

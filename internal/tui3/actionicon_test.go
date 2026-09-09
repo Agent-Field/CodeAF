@@ -36,11 +36,15 @@ func TestEveryActionFamilyHasAMark(t *testing.T) {
 // two cells anywhere would push the sentence beside it off the frame on the
 // narrow widths this block is budgeted for.
 func TestEveryActionMarkIsOneCellInBothTiers(t *testing.T) {
-	for category, mark := range actionMarks {
+	for category, slot := range actionMarks {
 		for _, side := range []struct {
 			tier  string
 			glyph string
-		}{{"rich", mark.rich}, {"unicode", mark.glyph}, {"ascii", mark.ascii}} {
+		}{
+			{"rich", tokens.NerdFont.Glyph(slot)},
+			{"unicode", tokens.Plain.Glyph(slot)},
+			{"ascii", tokens.ASCII.Glyph(slot)},
+		} {
 			if side.glyph == "" {
 				t.Errorf("%s draws nothing in the %s tier", category, side.tier)
 				continue
@@ -58,7 +62,7 @@ func TestEveryActionMarkIsOneCellInBothTiers(t *testing.T) {
 					category, side.tier, side.glyph, w)
 			}
 		}
-		if a, b := ansi.StringWidth(mark.glyph), ansi.StringWidth(mark.ascii); a != b {
+		if a, b := ansi.StringWidth(tokens.Plain.Glyph(slot)), ansi.StringWidth(tokens.ASCII.Glyph(slot)); a != b {
 			t.Errorf("%s: %d cells unicode, %d cells ascii — the tier moved this column",
 				category, a, b)
 		}
@@ -74,8 +78,8 @@ func TestActionMarksRefuseTheBannedGlyphs(t *testing.T) {
 	for _, b := range tokens.BannedGlyphs {
 		banned[b.Rune] = b.Reason
 	}
-	for category, mark := range actionMarks {
-		for _, spelling := range []string{mark.rich, mark.glyph, mark.ascii} {
+	for category, slot := range actionMarks {
+		for _, spelling := range []string{tokens.NerdFont.Glyph(slot), tokens.Plain.Glyph(slot), tokens.ASCII.Glyph(slot)} {
 			for _, r := range spelling {
 				if why, out := banned[r]; out {
 					t.Errorf("%s draws %U, which the vocabulary bans: %s", category, r, why)
@@ -94,19 +98,12 @@ func TestActionMarksRefuseTheBannedGlyphs(t *testing.T) {
 // THIRTEEN MARKS MEAN THIRTEEN THINGS. Two families sharing a character is a
 // gutter that cannot be read, in either tier.
 func TestEveryActionMarkIsDistinct(t *testing.T) {
-	for _, tier := range []struct {
-		name string
-		of   func(actionMark) string
-	}{
-		{"rich", func(m actionMark) string { return m.rich }},
-		{"unicode", func(m actionMark) string { return m.glyph }},
-		{"ascii", func(m actionMark) string { return m.ascii }},
-	} {
+	for _, tier := range []tokens.GlyphSet{tokens.NerdFont, tokens.Plain, tokens.ASCII} {
 		seen := map[string]session.ActionCategory{}
-		for category, mark := range actionMarks {
-			spelling := tier.of(mark)
+		for category, slot := range actionMarks {
+			spelling := tier.Glyph(slot)
 			if first, taken := seen[spelling]; taken {
-				t.Errorf("%s: %q says both %q and %q", tier.name, spelling, first, category)
+				t.Errorf("%s: %q says both %q and %q", tier, spelling, first, category)
 				continue
 			}
 			seen[spelling] = category
@@ -119,11 +116,11 @@ func TestEveryActionMarkIsDistinct(t *testing.T) {
 // never does, and would read as "this step passed" on a step that is still
 // running.
 func TestTheTestFamilyDrawsAnActionAndNeverAVerdict(t *testing.T) {
-	mark := actionMarks[session.ActionTest]
+	slot := actionMarks[session.ActionTest]
 	for _, verdict := range []string{
 		tokens.GlyphSettled, tokens.GlyphFailed, tokens.GlyphNeedsHuman, "✓", "✔", "x", "X",
 	} {
-		if mark.glyph == verdict || mark.ascii == verdict {
+		if tokens.Plain.Glyph(slot) == verdict || tokens.ASCII.Glyph(slot) == verdict {
 			t.Errorf("the test family draws the verdict mark %q", verdict)
 		}
 	}
@@ -242,9 +239,9 @@ func TestTheCompactBlockDrawsOneMarkPerStepInAFixedGutter(t *testing.T) {
 	}
 
 	marks := map[string]bool{}
-	for _, mark := range actionMarks {
-		marks[mark.rich] = true
-		marks[mark.glyph] = true
+	for _, slot := range actionMarks {
+		marks[tokens.NerdFont.Glyph(slot)] = true
+		marks[tokens.Plain.Glyph(slot)] = true
 	}
 	body := a.width - workIndentCols(a.width)
 	found := 0
@@ -403,8 +400,8 @@ func TestTheScreenReaderTierKeepsTheGutter(t *testing.T) {
 		t.Fatal("the linear tier drew nothing")
 	}
 	ascii := map[string]bool{}
-	for _, mark := range actionMarks {
-		ascii[mark.ascii] = true
+	for _, slot := range actionMarks {
+		ascii[tokens.ASCII.Glyph(slot)] = true
 	}
 	marked := false
 	for _, r := range rows {
@@ -468,15 +465,16 @@ func TestAFinishedTurnKeepsNoMarks(t *testing.T) {
 	a.entries = append(a.entries, entry{kind: entryAssistant, text: "the loader reads the tree up front.", turn: 1, settled: true})
 	a.touch()
 	page := livePage(a)
-	for category, mark := range actionMarks {
+	for category, slot := range actionMarks {
 		// The ASCII-bodied marks (`+` for create, `$` for run) are characters a
 		// page carries for a hundred honest reasons — the shared vocabulary
 		// gives up its claim on ASCII slots for exactly this reason — so the
 		// shapes are what this asks about.
-		if r, _ := utf8.DecodeRuneInString(mark.glyph); r < utf8.RuneSelf {
+		glyph := tokens.Plain.Glyph(slot)
+		if r, _ := utf8.DecodeRuneInString(glyph); r < utf8.RuneSelf {
 			continue
 		}
-		if strings.Contains(page, mark.glyph) {
+		if strings.Contains(page, glyph) {
 			t.Fatalf("a settled turn still draws the %q mark:\n%s", category, page)
 		}
 	}
@@ -500,23 +498,24 @@ func TestRichActionIconsAreNormalAndFallbackIsExplicit(t *testing.T) {
 			a := newTestApp(&fakeAgent{model: "m"})
 			a.actionAuto, _ = tokens.DetectGlyphSet(envOf(tc.env))
 			a.iconMode = config.IconsAuto
-			want := actionMarks[session.ActionRun].glyph
+			run := actionMarks[session.ActionRun]
+			want := tokens.Plain.Glyph(run)
 			if tc.rich {
-				want = actionMarks[session.ActionRun].rich
+				want = tokens.NerdFont.Glyph(run)
 			}
 			if got := a.actionMarkFor(session.ActionRun); got != want {
 				t.Fatalf("auto=%q want %q", got, want)
 			}
 			a.iconMode = config.IconsPlain
-			if got := a.actionMarkFor(session.ActionRun); got != actionMarks[session.ActionRun].glyph {
+			if got := a.actionMarkFor(session.ActionRun); got != tokens.Plain.Glyph(run) {
 				t.Fatal("plain override ignored")
 			}
 			a.iconMode = config.IconsRich
-			if got := a.actionMarkFor(session.ActionRun); got != actionMarks[session.ActionRun].rich {
+			if got := a.actionMarkFor(session.ActionRun); got != tokens.NerdFont.Glyph(run) {
 				t.Fatal("rich override ignored")
 			}
 			a.linear = true
-			if got := a.actionMarkFor(session.ActionRun); got != actionMarks[session.ActionRun].ascii {
+			if got := a.actionMarkFor(session.ActionRun); got != tokens.ASCII.Glyph(run) {
 				t.Fatal("rich override displaced accessible spelling")
 			}
 		})
@@ -540,9 +539,9 @@ func TestTheStepIconSettingChangesTheLiveGutterAndPersists(t *testing.T) {
 		if !a.dirty || a.iconMode != mode || config.IconsAt(a.profileDir) != mode {
 			t.Fatalf("mode %q did not update live and saved state", mode)
 		}
-		want := actionMarks[session.ActionRun].rich
+		want := tokens.NerdFont.Glyph(actionMarks[session.ActionRun])
 		if mode == config.IconsPlain {
-			want = actionMarks[session.ActionRun].glyph
+			want = tokens.Plain.Glyph(actionMarks[session.ActionRun])
 		}
 		if got := a.actionMarkFor(session.ActionRun); got != want {
 			t.Fatalf("mode %q paints %q want %q", mode, got, want)

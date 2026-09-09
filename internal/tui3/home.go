@@ -229,15 +229,21 @@ const homeGutter = 4
 // vocabulary: it is the difference between "this is running" and "this is what
 // the machine is doing at this instant", which is the distinction the one-spinner
 // law exists to draw.
+// AND `✕` FOR A CONVERSATION LEFT MID-WAY, which is the one mark this block
+// changed when the surface moved onto the shared vocabulary. It used to be `◌`,
+// a shape that existed nowhere else and that a person had to be taught; work
+// that did not finish is `✕` on the card, on the rail, on the roster and on the
+// task page, dim rather than loud unless something actually broke, and this
+// screen says the same thing with the same cell.
 const (
-	homeAskGlyph   = "?"
-	homeLiveGlyph  = "◐"
-	homeStuckGlyph = "◌"
-	homeIdleGlyph  = "○"
+	homeAskGlyph   = tokens.GlyphNeedsHuman
+	homeLiveGlyph  = tokens.GlyphWorking
+	homeStuckGlyph = tokens.GlyphFailed
+	homeIdleGlyph  = tokens.GlyphQueued
 
 	homeAskASCII   = "!"
 	homeLiveASCII  = "*"
-	homeStuckASCII = "o"
+	homeStuckASCII = "x"
 	homeIdleASCII  = "-"
 )
 
