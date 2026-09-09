@@ -716,8 +716,10 @@ func TestTheStarterLineDissolvesOnTheFirstKeystroke(t *testing.T) {
 
 // A FRESH SCREEN HAS NO COLUMN AND NO NUMBERS. No `+ /task`, no `+ /standing`,
 // no `ctrl+g`, no closed-column edge, no `$0.00`, no context meter — only the
-// identity and the state word on the status row. The column arrives with the
-// conversation.
+// state word at the right of the status row. Since 2026-09-09 the name and the
+// model are not there either: they are on the seam above the box, and the seam
+// is not drawn under a greeting at all (view.go's [app.chrome]). The column
+// arrives with the conversation, and so do they.
 func TestAFreshScreenDrawsNoRailAndNoTelemetry(t *testing.T) {
 	a, _ := welcomeApp(t, fourSessions())
 	a.width = 140
@@ -740,10 +742,11 @@ func TestAFreshScreenDrawsNoRailAndNoTelemetry(t *testing.T) {
 	}
 	a.railAway = false
 	status := plain(a.status(140))
-	for _, want := range []string{"gpt-4.1-mini", "idle"} {
-		if !strings.Contains(status, want) {
-			t.Fatalf("the quiet status row lost %q: %q", want, status)
-		}
+	if !strings.Contains(status, "idle") {
+		t.Fatalf("the quiet status row lost its state word: %q", status)
+	}
+	if strings.Contains(status, "gpt-4.1-mini") {
+		t.Fatalf("the greeting's status row is still naming the model: %q", status)
 	}
 	// The first keystroke begins the conversation, and the column stands.
 	drive(t, a, key("h"))

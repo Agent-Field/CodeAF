@@ -1756,20 +1756,25 @@ func hudApp(t *testing.T) (*app, *fakeAgent, *time.Time) {
 
 // ── the legend ──────────────────────────────────────────────────────────────
 
-// THE STATUS LINE OWNS IDENTITY. The adjacent legend keeps the branch and input
-// affordances without repeating the conversation name.
-func TestTheLegendCarriesTheBranchAndTheInputsAffordances(t *testing.T) {
+// THE SEAM OWNS IDENTITY FROM 2026-09-09. The rule above the box carries who
+// you are talking to and where — the conversation's name, the model answering
+// it, the branch — on the left, and the keys that work now on the right. The
+// name and the model came UP here from the status row so that a long title
+// could never push the numbers off the frame (foot.go's [app.seamIdentity]).
+func TestTheSeamCarriesTheIdentityTheBranchAndTheInputsAffordances(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.title = "porting the parser"
 
 	line := plain(a.legend(100))
-	for _, want := range []string{"chat-v3-task*", microcopy} {
+	for _, want := range []string{"porting the parser", "deepseek-v4-flash", "chat-v3-task*", microcopy} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("the legend is missing %q:\n%q", want, line)
 		}
 	}
-	if strings.Contains(line, "porting the parser") {
-		t.Fatalf("the legend repeats the status line's identity: %q", line)
+	// THE MODEL IS ITS BASENAME. The vendor half of a routing address is the
+	// same for every model a person is choosing between.
+	if strings.Contains(line, "deepseek/") {
+		t.Fatalf("the vendor is on the seam: %q", line)
 	}
 	// THE PATH IS NOT ON IT ANY MORE. It is a fact a person already has — the
 	// shell prompt behind this pane says it — and the slot went to the one fact
@@ -1790,14 +1795,13 @@ func TestTheLegendCarriesTheBranchAndTheInputsAffordances(t *testing.T) {
 		t.Fatalf("a clean tree is still starred: %q", line)
 	}
 
-	// No repository, no branch — and no empty separator where one would have gone.
+	// No repository, no branch — and no dangling separator where one would have
+	// gone: the emptiness law is what [dotted] is for.
 	a.branch = ""
 	line = plain(a.legend(100))
-	if label, _, _ := strings.Cut(strings.TrimPrefix(line, "─ "), " ─"); strings.Contains(label, "·") {
-		t.Fatalf("a workspace outside a repository still draws a separator: %q", line)
-	}
-	if strings.Contains(line, "porting the parser") {
-		t.Fatalf("the identity moved back onto the legend: %q", line)
+	label, _, _ := strings.Cut(strings.TrimPrefix(line, "─ "), " ─")
+	if label != "porting the parser · deepseek-v4-flash" {
+		t.Fatalf("a workspace outside a repository left a separator behind: %q", label)
 	}
 }
 
@@ -1808,19 +1812,23 @@ func TestAnUnnamedSessionPutsNoPlaceholderOnTheLegend(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.title = ""
 
+	// THE FOLDER'S NAME IS A TRUE FACT AND "untitled" IS NOT. The slot falls back
+	// to where the conversation is running — which the status row's identity
+	// cluster did before this moved up here — rather than inventing a word for a
+	// session that has not named itself yet.
 	line := plain(a.legend(100))
 	label, _, _ := strings.Cut(strings.TrimPrefix(line, "─ "), " ─")
-	if label != "chat-v3-task*" {
-		t.Fatalf("an unnamed session's legend label = %q, want the branch alone", label)
+	if label != "aforge-v2 · deepseek-v4-flash · chat-v3-task*" {
+		t.Fatalf("an unnamed session's legend label = %q, want the folder standing in for the name", label)
 	}
-	for _, banned := range []string{"untitled", "aforge-v2", "·"} {
+	for _, banned := range []string{"untitled", "Untitled", "new chat"} {
 		if strings.Contains(label, banned) {
 			t.Fatalf("the legend invented %q for a session with no name: %q", banned, line)
 		}
 	}
 
-	// And with nothing true to say at either end, the border is the plain rule it
-	// always was — with the input's own affordance still on it, because a person
+	// And with the branch gone too, what is left is the folder and the model —
+	// with the input's own affordance still on the other end, because a person
 	// who has not typed anything yet is exactly who "/ commands" is for.
 	a.branch = ""
 	line = plain(a.legend(100))
@@ -1835,19 +1843,32 @@ func TestAnUnnamedSessionPutsNoPlaceholderOnTheLegend(t *testing.T) {
 	}
 }
 
-// A LONG IDENTITY CANNOT TAKE CELLS FROM THE LEGEND because identity belongs to
-// the status line below it.
-func TestALongNameDoesNotChangeTheLegend(t *testing.T) {
+// A LONG IDENTITY IS SAID SHORTER, NEVER CLIPPED, AND NEVER AT THE KEYS' COST.
+// The seam gives up the cheapest true thing first (foot.go's [app.seamIdentity]):
+// the branch, which the shell prompt behind this pane still says, and only then
+// is the name cut with one ellipsis. The hint slot is not on that ladder at all
+// — the keys are written nowhere else on the frame.
+func TestALongNameIsCutOnTheSeamAndNeverTakesTheKeysSlot(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.title = "porting the parser off the old tokenizer and onto the new one at last"
 
 	line := plain(a.legend(100))
-	if !strings.Contains(line, "chat-v3-task*") || !strings.Contains(line, microcopy) ||
-		strings.Contains(line, "porting the parser") {
-		t.Fatalf("the conversation name changed the legend: %q", line)
+	if !strings.Contains(line, microcopy) {
+		t.Fatalf("a long name pushed the keys off the seam: %q", line)
+	}
+	if strings.Contains(line, "chat-v3-task*") {
+		t.Fatalf("the branch outlasted the name it stands after: %q", line)
+	}
+	if !strings.Contains(line, "…") || !strings.Contains(line, "porting the parser") {
+		t.Fatalf("the name was neither kept whole nor cut with one ellipsis: %q", line)
 	}
 	if ansi.StringWidth(line) != 100 {
 		t.Fatalf("the legend is %d cells wide, want the frame's 100", ansi.StringWidth(line))
+	}
+	// AND THE MODEL OUTLIVES THE BRANCH. Its rung is below the branch's, so a
+	// frame that had to drop one of them dropped the recoverable one.
+	if !strings.Contains(line, "deepseek-v4-flash") {
+		t.Fatalf("the model went before the branch did: %q", line)
 	}
 }
 
@@ -1876,20 +1897,24 @@ func TestTheLegendDropsTheBranchBeforeTheCommandsDoor(t *testing.T) {
 	if !strings.Contains(tight, microcopy) {
 		t.Fatalf("a tight frame is a rule with nothing written on it: %q", tight)
 	}
-	if strings.Contains(tight, "porting the parser") {
-		t.Fatalf("the tight legend repeated identity: %q", tight)
+	// AND WHAT IT KEPT IS THE IDENTITY. The branch is the first rung of the
+	// seam's own ladder for the same reason it is dropped outright under
+	// [hudTight]: it is the one fact on this line a person can read off the
+	// shell prompt behind the pane (foot.go's [app.seamIdentity]).
+	if !strings.Contains(tight, "porting the parser") {
+		t.Fatalf("the tight legend gave up the name before the branch: %q", tight)
 	}
 
-	// Without a duplicate name, the middle width has room for both facts.
-	middle := plain(a.legend(80))
+	// A frame wide enough for all three says all three.
+	middle := plain(a.legend(140))
 	if !strings.Contains(middle, microcopy) {
-		t.Fatalf("the identity-free legend dropped usable hints: %q", middle)
+		t.Fatalf("the legend dropped usable hints: %q", middle)
 	}
 	if !strings.Contains(middle, branch) {
 		t.Fatalf("the branch was dropped before the microcopy: %q", middle)
 	}
-	if strings.Contains(middle, "porting the parser") {
-		t.Fatalf("the middle legend repeated identity: %q", middle)
+	if !strings.Contains(middle, "porting the parser") {
+		t.Fatalf("a roomy legend is missing the conversation's name: %q", middle)
 	}
 
 	// And a frame with no room for a label at all is the rule it always was.
@@ -1922,9 +1947,12 @@ func TestThePathAbbreviatesLikeFishAndKeepsTheLastSegmentWhole(t *testing.T) {
 
 // ── the two clusters ────────────────────────────────────────────────────────
 
-// IDENTITY LEFT, TELEMETRY RIGHT, AND A GAP BETWEEN THEM. No pipes, no product
-// name, and the model without its vendor.
-func TestTheStatusRowIsIdentityLeftAndTelemetryRight(t *testing.T) {
+// A LEDGER LEFT, ALIVENESS RIGHT, AND A GAP BETWEEN THEM. From 2026-09-09 the
+// row's left is grouped by the QUESTION each group answers — the bill, then the
+// meter — with three cells of air between groups and a dot only inside one, and
+// the conversation's name and model are not on it at all: they are on the seam
+// above the box (foot.go). No pipes and no product name.
+func TestTheStatusRowIsALedgerLeftAndAlivenessRight(t *testing.T) {
 	a, _, _ := hudApp(t)
 	a.title, a.cost = "porting the parser", 0.14
 	a.ctxWindow, a.ctxTokens = 128_000, 12_400
@@ -1934,24 +1962,32 @@ func TestTheStatusRowIsIdentityLeftAndTelemetryRight(t *testing.T) {
 		t.Fatalf("a 200-column frame took %d rows for the status", len(rows))
 	}
 	line := plain(rows[0])
-	name, model := strings.Index(line, "porting the parser"), strings.Index(line, "deepseek-v4-flash")
-	cost, state := strings.Index(line, "$0.14"), strings.Index(line, "idle")
-	if name < 0 || model < name || cost < model || state < cost {
-		t.Fatalf("the clusters are out of order:\n%q", line)
+	cost, meter := strings.Index(line, "$0.14"), strings.Index(line, "12.4k/128k")
+	state := strings.Index(line, "idle")
+	if cost < 0 || meter < cost || state < meter {
+		t.Fatalf("the groups are out of order:\n%q", line)
 	}
-	if strings.Contains(line, "deepseek/") {
-		t.Fatalf("the vendor is still on the line: %q", line)
-	}
-	if strings.Contains(line, product) {
-		t.Fatalf("the product name is still on the line: %q", line)
+	// IDENTITY IS ON THE SEAM AND NOWHERE ELSE. A long title used to push these
+	// numbers off the frame from this end of the row.
+	for _, banned := range []string{"porting the parser", "deepseek-v4-flash", "deepseek/", product} {
+		if strings.Contains(line, banned) {
+			t.Fatalf("the row is still carrying %q: %q", banned, line)
+		}
 	}
 	if strings.ContainsAny(line, "|│") {
-		t.Fatalf("the clusters are separated by a glyph rather than by the gap: %q", line)
+		t.Fatalf("the groups are separated by a glyph rather than by the gap: %q", line)
 	}
-	// The barrier IS the gap: the identity ends, and nothing else is said until
-	// the telemetry starts.
-	if !strings.Contains(line, "    ") {
-		t.Fatalf("there is no gap between the clusters: %q", line)
+	// The barrier BETWEEN groups is air, and the join INSIDE one is a dot: the
+	// bill and the meter answer different questions, the meter's own two halves
+	// answer one.
+	if !strings.Contains(line, "%"+strings.Repeat(" ", groupGap)) &&
+		!strings.Contains(line, "cached"+strings.Repeat(" ", groupGap)) {
+		if !strings.Contains(line[cost:meter], strings.Repeat(" ", groupGap)) {
+			t.Fatalf("there is no gap between the bill and the meter: %q", line)
+		}
+	}
+	if !strings.Contains(line, "12.4k/128k · 10%") {
+		t.Fatalf("the meter's own halves are not joined by a dot: %q", line)
 	}
 	// The state word is LAST, whatever else is on the line.
 	if !strings.HasSuffix(strings.TrimRight(line, " "), "idle") {
@@ -2009,8 +2045,14 @@ func TestTheAmbientCountsShowOnlyWhatIsAlive(t *testing.T) {
 
 // ── the session delta ───────────────────────────────────────────────────────
 
-// THE LOWEST PRIORITY ON THE LINE: on a comfortable frame, and nowhere else.
-func TestTheSessionDeltaRidesOnlyAComfortableFrame(t *testing.T) {
+// IT IS OFF THE LINE AND ON THE PAGE. Until 2026-09-09 the delta rode the widest
+// frames and was the first thing any other frame dropped, which is the shape of
+// a fact nobody acts on from a row: it is about the PAST, and a person deciding
+// whether to keep this session's work opens something to read it. The segment is
+// still assembled — [app.deckItems] carries it to the sheet and to /status under
+// the label "changes" — and no width puts it back on the row (foot.go's
+// [groupOff]).
+func TestTheSessionDeltaIsOffTheRowAndOnTheSheet(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		beginWith("edit", "edit internal/session/loop.go", editPayload),
 		toolEnd("edit", ""),
@@ -2024,11 +2066,13 @@ func TestTheSessionDeltaRidesOnlyAComfortableFrame(t *testing.T) {
 	if !strings.HasPrefix(delta, "Σ ") || !strings.Contains(delta, glyphAdd+"1") {
 		t.Fatalf("the session delta reads %q, want a Σ with the edit's stat in it", delta)
 	}
-	if line := plain(a.status(hudWide)); !strings.Contains(line, delta) {
-		t.Fatalf("a comfortable frame dropped the delta:\n%q", line)
+	for _, width := range []int{hudWide, hudWide * 2, 200} {
+		if line := plain(a.status(width)); strings.Contains(line, "Σ") {
+			t.Fatalf("the delta is on a %d-column row:\n%q", width, line)
+		}
 	}
-	if line := plain(a.status(hudWide - 1)); strings.Contains(line, "Σ") {
-		t.Fatalf("the delta survived a frame that is not comfortable:\n%q", line)
+	if got := deckValue(a.deckItems(), deckSegWords[segDelta]); got != delta {
+		t.Fatalf("the sheet's %q row reads %q, want the delta %q", deckSegWords[segDelta], got, delta)
 	}
 
 	// A session that has written nothing says nothing, at any width.
@@ -2068,13 +2112,19 @@ func TestTheContextSparklineNeedsTwoReadingsAndScalesToTheThreshold(t *testing.T
 		t.Fatalf("a reading at the threshold is not the top bar: %q", spark)
 	}
 
-	// It rides the meter it is about, and only where there is room for it.
+	// IT RIDES THE METER ON THE PAGE AND NOT ON THE ROW. It was beside the meter
+	// on the status line until 2026-09-09, six cells of trend on a line that is
+	// read at a glance and acted on segment by segment; the sheet and /status are
+	// where somebody who wants the shape asks for it (statusdeck.go).
 	a.ctxTokens = threshold / 2
-	if line := plain(a.status(200)); !strings.Contains(line, spark) {
-		t.Fatalf("the sparkline is not beside the meter:\n%q", line)
+	for _, width := range []int{200, hudWide, hudTight - 1} {
+		if line := plain(a.status(width)); strings.Contains(line, spark) {
+			t.Fatalf("a %d-column row kept the sparkline:\n%q", width, line)
+		}
 	}
-	if line := plain(a.status(hudTight - 1)); strings.Contains(line, spark) {
-		t.Fatalf("a tight frame kept the sparkline:\n%q", line)
+	meter := deckValue(a.deckItems(), deckSegWords[segCtx])
+	if !strings.HasSuffix(meter, " "+spark) {
+		t.Fatalf("the sheet's meter reads %q, want the sparkline riding it", meter)
 	}
 
 	// The two tiers that cannot read shape keep the number and lose the line.
@@ -2105,8 +2155,15 @@ func TestTheBurnRateIsThisTurnsOutputOverThisTurnsSeconds(t *testing.T) {
 	if got := a.burnSegment(); got != "1k tok/s avg" {
 		t.Fatalf("the burn reads %q, want 1k tok/s avg", got)
 	}
-	if line := plain(a.status(200)); !strings.Contains(line, "1k tok/s avg") {
-		t.Fatalf("the burn is not on the line:\n%q", line)
+	// IT IS OFF THE ROW FROM 2026-09-09 and on the sheet under "rate": the live
+	// rate at the right edge is the one a person watching a turn reads, and an
+	// average over the whole turn beside it was two speeds saying different
+	// things about the same moment (foot.go's [groupOff]).
+	if line := plain(a.status(200)); strings.Contains(line, "tok/s avg") {
+		t.Fatalf("the burn is still on the line:\n%q", line)
+	}
+	if got := deckValue(a.deckItems(), deckSegWords[segBurn]); got != "1k tok/s avg" {
+		t.Fatalf("the sheet's %q row reads %q, want the burn", deckSegWords[segBurn], got)
 	}
 
 	// A settled turn has no rate: the figure is about now, or it is not drawn.
@@ -2302,12 +2359,17 @@ func TestAWaitingQuestionRoutesTheHueAndQuietsEverythingElse(t *testing.T) {
 	if !strings.Contains(line, a.pal.dim("$0.20")) {
 		t.Fatalf("a number is competing with a question:\n%q", line)
 	}
-	// The legend no longer carries the conversation's name at all — the status
-	// line owns identity — so the question hue's second home went with it. The
-	// waiting word above and the card itself are where the hue lives, and the
-	// legend has no title to route it onto.
-	if strings.Contains(plain(a.legend(120)), "cleaning the build directory") {
-		t.Fatalf("the legend still carries the conversation's name:\n%q", a.legend(120))
+	// AND THE SEAM IS THE HUE'S SECOND HOME AGAIN. The conversation's name came
+	// back onto the legend on 2026-09-09, and while a person is being asked
+	// something the whole left label goes violet with the state word — the
+	// question is bottom-anchored and so is this border, which is the surface
+	// pointing at it with both hands (render.go's [app.legend]).
+	legend := a.legend(120)
+	if !strings.Contains(plain(legend), "cleaning the build directory") {
+		t.Fatalf("the seam lost the conversation's name:\n%q", legend)
+	}
+	if !strings.Contains(legend, a.pal.ask("cleaning the build directory · m")) {
+		t.Fatalf("the seam's label is not the question hue:\n%q", legend)
 	}
 
 	// Working, the paint is spent on ALIVENESS and on nothing else: the spinner
@@ -2330,8 +2392,8 @@ func TestAWaitingQuestionRoutesTheHueAndQuietsEverythingElse(t *testing.T) {
 
 // ── the narrow-frame law ────────────────────────────────────────────────────
 
-// One ladder, four frames: what each width keeps, and where the telemetry stops
-// sharing a row with the identity.
+// One ladder, five frames: what each width keeps on the ledger, what the seam
+// above it keeps, and where the right edge stops sharing a row with the ledger.
 func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 	agent := &fakeAgent{model: "deepseek/deepseek-v4-flash", turns: [][]session.Event{{
 		beginWith("edit", "edit internal/session/loop.go", editPayload),
@@ -2355,29 +2417,24 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 	// row would silence them.
 	a.notices.enabled = false
 
-	spark := a.ctxSpark()
 	for _, tc := range []struct {
 		width       int
-		delta, sp   bool
+		eta         bool
 		branch, mic bool
 		rows        int
 	}{
-		{width: 200, delta: true, sp: true, branch: true, mic: true, rows: 1},
-		// At 120 the delta is the segment that yields: "cached" joined the warm
-		// share (the owner's word for which percentage this is), the row grew by
-		// its width, and the Σ figure is the lowest-ranked fact on the line. A
-		// person at 120 columns keeps the word that stops a misreading over a
-		// second spelling of money the meter already carries.
-		{width: 120, delta: false, sp: true, branch: true, mic: true, rows: 1},
-		{width: 100, delta: false, sp: true, branch: true, mic: true, rows: 1},
-		// At seventy the clusters stop sharing a row — the identity and the
-		// telemetry cannot both fit with a barrier between them — and everything
-		// else is still on.
-		{width: 70, delta: false, sp: true, branch: true, mic: true, rows: 2},
-		// Below the tight floor the legend gives up THE BRANCH and keeps the
-		// door — the one fact on this line a person cannot read off the pane
-		// behind it — and the meter keeps the number alone.
-		{width: 60, delta: false, sp: false, branch: false, mic: true, rows: 2},
+		{width: 200, eta: true, branch: true, mic: true, rows: 1},
+		{width: 120, eta: true, branch: true, mic: true, rows: 1},
+		{width: 100, eta: true, branch: true, mic: true, rows: 1},
+		// At seventy the ledger and the right edge stop sharing a row — they
+		// cannot both fit with a barrier between them — and the seam is the end
+		// that starts giving things up: the branch goes first, because the shell
+		// prompt behind this pane still says it.
+		{width: 70, eta: true, branch: false, mic: true, rows: 2},
+		// Below that the ledger gives up its forecast — the meter beside it is
+		// already painted the warning — and the seam keeps the name, the model
+		// and the door, which is the one fact on this frame written nowhere else.
+		{width: 60, eta: false, branch: false, mic: true, rows: 2},
 	} {
 		rows := a.statusRows(tc.width)
 		if len(rows) != tc.rows {
@@ -2390,15 +2447,24 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 			}
 		}
 		line := plain(strings.Join(rows, "\n"))
-		if has := strings.Contains(line, "Σ"); has != tc.delta {
-			t.Fatalf("at %d columns the delta is %v:\n%q", tc.width, has, line)
+		if has := strings.Contains(line, "compaction in"); has != tc.eta {
+			t.Fatalf("at %d columns the forecast is %v:\n%q", tc.width, has, line)
 		}
-		if has := strings.Contains(line, spark); has != tc.sp {
-			t.Fatalf("at %d columns the sparkline is %v:\n%q", tc.width, has, line)
+		// The bill and the meter outlast every other figure, in that order.
+		if !strings.Contains(line, "$1.42") || !strings.Contains(line, "100k/200k") {
+			t.Fatalf("at %d columns the ledger lost the bill or the meter:\n%q", tc.width, line)
 		}
 		// The state word survives every width: it is why the line is there.
 		if !strings.Contains(line, "idle") {
 			t.Fatalf("at %d columns the state word was dropped:\n%q", tc.width, line)
+		}
+		// AND IDENTITY IS NOT ON THE ROW AT ANY WIDTH from 2026-09-09. It is on
+		// the seam above the box, which is what stops a long title pushing the
+		// numbers off the frame.
+		for _, banned := range []string{"the bottom hud wave", "deepseek-v4-flash"} {
+			if strings.Contains(line, banned) {
+				t.Fatalf("at %d columns the row carries %q:\n%q", tc.width, banned, line)
+			}
 		}
 		legend := plain(a.legend(tc.width))
 		if has := strings.Contains(legend, "chat-v3-task"); has != tc.branch {
@@ -2407,10 +2473,12 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 		if has := strings.Contains(legend, microcopy); has != tc.mic {
 			t.Fatalf("at %d columns the microcopy is %v: %q", tc.width, has, legend)
 		}
-		// Identity belongs to the status line at every width and is not repeated
-		// on the adjacent legend.
-		if strings.Contains(legend, "the bottom hud wave") {
-			t.Fatalf("at %d columns the legend repeated identity: %q", tc.width, legend)
+		// The name and the model are on the seam at every width this ladder
+		// covers — the two facts that tell one pane from another.
+		for _, want := range []string{"the bottom hud wave", "deepseek-v4-flash"} {
+			if !strings.Contains(legend, want) {
+				t.Fatalf("at %d columns the seam is missing %q: %q", tc.width, want, legend)
+			}
 		}
 		if strings.Contains(legend, "aforge-v2") {
 			t.Fatalf("at %d columns the legend is still carrying the path: %q", tc.width, legend)
@@ -3661,10 +3729,21 @@ func TestTheRosterOrdersItsFamiliesByUrgencyAndCountsTheWhole(t *testing.T) {
 		t.Fatalf("the node's id is not the trailing meta of its row:\n%s", rail)
 	}
 	// AND THE FOOTER SAYS THE WHOLE, in the group vocabulary.
-	for _, want := range []string{railSigma + "$1.42", "312k tok", "1 running", "1 needs you",
+	for _, want := range []string{railSigma + "1 running", "1 needs you",
 		"1 queued", "1 waiting", "2 done"} {
 		if !strings.Contains(rail, want) {
 			t.Fatalf("the footer does not say %q:\n%s", want, rail)
+		}
+	}
+	// AND IT COUNTS WHAT THE COLUMN HOLDS AND NOTHING ELSE. The bill and the
+	// token total were on this foot until 2026-09-09, and both are the SESSION's
+	// — the same two figures the status row two lines down already draws. One
+	// number drawn twice on one frame is one of them wrong the moment they
+	// disagree, and the second copy cost this column two of its three lines
+	// (task.go's [app.railFootRows]).
+	for _, gone := range []string{"$1.42", "312k tok"} {
+		if strings.Contains(rail, gone) {
+			t.Fatalf("the footer repeats the status row's %q:\n%s", gone, rail)
 		}
 	}
 }

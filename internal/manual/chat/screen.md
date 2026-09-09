@@ -599,7 +599,7 @@ No. A scroll away from the live edge is yours and it stays.
 - **Typing** into the message box does not move you. Nor does deleting, pasting, or
   attaching a picture.
 
-The one dim chip at the bottom right, `↓ latest · ctrl+l`, is the whole of aforge's
+The one dim chip at the left of the breathing row, `↓ latest · ctrl+l`, is the whole of aforge's
 answer to being scrolled away: it offers the way back rather than taking it. Pressing
 `ctrl+l`, clicking the chip, or scrolling down to the bottom yourself re-arms following,
 and from then on new output keeps you at the edge again.
@@ -1153,7 +1153,7 @@ Under 60 columns, eight things change shape:
 
 On top of those eight: preview blocks under a pending call are capped at 4 rows instead of
 12; there is no task rail column (that already went at 100); and the legend has already
-dropped its hint slot and its branch (that went at 70).
+dropped its branch (that went at 70).
 
 ## What the top line of home drops when it is narrow — the clock goes first
 
@@ -1197,9 +1197,8 @@ Beyond the four tiers, these are the exact points where parts of the screen give
 
 | what | threshold |
 | --- | --- |
-| session delta (`Σ +128 −14`) drawn at all | width 120 |
-| telemetry may wrap to its own row | below width 100 |
-| legend loses branch and hint slot; status keeps the conversation's name; no context sparkline | below width 70 |
+| the status row's right edge may wrap to its own row | below width 100 |
+| the legend drops the branch outright, and the ledger drops its compaction forecast | below width 70 |
 | full task rail, 30 columns off the conversation | width 120 |
 | slim task rail, 24 columns | width 100 |
 | no rail column at all — `alt+t` overlays the roster instead | below width 100 |

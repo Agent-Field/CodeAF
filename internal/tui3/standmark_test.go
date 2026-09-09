@@ -273,7 +273,8 @@ func TestTheDoorBreathesOnlyWhileAnOrderIsInHand(t *testing.T) {
 	a.clock = func() time.Time { return now }
 	stale := func() { now = now.Add(keepEvery + time.Second) }
 
-	still := standWaitGlyph + homeKeepingWord + "1"
+	// ONE ORDER IS SAID IN THE SINGULAR: `◦ 1 standing order` (homestanding.go).
+	still := standWaitGlyph + " 1" + homeKeepingWord
 	stale()
 	if a.keepingWord() != still {
 		t.Fatalf("a quiet door is not still: %q", a.keepingWord())
@@ -286,7 +287,7 @@ func TestTheDoorBreathesOnlyWhileAnOrderIsInHand(t *testing.T) {
 		t.Fatal("a door with an order in hand is not breathing")
 	}
 	// AND IT IS STILL THE SAME DOOR, at the same width: only the glyph moves.
-	if !strings.HasSuffix(a.keepingWord(), homeKeepingWord+"1") {
+	if !strings.HasSuffix(a.keepingWord(), " 1"+homeKeepingWord) {
 		t.Fatalf("the breathing door lost its count: %q", a.keepingWord())
 	}
 }

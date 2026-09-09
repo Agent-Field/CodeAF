@@ -429,7 +429,7 @@ func (h *homeView) pointItemForTest(id string) {
 
 // THE SEGMENT EXISTS ONLY WHEN THERE IS SOMETHING TO SAY, and it moves only
 // while one of them is actually firing.
-func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
+func TestTheStandingOrdersSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width = 200
 	// THE READING IS CACHED ON HOME'S OWN BEAT ([app.keepingCount]), so the
@@ -440,7 +440,7 @@ func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	a.clock = func() time.Time { return now }
 	stale := func() { now = now.Add(keepEvery + time.Second) }
 
-	if strings.Contains(plain(a.status(200)), "keeping an eye") {
+	if strings.Contains(plain(a.status(200)), homeKeepingWord) {
 		t.Fatalf("a surface with the ambient side off grew a segment:\n%s", plain(a.status(200)))
 	}
 
@@ -450,13 +450,16 @@ func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	}}
 	band.wire(a)
 	stale()
-	want := standWaitGlyph + homeKeepingWord + "2"
+	// THE SEGMENT NAMES THE PAGE IT OPENS. It read `keeping an eye on 2` until
+	// 2026-09-09, which named nothing a person could type — the door is
+	// /standing, so the segment says `◦ 2 standing orders` (homestanding.go).
+	want := standWaitGlyph + " 2" + homeKeepingWord + "s"
 	if !strings.Contains(plain(a.status(200)), want) {
 		t.Fatalf("the status row is missing %q:\n%s", want, plain(a.status(200)))
 	}
 
 	// AT REST THE GLYPH IS STILL. It breathes only while a firing is in flight.
-	if strings.Contains(plain(a.status(200)), "keeping an eye on 2") && a.keepingWord() != want {
+	if strings.Contains(plain(a.status(200)), want) && a.keepingWord() != want {
 		t.Fatalf("a quiet band is animating: %q", a.keepingWord())
 	}
 	band.running = map[string]standing.RunningMark{
@@ -466,7 +469,7 @@ func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	if a.keepingWord() == want {
 		t.Fatalf("a firing band is not breathing: %q", a.keepingWord())
 	}
-	if !strings.HasSuffix(a.keepingWord(), homeKeepingWord+"2") {
+	if !strings.HasSuffix(a.keepingWord(), " 2"+homeKeepingWord+"s") {
 		t.Fatalf("the breathing segment lost its count: %q", a.keepingWord())
 	}
 
@@ -474,7 +477,7 @@ func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	band.items[0].Status = standing.StatusPaused
 	band.items[1].Status = standing.StatusPaused
 	stale()
-	if strings.Contains(plain(a.status(200)), "keeping an eye") {
+	if strings.Contains(plain(a.status(200)), homeKeepingWord) {
 		t.Fatalf("a band of paused items still claims to be watching:\n%s", plain(a.status(200)))
 	}
 }

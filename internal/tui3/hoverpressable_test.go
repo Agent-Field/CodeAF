@@ -217,10 +217,11 @@ func TestATrayChipLightsOnItsOwnCells(t *testing.T) {
 	a.attach(filepath.Join(dir, "one.png"))
 	a.attach(filepath.Join(dir, "two.png"))
 
-	width, height := a.size()
-	rows, _, _, _ := a.chrome(width)
-	at := len(rows) - 1 - a.overlayHeight() - a.inputHeight()
-	y := height - len(rows) + at
+	// The tray is the input block's FIRST row, read off the layout's own marks
+	// rather than counted back from the foot of the chrome: the breathing blank
+	// moved under the box on 2026-09-09 and a count would be a row out
+	// (attach.go's [app.chipTrayTarget] says the whole of it).
+	y := trayRow(a)
 	labels := chipLabels(a.chips, a.pal)
 	x := len(inputPad) + ansi.StringWidth(labels[0]) + len(chipGap) + 1
 
@@ -228,7 +229,7 @@ func TestATrayChipLightsOnItsOwnCells(t *testing.T) {
 	if !a.hoveringChip(1) {
 		t.Fatalf("the pointer on the second chip recorded %+v", a.hot)
 	}
-	strip := a.chipStrip(width - len(inputPad))
+	strip := a.chipStrip(a.width - len(inputPad))
 	if got := strings.Count(strip, hoverBg()); got != 1 {
 		t.Fatalf("hovering one picture lit %d things on the tray:\n%q", got, strip)
 	}

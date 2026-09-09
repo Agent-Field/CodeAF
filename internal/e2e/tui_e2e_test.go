@@ -681,7 +681,7 @@ func testFiringReachesThePerson(t *testing.T) {
 	// /status, while something stands: the derived `keeping watch` line and the
 	// status line's own segment.
 	if !strings.Contains(r.capture(), say(t, "homeKeepingWord")) {
-		t.Errorf("the status line has no `keeping an eye on N` segment while an item stands:\n%s", r.capture())
+		t.Errorf("the status line has no `◦ N standing orders` segment while an item stands:\n%s", r.capture())
 	}
 	r.lit("/status")
 	time.Sleep(700 * time.Millisecond)
@@ -689,7 +689,7 @@ func testFiringReachesThePerson(t *testing.T) {
 	status := r.waitFor(20*time.Second, say(t, "homeWatchLabel"))
 	t.Logf("/status while something stands:\n%s", status)
 	if !strings.Contains(status, say(t, "homeKeepingWord")) {
-		t.Errorf("/status says nothing about what is being kept an eye on:\n%s", status)
+		t.Errorf("/status says nothing about the orders standing here:\n%s", status)
 	}
 
 	// WHAT THE ITEM ITSELF SAYS IT WILL SAY. The model names the standing order

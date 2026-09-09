@@ -282,7 +282,7 @@ func TestTheHostDoorWiresTheStandingSeamAndNothingAboutThisMachine(t *testing.T)
 }
 
 // THE READ MUST NOT BLOCK, and that is the whole reason [hostStanding] exists.
-// The reader over --host is the status line's `keeping an eye on` segment — home
+// The reader over --host is the status line's `◦ N standing orders` segment — home
 // does not open on a remote session — and that segment is asked on every frame,
 // while a wire call has a ten-second deadline behind it. So this holds the far
 // end still and asks anyway.

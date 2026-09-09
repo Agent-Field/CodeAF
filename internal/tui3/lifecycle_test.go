@@ -746,20 +746,30 @@ func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
 
 	lines := strings.Split(plain(frame(a)), "\n")
 	last := lines[len(lines)-1]
-	// THE TWO CLUSTERS, on the one row a ninety-column frame keeps them on:
-	// identity left (the name and the model's BASENAME — the vendor is a routing
-	// address, and it stays in the picker), telemetry right, state word last.
-	// The product name is no longer on this line at all.
-	for _, want := range []string{"porting the parser", "gpt-4.1-mini", "$0.14", "1k/10k · 10%", "idle"} {
+	// THE LEDGER LEFT AND THE STATE WORD LAST, on the one row a ninety-column
+	// frame keeps them on. The product name is not on this line, and since
+	// 2026-09-09 neither are the conversation's name and model: they are on the
+	// seam above the box, which is where a person changes them (foot.go).
+	for _, want := range []string{"$0.14", "1k/10k · 10%", "idle"} {
 		if !strings.Contains(last, want) {
 			t.Fatalf("the status line is missing %q:\n%q", want, last)
 		}
 	}
-	if strings.Contains(last, product) {
-		t.Fatalf("the product name is still on the status line: %q", last)
+	for _, gone := range []string{product, "porting the parser", "gpt-4.1-mini"} {
+		if strings.Contains(last, gone) {
+			t.Fatalf("the status line is still carrying %q: %q", gone, last)
+		}
 	}
-	if strings.Contains(last, "openai/") {
-		t.Fatalf("the vendor prefix is still on the status line: %q", last)
+	// AND THE SEAM CARRIES BOTH, the model as its BASENAME — the vendor is a
+	// routing address, and it stays in the picker.
+	seam := plain(a.legend(a.width))
+	for _, want := range []string{"porting the parser", "gpt-4.1-mini"} {
+		if !strings.Contains(seam, want) {
+			t.Fatalf("the seam is missing %q:\n%q", want, seam)
+		}
+	}
+	if strings.Contains(seam, "openai/") {
+		t.Fatalf("the vendor prefix is on the seam: %q", seam)
 	}
 	// NO TOP BAR. Nothing above the conversation says any of this.
 	for _, line := range lines[:len(lines)-1] {
@@ -786,7 +796,10 @@ func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
 }
 
 // The rule sits between the conversation and the input, and the draft is inset
-// one cell under it with one blank row above.
+// one cell DIRECTLY under it, with the blank row below the box. The blank was
+// above the prompt until 2026-09-09; it moved so that a person starts writing
+// at the top of the room the box has rather than at the bottom of it, and the
+// draft grows down into the blank as it wraps (view.go's [app.chrome]).
 func TestTheInputAreaSitsUnderARuleWithItsOwnBreathingRoom(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	// Named, because the border's label is the conversation's name and an
@@ -808,18 +821,22 @@ func TestTheInputAreaSitsUnderARuleWithItsOwnBreathingRoom(t *testing.T) {
 	if got := lines[draft]; !strings.HasPrefix(got, inputPad+prompt) {
 		t.Fatalf("the draft is not inset one cell behind its prompt: %q", got)
 	}
-	if strings.TrimSpace(lines[draft-1]) != "" {
-		t.Fatalf("the row above the draft is not blank: %q", lines[draft-1])
+	if strings.TrimSpace(lines[draft+1]) != "" {
+		t.Fatalf("the row under the draft is not blank: %q", lines[draft+1])
 	}
-	// The rule above the box is the LEGEND (render.go). The conversation's name
-	// is not written into it any more — the status line owns identity, and the
-	// border keeps the branch, the host and the keys — so on a local session
-	// with nothing to say it is a bare rule.
-	if rule := lines[draft-2]; !strings.HasPrefix(rule, "─") || !strings.Contains(rule, "───") {
-		t.Fatalf("the row above that is not the input's legend border: %q", rule)
+	// The rule directly above the box is the LEGEND (render.go), and the
+	// conversation's name is written into it: the seam is where identity lives
+	// (foot.go's [app.seamIdentity]).
+	rule := lines[draft-1]
+	if !strings.HasPrefix(rule, "─") || !strings.Contains(rule, "───") {
+		t.Fatalf("the row above the draft is not the input's legend border: %q", rule)
 	}
-	if draft != len(lines)-2 {
-		t.Fatalf("the draft is %d rows from the bottom, want 1 (the status line)", len(lines)-1-draft)
+	if !strings.Contains(rule, "trimming the parser") {
+		t.Fatalf("the seam is not carrying the conversation's name: %q", rule)
+	}
+	if draft != len(lines)-3 {
+		t.Fatalf("the draft is %d rows from the bottom, want 2 (the blank and the status line)",
+			len(lines)-1-draft)
 	}
 	// The caret is in the box, one cell right of where it used to be.
 	_, caretX, caretY := a.frame()

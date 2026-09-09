@@ -655,13 +655,13 @@ the three classes:
 crew     max · brain kimi-k3 · hands glm-5.3 · checks kimi-k3
 ```
 
-On the live status line the same fact is one short segment — `crew max`, or
-`crew custom` — at the head of the telemetry, beside the model on the left, and it is among
-the first segments a narrow row gives up. The `crew` line here and on the phone's status
-sheet is the full reading. Every ordinary launch has a crew — one is never unset, only
-`custom` — so the line and the segment are always there; the one session that shows
-neither is a **remote** one opened with `--host`, where the crew belongs to the other
-machine.
+The crew is **not on the status line**. It was one short segment there — `crew max`, or
+`crew custom` — at the head of the telemetry until 2026-09-09, and it came off: the row is
+a ledger of things you act on from it, and a preset is changed on a page. The `crew` line
+here and on the phone's status sheet is where it is read now, in full. Every ordinary
+launch has a crew — one is never unset, only `custom` — so the line is always there; the
+one session that shows none is a **remote** one opened with `--host`, where the crew
+belongs to the other machine.
 
 `/status` differs from the on-screen status sheet in two deliberate ways:
 
@@ -834,7 +834,7 @@ memories are dropped with `/forget`.
 `/model` with nothing after it opens the model picker: a filter box in the input line's
 place with a short list of models under it. It is bottom-anchored, so the conversation
 shrinks above it and nothing pops up over what you were reading. Pressing the model's
-name in the status line opens the same picker.
+name on the legend line above the box opens the same picker.
 
 `/model <slug>` switches straight to that slug: no list, no confirmation, and no check
 that the slug exists in any list. If the slug is in no known list, the context window is
@@ -1392,7 +1392,7 @@ each of the five can be pinned on its own in /settings → Providers
 ```
 
 The first line says what the presets change and what they do not. The second is **seat
-one** — `you talk to · <model>`, spelled as the status line spells it — with no marker and
+one** — `you talk to · <model>`, spelled as the legend above the box spells it — with no marker and
 no highlight, because nothing in this chooser can move it. Then the three presets: the one
 in force wears a highlighted ground, `›` is where **enter** is aimed and it opens on yours,
 ↑ / ctrl+p and ↓ / ctrl+n move, and **esc** closes without changing anything. The last
@@ -1424,15 +1424,15 @@ a command you can type. See "Why is one word in a line brighter than the rest" o
 screen page.
 
 The last clause names, by id, the one seat the command did not touch: the model you are
-talking to, in the same spelling the status line's model segment uses, so you can check it
-against the foot of the frame. `/crew` never changes that model and never offers to; only
+talking to, in the same spelling the legend above the box uses, so you can check it
+against the line over your own prompt. `/crew` never changes that model and never offers to; only
 `/model` does. When the session has no model yet the clause reads
 `the model you talk to is untouched — /model changes that`.
 
 **The change is live.** The next call aforge makes on its own uses the new crew — no
 relaunch, and no waiting for the next session. To read the crew back afterwards: the live
-status line says `crew max` beside the model, `/status` prints the `crew` line under
-`model`, `/settings` → Providers has the crew row, and bare `/crew` opens on yours.
+`/status` prints the `crew` line under `model`, the phone's status sheet has the same row,
+`/settings` → Providers has the crew row, and bare `/crew` opens on yours.
 
 **That promise is local-session only.** Over `--host` the session resolves its crew from
 the other machine, and there is no crew write across the connection — so `/crew` refuses
@@ -1442,8 +1442,8 @@ rather than writing this laptop's profile behind your back:
 devbox owns the crew · change it on that machine
 ```
 
-For the same reason a remote window shows no `crew` segment on the status line and no
-`crew` line in `/status`. Change that machine's profile there.
+For the same reason a remote window shows no `crew` line in `/status` and none on the
+status sheet. Change that machine's profile there.
 
 ## /connect — your connected accounts
 

@@ -282,38 +282,44 @@ func TestTheWiderTiersKeepTodaysStatusRow(t *testing.T) {
 			t.Fatalf("at %d columns statusHeight says %d and the row builder drew %d",
 				width, got, len(rows))
 		}
-		// The wide row keeps its two clusters on one line, which is the thing the
-		// deck replaces and must not have replaced here.
+		// The wide row keeps its ledger and its right edge on one line, which is
+		// the thing the deck replaces and must not have replaced here. The
+		// identity is on the seam above the box at every one of these widths
+		// (foot.go), which is the other half of "the wide row is untouched".
 		line := plain(strings.Join(rows, "\n"))
-		if !strings.Contains(line, "Fix the nil-map crash · deepseek-v4-flash") {
-			t.Fatalf("at %d columns the identity cluster is not the wide row's:\n%q", width, line)
+		if !strings.Contains(line, "$0.31") || !strings.Contains(line, "24k/200k · 12%") ||
+			!strings.Contains(line, "idle") {
+			t.Fatalf("at %d columns the wide row lost a segment:\n%q", width, line)
+		}
+		if seam := plain(a.legend(width)); !strings.Contains(seam, "Fix the nil-map crash · deepseek-v4-flash") {
+			t.Fatalf("at %d columns the identity cluster is not on the seam:\n%q", width, seam)
 		}
 	}
 }
 
-// THE BYTES, PINNED. The wave's promise is that a frame wide enough for the
-// status row renders exactly what it rendered before the deck existed, escape
-// sequences and all — so the row is asserted against its literal self.
+// THE BYTES, PINNED. A frame wide enough for the status row renders this row
+// exactly, cell for cell — so it is asserted against its literal self, and any
+// change to the shape of the row has to be made here on purpose.
 //
-// The crew joined the row in #315, which is the one deliberate change to this
-// literal since the deck: the segment was written to stand at the head of the
-// telemetry and drew for nobody, because it was guarded on an empty profile
-// directory — the ordinary launch (crew.go's [app.crewReading]).
+// 2026-09-09 IS WHEN THE ROW CHANGED SHAPE. Until then it was identity left —
+// `Fix the nil-map crash · deepseek-v4-flash` — with every figure in one dotted
+// run flushed against the right edge, the crew word at the head of it (#315).
+// Now the name and the model are on the seam above the box, and what is left is
+// a LEDGER laid from the left and grouped by the question each group answers:
+// the bill, three cells of air, the meter — and the state word alone at the
+// right edge. The crew word is off the line entirely (foot.go's [groupOff]).
 //
-// AND THE BILL GAINED ITS RESERVATION, which is the second. The money segment
-// holds one width for every spelling a turn walks through, so the row does not
-// shove sideways as the figure grows a place and loses it again (render.go's
-// [costCell]). `$0.31` is five cells inside an eight-cell segment, so three of
-// the cells the gap used to hold moved to the other side of the crew word — the
-// row is the same length and the same segments, and the two right-hand clusters
-// stand exactly where they stood.
-func TestTheWideStatusRowIsByteForByteWhatItWas(t *testing.T) {
+// The three cells in front of `$0.31` are the money segment's own reservation,
+// which holds one width for every spelling a turn walks through so the row does
+// not shove sideways as the figure grows a place and loses it again
+// (render.go's [costCell]).
+func TestTheWideStatusRowIsByteForByteWhatItIs(t *testing.T) {
 	a, _ := deckApp(t)
 	a.width = 120
 	a.touch()
 
-	const want = "Fix the nil-map crash · deepseek-v4-flash" +
-		"                               crew balanced ·    $0.31 · 24k/200k · 12% · idle"
+	const want = "   $0.31   24k/200k · 12%" +
+		"                                                                                           idle"
 	if got := plain(strings.Join(a.statusRows(120), "\n")); got != want {
 		t.Fatalf("the wide status row changed:\n got %q\nwant %q", got, want)
 	}

@@ -308,23 +308,26 @@ func TestQuestionsQueueOldestFirstAndSayHowManyAreBehind(t *testing.T) {
 
 // ── 2. the session's name ───────────────────────────────────────────────────
 
-func TestTheTitleReachesTheStatusLineLiveAndOnResume(t *testing.T) {
+// The name reaches the SEAM — the rule above the box — where identity has lived
+// since 2026-09-09 (foot.go's [app.seamIdentity]). It was the status row's left
+// until then.
+func TestTheTitleReachesTheSeamLiveAndOnResume(t *testing.T) {
 	_, a := wired([]session.Event{{Kind: session.EventTitleChanged, Text: "porting the parser"}})
 	typeLine(t, a, "port it")
 
-	status := plain(a.status(a.width))
-	if !strings.Contains(status, "porting the parser") {
-		t.Fatalf("the status line is missing the title:\n%s", status)
+	seam := plain(a.legend(a.width))
+	if !strings.Contains(seam, "porting the parser") {
+		t.Fatalf("the seam is missing the title:\n%s", seam)
 	}
-	if strings.Index(status, "porting the parser") > strings.Index(status, a.model) {
-		t.Fatalf("the title has to sit left of the model:\n%s", status)
+	if strings.Index(seam, "porting the parser") > strings.Index(seam, a.model) {
+		t.Fatalf("the title has to sit left of the model:\n%s", seam)
 	}
 
 	// A resumed session is already named, and opens saying so.
 	named := &wiredAgent{fakeAgent: &fakeAgent{model: "m"}, name: "the tasker wave"}
 	resumed := newTestApp(named)
-	if !strings.Contains(plain(resumed.status(resumed.width)), "the tasker wave") {
-		t.Fatalf("a resumed session opened without its name:\n%s", plain(resumed.status(resumed.width)))
+	if !strings.Contains(plain(resumed.legend(resumed.width)), "the tasker wave") {
+		t.Fatalf("a resumed session opened without its name:\n%s", plain(resumed.legend(resumed.width)))
 	}
 }
 

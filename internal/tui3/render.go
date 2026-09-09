@@ -2613,7 +2613,12 @@ func splitReserve(text string) (room, figure string) {
 //	⠹ working · 4s       what it is DOING — always last, because it is the one
 //	                     segment that is true of the whole line
 func (a *app) telemetry(width int) []hudPart {
-	var parts []hudPart
+	// THE ROW'S OWN CAPACITY, TAKEN ONCE. There are [segCount] kinds and never
+	// more, and growing this slice a segment at a time is three allocations on
+	// a line rebuilt every frame — which the scroll's law counts
+	// (inputsmooth_test.go's
+	// [TestOneScreenScrollOfFourThousandLinesStaysInsideTheAllocationLaw]).
+	parts := make([]hudPart, 0, segCount)
 	add := func(kind hudSeg, text string) {
 		if text != "" {
 			parts = append(parts, hudPart{kind: kind, text: text})
@@ -2640,7 +2645,15 @@ func (a *app) telemetry(width int) []hudPart {
 	add(segDelta, a.deltaSegment())
 	add(segBurn, a.burnSegment())
 	add(segRate, a.liveRiderAt(-1))
+	// A LINK THAT HAS STOPPED WORKING OUTRANKS EVERY NUMBER ON THIS LINE, and
+	// says so by never being dropped: it is not in [dropOrder], so a narrow
+	// frame gives up the ledger around it rather than the one segment that
+	// explains why none of those numbers are moving (hostlink.go).
 	add(segLink, a.linkSegment())
+	// AND A DECISION WAITING ON A PERSON OUTRANKS EVERY NUMBER ON IT for the
+	// link's own reason said one rung louder: the numbers are not moving, and
+	// this is the segment that says whose move it is (question.go).
+	add(segQuestions, a.questionSegment())
 	if word, painted := a.stateSegment(); word != "" {
 		parts = append(parts, hudPart{kind: segState, text: word, paint: painted})
 	}
@@ -2928,7 +2941,13 @@ func (a *app) deltaSegment() string {
 
 // ctxSpark is the last few turn-end context readings, as one glyph each:
 //
-//	12.4k/128k · 10% ▁▂▂▃▅▆
+//	context   12.4k/128k · 10% ▁▂▂▃▅▆
+//
+// IT RIDES THE METER ON THE SHEET AND ON /status, NOT ON THE ROW. It was beside
+// the meter on the status line until 2026-09-09, where it was six cells of
+// trend on a line that is read at a glance and acted on segment by segment —
+// nothing on the row does anything with a shape. It is on the one page a person
+// opens BECAUSE they want the shape (statusdeck.go's [app.deckItems]).
 //
 // It answers the question the number cannot: a conversation at 60% that has sat
 // at 60% for six turns and one that arrived there from 20% are the same figure
@@ -3454,13 +3473,19 @@ func (a *app) legend(width int) string {
 		a.seamModelSpan = hudSpan{}
 	}
 	right := a.legendRight(width)
-	attempts := make([]struct{ left, right string }, 0, 6)
+	// EACH RUNG IS BUILT ONCE, SPAN AND ALL. The left label and the columns its
+	// model segment occupies come out of the same call, because building the
+	// cluster twice — once to measure the attempt and once to paint it — is
+	// twice the work on a line redrawn every frame, and the scroll's allocation
+	// law counts it (inputsmooth_test.go's
+	// [TestOneScreenScrollOfFourThousandLinesStaysInsideTheAllocationLaw]).
+	attempts := make([]legendAttempt, 0, 6)
 	// THE RUNNING SLOT IS A LADDER OF CLAUSES. Each pass drops its last clause
 	// and measures again, preserving the fixed order rather than inventing a
 	// second short sentence. Every other state has one rung and stops here.
 	for rung := right; rung != ""; {
-		if left, named := a.legendLeft(width, legendRoom(width, rung)); named {
-			attempts = append(attempts, struct{ left, right string }{left, rung})
+		if left, span, named := a.legendLeftSpan(width, legendRoom(width, rung)); named {
+			attempts = append(attempts, legendAttempt{left: left, right: rung, span: span})
 		}
 		next := a.hintShorter(rung)
 		if next == "" {
@@ -3468,23 +3493,27 @@ func (a *app) legend(width int) string {
 		}
 		rung = next
 	}
-	bare, _ := a.legendLeft(width, legendRoom(width, ""))
-	attempts = append(attempts, struct{ left, right string }{bare, ""})
+	bare, bareSpan, _ := a.legendLeftSpan(width, legendRoom(width, ""))
+	attempts = append(attempts, legendAttempt{left: bare, right: "", span: bareSpan})
+	// THE MODEL IS A DOOR ON THIS LINE. Its columns are those the chosen attempt
+	// drew it at, offset by the border's own two cells, and it brightens under
+	// the pointer to say so (foot.go's [app.legendModelPress]). The lift closure
+	// reads the attempt being tried through this one variable rather than being
+	// built again inside the loop, for the allocation law's sake.
+	seam := hudSpan{}
+	lift := func(text string) string {
+		return paintSpan(text, seam, paint, a.pal.accent, a.hoveringStatusModel())
+	}
 	for _, attempt := range attempts {
-		// THE MODEL IS A DOOR ON THIS LINE. Its columns are those the chosen
-		// attempt drew it at, offset by the border's own two cells, and it
-		// brightens under the pointer to say so (foot.go's [app.legendModelPress]).
-		lift := paint
+		seam = hudSpan{}
 		if !a.roomOpen() {
-			_, span := a.seamIdentity(width, legendRoom(width, attempt.right))
+			seam = attempt.span
+			span := attempt.span
 			if span.pressable() {
 				span.from += 2
 				span.to += 2
 			}
 			a.seamModelSpan = span
-			lift = func(text string) string {
-				return paintSpan(text, hudSpan{from: span.from - 2, to: span.to - 2}, paint, a.pal.accent, a.hoveringStatusModel())
-			}
 		}
 		if line, ok := a.legendLine(attempt.left, attempt.right, width, lift); ok {
 			return line
@@ -3494,6 +3523,14 @@ func (a *app) legend(width int) string {
 		}
 	}
 	return a.rule(width)
+}
+
+// legendAttempt is one rung of the ladder above: the two labels it would draw,
+// and where the model segment fell inside the left one.
+type legendAttempt struct {
+	left  string
+	right string
+	span  hudSpan
 }
 
 // legendGap is the shortest run of rule the two labels will leave between them.
@@ -3618,6 +3655,14 @@ func (a *app) branchWord() string {
 // THE TIGHT FRAME DROPS THE BRANCH. The status line below keeps identity, and a
 // branch a person can recover from the shell prompt does not outrank it.
 func (a *app) legendLeft(width, room int) (string, bool) {
+	left, _, named := a.legendLeftSpan(width, room)
+	return left, named
+}
+
+// legendLeftSpan is that label AND the columns its model segment occupies
+// within it, which is what [app.legend] needs to make the model pressable
+// without building the cluster a second time.
+func (a *app) legendLeftSpan(width, room int) (string, hudSpan, bool) {
 	// THE PLACE IS THE ROOM while one is open, and the name and branch go with
 	// the path: none of them is a fact about the page on screen, and the one
 	// thing a person in here needs from this slot is the key that gets them out
@@ -3629,20 +3674,20 @@ func (a *app) legendLeft(width, room int) (string, bool) {
 		// person's own draft comes back (room.go's [app.roomKey], recall.go). The
 		// slot is here to promise the NEXT keystroke, so it has to move with it.
 		if a.recalling() {
-			return roomLegendRecallWord, true
+			return roomLegendRecallWord, hudSpan{}, true
 		}
 		if a.roomOrganized() {
-			return "", true
+			return "", hudSpan{}, true
 		}
-		return roomLegendWord, true
+		return roomLegendWord, hudSpan{}, true
 	}
 	if room < 1 {
-		return "", true
+		return "", hudSpan{}, true
 	}
 	// THE NAME AND THE MODEL ARE HERE NOW, and the branch rides after them
 	// (foot.go's [app.seamIdentity] holds the ladder).
-	cluster, _ := a.seamIdentity(width, room)
-	return cluster, true
+	cluster, span := a.seamIdentity(width, room)
+	return cluster, span, true
 }
 
 // legendJoin is the separator between the legend's facts, and dotted threads any

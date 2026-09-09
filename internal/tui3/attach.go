@@ -772,8 +772,24 @@ func (a *app) chipTrayTarget(x, y int) (int, bool) {
 		return 0, false
 	}
 	width, height := a.size()
-	rows, _, _, _ := a.chrome(width)
-	at := len(rows) - 1 - a.overlayHeight() - a.inputHeight()
+	// THE ROW IS THE ONE THE LAYOUT MARKED AS THE BLOCK'S FIRST, and it is READ
+	// off the marks rather than counted backwards from the foot of the chrome.
+	// The count was `len(rows) - 1 - overlay - input`, which was true only while
+	// nothing else stood between the box and the bottom of the frame — and on
+	// 2026-09-09 the breathing blank moved from above the box to below it
+	// (view.go's [app.chrome]), so every press on the tray landed one row above
+	// where the tray was drawn. A mark cannot drift that way: it says which row
+	// the block actually began on. AND A GREETING HAS NO SUCH ROW: while the
+	// welcome unit holds the box it draws its own draft with no tray on it
+	// (welcome.go), so there is nothing here to press and this answers no.
+	rows, marks, _, _ := a.chrome(width)
+	at := -1
+	for i, mark := range marks {
+		if mark.kind == chromeDraft && mark.index == 0 {
+			at = i
+			break
+		}
+	}
 	if at < 0 || y != height-len(rows)+at {
 		return 0, false
 	}

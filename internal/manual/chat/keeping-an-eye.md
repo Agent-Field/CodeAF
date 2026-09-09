@@ -686,7 +686,7 @@ everything you set up from it:
 machine: home lists that machine's projects with each one's `◦` band under it, and the
 standing place lists both what stands on this conversation and what stands anywhere else on
 that machine. `p` and `s` write to the far machine's store and the refusal, if the store
-refuses, is that store's own. The status line counts too — `◦ keeping an eye on 2` is about
+refuses, is that store's own. The status line counts too — `◦ 2 standing orders` is about
 the workspace this window is on, which over `--host` is a path on the far machine.
 
 One live detail is still missing over a connection, and it says nothing rather than
@@ -766,8 +766,8 @@ never leaves a watch reading "checking now" for the rest of the week.
 
 Most passes are over in far less than a second, so the ordinary state of a
 healthy watch is `◦`. Seeing `◐` means you caught one working. On the status
-line the `keeping an eye on N` segment is still while nothing is running and
-turns while something is.
+line the `◦ N standing orders` segment is still while nothing is running and
+its mark turns while something is.
 
 ## Where is the record of a reminder I made from home
 
@@ -846,7 +846,7 @@ reasons, in the order worth checking:
   conversation there.
 - **It has not fired yet.** A window checks its items every five minutes, the
   first check five minutes after it opened, so a one-minute reminder can arrive
-  up to five minutes late. `/status` shows `keeping an eye on N` while something
+  up to five minutes late. `/status` shows `◦ N standing orders` while something
   stands.
 - **The check found nothing to say.** A watch or a rule that looked and found
   nothing writes nothing at all — that is the design, not a fault. The item's own

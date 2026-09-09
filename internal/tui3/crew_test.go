@@ -532,24 +532,24 @@ func TestBareCrewReadsTheFiveSeats(t *testing.T) {
 	}
 }
 
-// THE STATUS LINE PAIRS THE TWO DIALS: the crew word stands at the head of the
-// telemetry, across the gap from the conversation's model, and the word is the
-// same one /status, the picker's hint and the chooser read — derived from the
-// four live rows through one function.
-func TestTheStatusLinePairsTheCrewWithTheModel(t *testing.T) {
+// THE CREW IS SAID ON THE PAGES AND NOT ON THE ROW, and every page says the
+// same word — /status, the sheet, the picker's hint and the chooser all derive
+// it from the four live rows through one function.
+//
+// It stood at the head of the telemetry, across the gap from the conversation's
+// model, until 2026-09-09. It is a SETTING rather than a measurement and it is
+// said in full elsewhere, so it came off a row that is read at a glance and
+// acted on segment by segment (foot.go's [groupOff]).
+func TestTheCrewWordIsSaidTheSameWayOnEveryPageThatSaysIt(t *testing.T) {
 	a, _ := sheetApp(t)
 	a.width = 200
 	a.slash("/crew max")
 
-	line := plain(a.status(a.width))
-	if !strings.Contains(line, "crew max") {
-		t.Fatalf("the status line does not name the crew:\n%q", line)
+	if line := plain(a.status(a.width)); strings.Contains(line, "crew") {
+		t.Fatalf("the status line is still naming the crew:\n%q", line)
 	}
-	if strings.Index(line, "crew max") < strings.Index(line, "gpt-4.1-mini") {
-		t.Fatalf("the crew word is not beside the model, on its right:\n%q", line)
-	}
-	if parts := a.telemetry(a.width); len(parts) == 0 || parts[0].kind != segCrew {
-		t.Fatalf("the crew is not the head of the telemetry: %+v", parts)
+	if segGroup(segCrew) != groupOff {
+		t.Fatalf("the crew is drawn on the status row: %v", segGroup(segCrew))
 	}
 	// ONE SOURCE FOR THE WORD, wherever it is said.
 	if a.crewHint() != a.crewSegment() {
@@ -564,33 +564,33 @@ func TestTheStatusLinePairsTheCrewWithTheModel(t *testing.T) {
 	toProviders(t, a)
 	setRow(t, a, config.KeyTierMastermindModel, "openai/gpt-5")
 	a.closeSettings()
-	if line := plain(a.status(a.width)); !strings.Contains(line, "crew custom") || strings.Contains(line, "crew max") {
-		t.Fatalf("the status line did not follow the hand-set seat:\n%q", line)
+	if got := a.crewSegment(); got != "crew custom" {
+		t.Fatalf("the crew reads %q after a hand-set seat, want crew custom", got)
+	}
+	if got := deckValue(a.deckItems(), "crew"); !strings.HasPrefix(got, config.CrewCustom) {
+		t.Fatalf("the sheet's crew row is %q after a hand-set seat", got)
 	}
 }
 
-// THE CREW IS AMONG THE FIRST SEGMENTS TO GO: a setting rather than a
-// measurement, said in full elsewhere, so a short row gives it up before the
-// bill and the meter and nothing else on the row moves.
-func TestTheCrewSegmentYieldsBeforeTheNumbers(t *testing.T) {
+// THE CREW IS NOT ON THE ROW AT ANY WIDTH. It used to be the first segment a
+// crowded row gave up, which is the shape of a fact that did not belong there:
+// the row is a ledger of things a person acts on from it, and a preset is
+// changed on a page. The bill and the meter keep every width they had.
+func TestTheCrewIsOffTheRowAtEveryWidth(t *testing.T) {
 	a, _ := sheetApp(t)
-	// The name is sized so that at a hundred columns the telemetry is over by
-	// exactly the crew's width: dropping it is enough, and nothing else goes.
 	a.title = "a conversation with a name long enough to crowd"
 	a.ctxWindow, a.ctxTokens = 200_000, 24_000
 	a.cost = 0.31
 
-	wide := plain(a.status(200))
-	if !strings.Contains(wide, "crew balanced") {
-		t.Fatalf("the wide row does not carry the crew:\n%q", wide)
-	}
-	narrow := plain(a.status(100))
-	if strings.Contains(narrow, "crew") {
-		t.Fatalf("the crowded row kept the crew over the numbers:\n%q", narrow)
-	}
-	for _, kept := range []string{"$0.31", "24k/200k", "idle"} {
-		if !strings.Contains(narrow, kept) {
-			t.Fatalf("the crowded row lost %q while dropping the crew:\n%q", kept, narrow)
+	for _, width := range []int{200, 100} {
+		row := plain(a.status(width))
+		if strings.Contains(row, "crew") {
+			t.Fatalf("the %d-column row carries the crew:\n%q", width, row)
+		}
+		for _, kept := range []string{"$0.31", "24k/200k", "idle"} {
+			if !strings.Contains(row, kept) {
+				t.Fatalf("the %d-column row lost %q:\n%q", width, kept, row)
+			}
 		}
 	}
 	// The crew is not on the line at all any more (foot.go's [groupOff]), so it
@@ -616,15 +616,17 @@ func TestTheStatusLineSaysNothingAboutACrewInAHostedWindow(t *testing.T) {
 	}
 }
 
-// AND THE WHOLE FRAME CARRIES IT ON AN ORDINARY LAUNCH, at both the widths a
-// person actually sits at.
+// AND AN ORDINARY LAUNCH READS IT ON ITS OWN PAGE, at both the widths a person
+// actually sits at.
 //
-// This is the issue's headline said the way a person meets it: not a segment
-// asked for by name, but the frame [app.View] draws, with a crew picked in a
-// profile of this test's own and nothing exported into the environment. It was
-// red at every width before #315 and is green at both after it, and a hosted
-// window at the same widths still shows none.
-func TestTheFrameCarriesTheCrewOnAnOrdinaryLaunchAtEveryWidth(t *testing.T) {
+// This is the issue's headline said the way a person meets it: a crew picked in
+// a profile of this test's own, nothing exported into the environment, and the
+// word reachable without a flag or a variable. It was the FRAME that carried it
+// when #315 was fixed — the crew word rode the status row — and since 2026-09-09
+// the row does not carry settings, so what this asserts is the door that
+// replaced it: the sheet and /status, which every width reaches the same way. A
+// hosted window still shows none: its crew is on the far machine.
+func TestAnOrdinaryLaunchCarriesTheCrewOnItsPageAtEveryWidth(t *testing.T) {
 	dir := t.TempDir()
 	if err := config.ApplyCrew(dir, config.CrewMax); err != nil {
 		t.Fatal(err)
@@ -635,8 +637,11 @@ func TestTheFrameCarriesTheCrewOnAnOrdinaryLaunchAtEveryWidth(t *testing.T) {
 		a.model = "openai/gpt-4.1-mini"
 		a.width, a.height = width, 24
 		painted, _, _ := a.frame()
-		if frame := plain(painted); !strings.Contains(frame, "crew "+config.CrewMax) {
-			t.Fatalf("the %d-column frame of an ordinary launch does not carry the crew:\n%s", width, frame)
+		if frame := plain(painted); strings.Contains(frame, "crew ") {
+			t.Fatalf("the %d-column frame of an ordinary launch still carries the crew:\n%s", width, frame)
+		}
+		if got := deckValue(a.deckItems(), "crew"); !strings.HasPrefix(got, config.CrewMax) {
+			t.Fatalf("at %d columns the sheet's crew row is %q, want the picked preset", width, got)
 		}
 
 		hostedWindow := newTestApp(&fakeAgent{model: "openai/gpt-4.1-mini"})
@@ -644,9 +649,8 @@ func TestTheFrameCarriesTheCrewOnAnOrdinaryLaunchAtEveryWidth(t *testing.T) {
 		hostedWindow.host = "devbox"
 		hostedWindow.model = "openai/gpt-4.1-mini"
 		hostedWindow.width, hostedWindow.height = width, 24
-		hostedPaint, _, _ := hostedWindow.frame()
-		if frame := plain(hostedPaint); strings.Contains(frame, "crew ") {
-			t.Fatalf("the %d-column frame of a hosted window carries a crew:\n%s", width, frame)
+		if got := deckValue(hostedWindow.deckItems(), "crew"); got != "" {
+			t.Fatalf("at %d columns a hosted window read a crew: %q", width, got)
 		}
 	}
 }

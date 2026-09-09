@@ -684,7 +684,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) tui3.Opt
 		// which is exactly what welcome.Workspace is too).
 		//
 		// WHAT THIS LIGHTS UP HERE is both home's item band and the status line's
-		// `keeping an eye on` segment. Home reads the far world, so its project
+		// `◦ N standing orders` segment. Home reads the far world, so its project
 		// paths are paths this far store can answer, while the segment asks about this
 		// window's workspace — which over --host is the engine's own path, so
 		// the count is about the right machine ([hostStanding] has the longer
@@ -1037,7 +1037,7 @@ const hostStandingEvery = 5 * time.Second
 // (internal/tui3's homeRemoteWord), so home's item band and its `p` and `s` keys
 // are unreachable here and homestanding.go's per-project standItems is never
 // called. The live reader is THE STATUS LINE — [app.keepingCount] feeds the
-// `keeping an eye on 2` segment, and it asks about the window's own workspace,
+// `◦ 2 standing orders` segment, and it asks about the window's own workspace,
 // which over --host is the ENGINE's path. That makes the count a true sentence
 // about the right machine, and it is a real thing to have: a remote window says
 // how many things are keeping an eye on the project it is sitting in.

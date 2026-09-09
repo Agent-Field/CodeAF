@@ -51,7 +51,7 @@ const (
 	// groupPosture is the gate, drawn only when it is open.
 	groupPosture
 	// groupAlive is the right edge: how fast it is writing, how the machine it
-	// runs on answers, and what it is doing.
+	// runs on answers, whose move it is, and what it is doing.
 	groupAlive
 	// groupOff is the facts that are NOT on the line at all any more — the
 	// session delta, the crew word, the per-turn burn — kept in the telemetry
@@ -59,8 +59,14 @@ const (
 	groupOff
 )
 
-// groupGap is the air between two groups of the ledger.
-const groupGap = 3
+// groupGapRun is the air between two groups of the ledger, and groupGap is how
+// many cells that is. The run is the constant and the count is derived from it,
+// because this separator is written on every frame and building it with
+// [strings.Repeat] there is an allocation the scroll's own law counts
+// (inputsmooth_test.go's [TestOneScreenScrollOfFourThousandLinesStaysInsideTheAllocationLaw]).
+const groupGapRun = "   "
+
+const groupGap = len(groupGapRun)
 
 // segGroup is the one table that says where every segment is drawn.
 func segGroup(kind hudSeg) hudGroup {
@@ -73,7 +79,7 @@ func segGroup(kind hudSeg) hudGroup {
 		return groupElse
 	case segYolo:
 		return groupPosture
-	case segRate, segLink, segState:
+	case segRate, segLink, segQuestions, segState:
 		return groupAlive
 	}
 	return groupOff
@@ -81,7 +87,28 @@ func segGroup(kind hudSeg) hudGroup {
 
 // lineParts is the telemetry as the status row draws it: the facts that are
 // off the line removed, the rest split into the ledger and the right edge.
+//
+// THE TWO RUNS COME OUT OF ONE ARRAY, counted first and then filled, because
+// this is laid out several times a frame — the frame's height asks for it as
+// well as the frame's row — and two slices grown a segment at a time is half a
+// dozen allocations on a scrolling screen (inputsmooth_test.go's
+// [TestOneScreenScrollOfFourThousandLinesStaysInsideTheAllocationLaw]). Each
+// run is capped at exactly what it holds, so the narrow ladder's [dropKind] —
+// which only ever shortens them — can never grow one into the other's cells.
 func lineParts(parts []hudPart) (ledger, alive []hudPart) {
+	ledgers, alives := 0, 0
+	for _, part := range parts {
+		switch segGroup(part.kind) {
+		case groupOff:
+		case groupAlive:
+			alives++
+		default:
+			ledgers++
+		}
+	}
+	buf := make([]hudPart, 0, ledgers+alives)
+	ledger = buf[0:0:ledgers]
+	alive = buf[ledgers : ledgers : ledgers+alives]
 	for _, part := range parts {
 		switch segGroup(part.kind) {
 		case groupOff:
@@ -102,10 +129,14 @@ func partSep(parts []hudPart, i int) string {
 		return ""
 	}
 	if segGroup(parts[i-1].kind) == segGroup(parts[i].kind) {
-		return " · "
+		return partDot
 	}
-	return strings.Repeat(" ", groupGap)
+	return groupGapRun
 }
+
+// partDot is the separator inside one group. It is a constant for the same
+// reason [groupGapRun] is: these two strings are built on every frame.
+const partDot = " · "
 
 // hudWidth is what a run of segments measures, joined, unpainted.
 func hudWidth(parts []hudPart) int {
@@ -395,9 +426,24 @@ func (a *app) runStatusNote() tea.Cmd {
 func (a *app) seamIdentity(width, room int) (string, hudSpan) {
 	name := a.sessionName()
 	if name == "" {
-		name = a.place
+		// THE FOLDER STANDS IN UNTIL THE SESSION HAS NAMED ITSELF, so this slot
+		// is never empty — and it stands in ALONE. [app.place] is written with
+		// the machine in front of it (`devbox:app`) for the status row, which
+		// had no host segment of its own; this line has one, and `devbox ·
+		// devbox:app` would name the machine twice (host.go).
+		name = strings.TrimPrefix(a.place, a.host+":")
 	}
+	// THE MODEL IS ITS BASENAME AND HOW IT IS BEING RUN. The level is spelled
+	// with a colon rather than as a fourth segment for the reason the picker's
+	// own row spells it that way: it is not a thing beside the model, it is how
+	// this model is being run. It is BUILT here rather than lent through
+	// [app.model] the way the phone deck's row is (view.go's [app.statusRow]),
+	// because a lent id no longer matches the endpoint sighting the `via` rider
+	// is looked up by — the rider would go silent the moment a level was dialled.
 	model := modelBase(a.model)
+	if level := a.reasoningFor(a.model); level != "" && model != "" {
+		model += ":" + level
+	}
 	branch := a.branchWord()
 	if width < hudTight {
 		branch = ""

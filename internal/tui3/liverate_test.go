@@ -100,18 +100,24 @@ func TestTheRateIsSilentWhileThePulseSaysNothingHasComeBack(t *testing.T) {
 	}
 }
 
-// THE RIDER GIVES UP A SPELLING BEFORE THE ROW GIVES UP A NUMBER. The phase
-// words on the left grow and shrink several times a turn, and the segments on
-// the right were paying for it: the bill and the watch count disappeared and
-// came back while a person was reading them, on the one row whose stillness is
-// the whole reason it keeps a `$0.00`.
-func TestTheRidersSpellingGoesBeforeTheBillOnTheStatusLine(t *testing.T) {
+// THE RIGHT EDGE GOES BEFORE THE ROW GIVES UP A NUMBER. The phase words at the
+// right edge grow and shrink several times a turn, and the ledger on the left
+// used to pay for it: the bill and the watch count disappeared and came back
+// while a person was reading them, on the one row whose stillness is the whole
+// reason it keeps a `$0.00`. The rate stands above the bill, the cache and the
+// meter on the drop ladder (foot.go's [dropOrder]) — the clock on the state
+// word already says the turn is alive.
+func TestTheLiveRateGoesBeforeTheBillOnTheStatusLine(t *testing.T) {
 	now := time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC)
 	a := phaseApp(t, now)
 	a.title = "porting the parser"
 	a.cost = 1.12
+	// A ledger with something in every group it can have here, so the widths
+	// below are the ladder biting rather than an empty row fitting.
+	a.ctxWindow, a.ctxTokens = 200_000, 100_000
+	a.inputTokens, a.cacheRead = 10_000, 6_200
 	PostPhaseNews(richPhase(now))
-	// AND THE ANSWER IS ARRIVING, WHICH IS WHEN THE RIDER OWNS THE PHASE.
+	// AND THE ANSWER IS ARRIVING, WHICH IS WHEN THE RIGHT EDGE OWNS THE PHASE.
 	// The phase words have exactly one home per frame (render.go's
 	// [app.pulseHoldsThePhase]): the pulse holds them while it is on the frame,
 	// and the moment text starts landing the pulse goes and the status line
@@ -120,35 +126,39 @@ func TestTheRidersSpellingGoesBeforeTheBillOnTheStatusLine(t *testing.T) {
 	a.entries = append(a.entries, entry{kind: entryAssistant, text: "the parser is"})
 	a.live = len(a.entries) - 1
 
-	// Wide enough for everything: both clusters whole.
-	wide := plain(a.status(160))
-	for _, want := range []string{"via coreweave", "$1.12", "crew balanced"} {
+	// Wide enough for everything: the ledger whole and the right edge whole.
+	wide := plain(a.status(200))
+	for _, want := range []string{"via coreweave", "$1.12", "⟲ 62% cached", "100k/200k · 50%"} {
 		if !strings.Contains(wide, want) {
 			t.Fatalf("the wide row is missing %q:\n%q", want, wide)
 		}
 	}
-
-	// The cheap segments still go first, and the rider is untouched while they
-	// have anything left to give.
-	if line := plain(a.status(110)); strings.Contains(line, "crew balanced") ||
-		!strings.Contains(line, "via coreweave") {
-		t.Fatalf("the crew word should go before the rider's spelling:\n%q", line)
+	// The crew word is not on this row at any width any more (foot.go's
+	// [groupOff]), so it is not what pays for the rider either.
+	if strings.Contains(wide, "crew") {
+		t.Fatalf("the row grew a crew word:\n%q", wide)
 	}
 
-	// And then the rider pays, rather than the bill.
+	// The row is still whole where both ends fit, and the rider is untouched.
+	if line := plain(a.status(110)); !strings.Contains(line, "via coreweave") ||
+		!strings.Contains(line, "$1.12") {
+		t.Fatalf("a row with room for both ends gave one of them up:\n%q", line)
+	}
+
+	// And then the rate pays, rather than the bill.
 	line := plain(a.status(100))
-	if !strings.Contains(line, "$1.12") {
-		t.Fatalf("the bill was dropped while the rider kept its widest spelling:\n%q", line)
+	for _, want := range []string{"$1.12", "⟲ 62% cached", "100k/200k · 50%"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("the ledger lost %q while the rate kept its place:\n%q", want, line)
+		}
 	}
 	if strings.Contains(line, "via coreweave") {
-		t.Fatalf("the rider kept a spelling it could have given up:\n%q", line)
+		t.Fatalf("the rate outlasted the numbers it stands above:\n%q", line)
 	}
-	// AND WHAT IT GAVE UP IS A SPELLING AND NEVER A FACT: who answered, the
-	// phase and its clock are all still on the row.
-	for _, want := range []string{"coreweave", "first word", "3.1s"} {
-		if !strings.Contains(line, want) {
-			t.Fatalf("the shortened rider lost %q:\n%q", want, line)
-		}
+	// AND WHAT SURVIVES IT IS THE STATE WORD AND ITS CLOCK — the reason the line
+	// is there at all, and the part that already says the turn is alive.
+	if !strings.Contains(line, "working") {
+		t.Fatalf("the row gave up the state word:\n%q", line)
 	}
 	if strings.Contains(line, glyphMore) {
 		t.Fatalf("the row was clipped rather than said shorter:\n%q", line)

@@ -462,8 +462,21 @@ func (a *app) deckItems() []deckItem {
 		if part.kind == segCrew {
 			continue
 		}
+		text := part.text
+		// AND THE SHAPE OF THE APPROACH RIDES THE METER HERE. The sparkline came
+		// off the status row on 2026-09-09 — a row that is read at a glance was
+		// spending six cells on a trend nobody acts on from the line — and this
+		// page is where a person who wants the trend asks for it. A conversation
+		// sitting at 60% for six turns and one that arrived there from 20% are
+		// the same figure and completely different situations, and this is the
+		// only place that difference is now written down ([app.ctxSpark]).
+		if part.kind == segCtx {
+			if spark := a.ctxSpark(); spark != "" {
+				text += " " + spark
+			}
+		}
 		if int(part.kind) < len(deckSegWords) {
-			add(deckSegWords[part.kind], part.text, deckActNone)
+			add(deckSegWords[part.kind], text, deckActNone)
 		}
 		// AND DIRECTLY UNDER THE METER, THE LINE THE METER IS MEASURED AGAINST.
 		// The context row says how full the conversation is; this one says how
