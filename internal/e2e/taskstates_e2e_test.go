@@ -196,6 +196,14 @@ func testStatesConflict(t *testing.T) {
 	// branch and the person's branch have a shared parent to disagree about.
 	statesCommit(t, ws, "notes.txt", "one\n", "seed the file")
 
+	// AND THE CHECKOUT IS MOVED OFF ITS TRUNK BEFORE ANYTHING RUNS, which is what
+	// makes this shape reachable at all. `main` is on the protected list
+	// (internal/session's task_branch_protection.go), and a landing onto a
+	// protected checkout keeps its branch and never merges — so on the repository
+	// [newWorkspace] builds, nothing the person did could ever clash with
+	// anything. That is the engine behaving; it is the FIXTURE that was wrong.
+	statesWorkBranch(t, ws)
+
 	r := start(t, "afe2e_states_conflict", home, ws, tuiWide, 40)
 	statesPastTheDoor(t, r)
 	r.lit("/task solo replace the whole contents of notes.txt with the single line: from the task")
@@ -211,10 +219,19 @@ func testStatesConflict(t *testing.T) {
 	// a sentence a model happened to write, and it is the only moment at which
 	// committing over the same file can still clash with anything.
 	if !statesWaitForTaskBranch(t, ws, 4*time.Minute) {
-		t.Skipf("no task branch was cut in four minutes, so there was nothing for a commit to clash with:\n%s", r.capture())
+		t.Skipf("no task branch was cut in four minutes, so there was nothing for the person's own edit to clash with:\n%s", r.capture())
 	}
-	t.Logf("the work is out on its own branch; committing over the same file on the person's branch")
-	statesCommit(t, ws, "notes.txt", "two, from the person\n", "the person's own edit")
+	// THE PERSON'S EDIT IS NOT COMMITTED, AND THAT IS THE WHOLE OF WHAT MAKES A
+	// CLASH POSSIBLE. A commit on the checkout while the work is out MOVES the
+	// branch, and a branch that moved since the cut is one aforge will not write
+	// either ([keptLandingSentence]'s last arm) — so a committing fixture buys the
+	// same `branch kept` the protected trunk did, one reason further along. An
+	// open editor with unsaved-to-git changes in the file is the shape a person is
+	// actually in while a task is out, and it is the shape the landing carries:
+	// the work of theirs standing in the way is set aside, the branch merges, and
+	// their own goes back on top (internal/session's groundcarry.go).
+	t.Logf("the work is out on its own branch; writing over the same file in the person's checkout")
+	statesEdit(t, ws, "notes.txt", "two, from the person\n")
 
 	found, screen := statesAwait(r, 8*time.Minute,
 		say(t, "taskConflictReason"), say(t, "taskDoneWord"))
@@ -249,12 +266,15 @@ func testStatesConflict(t *testing.T) {
 		if strings.Contains(head, say(t, "taskBranchKeptFact")) {
 			// THE BRANCH NEVER CAME HOME, so nothing was ever merged and nothing
 			// could clash. This is NOT the merge round winning and it must not be
-			// reported as one: the person's commit and the task's edit are still
-			// sitting on two branches that have never met.
-			t.Skipf("the landing kept its branch (%q) rather than merging it, so the person's commit "+
-				"was never merged against and no clash was reached. FINDING: docs/design/task-states/"+
-				"DESIGN.md says a done row carries `branch kept` only when keeping was asked for, and "+
-				"nothing asked here — an ordinary `/task solo` landing on a repository draws it anyway:\n\t%s",
+			// reported as one: the person's edit and the task's are still on two
+			// sides that have never met.
+			//
+			// AND ON THIS CHECKOUT THERE IS NOTHING LEFT TO EXCUSE IT. It is on a
+			// plain branch nothing has moved, so none of the four reasons a landing
+			// keeps its branch applies (task_branch_protection.go) and the work had
+			// a destination to go to.
+			t.Fatalf("the landing kept its branch (%q) off a checkout that is on an ordinary "+
+				"branch nothing has moved, so it had a destination and did not take it:\n\t%s",
 				say(t, "taskBranchKeptFact"), head)
 		}
 		// It merged, so the clash either never happened or one round closed it —
@@ -825,6 +845,29 @@ func statesWaitForTaskBranch(t *testing.T, ws string, within time.Duration) bool
 		time.Sleep(time.Second)
 	}
 	return false
+}
+
+// statesEdit writes one file in the person's own checkout and LEAVES IT
+// UNCOMMITTED — a person carrying on working while a task is out, which is the
+// shape a real clash is made in ([testStatesConflict] says why a commit is not).
+func statesEdit(t *testing.T, ws, name, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(ws, name), []byte(body), 0o644); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+}
+
+// statesWorkBranch moves the person's checkout onto a branch tasks are allowed
+// to merge into. Every name on internal/session's protected list is one a
+// landing keeps its branch off rather than writing, and `main` — which
+// [newWorkspace] builds on — is the first entry.
+func statesWorkBranch(t *testing.T, ws string) {
+	t.Helper()
+	command := exec.Command("git", "checkout", "-q", "-b", "work")
+	command.Dir = ws
+	if out, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git checkout -b work: %v\n%s", err, out)
+	}
 }
 
 // statesCommit writes one file in the person's own checkout and commits it — the

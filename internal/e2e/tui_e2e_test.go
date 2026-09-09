@@ -130,10 +130,14 @@ func testFreshInstallSetup(t *testing.T) {
 		say(t, "setupTitleWord"), say(t, "setupConnectHeading"), say(t, "setupConnectSentence"))
 	t.Logf("a fresh install, launched the ordinary way, is shown the door:\n%s", screen)
 
-	// AND IT IS ASKING FOR ALL THREE. A machine with nothing on it has answered
-	// no part of the setup, so the count is the count of what is missing.
-	if !strings.Contains(screen, say(t, "setupTitleWord")+" · 1 of 3") {
-		t.Errorf("the title does not count three missing answers on a machine with nothing on it:\n%s", screen)
+	// AND IT IS ASKING FOR BOTH. A machine with nothing on it has answered no
+	// part of the setup, so the count is the count of what is missing — and
+	// internal/tui3's [setupStepsFor] builds at most two: the provider key, and
+	// the crew-and-spending step that carries the rest. It counted three before
+	// those were folded together, and a needle nobody moved would have waited
+	// twenty seconds for a title this door has stopped drawing.
+	if !strings.Contains(screen, say(t, "setupTitleWord")+" · 1 of 2") {
+		t.Errorf("the title does not count both missing answers on a machine with nothing on it:\n%s", screen)
 	}
 
 	// AND ITS EXIT IS REAL TOO. `esc` says not now, and the conversation under it
