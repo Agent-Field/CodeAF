@@ -26,3 +26,21 @@ Outstanding: the harness lane is still performing its one baseline run. Do not
 contend with it. After it commits, review its event/lifecycle fidelity and
 measurements, integrate it, then perform the frozen combined validation listed
 above.
+
+## Pass 2 checkpoint
+
+- Re-fetched both refs under the integration hold. The target remains
+  `6fa88e027`; this branch is exactly three commits ahead and has no target
+  commits to reconcile.
+- Re-ran the focused workflow and a fresh timing report with the constrained
+  resource defaults. The report contains 16 events, three passing tests, a
+  passing package terminal event, no cache label, and no incomplete package.
+- Revalidated all 329 unreleased change entries and a clean diff. The report
+  wrapper's strict producer/parser exit behavior remains covered by the pass 1
+  probes; no CI trigger, permission, timeout, shard, or broad parallelism change
+  is justified by the available measurements.
+
+Outstanding is unchanged: the harness lane is actively measuring and must not
+be contended with. Review and integrate only its finished committed history,
+then run the single frozen uncached combined validation. The target-merge hold
+remains active, and `reports/READY` remains absent.
