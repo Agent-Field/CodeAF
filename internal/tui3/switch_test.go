@@ -69,8 +69,8 @@ func TestASwitchKeepsTheTranscriptTheDraftTheScrollAndTheQuestion(t *testing.T) 
 	agent.running, agent.backlog = true, []session.Event{
 		consentEvent(7, "read", "read consent.go", `tool "read"`),
 	}
-	a.askAt = a.now().Add(-6 * time.Second)
-	before, _ := a.askLeft()
+	startAskClock(a, a.now().Add(-6*time.Second), false)
+	before := askClockLeft(a)
 
 	conv, side := a.front(), a.detachConversation()
 
@@ -111,8 +111,8 @@ func TestASwitchKeepsTheTranscriptTheDraftTheScrollAndTheQuestion(t *testing.T) 
 	}
 	// THE SAME READING TIME, NOT A FRESH CLOCK. The countdown measures how long
 	// somebody has had to read the question, and nobody read it while the
-	// conversation was in another project (consent.go's [app.tickAsk]).
-	after, _ := a.askLeft()
+	// conversation was in another project (question.go's [app.tickQuestion]).
+	after := askClockLeft(a)
 	if after > side.askLeft+time.Second || after < side.askLeft-time.Second {
 		t.Fatalf("the countdown came back with %s left, and %s went in", after, side.askLeft)
 	}

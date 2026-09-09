@@ -365,8 +365,12 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 	}
 	switch action.Kind {
 	case session.QuestionConsent:
-		if len(a.asks) > 0 && a.asks[0].id == question.ID {
-			a.answerWith(action.Allow, action.Scope, answerConsentWord(action))
+		if a.consentAsking(question.ID) {
+			// AND IT IS THE BLOCK'S OWN ANSWER, not a second one beside it
+			// (consent.go's [app.answerWith]): the same receipt, the same record
+			// and the same annotated row as the same answer pressed in front of
+			// the question.
+			a.answerWith(action.Allow, action.Scope)
 			return nil, true
 		}
 		if a.agent != nil {
@@ -434,21 +438,3 @@ func (a *app) answerWholeQuestion(question session.PresenceQuestion, key string)
 	}
 	return nil, true
 }
-
-// answerConsentWord is what the row in this window keeps.
-//
-// THE ALWAYS IS SPELLED WITH ITS REACH ON IT, because from home it is the
-// tool-wide one and nothing narrower: the second beat that turns a shell always
-// into a shape is a thing you do while looking at the command, and home has the
-// one line the session is stopped on rather than the command
-// ([session.AnswerFromKey] states the same at the other end). A row that said
-// `always · saved` would be claiming a rule nobody wrote.
-func answerConsentWord(action session.AnswerAction) string {
-	if action.Allow && action.Scope == session.ConsentToolSession {
-		return answerAlwaysWord
-	}
-	return decisionWord(action.Allow)
-}
-
-// answerAlwaysWord is that spelling.
-const answerAlwaysWord = "always · this tool, this session"

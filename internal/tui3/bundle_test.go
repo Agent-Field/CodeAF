@@ -2201,10 +2201,13 @@ func TestTheHintSlotFollowsTheStateAndIsEmptyAtRest(t *testing.T) {
 	a.pick.open = false
 
 	// A call parked on a person offers the keys that answer it — the SAME keys
-	// consent.go reads, which is what makes the hint safe to act on.
+	// the question block draws, which is what makes the hint safe to act on and
+	// is why the slot is DERIVED from the question rather than spelled here
+	// (question.go's [app.questionHint]).
 	a.entries = append(a.entries, entry{kind: entryTool, tool: "bash", status: toolConsent})
+	raiseAsk(a, 7, "bash")
 	hint := a.hintWord()
-	for _, want := range []string{"y allow", "n deny", "a always"} {
+	for _, want := range []string{"1 allow once", "3 deny", "2 always", "esc later"} {
 		if !strings.Contains(hint, want) {
 			t.Fatalf("the consent hint %q is missing %q", hint, want)
 		}

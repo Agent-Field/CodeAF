@@ -381,12 +381,15 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
-	// An approval question outranks even the model overlay: it is the one state
-	// where the SESSION is blocked on this keyboard — a tool call is parked
-	// mid-batch waiting for the answer — and everything else on this surface can
-	// wait for one keystroke. ctrl+c is the exception it makes for itself
-	// (consent.go).
-	if cmd, taken := a.consentKey(msg); taken {
+	// THE TASK PROPOSAL AND THE STANDING CARD ARE READ HERE, on the terms the
+	// approval question was read on before the block took it over: each is a
+	// question the SESSION is blocked on, so it outranks every overlay below it,
+	// and neither is modal — the box under both is a lane of its own (task.go's
+	// redirect, standing.go's correction).
+	if cmd, taken := a.taskKey(msg); taken {
+		return cmd
+	}
+	if cmd, taken := a.standingKey(msg); taken {
 		return cmd
 	}
 

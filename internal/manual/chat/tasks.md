@@ -2544,7 +2544,7 @@ Clicking a row's title does what `enter` on it does, on the **first** press — 
 it does not change them. The row under the pointer takes the hover step. The wheel walks the
 cursor.
 
-## Main chats and their subtasks — the conversation tree, folds, holds 3 more
+## Main chats and their subtasks — the conversation tree, folds, holds 3 more, what the +3 under a row means
 
 The **main chat is the parent** of the work it requested. Tasks hang beneath their
 conversation; a task's children hang beneath that task, including deeper levels.

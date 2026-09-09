@@ -247,8 +247,9 @@ func TestAHeldQuestionIsDrawnAsTheCardItWouldHaveBeen(t *testing.T) {
 	if !a.asking() {
 		t.Fatal("a question that waited four hours is not being asked")
 	}
+	a.width = 80
 	got := plain(frame(a))
-	for _, want := range []string{"rm -rf build", "allow? [y] yes", "[n] no"} {
+	for _, want := range []string{"rm -rf build", "allow? [1] allow once", "[3] deny"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the held card is missing %q:\n%s", want, got)
 		}
@@ -258,8 +259,10 @@ func TestAHeldQuestionIsDrawnAsTheCardItWouldHaveBeen(t *testing.T) {
 	if !strings.Contains(got, "waiting 4 hours") {
 		t.Fatalf("the card does not say how long it waited:\n%s", got)
 	}
-	// AND THE KEY THAT ANSWERS IT IS THE KEY THAT ALWAYS ANSWERED IT.
-	drive(t, a, key("y"))
+	// AND THE KEY THAT ANSWERS IT IS THE QUESTION'S OWN, exactly as it is on a
+	// question this window raised itself.
+	settleAsk(a)
+	drive(t, a, key("1"))
 	if len(agent.answers) != 1 || agent.answers[0].id != 7 || !agent.answers[0].allow {
 		t.Fatalf("answering the held card resolved %+v", agent.answers)
 	}
@@ -305,8 +308,8 @@ func TestAQuestionOfAnUnknownKindIsLeftWaiting(t *testing.T) {
 
 	drive(t, a, runCmd(a.askHeld())...)
 
-	if len(a.asks) != 1 || a.asks[0].id != 4 {
-		t.Fatalf("the surface drew %d questions: %+v", len(a.asks), a.asks)
+	if askCount(a) != 1 || askHead(t, a).question.ID != 4 {
+		t.Fatalf("the surface drew %d questions", askCount(a))
 	}
 	if got := plain(frame(a)); strings.Contains(got, "something-a-newer-build-holds") {
 		t.Fatalf("the unknown kind was drawn as something:\n%s", got)

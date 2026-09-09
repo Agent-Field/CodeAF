@@ -1456,7 +1456,7 @@ func (a *Agent) applyToLane(answer Answer) error {
 		}
 		switch action.Kind {
 		case QuestionConsent:
-			a.ResolveConsentRemember(answer.ID, action.Allow, action.Scope)
+			a.ResolveConsentRemember(answer.ID, action.Allow, ConsentScopeOf(action, answer))
 		case QuestionTask:
 			a.ResolveTask(answer.ID, action.Task)
 		case QuestionStanding:
@@ -1506,6 +1506,41 @@ func (a *Agent) applyToLane(answer Answer) error {
 // lane's own extra and every other lane would carry it empty
 // ([Event.Model] is where the question offered it).
 const questionModelNote = "model"
+
+// AnswerBanked is the key a widening answer carries under, in [Answer.Comments],
+// when the SURFACE has already written the permission down somewhere the person
+// can find and change it — the shape of a shell command, in the words they
+// picked out of it.
+//
+// IT IS WHAT KEEPS A NARROW YES FROM WIDENING ITSELF. The session memo this
+// engine writes for a [ConsentToolSession] answer is keyed by the tool's NAME
+// alone, so on `bash` it means every command for the rest of the conversation —
+// and a person who read `git status*` and pressed a key must not buy silence for
+// `rm -rf`. When the surface has banked a rule the answer is a [ConsentRule]
+// instead, which is the scope that tells this engine to write nothing beside it
+// (consent.go's askAnswer says the same from the other end).
+//
+// It is a comment rather than a field for [questionModelNote]'s reason: it is
+// one lane's own extra, and every other lane would carry it empty.
+const AnswerBanked = "banked"
+
+// ConsentScopeOf is how far one consent answer actually reaches.
+//
+// It is the key's own scope ([AnswerFromKey]) in every case but one: a widening
+// yes whose rule the surface has already written down is a [ConsentRule], and
+// [AnswerBanked] is where that fact rides.
+//
+// It is exported for the same reason [AnswerFromKey] is: anything that applies
+// an answer to this lane without going through [Agent.ResolveQuestion] — a
+// stand-in, a link that resolves on the far side — has to reach the one mapping
+// rather than write a second.
+func ConsentScopeOf(action AnswerAction, answer Answer) ConsentScope {
+	if action.Allow && action.Scope == ConsentToolSession &&
+		strings.TrimSpace(answer.Comments[AnswerBanked]) != "" {
+		return ConsentRule
+	}
+	return action.Scope
+}
 
 // applyLanding answers a landed task's `your call`, and it is the one arm of
 // this door with more than two outcomes — because a landed task is the one
@@ -1714,18 +1749,23 @@ func (a *Agent) consentQuestion(id uint64) Question {
 		Form:     FormLine,
 		Asker:    Asker{Kind: AskerEngine},
 		Head:     a.presenceAsk().Text,
-		Reason:   consentFallbackReason,
+		Reason:   ConsentFallbackReason,
 		Options:  AnswerOptions(QuestionConsent),
 		Stakes:   StakesCostly,
 		Blocking: Blocking{Turn: true},
 	})
 }
 
-// consentFallbackReason is why the gate is asking, in the one sentence that is
+// ConsentFallbackReason is why the gate is asking, in the one sentence that is
 // true of every question on this lane whatever the policy matched. The policy's
 // own phrasing is better and rides on the banked question; this is what is left
 // when there is none.
-const consentFallbackReason = "it will not run this without your word"
+//
+// It is exported because a SURFACE builds the same question out of the same
+// request event (tui3's [app.consentQuestion]) and the two are keyed by one
+// token — so a sentence spelled twice would be two questions replacing each
+// other on screen while somebody read one of them.
+const ConsentFallbackReason = "it will not run this without your word"
 
 // connectQuestion is a connect offer as a question. An account that needs a
 // typed answer is a question with a box rather than a pick, because a bare yes

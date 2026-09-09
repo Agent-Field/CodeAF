@@ -84,6 +84,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is there a countdown on this question", "questions"},
 		{"what does your rule mean on a question", "questions"},
 		{"can I answer a question over --host", "questions"},
+		// AND THE APPROVAL QUESTION AS IT IS DRAWN NOW that it is that block
+		// (internal/tui3's consent.go), asked the four ways somebody meets the
+		// keys that moved: the digits, the key that used to deny, the shape of
+		// the question on a small screen, and the widening yes.
+		{"what key allows a command now", "permissions"},
+		{"I pressed esc on the allow question and nothing happened", "permissions"},
+		{"the allow question turned into a card on my narrow terminal", "permissions"},
+		{"what does always this command write down", "permissions"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},
 		// Lanes behind a base of the person's own: the question the hostname gate

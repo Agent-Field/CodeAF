@@ -119,6 +119,7 @@ const (
 // the SURFACE raises (the stop card, the tab-close card), which need no engine
 // at all.
 type questionAgent interface {
+	questionResolver
 	// OpenQuestions is every decision this session is waiting on somebody for,
 	// oldest first. It is DERIVED from the lanes' own waits; there is no second
 	// store (internal/session's question.go).
@@ -127,8 +128,19 @@ type questionAgent interface {
 	// [session.EventQuestionWithdrawn] and [session.EventQuestionAnswered] that
 	// replays everything already open when a surface attaches.
 	WatchQuestions() (<-chan session.Event, func())
-	// ResolveQuestion is THE ONE DOOR every answer goes through: it reads the
-	// lane off the answer and hands it to that lane's own resolver.
+}
+
+// questionResolver is THE ONE DOOR every answer goes through, on its own.
+//
+// IT IS NARROWER THAN [questionAgent] ON PURPOSE. Watching for questions and
+// answering one are two capabilities and an engine may have either without the
+// other — the surface raises the questions it asks about ITSELF with no engine
+// at all, and an engine that can apply an answer but not stream a lane can still
+// be answered. A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN, so each is
+// asked for where it is needed rather than both everywhere.
+type questionResolver interface {
+	// ResolveQuestion reads the lane off the answer and hands it to that lane's
+	// own resolver.
 	ResolveQuestion(session.Answer) error
 }
 
@@ -181,6 +193,45 @@ type questionShown struct {
 	spans []choiceSpan
 	// row is which row of the block those spans are on.
 	row int
+	// shapes answers what this question's widening answer could be banked as,
+	// and it is the second beat's whole door.
+	//
+	// A WIDENING ANSWER IS SOMETIMES A QUESTION OF ITS OWN. `always` on a shell
+	// command used to bank the line exactly as it ran, which bought silence for
+	// that string and nothing else; what a person means is a SHAPE, and only
+	// they know which one. So a lane that can offer shapes offers them here, the
+	// block draws them where the answers row was, and nothing is written until
+	// one is picked. A lane with one shape or none has no beat and its widening
+	// answer is given straight ([app.questionWiden]).
+	shapes func() []string
+	// beat is the shapes on screen RIGHT NOW, and it is non-empty only while
+	// somebody is part-way through choosing one.
+	//
+	// It lives on the QUESTION rather than beside the block because it is one
+	// question's unfinished answer: a person part-way through a shape who is
+	// handed the next question in a queue must not find the previous one's offer
+	// still on screen.
+	beat []string
+	// answered is the lane's own hand on an answer, on its way to the door.
+	//
+	// IT IS WHAT THIS PROGRAM DOES ABOUT AN ANSWER, as against what the ENGINE
+	// does about it: a rule written into the person's settings, a transcript row
+	// annotated with what was decided. It hands back the answer the engine is
+	// actually told, so a lane that has already written a permission down can say
+	// so ([session.AnswerBanked]) rather than letting a second, wider one be
+	// written beside it.
+	answered func(session.Answer) session.Answer
+	// clockAt is when the reading time on this question started and clockFor how
+	// long it runs; clockHeld says it has stopped for good.
+	//
+	// A READING CLOCK NEVER ANSWERS. F41 was a hidden ten-second timer that
+	// recorded "denied" and killed work nobody refused, and that is the one
+	// answer this surface must never give on somebody's behalf. What this clock
+	// does at zero is HOLD ([app.tickQuestion]): the tail says paused, the work
+	// stays waiting, and the question is still there to answer.
+	clockAt   time.Time
+	clockFor  time.Duration
+	clockHeld bool
 }
 
 // token is the one string this question is known by across the two maps below
@@ -242,10 +293,7 @@ func (a *app) questionOpen() []questionShown {
 		out = append(out, q)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
-		if !out[i].question.Asked.Equal(out[j].question.Asked) {
-			return out[i].question.Asked.Before(out[j].question.Asked)
-		}
-		return out[i].token() < out[j].token()
+		return questionOlder(out[i].question, out[j].question)
 	})
 	return out
 }
@@ -306,6 +354,29 @@ func (a *app) raiseQuestion(q questionShown) {
 		// that never becomes answerable on a link that reconnects.
 		q.shown = a.questions[i].shown
 		q.pick = a.questions[i].pick
+		// AND SO DOES EVERYTHING THE SURFACE KNOWS THAT THE OBJECT CANNOT
+		// CARRY. The same question arrives twice on purpose — the lane that
+		// raised it dresses it with the row it is about, its second beat and
+		// its reading clock, and the engine re-sends the bare object on the
+		// questions lane whenever a surface attaches. A replace that took the
+		// bare one whole would take the beat off the screen under somebody's
+		// hand and hand the question a fresh clock every few seconds.
+		if q.beat == nil {
+			q.beat = a.questions[i].beat
+		}
+		if q.shapes == nil {
+			q.shapes = a.questions[i].shapes
+		}
+		if q.answered == nil {
+			q.answered = a.questions[i].answered
+		}
+		if q.local == nil {
+			q.local = a.questions[i].local
+		}
+		if q.clockFor == 0 {
+			q.clockAt, q.clockFor = a.questions[i].clockAt, a.questions[i].clockFor
+		}
+		q.clockHeld = q.clockHeld || a.questions[i].clockHeld
 		a.questions[i] = q
 		a.touch()
 		return
@@ -499,13 +570,26 @@ func (a *app) questionRows(width int) []string {
 		}
 		return out
 	}
-	if !a.questionQuieted() {
+	if head.shown.IsZero() && !a.questionQuieted() {
 		// THE BOX IS NEVER MOVED UNDER A HAND. The question is open, the chip
 		// is counting it and home can see it; what it may not do is take rows
 		// out from under a sentence somebody is in the middle of.
+		//
+		// IT IS ABOUT ARRIVING AND NOT ABOUT STANDING. A question that has been
+		// drawn stays drawn while somebody types their answer into the box —
+		// the words in the box ARE the answer on a question the turn is waiting
+		// on ([app.questionEnter]) — and a block that vanished on the first
+		// keystroke would take the question away exactly as they started
+		// answering it.
 		return out
 	}
 	a.markQuestionShown(head.token())
+	a.questionBands = nil
+	if a.questionNarrowed(head, width) {
+		// THE NARROW SHEET SAYS THE QUEUE COUNT ON ITS OWN FOOT, beside the
+		// clock, so it takes the rows whole (questionsheet.go).
+		return append(out, a.questionNarrowRows(head, width)...)
+	}
 	switch a.questionForm(head.question) {
 	case formsRatify:
 		out = append(out, a.questionRatifyRows(head, width)...)
@@ -562,16 +646,57 @@ func (a *app) questionLineRows(q questionShown, width int) []string {
 	if row, ok := a.questionSubjectRow(q, width); ok {
 		out = append(out, row)
 	}
-	head := strings.TrimSpace(q.question.Head)
+	lead := a.questionLead(q, len(out) > 0)
 	a.questionSpans, a.questionSpanRow = nil, len(out)
-	out = append(out, a.questionOffer(q, head+" ", formsLine, len(out), width))
+	if len(q.beat) > 0 {
+		out = append(out, a.questionBeatRow(q, formsLine, len(out), width))
+	} else {
+		row, fitted := a.questionOffer(q, lead, formsLine, len(out), width)
+		if !fitted {
+			// A FORM PROMOTES RATHER THAN CUTTING AN ANSWER. The line puts the
+			// head and every answer on one row, and on a frame with no room for
+			// that the honest shape is the one that gives each answer a row of
+			// its own — not the same row with its tail cut off, which is an
+			// offer that hides an answer. DESIGN.md's forms promote and never
+			// demote; this is the floor moving up under a narrow terminal.
+			return a.questionCardRows(q, width)
+		}
+		out = append(out, row)
+	}
 	if reason := strings.TrimSpace(q.question.Reason); reason != "" {
 		out = append(out, a.pal.dim(fit("  "+reason, width)))
 	}
 	return out
 }
 
-// questionCardRows is the card form: head, the reason and who asked, one row
+// questionLead is what the line form opens with, in front of its answers.
+//
+// A PERMISSION WHOSE ROW IS ALREADY ON SCREEN ASKS IN ONE WORD. The head of an
+// approval question is `needs your ok to run bash` — the right sentence for home,
+// for the chip and for the receipt, where the call itself is nowhere in sight,
+// and the wrong one directly under the call's own row, where it repeats the
+// tool's name and spends twenty-six columns saying what the row above it says.
+// Two renderings of one call is the defect this block was built around; a second
+// SENTENCE about it is the same defect one size smaller.
+//
+// It is the one shape that gets a short word, and the reason is that it is the
+// one shape whose head is about its subject. Every other kind's head IS the
+// decision — `wants to start a task: rewrite the packer` says something the row
+// above cannot — so it is drawn whole.
+func (a *app) questionLead(q questionShown, subject bool) string {
+	if !subject || q.question.Ask != session.AskPermission {
+		return strings.TrimSpace(q.question.Head) + " "
+	}
+	return questionAllowWord
+}
+
+// questionAllowWord is that word, and the space on the end of it is part of it:
+// a lead is what goes in FRONT of the answers on the row, so the gap that
+// separates the two belongs to the lead rather than to the answer beside it. It
+// is a question rather than a label because the row it opens is the asking.
+const questionAllowWord = "allow? "
+
+// questionCardRows is the card form// questionCardRows is the card form: head, the reason and who asked, one row
 // per answer, then the answers row.
 func (a *app) questionCardRows(q questionShown, width int) []string {
 	out := make([]string, 0, 8)
@@ -591,7 +716,15 @@ func (a *app) questionCardRows(q questionShown, width int) []string {
 		out = append(out, a.questionOptionRow(q, i, option, width))
 	}
 	a.questionSpans, a.questionSpanRow = nil, len(out)
-	out = append(out, a.questionOffer(q, "", formsCard, len(out), width))
+	if len(q.beat) > 0 {
+		// THE BEAT REPLACES THE ANSWERS ROW AND NOTHING ABOVE IT. The rows above
+		// are the question, which has not changed; what is one step further in
+		// is how it is being answered.
+		out = append(out, a.questionBeatRow(q, formsCard, len(out), width))
+		return out
+	}
+	row, _ := a.questionOffer(q, "", formsCard, len(out), width)
+	out = append(out, row)
 	return out
 }
 
@@ -637,21 +770,80 @@ func (a *app) questionSubjectRow(q questionShown, width int) (string, bool) {
 //
 // THE CALL'S ID IS THE ANSWER WHEREVER THERE IS ONE, which is consent.go's own
 // law and matters here for the same reason: a question that landed on the wrong
-// row is a person reading one command and answering about another.
+// row is a person reading one command and answering about another. The gate
+// sends it with the question (session's consent.go), the row has been carrying
+// it since its first fragment (app.go's [entry.callID]), and pairing on it is
+// exact.
+//
+// THE WALK BY NAME IS WHAT IS LEFT FOR A PROVIDER THAT STREAMS NO IDS — oldest
+// still-running row of that tool, the same rule [feed.closeTool] uses, because
+// the first call begun is the one a person watching the column expects to be
+// asked about first. It is a convention rather than a fact, which is why it is
+// second.
+//
+// AND A ROW ANOTHER OPEN QUESTION IS ALREADY ABOUT IS SKIPPED EITHER WAY. One
+// batch can raise three bash questions at once, and every one of them would
+// otherwise attach to the first bash row on screen — three questions annotating
+// one line and two calls the person never saw asked about.
 func (a *app) questionSubjectAt(q session.Question) int {
 	if q.Subject.Kind != session.SubjectCall {
 		return -1
 	}
 	call := strings.TrimSpace(q.Subject.CallID)
-	if call == "" {
-		return -1
-	}
 	for i := range a.entries {
-		if a.entries[i].kind == entryTool && a.entries[i].callID == call {
+		if a.entries[i].kind == entryTool && call != "" && a.entries[i].callID == call {
 			return i
 		}
 	}
+	if call != "" {
+		return -1
+	}
+	name := strings.TrimSpace(q.Subject.Name)
+	if name == "" {
+		return -1
+	}
+	// The rank is which of the questions with NO id about this tool this one is,
+	// oldest first, and it takes the row of the same rank. Answering "the oldest
+	// live row" to every one of them would put three questions on one line and
+	// leave two calls the person never saw asked about; the sequence is the only
+	// thing left to pair on when there is no id to pair on.
+	rank, token := 0, string(q.Kind)+":"+q.Token()
+	for _, open := range a.questions {
+		if open.token() == token ||
+			strings.TrimSpace(open.question.Subject.CallID) != "" ||
+			strings.TrimSpace(open.question.Subject.Name) != name {
+			continue
+		}
+		// THE FOLDED ONES COUNT. `esc` is later and not cancelled, so a question
+		// somebody put off is still a question about a row — and a rank that
+		// dropped when they pressed it would move the question in front of them
+		// onto a different call.
+		if questionOlder(open.question, q) {
+			rank++
+		}
+	}
+	for i := range a.entries {
+		e := &a.entries[i]
+		if e.kind != entryTool || !e.status.live() || e.decision != "" || e.tool != name {
+			continue
+		}
+		if rank > 0 {
+			rank--
+			continue
+		}
+		return i
+	}
 	return -1
+}
+
+// questionOlder is the block's one ordering of two questions, and it is the
+// engine's own ([session.Agent.OpenQuestions]): when they were asked, and their
+// tokens where that is the same instant.
+func questionOlder(one, two session.Question) bool {
+	if !one.Asked.Equal(two.Asked) {
+		return one.Asked.Before(two.Asked)
+	}
+	return string(one.Kind)+":"+one.Token() < string(two.Kind)+":"+two.Token()
 }
 
 // questionAttribution is the dim line under a card's head: why now, and who is
@@ -750,57 +942,24 @@ func (a *app) questionOptionRow(q questionShown, at int, option session.AnswerOp
 // IT DEGRADES BY DROPPING THE TAIL, NEVER BY CUTTING AN ANSWER. An offer with
 // its last option truncated is an offer that hides an answer; a person who
 // cannot see the clock still has every answer they had.
-func (a *app) questionOffer(q questionShown, lead string, form questionForms, row, width int) string {
-	// Pairs: the words at even indices, the keys — the only bold cells on the
-	// row — at odd ones, which is consent.go's own painting and is kept because
-	// the keys are what a person is scanning for.
-	parts := make([]string, 0, len(q.question.Options)*2+8)
-	if lead != "" {
-		parts = append(parts, lead)
-	}
-	spans := make([]choiceSpan, 0, len(q.question.Options))
-	// Both forms open with two cells — the line's mark and its space, the
-	// card's plain indent — so an answer's columns are the same arithmetic on
-	// either, which is what lets one press resolve against either row.
-	at := ansi.StringWidth(lead) + 2
-	for i, option := range q.question.Options {
-		if form == formsCard && len(q.question.Options) <= questionCardOptions {
-			// The card already drew a row per answer, keys and all.
-			break
-		}
-		key := strings.TrimSpace(option.Key)
-		if key == "" {
-			key = itoa(i + 1)
-		}
-		word := strings.TrimSpace(option.Label)
-		if word == "" {
-			word = key
-		}
-		chip, tail := "["+key+"]", " "+word
-		spans = append(spans, choiceSpan{
-			from: at, to: at + ansi.StringWidth(chip+tail), at: i,
-		})
-		at += ansi.StringWidth(chip + tail)
-		parts = append(parts, chip, tail)
-		if i < len(q.question.Options)-1 {
-			parts = append(parts, "", " · ")
-			at += 3
-		}
-	}
-	// THE ROW DEGRADES BY DROPPING ITS TAIL, NEVER BY CUTTING AN ANSWER. The
-	// verbs go from the end backwards until what is left fits, and `esc` is the
-	// one that is never dropped — it is the way out, and a row with no way off
-	// it is the modal block this one replaces. The options are never dropped at
-	// all: an offer with an answer missing is an offer that hides an answer.
+func (a *app) questionOffer(q questionShown, lead string, form questionForms, row, width int) (string, bool) {
+	// THE ROW DEGRADES BY DROPPING ITS TAIL, NEVER BY CUTTING AN ANSWER, and it
+	// gives things up in this order: the verbs from the end backwards, then the
+	// clock, then the parenthetical inside an answer's own word. `esc` is never
+	// dropped — it is the way out, and a row with no way off it is the modal
+	// block this one replaces — and no ANSWER is ever dropped at all, because an
+	// offer with an answer missing is an offer that hides an answer.
 	keys := a.questionAnswerKeys(q, form)
 	clock := a.questionClock(q)
+	terse := false
 	for {
+		parts, spans := a.questionAnswerParts(q, lead, form, terse)
 		tail := a.questionVerbParts(q, keys, len(parts) > 0)
 		line := strings.Join(parts, "") + strings.Join(tail, "")
 		if ansi.StringWidth("  "+line+clock) <= width {
 			parts = append(parts, tail...)
 			a.questionSpans, a.questionSpanRow = spans, row
-			return a.questionPaint(q, parts, clock, form)
+			return a.questionHovered(a.questionPaint(q, parts, clock, form), row, width), true
 		}
 		if dropped, ok := questionDropVerb(keys); ok {
 			keys = dropped
@@ -812,14 +971,271 @@ func (a *app) questionOffer(q questionShown, lead string, form questionForms, ro
 			// presses anything, so it is worth more than `[d] you decide` — and
 			// it is worth less than an answer, because a countdown a person
 			// cannot see is still a countdown while an answer they cannot see
-			// is not an answer (consent.go settled that half first).
+			// is not an answer (the approval gate settled that half first).
 			clock = ""
+			continue
+		}
+		if !terse && questionTerser(q.question) {
+			// AND THE ASIDE INSIDE AN ANSWER GOES BEFORE THE ANSWER DOES. A
+			// parenthetical is by definition the part that could be left out —
+			// `always, this tool (session)` still says which tool and how far
+			// without it — and giving it up is the last thing on this row that
+			// costs a person nothing they were reading.
+			terse = true
 			continue
 		}
 		parts = append(parts, tail...)
 		a.questionSpans, a.questionSpanRow = spans, row
-		return a.pal.ask(fit("  "+strings.Join(parts, ""), width))
+		return a.pal.ask(fit("  "+strings.Join(parts, ""), width)), false
 	}
+}
+
+// questionAnswerParts is the answers half of the row: the paired cells
+// [app.questionPaint] inks, and where each answer landed in columns.
+//
+// Pairs: the words at even indices, the keys — the only bold cells on the row —
+// at odd ones, which is the approval block's own painting and is kept because
+// the keys are what a person is scanning for.
+func (a *app) questionAnswerParts(q questionShown, lead string, form questionForms, terse bool) ([]string, []choiceSpan) {
+	parts := make([]string, 0, len(q.question.Options)*2+8)
+	if lead != "" {
+		parts = append(parts, lead)
+	}
+	spans := make([]choiceSpan, 0, len(q.question.Options))
+	if form == formsCard && len(q.question.Options) <= questionCardOptions {
+		// The card already drew a row per answer, keys and all.
+		return parts, spans
+	}
+	// Both forms open with two cells — the line's mark and its space, the card's
+	// plain indent — so an answer's columns are the same arithmetic on either,
+	// which is what lets one press resolve against either row.
+	at := ansi.StringWidth(lead) + 2
+	for i, option := range q.question.Options {
+		key := strings.TrimSpace(option.Key)
+		if key == "" {
+			key = itoa(i + 1)
+		}
+		word := questionAnswerWord(option, key, terse)
+		chip, tail := "["+key+"]", " "+word
+		spans = append(spans, choiceSpan{
+			from: at, to: at + ansi.StringWidth(chip+tail), at: i,
+		})
+		at += ansi.StringWidth(chip + tail)
+		parts = append(parts, chip, tail)
+		if i < len(q.question.Options)-1 {
+			parts = append(parts, "", " · ")
+			at += 3
+		}
+	}
+	return parts, spans
+}
+
+// questionAnswerWord is one answer's word on a row, with its parenthetical left
+// off where the row has asked for the short spelling.
+func questionAnswerWord(option session.AnswerOption, key string, terse bool) string {
+	word := strings.TrimSpace(option.Label)
+	if word == "" {
+		return key
+	}
+	if !terse {
+		return word
+	}
+	if at := strings.Index(word, " ("); at > 0 && strings.HasSuffix(word, ")") {
+		return word[:at]
+	}
+	return word
+}
+
+// questionTerser reports whether any of this question's answers has an aside to
+// give up. The emptiness law applied to a degrade: a row that tried the short
+// spelling when there is no short spelling would loop.
+func questionTerser(q session.Question) bool {
+	for _, option := range q.Options {
+		word := strings.TrimSpace(option.Label)
+		if at := strings.Index(word, " ("); at > 0 && strings.HasSuffix(word, ")") {
+			return true
+		}
+	}
+	return false
+}
+
+// ── the second beat ─────────────────────────────────────────────────────────
+//
+// A WIDENING ANSWER SOMETIMES ASKS ONE MORE THING.
+//
+// `always` on a shell command used to write the line down exactly as it ran,
+// which meant an always pressed on `git status --short` bought silence for that
+// string and nothing else: the same work with one more flag asked again, and the
+// person pressed always forever. What they meant was a SHAPE, and only they know
+// which one. So for one keystroke the answers row becomes:
+//
+//	always? [1] git status*  ·  [2] git *  ·  [3] just this line  ·  [esc] never mind
+//
+// Three decisions, and each is why this is a beat rather than a guess:
+//
+//   - NOTHING IS WIDENED WITHOUT BEING READ. The shapes come from the lane
+//     ([questionShown.shapes]) and are printed in full before any of them is
+//     written. A block that widened a permission on its own would be this
+//     surface deciding a permission on somebody's behalf.
+//   - IT REPLACES THE ANSWERS ROW, in place, where the answers were. It is the
+//     same question one step further in, not a second block appearing under the
+//     first; the row above it does not move.
+//   - esc LEAVES THE BEAT AND ANSWERS NOTHING. Everywhere else on this block esc
+//     is *later*; here the thing on screen is a step inside an answer, and
+//     backing out of a step puts the question back — the work is still waiting,
+//     and the person still has every answer they had a moment ago.
+
+// questionBeatLead is what the beat's row opens with. It is the widening
+// answer's own word with a question mark on it, because the beat is that answer
+// asking which of its shapes was meant.
+const questionBeatLead = "always? "
+
+// questionBeatBack is the way out of the beat, in the words for backing out of a
+// step rather than the words for answering.
+const questionBeatBack = "never mind"
+
+// questionBeatRow draws the shapes where the answers row was: by number, the
+// line itself last, and the way back out.
+//
+// It degrades the answers row's way and for the answers row's reason, with one
+// swap: the way out is the FIRST thing dropped when the shapes will not fit
+// beside it. A person who can see the shapes can still press esc, and a shape
+// they cannot see is a shape they cannot choose.
+func (a *app) questionBeatRow(q questionShown, form questionForms, row, width int) string {
+	parts := make([]string, 0, len(q.beat)*2+3)
+	spans := make([]choiceSpan, 0, len(q.beat))
+	parts = append(parts, questionBeatLead)
+	at := ansi.StringWidth(questionBeatLead) + 2
+	for i := range q.beat {
+		chip, tail := "["+itoa(i+1)+"]", " "+questionBeatShapeWord(q.beat, i)
+		spans = append(spans, choiceSpan{from: at, to: at + ansi.StringWidth(chip+tail), at: i})
+		at += ansi.StringWidth(chip + tail)
+		parts = append(parts, chip, tail)
+		if i < len(q.beat)-1 {
+			parts = append(parts, "", " · ")
+			at += 3
+		}
+	}
+	full := append(append([]string{}, parts...), "", " · ", "["+questionLaterKey+"]", " "+questionBeatBack)
+	if ansi.StringWidth("  "+strings.Join(full, "")) <= width {
+		parts = full
+	}
+	a.questionSpans, a.questionSpanRow = spans, row
+	line := strings.Join(parts, "")
+	if ansi.StringWidth("  "+line) > width {
+		return a.pal.ask(fit("  "+line, width))
+	}
+	return a.questionPaint(q, parts, "", form)
+}
+
+// questionBeatShapeWord is how one shape reads on the beat. The last one is the
+// line itself ([config.BashShapes] promises that), and it is named for what it
+// does rather than repeated: the command is already on the row above, and
+// printing it twice on two lines is the two-renderings defect this block exists
+// to avoid.
+//
+// IT IS NOT [questionShapeWord], which is the sheet's group heading and takes an
+// [session.AskKind]. The two words are about different things — a rule's shape
+// and a decision's shape — and sharing one name once cost a build.
+func questionBeatShapeWord(shapes []string, at int) string {
+	if at == len(shapes)-1 {
+		return "just this line"
+	}
+	return shapes[at]
+}
+
+// questionBeating reports whether the beat is on screen, which is what decides
+// which keys mean something (render.go's hint reads it too).
+func (a *app) questionBeating() bool {
+	head, ok := a.questionHead()
+	return ok && len(head.beat) > 0
+}
+
+// questionWiden is the widening answer pressed: the beat where there is one to
+// open, and the answer itself where there is not.
+//
+// ONE SHAPE IS NOT A CHOICE, and none at all is a command nothing can be derived
+// from. Both answer the way this question always did — the lane's own hand
+// ([questionShown.answered]) writes down what it can.
+func (a *app) questionWiden(head questionShown, key string) tea.Cmd {
+	if head.shapes == nil {
+		return a.questionAnswerKey(head, key)
+	}
+	shapes := head.shapes()
+	if len(shapes) <= 1 {
+		return a.questionAnswerKey(head, key)
+	}
+	a.setQuestionBeat(head, shapes)
+	return nil
+}
+
+// setQuestionBeat puts the shapes on screen, or takes them off with nil.
+func (a *app) setQuestionBeat(head questionShown, shapes []string) {
+	for i := range a.questions {
+		if a.questions[i].token() != head.token() {
+			continue
+		}
+		a.questions[i].beat = shapes
+		a.touch()
+		return
+	}
+}
+
+// questionBeatKey routes one key while the beat is up, and reports whether it
+// took it.
+//
+// THE BEAT TAKES THE KEYS IT DRAWS AND THE ANSWERS' DIGITS WITH THEM. A person
+// part-way through choosing a shape who pressed `3` must get the third shape and
+// not the third answer — the row under their eyes is the shapes, and a digit
+// read against the answers underneath would resolve a question that is no longer
+// the one on screen.
+func (a *app) questionBeatKey(head questionShown, key string) (tea.Cmd, bool) {
+	if len(head.beat) == 0 {
+		return nil, false
+	}
+	if key == questionLaterKey {
+		a.setQuestionBeat(head, nil)
+		return nil, true
+	}
+	if len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
+		a.questionPickShape(head, int(key[0]-'1'))
+		return nil, true
+	}
+	return nil, true
+}
+
+// questionPickShape banks the shape at this index and answers with the widening
+// answer it belongs to.
+func (a *app) questionPickShape(head questionShown, at int) {
+	if at < 0 || at >= len(head.beat) {
+		return
+	}
+	shape := head.beat[at]
+	a.setQuestionBeat(head, nil)
+	key := questionWideningKey(head.question)
+	if key == "" {
+		return
+	}
+	answer := session.Answer{
+		Key: key, Picked: []string{key}, Scope: questionScopeOf(head.question, key),
+		// THE SHAPE RIDES ON THE ANSWER, which is what lets the lane's own hand
+		// write it down and lets the engine know a rule exists rather than
+		// writing a wider one of its own ([session.AnswerBanked]).
+		Comments: map[string]string{session.AnswerBanked: shape},
+	}
+	head.beat = nil
+	a.answerQuestion(head, answer)
+}
+
+// questionWideningKey is the key of the answer that grants more than the
+// question asked about, or "" where the question has none.
+func questionWideningKey(q session.Question) string {
+	for _, option := range q.Options {
+		if option.Widening {
+			return strings.TrimSpace(option.Key)
+		}
+	}
+	return ""
 }
 
 // questionVerbParts is the tail of an answers row: the keys from
@@ -899,6 +1315,15 @@ func (a *app) questionPaint(q questionShown, parts []string, clock string, form 
 	return out + a.pal.dim(clock)
 }
 
+// questionHovered puts the background every pressable row on this surface takes
+// under the answers row, where the pointer is on it (hover.go).
+func (a *app) questionHovered(line string, row, width int) string {
+	if a.hot.kind != hoverChoices || a.hot.index != row {
+		return line
+	}
+	return a.pal.cursor(line, width)
+}
+
 // questionClock is the answers row's tail: how the silence is being held.
 //
 // SILENCE IS NEVER A NO. There is exactly one policy on this surface that acts
@@ -919,7 +1344,7 @@ func (a *app) questionClock(q questionShown) string {
 // of words.
 func (a *app) questionClockWord(q questionShown) string {
 	if q.question.Policy.Kind != session.PolicyRecommendThenAuto || q.question.Deadline.IsZero() {
-		return ""
+		return a.questionHeldWord(q)
 	}
 	left := q.question.Deadline.Sub(a.now())
 	if left <= 0 {
@@ -950,6 +1375,185 @@ func (a *app) questionClockWord(q questionShown) string {
 // questionOwnRuleWord is that half, spelled once and quoted in the manual.
 const questionOwnRuleWord = "your rule"
 
+// questionHeldWord is the tail on a question whose clock NEVER ANSWERS: the
+// reading time the approval gate has always drawn, and the one word every other
+// blocking question says while it stands there.
+//
+// IT IS NEVER EMPTY ON A QUESTION SOMETHING IS WAITING ON, and that is the whole
+// of what it is for. F41 was a hidden ten-second timer that recorded "denied"
+// and killed work nobody refused, and what let it hide for a year was a row with
+// no tail: a person could not tell a question that would wait for them from one
+// that was counting down to an answer they had not given. So the tail says which
+// — `7s` while the reading time runs, `paused` the moment a key says somebody is
+// at the keyboard, and `waiting` where there is no clock at all.
+//
+// A QUESTION NOTHING WAITS ON SAYS NOTHING. A ratify line is a statement about
+// work already done, and a countdown beside it would be a promise that something
+// is about to happen ([app.questionRatifyRows] says why nothing is).
+func (a *app) questionHeldWord(q questionShown) string {
+	if !q.question.Blocking.Turn && len(q.question.Blocking.Tasks) == 0 {
+		return ""
+	}
+	if q.clockFor <= 0 {
+		return session.ConsentWaiting
+	}
+	if q.clockHeld {
+		return questionPausedWord
+	}
+	if left := q.clockAt.Add(q.clockFor).Sub(a.now()); left > 0 {
+		return countdownWord(left)
+	}
+	return questionPausedWord
+}
+
+// questionPausedWord is what the tail says once the reading time has stopped —
+// because a key was pressed, or because it ran out and HELD rather than
+// answering ([app.tickQuestion]).
+const questionPausedWord = "paused"
+
+// questionReading reports whether this question has a reading clock that is
+// still running: one that is not held, has not run out, and never answers.
+func (a *app) questionReading(q questionShown) bool {
+	if q.clockFor <= 0 || q.clockHeld {
+		return false
+	}
+	return a.now().Before(q.clockAt.Add(q.clockFor))
+}
+
+// tickQuestion is the reading clock running out, on the frame clock that is
+// already turning (app.go's [app.paint]) — no ticker of its own.
+//
+// AT EXPIRY IT HOLDS. SILENCE IS NOT A NO. The clock used to deny here — F41, a
+// hidden ~10s timer recorded "denied" and killed work nobody refused — and that
+// is the one answer this surface must never give on a person's behalf. The
+// engine is BLOCKED on the question and stays blocked: the call does not run,
+// and it is not refused either. The tail says paused, and the work waits.
+//
+// AND IT DOES NOT RUN ON A WINDOW NOBODY IS LOOKING AT. Ten seconds is "long
+// enough to read a command and a rule" (config's DefaultConsentTimeout says so
+// in those words), which is a claim about a person READING — and there is nobody
+// reading a terminal that does not have the keyboard. A person who starts a turn
+// in one window and steps over to another is the ordinary way this surface is
+// used, and until the focus gate existed every call that turn made through the
+// gate was refused ten seconds later by a clock they could not have beaten. From
+// where they were sitting the unfocused session simply stopped working, and the
+// reason was on a screen behind them.
+func (a *app) tickQuestion() {
+	if !a.focused {
+		return
+	}
+	for i := range a.questions {
+		q := &a.questions[i]
+		if q.clockFor <= 0 || q.clockHeld {
+			continue
+		}
+		if a.now().Before(q.clockAt.Add(q.clockFor)) {
+			continue
+		}
+		q.clockHeld = true
+		a.touch()
+	}
+}
+
+// holdQuestionClocks stops every reading clock, and it is called from EVERY key
+// the block reads — the answers included, which cost nothing because they
+// resolve the question in the same breath.
+//
+// THERE IS NO WAY BACK. "Held" here means a person is at the keyboard, and that
+// fact does not expire: a clock that resumed after a few idle seconds would be a
+// clock that fires exactly when somebody has looked away from the screen
+// mid-decision, which is the one moment it must not.
+func (a *app) holdQuestionClocks() {
+	for i := range a.questions {
+		if a.questions[i].clockFor <= 0 || a.questions[i].clockHeld {
+			continue
+		}
+		a.questions[i].clockHeld = true
+		a.touch()
+	}
+}
+
+// refocusQuestions hands every waiting question its whole reading time back,
+// because the window it is drawn on has just got the keyboard.
+//
+// THE CLOCK MEASURES READING TIME AND NOT WALL TIME. A person returning to a
+// window that has been blurred for an hour has read nothing yet, so restamping
+// is what gives them the seconds the setting promises rather than an expiry on
+// their first frame back.
+//
+// A HELD QUESTION STAYS HELD. [app.holdQuestionClocks] is a one-way door —
+// somebody has touched the keys and is deciding — and alt-tabbing away and back
+// is not them changing their mind.
+func (a *app) refocusQuestions() {
+	for i := range a.questions {
+		if a.questions[i].clockFor <= 0 || a.questions[i].clockHeld {
+			continue
+		}
+		a.questions[i].clockAt = a.now()
+		a.touch()
+	}
+}
+
+// questionReadingLeft is what is left of the head question's reading clock,
+// whether it has been held, and whether there is a clock at all. It is what a
+// switch carries to the conversation the question follows (detach.go).
+//
+// IT IS THE REMAINDER AND NOT THE STAMP, because a conversation that is not on
+// screen has nobody reading it: what a person is owed when they come back is the
+// time they had not spent, not the time that passed while they were elsewhere.
+func (a *app) questionReadingLeft() (time.Duration, bool, bool) {
+	head, ok := a.questionHead()
+	if !ok || head.clockFor <= 0 {
+		return 0, false, false
+	}
+	left := head.clockAt.Add(head.clockFor).Sub(a.now())
+	if left < 0 {
+		left = 0
+	}
+	return left, head.clockHeld, true
+}
+
+// questionHint is the line under the box while the block is up: the keys it has
+// actually drawn, in the words it drew them with.
+//
+// IT IS DERIVED AND NEVER SPELLED TWICE. This slot named `a allow · t always`
+// for a year after the block's answers had taken different keys, which is one
+// keystroke with two readings and the wrong one widening a permission. So the
+// words come from the question in front of the person: its own answers first,
+// then the verbs the row is offering.
+func (a *app) questionHint() string {
+	head, ok := a.questionHead()
+	if !ok {
+		return ""
+	}
+	if len(head.beat) > 0 {
+		return "1-" + itoa(len(head.beat)) + " shape · " + questionLaterKey + " " + questionBeatBack
+	}
+	parts := make([]string, 0, len(head.question.Options)+3)
+	for i, option := range head.question.Options {
+		key := strings.TrimSpace(option.Key)
+		if key == "" {
+			key = itoa(i + 1)
+		}
+		word := strings.TrimSpace(option.Label)
+		if word == "" {
+			word = key
+		}
+		parts = append(parts, key+" "+word)
+	}
+	for _, verb := range a.questionAnswerKeys(head, a.questionForm(head.question)) {
+		if verb.key == questionWalkKey {
+			continue
+		}
+		word := verb.word
+		if verb.key == questionRuleKey {
+			word = questionRuleWord(head.question)
+		}
+		parts = append(parts, questionKeySpelling(verb.key)+" "+word)
+	}
+	return strings.Join(parts, " · ")
+}
+
 // questionAnimating reports whether a clock is running down, which is what
 // keeps the paint clock turning while a question waits (app.go's [app.paint]).
 func (a *app) questionAnimating() bool {
@@ -960,7 +1564,14 @@ func (a *app) questionAnimating() bool {
 	if !ok {
 		return false
 	}
-	return a.questionClockWord(head) != ""
+	if a.questionReading(head) {
+		return true
+	}
+	// A HELD CLOCK IS NOT ANIMATING and neither is `waiting`: the tail says one
+	// word and stops changing, and a frame clock left turning for it would be
+	// this surface repainting a still screen forever.
+	return head.question.Policy.Kind == session.PolicyRecommendThenAuto &&
+		a.questionClockWord(head) != ""
 }
 
 // ── the receipt and the withdrawn line ──────────────────────────────────────
@@ -1039,14 +1650,23 @@ func (a *app) answerQuestion(q questionShown, answer session.Answer) {
 	if answer.DecidedBy == "" {
 		answer.DecidedBy = session.DecidedByPerson
 	}
+	if q.answered != nil {
+		// THE LANE'S OWN HAND, BEFORE THE DOOR. Whatever this PROGRAM does about
+		// an answer happens here — a rule written into the person's settings, the
+		// transcript row annotated with what was decided — and what comes back is
+		// the answer the engine is actually told, which is how a permission the
+		// surface has already written down stops a wider one being written beside
+		// it ([questionShown.answered]).
+		answer = q.answered(answer)
+	}
 	if q.local != nil {
 		q.local(answer)
 	} else {
-		doors, ok := a.questionDoors()
-		if !ok {
+		door, ok := a.agent.(questionResolver)
+		if !ok || door == nil {
 			return
 		}
-		if err := doors.ResolveQuestion(answer); err != nil {
+		if err := door.ResolveQuestion(answer); err != nil {
 			return
 		}
 	}
@@ -1193,7 +1813,7 @@ func (a *app) questionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// sheet has the rows, so the sheet has the keyboard (questionsheet.go).
 		return a.questionSheetKey(msg)
 	}
-	if !a.questionQuieted() {
+	if head.shown.IsZero() && !a.questionQuieted() {
 		return nil, false
 	}
 	key := msg.String()
@@ -1202,12 +1822,21 @@ func (a *app) questionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// releases whatever the question was holding the honest way.
 		return nil, false
 	}
+	// EVERY KEY STOPS THE READING CLOCK, whether or not it answers anything and
+	// whether or not the question is old enough to take it. That is the whole of
+	// the hold: the clock exists so an unattended session cannot park work on a
+	// question forever, and the moment there is evidence of somebody at the
+	// keyboard the reason for it is gone.
+	a.holdQuestionClocks()
 	// THE SETTLE GUARD, AND IT DROPS RATHER THAN DEFERS. A key that arrived
 	// before the question had been on screen long enough was aimed at whatever
 	// was there before it, and applying it late is applying it to the wrong
 	// question rather than to none.
 	if !a.questionSettled(head) {
 		return nil, true
+	}
+	if cmd, taken := a.questionBeatKey(head, key); taken {
+		return cmd, true
 	}
 	if key == questionLaterKey {
 		a.foldQuestion(head)
@@ -1278,9 +1907,16 @@ func (a *app) questionOptionKey(head questionShown, key string) (tea.Cmd, bool) 
 		}
 	}
 	for _, option := range head.question.Options {
-		if strings.TrimSpace(option.Key) == key {
-			return a.questionAnswerKey(head, key), true
+		if strings.TrimSpace(option.Key) != key {
+			continue
 		}
+		if option.Widening {
+			// THE WIDENING ANSWER MAY HAVE A SECOND BEAT and is the only answer
+			// that ever does: it is the one that grants more than the question
+			// asked about, so it is the one worth asking how far.
+			return a.questionWiden(head, key), true
+		}
+		return a.questionAnswerKey(head, key), true
 	}
 	return nil, false
 }
@@ -1302,7 +1938,13 @@ func (a *app) questionPick(head questionShown, at int) tea.Cmd {
 	if at < 0 || at >= len(head.question.Options) {
 		return nil
 	}
-	return a.questionAnswerKey(head, strings.TrimSpace(head.question.Options[at].Key))
+	key := strings.TrimSpace(head.question.Options[at].Key)
+	if head.question.Options[at].Widening {
+		// A PRESS ON THE WIDENING ANSWER OPENS ITS BEAT exactly as the key does.
+		// One answer has one meaning whichever hand reaches it.
+		return a.questionWiden(head, key)
+	}
+	return a.questionAnswerKey(head, key)
 }
 
 // questionAnswerKey sends one key as the answer.
@@ -1560,15 +2202,26 @@ func (a *app) questionPress(x, y int) bool {
 	if !ok || a.copy.on {
 		return false
 	}
+	if took, sheeted := a.questionBandPress(head, x, y); sheeted {
+		return took
+	}
 	mark, found := a.chromeAt(y)
 	if !found || mark.kind != chromeQuestion || mark.index != a.questionSpanRow {
 		return false
 	}
 	for _, span := range a.questionSpans {
-		if x >= span.from && x < span.to {
-			a.questionPick(head, span.at)
+		if x < span.from || x >= span.to {
+			continue
+		}
+		if len(head.beat) > 0 {
+			// THE BEAT'S SPANS ARE SHAPES AND NOT ANSWERS. They are drawn where
+			// the answers were, so a press there means whichever of the two is on
+			// screen — and reading it as an answer would bank the widest one.
+			a.questionPickShape(head, span.at)
 			return true
 		}
+		a.questionPick(head, span.at)
+		return true
 	}
 	return false
 }
@@ -1846,6 +2499,12 @@ func (a *app) questionDrawnHere(q session.Question) bool {
 		// — which was observed on a real run: two `ask` calls waiting, the step
 		// saying `still waiting for an answer`, and nothing on any screen to
 		// answer with.
+		return true
+	case session.QuestionConsent:
+		// THE APPROVAL GATE, whose 1388-line block is deleted (consent.go). What
+		// is left there is the lane's own three things — the row, the widening
+		// write, the reading clock's length — and they ride on the question this
+		// block draws.
 		return true
 	}
 	return false

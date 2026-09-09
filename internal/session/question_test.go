@@ -562,3 +562,40 @@ func waitForAsk(t *testing.T, asks <-chan Event, want EventKind) Event {
 		}
 	}
 }
+
+// TestABankedRuleAnswersAsARuleAndNotAsAToolWideMemo is the one thing the
+// widening answer's scope has to get right.
+//
+// The session memo this engine writes for a [ConsentToolSession] answer is keyed
+// by the tool's NAME alone, so on `bash` it means every command for the rest of
+// the conversation. A person who reads `git status*` and presses a key must not
+// buy silence for `rm -rf` — so when the SURFACE has already written the rule
+// down, the answer says so ([AnswerBanked]) and this door applies it as a
+// [ConsentRule], which is the scope [Agent.askAnswer] writes nothing beside.
+func TestABankedRuleAnswersAsARuleAndNotAsAToolWideMemo(t *testing.T) {
+	widening := AnswerAction{Kind: QuestionConsent, Allow: true, Scope: ConsentToolSession}
+	banked := Answer{Kind: QuestionConsent, Key: "2", Comments: map[string]string{AnswerBanked: "git status*"}}
+	if got := ConsentScopeOf(widening, banked); got != ConsentRule {
+		t.Fatalf("a banked shape answered as %q, want %q", got, ConsentRule)
+	}
+	// AND EVERY OTHER ANSWER IS UNTOUCHED. A widening yes with nothing written
+	// behind it is still the memo it always was — that is what stops the asking
+	// for a plain tool — and neither the narrow yes nor the no is widened by a
+	// comment that happens to be on them.
+	if got := ConsentScopeOf(widening, Answer{Kind: QuestionConsent, Key: "2"}); got != ConsentToolSession {
+		t.Fatalf("a widening yes with nothing banked answered as %q", got)
+	}
+	once := AnswerAction{Kind: QuestionConsent, Allow: true, Scope: ConsentOnce}
+	if got := ConsentScopeOf(once, banked); got != ConsentOnce {
+		t.Fatalf("the narrow yes was widened to %q by a comment", got)
+	}
+	deny := AnswerAction{Kind: QuestionConsent, Scope: ConsentOnce}
+	if got := ConsentScopeOf(deny, banked); got != ConsentOnce {
+		t.Fatalf("a refusal answered as %q", got)
+	}
+	// A comment with nothing in it is a claim with nothing behind it.
+	empty := Answer{Kind: QuestionConsent, Key: "2", Comments: map[string]string{AnswerBanked: "  "}}
+	if got := ConsentScopeOf(widening, empty); got != ConsentToolSession {
+		t.Fatalf("an empty banked comment claimed a rule: %q", got)
+	}
+}

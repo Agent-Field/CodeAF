@@ -792,13 +792,17 @@ func TestTheLaneRaisesOnlyWhatThisBlockHasTakenOver(t *testing.T) {
 	for _, kind := range []session.QuestionKind{
 		session.QuestionSubharnessAsk, session.QuestionFuel, session.QuestionConflict,
 		session.QuestionAsk,
+		// AND THE APPROVAL GATE, whose own block is deleted: consent.go draws
+		// nothing now and what is left there is the lane's three surface-side
+		// facts (the row, the widening write, the reading clock's length).
+		session.QuestionConsent,
 	} {
 		if !a.questionDrawnHere(session.Question{Kind: kind}) {
 			t.Fatalf("%s has no other block and is not drawn here either", kind)
 		}
 	}
 	for _, kind := range []session.QuestionKind{
-		session.QuestionConsent, session.QuestionConnect, session.QuestionHarness,
+		session.QuestionConnect, session.QuestionHarness,
 		session.QuestionStanding, session.QuestionTask,
 	} {
 		if a.questionDrawnHere(session.Question{Kind: kind}) {

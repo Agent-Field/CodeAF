@@ -46,6 +46,8 @@ func shapeAsk(t *testing.T, command string) (*wiredAgent, *app, *remembered) {
 	})
 	a.width = 120
 	typeLine(t, a, "go on then")
+	settleAsk(a)
+	settleAsk(a)
 	if !a.asking() {
 		t.Fatal("the question never came up")
 	}
@@ -58,7 +60,7 @@ func shapeAsk(t *testing.T, command string) (*wiredAgent, *app, *remembered) {
 // itself is the last of them, and nothing has been written yet.
 func TestAlwaysOnBashOffersTheShapesBeforeItWritesAnything(t *testing.T) {
 	agent, a, saved := shapeAsk(t, "git status --short")
-	drive(t, a, key("a"))
+	drive(t, a, key("2"))
 
 	got := plain(frame(a))
 	for _, want := range []string{
@@ -82,7 +84,7 @@ func TestAlwaysOnBashOffersTheShapesBeforeItWritesAnything(t *testing.T) {
 // AND THE SHAPE PICKED IS THE SHAPE BANKED — a glob, not the line it came from.
 func TestPickingAShapeBanksThatShapeAndAnswersTheCall(t *testing.T) {
 	agent, a, saved := shapeAsk(t, "git status --short")
-	drive(t, a, key("a"), key("1"))
+	drive(t, a, key("2"), key("1"))
 
 	if len(saved.commands) != 1 || saved.commands[0] != "git status*" {
 		t.Fatalf("the write seam was handed %q, want the shape that was picked", saved.commands)
@@ -103,7 +105,7 @@ func TestPickingAShapeBanksThatShapeAndAnswersTheCall(t *testing.T) {
 // than the card ever offered. The rule covers the next call instead.
 func TestABankedShapeAnswersWithTheRuleScopeAndNotTheToolMemo(t *testing.T) {
 	agent, a, _ := shapeAsk(t, "git status --short")
-	drive(t, a, key("a"), key("1"))
+	drive(t, a, key("2"), key("1"))
 
 	want := answered{id: 7, allow: true, scope: session.ConsentRule}
 	if len(agent.answers) != 1 || agent.answers[0] != want {
@@ -116,7 +118,7 @@ func TestABankedShapeAnswersWithTheRuleScopeAndNotTheToolMemo(t *testing.T) {
 func TestAShapeThatCouldNotBeWrittenFallsBackToTheToolMemo(t *testing.T) {
 	agent, a, saved := shapeAsk(t, "git status --short")
 	saved.err = errWriteFailed
-	drive(t, a, key("a"), key("1"))
+	drive(t, a, key("2"), key("1"))
 
 	if len(agent.answers) != 1 || agent.answers[0].scope != session.ConsentToolSession {
 		t.Fatalf("the session was answered %+v", agent.answers)
@@ -130,7 +132,7 @@ func TestAShapeThatCouldNotBeWrittenFallsBackToTheToolMemo(t *testing.T) {
 // denies; here the thing on screen is a step inside an answer.
 func TestEscapeLeavesTheBeatWithoutAnsweringTheCall(t *testing.T) {
 	agent, a, saved := shapeAsk(t, "git status --short")
-	drive(t, a, key("a"), key("esc"))
+	drive(t, a, key("2"), key("esc"))
 
 	if len(agent.answers) != 0 {
 		t.Fatalf("backing out of the beat answered the call: %+v", agent.answers)
@@ -141,26 +143,29 @@ func TestEscapeLeavesTheBeatWithoutAnsweringTheCall(t *testing.T) {
 	if !a.asking() {
 		t.Fatal("the question went away")
 	}
-	if got := plain(frame(a)); !strings.Contains(got, "allow? [y] yes") {
+	if got := plain(frame(a)); !strings.Contains(got, "allow? [1] allow once") {
 		t.Fatalf("the offer did not come back:\n%s", got)
 	}
 	// And the answers still work, which is the whole of "the question is back".
-	drive(t, a, key("n"))
+	drive(t, a, key("3"))
 	if len(agent.answers) != 1 || agent.answers[0].allow {
 		t.Fatalf("the deny after the beat resolved %+v", agent.answers)
 	}
 }
 
-// THE BEAT OWNS THE KEYBOARD while it is up: y is not an answer to a question
-// that is no longer the one on screen.
+// THE BEAT'S DIGITS ARE THE BEAT'S. `3` under a beat is the third SHAPE and not
+// the third answer: the row under a person's eyes is the shapes, and a digit
+// read against the answers underneath would resolve a question that is no
+// longer the one on screen.
 func TestTheBeatDoesNotReadTheAnswersUnderneathIt(t *testing.T) {
-	agent, a, _ := shapeAsk(t, "git status --short")
-	drive(t, a, key("a"), key("y"))
-	if len(agent.answers) != 0 {
-		t.Fatalf("a key under the beat answered the call: %+v", agent.answers)
+	agent, a, saved := shapeAsk(t, "git status --short")
+	drive(t, a, key("2"), key("3"))
+	if len(agent.answers) != 1 || !agent.answers[0].allow {
+		t.Fatalf("a digit under the beat did not bank a shape: %+v", agent.answers)
 	}
-	if !a.shaping() {
-		t.Fatal("the beat went away on a key it does not read")
+	if len(saved.commands) != 1 || saved.commands[0] != "git status --short" {
+		t.Fatalf("`3` under the beat took the third ANSWER instead of the third shape: %v",
+			saved.commands)
 	}
 }
 
@@ -169,7 +174,7 @@ func TestTheBeatDoesNotReadTheAnswersUnderneathIt(t *testing.T) {
 // refuses on its own terms.
 func TestACompoundLineGetsNoBeatAndAnswersStraightAway(t *testing.T) {
 	agent, a, saved := shapeAsk(t, "cd /tmp && rm -rf build")
-	drive(t, a, key("a"))
+	drive(t, a, key("2"))
 
 	if a.shaping() {
 		t.Fatal("a compound line opened a beat with nothing on it")
@@ -191,7 +196,8 @@ func TestWithNoWriteSeamThereIsNoBeat(t *testing.T) {
 	})
 	a.width = 120
 	typeLine(t, a, "check the tree")
-	drive(t, a, key("a"))
+	settleAsk(a)
+	drive(t, a, key("2"))
 	if a.shaping() {
 		t.Fatal("a surface that cannot write offered shapes to write")
 	}
@@ -204,14 +210,15 @@ func TestWithNoWriteSeamThereIsNoBeat(t *testing.T) {
 // word is part of its target.
 func TestTheBeatAnswersToThePointer(t *testing.T) {
 	_, a, saved := shapeAsk(t, "git status --short")
-	drive(t, a, key("a"))
-	line := plain(a.consentOffer(a.width))
+	drive(t, a, key("2"))
+	row, block := askOffer(t, a)
+	line := plain(row)
 	at := strings.Index(line, "[2]")
 	if at < 0 {
 		t.Fatalf("the beat drew %q", line)
 	}
-	// Measured once: the press answers, and the offer row is gone by the release.
-	x, y := at+4, chromeRowY(t, a, consentOfferRow)
+	// Measured once: the press answers, and the answers row is gone by the release.
+	x, y := at+4, chromeRowY(t, a, block)
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	if len(saved.commands) != 1 || saved.commands[0] != "git *" {
@@ -228,7 +235,8 @@ func TestThePhoneSheetLaysTheShapesOutAsBands(t *testing.T) {
 	})
 	a.width, a.height = 44, 30
 	typeLine(t, a, "check the tree")
-	drive(t, a, key("a"))
+	settleAsk(a)
+	drive(t, a, key("2"))
 
 	rows := strings.Join(askRows(a), "\n")
 	for _, want := range []string{"[1] git status*", "[2] git *", "[3] just this line", "[esc] never mind"} {
@@ -236,7 +244,7 @@ func TestThePhoneSheetLaysTheShapesOutAsBands(t *testing.T) {
 			t.Fatalf("the sheet has no band for %q:\n%s", want, rows)
 		}
 	}
-	if got, want := a.consentHeight(), len(askRows(a)); got != want {
+	if got, want := a.questionHeight(), len(askRows(a)); got != want {
 		t.Fatalf("the sheet claims %d rows and drew %d", got, want)
 	}
 	drive(t, a, key("2"))
@@ -259,11 +267,12 @@ func TestTwoBashQuestionsPairToTheirOwnRowsByCallID(t *testing.T) {
 	_, a, saved := rememberingApp(t, events)
 	a.width = 120
 	typeLine(t, a, "do both")
+	settleAsk(a)
 
 	if got := plain(frame(a)); !strings.Contains(got, "npm test") {
 		t.Fatalf("the question is not drawn against the npm row:\n%s", got)
 	}
-	drive(t, a, key("a"))
+	drive(t, a, key("2"))
 	got := plain(frame(a))
 	if !strings.Contains(got, "[1] npm test*") {
 		t.Fatalf("the beat offers shapes for the wrong call:\n%s", got)
@@ -283,7 +292,8 @@ func TestAQuestionWithNoIDStillPairsByToolName(t *testing.T) {
 	})
 	a.width = 120
 	typeLine(t, a, "check the tree")
-	drive(t, a, key("a"), key("3"))
+	settleAsk(a)
+	drive(t, a, key("2"), key("3"))
 	if len(saved.commands) != 1 || saved.commands[0] != "git status --short" {
 		t.Fatalf("the card banked %q", saved.commands)
 	}
@@ -296,7 +306,7 @@ func TestAQuestionWithNoIDStillPairsByToolName(t *testing.T) {
 // rewrite the offer underneath it and ask a different question than the one
 // being answered.
 func TestACraftedArgumentCannotRepaintTheCard(t *testing.T) {
-	command := "git status\x1b[2A\x1b[Kallow? [y] yes"
+	command := "git status\x1b[2A\x1b[K[1] allow once"
 	_, a, _ := rememberingApp(t, []session.Event{
 		{
 			Kind: session.EventToolBegin, Tool: "bash", Hint: "bash " + command,
@@ -306,8 +316,9 @@ func TestACraftedArgumentCannotRepaintTheCard(t *testing.T) {
 	})
 	a.width, a.height = 44, 30
 	typeLine(t, a, "check the tree")
+	settleAsk(a)
 
-	rows := a.consentCommand(command, a.width)
+	rows := a.questionNarrowBody(command, a.width)
 	for _, row := range rows {
 		if strings.Contains(plain(row), "\x1b") || strings.Contains(plain(row), "\x07") {
 			t.Fatalf("a control byte reached the command region: %q", row)

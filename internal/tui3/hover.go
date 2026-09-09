@@ -86,7 +86,8 @@ const (
 	hoverBrief
 	// hoverPictures lights only the attachment expansion control.
 	hoverPictures
-	// hoverChoices is the consent block's offer line.
+	// hoverChoices is the question block's answers — one row of it at the wide
+	// tiers, and any of the narrow sheet's bands.
 	hoverChoices
 	// hoverConnectAsk is the connect offer's answers line (connect.go). It is a
 	// kind of its own rather than another hoverChoices because the two blocks can
@@ -582,10 +583,10 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	}
 	if mark, ok := a.chromeAt(y); ok {
 		switch mark.kind {
-		case chromeChoices:
-			// The index is the row WITHIN the block, which the one-line offer
-			// never needed and the phone sheet does: its answers are a row each
-			// (consent.go's [app.hoveringChoice]).
+		case chromeQuestion:
+			// The index is the row WITHIN the block, which the answers row never
+			// needed and the narrow sheet does: its answers are a row each
+			// (questionsheet.go's [app.questionBandRow]).
 			return hoverAt{kind: hoverChoices, index: mark.index}
 		case chromeHarnessAsk:
 			// One row again, and the same reason: the offer is the only

@@ -293,7 +293,8 @@ command about to run — that row is drawn above it, the same row you already
 read, not a second description of it.
 
 ```
-  ? allow this? [1] allow once · [2] always · [3] deny · [esc] later
+    ╰─▶ bash rm -rf build
+  ? allow? [1] allow once · [2] always, this command · [3] deny · [esc] later · 7s
     bash pattern "rm -rf *"
 ```
 
@@ -359,8 +360,8 @@ anything: the question is still open, whatever was waiting on it is still
 waiting, and the count in the status line does not drop. What goes away is the
 rows, so the box underneath is yours again.
 
-This is different from the older approval question, where `esc` denies. On the
-block, nothing is ever decided by making something go away.
+This is what changed about the approval question, where `esc` used to deny.
+Nothing is ever decided by making something go away.
 
 To bring it back, press `alt+a`.
 
@@ -632,6 +633,26 @@ Whatever you send goes with everything you did on the way:
 - anything you asked back and what came of it
 - how long the answer lasts, where the question offered a choice of that
 
+## Which questions draw this way
+
+**The approval question does** — the one aforge asks before it runs a tool. It
+has all of the above: the digits, `esc` for later, the chip, the receipt, the
+settle guard, the narrow card and the phone sheet. `permissions` is its own page
+and states what each answer banks.
+
+A question that is not simply a line of answers still fits here. The approval
+question's widening yes, `[2] always`, has a **second beat** on a shell command:
+it replaces the answers row with the shapes the rule could be written as, and
+picks one before anything is written.
+
+```
+  always? [1] git status*  ·  [2] git *  ·  [3] just this line  ·  [esc] never mind
+```
+
+While a beat is up, the digits belong to it — `3` is the third shape and not the
+third answer — and `esc` backs out of the beat rather than putting the question
+off.
+
 ## What is not built yet
 
 `o` opens a question out into a page of its own — see the sections above, from
@@ -647,7 +668,7 @@ The count of open questions in the status line IS built: that is the chip
 described above. So is the sheet, and so is the per-project setting that answers
 a whole kind of question while you are away (`/autonomy`, and `D` on a row).
 
-The older blocks — the approval question, a task proposal, a standing card, a
-connect offer, an offer to run a saved program, and the cards that ask before
-stopping work or closing a busy tab — have not moved onto the block yet and keep
-their own keys until they do.
+Some older blocks have not moved onto this one yet and keep their own keys until
+they do: a task proposal, a standing card, a connect offer, an offer to run a
+saved program, and the cards that ask before stopping work or closing a busy
+tab.

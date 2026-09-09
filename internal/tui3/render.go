@@ -3906,28 +3906,18 @@ func (a *app) hintWord() string {
 		// (standing.go).
 		return standAskHint(a.stand)
 	case a.shaping():
-		// The always is part-way answered and the block is on its second beat
-		// (consent.go): the numbers bank a shape and esc puts the question back.
+		// The widening answer is part-way given and the block is on its second
+		// beat (question.go): the numbers bank a shape and esc puts the question
+		// back exactly as it was.
 		return "1-3 shape · esc never mind"
 	case a.asking() || a.awaitingDecision():
-		// THE KEYS THE BLOCK ACTUALLY DRAWS. This line said "a allow · t always"
-		// for a year after the answers took their own first letters, so the hint
-		// under the box named `a` as allow while the block above it named `a` as
-		// always — one keystroke, two readings, and the wrong one widens a
-		// permission.
-		//
-		// AND IT NAMES THE ALWAYS KEY ONLY WHERE THAT KEY WOULD ACT. A stuck
-		// question borrows this lane to ask about a TURN, and the engine drops a
-		// tool-session scope on it — so the offer above leaves `[a]` off
-		// (consent.go's [app.consentOffer], from this same `memo` field) and the
-		// press does nothing. A hint that named it anyway would be this line
-		// promising a keystroke the block above it has already refused. It went
-		// unseen until this wave for one reason: the slot was silent under
-		// [hudTight], and that is the width the case is met at.
-		if len(a.asks) > 0 && !a.asks[0].memo {
-			return "y allow · n deny"
-		}
-		return "y allow · n deny · a always"
+		// THE KEYS THE BLOCK ACTUALLY DRAWS, read off the question itself. This
+		// line said "a allow · t always" for a year after the answers took their
+		// own first letters, so the hint under the box named `a` as allow while
+		// the block above it named `a` as always — one keystroke, two readings,
+		// and the wrong one widens a permission. It is derived now, so it cannot
+		// come apart from the row again.
+		return a.questionHint()
 	case a.railHold:
 		// The roster has the keyboard (alt+t, task.go) — the one state on this
 		// surface where the arrows have left the box entirely. It ranks HERE, under

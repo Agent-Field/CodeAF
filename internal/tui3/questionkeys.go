@@ -360,8 +360,22 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 	case needWalk:
 		return q.question.Ask == session.AskConfirmation && len(q.question.Options) > 1
 	case needHands:
-		return q.question.Ask != session.AskConfirmation &&
-			q.question.Stakes != session.StakesIrreversible
+		if q.question.Ask == session.AskConfirmation ||
+			q.question.Stakes == session.StakesIrreversible {
+			return false
+		}
+		// AND A PERMISSION THAT IS NOT CHEAP TO TAKE BACK IS NEVER HANDED OVER.
+		// The approval gate asks because a policy said a person has to see this
+		// call; `you decide` on it would give that decision straight back to the
+		// thing the gate was put in front of, which is the gate answering itself
+		// with one keystroke. docs/design/questions/DESIGN.md's kind table says
+		// the same about the clock — a permission may act on its own "only when
+		// Stakes == reversible" — and a key that skips a question is a clock a
+		// person wound by hand.
+		if q.question.Ask == session.AskPermission {
+			return q.question.Stakes == session.StakesReversible
+		}
+		return true
 	case needChecklist:
 		return q.question.Input.Kind == session.InputChecklist
 	case needOrdered:

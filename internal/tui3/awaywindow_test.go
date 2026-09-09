@@ -17,7 +17,7 @@ import (
 // was not the picture and it was not the engine — the engine's turn runs in
 // its own goroutine behind an unbounded queue (session's agent.go), and the
 // frame clock has never read focus at all. It was the approval countdown:
-// ten seconds after the gate stopped a call, [app.tickAsk] denied it on behalf
+// ten seconds after the gate stopped a call, [app.tickQuestion]'s ancestor denied it on behalf
 // of somebody who was two windows away and could not have known the question
 // existed. Every call that turn tried to make came back refused, so the session
 // really had stopped working, and the reason was on a screen behind them.
@@ -43,7 +43,7 @@ func awayAsk(t *testing.T) (*wiredAgent, *app, func(time.Duration)) {
 	// The countdown is the setting's default, stamped here because a test app
 	// never ran the boot that reads it (app.go's [app.consentWait]).
 	a.askWait = 10 * time.Second
-	a.askAt, a.askPaused = at, false
+	startAskClock(a, at, false)
 	return agent, a, func(d time.Duration) { at = at.Add(d) }
 }
 
@@ -111,18 +111,18 @@ func TestAFocusedWindowPausesTheQuestionAtExpiry(t *testing.T) {
 }
 
 // A PERSON WHO TOUCHED THE KEYS IS STILL DECIDING, and alt-tabbing away and
-// back is not them changing their mind. [app.pauseAsk] is a one-way door and
-// [app.refocusAsk] must not be the way back through it.
+// back is not them changing their mind. [app.holdQuestionClocks] is a one-way door
+// and [app.refocusQuestions] must not be the way back through it.
 func TestARefocusDoesNotRestartAPausedQuestion(t *testing.T) {
 	agent, a, advance := awayAsk(t)
 
 	// A key that is not an answer pauses the clock for good (consent.go).
 	drive(t, a, key("x"))
-	if !a.askPaused {
+	if !askHeld(a) {
 		t.Fatal("a key did not pause the countdown")
 	}
 	drive(t, a, tea.BlurMsg{}, tea.FocusMsg{})
-	if !a.askPaused {
+	if !askHeld(a) {
 		t.Fatal("a trip to another window un-paused a question somebody was answering")
 	}
 	advance(time.Hour)

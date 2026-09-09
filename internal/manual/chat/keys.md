@@ -1431,11 +1431,17 @@ seconds quits aforge with the picker still up.
 
 ## Keys when aforge asks you a question — what key answers switch to auto, and the other offers
 
-**An approval question:** `y` allow once · `a` or `t` always — refused when it would
-do nothing · `n`, `d` or `esc` deny. Every other key does nothing, but it **stops the
-countdown**. `ctrl+c` is handed back to the message box, where it arms the door and a
-second press within 1.5 seconds quits. On the second beat of
-"always" for a bash command, `1`–`9` pick a shape and `esc` goes back.
+**An approval question:** `1` allow once · `2` always — not drawn and inert when it
+would do nothing · `3` deny · `c` answer in words · `esc` **later**, which folds the
+question to the chip and answers nothing. It is **not modal**: every other key belongs
+to your message box, and a key it does read also **stops the countdown**. A key pressed
+in the first quarter-second is dropped, so a question landing under a moving hand is not
+answered by a keystroke aimed at your sentence. `ctrl+c` is handed back to the message
+box, where it arms the door and a second press within 1.5 seconds quits. On the second
+beat of "always" for a bash command, `1`–`9` pick a shape and `esc` goes back — and
+while that beat is up the digits are the shapes', not the answers'.
+
+`alt+a` raises the newest question you put off, from any page.
 
 **A task proposal** is not modal — the message box stays live as a redirect lane.
 Always available: `enter` submits a typed answer or takes the focused option over
