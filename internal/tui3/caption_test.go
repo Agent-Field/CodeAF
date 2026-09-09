@@ -133,6 +133,107 @@ func TestACaptionIsOneShortSentence(t *testing.T) {
 	}
 }
 
+func TestCaptionWordsKeepsTokenPunctuationAndSentenceBoundaries(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+		want string
+	}{
+		{
+			name: "file extension",
+			line: "Reading livesteps.go now.",
+			want: "Reading livesteps.go now",
+		},
+		{
+			name: "dotted token in a sentence",
+			line: "I will update config.json and then run the suite.",
+			want: "I will update config.json and then run the suite",
+		},
+		{
+			name: "version number",
+			line: "Bumping the pin to v1.2.3 across the three services.",
+			want: "Bumping the pin to v1.2.3 across the three services",
+		},
+		{
+			name: "dot inside a path without a sentence end",
+			line: "searching ~/.aforge/v3/projects for the transcript",
+			want: "searching ~/.aforge/v3/projects for the transcript",
+		},
+		{
+			name: "real sentence boundary",
+			line: "Good leads. Fetching the key pages to confirm which are open.",
+			want: "Fetching the key pages to confirm which are open",
+		},
+		{
+			name: "newline boundary",
+			line: "Reading livesteps.go now\nThen checking the renderer.",
+			want: "Reading livesteps.go now",
+		},
+		{
+			name: "word limit and dangling words",
+			line: "fetching the key pages to confirm which are actually still open tonight in toronto",
+			want: "fetching the key pages to confirm",
+		},
+		{
+			name: "question mark inside a token",
+			line: "fetching https://api.example.com/v1?limit=10 for the list",
+			want: "fetching https://api.example.com/v1?limit=10 for the list",
+		},
+		{
+			name: "exclamation mark inside a token",
+			line: "checking cache!primary before reading the fallback",
+			want: "checking cache!primary before reading the fallback",
+		},
+		{
+			name: "question mark at a sentence end",
+			line: "Ready? Fetching the key pages to confirm which are open.",
+			want: "Fetching the key pages to confirm which are open",
+		},
+		{
+			name: "terminator run at a sentence end",
+			line: "Done!! Fetching the key pages to confirm which are open.",
+			want: "Fetching the key pages to confirm which are open",
+		},
+		{
+			name: "closing punctuation before a sentence end",
+			line: "Good (“confirmed!”). Fetching the key pages to confirm which are open.",
+			want: "Fetching the key pages to confirm which are open",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := captionWords(tt.line)
+			if got != tt.want {
+				t.Fatalf("captionWords(%q) = %q, want %q", tt.line, got, tt.want)
+			}
+			if strings.Contains(got, "…") {
+				t.Fatalf("captionWords(%q) appended an ellipsis: %q", tt.line, got)
+			}
+		})
+	}
+}
+
+func TestTheDrawnCaptionKeepsAFileExtension(t *testing.T) {
+	es := captionFixture()
+	es[1].text = "Reading livesteps.go now."
+	got := captionsOf(es, 0)
+	if len(got) != 1 {
+		t.Fatalf("captions = %#v, want one", got)
+	}
+
+	a := newTestApp(&fakeAgent{model: "m"})
+	rows := a.captionRows(got[0], false, false, 80, a.conversation())
+	var drawn strings.Builder
+	for _, row := range rows {
+		drawn.WriteString(plain(row.text))
+		drawn.WriteByte('\n')
+	}
+	if page := drawn.String(); !strings.Contains(page, "livesteps.go") {
+		t.Fatalf("drawn caption lost the file extension:\n%s", page)
+	}
+}
+
 func TestANarrowCaptionWrapsWithoutEllipsis(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	c := caption{text: "listing open github issues for quality", start: 1, calls: 2, began: time.Unix(100, 0), ended: time.Unix(102, 0)}
