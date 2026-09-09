@@ -159,6 +159,9 @@ func TestTaskPanelLeavesNoEmptyDetailsAndKeepsTheHeadingHierarchy(t *testing.T) 
 	a.jobs = nil
 	a.width, a.height = 120, 38
 	rows := a.roomHeadRows(a.width)
+	if len(a.roomKinRows(a.width)) != 0 {
+		t.Fatal("expanded header repeats the family tree")
+	}
 	if strings.Contains(plain(rows[0]), a.roomHereWord()) {
 		t.Fatal("breadcrumb repeats the task heading")
 	}

@@ -2383,7 +2383,8 @@ func (a *app) roomHeadRows(width int) []string {
 }
 
 // roomHeadRowCount counts the semantic rows before optional trailing air on a frame with the
-// height to spare: the trail, and the facts under it. The tab strip above and
+// height to spare: the trail, the current title, and the facts. Compact frames
+// keep the title within the trail. The tab strip above and
 // the kin rows below are counted separately.
 const roomHeadRowCount = 3
 
