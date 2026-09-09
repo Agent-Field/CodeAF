@@ -370,10 +370,7 @@ type farRoomTickMsg struct{ gen int }
 // through it.
 func (r *taskRoom) deck() deck {
 	running := 0
-	// Hosted and guest pages read bounded journals without a local event lane.
-	// The task's reported state owns activity; a failed or lost reader cannot
-	// claim that its retained transcript is still making progress.
-	if !r.done && !r.readFailed && (r.guest == nil || !r.guest.lost) {
+	if r.running() {
 		running = r.turn
 	}
 	// THE LENS IS THE WHOLE OF WHAT MAKES THIS PAGE A ROOM (lens.go): settled
@@ -382,8 +379,17 @@ func (r *taskRoom) deck() deck {
 	// expanded cluster keeps a screenful of calls instead of three.
 	return deck{
 		entries: r.entries, unfolded: r.unfolded, workOpen: r.workOpen, capOpen: r.capOpen,
-		lens: r.readingLens(), runningTurn: running,
+		lens: r.readingLens(), runningTurn: running, col: &r.col,
 	}
+}
+
+// running is whether the page's work is still going, and it is the ONE answer
+// the deck's running turn, the live token column and every other sign of life
+// on the page read. Hosted and guest pages read bounded journals without a
+// local event lane. The task's reported state owns activity; a failed or lost
+// reader cannot claim that its retained transcript is still making progress.
+func (r *taskRoom) running() bool {
+	return !r.done && !r.readFailed && (r.guest == nil || !r.guest.lost)
 }
 
 // The words the room says of itself.
@@ -1147,6 +1153,14 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 		// revision the review pass writes are two replies on one lane, and
 		// without this they arrived as one unbroken wall of JSON.
 		room.closeLive()
+		// AND ONE STEP'S ACCOUNTING IS ADDED TO THE PAGE'S COLUMN, the way the
+		// pilot adds it to the node's bill (task.go's [taskNode.liveCost]): a
+		// node is driven through many Submits, this is the end of one, and the
+		// figures at the right edge of its live work are the sum of them. The
+		// column is not opened afresh per step because the work the block stands
+		// for is the node's whole run, and the block leaves when the run does.
+		room.col.up += ev.Usage.Input
+		room.col.down += ev.Usage.Output
 
 	case session.EventError:
 		a.roomNote("error: " + errText(ev.Err))

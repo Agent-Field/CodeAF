@@ -73,7 +73,13 @@ func landHome(node *TaskNode, tree taskTree, changed []string) ([]string, string
 	// is answered by somebody, and whether asking them again could change anything
 	// is decided where the refusal happened, not read back out of the sentence
 	// afterwards (task_land_unsaved.go's [landingRefusal]).
-	merge, detail, why := tree.comeHome(node.title(), ledger)
+	merge, detail, clashing, why := tree.comeHome(node.title(), ledger)
+	// AND THE NAMES ARE KEPT ON THE NODE, at the one moment they exist. git's index
+	// held them while the refused merge stood and was made to give them back before
+	// the merge was abandoned (groundcarry.go's [taskTree.refuseMerge]); a row drawn
+	// an hour later has nowhere else to read them from, and a surface parsing them
+	// back out of the report's prose would be this program reading its own writing.
+	node.clashesWith(clashing)
 	return ledger, merge, detail, why
 }
 
@@ -196,4 +202,18 @@ func (a *Agent) landFinished(node *TaskNode, tree taskTree, changed []string, he
 	// says it a second time in the harness's own vocabulary.
 	node.finish(withReport(head, withReport(tail, detail)), landed, tree.branch, merge)
 	return TaskDone
+}
+
+// clashesWith records the files that stopped this node's branch fastening onto
+// the person's. An empty list clears nothing: a landing road that named no files
+// — git would not say which they were, or the branch never reached the person's
+// repository at all — leaves whatever an earlier attempt found, because the
+// emptiness law says an absence is not evidence that nothing clashed.
+func (n *TaskNode) clashesWith(files []string) {
+	if n == nil || n.graph == nil || len(files) == 0 {
+		return
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	n.clashing = append([]string(nil), files...)
 }

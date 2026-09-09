@@ -4567,7 +4567,7 @@ func railPack(segs []string, width, rooms int, lead string) []string {
 // THE NAME LEADS AND THE HANDLE TRAILS. The glyph and the title are what a
 // person reads down this column — the state, and the words they themselves
 // approved — and the id is what identifies the node to the
-// MACHINE: the number the engine says in its own sentences ("task 7 finished",
+// MACHINE: the number the engine says in its own sentences ("task 7 done",
 // session's task_run.go), the thing to type when you go looking for the branch,
 // and the least interesting fact on the row. So it is dim, it is at the far end,
 // and the title is measured against what is left.
