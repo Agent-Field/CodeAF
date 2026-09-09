@@ -76,6 +76,12 @@ type mergeRoundOutcome struct {
 	files []string
 	// changed is the node's ledger with whatever the resolver wrote folded in.
 	changed []string
+	// tree is the working copy the round actually ran in, which is not always the
+	// one it was handed: a copy the landing already unregistered is picked back up
+	// on the way in, and that reading may correct the branch's own name
+	// ([taskTree.reopenReleased]). Everything after the round — the check, the
+	// retried landing, the undo — reads this one.
+	tree taskTree
 }
 
 // mergeRoundFailedSentence is what a person reads under a conflict the round
@@ -112,6 +118,7 @@ func (a *Agent) mergeRoundAtLanding(ctx context.Context, node *TaskNode, tree ta
 	if !ran {
 		return "", false, ""
 	}
+	tree = outcome.tree
 	if !outcome.resolved {
 		return "", false, mergeRoundFailedSentence(tree.branch, outcome.files)
 	}
@@ -149,13 +156,13 @@ func (a *Agent) mergeRoundAtLanding(ctx context.Context, node *TaskNode, tree ta
 func (a *Agent) spendMergeRound(ctx context.Context, node *TaskNode, tree taskTree, changed []string, log io.Writer) (mergeRoundOutcome, bool) {
 	tree, ok := resolvableTree(tree)
 	if !ok {
-		return mergeRoundOutcome{}, false
+		return mergeRoundOutcome{tree: tree}, false
 	}
 	home := currentBranch(tree.root)
 	if home == "" || strings.EqualFold(home, tree.branch) {
 		// A detached ground has no branch to merge, and a ground somehow standing
 		// on the task's own branch has nothing to bring together.
-		return mergeRoundOutcome{}, false
+		return mergeRoundOutcome{tree: tree}, false
 	}
 	// THE SURFACE HEARS THE NODE STILL FINISHING. Nothing has landed and nothing
 	// was undone; a round spent bringing two versions of a file together is the
@@ -170,7 +177,7 @@ func (a *Agent) spendMergeRound(ctx context.Context, node *TaskNode, tree taskTr
 	kept := beforeMergeRef(tree.branch)
 	if err := keepBeforeMerge(tree, kept); err != nil {
 		fmt.Fprintf(log, "merge round: %s could not be kept, so nothing was merged — %v\n", kept, err)
-		return mergeRoundOutcome{}, false
+		return mergeRoundOutcome{tree: tree}, false
 	}
 	node.spendMergeRoundCount()
 
@@ -179,7 +186,7 @@ func (a *Agent) spendMergeRound(ctx context.Context, node *TaskNode, tree taskTr
 		// The two branches had nothing to argue about after all — a merge git
 		// could do by itself, which is the cheapest possible round.
 		fmt.Fprintf(log, "merge round: %s merged into %s with nothing to resolve\n", home, tree.branch)
-		return mergeRoundOutcome{resolved: true, changed: changed}, true
+		return mergeRoundOutcome{resolved: true, changed: changed, tree: tree}, true
 	}
 	files := conflictedPaths(tree.dir)
 	if len(files) == 0 {
@@ -188,7 +195,7 @@ func (a *Agent) spendMergeRound(ctx context.Context, node *TaskNode, tree taskTr
 		// that shape is). It is not this round's to fix.
 		fmt.Fprintf(log, "merge round: %s would not open on %s — %s\n", home, tree.branch, firstLine(out))
 		abandonMerge(tree.dir)
-		return mergeRoundOutcome{}, false
+		return mergeRoundOutcome{tree: tree}, false
 	}
 	fmt.Fprintf(log, "merge round: %s conflicts with %s in %s — one round to resolve it\n",
 		tree.branch, home, namedFew(files, conflictNamesShown))
@@ -197,9 +204,9 @@ func (a *Agent) spendMergeRound(ctx context.Context, node *TaskNode, tree taskTr
 	if problem := settleResolvedMerge(tree, files); problem != "" {
 		fmt.Fprintf(log, "merge round: %s\n", problem)
 		abandonMerge(tree.dir)
-		return mergeRoundOutcome{files: files, changed: mergePaths(changed, wrote)}, true
+		return mergeRoundOutcome{files: files, changed: mergePaths(changed, wrote), tree: tree}, true
 	}
-	return mergeRoundOutcome{resolved: true, files: files, changed: mergePaths(changed, wrote)}, true
+	return mergeRoundOutcome{resolved: true, files: files, changed: mergePaths(changed, wrote), tree: tree}, true
 }
 
 // mergeRoundGap is what a person watching the card reads while the round runs.
@@ -524,6 +531,7 @@ func (a *Agent) landResolved(ctx context.Context, node *TaskNode, tree taskTree,
 	if !ran || !outcome.resolved || ctx.Err() != nil {
 		return
 	}
+	tree = outcome.tree
 	verdict := a.auditNode(ctx, node, tree, outcome.changed, report, log)
 	if ctx.Err() != nil {
 		return
