@@ -490,8 +490,9 @@ leaves the conversation usable with its existing placeholder; an existing name i
 overwritten. Title calls remain billed to the session and cost history, separately from
 an unrelated turn that happens to be running when the name arrives.
 
-The full name is capped at **80 characters**. The stable compact label is capped at **32
-characters** and the tab strip fits it to its available cells. Old saved conversations
+The full name is capped at **80 characters** in both its journal and folder metadata. The
+stable compact label is capped at **32 characters** in both places, and the tab strip fits
+it to its available cells. Old saved conversations
 have no separate compact label and use their full title in the tab, exactly as before.
 
 **There is no command to rename a conversation.** The name lives in the transcript as its

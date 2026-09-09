@@ -121,8 +121,10 @@ func (a *Agent) stampTitle(title string, shorts ...string) {
 	}
 	dir, snapshot := a.metaSnapshotAt()
 	a.updateMeta(dir, snapshot, func(meta *Meta) {
-		meta.Title = clip(title, metaTitleLimit)
-		meta.ShortTitle = clip(strings.TrimSpace(short), metaTitleLimit)
+		// Earned names keep the same guards as the journal they mirror. The
+		// narrower metadata limit belongs only to the opening-message placeholder.
+		meta.Title = clip(title, titleLimit)
+		meta.ShortTitle = clip(strings.TrimSpace(short), shortTitleLimit)
 	})
 }
 
