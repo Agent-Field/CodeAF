@@ -18,3 +18,9 @@ The terminal harness waits for an interactive surface before typing and preserve
 crashed panes for diagnosis. The task record test follows the current conversation grouping before selecting
 a task and opening its saved record.
 Delegation limits and access to other tasks are unchanged.
+
+The concurrent-child landing fixture now waits for both asynchronous runner
+callbacks before releasing the children together. Parking proves admission, not
+that those callbacks have run; a delayed callback previously caused a false
+zero/one-child failure in the required CI job. The delayed schedule reproduced
+that failure and passes with the synchronization in place.
