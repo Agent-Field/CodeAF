@@ -21,6 +21,7 @@ import (
 // database refuse a membership whose owning collection does not exist.
 func TestConnectionPragmasStayInForceSoWritesAreDurableAndBounded(t *testing.T) {
 	s := openTestStore(t, filepath.Join(t.TempDir(), "pragmas.db"))
+	createTestCollection(t, s, "Pragma witness")
 	for _, want := range []struct {
 		pragma string
 		value  int64
@@ -191,7 +192,7 @@ func TestRemoveDetachesTheReferenceAndLeavesTheRecordAlone(t *testing.T) {
 	}
 }
 
-// A damaged or hand-edited schema can still claim our version. The store must
+// C7 — A damaged or hand-edited schema can still claim our version. The store must
 // say so rather than treat the missing half as an
 // empty set of memberships, and it must not repair the file underneath the owner.
 func TestOpenRefusesAHalfBuiltSchemaAtOurOwnVersion(t *testing.T) {
@@ -222,7 +223,7 @@ PRAGMA application_id=%d; PRAGMA user_version=%d`, applicationID, schemaVersion)
 	}
 }
 
-// The file provisioned by Open is private. A dangling database symlink must
+// C7 — The file provisioned by Open is private. A dangling database symlink must
 // not let SQLite bypass that provisioning and create its target by itself.
 func TestOpenDoesNotCreateADanglingDatabaseLinkTarget(t *testing.T) {
 	root := t.TempDir()
@@ -239,12 +240,12 @@ func TestOpenDoesNotCreateADanglingDatabaseLinkTarget(t *testing.T) {
 	}
 }
 
-// Several sessions share one working tree and one home, so the very first open
+// C6 — Several sessions share one working tree and one home, so the very first open
 // of a collections database is routinely a race. Exactly one schema must result,
 // and no handle may be told the store is unusable because a peer got there first.
 func TestConcurrentFirstOpensAgreeOnOneSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "first.db")
-	const handles = 8
+	const handles = 32
 	var wg sync.WaitGroup
 	failures := make([]error, handles)
 	for i := 0; i < handles; i++ {

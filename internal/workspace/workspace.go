@@ -26,6 +26,10 @@ var (
 	ErrInvalid  = errors.New("invalid collection or reference")
 	ErrNotFound = errors.New("collection not found")
 	ErrCycle    = errors.New("collection membership would form a cycle")
+	// ErrBusy is a lock this store waited busyTimeout for and did not get. It is
+	// not corruption and not a refusal: another command is still writing, so
+	// this command left the collections database unchanged and can be retried.
+	ErrBusy = errors.New("the collections database is busy being written by something else")
 )
 
 // Ref preserves the address used by the existing record owner. TASK NUMBERS
