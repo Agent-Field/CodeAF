@@ -169,17 +169,18 @@ func (a *app) taskEffortClause(node *taskNode) string {
 // still there, they are still the keys a person already knows, and the one thing
 // they do not know is the one thing this line is for.
 //
-// It is spelled from [roomSettleHint], so the roster, the card and the room
-// cannot name three different letters for one question.
+// It is spelled from the card's own chips ([app.roomSettleHintFor]), so the
+// roster, the card and the room cannot name three different letters for one
+// question.
 func (a *app) railHoldHintWord() string {
-	if a.railSettleCard() != nil {
+	if card := a.railSettleCard(); card != nil {
 		// AND IT IS SPELLED TO THE FRAME. The slot takes a line whole or not at
 		// all ([app.legend]), so the full sentence plus `esc` — four cells too
 		// long at sixty columns — left the narrowest terminal naming NONE of the
 		// keys that answer the row the cursor is sitting on. [app.settleHintAt]
 		// is the ranked prefix of it that fits, and `esc` is the last thing it
 		// gives up.
-		return a.settleHintAt(a.width, railSep+"esc")
+		return a.settleHintAt(card, a.width, railSep+"esc")
 	}
 	if !a.taskRungMovable(a.railFocusNode()) {
 		return a.chords.say(railHoldHint)

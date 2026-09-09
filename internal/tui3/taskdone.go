@@ -52,16 +52,17 @@ type taskDone struct {
 	ident taskIdent
 	// title and subtitle are the identity (taskident.go), frozen at landing.
 	title, subtitle string
-	failed          bool
-	// ending is why a failed node stopped, as the engine said (taskending.go),
-	// and "" when it did not say.
-	ending session.TaskEnding
-	// unverified is the third settled state (session's TaskUnverified), and it
-	// is a FIELD OF ITS OWN rather than a value of failed: the run finished, no
-	// finding was made against it, and a card that folded it into the failure
-	// bool would be this surface reporting a verdict nobody gave. A card is
-	// never both — failed stays false here.
-	unverified bool
+	// status is THE READING, taken once at landing from the node's own facts
+	// through [session.ProjectTask] and never worked out again here.
+	//
+	// IT REPLACED THREE BOOLEANS AND FOUR PRIVATE WORDS. This card used to carry
+	// `failed`, `unverified` and a delivery predicate of its own, and each of them
+	// picked its own vocabulary out of a switch — so one landing was `failed` on
+	// the card, `incomplete` on the record page and `stopped` on the roster. The
+	// tier is the glyph, [session.TaskStatus.Word] is the word, and
+	// [session.TaskStatus.Ask] is the question and its two answers
+	// (docs/design/task-states/DESIGN.md).
+	status session.TaskStatus
 	// span is the node's own age at its final state. started is the record's start
 	// or the live surface's established fallback, and landed is the record's
 	// settling instant; the surface clock is the last resort only for a landing
@@ -122,19 +123,10 @@ type taskDone struct {
 	// decided is the receipt the card wears once its question has been answered
 	// from this surface, and it is empty for every card that was never asking
 	// (tasksettle.go). It is a STRING and not a bool because what the row says is
-	// what the person did — "you took this as done", "sent back to be checked
-	// again" — and a card that recorded only that it had been answered would have
-	// to reconstruct the sentence from a state the engine has since moved past.
+	// what the person did — "you took this as done", "sent to be resolved" — and a
+	// card that recorded only that it had been answered would have to reconstruct
+	// the sentence from a state the engine has since moved past.
 	decided string
-	// asks says the choices belong on THIS card, and it is frozen at landing from
-	// the person's `task.settle` row (tasksettle.go). Under `auto` the engine has
-	// already handed this decision to the model, so a card that drew four choices
-	// would be asking a question somebody else is answering — and reading the row
-	// at draw time instead would mean a policy flipped mid-afternoon retroactively
-	// took the choices off a card that was genuinely asking.
-	asks bool
-	// reviewByModel records an automatic policy or successful explicit handoff.
-	reviewByModel bool
 	// trouble is the one dim line a card carries when an answer could NOT be
 	// spent and the question is therefore still standing — no checker to look
 	// again with, a working copy that has gone. It is separate from [decided]
@@ -155,15 +147,22 @@ type taskDone struct {
 }
 
 // The card's words.
+//
+// THE STATE WORDS ARE NOT HERE ANY MORE. `done`, `stopped`, `incomplete` and
+// `your call` are [session.TaskStatus.Word], spelled once in internal/session's
+// task_status.go and read off the reading — because a state with two spellings
+// is two states to whoever is reading it, and this card used to hold four of its
+// own (docs/design/task-states/DESIGN.md).
 const (
-	doneWord      = "done"
+	// doneWord is the record page's own reading of a landed row (taskstatus.go)
+	// and no longer this card's head: the head takes its word from the reading.
+	doneWord = "done"
+	// doneFailWord is the record page's word for a fault and belongs to the rail
+	// lane, which is the last reader of it (taskstatus.go). It is NOT on this
+	// card: `failed` is deleted as person-facing text for a landing, which reads
+	// `incomplete` plus its reason.
 	doneFailWord  = "failed"
 	doneOutputKey = "ctrl+o output"
-	// The word for a landing nobody could judge is the rail's own
-	// ([taskUnverifiedWord]): one vocabulary for one state, so a person who read
-	// "needs your look" on the column does not have to learn a second name for it
-	// in the transcript.
-	//
 	// doneStartWord IS THE WORD FOR WHEN THE WORK BEGAN, and it said `spawned`
 	// until this wave. That is the machinery's own verb for starting a process,
 	// which this house bans in anything a person reads — the same rule that took
@@ -211,14 +210,17 @@ const (
 	// line at sixty columns.
 	//
 	// doneMoreAt and doneMoreGone are the pointer under an answer this card was
-	// handed only the beginning of, and doneHeldWord is the landing that turned
-	// the work back — the answer exists, it was not accepted, and where it can be
-	// read is the useful half. All three are internal/session's own facts
-	// (task_result.go's Result, ResultCut, ResultWhole, ResultHeld) said in this
-	// surface's words.
+	// handed only the beginning of — internal/session's own facts
+	// (task_result.go's Result, ResultCut, ResultWhole) said in this surface's
+	// words.
+	//
+	// THE SENTENCE ABOUT A HELD ANSWER IS GONE FROM HERE. It read `what it
+	// produced was not taken as done`, which is a second account of the state and
+	// is deleted as person-facing text: the card's own reason row already says
+	// `the check did not pass it: <gaps>` in the engine's spelling, and all this
+	// block owes a person after that is where the answer can be read.
 	doneMoreAt   = "the whole of it is at "
 	doneMoreGone = "the rest of it was not kept"
-	doneHeldWord = "what it produced was not taken as done"
 )
 
 // doneWindow caps EVERY long field inside an open card — the answer, the tail of
@@ -249,9 +251,7 @@ func (a *app) landedCard(node *taskNode) {
 		ident:       node.ident,
 		title:       title,
 		subtitle:    taskSubtitleOf(title, node.assignment),
-		failed:      node.state == session.TaskFailed,
-		ending:      node.ending,
-		unverified:  node.state == session.TaskUnverified,
+		status:      session.ProjectTask(doneNodeFacts(node)),
 		span:        node.elapsed,
 		started:     node.spawnedAt(),
 		landed:      landed,
@@ -271,30 +271,23 @@ func (a *app) landedCard(node *taskNode) {
 		model:       node.model,
 		cost:        node.spent(),
 	}
-	// WHO IS BEING ASKED IS SETTLED HERE, ONCE, from the row the engine wrote this
-	// node's landing note under (tasksettle.go's [app.settlePolicyAsks]).
-	card.asks = card.unverified && a.settlePolicyAsks()
-	card.reviewByModel = card.unverified && !card.asks
 	if card.span == 0 && !node.began.IsZero() {
 		card.span = a.now().Sub(node.began)
 	}
-	// A FAILURE THIS SURFACE WAS TOLD NOTHING ABOUT IS A NODE THAT STOPPED, and
-	// it says so in the word the rail uses (task.go's [taskStoppedWord]). The
-	// engine's own report is kept verbatim wherever there is one — "stopped: 40
-	// steps and no finish" is the difference between work that broke and work
-	// that ran out, and nothing here rewrites it.
-	if card.failed && card.outcome == "" {
-		card.outcome = taskStoppedWord
-	}
-	// AND THE SAME FOR A LANDING NOBODY COULD JUDGE. The engine leads such a
-	// node's report with a line already in a person's words ("finished, but needs
-	// your look — …"), and it is kept verbatim for the reason the failure
-	// sentence is: it is what a person reads to decide, and this surface is not
-	// the thing that decided it. The gloss stands in only for a node that arrived
-	// with no report at all, which would otherwise be a card that names the state
-	// and then says nothing about why.
-	if card.unverified && card.outcome == "" {
-		card.outcome = taskUnverifiedGloss
+	// A LANDING THAT SAID NOTHING ABOUT ITSELF SAYS NOTHING. The two glosses this
+	// surface used to write into an empty outcome — `stopped`, `finished, but
+	// needs your look` — were the card telling a person the state twice, in its own
+	// second vocabulary, on the one row that exists to carry the node's own words.
+	// The head already says the state and the reason row already says why; the
+	// emptiness law does the rest.
+	//
+	// THE FLOOR HANDS A CARD BACK RATHER THAN WRITING A SECOND ONE. A turn that
+	// ended with the model still holding a question publishes an ordinary update
+	// whose only news is who is deciding (session's agent.go), so the card that is
+	// already on the page picks up its chips instead of a duplicate landing below
+	// it (see [app.handedBackCard]).
+	if a.handedBackCard(card) {
+		return
 	}
 	// A card lands in the middle of whatever the model was saying, exactly as a
 	// note did: the streaming block is closed first so the card is a block of its
@@ -303,6 +296,65 @@ func (a *app) landedCard(node *taskNode) {
 	a.entries = append(a.entries, entry{kind: entryDone, turn: a.turn, done: card})
 	a.follow()
 	a.touch()
+}
+
+// doneNodeFacts is one landing as [session.ProjectTask] takes it.
+//
+// IT IS A LANDING'S FACTS AND NOT A ROW'S, which is why it is here rather than
+// beside the roster's own reading (taskstatus.go): a card asks four things of a
+// node the column never needs — the landing's own report, whether the check held
+// what it produced, which files clashed, and who is holding the decision right
+// now — and every one of them is what turns `your call` into a question with two
+// answers on it. The prerequisites go the other way: a node that has landed is
+// waiting on nothing, so no titles are looked up.
+func doneNodeFacts(node *taskNode) session.TaskFacts {
+	return session.TaskFacts{
+		State:     node.state,
+		Ending:    node.ending,
+		Life:      node.phase,
+		Kind:      node.kind,
+		Phase:     node.doing,
+		Gap:       node.mending,
+		Hold:      node.waiting,
+		Paused:    node.paused,
+		Stopped:   node.stopped,
+		Merge:     node.merge,
+		Branch:    node.branch,
+		Report:    strings.TrimSpace(node.report),
+		Held:      node.producedHeld,
+		Conflicts: node.conflicts,
+		Decider:   node.decider,
+		Liveness:  session.TaskLivenessHeld,
+	}
+}
+
+// handedBackCard is the floor putting one decision back in the person's hands,
+// and it reports whether the card already on the page took the news.
+//
+// A TASK NEVER STAYS UNOWNED PAST THE END OF A TURN (the design's own law). When
+// the model's turn ends with a question it never answered, the engine publishes
+// an ordinary update whose only change is [session.TaskNotice.Decider] — the
+// state, the branch, the report and the span are all exactly what they were. So
+// this is not a landing: writing a second card for it would put two accounts of
+// one piece of work in the transcript, the older of them still saying somebody
+// else was deciding.
+//
+// It moves in ONE DIRECTION ONLY. A card whose chips are already the person's
+// cannot be handed away by a late notice, and a card that has been answered is
+// history — the head is never rewritten after landing.
+func (a *app) handedBackCard(fresh *taskDone) bool {
+	card := a.doneCardFor(fresh.id)
+	if card == nil || card.decided != "" {
+		return false
+	}
+	if card.status.Ask.Owner != session.TaskAskOwnerModel ||
+		fresh.status.Ask.Owner != session.TaskAskOwnerPerson ||
+		card.status.State != fresh.status.State {
+		return false
+	}
+	card.status = fresh.status
+	a.settleTouched(card)
+	return true
 }
 
 // doneCardAt is the card one entry draws, or nil.
@@ -392,28 +444,22 @@ func (a *app) doneRows(card *taskDone, width int, sel bool) []string {
 // doneHead is the row a person reads at a glance:
 //
 //	✓ ◆ Fix nil-map crash · done · 4m12s · 3 files (+42 −7)
-//	✗ ▲ Mix audio · failed · 2m03s · stopped — branch kept · task/mix
-//	? ● Port the parser · needs your look · 6m40s · 2 files · branch kept · task/parser
+//	⊘ ▲ Mix audio · stopped · 2m03s · branch kept · task/mix
+//	✗ ▲ Port the parser · incomplete · 4m02s · 1 file · branch kept · task/parser
+//	? ● Port the parser · your call · 6m40s · 2 files · branch kept · task/parser
 //
-// The state mark is the rail's own (task.go's [app.railGlyph] draws the same
-// three), the identity is the one cell that never changes, and everything after
-// the title is dim: the title is what the row is about and the rest is what
-// became of it.
+// THE GLYPH IS THE TIER AND NOTHING ELSE, which is the whole of the design a
+// person is asked to learn: `?` is a question in front of them, `✓ ⊘ ✗` are
+// three ways of being over, and none of those three needs anything (the doc's
+// own table). Only the question takes the accent — an incomplete landing is dim
+// unless something actually broke, because most of them are work that ran out of
+// road rather than work that went wrong.
+//
+// The identity is the one cell that never changes, and everything after the
+// title is dim: the title is what the row is about and the rest is what became
+// of it.
 func (a *app) doneHead(card *taskDone, width int, sel bool) string {
-	mark := a.pal.muted(a.linearMark(glyphDone, glyphDoneASCII))
-	switch {
-	case card.failed && refused(card.ending):
-		mark = a.pal.warn(glyphHalted)
-	case card.failed:
-		mark = a.pal.bad(a.pal.badGlyph())
-	case card.unverified:
-		// THE RAIL'S OWN THIRD MARK (task.go's [glyphUnverified]): the question
-		// this card is, in the hue that says it is not a failure.
-		mark = a.pal.warn(glyphUnverified)
-	case card.deliveryProblem():
-		mark = a.pal.warn(glyphHalted)
-	}
-	lead := mark + " " + a.taskMarkSel(card.ident, sel) + " "
+	lead := a.doneMark(card) + " " + a.taskMarkSel(card.ident, sel) + " "
 	tail := a.doneTail(card)
 	// THE TAIL GOES FIRST WHEN THE TERMINAL IS NARROW, which is the tool line's
 	// own rule for the same reason (toolview.go): the name is the substance, and
@@ -435,35 +481,61 @@ func (a *app) doneHead(card *taskDone, width int, sel bool) string {
 // beside it is dropped instead. Eight is the tool line's own floor.
 const doneTitleFloor = 8
 
-// doneTail is everything the head says after the name.
+// doneMark is the tier in one cell, painted.
 //
-// A KEPT BRANCH IS NAMED HERE, in the words the rail uses for it (task.go's
-// [taskStoppedKept]): a branch that did not come home is the one outcome a
-// person still has to do something about, and the name of it is the only handle
-// back to work that is not on screen.
-func (a *app) doneTail(card *taskDone) string {
-	verb := doneWord
-	switch {
-	case card.failed && refused(card.ending):
-		verb = taskRecordStoppedWord
-	case card.failed:
-		verb = doneFailWord
-	case card.unverified && card.reviewByModel:
-		verb = taskReviewPendingWord
-	case card.unverified:
-		verb = taskUnverifiedWord
-	case card.deliveryProblem():
-		verb = doneDeliveryWord
+// IT IS THE READING'S CELL AND NOT THE STATE'S. Four marks used to be worked out
+// here from `failed`, an ending and a merge word, and the same node wore a
+// different one on the roster: the reading answers it once for every surface now
+// ([session.ProjectTask]).
+func (a *app) doneMark(card *taskDone) string {
+	if card.status.Tier == session.TaskTierYourCall {
+		// THE ONE ACCENT ON THE CARD. A question in front of somebody is the only
+		// thing on this surface that is waiting for them, and it is the same cell
+		// every other question here wears (styles.go's [glyphAsk]).
+		return a.pal.accent(glyphAsk)
 	}
-	tail := " · " + verb
+	switch card.status.Presence {
+	case session.TaskPresenceStopped:
+		// A person's own stop is not a finding, so it is neither a tick nor a cross.
+		return a.pal.dim(a.linearMark(glyphStopped, glyphStoppedASCII))
+	case session.TaskPresenceIncomplete:
+		// THE CROSS IS DIM UNLESS SOMETHING BROKE. Running out of steps, losing the
+		// wire and a check that named gaps are all work that did not finish, and
+		// colouring them as failures reports a fault nobody found
+		// ([session.TaskStatus.Fault] is the one field that says otherwise).
+		if card.status.Fault {
+			return a.pal.bad(a.linearMark(glyphBad, glyphBadASCII))
+		}
+		return a.pal.dim(a.linearMark(glyphBad, glyphBadASCII))
+	}
+	return a.pal.muted(a.linearMark(glyphDone, glyphDoneASCII))
+}
+
+// doneTail is everything the head says after the name, in ONE FIXED ORDER: the
+// tier word, the span, the files, the merge fact, the branch. Nothing else goes
+// on the head — the reason and the answers are the rows under it.
+//
+// THE WORD IS THE READING'S AND NEVER THIS CARD'S ([session.TaskStatus.Word]).
+// The reason travels on row 2 rather than here, which is why this is Word and
+// not [session.TaskStatus.RowWord]: a head carrying `your call · conflicts with
+// your branch: parser.go, parser_test.go` would push the span, the files and the
+// branch off every terminal there is.
+//
+// A KEPT BRANCH IS NAMED HERE: a branch that did not come home is the one
+// outcome a person still has to do something about, and the name of it is the
+// only handle back to work that is not on screen.
+func (a *app) doneTail(card *taskDone) string {
+	tail := ""
+	if word := strings.TrimSpace(card.status.Word); word != "" {
+		tail = " · " + word
+	}
 	// ONE SEPARATOR MEANS ONE THING ON THIS ROW. The span used to be joined to
 	// the state word with a bare space while every other fact on the same row was
-	// joined with ` · `, so the card read `? □ Cut every list · needs your look
-	// 12m00s · 4 files · merged` — in which `needs your look` and `12m00s` are two
-	// separate facts fused into one phrase, and the state word, which is the
-	// reason the card is asking for a hand at all, reads as part of a duration.
-	// The list on the roster was fixed the same way and for the same reason
-	// (audit-tasks.md's row 4).
+	// joined with ` · `, so the card read `? □ Cut every list · your call 12m00s ·
+	// 4 files · merged` — in which the state word, which is the reason the card is
+	// asking for a hand at all, reads as part of a duration. The list on the
+	// roster was fixed the same way and for the same reason (audit-tasks.md's row
+	// 4).
 	if word := taskSpanWord(card.span); card.span > 0 {
 		tail += " · " + word
 	}
@@ -474,37 +546,36 @@ func (a *app) doneTail(card *taskDone) string {
 	if card.open {
 		return tail
 	}
-	switch card.merge {
-	case mergeWordKept:
-		// THE WORK IS DONE AND THE BRANCH IS WAITING. This is not a stop or a
-		// conflict, so the plain branch sentence is the whole landing.
-		tail += " · " + taskBranchKept + " · " + card.branch
-	case mergeWordConflicted:
-		// A FOLDER FAMILY WEARS THIS WORD WITHOUT A BRANCH. Its landing refuses
-		// over the person's own edit to a file it was going to lay, which is the
-		// same fact a conflict is, and there is no branch to send anybody to — the
-		// report names the directory instead. The name is drawn when there is one
-		// and the tail simply ends when there is not.
-		tail += " · " + mergeWordConflicted
-		if card.branch != "" {
-			tail += " · " + card.branch
-		}
-	case mergeWordAborted:
-		// AN UNVERIFIED NODE DID NOT STOP. It ran to the end and its branch was
-		// kept because nothing merges on an answer nobody gave, so it takes the
-		// half of the sentence that is true of it (task.go's [taskBranchKept]).
-		kept := endingKept(card.ending)
-		if card.unverified {
-			kept = taskBranchKept
-		}
-		tail += " · " + kept + " · " + card.branch
-	case mergeWordMerged, mergeWordInPlace:
-		// THROUGH THE TABLE, NEVER THE TOKEN (task.go's [mergeScreenWords]). This
-		// arm used to append the engine's own word, so a task that ran in a
-		// folder with no repository closed its card with `· inplace`.
-		tail += " · " + mergeScreenWord(card.merge)
+	if fact := doneMergeFact(card); fact != "" {
+		tail += " · " + fact
+	}
+	if card.status.ChangesUnlanded() {
+		tail += " · " + card.status.Branch
 	}
 	return tail
+}
+
+// doneMergeFact is where the work ended up, as a FACT and never as a state:
+// `merged`, `branch kept`, or nothing at all for work done in place.
+//
+// `stopped — branch kept` is gone. It fused a state and a source-control fact
+// into one phrase, and the head already carries the state one cell to the left —
+// so a stopped node whose branch is waiting now reads `stopped · branch kept`,
+// which is two facts a person can act on separately.
+func doneMergeFact(card *taskDone) string {
+	switch card.status.Changes {
+	case session.TaskChangesMerged:
+		return mergeScreenWord(mergeWordMerged)
+	case session.TaskChangesKept, session.TaskChangesConflicted:
+		// AND ONLY WHERE THERE IS A BRANCH TO KEEP. A folder family refuses over
+		// the person's own edit with no branch anywhere — git said no and there is
+		// nothing to send anybody to — and `branch kept` about no branch is a
+		// pointer to nothing (the emptiness law).
+		if card.status.Branch != "" {
+			return taskBranchKept
+		}
+	}
+	return ""
 }
 
 // doneFilesWord is the diffstat, and it says only what it was told.
@@ -547,6 +618,20 @@ func doneFilesWord(files, added, removed int) string {
 // on the facts row ([app.doneFactsRow]), so nothing is lost and the expansion
 // opens on the thing the card was opened for.
 func (a *app) doneUnder(card *taskDone, width int) string {
+	// A QUESTION'S SECOND ROW IS ITS REASON, and it is drawn beside the answers
+	// that go with it (tasksettle.go) rather than here — one layout writes the
+	// reason, the chips and the columns a press is resolved against, so the three
+	// cannot fall out of step at a width where one of them was cut.
+	if card.status.Tier == session.TaskTierYourCall {
+		return ""
+	}
+	// AND AN INCOMPLETE LANDING'S SECOND ROW IS WHY, dim, in the engine's own
+	// sentence ([session.TaskReasonOf] spells the table once). It stands INSTEAD
+	// of the quoted report and never beside it: two accounts of one landing on one
+	// row is the wall this card was split apart to stop being.
+	if reason := strings.TrimSpace(card.status.Reason); reason != "" {
+		return a.pal.dim("  " + doneReasonRow(reason, doneReasonKey(card), width-4))
+	}
 	if card.open && card.saysOutcome() {
 		return ""
 	}
@@ -558,11 +643,6 @@ func (a *app) doneUnder(card *taskDone, width int) string {
 		tail += " · " + doneOutputKey
 	}
 	said := firstNonEmpty(card.outcome, card.subtitle)
-	// The synthesized fallback follows the handoff too. Keep actual worker
-	// reports verbatim: they describe what was said when the task landed.
-	if card.reviewByModel && strings.TrimSpace(card.report) == "" && card.outcome == taskUnverifiedGloss {
-		said = taskReviewPendingWord
-	}
 	if said == "" && tail == "" {
 		return ""
 	}
@@ -571,8 +651,59 @@ func (a *app) doneUnder(card *taskDone, width int) string {
 	// it had no room rather than that the node said nothing.
 	if said = fit(said, width-4-ansi.StringWidth(tail)); said != "" {
 		said = `"` + said + `"`
+	} else {
+		// AND A ROW THAT LEADS WITH A SEPARATOR IS A ROW REPORTING ITS OWN MISSING
+		// HALF. A stop and a landing that arrived with nothing to say both reach
+		// here with no sentence at all — since this surface stopped writing glosses
+		// of its own into an empty outcome — and ` · started 14:02` opens with a
+		// join to something that is not there.
+		tail = strings.TrimPrefix(tail, railSep)
 	}
 	return a.pal.dim("  " + said + tail)
+}
+
+// doneReasonRow is a reason and the one key clause beside it, fitted so that
+// THE KEY IS THE HALF THAT SURVIVES.
+//
+// NO SENTENCE ON THIS CARD MAY END IN `…` HIDING THE INSTRUCTION. A reason
+// carries a list — the files that clash, the gaps a check named — and a list is
+// the half a person can do without; the clause naming what to press is the half
+// they cannot. So the room is spent on the key first and the reason is cut into
+// whatever is left, which is the reverse of every other fit on this card and the
+// reason this has a function of its own (docs/design/task-states/DESIGN.md).
+//
+// A row with no room for even the key drops the key rather than the reason: half
+// a key is a press that does nothing.
+func doneReasonRow(reason, key string, room int) string {
+	if key == "" || ansi.StringWidth(key) >= room {
+		return fit(reason, room)
+	}
+	if said := fit(reason, room-ansi.StringWidth(key)); said != "" {
+		return said + key
+	}
+	return fit(reason, room)
+}
+
+// doneReasonKey is the one dim clause a reason row may carry after it, and today
+// it is `ctrl+o output` and nothing else.
+//
+// THE OPTIONAL VERB IS ABSENT AND NOT DEAD. The design offers `[r] rerun from its
+// branch` on an incomplete landing whose branch has work — and NOTHING IN THIS
+// PROCESS RE-RUNS A FINISHED TASK. A record row is an account of work that
+// happened, and starting the same brief again is `/task <brief>`, which is a new
+// piece of work with a new id (place_tasks.go's own reading of the same missing
+// seam). A capability that cannot work is absent, not broken, so the key is not
+// named and the foot does not promise it.
+//
+// WHAT IS DRAWN INSTEAD IS THE KEY THAT DOES WORK. A reason row stands where the
+// quoted report would have been, and the report is behind `ctrl+o` — so on the
+// one kind of card that no longer names that key anywhere, the card names it
+// once, dim, at the end of the row it displaced.
+func doneReasonKey(card *taskDone) string {
+	if card.open || !card.hasDetail() {
+		return ""
+	}
+	return " · " + doneOutputKey
 }
 
 // doneGroundLabel labels the row naming the branch a landed node's work is on,
@@ -602,7 +733,11 @@ func (a *app) doneGroundLabel(card *taskDone) string {
 // node that landed with no report, no files, no branch and no brief has already
 // said everything it has to say, and offering a key that opens nothing is worse
 // than offering none.
-func (a *app) doneHasDetail(card *taskDone) bool {
+func (a *app) doneHasDetail(card *taskDone) bool { return card.hasDetail() }
+
+// hasDetail is that question asked of the card alone, for the rows that are
+// drawn without a surface in hand ([doneReasonKey]).
+func (card *taskDone) hasDetail() bool {
 	return card.report != "" || card.result != "" || card.resultHeld ||
 		len(card.changed) > 0 || card.branch != "" ||
 		card.brief != "" || card.acceptance != "" || card.model != "" ||
@@ -685,11 +820,16 @@ func (card *taskDone) saysOutcome() bool {
 // branch by definition, so a state this build has never heard of is not silently
 // treated as delivered.
 func (card *taskDone) undelivered() bool {
-	switch card.merge {
-	case mergeWordKept, mergeWordConflicted, mergeWordAborted:
+	switch card.status.Changes {
+	case session.TaskChangesKept, session.TaskChangesConflicted:
 		return true
 	}
-	return card.failed || card.unverified
+	// AND ANYTHING THAT IS NOT PLAINLY DONE DID NOT GET HOME EITHER, whatever the
+	// merge word says: a stop, a landing that ran out of road and a question
+	// nobody has answered all leave the work somewhere other than the person's own
+	// tree. It is asked of the READING and not of a state, so a state this build
+	// has never heard of is not silently treated as delivered.
+	return card.status.Presence != session.TaskPresenceDone
 }
 
 // afterFirstLine is everything a block says after its first line, and "" when it
@@ -778,7 +918,7 @@ func (a *app) doneAccountRows(card *taskDone, account string, room int) []string
 		return nil
 	}
 	paint, mark := a.pal.dim, ""
-	if card.failed || card.unverified || card.deliveryProblem() {
+	if card.undelivered() {
 		paint, mark = a.pal.warn, glyphHalted+" "
 	}
 	pad := strings.Repeat(" ", ansi.StringWidth(mark))
@@ -841,9 +981,14 @@ func (a *app) doneAnswerRows(card *taskDone, answer string, room int) []string {
 // IT IS DRAWN OR THE CARD IS LYING. A result arrives cut when the work said more
 // than one reader is handed (session's taskResultCarry), and a block of text
 // that stops mid-sentence with nothing under it is a card claiming the work
-// stopped there. The held case is the third shape: the check did not accept the
-// work, so nothing was handed over at all — the answer exists, it was not taken
-// as done, and where it can be read is the useful half of that.
+// stopped there.
+//
+// A HELD ANSWER SAYS ONLY WHERE IT IS. The check did not pass the work, so
+// nothing was handed over at all — and the sentence this line used to lead with,
+// `what it produced was not taken as done`, was a second spelling of a state the
+// card's own reason row now says in the engine's words. What is left is the half
+// that was always the useful one: where the answer can be read. An answer nobody
+// kept a path to says nothing rather than announcing its own absence.
 func doneMoreLine(card *taskDone) string {
 	where := doneMoreGone
 	if card.resultWhole != "" {
@@ -852,9 +997,9 @@ func doneMoreLine(card *taskDone) string {
 	switch {
 	case card.resultHeld:
 		if card.resultWhole == "" {
-			return doneHeldWord
+			return ""
 		}
-		return doneHeldWord + " · " + where
+		return where
 	case card.resultCut:
 		return glyphMore + " " + where
 	}
@@ -990,7 +1135,8 @@ func (a *app) rollupRows(d deck, out []row, from, to, width int) []row {
 // reporting a wait nobody had. It is the first spawn to the last landing, which
 // is the thing the person actually lived through.
 func (a *app) rollupHead(d deck, from, to, width int) string {
-	count, failed, unverified, delivery := 0, false, false, false
+	count := 0
+	var loudest *taskDone
 	var first, last time.Time
 	for i := from; i < to; i++ {
 		card := d.entries[i].done
@@ -998,9 +1144,9 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 			continue
 		}
 		count++
-		failed = failed || card.failed
-		unverified = unverified || card.unverified
-		delivery = delivery || card.deliveryProblem()
+		if doneLouder(card, loudest) {
+			loudest = card
+		}
 		if !card.started.IsZero() && (first.IsZero() || card.started.Before(first)) {
 			first = card.started
 		}
@@ -1009,21 +1155,12 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 		}
 	}
 	mark, word := a.pal.muted(a.linearMark(glyphDone, glyphDoneASCII)), doneRollupWord
-	switch {
-	case failed:
-		// A MIXED BATCH IS NOT A DONE BATCH. The header keeps the failure mark and
-		// stops saying "done", because the one thing a rollup must never do is
-		// report four successes when it is three and a failure; which of them
-		// failed is on its own row, in its own mark.
-		mark, word = a.pal.bad(a.pal.badGlyph()), doneRollupMix
-	case unverified:
-		// AND A BATCH WITH A QUESTION IN IT IS NOT A DONE BATCH EITHER, for the
-		// same reason and one step quieter: nothing failed, so the mark is the
-		// question rather than the cross, and the header stops claiming that
-		// everything under it came home.
-		mark, word = a.pal.warn(glyphUnverified), doneRollupMix
-	case delivery:
-		mark, word = a.pal.warn(glyphHalted), doneRollupMix
+	if loudest != nil {
+		// A MIXED BATCH IS NOT A DONE BATCH. The header wears its loudest child's
+		// own mark and stops saying "done", because the one thing a rollup must
+		// never do is report four successes when it is three and a question; which
+		// of them it was is on its own row, in the same mark.
+		mark, word = a.doneMark(loudest), doneRollupMix
 	}
 	head := mark + " " + a.pal.ink(itoa(count)+word)
 	if !first.IsZero() && last.After(first) {
@@ -1032,27 +1169,38 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 	return fitPainted(head, width)
 }
 
+// doneLouder reports whether one card outranks another for the mark a folded
+// family wears. A QUESTION IN FRONT OF SOMEBODY OUTRANKS EVERYTHING, because it
+// is the only one of the three that is waiting on them; after it comes work that
+// did not get home, and a batch of plain landings has no loudest child at all.
+func doneLouder(card, than *taskDone) bool {
+	rank := func(one *taskDone) int {
+		switch {
+		case one == nil:
+			return 0
+		case one.status.Tier == session.TaskTierYourCall:
+			return 3
+		case one.status.Presence == session.TaskPresenceIncomplete:
+			return 2
+		case one.status.Presence == session.TaskPresenceStopped:
+			return 1
+		}
+		return 0
+	}
+	return rank(card) > rank(than)
+}
+
 // rollupRow is one card inside a batch: the identity, the name, and the two
 // facts that distinguish it from its siblings.
 func (a *app) rollupRow(card *taskDone, width int, sel bool) string {
-	// The indent, the identity and a space is four cells; a failure mark costs
-	// two more, and it is the only thing a compact row says about state — inside
-	// a rollup the header has already said the batch is home. There is NO tick
-	// on a row that succeeded: the header said that, and a column of them is a
-	// column read to learn nothing (the law toolview.go states).
+	// The indent, the identity and a space is four cells; a mark costs two more,
+	// and it is the only thing a compact row says about state — inside a rollup
+	// the header has already said the batch is home. There is NO tick on a row
+	// that succeeded: the header said that, and a column of them is a column read
+	// to learn nothing (the law toolview.go states).
 	lead, used := "  "+a.taskMarkSel(card.ident, sel)+" ", 4
-	switch {
-	case card.failed:
-		lead += a.pal.bad(a.pal.badGlyph()) + " "
-		used += 2
-	case card.unverified:
-		// The one other state worth a cell inside a rollup: the header says the
-		// batch is home, and this row says which of them is not finished being
-		// decided.
-		lead += a.pal.warn(glyphUnverified) + " "
-		used += 2
-	case card.deliveryProblem():
-		lead += a.pal.warn(glyphHalted) + " "
+	if doneLouder(card, nil) {
+		lead += a.doneMark(card) + " "
 		used += 2
 	}
 	tail := ""

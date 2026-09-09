@@ -220,17 +220,17 @@ func TestARowThatNeedsYourLookShowsItsVerbsBeforeTheRoomIsEntered(t *testing.T) 
 	}
 
 	hint := a.railHoldHintWord()
-	if !strings.Contains(hint, roomSettleHint) {
-		t.Fatalf("the hint does not offer the answers: %q", hint)
-	}
-	for _, want := range []string{"a accept", "l look again", "n not right"} {
+	// THE SLOT NAMES THE CARD'S OWN CHIPS. The two answers are the ask's
+	// ([session.TaskAsk]), so a slot spelling `accept` over a card whose first
+	// chip reads `resolve it` would be naming a key that is not there.
+	for _, want := range []string{"a accept", "n not right"} {
 		if !strings.Contains(hint, want) {
 			t.Fatalf("the hint is missing %q: %q", want, hint)
 		}
 	}
 	// AND THE SLOT IS WHAT THE FRAME ACTUALLY DRAWS, not a string only this test
 	// can see.
-	if got := a.hintWord(); !strings.Contains(got, roomSettleHint) {
+	if got := a.hintWord(); !strings.Contains(got, "a accept") {
 		t.Fatalf("the frame's hint slot says something else: %q", got)
 	}
 }
@@ -252,7 +252,7 @@ func TestTheSettleVerbsAnswerFromTheRosterRow(t *testing.T) {
 	}
 	// ONCE ANSWERED THE SLOT GOES BACK TO THE MOVE KEYS, because the question is
 	// gone and a hint may not name a key that no longer does anything.
-	if hint := a.railHoldHintWord(); strings.Contains(hint, roomSettleHint) {
+	if hint := a.railHoldHintWord(); strings.Contains(hint, "a accept") {
 		t.Fatalf("the hint still asks a question that was answered: %q", hint)
 	}
 }
@@ -266,7 +266,7 @@ func TestAnOrdinaryRowIsOfferedNoSettleVerbs(t *testing.T) {
 		session.TaskNotice{Elapsed: time.Second, Merge: mergeWordMerged})})
 	drive(t, a, key(railHoldChord))
 
-	if hint := a.railHoldHintWord(); strings.Contains(hint, roomSettleHint) {
+	if hint := a.railHoldHintWord(); strings.Contains(hint, "a accept") {
 		t.Fatalf("a merged row offers the answers: %q", hint)
 	}
 	drive(t, a, key("a"))
