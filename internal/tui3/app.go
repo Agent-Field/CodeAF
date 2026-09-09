@@ -2706,7 +2706,11 @@ func (a *app) Init() tea.Cmd {
 	// every project's index, and the paint path may never pay for one.
 	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
 		a.watchRuns(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
-		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor}
+		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor,
+		// AND THE SETUP SCREEN'S EXAMPLE PANEL, when the setup is the first frame
+		// and the controls screen is its first step. It answers nil in every other
+		// case, which is most launches (onboarding.go).
+		a.setupDemoCmd()}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -3912,6 +3916,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// AND THE PLACES THAT ARE NOT HOME HAVE THE SAME CLOCK, at the same
 		// period, re-armed only while one of them is standing (placecounts.go).
 		return a, a.placeBeat(msg.gen)
+
+	case setupDemoMsg:
+		// One beat of the setup screen's example panel: the request typing itself
+		// out and the lines under it arriving. It runs ONCE per deliberate act and
+		// then stops on its own, and it touches nothing but one integer on the
+		// flow — no focus moves, nothing is written, and the caret stays in the
+		// field on the left (onboarding.go).
+		return a, a.setupDemoBeatAt(msg.gen)
 
 	case searchTickMsg:
 		// The quiet interval after a keystroke, arriving. It becomes a store read
@@ -7393,8 +7405,11 @@ func (a *app) paste(text string) tea.Cmd {
 	// A PASTE IS SOMEBODY STARTING WORK, so it dismisses the welcome box on the
 	// same terms every other input does (welcome.go): everything puts the box
 	// away except the two keys that walk its list, and a paste is not one of
-	// them.
-	a.dismissWelcome()
+	// them — and except the first conversation's greeting, which stands through
+	// typed and pasted words alike so the composer does not move.
+	if !a.welcomeStandsThroughTyping() {
+		a.dismissWelcome()
+	}
 	// Bracketed paste arrives with the SENDER's line endings, and tmux sends
 	// CR: an editor that breaks rows on LF alone would hold one "line" whose
 	// carriage returns paint each logical line over the last. Normalize once,

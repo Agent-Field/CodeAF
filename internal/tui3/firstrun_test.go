@@ -82,11 +82,11 @@ func TestTheSetupOpensOverAnEmptyProfileAndNotOverAConfiguredOne(t *testing.T) {
 	if !a.setup.open {
 		t.Fatal("a profile with nothing in it must be asked")
 	}
-	if got := a.setup.steps; len(got) != 3 || got[0] != setupKey || got[1] != setupCrew || got[2] != setupBudget {
-		t.Fatalf("a fresh profile asks all three in order, got %v", got)
+	if got := a.setup.steps; len(got) != 2 || got[0] != setupKey || got[1] != setupControls {
+		t.Fatalf("a fresh profile asks the key and then the controls, got %v", got)
 	}
 	screen := setupScreen(a)
-	for _, want := range []string{"setting up · 1 of 3", "your openrouter key", "https://openrouter.ai/settings/keys", "esc skips setup"} {
+	for _, want := range []string{"setting up · 1 of 2", "your openrouter key", "https://openrouter.ai/settings/keys", "esc skips setup"} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the first screen must say %q; got:\n%s", want, screen)
 		}
@@ -141,8 +141,19 @@ func TestEnterConnectsOpenRouterInTheBrowserAndHandsTheKeyToThisProcess(t *testi
 	if screen := setupScreen(a); !strings.Contains(screen, "finish connecting openrouter") || !strings.Contains(screen, flow.url) {
 		t.Fatalf("the wait must carry the browser address; got:\n%s", screen)
 	}
-	if _, next := a.Update(wait()); next != nil {
-		t.Fatal("a key landing on the first of three steps starts no extra command")
+	// A key landing here goes on to the controls screen, and the ONE command that
+	// comes back is the example panel's first beat: the arrival is one of the two
+	// deliberate acts its demonstration plays for (onboarding.go). Nothing else is
+	// started — no fetch, no second listener, no clock that keeps running.
+	_, next := a.Update(wait())
+	if a.setup.step() != setupControls {
+		t.Fatalf("the key must go on to the controls; step = %v", a.setup.step())
+	}
+	if next == nil {
+		t.Fatal("arriving on the controls armed no beat for the example panel")
+	}
+	if _, ok := next().(setupDemoMsg); !ok {
+		t.Fatalf("the key started something other than the panel's beat: %T", next())
 	}
 	if got := config.PersistedAPIKey(dir); got != flow.key {
 		t.Fatalf("profile key = %q, want browser key", got)
@@ -150,8 +161,8 @@ func TestEnterConnectsOpenRouterInTheBrowserAndHandsTheKeyToThisProcess(t *testi
 	if len(*handed) != 1 || (*handed)[0] != flow.key {
 		t.Fatalf("running process was handed %v", *handed)
 	}
-	if a.setup.step() != setupCrew {
-		t.Fatalf("browser success did not advance to the crew; step = %v", a.setup.step())
+	if a.setup.step() != setupControls {
+		t.Fatalf("browser success did not advance to the controls; step = %v", a.setup.step())
 	}
 }
 
@@ -217,56 +228,68 @@ func TestEscCancelsAnOpenRouterBrowserTripWithoutSkippingTheKeyStep(t *testing.T
 	}
 }
 
-func TestEnterThreeTimesLandsTheDefaultsInTheProfile(t *testing.T) {
+// TAKING THE SCREEN AS IT STANDS LANDS EXACTLY WHAT IT DREW.
+//
+// The whole bargain of the controls screen is that every row opens on the value
+// already in force, so somebody who reads it and agrees is agreeing to what is on
+// the screen and not to a hidden default. This walks the shortest road through
+// it — enter past the key, tab to the way out, enter — and reads the profile back.
+func TestTakingTheControlsAsTheyStandLandsTheDefaultsInTheProfile(t *testing.T) {
 	a, dir, handed := setupApp(t, nil)
 	pressSetup(a, key("enter"))
-	if a.setup.step() != setupCrew {
-		t.Fatal("enter on an empty key box goes on to the crew")
+	if a.setup.step() != setupControls {
+		t.Fatal("enter on an empty key box goes on to the controls")
 	}
-	if !strings.Contains(setupScreen(a), "the model you talk to is a separate choice, made with /model") {
-		t.Fatalf("the crew step must say the crew is not the model you talk to; got:\n%s", setupScreen(a))
+	screen := setupScreen(a)
+	for _, want := range []string{
+		"Models and spending", "Keep these choices or change them.",
+		"Daily limit", "Chat model", "Work crew", "Start a conversation",
+	} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("the controls screen must say %q; got:\n%s", want, screen)
+		}
+	}
+	// The figure is read from the constant every other reader of the rail
+	// resolves to, so a moved default moves the test with it rather than leaving
+	// it pinning a number nobody ships.
+	if want := "$" + setupBudgetDefault(); !strings.Contains(screen, want) {
+		t.Fatalf("the limit must show %s, the amount it will keep; got:\n%s", want, screen)
+	}
+	// THE THREE ONE-LINE EXPLANATIONS ARE ON THE SCREEN, all three at once,
+	// because they are what makes three unfamiliar words into three decisions.
+	for _, want := range []string{controlLimitWord, controlModelWord, controlCrewWord} {
+		if !strings.Contains(screen, strings.Join(strings.Fields(want), " ")) {
+			t.Fatalf("the controls screen must explain itself with %q; got:\n%s", want, screen)
+		}
+	}
+
+	// tab down to `Start a conversation`, and take it.
+	pressSetup(a, key("tab"), key("tab"), key("tab"), key("tab"))
+	if a.setup.control != controlStart {
+		t.Fatalf("four tabs from the limit reach the way out, got %v", a.setup.control)
 	}
 	pressSetup(a, key("enter"))
-	if a.setup.step() != setupBudget {
-		t.Fatal("enter on the crew goes on to the ceiling")
-	}
-	// The figure is read from the constant the screen itself interpolates, so a
-	// raised rail moves both together rather than leaving the test pinning a
-	// number nobody ships.
-	if want := "$" + setupBudgetDefault(); !strings.Contains(setupScreen(a), want) {
-		t.Fatalf("the ceiling step must show %s, the default it will keep; got:\n%s", want, setupScreen(a))
-	}
-	// THE LAST STEP IS THREE ROWS AND NOT ONE (settingspend.go's design):
-	// enter keeps the default on the row it is standing on and walks to the
-	// next, and the third one closes the screen.
-	if screen := setupScreen(a); !strings.Contains(screen, "what may aforge spend?") ||
-		!strings.Contains(screen, "none means no limit") ||
-		!strings.Contains(screen, "per plan") || !strings.Contains(screen, "per conversation") {
-		t.Fatalf("the rails screen must offer all three rows and the word none; got:\n%s", screen)
-	}
-	pressSetup(a, key("enter"))
-	if !a.setup.open || a.setup.rail != 1 {
-		t.Fatalf("enter on the first rail walks to the second, rail = %d", a.setup.rail)
-	}
-	pressSetup(a, key("enter"), key("enter"))
 	if a.setup.open {
-		t.Fatal("enter on the last rail closes the setup")
+		t.Fatal("enter on `Start a conversation` closes the setup")
 	}
+
+	if !config.CrewConfigured(dir) || config.CrewAt(dir) != config.CrewBalanced {
+		t.Fatalf("taking the crew as it stands must write balanced; profile reads %q", config.CrewAt(dir))
+	}
+	if !config.DailyBudgetConfigured(dir) {
+		t.Fatal("taking the limit as it stands must write it into the profile")
+	}
+	if rail, err := config.DailyBudgetUSDAt(dir); err != nil || rail != config.DefaultDailyBudgetUSD {
+		t.Fatalf("the ceiling read back as %v (%v), want %v", rail, err, config.DefaultDailyBudgetUSD)
+	}
+	// AND THE TWO RAILS THIS SCREEN NO LONGER ASKS ABOUT ARE UNTOUCHED AND STILL
+	// RESOLVE. They keep the defaults docs/LIMITS.md states and /budget changes
+	// them; onboarding writing them down was the thing this wave removed.
 	if plan, err := config.PlanConsentUSDAt(dir); err != nil || plan != config.DefaultPlanConsentUSD {
 		t.Fatalf("the plan rail read back as %v (%v), want %v", plan, err, config.DefaultPlanConsentUSD)
 	}
 	if rail := config.SpendRailUSDAt(dir); rail != config.DefaultSpendRailUSD {
 		t.Fatalf("the conversation ceiling read back as %v, want %v", rail, config.DefaultSpendRailUSD)
-	}
-
-	if !config.CrewConfigured(dir) || config.CrewAt(dir) != config.CrewBalanced {
-		t.Fatalf("enter on the crew must write balanced; profile reads %q", config.CrewAt(dir))
-	}
-	if !config.DailyBudgetConfigured(dir) {
-		t.Fatal("enter on the ceiling must write the default into the profile")
-	}
-	if rail, err := config.DailyBudgetUSDAt(dir); err != nil || rail != config.DefaultDailyBudgetUSD {
-		t.Fatalf("the ceiling read back as %v (%v), want %v", rail, err, config.DefaultDailyBudgetUSD)
 	}
 	if config.SetupSeenAt(dir).IsZero() {
 		t.Fatal("finishing must write the marker")
@@ -301,9 +324,10 @@ func TestATypedOrPastedKeyIsWrittenAndHandedToTheSession(t *testing.T) {
 	if len(*handed) != 1 || (*handed)[0] != pasted {
 		t.Fatalf("the running session must be handed the key once, got %v", *handed)
 	}
-	pressSetup(a, key("down"), key("enter"))
-	if config.CrewAt(dir) != config.CrewMax {
-		t.Fatalf("↓ then enter takes the next preset; profile reads %q", config.CrewAt(dir))
+	// And on the controls screen a typed amount replaces the figure that was
+	// drawn, and the crew chosen in the list is the one that lands.
+	if a.setup.step() != setupControls {
+		t.Fatalf("a written key goes on to the controls; step = %v", a.setup.step())
 	}
 	for _, r := range "7.5" {
 		pressSetup(a, key(string(r)))
@@ -312,17 +336,17 @@ func TestATypedOrPastedKeyIsWrittenAndHandedToTheSession(t *testing.T) {
 	if rail, _ := config.DailyBudgetUSDAt(dir); rail != 7.5 {
 		t.Fatalf("a typed ceiling replaces the default, profile reads %v", rail)
 	}
-	// And `none` on the row under it removes that limit rather than being
-	// refused for not being a number.
-	for _, r := range "none" {
-		pressSetup(a, key(string(r)))
+	pressSetup(a, key("tab"))
+	if a.setup.control != controlCrew {
+		t.Fatalf("the focus is on %v, want the crew", a.setup.control)
 	}
-	pressSetup(a, key("enter"), key("enter"))
-	if plan, _ := config.PlanConsentUSDAt(dir); plan != 0 {
-		t.Fatalf("none on the plan rail must remove it, profile reads %v", plan)
-	}
+	pressSetup(a, key("enter"), key("down"), key("enter"))
+	pressSetup(a, key("tab"), key("tab"), key("enter"))
 	if a.setup.open {
-		t.Fatal("the flow closes after its last step")
+		t.Fatalf("`Start a conversation` did not finish the flow: %s", a.setup.refusal)
+	}
+	if config.CrewAt(dir) != config.CrewMax {
+		t.Fatalf("↓ then enter takes the next preset; profile reads %q", config.CrewAt(dir))
 	}
 	for _, e := range a.entries {
 		if e.kind == entryNote && strings.Contains(e.text, "no openrouter key") {
@@ -389,11 +413,13 @@ func TestAKeyInTheShellSkipsTheKeyStepSilently(t *testing.T) {
 	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: "openai/gpt-4.1-mini"}, Workspace: "/tmp/lab", ProfileDir: dir, Setup: true})
 	a.width, a.height = 90, 30
 	a.pal = newPalette(tokens.ANSI256, false)
-	if !a.setup.open || len(a.setup.steps) != 2 || a.setup.steps[0] != setupCrew {
-		t.Fatalf("with the key in the shell only the crew and the ceiling are asked, got %v", a.setup.steps)
+	if !a.setup.open || len(a.setup.steps) != 1 || a.setup.steps[0] != setupControls {
+		t.Fatalf("with the key in the shell only the controls are asked, got %v", a.setup.steps)
 	}
-	if !strings.Contains(setupScreen(a), "setting up · 1 of 2") {
-		t.Fatalf("the count is the count of what is asked; got:\n%s", setupScreen(a))
+	// ONE STEP SHOWS NO COUNT. `setup · 1 of 1` is the screen counting to one at
+	// somebody, which is furniture drawn to mark the absence of a second step.
+	if screen := setupScreen(a); strings.Contains(screen, "setup · 1 of 1") {
+		t.Fatalf("a one-step setup drew a count; got:\n%s", screen)
 	}
 }
 
