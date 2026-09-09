@@ -1,0 +1,60 @@
+name: Organization live journeys
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [dev]
+    paths:
+      - 'internal/workspace/**'
+      - 'internal/workspaceview/**'
+      - 'internal/session/**'
+      - 'internal/standing/**'
+      - 'cmd/aforge/chatv3*.go'
+      - 'internal/e2e/organization*.go'
+      - 'internal/e2e/harness_test.go'
+      - 'internal/e2e/families_e2e_test.go'
+      - 'Makefile'
+      - 'scripts/test-organization-live.sh'
+      - '.github/workflows/organization-live.yml'
+permissions:
+  contents: read
+concurrency:
+  group: organization-live-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  credentials:
+    runs-on: ubuntu-latest
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+    steps:
+      - id: check
+        env:
+          TEST_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -n "$TEST_KEY" ]; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo 'Live journeys NOT RUN: repository OPENROUTER_API_KEY is unavailable. Run make test-organization-live on an authenticated machine.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+  live:
+    name: DeepSeek V4 Flash functional tests
+    needs: credentials
+    if: needs.credentials.outputs.available == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Real model journeys
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ORGANIZATION_TEST_LOG: ${{ runner.temp }}/organization.jsonl
+        run: make test-organization-live
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: organization-live-receipts
+          path: ${{ runner.temp }}/organization.jsonl

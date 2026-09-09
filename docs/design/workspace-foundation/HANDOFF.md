@@ -18,12 +18,13 @@ implementation and testing here until the user changes that instruction.
 - Starting commit: `7f3ab8bf3046b83918c234cc30bf8cc224f3104a` on `dev`.
 - Draft PR: [#662](https://github.com/Agent-Field/aforge-v2/pull/662), targeting
   `dev`. Keep it draft and unmerged.
-- This continuation currently adds documentation only. No additional backend
-  capability is implemented yet beyond the merged foundation below.
+- This continuation adds the first integrated organization backend: live owner
+  resolution, sourced shared revisions, bounded chat/ordinary-worker context,
+  model tools and genuine LLM functional journeys. The broader autonomous model
+  remains unfinished; see the status table below.
 - Build this branch with `make build`; its review binary will be
-  `/Users/santoshkumar/af-personal-ai-backend/bin/aforge`. A fresh build of this
-  continuation has not yet been made. Do not mistake another worktree's binary
-  for this branch's output.
+  `/Users/santoshkumar/af-personal-ai-backend/bin/aforge`. It is a review build
+  for this branch. Do not replace the shared checkout's or another task's binary.
 
 ## Product goal
 
@@ -98,6 +99,29 @@ structural laws, packed manual, changelog validation, `make build`, size check
 and temporary-home binary smoke checks passed. Required CI run `34315648645`
 passed before merge. These are receipts for #661, not proof of future changes.
 
+### Implemented on draft #662 — not merged
+
+- `internal/workspace/context.go` adds one sourced record with immutable full
+  revisions, current revision, withdrawal and explicit targets. v1 collections
+  upgrade atomically to schema v2. Current store opens do not reserve the writer.
+- `internal/workspaceview` resolves current conversation/task/ongoing/file state
+  through existing owners. It does not start agents or duplicate their status.
+- `internal/session/organization.go` supplies bounded current information in the
+  volatile tail. A small persisted exposure bit prevents removed membership from
+  reviving old context on reopen. The immutable system prefix stays unchanged.
+- Chat tools `collections` and `shared_context` expose this backend through the
+  binary's production assembly, with memory off as well as on. Ordinary workers
+  inherit read access; collection/context mutation is refused for workers.
+- Paginated metadata and text windows keep tool results bounded. Historic reads
+  pin an exact revision. Missing sources remain explicitly unavailable.
+- Deterministic tests cover migration, concurrency, paging, task scope, source
+  stamping, rejection, empty-state behavior and reopen. Real-model tests cover
+  the built binary, actual task workers and five domain journeys.
+
+See [BACKEND.md](BACKEND.md) for data/runtime boundaries and
+[FUNCTIONAL-TESTS.md](FUNCTIONAL-TESTS.md) for the repeatable evidence contract.
+Verification for this wave is recorded in the checkpoint at the end of this file.
+
 ### Existing upstream capabilities we should reuse
 
 The starting commit also contains conversation runtime PR #653 and test-feedback
@@ -109,20 +133,20 @@ not establish cross-conversation coordination for collections.
 
 ## Remaining implementation and acceptance
 
-All items below are **pending**, unless their status is explicitly updated with
-code and verification evidence. The order is a dependency-oriented plan, not a
-commitment to add a separate service for each row.
+The first three slices are implemented in this draft; final verification is
+recorded below. Later slices remain pending and should be groomed independently.
+The table is a dependency plan, not a service decomposition.
 
 | Slice | Work needed | Evidence required before marking complete |
 | --- | --- | --- |
-| Resolve organized work | Resolve typed references through their existing owners into useful read views; distinguish missing, unavailable and actual current state. | A collection view reads real chat/task/standing fixtures without creating agents, changing files or duplicating mutable status. Identical task numbers in different chats resolve correctly. |
-| Shared sourced context | Settle the smallest representation for shared findings/decisions, their source, revision, withdrawal and explicit applicability. Add compatible migration if storage changes. | One record applies in two places; revision is visible in both; withdrawn or out-of-scope context is not presented as current. Upgrade preserves v1 collections; memory-off works. |
-| Runtime context integration | Supply bounded relevant context at real chat turns and task birth; preserve the existing instruction authority and standing scope resolver. | Real runtime assembly consumes current sourced context, rather than a test-only callback. Membership alone cannot inject binding instructions; prompt limits are exercised. |
+| Resolve organized work — implemented | Resolve typed references through their existing owners into useful read views; distinguish missing, unavailable and actual current state. | A collection view reads real chat/task/standing fixtures without creating agents, changing files or duplicating mutable status. Identical task numbers in different chats resolve correctly. |
+| Shared sourced context — implemented | Settle the smallest representation for shared findings/decisions, their source, revision, withdrawal and explicit applicability. Add compatible migration if storage changes. | One record applies in two places; revision is visible in both; withdrawn or out-of-scope context is not presented as current. Upgrade preserves v1 collections; memory-off works. |
+| Runtime context integration — implemented for chats and ordinary workers | Supply bounded relevant context at real chat turns and task birth; preserve the existing instruction authority and standing scope resolver. | Real runtime assembly consumes current sourced context, rather than a test-only callback. Membership alone cannot inject binding instructions; prompt limits are exercised. |
 | Shared consultation | Route an addressed request/reply across related conversations using existing delivery/authority boundaries. Retain one shared exchange or source reference. | Origin remains peer-origin; correlation/retries deduplicate; offline delivery is explicit; a peer cannot change another goal; repeated replies do not cause unbounded paid wakes. |
-| Ongoing responsibilities | Connect organized work and relevant context to existing standing items and their activations. Avoid a second scheduler. | A responsibility survives closing its originating chat, can be found from its collection, and handles repeated observations without duplicate action. Email/calendar implications do not grant calendar-write authority. |
+| Ongoing responsibilities — resolution only; activation integration pending | Connect organized work and relevant context to existing standing items and their activations. Avoid a second scheduler. | A responsibility survives closing its originating chat, can be found from its collection, and handles repeated observations without duplicate action. Email/calendar implications do not grant calendar-write authority. |
 | Discovery beyond links | Expose selective discovery over accessible records with source and current state; use explicit signals and semantic retrieval where useful. | An unlinked coding finding can inform a marketing conversation with a traceable source, without indexing similarity as authority or loading all transcripts. |
 | Learning and proposed work | Clarify how retained knowledge/methods improve authorized work and how a proposed new responsibility becomes accepted. | Learning does not silently create an ongoing obligation. Existing memory/method mechanisms are reused where sufficient. |
-| Backend surface and recovery | Provide the narrow backend entry points needed by chat and later UI; check lifecycle, cancellation, concurrency and restart behavior. | Capabilities work through production assembly in the binary, survive restart where promised, and do not depend on an open TUI. No second task-state owner is introduced. |
+| Backend surface and recovery — first slice implemented | Provide the narrow backend entry points needed by chat and later UI; check lifecycle, cancellation, concurrency and restart behavior. | Capabilities work through production assembly in the binary, survive restart where promised, and do not depend on an open TUI. No second task-state owner is introduced. |
 | Documentation and review | Update the manual for implemented capabilities, this record, the change entry and the draft PR description. | Documentation names actual limits; focused tests/build and relevant gates pass on the reviewed commit. PR remains draft and unmerged. |
 
 Not required to unlock these slices: a dashboard redesign, elaborate CLI
@@ -147,12 +171,15 @@ backend behavior.
   peer consultation by submitting its text as a new person message.
 - Hosted session construction is supplied through the existing boot boundary.
   Avoid introducing recursion or lock coupling when resolving another session.
-- SQLite schema v1 has no later migrations yet. Any new version needs atomic
-  migration and refusal/rollback tests; do not recreate an existing database.
-- Exact shared-record schema, source trust, applicability semantics, consultation
-  lifetime, discovery limits and adoption controls still require concrete choices.
-  Collection membership alone does not answer them. Record settled choices here
-  or in a linked design note before claiming they are accepted product behavior.
+- SQLite schema v2 adds immutable context revisions. Later migrations still need
+  atomic upgrade and refusal/rollback tests; never recreate an existing database.
+- This draft settles informational records and explicit applicability, not an
+  accepted-decision authority model. Consultation lifetime, discovery limits and
+  adoption controls remain open. A source address is not user acceptance.
+- Context targets may name ongoing items or files, but only chats and ordinary
+  task workers receive automatic turn snapshots. Scheduled firings, forked hands
+  and adaptive nodes are not integrated. Global semantic discovery and autonomous
+  inter-chat consultation remain absent.
 
 ## Coordination and workspace safety
 
@@ -169,13 +196,16 @@ The owner has been notified about this separate draft continuation.
 General-harness draft PR #660 may overlap session execution code; inspect its
 current scope and coordinate before changing the same runtime boundaries.
 
-The user requested Claude Code CLI with Opus for parallel implementation.
-At this checkpoint a read-only runtime integration reconnaissance lane is
-running; no product edits or verification results are attributed to it yet.
-Its output is expected at `/tmp/af-personal-ai-lanes/runtime-plan.md`. That path
-is temporary: incorporate useful conclusions into tracked documents before
-depending on them for a future chat. Do not require access to temporary logs
-to understand what was built.
+The user requested Claude Code CLI with Opus on Spark for parallel work. Resolver,
+shared-context storage, worker/E2E and review lanes ran there; Codex integrated
+runtime wiring and ran verification locally. Lane output was inspected and copied
+through explicit owned paths. No credentials were transferred to Spark.
+
+Product grooming is a separate task, `01a08653-1fcf-7880-b64f-dae46f29b86a`, on
+`codex/personal-ai-grooming`. Its [draft #663](https://github.com/Agent-Field/aforge-v2/pull/663)
+targets this backend branch and owns `grooming/`. Keep it separate; this backend
+wave neither merges it nor dispatches later slices. Its five-domain acceptance
+brief informed the functional cases. Do not overwrite its documents.
 
 ## How a new chat should resume
 
@@ -198,8 +228,15 @@ to understand what was built.
 
 ## Current checkpoint and next action
 
-Only #661's foundation is implemented at this checkpoint. The new branch and
-handoff are pushed, and draft PR #662 holds the backend continuation.
-Next: finish runtime seam reconnaissance, choose narrow resolver/shared-context
-interfaces, and implement the first integrated backend slice. Update this
-section and the status table as those changes become real.
+Implementation is present on the draft branch. Final full live and regression
+runs are in progress; do not claim the whole wave verified until this checkpoint
+is replaced with their results. Earlier targeted live evidence passed the
+API-contract revision/reopen/withdrawal case, two real task workers, and the
+binary collection path. Initial failures exposed fixture mistakes and unclear
+current-chat tool guidance; both were corrected, not marked as flaky.
+
+After the current wave passes: push it to #662 and keep the PR draft/unmerged.
+Continue later slices only after their own grooming and scope agreement. The
+first follow-on discussion should settle addressed consultation and its authority,
+then activation/idempotency and discovery; do not jump to a dashboard or add a
+second scheduler to compensate for missing backend behavior.

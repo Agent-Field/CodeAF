@@ -297,3 +297,12 @@ changelog:
 
 clean:
 	rm -rf bin
+
+# Organization's hermetic contracts run in ordinary touched-package CI as well.
+.PHONY: test-organization test-organization-live
+test-organization:
+	go test -timeout 15m ./internal/workspace/ ./internal/workspaceview/
+	go test -timeout 15m -run 'TestOrganization|TestSharedContext' ./internal/session/
+
+test-organization-live: build
+	bash scripts/test-organization-live.sh

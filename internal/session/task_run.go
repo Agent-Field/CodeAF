@@ -6389,7 +6389,8 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	}
 
 	return newAgent(Config{
-		memoryBrief: a.memoryBlock(ctx, node.assembledBrief()),
+		Organization: parent.Organization,
+		memoryBrief:  a.memoryBlock(ctx, node.assembledBrief()),
 		// The node learns from, and into, the PROJECT'S error→fix file rather
 		// than one of its own (fixstore.go states why a node cannot find it
 		// alone). A worker hammering a build in a worktree is the richest source

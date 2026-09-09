@@ -194,6 +194,7 @@ func (a *Agent) belt() []bare.Tool {
 	// firing's own headless session do not, because nothing unwatched may arm
 	// something that spends forever.
 	tools = append(tools, a.standingTools()...)
+	tools = append(tools, a.organizationTools()...)
 	tools = append(tools, a.harnessTools()...)
 	// The saved PROGRAMS, and the list that says which ones there are
 	// (tools_subharness.go). They are conditional on the same terms the three

@@ -261,6 +261,9 @@ type Meta struct {
 	// person's own act (home's `e`) and its own undoing — nothing automatic
 	// ever sets or clears it, and nothing else about the session changes.
 	Archived bool `json:"archived,omitempty"`
+	// SharedContextSeen remembers exposure, not the records themselves. A reopen
+	// must retract an old snapshot even after its collection membership is removed.
+	SharedContextSeen bool `json:"sharedContextSeen,omitempty"`
 }
 
 // LoadMeta reads a session folder's identity. A missing file, an unparsable

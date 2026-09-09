@@ -5,7 +5,8 @@ continuation and its remaining work, start with [HANDOFF.md](HANDOFF.md).
 
 This first implementation separates logical organization from conversation
 storage. The [constraints](CONSTRAINTS.md) describe the broader agreed product;
-this document describes only what this branch implements.
+this document records only the historical #661 foundation. Current runtime additions
+are described in [BACKEND.md](BACKEND.md).
 
 The slice was reconciled onto `dev` commit
 `0daa205df5932e05cf7a044da113b3e91dcf2851`, the accepted squash of conversation

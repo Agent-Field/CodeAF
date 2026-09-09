@@ -11,8 +11,9 @@ circular membership is refused. Renaming a collection preserves its ID.
 This command does not change the home dashboard, chat tabs or `/folder`.
 `/folder` chooses filesystem context for a conversation. Collection membership
 does not move transcripts, attach a working directory, grant write permissions,
-start work or change an assignment. There is no collection slash command or
-automatic context injection yet.
+start work or change an assignment. There is no collection slash command. Chat can inspect and organize logical
+collections through the `collections` tool. Explicitly shared context can reach
+chats and task workers without enabling learned memory.
 
 ## Where do I file a task
 
@@ -67,3 +68,57 @@ record nor stops ongoing work. Repeating add or remove is harmless, and removing
 something that was never there is not an error. Collection deletion, automatic
 organization, inherited instructions and communication between conversations are
 not implemented by these commands.
+
+
+## Can I organize and inspect work by asking in chat
+
+Ask to create a collection, file this chat in it, or inspect its work. The
+`collections` tool supports list, show, find, create, add and remove. Omitting
+`ref` on add or find means this conversation. Show resolves direct members
+through their existing owners: chat titles, task state, ongoing items and file
+availability. It does not resume a closed conversation or start its work.
+Unavailable sources remain listed. Results are paged with `next_offset`.
+The local `aforge collections show` command still prints references only.
+Task workers can inspect collections but cannot reorganize them.
+
+## How do I share a decision or finding across chats
+
+Use `shared_context` to create a titled record with text and explicit targets.
+Targets may name chats, tasks, collections, ongoing items or artifacts. Automatic
+turn context currently reaches chats and ordinary task workers: their own
+address, the worker's owning chat, and direct collections of those addresses.
+Ongoing-item and artifact targets can be inspected explicitly, but do not yet
+receive automatic delivery. A record aimed at a collection reaches its direct
+member chats and tasks; ancestor folders are not implicitly included. Merely linking two records
+does not share every message between them. One shared record keeps one ID even
+when it has several targets.
+
+Each revision records the conversation that wrote it; a revision from a different
+chat carries that chat as its source, while history preserves earlier sources.
+The runtime supplies the address; the model
+cannot substitute somebody else's source. That address identifies where it was
+recorded, not proof that the person endorsed every sentence. These records are
+information, not instructions or permissions. Use the existing standing-order
+flow for instructions or scheduled responsibilities.
+
+## How do I revise, withdraw or inspect shared context
+
+`shared_context` supports list, read, history, create, revise and withdraw.
+Read the current revision before changing a record. Revise supplies its replacement
+title, text and complete target set; a stale revision is refused, so simultaneous
+edits do not silently overwrite one another. Withdraw retains its history but
+removes it from applicable-context queries. History preserves earlier text,
+sources and targets.
+
+At each chat or ordinary task-worker turn, a bounded snapshot includes current
+context for that work and its direct collections. Revised or withdrawn context
+replaces earlier snapshots at the next turn; it does not interrupt an in-flight
+model response. List and history return metadata in pages of 25; use `next_offset`. Read returns
+up to 4,000 Unicode characters and `next_text_offset` when more remains. Continue
+with the returned revision to avoid mixing versions. Create, revise and withdraw
+return metadata; read by ID for the text. Records allow a 256-byte title, 65,536
+bytes of text and 64 distinct targets. A turn includes at most six records with
+1,200 characters each; truncation and additional records are identified. Task workers
+can read shared context but cannot create, revise or withdraw it. This works
+with learned memory disabled. It does not yet implement automatic consultation,
+semantic discovery beyond links, or sharing context with a scheduled firing.
