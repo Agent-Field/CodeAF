@@ -127,10 +127,10 @@ func (a *Agent) mergeRoundAtLanding(ctx context.Context, node *TaskNode, tree ta
 	// anybody checked: a worker has just edited the very files the deliverable is
 	// made of, and landing that on the strength of the check the round STARTED
 	// from would be merging unread work under a verdict about something else.
-	verdict := a.auditNode(ctx, node, tree, outcome.changed, report, log)
+	verdict := a.auditNode(ctx, node, tree, outcome.changed, "", log)
 	if !verdict.verified {
 		fmt.Fprintf(log, "merge round: the check did not pass what the round left — %s\n", verdict.report())
-		a.undoMergeRound(tree, log)
+		a.undoMergeRound(node, tree, log)
 		return "", false, mergeRoundFailedSentence(tree.branch, outcome.files)
 	}
 	// AND THE LANDING IS RETRIED, through the one road every landing takes
@@ -316,16 +316,21 @@ func markedFiles(dir string, files []string) []string {
 // The ref stays where it is. It is the record of what the node produced, and a
 // person reading the card is owed it whether or not this round put the branch
 // back onto it.
-func (a *Agent) undoMergeRound(tree taskTree, log io.Writer) {
+func (a *Agent) undoMergeRound(node *TaskNode, tree taskTree, log io.Writer) {
 	ref := beforeMergeRef(tree.branch)
 	if strings.TrimSpace(ref) == "" {
 		return
 	}
+	var note string
 	if out, err := git(tree.dir, "reset", "--hard", ref); err != nil {
-		fmt.Fprintf(log, "merge round: %s could not be put back on %s — %s\n", tree.branch, ref, firstLine(out))
-		return
+		note = fmt.Sprintf("Rollback failed: %s could not be restored to %s — %v: %s. Inspect the current files; restoration was not confirmed.", tree.branch, ref, err, firstLine(out))
+	} else {
+		note = fmt.Sprintf("Rollback completed: %s was restored to %s after the check rejected the resolution. The resolver's conclusion and receipts below describe the abandoned attempt, not changes retained in the current files.", tree.branch, ref)
 	}
-	fmt.Fprintf(log, "merge round: %s is back on %s\n", tree.branch, ref)
+	fmt.Fprintf(log, "merge round: %s\n", note)
+	// The rollback happens after the resolver's answer was kept. Put this fact
+	// first so a bounded later check cannot mistake that answer for current work.
+	node.keepResultNoting(withReport(note, checkerConclusion(node, "")), log)
 }
 
 // ── the resolver ────────────────────────────────────────────────────────────
@@ -356,6 +361,10 @@ func (a *Agent) runResolver(ctx context.Context, node *TaskNode, tree taskTree, 
 	defer room.speaking(spoke)
 
 	wrote, stopped, runErr := runTaskChild(ctx, child, node, resolveInstruction(node, tree, home, files, changed), tree.dir, a.taskLimits(node), room, log)
+	// The recheck reads this resolver's conclusion and evidence, not the report
+	// written before the files were merged and changed again.
+	node.keepWorkerConclusion(lastSaid(child), log)
+	node.keepReceipts(lastToolReceipts(child, auditReceiptCount))
 	switch {
 	case stopped != "":
 		fmt.Fprintf(log, "merge round: %s\n", stopped)
@@ -541,13 +550,13 @@ func (a *Agent) landResolved(ctx context.Context, node *TaskNode, tree taskTree,
 		return
 	}
 	tree = outcome.tree
-	verdict := a.auditNode(ctx, node, tree, outcome.changed, report, log)
+	verdict := a.auditNode(ctx, node, tree, outcome.changed, "", log)
 	if ctx.Err() != nil {
 		return
 	}
 	if !verdict.verified {
 		fmt.Fprintf(log, "merge round: the check did not pass what the round left — %s\n", verdict.report())
-		a.undoMergeRound(tree, log)
+		a.undoMergeRound(node, tree, log)
 		return
 	}
 	landed, merge, detail, _ := landHome(node, tree, outcome.changed)

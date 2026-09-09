@@ -3820,8 +3820,9 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 			// model has to read it as (steer.go).
 			Steer: journal.steerMark(msg),
 		})
-		for _, call := range msg.ToolCalls {
-			result, answered := results[call.ID]
+		for callIndex := range msg.ToolCalls {
+			call := &msg.ToolCalls[callIndex]
+			result, answered := results[call]
 			// The step's own title, off the journal's `caption` line, keyed by
 			// the anchor the narration was recorded against. Every call that is
 			// not a batch anchor answers empty and carries nothing.
@@ -3830,7 +3831,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 				Role:   "tool",
 				Tool:   call.Function.Name,
 				CallID: call.ID,
-				Hint:   gloss(call),
+				Hint:   gloss(*call),
 
 				Caption:         told,
 				CaptionCategory: family,
@@ -3838,7 +3839,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 				// applied to the same fields the journal kept: a replayed row and
 				// the row it replaces are the same row, or replay is a second
 				// rendering of one conversation.
-				Args:     argsText(call),
+				Args:     argsText(*call),
 				Output:   capOutput(result),
 				Answered: answered,
 			})
@@ -3846,6 +3847,13 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 	}
 	return entries
 }
+
+// legacyCheckpointCarryOnLead is the reserved continuation prefix written by
+// older journals. Match the complete prefix so ordinary words typed by a person
+// beginning with "[carry on]" remain visible.
+const legacyCheckpointCarryOnLead = "[carry on] You stopped, but what was asked is not finished. " +
+	"Somebody reading the work against the request says this is what is left. " +
+	"Carry on with it, and do not summarise what you have already done:\n"
 
 // entryRows is how many rows the shaping above makes of ONE message: none at
 // all for system messages and private continuation context, and otherwise the
@@ -3867,7 +3875,7 @@ func entryRows(msg ai.Message) int {
 		// The continuation's full reserved lead identifies older journals too:
 		// they wrote it as an unmarked user message even though nobody typed it.
 		// Keep the model's record intact; only its display projection omits it.
-		if isVolatileNote(text) || strings.HasPrefix(text, checkpointCarryOnLead) {
+		if isVolatileNote(text) || strings.HasPrefix(text, checkpointCarryOnLead) || strings.HasPrefix(text, legacyCheckpointCarryOnLead) {
 			return 0
 		}
 	}
@@ -3891,19 +3899,14 @@ func countEntries(messages []ai.Message) int {
 	return rows
 }
 
-// toolResults indexes a run of messages by the call each one answered. A result
-// with no id is skipped rather than kept under "": it is a message no call can
-// claim, and a call with no id would otherwise pick it up.
-func toolResults(messages []ai.Message) map[string]string {
-	var results map[string]string
-	for _, msg := range messages {
-		if msg.Role != "tool" || msg.ToolCallID == "" {
-			continue
-		}
-		if results == nil {
-			results = make(map[string]string, 8)
-		}
-		results[msg.ToolCallID] = messageContentText(msg)
+// toolResults indexes the text answered by each call occurrence. The pairing
+// respects assistant batches, so a reused provider ID cannot rewrite an earlier
+// result or make a later, unanswered call look complete.
+func toolResults(messages []ai.Message) map[*ai.ToolCall]string {
+	paired := toolResultCalls(messages)
+	results := make(map[*ai.ToolCall]string, len(paired))
+	for index, call := range paired {
+		results[call] = messageContentText(messages[index])
 	}
 	return results
 }
