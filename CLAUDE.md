@@ -211,9 +211,23 @@ here is a proposal, and the template is for defects.
 
 ## Tests
 
-`go test ./internal/tui3/` takes ~150s alone and about 485s on a loaded box or a
-two-core runner; budget for it, and give it `-timeout 15m`, never `8m`, or it is
-cut off at the finish line and reports whichever test was running as a hang.
+The 2026-09-08 constrained-runner baseline (`GOMAXPROCS=4`, `GOFLAGS=-p=2`) put
+`internal/tui3` at 563 seconds and `internal/session` at 210 seconds. Give tui3
+`-timeout 15m`, never `8m`, or the ceiling can report whichever test happened to
+be running as though it hung. Use the repository targets for shorter loops:
+
+```sh
+make test-focus PKGS=./internal/tui3 RUN='^TestTheRegression$$' # one named test
+make test PKGS='./internal/tui3 ./internal/session' TEST_FLAGS='-count=1'
+make test-quick                                                # light feedback, not acceptance
+make test-report PKGS=./internal/tui3 REPORT=/tmp/tui3.json    # fresh tests, timings and progress
+```
+
+`make test-report` keeps Go's build cache but supplies `-count=1`, so test
+results are fresh. Its JSON distinguishes cached packages, lists incomplete
+packages after an abrupt end, and sorts completed tests slowest-first. The
+quick target checks build, vet, formatting, the packed manual, and laws; it does
+not replace the full affected-package run or a final uncached relevant suite.
 
 **The tests that fail on a clean tree are listed in `.github/known-red.txt` and
 nowhere else.** `make test` skips them by name, and so does CI, through the same
