@@ -71,7 +71,7 @@ model that company serves. So the first request to a brand-new model is still
 routed, still has a clock on it, and asks for a fresh sheet in the background
 while it goes. You never wait for that fetch.
 
-## Learning which provider finishes my work faster
+## Learning which provider finishes my work faster — why the first message does not go to the most expensive provider
 
 Auto considers both the first words and the generation that must finish before
 the next step can run. Readable prose can arrive while you read. Reasoning and
@@ -80,9 +80,13 @@ tool arguments keep the next operation waiting, so their completion speed matter
 Completed calls teach aforge how much of each kind to expect for that model,
 whether tools are available, and its reasoning setting. Recent evidence counts
 more; stale evidence gives way to the conversation's previous answers. A new
-conversation with no evidence starts with unknown answer size. The request's
-output limit bounds the estimate. Capped, interrupted and unusable replies do not
-teach it that a complete answer is short.
+conversation with no evidence still has no measurement of how long its first
+answer will run. To compare machines, aforge reads that absence as a typical
+readable answer rather than no answer at all, so a machine that charges ten
+times as much to write does not win the first turn on its first word alone. It
+does not keep that comparison as a measurement. The request's output limit
+bounds a learned estimate. Capped, interrupted and unusable replies do not teach
+it that a complete answer is short.
 
 The measurements share the existing local routing history across sessions, with
 a bounded number of remembered request types. Endpoint names, prices and speeds

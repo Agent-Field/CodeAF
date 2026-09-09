@@ -2006,6 +2006,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does aforge do pick the fastest endpoint too", "lanes"},
 		{"does a headless run choose between lanes", "lanes"},
 		{"why did it pick that provider on my very first message", "lanes"},
+		{"why did my first message go to the most expensive provider", "lanes"},
 		// Naming the machine yourself — asked as the worry underneath it, which
 		// is whether a pin is honoured — and reading the line that says which
 		// machine actually answered.
