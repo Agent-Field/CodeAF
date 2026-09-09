@@ -10,15 +10,16 @@
 //
 // They share one shape and one law:
 //
-//   - THE MODEL IS A REFLEX, NOT A THINKER. Every call goes out with a small
-//     prompt, a ~200 token ceiling, temperature 0 and the thinking pass turned
-//     OFF, on [roles.RoleReflex] — its own tier ([roles.TierReflex]) precisely
-//     because a call made twice per turn is a different economy from one made
-//     once a session. Nothing here asks the model to reason; it sorts, it
-//     names, and it answers in a few words of JSON. The disable is not an
-//     optimisation but the thing that makes the ceiling honest: a reasoning
-//     model left to deliberate spends the whole 200 doing it and answers
-//     nothing at all.
+//   - THE MODEL IS A REFLEX, NOT A THINKER, AND THE PROMPT IS WHERE THAT IS
+//     SAID. Every call goes out with a small prompt on [roles.RoleReflex] — its
+//     own tier ([roles.TierReflex]) precisely because a call made twice per turn
+//     is a different economy from one made once a session. Nothing here asks the
+//     model to reason; it sorts, it names, and it answers in a few words of
+//     JSON. It used to say so on the WIRE as well, with a 200-token ceiling and
+//     a required reasoning disable; neither travels now, because how deeply
+//     somebody else's model thinks is not this package's to decide. An effort
+//     already carried by the caller or the configured model remains intact;
+//     this helper adds none.
 //
 //   - REFLEX NEVER BREAKS A TURN. A model that answers with prose, with a code
 //     fence, or with an enum this package has never heard of costs ONE repair
@@ -71,38 +72,12 @@ type Completer interface {
 var ErrReflexFailed = errors.New("reflex: no usable answer")
 
 const (
-	// AnswerTokens is the ordinary reflex answer ceiling. It is exported so the
-	// accounting layer can recognize the exact paid ceiling in its provider
-	// test doubles without repeating this package's economic constant.
-	AnswerTokens = 200
-
-	// answerTokens is the ceiling on every reflex reply. The largest legitimate
-	// answer here is an extraction with a state delta in it — a handful of short
-	// lines — and a model that wants more than this is not answering the
-	// question it was asked.
-	//
-	// It is only honest because the reflex asks for the thinking pass to be
-	// turned OFF (see [call]). A reasoning model handed this ceiling with its
-	// thinking left on spends all two hundred deliberating and returns an empty
-	// answer, every call, every turn — which is what
-	// nex-agi/nex-n2-mini did on the reflex tier: repeated 640-in/200-out calls
-	// billed in full for nothing.
-	answerTokens = AnswerTokens
-
-	// thinkingAnswerTokens is the ceiling when the disable was refused —
-	// [provider.ReasoningMandatory], a fact this process learned from a 400 and
-	// not from any published field.
-	//
-	// A model that MUST think still has to be asked, so the only remaining move
-	// is to leave room for the thinking pass in front of the answer. Ten times
-	// the answer ceiling is that room: a thinking pass on a question this small
-	// runs to a few hundred tokens, and the multiple still stops a model that
-	// has decided to write an essay well before it costs what a turn costs.
-	// ThinkingAnswerTokens is the recovery ceiling when reasoning cannot be
-	// removed. It is derived from the ordinary answer budget so the ratio has
-	// one source.
-	ThinkingAnswerTokens = AnswerTokens * 10
-	thinkingAnswerTokens = ThinkingAnswerTokens
+	// THERE IS NO ANSWER CEILING HERE ANY MORE. There were two — 200 for an
+	// ordinary reflex reply, and ten times that for a model whose endpoint had
+	// been observed refusing or ignoring the thinking disable — and both were
+	// only ever honest in company with that disable, which is also gone (see
+	// [call]). What bounds a reflex reply now is the prompt and the model's own
+	// default. The limits below are all INPUT limits: what the model is shown.
 
 	// messageLimit is how much of one side of an exchange the model is shown,
 	// in runes. A router that reads four paragraphs to decide which memory a
@@ -257,9 +232,8 @@ func Bind(c Completer, model string) Completer {
 	return bound{inner: c, model: model, session: &Session{}}
 }
 
-// Bind returns a completer that starts on model and, once that model has twice
-// spent its ceiling without answering, uses fallback for the rest of this
-// session. notice is called only on the transition and never while a lock is
+// Bind returns a completer that starts on model and, once that model has
+// answered nothing at all, uses fallback for the rest of this session. notice is called only on the transition and never while a lock is
 // held.
 func (s *Session) Bind(c Completer, model, fallback string, notice func(string)) Completer {
 	model = strings.TrimSpace(model)
@@ -322,7 +296,7 @@ func (b bound) abandon(model string) bool {
 	b.session.notified[key] = true
 	b.session.mu.Unlock()
 	if say && b.notice != nil {
-		b.notice("the reflex model answers nothing at its budget; using " + b.fallback + " for this session")
+		b.notice("the reflex model answers nothing; using " + b.fallback + " for this session")
 	}
 	return true
 }
@@ -579,59 +553,45 @@ func ask(ctx context.Context, c Completer, system, user string, read func(reply 
 //
 // WithoutStream for the reason the title and the consolidator use it: nobody
 // asked for this call, and streaming it would type a fragment of JSON into a
-// room where a person is reading an answer.
+// room where a person is reading an answer. It is the only thing this function
+// puts on the request that the caller did not.
 //
-// [provider.EffortOff] because THE MODEL IS A REFLEX, NOT A THINKER — the law
-// at the top of this file, finally said to the provider instead of only to the
-// prompt. It sends {"reasoning": {"enabled": false}}, so the model spends its
-// whole ceiling on the answer rather than deliberating first. It is REQUIRED
-// rather than a best-effort economy: a cold catalog must not erase the field
-// that makes this small ceiling usable.
+// IT USED TO SEND TWO MORE THINGS, and both are gone. A REQUIRED
+// [provider.EffortOff] — {"reasoning": {"enabled": false}} — said the law at the
+// top of this file to the provider instead of only to the prompt; and a 200
+// token ceiling, which was only honest BECAUSE of the disable, plus a ten-times
+// larger retry for the endpoints that accept the disable and ignore it. Each
+// rung of that was this harness deciding how somebody else's model should
+// answer, on evidence from the models it happened to be pointed at. The prompt
+// still asks for a few words of JSON, which is where a reflex's shape has
+// always actually come from. An explicit effort already carried by the caller
+// or configured model still reaches this call; the reflex adds none.
 //
-// Some endpoints accept that field and ignore it. Their signature is an empty
-// answer, finish reason "length", and the whole ceiling charged as output. That
-// buys ONE retry with [thinkingAnswerTokens]. An answer records the quirk for
-// later calls and later processes; a second empty answer abandons this session's
-// reflex model and asks the configured low tier once. There is no loop.
+// WHAT SURVIVES IS THE PART THAT WAS NEVER ABOUT GENERATION: an answer this
+// package cannot use must not break a turn. A model that says nothing at all
+// abandons this session's reflex model and asks the configured low tier once.
+// There is no loop.
 func call(ctx context.Context, c Completer, messages []ai.Message) (string, error) {
 	// Every reflex request in the process passes through here, so this is the
 	// one place its rows in the model-call log get their word.
 	ctx = provider.WithCallTag(ctx, "reflex")
-	ctx = provider.WithRequiredReasoningEffort(provider.WithoutStream(ctx), provider.EffortOff)
-	budget := answerBudget(c)
-	response, err := complete(ctx, c, messages, budget)
+	ctx = provider.WithoutStream(ctx)
+	response, err := c.CompleteWithMessages(ctx, messages)
 	if err != nil {
 		return "", err
 	}
 	if response == nil {
 		return "", errors.New("the model answered nothing")
 	}
-	if !emptyAtCeiling(response, budget) {
+	if !AnsweredNothing(response) {
 		return response.Text(), nil
-	}
-
-	model := boundModel(c)
-	if budget < thinkingAnswerTokens {
-		response, err = complete(ctx, c, messages, thinkingAnswerTokens)
-		if err != nil {
-			return "", err
-		}
-		if response != nil && strings.TrimSpace(response.Text()) != "" {
-			if model != "" {
-				provider.NoteReasoningDisableIgnored(model)
-			}
-			return response.Text(), nil
-		}
 	}
 
 	pinned, ok := c.(bound)
-	if !ok || !pinned.abandon(model) {
-		if response == nil {
-			return "", errors.New("the model answered nothing")
-		}
+	if !ok || !pinned.abandon(boundModel(c)) {
 		return response.Text(), nil
 	}
-	response, err = complete(ctx, c, messages, answerBudget(c))
+	response, err = c.CompleteWithMessages(ctx, messages)
 	if err != nil {
 		return "", err
 	}
@@ -641,22 +601,17 @@ func call(ctx context.Context, c Completer, messages []ai.Message) (string, erro
 	return response.Text(), nil
 }
 
-func complete(ctx context.Context, c Completer, messages []ai.Message, budget int) (*ai.Response, error) {
-	return c.CompleteWithMessages(ctx, messages, ai.WithMaxTokens(budget))
-}
-
-// emptyAtCeiling is deliberately narrower than "blank". A refusal or a cut
-// stream also has no text, but only a length finish at the requested ceiling
-// says that more answer room can change the result.
-func emptyAtCeiling(response *ai.Response, budget int) bool {
-	return provider.EmptyAtCeiling(response, budget)
-}
-
-// EmptyAtCeiling exposes the failure signature to the accounting wrapper that
-// journals each paid reflex call. Detection and recovery must read the same
-// definition or the bill can call a request empty that the caller did not.
-func EmptyAtCeiling(response *ai.Response, budget *int) bool {
-	return budget != nil && emptyAtCeiling(response, *budget)
+// AnsweredNothing is the one failure this package can do anything about: a call
+// that came back with no visible text at all.
+//
+// IT USED TO BE "EMPTY AT THE CEILING WE SENT", and that reading died with the
+// ceiling. What is left is the honest half of it — there is nothing to decode,
+// so there is nothing to use — and it is exported because the accounting
+// wrapper that journals each paid reflex call must call a request empty on
+// exactly the same terms this package does, or the bill and the recovery
+// disagree about what happened (internal/session's memory.go).
+func AnsweredNothing(response *ai.Response) bool {
+	return response == nil || strings.TrimSpace(response.Text()) == ""
 }
 
 func boundModel(c Completer) string {
@@ -664,22 +619,6 @@ func boundModel(c Completer) string {
 		return pinned.activeModel()
 	}
 	return ""
-}
-
-// answerBudget is the ceiling for one call, and it has two values because one
-// of them is a lie on a model that cannot be told to stop thinking.
-//
-// The model is known only to [Bind] — the three calls take a plain Completer,
-// which is what lets a test satisfy this package with a struct — so the pin is
-// where the question is asked. An unbound completer, and any model whose
-// endpoint has never refused the disable, gets [answerTokens] exactly as
-// before; only a model this process has been told 400s the disable is given
-// [thinkingAnswerTokens], and that fact is learned, never guessed.
-func answerBudget(c Completer) int {
-	if pinned, ok := c.(bound); ok && provider.ReasoningUnavoidable(pinned.activeModel()) {
-		return thinkingAnswerTokens
-	}
-	return answerTokens
 }
 
 // decode reads the model's reply as one JSON object, through the shared

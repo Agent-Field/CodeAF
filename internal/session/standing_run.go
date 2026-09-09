@@ -790,15 +790,18 @@ func standingRunConfig(parent Config, item standing.Item, runDir string) (Config
 	}
 	// ── how hard a firing thinks ────────────────────────────────────────────
 	//
-	// A FIRING IS CHEAP UNLESS THE ITEM SAYS OTHERWISE. It runs unattended, it
-	// runs on a schedule, and it runs forever — which is the whole reason the
-	// standing role carries a floor of its own (internal/effort's RoleStanding)
-	// instead of inheriting whatever the person happened to dial in the
-	// conversation that set the item up. An install on max must not quietly
-	// turn every check on the machine into a deep pass.
+	// A FIRING ASKS FOR NOTHING UNLESS THE ITEM SAYS OTHERWISE. It runs
+	// unattended, it runs on a schedule, and it runs forever, so the depth
+	// somebody happened to dial in the conversation that set the item up has no
+	// business travelling with it: an install on max must not quietly turn every
+	// check on the machine into a deep pass.
 	//
-	// The item's own rung sits above that floor, so an item that genuinely
-	// needs thinking says so once, on the card, and gets it on every firing.
+	// That is said by the two lines below and by nothing else. The role carried
+	// a floor of its own until the generation-defaults wave — a `low` this
+	// harness chose for a model it knew nothing about — and what replaced it is
+	// absence: the item's own rung is the only thing that reaches a firing, so
+	// an item that genuinely needs thinking says so once, on the card, and an
+	// item that said nothing sends no reasoning field at all.
 	cfg.EffortRole = effort.RoleStanding
 	cfg.Effort = restoredRung(item.Does.Effort)
 	// The conversation's dial does not reach here: a firing is not the
@@ -996,12 +999,11 @@ You are also shown what you said the last few times and what came of it. Do not 
 
 When the evidence does not settle it, answer no. A wrong yes interrupts somebody for nothing.`
 
-// standingSentinelTokens is what one answer may cost. It is generous for a
-// sentence and deliberately not tight, for the reason v1 wrote down: on a model
-// that reasons before it speaks the thinking comes out of the same budget, and
-// a cap sized for "yes plus a line" reads as no clear answer on every check
-// forever.
-const standingSentinelTokens = 1024
+// NO CEILING TRAVELS WITH A SENTINEL ANSWER. There was one — 1024, already
+// widened once from a figure sized for "yes plus a line" because on a model
+// that reasons before it speaks the thinking came out of the same budget and
+// every check read as no clear answer forever. Widening a guess is still a
+// guess. The prompt asks for a verdict and a sentence.
 
 // NewStandingSentinel is the seam a door fills [standing.Ticker.Sentinel] with.
 // It builds its client ONCE and lazily: a machine with no key, or a pass with
@@ -1030,17 +1032,22 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 		if built != nil {
 			return false, "", 0, built
 		}
-		// THE SENTINEL ASKS THE LADDER AND THE LADDER SAYS LOW.
+		// THE SENTINEL ASKS THE LADDER, AND FOR AN ITEM NOBODY DIALLED THE
+		// LADDER SAYS NOTHING.
 		//
-		// It is the one call in this package where deliberation buys nothing: a
+		// It is the one call in this package where deliberation buys least: a
 		// yes-or-no on evidence somebody else already gathered, run on every
-		// check of every item forever. So the role carries its own floor
-		// (internal/effort's RoleSentinel), and the item's rung sits above it for
-		// the judgment somebody has decided is genuinely hard.
+		// check of every item forever. It used to carry a `low` from the role's
+		// own floor for exactly that reason; the floor is gone, because a rung
+		// this harness picked for somebody else's model is a request nobody
+		// made (internal/effort's roleFloor). What is left is the item's own
+		// rung, which is a person having decided this particular judgment is
+		// hard — and when there is none, no reasoning field travels.
 		//
 		// The stamp is the CONFIGURED setter because this client is built here,
 		// without the catalog seam — a harness-default rung would be dropped
-		// every time and the floor would do nothing (provider's requestedEffort).
+		// every time and the item's own choice would do nothing (provider's
+		// requestedEffort).
 		//
 		// IntentBackground says the same thing to the router — nobody is
 		// waiting, so route on price rather than on speed.
@@ -1067,8 +1074,7 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 				textMessage("system", standingSentinelPrompt),
 				textMessage("user", standingSentinelQuestion(judgment)),
 			},
-			ai.WithModel(model),
-			ai.WithMaxTokens(standingSentinelTokens))
+			ai.WithModel(model))
 		if err != nil {
 			return false, "", 0, err
 		}

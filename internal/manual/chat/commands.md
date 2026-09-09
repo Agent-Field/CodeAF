@@ -647,7 +647,7 @@ The `crew` line sits directly under `model` and reads the preset word — or `cu
 the three classes:
 
 ```
-crew     max · brain kimi-k3:high · hands glm-5.3 · checks kimi-k3
+crew     max · brain kimi-k3 · hands glm-5.3 · checks kimi-k3
 ```
 
 On the live status line the same fact is one short segment — `crew max`, or
@@ -1378,11 +1378,11 @@ opens the six-seat reading, bottom-anchored like the model picker. From the top:
 the five models aforge uses on its own behalf — not the one you chat with
   you talk to · deepseek-v4-flash
   frugal — deepseek works, glm-flash thinks · pennies a day
-    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       deepseek/deepseek-v4-flash-0731 · careful work z-ai/glm-5.3-flash · mastermind   z-ai/glm-5.3-flash:high
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       deepseek/deepseek-v4-flash-0731 · careful work z-ai/glm-5.3-flash · mastermind   z-ai/glm-5.3-flash
 › balanced — glm-flash works, glm-5.3 thinks, qwen checks
-    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3-flash · careful work qwen/qwen3.8-27b · mastermind   z-ai/glm-5.3:high
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3-flash · careful work qwen/qwen3.8-27b · mastermind   z-ai/glm-5.3
   max — glm-5.3 works, kimi-k3 thinks and checks
-    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3 · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3:high
+    reflex       mistralai/mistral-nemo · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3 · careful work moonshotai/kimi-k3 · mastermind   moonshotai/kimi-k3
 each of the five can be pinned on its own in /settings → Providers
 ```
 
@@ -1408,7 +1408,7 @@ page.
 `/crew frugal`, `/crew balanced` or `/crew max` sets the five and confirms in one line:
 
 ```
-crew → max · brain kimi-k3:high · hands glm-5.3 · checks kimi-k3 · you are still talking to deepseek-v4-flash — /model changes that
+crew → max · brain kimi-k3 · hands glm-5.3 · checks kimi-k3 · you are still talking to deepseek-v4-flash — /model changes that
 ```
 
 **The model ids are drawn brighter than the words around them.** `crew →`, the preset

@@ -153,7 +153,7 @@ func Answer(ctx context.Context, client Completer, ask Ask, into any) (*ai.Respo
 	model := provider.CallFrom(ctx).Model()
 	ceiling := Room(ask, model)
 
-	response, err := client.CompleteWithMessages(ctx, ask.Messages, ask.request(ceiling)...)
+	response, err := client.CompleteWithMessages(ctx, ask.Messages, ask.request()...)
 	if err != nil {
 		provider.Report(ctx, provider.VerdictProviderFailure)
 		return nil, err
@@ -232,7 +232,7 @@ func repair(ctx context.Context, client Completer, ask Ask, model string, ceilin
 		}
 		note(ctx, Repair{Lane: ask.Lane, Model: model, Kind: RepairContinued,
 			Round: round, Spent: spent, Ceiling: ceiling})
-		more, err := client.CompleteWithMessages(ctx, continuation(ask, partial), ask.continuationRequest(ceiling)...)
+		more, err := client.CompleteWithMessages(ctx, continuation(ask, partial), ask.continuationRequest()...)
 		if err != nil {
 			return response, fmt.Errorf("%s: %w", ask.laneWords(), err)
 		}
@@ -257,14 +257,13 @@ func repair(ctx context.Context, client Completer, ask Ask, model string, ceilin
 	}
 
 	// NOTHING TO CONTINUE. Either no object was ever begun — prose, or a whole
-	// ceiling spent deliberating — or the continuation could not close one. One
-	// re-ask, carrying the contract and the model's own offending words, at the
-	// doubled room the harness has always used for a reply that ran out (the
-	// same arithmetic as plan.retryTokenBudget and revision.retryVerdictTokens,
-	// which is now written once, here).
+	// reply spent deliberating — or the continuation could not close one. One
+	// re-ask, carrying the contract and the model's own offending words. It used
+	// to also carry double the room; there is no room to double now, and what a
+	// re-ask was ever for is the CONTRACT rather than the ceiling.
 	note(ctx, Repair{Lane: ask.Lane, Model: model, Kind: RepairReasked,
 		Round: 1, Spent: spent, Ceiling: ceiling, Note: why(refused)})
-	again, err := client.CompleteWithMessages(ctx, reask(ask, joined), ask.request(doubled(spent, ceiling))...)
+	again, err := client.CompleteWithMessages(ctx, reask(ask, joined), ask.request()...)
 	if err != nil {
 		return response, fmt.Errorf("%s: %w", ask.laneWords(), err)
 	}
@@ -281,23 +280,24 @@ func repair(ctx context.Context, client Completer, ask Ask, model string, ceilin
 }
 
 // request is the option list one send goes out with: the shape, when this build
-// can carry one, and the room.
+// can carry one, and nothing else.
 //
-// The list is built fresh every time and the ceiling goes last, where it wins.
-// Neither is a nicety — two appends onto one slice with spare capacity write
-// over each other, and a repair would go out carrying the first send's ceiling.
-func (a Ask) request(ceiling int) []ai.Option {
-	options := make([]ai.Option, 0, 3)
+// NO max_tokens TRAVELS. The derived room ([Room]) used to go out on every send
+// and be doubled on every repair; it is now what this package COUNTS in, not
+// what it asks for — see ceiling.go. The list is still built fresh every time,
+// because two appends onto one slice with spare capacity write over each other.
+func (a Ask) request() []ai.Option {
+	options := make([]ai.Option, 0, 2)
 	if a.Routed && len(a.Schema) > 0 {
 		options = append(options, ai.WithSchema(a.Schema))
 	} else if a.JSON {
 		options = append(options, ai.WithJSONMode())
 	}
-	return append(options, ai.WithMaxTokens(ceiling))
+	return options
 }
 
-// continuationRequest is the option list a continuation goes out with: the
-// room, and no shape.
+// continuationRequest is the option list a continuation goes out with: nothing
+// at all.
 //
 // A FRAGMENT HAS NO SHAPE. The continuation prompt asks for the characters
 // that come next in an object already half written, and the rest of a cut
@@ -308,9 +308,7 @@ func (a Ask) request(ceiling int) []ai.Option {
 // AFTER the cut, and that object — complete, valid, and missing the one field
 // the fragment held — was taken whole and ended the run with a blank goal. The
 // re-ask keeps its hint: it asks for the whole object again, which has a shape.
-func (a Ask) continuationRequest(ceiling int) []ai.Option {
-	return []ai.Option{ai.WithMaxTokens(ceiling)}
-}
+func (a Ask) continuationRequest() []ai.Option { return nil }
 
 // laneWords is how this seam names itself in an error a person may read. The
 // lane is the caller's own word for the pass, so "plan request" and "gate

@@ -129,8 +129,7 @@ func (a *Agent) maybeCaption(ctx context.Context, hub *eventHub, calls []ai.Tool
 			textMessage("system", captionSystem),
 			// THE INSTRUCTION IS LAST, after the evidence it is about.
 			textMessage("user", user),
-		},
-		ai.WithMaxTokens(80))
+		})
 	if err != nil || response == nil {
 		return
 	}

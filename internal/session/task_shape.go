@@ -81,11 +81,12 @@ const (
 	// started immediately — is precisely what they asked for.
 	TaskShapeWindow = 25 * time.Second
 
-	// taskShapeTokens is the ceiling. The prompt asks for under 300 words and
-	// forbids more than 600, so ~1200 tokens is that bound with room for the
-	// JSON around it and for a model that runs slightly long — not room for an
-	// essay, which the prompt spends a paragraph refusing.
-	taskShapeTokens = 1200
+	// THE SHAPER SENDS NO CEILING. It used to send ~1200 — the prompt's own
+	// "under 300 words, never more than 600" turned into tokens, with room for
+	// the JSON and for a model that runs slightly long. The prompt still says
+	// it, which is where a length limit belongs: it is an instruction the model
+	// can follow, rather than a guillotine this file drops on an answer it has
+	// already paid for. The bounds below still hold what comes back.
 
 	// The two bounds on what comes back. They are guards against a model that
 	// ignored the prompt's own limit, not a second attempt at stating it: the
@@ -202,7 +203,7 @@ func (a *Agent) shapeBrief(ctx context.Context, request string) shapedBrief {
 		// was never written.
 		response, callErr := a.client.CompleteWithMessages(
 			provider.WithRole(watchedShapeContext(ctx, watch), lane.RoleAuxiliary), messages,
-			ai.WithModel(call.Model), ai.WithMaxTokens(taskShapeTokens))
+			ai.WithModel(call.Model))
 		if callErr != nil || response == nil {
 			// A SHAPER THAT RAN AND WAS CUT IS NOT THE SILENT PASS-THROUGH. The
 			// no-shaper paths above are the documented absence of the capability

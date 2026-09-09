@@ -249,16 +249,16 @@ func TestAnEmptyIndexReadsAsWordsRatherThanABlank(t *testing.T) {
 	}
 }
 
-// EVERY REFLEX CALL IS SHAPED THE SAME: a small ceiling and NO SAMPLING
-// PARAMETER — the provider's own default answers, here as on every call.
-func TestEveryCallIsSmallAndUnsampled(t *testing.T) {
+// EVERY REFLEX CALL ADDS NO GENERATION PARAMETER. The prompt asks for the
+// small answer; the provider decides how to generate it.
+func TestEveryCallLeavesGenerationToTheProvider(t *testing.T) {
 	client := &fake{replies: []string{`{"inject":[],"cmd":null}`}}
 	if _, err := Route(context.Background(), client, "hello", index); err != nil {
 		t.Fatalf("Route: %v", err)
 	}
 	request := client.calls[0]
-	if request.MaxTokens == nil || *request.MaxTokens != answerTokens {
-		t.Fatalf("the request's max tokens = %v, want %d", request.MaxTokens, answerTokens)
+	if request.MaxTokens != nil {
+		t.Fatalf("the request carried max_tokens = %d", *request.MaxTokens)
 	}
 	if request.Temperature != nil {
 		t.Fatalf("the request carried temperature %v, want none on the wire", *request.Temperature)
@@ -487,8 +487,8 @@ func TestBindSendsEveryReflexCallToOneModel(t *testing.T) {
 	if got := client.calls[0].Model; got != "vendor/tiny" {
 		t.Fatalf("a bound call named model %q", got)
 	}
-	if request := client.calls[0]; request.MaxTokens == nil || *request.MaxTokens != answerTokens {
-		t.Fatal("binding a model dropped the token ceiling")
+	if request := client.calls[0]; request.MaxTokens != nil {
+		t.Fatalf("binding a model added max_tokens = %d", *request.MaxTokens)
 	}
 	// Binding nothing is not binding the empty string.
 	if _, ok := Bind(client, "  ").(bound); ok {

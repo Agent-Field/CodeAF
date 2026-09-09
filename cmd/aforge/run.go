@@ -454,9 +454,8 @@ func runGraph(name string, args []string) error {
 	runCtx, stopSignals := signal.NotifyContext(settings.ExecContext(ctx), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	// The executor gets its own reasoning level. The run-wide context carries
-	// the planning economy (reasoning off), which is right for briefs and wrong
-	// for the loop: an agent that cannot think between tool calls writes
-	// nothing down and never converges.
+	// the planning setting, which may differ from the level an operator chose
+	// for execution.
 	runErr := scheduler.Run(runCtx, graph)
 	stopSignals()
 

@@ -201,12 +201,11 @@ const (
 	// the work somewhere it is watched.
 	checkpointMarks = 3
 
-	// checkpointBriefTokens bounds the handoff brief. The shaper writes the same
-	// document under taskShapeTokens for a request nobody has worked on yet; this
-	// one is written by a model with a turn's worth of findings in front of it and
-	// is asked to put them down, so it gets more room — and it is still clipped to
-	// taskShapeBriefLimit, which is the bound EVERY brief on this road is held to.
-	checkpointBriefTokens = 2000
+	// THE HANDOFF BRIEF IS SENT WITH NO CEILING, like everything else on this
+	// road. It used to carry 2000 — more room than the shaper's, because this
+	// document is written by a model with a turn's worth of findings in front of
+	// it — and what actually held the brief to a size was never that figure but
+	// taskShapeBriefLimit, the clip EVERY brief here is held to after it arrives.
 
 	// checkpointBriefWords is how many WORDS a dowry must carry before the
 	// harness will hand it to somebody as an instruction.
@@ -261,14 +260,13 @@ const (
 	// costs nothing.
 	checkpointBriefTries = 2
 
-	// checkpointSketchTokens is the sidecar's whole budget. What it is asked for
-	// is one line of shape and one sentence naming the letters, and a reader that
-	// runs out of room halfway through the shape writes a line the parser reads as
-	// ONE PART — a silent CONTINUE from the one call that was supposed to notice
-	// width. Three hundred is both halves at any length a sketch of a turn's
-	// remaining work honestly takes, and a fraction of the tool round it stands
-	// between.
-	checkpointSketchTokens = 300
+	// THE SIDECAR SENDS NO BUDGET EITHER, and its old one is the clearest case
+	// for why not. Three hundred tokens was "both halves at any length a sketch
+	// honestly takes" — and a reader that ran out of room halfway through the
+	// shape wrote a line the parser read as ONE PART, a silent CONTINUE from the
+	// one call that was supposed to notice width. The failure mode of a ceiling
+	// picked here is a wrong answer nobody can see, so there is no ceiling; what
+	// bounds this call is [checkpointSketchWindow].
 
 	// checkpointSketchWindow is how long the mark's read gets, and unlike the
 	// race's two windows (route_judge.go) SOMEBODY IS WAITING ON THIS ONE. It
@@ -285,9 +283,9 @@ const (
 
 	// checkpointHandoffWindow is how long the mastermind gets to WRITE the brief,
 	// and it is longer than the sketch's window for the one honest reason: what is
-	// being asked for is a document of up to [checkpointBriefTokens] rather than a
-	// line of shape, and a bound that fits a sketch would time out most of the
-	// documents this exists to produce.
+	// being asked for is a whole document rather than a line of shape, and a
+	// bound that fits a sketch would time out most of the documents this exists
+	// to produce.
 	//
 	// It is still a person's patience and not a generous bound. It stands at the
 	// END of a turn that has already run to its ceiling — minutes of tool calls —
@@ -1550,8 +1548,7 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 	// failed, the one the window cut short — which is what the defer is for.
 	a.tellPhase(provider.PhaseTakingStock, "", began)
 	defer a.endPhase()
-	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages,
-		ai.WithMaxTokens(checkpointSketchTokens))
+	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages)
 	read := checkpointRead{asked: true, model: reader, took: time.Since(began)}
 	if err != nil || response == nil {
 		read.failed = true
@@ -3094,8 +3091,7 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 	ctx, done := context.WithTimeout(ctx, checkpointSketchWindow)
 	defer done()
 	messages := []ai.Message{textMessage("user", page+"\n\n"+checkpointRemainsAsk)}
-	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages,
-		ai.WithMaxTokens(checkpointSketchTokens))
+	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages)
 	if err != nil || response == nil {
 		return readerLine{unreachable: true}
 	}
@@ -4216,7 +4212,7 @@ func (a *Agent) checkpointBrief(ctx context.Context, turn *Usage, model string) 
 	// their answer is not this call's to move (internal/lane's roles.go).
 	response, err := a.client.CompleteWithMessages(
 		provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary), messages,
-		ai.WithModel(model), ai.WithMaxTokens(checkpointBriefTokens))
+		ai.WithModel(model))
 	if err != nil || response == nil {
 		// AND THE FAULT IS CARRIED OUT OF HERE RATHER THAN SPELLED AS SILENCE. This
 		// rung answering "" used to be indistinguishable from a rung that answered
@@ -4362,8 +4358,7 @@ func (a *Agent) writeHandoff(ctx context.Context, asked, digest, draft string) (
 	for try := 0; try < checkpointBriefTries; try++ {
 		// NO BELT, for [Agent.checkpointBrief]'s reason: a writer with no hand to
 		// reach for can only answer with the document.
-		response, writer, err := a.callRole(ctx, roles.RoleHandoff, "", messages,
-			ai.WithMaxTokens(checkpointBriefTokens))
+		response, writer, err := a.callRole(ctx, roles.RoleHandoff, "", messages)
 		if err != nil || response == nil {
 			// THE PROVIDER'S OWN WORDS COME OUT WITH THE FAILURE. On the measured run
 			// this rung died on [checkpointHandoffWindow] — ninety seconds, to the
