@@ -367,7 +367,14 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 	a.mu.Unlock()
 
 	if question != "" {
-		defer a.presenceAsking(QuestionConsent, id, question)()
+		// AND THE WHOLE QUESTION IS BANKED, not only the one line
+		// (question.go). The gate is the only thing in this program that knows
+		// the tool, the rule the policy matched and the gloss of the call, and
+		// until this it threw all three away the moment the event went out — so
+		// home, a second window and the phone had the sentence and nothing
+		// under it. The short form goes up beside it unchanged, for the builds
+		// that only ever read that.
+		defer a.presenceAskingWhole(a.consentAsk(id, call, decision, memo, question))()
 	}
 
 	hub.send(Event{
@@ -395,6 +402,14 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 		// hidden deny timer (F41).
 		Wait: ConsentWaiting,
 	})
+
+	// AND THE SAME QUESTION GOES OUT AS AN OBJECT, AFTER the request that named
+	// the row (question.go's EventQuestion). The order is the order this lane
+	// already keeps against its batch's EventToolBegin rows and for the same
+	// reason: a question attaches to a row a surface has already drawn.
+	if question != "" {
+		a.emitQuestionOn(hub, EventQuestion, a.consentAsk(id, call, decision, memo, question), nil)
+	}
 
 	select {
 	case answer := <-answers:
@@ -472,3 +487,67 @@ func refusal(reason string) toolResult {
 }
 
 var errAgentClosed = errors.New("session: agent is closed")
+
+// consentAsk is the approval gate's question as [Question] — the same moment
+// the EventConsentRequest above describes, in the object every lane now speaks.
+//
+// IT INVENTS NOTHING. The head is the line this lane already wrote for the
+// presence file, the reason is the POLICY'S OWN phrasing of why it is asking
+// (internal/approval's Rule), the evidence is the arguments the row already
+// carries, and the answers are answers.go's for this kind — narrowed by one
+// where the memo would do nothing, because an offer that is inert must not be
+// on screen (Event.Memo says the same thing about the same key).
+//
+// THE STAKES ARE `costly` AND NOT `irreversible`, deliberately and for every
+// call alike. This gate does not know what a command will do — that judgement
+// is internal/approval's, and it is expressed as WHETHER TO ASK rather than as
+// how much is at stake — and a question that claimed `irreversible` on a `read`
+// would be crying wolf on the one word that is supposed to stop somebody.
+func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decision, memo bool, question string) Question {
+	options := AnswerOptions(QuestionConsent)
+	if !memo {
+		kept := options[:0:0]
+		for _, option := range options {
+			if option.Widening {
+				continue
+			}
+			kept = append(kept, option)
+		}
+		options = kept
+	}
+	ask := Question{
+		ID:      id,
+		Kind:    QuestionConsent,
+		Ask:     AskPermission,
+		Form:    FormLine,
+		Asker:   Asker{Kind: AskerEngine},
+		Head:    strings.TrimSpace(question),
+		Reason:  consentReason(decision),
+		Subject: SubjectRef{Kind: SubjectCall, CallID: call.ID, Name: call.Function.Name},
+		Options: options,
+		Stakes:  StakesCostly,
+		// THE TURN IS STOPPED ON IT AND NOTHING ELSE IS. The call is blocked
+		// inside its batch; the batch's other calls run in their own goroutines,
+		// and no task waits on this at all.
+		Blocking: Blocking{Turn: true},
+		Scope:    []AnswerScope{ScopeOnce},
+	}
+	if memo {
+		ask.Scope = append(ask.Scope, ScopeAlways)
+	}
+	if args := strings.TrimSpace(argsText(call)); args != "" {
+		ask.Attach = []Block{{Kind: BlockText, Body: args}}
+	}
+	return ask
+}
+
+// consentReason is why the gate is asking, in the policy's own words where it
+// gave any and in this lane's own sentence where it did not. The wording is
+// internal/approval's on the same terms [Event.Rule] takes it: every surface
+// should say the same sentence about the same rule instead of deriving one.
+func consentReason(decision approval.Decision) string {
+	if rule := strings.TrimSpace(decision.Rule); rule != "" {
+		return rule
+	}
+	return consentFallbackReason
+}

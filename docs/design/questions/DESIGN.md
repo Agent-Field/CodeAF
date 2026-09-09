@@ -47,7 +47,10 @@ and one lane raises two shapes (recovery.go borrows the consent lane to ask abou
 a turn).
 
 - `Question.Kind QuestionKind` — the **lane**, and therefore the resolver an
-  answer is applied through. Extended from three values to twelve:
+  answer is applied through. Extended from three values to eleven — the audit's thirteen
+  lanes, with the connect key folded into connect and the harness design folded
+  into the harness offer, because each of those pairs is one wait with one
+  resolver:
   `consent · task · standing · connect · harness · subharness · subharness-ask ·
   landing · conflict · fuel · recovery`.
 - `Question.Ask AskKind` — the **shape of the decision**: `permission · choice ·
@@ -127,7 +130,7 @@ the answer to that lane's own resolver — `ResolveConsentRemember`, `ResolveTas
 `ResolveHarness`, `ResolveSubharness`, `AnswerSubharness`, `ResolveUnverified`,
 `HandUnverifiedToModel`, `TakeBackDecision`, `SteerTask`, `ResolveConflict`,
 `ResolveOrchestrate`. `Agent.applyAnswer` (the answers.jsonl drain) now goes
-through it, so answers.go's first law is literally true across twelve lanes rather
+through it, so answers.go's first law is literally true across eleven lanes rather
 than nearly true across three.
 
 **`Agent.OpenQuestions() []Question`** is what is open right now, oldest first,

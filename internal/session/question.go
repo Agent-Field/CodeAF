@@ -1056,11 +1056,35 @@ func (a *Agent) rememberQuestion(q Question) func() {
 	}
 	a.questionWords[key] = q
 	a.mu.Unlock()
-	return func() {
-		a.mu.Lock()
-		delete(a.questionWords, key)
-		a.mu.Unlock()
+	// AND LETTING GO OF A QUESTION NOBODY ANSWERED IS WITHDRAWING IT. This is
+	// where withdrawal actually happens in the ordinary case, and it is why no
+	// lane has to remember to do it: the lane's own defer runs when its wait ends
+	// — the turn was interrupted, the clock started the work, the run was stopped
+	// — and an entry still standing here at that moment is a question that never
+	// got an answer. [Agent.ResolveQuestion] takes its entry off FIRST, so an
+	// answered question is already gone by the time the lane lets go and nothing
+	// is said about it.
+	return func() { a.WithdrawQuestion(q.Kind, q.Token(), questionGoneReason(q)) }
+}
+
+// claimQuestion takes one question's words OFF the book and answers them, or
+// false where nothing was banked.
+//
+// IT IS A CLAIM AND NOT A LOOK, and that is what keeps an answered question from
+// being withdrawn behind its own answer: the lane that raised it is about to
+// return and run the defer that withdraws whatever is still standing, so the
+// answer has to have taken the entry away before it gets there.
+//
+// keep says the answer does NOT end the question — a steer never resolves a task
+// by itself — and leaves the entry exactly where it was.
+func (a *Agent) claimQuestion(kind QuestionKind, token string, keep bool) (Question, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	q, said := a.questionWords[questionToken(kind, token)]
+	if said && !keep {
+		delete(a.questionWords, questionToken(kind, token))
 	}
+	return q, said
 }
 
 // questionSaid is what one question said, or false where the lane that raised
@@ -1080,15 +1104,31 @@ func (a *Agent) questionSaid(kind QuestionKind, token string) (Question, bool) {
 // is where those land. A surface reading both sees an in-turn question on both,
 // exactly as it sees an in-turn task update on both.
 func (a *Agent) emitQuestion(kind EventKind, q Question, answer *Answer) {
+	a.emitQuestionOn(nil, kind, q, answer)
+}
+
+// emitQuestionOn is the same thing for a lane that was HANDED a hub rather than
+// finding the session's own.
+//
+// The gate, the proposal and the standing card are all raised inside a turn and
+// are given that turn's hub as an argument — it is the one they sent their own
+// event to, and it is not always the hub on the agent (a fork, a design node and
+// every test that drives one ask directly hold their own). A question that went
+// out on a different lane from the row it is about is a question a surface
+// cannot pair, so the two travel together.
+func (a *Agent) emitQuestionOn(hub *eventHub, kind EventKind, q Question, answer *Answer) {
 	event := Event{Kind: kind, ID: q.ID, Question: &q, Answer: answer}
 	a.mu.Lock()
-	hub := a.hub
+	own := a.hub
 	watchers := make([]*eventStream, len(a.taskWatchers))
 	copy(watchers, a.taskWatchers)
 	a.mu.Unlock()
 
 	if hub != nil {
 		hub.send(event)
+	}
+	if own != nil && own != hub {
+		own.send(event)
 	}
 	for _, watcher := range watchers {
 		watcher.send(event)
@@ -1169,9 +1209,14 @@ func (a *Agent) WithdrawQuestion(kind QuestionKind, token, reason string) {
 	a.emitQuestion(EventQuestionWithdrawn, q, nil)
 }
 
-// sweepQuestions withdraws every question whose lane has stopped waiting on it,
-// and it is what makes withdrawal automatic rather than something thirteen
-// lanes have to remember.
+// sweepQuestions withdraws every question whose lane has stopped waiting on it
+// and that nothing took back on its way out.
+//
+// IT IS THE RECONCILER AND NOT THE ORDINARY PATH. Withdrawal ordinarily happens
+// the moment a lane lets go of its question ([Agent.rememberQuestion]), which is
+// exact and immediate. This is the beat that catches what that misses: a lane
+// that banked words and was killed before its defer could run, and a lane added
+// later that has not learned to let go properly.
 //
 // IT COMPARES THE WORDS AGAINST THE WAITS. [Agent.OpenQuestions] walks the
 // lanes; anything this session said out loud and no lane is waiting on any more
@@ -1239,7 +1284,7 @@ var (
 // ResolveQuestion is THE ONE DOOR every answer in this engine goes through.
 //
 // It is how answers.go's first law — AN ANSWER IS APPLIED THROUGH THE SAME
-// RESOLVER A SURFACE USES — stays literally true across thirteen lanes instead
+// RESOLVER A SURFACE USES — stays literally true across eleven lanes instead
 // of the three it covered. This function does not decide anything: it reads
 // which lane the answer names and hands it to that lane's own resolver, which
 // is exactly what the card in a window calls, what home's chip row reaches
@@ -1273,24 +1318,27 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 	if strings.TrimSpace(answer.Key) == "" {
 		answer.Key = answer.FirstKey()
 	}
+	// THE WORDS ARE CLAIMED BEFORE THE LANE IS TOUCHED. The lane is about to
+	// return and let go of this question, and letting go of one nobody answered
+	// is withdrawing it ([Agent.rememberQuestion]) — so an answer that had not
+	// taken the entry first would be raced by its own withdrawal.
+	q, said := a.claimQuestion(answer.Kind, answerToken(answer), !resolvesQuestion(answer))
 	if err := a.applyToLane(answer); err != nil {
+		// NOTHING WAS DECIDED, SO NOTHING IS FORGOTTEN. The question is still a
+		// question and still has to be drawn.
+		if said && resolvesQuestion(answer) {
+			a.rememberQuestion(q)
+		}
 		return err
 	}
 	// THE RECORD IS WRITTEN FROM THE QUESTION AND THE ANSWER TOGETHER, and it is
-	// written AFTER the lane took it: a decision recorded for work that was
-	// never resolved is a record that refuses the next question for no reason.
-	// A lane that banked no words leaves no record — there is no head to keep,
-	// and a record whose question cannot be read back is a line nobody can act
-	// on.
-	if q, said := a.questionSaid(answer.Kind, answerToken(answer)); said {
-		record := decisionRecordOf(q, answer)
-		a.recordDecision(record)
+	// written after the lane took it: a decision recorded for work that was never
+	// resolved is a record that refuses the next question for no reason. A lane
+	// that banked no words leaves no record — there is no head to keep, and a
+	// record whose question cannot be read back is a line nobody can act on.
+	if said {
+		a.recordDecision(decisionRecordOf(q, answer))
 		a.emitQuestion(EventQuestionAnswered, q, &answer)
-		if resolvesQuestion(answer) {
-			a.mu.Lock()
-			delete(a.questionWords, questionToken(answer.Kind, answerToken(answer)))
-			a.mu.Unlock()
-		}
 	}
 	return nil
 }

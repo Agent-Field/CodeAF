@@ -242,6 +242,23 @@ type PresenceQuestion struct {
 	// judges freshness by it, because the FILE's stamp is what says whether any
 	// of this is still true (see [SessionPresence.Fresh]).
 	Asked time.Time `json:"asked,omitzero"`
+	// Full is the WHOLE question (question.go), where the lane that raised it
+	// could describe one — the evidence, the asker's own pick, what is waiting
+	// on it, what an answer costs and how long it may last.
+	//
+	// THE FOUR FIELDS ABOVE STAY FILLED BESIDE IT, and that is the whole reason
+	// this is a pointer on the end rather than a replacement: presence files are
+	// read by BUILDS OF OTHER AGES, on this machine and across a shared disk,
+	// and a window that only ever knew Kind, ID, Text and Options must go on
+	// answering exactly as it did. A build that knows this field draws the
+	// object; a build that does not draws the line and the chips, which is what
+	// it always drew.
+	//
+	// IT IS STILL THE SHORTEST THING SOMEBODY COULD ANSWER FROM in the sense
+	// this struct's header means it: the whole question is the asker's own
+	// account of the decision, not a second rendering of the row it is about —
+	// [SubjectRef] points at that row and never copies it.
+	Full *Question `json:"full,omitempty"`
 }
 
 // Answerable reports whether this question is one another window could answer:
@@ -567,6 +584,64 @@ func (a *Agent) presenceAskingOptions(kind QuestionKind, id uint64, text string,
 	}
 }
 
+// presenceAskingWhole is [Agent.presenceAskingOptions] for a lane that can
+// describe its question COMPLETELY (question.go's [Question]).
+//
+// It banks the same short form every older reader expects — the kind, the id,
+// one line and the answers — and the whole object beside it, and it banks the
+// question's WORDS where [Agent.OpenQuestions] reads them. The three go up and
+// come down together, because a lane that stopped waiting has stopped asking,
+// and a window still drawing the question would be offering a key the session
+// would drop.
+func (a *Agent) presenceAskingWhole(q Question) func() {
+	forgetWords := a.rememberQuestion(q)
+	forgetDesk := a.presenceAskingQuestion(q)
+	return func() {
+		forgetDesk()
+		forgetWords()
+	}
+}
+
+// presenceAskingQuestion banks one whole question at the desk. It is split out
+// from [Agent.presenceAskingWhole] so a lane that wants the presence row without
+// the word book — there is none today — would have one, and so the mapping from
+// a [Question] to the four fields an older reader sees is written exactly once.
+func (a *Agent) presenceAskingQuestion(q Question) func() {
+	desk := a.presence
+	if desk == nil {
+		return func() {}
+	}
+	asked := q.Asked
+	if asked.IsZero() {
+		asked = time.Now()
+	}
+	question := PresenceQuestion{
+		Kind:    q.Kind,
+		ID:      q.ID,
+		Text:    strings.TrimSpace(q.Head),
+		Options: q.Options,
+		Asked:   asked,
+		Full:    &q,
+	}
+	desk.mu.Lock()
+	desk.askSeq++
+	seq := desk.askSeq
+	desk.asks = append(desk.asks, presenceAsk{seq: seq, question: question})
+	desk.mu.Unlock()
+	a.nudgePresence()
+	return func() {
+		desk.mu.Lock()
+		for at, ask := range desk.asks {
+			if ask.seq == seq {
+				desk.asks = append(desk.asks[:at], desk.asks[at+1:]...)
+				break
+			}
+		}
+		desk.mu.Unlock()
+		a.nudgePresence()
+	}
+}
+
 // beat is the heartbeat: one write now, one on every nudge, one on every tick,
 // and a removal on the way out.
 //
@@ -623,6 +698,12 @@ func (d *presenceDesk) beat() {
 		case <-ticker.C:
 			d.agent.drainAnswers()
 			d.agent.drainTakeover()
+			// AND A QUESTION WHOSE SUBJECT WENT AWAY IS TAKEN BACK, with a
+			// reason (question.go's [Agent.sweepQuestions]). It is on this beat
+			// and not on the nudge for [Agent.drainAnswers]'s reason exactly: a
+			// nudge fires while the agent's own lock is held by the lane that
+			// sent it, and the sweep reads every lane there is.
+			d.agent.sweepQuestions()
 			d.write()
 		}
 	}
@@ -816,8 +897,34 @@ func (a *Agent) waitingOnPerson() personAsk {
 			return personAsk{waiting: true, reason: fuelGateLine + " · " + snap.Fuel.Gauge()}
 		}
 	}
+	// AND A LANDED TASK'S `YOUR CALL` IS A QUESTION LIKE ANY OTHER, which for a
+	// long time this did not count. Work that finished and that nobody could
+	// check waits on a person's word and moves for nothing else — it is the
+	// third tier of docs/design/task-states/DESIGN.md and the whole content of
+	// pending.go's registry — and yet it lived outside every lane above, so a
+	// session sitting on one said `idle` to home, to the switcher and to the tab
+	// signal. A person was told there was nothing to do about work that could
+	// not go on without them (ideation/questions-audit.md, finding 4).
+	//
+	// IT IS READ LAST because it is the one question in this list that BLOCKS
+	// NOTHING: the work has already finished, and the reason a person reads
+	// should be the thing that is actually stopped where anything is.
+	//
+	// AND UNDER THE GRAPH'S OWN LOCK, never the agent's — this file's standing
+	// rule about anything with a lock of its own, kept by calling
+	// [Agent.PendingDecisions] with a.mu already released.
+	if pending := a.PendingDecisions(); len(pending) > 0 {
+		return personAsk{waiting: true, reason: yourCallLine + strings.TrimSpace(pending[0].Notice.Title)}
+	}
 	return personAsk{}
 }
+
+// yourCallLine opens the sentence a session says while a landed task waits on
+// somebody's word, and the task's own title closes it. It is [fuelGateLine]'s
+// shape and the tier's own word (task_status.go's [taskWordYourCall]), so home,
+// the switcher and the row on the roster cannot become three accounts of one
+// decision.
+const yourCallLine = taskWordYourCall + " on "
 
 // fuelGateLine opens the sentence a session says when an adaptive run has spent
 // its tank. It is the run page's own lead, repeated here because internal/session
@@ -833,8 +940,9 @@ const subharnessOfferLine = "wants to run "
 
 // NeedsPerson reports whether this conversation is stopped on a question only a
 // person can answer — an approval, a connect offer, a sub-harness offer, a task
-// proposal, a standing card, an intake card chat raised for a saved program, or
-// an adaptive run waiting at its fuel gate.
+// proposal, a standing card, an intake card chat raised for a saved program, an
+// adaptive run waiting at its fuel gate, or a landed task waiting on somebody's
+// word about whether its work holds.
 //
 // IT IS THE PRESENCE FILE'S OWN TEST, ASKED DIRECTLY. A surface in this process
 // must never answer it by reading its own presence file back: that file is

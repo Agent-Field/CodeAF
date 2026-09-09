@@ -895,9 +895,17 @@ func (a *Agent) askTask(ctx context.Context, id uint64, spec taskSpec, elsewhere
 	// the countdown approved is late, and late answers are dropped by
 	// [Agent.ResolveTask] exactly as they are when a click lands a moment too
 	// slowly in the card's own window.
-	defer a.presenceAsking(QuestionTask, id, "wants to start a task: "+strings.TrimSpace(spec.title))()
+	//
+	// AND IT IS BANKED WHOLE (question.go). The proposal is the one question in
+	// this engine with a clock, and the clock APPROVES; a window drawing only
+	// the line and two chips could not say so, and a person who left it alone
+	// was told nothing about what leaving it alone would do.
+	proposed := a.proposalAsk(id, question.notice)
+	defer a.presenceAskingWhole(proposed)()
 
 	a.announceTask(hub, question)
+	// AFTER the card that carries the brief, on EventQuestion's own ordering law.
+	a.emitQuestionOn(hub, EventQuestion, proposed, nil)
 	return a.awaitTaskAnswer(ctx, id, question, clock, countdown)
 }
 
@@ -1154,4 +1162,17 @@ func (a *Agent) PendingTasks() []uint64 {
 		}
 	}
 	return ids
+}
+
+// proposalAsk is one task proposal as [Question] — the same moment
+// [Agent.announceTask]'s EventTaskProposal describes, in the object every lane
+// now speaks.
+//
+// IT IS [Agent.proposalQuestion] AT THE MOMENT OF ASKING, and the two are one
+// function on purpose: that one builds this question from the wait when a
+// surface asks what is open, and this one banks it when the wait is made. A
+// second spelling here would be a second account of the same proposal, and the
+// clock is exactly the field the two would drift on.
+func (a *Agent) proposalAsk(id uint64, notice TaskNotice) Question {
+	return a.proposalQuestion(id, notice)
 }

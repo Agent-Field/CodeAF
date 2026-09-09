@@ -219,8 +219,14 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 	case QuestionConsent:
 		return []AnswerOption{
 			{Key: "1", Label: "allow once"},
-			{Key: "2", Label: "always"},
-			{Key: "3", Label: "deny"},
+			// `always` GRANTS MORE THAN THE QUESTION ASKED ABOUT — every later
+			// call of that tool, for the rest of this session — so it is marked
+			// widening and drawn apart from its neighbours (question.go's
+			// [AnswerOption.Widening]). It is also the one answer a question
+			// may not offer at all: the stuck-turn question borrows this lane
+			// to ask about a TURN, where the memo would do nothing.
+			{Key: "2", Label: "always", Widening: true},
+			{Key: "3", Label: "deny", Safe: true},
 		}
 	case QuestionTask:
 		return []AnswerOption{
@@ -717,7 +723,7 @@ func (a *Agent) applyAnswer(answer Answer) {
 	// true rather than nearly true. [Agent.ResolveQuestion] is the only thing
 	// in this package that knows which resolver a lane's answer belongs to;
 	// this file used to be a second, shorter copy of that knowledge, covering
-	// three lanes of the thirteen. An answer for a lane the door does not take
+	// three lanes of the eleven. An answer for a lane the door does not take
 	// comes back with a refusal and is dropped here, because a file on a
 	// doorstep has nobody left to tell.
 	if answer.From == "" {

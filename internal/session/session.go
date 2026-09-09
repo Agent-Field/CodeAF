@@ -566,7 +566,7 @@ const (
 	// emitting the event it always emitted — EventConsentRequest,
 	// EventTaskProposal, EventStandingProposal and the rest — so a surface that
 	// ignores this kind is exactly what it was. A surface that draws it draws
-	// one object for all thirteen lanes instead of thirteen cards.
+	// one object for every lane instead of thirteen cards.
 	EventQuestion
 	// EventQuestionWithdrawn says a question stopped being one: the subject
 	// settled, the clock took it, the plan changed, another answer made it
