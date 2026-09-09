@@ -17,6 +17,9 @@ setup)
     "$root/modal project/child folder/nested" \
     "$root/modal project/source" \
     "$root/modal project/long" \
+    "$root/modal project/empty" \
+    "$root/modal project/no access" \
+    "$root/modal project/ユニコード long folder name" \
     "$root/omega sibling"
   for n in $(seq -w 1 28); do
     printf 'alpha row %s\n' "$n" > "$root/alpha sibling/a${n}.txt"
@@ -24,15 +27,23 @@ setup)
   for n in $(seq -w 1 40); do
     printf 'long row %s\n' "$n" > "$root/modal project/long/list-${n}.txt"
   done
-  printf 'package nested\n\nfunc Deep() string { return "raw path identity" }\n' \
+  printf 'package nested\n\n/* a multiline comment\n   stays one comment */\nfunc Deep() string {\n\treturn `raw path\nidentity`\n}\n' \
     > "$root/modal project/child folder/nested/deep.go"
   printf 'package main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("modal preview")\n}\n' \
     > "$root/modal project/source/main.go"
   printf 'first line\nsecond line\nthird line\n' > "$root/modal project/notes.txt"
-  # A 1x1 opaque PNG keeps the fixture portable; native review may also copy a photo here.
-  printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' \
+  printf '{\n  "modal": true,\n  "types": ["source", "image", "document"]\n}\n' \
+    > "$root/modal project/settings.json"
+  printf '# Context fixture\n\n```go\nfunc preview() string { return "markdown" }\n```\n' \
+    > "$root/modal project/README.md"
+  printf 'portable binary fallback\000\001\002' > "$root/modal project/archive.bin"
+  printf 'portable media fallback' > "$root/modal project/clip.mp4"
+  printf 'unicode path\n' > "$root/modal project/ユニコード long folder name/naïve 文件.txt"
+  chmod 000 "$root/modal project/no access" 2>/dev/null || true
+  # A 16x8 true-colour PNG exercises aspect fitting without relying on native graphics protocols.
+  printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAICAIAAAB/fGkeAAAAFUlEQVR42mP8z8AARMAgYKSAAQAA//8DABJAAf8lKQAAAABJRU5ErkJggg==' \
     | base64 --decode > "$root/modal project/pixel.png" 2>/dev/null || \
-    printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' \
+    printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAICAIAAAB/fGkeAAAAFUlEQVR42mP8z8AARMAgYKSAAQAA//8DABJAAf8lKQAAAABJRU5ErkJggg==' \
       | base64 -D > "$root/modal project/pixel.png"
   printf '%s\n' "$root/modal project"
   ;;

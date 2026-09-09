@@ -18,6 +18,15 @@ bounded object, clear pane ownership, and an unmistakable active row. Acceptance
 requires aforge's own palette, responsive tiers, and a real modal interaction
 boundary.
 
+The latest visual review raises that bar beyond putting a border around the old
+rows. The parent pane must recede; the active contents pane must keep names and
+aligned sizes visually attached; selection, hover, keyboard focus, and persistent
+marks must be distinguishable without depending on colour; and the preview must
+receive enough of the bounded sheet to read real code or an image. Restrained,
+plain-cell file cues are useful, but a private-use glyph or emoji that becomes
+tofu is a regression. ASCII and `NO_COLOR` captures therefore remain first-class
+acceptance evidence.
+
 ## Review gates for the worker result
 
 - `/folder`, `/place`, `/dir`, and bare `/attach` open the same bounded chooser
@@ -40,6 +49,21 @@ boundary.
   the next request contains exactly those selections.
 - Wide, narrow, ASCII, and NO_COLOR views retain readable names and controls.
   Resize invalidates old screen geometry before another pointer action.
+- Dense mixed directories distinguish folder, source/config, image, document,
+  media, and other entries with consistent cell-width-safe cues. The cue is not
+  the only type signal. Selected-item detail may show reliably cached type,
+  size, and mtime; it must not call mtime "last opened" or add per-frame stats.
+- Source, JSON, and Markdown previews have bounded syntax colour, dim line
+  numbers, safe clipping, and credible multiline strings/comments. Image
+  previews retain aspect ratio within their pane and are described honestly as
+  portable half-cell output. Empty, unreadable, binary, and unsupported content
+  has an explicit fallback rather than dead space.
+- The backdrop is coherent on all four sides of the sheet. A paint that fades
+  the left side while erasing or leaving live text on the right is not accepted.
+- Visual evidence covers `160x44`, `100x32`, and `52x26`, long and Unicode names,
+  source, image, hovered right-directory entry, mixed marks, empty/error states,
+  and both command doors. Review is side-by-side against the supplied current
+  and Yazi captures and records concrete follow-up defects, not title matches.
 - Existing explicit `/attach <path>` direct attachment behavior is reported as
   an intentional separate shortcut unless the implementation truly changes it.
 
@@ -74,6 +98,11 @@ Portable native review must retain raw `.ans`/plain captures and rendered PNGs
 for both command doors at wide and narrow sizes, plus before/after captures for
 each cross-column activation. Spark output proves terminal behavior only; root's
 Mac review is the required graphics and pointer gate.
+
+The fixture also includes multiline Go, JSON, Markdown, a small real-colour PNG,
+an unsupported binary/media sample, dense rows, long/Unicode paths, an empty
+directory, and an unreadable directory (where the platform permits chmod 000).
+These exist to keep the visual pass reproducible, not to prescribe row order.
 
 ## Integration constraints
 
