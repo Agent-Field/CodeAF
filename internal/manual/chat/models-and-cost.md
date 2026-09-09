@@ -226,15 +226,18 @@ case the context window is left alone.
 
 ## I changed the model but my task is still on the old one — change the model inside a task
 
-In the conversation, `/model` changes the model you talk to. Inside a running
-ordinary task, `/model` opens the picker for **that task only**, and
+In the conversation, `/model` changes the model you talk to. Inside an ordinary task, `/model` opens the picker for **that task only**, and
 `/model <slug>` changes that task. Clicking its model in the status line or
 **Task setup** opens the same picker. A filtered `/model` search keeps that
 same task scope. The change takes effect on the task's next turn; a response
 already in progress keeps its model. Other tasks and the conversation stay as
 before.
 
-A completed task, an adaptive run or its nodes, and a task being read through
+For a completed, incomplete or `your call` ordinary task, the picker saves the
+model for when you continue. It does not restart work or change the completed
+attempt's recorded model. A queued task takes the choice when it starts.
+
+An adaptive run or its nodes, and a task being read through
 another conversation cannot use this model-changing door. `/model` says
 `this task's model cannot be changed here` instead of changing the conversation
 behind that page. Provider pinning with `@provider` or `auto` remains available

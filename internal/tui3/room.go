@@ -184,15 +184,8 @@ func (a *app) taskModelDoors() (taskModelDoor, bool) {
 // roomModelMovable reports whether the room's model word is a DOOR as well as a
 // fact — which is exactly the set of moments a press on it would do something.
 //
-// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN, so this is what the render
-// records the press target from ([app.identityParts]) rather than something the
-// press checks after the fact. A finished, incomplete, stopped or your-call node's
-// model is a fact about what happened and nothing can move it; a queued node has
-// not started, and the engine refuses it in the same words; a run's page is a
-// fleet rather than one node, and a node belonging to a run is not in the graph
-// this door reaches. In every one of those the word is still drawn — a person is
-// entitled to read what the work ran on — and it simply does not light and does
-// not answer.
+// Ordinary settled tasks save continuation settings through the same picker.
+// Adaptive runs and guest pages remain outside this task model door.
 func (a *app) roomModelMovable() bool {
 	if a.room == nil || a.room.orch != nil {
 		return false
@@ -209,7 +202,7 @@ func (a *app) roomModelMovable() bool {
 	if node == nil || node.run != "" {
 		return false
 	}
-	if node.state != session.TaskRunning || node.stopped {
+	if !taskSetupAvailable(node) {
 		return false
 	}
 	_, ok := a.taskModelDoors()
@@ -237,6 +230,9 @@ func (a *app) retargetTask(id uint64, model string) {
 	}
 	if err := door.RetargetTask(id, model); err != nil {
 		a.note(err.Error())
+		if a.room != nil && a.room.id == id {
+			a.roomNote(err.Error())
+		}
 		return
 	}
 	// The engine publishes the new id on an update of its own, which is what moves
@@ -249,7 +245,11 @@ func (a *app) retargetTask(id uint64, model string) {
 	// not, so the pair steps to ink and the scaffolding stays dim (payload.go).
 	a.noteFacts(taskIDWord(id)+" · model · "+model, taskIDWord(id), model)
 	if a.room != nil && a.room.id == id {
-		a.roomNote("model · " + model + " · its next turn takes it")
+		timing := "its next turn takes it"
+		if taskSetupLater(a.roomNode()) {
+			timing = "saved for when you continue"
+		}
+		a.roomNote("model · " + model + " · " + timing)
 	}
 }
 
@@ -2370,7 +2370,7 @@ func (a *app) roomHeadRows(width int) []string {
 	}
 	head := []string{a.roomTrailRow(width), a.roomFactsLine(width)}
 	if a.roomOrganized() {
-		head = []string{a.roomTrailRow(width), a.roomTitleRow(width), a.roomFactsLine(width)}
+		head = []string{a.roomTrailRow(width), a.roomTitleRow(width)}
 	}
 	if rows > a.roomHeadCount() {
 		if a.roomOrganized() {
@@ -2383,10 +2383,10 @@ func (a *app) roomHeadRows(width int) []string {
 }
 
 // roomHeadRowCount counts the semantic rows before optional trailing air on a frame with the
-// height to spare: the trail, the current title, and the facts. Compact frames
+// height to spare: the trail and the title with its facts. Compact frames
 // keep the title within the trail. The tab strip above and
 // the kin rows below are counted separately.
-const roomHeadRowCount = 3
+const roomHeadRowCount = 2
 
 // Compact frames already name the task in their navigation row.
 func (a *app) roomHeadCount() int {
@@ -3189,6 +3189,9 @@ func (a *app) roomModelWord() string {
 	if node == nil {
 		return ""
 	}
+	if node.nextModel != "" {
+		return "next model " + modelBase(node.nextModel)
+	}
 	model := modelBase(strings.TrimSpace(node.model))
 	if model == "" {
 		return ""
@@ -3247,6 +3250,9 @@ func (a *app) roomRows(width int) []row {
 	// which is why the branch that returns one does so above this line.
 	inner := gutterInner(width)
 	out, closed := a.deckRows(room.deck(), inner)
+	if len(out) > 0 {
+		out = append(a.roomAssignmentRows(inner), out...)
+	}
 	if room.harnessProgress != "" && !room.done {
 		out = append(out, row{text: a.pal.dim(fit(room.harnessProgress, inner)), entry: -1})
 		closed = false

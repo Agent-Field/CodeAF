@@ -3614,7 +3614,7 @@ func (a *app) legendLeft(width, room int) (string, bool) {
 			return roomLegendRecallWord, true
 		}
 		if a.roomOrganized() {
-			return "/ commands", true
+			return "", true
 		}
 		return roomLegendWord, true
 	}

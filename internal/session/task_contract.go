@@ -598,6 +598,8 @@ type TaskNotice struct {
 	// outlives the question — a card that lands twenty minutes later still says
 	// whose hands did it.
 	Model string
+	// NextModel is a saved continuation choice; Model still names the last attempt.
+	NextModel string
 	// CostUSD is what this node's own agent has spent, live while it runs and
 	// frozen once it lands. Zero means nobody published a price — an unpriced
 	// model, or a node that has not started — and it is NOT the same claim as

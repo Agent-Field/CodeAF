@@ -2,9 +2,9 @@
 
 ## What is at the top of a task page
 
-The pinned header carries the breadcrumb trail and Back, a bold task heading,
-and the task's state, time, activity and known cost. In the expanded layout, the breadcrumb names ancestors, the current
-task has its own heading, and the divider comes below the complete header.
+The pinned header carries the breadcrumb trail and Back. In the expanded layout,
+the breadcrumb names ancestors; one row below it combines the bold task title
+with state, activity, time and known cost. The divider comes below that row.
 The footer explicitly labels its figures `Conversation totals`. The right column keeps the
 existing task tree at the top. The input says `To: <task name>` when the terminal
 has room for that row. Back and Escape change the view; neither stops work.
@@ -21,7 +21,9 @@ Scrolling over task setup does not move the transcript.
 Task setup sits below these windows. `Model` names the working model; `Thinking`
 shows the task's own reasoning override, or `auto` when none is set. Clicking its
 cycle control changes the open task, like `ctrl+v` in that task's room. Unsupported
-controls are absent, and settled values are read-only. An adaptive run's published
+controls are absent. Ordinary settled tasks show `Next run setup`: model and
+thinking choices are saved for when you continue, without restarting work or
+rewriting the last attempt. An adaptive run's published
 planner and budget are shown as facts. Assignment and acceptance remain in the
 main task content rather than being repeated in a narrow sidebar.
 
@@ -42,7 +44,17 @@ stop confirmations. The header and controls stop the work on the open page.
 
 ## Change this task's model
 
-`/model` and the model row under Task setup target the open ordinary running
-task. They do not change the conversation or sibling tasks. A model that cannot
+`/model` and the model row under Task setup target the open ordinary task.
+A running task changes on its next turn. A queued task takes the new model when
+it starts. A settled task saves the choice under `Next run setup`; continuing
+applies it to the next attempt. Choosing a model alone does not continue work. They do not change the conversation or sibling tasks. A model that cannot
 be changed is shown as a fact without a clickable control. The model picker
 continues to be available in the task status line on compact terminals.
+
+## Where is the original task brief and acceptance
+
+The main reading column shows `Task brief` and `Acceptance` above a task's work
+history when those fields are available. They use the same Markdown formatting
+as the transcript and scroll with the content. A matching user message already
+carrying the brief is not repeated. The right column remains task navigation
+and setup; it does not duplicate the assignment in a narrow Details block.

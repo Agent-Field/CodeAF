@@ -186,8 +186,9 @@ type taskNode struct {
 	// (session's TaskNotice.Model). Empty means nobody said — a scripted agent,
 	// an older engine — and every row that draws it draws nothing instead, the
 	// way the spend does.
-	model string
-	state session.TaskState
+	model     string
+	nextModel string
+	state     session.TaskState
 	// dependsOn is the structural half of this file (see the header): stored
 	// always, drawn only when a prerequisite is unmet.
 	dependsOn []uint64
@@ -5669,7 +5670,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		if node == nil || (notice.CostUSD <= node.cost &&
 			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node) &&
 			!taskRenamesContext(notice, node) && !taskStops(notice, node) &&
-			!taskPauses(notice, node) && notice.Decider == node.decider) {
+			!taskPauses(notice, node) && notice.Decider == node.decider && notice.NextModel == node.nextModel) {
 			return nil
 		}
 	}
@@ -5806,6 +5807,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	if model := strings.TrimSpace(notice.Model); model != "" {
 		node.model = model
 	}
+	node.nextModel = strings.TrimSpace(notice.NextModel)
 	if len(notice.Changed) > 0 {
 		node.changed = notice.Changed
 	}

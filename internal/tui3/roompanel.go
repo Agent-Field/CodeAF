@@ -4,6 +4,8 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // The task column keeps the existing family tree above its independently
@@ -128,9 +130,13 @@ func (a *app) roomControlRows(width int) []railLine {
 	row := func(word, action string) railLine {
 		return railLine{text: roomPanelPad + a.pal.ink(fit(word, max(width-len(roomPanelPad), 0))), entry: -1, roomAction: action}
 	}
-	out := []railLine{{entry: -1}, row("Task setup", "")}
+	heading := "Task setup"
+	if taskSetupLater(a.roomNode()) {
+		heading = "Next run setup"
+	}
+	out := []railLine{{entry: -1}, row(heading, "")}
 	if n := a.roomNode(); n != nil && n.model != "" {
-		action, word := "", "Model · "+modelBase(n.model)
+		action, word := "", "Model · "+modelBase(firstNonEmpty(n.nextModel, n.model))
 		if a.roomModelMovable() {
 			action = "model"
 			word += " ▾"
@@ -138,7 +144,7 @@ func (a *app) roomControlRows(width int) []railLine {
 		out = append(out, row(word, action))
 	}
 	if node := a.roomNode(); node != nil && !a.roomIsGuest() {
-		movable := a.taskRungMovable(node) && !node.stopped
+		movable := a.taskRungMovable(node)
 		rung := a.taskRung(node.id).String()
 		if movable || rung != "" {
 			if rung == "" {
@@ -151,6 +157,9 @@ func (a *app) roomControlRows(width int) []railLine {
 			}
 			out = append(out, row("Thinking · "+rung, action))
 		}
+	}
+	if taskSetupLater(a.roomNode()) && a.roomModelMovable() {
+		out = append(out, row("Applies when you continue", ""))
 	}
 	if run := a.orchOf(); run != nil {
 		if model := run.plannerWord(); model != "" {
@@ -189,7 +198,7 @@ func (a *app) roomPanelTake(action string) {
 			a.openTaskPicker(a.room.id)
 		}
 	case "effort":
-		if node := a.roomNode(); node != nil && !a.roomIsGuest() && a.taskRungMovable(node) && !node.stopped {
+		if node := a.roomNode(); node != nil && !a.roomIsGuest() && a.taskRungMovable(node) {
 			a.cycleNodeEffort(node)
 		}
 	case "stop":
@@ -264,19 +273,32 @@ func (a *app) roomModelCommand(rest string) {
 // A task title is a terminal heading: one bold row at the existing reading
 // gutter, never an image or a second font size.
 func (a *app) roomTitleRow(width int) string {
-	return strings.Repeat(" ", headLabelAt) + a.pal.bold(a.pal.ink(fit(a.roomHereWord(), max(width-headLabelAt, 0))))
+	left := a.roomHereWord()
+	right, painted := "", ""
+	if node := a.roomNode(); node != nil {
+		f := a.roomFactsOf(node)
+		right = rowAll([]rowField{f.state, f.live, f.clock, f.spend})
+		state := rowAll([]rowField{f.state})
+		painted = a.taskStateInk(node)(state) + a.pal.muted(strings.TrimPrefix(right, state))
+	}
+	room := max(width-headLabelAt-2-ansi.StringWidth(right)-3, 1)
+	left = fit(left, room)
+	return strings.Repeat(" ", headLabelAt) + a.pal.bold(a.pal.ink(left)) + strings.Repeat(" ", max(width-headLabelAt-2-ansi.StringWidth(left)-ansi.StringWidth(right), 1)) + painted + "  "
 }
 
 // The expanded layout is a height decision independent of the body's measured
 // height, because the input and header participate in measuring that body.
 func (a *app) roomOrganized() bool {
 	_, height := a.size()
-	return a.room != nil && a.railShowing() && height >= roomPanelFloor+roomHeadRowCount+12
+	return a.room != nil && a.railShowing() && height >= roomPanelFloor+roomHeadRowCount+13
 }
 
 func (a *app) roomRecipientWord() string {
 	if a.pick.open {
 		if a.pick.task != 0 {
+			if taskSetupLater(a.roomNode()) {
+				return "Next model for: " + a.roomHereWord()
+			}
 			return "Model for: " + a.roomHereWord()
 		}
 		return "Conversation model"
@@ -305,4 +327,47 @@ func (a *app) roomRecipientHeight() int {
 		return 1
 	}
 	return 0
+}
+
+// A settled ordinary task can save settings without reopening its last attempt.
+func taskSetupLater(node *taskNode) bool {
+	return node != nil && (node.state == session.TaskDone || node.state == session.TaskFailed || node.state == session.TaskUnverified)
+}
+
+func taskSetupAvailable(node *taskNode) bool {
+	if node == nil || node.run != "" {
+		return false
+	}
+	if node.state == session.TaskRunning || node.state == session.TaskQueued {
+		return !node.stopped
+	}
+	return taskSetupLater(node) && node.kind != session.TaskKindHarness && node.kind != session.TaskKindSubharness
+}
+
+// The assignment belongs to the reading column even when the journal has work.
+// A matching opening user entry already carries it and is not drawn twice.
+func (a *app) roomAssignmentRows(width int) []row {
+	node := a.roomNode()
+	if node == nil {
+		return nil
+	}
+	brief := firstNonEmpty(strings.TrimSpace(node.brief), strings.TrimSpace(node.assignment))
+	for _, entry := range a.roomEntries() {
+		if entry.kind == entryUser && strings.TrimSpace(entry.text) == brief {
+			brief = ""
+			break
+		}
+	}
+	var out []row
+	for _, part := range [][2]string{{"Task brief", brief}, {"Acceptance", strings.TrimSpace(node.acceptance)}} {
+		if part[1] == "" {
+			continue
+		}
+		out = append(out, row{text: a.pal.bold(a.pal.ink(part[0])), entry: -1})
+		for _, line := range a.renderMarkdown(part[1], width) {
+			out = append(out, row{text: line, entry: -1})
+		}
+		out = append(out, row{entry: -1})
+	}
+	return out
 }

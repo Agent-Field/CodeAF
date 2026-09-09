@@ -127,7 +127,13 @@ func (a *app) cycleNodeEffort(node *taskNode) bool {
 	if node.state == session.TaskRunning && !node.stopped {
 		word += " · " + taskEffortNextCallWord
 	}
+	if taskSetupLater(node) {
+		word += " · saved for when you continue"
+	}
 	a.noteFacts(word, taskIDWord(node.id), next.String())
+	if a.room != nil && a.room.id == node.id {
+		a.roomNote(word)
+	}
 	a.touch()
 	return true
 }
@@ -159,9 +165,8 @@ func (a *app) taskEffortClause(node *taskNode) string {
 // legend is honest (render.go's A HINT MAY ONLY NAME A KEY THAT WORKS).
 //
 // It is the engine's own gate read from outside: a running or queued node in
-// this session's graph, with a door to ask. A settled node's rung is a fact
-// about what happened and the engine refuses to edit it; a node belonging to an
-// adaptive run is not in the graph this door reaches at all.
+// this session's graph, or an ordinary settled node saving its next rung.
+// A node belonging to an adaptive run is outside the graph this door reaches.
 // railHoldHintWord is [railHoldHint] with the rung's chord named in it while the
 // row under the cursor can take one, and [railHoldHint] itself otherwise.
 //
@@ -197,7 +202,7 @@ func (a *app) taskRungMovable(node *taskNode) bool {
 	if node == nil || node.run != "" {
 		return false
 	}
-	if node.state != session.TaskRunning && node.state != session.TaskQueued {
+	if !taskSetupAvailable(node) {
 		return false
 	}
 	_, ok := a.taskEffortDoors()

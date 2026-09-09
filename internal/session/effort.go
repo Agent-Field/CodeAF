@@ -107,6 +107,9 @@ func (a *Agent) TaskEffort(id uint64) string {
 	}
 	node.graph.mu.Lock()
 	defer node.graph.mu.Unlock()
+	if node.nextEffort != nil {
+		return *node.nextEffort
+	}
 	return node.spec.effort.String()
 }
 
@@ -116,13 +119,8 @@ func (a *Agent) TaskEffort(id uint64) string {
 // spec.effort), so a task that outlives the process comes back at the rung it
 // was set to.
 //
-// A QUEUED NODE TAKES ONE AND A SETTLED NODE DOES NOT, which is a wider door
-// than [Agent.RetargetTask]'s and deliberately so: waiting on a dependency is
-// exactly when somebody looks at a piece of work and decides it deserves
-// thinking about, and the rung has no run to disturb yet. What is refused is a
-// node whose run is OVER — in the same words every other room door refuses one,
-// and for the same reason: what it spent is a fact a person may read and must
-// not be able to edit.
+// Settled ordinary tasks save a separate continuation rung; queued and running
+// tasks update their worker setup. Saving a rung never restarts work.
 //
 // A WORKER ALREADY RUNNING KEEPS THE RUNG IT STARTED ON, and that is the same
 // contract the model switch has rather than a second mechanism. The child was
@@ -139,11 +137,22 @@ func (a *Agent) SetTaskEffort(id uint64, rung string) error {
 	if node == nil {
 		return fmt.Errorf("no task %d in this session", id)
 	}
-	if state := node.stateNow(); state != TaskRunning && state != TaskQueued {
-		return fmt.Errorf("task %d is %s, not running", id, state)
-	}
 	node.graph.mu.Lock()
-	node.spec.effort = parsed
+	switch node.state {
+	case TaskRunning, TaskQueued:
+		node.spec.effort = parsed
+	case TaskDone, TaskFailed, TaskUnverified:
+		if node.kind == TaskKindHarness || node.kind == TaskKindSubharness {
+			node.graph.mu.Unlock()
+			return fmt.Errorf("task %d cannot be continued", id)
+		}
+		word := parsed.String()
+		node.nextEffort = &word
+	default:
+		state := node.state
+		node.graph.mu.Unlock()
+		return fmt.Errorf("task %d is %s, not available for thinking changes", id, state)
+	}
 	node.graph.mu.Unlock()
 	node.graph.checkpoint()
 	return nil

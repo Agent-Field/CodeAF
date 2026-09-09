@@ -2224,7 +2224,7 @@ response; line paging does not claim to split it.
 
 `internal/tui3/roompanel.go` uses the existing rail width and theme paints.
 The expanded hierarchy requires **33 terminal rows**
-(`roomPanelFloor + roomHeadRowCount + 12`). Its divided task panel also requires
+(`roomPanelFloor + roomHeadRowCount + 13`). Its divided task panel also requires
 `roomPanelFloor` (**18 body rows**).
 Controls and existing column navigation reserve their measured height first;
 Conversation context, when present, receives one third of the remainder, capped at `roomDetailsMax`

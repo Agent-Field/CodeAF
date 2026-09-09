@@ -126,8 +126,8 @@ func TestTaskModelCommandCannotChangeConversationFromTask(t *testing.T) {
 	}
 	a.roomNode().state = session.TaskDone
 	typeLine(t, a, "/model another/model")
-	if a.model != original || len(f.retargeted) != 1 {
-		t.Fatal("finished task fell through to conversation")
+	if a.model != original || len(f.retargeted) != 2 {
+		t.Fatal("finished task did not retain its own model scope")
 	}
 }
 
@@ -165,13 +165,13 @@ func TestTaskPanelLeavesNoEmptyDetailsAndKeepsTheHeadingHierarchy(t *testing.T) 
 	if strings.Contains(plain(rows[0]), a.roomHereWord()) {
 		t.Fatal("breadcrumb repeats the task heading")
 	}
-	if plain(rows[1]) != strings.Repeat(" ", headLabelAt)+a.roomHereWord() {
+	if !strings.HasPrefix(plain(rows[1]), strings.Repeat(" ", headLabelAt)+a.roomHereWord()) {
 		t.Fatal("task lost its own heading")
 	}
-	if strings.Contains(plain(rows[2]), "─") {
+	if strings.Contains(plain(rows[1]), "─") {
 		t.Fatal("divider runs through the state")
 	}
-	if strings.Trim(plain(rows[3]), "─") != "" {
+	if strings.Trim(plain(rows[2]), "─") != "" {
 		t.Fatal("divider is not below the complete header")
 	}
 	lines, _ := a.railView(a.viewHeight())
@@ -292,5 +292,43 @@ func TestDeepTaskPanelKeepsAncestorClicksAndControlScope(t *testing.T) {
 		if a.roomOpen() {
 			t.Fatal("Back did not leave the deeply nested task")
 		}
+	}
+}
+
+func TestTaskBriefPrecedesTheWorkAndSavedSetupKeepsItsScope(t *testing.T) {
+	a, _ := taskControlApp(t)
+	n := a.roomNode()
+	n.brief = "Research **the task** and produce a concise report."
+	n.acceptance = "Include sources and unresolved questions."
+	a.room.entries = []entry{{kind: entryAssistant, text: "The finished report.", turn: 1}}
+	a.room.dirty = true
+	var text []string
+	for _, r := range a.roomRows(a.bodyWidth()) {
+		text = append(text, plain(r.text))
+	}
+	body := strings.Join(text, "\n")
+	if !strings.Contains(body, "Task brief") || !strings.Contains(body, n.acceptance) || strings.Index(body, "Task brief") > strings.Index(body, "The finished report.") {
+		t.Fatalf("missing original assignment: %s", body)
+	}
+	n.state = session.TaskDone
+	n.nextModel = "anthropic/claude-sonnet-5"
+	a.roomPanelTake("model")
+	if !a.pick.open || a.pick.task != n.id {
+		t.Fatal("saved setup did not open this task's picker")
+	}
+}
+
+func TestContinuationModelUpdateChangesSetupWithoutChangingThePastModel(t *testing.T) {
+	a, _ := roomModelApp(t, "z-ai/glm-5.2")
+	a.width, a.height = 120, 38
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(9, "Ship the parser fix", session.TaskUnverified, session.TaskNotice{Model: "z-ai/glm-5.2"})})
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(9, "Ship the parser fix", session.TaskUnverified, session.TaskNotice{Model: "z-ai/glm-5.2", NextModel: "anthropic/claude-sonnet-5"})})
+	if a.roomNode().model != "z-ai/glm-5.2" || a.roomNode().nextModel != "anthropic/claude-sonnet-5" {
+		t.Fatal("same-state update lost continuation settings or rewrote history")
+	}
+	y := panelRow(t, a, "model")
+	drive(t, a, tea.MouseClickMsg{X: a.width - 2, Y: y, Button: tea.MouseLeft})
+	if !a.pick.open || a.pick.task != 9 {
+		t.Fatal("completed task model row is not clickable")
 	}
 }

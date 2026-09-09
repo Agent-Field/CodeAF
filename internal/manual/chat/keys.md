@@ -2034,8 +2034,8 @@ back · `up`/`down` move · `right`/`left` open and fold · `enter` opens that r
 `alt+w` widens the column and narrows it again. Its hint reads exactly
 `↑↓ move · →← tree · enter open · alt+w wide · esc`. On a row whose work is still running or
 still queued the hint gains one more clause before `esc` — `ctrl+v think harder`, which
-moves that task's thinking rung; a finished row does not offer it, because a finished
-task's rung is a fact about what happened.
+moves that task's thinking rung. On an ordinary finished task, it saves the rung
+for when you continue; it does not restart work or rewrite the last attempt.
 
 **Widen is a chord and not the bare letter `w`.** It used to be `w`, and `w` was read
 before the message box: a sentence typed while the roster still held the keyboard came out
@@ -2657,19 +2657,18 @@ over it, which is a decision rather than something a wheel does on its way past.
 thing back to nothing in the place it is written down: the `thinking` row's own `auto`.
 
 **The rung reads as a quiet clause where the thing already states its facts.** A task's is
-on its page's header, after the model — `◆ Fix nil-map · running · 42s · $0.31 · gpt-5 ·
-thinking high` — and on the roster's own figures row when the column is wide enough to hold
-it. An item's is on that item's card. The machine's own is the `thinking` row of
+under `Task setup` (or `Next run setup` after it settles) in the expanded
+task page, and in the compact header and roster figures when there is room. An item's is on that item's card. The machine's own is the `thinking` row of
 `/settings`. A thing nobody has dialled says nothing, which is not the same as `low`.
 
 **On a task it lands on the next call, not this one.** A worker already running keeps the
 rung it started with, so the line aforge writes says so: `task 7 · thinking · high · its
-next call takes it`. A task that has finished refuses, in the engine's own words — `task 7
-is done, not running` — because what it spent is a fact you may read and must not edit.
+next call takes it`. On an ordinary task that has finished, it instead saves
+the choice for the next continuation. The completed attempt stays unchanged.
 
 **Every card that takes it says so.** The card's dim legend reads `ctrl+v think harder`,
-and it is drawn only where the key would work: a settled task's roster row does not offer
-it, and neither does a window with nowhere to write the setting.
+and it is drawn only where the key would work. A window with nowhere to write
+the setting does not offer it.
 
 ## Chords that are not bound
 
