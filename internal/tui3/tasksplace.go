@@ -52,9 +52,9 @@ const (
 	// node as well as a working one. So a machine with nothing executing on it
 	// drew two rows under `running` and a foot that said `2 running`, and a
 	// developer read that as two workers burning tokens somewhere and went
-	// looking for the window they were in. The column one keypress away called
-	// the same two nodes `2 parked` the whole time — two surfaces, one fact, two
-	// words — and this is the word both of them say now ([railGroupWords]).
+	// looking for the window they were in. This page now files both cases under
+	// `waiting`; the column one keypress away makes the finer distinction between
+	// `queued` for a slot and `waiting` behind work ([railGroupWords]).
 	tasksParked
 	tasksToday
 	tasksEarlier
@@ -805,8 +805,9 @@ type tasksTree struct {
 }
 
 // tasksTreeOf builds that shape, and it is the ONE place the page's structure is
-// decided — the layout, the tally and the section headings all read this rather
-// than each walking the rows their own way.
+// decided — the layout and the section headings both read this rather than each
+// walking the rows their own way. The tally deliberately reads each piece of
+// work's own state instead ([tasksReading.tally]).
 func tasksTreeOf(items []tasksItem, now time.Time, chats ...session.SessionRow) tasksTree {
 	t := tasksTree{
 		kids:  map[tasksKey][]tasksItem{},
@@ -1008,9 +1009,9 @@ func (t tasksTree) in(section tasksSection) []tasksGroup {
 	return out
 }
 
-// held is how much WORK one section is holding, at every depth and behind every
-// fold. It is the number the foot counts and the number the heading reconciles
-// the drawn rows against ([tasksSectionHead]).
+// held is how much WORK is FILED in one section, at every depth and behind every
+// fold. The heading compares this with the same tree's drawn rows to say what a
+// fold hides ([tasksSectionHead]); the foot counts a different partition.
 func (t tasksTree) held(section tasksSection) int {
 	n := 0
 	for _, g := range t.in(section) {
@@ -1308,8 +1309,8 @@ func (r tasksReading) section(want tasksSection) []tasksItem {
 	return items
 }
 
-// tasksTally is what the place says it is holding, in the same words its
-// sections are headed with.
+// tasksTally is what each piece of work on the place IS, said in the same words
+// that may also head its sections.
 //
 // THE EMPTINESS LAW HOLDS HERE TOO. A section with nothing in it is not counted
 // as zero — it is not mentioned — and the line is empty when the page is.
@@ -1322,10 +1323,16 @@ func (r tasksReading) section(want tasksSection) []tasksItem {
 // `10 pieces of work`, and 7 + 3 is that ten. A tally counting drawn rows would
 // trade this disagreement for a larger one with the head, and would change under
 // somebody opening a fold, which is a fact about the screen and not about the
-// work. What reconciles the two is [tasksSectionHead], on the heading standing
-// between them.
-// The footer counts actual states. Conversation grouping never turns finished
-// siblings into additional decisions for the person.
+// work.
+//
+// THE SECTIONS AND THIS LINE ARE TWO DIFFERENT PARTITIONS OF THE SAME ROWS. The
+// sections file a conversation and all its work under where the CONVERSATION
+// stands ([tasksTreeOf], [tasksTree.filed]); this line counts each piece of work
+// by its own state. A finished sibling can therefore stand under `waiting`, and
+// this line can name a state for which the page draws no heading. The manual is
+// where a person is told why, and this line keeps the states rather than taking
+// the sections' filing because conversation grouping must never turn a
+// conversation's finished siblings into more decisions for a person to make.
 func (r tasksReading) tally() string {
 	counts := [tasksSectionCount]int{}
 	for _, item := range r.items {
@@ -1346,7 +1353,7 @@ func (r tasksReading) tally() string {
 // IT ASKS THE SAME TREE THE PAGE IS BUILT FROM ([tasksReading.tree]) AND READS
 // THE SAME FOLD STATE ([tasksReading.opens]), so the count and the rows cannot
 // be made to disagree by a change to either — which is the whole point of the
-// clause it feeds. [TestTheSectionHeadCountsTheRowsItActuallyDraws] pins it
+// clause it feeds. [TestTheSectionHeadCountsTheRowsItActuallyWithholds] pins it
 // against the rows [tasksReading.lay] really produces rather than against this
 // arithmetic said twice.
 func (r tasksReading) shown(items []tasksItem) int {
@@ -1358,14 +1365,13 @@ func (r tasksReading) shown(items []tasksItem) int {
 }
 
 // tasksSectionHead is the heading over one section: its word, and — only where a
-// fold is holding rows back — how much of what the foot counts is on the page.
+// fold is holding rows back — how much of what is filed here is behind a fold.
 //
-// THE COUNT AND THE ROWS MEET HERE, which is the one place between them. The foot
-// says `5 done today` because five pieces of work landed today
-// ([tasksReading.tally]); the section draws two rows because three of the five
-// are workers folded under a root. A person reads the foot, counts the rows and
-// finds a defect — and the only thing on the frame reconciling the two used to be
-// a clause in the middle of one row's tail.
+// THE HEADING SAYS ONE THING ONLY: how much of the work filed in this section is
+// behind a fold. The foot counts what each piece of work is, while the section
+// files a whole conversation under where that conversation stands; neither
+// number is a total for the other partition ([tasksReading.tally],
+// [tasksTree.filed]).
 //
 // IT IS ON THE HEADING AND NOT ON THE FOOT, and that is a decision about width.
 // The foot is one dim line holding every section at once, already 67 cells with
@@ -1381,15 +1387,14 @@ func (r tasksReading) shown(items []tasksItem) int {
 // leave every glyph ragged, and widening it everywhere would take two cells off
 // every name — which is exactly what the name-first fix was made to stop.
 //
-// NOTHING IS SAID WHERE NOTHING IS HELD BACK. Open the fold and the numbers agree
-// by themselves, and the clause goes: the emptiness law applied to a fact that
-// has stopped being one.
+// NOTHING IS SAID WHERE NOTHING IS HELD BACK. Open the fold and the clause goes:
+// the emptiness law applied to a fact that has stopped being one.
 func tasksSectionHead(section tasksSection, held, shown int) string {
 	word := tasksSectionWord(section)
-	if shown >= held {
+	if held-shown <= 0 {
 		return word
 	}
-	return word + railSep + itoa(shown) + " of " + itoa(held) + " shown"
+	return word + railSep + itoa(held-shown) + " folded away"
 }
 
 func tasksSectionWord(section tasksSection) string {

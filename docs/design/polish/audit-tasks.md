@@ -353,8 +353,8 @@ width and costs nothing.
 
 files: `internal/tui3/tasksplace.go` (`tasksSectionHead`, `tasksReading.shown`;
 `tasksReading.tally` is unchanged in what it counts and gained the note saying why)
-tests: `TestTheTasksCountAndTheRowsUnderItAgreeOnOneFrame`,
-`TestTheSectionHeadCountsTheRowsItActuallyDraws`,
+tests: `TestTheTasksSectionHeadNamesOnlyWhatTheFoldHolds`,
+`TestTheSectionHeadCountsTheRowsItActuallyWithholds`,
 `TestASectionWithNothingFoldedAwaySaysNothingExtra`,
 `TestTheTasksFootFitsTheNarrowestFrameWholeWithAFoldOnThePage`
 (`internal/tui3/tallyrows_test.go`). The second is the one that matters for

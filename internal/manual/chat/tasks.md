@@ -1453,7 +1453,7 @@ run is not one — the chip is the only place on the screen that run exists.
 A blank line sits under the chips, separating them from the first line of conversation.
 It is part of the strip and leaves with it.
 
-Order: running first, then work that needs you, then idle. Parked and finished work never
+Order: running first, then work that needs you, then queued. Waiting and finished work never
 appear on it — the strip is the live set, the roster is this session's whole record, and
 `/history` is the project's, across every session.
 
@@ -1521,7 +1521,7 @@ the row says what it is held behind. (They were `idle` and `parked`, which were 
 unrelated words for one shape of fact and disagreed with the tasks page, where the same
 node read `parked`.) There are no state-group
 headings. The footer keeps those totals as counts, such as
-`2 need you · 3 running · 12 done`.
+`3 running · 2 needs you · 12 done`.
 
 **The pieces INSIDE a family are ranked the same way.** They used to be drawn in the order
 the session admitted them, so a run that hands four errands out and finishes them one at a
@@ -1531,8 +1531,8 @@ queued, waiting, done, with admission order deciding between two pieces in the s
 Two settled siblings therefore never trade places while you are looking at them. The kin
 line under a task's own page shows the same order.
 
-Folding belongs to each node. Families with a running, needs-you, or idle member start
-open. Settled families and families containing only parked work start folded to their
+Folding belongs to each node. Families with a running, needs-you, or queued member start
+open. Settled families and families containing only waiting work start folded to their
 root; the root then carries the family's aggregate state glyph and a `▸ +N` badge for the
 hidden descendants.
 
@@ -1596,8 +1596,8 @@ Under the task rows, one dim `+ /task` row closes the section — press it and `
 typed into your message box. Then a blank line, then the column's `standing` section.
 
 At the bottom, under both sections, up to three dim lines: `Σ $1.42 · 312k tok`,
-`1 need you · 3 running`,
-`148 parked · 12 done`. The `Σ` is the whole session's spend — it already contains every
+`3 running · 1 needs you`,
+`148 waiting · 12 done`. The `Σ` is the whole session's spend — it already contains every
 task in the column plus the conversation, so there is deliberately no per-task share. Zero
 figures are left out entirely, because zero means "nobody published a price", never "free".
 
@@ -1614,7 +1614,7 @@ work than it has rows, where it keeps one row back for everything else — a ses
 is read on the task page instead.
 
 **Non-running rows are drawn quieter.** A running task's name is in the ordinary text
-colour; idle, parked and finished names are muted, the tree connectors and every detail
+colour; queued, waiting and finished names are muted, the tree connectors and every detail
 line are dim, and the room you are standing in is the one row in the accent. Nothing is
 hidden by this — the column is a record and keeps everything — but a glance at it lands on
 what is moving.
@@ -2124,7 +2124,9 @@ The page takes the whole frame, the way the settings panel does. `esc` closes it
 pages here take the frame — the settings panel, this one, and `/home` — and **only one of
 them is ever up**: opening any one closes the other two.
 
-It opens on one heading saying what it is holding — for example
+It opens on one heading saying what it is holding. A page holding conversations reads, for
+example, `tasks · 15 chats · 13 subtasks · $2.98`: chats first, then the work under them. A
+page holding work with no conversation on it reads, for example,
 `tasks · 148 pieces of work since aug 11 · $34.10`. The count is every row the time window
 holds, the date is the far edge of that window, and the money is what those rows are known
 to have cost. A window with no known start drops the `since`, and rows nobody priced drop
@@ -2153,9 +2155,10 @@ Under it, **five sections, in the order you act on them**: `your call`, `running
 `waiting`, `finished today`, then `earlier`. `running` is work a worker is actually inside;
 `waiting` is work that has been admitted and that nothing is doing — behind the piece that
 needs a person, or behind a slot. A waiting row **carries no age at all**: it has not
-started, so there is nothing to count from. Nothing is grouped by whose work it is — a task
-this conversation started sits beside one another window is running and one a session you
-closed last week finished, filed by what you would do about it next.
+started, so there is nothing to count from. A conversation and everything under it stand
+together, in the section its most urgent piece of work puts it in. Conversations still sit
+beside one another regardless of whose work they hold — this conversation's, another
+window's, or one from a session you closed last week.
 
 `finished today` is **everything that ended today, however it ended** — work that came off,
 work that failed, work somebody stopped. It was called `done today` and held all three,
@@ -2212,7 +2215,7 @@ this window's own live work, and the window next door are read together and join
 conversation and the id, with the freshest of them winning.
 
 **A family can be folded away.** Where it is, the section's own heading says so —
-`finished today · 2 of 5 shown` — and `→` opens it. Everything else the window holds has a
+`finished today · 3 folded away` — and `→` opens it. Everything else the window holds has a
 line, and the page scrolls —
 `↑`/`↓`, `pgup`/`pgdown`, `home`/`end` and the wheel all walk it. **The last rows fade** when
 the list runs on below the bottom of the window: three rows, each a step fainter, saying
@@ -2220,12 +2223,19 @@ there is more under them. The row the cursor is on never fades wherever it sits,
 short enough to fit fades nothing at all — see *Why the bottom rows of a long list look
 dimmer* on the screen page.
 
-At the bottom: one dim line counting THE WORK THE WINDOW HOLDS, section by section —
-not the rows drawn, which is why it can read a larger number than you can count on the
-screen when a family is folded. The section heading is where that difference is said. It
-reads such as
-`2 your call · 3 running · 12 finished today · 148 earlier` — a section with nothing in it
-is not counted at all — and under it the keys.
+## Why the count at the bottom does not match the rows or headings
+
+At the bottom, one dim line counts what each piece of work IS. The sections answer a
+different question: they file a conversation and everything under it where the
+CONVERSATION stands, according to its most urgent work. A finished `✓` row can therefore
+sit under `waiting`, and the foot can name `running` or `finished today` when there is no
+heading for that state on the page at all. Each work row still says what it is with its own
+mark and its own words. A fold is a second, smaller difference: when it hides filed rows,
+that section's heading says exactly how many are `folded away`.
+
+The foot can read, for example,
+`2 your call · 3 running · 12 finished today · 148 earlier`. A state with no work in it is
+not counted at all, and the keys sit under the line.
 
 **Every door onto this place opens it, on a machine that has run nothing too.** `/history`,
 a bare `/task`, `ctrl+.`, `alt+2` and `tab` all reach the same page, and with nothing on it
@@ -3908,7 +3918,7 @@ same time.
 The setting `task.parallel` exists for anyone who wants a number anyway — settings panel
 (`ctrl+,` or `/settings`), category "spending". Blank means no limit. A cap is a queue and
 never a refusal: work past the cap waits and starts when a slot frees, and while it waits
-its roster row reads `waiting · slot`; a parked-only family starts folded.
+its roster row reads `waiting · slot`; a waiting-only family starts folded.
 
 What actually runs out is the machine, not a count of tasks. Two real ceilings hold new
 starts instead:
