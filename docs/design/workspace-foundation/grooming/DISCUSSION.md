@@ -51,14 +51,32 @@ ordinary workers. Scope-removal evidence distinguishes readable from applicable
 information. It does not prove automatic decision capture, semantic discovery,
 triggers, cross-chat cooperation, the new TUI or all five complete journeys.
 
-The last recorded owner update is repair `743f70866`, draft #662 unmerged:
-deterministic completion evidence handling repaired, live-reader judgment still
-inconsistent (#672 open); the 12-chat workday passed once and a later run failed on
-model-typed destinations. Recovery checks followed deletion of a temporary checkout
-and logs, with retained source/evidence safe. This is an owner-reported checkpoint,
-not a new root run or final acceptance. Updated identified-commit receipts are
-required before marking the first wave complete. See DEMONSTRATION.md and the
-integration owner's evidence record.
+The latest inspected implementation handoff is `c63e03b7f`, draft #662 unmerged.
+It records a full 12-chat working-day pass at `3f678b893`, worker/conflicting-source
+reruns at `fb95cd197`, and five bounded first-wave domain cases with stronger
+unrelated-chat scope assertions at `c9b9ff388`. These do not establish five complete
+final-product journeys. Completion-judgment issue #672 remains open.
+
+The independent behavioral audit on production commit `11c92fd1d6` reported
+failures in honest collection-add reporting, disclosure of the existing `/land`
+step for a follow-up correction, and recovery from watch setup failure. One run
+misreported a source suggestion as accepted; no unauthorized migration ran.
+Observed passes included quoted-source isolation, draft-local correction/reopen,
+and stop/withdrawal/reopen. The watch case never approved its valid setup card,
+so it does not establish successful ongoing monitoring. Ordinary CI passed;
+that is distinct from the behavioral audit. These are recorded evidence reviewed
+from the implementation handoff, not new runs by this discussion task or final
+acceptance. See the owner's HANDOFF.md and DESIGN-STATUS.md for full receipts.
+
+Existing v3 standing work already has background scheduled execution, setup
+approval, history and controls. The new workspace context is not yet consumed by
+scheduled firings, and a zoomable whole-workspace map is not implemented.
+[YEAR-ONE.md](YEAR-ONE.md) and [YEAR-ONE.svg](YEAR-ONE.svg) now illustrate the
+person's broader question: what a startup CTO's accumulated personal workspace
+might look like after a year. The person found those large boxes unhelpful.
+[INFORMATION-GRAPH.md](INFORMATION-GRAPH.md) and its SVG now focus on the simpler
+structure: records, typed relationships and progressively selected subsets.
+Neither study adds primitives or resolves pending behavior and permission choices.
 
 ## Next steps without changing direction
 

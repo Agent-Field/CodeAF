@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="990" viewBox="0 0 1400 990" role="img" aria-labelledby="title desc">
+  <title id="title">Where keep production healthy goes in aforge</title>
+  <desc id="desc">A person asks Forge through a conversation. An ongoing responsibility retains the purpose, target, conditions, allowed actions and limits. A folder organizes it and related records. Schedules or observed health signals can start agent executions that use tools against the deployed app and return results to the same work history. Home, folder views and a proposed relationship map are views of the same records. This is the conceptual flow, not a claim that every integration or view is implemented.</desc>
+  <style>
+    svg { background:#fafaf8; font-family:Arial,sans-serif; }
+    text { fill:#23323b; font-size:22px; }
+    .title { font-size:29px; font-weight:600; }
+    .name { font-size:24px; font-weight:600; }
+    .small { font-size:19px; fill:#526570; }
+    .node { fill:#fff; stroke:#91a2aa; stroke-width:1.6; }
+    .work { fill:#e8f0f5; stroke:#496a7d; stroke-width:2; }
+    .view { fill:none; stroke:#b6c1c5; stroke-width:1.5; }
+    .edge { fill:none; stroke:#587281; stroke-width:2; marker-end:url(#arrow); }
+    .both { fill:none; stroke:#587281; stroke-width:2; marker-start:url(#back); marker-end:url(#arrow); }
+    .label { font-size:18px; fill:#526570; paint-order:stroke; stroke:#fafaf8; stroke-width:7; stroke-linejoin:round; }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L9 4.5L0 9Z" fill="#587281"/></marker>
+    <marker id="back" markerWidth="9" markerHeight="9" refX="1" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M9 0L0 4.5L9 9Z" fill="#587281"/></marker>
+  </defs>
+  <text x="40" y="42" class="title">You entrust work to Forge; runs carry it out</text>
+  <text x="40" y="73" class="small">Conceptual flow · existing mechanisms plus unfinished integration · no permanent role required</text>
+
+  <rect x="40" y="125" width="330" height="105" rx="9" class="node"/>
+  <text x="62" y="161" class="name">Your personal aforge</text>
+  <text x="62" y="195" class="small">My App · Marketing · Travel · …</text>
+  <path d="M205 230V293" class="edge"/>
+  <text x="225" y="266" class="label">focus on one folder</text>
+
+  <rect x="470" y="112" width="400" height="80" rx="9" class="node"/>
+  <text x="490" y="145" class="name">You ask Forge</text>
+  <text x="490" y="175" class="small">“Keep My App’s production healthy”</text>
+  <path d="M670 192V218" class="edge"/>
+  <rect x="470" y="220" width="400" height="60" rx="9" class="node"/>
+  <text x="670" y="258" text-anchor="middle">Source conversation</text>
+  <path d="M670 280V318" class="edge"/>
+  <text x="688" y="307" class="label">retains the request</text>
+
+  <rect x="40" y="295" width="330" height="85" rx="9" class="node"/>
+  <text x="62" y="330" class="name">My App folder</text>
+  <text x="62" y="359" class="small">A place to find and resume work</text>
+  <path d="M370 348H468" class="edge"/>
+  <text x="420" y="337" text-anchor="middle" class="label">organizes</text>
+
+  <rect x="470" y="320" width="400" height="175" rx="9" class="work"/>
+  <text x="492" y="354" class="small">ONGOING WORK</text>
+  <text x="492" y="390" class="name">Keep production healthy</text>
+  <text x="492" y="428">purpose · target · wake conditions</text>
+  <text x="492" y="463">allowed actions · limits · state</text>
+  <text x="470" y="525" class="small">This remains when an individual run ends.</text>
+
+  <path d="M205 380V433" class="edge"/>
+  <rect x="40" y="435" width="330" height="155" rx="9" class="node"/>
+  <text x="62" y="472" class="name">Related records</text>
+  <text x="62" y="507">Deployment URL and release</text>
+  <text x="62" y="540">Relevant decisions and limits</text>
+  <text x="62" y="572">Launch work and other sources</text>
+  <path d="M370 482H420V447H468" class="edge"/>
+  <text x="420" y="420" text-anchor="middle" class="label">context*</text>
+
+  <rect x="990" y="220" width="370" height="60" rx="9" class="node"/>
+  <text x="1175" y="258" text-anchor="middle">Schedule / health signal</text>
+  <path d="M1175 280V318" class="edge"/>
+  <rect x="990" y="320" width="370" height="100" rx="9" class="node"/>
+  <text x="1012" y="358" class="name">Agent execution</text>
+  <text x="1012" y="392">One run, or cooperating runs*</text>
+  <path d="M870 367H988" class="edge"/>
+  <text x="930" y="355" text-anchor="middle" class="label">carries out</text>
+  <path d="M1175 420V478" class="edge"/>
+  <text x="1195" y="451" class="label">uses</text>
+
+  <rect x="990" y="480" width="370" height="110" rx="9" class="node"/>
+  <text x="1012" y="515" class="name">Tools and connected systems</text>
+  <text x="1012" y="546" class="small">Health checks · logs · code</text>
+  <text x="1012" y="575" class="small">Hosting provider · deployment access</text>
+  <path d="M1175 594V663" class="both"/>
+  <text x="1194" y="632" class="label">observe / act</text>
+
+  <rect x="990" y="665" width="370" height="80" rx="9" class="node"/>
+  <text x="1012" y="697" class="name">Deployed My App</text>
+  <text x="1012" y="729" class="small">Runs on its hosting provider</text>
+
+  <path d="M670 543V663" class="edge"/>
+  <text x="688" y="607" class="label">keeps its history</text>
+  <rect x="470" y="665" width="400" height="80" rx="9" class="work"/>
+  <text x="492" y="699" class="name">Checks, fixes and history</text>
+  <text x="492" y="730">Current outcome + evidence</text>
+  <path d="M990 553H936V705H872" class="edge"/>
+  <text x="943" y="617" class="label" transform="rotate(-90 943 617)">results</text>
+
+  <text x="40" y="639" class="small">A folder can reference the same work</text>
+  <text x="40" y="668" class="small">from another useful place.</text>
+  <text x="40" y="710" class="small">A relation does not itself start work</text>
+  <text x="40" y="739" class="small">or grant permission.</text>
+
+  <text x="40" y="805" class="name">Ways to see the same records</text>
+  <rect x="40" y="825" width="410" height="106" rx="8" class="view"/>
+  <text x="60" y="858">Home / work overview</text>
+  <text x="60" y="888" class="small">Active work, recent changes, your call</text>
+  <text x="60" y="915" class="small">Existing basics; richer view still to design</text>
+  <rect x="475" y="825" width="410" height="106" rx="8" class="view"/>
+  <text x="495" y="858">Folder views</text>
+  <text x="495" y="888" class="small">Chats, ongoing work, outputs and sources</text>
+  <text x="495" y="915" class="small">New logical-folder integration pending</text>
+  <rect x="910" y="825" width="450" height="106" rx="8" class="view"/>
+  <text x="930" y="858">Relationship map — proposed</text>
+  <text x="930" y="888" class="small">Zoom into work and relevant connections</text>
+  <text x="930" y="915" class="small">Optional view; not a separate source of truth</text>
+  <text x="40" y="967" class="small">*New shared context in scheduled runs and live cross-chat consultation still need integration.</text>
+</svg>

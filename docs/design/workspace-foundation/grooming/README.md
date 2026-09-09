@@ -27,6 +27,12 @@ services, or a claim that every shown path works today.
 records the current implementation checkpoint and groups the remaining product
 and engineering questions without introducing a new delivery roadmap.
 
+[Information structure](INFORMATION-GRAPH.md) and [the small graph](INFORMATION-GRAPH.svg)
+address the latest question: what records and relationships accumulate, and what
+zooming into learned information would expose. This is a conceptual model, not a
+claim of an implemented universal knowledge graph. The earlier [year-one study](YEAR-ONE.md)
+is retained as history; the person found its large boxes unhelpful.
+
 [Expectation probes](EXPECTATIONS.md) records the user-requested reusable
 multi-model experiment, its evidence limits and the navigation hypotheses under
 discussion. Synthetic answers expand our questions; they do not settle them.
@@ -63,7 +69,7 @@ PR #662, in `/Users/santoshkumar/af-personal-ai-backend`. It stays unmerged into
 The existing implementation task is **Ideate seamless home chat UX**,
 `01a0839c-a6c1-7a93-94f2-be0e4c528f64`. The current evidence checkpoint is kept in
 [DISCUSSION.md](DISCUSSION.md) and [DEMONSTRATION.md](DEMONSTRATION.md), including
-the unresolved complete-workday regression. Consult those records rather than
+the remaining completion-judgment and behavioral-audit gaps. Consult those records rather than
 interpreting an earlier bounded pass as proof of the whole product.
 
 Its first wave owns collections, resolved owner state, explicit sourced context,
