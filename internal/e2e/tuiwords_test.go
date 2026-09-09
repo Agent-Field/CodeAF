@@ -607,6 +607,13 @@ var tuiWords = map[string]tuiWord{
 			"the word and nothing else, so this is how the suite tells the column's row from the card's head " +
 			"whichever side of the frame the column is on",
 	},
+	"welcomeStarterKeysWord": {
+		screen: "\u2191\u2193 choose \u00b7 enter fills the box \u00b7 or just type",
+		why: "the greeting's own foot, and the door this suite has to recognise: a conversation nobody has " +
+			"typed in yet stands on its starting points (internal/tui3's welcome.go), and on the machine's " +
+			"FIRST conversation it stands through typing. A subtest that waits only for the home foot or the " +
+			"landing keys is waiting for a row this screen is covering",
+	},
 	"setupSkipWord": {
 		screen: "esc skips setup",
 		why: "the setup's own foot, on EVERY step of it. A state root built a minute ago opens on the setup " +

@@ -450,7 +450,8 @@ func statesPastTheDoor(t *testing.T, r *rig) {
 	r.skipSetup(t)
 	r.waitForAny(25*time.Second,
 		say(t, "homeFootWord"), say(t, "starterTaskWord"), say(t, "setupTitleWord"),
-		say(t, "setupSkipWord"), say(t, "landingKeysWord"), say(t, "taskLookWord"))
+		say(t, "setupSkipWord"), say(t, "landingKeysWord"), say(t, "taskLookWord"),
+		say(t, "welcomeStarterKeysWord"))
 }
 
 // statesAnswerKey presses one of the card's letters and waits for what it

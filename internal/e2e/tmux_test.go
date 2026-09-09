@@ -32,6 +32,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/config"
 )
 
 // pollEvery is how often waitFor reads the screen. It is a quarter second
@@ -115,6 +117,16 @@ func newHome(t *testing.T, overrides map[string]any) string {
 	// The model this suite is about, and the gate posture every scenario but
 	// the consent one wants.
 	rows["model.talk"] = "deepseek/deepseek-v4-flash"
+	// AND THE MARKS ARE PINNED TO THE PLAIN TIER, for the same reason
+	// [newWorld] pins them: tokens.DetectGlyphSet turns the nerd-font tier ON
+	// for any terminal it cannot veto, and tmux under TERM=xterm-256color is
+	// none of the three it vetoes — so a landing head that the vocabulary
+	// spells `✓` comes back off capture-pane as U+F00C, a private-use byte no
+	// needle in tuiwords_test.go could honestly pin and nobody reading this
+	// suite would recognise. The plain floor is a designed tier rather than a
+	// degradation, a person reaches it by choosing `plain` in the same Display
+	// row, and it is the one this suite asserts against.
+	rows[config.KeyIcons] = config.IconsPlain
 	if _, ok := rows["tools.approvalMode"]; !ok {
 		rows["tools.approvalMode"] = "allow"
 	}
