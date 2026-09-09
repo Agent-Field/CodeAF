@@ -165,6 +165,10 @@ var tuiWords = map[string]tuiWord{
 		screen: "→ verbs",
 		why:    "the card's last line, which names the key and the words and never the letters",
 	},
+	"homeHereWord": {
+		screen: "here",
+		why:    "the narrow home card keeps the current conversation door beside its address",
+	},
 	"homeFactsActive": {
 		screen: "last active ",
 		why:    "the card's facts line — the arithmetic that survived the sixteen bands becoming five",
