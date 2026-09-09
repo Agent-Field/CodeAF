@@ -44,3 +44,21 @@ Outstanding is unchanged: the harness lane is actively measuring and must not
 be contended with. Review and integrate only its finished committed history,
 then run the single frozen uncached combined validation. The target-merge hold
 remains active, and `reports/READY` remains absent.
+
+## Pass 3 checkpoint
+
+- Steering revision 02 supersedes the temporary merge hold. The room/timer
+  integration is now on the target at
+  `b252108d67a2f385a530367f9e22419ca4d37440`, preserving `6fa88e027`.
+- The feature branch reconciled that exact target normally at merge commit
+  `d6e970ac89b0738d93b7f4c1749d0a751a9128a5`. The focused report package and
+  all 331 current unreleased change entries pass on the combined source.
+- The harness lane still reports `running`; its worktree contains uncommitted
+  profiling/driver work, so there is no finished history to review or integrate
+  yet. No competing heavy suite was started.
+- `reports/READY` and `reports/QUALITY_READY` remain absent. They are permitted
+  only after measured harness improvement, correctness gates, target merge,
+  and verified target ancestry.
+
+Outstanding: wait for a committed harness result, review and integrate it, then
+run the one frozen combined validation and protected merge.
