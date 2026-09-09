@@ -161,6 +161,19 @@ func liveWorkRuns(d deck) map[int]liveWork {
 			step++
 		}
 		w := liveWork{key: liveWorkKey(d), turn: d.runningTurn, start: lo, end: hi, steps: d.captions[from:step], pending: hi == len(es)}
+		// A response can narrate its next action before its first tool byte
+		// arrives. Keep that text in the same compact window immediately; the
+		// full words remain behind disclosure until its answer is confirmed.
+		for at := lo; at < hi; at++ {
+			e := es[at]
+			if e.kind != entryAssistant || !e.provisional || e.settled {
+				continue
+			}
+			w.steps = append(append([]caption(nil), w.steps...), caption{
+				start: at, head: at, end: at + 1, source: captionSaid,
+				text: captionWords(e.revealed()), began: e.began,
+			})
+		}
 		for _, c := range w.steps {
 			if c.ended.IsZero() {
 				w.pending = false
@@ -248,8 +261,8 @@ func liveWorkKeepsRow(e *entry) bool {
 		// NARRATION IS THE STEP TITLE ITSELF — its first line is lifted into the
 		// caption this block draws (hierarchy.go's [stampCaptions]), so covering it
 		// hides nothing the window is not already saying. THE ANSWER IS NEVER
-		// COVERED: the trailing block of a running turn is provisionally the answer
-		// (hierarchy.go), which is the thing the person is waiting for.
+		// COVERED: a confirmed tool-free response is the answer. Unclassified
+		// streamed prose stays compact until that response boundary arrives.
 		return !e.demoted
 	}
 	// EVERYTHING ELSE STANDS. The person's own words and their corrections, a

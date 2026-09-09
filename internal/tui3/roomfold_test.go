@@ -307,12 +307,12 @@ func TestARunningRoomStillReadsByPhaseAndKeepsItsFrontier(t *testing.T) {
 	if n := strings.Count(page, "▸ worked"); n != 2 {
 		t.Fatalf("want a chip per settled phase behind the frontier, got %d:\n%s", n, page)
 	}
-	if !strings.Contains(page, "Still working.") || strings.Contains(page, "bash") {
+	if !strings.Contains(page, "Still working") || strings.Contains(page, "bash") {
 		t.Fatalf("compact frontier lost prose or exposed the call:\n%s", page)
 	}
 	openRoomCompactWork(t, a)
 	page = readingPage(a)
-	for _, want := range []string{"Still working.", "bash"} {
+	for _, want := range []string{"Still working", "bash"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("opened frontier lost %q:\n%s", want, page)
 		}

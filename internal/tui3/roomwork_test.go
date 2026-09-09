@@ -150,7 +150,7 @@ func TestARunningRoomFoldsThePastAndOffersCompactFrontier(t *testing.T) {
 	if !strings.Contains(page, "▸ worked") {
 		t.Fatalf("a running node's settled phases did not fold:\n%s", page)
 	}
-	if !strings.Contains(page, "Still working.") {
+	if !strings.Contains(page, "Still working") {
 		t.Fatalf("the room lost its live edge:\n%s", page)
 	}
 	if strings.Contains(page, "bash") {

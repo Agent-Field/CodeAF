@@ -224,6 +224,10 @@ func (s toolState) live() bool { return s == toolQueued || s == toolConsent || s
 // renders when its own content or the width changes, and a frame joins what is
 // already there. Nothing in here holds a blank row — spacing is [app.layout]'s
 // and only [app.layout]'s.
+// A shared response identity keeps interleaved content fragments together.
+// The nonzero-sized value ensures separate responses have distinct addresses.
+type responseConfirmation struct{ done bool }
+
 type entry struct {
 	kind entryKind
 	text string
@@ -449,9 +453,9 @@ type entry struct {
 	// (hierarchy.go states the law and [stampHierarchy] writes this field).
 	//
 	// It is DERIVED and never authored: a block is narration exactly when more
-	// work opened after it inside the same turn, which is a fact about the entry
-	// list's shape and about nothing else. So it is re-derived on every layout
-	// from the list itself — a resumed conversation, a rewound one and the live
+	// work opened after it inside the same turn, or its streaming response is
+	// not yet classified. Those facts come from entries and response boundaries.
+	// It is re-derived on every layout from the list itself — a resumed conversation, a rewound one and the live
 	// one all reach the same answer — and stored here only because
 	// [app.renderEntry] paints one block at a time and must not walk the list to
 	// find out which kind of block it is holding.
@@ -462,6 +466,12 @@ type entry struct {
 	// would keep them ([app.entryRows] hands back the cache unless [entry.stale]
 	// says otherwise).
 	demoted bool
+	// Provisional prose has arrived, but the response has not yet confirmed
+	// whether it ends in an answer or a tool call. It stays in the work view.
+	provisional bool
+	// A confirmed reply may be followed by reasoning from that same response.
+	// Settled private blocks must not turn that confirmed reply back into work.
+	confirmed *responseConfirmation
 	// capHead says this demoted block lent its first line to the step heading,
 	// and capCut is the byte immediately after that line. Both are derived with
 	// the hierarchy and invalidate the block when they move.
@@ -5121,6 +5131,9 @@ func (a *app) sampleContext() {
 // the list: the walk runs from the end and stops at the first entry belonging to
 // an older one. Once per turn, never on a frame (PERF.md).
 func (a *app) settleTurn() {
+	// Settlement changes the hierarchy even before the next layout, including
+	// for older engines that do not publish a response confirmation event.
+	defer func() { stampHierarchy(a.entries, a.deckFolds(a.conversation())) }()
 	a.closeLive()
 	// AND THE BOUNDARY IS REMEMBERED, so that a delta arriving after it knows it
 	// is late ([feed.settledTurn], [feed.say]). Stating the boundary is

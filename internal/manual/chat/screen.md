@@ -1356,7 +1356,7 @@ status line's `working` word and the elapsed clock are what to read for it.
 
 ## Markdown while a reply is still arriving
 
-The live tail of a streaming answer is plain wrapped text, not markdown.
+Within expanded work, the live tail of streaming prose is plain wrapped text, not markdown.
 
 Every **1500ms** the settled prefix — everything up to the last newline — is promoted to
 rendered markdown and remembered as promoted. Formatting catches up as the answer
@@ -3545,3 +3545,20 @@ A finished or stopped design task shows its saved report when there are no
 conversation messages to display. An older progress notice cannot hide that
 answer. While work is still running, the task continues to show its current
 progress and original prompt as they become available.
+
+## Why progress stays compact until the answer is confirmed
+
+While a response streams, its prose stays in the compact work area as a short
+step heading. The same text channel can contain a lead-in to a tool call or the
+answer itself, so the screen does not guess from the wording. Click the work or
+press `ctrl+e` to inspect the complete words while they arrive.
+
+When the response finishes with an answer and no tool calls, the full reply opens
+as formatted text. Questions open at that same boundary, before later completion
+checks finish. This means full answers no longer appear at full size token by
+token in the compact view. A response that calls a tool stays a step. If work
+continues later, earlier prose returns to the work hierarchy.
+
+The same behavior applies inside task rooms. Saved answers remain readable when
+you return, and completion still collapses the intermediate work. Explicitly
+expanded work and `ui.work = open` keep the detailed reading view available.

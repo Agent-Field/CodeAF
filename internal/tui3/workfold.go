@@ -365,6 +365,11 @@ func workEntry(es []entry, folds map[int]workfold, i int) bool {
 	if e.kind != entryAssistant {
 		return false
 	}
+	// Streaming content can still be a preamble to an upcoming tool. The
+	// response boundary confirms it before the answer receives full emphasis.
+	if e.provisional && !e.settled {
+		return true
+	}
 	// AN INTERRUPTED TURN PROMOTES NOTHING (hierarchy.go). It is asked first and
 	// asked of the block because turn and phase folds certify their endpoints
 	// differently, and this law is independent of the lens:
@@ -405,6 +410,14 @@ func workEntry(es []entry, folds map[int]workfold, i int) bool {
 	for at := i + 1; at < len(es) && es[at].turn == e.turn; at++ {
 		if groupBreaks(&es[at]) {
 			return false
+		}
+		if e.confirmed != nil && e.confirmed.done {
+			if es[at].kind == entryThinking && es[at].settled {
+				continue
+			}
+			if es[at].kind == entryAssistant && es[at].confirmed == e.confirmed {
+				continue
+			}
 		}
 		if es[at].kind != entryDivider && es[at].kind != entryNote && !entryWithdrawn(&es[at]) {
 			return true

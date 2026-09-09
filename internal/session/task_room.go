@@ -1065,10 +1065,11 @@ func (r *taskRoom) close() {
 // ── WHERE THE LINE IS DRAWN, AND WHY IT IS DRAWN THERE ──
 //
 // The boundary is loop.go's own, not a guess about it. A response is recorded
-// the moment it completes: with no tool calls it is recorded and the turn ends,
-// and with tool calls it is recorded BEFORE the batch runs. EventToolBegin and
-// EventTurnDone are therefore each the first event after a journal write, and
-// both clear everything kept here — what they closed is on disk now.
+// the moment it completes: with no tool calls it is recorded before
+// EventAssistantDone, and with tool calls it is recorded BEFORE the batch runs.
+// EventAssistantDone and EventToolBegin are therefore each the first event after
+// a journal write, and both clear everything kept here — what they closed is on
+// disk now. EventTurnDone remains a final guard for turns that ended elsewhere.
 //
 // It is the same fact that keeps a BEGUN call out of the catch-up. The assistant
 // message naming it was written before it started, so the journal has the call
@@ -1101,12 +1102,13 @@ func (c *taskCatchup) record(event Event) {
 		c.answer.WriteString(event.Text)
 	case EventToolAnnounced:
 		c.announced = append(c.announced, event)
-	case EventToolBegin, EventTurnDone, EventError:
-		// THE STEP IS ON DISK NOW. The begins of a batch are emitted together,
-		// after the assistant message that made every one of them was recorded
-		// (loop.go), so the first of them settles the whole of what is kept here —
-		// which is why nothing has to be dropped call by call, and why nothing in
-		// here needs an id that EventToolBegin does not carry.
+	case EventAssistantDone, EventToolBegin, EventTurnDone, EventError:
+		// THE STEP IS ON DISK NOW. EventAssistantDone follows a recorded prose
+		// answer; the begins of a batch are emitted together after the assistant
+		// message that made every one of them was recorded (loop.go). The first
+		// boundary therefore settles the whole of what is kept here — which is why
+		// nothing has to be dropped call by call, and why nothing in here needs an
+		// id that EventToolBegin does not carry.
 		c.reset()
 	case EventCompacting:
 		// A COMPACTION PASS RUNS AT A STEP BOUNDARY, and it is the one boundary

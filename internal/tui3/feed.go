@@ -236,6 +236,9 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 	case session.EventTextDelta:
 		f.sayStream(ev.Text, lump)
 
+	case session.EventAssistantDone:
+		f.confirmResponse()
+
 	case session.EventReasoning:
 		f.reasonStream(ev.Text, lump)
 
@@ -969,7 +972,7 @@ func (f *feed) sayStream(text string, lump bool) {
 		return
 	}
 	if f.live < 0 || f.live >= len(f.entries) || f.entries[f.live].kind != entryAssistant {
-		f.entries = append(f.entries, entry{kind: entryAssistant, turn: f.turn,
+		f.entries = append(f.entries, entry{kind: entryAssistant, turn: f.turn, provisional: true, began: f.now(),
 			replyTags: append([]session.TaskReplyTag(nil), f.pendingReplyTags...)})
 		f.pendingReplyTags = nil
 		f.live = len(f.entries) - 1
@@ -1193,6 +1196,20 @@ func (f *feed) noteWritten(text string, block bool, facts []string) {
 // because a room that had three of the four would be a room drawing an attempt
 // that never ran — which is exactly what a room did, by having none of them.
 func (f *feed) retry(ev session.Event) {
+	// A retry ends the attempt, including any text closed by interleaved
+	// reasoning. A later confirmation must not adopt those discarded words.
+	for i := len(f.entries) - 1; i >= 0 && f.entries[i].turn == f.turn; i-- {
+		e := &f.entries[i]
+		if (e.kind == entryTool && e.status != toolForming) || groupBreaks(e) || e.kind == entryCompact {
+			break
+		}
+		if e.kind == entryAssistant {
+			if !e.provisional {
+				break
+			}
+			e.provisional, e.text, e.stale = false, "", true
+		}
+	}
 	f.dropLive()
 	f.dropRetryingFormingTools()
 	f.resolveUnfinished()
@@ -1255,6 +1272,35 @@ func (f *feed) dropRetryingFormingTools() {
 			continue
 		}
 		f.entries[i] = entry{kind: entryAssistant, turn: f.turn, stale: true}
+	}
+	f.touch()
+}
+
+// A provider may end with private reasoning after its last visible words. Walk
+// only this response's tail so confirmation still reaches those words without
+// promoting a tool preamble or another exchange's answer.
+func (f *feed) confirmResponse() {
+	confirmation := &responseConfirmation{done: true}
+	for i := len(f.entries) - 1; i >= 0; i-- {
+		e := &f.entries[i]
+		if e.turn != f.turn || groupBreaks(e) || e.kind == entryTool || e.kind == entryCompact {
+			break
+		}
+		if e.kind != entryAssistant {
+			continue
+		}
+		// A previous response or a discarded attempt cannot become part of
+		// this answer merely because no tool separated the two requests.
+		if !e.provisional || e.confirmed != nil {
+			break
+		}
+		e.provisional, e.confirmed = false, confirmation
+		if f.live == i {
+			f.closeLive()
+		} else {
+			settleBlock(e)
+		}
+		e.demoted = workEntry(f.entries, nil, i)
 	}
 	f.touch()
 }
