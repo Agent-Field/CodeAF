@@ -46,7 +46,9 @@ import (
 // itself is deliberately left alone: this package draws `~` in front of paths
 // and those readings are about the real one.
 func TestMain(m *testing.M) {
+	startCmdProfile()
 	code := runTests(m)
+	writeCmdProfile()
 	// EVERY DROPPED COMMAND LEAVES A GOROUTINE PARKED on a channel nobody will
 	// write to, so the count at the end is the running total of what the harness
 	// gave up on — the measure that took #399 from a guess to a number. It is
@@ -278,10 +280,36 @@ func settleLevels(a *app, ids ...string) {
 	}
 }
 
+// The driver is per call rather than per app, so a command one [drive] started
+// is finished with — answered or dropped — before that call returns, and a test
+// that asserts between two calls is looking at the same surface it always was.
+// What overlaps is the waiting INSIDE one call; nothing is carried across the
+// boundary a test can see (harnessdriver_test.go states the law).
 func drive(t *testing.T, a *app, msgs ...tea.Msg) {
 	t.Helper()
+	started := time.Now()
+	defer func() { noteTopLevel(time.Since(started)) }()
+	d := newHarnessDriver()
+	d.app = a
 	queue := append([]tea.Msg(nil), msgs...)
-	for steps := 0; len(queue) > 0; steps++ {
+	// The two counters are the same guard against a surface that will not settle,
+	// kept apart because they count different things: `steps` is messages fed in,
+	// which is what the guard always counted, and `waits` is times the harness
+	// stood waiting for commands with nothing else to do. Folding the second into
+	// the first would make a long-but-finite drive trip the guard for waiting.
+	steps, waits := 0, 0
+	for len(queue) > 0 || d.busy() {
+		if len(queue) == 0 {
+			// Nothing left to feed the surface and something still running: wait
+			// for all of it at once, which is where the time is saved.
+			waits++
+			if waits > 500 {
+				t.Fatal("the surface did not settle")
+			}
+			queue = append(queue, unclocked(a, d.settle())...)
+			continue
+		}
+		steps++
 		if steps > 500 {
 			t.Fatal("the surface did not settle")
 		}
@@ -289,40 +317,43 @@ func drive(t *testing.T, a *app, msgs ...tea.Msg) {
 		queue = queue[1:]
 		model, cmd := a.Update(msg)
 		a = model.(*app)
-		for _, produced := range runCmd(cmd) {
-			if _, clock := produced.(frameMsg); clock {
-				a.painting = false // let the next mutation ask for a tick again
-				continue
-			}
-			queue = append(queue, produced)
-		}
+		d.app = a
+		queue = append(queue, unclocked(a, d.run(cmd))...)
+		// And anything a command started earlier has answered in the meantime.
+		queue = append(queue, unclocked(a, d.collect())...)
 	}
 }
 
-// runCmd executes one command within a budget and flattens a batch.
-func runCmd(cmd tea.Cmd) []tea.Msg {
-	if cmd == nil {
-		return nil
-	}
-	done := make(chan tea.Msg, 1)
-	go func() { done <- cmd() }()
-	select {
-	case msg := <-done:
-		switch produced := msg.(type) {
-		case nil:
-			return nil
-		case tea.BatchMsg:
-			var out []tea.Msg
-			for _, one := range produced {
-				out = append(out, runCmd(one)...)
-			}
-			return out
-		default:
-			return []tea.Msg{produced}
+// unclocked spends the paint clock's own message and hands back the rest. The
+// tick fires every 33ms for as long as a turn is running, so a harness that
+// queued it would never reach the end of the queue; clearing `painting` is what
+// lets the next mutation ask for a tick again, exactly as the program loop's
+// own frame would have.
+func unclocked(a *app, msgs []tea.Msg) []tea.Msg {
+	kept := msgs[:0]
+	for _, msg := range msgs {
+		if _, clock := msg.(frameMsg); clock {
+			a.painting = false
+			continue
 		}
-	case <-time.After(budgetFor(cmd)):
-		return nil
+		kept = append(kept, msg)
 	}
+	return kept
+}
+
+// runCmd executes one command within a budget and flattens a batch. It is what
+// a test calls when it wants one command's messages and nothing else; [drive] is
+// the loop. The two share a driver, so a batch of waiters costs one budget here
+// as well.
+func runCmd(cmd tea.Cmd) []tea.Msg {
+	started := time.Now()
+	defer func() { noteTopLevel(time.Since(started)) }()
+	d := newHarnessDriver()
+	out := d.run(cmd)
+	for d.busy() {
+		out = append(out, d.settle()...)
+	}
+	return out
 }
 
 // THE LAW: A HARNESS PAYS NOTHING FOR A TICK THAT CANNOT REACH IT, AND IT KNOWS
@@ -349,10 +380,16 @@ func runCmd(cmd tea.Cmd) []tea.Msg {
 // about the scheduler, not about the code, and this suite runs beside others on
 // a loaded machine. A budget tuned to that claim turns a delivered event into a
 // drop the day the box is busy, which is a load-shaped red on dev for nobody's
-// change: the exact failure #399 exists to remove. The waiters are named here so
-// that the seam which will remove the guessing — fakes that own and close their
-// own channels, so a waiter ENDS rather than parks — has one place to work from,
-// and so that a new waiter cannot be added without meeting this note.
+// change: the exact failure #399 exists to remove.
+//
+// AND THE SEAM THE WAITERS ARE NAMED FOR IS BUILT: harnessdriver_test.go. It
+// does not shorten anything. It takes the wait out of the COUNT instead — the
+// named waiters are started and left running while the harness gets on with the
+// next message, so a call that parks five of them pays one budget rather than
+// five, and each of the five still has the whole of its own. That is why the
+// table below must stay complete: a waiter missing from it is one the harness
+// goes on waiting for on its own, and the package gets slower by 150ms a call
+// with nothing failing.
 //
 // WHAT IS CHEAPENED IS THE TICK, where the question needs no scheduler at all. A
 // tick is a real timer, so the surface's own constants decide it: the shortest
@@ -381,11 +418,15 @@ const teaTickSymbol = "charm.land/bubbletea/v2.Tick.func1"
 // parks on a channel a test's fakes usually never write to and never close.
 //
 // IT DOES NOT PRICE ANYTHING — see the note above [cmdBudget] for why shortening
-// a waiter's budget is a bet on the scheduler. It is the enumeration the fix
-// after this one works from: when the fakes own and close their channels, these
-// are the commands that stop parking, and this list is how that change knows it
-// has covered them all. [TestTheHarnessKnowsEveryCommandThatCannotAnswer] holds
-// it to the surface's own source so it cannot rot in the meantime.
+// a waiter's budget is a bet on the scheduler. WHAT IT DOES IS SAY WHICH
+// COMMANDS MAY RUN BESIDE EACH OTHER: harnessdriver_test.go's [overlappable]
+// reads this table, and a name on it is a command the harness will start and
+// leave running rather than stand over. Two tests hold it in place —
+// [TestTheHarnessKnowsEveryCommandThatCannotAnswer] against the surface's own
+// source, so a new waiter cannot be added without landing here, and
+// [TestTheHarnessOverlapsEveryWaiterItNames] against real built commands, so a
+// name here that the runtime spells differently is caught rather than quietly
+// paying the old price.
 var blockingCommands = []string{
 	"pumpShaping",
 	"waitDesign",
