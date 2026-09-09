@@ -63,8 +63,10 @@ on the tray above the message box, and it goes with the next thing you send.
 /attach                     the browser, so you can find the file and look at it first
 ```
 
-**With nothing after it, `/attach` opens a browser.** It is the same sheet `/folder` opens,
-standing in the folder this conversation is about: the subdirectories and then the files
+**With nothing after it, `/attach` opens the add context sheet.** It is the same framed
+window `/folder` opens, in the same place and already browsing — the conversation stays
+visible behind it, dimmed, and does not answer a click while it is up. It stands in the
+folder this conversation is about: the subdirectories and then the files
 with their sizes, and a preview of whatever the cursor is on — source with syntax colour, a
 picture drawn in the terminal's own cells, a PDF's text. Moving the cursor shows you a file;
 it does not attach it. `alt+m` chooses one, or several, and the last row of the sheet says
@@ -400,7 +402,7 @@ sending. The last means this connection was opened without a door for files; you
 were **not** sent and your tray is still yours.
 
 **A bare `/attach` is not on this list any more.** It used to answer
-`/attach takes a path · try /attach server.log`; it now opens the context browser on the
+`/attach takes a path · try /attach server.log`; it now opens the add context sheet on the
 folder this conversation is standing in, so you can find the file rather than being told to
 know its path. See "Choosing a folder".
 

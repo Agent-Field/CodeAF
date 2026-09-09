@@ -454,7 +454,15 @@ func (f *folderPick) rank() {
 	// box ([folderPick.browseHold]), which is what makes the two agree without
 	// either of them being a claim about the other.
 	if typed := strings.TrimSpace(f.filter.String()); typed == "" {
-		if f.browsing {
+		// AN EMPTY BOX MEANS "WHEREVER THE COLUMNS ARE", and that is true whether
+		// the columns are what is on screen or what a search is standing in front
+		// of: clearing the box after a search puts a person back where they were
+		// browsing rather than leaving them on a list of everything. `f.cols.dir`
+		// is set the moment the sheet opens anywhere ([app.openContextPick]), so
+		// the only state with no columns behind it is a sheet that has never been
+		// pointed at a directory at all.
+		if f.cols.dir != "" {
+			f.browsing = true
 			return
 		}
 	} else {
