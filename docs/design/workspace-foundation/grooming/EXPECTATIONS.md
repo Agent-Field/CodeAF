@@ -169,6 +169,43 @@ discovery alternatives and a reasoned recommendation to the person. Once behavio
 is clear, tick only that contract and examine explicit folder/subtree rules versus
 trip-specific rules, including corrections that must persist across later work.
 
+## Third run: explicit scope, exceptions and remembered corrections
+
+After C15 was accepted, the user requested the next simulation and a return to the
+whole diagram. Round 3 used five models, three cases and two open wordings, with
+30 total attempts and a $0.75 ceiling. It returned 28 schema-compliant answers,
+one API rejection and one schema failure. Reported cost is $0.054263774 across
+29 receipts; one rejected call has no cost receipt. Conservative reservation was
+$0.203497992. Four offline tests and the complete receipt audit passed.
+
+[Round 3 results](/Users/santoshkumar/aforge-expectation-probe-20260909/round3/RESULTS.md)
+retain the exact configuration, responses, dissent and model/mode coverage. Both
+prompts were open, but the scenarios explicitly supplied an unresolved move policy;
+that uncertainty was not independently discovered. Some answers manufacture doubt
+about clear statements or mistake compatible instructions for conflicts.
+
+Proposals to discuss, not yet new confirmed behavior:
+
+- “Travel and its subfolders: $2000” plus “this conference trip: $2600” means the
+  local exception changes this trip only. A later correction follows its actual
+  wording; neither newest-wins nor most-specific-wins is a complete universal
+  policy. Keep compatible guidance: formal can still be concise.
+- Reprocessing unchanged history must not recreate a corrected inferred relation.
+  A later explicit request to use that itinerary as a reference for different work
+  provides new, purpose-specific relevance without changing the holiday's purpose.
+- Actual moves and references differ. For rules expressly tied to current folder
+  membership, our proposed behavior is to recalculate future applicable direction
+  after a move, preserve existing drafts/history and item-specific instructions,
+  and make changed scope understandable. An inherited-at-creation rule that follows
+  the work is an alternative; this contract remains to confirm.
+
+The [diagram checkpoint](DISCUSSION.md#return-to-diagram-checkpoint-after-c15)
+separates agreed product behavior, partial implementation evidence and full-journey
+gaps. Topics 1/2 are not wholly done. After confirming these scope transitions, the
+next demonstration must carry a correction through applicable context, affected
+work, the resulting artifact and the person's view, without asserting automatic
+activation or peer coordination until their actual paths are tested.
+
 ## Complementary human research
 
 [Stuff I've Seen (Dumais et al., SIGIR 2003)](https://www.microsoft.com/en-us/research/publication/stuff-ive-seen-a-system-for-personal-information-retrieval-and-re-use/)

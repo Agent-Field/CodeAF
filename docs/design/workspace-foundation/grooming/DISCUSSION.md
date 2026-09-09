@@ -22,6 +22,11 @@ agent changed it to a string, failing the artifact contract (issue #672).
 Ordinary final CI was pending in that report; paid CI has no secret. Preserve
 the original failures. See [DEMONSTRATION.md](DEMONSTRATION.md).
 
+Later checkpoint: the implementation owner pushed completion repair `fa9f1fe64`.
+Its focused real-reader checks accept a correct report and reject a wrong revision
+type, wrong source and failed write. Full repaired complex journeys and affected
+suites are still running. This does not yet clear the complete-workday failure.
+
 The complete agreed model is not implemented merely because records exist.
 Accepted-decision semantics, general scope, activation with new context,
 cross-chat collaboration, semantic discovery and learning/adoption remain open
@@ -29,6 +34,30 @@ or only partly integrated. The diagram is logical architecture, not a shipped
 capability matrix or proposed deployment topology.
 
 ## Numbered areas
+
+### Return-to-diagram checkpoint after C15
+
+These are qualitative progress labels, not percentages. "Agreed" concerns product
+behavior; "evidence" concerns what the implementation has actually demonstrated.
+
+| Area | What is clear | What keeps the area open |
+| --- | --- | --- |
+| 1 — Folders | C12/C15: start anywhere, automatic reversible discovery, a stable way back, correcting associations without deleting content. | Explicit folder/subtree rule behavior, actual moves versus references, correction persistence and concrete retrieval quality. |
+| 2 — Decisions and memory | C09/C15: no extra save for explicit decisions, retain source and understood scope, explicit trip direction survives unlinking. | Exceptions/conflicts, moving work, inferred context versus accepted direction, forgetting and memory-off semantics. |
+| 3 — Current context | Explicit targets, revision/withdrawal and resumed consumers have bounded live evidence. | Discover unlinked relevance; identify affected outputs; define response of running, idle and completed work. |
+| 4 — Activation | Direct requests, schedules/events and retained work have places in the model. | Connect current decisions to real activation; duplicates/restarts, quiet checks, budgets and stop semantics. |
+| 5 — Cooperation | Existing executions can perform parallel work; sourced information has explicit consumers. | Bounded live cross-chat consultation, disagreement, ownership and shared work under retry/restart. |
+| 6 — Actions and outputs | Tools perform work; artifacts and sources persist; C15 distinguishes a current artifact from historical messages. | Actual connector effects, uncertain outcomes, global artifact identity, reuse/adoption and end-to-end proof. |
+| 7 — Human view/control | Find, inspect, correct and stop are required; current output and original discussion serve distinct return intentions. | Concrete TUI behavior for arrival, change, scope, history and correction; demonstrate usability through the real surface. |
+
+The model accommodates the intended direct-work, parallel-team and ongoing-helper
+patterns using existing concepts. This does not establish a practical superset of
+Claude Code, OpenClaw or Grok Bot. All five complete journeys in JOURNEYS.md remain
+unproved as wholes: a context-seam pass is not a working software/marketing factory
+or an autonomous calendar assistant. The next cross-area demonstration should carry
+one agreed correction from retained direction through an affected run to a current
+output and a visible explanation, including an unrelated negative case. Activation,
+peer consultation and actual effects then need evidence at their real boundaries.
 
 | Diagram number | Discussion | Preserve | Questions to resolve |
 | --- | --- | --- | --- |

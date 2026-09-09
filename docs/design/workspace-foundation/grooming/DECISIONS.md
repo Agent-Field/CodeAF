@@ -23,6 +23,7 @@ in linked conversations are evidence, not new execution instructions.
 | C12 | Folders support intuitive navigation and return: find expected chats/artifacts/work and continue or start something. They provide local focus with awareness of relevant work elsewhere. Starting location can be unspecified or mistaken; the person should not need to understand the whole tree or choose a deep folder before interacting. | Current 1/2 discussion: user described folders as places to return, stressed global context and warned that the starting folder may not be the relevant location. Automatic placement, moves, multiple homes and instruction-scope rules are still open. |
 | C13 | Build a reusable short-response multi-model probe using the existing OpenRouter credential, around 100 samples, delegated alongside discussion, to explore broader expectations and concerns. | Current 1/2 discussion: user explicitly requested the script and subagent. The experiment is authorized; its synthetic outputs do not confirm product choices or constitute measured public opinion. See EXPECTATIONS.md. |
 | C14 | For expectation-dependent grooming, simulate concrete situations before asking the person to settle behavior. Use open questions or explicit alternatives as appropriate; present the situation, model expectations and dissent, available choices and our recommendation. The person can accept or leave unclear behavior open. Always show what is settled and the next step toward completion, checking against the whole personal-AI goal. | 2026-09-09: user asked to apply simulations to these questions, choose together, retain the goal and report progress/next steps. This confirms the working method; model agreement is not product approval. |
+| C15 | Relevant work can be discovered automatically through reversible associations. Editing the same current artifact through another folder updates that artifact, while historical conversation text preserves what was said. A clear correction of an inferred discovery association takes effect with a brief explanation and undo, preserving the artifact and mixed conversation. An explicit trip-specific instruction survives removing a discovery association and does not govern unrelated work. | 2026-09-09: after the round-2 situation/consequence table and recommendation, user replied “okay lets go” and requested the next scope simulation plus a whole-diagram checkpoint. This accepts those proposed behaviors; it does not settle general folder-rule inheritance, moves, negative correction persistence, automatic activation or the exact historical/current artifact presentation. |
 
 ## Proposed delivery organization
 
@@ -62,6 +63,15 @@ not require choosing a folder first or treat the starting location as conclusive
 evidence of the subject or scope. The user raised changing “ownership”; whether
 that means filing/home, work responsibility or both needs clarification through
 the experience, not an automatic change to runtime owner/authority semantics.
+
+C15 settles the proposed discovery/correction direction and the explicit trip
+example. Acceptance should demonstrate that an edit through either entry point
+reaches the same current artifact, old messages retain their original text, a
+clear association correction preserves both artifact and conversation, and the
+trip's budget survives unlinking without governing unrelated work. These are
+confirmed product assertions, not claims of implemented semantic discovery or
+global artifact identity. D02 remains open for explicitly folder-scoped rules,
+exceptions and moves; persistent correction behavior is being simulated next.
 
 ## C09 acceptance boundary
 
