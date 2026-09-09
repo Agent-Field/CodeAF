@@ -1922,7 +1922,7 @@ it in five minutes.
 
 ## A task that landed needing your look without doing anything — task did nothing, only I can approve this, my task stopped straight away and says it needs a person
 
-Sometimes a task lands needing your look within seconds, having written nothing, spent
+Sometimes a task lands as `your call` within seconds, having written nothing, spent
 almost nothing and touched no files. That is not a failure and nothing went wrong. It means
 what was left of the work is **not work a worker can do**: an approving review only a named
 person may give, a credential or an account nobody here holds, a decision that is yours to
