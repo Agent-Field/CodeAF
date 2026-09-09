@@ -27,6 +27,8 @@ usable and testable through the existing binary while the dashboard remains
 undecided. It does not add new TUI navigation or model tools. A future surface can
 resolve the typed references through existing owners and project their status;
 the current command honestly prints only references, even if a source is offline.
+Listing a fresh home does not initialize a store; `create` does that. Edits to a
+missing collection fail without creating storage as a side effect.
 
 ## Relationships and identity
 
@@ -55,7 +57,9 @@ its root and `--db` selects a different file. Existing modernc SQLite support is
 reused. Essential organization is available without enabling learned memory or
 configuring a model. No existing record format is migrated.
 
-The file is created with owner-only access. Application ID and schema version
+The file is created with owner-only access; SQLite then opens it without its own
+file-creation fallback, so a dangling symlink cannot bypass that provisioning.
+Application ID and schema version
 identify the store; unknown versions, foreign databases and damaged schema fail
 explicitly rather than being reset. Version 1 is the initial schema, not a claim
 that migrations from future versions exist.

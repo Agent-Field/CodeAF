@@ -11,12 +11,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
 
 const schemaVersion = 1
 const applicationID = 0x4146434c // AFCL distinguishes this store from optional memory.
+
+// LOCK WAITS ARE BOUNDED so a peer holding the writer cannot hang a command
+// indefinitely. The pragma is built from this constant rather than repeating
+// the number, because a bound that appears twice is a bound that drifts.
+const busyTimeout = time.Second
 
 // Store owns collection metadata only. Transcripts, task checkpoints, standing
 // items and artifacts retain their existing owners and persistence formats.
@@ -45,8 +51,11 @@ func Open(path string) (*Store, error) {
 	}
 	u := url.URL{Scheme: "file", Path: absolute}
 	q := u.Query()
+	// The private file was created above. SQLite must not create another file
+	// with its default permissions if the path is a dangling link or disappears.
+	q.Set("mode", "rw")
 	q.Add("_pragma", "foreign_keys(1)")
-	q.Add("_pragma", "busy_timeout(1000)")
+	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeout.Milliseconds()))
 	q.Add("_pragma", "synchronous(FULL)")
 	q.Set("_txlock", "immediate")
 	u.RawQuery = q.Encode()

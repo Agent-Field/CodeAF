@@ -160,6 +160,98 @@ func TestCollectionsHelpListsOperationsWithoutOpeningStorage(t *testing.T) {
 	}
 }
 
+// collectionPlain runs a command the way somebody at a terminal runs it, with
+// no --json, because the readable output is the only output most people see and
+// every other test here reads the structured form instead.
+func collectionPlain(t *testing.T, db string, args ...string) string {
+	t.Helper()
+	var out bytes.Buffer
+	if err := runCollectionsTo(append(args, "--db", db), &out); err != nil {
+		t.Fatal(err)
+	}
+	return out.String()
+}
+
+// These cases distinguish a missing membership from an empty store, and keep
+// task ownership visible in the plain output as well as the JSON representation.
+func TestCollectionsReadableOutputPreservesMeaning(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "collections.db")
+	product := collectionCreate(t, db, "Product")
+	if got := collectionPlain(t, db, "find", "conversation", "unfiled-chat"); got != "No collection references this record.\n" {
+		t.Fatalf("empty find %q", got)
+	}
+	if got := collectionPlain(t, db, "add", product.ID, "task", "7", "--session", "chat-a"); !strings.Contains(got, "7") || !strings.Contains(got, "chat-a") {
+		t.Fatalf("task owner missing from %q", got)
+	}
+	first := collectionPlain(t, db, "remove", product.ID, "task", "7", "--session", "chat-a")
+	second := collectionPlain(t, db, "remove", product.ID, "task", "7", "--session", "chat-a")
+	if first != second || !strings.Contains(second, "original record is unchanged") {
+		t.Fatalf("idempotent removal: %q, %q", first, second)
+	}
+}
+
+// A command that names a collection nobody created must refuse rather than
+// report a quiet success, and repeating an add must not file a second copy.
+func TestCollectionsRefuseUnknownCollectionsAndRepeatHarmlessly(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "collections.db")
+	real := collectionCreate(t, db, "Product")
+	for _, args := range [][]string{
+		{"show", "deadbeef"},
+		{"rename", "deadbeef", "Renamed"},
+		{"add", "deadbeef", "conversation", "chat-a"},
+		{"remove", "deadbeef", "conversation", "chat-a"},
+		{"add", real.ID, "collection", "deadbeef"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			var out bytes.Buffer
+			err := runCollectionsTo(append(args, "--db", db), &out)
+			if !errors.Is(err, workspace.ErrNotFound) {
+				t.Fatalf("err %v, output %q", err, out.String())
+			}
+		})
+	}
+	collectionCommand(t, db, "add", real.ID, "conversation", "chat-a")
+	collectionCommand(t, db, "add", real.ID, "conversation", "chat-a")
+	var members []workspace.Ref
+	if err := json.Unmarshal([]byte(collectionCommand(t, db, "show", real.ID)), &members); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(members, []workspace.Ref{{Kind: workspace.ConversationKind, ID: "chat-a"}}) {
+		t.Fatalf("repeat added %+v", members)
+	}
+}
+
+func TestCollectionsBlankDatabaseIsAnInvalidArgument(t *testing.T) {
+	t.Setenv("AFORGE_HOME", t.TempDir())
+	err := runCollectionsTo([]string{"list", "--db", ""}, &bytes.Buffer{})
+	if !errors.Is(err, workspace.ErrInvalid) {
+		t.Fatalf("blank database: %v", err)
+	}
+}
+
+// Listing a new home and refusing edits to absent collections must not create
+// directories or a database as a side effect of locating the requested records.
+func TestCollectionsColdReadsAndMissingEditsDoNotInitializeStorage(t *testing.T) {
+	for _, args := range [][]string{{"list"}, {"find", "conversation", "chat"}, {"show", "missing"}, {"rename", "missing", "Renamed"}, {"add", "missing", "conversation", "chat"}, {"remove", "missing", "conversation", "chat"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			root := filepath.Join(t.TempDir(), "absent")
+			db := filepath.Join(root, "collections.db")
+			var out bytes.Buffer
+			err := runCollectionsTo(append(args, "--json", "--db", db), &out)
+			if args[0] == "list" || args[0] == "find" {
+				if err != nil || out.String() != "[]\n" {
+					t.Fatalf("read %q: %v", out.String(), err)
+				}
+			} else if !errors.Is(err, workspace.ErrNotFound) {
+				t.Fatalf("missing collection: %v", err)
+			}
+			if _, err := os.Stat(root); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("created state: %v", err)
+			}
+		})
+	}
+}
+
 func TestCollectionsNestedMembershipRoundTrip(t *testing.T) {
 	db := filepath.Join(t.TempDir(), "collections.db")
 	a, b := collectionCreate(t, db, "A"), collectionCreate(t, db, "B")

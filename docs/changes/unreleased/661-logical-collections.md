@@ -13,6 +13,7 @@ artifact can be referenced from several collections. Task references retain thei
 session ID, nested collections reject cycles atomically, and removal detaches a
 reference without stopping or deleting its target. Optional learned memory and
 model availability do not control this store.
+Cold reads and refused edits to missing collections do not initialize storage.
 
 The agreed broader personal-AI model and the first slice's boundaries are recorded
 in `docs/design/workspace-foundation/`.
