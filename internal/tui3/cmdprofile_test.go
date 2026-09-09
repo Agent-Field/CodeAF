@@ -43,7 +43,7 @@ var (
 
 // cmdStat is one symbol's account.
 type cmdStat struct {
-	answered, dropped     int
+	answered, dropped      int
 	answeredWall, dropWall time.Duration
 	// latency buckets for answers, in the boundaries below: one per bound and
 	// one for everything above the last.

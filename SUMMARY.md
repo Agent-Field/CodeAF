@@ -131,17 +131,24 @@ evidence without producing either success marker.
   deterministic by start order, and two new laws guard waiter-symbol and tick
   callback assumptions. The lane was integrated with history at feature merge
   `937ad3478`.
-- A frozen JSON-report run of `internal/tui3` plus `internal/ci/testreport` was
-  attempted through the required suite lock. It was correctly refused because
-  another owner's tui3 suite holds the box at PID 2260601; the parser rejected
-  the empty stream and no stale JSON artifact remains. No competing run was
-  launched.
+- After the prior lock holder finished, the frozen JSON-report run of
+  `internal/tui3` plus `internal/ci/testreport` passed at `5a5b245f4` through
+  the required shared lock: 4,385 passed, 4 skipped, 0 failed, 0 package
+  failures, no incomplete packages, and no cached package labels. Tui3 took
+  407.901s. The machine-readable report is
+  `../logs/coordinator-pass6-frozen.json`; stderr records 30-second heartbeats
+  and the slowest tests, led by `TestALargePasteIsOneEditAndNoLayout` at 22.22s.
+- `make test-quick` initially caught one missing `gofmt` alignment in the
+  profiler. After that mechanical one-line rewrite, the complete quick gate
+  passed (build check, vet, formatting, packed manual, and 56 law files across
+  16 packages), and `make build` produced `bin/aforge`. The formatting change
+  does not alter the already measured test binary's behavior.
 - Steering 03 and the follow-up destination decision still govern. PR #658
   remains draft against `codex/conversation-execution`; it must not be retargeted
   or merged until the root supplies the verified PR #653 merge SHA and explicitly
   releases the hold. READY and QUALITY_READY remain absent.
 
-Outstanding: retry the one frozen affected suite after the shared runner is
-free, then preserve the exact tested feature head under the hold. Final dev
-reconciliation, normal PR gates, target merge, ancestry verification, and both
-success markers remain deferred until explicit release.
+Outstanding: preserve this tested feature branch under the hold. Final dev
+reconciliation, an affected validation on that new base, normal PR gates,
+target merge, ancestry verification, and both success markers remain deferred
+until explicit release.
