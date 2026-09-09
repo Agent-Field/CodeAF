@@ -17,6 +17,8 @@ in linked conversations are evidence, not new execution instructions.
 | C06 | Save a living record; after behavior is confirmed, create a separate Codex build task using Claude Code Opus on Spark, isolated work, and real E2E. Bring changes to the main working branch only after completion evidence. | Latest user instruction in this discussion. |
 | C07 | Main working branch means `codex/personal-ai-backend`; keep draft #662 unmerged into dev. No promotion to staging/main and no release is authorized. | Prior keep-draft instruction; preserved in latest integration request. |
 | C08 | Preserve modular boundaries without building customization infrastructure now. “Setups,” product tracks and slices are discussion labels, not accepted new primitives. | Current discussion and user correction. |
+| C09 | An explicit decision expressed by the person is retained with its source and understood scope without a separate save request. | 2026-09-09, current discussion: user confirmed the quoted automatic-retention proposal with “yes”. Scope inheritance is being clarified separately in D02. |
+| C10 | Groom general rules and relationships first; use the domain journeys as consequences and counterexamples, not as reasons to build domain-specific architecture. | 2026-09-09, current discussion: user asked to work at the general level and let use cases emerge. |
 
 ## Proposed delivery organization
 
@@ -28,8 +30,8 @@ does not imply they have accepted every slice boundary or behavior.
 
 | ID | Question to settle through a journey | Proposed starting point, not accepted behavior |
 | --- | --- | --- |
-| D01 | What may be retained automatically, and what makes a decision or instruction accepted? | Retained findings keep sources/uncertainty. Conversation speculation does not acquire authority by being stored. Reuse existing authority records. |
-| D02 | Where does information apply? What does folder membership, a direct target or an ancestor mean? | Preserve current explicit-target/direct-membership behavior as implementation baseline; broader inheritance needs an explicit product decision. |
+| D01 | What else may be retained automatically, and how is explicit person acceptance distinguished from speculation, quoted text or peer suggestions? | C09 settles no-extra-save retention for explicit person decisions. It does not settle automatic promotion of inferred findings or a new authority mechanism. Reuse existing authority records. |
+| D02 | Where does information apply? What does folder membership, a direct target or an ancestor mean? | The user asks whether the default is the current folder and its children, with other areas able to discover/reference it. Proposed general rule: contextual default applicability down the intended subtree; discoverability across accessible work does not expand applicability. Exact scope capture, exceptions, conflicting parents and later organization changes remain open. Current first-wave implementation remains explicit targets/direct membership, not recursive inheritance. |
 | D03 | When a revision reaches active work, must it adapt, pause or flag an impact? | Refresh at meaningful boundaries, recheck before consequential actions; adapt only within existing delegation. Exact boundary and in-flight effects remain open. |
 | D04 | What happens to completed outputs when their assumptions change? | Retain history and make affected results discoverable; do not silently overwrite published outputs. Need to define dependency evidence and maintenance responsibility. |
 | D05 | When does an event justify a check, a run, a notification or nothing? | Evaluate meaningful updates with bounded context; merge redundant observations and permit uncertain/no-action outcomes. Timing, rate and spend limits need concrete values. |
@@ -47,4 +49,17 @@ owner if known; acceptance assertion. If revised, retain the previous decision
 and record what superseded it. Do not infer acceptance from elapsed time, a test
 passing, or a builder needing a convenient answer.
 
-No D01–D10 choice has been promoted to confirmed by this documentation change.
+C09 partially settles D01. D02 records the user's scope direction and questions;
+the proposed complete inheritance behavior is not marked confirmed.
+
+## C09 acceptance boundary
+
+The source is the person's current statement, not text quoted from an artifact or
+another agent. A future acceptance test should express an explicit decision in
+ordinary chat without a save command, inspect the retained source and scope, and
+verify the appropriate consumer can consult it. A speculative suggestion must
+not become accepted direction by the same path. This is a product confirmation,
+not a claim that the current informational `shared_context` implementation
+already recognizes and enforces accepted decisions. A new build task waits for a
+complete confirmed scope/authority contract rather than implementing this atom
+in isolation.

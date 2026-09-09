@@ -106,8 +106,10 @@ declared solved by passing a shared-context test.
 
 ## How discussion proceeds
 
-For each slice, record a short story, an awkward counterexample, a concept or
-sequence diagram, agreed behavior, existing-code mapping, open choices and
+Start with general rules and relationships. Use the five journeys to reveal
+consequences and counterexamples, not to invent domain-specific mechanisms. For
+each slice, record the rule, a concept or sequence diagram, a short story and
+awkward counterexample, agreed behavior, existing-code mapping, open choices and
 observable acceptance. Keep product and engineering coupled: a product promise
 must have an owner and evidence; implementation convenience cannot quietly
 decide a product question. Sketch the person's actions and visible consequences
@@ -120,8 +122,10 @@ update the decision record before building a workaround.
 
 ## Start here next
 
-Slice 1 is being groomed; no new behavior in it is confirmed yet. Follow the
-API-contract example through discussion, acceptance, applicability, use,
-revision and reconsideration. First settle what makes “we might rename this
-field” different from “use this new field in the implementation.” Challenge that
-answer with a revised research finding. See open items D01–D04 in the ledger.
+Slice 1 is being groomed. The person has confirmed automatic retention of an
+explicit decision with source and understood scope, without a separate save
+request (C09). Next settle the general distinction between default applicability
+to a folder/subtree and discovery/reference from other work. Exact scope,
+authority, conflicts and changes remain open; no new buildable slice is yet
+confirmed. Then test the resulting rules against API-contract change and revised
+research. See open items D01–D04 in the ledger.
