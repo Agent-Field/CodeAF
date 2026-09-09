@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -459,4 +460,138 @@ func TestABriefThatDoesNotMatchItsWorldRerunsOnceBeforeItLandsIncomplete(t *test
 	if got := agent.briefMatchesItsWorld(node, tree, io.Discard); got != TaskFailed {
 		t.Fatalf("the second stale brief answered %q, want the node to land incomplete", got)
 	}
+}
+
+// ── the ground that moved ───────────────────────────────────────────────────
+
+// shiftedRepo is the merge-round fixture's sibling for THE OTHER ROAD: the task
+// changed one end of a shared file and the person changed the other end of it
+// while the work ran. The branch would fasten — git can bring the two together
+// on its own — and the work still may not merge quietly, because two people
+// wrote the same file and only one of them knows what the other meant.
+//
+// It answers the tree with the node's work UNCOMMITTED, which is where a landing
+// that never attempted a merge leaves it ([Agent.landShifted] commits through
+// [keepHome]).
+func shiftedRepo(t *testing.T, session string, id uint64, title string) (string, taskTree) {
+	t.Helper()
+	place, repo := newOwnedPlace(t)
+	writeFile(t, filepath.Join(repo, "shared.txt"), "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\n")
+	mustGit(t, repo, "add", "-A")
+	mustGit(t, repo, "-c", "user.name=aforge", "-c", "user.email=aforge@localhost", "commit", "-m", "the shared file")
+
+	tree, err := prepareTaskTree(place, repo, session, id, title)
+	if err != nil {
+		t.Fatalf("prepareTaskTree: %v", err)
+	}
+	writeFile(t, filepath.Join(tree.dir, "shared.txt"), "the task's line\ntwo\nthree\nfour\nfive\nsix\nseven\neight\n")
+
+	// And the person's own branch moves under it, at the far end of the same file.
+	writeFile(t, filepath.Join(repo, "shared.txt"), "one\ntwo\nthree\nfour\nfive\nsix\nseven\nthe person's line\n")
+	mustGit(t, repo, "add", "-A")
+	mustGit(t, repo, "-c", "user.name=aforge", "-c", "user.email=aforge@localhost", "commit", "-m", "the person's own edit")
+	return repo, tree
+}
+
+// A GROUND THAT MOVED ASKS THE CONFLICT'S QUESTION IN ITS OWN WORDS. The work
+// held its check and the branch would fasten; what happened is that two versions
+// of the same files now exist. Before this the landing fell to the default arm
+// and the row read `nobody could check it`, which was false in both halves.
+func TestAGroundShiftLandsAsTheConflictsQuestionWithTheFilesNamed(t *testing.T) {
+	repo, tree := shiftedRepo(t, "aaaa7777aaaa7777", 7, "edit the shared file")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.Workspace = repo })
+	node := loneTestNode(t, "edit the shared file")
+	node.graph.mu.Lock()
+	node.worktree, node.branch = tree.dir, tree.branch
+	node.graph.mu.Unlock()
+
+	state := agent.landShifted(node, tree, []string{"shared.txt"}, []string{"shared.txt"},
+		"the shared file now carries the task's line",
+		`"the person's own edit" changed shared.txt while this ran`, io.Discard)
+	if state != TaskUnverified {
+		t.Fatalf("a ground that moved landed %q, want it on the card", state)
+	}
+	// The run's own loop writes the state the landing answered; here nothing is
+	// running, so the test writes it.
+	node.graph.mu.Lock()
+	node.state = state
+	node.graph.mu.Unlock()
+
+	status := ProjectTask(node.notice().StatusFacts())
+	if status.Ask.Kind != TaskAskConflict {
+		t.Fatalf("the row asks %q, want the conflict's question", status.Ask.Kind)
+	}
+	const want = "your branch changed the same files while it worked: shared.txt"
+	if status.Ask.Reason != want {
+		t.Fatalf("the row reads %q, want %q", status.Ask.Reason, want)
+	}
+	if status.Ask.Yes != "resolve it" || status.Ask.No != "drop it" {
+		t.Fatalf("the answers are %q / %q", status.Ask.Yes, status.Ask.No)
+	}
+	if strings.Contains(status.Ask.Reason, "nobody could check it") {
+		t.Fatalf("checked work that holds still reads as unchecked: %q", status.Ask.Reason)
+	}
+	// AND THE REPORT LEADS WITH THE SAME SENTENCE, because the card's first line
+	// and the row's question are one sentence read twice ([yourCallLead]).
+	report, _, _, _ := node.leavings()
+	if !strings.HasPrefix(report, want) {
+		t.Fatalf("the report does not lead with the row's question:\n%s", report)
+	}
+}
+
+// AND THE ROUND IS THE RIGHT VERB FOR IT. `resolve it` on a shifted card brings
+// the person's branch into the task's, checks what that left and lands it — a
+// road that was already built and that this landing simply could not reach.
+func TestResolveConflictSpendsARoundOnAGroundThatMoved(t *testing.T) {
+	repo, tree := shiftedRepo(t, "bbbb8888bbbb8888", 8, "edit the shared file")
+	completer := &routedCompleter{
+		audit: []step{
+			func(context.Context, []ai.Message) (*ai.Response, error) {
+				return textResponse("VERIFIED — the task's line is in shared.txt"), nil
+			},
+		},
+	}
+	graph := &TaskGraph{nodes: map[uint64]*TaskNode{}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.tasker = graph
+	})
+	node := &TaskNode{graph: graph, id: 8, spec: taskSpec{title: "edit the shared file",
+		acceptance: "shared.txt carries the task's line"}, state: TaskRunning,
+		worktree: tree.dir, branch: tree.branch}
+	graph.mu.Lock()
+	graph.nodes[node.id] = node
+	graph.order = append(graph.order, node.id)
+	graph.mu.Unlock()
+
+	agent.landShifted(node, tree, []string{"shared.txt"}, []string{"shared.txt"},
+		"the shared file now carries the task's line",
+		`"the person's own edit" changed shared.txt while this ran`, io.Discard)
+	graph.mu.Lock()
+	node.state = TaskUnverified
+	graph.mu.Unlock()
+
+	if err := agent.ResolveConflict(node.id); err != nil {
+		t.Fatalf("the door refused a ground that moved: %v", err)
+	}
+
+	deadline := time.Now().Add(30 * time.Second)
+	for node.stateNow() != TaskDone {
+		if time.Now().After(deadline) {
+			t.Fatalf("the round never landed the node; it is %q", node.stateNow())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	// AND BOTH ENDS OF THE FILE SURVIVED ON THE BRANCH, which is what the round
+	// is for: git had nothing to argue about, so it merged the person's work into
+	// the task's and the check read the two changes together.
+	landed, err := git(repo, "show", tree.branch+":shared.txt")
+	if err != nil {
+		t.Fatalf("reading %s: %v", tree.branch, err)
+	}
+	if !strings.Contains(landed, "the task's line") || !strings.Contains(landed, "the person's line") {
+		t.Fatalf("the round did not bring the two versions together:\n%s", landed)
+	}
+	// AND NOTHING WAS REWRITTEN IN PLACE.
+	assertBeforeMergeRef(t, repo, tree.branch)
 }

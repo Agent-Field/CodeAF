@@ -4199,18 +4199,24 @@ as it takes: nothing ages it out, and only your decision moves it.
 ## What your call can be asking — the six questions, and what [a] and [n] mean on each
 
 There are exactly six things a `your call` row can be asking, and each closes with its own
-two answers — a yes and a no, in the words that question deserves:
+two answers — a yes and a no, in the words that question deserves. One of the six has two
+sentences, because there are two ways to end up with two versions of the same file:
 
 | The reason on the row | its yes | its no |
 | --- | --- | --- |
 | `nobody could check it` | `accept` | `not right` |
 | `the check did not pass it: <gaps>` | `accept anyway` | `not right` |
 | `conflicts with your branch: <files>` | `resolve it` | `drop it` |
+| `your branch changed the same files while it worked: <files>` | `resolve it` | `drop it` |
 | `starts on your word` — a proposal with no clock on it | `start` | `don't` |
 | `design ready to approve` — a subharness wrote its design | `approve` | `decline` |
 | `paused at the $5.00 cap` | `raise the cap` | `stop it` |
 
-**The first three are the ones a landing card asks**, and there the two answers are chips,
+The third and fourth are **one question with two true sentences**: either the branch would
+not merge, or it would have merged and your own branch changed those files while the task
+worked. Both hand you the same two answers, and the sentence says which happened.
+
+**The first four are the ones a landing card asks**, and there the two answers are chips,
 always the same three columns in the same order with the same keys — only the words on them
 change:
 
@@ -4298,6 +4304,33 @@ by decree: which of two versions of your own file survives is yours to say, and 
 model has merges anything. A landing that conflicts tells the model as much in as many
 words — `its branch conflicts with the person's and that is not yours to accept` — so what
 it does with one is describe the clash and leave the choice with you.
+
+## Someone else changed the same file while the task was running — the ground moved
+
+The other way to end up with two versions of one file is that nothing conflicted at all: the
+task's work passed its check and its branch **would** have merged, and while it worked you —
+or another window, or another task — changed the same files on your own branch. Merging it
+quietly would put its version over yours without anybody looking, so it stops and asks:
+
+```
+? ◆ Port the parser · your call · 6m40s · 2 files · branch kept · task/parser
+  your branch changed the same files while it worked: parser.go, lex.go
+  [a] resolve it · [n] drop it · [s] tell it
+```
+
+It is the same question a conflict asks and it takes the same two answers. **`[a] resolve
+it`** brings your branch into the task's branch — often with nothing for anyone to resolve,
+since the two would have merged — checks the two changes together and lands the work.
+**`[n] drop it`** keeps the branch and takes nothing, so both versions survive and merging
+is yours to do when you want it.
+
+This row used to read `nobody could check it`, which was untrue twice over: it **was**
+checked, and it **held**. Nothing is ever merged behind this card, and your checkout is
+untouched — no markers, no half-merge.
+
+**It is not handed to the model either**, whatever `task.settle` says. The note it reads
+says `their own branch changed the same files while this worked, and that is not yours to
+accept`, so what it does is tell you what moved and leave the choice with you.
 
 ## Tell it something instead of answering — [s] tell it, and why saying looks good does not accept
 
