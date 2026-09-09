@@ -887,6 +887,13 @@ type app struct {
 	// [app.dragSel] and [app.dragWord]).
 	dragLit   dragSelect
 	dragChars int
+	// boxSel is the same left-button gesture made inside a TEXT BOX rather than
+	// over the transcript, and dragInBox says the run the status line is
+	// reporting was copied out of one (boxselect.go). The flag is what keeps the
+	// two apart on the frame: dragLit is a span of BODY rows, so a box's copy
+	// must not leave the transcript lighting rows nobody swept.
+	boxSel    boxDrag
+	dragInBox bool
 	// clickAt, clickX, clickY and clicks are the multi-click count: a press
 	// soon and near the last is the same gesture's second or third click
 	// (dragselect.go's [app.countClick]).
@@ -3547,7 +3554,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 				prow: a.bodyContentRow(msg.Mouse().Y)}
 			// A new press retires the lit remnant of the last copy: one
 			// selection on screen at a time.
-			a.dragCopied = 0
+			a.dragCopied, a.dragInBox = 0, false
 			// A SECOND PRESS ON THE SAME SPOT IS A DOUBLE-CLICK, and it takes
 			// the word under the pointer; a third takes the row. Both are
 			// copied on release exactly as a sweep is (dragselect.go).
@@ -3615,6 +3622,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// A MOVE WITH THE LEFT BUTTON DOWN IS THE SWEEP, read before every hover:
 		// the rows under it wear the selection and the hover stays where the
 		// press left it (dragselect.go).
+		// AND A SWEEP INSIDE A TEXT BOX IS READ FIRST OF THE TWO, because a press
+		// the box took never parked a body drag and the two can therefore never
+		// both be live: this is the same gesture answered where the transcript's
+		// own machinery cannot see it (boxselect.go).
+		if msg.Mouse().Button == tea.MouseLeft && a.boxMotion(msg.Mouse().X, msg.Mouse().Y) {
+			return a, nil
+		}
 		if msg.Mouse().Button == tea.MouseLeft && a.dragMotion(msg.Mouse().X, msg.Mouse().Y) {
 			return a, nil
 		}
@@ -7487,6 +7501,9 @@ func (a *app) paste(text string) tea.Cmd {
 	before := a.input.String()
 	if !a.pasteFiles(text) {
 		if !a.pasteText(text) {
+			// A paste over a selected run replaces it, with the tags moved for
+			// the removal first (editselect.go).
+			a.dropDraftPick()
 			at := a.input.cursor
 			a.input.insert(text)
 			a.editTags(at, at, len([]rune(text)))

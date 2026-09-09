@@ -1743,6 +1743,12 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if editorMotion(&s.query, msg.String()) {
 		return nil, true
 	}
+	// AND ctrl+z TAKES BACK WHAT WAS TYPED, in every box on this surface and not
+	// only in the message one (editundo.go).
+	if editorUndo(&s.query, msg.String()) {
+		s.build()
+		return nil, true
+	}
 	if editorWordKill(&s.query, msg.String()) {
 		s.build()
 		return nil, true
@@ -2053,6 +2059,11 @@ func (a *app) sheetEditKey(msg tea.KeyPressMsg) {
 	edit := s.edit
 	// The word and line jumps are the surface's, said once (editkeys.go).
 	if editorMotion(&edit.box, msg.String()) {
+		return
+	}
+	// AND ctrl+z TAKES BACK WHAT WAS TYPED, in every box on this surface and not
+	// only in the message one (editundo.go).
+	if editorUndo(&edit.box, msg.String()) {
 		return
 	}
 	switch msg.String() {

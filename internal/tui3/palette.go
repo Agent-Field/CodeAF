@@ -1737,6 +1737,12 @@ func listNavigate(msg tea.KeyPressMsg, filter *editor, move func(int), rank func
 	if editorMotion(filter, msg.String()) {
 		return
 	}
+	// AND ctrl+z TAKES BACK WHAT WAS TYPED, in every box on this surface and not
+	// only in the message one (editundo.go).
+	if editorUndo(filter, msg.String()) {
+		rank()
+		return
+	}
 	switch msg.String() {
 	case "up", "ctrl+p":
 		move(-1)

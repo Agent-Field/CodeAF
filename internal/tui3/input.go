@@ -36,6 +36,19 @@ type editor struct {
 	// the value makes every reset or whole-draft replacement clear the state
 	// automatically instead of letting a new sentence inherit old plainness.
 	demotedTags []segment
+	// picked is a run of the draft under selection: anchor is the offset the
+	// gesture began at and the caret is its other end, so the run is those two
+	// in reading order (editselect.go). picked is what tells the zero value —
+	// no selection at all — apart from a selection that happens to start at
+	// offset zero, which is why the anchor alone will not do.
+	picked bool
+	anchor int
+	// past and ahead are the undo and redo stacks, and run is what the last
+	// edit was doing so a run of ordinary typing folds into one step
+	// (editundo.go).
+	past, ahead []editSnap
+	run         editRun
+	runSpace    bool
 }
 
 func (e *editor) String() string { return string(e.value) }
@@ -55,14 +68,25 @@ func (e *editor) empty() bool {
 	return true
 }
 
-func (e *editor) reset() { e.value, e.cursor, e.demotedTags = e.value[:0], 0, nil }
+// reset empties the draft. IT ALSO THROWS THE UNDO HISTORY AWAY, because the
+// commonest reset is a message being SENT: the words have left the box and the
+// recall history is where they live now (`↑` walks it), so a ctrl+z that pulled
+// a sent sentence back into the draft would be one chord with two unrelated
+// meanings (editundo.go).
+func (e *editor) reset() {
+	e.value, e.cursor, e.demotedTags = e.value[:0], 0, nil
+	e.picked = false
+	e.forgetUndo()
+}
 
 // setText replaces the whole draft and parks the caret at its end. It is what
 // history recall and the command list write through.
 func (e *editor) setText(text string) {
+	e.remember(runWhole, true)
 	e.value = append(e.value[:0], []rune(text)...)
 	e.cursor = len(e.value)
 	e.demotedTags = nil
+	e.picked = false
 }
 
 // rewrite replaces the whole draft and leaves the caret where it was, clamped to
@@ -71,36 +95,71 @@ func (e *editor) setText(text string) {
 // changes the line under somebody who is mid-sentence, and parking the caret at
 // the end of it would move them somewhere they did not ask to be.
 func (e *editor) rewrite(text string) {
+	e.remember(runWhole, true)
 	e.value = append(e.value[:0], []rune(text)...)
 	e.demotedTags = nil
+	e.picked = false
 	if e.cursor > len(e.value) {
 		e.cursor = len(e.value)
 	}
 }
 
+// insert types text in at the caret, over any selection there is: typing over
+// selected text replaces it, which is what every text field does and what
+// "acts like normal text" asks for (editselect.go).
 func (e *editor) insert(text string) {
 	runes := []rune(text)
+	if len(runes) == 0 {
+		return
+	}
+	e.cutPick()
+	// A STEP OF THE UNDO IS A WORD, NOT A KEYSTROKE, and it breaks at the first
+	// letter after a space (editundo.go). A paste is a step of its own: it is
+	// one thing a person did, and folding it into the sentence they were
+	// halfway through typing would make one ctrl+z take back both.
+	if len(runes) == 1 {
+		space := unicode.IsSpace(runes[0])
+		e.remember(runInsert, !space && e.runSpace)
+		e.runSpace = space
+	} else {
+		e.remember(runWhole, true)
+		e.runSpace = false
+	}
 	e.value = append(e.value[:e.cursor], append(runes, e.value[e.cursor:]...)...)
 	e.cursor += len(runes)
 }
 
 func (e *editor) deleteBackward() {
+	// A SELECTION IS WHAT BACKSPACE DELETES WHEN THERE IS ONE, whole, rather
+	// than one character off its end (editselect.go).
+	if e.cutPick() {
+		return
+	}
 	if e.cursor == 0 {
 		return
 	}
+	e.remember(runDelete, false)
 	e.value = append(e.value[:e.cursor-1], e.value[e.cursor:]...)
 	e.cursor--
 }
 
 func (e *editor) deleteForward() {
+	if e.cutPick() {
+		return
+	}
 	if e.cursor >= len(e.value) {
 		return
 	}
+	e.remember(runDelete, false)
 	e.value = append(e.value[:e.cursor], e.value[e.cursor+1:]...)
 }
 
 // deleteWord is ctrl+w: back over any spaces, then back over the word.
 func (e *editor) deleteWord() {
+	if e.cutPick() {
+		return
+	}
+	e.remember(runWhole, true)
 	at := e.cursor
 	for at > 0 && unicode.IsSpace(e.value[at-1]) {
 		at--
@@ -116,18 +175,33 @@ func (e *editor) deleteWord() {
 // the draft: on a one-line draft the two are the same, and on a six-line paste
 // only one of them is a gesture anybody wants.
 func (e *editor) killToStart() {
+	if e.cutPick() {
+		return
+	}
+	e.remember(runWhole, true)
 	at := e.lineStart()
 	e.value = append(e.value[:at], e.value[e.cursor:]...)
 	e.cursor = at
 }
 
+// ── EVERY CARET MOTION DROPS THE SELECTION ─────────────────────────────────
+//
+// A highlight left standing while the caret walked out of it would be a box
+// drawing a claim about text nobody is pointing at any more. The two gestures
+// that MAKE a selection put it back straight after the motion they ran
+// (editselect.go's [editorPick] and the sweep), and every other caller — the
+// arrows, the word jumps, the line ends, history recall — gets the plain
+// behaviour without knowing this file exists.
+
 func (e *editor) left() {
+	e.dropPick()
 	if e.cursor > 0 {
 		e.cursor--
 	}
 }
 
 func (e *editor) right() {
+	e.dropPick()
 	if e.cursor < len(e.value) {
 		e.cursor++
 	}
@@ -138,6 +212,7 @@ func (e *editor) right() {
 // the distance a jump covers and the distance a kill covers are one distance,
 // learned once.
 func (e *editor) wordLeft() {
+	e.dropPick()
 	for e.cursor > 0 && unicode.IsSpace(e.value[e.cursor-1]) {
 		e.cursor--
 	}
@@ -147,6 +222,7 @@ func (e *editor) wordLeft() {
 }
 
 func (e *editor) wordRight() {
+	e.dropPick()
 	for e.cursor < len(e.value) && unicode.IsSpace(e.value[e.cursor]) {
 		e.cursor++
 	}
@@ -155,9 +231,9 @@ func (e *editor) wordRight() {
 	}
 }
 
-func (e *editor) home() { e.cursor = e.lineStart() }
+func (e *editor) home() { e.dropPick(); e.cursor = e.lineStart() }
 
-func (e *editor) end() { e.cursor = e.lineEnd() }
+func (e *editor) end() { e.dropPick(); e.cursor = e.lineEnd() }
 
 // lineStart and lineEnd bound the LOGICAL line the caret is on — the run
 // between two newlines, not the soft-wrapped row the box happens to draw.
@@ -197,6 +273,7 @@ func (e *editor) onLastLine() bool { return e.lineEnd() == len(e.value) }
 
 // up and down move the caret between logical lines, keeping the column.
 func (e *editor) up() {
+	e.dropPick()
 	start := e.lineStart()
 	if start == 0 {
 		return
@@ -213,6 +290,7 @@ func (e *editor) up() {
 }
 
 func (e *editor) down() {
+	e.dropPick()
 	end := e.lineEnd()
 	if end >= len(e.value) {
 		return
@@ -932,6 +1010,12 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if len(a.input.value) == 0 && (a.dropChip() || a.dropHarnessChip()) {
 			return a.edited()
 		}
+		// A SELECTED RUN IS WHAT THIS KEY DELETES WHEN THERE IS ONE, whole
+		// (editselect.go). It is answered here rather than left to the editor
+		// so the tags move with it.
+		if a.dropDraftPick() {
+			return a.edited()
+		}
 		at := a.input.cursor
 		a.input.deleteBackward()
 		if at > 0 {
@@ -939,6 +1023,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return a.edited()
 	case "delete":
+		if a.dropDraftPick() {
+			return a.edited()
+		}
 		at := a.input.cursor
 		deleted := at < len(a.input.value)
 		a.input.deleteForward()
@@ -989,6 +1076,44 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.input.deleteWord()
 		a.editTags(from, to, 0)
 		return a.edited()
+	case "ctrl+z", "ctrl+shift+z":
+		// TAKE BACK WHAT YOU JUST TYPED, and put it forward again (editundo.go
+		// holds the whole argument — why ctrl+z reaches this program at all, why
+		// a step is a word rather than a keystroke, and why ctrl+shift+z is the
+		// one of the two that depends on the terminal).
+		if editorUndo(&a.input, msg.String()) {
+			return a.edited()
+		}
+		return nil
+	case "shift+left", "shift+right", "shift+up", "shift+down",
+		"shift+home", "shift+end",
+		"alt+shift+left", "alt+shift+right", "ctrl+shift+left", "ctrl+shift+right",
+		"super+shift+left", "super+shift+right", "meta+shift+left", "meta+shift+right":
+		// SHIFT WITH A MOTION KEY SELECTS, which is what shift has meant in every
+		// text field a person has ever used (editselect.go). It is read in the
+		// message box and not in the places' composers because three of the
+		// places already spend `shift+←→↑↓` on their time window — a shared map
+		// that seized them would take a working key off those screens.
+		//
+		// AN EMPTY BOX KEEPS ITS NAVIGATION, exactly as the word jumps above do:
+		// there is nothing to select, and a modifier held by accident must not
+		// move anybody to another page.
+		if !a.input.empty() && editorPick(&a.input, msg.String()) {
+			a.touch()
+		}
+		return nil
+	case "super+a", "meta+a":
+		// SELECT THE WHOLE DRAFT. `ctrl+a` cannot be this: it is the start of the
+		// line on every box on this surface and the byte ⌘← actually sends on the
+		// most common Mac profile there is (editkeys.go), so taking it would
+		// break a jump people use to fix a chord they mostly reach for with the
+		// pointer. cmd+a arrives only from a terminal that reports the modifier
+		// at all, which costs nothing where none does.
+		if !a.input.empty() {
+			a.input.pickAll()
+			a.touch()
+		}
+		return nil
 	case "alt+left", "alt+b", "ctrl+left":
 		// JUMP A WORD BACK, under every name a terminal spells it with.
 		// alt+left is what option+← arrives as on macOS terminals that keep the
@@ -1127,6 +1252,11 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// terminal whose brackets leaked was sent to the model a line at a time.
 		// The bracket is what catches that now, before this router is reached at
 		// all (app.go's [app.pasteKey]).
+		// A CHARACTER TYPED OVER A SELECTED RUN REPLACES IT, which is what every
+		// text field does and what the pointer's own gesture promises
+		// (editselect.go). The tags are moved for the removal first, so the
+		// insertion below is measured against the text that is actually there.
+		a.dropDraftPick()
 		at := a.input.cursor
 		a.input.insert(text)
 		a.editTags(at, at, len([]rune(text)))
@@ -1561,7 +1691,14 @@ func draftBlockWithTags(e *editor, pal palette, width, maxRows int, hint, lead s
 		at := segments[i].from
 		boundary := at == 0 || e.value[at-1] == ' ' || e.value[at-1] == '\n'
 		row := string(e.value[at:segments[i].to])
-		out = append(out, row0+paintDraftCommands(row, pal, pal.ink, at, boundary, demoted))
+		painted := paintDraftCommands(row, pal, pal.ink, at, boundary, demoted)
+		// AND A SELECTED RUN WEARS THE MARK, over whatever paint the row already
+		// carries — the same step the transcript's own sweep lights its cells
+		// with, so one gesture has one look wherever it is made (editselect.go).
+		if lo, hi, ok := e.selection(); ok {
+			painted = markDraftRow(painted, e.value, segments[i], lo, hi, pal)
+		}
+		out = append(out, row0+painted)
 	}
 	return out, head + caretColumn, caretRow - top
 }
