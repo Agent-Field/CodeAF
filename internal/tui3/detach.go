@@ -483,6 +483,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	if agent != nil {
 		a.model = agent.Model()
 		a.title = strings.TrimSpace(agent.Title())
+		a.shortTitle = shortTitleOf(agent)
 		// THE DIAL BELONGS TO THE AGENT, so what was held about the last one is
 		// dropped and this one's current model is asked about directly — the
 		// third of the three seeded moments (reasoninglevel.go).

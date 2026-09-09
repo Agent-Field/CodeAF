@@ -165,15 +165,17 @@ the selected row.
 
 ## Why does my tab say Untitled — when does a chat get its name, my new chat has no title, the tab says Untitled instead of the conversation name
 
-**Naming starts when your first message is accepted.** The title model works in the
-background alongside the answer. The answer does not wait for a title, and the title does
-not wait for the answer to finish.
+**Naming starts when your first message is accepted.** The small model on the `title`
+role works in the background alongside the answer. Each naming ask has twenty seconds to
+reach an answer or its existing fallback. The answer does not wait for a title, and the
+title does not wait for the answer to finish.
 
 1. `+` opens the `New chat` page. A newly created conversation starts as `Untitled`.
 2. Sending your first message starts both the conversation and background naming.
-3. When the name arrives, the tab, breadcrumb root, status line and terminal window title
-   update automatically. This also works after the answer has finished or you have switched
-   to another tab. Returning to the conversation keeps its saved name.
+3. One response supplies a full conversation title and a compact tab label. The tab strip
+   uses the compact label; breadcrumbs, the status line, Home, the switcher, recent sessions,
+   and the terminal window title keep the full title. This also works after the answer has
+   finished or you have switched to another tab.
 
 **Temporary failures retry automatically.** There are up to three naming attempts, with
 short increasing delays, within a two-minute overall window. You do not need to send

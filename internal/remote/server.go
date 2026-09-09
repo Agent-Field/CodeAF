@@ -933,6 +933,13 @@ func steerRepeatKnown(agent any) bool {
 	return ok && door.SteerRepeatKnown()
 }
 
+func shortTitleOf(agent any) string {
+	if named, ok := agent.(interface{ ShortTitle() string }); ok {
+		return named.ShortTitle()
+	}
+	return ""
+}
+
 func (sess *Session) welcomeLocked(s *server) Welcome {
 	// A HOSTED START MUST READ THE ENGINE'S FILE, not the surface's. Carrying
 	// this reading in the welcome is what makes an old persistent engine say
@@ -952,6 +959,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		Model:                      sess.agent.Model(),
 		Build:                      buildinfo.String(),
 		Title:                      sess.agent.Title(),
+		ShortTitle:                 shortTitleOf(sess.agent),
 		Note:                       note,
 		ApprovalMode:               sess.engine.ApprovalMode,
 		BashBackgroundAfterSeconds: sess.engine.BashBackgroundAfterSeconds,

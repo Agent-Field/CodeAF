@@ -233,7 +233,8 @@ type sessionEntry struct {
 	// created, and the name is not known until the first turn has been
 	// answered. A line is also how a name can be rewritten later without any
 	// reader having to rewrite the file: the replay takes the LAST title line.
-	Title string `json:"title,omitempty"`
+	Title      string `json:"title,omitempty"`
+	ShortTitle string `json:"shortTitle,omitempty"`
 
 	// Usage is what one COMPLETED turn — or one auxiliary call beside it — cost,
 	// and it is on its own line rather than on the assistant message that ended
@@ -935,7 +936,8 @@ type sessionFile struct {
 	closed bool
 	// title is the name replayed from the file at open, so a resumed session
 	// keeps the one it was given instead of paying to be named again.
-	title string
+	title      string
+	shortTitle string
 	// id is the header's session id — generated when the file is created and
 	// replayed unchanged on every resume after it. It is what makes a session
 	// one identity across days rather than one per process, which is what the
@@ -1024,6 +1026,12 @@ func (s *sessionFile) Title() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.title
+}
+
+func (s *sessionFile) ShortTitle() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.shortTitle
 }
 
 // ID is the session id this file was opened holding, empty when the header
@@ -1426,6 +1434,7 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 		return nil, replayedSession{}, err
 	}
 	journal.title = replayed.title
+	journal.shortTitle = replayed.shortTitle
 	journal.id = replayed.id
 	journal.images = replayed.images
 	journal.notes = replayed.notes
@@ -1563,16 +1572,17 @@ func replaySessionFile(path string) (replayedSession, error) {
 // both reading doors, because it is the same fact about the same file.
 func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, error) {
 	var (
-		messages  []ai.Message
-		reasoning []provider.MessageReasoning
-		earlier   []ai.Message
-		overlap   int
-		title     string
-		id        string
-		lines     int
-		scanned   int
-		spent     Usage
-		created   []fileChange
+		messages   []ai.Message
+		reasoning  []provider.MessageReasoning
+		earlier    []ai.Message
+		overlap    int
+		title      string
+		shortTitle string
+		id         string
+		lines      int
+		scanned    int
+		spent      Usage
+		created    []fileChange
 	)
 	// The picture index is built as the messages are, because this is the one
 	// pass that holds both halves at once: the reference the journal wrote and
@@ -1840,6 +1850,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// written down under one.
 			if named := healedTitle(entry.Title); named != "" {
 				title = named
+				shortTitle = healedTitle(entry.ShortTitle)
 			}
 		}
 	}
@@ -1861,6 +1872,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		earlier:        earlier,
 		overlap:        overlap,
 		title:          title,
+		shortTitle:     shortTitle,
 		id:             id,
 		images:         images,
 		notes:          notes,
@@ -2034,8 +2046,9 @@ type replayedSession struct {
 	//
 	// Zero whenever earlier is empty, and never anything else: a region that
 	// cannot be placed is not kept.
-	overlap int
-	title   string
+	overlap    int
+	title      string
+	shortTitle string
 	// id is the header's session id, empty for a file that has no header yet.
 	id string
 	// images is where this file's pictures came from, keyed by [partKey] — the
@@ -2512,15 +2525,15 @@ func (s *sessionFile) appendRewind(dropped int) {
 // appendTitle journals the session's name. It is one line, appended like any
 // other: a later name simply lands after this one, and the replay takes the
 // last. Nothing rewrites the file.
-func (s *sessionFile) appendTitle(title string) {
+func (s *sessionFile) appendTitle(title, short string) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return
 	}
 	s.mu.Lock()
-	s.title = title
+	s.title, s.shortTitle = title, strings.TrimSpace(short)
 	s.mu.Unlock()
-	s.writeLine(sessionEntry{Type: "title", Title: title, Timestamp: stamp()})
+	s.writeLine(sessionEntry{Type: "title", Title: title, ShortTitle: strings.TrimSpace(short), Timestamp: stamp()})
 }
 
 // appendUsage journals what one seal cost: the turn's own figures, or one

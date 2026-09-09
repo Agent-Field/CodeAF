@@ -59,6 +59,36 @@ func chatTabName(raw string) string {
 // EventTitleChanged updates a.title and invalidates the frame when naming finishes.
 func (a *app) chatDisplayName() string { return chatTabName(a.title) }
 
+type shortTitleAgent interface{ ShortTitle() string }
+
+func shortTitleOf(agent Agent) string {
+	if named, ok := agent.(shortTitleAgent); ok {
+		if short := strings.TrimSpace(named.ShortTitle()); short != "" {
+			return short
+		}
+	}
+	if agent != nil {
+		return strings.TrimSpace(agent.Title())
+	}
+	return ""
+}
+
+func shortTitleWithSide(agent Agent, side *aside) string {
+	if named, ok := agent.(shortTitleAgent); ok {
+		if short := strings.TrimSpace(named.ShortTitle()); short != "" {
+			return short
+		}
+	}
+	return hopRawTitle(agent, side)
+}
+
+func (a *app) chatTabDisplayName() string {
+	if short := strings.TrimSpace(a.shortTitle); short != "" {
+		return chatTabName(short)
+	}
+	return a.chatDisplayName()
+}
+
 // ── the naming lane ─────────────────────────────────────────────────────────
 //
 // A CONVERSATION NAMES ITSELF WHILE THE ANSWER IS STILL BEING WRITTEN, and since

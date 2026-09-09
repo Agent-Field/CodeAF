@@ -1683,6 +1683,14 @@ func (a *Agent) NoteConnected(service, account string) {
 // that has none is looking at a conversation that has not earned one yet.
 func (a *Agent) Title() string { return a.c.facts.read().Title }
 
+func (a *Agent) ShortTitle() string {
+	facts := a.c.facts.read()
+	if strings.TrimSpace(facts.ShortTitle) != "" {
+		return facts.ShortTitle
+	}
+	return facts.Title
+}
+
 // Usage is the session's running total, read from memory. The engine states it
 // at every turn end, ahead of the EventTurnDone that the surface settles on
 // (server.go's emit), so the figures a settle reads are that turn's.

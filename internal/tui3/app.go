@@ -898,11 +898,12 @@ type app struct {
 	state runState
 	model string
 	// title is the name the session gave itself, shown left of the model. Empty
-	// until the session has one (session's title.go names it after the first
-	// completed turn); a resumed session opens with the name it already had.
-	title  string
-	cost   float64
-	tokens int
+	// until the session has one (session's title.go starts naming it with the
+	// first accepted message); a resumed session opens with the name it already had.
+	title      string
+	shortTitle string
+	cost       float64
+	tokens     int
 	// dayCost is what this MACHINE has spent since midnight and dayCosted
 	// whether anything counted it at all — the pair the Spending tab's `today`
 	// receipt is drawn from (settingspend.go). It is a reading taken on the way
@@ -2460,6 +2461,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		// conversation on screen: it belongs in the first frame, not after the
 		// next turn (session's title.go re-names nothing).
 		a.title = strings.TrimSpace(a.agent.Title())
+		a.shortTitle = shortTitleOf(a.agent)
 		// AND THE LEVEL IS SEEDED HERE, beside the two facts above and for the
 		// same reason: the status row spells it onto the model segment, and a
 		// level fetched on the frame clock instead would leave the FIRST frame
@@ -4791,7 +4793,7 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		after = a.steerFellThrough(ev.Steer)
 
 	case session.EventTitleChanged:
-		a.setTitle(ev.Text)
+		a.setTitleEvent(ev.Text, ev.ShortTitle)
 
 	case session.EventToolEnd:
 		// A FILE THE MODEL JUST WROTE ON THE OTHER MACHINE IS FETCHED NOW,
@@ -5277,11 +5279,20 @@ func (a *app) noteBlock(text string) { a.noteWritten(text, true, nil) }
 // transcript. The session named itself, which is not news the conversation
 // needs — it is a label, and a label belongs where the labels are.
 func (a *app) setTitle(title string) {
+	a.setTitleEvent(title, title)
+}
+
+func (a *app) setTitleEvent(title, short string) {
 	title = strings.TrimSpace(title)
-	if title == "" || title == a.title {
+	short = strings.TrimSpace(short)
+	if short == "" {
+		short = title
+	}
+	if title == "" || (title == a.title && short == a.shortTitle) {
 		return
 	}
 	a.title = title
+	a.shortTitle = short
 	a.touch()
 }
 

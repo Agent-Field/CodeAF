@@ -171,7 +171,7 @@ func titleAgent(t *testing.T, completer Completer, mutate func(*Config)) (*Agent
 // The session names itself once, writes the name to its journal, says so on
 // the turn's stream, and answers Title() with it.
 func TestTitleLandsInTheFileAndOnTheStream(t *testing.T) {
-	completer := namedTurn(t, "the parser is fine", "  \"Tokenizer Bug Hunt.\"  ")
+	completer := namedTurn(t, "the parser is fine", "full: tokenizer compatibility investigation\ntab: tokenizer bug")
 	agent, path := titleAgent(t, completer, nil)
 
 	// The naming lane is taken BEFORE the turn, because a name that lands after
@@ -197,11 +197,14 @@ func TestTitleLandsInTheFileAndOnTheStream(t *testing.T) {
 	}
 	// The quotes, the trailing stop and the surrounding space are the three
 	// things a model adds against the instruction.
-	if changed.Text != "Tokenizer Bug Hunt" {
+	if changed.Text != "tokenizer compatibility investigation" || changed.ShortTitle != "tokenizer bug" {
 		t.Fatalf("title = %q, want it cleaned up", changed.Text)
 	}
-	if got := agent.Title(); got != "Tokenizer Bug Hunt" {
+	if got := agent.Title(); got != "tokenizer compatibility investigation" {
 		t.Fatalf("Title() = %q", got)
+	}
+	if got := agent.ShortTitle(); got != "tokenizer bug" {
+		t.Fatalf("ShortTitle() = %q", got)
 	}
 	if err := agent.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -211,13 +214,21 @@ func TestTitleLandsInTheFileAndOnTheStream(t *testing.T) {
 	for _, line := range readLines(t, path) {
 		if strings.Contains(line, `"type":"title"`) {
 			titles++
-			if !strings.Contains(line, `"title":"Tokenizer Bug Hunt"`) {
+			if !strings.Contains(line, `"title":"tokenizer compatibility investigation"`) ||
+				!strings.Contains(line, `"shortTitle":"tokenizer bug"`) {
 				t.Fatalf("title line = %s", line)
 			}
 		}
 	}
 	if titles != 1 {
 		t.Fatalf("%d title lines, want exactly 1", titles)
+	}
+	replayed, err := replaySessionFile(path)
+	if err != nil {
+		t.Fatalf("replay title pair: %v", err)
+	}
+	if replayed.title != "tokenizer compatibility investigation" || replayed.shortTitle != "tokenizer bug" {
+		t.Fatalf("replayed title pair = %q / %q", replayed.title, replayed.shortTitle)
 	}
 }
 
@@ -243,6 +254,25 @@ func TestASluggedTitleIsMintedAsWords(t *testing.T) {
 		if err := agent.Close(); err != nil {
 			t.Fatalf("Close: %v", err)
 		}
+	}
+}
+
+func TestConversationTitleCarriesOneFullNameAndOneStableTabLabel(t *testing.T) {
+	got := cleanConversationTitle("full: agentfield repository star growth analysis\ntab: star growth")
+	if got.full != "agentfield repository star growth analysis" || got.short != "star growth" {
+		t.Fatalf("two-part title = %+v", got)
+	}
+	legacy := cleanConversationTitle("workspace inventory")
+	if legacy.full != "workspace inventory" || legacy.short != legacy.full {
+		t.Fatalf("legacy title did not fall back for tabs: %+v", legacy)
+	}
+	for _, malformed := range []string{"tab: inventory", "full:\ntab: inventory", "full:"} {
+		if got := cleanConversationTitle(malformed); got.full != "" || got.short != "" {
+			t.Errorf("malformed labeled title %q was accepted as %+v", malformed, got)
+		}
+	}
+	if titleAskWindow != 20*time.Second {
+		t.Fatalf("title ask window = %v, want 20s", titleAskWindow)
 	}
 }
 

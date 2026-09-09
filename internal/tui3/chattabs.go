@@ -394,11 +394,11 @@ func (a *app) tabAs(tab chatTab, held *kept, front string) chatTab {
 		// as long as that takes — the tab flickering to a word that means "unnamed"
 		// about a conversation somebody named last week.
 		if name := a.sessionName(); name != "" || strings.TrimSpace(tab.word) == "" {
-			tab.word = a.chatDisplayName()
+			tab.word = a.chatTabDisplayName()
 		}
 		tab.file, tab.where = a.file, a.workspace
 	case held != nil:
-		tab.word = chatTabName(hopRawTitle(held.conv.Agent, held.side))
+		tab.word = chatTabName(shortTitleWithSide(held.conv.Agent, held.side))
 		tab.file, tab.where = held.conv.SessionFile, held.conv.Workspace
 	}
 	if strings.TrimSpace(tab.file) == "" {
