@@ -1098,7 +1098,7 @@ func (a *Agent) askStanding(ctx context.Context, notice *StandingNotice) (Standi
 	card := *notice
 	hub.send(Event{Kind: EventStandingProposal, Tool: "stand", Standing: &card})
 	// AFTER the card, on EventQuestion's own ordering law.
-	a.emitQuestionOn(hub, EventQuestion, standing, nil)
+	a.emitQuestion(EventQuestion, standing, nil)
 
 	select {
 	case answer := <-answers:

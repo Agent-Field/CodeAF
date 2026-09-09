@@ -121,8 +121,10 @@ place rather than the lifetime).
 Events: `EventQuestion` (the object, whole, after any subject rows),
 `EventQuestionWithdrawn`, `EventQuestionAnswered` (the answer, whole — this is the
 RECORD). They ride `Event.Question *Question` and `Event.Answer *Answer`, on the
-turn's hub AND on the standing task subscription, exactly as `EventTaskUpdate`
-does — a question about a task outlives the turn that proposed it.
+turn's hub and on **`Agent.WatchQuestions()`**, a standing subscription of their
+own that replays everything already open when a surface attaches. Deliberately
+NOT the standing task lane: that one is the roster's, its readers walk a strict
+sequence of rows, and a question is not a row.
 
 One door: **`Agent.ResolveQuestion(Answer) error`**, which reads the lane and hands
 the answer to that lane's own resolver — `ResolveConsentRemember`, `ResolveTask`,

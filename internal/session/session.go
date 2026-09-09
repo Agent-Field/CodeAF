@@ -567,6 +567,10 @@ const (
 	// EventTaskProposal, EventStandingProposal and the rest — so a surface that
 	// ignores this kind is exactly what it was. A surface that draws it draws
 	// one object for every lane instead of thirteen cards.
+	//
+	// IT RIDES THE TURN IT WAS RAISED IN, AND [Agent.WatchQuestions] BESIDE IT —
+	// never the standing TASK lane, which is the roster's and whose readers walk
+	// a strict sequence of rows.
 	EventQuestion
 	// EventQuestionWithdrawn says a question stopped being one: the subject
 	// settled, the clock took it, the plan changed, another answer made it
@@ -2780,6 +2784,13 @@ type Agent struct {
 	// nowhere, so a second window, home, or the phone had at best the one line
 	// the presence file carried and at worst nothing at all.
 	questionWords map[string]Question
+
+	// questionWatchers are the standing subscriptions to questions
+	// ([Agent.WatchQuestions]), and they are a lane of their own rather than a
+	// share of [Agent.taskWatchers] for the reason that door states: the task
+	// lane is the roster's, its readers walk a strict sequence of rows, and a
+	// question is not a row.
+	questionWatchers []*eventStream
 
 	// taskWatchers are the standing subscriptions to task updates
 	// ([Agent.TaskUpdates]). They are not the turn's hub and do not close with

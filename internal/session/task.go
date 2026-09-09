@@ -905,7 +905,7 @@ func (a *Agent) askTask(ctx context.Context, id uint64, spec taskSpec, elsewhere
 
 	a.announceTask(hub, question)
 	// AFTER the card that carries the brief, on EventQuestion's own ordering law.
-	a.emitQuestionOn(hub, EventQuestion, proposed, nil)
+	a.emitQuestion(EventQuestion, proposed, nil)
 	return a.awaitTaskAnswer(ctx, id, question, clock, countdown)
 }
 

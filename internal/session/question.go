@@ -76,6 +76,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
@@ -1098,40 +1099,74 @@ func (a *Agent) questionSaid(kind QuestionKind, token string) (Question, bool) {
 
 // emitQuestion puts one question in front of whoever is watching.
 //
-// IT IS [Agent.emitTaskUpdate]'S TWO LANES, for that function's reason exactly:
-// the turn's hub is what a Submit caller reads, and a question about a task
-// outlives the turn that proposed it by minutes, so the standing subscription
-// is where those land. A surface reading both sees an in-turn question on both,
-// exactly as it sees an in-turn task update on both.
-func (a *Agent) emitQuestion(kind EventKind, q Question, answer *Answer) {
-	a.emitQuestionOn(nil, kind, q, answer)
-}
-
-// emitQuestionOn is the same thing for a lane that was HANDED a hub rather than
-// finding the session's own.
+// IT SPEAKS ON ITS OWN LANE AND NEVER ON THE TURN'S ([Agent.WatchQuestions]),
+// and that is a decision rather than an omission. A turn's stream is a strict
+// sequence a caller reads to its close — text, tool rows, the lane's own
+// question event, the turn's end — and a second description of a moment
+// threaded into it is an event every existing reader has to step over to find
+// the one it was waiting for. The surfaces that draw questions hold the
+// questions lane; the surfaces that do not are exactly what they were.
 //
-// The gate, the proposal and the standing card are all raised inside a turn and
-// are given that turn's hub as an argument — it is the one they sent their own
-// event to, and it is not always the hub on the agent (a fork, a design node and
-// every test that drives one ask directly hold their own). A question that went
-// out on a different lane from the row it is about is a question a surface
-// cannot pair, so the two travel together.
-func (a *Agent) emitQuestionOn(hub *eventHub, kind EventKind, q Question, answer *Answer) {
+// AND IT IS STILL EMITTED AFTER THE ROW IT IS ABOUT. Each lane sends its own
+// event first and this second, in that order, so a surface holding both lanes
+// has already been handed the row by the time the question reaches it — which
+// is the whole content of that ordering law.
+func (a *Agent) emitQuestion(kind EventKind, q Question, answer *Answer) {
 	event := Event{Kind: kind, ID: q.ID, Question: &q, Answer: answer}
 	a.mu.Lock()
-	own := a.hub
-	watchers := make([]*eventStream, len(a.taskWatchers))
-	copy(watchers, a.taskWatchers)
+	watchers := make([]*eventStream, len(a.questionWatchers))
+	copy(watchers, a.questionWatchers)
 	a.mu.Unlock()
-
-	if hub != nil {
-		hub.send(event)
-	}
-	if own != nil && own != hub {
-		own.send(event)
-	}
 	for _, watcher := range watchers {
 		watcher.send(event)
+	}
+}
+
+// WatchQuestions is a standing subscription to every question this session
+// raises, withdraws and has answered, for the whole life of the session rather
+// than one turn. stop is never nil and calling it twice is calling it once.
+//
+// IT IS A LANE OF ITS OWN AND NOT THE TASK LANE, and that is deliberate rather
+// than tidy. [Agent.WatchTaskUpdates] is the ROSTER's lane: a surface holding it
+// reads a strict sequence of task rows — the roster replayed on open, then one
+// notice per move — and a question threaded into that sequence is an event that
+// lane's readers have to skip past to find the row they were waiting for. They
+// are two different subscriptions because they are two different things: what
+// the work is doing, and what somebody is being asked.
+//
+// It exists because most questions outlive the turn that raised them or never
+// had one. A landed task waits on somebody's word with no turn running at all,
+// a question is withdrawn on the presence heartbeat, and an answer left in
+// another window arrives on that same beat — none of those has a hub to speak
+// on, and a surface that only read turn streams would never hear them.
+func (a *Agent) WatchQuestions() (<-chan Event, func()) {
+	stream := newEventStream()
+	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
+		stream.close()
+		return stream.out, func() {}
+	}
+	a.questionWatchers = append(a.questionWatchers, stream)
+	a.mu.Unlock()
+	// AND WHAT IS ALREADY OPEN GOES OUT FIRST, to every new lane. A surface
+	// opens this with no questions on screen — a conversation resumed from its
+	// checkpoint, one switched back to behind home, a window attached over
+	// --host — and everything standing was raised on lanes that closed with the
+	// surface that held them. Replaying them is what makes the questions on
+	// screen rebuildable from the engine's own record, and a surface that
+	// watched all along re-hears what it already drew, which is drawing it once.
+	for _, open := range a.OpenQuestions() {
+		stream.send(Event{Kind: EventQuestion, ID: open.ID, Question: &open})
+	}
+	var once sync.Once
+	return stream.out, func() {
+		once.Do(func() {
+			a.mu.Lock()
+			a.questionWatchers = dropWatcher(a.questionWatchers, stream)
+			a.mu.Unlock()
+			stream.leave()
+		})
 	}
 }
 

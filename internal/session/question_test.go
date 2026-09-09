@@ -146,6 +146,10 @@ func TestTheApprovalGateComesBackOutAsAQuestion(t *testing.T) {
 	agent, dir := questionSession(t, "qqqq1111qqqq1111", nil)
 	hub := newEventHub()
 	events := hub.subscribe()
+	// THE QUESTION SPEAKS ON ITS OWN LANE and never on the turn's, so that a
+	// caller reading a turn to its close reads exactly what it always did.
+	asks, stopAsking := agent.WatchQuestions()
+	defer stopAsking()
 
 	done := make(chan struct{})
 	go func() {
@@ -159,11 +163,9 @@ func TestTheApprovalGateComesBackOutAsAQuestion(t *testing.T) {
 	if request.Kind != EventConsentRequest {
 		t.Fatalf("the gate sent %v first", request.Kind)
 	}
-	// AND THE OBJECT ARRIVES AFTER THE REQUEST THAT NAMED THE ROW.
-	object := <-events
-	if object.Kind != EventQuestion || object.Question == nil {
-		t.Fatalf("the gate sent %v where the question was owed", object.Kind)
-	}
+	// AND THE OBJECT ARRIVES ON THE QUESTIONS LANE, after the request that named
+	// the row.
+	object := waitForAsk(t, asks, EventQuestion)
 	if object.Question.ID != request.ID {
 		t.Fatalf("the object names question %d, the request names %d", object.Question.ID, request.ID)
 	}
@@ -247,15 +249,15 @@ func TestTheTaskProposalComesBackOutWithItsClockAndItsPick(t *testing.T) {
 		config.TaskAutoApproveSeconds = 30
 	})
 	events := watched(agent)
+	asks, stopAsking := agent.WatchQuestions()
+	defer stopAsking()
 
 	go func() { _, _ = agent.askTask(context.Background(), 7, taskSpec{title: "port the resume picker"}, "") }()
 
 	if proposal := <-events; proposal.Kind != EventTaskProposal {
 		t.Fatalf("the proposal lane sent %v", proposal.Kind)
 	}
-	if object := <-events; object.Kind != EventQuestion || object.Question == nil {
-		t.Fatalf("the proposal sent %v where the question was owed", object.Kind)
-	}
+	waitForAsk(t, asks, EventQuestion)
 
 	open := agent.OpenQuestions()
 	if len(open) != 1 || open[0].Kind != QuestionTask {
@@ -286,14 +288,12 @@ func TestTheTaskProposalComesBackOutWithItsClockAndItsPick(t *testing.T) {
 // sentence saying why the count they were watching dropped.
 func TestAQuestionWhoseSubjectWentAwayIsWithdrawnWithAReason(t *testing.T) {
 	agent, _ := questionSession(t, "qqqq3333qqqq3333", nil)
-	// THE SWEEP SPEAKS ON THE SESSION'S OWN HUB, which is what a turn sets and
-	// what a surface is reading — the withdrawal happens on the heartbeat, after
-	// the lane that raised the question has already let go of it.
+	// THE WITHDRAWAL SPEAKS ON THE QUESTIONS LANE, which is the one a surface
+	// holds for the life of the session — it happens after the lane that raised
+	// the question has let go of it, when there may be no turn left at all.
 	hub := newEventHub()
-	events := hub.subscribe()
-	agent.mu.Lock()
-	agent.hub = hub
-	agent.mu.Unlock()
+	asks, stopAsking := agent.WatchQuestions()
+	defer stopAsking()
 
 	ctx, stop := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -303,8 +303,7 @@ func TestAQuestionWhoseSubjectWentAwayIsWithdrawnWithAReason(t *testing.T) {
 			ai.ToolCall{ID: "c1", Function: ai.ToolCallFunction{Name: "bash", Arguments: `{"command":"ls"}`}},
 			approval.Decision{Action: approval.ActionPrompt, Rule: "bash always asks"})
 	}()
-	<-events // the request
-	<-events // the object
+	waitForAsk(t, asks, EventQuestion)
 
 	stop()
 	<-done
@@ -316,20 +315,7 @@ func TestAQuestionWhoseSubjectWentAwayIsWithdrawnWithAReason(t *testing.T) {
 	}
 	agent.sweepQuestions()
 
-	var withdrawn Event
-	deadline := time.After(5 * time.Second)
-waiting:
-	for {
-		select {
-		case event := <-events:
-			if event.Kind == EventQuestionWithdrawn {
-				withdrawn = event
-				break waiting
-			}
-		case <-deadline:
-			break waiting
-		}
-	}
+	withdrawn := waitForAsk(t, asks, EventQuestionWithdrawn)
 	if withdrawn.Question == nil || withdrawn.Question.Withdrawn == nil {
 		t.Fatalf("nothing said the question had gone: %+v", withdrawn)
 	}
@@ -339,11 +325,11 @@ waiting:
 	// AND IT IS WITHDRAWN ONCE. A second sweep has nothing left to say.
 	agent.sweepQuestions()
 	select {
-	case event := <-events:
+	case event := <-asks:
 		if event.Kind == EventQuestionWithdrawn {
 			t.Fatal("the question was withdrawn twice")
 		}
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(200 * time.Millisecond):
 	}
 }
 
@@ -551,5 +537,28 @@ func TestTheCapIsCountedAgainstOnePieceOfWorkAndNotTheSession(t *testing.T) {
 	agent.mu.Unlock()
 	if err := ask(9, elsewhere); err != nil {
 		t.Fatalf("a question about other work was refused: %v", err)
+	}
+}
+
+// waitForAsk is the next event of one kind off the questions lane, and a
+// failure with the kinds it did see when none arrives.
+func waitForAsk(t *testing.T, asks <-chan Event, want EventKind) Event {
+	t.Helper()
+	var seen []EventKind
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case event := <-asks:
+			if event.Kind == want {
+				if event.Question == nil {
+					t.Fatalf("the questions lane sent a %v with no question on it", want)
+				}
+				return event
+			}
+			seen = append(seen, event.Kind)
+		case <-deadline:
+			t.Fatalf("no %v reached the questions lane; it sent %v", want, seen)
+			return Event{}
+		}
 	}
 }

@@ -403,12 +403,13 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 		Wait: ConsentWaiting,
 	})
 
-	// AND THE SAME QUESTION GOES OUT AS AN OBJECT, AFTER the request that named
-	// the row (question.go's EventQuestion). The order is the order this lane
-	// already keeps against its batch's EventToolBegin rows and for the same
-	// reason: a question attaches to a row a surface has already drawn.
+	// AND THE SAME QUESTION GOES OUT AS AN OBJECT ON THE QUESTIONS LANE, AFTER
+	// the request that named the row (question.go's EventQuestion). The order is
+	// the order this lane already keeps against its batch's EventToolBegin rows
+	// and for the same reason: a question attaches to a row a surface has
+	// already drawn.
 	if question != "" {
-		a.emitQuestionOn(hub, EventQuestion, a.consentAsk(id, call, decision, memo, question), nil)
+		a.emitQuestion(EventQuestion, a.consentAsk(id, call, decision, memo, question), nil)
 	}
 
 	select {
