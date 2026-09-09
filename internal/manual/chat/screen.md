@@ -3217,12 +3217,16 @@ first word, or in the middle of its thinking, or mid-answer — aforge sends the
 question to another one of them and lets the two race. Whichever writes first owns the
 reply and the other is cancelled, which is what stops the bill. Anything the loser wrote
 while the race was undecided is thrown away, so its text, its thought and its half-formed
-tool calls never reach the screen or the conversation. If text was already on the screen
-when the switch happened, a line says so:
+tool calls never reach the screen or the conversation. If words from the first machine
+were already on the screen when the rescue wins, those words are taken off the page too:
+none of them is in the conversation, and the answer you keep is the second machine's,
+whole. This one line is drawn once where the withdrawn text was:
 
 ```
   that lane went quiet — this answer is coming from another one
 ```
+
+A rescue that wins before the first word takes nothing away and says nothing.
 
 The moment it acts at is not a fixed number of seconds. It is worked out per request from
 what the machine answering is believed to do, and it sits between **0.7 and 8 seconds** —
@@ -3286,9 +3290,18 @@ to it. See *Models, context, and what it costs* for which model it moves to and 
 **removed from the screen**, and it is removed because it was removed everywhere: none of
 it is in the conversation, none of it is in the session file, and none of it is sent back
 to the model on the retry. Any tool call that was still arriving when the cut happened
-stops where it is and keeps its row. A rescue is different: only one of the two machines is
-ever the one you are hearing, so when it wins nothing is taken away, and when the other one
-wins you are told in a line of its own that the answer changed machines.
+stops where it is and keeps its row. A rescue has the same discard boundary when it takes
+over an answer you had already begun reading: the first machine's words, private working
+and half-arrived tool calls come off the page, because none of them is in the conversation
+either. The answer you keep is the second machine's, whole, and this line is drawn once
+where the withdrawn text was:
+
+```
+  that lane went quiet — this answer is coming from another one
+```
+
+If the rescue wins before the first word, there is nothing to take away and no line is
+drawn.
 
 This is the one place aforge takes something off the page that you watched arrive, and the
 difference from an interrupt is exactly that. When **you** press `esc`, the half-written
