@@ -21,6 +21,8 @@ func TestAdaptiveCompletionTimeoutScalesAndBoundsRequests(t *testing.T) {
 		configured time.Duration
 		want       time.Duration
 	}{
+		{name: "no requested ceiling keeps the operational floor", maxTokens: 0, want: 5 * time.Minute},
+		{name: "no requested ceiling keeps a longer configured floor", maxTokens: 0, configured: 10 * time.Minute, want: 10 * time.Minute},
 		{name: "floor", maxTokens: 4_096, want: 5 * time.Minute},
 		{name: "scaled", maxTokens: 32_768, want: 512 * time.Second},
 		{name: "configured floor", maxTokens: 4_096, configured: 10 * time.Minute, want: 10 * time.Minute},

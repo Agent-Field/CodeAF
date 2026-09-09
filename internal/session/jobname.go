@@ -104,11 +104,6 @@ const (
 	// novel; the namer only needs to know where, not a nested volume prefix.
 	jobNameDirClip = 400
 
-	// jobNameTokens is the ceiling on the answer. Four words is a handful of
-	// tokens; this is that with room for a model that says "Title: …" first,
-	// which [cleanTitle] strips.
-	jobNameTokens = 32
-
 	// jobNameWindow is how long the call is given. Nobody is waiting for it —
 	// the job is already running — so this is not a person's patience but a
 	// bound on a goroutine holding a provider slot for work that has stopped
@@ -217,15 +212,15 @@ func (a *Agent) jobName(ctx context.Context, subject string) string {
 	ctx, cancel := context.WithTimeout(ctx, jobNameWindow)
 	defer cancel()
 
-	// NO EFFORT IS PUT ON THE REQUEST, and that is the reflex law rather than an
-	// omission: the calls that are told not to think are the ones that sort and
-	// name in a few words, and this is one of them.
+	// NO EFFORT AND NO CEILING ARE PUT ON THE REQUEST. Both used to be here and
+	// both were this harness deciding how somebody else's model answers a
+	// question; the clips above are what keep this call small, and the prompt is
+	// what keeps the answer to four words.
 	response, named, callErr := a.callRole(ctx, roles.RoleJobName, model,
 		[]ai.Message{
 			textMessage("system", jobNameSystem),
 			textMessage("user", subject+"\n\n"+jobNamePrompt),
-		},
-		ai.WithMaxTokens(jobNameTokens))
+		})
 	if callErr != nil || response == nil {
 		return ""
 	}

@@ -221,13 +221,9 @@ func TestAFlaggedSeatOutranksTheCrewAndTheReceiptSaysWhich(t *testing.T) {
 	}
 }
 
-// A tier value may carry a thinking level, and it must travel exactly as far as
-// a flag carrying one does: whole, into the seat and into the plan role's
-// binding, where the ladder splits it into a model and an effort at the point of
-// the call. The balanced crew's mastermind is exactly that value, so this is the
-// road's own check that a headless run on `balanced` plans at `high` — which is
-// what the same crew does in the conversation.
-func TestACrewsThinkingLevelReachesTheRunWhole(t *testing.T) {
+// A crew preset fills the run and durable role binding with its bare model id.
+// Presets choose models and leave generation behavior to them.
+func TestACrewsBareModelReachesTheRunWhole(t *testing.T) {
 	script := newScriptedBrain(t)
 	defer script.close()
 	t.Setenv(config.ModelEnv, "")
@@ -236,8 +232,8 @@ func TestACrewsThinkingLevelReachesTheRunWhole(t *testing.T) {
 		t.Fatal(err)
 	}
 	written := config.TierModelAt(script.dir, config.ModelTierMastermind)
-	if _, level := roles.SplitEffort(written); level == "" {
-		t.Fatalf("the balanced mastermind reads %q and carries no level, so this test is about nothing", written)
+	if _, level := roles.SplitEffort(written); level != "" {
+		t.Fatalf("the balanced mastermind reads %q and imposes level %q", written, level)
 	}
 
 	// A durable store, because the plan role's binding is the record under test
@@ -306,10 +302,9 @@ func TestACrewsThinkingLevelReachesTheRunWhole(t *testing.T) {
 	}
 }
 
-// TestACrewsThinkingLevelReachesTheHeadlessWire is C2: the plan seat resolved
-// from an unoverridden balanced profile keeps its level through applySeats and
-// ClientFor on both contexts a headless run uses, while the model id stays bare.
-func TestACrewsThinkingLevelReachesTheHeadlessWire(t *testing.T) {
+// The plan seat resolved from an unoverridden balanced profile sends its bare
+// model on both contexts a headless run uses, with no reasoning object.
+func TestACrewsBareModelReachesTheHeadlessWire(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(config.ModelEnv, "")
 	t.Setenv(config.PlanModelEnv, "")
@@ -318,13 +313,16 @@ func TestACrewsThinkingLevelReachesTheHeadlessWire(t *testing.T) {
 	}
 
 	type requestShape struct {
-		Model     string `json:"model"`
-		Reasoning struct {
-			Effort string `json:"effort"`
-		} `json:"reasoning"`
+		Model     string          `json:"model"`
+		Reasoning json.RawMessage `json:"reasoning"`
 	}
 	var received []requestShape
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost {
+			writer.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(writer, `[]`)
+			return
+		}
 		raw, err := io.ReadAll(request.Body)
 		if err != nil {
 			t.Errorf("read request: %v", err)
@@ -346,7 +344,6 @@ func TestACrewsThinkingLevelReachesTheHeadlessWire(t *testing.T) {
 	settings := config.Config{
 		APIKey:        "test-key",
 		BaseURL:       server.URL,
-		MaxTokens:     100,
 		Timeout:       config.DefaultTimeout,
 		Reasoning:     config.DefaultReasoning,
 		ExecReasoning: config.DefaultExecReasoning,
@@ -370,6 +367,9 @@ func TestACrewsThinkingLevelReachesTheHeadlessWire(t *testing.T) {
 	}
 
 	wantModel, wantEffort := roles.SplitEffort(config.DefaultMastermindModel)
+	if wantEffort != "" {
+		t.Fatalf("shipped mastermind %q imposes effort %q", config.DefaultMastermindModel, wantEffort)
+	}
 	if seats.Plan.Model != config.DefaultMastermindModel {
 		t.Fatalf("balanced plan seat = %q, want %q", seats.Plan.Model, config.DefaultMastermindModel)
 	}
@@ -377,9 +377,9 @@ func TestACrewsThinkingLevelReachesTheHeadlessWire(t *testing.T) {
 		t.Fatalf("provider received %d requests, want %d", len(received), len(contexts))
 	}
 	for index, body := range received {
-		if body.Model != wantModel || body.Reasoning.Effort != wantEffort {
-			t.Errorf("call %d carried model %q and effort %q, want bare %q and %q",
-				index, body.Model, body.Reasoning.Effort, wantModel, wantEffort)
+		if body.Model != wantModel || len(body.Reasoning) != 0 {
+			t.Errorf("call %d carried model %q and reasoning %s, want bare %q and no reasoning object",
+				index, body.Model, body.Reasoning, wantModel)
 		}
 	}
 }

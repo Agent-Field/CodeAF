@@ -22,10 +22,10 @@ import (
 // Config configures the adapter. It is deliberately the same shape the
 // AgentField SDK client takes, plus the two resolvers that let the adapter
 // decide a request's economics without ever performing I/O on the hot path —
-// and minus Temperature: an absent sampling parameter is omitted upstream and
-// the provider's own default applies, so the field is absent rather than
-// carried and always sent (withoutInjectedDefaults covers the SDK's own loop, which
-// injects one).
+// and minus generation controls: absent sampling and output parameters are
+// omitted upstream and the provider's own defaults apply. The SDK's plain
+// OpenAI loop injects config defaults of its own; [withoutInjectedDefaults]
+// clears those before applying the caller's explicit options.
 // It carries no attribution fields on purpose: who this binary reports itself
 // as is a constant (attribution.go), and a config field for it is exactly how a
 // caller ends up sending a different app — or none.
@@ -40,9 +40,8 @@ type Config struct {
 	// one call's correctness wins over it. A router copies the pin to every
 	// fallback model because the seat keeps doing the same job after a fallback.
 	// Zero is the ordinary unpinned case, and the level is NEVER part of Model.
-	Effort    Effort
-	MaxTokens int
-	Timeout   time.Duration
+	Effort  Effort
+	Timeout time.Duration
 
 	// SupportsParameter answers "does this model accept this request field?"
 	// from data already in memory. It must not block or perform I/O; an unknown
@@ -241,13 +240,12 @@ func (c *Client) SetAPIKey(key string) error {
 	var base *ai.Client
 	if key != "" {
 		built, err := ai.NewClient(&ai.Config{
-			APIKey:    key,
-			BaseURL:   c.config.BaseURL,
-			Model:     c.config.Model,
-			MaxTokens: c.config.MaxTokens,
-			Timeout:   c.config.Timeout,
-			SiteURL:   AppURL,
-			SiteName:  AppName,
+			APIKey:   key,
+			BaseURL:  c.config.BaseURL,
+			Model:    c.config.Model,
+			Timeout:  c.config.Timeout,
+			SiteURL:  AppURL,
+			SiteName: AppName,
 		})
 		if err != nil {
 			return err
@@ -729,14 +727,9 @@ func (c *Client) newRequest(messages []ai.Message, options []ai.Option) (*ai.Req
 		Messages: messages,
 		Model:    c.config.Model,
 	}
-	// NO SAMPLING PARAMETER IS SET, here or anywhere else: an absent
-	// temperature is omitted upstream and the provider applies its own
-	// default, which is the behavior every call through this adapter wants —
-	// nothing here chooses a temperature for somebody else's model.
-	if c.config.MaxTokens > 0 {
-		maxTokens := c.config.MaxTokens
-		request.MaxTokens = &maxTokens
-	}
+	// NO GENERATION PARAMETER IS SET HERE. An absent temperature or output cap
+	// is omitted upstream and the provider applies its own default. Explicit
+	// caller options below still travel unchanged.
 	for _, option := range options {
 		if err := option(request); err != nil {
 			return nil, fmt.Errorf("apply option: %w", err)

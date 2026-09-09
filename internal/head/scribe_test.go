@@ -120,8 +120,8 @@ func TestTheScribeNamesARoomFromItsFirstExchange(t *testing.T) {
 	if scribe.count() != 1 {
 		t.Fatalf("naming cost %d calls, want exactly one", scribe.count())
 	}
-	if scribe.maxTokens != scribeMaxTokens {
-		t.Fatalf("the naming call was capped at %d tokens, want %d", scribe.maxTokens, scribeMaxTokens)
+	if scribe.maxTokens != 0 {
+		t.Fatalf("the naming call was capped at %d tokens, want no cap on the wire", scribe.maxTokens)
 	}
 	prompt := scribe.prompts[0]
 	for _, required := range []string{"2 to 5 words", "audit last quarter's billing code", "billing package"} {
@@ -231,6 +231,31 @@ func TestTheScribeTitleGoesThroughTheSanitizer(t *testing.T) {
 	}
 }
 
+// THE NAMING CALL CARRIES NO CEILING, and there is nothing left to escalate.
+//
+// This file used to hold four tests about an escalation ladder: a first call at
+// 512 tokens, a retry at 8192 when the reply came back empty with a length-ish
+// finish, and the two edge readings of "length-ish". All four described a
+// mechanism for surviving a ceiling this package chose, and the ceiling is
+// gone — so what is pinned instead is its absence, and that an empty answer
+// costs exactly one call rather than two.
+func TestTheNamingCallSendsNoCeilingAndDoesNotEscalate(t *testing.T) {
+	graph := openHeadStore(t)
+	seedExchange(t, graph, "room", "audit the billing code", "On it.")
+	scribe := &scribeClientRecorder{answers: []string{"", "Billing code audit"}}
+	New(scribe, graph).nameRoom(context.Background(), "room")
+
+	if scribe.count() != 1 {
+		t.Fatalf("naming cost %d calls, want exactly one — there is no escalation", scribe.count())
+	}
+	if len(scribe.ceilings) != 0 {
+		t.Fatalf("the naming call carried ceilings %v, want none on the wire", scribe.ceilings)
+	}
+	if title := roomTitleOf(t, graph, "room"); title != "" {
+		t.Fatalf("an empty answer named the room %q", title)
+	}
+}
+
 // thoughtOnly is what a mandatory-reasoning model hands back when the whole
 // ceiling went on thinking: a real, successful, paid-for response with a
 // length-shaped finish and not one visible character in it. This is the exact
@@ -241,97 +266,6 @@ func thoughtOnly(finish string) *ai.Response {
 		Message:      ai.Message{Role: "assistant"},
 		FinishReason: finish,
 	}}}
-}
-
-// THE ESCALATION. A ceiling spent entirely on reasoning is the one failure a
-// bigger ceiling can fix, so the clerk asks once more with room to spare — and
-// the room gets its name from the second answer.
-func TestTheScribeRetriesOnceWhenTheCeilingWentOnThinking(t *testing.T) {
-	graph := openHeadStore(t)
-	seedExchange(t, graph, "room", "can you audit last quarter's billing code", "On it.")
-
-	scribe := &scribeClientRecorder{
-		raw:     []*ai.Response{thoughtOnly("length")},
-		answers: []string{"Billing code audit"},
-	}
-	New(scribe, graph).nameRoom(context.Background(), "room")
-
-	if title := roomTitleOf(t, graph, "room"); title != "Billing code audit" {
-		t.Fatalf("the room is called %q after the escalation", title)
-	}
-	if scribe.count() != 2 {
-		t.Fatalf("naming cost %d calls, want the try and one escalation", scribe.count())
-	}
-	if len(scribe.ceilings) != 2 {
-		t.Fatalf("the calls carried %d ceilings, want two", len(scribe.ceilings))
-	}
-	if scribe.ceilings[0] != scribeMaxTokens {
-		t.Fatalf("the first call was capped at %d, want %d", scribe.ceilings[0], scribeMaxTokens)
-	}
-	// SUBSTANTIALLY larger, and pinned as a ratio rather than as a number: the
-	// escalation is only a mechanism if the second ceiling is big enough to
-	// hold a reasoning budget the first one could not.
-	if scribe.ceilings[1] != scribeReliefTokens || scribe.ceilings[1] < 4*scribe.ceilings[0] {
-		t.Fatalf("the escalation was capped at %d, want %d and several times the first",
-			scribe.ceilings[1], scribeReliefTokens)
-	}
-}
-
-// A provider that reports no finish reason at all has told us nothing, and an
-// empty answer on a successful call is then the only signal there is.
-func TestTheScribeEscalatesWhenNoFinishReasonIsReported(t *testing.T) {
-	graph := openHeadStore(t)
-	seedExchange(t, graph, "room", "audit the billing code", "On it.")
-
-	scribe := &scribeClientRecorder{
-		raw:     []*ai.Response{thoughtOnly("")},
-		answers: []string{"Billing code audit"},
-	}
-	New(scribe, graph).nameRoom(context.Background(), "room")
-
-	if title := roomTitleOf(t, graph, "room"); title != "Billing code audit" {
-		t.Fatalf("the room is called %q", title)
-	}
-	if scribe.count() != 2 {
-		t.Fatalf("naming cost %d calls, want the try and one escalation", scribe.count())
-	}
-}
-
-// ONCE, AND THEN SILENCE. A model that thinks its way through the escalated
-// ceiling too leaves the room exactly as it was, and does not buy a third call.
-// The room is untitled, which is the true answer, and the next turn is another
-// chance at the same two calls — never a loop inside one pass.
-func TestAScribeThatOnlyEverThinksNamesNothing(t *testing.T) {
-	graph := openHeadStore(t)
-	seedExchange(t, graph, "room", "audit the billing code", "On it.")
-
-	scribe := &scribeClientRecorder{raw: []*ai.Response{thoughtOnly("length"), thoughtOnly("length")}}
-	New(scribe, graph).nameRoom(context.Background(), "room")
-
-	if title := roomTitleOf(t, graph, "room"); title != "" {
-		t.Fatalf("a reply with nothing in it became the title %q", title)
-	}
-	if scribe.count() != 2 {
-		t.Fatalf("the scribe made %d calls, want one escalation and no more", scribe.count())
-	}
-}
-
-// A model that CHOSE to say nothing will choose it again with sixteen times the
-// room. That is a different failure from running out of budget, the finish
-// reason says which, and the clerk pays for one call rather than two.
-func TestAnEmptyAnswerThatFinishedProperlyIsNotEscalated(t *testing.T) {
-	graph := openHeadStore(t)
-	seedExchange(t, graph, "room", "audit the billing code", "On it.")
-
-	scribe := &scribeClientRecorder{raw: []*ai.Response{thoughtOnly("stop")}}
-	New(scribe, graph).nameRoom(context.Background(), "room")
-
-	if title := roomTitleOf(t, graph, "room"); title != "" {
-		t.Fatalf("an empty answer became the title %q", title)
-	}
-	if scribe.count() != 1 {
-		t.Fatalf("the scribe made %d calls, want the one it was owed", scribe.count())
-	}
 }
 
 // An empty answer is not a name. The room keeps saying "untitled", which is the

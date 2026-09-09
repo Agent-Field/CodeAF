@@ -449,7 +449,8 @@ than fighting your shell.
                        AFORGE_MODELS=~/.aforge/models.json
                        Ratings accumulate in ~/.aforge/router-ledger.json
                        across runs; see them with ` + "`aforge models`" + `.
-  AFORGE_REASONING     planning calls: off (default), low, medium, high
+  AFORGE_REASONING     planning calls: model default (unset), off, low, medium,
+                       high
   AFORGE_EXEC_REASONING
                        executor calls: model default (unset), off, low, medium,
                        high

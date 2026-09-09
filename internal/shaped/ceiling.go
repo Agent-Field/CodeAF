@@ -7,6 +7,20 @@ import (
 
 // ── HOW MUCH ROOM A SHAPED ANSWER GETS ────────────────────────────────────────
 //
+// NOTHING HERE IS SENT ANY MORE. Read that first, because everything below it
+// was written when this figure was a max_tokens on the wire. It is not: the
+// generation-defaults wave took every app-imposed ceiling off every request in
+// this tree, structured calls included, and a shaped ask now goes out with its
+// schema and no room (shaped.go's request).
+//
+// WHAT IS LEFT IS THE UNIT OF ACCOUNT. The repair loop has to terminate, and it
+// terminates because spend grows toward the reserve; a provider that reports no
+// usage would otherwise let it grow by nothing forever, so a cut reply is
+// counted as having spent a reply's worth, and THIS is the figure that says what
+// a reply's worth is. It is an estimate used for bookkeeping, never a request —
+// which is why the derivation below still reads as a derivation and no longer
+// reads as a promise to any model.
+//
 // Every ceiling this system ever sent a structured call was a literal: 8192 in
 // the planner, a reserve-eighth in the delivery gate, eight thousand plus an
 // echo in the intent compiler. Each was right about the call its author had in
@@ -74,7 +88,8 @@ const (
 	echoCopies        = 2
 )
 
-// Room is the ceiling one ask is sent with. See the derivation above.
+// Room is what one ask's reply is COUNTED as being worth, never what it is sent
+// with. See the derivation and its first paragraph above.
 //
 // It takes the model rather than reading it from the context because the caller
 // has already resolved it — Answer asks the router's slot once — and because a
@@ -123,32 +138,7 @@ func echo(material string) int {
 	return echoCopies * len(material) / echoBytesPerToken
 }
 
-// doubled is the room a re-ask gets: twice what the failed attempt actually
-// spent, never less than the ceiling it already had, never more than the
-// reserve. This is plan.retryTokenBudget and revision.retryVerdictTokens, which
-// were the same arithmetic written twice with different literals, said once.
-func doubled(spent, ceiling int) int {
-	room := spent * 2
-	if room < ceiling*2 {
-		room = ceiling * 2
-	}
-	if limit := reserve(); room > limit {
-		room = limit
-	}
-	return room
-}
-
 // reserve is the one figure an operator states about how large a completion may
 // be. Read through ctxbudget every time rather than cached, because a test that
 // moves it expects the next call to see it.
 func reserve() int { return ctxbudget.CompletionReserve() }
-
-// ObjectRoom is the room one form-shaped answer gets, for the one caller whose
-// reply is not an object at all.
-//
-// The planner's brief pass writes prose, so there is no schema to derive from
-// and nothing to repair when it arrives — but it travels under the same ceiling
-// as everything else in that package, because left unset the ceiling is the leaf
-// completion reserve and a model that loops runs to it. Exported so that figure
-// is stated in one place rather than in two that will drift.
-func ObjectRoom() int { return oneObject() }
