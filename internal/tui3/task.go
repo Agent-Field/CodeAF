@@ -4624,7 +4624,19 @@ func (a *app) railEntryRows(e railEntry, width int) ([]string, hudSpan, hudSpan)
 	if node == nil {
 		return nil, hudSpan{}, hudSpan{}
 	}
+	// Deep ancestry keeps its full navigation identity, but its indentation must
+	// leave room for a name and the under-row's child stem. The ellipsis marks
+	// omitted outer connectors; only this drawing copy is shortened.
+	depthRoom := max((width-railTitleFloor-2-treeIndentCols)/treeIndentCols, 1)
+	compressed := len(e.stems) > depthRoom
+	if compressed {
+		e.stems = e.stems[len(e.stems)-depthRoom:]
+	}
 	prefix, at := a.railPrefix(e.stems)
+	if compressed {
+		tail, _ := a.railPrefix(e.stems[1:])
+		prefix = a.pal.dim(a.linearMark("…", "~")+strings.Repeat(" ", treeIndentCols-1)) + tail
+	}
 	glyph, lead, folds := a.railLead(e)
 	room := width - at - ansi.StringWidth(lead)
 	// The trailing slot: a folded root says how much it is standing for, every

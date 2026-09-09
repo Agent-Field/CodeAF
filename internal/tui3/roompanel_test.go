@@ -216,3 +216,81 @@ func TestTaskPanelHoverUsesTheCurrentThemeAndOnlyActionRows(t *testing.T) {
 		}
 	}
 }
+
+func TestDeepTaskPanelKeepsAncestorClicksAndControlScope(t *testing.T) {
+	a, _ := taskControlApp(t)
+	a.jobs = nil
+	a.title = strings.Repeat("Long conversation name ", 8)
+	parent := uint64(7)
+	for id := uint64(100); id < 130; id++ {
+		name := fmt.Sprintf("Level %d %s", id, strings.Repeat("long task title ", 8))
+		n := &taskNode{id: id, title: name, label: name, parent: fmt.Sprint(parent), state: session.TaskRunning, model: "z-ai/glm-5.3"}
+		a.tasks[id] = n
+		a.taskOrder = append(a.taskOrder, id)
+		a.railSetOpen(a.tasks[parent], true)
+		parent = id
+	}
+	for _, width := range []int{100, 120, 160} {
+		a.width, a.height = width, 48
+		a.openRoom(129, a.tasks[129].title)
+		a.railHold, a.railWhere = true, railSpot{id: 129}
+		frame, _, _ := a.frame()
+		for _, row := range strings.Split(plain(frame), "\n") {
+			if ansi.StringWidth(row) > width {
+				t.Fatalf("deep task overflows %d columns: %q", width, row)
+			}
+		}
+		entries := a.railEntries()
+		lines, _ := a.railView(a.viewHeight())
+		found := false
+		for row, line := range lines {
+			if line.head && line.entry >= 0 && entries[line.entry].node.id == 129 {
+				found = true
+				drive(t, a, tea.MouseClickMsg{X: width - 2, Y: a.topHeight() + row, Button: tea.MouseLeft})
+				if a.room.id != 129 {
+					t.Fatal("deep tree click opened a neighboring task")
+				}
+				break
+			}
+		}
+		if !found {
+			t.Fatal("deep selected task disappeared from the tree window")
+		}
+		a.frame()
+		hits := append([]crumbHit(nil), a.crumbs...)
+		folded := false
+		for _, hit := range hits {
+			if hit.crumb.node == nil {
+				continue
+			}
+			if hit.crumb.node.id == 129 {
+				t.Fatal("current task repeated in ancestor navigation")
+			}
+			folded = folded || hit.crumb.kind == crumbFold
+			a.openRoom(129, a.tasks[129].title)
+			a.frame()
+			clickHead(t, a, hit.span.from)
+			if a.room.id != hit.crumb.node.id {
+				t.Fatalf("ancestor click opened %d, wanted %d", a.room.id, hit.crumb.node.id)
+			}
+			a.roomPanelTake("model")
+			if a.pick.task != a.room.id {
+				t.Fatal("model picker did not follow the ancestor page")
+			}
+			drive(t, a, key("esc"))
+			a.roomPanelTake("stop")
+			if a.stop.target.id != session.CancelTask+":"+fmt.Sprint(a.room.id) {
+				t.Fatal("Stop did not follow the ancestor page")
+			}
+			drive(t, a, key("esc"))
+		}
+		if !folded {
+			t.Fatal("deep ancestry lost its folded navigation target")
+		}
+		a.frame()
+		drive(t, a, tea.MouseClickMsg{X: a.roomBackSpan.from, Y: a.roomHeadRow(), Button: tea.MouseLeft})
+		if a.roomOpen() {
+			t.Fatal("Back did not leave the deeply nested task")
+		}
+	}
+}

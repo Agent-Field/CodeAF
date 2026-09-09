@@ -2232,3 +2232,7 @@ Conversation context, when present, receives one third of the remainder, capped 
 Both windows clamp their own scroll offsets. Shorter frames use the established
 compact rail, header Stop and model picker. These are display budgets, not limits
 on tasks, their history or their execution.
+
+Deep tree rows retain their full navigation ancestry but bound drawn indentation
+by the available width, reserving `railTitleFloor`, the two-cell glyph lead and
+one `treeIndentCols` child stem. An ellipsis marks omitted outer connectors.

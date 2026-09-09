@@ -25,6 +25,8 @@ controls are absent, and settled values are read-only. An adaptive run's publish
 planner and budget are shown as facts. Assignment and acceptance remain in the
 main task content rather than being repeated in a narrow sidebar.
 
+Deep task trees keep their full ancestry. When indentation would hide a task
+name, `…` replaces outer connectors; breadcrumbs still open the actual ancestors.
 Long sections show their position; resizing clamps each section to its available
 rows. Short or narrow terminals retain the compact column and existing controls.
 

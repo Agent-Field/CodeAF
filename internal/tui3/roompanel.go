@@ -295,12 +295,7 @@ func (a *app) roomAncestorParts(width int) (string, []crumbHit) {
 		crumbs = crumbs[:len(crumbs)-1]
 	}
 	room := max(width-headLabelAt-len(" "+roomBackWord+" ")-3, 1)
-	for _, rung := range crumbRungs(crumbs) {
-		if word, hits, ok := crumbDraw(rung, room, false); ok {
-			return word, crumbsAt(hits, headLabelAt)
-		}
-	}
-	word, hits, _ := crumbDraw(crumbs, room, true)
+	word, hits, _ := fitCrumbChain(crumbs, room)
 	return word, crumbsAt(hits, headLabelAt)
 }
 
