@@ -91,6 +91,20 @@ line, the spawn tree, the gauges, the prose slots — is in
 `internal/tui2/tokens/nerdfont.go`, one binding each, with its argument at its
 own binding.
 
+The prompt family is three slots and not two since the questions wave
+(`docs/design/questions/DESIGN.md`), because an exchange has two voices in it:
+
+| Meaning | Slot | Plain | Nerd font | ASCII |
+| --- | --- | --- | --- | --- |
+| the composer, chat | `GPromptChat` | `›` | geometry | `›` |
+| the composer, a steer line | `GPromptSteer` | `↦` | geometry | `↦` |
+| the answer to a question put back to the asker | `GReplyIn` | `↳` | geometry | `↳` |
+
+`GReplyIn` is deliberately not `GPromptChat`: `›` is the person typing and `↳` is
+what came back, and a page that drew both with one mark would make an exchange
+unreadable at exactly the moment it matters. All three are punctuation rather
+than pictographs, so they are geometry and neither tier swaps the byte.
+
 ## Adding a mark
 
 1. Declare the constant in `glyph.go` and add it to `Glyphs()`. That list IS the

@@ -1748,6 +1748,17 @@ type app struct {
 	// resolves through the transcript.
 	room    *taskRoom
 	roomGen int
+	// qroom is the QUESTION's page, when a person has opened one out
+	// (questionroom.go), and nil is the ordinary state. It is a field beside the
+	// node's page and not a kind of it: the two draw different things, take
+	// different keys and are raised from different places, and the only thing
+	// they share is that both are the body region while they are up.
+	//
+	// THEY CAN BE UP TOGETHER, which is why this is not one field. A question
+	// raised about work a person is standing inside is exactly the case the room
+	// form is for, and the question is drawn OVER the node's page for the reason
+	// every question on this surface is drawn over what it is about.
+	qroom *questionRoom
 	// Recently visited tasks keep bounded display state across navigation.
 	roomReadings     map[roomReadingKey]roomReading
 	roomReadingOrder []roomReadingKey
@@ -2605,6 +2616,11 @@ func newApp(ctx context.Context, opts Options) *app {
 	// conversation is stamped by [app.attachConversation]; this is the first one,
 	// which no switch ever brought forward.
 	a.frontAt = a.now()
+	// AND LAST OF ALL, THE QUESTION FIXTURE, where the environment names one
+	// (questiondemo.go). It is not a feature and it is reached by nothing a
+	// person presses; it exists so that the page a question opens into can be
+	// looked at on a real screen before anything raises a real one.
+	a.openDemoQuestion(env)
 	return a
 }
 
@@ -2903,6 +2919,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// takes — esc to leave, enter to steer — belong to input.go, and it
 		// restates that file's precedence law rather than jumping it: everything
 		// that outranks the draft there outranks the room here.
+		// THE QUESTION'S PAGE READS BEFORE THE NODE'S, and only ever while one is
+		// open (questionroom.go). It is above the room for the reason the stop
+		// card is above both: it is drawn OVER whatever it was raised about, so a
+		// key that reached the page underneath would be a key aimed at something
+		// the person cannot see. It takes a bare letter only over an empty box,
+		// which is this surface's own law about letters, so nothing it claims is
+		// taken from somebody mid-sentence.
+		if cmd, took := a.questionRoomKey(msg); took {
+			return a, tea.Batch(flushed, cmd)
+		}
 		if cmd, took := a.roomKey(msg); took {
 			return a, tea.Batch(flushed, cmd)
 		}
@@ -3225,6 +3251,17 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The room is the body region while it is up, so the wheel is the room's:
 		// a wheel that moved the transcript under it would scroll a list that is
 		// not on screen (room.go).
+		// AND THE QUESTION'S PAGE OWNS IT ABOVE THE NODE'S, for the reason it owns
+		// the keyboard above it: it is the body region while it is up.
+		if a.questionRoomOpen() {
+			switch msg.Mouse().Button {
+			case tea.MouseWheelUp:
+				a.questionRoomScroll(-3)
+			case tea.MouseWheelDown:
+				a.questionRoomScroll(3)
+			}
+			return a, nil
+		}
 		if a.roomOpen() {
 			switch msg.Mouse().Button {
 			case tea.MouseWheelUp:

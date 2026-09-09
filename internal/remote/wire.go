@@ -332,17 +332,29 @@ const (
 	MethodConsent         = "ResolveConsent"         // ConsentArgs → nothing
 	MethodConsentRemember = "ResolveConsentRemember" // ConsentArgs → nothing
 	MethodStandingResolve = "ResolveStanding"        // StandingArgs → nothing
-	MethodHarness         = "ResolveHarness"         // HarnessArgs → nothing
-	MethodConnect         = "ResolveConnect"         // ConnectArgs → nothing
-	MethodConnectKey      = "ResolveConnectKey"      // ConnectArgs → nothing
-	MethodNoteConnected   = "NoteConnected"          // ConnectedArgs → nothing
-	MethodTitle           = "Title"                  // nothing → string
-	MethodUsage           = "Usage"                  // nothing → session.Usage
-	MethodContextTokens   = "ContextTokens"          // nothing → int
-	MethodTranscript      = "Transcript"             // nothing → []session.DisplayEntry
-	MethodEarlier         = "EarlierHistory"         // nothing → session.EarlierHistory
-	MethodRewindPoints    = "RewindPoints"           // nothing → []session.RewindPoint
-	MethodRewindAt        = "RewindAt"               // int → []session.DisplayEntry
+	// MethodQuestionResolve is the ONE door for an answer to any question, over
+	// the wire (docs/design/questions/DESIGN.md). It carries
+	// [session.Answer] whole — the lane, the token, the keys, the words beside
+	// them, the notes on parts, the exchanges, the blanks, the dial, the scope —
+	// and the engine reads the lane off it and applies it through that lane's own
+	// resolver ([session.Agent.ResolveQuestion]).
+	//
+	// IT IS ONE FRAME AND NOT ELEVEN because the object it carries already says
+	// which lane it belongs to. The per-lane frames above stay exactly as they
+	// are: they are what an older window on the other end of this wire sends, and
+	// this one is what a window that has the whole object sends.
+	MethodQuestionResolve = "ResolveQuestion"   // QuestionArgs → nothing (or a refusal)
+	MethodHarness         = "ResolveHarness"    // HarnessArgs → nothing
+	MethodConnect         = "ResolveConnect"    // ConnectArgs → nothing
+	MethodConnectKey      = "ResolveConnectKey" // ConnectArgs → nothing
+	MethodNoteConnected   = "NoteConnected"     // ConnectedArgs → nothing
+	MethodTitle           = "Title"             // nothing → string
+	MethodUsage           = "Usage"             // nothing → session.Usage
+	MethodContextTokens   = "ContextTokens"     // nothing → int
+	MethodTranscript      = "Transcript"        // nothing → []session.DisplayEntry
+	MethodEarlier         = "EarlierHistory"    // nothing → session.EarlierHistory
+	MethodRewindPoints    = "RewindPoints"      // nothing → []session.RewindPoint
+	MethodRewindAt        = "RewindAt"          // int → []session.DisplayEntry
 
 	// Session doors.
 	MethodSessionsRecent = "Sessions.Recent" // nothing → []session.Summary
@@ -1190,6 +1202,15 @@ type ConsentArgs struct {
 type StandingArgs struct {
 	ID     uint64                 `json:"id"`
 	Answer session.StandingAnswer `json:"answer"`
+}
+
+// QuestionArgs is one answer, whole. It carries [session.Answer] rather than a
+// flattened set of fields for the reason the object exists at all: the fields on
+// it are what a person's intent looks like, and a wire that carried only the key
+// would be the wire deciding that the notes, the exchange and the words beside
+// the pick are not part of the answer.
+type QuestionArgs struct {
+	Answer session.Answer `json:"answer"`
 }
 
 type HarnessArgs struct {

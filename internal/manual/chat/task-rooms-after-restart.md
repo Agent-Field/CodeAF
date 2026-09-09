@@ -152,7 +152,7 @@ Task numbers belong to their conversation. A reading view of another conversatio
 finished task never shows or answers the current conversation's answers. Open its owning
 conversation to make a decision there.
 
-## I handed a review to the chat — why does it still need me?
+## It says aforge is deciding — I handed a review to the chat and it still needs me
 
 **`awaiting review` is gone from every row, and there is no such state.** The card said
 it, then the rail, the roster, the record page and this room's own header said it too —

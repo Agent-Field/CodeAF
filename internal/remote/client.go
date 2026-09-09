@@ -1665,6 +1665,26 @@ func (a *Agent) ResolveStanding(id uint64, answer session.StandingAnswer) {
 	_, _ = a.c.call(nil, MethodStandingResolve, StandingArgs{ID: id, Answer: answer})
 }
 
+// ResolveQuestion answers ONE QUESTION OF ANY LANE, whole, over the wire.
+//
+// IT IS THE METHOD THAT MAKES A QUESTION ANSWERABLE FROM A SURFACE AT ALL, and
+// [Agent.ResolveStanding]'s note above says why in the older case: internal/tui3
+// asserts an OPTIONAL interface on whatever agent it is holding and draws a page
+// that can be READ and not answered for one that does not implement it. Every
+// local chat surface holds this type — the engine runs in its own process even
+// on this machine — so without this the question page was a page nobody could
+// answer anywhere.
+//
+// THE ERROR COMES BACK. Every other resolver here drops it, because their
+// answers cannot be refused: an approval either applies or the question is
+// already gone. A question CAN be refused with something a person needs to read
+// — the work it was about finished, somebody else answered it first — and the
+// page draws exactly that sentence where its foot was.
+func (a *Agent) ResolveQuestion(answer session.Answer) error {
+	_, err := a.c.call(nil, MethodQuestionResolve, QuestionArgs{Answer: answer})
+	return err
+}
+
 // ResolveHarness answers one sub-harness offer.
 func (a *Agent) ResolveHarness(id uint64, run bool, model string) {
 	_, _ = a.c.call(nil, MethodHarness, HarnessArgs{ID: id, Run: run, Model: model})

@@ -117,6 +117,7 @@ const (
 	GCut
 	GPromptChat
 	GPromptSteer
+	GReplyIn
 	GThought
 	GShell
 	GSearch

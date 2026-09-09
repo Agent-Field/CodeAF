@@ -199,6 +199,10 @@ var vocabulary = []GlyphBinding{
 		// moment itself.
 		Plain: GlyphPromptSteer, UsualTint: Identity0, Geometry: true,
 	},
+	{
+		ID: GReplyIn, Name: "ReplyIn", Meaning: "the answer to a question put back to the asker, drawn under it",
+		Plain: GlyphReplyIn, UsualTint: TextTertiary, Geometry: true,
+	},
 
 	// -- the execution voices (5.5) ------------------------------------------
 	{
