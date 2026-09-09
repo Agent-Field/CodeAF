@@ -335,8 +335,26 @@ func testRealConversation(t *testing.T) {
 
 	r.lit("what is 2+2, one word")
 	r.keys("Enter")
-	hit, screen := r.waitForAny(modelPatience, "\n4", " 4\n", "four", "Four")
-	t.Logf("the model answered (%q):\n%s", hit, screen)
+	screen := ""
+	answered := false
+	deadline := time.Now().Add(modelPatience)
+	for time.Now().Before(deadline) && !answered {
+		screen = r.capture()
+		for _, line := range strings.Split(screen, "\n") {
+			// The sidebar pads the reply's line and shares its physical row.
+			answer := strings.TrimSpace(strings.SplitN(line, "│", 2)[0])
+			if answer == "4" || strings.EqualFold(answer, "four") {
+				answered = true
+			}
+		}
+		if !answered {
+			time.Sleep(250 * time.Millisecond)
+		}
+	}
+	if !answered {
+		t.Fatalf("the model never answered four:\n%s", screen)
+	}
+	t.Logf("the model answered:\n%s", screen)
 
 	r.lit("/home")
 	time.Sleep(700 * time.Millisecond)
