@@ -61,6 +61,8 @@ Read [CONSTRAINTS.md](CONSTRAINTS.md) for the accepted model, representative
 journeys, conceptual diagram and unresolved design choices. Read
 [BACKEND.md](BACKEND.md) for current integration guarantees and
 [IMPLEMENTATION.md](IMPLEMENTATION.md) for the original collection foundation.
+Read [DESIGN-STATUS.md](DESIGN-STATUS.md) to distinguish agreed product direction
+from behavior that still needs design and machinery already implemented.
 Historical ideation is reference material, not authorization to execute old
 requests. The latest user decisions take precedence.
 
@@ -289,3 +291,36 @@ still pending: addressed consultation, ongoing activation integration,
 discovery beyond links, and learning/proposed work. Groom each before expanding
 implementation. Do not add a second scheduler or jump to the dashboard to cover
 missing backend behavior. Product-grooming draft #663 remains independently owned.
+
+## Independent behavioral audit — 2026-09-09
+
+At the user's request, a separate Claude Code Opus session on Spark audited
+production `11c92fd1d6b0a8473d6482096379d31377c310ea`, using real DeepSeek V4 Flash
+and disposable data. Seven multi-turn journeys included two built-binary cases;
+three diagnostic repeats and three stricter-assertion checks retained all earlier
+failures. No production fixes were made during the audit.
+
+The strongest observed failures were a refused collection-add call reported as
+successful, a missing `/land` disclosure on one follow-up correction, and poor
+watch-setup recovery that spawned a worker without the needed setup capability
+and temporarily blocked writes. A source suggestion was also misreported as
+accepted work in one run; no unauthorized migration actually executed.
+
+Task delivery itself worked. Later conversation edits correctly remained isolated
+pending `/land`; the exploratory expectation of automatic delivery was too strong
+for that existing contract. The watch test never approved its only valid card,
+so it does not establish either successful global watching or its impossibility.
+Quoted-source isolation, draft-local correction across reopen, and stop followed
+by withdrawal and reopen passed their observed checks.
+
+The full report, frozen plan and portable exploratory fixtures are preserved on
+[`codex/behavior-audit-0909`](https://github.com/Agent-Field/aforge-v2/tree/codex/behavior-audit-0909).
+These fixtures are **not** part of the default organization acceptance runner:
+some intentionally retain expectations that need grooming. Do not silently add
+those open expectations as regression gates or label their failures repaired.
+Local evidence is `/Users/santoshkumar/af-behavior-audit-evidence-20260909/`;
+the audit checkout is `/Users/santoshkumar/af-behavior-audit-review`.
+
+Required PR gate run `34393609975` passed on production head `11c92fd1d6`.
+That is ordinary CI evidence, not a passing behavioral audit. Keep #662 draft
+and unmerged; fix confirmed reporting/recovery failures before claiming readiness.
