@@ -1656,9 +1656,9 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		// Restoring it faithfully and handing it back deliberately is the whole
 		// point: the alternative — dropping it here — is the right answer with no
 		// act behind it, which is what nothing could seed and nothing could watch.
-		decider:        record.Decider,
-		offer:          record.Offer,
-		assignment:     restoredAssignment(record.Assignment),
+		decider:    record.Decider,
+		offer:      record.Offer,
+		assignment: restoredAssignment(record.Assignment),
 	}
 	// AND WHETHER THIS WORK MAY STILL DISCOVER THAT IT IS WIDE. The road is not
 	// on the record, because it is not a fact about the work — it is a reading
