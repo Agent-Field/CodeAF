@@ -8,9 +8,11 @@
   `reports/coordinator-notes.md`, both expanded for the latest visual review,
   committed and pushed through `599da68f1`.
 - Modal worker: still active on `codex/context-modal-ui-20260908`; its committed
-  checkpoints through `1eaa7de2b` are not yet accepted or merged. Coordinator
-  review identified the asymmetric right-backdrop compositor and superseded
-  no-separator styling as blockers; the worker is actively editing modal paint.
+  checkpoints through `1eaa7de2b` are not yet accepted or merged. Its dirty
+  visual pass addresses the earlier backdrop and sparse styling findings, but
+  is not yet a clean pushed result. The supplied owner-review evidence is still
+  ANSI/text only and lacks the required rendered PNG and full command-door,
+  image, mixed-mark, and empty-state matrix.
 - Integration, final build/suites, draft PR update, independent PNG inspection,
   `REMOTE_READY`, and the root-owned native Mac review remain outstanding.
 

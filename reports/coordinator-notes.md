@@ -137,3 +137,29 @@ acceptable as the finished visual correction:
 These are review findings against an active worker tree, not coordinator edits
 to picker implementation. Merge waits for a clean, pushed worker checkpoint and
 the promised rendered captures.
+
+## Checkpoint review — active visual pass after `1eaa7de2b`
+
+The worker tree now contains a material, still-uncommitted visual pass: cell-safe
+type marks with an ASCII tier, distinct cursor and hover bands, selected-item
+size/modification facts, whole-block syntax highlighting, and a compositor fix
+that retains both backdrop sides. Those changes address the earlier review in
+code, but they are not an integratable result until committed and pushed.
+
+The evidence directory is not yet acceptance-complete. In particular,
+`evidence/owner-review/` currently contains only ANSI and plain-text captures;
+there are no rendered PNGs for visual inspection. The current named scenes also
+do not independently demonstrate both `/folder` and bare `/attach` as the same
+modal, an actual image preview, persistent mixed marks, an empty-directory
+fallback, or the requested wide/narrow command-door matrix. The 52×26 text
+capture is useful for structural fallback but still needs a rendered image and
+an eyes-on judgment for clipping and hierarchy.
+
+Before integration, require a clean pushed worker head plus rendered PNGs made
+from the captured terminal frames. The coordinator must inspect those images,
+exercise the native-capable fixture independently, and record concrete results
+for right-pane directory and file activation, per-pane wheel routing, hover,
+outside click capture, resize geometry invalidation, draft-preserving cancel,
+mixed next-request context, and background room/timer continuity. ANSI style
+codes and unit assertions are supporting evidence, not a substitute for that
+visual and pointer pass.
