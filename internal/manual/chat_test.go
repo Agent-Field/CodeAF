@@ -31,6 +31,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what can you do", "what-i-can-do"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},
+		// Two aforge commands on one collections database: the words somebody
+		// types after they have seen the refusal, not the words it is written in.
+		{"collections database is locked", "collections"},
+		{"two aforge commands writing collections at the same time", "collections"},
 		// Lanes behind a base of the person's own: the question the hostname gate
 		// (issue #373) used to answer wrongly, in the three ways it gets asked.
 		{"do lanes work with a custom base url", "lanes"},
