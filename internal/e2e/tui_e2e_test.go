@@ -55,14 +55,10 @@ const (
 	// tuiWide is past internal/tui3's homeCardMin, where the width is genuinely
 	// spare and the card stands beside the list.
 	tuiWide = 180
-	// tuiCardAt is the first screen column the card's own text stands in at
-	// [tuiWide], and it is arithmetic rather than a guess: homeColumns gives the
-	// card thirty-six cells plus half of everything past the tier's floor —
-	// 36 + (180-160)/2 = 46 — with a four-cell gutter before it, so the list ends
-	// at 130 and the card begins at 134. A subtest that reads the pane fails
-	// loudly rather than quietly if that ever moves, because the pane comes back
-	// empty.
-	tuiCardAt = 134
+	// tuiCardAt is the card's first column at tuiWide: the current card uses
+	// 56 cells and the list and gutter occupy the remaining 124. Assertions
+	// below require complete card labels so a moved boundary fails visibly.
+	tuiCardAt = 124
 )
 
 // tuiShortRows is a deliberately SHORT terminal, and it is a fixture rather than
@@ -330,10 +326,22 @@ func testHomeShape(t *testing.T) {
 // that assertion is kept and respelled rather than dropped.
 func testRealConversation(t *testing.T) {
 	home := newHome(t, nil)
-	ws := newWorkspace(t, "repows", true)
-	r := start(t, "afe2e_talk", home, ws, tuiWide, 40)
+	// The card caps its width, so widening the terminal cannot make an
+	// arbitrary t.TempDir path fit beside repository facts. Give this one
+	// fixture a short, unique address, and remove it with the test.
+	short, err := os.MkdirTemp("/tmp", "hc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(short) })
+	ws, err := filepath.EvalSymlinks(short)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws = workspaceAt(t, ws, true)
+	r := start(t, "afe2e_talk", home, ws, tuiWide, 40, "chat", "--one-model", "--no-host")
 
-	r.lit("what is 2+2, one word")
+	r.lit("what is 2+2? Spell the answer as an English word.")
 	r.keys("Enter")
 	hit, screen := r.waitForAny(modelPatience, "\n4", " 4\n", "four", "Four")
 	t.Logf("the model answered (%q):\n%s", hit, screen)
@@ -344,7 +352,8 @@ func testRealConversation(t *testing.T) {
 	// THE CURSOR OPENS ON THE CONVERSATION THIS WINDOW HOLDS, which is the only
 	// one on this machine, so the card beside the list is this conversation's
 	// without anything being walked to.
-	card := r.waitFor(20*time.Second, say(t, "homeFootWord"), say(t, "homeVerbsWord"))
+	// The repository reading arrives asynchronously after the first card.
+	card := r.waitFor(20*time.Second, say(t, "homeFootWord"), say(t, "homeVerbsWord"), "main, 1 file dirty")
 	t.Logf("home, with the conversation's card up:\n%s", card)
 	pane := rightPane(card)
 
@@ -385,6 +394,16 @@ func testRealConversation(t *testing.T) {
 	if !strings.Contains(pane, say(t, "homeVerbsWord")) {
 		t.Errorf("the card has no verbs line:\n%s", pane)
 	}
+	// The same cached reading must give way whole on a narrow card, then
+	// return when the person widens the terminal again.
+	r.resize(136, 40)
+	narrow := r.waitFor(10*time.Second, ws+" · "+say(t, "homeHereWord"))
+	if strings.Contains(narrow, want) {
+		t.Errorf("the narrow card retained a repository clause that cannot fit:\n%s", narrow)
+	}
+	r.resize(tuiWide, 40)
+	r.waitFor(10*time.Second, want, say(t, "homeFactsActive"), say(t, "homeVerbsWord"))
+
 }
 
 // ── 3 ───────────────────────────────────────────────────────────────────────

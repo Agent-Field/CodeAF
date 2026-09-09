@@ -156,7 +156,13 @@ func emptyHome(t *testing.T) string {
 // band on home reads.
 func newWorkspace(t *testing.T, name string, dirty bool) string {
 	t.Helper()
-	ws := filepath.Join(t.TempDir(), name)
+	return workspaceAt(t, filepath.Join(t.TempDir(), name), dirty)
+}
+
+// workspaceAt seeds the same repository at a caller-chosen path when the
+// path length itself is part of a terminal layout scenario.
+func workspaceAt(t *testing.T, ws string, dirty bool) string {
+	t.Helper()
 	if err := os.MkdirAll(ws, 0o755); err != nil {
 		t.Fatalf("workspace: %v", err)
 	}
