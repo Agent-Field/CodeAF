@@ -874,6 +874,10 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// not into it (followup.go). Enter stays steering.
 		return a.followUp()
 
+	case "alt+i":
+		a.toggleVisiblePictures()
+		return nil
+
 	case "ctrl+o":
 		// A SELECTED COMPLETION CARD OWNS THIS KEY, because that card is the one
 		// place on the surface that prints a key and says what it does with it —

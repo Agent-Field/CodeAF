@@ -2240,3 +2240,11 @@ one `treeIndentCols` child stem. An ellipsis marks omitted outer connectors.
 Task setup reads thinking levels from the standing task notices on hosted pages.
 Frames and pointer motion make **zero network calls**. The expanded sidebar
 reserves its resize hint even before hover, keeping controls at stable rows.
+
+## Compact transcript images
+
+Unopened image tools and sent attachments share `pictureCompactRows` (3 terminal
+rows per image), rather than the text preview's 12/4-row budget. Explicit image
+expansion retains `pictureRowsMax` (20 rows). Rendering is fitted before sampling,
+never cropped afterward. Attached-image expansion invalidates its entry and task
+page caches and remains local display state; it is not written into the journal.

@@ -278,6 +278,8 @@ type entry struct {
 	// would make the hot entry carry a distinction no renderer can read.
 	pictures     []string
 	picturesHere bool
+	// picturesOpen belongs to this page, so replay starts with compact previews.
+	picturesOpen bool
 
 	// steer is THE ONE CORRECTION this block is, on [entrySteer] and nil on every
 	// other kind (steerelbow.go). It is a pointer for the reason [entry.card] and
@@ -5915,6 +5917,8 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.toggleWorkfold(r.turn)
 	case hitMore:
 		a.showAll(r.entry)
+	case hitPictures:
+		a.togglePicturesAt(r.entry)
 	case hitBrief:
 		a.toggleBriefFoldAt(r.entry)
 	case hitForming:

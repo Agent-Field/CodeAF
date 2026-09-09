@@ -270,13 +270,7 @@ func (a *app) toolBlockRows(e *entry, room int, phone bool) (rows []string, more
 	// everybody wants — but at tierPhone it is bounded HARDER, because twelve
 	// rows nobody asked for is most of a phone frame ([previewPhoneWindow]).
 	if !e.open || phone {
-		// THE PICTURE IS THE OTHER BLOCK NOBODY ASKS FOR, and it hangs at the
-		// far end of the same argument. The live preview shows a change BEFORE
-		// it lands because that is the moment it is worth something; a picture
-		// shows AFTER, because that is the only moment it exists — and in both
-		// cases the row on its own cannot say the thing the person wants. It
-		// takes the tier's cap for the tier's reason (imagepreview.go's
-		// [app.pictureThumb]).
+		// Pictures share the compact attachment budget; expansion is deliberate.
 		if picture, drawn := a.pictureThumb(e, room, previewCap(phone)); drawn {
 			return picture, 0, false
 		}

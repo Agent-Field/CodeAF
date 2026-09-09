@@ -1311,8 +1311,10 @@ Yes. After you send a message with pictures, each one is drawn under your line i
 order. The dim `[#1 shot.png]` marker stays in the sentence above it, numbered to match
 `[image #1]` and still clickable as the file door.
 
-Each thumbnail is at most **12 rows**, or **4 rows** at phone width, with no heading,
-border, path line or `… N more lines` foot. It uses half-block colour in TrueColor and
+Each thumbnail is at most **3 rows** at every width. Click **expand images** beneath
+the message for a larger preview, and **collapse images** to shrink it again. **alt+i**
+toggles the last visible attachment control in chat or a task page. The expansion is
+still low resolution; open the numbered filename for the original image. It uses half-block colour in TrueColor and
 the 256-colour xterm cube. On a sixteen-colour or colourless terminal, an ASCII-only or
 screen-reader display, a very narrow row, or when the file is missing or unreadable, no
 thumbnail is added and the marker remains exactly as it was.

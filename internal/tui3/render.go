@@ -44,6 +44,8 @@ const (
 	// with different things — hitMore lifts a cap and can never put it back,
 	// while a fold is a thing a person opens AND shuts.
 	hitBrief
+	// hitPictures expands the attached pictures without folding the message.
+	hitPictures
 	hitTask // a task proposal (task.go): click opens its brief
 	// hitDone is a landed task's card (taskdone.go): click opens its full
 	// context, enter opens the node's room, ctrl+o is the key the card itself
@@ -714,6 +716,9 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				entry: i, hit: hitBrief,
 			})
 		}
+		if a.pictureDoor(e, width) {
+			out = append(out, row{text: a.pictureFoldLine(e, width), entry: i, hit: hitPictures})
+		}
 		wasCluster = false
 		wasNote = e.kind == entryNote
 		wasBlock = e.kind == entryTask || (e.kind == entryStanding && e.stand != nil && !e.stand.news())
@@ -808,6 +813,8 @@ func (a *app) isHot(r row) bool {
 		return r.hit == hitCaption && r.turn == a.hot.turn
 	case hoverWorkFold:
 		return r.hit == hitWorkFold && r.turn == a.hot.turn
+	case hoverPictures:
+		return r.hit == hitPictures && r.entry == a.hot.entry
 	case hoverBrief:
 		// THE DOOR AND NOT THE BLOCK (brieffold.go): the lines above it are the
 		// person's own words, and nothing happens when they are pressed.
@@ -1106,7 +1113,7 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		// rung: fallback tiers must remain byte-for-byte ordinary prose. The door
 		// does not depend on decoding succeeding — a hosted file can still be
 		// opened even when its mirror has not arrived or its bytes are malformed.
-		cap := previewCap(layoutTier(width) == tierPhone)
+		cap := pictureRowBudget(e.picturesOpen)
 		pictures := make([][]string, len(e.pictures))
 		pictureDrawn := make([]bool, len(e.pictures))
 		for i, path := range e.pictures {

@@ -2411,12 +2411,18 @@ but colour codes. No image protocol is involved and nothing is written outside t
 frame, so the picture survives every repaint, scrolls with the conversation, and works
 over ssh and inside tmux the same as anywhere else.
 
-The picture under a row or your own message is a **thumbnail**: at most **12 rows** tall, or **4** at phone
-width — the same ceiling the live preview takes, because a block nobody asked for should
-not take the screen from the conversation it appeared in. It carries no heading, no
-border and no caption. Nothing is held back behind a `… N more lines` foot either: the
-whole picture is drawn into however many rows it has, because half a picture is not half
-an answer.
+The picture under a row or your own message is a **compact thumbnail**, at most
+**3 rows** tall at every width. It preserves the whole image's proportions. This is
+only a visual cue: screenshot text and fine details cannot be read at terminal-cell
+resolution. It does not change the image sent to the model.
+
+Attached images have an **expand images** / **collapse images** control beneath them.
+Click it, or press **alt+i** to toggle the last visible attachment control. Expansion
+shows each image at up to **20 rows**. The control belongs to the message, works in chat
+and task pages, and starts compact when the journal is replayed. It never folds your
+words. The numbered filename above it opens the original file through the existing
+file link; use that for full detail. Link handling depends on your terminal, and a
+plain SSH session does not automatically make a remote path a local file.
 
 **Open the row for the bigger look** — click it, or select it with `↑`/`↓` and press
 `enter`. There the picture is drawn again at up to **20 rows**, and under it, dim, one

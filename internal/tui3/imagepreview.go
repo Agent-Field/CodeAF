@@ -72,8 +72,8 @@ const (
 	// tallest block this surface draws under a tool row, and it is deliberately
 	// larger than every text window in D11's table: a diff capped at forty lines
 	// can be read forty lines at a time, while half a picture is not half an
-	// answer. Twenty rows is forty pixel rows, which is enough to see whether a
-	// diagram's labels are in the right places.
+	// answer. Twenty rows is forty pixel rows: useful for composition, but
+	// never enough to promise legible screenshot text or diagram labels.
 	pictureRowsMax = 20
 	// pictureColsMin is the narrowest preview worth drawing. Under this the
 	// picture is a smudge that says less than the path under it, so nothing is
@@ -119,11 +119,11 @@ type imagePreview struct {
 // line naming the file. It answers false when there is nothing to draw, and
 // every caller falls back to the words it would have shown.
 func (a *app) pictureRows(e *entry, width int) ([]string, bool) {
-	path, preview, drawn := a.drawPicture(e, width, pictureRowsMax)
+	path, preview, drawn := a.drawPicture(e, width, pictureRowBudget(true))
 	if !drawn {
 		return nil, false
 	}
-	return append(append([]string(nil), preview.rows...),
+	return append(append([]string{a.pal.dim(fit("Low-resolution preview · open the file for detail", width))}, preview.rows...),
 		picturePathLine(a.linker(), path, preview, width)...), true
 }
 
@@ -155,27 +155,9 @@ func (a *app) pictureRowsFor(path string, here bool, cols, maxRows int) ([]strin
 	return preview.rows, true
 }
 
-// pictureThumb is THE PICTURE UNDER A ROW NOBODY OPENED — the same renderer, a
-// shorter budget, and not one word of chrome.
-//
-// A picture tool is the one call on this surface whose result a person cannot
-// read. `book/cover.jpg — 768×1376 jpeg, 776.9KB` is a true sentence that
-// answers none of what was actually asked, which is "did it come out right", and
-// a person who has to click a row to find that out has been asked to click a row
-// to find out whether they need to click the row. So the answer is already
-// there when the call finishes.
-//
-// IT HANGS NOTHING ELSE. No header, no path, no border — the preview above it
-// (toolview.go) earns a `pending`/`applying` word because a diff drawn before it
-// lands needs to say which of those it is, and a picture that exists is not
-// about to be anything. The words all live one click away in the expansion,
-// which stays the bigger look: [pictureRowsMax] rows, and the file named whole
-// underneath.
-//
-// budget is the caller's cap — the tier's, since this is the block nobody asked
-// for — and it bounds the RENDER rather than trimming it afterwards, because
-// half a picture with a "… N more lines" foot under it is not half an answer.
-// The whole picture is drawn into however many rows there are.
+// pictureThumb keeps the unrequested picture small in every transcript. The
+// larger rendering is reserved for an explicit expansion, so scrolling a task
+// and scrolling a conversation have the same bounded colour traffic.
 func (a *app) pictureThumb(e *entry, width, budget int) ([]string, bool) {
 	// A CALL THAT HAS NOT FINISHED HAS NO PICTURE. `generate_image` writes the
 	// file last and `view_image` is looking at one the row cannot yet name a
@@ -184,7 +166,7 @@ func (a *app) pictureThumb(e *entry, width, budget int) ([]string, bool) {
 	if e == nil || e.status.live() || budget < 1 {
 		return nil, false
 	}
-	_, preview, drawn := a.drawPicture(e, width, budget)
+	_, preview, drawn := a.drawPicture(e, width, min(budget, pictureRowBudget(false)))
 	if !drawn {
 		return nil, false
 	}
