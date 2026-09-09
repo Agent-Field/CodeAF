@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/remote"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // THE ATTACHMENT TRAY: a picture is not a sentence.
@@ -158,10 +159,7 @@ func chipMark(pal palette) string {
 // message, and a tray that drew them alike would leave a person wondering why
 // their CSV was never looked at.
 func fileChipMark(pal palette) string {
-	if pal.ascii {
-		return "+"
-	}
-	return "▤"
+	return pal.glyph(tokens.GActionRead)
 }
 
 // pictureChips and fileChips split the tray into its two kinds.

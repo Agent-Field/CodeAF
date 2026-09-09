@@ -856,13 +856,13 @@ leads the second line instead, with the glyph it wears everywhere else here:
   the run is being read; the row is still live and still spinning.
 - `queued` with no mark — the task was admitted and nothing has started it yet. Accepting
   work and executing it are different receipts, and this row says which one has happened.
-- `◌ incomplete · <what is still missing>` — work a check did not accept, work a dropped
+- `✕ incomplete · <what is still missing>` — work a check did not accept, work a dropped
   connection or a threshold ended, a brief whose world had moved, or work that was under
-  way when the window went; home shares this empty-circle shape with queued work and
-  distinguishes it with the state word and warn hue
+  way when the window went. It is the same cross a fault wears, drawn dim rather than in
+  the bad hue, because the shape says WHAT happened and the hue says how badly
 - `? your call · <what it is asking>` — brought up out of the dim, because it is asking
-- `⊘ stopped · <what it came to>` — **you** ended it. Nothing was found wrong with it.
-- `✗ incomplete · a fault: <what broke>` — and only this shape is coloured bad: a working
+- `■ stopped · <what it came to>` — **you** ended it. Nothing was found wrong with it.
+- `✕ incomplete · a fault: <what broke>` — and only this one is coloured bad: a working
   copy that could not be made, a worker that would not start, an error nobody classified. A
   run the wire or a limit ended is `incomplete` too, drawn dim, because nothing went wrong
   with the work. **The word `failed` is nowhere on home** — it is the engine's own name for

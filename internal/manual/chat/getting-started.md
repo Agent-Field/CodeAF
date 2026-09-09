@@ -170,7 +170,7 @@ out of the preset's hands and a crew row that did not mention it would be sellin
 dial that is disconnected.
 
 At **112 columns and wider** a bordered panel stands beside these rows, labelled
-`◌ Example · what you can do` and footed `An illustration. Nothing here has run.` — the
+`○ Example · what you can do` and footed `An illustration. Nothing here has run.` — the
 only bordered surface aforge draws, so it cannot be read as more form. It holds one
 request you could type and what it leads to, and follows the row you are on: beside the
 crew it shows `/task Fix the failing tests and explain the changes.` That request **types

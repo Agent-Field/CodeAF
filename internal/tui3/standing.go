@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // THE STANDING SIDE, IN THE CONVERSATION: ONE CARD, AND ONE LINE AFTERWARDS.
@@ -984,7 +985,7 @@ func (a *app) standHead(card *standingCard, width int, sel bool) string {
 	if a.pal.ascii {
 		corner = taskCornerASCII
 	}
-	head := corner + " " + glyphAsk + " "
+	head := corner + " " + a.icon(tokens.GNeedsHuman) + " "
 	mark := standGlyph(card.item, false, false, a.pal.ascii)
 	if sel {
 		mark = a.pal.bold(mark)

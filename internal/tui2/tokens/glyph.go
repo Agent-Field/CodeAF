@@ -1,6 +1,13 @@
 package tokens
 
-// The glyph vocabulary (5.17, 5.21). No emoji in chrome: emoji are
+// The glyph vocabulary (5.17, 5.21), and the whole of what a person sees drawn
+// as a mark anywhere in this product. Its law, its three tiers, the table as it
+// landed and how to add to it are docs/design/icons/DESIGN.md; the short of it
+// is that every mark is a SLOT with a plain, a nerd-font and an ASCII spelling,
+// that GlyphSet.Glyph(id) is the one door to them, and that a surface spelling a
+// mark as a literal is a build failure rather than a matter of taste.
+//
+// No emoji in chrome: emoji are
 // double-width, render inconsistently, carry their own untintable colors, and
 // read as notification confetti rather than as an instrument. Everything here
 // is single-width, tintable and metric-safe — and glyph_test.go proves the
@@ -18,6 +25,13 @@ const (
 	GlyphWorking = "◐"
 	GlyphSettled = "✓"
 	GlyphFailed  = "✕"
+	// GlyphStopped is work A PERSON ENDED, and it is deliberately neither
+	// [GlyphSettled] nor [GlyphFailed]: a tick is a finding that the work came
+	// off and a cross is a finding that it did not, and nobody found anything
+	// about work somebody stopped. The filled square is the mark every device a
+	// person owns stops with, it is one cell under both shipping rulers, and it
+	// is the shape the nerd-font tier has an exact icon for (nf-fa-stop).
+	GlyphStopped = "■"
 	// GlyphPaused is 5.17's replacement for the banned ⏸: a paused row is
 	// "=" (or a dim GlyphQueued, at the renderer's choice).
 	GlyphPaused = "="
@@ -77,6 +91,30 @@ const (
 	GlyphShell   = "$" // a shell call — the prompt a person types at
 	GlyphSearch  = "⌕" // a call that went out to the world
 	GlyphWrite   = "✎" // a call that wrote something down
+
+	// The action families (internal/tui3's step gutter). One still, monochrome
+	// mark per FAMILY of work — searching, editing, running a command — keyed
+	// off the closed vocabulary the engine carries in session.ActionCategory.
+	//
+	// THEY ARE SLOTS HERE AND NOT CHARACTERS THERE. The surface used to hold
+	// its own three-tier table, with the private-use codepoints spelled inline
+	// beside the plain marks, so ten icons and ten plain glyphs lived outside
+	// the width gate, outside the ban list and outside the one-meaning law —
+	// which is how ▤, ◎ and ◷ came to be drawn product-wide without ever having
+	// been measured. Four of the families reuse a slot this table already owns
+	// (search, write, shell, and the diff-add byte for a thing that was not
+	// there); the rest are named here, and the surface keeps only the map from
+	// a family to a slot.
+	GlyphActionRead        = "▤" // a box with lines in it — a page of text, opened
+	GlyphActionCreate      = "+" // something that was not there is
+	GlyphActionTest        = "◎" // a target being aimed at — NEVER a checkmark
+	GlyphActionBrowse      = "↗" // out of here and onto a page somewhere else
+	GlyphActionTransfer    = "⇄" // bytes going the other way as well
+	GlyphActionCommunicate = "»" // the guillemet: something being SAID, to a person
+	GlyphActionCoordinate  = "⇉" // work handed out, or this mind copied to run beside itself
+	GlyphActionPlan        = "≡" // three level lines, an outline
+	GlyphActionWait        = "◷" // a quarter of a clock face, still
+	GlyphActionWork        = "▪" // a small square: "a step", which is all it knows
 
 	// Meta.
 	GlyphBoosted   = "⇡" // transient escalation of the work-role binding (8.2.16)
@@ -271,6 +309,7 @@ func Glyphs() []GlyphInfo {
 		{"Working", GlyphWorking, '◐', true},
 		{"Settled", GlyphSettled, '✓', false},
 		{"Failed", GlyphFailed, '✕', false},
+		{"Stopped", GlyphStopped, '■', true},
 		{"Paused", GlyphPaused, '=', false},
 		{"NeedsHuman", GlyphNeedsHuman, '?', false},
 		{"WaitsOn", GlyphWaitsOn, '⚑', false},
@@ -286,6 +325,16 @@ func Glyphs() []GlyphInfo {
 		{"Shell", GlyphShell, '$', false},
 		{"Search", GlyphSearch, '⌕', false},
 		{"Write", GlyphWrite, '✎', false},
+		{"ActionRead", GlyphActionRead, '▤', true},
+		{"ActionCreate", GlyphActionCreate, '+', false},
+		{"ActionTest", GlyphActionTest, '◎', true},
+		{"ActionBrowse", GlyphActionBrowse, '↗', true},
+		{"ActionTransfer", GlyphActionTransfer, '⇄', false},
+		{"ActionCommunicate", GlyphActionCommunicate, '»', false},
+		{"ActionCoordinate", GlyphActionCoordinate, '⇉', false},
+		{"ActionPlan", GlyphActionPlan, '≡', true},
+		{"ActionWait", GlyphActionWait, '◷', false},
+		{"ActionWork", GlyphActionWork, '▪', false},
 		{"Boosted", GlyphBoosted, '⇡', false},
 		{"Separator", GlyphSeparator, '·', true},
 		{"Missing", GlyphMissing, '—', true},

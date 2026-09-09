@@ -13,6 +13,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // THE HARNESS PICKER: /harness with a space after it, and every saved shape of
@@ -82,7 +83,10 @@ const (
 	glyphHarnessChipASCII = "*"
 	// glyphChipDrop is the way off. It is the same ✕ every other stoppable
 	// thing on this surface is closed by (stop.go).
-	glyphChipDrop = "✕"
+	// It is the vocabulary's cross (tokens.GFailed) spent as a DISMISSAL rather
+	// than as a finding — the same byte doing a second job, told apart by where
+	// it sits, exactly as the shared table's own `$` is.
+	glyphChipDrop = tokens.GlyphFailed
 )
 
 // harnessPickRow is one harness as this list ranks and draws it: what the page

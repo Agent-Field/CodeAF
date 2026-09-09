@@ -28,26 +28,41 @@ func tierStatus(facts session.TaskFacts) session.TaskStatus { return session.Pro
 // presence and fault a reading can produce — and over every one of the six
 // questions a your-call row can be asking, all of which wear the same cell.
 func TestEveryTierDrawsItsOwnCell(t *testing.T) {
+	plainPal, asciiPal := palOf(false), palOf(true)
 	for _, tc := range []struct {
 		what  string
 		facts session.TaskFacts
-		glyph string
-		ascii string
+		slot  tokens.GlyphID
 	}{
-		{"queued", session.TaskFacts{State: session.TaskQueued}, glyphQueued, glyphQueuedASCII},
-		{"waiting on work", session.TaskFacts{State: session.TaskQueued, Waits: []string{"Collect sources"}}, glyphQueued, glyphQueuedASCII},
-		{"working", session.TaskFacts{State: session.TaskRunning, Liveness: session.TaskLivenessHeld}, glyphRunning, glyphRunningASCII},
-		{"finishing", session.TaskFacts{State: session.TaskRunning, Life: session.TaskPhaseChecking, Liveness: session.TaskLivenessHeld}, glyphRunning, glyphRunningASCII},
-		{"done", session.TaskFacts{State: session.TaskDone}, glyphDone, glyphDoneASCII},
-		{"stopped", session.TaskFacts{State: session.TaskFailed, Stopped: true}, glyphStopped, glyphStoppedASCII},
-		{"incomplete", session.TaskFacts{State: session.TaskFailed, Ending: session.TaskEndingSteps}, glyphBad, glyphBadASCII},
-		{"a fault", session.TaskFacts{State: session.TaskFailed, Ending: session.TaskEndingError, Report: "the build would not run"}, glyphBad, glyphBadASCII},
-		{"your call", session.TaskFacts{State: session.TaskUnverified}, glyphAsk, glyphAsk},
-		{"nothing known", session.TaskFacts{}, glyphQueued, glyphQueuedASCII},
+		{"queued", session.TaskFacts{State: session.TaskQueued}, tokens.GQueued},
+		{"waiting on work", session.TaskFacts{State: session.TaskQueued, Waits: []string{"Collect sources"}}, tokens.GWaitsOn},
+		{"working", session.TaskFacts{State: session.TaskRunning, Liveness: session.TaskLivenessHeld}, tokens.GWorking},
+		{"finishing", session.TaskFacts{State: session.TaskRunning, Life: session.TaskPhaseChecking, Liveness: session.TaskLivenessHeld}, tokens.GWorking},
+		{"done", session.TaskFacts{State: session.TaskDone}, tokens.GSettled},
+		{"stopped", session.TaskFacts{State: session.TaskFailed, Stopped: true}, tokens.GStopped},
+		{"incomplete", session.TaskFacts{State: session.TaskFailed, Ending: session.TaskEndingSteps}, tokens.GFailed},
+		{"a fault", session.TaskFacts{State: session.TaskFailed, Ending: session.TaskEndingError, Report: "the build would not run"}, tokens.GFailed},
+		{"your call", session.TaskFacts{State: session.TaskUnverified}, tokens.GNeedsHuman},
+		{"nothing known", session.TaskFacts{}, tokens.GQueued},
 	} {
-		glyph, ascii := tierGlyph(tierStatus(tc.facts))
-		if glyph != tc.glyph || ascii != tc.ascii {
-			t.Errorf("%s draws %q/%q, want %q/%q", tc.what, glyph, ascii, tc.glyph, tc.ascii)
+		status := tierStatus(tc.facts)
+		if got := tierSlot(status); got != tc.slot {
+			t.Errorf("%s picks slot %d, want %d", tc.what, got, tc.slot)
+		}
+		// AND EVERY TIER OF THE REPERTOIRE DRAWS THAT SLOT AND NOTHING ELSE —
+		// the plain floor, the screen reader's character, and the icon a patched
+		// font has. A surface that reached for a literal would draw the same
+		// thing in all three, which is the bug the vocabulary exists to stop.
+		if got := tierGlyph(plainPal, status); got != tokens.Plain.Glyph(tc.slot) {
+			t.Errorf("%s draws %q in the plain tier, want %q", tc.what, got, tokens.Plain.Glyph(tc.slot))
+		}
+		if got := tierGlyph(asciiPal, status); got != tokens.ASCII.Glyph(tc.slot) {
+			t.Errorf("%s draws %q in the ascii tier, want %q", tc.what, got, tokens.ASCII.Glyph(tc.slot))
+		}
+		rich := plainPal
+		rich.icons = tokens.NerdFont
+		if got := tierGlyph(rich, status); got != tokens.NerdFont.Glyph(tc.slot) {
+			t.Errorf("%s draws %q in the nerd-font tier, want %q", tc.what, got, tokens.NerdFont.Glyph(tc.slot))
 		}
 	}
 
@@ -58,8 +73,36 @@ func TestEveryTierDrawsItsOwnCell(t *testing.T) {
 		if status.Ask.Kind != one.kind {
 			t.Fatalf("%s read as %q, want %q", one.what, status.Ask.Kind, one.kind)
 		}
-		if glyph, _ := tierGlyph(status); glyph != glyphAsk {
-			t.Errorf("%s draws %q, want %q", one.what, glyph, glyphAsk)
+		if got := tierSlot(status); got != tokens.GNeedsHuman {
+			t.Errorf("%s picks slot %d, want the question", one.what, got)
+		}
+	}
+}
+
+// THE SHAPE ALONE SAYS THE STATE. Seven readings, seven different cells, in
+// every tier — because the roster is read by people who have turned colour off
+// and by people who cannot see it, and a vocabulary that needed its hues would
+// have nothing to say to either.
+func TestEveryStateWearsItsOwnShapeWithNoColour(t *testing.T) {
+	states := []session.TaskFacts{
+		{State: session.TaskQueued},
+		{State: session.TaskQueued, Waits: []string{"Collect sources"}},
+		{State: session.TaskRunning, Liveness: session.TaskLivenessHeld},
+		{State: session.TaskDone},
+		{State: session.TaskFailed, Stopped: true},
+		{State: session.TaskFailed, Ending: session.TaskEndingSteps},
+		{State: session.TaskUnverified},
+	}
+	for _, tier := range []tokens.GlyphSet{tokens.Plain, tokens.NerdFont, tokens.ASCII} {
+		seen := map[string]string{}
+		for _, facts := range states {
+			status := tierStatus(facts)
+			cell := tier.Glyph(tierSlot(status))
+			if first, taken := seen[cell]; taken {
+				t.Errorf("%s: %q says both %q and %q", tier, cell, first, status.RowWord())
+				continue
+			}
+			seen[cell] = status.RowWord()
 		}
 	}
 }
@@ -116,14 +159,15 @@ func TestTheRowNeverReadsABareWord(t *testing.T) {
 		facts session.TaskFacts
 		want  string
 	}{
-		{"a prerequisite", session.TaskFacts{State: session.TaskQueued, Waits: []string{"Collect sources"}}, "◌ Port the parser · waiting on Collect sources"},
-		// A NODE WHOSE CALLS ARE BEING PACED IS STILL, not turning: `◌` is moving
-		// with nothing happening this instant, which is exactly what a hold is.
-		{"a hold", session.TaskFacts{State: session.TaskRunning, Hold: "machine busy", Liveness: session.TaskLivenessHeld}, "◌ Port the parser · waiting · machine busy"},
-		{"a clock", session.TaskFacts{State: session.TaskQueued, Consent: true, Countdown: "9s"}, "◌ Port the parser · auto-starts in 9s"},
+		{"a prerequisite", session.TaskFacts{State: session.TaskQueued, Waits: []string{"Collect sources"}}, "⚑ Port the parser · waiting on Collect sources"},
+		// A NODE WHOSE CALLS ARE BEING PACED IS WAITING, not turning: the flag is
+		// moving with nothing happening this instant, which is exactly what a
+		// hold is — and it is what the row says in words as well.
+		{"a hold", session.TaskFacts{State: session.TaskRunning, Hold: "machine busy", Liveness: session.TaskLivenessHeld}, "⚑ Port the parser · waiting · machine busy"},
+		{"a clock", session.TaskFacts{State: session.TaskQueued, Consent: true, Countdown: "9s"}, "○ Port the parser · auto-starts in 9s"},
 		{"a landing", session.TaskFacts{State: session.TaskDone}, "✓ Port the parser · done"},
-		{"a stop", session.TaskFacts{State: session.TaskFailed, Stopped: true}, "⊘ Port the parser · stopped"},
-		{"an ending", session.TaskFacts{State: session.TaskFailed, Ending: session.TaskEndingSteps}, "✗ Port the parser · incomplete · ran out of steps"},
+		{"a stop", session.TaskFacts{State: session.TaskFailed, Stopped: true}, "■ Port the parser · stopped"},
+		{"an ending", session.TaskFacts{State: session.TaskFailed, Ending: session.TaskEndingSteps}, "✕ Port the parser · incomplete · ran out of steps"},
 		{"a question", session.TaskFacts{State: session.TaskUnverified}, "? Port the parser · your call · nobody could check it"},
 		{"a clash", session.TaskFacts{State: session.TaskUnverified, Merge: "conflicted", Conflicts: []string{"parser.go"}}, "? Port the parser · your call · conflicts with your branch: parser.go"},
 	} {

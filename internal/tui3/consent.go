@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // THE APPROVAL QUESTION.
@@ -1163,7 +1164,7 @@ func (a *app) consentWords(head ask) (string, string) {
 // (render.go's legend) — a line that was already there, carrying the one word
 // that says what this is.
 func (a *app) consentTitle(name string, width int) string {
-	label := " " + glyphAsk + " " + name + " "
+	label := " " + a.icon(tokens.GNeedsHuman) + " " + name + " "
 	lead := 3
 	if room := width - lead - 1; ansi.StringWidth(label) > room {
 		label = fit(label, room)

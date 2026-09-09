@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // The model palette: /model with nothing after it, and omp's picker opens.
@@ -1273,9 +1274,9 @@ func (p *picker) mark(filled bool) string {
 	case p.ascii:
 		return "o"
 	case filled:
-		return "●"
+		return tokens.GlyphStepDone
 	}
-	return "○"
+	return tokens.GlyphStepPending
 }
 
 // laneAutoNote is what the auto row says it does. It is a sentence and not a

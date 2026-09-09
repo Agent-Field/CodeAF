@@ -13,6 +13,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // HOME: /home — everything this machine has worked on, in one place.
@@ -228,15 +229,21 @@ const homeGutter = 4
 // vocabulary: it is the difference between "this is running" and "this is what
 // the machine is doing at this instant", which is the distinction the one-spinner
 // law exists to draw.
+// AND `✕` FOR A CONVERSATION LEFT MID-WAY, which is the one mark this block
+// changed when the surface moved onto the shared vocabulary. It used to be `◌`,
+// a shape that existed nowhere else and that a person had to be taught; work
+// that did not finish is `✕` on the card, on the rail, on the roster and on the
+// task page, dim rather than loud unless something actually broke, and this
+// screen says the same thing with the same cell.
 const (
-	homeAskGlyph   = "?"
-	homeLiveGlyph  = "◐"
-	homeStuckGlyph = "◌"
-	homeIdleGlyph  = "○"
+	homeAskGlyph   = tokens.GlyphNeedsHuman
+	homeLiveGlyph  = tokens.GlyphWorking
+	homeStuckGlyph = tokens.GlyphFailed
+	homeIdleGlyph  = tokens.GlyphQueued
 
 	homeAskASCII   = "!"
 	homeLiveASCII  = "*"
-	homeStuckASCII = "o"
+	homeStuckASCII = "x"
 	homeIdleASCII  = "-"
 )
 
@@ -4823,10 +4830,7 @@ func (a *app) homeRowGlyph(row session.SessionRow, spins bool) string {
 		return a.homeSpinGlyph()
 	}
 	if row.Tasks.Running == 0 && row.Tasks.Incomplete == 0 && a.homeFresh(row) > 0 {
-		if a.pal.ascii {
-			return glyphDoneASCII
-		}
-		return glyphDone
+		return a.icon(tokens.GSettled)
 	}
 	return homeGlyph(row, a.pal.ascii)
 }
@@ -5151,8 +5155,8 @@ func homeTaskWord(entry session.TaskIndexEntry, row session.SessionRow) string {
 // has the node out, exactly as the counts and the old state words did. So:
 //
 //	⠋ (accent)  running this instant — the spinner, home's one moving part
-//	◌ (dim)     queued, or left mid-way by a window that went — nothing turns
-//	✗ (bad)     a fault;  ? (warn)  the person's call
+//	○ (dim)     queued, or left mid-way by a window that went — nothing turns
+//	✕ (bad)     a fault;  ? (warn)  the person's call
 //	✓ (muted)   landed — and ACCENT when it landed since you last looked
 //
 // The one departure from the task surfaces: a queued node and an incomplete one
@@ -5168,20 +5172,13 @@ func (a *app) homeTaskGlyph(entry session.TaskIndexEntry, row session.SessionRow
 	// work a window walked away from. It is the one reading this screen makes
 	// that the tier cannot, and it is home's own liveness question.
 	if status.Presence == session.TaskPresenceIncomplete && status.Liveness == session.TaskLivenessUnclaimed {
-		if pal.ascii {
-			return pal.dim(glyphQueuedASCII)
-		}
-		return pal.dim(glyphQueued)
+		return pal.dim(pal.glyph(tokens.GQueued))
 	}
 	// AND A LANDING SINCE YOU LAST LOOKED IS LIT. It is the same tick in the same
 	// place; what the accent says is that it is NEW, which is the only fact on
 	// this screen the reading has no way to know.
 	if status.Presence == session.TaskPresenceDone && a.homeEntryFresh(row, entry) {
-		mark, ascii := tierGlyph(status)
-		if pal.ascii {
-			mark = ascii
-		}
-		return pal.accent(mark)
+		return pal.accent(tierGlyph(pal, status))
 	}
 	return a.tierCell(status)
 }

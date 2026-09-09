@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // WORK COMING HOME IS AN EVENT, AND IT GETS A CARD.
@@ -439,12 +440,12 @@ func (a *app) doneRows(card *taskDone, width int, sel bool) []string {
 // doneHead is the row a person reads at a glance:
 //
 //	✓ ◆ Fix nil-map crash · done · 4m12s · 3 files (+42 −7)
-//	⊘ ▲ Mix audio · stopped · 2m03s · branch kept · task/mix
-//	✗ ▲ Port the parser · incomplete · 4m02s · 1 file · branch kept · task/parser
+//	■ ▲ Mix audio · stopped · 2m03s · branch kept · task/mix
+//	✕ ▲ Port the parser · incomplete · 4m02s · 1 file · branch kept · task/parser
 //	? ● Port the parser · your call · 6m40s · 2 files · branch kept · task/parser
 //
 // THE GLYPH IS THE TIER AND NOTHING ELSE, which is the whole of the design a
-// person is asked to learn: `?` is a question in front of them, `✓ ⊘ ✗` are
+// person is asked to learn: `?` is a question in front of them, `✓ ■ ✕` are
 // three ways of being over, and none of those three needs anything (the doc's
 // own table). Only the question takes the accent — an incomplete landing is dim
 // unless something actually broke, because most of them are work that ran out of
@@ -483,27 +484,28 @@ const doneTitleFloor = 8
 // different one on the roster: the reading answers it once for every surface now
 // ([session.ProjectTask]).
 func (a *app) doneMark(card *taskDone) string {
+	mark := a.tierMark(card.status)
 	if card.status.Tier == session.TaskTierYourCall {
 		// THE ONE ACCENT ON THE CARD. A question in front of somebody is the only
 		// thing on this surface that is waiting for them, and it is the same cell
-		// every other question here wears (styles.go's [glyphAsk]).
-		return a.pal.accent(glyphAsk)
+		// every other question here wears (tokens.GNeedsHuman).
+		return a.pal.accent(mark)
 	}
 	switch card.status.Presence {
 	case session.TaskPresenceStopped:
 		// A person's own stop is not a finding, so it is neither a tick nor a cross.
-		return a.pal.dim(a.linearMark(glyphStopped, glyphStoppedASCII))
+		return a.pal.dim(mark)
 	case session.TaskPresenceIncomplete:
 		// THE CROSS IS DIM UNLESS SOMETHING BROKE. Running out of steps, losing the
 		// wire and a check that named gaps are all work that did not finish, and
 		// colouring them as failures reports a fault nobody found
 		// ([session.TaskStatus.Fault] is the one field that says otherwise).
 		if card.status.Fault {
-			return a.pal.bad(a.linearMark(glyphBad, glyphBadASCII))
+			return a.pal.bad(mark)
 		}
-		return a.pal.dim(a.linearMark(glyphBad, glyphBadASCII))
+		return a.pal.dim(mark)
 	}
-	return a.pal.muted(a.linearMark(glyphDone, glyphDoneASCII))
+	return a.pal.muted(mark)
 }
 
 // doneTail is everything the head says after the name, in ONE FIXED ORDER: the
@@ -1149,7 +1151,7 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 			last = card.landed
 		}
 	}
-	mark, word := a.pal.muted(a.linearMark(glyphDone, glyphDoneASCII)), doneRollupWord
+	mark, word := a.pal.muted(a.icon(tokens.GSettled)), doneRollupWord
 	if loudest != nil {
 		// A MIXED BATCH IS NOT A DONE BATCH. The header wears its loudest child's
 		// own mark and stops saying "done", because the one thing a rollup must

@@ -1143,14 +1143,14 @@ func (a *app) mark(e *entry) string {
 			// for the reason it takes it there: nothing is coming.
 			return a.pal.dim(a.linearMark(glyphIdle, glyphIdleASCII))
 		}
-		return a.formingInk(a.linearMark(glyphQueued, glyphQueuedASCII))
+		return a.formingInk(a.icon(tokens.GQueued))
 	case toolQueued:
 		// ASKED FOR, NOT STARTED. An empty circle, dim: the row exists because
 		// the model has finished asking, and a spinner here would be the surface
 		// animating work that has not begun.
-		return a.pal.dim(a.linearMark(glyphQueued, glyphQueuedASCII))
+		return a.pal.dim(a.icon(tokens.GQueued))
 	case toolConsent:
-		return a.pal.askBold(glyphAsk) // "?" is already the ASCII of itself
+		return a.pal.askBold(a.icon(tokens.GNeedsHuman))
 	default:
 		// A RESOLVED ROW IS OVER WHATEVER THE SESSION IS DOING. A room's lane
 		// closing settles the calls that were still in the air by stamping the end
@@ -1169,7 +1169,7 @@ func (a *app) mark(e *entry) string {
 		// read aloud hears that claim thirty times a second. A still `*` makes the
 		// same claim once.
 		if a.linear {
-			return a.pal.muted(glyphRunASCII)
+			return a.pal.muted(a.icon(tokens.GWorking))
 		}
 		return a.pal.muted(tokens.Spinner(a.paints / spinnerStep))
 	}

@@ -356,8 +356,6 @@ func (c *completion) sectionRule(section int) string {
 // that ran somewhere else rather than a path in this directory. Without it the
 // two halves of the list are told apart only by the rule scrolled above them.
 const (
-	glyphRunning      = "▸"
-	glyphRunningASCII = ">"
 	glyphMention      = "⧉"
 	glyphMentionASCII = "#"
 )
@@ -369,15 +367,15 @@ const (
 // worth the tail is which of the two similarly-named ones this is.
 //
 //	› ✓ ⧉ Fix the nil-map crash                                    3h
-//	  ▸ ⧉ Sweep the deprecated call sites                          4m
-func taskRowLabel(entry session.TaskIndexEntry, ascii bool) string {
+//	  ◐ ⧉ Sweep the deprecated call sites                          4m
+func taskRowLabel(entry session.TaskIndexEntry, pal palette) string {
 	// Label is the title already cut to a row's width (session.taskLabel), and
 	// the uncut title stands in for a row written before that field existed.
 	words := entry.Label
 	if words == "" {
 		words = entry.Title
 	}
-	return taskStatusGlyph(entry, ascii) + " " + mentionMark(ascii) + " " + words
+	return taskStatusGlyph(entry, pal) + " " + mentionMark(pal.ascii) + " " + words
 }
 
 func mentionMark(ascii bool) string {
@@ -394,42 +392,8 @@ func mentionMark(ascii bool) string {
 // The menu has no liveness to ask: it draws the index alone, so a row claiming
 // to be running is taken at its word rather than guessed at. The surfaces that
 // do have the answer draw the quieter cell.
-func taskStatusGlyph(entry session.TaskIndexEntry, ascii bool) string {
-	status := session.ProjectTask(entry.StatusFacts(true))
-	switch status.Presence {
-	case session.TaskPresenceWorking, session.TaskPresenceWaiting, session.TaskPresenceFinishing:
-		if ascii {
-			return glyphRunningASCII
-		}
-		return glyphRunning
-	case session.TaskPresenceQueued:
-		if ascii {
-			return glyphQueuedASCII
-		}
-		return glyphQueued
-	case session.TaskPresenceIncomplete:
-		if !status.Fault {
-			return glyphHalted
-		}
-		if ascii {
-			return glyphBadASCII
-		}
-		return glyphBad
-	case session.TaskPresenceStopped:
-		if ascii {
-			return glyphStoppedASCII
-		}
-		return glyphStopped
-	case session.TaskPresenceNeedsLook:
-		// The tick is not the default answer to "what else is there": work nobody
-		// could judge would otherwise wear this surface's one success glyph
-		// (tasktier.go's [tierGlyph]).
-		return glyphAsk
-	}
-	if ascii {
-		return glyphDoneASCII
-	}
-	return glyphDone
+func taskStatusGlyph(entry session.TaskIndexEntry, pal palette) string {
+	return pal.glyph(tierSlot(session.ProjectTask(entry.StatusFacts(true))))
 }
 
 // taskNoteWord is the age on the right: how long a live task has been going,

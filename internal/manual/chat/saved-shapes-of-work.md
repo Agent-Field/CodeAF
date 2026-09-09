@@ -147,7 +147,7 @@ harness · triage-flake
 ```
 
 The mark, the step number, the id, the kind, and then what the step left behind — or, when
-it went wrong, what went wrong with it, marked `✗`. A failing step is the last one you see,
+it went wrong, what went wrong with it, marked `✕`. A failing step is the last one you see,
 because the run ends on it.
 
 **The row is replaced, never stacked.** Only the step happening now is on it. The report
@@ -162,7 +162,7 @@ The row goes away with the turn, by which time the report is on screen saying wh
 step did.
 
 **A failed run still reports.** The trail is the one thing worth having when a harness went
-wrong: the card's head reads `name · v1 · failed` and the failing step is marked `✗`.
+wrong: the card's head reads `name · v1 · failed` and the failing step is marked `✕`.
 
 ## Which tools can a harness use? Can a saved harness make an image or audio?
 

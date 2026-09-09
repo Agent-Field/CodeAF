@@ -72,7 +72,7 @@ Under it is the **live strip**: at most **two lines**, always the newest two thi
 have happened this turn, scrolling as they arrive — a call starting, a call finishing with
 its own time, and the growing tail of the reply so a long answer visibly moves. A call that
 is running carries the braille spinner; one that succeeded carries nothing at all, which is
-how the conversation draws a finished call; one that failed carries `✗` and what went wrong.
+how the conversation draws a finished call; one that failed carries `✕` and what went wrong.
 
 **The whole block disappears when the turn ends.** It is a window onto the moment, not a
 second copy of the transcript — everything in it is already a row above it.

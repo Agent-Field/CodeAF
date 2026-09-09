@@ -90,6 +90,8 @@ func TestOneGlyphOneMeaning(t *testing.T) {
 		GlyphProseBullet: "a middle dot: the telemetry separator's byte, a different slot",
 		GlyphProseQuote:  "an eighth block: the code fence's gutter, and the blockquote's — both are a margin beside a block set apart",
 		GlyphShell:       "a dollar: the spend mark's byte, told apart by what follows it",
+		GlyphActionCreate: "a plus: the diffstat's byte, and the step gutter's mark for a thing " +
+			"that was not there — one is bound to a number, the other stands alone in a gutter",
 	}
 	plainOwner := map[string]string{}
 	for _, b := range Vocabulary() {

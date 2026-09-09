@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // THE HARNESS OFFER.
@@ -447,7 +448,8 @@ func (a *app) harnessAskRows(width int) []string {
 // dropped at all — a row that fits by losing them is a question with no visible
 // way to answer it.
 func (a *app) harnessOffer(head harnessAsk, width int) string {
-	question := glyphAsk + ` run harness "` + head.name + `"?`
+	ask := a.icon(tokens.GNeedsHuman)
+	question := ask + ` run harness "` + head.name + `"?`
 	answers := []string{" · ", "[enter]", " run · ", "[esc]", " no"}
 	parts := append([]string{question}, answers...)
 	// Longest first, then each shorter reading in turn; the last one that fits
@@ -472,7 +474,7 @@ func (a *app) harnessOffer(head harnessAsk, width int) string {
 		case part == "[enter]" || part == "[esc]":
 			out += a.pal.askBold(part)
 		case part == question:
-			out += a.pal.askBold(glyphAsk) + a.pal.ask(part[len(glyphAsk):])
+			out += a.pal.askBold(ask) + a.pal.ask(part[len(ask):])
 		case head.desc != "" && part == " · "+head.desc:
 			out += a.pal.dim(part)
 		case part == harnessModelPart(head):

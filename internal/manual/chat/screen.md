@@ -2023,7 +2023,7 @@ and an elbow closing the run.
 │ @@ -1,4 +1,4 @@
 │ -const argsLimit = 8192
 │ +const argsLimit = 32768
-╰─▶ bash go test ./internal/session              ✗ exit 1 · 1m02s
+╰─▶ bash go test ./internal/session              ✕ exit 1 · 1m02s
 ```
 
 `├─▶ ` for every call above the last, `╰─▶ ` for the last, `│ ` for an opened call's
@@ -2035,12 +2035,12 @@ Each state has its own mark:
 
 | state | mark | the row |
 | --- | --- | --- |
-| arriving on the wire | `◌` pulsing dim | dim whole, e.g. `receiving · 1.2 KB`; a `write` also hangs the file it is typing |
-| queued | `◌` dim | ordinary row, quiet |
+| arriving on the wire | `○` pulsing dim | dim whole, e.g. `receiving · 1.2 KB`; a `write` also hangs the file it is typing |
+| queued | `○` dim | ordinary row, quiet |
 | waiting on you | `?` in the question hue, bold | the whole row is the question hue |
 | running | braille spinner, muted | the spinner leads the right column and the count-up follows it: `⠋ 4s` |
 | done, success | **nothing** | a quiet line is the success; the right column is the size and the duration |
-| done, failed | `✗` in the bad hue | the `✗` leads the right column: `✗ exit 1 · 1.2s` |
+| done, failed | `✕` in the bad hue | the `✕` leads the right column: `✕ exit 1 · 1.2s` |
 | unresolved when the turn ended | `·` dim | frozen; the clock stops |
 
 The spinner means one thing only: something is turning. On success there is no glyph,
@@ -2173,11 +2173,11 @@ it holds depends on the state:
 
 | state | the right column |
 | --- | --- |
-| queued | `◌` |
+| queued | `○` |
 | waiting on you | `?` |
 | running | `⠋ 4s` — the spinner, then how long this call has been going |
 | done | `189 lines · 0.4s` — what it came to, then how long it took |
-| failed | `✗ exit 1 · 1.2s` |
+| failed | `✕ exit 1 · 1.2s` |
 | unresolved when the turn ended | `·` |
 
 So `12.4 KB · 0.8s` on a `web_fetch` row means the page was 12.4 KB and took 0.8s;
@@ -2185,7 +2185,7 @@ So `12.4 KB · 0.8s` on a `web_fetch` row means the page was 12.4 KB and took 0.
 call's own**, never the turn's.
 
 **When the row is too narrow it drops whole segments, in a fixed order**: the size goes
-first, then the duration, and the mark — the spinner, the `◌`, the `?`, the `✗` — is the
+first, then the duration, and the mark — the spinner, the `○`, the `?`, the `✕` — is the
 last thing given up. Half a figure is worse than no figure: `12.4 K` is a number you have
 to distrust. Below the room for the mark alone the column is not drawn at all, rather
 than drawn as a stub.
@@ -2325,7 +2325,7 @@ its own line in full) or `read`.
 
 A long `write` takes seconds to arrive over the wire, and while it does you can **read
 the file as it is typed**. The row says how much has landed — `write notes.go ·
-receiving · 12.4 KB`, with a dim pulsing `◌` — and underneath it hangs the **last lines
+receiving · 12.4 KB`, with a dim pulsing `○` — and underneath it hangs the **last lines
 of the file so far**, dim and syntax-coloured, following the text downward as it grows.
 
 It is a **tail**, not the beginning: at most **12** rows (**4** at phone width), always
@@ -2479,10 +2479,10 @@ Where the files themselves land is on the "making pictures, audio and video" pag
 Under 60 columns a tool row is one line, never two:
 
 ```
-├─▶ ◌ edit  loop.go
+├─▶ ○ edit  loop.go
 ├─▶ ⠋ bash  go test ./…              12s
 ├─▶   edit  loop.go       +12 −4     1.2s
-╰─▶ ✗ bash  go build ./…  exit 1     1.2s
+╰─▶ ✕ bash  go build ./…  exit 1     1.2s
 ```
 
 The state glyph leads in a fixed 2-cell gutter — a column is the one thing a narrow
@@ -2519,7 +2519,7 @@ Four rungs, detected once from what your terminal says it can do:
 - **ANSI16** — **no hue at all**. The sixteen are your theme, and its reds and greens
   are loud by definition, so this rung answers with weight instead: bold for what leads,
   faint for what recedes, plain for the body. Every distinction the design draws in
-  colour is also drawn in text (`+` and `−`, `✗`, `exit 2`), so nothing is lost but the
+  colour is also drawn in text (`+` and `−`, `✕`, `exit 2`), so nothing is lost but the
   tint.
 - **NoColor** — no escape sequences at all, weight included.
 
@@ -2642,7 +2642,7 @@ glyph, the tool rail, and the one live or chosen thing on the screen; muted — 
 blue one full step calmer than the accent — for your message's words, tool names, the
 spinner, and headings; a neutral narration grey for the reply's working prose, one shade
 under the body; dim for everything the surface says about itself — stats, notes, hunk
-markers, the status line; add and del for a diff's `+` and `−`; bad for `✗`, `exit N`
+markers, the status line; add and del for a diff's `+` and `−`; bad for `✕`, `exit N`
 and an overdue context meter; amber for a bound about to be reached **and for anything
 waiting on you**; a mint green for **money and only money**; and violet for **the
 question hue inside a conversation**.

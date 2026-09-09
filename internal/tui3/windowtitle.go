@@ -1,6 +1,10 @@
 package tui3
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+)
 
 // THE TAB IS THE OUTERMOST ROW OF THE RAIL.
 //
@@ -39,8 +43,8 @@ const (
 	titleAskGlyph = homeAskGlyph
 	titleAskASCII = homeAskASCII
 
-	titleDoneGlyph = glyphDone
-	titleDoneASCII = glyphDoneASCII
+	titleDoneGlyph = tokens.GlyphSettled
+	titleDoneASCII = "+"
 )
 
 // windowTitle is the one line this surface says to the space outside its own

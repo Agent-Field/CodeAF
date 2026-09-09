@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // THE CONTROLS SCREEN — the one screen between connecting and the first thing a
@@ -1870,12 +1871,9 @@ func (a *app) showcaseBody(example setupExample, inner int) []string {
 // showcaseFoot the bottom edge with the position among the four written into
 // its middle. A label on an edge is a label that cannot be mistaken for content.
 func showcaseHead(box showBox, title string, pal palette, width int) string {
-	mark := glyphQueued
-	if pal.ascii {
-		mark = glyphQueuedASCII
-	}
-	// THE MARK IS THIS SURFACE'S OWN GLYPH FOR "NOTHING IS TURNING" (styles.go's
-	// [glyphQueued], the empty circle that is deliberately not a spinner), which
+	mark := pal.glyph(tokens.GQueued)
+	// THE MARK IS THIS SURFACE'S OWN GLYPH FOR "NOTHING IS TURNING"
+	// (tokens.GQueued, the empty circle that is deliberately not a spinner), which
 	// is exactly what this panel is. Borrowing it rather than inventing a shape
 	// keeps one vocabulary, and it means the one glyph on the frame agrees with
 	// the sentence at its foot.
