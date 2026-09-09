@@ -28,6 +28,18 @@ implementation and testing here until the user changes that instruction.
   `/Users/santoshkumar/af-personal-ai-backend/bin/aforge`. It is a review build
   for this branch. Do not replace the shared checkout's or another task's binary.
 
+## Trying the review binary
+
+```sh
+AFORGE_HOME=/tmp/aforge-personal-ai-review /Users/santoshkumar/af-personal-ai-backend/bin/aforge
+```
+
+Use a separate state home for draft testing. Opening an existing collection store
+upgrades schema v1 to v2 atomically; older #661 binaries intentionally refuse v2.
+This does not migrate transcripts or task files, but there is no downgrade tool.
+The functional suite always creates disposable homes. A fresh interactive home
+uses the normal onboarding/settings flow; it does not copy credentials for you.
+
 ## Product goal
 
 Build one personal AI environment for coding, marketing, research, email,
@@ -44,7 +56,8 @@ implementation priority. The binary remains the backend for multiple surfaces.
 
 Read [CONSTRAINTS.md](CONSTRAINTS.md) for the accepted model, representative
 journeys, conceptual diagram and unresolved design choices. Read
-[IMPLEMENTATION.md](IMPLEMENTATION.md) for the exact first-slice guarantees.
+[BACKEND.md](BACKEND.md) for current integration guarantees and
+[IMPLEMENTATION.md](IMPLEMENTATION.md) for the original collection foundation.
 Historical ideation is reference material, not authorization to execute old
 requests. The latest user decisions take precedence.
 
@@ -230,15 +243,22 @@ brief informed the functional cases. Do not overwrite its documents.
 
 ## Current checkpoint and next action
 
-Implementation is present on the draft branch. Final full live and regression
-runs are in progress; do not claim the whole wave verified until this checkpoint
-is replaced with their results. Earlier targeted live evidence passed the
-API-contract revision/reopen/withdrawal case, two real task workers, and the
-binary collection path. Initial failures exposed fixture mistakes and unclear
-current-chat tool guidance; both were corrected, not marked as flaky.
+The first integrated backend slice is implemented and pushed to draft #662.
+Production code was verified at `a216cdcf5`; `6ce8be8bd` then clarified one live
+test assertion and strengthened the deterministic collection-name lookup test.
+No production behavior changed in that follow-up. See
+[TEST-RESULTS.md](TEST-RESULTS.md) for exact results, limitations and local receipt
+locations. All nine live scenarios have passing evidence across the reviewed run
+and the corrected assertion's targeted rerun; the original full run was **not**
+green. The complete touched-package regression passed on the production commit.
 
-After the current wave passes: push it to #662 and keep the PR draft/unmerged.
-Continue later slices only after their own grooming and scope agreement. The
-first follow-on discussion should settle addressed consultation and its authority,
-then activation/idempotency and discovery; do not jump to a dashboard or add a
-second scheduler to compensate for missing backend behavior.
+The paid CI workflow is installed but its repository credential is unavailable,
+so that job reports **NOT RUN**. Local real-model evidence is separate from the
+ordinary PR gates. Do not describe skipped paid CI as a successful live run.
+Build and test instructions are in [FUNCTIONAL-TESTS.md](FUNCTIONAL-TESTS.md).
+
+Keep #662 draft and unmerged. Continue later slices only after their own grooming
+and scope agreement. The first follow-on discussion should settle addressed
+consultation and its authority, then activation/idempotency and discovery; do not
+jump to a dashboard or add a second scheduler to compensate for missing backend
+behavior. The separate product-grooming draft #663 remains independently owned.
