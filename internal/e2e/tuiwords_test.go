@@ -66,6 +66,12 @@ type tuiWord struct {
 	why string
 }
 
+// tokensPkg is the SHARED GLYPH VOCABULARY, and it is where every mark on this
+// surface is now spelled: the icons wave took the literals out of internal/tui3
+// and put one slot table behind one door, so a needle that looked for a glyph in
+// the surface would be looking where the surface no longer writes one.
+const tokensPkg = "internal/tui2/tokens"
+
 // tui3Pkg is where the surface's own words live, and the default for [tuiWord.pkg].
 const tui3Pkg = "internal/tui3"
 
@@ -485,12 +491,19 @@ var tuiWords = map[string]tuiWord{
 	// spellings of one answer.
 	"taskDoneGlyph": {
 		screen: "✓",
-		why:    "the `over` tier's cell for work that ran to the end (internal/tui3's glyphDone)",
+		pkg:    tokensPkg,
+		why: "the `over` tier's cell for work that ran to the end — the shared vocabulary's GlyphSettled " +
+			"slot, drawn through tasktier.go. It is the PLAIN tier's spelling, which is what this suite " +
+			"sees: a patched terminal draws the private-use icon instead and a capture-pane of one is not " +
+			"a thing a needle could honestly assert",
 	},
 	"taskBadGlyph": {
-		screen: "✗",
-		why: "the `over` tier's cell for work that did not finish (glyphBad). It is NOT the cell a person's " +
-			"own stop wears — that is ⊘, because nobody found anything wrong with work somebody ended",
+		screen: "✕",
+		pkg:    tokensPkg,
+		why: "the `over` tier's cell for work that did not finish — GlyphFailed. It is NOT the cell a " +
+			"person's own stop wears, which is GlyphStopped, because nobody found anything wrong with work " +
+			"somebody ended. It was `✗` in internal/tui3 until the icons wave moved every mark into one " +
+			"vocabulary (docs/design/icons/DESIGN.md)",
 	},
 	"taskDoneWord": {
 		screen: " · done",
