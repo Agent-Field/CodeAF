@@ -3687,7 +3687,7 @@ func (a *Agent) estimateTokensLocked() int {
 	for _, message := range a.messages {
 		total += messageBytes(message)
 	}
-	estimate := total / bytesPerToken
+	estimate := EstimateTokens(total)
 	if a.contextTokens > estimate {
 		return a.contextTokens
 	}

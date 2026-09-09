@@ -950,6 +950,13 @@ type app struct {
 	shownTokens  int
 	shownCtx     int
 	meterChasing bool
+	// shownUp and shownDown are the RUNNING TURN's token pair in motion — what
+	// has gone up to the model and what has come back — walked on the clock and
+	// the curve the three meters above are walked on (tokencol.go). They are
+	// held apart from those because they are turn-scoped and not the session's:
+	// they open at nothing with every turn, and they are gone when it settles.
+	shownUp   int
+	shownDown int
 	// revealMoved is when the live edge and the meters last stepped, on this
 	// surface's own clock ([app.now]). The walk is a function of TIME and not of
 	// how many frames were painted (reveal.go's [app.tickReveal]), and this is
@@ -995,6 +1002,12 @@ type app struct {
 	// finished turn is a rate nobody is watching.
 	turnBegan    time.Time
 	turnOutStart int
+	// turnInStart is [app.inputTokens] at the same instant, and it is the other
+	// half of the live token column's subtraction: what this turn has SENT is
+	// the session's input total less this mark, exactly as what it has written
+	// is the output total less the one above (tokencol.go). It is cleared with
+	// the pair beside it, because a turn that has settled sends nothing.
+	turnInStart int
 	// turnCostAt is what the session had spent when the turn now running
 	// started, and it is the other end of the subtraction a turn footer's price
 	// is (timestamps.go). It is kept beside the burn window's pair because it is
@@ -5020,7 +5033,8 @@ func (a *app) settle() tea.Cmd {
 	// AND THE RECEIPT IS FROZEN HERE, before the clock it is measured from is
 	// cleared: what the turn took, what it called, what it cost (timestamps.go).
 	a.stampTurn()
-	a.turnBegan, a.turnOutStart, a.turnCostAt = time.Time{}, 0, 0
+	a.turnBegan, a.turnOutStart, a.turnInStart, a.turnCostAt = time.Time{}, 0, 0, 0
+	a.shownUp, a.shownDown = 0, 0
 	a.approval = a.approvalPosture()
 	a.mouse = config.MouseEnabledAt(a.profileDir)
 	a.timestamps = config.TimestampsAt(a.profileDir)
@@ -5404,6 +5418,12 @@ func (a *app) startClock() {
 		return
 	}
 	a.turnBegan, a.turnOutStart, a.turnCostAt = a.now(), a.outputTokens, a.cost
+	a.turnInStart = a.inputTokens
+	// AND THE DRAWN PAIR OPENS AT NOTHING, because the figures it chases are
+	// this turn's rather than the session's: a pair left standing at the last
+	// turn's totals would spend the first second of this one walking DOWN to
+	// zero in front of somebody (tokencol.go).
+	a.shownUp, a.shownDown = 0, 0
 }
 
 // now is the time, from the seam rather than from the package: see [app.clock].
@@ -7690,7 +7710,8 @@ func (a *app) resetMeters() {
 	// carried across /new would be a graph of somebody else's context, and an
 	// ambient count would be claiming jobs that died with the agent.
 	a.ctxRing, a.ringTurn = nil, 0
-	a.turnBegan, a.turnOutStart, a.turnCostAt = time.Time{}, 0, 0
+	a.turnBegan, a.turnOutStart, a.turnInStart, a.turnCostAt = time.Time{}, 0, 0, 0
+	a.shownUp, a.shownDown = 0, 0
 	// The receipts go with the conversation they were written for: turn 1 of the
 	// session that replaced this one is not the turn 1 those figures describe
 	// (timestamps.go).

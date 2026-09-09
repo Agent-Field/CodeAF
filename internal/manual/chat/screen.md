@@ -1828,6 +1828,65 @@ Between calls the separate waiting dot moves; its response clock starts with
 the request, not with the preceding tool. Task pages never borrow this clock
 from the main conversation.
 
+## The two figures on the right while it works — the up arrow and down arrow, upload and download tokens, how many tokens is it using right now, is anything actually happening
+
+While a turn is running, the right edge of the working block carries two figures:
+
+```
+▸ Working · ctrl+e                                        ↑ 63.6k  ↓ 12
+  reading 2 files in internal/tui3
+· running go test ./internal/session · 41s               ↑ 78.2k  ↓ 486
+```
+
+`↑` is what this turn has **sent** to the model, and `↓` is what has **come
+back** from it, both in tokens. Between them they answer the question the
+shimmer cannot: not "is this alive" but "is anything moving, and how fast". A
+`↓` climbing steadily is a model writing; a `↓` that has stopped is a stream
+that has gone quiet, and the line beside it will say so within ten seconds.
+
+**They count up rather than jumping.** Both figures walk toward each new reading
+over a couple of tenths of a second — the same ease as the reply writing itself
+in. The books behind them stay exact; only what is painted is in motion.
+
+**They belong to this turn and they leave with it.** They open at nothing when
+you send a message and they are gone the moment the answer settles, because they
+are a sign that something is moving rather than a total. The session's running
+totals stay on the status line, where they never go away.
+
+**Only one row carries them.** The row that stands for the whole turn — the
+compact block's newest line, or `▾ working · ctrl+e` once you have opened the
+work — is the one with both figures on it. A step that has finished carries
+nothing.
+
+**An opened step shows its own `↓`.** Press `ctrl+e` and each running step's
+caption carries what the model wrote inside it, after its clock: `2s · ↓ 486`.
+There is no `↑` on a step: one request carries the whole conversation rather
+than the step it happens to be in, so a share of it per step would be arithmetic
+nobody performed.
+
+**A figure nobody has earned yet is not drawn.** Before anything comes back
+there is no `↓`, not a zero. On a narrow terminal the words win and the figures
+are dropped — `↑` first, because `↓` is the one that says something is arriving.
+
+**On a screen-reader or plain terminal** the arrows are spelled `^` and `v` and
+nothing eases: the exact figure is drawn each time.
+
+## How exact are the up and down token figures — is the upload figure what I am billed for
+
+`↓` is the provider's own count as soon as a step reports one. In between, while
+the model is still writing, it is estimated from the text already on your screen
+at about four bytes to the token — the same estimate aforge uses everywhere else
+it has to guess — and the exact figure takes over the moment it lands.
+
+`↑` is the same shape the other way round: the tokens this turn has actually
+been billed for, and, before the first step of the turn has reported anything,
+the weight of the conversation being sent. It steps up rather than climbing
+smoothly, because that is what really happens — a request goes out whole each
+time a tool result joins the conversation.
+
+Neither figure changes what you are charged, and neither is what `/cost` prints.
+`/cost` and `/status` print the exact books.
+
 ## The symbol beside each step — the little icons in the working block, what the mark in front of a step means
 
 Each compact caption carries **one small mark** on its first line,

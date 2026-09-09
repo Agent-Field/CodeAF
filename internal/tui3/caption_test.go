@@ -136,7 +136,7 @@ func TestACaptionIsOneShortSentence(t *testing.T) {
 func TestANarrowCaptionWrapsWithoutEllipsis(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	c := caption{text: "listing open github issues for quality", start: 1, calls: 2, began: time.Unix(100, 0), ended: time.Unix(102, 0)}
-	rows := a.captionRows(c, false, false, 28)
+	rows := a.captionRows(c, false, false, 28, a.conversation())
 	if len(rows) < 2 {
 		t.Fatalf("expected a wrap on a narrow frame, got %d rows: %#v", len(rows), rows)
 	}
@@ -160,15 +160,15 @@ func TestExpandingACaptionStopsItsShimmerAndStartsTheRowSpinners(t *testing.T) {
 	c := caption{text: "checking the fold", start: 1, calls: 2, began: time.Unix(100, 0)}
 	a.clock = func() time.Time { return time.Unix(104, 0) }
 	captionTimeAt(a, 0)
-	closed := a.captionRow(c, true, false, 80).text
+	closed := a.captionRow(c, true, false, 80, a.conversation()).text
 	captionTimeAt(a, shimmerPeriod/4)
-	if next := a.captionRow(c, true, false, 80).text; next == closed {
+	if next := a.captionRow(c, true, false, 80, a.conversation()).text; next == closed {
 		t.Fatal("collapsed live caption did not shimmer")
 	}
 	captionTimeAt(a, 0)
-	open := a.captionRow(c, true, true, 80).text
+	open := a.captionRow(c, true, true, 80, a.conversation()).text
 	captionTimeAt(a, shimmerPeriod/4)
-	if next := a.captionRow(c, true, true, 80).text; next != open {
+	if next := a.captionRow(c, true, true, 80, a.conversation()).text; next != open {
 		t.Fatal("expanded caption kept shimmering")
 	}
 }

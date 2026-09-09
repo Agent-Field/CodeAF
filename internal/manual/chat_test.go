@@ -296,6 +296,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is home empty over ssh", "places"},
 		{"someone else is typing", "staying-on-that-machine"},
 		{"how fast is the connection", "screen"},
+		// The two live figures on the working block. People ask for them as
+		// "upload and download", as "the arrows", and as the question they are
+		// really asking — whether anything is happening at all.
+		{"what are the two numbers on the right while it is working", "screen"},
+		{"upload and download tokens while it works", "screen"},
+		{"what do the up and down arrows next to working mean", "screen"},
+		{"how many tokens is this turn using right now", "screen"},
 		{"my click does nothing on the server", "opening-files-from-that-machine"},
 		{"does export save to my laptop", "commands"},
 		{"which machine's settings are these", "commands"},

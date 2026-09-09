@@ -360,7 +360,16 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 					painted = a.shimmer(line[:n]) + a.pal.dim(line[n:])
 				}
 			}
-			out = append(out, row{text: a.pal.dim(lead) + painted, entry: -1, hit: hitWorkFold, turn: w.key, activity: w.pending})
+			drawn := a.pal.dim(lead) + painted
+			// THIS ROW STANDS FOR THE WHOLE TURN, so it carries the turn's pair
+			// (tokencol.go). It is the row a person stares at for the first
+			// seconds of a turn — before there is a caption, and while a slow
+			// endpoint is deciding whether to say anything — which is exactly the
+			// stretch a still line says nothing about.
+			if i == 0 {
+				drawn += a.turnTokenSuffix(d, ansi.StringWidth(drawn), room)
+			}
+			out = append(out, row{text: drawn, entry: -1, hit: hitWorkFold, turn: w.key, activity: w.pending})
 		}
 		return out
 	}
@@ -438,7 +447,16 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 			} else {
 				lead = a.pal.fade(lead, stop)
 			}
-			out = append(out, row{text: lead + painted, entry: -1, hit: hitWorkFold, turn: w.key, activity: (s.live && at == 0) || (waiting && ((inline && i == len(s.lines)-1) || (!inline && i == 0))), inlineWait: waiting && ((inline && i == len(s.lines)-1) || (!inline && i == 0))})
+			drawn := lead + painted
+			// THE COMPACT BLOCK IS THE RUNNING TURN'S CHIP, and its newest row is
+			// the row that stands for the turn — so the pair rides the top line of
+			// it, flush right, where the finished chip carries its receipt
+			// (tokencol.go). The steps above it are work that is over and carry
+			// nothing: the column is a sign of motion and dies with the motion.
+			if at == 0 && i == 0 {
+				drawn += a.turnTokenSuffix(d, ansi.StringWidth(drawn), room)
+			}
+			out = append(out, row{text: drawn, entry: -1, hit: hitWorkFold, turn: w.key, activity: (s.live && at == 0) || (waiting && ((inline && i == len(s.lines)-1) || (!inline && i == 0))), inlineWait: waiting && ((inline && i == len(s.lines)-1) || (!inline && i == 0))})
 		}
 	}
 	return out
@@ -451,10 +469,18 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 //
 // It names its key for the reason every fold on this surface names its key:
 // something hidden without a way to it is something deleted.
-func (a *app) liveWorkDoor(w liveWork) row {
+// IT CARRIES THE TURN'S TOKEN PAIR, because with the window open it is the row
+// that stands for the whole turn — the steps under it carry their own figures
+// (tokencol.go states the one rule both obey).
+func (a *app) liveWorkDoor(w liveWork, width int, d deck) row {
 	mark := a.linearMark("▾ ", "v ")
+	text := a.pal.dim(mark + liveWorkWord + " · ctrl+e")
+	room := width - workIndentCols(width) - actionGutter
+	if room > 0 {
+		text += a.turnTokenSuffix(d, ansi.StringWidth(text), room)
+	}
 	return row{
-		text:  a.pal.dim(mark + liveWorkWord + " · ctrl+e"),
+		text:  text,
 		entry: -1, hit: hitWorkFold, turn: w.key,
 	}
 }

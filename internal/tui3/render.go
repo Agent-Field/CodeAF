@@ -414,7 +414,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				}
 				drewCaption = true
 				capOpen := a.captionCallsOpen(d, c)
-				out = append(out, a.captionRows(c, false, capOpen, width)...)
+				out = append(out, a.captionRows(c, false, capOpen, width, d)...)
 				if capOpen {
 					out = append(out, a.captionBody(d, c, width)...)
 					for at := toolsFrom; at < toolsTo; at++ {
@@ -465,7 +465,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			// own calls. The reasoning blocks inside the window are drawn where they
 			// happened — a person who opened the work asked for the machinery, and
 			// the model's working is machinery this surface has always shown.
-			out = append(out, a.liveWorkDoor(w))
+			out = append(out, a.liveWorkDoor(w, width, d))
 			// THE STEPS ARE WALKED WITH A CURSOR AND THE SPANS ARE STEPPED OVER.
 			// The window already knows its own steps in order ([liveWork.steps]),
 			// so a block between two of them is one that belongs to no step and is
@@ -485,7 +485,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				// is the caption's to draw, so the walk resumes past it.
 				at = c.end - 1
 				capOpen := a.captionCallsOpen(d, c)
-				out = append(out, a.captionRows(c, c.ended.IsZero(), capOpen, width)...)
+				out = append(out, a.captionRows(c, c.ended.IsZero(), capOpen, width, d)...)
 				if !capOpen {
 					continue
 				}
@@ -523,7 +523,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			}
 			if c, ok := captionAt(d.captions, i); ok {
 				open := a.captionCallsOpen(d, c)
-				out = append(out, a.captionRows(c, c.ended.IsZero(), open, width)...)
+				out = append(out, a.captionRows(c, c.ended.IsZero(), open, width, d)...)
 				toolsFrom, toolsTo := captionTools(c, es)
 				if open {
 					out = append(out, a.captionBody(d, c, width)...)
