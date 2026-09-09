@@ -217,7 +217,7 @@ Proposals to discuss, not yet new confirmed behavior:
   and make changed scope understandable. An inherited-at-creation rule that follows
   the work is an alternative; this contract remains to confirm.
 
-The [diagram checkpoint](DISCUSSION.md#return-to-diagram-checkpoint-after-c15)
+The [diagram checkpoint](DISCUSSION.md#agreed-versus-still-open)
 separates agreed product behavior, partial implementation evidence and full-journey
 gaps. Topics 1/2 are not wholly done. After confirming these scope transitions, the
 next demonstration must carry a correction through applicable context, affected
