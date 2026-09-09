@@ -159,16 +159,18 @@ until explicit release.
   active. GitHub confirms PR #653 remains open and draft against `dev`; this is
   observation only, not authority to infer completion or release the hold.
 - Draft PR #658 remains open, cleanly mergeable, and still targets
-  `codex/conversation-execution` at the exact pushed feature head
-  `7ff64a810e61582336416d988356192e1d7f05e9`. It was neither retargeted nor
+  `codex/conversation-execution`. Its tested code head is
+  `7ff64a810e61582336416d988356192e1d7f05e9`; the only later feature-branch
+  change in this pass is this status record. It was neither retargeted nor
   merged, and no protected branch was written.
 - The isolated candidate remains fully prepared at that head: controlled
   uncached tui3 tests improved from 564.32s to 402.60s (28.7%); the frozen
   affected report passed 4,385 tests with 4 skips and no failures, cached
   package labels, or incomplete packages; `make test-quick` and `make build`
   passed after the final formatting-only commit.
-- Remote refs were checked without mutation: `dev` is `65f060d338`, the old
-  conversation target is `2a02ac0bb`, and the feature ref is `7ff64a810`.
+- Before this status-only checkpoint, remote refs were checked without
+  mutation: `dev` was `65f060d338`, the old conversation target was
+  `2a02ac0bb`, and the tested feature ref was `7ff64a810`.
   `reports/READY` and `reports/QUALITY_READY` remain absent as required.
 
 Outstanding: wait for an explicit hold release carrying the verified PR #653
