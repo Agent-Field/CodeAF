@@ -248,6 +248,7 @@ func TestGlyphInventoryIsComplete(t *testing.T) {
 		GlyphQueued, GlyphWorking, GlyphSettled, GlyphFailed, GlyphPaused,
 		GlyphNeedsHuman, GlyphWaitsOn, GlyphCollapsed, GlyphExpanded,
 		GlyphScopeUp, GlyphTruncated, GlyphCut, GlyphPromptChat, GlyphPromptSteer,
+		GlyphReplyIn,
 		GlyphThought, GlyphShell, GlyphSearch, GlyphWrite,
 		GlyphBoosted, GlyphSeparator, GlyphMissing, GlyphEstimate,
 		GlyphAccentRail, GlyphHugEdge, GlyphChipCapLeft, GlyphChipCapRight,

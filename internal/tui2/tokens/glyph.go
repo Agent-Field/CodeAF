@@ -87,6 +87,17 @@ const (
 	// which surface the draft will land in (5.15).
 	GlyphPromptChat  = "›"
 	GlyphPromptSteer = "↦"
+	// GlyphReplyIn is AN ANSWER DRAWN UNDER THE THING IT ANSWERS: the reply to a
+	// question a person put back to the asker, the response landing on the row
+	// that asked for it (docs/design/questions/DESIGN.md's room form). It is a
+	// prompt mark in the same family as the two above — punctuation saying whose
+	// turn a line is — which is why it is geometry and neither tier swaps it.
+	//
+	// It is deliberately NOT [GlyphPromptChat]: `›` is the person typing and this
+	// is what came back, and a page that drew both with one mark would make an
+	// exchange unreadable at exactly the moment it matters. U+21B3 is
+	// East_Asian_Width=Neutral and one cell under both shipping rulers.
+	GlyphReplyIn = "↳"
 
 	// The execution voices (5.5). A work record is four speakers and no
 	// labels: the model thinking, the tools it reached for, the reader
@@ -333,6 +344,7 @@ func Glyphs() []GlyphInfo {
 		{"Cut", GlyphCut, '╌', false},
 		{"PromptChat", GlyphPromptChat, '›', false},
 		{"PromptSteer", GlyphPromptSteer, '↦', false},
+		{"ReplyIn", GlyphReplyIn, '↳', false},
 		{"Thought", GlyphThought, '✳', false},
 		{"Shell", GlyphShell, '$', false},
 		{"Search", GlyphSearch, '⌕', false},

@@ -762,6 +762,15 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for i, line := range a.roomApprovalRows(width) {
 		add(line, a.roomApprovalMark(i))
 	}
+	// AND A QUESTION'S OWN FOOT UNDER THAT, which is DESIGN.md's alignment law
+	// said as geometry: "the room's foot is pinned above the box exactly where
+	// every other question sits". It STACKS rather than sharing for the reason
+	// the approval row does — this is a question a person opened out on purpose,
+	// and the blocks above it are questions the session raised — and it takes
+	// only keys the box does not want (questionroom.go).
+	for _, line := range a.questionFootRows(width) {
+		add(line, chromeRow{})
+	}
 	// THE STEER GUARD SITS WHERE THE APPROVAL QUESTION SITS, because it is the
 	// same kind of thing: the surface holding words back until it is told where
 	// to send them (room.go). The two can never be up together — a question the
@@ -948,7 +957,8 @@ func (a *app) chromeHeight() int {
 	// whatever the two optional blocks, the open list and the welcome box are
 	// holding.
 	n := a.statusHeight(width) + a.overlayHeight() + a.questionHeight() + a.consentHeight() +
-		a.connectAskHeight() + a.harnessAskHeight() + a.roomApprovalHeight() + a.guardHeight() +
+		a.connectAskHeight() + a.harnessAskHeight() + a.roomApprovalHeight() +
+		a.questionFootHeight() + a.guardHeight() +
 		a.followHeight() + a.landHeight() + a.parkedHeight() + a.welcomeHeight() + a.spellHeight()
 	// THE GREETING'S ROWS ALREADY HOLD THE BOX while it holds the box, and the
 	// rule and its breathing room are not drawn under a greeting at all — both
@@ -1071,6 +1081,13 @@ func (a *app) bodyRows(width, height int) ([]row, int) {
 	if a.copy.on {
 		return a.copyRows(width, height)
 	}
+	// AND A QUESTION OPENED OUT INTO ITS OWN PAGE IS THE FOURTH ANSWER, on the
+	// room's own terms and above it (questionroom.go): a question is drawn over
+	// whatever it was raised about, and a node's page is one of the things it can
+	// be raised about.
+	if a.questionRoomOpen() {
+		return a.questionRoomWindow(width, height)
+	}
 	if a.roomOpen() {
 		return a.roomWindow(width, height)
 	}
@@ -1122,6 +1139,14 @@ func (a *app) rowAt(y int) (row, bool) {
 	// (see the frame's own note), so a screen row resolves by distance from the
 	// top with nothing to subtract. A pointer on the slack lands past the end of
 	// the row list and gets nothing, which is what it should get.
+	if a.questionRoomOpen() {
+		body, _ := a.questionRoomWindow(a.bodyWidth(), a.viewHeight())
+		at := y - top
+		if at < 0 || at >= len(body) {
+			return row{}, false
+		}
+		return body[at], true
+	}
 	if a.roomOpen() {
 		body, _ := a.roomWindow(a.bodyWidth(), a.viewHeight())
 		at := y - top

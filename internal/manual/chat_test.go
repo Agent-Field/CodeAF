@@ -51,6 +51,19 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it decide by itself", "questions"},
 		{"undo what I just approved", "questions"},
 		{"stop asking me about rm", "questions"},
+		// And the room form (lane S2): the page a question opens into, and the
+		// nine things a person does on it. Each one is asked in the words
+		// somebody would actually type rather than in the key's own name.
+		{"can I open a question up to read it properly", "questions"},
+		{"compare the options it gave me", "questions"},
+		{"how do I comment on one option", "questions"},
+		{"ask it something before I decide", "questions"},
+		{"how do I fill in the blanks it gave me", "questions"},
+		{"how do I pick several answers at once", "questions"},
+		{"it is asking me this or that over and over", "questions"},
+		{"can I just let it decide", "questions"},
+		{"stop asking me this kind of thing", "questions"},
+		{"none of the answers it offered are right", "questions"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},
 		// Lanes behind a base of the person's own: the question the hostname gate
