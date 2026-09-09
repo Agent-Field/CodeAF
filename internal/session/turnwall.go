@@ -15,7 +15,7 @@ package session
 // NOTHING DECIDED WRONGLY. Both governors that move inline work onto a task
 // answer questions about COUNTS — the mark ladder counts rounds
 // ([checkpointMarks]) and the write seam counts what the turn did to the disk
-// ([writeAllowanceFiles]) — and a turn that reads and runs tests for twelve
+// ([writeAllowanceCalls]) — and a turn that reads and runs tests for twelve
 // minutes crosses neither. What nobody was watching is the one thing the session
 // was actually running out of.
 //

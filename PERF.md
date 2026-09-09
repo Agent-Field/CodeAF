@@ -1238,6 +1238,33 @@ a new direction changes the request. This adds no classifier or model call to
 an ordinary tool round. `internal/session/completion_stale_test.go` pins the
 bound, revised direction, and survival of commands already owned by the turn.
 
+## The write allowance on an inline turn
+
+A turn that is changing files under the workspace is bounded by **five landed
+write calls** (`writeAllowanceCalls`, internal/session/writeseam.go). The next
+workspace write takes the same handover road the round ceiling takes, once per
+turn, and that road can still decline.
+
+**The count is calls, and only calls.** A second trigger on the number of
+DISTINCT files a turn had touched (two) has been removed. Breadth is not what the
+allowance prices: writing a helper and then the output it produces is two paths
+and one small piece of work, and a turn moved onto a task for that spends a fresh
+worktree and a brief on work that was already finishing inline. What the seam is
+for is how often a turn reaches for the disk unwatched — the run it was written
+from made forty-eight write calls — and the call count catches that whether those
+calls land on one file or on forty. One call is one reach however many paths it
+names.
+
+Nothing else moves: reads are still free in any number, a failed write and
+anything outside the workspace still count nothing, a forked hand's landed calls
+are still counted on the caller, and the delivery of a result this conversation
+owns still holds the door. The round ceiling (`checkpointPrice`, 10) and the
+turn-wall share are unchanged, so a turn that crossed the old file trigger at its
+second write now runs to its fifth write call or to whichever of those governors
+comes first. `internal/session/writeseam_test.go` pins both shapes: a few writes
+across different files followed by running their result finishes inline, and
+repeated writes to one file still hand over at the fifth call.
+
 ## The in-turn working-set ceiling
 
 A single tool-heavy turn starts folding already-seen tool results at **64,000

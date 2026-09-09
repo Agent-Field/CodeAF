@@ -40,9 +40,10 @@ import (
 )
 
 // finishedScript is the trace's own turn with the drawing the case wants: the
-// two workspace writes that fire the write seam, then a conversation that says
-// in words that the artifacts are written. The dowry is answered with the remains
-// token, which is what the live model answered.
+// workspace writes that fire the write seam — [writeAllowanceCalls] of them,
+// which is the count the seam has — then a conversation that says in words that
+// the artifacts are written. The dowry is answered with the remains token, which
+// is what the live model answered.
 func finishedScript(count int, sketch func() (string, error)) []step {
 	var writes atomic.Int64
 	steps := make([]step, count)
@@ -61,7 +62,7 @@ func finishedScript(count int, sketch func() (string, error)) []step {
 				return textResponse(checkpointNothingLeft), nil
 			}
 			round := writes.Add(1)
-			if round > writeAllowanceFiles {
+			if round > writeAllowanceCalls {
 				return textResponse("report.csv is written and report.md is gone."), nil
 			}
 			arguments, _ := json.Marshal(struct {
@@ -102,7 +103,7 @@ func finishedAgent(t *testing.T, completer Completer, path string) *Agent {
 	return agent
 }
 
-// grindingFinishedScript is [finishedScript]'s turn that DOES NOT STOP: the two
+// grindingFinishedScript is [finishedScript]'s turn that DOES NOT STOP: the
 // writes that fire the seam, then an unbroken run of ordinary tool calls. It is
 // what a turn looks like when its own claim was wrong, which is the case the
 // bound exists for.
@@ -121,7 +122,7 @@ func grindingFinishedScript(count int, dowry string, sketch string) []step {
 			case askedForRemains(messages):
 				return textResponse(checkpointNothingLeft), nil
 			}
-			if round := writes.Add(1); round <= writeAllowanceFiles {
+			if round := writes.Add(1); round <= writeAllowanceCalls {
 				arguments, _ := json.Marshal(struct {
 					Path string `json:"path"`
 					Text string `json:"content"`
@@ -608,7 +609,7 @@ func TestACompletionDropLeavesTheRunningCommandOwed(t *testing.T) {
 				return toolResponseWithText("start-build", "bash", string(arguments),
 					"Starting the build in the background."), nil
 			}
-			if round := writes.Add(1); round <= writeAllowanceFiles {
+			if round := writes.Add(1); round <= writeAllowanceCalls {
 				arguments, _ := json.Marshal(struct {
 					Path string `json:"path"`
 					Text string `json:"content"`
