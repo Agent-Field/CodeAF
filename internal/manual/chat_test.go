@@ -295,6 +295,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// visible answer.
 		{"why is home empty over ssh", "places"},
 		{"someone else is typing", "staying-on-that-machine"},
+		{"why does aforge take ten seconds to start", "staying-on-that-machine"},
+		{"my conversation says it ends with this terminal", "staying-on-that-machine"},
+		{"aforge home path too long", "staying-on-that-machine"},
+		{"state folder is a longer path than a socket may be named in", "staying-on-that-machine"},
 		{"how fast is the connection", "screen"},
 		// The two live figures on the working block. People ask for them as
 		// "upload and download", as "the arrows", and as the question they are

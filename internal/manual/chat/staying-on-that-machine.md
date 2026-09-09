@@ -53,8 +53,8 @@ refused visibly rather than lost.
 A recent ssh connection is kept reusable for 300 seconds, so a new channel can avoid a
 full handshake when the underlying ssh connection is still healthy. Its control socket
 lives under this machine's aforge state directory at `~/.aforge/v3/ssh/` (moved by
-`AFORGE_HOME`). A state path too long for a unix socket disables reuse only; the ordinary
-ssh connection still opens.
+`AFORGE_HOME`). The same **104-byte** socket-path limit applies there: a state path too
+long disables reuse only; the ordinary ssh connection still opens.
 
 These network-dependent defaults are editable on `/settings`' **Workspace** tab as `ssh
 reuse` (`300s`), `ssh heartbeat` (`3s`), `ssh missed heartbeats` (`3`), and `ssh traffic`
@@ -451,6 +451,35 @@ nothing a person accomplishes by typing it. The third flag beside them is `--sto
 the one a person really does type; it has its own section above. None of them appear in
 `aforge`'s usage text, because `aforge engine` itself does not — it is the far half of
 `--host` and a surface dials it.
+
+## Why does aforge take ten seconds to start, or say the conversation ends with this terminal — a state folder too long for a socket
+
+The thing that holds a conversation after you close the terminal is reached on a unix
+socket under aforge's own state folder, and a socket path may weigh at most **104
+bytes**. It is 104 rather than Linux's own 108 because the smallest limit is the one that
+travels: macOS stops at 104, and the same folder can be shared over a network mount.
+
+If `AFORGE_HOME` puts that folder deep enough to push the path past the limit, there is
+nowhere for a session host to answer, and the launch opens the conversation in this
+terminal **at once** — nothing is started in the background, and nothing is left behind
+under `v3/hosts`. Everything else about the conversation works exactly as it always does.
+It simply ends when this terminal does. The entry notice says so:
+
+```
+this conversation opened in this terminal instead, and ends with it: aforge's state folder is a longer path than the 104 bytes a socket may be named in — AFORGE_HOME moves it somewhere shorter
+```
+
+**It used to cost ten seconds.** The launch started a host into a path it could never
+listen on and waited out the whole birth wait before falling back, with a blank screen
+the entire time. The refusal is settled before anything is started now, so the surface
+draws immediately.
+
+The way out is to point `AFORGE_HOME` at a shorter path — that is the whole of it, and
+the next launch holds its conversation in the background again. `aforge chat --no-host`
+is the same floor asked for on purpose, on any machine.
+
+The same 104 bytes govern the reusable ssh control socket under **How quickly a dead ssh
+link is noticed and retried**: a path past it turns ssh reuse off and nothing else.
 
 ## Background replies while another reply finishes
 
