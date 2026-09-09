@@ -13,6 +13,10 @@ Code, OpenClaw and Grok Bot using official documentation. It distinguishes
 expressible behavior, shipped mechanisms and verified outcomes; it does not
 claim that aforge is a superset or add new primitives to the product.
 
+[Common model and task coverage](FRAMEWORK.md) revisits the earlier mathematical
+study, defines a practical comparison under resource and authority constraints,
+and compares five requests across all four systems. It is a discussion proposal.
+
 ## The product we are preserving
 
 Aforge is one personal AI work environment for development, research, marketing,
@@ -43,10 +47,11 @@ PR #662, in `/Users/santoshkumar/af-personal-ai-backend`. It stays unmerged into
 `main`, `dev`, `staging`, or publishing a release.
 
 The existing implementation task is **Ideate seamless home chat UX**,
-`01a0839c-a6c1-7a93-94f2-be0e4c528f64`. Its latest report says the integrated
-backend builds and resolver/chat integration tests pass; independent review and
-real-model acceptance are outstanding. This is a reported checkpoint, not an
-independent rerun. The local working tree has uncommitted implementation.
+`01a0839c-a6c1-7a93-94f2-be0e4c528f64`. Its recorded checkpoint covers production
+commit `a216cdcf5` and test clarification `6ce8be8bd`: touched-package regression
+passed and all nine live cases have evidence across two runs, not one entirely
+green full-suite run. Paid CI reports NOT RUN because its key is absent. See the
+integration branch's `TEST-RESULTS.md`; this is read evidence, not our rerun.
 
 Its first wave owns collections, resolved owner state, explicit sourced context,
 revision/withdrawal, ordinary chat/task context refresh and memory-off behavior.
