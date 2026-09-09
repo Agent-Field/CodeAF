@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Home-card terminal checks follow the current layout and asynchronous Git reading
-pr: 0
+pr: 721
 surface: [chat, docs]
 invalidates:
   - "The live home-card test treated an omitted Git clause as missing metadata even when its temporary folder path exhausted the card. It now uses a short repository path, waits for the reading, compares it with Git, and checks narrow and wide layouts."
