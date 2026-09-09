@@ -24,7 +24,7 @@ import (
 // decide a request's economics without ever performing I/O on the hot path —
 // and minus Temperature: an absent sampling parameter is omitted upstream and
 // the provider's own default applies, so the field is absent rather than
-// carried and always sent (withoutSampling covers the SDK's own loop, which
+// carried and always sent (withoutInjectedDefaults covers the SDK's own loop, which
 // injects one).
 // It carries no attribution fields on purpose: who this binary reports itself
 // as is a constant (attribution.go), and a config field for it is exactly how a
@@ -322,20 +322,19 @@ func (c *Client) ExecuteToolCallLoop(
 	if base == nil {
 		return nil, nil, ErrNoAPIKey
 	}
-	// The SDK builds every round's request with its configured temperature —
-	// its config supplies one even when nobody asked — so the option that
-	// undoes the injection goes on LAST, after anything a caller passed: a
-	// sampling decision this adapter has promised not to make.
-	return base.ExecuteToolCallLoop(ctx, messages, tools, config, call, append(options, withoutSampling)...)
+	// The SDK installs generation defaults before applying options. Clear those
+	// first, so a caller's explicit choice, including zero temperature, survives.
+	cleanOptions := make([]ai.Option, 0, len(options)+1)
+	cleanOptions = append(cleanOptions, withoutInjectedDefaults)
+	cleanOptions = append(cleanOptions, options...)
+	return base.ExecuteToolCallLoop(ctx, messages, tools, config, call, cleanOptions...)
 }
 
-// withoutSampling removes the one sampling parameter the SDK's request
-// builders always set. The SDK is read-only here and its temperature cannot
-// be configured AWAY — a zero would be sent as zero — so the answer is an
-// option that takes the field back off, leaving the provider's own default
-// to answer. Everything else the SDK injects stays.
-func withoutSampling(request *ai.Request) error {
+// withoutInjectedDefaults removes fields supplied by the SDK's config. It runs
+// before caller options; provenance comes from that order, not a field's value.
+func withoutInjectedDefaults(request *ai.Request) error {
 	request.Temperature = nil
+	request.MaxTokens = nil
 	return nil
 }
 
