@@ -216,7 +216,7 @@ func newOrgFixture(t *testing.T, w *world) *orgFixture {
 		t.Fatalf("create the collection %q: %v", fix.name, err)
 	}
 	fix.collection = workspace.Ref{Kind: workspace.CollectionKind, ID: made.ID}
-	ongoing, err := w.store.Create(standing.Item{Words: "Review dependency upgrades", Workspace: fix.folder, When: standing.When{Kind: standing.WhenEvery, Every: "24h"}, Does: standing.Action{Kind: standing.ActionSay, Say: "Report upgrades; patch releases only"}})
+	ongoing, err := w.store.Create(standing.Item{Words: "Review dependency upgrades", Workspace: fix.folder, When: standing.When{Kind: standing.WhenEvery, Every: "24h"}, Does: standing.Action{Kind: standing.ActionSay, Say: "Report upgrades; patch releases only"}, Rails: standing.Rails{PerRunUSD: 0.01, MaxPerDay: 1}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -68,8 +68,8 @@ func organizationWorkerOn(t *testing.T, w *world) {
 		name, held.record.ID, held.record.Revision, held.record.Source, key)
 
 	// ── the same work, in two conversations that both call it task #1 ──
-	first := orgWorkerTask(t, w, name, "context-first.json")
-	second := orgWorkerTask(t, w, name, "context-second.json")
+	first := orgWorkerTask(t, w, store, held.collection, name, "context-first.json")
+	second := orgWorkerTask(t, w, store, held.collection, name, "context-second.json")
 
 	for _, one := range []*orgWorkerJourney{first, second} {
 		orgWorkerReadsTheNote(t, one, held)
@@ -194,7 +194,7 @@ func orgWorkerConfig(w *world) func(*session.Config) {
 
 // orgWorkerTask opens one owning conversation on a repository of its own, starts
 // ONE task at the typed door, and waits for it to come to rest.
-func orgWorkerTask(t *testing.T, w *world, collection, artifact string) *orgWorkerJourney {
+func orgWorkerTask(t *testing.T, w *world, store *workspace.Store, collectionID, collection, artifact string) *orgWorkerJourney {
 	t.Helper()
 	ground := newRepositoryGround(t)
 	desk := filepath.Join(t.TempDir(), "desk")
@@ -218,6 +218,11 @@ func orgWorkerTask(t *testing.T, w *world, collection, artifact string) *orgWork
 		t.Fatalf("seed the owning conversation: %v", err)
 	}
 
+	// Explicit membership is what makes the record applicable to this worker.
+	// The brief names the collection but never carries the finding itself.
+	if err := store.Add(context.Background(), collectionID, workspace.Ref{Kind: workspace.ConversationKind, ID: owner}); err != nil {
+		t.Fatal(err)
+	}
 	agent := w.openAt(desk, place, orgWorkerConfig(w))
 	if _, err := agent.ReferPlace(ground, session.PlaceSaid); err != nil {
 		t.Fatalf("refer %s: %v", ground, err)
@@ -319,7 +324,7 @@ func orgWorkerReadsTheNote(t *testing.T, journey *orgWorkerJourney, held orgWork
 		t.Errorf("%s names its OWN conversation %s as the note's source; a worker that only read a record does not become the source of it",
 			journey.artifact, journey.session)
 	}
-	t.Logf("  %s in %s → key ✓ record=%s revision=%s source=%s", journey.artifact, where,
+	t.Logf("  %s in %s → record=%s revision=%s source=%s", journey.artifact, where,
 		orgWorkerText(answer, "record"), orgWorkerText(answer, "revision"), source)
 }
 
