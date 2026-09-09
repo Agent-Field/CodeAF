@@ -218,3 +218,16 @@ func (n *TaskNode) clashesWith(files []string) {
 	defer n.graph.mu.Unlock()
 	n.clashing = append([]string(nil), files...)
 }
+
+// clashes reads that list back, under the same lock, for the landing that is
+// about to write the question into its report ([yourCallLead]). A copy is
+// handed out rather than the slice itself, because the caller is outside the
+// lock the moment this returns.
+func (n *TaskNode) clashes() []string {
+	if n == nil || n.graph == nil {
+		return nil
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return append([]string(nil), n.clashing...)
+}

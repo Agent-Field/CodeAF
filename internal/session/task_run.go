@@ -5220,7 +5220,7 @@ func (a *Agent) landConflicted(ctx context.Context, node *TaskNode, tree taskTre
 	// AND WHAT THE ROUND TRIED STANDS BETWEEN THE REFUSAL AND THE WORK'S OWN
 	// ACCOUNT, or is nothing at all where no round ran — the emptiness law, and
 	// [withReport] drops it either way.
-	node.finish(withReport(yourCallLead(TaskFacts{Merge: merge})+detail, withReport(round, report)), changed, tree.branch, merge)
+	node.finish(withReport(yourCallLead(TaskFacts{Merge: merge, Conflicts: node.clashes()})+detail, withReport(round, report)), changed, tree.branch, merge)
 	return TaskUnverified
 }
 

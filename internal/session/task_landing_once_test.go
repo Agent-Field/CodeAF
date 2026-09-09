@@ -89,7 +89,7 @@ func TestTheOneRoadHomeStillRefusesToCallAConflictDone(t *testing.T) {
 	if merge != mergeConflicted {
 		t.Fatalf("merge = %q, want it to say the branch would not go", merge)
 	}
-	if !strings.HasPrefix(report, yourCallLead(TaskFacts{Merge: mergeConflicted})) {
+	if !strings.HasPrefix(report, yourCallLead(node.notice().StatusFacts())) {
 		t.Fatalf("the report does not lead with the person's own words:\n%s", report)
 	}
 	if !strings.Contains(report, "the shared line now carries the flag") {
@@ -134,7 +134,7 @@ func TestAConflictedMergeNoticeNamesTheBranchAndDoesNotClaimSuccess(t *testing.T
 		"task 1 finished",
 		"merged into yours",
 		"arrived as a merge",
-		yourCallLead(TaskFacts{Merge: mergeConflicted}),
+		yourCallLead(node.notice().StatusFacts()),
 	} {
 		if strings.Contains(note, success) {
 			t.Fatalf("the notice claims success (%q):\n%s", success, note)

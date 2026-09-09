@@ -2470,7 +2470,7 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 			node.graph.resettle(node, TaskDone)
 			return nil
 		}
-		node.finish(withReport(yourCallLead(TaskFacts{Merge: merge})+detail, withReport(acceptedLine(why), report)),
+		node.finish(withReport(yourCallLead(TaskFacts{Merge: merge, Conflicts: node.clashes()})+detail, withReport(acceptedLine(why), report)),
 			changed, tree.branch, merge)
 		node.graph.resettle(node, TaskUnverified)
 		return nil
@@ -2594,7 +2594,7 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		// asked to resolve this node needs both halves (task_contract.go's
 		// TaskUnverified) — the index row, the brief a dependent is handed, and
 		// the accept that carries it into TaskDone all read this string.
-		node.finish(withReport(verdict.lookOutcome(TaskFacts{Merge: merge}), claim), changed, branch, merge)
+		node.finish(withReport(verdict.lookOutcome(TaskFacts{Merge: merge, Conflicts: node.clashes()}), claim), changed, branch, merge)
 		node.graph.resettle(node, TaskUnverified)
 	case !verdict.verified:
 		// A re-audit that finds something is a landing, not a loop. The repair
@@ -2623,7 +2623,7 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 				node.graph.resettle(node, TaskDone)
 				return
 			}
-			node.finish(withReport(yourCallLead(TaskFacts{Merge: merged})+detail, withReport(claim, verdict.doneOutcome())),
+			node.finish(withReport(yourCallLead(TaskFacts{Merge: merged, Conflicts: node.clashes()})+detail, withReport(claim, verdict.doneOutcome())),
 				changed, tree.branch, merged)
 			node.graph.resettle(node, TaskUnverified)
 			return
