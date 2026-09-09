@@ -3019,18 +3019,20 @@ Your later messages and corrections remain visible at their original boundaries.
 A stretch with no final reply keeps its available work visible, so an interrupted
 or tool-only record does not pretend to have an answer.
 
-While a task is running, settled phases keep their existing individual chips and
-current work remains visible. When it finishes, phase expansion choices reset so
-an opened live phase does not accidentally expand the entire finished task.
-`ui.work = open` still opens the detailed work by default.
+While a task is running, settled phases keep their individual chips. Current work
+uses the conversation’s compact step display: recent step headings, with a moving
+heading for the active call or `Working` between calls. Click it or press `ctrl+e`
+to open the details, and use the same control to close them. Questions, failures,
+your corrections, and the final reply remain visible outside this display.
+When the task finishes, live expansion choices reset so they do not accidentally
+expand the entire finished task. `ui.work = open` still opens details by default.
 
 Inside expanded work, captions group the steps. Click a caption to open its tool
 rows. Nothing is removed from the journal. The page retains a bounded recent view;
 on very long records it keeps the opening request and explicitly marks where earlier
 work lies outside that view. Expanding the work reveals the retained entries.
 
-Three bounded things do still hold something back, and every one of them names itself and
-opens:
+Within expanded work, the existing disclosure controls still apply:
 
 - the **instruction at the very top** — the brief the task was given — shows its first
   three lines above a line reading `▸ …14 more lines · ctrl+o` when it is longer than
@@ -3097,8 +3099,9 @@ every message you send out in the main thread, is drawn in full and has no fold 
 your own words in a conversation are the one thing this surface will not hide.
 
 **Reading choices stay with the task during this session.** Returning to a task restores
-its request expansion and reading position. A saved live-phase expansion is not applied
-to the finished task's whole-work chip. Nothing is written to the journal.
+its request expansion and reading position. Expanded live work returns only if that
+same work is still current; it does not open a new step or the finished task’s whole-work
+chip. Nothing is written to the journal.
 
 `ctrl+o` is a chord, so it costs you no character — you can press it with a half-typed
 sentence in the box and carry on. The three visible lines are drawn exactly as they would

@@ -228,7 +228,7 @@ func liveStepRowsOf(t *testing.T, a *app, width int) []row {
 		t.Fatalf("the page has %d compact blocks, want 1", len(works))
 	}
 	for _, w := range works {
-		return a.liveStepBlock(w, width, d.entries)
+		return a.liveStepBlock(w, width, d)
 	}
 	return nil
 }

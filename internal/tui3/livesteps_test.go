@@ -524,13 +524,12 @@ func TestTheLinearTierDrawsTheWindowStill(t *testing.T) {
 
 // ── ONE SURFACE ONLY ────────────────────────────────────────────────────────
 
-// A TASK'S PAGE AND A NODE'S TRANSCRIPT ARE UNTOUCHED. They are the pages
-// somebody opened because they want to watch the machinery, and the gate is the
-// lens's own fold style rather than a page name (lens.go).
-func TestTheRoomAndTheNodeTranscriptKeepTheirMachinery(t *testing.T) {
+// A node transcript is an explicitly detailed view. Its lens does not opt
+// into compact live work; task rooms are covered by roomcompact_test.go.
+func TestTheNodeTranscriptKeepsItsMachinery(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width, a.height = 80, 40
-	for _, l := range []lens{overseerLens, transcriptLens} {
+	for _, l := range []lens{transcriptLens} {
 		d := deck{entries: liveStepsFixture(), unfolded: map[int]bool{},
 			workOpen: map[int]bool{}, capOpen: map[int]bool{}, lens: l, runningTurn: 1}
 		d.captions = deriveCaptions(d.entries, d.runningTurn)
@@ -654,8 +653,8 @@ func TestPendingActivityKeepsWaitDetailsAcrossFullFrameTransitions(t *testing.T)
 
 func TestPendingActivityTakesPriorityOverAnOversizedFinishedCaption(t *testing.T) {
 	a := liveStepsApp(t)
-	w := liveWork{turn: 1, pending: true, steps: []caption{{text: "reading the complete configuration and checking every startup setting", ended: liveStepsBase}}}
-	out := a.liveStepBlock(w, 20, a.entries)
+	w := liveWork{key: 1, turn: 1, pending: true, steps: []caption{{text: "reading the complete configuration and checking every startup setting", ended: liveStepsBase}}}
+	out := a.liveStepBlock(w, 20, a.conversation())
 	if len(out) > liveStepRows || !hasCompactActivity(out) {
 		t.Fatalf("pending window lost its budget or current state: %#v", out)
 	}
@@ -669,13 +668,50 @@ func TestPendingActivityTakesPriorityOverAnOversizedFinishedCaption(t *testing.T
 func TestThePreCaptionDoorWrapsWithinTheMinimumWidth(t *testing.T) {
 	a := liveStepsApp(t)
 	for _, width := range []int{8, 9, 20} {
-		out := a.liveStepBlock(liveWork{turn: 1, pending: true}, width, nil)
+		out := a.liveStepBlock(liveWork{key: 1, turn: 1, pending: true}, width, deck{lens: participantLens})
 		for _, r := range out {
 			if ansi.StringWidth(r.text) > width-workIndentCols(width) {
 				t.Fatalf("width %d overflowed: %q", width, plain(r.text))
 			}
 			if r.hit != hitWorkFold {
 				t.Fatal("wrapped activity lost its disclosure")
+			}
+		}
+	}
+}
+
+// A room has its own worker. The main chat's retry/wait clock cannot describe
+// that worker, whether the room is before its first caption or between calls.
+func TestRoomLiveActivityDoesNotBorrowTheParentPhase(t *testing.T) {
+	now := time.Now()
+	a := phaseApp(t, now)
+	PostPhaseNews(PhaseNews{
+		Model: phaseModel, Role: lane.RoleTalk, Phase: provider.PhaseRetrying,
+		At: now, Since: now.Add(-2 * time.Second), Detail: "2 of 6",
+	})
+	for _, afterCaption := range []bool{false, true} {
+		w := liveWork{key: 0, turn: 1, pending: true}
+		if afterCaption {
+			w.steps = []caption{{text: "Reading the loader", ended: now.Add(-time.Second)}}
+		}
+		for _, tc := range []struct {
+			name       string
+			lens       lens
+			wantsPhase bool
+		}{
+			{"conversation", participantLens, true},
+			{"task room", overseerLens, false},
+		} {
+			var text strings.Builder
+			for _, row := range a.liveStepBlock(w, 100, deck{lens: tc.lens}) {
+				text.WriteString(plain(row.text))
+				text.WriteByte('\n')
+			}
+			if got := strings.Contains(text.String(), "2 of 6"); got != tc.wantsPhase {
+				t.Fatalf("%s afterCaption=%v inherited phase=%v: %s", tc.name, afterCaption, got, text.String())
+			}
+			if !tc.wantsPhase && !strings.Contains(text.String(), "Working") {
+				t.Fatalf("room lost truthful working state: %s", text.String())
 			}
 		}
 	}

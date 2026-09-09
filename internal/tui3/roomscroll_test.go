@@ -42,8 +42,9 @@ func callsJournal(t *testing.T, n int) string {
 	return roomJournal(t, lines...)
 }
 
-// callsRoom opens a room on a node with three screens' worth of calls in one
-// turn — more than any tail can keep, so the fold is guaranteed to be drawn.
+// callsRoom opens the compact room, then explicitly opens its live outline.
+// These tests inspect the call window within that outline, using three screens
+// of calls so its overflow and scrolling behavior remain meaningful.
 func callsRoom(t *testing.T) (*app, int) {
 	t.Helper()
 	a, fake, _ := roomApp(t)
@@ -51,6 +52,11 @@ func callsRoom(t *testing.T) (*app, int) {
 	fake.journal = callsJournal(t, n)
 	a.openRoom(7, "Port the loader")
 	a.touch()
+	compact := roomText(a)
+	if !strings.Contains(compact, "reading "+strconv.Itoa(n)+" files") || strings.Contains(compact, "file0.go") {
+		t.Fatalf("new room did not start with a compact caption:\n%s", compact)
+	}
+	openRoomCompactWork(t, a)
 	return a, n
 }
 

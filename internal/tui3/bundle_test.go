@@ -4060,6 +4060,13 @@ func TestARailClickOpensTheNodesRoomOnItsJournal(t *testing.T) {
 	if !a.roomOpen() {
 		t.Fatal("a rail click did not open the node's room")
 	}
+	// The rail opens compact activity; the journal's detailed tool row is
+	// available through the same live disclosure as a newly running call.
+	compact := roomText(a)
+	if !strings.Contains(compact, "I will read the parser first") || strings.Contains(compact, "read internal/parse/keys.go") {
+		t.Fatalf("rail did not open compact journal activity:\n%s", compact)
+	}
+	openRoomCompactWork(t, a)
 	page := roomText(a)
 	for _, want := range []string{"Fix the nil-map crash", "I will read the parser first",
 		"read internal/parse/keys.go"} {

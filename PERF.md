@@ -2074,6 +2074,11 @@ caption for each separated block. Opening a block traverses its caption spans
 rather than searching the whole caption list for every entry. Motion uses the
 existing frame clock, shimmer and fade palette, adding no timer, goroutine,
 filesystem access or network request. The screen-reader tier stays static.
+`stepElapsedAfter` is 10 seconds. An active caption then formats its elapsed age
+from the existing frame clock in whole seconds, using `countUpWord`. Its dim
+suffix only occupies spare cells on the last wrapped line; it never changes
+wrapping or the row budget. Unknown start times and completed captions carry no
+live clock. No additional tick source or state is allocated for elapsed time.
 
 ## Task request and finished-task reading
 

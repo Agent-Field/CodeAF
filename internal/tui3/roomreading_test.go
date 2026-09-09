@@ -12,6 +12,9 @@ func TestTaskReadingSurvivesLeavingAndNewOutput(t *testing.T) {
 	a.height = 24
 	fake.journal = callsJournal(t, 65)
 	a.openRoom(7, "Port the loader")
+	// Open current work before scrolling its call history. The task now opens
+	// on a compact step, whose disclosure is a separate reading gesture.
+	a.toggleLatestWorkfold()
 	a.roomScroll(-10000)
 	a.roomScroll(-3)
 	a.roomScroll(-8)
