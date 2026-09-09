@@ -1343,6 +1343,8 @@ it reads is capped at 8000 bytes. `read` reserves room inside that bound for its
 content-addressed file holding the whole output; the checker opens that path with `read` and
 uses the same line offsets as any other file. Those saved results are aforge's expiring
 droppings beside the commissioning conversation, never files in the work being checked.
+If the full output cannot be saved, the result says so and asks for a narrower path, pattern,
+or range; it does not claim the missing bytes are available.
 
 Before the check, new files are staged so the diff shows everything including brand-new
 files. Staging happens once, so every look judges the same tree. In a workspace that is

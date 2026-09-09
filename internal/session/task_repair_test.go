@@ -789,3 +789,24 @@ func TestABoundedErrorKeepsItsMeaning(t *testing.T) {
 		t.Fatalf("bounded error has no full-output path: %.200q", text)
 	}
 }
+
+// A failed filing must leave an honest way to recover narrower evidence.
+func TestABoundedResultExplainsWhenTheFullOutputCannotBeSaved(t *testing.T) {
+	workspace := t.TempDir()
+	blocked := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocked, []byte("occupied"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, isFailure := range []bool{false, true} {
+		tool := boundedResult(bare.Tool{Name: "grep", Execute: func(context.Context, json.RawMessage) (string, bool, error) {
+			return strings.Repeat("observed evidence\n", 2000), isFailure, nil
+		}}, Place{Dir: blocked}, workspace)
+		text, isError, err := tool.Execute(context.Background(), nil)
+		if err != nil || isError != isFailure || len(text) > auditResultLimit {
+			t.Fatalf("result = (%d bytes, %v, %v)", len(text), isError, err)
+		}
+		if !strings.Contains(text, "full output could not be saved") || !strings.Contains(text, "ask for a narrower") || strings.Contains(text, "whole output:") {
+			t.Fatalf("missing honest recovery: %s", text)
+		}
+	}
+}

@@ -2754,7 +2754,8 @@ func boundedResult(tool bare.Tool, droppings Place, workspace string) bare.Tool 
 		}
 		pointer, fileErr := writeStub(droppings, workspace, text)
 		if fileErr != nil || pointer == "" {
-			return capBytes(text, auditResultLimit-64), isError, nil
+			footer := "\n[cut here; full output could not be saved — ask for a narrower path, pattern, or range]"
+			return capBytes(text, auditResultLimit-len(footer)-32) + footer, isError, nil
 		}
 		footer := fmt.Sprintf("\n[cut here; whole output: %s — use read with offset/limit]", pointer)
 		return capBytes(text, auditResultLimit-len(footer)-32) + footer, isError, nil
