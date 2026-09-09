@@ -1912,9 +1912,9 @@ conversation away** — it leaves the list, and typing its name is how you find 
 project (the browser's new-tab key — ctrl+n is the walk down), **`ctrl+o`** opens its
 folder, **`ctrl+y`** copies its path. On a `◦` row of the `keeping an eye on` list,
 **`ctrl+e` pauses** it, **`ctrl+x` stops it for good**, and **`ctrl+v` raises how hard that
-item thinks** one rung. **With the cursor on no row at all** — one `↑` up off the top row,
-where the card becomes the machine's own — **`ctrl+v` moves the machine-wide default**
-instead, which is the `thinking` row in `/settings`. Each chord acts on the card you are looking at — the row
+item thinks** one rung. The machine's own default is not on this chord — it is the
+`thinking` row of `/settings`, and *ctrl+v — how hard the thing you are looking at thinks*
+says why. Each chord acts on the card you are looking at — the row
 under your pointer when there is one, the cursor's row otherwise — and the card's own
 dim legend names the verbs, and the strip names the letters. The other printable exception
 is the digits on a waiting row's answer chips, which are drawn on the line above the box.
@@ -2651,10 +2651,14 @@ reaches the **tab bar** now, so that card is gone. To change how hard this machi
 default, open `/settings` and walk to the **`thinking`** row, which is the setting both
 roads always wrote.
 
-**It climbs and it wraps.** Each press goes one rung up, and `max` wraps back to `low`. It
-never returns to "nobody said" — clearing a rung hands the work back to whatever stands
-over it, which is a decision rather than something a wheel does on its way past. Set a
-thing back to nothing in the place it is written down: the `thinking` row's own `auto`.
+**It climbs, and what happens off the top is the scope's own answer.** Each press goes one
+rung up. A conversation's rung and a standing item's wrap from `max` back to `low` and
+never return to "nobody said" — clearing one hands the work back to whatever stands over
+it, which is a decision rather than something a wheel does on its way past, and it is made
+where the rung is written down: the `thinking` row's own `auto`, or the item's empty field.
+A task's rung, and the level `ctrl+t` dials onto one model in `/model`, come back to `auto`
+off the top instead, because the surface is the only door that sets either and so has to be
+the door that clears them.
 
 **The rung reads as a quiet clause where the thing already states its facts.** A task's is
 under `Task setup` (or `Next run setup` after it settles) in the expanded

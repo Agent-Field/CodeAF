@@ -847,9 +847,10 @@ switch mid-conversation is ever refused with "encrypted reasoning … produced u
 different model", the request is repaired and sent again on its own; nothing is lost.
 
 Moving in the picker: type to filter; ↑ / ctrl+p and ↓ / ctrl+n move; pgup/pgdown move
-12; left, right, home, end, ctrl+u and ctrl+w edit the filter. **ctrl+t** walks the model
-under the cursor through off → low → medium → high → off reasoning effort. enter
-switches.
+12; left, right, home, end, ctrl+u and ctrl+w edit the filter. **ctrl+t** walks the
+reasoning effort of the model under the cursor through
+`auto → low → medium → high → xhigh → max → auto`, which is the same walk a task's own
+thinking control takes. enter switches.
 
 esc leaves and changes **nothing** — your half-typed draft, the model in use and the
 frame all come back as they were. The filter is forgotten when the picker closes.

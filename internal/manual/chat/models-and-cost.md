@@ -862,7 +862,8 @@ effort rungs below).
 ## Reasoning effort — making the model think harder or faster
 
 Reasoning effort is set in the model picker with **ctrl+t**, on the model under the cursor.
-Each press walks it round: off → low → medium → high → off.
+Each press walks it round: `auto → low → medium → high → xhigh → max → auto`. `auto`
+hands the dial back to whatever is under it.
 
 - On a model whose catalog row does not accept a reasoning knob, ctrl+t does **nothing at
   all, silently** — the level would be a 400 at the next turn. A row that published nothing
@@ -875,8 +876,8 @@ Each press walks it round: off → low → medium → high → off.
 **A level set here wins over everything else that asks for thinking.** It is the most
 specific thing anybody said about how hard this model should work, so it beats the
 conversation's own rung, a task's rung and the **thinking** default — see *Making the model
-think harder, deeper, or less*. The cycle itself is unchanged and still walks
-off → low → medium → high → off; it does not offer `xhigh` or `max`.
+think harder, deeper, or less*. This is the same walk the task control and the settings row
+use, and all five rungs are reachable here.
 
 ## Making the model think harder, deeper, or less — the effort ladder from low to max
 
@@ -898,20 +899,22 @@ Several things can name a rung, and the most specific one wins:
    `meta.json`, so it is still there after you close aforge and come back.
 3. **The piece of work's own rung** — a task carries one in `tasks.json`, and a standing
    item carries one as its `does.effort`.
-4. **What the call is for.** A standing item firing, and the sentinel run that watches for
-   it, think at `low`. The errands aforge runs beside your turn — naming a conversation,
-   summarising it, judging where a request belongs — ask for nothing at all. Your own turn,
-   and the task workers you hand work out to, take the default.
+4. **What the call is for.** A standing item's firing and the sentinel check in front of it
+   take the item's own rung, and ask for nothing at all when the item has none — nothing
+   else on this machine reaches them. The errands aforge runs beside your turn — naming a
+   conversation, summarising it, judging where a request belongs — ask for nothing whatever
+   anybody set. Your own turn, and the task workers you hand work out to, take the default.
 5. **The default** — the **thinking** row, which is `auto` until somebody chooses otherwise.
 
 **`ctrl+v` moves the rung of whatever you are standing on.** In the message box it moves
 **this conversation's** rung, which has a chip above the box naming it. On a task — the
-roster row under the cursor, or the page you are inside — it moves that task's rung. On
-home with the cursor on no row at all, it moves the **thinking** row itself, the
-machine-wide default. On a standing item's card it moves that item's. The rung climbs one
-step each press and wraps from `max` back to `low`; it never goes back to "nobody said".
-The **thinking** row in `/settings` stays what it is: the answer for every conversation
-that has not been dialled by hand. The keys page has the whole of it — see *The thinking
+roster row under the cursor, or the page you are inside — it moves that task's rung. On a
+standing item's card it moves that item's. A conversation's rung and an item's climb one
+step each press and wrap from `max` back to `low`; they never go back to "nobody said". A
+task's rung, and the level `ctrl+t` dials onto one model in `/model`, come back to `auto`
+off the top instead — that is how you hand this piece of work, or this model, back to
+whatever stands above it. The **thinking** row in `/settings` stays what it is: the answer
+for every conversation that has not been dialled by hand. The keys page has the whole of it — see *The thinking
 chip above the message box* and *ctrl+v — how hard the thing you are looking at thinks*.
 There is no slash command for it.
 

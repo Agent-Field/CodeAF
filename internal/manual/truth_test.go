@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	executor "github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
@@ -115,6 +116,33 @@ func quotedFacts(t *testing.T) []quotedFact {
 	minutesWord, notMinutesWord := counted(int(standing.Interval / time.Minute))
 
 	facts := []quotedFact{{
+		// THE THINKING WALK HAS ONE OWNER for both surface doors and every page
+		// that teaches it, so adding a rung cannot leave either door behind.
+		fact: "what the picker's ctrl+t and a task's thinking control walk", owner: "config.EffortChoices",
+		value:  strings.Join(config.EffortChoices, " → ") + " → " + config.EffortChoices[0],
+		others: []string{"off → low → medium → high → off"},
+		quotes: []quotedIn{
+			{"commands", "`%s`"},
+			{"models-and-cost", "`%s`"},
+			{"task-controls", "`%s`"},
+		},
+	}, {
+		// The settings row's choices are the public spelling of the ladder, so
+		// the page must read them from the same list the row does.
+		fact: "the words the thinking row offers", owner: "config.EffortChoices",
+		value:  strings.Join(config.EffortChoices, ", "),
+		quotes: []quotedIn{{"models-and-cost", "its choices are `%s`"}},
+	}, {
+		// THE SHIPPED DEFAULT IS THE LADDER'S OWN DEFAULT rendered in the one
+		// public vocabulary, not a second word maintained by each page.
+		fact: "the shipped thinking default", owner: "config.EffortWord(effort.Ship)",
+		value: config.EffortWord(effort.Ship), others: []string{"low", "medium", "high", "xhigh", "max"},
+		quotes: []quotedIn{
+			{"models-and-cost", "**The default is `%s`.**"},
+			{"models-and-cost", "The **thinking** row in `/settings` defaults to `%s`."},
+			{"keys", "ships at `%s` (the provider default)"},
+		},
+	}, {
 		// THE STOP'S BOUND IS A NAMED CONSTANT AND THE PAGES QUOTE IT, so a
 		// ruling that moves the bound moves the manual in the same change
 		// rather than leaving two pages promising a window that is gone.
