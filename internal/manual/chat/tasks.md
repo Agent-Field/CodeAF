@@ -4185,27 +4185,35 @@ as it takes: nothing ages it out, and only your decision moves it.
 
 ## What your call can be asking — the six questions, and what [a] and [n] mean on each
 
-There are exactly six things a `your call` row can be asking, and each one has its own two
-answers. The chips are always the same three columns, in the same order, with the same
-keys — what changes is the words on them:
+There are exactly six things a `your call` row can be asking, and each closes with its own
+two answers — a yes and a no, in the words that question deserves:
+
+| The reason on the row | its yes | its no |
+| --- | --- | --- |
+| `nobody could check it` | `accept` | `not right` |
+| `the check did not pass it: <gaps>` | `accept anyway` | `not right` |
+| `conflicts with your branch: <files>` | `resolve it` | `drop it` |
+| `starts on your word` — a proposal with no clock on it | `start` | `don't` |
+| `design ready to approve` — a subharness wrote its design | `approve` | `decline` |
+| `paused at the $5.00 cap` | `raise the cap` | `stop it` |
+
+**The first three are the ones a landing card asks**, and there the two answers are chips,
+always the same three columns in the same order with the same keys — only the words on them
+change:
 
 ```
 [a] <yes> · [n] <no> · [s] tell it
 ```
 
-| The reason on the row | `[a]` | `[n]` |
-| --- | --- | --- |
-| `starts on your word` — a proposal with no clock on it | `start` | `don't` |
-| `design ready to approve` — a subharness wrote its design | `approve` | `decline` |
-| `conflicts with your branch: <files>` | `resolve it` | `drop it` |
-| `nobody could check it` | `accept` | `not right` |
-| `the check did not pass it: <gaps>` | `accept anyway` | `not right` |
-| `paused at the $5.00 cap` | `raise the cap` | `stop it` |
-
 So `[a]` is always **yes to what the row is asking** and `[n]` is always **no to it**, and
 you can read either off the chip rather than remembering a rule.
 
-Every one is a key **and** a click. The keys work on the **selected** card — walk to it
+The last three are asked **before or during** the work rather than at its landing, and each
+has its own card with its own answers: the proposal card (`yes · redirect · no`, above), a
+subharness design's own page, and an adaptive run's spend gate. The row and the note read
+the same six sentences whichever card is drawing them.
+
+Every chip is a key **and** a click. The keys work on the **selected** card — walk to it
 with `↑`/`↓` — and only over an **empty** message box, exactly like `x`: a letter typed
 into a sentence stays a letter. Clicking a chip presses it; clicking anywhere else on that
 row does nothing rather than expanding the card under your hand.
@@ -4231,7 +4239,11 @@ not drawn, and its letter does nothing rather than failing when you press it.
   not advance and land `incomplete · was blocked by another task`. The report leads
   `incomplete — you looked at this yourself and said so`.
 - **`[s] tell it`** — you have something to say rather than an answer to give; the next
-  section is about that.
+  section but one is about that.
+
+**A card with no answer left to give draws no chips at all.** `[s] tell it` and `[d]` both
+MOVE the question rather than answering it, so a row that offered only those would have
+stopped being a question — the card draws them beside an answer or not at all.
 
 **Answered means the chips are gone, not greyed.** They are replaced by one dim line in
 your own voice saying what you did: `you took this as done`, `you said it is not finished`,
