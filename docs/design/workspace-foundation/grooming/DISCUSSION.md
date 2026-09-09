@@ -78,6 +78,15 @@ might look like after a year. The person found those large boxes unhelpful.
 structure: records, typed relationships and progressively selected subsets.
 Neither study adds primitives or resolves pending behavior and permission choices.
 
+## Latest visualization scope correction
+
+The person requested an interactive desktop explorer of the existing data model,
+with large mock data, opened in the browser. They explicitly rejected adding
+future audit/memory behavior or spending effort on mobile layouts.
+[CURRENT-MODEL-EXPLORER.md](CURRENT-MODEL-EXPLORER.md) records the resulting viewer,
+its exact source structures, limits and validation. This does not confirm new
+backend semantics or replace the pending seven-area grooming checklist.
+
 ## Next steps without changing direction
 
 1. Resume the pending change-response choice: how active assignments, completed

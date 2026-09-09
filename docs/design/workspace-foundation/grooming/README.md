@@ -27,6 +27,11 @@ services, or a claim that every shown path works today.
 records the current implementation checkpoint and groups the remaining product
 and engineering questions without introducing a new delivery roadmap.
 
+[Current-model desktop explorer](CURRENT-MODEL-EXPLORER.md) is the latest
+interactive study: actual backend record shapes and stored links, synthetic
+data, opened in Chrome. The user explicitly excluded mobile work and proposed
+audit/memory capabilities from this viewer.
+
 [Information structure](INFORMATION-GRAPH.md) and [the small graph](INFORMATION-GRAPH.svg)
 address the latest question: what records and relationships accumulate, and what
 zooming into learned information would expose. This is a conceptual model, not a
