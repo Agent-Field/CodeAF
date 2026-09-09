@@ -655,7 +655,10 @@ func statesRail(t *testing.T, r *rig, glyph string) string {
 		return row
 	}
 	// No column at all, so ask for it back. The answer is remembered per machine
-	// and a fresh state root has none recorded either way.
+	// — a state root copied from a machine whose column is closed opens closed,
+	// which is how this ran green on one box and failed on another — so the key
+	// is spent only after looking, and looking is the whole of the guard: a press
+	// on a window that already has a column takes it away.
 	r.keys("C-g")
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
@@ -686,24 +689,14 @@ func statesRail(t *testing.T, r *rig, glyph string) string {
 // <word or reason>`, cut from the right, is laid over the row and the two lines
 // under it (internal/tui3's [app.railUnder] wraps them), so the row and its
 // block are read together or the word is not read at all.
+// IT IS THE COLUMN OR IT IS NOTHING. An empty answer means this frame has no
+// column on it, and the caller's job is then to ask for one — never to settle
+// for the strip that stands in its place, which is a tab bar with one glyph and
+// one name on it and is not the surface this is about. Reading the strip and
+// calling it the column is precisely what filed #707.
 func statesRailRow(t *testing.T, screen, glyph string) string {
 	t.Helper()
-	if column := statesRailColumn(screen); len(column) > 0 {
-		return statesRailBlock(column, glyph)
-	}
-	// NO COLUMN AT ALL, so what is on screen is the strip that stands in its
-	// place ([statesRail] presses for the column after this comes back empty).
-	for _, line := range strings.Split(screen, "\n") {
-		if strings.Contains(line, say(t, "taskCardKindGlyph")) {
-			// The card's own head, which the conversation draws and this is not
-			// about.
-			continue
-		}
-		if text := strings.TrimSpace(line); text != "" && strings.HasPrefix(text, glyph) {
-			return text
-		}
-	}
-	return ""
+	return statesRailBlock(statesRailColumn(screen), glyph)
 }
 
 // statesRailColumn is the column's own cells, cut off the right of the seam it
