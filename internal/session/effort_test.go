@@ -3,6 +3,7 @@ package session
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/effort"
@@ -159,5 +160,28 @@ func TestARungThisBuildDoesNotKnowResumesAsAbsence(t *testing.T) {
 	}
 	if got := restoredRung("XHIGH"); got != effort.XHigh {
 		t.Fatalf("restoredRung(%q) = %q, want xhigh however it was cased", "XHIGH", got)
+	}
+}
+
+// ── one word for absence, in what a person reads ────────────────────────────
+//
+// ABSENCE IS CALLED `auto` AND NOTHING ELSE. The settings row calls it auto
+// (internal/config's EffortWord), the model picker's walk calls it auto and the
+// task control's does too, so a refusal that offered `off` was the last place
+// this dial was spelled two ways. `off` is still READ — a profile written by an
+// older build means what it meant — it is just not what anybody is offered.
+func TestTheRefusalForAnUnknownRungCallsAbsenceAuto(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	err := agent.SetTaskEffort(1, "nonsense")
+	if err == nil {
+		t.Fatal("an unknown thinking level was accepted")
+	}
+	for _, word := range []string{"low", "medium", "high", "xhigh", "max", "auto"} {
+		if !strings.Contains(err.Error(), word) {
+			t.Errorf("the refusal %q does not offer %q", err, word)
+		}
+	}
+	if strings.Contains(err.Error(), "off") {
+		t.Fatalf("the refusal still calls absence off: %q", err)
 	}
 }

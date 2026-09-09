@@ -130,7 +130,7 @@ func (a *Agent) TaskEffort(id uint64) string {
 func (a *Agent) SetTaskEffort(id uint64, rung string) error {
 	parsed, ok := effort.Parse(rung)
 	if !ok {
-		return fmt.Errorf("%q is not a thinking level. Use one of: %s, or off",
+		return fmt.Errorf("%q is not a thinking level. Use one of: %s, or auto",
 			rung, strings.Join(rungWords(), ", "))
 	}
 	node := a.taskNode(id)

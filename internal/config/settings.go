@@ -1651,7 +1651,7 @@ func (s *Settings) build() []Setting {
 			Label: "thinking", Choices: EffortChoices,
 			Hint: "how hard the model thinks about your turns and the work you hand out. Auto leaves reasoning to the model. " +
 				"xhigh and max ask for a deeper pass than high, and cost the time they take. " +
-				"Standing items and their checks stay low whatever this says.",
+				"A standing item's firings and checks never take this row; only the rung on the item's own card reaches a firing.",
 			read:  func() string { return EffortWord(DefaultEffortAt(dir)) },
 			write: func(raw string) error { return writeChoice(dir, KeyEffort, raw, EffortChoices) },
 		},
