@@ -256,7 +256,11 @@ func (a *app) roomAncestors() []*taskNode {
 // two ancestors and a fold that hid five are the same mark, and both say the
 // same true thing — there is more chain here than the row can spell.
 func (a *app) roomCrumbLine(room int) (string, []crumbHit, bool) {
-	crumbs := a.roomCrumbs()
+	return fitCrumbChain(a.roomCrumbs(), room)
+}
+
+// Compact and expanded headers share the same bounded fitting and fold targets.
+func fitCrumbChain(crumbs []roomCrumb, room int) (string, []crumbHit, bool) {
 	if room <= 0 || len(crumbs) == 0 {
 		return "", nil, false
 	}

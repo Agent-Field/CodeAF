@@ -34,6 +34,9 @@ type taskEffortDoor interface {
 // taskEffortDoors is that door under this surface, when it has one.
 func (a *app) taskEffortDoors() (taskEffortDoor, bool) {
 	door, ok := a.agent.(taskEffortDoor)
+	if host, hosted := a.agent.(interface{ TaskSetupSupported() bool }); hosted {
+		ok = ok && host.TaskSetupSupported()
+	}
 	return door, ok
 }
 
@@ -76,6 +79,15 @@ func (a *app) effortTaskHere() (*taskNode, bool) {
 // taskRung is the rung one node is set to, and [effort.None] for one nobody has
 // set — which every surface below draws as nothing at all.
 func (a *app) taskRung(id uint64) effort.Rung {
+	// Hosted frames read the task lane, never a synchronous network getter.
+	if _, hosted := a.agent.(interface{ TaskSetupSupported() bool }); hosted {
+		if node := a.tasks[id]; node != nil {
+			rung, _ := effort.Parse(node.thinking)
+			return rung
+		}
+		return effort.None
+	}
+
 	door, ok := a.taskEffortDoors()
 	if !ok {
 		return effort.None
@@ -105,12 +117,22 @@ func (a *app) cycleTaskEffort() bool {
 	if !ok {
 		return false
 	}
+	return a.cycleNodeEffort(node)
+}
+
+// Both the keyboard and the task panel change the node they explicitly name.
+func (a *app) cycleNodeEffort(node *taskNode) bool {
 	door, open := a.taskEffortDoors()
 	if !open {
 		a.note(taskEffortUnavailableWord)
 		return true
 	}
-	next := effortNext(a.taskRung(node.id))
+	current := a.taskRung(node.id)
+	next := effortNext(current)
+	// Auto clears this task's override and must remain reachable after a full cycle.
+	if current == effort.Rungs[len(effort.Rungs)-1] {
+		next = effort.None
+	}
 	if err := door.SetTaskEffort(node.id, next.String()); err != nil {
 		// THE ENGINE'S OWN SENTENCE IS KEPT on a refusal, the way a stop's and a
 		// retarget's are: "task 7 is done, not running" is the answer, and a
@@ -118,11 +140,18 @@ func (a *app) cycleTaskEffort() bool {
 		a.note(err.Error())
 		return true
 	}
-	word := taskIDWord(node.id) + " · " + strings.TrimSpace(effortClauseWord) + " · " + next.String()
+	label := firstNonEmpty(next.String(), "auto")
+	word := taskIDWord(node.id) + " · " + strings.TrimSpace(effortClauseWord) + " · " + label
 	if node.state == session.TaskRunning && !node.stopped {
 		word += " · " + taskEffortNextCallWord
 	}
-	a.noteFacts(word, taskIDWord(node.id), next.String())
+	if taskSetupLater(node) {
+		word += " · saved for when you continue"
+	}
+	a.noteFacts(word, taskIDWord(node.id), label)
+	if a.room != nil && a.room.id == node.id {
+		a.roomNote(word)
+	}
 	a.touch()
 	return true
 }
@@ -154,9 +183,8 @@ func (a *app) taskEffortClause(node *taskNode) string {
 // legend is honest (render.go's A HINT MAY ONLY NAME A KEY THAT WORKS).
 //
 // It is the engine's own gate read from outside: a running or queued node in
-// this session's graph, with a door to ask. A settled node's rung is a fact
-// about what happened and the engine refuses to edit it; a node belonging to an
-// adaptive run is not in the graph this door reaches at all.
+// this session's graph, or an ordinary settled node saving its next rung.
+// A node belonging to an adaptive run is outside the graph this door reaches.
 // railHoldHintWord is [railHoldHint] with the rung's chord named in it while the
 // row under the cursor can take one, and [railHoldHint] itself otherwise.
 //
@@ -192,7 +220,7 @@ func (a *app) taskRungMovable(node *taskNode) bool {
 	if node == nil || node.run != "" {
 		return false
 	}
-	if node.state != session.TaskRunning && node.state != session.TaskQueued {
+	if !taskSetupAvailable(node) {
 		return false
 	}
 	_, ok := a.taskEffortDoors()

@@ -2183,6 +2183,9 @@ func (a *app) identity() string {
 // always acts on WHAT THE ROW NAMES, so in a room it is the node's model and out
 // here it is the conversation's, and neither can ever be mistaken for the other.
 func (a *app) identityParts(width int) (string, hudSpan) {
+	if a.roomOrganized() {
+		return "Conversation totals", hudSpan{}
+	}
 	// A ROOM RENAMES THIS CLUSTER AND NOTHING ELSE ON THE LINE. The identity is
 	// WHERE YOU ARE, and while a room is open where you are is a task — but the
 	// telemetry beside it is still the session's, because a room is a view over
@@ -3609,6 +3612,9 @@ func (a *app) legendLeft(width, room int) (string, bool) {
 		// slot is here to promise the NEXT keystroke, so it has to move with it.
 		if a.recalling() {
 			return roomLegendRecallWord, true
+		}
+		if a.roomOrganized() {
+			return "", true
 		}
 		return roomLegendWord, true
 	}

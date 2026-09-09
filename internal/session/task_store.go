@@ -333,7 +333,9 @@ type taskRecord struct {
 	// Model is the model this node was admitted to run on, and empty when it
 	// simply took the conversation's — including on every checkpoint written
 	// before a task could carry one, which resumes exactly as it always did.
-	Model string `json:"model,omitempty"`
+	Model      string  `json:"model,omitempty"`
+	NextModel  string  `json:"next_model,omitempty"`
+	NextEffort *string `json:"next_effort,omitempty"`
 
 	// Effort is the rung on the effort ladder this node's workers ask for, and
 	// empty when nobody set one and the ladder decides from further down
@@ -1012,6 +1014,8 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Journal:        n.journal,
 		Beat:           beat,
 		Model:          n.spec.model,
+		NextModel:      n.nextModel,
+		NextEffort:     n.nextEffort,
 		Effort:         n.spec.effort.String(),
 		MaxSteps:       n.spec.maxSteps,
 		NoProgress:     n.spec.noProgress,
@@ -1523,7 +1527,8 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		record.Title = taskPersonTitle(subject)
 	}
 	node := &TaskNode{
-		graph:     graph,
+		nextModel:  record.NextModel,
+		nextEffort: record.NextEffort, graph: graph,
 		id:        record.ID,
 		dependsOn: record.DependsOn,
 		parent:    record.Parent,

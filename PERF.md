@@ -2219,3 +2219,24 @@ content-addressed `writeStub` path; their bounded preview names the saved file.
 This adds no model call or separate retention cache. A single line larger than
 the native reader's content limit retains the reader's explicit long-line
 response; line paging does not claim to split it.
+
+## Task-side column height budget
+
+`internal/tui3/roompanel.go` uses the existing rail width and theme paints.
+The expanded hierarchy requires **33 terminal rows**
+(`roomPanelFloor + roomHeadRowCount + 13`). Its divided task panel also requires
+`roomPanelFloor` (**18 body rows**).
+Controls and existing column navigation reserve their measured height first;
+Conversation context, when present, receives one third of the remainder, capped at `roomDetailsMax`
+(**8 rows**), and the task tree gets the rest with a two-row floor.
+Both windows clamp their own scroll offsets. Shorter frames use the established
+compact rail, header Stop and model picker. These are display budgets, not limits
+on tasks, their history or their execution.
+
+Deep tree rows retain their full navigation ancestry but bound drawn indentation
+by the available width, reserving `railTitleFloor`, the two-cell glyph lead and
+one `treeIndentCols` child stem. An ellipsis marks omitted outer connectors.
+
+Task setup reads thinking levels from the standing task notices on hosted pages.
+Frames and pointer motion make **zero network calls**. The expanded sidebar
+reserves its resize hint even before hover, keeping controls at stable rows.

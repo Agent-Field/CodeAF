@@ -1479,7 +1479,7 @@ func (a *app) openPickerFiltered(query string) {
 func (a *app) openTaskPicker(id uint64) {
 	current := ""
 	if node := a.tasks[id]; node != nil {
-		current = node.model
+		current = firstNonEmpty(node.nextModel, node.model)
 	}
 	a.pick.startFor(a.modelList(), current, chatModel)
 	a.pick.task = id
