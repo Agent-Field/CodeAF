@@ -1338,7 +1338,11 @@ What it may touch: `read`, `grep`, `find`, `ls`, and a `bash` restricted to an a
 built for **that one task** — see the next section. It cannot edit, write, install, fetch or
 paint. Shell composition is refused outright: any of `; | & < > $ ( ) { }`, a backtick or a
 newline in the command is turned away before the allowlist is even consulted. Every result
-it reads is capped at 8000 bytes.
+it reads is capped at 8000 bytes. `read` reserves room inside that bound for its ordinary
+`Use offset=… to continue.` footer. When another tool returns more, the result names the
+content-addressed file holding the whole output; the checker opens that path with `read` and
+uses the same line offsets as any other file. Those saved results are aforge's expiring
+droppings beside the commissioning conversation, never files in the work being checked.
 
 Before the check, new files are staged so the diff shows everything including brand-new
 files. Staging happens once, so every look judges the same tree. In a workspace that is
