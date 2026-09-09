@@ -740,6 +740,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// end a turn (taxonomy_boundary.go's [Agent.readEmptyReply]). The
 			// transcript is untouched either way, so the retry re-sends exactly
 			// the messages the empty attempt was sent.
+			assistantDone := false
 			if turnBroke(response) {
 				a.journalFailedCall(ctx, model, "", errEmptyAnswer, emptyReplies+1, a.requestEstimate())
 				emptyReplies++
@@ -751,6 +752,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 				}
 			} else {
 				a.recordAssistant(ai.Message{Role: "assistant", Content: assistantContent(response)}, reasoning.snapshot())
+				assistantDone = true
 			}
 			// The step's text is in the transcript now. Resetting here rather
 			// than at the top of the next iteration is what keeps an interrupt
@@ -763,6 +765,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 					continue
 				}
 				a.markTurnTruncated()
+				assistantDone = false
+			}
+			if assistantDone {
+				// THE WORDS ARE DURABLE BEFORE THEIR BOUNDARY IS VISIBLE. A room
+				// joining after this event reads the response from the journal and
+				// must not replay the same streamed text from its catch-up lane.
+				hub.send(Event{Kind: EventAssistantDone})
 			}
 			// `pre-decision` (hooks.go): the last chance to shape what the model
 			// will be sent next. Its two citizens are the cross-turn stub and the
@@ -1246,6 +1255,9 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// in this loop — a guard cut and a refusal of our own bytes — are more
 		// specific than any class and must keep their own arms.
 		verdict := a.readCallFailure(err, model, "", attempt+1)
+		if provider.IsConnectionUnavailable(err) {
+			return nil, model, err
+		}
 		// THE GUARD'S CUT, ANSWERED HERE. The three resets at the top of this
 		// loop are exactly what a cut needs — the soup that was streamed, the
 		// reads it started, the calls it was half-way through asking for — so a

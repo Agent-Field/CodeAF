@@ -62,6 +62,11 @@ import (
 // ([folderPick.page]).
 const folderRows = 18
 
+// folderPaneFloorRows is the least the sheet is drawn at while a preview is
+// beside the list. Twelve rows is a readable amount of a file's source and a
+// picture with a shape to it; under that the pane is a strip.
+const folderPaneFloorRows = 12
+
 // folderLayer is WHICH SOURCE a candidate came from, and the order of the
 // constants is the order the rows are laid down in — best first.
 //
@@ -102,7 +107,7 @@ type folderCand struct {
 	// ancestors down to initials: `~/code/aforge-v2/internal` drew as
 	// `~/c/a/internal`, so the rows were unreadable AND unsearchable — a filter
 	// on "code" matched nothing, because the letters it was scoring against were
-	// not there. The same call in [folderPick.writeBack] put `/t/b/t/alpha/`
+	// not there. The same call in the walk's own box write put `/t/b/t/alpha/`
 	// into the box after a walk, which is not a path any resolve can find.
 	show  string
 	layer folderLayer
@@ -205,6 +210,11 @@ type folderPick struct {
 	// is on the screen rather than against a second layout that could disagree
 	// with it (attach.go's [app.chipTrayTarget] states this law for the tray).
 	geom folderGeom
+	// win is where the SHEET landed on the screen — the modal frame's own
+	// rectangle and the cell [folderGeom] counts from (contextmodal.go). The two
+	// are apart because they answer two different questions: geom is the layout
+	// of the browser, and win is where that layout was put.
+	win contextWin
 
 	// marks are the things a person has CHOSEN and not yet confirmed, in the
 	// order they chose them — the deliberate multiselect the owner asked for
@@ -215,6 +225,12 @@ type folderPick struct {
 	// where the pointer is resolved ([app.folderHoverColumn]) and read where the
 	// row is painted, so what lights is what a press takes off (hover.go's law).
 	trayHot int
+	// paneHot is which BODY ROW of the preview pane the pointer is over, or -1.
+	// It is answered in the same place trayHot is and read in the same paint, and
+	// it exists because the preview's folder listing is a set of rows a press now
+	// acts on — a column that lit nothing while every one of its rows was a
+	// target was the dead pane this wave was opened to fix (folderpane.go).
+	paneHot int
 	// say is one sentence this component wants the door to note — the mark cap's
 	// refusal, and nothing else so far. The component draws no notes of its own:
 	// a conversation's lines belong to the conversation, and a modal list that
@@ -302,6 +318,25 @@ type folderGeom struct {
 	// up, here and pane are the three columns' cells. pane is the preview, in
 	// the place the old column of children used to hold (folderpane.go).
 	up, here, pane hudSpan
+	// upFrom is which of the PARENT's rows the ancestry column's first row drew.
+	//
+	// IT IS THE ANCESTRY COLUMN'S OWN WINDOW AND NOT THE MIDDLE COLUMN'S. It used
+	// to be derived from the middle column's cursor — the parent row for the
+	// directory you are standing in was drawn beside the row the cursor was on —
+	// which meant that with the cursor at the top of a folder, every sibling ABOVE
+	// that folder was off the top of the column and the ancestry showed one name.
+	// The owner's reference draws the parent as what it is: a list, with the one
+	// you came out of marked in it.
+	upFrom int
+	// paneDir is the directory the preview pane is LISTING, absolute, or "" when
+	// the pane is showing something that is not a folder. It is the raw path the
+	// preview was read from and never a name off the screen.
+	paneDir string
+	// paneFrom is which entry of that listing the pane's first body row drew, and
+	// paneBody how many rows it drew. Together they are the map from a pointer's
+	// row to the entry it is over — written by the same function that draws those
+	// rows ([folderPick.paneRows]), so the two cannot disagree.
+	paneFrom, paneBody int
 	// owner maps a LIST row back to the candidate drawn on it. At phone width a
 	// row is two lines, so the two are not the same number ([overlayFill.done]).
 	owner []int
@@ -352,6 +387,7 @@ func (f *folderPick) start(candidates []folderCand, tilde string) {
 		gen:      gen,
 		previews: pump,
 		trayHot:  -1,
+		paneHot:  -1,
 	}
 	f.geom.action = -1
 	f.geom.tray = -1
@@ -402,13 +438,38 @@ func (f *folderPick) page() int {
 // Folder search ranks path segments, abbreviations and small spelling slips,
 // then preserves source priority and prior use within each match class.
 func (f *folderPick) rank() {
-	// WHICH SURFACE IS UP FOLLOWS THE BOX AND NOTHING ELSE, opening a row
-	// included: [folderPick.openAt] writes that row's path into the box, and an
-	// absolute path is always pathish — so the mode is still ONE question with
-	// one answer, and editing the path back down to a word puts the list back.
-	f.browsing = folderPathish(f.filter.String())
-	if f.browsing {
-		return
+	// WHICH SURFACE IS UP FOLLOWS THE BOX, WITH ONE EXCEPTION THAT IS THE WHOLE
+	// OF THIS WAVE'S REPAIR TO IT: AN EMPTY BOX CHANGES NOTHING.
+	//
+	// The box used to hold the current directory while the columns were up
+	// ([folderPick.writeBack], as it was), so the mode really did follow the box
+	// alone. It cost the search. Somebody who opened the chooser and typed `sibl`
+	// — the ordinary thing to do — appended four characters to a path and got a
+	// browse of `~/code/worksibl`, and the only way to reach the ranked list of
+	// remembered places was to notice the path was in the box and clear it first.
+	//
+	// So the box is a SEARCH box and the breadcrumb is where you are. Typing a
+	// word ranks; typing a path browses it; clearing the box puts you back where
+	// you were standing rather than throwing the columns away. Walking clears the
+	// box ([folderPick.browseHold]), which is what makes the two agree without
+	// either of them being a claim about the other.
+	if typed := strings.TrimSpace(f.filter.String()); typed == "" {
+		// AN EMPTY BOX MEANS "WHEREVER THE COLUMNS ARE", and that is true whether
+		// the columns are what is on screen or what a search is standing in front
+		// of: clearing the box after a search puts a person back where they were
+		// browsing rather than leaving them on a list of everything. `f.cols.dir`
+		// is set the moment the sheet opens anywhere ([app.openContextPick]), so
+		// the only state with no columns behind it is a sheet that has never been
+		// pointed at a directory at all.
+		if f.cols.dir != "" {
+			f.browsing = true
+			return
+		}
+	} else {
+		f.browsing = folderPathish(typed)
+		if f.browsing {
+			return
+		}
 	}
 	f.hits = f.ranker.rank(f.filter.String())
 	// A changed query is a changed list, and a cursor left at row nine of the
@@ -628,7 +689,7 @@ func (f *folderPick) descend() bool {
 		return false
 	}
 	f.browseAt(filepath.Join(f.cols.dir, f.cols.here.rowName(f.cols.cursor)), "")
-	f.writeBack()
+	f.browseHold()
 	f.paneRest()
 	return true
 }
@@ -644,7 +705,7 @@ func (f *folderPick) ascend() bool {
 		return false
 	}
 	f.browseAt(parent, filepath.Base(f.cols.dir))
-	f.writeBack()
+	f.browseHold()
 	f.paneRest()
 	return true
 }
@@ -657,22 +718,28 @@ func (f *folderPick) ascend() bool {
 func (f *folderPick) openAt(dir, keep string) {
 	f.browsing = true
 	f.browseAt(dir, keep)
-	f.writeBack()
+	f.browseHold()
 	f.paneRest()
 }
 
-// writeBack puts the directory the columns are now on back into the filter box,
-// so what is typed and what is shown are never two different claims about where
-// a person is.
+// browseHold is what every walk does to the box: it EMPTIES it, and keeps the
+// columns up.
 //
-// IT IS [tildePath] AND IT HAS TO BE. What goes in the box is read back by
-// [app.resolvePath] on the very next keystroke, so it must be a path that
-// resolves: `~` is the one abbreviation that survives that, and every other
-// segment is left exactly as it is. Written with the legend's spelling it put
-// `/t/b/t/alpha/` in the box after a walk — which drew as a claim about where
-// you were standing and named nowhere at all.
-func (f *folderPick) writeBack() {
-	f.filter.setText(tildePath(f.cols.dir, f.tilde) + "/")
+// It used to write the directory back into the box instead, on the reasoning
+// that what is typed and what is shown must never be two different claims about
+// where a person is. The reasoning was right and the box was the wrong place to
+// answer it: the sheet now says where you are in two places that cannot be typed
+// over — the breadcrumb above the columns and the location on the sheet's own
+// head rule (contextmodal.go) — which leaves the box free to be what a person
+// reaches for it as, a search.
+//
+// EMPTYING IT IS WHAT KEEPS THE TWO IN STEP. [folderPick.browseSync] follows the
+// box on every keystroke, so a box still holding the path you walked away from
+// would drag the columns back the moment somebody typed; and an empty box means
+// "wherever the columns are", which is exactly what [folderPick.rank] then does
+// with it.
+func (f *folderPick) browseHold() {
+	f.filter.setText("")
 	f.browsing = true
 }
 
@@ -749,7 +816,19 @@ func (f *folderPick) height(width int) int {
 		// three things in it is still three rows and not eighteen.
 		rows := f.cols.here.rows()
 		if folderDivide(width, f.pane).pane > 0 {
-			rows = folderRows
+			// A SHEET WITH A PREVIEW ON IT HAS A FLOOR AND NOT A FIXED HEIGHT. It
+			// used to ask for the whole allowance whatever was in the folder, so a
+			// directory with four things in it drew four names and fourteen blank
+			// rows inside a frame — which reads as a broken sheet rather than as a
+			// spacious one, and is what the owner met. The floor is what the PREVIEW
+			// needs to be worth reading; past it the middle column's own length is
+			// the honest height.
+			//
+			// IT IS THE MIDDLE COLUMN'S LENGTH AND NEVER THE PREVIEW'S, deliberately:
+			// the preview changes as the cursor moves and a sheet that resized under
+			// a person walking a list would be unusable. `alt+o` is how a long file
+			// gets the whole sheet.
+			rows = max(rows, folderPaneFloorRows)
 		}
 		return min(max(rows, 1), folderRows) + f.chromeRows()
 	case len(f.hits) == 0:
@@ -921,7 +1000,21 @@ func (f *folderPick) columnRows(width, n int, pal palette, st *tokens.Styler, ho
 		f.geom.pane = hudSpan{from: folderPadCells, to: folderPadCells + div.pane}
 	}
 	f.cols.top = listTop(f.cols.cursor, f.cols.top, f.cols.here.rows(), n)
-	pane := f.paneRows(pal, st, width, n)
+	// The ancestry column's own window, seated on the folder we are standing in
+	// (folderGeom.upFrom says why it is its own). It is computed here rather than
+	// in [folderPick.upText] because the press reads it back — one window, written
+	// once, for the draw and the pointer both.
+	f.geom.upFrom = listTop(f.cols.upAt, 0, f.cols.up.rows(), n)
+	// WHICH ROW OF THE PANE THE POINTER IS ON, in the pane's own numbering, and
+	// only while the pointer is actually over that column. It is read back from
+	// where the pointer was RESOLVED rather than recomputed here, which is exactly
+	// how the mark tray's own hot cell works and for the same reason: one answer
+	// to "what is the pointer over", written once.
+	paneHot := -1
+	if col == folderColPane {
+		paneHot = f.paneHot
+	}
+	pane := f.paneRows(pal, st, width, n, paneHot)
 	for row := 0; row < n; row++ {
 		line := folderPad
 		if div.up > 0 {
@@ -964,33 +1057,43 @@ func folderGapFor(width int) int {
 // recorded, because every segment is a place a click can go back to.
 func (f *folderPick) crumbRow(width int, pal palette) string {
 	trail := folderTrail(f.cols.dir, f.tilde)
-	// THE TAIL IS WHAT SURVIVES A NARROW FRAME. `~ › code › … › tui3` keeps the
-	// two facts a person needs — the root they are under and where they are
-	// standing — and dropping from the left is what every breadcrumb on this
-	// surface does (roomcrumbs.go).
-	room := width - folderPadCells
-	line, cells := folderPad, folderPadCells
+	// Keep the leaf and as many whole ancestors as fit. Charge the cut marker
+	// only for a shortened trail; its four cells do not replace a three-cell
+	// separator for free. Very small rows give their cells to the leaf instead.
+	pad := min(max(width, 0), folderPadCells)
+	room := max(0, width-pad)
+	line, cells := folderPad[:pad], pad
 	f.geom.crumbs = f.geom.crumbs[:0]
-	from, used := len(trail), 0
+	if len(trail) == 0 || room == 0 {
+		return line
+	}
+	cutCells := ansi.StringWidth(folderCrumbCut)
+	from := len(trail) - 1
+	used := ansi.StringWidth(trail[from].name)
 	for from > 0 {
-		used += ansi.StringWidth(trail[from-1].name) + folderCrumbGapCells
-		if used > room {
+		next := used + folderCrumbGapCells + ansi.StringWidth(trail[from-1].name)
+		cost := next
+		if from > 1 {
+			cost += cutCells
+		}
+		if cost > room {
 			break
 		}
 		from--
+		used = next
 	}
-	if from >= len(trail) && len(trail) > 0 {
-		from = len(trail) - 1
-	}
-	if from > 0 {
-		line, cells = line+pal.dim(folderCrumbCut), cells+ansi.StringWidth(folderCrumbCut)
+	if from > 0 && room > cutCells {
+		line, cells = line+pal.dim(folderCrumbCut), cells+cutCells
 	}
 	for at := from; at < len(trail); at++ {
 		crumb := trail[at]
 		if at > from {
 			line, cells = line+pal.dim(folderCrumbGap), cells+folderCrumbGapCells
 		}
-		name := fit(crumb.name, room)
+		name := fit(crumb.name, width-cells)
+		if name == "" {
+			continue
+		}
 		crumb.span = hudSpan{from: cells, to: cells + ansi.StringWidth(name)}
 		if at == len(trail)-1 {
 			line += pal.bold(pal.ink(name))
@@ -1018,7 +1121,6 @@ const (
 // spelled `~` under a person's home directory and `/` above it, which is how
 // they read it everywhere else on this surface.
 func folderTrail(dir, tilde string) []folderCrumb {
-	dir = strings.TrimSpace(dir)
 	if dir == "" {
 		return nil
 	}
@@ -1051,7 +1153,7 @@ func (f *folderPick) upText(row, room int, pal palette) string {
 	if f.cols.up.err != nil || f.cols.upAt < 0 {
 		return ""
 	}
-	at := row + f.cols.top - f.cols.cursor + f.cols.upAt
+	at := row + f.geom.upFrom
 	if at < 0 || at >= f.cols.up.rows() {
 		return ""
 	}
@@ -1084,6 +1186,38 @@ func (f *folderPick) upText(row, room int, pal palette) string {
 // deliberately the same two tiers the preview pane's own folder listing uses
 // ([previewNameAndSize]), so the sheet reads as one thing.
 func (f *folderPick) hereText(row, room int, pal palette, hovered bool) string {
+	return folderCellBand(f.hereInk(row, room, pal), room, pal,
+		row+f.cols.top == f.cols.cursor, hovered)
+}
+
+// folderCellBand puts the ladder's own grounds under a row of the middle
+// column — and under THAT COLUMN'S CELLS AND NOTHING WIDER.
+//
+// THE THREE STATES ARE THREE DIFFERENT THINGS AND THEY ARE TOLD APART. The row
+// the keyboard is on wears the SELECTED step, which is ungated on the linear
+// tier because "which row am I on" is a fact for every reader (styles.go); the
+// row the POINTER is on wears the quieter cursor step, and only where it is not
+// already the selected one, so hover never speaks over selection. What a person
+// has CHOSEN is neither of these — it is the persistent mark in the lead, and it
+// survives moving off the row, which a ground cannot.
+//
+// AND THE BAND IS THE COLUMN'S WIDTH, NEVER THE TERMINAL'S. A stripe across the
+// whole frame would light the ancestry and the preview beside a row that has
+// nothing to do with either [owner review 2026-09-08 §1].
+func folderCellBand(painted string, room int, pal palette, cursor, hovered bool) string {
+	cell := folderCell(painted, room)
+	switch {
+	case cursor:
+		return pal.selected(cell, room)
+	case hovered:
+		return pal.cursor(cell, room)
+	}
+	return cell
+}
+
+// hereInk is one row of the middle column's INK, before any ground goes under
+// it.
+func (f *folderPick) hereInk(row, room int, pal palette) string {
 	at := row + f.cols.top
 	if at < 0 || at >= f.cols.here.rows() {
 		if row == 0 && f.cols.here.rows() == 0 {
@@ -1120,16 +1254,14 @@ func (f *folderPick) hereText(row, room int, pal palette, hovered bool) string {
 	} else {
 		lead += "  "
 	}
-	body := folderNameAndSize(pal, name, size, dir, at == f.cols.cursor, room-folderLeadCells)
-	if hovered && at != f.cols.cursor {
-		body = pal.cursor(body, 0)
-	}
-	return lead + body
+	// The third pair reinforces the file type with a small shape and colour cue.
+	lead += folderTypeMark(pal, name, dir)
+	return lead + folderNameAndSize(pal, name, size, dir, at == f.cols.cursor, room-folderLeadCells)
 }
 
-// folderLeadCells is what the lead above costs: the cursor mark and the choice
-// mark, each with its own space.
-const folderLeadCells = 4
+// folderLeadCells is what the lead above costs: the cursor mark, the choice
+// mark and the type mark, each with its own space.
+const folderLeadCells = 6
 
 // folderNameAndSize lays one row out: the name, then whatever space is left,
 // then the size against the right edge — the reference screenshot's own
@@ -1139,7 +1271,7 @@ const folderLeadCells = 4
 // came to read; and a size is drawn only where one was obtained
 // ([folderSizeWord]) [design-law §EMPTINESS].
 func folderNameAndSize(pal palette, name, size string, dir, cursor bool, room int) string {
-	ink := pal.dim
+	ink := pal.ink
 	switch {
 	case cursor:
 		ink = func(s string) string { return pal.bold(pal.ink(s)) }
@@ -1369,7 +1501,7 @@ func (f *folderPick) hint() string {
 // The two sentences the action row falls back on.
 const (
 	folderListHintWord   = "type a path to browse · → opens the folder under the cursor"
-	folderBrowseHintWord = "←→ walk · alt+m chooses · alt+p hides the preview"
+	folderBrowseHintWord = "←→ walk · alt+m chooses · alt+p hides the preview · ctrl+u searches"
 )
 
 // folderCell pads one painted cell to its column's width, measuring through the
@@ -1530,23 +1662,23 @@ const folderHiddenKey = "alt+h"
 // narrow for all of them (rowfit.go), so the box never draws a key spelled
 // `es…`.
 var folderHintFields = []rowField{
-	rowSay("filter"), rowSay("↑↓"), rowSay("→ opens"),
+	rowSay("search folders and files"), rowSay("↑↓"), rowSay("→ opens"),
 	rowSay("enter adds"), rowSay("esc"),
 }
 
-// folderBrowseHintFields is the same line while the columns are up, where the
-// keys mean something else entirely and saying so is the only honest legend.
+// folderBrowseHintFields is what the SEARCH BOX says while the columns are up:
+// what typing in it does, and the two chords the foot row does not carry.
 //
-// THE PANE'S OWN KEYS ARE ON IT BECAUSE THEY HAVE NOWHERE ELSE TO BE. Every
-// chord on this surface keeps a visible, self-teaching door beside it
-// (docs/DESIGN-LANGUAGE.md), and a preview that could be hidden and expanded by
-// two keys nobody was told about would be two chords with no door at all. The
-// fields go from the RIGHT, whole, on a frame too narrow for all of them
-// (rowfit.go), so the line never draws a key spelled `alt+…`.
+// IT IS FOUR CLAUSES AND IT USED TO BE TEN. The two lines together — this
+// placeholder and [folderPick.controlLegend] under the columns — name every
+// chord the sheet owns exactly once, which is docs/DESIGN-LANGUAGE.md's rule
+// that a chord keeps a visible door beside it; naming them all in BOTH places
+// was the wall of shortcuts the owner's 2026-09-08 review asked us to stop
+// drawing. The fields go from the RIGHT, whole, on a frame too narrow for all of
+// them (rowfit.go), so the line never draws a key spelled `alt+…`.
 var folderBrowseHintFields = []rowField{
-	rowSay("←→ walk"), rowSay("↑↓"), rowSay("alt+m chooses"),
-	rowSay("alt+p preview"), rowSay("alt+o wide"), rowSay("alt+h hidden"),
-	rowSay("enter"), rowSay("esc"),
+	rowSay("search folders and files"), rowSay("or type a path"),
+	rowSay("alt+p preview"), rowSay("alt+h hidden"),
 }
 
 // folderWideHintFields is the legend with the preview alone on the sheet, where
@@ -1575,5 +1707,25 @@ func (f *folderPick) controlLegend(room int) string {
 	if f.pane == folderPaneWide {
 		return rowTail([]rowField{rowSay("esc cancel"), rowSay("alt+o back"), rowSay("↑↓ scroll"), rowSay("←→ slide")}, room)
 	}
-	return rowTail([]rowField{rowSay("esc cancel"), rowSay("alt+o preview"), rowSay("alt+m choose"), rowSay("←→ walk"), rowSay("alt+p hide"), rowSay("shift+arrows scroll"), rowSay("alt+h hidden")}, room)
+	// FIVE CLAUSES AND NOT EIGHT. This row used to name every chord the sheet
+	// owns, which made the one line under the columns a wall of shortcuts that
+	// read as noise and taught nothing [owner review 2026-09-08 §5]. What is left
+	// is the four things a person actually reaches for and the way out; the rest
+	// live in the box's own placeholder, which is on screen whenever the box is
+	// empty — which is now its resting state — and in the manual.
+	// THE PREVIEW'S DOOR IS ALWAYS NAMED AND THE WORD FOR IT IS CONTEXTUAL. On a
+	// narrow frame the pane has been given up for the names (folderpane.go) and
+	// `alt+o` is the only way to read a file at all; on a wide one it is the way to
+	// give the file the whole sheet. Either way it is a door a person cannot guess,
+	// and docs/DESIGN-LANGUAGE.md's rule is that every chord keeps a visible one
+	// beside it — so it is one clause here rather than a clause that comes and
+	// goes as the terminal is dragged.
+	door := "alt+o preview"
+	if f.paneWide(room) {
+		door = "alt+o wide"
+	}
+	return rowTail([]rowField{
+		rowSay("esc cancel"), rowSay("enter add"), rowSay(door),
+		rowSay("←→ walk"), rowSay("alt+m choose"), rowSay("ctrl+u search"),
+	}, room)
 }

@@ -526,6 +526,16 @@ const (
 	// empty whenever the narrator did not name one, and a surface reads that
 	// emptiness as "ask the tools", never as "draw nothing".
 	EventCaption
+	// EventAssistantDone marks the journal boundary for one valid, non-empty,
+	// tool-free assistant response. Its content has already arrived through
+	// EventTextDelta and has been recorded before this event is published. It
+	// carries no prose of its own: a surface uses it to stop treating those
+	// streamed words as provisional while the end-of-turn checks still run.
+	//
+	// IT IS APPENDED TO PRESERVE EVERY EXISTING WIRE NUMBER. Hosts serialize
+	// EventKind as an integer, so inserting a kind above this point would make
+	// an older binary read every later event as a different fact.
+	EventAssistantDone
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -564,6 +574,7 @@ type TaskReplyTag struct {
 type Event struct {
 	Kind          EventKind
 	Text          string
+	ShortTitle    string `json:"ShortTitle,omitempty"`
 	Tool          string
 	Hint          string
 	Err           error
@@ -2710,6 +2721,7 @@ type Agent struct {
 
 	title      string
 	titleTried bool
+	shortTitle string
 
 	// titleCtx is the lifetime of the naming errand and titleJobs counts the one
 	// that may be running. They are memoryCtx's bargain above, for the same

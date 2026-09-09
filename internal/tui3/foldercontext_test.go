@@ -107,7 +107,7 @@ func TestTheBrowserListsFoldersThenFilesWithTheirSizes(t *testing.T) {
 	if !here.isDir(0) || !here.isDir(1) || here.isDir(2) {
 		t.Fatalf("the directories do not lead: rows=%d dirs=%d", here.rows(), len(here.names))
 	}
-	drawn := plain(strings.Join(a.folder.rows(a.width, a.overlayHeight(), a.pal, a.styler(), -1, ""), "\n"))
+	drawn := plain(strings.Join(chooserRows(t, a, -1, ""), "\n"))
 	// A directory wears its slash; a file wears its size.
 	if !strings.Contains(drawn, "inner/") {
 		t.Fatalf("a directory drew without its slash:\n%s", drawn)
@@ -187,7 +187,7 @@ func TestThePreviewKnowsWhatKindOfThingItIsShowing(t *testing.T) {
 	// SOURCE IS PAINTED AND NUMBERED. The pane's rows carry SGR that the plain
 	// text does not, and the gutter is there at this width.
 	onFolderRow(t, a, "main.go")
-	rows := a.folder.paneRows(a.pal, a.styler(), a.width, 12)
+	rows := a.folder.paneRows(a.pal, a.styler(), a.width, 12, -1)
 	painted := strings.Join(rows, "\n")
 	if painted == plain(painted) {
 		t.Fatalf("a Go file drew with no syntax colour at all:\n%s", painted)
@@ -214,7 +214,7 @@ func TestAFilesOwnEscapesCannotRepaintTheSheet(t *testing.T) {
 	openBrowse(t, a, filepath.Join(root, "here"))
 	onFolderRow(t, a, "nasty.txt")
 
-	for _, row := range a.folder.paneRows(a.pal, a.styler(), a.width, 8) {
+	for _, row := range a.folder.paneRows(a.pal, a.styler(), a.width, 8, -1) {
 		if strings.Contains(plain(row), "\x1b") || strings.Contains(plain(row), "\x07") {
 			t.Fatalf("a raw control byte reached the frame: %q", row)
 		}
@@ -222,7 +222,7 @@ func TestAFilesOwnEscapesCannotRepaintTheSheet(t *testing.T) {
 			t.Fatalf("the file's own escape reached the frame: %q", row)
 		}
 	}
-	if !strings.Contains(plain(strings.Join(a.folder.paneRows(a.pal, a.styler(), a.width, 8), "\n")), "red") {
+	if !strings.Contains(plain(strings.Join(a.folder.paneRows(a.pal, a.styler(), a.width, 8, -1), "\n")), "red") {
 		t.Fatal("the readable text was thrown away with the escapes")
 	}
 }
@@ -279,7 +279,7 @@ func TestChoosingSeveralThingsCountsThemAndNamesBothVerbs(t *testing.T) {
 	}
 	// AND THE MARKED ROW LOOKS MARKED, apart from the cursor: focus and choice
 	// are two facts and a person has to be able to see both.
-	drawn := a.folder.rows(a.width, a.overlayHeight(), a.pal, a.styler(), -1, "")
+	drawn := chooserRows(t, a, -1, "")
 	if !strings.Contains(plain(strings.Join(drawn, "\n")), folderMarkGlyph(a.pal)) {
 		t.Fatalf("no chosen row wears the mark:\n%s", plain(strings.Join(drawn, "\n")))
 	}
@@ -301,18 +301,18 @@ func TestAPressOnATrayCellUnchoosesThatThing(t *testing.T) {
 	onFolderRow(t, a, "main.go")
 	drive(t, a, key(folderMarkKey))
 
-	markedRowY(a, chromeOverlay, 0)
-	y := markedRowY(a, chromeOverlay, a.folder.geom.tray)
-	if y < 0 || len(a.folder.geom.trayCells) != 2 {
-		t.Fatalf("the tray drew at row %d with %d cells", a.folder.geom.tray, len(a.folder.geom.trayCells))
+	geom := chooserGeom(t, a)
+	y := chooserRowY(t, a, geom.tray)
+	if y < 0 || len(geom.trayCells) != 2 {
+		t.Fatalf("the tray drew at row %d with %d cells", geom.tray, len(geom.trayCells))
 	}
-	x := a.folder.geom.trayCells[0].from
+	x := geom.trayCells[0].from
 	// It lights before it acts, which is the law that what brightens is what a
 	// press takes off.
-	if got, _ := a.folderHoverColumn(x, a.folder.geom.tray); got != folderColTray || a.folder.trayHot != 0 {
+	if got, _ := a.folderHoverColumn(x, geom.tray); got != folderColTray || a.folder.trayHot != 0 {
 		t.Fatalf("the pointer over the first cell answered %q / %d", got, a.folder.trayHot)
 	}
-	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: chooserX(t, a, x), Y: y, Button: tea.MouseLeft})
 	if len(a.folder.marks) != 1 || a.folder.marks[0].dir {
 		t.Fatalf("a press on the first cell left %+v", a.folder.marks)
 	}
@@ -523,11 +523,19 @@ func TestThePreviewHidesAndTakesTheWholeSheet(t *testing.T) {
 		t.Fatalf("the wide legend reads %q", a.folder.folderHintAt(a.width))
 	}
 	drive(t, a, key(folderWideKey))
-	legend := a.folder.folderHintAt(a.width)
-	for _, want := range []string{folderPaneKey, folderWideKey, folderMarkKey} {
-		if !strings.Contains(legend, want) {
-			t.Fatalf("the legend %q does not name %s", legend, want)
+	// EVERY CHORD THE SHEET OWNS IS NAMED EXACTLY ONCE, across the two lines that
+	// carry them: the box's own placeholder and the foot row under the columns.
+	// Naming them all in both places was the wall of shortcuts the owner's review
+	// asked us to stop drawing (folderpick.go's [folderBrowseHintFields]).
+	said := a.folder.folderHintAt(a.width) + " · " + a.folder.controlLegend(a.width)
+	for _, want := range []string{folderPaneKey, folderWideKey, folderMarkKey, "esc", "enter"} {
+		if !strings.Contains(said, want) {
+			t.Fatalf("nothing on the sheet names %s: %q", want, said)
 		}
+	}
+	if strings.Contains(a.folder.folderHintAt(a.width), folderWideKey) &&
+		strings.Contains(a.folder.controlLegend(a.width), folderWideKey) {
+		t.Fatalf("%s is named twice: %q", folderWideKey, said)
 	}
 }
 
@@ -545,14 +553,17 @@ func TestThePreviewScrollsAndSlidesAndStops(t *testing.T) {
 	openBrowse(t, a, filepath.Join(root, "here"))
 	onFolderRow(t, a, "long.txt")
 
-	rows := a.overlayHeight() - a.folder.chromeRows()
+	// The rows the COLUMNS were given, as the last paint gave them — which is the
+	// height the pane's own scroll is clamped against.
+	_ = chooserRows(t, a, -1, "")
+	rows := a.folder.geom.body
 	if rows < 4 {
 		t.Fatalf("the sheet only has %d body rows to scroll", rows)
 	}
-	first := plain(strings.Join(a.folder.paneRows(a.pal, a.styler(), a.width, rows), "\n"))
+	first := plain(strings.Join(a.folder.paneRows(a.pal, a.styler(), a.width, rows, -1), "\n"))
 	drive(t, a, key("shift+down"))
 	drive(t, a, key("shift+down"))
-	moved := plain(strings.Join(a.folder.paneRows(a.pal, a.styler(), a.width, rows), "\n"))
+	moved := plain(strings.Join(a.folder.paneRows(a.pal, a.styler(), a.width, rows, -1), "\n"))
 	if moved == first {
 		t.Fatal("shift+down did not scroll the preview")
 	}
@@ -560,11 +571,11 @@ func TestThePreviewScrollsAndSlidesAndStops(t *testing.T) {
 	for i := 0; i < 400; i++ {
 		drive(t, a, key("shift+down"))
 	}
-	a.folder.paneRows(a.pal, a.styler(), a.width, rows)
+	a.folder.paneRows(a.pal, a.styler(), a.width, rows, -1)
 	if a.folder.paneTop > 120 {
 		t.Fatalf("the scroll ran past the file: top=%d", a.folder.paneTop)
 	}
-	end := plain(strings.Join(a.folder.paneRows(a.pal, a.styler(), a.width, rows), "\n"))
+	end := plain(strings.Join(a.folder.paneRows(a.pal, a.styler(), a.width, rows, -1), "\n"))
 	if !strings.Contains(end, "line 119") {
 		t.Fatalf("the last line is unreachable:\n%s", end)
 	}
@@ -595,46 +606,96 @@ func TestTheWheelBelongsToWhicheverPaneItIsOver(t *testing.T) {
 	a, _, root := mixedLab(t)
 	openBrowse(t, a, filepath.Join(root, "here"))
 	onFolderRow(t, a, "notes.md")
-	markedRowY(a, chromeOverlay, 0)
-	body := markedRowY(a, chromeOverlay, a.folder.geom.head+1)
+	geom := chooserGeom(t, a)
+	body := chooserRowY(t, a, geom.head+1)
 	if body < 0 {
 		t.Fatal("the sheet drew no body row")
 	}
 
 	was, _ := a.folder.here()
 	// Over the preview: the cursor stays where it is.
-	drive(t, a, tea.MouseMotionMsg{X: a.folder.geom.pane.from + 2, Y: body})
-	drive(t, a, tea.MouseWheelMsg{X: a.folder.geom.pane.from + 2, Y: body, Button: tea.MouseWheelDown})
+	drive(t, a, tea.MouseMotionMsg{X: chooserX(t, a, geom.pane.from+2), Y: body})
+	drive(t, a, tea.MouseWheelMsg{X: chooserX(t, a, geom.pane.from+2), Y: body, Button: tea.MouseWheelDown})
 	if got, _ := a.folder.here(); got != was {
 		t.Fatalf("a wheel over the preview moved the cursor to %q", got)
 	}
 	// Over the names: it walks.
-	drive(t, a, tea.MouseMotionMsg{X: a.folder.geom.here.from + 2, Y: body})
-	drive(t, a, tea.MouseWheelMsg{X: a.folder.geom.here.from + 2, Y: body, Button: tea.MouseWheelDown})
+	drive(t, a, tea.MouseMotionMsg{X: chooserX(t, a, geom.here.from+2), Y: body})
+	drive(t, a, tea.MouseWheelMsg{X: chooserX(t, a, geom.here.from+2), Y: body, Button: tea.MouseWheelDown})
 	if got, _ := a.folder.here(); got == was {
 		t.Fatal("a wheel over the names did not walk the cursor")
 	}
 }
 
-// A PRESS IN THE PREVIEW DOES NOTHING. It is a read-only pane, and letting the
-// press fall through would move the cursor to whatever row happened to be beside
-// the line somebody clicked.
-func TestAPressInThePreviewMovesNothing(t *testing.T) {
+// A PRESS IN A FILE'S PREVIEW DOES NOTHING. Source, prose and a picture are
+// there to be READ: they have no rows to select, and letting the press fall
+// through would move the cursor to whatever row happened to be beside the line
+// somebody clicked.
+func TestAPressInAFilePreviewMovesNothing(t *testing.T) {
 	a, _, root := mixedLab(t)
 	openBrowse(t, a, filepath.Join(root, "here"))
 	onFolderRow(t, a, "notes.md")
-	markedRowY(a, chromeOverlay, 0)
-	body := markedRowY(a, chromeOverlay, a.folder.geom.head+2)
+	_ = chooserRows(t, a, -1, "")
+	body := chooserRowY(t, a, a.folder.geom.head+2)
 	if body < 0 {
 		t.Fatal("the sheet drew no third body row")
 	}
+	if !a.folder.geom.pane.pressable() {
+		t.Fatal("the sheet drew no preview column to press in")
+	}
 	was, _ := a.folder.here()
-	drive(t, a, tea.MouseClickMsg{X: a.folder.geom.pane.from + 3, Y: body, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: chooserX(t, a, a.folder.geom.pane.from+3), Y: body, Button: tea.MouseLeft})
 	if got, _ := a.folder.here(); got != was {
-		t.Fatalf("a press in the preview moved the cursor to %q", got)
+		t.Fatalf("a press in a file preview moved the cursor to %q", got)
 	}
 	if len(a.chips) != 0 {
 		t.Fatalf("a press in the preview attached %+v", a.chips)
+	}
+}
+
+// A PRESS IN A FOLDER'S PREVIEW OPENS THE DIRECTORY IT IS ON, which is
+// the whole of the dead-column defect this wave was opened for: the pane drew a
+// directory's contents in rows that looked exactly like the column beside them
+// and answered to no pointer at all.
+//
+// The preview row is already a fully specified navigation target, so one press
+// drills down. A file row instead becomes the selected preview subject and
+// neither gesture attaches anything.
+func TestAPressInAFolderPreviewOpensTheDirectoryItIsOn(t *testing.T) {
+	a, _, root := mixedLab(t)
+	// Something for the pane to LIST. A directory row whose preview is empty has
+	// no rows to press, which is a different fact and is tested elsewhere.
+	if err := os.MkdirAll(filepath.Join(root, "here", "inner", "leaf"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	openBrowse(t, a, filepath.Join(root, "here"))
+	onFolderRow(t, a, "inner")
+	if a.folder.preview.Kind != previewFolder {
+		t.Fatalf("the preview beside `inner` is kind %v", a.folder.preview.Kind)
+	}
+	if len(a.folder.preview.Entries) == 0 {
+		t.Fatal("the fixture's `inner` has nothing in it to press")
+	}
+	_ = chooserRows(t, a, -1, "")
+	want := a.folder.preview.Entries[0].Raw
+	body := chooserRowY(t, a, a.folder.geom.head)
+	if body < 0 || a.folder.geom.paneBody < 1 {
+		t.Fatalf("the pane drew %d entry rows at row %d", a.folder.geom.paneBody, body)
+	}
+	// IT LIGHTS BEFORE IT ACTS, which is the law that what brightens under the
+	// pointer is what a press acts on.
+	drive(t, a, tea.MouseMotionMsg{X: chooserX(t, a, a.folder.geom.pane.from+1), Y: body})
+	if a.folder.paneHot != 0 {
+		t.Fatalf("the pointer over the first preview row lit %d", a.folder.paneHot)
+	}
+	drive(t, a, tea.MouseClickMsg{X: chooserX(t, a, a.folder.geom.pane.from+1), Y: body, Button: tea.MouseLeft})
+	if a.folder.cols.dir != filepath.Join(root, "here", "inner", want) {
+		t.Fatalf("the press left the columns on %s", a.folder.cols.dir)
+	}
+	// AND IT CHOSE NOTHING. Navigating and choosing are two acts with two
+	// gestures, in the preview exactly as in the columns.
+	if len(a.folder.marks) != 0 || len(a.chips) != 0 {
+		t.Fatalf("a press in the preview chose %+v / %+v", a.folder.marks, a.chips)
 	}
 }
 
@@ -654,14 +715,14 @@ func TestANarrowSheetKeepsTheNamesAndStillPreviews(t *testing.T) {
 		if div.pane > 0 && div.here < folderNameFloor {
 			t.Fatalf("at %d cells the pane squeezed the names to %d", width, div.here)
 		}
-		for _, line := range a.folder.rows(width, a.overlayHeight(), a.pal, a.styler(), -1, "") {
+		for _, line := range chooserRows(t, a, -1, "") {
 			if ansi.StringWidth(line) > width {
 				t.Fatalf("at %d cells a row runs past the frame: %q", width, plain(line))
 			}
 		}
 		// And the preview alone fits too.
 		drive(t, a, key(folderWideKey))
-		for _, line := range a.folder.rows(width, a.overlayHeight(), a.pal, a.styler(), -1, "") {
+		for _, line := range chooserRows(t, a, -1, "") {
 			if ansi.StringWidth(line) > width {
 				t.Fatalf("at %d cells the wide preview runs past the frame: %q", width, plain(line))
 			}
@@ -838,13 +899,22 @@ func TestAThingThatVanishedUnderTheConfirmSaysSo(t *testing.T) {
 	}
 }
 
-// Browsing writes a path into the filter, so placeholder-only hints disappear.
-func TestBrowserKeepsPreviewControlsVisibleWhileAPathIsTyped(t *testing.T) {
+// THE WAY OUT AND THE PREVIEW'S OWN DOOR ARE ON THE SHEET AT EVERY WIDTH, and
+// which of the two places names them is contextual.
+//
+// The foot row used to name every chord the sheet owns, at every width, which is
+// the wall of shortcuts the owner's review asked us to stop drawing. `alt+o` is
+// on the foot exactly where the preview is NOT drawn — there it is the only way
+// to read a file at all — and in the box's own placeholder where it is, because
+// the box is empty while browsing now and its placeholder is on screen.
+func TestThePreviewDoorAndTheWayOutAreOnTheSheetAtEveryWidth(t *testing.T) {
 	a, _, root := mixedLab(t)
-	openBrowse(t, a, filepath.Join(root, "here"))
-	for _, width := range []int{52, 170} {
-		rows := a.folder.rows(width, 18, a.pal, a.styler(), -1, "")
-		drawn := ansi.Strip(strings.Join(rows, "\n"))
+	for _, width := range []int{52, 100, 170} {
+		a.width, a.height = width, 32
+		a.touch()
+		openBrowse(t, a, filepath.Join(root, "here"))
+		frame, _, _ := a.frameBody()
+		drawn := ansi.Strip(frame)
 		for _, word := range []string{"alt+o", "esc"} {
 			if !strings.Contains(drawn, word) {
 				t.Fatalf("%d columns hide %q: %s", width, word, drawn)

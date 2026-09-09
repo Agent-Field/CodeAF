@@ -60,6 +60,8 @@ const (
 	// PhaseConnecting is the handshake: DNS, TLS, and the request going out.
 	// Nothing has been accepted yet.
 	PhaseConnecting Phase = "connecting"
+	// PhaseConnectionLost is a reachability wait, not a slow model response.
+	PhaseConnectionLost Phase = "waiting for connection"
 	// PhaseFirstWord is the wait after the endpoint accepted the request and
 	// before it wrote anything — the queue, the router's own fallback walk, a
 	// cold model loading. It is the phase a hedge deadline belongs to.
@@ -206,7 +208,7 @@ type PhaseNews struct {
 // kept here so that two surfaces cannot disagree about it.
 func (n PhaseNews) Waiting() bool {
 	switch n.Phase {
-	case PhaseConnecting, PhaseFirstWord, PhasePaced, PhaseRetrying, PhaseSwitching, PhaseSwitchingModel, PhaseAsking, PhaseAllSlow:
+	case PhaseConnecting, PhaseConnectionLost, PhaseFirstWord, PhasePaced, PhaseRetrying, PhaseSwitching, PhaseSwitchingModel, PhaseAsking, PhaseAllSlow:
 		return true
 	}
 	return false

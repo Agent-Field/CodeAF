@@ -56,7 +56,9 @@ Write it so that somebody who cannot see this ask, cannot see the work, and cann
 
 Declare repeatable verification commands only in the optional checks field. An action the person asked to happen once is not permission to repeat it as verification.
 
-Answer {"work": true, "goal": "<the ask, self-contained>", "acceptance": "<done when>", "checks": ["<explicit repeatable verification command>"], "why": "<one line>"}. Use an empty checks list when none is declared.
+Also declare delivery: {"kind":"workspace|branch|report", "quote":"<verbatim words from the person's ask>"}. Use workspace when changed files must reach the person's requested working copy or when uncertain. Use branch only when the person explicitly wants a retained branch as the final result without integration. Use report only when the requested final result is the answer/report itself, not implementation elsewhere. For branch/report quote the original words establishing that destination, including any constraint about integration. Do not choose branch merely because workers use worktrees, and do not convert an implementation request into a report about implementation.
+
+Answer {"work": true, "goal": "<the ask, self-contained>", "acceptance": "<done when>", "checks": ["<explicit repeatable verification command>"], "delivery": {"kind":"workspace", "quote":""}, "why": "<one line>"}. Use an empty checks list when none is declared.
 
 ` + routeVerdictContract
 
@@ -105,7 +107,7 @@ func (a *Agent) openAcceptance(ctx context.Context, hub *eventHub) {
 		// the sentence and not the sentence.
 		verdict = routeVerdict{}
 	}
-	if !steward.setAcceptanceContract(ask, routeAcceptance(verdict, ask), routeChecks(verdict, ask)) {
+	if !steward.setAcceptanceDelivery(ask, routeAcceptance(verdict, ask), routeChecks(verdict, ask), routeDelivery(verdict, ask)) {
 		return
 	}
 	a.journalAcceptance(steward)
@@ -134,5 +136,6 @@ func (a *Agent) journalAcceptance(steward *Steward) {
 		Event:      "acceptance",
 		Acceptance: steward.Acceptance(),
 		Checks:     steward.declaredChecks(),
+		Delivery:   steward.deliveryReceipt(),
 	})
 }

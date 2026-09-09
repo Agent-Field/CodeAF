@@ -658,6 +658,7 @@ type Welcome struct {
 	Model       string `json:"model"`
 	Build       string `json:"build,omitempty"`
 	Title       string `json:"title,omitempty"`
+	ShortTitle  string `json:"shortTitle,omitempty"`
 	// Note is a sentence worth showing once — "session open elsewhere, started
 	// a new one" travels here.
 	Note string `json:"note,omitempty"`

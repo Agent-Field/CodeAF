@@ -477,19 +477,23 @@ in the older spelling.
 The name is written by a model, once, and appears in the status line below the message
 box: `porting the parser · gpt-4.1-mini:high`.
 
-**It starts with your first message.** The model on the `title` role is shown the opening
-question and asked for a short name in the background. The answer and the naming request
-run independently. A late name still reaches an idle chat, a background tab, or a hosted
-chat after the connection is restored; no refresh or follow-up message is needed.
+**It starts with your first message.** The small model on the `title` role is shown the
+opening question and asked for a descriptive conversation title plus a compact tab label
+in one response. The answer and the naming request run independently. A late name still
+reaches an idle chat, a background tab, or a hosted chat after the connection is restored;
+no refresh or follow-up message is needed.
 
-Temporary provider failures get up to three attempts within a two-minute window, using
-short increasing delays. Closing the session cancels this work. Failed or invalid naming
+Each ask is bounded to twenty seconds so a slow cheap endpoint yields to the existing
+fallback promptly. Temporary provider failures get up to three attempts within the
+two-minute parent window, using short increasing delays. Closing the session cancels this work. Failed or invalid naming
 leaves the conversation usable with its existing placeholder; an existing name is never
 overwritten. Title calls remain billed to the session and cost history, separately from
 an unrelated turn that happens to be running when the name arrives.
 
-The name is capped at **80 characters**, and the status line fits it to the room left by
-the model rather than letting identity push telemetry off the frame.
+The full name is capped at **80 characters** in both its journal and folder metadata. The
+stable compact label is capped at **32 characters** in both places, and the tab strip fits
+it to its available cells. Old saved conversations
+have no separate compact label and use their full title in the tab, exactly as before.
 
 **There is no command to rename a conversation.** The name lives in the transcript as its
 own appended line, and the last one wins when the file is read back — but nothing on this

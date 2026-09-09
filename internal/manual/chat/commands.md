@@ -191,7 +191,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
 | `/compact` | — | — | summarizes the conversation now |
 | `/home` | — | — | every project and conversation on this machine, fullscreen |
-| `/folder` | `/place`, `/dir` | — | opens the folder picker — say which folder this conversation is also about |
+| `/folder` | `/place`, `/dir` | — | opens the add context sheet — say which folder this conversation is also about |
 | `/folder` | `/place`, `/dir` | `<path>` | …opens it with that already in the box: a word filters, a path browses |
 | `/attach` | `/upload` | `<path>` | a file goes on the tray; **a folder** is referred instead, and says `folder · <path>` |
 | `/land` | — | — | says what has been changed for a folder you chose and is waiting to go into it |

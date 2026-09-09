@@ -253,6 +253,8 @@ type routeVerdict struct {
 	// [taskPersonAcceptance]: a judgement nobody asked for must never be the
 	// reason work is refused.
 	Acceptance string `json:"acceptance"`
+	// Delivery is used only by the original-ask acceptance writer.
+	Delivery deliveryContract `json:"delivery,omitempty"`
 	// Repeatable checks travel with the same request that declared them. A
 	// correction may keep the task useful while invalidating its old checks.
 	Checks        []string `json:"checks,omitempty"`

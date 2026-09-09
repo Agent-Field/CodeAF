@@ -2,16 +2,28 @@
 
 ## /folder — choose a folder, pick a directory, say which project you mean
 
-`/folder` opens a picker over the directories aforge already knows about. It also answers
-to `/place` and `/dir`, because people arrive with three different words for the same
-thing.
+`/folder` opens the **add context** sheet — a framed window over the middle of the screen,
+with the folder you are standing in browsable in columns. It also answers to `/place` and
+`/dir`, because people arrive with three different words for the same thing.
 
 ```
-/folder            the picker, opened on what is already known
-/folder aforge     …with `aforge` already typed, so the list is narrowed
+/folder            the sheet, opened on the folder this conversation is about
+/folder aforge     …with `aforge` already searched, so the list of known folders is narrowed
 /folder ~/code/    …with a path already typed, so the columns are open in ~/code
-/attach            the same browser, opened on the folder you are standing in
+/attach            the same sheet, opened in exactly the same place
 ```
+
+**Both commands open the same sheet, in the same place, already browsing.** Where it opens
+is the first of these that exists: a folder this conversation has already been given, the
+folder this window is working in, your home directory. It does not matter which of the two
+words you typed, and a brand-new machine that has never chosen a folder gets the same sheet
+as one that has chosen forty.
+
+**It is a window, not a line at the bottom of the chat.** The conversation stays visible
+behind it, dimmed, and is not live while the sheet is up: clicking it, scrolling it or
+turning the wheel over it does nothing at all. The two ways out are `esc` and the **cancel**
+words on the sheet's bottom edge, which you can click. A click on the dimmed area outside
+the sheet does nothing — it will not throw away things you have chosen.
 
 **It browses files as well as folders.** Once the columns are open, the middle column
 lists the subdirectories and then the files inside them, with each file's size against the
@@ -52,8 +64,12 @@ and nothing has been chosen.
 
 ## Type a word to filter, open a row to browse
 
-The box under the list is one box doing two jobs, and which job it is doing depends only on
-the shape of what is in it.
+The box at the top of the sheet is a **search box**, and it is empty when the sheet opens —
+so the first thing you type is a search rather than four more characters on the end of a
+path. Where you are is said in two places you cannot type over: the **breadcrumb** above the
+columns, and the location on the sheet's own top edge.
+
+It does two jobs, and which job it is doing depends only on the shape of what is in it.
 
 - **A word filters.** `agent`, `tui3`, `notes` — the list narrows with fuzzy
   matching of names and path segments, initials and small spelling slips. For example,
@@ -65,8 +81,14 @@ A bare word is never treated as a path. Typing `agentfield` means "find it for m
 "open ./agentfield".
 
 **You never have to retype a path you can already see.** Press `→` on a row of the list, or
-click it, and the columns open on that folder with its path written into the box for you.
-That is what a search result is for: find it by name, then walk into it.
+click it, and the columns open on that folder. The search that found it is spent — the box
+goes empty again, so the next thing you type is a new search rather than an edit of the old
+one. That is what a search result is for: find it by name, then walk into it.
+
+**Clearing the box comes back.** `ctrl+u` empties it, and an empty box means "wherever the
+columns are" — so searching and then clearing puts you back where you were standing rather
+than on a list of everything. That is also how you reach the remembered folders, the
+projects and the index from inside the sheet: clear the box, then type a word.
 
 ## The columns — the folder above, where you are, and what is inside the row you are on
 
@@ -81,14 +103,26 @@ Browsing draws three successive regions, the way a file browser does:
   add this folder · ~/code/aforge-v2/internal/session   repository · dev · clean
 ```
 
-- **left** — what is in the folder above, with the one you are standing in a shade brighter.
-  It is narrow on purpose: it is there to say where you are standing, not to be read down.
+- **left** — what is in the folder above, with the one you are standing in a shade brighter,
+  and its own scroll so the folders ABOVE the one you are in are on screen too. It is narrow
+  on purpose: it is there to say where you are standing, not to be read down.
 - **middle** — what is inside where you are: the subdirectories first, each with a trailing
-  `/`, then the files with their sizes right-aligned. The cursor lives here.
-- **right** — a **preview of the thing under the cursor**. On a folder that is the folder's
-  own contents, so the next level is on screen before you walk into it. On a file it is the
-  file: source with syntax colour and dim line numbers, a picture drawn in the terminal's
-  own cells, a PDF's text.
+  `/`, then the files with their sizes right-aligned. The cursor lives here, and the row it
+  is on wears a band across **this column only** — never a stripe across the whole window.
+
+  Every row leads with a **one-cell mark saying what kind of thing it is**: `▸` a folder,
+  `◆` source or configuration, `▤` text and documents, `▣` a picture, `▶` audio or video,
+  `▦` an archive, `·` anything else. On a terminal that cannot draw those the same seven
+  are `>` `*` `=` `#` `+` `%` `.` — one character either way, so the sizes stay lined up
+  down the column. Restrained colour reinforces the mark; type never depends on colour alone.
+  Filenames use readable ink, folders keep their slash, and sizes stay quieter.
+  Plain terminals keep the same shapes without colour.
+- **right** — a **preview of the thing under the cursor**, with the same type marks on it.
+  On a folder that is the folder's own contents, so the next level is on screen before you
+  walk into it. On a file it is the file: source with syntax colour and dim line numbers, a
+  picture drawn in the terminal's own cells, a PDF's text. The source is coloured by lexing
+  the **whole file at once**, so a comment or a string that runs over several lines is one
+  comment or one string all the way down.
 
 The path above them is a **breadcrumb**, and every segment of it is clickable: press `code`
 and you are back in `~/code` with the cursor on the folder you just left. On a narrow frame
@@ -113,13 +147,22 @@ There is no focus to keep track of: **the pane a key acts on is the pane that is
 With a list on screen the plain arrows walk the list and `shift` plus an arrow moves the
 preview; with the preview alone there is no list to walk, so the plain arrows are its own.
 
-**The mouse does all of it too.** A click in the middle column moves the cursor, and a
-second click on the row you are already on walks into it when it is a folder. A click in
-the left-hand column walks back out. A click on the breadcrumb goes back to that level. The
-wheel follows the pointer: turned over the preview it scrolls the preview, turned over the
-names it walks the names. A click in the preview does nothing — it is a pane you read.
-Clicking is navigation and never a choice; the only things that choose are `alt+m` and the
-action row, below.
+**The mouse does all of it too, in all three columns.** A click in the middle column moves
+the cursor, and a second click on the row you are already on walks into it when it is a
+folder. A click in the left-hand column walks back out. A click on the breadcrumb goes back
+to that level.
+
+**A click in the right-hand column acts on that row** when it is showing a folder's
+contents. A directory opens in one click. A file becomes the current selection and its
+source, prose or picture is previewed at once; neither gesture adds anything until you use
+the action row. There is no double-click timing anywhere. When the right-hand column is showing a
+**file** — source, prose, a picture — there is nothing there to select and a click does
+nothing: it is a pane you read, and `shift` plus an arrow or the wheel is how you read past
+the bottom of it.
+
+The wheel follows the pointer: turned over the preview it scrolls the preview, turned over
+the names it walks the names. Clicking is navigation and never a choice; the only things
+that choose are `alt+m` and the action row, below.
 
 One level is read at a time and nothing walks deep. Reading a folder and reading a file for
 the preview both happen in the background, so a directory with forty thousand entries in it
@@ -135,7 +178,18 @@ Hidden folders are out of the way rather than out of reach. Two ways in:
 - **Typing a name that starts with a dot** shows them by itself. `~/.con` finds `.config`
   without your having to think about a toggle first.
 
+The right-hand preview of a folder keeps the same rule as the columns, so what it lists is
+what you can walk into: `.git`, `node_modules` and `vendor` are absent from it until `alt+h`
+is on, and never shown there as a row that would not open.
+
 ## The action row — add this folder
+
+The last row of the sheet is the one thing on it that **chooses** anything, and its right
+end carries what is known about the **thing under the cursor** — `repository · main · clean`
+or `folder · 214 files` for a directory, and `7.7 KB · changed 3d` for a file. Nothing is
+drawn where the disk had nothing to say, and `changed` is the file's modification time: it
+is not "last opened", which no filesystem here answers honestly and aforge keeps no record
+of.
 
 The last row of the sheet is the one thing on it that **chooses** anything:
 
@@ -540,7 +594,6 @@ Exactly as they are written:
 ```
 choosing a folder is not available over --host yet — the folders here are this machine's, not the ones the conversation is on.
 this conversation cannot be given a folder · it has no way to remember one, so nothing would reach the next request
-nothing to offer yet · type a path after /folder, or use the picker's box
 no folder matches · type a path to browse
 no such folder · <path>
 nothing below here
@@ -567,11 +620,12 @@ putting changes into a folder is not available over --host yet — the conversat
   path into whatever asks for one instead.
 - The second is a conversation that has no way to hold a folder at all. Nothing is added
   and nothing pretends to be; `/folder` does not open.
-- The third is a brand-new machine with no projects, nothing touched yet and no index —
-  typing a path is the way through.
-- The fourth is a filter that matched none of the known folders. The folder may still be
+- There is no longer a refusal for a machine with nothing remembered. `nothing to offer yet`
+  used to stand here, and it met the one person least able to type a path; the sheet opens on
+  your own tree instead.
+- The third is a search that matched none of the known folders. The folder may still be
   there; the picker only ranks what it has seen, so type its path.
-- The fifth is the add action on a row whose folder has since been moved or deleted. The
+- The fourth is the add action on a row whose folder has since been moved or deleted. The
   rows come from memory, and one stat at that moment is what catches it.
 - `nothing below here` is a folder that was read and has nothing inside it at all. You can
   still add it — a leaf is a perfectly good choice.
@@ -592,14 +646,23 @@ putting changes into a folder is not available over --host yet — the conversat
 
 ## Finding preview controls while a path is typed
 
-The browser keeps a control legend above its action row even when the filter
-contains a path. `esc cancel` closes the browser; `alt+o preview` opens the full
-preview at narrow widths. `alt+m choose` marks an item. Wider frames also name
-walking, hiding the preview, scrolling it and showing hidden files. A terminal
-with too few rows gives the legend's row back to the file list.
+Every chord the sheet owns is named exactly once, across **two lines**, so neither is a
+wall of shortcuts.
+
+- The **foot row** above the action carries what you reach for: `esc cancel`, `enter add`,
+  `←→ walk`, `alt+m choose`, `ctrl+u search`, and the preview's own door — spelled
+  `alt+o preview` on a frame too narrow to draw the preview beside the list, and
+  `alt+o wide` on one that is already showing it.
+- The **box's own placeholder**, on screen whenever the box is empty, says what typing does
+  and carries the two remaining chords: `search folders and files · or type a path ·
+  alt+p preview · alt+h hidden`.
+
+A terminal with too few rows gives the foot row back to the file list, and `esc · cancel`
+stays on the sheet's bottom edge either way.
 
 ## Browse while keeping an unsent chat draft
 
-Go Home and run `/folder` or bare `/attach` in Home's box. The browser opens over
-the conversation you were in; its unsent draft stays underneath. Escape closes
-the browser and returns that draft unchanged.
+Go Home and run `/folder` or bare `/attach` in Home's box. The sheet opens over
+the conversation you were in; its unsent draft stays underneath, dimmed, where you
+can see it and cannot type into it. Escape — or the **cancel** words on the sheet's
+bottom edge — closes the sheet and returns that draft unchanged.

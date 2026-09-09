@@ -7,6 +7,15 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
+type twoTitleAgent struct {
+	*fakeAgent
+	full  string
+	short string
+}
+
+func (a *twoTitleAgent) Title() string      { return a.full }
+func (a *twoTitleAgent) ShortTitle() string { return a.short }
+
 // WHAT A CONVERSATION IS CALLED BEFORE IT HAS EARNED A NAME, AND WHEN THE NAME
 // ARRIVES.
 //
@@ -63,6 +72,27 @@ func TestTheNameArrivesOnItsEventAndReplacesThePlaceholder(t *testing.T) {
 	}
 	if got := a.sessionName(); got != "porting the parser" {
 		t.Fatalf("the status line and the window title read %q", got)
+	}
+}
+
+func TestTabsUseTheCompactNameWhileConversationSurfacesKeepTheFullTitle(t *testing.T) {
+	agent := &twoTitleAgent{fakeAgent: &fakeAgent{}, full: "agentfield repository star growth analysis", short: "star growth"}
+	a := newTestApp(agent)
+	a.width, a.height = 120, 40
+	strip := plain(a.tabsRow(a.width))
+	if !strings.Contains(strip, "star growth") || strings.Contains(strip, "repository star growth analysis") {
+		t.Fatalf("tab strip did not use the compact title: %q", strip)
+	}
+	if got := a.sessionName(); got != "agentfield repository star growth analysis" {
+		t.Fatalf("conversation title = %q", got)
+	}
+
+	a.applyEvent(session.Event{Kind: session.EventTitleChanged, Text: "github organization star history and notable followers", ShortTitle: "star history"}, false)
+	if strip = plain(a.tabsRow(a.width)); !strings.Contains(strip, "star history") || strings.Contains(strip, "notable followers") {
+		t.Fatalf("updated tab strip did not use the compact title: %q", strip)
+	}
+	if got := a.sessionName(); got != "github organization star history and notable followers" {
+		t.Fatalf("updated conversation title = %q", got)
 	}
 }
 

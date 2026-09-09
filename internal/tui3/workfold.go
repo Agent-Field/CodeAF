@@ -287,15 +287,53 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 		if eligible && !blocked && (runningTurn == 0 || es[lo].turn != runningTurn) {
 			// THE CONVERSATION KEYS ITS CHIPS BY THE TURN, which is what
 			// [deck.workOpen], [app.stamps] and every gesture out here already
-			// name (see [workfold.key]). One turn, one chip: nothing to separate.
+			// name (see [workfold.key]). Separated chips share that disclosure.
 			f := workfold{key: es[lo].turn, turn: es[lo].turn, start: -1, answer: end, stopped: stopped}
 			if countWork(es, lo, end, &f); f.start >= 0 {
 				out[f.start] = f
 			}
 		}
+		if !stopped && !blocked && (runningTurn == 0 || es[lo].turn != runningTurn) {
+			// A confirmed response's private tail can sit below a queued user
+			// or notice. Keep those boundaries and any final receipts outside
+			// its own closed disclosure, rather than exposing the thought row.
+			from, to := lo, hi
+			if answer >= 0 {
+				from = answer + 1
+			}
+			for from < to && (groupBreaks(&es[from]) || es[from].kind == entryNote || es[from].kind == entryDivider) {
+				from++
+			}
+			for to > from && (es[to-1].kind == entryNote || es[to-1].kind == entryDivider) {
+				to--
+			}
+			if confirmedReasoningTail(es[from:to]) {
+				f := workfold{key: es[lo].turn, turn: es[lo].turn, start: -1, answer: to}
+				if countWork(es, from, to, &f); f.start >= 0 {
+					out[f.start] = f
+				}
+			}
+		}
 		lo = hi
 	}
 	return out
+}
+
+// Only a settled tail owned by a confirmed response may fold without a later
+// answer. Unknown work, live reasoning, failed tools and new responses cannot.
+func confirmedReasoningTail(es []entry) bool {
+	found := false
+	for i := range es {
+		e := &es[i]
+		if groupBreaks(e) || e.kind == entryDivider || (e.kind == entryAssistant && strings.TrimSpace(e.text) == "") {
+			continue
+		}
+		if e.kind != entryThinking || !e.settled || e.cut || e.confirmed == nil || !e.confirmed.done {
+			return false
+		}
+		found = true
+	}
+	return found
 }
 
 // countWork fills in WHAT A CHIP COUNTS over es[from:to] — where the work it
@@ -365,6 +403,11 @@ func workEntry(es []entry, folds map[int]workfold, i int) bool {
 	if e.kind != entryAssistant {
 		return false
 	}
+	// Streaming content can still be a preamble to an upcoming tool. The
+	// response boundary confirms it before the answer receives full emphasis.
+	if e.provisional && !e.settled {
+		return true
+	}
 	// AN INTERRUPTED TURN PROMOTES NOTHING (hierarchy.go). It is asked first and
 	// asked of the block because turn and phase folds certify their endpoints
 	// differently, and this law is independent of the lens:
@@ -406,6 +449,14 @@ func workEntry(es []entry, folds map[int]workfold, i int) bool {
 		if groupBreaks(&es[at]) {
 			return false
 		}
+		if e.confirmed != nil && e.confirmed.done {
+			if es[at].kind == entryThinking && es[at].settled {
+				continue
+			}
+			if es[at].kind == entryAssistant && es[at].confirmed == e.confirmed {
+				continue
+			}
+		}
 		if es[at].kind != entryDivider && es[at].kind != entryNote && !entryWithdrawn(&es[at]) {
 			return true
 		}
@@ -436,9 +487,15 @@ func (a *app) workfoldLabel(d deck, f workfold) string {
 			took = stamp.took
 		}
 	}
-	parts := []string{"▸ worked"}
+	// The disclosure reports the effective state, including the reader's
+	// preference, so an expanded outline never advertises a closed door.
+	arrow := "▸"
+	if a.workFoldOpen(d, f.key) {
+		arrow = "▾"
+	}
+	parts := []string{arrow + " worked"}
 	if f.stopped {
-		parts[0] = "▸ stopped by you"
+		parts[0] = arrow + " stopped by you"
 		if word := tookWord(took); word != "" {
 			parts[0] += " at " + word
 		}

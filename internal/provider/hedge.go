@@ -294,6 +294,9 @@ func (r *hedgeRace) run(ctx context.Context, messages []ai.Message, options ...a
 				}
 			}
 			if result.err != nil {
+				if IsConnectionUnavailable(result.err) {
+					return result.response, result.relearned, result.err
+				}
 				// THE VOICE MOVES OFF A DEAD ARM. An arm that has failed will
 				// never speak again, and leaving it as the speaker holds every
 				// other arm's text unreplayed until one of them finishes —

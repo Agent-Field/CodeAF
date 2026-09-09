@@ -165,15 +165,17 @@ the selected row.
 
 ## Why does my tab say Untitled — when does a chat get its name, my new chat has no title, the tab says Untitled instead of the conversation name
 
-**Naming starts when your first message is accepted.** The title model works in the
-background alongside the answer. The answer does not wait for a title, and the title does
-not wait for the answer to finish.
+**Naming starts when your first message is accepted.** The small model on the `title`
+role works in the background alongside the answer. Each naming ask has twenty seconds to
+reach an answer or its existing fallback. The answer does not wait for a title, and the
+title does not wait for the answer to finish.
 
 1. `+` opens the `New chat` page. A newly created conversation starts as `Untitled`.
 2. Sending your first message starts both the conversation and background naming.
-3. When the name arrives, the tab, breadcrumb root, status line and terminal window title
-   update automatically. This also works after the answer has finished or you have switched
-   to another tab. Returning to the conversation keeps its saved name.
+3. One response supplies a full conversation title and a compact tab label. The tab strip
+   uses the compact label; breadcrumbs, the status line, Home, the switcher, recent sessions,
+   and the terminal window title keep the full title. This also works after the answer has
+   finished or you have switched to another tab.
 
 **Temporary failures retry automatically.** There are up to three naming attempts, with
 short increasing delays, within a two-minute overall window. You do not need to send
@@ -219,7 +221,9 @@ their own question about work in flight, and act on every conversation this wind
 at once. Closing a tab never quits aforge, and quitting is not what any of the card's
 three answers does.
 
-On the switcher card, `ctrl+w` closes the selected row. On New chat it closes
+On the switcher card, `ctrl+w` dismisses a selected background tab while keeping
+its work running. For the current conversation it uses the same close card when
+work is active. On New chat it closes
 the start page and parks its unfinished first message. Stop on a task page
 ends that task; `/quit` ends the program.
 
@@ -831,7 +835,7 @@ Twelve segments, right to left of the identity, joined by ` · ` in a fixed orde
 | 4 | cost | `$0.14` | the session's running spend. **It is a door**: press it and the **Spending** tab of `/settings` opens, and it brightens under the pointer to say so. It takes the warm ink once this conversation has spent four fifths of its own `per conversation` limit — a bound about to be reached is not a failure and does not wear the failure hue | never empty |
 | 5 | context | `12.4k/128k · 10% ▁▂▃▅` | tokens the conversation is carrying, the model's window, the percentage, then a 6-reading sparkline | empty when nobody has said what the window is, or tokens are 0 |
 | 6 | cache | `⟲ saved $0.02 · 89% cached` | the session's cache hit rate, and what that share was worth in cash | empty until there is a cached share; on an unpriced model the cash half goes, leaving `⟲ 89% cached` |
-| 7 | burn | `1.2k tok/s` | output tokens over the wall time of **this** turn | empty unless a turn is running and has run for at least 1 second |
+| 7 | burn | `1.2k tok/s avg` | output tokens over the wall time of **this** turn, including tool and model waiting time; the separate `via` provider rate measures generation | empty unless a turn is running and has run for at least 1 second |
 | 8 | eta | `compaction in ~3 turns` | forecast from average growth | empty when the conversation is not growing, when the answer is more than 5 turns out, or when compaction is already due |
 | 9 | yolo | `YOLO` | the `tools.approvalMode` row in your profile is `allow`, or the session was launched with `--yolo`, which forces that posture for the session without writing the row — over `--host` it is the far machine's row, carried once when the connection opens | empty in every other posture — absence is the safe state |
 | 10 | connection | `devbox · 3ms` | a rolling estimate of one empty round trip to the machine a `--host` conversation runs on; while the link is down this is replaced by `reconnecting to devbox — trying for up to 5 minutes` | empty on every local session and on a hosted one until the first measurement answers; never `0ms` |
@@ -1352,7 +1356,7 @@ status line's `working` word and the elapsed clock are what to read for it.
 
 ## Markdown while a reply is still arriving
 
-The live tail of a streaming answer is plain wrapped text, not markdown.
+Within expanded work, the live tail of streaming prose is plain wrapped text, not markdown.
 
 Every **1500ms** the settled prefix — everything up to the last newline — is promoted to
 rendered markdown and remembered as promoted. Formatting catches up as the answer
@@ -1780,10 +1784,16 @@ While the main conversation works, recent step descriptions occupy a compact
 window below your question. Older steps are fainter; the newest step shimmers
 while its calls run. A soft highlight sweeps across the text every two seconds,
 reaching ordinary reading brightness; the letters stay still. Thinking, raw tool calls, arguments and call counts stay
-behind this view. The window changes when a new step arrives. Before the first step and between
-finished calls, a separate “Working” line carries the shimmer; it does not make
-finished work look active. Hidden work has a clickable `▸ Working · ctrl+e`
-door even before the first caption. Waiting and retry information remains available.
+behind this view. The window changes when a new step arrives. Before the first step, a clickable `▸ Working · ctrl+e` door carries the shimmer.
+Between finished calls, the latest description stays readable and still, with a
+softly animated dot beside it. There is no extra Working row. After 10 seconds
+of a known response wait, a dim `awaiting response · 12s` suffix appears when it
+fits. A known connection loss says `waiting for connection` immediately when
+the suffix fits, instead of describing it as a slow model response. When the
+turn is still working after the response has begun, the same place says only
+`still working · 1m 3s`; that clock measures the turn, not the completed step
+whose description remains beside it. Detailed
+phase and retry information stays in the footer and expanded view.
 
 Click a step, or press `ctrl+e` with an empty message box, to open the full
 outline. Each caption then opens its own calls. The live caption keeps its
@@ -1793,8 +1803,9 @@ return to the compact view. `ctrl+o` can still show all calls.
 The window budgets **3 wrapped rows**, admitting whole captions newest first.
 On a narrow screen, a caption that needs two rows leaves room for fewer steps.
 If the current caption alone needs more than three rows, it stays whole rather
-than losing words. Between calls, the current activity takes priority over a
-finished caption too tall to fit beside it; open the work to read that caption. Screen-reader and lower-colour terminals (including 256 colours) draw the
+than losing words. Between calls, the latest caption also stays whole. Waiting text uses only spare
+space; when the dot cannot fit after the caption, it occupies the existing icon
+gutter. The description never moves to make room for a timer. Screen-reader and lower-colour terminals (including 256 colours) draw the
 descriptions without motion. Expanding or collapsing the work is immediate.
 
 Your messages, corrections, answers, approval questions and notices remain
@@ -1812,12 +1823,14 @@ the live timer. This counts up; the finish time is unknown.
 
 The time uses spare space after the caption's last line. It never moves the
 words or adds a row; on a narrow terminal with no spare room, it stays hidden.
-The icon stays still and only the step's words shimmer. Waiting/retry states
-keep their existing timing information rather than adding a second clock.
+The icon stays still and only the step's words shimmer while its tools run.
+Between calls the separate waiting dot moves; its response clock starts with
+the request, not with the preceding tool. Task pages never borrow this clock
+from the main conversation.
 
 ## The symbol beside each step — the little icons in the working block, what the mark in front of a step means
 
-Each of the three compact step lines carries **one small mark** in front of it,
+Each compact caption carries **one small mark** on its first line,
 in a gutter two columns wide. The mark says what **kind** of work that step is —
 searching, editing, running a command — so you can tell at a glance what is
 happening before you have read which file it is happening to.
@@ -1841,8 +1854,10 @@ happening before you have read which file it is happening to.
 ## The step marks never move and never say whether a step passed — no tick, no cross, still icons
 
 **The marks never move.** The newest step's *words* shimmer while its calls run;
-its mark holds still. Between tool calls, a short `Working` line keeps that
-sign of activity in the compact block. There is only one animated line.
+its mark holds still. Between tool calls, only a separate dot beside the latest
+finished caption animates. On very narrow lines the dot uses the icon gutter
+instead. Before any caption exists, the Working door carries the shimmer.
+There is only one animated indication.
 
 **They never say how a step went.** There is no tick, no cross and no warning
 mark here. A step that failed is not folded into this block at all — it keeps its
@@ -3059,46 +3074,39 @@ context, and what it costs*.
 
 ## Why the reply is slow to start, why it says "waiting for" a model, and whether it is stuck
 
-Between you pressing enter and the model's first word there is a gap, and it is sometimes
-long — twenty seconds, a minute. A pulsing ellipsis claims exactly as much at second one
-as at second fifty, so past a few seconds it starts saying what it is waiting on.
+The ellipsis and model-name timings below describe the expanded transcript.
+Before any caption exists, the compact Working door can carry the same details.
+After a caption exists, compact progress keeps that description still, animates
+only a separate dot, and adds `awaiting response` after 10 seconds when space
+permits. A known outage says `waiting for connection` immediately.
 
-**This line is the second-best answer.** Where the connection itself is reporting — which
-is most of the time on a router — you get the phase instead: `first word · 3.1s`,
-`thinking · 12s · friendli 38 t/s`. See "what is it doing" above. The `waiting for` line
-below is what is drawn when nothing on the wire has said anything at all.
-
-For the first **4 seconds** the line is the bare ellipsis. A fast reply never shows a
-clock. Past 4 seconds it grows a dim tail naming the model and counting up:
+A reported connection phase takes priority over the generic wait: for example,
+`first word · 3.1s` or `thinking · 12s · friendli 38 t/s`. Without that information,
+the expanded view shows a bare ellipsis for the first **4 seconds**, then a dim
+model name and elapsed time:
 
 ```
   ··· waiting for kimi-k3 · 12s
 ```
 
-Past **30 seconds** it says the plain fact outright:
+After **30 seconds**, it adds `nothing has come back yet`:
 
 ```
   ··· waiting for kimi-k3 · 47s · nothing has come back yet
 ```
 
-The model is its **basename**, the way the status deck's chip spells it — `kimi-k3`, not
-`moonshot/kimi-k3`. When there is no model name to show, the line reads `waiting · 12s`.
+The name is the model's basename (`kimi-k3`). Without a name, it says
+`waiting · 12s`. This generic label means a request is outstanding and no stream
+content has arrived; it does not diagnose a slow network or claim the model is
+thinking. A known phase is shown separately because it has better information.
 
-**What it claims, and what it does not.** It claims only that a request went out and the
-stream has said nothing since. It never says "the network is slow" or "the model is
-thinking" — this screen cannot see the wire and does not pretend to. So
-`waiting for kimi-k3 · 47s` is not a report that anything is broken. It is aforge saying
-it is still there and still waiting, which is the one thing a bare ellipsis could not tell
-you apart from a hung program.
+An advancing clock confirms the view is repainting. A still indicator alone
+does not prove a freeze: reduced-motion views use static marks, and narrow rows
+can omit the clock. `esc` interrupts the turn.
 
-**Is it stuck? Is it frozen?** A clock that is counting up means the program is alive and
-painting; a clock that has stopped means it is not. `esc` interrupts the turn at any point.
-
-**It never runs under a tool call.** A tool that is executing has its own spinner and its
-own count-up, and the ellipsis stands down for it entirely. This clock is only for the
-window between a request going out and the stream first speaking, so after a three-minute
-`go test` the request that follows starts the clock at zero rather than inheriting the
-call's runtime.
+The waiting clock stops when the stream speaks or tools run. A tool uses its own
+activity and elapsed time. The request after a three-minute `go test` starts a
+new response clock rather than inheriting those three minutes.
 
 ## Does it ever ask a second time in parallel, and does that spend twice
 
@@ -3537,3 +3545,27 @@ A finished or stopped design task shows its saved report when there are no
 conversation messages to display. An older progress notice cannot hide that
 answer. While work is still running, the task continues to show its current
 progress and original prompt as they become available.
+
+## Why progress stays compact until the answer is confirmed
+
+While a response streams, its prose stays in the compact work area as a short
+step heading. The same text channel can contain a lead-in to a tool call or the
+answer itself, so the screen does not guess from the wording. Click the work or
+press `ctrl+e` to inspect the complete words while they arrive.
+
+When the response finishes with an answer and no tool calls, the full reply opens
+as formatted text. Questions open at that same boundary, before later completion
+checks finish. This means full answers no longer appear at full size token by
+token in the compact view. A response that calls a tool stays a step. If work
+continues later, earlier prose returns to the work hierarchy.
+
+The same behavior applies inside task rooms. Saved answers remain readable when
+you return, and completion still collapses the intermediate work. Explicitly
+expanded work and `ui.work = open` keep the detailed reading view available.
+
+A message queued beneath a streaming reply, or a notice displayed there, stays
+below the complete answer when its response is confirmed. Stopping the turn keeps
+its partial response dim even if a confirmation was already in flight.
+
+If private work falls below a queued message, its finished work stays behind a
+separate closed `worked` chip. Expanding that chip still reveals its details.

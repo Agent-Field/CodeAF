@@ -23,5 +23,5 @@ Task placeholders remain on the composer row when an attachment tray precedes it
 
 A human question takes priority over running work. Internal waits and countdowns
 do not claim the person must respond. Status marks do not animate or change tab
-width. Actual switches on a shared engine connection still end the previous
-conversation; opening, cancelling, and dismissing a view do not.
+width. Every shipped door gives each conversation its own connection, so switching,
+opening, cancelling and dismissing a view do not end another conversation.

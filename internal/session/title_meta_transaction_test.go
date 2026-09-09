@@ -56,6 +56,46 @@ func TestAnOldSpendSnapshotCannotOverwriteAnEarlyTitle(t *testing.T) {
 	}
 }
 
+// An earned title is the conversation's name rather than the first-message
+// placeholder. Metadata keeps the journal's full 80-byte guard through a
+// concurrent usage stamp and the next open, so Home and the reopened session
+// cannot disagree about a valid name merely because it passed 56 bytes.
+func TestALongEarnedTitleSurvivesMetadataUsageAndReopen(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "0123456789abcdef")
+	path := filepath.Join(dir, "transcript.jsonl")
+	a, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.SessionFile = path
+		c.Place = Place{Dir: dir, Workspace: c.Workspace}
+	})
+	title := "github organization star history across repositories and notable followers"
+	short := "star history"
+	if len(title) <= metaTitleLimit || len(title) > titleLimit {
+		t.Fatalf("fixture title length = %d, want >%d and <=%d", len(title), metaTitleLimit, titleLimit)
+	}
+
+	stale := a.metaSnapshot()
+	if !a.setTitleIfUnnamed(title, short) {
+		t.Fatal("the unnamed conversation refused its earned title")
+	}
+	a.writeSpendSnapshot(dir, stale, .25, 140)
+	meta, err := LoadMeta(dir)
+	if err != nil || meta.Title != title || meta.ShortTitle != short || meta.SpentUSD != .25 || meta.Tokens != 140 {
+		t.Fatalf("usage stamp clipped or lost the earned title pair: %+v %v", meta, err)
+	}
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := newAgent(Config{Workspace: a.config.Workspace, Model: "test/model", System: "SYSTEM", SessionFile: path, Place: Place{Dir: dir, Workspace: a.config.Workspace}}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	if reopened.Title() != title || reopened.ShortTitle() != short {
+		t.Fatalf("reopened title pair = %q / %q", reopened.Title(), reopened.ShortTitle())
+	}
+}
+
 // A transaction may already own metaMu when recordUserLocked owns a.mu. It
 // must finish without reaching back for a.mu, or the two locks deadlock.
 func TestAMetadataPatchFinishesWhileAUserStampOwnsTheAgentLock(t *testing.T) {

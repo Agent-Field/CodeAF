@@ -123,6 +123,10 @@ type Client struct {
 	// poll: production sleeps, tests record what would have been slept and
 	// return, so how long a retry waits is assertable without waiting.
 	wait func(context.Context, time.Duration) error
+	// Connection recovery is shared by calls on this adapter, but each caller
+	// retains its own cancellation and deadline. The probe seam is test-only.
+	connection      connectionGate
+	connectionProbe func(context.Context, string) error
 	// receipts is the bounded hand-off for calls whose stream ended without a
 	// usage block. It is drained by a small pool started lazily for this client,
 	// so a client nobody arms for reconciliation pays no goroutine for it.
@@ -869,6 +873,16 @@ func (c *Client) completionInOnePiece(
 	// has never heard of.
 	var reasoningTokens int
 	response.Usage, reasoningTokens = decoded.Usage.mergeInto(response.Usage, 0)
+	served := servedProvider(decoded.Provider)
+	if err := c.terminalResponseError(ctx, request, knobs, &response, served); err != nil {
+		c.record(recordFacts{
+			ctx: ctx, request: request, knobs: knobs, stream: stream,
+			began: logBegan, status: status, served: served, err: err,
+			response: &response, reasoningTokens: reasoningTokens, responseBody: payload,
+		})
+		c.settle(ctx, c.modelFor(request), &response, receiptRefusalReason, len(responseText(&response)))
+		return nil, false, err
+	}
 	// AND THE SAME SPLIT THE STREAM TAKES, taken over the whole body (answer.go).
 	// A gateway that fences its working in `<think>` does it whether or not the
 	// request asked for a stream, and an answer that carried the model's private
@@ -882,7 +896,6 @@ func (c *Client) completionInOnePiece(
 	// ONE NAME, read off the decode above rather than from a second pass over
 	// the payload, and handed to both readers of it: the affinity that keeps a
 	// conversation on the endpoint holding its prompt cache, and the rating.
-	served := servedProvider(decoded.Provider)
 	// A completion teaches the lane its longest reply just as a stream does;
 	// without this line a lane that only ever answered whole — every headless
 	// worker's — never earned a wall at all.
@@ -891,17 +904,21 @@ func (c *Client) completionInOnePiece(
 	// reaches its wire at all — the one reading there is, and prefcarry.go says
 	// what it cannot tell apart.
 	c.notePrefsFromAnswer(ctx, served)
-	c.noteRun(c.modelFor(request), served, c.clock().Sub(began))
+	if knobs.trace == nil || !knobs.trace.connectionRecovered {
+		c.noteRun(c.modelFor(request), served, c.clock().Sub(began))
+	}
 	noteServed(ctx, served, c.noteEndpointAffinity(ctx, c.modelFor(request), served, response.Usage))
-	c.noteVelocity(
-		c.modelFor(request),
-		served,
-		0,
-		outputTokens(&response, ""),
-		c.clock().Sub(began),
-		0,
-		settledFrom(ctx, response.Usage),
-	)
+	if knobs.trace == nil || !knobs.trace.connectionRecovered {
+		c.noteVelocity(
+			c.modelFor(request),
+			served,
+			0,
+			outputTokens(&response, ""),
+			c.clock().Sub(began),
+			0,
+			settledFrom(ctx, response.Usage),
+		)
+	}
 	// Both epilogues or neither: the whole-body path reads the same fourth
 	// failure plane the streamed one does, and for the same reason — every
 	// headless worker answers whole, and a guard on one transport is a guard a
@@ -1759,6 +1776,22 @@ func (c *Client) completeWithMessagesStreaming(
 			}
 		}
 	}
+	response.Choices = []ai.Choice{{Index: 0, FinishReason: finishReason, Message: ai.Message{
+		Role:      "assistant",
+		Content:   []ai.ContentPart{{Type: "text", Text: content.String()}},
+		ToolCalls: tools.assembled(),
+	}}}
+	// An explicit failure is not the clean end below: do not promote its
+	// reasoning to an answer or announce its last tool as a complete instruction.
+	if err := c.terminalResponseError(ctx, request, knobs, response, served); err != nil {
+		c.record(recordFacts{
+			ctx: ctx, request: request, knobs: knobs, stream: true,
+			began: logBegan, status: httpResponse.StatusCode, served: served, err: err,
+			response: response, reasoningTokens: reasoningTokens,
+		})
+		c.settle(ctx, c.modelFor(request), response, receiptRefusalReason, content.Len())
+		return nil, false, err
+	}
 	// The last call has no successor to close it, so the clean end of the stream
 	// does. This runs only past the decode loop's error returns: a stream that
 	// died mid-call announces nothing, because the fragment it stopped on may be
@@ -1791,12 +1824,7 @@ func (c *Client) completeWithMessagesStreaming(
 		content.WriteString(promoted)
 		observer(StreamEvent{Kind: StreamDelta, Delta: promoted, Session: session})
 	}
-	message := ai.Message{
-		Role:      "assistant",
-		Content:   []ai.ContentPart{{Type: "text", Text: content.String()}},
-		ToolCalls: tools.assembled(),
-	}
-	response.Choices = []ai.Choice{{Index: 0, Message: message, FinishReason: finishReason}}
+	response.Choices[0].Message.Content[0].Text = content.String()
 	// The rate is measured over the GENERATION window — first token to last —
 	// and not over the call, so the wait to be served is charged to TTFT once
 	// rather than to both figures. A stream that never produced a token is
@@ -1812,20 +1840,25 @@ func (c *Client) completeWithMessagesStreaming(
 	// reaches its wire at all — the one reading there is, and prefcarry.go says
 	// what it cannot tell apart.
 	c.notePrefsFromAnswer(ctx, served)
-	c.noteRun(c.modelFor(request), served, generation.Sub(began))
+	if knobs.trace == nil || !knobs.trace.connectionRecovered {
+		c.noteRun(c.modelFor(request), served, generation.Sub(began))
+	}
 	noteServed(ctx, served, c.noteEndpointAffinity(ctx, c.modelFor(request), served, response.Usage))
-	if !firstToken.IsZero() {
-		c.noteVelocity(
-			c.modelFor(request),
-			served,
-			firstToken.Sub(began),
-			outputTokens(response, content.String()),
-			generation.Sub(firstToken),
-			widestGap,
-			settledFrom(ctx, response.Usage),
-		)
-	} else {
-		c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0, 0, settledFrom(ctx, response.Usage))
+	// Local connectivity says nothing about the speed of the serving provider.
+	if knobs.trace == nil || !knobs.trace.connectionRecovered {
+		if !firstToken.IsZero() {
+			c.noteVelocity(
+				c.modelFor(request),
+				served,
+				firstToken.Sub(began),
+				outputTokens(response, content.String()),
+				generation.Sub(firstToken),
+				widestGap,
+				settledFrom(ctx, response.Usage),
+			)
+		} else {
+			c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0, 0, settledFrom(ctx, response.Usage))
+		}
 	}
 	// A reply that is the model's own tool grammar as text ends the call as a
 	// cut even though every stream bound was met: the endpoint answered 200 and
@@ -2121,10 +2154,11 @@ func adaptiveCompletionTimeout(maxTokens int, configuredFloor time.Duration) tim
 // somebody and the refusal are both in the JSON it sent: `error.metadata`
 // carries `provider_name` and `raw`, and this client threw them away.
 type APIError struct {
-	// Status is the HTTP status the refusal arrived under.
+	// Status is the refusal's HTTP status, or the normalized gateway failure
+	// for an in-band error that supplied no status of its own.
 	Status int
-	// Message is the provider's own words, decoded out of the error body. Empty
-	// when the body did not decode, in which case Body carries it whole.
+	// Message is the provider's error text or a description of its terminal
+	// failure marker. When it could not be decoded, Body carries it whole.
 	Message string
 	// Body is the undecoded payload, kept so nothing is lost when the provider
 	// answered with something this client does not know the shape of.

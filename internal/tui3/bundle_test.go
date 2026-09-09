@@ -2102,10 +2102,10 @@ func TestTheBurnRateIsThisTurnsOutputOverThisTurnsSeconds(t *testing.T) {
 		t.Fatalf("a turn 0s old quoted %q", got)
 	}
 	*now = now.Add(10 * time.Second)
-	if got := a.burnSegment(); got != "1k tok/s" {
-		t.Fatalf("the burn reads %q, want 1k tok/s", got)
+	if got := a.burnSegment(); got != "1k tok/s avg" {
+		t.Fatalf("the burn reads %q, want 1k tok/s avg", got)
 	}
-	if line := plain(a.status(200)); !strings.Contains(line, "1k tok/s") {
+	if line := plain(a.status(200)); !strings.Contains(line, "1k tok/s avg") {
 		t.Fatalf("the burn is not on the line:\n%q", line)
 	}
 

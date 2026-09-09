@@ -224,6 +224,10 @@ func (s toolState) live() bool { return s == toolQueued || s == toolConsent || s
 // renders when its own content or the width changes, and a frame joins what is
 // already there. Nothing in here holds a blank row — spacing is [app.layout]'s
 // and only [app.layout]'s.
+// A shared response identity keeps prose and its private reasoning together.
+// It is pending until the response boundary confirms an answer.
+type responseConfirmation struct{ done bool }
+
 type entry struct {
 	kind entryKind
 	text string
@@ -449,9 +453,9 @@ type entry struct {
 	// (hierarchy.go states the law and [stampHierarchy] writes this field).
 	//
 	// It is DERIVED and never authored: a block is narration exactly when more
-	// work opened after it inside the same turn, which is a fact about the entry
-	// list's shape and about nothing else. So it is re-derived on every layout
-	// from the list itself — a resumed conversation, a rewound one and the live
+	// work opened after it inside the same turn, or its streaming response is
+	// not yet classified. Those facts come from entries and response boundaries.
+	// It is re-derived on every layout from the list itself — a resumed conversation, a rewound one and the live
 	// one all reach the same answer — and stored here only because
 	// [app.renderEntry] paints one block at a time and must not walk the list to
 	// find out which kind of block it is holding.
@@ -462,6 +466,12 @@ type entry struct {
 	// would keep them ([app.entryRows] hands back the cache unless [entry.stale]
 	// says otherwise).
 	demoted bool
+	// Provisional prose has arrived, but the response has not yet confirmed
+	// whether it ends in an answer or a tool call. It stays in the work view.
+	provisional bool
+	// The same identity can be attached while the reply is still pending. Its
+	// done flag confirms ownership before any private tail receives a work fold.
+	confirmed *responseConfirmation
 	// capHead says this demoted block lent its first line to the step heading,
 	// and capCut is the byte immediately after that line. Both are derived with
 	// the hierarchy and invalidate the block when they move.
@@ -898,11 +908,12 @@ type app struct {
 	state runState
 	model string
 	// title is the name the session gave itself, shown left of the model. Empty
-	// until the session has one (session's title.go names it after the first
-	// completed turn); a resumed session opens with the name it already had.
-	title  string
-	cost   float64
-	tokens int
+	// until the session has one (session's title.go starts naming it with the
+	// first accepted message); a resumed session opens with the name it already had.
+	title      string
+	shortTitle string
+	cost       float64
+	tokens     int
 	// dayCost is what this MACHINE has spent since midnight and dayCosted
 	// whether anything counted it at all — the pair the Spending tab's `today`
 	// receipt is drawn from (settingspend.go). It is a reading taken on the way
@@ -1244,6 +1255,9 @@ type app struct {
 	// laid out for.
 	rows      []row
 	rowsWidth int
+	// The current frame records inline activity so footer rendering never
+	// rebuilds the transcript or borrows a hidden conversation's state.
+	inlineWaitShowing bool
 
 	width, height int
 	offset        int
@@ -2457,6 +2471,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		// conversation on screen: it belongs in the first frame, not after the
 		// next turn (session's title.go re-names nothing).
 		a.title = strings.TrimSpace(a.agent.Title())
+		a.shortTitle = shortTitleOf(a.agent)
 		// AND THE LEVEL IS SEEDED HERE, beside the two facts above and for the
 		// same reason: the status row spells it onto the model segment, and a
 		// level fetched on the frame clock instead would leave the FIRST frame
@@ -3021,6 +3036,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.historyPrefetched(msg)
 
 	case tea.MouseWheelMsg:
+		// THE CONTEXT CHOOSER OWNS THE WHEEL WHILE IT IS UP, and it owns it over
+		// the WHOLE screen: the conversation under a modal is not live, so a wheel
+		// turned over it must move nothing at all (contextmodal.go).
+		if cmd, took := a.contextModalWheel(msg.Mouse().X, msg.Mouse().Y,
+			placeWheelDelta(msg.Mouse().Button)); took {
+			return a, cmd
+		}
 		if a.hopShowing() {
 			a.hop.live = false
 			if msg.Mouse().Button == tea.MouseWheelUp {
@@ -3141,13 +3163,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.tabWheel(msg) {
 			return a, nil
 		}
-		// AND THE FOLDER BROWSER ANSWERS THE WHEEL OVER ITS OWN ROWS. Its window
-		// follows its cursor rather than an offset of its own, so the wheel walks
-		// the cursor — the same bargain the roster and the status sheet make, and
-		// the reason the third column fills as it is turned (folderplace.go).
-		if cmd, took := a.folderWheel(msg.Mouse().Y, placeWheelDelta(msg.Mouse().Button)); took {
-			return a, cmd
-		}
 		// The roster over the body is the same claim one step earlier: while it
 		// is up the transcript is not on screen at all, and the roster's window
 		// follows its focus rather than an offset of its own (task.go's
@@ -3198,6 +3213,18 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseClickMsg:
+		// AND IT OWNS THE PRESS, on the same terms and for a sharper reason: a
+		// press that fell through a modal would switch a tab, open a tool call or
+		// answer a question behind a sheet somebody is looking at
+		// (contextmodal.go's [app.contextModalPress], which takes every press
+		// while the sheet is up and acts only on the sheet's own targets).
+		if msg.Mouse().Button == tea.MouseLeft {
+			if cmd, took := a.contextModalPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
+		} else if a.contextModalShowing() {
+			return a, nil
+		}
 		if a.hopShowing() {
 			if msg.Mouse().Button == tea.MouseLeft {
 				return a, a.hopPress(msg.Mouse().X, msg.Mouse().Y)
@@ -3366,14 +3393,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.effortMenuPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
-			// AND THE FOLDER BROWSER TAKES A PRESS ON ITS OWN ROWS AND NOTHING
-			// ELSE, on the two lists above's terms and for their reason: it hangs
-			// over a draft somebody is still writing, so a press anywhere else is
-			// a press on whatever is there. Its rows walk and its action row adds
-			// (folderplace.go's [app.folderPress]).
-			if cmd, took := a.folderPress(msg.Mouse().X, msg.Mouse().Y); took {
-				return a, cmd
-			}
 			// A chip is the one thing below the conversation a click can take
 			// off, and it is the one thing down there that needs the COLUMN as
 			// well as the row (attach.go).
@@ -3532,6 +3551,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseReleaseMsg:
+		// A RELEASE UNDER THE CHOOSER ENDS NOTHING, because nothing under it was
+		// started: the press it would close was taken by the sheet, and letting
+		// this one through would end a sweep of a transcript nobody swept
+		// (contextmodal.go).
+		if a.contextModalShowing() {
+			return a, nil
+		}
 		if a.hopShowing() {
 			return a, nil
 		}
@@ -3554,6 +3580,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseMotionMsg:
+		// AND THE CHOOSER OWNS MOTION TOO, ahead of the sweep and ahead of every
+		// place: [app.hoverTarget] already answers for the whole screen while the
+		// sheet is up, and this branch is what keeps a drag started under it from
+		// sweeping a transcript that is not live (contextmodal.go).
+		if a.contextModalShowing() {
+			a.setHover(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
 		if a.hopShowing() {
 			a.setHover(msg.Mouse().X, msg.Mouse().Y)
 			if a.hot.kind == hoverHop {
@@ -4769,7 +4803,7 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		after = a.steerFellThrough(ev.Steer)
 
 	case session.EventTitleChanged:
-		a.setTitle(ev.Text)
+		a.setTitleEvent(ev.Text, ev.ShortTitle)
 
 	case session.EventToolEnd:
 		// A FILE THE MODEL JUST WROTE ON THE OTHER MACHINE IS FETCHED NOW,
@@ -5097,6 +5131,9 @@ func (a *app) sampleContext() {
 // the list: the walk runs from the end and stops at the first entry belonging to
 // an older one. Once per turn, never on a frame (PERF.md).
 func (a *app) settleTurn() {
+	// Settlement changes the hierarchy even before the next layout, including
+	// for older engines that do not publish a response confirmation event.
+	defer func() { stampHierarchy(a.entries, a.deckFolds(a.conversation())) }()
 	a.closeLive()
 	// AND THE BOUNDARY IS REMEMBERED, so that a delta arriving after it knows it
 	// is late ([feed.settledTurn], [feed.say]). Stating the boundary is
@@ -5255,11 +5292,20 @@ func (a *app) noteBlock(text string) { a.noteWritten(text, true, nil) }
 // transcript. The session named itself, which is not news the conversation
 // needs — it is a label, and a label belongs where the labels are.
 func (a *app) setTitle(title string) {
+	a.setTitleEvent(title, title)
+}
+
+func (a *app) setTitleEvent(title, short string) {
 	title = strings.TrimSpace(title)
-	if title == "" || title == a.title {
+	short = strings.TrimSpace(short)
+	if short == "" {
+		short = title
+	}
+	if title == "" || (title == a.title && short == a.shortTitle) {
 		return
 	}
 	a.title = title
+	a.shortTitle = short
 	a.touch()
 }
 

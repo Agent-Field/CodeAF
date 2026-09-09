@@ -560,7 +560,7 @@ func TestACompletedTurnDerivesNoWindow(t *testing.T) {
 }
 
 // A completed caption must never be relit as ongoing just because the model
-// has not answered yet. The real frame handler advances one separate status.
+// has not answered yet. The real frame handler advances only its separate inline mark.
 func TestBetweenCallsThePaintClockMovesOnlyCurrentActivity(t *testing.T) {
 	a := liveStepsApp(t)
 	a.pal = newPalette(tokens.TrueColor, false)
@@ -575,8 +575,8 @@ func TestBetweenCallsThePaintClockMovesOnlyCurrentActivity(t *testing.T) {
 			captions++
 			if r.activity {
 				activity++
-				if !strings.Contains(plain(r.text), "Working") {
-					t.Fatalf("completed tool claims it is live: %s", plain(r.text))
+				if !strings.Contains(plain(r.text), "Checking what changed  ·") || strings.Contains(plain(r.text), "Working") {
+					t.Fatalf("waiting replaced the useful caption: %s", plain(r.text))
 				}
 			}
 		}
@@ -603,7 +603,7 @@ func TestBetweenCallsThePaintClockMovesOnlyCurrentActivity(t *testing.T) {
 		t.Fatalf("real paint clock moved %d rows, want only the current status", moved)
 	}
 	for _, r := range after {
-		if strings.Contains(plain(r.text), a.pulse()) {
+		if r.hit != hitWorkFold && strings.Contains(plain(r.text), a.pulse()) {
 			t.Fatal("compact activity kept a second pulse")
 		}
 	}
@@ -625,11 +625,11 @@ func TestPendingActivityKeepsWaitDetailsAcrossFullFrameTransitions(t *testing.T)
 	a.frameBody()
 	last := &a.entries[len(a.entries)-1]
 	last.status, last.ended = toolOK, liveStepsBase.Add(8*time.Second)
-	a.awaited = now.Add(-6 * time.Second)
+	a.awaited = now.Add(-12 * time.Second)
 	a.live = -1
 	a.touch()
 	frame, _, _ := a.frameBody()
-	if !strings.Contains(plain(frame), "waiting for") {
+	if !strings.Contains(plain(frame), "awaiting response · 12s") {
 		t.Fatalf("between-call wait vanished: %s", plain(frame))
 	}
 	PostPhaseNews(PhaseNews{Model: a.model, Role: lane.RoleTalk, Phase: provider.PhaseRetrying, At: now, Since: now.Add(-2 * time.Second), Detail: "2 of 6"})
@@ -651,16 +651,22 @@ func TestPendingActivityKeepsWaitDetailsAcrossFullFrameTransitions(t *testing.T)
 	}
 }
 
-func TestPendingActivityTakesPriorityOverAnOversizedFinishedCaption(t *testing.T) {
+func TestPendingActivityPreservesAnOversizedFinishedCaption(t *testing.T) {
 	a := liveStepsApp(t)
-	w := liveWork{key: 1, turn: 1, pending: true, steps: []caption{{text: "reading the complete configuration and checking every startup setting", ended: liveStepsBase}}}
+	description := "reading the complete configuration and checking every startup setting"
+	w := liveWork{key: 1, turn: 1, pending: true, steps: []caption{{text: description, ended: liveStepsBase}}}
 	out := a.liveStepBlock(w, 20, a.conversation())
-	if len(out) > liveStepRows || !hasCompactActivity(out) {
-		t.Fatalf("pending window lost its budget or current state: %#v", out)
+	w.pending = false
+	before := a.liveStepBlock(w, 20, a.conversation())
+	if len(out) != len(before) || !hasCompactActivity(out) {
+		t.Fatalf("pending changed the caption height or lost activity: %#v", out)
 	}
-	for _, r := range out {
-		if strings.Contains(plain(r.text), "reading") {
-			t.Fatal("an oversized completed caption was partially drawn")
+	for i, r := range out {
+		if ansi.StringWidth(r.text) > 20-workIndentCols(20) {
+			t.Fatalf("waiting overflowed: %q", plain(r.text))
+		}
+		if !strings.Contains(plain(r.text), strings.TrimSpace(string([]rune(plain(before[i].text))[2:]))) {
+			t.Fatalf("waiting lost caption words: %q -> %q", plain(before[i].text), plain(r.text))
 		}
 	}
 }
@@ -707,10 +713,10 @@ func TestRoomLiveActivityDoesNotBorrowTheParentPhase(t *testing.T) {
 				text.WriteString(plain(row.text))
 				text.WriteByte('\n')
 			}
-			if got := strings.Contains(text.String(), "2 of 6"); got != tc.wantsPhase {
+			if got := strings.Contains(text.String(), "2 of 6"); got != (tc.wantsPhase && !afterCaption) {
 				t.Fatalf("%s afterCaption=%v inherited phase=%v: %s", tc.name, afterCaption, got, text.String())
 			}
-			if !tc.wantsPhase && !strings.Contains(text.String(), "Working") {
+			if !tc.wantsPhase && !strings.Contains(text.String(), map[bool]string{false: "Working", true: "Reading the loader"}[afterCaption]) {
 				t.Fatalf("room lost truthful working state: %s", text.String())
 			}
 		}

@@ -6,6 +6,19 @@ two thirds off the embedded corpora. This file is what keeps it. Every win below
 is defended by something that goes red locally, in `go test` or in `make check`,
 with a message that says what happened.
 
+## Connection recovery bounds
+
+`internal/provider/connectivity.go` limits a connection-recovery episode to
+two minutes (`connectionRecoveryWindow`), including repeated loss after a
+successful probe. Caller deadlines and cancellation can end it earlier. Each
+non-generating HEAD check has a two-second timeout (`connectionProbeTimeout`);
+failed checks wait 1–1.5 seconds (`connectionProbeInterval` plus jitter). The
+cadence does not grow exponentially with outage age. Healthy calls issue zero
+checks. Waiting calls on one adapter share one active probe, and the final
+subscriber cancels it. Chat and media adapters own separate gates. These are
+operational safety bounds, not latency test thresholds; regression tests count
+requests, accepted generations and probe subscriptions.
+
 ## The doctrine: gate on work, never on time
 
 **No gate in this repository is allowed a wall-clock threshold.** Every one of
@@ -2114,8 +2127,12 @@ remain static because nearest palette matches can introduce abrupt hue changes.
 Tests inspect the whole cycle in both themes for visible yet smooth colour,
 a quiet loop boundary, stable width, intact Unicode and elapsed-time behavior
 under skipped frames. An actual paint-handler regression checks that between
-finished calls only the current Working state moves, within the same three-row
-budget. The laid-out activity row suppresses a duplicate footer pulse.
+finished calls only an inline activity dot moves. The latest finished caption
+stays still and whole, sharing the existing oversized-caption exception.
+Waiting labels reuse `stepElapsedAfter` (10 seconds) and the known request
+clock, with no new timer or narrator call. Suffixes use spare columns; at narrow
+widths the dot uses the existing icon gutter. The laid-out activity row suppresses
+a duplicate footer pulse; detailed phase information remains in the footer.
 
 ## Memory lookup before the first response
 

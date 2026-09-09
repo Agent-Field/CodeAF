@@ -106,22 +106,30 @@ const titleSystem = "You name conversations."
 
 // titlePrompt is the whole instruction, and it is the LAST thing in the user
 // message, after the exchange it is about. Short, because the shape of the
-// answer IS the requirement: eight words is a picker column, lowercase and
-// unquoted is what every other label in this surface looks like. The final
-// sentence is there because a small model that is not told the answer is the
-// whole reply will introduce it ("Sure, here is the title: ...").
-const titlePrompt = "Name this session in ≤8 words, lowercase, no quotes. Answer with the name only."
+// answer IS the requirement: one descriptive library title and one stable,
+// compact tab label. Lowercase and unquoted is what every other label in this
+// surface looks like.
+const titlePrompt = "Name this conversation twice. First line: full: a descriptive title in ≤12 words. Second line: tab: a distinct compact label in ≤3 words. Lowercase, no quotes, those two lines only."
+const legacyTitlePrompt = "Name this session in ≤8 words, lowercase, no quotes. Answer with the name only."
 
 // titleClip bounds each half of the opening exchange handed to the namer. A
 // title is derived from what the session is ABOUT, and the first paragraph of
 // the question and of the answer says that; sending a 300KB tool-assisted reply
-// would pay for a whole context to produce eight words.
+// would pay for a whole context to produce two short labels.
 const titleClip = 2000
 
-// titleLimit bounds the name itself. Eight words asked for, 80 bytes accepted:
+// titleLimit bounds the full name itself. Twelve words asked for, 80 bytes accepted:
 // the cap is a guard against a model that answers with a paragraph, not a
 // second attempt at the instruction.
 const titleLimit = 80
+const shortTitleLimit = 32
+
+// A title is visible housekeeping. Its low-tier outer patience is shared with
+// slower auxiliary work, so one naming ask states its own tighter worth. The
+// two-minute parent still owns retries and cancellation across asks.
+const titleAskWindow = 20 * time.Second
+
+type conversationTitle struct{ full, short string }
 
 // titleAttempts is how many times ONE naming errand may ask before it gives up,
 // and it is the transport ladder's own count rather than a number of its own:
@@ -223,7 +231,7 @@ func (a *Agent) nameSession(ctx context.Context, question, answer, model string)
 			return
 		}
 		title, again := a.askForName(ctx, question, answer, model)
-		if title != "" {
+		if title.full != "" {
 			a.publishTitle(ctx, title)
 			return
 		}
@@ -248,12 +256,13 @@ func (a *Agent) stillNeedsName() bool {
 // ([cleanTitle]) is the model's considered reply and asking it twice buys the
 // same words; a call that never landed is worth asking again, and which errors
 // those are is the loop's own question and answered by its own reader.
-func (a *Agent) askForName(ctx context.Context, question, answer, model string) (name string, again bool) {
+func (a *Agent) askForName(ctx context.Context, question, answer, model string) (name conversationTitle, again bool) {
 	// One errand, through the one door errands go through (auxiliary.go): the
-	// role's tier bounds how long eight words may take, and a model that cannot
+	// role's tier bounds how long two short labels may take, and a model that cannot
 	// answer at all costs one fall-through down the ladder rather than the
-	// session's name. No tools — the namer's only job is to produce eight words.
-	response, named, err := a.callRole(ctx, roles.RoleTitle, model,
+	// session's name. No tools — the namer's only job is to produce the title pair.
+	callCtx, cancel := context.WithTimeout(ctx, titleAskWindow)
+	response, named, err := a.callRole(callCtx, roles.RoleTitle, model,
 		[]ai.Message{
 			textMessage("system", titleSystem),
 			// THE INSTRUCTION IS LAST, after the exchange rather than above it.
@@ -265,12 +274,13 @@ func (a *Agent) askForName(ctx context.Context, question, answer, model string) 
 			// but the cheaper fix is to ask in the place it reads.
 			textMessage("user", titleAsk(question, answer)),
 		})
+	cancel()
 	if err != nil {
 		// A CANCELLED ERRAND IS NOT A FAILED ONE and is never asked again: the
 		// session is closing, or the whole window is spent, and both of those
 		// are answers rather than accidents.
 		if ctx.Err() != nil {
-			return "", false
+			return conversationTitle{}, false
 		}
 		// A RUNG THAT RAN OUT OF PATIENCE IS THE WIRE, and the reader below
 		// cannot see it. Every errand carries the bound of its role's TIER
@@ -282,12 +292,12 @@ func (a *Agent) askForName(ctx context.Context, question, answer, model string) 
 		// a provider's words and a context deadline has none of them, so it is
 		// asked as the typed error it is.
 		if errors.Is(err, context.DeadlineExceeded) {
-			return "", true
+			return conversationTitle{}, true
 		}
-		return "", isRetryable(err.Error())
+		return conversationTitle{}, isRetryable(err.Error())
 	}
 	if response == nil {
-		return "", false
+		return conversationTitle{}, false
 	}
 	// BILLED AGAINST THE MODEL THAT ANSWERED, which is not always the one the
 	// ladder resolved first, AND OFF EVERY TURN'S CLOCK. The errand outlives the
@@ -296,7 +306,7 @@ func (a *Agent) askForName(ctx context.Context, question, answer, model string) 
 	// journal line is written from exactly the figure this would have moved
 	// ([Agent.addDetachedUsageAs], loop.go).
 	a.addDetachedUsageAs(response, named, 1, auxRoleTitle)
-	return cleanTitle(response.Text()), false
+	return cleanConversationTitle(response.Text()), false
 }
 
 // titleAsk is the user message the namer reads: the opening exchange, then the
@@ -322,7 +332,7 @@ func titleAsk(question, answer string) string {
 // session may have been named by somebody with more authority than a cheap model
 // — that is what [Agent.setTitleIfUnnamed] is asked, under the one lock, and a
 // refusal here is silent because nothing went wrong: the session has a name.
-func (a *Agent) publishTitle(ctx context.Context, title string) {
+func (a *Agent) publishTitle(ctx context.Context, title conversationTitle) {
 	// A NAME THAT ARRIVED AFTER THE WINDOW OR AFTER THE QUIT IS NOT WRITTEN. A
 	// provider that ignores a cancelled context still returns eventually, and a
 	// journal line appended to a session that has closed is a write racing the
@@ -330,10 +340,10 @@ func (a *Agent) publishTitle(ctx context.Context, title string) {
 	if ctx.Err() != nil {
 		return
 	}
-	if !a.setTitleIfUnnamed(title) {
+	if !a.setTitleIfUnnamed(title.full, title.short) {
 		return
 	}
-	event := Event{Kind: EventTitleChanged, Text: title}
+	event := Event{Kind: EventTitleChanged, Text: title.full, ShortTitle: title.short}
 	a.mu.Lock()
 	hub := a.hub
 	watchers := make([]*eventStream, len(a.titleWatchers))
@@ -380,7 +390,7 @@ func (a *Agent) WatchTitle() (<-chan Event, func()) {
 	}
 	a.titleWatchers = append(a.titleWatchers, stream)
 	if title := strings.TrimSpace(a.title); title != "" {
-		stream.send(Event{Kind: EventTitleChanged, Text: title})
+		stream.send(Event{Kind: EventTitleChanged, Text: title, ShortTitle: a.shortTitle})
 	}
 	a.mu.Unlock()
 	var once sync.Once
@@ -438,22 +448,26 @@ func (a *Agent) waitForTitle() {
 // the same answer for the same reason: this is the last gate in front of a
 // journal append, and a session that has left is not one anything may still be
 // written to. Nothing is journaled, nothing is stamped, and no event is sent.
-func (a *Agent) setTitleIfUnnamed(title string) bool {
+func (a *Agent) setTitleIfUnnamed(title string, shorts ...string) bool {
+	short := title
+	if len(shorts) > 0 && strings.TrimSpace(shorts[0]) != "" {
+		short = shorts[0]
+	}
 	a.mu.Lock()
 	if a.closed || strings.TrimSpace(a.title) != "" {
 		a.mu.Unlock()
 		return false
 	}
-	a.title = title
+	a.title, a.shortTitle = title, short
 	file := a.file
 	a.mu.Unlock()
 	if file != nil {
-		file.appendTitle(title)
+		file.appendTitle(title, short)
 	}
 	// The folder's row says what the journal says. Until now it has carried the
 	// person's opening words as a placeholder (placemeta.go); this is the name
 	// the conversation actually earned.
-	a.stampTitle(title)
+	a.stampTitle(title, short)
 	return true
 }
 
@@ -498,6 +512,39 @@ func messageContentText(message ai.Message) string {
 	return text.String()
 }
 
+func cleanConversationTitle(raw string) conversationTitle {
+	var full, short string
+	labeled := false
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		lower := strings.ToLower(line)
+		switch {
+		case strings.HasPrefix(lower, "full:"):
+			labeled = true
+			full = cleanTitle(strings.TrimSpace(line[len("full:"):]))
+		case strings.HasPrefix(lower, "tab:"):
+			labeled = true
+			short = cleanTitle(strings.TrimSpace(line[len("tab:"):]))
+		}
+	}
+	// Old providers and saved test fixtures answer one plain line. It remains a
+	// valid full title and the tab falls back to it, preserving compatibility.
+	if full == "" && labeled {
+		return conversationTitle{}
+	}
+	if full == "" {
+		full = cleanTitle(raw)
+	}
+	if full == "" {
+		return conversationTitle{}
+	}
+	if short == "" {
+		short = full
+	}
+	short = clip(short, shortTitleLimit)
+	return conversationTitle{full: full, short: short}
+}
+
 // cleanTitle takes the first line and strips the things a model adds against
 // the instruction: the throat-clearing it opens with ("Title:", "Sure, here is
 // the name:"), the MARKDOWN it emphasises with, surrounding quotes, a trailing
@@ -507,7 +554,7 @@ func messageContentText(message ai.Message) string {
 //
 // The slug is the one worth explaining. The instruction asks for words, and a
 // model that has spent its life reading identifiers sometimes answers
-// "porting_the_parser" — which is the right eight words welded into a filename.
+// "porting_the_parser" — which is the right words welded into a filename.
 // A name is read by a person, in a status line and in a list of yesterday's
 // sessions, so the welding is undone at the moment the name is minted rather
 // than at each of the places it is drawn.
@@ -589,6 +636,7 @@ func stripMarkup(title string) string {
 // normalized answer, so case, quotes and punctuation do not hide an echo.
 var instructionPhrases = []string{
 	"name this session",
+	"name this conversation twice",
 	"name this piece of work",
 	"what is this work trying to find out",
 }
@@ -622,7 +670,7 @@ func namesTheInstruction(name string) bool {
 	for _, word := range said {
 		spoken[word] = true
 	}
-	for _, prompt := range []string{titlePrompt, taskNamePrompt, jobNamePrompt, captionPrompt} {
+	for _, prompt := range []string{titlePrompt, legacyTitlePrompt, taskNamePrompt, jobNamePrompt, captionPrompt} {
 		asked := 0
 		shared := 0
 		for _, word := range uniqueWords(normalizedWords(prompt)) {
