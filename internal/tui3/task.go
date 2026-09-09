@@ -592,8 +592,8 @@ var mergeScreenWords = map[string]string{
 	mergeWordConflicted: mergeWordConflicted,
 	// "aborted" reads as a crash and is almost never one: the commonest way a
 	// node wears it is that a person stopped it or it spent the steps it was
-	// given (see [taskStoppedKept], which adds the branch clause where a row has
-	// the cells for it).
+	// given (the rail hangs the branch clause off it where a row has the cells
+	// for it, [app.railUnder]).
 	mergeWordAborted: taskStoppedWord,
 	// "kept" says what the engine did with a ref; the person-facing fact is
 	// that a finished branch is waiting for them to take it.
@@ -628,42 +628,32 @@ func mergeScreenWord(merge string) string {
 	return roomDoneWord
 }
 
-// The two words a stopped node is drawn with.
+// taskStoppedWord is what a stopped node is drawn with.
 //
 // A node stops for reasons that are nobody's failure — a person pressed c on its
 // room, it spent the steps it was given, its deadline came — and session marks
 // every one of them "aborted", which is a word a person reads as "it crashed".
 // It did not: it stopped, and its branch was kept precisely so the work is still
-// there. Both halves are on screen because the second is the one that says what
-// to do next.
-const (
-	taskStoppedWord = "stopped"
-	taskStoppedKept = "stopped — branch kept"
-)
+// there.
+//
+// THE BRANCH IS A FACT AND NOT PART OF THE STATE. This constant had a sibling,
+// `stopped — branch kept`, which welded the two together and made the branch
+// unsayable about any other landing; where the work was left is now its own
+// clause on the row ([taskBranchKept], and the landing card's fact line), and
+// the state is one word (docs/design/task-states/DESIGN.md).
+const taskStoppedWord = "stopped"
 
-// The words a node NOBODY COULD JUDGE is drawn with (session's TaskUnverified).
+// taskBranchKept is WHERE THE WORK WAS LEFT, and it is a fact about source
+// control rather than a state: this node wears session's "aborted" merge and
+// nothing about it stopped.
 //
-// It is the third settled state and it is neither of the other two: the run is
-// over, the branch is kept, and nothing came back that could call the work
-// finished or call it wrong — so the surface must not spend "done" on it and
-// must not spend "failed" on it either.
-//
-// THE MACHINERY IS NOT THE SURFACE'S TO MENTION. These words used to be the
-// checking apparatus read out loud — "unverified", "auditor inconclusive" — and
-// that is a person being handed this program's internal org chart in place of
-// their answer. Nobody delegating a piece of work asked for a verdict; they
-// asked for the work. So the state is spelled as the only thing about it that is
-// a person's business: it FINISHED, and it is on them to look at it. The
-// identifiers keep their old names because they name a state in the code, and
-// the code is not the surface.
-const (
-	taskUnverifiedWord  = "needs your look"
-	taskUnverifiedGloss = "finished, but needs your look"
-	taskUnverifiedWaits = "finished — look it over"
-	// taskBranchKept is [taskStoppedKept] without the stop: this node wears the
-	// same "aborted" merge, and nothing about it stopped.
-	taskBranchKept = "branch kept"
-)
+// THE STATE WORDS THAT USED TO STAND BESIDE IT ARE GONE. `needs your look`,
+// `finished, but needs your look` and `finished — look it over` were three
+// spellings of one reading — the machine has done what it can, and somebody has
+// to say something — which internal/session now spells once as `your call` plus
+// the reason for it (docs/design/task-states/DESIGN.md). They were this file's
+// own vocabulary, and the roster, the record and home each had a different one.
+const taskBranchKept = "branch kept"
 
 // taskFinishingWord is what a node says while it is closing a gap in work it has
 // otherwise finished (session's TaskNotice.Mending, carried on [taskNode.mending]).
@@ -687,10 +677,10 @@ const taskFinishingWord = "finishing"
 // nothing" and "this has been sitting there for four minutes because the
 // machine is full".
 //
-// The identifier is "held" and the word is "waiting" because [taskWaitingWord]
-// is already spent, on the meter of a proposal that is waiting on a person. Two
-// different moments, one honest English word for both, and the card's had the
-// name first.
+// The identifier is "held" and the word is "waiting" because the proposal
+// meter's own sentence ([taskWaitingWord]) is about a different moment
+// altogether: a proposal nobody has agreed to yet, which says what answering it
+// would do rather than that it is waiting.
 const taskHeldWord = "waiting"
 
 // The reasons the engine holds a node with (session's TaskNotice.Waiting),
@@ -1272,7 +1262,19 @@ const (
 	// taskWaitingWord is what stands where the meter would be on a proposal the
 	// engine is holding open indefinitely. A bar with no end to drain toward
 	// would be an animation inventing a deadline nobody set.
-	taskWaitingWord = "waiting on you"
+	//
+	// IT IS THE READING'S OWN SENTENCE FOR THAT QUESTION. A proposal with no
+	// clock is the your-call tier's `start` ask and internal/session spells its
+	// reason `starts on your word` ([session.TaskAskStart]); this row said
+	// `waiting on you`, which is the phrase home spends on a CONVERSATION that
+	// wants somebody — so one screen had one phrase for two different objects
+	// and neither said what pressing anything would do.
+	//
+	// THE CLOCK IS THE WHOLE DIFFERENCE BETWEEN THE TWO TIERS. A proposal that
+	// will start by itself needs nothing from anybody and says when
+	// ([taskAutoWord], which is the engine's spelling too); one that will sit
+	// there until somebody answers is the person's call and says so.
+	taskWaitingWord = "starts on your word"
 	taskAutoWord    = "auto-starts in "
 	// taskFormingWord stands where the meter will be while the call that fills
 	// this card is still arriving. It is a state and not a promise: there is no
@@ -2555,6 +2557,12 @@ func (a *app) railGroupOf(node *taskNode) railGroup {
 		// `done` once let a nested question expire with nobody able to see it
 		// (#268). What folds is how loud it is ([app.railGlyphRank]).
 		return railAttention
+	case status.Tier == session.TaskTierYourCall:
+		// A QUESTION SOMEBODY ELSE IS HOLDING IS PARKED AND NEVER DONE. The demand
+		// is gone — the model, or the parent's own agent, is answering it — but the
+		// work is not finished, and filing it under `done` is exactly how a nested
+		// question once expired with nobody able to see it (#268).
+		return railParked
 	case status.Presence == session.TaskPresenceWaiting:
 		return railParked
 	case status.State == session.TaskQueued:
@@ -4882,32 +4890,55 @@ func (a *app) railWorst(t *railTwig) *taskNode {
 	return worst
 }
 
-// railGlyphRank orders the states by how loud they are on one cell: something
-// waiting on a person, then something running, then something that did not come
-// off, then something not started, then work that is over.
-// A CHILD WHOSE PARENT IS STILL WORKING DOES NOT MAKE THE FOLDED ROW A DEMAND,
-// which is [app.railGroupOf]'s law said on one cell: the parent is the one being
-// asked, so a family drawn as its root alone must wear the root's own news and
-// not a question its own head is already holding.
+// railGlyphRank orders the readings by how loud they are on one cell, and IT IS
+// THE TIER'S ORDER: the person's call first, then work in flight, then work that
+// is over (docs/design/task-states/DESIGN.md).
+//
+// THE ONE RANK THE TIERS DO NOT DECIDE IS `over` AND UNFINISHED. The glyph on a
+// folded row is the news of the subtree, and "something in here did not come
+// off" is the loudest news there is short of a demand — so an incomplete child
+// outranks a sibling that has not started, which is why this order and
+// [app.railTreeUrgency]'s differ by exactly one rank. Where a family STANDS in
+// the column is a question about what a person still has to do; what it WEARS is
+// a question about what happened in it.
+//
+// A CHILD WHOSE DECISION IS ITS PARENT'S AGENT'S DOES NOT MAKE THE FOLDED ROW A
+// DEMAND, which is [app.railGroupOf]'s law said on one cell: the parent holds
+// the question, so a family drawn as its root alone must wear the root's own
+// news and not a question its own head is already answering. That fold is read
+// off [session.TaskAsk.Owner] and off nothing else — a design waiting to be
+// approved is asking the PERSON, and no agent above it can answer for them —
+// and it changes only where the row sorts. The row still reads its reason.
 func (a *app) railGlyphRank(node *taskNode) int {
 	status := a.taskStatus(node)
 	switch {
-	case node.Paused(), status.ChangesUnlanded():
-		return 0
-	case status.Presence == session.TaskPresenceNeedsLook:
-		// The fold is for work nobody could check, whose question goes to the
-		// parent's own agent. A design waiting to be approved is asking the
-		// PERSON, and no agent above it can answer for them.
-		if status.State == session.TaskUnverified && a.taskParentDeciding(node) {
+	case status.Tier == session.TaskTierYourCall:
+		// AND THE TIER IS ASKED FIRST. A node whose landing is somebody's call has
+		// a branch that never came home by construction, so an unlanded-changes
+		// test above this one would answer for every one of them and the fold
+		// below could never fire.
+		//
+		// THE PARENT'S OWN RUN IS THE SAME FACT THE ENGINE HAS NOT PUBLISHED YET.
+		// The engine routes a sub-task's landing note to its parent node's agent
+		// while that parent lives (session's deliverTaskNote), which IS the model
+		// holding the question — but it does not stamp [session.TaskNotice.Decider]
+		// on that shape, so reading the owner alone would take the #268 fold away
+		// and put a demand back on a family whose head is already answering it.
+		// Both roads are the same claim; when the engine publishes the second the
+		// clause goes.
+		if status.Ask.Owner == session.TaskAskOwnerModel || a.taskParentDeciding(node) {
 			return 4
 		}
 		return 0
-	case status.State == session.TaskRunning:
-		return 1
-	case status.State == session.TaskFailed:
-		return 2
-	case status.State == session.TaskQueued:
+	case node.Paused(), status.ChangesUnlanded():
+		return 0
+	case status.Tier == session.TaskTierMoving:
+		if status.Presence == session.TaskPresenceWorking || status.Presence == session.TaskPresenceFinishing {
+			return 1
+		}
 		return 3
+	case status.Presence == session.TaskPresenceIncomplete:
+		return 2
 	}
 	return 4
 }
@@ -4978,7 +5009,7 @@ func (a *app) railTitle(node *taskNode, title string) string {
 //	waiting · machine busy       and what is holding it when nothing does
 //
 // THE ROWS THAT CARRY A HANDLE CARRY NOTHING ELSE. A conflicted branch, a kept
-// branch, a prerequisite's name and "unverified — waiting on you" are each one
+// branch, a prerequisite's name and a question's own reason are each one
 // fact a person has to ACT on, and a price appended to any of them would be a
 // figure competing with the only thing on the row worth reading. The telemetry
 // belongs to the states nobody has to do anything about — a node that is running
@@ -4991,9 +5022,6 @@ func (a *app) railTitle(node *taskNode, title string) string {
 // handles back to work that is not on screen, and half of one of those is worth
 // nothing at all.
 func (a *app) railUnder(node *taskNode, width int) []string {
-	if a.taskReviewPending(node) {
-		return []string{a.pal.dim(fit(taskReviewPendingWord, width))}
-	}
 	paint, text := a.pal.dim, ""
 	switch node.state {
 	case session.TaskRunning:
@@ -5084,11 +5112,16 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		}
 		text = "waits: " + waits
 	case session.TaskUnverified:
-		// NOT THE MERGE SENTENCE. An unverified node wears session's "aborted"
-		// merge like a stopped one does, and the row below would therefore say
-		// "stopped — branch kept" about work that ran to the end. What it is
-		// waiting for is a person, and that is what the row says.
-		paint, text = a.pal.warn, taskUnverifiedWaits
+		// NOT THE MERGE SENTENCE. A node whose landing is somebody's call wears
+		// session's "aborted" merge like a stopped one does, and the row below
+		// would therefore say `stopped` about work that ran to the end. What this
+		// row says is the QUESTION and its reason, in the engine's own spelling
+		// ([session.TaskStatus.RowWord]) — `your call · nobody could check it`,
+		// `your call · conflicts with your branch: parser.go` — because the reason
+		// is the half a person can act on and a bare `your call` sends them to the
+		// card to find out what for.
+		status := a.taskStatus(node)
+		paint, text = tierInk(a.pal, status), status.RowWord()
 	default:
 		switch node.merge {
 		case mergeWordKept:
@@ -5110,9 +5143,24 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 			// nothing went wrong, and the work is still on that branch — and where
 			// the engine said WHY it stopped, the row leads with that instead
 			// (taskending.go), because "stopped" was measured true of none of six.
-			text = endingKept(node.ending) + " · " + node.branch
-			if halted(node.ending) {
-				paint = a.pal.warn
+			// THE STATE, THEN WHERE THE WORK WAS LEFT. The state is the reading's
+			// own sentence and never this file's — `stopped`, or `incomplete · ran
+			// out of steps` — and the branch is a FACT hung off it rather than part
+			// of it. The one sentence that used to cover all of this, `stopped —
+			// branch kept`, was measured true of one landing in six.
+			//
+			// AND THE HANDLE OUTLIVES THE REASON. This block is two rows
+			// ([railUnderRows]) and a long ending sentence plus a branch name is
+			// three, which would drop the branch off the bottom — and the branch is
+			// the only way back to work that is not on screen, while the reason is
+			// on the card in full one keypress away. So when both will not fit the
+			// reason gives way, exactly as the file list does on a card
+			// (tasktier.go's [tierRow] states the same law).
+			status := a.taskStatus(node)
+			paint = tierInk(a.pal, status)
+			text = status.RowWord() + railSep + node.branch
+			if len(railWrap(text, width)) > railUnderRows {
+				text = status.Word + railSep + node.branch
 			}
 		default:
 			// THE MERGE WORD, AND WHAT THE WORK COST TO GET THERE. A node that came
@@ -5129,14 +5177,17 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 			// the person's own tree — still leads with why it stopped, when the
 			// engine said (taskending.go): where the work is is not what happened
 			// to it.
-			if word := endingWord(node.ending); word != "" && node.state == session.TaskFailed {
-				text = word
+			// A FAILED NODE WITH NO BRANCH TO KEEP — a non-git workspace ran it in
+			// the person's own tree — still leads with the reading's own sentence
+			// about how it ended, because where the work is is not what happened to
+			// it. The sentence is [session.TaskReasonOf]'s and is spelled nowhere on
+			// this surface.
+			if status := a.taskStatus(node); node.state == session.TaskFailed && status.RowWord() != "" {
+				text = status.RowWord()
 				if landed := mergeScreenWord(node.merge); landed != "" {
 					text += railSep + landed
 				}
-				if halted(node.ending) {
-					paint = a.pal.warn
-				}
+				paint = tierInk(a.pal, status)
 			}
 			if spent := node.spent(); text != "" && spent > 0 {
 				if priced := text + railSep + dollars(spent); ansi.StringWidth(priced) <= width {
@@ -5256,7 +5307,7 @@ func (a *app) railDoing(node *taskNode, width int) []string {
 //	finishing · adding amp-labs to t…           and the same row, fitted
 //
 // THE WORD IS THE SURFACE'S AND THE SENTENCE IS THE ENGINE'S, which is the same
-// split every other row down here is built on ([taskStoppedKept] states it about
+// split every other row down here is built on ([taskBranchKept] states it about
 // a merge word). "finishing" is this column saying which part of running this is;
 // what follows the separator is the engine's own plain line about what is left,
 // kept verbatim, because the whole value of the row is that it is SPECIFIC.
@@ -5474,64 +5525,21 @@ func (a *app) railGlyph(node *taskNode) string {
 	return a.taskStateInk(node)(a.taskStateMark(node))
 }
 
-// taskStateMark is a node's state in one cell, UNPAINTED. The cell is the
-// reading's and not the state's: which `failed` is a fault, which is work a
-// check found unfinished, which is a person's own stop and which is a run the
-// wire ended are four marks, decided once in [session.ProjectTask].
+// taskStateMark is a node's state in one cell, UNPAINTED — [tierMark]'s cell
+// asked about a node this window is watching. The table itself is tasktier.go's
+// and there is only one of it: which `failed` is a fault, which is a person's
+// own stop and which is a run the wire ended are decided once in
+// [session.ProjectTask] and drawn once there.
 func (a *app) taskStateMark(node *taskNode) string {
-	status := a.taskStatus(node)
-	switch status.Presence {
-	case session.TaskPresenceStopped:
-		// ⊘ outranks the state: a stopped node settles `failed` because nothing
-		// merged, and a cross would report a finding nobody made about work the
-		// person ended themselves.
-		return a.linearMark(glyphStopped, glyphStoppedASCII)
-	case session.TaskPresenceNeedsLook:
-		// ? for both kinds of waiting on you, and no spinner: the spinner is this
-		// surface's promise that something is happening this instant.
-		return glyphUnverified
-	case session.TaskPresenceIncomplete:
-		// ! is unfinished work; the cross is kept for the fault, because nobody
-		// found anything wrong with the rest.
-		if !status.Fault {
-			return glyphHalted
-		}
-		return a.linearMark(glyphBad, glyphBadASCII)
-	case session.TaskPresenceDone:
-		return a.linearMark(glyphDone, glyphDoneASCII)
-	}
-	if status.State == session.TaskRunning {
-		if a.linear {
-			return glyphRunASCII
-		}
-		return tokens.Spinner(a.paints / spinnerStep)
-	}
-	return a.linearMark(glyphQueued, glyphQueuedASCII)
+	return a.tierMark(a.taskStatus(node))
 }
 
 // taskStateInk is the hue that state is said in — the paint half of
-// [app.railGlyph], in the order the glyph half decides its cell so the two can
-// never fall out of step. Anything that says a node's name in the colour of what
-// it is doing asks this: the roster's glyph, and the composer's room segment.
+// [app.railGlyph], asked separately so the two can never fall out of step.
+// Anything that says a node's name in the colour of what it is doing asks this:
+// the roster's glyph, and the composer's room segment.
 func (a *app) taskStateInk(node *taskNode) func(string) string {
-	status := a.taskStatus(node)
-	switch status.Presence {
-	case session.TaskPresenceStopped:
-		return a.pal.dim
-	case session.TaskPresenceNeedsLook:
-		return a.pal.warn
-	case session.TaskPresenceIncomplete:
-		if !status.Fault {
-			return a.pal.warn
-		}
-		return a.pal.bad
-	case session.TaskPresenceDone:
-		return a.pal.muted
-	}
-	if status.State == session.TaskRunning {
-		return a.pal.accent
-	}
-	return a.pal.dim
+	return tierInk(a.pal, a.taskStatus(node))
 }
 
 // glyphDone marks a node that landed. See [app.railGlyph] for why this surface
@@ -5540,17 +5548,6 @@ const (
 	glyphDone      = "✓"
 	glyphDoneASCII = "+"
 )
-
-// glyphUnverified marks the node nobody could judge, and it ASKS A QUESTION
-// because that is what the state is: not a tick, which would claim a verdict
-// nobody gave, and not a cross, which would claim a finding nobody made. It
-// takes the warn hue rather than the ask hue — [glyphAsk] is the question the
-// SESSION is blocked on and answering it is the next thing anyone does here,
-// while this one waits for as long as it takes.
-//
-// It is the same cell in both glyph tiers: "?" is already a character a screen
-// reader names, so there is nothing for the linear tier to stand in for.
-const glyphUnverified = "?"
 
 // railJoin lays one conversation row beside the rail's column for that row. It
 // is the ONLY place the two columns meet, and it pads through

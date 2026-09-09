@@ -423,8 +423,8 @@ func taskStatusGlyph(entry session.TaskIndexEntry, ascii bool) string {
 	case session.TaskPresenceNeedsLook:
 		// The tick is not the default answer to "what else is there": work nobody
 		// could judge would otherwise wear this surface's one success glyph
-		// (task.go's [glyphUnverified]).
-		return glyphUnverified
+		// (tasktier.go's [tierGlyph]).
+		return glyphAsk
 	}
 	if ascii {
 		return glyphDoneASCII

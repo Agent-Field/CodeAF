@@ -69,21 +69,30 @@ func TestARunTheWireEndedReadsAsIncompleteEverywhere(t *testing.T) {
 			t.Errorf("%s: the record says %q, want %q", ending, word, taskRecordStoppedWord)
 		}
 		node := &taskNode{id: 9, state: session.TaskFailed, ending: ending}
-		if mark := a.taskStateMark(node); mark != glyphHalted {
-			t.Errorf("%s: the roster draws %q, want %q", ending, mark, glyphHalted)
+		// THE CELL IS THE TIER'S AND THE TIER HAS THREE OVER-CELLS. Work that did
+		// not finish wears the cross DIM; the `!` that used to stand here was a
+		// fourth answer to a question with three (tasktier.go).
+		if mark := a.taskStateMark(node); mark != a.linearMark(glyphBad, glyphBadASCII) {
+			t.Errorf("%s: the roster draws %q, want %q", ending, mark, glyphBad)
+		}
+		if ink := a.taskStateInk(node); ink("x") != a.pal.dim("x") {
+			t.Errorf("%s: an unfinished row is painted like a fault", ending)
 		}
 	}
 
-	// And a fault still wears the cross — including a row from an engine too old
-	// to name an ending.
+	// And a fault says the same word and is the only one painted like one —
+	// including a row from an engine too old to name an ending.
 	for _, ending := range []session.TaskEnding{session.TaskEndingError, ""} {
 		entry := session.TaskIndexEntry{Status: string(session.TaskFailed), Ending: ending}
-		if word := taskStateWord(entry, false); word != doneFailWord {
-			t.Errorf("%q: the record says %q, want %q", ending, word, doneFailWord)
+		if word := taskStateWord(entry, false); word != taskRecordStoppedWord {
+			t.Errorf("%q: the record says %q, want %q", ending, word, taskRecordStoppedWord)
 		}
 		node := &taskNode{id: 9, state: session.TaskFailed, ending: ending}
 		if mark := a.taskStateMark(node); mark != a.linearMark(glyphBad, glyphBadASCII) {
 			t.Errorf("%q: the roster draws %q at a fault", ending, mark)
+		}
+		if ink := a.taskStateInk(node); ink("x") != a.pal.bad("x") {
+			t.Errorf("%q: a fault is not painted as one", ending)
 		}
 	}
 }
@@ -96,9 +105,13 @@ func TestAQueuedRowIsNotWordedAsRunning(t *testing.T) {
 	if word := taskStateWord(entry, true); word != roomQueuedWord {
 		t.Errorf("a queued row in a live session says %q, want %q", word, roomQueuedWord)
 	}
+	// AND A RUNNING ROW SAYS `working`, which is the one word every surface says
+	// for it since the task-states wave: the record used to spell it `running`,
+	// the rail `working`, and one state with two spellings is two states to
+	// whoever is reading (docs/design/task-states/DESIGN.md).
 	running := session.TaskIndexEntry{Status: string(session.TaskRunning)}
-	if word := taskStateWord(running, true); word != taskRecordRunsWord {
-		t.Errorf("a running row says %q, want %q", word, taskRecordRunsWord)
+	if word := taskStateWord(running, true); word != "working" {
+		t.Errorf("a running row says %q, want %q", word, "working")
 	}
 }
 
