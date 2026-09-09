@@ -77,13 +77,16 @@ Ask to create a collection, file this chat in it, or inspect its work. The
 `ref` on add or find means this conversation. Show resolves direct members
 through their existing owners: chat titles, task state, ongoing items and file
 availability. It does not resume a closed conversation or start its work.
-Unavailable sources remain listed. Results are paged with `next_offset`.
+Unavailable sources remain listed. Find accepts a case-insensitive name fragment
+or a member reference. Omitting both finds collections containing this chat;
+name and reference cannot be combined. Results are paged with `next_offset`.
 The local `aforge collections show` command still prints references only.
 Task workers can inspect collections but cannot reorganize them.
 
 ## How do I share a decision or finding across chats
 
 Use `shared_context` to create a titled record with text and explicit targets.
+Create and revise require a targets array; an explicit empty array is allowed.
 Targets may name chats, tasks, collections, ongoing items or artifacts. Automatic
 turn context currently reaches chats and ordinary task workers: their own
 address, the worker's owning chat, and direct collections of those addresses.
