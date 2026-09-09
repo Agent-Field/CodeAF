@@ -213,7 +213,7 @@ func TestConfiguredFallbacksOutrankTheCatalogsNearestModel(t *testing.T) {
 
 func TestExhaustedChainEndsInADiagnosisRatherThanA404(t *testing.T) {
 	client, _ := refusingClient(t, func(map[string]any) bool { return false },
-		Config{Fallbacks: []string{"other/model"}})
+		Config{Model: "sim/exhausted-price", Fallbacks: []string{"other/model"}, ModelPrice: knownModelPrice()})
 
 	_, err := client.CompleteWithMessages(context.Background(), userMessages("hi"), toolRequest()...)
 	if err == nil {
@@ -225,13 +225,13 @@ func TestExhaustedChainEndsInADiagnosisRatherThanA404(t *testing.T) {
 	}
 	message := err.Error()
 	for _, want := range []string{
-		"sim/model",           // which model
+		"sim/exhausted-price", // which model
 		"tools", "max_tokens", // what was sent
-		"provider.require_parameters", // including the economy nobody asked for
-		"retried without",             // what was taken off
-		"also tried other/model",      // and what else was tried
-		"No endpoints found",          // the provider's own words, kept
-		"/model",                      // and the one thing a person can do
+		"provider.require_parameters", "provider.max_price", // including the economies nobody asked for
+		"retried without",        // what was taken off
+		"also tried other/model", // and what else was tried
+		"No endpoints found",     // the provider's own words, kept
+		"/model",                 // and the one thing a person can do
 	} {
 		if !strings.Contains(message, want) {
 			t.Fatalf("terminal error = %q, want it to name %q", message, want)

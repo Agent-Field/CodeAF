@@ -207,10 +207,10 @@ func TestAPriceSortedRequestCarriesTheRefusalsAndNoSpeedRanking(t *testing.T) {
 	}
 }
 
-// The ceiling is a filter, so it comes off with the rest of the filter when no
-// endpoint will take the request at all: "no endpoints found" is a worse answer
-// than a dear one.
-func TestTheRefusalLadderTakesTheCeilingOff(t *testing.T) {
+// The endpoint rung widens membership under the same ceiling. A second rung
+// still exists to favor an answer over a terminal refusal when price alone
+// leaves the router no endpoint.
+func TestTheEndpointRungKeepsTheCeiling(t *testing.T) {
 	yes := true
 	ceiling := &maxPrice{Prompt: 1, Completion: 2}
 	relaxed := relaxedPreferences(&providerPrefs{
@@ -222,11 +222,90 @@ func TestTheRefusalLadderTakesTheCeilingOff(t *testing.T) {
 	if relaxed == nil {
 		t.Fatal("relaxing dropped the preference object entirely")
 	}
-	if relaxed.MaxPrice != nil {
-		t.Fatalf("the relaxed request kept its ceiling: %+v", relaxed.MaxPrice)
+	if relaxed.MaxPrice == nil {
+		t.Fatal("the endpoint-only retry dropped its ceiling")
 	}
 	if relaxed.Sort != "latency" {
 		t.Fatalf("relaxed sort = %q, want the ask among whatever is left", relaxed.Sort)
+	}
+}
+
+// AN ENDPOINT FILTER REFUSAL DOES NOT AUTHORIZE A DEARER ENDPOINT. The router
+// can reject require_parameters, an ignore list, or a lane demand while another
+// endpoint at the same price can still answer. This goes through Complete and
+// the HTTP seam so it pins the body that actually travels on the retry.
+func TestRelaxingEndpointMembershipKeepsThePriceCeiling(t *testing.T) {
+	read := loggingTo(t)
+	client, recorded := refusingClient(t, func(body map[string]any) bool {
+		prefs, _ := body["provider"].(map[string]any)
+		return prefs != nil && prefs["require_parameters"] == nil && prefs["max_price"] != nil
+	}, Config{Model: "sim/membership-price", ModelPrice: knownModelPrice()})
+
+	var notices []string
+	if _, err := client.CompleteWithMessages(
+		noticeContext(context.Background(), &notices), userMessages("hello")); err != nil {
+		t.Fatalf("the endpoint-only retry should have answered: %v", err)
+	}
+	if got := len(recorded.bodies); got != 2 {
+		t.Fatalf("call made %d requests, want the refused request and one wider retry", got)
+	}
+	first := prefsOn(t, recorded, 0)
+	second := prefsOn(t, recorded, 1)
+	if first["require_parameters"] == nil || first["max_price"] == nil {
+		t.Fatalf("first request = %#v, want both the endpoint filter and price ceiling", first)
+	}
+	if second["require_parameters"] != nil || second["max_price"] == nil {
+		t.Fatalf("wider retry = %#v, want endpoint filter absent and price ceiling retained", second)
+	}
+	if len(notices) != 1 || notices[0] != "Retry 1/2: relaxed the endpoint filter" {
+		t.Fatalf("notices = %#v, want the endpoint-only retry named", notices)
+	}
+	records := read()
+	lastStart := records[len(records)-2]
+	if lastStart.Phase != "start" || !equalStrings(lastStart.Relaxed, []string{"provider.require_parameters"}) {
+		t.Fatalf("final request trace = %+v, want only the endpoint filter named", lastStart)
+	}
+}
+
+// AVAILABILITY STILL WINS AFTER THE NARROWER RETRY FAILS. Only a second
+// refusal proves widening the endpoint set under the same ceiling was not
+// enough, so the following rung may remove max_price and say that it did.
+func TestASecondRefusalDropsThePriceCeilingOnItsOwnRung(t *testing.T) {
+	read := loggingTo(t)
+	client, recorded := refusingClient(t, func(body map[string]any) bool {
+		prefs, _ := body["provider"].(map[string]any)
+		return prefs != nil && prefs["max_price"] == nil
+	}, Config{Model: "sim/price-rung", ModelPrice: knownModelPrice()})
+
+	var notices []string
+	if _, err := client.CompleteWithMessages(
+		noticeContext(context.Background(), &notices), userMessages("hello")); err != nil {
+		t.Fatalf("the price-ceiling retry should have answered: %v", err)
+	}
+	if got := len(recorded.bodies); got != 3 {
+		t.Fatalf("call made %d requests, want the original, wider retry, and uncapped retry", got)
+	}
+	for index, wantCeiling := range []bool{true, true, false} {
+		prefs := prefsOn(t, recorded, index)
+		if got := prefs != nil && prefs["max_price"] != nil; got != wantCeiling {
+			t.Fatalf("request %d max_price present = %v, want %v (%#v)", index+1, got, wantCeiling, prefs)
+		}
+		if index > 0 && prefs["require_parameters"] != nil {
+			t.Fatalf("request %d restored the relaxed endpoint filter: %#v", index+1, prefs)
+		}
+	}
+	wantNotices := []string{
+		"Retry 1/2: relaxed the endpoint filter",
+		"Retry 2/2: dropped the price ceiling",
+	}
+	if !equalStrings(notices, wantNotices) {
+		t.Fatalf("notices = %#v, want %#v", notices, wantNotices)
+	}
+	records := read()
+	lastStart := records[len(records)-2]
+	wantRelaxed := []string{"provider.require_parameters", "provider.max_price"}
+	if lastStart.Phase != "start" || !equalStrings(lastStart.Relaxed, wantRelaxed) {
+		t.Fatalf("final request trace = %+v, want relaxations %v", lastStart, wantRelaxed)
 	}
 }
 

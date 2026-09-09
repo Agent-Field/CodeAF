@@ -43,17 +43,15 @@ import (
 // and exactly what to change to keep it.
 //
 // WHAT ENTERS THE LADDER. Only this error class does, and only after a watched
-// request has no serving, untried lane the purse will fund. A recognised
-// refusal still teaches the ceiling memo before a funded walk takes it, so the
-// next arm never repeats a ceiling the router has already refused. A timeout,
-// a 5xx, a 429 and a plain 404 from a wrong base URL all keep the behaviour they
-// had (retry.go), because none of them is a claim about the request's shape and
+// request has no serving, untried lane the purse will fund. A timeout, a 5xx, a
+// 429 and a plain 404 from a wrong base URL all keep the behaviour they had
+// (retry.go), because none of them is a claim about the request's shape and
 // stripping fields off them would spend a person's turn discovering that.
 //
 // ── HOW THE CLASS IS RECOGNISED: BY STRUCTURE, NEVER BY VOCABULARY ──────────
 //
 // A list of the sentences a router has been SEEN to refuse in is always one
-// sentence behind, and on 2026-08-28 it was. The ladder's first rung IS the
+// sentence behind, and on 2026-08-28 it was. The ladder's price rung IS the
 // recovery for a price ceiling that emptied the endpoint set, and it never
 // fired for a whole headless run, because the router reports the LAST filter
 // that emptied the set — "no endpoints available matching your guardrail
@@ -90,11 +88,10 @@ import (
 // model. What is left is "nothing I can reach will serve this shape", and the
 // ladder is the right answer to it whatever sentence it arrived in.
 //
-// [endpointRefusalPhrases] survives as a HINT with two jobs and no authority:
+// [endpointRefusalPhrases] survives as a HINT with one job and no authority:
 // it SHORT-CIRCUITS the classification when it matches, so every refusal the
 // old gate caught is still caught — including on endpoints where the structural
-// facts cannot be established at all — and it chooses the WORDING of the retry
-// line a person reads ([Client.recoverFromRefusal]).
+// facts cannot be established at all.
 
 // endpointRefusalStatus is the status half of the gate. 404 is the router's own
 // spelling of "nothing can serve this"; 400 is what several OpenAI-compatible
@@ -106,7 +103,7 @@ func endpointRefusalStatus(status int) bool {
 
 // endpointRefusalPhrases is the vocabulary a router has been SEEN to refuse a
 // parameter combination in. It is a HINT and no longer the gate — the header
-// above says what replaced it and what the two remaining jobs are. Rule 1 of
+// above says what replaced it and what its remaining job is. Rule 1 of
 // docs/design/failsafe/FAILSAFE.md is why it is a hint: a phrase list is
 // evidence, never the classification.
 var endpointRefusalPhrases = []string{
@@ -139,39 +136,18 @@ var endpointRefusalPhrases = []string{
 	// satisfy the max price" — it reports the LAST filter that emptied the set,
 	// which was the data policy. None of the phrases above matched, so the gate
 	// said "not this class", the plain-404 path resent the identical body, and
-	// the ladder that drops the ceiling on its first rung never fired. The proof
+	// the ladder that drops the ceiling on its price rung never fired. The proof
 	// was a bisect against the live router with the captured body: every field
 	// passed alone, and max_price at list × 1.0 produced this exact sentence.
 	//
 	// THE FOUR PHRASES BELOW ARE NOW HISTORY RATHER THAN LOAD-BEARING. The refusal
 	// they describe is caught by [Client.routingRefusal] on its structure, and
-	// would be caught if the router reworded it tomorrow. What they still buy is
-	// the sentence a person reads when the ceiling comes off (see
-	// [Client.recoverFromRefusal]).
+	// would be caught if the router reworded it tomorrow. They remain because
+	// hints preserve the older gate on bases whose endpoint sheet is unavailable.
 	"no endpoints available",
 	"data policy",
 	"guardrail restrictions",
 	"satisfy the max price",
-}
-
-// ceilingRefusal reads a refusal body for the two spellings the router uses when
-// it is the PRICE CEILING that left nothing: its own "satisfy the max price",
-// and the data-policy sentence it prefers when the last endpoint under the
-// ceiling was one the account has excluded.
-//
-// IT DECIDES A SENTENCE AND NOT A BEHAVIOUR. The memo that stops the ceiling
-// being sent to a model twice ([velocityLedger.refuseCeiling]) no longer waits
-// to be told the price was the reason — that would be the vocabulary gate again,
-// one layer in — and what is left for these words to do is tell a person that
-// the thing coming off their request is a price ceiling.
-func ceilingRefusal(payload []byte) bool {
-	text := strings.ToLower(string(payload))
-	for _, phrase := range []string{"satisfy the max price", "data policy", "guardrail restrictions"} {
-		if strings.Contains(text, phrase) {
-			return true
-		}
-	}
-	return false
 }
 
 // endpointRefusalPhrase reports whether a refusal is one already KNOWN to be
@@ -290,12 +266,11 @@ func (c *Client) routingRefusal(model string, status int, payload []byte) bool {
 type relaxSet uint8
 
 const (
-	// relaxEndpointFilter drops THE WHOLE `provider` FILTER — the hard
-	// parameter filter, this process's own refusals, the price ceiling, and the
-	// demand for one machine that a pin or a rescue put there. FIRST because it
-	// is the only rung that changes nothing about what the model is asked: it
-	// widens which endpoints may answer, and every field on it is one that can
-	// empty the endpoint set ([providerPrefs.narrowing] is the one list).
+	// relaxEndpointFilter drops every membership restriction — the hard
+	// parameter filter, this process's own refusals, and the demand for one
+	// machine that a pin or a rescue put there. FIRST because it changes neither
+	// what the model is asked nor the most aforge will pay: it widens which
+	// endpoints may answer under the same ceiling.
 	//
 	// `provider.only` was not on this rung for a long time, and that is half of
 	// issue #266: a pinned request climbed every rung there is — reasoning, the
@@ -303,6 +278,11 @@ const (
 	// pinned to the one machine that had refused it, so every rung was spent on
 	// a request that could not have been served whatever shape it was in.
 	relaxEndpointFilter relaxSet = 1 << iota
+	// relaxPriceCeiling drops max_price only after the wider endpoint set has
+	// refused the request too. Availability still wins, but an unrelated pin,
+	// ignore list, or require_parameters refusal cannot silently authorize a
+	// dearer endpoint.
+	relaxPriceCeiling
 	// relaxReasoning drops the `reasoning` knob. A knob, not content: the model
 	// answers the same question, with its own default amount of thinking.
 	relaxReasoning
@@ -342,6 +322,7 @@ type relaxStep struct {
 // two names for one thing the first time either was reworded.
 var relaxRungs = []relaxStep{
 	{bit: relaxEndpointFilter, label: "relaxed the endpoint filter", name: "provider.require_parameters"},
+	{bit: relaxPriceCeiling, label: "dropped the price ceiling", name: "provider.max_price"},
 	{bit: relaxReasoning, label: "removed reasoning", name: "reasoning"},
 	{bit: relaxMaxTokens, label: "removed max_tokens", name: "max_tokens"},
 	{bit: relaxResponseFormat, label: "removed response_format", name: "response_format"},
@@ -375,8 +356,12 @@ func (c *Client) relaxationPlan(request *ai.Request, knobs callKnobs, model stri
 	// could not see the narrowest filter this process sends. A pinned request
 	// therefore had no first rung at all and climbed straight to "removed
 	// reasoning", still pinned to the machine that had refused it (issue #266).
-	if c.wirePreferences(model, knobs, request).narrowing() {
+	prefs := c.wirePreferences(model, knobs, request)
+	if prefs.membershipNarrowing() {
 		plan = append(plan, rung(relaxEndpointFilter))
+	}
+	if prefs != nil && prefs.MaxPrice != nil {
+		plan = append(plan, rung(relaxPriceCeiling))
 	}
 	if c.resolveEffort(model, knobs.effort) != EffortNone {
 		plan = append(plan, rung(relaxReasoning))
@@ -455,20 +440,6 @@ func dropAttachments(messages []ai.Message) []ai.Message {
 // and let them pick, rather than to walk a list on their behalf.
 const maxFallbackModels = 2
 
-// carriedCeiling reports whether this request's composed provider object put a
-// price ceiling on the wire.
-//
-// IT READS THE COMPOSED OBJECT AND NOT THE LEDGER'S HALF. A rescue or a strict
-// pin removes the ceiling after the ordinary preferences are built, and a
-// request already on the ladder removes the whole endpoint filter afterwards;
-// only [Client.wirePreferences] sees both decisions. [Client.sendRecovered]
-// reads this once before writing the memo and carries the answer into the
-// ladder, so the person-facing label still describes the refused request.
-func (c *Client) carriedCeiling(model string, knobs callKnobs, request *ai.Request) bool {
-	prefs := c.wirePreferences(model, knobs, request)
-	return prefs != nil && prefs.MaxPrice != nil
-}
-
 // recoverFromRefusal climbs the ladder and then the fallback chain, narrating
 // each attempt, and ends in an error a person can act on.
 //
@@ -481,20 +452,9 @@ func (c *Client) recoverFromRefusal(
 	knobs callKnobs,
 	stream bool,
 	first []byte,
-	carriedCeiling bool,
 ) (*http.Response, error) {
 	model := c.modelFor(request)
 	plan := c.relaxationPlan(request, knobs, model)
-	// THE PHRASE LIST'S SECOND JOB. When the router's own sentence said it was
-	// the price or the account's policy that emptied the set, the first rung
-	// SAYS SO — "relaxed the endpoint filter" does not tell somebody watching
-	// that they were being routed under a price ceiling at all, and the ceiling
-	// is the one thing on that rung they may want back. The rung does exactly
-	// the same work either way: max_price rides the same provider object as
-	// require_parameters and ignore, and rung one drops the object.
-	if carriedCeiling && ceilingRefusal(first) && len(plan) > 0 && plan[0].bit == relaxEndpointFilter {
-		plan[0].label = "dropped the price ceiling and relaxed the endpoint filter"
-	}
 	fallbacks := c.fallbackChain(model)
 	total := len(plan) + len(fallbacks)
 	if total == 0 {
@@ -513,6 +473,13 @@ func (c *Client) recoverFromRefusal(
 	relaxed := knobs
 	for _, step := range plan {
 		attempt++
+		// THE MEMO FOLLOWS THE SECOND REFUSAL. Reaching this rung means the
+		// endpoint-membership retry, when there was one, was refused under the
+		// original price ceiling too. That is evidence the ceiling must come off;
+		// the first refusal alone could have been caused by any membership field.
+		if step.bit == relaxPriceCeiling && c.velocity != nil {
+			c.velocity.refuseCeiling(model)
+		}
 		relaxed.relaxed |= step.bit
 		stripped = append(stripped, step.name)
 		Emit(ctx, StreamNotice, fmt.Sprintf("Retry %d/%d: %s", attempt, total, step.label))
