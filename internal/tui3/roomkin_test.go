@@ -274,3 +274,34 @@ func TestTheKinBlockFitsAndIsCapped(t *testing.T) {
 		t.Fatalf("the kin block outlived the header it hangs under:\n%q", rows)
 	}
 }
+
+// A waiting parent with long child names must keep its details out of the
+// roster's columns, including after resizing across the roster breakpoint.
+func TestWaitingParentDetailsStayInsideTaskColumn(t *testing.T) {
+	a, _, _ := taskApp(t)
+	railRun(a)
+	roomOn(a, 1, "Reddit marketing strategy")
+	a.tasks[1].waiting = "its parts"
+	for _, id := range []uint64{2, 3, 5} {
+		a.tasks[id].title = strings.Repeat("Long child task title ", 12)
+	}
+	for _, width := range []int{60, 100, 160, 205} {
+		a.width = width
+		a.touch()
+		for _, line := range a.roomKinRows(width) {
+			if got := ansi.StringWidth(line); got > a.bodyWidth() {
+				t.Fatalf("window %d: child summary occupies %d cells, task column has %d", width, got, a.bodyWidth())
+			}
+		}
+		if got, want := a.roomStartingSay(a.tasks[1]), plain(a.railWaiting(a.tasks[1], width)[0]); got != want {
+			t.Fatalf("empty page says %q, roster says %q", got, want)
+		}
+		rows := strings.Split(frame(a), "\n")
+		for i, line := range a.roomKinRows(width) {
+			at := a.roomHeadRow() + a.roomHeadHeight(width) + i
+			if plain(rows[at]) != plain(line) {
+				t.Fatalf("child summary disagrees with frame geometry at width %d", width)
+			}
+		}
+	}
+}

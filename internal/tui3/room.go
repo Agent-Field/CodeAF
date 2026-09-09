@@ -2732,6 +2732,10 @@ func roomKinName(name string, room int) string {
 // is telemetry about the page rather than a second header, and v1's column is
 // the reference — restrained, no border, no frame of its own (internal/tui).
 func (a *app) roomKinRows(width int) []string {
+	// FAMILY DETAILS BELONG TO THE TASK COLUMN. The header spans the window,
+	// but its child summary must stop where the adjacent roster begins. Both
+	// frame drawing and height accounting use this same width decision.
+	width = min(width, a.bodyWidth())
 	// A RUN'S PAGE IS ALREADY ITS OWN FAMILY TREE (roomorch.go): the graph is
 	// drawn there, node by node, with every prerequisite an edge — so a sentence
 	// about kin would be the picture read out loud beside the picture.
@@ -3385,13 +3389,9 @@ func (a *app) roomBlankWord() string {
 // that has nothing of its own to draw yet: the difference between a task that
 // has not started writing and a task nothing is happening to.
 //
-// IT NEVER REPEATS THE HEADER. The header spends its one word on the state
-// ([app.roomStateWord]) and collapses two of these to a single word on the way —
-// a paced node reads `waiting` up there and a node closing a gap reads
-// `finishing` — so what is drawn here is the SENTENCE underneath those words,
-// which is the thing the header had no room for. A phase the header prints
-// verbatim (`node.doing`) is deliberately absent: the same string twice, three
-// rows apart, is the one row on the page spent saying nothing.
+// A WAIT USES THE ROSTER'S COMPLETE EXPLANATION. Reasons can be fragments
+// such as "its parts", so dropping the state leaves a sentence without a verb.
+// Named phases already printed verbatim by the header remain absent here.
 //
 // A LANDED PAGE SAYS NONE OF IT. These three fields are reports of RIGHT NOW and
 // the engine clears them at the landing (task.go); drawing a stale one over
@@ -3402,7 +3402,7 @@ func (a *app) roomStartingSay(node *taskNode) string {
 	}
 	switch {
 	case strings.TrimSpace(node.waiting) != "":
-		return strings.TrimSpace(node.waiting)
+		return a.taskStatus(node).RowWord()
 	case strings.TrimSpace(node.mending) != "":
 		return strings.TrimSpace(node.mending)
 	case strings.TrimSpace(node.tool) != "":

@@ -181,8 +181,8 @@ func heldNotice(why string) session.TaskNotice {
 // survives.
 func TestAHeldNodeSaysWhatIsHoldingItAtEveryWidth(t *testing.T) {
 	for _, tc := range []struct{ why, full, slim string }{
-		{waitWordMachine, "waiting · machine busy", "waiting · machine b…"},
-		{waitWordSlot, "waiting · slot", "waiting · slot"},
+		{waitWordMachine, "queued · machine busy", "queued · machine bu…"},
+		{waitWordSlot, "queued · slot", "queued · slot"},
 	} {
 		t.Run(tc.why, func(t *testing.T) {
 			a, _, _ := taskApp(t)
@@ -207,7 +207,7 @@ func TestAHeldNodeSaysWhatIsHoldingItAtEveryWidth(t *testing.T) {
 			// AND THE COLUMN ITSELF DRAWS IT, at both widths the roster has.
 			for _, width := range []int{200, 110} {
 				a.width = width
-				if roster := rosterText(a, 12); !strings.Contains(roster, taskHeldWord+" · ") {
+				if roster := rosterText(a, 12); !strings.Contains(roster, a.taskStatus(node).Word+" · ") {
 					t.Fatalf("the roster at %d columns does not say the node is held:\n%s", width, roster)
 				}
 			}
@@ -306,7 +306,7 @@ func TestAWaitingDependencyOutranksTheHoldWord(t *testing.T) {
 	// unblocked, it is still not running, and the row says why.
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskDone,
 		session.TaskNotice{Merge: mergeWordMerged})})
-	if got := plain(strings.Join(a.railUnder(node, underWidth(railCols)), "\n")); got != "waiting · slot" {
+	if got := plain(strings.Join(a.railUnder(node, underWidth(railCols)), "\n")); got != "queued · slot" {
 		t.Fatalf("the unblocked node says %q, want the hold", got)
 	}
 }

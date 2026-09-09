@@ -167,7 +167,7 @@ func testNestedGate(t *testing.T) {
 	home := newHome(t, map[string]any{"task.settle": "ask"})
 	ws := newWorkspace(t, "gatews", false)
 	seedDecidedFamily(t, home, ws)
-	r := start(t, "afe2e_gate", home, ws, tuiWide, 40)
+	r := start(t, "afe2e_gate", home, ws, tuiWide, 40, "chat", "--one-model")
 
 	// WHICHEVER DOOR THE LAUNCH TOOK. A machine with no conversation for this
 	// workspace opens home; one that has the seeded conversation opens straight
@@ -1537,7 +1537,7 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	ws := newWorkspace(t, "roomws", false)
 
 	// ── the window that does the work ────────────────────────────────────────
-	first := start(t, "afe2e_room1", home, ws, tuiPlain, tuiShortRows)
+	first := start(t, "afe2e_room1", home, ws, tuiPlain, tuiShortRows, "chat", "--one-model", "--no-host")
 	// Whichever door the launch took. On a state root built one minute ago it is
 	// the setup, whose own foot says `esc skips setup`, and esc is what the rest
 	// of this file presses at this rung anyway.
@@ -1553,19 +1553,12 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	first.lit("/history")
 	time.Sleep(700 * time.Millisecond)
 	first.keys("Enter")
-	// THE WORK IS REALLY OUT. `enter open its room` stands on the foot only over
-	// a node this window's graph is holding, so waiting for that sentence is
-	// waiting for the task to have actually started rather than for a row to
-	// appear.
-	started := first.waitFor(4*time.Minute, say(t, "tasksEnterRoomWord"))
-	t.Logf("the task is out, and this window is holding it:\n%s", started)
-	// AND THEN THE WORK HAS TO LAND, because the row this test reads back is
-	// written when the node finishes and not when it starts
-	// ([session.appendTaskIndex]). The file is the wait: a window closed a
-	// second too early leaves a project with no record in it, which is what the
-	// fourth measured run of this subtest actually did.
+	// The tasks page selects the conversation group first. Once the task is
+	// recorded, move onto its child row to inspect the task's own door.
 	bucket := waitForRecord(t, home, 5*time.Minute)
-	t.Logf("the project's record was written at %s", filepath.Join(bucket, "tasks.jsonl"))
+	first.keys("Down")
+	started := first.waitFor(30*time.Second, say(t, "tasksEnterRoomWord"))
+	t.Logf("the selected task is held by this window:\n%s", started)
 	first.quit()
 
 	// ── and the window that reads it back ────────────────────────────────────
@@ -1583,7 +1576,7 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	// node and a reader of its record at the same time — the only combination
 	// the record card exists for.
 	fresh := filepath.Join(bucket, "read-it-back", "transcript.jsonl")
-	r := start(t, "afe2e_room2", home, ws, tuiPlain, tuiShortRows, "chat", "--session", fresh)
+	r := start(t, "afe2e_room2", home, ws, tuiPlain, tuiShortRows, "chat", "--session", fresh, "--one-model", "--no-host")
 	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "landingKeysWord"))
 	r.keys("Escape")
 	r.lit("/history")
@@ -1592,7 +1585,8 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	// AND NOW THE OTHER DOOR. No window is holding the node any more, so the
 	// foot offers the record rather than the room — which is the mode this test
 	// is about.
-	roster := r.waitFor(2*time.Minute, say(t, "tasksEnterInsideWord"))
+	r.waitFor(30*time.Second, "finished today")
+	roster := r.waitFor(30*time.Second, say(t, "tasksEnterInsideWord"))
 	t.Logf("the roster is offering the record of work nothing is holding:\n%s", roster)
 
 	// THE ARMING PRESS, AND IT IS THE ORDINARY ONE. A single space on a place

@@ -264,12 +264,20 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 		r.kill()
 	})
 	r.resize(cols, rows)
+	// Keep a crashed terminal readable so failures include the program's error.
+	if out, err := exec.Command("tmux", "set-option", "-w", "-t", name, "remain-on-exit", "on").CombinedOutput(); err != nil {
+		t.Fatalf("tmux remain-on-exit: %v\n%s", err, out)
+	}
 	respawn := exec.Command("tmux", "respawn-window", "-k", "-t", name, "-c", ws, strings.Join(quoted, " "))
 	if out, err := respawn.CombinedOutput(); err != nil {
 		t.Fatalf("tmux respawn-window: %v\n%s", err, out)
 	}
-	// And the app has to be past its first frame before it can be typed at.
-	time.Sleep(3 * time.Second)
+	// The local engine connection can outlast a fixed launch delay. Wait for
+	// an interactive surface before typing, or the first request is lost.
+	if hit, _ := r.waitForAny(45*time.Second, say(t, "homeFootWord"),
+		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "landingKeysWord")); hit == "" {
+		t.Fatal("the terminal never reached an interactive surface")
+	}
 	return r
 }
 
