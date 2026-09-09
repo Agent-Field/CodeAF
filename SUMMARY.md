@@ -152,3 +152,27 @@ Outstanding: preserve this tested feature branch under the hold. Final dev
 reconciliation, an affected validation on that new base, normal PR gates,
 target merge, ancestry verification, and both success markers remain deferred
 until explicit release.
+
+## Pass 7 checkpoint
+
+- Steering revision 04 still records the PR #653 release-integration hold as
+  active. GitHub confirms PR #653 remains open and draft against `dev`; this is
+  observation only, not authority to infer completion or release the hold.
+- Draft PR #658 remains open, cleanly mergeable, and still targets
+  `codex/conversation-execution` at the exact pushed feature head
+  `7ff64a810e61582336416d988356192e1d7f05e9`. It was neither retargeted nor
+  merged, and no protected branch was written.
+- The isolated candidate remains fully prepared at that head: controlled
+  uncached tui3 tests improved from 564.32s to 402.60s (28.7%); the frozen
+  affected report passed 4,385 tests with 4 skips and no failures, cached
+  package labels, or incomplete packages; `make test-quick` and `make build`
+  passed after the final formatting-only commit.
+- Remote refs were checked without mutation: `dev` is `65f060d338`, the old
+  conversation target is `2a02ac0bb`, and the feature ref is `7ff64a810`.
+  `reports/READY` and `reports/QUALITY_READY` remain absent as required.
+
+Outstanding: wait for an explicit hold release carrying the verified PR #653
+merge SHA. Then reconcile this separate follow-up onto that `origin/dev`,
+retarget PR #658, rerun affected validation and normal gates on the reconciled
+head, merge through the PR with expected-head protection, verify ancestry, and
+only then write both success markers.
