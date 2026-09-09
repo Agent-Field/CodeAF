@@ -323,13 +323,14 @@ the work is done then, and your git is your own.
 
 ## It keeps saying the tests fail but they were already failing · red before the work · a check that was broken when I started
 
-**A check is yours only if your run turned it red.** On a run with a budget, aforge runs
+**A check is yours only if your run introduced new red.** On a run with a budget, aforge runs
 the checks its acceptance names once at the start — before it has touched anything — and
 writes down which were already failing. Only the acceptance it wrote for the work and each
 task's own brief supply checks; a command pasted into your ask (the steps you took to see a
 bug, say) is never run as one — `$ chmod 000 tox.ini` in a pasted issue once was, and no
-longer is. At the end it runs them again, and only a check that was
-**green before and red after** counts as work still to do.
+longer is. At the end it runs them again. A check that was **green before and red after**
+counts as work still to do. When a runner names individual failures, a new failure inside
+a command that was already red also counts; unparsed red stays uncertain.
 
 That first reading runs **in the background**, so nothing waits for it: your first turn
 starts straight away. It gets one window for the whole set rather than one per check, and
@@ -355,7 +356,7 @@ What was already broken is not hidden from the work either — the brief it carr
 says so plainly, so nothing goes off to fix it by accident:
 
 ```
-1 check was already failing before this work and is not counted: tox -e py
+1 check was red before this work and is not counted as identified new red: tox -e py
 ```
 
 This section describes the session's own end-of-reply reading, which runs only when you

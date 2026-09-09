@@ -1838,8 +1838,9 @@ type Agent struct {
 	// session did any work, and baselineTaken says the reading has happened —
 	// which is not the same as the list being non-empty, because a clean tree
 	// reads as no red at all ([Agent.openBaseline]).
-	baselineRed   []string
-	baselineTaken bool
+	baselineRed      []string
+	baselineFailures map[string][]string
+	baselineTaken    bool
 	// baselineRead says the reading has LANDED, which is not the same as it
 	// having been started ([Agent.openBaseline] runs it in the background) and
 	// not the same as the list being non-empty (a clean tree reads as no red).

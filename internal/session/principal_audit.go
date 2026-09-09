@@ -175,10 +175,11 @@ func runOneCheck(ctx context.Context, tree, check string) CheckRun {
 	// closing over it, or the process never starting, and none of those is a
 	// reading of the tree ([CheckRun.Ran]).
 	return CheckRun{
-		Command: check,
-		Passed:  err == nil,
-		Ran:     checkActuallyRan(ctx, err),
-		Tail:    checkTail(string(output)),
+		Command:  check,
+		Passed:   err == nil,
+		Ran:      checkActuallyRan(ctx, err),
+		Tail:     checkTail(string(output)),
+		Failures: verify.FailingTests(string(output)),
 	}
 }
 
@@ -734,7 +735,7 @@ func (a *Agent) openBaseline(ctx context.Context) {
 		// NOTHING TO READ IS A FINISHED READING. A session whose ask declares no
 		// runnable check has no baseline to wait for, and leaving the reading
 		// permanently open would mean no check ever counted as this run's own.
-		a.closeBaseline(nil, nil)
+		a.closeBaseline(nil, nil, nil)
 		return
 	}
 	go func() {
@@ -753,6 +754,7 @@ func (a *Agent) readBaseline(ctx context.Context, checks []string) {
 
 	tree := a.deliverableTree()
 	var red, unread, moved []string
+	failures := make(map[string][]string)
 	for index, check := range checks {
 		if ctx.Err() != nil {
 			// The window closed. Everything it did not reach was not read, and
@@ -781,9 +783,12 @@ func (a *Agent) readBaseline(ctx context.Context, checks []string) {
 		}
 		if !run.Passed {
 			red = append(red, check)
+			if len(run.Failures) > 0 {
+				failures[check] = append([]string(nil), run.Failures...)
+			}
 		}
 	}
-	a.closeBaseline(red, unread)
+	a.closeBaseline(red, unread, failures)
 	a.journalBaseline(red, unread, moved)
 }
 
@@ -877,13 +882,14 @@ func treeRecordFromGit(tree string) ([]string, bool) {
 // closeBaseline publishes the reading and says it has happened, which are one
 // step: a reader that saw the list before the flag would count nothing, and one
 // that saw the flag before the list would count everything.
-func (a *Agent) closeBaseline(red, unread []string) {
+func (a *Agent) closeBaseline(red, unread []string, failures map[string][]string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.baselineRead {
 		return
 	}
 	a.baselineRed, a.baselineUnread = red, unread
+	a.baselineFailures = cloneFailureNames(failures)
 	a.baselineRead = true
 	if a.baselineDone != nil {
 		close(a.baselineDone)
@@ -913,7 +919,7 @@ func (a *Agent) awaitBaseline(ctx context.Context) {
 		return
 	}
 	if !started || done == nil {
-		a.closeBaseline(nil, nil)
+		a.closeBaseline(nil, nil, nil)
 		return
 	}
 	select {
@@ -929,6 +935,23 @@ func (a *Agent) baselineRedChecks() ([]string, []string, bool) {
 	defer a.mu.Unlock()
 	return append([]string(nil), a.baselineRed...),
 		append([]string(nil), a.baselineUnread...), a.baselineRead
+}
+
+func (a *Agent) baselineFailureNames() map[string][]string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return cloneFailureNames(a.baselineFailures)
+}
+
+func cloneFailureNames(in map[string][]string) map[string][]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string][]string, len(in))
+	for command, names := range in {
+		out[command] = append([]string(nil), names...)
+	}
+	return out
 }
 
 // journalBaseline writes the baseline down, INCLUDING WHEN IT WAS ALL GREEN.

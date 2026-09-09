@@ -255,6 +255,10 @@ type CheckRun struct {
 	Command string
 	Passed  bool
 	Tail    string
+	// Failures carries stable identities read from a failed command's own
+	// output. Empty remains honest for a non-test validation or output the
+	// generic reader cannot parse: the command is red, but what failed is unknown.
+	Failures []string
 
 	// Ran says the command STARTED AND FINISHED — it was found, it executed, and
 	// the shell gave an exit status. A command that would not start and one the
@@ -379,6 +383,9 @@ type Remains struct {
 	// takes one — every watched session — counts no check as its own, which is
 	// the one safe answer when nobody knows what was red to begin with.
 	WasFailing []string
+	// WasFailingTests keeps failure identities inside baseline-red commands,
+	// keyed by the exact declared command both readings ran.
+	WasFailingTests map[string][]string
 
 	// Unread is the declared checks the before-reading COULD NOT READ: one that
 	// changed the tree and had its answer thrown away, one the shell could not
@@ -529,21 +536,24 @@ func (r Remains) unmet() []string {
 	} else if r.Stashed > 1 {
 		out = append(out, fmt.Sprintf("%d stash entries hold work that is not in the tree", r.Stashed))
 	}
-	// AND ONLY THE RED THIS WORK TURNED RED IS LEFT. What was already failing
-	// before anybody touched the tree is the project's and not this session's,
-	// and naming it sends a run that has finished back into somebody else's bug
-	// for the rest of its ceiling. It is the same subtraction the task harness
-	// makes over its own before-and-after ([verify.NewFailures]), on the check
-	// commands rather than on test names, because a session's declared check is
-	// a whole command and its answer is whether that command passed.
+	// AND ONLY THE RED THIS WORK TURNED RED IS LEFT. An unchanged failure is not
+	// evidence of a new regression; the goal reader still decides whether the
+	// requested behavior itself was delivered. A command remains the unit that
+	// is run, but when both red outputs name failures, those identities are
+	// compared inside it: pytest red on A before and B after is new red, not the
+	// same answer.
 	//
 	// AND WITH NO BASELINE YET, NOTHING IS COUNTED. The reading runs in the
 	// background at the start of the run, and until it lands nobody knows which
 	// red is the project's — so the honest answer about the checks is silence
 	// rather than a guess, and [stewardBrief] says the reading is still going.
 	if r.BaselineRead {
-		for _, command := range verify.NewFailures(r.WasFailing, r.attributableRed()) {
-			out = append(out, command+" does not pass")
+		for _, failure := range r.newCheckFailures() {
+			line := failure.Command + " does not pass"
+			if len(failure.Failures) > 0 {
+				line += ": " + strings.Join(failure.Failures, ", ")
+			}
+			out = append(out, line)
 		}
 	}
 	return out
@@ -568,15 +578,46 @@ func (r Remains) redChecks() []string {
 	return out
 }
 
+func (r Remains) newCheckFailures() []CheckRun {
+	old := make(map[string]bool, len(r.WasFailing))
+	for _, command := range r.WasFailing {
+		old[command] = true
+	}
+	unread := make(map[string]bool, len(r.Unread))
+	for _, command := range r.Unread {
+		unread[command] = true
+	}
+	var fresh []CheckRun
+	for _, run := range r.Checks {
+		if run.Passed || unread[run.Command] {
+			continue
+		}
+		names, changed := verify.NewCommandFailure(old[run.Command], r.WasFailingTests[run.Command], run.Failures)
+		if changed {
+			run.Failures = names
+			fresh = append(fresh, run)
+		}
+	}
+	return fresh
+}
+
 // alreadyRed is what this reading found failing that was failing before the work
 // began — the checks [Remains.unmet] deliberately did not name.
 func (r Remains) alreadyRed() []string {
-	red := r.redChecks()
 	if !r.BaselineRead {
 		return nil
 	}
-	red = r.attributableRed()
-	return verify.Subtract(red, verify.NewFailures(r.WasFailing, red))
+	newRed := map[string]bool{}
+	for _, run := range r.newCheckFailures() {
+		newRed[run.Command] = true
+	}
+	var old []string
+	for _, command := range r.attributableRed() {
+		if !newRed[command] {
+			old = append(old, command)
+		}
+	}
+	return old
 }
 
 // absorbedBy names the landing that already did this one's work, and "" when
@@ -1227,5 +1268,5 @@ func alreadyRedSentence(already []string) string {
 	if len(already) > 1 {
 		was = fmt.Sprintf("%d checks were", len(already))
 	}
-	return was + " already failing before this work and is not counted: " + strings.Join(already, ", ")
+	return was + " red before this work and is not counted as identified new red: " + strings.Join(already, ", ")
 }

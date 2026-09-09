@@ -153,7 +153,7 @@ func TestTheCheckerIsToldWhatWasAlreadyFailing(t *testing.T) {
 		before: checkPhotograph{red: []string{command}, read: true},
 		after:  checkPhotograph{red: []string{command}, read: true},
 	})
-	for _, want := range []string{command, "already failing before this work", "not this work's to answer for"} {
+	for _, want := range []string{command, "was red before this work and remains red", "not proof that the requested behavior works"} {
 		if !strings.Contains(block, want) {
 			t.Errorf("the checker was not told %q:\n%s", want, block)
 		}
@@ -171,7 +171,7 @@ func TestTheBeforeReadingReachesTheCheckersQuestion(t *testing.T) {
 		after:  checkPhotograph{red: []string{command}, read: true},
 	}
 	question := auditQuestion(node, taskTree{}, auditGround{}, auditDoor{}, checks, landingFiles{}, "", nil)
-	for _, want := range []string{command, "not this work's to answer for"} {
+	for _, want := range []string{command, "Judge the requested acceptance"} {
 		if !strings.Contains(question, want) {
 			t.Errorf("the checker question is missing %q:\n%s", want, question)
 		}
@@ -327,7 +327,7 @@ func TestAPreExistingRedDoesNotStandBetweenTheWorkAndItsLanding(t *testing.T) {
 	if notice.State != TaskDone {
 		t.Fatalf("state = %q, report = %q, want done", notice.State, notice.Report)
 	}
-	want := "1 check was already failing before this work and is not counted: go test ./..."
+	want := "1 check was red before this work and is not counted as identified new red: go test ./..."
 	if !strings.Contains(notice.Report, want) {
 		t.Fatalf("report = %q, want %q", notice.Report, want)
 	}

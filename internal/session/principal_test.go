@@ -804,7 +804,7 @@ func TestTheAlreadyRedSentenceRidesAReaderSuppliedBrief(t *testing.T) {
 		t.Fatalf("the brief is not the reader's own line:\n%s", decision.Brief)
 	}
 	if !strings.Contains(decision.Brief,
-		"1 check was already failing before this work and is not counted: tox -e py") {
+		"1 check was red before this work and is not counted as identified new red: tox -e py") {
 		t.Fatalf("a reader's brief never says what was already broken:\n%s", decision.Brief)
 	}
 
@@ -852,7 +852,7 @@ func TestTheBriefSaysWhatWasAlreadyFailingBeforeTheWork(t *testing.T) {
 		t.Fatalf("the brief does not name the check this work broke:\n%s", decision.Brief)
 	}
 	if !strings.Contains(decision.Brief,
-		"1 check was already failing before this work and is not counted: tox -e py") {
+		"1 check was red before this work and is not counted as identified new red: tox -e py") {
 		t.Fatalf("the brief never says what was already broken:\n%s", decision.Brief)
 	}
 }

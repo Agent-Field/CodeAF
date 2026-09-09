@@ -2942,6 +2942,7 @@ func (a *Agent) decideOverTheChecks(ctx context.Context, remains Remains) (Decis
 	// ([Remains.Stashed]).
 	remains.Stashed = stashed
 	remains.WasFailing, remains.Unread, remains.BaselineRead = a.baselineRedChecks()
+	remains.WasFailingTests = a.baselineFailureNames()
 	return a.who().Decide(remains), found
 }
 

@@ -1541,10 +1541,12 @@ branch tip is never substituted for the missing history.
 Before a task's work is checked, aforge runs the task's named checks on the **base commit
 its copy was cut from**. That is the before-reading: it says which checks were already red
 before the task began. The check of what would ship is then compared with it. A check that
-was already failing and is still failing is not this task's to answer for; an acceptance
-that says the suite passes is met when everything this task could have broken is green and
-the rest is exactly as it was found. A check that was passing before the task and is red
-after it **is** this task's.
+was already failing and still names the same failure is unchanged baseline evidence. It is
+not proof that the requested behavior works: the checker still judges the request from the
+work and its evidence. When both readings name individual failures, aforge compares those
+names, so one old failure cannot hide a different new failure under the same command. A
+check that was passing before the task and is red after it **is** new red. Output that does
+not name individual failures stays uncertain rather than being guessed different.
 
 The checker is told that distinction before it reads which commands it may run. If the base
 was clean, it is told every check was passing before the work began, so any red it finds is
@@ -1563,7 +1565,7 @@ When old red remains under work that finishes, its report keeps the checker's ow
 first and then says exactly:
 
 ```
-1 check was already failing before this work and is not counted: go test ./...
+1 check was red before this work and is not counted as identified new red: go test ./...
 ```
 
 ## What the checker is shown of what the task already ran
