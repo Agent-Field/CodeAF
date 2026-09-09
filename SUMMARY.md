@@ -116,3 +116,32 @@ Outstanding: consume the harness lane only after its state and report are final;
 then review and integrate its committed history and run the single frozen
 combined validation. Under the current hold, preserve the draft branch and
 evidence without producing either success marker.
+
+## Pass 6 checkpoint
+
+- The harness lane finished at
+  `b463a9b10a1f721eaf86891e788423c0f7bc929d`. Its final evidence reports the
+  same-host, uncached-test improvement from 564.32s to 402.60s (28.7%), an
+  independently shuffled full run at 403.66s, waiter-heavy shuffle and
+  `GOMAXPROCS=1` stress, and no data races in the full race run. The sole race
+  run failure is a pre-existing allocation ceiling that reproduces on the base
+  and is not part of the normal race-free claim.
+- Coordinator review confirmed that command deadlines remain 150ms/120ms,
+  eligible waits overlap without crossing `drive` calls, result collection is
+  deterministic by start order, and two new laws guard waiter-symbol and tick
+  callback assumptions. The lane was integrated with history at feature merge
+  `937ad3478`.
+- A frozen JSON-report run of `internal/tui3` plus `internal/ci/testreport` was
+  attempted through the required suite lock. It was correctly refused because
+  another owner's tui3 suite holds the box at PID 2260601; the parser rejected
+  the empty stream and no stale JSON artifact remains. No competing run was
+  launched.
+- Steering 03 and the follow-up destination decision still govern. PR #658
+  remains draft against `codex/conversation-execution`; it must not be retargeted
+  or merged until the root supplies the verified PR #653 merge SHA and explicitly
+  releases the hold. READY and QUALITY_READY remain absent.
+
+Outstanding: retry the one frozen affected suite after the shared runner is
+free, then preserve the exact tested feature head under the hold. Final dev
+reconciliation, normal PR gates, target merge, ancestry verification, and both
+success markers remain deferred until explicit release.
