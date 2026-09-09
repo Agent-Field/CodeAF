@@ -155,3 +155,53 @@ func TestConfirmationDoesNotAdoptAnEarlierFailedAttempt(t *testing.T) {
 		}
 	}
 }
+
+// A provider can interleave private reasoning between sections of one answer.
+// Settling the turn must preserve the whole answer on both reading surfaces.
+func TestCompletedInterleavedAnswerKeepsEverySection(t *testing.T) {
+	for _, room := range []bool{false, true} {
+		t.Run(map[bool]string{false: "chat", true: "room"}[room], func(t *testing.T) {
+			a := newTestApp(&fakeAgent{model: "m"})
+			a.state, a.turn, a.linear = stateWorking, 1, true
+			a.entries = []entry{{kind: entryUser, text: "Review stars", turn: 1}}
+			if room {
+				a.room = a.newRoom(7, "Review stars")
+				a.room.done, a.room.turn = false, 1
+				a.room.entries = append([]entry(nil), a.entries...)
+			}
+			for _, ev := range []session.Event{
+				{Kind: session.EventToolBegin, Tool: "read", CallID: "notes", Args: `{"path":"hidden-notes.md"}`},
+				{Kind: session.EventToolEnd, Tool: "read", CallID: "notes", Output: "notes read"},
+				{Kind: session.EventTextDelta, Text: "First section. Its complete details remain visible."},
+				{Kind: session.EventReasoning, Text: "PRIVATE INTERLEAVED REASONING"},
+				{Kind: session.EventTextDelta, Text: "Second section. Its complete result also remains visible."},
+				{Kind: session.EventAssistantDone},
+				{Kind: session.EventTurnDone},
+			} {
+				if room {
+					drive(t, a, roomEventMsg{gen: a.room.gen, ev: ev})
+				} else {
+					a.event(ev)
+				}
+			}
+			if room {
+				drive(t, a, roomClosedMsg{gen: a.room.gen})
+			}
+			a.touch()
+			page := livePage(a)
+			if room {
+				page = roomText(a)
+			}
+			for _, want := range []string{"Its complete details", "Its complete result"} {
+				if !strings.Contains(page, want) {
+					t.Fatalf("completion hid %q:\n%s", want, page)
+				}
+			}
+			for _, hidden := range []string{"PRIVATE INTERLEAVED", "hidden-notes.md", "thought for"} {
+				if strings.Contains(page, hidden) {
+					t.Fatalf("completion exposed %q:\n%s", hidden, page)
+				}
+			}
+		})
+	}
+}

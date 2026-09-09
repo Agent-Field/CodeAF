@@ -118,3 +118,21 @@ func eventCount(events []Event, kind EventKind) int {
 	}
 	return count
 }
+
+// A new watcher must replay only the attempt the engine still owns.
+func TestTaskCatchupRetryDropsDiscardedAttemptBeforeConfirmation(t *testing.T) {
+	var catchup taskCatchup
+	catchup.record(Event{Kind: EventReasoning, Text: "discarded reasoning"})
+	catchup.record(Event{Kind: EventTextDelta, Text: "discarded answer"})
+	catchup.record(Event{Kind: EventToolAnnounced, CallID: "discarded-tool", Tool: "read"})
+	catchup.record(Event{Kind: EventRetrying})
+	catchup.record(Event{Kind: EventTextDelta, Text: "replacement answer"})
+	replay := catchup.replay()
+	if len(replay) != 1 || replay[0].Kind != EventTextDelta || replay[0].Text != "replacement answer" {
+		t.Fatalf("retry catchup = %#v, want only replacement answer", replay)
+	}
+	catchup.record(Event{Kind: EventAssistantDone})
+	if replay := catchup.replay(); len(replay) != 0 {
+		t.Fatalf("confirmed catchup = %#v", replay)
+	}
+}

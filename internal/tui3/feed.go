@@ -1281,6 +1281,7 @@ func (f *feed) dropRetryingFormingTools() {
 // promoting a tool preamble or another exchange's answer.
 func (f *feed) confirmResponse() {
 	confirmation := &responseConfirmation{done: true}
+	var fragments []int
 	for i := len(f.entries) - 1; i >= 0; i-- {
 		e := &f.entries[i]
 		if e.turn != f.turn || groupBreaks(e) || e.kind == entryTool || e.kind == entryCompact {
@@ -1294,13 +1295,37 @@ func (f *feed) confirmResponse() {
 		if !e.provisional || e.confirmed != nil {
 			break
 		}
+		fragments = append(fragments, i)
 		e.provisional, e.confirmed = false, confirmation
 		if f.live == i {
 			f.closeLive()
 		} else {
 			settleBlock(e)
 		}
-		e.demoted = workEntry(f.entries, nil, i)
+	}
+	if len(fragments) > 0 {
+		// THE CONFIRMED ANSWER HAS THE JOURNAL'S SHAPE. Interleaved private
+		// reasoning must not split the final answer or leave a thought row in
+		// its middle. Preserve exact content order in one final prose entry;
+		// empty earlier fragments in place so every existing index stays valid.
+		var text strings.Builder
+		var tags []session.TaskReplyTag
+		for at := len(fragments) - 1; at >= 0; at-- {
+			e := &f.entries[fragments[at]]
+			text.WriteString(e.text)
+			tags = append(tags, e.replyTags...)
+			e.text, e.replyTags, e.stale = "", nil, true
+		}
+		last := fragments[0]
+		if last != len(f.entries)-1 {
+			// Some providers finish with reasoning after their visible words.
+			// Put the whole answer after that settled work, as replay does.
+			f.closeLive()
+			f.entries = append(f.entries, f.entries[last])
+			last = len(f.entries) - 1
+		}
+		e := &f.entries[last]
+		e.text, e.replyTags, e.demoted = text.String(), tags, false
 	}
 	f.touch()
 }

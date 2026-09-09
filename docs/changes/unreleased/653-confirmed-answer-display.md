@@ -17,3 +17,7 @@ after the response was journaled does not replay the same prose a second time.
 Empty, failed and truncated responses do not signal a confirmed answer. Saved
 history keeps the existing structural answer hierarchy. No answer text is removed;
 explicit disclosure still makes the streaming source available.
+
+Interleaved content sections become one complete answer at confirmation, matching
+the saved transcript; private reasoning stays inside work rather than interrupting
+the answer. Joining a task during a retry replays only the replacement attempt.

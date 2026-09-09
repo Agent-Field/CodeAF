@@ -1110,6 +1110,11 @@ func (c *taskCatchup) record(event Event) {
 		// nothing has to be dropped call by call, and why nothing in here needs an
 		// id that EventToolBegin does not carry.
 		c.reset()
+	case EventRetrying:
+		// A failed attempt was discarded without a journal write. New room
+		// watchers must receive only the replacement response, just as a live
+		// watcher withdraws the failed attempt on this same event.
+		c.reset()
 	case EventCompacting:
 		// A COMPACTION PASS RUNS AT A STEP BOUNDARY, and it is the one boundary
 		// that takes SECONDS — the summarizer is a model call — so without this the
