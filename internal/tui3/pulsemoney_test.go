@@ -36,6 +36,13 @@ const (
 	moneyTaskUSD   = 0.13
 )
 
+// moneyFixtureNoon keeps every "today" row well inside one local calendar day.
+// The production reading is deliberately local-time aware, so the fixture keeps
+// time.Local while refusing to inherit the wall clock's midnight boundary.
+func moneyFixtureNoon() time.Time {
+	return time.Date(2026, time.September, 8, 12, 0, 0, 0, time.Local)
+}
+
 // oneMoneyLab is a machine that has spent money today with work recorded against
 // only a part of it: four ledger rows adding to $1.85, of which one task record
 // carries $0.13 and a standing firing carries the rest.
@@ -46,7 +53,7 @@ const (
 func oneMoneyLab(t *testing.T) (*app, func(time.Duration)) {
 	t.Helper()
 	lab := newHomeLab(t)
-	now := time.Now()
+	now := moneyFixtureNoon()
 	// THE ROWS ARE DATED BY THE HOUR OF THE DAY AND NOT BY `now` MINUS AN
 	// INTERVAL, because "three hours ago" is yesterday for anybody running this
 	// suite before breakfast — which is how a test about TODAY comes to read an
@@ -183,7 +190,7 @@ func TestTheMoneyOnTheTopLineIsTheMoneyOnTheSpendPage(t *testing.T) {
 // money segment at all, which is the emptiness law rather than `$0.00`.
 func TestATopLineOverAQuietDaySaysNothingAboutMoney(t *testing.T) {
 	lab := newHomeLab(t)
-	now := time.Now()
+	now := moneyFixtureNoon()
 	here := lab.workspace("alpha")
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", here, now)
 	a := lab.app(mine)
@@ -218,7 +225,7 @@ func TestTheTopLineSpellsTheLimitTheWayEverySurfaceSpellsIt(t *testing.T) {
 	for _, rail := range []float64{500, 12.5, 4.1} {
 		t.Setenv("AFORGE_DAILY_BUDGET", strconv.FormatFloat(rail, 'f', -1, 64))
 		lab := newHomeLab(t)
-		now := time.Now()
+		now := moneyFixtureNoon()
 		here := lab.workspace("alpha")
 		mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", here, now)
 		a := lab.app(mine)
@@ -226,7 +233,10 @@ func TestTheTopLineSpellsTheLimitTheWayEverySurfaceSpellsIt(t *testing.T) {
 		a.clock = func() time.Time { return now }
 
 		raw, err := json.Marshal(session.UsageLine{
-			At:      now.Add(-time.Hour),
+			// The formatter needs a non-zero current-day numerator. Its exact age
+			// is irrelevant, so use the captured fixture clock without another
+			// midnight-sensitive subtraction.
+			At:      now,
 			Session: "aaaa000000000001", Model: "m", Calls: 1, USD: 1.85,
 		})
 		if err != nil {
