@@ -19,6 +19,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -112,7 +113,7 @@ func (l *localLink) dial() (io.ReadWriteCloser, error) {
 	l.note = note
 	l.mu.Unlock()
 	return enginehost.Attach(l.workspace, func() error {
-		return enginehost.Spawn(self, "engine", "--daemon", "--workspace", l.workspace)
+		return enginehost.Spawn(l.workspace, self, "engine", "--daemon", "--workspace", l.workspace)
 	})
 }
 
@@ -131,6 +132,22 @@ func (h *hostShapeTaken) Error() string { return h.sentence }
 type hostUnreachable struct{ reason string }
 
 func (h *hostUnreachable) Error() string { return h.reason }
+
+// hostFallbackReason is the clause a person reads after "this conversation
+// opened in this terminal instead, and ends with it: ". The two host failures
+// written in machinery words are translated here, at the surface that knows
+// somebody will read them; every other reason passes through because stale and
+// older-host sentences have already been written for a person.
+func hostFallbackReason(err error) string {
+	switch {
+	case errors.Is(err, enginehost.ErrSocketPathTooLong):
+		return fmt.Sprintf("aforge's state folder is a longer path than the %d bytes a socket may be named in — AFORGE_HOME moves it somewhere shorter", enginehost.SocketLimit)
+	case errors.Is(err, enginehost.ErrNoHostAnswered):
+		return "nothing on this machine came up to hold it in the background"
+	default:
+		return err.Error()
+	}
+}
 
 // openChatV3Local is the launch.
 func openChatV3Local(launch localLaunch) error {
@@ -155,7 +172,7 @@ func openChatV3Local(launch localLaunch) error {
 		// A host that cannot be reached or started is not the end of the
 		// launch: the in-process door is the floor, and the reason travels with
 		// the fallback so a stale host's own sentence is still read.
-		return &hostUnreachable{reason: err.Error()}
+		return &hostUnreachable{reason: hostFallbackReason(err)}
 	}
 	closeClient := func() { _ = client.Close() }
 	defer func() { closeClient() }()

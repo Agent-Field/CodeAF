@@ -8,6 +8,7 @@ package enginehost
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -67,8 +68,8 @@ var _ remote.WrappedAgent = stubAgent{}
 // ([TestASocketPathTooLongIsRefusedAtTheDoor]) builds its own on purpose.
 //
 // It is NOT t.TempDir, and it does not honour $TMPDIR either, and the reason is
-// the point of [socketLimit] rather than an inconvenience: a unix socket path
-// has a hard ceiling of [socketLimit] bytes, Go names a temp directory after
+// the point of [SocketLimit] rather than an inconvenience: a unix socket path
+// has a hard ceiling of [SocketLimit] bytes, Go names a temp directory after
 // the test, this package's test names are sentences, and a Mac's own $TMPDIR
 // (/var/folders/…/T/…) spends most of the budget before the test has said
 // anything. WHETHER THIS SUITE PASSES MUST NOT BE A FUNCTION OF HOW DEEP
@@ -364,6 +365,96 @@ func TestAttachGivesUpQuietlyWhenNoHostCanStart(t *testing.T) {
 	if err == nil {
 		_ = conn.Close()
 		t.Fatal("Attach claimed a host that does not exist")
+	}
+	if !errors.Is(err, ErrNoHostAnswered) {
+		t.Fatalf("Attach answered with %v, want the no-host answer", err)
+	}
+	if errors.Is(err, ErrSocketPathTooLong) {
+		t.Fatalf("a short state root was refused as too long: %v", err)
+	}
+}
+
+// A SOCKET PATH THAT CAN NEVER BE NAMED IS ANSWERED BEFORE ANYTHING IS
+// STARTED. Paying the host's whole birth wait cannot change that answer, and
+// starting a process there would only make a child that was born unable to
+// listen.
+func TestAStatePathTooLongForASocketIsAnsweredBeforeAnythingIsStarted(t *testing.T) {
+	root := filepath.Join(t.TempDir(), strings.Repeat("deep/", 20))
+	t.Setenv("AFORGE_HOME", root)
+	spawned := false
+	started := time.Now()
+
+	conn, err := Attach("/home/somebody/api", func() error {
+		spawned = true
+		return nil
+	})
+	took := time.Since(started)
+	if conn != nil {
+		_ = conn.Close()
+		t.Fatal("a state root too deep for a socket returned a connection")
+	}
+	if !errors.Is(err, ErrSocketPathTooLong) {
+		t.Fatalf("the refusal was %v, want the socket-path answer", err)
+	}
+	if took >= spawnWait/10 {
+		t.Fatalf("a question settled at the door took %v of the %v host wait", took, spawnWait)
+	}
+	if spawned {
+		t.Fatal("a host was started where its socket could never be named")
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "v3", "hosts")); !os.IsNotExist(statErr) {
+		t.Fatalf("the refusal left a hosts directory behind: %v", statErr)
+	}
+}
+
+// A HOST THAT DIES AT BIRTH IS THE ONE PROCESS THAT KNOWS WHY. Its last words
+// belong in the workspace's host log, while stdout remains empty because the
+// process that asked for the host may be carrying the wire protocol there.
+func TestASpawnedHostsLastWordsLandInItsLog(t *testing.T) {
+	shortHome(t)
+	workspace := "/home/somebody/api"
+	dir, err := Dir(workspace)
+	if err != nil {
+		t.Fatalf("make somewhere for the host log: %v", err)
+	}
+
+	readStdout, writeStdout, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("make a stdout witness: %v", err)
+	}
+	originalStdout := os.Stdout
+	os.Stdout = writeStdout
+	if err := Spawn(workspace, "sh", "-c", "echo the host could not start 1>&2"); err != nil {
+		os.Stdout = originalStdout
+		_ = writeStdout.Close()
+		_ = readStdout.Close()
+		t.Fatalf("spawn the short-lived host: %v", err)
+	}
+	os.Stdout = originalStdout
+	if err := writeStdout.Close(); err != nil {
+		_ = readStdout.Close()
+		t.Fatalf("close the stdout witness: %v", err)
+	}
+	stdout, err := io.ReadAll(readStdout)
+	_ = readStdout.Close()
+	if err != nil {
+		t.Fatalf("read the stdout witness: %v", err)
+	}
+	if len(stdout) != 0 {
+		t.Fatalf("the spawned host wrote %q to this process's stdout", stdout)
+	}
+
+	logPath := filepath.Join(dir, logName)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		logged, readErr := os.ReadFile(logPath)
+		if readErr == nil && strings.Contains(string(logged), "the host could not start") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the host's last words did not reach %s: %q (%v)", logPath, logged, readErr)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
