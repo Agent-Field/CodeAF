@@ -199,6 +199,28 @@ func testNestedGate(t *testing.T) {
 // right, the engine keeps its failed plus refused state, and the built surface
 // must call that result incomplete rather than turning the useful finding into
 // a generic failure.
+// ── KNOWN RED, AND WHAT WAS MEASURED ABOUT IT ───────────────────────────────
+//
+// This subtest does not pass on dev today, and the reason is NOT the setup screen
+// or the greeting that were fixed for its two neighbours. It waits for the card's
+// answers row and the row is not drawn at all: the landing reads
+//
+//	? ◆ Review the pull request diff · your call · 42s · 1 file
+//	  nobody could check it
+//
+// and there is no third row under it — no `[a] accept`, no `[n] not right`, no
+// `[s] tell it`. The tier is right, the reason is right, and the answers are
+// missing, which is the shape docs/design/task-states/DESIGN.md exists to close.
+//
+// WHAT WAS RULED OUT, by measurement rather than by reading: it is not the
+// keyboard (the row is absent from the frame, not merely unanswered), not the
+// setup or the greeting ([rig.skipSetup], [statesAnswerKey]), and not the node
+// naming no changed file — that was the one structural difference from the
+// fixture in taskstates_e2e_test.go that DOES draw all four chips, and adding a
+// changed file put ` · 1 file` on the head and left the answers row absent.
+//
+// It is left standing rather than skipped: the suite is the place this is
+// visible, and a skip here is a defect nobody would meet again.
 func testRefusedLanding(t *testing.T) {
 	home := newHome(t, map[string]any{"task.settle": "ask"})
 	ws := newWorkspace(t, "refusedgatews", false)
