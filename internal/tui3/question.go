@@ -1504,7 +1504,12 @@ func (a *app) questionDial(head questionShown) tea.Cmd {
 // with what to say about it — "" where there was nothing to write or the engine
 // refused it.
 func (a *app) dialKind(kind session.AskKind) string {
-	agent, ok := a.agent.(autonomyAgent)
+	// IT ASKS FOR THE WRITE AND NOT FOR THE READ. `D` needs somewhere to keep
+	// the setting and nothing else; only `/autonomy` needs to read the rows
+	// back. Asking for both here would take the key away from a session that
+	// can keep a rule perfectly well, which is the narrowing
+	// [questionDialDoor]'s own comment exists to protect.
+	agent, ok := a.agent.(questionDialDoor)
 	if !ok || kind == "" {
 		return ""
 	}
