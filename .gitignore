@@ -15,6 +15,10 @@ __pycache__/
 *.aux
 harnesses/
 bench/swarm/results/
+# The timing report is diagnostic evidence for one run. Several sessions share
+# this checkout, and an untracked file at its root is what another lane's
+# `git add` sweeps up.
+/test-report.json
 # The manuals are generated for packed release builds. Their Markdown folders
 # are the tracked source; committing these shared binaries causes every branch
 # that documents a feature to conflict with every other one.

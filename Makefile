@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/aforge
 
-.PHONY: all build build-check debug demo-home embed manual-pack-law furrow test test-focus test-report test-quick test-laws fmt-check test-packed-manual test-remote vet check size clean \
+.PHONY: all build build-check debug demo-home embed manual-pack-law furrow test test-focus test-report test-quick test-laws fmt-check test-packed-manual manual-gates test-remote vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -141,13 +141,20 @@ REPORT ?= test-report.json
 test-report:
 	./scripts/test-report.sh '$(REPORT)' $(MAKE) -s --no-print-directory test PKGS='$(PKGS)' TEST_FLAGS="$(TEST_FLAGS) -count=1 -json"
 
-# This mirrors the deterministic light half of the pull-request gate. It is
-# fast feedback, NOT full acceptance: it does not run touched packages or the
-# whole suite. Use test-report/test with -count=1 before claiming acceptance.
+# This runs the deterministic light pull-request gates: build, vet, formatting,
+# the packed corpus, well-formed change entries, the manual gates, and the laws.
+# Off a pull request the changelog check can prove only that entries are well
+# formed; whether this branch adds one needs the base commit that only CI has.
+# It is fast feedback, NOT full acceptance: it does not run touched packages or
+# the whole suite. Use test-report/test with -count=1 before claiming acceptance.
 build-check:
 	go build ./...
 
-test-quick: build-check vet fmt-check test-packed-manual test-laws
+test-quick: build-check vet fmt-check test-packed-manual changelog-check manual-gates test-laws
+
+manual-gates:
+	go test ./internal/manual/
+	go test -run 'Manual' ./internal/tui3/ ./internal/session/
 
 # The laws alone — every test that reads the tree itself — in under half a
 # minute. This is what the pull-request gate runs on every change, and
