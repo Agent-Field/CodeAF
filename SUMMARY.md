@@ -232,3 +232,28 @@ merge SHA. Then reconcile onto the current `origin/dev`, retarget PR #658, run
 the affected suite and normal gates on that exact candidate, merge through the
 PR with expected-head protection, verify ancestry, rebuild here, and only then
 write both success markers.
+
+## Pass 10 checkpoint
+
+- Steering revision 04 and the coordinated destination decision remain active.
+  After a fresh fetch, PR #653 is still open and draft against `dev`; its light,
+  touched-package, and check jobs are green, but it has no merge commit or
+  merged timestamp. Green checks alone do not release the explicit hold.
+- Remote refs are unchanged: `origin/dev` is `65f060d338ec5d01eded666b420ec533319f35ac`,
+  `origin/codex/conversation-execution` and PR #653's head are
+  `2a02ac0bb9c4d085a345805fd809ac9539f2d896`, and the pushed PR #658 head is
+  `183981045d7b649e31d049812765496abc0c4ff1`.
+- PR #658 remains open, draft, and cleanly mergeable against the held
+  conversation target. It was neither retargeted nor merged, and no protected
+  branch was written.
+- No duplicate heavy run was launched. The unchanged frozen candidate already
+  has the controlled uncached tui3 improvement from 564.32s to 402.60s (28.7%),
+  4,385 passing affected tests with four skips and no failures/cache labels/
+  incomplete packages, followed by green `make test-quick` and `make build`.
+- `reports/READY` and `reports/QUALITY_READY` remain absent as required.
+
+Outstanding: the root must explicitly release steering03 with PR #653's
+verified merge SHA. Only then reconcile this follow-up onto current
+`origin/dev`, retarget PR #658, validate that exact candidate, merge through the
+PR with expected-head protection, verify ancestry, rebuild in this owned
+worktree, and write both success markers.
