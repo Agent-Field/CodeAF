@@ -774,8 +774,20 @@ type app struct {
 	// list in the same breath as the agent. They are preferred over fresh and
 	// resume wherever both are wired; the pair below is what a door that cannot
 	// answer the seam still gets ([app.nextConversation], [app.openConversation]).
-	start           func(workspace string) (Conversation, error)
-	open            func(workspace, transcript string) (Conversation, error)
+	start func(workspace string) (Conversation, error)
+	open  func(workspace, transcript string) (Conversation, error)
+	// engineAnswers is [Options.EngineAnswers]: whether a workspace has an engine
+	// holding it, asked on the keystroke that opens a held row and nowhere near a
+	// frame (home.go's [app.engineHolds]).
+	engineAnswers func(workspace string) bool
+	// engines is which of the projects with a held row on home turned out to be
+	// held by an ENGINE rather than by a window, from the last round of asking
+	// (homeengine.go). It is read on the frame and written on home's beat.
+	engines map[string]bool
+	// movedFrom is the conversation another window has just opened out from under
+	// this one, kept until home's list has the row to point at (takeover.go's
+	// [app.pointMovedRow]).
+	movedFrom       string
 	anchorWorkspace func(path string) (string, error)
 	// shared is [Options.SharedAgent]: this door's fresh and resume seams select
 	// a conversation IN PLACE on one handle rather than building a second agent.
@@ -2331,6 +2343,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		fresh:               opts.Fresh,
 		start:               opts.Start,
 		open:                opts.Open,
+		engineAnswers:       opts.EngineAnswers,
 		openTaskOwner:       opts.OpenTaskOwner,
 		anchorWorkspace:     opts.AnchorWorkspace,
 		errand:              opts.Errand,
@@ -3911,6 +3924,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.refreshPlaceCounts(a.now())
 		}
 		return a, a.homeBeat(msg.gen)
+
+	case engineReplyMsg:
+		// WHICH HELD ROWS ARE HELD BY AN ENGINE, coming back from the beat that
+		// asked (homeengine.go). It changes a word on a row and nothing else.
+		a.engineReply(msg)
+		return a, nil
 
 	case placeTickMsg:
 		// AND THE PLACES THAT ARE NOT HOME HAVE THE SAME CLOCK, at the same

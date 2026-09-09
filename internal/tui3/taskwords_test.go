@@ -328,8 +328,11 @@ func TestTheRoomHeaderSaysWaitingWhileANodeIsHeld(t *testing.T) {
 			a, _, _ := taskApp(t)
 			drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Write the report", tc.state, heldNotice(tc.why))})
 			node := a.tasks[7]
-			if got := a.roomStateWord(node); got != taskHeldWord {
-				t.Fatalf("the header calls a held node %q, want %q", got, taskHeldWord)
+			// AND THE HOLD TRAVELS WITH THE WORD. A row never reads a bare
+			// `waiting`: the reason is the half a person can act on, so the header
+			// says the reading's whole sentence (tasktier.go).
+			if got := a.roomStateWord(node); got != a.taskStatus(node).RowWord() || !strings.Contains(got, tc.why) {
+				t.Fatalf("the header calls a held node %q, want its word and %q", got, tc.why)
 			}
 			// The header is asserted through the rows a person actually reads: the
 			// trail is one row and the state, the clock and the spend are the row
@@ -337,7 +340,7 @@ func TestTheRoomHeaderSaysWaitingWhileANodeIsHeld(t *testing.T) {
 			a.room = a.newRoom(7, "Write the report")
 			head := plain(roomHeadAll(a, 120))
 			if !strings.Contains(head, a.chatCrumbWord()+roomCrumbSep+"Write the report") ||
-				!strings.Contains(head, taskHeldWord) {
+				!strings.Contains(head, tc.why) {
 				t.Fatalf("the room header is %q", head)
 			}
 
@@ -435,23 +438,23 @@ func TestNoTerminalStateEverSpeaksOfTheMachinery(t *testing.T) {
 	}
 }
 
-// THE THREE WORDS THE THIRD STATE IS SPELLED WITH say what is true of it from
-// the outside and nothing about what put it there: it finished, and it is on you
-// to look. They are asserted as literals because the whole point of them is the
-// wording — a constant renamed is a refactor, a constant reworded is a decision.
-func TestTheStateNobodyCouldJudgeReadsAsNeedingYourLook(t *testing.T) {
-	for _, tc := range []struct{ got, want string }{
-		{taskUnverifiedWord, "needs your look"},
-		{taskUnverifiedWaits, "finished — look it over"},
-		{taskUnverifiedGloss, "finished, but needs your look"},
-	} {
-		if tc.got != tc.want {
-			t.Fatalf("the state is spelled %q, want %q", tc.got, tc.want)
-		}
+// THE ONE WORD THE THIRD STATE IS SPELLED WITH says what is true of it from the
+// outside and nothing about what put it there: the machine has done what it can,
+// and the next move is yours. It is asserted as a literal because the whole point
+// of it is the wording — a constant renamed is a refactor, a constant reworded is
+// a decision — and against the engine's own answer, because the surface may not
+// hold a second spelling of a word internal/session already spells.
+func TestTheStateNobodyCouldJudgeReadsAsYourCall(t *testing.T) {
+	if tierYourCallWord != "your call" {
+		t.Fatalf("the state is spelled %q, want %q", tierYourCallWord, "your call")
+	}
+	status := session.ProjectTask(session.TaskFacts{State: session.TaskUnverified})
+	if status.Word != tierYourCallWord {
+		t.Fatalf("the surface says %q and the engine says %q", tierYourCallWord, status.Word)
 	}
 
 	// AND THE GROUP HEADING ALREADY COMPLIED: a column that files this under
-	// "needs you" and then calls the row "unverified" was saying one thing twice
+	// "needs you" and then calls the row something else was saying one thing twice
 	// and getting one of them wrong.
 	if railGroupWords[railAttention] != "needs you" {
 		t.Fatalf("the attention group is headed %q", railGroupWords[railAttention])

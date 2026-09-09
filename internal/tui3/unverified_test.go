@@ -61,7 +61,7 @@ func TestAnUnverifiedLandingIsNeitherDoneNorFailed(t *testing.T) {
 		}
 	}
 	for _, never := range []string{
-		glyphDone, doneWord + " ", doneFailWord, glyphBad, taskStoppedKept, mergeWordAborted,
+		glyphDone, doneWord + " ", "failed", glyphBad, "stopped — branch kept", mergeWordAborted,
 		said, // the landing's own sentence is behind ctrl+o while a reason is showing
 		"the key table is the part to read first",
 	} {
@@ -86,15 +86,21 @@ func TestAnUnverifiedLandingIsNeitherDoneNorFailed(t *testing.T) {
 	for _, want := range []string{
 		// The column leads with the STATE and nothing else — the card's identity
 		// cell is not spent here (task.go's [app.railLead]).
-		glyphUnverified + " Port the parser",
-		taskUnverifiedWaits,
+		glyphAsk + " Port the parser",
+		// AND THE ROW READS ITS REASON. A bare `your call` sends a person to the
+		// card to find out what for; the reason is the half they can act on
+		// (tasktier.go, docs/design/task-states/DESIGN.md). The under-block WRAPS
+		// rather than truncating at this width, so the sentence is asserted in the
+		// two halves it is drawn in.
+		tierYourCallWord + " · nobody could",
+		"check it",
 	} {
 		if !strings.Contains(rail, want) {
 			t.Fatalf("the rail is missing %q:\n%s", want, rail)
 		}
 	}
-	if strings.Contains(rail, taskStoppedKept) {
-		t.Fatalf("the rail says an unverified node stopped:\n%s", rail)
+	if strings.Contains(rail, taskStoppedWord) {
+		t.Fatalf("the rail says a your-call node stopped:\n%s", rail)
 	}
 }
 
@@ -148,8 +154,8 @@ func TestARollupWithAnUnverifiedNodeStopsSayingDone(t *testing.T) {
 func TestTheMentionListMarksAnUnverifiedRow(t *testing.T) {
 	for _, ascii := range []bool{false, true} {
 		entry := session.TaskIndexEntry{Status: string(session.TaskUnverified)}
-		if got := taskStatusGlyph(entry, ascii); got != glyphUnverified {
-			t.Fatalf("an unverified row is marked %q (ascii=%v), want %q", got, ascii, glyphUnverified)
+		if got := taskStatusGlyph(entry, ascii); got != glyphAsk {
+			t.Fatalf("an unverified row is marked %q (ascii=%v), want %q", got, ascii, glyphAsk)
 		}
 	}
 	done := session.TaskIndexEntry{Status: string(session.TaskDone)}

@@ -353,7 +353,7 @@ func standDrawn(views []StandingItemView) int {
 // StandingItemRow draws ONE standing item as one line of home's left column:
 //
 //	◦ every Monday at 9, draft the weekly update   Mondays 9am · last Mon
-//	▲ keep main green                    needs your look · the fix touches …
+//	▲ keep main green                       your call · the fix touches …
 //	● check the deploy                              checking now · since 4s
 //
 // IT IS PACKAGE-LEVEL AND EXPORTED ON PURPOSE, for [StandingCardRows]'s reason:
@@ -363,7 +363,7 @@ func standDrawn(views []StandingItemView) int {
 //
 // The row wears the calm every other row on this column wears — dim except
 // under the cursor — with one exception, and it is the same exception the
-// conversation rows make: `needs your look` is brought up out of the dim,
+// conversation rows make: `your call` is brought up out of the dim,
 // because a screen whose whole job is triage cannot render its most urgent fact
 // in the same grey as an age.
 func StandingItemRow(a *app, view StandingItemView, width int, now time.Time, sel, hover bool) string {
@@ -434,7 +434,7 @@ func standRollup(view StandingItemView, now time.Time) string {
 	item := view.Item
 	switch {
 	case item.NeedsPerson != "":
-		return "needs your look · " + item.NeedsPerson
+		return tierYourCallWord + tierReasonSep + item.NeedsPerson
 	case view.Running:
 		return standRunWord(view, now)
 	case item.Status == standing.StatusPaused:
@@ -605,7 +605,7 @@ func StandingItemCard(a *app, view StandingItemView, project, dir string, width,
 	if item.NeedsPerson != "" {
 		// The one thing on this card that is not a fact about the past. It is
 		// somebody's to do, and it is the only line here that is not dim.
-		for _, line := range wrap("needs your look · "+item.NeedsPerson, width) {
+		for _, line := range wrap(tierYourCallWord+tierReasonSep+item.NeedsPerson, width) {
 			// Amber: this is the card's one line about a person being waited on,
 			// and the design gives that reading one colour (styles.go's
 			// [hueWarn]).

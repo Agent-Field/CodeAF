@@ -36,6 +36,7 @@ package remote
 
 import (
 	"encoding/json"
+	"strings"
 	"sync"
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
@@ -286,6 +287,33 @@ func (c *Client) taskFrame(payload json.RawMessage) {
 	// whole, and the surface's own (id, state) de-dup is what makes a replayed
 	// row and a live row the same row (internal/tui3's taskUpdate).
 	lane.push(0, payload)
+}
+
+// movedFrame turns the engine's "moved" frame into the one event a surface acts
+// on, on the lane it is already reading.
+//
+// THE SENTENCE IS THE SESSION PACKAGE'S AND NOT THIS FILE'S. Both roads a
+// conversation can walk down — the takeover on this machine's disk and the move
+// through an engine — end in a window saying where the conversation went, and
+// two spellings of that would be two programs ([session.MovedWord]).
+//
+// A SURFACE WITH NO TASK LANE HEARS NOTHING, and that is the honest floor rather
+// than a gap to paper over: a connection that never subscribed is a door with no
+// screen behind it (a --once probe, a scripted client), and there is nobody
+// there to step back.
+func (c *Client) movedFrame(payload json.RawMessage) {
+	var note Moved
+	if err := json.Unmarshal(payload, &note); err != nil {
+		return
+	}
+	ev := session.Event{Kind: session.EventMoved, Text: session.MovedWord}
+	if !note.Here && strings.TrimSpace(note.Machine) != "" {
+		// The machine is named only when it is a DIFFERENT one. `another window`
+		// is already what the sentence says, and a name glued onto it for a
+		// window on this same laptop would be a fact nobody can act on.
+		ev.Text = "moved to " + note.Machine + " · enter on home brings it back"
+	}
+	c.taskFrame(mustJSON(WireEvent(ev)))
 }
 
 // buryTasks ends the lane when the connection does, so a surface pumping it

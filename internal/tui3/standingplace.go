@@ -10,7 +10,7 @@ package tui3
 //
 //	  standing orders
 //	  in this conversation
-//	› ▲ keep the tests green        needs your look · the fix touches migrations
+//	› ▲ keep the tests green        your call · the fix touches migrations
 //	  for this project
 //	  ◦ draft the weekly update                                  Mondays at 9am
 //	  everywhere
@@ -304,7 +304,7 @@ func standRowLabel(row standRow, pal palette) string {
 // on would be a second authority on the one question this column exists to ask.
 //
 // THE STATUS CLAUSE BEHIND IT IS [standRollup]'S, exactly as it has always been:
-// needs your look, checking now, paused, the cadence, what the last look found —
+// your call, checking now, paused, the cadence, what the last look found —
 // one derivation with one set of words, shared with home's own rows.
 //
 // THE WORDS OUTRANK BOTH, exactly as they do on home's own row ([standFitNote]

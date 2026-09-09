@@ -186,7 +186,7 @@ func (a *app) taskModelDoors() (taskModelDoor, bool) {
 //
 // A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN, so this is what the render
 // records the press target from ([app.identityParts]) rather than something the
-// press checks after the fact. A finished, failed, stopped or unverified node's
+// press checks after the fact. A finished, incomplete, stopped or your-call node's
 // model is a fact about what happened and nothing can move it; a queued node has
 // not started, and the engine refuses it in the same words; a run's page is a
 // fleet rather than one node, and a node belonging to a run is not in the graph
@@ -481,7 +481,7 @@ const (
 	roomKinSpawnedWord = "handed out: "
 	// roomKinStateSep joins a child to its state word on the spawned line. It is
 	// the em dash the surface already uses to hang a condition off a name
-	// (task.go's [taskStoppedKept], "stopped — branch kept"), so the two levels
+	// (task.go's [taskBranchKept], "branch kept"), so the two levels
 	// of the list read apart: children are separated by [railSep], and a child
 	// from its own state by this.
 	roomKinStateSep = " — "
@@ -2404,7 +2404,7 @@ func (a *app) roomTrailRow(width int) string {
 //
 // THE STATE WEARS THE NODE'S OWN INK and everything after it is dim. The hue is
 // [app.taskStateInk] — the same one the roster paints that node's glyph with —
-// so "needs your look" reads as warning here exactly as it does in the column,
+// so "your call" reads as warning here exactly as it does in the column,
 // and the figures beside it read as figures. The row is painted in pieces rather
 // than nested for [app.roomTrailRow]'s reason: a hue inside a hue ends at the
 // inner one's reset.
@@ -2903,9 +2903,12 @@ func guestOwnerName(owner string) string {
 // roomStateWord is what the node is doing, in the engine's own vocabulary where
 // it has one (task.go's merge words).
 func (a *app) roomStateWord(node *taskNode) string {
-	if a.taskReviewPending(node) {
-		return taskReviewPendingWord
-	}
+	// A QUESTION SOMEBODY ELSE IS ANSWERING IS STILL THAT QUESTION. This line
+	// used to read `awaiting review` for a card the settle policy had handed to
+	// the model, which was a fourth word for one reading and said nothing about
+	// what the question actually was. The header reads the reading's own sentence
+	// — `your call · nobody could check it` — and WHO is holding it is the card's
+	// to say, one keypress away (tasksettle.go, docs/design/task-states/DESIGN.md).
 	switch node.state {
 	case session.TaskRunning:
 		// A NODE A PERSON HAS ENDED IS STOPPING, AND IT OUTRANKS EVERY PHASE
@@ -2965,8 +2968,11 @@ func (a *app) roomStateWord(node *taskNode) string {
 		// there: the node is running and the wire is full. The reason itself is on
 		// the rail's own row under the node; the header has one line and spends it
 		// on the state.
+		// A ROW NEVER READS A BARE `waiting`. The word is half the news and the
+		// reason is the half a person can act on, so the two travel together
+		// wherever either is drawn ([session.TaskStatus.RowWord]).
 		if node.waiting != "" {
-			return taskHeldWord
+			return a.taskStatus(node).RowWord()
 		}
 		// The word the status line uses for a session that is working, said about
 		// a node for the same reason: a person who has learned what "working"
@@ -2985,7 +2991,7 @@ func (a *app) roomStateWord(node *taskNode) string {
 			return "waits: " + waits
 		}
 		if node.waiting != "" {
-			return taskHeldWord
+			return a.taskStatus(node).RowWord()
 		}
 		return roomQueuedWord
 	case session.TaskFailed:
@@ -2995,18 +3001,21 @@ func (a *app) roomStateWord(node *taskNode) string {
 		if node.stopped {
 			return taskStoppedByPerson
 		}
-		if refused(node.ending) {
-			return taskRecordStoppedWord
-		}
-		return roomFailedWord
+		// AND `failed` IS GONE. The engine keeps the state's name and a person
+		// reads the reading's own word — `incomplete` — because "failed" sends
+		// somebody looking for a fault and four of the five ways a run ends this
+		// way are not one (docs/design/task-states/DESIGN.md). The reason itself is
+		// on the rail's row under the node; the header has one line and spends it
+		// on the state.
+		return a.taskStatus(node).Word
 	case session.TaskUnverified:
 		// NOT THE MERGE SENTENCE, for the reason the rail states in the same words
-		// (task.go's [app.railUnder]): an unverified node wears session's
-		// "aborted" merge exactly as a stopped one does, so the switch below said
-		// "stopped" about work that ran to the end. What it is waiting for is a
-		// person, and the header says what the card and the rail already say
-		// (task.go's [taskUnverifiedWord]).
-		return taskUnverifiedWord
+		// (task.go's [app.railUnder]): a node whose landing is somebody's call
+		// wears session's "aborted" merge exactly as a stopped one does, so the
+		// switch below said "stopped" about work that ran to the end. What it is
+		// waiting for is a person, and the header says the word the card and the
+		// rail already say (tasktier.go).
+		return a.taskStatus(node).Word
 	}
 	// WHERE THE WORK LANDED, IN A PERSON'S WORDS. It is one table lookup and not
 	// a switch with a fall-through, because the fall-through was drawing the
@@ -3020,11 +3029,14 @@ func (a *app) roomStateWord(node *taskNode) string {
 	return roomDoneWord
 }
 
-// The three words the header has that nothing else on this surface says.
+// The two words the header has that nothing else on this surface says.
+//
+// A THIRD ONE, `failed`, IS GONE. It was the header's private name for a landing
+// the reading calls `incomplete`, and it reported a finding nobody made about
+// the four endings in five that are not faults.
 const (
 	roomQueuedWord = "queued"
 	roomDoneWord   = "done"
-	roomFailedWord = "failed"
 )
 
 // roomClock is the node's age: counting up while it runs, frozen at what the

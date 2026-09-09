@@ -217,7 +217,7 @@ func TestADesignAwaitingYourLookCountsAsNeedsYouAndNotAsRunning(t *testing.T) {
 	}
 	// NO SPINNER ON A WAITING ROW. It wears the same mark the other kind of
 	// finished-and-waiting work wears.
-	if glyph := plain(a.railGlyph(node)); glyph != glyphUnverified {
+	if glyph := plain(a.railGlyph(node)); glyph != glyphAsk {
 		t.Fatalf("a waiting design's row is drawn with %q, not the waiting mark", glyph)
 	}
 	if a.tasksAnimating() {
