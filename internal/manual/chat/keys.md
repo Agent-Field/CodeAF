@@ -1931,8 +1931,16 @@ it was. The hint line becomes a bar of at most three wide targets — `open · n
 ask here`, or `‹ back · open · more` on a sheet — and mouse motion is ignored, because
 there is no hover on glass. Home's own page has the whole shape.
 
-The box row reads `› say what you want done`, with the scope chip — `here ~/aforge-v2` —
-against its right edge. The line under it is the foot, and **at rest it is exactly**
+The box row reads `› say what you want done`. **The rule above it is a legend on home and
+nowhere else**, and it says what the box is a draft *for*:
+`─ → new conversation in ~/aforge-v2 · glm-5.3-flash ── alt+w folder · alt+o model · / commands ─`
+— the folder the next conversation opens in, the model it will answer on, and the two chords
+that change them. `alt+w` walks the folder round the projects on this machine and `alt+o`
+opens the model list in home's own body; pressing either label does the same as its chord.
+The scope chip that used to sit against the right of the box row — `here ~/aforge-v2` — is
+gone from home, because the rule says the same fact better and `enter` honours this one. The
+other six places keep the chip. The line under the box is the foot, and **at rest it is
+exactly**
 `type to search or start something new · ↑↓ pick · enter open · tab next place`: four keys
 and no more. `esc` still closes home from anywhere; the resting foot does not spend a cell
 naming it, and `alt+.` draws the whole map when you want it.
@@ -1941,9 +1949,9 @@ On any other row the foot says what THAT row's keys do and gains the two that ar
 everywhere — `enter opens the place this happened in · alt+. map · tab next place · esc close`
 on a `since you left` line, `enter or → show them · alt+. map · tab next place · esc close`
 on the fold, and
-`enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · alt+. map · tab next place · esc clear`
+`enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+. map · tab next place · esc clear`
 on the action row — and
-`enter runs this command · ctrl+enter ask here · ↑ pick a match · alt+. map · tab next place · esc clear`
+`enter runs this command · ↑ ask here · ↑↑ pick a match · alt+. map · tab next place · esc clear`
 on that same row when what is typed is a slash command, because `enter` runs it rather than
 sending it (home's page has that rule whole).
 

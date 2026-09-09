@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -14,11 +16,14 @@ import (
 // [chooseCommand], run over home's box, so the two surfaces cannot grow two
 // answers to what "/mo" offers or to what enter does with the row.
 //
-// THE DISPATCH IS NOT HERE EITHER. [app.homeSlash] hands the line to
-// [app.slash] — the same switch chat's enter runs — so a command behaves on
-// home exactly as it does in chat, and the conversation-scoped ones act on the
-// conversation this window holds behind the screen, which is parity rather
-// than a limitation: the window always holds one.
+// THE DISPATCH IS MOSTLY NOT HERE EITHER. [app.homeSlash] hands the line to
+// [app.slash] — the same switch chat's enter runs — through a gate that first
+// asks what the command MEANS on a screen with no conversation in front of it.
+// That gate is the second half of this file and it replaced a ruling: that the
+// conversation-scoped commands act on the conversation this window holds behind
+// the screen, "which is parity rather than a limitation: the window always
+// holds one." The window does always hold one. What it does not do is DRAW one,
+// and a command whose answer is drawn where nobody is looking is not parity.
 
 // homeCommand is one slash command, offered in the drop-up because what was
 // typed matches its name or one of its aliases. It is numbered OUTSIDE the
@@ -76,16 +81,164 @@ func (a *app) homeCommandRow(line homeLine, at, width int, pal palette) string {
 		at == h.cursor, false, at == h.hover, width, pal)
 }
 
-// homeSlash is what enter does with a slash line on the action row: the line
-// is consumed the way chat's enter consumes it (input.go's [app.enterLine]) —
-// the box is emptied, and the words go to the one dispatcher. A command that
-// stays on this screen (/home, an unknown word) therefore leaves the composer
-// empty rather than leaving the person to erase what they said.
+// ── THE GATE: WHAT A COMMAND MEANS ON A SCREEN WITH NO CONVERSATION ─────────
+//
+// Every command used to go straight to [app.slash], and the header above calls
+// that parity. It was parity for about half of them and a trapdoor for the
+// rest: ten commands answer by opening a bottom-anchored overlay, which a place
+// cannot draw and the keyboard cannot reach (pages.go's [app.closeModals] tells
+// that story), and sixteen more answer with a note written into a conversation
+// nobody is looking at. So the same three characters did three different things
+// depending on which command they spelled, and two of the three were silence.
+//
+// FOUR FATES, AND EVERY ONE OF THEM IS VISIBLE:
+//
+//	configures the draft   /model — it acts on the target and says so on home's
+//	                       own line ([homeView.say])
+//	names a place          /settings /home /search /spend /standing /memory
+//	                       /history /budget — unchanged, a place replaces a place
+//	is about THIS screen   /resume and /folder, whose answers home already IS —
+//	                       one line each, naming the gesture that does it here
+//	needs a conversation   it opens one AT THE TARGET first (homedraft.go), then
+//	                       runs there, which is the same door `enter` uses
+//
+// AND EVERYTHING ELSE STILL GOES TO THE ONE DISPATCHER, with its answer echoed
+// onto home's message line by [app.noteWritten] — so /help, /status, /cost,
+// /crew frugal, /budget 20 and `there is no command called /x · / lists them`
+// are all read where the person is standing.
+
+// The sentences the gate says. Each is quoted in the manual exactly as it is
+// spelled here.
+const (
+	// homeIsTheResumeWord is /resume and /sessions on the screen that IS the
+	// list of every conversation on this machine. It names the gesture rather
+	// than refusing, because the thing the person asked for is already in front
+	// of them.
+	homeIsTheResumeWord = "this list is /resume · enter opens a row"
+	// homeMoveTheTargetWord is /folder, /place and /dir, whose overlay this
+	// screen cannot draw and whose question home answers two better ways.
+	homeMoveTheTargetWord = "alt+w moves the next conversation · or type a path"
+)
+
+// homeSlash is what enter does with a slash line on the action row: the line is
+// consumed the way chat's enter consumes it (input.go's [app.enterLine]) — the
+// box is emptied — and then the gate above decides which of the four fates it
+// has. A command that stays on this screen therefore leaves the composer empty
+// rather than leaving the person to erase what they said.
 func (a *app) homeSlash(line string) tea.Cmd {
 	h := &a.home
+	name, rest, _ := strings.Cut(strings.TrimPrefix(line, "/"), " ")
+	rest = strings.TrimSpace(rest)
+	word := canonicalCommand(strings.ToLower(name))
 	h.box.reset()
 	h.build()
+	switch word {
+	case "model":
+		return a.homeModelCommand(rest)
+	case "resume":
+		h.say(homeIsTheResumeWord, "")
+		return nil
+	case "folder":
+		// BARE, its overlay is one home cannot draw and its question is one home
+		// answers two better ways. WITH A PATH it is the context browser opened
+		// straight at that folder — a real gesture, and one this screen is a good
+		// door onto precisely because home has a composer of its own to type it
+		// into (foldercontext.go).
+		if rest == "" {
+			h.say(homeMoveTheTargetWord, "")
+			return nil
+		}
+	}
+	if homeNeedsConversation(word, rest) {
+		// THE SAME DOOR `enter` TAKES, and it has to be: `/compact` typed at home
+		// used to compact a conversation behind the screen, and `/files` opened a
+		// shelf over one. Both are now about the conversation this line is
+		// opening, which is the conversation the rule above the box named.
+		started, opened := a.homeOpenAtTarget()
+		if !opened {
+			return nil
+		}
+		// AND THE DISPATCH RUNS AGAINST THE NEW AGENT. Both roads into
+		// [app.homeOpenAtTarget] swap the agent synchronously, so `a.agent` here
+		// is the conversation that just opened and [app.slash] acts on it.
+		return tea.Batch(started, a.slash(line))
+	}
+	// AND THE ANSWER OF EVERYTHING ELSE IS ECHOED WHERE IT WAS TYPED. /help,
+	// /status, /cost, /crew frugal, /budget 20 and `there is no command called
+	// /x · / lists them` all answer with a note, which lands in the conversation
+	// behind this screen — true, kept, and unreadable until you leave. The flag
+	// puts the first line of it on home's own message line as well
+	// ([app.noteWritten]).
+	a.echoHome = true
+	defer func() { a.echoHome = false }()
 	return a.slash(line)
+}
+
+// homeModelCommand is /model at home, and it is about the DRAFT.
+//
+// It used to be [app.switchModel] on the conversation behind the screen, which
+// re-modelled something the person was not looking at, wrote `model · <slug>`
+// where they could not read it, and persisted the choice as the launch default
+// — three effects from one command, none of them visible. Here it pins the
+// model the next conversation will open on, and says exactly that.
+func (a *app) homeModelCommand(rest string) tea.Cmd {
+	// Bare is a question — "which ones are there" — and the list is the answer,
+	// drawn in home's own body (homedraft.go). A slug is an instruction, and an
+	// instruction that opened a list to confirm itself would be the surface
+	// asking a person to say something twice.
+	if rest == "" {
+		a.openTargetPicker()
+		return nil
+	}
+	// AND THE WORDS AFTER IT ARE READ FOR SHAPE, exactly as chat reads them
+	// (commands.go's [modelArg]). A question opens the list with the query
+	// already typed; a machine pin is about a conversation's own routing and is
+	// left to the one dispatcher.
+	switch intent, value := modelArg(rest); intent {
+	case modelQuery:
+		a.openTargetPicker()
+		a.target.pick.filter.setText(value)
+		a.target.pick.rank()
+		a.touch()
+		return nil
+	case modelPinLane, modelAutoLane:
+		return a.slash("/model " + rest)
+	}
+	// A SLUG THE CATALOG KNOWS IS CHECKED BEFORE IT IS TAKEN, on the dispatcher's
+	// own argument: "openai/gpt-4o-mini-tts" is a name this surface can look up
+	// and know answers in mp3, and pinning it would leave somebody starting a
+	// conversation with a model that cannot hold one.
+	if warning := a.nonChatWarning(rest); warning != "" {
+		a.home.say(firstLine(warning), "")
+		return nil
+	}
+	a.pinTargetModel(rest)
+	return nil
+}
+
+// homeNeedsConversation is the third fate: a command whose whole answer is
+// about a conversation, asked on a screen that is not in one.
+//
+// THE TEST IS THE COMMAND AND SOMETIMES ITS ARGUMENT, because two of them have
+// a bare form that is a place and a worded form that is work: `/standing` is
+// the standing place and `/standing <words>` raises a card in a conversation;
+// `/crew` is a picker and `/crew frugal` is a note. A table that keyed on the
+// name alone would send a person to the wrong one of each pair.
+func homeNeedsConversation(word, rest string) bool {
+	switch word {
+	case "files", "permissions", "connect", "harness", "subharness",
+		"copy", "select", "rewind", "compact", "export", "image", "task":
+		return true
+	case "attach", "crew":
+		// Bare, each of these opens an overlay this screen cannot draw. With
+		// words it writes a note, which the echo onto home's line now shows.
+		return rest == ""
+	case "standing":
+		// Bare it is the standing place; with words it is a card raised in a
+		// conversation, and there has to be one.
+		return rest != ""
+	}
+	return false
 }
 
 // homeRunCommand is enter on an offered command row, and it is LITERALLY chat's
@@ -113,5 +266,9 @@ func (a *app) homeRunCommand(line homeLine) tea.Cmd {
 	if !run {
 		return nil
 	}
-	return a.slash(word)
+	// THE ROW GOES THROUGH HOME'S OWN GATE and not straight to the dispatcher,
+	// because a command chosen off the list and the same command typed out in
+	// full must do the same thing — and the gate is what makes /model open the
+	// list over the target rather than an overlay nothing draws ([app.homeSlash]).
+	return a.homeSlash(word)
 }

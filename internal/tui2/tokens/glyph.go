@@ -55,6 +55,19 @@ const (
 	GlyphCollapsed = "▸"
 	GlyphExpanded  = "▾"
 	GlyphScopeUp   = "‹" // scope header / go up
+
+	// GlyphTarget is WHERE THE NEXT THING GOES, and it is the one mark in this
+	// vocabulary about a destination rather than about a state. Home's rule wears
+	// it in front of the folder and the model the next conversation will open on
+	// (internal/tui3's homedraft.go), and the whole of its meaning is the
+	// difference between "where I am" and "where this is going" — which is why it
+	// is neither [GlyphScopeUp], a header pointing back up a tree, nor
+	// [GlyphPromptSteer], a composer's own prompt.
+	//
+	// IT IS GEOMETRY ON PURPOSE. An arrow is already the right character for a
+	// grid, exactly as the tree corners and the rails are, and a Font Awesome
+	// arrow in its place would buy nothing and spend a private-use codepoint.
+	GlyphTarget    = "→" // where the next thing goes
 	GlyphTruncated = "⋯" // clickable overflow; [GlyphEllipsis] marks static overflow
 
 	// GlyphEllipsis is §16's ONE ELLIPSIS GRAMMAR as a slot: the mark text
@@ -328,6 +341,7 @@ func Glyphs() []GlyphInfo {
 		{"Collapsed", GlyphCollapsed, '▸', false},
 		{"Expanded", GlyphExpanded, '▾', false},
 		{"ScopeUp", GlyphScopeUp, '‹', false},
+		{"Target", GlyphTarget, '→', true},
 		{"Truncated", GlyphTruncated, '⋯', false},
 		{"Ellipsis", GlyphEllipsis, '…', true},
 		{"Cut", GlyphCut, '╌', false},

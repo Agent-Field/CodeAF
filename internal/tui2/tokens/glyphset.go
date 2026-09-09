@@ -113,6 +113,7 @@ const (
 	GCollapsed
 	GExpanded
 	GScopeUp
+	GTarget
 	GTruncated
 	GEllipsis
 	GCut

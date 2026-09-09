@@ -1174,6 +1174,14 @@ func placeFrameWithBar(a *app, width, height int,
 			drawn[i].text, drawn[i].hit = texts[i], nil
 		}
 	}
+	// AND THE MODEL LIST OVER HOME'S TARGET IS DRAWN THE SAME WAY, for the same
+	// reason and through the same body (homedraft.go's [app.targetPickRows]).
+	// `/model` at home used to open [app.pick] — a bottom-anchored overlay a
+	// place cannot draw and the keyboard cannot reach — which then appeared over
+	// the conversation behind home the moment `esc` closed the screen.
+	if a.targetPickShowing() {
+		drawn = a.targetPickRows(width, bodyRoom, pal)
+	}
 	if a.composer.open {
 		// The model list `alt+o` opens is drawn in the body's room and not over
 		// the page, because a place takes the frame whole and the bottom-anchored
@@ -1191,7 +1199,24 @@ func placeFrameWithBar(a *app, width, height int,
 		add(row.text, row.hit)
 	}
 	add("", nil)
-	add(pal.dim(rule(width)), nil)
+	// AND HOME'S RULE IS A LEGEND RATHER THAN A LINE. The other six places have
+	// nothing to put on it — you are IN them, and the tab bar four rows up says
+	// which — but home's box is a draft for a conversation that does not exist
+	// yet, and this is the line a person's eye crosses on the way into it. So it
+	// carries the two facts that draft is made of and the two chords that change
+	// them, exactly as the conversation's own seam does one row above its box
+	// (homedraft.go, foot.go's THE SEAM IS WHO AND WHERE).
+	//
+	// It is recorded as a local and published below the clamp for [app.boxRow]'s
+	// reason: the clamp is what decides which rows this frame really kept.
+	targetTop := -1
+	ruleLine := pal.dim(rule(width))
+	if a.at(pageHome) {
+		if line, drew := a.targetLegend(width, pal); drew {
+			ruleLine, targetTop = line, len(lines)
+		}
+	}
+	add(ruleLine, nil)
 	// A PLACE MAY SAY ONE LINE ABOUT WHAT IT IS HOLDING, and it says it here:
 	// under the rule and above the composer, where every place's own count,
 	// filter line or open editor's label goes. It is the router's one concession
@@ -1208,6 +1233,16 @@ func placeFrameWithBar(a *app, width, height int,
 	// a verb that is always in reach has to always say where it will land —
 	// otherwise "start a task from anywhere" is "start a task somewhere".
 	chip := a.scopeChip()
+	// AND HOME HAS NO CHIP, because home's rule says the same fact one row up and
+	// says it better: `→ new conversation in ~/src/parser · glm-5.3-flash` is
+	// where the sentence lands AND what it will run on, and `here ~/src/parser`
+	// competing with the draft for the same row was the one reading on this
+	// screen that `enter` did not honour (homedraft.go's header). The other six
+	// places keep it — `alt+enter` sends a task from any of them, and a verb
+	// always in reach has to always say where it will land.
+	if a.at(pageHome) {
+		chip = ""
+	}
 	// AND THE POINTER IS TOLD WHERE THE BOX ENDED UP, on the tab bar's own
 	// bargain: a press resolves against the rows that were actually drawn
 	// ([app.boxRow], placemouse.go's [app.placeBoxPress]). It is recorded as a
@@ -1294,8 +1329,21 @@ func placeFrameWithBar(a *app, width, height int,
 				boxHeight = 0
 			}
 		}
+		// AND HOME'S RULE MOVES WITH THEM, by the same arithmetic and under the
+		// same rule: a legend the clamp pushed off the top is a legend with no
+		// row on this frame, and a press must never be resolved against one.
+		switch {
+		case targetTop >= 1+removed:
+			targetTop -= removed
+		case targetTop > 0:
+			targetTop = -1
+		}
 	}
 	a.boxRow, a.boxRows = boxTop, boxHeight
+	a.targetRow = targetTop
+	if targetTop < 0 {
+		a.targetFolderSpan, a.targetModelSpan = hudSpan{}, hudSpan{}
+	}
 	for len(lines) < height {
 		add("", nil)
 	}
@@ -1522,6 +1570,13 @@ func (a *app) placeHintSaid() string {
 	// round.
 	if pl := a.showing(); pl != nil && a.sheetLayerOwnsKeys() {
 		return pl.hint(a)
+	}
+	// AND THE MODEL LIST OVER HOME'S TARGET IS THE THIRD OF THOSE, on identical
+	// terms: it has taken `tab` along with every other key while it is up
+	// (homedraft.go's [app.homeTargetKey]), so the tail would name two keys that
+	// do nothing.
+	if a.targetPickShowing() {
+		return a.homeHint()
 	}
 	// EVERY PLACE'S OWN SENTENCE, WITH THE ROUTER'S KEYS ON THE END OF IT. The
 	// places that had a keys line of their own keep it — it is about the row a
@@ -1837,6 +1892,11 @@ func (a *app) showPage(id page) (cmd tea.Cmd) {
 	// next room it would be a decision drawn over a page it was never about
 	// (composerlayer.go).
 	a.closeComposerLayer()
+	// AND EVERY BOTTOM-ANCHORED MODAL GOES WITH IT. A place takes the frame
+	// whole, so a picker or a panel left open behind one is drawn nowhere and
+	// driven by nothing — and then appears over whatever the next `esc` lands on
+	// ([app.closeModals] names the ten and says where the bug was seen).
+	a.closeModals()
 	a.pageMsg = ""
 	next := placeFor(id)
 	if next == nil {
@@ -1847,6 +1907,38 @@ func (a *app) showPage(id page) (cmd tea.Cmd) {
 	}
 	a.page = id
 	return next.open(a)
+}
+
+// closeModals puts away every bottom-anchored overlay on the way into a place.
+//
+// THIS IS THE FIX FOR "IT GOES TO AN OLD CHAT". A place takes the frame whole
+// (view.go returns before the chrome is ever built) and every key while one is
+// showing is routed to [app.placeKeyPress] above the modal checks (input.go), so
+// each of these opened from home was invisible AND unreachable — and then
+// [app.closeHome] handed the frame back to the conversation underneath and the
+// picker appeared over THAT. Ten commands did it: /model, /resume, /folder,
+// /attach, /files, /crew, /permissions, /connect, /harness and /subharness.
+//
+// IT IS NOT [app.standDownRest], which is the two FULLSCREEN pages that are not
+// places, and it is not [app.closeForSwitch], which is about a conversation
+// changing under a person's hands. This one is about the frame: these are
+// overlays the place cannot draw, so a place standing up puts them away.
+func (a *app) closeModals() {
+	a.pick.close()
+	a.roster.close()
+	a.folder.close()
+	a.shelf.close()
+	a.crewPick.close()
+	a.effPick.close()
+	a.connPanel.close()
+	a.harnPanel.close()
+	a.permPanel.close()
+	a.subPage.close()
+	// AND HOME'S OWN MODEL LIST, which IS drawn where it stands and is still a
+	// list nobody left open on purpose: walking to another place and back to a
+	// list you had not finished with is a list you have to remember opening
+	// (homedraft.go). The pin it was about survives; only the list goes.
+	a.target.pick.close()
 }
 
 // raisePlace says where the person is standing for a place that has ALREADY

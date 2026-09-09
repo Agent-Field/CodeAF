@@ -65,6 +65,12 @@ naming the seven, a dim rule, the place's body, a rule, the place's own count or
 **composer** with its scope chip (`here ~/aforge-v2`) at the right of the box row, and the
 hint line last. See the **Places** page.
 
+On **home** that second rule is not a plain line: it is a legend reading
+`→ new conversation in ~/aforge-v2 · glm-5.3-flash` with `alt+w folder · alt+o model ·
+/ commands` at its right, and home draws no scope chip at all — the rule says where the next
+conversation opens and what it will run on, which is the same fact said better. Home's own
+page has that whole gesture.
+
 The status line is the last row of the frame, not the first. It sits at the bottom so
 you read it in the same glance as the box above it.
 
@@ -1144,7 +1150,11 @@ Under 60 columns, eight things change shape:
    at most three wide targets: `open · new · ask here` on the inbox, `‹ back · open ·
    more` on a sheet. A tap **opens** — there is no second column to preview into, so
    there is no two-step — and mouse motion is ignored. Below width **24** the plain
-   hint line is drawn instead of the bar.
+   hint line is drawn instead of the bar. The rule over the box still says where the next
+   conversation goes, shortened to fit: `─ → ~/src/parser · glm-5.3-flash ───` with the
+   model dropped first and the folder abbreviated after it. The `new conversation in` lead
+   goes — the arrow is the whole of what it said — and no chord is named, because a phone
+   has no `alt` to press.
 8. **The task strip becomes one door, and the roster becomes cards.** The strip stops
    being a row of chips and becomes a single full-width door — `▸ 3 tasks · 1 running`
    — that a tap opens into the roster page; that page's rows become two-line cards a

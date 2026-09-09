@@ -187,6 +187,13 @@ The path is shortened the same way every path on this surface is: `~` for your h
 directory, and a first letter for each folder above the last when the whole thing will not
 fit. Home used to draw it in full while every other place shortened it; both are short now.
 
+**Home has no chip.** It says the same thing one row up, on its rule, and says more:
+`→ new conversation in ~/src/parser · glm-5.3-flash` is where a sentence will land *and*
+what it will answer on, with `alt+w folder · alt+o model` naming the two chords that change
+either. The chip on home was a reading nothing acted on — `enter` opened a conversation in
+this window's folder whatever the chip said — and the rule is that reading with `enter`
+honouring it. Home's own page has the whole gesture.
+
 ## The composer layer — set which project, pick the model and set a spend limit before starting a task
 
 Press **`alt+enter`** with something typed into the composer, on any place, and the layer
