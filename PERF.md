@@ -2208,7 +2208,11 @@ its cost grows with retained history and should be profiled before large-scale u
 
 Opening a current database verifies its schema without reserving the writer;
 creation and v1 migration remain atomic. Reads use `OpenExisting` and cannot
-recreate a missing database. Work resolution receives only the requested page,
+recreate a missing database. Identity reads add one indexed `EXISTS` query using
+the same direct-scope predicate as selection, so `applicable_here` distinguishes
+readability from current applicability without enumerating records or bodies.
+The check compares the exact returned revision to the current revision; a
+concurrent revision can therefore conservatively make the old read non-applicable. Work resolution receives only the requested page,
 uses the existing open store, and reads the owner world once per batch. Collection
 metadata list/find still enumerate their small index before paging; they do not
 scan transcripts. Ordinary workers inherit the read seam and cannot mutate it.

@@ -397,3 +397,65 @@ func TestOrganizationCompletionReaderReceivesCurrentAndRetiredContext(t *testing
 		}
 	}
 }
+
+// Remembering a record ID must not resurrect scope removed through collection
+// membership. The body remains readable for intentional cross-conversation use.
+func TestSharedContextIdentityReadSeparatesExistenceFromCurrentApplicability(t *testing.T) {
+	a, s, g := organizationFixture(t)
+	ctx := context.Background()
+	other, err := s.Create(ctx, "Launch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := a.organizationSource()
+	if err = s.Add(ctx, other.ID, ref); err != nil {
+		t.Fatal(err)
+	}
+	r, err := s.CreateContext(ctx, "Contract", "OLD", ref, []workspace.Ref{{Kind: workspace.CollectionKind, ID: g.ID}, {Kind: workspace.CollectionKind, ID: other.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func(revision int, want bool, text string) {
+		t.Helper()
+		args, _ := json.Marshal(map[string]any{"action": "read", "id": r.ID, "revision": revision})
+		raw, failed, err := a.sharedContextTool(ctx, args)
+		if err != nil || failed {
+			t.Fatalf("identity read refused: %s %v", raw, err)
+		}
+		var got struct {
+			Text       string `json:"text"`
+			Applicable *bool  `json:"applicable_here"`
+			ScopeNote  string `json:"scope_note"`
+		}
+		if err = json.Unmarshal([]byte(raw), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Text != text || got.Applicable == nil || *got.Applicable != want || got.ScopeNote == "" {
+			t.Fatalf("wrong read scope: %s", raw)
+		}
+	}
+	read(1, true, "OLD")
+	if err = s.Remove(ctx, g.ID, ref); err != nil {
+		t.Fatal(err)
+	}
+	read(1, true, "OLD")
+	if err = s.Remove(ctx, other.ID, ref); err != nil {
+		t.Fatal(err)
+	}
+	read(1, false, "OLD")
+	if err = s.Add(ctx, other.ID, ref); err != nil {
+		t.Fatal(err)
+	}
+	read(1, true, "OLD")
+	r, err = s.ReviseContext(ctx, r.ID, 1, r.Title, "NEW", ref, r.Targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read(1, false, "OLD")
+	read(2, true, "NEW")
+	if _, err = s.WithdrawContext(ctx, r.ID, 2); err != nil {
+		t.Fatal(err)
+	}
+	read(2, false, "NEW")
+	read(0, false, "NEW")
+}

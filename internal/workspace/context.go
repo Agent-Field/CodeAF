@@ -294,6 +294,25 @@ func (s *Store) ContextPage(ctx context.Context, targets []Ref, includeCollectio
 	return page, nil
 }
 
+// ContextApplies reports whether this exact revision is current, not withdrawn,
+// and applicable in the requested scope. An identity read can still return an
+// older or unrelated record; existence alone must never imply applicability.
+func (s *Store) ContextApplies(ctx context.Context, id string, revision int, targets []Ref, includeCollections bool) (bool, error) {
+	targets, err := askedRefs(targets)
+	if err != nil {
+		return false, err
+	}
+	if len(targets) == 0 {
+		return false, nil
+	}
+	scope, args := contextScope("d", "c.id", "c.revision", targets, includeCollections)
+	var applies bool
+	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM contexts c
+ JOIN context_revisions r ON r.context_id=c.id AND r.revision=c.revision
+ WHERE c.id=? AND c.revision=? AND r.withdrawn=0 AND `+scope+`)`, append([]any{id, revision}, args...)...).Scan(&applies)
+	return applies, err
+}
+
 // previouslyApplied reports that some record once applied in this scope and does
 // not now. It is deliberately narrow: a record that still applies here does not
 // count merely because it has older revisions, or every revised record would
@@ -319,8 +338,8 @@ func currentQuery(scope string) string {
  WHERE r.withdrawn=0 AND ` + scope + ` ORDER BY c.seq`
 }
 
-// contextScope is THE ONE DEFINITION OF "applies here", used by the page, by the
-// previously-applied question and by ContextFor, so those three can never come to
+// contextScope is THE ONE DEFINITION OF "applies here", used by identity-read applicability, the page, the
+// previously-applied question and ContextFor, so these paths cannot come to
 // disagree about what a scope means. It is a predicate over an already-chosen
 // (context, revision) pair rather than a join, so a record is never returned
 // twice for matching two ways.
