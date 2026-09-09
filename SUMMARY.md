@@ -62,3 +62,30 @@ remains active, and `reports/READY` remains absent.
 
 Outstanding: wait for a committed harness result, review and integrate it, then
 run the one frozen combined validation and protected merge.
+
+## Pass 4 checkpoint
+
+- Steering 03 supersedes the prior merge authorization while the release owner
+  freezes the combined conversation/UI head. PR #658 remains draft against
+  `codex/conversation-execution`; no target, `dev`, `main`, or `staging` write
+  was made. After the root explicitly lifts the hold, the coordinated direction
+  is to reconcile the separate follow-up onto `origin/dev`, retarget PR #658 to
+  `dev`, and use the normal gates rather than merging it into the old target.
+- Harness commit `b463a9b10a1f721eaf86891e788423c0f7bc929d` is pushed. Its same-host,
+  warm-build-cache and uncached-test measurements report `internal/tui3`
+  improving from 564.32s to 402.60s (161.72s / 28.7%), with 4,359 baseline
+  tests plus two new harness-law tests, the same four skips, and no failures.
+  The change keeps the 150ms/120ms budgets and overlaps eligible waits instead
+  of shortening or deleting them.
+- Coordinator review confirms the commit is confined to three `internal/tui3`
+  test-harness files and has a clean `git diff --check`. It has not been merged
+  into this branch because the harness report still marks its full race run and
+  order/load stress unfinished; the shared runner is actively executing that
+  full race run. No competing full suite was started.
+- `reports/READY` and `reports/QUALITY_READY` remain absent. The feature branch
+  head remains `ac8486c0ef1f7537a7e1b7526628d049ea873686`; no final tested or merged
+  hash exists yet.
+
+Outstanding: wait for the harness lane's completed validation and state, review
+the final report/commit, integrate safely, then run one frozen uncached combined
+validation. Preserve the draft PR and evidence during the Steering 03 hold.
