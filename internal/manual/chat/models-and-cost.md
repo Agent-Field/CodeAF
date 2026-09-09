@@ -9,14 +9,20 @@ your prompt or API key; it does not ask a model to generate anything.
 
 Waiting calls share a check. After each failed check, aforge waits about one to
 one and a half seconds before checking again. Each check has a two-second limit.
-When the endpoint answers, your request resumes without waiting through an old
-retry delay. A response proves endpoint reachability, not that every internet
-service is healthy. No separate public ping service is involved.
+When the endpoint first answers, your request resumes immediately. If the check
+answers but your request still cannot go out, aforge waits a little longer
+before each further try. A response proves endpoint reachability, not that every
+internet service is healthy. No separate public ping service is involved.
 
 Connection recovery waits up to two minutes, or less if that call already had
 a shorter deadline. Esc or Stop work cancels your call immediately; other calls
 still waiting keep their shared check. If the connection does not return, aforge
 says `connection is still unavailable; try again when connected`.
+
+A picture, video, speech or transcription request shows `waiting for
+connection` against the model it asked for, just as a chat reply does. If its
+checks answer but the request still cannot go out, aforge eventually gives up
+with `connection is still unavailable; try again when connected`.
 
 Chat, auxiliary requests, document parsing and authenticated media requests use
 this recovery for pre-send connection failures. A cut-off reply still follows

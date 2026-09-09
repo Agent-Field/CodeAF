@@ -8,6 +8,11 @@ and waits for up to two minutes, subject to the request's own deadline. You can
 cancel the wait. When the endpoint becomes reachable, the request continues;
 the outage does not spend its generation retries or teach a slower provider
 speed. This recovery does not replay a request already accepted by the model.
+If the check answers but the request still cannot go out, aforge waits a little
+longer before each further try and then says `connection is still unavailable;
+try again when connected`. A picture, video, speech or transcription request
+shows `waiting for connection` against the model it asked for, just as a chat
+reply does.
 
 For a chat opened with `--host`, a lost link to the other machine has a separate
 reconnection policy: the surface redials for up to five minutes. Your draft
