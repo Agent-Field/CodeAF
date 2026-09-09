@@ -4,6 +4,8 @@ import (
 	"context"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -60,5 +62,37 @@ func TestTaskNamingRejectsPlaceholderAndTriesFallback(t *testing.T) {
 	got := agent.taskName(context.Background(), "search harder for rentals near victoria memorial square")
 	if got != "hidden rentals" || client.requests() != 2 {
 		t.Fatalf("name=%q calls=%d", got, client.requests())
+	}
+}
+
+func TestReopeningRepairsAnOldTaskPlaceholderWithoutRerunningWork(t *testing.T) {
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	writeCheckpoint(t, taskCheckpointPath(journal), taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{{ID: 1, Title: "nothing to name", Summary: "search harder for rentals near the park",
+			Brief: "Find hidden rental listings near victoria memorial square", Acceptance: "listings found",
+			State: TaskDone, Report: "rental list saved", Noted: true}},
+	})
+	client := &scriptedCompleter{steps: []step{func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+		if !isNameCall(messages) {
+			t.Error("reopening reran work instead of naming it")
+		}
+		if !strings.Contains(messageContentText(messages[1]), "victoria memorial square") {
+			t.Error("namer lost the saved brief")
+		}
+		return textResponse("hidden rentals"), nil
+	}}}
+	agent, _ := newTestAgent(t, client, func(c *Config) { c.SessionFile = journal; c.RolesSource = nameSettings() })
+	node := agent.graph().node(1)
+	if !nameLanded(func() bool { return node.title() == "hidden rentals" }) {
+		t.Fatalf("title=%q", node.title())
+	}
+	if node.stateNow() != TaskDone || client.requests() != 1 {
+		t.Fatal("reopening changed finished work")
+	}
+	if !nameLanded(func() bool {
+		return recordOf(t, readCheckpoint(t, taskCheckpointPath(journal)), 1).Title == "hidden rentals"
+	}) {
+		t.Fatal("repaired name was not saved")
 	}
 }

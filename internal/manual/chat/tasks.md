@@ -163,7 +163,9 @@ that started on its own after a words-only turn, an adaptive run's own row. That
 handed to the cheap `taskname` role, which reads the work and answers with two or three lowercase words.
 Empty replies, instruction echoes and placeholders such as `nothing to name` are refused.
 The next configured naming model may answer within the same time limit; if it cannot,
-the existing fallback stays.
+the existing fallback stays. A previously saved placeholder such as `nothing to name`
+is named again from its saved brief when you reopen the conversation; the work itself
+is not rerun.
 
 **Work a model already named is left alone.** A task the conversation proposed with
 `propose_task` carries the name the model wrote as an argument to that tool; a `/task` whose

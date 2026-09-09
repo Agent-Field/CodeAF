@@ -283,7 +283,7 @@ func (n *nameAhead) release() {
 // is the machine's own filing.
 func taskNameNeeded(title string) bool {
 	title = strings.TrimSpace(title)
-	if title == "" {
+	if title == "" || unusableName(title) {
 		return true
 	}
 	if strings.ContainsAny(title, "/\\") {
@@ -384,7 +384,7 @@ func (a *Agent) taskNameWithin(ctx context.Context, subject string, window time.
 // like that can be true of both namers at once.
 func cleanTaskName(raw string) string {
 	name := firstWordsOf(cleanTitle(raw), TaskNameWords)
-	if name == "" || taskNameNeeded(name) {
+	if name == "" || unusableName(name) || taskNameNeeded(name) {
 		return ""
 	}
 	return name

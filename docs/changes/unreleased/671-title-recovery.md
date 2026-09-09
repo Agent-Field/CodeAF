@@ -12,4 +12,5 @@ invalidates:
 The rental conversation recorded a successful one-token naming reply and stayed unnamed.
 Its second task was saved as `nothing to name`; a second conversation saved `Full:` as
 part of both names. Naming recovery remains separate from foreground work and preserves
-usage for every answered call, including rejected replies. Hover changes no tab geometry.
+usage for every answered call, including rejected replies. Hover changes no tab geometry. Previously saved task placeholders are named again from
+the saved brief on reopening, without rerunning the work.
