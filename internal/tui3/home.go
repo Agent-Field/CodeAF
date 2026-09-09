@@ -13,7 +13,6 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // HOME: /home — everything this machine has worked on, in one place.
@@ -5053,7 +5052,7 @@ func (a *app) homeHolding(row session.SessionRow) string {
 //
 // THE WORDS THEMSELVES ARE NOT THIS FILE'S. They are [taskStateWord]
 // (taskview.go), which the task page's own record rows and the record card both
-// answer through — one vocabulary, so a task called `needs your look` on this
+// answer through — one vocabulary, so a task called `your call` on this
 // screen is not called something else on the next one. What belongs to home is
 // the LIVENESS QUESTION: this screen judges a row against the conversation that
 // wrote it, and the task page judges it against the windows that are open.
@@ -5068,7 +5067,7 @@ func homeTaskWord(entry session.TaskIndexEntry, row session.SessionRow) string {
 //
 //	⠋ (accent)  running this instant — the spinner, home's one moving part
 //	◌ (dim)     queued, or left mid-way by a window that went — nothing turns
-//	✗ (bad)     failed;  ? (warn)  finished and needs your look
+//	✗ (bad)     a fault;  ? (warn)  the person's call
 //	✓ (muted)   landed — and ACCENT when it landed since you last looked
 //
 // The one departure from the task surfaces: a queued node and an incomplete one
@@ -5079,50 +5078,27 @@ func homeTaskWord(entry session.TaskIndexEntry, row session.SessionRow) string {
 func (a *app) homeTaskGlyph(entry session.TaskIndexEntry, row session.SessionRow) string {
 	pal := a.pal
 	status := taskEntryStatus(entry, row.Runs(entry))
-	switch status.Presence {
-	case session.TaskPresenceWorking, session.TaskPresenceWaiting, session.TaskPresenceFinishing:
-		if a.linear {
-			return pal.accent(glyphRunASCII)
-		}
-		return pal.accent(tokens.Spinner(a.paints / spinnerStep))
-	case session.TaskPresenceIncomplete:
-		// A row nothing holds any more is "started and not turning", which is the
-		// empty circle and not the steer mark: nothing was found wrong with work a
-		// window walked away from.
-		if status.Liveness == session.TaskLivenessUnclaimed {
-			if pal.ascii {
-				return pal.dim(glyphQueuedASCII)
-			}
-			return pal.dim(glyphQueued)
-		}
-		if !status.Fault {
-			if pal.ascii {
-				return pal.warn(homeStuckASCII)
-			}
-			return pal.warn(homeStuckGlyph)
-		}
-		return pal.bad(pal.badGlyph())
-	case session.TaskPresenceStopped:
-		if pal.ascii {
-			return pal.dim(glyphStoppedASCII)
-		}
-		return pal.dim(glyphStopped)
-	case session.TaskPresenceNeedsLook:
-		return pal.warn(glyphUnverified)
-	case session.TaskPresenceQueued:
+	// A ROW NOTHING HOLDS ANY MORE is "started and not turning", which is the
+	// empty circle and not a state it never reached: nothing was found wrong with
+	// work a window walked away from. It is the one reading this screen makes
+	// that the tier cannot, and it is home's own liveness question.
+	if status.Presence == session.TaskPresenceIncomplete && status.Liveness == session.TaskLivenessUnclaimed {
 		if pal.ascii {
 			return pal.dim(glyphQueuedASCII)
 		}
 		return pal.dim(glyphQueued)
 	}
-	mark := glyphDone
-	if pal.ascii {
-		mark = glyphDoneASCII
-	}
-	if a.homeEntryFresh(row, entry) {
+	// AND A LANDING SINCE YOU LAST LOOKED IS LIT. It is the same tick in the same
+	// place; what the accent says is that it is NEW, which is the only fact on
+	// this screen the reading has no way to know.
+	if status.Presence == session.TaskPresenceDone && a.homeEntryFresh(row, entry) {
+		mark, ascii := tierGlyph(status)
+		if pal.ascii {
+			mark = ascii
+		}
 		return pal.accent(mark)
 	}
-	return pal.muted(mark)
+	return a.tierCell(status)
 }
 
 // homeFilesTouched is how many files this conversation's work wrote, summed

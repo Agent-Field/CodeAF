@@ -200,7 +200,7 @@ func TestTheProjectCardListsWhatIsKeepingAnEyeOnTheProject(t *testing.T) {
 	}
 	want := []string{
 		homeAskGlyph + " keep main green",
-		"      needs your look · the fix touches migrations",
+		"            " + tierYourCallWord + " · the fix touches migrations",
 		standWaitGlyph + " remind me on Fridays                     Fridays",
 		standWaitGlyph + " remind me on Sundays                     Sundays",
 		bandFoldGlyph + " …1 more " + projectItemsWord,

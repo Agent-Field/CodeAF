@@ -28,13 +28,39 @@ func (a *app) taskStatus(node *taskNode) session.TaskStatus {
 		Stopped: node.stopped,
 		Merge:   node.merge,
 		Branch:  node.branch,
+		Report:  node.report,
+		// THE QUESTION IS THE ENGINE'S TO CHOOSE AND NOT THIS WINDOW'S. Which of
+		// the six a your-call row is asking comes out of these three facts — the
+		// landing that turned the work back, the files that would not fasten, and
+		// who is holding the answer right now — and a surface that guessed at one
+		// of them would be a card asking a different question from its own row.
+		Held:      node.producedHeld,
+		Conflicts: node.conflicts,
+		Decider:   node.decider,
 	}
 	if !node.restored {
 		facts.Liveness = session.TaskLivenessHeld
 	}
-	status := session.ProjectTask(facts)
+	// AND A NODE THIS WINDOW HANDED TO THE MODEL IS THE MODEL'S TO DECIDE, which
+	// is the same fact the engine publishes as [session.TaskNotice.Decider] and
+	// the only one this surface knows first: the settle policy is read here, on
+	// the card, before any of it reaches the wire (tasksettle.go). It is a fact
+	// about WHO IS HOLDING THE QUESTION and it does not move the row out of its
+	// tier — the row still asks, still wears the `?`, and still reads its reason.
+	// It used to be published as a state of its own, `awaiting review`, which was
+	// a fourth word for one reading and hid the reason behind it.
 	if a.taskReviewPending(node) {
-		status.Presence, status.On, status.Reason = session.TaskPresenceWaiting, session.TaskWaitMachine, taskReviewPendingWord
+		facts.Decider = session.TaskAskOwnerModel
+	}
+	status := session.ProjectTask(facts)
+	// AND A QUESTION SOMEBODY ELSE IS HOLDING IS NOT A DEMAND ON THIS PERSON.
+	// [session.TaskStatus.Attention] is what files a row in the column's `needs
+	// you` group, and a card handed to the model is exactly the row that must not
+	// stand there — it is being answered, and it comes back by itself if it is
+	// not (session's agent.go hands it back at the end of the turn). The tier,
+	// the word and the question are untouched: the row still wears the `?` and
+	// still reads its reason, because a person watching it is owed both.
+	if status.Ask.Owner == session.TaskAskOwnerModel {
 		status.Attention = false
 	}
 	return status
@@ -49,41 +75,18 @@ func taskEntryStatus(entry session.TaskIndexEntry, runs bool) session.TaskStatus
 	return session.ProjectTask(entry.StatusFacts(runs))
 }
 
-// taskPresenceWord is the reading in this surface's words, and the only table
-// that spells one. A presence with no word draws nothing rather than falling
-// through to `done`, which is what the record page's switch did with a status it
-// did not recognise.
-func taskPresenceWord(status session.TaskStatus) string {
-	switch status.Presence {
-	case session.TaskPresenceQueued:
-		return roomQueuedWord
-	case session.TaskPresenceWorking:
-		return taskRecordRunsWord
-	case session.TaskPresenceWaiting:
-		if status.Reason == taskReviewPendingWord {
-			return taskReviewPendingWord
-		}
-		return taskHeldWord
-	case session.TaskPresenceFinishing:
-		return taskFinishingWord
-	case session.TaskPresenceDone:
-		return doneWord
-	case session.TaskPresenceNeedsLook:
-		return taskUnverifiedWord
-	case session.TaskPresenceStopped:
-		return taskStoppedWord
-	case session.TaskPresenceIncomplete:
-		// The fault is the only thing that earns `failed`: a dropped connection, a
-		// threshold, a check that named gaps and a brief whose world had moved are
-		// all work that did not finish, and calling any of them a failure reports a
-		// finding nobody made.
-		if status.Fault {
-			return doneFailWord
-		}
-		return taskRecordStoppedWord
-	}
-	return ""
-}
+// taskPresenceWord is the reading in the person's words, and IT SPELLS NOTHING
+// OF ITS OWN: the word is [session.TaskStatus.Word], written down once in
+// internal/session and read out here.
+//
+// It used to be this surface's own table over the presence, and that table is
+// where three of the deleted words lived — `needs your look` for a landing
+// nobody could check, `awaiting review` for one handed to the model, `failed`
+// for a run the wire ended. Each was a private name for a reading the engine had
+// already made, and the roster, the record and home each held a slightly
+// different copy of it. A reading with no word draws NOTHING, which is the
+// emptiness law and not a fall-through to `done`.
+func taskPresenceWord(status session.TaskStatus) string { return status.Word }
 
 // taskWaitTitles names the prerequisites a node is still blocked on, oldest
 // first. A dependency this surface has never seen an update for is skipped

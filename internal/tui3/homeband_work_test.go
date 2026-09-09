@@ -273,7 +273,7 @@ func TestATaskThatIsNotDoneLeadsWithItsState(t *testing.T) {
 	a := lab.app(mine)
 	// THE SUBJECT HERE IS A WHOLE SENTENCE, so it is asked at the width where the
 	// card has all the room it will ever ask for. At [homeCardMin] the card is
-	// exactly [homeCardCol] cells and `▲ needs your look · nobody could judge it`
+	// exactly [homeCardCol] cells and `▲ your call · nobody could judge it`
 	// is longer than that — which would be a test about clipping wearing the
 	// clothes of a test about wording.
 	a.width, a.height = homeCardWidest, 40
@@ -282,8 +282,8 @@ func TestATaskThatIsNotDoneLeadsWithItsState(t *testing.T) {
 	rows := workCard(t, a)
 	card := strings.Join(rows, "\n")
 	for _, want := range []string{
-		homeAskGlyph + " " + taskUnverifiedWord + " · nobody could judge it",
-		glyphBad + " " + doneFailWord + " · the build would not run",
+		homeAskGlyph + " " + tierYourCallWord + " · nobody could judge it",
+		glyphBad + " " + taskRecordStoppedWord + " · the build would not run",
 	} {
 		if !strings.Contains(card, want) {
 			t.Fatalf("the card does not say %q:\n%s", want, card)
@@ -291,7 +291,7 @@ func TestATaskThatIsNotDoneLeadsWithItsState(t *testing.T) {
 	}
 	// The name is still the first line of each — the state is UNDER it.
 	at := workRowAt(t, rows, "Look At This")
-	if strings.Contains(rows[at], taskUnverifiedWord) {
+	if strings.Contains(rows[at], tierYourCallWord) {
 		t.Fatalf("the state landed on the name's line:\n%s", card)
 	}
 }

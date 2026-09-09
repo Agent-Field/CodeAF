@@ -21,7 +21,7 @@ package tui3
 //	 › ▲ fix the nil-map crash
 //	     waiting on you · 12m
 //	   ▲ every Monday, the weekly update
-//	     needs your look · Mondays 9am
+//	     your call · Mondays 9am
 //	   ▸ …2 more
 //
 //	 running

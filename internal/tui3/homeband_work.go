@@ -24,8 +24,8 @@ package tui3
 //     task: this surface's glyphs say what is HAPPENING, and a tick on every
 //     finished row would spend the loudest ink on the rows that want nothing.
 //     Everything that is NOT simply done leads the second line with its glyph
-//     and its word instead — `● running`, `◌ incomplete`, `▲ needs your look`,
-//     `✗ failed` — so the eye finds the exceptions and skims the rest.
+//     and its word instead — `● working`, `◌ incomplete`, `▲ your call`,
+//     `✗ incomplete` — so the eye finds the exceptions and skims the rest.
 //   - ONE BLANK BETWEEN TASKS AND NONE AFTER THE LAST, which is what turns the
 //     band from a block into a list of things.
 //

@@ -29,10 +29,9 @@ func endedNotice(ending session.TaskEnding, report string) session.TaskNotice {
 
 // A NODE THE CONNECTION DROPPED OUT FROM UNDER IS NOT A FAILURE AND WAS NOT
 // STOPPED. Six rows read "stopped — branch kept" one evening, and three of them
-// were this: the row now says what happened, wears the mark that asks for a
-// steer rather than the cross that reports a fault, and keeps the half of the
-// old sentence that is still true.
-func TestAHaltedNodeSaysWhyAndWearsTheSteerMarkNotTheCross(t *testing.T) {
+// were this: the row now says WHAT HAPPENED, in the reading's own sentence, with
+// the branch hung off it as a fact rather than welded into the state.
+func TestAHaltedNodeSaysWhyAndIsNotCalledStopped(t *testing.T) {
 	for _, tc := range []struct {
 		ending session.TaskEnding
 		word   string
@@ -63,19 +62,29 @@ func TestAHaltedNodeSaysWhyAndWearsTheSteerMarkNotTheCross(t *testing.T) {
 				t.Fatalf("%s: the card is missing %q:\n%s", tc.ending, want, text)
 			}
 		}
-		for _, never := range []string{taskStoppedKept, tc.word + " — "} {
+		for _, never := range []string{"stopped — branch kept", tc.word + " — "} {
 			if strings.Contains(text, never) {
 				t.Fatalf("%s: the card says %q:\n%s", tc.ending, never, text)
 			}
 		}
 		rail := endedRailText(a)
-		if want := glyphHalted + " Port the parser"; !strings.Contains(rail, want) {
-			t.Fatalf("%s: the rail is missing %q:\n%s", tc.ending, want, rail)
+		// THE READING'S SENTENCE, AND NOT THIS SURFACE'S: `incomplete` plus the
+		// reason internal/session spells for that ending, and the branch, which is
+		// the one handle back to the work. The column is two rows deep, so on the
+		// sentences too long for it the reason gives way and the handle stays
+		// (task.go's [app.railUnder]) — which is why the row is asserted in the
+		// parts it always carries.
+		for _, want := range []string{taskRecordStoppedWord, "task/parser", glyphBad + " Port the parser"} {
+			if !strings.Contains(rail, want) {
+				t.Fatalf("%s: the rail row is missing %q:\n%s", tc.ending, want, rail)
+			}
 		}
-		if !strings.Contains(rail, tc.word+" — "+taskBranchKept) {
-			t.Fatalf("%s: the rail row does not say why:\n%s", tc.ending, rail)
+		// AND THE REASON IS THERE WHEREVER THE COLUMN HAS THE CELLS.
+		wide := plain(strings.Join(a.railUnder(a.tasks[7], 90), " "))
+		if want := taskRecordStoppedWord + " · " + session.TaskReasonOf(tc.ending, "") + " · task/parser"; wide != want {
+			t.Fatalf("%s: a wide column says %q, want %q", tc.ending, wide, want)
 		}
-		for _, never := range []string{glyphBad + " Port the parser", taskStoppedKept} {
+		for _, never := range []string{glyphHalted + " Port the parser", taskStoppedWord + " —"} {
 			if strings.Contains(rail, never) {
 				t.Fatalf("%s: the rail says %q:\n%s", tc.ending, never, rail)
 			}
@@ -89,14 +98,15 @@ func TestAHaltedNodeSaysWhyAndWearsTheSteerMarkNotTheCross(t *testing.T) {
 func TestARefusedNodeIsIncompleteAndBrokenOrOldNodesStillFail(t *testing.T) {
 	for _, tc := range []struct {
 		ending session.TaskEnding
-		row    string
 		mark   string
 		home   string
-		state  string
+		// state is the one word the rail, the room header, the record and the
+		// landing card all say about this ending.
+		state string
 	}{
-		{session.TaskEndingRefused, endingWordRefused + " — " + taskBranchKept, glyphHalted, homeStuckGlyph, taskRecordStoppedWord},
-		{session.TaskEndingError, endingWordError + " — " + taskBranchKept, glyphBad, glyphBad, roomFailedWord},
-		{"", taskStoppedKept, glyphBad, glyphBad, roomFailedWord},
+		{session.TaskEndingRefused, glyphBad, glyphBad, taskRecordStoppedWord},
+		{session.TaskEndingError, glyphBad, glyphBad, taskRecordStoppedWord},
+		{"", glyphBad, glyphBad, taskRecordStoppedWord},
 	} {
 		a, _, _ := taskApp(t)
 		drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskFailed,
@@ -105,8 +115,12 @@ func TestARefusedNodeIsIncompleteAndBrokenOrOldNodesStillFail(t *testing.T) {
 		if want := tc.mark + " Port the parser"; !strings.Contains(rail, want) {
 			t.Fatalf("%q: the rail is missing %q:\n%s", tc.ending, want, rail)
 		}
-		if !strings.Contains(rail, tc.row+" · task/parser") {
-			t.Fatalf("%q: the rail row is missing %q:\n%s", tc.ending, tc.row, rail)
+		row := tc.state
+		if reason := session.TaskReasonOf(tc.ending, "incomplete — the parser still drops the last key"); reason != "" {
+			row += " · " + reason
+		}
+		if wide := plain(strings.Join(a.railUnder(a.tasks[7], 90), " ")); wide != row+" · task/parser" {
+			t.Fatalf("%q: the rail row is %q, want %q", tc.ending, wide, row+" · task/parser")
 		}
 		node := a.tasks[7]
 		if got := a.roomStateWord(node); got != tc.state {
@@ -128,8 +142,8 @@ func TestARefusedNodeIsIncompleteAndBrokenOrOldNodesStillFail(t *testing.T) {
 		if !strings.Contains(tail, " · "+taskIncompleteState) {
 			t.Fatalf("%q: landed-card tail = %q, want %q", tc.ending, tail, taskIncompleteState)
 		}
-		if strings.Contains(tail, doneFailWord) {
-			t.Fatalf("%q: a landing still says %q: %q", tc.ending, doneFailWord, tail)
+		if strings.Contains(tail, "failed") {
+			t.Fatalf("%q: a landing still says %q: %q", tc.ending, "failed", tail)
 		}
 	}
 }
@@ -144,7 +158,7 @@ func TestAStoppedNodeStillWearsTheStopMarkOverItsEnding(t *testing.T) {
 	if !strings.Contains(rail, glyphStopped+" Port the parser") {
 		t.Fatalf("the rail lost the stop mark:\n%s", rail)
 	}
-	if !strings.Contains(rail, taskStoppedKept+" · task/parser") {
+	if !strings.Contains(rail, taskStoppedWord+" · task/parser") {
 		t.Fatalf("the rail lost the stopped sentence:\n%s", rail)
 	}
 }
@@ -160,12 +174,19 @@ func TestAWorkerThatWouldNotWriteItsNotesSaysSoOnTheRailAndInTheRoom(t *testing.
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskFailed,
 		endedNotice(session.TaskEndingNotes, "stopped here · would not write its notes down"))})
 
-	row := "would not write its notes down — branch kept"
-	// The branch is not asserted beside it: this row is the longest of the
-	// endings and the rail drops the branch to keep the name whole, which is the
-	// narrow-row law working rather than a missing word.
-	if rail := endedRailText(a); !strings.Contains(rail, row) {
-		t.Fatalf("the rail row does not read %q:\n%s", row, rail)
+	// THE ROW IS THE READING'S SENTENCE, spelled here as a literal rather than
+	// read out of the constant it comes from, because a reworded constant is
+	// exactly the change this test is here to catch.
+	row := "incomplete · would not write its notes down"
+	// The column is two rows deep and this is the longest of the endings, so on a
+	// narrow rail the reason gives way and the branch — the one handle back to the
+	// work — stays (task.go's [app.railUnder]). The sentence is asserted where the
+	// column has the cells for it.
+	if wide := plain(strings.Join(a.railUnder(a.tasks[7], 90), " ")); !strings.Contains(wide, row) {
+		t.Fatalf("the rail row does not read %q:\n%s", row, wide)
+	}
+	if rail := endedRailText(a); !strings.Contains(rail, "task/parser") {
+		t.Fatalf("the rail lost the handle back to the work:\n%s", rail)
 	}
 	// THE CARD SAYS THE SAME THING ON TWO ROWS, which is its own law: the word and
 	// the branch on the head, the reason under it, and nothing fused
@@ -178,10 +199,16 @@ func TestAWorkerThatWouldNotWriteItsNotesSaysSoOnTheRailAndInTheRoom(t *testing.
 			t.Fatalf("the card is missing %q:\n%s", want, card)
 		}
 	}
-	// AND IT IS THE STEER MARK, NOT THE CROSS. Nobody found anything wrong with
-	// the work; it is on the branch and the next move is a person's.
-	if rail := endedRailText(a); !strings.Contains(rail, glyphHalted+" Port the parser") {
-		t.Fatalf("the rail does not wear the steer mark:\n%s", rail)
+	// The landing card keeps the card lane's own sentence for the same ending
+	// until that lane lands.
+	if room := taskText(a); !strings.Contains(room, "would not write its notes down") {
+		t.Fatalf("the room does not say why the worker stopped:\n%s", room)
+	}
+	// AND IT IS THE OVER-TIER CELL, DIM. Nobody found anything wrong with the
+	// work; it is on the branch and the next move is a person's, and the hue is
+	// what says so rather than a fourth glyph (tasktier.go).
+	if rail := endedRailText(a); !strings.Contains(rail, glyphBad+" Port the parser") {
+		t.Fatalf("the rail does not wear the over-tier cell:\n%s", rail)
 	}
 	// AND NO MACHINERY VOCABULARY REACHES IT (CLAUDE.md's vocabulary law).
 	for _, banned := range []string{"rule", "held", "process", "loop", "enforce"} {

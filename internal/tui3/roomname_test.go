@@ -67,7 +67,7 @@ func TestAWideRoomNamesTheWorkBetterThanANarrowRail(t *testing.T) {
 	}
 	// AND THE FACTS ARE STILL BEHIND IT, in rank order, because a name that fits
 	// leaves its remainder to the tail (rowfit.go's law 1).
-	for _, want := range []string{"needs your look", "$0.52"} {
+	for _, want := range []string{tierYourCallWord, "$0.52"} {
 		if !strings.Contains(head, want) {
 			t.Fatalf("the 160-column header lost %q behind the name it now draws whole:\n\t%q", want, head)
 		}
@@ -129,7 +129,7 @@ func TestANarrowRoomGivesTheTrailRowToTheNameAndKeepsTheFactsUnderIt(t *testing.
 	}
 	// AND THE FACTS ARE STILL THERE, on their own row, ranked.
 	facts, _ := a.roomFactsWord(a.roomNode(), 60)
-	if !strings.Contains(plain(facts), "needs your look") {
+	if !strings.Contains(plain(facts), tierYourCallWord) {
 		t.Fatalf("the 60-column facts row lost the state word:\n\t%q", plain(facts))
 	}
 }
