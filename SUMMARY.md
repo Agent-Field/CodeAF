@@ -12,6 +12,17 @@
 - No sharding or blanket test parallelism: current data points first to harness
   waiting, and the shared-state audit is not complete.
 
-Outstanding: validate tooling, open draft PR and add its numbered changelog;
-wait for and review harness lane; integrate and run one frozen uncached relevant
-suite; build, pass required checks, merge, verify ancestry, and write READY.
+## Pass 1 checkpoint
+
+- Draft PR #658 is open against the owner-overridden target
+  `codex/conversation-execution`; commits `cac54a7d2` and `6a6d1beae` are pushed.
+- The real-number change entry validates. Developer instructions now distinguish
+  focused/cacheable iteration, fresh affected-package runs, the non-acceptance
+  quick gate, and fresh-test/warm-build-cache timing reports.
+- Exit probes preserved a producer's status 7 and rejected malformed JSON
+  nonzero without retaining the prior report at its requested path.
+
+Outstanding: the harness lane is still performing its one baseline run. Do not
+contend with it. After it commits, review its event/lifecycle fidelity and
+measurements, integrate it, then perform the frozen combined validation listed
+above.

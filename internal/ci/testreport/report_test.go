@@ -38,3 +38,22 @@ func TestReadRejectsMalformedAndEmptyStreams(t *testing.T) {
 		}
 	}
 }
+
+func TestReadCountsFailuresAndSortsSlowestFirst(t *testing.T) {
+	in := strings.Join([]string{
+		`{"Action":"start","Package":"example/fail"}`,
+		`{"Action":"fail","Package":"example/fail","Test":"TestFast","Elapsed":0.1}`,
+		`{"Action":"skip","Package":"example/fail","Test":"TestSlow","Elapsed":2.0}`,
+		`{"Action":"fail","Package":"example/fail","Elapsed":2.2}`,
+	}, "\n")
+	report, err := Read(strings.NewReader(in), &strings.Builder{}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.TestsFailed != 1 || report.TestsSkipped != 1 || report.PackageFailures != 1 {
+		t.Fatalf("failure counts = %#v", report)
+	}
+	if got := report.Tests[0].Name; got != "TestSlow" {
+		t.Fatalf("slowest test = %q", got)
+	}
+}
