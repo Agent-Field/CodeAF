@@ -1829,6 +1829,11 @@ The word on the row above it, and in the note, is `your call`; the report's lead
 row's reason sentence, written once in each place so the two cannot disagree. There is no
 `finished, but needs your look — ` any more: that lead was deleted with the state it named.
 
+**It is never said twice.** Several of the checker's own sentences already open with that
+same question — `nobody could check it in 5m0s`, `nobody could check it — asked twice, and
+neither call answered` — and where one of them does, that sentence IS the lead and nothing
+is put in front of it.
+
 The sentences you may see when nobody could say are written plainly:
 `the checker could not start: <err>`, `the checker could not be asked: <err>`,
 `one call ran 2m30s without answering and was abandoned`,

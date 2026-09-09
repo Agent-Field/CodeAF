@@ -5173,7 +5173,7 @@ func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, 
 func (a *Agent) landShifted(node *TaskNode, tree taskTree, changed []string, report, shift string, log io.Writer) TaskState {
 	merge, kept := keepHome(node, tree, changed)
 	fmt.Fprintf(log, "not merged: %s\n", shift)
-	node.finish(withReport(yourCallLead(TaskFacts{Merge: merge})+shift, report), kept, tree.branch, merge)
+	node.finish(withReport(withYourCallLead(TaskFacts{Merge: merge}, shift), report), kept, tree.branch, merge)
 	return TaskUnverified
 }
 
@@ -5220,7 +5220,7 @@ func (a *Agent) landConflicted(ctx context.Context, node *TaskNode, tree taskTre
 	// AND WHAT THE ROUND TRIED STANDS BETWEEN THE REFUSAL AND THE WORK'S OWN
 	// ACCOUNT, or is nothing at all where no round ran — the emptiness law, and
 	// [withReport] drops it either way.
-	node.finish(withReport(yourCallLead(TaskFacts{Merge: merge, Conflicts: node.clashes()})+detail, withReport(round, report)), changed, tree.branch, merge)
+	node.finish(withReport(withYourCallLead(TaskFacts{Merge: merge, Conflicts: node.clashes()}, detail), withReport(round, report)), changed, tree.branch, merge)
 	return TaskUnverified
 }
 

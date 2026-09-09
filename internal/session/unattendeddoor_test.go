@@ -1100,7 +1100,12 @@ func TestAWindowOneStallClosedIsDecidedByThePosture(t *testing.T) {
 			if strings.Contains(notice.Report, "nobody could check it in") {
 				t.Fatalf("the landing says nobody was asked, and two checkers were:\n%s", notice.Report)
 			}
-			if strings.Contains(notice.Report, yourCallLead(notice.StatusFacts())) {
+			// AND IT DOES NOT OPEN WITH A QUESTION. The checker's own sentence
+			// says "nobody could check it" wherever it is quoted, so what tells
+			// the two landings apart is whether the report LEADS with the
+			// question — this one leads with the work's own account and settles
+			// under it.
+			if strings.HasPrefix(strings.TrimSpace(notice.Report), yourCallLead(notice.StatusFacts())) {
 				t.Fatalf("an unattended run still asks somebody who is not there:\n%s", notice.Report)
 			}
 			// AND THE VOCABULARY LAW HOLDS ON THE NEW SENTENCE.

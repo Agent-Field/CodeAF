@@ -457,6 +457,23 @@ func yourCallLead(facts TaskFacts) string {
 	return taskAskOf(facts).Reason + yourCallDash
 }
 
+// withYourCallLead puts that question in front of what is said under it, AND
+// DOES NOT SAY IT TWICE.
+//
+// Three of the checker's own sentences already open with the question, because
+// they were written when the lead was a different sentence entirely and each had
+// to carry its own subject: [checkerRanOut] says "nobody could check it in 5m0s",
+// [checkerAskedTwice] and [checkerWindowClosedAlone] both open "nobody could
+// check it". Where the account already opens with the question, THE ACCOUNT IS
+// THE LEAD — anything else is one sentence stuttering, which is what a lead and
+// an account written a year apart will always eventually do.
+func withYourCallLead(facts TaskFacts, said string) string {
+	if reason := taskAskOf(facts).Reason; !strings.HasPrefix(said, reason) {
+		return reason + yourCallDash + said
+	}
+	return said
+}
+
 // machineryWords is the vocabulary that must never reach a person, and what to
 // say instead. The order is LONGEST-STEM-FIRST and it has to be: "unverified"
 // contains "verified", and "auditor" contains "audit", so a pass that took the
@@ -624,7 +641,7 @@ func (v auditVerdict) lookOutcome(facts TaskFacts) string {
 	if len(lines) == 0 {
 		return yourCallLead(facts) + "the checker never answered"
 	}
-	return yourCallLead(facts) + strings.Join(lines, "\n")
+	return withYourCallLead(facts, strings.Join(lines, "\n"))
 }
 
 // takenAsItStands is [auditVerdict.lookOutcome]'s counterpart for a run with
@@ -2470,7 +2487,7 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 			node.graph.resettle(node, TaskDone)
 			return nil
 		}
-		node.finish(withReport(yourCallLead(TaskFacts{Merge: merge, Conflicts: node.clashes()})+detail, withReport(acceptedLine(why), report)),
+		node.finish(withReport(withYourCallLead(TaskFacts{Merge: merge, Conflicts: node.clashes()}, detail), withReport(acceptedLine(why), report)),
 			changed, tree.branch, merge)
 		node.graph.resettle(node, TaskUnverified)
 		return nil
@@ -2623,7 +2640,7 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 				node.graph.resettle(node, TaskDone)
 				return
 			}
-			node.finish(withReport(yourCallLead(TaskFacts{Merge: merged, Conflicts: node.clashes()})+detail, withReport(claim, verdict.doneOutcome())),
+			node.finish(withReport(withYourCallLead(TaskFacts{Merge: merged, Conflicts: node.clashes()}, detail), withReport(claim, verdict.doneOutcome())),
 				changed, tree.branch, merged)
 			node.graph.resettle(node, TaskUnverified)
 			return

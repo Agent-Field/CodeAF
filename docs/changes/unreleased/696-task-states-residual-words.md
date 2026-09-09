@@ -12,6 +12,9 @@ invalidates:
     internal/session/task_status.go. There is no needsLookLead any more.
   - A check that answered nothing wrote "nobody could say whether it holds". It now writes
     "the checker never answered".
+  - The lead is never said twice. Three of the checker's own sentences already open with the
+    question — checkerRanOut, checkerAskedTwice, checkerWindowClosedAlone — and where one of
+    them does, that sentence is the lead and nothing is put in front of it (withYourCallLead).
   - waitWord (internal/session/principal_wire.go) said a prerequisite "needs your look". It
     says "is your call". taskGradeOutcome wrote "needs your look" into the ratings file and
     now writes "your call". Both spell it from taskWordYourCall, which is the one spelling,
