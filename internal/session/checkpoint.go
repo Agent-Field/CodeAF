@@ -642,6 +642,8 @@ const checkpointHandoffWriteAsk = "[write the handoff] The work above is being h
 const checkpointRemainsAsk = "[still asked] Above is what the person asked for and what has been done towards it. " +
 	"The model working on it has just stopped. This is a bounded account, not a fresh inspection of the files. " +
 	"Submitted write/edit arguments show intended changes; their tool results say whether they succeeded. " +
+	"Compare the requested deliverable and its explicit value/type constraints with those inputs and results before deciding. " +
+	"A successful write confirms only that bytes were written; it does not prove their contents meet the request. " +
 	"Tool failures and exact data mismatches outweigh an assistant claim of success. " +
 	"Abbreviated or omitted content is unknown, not evidence of a defect. " +
 	"Ground any claimed defect in the evidence shown; if a necessary check is missing, name that check instead of inventing its result. " +
@@ -2185,8 +2187,20 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 			if name == "" {
 				continue
 			}
+			// A writer already has a known target below. Keep that target in
+			// the ledger even when its path is long; a clipped payload looks
+			// like an incomplete report rather than a label for the operation.
+			path, argument := "", ""
+			if checkpointWriters[name] {
+				path = checkpointArgumentNamed(call.Function.Arguments, "path")
+			}
+			if path != "" {
+				argument = clip(path, checkpointLedgerBytes)
+			} else {
+				argument = checkpointArgument(call.Function.Arguments)
+			}
 			line := name
-			if argument := checkpointArgument(call.Function.Arguments); argument != "" {
+			if argument != "" {
 				line += " " + argument
 			}
 			ledger = append(ledger, line)
@@ -2208,7 +2222,6 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 			if !checkpointWriters[name] {
 				continue
 			}
-			path := checkpointArgumentNamed(call.Function.Arguments, "path")
 			if path == "" {
 				continue
 			}

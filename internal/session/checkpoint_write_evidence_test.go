@@ -28,6 +28,9 @@ func TestCompletionReaderSeesExactSmallWriteAndItsOutcome(t *testing.T) {
 				t.Fatal("completion reader was not called")
 			}
 			page := messageText(completer.request(0)[0])
+			if strings.Contains(page, `write {"value"`) {
+				t.Fatal("ledger showed a clipped report instead of its target")
+			}
 			if !strings.Contains(page, string(args)) || !strings.Contains(page, outcome) {
 				t.Fatalf("reader cannot distinguish the exact submitted report from its outcome:\n%s", page)
 			}
