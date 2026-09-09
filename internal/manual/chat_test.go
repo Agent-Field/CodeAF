@@ -42,6 +42,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it went ahead by itself", "questions"},
 		{"make it ask me every time", "questions"},
 		{"it assumed something wrong", "questions"},
+		// The block (docs/design/questions/DESIGN.md, internal/tui3's
+		// question.go), asked the five ways somebody meets it: putting one off,
+		// finding it again, what happened when nobody pressed anything, taking
+		// an approval back, and making the asking stop.
+		{"how do I answer later", "questions"},
+		{"it asked me something and I pressed esc", "questions"},
+		{"why did it decide by itself", "questions"},
+		{"undo what I just approved", "questions"},
+		{"stop asking me about rm", "questions"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},
 		// Lanes behind a base of the person's own: the question the hostname gate

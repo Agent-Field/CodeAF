@@ -1904,6 +1904,12 @@ const (
 	// that are true of the WHOLE of it — one says what the conversation is
 	// doing, and this one says how the machine it is doing it on answers.
 	segLink
+	// segQuestions is how many decisions are waiting on this person, and the
+	// chord that raises the newest one: `? 3 questions · alt+a` (question.go).
+	// It sits beside [segLink] and is not in [dropOrder] for the same reason:
+	// a narrow frame gives up a number rather than the one segment saying that
+	// the session has stopped and is waiting for them.
+	segQuestions
 	segState
 	segCount
 )
@@ -2563,6 +2569,10 @@ func (a *app) telemetry(width int) []hudPart {
 	// frame gives up the telemetry around it rather than the one segment that
 	// explains why none of those numbers are moving (hostlink.go).
 	add(segLink, a.linkSegment())
+	// AND A DECISION WAITING ON A PERSON OUTRANKS EVERY NUMBER ON IT for the
+	// link's own reason said one rung louder: the numbers are not moving, and
+	// this is the segment that says whose move it is (question.go).
+	add(segQuestions, a.questionSegment())
 	// THE STATE WORD IS TAKEN PLAIN AND PAINTED IN ONE READING. Asking for the
 	// painting again at paint time is asking the clock again, and the two
 	// answers are not always the same width ([hudPart] states the defect that
@@ -2810,6 +2820,14 @@ func (a *app) paintPart(part hudPart) string {
 			return room + a.pal.warn(figure)
 		}
 		return room + a.fadeSeg(part.kind, figure)
+	case segQuestions:
+		// AMBER, AND THE THIRD SEGMENT THE AGE RAMP HAS NOTHING TO SAY ABOUT.
+		// It is true while it is drawn and gone the instant it is not, so "this
+		// changed four seconds ago" is not a fact about it — and it is loud for
+		// what it MEANS rather than for when it changed, which is [segYolo]'s
+		// own argument at the one hue this surface reserves for a person being
+		// waited on (question.go, styles.go's [hueWarn]).
+		return a.pal.warn(part.text)
 	case segYolo:
 		// The one segment that is loud because of what it MEANS rather than
 		// because of when it changed.

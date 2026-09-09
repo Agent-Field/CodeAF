@@ -109,6 +109,7 @@ const (
 	GPaused
 	GNeedsHuman
 	GWaitsOn
+	GWithdrawn
 	GCollapsed
 	GExpanded
 	GScopeUp

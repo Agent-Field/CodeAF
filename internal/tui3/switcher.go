@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -999,8 +1000,18 @@ func switcherVerbsFor(row switcherRow) []switcherVerb {
 }
 
 // switcherQuestionVerbs is 1b's answer-in-place: the question's OWN option
-// words, on the two letters a hand already knows, carrying the option key the
-// answer has to be sent under.
+// words, on the question's OWN keys, carrying the option key the answer has to
+// be sent under.
+//
+// THE KEYS COME OFF THE OPTIONS AND ARE NEVER POSITIONAL. This strip used to
+// draw `y` on whatever answer happened to be first and `n` on whatever happened
+// to be second, and that is a lie the moment a lane orders its answers any
+// other way: [session.AnswerOptions] gives the consent lane `1 allow once ·
+// 2 always · 3 deny`, so the strip offered `y always` — a widening approval on
+// the key a person presses for yes. The option carries the key the ANSWER is
+// sent under ([session.AnswerOption.Key]) and there is no second opinion about
+// it; drawing anything else is drawing a key that means something other than
+// what it does.
 //
 // TWO, AND NEVER THE WHOLE LIST. A strip is one row of the frame and a question
 // with five options would push the list down by two more; the digits still
@@ -1008,17 +1019,25 @@ func switcherVerbsFor(row switcherRow) []switcherVerb {
 // (homeband_answer.go).
 func switcherQuestionVerbs(options []session.AnswerOption) []switcherVerb {
 	var verbs []switcherVerb
-	for i, option := range options {
-		if i > 1 {
+	for _, option := range options {
+		if len(verbs) >= switcherQuestionVerbCap {
 			break
 		}
-		key := 'y'
-		if i == 1 {
-			key = 'n'
+		key := strings.TrimSpace(option.Key)
+		word := strings.TrimSpace(option.Label)
+		if key == "" || word == "" || utf8.RuneCountInString(key) != 1 {
+			// A KEY THIS STRIP CANNOT DRAW IS AN ANSWER IT DOES NOT OFFER. The
+			// strip's own grammar is one rune per verb ([switcherVerb.key]), and
+			// an answer whose key is a word — a chord, a name — is still
+			// answerable by opening the question; it is only this one row that
+			// has no cell for it.
+			continue
 		}
-		if word := strings.TrimSpace(option.Label); word != "" {
-			verbs = append(verbs, switcherVerb{key: key, word: word, answer: option.Key})
-		}
+		rune, _ := utf8.DecodeRuneInString(key)
+		verbs = append(verbs, switcherVerb{key: rune, word: word, answer: option.Key})
 	}
 	return verbs
 }
+
+// switcherQuestionVerbCap is how many of a question's answers reach the strip.
+const switcherQuestionVerbCap = 2

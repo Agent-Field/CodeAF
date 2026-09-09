@@ -360,6 +360,27 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 
+	// THE CHIP'S CHORD IS READ ABOVE EVERY PLACE, because the chip is drawn on
+	// every page and a door that only opened from the conversation would be a
+	// door that is not there wherever a person is actually standing when the
+	// count changes. It answers false unless something is open and the key is
+	// its own, so on every other keystroke it costs one string comparison
+	// (question.go's [app.questionChipKeyPress]).
+	if cmd, taken := a.questionChipKeyPress(msg); taken {
+		return cmd
+	}
+
+	// THE QUESTION BLOCK IS READ FIRST AMONG THE QUESTIONS, and it is the one
+	// rung on this list that is NOT modal (question.go). It takes only the keys
+	// it has drawn — over an empty box, because a letter is the question's only
+	// there — and hands everything else straight back, so the eleven arms below
+	// it and the composer under all of them keep every key they had. What it
+	// buys by being here rather than lower is that `esc` means LATER on a
+	// question before it means anything else to anything underneath.
+	if cmd, taken := a.questionKey(msg); taken {
+		return cmd
+	}
+
 	// An approval question outranks even the model overlay: it is the one state
 	// where the SESSION is blocked on this keyboard — a tool call is parked
 	// mid-batch waiting for the answer — and everything else on this surface can

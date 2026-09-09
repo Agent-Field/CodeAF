@@ -551,7 +551,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// are facts about THIS conversation's connection; the waits the previous one
 	// armed are parked on the previous one's channels and discard themselves by
 	// generation (watching.go's [followingMsg]).
-	cmds := []tea.Cmd{a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(), a.watchRuns(), a.loadTasks(),
+	cmds := []tea.Cmd{a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(), a.watchRuns(), a.watchQuestions(), a.loadTasks(),
 		a.askHeld(), a.watchDriving(), a.watchFollowing()}
 
 	if side != nil {

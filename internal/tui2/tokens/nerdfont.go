@@ -113,6 +113,22 @@ var vocabulary = []GlyphBinding{
 		ASCII:     "!",
 		UsualTint: Amber, NFAmbiguous: true, AutoUpgrade: true,
 	},
+	{
+		ID: GWithdrawn, Name: "Withdrawn", Meaning: "the question no longer needs answering",
+		// nf-fa-ban is the same shape one weight heavier — a ring with a stroke
+		// through it — so the two tiers are the geometric and the pictographic
+		// spelling of one mark, which is the whole test of a binding. It sits in
+		// the same FA4.7 outline family as nf-fa-question_circle_o above it,
+		// which is the mark it retires on the row it lands on.
+		//
+		// The tint is TERTIARY and never Amber. Amber is a person being waited
+		// on, and this mark's entire meaning is that nobody is being waited on
+		// any more; a withdrawn line drawn in the attention hue would be the
+		// screen asking for a decision it has just said it does not need.
+		Plain: GlyphWithdrawn, NerdFont: "\uF05E", NFName: "nf-fa-ban",
+		ASCII:     "-",
+		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
+	},
 
 	// -- disclosure and navigation -------------------------------------------
 	//

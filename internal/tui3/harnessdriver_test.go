@@ -397,6 +397,7 @@ func TestTheHarnessOverlapsEveryWaiterItNames(t *testing.T) {
 		"waitEvent":        waitEvent(events, 1),
 		"waitGuestNotices": waitGuestNotices(events, 1),
 		"waitPilot":        waitPilot(events, 1, 1),
+		"waitQuestion":     waitQuestion(events, 1),
 		"waitRoom":         waitRoom(events, 1),
 		"waitRun":          waitRun(events, 1),
 		"waitSteerLane":    waitSteerLane(events, 1),
