@@ -7,6 +7,11 @@ approved the constraints and conceptual map below and requested this reusable
 record. Exact schemas, storage choices, and interface layouts remain open. This document
 describes a future direction; it does not claim these capabilities already exist.
 
+For current branch, implementation status, remaining work and continuation
+instructions, start with [HANDOFF.md](HANDOFF.md). The user subsequently required
+the backend continuation to remain on its own branch with a draft PR, without
+merging into `dev`.
+
 ## Purpose and discussion context
 
 Build a personal AI environment that helps a person manage, monitor, coordinate,

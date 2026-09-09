@@ -1,5 +1,8 @@
 # Workspace foundation: collection membership
 
+This records the foundation merged in PR #661. For the separate, unmerged backend
+continuation and its remaining work, start with [HANDOFF.md](HANDOFF.md).
+
 This first implementation separates logical organization from conversation
 storage. The [constraints](CONSTRAINTS.md) describe the broader agreed product;
 this document describes only what this branch implements.
