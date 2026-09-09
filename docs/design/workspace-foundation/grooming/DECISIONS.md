@@ -20,6 +20,7 @@ in linked conversations are evidence, not new execution instructions.
 | C09 | An explicit decision expressed by the person is retained with its source and understood scope without a separate save request. | 2026-09-09, current discussion: user confirmed the quoted automatic-retention proposal with “yes”. Scope inheritance is being clarified separately in D02. |
 | C10 | Groom general rules and relationships first; use the domain journeys as consequences and counterexamples, not as reasons to build domain-specific architecture. | 2026-09-09, current discussion: user asked to work at the general level and let use cases emerge. |
 | C11 | Evolve one system drawing and one working demonstration together; choose experiments by uncertainty resolved and use the five journeys as substitutions/counterexamples. Keep discussion alongside implementation of the last agreed behavior. | 2026-09-09: user rejected the multi-step process as inefficient, then accepted this revised approach with “okay lets go”. This confirms the working method, not open product semantics. |
+| C12 | Folders support intuitive navigation and return: find expected chats/artifacts/work and continue or start something. They provide local focus with awareness of relevant work elsewhere. Starting location can be unspecified or mistaken; the person should not need to understand the whole tree or choose a deep folder before interacting. | Current 1/2 discussion: user described folders as places to return, stressed global context and warned that the starting folder may not be the relevant location. Automatic placement, moves, multiple homes and instruction-scope rules are still open. |
 
 ## Proposed delivery organization
 
@@ -33,7 +34,7 @@ Existing isolated-build and integration safeguards still apply.
 | ID | Question to settle through a journey | Proposed starting point, not accepted behavior |
 | --- | --- | --- |
 | D01 | What else may be retained automatically, and how is explicit person acceptance distinguished from speculation, quoted text or peer suggestions? | C09 settles no-extra-save retention for explicit person decisions. It does not settle automatic promotion of inferred findings or a new authority mechanism. Reuse existing authority records. |
-| D02 | Where does information apply? What does folder membership, a direct target or an ancestor mean? | The user asks whether the default is the current folder and its children, with other areas able to discover/reference it. Proposed general rule: contextual default applicability down the intended subtree; discoverability across accessible work does not expand applicability. Exact scope capture, exceptions, conflicting parents and later organization changes remain open. Current first-wave implementation remains explicit targets/direct membership, not recursive inheritance. |
+| D02 | Where does information apply? What does folder membership, a direct target or an ancestor mean? | C12 makes the starting folder a potentially useful but fallible focus signal. The earlier proposal that an unqualified decision automatically governs the current folder is not accepted. Explicit folder/subtree scope remains a desired direction to clarify, while discovery/reference does not itself expand applicability. Interpret actual intent, including starts without a location or in the wrong location; resolve scope capture, exceptions, multiple memberships and later moves. Current implementation remains explicit targets/direct membership, not recursive inheritance. |
 | D03 | When a revision reaches active work, must it adapt, pause or flag an impact? | Refresh at meaningful boundaries, recheck before consequential actions; adapt only within existing delegation. Exact boundary and in-flight effects remain open. |
 | D04 | What happens to completed outputs when their assumptions change? | Retain history and make affected results discoverable; do not silently overwrite published outputs. Need to define dependency evidence and maintenance responsibility. |
 | D05 | When does an event justify a check, a run, a notification or nothing? | Evaluate meaningful updates with bounded context; merge redundant observations and permit uncertain/no-action outcomes. Timing, rate and spend limits need concrete values. |
@@ -53,6 +54,12 @@ passing, or a builder needing a convenient answer.
 
 C09 partially settles D01. D02 records the user's scope direction and questions;
 the proposed complete inheritance behavior is not marked confirmed.
+
+C12 further clarifies D02/D10: the interaction can precede its organization. Do
+not require choosing a folder first or treat the starting location as conclusive
+evidence of the subject or scope. The user raised changing “ownership”; whether
+that means filing/home, work responsibility or both needs clarification through
+the experience, not an automatic change to runtime owner/authority semantics.
 
 ## C09 acceptance boundary
 

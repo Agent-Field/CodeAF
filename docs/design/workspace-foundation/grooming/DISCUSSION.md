@@ -43,6 +43,13 @@ not convert proposals into decisions.
 
 ## Where to begin in discussion
 
+The user's C12 clarification changes the starting point: first explore entering
+an interaction from anywhere, continuing known work, and starting in a location
+that later proves unrelated. A folder is a predictable place to return and a
+focus signal, not a mandatory routing choice. Organization may follow emerging
+understanding, but automatic placement/moves, references, topic drift and their
+visibility remain proposals. No new inbox/project/setup primitive is implied.
+
 Discuss 1 and 2 together: what a statement means and where it applies. Sketch
 the corresponding acknowledgment/inspection/correction in 7 at the same time.
 The implementation owner can continue testing the existing part of 3 while we
