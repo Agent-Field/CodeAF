@@ -622,6 +622,10 @@ const (
 // whole line is painted once, and a hue nested inside a hue ends at the inner
 // one's reset.
 func (a *app) roomStopWord() string {
+	// The expanded page reserves its stop action below the tree.
+	if a.roomPanelShowing(a.viewHeight()) {
+		return ""
+	}
 	if !a.stopOffered() {
 		return ""
 	}

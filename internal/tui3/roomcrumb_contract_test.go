@@ -496,11 +496,11 @@ func TestTheTrailAndTheFactsDegradeOnTheirOwnRows(t *testing.T) {
 			t.Fatalf("at %d columns the header is %d rows", width, len(rows))
 		}
 		for _, row := range rows[roomHeadRowCount:] {
-			if strings.TrimSpace(plain(row)) != "" {
+			if !a.roomOrganized() && strings.TrimSpace(plain(row)) != "" {
 				t.Fatalf("at %d columns the header padding contains content: %q", width, plain(row))
 			}
 		}
-		trail, facts := plain(rows[0]), plain(rows[1])
+		trail, facts := plain(rows[0]), plain(rows[roomHeadRowCount-1])
 		// THE TRAIL ROW CARRIES NO TELEMETRY AT ANY WIDTH. That is the whole of the
 		// separation: a path with a state word threaded into it is a path nobody
 		// reads as a path.
@@ -512,7 +512,11 @@ func TestTheTrailAndTheFactsDegradeOnTheirOwnRows(t *testing.T) {
 			t.Fatalf("at %d columns the facts row lost the state word:\n%q", width, facts)
 		}
 		// The page's own name survives on the trail row, cut where it must be.
-		if !strings.Contains(trail, "long name") {
+		nameRow := trail
+		if a.roomOrganized() {
+			nameRow = plain(rows[1])
+		}
+		if !strings.Contains(nameRow, "long name") {
 			t.Fatalf("at %d columns the trail lost the page's own name:\n%q", width, trail)
 		}
 	}

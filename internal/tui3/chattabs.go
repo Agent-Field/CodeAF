@@ -527,7 +527,7 @@ func (a *app) roomFactsRow() int {
 	if a.roomHeadHeight(width) < roomHeadRowCount {
 		return -1
 	}
-	return a.roomHeadRow() + 1
+	return a.roomHeadRow() + roomHeadRowCount - 1
 }
 
 // ── THE ROW, LAID OUT ───────────────────────────────────────────────────────

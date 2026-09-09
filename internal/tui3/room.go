@@ -248,6 +248,9 @@ func (a *app) retargetTask(id uint64, model string) {
 	// The id and the model are both facts and the two `·` labels between them are
 	// not, so the pair steps to ink and the scaffolding stays dim (payload.go).
 	a.noteFacts(taskIDWord(id)+" · model · "+model, taskIDWord(id), model)
+	if a.room != nil && a.room.id == id {
+		a.roomNote("model · " + model + " · its next turn takes it")
+	}
 }
 
 // taskModelUnavailableWord is the degraded case, in the vocabulary the other
@@ -260,6 +263,9 @@ const taskModelUnavailableWord = "changing a task's model is unavailable — thi
 // taskRoom is one node's page: what it has said, the lane carrying what it says
 // next, and where the reader is in it.
 type taskRoom struct {
+	// detailsTop belongs to this page so scrolling its facts never moves the tree.
+	detailsTop int
+
 	id    uint64
 	title string
 	// feed is this page's transcript and the reducer that grows it (feed.go).
@@ -410,7 +416,7 @@ const (
 	// already carrying that key while a room is open, and one row saying the same
 	// thing twice is the defect the rewind mode's empty hint exists to avoid.
 	roomRecallHint = "↑↓ history"
-	roomStopHint   = "x stop"
+	roomStopHint   = "/stop · x with empty input"
 	// roomGoneWord is the one line a landed node's room draws when there is
 	// NOTHING to replay: no lane, and no journal entries. The engine keeps the
 	// transcript's path across restarts and finds it by id when it was not
@@ -1774,6 +1780,17 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// nothing. The recall walk is excluded here for the same reason esc excludes
 	// it below — a state the dismiss key cannot dismiss is a trap — and every key
 	// the page does not take falls through to the two below.
+	// Scoped controls remain commands after their argument closes the slash list.
+	// Otherwise Enter would send "/model <slug>" to the worker as an instruction.
+	if msg.String() == "enter" {
+		line := strings.TrimSpace(a.input.String())
+		name, _, _ := strings.Cut(line, " ")
+		if name == "/model" || name == "/stop" {
+			a.input.setText("")
+			a.closeLists()
+			return a.slash(line), true
+		}
+	}
 	if a.room.orch != nil && !a.recalling() {
 		if cmd, taken := a.orchKey(msg); taken {
 			return cmd, true
@@ -1809,6 +1826,13 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 	case "enter":
 		return a.steer(), true
+
+	case "alt+pgup":
+		a.roomDetailsScroll(-a.scrollPage())
+		return nil, true
+	case "alt+pgdown":
+		a.roomDetailsScroll(a.scrollPage())
+		return nil, true
 
 	case "ctrl+v":
 		// HOW HARD THIS NODE THINKS, one step up the ladder — the same chord that
@@ -1890,6 +1914,9 @@ func (a *app) roomHint() string {
 	case a.recalling():
 		return roomRecallHint
 	case a.stopOffered():
+		if a.roomOrganized() {
+			return "/model · /stop"
+		}
 		// THE ROOM'S ANSWER TO "HOW DO I STOP THIS". It is the honest counterpart
 		// to the conversation's "esc interrupt": the work in here ends through a
 		// card and never through the dismiss key (stop.go), so this is the key a
@@ -2157,6 +2184,10 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	if !ok {
 		return nil, true
 	}
+	if line.roomAction != "" {
+		a.roomPanelTake(line.roomAction)
+		return nil, true
+	}
 	// THE FOOTER'S ONE OFFER IS PRESSABLE, because a hint that names a key and
 	// cannot be pressed is a hint that is only for one of the two hands
 	// (task.go's [app.railFootRows]).
@@ -2337,8 +2368,12 @@ func (a *app) roomHeadRows(width int) []string {
 	if rows == 1 {
 		return []string{a.roomTrailRow(width)}
 	}
-	head := []string{a.roomTrailRow(width), a.roomFactsLine(width)}
+	head := []string{a.roomTrailRow(width), a.roomTitleRow(width), a.roomFactsLine(width)}
 	if rows > roomHeadRowCount {
+		if a.roomOrganized() {
+			head = append(head, a.rule(width))
+			return head
+		}
 		head = append(head, "")
 	}
 	return head
@@ -2347,7 +2382,7 @@ func (a *app) roomHeadRows(width int) []string {
 // roomHeadRowCount counts the semantic rows before optional trailing air on a frame with the
 // height to spare: the trail, and the facts under it. The tab strip above and
 // the kin rows below are counted separately.
-const roomHeadRowCount = 2
+const roomHeadRowCount = 3
 
 // roomHeadHeight is how many of those rows this frame can actually afford.
 //
@@ -2375,6 +2410,9 @@ func (a *app) roomHeadHeight(width int) int {
 // roomTrailRow is the ancestry, the way out, and nothing else.
 func (a *app) roomTrailRow(width int) string {
 	left, hits := a.roomHeadParts(width)
+	if a.roomOrganized() {
+		left, hits = a.roomAncestorParts(width)
+	}
 	a.crumbs, a.roomBackSpan = hits, hudSpan{}
 	line := strings.Repeat(" ", headLabelAt) + a.paintCrumbs(left, headLabelAt, a.pal.accent)
 	leftWidth := headLabelAt + ansi.StringWidth(left)
@@ -2731,6 +2769,10 @@ func roomKinName(name string, room int) string {
 // is telemetry about the page rather than a second header, and v1's column is
 // the reference — restrained, no border, no frame of its own (internal/tui).
 func (a *app) roomKinRows(width int) []string {
+	// The expanded page already has the family tree beside its transcript.
+	if a.roomOrganized() {
+		return nil
+	}
 	// A RUN'S PAGE IS ALREADY ITS OWN FAMILY TREE (roomorch.go): the graph is
 	// drawn there, node by node, with every prerequisite an edge — so a sentence
 	// about kin would be the picture read out loud beside the picture.
@@ -3632,6 +3674,9 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 	if lead != "" {
 		lane = roomSteerHere + roomSteerBack
 	}
+	if a.roomOrganized() {
+		lane = "Give an instruction or ask about this task"
+	}
 	if a.room.orch != nil {
 		// A RUN HAS NO WORKER TO TALK TO, so the box does not offer to steer one:
 		// the sentence goes to the PLANNER, which reads it on its next call
@@ -3717,7 +3762,7 @@ const (
 // [app.inputBlock] is laying out into — because the segment is charged to the
 // box and to nothing else.
 func (a *app) roomLead(width int) string {
-	if a.room == nil {
+	if a.room == nil || a.roomOrganized() {
 		return ""
 	}
 	node := a.roomNode()

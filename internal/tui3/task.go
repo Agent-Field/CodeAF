@@ -3331,6 +3331,10 @@ func (a *app) bodyWidth() int {
 // to the roster, because two would be a click that opened the node above the one
 // under the pointer.
 type railLine struct {
+	// roomAction and roomSection share the drawn rows with pointer routing.
+	roomAction  string
+	roomSection int
+
 	text string
 	// entry indexes [app.railEntries], or -1 for the padding and the footer.
 	entry int
@@ -3437,6 +3441,9 @@ func (a *app) railLines(entries []railEntry, width int) []railLine {
 func (a *app) railView(height int) ([]railLine, int) {
 	if height <= 0 || !a.railStanding() {
 		return nil, -1
+	}
+	if a.roomPanelShowing(height) {
+		return a.roomPanelView(height)
 	}
 	room := a.railRoom()
 	entries := a.railEntries()
@@ -3701,6 +3708,8 @@ func (a *app) railRows(height int) []string {
 			node = entries[line.entry].node
 		}
 		switch {
+		case line.roomAction != "" && a.hot.kind == hoverRoomControl && a.hot.key == line.roomAction:
+			text = a.hoverRow(text, room)
 		case a.roomStandingOn(node):
 			text = a.pal.selected(text, room)
 		case node != nil && a.hoveringRail(node):

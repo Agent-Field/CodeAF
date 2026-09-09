@@ -105,6 +105,11 @@ func (a *app) cycleTaskEffort() bool {
 	if !ok {
 		return false
 	}
+	return a.cycleNodeEffort(node)
+}
+
+// Both the keyboard and the task panel change the node they explicitly name.
+func (a *app) cycleNodeEffort(node *taskNode) bool {
 	door, open := a.taskEffortDoors()
 	if !open {
 		a.note(taskEffortUnavailableWord)
