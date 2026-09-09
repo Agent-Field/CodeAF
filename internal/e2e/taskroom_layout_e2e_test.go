@@ -91,7 +91,20 @@ func TestTUIWaitingFamily(t *testing.T) {
 					t.Fatalf("unexpected terminal task state %s: %s", record.Status, record.Outcome)
 				}
 				t.Logf("parent execution ended %s: %s", record.Status, record.Outcome)
-				r.keys("Right")
+				// Right cycles running tasks only. A completed parent is opened
+				// through its roster row, the same pointer door a person uses.
+				opened := false
+				for i, line := range strings.Split(r.capture(), "\n") {
+					if at := strings.Index(line, "│ tasks"); at >= 0 {
+						x, y := ansi.StringWidth(line[:at])+6, i+2
+						r.lit(fmt.Sprintf("\x1b[<0;%d;%dM\x1b[<0;%d;%dm", x, y, x, y))
+						opened = true
+						break
+					}
+				}
+				if !opened {
+					t.Fatal("completed parent has no roster row to open")
+				}
 				// Model checks can finish or ask for review. The terminal must
 				// expose that ending rather than leave the parent spinning.
 				shown := false
