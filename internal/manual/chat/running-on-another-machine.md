@@ -747,3 +747,19 @@ is an interactive chat. Reopening that conversation by its session path uses
 those same settings and rejoins the engine's live work. It does not submit the
 message again or wait for its own pending question to finish in another window.
 Explicitly different launch flags still use the existing compatibility check.
+
+## Opening full-quality images from an SSH server
+
+To view an original image on your computer, run aforge locally with `--host` pointing
+to the server. The **[open original]** action, a click on the expanded picture, or
+**alt+o** fetches the remote file through the existing connection, checks its content,
+keeps a named local copy and opens that copy in your system viewer. Repeated opens
+reuse unchanged content; a changed remote file is refreshed. A local attachment
+keeps its local ownership and does not make that round trip.
+
+If you SSH into a server and run aforge there, the terminal application and its file
+opener are on that server. The original-file action explains how to use the local
+`--host` client and shows the original path so you can retrieve it yourself. It does
+not launch a viewer on a machine you are not sitting at. The optional cell preview
+still scrolls as ordinary terminal text; it cannot display screenshot text at full
+resolution. This distinction applies inside tmux too.

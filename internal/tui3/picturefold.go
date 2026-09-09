@@ -189,5 +189,5 @@ func (a *app) openMediaOriginal(item mediaItem) tea.Cmd {
 // pictureOriginalRow identifies the preview pixels and their explicit action
 // caption. Tool details and the phone sheet use the same pointer contract.
 func pictureOriginalRow(line string) bool {
-	return strings.Contains(line, halfBlock) || strings.Contains(plain(line), "Click image to open full size")
+	return strings.Contains(line, halfBlock) || strings.Contains(ansi.Strip(line), "Click image to open full size")
 }
