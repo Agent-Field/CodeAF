@@ -1028,7 +1028,10 @@ func helpText(file string, chords chordSpelling) string {
 		// (steer.go binds both names). The substitution is chords.go's one door.
 		helpKeyRow(chords.say(parkKey), "mid-answer: waits above the box · → sends a waiting one"),
 		"ctrl+q         hand this to the session now, to run after the current turn",
-		"ctrl+e         open the model's thinking, streaming or finished",
+		// THE ROW READS IN THE ROUTER'S ORDER. The empty-box key asks the running
+		// turn's window first ([app.toggleLatestWorkfold]) and falls through to
+		// thinking ([app.toggleLatestThought]); the row was rewritten when the key was.
+		"ctrl+e         open the running turn's compact steps · the newest worked chip · or the thinking",
 		// THE NEW TAB AND THE ROSTER, IN THAT ORDER AND ON TWO ROWS. They used to be
 		// one key: ctrl+t handed the roster the keyboard, and the tab strip's `+` had
 		// no chord at all. The strip is drawn as tabs, so the key every browser opens

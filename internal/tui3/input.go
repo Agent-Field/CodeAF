@@ -1224,9 +1224,11 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	case "end", "ctrl+e":
 		// ctrl+e has two meanings and they are read the way ↑'s four are: with
-		// nothing typed it opens the model's thinking (thinking.go), and with a
-		// sentence in the box it is end-of-line, where the caret is what the hand
-		// meant. `end` is always end-of-line, so nothing is unreachable.
+		// nothing typed it opens the running turn's compact steps first
+		// ([app.toggleLatestWorkfold]) and falls through to the model's thinking
+		// ([app.toggleLatestThought]); with a sentence in the box it is end-of-line,
+		// where the caret is what the hand meant. `end` is always end-of-line, so
+		// nothing is unreachable.
 		if msg.String() == "ctrl+e" && a.input.empty() {
 			if a.toggleLatestWorkfold() || a.toggleLatestThought() {
 				return nil
