@@ -386,8 +386,11 @@ func (a *app) frameBody() (string, int, int) {
 	// uses the same cached rows that the frame places below; status painting
 	// never rebuilds a hidden transcript to infer ownership.
 	view := a.viewHeight()
-	body, pad := a.bodyRows(a.bodyWidth(), view)
-	if !a.railFull() {
+	fullRail := a.railFull()
+	var body []row
+	pad := 0
+	if !fullRail {
+		body, pad = a.bodyRows(a.bodyWidth(), view)
 		for _, r := range body {
 			a.inlineWaitShowing = a.inlineWaitShowing || r.inlineWait
 		}
@@ -461,7 +464,7 @@ func (a *app) frameBody() (string, int, int) {
 	// [app.railFull]). The conversation is not drawn under it — an overlay you
 	// read past is an overlay that made the page harder to read — and the chrome
 	// below stays, because the draft is still where this surface types.
-	if a.railFull() {
+	if fullRail {
 		// THE SWITCHER IS DRAWN OVER THE ROSTER TOO. On a frame with no columns
 		// to lend, the roster IS the body, and a card that skipped this branch
 		// would be a key that did nothing at sixty columns (hop.go).
