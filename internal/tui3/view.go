@@ -183,7 +183,7 @@ func (a *app) View() tea.View {
 		return a.shown
 	}
 	frame, caretX, caretY := a.frame()
-	v := tea.NewView(frame)
+	v := tea.NewView(a.tabTitlePreview(frame))
 	v.AltScreen = true
 	// THE POINTER IS OURS BY DEFAULT, AND THAT HAS A COST WORTH NAMING. Asking
 	// for it — at any motion level — makes this app the owner of every drag, so

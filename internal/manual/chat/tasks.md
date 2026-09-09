@@ -161,6 +161,9 @@ field in an answer aforge was already paying for and already waiting on.
 all — only the sentence it was started from: a `/task` whose shaping could not run, work
 that started on its own after a words-only turn, an adaptive run's own row. That title is
 handed to the cheap `taskname` role, which reads the work and answers with two or three lowercase words.
+Empty replies, instruction echoes and placeholders such as `nothing to name` are refused.
+The next configured naming model may answer within the same time limit; if it cannot,
+the existing fallback stays.
 
 **Work a model already named is left alone.** A task the conversation proposed with
 `propose_task` carries the name the model wrote as an argument to that tool; a `/task` whose

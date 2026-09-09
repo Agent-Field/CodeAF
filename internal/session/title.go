@@ -53,22 +53,9 @@ package session
 //     opened, on its next message: titleTried is a fact about this process, and
 //     the title read back off the file is now empty.
 //
-//   - A NAME THAT DID NOT ARRIVE IS ASKED FOR AGAIN, AND ONLY WHEN THE FAILURE
-//     WAS THE WIRE. [titleAttempts] tries within ONE bounded lifetime, backing
-//     off on the loop's own ladder, and the classification is the loop's own
-//     ([isRetryable]) rather than a second opinion about which errors are worth
-//     asking again. THE TWO OUTCOMES ARE DELIBERATELY DIFFERENT: a torn socket
-//     is the request never having been answered, and asking again is what the
-//     rest of this program does with one; a model that ANSWERED with something
-//     that is not a name has already said what it thinks, and asking the same
-//     small model the same question a second time buys the same answer and a
-//     second charge. So a transient failure retries and a refused answer does
-//     not — the session stays unnamed and asks again the next time it opens.
-//
-//     ONE ERRAND, whatever it costs inside: [Agent.titleTried] is still marked
-//     before the first call, so a second turn never starts a second namer, and
-//     the whole ladder is bounded by [titleWindow] so a provider having a very
-//     bad minute cannot leave a goroutine asking all afternoon.
+//   - NAMING IS BOUNDED, INCLUDING UNUSABLE ANSWERS. Empty replies and invalid
+//     labels fall through the same model ladder as request failures. Up to
+//     titleAttempts asks share titleWindow; another turn never adds an errand.
 //
 //   - IT NEVER BREAKS THE TURN, AND NOW IT NEVER DELAYS ONE EITHER. A failed,
 //     empty or cancelled title leaves the session unnamed and says nothing.
@@ -89,6 +76,7 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -109,7 +97,11 @@ const titleSystem = "You name conversations."
 // answer IS the requirement: one descriptive library title and one stable,
 // compact tab label. Lowercase and unquoted is what every other label in this
 // surface looks like.
-const titlePrompt = "Name this conversation twice. First line: full: a descriptive title in ≤12 words. Second line: tab: a distinct compact label in ≤3 words. Lowercase, no quotes, those two lines only."
+const shortTitleWords = 2
+
+var titlePrompt = fmt.Sprintf("Name this conversation twice. First line: full: a descriptive title in ≤12 words. Second line: tab: a distinct compact label in ≤%d words. Lowercase, no quotes, those two lines only.", shortTitleWords)
+var errInvalidName = errors.New("naming response contained no usable name")
+
 const legacyTitlePrompt = "Name this session in ≤8 words, lowercase, no quotes. Answer with the name only."
 
 // titleClip bounds each half of the opening exchange handed to the namer. A
@@ -252,17 +244,14 @@ func (a *Agent) stillNeedsName() bool {
 // askForName makes one call and returns the name it earned, or asks to be
 // called again.
 //
-// again is TRUE ONLY FOR THE WIRE. An answer that arrived and was refused
-// ([cleanTitle]) is the model's considered reply and asking it twice buys the
-// same words; a call that never landed is worth asking again, and which errors
-// those are is the loop's own question and answered by its own reader.
+// A failed request or an unusable reply may spend another bounded attempt.
 func (a *Agent) askForName(ctx context.Context, question, answer, model string) (name conversationTitle, again bool) {
 	// One errand, through the one door errands go through (auxiliary.go): the
 	// role's tier bounds how long two short labels may take, and a model that cannot
 	// answer at all costs one fall-through down the ladder rather than the
 	// session's name. No tools — the namer's only job is to produce the title pair.
 	callCtx, cancel := context.WithTimeout(ctx, titleAskWindow)
-	response, named, err := a.callRole(callCtx, roles.RoleTitle, model,
+	response, named, err := a.callRoleChecked(callCtx, roles.RoleTitle, model,
 		[]ai.Message{
 			textMessage("system", titleSystem),
 			// THE INSTRUCTION IS LAST, after the exchange rather than above it.
@@ -273,6 +262,12 @@ func (a *Agent) askForName(ctx context.Context, question, answer, model string) 
 			// them. [cleanTitle] refuses that answer whatever it costs to make,
 			// but the cheaper fix is to ask in the place it reads.
 			textMessage("user", titleAsk(question, answer)),
+		}, func(response *ai.Response, named string) bool {
+			if cleanConversationTitle(response.Text()).full != "" {
+				return true
+			}
+			a.addDetachedUsageAs(response, named, 1, auxRoleTitle)
+			return false
 		})
 	cancel()
 	if err != nil {
@@ -294,10 +289,10 @@ func (a *Agent) askForName(ctx context.Context, question, answer, model string) 
 		if errors.Is(err, context.DeadlineExceeded) {
 			return conversationTitle{}, true
 		}
-		return conversationTitle{}, isRetryable(err.Error())
+		return conversationTitle{}, errors.Is(err, errInvalidName) || isRetryable(err.Error())
 	}
 	if response == nil {
-		return conversationTitle{}, false
+		return conversationTitle{}, true
 	}
 	// BILLED AGAINST THE MODEL THAT ANSWERED, which is not always the one the
 	// ladder resolved first, AND OFF EVERY TURN'S CLOCK. The errand outlives the
@@ -458,6 +453,7 @@ func (a *Agent) setTitleIfUnnamed(title string, shorts ...string) bool {
 		a.mu.Unlock()
 		return false
 	}
+	short = compactTitle(short)
 	a.title, a.shortTitle = title, short
 	file := a.file
 	a.mu.Unlock()
@@ -516,7 +512,8 @@ func cleanConversationTitle(raw string) conversationTitle {
 	var full, short string
 	labeled := false
 	for _, line := range strings.Split(raw, "\n") {
-		line = strings.TrimSpace(line)
+		line = stripMarkup(strings.TrimSpace(line))
+		line = strings.Trim(line, `"'“”`)
 		lower := strings.ToLower(line)
 		switch {
 		case strings.HasPrefix(lower, "full:"):
@@ -541,8 +538,13 @@ func cleanConversationTitle(raw string) conversationTitle {
 	if short == "" {
 		short = full
 	}
-	short = clip(short, shortTitleLimit)
+	short = compactTitle(short)
 	return conversationTitle{full: full, short: short}
+}
+
+// compactTitle also repairs short labels saved before the word cap existed.
+func compactTitle(raw string) string {
+	return clip(firstWordsOf(cleanTitle(raw), shortTitleWords), shortTitleLimit)
 }
 
 // cleanTitle takes the first line and strips the things a model adds against
@@ -585,10 +587,20 @@ func cleanTitle(raw string) string {
 		title = strings.Join(strings.Fields(title), " ")
 	}
 	title = clip(strings.TrimSpace(title), titleLimit)
-	if namesTheInstruction(title) {
+	if namesTheInstruction(title) || unusableName(title) {
 		return ""
 	}
 	return title
+}
+
+// unusableName refuses empty-subject answers that small namers have returned.
+// They describe the failed naming call rather than the conversation or task.
+func unusableName(name string) bool {
+	switch strings.Join(normalizedWords(name), " ") {
+	case "untitled", "nothing to name", "no title", "no name", "n a", "none", "null":
+		return true
+	}
+	return false
 }
 
 // stripMarkup takes the markdown off a name.
@@ -624,12 +636,6 @@ func stripMarkup(title string) string {
 // the user message now) makes it rarer; refusing the answer is what makes it
 // harmless.
 //
-// THERE IS NO SECOND ATTEMPT. ONE CALL, ONCE stands exactly as the file header
-// states it: [Agent.maybeTitle] marks the attempt BEFORE the call, so a refused
-// name costs this session its name and nothing more. A retry would turn one bad
-// minute at a provider into two calls for every session that has one, to earn a
-// label that the person's own opening words already stand in for.
-
 // instructionPhrases are the openings of the two namers' instructions, and one
 // of them appearing anywhere in an answer means the model handed the
 // instruction back rather than doing what it said. They are matched against the
@@ -771,7 +777,7 @@ func isOpener(words []string) bool {
 		return true
 	}
 	switch words[len(words)-1] {
-	case "title", "name", "is", "about", "called", "answer", "caption":
+	case "title", "name", "is", "about", "called", "answer", "caption", "full", "tab":
 		return true
 	}
 	return false
@@ -831,8 +837,12 @@ func uniqueWords(words []string) []string {
 // completed turn and the next good name is appended as every name always is.
 func healedTitle(stored string) string {
 	stored = strings.TrimSpace(stored)
-	if stored == "" || namesTheInstruction(stored) {
+	if stored == "" || namesTheInstruction(stored) || unusableName(stored) {
 		return ""
+	}
+	// Old paired replies sometimes kept their formatting label as part of the name.
+	if strings.HasPrefix(strings.ToLower(stripMarkup(stored)), "full:") {
+		return cleanConversationTitle(stored).full
 	}
 	return stored
 }
