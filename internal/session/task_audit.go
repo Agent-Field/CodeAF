@@ -248,6 +248,11 @@ const (
 	// than believing it has seen everything.
 	auditResultLimit = 8000
 
+	// auditReadContentLimit leaves room under auditResultLimit for bare read's
+	// exact line range and continuation footer. It changes only the page size;
+	// paths and offsets keep the ordinary read contract.
+	auditReadContentLimit = 7500
+
 	// auditRestoreEntries bounds the CLEAN RESTORE a verdict is reached in when
 	// the workspace is not a repository and the restore has to be copied by hand
 	// ([restoreTaskWork]).
@@ -2681,7 +2686,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agen
 	// may touch, and every later hand added to the session would silently join
 	// the auditor's belt unless somebody remembered this rule. Composed here,
 	// a new tool reaches the auditor only when this list names it.
-	tools := auditBelt(dir, door)
+	tools := auditBelt(dir, door, parent.droppingsPlace())
 	definitions, err := toolDefinitions(tools)
 	if err != nil {
 		_ = auditor.Close()
@@ -2715,14 +2720,16 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor) (*Agen
 // bounds an investigation is what ONE ANSWER may weigh, whichever hand returned
 // it, so it is applied here — where the hands are chosen — and not five times
 // over in five wrappers.
-func auditBelt(dir string, door auditDoor) []bare.Tool {
+func auditBelt(dir string, door auditDoor, droppings Place) []bare.Tool {
 	var belt []bare.Tool
 	for _, tool := range bare.AllTools(dir) {
 		switch tool.Name {
-		case "read", "grep", "find", "ls":
-			belt = append(belt, boundedResult(tool))
+		case "read":
+			belt = append(belt, boundedResult(bare.ReadTool(dir, auditReadContentLimit), droppings, dir))
+		case "grep", "find", "ls":
+			belt = append(belt, boundedResult(tool, droppings, dir))
 		case "bash":
-			belt = append(belt, boundedResult(verifyOnlyBash(tool, door)))
+			belt = append(belt, boundedResult(verifyOnlyBash(tool, door), droppings, dir))
 		}
 	}
 	return belt
@@ -2730,26 +2737,28 @@ func auditBelt(dir string, door auditDoor) []bare.Tool {
 
 // boundedResult caps what one tool call may hand back.
 //
-// It reuses [capBytes], which is the package's own truncation — the same one
-// [capOutput] bounds a tool result for a person's screen with — so a cut result
-// carries the count of what was left behind rather than an ellipsis: an auditor
-// that cannot tell whether it is missing a line or a megabyte cannot tell
-// whether it has seen enough to judge. The sentence after it says what to do
-// about it, because the answer is never "give up", it is "ask something
-// narrower".
+// A cut result is filed through [writeStub], the same content-addressed,
+// atomic droppings path used by conversation compaction. The cap therefore
+// remains a hard bound on this observation while ordinary read paths and line
+// offsets reach the rest. Nothing is written into the work being judged.
 //
 // The refusals pass through UNCAPPED in every practical case and deliberately go
 // through the same cap anyway: a refusal is a result like any other, and a gate
 // with an exception in it is a gate with a way around it.
-func boundedResult(tool bare.Tool) bare.Tool {
+func boundedResult(tool bare.Tool, droppings Place, workspace string) bare.Tool {
 	inner := tool.Execute
 	tool.Execute = func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 		text, isError, err := inner(ctx, args)
 		if err != nil || len(text) <= auditResultLimit {
 			return text, isError, err
 		}
-		return capBytes(text, auditResultLimit) +
-			"\n[cut here: ask something narrower — a path, a pattern, a specific file]", isError, nil
+		pointer, fileErr := writeStub(droppings, workspace, text)
+		if fileErr != nil || pointer == "" {
+			footer := "\n[cut here; full output could not be saved — ask for a narrower path, pattern, or range]"
+			return capBytes(text, auditResultLimit-len(footer)-32) + footer, isError, nil
+		}
+		footer := fmt.Sprintf("\n[cut here; whole output: %s — use read with offset/limit]", pointer)
+		return capBytes(text, auditResultLimit-len(footer)-32) + footer, isError, nil
 	}
 	return tool
 }

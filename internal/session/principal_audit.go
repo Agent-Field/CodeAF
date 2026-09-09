@@ -175,10 +175,11 @@ func runOneCheck(ctx context.Context, tree, check string) CheckRun {
 	// closing over it, or the process never starting, and none of those is a
 	// reading of the tree ([CheckRun.Ran]).
 	return CheckRun{
-		Command: check,
-		Passed:  err == nil,
-		Ran:     checkActuallyRan(ctx, err),
-		Tail:    checkTail(string(output)),
+		Command:  check,
+		Passed:   err == nil,
+		Ran:      checkActuallyRan(ctx, err),
+		Tail:     checkTail(string(output)),
+		Failures: verify.FailingTests(string(output)),
 	}
 }
 
@@ -734,7 +735,7 @@ func (a *Agent) openBaseline(ctx context.Context) {
 		// NOTHING TO READ IS A FINISHED READING. A session whose ask declares no
 		// runnable check has no baseline to wait for, and leaving the reading
 		// permanently open would mean no check ever counted as this run's own.
-		a.closeBaseline(nil, nil)
+		a.closeBaseline(nil, nil, nil, checks)
 		return
 	}
 	go func() {
@@ -753,6 +754,7 @@ func (a *Agent) readBaseline(ctx context.Context, checks []string) {
 
 	tree := a.deliverableTree()
 	var red, unread, moved []string
+	failures := make(map[string][]string)
 	for index, check := range checks {
 		if ctx.Err() != nil {
 			// The window closed. Everything it did not reach was not read, and
@@ -781,9 +783,12 @@ func (a *Agent) readBaseline(ctx context.Context, checks []string) {
 		}
 		if !run.Passed {
 			red = append(red, check)
+			if len(run.Failures) > 0 {
+				failures[check] = append([]string(nil), run.Failures...)
+			}
 		}
 	}
-	a.closeBaseline(red, unread)
+	a.closeBaseline(red, unread, failures, checks)
 	a.journalBaseline(red, unread, moved)
 }
 
@@ -877,13 +882,15 @@ func treeRecordFromGit(tree string) ([]string, bool) {
 // closeBaseline publishes the reading and says it has happened, which are one
 // step: a reader that saw the list before the flag would count nothing, and one
 // that saw the flag before the list would count everything.
-func (a *Agent) closeBaseline(red, unread []string) {
+func (a *Agent) closeBaseline(red, unread []string, failures map[string][]string, declared []string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.baselineRead {
 		return
 	}
 	a.baselineRed, a.baselineUnread = red, unread
+	a.baselineFailures = cloneFailureNames(failures)
+	a.baselineDeclared = append([]string(nil), declared...)
 	a.baselineRead = true
 	if a.baselineDone != nil {
 		close(a.baselineDone)
@@ -902,9 +909,8 @@ func (a *Agent) closeBaseline(red, unread []string) {
 //
 // A SESSION THAT NEVER STARTED ONE CLOSES IT EMPTY AND CARRIES ON. A watched
 // session, a unit test, an ask with no runnable check: there is nothing coming,
-// so waiting would be waiting forever. Empty means nothing is KNOWN to have been
-// already red, and every red then counts — which is the safe side of a terminal
-// answer.
+// so waiting would be waiting forever. Empty coverage means a command found only
+// at the terminal door is unread, because nobody saw what it said before work.
 func (a *Agent) awaitBaseline(ctx context.Context) {
 	a.mu.Lock()
 	read, started, done := a.baselineRead, a.baselineTaken, a.baselineDone
@@ -913,7 +919,7 @@ func (a *Agent) awaitBaseline(ctx context.Context) {
 		return
 	}
 	if !started || done == nil {
-		a.closeBaseline(nil, nil)
+		a.closeBaseline(nil, nil, nil, nil)
 		return
 	}
 	select {
@@ -929,6 +935,54 @@ func (a *Agent) baselineRedChecks() ([]string, []string, bool) {
 	defer a.mu.Unlock()
 	return append([]string(nil), a.baselineRed...),
 		append([]string(nil), a.baselineUnread...), a.baselineRead
+}
+
+// baselineRedChecksFor adds commands that appeared only after the
+// before-reading to Unread. Their current result is useful evidence, but a red
+// result with no before-reading cannot honestly be attributed to this session.
+func (a *Agent) baselineRedChecksFor(checks []CheckRun) (red, unread []string, read bool) {
+	a.mu.Lock()
+	red = append([]string(nil), a.baselineRed...)
+	unread = append([]string(nil), a.baselineUnread...)
+	declared := append([]string(nil), a.baselineDeclared...)
+	read = a.baselineRead
+	a.mu.Unlock()
+
+	covered := make(map[string]bool, len(declared))
+	unknown := make(map[string]bool, len(unread))
+	for _, command := range declared {
+		covered[command] = true
+	}
+	for _, command := range unread {
+		unknown[command] = true
+	}
+	for _, check := range checks {
+		if covered[check.Command] {
+			continue
+		}
+		if !unknown[check.Command] {
+			unread = append(unread, check.Command)
+			unknown[check.Command] = true
+		}
+	}
+	return red, unread, read
+}
+
+func (a *Agent) baselineFailureNames() map[string][]string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return cloneFailureNames(a.baselineFailures)
+}
+
+func cloneFailureNames(in map[string][]string) map[string][]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string][]string, len(in))
+	for command, names := range in {
+		out[command] = append([]string(nil), names...)
+	}
+	return out
 }
 
 // journalBaseline writes the baseline down, INCLUDING WHEN IT WAS ALL GREEN.
@@ -953,9 +1007,9 @@ func (a *Agent) journalBaseline(red, unread, moved []string) {
 // reads a tree it is missing from without noticing ([stashedWork]).
 func (a *Agent) terminalAudit(ctx context.Context) ([]CheckRun, reconciliation, int) {
 	// THE BEFORE-READING IS WAITED FOR HERE AND NOWHERE ELSE. What these checks
-	// answer is about to be subtracted from it, and a terminal answer of done
-	// taken over a red check nobody could attribute would ship red work as
-	// finished ([Agent.awaitBaseline]).
+	// answer is about to be compared with it. A command outside its coverage is
+	// carried as unread, while a covered command that turned red remains work
+	// ([Agent.awaitBaseline]).
 	a.awaitBaseline(ctx)
 	ran := a.runSessionChecks(ctx, a.sessionChecks())
 	tree := a.deliverableTree()

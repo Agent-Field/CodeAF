@@ -255,6 +255,10 @@ type CheckRun struct {
 	Command string
 	Passed  bool
 	Tail    string
+	// Failures carries stable identities read from a failed command's own
+	// output. Empty remains honest for a non-test validation or output the
+	// generic reader cannot parse: the command is red, but what failed is unknown.
+	Failures []string
 
 	// Ran says the command STARTED AND FINISHED — it was found, it executed, and
 	// the shell gave an exit status. A command that would not start and one the
@@ -379,10 +383,13 @@ type Remains struct {
 	// takes one — every watched session — counts no check as its own, which is
 	// the one safe answer when nobody knows what was red to begin with.
 	WasFailing []string
+	// WasFailingTests keeps failure identities inside baseline-red commands,
+	// keyed by the exact declared command both readings ran.
+	WasFailingTests map[string][]string
 
-	// Unread is the declared checks the before-reading COULD NOT READ: one that
-	// changed the tree and had its answer thrown away, one the shell could not
-	// run, one the window never reached.
+	// Unread is the current checks with no usable before-reading: one declared
+	// after that reading, one that changed the tree and had its answer thrown
+	// away, one the shell could not run, one the window never reached.
 	//
 	// A CHECK WHOSE READING WAS THROWN AWAY DOES NOT MAKE EVERY RED LOOK NEW.
 	// With WasFailing alone, a baseline that discarded its ONLY check came back
@@ -529,21 +536,24 @@ func (r Remains) unmet() []string {
 	} else if r.Stashed > 1 {
 		out = append(out, fmt.Sprintf("%d stash entries hold work that is not in the tree", r.Stashed))
 	}
-	// AND ONLY THE RED THIS WORK TURNED RED IS LEFT. What was already failing
-	// before anybody touched the tree is the project's and not this session's,
-	// and naming it sends a run that has finished back into somebody else's bug
-	// for the rest of its ceiling. It is the same subtraction the task harness
-	// makes over its own before-and-after ([verify.NewFailures]), on the check
-	// commands rather than on test names, because a session's declared check is
-	// a whole command and its answer is whether that command passed.
+	// AND ONLY THE RED THIS WORK TURNED RED IS LEFT. An unchanged failure is not
+	// evidence of a new regression; the goal reader still decides whether the
+	// requested behavior itself was delivered. A command remains the unit that
+	// is run, but when both red outputs name failures, those identities are
+	// compared inside it: pytest red on A before and B after is new red, not the
+	// same answer.
 	//
 	// AND WITH NO BASELINE YET, NOTHING IS COUNTED. The reading runs in the
 	// background at the start of the run, and until it lands nobody knows which
 	// red is the project's — so the honest answer about the checks is silence
 	// rather than a guess, and [stewardBrief] says the reading is still going.
 	if r.BaselineRead {
-		for _, command := range verify.NewFailures(r.WasFailing, r.attributableRed()) {
-			out = append(out, command+" does not pass")
+		for _, failure := range r.newCheckFailures() {
+			line := failure.Command + " does not pass"
+			if len(failure.Failures) > 0 {
+				line += ": " + strings.Join(failure.Failures, ", ")
+			}
+			out = append(out, line)
 		}
 	}
 	return out
@@ -568,15 +578,46 @@ func (r Remains) redChecks() []string {
 	return out
 }
 
+func (r Remains) newCheckFailures() []CheckRun {
+	old := make(map[string]bool, len(r.WasFailing))
+	for _, command := range r.WasFailing {
+		old[command] = true
+	}
+	unread := make(map[string]bool, len(r.Unread))
+	for _, command := range r.Unread {
+		unread[command] = true
+	}
+	var fresh []CheckRun
+	for _, run := range r.Checks {
+		if run.Passed || unread[run.Command] {
+			continue
+		}
+		names, changed := verify.NewCommandFailure(old[run.Command], r.WasFailingTests[run.Command], run.Failures)
+		if changed {
+			run.Failures = names
+			fresh = append(fresh, run)
+		}
+	}
+	return fresh
+}
+
 // alreadyRed is what this reading found failing that was failing before the work
 // began — the checks [Remains.unmet] deliberately did not name.
 func (r Remains) alreadyRed() []string {
-	red := r.redChecks()
 	if !r.BaselineRead {
 		return nil
 	}
-	red = r.attributableRed()
-	return verify.Subtract(red, verify.NewFailures(r.WasFailing, red))
+	newRed := map[string]bool{}
+	for _, run := range r.newCheckFailures() {
+		newRed[run.Command] = true
+	}
+	var old []string
+	for _, command := range r.attributableRed() {
+		if !newRed[command] {
+			old = append(old, command)
+		}
+	}
+	return old
 }
 
 // absorbedBy names the landing that already did this one's work, and "" when
@@ -809,6 +850,10 @@ type Steward struct {
 	acceptance string
 	checks     []string
 	delivery   deliveryContract
+	// deliveryReading is the one in-flight destination reading shared by both
+	// ending seams. The network call runs outside this lock; closing the channel
+	// publishes the frozen result to every waiter.
+	deliveryReading chan struct{}
 
 	// wall and money are the CEILINGS; started and spent are how the figures
 	// against them are read. spent is a closure onto the session's own
@@ -1048,10 +1093,10 @@ func stewardReason(landing Landing) string {
 //     measured run had a task merged home with twenty-two checks green, and was
 //     carried on past it for the rest of its wall on a line somebody's sidecar
 //     wrote about the transcript.
-//  4. WITH SOMETHING GENUINELY LEFT, THE READER'S OWN WORDS ARE THE BRIEF where
-//     there are any: the unmet set says THAT work remains and the reader is
-//     usually more specific about WHAT, and a brief is read by a model that has to
-//     act on it.
+//  4. WITH SOMETHING GENUINELY LEFT, THE ADMITTED UNMET FACTS ARE THE BRIEF. A
+//     reader's words enter those facts for inline work, where there is no task
+//     landing to outrank them; they cannot replace an independent task, delivery
+//     or check fact with a fresh obligation.
 //  5. WORK STILL IN FLIGHT IS NEITHER OF THE TWO ENDINGS. An ask with a unit of
 //     work still going is not finished, and it is not going round in a circle
 //     either — it is waiting, so the floor below is not asked about it and what it
@@ -1085,19 +1130,13 @@ func (s *Steward) Decide(r Remains) Decision {
 		if r.stoodInForTheReader() {
 			brief = checksStoodInForTheReader
 		}
+		brief = withUnknownRedChecks(brief, r)
 		return done(brief)
 	}
-	brief := strings.TrimSpace(r.Reader)
-	if brief == "" {
-		brief = stewardBrief(r, unmet)
-	} else {
-		// AND WHAT IS KNOWN ABOUT THE CHECKS RIDES EVERY BRIEF, not only the one
-		// this package wrote. A reader's line is about the WORK and says nothing
-		// about which red was already there — so a worker handed it alone can see
-		// red it was never told to leave alone, and goes and fixes somebody else's
-		// bug. The two sentences are the same two [stewardBrief] appends.
-		brief = withWhatIsKnownAboutTheChecks(brief, r)
-	}
+	// THE UNMET SET IS THE AUTHORITY. Reader prose is admitted into that set on
+	// the inline road above; it must not replace an independent task, delivery or
+	// check fact with a new obligation of its own.
+	brief := stewardBrief(r, unmet)
 	// AND NOTHING IS A STANDSTILL WHILE SOMETHING IS STILL MOVING. An unmet set
 	// that has not changed because the work has not come home yet is a session
 	// waiting, not a session repeating itself, and what the floor remembers from
@@ -1185,8 +1224,8 @@ func stewardBrief(r Remains, unmet []string) string {
 	return withWhatIsKnownAboutTheChecks(out.String(), r)
 }
 
-// withWhatIsKnownAboutTheChecks appends the sentences a brief owes about the
-// declared checks, and it is ONE function because both briefs owe them.
+// withWhatIsKnownAboutTheChecks appends the sentences a continuation brief owes
+// about the declared checks.
 //
 // WHEN THE CHECKS STOOD IN FOR AN UNREACHED READER, THE BRIEF SAYS SO. A worker
 // handed a red check without that account would know what failed and not why
@@ -1207,9 +1246,33 @@ func withWhatIsKnownAboutTheChecks(brief string, r Remains) string {
 		return brief + "\n\n" + baselineStillReading
 	}
 	if already := r.alreadyRed(); len(already) > 0 {
-		return brief + "\n\n" + alreadyRedSentence(already)
+		brief += "\n\n" + alreadyRedSentence(already)
 	}
-	return brief
+	return withUnknownRedChecks(brief, r)
+}
+
+func withUnknownRedChecks(brief string, r Remains) string {
+	unread := make(map[string]bool, len(r.Unread))
+	for _, command := range r.Unread {
+		unread[command] = true
+	}
+	var checks []string
+	for _, command := range r.redChecks() {
+		if unread[command] {
+			checks = append(checks, command)
+		}
+	}
+	if len(checks) == 0 {
+		return brief
+	}
+	line := "one check has no usable before-reading, so its current result cannot establish a regression from this work: "
+	if len(checks) > 1 {
+		line = fmt.Sprintf("%d checks have no usable before-reading, so their current results cannot establish regressions from this work: ", len(checks))
+	}
+	if brief == "" {
+		return line + strings.Join(checks, ", ")
+	}
+	return brief + "\n\n" + line + strings.Join(checks, ", ")
 }
 
 // baselineStillReading is what a brief says while the before-reading of the
@@ -1227,5 +1290,5 @@ func alreadyRedSentence(already []string) string {
 	if len(already) > 1 {
 		was = fmt.Sprintf("%d checks were", len(already))
 	}
-	return was + " already failing before this work and is not counted: " + strings.Join(already, ", ")
+	return was + " already failing before this work; that does not show the requested result works: " + strings.Join(already, ", ")
 }
