@@ -409,25 +409,19 @@ func testStatesRailAndRoster(t *testing.T) {
 	// row is read to find out whether it needs anything and the word is the half
 	// that answers that (docs/design/task-states/DESIGN.md).
 	//
-	// THE RAIL HALF IS OPEN AS ISSUE #707 AND IS THEREFORE RECORDED RATHER THAN
-	// FAILED. A red that a lane did not cause may not sit on dev — the ledger in
-	// .github/known-red.txt only ever shrinks — so this half states exactly what
-	// it measured, the roster half below is still asserted, and the subtest ends
-	// skipped with the issue named. When #707 lands, the skip goes and the
-	// Errorf this replaced comes back.
-	railSaysTheWord := true
-	switch {
-	case strings.Contains(rail, say(t, "settleAskWord")):
-		t.Logf("the column was wide enough for the reason as well as the word")
-	case strings.Contains(rail, say(t, "taskLookWord")):
-		t.Logf("the column kept the title and the word; the reason gave ground first, as the ruling says it does")
-	default:
-		railSaysTheWord = false
-		t.Logf("FINDING (issue #707): the column's row says neither %q nor %q — it names the work "+
-			"and stops, while the card in the same frame says the word, which leaves the one "+
-			"question every row is read to answer unanswered on the surface that exists to answer "+
-			"it at a glance:\n\t%s\n%s",
-			say(t, "taskLookWord"), say(t, "settleAskWord"), rail, r.capture())
+	// THE ROW IS READ WITH ITS BLOCK ([statesRailRow] says why). Thirty cells will
+	// not hold a name and a reason side by side, so the reading is laid over the
+	// row and the lines under it — and a reader that took the first line alone was
+	// what filed issue #707 against a column that was saying the word all along.
+	if !strings.Contains(rail, say(t, "taskLookWord")) {
+		t.Errorf("the column's row says nothing about %q — it names the work and stops, while "+
+			"the card in the same frame says the word, which leaves the one question every row "+
+			"is read to answer unanswered on the surface that exists to answer it at a glance:"+
+			"\n\t%s\n%s", say(t, "taskLookWord"), rail, r.capture())
+	}
+	if !strings.Contains(rail, say(t, "settleAskWord")) {
+		t.Errorf("the column's row says %q and never what for; the reason is the half a person "+
+			"can act on:\n\t%s", say(t, "taskLookWord"), rail)
 	}
 
 	// AND THE ROSTER SAYS THE SAME WORD. `/history` is the door; the chord the
@@ -439,11 +433,6 @@ func testStatesRailAndRoster(t *testing.T) {
 	t.Logf("the roster, saying the same word:\n%s", roster)
 	statesNoDeletedWords(t, roster)
 	r.quit()
-	if !railSaysTheWord {
-		t.Skipf("the roster says %q about this landing and the card says it too; the column does not "+
-			"(issue #707), so this subtest measured the disagreement rather than passing over it",
-			say(t, "taskLookWord"))
-	}
 }
 
 // ── the doors this file shares ──────────────────────────────────────────────
@@ -658,14 +647,33 @@ func statesRail(t *testing.T, r *rig, glyph string) string {
 	return ""
 }
 
-// statesRailRow is one line of the column: the tier cell on a row that is not a
-// landing card's head and not the person's own.
+// statesRailRow is ONE ROW OF THE COLUMN, WITH THE BLOCK UNDER IT, as one
+// string: the tier cell, the name, and whatever the rows beneath it say about
+// the same node.
+//
+// IT READS THE COLUMN AND NOT WHATEVER LINE HAPPENS TO START WITH THE GLYPH,
+// and the first measured run of this file is why. The column stands to the RIGHT
+// of the conversation, so no line of a capture that has one ever begins with a
+// tier cell — every one of them begins with the transcript. A reader that
+// matched on the whole line therefore found nothing, [statesRail] then pressed
+// ctrl+g "because there was no column", and what it measured was the tab strip
+// that appears in the column's place: one chip, one glyph, one name. The column
+// itself was saying `your call · nobody could check it` the whole time, one row
+// below the name, and that misreading is the whole of what issue #707 recorded.
+//
+// THE BLOCK IS PART OF THE ROW because the column is thirty cells wide and the
+// reading does not fit beside the name at that width. `<tier glyph> <title> ·
+// <word or reason>`, cut from the right, is laid over the row and the two lines
+// under it (internal/tui3's [app.railUnder] wraps them), so the row and its
+// block are read together or the word is not read at all.
 func statesRailRow(t *testing.T, screen, glyph string) string {
 	t.Helper()
+	if column := statesRailColumn(screen); len(column) > 0 {
+		return statesRailBlock(column, glyph)
+	}
+	// NO COLUMN AT ALL, so what is on screen is the strip that stands in its
+	// place ([statesRail] presses for the column after this comes back empty).
 	for _, line := range strings.Split(screen, "\n") {
-		if !strings.Contains(line, glyph) {
-			continue
-		}
 		if strings.Contains(line, say(t, "taskCardKindGlyph")) {
 			// The card's own head, which the conversation draws and this is not
 			// about.
@@ -674,6 +682,46 @@ func statesRailRow(t *testing.T, screen, glyph string) string {
 		if text := strings.TrimSpace(line); text != "" && strings.HasPrefix(text, glyph) {
 			return text
 		}
+	}
+	return ""
+}
+
+// statesRailColumn is the column's own cells, cut off the right of the seam it
+// is drawn behind. An empty answer means this frame has no column on it.
+func statesRailColumn(screen string) []string {
+	var out []string
+	for _, line := range strings.Split(screen, "\n") {
+		at := strings.Index(line, statesRailSeam)
+		if at < 0 {
+			continue
+		}
+		out = append(out, strings.TrimRight(line[at+len(statesRailSeam):], " "))
+	}
+	return out
+}
+
+// statesRailSeam is the rule the column is drawn behind (internal/tui3's
+// [app.railJoin]).
+const statesRailSeam = "│"
+
+// statesRailBlock is one node's row and the rows indented under it, joined.
+// The row itself sits one cell in from the seam and its block sits further in,
+// which is what ends the block: the next row of work starts where this one did.
+func statesRailBlock(column []string, glyph string) string {
+	for i, line := range column {
+		text := strings.TrimSpace(line)
+		if text == "" || !strings.HasPrefix(text, glyph) {
+			continue
+		}
+		lead := len(line) - len(strings.TrimLeft(line, " "))
+		for _, under := range column[i+1:] {
+			said := strings.TrimSpace(under)
+			if said == "" || len(under)-len(strings.TrimLeft(under, " ")) <= lead {
+				break
+			}
+			text += " " + said
+		}
+		return text
 	}
 	return ""
 }
