@@ -1224,6 +1224,25 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I accept a task", "tasks"},
 		{"can the chat decide on its own", "tasks"},
 		{"stop asking me about tasks", "tasks"},
+		// THE TASK-STATES WAVE. Three tiers replaced five surfaces' private
+		// vocabularies, and every word somebody used to read is now something
+		// else: `needs your look` became `your call`, `failed` became
+		// `incomplete` with a reason, and `check again` and `decide these for me`
+		// left the answers row. These are the questions asked in front of the new
+		// words by somebody who has never read the design.
+		{"what does your call mean", "tasks"},
+		{"what does the question mark on a task mean", "tasks"},
+		{"why does it say incomplete", "tasks"},
+		{"what does incomplete mean vs stopped", "tasks"},
+		{"the task has a conflict", "tasks"},
+		{"what does resolve it mean on a task card", "tasks"},
+		{"why did it stop asking me about a task", "tasks"},
+		{"why is there no check again button", "tasks"},
+		{"does saying looks good accept the task", "tasks"},
+		// And the two halves of the auto-settle floor, which are the same
+		// question asked before and after somebody notices the chips are gone.
+		{"it says aforge is deciding", "task-rooms-after-restart"},
+		{"how do I take a task back", "tasks"},
 		// The other end of the same impatience: not "decide for me" but "give me
 		// longer to speak up", which is a row in the settings panel and a page
 		// that has to name the right tab of it.

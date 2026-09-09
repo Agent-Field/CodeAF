@@ -420,7 +420,7 @@ changed because it is waiting on that work is a run waiting rather than a run
 repeating itself, so the count above starts again once everything has landed.
 
 **Work that cannot start is not waiting, it is left.** A piece of work queued
-behind one that did not finish, or behind one that came home and needs your look,
+behind one that did not finish, or behind one that came home needing a decision,
 has nothing coming to start it — nobody is going to look at it while the run is
 unattended. So it is said whole, with what it waits on and what became of that:
 

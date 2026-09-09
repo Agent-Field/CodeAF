@@ -889,8 +889,8 @@ multi-line editor rather than a single-line field.
 **Inside a task's room the box wears a segment in front of its `› `**, naming the work
 your words are going to: the task's state glyph and its name, on the same tinted
 background a selected row wears, in the hue that task's state is drawn in everywhere
-else — accent while it runs, the warn colour while it needs your look, muted once it is
-done, the bad hue when it failed, dim when it is queued or you stopped it. It is there
+else — accent while it runs and again while it is your call, muted once it is done, the
+bad hue when something broke, dim when it is queued or you stopped it. It is there
 whether the box is empty or full, which is the point: the placeholder that used to say
 this disappeared the moment you started typing. The name is cut to at most 18 cells; on
 a frame too narrow to spend the cells, the segment is dropped and the placeholder goes
