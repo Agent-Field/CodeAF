@@ -1787,7 +1787,10 @@ Between finished calls, the latest description stays readable and still, with a
 softly animated dot beside it. There is no extra Working row. After 10 seconds
 of a known response wait, a dim `awaiting response · 12s` suffix appears when it
 fits. A known connection loss says `waiting for connection` immediately when
-the suffix fits, instead of describing it as a slow model response. Detailed
+the suffix fits, instead of describing it as a slow model response. When the
+turn is still working after the response has begun, the same place says only
+`still working · 1m 3s`; that clock measures the turn, not the completed step
+whose description remains beside it. Detailed
 phase and retry information stays in the footer and expanded view.
 
 Click a step, or press `ctrl+e` with an empty message box, to open the full

@@ -12,28 +12,37 @@ func (a *app) compactWaitMark() string {
 	return a.shimmer(a.linearMark("·", "."))
 }
 
-// Only a known response wait earns a label. A task room has its own worker,
-// so it cannot borrow the parent conversation's request clock or phase.
+// The most specific known wait earns the label: a lost connection immediately,
+// a response wait after ten seconds, then the turn's generic elapsed work. A
+// task room has its own worker, so it cannot borrow the parent conversation's
+// request clock, turn clock or phase.
 func (a *app) compactWaitWords(d deck) string {
-	if !d.lens.clock || !a.awaitingReply() {
+	if !d.lens.clock {
 		return ""
 	}
-	began := a.awaited
-	if news, ok := a.livePhase(); ok {
+	news, hasPhase := a.livePhase()
+	if hasPhase {
 		// A known lost connection is actionable context immediately, not a
 		// slow response that waits for the quiet ten-second label threshold.
 		if news.Phase == provider.PhaseConnectionLost {
 			return string(provider.PhaseConnectionLost)
 		}
-		if !phaseWaiting(news.Phase) {
-			return ""
-		}
-		if !news.Since.IsZero() && news.Since.Before(began) {
+	}
+	if a.awaitingReply() && (!hasPhase || phaseWaiting(news.Phase)) {
+		began := a.awaited
+		if hasPhase && !news.Since.IsZero() && news.Since.Before(began) {
 			began = news.Since
 		}
+		if age := compactStepAge(began, a.now()); age != "" {
+			return "awaiting response · " + age
+		}
+		return ""
 	}
-	if age := compactStepAge(began, a.now()); age != "" {
-		return "awaiting response · " + age
+	// A completed caption names the last step, not the work continuing after
+	// it. The fallback therefore times the conversation's turn and says only
+	// that it is still working; it never relights or retimes the finished step.
+	if age := compactStepAge(a.turnBegan, a.now()); age != "" {
+		return "still working · " + age
 	}
 	return ""
 }

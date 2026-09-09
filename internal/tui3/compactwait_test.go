@@ -48,6 +48,7 @@ func TestCompactWaitUsesOnlyKnownResponseAge(t *testing.T) {
 	a.entries[len(a.entries)-1].status = toolOK
 	a.entries[len(a.entries)-1].ended = liveStepsBase.Add(8 * time.Second)
 	a.awaited = liveStepsBase.Add(8 * time.Second)
+	a.turnBegan = a.awaited.Add(-time.Minute)
 	for _, tc := range []struct {
 		age  time.Duration
 		want string
@@ -63,8 +64,56 @@ func TestCompactWaitUsesOnlyKnownResponseAge(t *testing.T) {
 		}
 	}
 	a.awaited = time.Time{}
+	a.turnBegan = time.Time{}
 	if got := a.compactWaitWords(a.conversation()); got != "" {
 		t.Fatalf("unknown wait invented a clock: %q", got)
+	}
+}
+
+func TestCompactWaitTimesWorkAfterACompletedPostCorrectionStep(t *testing.T) {
+	forgetPhases()
+	t.Cleanup(forgetPhases)
+	a := liveStepsApp(t)
+	a.width = 160
+	a.model = phaseModel
+	a.entries = append(a.entries,
+		entry{kind: entrySteer, turn: 1, steer: &steerElbow{words: "Also check the organization list", consumed: true}},
+		entry{kind: entryAssistant, turn: 1, text: "Yes – Agent-Field was in your org list.", settled: true},
+		entry{kind: entryTool, tool: "read", turn: 1, status: toolOK,
+			began: liveStepsBase.Add(2 * time.Second), ended: liveStepsBase.Add(3 * time.Second)},
+		entry{kind: entryThinking, turn: 1, text: "checking what remains", began: liveStepsBase.Add(4 * time.Second)},
+	)
+	a.turnBegan = liveStepsBase
+	a.awaited = time.Time{}
+	for _, tc := range []struct {
+		at   time.Duration
+		want string
+	}{
+		{9999 * time.Millisecond, ""},
+		{10 * time.Second, "still working · 10s"},
+		{3*time.Minute + 55*time.Second, "still working · 3m 55s"},
+	} {
+		a.clock = func() time.Time { return liveStepsBase.Add(tc.at) }
+		PostPhaseNews(PhaseNews{Model: phaseModel, Role: lane.RoleTalk,
+			Phase: provider.PhaseThinking, Since: liveStepsBase.Add(4 * time.Second), At: a.now()})
+		a.touch()
+		page := livePage(a)
+		if !strings.Contains(page, "Yes – Agent-Field was in your org list") {
+			t.Fatalf("at %s the completed post-correction caption vanished:\n%s", tc.at, page)
+		}
+		if tc.want == "" {
+			if strings.Contains(page, "still working ·") {
+				t.Fatalf("at %s generic elapsed appeared early:\n%s", tc.at, page)
+			}
+		} else if !strings.Contains(page, tc.want) {
+			t.Fatalf("at %s page missed %q:\n%s", tc.at, tc.want, page)
+		}
+		if strings.Contains(page, "awaiting response") {
+			t.Fatalf("reasoning was called a response wait:\n%s", page)
+		}
+	}
+	if got := a.compactWaitWords(deck{lens: overseerLens}); got != "" {
+		t.Fatalf("task room borrowed the conversation clock: %q", got)
 	}
 }
 
