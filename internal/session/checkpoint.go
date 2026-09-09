@@ -2873,6 +2873,7 @@ const checkpointStoppedNote = "stopping here · "
 func (a *Agent) decideRemains(ctx context.Context, reader readerLine, said string) Decision {
 	principal := a.who()
 	remains := a.remainsFor(said, reader)
+	remains = a.completeRetainedContract(ctx, remains)
 	a.journalAbsorbed(remains)
 	readChecks := remains.Acceptance != "" && remains.witnessIsTheOnlyGap()
 	var decision Decision
@@ -4061,6 +4062,7 @@ func (a *Agent) sealTurnWithNothingMoving(spent bool, turn Usage, started time.T
 // ([Agent.endTurnUnderSteward]).
 func (a *Agent) decideHandover(ctx context.Context, reader readerLine, said string) Decision {
 	remains := a.remainsFor(said, reader)
+	remains = a.completeRetainedContract(ctx, remains)
 	a.journalAbsorbed(remains)
 	readChecks := remains.Acceptance != "" && remains.witnessIsTheOnlyGap()
 	var decision Decision

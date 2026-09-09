@@ -18,12 +18,10 @@ package session
 //
 // ── IT IS THE JUDGE'S OWN MACHINERY, NOT A SECOND ONE ───────────────────────
 //
-// The wire is [routeVerdictContract], the ladder that falls back to the
-// person's own words is [routeAcceptance], and the bound is the shaper's
-// ([taskShapeAcceptanceLimit]). What is new here is one brief and one moment:
-// the question is asked about the ASK rather than about a finished turn, and it
-// is asked once, at the start of the first turn, before any of the work has had
-// a chance to argue for a definition of done that suits it.
+// [routeAcceptance]'s lower rung frames the person's own words as the whole
+// done-condition. No model rewrites a concrete request before the working model
+// sees it. This keeps writing, data and code requests equally direct, and takes
+// one synchronous call off the front of every unattended run.
 //
 // ── AND IT IS FROZEN ────────────────────────────────────────────────────────
 //
@@ -35,6 +33,7 @@ package session
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
@@ -71,22 +70,81 @@ func sessionAcceptanceQuestion(ask string) string {
 		"\n\nWrite the DONE WHEN sentence for the whole of it. Answer with one JSON object."
 }
 
+// completeRetainedContract asks the old acceptance writer only when a finished
+// task left changed work somewhere other than the requested workspace. That is
+// the one ending where `workspace`, `branch` and `report` produce different
+// answers, so it is the one place where paying for the distinction can change
+// what happens. The writer still sees only the original ask. Its rewritten
+// acceptance is discarded; only its structured destination and safe declared
+// checks may complete the contract frozen before work began.
+func (a *Agent) completeRetainedContract(ctx context.Context, remains Remains) Remains {
+	steward := a.steward()
+	if steward == nil || steward.declaredDelivery().Kind != "" {
+		return remains
+	}
+	needed := false
+	for _, landing := range remains.Landings {
+		if landing.needsDelivery() {
+			needed = true
+			break
+		}
+	}
+	if !needed {
+		return remains
+	}
+	ask := steward.Ask()
+	if ask == "" {
+		return remains
+	}
+	a.mu.Lock()
+	model := a.model
+	a.mu.Unlock()
+	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, model,
+		sessionAcceptanceBrief, sessionAcceptanceQuestion(ask), ask)
+	delivery := routeDelivery(verdict, ask)
+	checks := routeChecks(verdict, ask)
+	if !ok || delivery.Kind == "" {
+		// UNKNOWN IS CONSERVATIVE, AND IT IS SETTLED ONCE. A writer that could
+		// not answer must not be bought again at every later ending, and treating
+		// its silence as workspace delivery keeps retained work unfinished.
+		delivery, checks = deliveryContract{Kind: "workspace"}, nil
+	}
+	if !steward.completeDelivery(ask, checks, delivery) {
+		return remains
+	}
+	remains.Delivery = steward.declaredDelivery()
+	a.journalDelivery(steward)
+	return remains
+}
+
+// completeDelivery fills only the fields the deterministic opening left
+// empty. It cannot replace the person's request or any structured authority
+// already frozen beside it.
+func (s *Steward) completeDelivery(ask string, declared []string, delivery deliveryContract) bool {
+	delivery = validDelivery(ask, delivery)
+	if delivery.Kind == "" {
+		return false
+	}
+	checks, _ := declaredCheckList(declared)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if strings.TrimSpace(ask) != s.ask || s.acceptance == "" || s.delivery.Kind != "" {
+		return false
+	}
+	s.delivery = delivery
+	if len(s.checks) == 0 {
+		s.checks = checks
+	}
+	return true
+}
+
 // openAcceptance writes this session's acceptance, once, at the start of the
 // first turn a [Steward] runs.
 //
-// EVERY WAY IT CAN FAIL LEAVES THE SESSION WITH NO ACCEPTANCE, and that is a
-// working session rather than a broken one: [Steward.Decide] falls back on the
-// landings and the checks, which is less than it would have had and is still
-// more than the engine ever had. A run must not fail to start because a
-// sidecar model was unreachable.
-//
-// IT IS BILLED TO THE ERRAND POCKET, for [Agent.readMark]'s reason: it is a
-// side-call to a different model that the person did not ask for.
-//
-// AND IT IS ASKED ON THE MASTERMIND TIER. This one sentence is what the whole
-// unattended run is measured against for its entire life, it is written once,
-// and it costs one call — the cheapest place in this whole road to be right.
-func (a *Agent) openAcceptance(ctx context.Context, hub *eventHub) {
+// IT GRANTS NO COMMAND AUTHORITY. A command in prose remains evidence, not
+// permission to execute it again. The existing structured writer is deferred
+// until a retained result makes its delivery distinction necessary.
+func (a *Agent) openAcceptance(_ context.Context, hub *eventHub) {
 	steward := a.steward()
 	if steward == nil || steward.Acceptance() != "" {
 		return
@@ -95,19 +153,7 @@ func (a *Agent) openAcceptance(ctx context.Context, hub *eventHub) {
 	if ask == "" {
 		return
 	}
-	a.mu.Lock()
-	model := a.model
-	a.mu.Unlock()
-	verdict, ok := a.putRouteQuestion(ctx, roles.RoleRouterConfirm, model,
-		sessionAcceptanceBrief, sessionAcceptanceQuestion(ask), ask)
-	if !ok {
-		// The ladder's lower rungs still say something true about a whole ask —
-		// "everything asked for below is actually done" over the person's own
-		// words — so a writer that could not be reached costs the sharpness of
-		// the sentence and not the sentence.
-		verdict = routeVerdict{}
-	}
-	if !steward.setAcceptanceDelivery(ask, routeAcceptance(verdict, ask), routeChecks(verdict, ask), routeDelivery(verdict, ask)) {
+	if !steward.setAcceptanceDelivery(ask, routeAcceptance(routeVerdict{}, ask), nil, deliveryContract{}) {
 		return
 	}
 	a.journalAcceptance(steward)
@@ -137,5 +183,19 @@ func (a *Agent) journalAcceptance(steward *Steward) {
 		Acceptance: steward.Acceptance(),
 		Checks:     steward.declaredChecks(),
 		Delivery:   steward.deliveryReceipt(),
+	})
+}
+
+// journalDelivery records the late destination reading separately from the
+// acceptance that was already frozen and shown before any work began.
+func (a *Agent) journalDelivery(steward *Steward) {
+	a.mu.Lock()
+	file := a.file
+	a.mu.Unlock()
+	file.appendPrincipal(journalPrincipal{
+		Who:      "steward",
+		Event:    "delivery",
+		Checks:   steward.declaredChecks(),
+		Delivery: steward.deliveryReceipt(),
 	})
 }
