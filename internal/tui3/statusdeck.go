@@ -269,8 +269,12 @@ func (a *app) deckAmbient(width int) (string, string) {
 	if jobs := a.hudStats().jobs; jobs > 0 {
 		parts = append(parts, hudPart{kind: segAmbient, text: itoa(jobs) + plural(" job", jobs)})
 	}
-	if word, _ := a.stateSegment(); word != "" {
-		parts = append(parts, hudPart{kind: segState, text: word})
+	// Plain and painted in ONE reading of the clock, for the wide row's own
+	// reason (render.go's [hudPart]): the deck's rows are laid out from the plain
+	// cluster too, and a painting fetched a second time is a painting a tick
+	// wider than the row was measured for.
+	if word, painted := a.stateSegment(); word != "" {
+		parts = append(parts, hudPart{kind: segState, text: word, paint: painted})
 	}
 	// The budget is the row minus its inset and the smallest name the chip beside
 	// it is worth drawing at all.
