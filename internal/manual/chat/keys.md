@@ -2200,53 +2200,41 @@ order.
 Nothing is thrown away by stopping: see the tasks page for what a stopped task and a
 stopped run keep.
 
-## Deciding about a landed task from the keyboard — how do I accept a task, say it is not right, take a task back
+## Deciding about a landed task from the keyboard — accept, look again, not right
 
-A landing that says **`your call`** is the one card in the transcript that is still a
-question, and a handful of letters answer it. **Any landing that is your call, at any
-depth** — a task you asked for, or a part of one it handed out itself:
+A landing that **needs your look** is the one card in the transcript that is still a
+question, and four letters answer it. **Any landing that needs a look, at any depth** — a
+task you asked for, or a part of one it handed out itself:
 
 | Key | What it does |
 | --- | --- |
-| `a` | **yes to what the row is asking** — `accept`, or `resolve it` on a conflict, `accept anyway` on a check that did not pass it, `approve` on a design, `start` on a proposal, `raise the cap` at a spend gate |
-| `n` | **no to what the row is asking** — `not right`, or `drop it`, `decline`, `don't`, `stop it` |
-| `s` | tell it — puts the message box into steer mode addressed to that task; what you type is sent as a correction and **does not answer the question** |
-| `d` | let aforge decide this one — hands this one card over and **changes no setting** |
-| `t` | take it back — draws the chips again on a card that says `aforge is deciding`, and resolves nothing |
-
-The chips on the card are always the same three columns in the same order —
-`[a] <yes> · [n] <no> · [s] tell it` — with `[d]` under them, drawn dimmer, because it is
-not one of the answers. The words on `[a]` and `[n]` change with what is being asked, so
-you can read the answer off the chip rather than remember a rule.
-
-**`d` no longer changes a setting.** It used to be spelled `decide these for me` and it
-flipped `task.settle` to `auto` for good; now it hands over the one card in front of you
-and nothing else. The standing preference lives in `/settings` alone.
+| `a` | accept — take the work; its branch merges and its dependents unblock |
+| `l` | look again — a fresh check runs; the task keeps waiting until that answers |
+| `n` | not right — the task becomes incomplete and keeps its branch; its dependents still fail because it did not finish |
+| `d` | decide these for me — hands this one to aforge and sets `task.settle` to `auto` |
 
 **They are held to the same rule `x` is.** The card must be the **selected** one — walk to
 it with `↑`/`↓`, which steps through tool calls, proposals and landed cards — and the
 message box must be **empty**, with no panel, picker or copy mode up. A letter typed into a
 sentence stays a letter, always.
 
-Once answered the chips go away and one dim line takes their place saying what you chose.
-Every chip is clickable too. See the tasks page for what each answer does to the work.
+Once answered the four go away and one dim line takes their place saying what you chose.
+The same four are clickable on the card. See the tasks page for what each answer does to
+the work.
 
-**Inside the task's room the same keys need no selection.** The room is the task, so `a`,
-`n`, `s`, `d` and `t` over an empty message box answer it directly, the chips stand at the
-foot of the page where `this task has finished — say it to main` would otherwise be, and
-the hint slot names them while the question stands. The room and the card are one question:
-answer in either and both show the receipt.
+**Inside the task's room the same four keys need no selection.** The room is the task, so
+`a`, `l`, `n` and `d` over an empty message box answer it directly, the answers row stands
+at the foot of the page where `this task has finished — say it to main` would otherwise be,
+and the hint slot reads `a accept · l look again · n not right` while the question stands.
+The room and the card are one question: answer in either and both show the receipt.
 
 **And the roster's row answers them too.** With the roster holding the keyboard (`alt+t`)
-and the cursor on a row that says **`your call`**, the hint slot names the same answers in
-place of the move keys, and those letters answer that row's landing without opening its
-room. Same card, same answers, same receipt — the column, the card and the room cannot
-disagree, because there is one card behind all three. `d` works there too and is left off
-the hint: it is not an answer to the question in front of you.
-
-**There is no `check again` key.** The engine has the check asked a second time by itself
-before a landing ever reaches you, so a chip offering a third would be offering the thing
-that has just been tried twice. Ask for one in words if you want it.
+and the cursor on a row that **needs your look**, the hint slot reads
+`a accept · l look again · n not right · esc` in place of the move keys, and those three
+letters answer that row's landing without opening its room. Same card, same answers, same
+receipt — the column, the card and the room cannot disagree, because there is one card
+behind all three. `d` works there too and is left off the hint for the room's own reason:
+it is a preference and not an answer to the question in front of you.
 
 ## The mouse: what you can click
 
@@ -2308,8 +2296,8 @@ Only the left button acts. A press is resolved in this order:
    `N earlier tool calls` fold; the `… N more lines` foot, which lifts the cap; a
    spawn card, which opens the node's room, or its brief if there is no node yet; and
    a landed card, which opens its full context — except on the answers row of a card
-   that says `your call`, where each of `[a]`, `[n]`, `[s] tell it` and
-   `[d] let aforge decide this one` is its own target and a press between them does
+   that needs your look, where each of `[a] accept`, `[l] look again`, `[n] not right`
+   and `[d] decide these for me` is its own target and a press between them does
    nothing.
 
 **A file path is a different kind of target.** Everything numbered above is a click

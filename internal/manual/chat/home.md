@@ -296,7 +296,8 @@ Three ways to settle it, and they are the same door:
 
 - **the landing card in the conversation** — `[a] <yes>` and `[n] <no>`, whose words are
   whatever that row is asking (`accept`/`not right`, `resolve it`/`drop it`), plus
-  `[s] tell it` and a dimmer `[d] let aforge decide this one`;
+  `[s] tell it`, which opens the task's page rather than answering, and a dimmer
+  `[d] let aforge decide this one`;
 - **the task's room** — enter on its roster row opens it, and the same chips stand at the
   foot of the page; `a`, `n`, `s` and `d` over an empty box answer it with nothing
   selected;

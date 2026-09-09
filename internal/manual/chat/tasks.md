@@ -1220,7 +1220,7 @@ The check runs at the moment work is proposed and never again. Nothing re-checks
 while it runs, and nothing waits: two windows that decide to work the same file both work
 it, and the merge is still yours.
 
-## The states a task passes through — the three tiers, one glyph each, what the word on a task row means
+## The states a task passes through — the three tiers, one glyph each, what the word on a task row means, and what happened to finished but needs your look
 
 Every task row, card, rail line and roster entry answers **one question before it says
 anything else: do I need to do anything?** There are exactly three answers, each with its
@@ -4211,7 +4211,12 @@ into a sentence stays a letter. Clicking a chip presses it; clicking anywhere el
 row does nothing rather than expanding the card under your hand.
 
 **No sentence on a card ends in `…` hiding the thing you need.** Where a reason is too long
-for the width, the list of files is what gets cut — never the verb.
+for the width, the list of files is what gets cut — never the verb, and a chip that will not
+fit is dropped off the end with a dim count of what went (`· +1`) rather than squeezed.
+
+**A chip aforge cannot spend is absent, not broken.** Where there is no door behind an
+answer — no working copy left to run a merge round in, for instance — that column is simply
+not drawn, and its letter does nothing rather than failing when you press it.
 
 ## How do I accept a task — what accept and not right actually do
 
@@ -4230,8 +4235,9 @@ for the width, the list of files is what gets cut — never the verb.
 
 **Answered means the chips are gone, not greyed.** They are replaced by one dim line in
 your own voice saying what you did: `you took this as done`, `you said it is not finished`,
-`sent to be resolved`, or `already answered` when somebody got there first — the model's
-own settling, or another window.
+`sent to be resolved` for a conflict handed to the merge round, `handed to aforge for this
+one` after `[d]`, or `already answered` when somebody got there first — the model's own
+settling, or another window.
 
 The card's own head is **not** rewritten — it is the record of how the work came home, kept
 branch and all. What follows is a **second** card, when the task re-settles into `done` or
@@ -4271,8 +4277,8 @@ it does with one is describe the clash and leave the choice with you.
 ## Tell it something instead of answering — [s] tell it, and why saying looks good does not accept
 
 `[s] tell it` is the third chip on **every** `your call` card, and it is not a third answer.
-It puts the message box into steer mode addressed to that task: the composer shows the
-address as a chip, and what you type is sent to the task as a correction.
+It opens the task's own page with the message box pointed at it, so what you type there is
+sent to the task as a correction.
 
 **A steer never resolves a task by itself.** The model or a worker reads what you said and
 spends a verb, or does not — so "looks good" typed on a card is words the work receives,
