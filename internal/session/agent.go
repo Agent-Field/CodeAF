@@ -1556,6 +1556,14 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		defer cancel()
 		defer hub.close()
 		defer func() {
+			// A TASK NEVER STAYS UNOWNED PAST THE END OF A TURN. Anything the settle
+			// policy or the person handed to the model comes back to the person here,
+			// and the card draws its chips again (task_run.go's
+			// [Agent.handBackUnsettled] states the law). It runs before the lock
+			// because it asks this agent for its graph, which takes a.mu itself, and
+			// it is safe to run twice — a disowned turn hands back nothing, because
+			// the turn that replaced it has already handed back whatever was owed.
+			a.handBackUnsettled()
 			a.mu.Lock()
 			// A DISOWNED TURN CLEANS UP NOTHING. [Agent.Abandon] has already done
 			// every act below — drained the queues, cleared running, closed the

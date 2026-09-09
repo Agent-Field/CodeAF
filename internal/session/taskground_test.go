@@ -307,7 +307,7 @@ func TestTheReasonReachesTheModelUnderneathTheSettlePolicy(t *testing.T) {
 	}
 	for _, settle := range []TaskSettle{TaskSettleAsk, TaskSettleAuto} {
 		note := taskNote(notice, "", settle, landingAddress{person: true})
-		if !strings.Contains(note, "task 12 needs your look") {
+		if !strings.Contains(note, "task 12 your call") {
 			t.Fatalf("under %s the note does not say what state it is in:\n%s", settle, note)
 		}
 		if !strings.Contains(note, reason) {

@@ -352,7 +352,7 @@ func TestAFamilyPutsItsWorkOnTheFamilyBranchBeforeItsPartsAreCut(t *testing.T) {
 	// AND THE FAMILY COMES HOME IN ONE MERGE. The parent lands the way its
 	// runner lands it: its own ledger committed, its branch merged into the
 	// person's repository, once.
-	merge, detail, _ := family.tree.comeHome(family.parent.title(), []string{"repro.txt"})
+	merge, detail, _, _ := family.tree.comeHome(family.parent.title(), []string{"repro.txt"})
 	if merge != mergeMerged {
 		t.Fatalf("the family came home as %q (%s)", merge, detail)
 	}
