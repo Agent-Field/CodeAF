@@ -1246,6 +1246,9 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// in this loop — a guard cut and a refusal of our own bytes — are more
 		// specific than any class and must keep their own arms.
 		verdict := a.readCallFailure(err, model, "", attempt+1)
+		if provider.IsConnectionUnavailable(err) {
+			return nil, model, err
+		}
 		// THE GUARD'S CUT, ANSWERED HERE. The three resets at the top of this
 		// loop are exactly what a cut needs — the soup that was streamed, the
 		// reads it started, the calls it was half-way through asking for — so a

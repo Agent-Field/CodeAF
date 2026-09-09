@@ -7,7 +7,9 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"net/http/httptrace"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
@@ -119,6 +121,8 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	// call that has been held from the start does not.
 	var pacedSince time.Time
 	attempts := 0
+	var recoveryCtx context.Context
+	reconnected := false
 	// The body this call is carrying, kept for the model-call log and ONLY when
 	// somebody asked for bodies (calllog.go). On every ordinary run this is nil
 	// and the person's prompts never leave the process.
@@ -136,13 +140,13 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		if attempt > 0 && outOfPatience(patient, attempt, pacedSince) {
 			break
 		}
-		attempts = attempt + 1
+		attempts++
 		// What the CALL has spent, for the row the completed answer writes at
 		// the end of it (calllog.go). The count lives on the knobs rather than
 		// here because a call that is repaired or relaxed comes back through
 		// this loop with a new body and the same trace.
 		knobs.trace.begin()
-		if attempt > 0 {
+		if attempt > 0 && !reconnected {
 			delay := backoffFor(attempt, providerWait)
 			// AND A PERSON IS TOLD HOW LONG, WHICH IS THE ONE FACT THIS LOOP
 			// HAD AND THREW AWAY. Until the phase clock, a conversation parked
@@ -174,12 +178,22 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				return nil, err
 			}
 		}
+		reconnected = false
+		if waited, err := c.waitConnection(ctx, c.modelFor(request), c.config.BaseURL, false); err != nil {
+			return nil, err
+		} else if waited && knobs.trace != nil {
+			knobs.trace.connectionRecovered = true
+		}
 
 		// A stream gets its own cancellable context so the idle watchdog has
 		// something to pull. Every path that does not hand the body back to the
 		// caller releases it here; the path that does hands the cancel to the
 		// watchdog, which fires it on stall or on Close.
 		attemptCtx, cancelAttempt := attemptContext(ctx, stream)
+		var sent atomic.Bool
+		attemptCtx = httptrace.WithClientTrace(attemptCtx, &httptrace.ClientTrace{
+			WroteRequest: func(httptrace.WroteRequestInfo) { sent.Store(true) },
+		})
 
 		httpRequest, err := c.newHTTPRequest(attemptCtx, request, body, stream)
 		if err != nil {
@@ -224,6 +238,33 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 				return nil, fmt.Errorf("execute request: %w", err)
 			}
 			lastErr = fmt.Errorf("execute request: %w", err)
+			if connectionFailure(err) && !sent.Load() {
+				if knobs.trace != nil {
+					knobs.trace.connectionRecovered = true
+				}
+				// A DNS or dial failure precedes accepted generation. Wait for
+				// the origin, not another provider behind that same origin. The
+				// whole recovery is bounded even if connectivity keeps flapping.
+				if recoveryCtx == nil {
+					var cancelRecovery context.CancelFunc
+					recoveryCtx, cancelRecovery = context.WithTimeout(ctx, connectionRecoveryWindow)
+					defer cancelRecovery()
+				}
+				if _, waitErr := c.waitConnection(recoveryCtx, c.modelFor(request), httpRequest.URL.String(), true); waitErr != nil {
+					if ctx.Err() != nil {
+						return nil, ctx.Err()
+					}
+					if recoveryCtx.Err() != nil {
+						return nil, &ConnectionUnavailableError{}
+					}
+					return nil, waitErr
+				}
+				// Connectivity probes do not spend provider retries. A fresh
+				// connection gets the request immediately, without old backoff.
+				attempt--
+				reconnected = true
+				continue
+			}
 			if retryElsewhere(ctx, knobs) {
 				return nil, lastErr
 			}

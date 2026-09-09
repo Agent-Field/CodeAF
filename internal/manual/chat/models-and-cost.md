@@ -1,5 +1,30 @@
 # Models, context, and what it costs
 
+## Lost internet, Wi-Fi disconnected, DNS errors, and waiting for connection
+
+When DNS or a connection attempt fails before the request is accepted, aforge
+shows `waiting for connection`. It pauses requests on that client and checks
+whether the configured endpoint is reachable. This is a small request without
+your prompt or API key; it does not ask a model to generate anything.
+
+Waiting calls share a check. After each failed check, aforge waits about one to
+one and a half seconds before checking again. Each check has a two-second limit.
+When the endpoint answers, your request resumes without waiting through an old
+retry delay. A response proves endpoint reachability, not that every internet
+service is healthy. No separate public ping service is involved.
+
+Connection recovery waits up to two minutes, or less if that call already had
+a shorter deadline. Esc or Stop work cancels your call immediately; other calls
+still waiting keep their shared check. If the connection does not return, aforge
+says `connection is still unavailable; try again when connected`.
+
+Chat, auxiliary requests, document parsing and authenticated media requests use
+this recovery for pre-send connection failures. A cut-off reply still follows
+the existing stream recovery rules. A lost response to an accepted media job
+does not automatically submit that job again. Rate limits keep their existing
+retry policy; invalid credentials, invalid requests and certificate errors are
+not repaired by a connection wait.
+
 ## Why a longer conversation does not get a full cache discount
 
 When choosing a provider, aforge can estimate that it still holds some of this
@@ -2672,3 +2697,9 @@ marked `empty at the ceiling` is the thinking pass having spent the whole reply 
 before the answer began, which is the one failure a larger ceiling actually fixes. Failed
 attempts get their own lines, so a call that was rate limited four times before it landed
 is five lines rather than one slow one.
+
+## Does losing my connection change provider ratings?
+
+No. The connection wait pauses provider-switch timers. Once the endpoint is
+reachable, those timers restart, and that call is excluded from learned provider
+speed because the local outage was not time spent generating an answer.

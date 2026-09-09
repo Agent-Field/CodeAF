@@ -123,6 +123,10 @@ type Client struct {
 	// poll: production sleeps, tests record what would have been slept and
 	// return, so how long a retry waits is assertable without waiting.
 	wait func(context.Context, time.Duration) error
+	// Connection recovery is shared by calls on this adapter, but each caller
+	// retains its own cancellation and deadline. The probe seam is test-only.
+	connection      connectionGate
+	connectionProbe func(context.Context, string) error
 	// receipts is the bounded hand-off for calls whose stream ended without a
 	// usage block. It is drained by a small pool started lazily for this client,
 	// so a client nobody arms for reconciliation pays no goroutine for it.
@@ -891,17 +895,21 @@ func (c *Client) completionInOnePiece(
 	// reaches its wire at all — the one reading there is, and prefcarry.go says
 	// what it cannot tell apart.
 	c.notePrefsFromAnswer(ctx, served)
-	c.noteRun(c.modelFor(request), served, c.clock().Sub(began))
+	if knobs.trace == nil || !knobs.trace.connectionRecovered {
+		c.noteRun(c.modelFor(request), served, c.clock().Sub(began))
+	}
 	noteServed(ctx, served, c.noteEndpointAffinity(ctx, c.modelFor(request), served, response.Usage))
-	c.noteVelocity(
-		c.modelFor(request),
-		served,
-		0,
-		outputTokens(&response, ""),
-		c.clock().Sub(began),
-		0,
-		settledFrom(ctx, response.Usage),
-	)
+	if knobs.trace == nil || !knobs.trace.connectionRecovered {
+		c.noteVelocity(
+			c.modelFor(request),
+			served,
+			0,
+			outputTokens(&response, ""),
+			c.clock().Sub(began),
+			0,
+			settledFrom(ctx, response.Usage),
+		)
+	}
 	// Both epilogues or neither: the whole-body path reads the same fourth
 	// failure plane the streamed one does, and for the same reason — every
 	// headless worker answers whole, and a guard on one transport is a guard a
@@ -1812,20 +1820,25 @@ func (c *Client) completeWithMessagesStreaming(
 	// reaches its wire at all — the one reading there is, and prefcarry.go says
 	// what it cannot tell apart.
 	c.notePrefsFromAnswer(ctx, served)
-	c.noteRun(c.modelFor(request), served, generation.Sub(began))
+	if knobs.trace == nil || !knobs.trace.connectionRecovered {
+		c.noteRun(c.modelFor(request), served, generation.Sub(began))
+	}
 	noteServed(ctx, served, c.noteEndpointAffinity(ctx, c.modelFor(request), served, response.Usage))
-	if !firstToken.IsZero() {
-		c.noteVelocity(
-			c.modelFor(request),
-			served,
-			firstToken.Sub(began),
-			outputTokens(response, content.String()),
-			generation.Sub(firstToken),
-			widestGap,
-			settledFrom(ctx, response.Usage),
-		)
-	} else {
-		c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0, 0, settledFrom(ctx, response.Usage))
+	// Local connectivity says nothing about the speed of the serving provider.
+	if knobs.trace == nil || !knobs.trace.connectionRecovered {
+		if !firstToken.IsZero() {
+			c.noteVelocity(
+				c.modelFor(request),
+				served,
+				firstToken.Sub(began),
+				outputTokens(response, content.String()),
+				generation.Sub(firstToken),
+				widestGap,
+				settledFrom(ctx, response.Usage),
+			)
+		} else {
+			c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0, 0, settledFrom(ctx, response.Usage))
+		}
 	}
 	// A reply that is the model's own tool grammar as text ends the call as a
 	// cut even though every stream bound was met: the endpoint answered 200 and

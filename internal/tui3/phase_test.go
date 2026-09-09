@@ -111,6 +111,10 @@ func TestThePhaseClockSpellsEveryStateItIsToldAbout(t *testing.T) {
 		news: PhaseNews{Phase: provider.PhaseRetrying, Since: ago(4 * time.Second)},
 		want: "trying again · 4s",
 	}, {
+		what: "a lost connection is distinct from a slow model",
+		news: PhaseNews{Phase: provider.PhaseConnectionLost, Since: ago(15 * time.Second)},
+		want: "waiting for connection · 15s",
+	}, {
 		what: "a rescue in flight, with the stall that caused it",
 		news: PhaseNews{Phase: provider.PhaseSwitching, Since: ago(time.Second), Detail: "stalled 9s", Then: "Parasail"},
 		want: "stalled 9s · switching to parasail",

@@ -6,6 +6,19 @@ two thirds off the embedded corpora. This file is what keeps it. Every win below
 is defended by something that goes red locally, in `go test` or in `make check`,
 with a message that says what happened.
 
+## Connection recovery bounds
+
+`internal/provider/connectivity.go` limits a connection-recovery episode to
+two minutes (`connectionRecoveryWindow`), including repeated loss after a
+successful probe. Caller deadlines and cancellation can end it earlier. Each
+non-generating HEAD check has a two-second timeout (`connectionProbeTimeout`);
+failed checks wait 1–1.5 seconds (`connectionProbeInterval` plus jitter). The
+cadence does not grow exponentially with outage age. Healthy calls issue zero
+checks. Waiting calls on one adapter share one active probe, and the final
+subscriber cancels it. Chat and media adapters own separate gates. These are
+operational safety bounds, not latency test thresholds; regression tests count
+requests, accepted generations and probe subscriptions.
+
 ## The doctrine: gate on work, never on time
 
 **No gate in this repository is allowed a wall-clock threshold.** Every one of
