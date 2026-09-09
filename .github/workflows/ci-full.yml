@@ -218,11 +218,12 @@ jobs:
             gh issue create --title "$title" --label bug --body "$body"
           fi
 
-  # THE BINARY'S WEIGHT, REPORTED AND NOT ENFORCED — YET. SIZE-BUDGET was set on
-  # linux/arm64 with the toolchain of the day, and this runner is linux/amd64,
-  # so the two numbers are not comparable and a hard compare here would be red
-  # for a reason nobody caused. It prints both so the drift is visible; making
-  # it block means first agreeing which architecture the budget is measured on.
+  # THE BINARY'S WEIGHT, REPORTED AND NOT ENFORCED — YET. SIZE-BUDGET is set on
+  # darwin/amd64, the heaviest of the four platforms, and this runner is
+  # linux/amd64, which weighs about eight hundred kilobytes less — so a hard
+  # compare here would pass a tree that is over the cap on the platform the cap
+  # is measured on. It prints both so the drift is visible; making it block
+  # means first weighing darwin here, which this runner cannot do.
   size:
     name: size (informational)
     runs-on: ubuntu-latest
@@ -240,5 +241,5 @@ jobs:
           make build
           actual="$(stat -c%s bin/aforge)"
           budget="$(cat SIZE-BUDGET)"
-          printf 'bin/aforge on linux/amd64: %s bytes. SIZE-BUDGET (set on linux/arm64): %s.\n' \
+          printf 'bin/aforge on linux/amd64: %s bytes. SIZE-BUDGET (set on darwin/amd64): %s.\n' \
             "$actual" "$budget"
