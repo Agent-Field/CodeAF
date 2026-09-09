@@ -30,6 +30,7 @@ package e2e
 //	go test -tags e2e -run TestTaskStatesE2E -count=1 -timeout 40m -v ./internal/e2e/
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -677,9 +678,7 @@ func seedUnchecked(t *testing.T, home, ws string, id uint64) string {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("seed unchecked: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"), nil, 0o644); err != nil {
-		t.Fatalf("seed unchecked: %v", err)
-	}
+	statesSeedTranscript(t, dir, sid, ws, "port the parser for me")
 	at := time.Now().Add(-3 * time.Minute)
 	writeJSON(t, filepath.Join(dir, "meta.json"), map[string]any{
 		"id": sid, "title": "The landing that is your call", "workspace": ws,
@@ -721,6 +720,45 @@ func statesWaitForTaskBranch(t *testing.T, ws string, within time.Duration) bool
 	return false
 }
 
+// statesSeedTranscript writes the journal of a conversation SOMEBODY HAS
+// ACTUALLY SPOKEN IN: the header line, the person's sentence, and the answer.
+//
+// AN EMPTY JOURNAL IS NOT A CHEAPER FIXTURE, IT IS A DIFFERENT SCREEN, and the
+// first measured run of this file is what found it. A conversation with nothing
+// in it opens on the greeting, and on the machine's FIRST conversation the
+// greeting deliberately stands through typing (welcome.go's
+// [app.welcomeStandsThroughTyping]) and stands the chord keys down while it is up
+// (stop.go) — so the card's own answer letters are refused, which is the greeting
+// behaving correctly about a conversation that does not exist.
+//
+// It is also nothing like the shape these subtests are about. A landing that is
+// somebody's call arrives in a conversation they started the work from, which is
+// a conversation with their words in it. So the fixture has their words in it.
+func statesSeedTranscript(t *testing.T, dir, id, ws, said string) {
+	t.Helper()
+	at := time.Now().Add(-5 * time.Minute)
+	lines := []map[string]any{
+		{"type": "session", "version": 1, "id": id, "cwd": ws,
+			"model": "deepseek/deepseek-v4-flash", "timestamp": at.Format(time.RFC3339Nano)},
+		{"type": "message", "role": "user", "content": said,
+			"timestamp": at.Format(time.RFC3339Nano)},
+		{"type": "message", "role": "assistant", "content": "I have put that out as a task.",
+			"timestamp": at.Add(time.Second).Format(time.RFC3339Nano)},
+	}
+	var b strings.Builder
+	for _, line := range lines {
+		raw, err := json.Marshal(line)
+		if err != nil {
+			t.Fatalf("seed transcript: %v", err)
+		}
+		b.Write(raw)
+		b.WriteString("\n")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"), []byte(b.String()), 0o644); err != nil {
+		t.Fatalf("seed transcript: %v", err)
+	}
+}
+
 // statesCommit writes one file// statesCommit writes one file in the person's own checkout and commits it — the
 // person carrying on working while a task is out, which is the only way a real
 // conflict is made.
@@ -759,9 +797,7 @@ func seedOutOfSteps(t *testing.T, home, ws string) string {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("seed out of steps: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"), nil, 0o644); err != nil {
-		t.Fatalf("seed out of steps: %v", err)
-	}
+	statesSeedTranscript(t, dir, sid, ws, "port the parser for me")
 	at := time.Now().Add(-4 * time.Minute)
 	writeJSON(t, filepath.Join(dir, "meta.json"), map[string]any{
 		"id": sid, "title": "The run that ran out", "workspace": ws,
