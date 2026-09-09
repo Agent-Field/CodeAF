@@ -5,10 +5,12 @@
 - Baseline: `b252108d6`; target currently includes required follow-up
   `2a02ac0bb`.
 - Coordinator artifacts: `scripts/context-modal-native-fixture.sh` and
-  `reports/coordinator-notes.md`, both committed and pushed.
+  `reports/coordinator-notes.md`, both expanded for the latest visual review,
+  committed and pushed through `599da68f1`.
 - Modal worker: still active on `codex/context-modal-ui-20260908`; its committed
-  checkpoints are not yet accepted or merged. It is currently exercising the
-  real Linux binary with SGR mouse reports and captured frames.
+  checkpoints through `1eaa7de2b` are not yet accepted or merged. Coordinator
+  review identified the asymmetric right-backdrop compositor and superseded
+  no-separator styling as blockers; the worker is actively editing modal paint.
 - Integration, final build/suites, draft PR update, independent PNG inspection,
   `REMOTE_READY`, and the root-owned native Mac review remain outstanding.
 
