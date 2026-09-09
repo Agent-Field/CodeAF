@@ -214,9 +214,7 @@ type folderAdded struct {
 func (a *app) folderConfirm() tea.Cmd {
 	takes := a.folder.takes()
 	if len(takes) == 0 {
-		a.folder.close()
-		a.touch()
-		return nil
+		return a.closeContextSheet()
 	}
 	// A REMOVAL LEAVES THE SHEET OPEN and everything else closes it. Adding is a
 	// decision and the sheet has served its purpose; removing is a tidy-up, and
@@ -242,9 +240,7 @@ func (a *app) folderConfirm() tea.Cmd {
 			}
 		}
 	}
-	a.folder.close()
-	a.touch()
-	return a.folderTakeCmd(takes)
+	return tea.Batch(a.closeContextSheet(), a.folderTakeCmd(takes))
 }
 
 // folderTakeCmd is the whole of the confirm's work, off the loop.

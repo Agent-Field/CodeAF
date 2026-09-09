@@ -126,6 +126,23 @@ func (w contextWin) holds(x, y int) bool {
 // being open and nothing else: there is one chooser and it is always modal.
 func (a *app) contextModalShowing() bool { return a.folder.open }
 
+// closeContextSheet is the one way out of the chooser, and it asks for the
+// whole screen back on the way.
+//
+// THE SHEET IS THE ONLY SURFACE HERE THAT COVERS RATHER THAN REPLACES. The
+// ordinary frame revealed after it closes often has rows shorter than the
+// sheet, and the incremental renderer does not always overwrite the cells the
+// sheet lit beyond those rows. Padding cannot repair that: the renderer clears
+// its cell buffer before every frame, so explicit trailing spaces and absent
+// cells produce the same diff. This is one full repaint at the one moment this
+// surface has a layer to undraw, routed through one door so none of the ways out
+// can leave the layer behind.
+func (a *app) closeContextSheet() tea.Cmd {
+	a.folder.close()
+	a.touch()
+	return tea.ClearScreen
+}
+
 // ── the frame ───────────────────────────────────────────────────────────────
 
 // contextModalOver composites the sheet onto a finished chat frame and answers
@@ -180,30 +197,29 @@ func contextInlay(under, sheet string, from, to, width int) string {
 // contextSheet draws the sheet and records where every part of it landed.
 func (a *app) contextSheet(width, height int) ([]string, int, int) {
 	f := &a.folder
+	if height <= 0 {
+		f.win = contextWin{}
+		a.caret = false
+		return nil, 0, 0
+	}
 	box := contextSheetWidth(width)
 	inner := a.contextInner()
 	// The body asks for what it wants and is given what there is. One row is
 	// added to the browser's own want for the legend it draws above the action
-	// row, which [folderPick.height] does not count.
+	// row, which [folderPick.height] does not count. It may be zero:
+	// [folderPick.rows] already answers nil for a nonpositive count, so the frame
+	// does not need a second guard or a made-up browser row.
 	want := f.height(inner) + 1 + contextSheetChrome
-	tall := min(min(want, contextSheetTall), height)
-	body := tall - contextSheetChrome
-	if body < 1 {
-		body = 1
-		tall = body + contextSheetChrome
+	body := 0
+	if height >= contextSheetChrome {
+		body = min(min(want-contextSheetChrome, contextSheetTall-contextSheetChrome),
+			height-contextSheetChrome)
+		body = max(body, 0)
 	}
-	if tall > height {
-		tall = height
-		body = max(tall-contextSheetChrome, 1)
-	}
+	drawHead := height >= 2
+	drawBox := height >= 3
+	drawThin := height >= contextSheetChrome
 	left := (width - box) / 2
-	// CENTRED AND NUDGED UP BY A THIRD, which is hop.go's own answer to the same
-	// question: dead centre reads as low, because the eye's centre is above the
-	// frame's.
-	top := max((height-tall)/3, 0)
-	if top+tall > height {
-		top = max(height-tall, 0)
-	}
 
 	// The hovered row and column, translated out of the pointer's own answer.
 	// They are the SAME numbers the press uses, which is what this file's one-hit
@@ -215,20 +231,15 @@ func (a *app) contextSheet(width, height int) ([]string, int, int) {
 	rows := f.rows(inner, body, a.pal, a.styler(), hover, col)
 
 	glyph := contextGlyphs(a.pal)
-	out := make([]string, 0, tall)
-	out = append(out, a.contextHeadRule(inner, glyph))
+	out := make([]string, 0, min(height, contextSheetTall))
+	if drawHead {
+		out = append(out, a.contextHeadRule(inner, glyph))
+	}
 	// THE BOX SITS IN THE SAME LEFT MARGIN EVERY OTHER ROW OF THE SHEET SITS IN
 	// ([folderPad]), so the `›` of the box and the names under it stand in one
 	// column. It is the surface's own one-line box and not a widget of its own —
 	// the same [draftBlock] the message composer and every other picker's filter
 	// is drawn with.
-	room := max(inner-len(folderPad), 1)
-	boxRows, caretX, _ := draftBlock(&f.filter, a.pal, room, 1,
-		f.folderHintAt(room-ansi.StringWidth(prompt)), "")
-	line := ""
-	if len(boxRows) > 0 {
-		line = boxRows[0]
-	}
 	// EVERY ROW OF THE SHEET GOES THROUGH ONE PADDER, so the right edge lands in
 	// one column on every one of them. A row measured its own way is a frame with
 	// a notch in it, which is the first thing an eye finds and the last thing
@@ -236,8 +247,29 @@ func (a *app) contextSheet(width, height int) ([]string, int, int) {
 	side := func(content string) string {
 		return glyph.side + contextPadded(content, inner) + glyph.side
 	}
-	out = append(out, side(folderPad+line))
-	out = append(out, side(folderPad+a.pal.dim(strings.Repeat(glyph.thin, max(inner-2*len(folderPad), 1)))))
+	caretX := 0
+	boxRow := -1
+	boxX := left + 1 + len(folderPad)
+	if drawBox {
+		room := max(inner-len(folderPad), 1)
+		boxRows, drawnCaretX, _ := draftBlock(&f.filter, a.pal, room, 1,
+			f.folderHintAt(room-ansi.StringWidth(prompt)), "")
+		line := ""
+		if len(boxRows) > 0 {
+			line = boxRows[0]
+		}
+		boxRow = len(out)
+		caretX = drawnCaretX
+		out = append(out, side(folderPad+line))
+	} else {
+		// With no box there is nowhere on this frame to type. Hiding the caret is
+		// the same answer every other non-writing surface gives (view.go).
+		a.caret = false
+	}
+	if drawThin {
+		out = append(out, side(folderPad+a.pal.dim(strings.Repeat(glyph.thin, max(inner-2*len(folderPad), 1)))))
+	}
+	bodyRow := len(out)
 	for i := 0; i < body; i++ {
 		row := ""
 		if i < len(rows) {
@@ -247,13 +279,31 @@ func (a *app) contextSheet(width, height int) ([]string, int, int) {
 	}
 	foot, cancel := a.contextFootRule(inner, glyph)
 	out = append(out, foot)
+	tall := len(out)
+	// CENTRED AND NUDGED UP BY A THIRD, which is hop.go's own answer to the same
+	// question: dead centre reads as low, because the eye's centre is above the
+	// frame's. The size comes from what was actually built, and the final clamp
+	// keeps every one of those rows on the terminal.
+	top := max((height-tall)/3, 0)
+	if top+tall > height {
+		top = max(height-tall, 0)
+	}
+	bodyY := top + bodyRow
+	boxY := -1
+	if boxRow >= 0 {
+		boxY = top + boxRow
+	}
+	screenCancel := hudSpan{}
+	if cancel.pressable() {
+		screenCancel = hudSpan{from: left + cancel.from, to: left + cancel.to}
+	}
 
 	f.win = contextWin{
 		left: left, top: top, width: box, height: len(out),
-		bodyX: left + 1, bodyY: top + contextSheetChrome - 1,
+		bodyX: left + 1, bodyY: bodyY,
 		bodyRows: body,
-		boxY:     top + 1, boxX: left + 1 + len(folderPad),
-		cancel:  hudSpan{from: left + cancel.from, to: left + cancel.to},
+		boxY:     boxY, boxX: boxX,
+		cancel:  screenCancel,
 		cancelY: top + len(out) - 1,
 	}
 	// The caret is in the box, which is the one thing on this sheet a person
@@ -379,9 +429,7 @@ func (a *app) contextModalPress(x, y int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if y == win.cancelY && win.cancel.holds(x) {
-		a.folder.close()
-		a.touch()
-		return nil, true
+		return a.closeContextSheet(), true
 	}
 	if y == win.boxY && x >= win.boxX {
 		// THE BOX TAKES A PRESS THE WAY THE DRAFT DOES: the caret lands under the

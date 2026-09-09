@@ -12,8 +12,11 @@ package tui3
 // than against the browser's own state.
 
 import (
+	"image/png"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -261,6 +264,251 @@ func TestTheBackdropNeitherScrollsNorLights(t *testing.T) {
 }
 
 // ── leaving ─────────────────────────────────────────────────────────────────
+
+// contextExitMessages opens a batch just as the terminal loop does, so a close
+// can be checked for both the repaint message and any work it still carries.
+func contextExitMessages(msg tea.Msg) []tea.Msg {
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		return []tea.Msg{msg}
+	}
+	var out []tea.Msg
+	for _, cmd := range batch {
+		if cmd != nil {
+			out = append(out, contextExitMessages(cmd())...)
+		}
+	}
+	return out
+}
+
+// contextExitAsksForTheScreen reports whether a close carried Bubble Tea's
+// whole-screen repaint message. Its concrete type is deliberately private, so
+// the public constructor supplies the type the test compares.
+func contextExitAsksForTheScreen(msgs []tea.Msg) bool {
+	want := reflect.TypeOf(tea.ClearScreen())
+	for _, msg := range msgs {
+		if reflect.TypeOf(msg) == want {
+			return true
+		}
+	}
+	return false
+}
+
+// EVERY DOOR OUT ASKS FOR THE WHOLE SCREEN BACK. The action door also keeps the
+// work it was carrying; repainting may not turn choosing something into merely
+// closing the sheet.
+func TestClosingTheSheetAsksForTheWholeScreenBack(t *testing.T) {
+	t.Run("esc", func(t *testing.T) {
+		a, _, root := modalLab(t)
+		openBrowse(t, a, filepath.Join(root, "work"))
+		cmd := a.folderKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+		if a.folder.open {
+			t.Fatal("esc left the sheet open")
+		}
+		if cmd == nil || !contextExitAsksForTheScreen(contextExitMessages(cmd())) {
+			t.Fatal("esc did not ask for the whole screen back")
+		}
+	})
+
+	t.Run("cancel words", func(t *testing.T) {
+		a, _, root := modalLab(t)
+		openBrowse(t, a, filepath.Join(root, "work"))
+		_ = frameOf(t, a)
+		win := a.folder.win
+		cmd, took := a.contextModalPress(win.cancel.from, win.cancelY)
+		if !took || a.folder.open {
+			t.Fatalf("cancel took=%v open=%v", took, a.folder.open)
+		}
+		if cmd == nil || !contextExitAsksForTheScreen(contextExitMessages(cmd())) {
+			t.Fatal("the cancel words did not ask for the whole screen back")
+		}
+	})
+
+	t.Run("chosen things", func(t *testing.T) {
+		a, _, root := modalLab(t)
+		openBrowse(t, a, filepath.Join(root, "work"))
+		if say := a.folder.mark(); say != "" || len(a.folder.marks) != 1 {
+			t.Fatalf("the tray holds %+v and said %q", a.folder.marks, say)
+		}
+		cmd := a.folderConfirm()
+		if cmd == nil || a.folder.open {
+			t.Fatalf("confirm returned %v with open=%v", cmd, a.folder.open)
+		}
+		msg := cmd()
+		if _, ok := msg.(tea.BatchMsg); !ok {
+			t.Fatalf("confirm returned %T, want the repaint and its work in a batch", msg)
+		}
+		msgs := contextExitMessages(msg)
+		if !contextExitAsksForTheScreen(msgs) {
+			t.Fatal("confirm did not ask for the whole screen back")
+		}
+		work := false
+		for _, got := range msgs {
+			if _, ok := got.(folderTakenMsg); ok {
+				work = true
+			}
+		}
+		if !work {
+			t.Fatal("confirm lost the work that adds the chosen thing")
+		}
+	})
+
+	t.Run("nothing to take", func(t *testing.T) {
+		a, _, _ := modalLab(t)
+		settleFolder(t, a, a.openFolderPick("nothing-could-match-this"))
+		if len(a.folder.takes()) != 0 {
+			t.Fatalf("the empty action unexpectedly offered %+v", a.folder.takes())
+		}
+		cmd := a.folderConfirm()
+		if cmd == nil || a.folder.open {
+			t.Fatalf("empty confirm returned %v with open=%v", cmd, a.folder.open)
+		}
+		if !contextExitAsksForTheScreen(contextExitMessages(cmd())) {
+			t.Fatal("an empty confirm did not ask for the whole screen back")
+		}
+	})
+}
+
+// THE ORDINARY FRAME AFTER A RESIZED SHEET HOLDS NONE OF THE SHEET'S CELLS, and
+// the close asks the renderer to repaint cells beyond the shorter rows too.
+func TestTheFrameAfterACloseHoldsNoCellOfTheSheet(t *testing.T) {
+	a, _, root := modalLab(t)
+	a.width, a.height = 150, 42
+	a.touch()
+	openBrowse(t, a, filepath.Join(root, "work"))
+	_ = frameOf(t, a)
+	a.width, a.height = 52, 30
+	a.touch()
+	_ = frameOf(t, a)
+	a.width, a.height = 150, 42
+	a.touch()
+	_ = frameOf(t, a)
+
+	cmd := a.folderKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if cmd == nil || !contextExitAsksForTheScreen(contextExitMessages(cmd())) {
+		t.Fatal("the resized close did not ask for the whole screen back")
+	}
+	drawn := strings.Join(frameOf(t, a), "\n")
+	for _, left := range []string{contextTitleWord, contextCancelWord, "╭", "╮", "╰", "╯"} {
+		if strings.Contains(drawn, left) {
+			t.Fatalf("the frame after close still holds %q:\n%s", left, drawn)
+		}
+	}
+}
+
+// A SHORT TERMINAL GIVES UP BROWSER ROWS, THEN THE THIN RULE, THEN THE BOX. The
+// title and the foot are the last two rows, and whatever fits ends with the
+// visible way out.
+func TestAShortTerminalStillDrawsTheWayOut(t *testing.T) {
+	for height := 1; height <= 6; height++ {
+		t.Run(itoa(height), func(t *testing.T) {
+			a, _, root := modalLab(t)
+			a.width, a.height = 100, height
+			a.touch()
+			openBrowse(t, a, filepath.Join(root, "work"))
+			rows := frameOf(t, a)
+			win := a.folder.win
+			if win.height > height || win.top+win.height > height {
+				t.Fatalf("the sheet drew %d rows from %d into a %d-row terminal", win.height, win.top, height)
+			}
+			last := rows[win.top+win.height-1]
+			if !strings.Contains(last, contextCancelWord) {
+				t.Fatalf("the last sheet row at height %d has no way out: %q", height, last)
+			}
+			if height == 1 && strings.Contains(rows[win.top], contextTitleWord) {
+				t.Fatalf("one row kept the head instead of the foot: %q", rows[win.top])
+			}
+			if height >= 2 && !strings.Contains(rows[win.top], contextTitleWord) {
+				t.Fatalf("height %d gave up the head rule: %q", height, rows[win.top])
+			}
+			wantBox := height >= 3
+			if got := win.boxY >= 0; got != wantBox {
+				t.Fatalf("height %d box drawn=%v, want %v", height, got, wantBox)
+			}
+			if got, want := win.bodyRows, max(height-contextSheetChrome, 0); got != want {
+				t.Fatalf("height %d drew %d browser rows, want %d", height, got, want)
+			}
+			if a.caret != wantBox {
+				t.Fatalf("height %d caret=%v with box drawn=%v", height, a.caret, wantBox)
+			}
+		})
+	}
+}
+
+// THE HIT MAP NEVER CLAIMS A ROW THE PAINT DID NOT PUT ON SCREEN. A press below
+// the terminal is swallowed by the modal, but cannot close it or move its box.
+func TestTheSheetNeverClaimsARowTheTerminalDoesNotHave(t *testing.T) {
+	for height := 1; height <= 40; height++ {
+		t.Run(itoa(height), func(t *testing.T) {
+			a, _, root := modalLab(t)
+			a.width, a.height = 100, height
+			a.touch()
+			openBrowse(t, a, filepath.Join(root, "work"))
+			_ = frameOf(t, a)
+			win := a.folder.win
+			if win.top+win.height > height {
+				t.Fatalf("the window claims rows through %d on a %d-row terminal", win.top+win.height-1, height)
+			}
+			if win.cancelY >= height {
+				t.Fatalf("cancel is offered on row %d of a %d-row terminal", win.cancelY, height)
+			}
+			for x := 0; x < a.width; x++ {
+				if win.holds(x, height) {
+					t.Fatalf("column %d claims the first row below a %d-row terminal", x, height)
+				}
+			}
+			cursor := a.folder.filter.cursor
+			cmd, took := a.contextModalPress(win.cancel.from, height)
+			if !took || cmd != nil || !a.folder.open || a.folder.filter.cursor != cursor {
+				t.Fatalf("below-screen press took=%v cmd=%v open=%v cursor=%d, want swallowed and unchanged",
+					took, cmd, a.folder.open, a.folder.filter.cursor)
+			}
+		})
+	}
+
+	for _, height := range []int{-1, 0} {
+		a, _, root := modalLab(t)
+		openBrowse(t, a, filepath.Join(root, "work"))
+		a.caret = true
+		rows, _, _ := a.contextSheet(100, height)
+		if len(rows) != 0 || a.folder.win != (contextWin{}) || a.caret {
+			t.Fatalf("height %d drew %d rows with window %+v and caret=%v", height, len(rows), a.folder.win, a.caret)
+		}
+	}
+}
+
+// THE NATIVE FIXTURE'S PICTURE OPENS AS THE PICTURE IT CLAIMS TO BE. A corrupt
+// sample turns the preview row into an error and leaves the fixture unable to
+// exercise its reason for existing.
+func TestTheNativeFixtureWritesAPictureThatOpens(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash is not available")
+	}
+	root := t.TempDir()
+	cmd := exec.Command(bash, "../../scripts/context-modal-native-fixture.sh", "setup", root)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("fixture setup: %v\n%s", err, out)
+	}
+	locked := filepath.Join(root, "modal project", "no access")
+	defer func() {
+		if err := os.Chmod(locked, 0o755); err != nil {
+			t.Errorf("restore fixture permissions: %v", err)
+		}
+	}()
+	picture, err := os.Open(filepath.Join(root, "modal project", "pixel.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer picture.Close()
+	config, err := png.DecodeConfig(picture)
+	if err != nil {
+		t.Fatalf("pixel.png does not open: %v", err)
+	}
+	if config.Width != 16 || config.Height != 8 {
+		t.Fatalf("pixel.png is %dx%d, want 16x8", config.Width, config.Height)
+	}
+}
 
 // THE CANCEL TARGET ON THE FOOT RULE IS THE POINTER'S OWN WAY OUT, and it leaves
 // exactly as much behind as `esc` does: nothing.

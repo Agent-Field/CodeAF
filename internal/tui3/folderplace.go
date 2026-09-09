@@ -305,9 +305,7 @@ func (a *app) contextStart() string {
 func (a *app) folderKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
-		a.folder.close()
-		a.touch()
-		return nil
+		return a.closeContextSheet()
 
 	case "enter":
 		return a.folderConfirm()
