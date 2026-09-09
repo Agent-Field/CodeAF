@@ -2179,3 +2179,14 @@ changed names so overtaking cannot lose the visible update. Reconnect reopens an
 title subscription once, without polling or model work. Background title redraws neither
 consume completion flags nor raise attention banners. Metadata read-modify-write is
 serialized per agent, with owned-field patches so stale spend snapshots preserve titles.
+
+## Checker observations remain bounded and recoverable
+
+The checker keeps its existing **8,000-byte** per-result ceiling
+(`auditResultLimit`). Its native reader uses **7,500 bytes** for page content
+(`auditReadContentLimit`), reserving the remainder for the exact line range and
+continuation footer. Other oversized observations use the existing atomic,
+content-addressed `writeStub` path; their bounded preview names the saved file.
+This adds no model call or separate retention cache. A single line larger than
+the native reader's content limit retains the reader's explicit long-line
+response; line paging does not claim to split it.
