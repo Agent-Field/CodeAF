@@ -1,6 +1,10 @@
 package tui3
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/charmbracelet/x/ansi"
+)
 
 // ── THE SHARED FOOT, AND THE HEAD THE POINTER COUNTS FROM ───────────────────
 //
@@ -66,6 +70,42 @@ func (a *app) placeNote(width int) []string {
 	}
 	return rows
 }
+
+// placeNoteRule is the foot's rule, carrying the place's note as its legend:
+// `─ 9 finished today · 191 earlier ──────`.
+//
+// THE NOTE IS ONE LINE AND IT COSTS NO ROW. A place's note used to be a row of
+// its own under the rule, so the rule stood one row higher on a place that had
+// something to say than on one that did not — and the foot is the one edge of
+// the frame a person's eye uses to find the box. On the rule, every place's
+// foot is the same three rows at the same height (PLACES-AUDIT.md finding 1).
+//
+// The lines arrive painted and led by the one cell every note row carried, so
+// the lead is trimmed and the lines are joined with the surface's middle dot.
+// A legend too long for the rule is cut, one ellipsis, rather than pushed onto
+// a second row — which would be the jump this exists to end.
+func placeNoteRule(notes []string, width int, pal palette) string {
+	parts := make([]string, 0, len(notes))
+	for _, line := range notes {
+		if text := strings.TrimLeft(line, " "); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	room := width - placeNoteRuleFrame
+	if len(parts) == 0 || room < 1 {
+		return pal.dim(rule(width))
+	}
+	legend := strings.Join(parts, pal.dim(railSep))
+	if ansi.StringWidth(legend) > room {
+		legend = ansi.Truncate(legend, room, "…")
+	}
+	fill := width - ansi.StringWidth(legend) - placeNoteRuleFrame + 1
+	return pal.dim("─ ") + legend + " " + pal.dim(rule(fill))
+}
+
+// placeNoteRuleFrame is the rule a legend keeps around itself: `─ ` before it,
+// and ` ─` after it at the least.
+const placeNoteRuleFrame = 4
 
 // placeTray is the attachment tray drawn over a place's box, and it is home's
 // alone: home is the one place whose box starts a conversation, so it is the one
