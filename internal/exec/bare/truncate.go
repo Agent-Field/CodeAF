@@ -73,8 +73,8 @@ func CapsFor(contextTokens int) Caps {
 }
 
 // capsAt derives the pair from a byte budget alone. A budget outside the
-// ordinary range takes pi's own, which is the same clamp [ReadTool] has always
-// applied to a composed belt's smaller budget.
+// ordinary range takes pi's own, so an unusable number can never widen a cap:
+// the caps only ever fall away from pi's, never past them.
 func capsAt(maxBytes int) Caps {
 	if maxBytes <= 0 || maxBytes > defaultMaxBytes {
 		return DefaultCaps()
