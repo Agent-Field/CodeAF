@@ -20,6 +20,10 @@ invalidates:
   - "`aforge standing check` exited 0 whatever its runs came to. It exits 2 when a run did not finish and 4 when one is waiting on the person."
   - "A standing run stopped at its step or spending limit ended its turn normally and published whatever report it had written, and a report opened and never closed was published to wherever it stopped. Both now fail and publish nothing, as does a run that tried to write its own report file and never replied with one; the previous report stays."
   - "A stop while a standing run was working still let it replace its report and send a note. A stopped item's in-flight run now publishes nothing and sends nothing; what it already did is not undone, and a pause still lets it finish."
+  - "A standing run replying `<report>` and `</report>` with nothing between them replaced the last good report with an empty file. An empty report is no report: the run fails with `the run's report was empty` and the previous report stays."
+  - "A standing run whose answer ran out of output-limit continuations published the partial answer, and so did its one rules correction. The turn's ending now says it was cut (`Truncated` on the turn-done event), and the run fails with `the run's answer was cut off at the model's output limit`."
+  - "A standing answer with a `</report>` but no `<report>` line was published whole, stray tag and all. It is no longer published (`the run's report has a closing line but no opening line`)."
+  - "A withheld standing report said why only in words. `occurrence.json` now carries `withheld` — a fixed kebab-case code (`output-limit`, `at-a-limit`, `empty-report`, …) — on withheld runs only, and `aforge standing show` prints it on the `came to:` line. Older records without it stay valid."
 ---
 
 `collections` and `shared_context` are wired through the production binary.
@@ -116,6 +120,10 @@ attempt to write its own report file no longer leaves it waiting on the person, 
 without a closed report it publishes nothing. Whether a run may publish is one
 decision read from everything its turns came to (`standing_publish.go`), so a limit,
 an unclosed report, a cut-off and a self-write each withhold it with their own line.
+A second review found two more ways past it, both closed inside that decision: an
+empty closed report, and an answer cut at the output limit after its continuations
+ran out, which the run now reads off the turn's own ending rather than a flag beside
+it. Every withheld run records its reason as a pinned code beside its outcome.
 `make test-local-work` drives `bin/aforge` with a scripted
 model and `make demo-local-work` runs the same journey with a real model in a
 disposable `AFORGE_HOME`, failing on the first step that does not hold. No

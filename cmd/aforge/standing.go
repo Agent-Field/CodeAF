@@ -773,8 +773,16 @@ func writeStandingRecord(out io.Writer, record standingRecord) error {
 		if run.SupersededBy != "" {
 			fmt.Fprintln(out, "      interrupted; retried as "+run.SupersededBy)
 		}
-		if run.OutcomeText != "" {
-			fmt.Fprintln(out, "      came to: "+oneLineOf(run.OutcomeText))
+		// A withheld report's code rides the line that says why, as the
+		// evidence a person can search the record for ("withheld": in
+		// occurrence.json) — never a line of its own that could be read apart
+		// from the reason.
+		came := oneLineOf(run.OutcomeText)
+		if run.Withheld != "" {
+			came = strings.TrimPrefix(came+" · withheld: "+run.Withheld, " · ")
+		}
+		if came != "" {
+			fmt.Fprintln(out, "      came to: "+came)
 		}
 		if check := run.RuleCheck; check != nil {
 			line := fmt.Sprintf("      checked against %d rule(s): %s", len(check.Rules), check.Verdict)
