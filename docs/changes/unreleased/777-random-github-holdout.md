@@ -10,3 +10,6 @@ invalidates:
 Record the sampling population and seed, reject only uncalibrated environments
 before inference, and preserve scored failures. The preparation job runs on
 Spark without model requests; scoring follows calibration and client preflight.
+
+A shared grader preserves nested regression directories and requires the same
+test identities and outcomes as the calibrated reference, including skips.

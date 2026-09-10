@@ -47,6 +47,15 @@ The external evidence directory is
 destination. Submit from the repository root with `fleet run --cpu --rsync`.
 Keep the job receipt and exact input hashes. Never run full acceptance locally.
 
+## Shared grading adapter
+
+`grading.py` restores original tests using each fixture's frozen `test_roots`,
+including nested package test directories. All arms use this same grader. A green
+exit passes only when the test identities and outcomes match the calibrated
+reference; missing tests, newly skipped cases, and duplicate-name loss cannot
+quietly produce a passing score. `test_grading.py` covers these protections and
+is queued for execution on Spark before the scoring stage.
+
 ## Frozen harness comparison
 
 The intended scored comparison is five accepted issues, two seeds, four arms:
