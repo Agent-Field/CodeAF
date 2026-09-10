@@ -27,7 +27,7 @@ func (leftPanel) rows(in *homeGridInput) homePanelRows {
 	for _, row := range in.ledger {
 		lines = append(lines, leftLine(row))
 	}
-	out := homeLiveFold(lines)
+	out := homePanelCut(panelLeft, lines)
 	if len(lines) > 0 {
 		out.said = sinceAt(in.seen, in.now)
 	}

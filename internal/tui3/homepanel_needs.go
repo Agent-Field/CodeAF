@@ -57,7 +57,7 @@ func (needsPanel) rows(in *homeGridInput) homePanelRows {
 		}
 		lines = append(lines, item.line)
 	}
-	out := homeLiveFold(lines)
+	out := homePanelCut(panelNeeds, lines)
 	out.said = countWord(len(lines))
 	return out
 }

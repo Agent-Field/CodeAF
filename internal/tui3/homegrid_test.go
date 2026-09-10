@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -113,6 +114,64 @@ func TestAShortColumnShrinksTheLowestPriorityPanelFirst(t *testing.T) {
 	}
 	if homeColumnHeight(column) > 8 {
 		t.Fatalf("the column is %d rows in a room of 8", homeColumnHeight(column))
+	}
+}
+
+// A TALL COLUMN HANDS ITS SPARE ROWS OUT IN THE SQUEEZE'S ORDER REVERSED, one
+// at a time: needs you first, then where you were, round again — and never a
+// row past a panel's budget, never a row the room cannot hold.
+func TestATallColumnGrowsWhatAPersonCameForFirst(t *testing.T) {
+	rows := func(n int) homePanelRows {
+		lines := make([]homeLine, n)
+		for i := range lines {
+			lines[i] = homeLine{kind: homeLedger, cell: &homeCell{title: "row"}}
+		}
+		return homePanelRows{lines: lines, more: 20}
+	}
+	needs := &homeGridPanel{slot: homeSlotOf(panelNeeds), read: rows(8), shown: 4}
+	recent := &homeGridPanel{slot: homeSlotOf(panelRecent), read: rows(10), shown: 5}
+	column := []*homeGridPanel{needs, recent}
+	// A heading, the rows and a fold each, and a blank between: 6 + 1 + 7 = 14.
+	// Three rows to spare go needs, recent, needs.
+	fitColumn(column, 17)
+	if needs.shown != 6 || recent.shown != 6 {
+		t.Fatalf("three spare rows grew needs to %d and recent to %d, want 6 and 6", needs.shown, recent.shown)
+	}
+	fitColumn(column, 200)
+	if needs.shown != 8 || recent.shown != 10 {
+		t.Fatalf("a room of 200 grew needs to %d and recent to %d, want their budgets 8 and 10", needs.shown, recent.shown)
+	}
+}
+
+// AT 120×55 WHERE YOU WERE SHOWS TEN AND FOLDS THE REST: a machine with
+// seventy-six conversations in this folder draws this one and nine more, and
+// the fold counts the other sixty-six — while at 120×24 the squeeze still holds.
+func TestATallFrameShowsTenOfWhereYouWereAndFoldsTheRest(t *testing.T) {
+	lab := newHomeLab(t)
+	alpha := lab.workspace("alpha")
+	now := time.Now()
+	mine := lab.session("-alpha", "aaaa000000000000", "this very chat", alpha, now)
+	for i := 1; i <= 75; i++ {
+		id := fmt.Sprintf("aaaa%012d", i)
+		lab.session("-alpha", id, fmt.Sprintf("older chat %d", i), alpha, now.Add(-time.Duration(i)*time.Hour))
+	}
+	a := lab.app(mine)
+	a.width, a.height = 120, 55
+	a.openHome()
+	frame := homeText(a)
+	if got := len(panelRows(a, panelRecent)); got != homeSlotOf(panelRecent).most {
+		t.Fatalf("where you were drew %d rows at 120×55, want %d:\n%s", got, homeSlotOf(panelRecent).most, frame)
+	}
+	if row, _ := homeRowOf(frame, "66 more · "+homeFindWord); row < 0 {
+		t.Fatalf("the fold does not count the other sixty-six:\n%s", frame)
+	}
+	a.width, a.height = 120, 24
+	frame = homeText(a)
+	if len(strings.Split(frame, "\n")) != 24 || strings.Contains(frame, "66 more") {
+		t.Fatalf("at 120×24 the squeeze does not hold:\n%s", frame)
+	}
+	if row, _ := homeRowOf(frame, "where you were"); row < 0 {
+		t.Fatalf("where you were was squeezed off a 120×24 home:\n%s", frame)
 	}
 }
 

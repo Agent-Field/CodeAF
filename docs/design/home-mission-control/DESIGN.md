@@ -69,8 +69,14 @@ own keys, each a door to the place that owns it. The chat list is one panel.
    a person, the single spinner cell for work. Nothing else wears a glyph or a
    colour. Money is a number. Key hints live on the foot and the alt map, never
    inside a panel.
-9. **Nothing grows.** Every panel folds inside itself with `N more` and the
-   name of its place. The fold is the door.
+9. **Nothing grows past its budget.** Every panel folds inside itself with
+   `N more` and the name of its place; the fold is the door. A tall frame hands
+   its spare rows out — only once every panel has its natural height — in the
+   squeeze's order reversed, one row each round: `needs you` and `running` to 8,
+   `where you were` from 5 to 10, `since you left` to 8, `projects` to 8, `next
+   up` from 3 to 5; `spend` never grows. The air that is left sits under the
+   shortest column (owner, 2026-09-10: a 55-row terminal was two short columns
+   over thirty rows of air). The budgets are the order table's `rest`/`most`.
 10. **Home is the summary of the tabs.** `running` opens tasks, `spend` opens
     spend, `next up` opens standing. The bar is four places: `home tasks spend
     settings`. Memory, standing and search stay reachable by their slash

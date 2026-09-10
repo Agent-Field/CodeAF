@@ -104,7 +104,7 @@ func TestSinceYouLeftIsItsOwnPanelOfDoors(t *testing.T) {
 }
 
 // WHERE YOU WERE: this window's own conversation first with `here`, the last
-// thing said in it under it, then the most recent quiet ones, then the fold.
+// thing said in it under it, then the most recent quiet ones.
 func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 	lab := newSwitchLab(t)
 	a := lab.open(120, 45)
@@ -120,9 +120,6 @@ func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 	if !strings.Contains(lines[own], homeHereWord) || !strings.Contains(lines[own+1], "explain open addressing") {
 		t.Fatalf("the own row does not say here with its last words under it:\n%s", frame)
 	}
-	if !strings.Contains(frame, "6 more · "+homeFindWord) {
-		t.Fatalf("the quiet tail is not folded behind one line:\n%s", frame)
-	}
 	// AND A ROW FROM ANOTHER FOLDER SAYS WHICH, where one from this folder does
 	// not. The conversation mid-turn is here too: `running` lists the work a
 	// conversation sent out and never the conversation, so this is its panel.
@@ -132,9 +129,9 @@ func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 	if quiet := lines[own+3]; !strings.Contains(quiet, "Quiet Chat a") {
 		t.Fatalf("the quiet rows do not follow in recency order:\n%s", frame)
 	}
-	// AND THE ROW WAITING ON A PERSON IS NOT HERE A SECOND TIME.
-	if strings.Count(frame, "Swarm Task Splitting") != 1 {
-		t.Fatalf("a conversation waiting on you is drawn on two panels:\n%s", frame)
+	// AND THE TWO ROWS THAT ARE ON OTHER PANELS ARE NOT HERE A SECOND TIME.
+	if strings.Count(frame, "Swarm Task Splitting") != 1 || strings.Count(frame, "Bounty Reward Companies") > 1 {
+		t.Fatalf("a conversation is drawn on two panels:\n%s", frame)
 	}
 }
 
@@ -346,7 +343,7 @@ func TestSpendDrawsTodayTheBarAndTheFortnightAsDoors(t *testing.T) {
 	}
 }
 
-// NEXT UP IS SOONEST FIRST, three of them, then the fold into standing.
+// NEXT UP IS SOONEST FIRST, as many as its budget, then the fold into standing.
 func TestNextUpIsSoonestFirstAndFoldsIntoStanding(t *testing.T) {
 	lab := newSwitchLab(t)
 	a := lab.open(120, 45)
@@ -358,6 +355,7 @@ func TestNextUpIsSoonestFirstAndFoldsIntoStanding(t *testing.T) {
 	a.home.items = map[string][]StandingItemView{dir: {
 		due("w4", "the fourth thing", 9*time.Hour), due("w1", "the 6am repo watch", 20*time.Hour),
 		due("w2", "top movers before the open", 2*time.Hour), due("w3", "water the plants", 5*time.Hour),
+		due("w5", "the fifth thing", 10*time.Hour), due("w6", "the sixth thing", 11*time.Hour),
 	}}
 	a.home.build()
 	frame := homeText(a)

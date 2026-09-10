@@ -16,13 +16,10 @@ import (
 // in is always one of its rows.
 type projectsPanel struct{ homePanelBase }
 
-// homeProjectRows is how many projects the panel draws before its fold, and
-// homeProjectPad the widest the path column is padded to, so the counts beside
-// the paths stand in one column without a long path pushing them off the row.
-const (
-	homeProjectRows = 5
-	homeProjectPad  = 24
-)
+// homeProjectPad is the widest the path column is padded to, so the counts
+// beside the paths stand in one column without a long path pushing them off the
+// row.
+const homeProjectPad = 24
 
 // homeProjectRow is ONE PROJECT ON THE PROJECTS PANEL, and a cursor stop whose
 // door is a fresh conversation in that folder. It is numbered beside the
@@ -32,7 +29,7 @@ const homeProjectRow homeRowKind = 244
 
 func (projectsPanel) rows(in *homeGridInput) homePanelRows {
 	ordered := projectsOrdered(in)
-	shown := min(homeProjectRows, len(ordered))
+	shown := min(homeSlotOf(panelProjects).most, len(ordered))
 	pad := 0
 	for _, project := range ordered[:shown] {
 		pad = max(pad, min(homeProjectPad, len([]rune(projectWord(project, in.tilde)))))

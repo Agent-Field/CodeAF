@@ -18,10 +18,6 @@ package tui3
 // for belongs.
 type recentPanel struct{ homePanelBase }
 
-// homeRecentRows is how many conversations the panel draws before its fold:
-// this window's own and the four before it.
-const homeRecentRows = 5
-
 func (recentPanel) rows(in *homeGridInput) homePanelRows {
 	var own *switcherRow
 	var rest []switcherRow
@@ -36,7 +32,9 @@ func (recentPanel) rows(in *homeGridInput) homePanelRows {
 		}
 	}
 	lines := append([]homeLine(nil), in.errands...)
-	room := homeRecentRows
+	// The panel hands the layout as many conversations as its budget in the
+	// order table, and the layout draws five of them or, in a tall frame, more.
+	room := homeSlotOf(panelRecent).most
 	if own != nil {
 		lines = append(lines, switcherRowLine(*own, recentOwnCell(*own, in)))
 		room--

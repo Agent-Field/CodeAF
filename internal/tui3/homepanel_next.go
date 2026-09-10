@@ -13,13 +13,10 @@ import (
 // whole machine. Every row opens the standing place, where the orders are kept.
 type nextPanel struct{ homePanelBase }
 
-// homeNextRows is how many the panel draws before `N more · standing`.
-const homeNextRows = 3
-
 func (nextPanel) rows(in *homeGridInput) homePanelRows {
 	views := nextActive(in)
 	standByNextDue(views)
-	shown := min(homeNextRows, len(views))
+	shown := min(homeSlotOf(panelNext).most, len(views))
 	lines := make([]homeLine, 0, shown)
 	for _, view := range views[:shown] {
 		item := view.Item
