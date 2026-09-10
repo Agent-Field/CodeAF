@@ -136,7 +136,8 @@ func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 }
 
 // AND UNTIL THE JOURNAL'S TAIL HAS BEEN READ THE `here` ROW IS ONE LINE: no
-// caption, no placeholder — the next conversation stands right under it.
+// caption, no placeholder — the next conversation stands right under it (the
+// one mid-turn, which stays on this panel: `running` lists work, never chats).
 func TestTheHereRowIsOneLineUntilItsSnippetArrives(t *testing.T) {
 	lab := newSwitchLab(t)
 	a := lab.open(120, 45)

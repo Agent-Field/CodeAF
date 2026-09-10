@@ -52,7 +52,10 @@ func (needsPanel) rows(in *homeGridInput) homePanelRows {
 	lines := make([]homeLine, 0, len(items))
 	drawn := false
 	for _, item := range items {
-		item.line.cell.subRight = needsOpenWord
+		// A line that already names its door draws no second one ([needsUncheckedWord]).
+		if item.line.cell.sub != needsUncheckedWord {
+			item.line.cell.subRight = needsOpenWord
+		}
 		if item.answers != "" && !drawn {
 			item.line.cell.subRight, drawn = item.answers, true
 		}
@@ -147,6 +150,9 @@ func needsCall(project session.Project, row session.SessionRow, entry session.Ta
 	sub := switcherFirstLine(status.Reason)
 	if sub == "" {
 		sub = status.Word
+	}
+	if status.Ask.Kind == session.TaskAskCheck {
+		sub = needsUncheckedWord
 	}
 	asked := entry.EndedAt
 	if asked.IsZero() {

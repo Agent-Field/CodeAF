@@ -141,7 +141,9 @@ the right*). Top to bottom:
 
 **A row is:** the state mark, the name, and then out at the right margin the project as a
 tag, the note, and the age — or the word `here` in place of the age on the conversation
-this window is holding. The marks are `?` (amber) it is asking you something, `◐` it is
+this window is holding, with the last thing you said in it on the line under it. A
+conversation this launch has only just started is one line, `new conversation` and `here`,
+until you say something in it. The marks are `?` (amber) it is asking you something, `◐` it is
 moving, `○` at rest, `=` a standing item you paused. The note is the one fact the row is
 about: `asks: add a --report-only mode?`, `needs your ok to run bash`,
 `2 tasks running · reading filings`, `3 files made`, `ran a saved shape`.
@@ -273,7 +275,7 @@ A row is there when something has stopped and cannot go on without you:
 - a conversation in another window stopped on a question — a command to approve, a task to
   approve, a card about something standing;
 - a task the record marks as `your call` — it opens on the task's record, where its two
-  answers are. It is a row for two days after it landed; after that the panel's last line
+  answers are; work nobody could check reads `landed unchecked · enter to look`. It is a row for two days after it landed; after that the panel's last line
   counts it instead — `3 older · tasks` — and `enter` there opens tasks;
 - a reminder, watch or rule that stopped and wants an answer.
 

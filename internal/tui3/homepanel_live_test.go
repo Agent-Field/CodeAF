@@ -120,17 +120,20 @@ func TestNeedsYouOrdersTheWaitsAndDrawsAnswersOnTheTopRowOnly(t *testing.T) {
 	}
 }
 
-// A TASK THE RECORD MARKS AS YOUR CALL IS A ROW OF ITS OWN, with the engine's
-// reason under it, and enter aims at the task rather than at the conversation's
-// live edge.
+// A TASK THE RECORD MARKS AS YOUR CALL IS A ROW OF ITS OWN, and enter aims at
+// the task rather than at the conversation's live edge. Work nobody could check
+// says what the person can do about it, and draws no second `enter` beside that.
 func TestNeedsYouCarriesATaskWaitingOnYourCall(t *testing.T) {
 	l := newLiveLab(t)
 	l.task("-alpha", session.TaskIndexEntry{ID: "4", SessionID: "aaaa000000000002", Label: "fix the flaky sieve",
 		Title: "fix the flaky sieve", Status: string(session.TaskUnverified), EndedAt: l.now.Add(-30 * time.Minute)})
 	a := l.open()
 	rows := panelRows(a, panelNeeds)
-	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" || rows[0].sub == "" || rows[0].subRight != needsOpenWord {
-		t.Fatalf("the task's call is not a row of needs you: %+v", rows)
+	if len(rows) != 1 || rows[0].title != "fix the flaky sieve" || rows[0].sub != needsUncheckedWord || rows[0].subRight != "" {
+		t.Fatalf("the task's call is not a row of needs you that says what to do: %+v", rows)
+	}
+	if frame := homeText(a); !strings.Contains(frame, "landed unchecked · enter to look") || strings.Contains(frame, "nobody could check it") {
+		t.Fatalf("the row under the call does not say what to do:\n%s", frame)
 	}
 	for _, line := range panelLines(a, panelNeeds) {
 		if line.cell.kind == cellRow && (line.task == nil || line.task.ID != "4") {
@@ -188,6 +191,50 @@ func consentQuestionAt(id uint64, text string, asked time.Time) session.Presence
 	q := consentQuestion(id, text)
 	q.Asked = asked
 	return q
+}
+
+// ── where you were ──────────────────────────────────────────────────────────
+
+// A BRAND-NEW LAUNCH'S OWN ROW IS ONE LINE: `new conversation` and `here`, no
+// age and nothing under it — whatever the journal's tail has on hand — until
+// its person says something, and then the line under it is what they said.
+func TestAFreshLaunchsHereRowIsOneLineUntilItsFirstMessage(t *testing.T) {
+	l := newLiveLab(t)
+	dir := filepath.Join(l.project("-alpha"), "aaaa000000000009")
+	fresh := filepath.Join(dir, "transcript.jsonl")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fresh, []byte(`{"type":"session","version":1,"id":"aaaa000000000009"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	meta := session.Meta{ID: "aaaa000000000009", Workspace: l.workspace("alpha"), Created: l.now.Add(-time.Minute)}
+	if err := session.SaveMeta(dir, meta); err != nil {
+		t.Fatal(err)
+	}
+	openOn := func() *app {
+		a := l.app(fresh)
+		a.width, a.height = 120, 45
+		a.openHome()
+		a.home.last = map[string]session.Summary{fresh: {LastUser: "explain open addressing"}}
+		a.home.build()
+		return a
+	}
+	a := openOn()
+	own := panelRows(a, panelRecent)[0]
+	if own.title != unnamedConversationWord || own.right != homeHereWord || own.sub != "" {
+		t.Fatalf("the fresh launch's row is not one line saying here: %+v", own)
+	}
+	if next := homeLineAfter(homeText(a), unnamedConversationWord); !strings.Contains(next, "Porting the Resume Picker") {
+		t.Fatalf("the fresh launch's row carries a line under it:\n%s", homeText(a))
+	}
+	meta.LastUserAt = l.now
+	if err := session.SaveMeta(dir, meta); err != nil {
+		t.Fatal(err)
+	}
+	if next := homeLineAfter(homeText(openOn()), unnamedConversationWord); !strings.Contains(next, "explain open addressing") {
+		t.Fatalf("the first message did not arrive under the row:\n%s", next)
+	}
 }
 
 // ── running ─────────────────────────────────────────────────────────────────
