@@ -387,7 +387,7 @@ func switcherConversationNote(row session.SessionRow, seen time.Time) string {
 		if row.Presence.Question.Kind == session.QuestionConsent {
 			return line
 		}
-		return "asks: " + line
+		return switcherAsksWord + line
 	}
 	if row.Tasks.Running > 0 {
 		note := fmt.Sprintf("%d %s running", row.Tasks.Running, switcherPlural(row.Tasks.Running, "task", "tasks"))
@@ -439,13 +439,18 @@ func switcherConversationNote(row session.SessionRow, seen time.Time) string {
 
 func switcherStandingNote(view StandingItemView) string {
 	if need := switcherFirstLine(view.Item.NeedsPerson); need != "" {
-		return "asks: " + need
+		return switcherAsksWord + need
 	}
 	if view.Running && strings.TrimSpace(view.Mark.What) != "" {
 		return switcherFirstLine(view.Mark.What)
 	}
 	return ""
 }
+
+// switcherAsksWord is what a row's note says in front of the question it is
+// stopped on. The grid's needs panel draws the question under its row and takes
+// the word back off, because there the panel's own heading already says it.
+const switcherAsksWord = "asks: "
 
 func switcherFirstLine(s string) string {
 	s = strings.TrimSpace(s)
@@ -863,24 +868,10 @@ func switcherPaintRow(row switcherRow, width int, pal palette, grouped bool, p s
 	if row.needs {
 		glyph, glyphInk = tokens.GlyphNeedsHuman, pal.warn
 	}
-	age := row.age
+	age := switcherMarginWord(row)
 	project, note := row.project, row.note
 	if grouped {
 		project = ""
-	}
-	// THE RIGHT MARGIN SAYS THE ONE THING THAT DECIDES WHAT ENTER WILL DO, and an
-	// age is what it says when nothing does. A folder that is gone outranks a
-	// window holding the row, which outranks this window's own — worst news
-	// first, because that is the order a person needs them in.
-	switch {
-	case row.gone:
-		age = homeGoneShort
-	case row.coming:
-		age = takeoverComingWord
-	case row.held:
-		age = homeHeldShort
-	case row.here:
-		age = homeHereWord
 	}
 	if width < 80 {
 		note = ""
@@ -967,6 +958,25 @@ func switcherPaintRow(row switcherRow, width int, pal palette, grouped bool, p s
 		}
 	}
 	return switcherBand(fit(line, width), width, pal, p)
+}
+
+// switcherMarginWord is a row's right margin: THE ONE THING THAT DECIDES WHAT
+// ENTER WILL DO, and an age when nothing does. A folder that is gone outranks a
+// window holding the row, which outranks this window's own — worst news first,
+// because that is the order a person needs them in. The grid's panels say it
+// from here too (homepanel_recent.go).
+func switcherMarginWord(row switcherRow) string {
+	switch {
+	case row.gone:
+		return homeGoneShort
+	case row.coming:
+		return takeoverComingWord
+	case row.held:
+		return homeHeldShort
+	case row.here:
+		return homeHereWord
+	}
+	return row.age
 }
 
 // switcherBand is the one ground this list paints: the row the keyboard is on,
