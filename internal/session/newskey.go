@@ -28,7 +28,10 @@ package session
 // same registered reader. Nothing else may call them: they are for a transport
 // that took the news off a wire.
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 // newsKey names the conversation a piece of news belongs to.
 //
@@ -53,6 +56,53 @@ func (a *Agent) newsKey() string {
 		return root
 	}
 	return a.threadID()
+}
+
+// newsSubjectMark joins a conversation to one piece of work inside it. It is a
+// character no session id and no decimal id contains, so the two halves of a
+// subject can never be read as one another.
+const newsSubjectMark = "#"
+
+// NewsSubject is the name one piece of work's news is filed under: the
+// conversation it is rooted in, and the node inside it.
+//
+// IT IS EXPORTED BECAUSE BOTH SIDES OF THE SEAM SPELL IT, and there is exactly
+// one spelling. The engine stamps it on every phase and every sighting a node
+// produces ([Agent.newsSubject]); a surface asks its own desks for the subject
+// of the room it has open (internal/tui3's phase.go and lanes.go). Two
+// hand-written spellings of one identity is a room that quietly draws nothing
+// forever, which is a defect no test would name.
+//
+// THE CONVERSATION IS PART OF THE NAME BECAUSE NODE IDS RESTART. Every
+// conversation counts its work from one, so `7` alone would alias — and a
+// window CAN be looking at two conversations' node 7 at once, which is exactly
+// what a guest room is (internal/tui3's taskGuest, whose own comment says a
+// per-task key must be built this way for the same reason).
+//
+// A CONVERSATION THAT CANNOT NAME ITSELF NAMES NOTHING. An empty conversation
+// gives an empty subject, which reads as "the conversation" everywhere a
+// subject is read — the honest answer, because a subject nobody can scope is a
+// subject that would collide with somebody else's.
+func NewsSubject(conversation string, node uint64) string {
+	if conversation = strings.TrimSpace(conversation); conversation == "" {
+		return ""
+	}
+	return conversation + newsSubjectMark + strconv.FormatUint(node, 10)
+}
+
+// newsSubject is what this agent's news is ABOUT, as opposed to [Agent.newsKey],
+// which is whose it is.
+//
+// A CONVERSATION IS THE EMPTY SUBJECT and a task node is itself. That asymmetry
+// is the compatibility bargain stated on [provider.PhaseNews.Subject]: every
+// producer that predates the field, and every older peer across a connection,
+// is talking about a conversation, so the conversation's own news must go on
+// carrying no subject at all.
+func (a *Agent) newsSubject() string {
+	if a == nil || !a.config.InTask || a.config.taskID == 0 {
+		return ""
+	}
+	return NewsSubject(a.newsKey(), a.config.taskID)
 }
 
 // NewsKey is [Agent.newsKey] for the transport that has to file a connection

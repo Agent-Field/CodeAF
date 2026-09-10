@@ -1647,8 +1647,14 @@ func (a *app) ellipsisShowing() bool {
 // answer is streaming, a call is spinning, the turn is over) the rider takes the
 // phase up, so no state of a turn is without it. That is the whole rule: ONE
 // HOME AT A TIME, and never the same words on two rows.
+//
+// AND A ROOM HAS NO PULSE TO HOLD IT. The pulse is a row of the CONVERSATION's
+// transcript (this file's [app.deckRows]), and while a room is open the body is
+// the room's own page — so there is no second row for the words to appear
+// twice on, and a conversation that happens to be working behind the room must
+// not silence the node's clock in front of it.
 func (a *app) pulseHoldsThePhase(news PhaseNews) bool {
-	if a.inlineWaitShowing {
+	if a.inlineWaitShowing || a.roomOpen() {
 		return false
 	}
 	return a.ellipsisShowing() && phaseWords(news, a.now()) != ""
@@ -2230,12 +2236,32 @@ func (a *app) identityParts(width int) (string, hudSpan) {
 		// exact misreading [roomModelLead] exists to prevent. And a dropped model
 		// takes its press target with it — the press acts on what the row NAMES,
 		// so a segment that is not drawn is not a door.
+		//
+		// AND THE NODE'S OWN MACHINE RIDES ITS OWN MODEL (lanes.go's
+		// [app.roomLaneRider]), which makes the ladder four rungs:
+		//
+		//   ⠋ Ship the parser fix · task glm-5.2 · via deepinfra
+		//   ⠋ Ship the parser fix · task glm-5.2
+		//   ⠋ Ship the parser fix
+		//   ⠋ Ship the parser f…
+		//
+		// The rider gives way before the model for the reason the model gives way
+		// before the name: each rung is the least identifying fact left. It is the
+		// conversation's own rule said over a second subject — attribution rides
+		// the model it is about, and the rate stands at the right edge
+		// ([app.liveRiderAt]) — and it became possible only when a piece of news
+		// started naming which piece of work it was about, because until then the
+		// only sighting a room could reach was the conversation's.
 		word := a.roomModelWord()
-		fact := ""
+		fact, plain := "", ""
 		if word != "" {
-			fact = " · " + word
+			plain = " · " + word
+			fact = plain + a.roomLaneRider()
 		}
 		cluster := a.roomChip(0)
+		if width > 0 && ansi.StringWidth(cluster)+ansi.StringWidth(fact) > width {
+			fact = plain
+		}
 		if width > 0 && ansi.StringWidth(cluster)+ansi.StringWidth(fact) > width {
 			fact = ""
 			if ansi.StringWidth(cluster) > width {
@@ -2252,16 +2278,18 @@ func (a *app) identityParts(width int) (string, hudSpan) {
 		if fact == "" {
 			return cluster, hudSpan{}
 		}
-		// The LEAD WORD IS PART OF THE TARGET, exactly as the served rider is part
-		// of the conversation's: "task glm-5.2" is one fact said in three words, and
-		// a person pressing any of them means the same thing (room.go's
-		// [roomModelLead]).
+		// The LEAD WORD AND THE MACHINE ARE PART OF THE TARGET, exactly as the
+		// served rider is part of the conversation's: "task glm-5.2 · via
+		// deepinfra" is one fact said in five words, and a person pressing any of
+		// them means the same thing (room.go's [roomModelLead]). So the span is
+		// the whole fact rather than the model's own cells, which is also what
+		// keeps it right when the ladder above has dropped the rider.
 		from := ansi.StringWidth(cluster + " · ")
 		cluster += fact
 		if !a.roomModelMovable() {
 			return cluster, hudSpan{}
 		}
-		return cluster, hudSpan{from: from, to: from + ansi.StringWidth(word)}
+		return cluster, hudSpan{from: from, to: from + ansi.StringWidth(strings.TrimPrefix(fact, " · "))}
 	}
 	name := a.sessionName()
 	if name == "" {
@@ -2504,8 +2532,14 @@ func (a *app) modelRiderAt(width int) string {
 // has that nothing else does is the speed. Every OTHER phase keeps its words,
 // because in those the turn is not producing anything and the phase is the only
 // thing on the frame saying it is alive at all.
+//
+// AND IT IS THE WINDOW'S OWN WORK, NEVER THE SESSION'S (phase.go's
+// [app.windowPhase] and the law above it). While a room is open the work in
+// front of the person is that node, so this edge is the node's rate — which is
+// the whole of why a room used to show none: the figure was the conversation's,
+// and a conversation that has handed a task out is idle.
 func (a *app) liveRiderAt(width int) string {
-	news, ok := a.livePhase()
+	news, ok := a.windowPhase()
 	if !ok || a.pulseHoldsThePhase(news) {
 		return ""
 	}
@@ -2516,7 +2550,7 @@ func (a *app) liveRiderAt(width int) string {
 		// and a rate quoted beside the pulse's own silence is this program
 		// contradicting itself out loud. The emptiness law does the rest — a rate
 		// nobody has measured yet is nothing, never `0 tok/s`.
-		if a.state != stateWorking || a.awaitingReply() || news.Rate <= 0 {
+		if !a.windowWorking() || news.Rate <= 0 {
 			return ""
 		}
 		return rowLed([]rowField{rowSay(tokenWord(int(news.Rate)) + " tok/s")}, roomFor(width))
