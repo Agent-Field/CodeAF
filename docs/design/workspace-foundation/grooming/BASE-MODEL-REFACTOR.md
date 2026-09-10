@@ -1,5 +1,9 @@
 # Proposed base-model refactor
 
+Read [Target system first](TARGET-SYSTEM-BASE.md) before this implementation map.
+The desired behavior defines the refactor; existing memory/standing mechanisms
+are not the goal and their current behavior is not a constraint on the design.
+
 2026-09-10. Proposal following the memory review, not approval to implement or
 merge. The user clarified that draft PR #662 is the working baseline. Its live
 GitHub head and local checkout both resolve to `c63e03b7f`. Dev `893d66067` was

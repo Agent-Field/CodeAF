@@ -1,0 +1,84 @@
+<div id="af-base-loop">
+  <style>
+    #af-base-loop { color:var(--foreground); }
+    #af-base-loop .loop-diagram { display:block; width:100%; }
+    #af-base-loop .loop-diagram text { fill:var(--foreground); font-family:inherit; }
+    #af-base-loop .node { fill:var(--muted); stroke:var(--border); }
+    #af-base-loop .selected { fill:color-mix(in srgb,var(--viz-series-1) 15%,var(--background)); stroke:var(--viz-series-1); }
+    #af-base-loop .edge { fill:none; stroke:var(--muted-foreground); stroke-width:1.5; }
+    #af-base-loop .record { fill:var(--secondary); stroke:none; }
+    #af-base-loop .loop-inspect { margin-top:12px; }
+    #af-base-loop .loop-status { margin-top:8px; }
+  </style>
+  <h3>Target behavior, supported by our record model</h3>
+  <div class="text-small text-muted">Intent → informed action → checked outcomes → continuity</div>
+  <svg class="loop-diagram" role="img" aria-label="Request or event leads to context, action, checking, retaining results and continuation. Existing records support the loop; folder and audit views read those records."></svg>
+  <div class="viz-controls loop-inspect">
+    <label class="form-label">What each part must achieve
+      <select class="form-select" id="af-loop-stage">
+        <option value="0">1 · Request / event</option>
+        <option value="1">2 · Resolve context</option>
+        <option value="2">3 · Act &amp; coordinate</option>
+        <option value="3" selected>4 · Check the outcome</option>
+        <option value="4">5 · Retain the result</option>
+        <option value="5">6 · Continue or finish</option>
+      </select>
+    </label>
+  </div>
+  <div class="loop-status text-small" aria-live="polite" id="af-loop-detail"></div>
+  <script>
+  (() => {
+    const root = document.getElementById('af-base-loop');
+    const svg = root.querySelector('.loop-diagram');
+    const select = root.querySelector('#af-loop-stage');
+    const detail = root.querySelector('#af-loop-detail');
+    const ns = 'http://www.w3.org/2000/svg';
+    const stages = [
+      ['Request / event','intent · origin · authorization','Understand the request without requiring the person to choose the perfect folder first.'],
+      ['Resolve context','instructions + retrieved evidence','Carry applicable direction and current state; discover useful evidence beyond existing folder links.'],
+      ['Act & coordinate','tools · delegated tasks · peers','Do direct or parallel work and consult related efforts within the existing authorization.'],
+      ['Check the outcome','tests · observations · AI judgment','Gather current evidence; continue, wait or ask when the requested condition has not been established.'],
+      ['Retain the result','sources · revisions · evidence','Keep original sources, current meaning, corrections and the evidence behind reported outcomes.'],
+      ['Continue or finish','done · wait · retry · your call','Preserve unfinished and ongoing work across closed chats; honor changes, pause and stop without duplicate action.']
+    ];
+    function add(tag, attrs, text) {
+      const el = document.createElementNS(ns, tag);
+      for (const [k,v] of Object.entries(attrs)) el.setAttribute(k,String(v));
+      if (text !== undefined) el.textContent = text;
+      svg.appendChild(el); return el;
+    }
+    function draw() {
+      const w = Math.max(680,Math.round(root.getBoundingClientRect().width));
+      svg.replaceChildren(); svg.setAttribute('viewBox',`0 0 ${w} 438`);
+      const defs=add('defs',{}); const marker=document.createElementNS(ns,'marker');
+      for (const [k,v] of Object.entries({id:'af-loop-arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:6,markerHeight:6,orient:'auto-start-reverse'})) marker.setAttribute(k,v);
+      const tip=document.createElementNS(ns,'path'); tip.setAttribute('d','M0 0L10 5L0 10Z'); tip.setAttribute('fill','var(--muted-foreground)'); marker.appendChild(tip); defs.appendChild(marker);
+      const pad=12,gap=34,bw=(w-pad*2-gap*2)/3,bh=77;
+      const pos=[[pad,30],[pad+bw+gap,30],[pad+2*(bw+gap),30],[pad+2*(bw+gap),174],[pad+bw+gap,174],[pad,174]];
+      function path(d,arrow=true) { add('path',{d,class:'edge',...(arrow?{'marker-end':'url(#af-loop-arrow)'}:{})}); }
+      path(`M${pad+bw} 68H${pos[1][0]-5}`); path(`M${pos[1][0]+bw} 68H${pos[2][0]-5}`);
+      path(`M${pos[2][0]+bw/2} 107V169`);
+      path(`M${pos[3][0]} 212H${pos[4][0]+bw+5}`); path(`M${pos[4][0]} 212H${pad+bw+5}`);
+      path(`M${pad+bw/2} 174V112`);
+      add('text',{x:pad+bw/2+8,y:145,class:'text-small'},'next activation');
+      add('text',{x:pos[2][0]+bw/2-8,y:145,'text-anchor':'end',class:'text-small'},'evidence');
+      stages.forEach((s,i)=>{
+        const [x,y]=pos[i]; add('rect',{x,y,width:bw,height:bh,rx:10,class:'node'+(i===Number(select.value)?' selected':'')});
+        add('text',{x:x+13,y:y+29,'font-weight':500},`${i+1}  ${s[0]}`);
+        add('text',{x:x+13,y:y+54,class:'text-small'},s[1]);
+      });
+      path(`M${w/2} 251V282`,false);
+      add('text',{x:w/2,y:305,'text-anchor':'middle','font-weight':500},'Persistent records — read and updated throughout');
+      const names=['Folders · membership','Chats · source history','Context · revisions','Work · runs · files'];
+      const rw=(w-pad*2-24)/4;
+      names.forEach((n,i)=>{const x=pad+i*(rw+8);add('rect',{x,y:320,width:rw,height:42,rx:7,class:'record'});add('text',{x:x+rw/2,y:346,'text-anchor':'middle',class:'text-small'},n);});
+      path(`M${w/2} 363V386`);
+      add('text',{x:w/2,y:412,'text-anchor':'middle'},'Folder navigation · current work · source and activity inspection');
+      detail.textContent=stages[Number(select.value)][2];
+    }
+    select.addEventListener('change',draw);
+    new ResizeObserver(draw).observe(root);
+    draw();
+  })();
+  </script>
+</div>
