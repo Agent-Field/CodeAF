@@ -758,7 +758,28 @@ func (r *hedgeRace) claim(preferred string, past bool) (lane, why string) {
 	return "", "no alt"
 }
 
-// rememberRefusal keeps the first reason a controller-requested hedge did not
+// ── WHAT "REFUSED" MAY MEAN ON A ROW ────────────────────────────────────────
+//
+// `refused` NAMES WHAT THIS QUESTION WAS LEFT WITHOUT, and nothing else. It was
+// written wherever any gate anywhere said no, which made it the commonest word
+// in the log and the least informative: a race that put THREE arms on the wire
+// and was then declined a fourth carried `hedged arms=3 refused=budget`, which
+// is a row saying both that a rescue happened and that one was refused. A
+// question that was answered while a stall rescue was being priced carried the
+// same word for a rescue nobody needed by then.
+//
+// So a refusal is remembered only while there is still something to be refused
+// — no answer in, no rescue already running — and it is read back off the row
+// only if the question really ended with the one arm it started with. Both
+// halves are needed and they are not the same test: the walk deliberately
+// ignores an earlier purse refusal (see [hedgeRace.walk]), so a question can be
+// refused a hedge at three seconds and still put a second machine on the wire
+// at nine.
+//
+// NONE OF THIS CHANGES WHAT IS SPENT. The purse decides exactly what it decided
+// before; this is about what the row is allowed to claim afterwards.
+
+// rememberRefusal keeps the first reason a rescue this question NEEDED did not
 // reach the wire. Later beats can encounter another closed gate, but changing
 // the word would make the call's row depend on timing rather than on what first
 // stopped its rescue.
@@ -774,9 +795,26 @@ func (r *hedgeRace) rememberRefusal(why string) {
 // rememberRefusalLocked is the locked half for callers already changing the
 // race state beside the refusal.
 func (r *hedgeRace) rememberRefusalLocked(why string) {
-	if r.refusal == "" {
-		r.refusal = why
+	if r.refusal != "" {
+		return
 	}
+	// AN ANSWER IN HAND IS NOT A RESCUE REFUSED. A gate that closes after the
+	// question has been answered, or beside an arm that is already running,
+	// declined something nobody was waiting on.
+	if r.winner >= 0 || len(r.arms) > 1 {
+		return
+	}
+	r.refusal = why
+}
+
+// refusalLocked is what the row may say this question was left without: the
+// remembered word, and only where the question really did end with the single
+// arm it started with.
+func (r *hedgeRace) refusalLocked() string {
+	if len(r.arms) > 1 {
+		return ""
+	}
+	return r.refusal
 }
 
 // ask is a pinned lane's rescue: the person who named the machine is asked
@@ -1252,7 +1290,7 @@ func (r *hedgeRace) spend(arm int) (arms int, waste float64, note, refused strin
 			waste += r.estimateLocked(laneOf(other), other.watch.written())
 		}
 	}
-	return len(r.arms), waste, r.note, r.refusal
+	return len(r.arms), waste, r.note, r.refusalLocked()
 }
 
 // settle writes the ledger and the report, and hands back the winner's answer.

@@ -1491,7 +1491,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.refreshSystemLocked()
 	hub := newEventHub()
 	a.hub = hub
-	turnCtx, cancel := context.WithCancel(ctx)
+	turnCtx, cancel := context.WithCancelCause(ctx)
 	a.cancel = cancel
 	// AND THE TURN CARRIES ITS OWN SECOND STAGE (abandon.go). The signal rides on
 	// the context because the waits that need it are several frames down inside
@@ -1556,7 +1556,10 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		// without a tool call and nobody interrupted. It is what decides
 		// whether a queued follow-up may start (see [Agent.FollowUp]).
 		completed := false
-		defer cancel()
+		// NO CAUSE, BECAUSE NOTHING WAS STOPPED. This is the turn's own tidying
+		// on the way out and there is nobody left waiting on the context; a door
+		// named here would put a stop on a turn that finished (stopcause.go).
+		defer cancel(nil)
 		defer hub.close()
 		defer func() {
 			// A TASK NEVER STAYS UNOWNED PAST THE END OF A TURN. Anything the settle
@@ -1779,7 +1782,19 @@ func (a *Agent) dropFollowUpsLocked() {
 // it into the transcript (the person typed it, so it is part of the record) —
 // and that drain starts nothing, so it cannot resurrect anything. Both queues
 // are empty once the interrupted turn has finished.
-func (a *Agent) Interrupt() {
+func (a *Agent) Interrupt() { a.interruptFor(StopByPerson) }
+
+// InterruptFor is the same door for machinery that is not a person: a window
+// taking the conversation over, a tab closing, a hosted session being retired.
+//
+// IT EXISTS SO THAT THE TURN CAN ACCOUNT FOR ITSELF AFTERWARDS. Everything
+// below is identical either way — the same queues are dropped, the same hands
+// are stopped — and the only difference is the word the cancelled context
+// carries, which is what decides whether the person is owed a sentence about a
+// reply that never arrived (stopcause.go).
+func (a *Agent) InterruptFor(door StopDoor) { a.interruptFor(door) }
+
+func (a *Agent) interruptFor(door StopDoor) {
 	// ONE GENERATION FOR THIS STOP, minted before the turn context dies so a
 	// leftover handler that has not yet entered callRole shares the same
 	// "what changed" decision as the redirect that follows (interrupt_fan.go).
@@ -1800,7 +1815,7 @@ func (a *Agent) Interrupt() {
 	a.stopSteerGraceLocked()
 	a.mu.Unlock()
 	if cancel != nil {
-		cancel()
+		cancel(stopFor(door))
 	}
 	// AND EVERY HAND STOPS WITH THE ANSWER IT WAS PART OF. A background job
 	// deliberately survives this — it is a command the person asked to be left
@@ -2056,7 +2071,7 @@ func (a *Agent) Close() error {
 		titleStop()
 	}
 	if cancel != nil {
-		cancel()
+		cancel(stopFor(StopByClosing))
 	}
 	if memoryStop != nil {
 		a.waitForMemory(memoryStop)

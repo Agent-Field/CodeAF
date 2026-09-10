@@ -402,10 +402,10 @@ func TestASteerGraceCannotDetachWorkInsideAnInterrupt(t *testing.T) {
 	real := agent.cancel
 	// Close cancels too, so both sides are once-only: the gate is about the ONE
 	// pass Interrupt makes through here.
-	agent.cancel = func() {
+	agent.cancel = func(cause error) {
 		arrived.Do(func() { close(entered) })
 		<-release
-		real()
+		real(cause)
 	}
 	agent.mu.Unlock()
 	if watch == nil {

@@ -204,7 +204,7 @@ func (a *app) stopConversation(tab chatTab) error {
 		return nil
 	}
 	if held := a.behind[tab.key]; held != nil && held.conv.Agent != nil {
-		held.conv.Agent.Interrupt()
+		held.conv.Agent.InterruptFor(session.StopByLeaving)
 		if doors, ok := held.conv.Agent.(stopAgent); ok {
 			tasks, jobs := held.watch.workIDs()
 			for _, id := range append(tasks, jobs...) {

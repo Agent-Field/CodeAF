@@ -7013,7 +7013,7 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 		// the engine swapped to, so this close would land on the conversation
 		// /new had just made ([Options.SharedAgent]).
 		if leaving != nil && !a.shared {
-			leaving.Interrupt()
+			leaving.InterruptFor(session.StopByLeaving)
 			if err := leaving.Close(); err != nil {
 				a.note("close failed: " + err.Error())
 			}

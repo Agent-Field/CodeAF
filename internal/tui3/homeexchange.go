@@ -766,7 +766,7 @@ func (a *app) fileExchange(ex *homeExchange) {
 	// left running into a closed agent's grace period is the pause a person
 	// feels on the way out.
 	if ex.working {
-		ex.agent.Interrupt()
+		ex.agent.InterruptFor(session.StopByLeaving)
 	}
 	_ = ex.agent.Close()
 	a.moveFiled(ex)
@@ -1401,7 +1401,7 @@ func (a *app) promoteExchange(ex *homeExchange) tea.Cmd {
 		return nil
 	}
 	if ex.working {
-		ex.agent.Interrupt()
+		ex.agent.InterruptFor(session.StopByLeaving)
 	}
 	// THE AGENT CLOSES BEFORE THE FOLDER MOVES (this file's header says why),
 	// and the close failing is not a reason to keep somebody out of their own

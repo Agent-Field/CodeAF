@@ -75,7 +75,7 @@ func TestTheExpectedRemainingWaitRisesWithTheWait(t *testing.T) {
 		far := int(math.Min(30, belief.Quantile(4)) * 1000)
 		turn, least := 0.0, math.Inf(1)
 		for ms := 1; ms <= far; ms++ {
-			if wait := belief.Remaining(float64(ms) / 1000); wait < least {
+			if wait, _ := belief.Remaining(float64(ms) / 1000).Get(); wait < least {
 				turn, least = float64(ms)/1000, wait
 			}
 		}
@@ -84,7 +84,7 @@ func TestTheExpectedRemainingWaitRisesWithTheWait(t *testing.T) {
 		}
 		previous := least
 		for ms := int(turn*1000) + 1; ms <= far; ms++ {
-			wait := belief.Remaining(float64(ms) / 1000)
+			wait, _ := belief.Remaining(float64(ms) / 1000).Get()
 			if wait < previous-1e-9 {
 				t.Fatalf("σ=%g: W fell from %g to %g at s=%.3f", sigma, previous, wait, float64(ms)/1000)
 			}
@@ -95,7 +95,7 @@ func TestTheExpectedRemainingWaitRisesWithTheWait(t *testing.T) {
 		// that has just been sent. That is the whole argument for hedging, and
 		// it is why the predictive spread has a floor of one nat — a belief
 		// narrower than that has no tail to be surprised by.
-		if sigma >= 1 && previous <= belief.Remaining(0) {
+		if start, _ := belief.Remaining(0).Get(); sigma >= 1 && previous <= start {
 			t.Fatalf("σ=%g: a long silence bought no pessimism at all", sigma)
 		}
 	}
@@ -107,7 +107,11 @@ func TestTheClosedFormIsTheDefinition(t *testing.T) {
 	belief := logNormal(1.2, 0.9)
 	for _, silence := range []float64{0.01, 0.5, 1.2, 4, 12, 40} {
 		want := remaining(belief, silence)
-		got := belief.Remaining(silence)
+		got, known := belief.Remaining(silence).Get()
+		if !known {
+			t.Errorf("W(%g) could not be priced at all, want %g", silence, want)
+			continue
+		}
 		if math.Abs(got-want) > 1e-9*math.Max(1, math.Abs(want)) {
 			t.Errorf("W(%g) = %g, want %g", silence, got, want)
 		}
@@ -119,8 +123,13 @@ func TestTheClosedFormIsTheDefinition(t *testing.T) {
 // may make one.
 func TestNothingIsBelievedAboutAnEmptySurvival(t *testing.T) {
 	var nothing Survival
-	if nothing.Known() || nothing.Mean() != 0 || nothing.Quantile(1.2816) != 0 || nothing.Remaining(4) != 0 {
+	if nothing.Known() || nothing.Mean() != 0 || nothing.Quantile(1.2816) != 0 {
 		t.Fatal("an empty survival invented a number")
+	}
+	// AND W(s) ON ONE IS NOTHING RATHER THAN ZERO. Zero is a claim that the
+	// wait is over; nothing is the truth, and [Seconds.Over] cannot act on it.
+	if left := nothing.Remaining(4); left.Known() {
+		t.Fatalf("an empty survival priced a wait: %+v", left)
 	}
 }
 
@@ -902,17 +911,96 @@ func TestALegitimateThinkIsLeftAloneAndAHungOneIsNot(t *testing.T) {
 		}
 		return acted
 	}
-	// A thought at the median and one at the belief's own p90: both ordinary.
-	for _, ordinary := range []time.Duration{p.Ceiling / 2, 9 * time.Second} {
+	// A thought at the median, one at the belief's own p90, and one at four
+	// times the ceiling: all ordinary for a model that thinks for twenty
+	// seconds at the median.
+	//
+	// THE LAST OF THOSE IS THE FIX. It used to be acted on at exactly the
+	// ceiling, because the ceiling measured from the last VISIBLE token and a
+	// run of thought produces none — so every model that deliberates for longer
+	// than a person's patience was reported as a stall while it was writing at
+	// full rate. The measured case was 6,174 reasoning tokens in 108 seconds.
+	for _, ordinary := range []time.Duration{p.Ceiling / 2, 9 * time.Second, 20 * time.Second, 40 * time.Second} {
 		if run(ordinary) {
 			t.Errorf("a %s run of thought was acted on, and this model thinks for %.0fs at the median",
 				ordinary, p.Think.Quantile(0))
 		}
 	}
-	// The ceiling is what bounds a thought that goes past a person's patience,
-	// and it is untouched: a thought longer than it is acted on regardless.
-	if !run(2 * p.Ceiling) {
-		t.Error("a run of thought twice the ceiling was never acted on")
+	// AND THE DURATION CLOCK IS WHAT BOUNDS ONE THAT REALLY HAS GONE WRONG. Far
+	// enough into the tail of this model's OWN thinking distribution the
+	// abnormality gate opens and the payoff test crosses, which is the only
+	// clock that can tell a model deliberating from a model hung.
+	if !run(10 * time.Minute) {
+		t.Error("a run of thought ten minutes long was never acted on")
+	}
+}
+
+// TestAThinkingStreamIsNotSilenceAndAStoppedOneIs is the D1 regression, and it
+// is two halves of one law: the ceiling bounds a STILL WIRE.
+//
+// A model writing reasoning at a healthy rate is the opposite of a model that
+// has stopped, and until this the two were the same event to the ceiling. The
+// second half is what keeps the absolute absolute: the moment the deltas stop,
+// the ceiling runs from THERE and fires exactly where it always did.
+func TestAThinkingStreamIsNotSilenceAndAStoppedOneIs(t *testing.T) {
+	p := plan()
+	// Nothing is believed about how long this model thinks, which is the case
+	// that matters: a model somebody has just switched to. WHERE NOTHING IS
+	// MEASURED THE ANSWER IS "KEEP WAITING WHILE THE WIRE IS ALIVE".
+	p.Think = Survival{}
+	watch, now := New(p), epoch
+	// Fifty-seven hidden tokens a second for two minutes — the measured rate of
+	// the stream that was called a stall — is twelve times the ceiling.
+	for now.Before(epoch.Add(2 * time.Minute)) {
+		now = now.Add(17 * time.Millisecond)
+		if act := watch.Note(Reading{At: now, Hidden: 1}); act.Kind != None {
+			t.Fatalf("a healthy thinking stream was acted on after %s: %+v", now.Sub(epoch), act)
+		}
+	}
+	if phase := watch.Phase(); phase != PhaseThinking {
+		t.Fatalf("two minutes of reasoning deltas left the phase at %v", phase)
+	}
+	// AND THE DEADLINE IT ASKS TO BE WOKEN AT MOVES WITH THE WIRE. A deadline
+	// still anchored to the request going out would be a moment already gone,
+	// which is how a beat becomes a spin.
+	if deadline := watch.Deadline(); !deadline.After(now) {
+		t.Fatalf("the controller wants waking at %s, which is not after %s", deadline.Sub(epoch), now.Sub(epoch))
+	}
+	// Now the endpoint stops writing. The ceiling runs from the last delta.
+	stopped := now
+	acted := time.Duration(-1)
+	for step := 0; step <= 20_000; step += 50 {
+		if watch.Quiet(stopped.Add(time.Duration(step)*time.Millisecond)).Kind != None {
+			acted = time.Duration(step) * time.Millisecond
+			break
+		}
+	}
+	if acted < 0 || acted > p.Ceiling {
+		t.Fatalf("a wire that stopped mid-thought was acted on after %s; the ceiling is %s", acted, p.Ceiling)
+	}
+}
+
+// TestAHeartbeatBuysAThinkingStreamNothing is the other side of the same law.
+// A router's own comment line is proof about the PATH and about nothing else,
+// so a lane that has stopped writing reaches the ceiling however politely it
+// keeps the connection open.
+func TestAHeartbeatBuysAThinkingStreamNothing(t *testing.T) {
+	p := plan()
+	p.Think = Survival{}
+	watch, now := New(p), epoch
+	// One real thinking delta, so the phase is the thinking phase, and then
+	// nothing but heartbeats.
+	now = now.Add(200 * time.Millisecond)
+	watch.Note(Reading{At: now, Hidden: 1})
+	acted := time.Duration(-1)
+	for step := 50; step <= 30_000; step += 50 {
+		if watch.Note(Reading{At: now.Add(time.Duration(step) * time.Millisecond), Beat: true}).Kind != None {
+			acted = time.Duration(step) * time.Millisecond
+			break
+		}
+	}
+	if acted < 0 || acted > p.Ceiling {
+		t.Fatalf("a heartbeat-only stream was acted on after %s; the ceiling is %s", acted, p.Ceiling)
 	}
 }
 
@@ -986,3 +1074,91 @@ func TestOneStallIsCaughtByTheArithmeticAndNotByTheBound(t *testing.T) {
 		t.Fatalf("acted after %s, which is not inside the %s ceiling", acted, p.Ceiling)
 	}
 }
+
+// ── NOTHING IS NOT A NUMBER (D2) ────────────────────────────────────────────
+
+// TestAWaitWithNowhereToGoIsPricedAtNothingRatherThanInfinity is the second
+// half of the thinking-turn fix. What acting costs used to be +Inf on every
+// request that held no alternative and on every request nobody was waiting on,
+// and an infinity is a number: it travelled through the act into the model-call
+// log, where JSON cannot spell it, so the row lost its own figure and carried a
+// sentence about a float instead.
+func TestAWaitWithNowhereToGoIsPricedAtNothingRatherThanInfinity(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		make func(Plan) Plan
+	}{
+		{"no alternative", func(p Plan) Plan { p.Alts = nil; return p }},
+		{"nobody waiting", func(p Plan) Plan { p.Lambda = 0; return p }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			watch := New(test.make(plan()))
+			// Past the ceiling, where an act is certain, so the act carrying the
+			// figures is the one under test.
+			var act Act
+			for step := 0; step <= 20_000; step += 50 {
+				if act = watch.Quiet(at(step)); act.Kind != None {
+					break
+				}
+			}
+			if act.Kind == None {
+				t.Fatal("the ceiling never acted, so this test proves nothing")
+			}
+			if cost, known := act.Cost.Get(); known {
+				t.Errorf("acting was priced at %g seconds with nowhere to act to", cost)
+			}
+			if act.Cost.Known() {
+				t.Error("a cost nobody could state was reported as a figure")
+			}
+			// AND THE WAIT IS STILL A NUMBER where the belief holds one: the
+			// emptiness is about the alternative, not about the measurement.
+			if _, known := act.Wait.Get(); !known {
+				t.Error("a measured first-token belief could not price the wait")
+			}
+		})
+	}
+}
+
+// TestNothingAndPastPricingAreNotFloats pins [Seconds] itself: the payoff test
+// needs BOTH sides before it can say yes, and the one asymmetric answer is a
+// wait past what its belief can price against a cost that is a number.
+func TestNothingAndPastPricingAreNotFloats(t *testing.T) {
+	var unknown Seconds
+	cheap, dear := Measured(1), Measured(100)
+	if unknown.Known() {
+		t.Error("the zero value is nothing and says so")
+	}
+	if _, known := PastPricing().Get(); known {
+		t.Error("a wait past pricing handed out a number")
+	}
+	if !PastPricing().Known() {
+		t.Error("a wait past pricing says nothing at all about itself")
+	}
+	for _, test := range []struct {
+		name       string
+		wait, cost Seconds
+		want       bool
+	}{
+		{"both measured, acting pays", dear, cheap, true},
+		{"both measured, waiting pays", cheap, dear, false},
+		{"no cost is no alternative", dear, unknown, false},
+		{"no wait is no evidence", unknown, cheap, false},
+		{"past pricing against a figure", PastPricing(), cheap, true},
+		{"past pricing against nothing", PastPricing(), unknown, false},
+		{"a figure against past pricing", dear, PastPricing(), false},
+	} {
+		if got := test.wait.Over(test.cost, 0.05); got != test.want {
+			t.Errorf("%s: acting pays = %v, want %v", test.name, got, test.want)
+		}
+	}
+	// Plus adds to a figure and leaves the other two alone: a sum with a number
+	// in it does not make one.
+	if got, _ := Measured(2).Plus(3).Get(); got != 5 {
+		t.Errorf("2 + 3 seconds = %g", got)
+	}
+	if unknown.Plus(3).Known() || !sameReach(PastPricing().Plus(3), PastPricing()) {
+		t.Error("adding seconds to nothing invented something")
+	}
+}
+
+func sameReach(a, b Seconds) bool { return a.reach == b.reach }

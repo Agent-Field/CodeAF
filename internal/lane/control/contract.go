@@ -97,22 +97,109 @@ func (s Survival) Quantile(z float64) float64 {
 // the thing that feels wrong until it is written down: a stream four seconds
 // late is not four seconds from finishing, it is a draw from the tail.
 //
-// Infinity is the honest answer far enough into the tail that the ratio below
-// is two vanishing numbers divided by each other. Anything still running there
-// should have been acted on long ago.
-func (s Survival) Remaining(silence float64) float64 {
+// IT ANSWERS IN [Seconds] AND NEVER IN A FLOAT, because two of its three
+// answers are not numbers. A belief nobody measured says NOTHING — it used to
+// say zero, which is a claim that the wait is over — and a wait far enough into
+// the tail that the ratio below is two vanishing numbers divided by each other
+// is PAST PRICING: it used to say +Inf, and that infinity travelled through the
+// act into the model-call log, where it cost the row its number and bought a
+// sentence about a float instead (internal/calllog's finite.go).
+func (s Survival) Remaining(silence float64) Seconds {
 	if !s.Known() {
-		return 0
+		return Seconds{}
 	}
 	if silence <= 0 {
-		return s.Mean()
+		return Measured(s.Mean())
 	}
 	survival := 1 - phi((math.Log(silence)-s.Mu)/s.Sigma)
 	if survival < 1e-12 {
-		return math.Inf(1)
+		return PastPricing()
 	}
 	weighted := s.Mean() * phi((s.Mu+s.Sigma*s.Sigma-math.Log(silence))/s.Sigma)
-	return weighted/survival - silence
+	return Measured(weighted/survival - silence)
+}
+
+// ── A FIGURE THE LADDER MAY REASON WITH, OR NOTHING AT ALL ──────────────────
+//
+// THE ARITHMETIC HAS THREE ANSWERS AND A FLOAT CAN ONLY SPELL ONE. Two of the
+// three used to be spelled as infinity — W(s) far out in the tail, and what
+// acting costs when there is nowhere to act TO — and an infinity is a number,
+// so everything downstream reasoned with it as one. It crossed `wait > cost +
+// margin` by construction, it reached [Act], and it reached the model-call log,
+// where the one thing JSON cannot spell took the row's own figure off it and
+// left a sentence about a float in its place. A row that says nothing is the
+// emptiness law working; a row that says "cost_s was +Inf" is a program
+// explaining its own arithmetic to somebody who asked what happened.
+//
+// So the three answers are three states, and the only comparison the controller
+// ever makes is [Seconds.Over], which has to be given both of them before it
+// can say yes.
+type reach uint8
+
+const (
+	// nothing is no belief and no alternative: the question cannot be priced
+	// because the material to price it with was never measured.
+	nothing reach = iota
+	// figure is a number of seconds.
+	figure
+	// pastPricing is a wait so far into the tail that the belief holding it can
+	// no longer put a number on it. It is not unknown — it is known to be worse
+	// than anything a finite cost could be — and it is the one state that makes
+	// [Seconds.Over] true without arithmetic.
+	pastPricing
+)
+
+// Seconds is a figure in seconds that may be a number, may be unknown, and may
+// be past what its belief can price. The zero value is UNKNOWN, so a field
+// nobody filled in decides nothing.
+type Seconds struct {
+	seconds float64
+	reach   reach
+}
+
+// Measured is a real number of seconds.
+func Measured(seconds float64) Seconds { return Seconds{seconds: seconds, reach: figure} }
+
+// PastPricing is a wait past anything its belief can put a number on.
+func PastPricing() Seconds { return Seconds{reach: pastPricing} }
+
+// Get is the number and whether there is one. Only a measured figure has one:
+// an unknown has nothing to give, and one past pricing has no number to give
+// even though it is the largest answer there is.
+func (s Seconds) Get() (float64, bool) { return s.seconds, s.reach == figure }
+
+// Known reports whether this figure says anything at all — a number, or that
+// the wait is past pricing. It is what the commitment half of the inequality
+// asks: an arm may only be committed to against a cost somebody could state.
+func (s Seconds) Known() bool { return s.reach != nothing }
+
+// Plus adds seconds to a figure. Adding to nothing is still nothing, and adding
+// to a wait past pricing leaves it past pricing: neither is a number, and a sum
+// with a number in it does not make one.
+func (s Seconds) Plus(extra float64) Seconds {
+	if s.reach != figure {
+		return s
+	}
+	return Measured(s.seconds + extra)
+}
+
+// Over is the payoff test — W(s) > A + m — and it is the ONLY comparison this
+// package makes between two of these.
+//
+// IT NEEDS BOTH SIDES BEFORE IT CAN SAY YES, which is the whole reason the type
+// exists. A cost nobody can state is not a cheap alternative: it is no
+// alternative, and acting toward it cannot pay. A wait nobody has measured is
+// not a short wait; it simply is not evidence. The one asymmetric answer is a
+// wait past pricing against a cost that is a number, which is yes by
+// construction — that is what past pricing means.
+func (s Seconds) Over(cost Seconds, margin float64) bool {
+	if s.reach == nothing || cost.reach != figure {
+		return false
+	}
+	if s.reach == pastPricing {
+		return true
+	}
+	return s.seconds > cost.seconds+margin
 }
 
 // phi is the standard normal distribution function.
@@ -180,6 +267,11 @@ type Plan struct {
 	// controller acts whatever it believes, because a belief that says "keep
 	// waiting" past a person's patience is a belief answering the wrong
 	// question. It is the role's, and every role has one.
+	//
+	// IT BOUNDS A STILL WIRE. An endpoint that is writing — visibly, or a run
+	// of reasoning nobody can read — is not a silence this figure is about, and
+	// the one exception is a visible rate that has collapsed, which is a person
+	// waiting whatever the wire is doing. See [hazard.stillSince].
 	Ceiling time.Duration
 	// Floor is the shortest silence that may be acted on. Below it a second
 	// request is racing the network rather than the lane.
@@ -254,10 +346,13 @@ type Act struct {
 	Lane    string
 	Reason  string
 	Silence time.Duration
-	// Wait is E[remaining] in seconds at the moment of the act, and Cost what
-	// acting was expected to cost in the same unit.
-	Wait float64
-	Cost float64
+	// Wait is E[remaining] at the moment of the act, and Cost what acting was
+	// expected to cost. Both are [Seconds] rather than floats because either
+	// can honestly be nothing — an unmeasured belief, a request with nowhere to
+	// act to — and a row that carries no number is the emptiness law rather
+	// than a gap.
+	Wait Seconds
+	Cost Seconds
 }
 
 // CeilingReason is the machine word [Act.Reason] carries when the bound is what

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/remote"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // ── ONE CONNECTION, ONE CONVERSATION ────────────────────────────────────────
@@ -43,8 +44,9 @@ type recordingAgent struct {
 	closes     int
 }
 
-func (r *recordingAgent) Interrupt()   { r.interrupts++ }
-func (r *recordingAgent) Close() error { r.closes++; return nil }
+func (r *recordingAgent) Interrupt()                    { r.interrupts++ }
+func (r *recordingAgent) InterruptFor(session.StopDoor) { r.interrupts++ }
+func (r *recordingAgent) Close() error                  { r.closes++; return nil }
 
 // swapClient is a real client against a real engine holding conversation A.
 func swapClient(t *testing.T, engine *swapEngine) (*remote.Client, *recordingAgent) {

@@ -595,8 +595,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// drains the queue under the same lock that clears running (agent.go),
 		// so a leftover lands ahead of the next Submit's message.
 		if ctx.Err() != nil {
-			a.keepPartial(partial, hub)
-			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
+			a.endStoppedTurn(ctx, hub, partial, turn, started, model)
 			return false
 		}
 
@@ -667,10 +666,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			}
 			// Interrupt (or the caller's own deadline). Whatever was streamed
 			// before the cut is real work the person watched arrive, so it
-			// stays in the transcript and the turn ends normally.
+			// stays in the transcript and the turn ends normally — and WHICH
+			// DOOR ENDED IT is written down and, where it was not the person's
+			// own stop, said out loud (stopcause.go).
 			if ctx.Err() != nil {
-				a.keepPartial(partial, hub)
-				hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
+				a.endStoppedTurn(ctx, hub, partial, turn, started, model)
 				return false
 			}
 			// Overflow is the one error with an answer other than reporting
@@ -1051,6 +1051,36 @@ func (a *Agent) stoppedSoup(text string, hub *eventHub) bool {
 	return true
 }
 
+// endStoppedTurn is the ONE place a turn that ended with no answer is put on the
+// record, and it exists because there used to be no such place.
+//
+// A turn whose context was cancelled kept its partial reply, sealed itself and
+// returned — which is right — and wrote NOTHING about why. On a reply that was
+// still thinking there is no partial to keep either, so the whole ending was a
+// transcript with a question in it and nothing after, a model-call row saying
+// `context canceled`, and an idle status line. Nobody could tell a stop the
+// person pressed from a window that took the conversation over.
+//
+// TWO ACCOUNTS, FOR TWO READERS. The machine's goes in the journal, in the
+// machine's own words, so that the file can answer the question afterwards. The
+// person's goes to the surface, in theirs, and only where they did not do it
+// themselves: telling somebody what they just pressed is noise, and it is the
+// one door that already drew its own ending.
+//
+// THE JOURNAL ROW IS FOR THE MACHINERY DOORS ONLY. An ordinary stop is a thing
+// a person did and watched happen, and a failed-call row on every esc would
+// turn the record of a healthy session into a list of failures.
+func (a *Agent) endStoppedTurn(ctx context.Context, hub *eventHub, partial *partialBuffer, turn Usage, started time.Time, model string) {
+	a.keepPartial(partial, hub)
+	if door, stopped := stopCause(ctx); stopped && door != StopByPerson {
+		a.journalFailedCall(ctx, model, "", stopFor(door), 1, a.requestEstimate())
+		if said := stopSentence(door); said != "" {
+			hub.send(Event{Kind: EventNotice, Text: said})
+		}
+	}
+	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
+}
+
 // keepSteeredPartial records the legal assistant half of a cut generation.
 // Tool calls are deliberately absent: a call whose result can never follow is
 // a provider-invalid assistant message. When fragments had arrived, the text
@@ -1239,7 +1269,28 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		lastErr = err
 
 		if ctx.Err() != nil {
-			return nil, model, ctx.Err()
+			// THE TURN ITSELF IS OVER and no rung of this ladder can be climbed
+			// on a dead context. What is owed here is the ACCOUNT, so the cause
+			// travels out in place of a bare `context canceled` — it unwraps to
+			// [context.Canceled], so every caller that only asks whether the
+			// turn was cancelled still gets its answer (stopcause.go).
+			return nil, model, context.Cause(ctx)
+		}
+		// AND A GENERATION CUT WITH THE TURN STILL ALIVE IS RE-ASKED RATHER THAN
+		// REPORTED. A steer is answered above, by the boundary it exists to open;
+		// anything else that cuts one request out from under a live turn — now
+		// or later — is machinery, and machinery that takes a reply away owes the
+		// person another attempt at it rather than a turn that stops. The three
+		// resets at the top of this loop are exactly what such a cut needs: the
+		// text that was streamed, the reads it started and the half-arrived calls
+		// are all thrown away before the next request is assembled, so nothing of
+		// the dead attempt reaches the replacement. It costs an ordinary attempt
+		// out of the ladder's own budget, which is what stops a door that cuts
+		// every generation from cutting them forever.
+		if cause != nil {
+			a.journalFailedCall(ctx, model, "", cause, attempt+1, a.requestEstimate())
+			hub.send(Event{Kind: EventRetrying, Text: cutShortNotice})
+			continue
 		}
 		// AND THE FAILURE IS WRITTEN DOWN BEFORE ANYTHING DECIDES WHAT TO DO
 		// ABOUT IT. Every other outcome of a request reaches the journal; this
@@ -1432,6 +1483,15 @@ func (a *Agent) nextFallback(origin string, hopped []string) (string, bool) {
 	}
 	return options[len(hopped)], true
 }
+
+// cutShortNotice is the dim line for a request that was cut out from under a
+// turn that is still going — not by the stream guard, which has its own words
+// below, but by machinery inside this process.
+//
+// It is [cutNotice]'s register and for the same reason: the turn is still going,
+// nobody has to decide anything, and the person is owed the fact that the reply
+// they were watching is being started over rather than an unexplained pause.
+const cutShortNotice = "the reply was cut short — asking again"
 
 // cutNotice is the dim line the person sees while the question is asked again.
 //

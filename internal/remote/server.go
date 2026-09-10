@@ -83,6 +83,9 @@ type WrappedAgent interface {
 	FollowUp(text string) (<-chan session.Event, error)
 	Steer(text string) (<-chan session.Event, error)
 	Interrupt()
+	// InterruptFor is the stop with the door it came through on it, for the
+	// machinery stops that are not a person (internal/session's stopcause.go).
+	InterruptFor(door session.StopDoor)
 	Compact(ctx context.Context) error
 	Close() error
 	Model() string
@@ -626,7 +629,7 @@ func (sess *Session) shutDown(agent WrappedAgent, already bool) error {
 	if agent == nil || already {
 		return nil
 	}
-	agent.Interrupt()
+	agent.InterruptFor(session.StopByRetired)
 	return agent.Close()
 }
 
@@ -1277,7 +1280,7 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	sess.mu.Unlock()
 
 	if previous != nil {
-		previous.Interrupt()
+		previous.InterruptFor(session.StopByLeaving)
 		_ = previous.Close()
 	}
 	// AND EVERY RAIL IN THE ROOM IS RE-POINTED AT THE CONVERSATION THAT IS
@@ -2007,6 +2010,16 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return nil, door.StopWork()
 
 	case MethodInterrupt:
+		// A STOP WITH NO DOOR ON IT IS A PERSON'S OWN, which is what every
+		// surface older than this argument means by sending nothing.
+		args, err := arg[InterruptArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		if door := session.StopDoor(strings.TrimSpace(args.Door)); door != "" && door != session.StopByPerson {
+			agent.InterruptFor(door)
+			return nil, nil
+		}
 		agent.Interrupt()
 		return nil, nil
 

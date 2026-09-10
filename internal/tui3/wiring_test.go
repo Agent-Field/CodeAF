@@ -65,11 +65,14 @@ func (w *wiredAgent) FollowUp(text string) (<-chan session.Event, error) {
 	return w.follow, nil
 }
 
-func (w *wiredAgent) Interrupt() {
-	w.fakeAgent.Interrupt()
+func (w *wiredAgent) Interrupt() { w.InterruptFor(session.StopByPerson) }
+
+func (w *wiredAgent) InterruptFor(door session.StopDoor) {
+	w.fakeAgent.InterruptFor(door)
 	for _, stream := range w.followStreams {
 		close(stream)
 	}
+	w.followStreams = nil
 }
 
 func wired(turns ...[]session.Event) (*wiredAgent, *app) {
