@@ -295,8 +295,9 @@ type homePanelRows struct {
 	// said is what the heading carries after its word — a count, an age — and
 	// "" for the word alone.
 	said string
-	// right is a clause the heading carries at its right margin.
-	right string
+	// right is a clause the heading carries at its right margin, and money the
+	// figure inside it drawn in the money ink — the day's spend on `spend`.
+	right, money string
 }
 
 // homeCellKind is which shape one line of a panel is drawn in.
@@ -309,10 +310,12 @@ const (
 	cellHead
 	cellWhisper
 	cellFold
-	// cellBar and cellSpark are the spend panel's two drawings: the day against
-	// its allowance, and the fortnight.
+	// cellBar, cellSpark and cellFacts are the spend panel's three lines: the
+	// day against its allowance, the fortnight, and who it went to and what for
+	// (homepanel_spend.go).
 	cellBar
 	cellSpark
+	cellFacts
 )
 
 // homeCellMark is the one mark a row may wear. There are two (law 8): the
@@ -354,6 +357,9 @@ type homeCell struct {
 	// share is how full the spend bar is, and spark the fortnight's days.
 	share float64
 	spark []float64
+	// money is the figure inside a heading's right-hand clause that is drawn
+	// in the money ink rather than the dim.
+	money string
 	// row is the switcher's own row behind a conversation or a watch, which is
 	// what its verbs are read from (place_home.go's [app.homeRowVerbs]).
 	row *switcherRow
@@ -393,6 +399,10 @@ type homeGridPanel struct {
 	shown   int
 	dropped bool
 }
+
+// natural is how many rows the panel shows at its natural height: its rest,
+// or all it holds when that is fewer.
+func (p homeGridPanel) natural() int { return min(p.slot.rest, len(p.read.lines)) }
 
 // empty reports a panel with no rows at all, which draws its whisper instead.
 func (p homeGridPanel) empty() bool { return len(p.read.lines) == 0 && p.read.more == 0 }
@@ -489,10 +499,14 @@ func squeezeColumn(column []*homeGridPanel, room int) {
 // drop frees a whole panel, so the squeeze can overshoot — and air under a
 // column while `where you were` is folded is the squeeze spending the wrong
 // panel's rows.
+//
+// IT GIVES BACK ONLY UP TO A PANEL'S NATURAL HEIGHT. A squeezed column is a
+// short frame, and growth past the resting fold is for a column with room once
+// every panel has its natural height ([growColumn]).
 func regrowColumn(order, column []*homeGridPanel, room int) {
 	for i := len(order) - 1; i >= 0; i-- {
 		p := order[i]
-		for !p.dropped && p.shown < len(p.read.lines) {
+		for !p.dropped && p.shown < p.natural() {
 			p.shown++
 			if homeColumnHeight(column) > room {
 				p.shown--
@@ -554,7 +568,8 @@ func homeGridLayout(in *homeGridInput, cols, width, room int) [][]*homeGridPanel
 	for _, slot := range homePanelOrder {
 		read := slot.panel.rows(in)
 		at := slot.column(cols)
-		p := &homeGridPanel{slot: slot, read: read, shown: min(slot.rest, len(read.lines))}
+		p := &homeGridPanel{slot: slot, read: read}
+		p.shown = p.natural()
 		if p.empty() {
 			p.whisper = homeWhisperLines(slot.panel.whisper(), widths[at])
 		}
@@ -635,7 +650,7 @@ func (p homeGridPanel) lines() []homeLine {
 	if p.read.said != "" {
 		head += rowSep + p.read.said
 	}
-	out := []homeLine{{kind: homeSwitchHead, cell: &homeCell{kind: cellHead, panel: id, title: head, right: p.read.right}}}
+	out := []homeLine{{kind: homeSwitchHead, cell: &homeCell{kind: cellHead, panel: id, title: head, right: p.read.right, money: p.read.money}}}
 	if p.empty() {
 		for _, words := range p.whisper {
 			out = append(out, homeLine{kind: homeSwitchHead, cell: &homeCell{kind: cellWhisper, panel: id, title: words}})
@@ -840,6 +855,15 @@ func (h *homeView) pointGrid(want homeLine) bool {
 func (a *app) homeColsNow() int {
 	width, _ := a.size()
 	return homeGridCols(width)
+}
+
+// homeGridWidthNow is the frame width the grid lays out for, asked when home
+// opens for the same reason: a whisper wraps at its column's width, and a
+// build before the first frame that wrapped it at no width would move every
+// line under it the moment the frame arrived.
+func (a *app) homeGridWidthNow() int {
+	width, _ := a.size()
+	return width
 }
 
 // ── the pointer ────────────────────────────────────────────────────────────
