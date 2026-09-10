@@ -2389,12 +2389,14 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 				t.Fatalf("at %d columns an empty home is missing %q:\n%s", tc.width, want, text)
 			}
 		}
-		// AND AN EMPTY HOME HAS NO ROW TO STAND ON, which is the emptiness law
-		// rather than a broken cursor: a whisper names what arrives rather than
-		// a thing to open. `↑` from there reaches the tab bar,
-		// which is the whole of what this screen has to offer onward.
-		if len(placeHome{}.stops(a)) != 0 {
-			t.Fatalf("at %d columns an empty home offered a row to stand on", tc.width)
+		// AND THE ONE ROW AN EMPTY HOME HAS TO STAND ON IS THE FOLDER IT WAS
+		// OPENED IN: `projects` is never empty (DESIGN.md §4), and enter there
+		// starts the first conversation. Every other panel whispers, and a
+		// whisper names what arrives rather than a thing to open.
+		for _, at := range (placeHome{}).stops(a) {
+			if kind := a.home.lines[at].kind; kind != homeProjectRow {
+				t.Fatalf("at %d columns an empty home offered a row of kind %v to stand on", tc.width, kind)
+			}
 		}
 		// The arrows have nothing to land on and must not land on the furniture.
 		drive(t, a, key("down"))
