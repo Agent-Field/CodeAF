@@ -4314,11 +4314,14 @@ not drawn, and its letter does nothing rather than failing when you press it.
 MOVE the question rather than answering it, so a row that offered only those would have
 stopped being a question — the card draws them beside an answer or not at all.
 
-**Answered means the chips are gone, not greyed.** They are replaced by one dim line in
-your own voice saying what you did: `you took this as done`, `you said it is not finished`,
-`sent to be resolved` for a conflict handed to the merge round, `handed to aforge for this
-one` after `[d]`, or `already answered` when somebody got there first — the model's own
-settling, or another window.
+**Answered means the chips are gone, not greyed.** They are replaced by the one receipt
+line every question leaves, `decided <the card's head> → accept · you · 14:02 · c change`:
+the pick in the card's own words (`accept`, `not right`, `resolve it`, `drop it`), who
+decided — `you`, `aforge, on your settings` when the model settled it, `another window`
+when somebody else got there first — and when. The report under the second card then
+leads `you took this as done` or `incomplete — you said it is not finished`. After `[d]`
+nothing is decided yet: the answers stay drawn and the reason row reads `aforge is
+deciding`.
 
 The card's own head is **not** rewritten — it is the record of how the work came home, kept
 branch and all. What follows is a **second** card, when the task re-settles into `done` or
