@@ -215,10 +215,16 @@ every layer-C outcome equal or better.
 
 Two honest qualifications. The prefix fell 15.8% and the per-turn prompt fell
 21.6%, so the diet is doing slightly better on the wire than on the scale — the
-dynamic fixes in DESIGN.md §5 showing up beside the page. And **the cached share
-fell 40.6%**, which is the frontier-bill risk DESIGN.md §0 names: on this
-open-weight pin it costs nothing, but it is the number to watch on the frontier
-arm in §4 before anybody calls this settled.
+dynamic fixes in DESIGN.md §5 showing up beside the page. And **the cached
+tokens fell 40.6%**, which reads like the frontier-bill risk DESIGN.md §0 names.
+
+**That reading is wrong and §1c is the autopsy**, kept here rather than corrected
+in place because the row above is what the run measured. Read as a SHARE by
+dividing these two medians it says the cached fraction fell from 91% to 69%;
+asked per request and then taken at the median it ROSE, 83.0% to 95.2%, and the
+prefix did not move on a single request of either capture. A ratio of medians is
+not the median of a ratio, which is §1b's lesson arriving a second time by
+another road.
 
 ## 1b. The number this bench nearly reported instead
 
@@ -244,14 +250,20 @@ code that fixes them: a parent test counted beside its own children turned one
 broken subtest into two failures, and a `wall_s` that travelled as a JSON string
 was silently dropped by a numeric filter and printed as an em dash.
 
-## 1c. The prefix does not hold still, on either branch
+## 1c. Cache — does the prefix hold still, and did the diet move it
 
-Byte-stability is a different question from size, and DESIGN.md §0 opens on it:
-on a frontier model a prefix one byte different from the last request's
-re-prices the whole conversation cold. Nothing in this bench could see that
-until `lib/wire.py` started fingerprinting each request's system message and
-tool block from the bodies the call log already keeps. Over the **turn** calls
-of the same two runs:
+Two questions were open here and they are answered together, because the first
+one's evidence is the second one's instrument.
+
+§1a would not rule on the cached share and was right not to: a charge is an
+outcome. And byte-stability is a different question from size — DESIGN.md §0
+opens on it, because on a frontier model a prefix one byte different from the
+last request's re-prices the whole conversation cold.
+
+### The first measurement, and the question it left open
+
+`lib/wire.py` fingerprints each request's system message and tool block out of
+the bodies the call log already keeps. Over the **turn** calls of §1a's two runs:
 
 | | dev | diet |
 | --- | --- | --- |
@@ -263,15 +275,233 @@ of the same two runs:
 
 The sizes that differ by thousands are the honest ones — a shelf loaded, a
 project instruction file folded in, a task's own page. **The pairs two and six
-bytes apart are not.** `23,027` against `23,029` covers 51 of dev's 69 turn
-calls: a prefix that moves by two bytes between requests inside one
-conversation, which is a cold re-price every time it moves and is invisible in
-every size column this bench prints. The diet has the same wobble at the same
-scale (`17,787` / `17,789`, `17,229` / `17,235`) — it neither introduced it nor
-fixed it.
+bytes apart look like a prefix that wobbles**, and `23,027` against `23,029`
+covers 51 of dev's 69 turn calls. A prefix that moved by two bytes between
+requests inside one conversation would be a cold re-price every time it moved
+and would be invisible in every size column this bench prints, so it had to be
+run down before anything else here was worth reading.
 
-Nothing here says which two bytes. That is lane K's question, and §7 hands it
-the evidence.
+**It is not a wobble.** A fingerprint pooled over a whole RUN cannot answer a
+question about one CONVERSATION, and that is the whole of it. Counted per
+conversation, every cell on both branches sent exactly one system prompt, by
+digest, for its entire life:
+
+| conversation | dev: distinct system prompts | diet: distinct system prompts |
+| --- | ---: | ---: |
+| `47a6a473` | 1 (×5 calls) | 1 (×5) |
+| `60c39ef4` | 1 (×20) | 1 (×4) |
+| `b97e23ca` | 1 (×31) | 1 (×7) |
+| `bc3edd99` | 1 (×3) | 1 (×3) |
+| `44015c4b` task | 1 (×10) | — |
+
+The 20 and the 31 that make up "51 of 69" are two different cells. The two bytes
+between them are in the footer's own `- Working directory:` line —
+`work-result-recalled-aforge` against `followup-while-working-aforge` — and the
+six-byte pair is `code-fix-aforge` against `research-brief-aforge`. They are the
+names of the bench's scratch directories, and they differ between conversations
+exactly as they should.
+
+That is worth writing down rather than deleting, because the shape of the error
+is one this bench has now made twice: §1b averaged over a mix of request kinds,
+and this pooled over a mix of conversations. **A statistic about a prefix has to
+be taken inside the thing that has a prefix.**
+
+### The instrument that settles it
+
+`bench/prompt-diet/prefixdiff.py` asks the question directly rather than
+inferring it from sizes. For each request it serialises `[tools][system]
+[messages]`, groups requests into conversations by their opening human message,
+and reports how many leading bytes each shared with the one before it, where the
+sharing stopped, which block and field that offset lands in, sixty bytes of old
+against new, and a one-word cause.
+
+The serialisation order is the Anthropic assembly order and the conservative
+reading of the other: whatever a server does with the tool block, a client that
+keeps tools AND system AND the head of the transcript byte-stable is stable
+under either. It sorts nothing — `canonical()` says why — because a schema whose
+keys came out in a different order is one of the things it exists to convict.
+
+```sh
+bench/prompt-diet/prefixdiff.py ~/bench-diet-out/dev ~/bench-diet-out/diet
+```
+
+### What it found: nothing moved, on either side
+
+Run against §1a's own two captures, unchanged.
+
+| | dev | diet |
+| --- | ---: | ---: |
+| belt-carrying requests | 69 | 19 |
+| conversations | 5 | 4 |
+| openers (nothing to share with) | 5 | 4 |
+| **append-only — the whole last request re-sent unchanged** | **64** | **15** |
+| **requests that moved the prefix** | **0** | **0** |
+| median stable share of the request | 98.6% | 98.3% |
+
+Every non-opening request on both branches was an APPEND: everything the request
+before it sent was still there, byte for byte, in the same order, at the head.
+The worst single row in either run shares 76.3% of its bytes with the request
+before it — a task node that appended a very large tool result, which is a big
+append and not a small break.
+
+Two mechanisms that could have shown up here and did not. **No history was
+rewritten**: the stubbing pass (`stub.go`, `stubKeepTurns` = 4) replaces old tool
+outputs in place, which re-bills everything after the rewrite point, and it fired
+**zero times** across both captures — 0 of 69 dev requests and 0 of 19 diet
+requests carry a `[tool:` stub line, and nothing broke at a `messages[i]` either.
+**No tool block moved**: nothing was armed, re-armed or reordered mid-conversation
+on either side, which is `armFamily`'s append-and-dedupe law holding in the wild.
+
+### The number that said otherwise was a ratio of two medians
+
+§1a reported median cached tokens `16,212 → 9,627` and read a share out of it by
+dividing by the median prompt. That is a **ratio of medians standing in for the
+median of a ratio**, and over these rows the two are not close, because the
+request with the median prompt is not the request with the median cache. Asked
+per request and then taken at the median — which is the only form of the question
+a bill can answer — the cached share went the other way:
+
+| median of the per-request cached share | dev | diet |
+| --- | ---: | ---: |
+| all belt-carrying requests | 83.0% | **95.2%** |
+| openers | 64.8% | 58.8% |
+| continuations | 83.9% | **95.6%** |
+| openers as a fraction of the requests | 7% | 21% |
+
+The absolute cached-token median fell for the reason the absolute prompt-token
+median fell — there is less prompt to cache — and because the diet's
+conversations finished in three to seven rounds where the baseline's ran to
+twenty and thirty-one, so the deep requests that drag an absolute cache count
+upwards are simply not there. Neither is a prefix that moved.
+
+**The ruling on cache: the diet did not make it worse, and on the same cells it
+made it better.** Nothing on either branch broke a cached prefix; the median
+request's own cached share rose 83.0% → 95.2%.
+
+### What the same instrument then convicted
+
+Zero breaks in these captures is a true statement about these captures, and they
+were made on fresh homes: no memories, no standing orders, no answered
+questions, so three of the four blocks that ride in `message[0]` were empty
+strings the whole time. The code says what happens when they are not, and one of
+them was a real defect.
+
+`refreshSystemLocked` (memory.go) built `message[0]` as
+`system + places + standing + memory + record`. The first, third and fourth of
+those move only when a person does something — a folder attached, an order
+stood up, a question answered — which is the documented rule for a block that
+sits in front of every message there is. **The `<memory>` block was not like
+them**: it is re-routed against the person's own words at the start of every turn
+(`refreshMemory`), and `renderMemoryBlock` re-stamps every line it keeps with an
+age label whose granularity is hourly for anything learned today, so it moved on
+turns where the router had chosen identically. A working session with memories on
+therefore re-priced its whole conversation at the uncached rate — about five
+times the cached one — on any turn the subject moved.
+
+It rides at the tail now, in an appended note of its own
+(`agent.go`'s `memoryNoteOpening`), beside the state card and the other windows'
+work that an earlier wave moved there for the same reason. It is a second note
+rather than a paragraph of the first because the two move on different beats: one
+note would re-send up to `memoryBlockRunes` of memory every time a goal changed.
+What it costs is a superseded memory left standing in the transcript where it was
+said, which is why the note's opening says the last one holds.
+
+The law is pinned rather than described.
+`TestARoutedMemoryChangeLeavesMessageZeroByteIdentical` renders two consecutive
+turns with a routed memory change and asserts `message[0]` is byte-identical; it
+fails on the arrangement above with exactly the diagnosis this section gives.
+`TestTheToolBlockMarshalsToTheSameBytesEveryTime` is the other half — every
+schema in this program reaches the wire as a `map[string]any`, `encoding/json`
+sorts map keys so it is stable today, and the test says that this is load-bearing
+rather than incidental.
+
+The fixed prefix is unchanged by the move: **38,742 bytes (prompt 18,807 + tools
+19,935)** before and after. Nothing left the page or the belt; one block left the
+front of the conversation.
+
+### And the run after it caught a second one, which is lane A's
+
+The same four cells were run again on `prompt-diet/integrate` at `2ce3b3abc`,
+after the move, as `diet-k`. Nineteen turn calls, four conversations, **one
+system prompt per conversation by digest**, fourteen append-only requests — and
+**one broken prefix**, which the earlier captures did not have because the code
+that causes it had not landed yet.
+
+```
+history-rewritten at messages[3] tool, 56,718 of 61,978 bytes stable
+  was: content":"#!/bin/sh\n# Stands in for a build: it takes a while and the
+  now: content":"[reduced view: bash · 933 bytes · full: /tmp/afconv-home.P
+```
+
+The reduced view of `toolcompact.go` replaced a **934-byte** tool result with an
+**843-byte** view. It reclaimed **91 bytes** and cost **5,260** — every byte
+after `messages[3]`, re-billed uncached, on that request and on the ones that
+follow it until the next break.
+
+The cause is a threshold on the wrong quantity. `compactLeaveVerbatim` leaves a
+result alone when `len(text) <= compactViewBytes`, which is 600 (`compactHeadBytes`
+200 + `checkpointResultBytes` 400) and is a bound on the RESULT. What decides
+whether a rewrite pays is the RECLAIM, and the reclaim is the result minus the
+head, the tail AND the pointer — and the pointer here was a 90-character absolute
+path into a temporary home, which ate almost the whole saving.
+
+`stub.go` already has this law and already has the test that pins it
+(`TestStubbingLeavesTheCachedPrefixAloneForATrivialReclaim`: "the pass replaces
+an old result only when the reclaim is worth it"). The reduced view wants the
+same guard — compose the view first, then keep it only if it is smaller than what
+it replaces by more than some margin — and `toolcompact.go` belongs to lane A, so
+this is written down here with its numbers rather than changed from outside it.
+
+Zero of dev's 69 requests and zero of the §1a diet's 19 carry a `[reduced view:`
+line; four of `diet-k`'s do. It is new in the wave, and it is small — 91 bytes
+against 5,260, once in nineteen requests — but it is the exact shape DESIGN.md §0
+says must never be paid, and it will be paid on every long result whose pointer
+is long.
+
+### What was checked and found already correct
+
+- **Arming appends and never reorders.** `armFamily` (connect.go) dedupes by
+  name, keeps the existing order and appends the arrivals into fresh arrays;
+  `armPrearmed` is one of its callers, so a lean belt's handed-over groups ride
+  the same door. A load costs the tool block's tail once and nothing after that.
+- **Nothing in the `# Project` footer moves on its own except the clock**, and it
+  moves only past `clockRefresh` (10 minutes), which is longer than any of these
+  providers keeps an untouched entry — so the re-render is free by construction.
+  Inside the threshold `refreshClockLocked` returns without touching `a.system`
+  at all. The footer quotes `AGENTS.md` and `CLAUDE.md`, so an edit to one of
+  those does move the page — on the next clock refresh, which is to say at the
+  moment the prefix was going cold anyway. The attached-folder block is the same
+  shape: `publishAttached` compares the composed text and does not touch
+  `message[0]` when a re-resolve produced the same bytes.
+- **The caps and the profile settle once per agent.** `bare.CapsFor(a.window())`
+  and the prompt profile are both read out of `Config` when the belt and the page
+  are built, and the belt is rebuilt exactly twice in a conversation's life: at
+  construction, and on `AnchorWorkspace` — a project-less conversation acquiring
+  its project, once, on a deliberate act, which also re-renders the page.
+
+### Where the breakpoints are, and what is owed there
+
+There is one wire dialect in this build: the OpenAI-shaped `chat/completions`
+body, with the system prompt as `messages[0]` and `tools` in the body
+(`internal/provider/wire.go`). `cache_control` is written **only** for
+Anthropic-family slugs on `openrouter.ai` or `anthropic.com`
+(`caching.go`'s `dialectFor`); everything else — DeepSeek and the rest of what
+OpenRouter fronts — is `cacheDialectAutomatic`, gets no markers at all, and its
+only levers are byte stability and `prompt_cache_key`. `quirks.go`'s
+`noCacheControl` is learned at runtime and never configured: an endpoint that
+rejects a breakpoint downgrades that model to automatic for good, and the refused
+call is re-sent free.
+
+Three of Anthropic's four breakpoints are used: the last message of the leading
+system run, the last tool definition, and the last user-or-tool message. After
+the move above, the system breakpoint sits behind a `message[0]` that only a
+deliberate act can move, which is where DESIGN.md §0 wants it.
+
+**Owed: none of that is measured.** Every capture this bench holds is DeepSeek,
+which sends no markers, so the placement is argued from the code and from the
+provider's documentation and not from a bill. §4's frontier arm is where it gets
+tested, and `prefixdiff.py` runs on a frontier capture unchanged — it reads
+whichever dialect the body is in.
 
 ## 2. What is not covered, and why that is stated rather than fixed
 
@@ -558,7 +788,8 @@ as a pass nor as a regression.
   against an unsettled baseline proves nothing. DESIGN.md §3 says the profile
   should not ship without this cell.
 
-- **The raw wire evidence for lane K** is on the Spark and needs no re-capture.
+- **The raw wire evidence** is on the Spark and needs no re-capture. This is
+  what §1c was run against and what a re-run of `prefixdiff.py` reads.
   Per label — `dev` and `diet`:
 
   | what | path |
@@ -572,9 +803,17 @@ as a pass nor as a regression.
   the cells run under `AFORGE_CALL_LOG_BODIES=1`. `wire.jsonl` deliberately does
   not copy those bytes; it carries the fingerprints computed from them
   (`system_bytes`, `system_sha`, `tool_block_bytes`, `tools_sha`, `prefix_sha`)
-  and a `body_source` naming the log beside it. §1c is what those fields already
-  say, and the two-byte wobble across 51 of dev's 69 turn calls is the thread to
-  pull.
+  and a `body_source` naming the log beside it. **The thread has been pulled**:
+  the two-byte pair across 51 of dev's 69 turn calls is two different cells whose
+  scratch directories are named two characters apart, not one conversation whose
+  prefix moved, and §1c has the per-conversation digests that settle it. What is
+  still owed there is a FRONTIER capture: every body here is DeepSeek, which
+  sends no `cache_control` at all.
+
+- **The reduced view's rewrite guard**, from lane A (`toolcompact.go`). §1c has
+  the capture and the arithmetic: 91 bytes reclaimed for 5,260 re-billed, because
+  `compactLeaveVerbatim` bounds the RESULT rather than the RECLAIM and takes no
+  account of the pointer's own length. `stub.go` has the law and the test to copy.
 
 - **An issue about the one-endpoint pin.** §1's model-pin note has the evidence:
   an endpoint excluded by account policy ends a turn instead of hopping, while

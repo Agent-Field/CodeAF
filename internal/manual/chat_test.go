@@ -191,6 +191,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// go round again and want the sentence that says what ended it.
 		{"why was my work picked up again", "adaptive-runs"},
 		{"whose model context window is used over host", "models-and-cost"},
+		// The lean profile, asked the two ways it is met: somebody on a local
+		// model wondering why the answer got worse, and somebody on an
+		// open-weight model wondering whether they are being given the small
+		// version. The second is the one the ruling of 2026-09-10 turned around.
+		{"why does my local model get fewer tools", "models-and-cost"},
+		{"when does aforge use the lean profile", "models-and-cost"},
+		{"is deepseek given a shorter page than claude", "models-and-cost"},
+		{"does an open weight model get the lean prompt", "models-and-cost"},
 		{"can you read a pdf file", "what-i-can-do"},
 		{"can you search the web", "what-i-can-do"},
 		{"which search engine answered?", "what-i-can-do"},

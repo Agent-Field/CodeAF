@@ -5,7 +5,7 @@ package session
 // Everything in front of a request — the page and the tool block — is paid for
 // on every round of every turn (prefixbudget_test.go weighs it). On a frontier
 // model with a hundred and twenty-eight thousand tokens of room that bill is a
-// few percent of the window and the laws it buys are worth it. On an open-weight
+// few percent of the window and the laws it buys are worth it. On a small local
 // model with sixteen thousand it is most of the window, and the cost is not only
 // money: every extra instruction is one more thing for a small model to get
 // wrong, and every schema it is not going to call is attention taken off the ones
@@ -16,20 +16,35 @@ package session
 // ── IT IS DERIVED AND IT IS NOT A NEW DIAL ──
 //
 // Nobody is asked to choose a profile, because nobody arrives at a settings sheet
-// wanting to. The two facts this build already holds answer it:
+// wanting to. ONE FACT ANSWERS IT:
 //
 //   - THE MODEL'S WINDOW. [Config.promptWindow] is the same ladder [Agent.window]
 //     climbs — the catalog the machine running this session owns, then the figure
 //     the session was configured with, then the conservative default — with
 //     everything this process has learned about the model applied over it
 //     ([TrustedWindowFor]). Under [leanWindowThreshold] the prefix is lean.
-//   - THE SEAT. The crew's `worker` row is the open-weight seat that does the
-//     work (internal/config's crew.go), and a conversation riding that model IS
-//     the case this profile was written for, whatever window its card claims.
 //
-// [promptProfileEnv] pins it for a test or a bench cell and is not a settings
-// row for the same reason: it is how a measurement names the arm it is measuring,
-// not how a person configures their machine. It is spelled the way every other
+// ── AND THE WINDOW IS THE ONLY FACT: OPEN WEIGHTS ARE NOT A SIZE ──
+//
+// An earlier draft of this file had a second trigger — the crew's `worker` row,
+// on the reasoning that an open-weight model reasons like a worker whatever its
+// card claims. THAT WAS WRONG, and it is stated here so nobody restores it.
+// `deepseek-v4-flash` and `glm-5.3-flash` are the open-weight models the frugal
+// and balanced presets put in that seat, and served through a provider they have
+// a hundred and twenty-eight thousand tokens of room. That is a NORMAL SYSTEM and
+// it must get the full page: the seat rule would have taken sections off the page,
+// shelved `propose_task` and `tasks`, and turned saved memories OFF for anybody
+// who picked the frugal preset and then chose that same model in chat — silently,
+// with nothing on screen saying so, because a derived profile has no row anywhere
+// for a person to read. Open weights are a licence, not a size. A model that is
+// genuinely small announces it the way every other model does: llama.cpp, ollama
+// and LM Studio all report the window they were loaded with, and that is the fact
+// this file reads. Where they do not, [promptProfileEnv] pins it.
+//
+// [promptProfileEnv] is the second and last way in: a pin, for a bench cell, a
+// test, or a person whose endpoint reports a window its loaded model does not
+// really have. There is no settings row for it yet and there should be — see
+// docs/changes — but a pin is not a dial, and it is spelled the way every other
 // pin of that kind in this tree is (internal/splitgate's Mode): the words are
 // exact, and anything else — a typo, a stale word, nothing at all — is not a pin
 // at all rather than a silent move onto the other arm.
@@ -51,7 +66,7 @@ package session
 //     offered by the loading verb.
 //  4. THE MEMORY REFLEX DOES NOT RUN and the project's instruction file rides
 //     under [leanInstructionLimit]. The reflex is two model calls every turn on
-//     top of the one the person is waiting for; on this seat it is the most
+//     top of the one the person is waiting for; on a small window it is the most
 //     expensive thing in the turn that nobody asked for. It is off by the
 //     predicate that already decides writable memory ([Config.hasStore]) rather
 //     than by a switch of its own — and the conversation's own record is
@@ -67,8 +82,6 @@ package session
 import (
 	"os"
 	"strings"
-
-	"github.com/Agent-Field/aforge-v2/internal/config"
 )
 
 // promptProfile is which of the two prefixes this agent sends. It is a word
@@ -142,17 +155,15 @@ func (c Config) promptProfile() promptProfile {
 // back into the config the agent will keep.
 func settlePromptProfile(c Config) promptProfile { return resolvePromptProfile(c) }
 
-// resolvePromptProfile is the derivation itself, most specific answer first.
+// resolvePromptProfile is the derivation itself, most specific answer first:
+// THE PIN, THEN THE WINDOW, AND NOTHING ELSE. There is deliberately no third
+// rung — no model name, no vendor, no crew seat — because every one of those is
+// a guess about a model's size standing in for the figure the model itself
+// reports, and the guess was wrong about the open-weight models this build ships
+// with (see the law at the top of this file).
 func resolvePromptProfile(c Config) promptProfile {
 	if pinned, ok := pinnedPromptProfile(); ok {
 		return pinned
-	}
-	// THE SEAT BEFORE THE WINDOW. An open-weight worker model that claims a
-	// large window still reasons like a worker, and the claim is the half of the
-	// pair we trust least — a card's figure is a marketing number until an
-	// endpoint refuses one (loop.go's [Agent.learnServedWindow]).
-	if c.atTheWorkerSeat() {
-		return profileLean
 	}
 	if c.promptWindow() < leanWindowThreshold {
 		return profileLean
@@ -195,24 +206,6 @@ func (c Config) promptWindow() int {
 		window = defaultContextWindow
 	}
 	return TrustedWindowFor(c.Model, window)
-}
-
-// atTheWorkerSeat says whether this session is riding the crew's `worker` model
-// — the open-weight seat that does the work (internal/config's crew.go, whose
-// worker column is the dial the three presets move).
-//
-// IT IS THE PROFILE'S OWN ROW AND NOT A LIST OF MODEL NAMES. A table of
-// open-weight slugs here would be a second copy of the crew, free to drift the
-// first time somebody pins their own worker; asking the crew is asking the one
-// place that answers. A config with no profile directory reads this build's
-// default worker, which is the honest answer for a machine nobody has configured.
-func (c Config) atTheWorkerSeat() bool {
-	model := strings.TrimSpace(c.Model)
-	if model == "" {
-		return false
-	}
-	seat := strings.TrimSpace(config.TierModelAt(c.ProfileDir, config.ModelTierWorker))
-	return seat != "" && strings.EqualFold(seat, model)
 }
 
 // ── the page ────────────────────────────────────────────────────────────────
