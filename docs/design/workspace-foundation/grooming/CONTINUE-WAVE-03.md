@@ -2,6 +2,8 @@
 
 Handoff written 2026-09-10, approximately 20:45 UTC. **Work is still running on Spark. This is a checkpoint, not a completion claim.** Read this with [NEXT-STEPS.md](NEXT-STEPS.md), [DECISIONS.md](DECISIONS.md), and the Spark worktree's evolving `BUILD-WAVE-03.md`. Later runtime results supersede the snapshots below.
 
+**Latest observation, after writing the checkpoint:** Opus committed the report-write fix as **`9cc7b638c`** (`A run's own report write is not a question; the report is the latest delimited block [skip ci]`). `run6.log` is **PASS**, `TestLocalWorkJourney`2.24s, 9 scripted firings/11 rule checks. **`/tmp/opus-localwork/live5.log` is now the running live retry**; inspect that instead of waiting for live4 to change. No live5 result yet. Maintained branch checkpoint `a8bd7445c` was pushed and PR662 now links this handoff; this paragraph is a subsequent documentation-only update.
+
 ## Owner's instructions
 
 - Continue implementing until there is a usable end-to-end journey; preserve the elegant typed primitives already agreed, separate developer architecture from user-facing names, and avoid new overlapping concepts.
