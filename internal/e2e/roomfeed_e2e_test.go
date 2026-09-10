@@ -47,14 +47,21 @@ import (
 // and what its row is found by; the sleep is what makes the duration a fact
 // rather than a rounding.
 const (
-	roomProbeQuick = "sleep 1; echo PROBE-A"
-	roomProbeSlow  = "sleep 4; echo PROBE-B"
+	// Short commands on purpose: the tool row sheds duration before the target
+	// (toolview.go's [app.toolTail]), and a long `sleep N; echo PROBE-…` ate the
+	// whole budget so the figure this test exists to catch never reached the
+	// screen even when the entry held it.
+	roomProbeQuick = "sleep 3; echo A"
+	roomProbeSlow  = "sleep 7; echo B"
 	roomProbeBrief = "run both probes and report what they printed"
 	roomProbeModel = "stub/scripted"
 	// What each of them is spelled as (timestamps.go's tookWord: one decimal
-	// under ten seconds).
-	roomQuickTook = "1.0s"
-	roomSlowTook  = "4.0s"
+	// under ten seconds). Chosen so neither collides with the room header's
+	// running clock (`working · bash · Ns`), which is whole seconds.
+	roomQuickTook = "3.0s"
+	roomSlowTook  = "7.0s"
+	roomQuickMark = "echo A"
+	roomSlowMark  = "echo B"
 )
 
 func TestATaskPageShowsWhatACallTook(t *testing.T) {
@@ -86,18 +93,20 @@ func TestATaskPageShowsWhatACallTook(t *testing.T) {
 	rig.lit("/task solo " + roomProbeBrief)
 	rig.keys("Enter")
 
-	// The node has to reach the call before there is anything to read. The
-	// roster's row is the door and the room is behind it.
-	rig.waitFor(90*time.Second, roomProbeBrief)
+	// THE ROOM OPENS AFTER THE LANDING. The defect this pins is the one a
+	// person actually hits: walk into a finished task, open the worked chip,
+	// and each call still says what it took. Opening mid-flight would only
+	// prove the live EventToolFinished path, which unit tests already hold;
+	// the journal's `took` line is what a reopen has, and that is what failed
+	// when the room was drawn from the record alone.
+	rig.waitFor(90*time.Second, "Both probes printed")
 	openTheOnlyRoom(t, rig)
+	rig.keys("Escape")
+	revealCallRows(t, rig)
 
-	// THE ROWS COME FIRST AND THE FIGURES COME AFTER THEM — both calls are still
-	// running when the page opens, which is the point: the wait is for the
-	// slower one's figure, so a page that drew the rows and never the figures
-	// fails here rather than passing on the frame before the answer.
-	page := rig.waitFor(90*time.Second, roomSlowTook)
-	tookOn(t, page, "PROBE-A", roomQuickTook)
-	tookOn(t, page, "PROBE-B", roomSlowTook)
+	page := waitForCallFigures(t, rig, 30*time.Second)
+	tookOn(t, page, roomQuickMark, roomQuickTook)
+	tookOn(t, page, roomSlowMark, roomSlowTook)
 	t.Logf("the task page, captured:\n%s", page)
 }
 
@@ -120,8 +129,7 @@ func tookOn(t *testing.T, page, command, took string) {
 	t.Fatalf("no row for %s on the page:\n%s", command, page)
 }
 
-// openTheOnlyRoom walks into the one node on the roster. The rail's first node
-// row is the door, and `enter` on it is the same press a person makes.
+// openTheOnlyRoom walks into the one node on the roster.
 func openTheOnlyRoom(t *testing.T, r *rig) {
 	t.Helper()
 	// THE ROSTER MAY BE HIDDEN, and its own foot says which: `ctrl+g tasks`
@@ -130,14 +138,142 @@ func openTheOnlyRoom(t *testing.T, r *rig) {
 	// close the roster on half the launches and then walk an empty column.
 	if strings.Contains(r.capture(), "ctrl+g tasks") {
 		r.keys("C-g")
-		r.waitFor(10*time.Second, "ctrl+g hide")
+		mustSee(t, r, 10*time.Second, "ctrl+g hide")
 	}
-	// alt+t puts the pointer on the roster; enter opens the row under it. ctrl+t is
-	// the new-tab chord now (tui3/chatstart.go), and the roster answers the same
-	// letter under the other modifier — which tmux spells `M-t`.
-	r.keys("M-t")
-	r.keys("Enter")
-	r.waitFor(20*time.Second, "room ·")
+	// CLICK THE RAIL ROW rather than alt+t then Enter. After a landing the
+	// settle strip owns Enter (`[enter] take it`), and the roster's own hold
+	// legend (`↑↓ move`) is replaced by the settle keys while the card is up —
+	// so a keyboard open either settles the card or waits forever for a hint
+	// that will not return. A click on the row is the person-facing door that
+	// does not compete with the strip (roomsteer still uses the keyboard when
+	// no settle is covering it).
+	clickRailTask(t, r)
+	// THE ROOM IS OPEN WHEN ITS WAY BACK IS ON THE FRAME. The organized room
+	// (roompanel.go's [app.roomOrganized]) draws `esc/← main` on the focus
+	// header and leaves the legend empty — so a wait for the older legend
+	// spelling `room · esc/←← main` never fired on a real open page. The back
+	// word is the one string every room shape shares (tuiwords' roomBackWord).
+	mustSee(t, r, 8*time.Second, say(t, "roomBackWord"))
+}
+
+// clickRailTask presses the roster's first task row. The row carries `#1` (or
+// the node's number) on the right column; the transcript's own prose must not
+// steal the click.
+func clickRailTask(t *testing.T, r *rig) {
+	t.Helper()
+	rows := strings.Split(strings.TrimRight(r.capture(), "\n"), "\n")
+	for i, line := range rows {
+		// The roster marks its focused row with ▌ and every task row with #N.
+		if strings.Contains(line, "#1") || strings.Contains(line, "▌") {
+			// Click in the right half where the column lives (120-col frame).
+			r.mouseTo(100, i+1)
+			r.mouseClick(100, i+1)
+			return
+		}
+	}
+	t.Fatalf("no rail task row to open:\n%s", r.capture())
+}
+
+// revealCallRows puts each call's own row on the room page. After a landing the
+// stretch sits behind `▸ worked` — a click opens the chip (workfold.go), and a
+// shut caption underneath opens the calls. ctrl+e is NOT used here: a settle
+// strip under the room owns the keyboard, and the chord would land on the
+// strip rather than on the chip.
+func revealCallRows(t *testing.T, r *rig) {
+	t.Helper()
+	if strings.Contains(r.capture(), roomQuickMark) {
+		return
+	}
+	clickLineContaining(t, r, "▸ worked")
+	mustSee(t, r, 8*time.Second, "▾ worked")
+	if strings.Contains(r.capture(), roomQuickMark) {
+		return
+	}
+	if strings.Contains(r.capture(), "▸ ran ") || strings.Contains(r.capture(), "▸ running ") {
+		clickShutCaption(t, r)
+	}
+	mustSee(t, r, 8*time.Second, roomQuickMark)
+}
+
+// clickLineContaining presses the first body row that carries needle. It is the
+// person-facing door onto a chip or a caption when a settle strip is holding
+// the keyboard chords.
+func clickLineContaining(t *testing.T, r *rig, needle string) {
+	t.Helper()
+	rows := strings.Split(strings.TrimRight(r.capture(), "\n"), "\n")
+	for i, line := range rows {
+		if strings.Contains(line, needle) {
+			r.mouseTo(12, i+1)
+			r.mouseClick(12, i+1)
+			return
+		}
+	}
+	t.Fatalf("no line carrying %q:\n%s", needle, r.capture())
+}
+
+// clickShutCaption presses the outline's shut caption — the person-facing door
+// onto the calls when ui.work has the chip open (workfold.go's [app.toggleCap]).
+func clickShutCaption(t *testing.T, r *rig) {
+	t.Helper()
+	clickLineContaining(t, r, "▸ ran ")
+}
+
+// waitForCallFigures waits until both probes' own durations are on their rows.
+// A landing that folds the stretch mid-wait is reopened rather than treated as
+// a missing figure — the figures are still on the page behind the chip.
+func waitForCallFigures(t *testing.T, r *rig, within time.Duration) string {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for {
+		screen := r.capture()
+		if callTook(screen, roomQuickMark, roomQuickTook) && callTook(screen, roomSlowMark, roomSlowTook) {
+			return screen
+		}
+		if strings.Contains(screen, "▸ worked") ||
+			(strings.Contains(screen, "▾ worked") && !strings.Contains(screen, roomQuickMark)) {
+			revealCallRows(t, r)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("waited %s for per-call figures and never saw them. the screen was:\n%s",
+				within, screen)
+		}
+		time.Sleep(pollEvery)
+	}
+}
+
+func callTook(page, command, took string) bool {
+	for _, line := range strings.Split(page, "\n") {
+		if strings.Contains(line, command) && strings.Contains(line, took) {
+			return true
+		}
+	}
+	return false
+}
+
+// mustSee is waitFor that fails the test at once. waitFor itself only Errorf's
+// so a caller can keep gathering, and that turned a missed rail hold into a
+// ninety-second wait for a figure behind a folded chip.
+func mustSee(t *testing.T, r *rig, within time.Duration, want ...string) string {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	screen := ""
+	for {
+		screen = r.capture()
+		ok := true
+		for _, sub := range want {
+			if !strings.Contains(screen, sub) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return screen
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("waited %s for %q and never saw it. the screen was:\n%s", within, want, screen)
+		}
+		time.Sleep(pollEvery)
+	}
 }
 
 // ── the scripted endpoint ───────────────────────────────────────────────────
@@ -272,6 +408,7 @@ func TestATaskPageShowsWhatACallTookAgainstARealModel(t *testing.T) {
 	// THE NODE HAS TO EXIST BEFORE THERE IS A ROOM TO WALK INTO. The line the
 	// conversation writes when it starts one is the honest signal; the card
 	// above it is still shaping and has no page behind it (app.go's task note).
+	// Open while the calls are still in flight — a landed page folds them.
 	rig.waitFor(180*time.Second, "task 1 started")
 	openTheOnlyRoom(t, rig)
 

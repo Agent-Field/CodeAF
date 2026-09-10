@@ -448,6 +448,30 @@ func (r *rig) mouseTo(col, row int) {
 	time.Sleep(400 * time.Millisecond)
 }
 
+// mouseClick is a left-button press and release at a 1-based cell. The body
+// acts on release (dragselect.go), so a motion alone is not a click — the same
+// SGR pair the unit harness builds as MouseClickMsg + MouseReleaseMsg.
+func (r *rig) mouseClick(col, row int) {
+	r.t.Helper()
+	r.lit(fmt.Sprintf("\x1b[<0;%d;%dM", col, row))
+	time.Sleep(50 * time.Millisecond)
+	r.lit(fmt.Sprintf("\x1b[<0;%d;%dm", col, row))
+	time.Sleep(400 * time.Millisecond)
+}
+
+// mouseWheel sends one SGR wheel tick at a 1-based cell. up is wheel-up
+// (button 64); down is wheel-down (button 65). A room at its top opens the
+// uppermost fold on wheel-up (room.go's [app.roomUnfoldAtTop]).
+func (r *rig) mouseWheel(col, row int, up bool) {
+	r.t.Helper()
+	button := 65
+	if up {
+		button = 64
+	}
+	r.lit(fmt.Sprintf("\x1b[<%d;%d;%dM", button, col, row))
+	time.Sleep(300 * time.Millisecond)
+}
+
 // capture is the screen, exactly as it stands.
 func (r *rig) capture() string {
 	r.t.Helper()

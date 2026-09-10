@@ -577,12 +577,48 @@ func statesPastTheDoor(t *testing.T, r *rig) {
 // character is a full stop on purpose — `x` is the stop key and a,n,s,d,t are the
 // answers, and a fixture that reached for one of those would be answering the
 // question it came to read.
+//
+// AND WHEN THE LANDING IS A QUESTION BLOCK (tasksettle.go, 2026-09), the letters
+// answer the BLOCK above the box — not a selected card. ↑ then walks the feed or
+// the pointer rather than "to the card", and a keystroke inside the block's
+// settle guard (question.go's [questionSettle], 250ms) is dropped on purpose.
+// So the road is: clear the box, wait out the guard the questions e2e already
+// pays ([statesQuestionSettle]), press the letter; the Up-walk stays as the
+// fallback for a fixture that somehow still has no block.
 func statesAnswerKey(t *testing.T, r *rig, key, want string) bool {
 	t.Helper()
 	for attempt := 1; attempt <= 2; attempt++ {
-		r.lit(".")
-		r.keys("C-u")
-		time.Sleep(400 * time.Millisecond)
+		screen := r.capture()
+		onGreeting := strings.Contains(screen, say(t, "starterTaskWord")) ||
+			strings.Contains(screen, say(t, "welcomeStarterKeysWord"))
+		if onGreeting {
+			r.lit(".")
+			r.keys("C-u")
+			time.Sleep(400 * time.Millisecond)
+		} else {
+			r.keys("C-u")
+		}
+		// Pay the settle guard before any answer key. The questions lane owns
+		// the same wait ([questionSettleWait]); naming it once here keeps the
+		// two doors from drifting apart.
+		time.Sleep(statesQuestionSettle)
+
+		// THE BLOCK IS THE DOOR when it is on the frame. Its answers row spells
+		// `[a] accept` (or the ask's own yes word); pressing the letter over an
+		// empty box is what a person does, without walking the transcript.
+		if strings.Contains(r.capture(), say(t, "settleAccept")) ||
+			strings.Contains(r.capture(), say(t, "settleNotRight")) ||
+			strings.Contains(r.capture(), say(t, "settleAskWord")) {
+			r.lit(key)
+			if _, ok := r.glimpse(8*time.Second, want); ok {
+				t.Logf("the %q was spent on the question block on attempt %d", key, attempt)
+				return true
+			}
+			r.keys("C-u")
+			t.Logf("attempt %d: the block had the landing and %q left no %q:\n%s",
+				attempt, key, want, r.capture())
+		}
+
 		// AND ↑ IS WALKED RATHER THAN PRESSED ONCE. The letters answer the SELECTED
 		// card, the selection starts at the foot of the conversation, and what sits
 		// at the foot is whatever the window wrote last — the note the greeting
@@ -593,6 +629,7 @@ func statesAnswerKey(t *testing.T, r *rig, key, want string) bool {
 		// ↑ again.
 		for up := 1; up <= statesWalkUp; up++ {
 			r.keys("Up")
+			time.Sleep(statesQuestionSettle)
 			r.lit(key)
 			if _, ok := r.glimpse(6*time.Second, want); ok {
 				t.Logf("the %q was spent on attempt %d, %d rows up", key, attempt, up)
@@ -607,6 +644,12 @@ func statesAnswerKey(t *testing.T, r *rig, key, want string) bool {
 	}
 	return false
 }
+
+// statesQuestionSettle is how long the answer key is held back after the
+// landing appears on the block. It is the questions e2e's own settle wait
+// (questions_e2e_test.go's questionSettleWait) written once for this door: the
+// block's guard is 250ms, and 700ms is the measured margin on a loaded box.
+const statesQuestionSettle = 700 * time.Millisecond
 
 // statesWalkUp is how far up the conversation one answer is looked for. Six rows
 // is every entry these fixtures write and then some; a card further up than that
