@@ -134,6 +134,20 @@ func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 	}
 }
 
+// AND UNTIL THE JOURNAL'S TAIL HAS BEEN READ THE `here` ROW IS ONE LINE: no
+// caption, no placeholder — the next conversation stands right under it.
+func TestTheHereRowIsOneLineUntilItsSnippetArrives(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.open(120, 45)
+	a.home.last = map[string]session.Summary{}
+	a.home.build()
+	frame := homeText(a)
+	own, _ := homeRowOf(frame, "Porting the Resume Picker")
+	if next := homeLineAfter(frame, "Porting the Resume Picker"); own < 0 || !strings.Contains(next, "Quiet Chat") {
+		t.Fatalf("the here row carries a line under it with nothing said:\n%s", frame)
+	}
+}
+
 // PRESELECT THE PREVIOUS THING (law 6): home opened from a conversation puts the
 // cursor on the one this window was in before it, so enter is a switch in two
 // keys.

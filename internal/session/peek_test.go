@@ -74,6 +74,22 @@ func TestPeekFallsBackToTheAnswerWhenTheLastMessageHadNoWords(t *testing.T) {
 	}
 }
 
+// LastUser IS THE PERSON'S OWN LAST LINE: the `while you worked:` note the
+// session journals into the user role after it is not something they said.
+func TestPeekLastUserSkipsTheSessionsOwnNotes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	writeTranscript(t, path, peekHeader, peekAsked, peekSaid, peekAgain,
+		`{"type":"message","role":"user","content":"while you worked: the build task finished","note":true,"timestamp":"2026-08-16T10:06:00Z"}`)
+
+	summary, ok := Peek(path)
+	if !ok {
+		t.Fatal("a conversation has to peek")
+	}
+	if summary.LastUser != "now run the migration" {
+		t.Fatalf("last user is %q, want the person's own last line", summary.LastUser)
+	}
+}
+
 // A file nobody ever spoke in is not a row in a picker: it has no words on it
 // and nothing behind it.
 func TestPeekRefusesAFileThatIsNotAConversation(t *testing.T) {

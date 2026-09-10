@@ -125,7 +125,14 @@ func Peek(path string) (Summary, bool) {
 					summary.Opening = text
 				}
 				summary.Last = text
-				summary.LastUser = text
+				// AND LastUser IS ONLY EVER THE PERSON. A line the session wrote
+				// into the user role — a task's completion note, the batched
+				// `while you worked:` news ([sessionEntry.Note]) — is the harness
+				// talking to the model, and home's `where you were` row drew it
+				// under the chat as though somebody had typed it.
+				if !entry.Note {
+					summary.LastUser = text
+				}
 			case "assistant":
 				if text != "" {
 					answered = text
