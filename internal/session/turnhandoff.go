@@ -1,9 +1,22 @@
 package session
 
-// turnhandoff.go answers ONE question for the end of a turn: did this turn put
-// the work THE CURRENT REQUEST asked for into a task that is still live?
+import "github.com/Agent-Field/aforge-v2/internal/provider"
+
+// turnhandoff.go answers TWO questions for the end of a turn, both facts about
+// the graph rather than readings of anything the model said:
 //
-// ── THE MEASURED FAILURE ────────────────────────────────────────────────────
+//	 1. did this turn put the work THE CURRENT REQUEST asked for into a task that
+//	    is still live? ([turnHandedItsAskOff])
+//	 2. is this turn answering a request whose work has already come home with
+//	    its check green? ([turnSettledItsAsk])
+//
+// They are the two halves of one moment. The first stops the reader polling a
+// task that is about to report. The second stops it re-opening a report that
+// already landed done.
+
+// ── THE LIVE HALF ──────────────────────────────────────────────────────────
+
+// THE MEASURED FAILURE.
 //
 // "Please hand this work to a task: run ./slow-build.sh, wait for it to finish,
 // and tell me the marker it wrote. Start it now; keep the main conversation
@@ -23,8 +36,7 @@ package session
 //
 // ── THE GUARANTEE, EXACTLY ──────────────────────────────────────────────────
 //
-// The gate opens only when ALL of these hold, and each is a runtime fact rather
-// than a reading of anything the model said:
+// The live gate opens only when ALL of these hold:
 //
 //	 1. this agent is a conversation, not a task worker ([Config.InTask]);
 //	 2. a turn is running, and the node was admitted BY THIS AGENT DURING IT
@@ -132,8 +144,8 @@ func (g *TaskGraph) liveWorkFromEpoch(admitter *Agent, now requestEpoch) bool {
 			continue
 		}
 		// A settled node is news to answer rather than work to wait for: it has
-		// already reported, and the turn holding that report is read like any
-		// other. See the header for what queued and running do and do not mean.
+		// already reported. A failed or unfinished landing is still read. A done
+		// landing whose own check passed is the other gate ([turnSettledItsAsk]).
 		if node.state == TaskQueued || node.state == TaskRunning {
 			return true
 		}
@@ -228,4 +240,71 @@ func (g *TaskGraph) liveWorkOf(owner *Agent) (uint64, bool) {
 		}
 	}
 	return 0, false
+}
+
+// ── THE SETTLED HALF ────────────────────────────────────────────────────────
+
+// turnSettledItsAsk says this turn is answering a request whose work has already
+// come home with its check green, so the end-of-turn reader must not re-open it
+// as unfinished.
+//
+// THE MEASURED FAILURE. A task landed done, its own checks passed, the card
+// showed the settled mark, and the end-of-turn reader — looking at a digest of
+// the transcript, not the tree — said the ask was unfinished. The turn was
+// carried on three times and then told the person the work was not finished
+// (#468). The live-task gate ([turnHandedItsAskOff]) covers the other half of
+// the same moment: work still out. This is the landing's half.
+//
+// THE GATE OPENS ONLY WHEN ALL OF THESE HOLD, and each is a runtime fact:
+//
+//  1. this agent is a conversation, not a task worker;
+//  2. this turn arrived with at least one result ([Agent.turnResults]);
+//  3. every ask it owes came from those results — not the person's own later
+//     words, which would be a new request on top of the landing
+//     ([wakecause.go]);
+//  4. every arrived node is done, and its own check passed.
+//
+// A PIECE OF A LARGER ASK IS NOT THIS. A landing whose tag carries no request
+// leaves the turn owing the person's broader sentence, and that turn is still
+// read — TestAWokenTurnThatStopsShortIsReopenedEvenWhenCheap is that shape. A
+// failed landing is news to carry on from, and a done landing nobody checked is
+// still read: the green mark on the card is the check that ran, and without it
+// the reader is the second opinion the work has.
+func (a *Agent) turnSettledItsAsk() bool {
+	if a.config.InTask {
+		return false
+	}
+	a.mu.Lock()
+	arrived := append([]uint64(nil), a.turnResults...)
+	owed := append([]owedAsk(nil), a.owedAsks...)
+	a.mu.Unlock()
+	if len(arrived) == 0 || len(owed) == 0 {
+		return false
+	}
+	for _, ask := range owed {
+		if ask.from != owedByResult || ask.task == 0 {
+			return false
+		}
+	}
+	graph := a.tasker()
+	if graph == nil {
+		return false
+	}
+	settled := make(map[uint64]bool, len(arrived))
+	for _, id := range arrived {
+		node := graph.node(id)
+		if node == nil || node.stateNow() != TaskDone {
+			return false
+		}
+		if node.checkAnswer() != provider.VerdictVerifiedSuccess {
+			return false
+		}
+		settled[id] = true
+	}
+	for _, ask := range owed {
+		if !settled[ask.task] {
+			return false
+		}
+	}
+	return true
 }

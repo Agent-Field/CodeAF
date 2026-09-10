@@ -289,7 +289,7 @@ var tuiWords = map[string]tuiWord{
 	// ── what stands, and what it costs ───────────────────────────────────────
 	"homeKeepingWord": {
 		screen: " standing order",
-		why:    "the count at the foot of the task column while something stands, and a door onto the standing place — `◦ 2 standing orders`, respelled from `keeping an eye on 2` on 2026-09-09 because that named nothing a person could type, and moved off the status row on the same day",
+		why:    "the count at the foot of the task column while something stands, and a door onto the standing place — `◦ 2 standing orders`, respelled from `keeping an eye on 2` on 2026-09-09 because that named nothing a person could type, and moved off the status row on the same day; /status and the phone sheet keep the same words under `watching`",
 	},
 	"homeWatchLabel": {
 		screen: "keeping watch",
@@ -735,7 +735,7 @@ var tuiWords = map[string]tuiWord{
 	"questionBlankKeyWord": {
 		screen: "[tab] next blank",
 		source: "next blank",
-		why:    "how a sentence with holes in it is walked through",
+		why:    "how a sentence with holes in it is walked through — the blanks shape's own verb, ranked with the answers so a hundred-column foot keeps it",
 	},
 	"questionPairAWord": {
 		screen: "[a] the first",

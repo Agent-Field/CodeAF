@@ -1044,7 +1044,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// the other half of the law: a claim is a finding, or it holds, or it is said
 	// out loud — never silently passed ([withOpenClaims]).
 	open := checklist.open()
-	verdict, again, _ := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, open, "", log)
+	verdict, again := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, open, "", log)
 	verdict.alreadyRed = checks.alreadyRed()
 	switch {
 	case verdict.answered, !again:
@@ -1077,30 +1077,61 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	} else {
 		fmt.Fprintf(log, "audit: no verdict — asking a fresh auditor\n")
 	}
-	retried, _, asked := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, open, elsewhere, log)
-	// AND THE WINDOW IS READ TWICE ON THE WAY HERE, SO IT CAN CLOSE IN BETWEEN.
-	// The reading above was taken before a fresh checker was built; the one
-	// inside the attempt is taken with it built, against the time the call
-	// actually has — and on a loaded box the building is enough to spend what was
-	// left. A retry the window refused is not an attempt, so this lands exactly
-	// where the branch above lands: on the first call's own account, with the
-	// window's closing as a clause on the end of it. Saying `asked twice` over a
-	// call nobody made would tell a person two checkers were asked when one was,
-	// and the sentence it prefixes is [checkerRanOut]'s — which says nobody could
-	// check the work a second time in the same breath ([auditVerdict.twice]).
-	if !asked {
-		fmt.Fprintf(log, "audit: %s\n", checkerWindowClosed)
-		return withOpenClaims(verdict.andTheWindowClosed(), open)
-	}
+	retried, again := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, open, elsewhere, log)
 	retried.alreadyRed = checks.alreadyRed()
-	if retried.answered {
+	return withOpenClaims(secondAuditOutcome(verdict, retried, again, log), open)
+}
+
+// secondAuditOutcome is what a person reads when the first attempt did not
+// answer and a second was considered. The four roads:
+//
+//   - the second answered → that verdict, marked as the second try
+//   - the second stalled as the window closed → the second's own stall account
+//   - the second could not be made (window already under the floor) → the
+//     FIRST attempt's account plus the window-closed clause — never
+//     [checkerAskedTwice] over [checkerRanOut], which would claim two calls
+//     when only one ran (#803)
+//   - the second ran and also did not answer, with room left → [twice]
+func secondAuditOutcome(first, second auditVerdict, secondAgain bool, log io.Writer) auditVerdict {
+	if second.answered {
 		// AND THE LANDING SAYS WHICH TRY ANSWERED. A verdict the first call did
 		// not produce is the same verdict — nothing about the work is different —
 		// but a person reading a card wants to know that the first call was
 		// abandoned rather than skipped ([checkedOnTheSecondTry]).
-		return withOpenClaims(retried.onTheSecondTry(), open)
+		return second.onTheSecondTry()
 	}
-	return retried.twice()
+	if !secondAgain {
+		// Matching the pre-flight branch above: the window closed, and when the
+		// second attempt never became a call its only evidence is [checkerRanOut]
+		// — keeping that would erase the first call's stall (#803). A second
+		// attempt that stalled on the last of the window already carries
+		// [andTheWindowClosed].
+		if auditCallRan(second) {
+			return second
+		}
+		fmt.Fprintf(log, "audit: %s\n", checkerWindowClosed)
+		return first.andTheWindowClosed()
+	}
+	return second.twice()
+}
+
+// auditCallRan reports that its verdict is about a call that was actually made
+// (or that failed to start after being asked), rather than about a window that
+// closed before anybody was asked.
+func auditCallRan(v auditVerdict) bool {
+	if len(v.evidence) == 0 {
+		return false
+	}
+	line := v.evidence[0]
+	switch {
+	case strings.Contains(line, "without answering and was abandoned"):
+		return true
+	case strings.Contains(line, "the checker could not be asked"):
+		return true
+	case strings.Contains(line, "the checker could not start"):
+		return true
+	}
+	return false
 }
 
 // auditOnce is one attempt: a fresh auditor in the node's worktree, one
@@ -1117,16 +1148,20 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 // ([auditPace]) and the check is asked again inside what is left — where before
 // it, one hung call spent the whole five minutes and the node landed on a
 // sentence claiming nobody could check it (#513).
-//
-// THE THIRD RETURN SAYS WHETHER A CALL WAS MADE AT ALL, and it is false in
-// exactly one place: the window had closed before this attempt could ask
-// anybody anything. The caller needs it because it read the same window a
-// moment earlier and was told there was room, and what it must not do with a
-// call that never happened is say two of them were made ([Agent.auditNode]).
-func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, pace auditPace, door auditDoor, checks checkGround, files landingFiles, claim string, open []claimFinding, on string, log io.Writer) (auditVerdict, bool, bool) {
+func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, pace auditPace, door auditDoor, checks checkGround, files landingFiles, claim string, open []claimFinding, on string, log io.Writer) (auditVerdict, bool) {
+	// A WINDOW WITH TOO LITTLE LEFT IN IT ASKS NOBODY ANYTHING — and that question
+	// is asked BEFORE a fresh checker is built. Building under load can spend the
+	// last of a short window; a call that is then refused must not be written as a
+	// call that ran, or the landing claims two asks when only one happened (#803).
+	// The bound is read again after the build for the timeout itself, so a call
+	// that does go out is still measured against the time it actually has.
+	if _, worthAsking := pace.bound(a.auditNow()); !worthAsking {
+		return noVerdict(checkerRanOut(pace.window), ""), false
+	}
+
 	auditor, err := a.newAuditAgent(ground.dir, node, door, on)
 	if err != nil {
-		return noVerdict("the checker could not start: "+err.Error(), ""), true, true
+		return noVerdict("the checker could not start: "+err.Error(), ""), true
 	}
 	defer func() {
 		_ = auditor.Close()
@@ -1146,15 +1181,9 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	// something to run gets the time a run takes, one whose only remaining move is
 	// a refused command gets the time reading takes ([auditDoor.window]) — and
 	// what is decided here is only how much of it one call may hold.
-	//
-	// A WINDOW WITH TOO LITTLE LEFT IN IT ASKS NOBODY ANYTHING. It is read HERE,
-	// with the first checker closed and this one already built, so the bound is
-	// measured against the time this call actually has; a retry that would get
-	// less than the floor is not made at all, and what the landing then says is
-	// that the window closed rather than that a call it never made stalled.
 	bound, worthAsking := pace.bound(a.auditNow())
 	if !worthAsking {
-		return noVerdict(checkerRanOut(pace.window), ""), false, false
+		return noVerdict(checkerRanOut(pace.window), ""), false
 	}
 	auditCtx, done := context.WithTimeout(ctx, bound)
 	defer done()
@@ -1162,7 +1191,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	fmt.Fprintf(log, "audit: verifying against the acceptance\n")
 	events, err := auditor.Submit(auditCtx, auditQuestion(node, tree, ground, door, checks, files, claim, open))
 	if err != nil {
-		return noVerdict("the checker could not be asked: "+err.Error(), ""), true, true
+		return noVerdict("the checker could not be asked: "+err.Error(), ""), true
 	}
 	// The turn's own failure is watched for, and it is watched for HERE rather
 	// than inferred from an empty reply, because the two are different news with
@@ -1199,17 +1228,17 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 		stalled := noVerdict(checkerStalled(bound), said)
 		if pace.left(a.auditNow()) > 0 {
 			fmt.Fprintf(log, "audit: %s\n", checkerStalled(bound))
-			return stalled, true, true
+			return stalled, true
 		}
 		fmt.Fprintf(log, "audit: %s%s\n", checkerStalled(bound), checkerWindowClosedTail)
-		return stalled.andTheWindowClosed(), false, true
+		return stalled.andTheWindowClosed(), false
 	}
 	if failure != nil && strings.TrimSpace(said) == "" {
 		// NOTHING WAS DELIVERED. There is no reply to have parsed and no auditor
 		// left to ask for a word — the call itself did not land — so this goes to
 		// the rung that builds a new one, exactly as it did before the nudge
 		// existed.
-		return noVerdict("the checker could not be asked: "+failure.Error(), ""), true, true
+		return noVerdict("the checker could not be asked: "+failure.Error(), ""), true
 	}
 
 	verdict := parseAuditVerdict(said)
@@ -1224,7 +1253,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 		verdict = a.nudgeAudit(auditCtx, auditor, verdict, log)
 	}
 	fmt.Fprintf(log, "audit: %s\n", verdict.report())
-	return verdict, true, true
+	return verdict, true
 }
 
 // nudgeAudit asks the SAME auditor, once, for the word it did not say.
@@ -3077,10 +3106,10 @@ func boundedResult(tool bare.Tool, droppings Place, workspace string) bare.Tool 
 		pointer, fileErr := writeStub(droppings, workspace, text)
 		if fileErr != nil || pointer == "" {
 			footer := "\n[cut here; full output could not be saved — ask for a narrower path, pattern, or range]"
-			return capBytes(text, auditResultLimit-len(footer)-capMarkerRoom) + footer, isError, nil
+			return capBytes(text, auditResultLimit-len(footer)-32) + footer, isError, nil
 		}
 		footer := fmt.Sprintf("\n[cut here; whole output: %s — use read with offset/limit]", pointer)
-		return capBytes(text, auditResultLimit-len(footer)-capMarkerRoom) + footer, isError, nil
+		return capBytes(text, auditResultLimit-len(footer)-32) + footer, isError, nil
 	}
 	return tool
 }

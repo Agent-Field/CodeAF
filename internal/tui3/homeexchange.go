@@ -855,6 +855,11 @@ func (a *app) errandUpdated(ex *homeExchange, notice session.StandingNotice) tea
 	ex.itemID = strings.TrimSpace(notice.Item.ID)
 	ex.focused, ex.onOffer, ex.changing = false, false, false
 	ex.rows = append(ex.rows, exchangeRow{kind: exchangeNote, text: homeAskStoodWord})
+	// AND THE COLUMN'S COUNT HEARS IT TOO. `ask here` stands the item on the
+	// errand's own stream, which never reaches [app.standingUpdate], so without
+	// this the foot of the task column kept a cached zero until home's beat
+	// re-read the store — while the pane already said the order stood.
+	a.refreshKeepingCount()
 	return nil
 }
 

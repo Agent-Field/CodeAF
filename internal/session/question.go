@@ -1548,6 +1548,17 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 	// is withdrawing it ([Agent.rememberQuestion]) — so an answer that had not
 	// taken the entry first would be raced by its own withdrawal.
 	q, said := a.claimQuestion(answer.Kind, answerToken(answer), !resolvesQuestion(answer))
+	// A LANDING ANSWER STILL OWES THE EVENT WHEN NOTHING WAS BANKED. Before
+	// publishLandingQuestion started banking, and for an answer that reaches
+	// this door from a restored graph whose raise was only replayed, claim
+	// answers false — and without an EventQuestionAnswered a `--host` surface
+	// that never closed the question itself keeps drawing it open. Capture the
+	// words before apply settles the node out of PendingDecisions.
+	landingSaid := !said && resolvesQuestion(answer) &&
+		(answer.Kind == QuestionLanding || answer.Kind == QuestionConflict)
+	if landingSaid {
+		q = a.questionForLandingAnswer(answer)
+	}
 	if err := a.applyToLane(answer); err != nil {
 		// NOTHING WAS DECIDED, SO NOTHING IS FORGOTTEN. The question is still a
 		// question and still has to be drawn.
@@ -1568,9 +1579,29 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 			// this decision. The existing memory door keeps it forgettable.
 			_, _ = a.RememberScoped("prefers "+strings.TrimSpace(answer.Why), memoryScopeForAnswer(answer.Scope))
 		}
+	}
+	if said || landingSaid {
 		a.emitQuestion(EventQuestionAnswered, q, &answer)
 	}
 	return nil
+}
+
+// questionForLandingAnswer is the words a landing answer is ABOUT, captured
+// before apply settles the node. Prefer the pending decision's own shape; fall
+// back to the lane the answer named so the event still carries a token a
+// surface can match.
+func (a *Agent) questionForLandingAnswer(answer Answer) Question {
+	for _, pending := range a.PendingDecisions() {
+		if pending.Notice.ID != answer.ID {
+			continue
+		}
+		q := a.landingQuestion(pending)
+		if answer.Kind != "" {
+			q.Kind = answer.Kind
+		}
+		return q
+	}
+	return Question{ID: answer.ID, Kind: answer.Kind, Ask: AskLanding}
 }
 
 // answerToken is the answer's own id as one string, matching [Question.Token].

@@ -266,7 +266,15 @@ var questionKeys = []questionVerb{
 	// ratify line whose undo is off the row is a ratify line with no undo.
 	{key: questionRuleKey, word: "make it a rule", forms: formsBlock | formsRoom, needs: needRule, giveUp: 2},
 	{key: questionUndoKey, word: "undo", forms: formsRatify | formsRoom, needs: needUndo, giveUp: 2},
-	{key: questionBlankKey, word: "next blank", forms: formsRoom, needs: needBlanks, giveUp: 6},
+	// `tab` IS THE BLANKS SHAPE'S OWN VERB AND IS RANKED WITH THE ANSWERS, for
+	// the checklist's `space` law said one shape over: a sentence with holes
+	// whose foot kept `[c] change` and `[x] compare` and gave up `[tab] next
+	// blank` is a form nobody can walk. It was ranked sixth — the same rank
+	// that hid `tick it` at a hundred columns — so the e2e gallery width
+	// (questionCols) and every ordinary room drew a blanks page with no key
+	// that moves between the holes. Ranked zero beside `a`/`b` and `←→ move
+	// it`; offered only where there is more than one hole ([needBlanks]).
+	{key: questionBlankKey, word: "next blank", forms: formsRoom, needs: needBlanks},
 	// `space` IS THE CHECKLIST'S ANSWER AND IS RANKED WITH THE ANSWERS, which is
 	// this table's own law read on the one shape that was breaking it: "The
 	// options are never dropped at all: an offer with an answer missing is an

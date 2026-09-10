@@ -785,9 +785,11 @@ Some questions are a sentence with holes in it rather than a list of answers:
 
     land them in [ ~/notes ] as [ a new file ] and keep the old copy: [ no ▾ ]
 
-`tab` moves to the next hole and `shift+tab` back. Both stop at the ends rather
-than wrapping. Typing fills a hole; `←→` walks the choices where a hole has a
-short list of them.
+`tab` moves to the next hole (`[tab] next blank` on the page's foot) and
+`shift+tab` back. Both stop at the ends rather than wrapping. Typing fills a
+hole; `←→` walks the choices where a hole has a short list of them. The walk is
+the shape's own verb — it stays on the foot at a hundred columns, the way
+`[space] tick it` stays on a checklist.
 
 Each hole opens on whatever the asker already knew, so you are not retyping it.
 Under the sentence, one dim line says what the hole you are in takes — a file or

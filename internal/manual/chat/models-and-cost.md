@@ -55,6 +55,10 @@ from its next turn onward. Nothing else moves: not the conversation, not any oth
 See "Changing the model for one task while it is running" on the tasks page. Inside a
 task that has finished the name is still there to read and cannot be pressed.
 
+If the task's work is being checked when you press, there is no next turn left to move:
+the pick is saved for the next run and the row keeps naming the model the work actually
+ran on. The room shows `next model <id>` while that choice is held.
+
 The picker is a filter box in the input line's place with a short list of models under it.
 It is bottom-anchored: the conversation shrinks above it, so nothing pops up over what you
 were reading.
@@ -2971,10 +2975,12 @@ session keeps the bodies you asked for rather than rotating them away after a fe
 calls.
 
 That pin is also the old spelling of one switch — `AFORGE_DEBUG=1`, `--debug`, or `/debug`
-in a conversation — which keeps the **debug record** of a run in a folder of its own. The
-bodies are moving there, so that this file stays small enough to grep and a long run
-cannot rotate away the failure you came for. The debug-record page says where the folder
-is and what is in it today.
+in a conversation — which keeps the **debug record** of a run in a folder of its own.
+The bodies live there now (each model call under `calls/`, each tool call and each
+choice on `events.jsonl`), so this file can stay small enough to grep and a long run
+cannot rotate away the failure you came for. The pin still also writes the bodies onto
+the log for one release, so a shell history that uses the old word still gets them. The
+debug-record page says where the folder is and what is in it.
 
 **Why did that call fail?** The line says. A `→ 400` carries the endpoint's own first
 sentence; a line with no status at all is a request that never reached an endpoint; a line

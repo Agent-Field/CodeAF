@@ -1021,6 +1021,13 @@ var OperatorEnvPins = []string{
 	// answers. It is plumbing: diagnostic output a preference sheet has no
 	// business persisting.
 	"AFORGE_WIRE_LOG",
+	// AFORGE_PROMPT_PROFILE pins the prompt profile (internal/session's
+	// promptprofile.go) to `lean` or `full` for one launch: a bench or a test
+	// measuring one arm against the other. The profile is DERIVED from the
+	// model's window in ordinary use, so this is an operator's pin and not a
+	// preference; the row a person would choose lean with is owed and is not
+	// this variable.
+	"AFORGE_PROMPT_PROFILE",
 	// AFORGE_GROWTH_GATE is the growth governor's rollback switch
 	// (internal/resident/grow.go): set to 0 and the governor keeps its three
 	// free checks and never asks the paid satisfaction question. It is
