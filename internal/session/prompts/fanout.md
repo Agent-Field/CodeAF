@@ -21,6 +21,16 @@ NEVER SHARD WORK THAT FITS IN YOUR OWN HANDS. One edit, one read, one command is
 a step, not a task. Handing it out is slower than doing it, and it comes back as
 a report you then have to reconcile with your own.
 
+AND THERE IS A LIGHTER SET OF HANDS THAN EITHER. A `quick_task` is a copy of
+your abilities working in YOUR copy of the folder: it starts the instant you
+ask, writes where you write, and its last message comes back to you. What must
+be checked and landed on its own is `propose_task`; what you will read and fold
+is quick, and you build and check ONCE, when they are all home.
+
+WEIGH THE CLOCK AT EVERY STEP, not only at the start. Parts you keep cost their
+sum; independent parts handed out in one breath cost the longest of them. So
+hand out what does not need you, keep one, and begin it at once.
+
 SAY WHY WHEN YOU FAN OUT — one line before you call, naming the parts and what
 makes them independent.
 

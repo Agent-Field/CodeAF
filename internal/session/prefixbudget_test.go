@@ -156,14 +156,25 @@ import (
 // `model` give up their rules entirely to `propose_task`'s copies of the same
 // two fields. For comparison, `propose_task` encodes to 5,720.
 //
-// WHAT IS STILL OWED, AND WHERE IT SHOULD COME FROM. Three second copies of the
-// planner rule are now in the prefix at once — `taskDescription`'s "do not reach
-// for a planner", the `WIDE WORK` bullet's "never split related work", and
-// prompts/system.md's own `THERE IS NO PLANNER ON YOUR BELT` paragraph — and
-// prompts/system.md's `small work ... is answered here` sentence is a routing
-// call the judge now makes better and in the place the call is made. Any of
-// them pays this back; none of them belonged to the lane that added the verb.
-const fixedPrefixBudget = 49_000
+// AND THE CHOICE WAVE PAID IT BACK THE NEXT DAY (2026-09-10), so the cap is
+// 48,000 again and the measured prefix is 46,245, which is 1,755 under. Two
+// things happened in one commit. The belt's hand-off section stopped being a
+// list of bullets that sorted work by WIDTH and became one picture of what the
+// model HAS and what each thing COSTS (beltfacts.go says why, and what a real
+// model did with the list); the picture is a net saving on the three rule lists
+// it replaced, and it states "never poll" once for every road rather than per
+// verb. And `propose_task`'s schema went on the same diet its description went
+// on: one clause per field, the dowry prose dropped from `brief` because
+// prompts/system.md teaches it and a test pins it there, and the em dashes
+// taken out of every description string, small models tokenising them badly.
+// The tool block went 23,369 → 21,808 and the page reads 24,437.
+//
+// WHAT IS STILL OWED. The planner rule is in the prefix twice —
+// `taskDescription`'s "do not reach for a planner" and prompts/system.md's own
+// `THERE IS NO PLANNER ON YOUR BELT` paragraph — and both are pinned by
+// TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner, so paying it back is a
+// change to that test's mind and not only to the bytes.
+const fixedPrefixBudget = 48_000
 
 // widestPage is the page at its heaviest: prompts/system.md with every one of
 // its tool-naming facts in the PRESENT case (beltfacts.go).

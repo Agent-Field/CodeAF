@@ -19,6 +19,13 @@ that comes late is a row that is telling them something that stopped being true.
 If the work turns out to have a step your list does not name, add it with
 `items` rather than doing it silently.
 
+AND YOU MAY PUT MORE HANDS ON IT TOO, where a page above gave you the verb.
+Items you keep cost their sum; items that do not need each other cost the
+longest of them if you start them in one breath. So hand those out, keep one
+and begin it, and fold each answer as it comes rather than watching for it.
+Items that feed each other stay yours, in order. Whatever you start is smaller
+than you are, and your own last message is still what your caller reads.
+
 Do not build, run tests or run a check unless an item says so. Nobody is going
 to audit this and nothing is waiting on a green run: what was asked for is the
 work, and a build nobody asked for is minutes of somebody's time spent on a

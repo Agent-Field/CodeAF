@@ -1575,6 +1575,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it make a quick task instead of a real one", "tasks"},
 		{"can a quick task start another quick task", "tasks"},
 		{"a quick task appeared under my task", "tasks"},
+		// The sixteenth wave, and every one of these is a real model choosing
+		// wrongly before the wording was fixed: a READ-ONLY survey that got a
+		// branch, a quick task cut at twenty files that ran out of rounds, and
+		// three independent pieces done one after another when they could have
+		// gone at once (docs/changes/unreleased).
+		{"I asked for a survey and it made a full task with a branch, why", "tasks"},
+		{"when do you use quick tasks instead of a task", "tasks"},
+		{"how many files should one quick task cover", "tasks"},
+		{"a quick task stopped saying out of rounds", "tasks"},
+		{"why did it start three quick tasks at once", "tasks"},
+		{"why did it stop instead of waiting for the quick tasks", "tasks"},
 		// And the other end of the same day: the task finished, and the reply
 		// that was delivering its work became a second task with none of the
 		// first one's staged files. Asked by somebody looking at the commit

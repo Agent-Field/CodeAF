@@ -207,7 +207,7 @@ Five limits, and they are the price of there being no ceremony:
 None of these are settings. A quick task that turns out to need any of them is a sign the
 work wanted an ordinary task, and you can say so mid-flight: stop it and ask for a task.
 
-## Quick task or a proper task — why it went quick instead of a real task, and how aforge decides which road your work takes
+## Quick task or a proper task — why it went quick instead of a real task, why a survey did not get a branch, and how aforge decides which road your work takes
 
 The rule is written once, in the words the model itself reads:
 
@@ -216,15 +216,61 @@ The rule is written once, in the words the model itself reads:
 > it is quick. If it must be checked and merged on its own, or survive the window
 > closing, it is a task. One edit, one read, one command is a step: do it yourself.
 > Related steps that share what they learn are one quick task's items, not several quick
-> tasks.
+> tasks. Keep one small — a few files and a few minutes: reading is not progress, so
+> six steps that only read end it.
 
-Two consequences worth knowing. **Small things still do not become work at all** — one
+**What decides is what happens to the answer, never how wide the work is.** Work whose
+result comes back for the conversation to read and carry on with is quick tasks, one per
+independent part, however many parts there are — a survey of four packages is four of
+them, not one task with a branch. Work that has to be *checked and landed on its own*, or
+to outlive the window you are looking at, is a task. Width only decides the shape of the
+second one: a wide **change** is one task whose worker hands the real parts out from
+inside once it has opened the material, and a wide **read** never comes down that road.
+
+**And the model is told what each one costs**, rather than given a list of which kinds of
+work go where. Its own instructions describe a quick task as a copy of its abilities
+working where it stands and a task as a worker in a copy of the folder that is checked and
+merged, and then the arithmetic: pieces it keeps cost their sum, independent pieces handed
+out in one breath cost the longest of them. Everything on this page follows from that, and
+so does anything this page did not think to list.
+
+Three consequences worth knowing. **Small things still do not become work at all** — one
 edit, one read, one command is done in the reply, and it was never a candidate for either
-road. And **related steps are one quick task's items, not several quick tasks**: reading
+road. **Related steps are one quick task's items, not several quick tasks**: reading
 four files to answer one question about them is one quick task with four items, because
-the fourth read is worth more to somebody who has seen the first three.
+the fourth read is worth more to somebody who has seen the first three. And **one quick
+task is a few files and a few minutes** — see *How big one quick task should be* below.
 
 You can overrule it either way in words, and the model follows.
+
+## How big one quick task should be — a quick task that ran out of rounds, one that read twenty files and cost a dollar, why a big package became several
+
+**A few files and a few minutes.** A quick task is one worker with one context and no
+grooming, so the thing that ends it early is not a wall clock, it is running out of room:
+a worker that only reads is not making progress by aforge's own measure, and after a few
+such steps in a row it is stopped and its row lands saying `out of rounds`.
+
+That is a real failure and not a hypothetical. A quick task told to survey twenty files
+and 8,600 lines read them whole into a context with no space for them, stopped on
+`out of rounds — stopped: 6 steps without progress` after eight minutes, and cost over
+half a dollar for an answer nobody got.
+
+So a large package is **several** quick tasks of a few files each, or one quick task with
+one item per small group — never one over all of it. And a quick task that starts quick
+tasks of its own cuts them smaller still, because its own room is already spent.
+
+## Why several things started at once — three quick tasks in one message, why it did not do them one at a time
+
+**Because they did not need each other, and one after another is the slowest order.**
+When a turn has independent pieces in front of it, aforge starts them in the same breath
+rather than in turn, keeps one piece for itself and gets on with it. You wait for the
+longest piece instead of the sum of them, and the rail shows every one of them running.
+
+What it will *not* do is watch them. Each landing arrives on its own and wakes the
+conversation, so once nothing is left that is independent of the work it handed out, the
+turn simply ends — a reply that sat there polling would have spent your money to learn
+what it was going to be told anyway. If the pieces share what they learn, they are one
+quick task's items instead, and they stay in order.
 
 ## Can a quick task start more work — quick tasks inside quick tasks, and the two bounds
 
@@ -3945,11 +3991,13 @@ than one job in your words writes one dim line before the work starts —
 `the work looks wide · one worker starts, and it can split as it goes` — and that line is
 what this section is about. It promises nothing: the tests below still have to pass.
 
-**And this is what I do with wide work too.** When I hand work off myself rather than you
-typing `/task`, `propose_task` carries a `wide` flag, and I set it whenever I judged the
-work broad — a sweep across many files, research across many sources, the same change over
-many separate items. It still starts **one** task, armed to split itself; it is not a
-planner and not three tasks. **There is no planner on my belt at all any more**, and there
+**And this is what I do with a wide change too.** When I hand work off myself rather than
+you typing `/task`, `propose_task` carries a `wide` flag, and I set it whenever the work
+that must be checked and landed is broad — the same edit over many separate items, a sweep
+that writes across many files. It still starts **one** task, armed to split itself; it is
+not a planner and not three tasks. A wide **read** never comes down this road at all: a
+survey or a comparison across many packages is quick tasks in your own folder, one per
+part, and *Quick task or a proper task* is where that is decided. **There is no planner on my belt at all any more**, and there
 is no sentence you can type that reaches one either, so width has nowhere else to go —
 *adaptive runs*, under *How do I start an adaptive run*, is the whole of that answer.
 

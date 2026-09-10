@@ -32,6 +32,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
@@ -165,11 +166,34 @@ const quickInterruptedReport = "the quick task did not finish before aforge clos
 // would otherwise open it — that the id returns at once and its answer starts a
 // turn here, so there is nothing to poll — is [taskDescription]'s already, and
 // the two verbs are on a belt together or on neither ([Config.mayQuickTask]).
-const quickTaskDescription = "A task gets its own copy of the folder, is checked, and lands. A quick task works " +
+//
+// ONE CLAUSE WAS ADDED TO IT ON 2026-09-10 AND THE JUDGE ITSELF IS UNTOUCHED.
+// The clause is the GRAIN, and it is here because a real run showed the judge
+// says nothing about size: a quick task sized at twenty files and 8,600 lines
+// read them whole into a context with no room for them, died `out of rounds —
+// stopped: 6 steps without progress` after 500 seconds, and cost $0.62 for an
+// answer nobody got. Which work goes down which road is the belt's picture
+// (beltfacts.go); how big one of them is cut is this.
+//
+// AND IT NAMES NO SHAPES OF WORK, by the same ruling that took the shape list
+// out of the belt: a description that says "a survey is quick tasks" has
+// stopped teaching the judge and started listing matches for it.
+//
+// AND THE GRAIN QUOTES THE CONSTANT THAT ENDS IT, never a figure typed here.
+// [taskNoProgress] is the number of consecutive steps a node may take without
+// adding anything before it is stopped ([taskLimits]), and reading a file that
+// nothing has changed does not count as adding anything — which is precisely
+// why the twenty-file child died. A model that reasons from the real number
+// sizes the work it starts; one that reasons from a number somebody typed
+// twice reasons from whichever copy drifted (design-law §ONE SOURCE OF TRUTH).
+// It is a var and not a const for that reason alone, exactly as
+// [taskDescription] is.
+var quickTaskDescription = "A task gets its own copy of the folder, is checked, and lands. A quick task works " +
 	"where you are and its last message is its answer. If you will read the result and carry on, it is quick. " +
 	"If it must be checked and merged on its own, or survive the window closing, it is a task. One edit, one " +
 	"read, one command is a step: do it yourself. Related steps that share what they learn are one quick " +
-	"task's items, not several quick tasks."
+	"task's items, not several quick tasks. KEEP ONE SMALL, a few files and a few minutes: reading is not " +
+	"progress, so " + strconv.Itoa(taskNoProgress) + " steps that only read end it."
 
 // quickTaskSchemaJSON is the wire schema. Every field but `line` is optional,
 // which is the whole shape of the verb: there is no contract to groom, no
