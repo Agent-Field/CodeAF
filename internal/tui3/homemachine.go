@@ -18,12 +18,13 @@ package tui3
 // stayed and the second surface went, which is one reading feeding one line
 // rather than one reading feeding two things that could drift apart.
 //
-// ── AND IT NEVER BLOCKS ──
+// ── AND IT NEVER BLOCKS, AND A DRAW NEVER TAKES IT ──
 //
-// Everything below is either already in the view — the world, the standing
-// bands — or a single small file, and it is taken at most once per [homeEvery]
-// whoever asks first. The pulse is drawn on every frame; the disk is walked on
-// home's clock and nowhere else.
+// The reading is taken on a beat and at a door — home's three-second beat and
+// every place's ([homeEvery]), the pulse's own ten-second beat while no home is
+// open (pulsebeat.go), and [app.showPage] on the way into any room — and left
+// in [app.machine]. The pulse is drawn on every frame and reads that memo and
+// nothing else, so a frame costs no file, however often it is painted.
 
 import (
 	"strings"
@@ -51,7 +52,7 @@ type machineFacts struct {
 	// mid-turn, an errand answering, a standing order firing.
 	//
 	// IT IS THE LIST'S OWN ARITHMETIC AND NOT A SECOND ACCOUNTING
-	// ([app.machineHands] counts the world the list is ranked from). The rows the
+	// ([machineCounts] counts the world the list is ranked from). The rows the
 	// switcher calls moving are the same things this figure counts, and a count
 	// derived a second way here would be a top line saying `3 working` over a
 	// list showing four, which is the exact failure the one-reader law was
@@ -62,7 +63,7 @@ type machineFacts struct {
 	// fire until somebody says so, an errand holding a question.
 	//
 	// IT IS [machineFacts.hands]' MIRROR AND IS COUNTED THE SAME WAY, off the same
-	// three worlds in the same order ([app.machineWants]). The two are the whole
+	// three worlds in the same walk ([machineCounts]). The two are the whole
 	// of the switcher's sort order said as two numbers — SCREEN 2b ranks the one
 	// list by "what wants you first", then what is moving — so a pulse whose two
 	// counts came from anywhere else would be a headline over somebody else's
@@ -88,31 +89,28 @@ func (f machineFacts) nearCeiling() bool {
 	return f.ceiling > 0 && f.spent >= f.ceiling*machineCeilingNear
 }
 
-// machineFactsAt is that reading, taken once per [homeEvery] and answered from
-// the memo in between.
-//
-// THE MEMO DIES WITH THE SCREEN AND THE FACTS DO NOT. [homeView] is zeroed when
-// home closes, so walking out of home costs one more reading and never a
-// different answer: every figure below is taken from the machine itself — the
-// usage ledger, the person's own daily row — and not from what a screen happened
-// to be holding when they left it. The money was the one that was not, and it is
-// why the top line read `$1.85` on home and `$0.37` on tasks
-// ([app.machineSpentToday] carries the whole story).
-func (a *app) machineFactsAt(now time.Time) machineFacts {
-	h := &a.home
-	if !h.machineAt.IsZero() && !now.IsZero() && now.Sub(h.machineAt) < homeEvery {
-		return h.machine
-	}
-	facts := machineFacts{ceiling: a.machineAllowance()}
-	facts.spent = a.machineSpentToday(now)
-	facts.hands = a.machineHands()
-	facts.wants = a.machineWants()
-	h.machine, h.machineAt = facts, now
-	return facts
+// readMachine is the whole reading, taken over one world: the day's money off
+// the ledger and the two counts off the world's rows and the standing bands
+// read with it. It runs on a beat and never on a draw.
+func (a *app) readMachine(now time.Time, sessions []session.SessionRow, bands map[string][]StandingItemView) {
+	a.readMachineMoney(now)
+	a.machine.hands, a.machine.wants = machineCounts(sessions, bands, a.exchanges)
 }
 
-// machineHands is how many things this machine has in flight, counted off the
-// world the list is ranked from ([readSwitcher] judges the same rows moving).
+// readMachineMoney is the money half alone: what the day has cost, and the
+// allowance it is spending against. It is the half every place's beat can take
+// by itself, because the ledger is one file and the counts need a world.
+//
+// THE COUNTS ARE LEFT AS THE LAST WORLD LEFT THEM. A place's beat has no world
+// of its own to count, and zeroing them here would draw `2 want you` on one
+// beat and nothing on the next.
+func (a *app) readMachineMoney(now time.Time) {
+	a.machine.ceiling = a.machineAllowance()
+	a.machine.spent = a.machineSpentToday(now)
+}
+
+// machineCounts is how many things this machine has in flight and how many
+// have stopped on a person, counted off one reading of the world.
 //
 // ONE ROW IS NOT ALWAYS ONE HAND. A conversation with three task nodes out is
 // one row and three things being done, so it counts three. A row with no count —
@@ -120,86 +118,55 @@ func (a *app) machineFactsAt(now time.Time) machineFacts {
 // hand: something IS being done there, and the machine has no finer number for
 // it than "this".
 //
-// IT IS COUNTED OFF THE READING AND NOT OFF THE COLUMN. The list caps what it
-// draws ([switcherShown]) and the pulse's figure is about the MACHINE, so a
-// count taken from the rows on screen would fall the moment a ninth thing
-// started — which is the opposite of what the figure means.
-func (a *app) machineHands() int {
-	hands := 0
-	for _, row := range a.home.world.Sessions() {
-		if row.Archived || row.NeedsPerson() {
-			continue
-		}
-		if row.Tasks.Running > 1 {
+// BUT ONE ROW IS ONE WANT. A conversation that has asked you something is ONE
+// question however many nodes it has parked behind it, because what a person
+// does about it is answer it once. The count is a count of decisions waiting,
+// not of work waiting.
+//
+// IT IS COUNTED OFF THE READING AND NOT OFF ANY COLUMN. A panel caps what it
+// draws and these figures are about the MACHINE, so a count taken from the rows
+// on screen would fall the moment a ninth thing started — which is the opposite
+// of what the figure means.
+func machineCounts(sessions []session.SessionRow, bands map[string][]StandingItemView, exchanges []*homeExchange) (hands, wants int) {
+	for _, row := range sessions {
+		switch {
+		case row.Archived:
+		case row.NeedsPerson():
+			wants++
+		case row.Tasks.Running > 1:
 			hands += row.Tasks.Running
-			continue
-		}
-		if row.Tasks.Running == 1 || row.Live && row.Presence.State == session.PresenceWorking {
+		case row.Tasks.Running == 1 || row.Live && row.Presence.State == session.PresenceWorking:
 			hands++
 		}
 	}
-	// ONE ITEM IS ONE HAND HOWEVER MANY PROJECTS HOLD IT. A machine-wide watch is
-	// in every project's band ([app.readStandBands] keys them by directory), and a
-	// walk that did not remember what it had counted would multiply it.
+	// ONE ITEM IS ONE HAND, OR ONE QUESTION, HOWEVER MANY PROJECTS HOLD IT. A
+	// machine-wide watch is in every project's band ([app.readStandBands] keys
+	// them by directory), and a walk that did not remember what it had counted
+	// would multiply it.
 	counted := make(map[string]bool)
-	for _, views := range a.home.items {
+	for _, views := range bands {
 		for _, view := range views {
-			if !view.Running || strings.TrimSpace(view.Item.NeedsPerson) != "" || counted[view.Item.ID] {
+			if counted[view.Item.ID] {
 				continue
 			}
 			counted[view.Item.ID] = true
-			hands++
-		}
-	}
-	for _, ex := range a.home.exchanges {
-		if ex.working && !ex.waiting() {
-			hands++
-		}
-	}
-	return hands
-}
-
-// machineWants is how many things on this machine have stopped on a person,
-// counted off the world the list is ranked from — the same three walks
-// [app.machineHands] makes, asking the opposite question of each.
-//
-// ONE ROW IS ONE THING HERE, and that is where it differs from its mirror. A
-// conversation with three tasks out is three hands because three things are being
-// done; a conversation that has asked you something is ONE question however many
-// nodes it has parked behind it, because what a person does about it is answer it
-// once. The count is a count of decisions waiting, not of work waiting.
-//
-// IT IS COUNTED OFF THE READING AND NOT OFF THE COLUMN, for [app.machineHands]'
-// reason: the list caps what it draws and this figure is about the MACHINE, so a
-// tenth thing asking would otherwise be a thing the top line did not know about.
-func (a *app) machineWants() int {
-	wants := 0
-	for _, row := range a.home.world.Sessions() {
-		if row.Archived || !row.NeedsPerson() {
-			continue
-		}
-		wants++
-	}
-	// ONE ITEM IS ONE QUESTION HOWEVER MANY PROJECTS HOLD IT, which is the same
-	// double-counting [app.machineHands] guards against and for the same reason:
-	// a machine-wide order sits in every project's band.
-	counted := make(map[string]bool)
-	for _, views := range a.home.items {
-		for _, view := range views {
-			item := view.Item
-			if strings.TrimSpace(item.NeedsPerson) == "" || counted[item.ID] {
-				continue
+			switch {
+			case strings.TrimSpace(view.Item.NeedsPerson) != "":
+				wants++
+			case view.Running:
+				hands++
 			}
-			counted[item.ID] = true
-			wants++
 		}
 	}
-	for _, ex := range a.home.exchanges {
-		if ex.waiting() {
+	for _, ex := range exchanges {
+		switch {
+		case ex.waiting():
 			wants++
+		case ex.working:
+			hands++
 		}
 	}
-	return wants
+	return hands, wants
 }
 
 // machineSpentToday is WHAT THIS MACHINE HAS SPENT TODAY, and it is the usage

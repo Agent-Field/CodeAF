@@ -155,6 +155,10 @@ func (a *app) placeBeat(gen int) tea.Cmd {
 	// alive. A room may decline to re-read its own rows; it may not silence the
 	// bar.
 	a.refreshPlaceCounts(now)
+	// AND THE DAY'S MONEY ON THE TOP LINE, on the same beat and for the same
+	// reason: the pulse is drawn from a memo, and this is the clock that keeps it
+	// current while a place stands (homemachine.go's [app.readMachineMoney]).
+	a.readMachineMoney(now)
 	// AND THE ROOM ANSWERS ONLY WHETHER THE BEAT GOES ON. Home runs a beat of
 	// its own and answers false, which is what stops a clock armed by another
 	// place turning forever behind it ([place.tick] holds the whole argument).
