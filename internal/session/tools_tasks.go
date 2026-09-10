@@ -54,7 +54,15 @@ import (
 // comment beside it is free. Every rule the old description stated is still
 // stated; what went is the rhetoric, and the sentences the schema's own fields
 // say better. A rule belongs in the field it governs and appears ONCE.
-const tasksDescription = "Find prior or running tasks. No id searches; an id reads, steers, forwards, continues or settles one. Use it when the person means earlier work without pointing at it, or to look inside running work. Never to WAIT for handed-off work. A search also lists other windows' live work here, marked `another window`: it has no id in this conversation, so none of those operations reach it."
+//
+// AND THE STOP VERB IS SPELLED OUT IN IT rather than left to the field, because
+// the sentence a model has to have BEFORE it reaches for a field is which field
+// ends work. Asked to stop task 2, a model with no stop verb said "stop, do not
+// continue" into the task with `say`; the worker wrote down that it had been
+// told to stop, delivered nothing, and the check read that as an ordinary
+// unfinished run and opened a repair round on it. The task went on spending for
+// as long as it took somebody to notice.
+const tasksDescription = "Find prior or running tasks. No id searches; an id reads, steers, stops, forwards, continues or settles one. Use it when the person means earlier work without pointing at it, or to look inside running work. To END running work use stop: a say telling a task to stop is a message it may ignore, never a stop. Never to WAIT for handed-off work. A search also lists other windows' live work here, marked `another window`: it has no id in this conversation, so none of those operations reach it."
 
 // The schema's `resolve` enum is INTERPOLATED from [TaskResolutions] rather
 // than typed out, because the landing note offers the same three words to the
@@ -78,7 +86,8 @@ var tasksSchemaJSON = `{"type":"object","properties":{` +
 	// request of every turn while this comment is free.
 	`"lines":{"type":"integer","description":"Tail lines of a running task (default: ` + strconv.Itoa(taskLiveDefaultTail) + `, maximum: ` + strconv.Itoa(taskLiveMaxTail) + `)"},` +
 	`"scope":{"type":"string","enum":` + taskScopeEnum + `,"description":"\"` + taskScopeProject + `\" (default) is this project alone; \"` + taskScopeEverywhere + `\" also lists live work in every OTHER project, grouped by project and as unreachable from here. A search only."},` +
-	`"say":{"type":"string","description":"A line into the RUNNING task named by id: a correction, or a fact it lacks. With resolve, it is the REASON; with continue, this round's finding."},` +
+	`"say":{"type":"string","description":"A line into the RUNNING task named by id: a correction, or a fact it lacks. It ends nothing — a line telling a task to stop is a message it may ignore; stop is the door that ends work. With stop or resolve, it is the REASON; with continue, this round's finding."},` +
+	`"stop":{"type":"boolean","description":"Ends the RUNNING task named by id, through the same door the person's own stop pulls: its work halts where it stands, its branch is kept, and nothing re-runs it. Use it whenever the person says to stop, cancel or drop a task. It asks no confirmation. say with it is the reason, and goes on the task's record."},` +
 	`"continue":{"type":"boolean","description":"The door for \"continue task N\" / \"keep going on task N\". Re-arm that settled task: same node, brief and working copy. A new propose_task is the wrong door."},` +
 	`"resolve":{"type":"string","enum":` + TaskResolveEnum() + `,"description":"Settles a task nobody could check. accept: done on your own reading, branch merged. reaudit: a fresh checker, task still waiting. refute: it and its dependents fail. Ask accept or refute only on evidence you read; prefer reaudit when the checker never answered."},` +
 	// AND THE ONE OP THAT CARRIES SOMEBODY ELSE'S AUTHORITY says in its own
@@ -102,6 +111,7 @@ type tasksArguments struct {
 	ID       json.RawMessage `json:"id"`
 	Lines    int             `json:"lines"`
 	Say      string          `json:"say"`
+	Stop     bool            `json:"stop"`
 	Forward  bool            `json:"forward"`
 	Continue bool            `json:"continue"`
 	Resolve  string          `json:"resolve"`
@@ -192,6 +202,9 @@ func (a *Agent) tasksTool() bare.Tool {
 				}
 				if parsed.Forward {
 					return "Invalid arguments: forward needs an id — the person's words go to one running task, not to a search", true, nil
+				}
+				if parsed.Stop {
+					return "Invalid arguments: stop needs an id — it ends one running task, not a search", true, nil
 				}
 				return markTaskLook(ctx, a.taskSearchText(parsed.Query, parsed.Limit, scope)), false, nil
 			}
@@ -472,6 +485,14 @@ func (a *Agent) oneTask(ctx context.Context, token string, parsed tasksArguments
 	if parsed.Forward && (parsed.Continue || strings.TrimSpace(parsed.Resolve) != "") {
 		return "forward cannot be combined with continue or resolve; send one action at a time.", true, nil
 	}
+	// AND STOP IS THE ONE THAT CANNOT SHARE A CALL WITH ANYTHING. It ends the
+	// work; continue puts it back on, resolve settles what it produced, forward
+	// sends the person's words into it. A call carrying stop and one of those is
+	// two decisions about the same task in one breath, and there is no order to
+	// take them in that answers what the caller meant.
+	if parsed.Stop && (parsed.Continue || parsed.Forward || strings.TrimSpace(parsed.Resolve) != "") {
+		return "stop ends the task, so it cannot be combined with continue, resolve or forward; send one action at a time.", true, nil
+	}
 	rows := a.taskRows()
 	entry, found := LookupTask(rows, token)
 	if !found {
@@ -490,6 +511,13 @@ func (a *Agent) oneTask(ctx context.Context, token string, parsed tasksArguments
 		return fmt.Sprintf("No task %q in this project. Call tasks with no arguments to see the most recent ones.", token), true, nil
 	}
 	id, here := a.thisSessionTask(entry)
+	// STOP IS READ BEFORE SAY, because a call carrying both means one thing: end
+	// it, and here is why. Reading say first would relay the reason into a worker
+	// this call is about to cut, which is the exact move this verb exists to
+	// replace.
+	if parsed.Stop {
+		return a.stopOneTask(entry, id, here, parsed.Say)
+	}
 	if resolution := strings.TrimSpace(parsed.Resolve); resolution != "" {
 		return a.resolveOneTask(entry, id, here, TaskResolution(strings.ToLower(resolution)), parsed.Say)
 	}
@@ -557,6 +585,52 @@ func (a *Agent) oneTask(ctx context.Context, token string, parsed tasksArguments
 		return taskRowText(entry), false, nil
 	}
 	return taskLiveText(live, state), false, nil
+}
+
+// stopOneTask is the stop verb: the model ending running work through the very
+// door a person's own stop pulls ([Agent.CancelWithReason]).
+//
+// ONE DOOR, SO THE CONSEQUENCES CANNOT DIVERGE. The cut, the kept branch, the
+// `stopped` row on the rail and the landing that arrives a moment later are the
+// same whichever hand asked for them — which is the whole reason this reaches for
+// Cancel rather than settling the node here.
+//
+// IT ASKS NOBODY, AND THAT IS THE ONE DIFFERENCE WORTH KNOWING. The person's
+// road draws a card and waits for an answer (internal/tui3's stop.go); this call
+// IS the answer to a person who has already said stop, and a second question
+// would be asking them to confirm their own sentence.
+//
+// AND A TASK THAT IS NOT RUNNING IS NOT AN ERROR. "Stop task 2" over work that
+// landed a minute ago is a reasonable thing to have said, and what the asker is
+// owed back is what task 2 actually IS — done, stopped, your call — in the words
+// they are reading on the screen (task_status.go's tier words), rather than a
+// refusal that leaves the model guessing whether it ended anything.
+func (a *Agent) stopOneTask(entry TaskIndexEntry, id uint64, here bool, why string) (string, bool, error) {
+	if !here {
+		// A ROW STILL CLAIMING TO BE LIVE IS THE ONE REFUSAL HERE. The stop door
+		// is this session's graph and the id belongs to another conversation's, so
+		// there is nothing here to end and nobody to end it — the same fact
+		// steering and resolving already give for the same row.
+		if entry.Live() {
+			return fmt.Sprintf("Task %s is running in the conversation that owns it, and a stop reaches only this session's own work. It has to be stopped in that window.", entry.ID), true, nil
+		}
+		return fmt.Sprintf("task %s ran in an earlier conversation and is %s; there is nothing to stop.", entry.ID, taskEntryWord(entry)), false, nil
+	}
+	if node := a.taskNode(id); node != nil {
+		if status := ProjectTask(node.notice().StatusFacts()); status.Settled() {
+			return fmt.Sprintf("task %s is %s; there is nothing to stop.", entry.ID, status.RowWord()), false, nil
+		}
+	}
+	line, err := a.CancelWithReason(CancelTask+":"+strconv.FormatUint(id, 10), why)
+	if err != nil {
+		return capitalized(err.Error()) + ".", true, nil
+	}
+	// AND THE ANSWER SAYS THE THING THE OLD WORKAROUND GOT WRONG. A task told in
+	// words to stop still ended as an unfinished run and was sent back to close
+	// its gaps; a task STOPPED never reaches the check at all
+	// (task_run.go's [Agent.settleUnfinished]), and the model has to know that so
+	// it does not go looking for a landing that will never be judged.
+	return line + ". Its landing arrives the way every task's does; it is not checked and nothing re-runs it.", false, nil
 }
 
 // continueOneTask is the continue verb: the model re-arming a settled node

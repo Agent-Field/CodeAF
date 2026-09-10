@@ -309,3 +309,155 @@ func runningStubbedNode(t *testing.T, title string) (*Agent, *TaskNode, uint64) 
 	})
 	return agent, node, id
 }
+
+// ── the stop verb ───────────────────────────────────────────────────────────
+
+// THE MODEL CAN END RUNNING WORK, AND THROUGH THE PERSON'S OWN DOOR.
+//
+// Told to stop task 2, a model with no stop verb did the only thing its belt
+// allowed: it said "stopped in favour of task 3, do not continue" INTO the task.
+// The worker wrote down that it had been told to stop and delivered nothing, the
+// check read that as an ordinary unfinished run, a round opened to close the
+// gaps, and the task went on spending. This test is the verb that replaces that
+// move: one call, the same [Agent.Cancel] road the stop card takes, the reason on
+// the node's own record, and no check.
+func TestTasksToolStopsARunningNodeThroughTheStopDoor(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	started, release := make(chan struct{}), make(chan struct{})
+	// The runner takes no claim — no [TaskNode.setCancel] — so the stop settles
+	// the node where it stands rather than promising a landing nothing would
+	// bring, which is cancel.go's road for a node no goroutine has taken up.
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		close(started)
+		<-release
+	})
+	t.Cleanup(func() { close(release) })
+
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Port the parser", named: true, brief: "b", acceptance: "a"})
+	waitSignal(t, started, "the node to start")
+
+	text, isError := runTool(t, agent, "tasks",
+		fmt.Sprintf(`{"id":%d,"stop":true,"say":"I changed my mind, task 3 covers this"}`, id))
+	if isError {
+		t.Fatalf("stopping a running node was refused:\n%s", text)
+	}
+	for _, want := range []string{
+		// The engine's own line, with the reason where a person's would be.
+		"stopped " + taskStopName(id, "Port the parser") + ": I changed my mind, task 3 covers this",
+		// And the fact the old workaround got wrong: a stop is not an unfinished
+		// run, so nothing sends it back to close its gaps.
+		"it is not checked and nothing re-runs it",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the stop answer is missing %q:\n%s", want, text)
+		}
+	}
+
+	node := graph.node(id)
+	if state := node.stateNow(); state != TaskFailed {
+		t.Fatalf("the stopped node is %q, want settled the moment it was stopped", state)
+	}
+	notice := node.notice()
+	if !notice.Stopped {
+		t.Fatalf("the landing does not say somebody stopped it: %+v", notice)
+	}
+	// THE REASON IS THE RECORD, exactly as it is for an accept and a refute: the
+	// row afterwards says why this work ended, and not merely that it did.
+	if want := taskStoppedWord + ": I changed my mind, task 3 covers this"; notice.Report != want {
+		t.Fatalf("the stopped node's report is %q, want %q", notice.Report, want)
+	}
+
+	// AND A SECOND STOP IS NOT AN ERROR. The task is settled, so the answer is
+	// what it IS, in the word the person's own screen is showing them.
+	again, isError := runTool(t, agent, "tasks", fmt.Sprintf(`{"id":%d,"stop":true}`, id))
+	if isError {
+		t.Fatalf("stopping a settled node answered as an error:\n%s", again)
+	}
+	if !strings.Contains(again, "is stopped") || !strings.Contains(again, "nothing to stop") {
+		t.Fatalf("the answer does not say what the task is now:\n%s", again)
+	}
+}
+
+// A TASK THAT FINISHED SAYS SO, IN THE PERSON'S WORD FOR IT. "Stop task 2" over
+// work that landed a minute ago is a reasonable thing to have said, and a refusal
+// would leave the model guessing whether it had ended anything.
+func TestTasksToolStopOnASettledNodeAnswersWithItsState(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		node.finish("added the guard", nil, "", "")
+		node.graph.complete(node, TaskDone)
+	})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Fix the nil-map crash", named: true, brief: "b", acceptance: "a"})
+	waitDoneNode(t, graph.node(id))
+
+	text, isError := runTool(t, agent, "tasks", fmt.Sprintf(`{"id":%d,"stop":true}`, id))
+	if isError {
+		t.Fatalf("stopping a landed node answered as an error:\n%s", text)
+	}
+	if !strings.Contains(text, "is "+taskWordDone) || !strings.Contains(text, "nothing to stop") {
+		t.Fatalf("a landed node's stop does not say what it is:\n%s", text)
+	}
+}
+
+// STOP IS THE ONE VERB THAT CANNOT SHARE A CALL. Continue puts the work back on,
+// resolve settles what it produced, forward sends the person's words into it —
+// and every one of those is a decision about a task this call is ending.
+func TestTasksToolRefusesAStopSentWithAnotherVerb(t *testing.T) {
+	agent, _, id := runningStubbedNode(t, "Sweep the call sites")
+
+	for _, call := range []string{
+		fmt.Sprintf(`{"id":%d,"stop":true,"continue":true}`, id),
+		fmt.Sprintf(`{"id":%d,"stop":true,"resolve":"accept"}`, id),
+		fmt.Sprintf(`{"id":%d,"stop":true,"forward":true}`, id),
+	} {
+		text, isError := runTool(t, agent, "tasks", call)
+		if !isError || !strings.Contains(text, "stop ends the task") {
+			t.Fatalf("%s was not refused:\n%s", call, text)
+		}
+	}
+	// And a stop aimed at nothing names what is missing, the way every other
+	// verb on this tool does.
+	if text, isError := runTool(t, agent, "tasks", `{"stop":true}`); !isError ||
+		!strings.Contains(text, "stop needs an id") {
+		t.Fatalf("stop without an id was not refused:\n%s", text)
+	}
+}
+
+// WHAT THE MODEL IS TOLD ABOUT THE TWO VERBS. The defect was not that the door
+// was missing from the engine — a person's stop has always worked — it was that
+// the model reading this schema had no word for ending work and one that looked
+// close enough. So the description carries both halves: stop ends it, and a `say`
+// telling a task to stop does not.
+func TestTheTasksSchemaSaysStopEndsWorkAndSayDoesNot(t *testing.T) {
+	if !strings.Contains(tasksDescription, "To END running work use stop") {
+		t.Fatalf("the tool's description does not name the stop verb:\n%s", tasksDescription)
+	}
+	var schema struct {
+		Properties map[string]struct {
+			Type        string `json:"type"`
+			Description string `json:"description"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal([]byte(tasksSchemaJSON), &schema); err != nil {
+		t.Fatalf("the tasks schema does not parse: %v", err)
+	}
+	stop, present := schema.Properties["stop"]
+	if !present {
+		t.Fatal("the tasks schema has no stop field")
+	}
+	if stop.Type != "boolean" {
+		t.Fatalf("stop is a %q, want a boolean beside continue and forward", stop.Type)
+	}
+	for _, want := range []string{"same door the person's own stop pulls", "asks no confirmation"} {
+		if !strings.Contains(stop.Description, want) {
+			t.Fatalf("the stop field does not say %q:\n%s", want, stop.Description)
+		}
+	}
+	// AND THE FIELD THE MODEL USED TO REACH FOR SAYS WHAT IT IS NOT.
+	if say := schema.Properties["say"].Description; !strings.Contains(say, "It ends nothing") ||
+		!strings.Contains(say, "stop is the door that ends work") {
+		t.Fatalf("say does not say that it ends nothing:\n%s", say)
+	}
+}

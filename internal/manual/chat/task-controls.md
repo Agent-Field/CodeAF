@@ -44,6 +44,38 @@ is kept; a design task can discard its unsaved page, and the confirmation says
 which consequence applies. Runs and background jobs use their own existing
 stop confirmations. The header and controls stop the work on the open page.
 
+## Asking the chat to stop a task — can I tell the chat to stop a task, I asked it to stop task 2 and it kept going, the model said it stopped but the task is still running, cancel task 2
+
+**Yes, and it is a real stop.** Say "stop task 2", "cancel task 2" or "drop task 2" in the
+conversation and the model calls `tasks` with that id and `stop`. That is the same door
+`/stop`, `x` and the `Stop task…` row take, so the ending is identical whichever hand pulls
+it: the worker is cut off where it stands, its branch is kept with its work committed on it,
+the row reads `stopped`, and what it spent freezes where it was.
+
+**It asks you nothing.** Your own `x` raises a confirmation card, because one bare keystroke
+over a list should not be able to end an hour of work. The sentence you typed already *is*
+the decision, so the model does not hand it back to you as a question. If you would rather
+have the card, press `x` or type `/stop` inside the task.
+
+**Your reason goes with it.** Whatever you gave — "I changed my mind", "task 3 covers this"
+— is written onto the task's own record beside the word `stopped`, so the row afterwards
+says why. What the model reads back is the line you would have seen yourself, with your
+reason in it: `stopping task 2 (Port the parser): I changed my mind — its branch is kept`.
+
+**Telling a task to stop is not stopping it.** A line sent *into* a running task — the
+model's `say`, or your own words typed in its room — is a message, and a message can be
+ignored, or answered "stopped as instructed" while the work carries on. It is worse than
+nothing: a worker that ends a turn having delivered nothing looks exactly like a worker that
+ran out of road, so the check says it is not done, `closing gaps · round 1 of 1` opens, and
+the task keeps working and keeps spending. A real stop never reaches the check at all and is
+never handed back for another round.
+
+**A task that is not running answers with what it is.** "Stop task 2" over work that landed
+a minute ago is a reasonable thing to have said, so it is not refused: the reply is `task 2
+is done`, or `stopped`, or `your call`, in the same words your screen is showing. Work
+running in **another aforge window** cannot be stopped from here at all — it has no id in
+this conversation, and the window that owns it has to stop it.
+
 ## Change this task's model
 
 `/model` and the model row under Task setup target the open ordinary task.

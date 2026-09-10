@@ -391,6 +391,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how many tasks can run at once", "tasks"},
 		{"how do I stop a running task", "tasks"},
 		{"how do I start a task", "tasks"},
+		// The stop verb the chat's own model grew (internal/session's
+		// tools_tasks.go). Both halves of it are asked: whether saying so works at
+		// all, and the shape somebody arrives in when it did not — the model
+		// reported a stop, and the work kept going, because before the verb
+		// existed all it could do was say "stop" into the task.
+		{"can I tell the chat to stop a task", "task-controls"},
+		{"I asked it to stop task 2 and it kept going", "task-controls"},
 		// The navigation wave: opening a task somebody else's conversation is
 		// running, what that page can and cannot say, and the two things about the
 		// tasks place a person meets before any of it — what the box does, and why

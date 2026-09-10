@@ -769,6 +769,12 @@ type TaskNode struct {
 	// decision it was — a flag written afterwards would be a flag the update
 	// announcing the end raced past.
 	stopped bool
+	// stopReason is what whoever pulled the stop said they were stopping it FOR,
+	// and "" for every stop that came with no words — which is every one a person
+	// pulls, their card being a decision and not a sentence (cancel.go). It is
+	// written beside the flag and for the same reason: the landing this stop
+	// causes is the one place the reason can still be put on the record.
+	stopReason string
 	// ending is why this node stopped where it did, once it has (task_contract.go's
 	// [TaskEnding]), and "" until then and forever on a node that finished. THE
 	// FIRST CAUSE WINS: [TaskNode.end] refuses to overwrite one already written,
@@ -1976,6 +1982,14 @@ func (n *TaskNode) wasStopped() bool {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	return n.stopped
+}
+
+// stoppedLead is the first line of a stopped node's report: the word, and under
+// it the reason whoever pulled the stop gave, where there was one.
+func (n *TaskNode) stoppedLead() string {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return stopBecause(taskStoppedWord, n.stopReason)
 }
 
 func (n *TaskNode) markStopped() {
@@ -4789,7 +4803,7 @@ func (a *Agent) settleUnfinished(ctx context.Context, node *TaskNode, tree taskT
 		if node.wasStopped() {
 			merge, changed := keepHome(node, tree, changed)
 			node.end(TaskEndingStopped)
-			node.finish(withReport("stopped", report), changed, tree.branch, merge)
+			node.finish(withReport(node.stoppedLead(), report), changed, tree.branch, merge)
 			return TaskFailed, true
 		}
 		// Lifecycle cancellation is an interruption, never a finding about the

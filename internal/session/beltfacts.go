@@ -204,7 +204,13 @@ var beltFacts = []beltFact{{
 		// continues or settles one piece of work and is how you look inside
 		// running work. What paid for `propose_task`'s `checks` field is this
 		// second copy of a law the model holds whenever it holds the verb.
-		"- To send the person's current correction to a running task, use `tasks` with `id` and `forward: true`. `say` is your own coordination.\n" +
+		// AND THE CLAUSE ABOUT `say` IS HERE BECAUSE THIS IS WHERE `say` IS NAMED.
+		// A model asked to stop a task and holding no stop verb reached for the
+		// nearest thing on the belt and said "stop, do not continue" into the work;
+		// it kept running, and the check read what came back as an ordinary
+		// unfinished run. The verb exists now ([tasksDescription] carries what it
+		// does), so what this line owes is the boundary between the two.
+		"- To send the person's current correction to a running task, use `tasks` with `id` and `forward: true`. `say` is your own coordination and ends nothing; `stop` ends a task.\n" +
 		// THE CONTINUE SENTENCE IS NOT REPEATED HERE. `tasks` own description
 		// carries it word for word ([tasksDescription]), and the prefix is a
 		// budget: what pays for the handoff law in prompts/system.md is this

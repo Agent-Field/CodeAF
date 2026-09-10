@@ -4150,8 +4150,15 @@ press `esc`.
 Pressing `x` twice, or on work that has already landed, does nothing but say so — the
 second press answers `task 7 (Fix the parser) is already stopping`.
 
-**You can still ask in words instead** — "stop task 7" — and the model has the door
-through its `tasks` tool. The key is faster and does not spend a turn.
+**You can still ask in words instead** — "stop task 7", "cancel task 7" — and the model has
+a real stop of its own: it calls `tasks` with that id and `stop`, which is this same door,
+so the ending is identical. It asks no confirmation card, because the sentence you typed is
+already the answer to that question, and your reason goes onto the task's record beside the
+word `stopped`. The key is faster and does not spend a turn. **A line sent INTO a task is
+never a stop** — the model's `say`, or your own words in its room, are messages the worker
+may ignore or answer while carrying on, and a worker that then delivers nothing is read as
+unfinished work and handed back for a round of `closing gaps` while it goes on spending.
+`Asking the chat to stop a task` on the task-controls page has the whole of it.
 
 What else you can do yourself, on a task that is running:
 
@@ -4707,7 +4714,8 @@ words. Its reply should say what it forwarded and to which task.
 
 `tasks` with `say` remains a message from the model. It cannot authorize an assignment
 revision. Task workers cannot use `forward`, and it cannot address another session.
-It cannot be combined with `say`, `continue`, or `resolve`. A result arriving by itself
+It cannot be combined with `say`, `continue`, `resolve`, or `stop` — and neither can
+`stop` be combined with any of them, since it ends the task the others act on. A result arriving by itself
 does not authorize forwarding an old message of yours.
 
 Repeating the same forward to the same task is acknowledged without sending twice.
