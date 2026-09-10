@@ -703,3 +703,81 @@ func TestARefusalClearsOnTheNextKey(t *testing.T) {
 		t.Errorf("the refusal should be gone after the next key:\n%s", foot)
 	}
 }
+
+// ONE ANSWER LEAVES ONE RECORD, AND IT SAYS WHO GAVE IT.
+//
+// The page used to keep an account of its own where the foot had been, while the
+// block — which still held the question, because nothing had told it otherwise —
+// wrote the receipt as well. Two adjacent lines about one decision, in two
+// spellings, and the block's said `another window` about a key pressed on this
+// one: the answer came back down the questions lane, found the question still
+// open here, and was read as somebody else's.
+func TestAnAnswerGivenOnThePageLeavesOneRecordAndItSaysYou(t *testing.T) {
+	agent := newAnsweringAgent()
+	a := newTestApp(agent)
+	a.width, a.height = 92, 30
+	q := demoQuestionReading()
+	// THE PAGE IS OPENED THE WAY A PERSON OPENS ONE — off the block, with `o` —
+	// because the defect was entirely in what the two of them did about each
+	// other, and a page raised on its own has no block behind it to disagree.
+	a.raiseQuestion(questionShown{question: q})
+	a.questionRows(a.width)
+	head, ok := a.questionHead()
+	if !ok {
+		t.Fatal("the question never reached the block")
+	}
+	a.openQuestionRoom(head)
+	a.qroom.shown = a.qroom.shown.Add(-time.Second)
+
+	tap(a, "2")
+	tap(a, "enter")
+
+	if len(agent.answers) != 1 || agent.answers[0].FirstKey() != "2" {
+		t.Fatalf("the door was handed %+v", agent.answers)
+	}
+	// THE PAGE IS GONE. Its whole job was over when the answer was spent, and a
+	// page reporting what it just did is a page a person has to press esc to
+	// leave for no reason.
+	if a.questionRoomOpen() {
+		t.Fatalf("the page stayed up after it was answered:\n%s", footText(a))
+	}
+	block := plain(strings.Join(a.questionRows(a.width), "\n"))
+	if got := strings.Count(block, "decided "); got != 1 {
+		t.Fatalf("one answer left %d records:\n%s", got, block)
+	}
+	if strings.Contains(block, "another window") {
+		t.Fatalf("the receipt says somebody else pressed the key:\n%s", block)
+	}
+	if !strings.Contains(block, "you") {
+		t.Fatalf("the receipt does not say who decided:\n%s", block)
+	}
+}
+
+// AND THE LANE'S OWN NEWS ABOUT THAT ANSWER ADDS NOTHING.
+//
+// The engine emits EventQuestionAnswered for every answer, including this
+// window's own. The block already knows, so the round trip must be silent —
+// otherwise closing the question here only moved the second line rather than
+// deleting it.
+func TestTheLanesNewsAboutAnAnswerGivenHereAddsNoSecondLine(t *testing.T) {
+	agent := newAnsweringAgent()
+	a := newTestApp(agent)
+	a.width, a.height = 92, 30
+	q := demoQuestionReading()
+	a.raiseQuestion(questionShown{question: q})
+	a.questionRows(a.width)
+	head, _ := a.questionHead()
+	a.openQuestionRoom(head)
+	a.qroom.shown = a.qroom.shown.Add(-time.Second)
+	tap(a, "2")
+	tap(a, "enter")
+
+	answer := agent.answers[0]
+	a.questionFold(session.Event{
+		Kind: session.EventQuestionAnswered, Question: &q, Answer: &answer,
+	})
+	block := plain(strings.Join(a.questionRows(a.width), "\n"))
+	if got := strings.Count(block, "decided "); got != 1 {
+		t.Fatalf("the lane's news made it %d records:\n%s", got, block)
+	}
+}

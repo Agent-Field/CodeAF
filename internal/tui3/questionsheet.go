@@ -387,7 +387,12 @@ func (a *app) questionSheetRow(s *questionSheet, at int, q session.Question, wid
 		cursor = a.pal.ask(plainCursor)
 	}
 	answer, given := s.answered(q)
-	mark, plainMark := a.questionMark(), a.icon(tokens.GNeedsHuman)
+	// EACH ROW WEARS ITS OWN SHAPE'S MARK. A sheet is questions of several
+	// shapes gathered at one boundary, so an assumptions row and a permission
+	// row sit under each other here — and the one that is waiting on somebody is
+	// the only one that may say so ([questionAskSlot]).
+	slot, _ := questionAskSlot(q.Ask)
+	mark, plainMark := a.questionMarkFor(q), a.icon(slot)
 	if given {
 		plainMark = a.icon(tokens.GSettled)
 		mark = a.pal.dim(plainMark)
