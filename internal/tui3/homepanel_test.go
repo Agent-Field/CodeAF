@@ -49,14 +49,15 @@ func TestADigitAnswersTheTopQuestionWithTheCursorElsewhere(t *testing.T) {
 }
 
 // RUNNING DRAWS ITS ROWS WITH ONE MOVING CELL, on the first, and the line under
-// each row says what it is doing.
+// each row says what it is doing. A presence row with no title of its own is
+// named from the project's record.
 func TestRunningDrawsTheWorkAndWhatItIsDoing(t *testing.T) {
 	a := newSwitchLab(t).open(120, 45)
 	frame := homeText(a)
-	if !strings.Contains(frame, "running · 1") || !strings.Contains(frame, "Bounty Reward Companies") {
-		t.Fatalf("running does not draw the moving conversation:\n%s", frame)
+	if !strings.Contains(frame, "running · 1") || !strings.Contains(frame, "read 40 filings") {
+		t.Fatalf("running does not draw the work that is out:\n%s", frame)
 	}
-	if under := homeLineAfter(frame, "Bounty Reward Companies"); !strings.Contains(under, "1 task running") {
+	if under := homeLineAfter(frame, "read 40 filings"); !strings.Contains(under, tabSignalWord(tabWorking)) {
 		t.Fatalf("the running row does not say what it is doing:\n%s", frame)
 	}
 	if spin := a.home.spinAt(); spin < 0 || a.home.lines[spin].cell.panel != panelRunning {

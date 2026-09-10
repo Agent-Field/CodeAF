@@ -139,7 +139,7 @@ func (h *homeView) switchExchanges() []homeLine {
 // that could not be read, answers nothing — and the ledger then draws no memory
 // line at all, which is the emptiness law rather than a gap.
 func (a *app) readSwitchLedger() {
-	a.home.ledger = switcherLedgerInput{}
+	a.home.ledger = switcherLedgerInput{made: a.madeSince(a.home.seen)}
 	if a.memory == nil || a.home.seen.IsZero() {
 		return
 	}
@@ -147,7 +147,7 @@ func (a *app) readSwitchLedger() {
 	if err != nil {
 		return
 	}
-	a.home.ledger = switcherLedgerInput{learned: learned, letGo: letGo}
+	a.home.ledger.learned, a.home.ledger.letGo = learned, letGo
 }
 
 // ── the two views ───────────────────────────────────────────────────────────
@@ -192,6 +192,9 @@ func (a *app) homeAlt(letter rune) bool {
 // notification, and this surface does not have notifications. The word in the
 // right margin IS the door, which is why the two are one field.
 func (a *app) homeLedgerEnter(line homeLine) tea.Cmd {
+	if cmd, took := a.leftEnter(line); took {
+		return cmd
+	}
 	id, ok := parsePageWord(line.project)
 	if !ok {
 		return nil
@@ -253,6 +256,11 @@ func (a *app) homeRowVerbs() []verb {
 	line, ok := a.home.previewLine()
 	if !ok {
 		return nil
+	}
+	// A RUNNING ROW IS A PIECE OF WORK AND NOT ITS CONVERSATION, so its verbs
+	// are the work's (homepanel_running.go) and never `put it away`.
+	if line.cell != nil && line.cell.panel == panelRunning {
+		return a.runningVerbs(line)
 	}
 	// A ROW OF THE GRID CARRIES THE SWITCHER'S OWN ROW ON ITS CELL, so its verbs
 	// are the reading's exactly as they were on the list (homegrid.go).
@@ -358,7 +366,13 @@ func (a *app) homeArchiveRow(row session.SessionRow) tea.Cmd {
 // homeOpenFolder is `o open folder`, and homeCopyPath is `c copy path` — the
 // same two doors ctrl+o and ctrl+y are.
 func (a *app) homeOpenFolder(row session.SessionRow) tea.Cmd {
-	path := strings.TrimSpace(row.Workspace)
+	return a.homeOpenPath(row.Workspace)
+}
+
+// homeOpenPath hands one path to this machine's opener and says what came of
+// it — a folder for `o`, a file made while you were away (homepanel_left.go).
+func (a *app) homeOpenPath(path string) tea.Cmd {
+	path = strings.TrimSpace(path)
 	if path == "" || processOpener(path) != nil {
 		a.home.say("could not open "+path, "")
 		return nil

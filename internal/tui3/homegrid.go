@@ -141,7 +141,7 @@ var homePanelOrder = []homePanelSlot{
 	{panel: recentPanel{homePanelBase{panelRecent}}, word: "where you were", col2: 0, col3: 0, keep: 5, least: 4, more: homeFindWord},
 	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", col2: 0, col3: 2, keep: 4, least: 3, more: homeFindWord},
 	{panel: runningPanel{homePanelBase{panelRunning}}, word: "running", col2: 1, col3: 1, keep: 3, least: 4, place: pageTasks},
-	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", col2: 1, col3: 1, keep: 2, least: 3},
+	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", col2: 1, col3: 1, keep: 2, least: 3, place: pageTasks},
 	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", col2: 1, col3: 2, keep: 1, least: 3, place: pageSpend},
 	{panel: nextPanel{homePanelBase{panelNext}}, word: "next up", col2: 1, col3: 1, keep: 0, least: 3, place: pageStanding},
 }
@@ -314,6 +314,11 @@ type homeCell struct {
 	// row is the switcher's own row behind a conversation or a watch, which is
 	// what its verbs are read from (place_home.go's [app.homeRowVerbs]).
 	row *switcherRow
+	// key tells apart two rows of one panel that stand for the same
+	// conversation — two of its tasks running — so the cursor that was on the
+	// second is put back on the second after a rebuild ([homeLine.sameRow]).
+	// It is "" on every row that is the only one of its conversation.
+	key string
 }
 
 // height is how many screen rows one line takes.
@@ -731,7 +736,7 @@ func (a *app) homeGridAnswer(key string) (tea.Cmd, bool) {
 		return nil, false
 	}
 	for _, line := range a.home.lines {
-		if line.cell == nil || line.cell.panel != panelNeeds || line.cell.subRight == "" {
+		if !needsAnswering(line.cell) {
 			continue
 		}
 		return a.answerRowKey(a.homeTrue(line.row), key)
