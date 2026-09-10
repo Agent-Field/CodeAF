@@ -50,14 +50,14 @@ import (
 const standingSummary = `  aforge standing [add|edit|show|stop|check]  ongoing work and its runs`
 
 const standingUsage = `  aforge standing [list] [--json]       everything standing on this machine
-  aforge standing add --words "<your sentence>" --brief "<the work>"
+  aforge standing add --words "<your sentence>" --instructions "<the work>"
       (--watch <glob> | --every <cron or 20m>) [--report <path>]
       [--workspace <dir>] [--place <folder-id>] [--acceptance "<done when>"]
       [--max-per-day n] [--per-run-usd n] [--model slug]
   aforge standing add --hold --words "<a rule>" [--scope <folder-id>]
       [--descendants] [--workspace <dir>]
-  aforge standing edit <id> [--words ..] [--brief ..] [--watch ..] [--every ..]
-      [--report ..] [--acceptance ..] [--version n]
+  aforge standing edit <id> [--words ..] [--instructions ..] [--watch ..]
+      [--every ..] [--report ..] [--acceptance ..] [--version n]
   aforge standing show <id> [--json] [--runs n]
       what it is, which rules reach it, what woke each run, what each made
   aforge standing pause|resume|stop <id>
@@ -72,14 +72,14 @@ const standingUsage = `  aforge standing [list] [--json]       everything standi
 // standingFlags is every flag the door reads. One set for every verb, the way
 // `aforge collections` is written, with the verbs refusing what is not theirs.
 type standingFlags struct {
-	asJSON                        *bool
-	words, brief, watch, every    *string
-	report, acceptance, workspace *string
-	place, scope, model, title    *string
-	hold, descendants             *bool
-	maxPerDay, runs               *int
-	perRunUSD                     *float64
-	version                       *uint64
+	asJSON                            *bool
+	words, instructions, watch, every *string
+	report, acceptance, workspace     *string
+	place, scope, model, title        *string
+	hold, descendants                 *bool
+	maxPerDay, runs                   *int
+	perRunUSD                         *float64
+	version                           *uint64
 }
 
 func runStanding(args []string) error { return runStandingTo(args, os.Stdout) }
@@ -87,24 +87,24 @@ func runStanding(args []string) error { return runStandingTo(args, os.Stdout) }
 func runStandingTo(args []string, out io.Writer) error {
 	flags := commandFlags("standing")
 	f := standingFlags{
-		asJSON:      flags.Bool("json", false, "print structured records"),
-		words:       flags.String("words", "", "your own sentence; every row leads with it"),
-		brief:       flags.String("brief", "", "the work one run does, self-contained: nobody is there to ask"),
-		watch:       flags.String("watch", "", "a glob inside the workspace; a run starts when a matching file changes"),
-		every:       flags.String("every", "", "a rhythm: a five-field cron line or a duration of at least a minute"),
-		report:      flags.String("report", "", "a path inside the workspace the run's final reply is published to"),
-		acceptance:  flags.String("acceptance", "", "how anybody checks one run's work is done"),
-		workspace:   flags.String("workspace", "", "the folder the work runs in (default: this directory)"),
-		place:       flags.String("place", "", "a folder id this work is placed in; that folder's rules then reach it"),
-		scope:       flags.String("scope", "", "for --hold: the folder id whose placed work the rule governs"),
-		model:       flags.String("model", "", "the model one run works on, when not the configured one"),
-		title:       flags.String("title", "", "three or four words for a narrow row"),
-		hold:        flags.Bool("hold", false, "a rule that never wakes: it rides into the work it reaches"),
-		descendants: flags.Bool("descendants", false, "for --scope: include work placed in subfolders"),
-		maxPerDay:   flags.Int("max-per-day", standing.DefaultMaxPerDay, "the most runs in one local day"),
-		runs:        flags.Int("runs", 10, "for show: how many runs of history to print"),
-		perRunUSD:   flags.Float64("per-run-usd", standing.DefaultPerRunUSD, "the most one run may spend; 0 is only the daily limit"),
-		version:     flags.Uint64("version", 0, "for edit: the instructions version you read; a newer one refuses the edit"),
+		asJSON:       flags.Bool("json", false, "print structured records"),
+		words:        flags.String("words", "", "your own sentence; every row leads with it"),
+		instructions: flags.String("instructions", "", "the work one run does, self-contained: nobody is there to ask"),
+		watch:        flags.String("watch", "", "a glob inside the workspace; a run starts when a matching file changes"),
+		every:        flags.String("every", "", "a rhythm: a five-field cron line or a duration of at least a minute"),
+		report:       flags.String("report", "", "a path inside the workspace the run's final reply is published to"),
+		acceptance:   flags.String("acceptance", "", "how anybody checks one run's work is done"),
+		workspace:    flags.String("workspace", "", "the folder the work runs in (default: this directory)"),
+		place:        flags.String("place", "", "a folder id this work is placed in; that folder's rules then reach it"),
+		scope:        flags.String("scope", "", "for --hold: the folder id whose placed work the rule governs"),
+		model:        flags.String("model", "", "the model one run works on, when not the configured one"),
+		title:        flags.String("title", "", "three or four words for a narrow row"),
+		hold:         flags.Bool("hold", false, "a rule that never wakes: it rides into the work it reaches"),
+		descendants:  flags.Bool("descendants", false, "for --scope: include work placed in subfolders"),
+		maxPerDay:    flags.Int("max-per-day", standing.DefaultMaxPerDay, "the most runs in one local day"),
+		runs:         flags.Int("runs", 10, "for show: how many runs of history to print"),
+		perRunUSD:    flags.Float64("per-run-usd", standing.DefaultPerRunUSD, "the most one run may spend; 0 is only the daily limit"),
+		version:      flags.Uint64("version", 0, "for edit: the instructions version you read; a newer one refuses the edit"),
 	}
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
@@ -158,8 +158,8 @@ func runStandingTo(args []string, out io.Writer) error {
 func standingFlagsFor(verb string, set map[string]bool) error {
 	allowed := map[string][]string{
 		"list":   {"json"},
-		"add":    {"json", "words", "brief", "watch", "every", "report", "acceptance", "workspace", "place", "scope", "model", "title", "hold", "descendants", "max-per-day", "per-run-usd"},
-		"edit":   {"json", "words", "brief", "watch", "every", "report", "acceptance", "max-per-day", "per-run-usd", "version", "title"},
+		"add":    {"json", "words", "instructions", "watch", "every", "report", "acceptance", "workspace", "place", "scope", "model", "title", "hold", "descendants", "max-per-day", "per-run-usd"},
+		"edit":   {"json", "words", "instructions", "watch", "every", "report", "acceptance", "max-per-day", "per-run-usd", "version", "title"},
 		"show":   {"json", "runs"},
 		"pause":  {"json"},
 		"resume": {"json"},
@@ -247,7 +247,7 @@ func standingAdd(out io.Writer, store *standing.Store, f standingFlags) error {
 		Adoption:  &standing.Adoption{Actor: "person", Via: "terminal", At: time.Now().UTC()},
 	}
 	if *f.hold {
-		if *f.watch != "" || *f.every != "" || *f.brief != "" || *f.report != "" || *f.place != "" || *f.model != "" || *f.acceptance != "" {
+		if *f.watch != "" || *f.every != "" || *f.instructions != "" || *f.report != "" || *f.place != "" || *f.model != "" || *f.acceptance != "" {
 			return errors.New("a rule (--hold) never wakes and runs nothing: it takes --words, --scope and --descendants only")
 		}
 		item.When = standing.When{Kind: standing.WhenHold}
@@ -270,8 +270,8 @@ func standingAdd(out io.Writer, store *standing.Store, f standingFlags) error {
 		if *f.scope != "" || *f.descendants {
 			return errors.New("--scope belongs to a rule (--hold); place work in a folder with --place")
 		}
-		if strings.TrimSpace(*f.brief) == "" {
-			return errors.New(`--brief is required: the work one run does, written so nobody has to be asked`)
+		if strings.TrimSpace(*f.instructions) == "" {
+			return errors.New(`--instructions is required: the work one run does, written so nobody has to be asked`)
 		}
 		when, err := standingWhenFlags(*f.watch, *f.every)
 		if err != nil {
@@ -280,7 +280,7 @@ func standingAdd(out io.Writer, store *standing.Store, f standingFlags) error {
 		item.When = when
 		item.Does = standing.Action{
 			Kind:       standing.ActionTask,
-			Brief:      strings.TrimSpace(*f.brief),
+			Brief:      strings.TrimSpace(*f.instructions),
 			Acceptance: strings.TrimSpace(*f.acceptance),
 			Model:      strings.TrimSpace(*f.model),
 			Report:     strings.TrimSpace(*f.report),
@@ -412,11 +412,11 @@ func standingEdit(out io.Writer, store *standing.Store, id string, f standingFla
 		if set["title"] {
 			item.Brief.Title = strings.TrimSpace(*f.title)
 		}
-		if set["brief"] {
+		if set["instructions"] {
 			if item.When.Kind == standing.WhenHold {
-				item.Brief.Prompt = strings.TrimSpace(*f.brief)
+				item.Brief.Prompt = strings.TrimSpace(*f.instructions)
 			} else {
-				item.Does.Brief = strings.TrimSpace(*f.brief)
+				item.Does.Brief = strings.TrimSpace(*f.instructions)
 			}
 		}
 		if set["acceptance"] {
@@ -668,7 +668,7 @@ func writeStandingRecord(out io.Writer, record standingRecord) error {
 	}
 	fmt.Fprintln(out, "  workspace: "+item.Workspace)
 	if item.Does.Kind == standing.ActionTask {
-		fmt.Fprintln(out, "  brief: "+oneLineOf(item.Does.Brief))
+		fmt.Fprintln(out, "  instructions: "+oneLineOf(item.Does.Brief))
 		if item.Does.Report != "" {
 			fmt.Fprintln(out, "  report: "+item.Does.Report)
 		}

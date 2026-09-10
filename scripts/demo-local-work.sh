@@ -81,7 +81,7 @@ say "Ongoing work: keep an inbox report current (placed in Launch)"
 inbox="$("$bin" standing add --json --workspace "$project" --place "$launch" \
   --words "Keep an eye on the inbox folder and keep reports/inbox-report.md current." \
   --watch 'inbox/*' --report reports/inbox-report.md --per-run-usd "$per_run" \
-  --brief "Read the files under inbox/ that changed (use the read tool; do not run shell commands) and write a short Markdown report: new decisions, open requests with their owner, and anything that needs the person. Carry forward items from the previous report that are still open." \
+  --instructions "Read the files under inbox/ that changed (use the read tool; do not run shell commands) and write a short Markdown report: new decisions, open requests with their owner, and anything that needs the person. Carry forward items from the previous report that are still open." \
   | head -1 | sed -E 's/.*"id":"([^"]+)".*/\1/')"
 echo "inbox work: $inbox"
 
@@ -89,7 +89,7 @@ say "Ongoing work: review launch copy when the product spec changes (placed in M
 review="$("$bin" standing add --json --workspace "$project" --place "$marketing" \
   --words "When the product spec changes, review the launch copy against it." \
   --watch 'product/*' --report marketing/review-notes.md --per-run-usd "$per_run" \
-  --brief "Compare marketing/launch-copy.md with product/spec.md (use the read tool; do not run shell commands). List every claim in the copy the spec does not support, quoting the spec line. Do not change any file." \
+  --instructions "Compare marketing/launch-copy.md with product/spec.md (use the read tool; do not run shell commands). List every claim in the copy the spec does not support, quoting the spec line. Do not change any file." \
   | head -1 | sed -E 's/.*"id":"([^"]+)".*/\1/')"
 echo "review work: $review"
 
@@ -115,7 +115,7 @@ check
 echo "--- reports/inbox-report.md"; cat "$project/reports/inbox-report.md"
 
 say "Edit the work: the NEXT run uses the new brief; the last run keeps what it had"
-run standing edit "$inbox" --brief "Read the files under inbox/ that changed (use the read tool; do not run shell commands). Write a Markdown table of open requests with columns Request, Owner, Due; unknown owners are 'unassigned'. Then list decisions."
+run standing edit "$inbox" --instructions "Read the files under inbox/ that changed (use the read tool; do not run shell commands). Write a Markdown table of open requests with columns Request, Owner, Due; unknown owners are 'unassigned'. Then list decisions."
 cat >> "$project/inbox/2026-09-10-standup.md" <<'EOF'
 - Request: Bob owns the press release, due Wednesday.
 EOF
