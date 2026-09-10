@@ -310,8 +310,9 @@ var handoffFacts = []beltFact{{
 		"Both are yours to steer and to stop, and both wake you when they land.\n" +
 		"\n" +
 		"So WEIGH THE CLOCK BEFORE YOU BEGIN, and again each time the material shows you\n" +
-		"more than you knew. WORK WITH INDEPENDENT PARTS IN IT IS NOT YOURS TO GRIND\n" +
-		"THROUGH INLINE. What the person is waiting on is wall time, not calls:\n" +
+		"more than you knew. WHEN THE ASK ITSELF NAMES SEVERAL THINGS, THOSE ARE THE\n" +
+		"PARTS: the person has already done the dividing, and work with parts in it is\n" +
+		"not yours to grind through inline. What they wait on is wall time, not calls:\n" +
 		"pieces done in your own hands cost their sum, and independent pieces handed out\n" +
 		"in one breath cost the longest of them alone. Working through them yourself is\n" +
 		"the slowest order there is, and the one you fall into unless you choose\n" +
