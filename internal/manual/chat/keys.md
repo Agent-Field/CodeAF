@@ -2378,8 +2378,9 @@ Only the left button acts. A press is resolved in this order:
    phone tool sheet — each takes **every** press inside its frame, padding included. On the
    task page a press on a row opens it on the first press; a press on a section word or on
    empty padding does nothing. Inside an old task's record card, the head row and the foot
-   go back to the list and its body is read. On home a click puts the cursor on a row and a
-   second click opens it. On the rewind timeline a click places the pick and a click on the
+   go back to the list and its body is read. On standing, spend and search a press on a
+   row opens it on the first press too; on memory it opens a line's card, or folds a
+   shelf. On home a click puts the cursor on a row and a second click opens it. On the rewind timeline a click places the pick and a click on the
    point already placed does the rewind.
 2. An approval question block, then a connect offer, then a harness offer.
 3. The harness panel, the permissions panel, the connections panel — a press on a row

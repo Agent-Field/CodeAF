@@ -660,12 +660,13 @@ func (placeSpend) hint(a *app) string {
 	return strings.Join(parts, railSep) + railSep + "esc"
 }
 
-func (placeSpend) press(a *app, y int) bool {
+func (placeSpend) press(a *app, y int) (tea.Cmd, bool) {
 	if at, ok := placeBodyLine(y, a.spend.top, a.spend.shown); ok && a.spendStopAt(at).ok {
 		a.spend.cursor = at
 		a.touch()
+		return placeSpend{}.enter(a), true
 	}
-	return true
+	return nil, true
 }
 
 func (placeSpend) hover(a *app, y int) bool {

@@ -445,14 +445,15 @@ func (placeSearch) enter(a *app) tea.Cmd {
 	return nil
 }
 
-func (placeSearch) press(a *app, y int) bool {
+func (placeSearch) press(a *app, y int) (tea.Cmd, bool) {
 	if at, ok := placeBodyLine(y, a.search.top, a.search.shown); ok {
 		if _, stop := a.search.reading.at(at); stop {
 			a.search.cursor = at
 			a.touch()
+			return placeSearch{}.enter(a), true
 		}
 	}
-	return true
+	return nil, true
 }
 
 func (placeSearch) hover(a *app, y int) bool {

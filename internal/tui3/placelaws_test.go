@@ -423,8 +423,10 @@ func TestAPlaceNeverReadsTheDiskOnADraw(t *testing.T) {
 			// that draws the strip.
 			pl.verbs(a)
 			pl.rowID(a)
+			// THE POINTER RESTING IS HERE AND THE PRESS IS NOT: a press on a row
+			// is `enter` on it (pages.go's [place.press]), and a door may read what
+			// it opens, as the tab bar's own press does.
 			for y := 0; y < 12; y++ {
-				pl.press(a, y)
 				pl.hover(a, y)
 			}
 			pl.wheel(a, 1)
