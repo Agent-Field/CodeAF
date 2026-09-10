@@ -23,8 +23,8 @@ The user explicitly deferred tui3 and similarly expensive broad UI/E2E tests;
 focused functional checks run on Spark. Keep broad acceptance visibly deferred.
 
 The user requested a single maintained draft. #662 remains the active draft;
-grooming #663's committed documents are being consolidated here and it is closed
-only after those records are retained on the pushed branch. No successor draft,
+grooming #663's committed documents are retained here, and GitHub marked #663
+merged when that history reached the pushed backend branch. No successor draft,
 merge into dev, promotion or release is part of this iteration.
 
 ## Current instruction: keep this work separate

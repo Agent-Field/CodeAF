@@ -178,3 +178,17 @@ evidence, not a test result for the implementation candidate.
 The main draft's description records the integrated baseline, passing result and
 remaining target work. Grooming history is retained before closing superseded #663.
 Broad CI remains deferred under C21; candidate publication is not merge approval.
+
+## Consolidation completed
+
+- [x] Validated code and all grooming history retained on
+  `codex/personal-ai-backend`, existing draft #662.
+- [x] #663 marked merged by GitHub when its history reached #662's branch;
+  its description redirects future work to #662.
+- [x] #662 description updated with baseline, implemented behavior, exact Spark
+  evidence, remaining work and explicitly deferred broad acceptance.
+- [x] No additional implementation PR opened and nothing merged into dev.
+
+Next unchecked delivery is T12, preceded by the remaining authority/scope
+contract decisions in T03. This completed slice establishes safe owner updates;
+it does not complete the entire personal AI architecture.
