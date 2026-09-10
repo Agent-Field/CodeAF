@@ -25,3 +25,5 @@ Calibration now accepts a missing API that prevents old-source test collection
 when the unchanged tests pass on the upstream solution. The initial assertion-only
 rule excluded such feature requests. Failed reference tests still reject a
 fixture, and scored patches still need the complete reference test outcomes.
+The reassessment preserves and hashes the original controls in a separate tree;
+Pi receives the same frozen toolchain on each calibrated runtime image.

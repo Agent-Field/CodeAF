@@ -49,6 +49,14 @@ remain unchanged. `test_calibration.py` covers the corrected general rule; any
 reassessment uses separately recorded evidence before scoring. The scored
 grader still requires every calibrated reference test and outcome.
 
+`prepare_scoring.py <original-root> <new-output-root>` preserves the original
+calibration and hashes its evidence, then applies the corrected control rule in
+the frozen draw order. It creates a separate prepared tree, retaining the exact
+source archives, reference reports and tool images. It also overlays the frozen
+Node 24.12.0 / Pi 0.84.2 toolchain with networking disabled and checks versions.
+This step makes no model calls and does not start scoring; the actual-client
+preflight and final manifest still follow.
+
 The external evidence directory is
 `/home/santosh/bench-artifacts/af-random-holdout-20260910`, outside fleet's rsync
 destination. Submit from the repository root with `fleet run --cpu --rsync`.
