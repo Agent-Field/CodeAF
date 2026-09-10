@@ -25,8 +25,11 @@ the dim words naming what arrives there, wrapped onto a second line rather than 
 tall window grows the panels — `needs you`, `running`, `since you left` and `projects` to
 eight rows, `where you were` to ten, `next up` to five; `spend` never grows — and a short
 one squeezes them, `next up` and `spend` first. `↑↓` walk a panel, `←` `→` cross columns, and a digit
-answers the top question in `needs you`. On a project row `enter` starts a chat in that
-folder, and `→` offers `its chats` and `open folder`.
+answers the top question in `needs you`. **Columns win the arrow:** `→` opens a row's verbs
+only where no column with rows lies to its right, and on a row where it crosses instead the
+foot names the chord that still reaches them — `ctrl+o open folder`, or `ctrl+e pause` on a
+standing order. On a project row `enter` starts a chat in that folder; its verbs are `its
+chats` and `open folder` (`ctrl+o`).
 
 Home is the **first of the four places on the tab bar** — `home  tasks  spend  settings`,
 drawn under the top line, with `tab` and `alt+1`…`alt+4` between them. Standing, memory and
@@ -514,7 +517,9 @@ about something else (*Where did the machine's own card go*).
 
 **Press `→`.** A strip opens **directly under the row you are standing on**, carrying that
 row's own verbs, and **while it is drawn those letters are the verbs and the composer is
-asleep**:
+asleep**. On a home of two or three columns `→` crosses into the next column first, so the
+strip opens on a row with no column of rows to its right — `running` at two columns, for
+instance — and everywhere else the chords below reach the same verbs:
 
 ```
 y let it send   n not this time   a put it away   t new chat here
@@ -554,11 +559,13 @@ The card names it — `→ verbs: …` — and `alt+.` draws it on the map; the 
 not, because that line is four keys exactly. A row with verbs is any row
 under the box.
 
-## Which column am I in — there is one column, and the band is the cursor
+## Which column am I in — the arrows cross columns, and the band is the cursor
 
-**One column.** The zones' own column went with the strips, so there is no crossing between
-columns to keep track of and no marked heading over a section: `↑`/`↓` walk every row on
-the page in reading order.
+**One column under 110 cells, two under 170, three past that.** `↑`/`↓` walk the column
+the cursor is in, from one panel into the next; `←`/`→` cross to the nearest row of the
+neighbouring column, and skip a column where every panel is whispering. `↑` off the top of
+any column reaches the tab bar. The panel the cursor is in marks its heading with the same
+quiet ground.
 
 **The cursor is the band.** The row you are on wears a quiet background and its name goes
 bold inside it; every other row is dim. Exactly one row on the frame wears that ground, and

@@ -2642,8 +2642,11 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			h.say("folders on the other machine do not open here", "")
 			return nil
 		}
-		if line, ok := h.previewLine(); ok && line.kind == homeSession {
-			path := strings.TrimSpace(line.row.Workspace)
+		// A PROJECT ROW OPENS ITS FOLDER TOO, because on a two-column grid its
+		// `→` crosses to the right-hand column and this chord is the way to the
+		// strip's `open folder` there (homegrid.go's [app.homeCrossChord]).
+		if line, ok := h.previewLine(); ok && (line.kind == homeSession || line.kind == homeProjectRow) {
+			path := homeRowFolder(line)
 			if path == "" || processOpener(path) != nil {
 				h.say("could not open "+path, "")
 				return nil
@@ -5417,13 +5420,21 @@ func (a *app) homeHintWords() string {
 	case line.kind == homeItem:
 		// THE KEYS THE CARD BESIDE IT ALREADY NAMES, said once more where the
 		// hand is. One vocabulary, two places (homestanding.go's
-		// [homeItemActions]).
+		// [homeItemActions]) — except on a grid row whose `→` crosses columns,
+		// where the strip is not one arrow away and its chord is named instead.
+		if chord := a.homeCrossChord(line); chord != "" {
+			return homeItemEnterWord + " · " + chord + " · esc close"
+		}
 		return homeItemActions + " · esc close"
 	case a.home.searching():
 		return "enter open · ↓ back to starting a new conversation · esc clear"
 	}
 	// AT REST THE FOOT IS THE PROMISE THE BOX MAKES, and [app.homeHint] turns it
-	// into the design's whole sentence. Every other row said its own thing above.
+	// into the design's whole sentence. Every other row said its own thing above,
+	// and a row whose verbs `→` cannot reach adds the one chord that can.
+	if chord := a.homeCrossChord(line); chord != "" {
+		return homeFootWord + " · " + chord
+	}
 	return homeFootWord
 }
 

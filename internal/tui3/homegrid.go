@@ -805,9 +805,21 @@ func (h *homeView) rowOf(at int) int {
 // reports false when there is no column that way, or none with a row in it, so
 // the arrow keeps whatever else it means at the edge (the verb strip).
 func (h *homeView) gridCross(dir int) bool {
+	best := h.gridCrossTarget(dir)
+	if best < 0 {
+		return false
+	}
+	h.cursor, h.picked = best, true
+	return true
+}
+
+// gridCrossTarget is the line [homeView.gridCross] would land on, and -1 where
+// the arrow keeps its other meaning. The foot asks it too, to know whether `→`
+// on the row under the cursor is a move or the strip ([app.homeCrossChord]).
+func (h *homeView) gridCrossTarget(dir int) int {
 	next := h.columnOf(h.cursor) + dir
 	if next < 0 || next >= h.grid.cols {
-		return false
+		return -1
 	}
 	y := h.rowOf(h.cursor)
 	best, gap := -1, 0
@@ -822,11 +834,7 @@ func (h *homeView) gridCross(dir int) bool {
 	}
 	// A COLUMN WITH NOTHING TO STAND ON IS NO COLUMN THAT WAY: every panel in
 	// it is whispering, and the arrow keeps its other meaning.
-	if best < 0 {
-		return false
-	}
-	h.cursor, h.picked = best, true
-	return true
+	return best
 }
 
 // homeGridCross is `←` and `→` on the resting grid: the neighbouring column.
@@ -863,6 +871,46 @@ func (a *app) homeGridCross(msg tea.KeyPressMsg) bool {
 	a.sweepExchanges()
 	a.touch()
 	return true
+}
+
+// The chords the foot names for a row whose `→` crosses columns. Each is the
+// strip's own word for the verb, after the key that reaches it without the strip.
+const (
+	homeFolderChordWord = "ctrl+o " + homeProjectFolderWord
+	homePauseChordWord  = "ctrl+e " + homeItemPauseWord
+)
+
+// homeCrossChord is the ONE verb chord the foot names on a grid row whose `→`
+// crosses into the next column, and "" everywhere else.
+//
+// COLUMNS WIN THE ARROW (DESIGN §6 ruling 6), so a row with a column of rows to
+// its right has verbs `→` cannot reach. The chords still reach them, and a door
+// a person cannot see is a door they never learn (docs/DESIGN-LANGUAGE.md: every
+// chord keeps a visible door beside it) — so the foot says one, the one that is
+// never destructive: a conversation's or a project's folder, a watch's pause.
+func (a *app) homeCrossChord(line homeLine) string {
+	if !a.home.gridOn() || a.home.gridCrossTarget(1) < 0 {
+		return ""
+	}
+	switch {
+	case line.kind == homeItem:
+		return homePauseChordWord
+	case homeRowFolder(line) != "" && !a.hosted() && !a.home.gone[homeRowFolder(line)]:
+		return homeFolderChordWord
+	}
+	return ""
+}
+
+// homeRowFolder is the folder `ctrl+o` opens for a row: a conversation's
+// workspace, or a project's own path.
+func homeRowFolder(line homeLine) string {
+	switch line.kind {
+	case homeSession:
+		return strings.TrimSpace(line.row.Workspace)
+	case homeProjectRow:
+		return strings.TrimSpace(line.proj.Path)
+	}
+	return ""
 }
 
 // pointGrid puts the cursor back on the row a person had chosen: the same thing

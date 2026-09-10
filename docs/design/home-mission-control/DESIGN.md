@@ -179,7 +179,8 @@ shows `Outcome`. Reconsider after a week of real receipts.
 - **K2** the bar: `pages.go`'s order table shows four places; memory, standing
   and search remain registered places reachable by command and by `alt+.`.
 - **K3** keys: `↑↓` within a panel, `←→` across columns, digits to the top
-  question, `→` verb strip unchanged, `alt+.` map gains the panels.
+  question, `alt+.` map gains the panels. Columns win `→`: it opens a row's
+  verb strip only where no column with rows lies to its right (§6 ruling 6).
 - **K4** phone (<60 cells): the inbox stays; panels stack one column with the
   same whispers.
 
@@ -242,6 +243,10 @@ useful.
 4. **The emptiness law narrows for panels** — written into `docs/DESIGN-LANGUAGE.md`
    ("presence over labels") and CLAUDE.md's design-laws list in this branch.
 5. **Cross-window stop stays absent**, not broken; the row says `another window`.
+6. **Columns win the arrow.** `←→` cross columns, and `→` opens a row's verb strip
+   only where no column with rows lies to its right. A row whose verbs `→` cannot
+   reach keeps them on their chords (`ctrl+o`, `ctrl+e`, …), and the foot names one
+   so the door is never invisible.
 
 ## 7. Where the work runs
 
