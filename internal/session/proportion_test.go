@@ -86,6 +86,28 @@ func TestTheTaskPromptTeachesTheNothingToDoReportLeadsWithOneCheck(t *testing.T)
 	}
 }
 
+// THE REPORT OPENS WITH ITS RESULT, ON A LINE OF ITS OWN, because that line is
+// the outcome every surface shows ([taskOutcome] takes the report's first line
+// and nothing else). The rule and the reader are held together here: a report
+// written the way the page asks has to come out of taskOutcome as the result,
+// and a heading on that line is exactly what a person would have been shown.
+func TestTheWorkerReportOpensWithTheResultTheOutcomeShows(t *testing.T) {
+	const law = "OPEN WITH THE RESULT, IN ONE PLAIN SENTENCE ON A LINE OF ITS OWN"
+	if !strings.Contains(workerPrompt, law) {
+		t.Fatalf("prompts/worker.md does not say %q", law)
+	}
+	if taught := section(workerPrompt, law, "\n\n"); !strings.Contains(taught, "what stopped it") {
+		t.Errorf("the rule never says a report that did not come off opens with what stopped it:\n%s", taught)
+	}
+	result := "The staging certificate is rotated and valid until March."
+	if got := taskOutcome(result + "\n\nThe old one was revoked first, because …"); got != result {
+		t.Fatalf("a report that opens with its result shows %q as its outcome", got)
+	}
+	if got := taskOutcome("## Summary\n\n" + result); got == result {
+		t.Fatal("a heading on the first line did not become the outcome, so the rule is guarding nothing")
+	}
+}
+
 // THE CHECKER'S OWN SIDE, and the one that spends the most: an auditor gathers
 // its own evidence from scratch, so re-deriving a claim that changed nothing is
 // a second full investigation bought to rule out nothing.

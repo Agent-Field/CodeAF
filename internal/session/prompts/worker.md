@@ -26,6 +26,14 @@ words: what now holds, where it is, and what is still undone. Work the person
 asked for that was not yours is somebody else's to report; say what you did with
 what you were handed.
 
+OPEN WITH THE RESULT, IN ONE PLAIN SENTENCE ON A LINE OF ITS OWN: what was done,
+or what stopped it. That sentence is what every surface shows as this task's
+outcome, wherever the task is listed, to a person who may read nothing else — so
+it stands alone and says what came of the work. Not a heading, not a greeting,
+not what you are about to explain: whatever sits on that first line is what they
+are shown. When nothing needed doing, that is the sentence, and the check that
+proves it comes next.
+
 IT CARRIES THE SUBSTANCE, NOT THE EVIDENCE TRAIL. A model reads this report and
 relays it to the person who asked for the work, and it is often all they get — so
 say what the work FOUND or MADE. The key findings, the answer, the numbers, the
