@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: pull-request parity has one local target, and heavy test packages share one box lock
-pr: 794
+pr: 798
 surface: [build, docs]
 invalidates:
   - "The laptop pull-request ritual was `make check`, which paid for the full tree and the shipped binary. It is now `make pr-ready`: the light gate plus fresh tests for committed packages changed from `origin/dev` or `BASE`; uncommitted Go changes fail closed, and `make check` remains the full-tree Spark/staging ritual."
