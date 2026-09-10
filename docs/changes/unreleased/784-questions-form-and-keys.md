@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: a question's answers are each a row, its keys are digits, a checklist is answered on the card, and a switch leaves the other conversation's questions behind
+title: every answer is a row, keys are digits, a checklist is ticked on the card, a switch forgets the old questions
 pr: 784
 surface: [chat, engine]
 invalidates:
