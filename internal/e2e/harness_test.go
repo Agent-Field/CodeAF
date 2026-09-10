@@ -54,10 +54,17 @@ const e2eModel = "deepseek/deepseek-v4-flash"
 // directory, and on every other machine the whole lane — families, standing,
 // the phase clock — skipped with "no provider credentials", which reads as a
 // key that was never set rather than as a path that was never yours. Resolving
-// through [home.Dir] honours the same override the binary does, so a person
-// who runs aforge out of AFORGE_HOME runs this lane out of it too.
+// through [home.InheritedDir] honours the same override the binary does, so a
+// person who runs aforge out of AFORGE_HOME runs this lane out of it too.
+//
+// It is the INHERITED root and not [home.Dir], which hands a test binary a
+// throwaway root of its own so that a suite cannot write into a person's state
+// (internal/home/undertest.go). Reading a credential the person already has is
+// the one thing this lane genuinely wants from that root, and Dir would have
+// pointed it at an empty directory — every model-driven subtest skipping with
+// "no provider credentials" on a machine that has them.
 func personConfig() string {
-	return filepath.Join(home.Dir(), "config.json")
+	return filepath.Join(home.InheritedDir(), "config.json")
 }
 
 // ── the throwaway machine ───────────────────────────────────────────────────
