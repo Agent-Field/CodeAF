@@ -695,8 +695,10 @@ var (
 	errQuestionTooFewOptions = errors.New(
 		"a question of this kind needs at least two answers written down — decide, or state the assumption")
 	errQuestionTooManyOptions = fmt.Errorf(
-		"a question offers at most %d answers (%d on a checklist): make the extras their own question, or consolidate them",
+		"a question offers at most %d answers, or %d when several may be ticked at once: set input.kind to checklist and keep the answers in options, make the extras their own question, or consolidate them",
 		questionOptionCap, questionChecklistCap)
+	errQuestionChecklistWithoutOptions = errors.New(
+		"a checklist ticks its answers, so they go in options with a key and a label each, and blanks are a form rather than a list: move the items into options, or ask for blanks instead")
 	errQuestionClockOnIrreversible = errors.New(
 		"an irreversible question never runs on a clock and nothing answers it but a person: drop the clock, or lower the stakes if it can in fact be taken back")
 	errQuestionAutoOnIrreversible = errors.New(
@@ -752,6 +754,12 @@ func (q Question) Check(records []DecisionRecord) error {
 	switch {
 	case len(q.Options) > cap:
 		return errQuestionTooManyOptions
+	case q.Input.Kind == InputChecklist && len(q.Options) < 2:
+		// The one shape a model writes wrong more than any other: the items
+		// of a checklist under input.blanks with nothing in options, because
+		// the schema's word for a list of things to fill in is right there.
+		// The refusal names the move rather than making it, per the header.
+		return errQuestionChecklistWithoutOptions
 	case q.Ask.needsOptions() && len(q.Options) < 2:
 		return errQuestionTooFewOptions
 	}

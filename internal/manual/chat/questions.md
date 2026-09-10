@@ -724,6 +724,13 @@ past its neighbour and the answer carries the order you put them in.
 The foot lists what is ticked, in that order, so what you can see is what would
 be sent.
 
+The asker writes a checklist as an `ask` with `input.kind` set to `checklist`
+and the answers themselves in `options` — up to eight of them, each with a key
+and a label. Items written under `input.blanks` with nothing in `options` are
+refused with `a checklist ticks its answers, so they go in options`, and more
+than eight are refused with `a question offers at most 4 answers, or 8 when
+several may be ticked at once`.
+
 ## This or that, asked over and over — a run of two-way questions
 
 A run of two-way questions is drawn one at a time:
