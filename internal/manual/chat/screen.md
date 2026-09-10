@@ -660,12 +660,19 @@ been timed in the last ten minutes.
 things up in this order, and each step is a shorter *true* sentence:
 
 1. the branch goes — the shell prompt behind this pane still says it;
-2. the `via` rider goes;
-3. the thinking rung goes, **whole** — half a rung word is a word you would read as
+2. the name is cut with one `…` to seat the `via` rider whole, never to fewer than
+   12 cells — which machine is answering is the one fact on this line about *now*, and
+   the rest of the title is in the tab strip;
+3. the `via` rider goes, only once the name is at its floor;
+4. the thinking rung goes, **whole** — half a rung word is a word you would read as
    another rung, and `/effort` says it in full;
-4. the name is cut with one `…`, never to fewer than 12 cells;
-5. the model goes — the name is what tells two panes apart;
-6. the name goes — on a `--host` session the machine is the last thing standing.
+5. the name is cut again, and never to fewer than 12 cells;
+6. the model goes — the name is what tells two panes apart;
+7. the name goes — on a `--host` session the machine is the last thing standing.
+
+So a long title never hides who served: `first line: casual greeting… · glm-5.3-flash ·
+via relace` is what an 80-column frame draws, and until 2026-09-10 the same frame drew
+the whole title, the branch, and no `via` at all.
 
 Under 70 columns the branch is dropped outright. Only a frame with no room for a label
 at either end falls back to the plain rule. Until 2026-09-09 this line carried only the

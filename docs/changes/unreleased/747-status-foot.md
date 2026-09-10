@@ -23,6 +23,7 @@ invalidates:
   - "`◦ 2 standing orders` was a segment of the status row. It is a line at the foot of the TASK COLUMN, under that column's counts of what is running, waiting, parked and done: dim, brightening under the pointer, still opening `/standing`, its mark still breathing while a pass has one of this project's orders in hand, and still absent when nothing stands here. `/status` and the phone sheet keep it under `watching`."
   - "The task column's foot led its counts with `Σ`. The sigma meant `this is a sum, including what the column folded away` and it earned that while the first line was the session's bill; the bill left this foot on 2026-09-09 and the sign has gone with it. The foot counts, and the counts say so in words."
   - "The status row's drop ladder was `open → jobs → standing orders → eta → the cache's cash half → rate → cache → cost → context`. It is `jobs → eta → the cache's cash half → rate → cache → cost → context`: the first two rungs are not on the line to give up."
+  - "The seam's `via <machine>` rider was the filler after everything fixed on the line — name, model, rung, branch — so a conversation with a five-word title drew `… · glm-5.3-flash · main` and no `via` while `/status` said `served via relace`. The rider outranks the branch and the name's tail now: the branch goes first, then the name is cut with one `…` (never under 12 cells) to seat the rider whole, and only a name at its floor gives the rider up."
 ---
 
 A long title pushed every number off the row, and on the row nothing read first:

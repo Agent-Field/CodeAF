@@ -504,10 +504,14 @@ func (a *app) seamIdentity(width, room int) (string, hudSpan, hudSpan) {
 		return named, hudSpan{from: at, to: end}
 	}
 	// A step: a cluster with the rung and the rider it can afford, or false when
-	// what is fixed about it does not fit at all. The rider is asked for what is
-	// left after everything else, so it drops itself before anything above it on
-	// the ladder has to be given up.
-	step := func(rung, tail string) (string, hudSpan, hudSpan, bool) {
+	// what is fixed about it does not fit at all. With `keep` the rider is part
+	// of what is fixed: a step that cannot seat the whole rider fails, so the
+	// ladder can give up something ABOVE the rider before the rider itself.
+	full := ""
+	if model != "" {
+		full = a.modelRiderAt(-1)
+	}
+	step := func(rung, tail string, keep bool) (string, hudSpan, hudSpan, bool) {
 		bare := dotted(head, dotted(model, rung), tail)
 		if ansi.StringWidth(bare) > room {
 			return "", hudSpan{}, hudSpan{}, false
@@ -516,15 +520,54 @@ func (a *app) seamIdentity(width, room int) (string, hudSpan, hudSpan) {
 		if model != "" {
 			rider = a.modelRiderAt(room - ansi.StringWidth(bare))
 		}
+		if keep && rider != full {
+			return "", hudSpan{}, hudSpan{}, false
+		}
 		cluster := dotted(head, dotted(model, rung)+rider, tail)
 		named, dial := spans(cluster, rung)
 		return cluster, named, dial, true
 	}
-	if cluster, named, dial, ok := step(thinking, branch); ok {
+	// THE RIDER OUTRANKS THE BRANCH AND THE NAME'S TAIL. `via relace` is the one
+	// fact on this line that says what is happening NOW — which machine is
+	// answering — and the owner's ruling is that it is always on the seam. The
+	// branch is on the folder's own line and the name's tail is in the tab
+	// strip; so a rider that does not fit beside them takes the branch's cells
+	// first, then the name's, and drops only when the name is at its floor. It
+	// used to be the filler after everything else, and a conversation with a
+	// long title never showed who served it.
+	if full != "" {
+		if cluster, named, dial, ok := step(thinking, branch, true); ok {
+			return cluster, named, dial
+		}
+		if branch != "" {
+			if cluster, named, dial, ok := step(thinking, "", true); ok {
+				return cluster, named, dial
+			}
+		}
+		fixed := dotted(a.host, dotted(model, thinking)+full)
+		left := room - ansi.StringWidth(fixed)
+		if fixed != "" {
+			left -= ansi.StringWidth(legendJoin)
+		}
+		if model != "" && name != "" && left >= legendNameFloor {
+			cut := dotted(a.host, fit(name, left))
+			cluster := dotted(cut, dotted(model, thinking)+full)
+			// The spans are measured off the cut head, which is what was drawn.
+			from := ansi.StringWidth(cut + legendJoin)
+			named := hudSpan{from: from, to: from + ansi.StringWidth(model)}
+			dial := hudSpan{}
+			if thinking != "" {
+				at := named.to + ansi.StringWidth(legendJoin)
+				dial = hudSpan{from: at, to: at + ansi.StringWidth(thinking)}
+			}
+			return cluster, named, dial
+		}
+	}
+	if cluster, named, dial, ok := step(thinking, branch, false); ok {
 		return cluster, named, dial
 	}
 	if branch != "" {
-		if cluster, named, dial, ok := step(thinking, ""); ok {
+		if cluster, named, dial, ok := step(thinking, "", false); ok {
 			return cluster, named, dial
 		}
 	}
@@ -532,7 +575,7 @@ func (a *app) seamIdentity(width, room int) (string, hudSpan, hudSpan) {
 	// the tray and pickrow.go's about an answer: `hig` is a word somebody reads
 	// as another rung.
 	if thinking != "" {
-		if cluster, named, dial, ok := step("", ""); ok {
+		if cluster, named, dial, ok := step("", "", false); ok {
 			return cluster, named, dial
 		}
 	}

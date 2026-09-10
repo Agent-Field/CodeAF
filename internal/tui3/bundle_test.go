@@ -4901,3 +4901,43 @@ func TestASessionWithoutRoomDoorsSaysSoAndStaysPut(t *testing.T) {
 		t.Fatalf("the degraded case said nothing:\n%s", taskText(a))
 	}
 }
+
+// THE RIDER OUTRANKS THE BRANCH AND THE NAME'S TAIL. On 2026-09-10 the owner
+// opened a conversation whose title ran to five words and the seam read `… ·
+// glm-5.3-flash · main` with no `via` at all, while `/status` said `served via
+// relace`: the rider was the filler after everything fixed, and a long title
+// left it nothing. Which machine is answering is the one fact on this line about
+// NOW, so it takes the branch's cells first and then the name's, and only a
+// name at its floor gives it up (foot.go's [app.seamIdentity]).
+func TestTheSeamKeepsTheRiderBeforeTheBranchAndTheNamesTail(t *testing.T) {
+	a, _, now := hudApp(t)
+	a.title = "first line: casual greeting exchange about nothing"
+	a.branch = "main"
+	pinSighting(t, provider.Sighting{
+		Model: "deepseek/deepseek-v4-flash", Provider: "relace", Rate: 40, At: now.Add(-time.Second),
+	}, true)
+
+	// Wide enough for everything: name, model, rider, branch.
+	if line := plain(a.legend(160)); !strings.Contains(line, "via relace") || !strings.Contains(line, "· main") {
+		t.Fatalf("with room for all of it, something was dropped: %q", line)
+	}
+	// Room for the name and the rider, but not the branch: the branch goes.
+	line := plain(a.legend(100))
+	if !strings.Contains(line, "via relace") {
+		t.Fatalf("the rider was given up before the branch: %q", line)
+	}
+	if strings.Contains(line, "· main") {
+		t.Fatalf("the branch stayed while the rider had no room: %q", line)
+	}
+	// Tighter still: the name is cut and the rider stays whole.
+	line = plain(a.legend(80))
+	if !strings.Contains(line, "via relace") {
+		t.Fatalf("the rider was given up before the name's tail: %q", line)
+	}
+	if !strings.Contains(line, "…") {
+		t.Fatalf("the name was not cut to seat the rider: %q", line)
+	}
+	if ansi.StringWidth(line) != 80 {
+		t.Fatalf("the legend is %d cells wide, want 80", ansi.StringWidth(line))
+	}
+}
