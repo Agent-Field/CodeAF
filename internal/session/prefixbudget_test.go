@@ -139,6 +139,21 @@ import (
 // saved procedure configured, the complete tool block is 40,595 bytes and
 // discovery carries 26,740, including its 708-byte loader. Measure whole JSON
 // arrays rather than adding separately encoded array sizes.
+// AND THE EVENT LANE PAID NOTHING AND TOOK 2,189 BYTES BACK (2026-09-10). The
+// prompt diet's WITH THE EVENT pass (docs/design/prompt-diet/DESIGN.md §2): a
+// harness-authored message now carries its own reading instruction, so the page
+// stopped explaining messages it may never see. A landed task's note opens on
+// [landingNoteLead] — 234 bytes on the turn a task lands, with the tier word
+// interpolated — and a job's ending carries [jobExitNewsRule]. In exchange
+// `# Interrupts and steering` lost the woken-turn and `[carry on]` paragraphs
+// (the messages say all of it, and [checkpointCarryOnLead] has said its own
+// half since it was written), `# Session facts` lost the four-words, `your
+// call` and saying-stop bullets, and the belt's `tasks` fact lost its second
+// copy of the four words and the resolve verbs — [settleClause] interpolates
+// those from [TaskResolutions] on the note itself, and `tasks` own description
+// owns "To END running work use stop". Nothing was raised and no law left the
+// build: the page went 23,391 → 21,202 and the prefix is 45,246, which is
+// 2,754 under.
 // widestPage weighs the larger direct/deferred wording for each fact.
 const fixedPrefixBudget = 48_000
 

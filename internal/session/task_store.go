@@ -1663,7 +1663,11 @@ func (g *TaskGraph) owedNotes(unannounced []*TaskNode, settle TaskSettle, addres
 			delivery.settled()
 			continue
 		}
-		notes = append(notes, taskNote(node.notice(), taskURI(node.journalPath()), settle, address))
+		// A RE-TELLING IS READ THE SAME WAY THE FIRST TELLING WOULD HAVE BEEN, so
+		// it opens on the same lead ([landingNoteLead]). A resumed session is in
+		// fact the shape that needs it most: nobody has typed, the note is the
+		// whole message, and the model has no turn behind it to infer who wrote it.
+		notes = append(notes, landingNoteLead(node.notice())+taskNote(node.notice(), taskURI(node.journalPath()), settle, address))
 		node.noteQueued(claim)
 		deliveries = append(deliveries, delivery)
 	}
