@@ -317,9 +317,22 @@ func (r spendReading) empty() bool {
 }
 
 func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
+	return r.paint(width, pal, nil)
+}
+
+// paint is [spendReading.body] with the rows a hand is on lit: the subject bold
+// in ink and the row's own facts brought up to ink, which is SCREEN 2a's band on
+// every place (placeprose.go's [placeSubject]). lit may be nil.
+//
+// EVERY ROW STANDS ON THE PLACE'S ONE LEFT EDGE ([placeLead]): it is laid out
+// one cell narrower and led by that cell, except the window head, whose row
+// already stands on it ([placeHeadRow]).
+func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]string, []spendStop) {
 	if width < 1 || r.empty() {
 		return nil, nil
 	}
+	on := func(at int) bool { return lit != nil && lit(at) }
+	inner := width - len(placeLead)
 	var out []string
 	// doors are recorded BY THE INDEX THE ROW LANDED AT, taken as it is appended.
 	// [appendPlaceSection] eats a trailing blank before it writes a heading, so a
@@ -333,16 +346,16 @@ func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
 	// what it is allowed and where that second figure is set; `enter` on it walks
 	// to the one editor money has.
 	rails := len(out)
-	out = append(out, r.railsRow(width, pal))
+	out = append(out, placeLead+r.railsRowIn(inner, placeFactInk(on(rails), pal)))
 	out = append(out, r.windowHeaderRow(width, pal))
 
-	if spark := r.sparkline(width); spark != "" {
-		out = append(out, pal.data(spark))
+	if spark := r.sparkline(inner); spark != "" {
+		out = append(out, placeLead+pal.data(spark))
 		if axis := r.sparkAxis(ansi.StringWidth(spark), pal); axis != "" {
-			out = append(out, axis)
+			out = append(out, placeLead+axis)
 		}
 	}
-	if loud, subject, door := r.loudestRow(width, pal); loud != "" {
+	if loud, subject, door := r.loudestRowIn(inner, placeFactInk(on(len(out)), pal)); loud != "" {
 		// AND THE LOUDEST DAY IS A DOOR, because the row names a thing money was
 		// spent on exactly as the rows under `what it was for` do — and the word
 		// on its right now says `enter opens it`, which is a key drawn and
@@ -350,13 +363,13 @@ func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
 		if door {
 			doors[len(out)] = subject
 		}
-		out = append(out, loud)
+		out = append(out, placeLead+loud)
 	}
 
 	if len(r.models) > 0 || len(r.crew.unbound) > 0 {
-		out = appendPlaceSection(out, pal.dim(fit(spendModelsWord, width)))
+		out = appendPlaceSection(out, placeLead+placeHeading(fit(spendModelsWord, inner), pal))
 		for _, model := range r.models {
-			out = append(out, r.modelRow(model, width, pal))
+			out = append(out, placeLead+r.modelRow(model, inner, pal))
 		}
 		// AND THE SLOTS NOTHING ANSWERS FOR, under the models that do. A slot with
 		// no binding has no line in the ledger to be found on and would simply be
@@ -364,21 +377,21 @@ func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
 		// this column must not give, because "planning costs nothing" and "nothing
 		// is bound to planning" are opposite facts about the same blank.
 		for _, slot := range r.crew.unbound {
-			out = append(out, spendUnboundRow(slot, width, pal))
+			out = append(out, placeLead+spendUnboundRow(slot, inner, pal))
 		}
 	}
 	if len(r.subjects) > 0 {
-		out = appendPlaceSection(out, pal.dim(fit("what it was for", width)))
+		out = appendPlaceSection(out, placeLead+placeHeading(fit(spendSubjectsWord, inner), pal))
 		shown := len(r.subjects)
 		if shown > spendSubjectCap {
 			shown = spendSubjectCap
 		}
 		for _, subject := range r.subjects[:shown] {
 			doors[len(out)] = subject
-			out = append(out, spendSubjectRow(subject, r.name(subject), width, pal))
+			out = append(out, placeLead+spendSubjectRowLit(subject, r.name(subject), inner, on(len(out)), pal))
 		}
 		if more := len(r.subjects) - shown; more > 0 {
-			out = append(out, pal.dim(fit(foldLine(more, ""), width)))
+			out = append(out, placeLead+pal.dim(fit(foldLine(more, ""), inner)))
 		}
 	}
 	stops := make([]spendStop, len(out))
@@ -403,6 +416,12 @@ func (r spendReading) body(width int, pal palette) ([]string, []spendStop) {
 // about today, and a machine with no daily limit says `no limit` rather than
 // drawing a fraction with nothing under the line.
 func (r spendReading) railsRow(width int, pal palette) string {
+	return r.railsRowIn(width, pal.dim)
+}
+
+// railsRowIn is [spendReading.railsRow] in the ink the row is drawn in: dim at
+// rest, ink under the band.
+func (r spendReading) railsRowIn(width int, ink func(string) string) string {
 	fields := []rowField{}
 	if today := r.today; today > 0 {
 		// THE POINTER LINE USES [dollars] AND NOT THIS PAGE'S OWN SLIVER WORD.
@@ -437,7 +456,7 @@ func (r spendReading) railsRow(width int, pal palette) string {
 		fields = append(fields, rowSay(figure+" "+spendUnbilledSaid, figure+" unbilled", figure))
 	}
 	fields = append(fields, rowSay(spendRailsWord, "/budget"))
-	return pal.dim(fit(rowTail(fields, width), width))
+	return ink(fit(rowTail(fields, width), width))
 }
 
 // spendDayTotal is WHAT ONE DAY COST, summed off ledger lines — and it is THE
@@ -513,7 +532,7 @@ func (r spendReading) headWords(width int) string {
 		// sentence already names the fortnight it is about.
 		return spendNothingWord
 	}
-	room := width - ansi.StringWidth(placeWindowWords(r.window)) - placeHeadGap
+	room := width - len(placeLead) - ansi.StringWidth(placeWindowWords(r.window)) - placeHeadGap
 	if room < 1 {
 		room = width
 	}
@@ -692,6 +711,11 @@ func (r spendReading) sparkAxis(width int, pal palette) string {
 // the sentence whole and draws no door at all — never `rebuild-the-frame… tasks`,
 // which was the reading at 60 columns.
 func (r spendReading) loudestRow(width int, pal palette) (string, session.SubjectSpend, bool) {
+	return r.loudestRowIn(width, pal.dim)
+}
+
+// loudestRowIn is [spendReading.loudestRow] in the ink the row is drawn in.
+func (r spendReading) loudestRowIn(width int, ink func(string) string) (string, session.SubjectSpend, bool) {
 	if r.loudest.USD <= 0 {
 		return "", session.SubjectSpend{}, false
 	}
@@ -705,7 +729,7 @@ func (r spendReading) loudestRow(width int, pal palette) (string, session.Subjec
 		door = rowTail([]rowField{word}, width-ansi.StringWidth(left)-rowGutter-1)
 		opens = door != ""
 	}
-	return spendSides(width, left, door, pal.dim, pal.dim), r.loudFor, opens
+	return spendSides(width, left, door, ink, ink), r.loudFor, opens
 }
 
 // spendDoorWord is where `enter` on a row goes, in the words of the place it
@@ -729,6 +753,9 @@ func spendDoorWord(subject session.SubjectSpend) rowField {
 // go and change — and not the auxiliary word one call gave itself, which is what
 // the caption used to promise and what the table used to draw.
 const spendModelsWord = "what ran it · by the model, and the role it was bound to"
+
+// spendSubjectsWord is the subjects table's caption.
+const spendSubjectsWord = "what it was for"
 
 // spendUnboundRow is one role slot with nothing bound to it:
 //
@@ -814,6 +841,12 @@ func spendBar(fraction float64, cap int) string {
 }
 
 func spendSubjectRow(subject session.SubjectSpend, name string, width int, pal palette) string {
+	return spendSubjectRowLit(subject, name, width, false, pal)
+}
+
+// spendSubjectRowLit is [spendSubjectRow] on the scale: the subject in ink, bold
+// under the band, and its facts dim at rest and ink under it.
+func spendSubjectRowLit(subject session.SubjectSpend, name string, width int, lit bool, pal palette) string {
 	tag := filepath.Base(strings.TrimSpace(subject.Workspace))
 	if subject.Kind == session.SubjectStanding && subject.Calls > 0 {
 		tag = fmt.Sprintf("standing · %d firings", subject.Calls)
@@ -829,11 +862,12 @@ func spendSubjectRow(subject session.SubjectSpend, name string, width int, pal p
 		// row spends that field on something a person did not already know.
 		kind = ""
 	}
+	facts := placeFactInk(lit, pal)
 	var left strings.Builder
 	left.WriteString(pal.dim(tokens.GlyphProseBullet + " "))
-	left.WriteString(pal.data(name))
+	left.WriteString(placeSubject(name, lit, pal))
 	for _, word := range nonempty(tag, kind) {
-		left.WriteString(pal.dim(" · " + word))
+		left.WriteString(facts(" · " + word))
 	}
 	return spendSides(width, left.String(), spendMoneyWord(subject.USD), func(s string) string { return s }, placeMoneyInk(pal))
 }

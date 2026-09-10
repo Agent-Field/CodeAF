@@ -247,7 +247,10 @@ func searchRowAt(hit searchHit, query string, width int, now time.Time, pal pale
 	return fit(left+strings.Repeat(" ", pad)+tail, width)
 }
 
-// searchLead is the two cells in front of every result.
+// searchLead is the two cells in front of every result, after the body's one
+// ([placeLead]). A result wears no glyph, so its title starts in the column
+// every other place's subject starts in — after the mark the other places stand
+// on the edge — and a heading or a fold still hangs from the edge itself.
 const searchLead = "  "
 
 func searchTail(project, age string, ink func(string) string) string {

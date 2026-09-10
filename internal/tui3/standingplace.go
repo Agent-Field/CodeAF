@@ -253,9 +253,10 @@ func standingGrainRoom(width int, win session.UsageWindow) bool {
 	return grain
 }
 
-// standingHeadWords is the page's name as the header lays it out, indent and
-// all. It is measured as well as drawn, so it is one string.
-const standingHeadWords = "  " + standHeading
+// standingHeadWords is the page's name as the header lays it out. It is
+// measured as well as drawn, so it is one string; the edge it stands on is the
+// head row's own ([placeLead]).
+const standingHeadWords = standHeading
 
 // standingHeaderRow is the place's first line: what this page is on the left,
 // and on the right the window that scopes it — drawn by the one head row every
@@ -374,6 +375,22 @@ func standLastLook(view StandingItemView, width int, pal palette, now time.Time)
 	return []string{"", pal.dim(fit("  "+head, width)), pal.ink(fit("  "+line, width))}
 }
 
+// standShelfAir is how many blank rows the list spends on air: the one under
+// the head, and one above every shelf after the first.
+func standShelfAir(rows []standRow) int {
+	air := 1
+	shelves := 0
+	for _, row := range rows {
+		if row.kind == standRowShelf {
+			shelves++
+		}
+	}
+	if shelves > 1 {
+		air += shelves - 1
+	}
+	return air
+}
+
 // standingLines paints the rows into exactly the `room` lines the frame reserved
 // for them, and answers the map a click resolves against, the top it scrolled
 // to, and the window it had room for.
@@ -391,7 +408,14 @@ func standingLines(rows []standRow, win session.UsageWindow, cursor, top, width,
 	if room <= 0 || width < 1 {
 		return nil, nil, top, 0
 	}
-	shown = overlayItems(room-1, width)
+	// THE AIR IS RESERVED BEFORE THE WINDOW IS SIZED: a blank under the head
+	// and one above every shelf after the first. Sized without it, the cursor on
+	// the last row of a full page would be the row the blanks pushed off the
+	// bottom.
+	shown = overlayItems(room-1-standShelfAir(rows), width)
+	if shown < 1 {
+		shown = 1
+	}
 	scrolled = listTop(cursor, top, len(rows), shown)
 	fill := newOverlayFill(width, room, pal, hover)
 	// THE HEADINGS ARE [overlayFill.plain] LINES, which is what makes them
@@ -401,14 +425,21 @@ func standingLines(rows []standRow, win session.UsageWindow, cursor, top, width,
 	// for the same reason it is drawn there at all — it is about the WHOLE list
 	// and answers to no row on it.
 	fill.plain(standingHeaderRow(width, win, pal))
+	fill.plain("")
 	for at := scrolled; at < len(rows) && fill.room(); at++ {
 		row := rows[at]
 		var fitted bool
 		switch row.kind {
 		case standRowShelf:
-			fitted = fill.plain(pal.dim(fit("  "+row.shelf, width)))
+			// A SHELF IS A SECTION AND TAKES A SECTION'S AIR: one blank row above
+			// it, as every section heading on a place has (SCREEN 2a's rhythm). The
+			// first stands on the blank under the head.
+			if last := len(fill.out) - 1; last >= 0 && fill.out[last] != "" && fill.room() {
+				fill.plain("")
+			}
+			fitted = fill.plain(placeLead + placeHeading(fit(row.shelf, width-len(placeLead)), pal))
 		case standRowNotHere:
-			fitted = fill.plain(pal.dim(fit("  "+standRowNotHereLine(row, pal), width)))
+			fitted = fill.plain(pal.dim(fit(placeLead+"  "+standRowNotHereLine(row, pal), width)))
 		default:
 			fitted = fill.add(at, standRowLabel(row, pal), standRowNote(row, width, now), at == cursor, false)
 			if fitted && at == cursor {

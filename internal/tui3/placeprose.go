@@ -102,6 +102,7 @@ const (
 // from brightness, weight, case and air — and each is spelled ONCE, here, so a
 // place cannot light a heading or bold a fact without saying so in this file:
 //
+//	edge      [placeLead] — one cell in, for every heading and every mark
 //	page      the tab bar alone, bold, and nowhere in a body
 //	section   [placeHeading] — lowercase, muted, one blank row above it
 //	subject   [placeSubject] — the reading ink, bold inside the band
@@ -121,11 +122,15 @@ func placeHeading(text string, pal palette) string { return pal.muted(text) }
 // row's glyph carries its state and the words beside it keep the ordinary ink
 // (docs/DESIGN-LANGUAGE.md), so a finished task and a running one are told
 // apart by their marks rather than by a second ink on their titles.
-func placeSubject(text string, lit bool, pal palette) string {
+func placeSubject(text string, lit bool, pal palette) string { return placeSubjectInk(lit, pal)(text) }
+
+// placeSubjectInk is [placeSubject] as an ink, for the painters that are handed
+// one.
+func placeSubjectInk(lit bool, pal palette) func(string) string {
 	if lit {
-		return pal.bold(pal.ink(text))
+		return func(s string) string { return pal.bold(pal.ink(s)) }
 	}
-	return pal.ink(text)
+	return pal.ink
 }
 
 // placeFactInk is the ink of what is true about a row and of its margin: dim,
@@ -137,6 +142,14 @@ func placeFactInk(lit bool, pal palette) func(string) string {
 	}
 	return pal.dim
 }
+
+// placeLead is THE ONE LEFT EDGE: the cell every place's body starts one in
+// from, where the pulse, the composer and the hint start and where home hangs
+// its headings. A row's mark stands on it and the row's words start two cells
+// after the mark; a heading starts on it. Before it the bodies started at
+// columns 0, 1 and 2 depending on the place, so walking the bar the body
+// stepped sideways (PLACES-AUDIT.md finding 12).
+const placeLead = " "
 
 // placeBand is the ground under the row the cursor or the pointer is on. They
 // are ONE step (THE GROUND LADDER): a place has nothing open, so nothing on it
@@ -307,7 +320,7 @@ func placeWindowFits(width int, head string, win session.UsageWindow) (arrows, g
 	if words == "" || phoneList(width) {
 		return false, false
 	}
-	used := ansi.StringWidth(head) + ansi.StringWidth(words) + placeHeadGap
+	used := len(placeLead) + ansi.StringWidth(head) + ansi.StringWidth(words) + placeHeadGap
 	if width < used {
 		return false, false
 	}
@@ -332,11 +345,16 @@ func placeWindowFits(width int, head string, win session.UsageWindow) (arrows, g
 // An empty `painted` means "paint it dim", which is what a place name wants.
 func placeHeadRow(width int, head, painted string, win session.UsageWindow, pal palette) string {
 	if painted == "" {
-		painted = pal.dim(head)
+		painted = placeHeading(head, pal)
 	}
 	arrows, grain := placeWindowFits(width, head, win)
 	if !arrows {
-		return pal.dim(fit(head, width))
+		// A HEAD WITH NO ROOM FOR ITS CONTROL KEEPS ITS OWN INK where it fits
+		// whole; only a head too long for the row is cut, and cut dim.
+		if ansi.StringWidth(head) <= width-len(placeLead) {
+			return placeLead + painted
+		}
+		return placeLead + pal.dim(fit(head, width-len(placeLead)))
 	}
 	right := placeWindowRow(win, pal)
 	plainRight := placeWindowWords(win)
@@ -344,11 +362,11 @@ func placeHeadRow(width int, head, painted string, win session.UsageWindow, pal 
 		right += pal.dim("  " + placeGrainWords(win))
 		plainRight += "  " + placeGrainWords(win)
 	}
-	gap := width - ansi.StringWidth(head) - ansi.StringWidth(plainRight)
+	gap := width - len(placeLead) - ansi.StringWidth(head) - ansi.StringWidth(plainRight)
 	if gap < 1 {
 		gap = 1
 	}
-	return painted + strings.Repeat(" ", gap) + right
+	return placeLead + painted + strings.Repeat(" ", gap) + right
 }
 
 // foldWords is THE ONE SENTENCE a fold says, and the reason it lives here
