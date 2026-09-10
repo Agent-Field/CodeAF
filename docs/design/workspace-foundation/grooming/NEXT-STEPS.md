@@ -14,7 +14,7 @@ A checked item means completed with the evidence named here, not merely discusse
 - [x] Run existing workspace/workspaceview/session/standing package suites on Spark:
   job `20260910-150118-000406` passed.
 - [x] Reproduce concurrent stop/pause overwrite on Spark:
-  job `20260910-150249-000407` failed as documented. **The defect is not fixed.**
+  job `20260910-150249-000407` failed as documented. **A candidate fix is implemented; fresh validation is pending.**
 
 ## Current: settle decisions and choose the baseline
 
@@ -40,9 +40,12 @@ A checked item means completed with the evidence named here, not merely discusse
 
 ## Subsequent delivery
 
-- [ ] T10 — IN PROGRESS: integration subagent owns isolated candidate, retains
-  draft ancestry and reconciles newer dev changes. Preserve parent #662.
-- [ ] T11a — IN PROGRESS: lifecycle implementation subagent fixes stale writeback.
+- [x] T10 — Isolated integration baseline prepared and statically reviewed;
+  draft ancestry and newer dev behavior retained. Parent #662 is preserved.
+  Runtime validation is tracked separately below.
+- [x] T11a — Candidate implementation and manual completed; owner operations,
+  stale-write detection, runtime delta merge and schedule reconciliation reviewed.
+  Source commit `5186fda3e`, integrated as `3f57455ca`; not yet runtime-confirmed.
 - [x] T11b1 — Independent regression suite written; baseline Spark job
   `20260910-153136-000409` fails all five top-level tests (13 scenarios), including
   unwanted subsequent execution. Test commit `8dedb0bb6`; runtime 0.020s.
@@ -147,3 +150,24 @@ no introduced merge regression; the build and functional checks remain pending.
 The [independent old-behavior receipt](validation/lifecycle-baseline.log) is
 retained separately from the earlier two-case reproducer. It is failing baseline
 evidence, not a test result for the implementation candidate.
+
+## Current candidate and validation blocker
+
+- Candidate: `codex/personal-ai-integration`, pushed without opening another PR.
+- Exact code/test revision submitted: `55bfc0118ff9371b9abd3a2524e8dbb3930bb04d`.
+- Independent tests: original `8dedb0bb6`, follow-up `2234b58b2`; final fixture
+  covers 17 scenarios, alongside seven narrow owner tests.
+- Spark job: `20260910-154640-000411`. Command runs small standing/workspace/view
+  package suites, selected session control/context/history/evidence cases, then
+  `make build`. No tui3 test or broad UI/E2E acceptance is included.
+- Retrieving its output hit a renewed Tailscale SSH authentication check. The
+  user has been given the sign-in link. Outcome remains **unknown**, not passing.
+- After authentication: retrieve the existing job (do not submit a duplicate),
+  fix any failures, update the existing #662 branch and close #663 only after
+  its records are retained there. The candidate already includes that history.
+- Deployment boundary: standing schema 2 reads legacy schema 1 and upgrades on
+  write. Old engines/tickers must be stopped and restarted together; no live
+  installation or user-state migration has been performed by this iteration.
+
+The main draft's description links this candidate and reports the pending result.
+Broad CI remains deferred under C21; candidate publication is not merge approval.
