@@ -5299,66 +5299,6 @@ func (a *app) homeHolding(row session.SessionRow) string {
 	return word
 }
 
-// homeTaskWord is what one row of the index is called on screen, and it says
-// `running` only where the count in [session.TaskRollup] said so — the two are
-// the same judgement and it is made once, in session's world.go, not twice.
-//
-// A task takes its row when it starts and the index is append-only, so a
-// machine that lost power leaves rows saying `running` for as long as the file
-// exists. What settles it is the conversation itself: a live one names the nodes
-// it has out, and a row it does not name is work that was under way when the
-// window went — `incomplete`, the same word the interrupted-task outcome uses,
-// and not a claim that something is happening.
-//
-// THE WORDS THEMSELVES ARE NOT THIS FILE'S. They are [taskStateWord]
-// (taskview.go), which the task page's own record rows and the record card both
-// answer through — one vocabulary, so a task called `your call` on this
-// screen is not called something else on the next one. What belongs to home is
-// the LIVENESS QUESTION: this screen judges a row against the conversation that
-// wrote it, and the task page judges it against the windows that are open.
-//
-// OWED: lane P — this, [app.homeTaskGlyph] and tasktier.go's [app.tierCell]
-// were drawn by the resting card's work band, which the grid retired; only
-// their tests call them now. `running`'s task rows are where a task's state
-// would go if the panel wants it, and they are deleted with their tests if not.
-func homeTaskWord(entry session.TaskIndexEntry, row session.SessionRow) string {
-	return taskStateWord(entry, row.Runs(entry))
-}
-
-// homeTaskGlyph is a task's state in one painted cell, and it is the rail's own
-// vocabulary ([app.taskStateMark], task.go) asked home's liveness question: a
-// row spins only when [session.SessionRow.Runs] vouches that the session still
-// has the node out, exactly as the counts and the old state words did. So:
-//
-//	⠋ (accent)  running this instant — the spinner, home's one moving part
-//	○ (dim)     queued, or left mid-way by a window that went — nothing turns
-//	✕ (bad)     a fault;  ? (warn)  the person's call
-//	✓ (muted)   landed — and ACCENT when it landed since you last looked
-//
-// The one departure from the task surfaces: a queued node and an incomplete one
-// share the empty circle here, where the task card and roster use ! for
-// incomplete. Both are "started and not turning", the left column already makes
-// the same choice ([homeStuckGlyph]), and a third home mark would be a state a
-// person has to be taught.
-func (a *app) homeTaskGlyph(entry session.TaskIndexEntry, row session.SessionRow) string {
-	pal := a.pal
-	status := taskEntryStatus(entry, row.Runs(entry))
-	// A ROW NOTHING HOLDS ANY MORE is "started and not turning", which is the
-	// empty circle and not a state it never reached: nothing was found wrong with
-	// work a window walked away from. It is the one reading this screen makes
-	// that the tier cannot, and it is home's own liveness question.
-	if status.Presence == session.TaskPresenceIncomplete && status.Liveness == session.TaskLivenessUnclaimed {
-		return pal.dim(pal.glyph(tokens.GQueued))
-	}
-	// AND A LANDING SINCE YOU LAST LOOKED IS LIT. It is the same tick in the same
-	// place; what the accent says is that it is NEW, which is the only fact on
-	// this screen the reading has no way to know.
-	if status.Presence == session.TaskPresenceDone && a.homeEntryFresh(row, entry) {
-		return pal.accent(tierGlyph(pal, status))
-	}
-	return a.tierCell(status)
-}
-
 // homeFilesTouched is how many files this conversation's work wrote, summed
 // across its rows. The list of which files is the transcript's; the count is
 // the card's one physical fact about the work.

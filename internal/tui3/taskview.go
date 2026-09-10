@@ -631,11 +631,10 @@ type taskSheetHit struct {
 // reading of the row ([taskEntryStatus]) spelled by the one table that spells
 // readings ([taskPresenceWord], taskstatus.go).
 //
-// IT IS ONE FUNCTION BECAUSE THREE SURFACES SAY IT. Home's task lines
-// ([homeTaskWord]), the record card's first line ([app.taskCardWhenLine],
-// taskrecord.go) and this file's own tail all answer the same question about the
-// same row, and three spellings of "needs your look" is three chances for two
-// screens to disagree about one finished task.
+// IT IS ONE FUNCTION BECAUSE TWO SURFACES SAY IT. The record card's first line
+// ([app.taskCardWhenLine], taskrecord.go) and this file's own tail answer the
+// same question about the same row, and two spellings of "your call" is two
+// chances for two screens to disagree about one finished task.
 //
 // THE READING IS WHERE THE JUDGEMENTS LIVE NOW, and three of them changed when
 // it arrived: a row a person stopped says `stopped` rather than `failed`, a run
