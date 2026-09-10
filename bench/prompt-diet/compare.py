@@ -144,10 +144,19 @@ class Run:
         return os.path.isdir(self.root)
 
     def test_outcomes(self):
-        """Every subtest of every suite, flattened to suite/test → word."""
+        """Every subtest of every suite, flattened to suite/test → word.
+
+        LEAVES ONLY, where a suite has leaves. `go test -v` fails the parent
+        whenever any child did, so keeping both would report one broken subtest
+        as two regressions and make the ruling read worse than the truth. A
+        suite that reported no subtests at all is kept as itself, because a
+        parent that failed with no failing child is a real event — a fixture
+        that died before any subtest ever started."""
         out = {}
         for suite, body in self.outcomes.items():
-            for test, entry in body.get("tests", {}).items():
+            tests = body.get("tests", {})
+            leaves = {name: entry for name, entry in tests.items() if "/" in name}
+            for test, entry in (leaves or tests).items():
                 out[test if test.startswith(suite) else suite + "/" + test] = entry["outcome"]
         return out
 
@@ -353,6 +362,13 @@ def main():
     add("Wall clock and dollars move with the provider's weather as much as with the")
     add("change. `bench/e2e/README.md` measured a 60% wall swing between two runs of")
     add("identical code, so these are here to be looked at and not to decide anything.")
+    add("")
+    add("**Spend is a sum over the requests the provider actually priced.** OpenRouter")
+    add("returns no usage block on some calls — a measured cell had 5 of 7 priced — and")
+    add("the guard records that as unknown rather than as zero, so this figure is a")
+    add("floor and not a bill. The token columns above are unaffected: they are medians")
+    add("over the requests that reported, and a request that reported nothing is absent")
+    add("from them rather than counted as free.")
     add("")
     add("| | %s | %s | Δ | |" % (before.label, after.label))
     add("| --- | ---: | ---: | ---: | ---: |")

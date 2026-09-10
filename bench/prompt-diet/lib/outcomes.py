@@ -56,8 +56,17 @@ def main():
                 "outcome": ended.get(test, "incomplete"),
                 "seconds": seconds.get(test),
             }
+        # THE PARENT IS NOT COUNTED BESIDE ITS OWN CHILDREN. `go test -v`
+        # reports the top-level test as failing whenever any subtest did, so
+        # tallying every reported name turns one broken subtest into two
+        # failures and a suite of fifteen into a suite of sixteen. Leaves are
+        # what a parity claim is made of; the parent's row is kept in `tests`
+        # because a parent that failed with no failing child is a real and
+        # otherwise invisible event (a fixture that died before any subtest).
+        leaves = {name: entry for name, entry in tests.items() if "/" in name}
+        counted = leaves or tests
         tally = {word: 0 for word in ("pass", "fail", "skip", "incomplete")}
-        for entry in tests.values():
+        for entry in counted.values():
             tally[entry["outcome"]] += 1
         suites[suite] = {"tests": tests, "tally": tally}
     json.dump(suites, sys.stdout, indent=2, sort_keys=True)
