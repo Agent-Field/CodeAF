@@ -30,6 +30,16 @@ type argumentsForTest struct {
 	Rails     struct {
 		MaxPerDay int `json:"max_per_day"`
 	} `json:"rails"`
+	// Dimensions is the shape of an answer's comparison axes: a text table.
+	Dimensions map[string]string `json:"dimensions"`
+	// Pick is `ask`'s own pick, a type that decodes itself.
+	Pick *Pick `json:"pick"`
+	// Options is the shape of `ask`'s answers — a list of objects that each carry
+	// a list — because that is the argument a provider was seen wrap in a string.
+	Options []struct {
+		Key    string   `json:"key"`
+		Blocks []string `json:"blocks"`
+	} `json:"options"`
 }
 
 func TestDecodeToolArgumentsTakesTheLooseFormsAndRefusesTheRestInWordsAModelCanAct(t *testing.T) {
@@ -116,6 +126,153 @@ func TestDecodeToolArgumentsTakesTheLooseFormsAndRefusesTheRestInWordsAModelCanA
 			},
 		},
 		{
+			name: "THE ASK DEFECT: a list sent as a JSON string holding the list is that list",
+			args: `{"options":"[{\"key\":\"1\",\"blocks\":[\"a\"]},{\"key\":\"2\"}]"}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if len(got.Options) != 2 || got.Options[0].Key != "1" || got.Options[1].Key != "2" {
+					t.Fatalf("options: want two answers keyed 1 and 2, got %+v", got.Options)
+				}
+				if len(got.Options[0].Blocks) != 1 || got.Options[0].Blocks[0] != "a" {
+					t.Fatalf("options[0].blocks: want [a], got %v", got.Options[0].Blocks)
+				}
+			},
+		},
+		{
+			name:  "an object sent as a JSON string holding the object is that object, leaves and all",
+			args:  `{"rails":"{\"max_per_day\": 3.0}"}`,
+			check: func(t *testing.T, got argumentsForTest) { equalInt(t, "max_per_day", got.Rails.MaxPerDay, 3) },
+		},
+		{
+			name: "a string wrapped inside a list that was itself wrapped is unwrapped at each level it asks for",
+			args: `{"options":"[{\"key\":\"1\",\"blocks\":\"[\\\"a\\\",\\\"b\\\"]\"}]"}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if len(got.Options) != 1 || len(got.Options[0].Blocks) != 2 || got.Options[0].Blocks[1] != "b" {
+					t.Fatalf("options: want one answer with blocks [a b], got %+v", got.Options)
+				}
+			},
+		},
+		{
+			name: "THE ASK DEFECT AS IT IS MOSTLY SEEN: the list and every field after it arrive inside one string",
+			args: `{"limit":3,"query":"what","options":"[{\"key\":\"1\",\"blocks\":[\"a\"]}], \"depends_on\": [7.0], \"rails\": {\"max_per_day\": 2.0}, \"query\": \"inner\"}"}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if len(got.Options) != 1 || got.Options[0].Key != "1" {
+					t.Fatalf("options: want the one answer that was inside the string, got %+v", got.Options)
+				}
+				if len(got.DependsOn) != 1 || got.DependsOn[0] != 7 {
+					t.Fatalf("depends_on: the field after the swallowed list was lost: %v", got.DependsOn)
+				}
+				equalInt(t, "max_per_day", got.Rails.MaxPerDay, 2)
+				// What the model wrote at the top level stands; the copy inside the
+				// string never overwrites it.
+				equalText(t, "query", got.Query, "what")
+				equalInt(t, "limit", got.Limit, 3)
+			},
+		},
+		{
+			name: "THE PICK DEFECT: a pick written as nothing but its key, as a number or as text",
+			args: `{"pick":1}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if got.Pick == nil || got.Pick.Key != "1" {
+					t.Fatalf("pick: want key 1, got %+v", got.Pick)
+				}
+			},
+		},
+		{
+			name: "a pick as text is that key too",
+			args: `{"pick":"2"}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if got.Pick == nil || got.Pick.Key != "2" {
+					t.Fatalf("pick: want key 2, got %+v", got.Pick)
+				}
+			},
+		},
+		{
+			name: "a pick's object form is walked by the one decoder",
+			args: `{"pick":{"key":"3","reason":"why"}}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if got.Pick == nil || got.Pick.Key != "3" || got.Pick.Reason != "why" {
+					t.Fatalf("pick: want key 3 with its reason, got %+v", got.Pick)
+				}
+			},
+		},
+		{
+			name:    "and a key written as a number inside it is refused by the one rule, in the decoder's words",
+			args:    `{"pick":{"key":3}}`,
+			refusal: `key takes text: send {"key":"3"}, not 3`,
+		},
+		{
+			name:    "a pick's confidence written as a number is refused in the decoder's words",
+			args:    `{"pick":{"key":"1","confidence":true}}`,
+			refusal: `confidence takes text: send {"confidence":"true"}, not true`,
+		},
+		{
+			name: "a swallowed tail closed with a bracket after its brace is still that tail",
+			args: `{"options":"[{\"key\":\"1\"}], \"depends_on\": [7]}]"}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if len(got.Options) != 1 || len(got.DependsOn) != 1 || got.DependsOn[0] != 7 {
+					t.Fatalf("want the answer and the field after it, got %+v %v", got.Options, got.DependsOn)
+				}
+			},
+		},
+		{
+			name: "THE SPILL LAW: a complete list followed by a leaked control token and prose is that list",
+			args: `{"depends_on":"[7, 8]\n<｜DSML｜>I recommend the first, because"}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if len(got.DependsOn) != 2 || got.DependsOn[1] != 8 {
+					t.Fatalf("depends_on: want [7 8] with the spill dropped, got %v", got.DependsOn)
+				}
+			},
+		},
+		{
+			name: "a backslash before a real newline inside the wrapped string is the newline it meant",
+			args: badEscapeArguments,
+			check: func(t *testing.T, got argumentsForTest) {
+				if len(got.Options) != 1 || len(got.Options[0].Blocks) != 1 || got.Options[0].Blocks[0] != "top\n│ mid\nbottom" {
+					t.Fatalf("want the diagram with its line breaks, got %+v", got.Options)
+				}
+			},
+		},
+		{
+			name:    "any other bad escape inside the wrapped string is still refused",
+			args:    `{"depends_on":"[7, \"\\q\"]"}`,
+			refusal: `depends_on takes a list; it arrived as text, "[7, \"\\q\"]" — send the value itself, not a string holding it`,
+		},
+		{
+			name: "and a swallowed tail followed by prose is that tail, with nothing read out of the prose",
+			args: `{"depends_on":"[7], \"limit\": 2} and \"limit\": 9 is what I meant"}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if len(got.DependsOn) != 1 || got.DependsOn[0] != 7 {
+					t.Fatalf("depends_on: want [7], got %v", got.DependsOn)
+				}
+				equalInt(t, "limit", got.Limit, 2)
+			},
+		},
+		{
+			name: "a tail that never closes is not an object, so only the list at its head is read",
+			args: `{"depends_on":"[7], \"limit\": 1"}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if len(got.DependsOn) != 1 || got.DependsOn[0] != 7 {
+					t.Fatalf("depends_on: want [7], got %v", got.DependsOn)
+				}
+				equalInt(t, "limit", got.Limit, 0)
+			},
+		},
+		{
+			name:    "a string that is not holding a list is refused, and the refusal says it arrived as text",
+			args:    `{"depends_on":"seven and eight"}`,
+			refusal: `depends_on takes a list; it arrived as text, "seven and eight" — send the value itself, not a string holding it`,
+		},
+		{
+			name:    "a string holding an object where a list was wanted is not unwrapped into the wrong shape",
+			args:    `{"depends_on":"{\"first\":7}"}`,
+			refusal: `depends_on takes a list; it arrived as text, "{\"first\":7}" — send the value itself, not a string holding it`,
+		},
+		{
+			name:    "a number where a list was wanted still reads as it always did",
+			args:    `{"depends_on":7}`,
+			refusal: `depends_on takes a list`,
+		},
+		{
 			name:  "a nested object is walked to its leaves",
 			args:  `{"rails":{"max_per_day":3.0}}`,
 			check: func(t *testing.T, got argumentsForTest) { equalInt(t, "max_per_day", got.Rails.MaxPerDay, 3) },
@@ -135,9 +292,23 @@ func TestDecodeToolArgumentsTakesTheLooseFormsAndRefusesTheRestInWordsAModelCanA
 			},
 		},
 		{
-			name:    "a number where text belongs says how to quote it",
+			name:    "a number where a named text argument belongs says how to quote it",
 			args:    `{"query":7}`,
 			refusal: `query takes text: send {"query":"7"}, not 7`,
+		},
+		{
+			name: "THE AXIS DEFECT: a number in a cell of a text table is that number's spelling",
+			args: `{"dimensions":{"complexity":1,"cost":0.50,"speed":"fast"}}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				equalText(t, "complexity", got.Dimensions["complexity"], "1")
+				equalText(t, "cost", got.Dimensions["cost"], "0.50")
+				equalText(t, "speed", got.Dimensions["speed"], "fast")
+			},
+		},
+		{
+			name:    "but a truth in a cell is still refused, in the cell's own name",
+			args:    `{"dimensions":{"cheap":true}}`,
+			refusal: `cheap takes text: send {"cheap":"true"}, not true`,
 		},
 		{
 			name:    "a word where a truth belongs",
@@ -202,6 +373,23 @@ func assertNoMachineryInRefusal(t *testing.T, sentence string) {
 		if strings.Contains(sentence, banned) {
 			t.Fatalf("refusal %q carries machinery vocabulary %q — nobody outside can see it", sentence, banned)
 		}
+	}
+}
+
+// badEscapeArguments is the wrapped-string shape with the model's one bad
+// escape in it: inside the held list, a diagram's line breaks are written as a
+// backslash followed by a REAL newline. It is built rather than spelled because
+// three layers of quoting in one literal is where a fixture goes wrong.
+var badEscapeArguments = func() string {
+	held := "[{\"key\":\"1\",\"blocks\":[\"top\\\n│ mid\\\nbottom\"]}]"
+	wrapped, _ := json.Marshal(held)
+	return `{"options":` + string(wrapped) + `}`
+}()
+
+func equalText(t *testing.T, name, got, want string) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s: want %q, got %q", name, want, got)
 	}
 }
 
@@ -309,6 +497,48 @@ func TestNoWholeNumberArgumentIsDeclaredANumber(t *testing.T) {
 			t.Fatalf(`%s declares %q as "type":"number". An argument decoded into a whole `+
 				`number is declared "type":"integer", or a provider that renders every number `+
 				`as a float sends a form the schema invited (toolargs.go)`, filepath.Base(path), name)
+		}
+	}
+}
+
+// EVERY SCHEMA ON THE BELT IS ONE WELL-FORMED JSON DOCUMENT, AND NONE CARRIES A
+// REFERENCE. The first half is here because the second half's own first cut
+// broke it: a block spliced into the template with one brace too many left
+// `ask` with a schema encoding/json could not read, and the belt's answer to
+// that is to keep the tool off the shelf — `The questions tools could not be
+// loaded: … malformed schema` — so the model wrote the question out as prose and
+// the person never saw one. Every unit test was green. A schema is bytes the
+// model reads and this program never does, so nothing but a test can notice it
+// is broken.
+//
+// `$ref` into `$defs` is legal JSON
+// Schema and it is the one shape a provider is free to flatten, ignore or
+// mis-render, because nothing else on this belt ever used it and the models are
+// steered by what the belt has always looked like. `ask` was the only tool that
+// did, and it was the only tool deepseek-v4-flash could not call: three calls
+// running on 2026-09-10 arrived with the answers list rendered as a string,
+// every one refused, and the person never saw a question. A shape used in one
+// place is written out in full at every place it stands (askBlockSchemaJSON),
+// which costs bytes on the wire and nothing else.
+func TestEveryBeltSchemaIsWellFormedAndCarriesNoReference(t *testing.T) {
+	agent := &Agent{config: Config{Workspace: t.TempDir(), ProfileDir: t.TempDir()}}
+	agent.tools = agent.belt()
+	tools := agent.offeredTools()
+	if len(tools) == 0 {
+		t.Fatal("the belt is empty")
+	}
+	for _, tool := range tools {
+		schema := string(tool.Schema)
+		if !json.Valid(tool.Schema) {
+			t.Errorf("%s's schema is not one well-formed JSON document; it ends %q", tool.Name, schema[max(0, len(schema)-80):])
+			continue
+		}
+		for _, mark := range []string{`"$ref"`, `"$defs"`, `"definitions"`} {
+			if strings.Contains(schema, mark) {
+				t.Errorf("%s's schema carries %s — write the shape out in full where it stands "+
+					"(see askBlockSchemaJSON); a reference is the one schema shape a provider has "+
+					"been seen fail to follow", tool.Name, mark)
+			}
 		}
 	}
 }
