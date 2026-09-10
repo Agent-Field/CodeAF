@@ -43,7 +43,21 @@ import (
 // the draw, for [homeView.wide]'s reason: the paint asks it once per row and
 // thirty times a second, and a choice remade per cell would be this file paying
 // for its own law.
-func (h *homeView) spinAt() int { return h.newestMoving() }
+func (h *homeView) spinAt() int {
+	// ON THE GRID THE ONE MOVING CELL IS THE FIRST RUNNING ROW'S, which the
+	// running panel marked when it read its rows (homepanel_running.go) — the
+	// panel is ranked, so its first row is already the answer this function
+	// would otherwise work out.
+	if h.gridOn() {
+		for at, line := range h.lines {
+			if line.cell != nil && line.cell.mark == cellMarkSpin {
+				return at
+			}
+		}
+		return homeNoLine
+	}
+	return h.newestMoving()
+}
 
 // newestMoving is the freshest moving row on the column.
 //
