@@ -372,9 +372,18 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	// that had arrived, drawn the whole screen and offered somebody a keystroke
 	// was declared dead by this list. [placeRestWord] is the prompt in the box at
 	// the foot of EVERY place at rest, whatever the line under it says.
+	//
+	// AND A SCREEN THAT IS ASKING SOMETHING IS THE MOST INTERACTIVE SURFACE
+	// THERE IS. The box at the foot of a place holds ONE thing at a time, and a
+	// question raised in this workspace takes it: the prompt becomes the ask and
+	// its options (`needs your ok to run bash · 1 allow once · …`), so a window
+	// that arrived and is waiting on a keystroke wears neither foot above. The
+	// engine's own first option and home's hint for the row are the two ways
+	// that screen says so.
 	if hit, _ := r.waitForAny(45*time.Second, say(t, "homeFootWord"), say(t, "placeRestWord"),
 		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "setupSkipWord"),
-		say(t, "landingKeysWord"), say(t, "welcomeStarterKeysWord")); hit == "" {
+		say(t, "landingKeysWord"), say(t, "welcomeStarterKeysWord"),
+		say(t, "answersAllowOnce"), say(t, "homeAnswerHint")); hit == "" {
 		t.Fatal("the terminal never reached an interactive surface")
 	}
 	return r
