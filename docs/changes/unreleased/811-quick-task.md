@@ -1,7 +1,7 @@
 ---
 kind: added
 title: A quick task does the small job where you are — no copy of the folder, no branch, no check
-pr: 800
+pr: 811
 surface: [chat, engine, docs]
 invalidates:
   - "Every task got its own copy of the folder, was checked, and landed. A quick task gets none of the three: it runs in the caller's own workspace, its last message is its result, and its row goes `done` with no branch and nothing to merge."

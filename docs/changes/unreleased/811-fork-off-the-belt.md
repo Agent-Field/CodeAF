@@ -1,7 +1,7 @@
 ---
 kind: removed
 title: '`fork` is off the belt: a reply no longer copies itself into hands'
-pr: 800
+pr: 811
 surface: [chat, engine, docs]
 invalidates:
   - "`fork` was a tool on every belt but a hand's own: mid-work, the running mind copied itself into two to four HANDS, each opening on the caller's whole transcript, each holding a declared slice of the caller's working copy. It is GONE — not refusing, absent, so the model does not have the verb. `Agent.forkTools`, `forkHands`, `forkSeed`, `newHandAgent`, `forkBelt`, `runHand`, `handLeash`, `forkOut`, `handReport`, `forkNote`, `forkCharge` and the rest of the verb are deleted with their tests, and the belt bullet in `beltfacts.go` (`Config.mayFork`) with them. What replaces it is the quick task (docs/design/quick-task/DESIGN.md): work that runs where the caller works and whose last message is its result — but it is a task node with a row, a room and a stop, not a copy of the caller's mind."
