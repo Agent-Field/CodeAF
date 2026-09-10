@@ -177,8 +177,14 @@ type placeBlank struct {
 	whisper string
 }
 
-// placeWhisper is THE COPY OF RECORD for an empty place, one line each, and the
-// manual quotes it from here.
+// placeWhisper is THE COPY OF RECORD for an empty place, one sentence each, and
+// the manual quotes it from here.
+//
+// NO WHISPER CARRIES AN ELLIPSIS, not even a quoted one — home's rule for its
+// panels (homegrid.go's [homeWhisper]), for home's reason: a whisper wraps
+// rather than being cut ([placeWhisperLines]), so a `…` on one of these lines
+// could only be read as the screen having run out of room. Standing's example
+// was `"every morning, …"` until it took home's `"every morning at 9"`.
 //
 // A WHISPER NAMES WHAT ARRIVES AND THE ONE THING THAT PUTS IT THERE — the rule
 // home's panels already keep (homegrid.go's [homeWhisper], DESIGN.md §4). It
@@ -189,22 +195,25 @@ type placeBlank struct {
 var placeWhisper = map[page]placeBlank{
 	pageTasks:    {whisper: "work you send off with /task lands here, and its record stays"},
 	pageSpend:    {whisper: "every chat and task is priced here as it runs"},
-	pageStanding: {heading: standHeading, whisper: `reminders, watches and routines · "remind me at 6" or "every morning, …"`},
+	pageStanding: {heading: standHeading, whisper: `reminders, watches and routines · "remind me at 6" or "every morning at 9"`},
 	pageMemory:   {whisper: "what it has learned about you and this machine · /remember adds a line"},
 	pageSearch:   {whisper: "type a word · every conversation on this machine is searched"},
 }
 
-// placeWhisperLead is where the whisper hangs: under its heading, one gutter
-// in, exactly as home hangs a panel's (homegrid.go's [homeGridLead]).
-const placeWhisperLead = "   "
+// placeWhisperLead is where the whisper hangs: the place's own lead, then the
+// gutter home hangs a panel's whisper in (homecell.go's [homeCellLeadBlank]), so
+// the two stand in one column by construction.
+var placeWhisperLead = placeLead + homeCellLeadBlank
 
-// placeWhisperLines is an empty place's two rows: the heading in the muted tier
+// placeWhisperLines is an empty place's rows: the heading in the muted tier
 // every heading on this surface wears, and the whisper dim under it.
 //
-// THE WHISPER GIVES UP A CLAUSE RATHER THAN WRAPPING. It is one line on every
-// frame, so a place does not grow a second row of prose at eighty columns that
-// it did not have at a hundred and twenty; the clause after the middle dot is
-// the example, and it is the half a narrow frame can spare ([noteFit]).
+// THE WHISPER WRAPS; IT IS NEVER CUT. It takes the dim lines it needs from the
+// one wrapper home's panels use ([homeWhisperLines]), handed the width to the
+// right of the place's lead. It used to give up its example after the middle
+// dot and then take an ellipsis where there was no clause left to give, so at
+// forty-four columns tasks read `work you send off with /task lands here, and…`
+// — the half a person needed was the half that went (DESIGN.md §4).
 func placeWhisperLines(id page, width int, pal palette) []string {
 	blank, ok := placeWhisper[id]
 	if !ok || width < len(placeWhisperLead)+1 {
@@ -214,10 +223,11 @@ func placeWhisperLines(id page, width int, pal palette) []string {
 	if heading == "" {
 		heading = id.word()
 	}
-	return []string{
-		" " + placeHeading(fit(heading, width-1), pal),
-		placeWhisperLead + pal.dim(noteFit(blank.whisper, width-len(placeWhisperLead))),
+	lines := []string{placeLead + placeHeading(fit(heading, width-len(placeLead)), pal)}
+	for _, words := range homeWhisperLines(blank.whisper, width-len(placeLead)) {
+		lines = append(lines, placeWhisperLead+pal.dim(words))
 	}
+	return lines
 }
 
 // placeWindowStep is SCREEN 3d'S FOUR KEYS, and it is one function because

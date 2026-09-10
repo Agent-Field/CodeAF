@@ -301,32 +301,63 @@ func TestAMemoryLetGoAndOneReplacedAreNotTheSameWord(t *testing.T) {
 	}
 }
 
-// TestEveryWhisperFitsWithoutCuttingAWord is audit-help rows 11 and 12 said of
-// every empty place. Memory's own explanation of itself was cut with an
-// ellipsis mid-word at 80 columns, and its rows started one cell left of every
-// other place's. A whisper is one line on every frame, so it gives up a whole
-// clause on a narrow one before anything is cut, and it hangs where home hangs
-// a panel's (placeprose.go's [placeWhisperLines]).
-func TestEveryWhisperIsOneLineThatFits(t *testing.T) {
-	pal := newPalette(tokens.NoColor, false)
-	for id, blank := range placeWhisper {
-		for _, width := range []int{44, 60, 80, 120, 160} {
-			lines := placeWhisperLines(id, width, pal)
-			if len(lines) != 2 {
-				t.Fatalf("the %s place drew %d whisper rows at %d cells", id.word(), len(lines), width)
+// A PLACE'S WHISPER WRAPS LIKE HOME'S, AND NOTHING CUTS IT. Audit-help rows 11
+// and 12 found memory's explanation of itself cut mid-word at 80 columns; the
+// cure was one line that gave up its example after the middle dot — and then
+// took an ellipsis wherever there was no clause to give, so at 44 columns the
+// tasks whisper read `work you send off with /task lands here, and…`. It now
+// takes the dim lines it needs from home's own wrapper (placeprose.go's
+// [placeWhisperLines]): each empty place is drawn at three widths, and its
+// whisper has to be all of its own words, one to three lines, hung where home
+// hangs a panel's, with no `…` anywhere.
+func TestEveryPlaceWhisperWrapsLikeHomesAndIsNeverCut(t *testing.T) {
+	for _, lab := range everyEmptyPlace() {
+		sentence := placeWhisper[lab.id].whisper
+		for _, width := range []int{44, 58, 80} {
+			a := lab.open(t)
+			a.width, a.height = width, 24
+			lines, _, _, _ := a.placeDraw(placeFor(lab.id), a.width, a.height)
+			rows := make([]string, len(lines))
+			for i, line := range lines {
+				rows[i] = strings.TrimRight(plain(line), " ")
 			}
-			for _, row := range lines {
-				if got := ansi.StringWidth(row); got > width {
-					t.Fatalf("at %d cells the %s whisper measures %d: %q", width, id.word(), got, row)
+			said := whisperRowsUnder(rows, placeHeadRows)
+			if len(said) == 0 || len(said) > 3 {
+				t.Fatalf("the empty %s place at %d cells whispers on %d rows:\n%s",
+					lab.id.word(), width, len(said), strings.Join(rows, "\n"))
+			}
+			// One line where the sentence fits beside its lead, and more only
+			// where it does not — a wrap, never a second row nobody needed.
+			if fits := len(placeWhisperLead)+ansi.StringWidth(sentence) <= width; fits != (len(said) == 1) {
+				t.Fatalf("the empty %s place at %d cells whispers on %d rows, and the sentence fits=%v:\n%s",
+					lab.id.word(), width, len(said), fits, strings.Join(said, "\n"))
+			}
+			words := make([]string, 0, len(said))
+			for _, row := range said {
+				if !strings.HasPrefix(row, placeWhisperLead) || strings.HasPrefix(row, placeWhisperLead+" ") ||
+					strings.Contains(row, glyphMore) || ansi.StringWidth(row) > width {
+					t.Fatalf("at %d cells a row of the %s whisper is not hung, whole and inside the frame: %q",
+						width, lab.id.word(), row)
 				}
+				words = append(words, strings.TrimPrefix(row, placeWhisperLead))
 			}
-			// A WHISPER WITH NO CLAUSE LEFT TO DROP IS CUT, ONE ELLIPSIS, and what
-			// is left is still the whisper's own opening words.
-			said := strings.TrimSuffix(strings.TrimPrefix(lines[1], placeWhisperLead), glyphMore)
-			if !strings.HasPrefix(blank.whisper, said) {
-				t.Fatalf("at %d cells the %s whisper is not its own opening words: %q",
-					width, id.word(), said)
+			if got := strings.Join(words, " "); got != sentence {
+				t.Fatalf("at %d cells the %s whisper says %q, not its own sentence %q", width, lab.id.word(), got, sentence)
 			}
 		}
 	}
+}
+
+// whisperRowsUnder is the dim lines under the first heading of a place's body —
+// the rows from `top` on that are hung in a whisper's lead, up to the first
+// row that is not.
+func whisperRowsUnder(rows []string, top int) []string {
+	var said []string
+	for _, row := range rows[top+1:] {
+		if !strings.HasPrefix(row, placeWhisperLead) || strings.TrimSpace(row) == "" {
+			break
+		}
+		said = append(said, row)
+	}
+	return said
 }
