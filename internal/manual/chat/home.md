@@ -179,9 +179,11 @@ Four rows show, eight in a tall window, then `N more · tasks`. There is no sepa
 column or `◐` mark any more; this panel is that list.
 
 **`s` stops only what this window is running.** `→` on a task this window's own
-conversation holds offers `s stop`, which asks you first. **A task another window runs
-cannot be stopped from here** — the row offers no stop at all; bring it here with `enter`
-and stop it there.
+conversation holds offers `s stop it`, which asks you first, and **`ctrl+x`** asks the same
+from any column with no strip. On a three-column home `running` is the middle column, so
+`→` crosses to the next column instead of opening the verbs, and the foot names the chord:
+`ctrl+x stop it`. **A task another window runs cannot be stopped from here** — the row
+offers no stop at all; bring it here with `enter` and stop it there.
 
 The pulse inside a chat counts the same work: `1 moving` is these rows.
 
@@ -1437,7 +1439,8 @@ place is where every one of them is.
 ## How do I pause a reminder from home — the → strip, and ctrl+e / ctrl+x
 
 Put the cursor on the item's row (or point at it). **`ctrl+e` pauses it** and **`ctrl+x`
-stops it for good**, from any column, with no strip. On a `running` row, or on any row at
+stops it for good**, from any column, with no strip (on a `running` row this window holds,
+`ctrl+x` asks to stop that task instead). On a `running` row, or on any row at
 one column, **`→`** opens a strip under the row offering `p pause it`, or `r resume it` when
 it is already paused, and while that strip is drawn those letters are the verbs. `esc` or
 `←` closes it.

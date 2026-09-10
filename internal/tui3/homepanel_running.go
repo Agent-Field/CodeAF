@@ -184,12 +184,19 @@ func runningStandingLine(row switcherRow) homeLine {
 // hold, so the row offers no verb rather than one that would end the wrong work
 // or fail (DESIGN §6 ruling 5). A row another window holds already says
 // `another window`, and enter brings it here, where it can be stopped.
+//
+// THE VERB IS SPELLED AS THE TASKS PLACE SPELLS IT ([stopActWord]), because it
+// is the same act on the same work and reaches the same card; a row that said
+// `stop` on home and `stop it` one `tab` away would be two verbs to a person.
+// `ctrl+x` reaches it without the strip, which is what a three-column home
+// needs: there `running` is the middle column and `→` crosses rather than
+// opening the strip ([app.homeCrossChord] names the chord on the foot).
 func (a *app) runningVerbs(line homeLine) []verb {
 	target := a.runningStopTarget(line)
 	if target.empty() {
 		return nil
 	}
-	return []verb{{key: 's', word: homeItemStopWord, do: func() tea.Cmd {
+	return []verb{{key: 's', word: stopActWord, do: func() tea.Cmd {
 		// HOME STEPS ASIDE FOR THE CARD. The block draws every question above the
 		// conversation's box (question.go), and home's frame has no such block —
 		// so a card raised over home was a question nobody could see, holding the
@@ -203,10 +210,16 @@ func (a *app) runningVerbs(line homeLine) []verb {
 
 // runningStopTarget is the task a running row names, when this window's engine
 // is the one running it.
+//
+// WHICH CONVERSATION THIS WINDOW HOLDS IS THE READING'S OWN FACT
+// ([switcherRow.here], the fact the row's `here` margin is drawn from), and
+// never a path resolved again here. The foot asks this on every frame a
+// running row is under the cursor ([app.homeCrossChord]), and a draw may not
+// walk the disk to answer it — resolving the transcript's symlinks would be a
+// syscall a frame.
 func (a *app) runningStopTarget(line homeLine) stopTarget {
 	key := line.cellKey()
-	if !strings.HasPrefix(key, runningTaskKey) || line.row.Transcript == "" ||
-		a.convKey(line.row.Transcript) != a.frontTabKey() {
+	if !strings.HasPrefix(key, runningTaskKey) || line.cell.row == nil || !line.cell.row.here {
 		return stopTarget{}
 	}
 	id, err := strconv.ParseUint(strings.TrimPrefix(key, runningTaskKey), 10, 64)
