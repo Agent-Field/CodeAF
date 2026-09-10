@@ -1166,3 +1166,37 @@ func TestSwitchingConversationsLeavesTheOtherOnesQuestionsBehind(t *testing.T) {
 		t.Fatalf("questions or records survived the switch · %d / %d", len(lab.a.questions), len(lab.a.questionRecords))
 	}
 }
+
+// AND THE CARD MAY NOT PUSH ITS OWN HEAD OFF THE SCREEN: on a short terminal
+// the note under each of eight answers is held to one row ending in the more
+// mark, and the whole card stays inside half the screen.
+func TestALongNoteUnderEveryAnswerIsCutToWhatTheScreenHolds(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.a.width, lab.a.height = 120, 36
+	note := "Compositions of objects, vanitas pieces, floral arrangements, the Dutch Golden Age, Chardin, Morandi, and modern tabletop work that carries the same stillness"
+	options := make([]session.AnswerOption, 0, 8)
+	for i := 0; i < 8; i++ {
+		options = append(options, session.AnswerOption{Key: itoa(i + 1), Label: "Genre " + itoa(i+1), Body: note})
+	}
+	lab.raise(session.Question{
+		ID: 44, Kind: session.QuestionAsk, Ask: session.AskChoice,
+		Asker: session.Asker{Kind: session.AskerModel}, Head: "Which genres?",
+		Reason: "a tour needs a shape", Options: options,
+		Input: session.InputShape{Kind: session.InputChecklist}, Stakes: session.StakesReversible,
+	})
+	screen := lab.plain()
+	if n := strings.Count(screen, glyphMore); n != 8 {
+		t.Fatalf("expected every note cut once, saw %d marks:\n%s", n, screen)
+	}
+	if strings.Contains(screen, "same stillness") {
+		t.Fatalf("a note ran to its end on a screen that has no room for it:\n%s", screen)
+	}
+	if rows := lab.a.questionHeight(); rows > 8*2+3 {
+		t.Fatalf("the card spends %d rows of a 36-row screen:\n%s", rows, screen)
+	}
+	// On a tall screen the same note gets two rows.
+	lab.a.height = 80
+	if screen = lab.plain(); !strings.Contains(screen, "Chardin") {
+		t.Fatalf("a tall screen still cuts the note to one row:\n%s", screen)
+	}
+}

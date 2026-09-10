@@ -1003,13 +1003,14 @@ func (a *app) questionCardBody(q questionShown, width int) []string {
 			pad = w
 		}
 	}
+	noteRows := a.questionCardNoteRows(len(options), len(out))
 	for i, option := range options {
 		// EVERY ANSWER ROW IS PRESSABLE ALONG ITS WHOLE WIDTH, which is the
 		// sheet's own bargain applied to the card ([questionBand] says why it is
 		// a row and not a span) — and EVERY ROW A LABEL WRAPS ONTO PRESSES THE
 		// SAME ANSWER, so a long answer is not a target that shrinks to its
 		// first line.
-		for _, line := range a.questionCardOptionRows(q, i, option, pad, width) {
+		for _, line := range a.questionCardOptionRows(q, i, option, pad, width, noteRows) {
 			row := len(out)
 			out = append(out, a.questionHovered(line, row, width))
 			a.questionBands = append(a.questionBands, questionBand{
@@ -1224,7 +1225,28 @@ func questionAskerWord(asker session.Asker) string {
 // the confirmation kind has a cursor at all (see [questionSafeAt]), so on every
 // other card the one mark on the rows is the recommendation and cannot be
 // misread as "the key you are about to press".
-func (a *app) questionCardOptionRows(q questionShown, at int, option session.AnswerOption, pad, width int) []string {
+// questionCardNoteRows is how many rows the note under one answer may take on
+// the card: two when the screen has them, one when it does not, never none.
+//
+// THE CARD MAY NOT PUSH ITS OWN HEAD OFF THE SCREEN. Eight answers with three
+// rows of note each is thirty rows, and on a thirty-six-row terminal the
+// question itself scrolled away above the first note (2026-09-10, a real
+// screen) — a card whose question cannot be read is a list of answers to
+// nothing. So the answers are given at most half the screen less what the head
+// already spent, shared evenly, and a note that does not fit ends in `…` with
+// `[o] open it` holding the rest. The floor is one row rather than none
+// because a note cut to nothing is an answer nobody can weigh, and the
+// ceiling is two because a note is a note and not the page.
+func (a *app) questionCardNoteRows(answers, spent int) int {
+	_, height := a.size()
+	if answers < 1 {
+		return 2
+	}
+	left := height/2 - spent - 1
+	return max(1, min(2, left/answers-1))
+}
+
+func (a *app) questionCardOptionRows(q questionShown, at int, option session.AnswerOption, pad, width, noteRows int) []string {
 	key := strings.TrimSpace(option.Key)
 	if key == "" {
 		key = itoa(at + 1)
@@ -1305,11 +1327,18 @@ func (a *app) questionCardOptionRows(q questionShown, at int, option session.Ans
 			out = append(out, paint(a.pal.ask(indent+wrapped)))
 		}
 	}
-	for _, text := range []string{say, note} {
-		if text == "" {
-			continue
+	if say != "" {
+		for _, wrapped := range wrap(say, room) {
+			out = append(out, paint(a.pal.dim(indent+wrapped)))
 		}
-		for _, wrapped := range wrap(text, room) {
+	}
+	if note != "" {
+		rows := wrap(note, room)
+		if len(rows) > noteRows {
+			rows = rows[:noteRows]
+			rows[len(rows)-1] = ansi.Truncate(rows[len(rows)-1]+" "+glyphMore, room, glyphMore)
+		}
+		for _, wrapped := range rows {
 			out = append(out, paint(a.pal.dim(indent+wrapped)))
 		}
 	}

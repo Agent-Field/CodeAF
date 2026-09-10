@@ -347,7 +347,9 @@ row `space` ticks) and the recommended row says `· suggested` instead. **Every
 answer gets a row of its own, however many there are** (the model may raise up
 to four, eight on a checklist), a note the asker wrote under an answer is drawn
 dim beneath its label, and a long answer wraps onto as many rows as it needs —
-nothing on a card ends in `…`. The keys
+nothing on a card ends in `…` except a note the screen has no room for, which
+is held to a row or two so the question itself stays on the screen, with `o`
+opening the page that has all of it. The keys
 are always digits, `1` upward in the order the answers came, whatever the asker
 called them. The model may ask for a line; it gets one only when every answer is
 plain and fits — a checklist, blanks, pairs, a dial, or an answer with a
