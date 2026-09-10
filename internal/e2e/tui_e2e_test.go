@@ -479,10 +479,13 @@ func testRealConversation(t *testing.T) {
 // row still being there after the screen it was asked on has been closed and
 // reopened.
 //
-// IT RUNS AT [tuiWide] SO THAT THE LIST AND THE EXCHANGE ARE BOTH ON SCREEN. At
-// an ordinary width the exchange takes the whole frame and the row it belongs to
-// — with the `working` / `waiting on you` / `stood` tails this subtest is really
-// about — is not drawn at all.
+// THE EXCHANGE IS THE SCREEN WHILE IT HOLDS THE KEYBOARD, AT EVERY WIDTH. It
+// sat beside the list at [tuiWide] once; the grid has no pane column at any
+// width, so an errand stacks over the panels exactly as it always did on a
+// narrow frame (internal/tui3's homeStacked), and its row on `where you were` —
+// with the `waiting on you` / `stood` tails this subtest is really about — is
+// what `esc` puts back. So every tail is read on the list after the keyboard
+// has left the pane, and every word of the pane is read while it holds it.
 //
 // WHAT WENT. The old subtest ended by looking for a `◦ remind me …` row under
 // the project on home, drawn by the standing band a project used to carry. There
@@ -515,97 +518,49 @@ func testAskHere(t *testing.T) {
 	}
 	t.Logf("the action rows while typing:\n%s", typed)
 
-	// ctrl+enter, sent as the CSI 13;5u a kitty-protocol terminal sends.
+	// ctrl+enter, sent as the CSI 13;5u a kitty-protocol terminal sends. It
+	// hands the keyboard straight to the pane, and a pane holding the keyboard
+	// always names both ways back out of it.
 	r.ctrlEnter()
-
-	working := r.waitFor(25*time.Second, "? remind me in 1 minute", say(t, "homeAskWorkingWord"))
-	t.Logf("the exchange row is working:\n%s", working)
-
-	// THE SECTION LINE IS NOT ASSERTED HERE, and that is a finding rather than
-	// an omission. `what wants you first` is the heading over the RANKED LIST and
-	// it is drawn when a row of that list is asking or moving
-	// ([switcherReading.hasAttention]) — an errand stands OVER the reading and is
-	// never in it (place_home.go says so outright), so on this screen the list
-	// holds one quiet conversation and the heading would be a sentence about
-	// nothing. The three needles are read where the line is genuinely true: on
-	// the second window's home in [testAnswerFromHome], whose list really does
-	// hold a conversation stopped on a person.
+	pane := r.waitFor(25*time.Second, say(t, "homeAskHereWord"), say(t, "exchangeBack"))
+	t.Logf("the exchange took the screen:\n%s", pane)
 
 	// The pane's own clock, caught in flight. It lives for seconds, so this is
 	// a fast poll and it is a finding rather than a failure when it is missed.
+	// Everything the pane draws is kept so the tool rows can be read afterwards.
+	seen := []string{pane}
 	if caught, ok := r.glimpse(25*time.Second,
 		say(t, "homeAskThinkWord"), say(t, "homeAskWriteWord"), say(t, "homeAskRunWord")); ok {
 		t.Logf("the live strip was caught mid-turn:\n%s", caught)
+		seen = append(seen, caught)
 	} else {
 		t.Logf("FINDING: never caught the live strip in the pane")
 	}
 
-	// Everything the pane draws while the errand runs, kept so the tool rows
-	// can be read afterwards.
-	seen := []string{}
-	deadline := time.Now().Add(modelPatience)
-	waiting := ""
-	for time.Now().Before(deadline) {
-		screen := r.capture()
-		seen = append(seen, screen)
-		if strings.Contains(screen, say(t, "notifyAskWord")) {
-			waiting = screen
-			break
-		}
-		time.Sleep(200 * time.Millisecond)
+	// THE TAILS ARE THE LIST'S, so the keyboard goes back to it: one esc over an
+	// empty follow-up box hands it over, and the errand stays as the first row of
+	// `where you were`. Its tail says `working` while the turn is in flight and
+	// `waiting on you` once the card is up — and a model that reaches for the
+	// card inside a second or two can beat the first read, which is a fast reply
+	// and not a missing tail.
+	r.keys("Escape")
+	hit, listed := r.waitForAny(25*time.Second, say(t, "homeAskWorkingWord"), say(t, "notifyAskWord"))
+	if !strings.Contains(listed, "? remind me in 1 minute") {
+		t.Errorf("esc did not put the list back with the exchange row on it:\n%s", listed)
 	}
-	if waiting == "" {
-		t.Fatalf("the card never arrived. last screen:\n%s", r.capture())
-	}
-	// The card is drawn over several frames; give it one before reading the
-	// answers off it, or this reads a half-painted row.
-	time.Sleep(2 * time.Second)
-	waiting = r.capture()
-	seen = append(seen, waiting)
-	t.Logf("the card arrived and the row tail says it is waiting on somebody:\n%s", waiting)
-
-	// THE ANSWERS ARE READ OFF THE FOOT AND NOT OFF THE CHIPS. The card lives in
-	// a forty-six-cell pane and the chips give their words up to fit it — `[ 1
-	// yes ]  [ 2 change ]  [ 0 no ]` — while the hint under the box spells every
-	// answer in full at every width (internal/tui3's exchangeHint). So the foot
-	// is where this suite reads what a person is being offered.
-	//
-	// AND THE FOOT NAMES WHAT THE CARD DREW AND NOTHING MORE (#189, fixed). It
-	// used to say `3 just once` over a one-off reminder whose card offers no
-	// such chip, because the line was a third hardcoded copy of a sentence
-	// internal/tui3 already kept two correct spellings of. It is built from the
-	// chips now, so the reminder this subtest asks for is offered three answers
-	// and the needle spells three.
-	if !strings.Contains(waiting, say(t, "exchangeAnswerHint")) {
-		t.Errorf("the foot does not offer the card's answers:\n%s", waiting)
-	}
-	if !strings.Contains(waiting, say(t, "exchangeFollowUp")) {
-		t.Errorf("the foot does not say what enter does in the pane:\n%s", waiting)
-	}
-	if !strings.Contains(waiting, say(t, "exchangeBack")) {
-		t.Errorf("the foot does not name the way back to the list:\n%s", waiting)
-	}
-
-	// WHAT THE MODEL ACTUALLY DID. No tool row may say `unknown`
-	// (asking-from-home.md states it), and the instructions forbid running
-	// `date` to learn the time (keeping-an-eye.md).
-	all := strings.Join(seen, "\n")
-	if strings.Contains(all, "unknown") {
-		t.Errorf("a tool row said `unknown`:\n%s", firstMatch(all, "unknown"))
-	}
-	if strings.Contains(all, "bash · date") || strings.Contains(all, "bash date") {
-		t.Logf("FINDING: the model still ran `date` before setting the reminder: %s",
-			firstMatch(all, "date"))
+	if hit == say(t, "homeAskWorkingWord") {
+		t.Logf("the exchange row is working:\n%s", listed)
 	} else {
-		t.Logf("the model did not run `date` — it used the Now line in its instructions")
+		t.Logf("FINDING: the card was up before the list was read, so the `%s` tail was not seen",
+			say(t, "homeAskWorkingWord"))
 	}
-	t.Logf("tool rows drawn in the pane: %s", strings.Join(toolRows(seen), " | "))
+	waiting := r.waitFor(modelPatience, "? remind me in 1 minute", say(t, "notifyAskWord"))
+	t.Logf("the card arrived and the row tail says it is waiting on somebody:\n%s", waiting)
 
 	// AN EXCHANGE OUTLIVES THE SCREEN IT WAS ASKED ON. This one is holding a
 	// card, which is the case asking-from-home.md states outright: closing home
-	// does not touch it, and neither does opening another conversation.
-	r.keys("Escape") // keyboard back on the list
-	time.Sleep(1200 * time.Millisecond)
+	// does not touch it, and neither does opening another conversation. The
+	// keyboard is already on the list, so ONE esc closes home.
 	r.keys("Escape") // home closes into the conversation underneath
 	time.Sleep(2500 * time.Millisecond)
 	r.lit("/home")
@@ -625,37 +580,77 @@ func testAskHere(t *testing.T) {
 		t.Fatalf("could not put the cursor back on the exchange row:\n%s", r.capture())
 	}
 	r.keys("Enter")
-	time.Sleep(1200 * time.Millisecond)
+	card := r.waitFor(20*time.Second, say(t, "exchangeAnswerHint"))
+	// The card is drawn over several frames; give it one before reading the
+	// answers off it, or this reads a half-painted row.
+	time.Sleep(2 * time.Second)
+	card = r.capture()
+	seen = append(seen, card)
+	t.Logf("enter on the row gave the pane the keyboard, with the card on it:\n%s", card)
 
+	// THE ANSWERS ARE READ OFF THE FOOT AND NOT OFF THE CHIPS. The chips give
+	// their words up to fit whatever room the card has — `[ 1 yes ]  [ 2 change
+	// ]  [ 0 no ]` — while the hint under the box spells every answer in full at
+	// every width (internal/tui3's exchangeHint). So the foot is where this suite
+	// reads what a person is being offered.
+	//
+	// AND THE FOOT NAMES WHAT THE CARD DREW AND NOTHING MORE (#189, fixed). It
+	// used to say `3 just once` over a one-off reminder whose card offers no
+	// such chip, because the line was a third hardcoded copy of a sentence
+	// internal/tui3 already kept two correct spellings of. It is built from the
+	// chips now, so the reminder this subtest asks for is offered three answers
+	// and the needle spells three.
+	if !strings.Contains(card, say(t, "exchangeFollowUp")) {
+		t.Errorf("the foot does not say what enter does in the pane:\n%s", card)
+	}
+	if !strings.Contains(card, say(t, "exchangeBack")) {
+		t.Errorf("the foot does not name the way back to the list:\n%s", card)
+	}
+
+	// WHAT THE MODEL ACTUALLY DID. No tool row may say `unknown`
+	// (asking-from-home.md states it), and the instructions forbid running
+	// `date` to learn the time (keeping-an-eye.md).
+	all := strings.Join(seen, "\n")
+	if strings.Contains(all, "unknown") {
+		t.Errorf("a tool row said `unknown`:\n%s", firstMatch(all, "unknown"))
+	}
+	if strings.Contains(all, "bash · date") || strings.Contains(all, "bash date") {
+		t.Logf("FINDING: the model still ran `date` before setting the reminder: %s",
+			firstMatch(all, "date"))
+	} else {
+		t.Logf("the model did not run `date` — it used the Now line in its instructions")
+	}
+	t.Logf("tool rows drawn in the pane: %s", strings.Join(toolRows(seen), " | "))
+
+	// A YES HANDS THE KEYBOARD BACK TO THE LIST BY ITSELF (internal/tui3's
+	// homeKey, "the two zones"), so the row's tail is what says it landed.
 	r.lit("1")
-	stood := r.waitFor(30*time.Second, say(t, "homeAskStoodTail"))
-	time.Sleep(1500 * time.Millisecond)
-	stood = r.capture()
+	stood := r.waitFor(30*time.Second, "? remind me in 1 minute", say(t, "homeAskStoodTail"))
 	t.Logf("answered `1` — the row says something stands:\n%s", stood)
-	if !strings.Contains(stood, say(t, "standYesWord")+" · "+say(t, "standSetWord")) {
-		t.Errorf("the settled card does not carry the answer and its verdict:\n%s", stood)
+
+	// AND THE SETTLED CARD IS ONE ENTER AWAY. The pane keeps the exchange as it
+	// ended — the answer, what it set up, and where the exchange is filed — and
+	// enter on the row is how a person reads it again.
+	r.keys("Enter")
+	settled := r.waitFor(20*time.Second, say(t, "exchangeBack"))
+	time.Sleep(1500 * time.Millisecond)
+	settled = r.capture()
+	t.Logf("the settled exchange, reopened:\n%s", settled)
+	if !strings.Contains(settled, say(t, "standYesWord")+" · "+say(t, "standSetWord")) {
+		t.Errorf("the settled card does not carry the answer and its verdict:\n%s", settled)
 	}
-	if !strings.Contains(stood, say(t, "homeAskStoodWord")) {
-		t.Errorf("the pane does not say the exchange is filed under what it made:\n%s", stood)
+	if !strings.Contains(settled, say(t, "homeAskStoodWord")) {
+		t.Errorf("the pane does not say the exchange is filed under what it made:\n%s", settled)
 	}
 
-	// Walk off the exchange onto another row: the pane must draw THAT row. The
-	// keyboard is already back on the list — answering a card hands it back —
-	// so an `esc` here would close home instead of moving anything.
-	before := rightPane(r.capture())
-	for i := 0; i < 3; i++ {
-		r.keys("Down")
-		time.Sleep(400 * time.Millisecond)
+	// esc puts the list back, and the exchange is still a row on it: a settled
+	// errand stays where it was asked until it is put away.
+	r.keys("Escape")
+	back := r.waitFor(20*time.Second, say(t, "homePanelRecent"), "? remind me in 1 minute")
+	if strings.Contains(back, "› remind me in 1 minute to drink water") {
+		t.Errorf("esc left the pane drawn over the list:\n%s", back)
 	}
-	time.Sleep(1500 * time.Millisecond)
-	walked := r.capture()
-	t.Logf("after walking down off the exchange row:\n%s", walked)
-	if pane := rightPane(walked); pane == before {
-		t.Errorf("the pane did not change when the cursor walked off the exchange row:\n%s", walked)
-	}
-	if strings.Contains(rightPane(walked), "› remind me in 1 minute to drink water") {
-		t.Errorf("the pane still draws the exchange after the cursor walked off it:\n%s", walked)
-	}
+	t.Logf("esc brought the list back with the settled row on it:\n%s", back)
 }
 
 // walkTo steps the cursor along the list, one press of `key` at a time, until
@@ -968,14 +963,17 @@ func standReminder(t *testing.T, r *rig, words string) {
 	r.lit(words)
 	time.Sleep(600 * time.Millisecond)
 	r.ctrlEnter()
-	r.waitFor(modelPatience, say(t, "notifyAskWord"))
 	// ctrl+enter HANDS THE KEYBOARD STRAIGHT TO THE PANE, so the digit reaches
 	// the card with nothing walked onto — and the foot naming the card's own
-	// answers is how this helper knows the pane has it. A reminder's card draws
-	// three of them and the foot names three (#189). (Subtest 3 takes the other
-	// road on purpose: it closes home first, which puts the keyboard back on the
-	// list, and walks onto the row.)
-	r.waitFor(20*time.Second, say(t, "exchangeAnswerHint"))
+	// answers is how this helper knows the card is up and the pane has it. A
+	// reminder's card draws three of them and the foot names three (#189).
+	//
+	// IT IS NOT THE ROW'S `waiting on you` TAIL ANY MORE. The pane stacks over
+	// the grid while it holds the keyboard (internal/tui3's homeStacked), so the
+	// row is not on the screen to wear a tail until the keyboard leaves. (Subtest
+	// 3 takes the other road on purpose: it hands the keyboard back, reads the
+	// tail on the list, and walks onto the row.)
+	r.waitFor(modelPatience, say(t, "exchangeAnswerHint"))
 	r.lit("1")
 	r.waitFor(30*time.Second, say(t, "homeAskStoodTail"))
 	t.Logf("stood: %q\n%s", words, r.capture())
