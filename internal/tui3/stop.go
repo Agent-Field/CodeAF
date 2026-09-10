@@ -133,6 +133,13 @@ const (
 	// so the reassurance above would be pointing at work that does not exist, and
 	// this is the honest promise in its place.
 	stopDesignDetail = "The page it is writing is dropped; nothing was saved."
+	// stopQuickDetail is what the same card says over a QUICK node (session's
+	// TaskKindQuick). It has no worktree and no branch — it works in the folder
+	// the person is already in — so `the branch it wrote on is kept` would send
+	// somebody looking for a branch that was never cut. What is true instead is
+	// that anything it has already written is where they are, and the answer it
+	// was going to hand back is the half that is lost.
+	stopQuickDetail = "Its work halts; whatever it already wrote is in your folder."
 	// stopJobDetail is what the same card says over a background job. It has no
 	// branch and wrote no files a merge would keep — what remains after a stop
 	// is the log, which is the whole record of what the process did.
@@ -427,6 +434,8 @@ func (a *app) stopTaskTarget(node *taskNode) stopTarget {
 			// designed has no worktree and wrote no files, and nothing reaches the
 			// registry until somebody approves the card — so the reassurance would
 			// be pointing at work that does not exist (session's TaskKindHarness).
+			// A quick node has no branch either and never had one: it works in the
+			// person's own folder (session's TaskKindQuick).
 			detail: stopDetailFor(node.kind),
 		}
 	}
@@ -450,8 +459,11 @@ func stopJobTarget(job *session.JobNotice) stopTarget {
 // stopDetailFor is the second line of the confirmation, chosen by what the node
 // is rather than by what it is doing.
 func stopDetailFor(kind session.TaskKind) string {
-	if kind == session.TaskKindHarness {
+	switch kind {
+	case session.TaskKindHarness:
 		return stopDesignDetail
+	case session.TaskKindQuick:
+		return stopQuickDetail
 	}
 	return stopTaskDetail
 }
