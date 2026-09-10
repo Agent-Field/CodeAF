@@ -88,7 +88,7 @@ refuses an `--out` inside a checkout.
 | flag | default | meaning |
 | --- | --- | --- |
 | `--layers` | `a,c,d` | which layers to run |
-| `--model` | `deepseek/deepseek-v4.1-flash` | the catalog id every cell is pinned to |
+| `--model` | `deepseek/deepseek-v4-flash-0731` | the catalog id every cell is pinned to — see BENCH.md §1 on why not `v4.1-flash` |
 | `--scenarios` | `research-brief,code-fix,followup-while-working,work-result-recalled` | `bench/conversation` scenarios, or `none` |
 | `--cells` | `lookup,bundle3` | `bench/e2e` cells, or `none` |
 | `--suites` | `TestTUIE2E,TestQuestionsE2E,TestStandingE2E` | layer B, or `none` |

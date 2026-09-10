@@ -69,7 +69,26 @@ RIG_ROOT="$(cd "$DIET_ROOT/../.." && pwd)"
 #             in front of OpenRouter) and from aforge's built-in call log.
 LAYERS="a,c,d"
 
-MODEL="${DIET_MODEL:-deepseek/deepseek-v4.1-flash}"
+# THE PIN IS THE ONE THE BATTERIES WERE CALIBRATED ON, and it is not the one
+# this wave started with.
+#
+# MEASURED on the Spark, 2026-09-10. Pinned to `deepseek/deepseek-v4.1-flash`,
+# cells died mid-turn with the provider's own sentence: "0 endpoints out of 1
+# requested are available matching your guardrail restrictions and data policy
+# … Paid model training violation (account settings): 1 endpoint excluded". It
+# is intermittent and it is not aforge's fault twice over — the id is real and a
+# bare curl to it answered three times out of three, from GMICloud and DeepInfra
+# — but aforge asks for ONE endpoint per request and takes no fallback, so an
+# endpoint this account's privacy settings exclude is a dead turn rather than a
+# hop. It failed `research-brief`, which had passed twice, and `code-fix`, on
+# the same afternoon, on the same build. A parity ruling cannot be made through
+# that: the noise is bigger than the effect being measured.
+#
+# `deepseek/deepseek-v4-flash-0731` is the same family, is what every historical
+# row in `bench/conversation` and `bench/e2e` was measured on, and its endpoints
+# are ones this account allows. Comparability with that history is worth having
+# anyway. DIET_MODEL or --model moves it; BENCH.md §1 carries the finding.
+MODEL="${DIET_MODEL:-deepseek/deepseek-v4-flash-0731}"
 # The scenarios are picked for what they exercise rather than for coverage:
 # research-brief is a plain conversation turn through the print door, code-fix
 # is the turn that becomes work, followup-while-working is a person typing while
