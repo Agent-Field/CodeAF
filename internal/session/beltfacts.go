@@ -168,8 +168,7 @@ type beltFact struct {
 var beltFacts = []beltFact{{
 	tools:   []string{"ask", loadCapabilityToolName},
 	holds:   Config.mayAsk,
-	present: "- Use `ask` only as the last rung of the decision ladder — and when you do ask, ask through `ask`, never in prose; a question typed out has no keys and no record.",
-	shelved: "- `ask` waits in the `questions` group. When the decision ladder reaches its last rung — or the person asks you to ask them something — call `load_capability`, then `ask` in this same turn; a question typed out in prose has no keys and no record.",
+	shelved: "- `ask` waits in the `questions` group; `load_capability` fetches it.",
 }, {
 	// THE CLOCK, whose second sentence is the one place the session facts named a
 	// conditional verb for everybody. The first sentence is true of every shape —
@@ -220,10 +219,9 @@ var beltFacts = []beltFact{{
 	present: "- When asked to find a past conversation or report what was said or decided elsewhere, call `search_conversations` BEFORE answering, even if a saved memory suggests the answer. Memories guide the query; source messages establish what was said. Copy a returned ref to read more and check corrections.",
 	absent:  "- What was said in earlier conversations cannot be looked up from here, so answer out of what is in this window rather than reconstructing it.",
 }, {
-	tools:   []string{"watch"},
-	holds:   Config.mayWatch,
-	present: "- Start ONE `watch` to follow something that changes.",
-	absent:  "- There is no `watch` here: a foreground `bash` call is how you wait for something to finish.",
+	tools:  []string{"watch"},
+	holds:  Config.mayWatch,
+	absent: "- There is no `watch` here: a foreground `bash` call is how you wait for something to finish.",
 }, {
 	tools: []string{"use_service"},
 	holds: Config.hasConnect,
@@ -245,7 +243,7 @@ var beltFacts = []beltFact{{
 	tools:   []string{"settings", "change_setting", loadCapabilityToolName},
 	holds:   Config.maySeeSettings,
 	present: "- A preference changed goes through `settings` for the row and `change_setting` for the write, never `edit` or `write` on a config file. Relay a refusal as written and point at `/settings`.",
-	shelved: "- A preference changed goes through `settings` for the row and `change_setting` for the write, never `edit` or `write` on a config file. Both wait in the `settings` group, so call `load_capability` and carry straight on: they are in your tool list on your next request, this same turn. Relay a refusal as written and point at `/settings`.",
+	shelved: "- A preference changed goes through `settings` for the row and `change_setting` for the write, never `edit` or `write` on a config file. Both wait in the `settings` group and `load_capability` fetches them. Relay a refusal as written and point at `/settings`.",
 	absent:  "- YOU CANNOT CHANGE A PREFERENCE FROM INSIDE A TASK: say so and point at `/settings`, and never `edit` or `write` a config file instead.",
 }}
 
