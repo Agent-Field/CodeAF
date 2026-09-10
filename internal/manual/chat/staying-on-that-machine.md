@@ -410,6 +410,20 @@ already did.
 Nothing here half-works: a capability a road cannot carry is absent rather than present and
 failing, which is why the model is not given a verb it could not finish.
 
+## Is the tok/s and the via name still right when a session host is holding the conversation
+
+Yes, and there is nothing to turn on. A plain `aforge` in a folder does not run the
+conversation inside the window you are looking at — the session host holds it, in a
+process of its own, so that closing the terminal does not end the work. Everything the
+status row says about a request in flight is measured in that process and pushed to your
+window as it changes: the live `38 tok/s` at the right edge, `via <machine>` beside the
+model once an answer lands, the phase words (`connecting · 1.2s`, `first word …`,
+`thinking`, `writing`), and the `served` row in `/status`.
+
+The host sends each window only its own conversation's readings, so two terminals on two
+different chats never show each other's clocks. *Running on another machine* has the same
+answer for `--host`, where the engine is on a different computer entirely.
+
 ## What does --no-host do — make one window not use the session host
 
 There are two of it, one for each end, and they mean the same thing: do not look for a

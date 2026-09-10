@@ -335,6 +335,33 @@ emptying out — which is the truth, because the conversation is not moving eith
 `connection` segment says what is happening, and everything comes back up to date the
 moment the link does.
 
+## Do I still see the speed and which machine answered when the engine is elsewhere
+
+Yes. All of it crosses the connection, and it is the same row you read locally.
+
+- **The live rate at the right edge** — `38 tok/s` — while the answer is being written.
+- **`via <machine>`** beside the model on the line above the message box, once an answer
+  has come back: the lane that actually served it, and `via parasail · rescued` when a
+  second machine finished what the first one started.
+- **The phase words** on the row while a request is in flight: `connecting · 1.2s`,
+  `first word · 3.1s → parasail at 4.4s`, `thinking · 12s · friendli 38 t/s`,
+  `writing · 4s · friendli 61 t/s`, `paced · retry in 6s`, `trying again · 2 of 6`.
+- **The `served` row in `/status`** — the endpoint the last answer came from.
+
+**Nothing is measured on this machine.** Every one of those figures is taken where the
+request is made, which is the machine running the conversation, and pushed down to you
+the moment it changes. So the clock counts the real wait on that machine, and the rate is
+that machine's throughput rather than a guess made from when bytes reached your terminal.
+
+**The clocks are rebuilt against your own.** What crosses is *how long* — how long this
+phase has lasted, how long is left before something is done about the wait — never a
+timestamp, because two machines need not agree about what time it is. A phase you stop
+hearing about goes quiet on the row after fifteen seconds, exactly as it does locally.
+
+**A phase that goes missing is never a wrong one.** If the link is busy the odd reading is
+dropped rather than queued, because every one of them is a claim about *now* and the next
+one is a second away.
+
 ## What does not work over --host
 
 This is the first half of the whole list, so you know before you rely on it, with the
