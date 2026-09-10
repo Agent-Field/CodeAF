@@ -211,6 +211,11 @@ func readContextTrace(ctx context.Context, path string, from int) (contextTraceP
 			}
 		}
 		if entry.Type == "compaction" {
+			if entry.Window <= 0 {
+				page.Unreadable = fmt.Sprintf("Journal line %d has an unknown compaction window; later copied messages cannot be distinguished from original actions.", line)
+				break
+			}
+			pending = map[string][]int{}
 			replayedMessages = entry.Window
 			continue
 		}
@@ -222,6 +227,9 @@ func readContextTrace(ctx context.Context, path string, from int) (contextTraceP
 		row.Line = line
 		if entry.Exposure != nil && entry.Type == "context_exposure" {
 			row.Kind, row.Exposure = entry.Type, entry.Exposure
+			if entry.Exposure.Phase == "selected" || entry.Exposure.Phase == "loop_returned" {
+				pending = map[string][]int{}
+			}
 			if entry.Exposure.Phase == "selected" {
 				active[entry.Exposure.ExecutionID] = true
 				if len(active) > 1 {
@@ -236,6 +244,9 @@ func readContextTrace(ctx context.Context, path string, from int) (contextTraceP
 		} else {
 			switch entry.Type {
 			case "message":
+				if entry.Role == "assistant" {
+					pending = map[string][]int{}
+				}
 				if len(entry.ToolCalls) > 0 {
 					row.Kind = "tool_calls"
 					for _, call := range entry.ToolCalls {
@@ -285,9 +296,8 @@ func readContextTrace(ctx context.Context, path string, from int) (contextTraceP
 			continue
 		}
 		encoded, _ := json.Marshal(row)
-		if len(encoded) > 12000 && row.Exposure != nil {
-			row.Exposure = &contextExposure{ExecutionID: row.Exposure.ExecutionID, Phase: row.Exposure.Phase, Owner: row.Exposure.Owner, ParentCause: row.Exposure.ParentCause}
-			row.DetailOmitted = true
+		if len(encoded) > 12000 {
+			row = contextTraceRow{Line: row.Line, Kind: row.Kind, DetailOmitted: true}
 			encoded, _ = json.Marshal(row)
 		}
 		if len(page.Rows) == contextTracePageSize || (len(page.Rows) > 0 && pageBytes+len(encoded) > 24000) {
