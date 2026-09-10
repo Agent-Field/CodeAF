@@ -853,6 +853,86 @@ func TestTheCapabilityTableIsWellFormed(t *testing.T) {
 	}
 }
 
+// ── the prose that rides with a load ────────────────────────────────────────
+
+// A GROUP'S LONG MECHANICS ARE BOUGHT BY WHOEVER PULLS THEM, and this is the
+// both-ways proof of the delivery the prompt diet moved them to
+// (docs/design/prompt-diet/DESIGN.md §2, the ON DEMAND class).
+//
+// FORWARD: the paragraph that used to sit in prompts/system.md for every request
+// of every turn — how to write a media prompt that does not come back average,
+// what a saved recipe is against a saved program, what a refused setting write
+// means — arrives in the answer to the load that fetches those verbs, which is
+// the first moment anybody can use it.
+//
+// BACKWARD, AND THIS IS THE HALF THAT BREAKS SILENTLY: checkpoint.go's
+// [loadedAndNeverUsed] reads the armed names off the `Loaded: ` line, up to its
+// FIRST FULL STOP, to build the synthetic continuation that sends a stalled turn
+// back in. Prose written above that line, or a group name with a full stop in
+// it, turns that nudge into a list of sentence fragments. So the lead stays
+// first and the parse is re-run here on the real answer.
+func TestALoadAnswersWithItsGroupsProseUnderAnUnchangedLoadedLine(t *testing.T) {
+	agent := shelfAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Media = &scriptedMedia{}
+		config.MediaModel = allMediaModels()
+		config.HarnessCards = true
+		config.Subharnesses = registryWith(t, &fakeGeneralist{}, &fakeRunner{manifest: theProgram()})
+	})
+
+	for _, group := range capabilityGroups {
+		answer, failed := agent.loadCapability(group.name)
+		if failed {
+			t.Fatalf("loading %s failed: %s", group.name, answer)
+		}
+		if !strings.HasPrefix(answer, loadedLead) {
+			t.Fatalf("the %s load does not open with %q: %s", group.name, loadedLead, answer)
+		}
+
+		// THE PARSE checkpoint.go MAKES, on this exact string.
+		names := strings.Split(strings.TrimSpace(strings.SplitN(strings.TrimPrefix(answer, loadedLead), ".", 2)[0]), ", ")
+		for _, name := range names {
+			if strings.TrimSpace(name) == "" || strings.Contains(name, "\n") {
+				t.Errorf("the %s load's first sentence does not read back as tool names: %q", group.name, names)
+			}
+		}
+
+		if group.prose == "" {
+			// `questions` has none, and a load that invented one would be a
+			// paragraph nobody wrote.
+			continue
+		}
+		if !strings.Contains(answer, "\n\n"+group.prose) {
+			t.Errorf("the %s load does not carry its own prose under a blank line:\n%s", group.name, answer)
+		}
+		if strings.Index(answer, group.prose) < strings.Index(answer, "\n") {
+			t.Errorf("the %s group's prose is above the Loaded line, where checkpoint.go reads names", group.name)
+		}
+	}
+}
+
+// AND THE PROSE IS NOT A SECOND COPY OF THE PAGE. The whole point of moving it
+// is that message[0] stopped carrying it, so a lane that puts a sentence back on
+// the page and leaves it here as well has paid twice for one law.
+func TestAGroupsProseIsNotAlsoOnThePage(t *testing.T) {
+	page := widestPage()
+	for _, group := range capabilityGroups {
+		if group.prose == "" {
+			continue
+		}
+		// A key sentence out of the middle of each paragraph, long enough that
+		// an accidental match is not a thing that happens.
+		for _, sentence := range strings.Split(group.prose, ". ") {
+			sentence = strings.TrimSpace(sentence)
+			if len(sentence) < 60 {
+				continue
+			}
+			if strings.Contains(page, sentence) {
+				t.Errorf("the %s group's prose is on the page too, so it is paid for on every request as well as on the load: %q", group.name, sentence)
+			}
+		}
+	}
+}
+
 // THE EVERYDAY BELT IS UNTOUCHED. The saving is only worth having if the tools a
 // conversation reaches for on the turn it needs them are still in front of it,
 // so this pins the list that must never move onto a shelf.

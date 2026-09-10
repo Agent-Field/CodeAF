@@ -27,5 +27,5 @@ suggestion block, or on words the person dictated.
 It is conditional in the chat — absent with the row off, absent in a fork's
 hand, whose `bash` is read-only and could not commit if it wanted to — and it
 cost the fixed prefix 863 bytes, of which 333 are the trailer, the footer and
-the comment line themselves. The prefix is 45,433, which is 2,567 under a budget
+the comment line themselves. The prefix is 40,584, which is 7,416 under a budget
 nothing raised.
