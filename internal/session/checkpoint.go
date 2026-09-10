@@ -1907,6 +1907,7 @@ const (
 // other three for the same reason they are spelled apart from each other: a bench
 // reading the file has to tell a turn the clock moved from a turn the counters
 // moved, and it can only do that if the row says so.
+//
 // AND THE CARRY-ON ROAD IS A FIFTH, which is not a handover at all and writes a
 // row for the same reason the other four do. It is the one seam that can end a
 // turn WITHOUT reading it ([Agent.checkpointReopen]'s gates), and a refusal
