@@ -568,6 +568,58 @@ func TestTheRatifyLineSaysWhatWasDoneAndHowToUndoIt(t *testing.T) {
 	}
 }
 
+// TestARatifiedActOffersTheWayBackWithoutBeingTold is the ladder's third rung
+// arriving the way the engine actually sends it: nothing but the object, and the
+// row still finds the way back on it.
+//
+// Nothing set [questionShown.undoable] outside a test until this landed, so
+// `[u] undo` was a key in the table, a paragraph in the manual, and a cell no
+// ratify line ever drew.
+func TestARatifiedActOffersTheWayBackWithoutBeingTold(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.fromLane(session.Question{
+		ID: 9, Kind: session.QuestionAsk, Ask: session.AskRatify,
+		Asker: session.Asker{Kind: session.AskerModel},
+		Head:  "renamed 12 files under src/",
+		Options: []session.AnswerOption{
+			{Key: "1", Label: "put them back", Safe: true},
+			{Key: "2", Label: "already done"},
+		},
+		Stakes: session.StakesReversible,
+	})
+	if got := lab.plain(); !strings.Contains(got, "[u] undo") {
+		t.Fatalf("the ratify line offers no way back: %q", got)
+	}
+	// AND THE KEY REACHES THE UNWIND THE ASKER DESCRIBED, which is the whole of
+	// what makes offering it honest.
+	lab.tick(questionSettle)
+	head, ok := lab.a.questionHead()
+	if !ok {
+		t.Fatal("the ratify line left the block")
+	}
+	if _, took := lab.a.questionVerbKey(head, questionUndoKey); !took {
+		t.Fatal("`u` was drawn and did nothing")
+	}
+	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != "1" {
+		t.Fatalf("`u` sent %+v, want the answer that puts the work back", lab.answer)
+	}
+}
+
+// TestACostlyRatifyDoesNotOfferTheWayBack is the other half of the same reading:
+// the rung is REVERSIBLE work, and a row that offered to unwind anything else
+// would be promising something the world will not do.
+func TestACostlyRatifyDoesNotOfferTheWayBack(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.fromLane(session.Question{
+		ID: 10, Kind: session.QuestionAsk, Ask: session.AskRatify,
+		Head: "bought the machine hour", Stakes: session.StakesCostly,
+		Options: []session.AnswerOption{{Key: "1", Label: "refund it", Safe: true}},
+	})
+	if got := lab.plain(); strings.Contains(got, "[u] undo") {
+		t.Fatalf("a ratify line for costly work offered a way back: %q", got)
+	}
+}
+
 // TestARatifyLineWithNothingRealToUndoDoesNotOfferTheKey is the emptiness law
 // applied to an answer rather than to a number.
 func TestARatifyLineWithNothingRealToUndoDoesNotOfferTheKey(t *testing.T) {

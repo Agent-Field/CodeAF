@@ -456,9 +456,11 @@ standing refusal is something you write in your settings on purpose.
 Two keys, and which one you get depends on whether the thing has happened yet.
 
 `u` is on a ratify line — something reversible was already done, and pressing it
-puts it back. It is only offered while there is really something to undo; a
-ratify line about something that cannot be taken back does not draw the key at
-all.
+puts it back. It is only offered while there is really something to undo, and
+that is two things at once: the work has to be **reversible**, and whatever did
+it has to have written down the answer that puts it back. A ratify line about
+something costly or irreversible does not draw the key, and neither does one that
+named no way back — pressing `u` there would send an answer nobody described.
 
 `c` is on the receipt after you answer, spelled `c change` on the line. It shows
 what unwinding would cost before it reopens the question.

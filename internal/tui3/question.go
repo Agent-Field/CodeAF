@@ -296,6 +296,13 @@ func (a *app) raiseQuestion(q questionShown) {
 		q.question.Asked = a.now()
 	}
 	q.pick = questionSafeAt(q.question)
+	// THE WAY BACK IS THE ASKER'S OWN CLAIM AND NOT THIS SURFACE'S GUESS. A
+	// caller that already knows this window can put the work back says so; for
+	// every question that arrived from the engine the object is the only thing
+	// that knows, and until this line nothing read it — so `[u] undo` was a row
+	// in the key table, a paragraph in the manual, and a key no ratify line ever
+	// drew ([questionUndoable] holds the reading).
+	q.undoable = q.undoable || questionUndoable(q.question)
 	for i := range a.questions {
 		if a.questions[i].token() != q.token() {
 			continue
@@ -314,6 +321,31 @@ func (a *app) raiseQuestion(q questionShown) {
 	a.questions = append(a.questions, q)
 	a.questionRule(&a.questions[len(a.questions)-1])
 	a.touch()
+}
+
+// questionUndoable reads the object for the one thing the ratify row's `u`
+// needs to be true: that pressing it would reach something real.
+//
+// THREE CONDITIONS, AND ALL THREE ARE THE ASKER'S OWN WORDS.
+//
+//   - IT IS A RATIFY. Nothing else on this block has work already done behind
+//     it, so nothing else has anything to take back; a `u` on an open question
+//     would be undoing a decision nobody has made yet.
+//   - THE STAKES ARE REVERSIBLE. That is the whole content of the ladder's third
+//     rung ([session.AskRatify]: "something reversible was DONE") and the whole
+//     content of the key: a costly or irreversible act is one the receipt says
+//     `cannot change` about, and offering a way back from it would be the row
+//     promising something the world will not do.
+//   - THE ASKER DESCRIBED THE UNWIND. `u` sends the answer that puts the work
+//     back ([app.questionUndo] takes [questionSafeAt]'s option), so an asker
+//     that wrote no answers wrote no unwind, and there is nothing for the key to
+//     send. THE EMPTINESS LAW APPLIED TO AN ANSWER RATHER THAN TO A NUMBER.
+func questionUndoable(q session.Question) bool {
+	if q.Ask != session.AskRatify || q.Stakes != session.StakesReversible {
+		return false
+	}
+	at := questionSafeAt(q)
+	return at < len(q.Options) && strings.TrimSpace(q.Options[at].Key) != ""
 }
 
 // questionSafeAt is the index of the answer the cursor starts on: the one
