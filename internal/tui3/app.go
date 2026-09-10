@@ -4458,7 +4458,8 @@ func (a *app) paint() tea.Cmd {
 		kick = tea.Batch(kick, a.usageKick())
 		// AND WHAT THE WORK THIS CONVERSATION STARTED IS SPENDING, on the same
 		// clock and ON this loop, because that reading is a tail read of a file
-		// and not a lock or a round trip (treespend.go). A node's money reaches
+		// — or, over a connection, the cache the link keeps warm behind itself —
+		// and never a lock or a round trip (treespend.go). A node's money reaches
 		// the conversation's own books only when the node closes, so without this
 		// the figure on the row is hours behind exactly while somebody is
 		// watching it — which is issue #145. It is asked only while this
