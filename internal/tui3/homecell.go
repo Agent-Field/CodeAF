@@ -248,9 +248,12 @@ func (a *app) homeCellLead(cell *homeCell, at int, pal palette) string {
 // homeCellBody is a row after its lead: the title, a note in the title's
 // shadow, and the facts at the right margin.
 //
-// THE TITLE IS WHOLE BEFORE ANY FACT GETS A CELL (rowfit.go's law 1). The note
-// gives way first, then the tag, then the right-hand word, and only a title that
-// will not fit alone is cut.
+// THE AGE OUTRANKS THE TAIL OF A TITLE (owner, 2026-09-10: `Generate and Display
+// First 200 Primes, Sleep, Then Prin…` drew with no age beside rows that had
+// one). The note gives way first, then the tag, then the title is cut — and the
+// right-hand word, the age or the door word, is the last thing to go: only where
+// the title would keep fewer than [homeCellTitleFloor] cells beside it, and a
+// held word not even then.
 func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 	if width < 1 {
 		return ""
@@ -260,15 +263,15 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 	if cell.path {
 		title, pad = homeCellPathTitle(cell, width)
 	}
-	facts := []*string{&note, &tag, &right}
-	if cell.hold {
-		facts = facts[:2]
-	}
-	for _, fact := range facts {
+	for _, fact := range []*string{&note, &tag} {
 		if homeCellWidth(title, pad, note, tag, right) <= width {
 			break
 		}
 		*fact = ""
+	}
+	if !cell.hold && homeCellWidth(title, pad, note, tag, right) > width &&
+		width < homeCellTitleFloor+homeCellWidth("", 0, "", "", right) {
+		right = ""
 	}
 	if over := homeCellWidth(title, pad, note, tag, right) - width; over > 0 {
 		keep := max(1, ansi.StringWidth(title)-over)
@@ -356,6 +359,10 @@ func (a *app) homeCellDoor(cell *homeCell, at, width int) *homeCell {
 // homeCellGap is the air between two clauses of one row that are not joined by
 // a separator: a title and its note, a tag and its right-hand word.
 const homeCellGap = "  "
+
+// homeCellTitleFloor is the fewest cells a cut title keeps before the row's
+// right-hand word gives way to it ([homeCellBody]).
+const homeCellTitleFloor = 12
 
 // homeCellTail is the right margin's words.
 func homeCellTail(tag, right string) string {

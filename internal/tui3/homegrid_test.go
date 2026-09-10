@@ -318,3 +318,18 @@ func TestAClickResolvesTheColumnItLandedIn(t *testing.T) {
 		t.Fatalf("the click selected %q", got)
 	}
 }
+
+// THE AGE OUTRANKS THE TAIL OF A TITLE: a seventy-character title in a
+// fifty-eight-cell column is cut, and the row still says how long ago it was.
+func TestALongTitleIsCutBeforeItsAge(t *testing.T) {
+	const width = 58
+	title := strings.Repeat("Generate and Display First 200 Primes ", 2)[:70]
+	cell := &homeCell{panel: panelRecent, title: title, right: "1h"}
+	row := plain(homeCellBody(cell, width-homeGridLead, newTestPalette(), false))
+	if !strings.HasSuffix(row, " 1h") || strings.Contains(row, title) || !strings.Contains(row, "…") {
+		t.Fatalf("the title was not cut to keep its age: %q", row)
+	}
+	if got := len([]rune(row)); got > width-homeGridLead {
+		t.Fatalf("the row is %d cells wide, its column holds %d", got, width-homeGridLead)
+	}
+}
