@@ -720,9 +720,26 @@ func (a *app) sendSheet() (tea.Cmd, bool) {
 	if !ok {
 		return nil, false
 	}
+	// THE ANSWER IS THE RECORD, AND A BATCH IS NOT AN EXCEPTION TO IT. Every
+	// other way of answering on this surface leaves the dim line where the
+	// question was ([app.closeQuestion]); the sheet was resolving through the
+	// door and drawing nothing at all, so a person who answered two decisions
+	// and pressed `s` watched both rows disappear with no account of what they
+	// had just decided anywhere on the screen. The questions are looked up by
+	// token because [questionSheet.send] answers in [session.Answer]s and the
+	// record is written from the question and the answer together.
+	asked := make(map[sheetRow]session.Question, len(a.questionBatch.questions))
+	for _, q := range a.questionBatch.questions {
+		asked[sheetRow{kind: q.Kind, id: q.ID, ref: q.Ref}] = q
+	}
 	cmds := make([]tea.Cmd, 0, len(answers))
 	for _, answer := range answers {
 		one := answer
+		if q, ok := asked[sheetRow{kind: one.Kind, id: one.ID, ref: one.Ref}]; ok {
+			shown := questionShown{question: q}
+			a.recordQuestion(shown, one)
+			a.countQuestionYes(shown, one)
+		}
 		cmds = append(cmds, func() tea.Msg { _ = doors.ResolveQuestion(one); return nil })
 	}
 	a.questionBatch = nil
@@ -739,4 +756,15 @@ func (a *app) sendSheet() (tea.Cmd, bool) {
 	}
 	a.touch()
 	return tea.Batch(cmds...), true
+}
+
+// sheetRow is one question's identity as both a [session.Question] and a
+// [session.Answer] carry it: the lane, and the lane's OWN id in whichever of its
+// two shapes that lane uses. It is spelled here rather than reusing
+// [questionToken] because that string is built from the question alone and an
+// answer has no method that produces it.
+type sheetRow struct {
+	kind session.QuestionKind
+	id   uint64
+	ref  string
 }

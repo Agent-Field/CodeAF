@@ -1405,7 +1405,9 @@ func (a *app) questionAnswer(answer session.Answer) tea.Cmd {
 	// engine's own rendering, so the model's record and the row above the box
 	// are one account of one decision (question.go's THE ANSWER IS THE RECORD).
 	// The page's whole job is over at this point, so it folds and the receipt is
-	// waiting underneath it.
+	// waiting underneath it. Measured on a real screen before either half of
+	// this landed: an answer given on this page, in this window, drew
+	// `another window` on its own receipt.
 	a.closeQuestion(room.head, answer)
 	a.closeQuestionRoom()
 	return nil

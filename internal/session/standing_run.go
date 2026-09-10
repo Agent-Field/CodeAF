@@ -1183,9 +1183,16 @@ func StandingIdle() standing.Idle {
 // six separate things to read before the first sentence they came for.
 //
 // THE AMBIENT LANE AND NOT THE WAKING ONE ([Agent.enqueueAmbientNote]). This
-// runs at construction, before anybody has said anything, and an account of
-// what happened while they were gone is context for whatever they type next —
-// not a reason for the session to start talking to itself about last night.
+// runs before anybody has said anything, and an account of what happened while
+// they were gone is context for whatever they type next — not a reason for the
+// session to start talking to itself about last night.
+//
+// IT RUNS TWICE OVER AND THAT IS THE POINT. Construction is one of the two
+// moments a person arrives at a conversation; a SURFACE ATTACHING to one this
+// process never let go of is the other, and since #653 the second is the
+// ordinary one — the session host outlives the window and hands the next one
+// the same agent. So [Agent.WatchTaskUpdates] asks for this too, and the drain
+// is idempotent by construction: it empties the files it reads.
 func (a *Agent) drainStandingInbox() {
 	if a.config.InTask {
 		return

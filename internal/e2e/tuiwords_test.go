@@ -150,6 +150,11 @@ var tuiWords = map[string]tuiWord{
 		why:    "the fold at the foot counts what it stands over — `▸ 5 more, quiet since 6d`",
 		pkg:    tui3Pkg,
 	},
+	"foldFewerWord": {
+		screen: " fewer",
+		why:    "the same fold with it standing open — the way back, said as what pressing it does (#518)",
+		pkg:    tui3Pkg,
+	},
 	// The two fold hints are the CLAUSE THE ROW OWNS and not the whole drawn
 	// line, because the router puts its own `tab next place` in front of the
 	// `esc` clause on the way to the screen (pages.go's placeTailed) — so what a
@@ -634,6 +639,228 @@ var tuiWords = map[string]tuiWord{
 			"that root — so a suite that seeds a graph and reads it back has to know it is standing on this " +
 			"screen and press past it",
 	},
+	// ── questions: one object, drawn at the size the evidence needs ──────────
+	//
+	// docs/design/questions/DESIGN.md is a contract about what a person SEES when
+	// this engine hands them a decision, and questions_e2e_test.go is the only
+	// place that drives it through a real binary. Every sentence below is a
+	// product sentence; the heads, labels and bodies in those scenarios are the
+	// MODEL's and are steered by the prompt, so they are typed there rather than
+	// written down here — a table of things a model happened to say would be a
+	// table of coincidences.
+	"questionChipTail": {
+		screen: "question · alt+a",
+		source: "alt+a",
+		why: "the status line's chip, which is the one thing that is always there while anything is " +
+			"waiting — reachable from home, a room and every other page",
+	},
+	"questionLaterKeyWord": {
+		screen: "[esc] later",
+		source: "later",
+		why: "`esc` IS LATER AND NOT CANCEL. The consent block spelled it `cancel` for a year and " +
+			"cancel meant deny; the block is not modal any more, so there is a way out that neither " +
+			"answers nor traps, and the word may not say cancelled",
+	},
+	"questionTakeThePickWord": {
+		screen: "[enter] take the pick",
+		source: "take the pick",
+		why:    "`enter` is offered ONLY where the asker named a pick — the emptiness law on a key",
+	},
+	"questionOpenKeyWord": {
+		screen: "[o] open it",
+		source: "open it",
+		why: "the key to the room, drawn only where opening would show more than the block already " +
+			"does; a page that says what the row said is a page nobody should be sent to",
+	},
+	"questionChangeKeyWord": {
+		screen: "[c] change",
+		source: "change",
+		why: "taking an answer with words, on every form but the confirmation — whose two answers ARE " +
+			"the question and have no third reading a sentence could add",
+	},
+	"questionUndoKeyWord": {
+		screen: "[u] undo",
+		source: "undo",
+		why: "the way back on a ratify row. The ladder's third rung acts FIRST and tells you after, so " +
+			"the undo is the whole of the bargain",
+	},
+	"questionTickKeyWord": {
+		screen: "[space] tick it",
+		source: "tick it",
+		why: "the checklist's own verb. A shape whose key is given up for width is a shape a person " +
+			"cannot discover is tickable, which is an ordinary list",
+	},
+	"questionBlankKeyWord": {
+		screen: "[tab] next blank",
+		source: "next blank",
+		why:    "how a sentence with holes in it is walked through",
+	},
+	"questionPairAWord": {
+		screen: "[a] the first",
+		source: "the first",
+		why:    "this-or-this, once per row: the left side",
+	},
+	"questionPairBWord": {
+		screen: "[b] the second",
+		source: "the second",
+		why:    "and the right one",
+	},
+	"questionMoveItWord": {
+		screen: "[←→] move it",
+		source: "move it",
+		why: "the arrows on a dial. They are a SECOND row in the key table rather than a second word " +
+			"on the first, because `←→ pick` walks a confirmation's cursor and this changes the answer",
+	},
+	"questionOwnRuleWord": {
+		screen: "your rule",
+		why: "a countdown running because of something this project was told to do says so on the row. " +
+			"Never a hidden rule (DESIGN.md's RULES ARE OFFERED, VISIBLE, FORGETTABLE)",
+	},
+	"questionReceiptWord": {
+		screen: "decided ",
+		source: "  decided ",
+		why: "THE ANSWER IS THE RECORD: a dim line stays exactly where the question was, because the " +
+			"transcript is what happened and `you were asked and said this` is part of it",
+	},
+	"questionReceiptYouWord": {
+		screen: " · you · ",
+		source: "you",
+		pkg:    "internal/session",
+		why: "the record is read by the person who gave it and nobody calls themselves the person. It " +
+			"is the ENGINE's word ([session.decidedByWord]) because the row above the box and the line " +
+			"in decisions.jsonl have to be one sentence, so the gate looks where it is written",
+	},
+	"questionOtherWindowWord": {
+		screen: "another window",
+		pkg:    "internal/session",
+		why: "FIRST ANSWER WINS. A window that did not take the key may not write `you` on the receipt " +
+			"for it",
+	},
+	"questionDecidedByRuleWord": {
+		screen: "aforge, on your settings",
+		pkg:    "internal/session",
+		why: "and a decision the dial took while nobody was there says that instead — F41 was a hidden " +
+			"timer recording `denied`, and this is the sentence that makes such a thing impossible to hide",
+	},
+	"questionWithdrawnWord": {
+		screen: " — no longer needed · ",
+		why: "WITHDRAWN, WITH A REASON, and never the word cancelled: what a person experiences is the " +
+			"thing no longer needing them",
+	},
+	"questionWithdrawnMark": {
+		screen: "⊘",
+		pkg:    tokensPkg,
+		why:    "the mark on that line, from the vocabulary's plain floor, which is the tier this suite pins",
+	},
+	"questionSettledMark": {
+		screen: "✓",
+		pkg:    tokensPkg,
+		why: "the ratify line wears the SETTLED mark and not the attention one: nothing waits on it, so " +
+			"a `?` there would be the surface asking for something it has already had",
+	},
+	"questionRoomBackWord": {
+		screen: "‹ back",
+		source: "‹",
+		pkg:    tokensPkg,
+		why: "the room is a VIEW and not a modal, so it owes a crumb out. The mark is the vocabulary's " +
+			"scope-up and the word beside it is internal/tui3's",
+	},
+	"questionRoomPickWord": {
+		screen: "my pick",
+		why: "the asker saying which one it would take. It is a fact about the question and never a " +
+			"cursor, which is a fact about the person",
+	},
+	"questionRoomWaitsWord": {
+		screen: "the turn waits on it",
+		why:    "what is stopped on this decision — said with what is NOT stopped, or it reads as everything",
+	},
+	"questionRoomNoPickWord": {
+		screen: "nothing chosen yet",
+		why:    "the emptiness law in the foot: no pick, no `enter →` line",
+	},
+	"questionFilledWord": {
+		screen: "enter when it reads right",
+		why: "the same slot on a shape rather than a list. There is nothing to choose on a dial or a " +
+			"row of holes, and `nothing chosen yet` would describe a decision nobody is being asked to make",
+	},
+	"questionAnsweringWord": {
+		screen: "answering ",
+		why:    "the foot of a room with an answer composed on it: what pressing enter would send",
+	},
+	"questionNotedWord": {
+		screen: " noted",
+		why:    "how many comments are attached to the answer being composed",
+	},
+	"questionCommentPromptWord": {
+		screen: "say what you think about this one, then enter",
+		why:    "the prompt `c` opens under whatever it is annotating",
+	},
+	"questionAskBackPromptWord": {
+		screen: "ask it one thing about this answer, then enter",
+		why: "ONE exchange per option is the bound the design sets, and the row says so rather than " +
+			"letting a person discover it by being refused",
+	},
+	"questionWouldSwitchWord": {
+		screen: "would switch if ",
+		why: "the most useful line on the page: what would change the asker's mind, which is usually " +
+			"exactly what somebody who disagrees with the pick disagrees with",
+	},
+	"questionCompareOnlyWord": {
+		screen: "only what differs is here",
+		why:    "the compare table, built on the asker's own dimensions rather than on anything invented",
+	},
+	"questionSheetTogetherWord": {
+		screen: " raised together",
+		why: "BATCHED AT THE BOUNDARY: the one thing about a sheet that is not visible from its rows " +
+			"is that they arrived at the same moment, from one piece of work",
+	},
+	"questionSheetSendWord": {
+		screen: "send what is answered",
+		why:    "a batch answered row by row and then not sent is a batch nobody answered",
+	},
+	"questionSheetSameWord": {
+		screen: "same answer for all like this",
+		why: "`g` spreads the answer just given across the rows in front of you and writes nothing down " +
+			"— which is a different act from the room's `=`, that writes a rule about the future",
+	},
+	"questionSheetSpreadWord": {
+		screen: " answered the same way",
+		why:    "and it says how many rows took it, because a spread nobody can count is a spread nobody can check",
+	},
+	"consentOldOfferWord": {
+		screen: "allow? ",
+		why: "the approval gate's OWN offer row, which is what the oldest and most common asker in " +
+			"this product still draws. It is in this table so questions_e2e_test.go can wait for the " +
+			"moment the older block is up and then say what the wave's grammar is missing from it",
+	},
+	"consentOldCancelWord": {
+		screen: "[esc] cancel",
+		source: " cancel",
+		why: "and the word that block spells for `esc`. THE QUESTIONS WAVE RETIRED IT — `esc` is later " +
+			"and cancels nothing — so this row standing is the migration's own ledger, read off a screen",
+	},
+
+	"autonomyHeadWord": {
+		screen: "questions while you are away",
+		why:    "the head of the `/autonomy` sheet: this project's rules, in a person's own words",
+	},
+	"autonomyUsageWord": {
+		screen: "/autonomy <kind> ask · recommend <duration> · decide",
+		why: "the sheet's foot and the only place it names a door. An earlier draft put `· change` on " +
+			"every row, which is a word with no key behind it",
+	},
+	"autonomyAlwaysWord": {
+		screen: "destructive always asks",
+		why: "the row no rule may cover, stated on the sheet rather than discovered by being refused — " +
+			"stop.go's law widened to every question of that shape",
+	},
+	"headlessAskedWord": {
+		screen: "(default · nobody to ask)",
+		pkg:    "internal/session",
+		why: "the HEADLESS law: with nobody to ask the policy applies AND IS PRINTED. A run that took a " +
+			"default silently is a run whose decision nobody can find afterwards",
+	},
+
 	"setupNotConnectedNote": {
 		screen: "openrouter is not connected",
 		why: "the dim line the conversation says after esc, which is the other half of a front door: " +

@@ -499,9 +499,19 @@ type journalCall struct {
 // IT IS EVIDENCE AND NEVER SPEND, for [journalCall]'s reason and one more: a
 // failed call was not billed, so there is nothing here to sum.
 type journalError struct {
-	Model      string `json:"model,omitempty"`
-	Endpoint   string `json:"endpoint,omitempty"`
-	Role       string `json:"role,omitempty"`
+	Model    string `json:"model,omitempty"`
+	Endpoint string `json:"endpoint,omitempty"`
+	Role     string `json:"role,omitempty"`
+	// Door is WHICH DOOR ENDED THE TURN, for the one kind of failed call that
+	// is not a provider's: a turn this machine stopped from the inside
+	// (stopcause.go). It is the [StopDoor] itself and not the sentence built
+	// from it, because the whole point of a door is that a reader can ask which
+	// one it was without comparing prose — and the reader this field exists for
+	// is the one that decides whether the question is still owed an answer
+	// (resume.go). Absent on every call a provider failed and on every file
+	// written before it existed, and a stop this build cannot name is a stop it
+	// will not act on.
+	Door       string `json:"door,omitempty"`
 	Status     int    `json:"status,omitempty"`
 	Provider   string `json:"provider,omitempty"`
 	Message    string `json:"message,omitempty"`
@@ -1606,6 +1616,14 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 	// an ordinary user message once it has been rebuilt, and the mark that says
 	// it was typed INTO the turn above it is on the line (steer.go).
 	steers := make(map[string]SteerMark)
+	// asked and stopped are THE TAIL OF THE CONVERSATION AS A SHAPE: whether the
+	// last line of the transcript is a question the person typed themselves, and
+	// whether the only thing after it is this machine stopping the turn that was
+	// answering it (resume.go). They are read here rather than off the rebuilt
+	// messages because the door is on the `error` LINE and the line is gone by
+	// the time anybody has a transcript.
+	asked := false
+	var stopped StopDoor
 	scanner := bufio.NewScanner(reader)
 	// A tool result can be tens of kilobytes; the default 64KiB token limit
 	// would end the replay at the first big one.
@@ -1655,6 +1673,15 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			if entry.Role == "" {
 				continue
 			}
+			// EVERY MESSAGE CLOSES THE SHAPE AND ONLY ONE OPENS IT. A line of
+			// the model's — its words, its tool calls, the results that came
+			// back — is an answer that arrived, and the person's question is no
+			// longer the last thing said. A note the session wrote itself is not
+			// the person asking, and a sentence spliced into a turn that was
+			// already running belongs to a turn that had already produced
+			// something (steer.go), so neither of those opens it either.
+			asked = entry.Role == "user" && !entry.Note && entry.Steer == nil
+			stopped = ""
 			message := replayedMessage(entry, rebuild)
 			rememberParts(images, message, entry.Parts)
 			if entry.Note {
@@ -1683,6 +1710,10 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// holds every line of the conversation above the marker, and without
 			// this the boundary would masquerade as the beginning of the chat.
 			//
+			// AND IT CLOSES THE TAIL SHAPE for [readJournal]'s `rewind` reason:
+			// a pass that rewrites the window rewrites what the last line of the
+			// conversation is.
+			//
 			// It is taken with the SAME reducer state that is about to be
 			// discarded — rewind cuts already applied, an older marker's window
 			// already in place — so the region is the transcript exactly as it
@@ -1693,6 +1724,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// The LAST marker wins because each one overwrites the snapshot the
 			// one before it took. See [replayedSession.earlier] for why the
 			// nested regions are not stacked.
+			asked, stopped = false, ""
 			earlier = append(earlier[:0], messages...)
 			// Everything before this marker is what the pass replaces. The
 			// name is not a message and survives the cut: a compacted session
@@ -1745,6 +1777,11 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// line was forgotten about.
 			continue
 		case "rewind":
+			// AND A LINE THAT TAKES MESSAGES BACK CLOSES THE SHAPE. What the tail
+			// of the transcript now is cannot be read off the lines this pass has
+			// walked past, so the honest answer about a question still owed an
+			// answer is that this reading does not have one.
+			asked, stopped = false, ""
 			// The turn this line took back. Everything after it in the file is
 			// ordinary conversation again — a rewind is followed by the person
 			// saying the thing better — so the replay drops N and keeps reading
@@ -1797,6 +1834,18 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// transcript. It is evidence for whoever reads the file afterwards,
 			// and replaying it would put a provider's refusal into somebody's
 			// conversation as though the model had said it.
+			//
+			// ONE BIT OF IT IS READ, AND IT IS NOT A MESSAGE. A row naming a
+			// door is this machine saying it stopped the turn itself, and a row
+			// naming none is a provider that said no — which is a thing that
+			// happened on the way to an answer and never a reason the question
+			// stopped being asked, so it leaves the shape exactly as it was
+			// (resume.go).
+			if asked && entry.Error != nil {
+				if door := StopDoor(strings.TrimSpace(entry.Error.Door)); door != "" {
+					stopped = door
+				}
+			}
 		case "abandoned":
 			// DROPPED ON PURPOSE, for the reason a call line is and one of its
 			// own. Every dollar on it is already counted — the calls it sums each
@@ -1866,7 +1915,16 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		// the one AFTER the last one counted.
 		unread = scanned + 1
 	}
+	// AND THE SHAPE IS CHECKED AGAINST THE TRANSCRIPT IT PRODUCED, not only
+	// against the lines it was read off. A file whose last line said one thing
+	// and whose rebuilt tail says another — a reading that stopped early, a
+	// repair yet to come — is a file this reading cannot honestly claim ends on a
+	// question nobody answered, and the safe answer is that it does not.
+	if len(messages) == 0 || messages[len(messages)-1].Role != "user" {
+		stopped = ""
+	}
 	return replayedSession{
+		stopped:        stopped,
 		messages:       messages,
 		unread:         unread,
 		reasoning:      reasoning,
@@ -2087,6 +2145,12 @@ type replayedSession struct {
 	// ([journalCreated]).
 	created []fileChange
 	existed bool
+	// stopped is THE DOOR THAT ENDED THE LAST TURN WITH NOTHING SAID, and "" —
+	// which is nearly every file — for a conversation that does not end on an
+	// unanswered question. It is set only for the exact shape resume.go acts on:
+	// the person's own words as the last message, and after them a stop this
+	// machine made and no answer of any kind (see [readJournal]).
+	stopped StopDoor
 }
 
 // repairTranscript makes a replayed transcript legal to send.

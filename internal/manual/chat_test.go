@@ -79,6 +79,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// together, one vanishing, two windows racing, and the setting that
 		// governs the whole thing.
 		{"how do I answer from home", "questions"},
+		// The proof wave: four sentences somebody says at the screen when what
+		// the wave built does not reach them. Each is a limit the corpus now
+		// states rather than a thing they have to find out by pressing.
+		{"I pressed the key on the home row and nothing happened", "questions"},
+		{"why is there no question when I run aforge normally", "questions"},
+		{"it printed asked with nobody to ask", "questions"},
+		{"there is no undo on the line saying what it did", "questions"},
 		{"it asked while I was away", "questions"},
 		{"why did several questions arrive at once", "questions"},
 		{"answer a whole batch of questions at once", "questions"},
@@ -92,6 +99,29 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is there a countdown on this question", "questions"},
 		{"what does your rule mean on a question", "questions"},
 		{"can I answer a question over --host", "questions"},
+		// The hole on a CARD rather than on a page, which is where the task
+		// proposal's model shortlist went. People ask about the arrows and about
+		// whether moving one is an answer.
+		{"what do the arrows do on the question above my box", "questions"},
+		{"does changing the hole answer the question", "questions"},
+		// AND THE APPROVAL QUESTION AS IT IS DRAWN NOW that it is that block
+		// (internal/tui3's consent.go), asked the four ways somebody meets the
+		// keys that moved: the digits, the key that used to deny, the shape of
+		// the question on a small screen, and the widening yes.
+		{"what key allows a command now", "permissions"},
+		{"I pressed esc on the allow question and nothing happened", "permissions"},
+		{"the allow question turned into a card on my narrow terminal", "permissions"},
+		{"what does always this command write down", "permissions"},
+		// AND THE TASK PROPOSAL AS IT IS DRAWN NOW that it is that block too
+		// (internal/tui3's task.go), asked the four ways somebody meets the
+		// keys that moved: the answers row that replaced the chips, the typed
+		// `no` that used to decline and now corrects, and the model shortlist,
+		// which is a hole in a sentence walked with the arrows rather than a
+		// row of chips answered with the digits.
+		{"how do I say no to a task it wants to start", "tasks"},
+		{"I typed no to the task and it started anyway", "tasks"},
+		{"where did the model chips on the proposal go", "tasks"},
+		{"change which model a task runs on before it starts", "tasks"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},
 		// Lanes behind a base of the person's own: the question the hostname gate
@@ -1741,6 +1771,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"that window did not answer", "home"},
 		{"I pressed enter to move a chat and nothing happened", "home"},
 		{"how do I cancel moving a conversation here", "home"},
+		// And the card the first enter raises now, asked the two ways somebody
+		// meets it: they pressed enter twice and nothing moved, and they want
+		// the key that does move it.
+		{"I pressed enter twice on the held row and it did not move", "home"},
+		{"move this conversation here what do I press", "home"},
 		// And the resting row's own words, which is where somebody looking at
 		// `another window` starts: they are staring at a margin, not at a card.
 		{"the row says another window, how do I get it back", "home"},
@@ -2205,6 +2240,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happens to a running chat when I close its tab", "screen"},
 		{"what does keep running do", "screen"},
 		{"what is the difference between keep running and stop work", "screen"},
+		{"k doesn't do anything on the close tab card any more", "screen"},
+		{"how do I close a tab without stopping the work", "screen"},
+		{"I pressed 1 on the stop card and it did not stop", "keys"},
+		{"why does the stop card need enter as well as the number", "keys"},
 		{"where did my chat go after I closed its tab", "screen"},
 		{"how do I stop just this chat without touching the others", "screen"},
 	}
@@ -2343,6 +2382,11 @@ func TestTheVanishedReplyQuestionsReachTheAnswer(t *testing.T) {
 		{"my answer disappeared when I opened the conversation in another window", "models-and-cost", "ask again to pick it up"},
 		{"it thought for two minutes and then said nothing", "lanes", "a ceiling on a still wire"},
 		{"is a model that is thinking treated as a stall", "lanes", "a ceiling on a still wire"},
+		// And the half the repair owes them: after a conversation moves, the
+		// question is asked again for them rather than by them.
+		{"do I have to type my question again after moving a conversation here", "models-and-cost", "asks your question again by itself"},
+		{"the reply stopped when this conversation moved", "models-and-cost", "asking again"},
+		{"why did the answer start again on its own when I moved the conversation", "home", "asks your question again for you"},
 	} {
 		found := false
 		for _, section := range Chat().Search(probe.asked, DefaultResults) {

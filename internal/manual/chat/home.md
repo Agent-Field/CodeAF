@@ -38,6 +38,10 @@ Every kind of question can be answered this way, not a chosen few: the whole que
 in the file home reads, and the answer goes back through the one door that knows which
 part of the engine is waiting on it.
 
+**Not yet a question the model raised with `ask`.** That one is drawn on the row
+like any other and no key over it takes it; press `enter` to bring the conversation
+here and answer it above the box where it was raised.
+
 Home leaves the answer on the other window's doorstep, so the band says
 `answered · waiting for it to pick that up` until that window applies it — a second or
 two. If it could not be left at all, it says
@@ -1059,35 +1063,60 @@ has** — it does not mint a second chat on top of it, and it never says
 only after the first conversation that engine opened had ended: the launch dropped back into
 this terminal with a brand-new chat, and `enter` on the held row then had no engine to ask.
 
-**The one road where it still takes two enters** is a window with no engine behind it —
+**The one road where it still asks first** is a window with no engine behind it —
 `aforge chat --no-host`, `--debug`, or a build old enough to predate the engine. There is no
 engine to ask, so the only thing anybody can do is ask that window to let go, and moving the
-conversation really does end it. See *Moving a conversation from a window with no engine*.
+conversation really does end it — so `enter` there puts a question up rather than moving
+anything. See *Moving a conversation from a window with no engine*.
 
 **And `--host` is the one place it cannot happen at all.** The holder is a window on this
 laptop and the journal is on the other machine, so there is nobody to ask, and the row says
 `open in another window — go there, or start a new conversation here`.
 
-## Moving a conversation from a window with no engine — why is moving a conversation slow, it says coming here and nothing happens, how do I cancel the move, that window did not answer
+## Moving a conversation from a window with no engine asks first — the move card, enter moves nothing, the cursor starts on leave it there
 
 This is the road a window takes when there is no engine holding the conversation —
 `--no-host`, `--debug`, a test. On the ordinary `aforge chat` you will not meet it: see
 *Continue a conversation from another terminal*, where one `enter` opens the conversation
 instantly.
 
-**It takes two enters, and the first one only offers**, because this move really does end
-the other window. The first press arms the row. The card beside it says `enter again moves
-it here`, then `its reply stops there · its tasks come here`, and the foot line says the
-whole of it once more:
+**`enter` asks a question and moves nothing**, because this move really does end the other
+window. The card beside the row becomes that question, drawn the way every question on this
+surface is drawn:
 
 ```
-open in another window · working — enter again to move it here (that window's reply stops there; its tasks resume here)
+?  Move this conversation here?
+     open in another window · working
+     1  move it here     its reply stops there; its tasks come here
+     2  leave it there   nothing changes
+   [esc] leave it there · [←→] pick
 ```
 
-Anything else — an arrow, a letter, `esc` — disarms it. Nothing has been written and nothing
-in the other window knows you looked.
+**The cursor starts on `leave it there`.** That is the law every confirmation here keeps:
+`enter` is the key people press to make a question go away, so the answer under it has to be
+the one that loses nothing. To move it, press `1` or `→` — which moves the cursor and
+answers nothing — and then `enter`. `esc` is `leave it there`. Anything that moves the cursor
+off the row takes the question down; nothing has been written and nothing in the other
+window knows you looked.
 
-**The second press asks, and the row says it is coming.** The right margin stops saying
+**Below about a hundred and sixty columns there is no card at all**, so the same question is
+home's foot line instead, in one row:
+
+```
+Move this conversation here? · 1 move it here · 2 leave it there · its reply stops there; its tasks come here · esc leave it there
+```
+
+The keys are identical. A narrower terminal drops whole clauses off the end of it — what
+moving costs goes first, then the answers — and what a very narrow one is left with is the
+question and `esc leave it there`.
+
+It used to be two enters, with the offer on a foot line thirty rows from the row it was
+about and the second `enter` doing the move — so leaning on `enter` down a list of
+conversations ended another window with it.
+
+## Moving a conversation from a window with no engine — why is moving a conversation slow, it says coming here and nothing happens, how do I cancel the move, that window did not answer
+
+**Answering `move it here` asks the other window, and the row says it is coming.** The right margin stops saying
 `another window` and says `coming here`, the row takes the page's one turning cell, and the
 card carries the state:
 
@@ -1102,6 +1131,15 @@ answered, which is what made a move take minutes with nothing on screen to expla
 now stops where it is and hands the conversation over on its next look — four times a
 second — so `enter` and the conversation arriving are one gesture. The reply it had written
 so far is in the transcript that arrives with it.
+
+**And if it had written nothing yet, this window asks your question again for you.** A model
+that has been thinking for a minute has said nothing that can be kept, so a move used to
+land you on your own question with nothing under it and a line telling you to ask again.
+Now the question is asked again here, by itself, the moment the conversation arrives: one
+dim line — `the reply stopped when this conversation moved — asking again` — and then the
+answer. Nothing is typed twice and nothing is on the page twice. A reply that had already
+started is *not* asked again: what it wrote came with it, and its tasks resume from their
+checkpoints rather than running a second time.
 
 Past fifteen seconds with nothing happening over there, the card says `that window has not
 answered yet` and stops at that: a window wedged on a disk, one whose machine went to sleep

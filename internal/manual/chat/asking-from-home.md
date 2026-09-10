@@ -241,7 +241,12 @@ gap between two answers costs nothing.
 every terminal here sends it, so if `ctrl+enter` does nothing, use `alt+enter`.
 
 If this window was launched with no way to open a second session, the row refuses in one
-line: `this window cannot ask from home`, and nothing is created.
+line: `this window cannot ask from home`, and nothing is created. The window that gets that
+line is one attached to another machine — `--host` or `--at`: the errand's folder and the
+standing store live on the machine that runs the errand, and a laptop cannot make either of
+them on a server's disk. An ordinary `aforge` in a folder asks from home whether or not this
+project's engine is holding the conversation, because that engine is a process on the same
+machine as the folder.
 
 ## What is ask here — and how is it different from starting a conversation
 

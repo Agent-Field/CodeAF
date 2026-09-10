@@ -30,22 +30,24 @@ package tui3
 // A window with no engine behind it (`--no-host`, `--debug`, a test) holds the
 // journal in its own process, and nothing outside that process can join it. That
 // is what the rest of this file is: a request on the disk, a holder that lets go,
-// and a window waiting on the flock. It is a two-key door because it really does
-// END the other window, and the work there pauses for a moment and resumes here.
+// and a window waiting on the flock. It ASKS FIRST because it really does END the
+// other window, and the work there pauses for a moment and resumes here.
 //
 // The in-process road has three sides:
 //
-//	the asking side   home. One enter on a held row ARMS it and says what the
-//	                  next one will do and what it costs; the second writes the
-//	                  request ([session.AskTakeover]) and waits on the flock.
-//	                  When the lock frees, the row opens by the ordinary door.
+//	the asking side   home. Enter on a held row raises a confirmation on home's
+//	                  own card (homeconfirm.go) — `Move this conversation here?`,
+//	                  cursor on `leave it there` — and answering `move it here`
+//	                  writes the request ([session.AskTakeover]) and waits on the
+//	                  flock. When the lock frees, the row opens by the ordinary
+//	                  door.
 //	the holder        the window that has it. It hears [session.EventTakeover]
 //	                  on the standing lane — the one subscription that outlives
 //	                  every turn — and lets go the way /new lets go: interrupt,
 //	                  close, land on whatever else this window was holding.
 //	the launch        `aforge chat` in a folder whose conversation is open
-//	                  somewhere else comes up on home with that row already
-//	                  armed ([Options.TakeOver]), so one enter continues it.
+//	                  somewhere else comes up on home with that row's question
+//	                  already asked ([Options.TakeOver]).
 //
 // ── THE FOUR THINGS THIS DESIGN PROMISES ───────────────────────────────────
 //
@@ -55,10 +57,11 @@ package tui3
 //     out of sight. The holder interrupts and closes the way /new does, which
 //     leaves its work `paused — it resumes` and its partial reply in the
 //     journal, and the window that asked picks both up.
-//   - NOTHING IS DECIDED BY ONE KEYSTROKE. The first enter is the question and
-//     the second is the answer, because moving a conversation ends the window it
-//     was in, and a person pressing enter down a list must not do that by
-//     accident. Anything but a second enter disarms.
+//   - NOTHING IS DECIDED BY ONE KEYSTROKE. Enter raises the question; the answer
+//     under the cursor is `leave it there`, so a person walking a list with enter
+//     cannot end another window with it. Moving it is `1` or `→` — which move the
+//     cursor and answer nothing — and then enter. Anything that moves the cursor
+//     off the row takes the question down.
 //   - THE WORK COMES WITH IT. Tasks land `paused — it resumes` when the holder
 //     closes, and the window that takes the conversation resumes them from the
 //     checkpoint. The unsent sentence comes too, through the draft file.
@@ -67,6 +70,7 @@ package tui3
 //     keeps [sessionBusyWord] there and says nothing about moving anything.
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -77,20 +81,88 @@ import (
 
 // ── the words ───────────────────────────────────────────────────────────────
 
-// takeoverArmedWord is the foot line after the FIRST enter, and it is built onto
-// what home already says about the row ([app.homeHolding] — `open in another
-// window · working`), because the state of the other window is half of what a
-// person is deciding with.
+// takeoverAskWord is the question itself, and it is a QUESTION rather than an
+// instruction: what the first enter raises is a confirmation on home's own card
+// (homeconfirm.go), answered the way every confirmation on this surface is.
+//
+// It used to be a sentence on the foot line — `enter again to move it here (that
+// window's reply stops there; its tasks resume here)` — thirty rows from the row
+// it was about, and the second enter was the answer. A person leaning on enter
+// down a list of conversations ended another window with a key they press to
+// make things go away; the card puts the cursor on the answer that loses
+// nothing instead, which is stop.go's law and now this door's.
+const takeoverAskWord = "Move this conversation here?"
+
+// takeoverMoveWord and takeoverStayWord are the two answers, and
+// [takeoverStayWord] is the one marked [session.AnswerOption.Safe] — the cursor
+// starts on it, `esc` answers with it, and the offer row calls `esc` by its name.
+const (
+	takeoverMoveWord = "move it here"
+	takeoverStayWord = "leave it there"
+)
+
+// takeoverCostWord is what moving it costs, and it is the card's REASON rather
+// than a consequence beside an answer.
 //
 // IT STATES THE COST BEFORE THE KEY IS PRESSED. Two things are surprising about
-// this door and both are in the sentence: the other window's reply stops where
-// it is, and the work running over there comes here rather than stopping.
-func takeoverArmedWord(holding string) string {
-	if holding == "" {
-		holding = homeHeldWord
+// this door and both are here: the other window's reply stops where it is, and
+// the work running over there comes here rather than stopping.
+//
+// IT IS THE REASON ROW BECAUSE HOME'S CARD IS FIFTY COLUMNS. A consequence
+// stands in a column beside its answer and is cut at the card's right edge —
+// which on this card left `its reply stops there; i…` — and the reason has the
+// row to itself. The other thing that row could have said is where the
+// conversation is, and that is already on the line above it and in the row's own
+// margin: the same sentence twice is what this block exists to end.
+const takeoverCostWord = "its reply stops there; its tasks come here"
+
+// takeoverQuestionKind is the lane this file's question travels under, and it is
+// NOT one of internal/session's for stop.go's reason: nothing in the engine
+// raises it, nothing in the engine answers it, and it is answered by the closure
+// the card carries ([questionShown.local]).
+const takeoverQuestionKind session.QuestionKind = "surface-takeover"
+
+// takeoverShown is that question, and the closure that acts on it.
+//
+// IT BLOCKS NOTHING and carries no clock: the person raised it with their own
+// hand, nothing is waiting behind it, and a countdown on the end of its row
+// would be a promise that something is about to happen by itself.
+func (a *app) takeoverShown(line homeLine) questionShown {
+	return questionShown{
+		question: session.Question{
+			Kind:    takeoverQuestionKind,
+			Ask:     session.AskConfirmation,
+			Form:    session.FormCard,
+			Asker:   session.Asker{Kind: session.AskerSurface},
+			Head:    takeoverAskWord,
+			Reason:  takeoverCostWord,
+			Subject: session.SubjectRef{Name: strings.TrimSpace(line.row.Transcript)},
+			Options: []session.AnswerOption{
+				{Key: "1", Label: takeoverMoveWord},
+				{Key: "2", Label: takeoverStayWord, Safe: true},
+			},
+			// MOVING A CONVERSATION ENDS THE WINDOW IT WAS IN, which is the one
+			// fact that makes this a confirmation at all: the reply over there
+			// stops where it is and cannot be put back.
+			Stakes: session.StakesIrreversible,
+			Asked:  a.now(),
+		},
+		pick: takeoverStayAt,
+		local: func(answer session.Answer) tea.Cmd {
+			if answer.FirstKey() != "1" {
+				// `leave it there`, and `esc`, which is the same answer. The row
+				// goes back to rest and nothing has happened.
+				a.home.armed = ""
+				return nil
+			}
+			return a.askTakeover(line)
+		},
 	}
-	return holding + " — enter again to move it here (that window's reply stops there; its tasks resume here)"
 }
+
+// takeoverStayAt is which of the two answers is the one that loses nothing, and
+// it is the cursor's home.
+const takeoverStayAt = 1
 
 // takeoverWaitWord is the foot's ECHO while the claim is out, and it is short
 // on purpose.
@@ -257,13 +329,15 @@ func (a *app) syncHomeClaim() {
 	a.home.build()
 }
 
-// homeTakeoverEnter is enter on a row another window is holding, and it is the
-// two-step door.
+// homeTakeoverEnter is enter on a row another window is holding, and it RAISES
+// THE QUESTION rather than answering it.
 //
-// THE FIRST PRESS ARMS AND THE SECOND ASKS. What makes that worth a second
-// keystroke rather than a confirmation card is that the sentence it puts on the
-// foot is the card: it names the state of the other window, what enter will do,
-// and the two things about it that surprise people.
+// NOTHING IS DECIDED BY ONE KEYSTROKE, and this is where that is kept. Moving a
+// conversation ends the window it was in, so the press puts a confirmation on
+// home's own card (homeconfirm.go) with the cursor on `leave it there`: the
+// answer somebody gets by pressing enter again, or esc, is the one that loses
+// nothing, and moving it costs a deliberate `1` or `→` first. That is stop.go's
+// law, kept whole, on the one door on this screen that ends another window.
 func (a *app) homeTakeoverEnter(line homeLine) tea.Cmd {
 	h := &a.home
 	// A ROW ALREADY ASKED FOR IS NOT ASKED FOR AGAIN. The request is one file and
@@ -274,18 +348,23 @@ func (a *app) homeTakeoverEnter(line homeLine) tea.Cmd {
 		h.say(a.takeoverLine(), "")
 		return nil
 	}
-	// A CLAIM THAT ENDED UNANSWERED IS RE-ARMED BY THE KEY THE CARD NAMES.
-	// [takeoverRetryWord] says `enter asks again`, and a row still wearing that
-	// state has already been through the two-key door once — so the press that
-	// follows the sentence is the one that asks, not one that arms.
-	if a.takeover.about == line.row.Transcript && a.takeover.outcome == takeoverEndedUnanswered {
+	if h.armed != line.row.Transcript || line.row.Transcript == "" || h.ask == nil {
 		h.armed = line.row.Transcript
-	}
-	if h.armed != line.row.Transcript || line.row.Transcript == "" {
-		h.armed = line.row.Transcript
-		h.say(takeoverArmedWord(a.homeHolding(line.row)), "")
+		a.raiseHomeAsk(a.takeoverShown(line))
+		a.sayHomeAsk()
 		return nil
 	}
+	// The card is already up and this is enter landing on it, which the card's
+	// own router answers ([app.homeAskKey]). Getting here at all means the key
+	// reached the row before the card, so it is handed on rather than acted on.
+	cmd, _ := a.homeAskKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	return cmd
+}
+
+// askTakeover is `move it here` taken: the request onto the disk, and the wait
+// on the flock.
+func (a *app) askTakeover(line homeLine) tea.Cmd {
+	h := &a.home
 	h.armed = ""
 	if line.row.Dir == "" {
 		// A conversation with no folder of its own — the flat layout that
@@ -346,6 +425,16 @@ func (a *app) takeoverTick(msg takeoverTickMsg) tea.Cmd {
 		}
 		return a.takeoverBeat()
 	}
+	// THE REQUEST COMES OFF THE DISK ON THE WAY IN, and this is not tidying.
+	// The lock frees because the holder let go — and the holder only removes the
+	// request when it is the one that answered it ([session.drainTakeover]
+	// returns without taking it when the session was already closing, or had
+	// been asked once before). So a claim can succeed against a lock that freed
+	// for its own reasons with this window's question still lying in the folder
+	// it is about to open — and the session opened on it would find that
+	// question on its own beat and let go of a conversation nobody asked it to.
+	// A window that has what it asked for has no question left to leave behind.
+	session.CancelTakeover(a.takeover.dir)
 	line, about := a.takeover.line, a.takeover.file
 	a.takeover = takeoverWait{gen: a.takeover.gen}
 	a.syncHomeClaim()
@@ -441,7 +530,8 @@ func (a *app) landTakeover(transcript string) {
 		return
 	}
 	a.home.armed = transcript
-	a.home.say(takeoverArmedWord(a.homeHolding(line.row)), "")
+	a.raiseHomeAsk(a.takeoverShown(line))
+	a.sayHomeAsk()
 }
 
 // ── the holder: the conversation in front ───────────────────────────────────
@@ -488,6 +578,80 @@ func (a *app) takeOver() tea.Cmd {
 // flock this whole exchange exists to release, and the window waiting for it
 // would wait for ever.
 func (a *app) takeOverFresh() tea.Cmd { return a.freshAfterLeaving(a.endAgent) }
+
+// ── the arriving window: a question nobody answered ─────────────────────────
+
+// turnResumer is the agent door onto A QUESTION THIS CONVERSATION WAS NEVER
+// ANSWERED (session's [Agent.ResumeStoppedTurn]). It asks the person's last
+// message again — once, through the ordinary turn door — when the journal this
+// conversation was opened on ends in their words and then this machine stopping
+// the turn that was answering them, which is the shape a takeover mid-thought
+// leaves behind (session's resume.go).
+//
+// It is asserted rather than added to [Agent] for [attachable]'s reason: a
+// scripted agent in this package's tests has never heard of one, and a surface
+// driven by one must stay representable. A hosted conversation answers no such
+// door either, which is honest — over a connection the engine is running the
+// turn and nothing stopped it.
+type turnResumer interface {
+	ResumeStoppedTurn(ctx context.Context) (<-chan session.Event, bool)
+}
+
+// resumedTurnMsg is that door's answer on its way back to the loop, and it is
+// sent only when a turn really started.
+type resumedTurnMsg struct {
+	gen int
+	ch  <-chan session.Event
+}
+
+// resumeStoppedTurn is the one line [app.attachConversation] spends on this: ask
+// the conversation being taken up whether it is sitting on a question nobody
+// answered, and if it is, let it ask again.
+//
+// IT GOES THROUGH A COMMAND because the door takes the agent's lock and may
+// reach a provider, and the Update loop is not a place to wait. Nothing on the
+// screen moves until the answer lands, so a conversation that is NOT owed one —
+// which is nearly every conversation ever opened — costs one lock read and draws
+// nothing at all.
+//
+// A TURN ALREADY ON SCREEN IS NEVER ASKED. The atomic replay above this may have
+// handed the surface a turn that is still running; the engine would refuse
+// anyway (a resume needs an idle session), and asking would spend a lock to be
+// told so.
+func (a *app) resumeStoppedTurn() tea.Cmd {
+	door, ok := a.agent.(turnResumer)
+	if !ok || a.stream != nil {
+		return nil
+	}
+	gen, ctx := a.gen, a.ctx
+	return func() tea.Msg {
+		events, resumed := door.ResumeStoppedTurn(ctx)
+		if !resumed {
+			return nil
+		}
+		return resumedTurnMsg{gen: gen, ch: events}
+	}
+}
+
+// tookResumedTurn is the surface taking up that turn.
+//
+// THE SENTENCE IS SAID HERE AND THE TURN IS TAKEN THE ORDINARY WAY. What the
+// person sees is their own question — already on the page, put there by the
+// replay a moment ago — one dim line saying the reply is being asked for again
+// ([session.ResumedWord]), and then the answer streaming under it. There is no
+// second copy of their words, because nothing wrote one.
+//
+// A WINDOW THAT MOVED ON IN THE MEANTIME LETS IT GO. The generation is the one
+// the ask was made under, and a conversation switched away from between the two
+// is a turn this surface is no longer drawing; the engine goes on running it and
+// the journal keeps its answer, which is what every other detached turn does.
+func (a *app) tookResumedTurn(msg resumedTurnMsg) tea.Cmd {
+	if msg.ch == nil || msg.gen != a.gen || a.stream != nil {
+		return nil
+	}
+	a.note(session.ResumedWord)
+	return a.takeStream(msg.ch)
+}
 
 // movedFresh is the same landing on the ENGINE ROAD, and it differs in the one
 // line [app.stepBackFront] differs in: the conversation is detached rather than

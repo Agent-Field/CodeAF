@@ -130,6 +130,11 @@ const (
 
 	// needChecklist is a question answered by ticking several rows.
 	needChecklist
+	// needBlanks is a sentence with holes in it. It is a condition of its own
+	// rather than a shape the room simply draws, because `tab` walks BETWEEN
+	// holes and a form with none of them would be offering a key that moves
+	// nothing — the same reason `space` is conditional beside it.
+	needBlanks
 	// needOrdered is a checklist whose ORDER is part of the answer. It is the
 	// same shape as [needChecklist] with a second promise, so the two keys are
 	// separate rows rather than one that sometimes does nothing.
@@ -242,8 +247,17 @@ var questionKeys = []questionVerb{
 	// ratify line whose undo is off the row is a ratify line with no undo.
 	{key: questionRuleKey, word: "make it a rule", forms: formsBlock | formsRoom, needs: needRule, giveUp: 2},
 	{key: questionUndoKey, word: "undo", forms: formsRatify | formsRoom, needs: needUndo, giveUp: 2},
-	{key: questionBlankKey, word: "next blank", forms: formsRoom, giveUp: 6},
-	{key: questionToggleKey, word: "tick it", forms: formsRoom, giveUp: 6},
+	{key: questionBlankKey, word: "next blank", forms: formsRoom, needs: needBlanks, giveUp: 6},
+	// `space` IS THE CHECKLIST'S ANSWER AND IS RANKED WITH THE ANSWERS, which is
+	// this table's own law read on the one shape that was breaking it: "The
+	// options are never dropped at all: an offer with an answer missing is an
+	// offer that hides an answer" ([app.questionOffer]). Every other shape's
+	// answer key is already ranked zero — `a`/`b` on a pair, `←→` on a dial —
+	// and this one was ranked sixth, so at a hundred columns a checklist gave up
+	// the only verb that works it and drew as an ordinary list. Measured on a
+	// real screen: four answers, no marks anybody could act on, and `[c] change`
+	// kept in its place.
+	{key: questionToggleKey, word: "tick it", forms: formsRoom, needs: needChecklist},
 	// The room's own four. `a` is the one collision in the grammar — "take its
 	// suggestion" on a checklist and "the first one" on a pair — and it is two
 	// rows here rather than one key with two words, because the offer row prints
@@ -260,7 +274,13 @@ var questionKeys = []questionVerb{
 	// and it is on the row at all because a person who thinks the question is
 	// wrong has no other way to say so without it reading as a refusal.
 	{key: questionReframeKey, word: "none of these", forms: formsRoom, needs: needOptions, giveUp: 8},
-	{key: questionWalkKey, word: "move it", forms: formsRoom, needs: needMoves},
+	// `←→ move it` IS ON THE CARD AS WELL AS IN THE ROOM, because the card draws
+	// the sentence with a hole in it too — a task proposal's model shortlist is
+	// exactly that shape ([session.TaskModelShape]). It is a second row on
+	// [questionWalkKey] rather than a second word on the first for the reason
+	// [needMoves] states: `pick` walks a cursor between two answers and `move it`
+	// changes the answer itself, and the two are never true at once.
+	{key: questionWalkKey, word: "move it", forms: formsCard | formsRoom, needs: needMoves},
 	// INSIDE THE ROOM `o` OPENS AN ANSWER RATHER THAN THE PAGE, which is why it
 	// is a second row rather than a second word: `[o] open it` on a card is a
 	// promise about a page, and repeating that promise on the page itself would
@@ -345,6 +365,14 @@ func (a *app) questionAnswerKeys(q questionShown, form questionForms) []question
 func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 	switch need {
 	case needPick:
+		if q.question.Ask == session.AskConfirmation {
+			// A CONFIRMATION ALWAYS HAS A PICK AND IT IS THE CURSOR. It is the
+			// one shape on this block where the person's own keyboard chooses
+			// which answer `enter` takes ([questionSafeAt] puts it on the answer
+			// that loses nothing), so the key is always offered — where every
+			// other question offers it only when the ASKER recommended something.
+			return true
+		}
 		return q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != ""
 	case needRule:
 		return q.rule
@@ -360,10 +388,26 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 	case needWalk:
 		return q.question.Ask == session.AskConfirmation && len(q.question.Options) > 1
 	case needHands:
-		return q.question.Ask != session.AskConfirmation &&
-			q.question.Stakes != session.StakesIrreversible
+		if q.question.Ask == session.AskConfirmation ||
+			q.question.Stakes == session.StakesIrreversible {
+			return false
+		}
+		// AND A PERMISSION THAT IS NOT CHEAP TO TAKE BACK IS NEVER HANDED OVER.
+		// The approval gate asks because a policy said a person has to see this
+		// call; `you decide` on it would give that decision straight back to the
+		// thing the gate was put in front of, which is the gate answering itself
+		// with one keystroke. docs/design/questions/DESIGN.md's kind table says
+		// the same about the clock — a permission may act on its own "only when
+		// Stakes == reversible" — and a key that skips a question is a clock a
+		// person wound by hand.
+		if q.question.Ask == session.AskPermission {
+			return q.question.Stakes == session.StakesReversible
+		}
+		return true
 	case needChecklist:
 		return q.question.Input.Kind == session.InputChecklist
+	case needBlanks:
+		return q.question.Input.Kind == session.InputBlanks && len(q.question.Input.Blanks) > 1
 	case needOrdered:
 		// AN ORDER KEY IS OFFERED ONLY WHERE THERE IS AN ORDER TO CHANGE. Two
 		// rows have one arrangement and no second one, so the key would move a

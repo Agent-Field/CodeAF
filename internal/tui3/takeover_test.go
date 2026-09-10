@@ -9,14 +9,20 @@ package tui3
 // against that lock and a flag standing in for it would test nothing.
 
 import (
+	"context"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/aforge-v2/internal/filelock"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/reltime"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // cardSays reports that a phrase is on the card, ACROSS ITS WRAPS. The right
@@ -54,11 +60,28 @@ func (l *homeLab) holdUntil(transcript string) func() {
 	return release
 }
 
-// ── home: the two enters ────────────────────────────────────────────────────
+// moveItHere is the whole door, driven the way a person drives it: enter raises
+// the question, `1` moves the cursor onto `move it here` — which answers nothing
+// — and enter takes it (takeover.go's card).
+//
+// IT IS THREE KEYS AND NOT TWO ON PURPOSE. The tests below are about what
+// happens AFTER the request is on the disk, and every one of them used to spend
+// two lines spelling `enter` twice; the door's own grammar is asserted by
+// [TestEnterOnAHeldRowRaisesTheQuestionWithTheSafeAnswerUnderTheCursor] and
+// [TestTheDigitMovesTheCursorAndEnterMovesTheConversation], which is where a
+// change to it should go red.
+func moveItHere(a *app) {
+	a.homeKey(key("enter"))
+	a.homeKey(key("1"))
+	a.homeKey(key("enter"))
+}
 
-// THE FIRST ENTER ASKS AND THE SECOND ANSWERS. Nothing is written on the first,
-// and the line on the foot says both what the next key does and what it costs.
-func TestFirstEnterOnAHeldRowArmsItAndSaysWhatTheNextOneDoes(t *testing.T) {
+// ── home: enter raises the question ─────────────────────────────────────────
+
+// THE FIRST ENTER RAISES THE QUESTION AND ANSWERS NOTHING. Nothing is written
+// on it, the card home draws is the question block's own, and the cursor is on
+// the answer that loses nothing.
+func TestEnterOnAHeldRowRaisesTheQuestionWithTheSafeAnswerUnderTheCursor(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	where := lab.project("-tmp-alpha")
@@ -77,33 +100,87 @@ func TestFirstEnterOnAHeldRowArmsItAndSaysWhatTheNextOneDoes(t *testing.T) {
 	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); err == nil {
 		t.Fatal("the first enter already asked the other window for the conversation")
 	}
-	// The foot line is asserted as the SENTENCE and not as the frame: it is one
-	// row and a narrow terminal truncates it, exactly as it truncates every
-	// other long refusal on this screen.
-	for _, want := range []string{
-		"open in another window",
-		"enter again to move it here",
-		"that window's reply stops there",
-		"its tasks resume here",
-	} {
-		if !strings.Contains(a.home.msg, want) {
-			t.Fatalf("the armed line is missing %q:\n%s", want, a.home.msg)
+	ask, up := a.homeAsking()
+	if !up {
+		t.Fatal("enter armed the row and asked nothing")
+	}
+	if ask.question.Ask != session.AskConfirmation {
+		t.Fatalf("the question is a %q and not a confirmation", ask.question.Ask)
+	}
+	// THE CURSOR IS ON THE ANSWER THAT LOSES NOTHING, which is the whole reason
+	// this door became a card: enter is the key people press to make a question
+	// go away, and the thing it must never do here is end another window.
+	if ask.pick != takeoverStayAt {
+		t.Fatalf("the cursor opened on answer %d, not on %q", ask.pick, takeoverStayWord)
+	}
+	// AND THE CARD SAYS IT WHERE THE EYE IS, beside the row it is about, with
+	// what each answer costs on the answer rather than on a foot thirty rows
+	// away.
+	card := homeCardFor(t, a, theirs)
+	for _, want := range []string{takeoverAskWord, takeoverMoveWord, takeoverStayWord} {
+		if !cardSays(card, want) {
+			t.Fatalf("the card is missing %q:\n%s", want, strings.Join(card, "\n"))
 		}
 	}
-	if !strings.Contains(homeText(a), "enter again to move it here") {
-		t.Fatalf("the offer never reached the screen:\n%s", homeText(a))
+	// WHAT MOVING IT COSTS IS ON THE CARD, in the reason row under the question
+	// — which is where it fits on a card home lends fifty columns.
+	if !cardSays(card, takeoverCostWord) {
+		t.Fatalf("the card does not say what moving it costs:\n%s", strings.Join(card, "\n"))
+	}
+	// AND WHERE THE CONVERSATION IS IS NOT SAID TWICE. The row's own margin and
+	// the line above the card already carry it; a reason row repeating it would
+	// be the same sentence in two hues on one card.
+	if strings.Count(strings.Join(card, "\n"), homeHeldWord) > 1 {
+		t.Fatalf("the card says where it is more than once:\n%s", strings.Join(card, "\n"))
 	}
 	if !a.at(pageHome) {
 		t.Fatal("arming a row closed home")
 	}
-	// AND THE CARD SAYS IT WHERE THE EYE IS. The foot keeps the long sentence
-	// because this is the one press that ends another window; the card carries
-	// the same offer beside the row it is about, in its own words.
-	card := homeCardFor(t, a, theirs)
-	for _, want := range []string{takeoverAgainWord, takeoverCostWords[0], takeoverCostWords[1]} {
-		if !cardSays(card, want) {
-			t.Fatalf("the card is missing %q:\n%s", want, strings.Join(card, "\n"))
-		}
+
+	// A SECOND ENTER TAKES WHAT THE CURSOR IS ON, which is `leave it there`: the
+	// request is still not on the disk and the card is gone.
+	a.homeKey(key("enter"))
+	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); err == nil {
+		t.Fatal("leaning on enter moved the conversation")
+	}
+	if _, up := a.homeAsking(); up {
+		t.Fatal("the card is still up after it was answered")
+	}
+	if a.home.armed != "" {
+		t.Fatalf("the row is still armed after `%s` · armed=%q", takeoverStayWord, a.home.armed)
+	}
+}
+
+// AND `1` THEN ENTER IS THE MOVE. The digit names the answer and moves the
+// cursor onto it; enter is what takes it, which is one grammar with every other
+// confirmation on this surface.
+func TestTheDigitMovesTheCursorAndEnterMovesTheConversation(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	where := lab.project("-tmp-alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", where, now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", where, now.Add(-time.Hour))
+	lab.hold(theirs)
+
+	a := lab.app(mine)
+	a.openHome()
+	a.home.point(theirs)
+	a.homeKey(key("enter"))
+	a.homeKey(key("1"))
+
+	ask, up := a.homeAsking()
+	if !up {
+		t.Fatal("the digit answered the question outright")
+	}
+	if ask.pick != 0 {
+		t.Fatalf("`1` did not move the cursor onto %q · pick=%d", takeoverMoveWord, ask.pick)
+	}
+	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); err == nil {
+		t.Fatal("the digit asked the other window for the conversation")
+	}
+	a.homeKey(key("enter"))
+	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); err != nil {
+		t.Fatalf("enter on `%s` wrote no request: %v", takeoverMoveWord, err)
 	}
 }
 
@@ -154,8 +231,7 @@ func TestSecondEnterAsksForTheConversationAndWaits(t *testing.T) {
 	}
 	a.openHome()
 	a.home.point(theirs)
-	a.homeKey(key("enter"))
-	a.homeKey(key("enter"))
+	moveItHere(a)
 
 	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); err != nil {
 		t.Fatalf("no request was left for the other window: %v", err)
@@ -199,8 +275,7 @@ func TestTheClaimedRowSaysItIsComingAndTakesTheOneSpinner(t *testing.T) {
 		a.homeMark(row.row), false, 0, now) == "" {
 		t.Fatal("the held row carries no note at all")
 	}
-	a.homeKey(key("enter"))
-	a.homeKey(key("enter"))
+	moveItHere(a)
 
 	line, ok := a.home.focusedLine()
 	if !ok {
@@ -239,8 +314,7 @@ func TestTheRowOpensTheMomentTheOtherWindowLetsGo(t *testing.T) {
 	}
 	a.openHome()
 	a.home.point(theirs)
-	a.homeKey(key("enter"))
-	a.homeKey(key("enter"))
+	moveItHere(a)
 
 	// One beat while it is still held changes nothing but the line.
 	a.takeoverTick(takeoverTickMsg{gen: a.takeover.gen})
@@ -274,8 +348,7 @@ func claimHeld(t *testing.T, lab *homeLab, mine, theirs string) *app {
 	a.width, a.height = homeCardMin, 40
 	a.openHome()
 	a.home.point(theirs)
-	a.homeKey(key("enter"))
-	a.homeKey(key("enter"))
+	moveItHere(a)
 	if !a.waitingToTakeOver() {
 		t.Fatal("the two enters left no claim out")
 	}
@@ -387,8 +460,19 @@ func TestAClaimThatAgesOutStopsAndSaysTheOtherWindowStillHasIt(t *testing.T) {
 	if !cardSays(card, takeoverRetryWord) {
 		t.Fatalf("the card names no way to ask again:\n%s", strings.Join(card, "\n"))
 	}
-	// AND THE KEY IT NAMES IS THE KEY IT MEANS. `enter asks again` is one press
-	// and not two: this row has been through the two-key door already.
+	// AND THE KEY IT NAMES RAISES THE QUESTION AGAIN, exactly as it does on a
+	// row that has never been asked about. A row that had been through the door
+	// once used to get the ask on a single press — a shortcut that meant one
+	// keystroke could end another window, on the one row where somebody has
+	// already pressed enter twice and learnt it does nothing.
+	a.homeKey(key("enter"))
+	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); err == nil {
+		t.Fatal("`enter asks again` asked the other window on one press")
+	}
+	if _, up := a.homeAsking(); !up {
+		t.Fatal("`enter asks again` raised no question")
+	}
+	a.homeKey(key("1"))
 	a.homeKey(key("enter"))
 	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); err != nil {
 		t.Fatalf("`enter asks again` asked nothing: %v", err)
@@ -453,7 +537,7 @@ func TestNoStateOfAMoveIsSilent(t *testing.T) {
 	}{
 		{"at rest", func() {}},
 		{"armed", func() { a.homeKey(key("enter")) }},
-		{"moving", func() { a.homeKey(key("enter")) }},
+		{"moving", func() { a.homeKey(key("1")); a.homeKey(key("enter")) }},
 		{"mid-reply", func() {
 			lab.presence("-tmp-alpha", "aaaa000000000002", session.PresenceWorking, "", a.now())
 			a.refreshHome()
@@ -466,7 +550,7 @@ func TestNoStateOfAMoveIsSilent(t *testing.T) {
 		stage.set()
 		card := homeCardFor(t, a, theirs)
 		spoke := false
-		for _, word := range []string{takeoverComingWord, takeoverDoorWord, takeoverAgainWord, takeoverUnansweredWord} {
+		for _, word := range []string{takeoverComingWord, takeoverDoorWord, takeoverAskWord, takeoverUnansweredWord} {
 			if cardSays(card, word) {
 				spoke = true
 			}
@@ -491,8 +575,7 @@ func TestEscStopsWaitingAndWithdrawsTheRequest(t *testing.T) {
 	a := lab.app(mine)
 	a.openHome()
 	a.home.point(theirs)
-	a.homeKey(key("enter"))
-	a.homeKey(key("enter"))
+	moveItHere(a)
 
 	a.homeKey(key("esc"))
 	if a.waitingToTakeOver() {
@@ -602,13 +685,20 @@ func TestALaunchThatMetALockLandsOnThatRowArmed(t *testing.T) {
 	if a.home.armed != theirs {
 		t.Fatalf("the row is not armed · %q", a.home.armed)
 	}
-	if !strings.Contains(homeText(a), "enter again to move it here") {
-		t.Fatalf("the offer is not on the screen:\n%s", homeText(a))
+	if !strings.Contains(homeText(a), takeoverAskWord) {
+		t.Fatalf("the question is not on the screen:\n%s", homeText(a))
 	}
-	// AND ONE ENTER ASKS FOR IT.
+	// AND THE QUESTION IS ALREADY ASKED, WITH THE CURSOR ON `leave it there`. A
+	// launch that met a lock may not be a launch that MOVES the conversation on
+	// the first keystroke — the person did not ask for this screen, they asked
+	// for a conversation, and the key they will press to get on with it is enter.
 	a.homeKey(key("enter"))
+	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); err == nil {
+		t.Fatal("enter on the landed question moved the conversation")
+	}
+	moveItHere(a)
 	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); err != nil {
-		t.Fatalf("the armed row did not ask on its first enter: %v", err)
+		t.Fatalf("the landed question could not be answered `%s`: %v", takeoverMoveWord, err)
 	}
 }
 
@@ -837,4 +927,159 @@ func TestNoDoorOnTheMarginWhereEnterWouldRefuse(t *testing.T) {
 			t.Fatalf("%q was offered a move on another machine's home", row.title)
 		}
 	}
+}
+
+// ── the arriving window: a question nobody answered ─────────────────────────
+
+// resumingAgent is a conversation whose journal ends on a question this machine
+// stopped answering (session's resume.go). It answers the one door the surface
+// asks about that, and counts how many times it was asked.
+type resumingAgent struct {
+	*switchAgent
+	asked  int
+	answer string
+}
+
+func (r *resumingAgent) ResumeStoppedTurn(context.Context) (<-chan session.Event, bool) {
+	r.asked++
+	if r.asked > 1 {
+		return nil, false
+	}
+	out := make(chan session.Event, 4)
+	out <- session.Event{Kind: session.EventTextDelta, Text: r.answer}
+	out <- session.Event{Kind: session.EventTurnDone}
+	close(out)
+	return out, true
+}
+
+// A CONVERSATION THAT ARRIVES ON A QUESTION NOBODY ANSWERED ASKS IT AGAIN HERE.
+// This is the whole of the repair a person sees: they moved the conversation,
+// and the reply they were waiting for starts in front of them without a
+// keystroke. Nothing of their question is typed or drawn a second time.
+func TestAConversationArrivingOnAnUnansweredQuestionAsksItAgain(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	where := lab.project("-tmp-alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", where, now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", where, now.Add(-time.Hour))
+	release := lab.holdUntil(theirs)
+
+	a := lab.app(mine)
+	arriving := &resumingAgent{
+		switchAgent: &switchAgent{fakeAgent: &fakeAgent{model: "m"}},
+		answer:      "the answer nobody had to ask for twice",
+	}
+	a.open = func(workspace, transcript string) (Conversation, error) {
+		return Conversation{Agent: arriving, SessionFile: transcript, Workspace: workspace, Resumed: true}, nil
+	}
+	a.openHome()
+	a.home.point(theirs)
+	a.homeKey(key("enter"))
+	// The card home raises has the cursor on `leave it there`; `1` moves it onto
+	// `bring it here` and the second enter answers (homeconfirm.go).
+	a.homeKey(key("1"))
+	a.homeKey(key("enter"))
+	release()
+	drive(t, a, takeoverTickMsg{gen: a.takeover.gen})
+
+	if a.file != theirs {
+		t.Fatalf("the window landed on %q, want %q", a.file, theirs)
+	}
+	if arriving.asked != 1 {
+		t.Fatalf("the arriving conversation was asked to resume %d times, want once", arriving.asked)
+	}
+	// ONE DIM LINE SAYS WHY A REPLY STARTED ON ITS OWN, and it is the engine's
+	// sentence rather than a second spelling of it.
+	said := noteTexts(a)
+	if !slices.Contains(said, session.ResumedWord) {
+		t.Fatalf("nothing said why the reply started again; the notes were %q", said)
+	}
+	// AND THE ANSWER ARRIVED.
+	if !strings.Contains(transcriptText(a), arriving.answer) {
+		t.Fatalf("the resumed reply never reached the page:\n%s", transcriptText(a))
+	}
+}
+
+// AND THE REQUEST COMES OFF THE DISK WHEN THE CLAIM SUCCEEDS. A lock can free
+// for its own reasons — the other window quit, or went to another conversation —
+// with this window's question still lying in the folder it is about to open; the
+// session opened on it would find that question on its own beat and let go of a
+// conversation nobody asked it to.
+func TestAClaimThatSucceedsLeavesNoQuestionBehind(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	where := lab.project("-tmp-alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", where, now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", where, now.Add(-time.Hour))
+	release := lab.holdUntil(theirs)
+
+	a := lab.app(mine)
+	a.openHome()
+	a.home.point(theirs)
+	a.homeKey(key("enter"))
+	// The card home raises has the cursor on `leave it there`; `1` moves it onto
+	// `bring it here` and the second enter answers (homeconfirm.go).
+	a.homeKey(key("1"))
+	a.homeKey(key("enter"))
+	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); err != nil {
+		t.Fatalf("no request was left for the other window: %v", err)
+	}
+
+	release()
+	a.takeoverTick(takeoverTickMsg{gen: a.takeover.gen})
+
+	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); !os.IsNotExist(err) {
+		t.Fatal("the window opened the conversation and left its own question in the folder")
+	}
+}
+
+// AND THEN SOMEBODY LOOKS AT IT.
+//
+// The card home raises about moving a conversation is the question block's own
+// card drawn inside a home band, which is a place no other screen in this suite
+// has photographed. It is written through the same door every question screen
+// is (questionscreens_test.go): the whole frame, at truecolor, with the
+// geometric glyph floor, and only when AFORGE_SCREENS names a directory.
+func TestTheTakeoverCardScreen(t *testing.T) {
+	dir := strings.TrimSpace(os.Getenv("AFORGE_SCREENS"))
+	lab := newHomeLab(t)
+	now := time.Date(2026, time.September, 9, 14, 2, 0, 0, time.UTC)
+	where := lab.project("-tmp-alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", where, now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", where, now.Add(-time.Hour))
+	lab.hold(theirs)
+
+	a := lab.app(mine)
+	a.pal = newPalette(tokens.TrueColor, false)
+	a.actionAuto = tokens.Plain
+	a.settleIcons()
+	a.width, a.height = 160, 24
+	a.clock = func() time.Time { return now }
+	a.openHome()
+	a.home.point(theirs)
+
+	shot := func(name string) {
+		t.Helper()
+		width, height := a.size()
+		lines, _, _, _ := a.homeFrame(width, height)
+		body := strings.Join(lines, "\n")
+		if !strings.Contains(ansi.Strip(body), takeoverAskWord) {
+			t.Fatalf("%s does not carry the question:\n%s", name, ansi.Strip(body))
+		}
+		if dir == "" {
+			return
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name+".ansi"), []byte(body+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.homeKey(key("enter"))
+	shot("takeover-card")
+	// AND THE SAME CARD AFTER `1`, which moves the cursor onto the act and
+	// answers nothing — the one thing about this door a sentence cannot show.
+	a.homeKey(key("1"))
+	shot("takeover-card-picked")
 }

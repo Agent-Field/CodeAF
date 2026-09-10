@@ -31,14 +31,31 @@ A question with more behind it than the block draws **opens out into a page of
 its own** — `o` opens it, `esc` closes it, and the sections below say what you
 can do in there.
 
+## The squiggle, the tick and the amber mark at the start of a card
+
+Every question opens with **one cell**, and it says whether the card in front of
+you is waiting for you at all:
+
+| mark | what it means |
+| --- | --- |
+| amber `?` | it is waiting on you and nothing moves until you answer |
+| dim `≈` | it took something for granted and went on — strike a line to change it |
+| dim `✓` | it did the reversible thing already and is telling you |
+| dim `⊘` | it stopped needing an answer and was taken back |
+
+**Only the first is amber.** Amber on this screen means waiting on you and
+nothing else, so the three cards that are not waiting on anybody do not wear it —
+a squiggle or a tick in the attention colour would be the screen asking you for
+something it has just said it does not need.
+
+On a terminal with a patched font these are drawn as icons instead of as shapes;
+`/settings` → **step icons** → `plain` puts the characters above back.
+
 ## The kinds of question
 
 Eight shapes. The shape is what says whether anything but you may answer it and
-what a safe answer would be, and it also decides which one-cell glyph the block
-opens with: amber `?` for the six that are waiting on you, dim `≈` for an
-assumption and dim `✓` for a ratify line. Amber means waiting on you and nothing
-else on this screen, so the two shapes that are not waiting on anybody do not
-wear it.
+what a safe answer would be, and it also decides which of the marks above the
+card opens with.
 
 - **permission** — may this happen. The approval gate before a command runs, an
   offer to connect one of your accounts, an offer to run a saved program. The
@@ -64,10 +81,12 @@ Most of them wait. A wait that ended is not a no: an approval question, a
 standing card and a page waiting to be approved carry no clock at all, and they
 stay up until somebody answers them.
 
-**A task proposal and a reversible recommendation may carry a clock.** The card says how long is left, and
-when the time runs out the work STARTS — the card is your chance to redirect it,
-not a gate the work waits on. A proposal you hold loses its deadline and then
-waits like everything else.
+**A task proposal and a reversible recommendation may carry a clock.** The answers
+row says which answer is about to be taken and when — `start it in 9s` — and when
+the time runs out the work STARTS. It is your chance to correct it, not a gate the
+work waits on. Any key you press stops that clock, and a proposal you hold loses
+its deadline and then waits like everything else, with `waiting` on the end of the
+row instead of a countdown.
 
 **A clock says what it is going to do, in that shape's own words.** Where there
 is a recommended answer the tail is that answer — `start it in 9s`. Where there
@@ -146,6 +165,17 @@ the one door that knows which lane it belongs to.
 A window attached over `--host` draws a question the far machine raises, but
 cannot yet answer one — answering across the link is not built (see *What is not
 built yet*). Answer it in a window on the machine holding the conversation.
+
+## The row on home shows the question but my key does nothing over it
+
+A question the model raised with `ask` is drawn on the row like any other — the
+mark, the conversation's name, what was asked, and the count in the band at the
+top — and no key pressed over that row takes it. The lanes that wrote their own
+card before questions became one object are the ones a row still takes a key for:
+a permission, a task proposal, a standing offer.
+
+Press `enter` on the row instead. It brings that conversation here, and the
+question is above the box where it was raised, with its own keys on it.
 
 ## The other window answered it, or two windows answered at the same time
 
@@ -247,14 +277,15 @@ beside it, `?` is one still waiting.
   answer, and `g` will not treat them as one
 - `s` sends everything you answered and lets each remaining question take its
   own recommended answer. Anything nobody recommended an answer for stays open,
-  and one line says `still needs you`
+  and one line says `still needs you`. Every answer it sends leaves the same dim
+  `decided …` line one answered on its own would
 - `esc` puts the whole sheet off; nothing is answered, the count does not drop,
   and the chip's key brings it back
 
 A question something is blocked on never waits for a boundary. It arrives at
 once, on its own.
 
-## The question disappeared — withdrawal
+## The question disappeared — it vanished without me answering, withdrawal
 
 A question can stop needing an answer: what it was about went away, the plan
 changed, or another answer settled it. It is taken back by whoever asked, and one
@@ -269,6 +300,9 @@ The count in the chip drops, and an open sheet loses that row and re-flows —
 question and not to the position it was drawn in. A question still gathering
 inside a step is dropped from that batch too, so a boundary never delivers a
 decision that stopped needing to be made.
+
+It is never called cancelled: nothing failed, and nobody decided anything. The
+decision simply stopped needing to be made.
 
 ## Questions aforge refuses to put to you
 
@@ -303,7 +337,8 @@ command about to run — that row is drawn above it, the same row you already
 read, not a second description of it.
 
 ```
-  ? allow this? [1] allow once · [2] always · [3] deny · [esc] later
+    ╰─▶ bash rm -rf build
+  ? allow? [1] allow once · [2] always, this command · [3] deny · [esc] later · 7s
     bash pattern "rm -rf *"
 ```
 
@@ -357,7 +392,7 @@ the row.
 | `D` | decide questions like this from now on |
 | `r` | make it a rule |
 | `u` | undo, while what was done is still real |
-| `←` `→` | walk the two answers of a confirmation |
+| `←` `→` | walk the two answers of a confirmation, or change what is in the hole where the question has one |
 | `s` | on a sheet: send what you answered, and let the rest take their own picks |
 | `g` | on a sheet: same answer for all like this |
 
@@ -381,8 +416,8 @@ anything: the question is still open, whatever was waiting on it is still
 waiting, and the count in the status line does not drop. What goes away is the
 rows, so the box underneath is yours again.
 
-This is different from the older approval question, where `esc` denies. On the
-block, nothing is ever decided by making something go away.
+This is what changed about the approval question, where `esc` used to deny.
+Nothing is ever decided by making something go away.
 
 To bring it back, press `alt+a`.
 
@@ -423,6 +458,21 @@ without you, and nothing that cannot be taken back ever will.
 
 If an answer was not yours, the line left behind names whoever gave it, so you
 can always tell by reading it — see "What stays behind after you answer" below.
+
+## Nobody to ask — a question in `--once`, an errand or a task lane
+
+With nobody at a keyboard there is no block to draw, so what the settings decide
+is printed rather than shown:
+
+```
+asked: which store should the ledger sit on? → 1 (default · nobody to ask)
+```
+
+It goes to the error stream beside the `tool:` lines and never into the reply, so
+a run whose output you are piping somewhere still says what was taken in your
+absence. Where the asker recommended nothing there is nothing to take: the line
+reads `your call: <what was asked> (nobody to ask)` and the work stops there
+rather than guessing.
 
 ## What stays behind after you answer
 
@@ -513,6 +563,10 @@ named no way back — pressing `u` there would send an answer nobody described.
 
 `c` is on the receipt after you answer, spelled `c change` on the line. It shows
 what unwinding would cost before it reopens the question.
+
+Today `u` is never drawn: nothing yet tells a ratify row that the work behind it
+can still be put back, so the row reads `✓ <what was done> · [esc] later ·
+[c] change` and `c` is the way back.
 
 A decision that cannot be taken back says `cannot change` on its receipt and
 offers neither. Those are the ones that were never on a clock and that nobody
@@ -621,7 +675,7 @@ there is nothing for it to decide, because the whole question is what you meant.
 asked and press enter; it goes back to the asker as a reframe rather than as a
 pick, and nothing is chosen.
 
-## Fill in the blanks
+## Fill in the blanks — the holes in a sentence, and what the arrows do on the question above your box
 
 Some questions are a sentence with holes in it rather than a list of answers:
 
@@ -635,6 +689,19 @@ Each hole opens on whatever the asker already knew, so you are not retyping it.
 Under the sentence, one dim line says what the hole you are in takes — a file or
 folder, a number, a time — or why what is in it will not do. Press enter when it
 reads right; the holes come back as fields, keyed by their own names.
+
+**A card can carry a hole too, not only a page.** The one you will meet is a task
+proposal whose model shortlist the harness could not settle: it draws
+
+```
+     run it on [ anthropic/claude-opus-5 ▾ ]
+```
+
+above the proposal's own answers, and `←→` walks the shortlist. **Moving what is
+in a hole answers nothing** — the countdown on the proposal keeps running, and
+what is in the hole when you answer travels with the answer. On a card the holes
+are `←→` only: `tab` is the page's key, and the sentence a card carries is one
+line with one hole in it.
 
 ## Pick several
 
@@ -692,6 +759,43 @@ Whatever you send goes with everything you did on the way:
 - anything you asked back and what came of it
 - how long the answer lasts, where the question offered a choice of that
 
+## Which questions draw this way
+
+**The approval question does** — the one aforge asks before it runs a tool. It
+has all of the above: the digits, `esc` for later, the chip, the receipt, the
+settle guard, the narrow card and the phone sheet. `permissions` is its own page
+and states what each answer banks.
+
+**So does the task proposal** — `wants to start a task:` with `[1] start it` and
+`[2] no`, and its clock on the end of the row. **So do the two cards you raise
+yourself**: `x` on running work (`Stop this task?`) and `ctrl+w` on a busy tab
+(`Close this tab?`). Those two are **confirmations**, and a confirmation differs
+from every other question here in three ways worth knowing:
+
+- **`esc` does not mean later.** There is nothing to come back to — you raised it
+  with your own hand a second ago — so `esc` gives the answer that loses nothing:
+  `keep going` on the stop card, `cancel` on the close card.
+- **A digit moves the cursor rather than answering.** `1` and `2` walk the cursor
+  onto the answer they name and light its row; `enter` is what decides. Nothing is
+  decided by one keystroke.
+- **They are answerable at once, and they take the whole keyboard.** The settle
+  guard does not apply — your hand is already on the key that raised it — and
+  while one is up your half-typed sentence stays in the box, unsent, because
+  `enter` belongs to the card.
+
+A question that is not simply a line of answers still fits here. The approval
+question's widening yes, `[2] always`, has a **second beat** on a shell command:
+it replaces the answers row with the shapes the rule could be written as, and
+picks one before anything is written.
+
+```
+  always? [1] git status*  ·  [2] git *  ·  [3] just this line  ·  [esc] never mind
+```
+
+While a beat is up, the digits belong to it — `3` is the third shape and not the
+third answer — and `esc` backs out of the beat rather than putting the question
+off.
+
 ## What is not built yet
 
 `o` opens a question out into a page of its own — see the sections above, from
@@ -699,15 +803,24 @@ Whatever you send goes with everything you did on the way:
 `.aforge/autonomy.json` beside the project AND answers the question in front of
 you; a conversation with no project to keep it in says so.
 
-**Answering over `--host` is not built.** A window attached to another machine
-draws a question that machine raises, but the answer does not cross the link, so
-it has to be given in a window on the machine holding the conversation.
+**A question does not cross the session-host link.** An ordinary `aforge` or
+`aforge chat` in a project does not keep the conversation in the terminal — it
+attaches this machine's session host, so the work goes on when the window closes.
+Questions do not travel that link in either direction: one raised behind it
+reaches no screen, nothing counts it, and the turn waits. Open a conversation you
+want to be asked in with `aforge chat --no-host`, which keeps it here; `--once`
+and `--debug` keep it here too.
+
+**Answering over `--host` is not built either.** A window attached to another
+machine draws a question that machine raises, but the answer does not cross the
+link, so it has to be given in a window on the machine holding the conversation.
+
+**A row on home shows a question the model raised and does not take a key for
+it** — see *The row on home shows the question but my key does nothing over it*.
 
 The count of open questions in the status line IS built: that is the chip
 described above. So is the sheet, and so is the per-project setting that answers
 a whole kind of question while you are away (`/autonomy`, and `D` on a row).
 
-The older blocks — the approval question, a task proposal, a standing card, a
-connect offer, an offer to run a saved program, and the cards that ask before
-stopping work or closing a busy tab — have not moved onto the block yet and keep
-their own keys until they do.
+Some older blocks have not moved onto this one yet and keep their own keys until
+they do: a standing card, a connect offer, and an offer to run a saved program.

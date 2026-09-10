@@ -364,9 +364,32 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	// opened on a later step — which is exactly what a state root whose profile
 	// is complete does now. The flow's FOOT is on every step of it, and the
 	// greeting's foot is the other screen a launch lands on, so both are here.
-	if hit, _ := r.waitForAny(45*time.Second, say(t, "homeFootWord"),
+	//
+	// AND A PLACE IS RECOGNISED BY ITS BOX AND NOT BY ITS FOOT. Home's resting
+	// foot is one sentence among several: a launch that meets a lock lands on
+	// home with the held row pointed and armed, and the foot then says what the
+	// next enter would do instead (internal/tui3's takeover.go) — so a window
+	// that had arrived, drawn the whole screen and offered somebody a keystroke
+	// was declared dead by this list. [placeRestWord] is the prompt in the box at
+	// the foot of EVERY place at rest, whatever the line under it says.
+	//
+	// AND A SCREEN THAT IS ASKING SOMETHING IS THE MOST INTERACTIVE SURFACE
+	// THERE IS. The box at the foot of a place holds ONE thing at a time, and a
+	// question raised in this workspace takes it: the prompt becomes the ask and
+	// its options (`needs your ok to run bash · 1 allow once · …`), so a window
+	// that arrived and is waiting on a keystroke wears neither foot above. The
+	// engine's own first option and home's hint for the row are the two ways
+	// that screen says so.
+	//
+	// AND THE SWITCHER IS ONE OF THOSE SURFACES. A launch into a project that
+	// already holds a conversation opens on the ranked list rather than on the
+	// resting home foot or a greeting, so a scenario that opens a SECOND window
+	// on one project — which is what answering from another window takes — was
+	// declared dead at forty-five seconds while looking at a perfectly live one.
+	if hit, _ := r.waitForAny(45*time.Second, say(t, "homeFootWord"), say(t, "placeRestWord"),
 		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "setupSkipWord"),
-		say(t, "landingKeysWord"), say(t, "welcomeStarterKeysWord")); hit == "" {
+		say(t, "landingKeysWord"), say(t, "welcomeStarterKeysWord"),
+		say(t, "answersAllowOnce"), say(t, "homeAnswerHint"), say(t, "switcherSectionWord")); hit == "" {
 		t.Fatal("the terminal never reached an interactive surface")
 	}
 	return r

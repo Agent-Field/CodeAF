@@ -856,13 +856,14 @@ type personAsk struct {
 // another lock is holding the lock Interrupt has to be able to take.
 func (a *Agent) waitingOnPerson() personAsk {
 	a.mu.Lock()
-	// AND THE MODEL'S OWN `ask` IS A LANE LIKE ANY OTHER. [Agent.askWaits] is
-	// the turn sitting inside a tool call with nothing to do but wait, which is
-	// the most stopped a session ever is — and it was the one lane missing from
-	// this list, so a conversation stopped on an `ask` told home, the switcher
-	// and every other window that it was `working`. Nothing was drawn for it
-	// anywhere, because [Agent.presenceSnapshot] writes the question only where
-	// this predicate says somebody is being waited on.
+	// THE MODEL'S OWN DOOR IS ONE OF THESE LANES, and leaving it out was a
+	// session stopped on a question telling every other window it was `working`.
+	// [Agent.askWaits] is what the `ask` tool blocks its turn on (tools_ask.go);
+	// the desk already carries the whole question beside it
+	// ([Agent.presenceAskingQuestion]), so the words below are there — it was
+	// only this predicate that did not know to look. Measured in two terminals
+	// on one machine: a question raised in the first, and home in the second
+	// drawing that conversation as `working` with nothing to answer.
 	asked := len(a.consent) > 0 || len(a.connectAsks) > 0 || len(a.harnessAsks) > 0 ||
 		len(a.standingAnswers) > 0 || len(a.askWaits) > 0
 	for _, proposal := range a.taskAnswers {
