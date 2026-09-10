@@ -1917,7 +1917,7 @@ can name neither says `full: not retrievable`** rather than a path that is not t
 
 **A `store:` id is never given as a pointer.** It used to be, whenever memory was on, and
 at that time no tool could fetch a store message by id. `search_conversations` now opens
-a bounded exchange by conversation and message IDs, but it does not replay a whole tool
+a bounded exchange by a source reference, but it does not replay a whole tool
 result. A stub still names the file containing the full bytes. When a turn has made so many calls that even these views
 are too much, the oldest fall back to the same one-line stub described next.
 

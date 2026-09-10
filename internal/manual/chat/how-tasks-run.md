@@ -684,8 +684,9 @@ instructions describe the tools it actually carries:
   task and points you at `/settings`; it is told never to edit a config file instead.
 - **Look up an earlier conversation.** `search_conversations` reads the index in
   its parent's history through a read-only interface, including in nested tasks
-  and forked hands. It can search all indexed places and open an exchange by
-  conversation and message IDs. It cannot write memories through that interface.
+  and forked hands. The task's checker can independently read the same source.
+  It can search all indexed places and open an exchange by
+  an opaque source reference. It cannot write memories through that interface.
   If the parent has memory off and no history source, the tool remains absent.
 - **Start a watch.** `watch` delivers its news into a conversation and a task has
   none. A worker waits with an ordinary foreground `bash` call.

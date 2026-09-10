@@ -62,7 +62,7 @@ func (s *Store) FindConversationMessages(ctx context.Context, terms, sessionID, 
 		args = append(args, strings.TrimSpace(excludeSessionID))
 	}
 	args = append(args, limit)
-	rows, err := s.db.QueryContext(ctx, "SELECT m.seq, m.ts, m.session_id, m.role, "+body+" FROM "+from+" WHERE "+where+" ORDER BY "+order+" LIMIT ?", args...)
+	rows, err := s.db.QueryContext(ctx, "SELECT m.seq, m.ts, m.session_id, m.role, "+body+", ("+body+" = m.body) FROM "+from+" WHERE "+where+" ORDER BY "+order+" LIMIT ?", args...)
 	if err != nil {
 		return nil, fmt.Errorf("find conversation messages: %w", err)
 	}
@@ -92,7 +92,7 @@ func (s *Store) ConversationExchange(ctx context.Context, sessionID string, seq 
 	if strings.TrimSpace(sessionID) != owner {
 		return nil, nil
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT seq, ts, session_id, role, body FROM (
+	rows, err := s.db.QueryContext(ctx, `SELECT seq, ts, session_id, role, body, 1 FROM (
  SELECT * FROM (SELECT seq, ts, session_id, role, body FROM messages WHERE session_id = ? AND seq < ? ORDER BY seq DESC LIMIT ?)
  UNION ALL SELECT seq, ts, session_id, role, body FROM messages WHERE session_id = ? AND seq = ?
  UNION ALL SELECT * FROM (SELECT seq, ts, session_id, role, body FROM messages WHERE session_id = ? AND seq > ? ORDER BY seq LIMIT ?)
@@ -103,7 +103,9 @@ func (s *Store) ConversationExchange(ctx context.Context, sessionID string, seq 
 	hits, err := conversationRows(rows, byteLimit)
 	for i := range hits {
 		if hits[i].Seq != seq {
-			hits[i].Body = bounded(hits[i].Body, ConversationExcerptBytes)
+			original := hits[i].Body
+			hits[i].Body = conversationBound(original, ConversationExcerptBytes)
+			hits[i].Complete = hits[i].Complete && hits[i].Body == original
 		}
 	}
 	return hits, err
@@ -118,7 +120,7 @@ func conversationRows(rows *sql.Rows, byteLimit int) ([]MessageHit, error) {
 	for rows.Next() {
 		var hit MessageHit
 		var timestamp string
-		if err := rows.Scan(&hit.Seq, &timestamp, &hit.SessionID, &hit.Role, &hit.Body); err != nil {
+		if err := rows.Scan(&hit.Seq, &timestamp, &hit.SessionID, &hit.Role, &hit.Body, &hit.Complete); err != nil {
 			return nil, err
 		}
 		parsed, err := parseTime(timestamp)
@@ -126,8 +128,19 @@ func conversationRows(rows *sql.Rows, byteLimit int) ([]MessageHit, error) {
 			return nil, err
 		}
 		hit.Time, hit.Age = parsed, AgeLabel(parsed, now)
-		hit.Body = bounded(hit.Body, byteLimit)
+		original := hit.Body
+		hit.Body = conversationBound(original, byteLimit)
+		hit.Complete = hit.Complete && hit.Body == original
 		hits = append(hits, hit)
 	}
 	return hits, rows.Err()
+}
+
+// A full read preserves the stored whitespace, including code indentation.
+// Only an overlong excerpt needs the store's UTF-8-safe truncation marker.
+func conversationBound(body string, limit int) string {
+	if len(body) <= limit {
+		return body
+	}
+	return bounded(body, limit)
 }

@@ -1140,7 +1140,7 @@ func forkBelt(belt []bare.Tool, dir string, mayWrite bool) []bare.Tool {
 	var out []bare.Tool
 	for _, tool := range belt {
 		switch tool.Name {
-		case "read", "grep", "find", "ls", "read_document", "manual":
+		case "read", "grep", "find", "ls", "read_document", "manual", "search_conversations":
 			out = append(out, tool)
 		case "edit", "write":
 			if mayWrite {

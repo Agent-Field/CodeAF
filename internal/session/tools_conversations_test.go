@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -97,7 +96,7 @@ func TestSearchingConversationsAnswersWithTheWordsTheirAgeAndTheirTranscript(t *
 	if !strings.Contains(out, "'the pricing thread'") {
 		t.Fatalf("the conversation is not named:\n%s", out)
 	}
-	if !strings.Contains(out, "them: ") {
+	if !strings.Contains(out, "user: ") {
 		t.Fatalf("nobody is said to have spoken:\n%s", out)
 	}
 	if !strings.Contains(out, "just now") && !strings.Contains(out, "ago") {
@@ -228,7 +227,7 @@ func TestConversationSearchFindsThePassageAndOpensItsCorrectionByID(t *testing.T
 	if err != nil || len(hits) != 1 {
 		t.Fatalf("hits: %v %v", hits, err)
 	}
-	opened := searchConversations(t, agent, fmt.Sprintf(`{"session_id":"elsewhere","message_id":%d}`, hits[0].Seq))
+	opened := searchConversations(t, agent, conversationReadArgs("elsewhere", hits[0].Seq))
 	if !strings.Contains(opened, "MAPLE-92") {
 		t.Fatalf("cannot open correction: %s", opened)
 	}
@@ -269,7 +268,7 @@ func TestTaskWorkersInheritConversationReadsWithoutMemoryWrites(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer worker.Close()
-		if !beltHas(worker, "search_conversations") || beltHas(worker, "remember") || worker.config.Memory != nil || worker.memory != nil {
+		if !historyCarriesTool(worker, "search_conversations") || historyCarriesTool(worker, "remember") || worker.config.Memory != nil || worker.memory != nil {
 			t.Fatalf("depth %d: worker must carry read-only history, with no memory writer", depth)
 		}
 		if got := searchConversations(t, worker, `{"query":"SILVER"}`); !strings.Contains(got, "SILVER-731") {
@@ -318,10 +317,64 @@ func TestForkedHandsInheritOnlyConversationReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer hand.Close()
-	if !beltHas(hand, "search_conversations") || beltHas(hand, "remember") || hand.config.Memory != nil {
+	if !historyCarriesTool(hand, "search_conversations") || historyCarriesTool(hand, "remember") || hand.config.Memory != nil {
 		t.Fatal("fork did not inherit only history reads")
 	}
 	if got := searchConversations(t, hand, `{"query":"FIR"}`); !strings.Contains(got, "FIR-555") {
 		t.Fatal(got)
 	}
+}
+
+func TestTaskCheckerCanReadConversationEvidenceWithoutWriters(t *testing.T) {
+	parent, brain := brainAgent(t, &scriptedCompleter{}, nil)
+	post(t, brain, "earlier", store.RoleUser, "the checked receipt is BIRCH-333")
+	graph := parent.graph()
+	graph.run = func(*TaskNode) {}
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "read history", brief: "find the receipt", acceptance: "quote it"})
+	checker, err := parent.newAuditAgent(t.TempDir(), graph.node(id), plainDoor(auditReadCommands), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer checker.Close()
+	if !historyCarriesTool(checker, "search_conversations") || historyCarriesTool(checker, "remember") || historyCarriesTool(checker, "write") || checker.config.Memory != nil {
+		t.Fatal("checker must inherit only read access")
+	}
+	for _, tool := range checker.tools {
+		if tool.Name == "search_conversations" {
+			out, failed, err := tool.Execute(context.Background(), json.RawMessage(`{"query":"BIRCH"}`))
+			if err != nil || failed || !strings.Contains(out, "BIRCH-333") {
+				t.Fatalf("checker cannot inspect source: %s %v", out, err)
+			}
+		}
+	}
+}
+
+func TestOpeningAConversationMessagePreservesItsWholeIndexedBody(t *testing.T) {
+	agent, brain := brainAgent(t, &scriptedCompleter{}, nil)
+	body := strings.Repeat("Background paragraph.\n", 300) + "```go\nfinal := \"CEDAR-19\"\n```"
+	msg, err := brain.PostMessage(store.Message{SessionID: "source", Role: store.RoleAgent, Body: body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := searchConversations(t, agent, conversationReadArgs("source", msg.Seq))
+	if !strings.Contains(out, strings.ReplaceAll(body, "\n", "\n    ")) || !strings.Contains(out, "Beginning of indexed conversation reached") || !strings.Contains(out, "End of indexed conversation reached") {
+		t.Fatal(out)
+	}
+}
+
+// Restricted hands replace their initial belt after construction. The actual
+// carried tools, not a fresh call to belt(), are what a model can invoke.
+func historyCarriesTool(agent *Agent, name string) bool {
+	for _, tool := range agent.tools {
+		if tool.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func conversationReadArgs(id string, seq int64) string {
+	raw, _ := json.Marshal(map[string]string{"ref": ConversationReference(id, seq)})
+	return string(raw)
 }

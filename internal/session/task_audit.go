@@ -2770,6 +2770,9 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		judge = named
 	}
 	auditor, err := newAgent(Config{
+		// A checker can independently read the source a worker cited, without
+		// gaining the writable memory store or any additional mutation tool.
+		ConversationHistory: parent.conversationHistory(),
 		// The auditor reads rather than writes, but reading is what makes a
 		// dropping: a long file it looks at is stubbed on its way out of the live
 		// context (stub.go), and with nothing here those bytes landed in the
@@ -2820,6 +2823,9 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 	// the auditor's belt unless somebody remembered this rule. Composed here,
 	// a new tool reaches the auditor only when this list names it.
 	tools := auditBelt(dir, door, parent.droppingsPlace())
+	for _, tool := range auditor.conversationTools() {
+		tools = append(tools, boundedResult(tool, parent.droppingsPlace(), dir))
+	}
 	definitions, err := toolDefinitions(tools)
 	if err != nil {
 		_ = auditor.Close()

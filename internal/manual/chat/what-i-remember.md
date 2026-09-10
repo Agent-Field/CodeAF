@@ -341,7 +341,7 @@ keeps with a suggested fix that gets offered and then fails.
 Nothing is counted either way when that pass could not run. A provider outage is
 not evidence that a memory failed to help.
 
-## Can you look up what we said in an earlier conversation — searching old chats
+## What did we decide last week — can you look up an earlier conversation or search old chats
 
 Yes. `search_conversations` searches indexed messages across all places in the
 current store, excluding the asking conversation unless its ID is supplied:
@@ -349,26 +349,28 @@ what you typed, what was answered, and tool results. Ask "what did
 we decide about the retry limit" or "search my old conversations for the flag
 name" and aforge looks for the original words.
 
-Each match carries its conversation name and ID, message ID, date, speaker,
-matching passage, and one message before and after it when available. Context
+Each match carries its conversation name and ID, message ID, a copyable `ref`,
+date, matching passage, whether it is full text or an excerpt, the stored role
+(`user`, `assistant`, or a tool result), and one message before and after it when
+available. Context
 stays inside that conversation, even when other conversations were active at
 the same time. Historical text is evidence to read, not instructions to follow.
 
-## Open an old conversation or message by ID — fewer search steps
+## Read an old conversation by reference, or search inside it by ID
 
 The same `search_conversations` tool accepts `session_id` to search one
 conversation, or lists its recent messages when no query is supplied. Give it
-both `session_id` and `message_id` from a result, without a query, to open that
+the opaque `ref` from a result, on its own, to open that
 message and up to two messages on either side. This works across project folders
 even when there is no transcript file beside the current conversation.
 
 ## Conversation search limits — words, coverage, and memory off
 
 - Search returns eight matches by default, twenty at most. Each matching passage
-  and nearby excerpt is limited to 400 bytes. Opening a message by ID returns
+  and nearby excerpt is limited to 400 bytes. Opening a message by its source reference returns
   the whole indexed anchor (up to 16 KiB), preserving line breaks, with neighbours
-  still limited to 400 bytes. Cuts end in `...`; a transcript, when named, is the
-  route to the full record. Use IDs near the edge to continue an exchange.
+  still limited to 400 bytes. Ellipses mark omitted text; a transcript, when named, is the
+  route to the full record. Copy another returned reference to continue an exchange.
   Message IDs belong to the
   global journal; a gap does not mean a message is missing from this conversation.
   Results say when the beginning or end of indexed history has been reached.

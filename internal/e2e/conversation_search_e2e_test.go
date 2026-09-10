@@ -56,7 +56,7 @@ func TestConversationSearchLive(t *testing.T) {
 		{"correction", "What launch code did we finally choose in our earlier amber conversation?", "MAPLE-92", 2},
 		{"other_project", "What badge did I pick in our earlier harbour dashboard conversation?", "violet-kestrel-47", 2},
 		{"task_or_chat", "Find my recent harbour dashboard task and tell me which badge I picked.", "violet-kestrel-47", 2},
-		{"open_by_id", fmt.Sprintf("Open conversation %s at message %d and tell me the corrected choice in that exchange.", alpha.ID(), anchor), "MAPLE-92", 2},
+		{"open_by_id", fmt.Sprintf("Open this conversation source and tell me the corrected choice in that exchange: %s", session.ConversationReference(alpha.ID(), anchor)), "MAPLE-92", 2},
 		{"missing", "Search our saved conversations for quasar-zebra-995. If there is no match, say you could not find it; do not guess.", "", 2},
 	}
 	for _, sc := range scenarios {
@@ -121,7 +121,7 @@ func TestConversationSearchInsideLiveTask(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = brain.Close() })
-	_, err = brain.PostMessage(store.Message{SessionID: "earlier-other-project", Role: store.RoleUser, Body: "For the copper rollout the final approval phrase is heron-lilac-731."})
+	source, err := brain.PostMessage(store.Message{SessionID: "earlier-other-project", Role: store.RoleUser, Body: "For the copper rollout the final approval phrase is heron-lilac-731."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,11 +131,12 @@ func TestConversationSearchInsideLiveTask(t *testing.T) {
 		manualConfig(cfg)
 		cfg.Memory = brain
 		cfg.Divide = false
+		cfg.TaskAudit = true
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 	defer cancel()
 	started := time.Now()
-	id, _, _, err := agent.StartTask(ctx, "Look up what we decided in our earlier copper rollout conversation. Write the final approval phrase, who said it, and its conversation and message IDs to decision.txt. Use the original conversation as evidence. Do not guess the phrase.")
+	id, _, _, err := agent.StartTask(ctx, "Look up our earlier copper rollout decision. Save decision.json with five fields: approval_phrase (verbatim), speaker_role (the stored role, not an inferred person name), conversation_id, message_id (numeric), and source_ref (the opaque source reference). Read the original conversation as evidence; do not guess.")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,22 +173,32 @@ func TestConversationSearchInsideLiveTask(t *testing.T) {
 			}
 		}
 	}
-	if searches < 1 || searches > 3 || !receipt {
-		t.Fatalf("worker lookup was absent or took too many calls: calls=%d receipt=%v\nJOURNALS\n%s", searches, receipt, journals.String())
+	if searches < 1 || !receipt {
+		t.Fatalf("worker lookup was absent: calls=%d receipt=%v\nJOURNALS\n%s", searches, receipt, journals.String())
 	}
 	// The task may keep its working copy under the person's configured landing
 	// policy; the delivery assertion follows the task's recorded location.
 	found := false
+	isReceipt := func(raw []byte) bool {
+		var receipt struct {
+			Phrase       string `json:"approval_phrase"`
+			Role         string `json:"speaker_role"`
+			Conversation string `json:"conversation_id"`
+			MessageID    int64  `json:"message_id"`
+			Ref          string `json:"source_ref"`
+		}
+		return json.Unmarshal(raw, &receipt) == nil && receipt.Phrase == "heron-lilac-731" && receipt.Role == "user" && receipt.Conversation == source.SessionID && receipt.MessageID == source.Seq && receipt.Ref == session.ConversationReference(source.SessionID, source.Seq)
+	}
 	filepath.WalkDir(place.Dir, func(path string, d os.DirEntry, err error) error {
-		if err == nil && !d.IsDir() && d.Name() == "decision.txt" {
+		if err == nil && !d.IsDir() && d.Name() == "decision.json" {
 			raw, _ := os.ReadFile(path)
-			if strings.Contains(string(raw), "heron-lilac-731") && strings.Contains(string(raw), "earlier-other-project") {
+			if isReceipt(raw) {
 				found = true
 			}
 		}
 		return nil
 	})
-	if raw, err := os.ReadFile(filepath.Join(ground, "decision.txt")); err == nil && strings.Contains(string(raw), "heron-lilac-731") && strings.Contains(string(raw), "earlier-other-project") {
+	if raw, err := os.ReadFile(filepath.Join(ground, "decision.json")); err == nil && isReceipt(raw) {
 		found = true
 	}
 	if !found {
@@ -200,6 +211,17 @@ func TestConversationSearchInsideLiveTask(t *testing.T) {
 		}
 	}
 	t.Logf("RESULT actual task=%d searches=%d cost=$%.6f models=%v", id, searches, usd, models)
+	// The task may investigate source attribution before writing. Measure
+	// those calls rather than treating a speed target as a correctness gate.
+	if searches > 3 {
+		t.Logf("EFFICIENCY: worker made %d history lookups; the artifact remains grounded", searches)
+	}
+	rows := readTaskRows(t, place.Tasks())
+	for _, row := range rows {
+		if row.ID == id && row.State != string(session.TaskDone) {
+			t.Errorf("task did not pass its completion check: state=%s report=%s", row.State, row.Report)
+		}
+	}
 	_ = agent.Close()
 }
 

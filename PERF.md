@@ -2263,7 +2263,7 @@ state is not journaled. Folder preview decoding remains on its bounded worker po
 `search_conversations` keeps the existing eight default and twenty maximum
 matches. Search passages and neighbouring messages are bounded by
 `store.ConversationExcerptBytes` (400 bytes); a search adds at most one actual
-message on either side from the same conversation. Explicit message-ID reads
+message on either side from the same conversation. Explicit source-reference reads
 return the full indexed anchor, bounded by `store.MaxMessageBytes` (16 KiB),
 plus at most two 400-byte neighbours on each side. They do not read whole
 transcripts or invoke an embedding model. Search tokenization accepts at most

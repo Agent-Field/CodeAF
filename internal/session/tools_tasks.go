@@ -250,7 +250,7 @@ func (a *Agent) taskSearchText(query string, limit int, scope string) string {
 // points at conversations, and only when that reader is on the caller's belt.
 func (a *Agent) taskConversationHint(out string) string {
 	if a.config.hasConversationHistory() && strings.HasPrefix(out, "No task matches ") && !strings.Contains(out, "\n") {
-		out += " If this was a conversation rather than handed-off work, search_conversations searches saved chats across places."
+		out += " If this was a conversation rather than handed-off work, search_conversations searches saved chats across places. A saved memory may suggest the answer but does not locate the original conversation; look up the source before answering."
 	}
 	return out
 }

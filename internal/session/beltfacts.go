@@ -211,7 +211,7 @@ var beltFacts = []beltFact{{
 }, {
 	tools:   []string{"search_conversations"},
 	holds:   Config.hasConversationHistory,
-	present: "- For what was said elsewhere, use `search_conversations` with distinctive words; the same tool opens an exchange by conversation and message IDs. Check surrounding corrections before answering.",
+	present: "- When asked to find a past conversation or report what was said or decided elsewhere, call `search_conversations` BEFORE answering, even if a saved memory suggests the answer. Memories guide the query; source messages establish what was said. Copy a returned ref to read more and check corrections.",
 	absent:  "- What was said in earlier conversations cannot be looked up from here, so answer out of what is in this window rather than reconstructing it.",
 }, {
 	tools:   []string{"watch"},
