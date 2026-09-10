@@ -4035,6 +4035,13 @@ What that does, exactly:
 - **It takes effect on the task's next turn.** The call the worker is in the middle of
   finishes on the model it started on — killing a request in flight would throw away work
   you have already paid and waited for — and everything after it is on the new model.
+- **Unless the work is already being checked, in which case the pick is saved for the next
+  run.** A running task is running across three lives: its own worker, the gate reading
+  what that worker left, and any repair round. Once the gate is reading, the worker has
+  stopped, so there is no next turn for the pick to reach. It is kept the way a finished
+  task's pick is kept — the room reads `next model <id>`, the sidebar heads itself `Next
+  run setup` — and it applies if you continue the work. The model on the row does not move,
+  because that model is the one the work actually ran on.
 - **It moves that task and nothing else.** The conversation stays on its own model, and so
   does every other task. Walk back out with `esc` and the status line is the
   conversation's model again.
@@ -4045,7 +4052,9 @@ What that does, exactly:
   class, otherwise the model the conversation is on. A pick made inside one room is not a
   preference the session learns.
 - **The row, the roster and the finished card all say the new model** from that moment on,
-  and the change survives a restart.
+  and the change survives a restart. A pick that was saved for the next run instead leaves
+  all three naming the model the work ran on, which is what a bill can be reconciled
+  against.
 
 The picker offers the same rows `/model` offers, and it opens with the cursor on the model
 the task is already running — so `enter` confirms rather than changes. `esc` leaves
