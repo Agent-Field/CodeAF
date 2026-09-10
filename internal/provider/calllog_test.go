@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -489,5 +490,48 @@ func TestBothRowsOfACallNameTheRunThatMadeIt(t *testing.T) {
 	// fact, kept in memory so it survives the log being switched off.
 	if got := calllog.CallsFor(run); got != 1 {
 		t.Errorf("the run made one call and reports %d", got)
+	}
+}
+
+// TestARowNamesWhoeverCancelledTheCall is the model-call log's half of the
+// stop-cause fix. `context canceled` is the same eight characters for a
+// person's stop key, a window taking a conversation over and a hedge arm that
+// lost its race, and it was the whole account a healthy 109-second reply left
+// behind when something ended it on 2026-09-09.
+func TestARowNamesWhoeverCancelledTheCall(t *testing.T) {
+	named := errors.New("turn ended: taken over")
+	cut := errors.New("decode stream: " + context.Canceled.Error())
+	wrapped := fmt.Errorf("decode stream: %w", context.Canceled)
+
+	live := context.Background()
+
+	caused, stopCaused := context.WithCancelCause(context.Background())
+	stopCaused(named)
+
+	plain, stopPlain := context.WithCancel(context.Background())
+	stopPlain()
+
+	late, stopLate := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer stopLate()
+
+	for _, test := range []struct {
+		name string
+		ctx  context.Context
+		err  error
+		want string
+	}{
+		{"a named cancel is named", caused, wrapped, "decode stream: context canceled (turn ended: taken over)"},
+		{"an unnamed cancel says only itself", plain, wrapped, "decode stream: context canceled"},
+		{"a deadline is not a door", late, wrapped, "decode stream: context canceled"},
+		{"a live context changes nothing", live, wrapped, "decode stream: context canceled"},
+		// A SENTENCE THAT MERELY READS LIKE ONE IS NOT ONE. The test is
+		// errors.Is and never the words, so an unrelated failure whose text
+		// happens to say `context canceled` is left exactly as it came.
+		{"only a real cancellation is asked about", caused, cut, "decode stream: context canceled"},
+		{"an ordinary failure is untouched", caused, errors.New("upstream said no"), "upstream said no"},
+	} {
+		if got := namedCancel(test.ctx, test.err); got != test.want {
+			t.Errorf("%s: %q, want %q", test.name, got, test.want)
+		}
 	}
 }

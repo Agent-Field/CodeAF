@@ -522,7 +522,7 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 	// of the person who asked for it. The previous conversation is already ended,
 	// by the engine, as part of the swap (internal/remote's Session.swap).
 	if leaving != nil && !a.shared {
-		leaving.Interrupt()
+		leaving.InterruptFor(session.StopByLeaving)
 		if err := leaving.Close(); err != nil {
 			a.note("close failed: " + err.Error())
 		}

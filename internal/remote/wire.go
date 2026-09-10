@@ -321,7 +321,7 @@ const (
 	MethodFollowUp        = "FollowUp"               // SubmitArgs → StreamRef, then "event" frames
 	MethodSteer           = "Steer"                  // SubmitArgs → StreamRef, then "event" frames
 	MethodStopWork        = "StopWork"               // nothing → nothing; stop this conversation, retaining history
-	MethodInterrupt       = "Interrupt"              // nothing → nothing
+	MethodInterrupt       = "Interrupt"              // InterruptArgs, or nothing → nothing
 	MethodCompact         = "Compact"                // nothing → nothing (error carries the failure)
 	MethodClose           = "Close"                  // nothing → nothing
 	MethodModel           = "Model"                  // nothing → string
@@ -913,6 +913,17 @@ type Moved struct {
 }
 
 // SubmitArgs carries Submit and FollowUp.
+// InterruptArgs names the door a stop came through, so that a hosted engine can
+// write down what ended a turn and say one sentence about a reply that never
+// arrived (internal/session's stopcause.go).
+//
+// AN EMPTY DOOR IS A PERSON'S OWN STOP, which is what an older surface that
+// sends no arguments at all means and what it always meant. That is the one
+// direction this may fail in that costs nothing: a stop is still a stop.
+type InterruptArgs struct {
+	Door string `json:"door,omitempty"`
+}
+
 type SubmitArgs struct {
 	Text string `json:"text"`
 	// Standing says the person MARKED this draft as something to keep true

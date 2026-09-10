@@ -1524,7 +1524,14 @@ func (a *Agent) open(ctx context.Context, method string, args any) (<-chan sessi
 // the interface says so, and a key that is pressed to stop something must not
 // itself become a thing that blocks. A dead connection swallows it, which is
 // exactly what a dead connection does to the turn as well.
-func (a *Agent) Interrupt() { _, _ = a.c.call(nil, MethodInterrupt, nil) }
+func (a *Agent) Interrupt() { a.InterruptFor(session.StopByPerson) }
+
+// InterruptFor is the same stop with the door on it, for the machinery stops
+// that are not a person. An engine too old to read the argument sees the stop it
+// always saw.
+func (a *Agent) InterruptFor(door session.StopDoor) {
+	_, _ = a.c.call(nil, MethodInterrupt, InterruptArgs{Door: string(door)})
+}
 
 // StopWork asks the engine to end all work in this conversation and suppress wakes.
 func (a *Agent) StopWork() error {

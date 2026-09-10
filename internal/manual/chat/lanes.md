@@ -197,6 +197,24 @@ that model's thinking, and only the ceiling on silence can end a hung one. That
 is why a model you have been using feels quicker to rescue than one you have
 just picked.
 
+**The ceiling on silence is a ceiling on a still wire.** A model writing
+reasoning is writing, so the clock the ceiling runs on is the time since the
+endpoint last sent anything at all — readable or not. A thought that has been
+arriving steadily for two minutes has never been silent for one second of it,
+and nothing acts on it. The moment the deltas stop, the ceiling starts from
+there and fires exactly where it always did.
+
+Keepalives buy nothing. A router that holds the connection open by saying
+nothing in a well-formed way is proof about the path and about nothing else, so
+a lane that has stopped writing reaches the ceiling however politely it keeps
+the line open.
+
+Before 2026-09-09 that clock ran from the last word you could READ, which is
+none at all during a thought — so every model that thought for longer than the
+ceiling was reported as a stall at exactly the ceiling while it was writing at
+full rate, and one measured turn wrote 6,174 tokens of reasoning in 108 seconds
+and was called slow ten seconds in.
+
 ## Why is it writing one word at a time — it never stopped, it just crawled
 
 A stream does not have to stop completely to need rescuing. Once aforge has
@@ -211,9 +229,11 @@ One slow gap is still only one slow gap. The judgment comes from the run of
 visible gaps, fades over the same time as the ceiling, and clears when the
 stream recovers. A batch containing several visible tokens is counted at its
 per-token rate, so ordinary batching does not look like a crawl.
-Hidden thinking does not count as a visible word; a model that
-interleaves long thoughts between single words can therefore be rescued after
-a ceiling of text arriving too slowly.
+Hidden thinking does not count as a visible word, so a model that interleaves
+long thoughts between single words can still be rescued this way — but only
+once its MEASURED visible rate has collapsed. A pause between words is not
+enough on its own, however long, as long as the endpoint is still writing
+something.
 
 If aforge has never measured a visible rate for that lane, it invents none and
 cannot judge a crawl this way. Only a period with no visible progress long

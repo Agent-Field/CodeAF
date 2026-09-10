@@ -622,7 +622,7 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 				// agent's lock a thousand times to learn the same figure.
 				if steps >= limit || (item.Rails.PerRunUSD > 0 && agent.Usage().CostUSD >= item.Rails.PerRunUSD) {
 					capped = true
-					agent.Interrupt()
+					agent.InterruptFor(StopByWorkStopped)
 				}
 			case EventToolFailed:
 				if line := standingRefusal(event); line != "" && needs == "" {
