@@ -792,15 +792,32 @@ let go · <name> — quiet a while — open it again from home
 let go · <name> — quiet a while — its work keeps running
 ```
 
-The second sentence is a hosted conversation: its engine keeps the turn, the tasks and
-the journal. An in-process one is closed, because nothing else could run it. Either way the
-transcript is on disk and every door — home, the switcher, search — opens it again. A
-window left completely alone keeps what it holds; opening another conversation, or one
-of the others finishing, is what collects a quiet one.
+The second sentence means the work keeps running on its engine. Otherwise the
+conversation is closed, because nothing else could run it. Either way the transcript is
+on disk and every door — home, the switcher, search — opens it again. A window left
+completely alone keeps what it holds; opening another conversation, or one of the
+others finishing, is what collects a quiet one.
 
 Each conversation that is still held is fully alive whether or not you are looking at it.
 `/quit` closes the one in front. `ctrl+k` shows the first twelve as rows; home's
 `where you were` panel reaches every one. `/status` carries the count as `2 open · 1 waiting`.
+
+## let go · quiet a while — a conversation this window let go of, too many open
+
+**A conversation you had open was let go of because it had been quiet and you had not
+looked at it.** Past twelve open, the one left longest ago — idle fifteen minutes, nothing
+turning, nothing waiting, no draft — is let go of so this window can stop holding it.
+
+The note in the conversation that stayed in front is one of:
+
+```
+let go · <name> — quiet a while — open it again from home
+let go · <name> — quiet a while — its work keeps running
+```
+
+The second means the work keeps running on its engine. Either way the transcript is on
+disk; home, the switcher and search open it again. Opening another is never refused.
+*How many conversations can one terminal hold* is the rest of the rule.
 
 ## Enter does nothing on a row — the folder is gone
 
