@@ -56,8 +56,19 @@ func (recentPanel) rows(in *homeGridInput) homePanelRows {
 // last thing its person said on the line under it — read from the journal's
 // tail on the beat (homecardread.go), never on a draw, and nothing at all until
 // that reading has come back.
+//
+// A BRAND-NEW LAUNCH IS ONE LINE. `new conversation` with `here` is the shell
+// this launch minted, and it keeps its row because it IS this window — but
+// until its person has said something in it there is no last thing said, and
+// the only fact about it is where it is. The record of the first message is the
+// row's own time ([session.SessionRow.At] is the person's last word, and zero on
+// a shell nobody has spoken in), so no tail read off the journal can put a line
+// under it first.
 func recentOwnCell(row switcherRow, in *homeGridInput) *homeCell {
-	said := switcherFirstLine(in.last[row.session.Transcript].LastUser)
+	said := ""
+	if !row.session.At.IsZero() {
+		said = switcherFirstLine(in.last[row.session.Transcript].LastUser)
+	}
 	return &homeCell{panel: panelRecent, title: row.title, right: switcherMarginWord(row), hold: true, bold: true, sub: said}
 }
 
