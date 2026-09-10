@@ -17,5 +17,5 @@ the same four bytes drift into two laws, and a trailer spelled two ways is
 provenance nobody can count. It is conditional in the chat — absent with the row
 off, absent in a fork's hand, whose `bash` is read-only and could not commit if
 it wanted to — and it cost the fixed prefix 586 bytes, of which 207 are the
-trailer and the footer themselves. The prefix is 47,344, which is 656 under a
+trailer and the footer themselves. The prefix is 45,155, which is 2,845 under a
 budget nothing raised.

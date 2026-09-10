@@ -3039,10 +3039,10 @@ func boundedResult(tool bare.Tool, droppings Place, workspace string) bare.Tool 
 		pointer, fileErr := writeStub(droppings, workspace, text)
 		if fileErr != nil || pointer == "" {
 			footer := "\n[cut here; full output could not be saved — ask for a narrower path, pattern, or range]"
-			return capBytes(text, auditResultLimit-len(footer)-32) + footer, isError, nil
+			return capBytes(text, auditResultLimit-len(footer)-capMarkerRoom) + footer, isError, nil
 		}
 		footer := fmt.Sprintf("\n[cut here; whole output: %s — use read with offset/limit]", pointer)
-		return capBytes(text, auditResultLimit-len(footer)-32) + footer, isError, nil
+		return capBytes(text, auditResultLimit-len(footer)-capMarkerRoom) + footer, isError, nil
 	}
 	return tool
 }

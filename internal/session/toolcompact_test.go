@@ -395,6 +395,44 @@ func TestAReducedViewCountsTheBytesItCutExactly(t *testing.T) {
 	}
 }
 
+// THE TAIL OF A COMPACTED RESULT IS THE TOOL'S OWN LAST LINE, NEVER THE JOB
+// FOOTER. A command's verdict is at the end of it, which is exactly where
+// jobfooter.go appends the state of the outstanding jobs — so a reduced view of
+// a 40 KB build log ended in a background job's elapsed time and the model never
+// saw whether the build passed. The footer is stale by the time this view is
+// read anyway; the fresh copy is on the result the model is reading now.
+func TestAReducedViewEndsInTheToolsOwnLastLineAndNotTheJobFooter(t *testing.T) {
+	text := headedOutput(7) + "\n\n[job 3] running 12m03s · last: case 41/120 scored"
+	view := reducedResultView("bash", text, "logs/stubs/9c2f.txt")
+	if strings.Contains(view, "[job 3] running") {
+		t.Fatalf("the compacted view carried the job footer: %.300q", view)
+	}
+	if !strings.HasSuffix(view, strings.TrimSpace(lastLineOf(headedOutput(7)))) {
+		t.Fatalf("the view does not end in the tool's own last line: %.300q", view)
+	}
+	// AND THE SIZE IT REPORTS IS THE RESULT'S, not the result plus a footer.
+	if !strings.Contains(view, fmt.Sprintf("%d bytes ·", len(strings.TrimSpace(headedOutput(7))))) {
+		t.Fatalf("the view counted the footer into the result's size: %.300q", view)
+	}
+}
+
+// The stub line quotes what the TOOL said. A result whose own output was empty
+// used to quote a background job's elapsed time as its outcome.
+func TestAStubQuotesTheToolAndNotTheJobFooter(t *testing.T) {
+	line := stubLine("bash", "\n\n[job 3] running 12m03s · last: case 41/120 scored", "store:412")
+	if strings.Contains(line, "job 3") {
+		t.Fatalf("the stub quoted the job footer as the outcome: %q", line)
+	}
+	if !strings.Contains(line, "0 bytes") {
+		t.Fatalf("the stub counted the footer into the result's size: %q", line)
+	}
+}
+
+func lastLineOf(text string) string {
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	return lines[len(lines)-1]
+}
+
 // A SESSION THAT CAN NAME NOWHERE SAYS SO. A pointer at a store this session
 // never had, or a journal it is not writing, costs the model a call and returns
 // nothing — the one failure stub.go's law forbids.

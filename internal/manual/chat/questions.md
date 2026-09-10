@@ -112,6 +112,13 @@ reading as something you said.
 When the autonomy dial takes a recommendation, the record identifies the answer
 as `aforge, on your settings`; it never makes that answer look like yours.
 
+**The whole record is on disk; the model is handed the newest few.** What rides at
+the top of every request is the newest eight decisions plus one line saying how
+many older ones `decisions.jsonl` still holds — a record that grew all day would
+be re-sent, and paid for, on every message you send. Nothing is lost: the file
+keeps every line, and the `already decided:` refusal above is checked against all
+of them however old.
+
 ## Why did it not ask me, or why did it go ahead by itself?
 
 The model is instructed to ask last. It first reads `the record`, then states a
