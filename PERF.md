@@ -2257,3 +2257,11 @@ rows). A message expands at most one attachment at a time. The shared media cont
 carry file ownership independently of their label, and original-file opening runs
 outside the paint loop through the existing local or hosted mirror route. Display
 state is not journaled. Folder preview decoding remains on its bounded worker pool.
+
+## Optional progress narration
+
+Tool execution does not depend on visible assistant narration. The former six/twelve
+quiet-batch advisories and three-held-reply stop are removed; useful observations may
+continue without progress notes. Actual loop/repetition limits, provider retries, task
+budgets, cancellation, completion checks and handoffs are unchanged. This is an isolated
+behavioral experiment; no benchmark improvement is claimed.

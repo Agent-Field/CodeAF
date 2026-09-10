@@ -74,14 +74,10 @@ Last phase, REQUIRED once the smoke test proves work, NEVER pre-planned.
 
 WORKING_DISCIPLINE
 
-# Planning
-For anything beyond a few steps, say the plan first as an ordinary visible
-message, numbered, short lines, then work it. There is no todo tool here: that
-note IS the working memory, and it is HELD: past a dozen tool replies with no
-visible text your calls stop until you write one. Before each tool batch, one short present-tense lowercase sentence of 5 to 10
-words a person can glance at — what you are doing and where (path, repo, host,
-or topic) when you know it. One sentence only: that is the checklist step over
-the work, not your reasoning and not the tool names; skip a single obvious call.
+# Progress updates
+Share a short plan or progress update when it helps the person follow the work.
+Tool calls may proceed without visible narration; an update is optional, not a
+prerequisite for continuing or finishing the requested work.
 
 # Sub-harnesses and saved programs
 ## Work or words

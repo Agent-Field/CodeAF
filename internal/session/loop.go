@@ -859,38 +859,6 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		partial.reset()
 		usedTools = true
 
-		// ── THE ENFORCED RUNG OF A PROCESS RULE (processrule.go) ──
-		//
-		// THIS IS THE ONE BOUNDARY WHERE BOTH FACTS ARE IN HAND: the batch the
-		// model wants run, and whether it wrote anything visible beside it. The
-		// assistant message is already in the transcript and nothing has reached
-		// the world yet, so a rule that has been advised and ignored can answer
-		// the submission with its demand INSTEAD of executing it — which is the
-		// difference between a rule and a suggestion, and the thing the second
-		// silent note had been promising in words it could not keep.
-		//
-		// A COMPLYING MODEL NEVER REACHES THE CALL. Every rule passes a
-		// submission that meets it, and the write-your-notes rule only holds
-		// anything after its advisory has been said twice into an unbroken
-		// silence — so this is a map lookup on the ordinary path.
-		//
-		// IT IS A LINE HERE RATHER THAN A PRE-ACTION HOOK for [Agent.checkpointRound]'s
-		// reason: it may STOP something, and hooks.go's law reserves that for the
-		// loop that owns the turn's usage, request and meter.
-		if hold, held := episode.holdSubmission(submission{calls: calls, visibleText: visibleText}); held {
-			if hold.stop {
-				return a.stopForProcessRule(ctx, hub, calls, hold, &turn, started, model)
-			}
-			a.withholdSubmission(hub, calls, hold)
-			// The reads this response started early are dropped exactly as a
-			// provider retry drops them, and for the same reason the early-start
-			// law admits read-only calls only: a discarded read costs the work and
-			// nothing else, and the model must not be handed the answer to a call
-			// the harness has just refused to run.
-			warm.reset()
-			continue
-		}
-
 		results := a.runToolsWarm(toolCtx, episode, calls, hub, warm)
 		// AND A TURN THIS SESSION HAS ALREADY LET GO OF STOPS HERE, WRITING
 		// NOTHING. [waitBatch] is the one wait in this loop that can return with

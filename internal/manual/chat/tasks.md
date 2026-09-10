@@ -1295,7 +1295,7 @@ the card, the rail, the roster and in the chat:
 | the worker repeated itself and its loop guard ended the turn | `incomplete · went in circles` |
 | the work it depended on did not land | `incomplete · was blocked by another task` |
 | it used up the steps it was given | `incomplete · ran out of steps` |
-| it would not write its notes down | `incomplete · would not write its notes down` |
+| historical record: it would not write its notes down | `incomplete · would not write its notes down` |
 | its brief no longer described the world | `incomplete · its brief went stale` |
 | it would not take a step it was asked to | `incomplete · would not take a step it was asked to` |
 | a check looked and named what is missing | `incomplete · the check found gaps: <the gaps>` |

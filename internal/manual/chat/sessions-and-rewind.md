@@ -791,9 +791,9 @@ error's fix is remembered by, because that one outlives the conversation.
 
 Some things live only in memory, and a resumed conversation does not have them.
 
-- **The model's thinking.** Only the text of a message is written to the journal. The
-  reasoning behind a reply is not kept, so a resumed conversation shows you the answers, not
-  the thinking that produced them.
+- **Unfinished thinking.** Completed provider reasoning continuation data is saved
+  with its assistant message for compatible follow-up requests. Thinking from an
+  unfinished attempt is not a completed continuation. Visible notes are optional.
 - **Anything mid-turn.** A line is written when a message **completes**. A reply that was
   still streaming when the process died is not in the file.
 - **Image bytes.** Pictures are journaled as a path and a digest. If the file has moved or

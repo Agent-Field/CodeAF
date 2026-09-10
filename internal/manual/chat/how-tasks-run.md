@@ -2550,11 +2550,9 @@ task's card. They are three kinds of news:
     then run this one again on top of it.
   - `ran out of steps`: a step, no-progress or time limit fired and the work did
     not hold when it was checked.
-  - `would not write its notes down`: the worker was asked twice to write down
-    what it was doing, its tool calls were **held** until it did, and it sent three more
-    replies with nothing visible in them — so the turn ended. Whatever it had already done
-    is on the branch; the thinking behind it was never written anywhere, which is why the
-    run stopped rather than carried on.
+  - `would not write its notes down`: an older record from the retired mandatory
+    progress-note rule. New workers are not stopped for omitting narration.
+
 ## Why does it say not accepted under my task — the check named gaps, or you said it was not right
 
 Two endings mean **something was found**, rather than something having happened to the
@@ -2584,26 +2582,13 @@ unless something actually broke. The mark survives in two places that are not ro
 warning on a landing card whose work could not be delivered, and a task **mentioned** in
 prose.
 
-## Being quiet is not going in circles — the [silent] notes, held tool calls, and why a quiet worker is not stopped for it
+## Being quiet is not going in circles — optional progress notes and old held calls
 
-**Being quiet is not going in circles**, and a task that was working cannot land here for
-it. A worker committing, pushing and writing files says very little, and the `[silent]`
-notes that ask it to write its plan down spend none of the loop guard's limit, so no number
-of them can make a row say `went in circles`. Neither does a shell command that changed the
-working folder: that is counted as work, the same as an `edit` or a `write`.
-
-A worker that ignores those notes twice over is a different story, and it is not this row.
-After the second `[silent]` note its tool calls are **held** until it writes something
-visible — every call in the reply is answered `[held] Nothing was run this step…` and none
-of them runs — and if it sends only tool calls three more times its turn ends with
-`stopped here · would not write its notes down, so what this turn worked out is not on the record`.
-That is not circling, and the row does not say it is. **It is written up in its own
-words**: the rail reads `incomplete · would not write its notes down`, dim like every
-other halted row; the landing note reads
-`task 7 incomplete: <title> · would not write its notes down`; and the record that grades
-the model on the work says it was `stopped`, not that it did not finish. The run settles on whatever it
-had actually done and the branch is kept like any other. The keys page has the whole ladder
-under "Why did aforge stop running tool calls, and what is a [held] answer?".
+Progress notes are optional for workers as well as the main conversation. A useful tool
+call does not need visible narration to run. Quiet work does not create `[silent]` notes,
+`[held]` replies or new `would not write its notes down` endings. Old task records retain
+those labels so their history remains readable. Actual repeated calls, invalid arguments,
+repeated errors and observations bringing no new information still use the loop guard.
 
 If a row says `went in circles`, the worker had genuinely stopped making progress, and its
 transcript shows what it kept repeating.

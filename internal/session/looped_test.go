@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -85,23 +84,6 @@ func transcriptNotes(a *Agent) []string {
 			continue
 		}
 		if text := messageContentText(message); strings.HasPrefix(text, "[stuck]") {
-			notes = append(notes, text)
-		}
-	}
-	return notes
-}
-
-// silentTranscriptNotes is every externalize-your-plan note the silent rule
-// left in the transcript.
-func silentTranscriptNotes(a *Agent) []string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	var notes []string
-	for _, message := range a.messages {
-		if message.Role != "user" {
-			continue
-		}
-		if text := messageContentText(message); strings.HasPrefix(text, "[silent]") {
 			notes = append(notes, text)
 		}
 	}
@@ -219,116 +201,7 @@ func TestTheSameErrorThreeTimesIsNudged(t *testing.T) {
 	}
 }
 
-// ── the silent-streak rule ─────────────────────────────────────────────────
-
-// Six distinct successful reads are exactly the case the identity rules cannot
-// see: every call is new, but the model has carried no visible plan between
-// steps. The sixth batch asks it to write that plan down.
-func TestSixSilentToolBatchesAreNudged(t *testing.T) {
-	steps := make([]step, 0, silentStreakLimit+1)
-	for index := 0; index < silentStreakLimit; index++ {
-		id, arguments := fmt.Sprintf("read-%d", index), fmt.Sprintf(`{"path":"file-%d.go"}`, index)
-		steps = append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolResponse(id, "read", arguments), nil
-		})
-	}
-	steps = append(steps, func(context.Context, []ai.Message) (*ai.Response, error) {
-		return textResponse("done"), nil
-	})
-	completer := &scriptedCompleter{steps: steps}
-	agent := loopAgent(t, completer, countingTool("read", make(chan string, 8), nil))
-
-	events, err := agent.Submit(context.Background(), "go")
-	if err != nil {
-		t.Fatalf("Submit: %v", err)
-	}
-	fired := nudgeEvents(collect(t, events))
-	if len(fired) != 1 {
-		t.Fatalf("nudges: got %d, want 1", len(fired))
-	}
-	if fired[0].Count != silentStreakLimit || !strings.HasPrefix(fired[0].Hint, "silent:") {
-		t.Fatalf("silent nudge: count=%d hint=%q", fired[0].Count, fired[0].Hint)
-	}
-	notes := silentTranscriptNotes(agent)
-	if len(notes) != 1 || !strings.Contains(notes[0], "reasoning between steps is not saved") {
-		t.Fatalf("silent note does not explain the lost fact: %v", notes)
-	}
-}
-
-func TestVisibleTextResetsTheSilentStreak(t *testing.T) {
-	watch := newLoopWatch()
-	observe := func(index int, visible bool) bool {
-		call := ai.ToolCall{ID: fmt.Sprintf("r%d", index), Function: ai.ToolCallFunction{
-			Name: "read", Arguments: fmt.Sprintf(`{"path":"%d"}`, index)}}
-		_, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: fmt.Sprintf("file %d", index)}}, visible)
-		return fired
-	}
-	for index := 0; index < silentStreakLimit-1; index++ {
-		if observe(index, false) {
-			t.Fatalf("nudged on silent batch %d", index+1)
-		}
-	}
-	if observe(silentStreakLimit-1, true) {
-		t.Fatal("a batch with visible text nudged")
-	}
-	for index := silentStreakLimit; index < 2*silentStreakLimit-1; index++ {
-		if observe(index, false) {
-			t.Fatalf("the streak survived visible text and nudged on batch %d", index+1)
-		}
-	}
-}
-
-func TestFileWritingProgressResetsTheSilentStreak(t *testing.T) {
-	watch := newLoopWatch()
-	index := 0
-	for cycle := 0; cycle < 2; cycle++ {
-		for silent := 0; silent < silentStreakLimit-1; silent++ {
-			call := ai.ToolCall{ID: fmt.Sprintf("r%d", index), Function: ai.ToolCallFunction{
-				Name: "read", Arguments: fmt.Sprintf(`{"path":"%d"}`, index)}}
-			index++
-			if _, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: fmt.Sprintf("file %d", index)}}, false); fired {
-				t.Fatalf("nudged before write progress in cycle %d", cycle+1)
-			}
-		}
-		write := ai.ToolCall{ID: fmt.Sprintf("w%d", cycle), Function: ai.ToolCallFunction{
-			Name: "write", Arguments: fmt.Sprintf(`{"path":"%d","content":"done"}`, cycle)}}
-		if _, fired := watch.observe([]ai.ToolCall{write}, []toolResult{{text: "wrote it"}}, false); fired {
-			t.Fatalf("successful write nudged in cycle %d", cycle+1)
-		}
-	}
-}
-
-func TestThirtySilentBatchesClimbAtSixAndTwelveAndNoFurther(t *testing.T) {
-	watch := newLoopWatch()
-	var rounds []int
-	var notes []string
-	for index := 0; index < 30; index++ {
-		call := ai.ToolCall{ID: fmt.Sprintf("r%d", index), Function: ai.ToolCallFunction{
-			Name: "read", Arguments: fmt.Sprintf(`{"path":"%d"}`, index)}}
-		looping, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: fmt.Sprintf("file %d", index)}}, false)
-		if fired {
-			rounds = append(rounds, index+1)
-			notes = append(notes, nudgeNote(looping))
-		}
-	}
-	want := []int{silentThreshold(0), silentThreshold(1)}
-	if !slices.Equal(rounds, want) {
-		t.Fatalf("silent nudge rounds = %v, want %v", rounds, want)
-	}
-	// AND THE SECOND RUNG PROMISES WHAT NOW HAPPENS. It is the rung where advice
-	// becomes enforcement (processrule.go): the turn loop holds the next
-	// tool-calls-only submission rather than running it, so the sentence saying so
-	// is the one thing this note may claim.
-	if !strings.Contains(notes[1], "your tool calls are held") {
-		t.Fatalf("second note did not say the tools are held: %q", notes[1])
-	}
-	if strings.Contains(strings.Join(notes, " "), "hand the turn over") {
-		t.Fatalf("a silent note still promises a hand-off: %v", notes)
-	}
-	if watch.nudges != 0 {
-		t.Fatalf("thirty silent batches spent %d of the hand-off count, want 0", watch.nudges)
-	}
-}
+// ── repeated observations ──────────────────────────────────────────────────
 
 // Distinct calls can still repeat one fact. Empty answers make the ledger's
 // judgement unambiguous: none of the six rounds brought back a fresh line.
@@ -338,7 +211,7 @@ func TestDistinctCallsThatReadNothingNewAreNudged(t *testing.T) {
 	for round := 0; round < noNewInformationLimit+1; round++ {
 		call := ai.ToolCall{ID: fmt.Sprintf("r%d", round), Function: ai.ToolCallFunction{
 			Name: "bash", Arguments: fmt.Sprintf(`{"command":"git show file | grep pattern-%d"}`, round)}}
-		if looping, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: ""}}, true); fired {
+		if looping, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: ""}}); fired {
 			notes = append(notes, nudgeNote(looping))
 		}
 	}
@@ -351,12 +224,12 @@ func TestDistinctCallsThatReadNothingNewAreNudged(t *testing.T) {
 	}
 }
 
-func TestAFreshWriteResetsSilentAndNoNewInformationStreaks(t *testing.T) {
+func TestAFreshWriteResetsNoNewInformationStreaks(t *testing.T) {
 	watch := newLoopWatch()
 	read := func(round int) bool {
 		call := ai.ToolCall{ID: fmt.Sprintf("r%d", round), Function: ai.ToolCallFunction{
 			Name: "bash", Arguments: fmt.Sprintf(`{"command":"empty-%d"}`, round)}}
-		_, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: ""}}, false)
+		_, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: ""}})
 		return fired
 	}
 	for round := 0; round < noNewInformationLimit-1; round++ {
@@ -366,7 +239,7 @@ func TestAFreshWriteResetsSilentAndNoNewInformationStreaks(t *testing.T) {
 	}
 	write := ai.ToolCall{ID: "w", Function: ai.ToolCallFunction{
 		Name: "write", Arguments: `{"path":"notes.md","content":"new"}`}}
-	if _, fired := watch.observe([]ai.ToolCall{write}, []toolResult{{text: "wrote notes.md"}}, false); fired {
+	if _, fired := watch.observe([]ai.ToolCall{write}, []toolResult{{text: "wrote notes.md"}}); fired {
 		t.Fatal("the fresh write nudged")
 	}
 	for round := noNewInformationLimit - 1; round < 2*(noNewInformationLimit-1); round++ {
@@ -381,13 +254,13 @@ func TestHarnessMadeBatchesDoNotAdvanceAnyStreak(t *testing.T) {
 	for round := 0; round < 30; round++ {
 		call := ai.ToolCall{ID: fmt.Sprintf("h%d", round), Function: ai.ToolCallFunction{
 			Name: "bash", Arguments: fmt.Sprintf(`{"command":"refused-%d"}`, round)}}
-		if _, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: "refused", harness: true}}, false); fired {
+		if _, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: "refused", harness: true}}); fired {
 			t.Fatalf("the harness's own answer nudged at round %d", round+1)
 		}
 	}
-	if watch.silentStreak != 0 || watch.noNewStreak != 0 || watch.nudges != 0 {
-		t.Fatalf("harness batches changed the watch: silent=%d no-new=%d nudges=%d",
-			watch.silentStreak, watch.noNewStreak, watch.nudges)
+	if watch.noNewStreak != 0 || watch.nudges != 0 {
+		t.Fatalf("harness batches changed the watch: no-new=%d nudges=%d",
+			watch.noNewStreak, watch.nudges)
 	}
 }
 
@@ -468,35 +341,35 @@ func TestLoopWatchNamesASignatureThenClimbsOnRepeatedEvidence(t *testing.T) {
 	}
 
 	for attempt := 1; attempt <= 2; attempt++ {
-		if _, fired := watch.observe([]ai.ToolCall{call}, ok(call), true); fired {
+		if _, fired := watch.observe([]ai.ToolCall{call}, ok(call)); fired {
 			t.Fatalf("nudged after %d identical calls, want %d", attempt, loopRepeats)
 		}
 	}
-	looping, fired := watch.observe([]ai.ToolCall{call}, ok(call), true)
+	looping, fired := watch.observe([]ai.ToolCall{call}, ok(call))
 	if !fired || looping.count != 3 || looping.nth != 1 {
 		t.Fatalf("third identical call: fired=%v count=%d nth=%d", fired, looping.count, looping.nth)
 	}
 
 	// SAME ONCE IS NOT ENOUGH. The model has been told; one more repetition is
 	// not yet evidence that the telling failed.
-	if _, fired := watch.observe([]ai.ToolCall{call}, ok(call), true); fired {
+	if _, fired := watch.observe([]ai.ToolCall{call}, ok(call)); fired {
 		t.Fatal("one repetition after a nudge escalated; the ladder needs repeated evidence")
 	}
 	// SAME TWICE MORE IS. And the streak resets with the escalation, so the next
 	// rung costs the same evidence again rather than firing every step.
-	second, fired := watch.observe([]ai.ToolCall{call}, ok(call), true)
+	second, fired := watch.observe([]ai.ToolCall{call}, ok(call))
 	if !fired || second.nth != 2 {
 		t.Fatalf("the second rung: fired=%v nth=%d, want true/2", fired, second.nth)
 	}
-	if _, fired := watch.observe([]ai.ToolCall{call}, ok(call), true); fired {
+	if _, fired := watch.observe([]ai.ToolCall{call}, ok(call)); fired {
 		t.Fatal("the ladder climbed on a single repetition after escalating")
 	}
-	third, fired := watch.observe([]ai.ToolCall{call}, ok(call), true)
+	third, fired := watch.observe([]ai.ToolCall{call}, ok(call))
 	if !fired || third.nth != 3 {
 		t.Fatalf("the third rung: fired=%v nth=%d, want true/3", fired, third.nth)
 	}
 	for attempt := 0; attempt < 3; attempt++ {
-		if _, fired := watch.observe([]ai.ToolCall{call}, ok(call), true); fired {
+		if _, fired := watch.observe([]ai.ToolCall{call}, ok(call)); fired {
 			t.Fatal("the watch produced a fourth nudge after its terminal signal")
 		}
 	}
@@ -515,14 +388,14 @@ func TestLoopWatchGivesADifferentLoopItsOwnNudge(t *testing.T) {
 	}
 
 	for attempt := 1; attempt <= 3; attempt++ {
-		watch.observe([]ai.ToolCall{call}, ok(call), true)
+		watch.observe([]ai.ToolCall{call}, ok(call))
 	}
 	for attempt := 1; attempt <= 2; attempt++ {
-		if _, fired := watch.observe([]ai.ToolCall{other}, ok(other), true); fired {
+		if _, fired := watch.observe([]ai.ToolCall{other}, ok(other)); fired {
 			t.Fatalf("nudged after %d calls of the second loop", attempt)
 		}
 	}
-	second, fired := watch.observe([]ai.ToolCall{other}, ok(other), true)
+	second, fired := watch.observe([]ai.ToolCall{other}, ok(other))
 	if !fired || second.nth != 2 {
 		t.Fatalf("second loop: fired=%v nth=%d, want true/2", fired, second.nth)
 	}
@@ -547,7 +420,7 @@ func TestForwardProgressResetsTheBackwardStreak(t *testing.T) {
 	}
 	observe := func(n int) (nudge, bool) {
 		calls, results := failing(n)
-		return watch.observe(calls, results, true)
+		return watch.observe(calls, results)
 	}
 
 	observe(1)
@@ -561,7 +434,7 @@ func TestForwardProgressResetsTheBackwardStreak(t *testing.T) {
 
 	// A successful call the turn has not been nudged about: forward evidence.
 	progress := ai.ToolCall{ID: "ok", Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"x"}`}}
-	watch.observe([]ai.ToolCall{progress}, []toolResult{{text: "the file"}}, true)
+	watch.observe([]ai.ToolCall{progress}, []toolResult{{text: "the file"}})
 
 	if _, fired := observe(5); fired {
 		t.Fatal("the streak survived forward progress: the fifth failure escalated on one repetition")
@@ -579,14 +452,14 @@ func TestABatchThatAlsoProgressedDoesNotEscalate(t *testing.T) {
 	call := ai.ToolCall{ID: "1", Function: ai.ToolCallFunction{Name: "touch", Arguments: `{"path":"a"}`}}
 	ok := []toolResult{{text: "fine"}}
 	for attempt := 1; attempt <= 3; attempt++ {
-		watch.observe([]ai.ToolCall{call}, ok, true)
+		watch.observe([]ai.ToolCall{call}, ok)
 	}
 
 	progress := ai.ToolCall{ID: "2", Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"x"}`}}
 	both := []ai.ToolCall{call, progress}
 	results := []toolResult{{text: "fine"}, {text: "the file"}}
 	for attempt := 1; attempt <= 3; attempt++ {
-		if _, fired := watch.observe(both, results, true); fired {
+		if _, fired := watch.observe(both, results); fired {
 			t.Fatalf("a batch that also progressed escalated (batch %d)", attempt)
 		}
 	}
@@ -598,9 +471,9 @@ func TestOneBatchSaysOneThing(t *testing.T) {
 	call := ai.ToolCall{ID: "1", Function: ai.ToolCallFunction{Name: "build", Arguments: "{}"}}
 	failed := []toolResult{{text: "undefined: Frobnicate", isError: true}}
 
-	watch.observe([]ai.ToolCall{call}, failed, true)
-	watch.observe([]ai.ToolCall{call}, failed, true)
-	looping, fired := watch.observe([]ai.ToolCall{call}, failed, true)
+	watch.observe([]ai.ToolCall{call}, failed)
+	watch.observe([]ai.ToolCall{call}, failed)
+	looping, fired := watch.observe([]ai.ToolCall{call}, failed)
 	if !fired {
 		t.Fatal("three identical failing calls did not nudge")
 	}
@@ -614,72 +487,17 @@ func TestOneBatchSaysOneThing(t *testing.T) {
 
 // ── silence is hygiene, not stuckness ───────────────────────────────────────
 
-// THE MEASURED SHAPE, REPLAYED. A worker fixing two code-scanning findings was
-// stopped with `this turn is going in circles`, and its row said "went in
-// circles". Its last six calls before the cut were `commit-tree`, `write-tree`,
-// a second commit, a ref update, a log and a cleanup: all distinct, all
-// succeeding, with three visible notes written in the minute before. What ended
-// it was the THIRD [silent] note — two early ones plus one late one adding up
-// to the hand-off ceiling.
-//
-// So: the notes still arrive, and none of them may spend the count.
-func TestTheJournalsSilentCommitPhaseIsNotAHandOff(t *testing.T) {
+// Distinct successful observations do not spend the repetition budget.
+func TestUsefulObservationsDoNotSpendTheLoopBudget(t *testing.T) {
 	watch := newLoopWatch()
-	plumbing := []string{
-		"git write-tree", "git commit-tree -p HEAD -m fix", "git commit-tree -p HEAD -m docs",
-		"git update-ref refs/heads/work", "git log --oneline -5", "rm -rf /tmp/scratch",
-	}
-	round := 0
-	silent := func() (nudge, bool) {
-		command := plumbing[round%len(plumbing)]
-		call := ai.ToolCall{ID: fmt.Sprintf("g%d", round), Function: ai.ToolCallFunction{
-			Name: "bash", Arguments: fmt.Sprintf(`{"command":%q}`, fmt.Sprintf("%s # %d", command, round))}}
-		round++
-		return watch.observe([]ai.ToolCall{call}, []toolResult{{text: fmt.Sprintf("ok %d", round)}}, false)
-	}
-
-	notes := 0
-	for range 30 {
-		if looping, fired := silent(); fired {
-			notes++
-			if !looping.silent {
-				t.Fatalf("a distinct successful call fired a stuck rule: %q", loopRule(looping))
-			}
-			if looping.nth != 0 {
-				t.Fatalf("silent note %d booked nth=%d, want 0", notes, looping.nth)
-			}
-		}
-	}
-	if notes != silentRungs {
-		t.Fatalf("silent notes = %d, want %d", notes, silentRungs)
-	}
-	if watch.nudges != 0 {
-		t.Fatalf("the silent run spent %d of the hand-off count, want 0", watch.nudges)
-	}
-}
-
-// And the visible notes in that minute change nothing either way: the shape
-// [silent, silent, progress, progress, silent] does not end a turn.
-func TestSilenceAroundVisibleWorkNeverEndsTheTurn(t *testing.T) {
-	watch := newLoopWatch()
-	round := 0
-	step := func(visible bool) (nudge, bool) {
-		call := ai.ToolCall{ID: fmt.Sprintf("s%d", round), Function: ai.ToolCallFunction{
-			Name: "bash", Arguments: fmt.Sprintf(`{"command":"git show %d"}`, round)}}
-		round++
-		return watch.observe([]ai.ToolCall{call}, []toolResult{{text: fmt.Sprintf("commit %d", round)}}, visible)
-	}
-	// Two silent stretches long enough to earn their first rung, with two spoken
-	// batches between them, then a third silent stretch that earns another.
-	for _, visible := range []bool{false, false, true, true, false} {
-		for range silentStreakLimit {
-			if looping, fired := step(visible); fired && looping.nth != 0 {
-				t.Fatalf("a note that can end a turn fired: %q", loopRule(looping))
-			}
+	for round := 0; round < 30; round++ {
+		call := ai.ToolCall{ID: fmt.Sprintf("s%d", round), Function: ai.ToolCallFunction{Name: "bash", Arguments: fmt.Sprintf(`{"command":"git show %d"}`, round)}}
+		if looping, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: fmt.Sprintf("commit %d", round)}}); fired {
+			t.Fatalf("useful work nudged: %q", loopRule(looping))
 		}
 	}
 	if watch.nudges != 0 {
-		t.Fatalf("nudges = %d, want 0: no silent stretch may reach the ceiling", watch.nudges)
+		t.Fatalf("nudges=%d", watch.nudges)
 	}
 }
 
@@ -688,10 +506,10 @@ func TestSilenceAroundVisibleWorkNeverEndsTheTurn(t *testing.T) {
 // make a real loop free with it.
 func TestARealLoopStillHandsOverAfterASilentRun(t *testing.T) {
 	watch := newLoopWatch()
-	for round := range 3 * silentStreakLimit {
+	for round := range 18 {
 		call := ai.ToolCall{ID: fmt.Sprintf("q%d", round), Function: ai.ToolCallFunction{
 			Name: "bash", Arguments: fmt.Sprintf(`{"command":"git show %d"}`, round)}}
-		watch.observe([]ai.ToolCall{call}, []toolResult{{text: fmt.Sprintf("commit %d", round)}}, false)
+		watch.observe([]ai.ToolCall{call}, []toolResult{{text: fmt.Sprintf("commit %d", round)}})
 	}
 	if watch.nudges != 0 {
 		t.Fatalf("the silent run spent %d of the count before the loop began", watch.nudges)
@@ -703,7 +521,7 @@ func TestARealLoopStillHandsOverAfterASilentRun(t *testing.T) {
 		call := ai.ToolCall{ID: fmt.Sprintf("b%d", round), Function: ai.ToolCallFunction{
 			Name: "bash", Arguments: `{"command":"make build"}`}}
 		looping, fired := watch.observe([]ai.ToolCall{call},
-			[]toolResult{{text: "undefined: Frobnicate", isError: true}}, false)
+			[]toolResult{{text: "undefined: Frobnicate", isError: true}})
 		if fired && looping.nth > highest {
 			highest = looping.nth
 		}
@@ -733,7 +551,7 @@ func TestAShellCommandThatMovedTheTreeIsProgress(t *testing.T) {
 			Name: "bash", Arguments: fmt.Sprintf(`{"command":"land %d"}`, round)}}
 		result := fmt.Sprintf("landed step %d", round)
 		round++
-		_, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: result}}, false)
+		_, fired := watch.observe([]ai.ToolCall{call}, []toolResult{{text: result}})
 		return fired
 	}
 
@@ -749,7 +567,7 @@ func TestAShellCommandThatMovedTheTreeIsProgress(t *testing.T) {
 	}
 
 	for cycle := range 3 {
-		for range silentStreakLimit - 1 {
+		for range 6 - 1 {
 			if shell(false) {
 				t.Fatalf("nudged before the landing command in cycle %d", cycle+1)
 			}
@@ -758,8 +576,8 @@ func TestAShellCommandThatMovedTheTreeIsProgress(t *testing.T) {
 			t.Fatalf("the command that moved the tree nudged in cycle %d", cycle+1)
 		}
 	}
-	if watch.nudges != 0 || watch.silentStreak != 0 {
-		t.Fatalf("nudges=%d silent=%d after three landings", watch.nudges, watch.silentStreak)
+	if watch.nudges != 0 {
+		t.Fatalf("nudges=%d after three landings", watch.nudges)
 	}
 }
 
@@ -792,14 +610,14 @@ func TestMaterialProgressGivesOneSpentNoteBack(t *testing.T) {
 		var last nudge
 		var fired bool
 		for range loopRepeats {
-			last, fired = watch.observe([]ai.ToolCall{call}, []toolResult{{text: "fine"}}, false)
+			last, fired = watch.observe([]ai.ToolCall{call}, []toolResult{{text: "fine"}})
 		}
 		return last, fired
 	}
 	wrote := func() {
 		call := ai.ToolCall{ID: "w", Function: ai.ToolCallFunction{
 			Name: "write", Arguments: `{"path":"out.md","content":"landed"}`}}
-		watch.observe([]ai.ToolCall{call}, []toolResult{{text: "wrote out.md"}}, false)
+		watch.observe([]ai.ToolCall{call}, []toolResult{{text: "wrote out.md"}})
 	}
 
 	if first, fired := loop("alpha"); !fired || first.nth != 1 {
@@ -829,13 +647,13 @@ func TestASuccessfulUnnamedCallDoesNotGiveTheCountBack(t *testing.T) {
 	watch := newLoopWatch()
 	call := ai.ToolCall{ID: "1", Function: ai.ToolCallFunction{Name: "touch", Arguments: `{"path":"a"}`}}
 	for range loopRepeats {
-		watch.observe([]ai.ToolCall{call}, []toolResult{{text: "fine"}}, false)
+		watch.observe([]ai.ToolCall{call}, []toolResult{{text: "fine"}})
 	}
 	if watch.nudges != 1 {
 		t.Fatalf("nudges = %d after one loop, want 1", watch.nudges)
 	}
 	read := ai.ToolCall{ID: "2", Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"x"}`}}
-	watch.observe([]ai.ToolCall{read}, []toolResult{{text: "a line nobody has read"}}, true)
+	watch.observe([]ai.ToolCall{read}, []toolResult{{text: "a line nobody has read"}})
 	if watch.nudges != 1 {
 		t.Fatalf("a successful read gave the count back: nudges = %d, want 1", watch.nudges)
 	}

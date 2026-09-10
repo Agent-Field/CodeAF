@@ -214,13 +214,6 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 	// episode-init is the one hook whose order cannot matter: every citizen there
 	// writes its own field on a struct nobody else has read yet.
 	plane.register(fixMemory{agent: a})
-	// AND THE PROCESS RULES THE LOOP ITSELF ENFORCES (processrule.go), whose
-	// episode-init is one field for the same reason: the count of submissions a
-	// rule has held is a fact about ONE turn, and a rule remembering yesterday's
-	// silence would withhold the tools of a model that has said nothing yet
-	// today. Its enforcement is NOT a pre-action citizen, and the type's own
-	// comment says why.
-	plane.register(processRuleGuard{})
 	// The write scope runs LAST of the pre-action citizens, and only ever
 	// refuses: an agent with no scope (every agent but a node of an adaptive
 	// run) is one slice length away from being where it was before this
@@ -300,11 +293,6 @@ type episode struct {
 	// looks is what the `tasks` tool has already told this turn, so that an
 	// answer asked for twice can say it has not moved (tasklook.go).
 	looks *lookMemory
-	// rules is this turn's enforcement state for the process rules the loop can
-	// hold a model to: which of them are holding, and how many submissions each
-	// has held (processrule.go).
-	rules *ruleWatch
-
 	// captionN is the number of dwell-narrator calls this turn has spent. It is
 	// guarded separately because a narrator runs beside the tool wait, while
 	// the rest of the episode is advanced on the turn loop's one goroutine.
@@ -487,5 +475,5 @@ func (loopDetector) EpisodeInit(ep *episode) {
 }
 
 func (d loopDetector) PostFeedback(ctx context.Context, ep *episode, hub *eventHub, calls []ai.ToolCall, results []toolResult, visibleText bool) {
-	d.agent.nudgeIfLooping(ctx, hub, ep, calls, results, visibleText)
+	d.agent.nudgeIfLooping(ctx, hub, ep, calls, results)
 }

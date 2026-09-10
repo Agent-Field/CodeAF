@@ -20,15 +20,6 @@ package session
 //   - THE SAME ERROR THREE TIMES IN THE TURN. Total rather than consecutive, and
 //     across tools rather than per tool, because this is the shape a real loop
 //     takes: the model varies the call, the failure does not move.
-//   - SILENT TOOL BATCHES IN A ROW. A reasoning model can keep re-deriving a
-//     plan that vanishes at every step boundary while every individual call
-//     remains distinct. The notes arrive after six batches and after twelve, the
-//     second stronger than the first, and progress resets the ladder.
-//     SILENCE IS HYGIENE AND NOT STUCKNESS, so its notes are the only ones that
-//     cannot end a turn through the hand-off below. THE SECOND RUNG IS WHERE THE
-//     ADVICE STOPS BEING ADVICE: from there the loop withholds a submission that
-//     carries only tool calls until a note lands, and ends the turn on its own
-//     honest line if the model will not write one (processrule.go).
 //   - ROUNDS THAT READ NOTHING NEW. Distinct command strings can ask the same
 //     question with slightly different words, so the ledger rather than the
 //     signature decides whether the answers added anything. Five consecutive
@@ -98,21 +89,6 @@ package session
 // unavailable — inside a task, without a consent surface, or when no brief can
 // be carried — the turn still ends and says plainly that its remains were left.
 //
-// FOUR RULES CAN SPEND THAT COUNT, AND SILENCE IS NOT ONE OF THEM: identity, the
-// repeated error, the argument refusal, and the round that read nothing new.
-// Each of those is a claim that the turn is not moving. Silence is a claim about
-// the RECORD — that reasoning is being lost between steps — and a turn can be
-// entirely silent while committing, pushing and landing real work.
-//
-// The measured case: a worker's last six calls before it was stopped were
-// `commit-tree`, `write-tree`, a second commit, a ref update, a log and a
-// cleanup — all distinct, all succeeding, with three visible notes written in
-// the minute before. Two early silence notes plus one late one added up to a
-// hand-off, and the row it left said the turn "went in circles" when the turn
-// had been working the whole time. So a silent note keeps its rung and its
-// wording and books nothing, and no rung of it promises a hand-off it cannot
-// make.
-//
 // AND MATERIAL PROGRESS GIVES THE COUNT BACK, ONE RUNG AT A TIME. The two
 // ledgers this file keeps take different evidence, on purpose:
 //
@@ -127,8 +103,7 @@ package session
 //     BY ONE rather than clearing.
 //
 // Both halves of that are load-bearing. VISIBLE TEXT CANNOT BUY THE COUNT BACK,
-// because a model narrating its own loop is still looping — text is the cure for
-// the silent ladder and for nothing else. NOR CAN THE WEAK KIND: the first two
+// because a model narrating its own loop is still looping. NOR CAN THE WEAK KIND: the first two
 // calls of a turn's SECOND loop are by construction calls nobody has been nudged
 // about yet, so a turn-wide budget refunded by them is no budget at all.
 //
@@ -167,40 +142,17 @@ const (
 	// might work, it is evidence the correction went unread.
 	loopInvalidRepeats = 2
 
-	// silentStreakLimit is how many consecutive tool-using steps may carry no
-	// visible assistant text before the model is asked to externalize its plan.
-	// Six leaves room for a short inspect-decide sequence; beyond that, silence
-	// is more likely lost cross-step reasoning than useful brevity.
-	silentStreakLimit = 6
-
 	// noNewInformationLimit is how many consecutive finished tool rounds may
 	// bring back no fresh line before the transcript itself is named as the place
-	// the answer already lives. Five catches a rephrased search before the silent
-	// ladder's first rung without treating a short verification sequence as spin.
+	// the answer already lives. Five catches a rephrased search without treating
+	// a short verification sequence as spin.
 	noNewInformationLimit = 5
 
 	// loopNudgeCeiling is how many notes a turn gets before the work is handed
 	// off instead. Two, because a third note would be the third time advice failed
 	// to change anything.
 	//
-	// IT COUNTS THE RULES THAT CLAIM THE TURN IS NOT MOVING and no others, which
-	// is why [silentRungs] is its own number rather than this one reused: the
-	// two ladders answer different questions and only one of them may stop work.
 	loopNudgeCeiling = 2
-
-	// silentRungs is how many notes ONE silent stretch earns: two, at six batches
-	// and at twelve. A stretch broken by progress and begun again starts at the
-	// first rung.
-	//
-	// IT WAS THREE, AND THE THIRD RUNG IS GONE BECAUSE NOTHING CAN REACH IT ANY
-	// MORE. The second rung is where the write-your-notes rule stops being advice
-	// (processrule.go's [silentEnforceRung]): from there the loop answers a
-	// tool-calls-only submission with the rule's demand instead of running it,
-	// and a submission the harness itself refused is not one this watch counts —
-	// so the streak freezes at twelve and a rung at twenty-four is a rung no run
-	// can climb to. Its words were also the opposite of what now happens: it said
-	// "Nothing is being stopped — keep working", and by then something is.
-	silentRungs = 2
 
 	// loopHysteresis is how many MORE repetitions of an already-named signature
 	// count as evidence before the ladder advances again.
@@ -225,14 +177,7 @@ type nudge struct {
 	// failing distinguishes a repeated CALL from a repeated ERROR. They read
 	// differently to the model, so they are worded differently.
 	failing bool
-	// silent distinguishes the batch-streak rule from the two identity rules.
-	// It gets its own note and event hint because the remedy is to write the plan
-	// down, not merely to choose a different call.
-	silent bool
-	// silentRung is which rung of the silent ladder fired, 1-based. Its wording
-	// grows stronger independently of the shared turn-wide nudge count.
-	silentRung int
-	// stale distinguishes the ledger rule from identity and silence. Its count
+	// stale distinguishes the ledger rule from identity. Its count
 	// is rounds rather than calls because a parallel batch is one attempt.
 	stale bool
 	// invalid says the repeat was a call the TOOL refused over its arguments,
@@ -241,10 +186,7 @@ type nudge struct {
 	// the same argument went out twice — because a call nobody can execute is
 	// not the same news as work that keeps failing out in the world.
 	invalid bool
-	// nth is which STOPPING nudge of this turn it is, 1-based — and zero for a
-	// note that cannot end a turn, which today is every silent one. It is what
-	// the escalation law reads, so a zero here is the whole of "this note is
-	// hygiene, and the work goes on".
+	// nth is this turn's nudge count, read by the existing hand-off ceiling.
 	nth int
 	// fact is the structural sentence the turn's [workClock] can say about
 	// itself — when the work last changed, and how much the results since
@@ -278,19 +220,14 @@ type loopWatch struct {
 	// signature has repeated since its last nudge. It is what
 	// [loopHysteresis] is counted against, and forward progress empties it.
 	streak map[string]int
-	// silentStreak counts consecutive tool-using batches with no visible text;
-	// silentCalls is the number of calls those batches contained, for the note,
-	// and silentRung is the next rung not yet spoken in this streak.
-	silentStreak int
-	silentCalls  int
-	silentRung   int
+
 	// noNewStreak counts consecutive batches in which every observed call
 	// brought back zero fresh lines. noNewNudged makes the rule one-shot for this
 	// streak; either fresh information or a successful write rearms it.
 	noNewStreak int
 	noNewNudged bool
 	// nudges is how many STOPPING nudges this turn has produced — the count the
-	// hand-off ceiling is read against. Silent notes never touch it, and a batch
+	// hand-off ceiling is read against. A batch
 	// of forward progress gives one of them back.
 	nudges int
 	// dir is the directory whose worktree answers "did anything actually change"
@@ -335,14 +272,14 @@ func newLoopWatch() *loopWatch {
 //
 // AT MOST ONE NUDGE PER BATCH, even when several rules fire: two notes about the
 // same moment is the harness being noisy about its own cleverness. The identity
-// rules are more specific than silence, so they are read first.
+// rules are read before the no-new-information signal.
 //
 // FORWARD EVIDENCE IS READ FIRST, before any rule is tested, so a batch that
 // both progressed and repeated cannot escalate. That ordering is the hysteresis
 // law's "immediately": a model that got something done this step is not a model
 // the harness interrupts this step, even if it also re-ran the thing it was
 // nudged about.
-func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleText bool) (nudge, bool) {
+func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult) (nudge, bool) {
 	if w == nil || len(calls) == 0 {
 		return nudge{}, false
 	}
@@ -367,20 +304,11 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 
 	// BOTH KINDS OF FORWARD EVIDENCE ARE READ BEFORE ANY RULE IS TESTED, so a
 	// batch that both progressed and repeated cannot escalate. The weak kind
-	// empties the per-signature streaks; the strong kind also breaks the silent
-	// ladder and gives a spent note back.
+	// empties the per-signature streaks; the strong kind gives a spent note back.
 	if w.sawProgress(calls, results) {
 		clear(w.streak)
 	}
 	material := w.materialProgress(calls, results)
-	if visibleText || material {
-		w.silentStreak = 0
-		w.silentCalls = 0
-		w.silentRung = 0
-	} else {
-		w.silentStreak++
-		w.silentCalls += worldCalls
-	}
 
 	var found nudge
 	ok := false
@@ -474,22 +402,6 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 			}, true
 		}
 	}
-	if w.silentRung < silentRungs && w.silentStreak >= silentThreshold(w.silentRung) {
-		// An identity nudge from this same batch already told the model the turn
-		// is stuck. Booking silence with it avoids two rules taking turns to say
-		// the same moment is bad, while distinct-call silence gets its own words.
-		w.silentRung++
-		if !ok {
-			last := calls[len(calls)-1]
-			found, ok = nudge{
-				call:       last,
-				tool:       last.Function.Name,
-				count:      w.silentCalls,
-				silent:     true,
-				silentRung: w.silentRung,
-			}, true
-		}
-	}
 	// THE COUNT COMES BACK BEFORE IT IS SPENT. A batch that got something done
 	// and also tipped a rule over cannot escalate on it: the step down and the
 	// step up cancel, and the note goes out as an aside.
@@ -499,13 +411,8 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 	if !ok {
 		return nudge{}, false
 	}
-	// AND A SILENT NOTE BOOKS NOTHING. It keeps its rung, it says its piece, and
-	// the hand-off ceiling never hears about it: nth stays zero, which is what
-	// [Agent.nudgeIfLooping] reads as "this one cannot end the turn".
-	if !found.silent {
-		w.nudges++
-		found.nth = w.nudges
-	}
+	w.nudges++
+	found.nth = w.nudges
 	// The clock's note is the fallback and never an override: an argument
 	// refusal already put the sentence that matters here.
 	if found.fact == "" {
@@ -514,33 +421,8 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult, visibleTe
 	return found, true
 }
 
-// silentThreshold derives every rung from the first: rung zero is six batches,
-// then each rung doubles. Its caller bounds the rung by [silentRungs], so one
-// silent stretch cannot earn a fourth note.
-func silentThreshold(rung int) int {
-	return silentStreakLimit << rung
-}
-
-// silentLadderRung is how many rungs of the silent ladder this turn's CURRENT
-// stretch of silence has spoken, 1-based and zero for a turn that has written
-// something.
-//
-// It is the one thing this watch says about itself to anybody outside it, and
-// the predicate the write-your-notes rule is enforced on (processrule.go). It is
-// read under the watch's own lock, and a nil watch — an episode assembled by a
-// test that has no detector — answers zero, which is "there is nothing to
-// enforce" and not "enforce everything".
-func (w *loopWatch) silentLadderRung() int {
-	if w == nil {
-		return 0
-	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.silentRung
-}
-
 // materialProgress reports the STRONG kind of forward evidence: this batch put
-// something in the world. It is what breaks a silent streak and what gives a
+// something in the world. It is what gives a
 // spent note back, and it has two halves.
 //
 // THE CHEAP HALF is a successful call whose effect on the disk is a known path
@@ -759,20 +641,6 @@ func nudgeNote(n nudge) string {
 		}
 		return note + " Send the corrected call, or say what you needed and stop — sending this one again cannot work."
 	}
-	if n.silent {
-		note := fmt.Sprintf("[silent] You have made %d tool calls without writing anything down. "+
-			"Before your next tool call, write a short visible note: what you've learned so far, "+
-			"what you're checking next, and why. Your reasoning between steps is not saved — "+
-			"if it isn't in your visible reply, it's gone.", n.count)
-		// AND THE SECOND RUNG SAYS WHAT IS ABOUT TO HAPPEN, because from here it
-		// is true: the loop holds the next tool-calls-only submission rather than
-		// running it (processrule.go). This sentence used to promise exactly that
-		// with nothing behind it, thirteen times in one measured conversation.
-		if n.silentRung >= silentEnforceRung {
-			note += " This is the second and last note about it: from here your tool calls are held. The next reply that carries only tool calls will not be run."
-		}
-		return note
-	}
 	if n.stale {
 		return fmt.Sprintf("[stuck] The last %d rounds read nothing new; what you are looking for is already in the transcript. "+
 			"Use what is already there to take a different action, or say what remains blocked and stop.", n.count)
@@ -803,9 +671,6 @@ func loopRule(n nudge) string {
 	if n.invalid {
 		return fmt.Sprintf("stuck: %s was sent the same wrong argument %d times", n.tool, n.count)
 	}
-	if n.silent {
-		return fmt.Sprintf("silent: %d tool calls without visible assistant text", n.count)
-	}
 	if n.stale {
 		return fmt.Sprintf("stuck: the last %d rounds read nothing new", n.count)
 	}
@@ -823,11 +688,11 @@ func loopRule(n nudge) string {
 // are in the transcript and before the next request is assembled — the one
 // moment a note can ride into the next request the way a person's steering does.
 //
-// The first two stopping nudges are asides, and every silent note is one
-// forever. Past the ceiling the episode is marked for the main loop to end
+// The first two stopping nudges are asides. Past the ceiling the episode is
+// marked for the main loop to end
 // through checkpointing, because only that caller owns the turn usage and the
 // person's original request needed by the hand-off.
-func (a *Agent) nudgeIfLooping(ctx context.Context, hub *eventHub, ep *episode, calls []ai.ToolCall, results []toolResult, visibleText bool) {
+func (a *Agent) nudgeIfLooping(ctx context.Context, hub *eventHub, ep *episode, calls []ai.ToolCall, results []toolResult) {
 	// WAITING ON HANDED-OUT PARTS IS NEITHER WORKING NOR SPINNING. A parent with
 	// pieces outstanding has no new information because those pieces are still
 	// making it elsewhere; task_run.go parks it at the end of this turn and folds
@@ -837,7 +702,7 @@ func (a *Agent) nudgeIfLooping(ctx context.Context, hub *eventHub, ep *episode, 
 	if a.childrenOutstanding() {
 		return
 	}
-	looping, ok := ep.watch.observe(calls, results, visibleText)
+	looping, ok := ep.watch.observe(calls, results)
 	if !ok {
 		return
 	}
@@ -850,18 +715,8 @@ func (a *Agent) nudgeIfLooping(ctx context.Context, hub *eventHub, ep *episode, 
 		Hint:  loopRule(looping),
 	})
 
-	// AND THE PROCESS RULE THIS NOTE BELONGS TO COUNTS IT (processrule.go). The
-	// advisory rungs above are one rule's first step, and how often that step has
-	// had to be taken in this CONVERSATION is the number the enforced rung is
-	// measured against — thirty-two of them in the run that ordered the
-	// enforcement, and no turn-shaped counter could ever have said so.
-	a.countProcessRuleAdvice(looping)
-
 	// Past the ceiling no fourth message is useful. The hook cannot end a turn,
 	// so it leaves the decision on the episode for loop.go to spend immediately.
-	// A SILENT NOTE CARRIES nth 0 AND NEVER REACHES THIS. What it is about is the
-	// record, not the work, and taking a turn away from a worker that is landing
-	// commits because it landed them quietly is the defect this guard caused.
 	if looping.nth > loopNudgeCeiling {
 		ep.loopHandoff = true
 		return
@@ -874,8 +729,8 @@ func (a *Agent) nudgeIfLooping(ctx context.Context, hub *eventHub, ep *episode, 
 // loopLeftUndoneNote is the sentence a handed-over turn leaves behind, and the
 // one this package rather than a worker wrote — task_run.go's [endingOfClaim]
 // reads it back to say a node "went in circles". ONLY THE RULES THAT CLAIM THE
-// TURN IS NOT MOVING can reach it: a silent note books no nudge, so no amount of
-// quiet work can put these words on a row.
+// TURN IS NOT MOVING can reach it. Quiet useful work cannot put these words
+// on a row.
 const loopLeftUndoneNote = "this turn is going in circles · stopping here with anything remaining left undone"
 
 // handOverLoopingTurn spends the terminal signal at the one point that owns all
