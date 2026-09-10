@@ -1,5 +1,28 @@
 # Commands you type in a terminal
 
+## How do I install or update aforge to the latest version — the curl line, dev, staging, rc and stable
+
+The installer puts aforge at `~/.aforge/bin/aforge`. Choose the newest build on
+one channel:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --stable
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --rc
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --dev
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | bash -s -- --staging
+```
+
+Pin one published build instead with `VERSION=v0.2.0` (or another complete tag):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | VERSION=v0.2.0 bash
+```
+
+While the repository is private, export `GITHUB_TOKEN` first. The last installer
+line is `aforge version`; it shows the tag installed, when it was built, and the
+Go and operating-system target. Nothing self-updates: run the curl command again
+when you want a newer build.
+
 ## Running aforge from the terminal — can I run this without the chat
 
 Typing `aforge` with no arguments opens the conversation. Everything else is a verb after

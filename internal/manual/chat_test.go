@@ -2306,6 +2306,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// gate that would have caught the omission is
 		// TestTheChatManualMentionsEveryVerbTheCommandLineAnswersTo.
 		{"can I run this without the chat", "running-from-the-terminal"},
+		{"how do I update aforge to the latest version", "running-from-the-terminal"},
 		// The ending #593 added, in the words somebody meets it in: on the
 		// stderr line they have just read, on the word in `--json`, and on the
 		// exit code they are staring at with a perfectly good answer above it.
