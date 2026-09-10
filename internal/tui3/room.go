@@ -3163,13 +3163,19 @@ const roomModelLead = "task "
 // is a guess this row is not entitled to make. It draws nothing, which is what
 // every other unpublished figure in a room draws ([app.roomSpend]).
 //
-// It wears NO REASONING SUFFIX AND NO SERVED RIDER either, for one reason said
-// twice: THE DIAL IS THE CONVERSATION'S. The ":high" is spliced on by lending
-// a.model its suffixed form for the length of one call (view.go's
-// [app.statusRow]) and the rider is keyed on a.model's own sighting, so both are
-// facts about the model the SESSION is running — and a task model wearing the
-// session's knob would be the same lie in smaller print. Reading the node's model
-// from the node keeps it out of the splice by construction.
+// It wears NO REASONING SUFFIX, because THE DIAL IS THE CONVERSATION'S: the
+// ":high" is spliced on by lending a.model its suffixed form for the length of
+// one call (view.go's [app.statusRow]), so a task model wearing it would be a
+// fact about the model the SESSION is running told in smaller print. Reading the
+// node's model from the node keeps it out of the splice by construction.
+//
+// IT DOES WEAR A SERVED RIDER, and it is the NODE'S (lanes.go's
+// [app.roomLaneRider]). It did not until the news started saying which piece of
+// work it was about: the sighting desk was keyed by model, so the only machine
+// this row could have named was whichever answer on that model id landed last —
+// the conversation's, most often — and drawing that here would have been the
+// same misreading as the reasoning splice. The rider is appended by the caller
+// ([app.identityParts]), which is where the row's width ladder lives.
 func (a *app) roomModelWord() string {
 	node := a.roomNode()
 	if node == nil {
