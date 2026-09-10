@@ -138,7 +138,7 @@ func (a *app) homeBeat(gen int) tea.Cmd {
 	// THE BEAT REBUILDS THE LIST AND THE CURSOR FOLLOWS ITS CONVERSATION
 	// ([homeView.build]), so the row the card is about may be a row nothing has
 	// read for. It is an arrival like a key (homecardread.go).
-	asked := tea.Batch(a.refreshHomeCard(a.now()), a.askEngines())
+	asked := tea.Batch(a.refreshHomeCard(a.now()), a.refreshGridReadings(a.now()), a.askEngines())
 	// A task starting in another window arrives on this beat, and the spinner it
 	// earns needs the fast clock — woken here because this is the only moment
 	// home learns anything ([app.homeAnimating]; paint keeps it turning and lets
@@ -940,7 +940,7 @@ func (a *app) raiseHome() tea.Cmd {
 	// AND THE CARD'S OWN READINGS ARE TAKEN AT THE ARRIVAL, never in the draw
 	// (homecardread.go). The repository among them is a command, so it is asked
 	// for rather than waited on and comes back as a message.
-	asked := a.refreshHomeCard(time.Now())
+	asked := tea.Batch(a.refreshHomeCard(time.Now()), a.refreshGridReadings(time.Now()))
 	a.touch()
 	// THE PAINT CLOCK JOINS THE SLOW TICK when a row on the column is running:
 	// the spinner and the count-up are claims about this instant, and a still
