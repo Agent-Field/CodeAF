@@ -110,7 +110,8 @@ refused, a published-but-unrecorded run is recovered rather than rerun, report
 folders are contained before they are made, and a failed or held run's changes
 are listed again. The live reports opened with the model's own narration, so a
 run now writes its report between a `<report>` line and a `</report>` line and only
-that is published (an answer without them is still published whole).
+that is published (an answer without them is still published whole); a refused
+attempt to write its own report file no longer leaves it waiting on the person.
 `make test-local-work` drives `bin/aforge` with a scripted
 model and `make demo-local-work` runs the same journey with a real model in a
 disposable `AFORGE_HOME`, failing on the first step that does not hold. No

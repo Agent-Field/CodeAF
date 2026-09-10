@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -380,6 +381,8 @@ func TestAReportIsWhatIsBetweenItsLinesAndNotTheSentenceBeforeIt(t *testing.T) {
 		"<report>\n# Report\n- cut before the close":                                                "# Report\n- cut before the close",
 		"# Report\nno delimiter at all":                                                             "# Report\nno delimiter at all",
 		"a draft\n<report>\nfirst\n</report>\nthen again\n<report>\nsecond\n</report>":              "second",
+		"<report>\n# Report\n- x</report>I cannot write the file myself.":                           "# Report\n- x",
+		"I will put it between <report> and </report>.\n<report>\n# R\n</report>":                   "# R",
 	} {
 		if got := standingReportBody(final); got != want {
 			t.Errorf("standingReportBody(%q) = %q, want %q", final, got, want)
@@ -394,5 +397,56 @@ func TestAReportIsWhatIsBetweenItsLinesAndNotTheSentenceBeforeIt(t *testing.T) {
 	raw, _ := os.ReadFile(filepath.Join(workspace, "reports", "r.md"))
 	if string(raw) != "# Review\n- claim unsupported\n" || outcome.Published == nil {
 		t.Fatalf("published %q outcome %+v", raw, outcome)
+	}
+}
+
+// A RUN THAT WROTE ITS REPORT AND THEN TRIED TO SAVE IT ITSELF is not waiting
+// on the person. The live review of 2026-09-10 did exactly this: the report
+// between its lines, then a `write` of the report path, refused as every
+// unattended write is, then an apology. The write stays refused; the report it
+// wrote is the one published, not the apology after it.
+func TestARefusedWriteOfTheRunsOwnReportIsNotAQuestionForThePerson(t *testing.T) {
+	root, workspace := t.TempDir(), t.TempDir()
+	body := "# Review\n- \"Works offline\" is unsupported: `Offline support: removed in this release.`"
+	args, _ := json.Marshal(map[string]string{"path": filepath.Join(workspace, "reports", "r.md"), "content": "the model's own copy"})
+	model := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			text := "Now the report.\n<report>\n" + body + "\n</report>\nNow I'll write it to the file."
+			provider.Emit(ctx, provider.StreamDelta, text)
+			return toolResponseWithText("call_w", "write", string(args), text), nil
+		},
+		saying("I cannot write the file; someone with permission needs to place it."),
+	}}
+	// Every write asks, as the builtin rules make it ask, and nobody is there.
+	asking := &approval.Policy{Default: approval.ActionPrompt}
+	runner := standingChildRunner(t, root, model)
+	runner.parent.ApprovalPolicy = asking
+	outcome, err := runner.Run(context.Background(), reporting(workspace), filepath.Join(root, "runs", "0001"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls := model.seen; len(calls) < 2 || !strings.Contains(messageText(calls[1][len(calls[1])-1]), "nobody to ask") {
+		t.Fatalf("the write was not refused as an unattended write: %d requests", len(calls))
+	}
+	raw, _ := os.ReadFile(filepath.Join(workspace, "reports", "r.md"))
+	if string(raw) != body+"\n" || outcome.Kind != "landed" || outcome.NeedsPerson != "" || outcome.Published == nil {
+		t.Fatalf("published %q outcome %+v", raw, outcome)
+	}
+	// Any OTHER refused write is still a question for the person.
+	other, _ := json.Marshal(map[string]string{"path": filepath.Join(workspace, "notes.md"), "content": "x"})
+	model = &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			return toolResponseWithText("call_o", "write", string(other), ""), nil
+		},
+		saying("<report>\n# Report\n</report>"),
+	}}
+	runner = standingChildRunner(t, root, model)
+	runner.parent.ApprovalPolicy = asking
+	outcome, err = runner.Run(context.Background(), reporting(workspace), filepath.Join(root, "runs", "0002"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Kind != standing.OutcomeNeedsYou || outcome.NeedsPerson == "" {
+		t.Fatalf("a refused write of another file did not wait on the person: %+v", outcome)
 	}
 }

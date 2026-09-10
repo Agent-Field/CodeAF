@@ -734,7 +734,9 @@ unknown, never that nothing changed.
 report: aforge writes it there, replacing the previous version, and the run is told
 where the previous version is so it can carry things forward. The run is asked to put
 the report between a line `<report>` and a line `</report>`, and only that is
-published; an answer without them is published whole. The run does not write
+published; an answer without them is published whole. A run that also tries to write
+the report file itself is refused, as every unattended write is, but that does not
+make it wait on you. The run does not write
 the file itself — an unattended run may only do what your approval rules allow without
 asking, and reading is allowed; shell commands are not. Only a run that came back
 clean publishes. A run cut off mid-answer says `the run was cut off before it finished`
