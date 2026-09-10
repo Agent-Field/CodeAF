@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
 // machineKey is what a launch on THIS machine would authenticate with, read once
@@ -34,7 +35,24 @@ import (
 // directory, and a resolution run after that would be answering for the fixture
 // rather than for the machine. The question this package has to ask is the one a
 // person's own launch answers, and that is the environment the binary started in.
-var machineKey = strings.TrimSpace(config.APIKeyAt(config.ProfileDir()))
+//
+// THE PROFILE ROAD GOES THROUGH [home.InheritedDir], NOT [config.ProfileDir].
+// ProfileDir is AFORGE_PROFILE_DIR, which almost nobody exports, and the empty
+// string falls through home.Dir() — which a test binary will point at a
+// throwaway of its own (#402). InheritedDir is the ungated person home this
+// process started with, so a key that lives only in ~/.aforge/config.json is
+// still the key a launch on this machine would talk with.
+var machineKey = strings.TrimSpace(config.APIKeyAt(liveProfileDir()))
+
+// liveProfileDir is the profile a launch on this machine would read: an explicit
+// AFORGE_PROFILE_DIR when the process was started with one, otherwise the
+// inherited state root. Empty ProfileDir must NOT fall through home.Dir().
+func liveProfileDir() string {
+	if dir := strings.TrimSpace(config.ProfileDir()); dir != "" {
+		return dir
+	}
+	return home.InheritedDir()
+}
 
 // noLiveKeyReason is the sentence a lane skips with, and it names every road it
 // looked down — so a person who HAS a key and sees this line knows the key is

@@ -105,8 +105,10 @@ func TestEveryLaneAsksForItsKeyTheWayTheProductDoes(t *testing.T) {
 }
 
 // theDoorStillAsksTheProduct fails if livekey_test.go has stopped calling
-// config.APIKeyAt. The other half of this gate excludes that file, so a door
-// that went back to os.Getenv would go green on the exact skip #576 closed.
+// config.APIKeyAt, or has gone back to resolving the profile through
+// home.Dir / config.ProfileDir with no InheritedDir. The other half of this
+// gate excludes that file, so a door that went back to os.Getenv would go
+// green on the exact skip #576 closed.
 func theDoorStillAsksTheProduct(t *testing.T, dir string) {
 	t.Helper()
 	path := filepath.Join(dir, "livekey_test.go")
@@ -116,6 +118,7 @@ func theDoorStillAsksTheProduct(t *testing.T, dir string) {
 		t.Fatalf("parsing the liveKey door: %v", err)
 	}
 	found := false
+	asksInherited := false
 	ast.Inspect(file, func(node ast.Node) bool {
 		call, ok := node.(*ast.CallExpr)
 		if !ok {
@@ -124,6 +127,9 @@ func theDoorStillAsksTheProduct(t *testing.T, dir string) {
 		if isAPIKeyAt(call) {
 			found = true
 		}
+		if isInheritedDir(call) {
+			asksInherited = true
+		}
 		return true
 	})
 	if !found {
@@ -131,6 +137,12 @@ func theDoorStillAsksTheProduct(t *testing.T, dir string) {
 			"key through, and it no longer calls config.APIKeyAt. That is the product's " +
 			"three-road resolver; a door that reads one variable instead SKIPS on a machine " +
 			"that talks to a model every day (#576).")
+	}
+	if !asksInherited {
+		t.Errorf("internal/e2e/livekey_test.go no longer calls home.InheritedDir. " +
+			"config.ProfileDir() under an empty AFORGE_PROFILE_DIR falls through home.Dir(), " +
+			"which a test binary points at a throwaway (#402), so the profile api_key road " +
+			"would read empty on a machine that talks to a model every day (#576).")
 	}
 }
 
@@ -169,6 +181,17 @@ func isAPIKeyAt(call *ast.CallExpr) bool {
 	}
 	pkg, ok := selector.X.(*ast.Ident)
 	return ok && pkg.Name == "config"
+}
+
+// isInheritedDir reports whether a call is home.InheritedDir. The profile
+// api_key road has to go through the ungated person home, not home.Dir.
+func isInheritedDir(call *ast.CallExpr) bool {
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != "InheritedDir" {
+		return false
+	}
+	pkg, ok := selector.X.(*ast.Ident)
+	return ok && pkg.Name == "home"
 }
 
 // readsTheEnvironment reports whether a call is os.Getenv or os.LookupEnv, which
