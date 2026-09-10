@@ -1007,6 +1007,25 @@ the marker, keep the conversation free while it runs" was done exactly as asked,
 unfinished because the marker was not known yet, and carried on into polling the task it had
 just started and a watch over its own work.
 
+## A settled task with green checks is not carried on as unfinished — it kept saying the ask was not finished over a done task, carried on 3 times then said unfinished
+
+**When the task that was this request comes home done and its own checks have passed, the
+reply that reports the landing is not carried on as unfinished.** The card already shows
+it done. The end-of-turn reader is looking at a short account of what was said, not at the
+tree or the checks that already ran, and a reader that answers "still not finished" over
+that card is not evidence — it is the same echo that used to carry a finished ask on three
+times and then tell you it was unfinished.
+
+**A piece of a larger ask is still read.** If the landing is one finished part and what you
+asked for is bigger, or the landing is incomplete, or nobody ran the task's own checks, that
+reply is still read for what remains, the way a cheap woken reply always is. The gate is the
+landing's own fact: this request, this task, done, checks green.
+
+**It is the other half of handing the work out.** While the task is queued or running, the
+reply that started it is not read. When it lands done with its checks green, the reply that
+reports it is not read either. What is in between — a failed landing, a landing nobody
+checked, a new sentence you typed after it — is still read.
+
 **And one question is carried on at most three times.** A reader that answers "still not
 finished" about the same stopped reply three times running has stopped telling aforge anything
 new. The fourth time it says so, the reply ends instead, and one dim line goes on the screen —

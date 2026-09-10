@@ -2939,6 +2939,17 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	if a.turnHandedItsAskOff() {
 		return false, false
 	}
+	// AND A TURN THAT IS REPORTING A SETTLED, CHECKED TASK IS FINISHED.
+	//
+	// The live gate above covers work still out. This is the landing's half
+	// (#468): the task came home done, its own checks passed, and the end-of-turn
+	// reader — looking at a digest of the transcript, not the tree — said the ask
+	// was unfinished. The turn was carried on three times and then told the person
+	// the work was not finished, over a card that already showed it done.
+	// turnhandoff.go is the fact; this is where it stops the reader being spent.
+	if a.turnSettledItsAsk() {
+		return false, false
+	}
 	// A WOKEN TURN OUTRANKS THE PRICE, WHICH IS THE WHOLE OF WHAT THE MEASURED RUN
 	// STILL GOT WRONG.
 	//
@@ -2957,8 +2968,9 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// work, and the cell settled idle with seven and a half of its ten hours
 	// unspent on the best clean seed of the run. A WOKEN TURN IS READ FOR WHAT
 	// REMAINS WHATEVER IT COST ([Agent.wakeLocked] sets the bit); it is owed an
-	// answer by definition, and [endsAskingThePerson] and [turnBroke] above are
-	// the only two endings that still stop the reader from being spent on one.
+	// answer by definition, and [endsAskingThePerson], [turnBroke] and a landing
+	// that already came home with its check green ([turnSettledItsAsk]) are the
+	// endings that still stop the reader from being spent on one.
 	//
 	// THE PRICE GATE, AND THE EXPOSURE THAT OUTRANKS IT, FOR EVERY OTHER TURN.
 	//
