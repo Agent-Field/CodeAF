@@ -10,12 +10,13 @@ before you read.
 | `internal/tui3` | **v3 — the live surface.** Entry `cmd/aforge/chatv3.go`. Bare `aforge` and `aforge chat` both open it. |
 | `internal/session` | **the v3 engine** — the agent, the turn loop, the toolbelt, tasks. |
 | `internal/tui2` | REMOVED as a surface on 2026-08-31, and its compositor, its `blocks` engine and its model picker followed. What remains (`tokens`, `prose`, `reltime`, and `modelui`'s model words) is the shared component library v3 draws with. |
-| `internal/tui` | v1, and the visual north star: restrained, dim telemetry, no borders. |
 | `internal/head`, `internal/resident` | the v1 **resident** — a different product in the same binary. |
 
 v3 is a **session you sit in front of**. The resident is an employee that keeps working
 while the terminal is closed. They share a repository and almost nothing else — do not
 carry vocabulary or assumptions between them.
+
+`docs/DESIGN-LANGUAGE.md` is the visual north star: restrained, dim telemetry, no borders.
 
 ## Branches — where work goes
 
@@ -196,12 +197,11 @@ Violations get rejected in review, and some are pinned by tests.
   gutter's action families, file kinds, chrome — each a slot with three spellings (a Font
   Awesome 4 icon, the geometric floor, one ASCII character for a screen reader), resolved by
   `tokens.GlyphSet.Glyph(id)` and reached from the surface through `palette.glyph` /
-  `app.icon` in `internal/tui3` and `Model.icon` in `internal/tui`. A mark spelled as a
-  literal draws the plain floor forever, because a literal cannot know which repertoire the
-  terminal is on. One terminal shows ONE tier everywhere: every surface folds the Display row
-  (`step icons`) over `tokens.DetectGlyphSet` the same way. `internal/iconlaw` walks
-  `internal/tui`, `internal/tui3`, `internal/head` and `internal/resident` and fails the
-  build on one, on every pull request;
+  `app.icon` in `internal/tui3`. A mark spelled as a literal draws the plain floor forever,
+  because a literal cannot know which repertoire the terminal is on. One terminal shows ONE
+  tier everywhere: every surface folds the Display row (`step icons`) over
+  `tokens.DetectGlyphSet` the same way. `internal/iconlaw` walks `internal/tui3`,
+  `internal/head` and `internal/resident` and fails the build on one, on every pull request;
   [docs/design/icons/DESIGN.md](docs/design/icons/DESIGN.md) is the law and the table.
 - **One source of truth.** A number that appears in two places will drift — interpolate it
   from the constant. `propose_task`'s schema said the step default was 40 while the
