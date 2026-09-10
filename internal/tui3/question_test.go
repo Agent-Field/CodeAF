@@ -1020,7 +1020,7 @@ func TestAChecklistAskedForAsALineIsACardWithARowPerAnswer(t *testing.T) {
 		Asker: session.Asker{Kind: session.AskerModel}, Head: "Which painting genres do you like?",
 		Reason: "you asked to be asked with choices", Options: options,
 		Input: session.InputShape{Kind: session.InputChecklist}, Stakes: session.StakesReversible,
-		Pick:  &session.Pick{Key: "5", Reason: "every gallery has a wall of it"},
+		Pick: &session.Pick{Key: "5", Reason: "every gallery has a wall of it"},
 	})
 	screen := lab.plain()
 	// THE NOTE UNDER AN ANSWER IS DRAWN, the asker's pick is a word on its row
