@@ -555,13 +555,13 @@ func statesPastTheDoor(t *testing.T, r *rig) {
 		say(t, "welcomeStarterKeysWord"))
 }
 
-// statesAnswerKey presses one of the card's letters and waits for what it
+// statesAnswerKey presses one of the landing letters and waits for what it
 // leaves, THROUGH THE GREETING, and retrying the way a person does.
 //
 // THE LETTERS HAVE THREE GUARDS AND ALL THREE ARE ABOUT NOT ANSWERING BY
-// ACCIDENT (tasksettle.go's [app.settleCardKey] keeps the same guards `x` has):
-// the card must be the SELECTED one, the message box must be empty, and no
-// overlay may be up.
+// ACCIDENT (question.go's [app.questionOptionKey] / the landing door keep the
+// same guards `x` has): the question must be answerable, the message box must
+// be empty, and no overlay may be up.
 //
 // AND A CONVERSATION NOBODY HAS TYPED IN YET IS STANDING ON ITS GREETING, whose
 // starting-point list holds ↑ and ↓ over an empty box (welcome.go's
@@ -573,24 +573,31 @@ func statesPastTheDoor(t *testing.T, r *rig) {
 //
 // The way through is the greeting's own contract: EVERY OTHER KEY DISMISSES IT.
 // So one harmless character puts the list away, ctrl+u gives the empty box the
-// letters need back, and only then is ↑ the walk through the conversation. The
+// letters need back, and only then is the letter read as an answer. The
 // character is a full stop on purpose — `x` is the stop key and a,n,s,d,t are the
 // answers, and a fixture that reached for one of those would be answering the
 // question it came to read.
+//
+// SINCE #789, ↑ WALKS THE QUESTION BLOCK'S POINTER rather than the transcript
+// selection. The bare letter is therefore tried first — the landing question
+// owns the keys when it is on the block — and the ↑ walk is only the fallback
+// for a screen that still needs the selected card (pre-block fixtures).
 func statesAnswerKey(t *testing.T, r *rig, key, want string) bool {
 	t.Helper()
 	for attempt := 1; attempt <= 2; attempt++ {
 		r.lit(".")
 		r.keys("C-u")
 		time.Sleep(400 * time.Millisecond)
-		// AND ↑ IS WALKED RATHER THAN PRESSED ONCE. The letters answer the SELECTED
-		// card, the selection starts at the foot of the conversation, and what sits
-		// at the foot is whatever the window wrote last — the note the greeting
-		// leaves on its way out, a line the model added, the card itself. A single
-		// ↑ therefore lands on the card only when the card happens to be last, and
-		// a key refused on the wrong row falls through and types itself, which is
-		// exactly what a person watching the box would see and correct by pressing
-		// ↑ again.
+		r.lit(key)
+		if _, ok := r.glimpse(6*time.Second, want); ok {
+			t.Logf("the %q was spent on attempt %d, bare on the question block", key, attempt)
+			return true
+		}
+		r.keys("C-u")
+		// AND ↑ IS WALKED RATHER THAN PRESSED ONCE as a fallback. The letters
+		// once answered the SELECTED card; a single ↑ lands on it only when the
+		// card happens to be last, and a key refused on the wrong row falls
+		// through and types itself.
 		for up := 1; up <= statesWalkUp; up++ {
 			r.keys("Up")
 			r.lit(key)
