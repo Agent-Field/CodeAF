@@ -2494,6 +2494,17 @@ type Agent struct {
 	// process has not let go of it yet (takeover.go). Set once, never cleared:
 	// the only way out is the close the ask is for.
 	takenOver bool
+	// stoppedTurn is THE DOOR THAT ENDED THIS CONVERSATION'S LAST TURN WITH
+	// NOTHING SAID, read off the journal when the session was opened and spent
+	// the first time anybody asks (resume.go). It is empty on every conversation
+	// that was answered, on every one the person stopped themselves, and on
+	// every one this build has already asked again.
+	stoppedTurn StopDoor
+	// turnBegan is when the turn now running opened, and the zero time when
+	// none is. It is read by exactly one thing: the takeover beat, which will
+	// not let a request that was already on the disk before this turn started
+	// end it (takeover.go says why that request has had its chance).
+	turnBegan time.Time
 	// steerSeq names the sentences the person has spliced into a running turn
 	// (steer.go). It is an atomic rather than a field under mu because minting an
 	// identity is not a fact about the transcript, and an id that could only be
