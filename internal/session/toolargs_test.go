@@ -215,14 +215,33 @@ func TestDecodeToolArgumentsTakesTheLooseFormsAndRefusesTheRestInWordsAModelCanA
 			},
 		},
 		{
-			name:    "but a swallowed tail followed by anything else is not guessed at",
-			args:    `{"depends_on":"[7], \"limit\": 2} trailing words"}`,
-			refusal: `depends_on takes a list; it arrived as text, "[7], \"limit\": 2} trai… — send the value itself, not a string holding it`,
+			name: "THE SPILL LAW: a complete list followed by a leaked control token and prose is that list",
+			args: `{"depends_on":"[7, 8]\n<｜DSML｜>I recommend the first, because"}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if len(got.DependsOn) != 2 || got.DependsOn[1] != 8 {
+					t.Fatalf("depends_on: want [7 8] with the spill dropped, got %v", got.DependsOn)
+				}
+			},
 		},
 		{
-			name:    "a string that is a swallowed tail of the WRONG object is not spliced in",
-			args:    `{"depends_on":"[7], \"unrelated\": 1"}`,
-			refusal: `depends_on takes a list; it arrived as text, "[7], \"unrelated\": 1" — send the value itself, not a string holding it`,
+			name: "and a swallowed tail followed by prose is that tail, with nothing read out of the prose",
+			args: `{"depends_on":"[7], \"limit\": 2} and \"limit\": 9 is what I meant"}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if len(got.DependsOn) != 1 || got.DependsOn[0] != 7 {
+					t.Fatalf("depends_on: want [7], got %v", got.DependsOn)
+				}
+				equalInt(t, "limit", got.Limit, 2)
+			},
+		},
+		{
+			name: "a tail that never closes is not an object, so only the list at its head is read",
+			args: `{"depends_on":"[7], \"limit\": 1"}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if len(got.DependsOn) != 1 || got.DependsOn[0] != 7 {
+					t.Fatalf("depends_on: want [7], got %v", got.DependsOn)
+				}
+				equalInt(t, "limit", got.Limit, 0)
+			},
 		},
 		{
 			name:    "a string that is not holding a list is refused, and the refusal says it arrived as text",

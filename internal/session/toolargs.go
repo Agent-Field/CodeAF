@@ -511,19 +511,14 @@ func unswallowTail(fields map[string]json.RawMessage, t reflect.Type) {
 			// that last one is unwrapEncoded's case, not this one.
 			continue
 		}
-		// The object is read with a decoder rather than Unmarshal because the
-		// same model, having lost its place, sometimes closes the tail with `}]`
-		// — a bracket after the brace, closing a list it was no longer in.
-		// Closers that close nothing carry nothing, and are the only thing
-		// allowed to follow the object; any other trailing text is a shape
-		// this decoder has not seen and will not guess at.
-		doc := `{"` + name + `":` + held
-		reader := json.NewDecoder(strings.NewReader(doc))
+		// The object is read with a decoder rather than Unmarshal because what
+		// follows it is the model's spill and not the value: the same model,
+		// having lost its place, closes the tail with `}]` (a bracket after the
+		// brace, closing a list it was no longer in) or runs straight on into a
+		// leaked control token and prose. Once the object has closed it is
+		// whole, and nothing after it can add to it (the spill law, below).
 		var tail map[string]json.RawMessage
-		if err := reader.Decode(&tail); err != nil {
-			continue
-		}
-		if rest := doc[reader.InputOffset():]; strings.Trim(rest, "]} \t\r\n") != "" {
+		if err := json.NewDecoder(strings.NewReader(`{"` + name + `":` + held)).Decode(&tail); err != nil {
 			continue
 		}
 		own, has := tail[name]
@@ -557,11 +552,12 @@ func wantsAContainer(t reflect.Type) bool {
 }
 
 // unwrapEncoded reads a JSON string that holds JSON text of the wanted shape —
-// `"[{...}]"` where a list was asked for — and hands back the text it holds,
-// trimmed, so the caller can read it as the list or object it always was. It
-// unwraps ONCE: the text inside is read by the same coercion that asked, so a
-// string inside a string is refused there in the ordinary way, and a string
-// holding anything but the wanted opener is not touched at all.
+// `"[{...}]"` where a list was asked for — and hands back the value it holds,
+// so the caller can read it as the list or object it always was. It unwraps
+// ONCE: the value inside is read by the same coercion that asked, so a string
+// inside a string is refused there in the ordinary way, and a string holding
+// anything but the wanted opener is not touched at all. What follows the first
+// complete value is the model's spill (the spill law, below) and is dropped.
 func unwrapEncoded(raw json.RawMessage, text string, opener byte) (json.RawMessage, bool) {
 	if !strings.HasPrefix(text, `"`) {
 		return nil, false
@@ -571,11 +567,25 @@ func unwrapEncoded(raw json.RawMessage, text string, opener byte) (json.RawMessa
 		return nil, false
 	}
 	held = strings.TrimSpace(held)
-	if held == "" || held[0] != opener || !json.Valid([]byte(held)) {
+	if held == "" || held[0] != opener {
 		return nil, false
 	}
-	return json.RawMessage(held), true
+	var first json.RawMessage
+	if err := json.NewDecoder(strings.NewReader(held)).Decode(&first); err != nil {
+		return nil, false
+	}
+	return first, true
 }
+
+// THE SPILL LAW, which both repairs above share and which is stated once
+// because it is a claim about a model and not about JSON: INSIDE A STRING A
+// MODEL WRAPPED BY MISTAKE, WHAT FOLLOWS THE FIRST COMPLETE VALUE IS NOT PART
+// OF THE VALUE. Measured 2026-09-10 on deepseek-v4-flash: a stray `]` after the
+// closing brace; a leaked `<｜…｜>` control token and a paragraph of prose after
+// a complete list; and, most often, nothing at all. A value that has closed is
+// whole, and a decoder that refused it for what came after would be refusing
+// the person's question over the model's stutter. Nothing is ever read OUT of
+// the spill — a pick that fell into it is a pick the asker did not make.
 
 // arrivedAsText is the clause added to a list or object refusal when what
 // arrived was a JSON string, because "takes a list" alone reads as a lie to a
