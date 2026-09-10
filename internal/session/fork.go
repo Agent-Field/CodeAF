@@ -879,6 +879,13 @@ func forkOutcome(ctx context.Context, leash *handLeash, failure error) string {
 func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, leash *handLeash) (*Agent, error) {
 	a.mu.Lock()
 	parent := a.config
+	// The runtime-owned block is refreshed in the child, not frozen into its
+	// base instructions from the parent's previous turn.
+	if a.standingText != "" {
+		system = strings.Replace(system, a.standingText, "", 1)
+	}
+	governing := a.governingLocked()
+	owner := a.organizationSourceLocked()
 	model := a.model
 	// AND THE CALLER'S CACHE LINEAGE, WHICH IS THE VERB'S WHOLE ECONOMY. The key
 	// is a routing hint — "which replica should serve this?" — and a prefix cache
@@ -924,6 +931,9 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 	}
 
 	hand, err := newAgent(Config{
+		Governing:       governing,
+		OrganizationRef: owner,
+		Organization:    parent.Organization,
 		// Search authority follows the work without enabling memory writes.
 		ConversationHistory: parent.conversationHistory(),
 		// THE SAME DIRECTORY, WHICH IS THE POINT. A worktree per hand is what
@@ -1140,7 +1150,7 @@ func forkBelt(belt []bare.Tool, dir string, mayWrite bool) []bare.Tool {
 	var out []bare.Tool
 	for _, tool := range belt {
 		switch tool.Name {
-		case "read", "grep", "find", "ls", "read_document", "manual", "search_conversations":
+		case "read", "grep", "find", "ls", "read_document", "manual", "search_conversations", "collections", "shared_context":
 			out = append(out, tool)
 		case "edit", "write":
 			if mayWrite {

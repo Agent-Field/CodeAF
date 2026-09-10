@@ -32,9 +32,11 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/search"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
+	"github.com/Agent-Field/aforge-v2/internal/workspace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -1179,6 +1181,10 @@ type Config struct {
 	Standing *Standing
 	// Organization is independent of optional learned memory and UI lifetime.
 	Organization *Organization
+	// OrganizationRef identifies the owning work, independently of a generated
+	// worker journal. Governing grants reads only, never scheduling or mutation.
+	OrganizationRef workspace.Ref
+	Governing       *Governing
 
 	// standingItems overrides where [Standing.Store] would be read, and it is
 	// unexported because it exists for THIS PACKAGE'S TESTS and for nothing
@@ -2353,6 +2359,11 @@ type Agent struct {
 	// have not moved leaves message[0] exactly as the provider cached it.
 	standingText           string
 	organizationText       string
+	organizationRecords    []workspace.ContextRecord
+	governingCollections   map[string]int
+	governingRecords       []standing.Item
+	organizationReadError  string
+	governingReadError     string
 	organizationSeen       bool
 	organizationSeenLoaded bool
 	// placesText is the `# Attached folders` block message[0] currently carries

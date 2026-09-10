@@ -134,6 +134,8 @@ func v3StandingTicker(store *standing.Store) (*standing.Ticker, error) {
 		return nil, err
 	}
 	idle := session.StandingIdle()
+	posture.Governing = &session.Governing{Reader: store}
+	posture.Organization = v3Organization(&session.Standing{Store: store})
 	return &standing.Ticker{
 		Store:    store,
 		Sentinel: session.NewStandingSentinel(posture),
@@ -178,6 +180,7 @@ func v3StandingPosture(settings config.Config) (session.Config, error) {
 		root = os.TempDir()
 	}
 	cfg := session.Config{
+		Organization:   v3Organization(nil),
 		Workspace:      root,
 		Model:          v3TalkModel("", settings),
 		APIKey:         settings.APIKey,

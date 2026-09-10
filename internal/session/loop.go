@@ -333,6 +333,18 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// empty block, and a turn with an empty block is a turn as it always was.
 	a.refreshElsewhere()
 	a.refreshOrganization(ctx)
+	owner := a.organizationSource()
+	a.mu.Lock()
+	a.refreshStandingLocked()
+	a.refreshSystemLocked()
+	governingError := a.governingReadError
+	executionID := a.recordContextExposureLocked(owner, a.organizationRecords, a.governingRecords, a.organizationReadError+governingError, a.governingCollections)
+	a.mu.Unlock()
+	defer a.finishContextExposure(executionID)
+	if governingError != "" {
+		hub.send(Event{Kind: EventError, Err: fmt.Errorf("cannot read governing directions: %s", governingError), Usage: a.sealTurn(turn, started, model)})
+		return false
+	}
 
 	// partial accumulates what the model has streamed for the CURRENT step.
 	// It is the transcript's answer for an interrupted step, where no response
