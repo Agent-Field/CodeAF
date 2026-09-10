@@ -9,6 +9,17 @@ invalidates:
   - "The completion reader previously judged report fields from a clipped write label and a byte-count receipt, and its objection was presented as fact. The newest bounded exact write/edit input now accompanies its result; missing evidence is explicit and objections must be checked against current work before editing."
   - "A finishing standing check or action could overwrite a concurrent pause, stop or configuration edit. Revision-aware owner operations and runtime-only writeback now preserve newer intent and completed occurrence progress."
   - "Organization opens no longer reserve the writer for a current schema, and reads cannot recreate a missing database. Task workers can inspect but cannot reorganize or revise shared context."
+  - "Ongoing work could only be set up, changed or inspected through the chat card. `aforge standing add|edit|show|pause|resume|stop|check` does it from a terminal, and `aforge collections place|unplace` sets governing folders there."
+  - "A standing order could not be edited after it stood; a change meant stop and a new card. `aforge standing edit` makes a new instructions version (`specRevision`) that the next run uses."
+  - "A standing run's journal recorded `parent_cause: not_recorded`. Task firings now write `occurrence.json` before they run and their journal names that occurrence as the cause."
+  - "A file watch told its run the whole listing. It now says which files were added, modified or removed since the previous reading."
+  - "A process killed mid-firing re-fired the same change with no link to the half-done run. The retry is `attempt 2` of the same occurrence and names the interrupted run; a finished but unrecorded run is not run again."
+  - "One standing pass could last 120 seconds. It may now last one interval (5 minutes), and a run cut off mid-answer is failed rather than landed."
+  - "Standing item documents are schema 4 (specification revision and report path). Older engines refuse them; stop old tickers and windows before upgrading."
+  - "A rule placed on a folder only reached a standing run's instructions; nothing checked what the run published. A report is now read against the rules that reached its run before it is published, sent back once on a quoted finding, and held back (draft kept, previous report unchanged, the item waiting on the person) if it still breaks one. It is a model's reading, not a proof."
+  - "`aforge standing check` exited 0 whatever its runs came to. It exits 2 when a run did not finish and 4 when one is waiting on the person."
+  - "A standing run stopped at its step or spending limit ended its turn normally and published whatever report it had written, and a report opened and never closed was published to wherever it stopped. Both now fail and publish nothing, as does a run that tried to write its own report file and never replied with one; the previous report stays."
+  - "A stop while a standing run was working still let it replace its report and send a note. A stopped item's in-flight run now publishes nothing and sends nothing; what it already did is not undone, and a pause still lets it finish."
 ---
 
 `collections` and `shared_context` are wired through the production binary.
@@ -80,3 +91,32 @@ original journal evidence; missing parent causal links and ambiguous overlaps
 remain explicit. It does not claim complete causality, instruction compliance or
 external-effect verification. All builds/tests in this wave run on Spark, including
 targeted checks; no local compilation or tui3 tests are authorized.
+
+The local-files wave adds the terminal door onto standing work and the causes
+behind each firing. `--report <path>` names one workspace file the runner
+publishes a task firing's final answer to, with a sha256 receipt in the run's
+`occurrence.json`; the firing gets no wider write approval, a run that stops on a
+question or is cut off leaves the previous report, and a report inside its own
+watch is refused. Terminal-made orders deliver their notes to the project inbox.
+The declining answer on a standing card no longer carries an adoption receipt.
+A live run quoted an address a folder rule forbade even though the journal showed
+the rule reached it, so a published report is now checked against the rules that
+reached its run (auditor role, fresh context, no tools; a finding must quote the
+report), corrected once, or held back; the check is recorded as `ruleCheck` in
+`occurrence.json`. It covers the published report only — not tool actions, notes
+or work without a report. Review fixes in the same wave: occurrence keys carry
+the run count (a folder returning to an earlier reading no longer recovers an old
+record forever), a report-only edit is an edit, a report in a watched folder is
+refused, a published-but-unrecorded run is recovered rather than rerun, report
+folders are contained before they are made, and a failed or held run's changes
+are listed again. The live reports opened with the model's own narration, so a
+run now writes its report between a `<report>` line and a `</report>` line and only
+that is published (an answer without them is still published whole); a refused
+attempt to write its own report file no longer leaves it waiting on the person, but
+without a closed report it publishes nothing. Whether a run may publish is one
+decision read from everything its turns came to (`standing_publish.go`), so a limit,
+an unclosed report, a cut-off and a self-write each withhold it with their own line.
+`make test-local-work` drives `bin/aforge` with a scripted
+model and `make demo-local-work` runs the same journey with a real model in a
+disposable `AFORGE_HOME`, failing on the first step that does not hold. No
+connector or account is used.

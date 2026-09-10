@@ -1,0 +1,14 @@
+REVISION of the tested source: 9cc7b638c (temporary detached worktree), with internal/session/standing_publish_test.go from c0de4d8f9 copied in
+COMMAND: go test -count=1 -run 'TestARefusedWriteOfItsOwnReportWithNoReportLinesPublishesNothing|TestARunStoppedAtItsStepLimitPublishesNothing|TestAReportOpenedAndNeverClosedIsNotPublished|TestACorrectionStoppedAtTheStepLimitPublishesNothing' -v ./internal/session/
+EXPECTED: FAIL on the old logic
+    standing_publish_test.go:81: the last good report was replaced with "I cannot write the file; someone with permission needs to place it.\n" (outcome {Kind:landed Text:report updated: reports/r.md — I cannot write the file; someone with permission needs to place it. USD:0 NeedsPerson: Published:0x7c24d316a280})
+--- FAIL: TestARefusedWriteOfItsOwnReportWithNoReportLinesPublishesNothing (0.02s)
+    standing_publish_test.go:99: the last good report was replaced with "# Report\n- after the limit\n" (outcome {Kind:landed Text:report updated: reports/r.md — # Report
+--- FAIL: TestARunStoppedAtItsStepLimitPublishesNothing (0.01s)
+    standing_publish_test.go:111: the last good report was replaced with "# Report\n- half a page, and then\n" (outcome {Kind:landed Text:report updated: reports/r.md — # Report
+--- FAIL: TestAReportOpenedAndNeverClosedIsNotPublished (0.02s)
+    standing_publish_test.go:132: the last good report was replaced with "# Report\n- after the limit\n" (outcome {Kind:landed Text:report updated: reports/r.md — # Report
+--- FAIL: TestACorrectionStoppedAtTheStepLimitPublishesNothing (0.03s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/session	0.346s
+FAIL

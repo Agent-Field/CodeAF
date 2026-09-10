@@ -20,10 +20,13 @@ const collectionsUsage = collectionsSummary + `
   aforge collections create <name> | rename <collection-id> <name>
   aforge collections show <collection-id>
   aforge collections add|remove <collection-id> <kind> <record-id>
+  aforge collections place|unplace <collection-id> <kind> <record-id>
   aforge collections find <kind> <record-id>
       kinds: collection, conversation, task, standing, artifact (a file path)
       tasks need --session <conversation-id>; all accept --db and --json
-      organize references without moving files or starting work`
+      add files a reference: it is found there and nothing else changes.
+      place is a governing placement: that folder's rules reach the work.
+      neither moves files or starts work`
 
 func runCollections(args []string) error { return runCollectionsTo(args, os.Stdout) }
 
@@ -40,7 +43,7 @@ func runCollectionsTo(args []string, output io.Writer) error {
 		rest = []string{"list"}
 	}
 	verb := rest[0]
-	want := map[string]int{"list": 1, "create": 2, "rename": 3, "show": 2, "add": 4, "remove": 4, "find": 3}
+	want := map[string]int{"list": 1, "create": 2, "rename": 3, "show": 2, "add": 4, "remove": 4, "place": 4, "unplace": 4, "find": 3}
 	if n, ok := want[verb]; !ok || len(rest) != n {
 		return fmt.Errorf("usage: %s", strings.TrimLeft(collectionsUsage, " "))
 	}
@@ -50,7 +53,8 @@ func runCollectionsTo(args []string, output io.Writer) error {
 	if strings.TrimSpace(*database) == "" {
 		return fmt.Errorf("%w: --db needs a collection database path", workspace.ErrInvalid)
 	}
-	if verb == "rename" || verb == "show" || verb == "add" || verb == "remove" {
+	placing := verb == "place" || verb == "unplace"
+	if verb == "rename" || verb == "show" || verb == "add" || verb == "remove" || placing {
 		if err := (workspace.Ref{Kind: workspace.CollectionKind, ID: rest[1]}).Validate(); err != nil {
 			return err
 		}
@@ -61,7 +65,7 @@ func runCollectionsTo(args []string, output io.Writer) error {
 		}
 	}
 	var ref workspace.Ref
-	if verb == "add" || verb == "remove" || verb == "find" {
+	if verb == "add" || verb == "remove" || verb == "find" || placing {
 		ref = workspace.Ref{Kind: workspace.Kind(rest[len(rest)-2]), ID: rest[len(rest)-1], SessionID: *sessionID}
 		if ref.Kind == workspace.ArtifactKind {
 			if ref.ID == "" {
@@ -121,6 +125,12 @@ func runCollectionsTo(args []string, output io.Writer) error {
 	case "remove":
 		err = store.Remove(ctx, rest[1], ref)
 		result = ref
+	case "place":
+		err = store.AddPlacement(ctx, rest[1], ref)
+		result = ref
+	case "unplace":
+		err = store.RemovePlacement(ctx, rest[1], ref)
+		result = ref
 	case "find":
 		result, err = store.CollectionsFor(ctx, ref)
 	}
@@ -167,6 +177,16 @@ func writeCollectionsResult(output io.Writer, verb string, asJSON bool, result a
 			}
 		}
 	case workspace.Ref:
+		if verb == "place" {
+			if err = writeCollectionRef(output, value); err == nil {
+				_, err = fmt.Fprintln(output, "Placed: this folder's rules now reach it. Nothing moved and nothing started.")
+			}
+			return err
+		}
+		if verb == "unplace" {
+			_, err = fmt.Fprintln(output, "This folder's rules no longer reach it; any reference and the original record are unchanged.")
+			return err
+		}
 		if verb == "remove" {
 			// REMOVAL IS IDEMPOTENT, so this sentence has to be true of a
 			// membership that was never there as well. "Reference removed"

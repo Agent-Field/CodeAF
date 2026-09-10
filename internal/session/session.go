@@ -1841,6 +1841,13 @@ type Config struct {
 	// thing that knows which promise is the runner that built this config.
 	standingItemID string
 
+	// cause is what admitted this execution, when the door that built it knows
+	// (context_trace.go's [executionCause]). Only the standing runner fills it
+	// today, from the occurrence record the pass wrote into the run folder
+	// before the run began; every other execution records "not_recorded"
+	// rather than a cause inferred from timing.
+	cause *executionCause
+
 	// SpendRailUSD stops a session that has spent this much. 0 is off. The
 	// check happens BEFORE a turn starts (rail.go) and reads the session's own
 	// journaled usage, so the rail is exact rather than an estimate, and a turn

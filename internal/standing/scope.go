@@ -19,6 +19,11 @@ type Adoption struct {
 	Actor      string    `json:"actor"`
 	ProposalID uint64    `json:"proposal_id"`
 	At         time.Time `json:"at"`
+	// Via names the door when it was not a card in a conversation: "terminal"
+	// for an item the person wrote whole with `aforge standing add`, where
+	// there was no proposal to answer and ProposalID stays zero. Empty is the
+	// card, which is every item made before a second door existed.
+	Via string `json:"via,omitempty"`
 }
 
 func (it Item) validateScope() error {

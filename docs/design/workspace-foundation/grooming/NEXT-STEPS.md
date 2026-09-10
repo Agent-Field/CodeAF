@@ -12,6 +12,13 @@ local-file E2E evidence, and the remaining integration steps. Read it before
 starting another agent or interpreting this checklist as current runtime status.
 Wave 03 is still in progress; its final live journey and integration are not checked off.
 
+**Superseded the same day (about 22:40 UTC):** wave 03 finished and is integrated
+into this branch. Final source `c0de4d8f9`, focused validation 11/11 at `1c7012818`,
+live6 `DEMO PASSED` ($0.0114); the lane `b48387207` was merged with no runtime
+difference. The wave-03 execution checklist and its evidence are in
+[CONTINUE-WAVE-03.md](CONTINUE-WAVE-03.md) (completion section and "Remaining
+execution checklist"); the delivery record is "Local-files ongoing-work wave" below.
+
 ## Completed
 
 - [x] Consolidate architecture, persistence and seven operating sequences.
@@ -65,10 +72,20 @@ Wave 03 is still in progress; its final live journey and integration are not che
 - [x] T12b — Read-only governing context across chat, workers, independent checking and scheduled runs.
 - [x] T12c — Consumed-context records for journaled turns and bounded in-aforge inspection (C24); gaps remain below.
 - [ ] T12d — Exact automatic source-backed retention, clause-specific exceptions, action-boundary re-admission, ephemeral fork receipts and complete causal handoffs.
-- [ ] T13 — Complete the daily Slack journey, including setup, delivery, edits,
-  unanswered questions, pause/stop and restart.
+  Partial (wave 03): standing task runs record their occurrence as `parent_cause`;
+  tasks, forks and other executions still record `not_recorded`.
+- [x] T13 — Re-scoped by the owner on 2026-09-10 to **local files only** (no Slack,
+  real or simulated; no connector). The ongoing inbox-report journey passed:
+  setup, delivery (report plus project inbox note), edits, a report held for the
+  person, pause/stop, and restart after a kill. Evidence is in BUILD-WAVE-03.md
+  and the "Local-files ongoing-work wave" section below. The Slack version is
+  withdrawn, not done.
 - [ ] T14 — Complete cross-work Product-to-Marketing impact, including worker
   publication, duplicate suppression, authority and no-manual-reopen activation.
+  Partial (wave 03): a local spec change wakes a Marketing review through an
+  explicit file watch. The review's report is owner-published and checked against
+  the Marketing rule, it is not rerun on an idle pass, and a reference does not
+  govern. Impact between works without an explicit watch is not built.
 - [ ] T15 — Extend proven seams to persistent roles, handoffs, reusable profiles,
   additional adapters and compound triggers; tick each supported journey only
   against its own real acceptance evidence.
@@ -231,3 +248,46 @@ recorded after combined integration. All local builds/tests are prohibited (C25)
 - Next: T12d authority/source and cause propagation, then T13 complete daily Slack
   journey and T14 cross-work impact. A source selection is not proof that the
   model complied; journal windows are not a complete cause/effect graph.
+
+## Local-files ongoing-work wave — completed
+
+- Lane `codex/personal-e2e-opus`, base `72660bf57`, destination #662 through
+  `codex/personal-ai-backend`. Final source revision `c0de4d8f9`, after final
+  review 425's two publish-path blockers; plan and receipts are in
+  [BUILD-WAVE-03.md](BUILD-WAVE-03.md).
+- Focused Spark validation at `1c7012818` (source `c0de4d8f9`): **PASS, STATUS 0**,
+  11 of 11 steps, 0 skips, 22:20:35–22:21:54 UTC
+  ([receipt](validation/wave03-validate-final.log)). The earlier pass at
+  `7c3312539` is kept as [wave03-validate.log](validation/wave03-validate.log). Deterministic binary journey `TestLocalWorkJourney`
+  ran with a scripted loopback model; that is not live-model acceptance.
+- Live, on `deepseek/deepseek-v4-flash`, one call at a time, well under $0.10 in total:
+  - live6 at `1c7012818` (source `c0de4d8f9`): `DEMO PASSED`, $0.0114, including a
+    live refused self-write that published the closed report
+    ([log](validation/wave03-live6.log)).
+  - live5 at `9cc7b638c`: `DEMO PASSED` ([log](validation/wave03-live5.log)); review 425
+    then found the publish blockers at that revision.
+  - live4 at `d73ce259a`: the report correction was observed live, then the demo
+    failed on a refused self-write ([log](validation/wave03-live4.log)), which was fixed.
+  - live2 at `b427dde07`: the privacy violation ([log](validation/wave03-live2.log));
+    not acceptance.
+  - Real-model rules check on that violation: PASS ([log](validation/wave03-rules-check-live.log)).
+- An independent review found blockers 1–2 and issues 3–5, and the symlinked-parent
+  `MkdirAll` problem. All are fixed, each with a regression test; the blocker-1,
+  publish-crash and own-report-write tests fail on the old logic. Final review 425
+  found two more in the publish path: a self-write apology was published, and a
+  limit or an unclosed report still published. Both are fixed by one typed
+  publish decision; four regressions fail at `9cc7b638c`
+  ([receipt](validation/wave03-publish-old-logic.log)).
+- Boundaries kept open:
+  - The rule check is a model's reading of the published report, not proof and
+    not general enforcement.
+  - A failed run is not retried by itself.
+  - Stop mid-run withholds only aforge's report and note; started effects are
+    not cancelled.
+  - Terminal-made items do not install the timer.
+- Not run: tui3, broad UI/E2E, full session/cmd suites, the chat-card setup path,
+  Slack or any connector. No merge into dev, no deployment, no change to the
+  person's live state.
+- Integrated into `codex/personal-ai-backend` (#662) by a `--no-ff` merge of lane
+  head `b48387207`; `git diff b48387207 HEAD -- ':!docs' ':!*.md'` is empty, so the
+  validated runtime tree is the draft's.

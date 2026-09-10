@@ -1,0 +1,187 @@
+
+== LIVE MODEL DEMO — local files only, model deepseek/deepseek-v4-flash, at most $0.25 a run, $2 a day
+aforge:  aforge 9cc7b638c (dirty) built 2026-09-10 16:43 · go1.26.5 linux/arm64
+home:    /tmp/opus-localwork/live5/home
+project: /tmp/opus-localwork/live5/project
+
+== Folders, and a rule placed on each
+Launch=a7111486e5673199792f61afff4049dc Marketing=1027066d7aaae13b0e6950bf68531412
+$ aforge standing add --hold --scope a7111486e5673199792f61afff4049dc --workspace /tmp/opus-localwork/live5/project --words Inbox reports for Launch never quote email addresses or phone numbers; write [redacted].
+set up 20459b55c63c7cb9: Inbox reports for Launch never quote email addresses or phone numbers; write [redacted].
+a rule: applies in Launch (directly placed work only)
+$ aforge standing add --hold --scope 1027066d7aaae13b0e6950bf68531412 --workspace /tmp/opus-localwork/live5/project --words Marketing review notes cite the spec line behind every finding and never edit the copy itself.
+set up ee0d7a7789d79931: Marketing review notes cite the spec line behind every finding and never edit the copy itself.
+a rule: applies in Marketing (directly placed work only)
+
+== Ongoing work: keep an inbox report current (placed in Launch)
+inbox work: 5a4289db00e7f7fb
+
+== Ongoing work: review launch copy when the product spec changes (placed in Marketing)
+review work: 81182f9fd327404d
+
+== First pass: every watch takes its baseline; nothing runs
+$ aforge standing check
+2 checked
+ok: 0 run(s)
+ok: 0 run(s)
+
+== A new inbox note starts a run; the report is checked against the Launch rule, then published
+$ aforge standing check
+2 checked · 1 ran
+ok: run 0001 landed on v1, woken by added inbox/2026-09-10-standup.md, published reports/inbox-report.md; checked against 1 rule(s): kept
+--- reports/inbox-report.md
+## Inbox Report — 2026-09-10
+
+**Standup (2026-09-10)**
+- **Decision:** Launch moves to Friday.
+- **Open — Priya:** Confirm the venue.
+- **Open — unowned:** Press release needs an owner.
+ok: no raw contact detail in inbox-report.md
+
+== Edit the work: the NEXT run uses the new instructions; the last run keeps what it had
+$ aforge standing edit 5a4289db00e7f7fb --instructions Read the files under inbox/ that changed (use the read tool; do not run shell commands). Write a Markdown table of open requests with columns Request, Owner, Due; unknown owners are 'unassigned'. Then list decisions.
+revised 5a4289db00e7f7fb to version 2: instructions
+the next run uses it; a run already under way keeps what it started with
+$ aforge standing check
+2 checked · 1 ran
+ok: run 0002 landed on v2, woken by modified inbox/2026-09-10-standup.md, published reports/inbox-report.md; checked against 1 rule(s): kept
+--- reports/inbox-report.md
+## Inbox Report — 2026-09-10
+
+**Standup (2026-09-10)**
+
+| Request | Owner | Due |
+|---|---|---|
+| Confirm the venue | Priya | — |
+| Write the press release | Bob | Wednesday |
+
+### Decisions
+
+- Launch moves to Friday.
+ok: no raw contact detail in inbox-report.md
+ok: the report is now a table
+
+== Pause: a new note waits; nothing runs
+$ aforge standing pause 5a4289db00e7f7fb
+paused · Keep an eye on the inbox folder and keep reports/inbox-report.md current.
+not checked and not run until resumed; what it knows is kept
+$ aforge standing check
+1 checked
+ok: 2 run(s)
+
+== Resume: the change made while paused is picked up, not lost
+$ aforge standing resume 5a4289db00e7f7fb
+resumed · Keep an eye on the inbox folder and keep reports/inbox-report.md current.
+$ aforge standing check
+2 checked · 1 ran
+ok: run 0003 landed on v2, woken by added inbox/2026-09-11-budget.md, published reports/inbox-report.md; checked against 1 rule(s): kept
+ok: no raw contact detail in inbox-report.md
+
+== Product changes: the marketing review runs, and the copy is untouched
+$ aforge standing check
+2 checked · 1 ran
+ok: run 0001 landed on v1, woken by modified product/spec.md, published marketing/review-notes.md; checked against 1 rule(s): kept
+ok: 3 run(s)
+--- marketing/review-notes.md
+# Marketing review notes
+
+## Spec lines
+- **Offline support**: "removed in this release."
+- **Export**: "CSV only."
+
+## Claims the spec does not support
+
+1. **"Works offline, anywhere"** — spec says offline support is removed in this release.
+2. **"Export to CSV, PDF and Excel in one click"** — spec says export is CSV only; PDF and Excel are not supported.
+ok: launch-copy.md unchanged
+
+== Stop: final
+$ aforge standing stop 5a4289db00e7f7fb
+stopped · Keep an eye on the inbox folder and keep reports/inbox-report.md current.
+it will not run again; its history stays in aforge standing show 5a4289db00e7f7fb
+$ aforge standing check
+1 checked
+ok: 3 run(s)
+ok: stopped work does not resume
+
+== An idle pass runs nothing and publishes nothing twice
+$ aforge standing check
+1 checked
+ok: 3 run(s)
+ok: 1 run(s)
+ok: both reports unchanged
+
+== Cause and effect, per run
+$ aforge standing show 5a4289db00e7f7fb
+5a4289db00e7f7fb  retired  Keep an eye on the inbox folder and keep reports/inbox-report.md current.
+  retired: stopped by you
+  wakes when inbox/* changes
+  workspace: /tmp/opus-localwork/live5/project
+  instructions (version 2): Read the files under inbox/ that changed (use the read tool; do not run shell commands). Write a Markdown table of open requests with columns Request, Owner, Du…
+  report: reports/inbox-report.md
+  set up by: person, through the terminal
+  folder: a7111486e5673199792f61afff4049dc Launch (placed directly)
+  rule reaching it: 20459b55c63c7cb9 Inbox reports for Launch never quote email addresses or phone numbers; write [redacted].
+  ran 3 time(s); last came to landed · spent $0.0061
+runs, newest first:
+  0003  finished · landed · instructions v2 · Sep 10 16:45:46
+      woken: the files you are watching changed
+      added inbox/2026-09-11-budget.md
+      came to: report updated: reports/inbox-report.md — ## Inbox Report — 2026-09-10 **Standup (2026-09-10)** | Request | Owner | Due | |---|---|---| | Confirm the venue …
+      checked against 1 rule(s): kept
+      cost $0.0025
+      published reports/inbox-report.md (331 bytes, sha256 031b5c21120d)
+      journal: /tmp/opus-localwork/live5/home/v3/standing/5a4289db00e7f7fb/runs/0003/transcript.jsonl
+  0002  finished · landed · instructions v2 · Sep 10 16:44:43
+      woken: the files you are watching changed
+      modified inbox/2026-09-10-standup.md
+      came to: report updated: reports/inbox-report.md — ## Inbox Report — 2026-09-10 **Standup (2026-09-10)** | Request | Owner | Due | |---|---|---| | Confirm the venue …
+      checked against 1 rule(s): kept
+      cost $0.0015
+      published reports/inbox-report.md (222 bytes, sha256 0ff337fefeb2)
+      journal: /tmp/opus-localwork/live5/home/v3/standing/5a4289db00e7f7fb/runs/0002/transcript.jsonl
+  0001  finished · landed · instructions v1 · Sep 10 16:44:01
+      woken: the files you are watching changed
+      added inbox/2026-09-10-standup.md
+      came to: report updated: reports/inbox-report.md — ## Inbox Report — 2026-09-10 **Standup (2026-09-10)** - **Decision:** Launch moves to Friday. - **Open — Priya:*…
+      checked against 1 rule(s): kept
+      cost $0.0020
+      published reports/inbox-report.md (192 bytes, sha256 14de965b123f)
+      journal: /tmp/opus-localwork/live5/home/v3/standing/5a4289db00e7f7fb/runs/0001/transcript.jsonl
+log:
+  2026-09-10T16:44:01-04:00  set up at the terminal
+  2026-09-10T16:44:42-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — ## Inbox Report — 2026-09-10  **Standup (2026-09-10)** - **Decision:** Launch moves to Friday. - **Open — Priya:** Confirm the venue. - **Open — unown…
+  2026-09-10T16:44:43-04:00  revised at the terminal to version 2: instructions
+  2026-09-10T16:45:45-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — ## Inbox Report — 2026-09-10  **Standup (2026-09-10)**  | Request | Owner | Due | |---|---|---| | Confirm the venue | Priya | — | | Write the press rele…
+  2026-09-10T16:45:46-04:00  paused at the terminal
+  2026-09-10T16:45:46-04:00  resumed at the terminal
+  2026-09-10T16:47:18-04:00  the files you are watching changed — landed: report updated: reports/inbox-report.md — ## Inbox Report — 2026-09-10  **Standup (2026-09-10)**  | Request | Owner | Due | |---|---|---| | Confirm the venue | Priya | — | | Write the press rele…
+  2026-09-10T16:48:03-04:00  stopped at the terminal
+$ aforge standing show 81182f9fd327404d
+81182f9fd327404d  active  When the product spec changes, review the launch copy against it.
+  wakes when product/* changes
+  workspace: /tmp/opus-localwork/live5/project
+  instructions (version 1): Compare marketing/launch-copy.md with product/spec.md (use the read tool; do not run shell commands). List every claim in the copy the spec does not support, qu…
+  report: marketing/review-notes.md
+  set up by: person, through the terminal
+  folder: 1027066d7aaae13b0e6950bf68531412 Marketing (placed directly)
+  rule reaching it: ee0d7a7789d79931 Marketing review notes cite the spec line behind every finding and never edit the copy itself.
+  ran 1 time(s); last came to landed · spent $0.0019
+runs, newest first:
+  0001  finished · landed · instructions v1 · Sep 10 16:47:18
+      woken: the files you are watching changed
+      modified product/spec.md
+      came to: report updated: marketing/review-notes.md — # Marketing review notes ## Spec lines - **Offline support**: "removed in this release." - **Export**: "CSV only."…
+      checked against 1 rule(s): kept
+      cost $0.0019
+      published marketing/review-notes.md (363 bytes, sha256 70b0de8248ff)
+      journal: /tmp/opus-localwork/live5/home/v3/standing/81182f9fd327404d/runs/0001/transcript.jsonl
+log:
+  2026-09-10T16:44:01-04:00  set up at the terminal
+  2026-09-10T16:48:03-04:00  the files you are watching changed — landed: report updated: marketing/review-notes.md — # Marketing review notes  ## Spec lines - **Offline support**: "removed in this release." - **Export**: "CSV only."  ## Claims the spec does not support  …
+
+== Spend in this home
+model calls: 13  spend: $0.0079 (every model call in this home, from its usage ledger)
+
+DEMO PASSED — every step held, on aforge 9cc7b638c (dirty) built 2026-09-10 16:43 · go1.26.5 linux/arm64, model deepseek/deepseek-v4-flash.
+Kept at /tmp/opus-localwork/live5 — export AFORGE_HOME=/tmp/opus-localwork/live5/home to keep exploring with /home/santosh/src/aforge-personal-e2e/bin/aforge standing ...

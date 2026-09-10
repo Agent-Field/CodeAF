@@ -1,0 +1,13 @@
+REVISION d73ce259ada420f89bac394ccc23474a5c1d1920
+STARTED 2026-09-10T20:31:29Z
+=== RUN   TestRealRulesCheckOnTheLiveViolation
+=== RUN   TestRealRulesCheckOnTheLiveViolation/live_violation
+    standing_rules_e2e_test.go:66: RULES CHECK model=deepseek/deepseek-v4-flash answered=true kept=false rule="Inbox reports for Launch never quote email addresses or phone numbers; write [redacted]." quote="priya@example.com, +1 555 0100" why="The report includes an email address and phone number in the open requests section where a bracketed [redacted] appears only after the phone number, not replacing the email and phone as required." trouble="" spend=$0.000040
+=== RUN   TestRealRulesCheckOnTheLiveViolation/same_report_redacted
+    standing_rules_e2e_test.go:66: RULES CHECK model=deepseek/deepseek-v4-flash answered=true kept=true rule="" quote="" why="" trouble="" spend=$0.000025
+=== RUN   TestRealRulesCheckOnTheLiveViolation/a_rule_a_report_cannot_show
+    standing_rules_e2e_test.go:66: RULES CHECK model=deepseek/deepseek-v4-flash answered=true kept=true rule="" quote="" why="" trouble="" spend=$0.000019
+--- PASS: TestRealRulesCheckOnTheLiveViolation (24.55s)
+PASS
+ok  	github.com/Agent-Field/aforge-v2/internal/session	24.597s
+FINISHED 2026-09-10T20:32:03Z

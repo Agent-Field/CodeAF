@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -23,10 +24,13 @@ const contextTraceScanLimit = 16 * 1024 * 1024
 // Standing documents replace earlier revisions, so the effective words belong
 // here; shared context already has immutable revision history in its owner.
 type contextExposure struct {
-	ExecutionID          string             `json:"execution_id"`
-	Phase                string             `json:"phase"`
-	Owner                workspace.Ref      `json:"owner,omitempty"`
+	ExecutionID string        `json:"execution_id"`
+	Phase       string        `json:"phase"`
+	Owner       workspace.Ref `json:"owner,omitempty"`
+	// ParentCause is "not_recorded" unless the door that built this execution
+	// handed it a cause, and then it is that cause's kind, detailed in Cause.
 	ParentCause          string             `json:"parent_cause,omitempty"`
+	Cause                *executionCause    `json:"cause,omitempty"`
 	Standing             []standingExposure `json:"standing,omitempty"`
 	Shared               []sharedExposure   `json:"shared,omitempty"`
 	ReadError            string             `json:"read_error,omitempty"`
@@ -45,6 +49,28 @@ type standingExposure struct {
 	Scope      *standing.Scope      `json:"scope,omitempty"`
 	Adoption   *standing.Adoption   `json:"adoption,omitempty"`
 }
+
+// executionCause is the admission an execution was started by, copied from
+// the owner's own record rather than reconstructed afterwards. For a standing
+// firing it is the pass's occurrence record (internal/standing's
+// occurrence.go): which item, which version of its instructions, which
+// scheduled moment, and the file in the run folder that says so. It is the
+// link from a run's journal back to the duty that caused it; the ledger line
+// and the item's LastRun are the link the other way.
+type executionCause struct {
+	Kind  string        `json:"kind"`
+	ID    string        `json:"id"`
+	Owner workspace.Ref `json:"owner"`
+	// Spec is the owner's specification revision the execution ran on.
+	Spec uint64 `json:"spec,omitempty"`
+	// Due is the scheduled moment of a rhythm; a watch has none.
+	Due *time.Time `json:"due,omitempty"`
+	// Receipt is the path of the owner's admission record.
+	Receipt string `json:"receipt,omitempty"`
+}
+
+// causeStandingOccurrence is the one cause kind recorded today.
+const causeStandingOccurrence = "standing_occurrence"
 
 type sharedExposure struct {
 	ID        string        `json:"id"`
@@ -67,6 +93,10 @@ func (a *Agent) recordContextExposureLocked(owner workspace.Ref, records []works
 		return ""
 	}
 	receipt := contextExposure{ExecutionID: hex.EncodeToString(random[:]), Phase: "selected", Owner: owner, ParentCause: "not_recorded", ReadError: readError}
+	if cause := a.config.cause; cause != nil {
+		copied := *cause
+		receipt.ParentCause, receipt.Cause = copied.Kind, &copied
+	}
 	if len(placements) > 0 {
 		receipt.GoverningCollections = placements[0]
 	}
@@ -174,7 +204,7 @@ func (a *Agent) contextTraceTool(ctx context.Context, raw json.RawMessage) (stri
 // overlapping executions and duplicate unmatched provider IDs are ambiguous,
 // never guessed into a causal link. Metadata is not replayed as model input.
 func readContextTrace(ctx context.Context, path string, from int) (contextTracePage, error) {
-	page := contextTracePage{Journal: path, Rows: []contextTraceRow{}, Limitations: "Selection records describe exposure, not compliance. Tool rows are observed calls/replies, not proof of external effects. Execution links use journal windows; overlapping executions are ambiguous. Parent causes are not recorded. Original lines remain authoritative; read them for outcomes and content."}
+	page := contextTracePage{Journal: path, Rows: []contextTraceRow{}, Limitations: "Selection records describe exposure, not compliance. Tool rows are observed calls/replies, not proof of external effects. Execution links use journal windows; overlapping executions are ambiguous. Parent causes are recorded only where a selection row names one (a standing occurrence); parent_cause not_recorded means unknown, not absent. Original lines remain authoritative; read them for outcomes and content."}
 	file, err := os.Open(path)
 	if err != nil {
 		return page, err

@@ -79,7 +79,7 @@ const (
 	standDefaultPerRunUSD = standing.DefaultPerRunUSD
 	// standDefaultMaxPerDay is how many times an item may fire in a local
 	// day.
-	standDefaultMaxPerDay = 10
+	standDefaultMaxPerDay = standing.DefaultMaxPerDay
 )
 
 // standingPastGrace is how far behind the clock a named moment may be and still
@@ -1188,7 +1188,12 @@ func (a *Agent) askStanding(ctx context.Context, notice *StandingNotice) (Standi
 
 	select {
 	case answer := <-answers:
-		answer.answeredBy = "person"
+		// THE RECEIPT IS FOR WHAT STANDS. Only a yes creates an item and only an
+		// item carries an adoption receipt, so a decline, a once or a change
+		// stays the plain answer it was — nothing downstream reads who said no.
+		if answer.Approved {
+			answer.answeredBy = "person"
+		}
 		return answer, nil
 	case <-ctx.Done():
 		a.forgetStanding(id)
@@ -1509,7 +1514,7 @@ func (a *Agent) standingMove(store standingStore, item standing.Item, status sta
 
 // standingStoppedWhy is what a stopped item's document records, and it is one
 // of the cases [standing.Item.RetiredWhy] spells out.
-const standingStoppedWhy = "stopped by you"
+const standingStoppedWhy = standing.StoppedWhy
 
 // standingNamed resolves an id OR the person's own words to one item.
 //
