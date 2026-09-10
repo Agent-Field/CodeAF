@@ -10,6 +10,8 @@ import sys
 
 def validate_blocks(plan):
     blocks = plan["blocks"]
+    if not blocks or not plan["arms"]:
+        raise ValueError("A scoring campaign must contain trials and arms")
     flattened = [cell for block in blocks for cell in block]
     if flattened != plan["cells"] or len({tuple(c) for c in flattened}) != len(flattened):
         raise ValueError("Blocks must cover the frozen trials exactly once")

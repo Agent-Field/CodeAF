@@ -29,3 +29,5 @@ The reassessment preserves and hashes the original controls in a separate tree;
 Pi receives the same frozen toolchain on each calibrated runtime image.
 An offline client preflight checks the frozen binaries and native clients
 against a fake provider before any paid holdout trial.
+Process-level checks cover scheduler ordering and failure retention, plus native
+usage deduplication and a cost stop that leaves another trial running.

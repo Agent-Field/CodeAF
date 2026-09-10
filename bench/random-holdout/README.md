@@ -62,6 +62,9 @@ native mini and Pi clients, both frozen Aforge binaries through protocol 13,
 and the strict request guard against a loopback fake provider. It checks model
 identity, omitted generation controls and guard seed enforcement without a real
 API key. This does not replace the separate scheduler and usage-watch checks.
+`test_execution.py` runs those processes against synthetic trials: it checks the
+two-trial concurrency bound, block ordering, retained failures, replay refusal,
+generation deduplication and a cost stop scoped to the owning mini process.
 
 The external evidence directory is
 `/home/santosh/bench-artifacts/af-random-holdout-20260910`, outside fleet's rsync
