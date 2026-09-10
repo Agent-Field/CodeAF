@@ -165,3 +165,7 @@ sequences from typed references. The [workspace model lab](WORKSPACE-MODEL-LAB.m
 adds Browse, Connections and Records representations over one synthetic fixture,
 with inspectable details, relationship directions and logical fields. It is a
 separate grooming study, not a finalized product surface or new backend contract.
+
+The [critical review](CRITICAL-REVIEW.md) challenges the architecture, traces the
+actual #662 execution paths and orders the required refactoring. It separates
+design plausibility, static source evidence and fresh Spark test receipts.

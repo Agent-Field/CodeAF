@@ -1,0 +1,20 @@
+# job    20260910-150249-000407
+# cwd    /home/santosh/work/af-architecture-audit-repro
+# cmd    go test ./internal/standing -run "^TestArchitectureAuditControlSurvivesFiring$" -count=1 -v
+# start  2026-09-10T15:04:42Z
+# ---
+[fleet-guard] cgroup memory cap 107G
+=== RUN   TestArchitectureAuditControlSurvivesFiring
+=== RUN   TestArchitectureAuditControlSurvivesFiring/paused
+    architecture_audit_test.go:37: control was overwritten: saved paused during firing, got active
+=== RUN   TestArchitectureAuditControlSurvivesFiring/retired
+    architecture_audit_test.go:37: control was overwritten: saved retired during firing, got active
+--- FAIL: TestArchitectureAuditControlSurvivesFiring (0.01s)
+    --- FAIL: TestArchitectureAuditControlSurvivesFiring/paused (0.01s)
+    --- FAIL: TestArchitectureAuditControlSurvivesFiring/retired (0.00s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/standing	0.015s
+FAIL
+# ---
+# exit   1
+# end    2026-09-10T15:04:43Z

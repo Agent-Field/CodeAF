@@ -5,6 +5,10 @@ and tighten it. This is a separate logical walkthrough of the proposed model,
 not execution of the product or competitive benchmarks. S1–S7 refer to the
 architecture's sequence diagrams; G1–G12 identify its gap ledger.
 
+See the subsequent [critical review and code comparison](CRITICAL-REVIEW.md)
+for challenged assumptions, backend gaps and fresh validation evidence. The
+walkthroughs below are design cases, not 23 passing executable tests.
+
 **Assessment**
 
 The selected journeys fit the same folder/chat/work/file model, with Context and

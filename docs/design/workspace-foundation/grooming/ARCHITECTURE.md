@@ -12,6 +12,13 @@ stable folders, coordinate relevant efforts, continue delegated responsibilities
 over time, and inspect, correct or stop the resulting activity. The same model
 must support software development, research, marketing and personal assistance.
 
+The subsequent [critical review](CRITICAL-REVIEW.md) narrows the validation claim:
+this is a coherent target proposal, not yet an implementation-ready specification.
+Its A1–A12 findings and transition contracts refine this document where an earlier
+paragraph leaves ownership, versioning or failure behavior open. In particular,
+source text revisions alone do not version effective context, and fitting a
+journey to these diagrams is not runtime validation.
+
 **Reading map**
 
 1. Objects and typed relationships.
@@ -229,10 +236,11 @@ durable responsibility it is ongoing Work with associated chats, applicable
 Context and an execution profile. Without such a responsibility it can be a
 named Chat using that profile. Several responsibilities can share a profile
 without sharing all history or schedules. Durable routing bindings address a
-stable target ID, not a display name or temporary Run ID. If a future assistant
-must independently own credentials, membership and reassignment across many
-responsibilities, that is evidence for a separate supporting identity record;
-it is not justification to pre-create an employee object for every folder.
+stable target ID, not a display name or temporary Run ID. For roles spanning several duties, use a supporting execution-identity record
+independent of those duties: deleting or handing off one responsibility must not
+delete the named identity or route all future messages to that obsolete work.
+The identity references configuration and account bindings; it does not own a
+copy of every duty’s state or require an employee object for every folder.
 
 Group collaboration is a Chat with explicit participant/origin references and
 Work carrying the common outcome. Replies from peers are evidence or requests,
@@ -732,6 +740,22 @@ governed by the work's explicit policy. A chat close/detach does not imply stopp
 durable work; a request to stop must use actual owner controls.
 
 **6. Recovery, capacity and operational contracts**
+
+A run’s effective-input manifest must name semantic source revisions, adopted
+scope/direction revisions, relevant governing-membership generation, profile
+version and authority revision. Text revision alone cannot reveal a changed
+exception or placement. Explicit known requirements propagate deterministically;
+semantic discovery is measured best-effort assistance, not the enforcement path.
+When required obligations cannot be established within available context/capacity,
+split or suspend affected work rather than silently dropping them.
+
+Work specification revision, control revision, execution fence and wait token
+serve different lifecycles. The [critical review transition table](CRITICAL-REVIEW.md)
+defines their proposed interaction. Completing an older attempt cannot overwrite
+a concurrent pause/stop or satisfy a newer outcome automatically. Local durable
+admission is not an exactly-once guarantee for a remote effect; uncertain external
+outcomes require adapter reconciliation before retry.
+
 
 The architecture is incomplete without these operational rules:
 
