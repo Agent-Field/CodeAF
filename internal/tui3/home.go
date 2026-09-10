@@ -816,6 +816,7 @@ type homeView struct {
 	// are the pointer's half, written by the draw: where each column starts, and
 	// for each screen row which line every column drew there.
 	cols      int
+	spend     homeSpendReading
 	grid      homeGrid
 	tilde     string
 	gridX     []int
@@ -921,6 +922,8 @@ func (a *app) raiseHome() tea.Cmd {
 	// beat (place_home.go's [app.readSwitchLedger]).
 	a.readSwitchLedger()
 	a.readPlaceSummaries()
+	// AND WHAT THE MACHINE SPENT, for the spend panel (homepanel_spend.go).
+	a.readHomeSpend()
 	// AND THE FILES CONVERSATIONS HAVE MADE, as ONE reading for the whole screen
 	// rather than one per card (homeband_deliverables.go). It is taken here, with
 	// the other readings, because that index is a file and a card is a draw.
@@ -1362,6 +1365,7 @@ func (a *app) refreshHome() {
 	// it yet.
 	a.readStandBands()
 	a.readSwitchLedger()
+	a.readHomeSpend()
 	// AND THE DELIVERABLES INDEX, which costs ONE os.Stat on a beat where nothing
 	// has been written and re-reads the file only when something has
 	// (homeband_deliverables.go). A resting screen used to re-parse the whole
