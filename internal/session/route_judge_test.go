@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/splitgate"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -73,6 +74,16 @@ type routeCompleter struct {
 	// page whose turn ends up on the rail ends up there through this answer.
 	// Empty is a reader with nothing to say, which is a carry-on.
 	sketch string
+	// writesFirst makes the conversation's FIRST tool round a write under the
+	// workspace instead of a read.
+	//
+	// IT IS WHAT KEEPS A CONVERTED TURN ON THE FULL ROAD. A turn that touched
+	// nothing and whose mark reader drew parts is handed to a QUICK NODE — no
+	// brief, no arming, no division (checkpoint_quick.go) — so every case here
+	// that asserts what the task was BRIEFED or ARMED with has to be a turn that
+	// wrote. One call is enough to say so and four short of the write seam's own
+	// allowance, so the mark is still what moves the work.
+	writesFirst bool
 	// holdUntilRaced holds every CONVERSATION answer until this many PRE-TURN
 	// calls have been entered — one for the screen, two for the screen and the
 	// confirm.
@@ -183,9 +194,14 @@ func (c *routeCompleter) CompleteWithMessages(_ context.Context, messages []ai.M
 	c.answers++
 	answer, round, hook := c.answer, c.answers, c.onAnswer
 	call := round <= c.toolRounds
+	wrote := c.writesFirst && call && round == 1
 	c.mu.Unlock()
 	if hook != nil {
 		hook(round)
+	}
+	if wrote {
+		return toolResponse("wrote-notes", "write",
+			`{"path":"notes.md","content":"what the turn found out\n"}`), nil
 	}
 	if call {
 		return toolResponse(fmt.Sprintf("call-%d", round), "ls",
@@ -351,6 +367,11 @@ func routeAgent(t *testing.T, completer Completer) (*Agent, *routeRun, *ran) {
 	runs := &routeRun{}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.AskConsent = true
+		// AND THE BELT IS ALLOWED TO RUN, so a fixture whose turn writes actually
+		// lands the write: the seam counts the calls that CHANGED SOMETHING
+		// (writeseam.go), and a card raised over a refused edit would break
+		// [noCard] besides.
+		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
 		config.OrchestrateRunner = runs.start
 		config.RolesSource = tierSettings(map[string]string{
 			roles.TierKey(roles.TierLow):        routeScreenModel,
@@ -1014,6 +1035,9 @@ func racingAgent(t *testing.T, completer *routeCompleter) (*Agent, *routeRun, *r
 	if completer.toolRounds == 0 {
 		completer.toolRounds = 8
 	}
+	// AND THE TURN TOUCHES THE DISK ONCE, so what it is handed to is the watched
+	// task these cases are about rather than a quick node (see [routeCompleter.writesFirst]).
+	completer.writesFirst = true
 	// Both judges have answered before the conversation says its first word, so
 	// the boundary after that word is a boundary with a verdict waiting at it.
 	completer.holdUntilRaced = 2

@@ -153,6 +153,29 @@ func (m *writeMeter) past() bool {
 	return !m.spent && m.pastLocked()
 }
 
+// untouched reports that this turn has not landed ONE write-shaped call under
+// the workspace — the same counter the allowance is read off, read for zero.
+//
+// IT IS THE OTHER END OF THE SAME QUESTION and it lives here rather than beside
+// its caller for exactly that reason: what counts as a write is this file's
+// answer ([workspaceWrites]), and a second reader that re-derived "this turn
+// only read" from anything else would be a second definition of the word. The
+// caller is the checkpoint's quick road (checkpoint_quick.go), which hands a
+// turn that only read to a node that works where the person is standing.
+//
+// A NIL METER ANSWERS NO, which is the opposite direction from [mayBelieveDone]
+// and is the fail-safe one here. There is no counter in a session that never ran
+// an episode, so there is no evidence the disk was left alone — and the road
+// this gates is the one that skips the worktree.
+func (m *writeMeter) untouched() bool {
+	if m == nil {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.calls == 0
+}
+
 // pastLocked is the allowance itself, in the one place, so the three readers
 // above cannot come to disagree about where the line is. The caller holds m.mu.
 func (m *writeMeter) pastLocked() bool { return m.calls >= writeAllowanceCalls }

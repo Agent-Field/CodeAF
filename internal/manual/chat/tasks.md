@@ -687,6 +687,31 @@ this is running long · moving it to a task that is watched and can split
 this looked like work, so task 4 started: finish the four pieces
 ```
 
+## A quick task took over my answer · this has parts, a quick task is taking them here · why was there no copy of the folder · the moved work carried on in my own folder
+
+**When the answer being moved has changed nothing on disk, a quick task takes it instead of a
+full one.** That is the whole of what aforge reads here — not what the work was about, but
+whether the reply had written or edited anything under the folder you are in. A reply that
+only read files, ran searches and looked things up has nothing to isolate and nothing to
+merge, so it is not given a copy of the folder.
+
+**You read one line instead of two:**
+
+```
+this has parts · a quick task is taking them here, in this folder: audit the pricing code
+```
+
+**What that means.** The work carries on **in the folder you are standing in** — no branch,
+no copy, no merge. The parts the second reader drew become the quick task's **items**, in
+the order they were drawn, and it works through them in that order. Nothing checks it and
+there is nothing to land: its last message is the answer, and it reaches you as the ordinary
+note when the row goes `done`. It is on the rail like any other task, so it can be opened,
+steered and stopped from there.
+
+**If the reply had written anything at all, none of this applies.** One edit is enough: the
+answer takes the ordinary road above — a task in its own copy of the folder, briefed,
+checked and landed — and you read the two lines that road writes.
+
 ## It made a task out of work that was already done · why did it hand over when everything was written · the task redid what the answer had already written · it started again from my first message
 
 **When aforge stops to look at a long answer, it asks the model writing that answer whether

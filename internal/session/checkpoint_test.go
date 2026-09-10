@@ -31,6 +31,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -453,6 +454,47 @@ func answerTheNamerOffTheQueue(completer Completer) {
 	}
 }
 
+// writingGrindSteps is [grindingSteps] WITH ONE WRITE IN FRONT OF THE READS, and
+// it is what keeps a case on the full handover road.
+//
+// A turn that has touched nothing under the workspace and whose drawing came
+// back with parts is now handed to a QUICK NODE instead — no worktree, no brief
+// written by a second model, no division, and one line where there were two
+// (checkpoint_quick.go). So every case that is about the BRIEF, the ARMING or
+// the DIVISION has to be a turn that wrote, because that is the only turn the
+// full road still takes.
+//
+// ONE CALL SAYS SO, and one is deliberate at both ends: it is enough for
+// [writeMeter.untouched] to answer no, and it is four short of
+// [writeAllowanceCalls], so the write seam never fires and the MARK is still
+// what moves the work.
+func writingGrindSteps(count int, sketch, brief string) []step {
+	steps := grindingSteps(count, sketch, brief)
+	reading := steps[0]
+	steps[0] = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
+		if askedForSketch(messages) || askedForHandoff(messages) ||
+			askedToWriteHandoff(messages) || askedForRemains(messages) {
+			return reading(ctx, messages)
+		}
+		return toolResponseWithText("wrote-notes", "write",
+			`{"path":"notes.md","content":"what the turn found out\n"}`,
+			"Writing down what I found."), nil
+	}
+	return steps
+}
+
+// checkpointWritingAgent is [checkpointAgent] with the belt allowed to run, so
+// that the write in [writingGrindSteps] actually lands: the seam counts the
+// calls that CHANGED SOMETHING (writeseam.go), and a refused edit changed
+// nothing. It is [writeSeamAgent] without that page's own posture.
+func checkpointWritingAgent(t *testing.T, completer Completer, mutate ...func(*Config)) *Agent {
+	t.Helper()
+	allow := func(config *Config) {
+		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+	}
+	return checkpointAgent(t, completer, append([]func(*Config){allow}, mutate...)...)
+}
+
 // checkpointAgent is a watched conversation with a mastermind the mark can be
 // read by. Everything else is [newTestAgent]'s.
 func checkpointAgent(t *testing.T, completer Completer, mutate ...func(*Config)) *Agent {
@@ -705,8 +747,8 @@ func TestASplitSketchAtTheFirstMarkHandsTheTurnOver(t *testing.T) {
 
 	// Well past the first mark and well short of the second, so what fires here
 	// can only be the first.
-	completer := &scriptedCompleter{steps: grindingSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, dowry)}
-	agent := checkpointAgent(t, completer, func(config *Config) { config.Divide = true })
+	completer := &scriptedCompleter{steps: writingGrindSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, dowry)}
+	agent := checkpointWritingAgent(t, completer, func(config *Config) { config.Divide = true })
 	ran := make(ranNodes, 2)
 	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
@@ -1071,10 +1113,10 @@ func TestTheCeilingCarriesTheLastSketchIntoTheBrief(t *testing.T) {
 	const brief = "Finish the four pieces\nwhat is left, and everything this turn already found out"
 
 	rounds := checkpointMarkAt(checkpointMarks)
-	completer := &scriptedCompleter{steps: grindingSteps(rounds+checkpointSlack, checkpointSplitSketch, brief)}
+	completer := &scriptedCompleter{steps: writingGrindSteps(rounds+checkpointSlack, checkpointSplitSketch, brief)}
 	// Divide is off, which is the product's other posture: the sketch still heads
 	// the brief, because a brief is a document and not a road.
-	agent := checkpointAgent(t, completer)
+	agent := checkpointWritingAgent(t, completer)
 	ran := make(ranNodes, 2)
 	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
@@ -1966,9 +2008,9 @@ func TestTheCeilingIsDroppedWhenTheReaderAgreesNothingRemains(t *testing.T) {
 // is a reader stating that work remains — it cannot corroborate a claim that none
 // does.
 func TestASplitIsNeverDroppedByTheRunningModelsDeclaration(t *testing.T) {
-	completer := &scriptedCompleter{steps: grindingSteps(checkpointMarkAt(1)+6,
+	completer := &scriptedCompleter{steps: writingGrindSteps(checkpointMarkAt(1)+6,
 		checkpointSplitSketch, checkpointNothingLeft)}
-	agent := checkpointAgent(t, completer)
+	agent := checkpointWritingAgent(t, completer)
 	ran := make(ranNodes, 2)
 	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
@@ -3197,8 +3239,8 @@ func TestACoordinationSketchStartsNothingAndRealPartsStillConvert(t *testing.T) 
 	})
 
 	t.Run("real parts", func(t *testing.T) {
-		completer := &scriptedCompleter{steps: grindingSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, "Finish the four pieces\nwhat is left")}
-		agent := checkpointAgent(t, completer, func(config *Config) { config.Divide = true })
+		completer := &scriptedCompleter{steps: writingGrindSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, "Finish the four pieces\nwhat is left")}
+		agent := checkpointWritingAgent(t, completer, func(config *Config) { config.Divide = true })
 		ran := make(ranNodes, 2)
 		graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 

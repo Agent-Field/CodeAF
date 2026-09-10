@@ -1950,6 +1950,17 @@ const (
 	carryRungDraft   = "draft"
 	carryRungAsk     = "ask"
 
+	// AND ONE ROAD WALKS NO LADDER AT ALL, so it names itself on the ceiling row
+	// rather than naming a rung it never tried. A write-free turn whose drawing
+	// came back with parts is handed over as a QUICK NODE, and the drawing is the
+	// brief: its parts are the node's items, in order, and there is nothing for a
+	// second model to write out of them (checkpoint_quick.go). Nothing was
+	// skipped and nothing failed — there was nothing to ask for — so `skipped`
+	// and `empty` would both be a rung reporting on a call this road does not
+	// make. A bench reading the file tells this road from every other by this
+	// word alone.
+	carryRungQuick = "quick"
+
 	// What one rung DID. `written` is words somebody could work from;
 	// `degenerate` is words that were not words, or words that had stopped
 	// saying new things; `failed` is a rung whose call did not come back, and
@@ -3693,6 +3704,18 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// for a task nobody starts (taskname.go's [nameAhead]).
 	ahead := a.nameAhead(asked)
 	defer ahead.release()
+	// AND A TURN THAT ONLY READ GOES SOMEWHERE ELSE ENTIRELY, on a road that
+	// writes no brief because the drawing already is one (checkpoint_quick.go).
+	//
+	// IT IS DECIDED HERE, AFTER EVERY ENDING AND BEFORE EVERY MODEL CALL. After,
+	// because a turn that is finishing, awaiting or overruled must not be moved
+	// at all and the kind of node it would have moved to changes none of that.
+	// Before, because the two calls below are the whole of what this road exists
+	// to skip: a worktree nobody opens and a ninety-second writer producing a
+	// paragraph the items say better.
+	if quick := a.quickFromDrawing(read, asked); quick != nil {
+		return a.handOverAsQuick(ctx, hub, turn, started, model, verdict, asked, quick, ahead)
+	}
 	// AND THE BRIEF IS WRITTEN BY SOMEBODY WHO DID NOT SPEND THE TURN.
 	//
 	// THE DRAFT IS THE FINDINGS AND THE WRITER IS THE JUDGEMENT, which is the split
@@ -3931,7 +3954,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// closing remark of a finished answer. The person's sentence is the one thing
 	// on this road nobody writes, so it is the one thing that cannot come back as
 	// machinery — and the namer improves it a second later anyway (taskname.go).
-	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead)
+	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead, nil)
 
 	// THE GAP IS SPENT, because the person has just been interrupted by a task and
 	// does not care which of the moments noticed. routeJudgeGap exists so that work

@@ -445,6 +445,17 @@ type taskSpec struct {
 	// it ever ran comes back as one worker, which is what a task whose reviewer
 	// refused already is. Neither is a loss worth a second way to spawn work.
 	drawn drawnDivision
+	// quick is set on A QUICK NODE and on nothing else, and it is what
+	// [taskSpec.kind] reads to answer `quick`: a line saying what to do, the
+	// ordered items it works through, and the paths it claims
+	// (docs/design/quick-task/DESIGN.md). It runs where the caller works, with no
+	// worktree, no audit and no landing — its last message is its result.
+	//
+	// IT IS NEVER SET BESIDE [taskSpec.drawn]. A drawing is an instruction to
+	// divide this work into children; the items ARE the division, done in order
+	// by one worker, so a spec carrying both would hand the same parts out twice
+	// (checkpoint_quick.go).
+	quick *quickTaskSpec
 }
 
 // taskOrigin is the pointer a worker is handed so it can find the person's
