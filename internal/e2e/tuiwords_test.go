@@ -411,6 +411,26 @@ var tuiWords = map[string]tuiWord{
 		why:    "the greeting's own starter line, and the door a person is pointed at before they have typed anything",
 	},
 
+	// ── the roster column, and the difference between empty and ignorant ─────
+	//
+	// #761: a window that showed a conversation's replies and status line while
+	// the engine ran that conversation's tasks drew `+ /task` and nothing else.
+	// The label is the whole assertion, because the column only earns one when
+	// there is a row under it — an empty section would spend a line announcing
+	// absence, which the emptiness law forbids (margin.go).
+	"railTasksLabel": {
+		screen: "tasks",
+		why: "the roster column's own section label (margin.go's marginTasksWord), drawn ONLY when the " +
+			"column has a task row to put under it — so its presence beside a conversation is the " +
+			"surface saying it knows what the engine is running",
+	},
+	"railTaskDoorWord": {
+		screen: "+ /task",
+		source: "/task ",
+		why: "the roster column's door (margin.go's marginDoorMark plus marginTaskType), which is the " +
+			"whole of what a column with no task facts draws. #761's failure is this line ALONE",
+	},
+
 	// ── the task room, and the key the door home had to give back ────────────
 	//
 	// #457/#486 widened `space space` to open home from every place. The room a

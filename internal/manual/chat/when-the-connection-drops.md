@@ -54,6 +54,30 @@ conversation per connection — then the turn ended when the link did, and the r
 was part-way through is not coming back. aforge says which of the two happened rather than
 letting you guess; see *why did the reply not finish when it reconnected*.
 
+## The task column is empty after it reconnected — does the roster come back
+
+Yes, and it comes back whole.
+
+The column on the right is a **standing subscription** to the conversation's work, and
+that subscription lives on the connection. When a link dies and is redialled — a wifi
+handover, a lid closed, an engine on this machine replaced by a newer build — the surface
+asks for the roster again on the new link, and the far conversation replays every task it
+holds onto it: what is running, what landed, what is waiting on you. A row you already had
+and a row that was replayed are the same row, so nothing is drawn twice.
+
+The same is true of the harness card and the conversation's name.
+
+A column holding only
+
+```
++ /task
+```
+
+means this conversation has no tasks — the `tasks` label above the rows is drawn only when
+there is a row to put under it. It is not a column that has lost track of anything: a
+window attached to a conversation draws that conversation's work whether or not it is the
+window you are typing in, and it draws it again after a reconnect.
+
 ## Did I lose my work
 
 No. Nothing that reached the conversation is lost when a connection drops.
