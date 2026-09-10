@@ -103,11 +103,13 @@ type sessionHeader struct {
 }
 
 type sessionEntry struct {
-	Type       string        `json:"type"`
-	Role       string        `json:"role,omitempty"`
-	Content    string        `json:"content,omitempty"`
-	ToolCalls  []ai.ToolCall `json:"toolCalls,omitempty"`
-	ToolCallID string        `json:"toolCallId,omitempty"`
+	// Exposure is runtime-selected provenance, not another conversational message.
+	Exposure   *contextExposure `json:"context_exposure,omitempty"`
+	Type       string           `json:"type"`
+	Role       string           `json:"role,omitempty"`
+	Content    string           `json:"content,omitempty"`
+	ToolCalls  []ai.ToolCall    `json:"toolCalls,omitempty"`
+	ToolCallID string           `json:"toolCallId,omitempty"`
 	// Reasoning fields are the assistant continuation exactly as it arrived.
 	// They stay beside the message rather than inside Content so a resumed tool
 	// loop preserves both the wire contract and what the person actually saw.
