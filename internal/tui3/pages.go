@@ -1124,7 +1124,24 @@ func placeFrameWithBar(a *app, width, height int,
 	// and they belong beside the composer that could answer them.
 	inline := a.verbStripRow(width)
 	strip := a.placeStrip(width)
-	note := a.placeNote(width)
+	// THE NOTE RIDES THE RULE, SO THE FOOT IS ONE HEIGHT ON EVERY PLACE. It used
+	// to be a row of its own under the rule, and a place with a note (tasks,
+	// settings) drew its rule one row higher than a place without one — `tab`
+	// between them moved the rule and the body's bottom edge, and the first task
+	// to land moved it again inside tasks (PLACES-AUDIT.md finding 1). As the
+	// rule's legend it costs no row at all, which is the shape the conversation's
+	// seam and home's target already have. Home keeps its notes as rows because
+	// its rule is already a legend of its own ([app.targetLegend]).
+	//
+	// A note builder fits its words to the width it is handed less the two cells
+	// its own row spent on a lead and a margin, so it is handed the rule's room
+	// plus those two — and drops a whole clause, rather than the rule cutting one.
+	var note, legend []string
+	if a.at(pageHome) {
+		note = a.placeNote(width)
+	} else {
+		legend = a.placeNote(width - placeNoteRuleFrame + 2)
+	}
 	// AND THE TRAY IS A ROW OF THE FOOT, directly over the box, exactly where the
 	// conversation draws it (attach.go, input.go's [app.inputBlock]). It is
 	// measured with the foot for the composer layer's reason: a row that appeared
@@ -1221,19 +1238,16 @@ func placeFrameWithBar(a *app, width, height int,
 	// It is recorded as a local and published below the clamp for [app.boxRow]'s
 	// reason: the clamp is what decides which rows this frame really kept.
 	targetTop := -1
-	ruleLine := pal.dim(rule(width))
+	ruleLine := placeNoteRule(legend, width, pal)
 	if a.at(pageHome) {
 		if line, drew := a.targetLegend(width, pal); drew {
 			ruleLine, targetTop = line, len(lines)
 		}
 	}
 	add(ruleLine, nil)
-	// A PLACE MAY SAY ONE LINE ABOUT WHAT IT IS HOLDING, and it says it here:
-	// under the rule and above the composer, where every place's own count,
-	// filter line or open editor's label goes. It is the router's one concession
-	// to the places having bodies that are not all lists — and it is a LINE, not
-	// a foot: a place that wanted three rows here would be a place drawing a
-	// second frame inside this one.
+	// A PLACE MAY SAY ONE LINE ABOUT WHAT IT IS HOLDING, and it says it on the
+	// rule above ([placeNoteRule]); only home, whose rule is its target legend,
+	// still spends rows on one here.
 	for _, row := range note {
 		add(row, nil)
 	}
