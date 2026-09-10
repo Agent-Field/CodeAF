@@ -30,9 +30,10 @@ The frozen primary draw is:
 
 `prepare.py` runs only on Spark. It verifies fixture hashes and the repository
 base, retains the source archive, and records the runtime image identifier. The
-identical offline grader must find assertion failures on the unmodified source
-and pass on the upstream solution. Collection/setup errors do not count as a
-useful failing baseline. All targeted original tests and the upstream test patch
+identical offline grader must fail on the unmodified source and pass on the
+upstream solution. A missing requested API may fail during collection, so base
+and reference collection counts need not match. Reference setup errors, empty
+collection and entirely skipped suites are rejected. All targeted original tests and the upstream test patch
 are included; no case-specific test exclusion or acceptance rewrite is allowed.
 
 Preparation is sequential, bounded, and records every rejection. An unusable
@@ -41,6 +42,12 @@ A scored solution failure can never trigger replacement. If fewer than five
 different repositories calibrate, preparation reports `needs_review`; it does
 not silently change the draw or lower the bar. This calibration job does not
 start model calls.
+
+The first calibration used an overly strict assertion-only rule and rejected
+missing-API cases whose upstream solutions passed. Its frozen job and receipts
+remain unchanged. `test_calibration.py` covers the corrected general rule; any
+reassessment uses separately recorded evidence before scoring. The scored
+grader still requires every calibrated reference test and outcome.
 
 The external evidence directory is
 `/home/santosh/bench-artifacts/af-random-holdout-20260910`, outside fleet's rsync

@@ -18,6 +18,17 @@ def write(path, value):
     path.write_text(json.dumps(value, indent=2) + "\n")
 
 
+def validate_controls(metadata):
+    base, gold = metadata["base"], metadata["gold"]
+    # A requested API can be absent at import or decoration time. Requiring
+    # assertion failures would exclude those features before any agent runs.
+    # The unchanged tests must fail on the old source and pass on the reference;
+    # only the scored patch must reproduce the reference's complete collection.
+    assert base["exit"] in (1, 2) and base["failures"] + base["errors"] > 0, "Base must fail executable tests or collection"
+    assert gold["exit"] == 0 and gold["failures"] == 0 and gold["errors"] == 0, "Reference must pass unchanged tests"
+    assert gold["tests"] > gold["skipped"], "Reference must execute tests"
+
+
 def calibrate(task, root):
     key = task["id"]
     out = root / "prepared" / key
@@ -84,9 +95,7 @@ def calibrate(task, root):
                                "errors": sum(t.find("error") is not None for t in cases),
                                "skipped": sum(t.find("skipped") is not None for t in cases)}
             write(out / "calibration.json", metadata)
-        assert metadata["base"]["failures"] > 0 and metadata["base"]["errors"] == 0, "Base must fail assertions, not environment setup"
-        assert metadata["gold"]["exit"] == 0 and metadata["gold"]["tests"] > metadata["gold"]["skipped"], "Reference must pass executable tests"
-        assert metadata["gold"]["tests"] == metadata["base"]["tests"], "Reference changed test collection"
+        validate_controls(metadata)
         write(out / "ready.json", metadata)
         receipt.update(status="ready", image_id=image["Id"], runtime_image_id=runtime)
     except Exception:

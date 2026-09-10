@@ -20,3 +20,8 @@ the separate Spark preflight; their presence does not mean scoring has begun.
 
 A bounded block scheduler preserves the preregistered arm order and all failed
 trials; it refuses duplicate launches and never retries scored work.
+
+Calibration now accepts a missing API that prevents old-source test collection
+when the unchanged tests pass on the upstream solution. The initial assertion-only
+rule excluded such feature requests. Failed reference tests still reject a
+fixture, and scored patches still need the complete reference test outcomes.
