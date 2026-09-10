@@ -2479,6 +2479,30 @@ func TestTheCutReplyCostQuestionReachesTheReceiptAnswer(t *testing.T) {
 	t.Fatalf("the cut-reply cost question does not reach the section that says %q", said)
 }
 
+// 2026-09-10: a task writing one large file was cut at its wall three times
+// while it streamed at full speed. The wall now asks whether a reply kept pace
+// before it cuts, and a person who watched a long write die, or who reads the
+// cut sentence on an error row, has to reach the section that says so — not the
+// silence clocks beside it.
+func TestALongWriteCutAtTheWallReachesThePaceAnswer(t *testing.T) {
+	for _, probe := range []struct{ asked, page, says string }{
+		{"why does writing a big file keep getting cut off", "what-i-can-do", "is **not** cut for taking a long time"},
+		{"the reply ran past 2m30s without finishing and was cut", "models-and-cost", "checks its speed before it cuts"},
+		{"a long reply that is still writing gets cut", "models-and-cost", "checks its speed before it cuts"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == probe.page && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the %s section that says %q", probe.asked, probe.page, probe.says)
+		}
+	}
+}
+
 // #578: a ground never climbs out of the machine's scratch, so a workspace under
 // the temporary directory runs in place instead of cutting a branch off whatever
 // repository happens to sit above it. The page-level probe above cannot hold

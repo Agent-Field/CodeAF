@@ -1140,14 +1140,30 @@ few seconds resets both of them forever, and for a long time nothing in aforge e
 request like that: a turn could sit there for half an hour with the reply still technically
 arriving, and the session log recorded nothing at all while it did.
 
-So every request also carries a **wall** — the longest it may run before it is cut, whether
-or not it is still writing.
+So every request also carries a **wall**. **A long reply that is still writing at its
+endpoint's normal speed is not cut at the wall** — only a reply that has stopped keeping
+up, or one that reaches 20 minutes.
 
 **The wall is not a fixed number.** It is worked out from what that endpoint has actually
 done for you: **five times the longest reply it has finished** in this session, never less
 than **2m30s** and never more than **20 minutes**. Two endpoints serving the same model
 therefore get two different walls, and one that routinely writes long answers earns a
 longer one by writing them.
+
+**When a reply reaches the wall, aforge checks its speed before it cuts.** If the reply
+wrote at least a fifth of what that endpoint normally writes in the same time, it is a long
+answer and not a stuck one, and it gets another wall's worth of time. It is checked again at
+the end of that, and again, up to **20 minutes**, which is the one limit nothing extends. A
+reply that is dripping — a token every few seconds from an endpoint that writes forty a
+second — is cut at the first wall. The speed of an endpoint aforge has not timed yet is
+taken as 30 tokens a second, so the check is six a second.
+
+**A long file write is a long reply like any other.** A tool call that writes a whole file
+streams its contents the way an answer streams words, and it counts as the reply arriving.
+Before this, a model writing one large file on an endpoint that had only ever finished short
+turns was cut at 2m30s every time, on every retry, while it wrote at full speed — the wall
+was too short for the file, and the endpoint could never finish a long reply to earn a
+longer wall.
 
 **A model aforge has not spoken to yet gets 5 minutes**, because there is nothing measured
 to work from. That figure used to be the floor under *everybody*, which meant the
@@ -1161,7 +1177,7 @@ The lower clamp is 2m30s and not less, because that is the longest an endpoint i
 go quiet while assembling an answer on its own side (above). A wall shorter than that would
 cut a reply the silence clocks were still being patient with.
 
-When a reply hits the wall it is cut and asked again exactly like a reply that went quiet —
+When a reply is cut at the wall it is asked again exactly like a reply that went quiet —
 the endpoint is avoided on the retry, and a dim line lands:
 
 ```
@@ -1180,6 +1196,10 @@ with the same ending when there is nowhere to move:
 error: the reply ran past 15m0s without finishing and was cut, three times. a different model may answer — /model, or set models.fallbacks so this can move on its own
 ```
 
+The time in that sentence is the whole limit the reply reached — after extensions, if it
+got any — and the session log records how many tokens had arrived before the cut, a file
+being written included.
+
 **Nothing you can set changes the wall.** It has no settings row, because a number you had
 to pick would be a number nobody could pick correctly — that is the whole reason it is
 measured instead.
@@ -1191,7 +1211,8 @@ second for every 64 tokens it may write, never less than 5 minutes and never mor
 Once that endpoint has finished a reply for you, the measured wall applies to those calls
 too, and whichever of the two is shorter is the one that cuts. A model aforge has not heard
 back from yet keeps the room-sized deadline, because a first reply from a model that thinks
-at length may need all of it.
+at length may need all of it. **That wall is never extended**: a reply that arrives in one
+piece has no speed to check until it is over.
 
 **A cut reply is thrown away whole**, like every other cut: none of the text reaches the
 conversation, and the retry starts the reply from the beginning.

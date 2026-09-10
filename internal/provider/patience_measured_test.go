@@ -109,7 +109,10 @@ func TestTheLedgerHandsOutTheLanesOwnRate(t *testing.T) {
 
 // TestAHungStreamIsCutInProportionToItsBaselineAndNotAtTheColdFloor is the
 // acceptance end to end, over a real request against a real endpoint that never
-// stops writing.
+// stops writing — and never writes at the pace its lane is measured at, which is
+// what makes it hung rather than long. A stream keeping pace would be re-armed
+// at this wall ([stallWatch.keptPace]); a drip at a hundredth of its lane's rate
+// is cut at it.
 //
 // THE TWO FLOORS ARE SET APART ON PURPOSE. Every other test in this package
 // moves them together, because it is asking about the derivation rather than
@@ -137,10 +140,14 @@ func TestAHungStreamIsCutInProportionToItsBaselineAndNotAtTheColdFloor(t *testin
 					_ = writer.CloseWithError(request.Context().Err())
 					return
 				}
-				if _, err := writer.Write([]byte("data: " + deltaChunk("and on ") + "\n\n")); err != nil {
+				// A DRIP: one byte every twenty milliseconds, a fiftieth of a
+				// token a millisecond against a lane measured at four hundred a
+				// second — never quiet long enough for a silence bound, and
+				// never going to finish.
+				if _, err := writer.Write([]byte("data: " + deltaChunk(".") + "\n\n")); err != nil {
 					return
 				}
-				time.Sleep(2 * time.Millisecond)
+				time.Sleep(20 * time.Millisecond)
 			}
 		}()
 		return &http.Response{
@@ -160,8 +167,11 @@ func TestAHungStreamIsCutInProportionToItsBaselineAndNotAtTheColdFloor(t *testin
 	client.velocity = newVelocityLedger()
 	// THE BASELINE: this endpoint has finished a reply for us in ten
 	// milliseconds. Five times that is fifty, which is the measured floor, and
-	// it is eighty times shorter than what a stranger would be given.
+	// it is eighty times shorter than what a stranger would be given. And it
+	// writes at four hundred tokens a second, which is the pace the drip above
+	// is measured against.
 	client.velocity.noteRun(model, "gusher", 10*time.Millisecond)
+	client.velocity.brisk(model, "gusher")
 
 	ctx := WithStreamObserver(context.Background(), func(StreamEvent) {})
 	began := time.Now()
@@ -207,7 +217,7 @@ func TestAKeepaliveStillBuysPatienceOnAFastLane(t *testing.T) {
 	restore := shortenStallBounds(t, 200*time.Millisecond, 120*time.Millisecond)
 	defer restore()
 	cut := false
-	watch := newStallWatch(talking(), func() { cut = true }, time.Hour)
+	watch := newStallWatch(talking(), func() { cut = true }, time.Hour, paceFor(0))
 	// The timers are stopped and the verdict is asked for directly: this is a
 	// test about the REASONING, and a timer firing under it would be a second
 	// caller of the same once-only decision.
@@ -231,7 +241,7 @@ func TestAKeepaliveStillBuysPatienceOnAFastLane(t *testing.T) {
 
 	// And the other half: the same narrowed bound DOES cut a stream whose
 	// endpoint has gone silent as well, which is the whole point of narrowing.
-	silent := newStallWatch(talking(), func() {}, time.Hour)
+	silent := newStallWatch(talking(), func() {}, time.Hour, paceFor(0))
 	silent.stop()
 	silent.spoken = true
 	silent.gap = 10 * time.Millisecond
@@ -253,7 +263,7 @@ func TestAKeepaliveStillBuysPatienceOnAFastLane(t *testing.T) {
 // which are [stallWatch.rewall]'s: a bound a chunk could push out repeatedly
 // would not be a bound.
 func TestTheGapNarrowsOnceAndOnlyDownwards(t *testing.T) {
-	watch := newStallWatch(talking(), func() {}, time.Hour)
+	watch := newStallWatch(talking(), func() {}, time.Hour, paceFor(0))
 	defer watch.stop()
 	if watch.gap != stallGapBound {
 		t.Fatalf("a fresh watch opens at %s, want the flat bound %s", watch.gap, stallGapBound)
@@ -270,7 +280,7 @@ func TestTheGapNarrowsOnceAndOnlyDownwards(t *testing.T) {
 		t.Fatalf("gap = %s after a second narrowing, want the first one to stand", watch.gap)
 	}
 
-	fresh := newStallWatch(talking(), func() {}, time.Hour)
+	fresh := newStallWatch(talking(), func() {}, time.Hour, paceFor(0))
 	defer fresh.stop()
 	fresh.regap(time.Hour)
 	if fresh.gap != stallGapBound {

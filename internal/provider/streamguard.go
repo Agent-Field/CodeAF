@@ -199,8 +199,83 @@ const (
 	// It is also what keeps one pathological completion from poisoning the
 	// ledger. A lane that once took nineteen minutes and finished cannot use
 	// that to buy itself an hour.
+	//
+	// AND IT IS THE ONE BOUND NO EVIDENCE MOVES. A wall re-armed on a stream
+	// that kept pace ([stallWatch.keptPace]) is re-armed up to here and never
+	// past it: twenty minutes at forty tokens a second is forty-eight thousand
+	// tokens, past any honest single reply this program asks for, so a stream
+	// still writing at the ceiling is not a long answer, it is one that is not
+	// going to end.
 	streamWallCeiling = 20 * time.Minute
 )
+
+// ── THE WALL BOUNDS A REPLY THAT IS NOT WORKING, NEVER A REPLY THAT IS LONG ─
+//
+// THE WALL USED TO BE BLIND TO PROGRESS, and on 2026-09-10 it cost a whole
+// task. A lane that had only ever finished five-to-nine-second tool-call turns
+// earned the measured floor, two and a half minutes, which at forty tokens a
+// second is a hard cap of about six thousand tokens of output. The task asked
+// for one self-contained HTML file of about nine thousand. Three attempts on
+// three endpoints streamed 5,510, 3,576 and 26,145 tokens at the lane's normal
+// rate the whole time, and each was cut at its wall with nothing wrong with it;
+// $1.46 of the task's $1.74 was output thrown away. The retry ran the identical
+// request into the identical wall, and the ledger could never learn the longer
+// reply either, because [velocityLedger.noteRun] learns only from a reply that
+// FINISHED and a wall too short for the reply is a wall no reply finishes under.
+// That chicken-and-egg needs no mechanism of its own: it is the blindness above
+// seen from the ledger's side, and it ends with it.
+//
+// SO WHEN THE WALL FIRES, IT ASKS BEFORE IT CUTS. The question is the one a
+// person would ask of a reply still arriving — is it arriving at the speed this
+// lane writes at? — answered from what the watch counted over the period the
+// wall was armed for, against what the lane's own measured rate would have
+// produced over the same period ([stallWatch.keptPace]). A stream that kept
+// pace is long and healthy, and the wall RE-ARMS for another period. A stream
+// that did not — the drip the wall was written for, a token every few seconds
+// against a lane that writes forty — is cut exactly as before, with the same
+// sentence.
+//
+// THIS IS NOT THE WALL BEING PUSHED BY CHUNKS, which [stallWatch.rewall] rightly
+// forbids. No chunk moves it. It is re-derived ONCE PER PERIOD, from a
+// measurement of pace over the whole of that period, and it can never pass
+// [streamWallCeiling]. A drip that sends a token a second cannot buy a second
+// period, however many tokens it sends, because the question is how many
+// arrived against how many the lane writes in that time.
+//
+// KEEPING PACE IS A FIFTH OF THE LANE'S RATE, AND THE FIFTH IS
+// [streamWallFactor]. The wall's own factor was argued from the spread between
+// two healthy replies — three or four to one, and a reply that is never going to
+// end is an order of magnitude off — and the same spread bounds a rate: a lane
+// under load, a reply decoding deep into a long context, a batched endpoint
+// delivering in bursts, all move the rate by less than the widest honest ratio,
+// and a drip is ten or a hundred times under it. So the one number answers both
+// sides of the same question and is not stated twice.
+//
+// A LANE WITH NO MEASURED RATE IS HELD TO [LagRate] ([paceFor]). It is the one
+// rate this process already asserts about every endpoint before it has timed
+// any: an endpoint that finishes under it is called slow. A fifth of that is six
+// tokens a second — under every healthy lane this adapter has measured (the
+// slowest on 2026-09-10 sustained twenty-four) and far over a drip — so a
+// stranger's drip is caught at its first wall exactly as it always was, and a
+// stranger's long reply is not. The stream's own first-period rate was the other
+// candidate and it is the wrong one: a drip measured against itself keeps pace
+// with itself forever, and would run to the ceiling on every stranger.
+//
+// THE RULE IS STRICTLY MORE PATIENT THAN THE ONE IT REPLACES. Every stream the
+// old wall cut is either cut at the same moment or re-armed; nothing is ever cut
+// earlier. That is what lets a measured rate that overstates a lane — a reply
+// whose thinking was billed and never streamed — be used without fear: the worst
+// it can do is decline a re-arm the old wall never offered.
+
+// paceFor is the rate, in tokens a second, a stream on a lane measured at `rate`
+// is expected to keep: the lane's own figure, or [LagRate] for a lane this
+// process has not rated. See THE WALL BOUNDS A REPLY THAT IS NOT WORKING above.
+func paceFor(rate float64) float64 {
+	if rate <= 0 {
+		return LagRate
+	}
+	return rate
+}
 
 // stallFirstBound and stallGapBound are what the watchdog actually reads. The
 // constants above are the figures — one source of truth for the manual page and
@@ -401,7 +476,9 @@ const (
 	// text switching alphabet inside its own words.
 	CutBabble
 	// CutOverrun is a reply that never stopped: an endpoint that kept writing
-	// past the wall its own history earned it. See [wallFor].
+	// past the wall its own history earned it WITHOUT KEEPING PACE, or past
+	// [streamWallCeiling] whatever its pace. See [wallFor] and
+	// [stallWatch.keptPace].
 	CutOverrun
 	// CutMachinery is a reply that is the model's own tool grammar written as
 	// text: the request declared tools, the answer called none, and the content
@@ -450,11 +527,23 @@ type StreamCut struct {
 	//
 	// On CutOverrun it is THE WALL THAT FIRED, which is derived rather than
 	// constant ([wallFor]): the same rule, that the figure a person is told is
-	// the figure the timer was set to.
+	// the figure the timer was set to. A wall re-armed on a stream that kept pace
+	// names the whole bound it reached, measured from when the stream opened —
+	// "ran past 7m30s" after two re-arms of a 2m30s wall, never the 2m30s.
 	Waited time.Duration
 	// Provider is the endpoint the stream named as serving it, "" when no chunk
-	// ever did. Ran is how long the request had been open and Tokens is how much
-	// answer had arrived, both measured rather than derived.
+	// ever did. Ran is how long the request had been open, and Tokens is how
+	// much the model had WRITTEN — answer, thought and tool-call arguments alike
+	// — both measured rather than derived.
+	//
+	// TOKENS IS THE WATCH'S OWN COUNT, the one the wall's pace test read
+	// ([stallWatch.tokens]), so a row can be checked against the decision it
+	// records. It used to count answer text only, and a cut tool call — ten
+	// minutes of a `write` streaming at pace — was journaled as zero tokens,
+	// which is the one figure that cannot tell "producing nothing" from
+	// "producing forever". Thought is in it for the reason the provider's own
+	// output count has it: it is billed, streamed work, and a row comparable
+	// with the call rows beside it has to count what they count.
 	//
 	// THE THREE OF THEM EXIST FOR THE JOURNAL. A cut is the one failure that got
 	// somewhere before it failed, and the autopsy question about it — was this
@@ -618,12 +707,26 @@ type stallWatch struct {
 	born time.Time
 	// wallTimer fires when the request has been open longer than the lane's
 	// own history says any reply of its ever takes. walled is the bound it was
-	// set to, kept so the sentence a person reads names the figure that
-	// decided. rewalled says the wall has already been re-derived once, from
-	// the endpoint the stream named — see [stallWatch.rewall].
+	// set to, measured from born, kept so the sentence a person reads names the
+	// figure that decided. rewalled says the wall has already been re-derived
+	// once, from the endpoint the stream named — see [stallWatch.rewall].
 	wallTimer *time.Timer
 	walled    time.Duration
 	rewalled  bool
+	// period is one wall's length, what the lane's history earned it; walled
+	// equals it until the first re-arm and grows by it on each one after
+	// ([stallWatch.keptPace]). pace is the rate, in tokens a second, the stream
+	// is expected to keep ([paceFor]).
+	period time.Duration
+	pace   float64
+	// written is every byte the model has written — answer, thought and call
+	// arguments alike — and it is THE ONE COUNT of this stream's output: the
+	// pace test reads it and the cut reports it ([stallWatch.tokens]).
+	// paceFrom and paceMark are where the period being judged began — the first
+	// write, then each re-arm — and how much had been written by then.
+	written  int
+	paceFrom time.Time
+	paceMark int
 	// bounds are the three silence bounds this request is guarded by, in the
 	// patience of the role that asked for it. They are read here rather than
 	// out of the package vars because the ceiling they must sit above is the
@@ -641,20 +744,21 @@ type stallWatch struct {
 
 // newStallWatch starts both clocks: the silence timer, and the wall.
 //
-// The wall is passed in rather than read here because deriving it needs the
-// ledger, and this file is deliberately the layer that only detects and cuts.
-// A caller with nothing to derive from passes wallFor(0), which is the floor.
+// The wall and the pace it is judged at are passed in rather than read here
+// because deriving them needs the ledger, and this file is deliberately the
+// layer that only detects and cuts. A caller with nothing to derive from passes
+// wallFor(0) and paceFor(0), which are the stranger's figures.
 //
 // THE SILENCE BOUNDS COME OFF THE CONTEXT, because they are the role's and the
 // role rides the context (roles.go says why: a role belongs to the errand, so it
 // survives a wrapper, a retry, a relax rung and a hedge arm without anybody
 // re-stating it). A call that named none reads as [lane.RoleUnknown], a hidden
 // background errand, which waits longer rather than less.
-func newStallWatch(ctx context.Context, cancel context.CancelFunc, wall time.Duration) *stallWatch {
+func newStallWatch(ctx context.Context, cancel context.CancelFunc, wall time.Duration, pace float64) *stallWatch {
 	watch := &stallWatch{cancel: cancel, clock: time.Now, bounds: boundsFor(RoleFrom(ctx))}
 	watch.born = watch.clock()
 	watch.quietSince = watch.born
-	watch.walled = wall
+	watch.walled, watch.period, watch.pace = wall, wall, pace
 	watch.gap = watch.bounds.gap
 	watch.timer = time.AfterFunc(watch.bounds.first, func() { watch.fire() })
 	watch.wallTimer = time.AfterFunc(wall, func() { watch.overran() })
@@ -673,19 +777,27 @@ func newStallWatch(ctx context.Context, cancel context.CancelFunc, wall time.Dur
 //
 // It happens ONCE. A stream that renamed its provider halfway through is not a
 // thing this wire does, and a wall that could be pushed out repeatedly by
-// chunks would not be a wall.
+// chunks would not be a wall. (The re-arm on a stream that kept pace is not a
+// chunk pushing it: see THE WALL BOUNDS A REPLY THAT IS NOT WORKING.) And it
+// does not happen after a re-arm: a wall that has already been extended on a
+// measurement of pace is not narrowed afterwards by a name.
+//
+// The lane's pace comes with its wall, for the same reason and at the same
+// moment: before the first chunk names who is serving, the stream is judged at
+// the lineage's slowest measured rate, which is the most patient honest figure
+// there is ([velocityLedger.rate]).
 //
 // The new bound is measured from [stallWatch.born] rather than from now, so
-// narrowing is real: a lane whose wall is already spent is cut immediately
+// narrowing is real: a lane whose wall is already spent is judged immediately
 // instead of being given the whole of it again.
-func (w *stallWatch) rewall(wall time.Duration) {
+func (w *stallWatch) rewall(wall time.Duration, pace float64) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.tripped != nil || w.rewalled || wall <= 0 {
+	if w.tripped != nil || w.rewalled || wall <= 0 || w.walled > w.period {
 		return
 	}
 	w.rewalled = true
-	w.walled = wall
+	w.walled, w.period, w.pace = wall, wall, pace
 	left := w.born.Add(wall).Sub(w.clock())
 	if left < 0 {
 		left = 0
@@ -737,39 +849,105 @@ func (w *stallWatch) regap(gap time.Duration) {
 	w.timer.Reset(left)
 }
 
-// overran is the wall firing: the endpoint is writing, it has been writing for
-// longer than anything of its own has ever taken to finish, and it is not going
-// to stop. It is the same cut every other reason makes — cancel the request,
-// name what happened — so the decode loop's one cut path answers it unchanged.
+// overran is the wall firing: the endpoint has been writing for longer than
+// anything of its own has ever taken to finish. Whether that is a long answer
+// or one that is never going to end is [stallWatch.overrunVerdict]'s question;
+// a cut is the same cut every other reason makes — cancel the request, name
+// what happened — so the decode loop's one cut path answers it unchanged.
+//
+// The cancel runs outside the lock, for [stallWatch.fire]'s reason.
 func (w *stallWatch) overran() {
+	if cancel := w.overrunVerdict(); cancel != nil {
+		cancel()
+	}
+}
+
+// overrunVerdict is the wall's whole reasoning, under the lock from first line
+// to last. It answers with the cancellation the caller owes the stream, or nil
+// when the stream kept pace and the wall re-armed for another period instead.
+//
+// THE RE-ARM IS BOUNDED BY THE CEILING AND BY NOTHING ELSE. A period is added
+// to the bound, never more than [streamWallCeiling] allows, and a wall already
+// at the ceiling cuts whatever the pace — that bound is the one no evidence
+// moves. The re-arm happens with the lock held and the timer already fired, so
+// it cannot race a second fire.
+func (w *stallWatch) overrunVerdict() context.CancelFunc {
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	if w.tripped != nil {
-		w.mu.Unlock()
-		return
+		return nil
+	}
+	now := w.clock()
+	if w.walled < stallWallCeiling && w.keptPace(now) {
+		w.walled = min(w.walled+w.period, stallWallCeiling)
+		w.paceFrom, w.paceMark = now, w.written
+		w.wallTimer.Reset(w.born.Add(w.walled).Sub(now))
+		return nil
 	}
 	w.tripped = &StreamCut{
 		Reason: CutOverrun,
 		Waited: w.walled,
-		Ran:    w.clock().Sub(w.born),
+		Ran:    now.Sub(w.born),
 	}
-	cancel := w.cancel
-	w.mu.Unlock()
-	cancel()
+	return w.cancel
 }
 
-// progress says the model wrote something. It restarts the clock at the
-// mid-stream bound, because from the first token onwards the question is about
-// gaps rather than about the wait to be served — and it restarts the buffered
-// cap too, because the cap is about one quiet stretch, not about the whole
-// stream.
-func (w *stallWatch) progress() {
+// keptPace reports whether the period the wall was armed for delivered at
+// least a fifth of what the lane's own rate would have produced over it — the
+// fifth being [streamWallFactor], for the reason THE WALL BOUNDS A REPLY THAT IS
+// NOT WORKING gives. It runs with the lock held.
+//
+// THE PERIOD IS MEASURED FROM THE FIRST WRITE, then from each re-arm. The rate
+// it is judged against is measured over a lane's generation window, first token
+// to last, and the wait to be served is the first-token bound's business and
+// not this one's; charging it here would hold a stream that took a minute to
+// start to a rate it was never measured at. A stream that has written nothing
+// at all by its wall has not kept any pace and is cut.
+//
+// EACH PERIOD IS JUDGED ON ITS OWN. A stream that ran fast for ten minutes and
+// then fell to a drip has not earned the drip a pass, which is the controller's
+// "the collapse must be current" (internal/lane/control's hazard.go) said about
+// the transport's last resort.
+func (w *stallWatch) keptPace(now time.Time) bool {
+	if !w.spoken {
+		return false
+	}
+	delivered := float64(tokensOf(w.written - w.paceMark))
+	owed := w.pace * now.Sub(w.paceFrom).Seconds()
+	return delivered*streamWallFactor >= owed
+}
+
+// tokens is how much the model has written on this stream, in the estimate
+// every other count in this package uses ([tokensOf]). It is what a cut reports
+// ([StreamCut.Tokens]) and what the pace test reads, so the two are one figure.
+func (w *stallWatch) tokens() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return tokensOf(w.written)
+}
+
+// progress says the model wrote something, and how many bytes of it. It
+// restarts the clock at the mid-stream bound, because from the first token
+// onwards the question is about gaps rather than about the wait to be served —
+// and it restarts the buffered cap too, because the cap is about one quiet
+// stretch, not about the whole stream.
+//
+// THE BYTES ARE COUNTED AND THE WALL IS NOT TOUCHED. A chunk moves the silence
+// clock and nothing else; what the count buys is an answer when the wall
+// fires and asks whether the stream kept pace ([stallWatch.keptPace]).
+func (w *stallWatch) progress(bytes int) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.tripped != nil {
 		return
 	}
+	now := w.clock()
+	if !w.spoken {
+		w.paceFrom = now
+	}
 	w.spoken = true
-	w.quietSince = w.clock()
+	w.written += bytes
+	w.quietSince = now
 	w.timer.Reset(w.gap)
 }
 

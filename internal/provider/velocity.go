@@ -854,6 +854,16 @@ func (c *Client) streamGap(model, served string) time.Duration {
 	return gapFor(c.velocity.rate(model, served))
 }
 
+// streamPace is the rate, in tokens a second, the stream about to be opened —
+// or the one now known to be served by `served` — is expected to keep, which is
+// what its wall asks about before it cuts. See streamguard.go's [paceFor].
+func (c *Client) streamPace(model, served string) float64 {
+	if c.velocity == nil {
+		return paceFor(0)
+	}
+	return paceFor(c.velocity.rate(model, served))
+}
+
 // completionWall is the wall a reply that is NOT streamed is held to, and
 // whether there is one. A stream on a lane nothing is known about gets the
 // floor, because silence bounds it as well; a completion has only its total

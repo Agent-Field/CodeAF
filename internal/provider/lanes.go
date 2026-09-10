@@ -295,7 +295,12 @@ func promptTokens(request *ai.Request) int {
 
 // tokensIn is the estimate above, over one string. See [outputTokens], which is
 // its other caller and the reason it is stated in one place.
-func tokensIn(text string) int { return len(text) / charsPerToken }
+func tokensIn(text string) int { return tokensOf(len(text)) }
+
+// tokensOf is the same estimate over a count of bytes, for a reader that kept
+// the count rather than the text — the stream wall, which has no reason to hold
+// ten minutes of a reply in memory to know how long it was ([stallWatch.tokens]).
+func tokensOf(bytes int) int { return bytes / charsPerToken }
 
 // applyLaneChoice puts the belief's preference on a request that is about to go
 // out, and does nothing at all when there is no belief to put.
