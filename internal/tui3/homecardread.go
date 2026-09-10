@@ -68,9 +68,11 @@ func (a *app) refreshHomeCard(now time.Time) tea.Cmd {
 		return nil
 	}
 	// THE GRID HAS NO CARD, and what it reads is about the rows it draws rather
-	// than about the one under the cursor (homegrid.go).
+	// than about the one under the cursor — so a key or a pointer asks for
+	// nothing, and the beat and the open ask for the grid's readings
+	// (homegrid.go's [app.refreshGridReadings]).
 	if a.home.gridOn() {
-		return a.refreshGridReadings(now)
+		return nil
 	}
 	line, ok := a.home.previewLine()
 	if !ok {
