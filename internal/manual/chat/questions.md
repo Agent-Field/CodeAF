@@ -31,11 +31,31 @@ A question with more behind it than the block draws **opens out into a page of
 its own** — `o` opens it, `esc` closes it, and the sections below say what you
 can do in there.
 
+## The squiggle, the tick and the amber mark at the start of a card
+
+Every question opens with **one cell**, and it says whether the card in front of
+you is waiting for you at all:
+
+| mark | what it means |
+| --- | --- |
+| amber `?` | it is waiting on you and nothing moves until you answer |
+| dim `≈` | it took something for granted and went on — strike a line to change it |
+| dim `✓` | it did the reversible thing already and is telling you |
+| dim `⊘` | it stopped needing an answer and was taken back |
+
+**Only the first is amber.** Amber on this screen means waiting on you and
+nothing else, so the three cards that are not waiting on anybody do not wear it —
+a squiggle or a tick in the attention colour would be the screen asking you for
+something it has just said it does not need.
+
+On a terminal with a patched font these are drawn as icons instead of as shapes;
+`/settings` → **step icons** → `plain` puts the characters above back.
+
 ## The kinds of question
 
 Eight shapes. The shape is what says whether anything but you may answer it and
-what a safe answer would be. Not all eight are raised today — nothing yet asks
-you to strike an assumption or to unwind something already done.
+what a safe answer would be, and it also decides which of the marks above the
+card opens with.
 
 - **permission** — may this happen. The approval gate before a command runs, an
   offer to connect one of your accounts, an offer to run a saved program. The
@@ -67,6 +87,13 @@ the time runs out the work STARTS. It is your chance to correct it, not a gate t
 work waits on. Any key you press stops that clock, and a proposal you hold loses
 its deadline and then waits like everything else, with `waiting` on the end of the
 row instead of a countdown.
+
+**A clock says what it is going to do, in that shape's own words.** Where there
+is a recommended answer the tail is that answer — `start it in 9s`. Where there
+is not, the words depend on the shape: a proposal reads `starts on its own in 9s`
+because something begins when it runs out, and an assumptions card reads
+`goes on in 9s`, because nothing begins — the asker simply stops waiting for you
+to strike a line and carries on with what it said it was assuming.
 
 **Nothing that cannot be taken back ever runs on a clock**, and only you ever answer
 one. aforge refuses to raise a question that says otherwise.
@@ -335,6 +362,18 @@ is waiting on it. Reading past it is accepting it.
   ✓ renamed 12 files under src/ · [u] undo · [c] change
 ```
 
+**An assumptions card** wears `≈` instead of `?` for the same reason: it is not
+asking, it is telling you what it took for granted, and everything on it stands
+until you strike one.
+
+```
+  ≈ going ahead on these unless you strike one
+    nobody said which store to use · aforge
+      1  the sqlite file is the source of truth
+      2  the old rows can be dropped
+    [esc] later · [c] change · goes on in 9m 57s
+```
+
 ## Every key on a question
 
 The keys are one set, and a question only ever draws the ones it will actually
@@ -455,6 +494,46 @@ where you handed it back with `d`. It is the same line that goes into
 The line stays for half a minute and then goes — it is news, and after that it
 is history, which lives in the transcript and in the record.
 
+**There is one line however you answered.** Answering from the page a question
+opens into folds that page away and leaves the same receipt above the box —
+not a second account of the same decision in different words, and never one
+saying `another window` about a key you pressed yourself.
+
+## Part of the receipt is missing — a narrow window, and what it gives up first
+
+A receipt too long for the window **gives up a whole clause** rather than running
+off the right-hand edge, and the order is fixed:
+
+1. `with: …` — what you typed beside your pick. It goes first, and it is the one
+   clause the transcript and `decisions.jsonl` both still carry in full, so
+   nothing is lost by dropping it from a line that is news.
+2. the time.
+
+**What is never given up**: the question and what you picked, **who decided**,
+`cannot change`, and `c change`. Who decided is the one thing on that line you
+cannot work out for yourself — `another window` and `aforge, on your settings`
+are the whole reason it is written — and the last two are not details about the
+decision, they are what is still possible about it. A line that dropped
+`cannot change` would read as something you could walk back. If a window is
+narrow enough that even the question will not fit beside all of that, the
+question is what is cut and they stay.
+
+Widen the window, or open the conversation: the transcript and the record always
+have the whole line.
+
+## A question that stops needing you
+
+Sometimes the thing a question was about goes away — the turn moved on, the plan
+changed, another answer settled it. When that happens the question is taken back
+by whoever asked it and one dim line says so, once:
+
+```
+  ⊘ allow this? — no longer needed · the turn moved on without it
+```
+
+Then the count in the status line drops. It is never called cancelled: nothing
+failed, the decision simply stopped needing to be made.
+
 ## Stop asking me about this — rules
 
 Say yes to the same shape of question three times and the row grows one more
@@ -476,9 +555,11 @@ standing refusal is something you write in your settings on purpose.
 Two keys, and which one you get depends on whether the thing has happened yet.
 
 `u` is on a ratify line — something reversible was already done, and pressing it
-puts it back. It is only offered while there is really something to undo; a
-ratify line about something that cannot be taken back does not draw the key at
-all.
+puts it back. It is only offered while there is really something to undo, and
+that is two things at once: the work has to be **reversible**, and whatever did
+it has to have written down the answer that puts it back. A ratify line about
+something costly or irreversible does not draw the key, and neither does one that
+named no way back — pressing `u` there would send an answer nobody described.
 
 `c` is on the receipt after you answer, spelled `c change` on the line. It shows
 what unwinding would cost before it reopens the question.
@@ -653,11 +734,20 @@ Some settings are a dial rather than a choice:
 
     how much may it decide on its own here?
     ask me everything · [ tell me, then act ] · just do it
-    it will tell me, then act
+    tell me, then act
 
-`←` and `→` move it, and the line underneath says what the setting you are on
-actually does. On a screen reader it is drawn as `2 of 3 · tell me, then act`
-instead of as a picture, and the same two keys move it.
+`←` and `→` move it. The row of words is the SCALE — every notch this dial has —
+and the line under it is the READING, which is where it is standing right now.
+
+**The reading is whatever wrote the dial called that notch, word for word.**
+Nothing builds a sentence around it, because not every label is a verb phrase: a
+how-many dial reading `once · three times · five times` came out as
+`it will five times` when it did.
+
+On a screen reader the scale is drawn as `2 of 3 · tell me, then act` instead of
+as a picture, and the same two keys move it. A dial with no words on it at all is
+a bar with its number beside it, and has no reading underneath — the number is
+already there.
 
 ## What an answer carries
 

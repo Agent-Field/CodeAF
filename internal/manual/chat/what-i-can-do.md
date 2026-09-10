@@ -991,6 +991,11 @@ note in square brackets that begins `[Cut: … bytes of …. The rest of this pa
 in its sections — ask for the same page again with section set to one of:` and
 then lists every heading on that page, one to a line, before it closes.
 
+That list is bounded too — half of what one read hands over, which is twice the
+room the longest page in this manual needs — and if a page ever had more headings
+than that the list would stop and close with `(… and 3 more)` rather than run on.
+No page is near it today.
+
 Those headings are the addresses of the rest. Ask for the same page with one of
 them in `section` and that part comes back whole, however far past the cut it
 sat. A heading that is not on the page is refused by name, and the refusal lists

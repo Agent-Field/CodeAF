@@ -110,6 +110,7 @@ const (
 	GNeedsHuman
 	GWaitsOn
 	GWithdrawn
+	GAssumed
 	GCollapsed
 	GExpanded
 	GScopeUp

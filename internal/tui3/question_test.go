@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -568,6 +569,58 @@ func TestTheRatifyLineSaysWhatWasDoneAndHowToUndoIt(t *testing.T) {
 	}
 }
 
+// TestARatifiedActOffersTheWayBackWithoutBeingTold is the ladder's third rung
+// arriving the way the engine actually sends it: nothing but the object, and the
+// row still finds the way back on it.
+//
+// Nothing set [questionShown.undoable] outside a test until this landed, so
+// `[u] undo` was a key in the table, a paragraph in the manual, and a cell no
+// ratify line ever drew.
+func TestARatifiedActOffersTheWayBackWithoutBeingTold(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.fromLane(session.Question{
+		ID: 9, Kind: session.QuestionAsk, Ask: session.AskRatify,
+		Asker: session.Asker{Kind: session.AskerModel},
+		Head:  "renamed 12 files under src/",
+		Options: []session.AnswerOption{
+			{Key: "1", Label: "put them back", Safe: true},
+			{Key: "2", Label: "already done"},
+		},
+		Stakes: session.StakesReversible,
+	})
+	if got := lab.plain(); !strings.Contains(got, "[u] undo") {
+		t.Fatalf("the ratify line offers no way back: %q", got)
+	}
+	// AND THE KEY REACHES THE UNWIND THE ASKER DESCRIBED, which is the whole of
+	// what makes offering it honest.
+	lab.tick(questionSettle)
+	head, ok := lab.a.questionHead()
+	if !ok {
+		t.Fatal("the ratify line left the block")
+	}
+	if _, took := lab.a.questionVerbKey(head, questionUndoKey); !took {
+		t.Fatal("`u` was drawn and did nothing")
+	}
+	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != "1" {
+		t.Fatalf("`u` sent %+v, want the answer that puts the work back", lab.answer)
+	}
+}
+
+// TestACostlyRatifyDoesNotOfferTheWayBack is the other half of the same reading:
+// the rung is REVERSIBLE work, and a row that offered to unwind anything else
+// would be promising something the world will not do.
+func TestACostlyRatifyDoesNotOfferTheWayBack(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.fromLane(session.Question{
+		ID: 10, Kind: session.QuestionAsk, Ask: session.AskRatify,
+		Head: "bought the machine hour", Stakes: session.StakesCostly,
+		Options: []session.AnswerOption{{Key: "1", Label: "refund it", Safe: true}},
+	})
+	if got := lab.plain(); strings.Contains(got, "[u] undo") {
+		t.Fatalf("a ratify line for costly work offered a way back: %q", got)
+	}
+}
+
 // TestARatifyLineWithNothingRealToUndoDoesNotOfferTheKey is the emptiness law
 // applied to an answer rather than to a number.
 func TestARatifyLineWithNothingRealToUndoDoesNotOfferTheKey(t *testing.T) {
@@ -581,6 +634,58 @@ func TestARatifyLineWithNothingRealToUndoDoesNotOfferTheKey(t *testing.T) {
 	})
 	if got := lab.plain(); strings.Contains(got, "[u] undo") {
 		t.Fatalf("a ratify line with nothing to undo offered the key: %q", got)
+	}
+}
+
+// TestAnAssumptionsCardWearsItsOwnMarkAndItsOwnClock is the ladder's SECOND rung
+// drawn as what it is: nothing is waiting on anybody, so it does not wear the
+// mark that says something is, and the countdown says what actually happens when
+// it runs out.
+//
+// Both halves were the task proposal's before this landed — the amber `?` and
+// `starts on its own in 9m 57s` — about a card that asks nothing and starts
+// nothing.
+func TestAnAssumptionsCardWearsItsOwnMarkAndItsOwnClock(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.fromLane(session.Question{
+		ID: 12, Kind: session.QuestionAsk, Ask: session.AskAssumption,
+		Asker:  session.Asker{Kind: session.AskerModel},
+		Head:   "going ahead on these unless you strike one",
+		Reason: "nobody said which store to use",
+		Options: []session.AnswerOption{
+			{Key: "1", Label: "the sqlite file is the source of truth"},
+			{Key: "2", Label: "the old rows can be dropped"},
+		},
+		Stakes:   session.StakesReversible,
+		Policy:   session.Policy{Kind: session.PolicyRecommendThenAuto, After: 10 * time.Minute},
+		Deadline: lab.at.Add(9*time.Minute + 57*time.Second),
+	})
+	got := lab.plain()
+	// The mark is read off the HEAD ROW alone: `?` is also the ask-back key's
+	// own cell further down the block, and that one is a key rather than a mark.
+	head := questionPlainRows(lab.rows())[0]
+	if !strings.HasPrefix(head, tokens.Plain.Glyph(tokens.GAssumed)+" ") {
+		t.Fatalf("the assumptions card does not open with %q: %q", tokens.Plain.Glyph(tokens.GAssumed), head)
+	}
+	if strings.HasPrefix(head, tokens.Plain.Glyph(tokens.GNeedsHuman)) {
+		t.Fatalf("the assumptions card wears the attention mark; nothing is waiting on it: %q", head)
+	}
+	if !strings.Contains(got, questionAssumptionClockWord+" in ") {
+		t.Fatalf("the clock does not say what an assumption's clock does:\n%s", got)
+	}
+	if strings.Contains(got, questionProposalClockWord) {
+		t.Fatalf("the assumptions card borrowed the task proposal's sentence:\n%s", got)
+	}
+}
+
+// TestAQuestionThatIsWaitingKeepsTheAttentionMark is the other side of the same
+// reading: the shapes that DO want a key are unmoved.
+func TestAQuestionThatIsWaitingKeepsTheAttentionMark(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.raise(consentAsk())
+	head := questionPlainRows(lab.rows())[0]
+	if !strings.HasPrefix(head, tokens.Plain.Glyph(tokens.GNeedsHuman)+" ") {
+		t.Fatalf("a permission lost the attention mark: %q", head)
 	}
 }
 
@@ -812,5 +917,72 @@ func TestTheLaneRaisesOnlyWhatThisBlockHasTakenOver(t *testing.T) {
 		if a.questionDrawnHere(session.Question{Kind: kind}) {
 			t.Fatalf("%s is drawn here AND by its own block; one decision, two rows", kind)
 		}
+	}
+}
+
+// THE RECEIPT GIVES UP A CLAUSE AND IS NEVER CUT FROM THE RIGHT.
+//
+// The tail is where everything a person cannot work out for themselves lives —
+// who answered, when, and whether it can still be changed — and it was the half
+// a long `with:` clause took off the end at a hundred columns.
+func TestTheReceiptGivesUpAClauseRatherThanLosingItsTail(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.a.width = 100
+	lab.a.questionRecords = append(lab.a.questionRecords, questionRecord{
+		record: session.DecisionRecord{
+			Head: "which store should the ledger sit on?", Picked: []string{"2"},
+			Labels: []string{"sqlite beside the project"},
+			Change: "2, but keep the sqlite file as the source of truth and write the migration first",
+			By:     session.DecidedByPerson, At: lab.at,
+		},
+		at: lab.at, reversible: true,
+	})
+	row := plain(lab.a.questionRecordRow(lab.a.questionRecords[0], lab.a.width))
+	if ansi.StringWidth(row) > lab.a.width {
+		t.Fatalf("the receipt is %d cells wide at %d: %q", ansi.StringWidth(row), lab.a.width, row)
+	}
+	for _, kept := range []string{
+		"which store should the ledger sit on? → sqlite beside the project",
+		"you", "14:02", questionCommentKey + " change",
+	} {
+		if !strings.Contains(row, kept) {
+			t.Fatalf("the receipt lost %q: %q", kept, row)
+		}
+	}
+	// The change said beside the pick is the one clause that goes, because it is
+	// the one the transcript and decisions.jsonl both still carry in full.
+	if strings.Contains(row, "with:") {
+		t.Fatalf("the receipt kept the clause it should have given up first: %q", row)
+	}
+	// AND WHO DECIDED SURVIVES A ROW TOO NARROW EVEN FOR THE QUESTION, because
+	// it is the one thing on the line nobody can work out for themselves.
+	narrow := plain(lab.a.questionRecordRow(lab.a.questionRecords[0], 70))
+	if !strings.Contains(narrow, "you") || !strings.Contains(narrow, questionCommentKey+" change") {
+		t.Fatalf("a narrow receipt stopped saying who decided: %q", narrow)
+	}
+	// AND AT A WIDTH THAT HOLDS EVERYTHING, NOTHING IS GIVEN UP.
+	lab.a.width = 200
+	wide := plain(lab.a.questionRecordRow(lab.a.questionRecords[0], lab.a.width))
+	if !strings.Contains(wide, "with: 2, but keep the sqlite file") {
+		t.Fatalf("a wide receipt dropped a clause it had room for: %q", wide)
+	}
+}
+
+// AND `cannot change` IS NEVER GIVEN UP, because it is a limit rather than a
+// detail: a row that dropped it would read as a decision somebody could walk
+// back.
+func TestAnIrreversibleReceiptKeepsItsLimitAtAnyWidth(t *testing.T) {
+	lab := newQuestionLab(t)
+	record := questionRecord{
+		record: session.DecisionRecord{
+			Head: "send the quarterly digest to every address on the list?", Picked: []string{"1"},
+			Labels: []string{"send it"}, Change: "send it, but hold the two bounced addresses back until they are checked",
+			By: session.DecidedByPerson, At: lab.at, Stakes: session.StakesIrreversible,
+		},
+		at: lab.at,
+	}
+	row := plain(lab.a.questionRecordRow(record, 70))
+	if !strings.Contains(row, "cannot change") {
+		t.Fatalf("a narrow receipt gave up the one clause that is a limit: %q", row)
 	}
 }

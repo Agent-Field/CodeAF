@@ -609,8 +609,24 @@ const answerFromHome = "home"
 // session being answered is in another process. A key the kind does not take is
 // refused here rather than written and dropped later — the surface that offered
 // the chip is the one that can still say something about it.
+//
+// THE REFUSAL IS THE KIND'S OWN LIST WHERE THERE IS ONE, AND THE QUESTION'S
+// EVERYWHERE ELSE. [AnswerOptions] answers for the eight lanes whose keys are
+// fixed by the lane rather than by what is being asked; for the rest — the
+// model's own `ask`, a running sub-harness, the stuck-turn question — THE
+// QUESTION CARRIES ITS OWN OPTIONS ([PresenceQuestion.Options], written by the
+// session that is waiting) and this table has nothing to say about them. It used
+// to refuse them anyway, so every answer given from home to a question the model
+// raised came back `could not leave that answer — open the conversation and
+// answer it there`: the chips were drawn off the question's own options, the key
+// was checked against them, and then this door threw it away. A surface has
+// already asked [PresenceQuestion.Label] before it reaches here, which is the
+// narrower list and the honest one.
 func WriteAnswer(sessionDir string, kind QuestionKind, id uint64, key string) error {
-	if _, ok := AnswerFromKey(kind, key); !ok {
+	if strings.TrimSpace(key) == "" {
+		return errUnknownAnswer
+	}
+	if _, ok := AnswerFromKey(kind, key); !ok && len(AnswerOptions(kind)) > 0 {
 		return errUnknownAnswer
 	}
 	return deliverAnswer(sessionDir, Answer{
