@@ -106,6 +106,13 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if config.newerBuild == nil {
 		config.newerBuild = buildinfo.StaleNotice
 	}
+	// WHICH OF THE TWO FIXED PREFIXES THIS SESSION SENDS, SETTLED ONCE AND
+	// BEFORE ANYTHING IS BUILT FROM IT (promptprofile.go). It is derived rather
+	// than configured — the model's window and the crew's worker seat are the
+	// two facts — and it is settled HERE, above the render, because the page,
+	// the belt, the shelf and the memory reflex are all built from this one
+	// config and a profile resolved twice is a profile that can answer twice.
+	config.profile = settlePromptProfile(config)
 	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {
 		system, own = renderSystem(config), true
@@ -145,7 +152,13 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// store has to exist before the tools are assembled (memory.go). The
 	// background lifetime is minted with it, because a pass started by the first
 	// turn has to have somewhere to be cancelled from.
-	if config.Memory != nil {
+	// THE PREDICATE IS [Config.hasStore] AND NOT THE FIELD, because the field is
+	// two things: the conversation's own record, which every shape writes and
+	// reads, and the writable memory this brain is, which a lean prefix does not
+	// have (promptprofile.go). The belt and the page are built from that same
+	// predicate a moment later, which is what stops them disagreeing about
+	// whether `remember` exists.
+	if config.hasStore() {
 		agent.memory = newMemoryBrain(config.Memory)
 		agent.memoryCtx, agent.memoryStop = context.WithCancel(context.Background())
 	}
@@ -193,6 +206,15 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		return nil, err
 	}
 	agent.definitions = definitions
+	// AND THE GROUPS THIS PROFILE HANDS OVER RATHER THAN ASKING FOR. A lean belt
+	// is given `ask` at construction because a one-call-per-message model cannot
+	// do load-then-ask inside a turn (promptprofile.go's [Config.prearmedGroups]
+	// states the whole of it). It goes on through [Agent.armFamily], the one
+	// arming door, so the append law and the dedupe are the same ones a
+	// connected account and a loaded group ride.
+	if err := agent.armPrearmed(); err != nil {
+		return nil, err
+	}
 	agent.messages = []ai.Message{textMessage("system", system)}
 	agent.messageReasoning = make([]provider.MessageReasoning, 1)
 	agent.refreshSystemLocked()
