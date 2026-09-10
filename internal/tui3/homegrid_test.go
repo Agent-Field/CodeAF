@@ -152,6 +152,28 @@ func TestAnEmptyPanelWhispersWhatArrivesAndNeverThatItIsEmpty(t *testing.T) {
 	}
 }
 
+// firstRowOf is the line of the first row a panel draws under its heading —
+// an errand's row included, which wears no cell of its own.
+func firstRowOf(a *app, panel homePanelID) (int, bool) {
+	under := false
+	for at, line := range a.home.lines {
+		if line.cell != nil && line.cell.kind == cellHead {
+			under = line.cell.panel == panel
+			continue
+		}
+		if under && line.stop() {
+			return at, true
+		}
+	}
+	return homeNoLine, false
+}
+
+// homeEmptyWhispers are what an empty machine's home always whispers: the two
+// panels the squeeze never drops.
+func homeEmptyWhispers() []string {
+	return []string{homeWhisper[panelNeeds], homeWhisper[panelRecent]}
+}
+
 // focusedTitle is the title of the row the cursor is on.
 func focusedTitle(a *app) string {
 	if line, ok := a.home.focusedLine(); ok && line.cell != nil {
@@ -169,19 +191,25 @@ func TestTheArrowsWalkAColumnAndCrossToTheNext(t *testing.T) {
 		t.Fatalf("home opened on %q", got)
 	}
 	a.placeKeyPress(key("down"))
-	if got := focusedTitle(a); got != "Quiet Chat a" {
+	if got := focusedTitle(a); got != "Bounty Reward Companies" {
 		t.Fatalf("↓ went to %q, want the next row of where you were", got)
 	}
 	a.placeKeyPress(key("right"))
-	if got := focusedTitle(a); got != "Bounty Reward Companies" || a.strip.open {
-		t.Fatalf("→ went to %q (strip %v), want the right column's row", got, a.strip.open)
+	if got, want := a.home.columnOf(a.home.cursor), 1; got != want || a.strip.open {
+		t.Fatalf("→ went to column %d (strip %v), want the right column", got, a.strip.open)
 	}
+	right := a.home.cursor
 	a.placeKeyPress(key("left"))
-	if got := focusedTitle(a); got != "Swarm Task Splitting" {
-		t.Fatalf("← went to %q, want the left column's row nearest", got)
+	if got := a.home.columnOf(a.home.cursor); got != 0 {
+		t.Fatalf("← went to column %d, want the left column", got)
 	}
-	a.placeKeyPress(key("right"))
-	a.placeKeyPress(key("up"))
+	a.home.cursor = right
+	for i := 0; i < 20 && !a.bar.on; i++ {
+		if a.home.columnOf(a.home.cursor) != 1 {
+			t.Fatal("↑ walked out of the right column sideways")
+		}
+		a.placeKeyPress(key("up"))
+	}
 	if !a.bar.on {
 		t.Fatal("↑ off the top of the right column did not reach the tab bar")
 	}

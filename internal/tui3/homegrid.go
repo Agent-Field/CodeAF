@@ -401,7 +401,7 @@ func homeColumnHeight(column []*homeGridPanel) int {
 // floor are panels dropped, lowest first. ZERO ROOM IS NO ANSWER — a build
 // before the first frame has no height to fit, and squeezes nothing.
 func squeezeColumn(column []*homeGridPanel, room int) {
-	if room <= 0 {
+	if room <= 0 || homeColumnHeight(column) <= room {
 		return
 	}
 	order := append([]*homeGridPanel(nil), column...)
@@ -412,15 +412,34 @@ func squeezeColumn(column []*homeGridPanel, room int) {
 	}
 	for _, p := range order {
 		if homeColumnHeight(column) <= room {
-			return
+			break
 		}
 		p.shrink()
 	}
 	for _, p := range order {
 		if homeColumnHeight(column) <= room {
-			return
+			break
 		}
 		p.dropped = true
+	}
+	regrowColumn(order, column, room)
+}
+
+// regrowColumn hands back what the squeeze did not need, a row at a time, to
+// the panels it cut, the most important first. A floor is a whole step, and a
+// drop frees a whole panel, so the squeeze can overshoot — and air under a
+// column while `where you were` is folded is the squeeze spending the wrong
+// panel's rows.
+func regrowColumn(order, column []*homeGridPanel, room int) {
+	for i := len(order) - 1; i >= 0; i-- {
+		p := order[i]
+		for !p.dropped && p.shown < len(p.read.lines) {
+			p.shown++
+			if homeColumnHeight(column) > room {
+				p.shown--
+				break
+			}
+		}
 	}
 }
 
@@ -626,8 +645,8 @@ func (h *homeView) rowOf(at int) int {
 
 // gridCross moves the cursor into the neighbouring column, onto the stop whose
 // row is nearest the one it left — the same rank a person's eye was at. It
-// reports false when there is no column that way, so the arrow keeps whatever
-// else it means at the edge (the verb strip, on the rightmost column).
+// reports false when there is no column that way, or none with a row in it, so
+// the arrow keeps whatever else it means at the edge (the verb strip).
 func (h *homeView) gridCross(dir int) bool {
 	next := h.columnOf(h.cursor) + dir
 	if next < 0 || next >= h.grid.cols {
@@ -644,9 +663,12 @@ func (h *homeView) gridCross(dir int) bool {
 			best, gap = at, d
 		}
 	}
-	if best >= 0 {
-		h.cursor, h.picked = best, true
+	// A COLUMN WITH NOTHING TO STAND ON IS NO COLUMN THAT WAY: every panel in
+	// it is whispering, and the arrow keeps its other meaning.
+	if best < 0 {
+		return false
 	}
+	h.cursor, h.picked = best, true
 	return true
 }
 

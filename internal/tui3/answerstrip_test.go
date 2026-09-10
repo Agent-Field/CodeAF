@@ -32,15 +32,19 @@ func drawnAnswerStrip(a *app) string {
 	return plain
 }
 
-func TestAnswerStripShowsTheCursorRowsAnswerableCard(t *testing.T) {
+// ON THE GRID THE ANSWERS ARE THE ROW'S AND NOT THE FOOT'S. A question's `needs
+// you` row carries its words and its answers (homecell.go's [app.homeCellRow]),
+// so the strip that used to stand between the box and the hint would be the
+// same chips drawn twice; it stands only over the typed drop-up now.
+func TestAnswerStripGivesWayToTheRowOnTheGrid(t *testing.T) {
 	lab := newAnswerLab(t, consentQuestion(7, "approve schema change — alter users table, add sso columns"), time.Now())
-	strip := drawnAnswerStrip(lab.a)
-	if strip == "" {
-		t.Fatalf("home drew no answer strip:\n%s", homeText(lab.a))
+	if strip := drawnAnswerStrip(lab.a); strip != "" {
+		t.Fatalf("the grid drew the answers at the foot as well: %q", strip)
 	}
+	text := homeText(lab.a)
 	for _, want := range []string{"approve schema change", "1 allow once", "2 always", "3 deny"} {
-		if !strings.Contains(strip, want) {
-			t.Fatalf("the answer strip lost %q: %q", want, strip)
+		if !strings.Contains(text, want) {
+			t.Fatalf("the needs row lost %q:\n%s", want, text)
 		}
 	}
 }

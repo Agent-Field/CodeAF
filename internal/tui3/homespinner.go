@@ -47,8 +47,15 @@ func (h *homeView) spinAt() int {
 	// ON THE GRID THE ONE MOVING CELL IS THE FIRST RUNNING ROW'S, which the
 	// running panel marked when it read its rows (homepanel_running.go) — the
 	// panel is ranked, so its first row is already the answer this function
-	// would otherwise work out.
+	// would otherwise work out. A conversation being moved here takes it
+	// outright, for [homeView.newestMoving]'s reason, on whichever panel its
+	// row stands.
 	if h.gridOn() {
+		for at, line := range h.lines {
+			if h.claim != "" && line.kind == homeSession && line.row.Transcript == h.claim {
+				return at
+			}
+		}
 		for at, line := range h.lines {
 			if line.cell != nil && line.cell.mark == cellMarkSpin {
 				return at
