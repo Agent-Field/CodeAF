@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -50,6 +51,32 @@ func TestATransportRetryReplacesTheVisiblePartialAnswer(t *testing.T) {
 	}
 	if got := completer.requests(); got != 2 {
 		t.Fatalf("requests = %d, want failed attempt and its replacement", got)
+	}
+	// AND THE SAME EVENT SAYS IT IN PARTS. A surface that wants to draw a row
+	// rather than a line needs which model, how far into its patience, and — the
+	// distinction it could not draw at all before — whether the next request goes
+	// to the same model or a different one (retrynews.go).
+	retry, _ := firstOfKind(collected, EventRetrying)
+	if retry.Retry == nil {
+		t.Fatalf("the retry %q carried no news beside it", retry.Text)
+	}
+	if retry.Retry.Model != "test/model" {
+		t.Errorf("the retry named %q, want the model being asked", retry.Retry.Model)
+	}
+	if retry.Retry.Next != "" {
+		t.Errorf("an ordinary retry said it was moving to %q", retry.Retry.Next)
+	}
+	if retry.Retry.Attempt != 1 || retry.Retry.Attempts != taxonomy.DefaultTransportAttempts {
+		t.Errorf("the retry reads %d of %d, want the first of the whole ladder",
+			retry.Retry.Attempt, retry.Retry.Attempts)
+	}
+	if !strings.Contains(retry.Retry.Reason, "connection") {
+		t.Errorf("the reason %q does not say the connection dropped", retry.Retry.Reason)
+	}
+	for _, banned := range []string{"endpoint", "transport", "verdict"} {
+		if strings.Contains(strings.ToLower(retry.Retry.Reason), banned) {
+			t.Errorf("the reason %q leaks the machinery word %q", retry.Retry.Reason, banned)
+		}
 	}
 }
 

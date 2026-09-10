@@ -86,26 +86,107 @@ type transportPolicy struct{}
 
 func (transportPolicy) Class() Class { return Transport }
 
+// Decide walks ONE budget with THREE endings, and which ending it is depends on
+// nothing but how much of the budget is gone and whether the caller has anywhere
+// else to ask.
+//
+// AND THE SPENT BUDGET IS NOT THE END OF THE STORY, which is the change. It used
+// to be: a model whose ladder ran out ended the request, and a fallback chain the
+// person had configured was never asked unless the failure happened to be a cut
+// stream — so a refusal storm on one model killed a turn while another model in
+// the same session answered every call put to it. A budget is spent on a MODEL,
+// and a model is not the last thing there is.
 func (transportPolicy) Decide(e Evidence, l Limits) Verdict {
-	attempt := e.Attempt
-	if attempt < 1 {
-		attempt = 1
-	}
-	if attempt < l.TransportAttempts {
+	spent, allowed := transportBudget(e, l)
+	if spent < allowed {
 		return Verdict{
 			Action:   ActionRetry,
 			Reason:   transportReason(e),
-			Attempts: l.TransportAttempts,
-			Backoff:  waitFor(e, attempt, l.TransportBackoff),
+			Attempts: allowed,
+			Backoff:  waitFor(e, spent, l.TransportBackoff),
 			Rotate:   true,
+		}
+	}
+	if e.FallbackAvailable {
+		return Verdict{
+			Action:   ActionHop,
+			Reason:   transportReason(e),
+			Attempts: allowed,
+			// The next model is asked by somebody else's routing, exactly as a
+			// retry is, so the ask still wants to land wherever that routing
+			// would put it rather than on the lane this one died on.
+			Rotate: true,
 		}
 	}
 	return Verdict{
 		Action:   ActionGiveUp,
 		Reason:   transportReason(e),
-		Attempts: l.TransportAttempts,
+		Attempts: allowed,
 	}
 }
+
+// transportBudget is how much of this model's budget is gone and how much it
+// had, and the two kinds of spending are the whole of it.
+//
+// A REQUEST THAT FAILED spends an ordinary attempt off [Limits.TransportAttempts]
+// — the ladder the person configured, with its doubling wait in front of each
+// rung — because a refusal, a reset or a deadline is evidence that the endpoint
+// is failing and time is the thing that mends it.
+//
+// A STREAM THE GUARD CUT spends a shorter allowance, because it is not that
+// evidence: the request was served, at once, and the REPLY came apart. Nothing
+// here is worth waiting out, and the same four rungs that make sense for a socket
+// would keep a model that has lost the thread going four times over a context
+// that is only getting worse. Its three allowances are the three things that can
+// be true about a cut:
+//
+//   - DEGENERATION IS WORTH ASKING ONCE MORE. If the same transcript comes back
+//     as soup twice, the transcript is the suspect and the person is told rather
+//     than charged for a third.
+//   - A CUT THAT REROUTED NOTHING IS WORTH ASKING ONCE MORE, and for a harder
+//     reason: nothing moved. Routing is off, or the stream died before any chunk
+//     named who served it, so the next ask lands in the same place by the same
+//     rules and a second one buys nothing at all.
+//   - SILENCE THAT DID REROUTE IS WORTH ASKING TWICE MORE. A quiet endpoint is
+//     very often a bad draw out of a pool, and the asks after it are genuinely
+//     served by somebody else.
+//
+// The allowance is stated as a TOTAL — attempts, not retries — so that it reads
+// the same way [Limits.TransportAttempts] does and a caller comparing the two is
+// comparing like with like.
+func transportBudget(e Evidence, l Limits) (spent, allowed int) {
+	if e.Cut {
+		spent = e.Cuts
+		if spent < 1 {
+			spent = 1
+		}
+		switch {
+		case e.Degenerate:
+			return spent, DegenerateCutAttempts
+		case !e.Rerouted:
+			return spent, BlindCutAttempts
+		}
+		return spent, SilentCutAttempts
+	}
+	spent = e.Attempt
+	if spent < 1 {
+		spent = 1
+	}
+	return spent, l.TransportAttempts
+}
+
+// The cut allowances. They are constants rather than [Limits] rows because the
+// number a person turns is "how patient is this harness with the wire", and each
+// of these is a fact about a SHAPE of failure that patience does not mend — see
+// [transportBudget] for why each is the number it is.
+// They are EXPORTED because a caller's own tests have to state the same numbers
+// this policy walks, and a test holding a copy of a budget is a test that goes on
+// passing after the budget moves.
+const (
+	SilentCutAttempts     = 3
+	DegenerateCutAttempts = 2
+	BlindCutAttempts      = 2
+)
 
 // waitFor is how long to wait before asking again, and it is TWO answers
 // because there are two kinds of transport failure.
@@ -124,6 +205,12 @@ func waitFor(e Evidence, attempt int, base time.Duration) time.Duration {
 	if e.Empty || e.Malformed {
 		return 0
 	}
+	// AND NEITHER IS A CUT STREAM. The request was served and the reply came
+	// apart; there is no failing endpoint here to give a moment to, and the
+	// caller that walks this shape has never waited between two of them.
+	if e.Cut {
+		return 0
+	}
 	if base <= 0 || attempt < 1 {
 		return 0
 	}
@@ -136,24 +223,49 @@ func waitFor(e Evidence, attempt int, base time.Duration) time.Duration {
 func transportReason(e Evidence) string {
 	switch {
 	case e.Empty:
-		return "the reply arrived empty"
+		return ReasonEmpty
 	case e.Malformed:
-		return "the tool call did not parse"
+		return ReasonMalformed
 	case e.Timeout:
-		return "nobody answered in time"
+		return ReasonTimeout
 	case e.Idle:
-		return "it went silent and stopped working"
+		return ReasonIdle
+	case e.Degenerate:
+		return ReasonDegenerate
 	case e.Cut:
-		return "the reply stopped part-way"
+		return ReasonCut
 	case e.Wire:
-		return "the connection did not hold"
+		return ReasonWire
 	case e.Upstream != "":
-		return "the endpoint refused"
+		return ReasonRefused
 	case e.Status > 0:
-		return "the provider could not serve it"
+		return ReasonUnserved
 	}
-	return "the request did not reach anybody"
+	return ReasonUnreached
 }
+
+// The shapes a transport failure comes in, named.
+//
+// They are EXPORTED because a caller has to say the same thing to a PERSON that
+// this says to the journal, and it cannot spell that from the phrase itself: the
+// journal wants one grouping word per shape and a person wants a sentence with
+// no machinery in it ("the endpoint refused" is the right journal line and the
+// wrong thing to put on somebody's screen). A caller switching over these
+// constants writes its own words for a shape THIS package named, which is one
+// list rather than two — and the day a shape is added, every caller that did not
+// grow a case for it still compiles and falls to its own default.
+const (
+	ReasonEmpty      = "the reply arrived empty"
+	ReasonMalformed  = "the tool call did not parse"
+	ReasonTimeout    = "nobody answered in time"
+	ReasonIdle       = "it went silent and stopped working"
+	ReasonDegenerate = "the reply stopped being language"
+	ReasonCut        = "the reply stopped part-way"
+	ReasonWire       = "the connection did not hold"
+	ReasonRefused    = "the endpoint refused"
+	ReasonUnserved   = "the provider could not serve it"
+	ReasonUnreached  = "the request did not reach anybody"
+)
 
 // ── capability ──────────────────────────────────────────────────────────────
 

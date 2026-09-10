@@ -81,6 +81,91 @@ func TestTheTransportLadderIsWalkedAndThenTheRequestIsGivenUp(t *testing.T) {
 	}
 }
 
+// ── AND A SPENT LADDER IS NOT THE END WHEN THERE IS SOMEWHERE ELSE TO ASK ───
+//
+// A budget is spent on a MODEL, and a model is not the last thing there is. The
+// measured failure was one 502 and three 429s ending a turn while a chain the
+// person had configured was never asked, because the only road to it was a cut
+// stream.
+func TestASpentLadderMovesToTheNextModelWhenTheCallerHasOne(t *testing.T) {
+	limits := Limits{TransportAttempts: 4}
+	spent := Evidence{Status: 429, Upstream: "Together", Attempt: 4}
+
+	alone := Classify(spent, limits)
+	if alone.Action != ActionGiveUp {
+		t.Fatalf("with nowhere to go the spent ladder did %q, want the request given up on", alone.Action)
+	}
+
+	spent.FallbackAvailable = true
+	moved := Classify(spent, limits)
+	if !moved.Hops() {
+		t.Fatalf("with a model left to ask the spent ladder did %q, want the step moved", moved.Action)
+	}
+	if moved.Class != Transport {
+		t.Fatalf("the move was classified %q; nothing about who SERVED a request is evidence about who was asked", moved.Class)
+	}
+	// A MOVE IS NOT A PURCHASE and it does not end anything.
+	if moved.Escalates() {
+		t.Error("moving to another model bought a tier")
+	}
+	if moved.EndsTurn() {
+		t.Error("moving to another model was allowed to end a turn")
+	}
+	if moved.Backoff != 0 {
+		t.Errorf("the move waits %s; the wait belongs to the model that was being asked", moved.Backoff)
+	}
+	// AND IT IS NOT REACHED EARLY. A model with budget left is asked again on
+	// the model it is on, chain or no chain.
+	if early := Classify(Evidence{Status: 429, Upstream: "Together", Attempt: 3,
+		FallbackAvailable: true}, limits); !early.Retries() {
+		t.Fatalf("attempt 3 of 4 did %q with a chain in hand, want a retry on the same model", early.Action)
+	}
+}
+
+// ONE BUDGET, TWO KINDS OF SPENDING. A cut stream is not evidence that the
+// endpoint is failing — the request was served and the REPLY came apart — so it
+// spends a shorter allowance with no wait in front of it, and arrives at the
+// same three endings.
+func TestACutStreamSpendsItsOwnAllowanceAndEndsTheSameWay(t *testing.T) {
+	limits := Limits{TransportAttempts: 4, TransportBackoff: time.Second}
+	for _, shape := range []struct {
+		name    string
+		cut     Evidence
+		allowed int
+	}{
+		{"silence that rerouted", Evidence{Cut: true, Rerouted: true}, SilentCutAttempts},
+		{"silence that rerouted nothing", Evidence{Cut: true}, BlindCutAttempts},
+		{"a reply that stopped being language", Evidence{Cut: true, Degenerate: true, Rerouted: true}, DegenerateCutAttempts},
+	} {
+		for spent := 1; spent < shape.allowed; spent++ {
+			evidence := shape.cut
+			evidence.Cuts = spent
+			verdict := Classify(evidence, limits)
+			if !verdict.Retries() {
+				t.Fatalf("%s: cut %d of %d did %q, want a retry", shape.name, spent, shape.allowed, verdict.Action)
+			}
+			if verdict.Attempts != shape.allowed {
+				t.Errorf("%s: the allowance reads %d, want %d", shape.name, verdict.Attempts, shape.allowed)
+			}
+			// NOTHING TO BACK OFF FROM. The endpoint answered, at once.
+			if verdict.Backoff != 0 {
+				t.Errorf("%s: cut %d waits %s", shape.name, spent, verdict.Backoff)
+			}
+		}
+		full := shape.cut
+		full.Cuts = shape.allowed
+		if verdict := Classify(full, limits); verdict.Action != ActionGiveUp {
+			t.Fatalf("%s: the spent allowance did %q with nowhere to go, want it given up on",
+				shape.name, verdict.Action)
+		}
+		full.FallbackAvailable = true
+		if verdict := Classify(full, limits); !verdict.Hops() {
+			t.Fatalf("%s: the spent allowance did %q with a model left, want the step moved",
+				shape.name, verdict.Action)
+		}
+	}
+}
+
 // ── the capability ladder ───────────────────────────────────────────────────
 
 // K FINDINGS ON THE SAME TIER BUY ONE LIFT, AND NOT THE ONE BEFORE.

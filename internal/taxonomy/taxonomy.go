@@ -84,9 +84,27 @@ const (
 	// answer and it is the only action that carries a [Verdict.Backoff].
 	ActionRetry Action = "retry"
 
-	// ActionGiveUp is the transport budget spent. The request is over; the TIER
-	// is untouched and nothing about this counts toward a lift, which is the
-	// whole distinction this package exists to keep.
+	// ActionHop is the transport budget spent WITH SOMEWHERE LEFT TO GO: ask
+	// the same question of the NEXT MODEL the caller has, on a budget of its
+	// own.
+	//
+	// It is not a tier purchase and it must never be read as one. Nothing about
+	// who served a request is evidence about who was asked, so this buys no
+	// strength, counts toward no lift, and is reached only when one model's
+	// whole budget has been spent on failures that were never about the model.
+	// It exists because giving up while a chain the person configured had never
+	// been asked was the measured failure: one 502 and three 429s inside
+	// seventy-five seconds ended a turn while another model in the same session
+	// was answering every call put to it.
+	//
+	// WHICH MODEL IS THE CALLER'S ANSWER, not this package's. The policy knows
+	// only whether one exists ([Evidence.FallbackAvailable]); the order and the
+	// cap belong to whatever holds the chain.
+	ActionHop Action = "hop"
+
+	// ActionGiveUp is the transport budget spent with nowhere left to go. The
+	// request is over; the TIER is untouched and nothing about this counts
+	// toward a lift, which is the whole distinction this package exists to keep.
 	ActionGiveUp Action = "give_up"
 
 	// ActionHold is "stay where you are". It is what a capability verdict says
@@ -157,8 +175,43 @@ type Evidence struct {
 	// one and a second would drift.
 	Wire bool
 
-	// Attempt is which transport attempt this is, 1-based. Nothing else uses it.
+	// Attempt is which transport attempt this is, 1-based. It counts the
+	// requests this model FAILED OUTRIGHT — a refusal, a reset, a deadline —
+	// and never the ones a stream guard cut, which are counted beside it in
+	// Cuts and spend a budget of their own shape.
 	Attempt int
+
+	// Cuts is how many of this model's attempts were streams the guard ended,
+	// this one included and 0 when this failure is not a cut.
+	//
+	// IT IS THE SAME BUDGET AS Attempt AND A DIFFERENT KIND OF SPENDING. A
+	// request that failed is evidence the endpoint is failing and earns the
+	// full ladder with its waits; a stream that was cut is not — the request
+	// succeeded and the reply came apart — so it earns a shorter allowance with
+	// no wait in front of it. One model, one budget, two ways to spend it.
+	Cuts int
+
+	// Degenerate says the cut was the reply ceasing to be language — repetition,
+	// jumbled text, the model's own internal markup — rather than the stream
+	// going quiet. If the same transcript produces that twice, the transcript is
+	// the suspect and a third ask spends the whole prompt to be told so again.
+	Degenerate bool
+
+	// Rerouted says this cut actually took an endpoint out of the caller's
+	// routing, so the attempts after it are genuinely served by somebody else.
+	//
+	// FALSE IS THE CASE THAT MATTERS. A cut that struck nothing — routing turned
+	// off by the person, or a stream that died before any chunk named who served
+	// it — leaves the next attempt landing in the same place by the same rules,
+	// so the extra asks buy nothing and the allowance narrows.
+	Rerouted bool
+
+	// FallbackAvailable says the caller has a NEXT MODEL to ask when this one's
+	// budget is spent. It is the whole difference between [ActionHop] and
+	// [ActionGiveUp], and it is the caller's fact: an empty chain, a completer
+	// with none to offer and a person who pinned one model all spell it false,
+	// and each of those makes the move ABSENT rather than broken.
+	FallbackAvailable bool
 
 	// Refuted is how many SEMANTIC failures this tier has: checks that read the
 	// finished work and found gaps, with no transport failure under them. A
@@ -224,8 +277,14 @@ type Verdict struct {
 // two spellings of it would be two answers.
 func (v Verdict) Escalates() bool { return v.Action == ActionEscalate }
 
-// Retries reports whether the caller should ask again.
+// Retries reports whether the caller should ask again, on the model it is on.
 func (v Verdict) Retries() bool { return v.Action == ActionRetry }
+
+// Hops reports whether the caller should ask the NEXT MODEL it has. It is a
+// method for [Verdict.Escalates]'s reason: "did this model's budget run out with
+// somewhere left to go" is one question, and two spellings of it at two call
+// sites would be two answers.
+func (v Verdict) Hops() bool { return v.Action == ActionHop }
 
 // EndsTurn reports whether this verdict is allowed to end a turn.
 //
@@ -297,7 +356,7 @@ func classOf(e Evidence) Class {
 	if e.Passed {
 		return Capability
 	}
-	if e.Empty || e.Malformed || e.Timeout || e.Idle || e.Cut || e.Wire {
+	if e.Empty || e.Malformed || e.Timeout || e.Idle || e.Cut || e.Degenerate || e.Wire {
 		return Transport
 	}
 	switch {
