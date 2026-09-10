@@ -124,10 +124,13 @@ shows `Outcome`. Reconsider after a week of real receipts.
   readers ignore the new fields.
 - **E2** `TaskIndexEntry.StartedAt` written at start, so elapsed is real on a
   restored row (closes audit-jobs row 2).
-- **E3** `ArtifactsSince(root, stamp)` and `LandedSince(world, stamp)` readers so
-  the ledger's per-task and per-file lines are one call each.
-- **E4** `SpendToday(cache, now, budget) (usd float64, share float64)` beside
-  `UsageByDay`; the daily budget read through `config.DailyBudgetUSDAt`.
+- **E3** `ArtifactsSince(indexFile, stamp)` (pass `home.Join("v3", session.ArtifactsIndexName)`;
+  on a hosted surface filter `World.Artifacts` by `Created` instead) and
+  `LandedSince(world, stamp)` (every landed row, parts included — a panel that wants
+  one line per piece of work drops rows with a `Parent`), so the ledger's per-task
+  and per-file lines are one call each. Both return nothing on a zero stamp.
+- **E4** `SpendToday(lines, now) float64` and `SpendShare(usd, budget) float64` beside
+  `UsageByDay`, both pure; the caller reads the budget through `config.DailyBudgetUSDAt`.
 - **E5** worker report prompt: the first sentence is the result. `taskOutcome`
   unchanged.
 
