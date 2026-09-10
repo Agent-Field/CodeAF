@@ -176,6 +176,27 @@ import (
 // build. On dev alone it was 23,391 → 21,202; landing after lane C's delete
 // pass it is 22,714 → 20,525, and the two together leave the prefix at 44,569,
 // which is 3,431 under. Neither raised the budget.
+// AND THE TOOL DESCRIPTIONS GAVE BACK 1,221 BYTES AND ADDED A LAW (2026-09-10,
+// the prompt diet, lane F). The tool block went 24,044 → 22,823 and nothing was
+// raised; the prompt is untouched by this lane, so the prefix went 47,435 →
+// 46,214. Every byte came out of text that said something a SECOND time. The
+// handed-off-work-reports-itself law was written four times across the belt —
+// twice in `jobs`, once in `watch`, once in `propose_task` — and is now on the
+// page once; `read`'s senses sentence enumerated what a picture, a recording and
+// a video each come back as, where "described, never as bytes" is the whole rule
+// (322 → 95); and the routing sentences left `tasks` (three of them),
+// `read_document` and `recall` for the page's routing table, which states each
+// once for the whole belt rather than once per tool. Per tool: tasks 2,738 →
+// 2,272, read 1,169 → 952, jobs 1,103 → 802, watch 1,495 → 1,396, read_document
+// 819 → 754, recall 324 → 269, manual 616 → 603, commit 330 → 325, track 787
+// unchanged. schemalaw_test.go is the gate that keeps it: a parameter
+// description past 200 bytes, or shouting, or reaching for a dash, now fails the
+// build instead of waiting for this number to notice it. Merged with the page
+// passes above, the prefix is 43,348 — page 20,525 and tools 22,823, which is
+// 4,652 under a cap no lane of this wave moved. And `watch.instead-of-polling`
+// left lawregistry_test.go with the sentence it filed: `handoff.reports-itself`
+// now matches on "never sleep, tail or poll", so putting any of the four
+// per-tool copies back fails that gate wherever it is put.
 // AND THE RESULT CAPS PAID 652 BYTES ON THE WAY TO FIXING A DEFECT (2026-09-10).
 // Lane B (§5 item 1) made every result cap a share of the model's window instead
 // of a flat 2000 lines / 50KB, which meant the figures had to be rendered from
@@ -188,8 +209,9 @@ import (
 // argument — went to nought, on the strength of the page's new
 // `handoff.reports-itself`. `write`'s append and salvage clause says the same
 // two rules in 165 fewer bytes. Nothing was raised: the tool block went
-// 24,044 → 23,392 and the page is unmoved by this lane, so landing beside the
-// two passes above the prefix is 43,917 — 4,083 under.
+// 24,044 → 23,392 on its own branch and the page is unmoved by this lane. The
+// figure below is what it and lane F's pass weigh together, since both cut
+// `read`.
 // widestPage weighs the larger direct/deferred wording for each fact.
 const fixedPrefixBudget = 48_000
 

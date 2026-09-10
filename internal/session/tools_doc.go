@@ -213,9 +213,8 @@ var documentMediaTypes = map[string]struct {
 // readDocumentDescription is prompt text billed on EVERY request of every turn —
 // the whole tool-schema block rides in front of each one — so it is written for
 // density: one imperative clause per rule, and each rule said once. What it must
-// still teach is unchanged, and it is the same four things: which files this
-// hand is for, that it COSTS MONEY where read does not, that read is the rung
-// below it for anything with a text layer, and pi's truncation law.
+// still teach is three things: which files this hand is for, that it COSTS MONEY
+// where read does not, and pi's truncation law.
 //
 // THE TRUNCATION FIGURES ARE INTERPOLATED, not typed. They are the belt's own
 // [bare.Caps] — the same pair piReadLaw actually applies below, and the same
@@ -223,8 +222,14 @@ var documentMediaTypes = map[string]struct {
 // enforces another is the exact drift one-source-of-truth exists to stop (they
 // were bare digits here until this pass). That is what makes this a function
 // rather than a const: the caps follow the model's window.
+// AND THE RUNG-BELOW SENTENCE LEFT (2026-09-10, the prompt diet). "use read for
+// plain text, source and PDFs that have a text layer" is a WHICH-TOOL rule, and
+// it is already stated from the other side by `read`'s own description (the
+// scanned-PDF clause names this tool) and by the page's routing table. The cost
+// clause stays: it is a LIMIT rather than a routing rule, and it is the whole
+// reason a model should hesitate before reaching here.
 func readDocumentDescription(caps bare.Caps) string {
-	return fmt.Sprintf("Read what plain read cannot turn into text: a scanned PDF with no text layer, a photograph of a page, an office document (docx, xlsx, pptx). IT COSTS MONEY (parsers billed per page); use read for plain text, source and PDFs that have a text layer. Truncates to %d lines or %dKB; offset continues.", caps.MaxLines, caps.MaxBytes/1024)
+	return fmt.Sprintf("Read what plain read cannot turn into text: a scanned PDF with no text layer, a photograph of a page, an office document (docx, xlsx, pptx). IT COSTS MONEY (parsers billed per page). Truncates to %d lines or %dKB; offset continues.", caps.MaxLines, caps.MaxBytes/1024)
 }
 
 const readDocumentSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","description":"The file, workspace-relative or absolute"},"question":{"type":"string","description":"What you need from it; default all of it. Shapes the native rung only"},"offset":{"type":"integer","description":"Line to start from (1-based). Paging is free"},"limit":{"type":"integer","description":"How many lines to return"}},"required":["path"],"additionalProperties":false}`

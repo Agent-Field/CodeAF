@@ -66,7 +66,16 @@ import (
 // instruction that pays for itself: the failure this whole file exists to
 // prevent is `bash: python3 -c "import whisper"`, and a model told plainly that
 // read already does this never writes that line.
-const senseSentence = " Images, audio and video are read the same way — as a description: a picture comes back with its text transcribed and its layout described, a recording as its speech transcribed or, when it is not speech, as an account of the sound, and a video as what happens in it. Never write a script to decode any of them."
+//
+// THE PROMPT DIET CUT IT TO A QUARTER (2026-09-10) AND KEPT BOTH RULES. What
+// went was the worked example — a paragraph enumerating what a picture, a
+// recording and a video each come back as, which is three tellings of one fact
+// the first clause states. `described, never as bytes` is the whole of the
+// decoder ban: a model that knows the answer is prose does not reach for a
+// codec. The scanned-PDF pointer stays because it is the one file this rung
+// genuinely cannot take, and a model that meets one needs the name of the tool
+// that can.
+const senseSentence = " Images, audio and video come back described, never as bytes; a scanned PDF needs read_document."
 
 // ── what kind of file is this ───────────────────────────────────────────────
 

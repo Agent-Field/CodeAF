@@ -62,7 +62,14 @@ import (
 // told to stop, delivered nothing, and the check read that as an ordinary
 // unfinished run and opened a repair round on it. The task went on spending for
 // as long as it took somebody to notice.
-const tasksDescription = "Find prior or running tasks. No id searches; an id reads, steers, stops, forwards, continues or settles one. Use it when the person means earlier work without pointing at it, or to look inside running work. To END running work use stop: a say telling a task to stop is a message it may ignore, never a stop. Never to WAIT for handed-off work. A search also lists other windows' live work here, marked `another window`: it has no id in this conversation, so none of those operations reach it."
+// AND THE ROUTING SENTENCE LEFT (2026-09-10, the prompt diet). "Use it when the
+// person means earlier work without pointing at it, or to look inside running
+// work" is a WHEN-TO-REACH rule, and a description is a CONTRACT: what the tool
+// does, what its fields take, what comes back. Which verb a request routes to is
+// stated once, on the page's own routing table, rather than once per tool here —
+// eighteen descriptions each carrying their own routing clause is the same table
+// written eighteen times and billed on every request of every turn.
+const tasksDescription = "Find prior or running tasks. No id searches; an id reads, steers, stops, forwards, continues or settles one. To END running work use stop: a say telling a task to stop is a message it may ignore, never a stop. Never to WAIT for handed-off work. A search also lists other windows' live work, marked `another window`: it has no id here, so none of those operations reach it."
 
 // The schema's `resolve` enum is INTERPOLATED from [TaskResolutions] rather
 // than typed out, because the landing note offers the same three words to the
@@ -85,18 +92,18 @@ var tasksSchemaJSON = `{"type":"object","properties":{` +
 	// because the answer itself carries it, and this string is paid for on every
 	// request of every turn while this comment is free.
 	`"lines":{"type":"integer","description":"Tail lines of a running task (default: ` + strconv.Itoa(taskLiveDefaultTail) + `, maximum: ` + strconv.Itoa(taskLiveMaxTail) + `)"},` +
-	`"scope":{"type":"string","enum":` + taskScopeEnum + `,"description":"\"` + taskScopeProject + `\" (default) is this project alone; \"` + taskScopeEverywhere + `\" also lists live work in every OTHER project, grouped by project and as unreachable from here. A search only."},` +
-	`"say":{"type":"string","description":"A line into the RUNNING task named by id: a correction, or a fact it lacks. It ends nothing — a line telling a task to stop is a message it may ignore; stop is the door that ends work. With stop or resolve, it is the REASON; with continue, this round's finding."},` +
-	`"stop":{"type":"boolean","description":"Ends the RUNNING task named by id, through the same door the person's own stop pulls: its work halts where it stands, its branch is kept, and nothing re-runs it. Use it whenever the person says to stop, cancel or drop a task. It asks no confirmation. say with it is the reason, and goes on the task's record."},` +
-	`"continue":{"type":"boolean","description":"The door for \"continue task N\" / \"keep going on task N\". Re-arm that settled task: same node, brief and working copy. A new propose_task is the wrong door."},` +
-	`"resolve":{"type":"string","enum":` + TaskResolveEnum() + `,"description":"Settles a task nobody could check. accept: done on your own reading, branch merged. reaudit: a fresh checker, task still waiting. refute: it and its dependents fail. Ask accept or refute only on evidence you read; prefer reaudit when the checker never answered."},` +
+	`"scope":{"type":"string","enum":` + taskScopeEnum + `,"description":"\"` + taskScopeProject + `\" (default) is this project alone; \"` + taskScopeEverywhere + `\" also lists live work in every other project, grouped by project and unreachable from here. A search only."},` +
+	`"say":{"type":"string","description":"A line into the running task named by id: a correction, or a fact it lacks. It ends nothing; stop is the door that ends work. With stop or resolve it is the reason, with continue this round's finding."},` +
+	`"stop":{"type":"boolean","description":"Ends the running task named by id, through the same door the person's own stop pulls: work halts where it stands, the branch is kept, nothing re-runs it. It asks no confirmation; say is the reason."},` +
+	`"continue":{"type":"boolean","description":"The door for \"continue task N\": re-arms that settled task with the same node, brief and working copy."},` +
+	`"resolve":{"type":"string","enum":` + TaskResolveEnum() + `,"description":"Settles a task nobody could check, only on evidence you read. accept: done, branch merged. reaudit: a fresh checker, and the answer when none came. refute: it and its dependents fail."},` +
 	// AND THE ONE OP THAT CARRIES SOMEBODY ELSE'S AUTHORITY says in its own
 	// description that the words are not yours to write, because that is the
 	// rule a model has to know BEFORE it reaches for the field. What it cannot
 	// do — supply the text, name a message, forward from a turn the person did
 	// not open — is refused by the runtime with its reason (task_forward.go), so
 	// the schema spends its bytes on the choice rather than on the law.
-	`"forward":{"type":"boolean","description":"Sends what the person just said, verbatim, into the running task named by id, as theirs — the one door by which a correction they type HERE moves what that task is judged by. Their words go, never yours: say is refused with it."}` +
+	`"forward":{"type":"boolean","description":"Sends what the person just said into the running task named by id, verbatim and as theirs: the one door by which a correction typed here moves what that task is judged by. Their words go alone."}` +
 	`},"additionalProperties":false}`
 
 // tasksArguments is the wire form. The id is RAW because a model that has just
