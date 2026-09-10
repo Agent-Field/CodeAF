@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -372,6 +373,32 @@ func taskURIPath(uri string) string { return session.TaskRecordPath(uri) }
 // [app.taskSheetKeyPress], which is where this page's whole claim on the
 // keyboard lives.
 func (a *app) taskCardKey(key string) tea.Cmd {
+	if q, ok := a.taskRecordLanding(a.taskSheet.detail); ok {
+		// THE QUESTION IS ANSWERED WHERE ITS EVIDENCE IS. The block owns the
+		// landing and its keys ([app.questionOptionKey]); this page only
+		// carries them, so `a`/`n`/`s`, the pointer's `←→` and `enter` reach
+		// the same door the conversation's block reaches. `s tell it` opens
+		// the node's room, which lives over the conversation, so the sheet is
+		// put down first.
+		switch key {
+		case "left", "right":
+			cmd, _ := a.questionOptionKey(q, key)
+			return cmd
+		case questionEnterKey:
+			cmd, _ := a.questionEnter(q, false)
+			return cmd
+		}
+		for _, option := range q.question.Options {
+			if strings.TrimSpace(option.Key) != key {
+				continue
+			}
+			if key == session.LandingTellKey {
+				a.closeTaskSheet()
+			}
+			cmd, _ := a.questionOptionKey(q, key)
+			return cmd
+		}
+	}
 	switch key {
 	case "esc", "left":
 		// ONE LAYER AT A TIME. The list is underneath and it is where this came
@@ -540,12 +567,26 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 	}
 
 	add(pal.dim(rule(width)), taskCardHitNone)
+	// THE PAGE ENTER LANDS ON FROM A `needs you` ROW SHOWS THE QUESTION IT
+	// NEEDS YOU FOR. The landing has been on the block above the conversation's
+	// box all along ([session.Agent.publishLandingQuestion]); this card is a
+	// place, the block is neither drawn nor keyed under a place, and a person
+	// sent here by `enter` read the whole report and found nothing to press
+	// (the owner, 2026-09-10). So the card draws the question's own head and
+	// answers row, from the block's own object, above its foot.
+	asking := false
+	if q, ok := a.taskRecordLanding(entry); ok {
+		asking = true
+		for _, row := range a.taskRecordLandingRows(q, width-2) {
+			add(" "+row, taskCardHitNone)
+		}
+	}
 	// phone lane: the keys line becomes bands a thumb can hit (taskphone.go).
 	if taskCardPhone(width) {
 		line, _ := a.taskCardBar(width)
 		add(line, taskCardHitMention)
 	} else {
-		add(" "+paintHint(hintFit(taskCardFootKeys(wayOut, a.taskSheet.awayOwner.on), width-2), pal, pal.dim), taskCardHitFoot)
+		add(" "+paintHint(hintFit(taskCardFootKeys(wayOut, a.taskSheet.awayOwner.on, asking), width-2), pal, pal.dim), taskCardHitFoot)
 	}
 
 	// A terminal too short for the whole card keeps its head and its foot: what
@@ -569,17 +610,70 @@ func (a *app) taskCardFrame(width, height int) ([]string, []taskCardHit, int, in
 // window is running has no mention to offer ([taskAwayCardKeys] says why), and a
 // foot that named one would be this page's one clause that does nothing when it
 // is pressed.
-func taskCardFootKeys(headSaysTheWayOut, away bool) string {
+func taskCardFootKeys(headSaysTheWayOut, away, asking bool) string {
 	if away {
 		if headSaysTheWayOut {
 			return taskAwayCardKeysHeld
 		}
 		return taskAwayCardKeys
 	}
-	if headSaysTheWayOut {
-		return taskCardKeysHeld
+	lead := ""
+	if asking {
+		// The pointer's keys go first, because the question is what the page
+		// was opened for; the answers themselves are on their own row above.
+		lead = taskCardAskingKeys
 	}
-	return taskCardKeys
+	if headSaysTheWayOut {
+		return lead + taskCardKeysHeld
+	}
+	return lead + taskCardKeys
+}
+
+// taskCardAskingKeys opens the foot over a card whose node is asking: how the
+// answers row above it is walked and taken.
+const taskCardAskingKeys = "←→ choose · enter take it · "
+
+// taskRecordLanding is the landing (or conflict) question standing on the node
+// this card is about — one of THIS conversation's nodes, since the block only
+// holds this conversation's questions and another session's task may wear the
+// same number ([session.TaskIndexEntry.ID] is not unique across sessions).
+func (a *app) taskRecordLanding(entry session.TaskIndexEntry) (questionShown, bool) {
+	if strings.TrimSpace(entry.SessionID) != strings.TrimSpace(a.taskSheetSelfRow().ID) {
+		return questionShown{}, false
+	}
+	id, err := strconv.ParseUint(strings.TrimSpace(entry.ID), 10, 64)
+	if err != nil || id == 0 {
+		return questionShown{}, false
+	}
+	for _, kind := range []session.QuestionKind{session.QuestionLanding, session.QuestionConflict} {
+		token := string(kind) + ":" + itoa64(id)
+		for _, open := range a.questions {
+			if open.token() == token {
+				return open, true
+			}
+		}
+	}
+	return questionShown{}, false
+}
+
+// taskRecordLandingRows is the question as the card draws it: its head with
+// the block's own mark, its reason dim under it, and the answers row the block
+// would draw — the same words and keys, the pointed answer banded — so what a
+// person learns here is what the conversation's block will show them next.
+func (a *app) taskRecordLandingRows(q questionShown, width int) []string {
+	rows := make([]string, 0, 4)
+	head := strings.TrimSpace(q.question.Head)
+	if head != "" {
+		rows = append(rows, fit(a.questionMarkFor(q.question)+" "+a.pal.askBold(head), width))
+	}
+	if why := strings.TrimSpace(q.question.Reason); why != "" {
+		rows = append(rows, fit("  "+a.pal.dim(why), width))
+	}
+	parts, _, pointed := a.questionAnswerParts(q, "", formsLine, false)
+	if len(parts) > 0 {
+		rows = append(rows, fit(a.questionPaint(q, parts, "", formsCard, pointed), width))
+	}
+	return rows
 }
 
 // taskCardTitleLine is the head — what this task was called on the left, and how

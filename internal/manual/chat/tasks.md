@@ -263,7 +263,7 @@ no other decision on this screen is drawn. The question is above the box:
   The parser drops a key on an empty map. · aforge
   ▸ 1  start it
     2  no
-  [enter] take the pick · [esc] later · [c] change · start it in 9s
+  [enter] take it · [esc] later · [c] change · start it in 9s
 ```
 
 `▸` marks the answer the clock is about to take. The question is **not modal**: the message
@@ -1781,7 +1781,7 @@ opens the page again:
      The process is ended; its log is kept.
      1  stop it
      2  keep going
-   [enter] take the pick · [esc] keep going · [←→] pick
+   [enter] take it · [esc] keep going · [←→] choose
 ```
 
 `1` and `2` move the cursor onto the answer they name; `enter` is what decides.

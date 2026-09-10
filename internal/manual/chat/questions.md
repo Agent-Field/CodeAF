@@ -147,6 +147,23 @@ It did not always. A task on `your call` used to leave every one of those saying
 the conversation was idle, and the only way to find it was to open the
 conversation and look.
 
+## The task page shows no accept or not right keys — where the landing question is when I press enter on home
+
+`enter` on a task that is waiting on you (home's needs-you row, or the tasks
+page) opens that task's record: what it was called, what it said at the end,
+its files and its transcript. **The question is drawn on that page too**, above
+the foot, in the block's own shape — the task's head, why it is asking (`nobody
+could check it`), and the answers row `[a] accept · [n] not right · [s] tell
+it`. `←` and `→` move the pointer between the answers, `enter` takes the one it
+is on, and `a`, `n` and `s` answer at once; `s tell it` puts the page down and
+opens the task's room. The foot says `←→ choose · enter take it` while a
+question is on the page. It is the same question the conversation's block above
+your box is holding, so answering it in either place answers it in both.
+
+The page draws only questions belonging to the conversation you are in — a task
+from another conversation wearing the same number shows its record and no
+question; open that conversation to answer.
+
 ## Answer from home or another window
 
 Home lists what a conversation is waiting on and lets you answer it there, and so
@@ -341,12 +358,17 @@ read, not a second description of it.
 
 **A card** — for a decision with more behind each answer. The question, then why
 it is being asked and who is asking, then one row per answer with what taking it
-produces, then the keys. A `▸` marks the answer that was recommended; it is not
-where your cursor is — except on a checklist, where the `▸` is yours (it is the
-row `space` ticks) and the recommended row says `· suggested` instead. **Every
-answer gets a row of its own, however many there are** (the model may raise up
-to four, eight on a checklist), a note the asker wrote under an answer is drawn
-dim beneath its label, and a long answer wraps onto as many rows as it needs —
+produces, then the keys. **The `▸` is your pointer**: `↑` and `↓` walk it from
+answer to answer (`←→`, `tab` and `shift+tab` do the same), `enter` takes the
+answer it is on, and a digit still takes that answer at once. It starts on the
+answer the asker recommended, when there is one, and that answer says
+`suggested` in its consequence column wherever the pointer is. On a checklist
+the pointer is the row `space` ticks. **Every answer gets a row of its own,
+however many there are** (the model may raise up to four, eight on a
+checklist), a note the asker wrote under an answer is drawn beneath its label
+in the ordinary text ink — the consequence beside the label is the dim aside,
+the note is the sentence you weigh — and a long answer wraps onto as many rows
+as it needs —
 nothing on a card ends in `…` except a note the screen has no room for, which
 is held to a row or two so the question itself stays on the screen, with `o`
 opening the page that has all of it. The keys
@@ -359,10 +381,14 @@ an answer presses it, and the row under the pointer lights up.
 ```
   ? wants to start a task: rewrite the packer
     it will run on its own branch · aforge
-      1  start it   on a branch of its own
-    ▸ 2  not now    nothing runs
-    [enter] take the pick · [d] you decide · [esc] later
+    ▸ 1  start it   on a branch of its own · suggested
+      2  not now    nothing runs
+    [enter] take it · [d] you decide · [esc] later · [↑↓] choose
 ```
+
+**On a line** the pointer is the highlighted answer: `←` and `→` move it along
+the row, `enter` takes it, and the key row says `[enter] take it` and
+`[←→] choose` while there is room for them (the arrows work either way).
 
 **A ratify line** — one row, with a `✓`, about something already done. Nothing
 is waiting on it. Reading past it is accepting it.
@@ -392,11 +418,12 @@ the row.
 | key | what it does |
 | --- | --- |
 | `1`–`9` | take that answer |
-| `enter` | take the recommended answer — only shown when there is one |
+| `enter` | take the answer the pointer is on — it starts on the recommended one |
+| `↑` `↓` `←` `→` | move the pointer (`↑↓` on a card, `←→` on a line; both pairs work on both) |
 | `esc` | later. Nothing is cancelled |
 | `o` | open it out into its own page, where there is more to see |
-| `c` | change — take an answer, but say what you want different |
-| `?` | ask back before answering |
+| `c` | change — take an answer, but say what you want different. The answers row becomes `change: say what you want different, then enter · it goes with [2] …`; type in the box below, `enter` sends the words with the pointed answer, `esc` gives the box back |
+| `?` | ask back before answering. The row becomes `ask back: type your question, then enter · the question stays open`; the reply lands in the conversation and the question is still there to answer |
 | `d` | you decide |
 | `D` | decide questions like this from now on |
 | `r` | make it a rule |
@@ -627,6 +654,23 @@ Under eighty columns the table stacks: each answer gets its own heading with its
 readings underneath, because a column cut to nine characters is a column that
 lies. `x` again goes back to the answers.
 
+## Where do I type my answer — the box under the question, change and ask back, why typing did nothing
+
+There is no separate typing place: **the message box under the question is where
+the words go**, and the block says what they will mean. With nothing pressed,
+what you type is a message to the conversation and the question waits. Press
+`c` first and the answers row turns into `change: say what you want different,
+then enter · it goes with [2] Adaptive · esc back` — now the box is the
+question's: every letter types (even `d`), `enter` sends the sentence together
+with the answer the pointer is on, and `esc` turns the row back into the keys
+without answering. Press `?` and the row says `ask back: type your question,
+then enter · the question stays open`: `enter` sends the question to the asker,
+its reply lands in the conversation, and the block is still above the box to
+answer afterwards.
+
+If the row still shows the keys — `[enter] take it · [esc] later · …` — the box
+is the conversation's, and what you type there goes to the model as a message.
+
 ## Comment on one option
 
 `c` writes a note under whichever answer, blank or pair you are on. Type it and
@@ -723,7 +767,7 @@ On the card, a **digit ticks its row** (press it again to untick), `space` ticks
 the row the `▸` is on, `tab` moves the `▸` (`[tab] next row`; `shift+tab` back),
 and `enter` sends what is ticked — the key row says `[enter] send what is ticked`
 once something is, and `enter` over nothing ticked sends nothing. There is no
-`take the pick` on a checklist: the answer the asker would tick says `· suggested`
+`take it` on a checklist: the answer the asker would tick says `· suggested`
 on its row, and ticking it is yours to do. On the page, `space` ticks the one you
 are on, `a` takes what the asker would tick, and `enter` sends them. Where the order matters, `shift+↑` and `shift+↓` move a row
 past its neighbour and the answer carries the order you put them in.
