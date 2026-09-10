@@ -383,12 +383,13 @@ func (a *Agent) tellPhase(phase provider.Phase, detail string, since time.Time) 
 	// its clock reset to zero by every beat, which reads as a stage restarting
 	// over and over rather than one that is lasting.
 	news := PhaseNews{
-		Phase:  phase,
-		Since:  since,
-		Detail: detail,
-		Model:  model,
-		Role:   a.laneRole(),
-		At:     now,
+		Phase:   phase,
+		Since:   since,
+		Detail:  detail,
+		Model:   model,
+		Role:    a.laneRole(),
+		Session: a.newsKey(),
+		At:      now,
 	}
 	a.phase.mu.Lock()
 	defer a.phase.mu.Unlock()
