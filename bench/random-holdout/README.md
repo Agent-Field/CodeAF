@@ -78,7 +78,7 @@ including nested package test directories. All arms use this same grader. A gree
 exit passes only when the test identities and outcomes match the calibrated
 reference; missing tests, newly skipped cases, and duplicate-name loss cannot
 quietly produce a passing score. `test_grading.py` covers these protections and
-is queued for execution on Spark before the scoring stage.
+passed on Spark before the scoring stage.
 
 ## Frozen harness comparison
 
@@ -120,15 +120,50 @@ input hashes, and uses the shared grader for all arms. For mini,
 `native_usage_watch.py` is the existing per-generation collector scoped to one
 trial; native cost-stop classification is retained separately in accounting.json.
 
-These adapters are preparatory code, not a launched campaign. Runner resources,
-Pi runtime overlays, the actual-client preflight and the final scoring manifest
-still have to be assembled and verified on Spark. The already queued fixture
-and grader jobs do not exercise these additional files. No holdout inference
-may start until that separate validation passes.
+Fleet 403 launched the frozen 40-trial campaign after the shared grader,
+calibration, actual-client and execution checks passed on Spark. The accepted
+repositories are Hypothesis, Woodwork, RDT, python-semantic-release and Pyccel.
+Copier failed reference calibration and was replaced by the first frozen reserve,
+Pyccel, before inference. The scoring plan hash is
+`e55c7c9d410b32fbfa0c3056778d1ab64e932ae5d708099120d1e3fbd888501d`.
+Later documentation changes do not alter its 1798 frozen input hashes.
 
 `run_campaign.py` preserves issue/seed blocks and runs at most two trials at once.
 Each block contains every arm exactly once in its preregistered rotated order;
 the next issue waits for the entire block. An exclusive reservation prevents
 reruns. Infrastructure failures are retained and stop later blocks, while scored
-wrong answers remain in the comparison. This scheduler is also pending Spark
-validation; it has not launched any model calls.
+wrong answers remain in the comparison. The scheduler passed the
+Spark execution checks before launch.
+
+
+## Specification audit and limits of this campaign
+
+CRITICAL: a failing base and passing upstream solution prove that the grader
+runs, not that the supplied task describes everything the grader requires.
+Before a future launch, review the complete public task specification against
+the acceptance scope. A PR may combine changes beyond its linked issue. Retain
+the public sources for each required behavior and flag requirements that are
+unspecified; do not derive new model instructions from a hidden solution after
+seeing outcomes. This review is a preparation requirement, not an automated
+capability implemented by these scripts.
+
+The first completed Hypothesis block exposed this gap. Issue 3567 proposes an
+`allow_special_use` keyword, but the upstream tests also require an
+`emails(domains=...)` argument from separate PR 3582. The supplied prompt omits
+that API contract. All four arms timed out and failed collection at that call.
+Both seeds of this fixture are specification-misaligned and cannot establish a
+clean solve-quality comparison. Preserve every frozen result, patch, timeout and
+charge; do not silently drop the issue, rewrite its prompt, weaken tests or
+retry it in this campaign.
+
+A review of the remaining upstream test patches found that Woodwork tests its
+existing `init_series` conversion entry point, semantic-release checks the exact
+issue-link behavior requested, and Pyccel checks the requested set-clear behavior
+for integer, float and complex sets. RDT tests the requested helper extraction,
+but fixes its exact name and location as `rdt.transformers.utils.learn_rounding_digits`,
+whereas the issue only asks to move `_learn_rounding_digits` into a helper file.
+Record that naming ambiguity when interpreting its result; passing calibration
+does not resolve it. These observations do not change any frozen test or prompt.
+
+This campaign remains diagnostic evidence. A clean generalization claim needs a
+fresh, fully specified validation set after any tuning informed by these results.
