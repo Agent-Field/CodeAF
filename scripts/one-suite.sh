@@ -1,22 +1,24 @@
 #!/usr/bin/env bash
-# ONE FULL SUITE PER BOX AT A TIME.
+# ONE HEAVY SUITE PER BOX AT A TIME.
 #
 # Nine sessions fired `go test ./...` at once on 2026-09-02 — a load average of
 # a hundred, thirty-seven go test invocations, a hundred and twelve test
 # binaries — and the reds that came out of it were manufactured by the load:
 # packages cut off by a timeout that was fine on a quiet machine, races that
 # only lose when the scheduler is starved. A timeout under that load attributes
-# nothing, and a red under it proves nothing. So the full run takes a lock, and
-# a second full run on the same box refuses to start and says who holds it,
-# rather than joining the pile and reporting a red nobody caused.
+# nothing, and a red under it proves nothing. So a whole-tree run and the two
+# heavy packages, internal/tui3 and internal/session, take one lock. A second
+# run on the same box refuses to start and says who holds it rather than joining
+# the pile and reporting a red nobody caused.
 #
 # THE LOCK IS A PID WITH ITS COMMAND LINE CHECKED, not a path's existence. A
 # session that died mid-run must not leave the box locked, and a pid that was
 # reused by something else must not either; the lock is stale unless the pid
 # is alive AND is still running this script, and a stale lock is simply taken.
-# Packages named one at a time (`make test PKGS=./internal/x`) do not take it:
-# the pile is made of whole-tree runs, and the touched-package proof a pull
-# request needs should never wait on somebody else's nightly.
+# The Makefile invokes this wrapper for a full `make test` or `test-report` when
+# PKGS contains `./...`, `./internal/tui3` or `./internal/session`. A
+# `test-focus` selector and lighter packages do not take it, so cheap,
+# independent proofs remain independent.
 #
 # The file is per box and per user, under /tmp rather than the session's own
 # TMPDIR, because the point is to see the other session's run and a TMPDIR is
@@ -55,8 +57,8 @@ take() {
 if ! take; then
 	holder="$(cat "$lock/pid" 2>/dev/null || true)"
 	if holder_alive "$holder"; then
-		printf '%s\n' "another full suite is already running on this box (pid ${holder}, started $(cat "$lock/since" 2>/dev/null || echo '?'))." \
-			'Wait for it, or run the packages you touched: make test PKGS=./internal/whatever' >&2
+		printf '%s\n' "another heavy suite is already running on this box (pid ${holder}, started $(cat "$lock/since" 2>/dev/null || echo '?'))." \
+			'Wait for it, or run one named regression with make test-focus.' >&2
 		exit 1
 	fi
 	stale="$lock.stale.$$"
@@ -64,7 +66,7 @@ if ! take; then
 		rm -rf "$stale"
 	fi
 	if ! take; then
-		echo 'another full suite took the lock this instant; try again.' >&2
+		echo 'another heavy suite took the lock this instant; try again.' >&2
 		exit 1
 	fi
 fi
@@ -88,9 +90,9 @@ date -u +%Y-%m-%dT%H:%M:%SZ >"$lock/since"
 # WHAT THE WRAPPER DOES OWE THE RUN IS THAT IT REALLY RAN.
 #
 # `go test` answers a package it has already run with the same inputs out of its
-# cache, so a full suite can report an earlier tree: a package whose red was
+# cache, so a heavy suite can report an earlier tree: a package whose red was
 # fixed by something the cache key does not cover still reads red, and one whose
-# green was cached reads as a proof nobody performed. A whole-tree run is what a
+# green was cached reads as a proof nobody performed. A heavy run is what a
 # person quotes; it says nothing unless every package in it actually ran. The
 # caller may say otherwise — only a caller that named no count gets this one.
 suite=("$@")

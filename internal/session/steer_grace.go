@@ -91,6 +91,15 @@ type steerWatch struct {
 	calls []*bare.BashCall
 }
 
+// steerBashRunningFor reads the age used by both the first and second steer
+// looks. Tests can advance this one clock without waiting out the product law.
+func (a *Agent) steerBashRunningFor(call *bare.BashCall) time.Duration {
+	if a.steerAge != nil {
+		return a.steerAge(call)
+	}
+	return call.RunningFor()
+}
+
 // armSteerGraceLocked schedules the second look, from [Agent.Steer] and with
 // a.mu held. It is called on BOTH of Steer's bash roads: a steer that adopted
 // an old call may still be waiting on a young one beside it in the same
@@ -109,7 +118,7 @@ func (a *Agent) armSteerGraceLocked() {
 	// [steerBashAge], because that is the oldest any of them can be short of.
 	var wait time.Duration
 	for _, call := range a.inFlightBash.snapshot() {
-		age := call.RunningFor()
+		age := a.steerBashRunningFor(call)
 		if age >= steerBashAge {
 			continue
 		}

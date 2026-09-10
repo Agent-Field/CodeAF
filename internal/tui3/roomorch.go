@@ -445,7 +445,7 @@ func (a *app) orchShowing(id string) bool {
 
 // orchTick asks for the next poll.
 func orchTick(gen int) tea.Cmd {
-	return tea.Tick(orchPollEvery, func(time.Time) tea.Msg { return orchPollMsg{gen: gen} })
+	return surfaceTick(orchPollEvery, func(time.Time) tea.Msg { return orchPollMsg{gen: gen} })
 }
 
 // orchPoll re-reads the run and re-arms. A generation that no longer matches is

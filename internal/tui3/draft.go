@@ -162,7 +162,7 @@ func (a *app) armDraftKeep() tea.Cmd {
 	}
 	a.draftPending = true
 	file := a.draftFile
-	return tea.Tick(draftDebounce, func(time.Time) tea.Msg { return draftSaveMsg{file: file} })
+	return surfaceTick(draftDebounce, func(time.Time) tea.Msg { return draftSaveMsg{file: file} })
 }
 
 // saveDraft writes the composer as it stands. The write happens in the command

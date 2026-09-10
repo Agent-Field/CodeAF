@@ -118,7 +118,7 @@ type homeTickMsg struct{ gen int }
 
 // homeTick schedules the next reading.
 func homeTick(gen int) tea.Cmd {
-	return tea.Tick(homeEvery, func(time.Time) tea.Msg { return homeTickMsg{gen: gen} })
+	return surfaceTick(homeEvery, func(time.Time) tea.Msg { return homeTickMsg{gen: gen} })
 }
 
 // homeBeat is the beat, arriving. A beat that finds home closed re-arms

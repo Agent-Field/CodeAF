@@ -239,7 +239,7 @@ func (a *app) linkPingTick() tea.Cmd {
 	if !a.hosted() || a.link.Ping == nil {
 		return nil
 	}
-	return tea.Tick(hostPingEvery, func(time.Time) tea.Msg { return linkPingTickMsg{} })
+	return surfaceTick(hostPingEvery, func(time.Time) tea.Msg { return linkPingTickMsg{} })
 }
 
 // linkPingKick sends one reading off the update loop. The reconnecting check is

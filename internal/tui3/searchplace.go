@@ -377,5 +377,5 @@ func searchDoneAccepted(current searchAsk, msg searchDoneMsg) bool {
 }
 
 func searchDebounce(gen int) tea.Cmd {
-	return tea.Tick(searchDebounceEvery, func(time.Time) tea.Msg { return searchTickMsg{gen: gen} })
+	return surfaceTick(searchDebounceEvery, func(time.Time) tea.Msg { return searchTickMsg{gen: gen} })
 }

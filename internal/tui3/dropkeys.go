@@ -208,7 +208,7 @@ func (a *app) dropWake() tea.Cmd {
 	}
 	a.drop.settling = true
 	a.drop.armed++
-	return tea.Tick(dropQuiet, func(time.Time) tea.Msg { return dropMsg{} })
+	return surfaceTick(dropQuiet, func(time.Time) tea.Msg { return dropMsg{} })
 }
 
 // dropSettled is the wakeup landing. It re-arms itself while characters are

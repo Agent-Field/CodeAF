@@ -221,7 +221,7 @@ func (a *app) pointerWake() tea.Cmd {
 		return nil
 	}
 	a.ptr.settling = true
-	return tea.Tick(pointerEvery, func(time.Time) tea.Msg { return pointerMsg{} })
+	return surfaceTick(pointerEvery, func(time.Time) tea.Msg { return pointerMsg{} })
 }
 
 // pointerSettled is the frame boundary: whatever the gesture piled up since the

@@ -153,7 +153,7 @@ func (a *app) boxYank(box *editor, unit dragUnit) tea.Cmd {
 	// an idle status line forever.
 	return tea.Batch(
 		tea.Raw(osc52(text, a.tmux)),
-		tea.Tick(dragFlashFor, func(time.Time) tea.Msg { return dragFlashMsg{} }),
+		surfaceTick(dragFlashFor, func(time.Time) tea.Msg { return dragFlashMsg{} }),
 	)
 }
 

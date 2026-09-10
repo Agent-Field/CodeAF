@@ -567,12 +567,14 @@ func TestThePreviewScrollsAndSlidesAndStops(t *testing.T) {
 	if moved == first {
 		t.Fatal("shift+down did not scroll the preview")
 	}
-	// Held down, it stops with the last line still on screen.
-	for i := 0; i < 400; i++ {
+	// Near the end, three more presses cross the ceiling and prove the same
+	// clamp without rendering four hundred complete surface turns.
+	a.folder.paneTop = len(long) - 2
+	for range 3 {
 		drive(t, a, key("shift+down"))
 	}
 	a.folder.paneRows(a.pal, a.styler(), a.width, rows, -1)
-	if a.folder.paneTop > 120 {
+	if a.folder.paneTop > len(long) {
 		t.Fatalf("the scroll ran past the file: top=%d", a.folder.paneTop)
 	}
 	end := plain(strings.Join(a.folder.paneRows(a.pal, a.styler(), a.width, rows, -1), "\n"))

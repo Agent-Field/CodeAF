@@ -129,7 +129,7 @@ func (a *app) openRemotePath(name string) tea.Cmd {
 	r.opening[target] = true
 	return tea.Batch(
 		func() tea.Msg { return remoteOpenedMsg{target: target, err: r.open(target)} },
-		tea.Tick(remoteOpenQuiet, func(time.Time) tea.Msg { return remoteOpenSlowMsg{target: target} }),
+		surfaceTick(remoteOpenQuiet, func(time.Time) tea.Msg { return remoteOpenSlowMsg{target: target} }),
 		a.wake(),
 	)
 }

@@ -380,7 +380,7 @@ func (a *app) setEffortRung(dial effortDialer, rung effort.Rung) tea.Cmd {
 		// grammar the other notes on this surface are written in.
 		a.noteFacts("thinking · "+effortAutoWord+" · the model decides", effortAutoWord)
 	}
-	return tea.Tick(effortFlashFor, func(time.Time) tea.Msg { return effortFlashMsg{} })
+	return surfaceTick(effortFlashFor, func(time.Time) tea.Msg { return effortFlashMsg{} })
 }
 
 // ── the menu ────────────────────────────────────────────────────────────────

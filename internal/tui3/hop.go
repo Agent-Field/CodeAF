@@ -432,7 +432,7 @@ func (a *app) hopSettled(msg hopSettleMsg) {
 func (a *app) hopTick() tea.Cmd {
 	a.hop.pulse++
 	pulse := a.hop.pulse
-	return tea.Tick(hopSettle, func(time.Time) tea.Msg { return hopSettleMsg{pulse: pulse} })
+	return surfaceTick(hopSettle, func(time.Time) tea.Msg { return hopSettleMsg{pulse: pulse} })
 }
 
 // hopReading is the card's whole reading: the conversations in the keeper,

@@ -561,7 +561,7 @@ func (a *app) gatherQuestions() tea.Cmd {
 	if step == "" {
 		return nil
 	}
-	return tea.Tick(questionGatherFor, func(time.Time) tea.Msg {
+	return surfaceTick(questionGatherFor, func(time.Time) tea.Msg {
 		return questionGatherMsg{step: step}
 	})
 }

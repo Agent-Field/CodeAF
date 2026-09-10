@@ -2463,6 +2463,9 @@ type Agent struct {
 	// There is at most one, it is replaced rather than added to, and every exit
 	// stops it.
 	steerGrace *steerWatch
+	// steerAge is the foreground-command age seam used by steer tests. A nil
+	// seam reads the process's real start through [bare.BashCall.RunningFor].
+	steerAge func(*bare.BashCall) time.Duration
 	// ambient is periodic watch news that must wait for a TURN boundary.
 	//
 	// It is separate from steering because a step boundary is not a turn
