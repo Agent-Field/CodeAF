@@ -494,6 +494,11 @@ type homeLine struct {
 	// project heading. It points INTO [homeView.reading], which is replaced whole
 	// with the lines it fills, so the two can never be a rebuild apart.
 	sw *switcherLine
+	// cell is the words a row of the resting GRID is painted from, and nil on
+	// every line built any other way (homegrid.go). Like [homeLine.sw] it is
+	// what paints the row and not what the row is: a conversation on a panel is
+	// still a [homeSession] line, so every door on this screen reaches it.
+	cell *homeCell
 	// task is the ONE PIECE OF WORK a row was named after, and nil on every row
 	// that stands for a conversation as a whole. The `needs you` strip's landed
 	// rows are the ones that carry it today (homeattention.go's [attentionTask]):
@@ -817,6 +822,18 @@ type homeView struct {
 	// and a card asking per item would open the same week once per row.
 	week   map[string]standing.Spend
 	weekAt time.Time
+
+	// The resting grid's own state (homegrid.go). cols is how many columns this
+	// frame has room for, settled by the draw before the lines are built exactly
+	// as [homeView.room] is; grid is the shape the last build laid the lines out
+	// in; tilde is what `~` abbreviates in a project's path. gridX and gridMarks
+	// are the pointer's half, written by the draw: where each column starts, and
+	// for each screen row which line every column drew there.
+	cols      int
+	grid      homeGrid
+	tilde     string
+	gridX     []int
+	gridMarks []homeMark
 }
 
 // say replaces the refusal on screen, together with the directory it names.
@@ -889,6 +906,8 @@ func (a *app) raiseHome() tea.Cmd {
 		// (takeovervoice.go).
 		claim:     a.takeover.file,
 		tier:      a.homeTierNow(),
+		cols:      a.homeColsNow(),
+		tilde:     a.tilde,
 		hover:     -1,
 		last:      map[string]session.Summary{},
 		news:      map[string]homeNewsCache{},
@@ -1243,6 +1262,8 @@ func (a *app) newHomeView(world session.World, known bool) homeView {
 		bucket:    homeBucketOf(a.file),
 		here:      homeSessionDirOf(a.file),
 		tier:      a.homeTierNow(),
+		cols:      a.homeColsNow(),
+		tilde:     a.tilde,
 		hover:     -1,
 		last:      map[string]session.Summary{},
 		news:      map[string]homeNewsCache{},
@@ -1450,6 +1471,19 @@ func (h *homeView) build() {
 		// Either way the cursor is where it belongs: [homeView.pointSame] put it
 		// back on the row that was chosen, and the followers below are about a
 		// list nobody is filtering.
+		return
+	}
+	// ON THE GRID THE ROW IS FOLLOWED BY WHAT IT IS AND BY THE PANEL IT IS IN
+	// (homegrid.go's [homeView.pointGrid]), because every kind of row on it —
+	// a project, a spend line, a fold door — is a stop, and the four followers
+	// below each know one kind.
+	if h.gridOn() {
+		if hadLine && h.pointGrid(previousLine) {
+			return
+		}
+		if previous.Transcript != "" {
+			h.point(previous.Transcript)
+		}
 		return
 	}
 	if previousFold {
@@ -2301,6 +2335,14 @@ func (h *homeView) move(delta int) {
 	if delta == 0 || len(h.lines) == 0 {
 		return
 	}
+	// ON THE GRID THE WALK STAYS IN ITS COLUMN (homegrid.go's [homeView.gridMove]):
+	// the lines are laid out column by column, and a walk off the foot of one
+	// column into the top of the next would be the cursor jumping across the
+	// screen on a key that means "the row below".
+	if h.gridOn() {
+		h.gridMove(delta)
+		return
+	}
 	step := 1
 	if delta < 0 {
 		step, delta = -1, -delta
@@ -2752,7 +2794,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		// (homebands.go's [app.setAllBandFolds]). It took over from the `m`
 		// that used to do this, because m belongs to the box now — and only
 		// with nothing typed, since in a draft the arrows are the caret's.
-		if h.box.empty() {
+		if h.box.empty() && !h.gridOn() {
 			if subject, ok := a.homeSubject(); ok && !a.allBandFoldsOpen(subject) {
 				a.setAllBandFolds(subject, true)
 				return nil
@@ -2763,7 +2805,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "left":
 		// A CARD'S OPEN BANDS FOLD FIRST, one layer at a time on esc's own
 		// law: ← folds what → opened before it folds anything on the list.
-		if h.box.empty() {
+		if h.box.empty() && !h.gridOn() {
 			if subject, ok := a.homeSubject(); ok && a.anyBandFoldOpen(subject) {
 				a.setAllBandFolds(subject, false)
 				return nil
@@ -2946,7 +2988,7 @@ func (h *homeView) buildFor() {
 		h.buildWorld()
 		return
 	}
-	h.buildSwitch()
+	h.buildGrid()
 }
 
 // homeEnter is the one decision this surface makes, and it makes a different
@@ -3912,7 +3954,7 @@ func (a *app) homePress(x, y int) tea.Cmd {
 	// found by its own text rather than by counting rows: the card is assembled
 	// band by band and drops whole bands on a short frame, and a row number
 	// computed against it would be a second answer to where things ended up.
-	if left, right := homeColumns(width); right > 0 && x >= left+homeGutter && y < len(lines) {
+	if left, right := homeColumns(width); right > 0 && !a.home.gridOn() && x >= left+homeGutter && y < len(lines) {
 		if fold, ok := a.bandFoldAt(ansi.Strip(lines[y])); ok {
 			a.toggleBandFold(fold.band, fold.subject)
 			a.touch()
@@ -3931,7 +3973,7 @@ func (a *app) homePress(x, y int) tea.Cmd {
 	if row, column, ok := a.homePane(x, y); ok {
 		return a.exchangePress(column, row)
 	}
-	at := hits[y]
+	at := a.homeHitAt(x, y, hits)
 	if at < 0 || at >= len(a.home.lines) || !a.home.lines[at].stop() {
 		return nil
 	}
@@ -4045,7 +4087,9 @@ func (a *app) homePane(x, y int) (row, column int, ok bool) {
 // it back beside the list with everything in it.
 func (a *app) homeStacked() (*homeExchange, bool) {
 	width, _ := a.size()
-	if _, right := homeColumns(width); right > 0 {
+	// THE GRID HAS NO PANE COLUMN AT ANY WIDTH, so an errand holding the keyboard
+	// stacks over it the way it always has on a narrow frame (homegrid.go).
+	if _, right := homeColumns(width); right > 0 && !a.home.gridOn() {
 		return nil, false
 	}
 	ex := a.paneExchange()
@@ -4105,8 +4149,8 @@ func (a *app) homeHover(x, y int) tea.Cmd {
 	// change under the very pointer that came to read it. The gutter counts as
 	// the pane's side, exactly as it does for a press ([app.homePane]).
 	left, right := homeColumns(width)
-	if !inPane && (right <= 0 || x < left) && y >= 0 && y < len(hits) {
-		at := hits[y]
+	if !inPane && (a.home.gridOn() || right <= 0 || x < left) && y >= 0 && y < len(hits) {
+		at := a.homeHitAt(x, y, hits)
 		if at >= 0 && at < len(a.home.lines) && a.home.lines[at].stop() {
 			a.home.hover = at
 		}
@@ -4205,6 +4249,10 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		rows[i], panes[i] = mark.line, mark.pane
 	}
 	a.home.pane = panes
+	a.home.gridMarks = nil
+	if a.home.gridOn() {
+		a.home.gridMarks = marks
+	}
 	// AND THE FRAME IS KEPT, because the pointer resolves against what is ON THE
 	// SCREEN and this is it ([app.homeHover]). It is the same reasoning the hit
 	// maps above are written down for, one step further: the maps say which row
@@ -4233,6 +4281,11 @@ type homePainted struct {
 type homeMark struct {
 	line int
 	pane int
+	// grid says the row is the resting grid's, where one screen row holds a line
+	// of EVERY column and the x of the press says which (homecell.go's
+	// [homeGridZip]); cells is those lines, -1 where a column drew nothing.
+	grid  bool
+	cells [homeGridMaxCols]int
 }
 
 // homeDrawn is one screen line, the column line it belongs to, and — while an
@@ -5123,14 +5176,6 @@ func (a *app) homeCardRows(width, room int, pal palette) []string {
 		// somebody walked past would be the pane describing a row the cursor is
 		// not on any more.
 		return nil
-	}
-	if line.sw != nil {
-		// THE SWITCHER'S CARD IS FIVE BANDS AND IT ACTS (SCREEN 1d,
-		// place_home.go). It is only ever drawn past [homeCardMin], where the
-		// width is genuinely spare, so it may not be a second reading of the row
-		// beside it — every band on it either asks something answerable here or
-		// points at a place.
-		return a.homeSwitchCard(line, width, room, pal)
 	}
 	row := line.row
 
