@@ -4,6 +4,8 @@ title: tasks can search and read earlier conversations without filesystem discov
 pr: 769
 surface: [chat, engine, docs]
 invalidates:
+  - "The checker received the worker's kept answer as a claim but was not told that a requested final response is itself a durable deliverable. It is now told to verify that response without inventing a file requirement; claimed or required files still must exist."
+  - "When task preparation fell back to 'Complete the brief and report the result and checks run.', the checker still received no brief. It now receives that referenced request; explicit acceptance criteria continue to stand alone. Live history tasks exposed this gap when correct source metadata was rejected as invented."
   - "A task worker, nested worker, forked hand and task checker had no search_conversations tool because they received no writable memory store. They now inherit a read-only conversation-history interface and the tool, without enabling memory extraction, memory writes or worker-message indexing."
   - "search_conversations only accepted query and limit, returned the start of matching messages, and required a sibling transcript path for further reading. It now supports conversation-scoped search, recent-message browsing and opaque source-reference reads with surrounding messages; explicit reads preserve the full indexed anchor and its line breaks."
   - "Broad conversation searches could rank the asking conversation's own fresh question and tool calls first. They now exclude only the asking agent's own thread; an explicit session_id includes it, and workers can still search their parent's history."

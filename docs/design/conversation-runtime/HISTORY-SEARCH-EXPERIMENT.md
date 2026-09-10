@@ -64,7 +64,7 @@ toolbelt; the worker case enters through `Agent.StartTask`, runs its normal task
 loop and enables the task checker. These are live engine tests, not a claim that
 the tmux terminal suite was run.
 
-The final run on 2026-09-10 passed in 161 seconds:
+An initial successful run on 2026-09-10 passed in 161 seconds:
 
 | Case | Assertion | History calls |
 | --- | --- | --- |
@@ -79,7 +79,7 @@ The five foreground cases rejected repeated identical searches and filesystem
 history detours. They shared memory state deliberately: a remembered answer must
 not replace locating the requested original conversation. The task artifact was
 validated against the fixture's exact source record, and the model ledger was
-checked to contain only the requested model. The final run's recorded cost was
+checked to contain only the requested model. That run's recorded cost was
 $0.012838 for chat and $0.005882 for the task. This excludes earlier iterations.
 
 ## What the iterations revealed
@@ -93,13 +93,60 @@ tool guidance and task-miss hint. A checked task found the right evidence but
 failed an ambiguous report-format requirement, so the final fixture uses a
 precisely specified JSON artifact.
 
-The final task still decoded and altered source references unnecessarily: after
+That task family still decoded and altered source references unnecessarily: after
 searching and opening the real message, it tried earlier global IDs, including
 zero. Those calls produced no fabricated evidence, and the final artifact was
 correct, but this is a remaining tool-selection inefficiency. Opaque references
-discourage arithmetic; they do not prevent a model from doing it. Worker call
-count is therefore reported rather than hidden behind an arbitrary three-call
+discourage arithmetic; they do not prevent a model from doing it. Task-family call
+count was therefore reported rather than hidden behind an arbitrary three-call
 correctness gate.
+
+Repeating the experiment exposed an additional completion failure: a task wrote
+the exact correct artifact, but its checker rejected the source metadata because
+it could not establish which fields the person had requested. The captured
+checker packet contained only the fallback acceptance, "Complete the brief and
+report the result and checks run.", without the referenced brief. It tried to
+reconstruct that missing request from the source conversation. Another run failed
+the artifact assertion before these diagnostics were available, so its exact
+cause remains unresolved. A subsequent diagnostic run passed with two history
+calls; that variability is why the missing contract was fixed instead of simply
+rerunning until green.
+
+The checker now receives the admitted brief only when the current acceptance is
+that exact fallback. Explicit acceptance criteria retain the existing contract-only
+behavior. A regression test covers both cases. This fixes missing input to the
+check rather than weakening artifact assertions or disabling the checker.
+
+Two file-delivery repeats after that fix both recovered the exact source-backed
+JSON. One passed; one was rejected because the checker confused the restored
+workspace's temporary name with the worker's original root folder. Its own
+reasoning explicitly confirmed all five source fields before rejecting the path
+claim. That broader file-completion issue remains unresolved. The earlier
+file-delivery scenario is reproducible from commit `ce81ac14f` using the live
+command above; it predates the fallback-contract fix and can expose either failure.
+
+The maintained task test now asks for the person's actual operation: return the
+earlier approval phrase, stored role, conversation ID and source reference in the
+task's final answer. It checks the worker's final message, not a tool result or
+the checker's paraphrase, and still requires the task to finish done with checking
+enabled. It does not claim coverage of JSON-file delivery or that the broader
+completion issues have been solved.
+
+A repeat of the direct-answer scenario also exposed a checker that confirmed the
+answer but demanded a file despite the requested final response. The checker
+packet now explicitly identifies the retained final response as a valid
+deliverable when requested, while requiring evidence for its claims and retaining
+file checks when a file is required or claimed. Worker and checker history calls
+are logged separately: checker reads are useful independent checks, not worker
+redundancy. Some checks rely on the supplied source receipts without issuing a
+fresh lookup; the test requires worker retrieval, a grounded worker answer and
+successful completion, and reports checker calls rather than mandating them.
+
+The PR's first complete CI run also found a manual section-list failure on the
+newer merge base. `TestEverySectionTheCutNamesComesBackWhole` fails identically
+on clean `dev` commit `be1cc3749`: the tasks page's bounded heading list omits
+"Back to main from a nested task — return to the conversation". This is separate
+from conversation retrieval and was reproduced in a detached clean worktree.
 
 ## Limits and follow-up criteria
 

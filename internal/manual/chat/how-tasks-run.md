@@ -688,6 +688,10 @@ instructions describe the tools it actually carries:
   It can search all indexed places and open an exchange by
   an opaque source reference. It cannot write memories through that interface.
   If the parent has memory off and no history source, the tool remains absent.
+  If task preparation falls back to "Complete the brief and report the result and checks run.",
+  the checker receives that referenced brief so it can check the actual request.
+  A requested final answer is kept as the task's result; checking it does not
+  require an extra file unless the request or the work's own claim requires one.
 - **Start a watch.** `watch` delivers its news into a conversation and a task has
   none. A worker waits with an ordinary foreground `bash` call.
 - **See the work that already ran** — but only at the bottom of the tree. A task

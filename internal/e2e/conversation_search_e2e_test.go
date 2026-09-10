@@ -136,7 +136,7 @@ func TestConversationSearchInsideLiveTask(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 	defer cancel()
 	started := time.Now()
-	id, _, _, err := agent.StartTask(ctx, "Look up our earlier copper rollout decision. Save decision.json with five fields: approval_phrase (verbatim), speaker_role (the stored role, not an inferred person name), conversation_id, message_id (numeric), and source_ref (the opaque source reference). Read the original conversation as evidence; do not guess.")
+	id, _, _, err := agent.StartTask(ctx, "Look up our earlier copper rollout decision. In your final answer, quote the approval phrase verbatim, identify the stored speaker role, and cite the conversation ID and its opaque source reference. Read the original conversation as evidence; do not guess.")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,9 @@ func TestConversationSearchInsideLiveTask(t *testing.T) {
 		t.Fatal(err)
 	}
 	searches := 0
+	checkerSearches := 0
 	receipt := false
+	answered := false
 	var journals strings.Builder
 	for _, file := range files {
 		raw, err := os.ReadFile(file)
@@ -162,10 +164,18 @@ func TestConversationSearchInsideLiveTask(t *testing.T) {
 			if json.Unmarshal([]byte(line), &row) != nil {
 				continue
 			}
+			if !strings.Contains(filepath.Base(file), "-audit-") && row.Role == "assistant" && len(row.ToolCalls) == 0 && strings.Contains(row.Content, "heron-lilac-731") && strings.Contains(row.Content, "user") && strings.Contains(row.Content, source.SessionID) && strings.Contains(row.Content, session.ConversationReference(source.SessionID, source.Seq)) {
+				answered = true
+			}
 			for _, call := range row.ToolCalls {
 				if call.Function.Name == "search_conversations" {
-					searches++
-					t.Logf("WORKER SEARCH %s", call.Function.Arguments)
+					if strings.Contains(filepath.Base(file), "-audit-") {
+						checkerSearches++
+						t.Logf("CHECKER SEARCH %s", call.Function.Arguments)
+					} else {
+						searches++
+						t.Logf("WORKER SEARCH %s", call.Function.Arguments)
+					}
 				}
 			}
 			if row.Role == "tool" && strings.Contains(row.Content, "heron-lilac-731") && strings.Contains(row.Content, "message ") {
@@ -174,35 +184,10 @@ func TestConversationSearchInsideLiveTask(t *testing.T) {
 		}
 	}
 	if searches < 1 || !receipt {
-		t.Fatalf("worker lookup was absent: calls=%d receipt=%v\nJOURNALS\n%s", searches, receipt, journals.String())
+		t.Fatalf("worker lookup was absent: worker=%d checker=%d receipt=%v\nJOURNALS\n%s", searches, checkerSearches, receipt, journals.String())
 	}
-	// The task may keep its working copy under the person's configured landing
-	// policy; the delivery assertion follows the task's recorded location.
-	found := false
-	isReceipt := func(raw []byte) bool {
-		var receipt struct {
-			Phrase       string `json:"approval_phrase"`
-			Role         string `json:"speaker_role"`
-			Conversation string `json:"conversation_id"`
-			MessageID    int64  `json:"message_id"`
-			Ref          string `json:"source_ref"`
-		}
-		return json.Unmarshal(raw, &receipt) == nil && receipt.Phrase == "heron-lilac-731" && receipt.Role == "user" && receipt.Conversation == source.SessionID && receipt.MessageID == source.Seq && receipt.Ref == session.ConversationReference(source.SessionID, source.Seq)
-	}
-	filepath.WalkDir(place.Dir, func(path string, d os.DirEntry, err error) error {
-		if err == nil && !d.IsDir() && d.Name() == "decision.json" {
-			raw, _ := os.ReadFile(path)
-			if isReceipt(raw) {
-				found = true
-			}
-		}
-		return nil
-	})
-	if raw, err := os.ReadFile(filepath.Join(ground, "decision.json")); err == nil && isReceipt(raw) {
-		found = true
-	}
-	if !found {
-		t.Fatal("no delivered decision with the retrieved phrase and conversation ID")
+	if !answered {
+		t.Fatalf("worker did not deliver the exact approval phrase, stored role and source citation\nJOURNALS\n%s", journals.String())
 	}
 	usd, models := ledgerSince(t, started)
 	for _, model := range models {
@@ -210,16 +195,17 @@ func TestConversationSearchInsideLiveTask(t *testing.T) {
 			t.Errorf("unexpected model: %s", model)
 		}
 	}
-	t.Logf("RESULT actual task=%d searches=%d cost=$%.6f models=%v", id, searches, usd, models)
+	t.Logf("RESULT actual task=%d worker_searches=%d checker_searches=%d cost=$%.6f models=%v", id, searches, checkerSearches, usd, models)
 	// The task may investigate source attribution before writing. Measure
 	// those calls rather than treating a speed target as a correctness gate.
 	if searches > 3 {
-		t.Logf("EFFICIENCY: worker made %d history lookups; the artifact remains grounded", searches)
+		t.Logf("EFFICIENCY: worker made %d history lookups; the answer remains grounded", searches)
 	}
 	rows := readTaskRows(t, place.Tasks())
 	for _, row := range rows {
 		if row.ID == id && row.State != string(session.TaskDone) {
-			t.Errorf("task did not pass its completion check: state=%s report=%s", row.State, row.Report)
+			checkpoint, _ := os.ReadFile(place.Tasks())
+			t.Errorf("task did not pass its completion check: state=%s report=%s\nCHECKPOINT\n%s\nJOURNALS\n%s", row.State, row.Report, checkpoint, journals.String())
 		}
 	}
 	_ = agent.Close()
