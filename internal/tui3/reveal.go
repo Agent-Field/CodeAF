@@ -514,10 +514,13 @@ func (a *app) spendDrawn() float64 {
 	return a.shownCost
 }
 
-// tokensDrawn is the session's token total in motion — the figure the task
-// column's foot paints beside the bill (task.go's [app.railFootRows]), which is
-// the one place on this surface a running total of tokens is drawn while it is
-// still growing. /status prints the exact books instead, as it does for money.
+// tokensDrawn is the session's token total in motion, eased the way the bill
+// beside it is ([app.armMeters]). NOTHING DRAWS IT TODAY: the task column's foot
+// painted it beside the bill until 2026-09-09 and both figures left that foot
+// for the status row, which draws the money and the CONTEXT weight rather than a
+// session token total. It is kept because the easing it belongs to is the one
+// every meter on this surface shares, and a total that came back would come back
+// in motion or not at all. /status prints the exact books.
 func (a *app) tokensDrawn() int {
 	if !a.chasingMeters() {
 		return a.tokens

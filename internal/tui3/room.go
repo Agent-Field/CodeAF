@@ -2181,6 +2181,16 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	if line.more {
 		return a.showPage(pageTasks), true
 	}
+	// AND THE STANDING COUNT IS THE FOURTH, on the same terms: it is a line of
+	// the footer, it belongs to no node, and it opens the page a person reading
+	// that number is trying to find (standdoor.go). It is refused only where the
+	// page is already what they are looking at.
+	if line.keeping {
+		if a.at(pageStanding) {
+			return nil, true
+		}
+		return a.openStanding(), true
+	}
 	if line.hint {
 		a.railWiden(!a.railWide)
 		return nil, true

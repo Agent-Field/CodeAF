@@ -3,6 +3,7 @@ package tui3
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -242,6 +243,13 @@ func TestTheOpenCountIsAbsentAtOneAndPresentAtTwo(t *testing.T) {
 	stowOne(t, a, &switchAgent{fakeAgent: &fakeAgent{model: "m"}}, "/tmp/lab/two/transcript.jsonl")
 	if got := a.openSegment(); got != "2 open" {
 		t.Fatalf("two conversations drew %q", got)
+	}
+	// AND IT IS NOT ON THE STATUS ROW ANY MORE. The tab strip above the
+	// transcript already draws every open conversation by name, so the count was
+	// the same fact said twice and the weaker of the two — the sheet and /status
+	// still say it (foot.go's [groupOff]).
+	if line := plain(a.status(200)); strings.Contains(line, "2 open") {
+		t.Fatalf("the open count is back on the status row:\n%s", line)
 	}
 }
 

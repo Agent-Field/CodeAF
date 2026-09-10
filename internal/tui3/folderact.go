@@ -56,6 +56,7 @@ package tui3
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -113,6 +114,16 @@ func (f *folderPick) mark() string {
 	}
 	if len(f.marks) >= folderMarkCap {
 		return folderMarkFullWord
+	}
+	// AND ON HOME'S SHEET A FOLDER IS A RADIO BUTTON. One conversation opens in
+	// one folder ([homeTarget.where] is a single path), so a second folder marked
+	// here MOVES the choice rather than adding to it. The alternative was a
+	// confirm that quietly used one of the marks and ignored the others, which is
+	// the sheet doing something other than what its own tray says. Files are
+	// untouched: several of them ride the same message, in the order they were
+	// marked (this function's header).
+	if dir && f.forTarget {
+		f.marks = slices.DeleteFunc(f.marks, func(mark folderMark) bool { return mark.dir })
 	}
 	f.marks = append(f.marks, folderMark{path: path, dir: dir})
 	return ""
@@ -214,9 +225,14 @@ type folderAdded struct {
 func (a *app) folderConfirm() tea.Cmd {
 	takes := a.folder.takes()
 	if len(takes) == 0 {
-		a.folder.close()
-		a.touch()
-		return nil
+		return a.closeFolderSheet()
+	}
+	// THE SHEET HOME OPENED ANSWERS A DIFFERENT QUESTION and answers it here,
+	// before any of the machinery below: a folder chosen there is the folder the
+	// NEXT conversation opens in, which is a decision about this window and not a
+	// round trip to any agent ([app.targetFolderConfirm]).
+	if a.folder.forTarget {
+		return a.targetFolderConfirm(takes)
 	}
 	// A REMOVAL LEAVES THE SHEET OPEN and everything else closes it. Adding is a
 	// decision and the sheet has served its purpose; removing is a tidy-up, and
@@ -245,6 +261,51 @@ func (a *app) folderConfirm() tea.Cmd {
 	a.folder.close()
 	a.touch()
 	return a.folderTakeCmd(takes)
+}
+
+// targetFolderConfirm is a confirm on the sheet home opened: the folder becomes
+// the next conversation's ([homeTarget.where]) and the files go on the tray home
+// is already carrying, with home back on the frame under both.
+//
+// A PIN IS NOT A ROUND TRIP. Registering a folder with an agent is a write and a
+// wire call, which is why the ordinary confirm runs off the loop; setting a
+// string on this window is neither, and it is the same act `alt+w` performs
+// synchronously one keystroke away (homedraft.go's [app.moveTarget]). So the
+// rule above home's box says the new folder on the very next frame — which is
+// the whole of what the owner asked to be able to see.
+//
+// THE FILES STILL GO THE LONG WAY ROUND, because a file is a stat and a stat is
+// a disk: they ride the same command every other confirm fires, and land on the
+// tray that travels with the person (attach.go).
+//
+// ONE FOLDER IS TAKEN AND THERE CAN ONLY BE ONE ([folderPick.mark] keeps the
+// marks to a single directory on this sheet).
+func (a *app) targetFolderConfirm(takes []folderTake) tea.Cmd {
+	where := ""
+	files := make([]folderTake, 0, len(takes))
+	for _, take := range takes {
+		if take.dir {
+			if where == "" {
+				where = take.path
+			}
+			continue
+		}
+		files = append(files, take)
+	}
+	a.folder.close()
+	// HOME COMES BACK FIRST AND THE SENTENCE IS SAID SECOND. Raising home builds
+	// a fresh [homeView] (home.go's [app.raiseHome]), so a line said before it
+	// would be a line thrown away.
+	back := a.openHome()
+	if where != "" {
+		a.target.where = where
+		a.home.say(targetMovedWord+a.hostedPath(shortPath(where, a.tilde, 0)), "")
+	}
+	a.touch()
+	if len(files) == 0 {
+		return back
+	}
+	return tea.Batch(back, a.folderTakeCmd(files))
 }
 
 // folderTakeCmd is the whole of the confirm's work, off the loop.
@@ -364,6 +425,13 @@ func (a *app) tookFolderTaken(msg folderTakenMsg) {
 				attachChipTo(&state.chips, held)
 			}
 		})
+		// AND HOME SAYS SO ON ITS OWN LINE. The sentence below lands in the
+		// conversation behind home, where nobody standing on home can read it —
+		// the same fault the whole of homeslash.go's gate exists to end. Home's
+		// tray is the next conversation's, and the line says which one it is for.
+		if a.at(pageHome) {
+			a.home.say(folderAttachedWord+folderChipWords(msg.chips)+homeRidesWord, "")
+		}
 	}
 	if msg.file != a.file {
 		a.touch()

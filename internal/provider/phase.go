@@ -201,6 +201,24 @@ type PhaseNews struct {
 	Model string
 	Role  lanes.Role
 	At    time.Time
+
+	// Session is the conversation this request belongs to ([SessionFrom]), and
+	// it is EMPTY IN EVERY BUILD THAT NEEDS NO ANSWER: one process with one
+	// window has nothing to disambiguate. An engine that is a separate process
+	// from its surfaces reads it to decide which connection a piece of news
+	// belongs on, and news that names no conversation is news it cannot place.
+	Session string
+
+	// Relayed says this news arrived over a connection from the engine that
+	// produced it, rather than off this process's own stream.
+	//
+	// IT EXISTS TO STOP A LOOP. A build that is both serving and watching —
+	// which is every test that drives an engine host inside its own process —
+	// would otherwise forward what it just received straight back out of the
+	// door it came in, forever. It is never put on the wire: the side that
+	// takes a frame off the wire is the only side that can know it, and it
+	// stamps it on receipt.
+	Relayed bool
 }
 
 // Waiting reports whether this phase is one a person is waiting through with
@@ -279,6 +297,11 @@ type phaseClock struct {
 	mu    sync.Mutex
 	model string
 	role  lanes.Role
+	// session is the conversation these requests belong to, carried so that an
+	// engine serving many windows can put this clock on the right one
+	// (roles.go's [WithSession]). It is empty in a build where there is only
+	// one window to put it on.
+	session string
 	// phase is what was last posted, since when, and when it was last said out
 	// loud.
 	phase Phase
@@ -318,9 +341,10 @@ func (c *Client) newPhaseClock(ctx context.Context, model string) *phaseClock {
 		return nil
 	}
 	return &phaseClock{
-		model: strings.TrimSpace(model),
-		role:  RoleFrom(ctx),
-		now:   c.clock,
+		model:   strings.TrimSpace(model),
+		role:    RoleFrom(ctx),
+		session: SessionFrom(ctx),
+		now:     c.clock,
 	}
 }
 
@@ -416,7 +440,7 @@ func (p *phaseClock) done() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.phase = ""
-	postPhase(PhaseNews{Model: p.model, Role: p.role, At: p.now()})
+	postPhase(PhaseNews{Model: p.model, Role: p.role, Session: p.session, At: p.now()})
 }
 
 // say posts the phase as it stands. IT IS CALLED WITH THE LOCK HELD, from every
@@ -434,6 +458,7 @@ func (p *phaseClock) say(detail string, now time.Time) {
 		Detail:   detail,
 		Model:    p.model,
 		Role:     p.role,
+		Session:  p.session,
 		At:       now,
 	}
 	// THE RATE IS THE ONE THIS PHASE MEASURED, and never the last answer's. A
@@ -459,6 +484,7 @@ func notePhase(ctx context.Context, model string, phase Phase, detail string, si
 		Detail:   detail,
 		Model:    strings.TrimSpace(model),
 		Role:     RoleFrom(ctx),
+		Session:  SessionFrom(ctx),
 	})
 }
 

@@ -126,6 +126,22 @@ func (r *replica) setModel(model string) {
 	r.facts.Model = model
 }
 
+// setThinking is that same optimism for the conversation's rung, and it is
+// written with THE ENGINE'S OWN ANSWER rather than with the word that was asked
+// for (effort.go's [Agent.SetConversationEffort] reads it back).
+//
+// It has to be read back rather than assumed, because a rung set here is not
+// always the rung that wins: a level dialled onto the model itself outranks the
+// conversation's (internal/effort's Resolve), and a dial that showed the word a
+// person pressed while the machine ran at another one would be the exact defect
+// the ladder was written to end. The engine's push lands over the top of this at
+// a higher revision, as it does for the model.
+func (r *replica) setThinking(rung string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.facts.Thinking = rung
+}
+
 // referPlace and removePlace are the same optimism for the folders a person
 // attaches, and they are here for the same reason: the folder indicator is drawn
 // in the frame that follows the keystroke, and a chip that took a round trip to
