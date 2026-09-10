@@ -298,13 +298,15 @@ func TestAPacedProviderWaitIsClampedToTheCooldown(t *testing.T) {
 	}
 }
 
-// pacedProviderName reads the router's own 429 body, and only that: a refusal
-// shaped any other way answers "" and keeps the pacing behaviour it always had.
-func TestPacedProviderNameReadsTheRoutersMetadata(t *testing.T) {
+// The router's own 429 body is read for the pool that refused, by the one
+// reader every refusal is built through ([apiError]): a refusal shaped any
+// other way names nobody and keeps the account-wide pacing it always had.
+func TestAPacedRefusalCarriesTheRoutersNamedPool(t *testing.T) {
 	routed := `{"error":{"message":"Provider returned error","code":429,` +
 		`"metadata":{"raw":"model is temporarily rate-limited upstream","provider_name":"Sundial"}}}`
-	if got := pacedProviderName([]byte(routed)); got != "Sundial" {
-		t.Fatalf("named provider = %q, want Sundial", got)
+	named, ok := RefusalFrom(apiError(429, []byte(routed)))
+	if !ok || named.Provider != "Sundial" {
+		t.Fatalf("named provider = %q, want Sundial", named.Provider)
 	}
 	for _, body := range []string{
 		`{"error":{"message":"too many requests","code":429}}`,
@@ -312,8 +314,12 @@ func TestPacedProviderNameReadsTheRoutersMetadata(t *testing.T) {
 		`not json at all`,
 		``,
 	} {
-		if got := pacedProviderName([]byte(body)); got != "" {
-			t.Fatalf("body %q named %q, want nothing", body, got)
+		refusal, ok := RefusalFrom(apiError(429, []byte(body)))
+		if !ok {
+			t.Fatalf("body %q built no refusal", body)
+		}
+		if refusal.Provider != "" {
+			t.Fatalf("body %q named %q, want nothing", body, refusal.Provider)
 		}
 	}
 }

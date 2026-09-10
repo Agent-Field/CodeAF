@@ -309,26 +309,21 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		peek, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
 		response.Body.Close()
 		cancelAttempt()
-		if rateLimited {
-			// A 429 that names its upstream is one provider's pool, not this
-			// account: the ledger refuses that lane so every request encoded
-			// from here on routes around it. This call's own retries keep the
-			// body they were built with and wait as they always did.
-			if served := pacedProviderName(peek); served != "" {
-				c.notePacedProvider(c.modelFor(request), served, named)
-			}
-		}
 		lastErr = apiError(response.StatusCode, peek)
 		c.record(recordFacts{
 			ctx: ctx, request: request, knobs: knobs, stream: stream,
 			attempt: attempts, began: attemptBegan,
 			status: response.StatusCode, err: lastErr, responseBody: peek,
 		})
-		// A 5xx that names its upstream is that upstream failing, not this model:
-		// the lane goes so the next encode routes around it (velocity.go's
-		// refuseUpstream). A 429 was already answered above with the wait the
-		// provider itself named, and this leaves it alone.
-		c.refuseUpstream(request, knobs, lastErr)
+		// EVERY REFUSAL THIS LOOP DRAWS GOES THROUGH THE ONE DOOR, and what is
+		// done about it is decided there from what the refusal says rather than
+		// here from the status this loop happens to be holding (velocity.go's
+		// [Client.refuseLane], which carries the measurement that law comes
+		// from). A 5xx naming its upstream takes that lane away; a 429 naming
+		// its pool is paced for the wait it asked for, which is why that wait
+		// is handed over rather than left in this loop; a 429 naming nobody is
+		// this account's own ceiling and writes nothing at all.
+		c.refuseUpstream(request, knobs, lastErr, "", named)
 		// One watched request has one recovery owner. When its existing race
 		// can fund an alternative, return the fault there instead of waiting
 		// and replaying the same encoded request up to three times first.

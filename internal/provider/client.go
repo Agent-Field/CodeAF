@@ -501,14 +501,14 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	//
 	// THE STRIKE IS THE FIRST OF THEM, and it was missing (issue #456). It
 	// fired only where a refusal surfaced to a caller as a 4xx
-	// ([Client.refuseUpstream]'s three call sites); a routing refusal the
+	// ([Client.refuseUpstream]'s call sites); a routing refusal the
 	// LADDER absorbed never reached one, so the machine that had just said it
 	// cannot serve this model was left standing in the serving set and the next
 	// turn chose it again. "This machine refused this model" is true whatever
 	// the recovery below does with the request, and it is recorded at the seam
 	// where it is known.
 	refusal := c.refusalObject(request, knobs, apiError(status, peek))
-	c.strikeRefusal(model, refusal)
+	c.refuseLane(model, refusal, 0)
 	// AND THE SAME MEMO IS TAKEN FOR THE IGNORE LIST, from the only authority on
 	// how many machines serve a model. This process holds the lanes it has timed
 	// and no denominator, so it cannot tell a veto that narrowed a set of five
@@ -1301,7 +1301,7 @@ func (c *Client) completeWithMessagesStreaming(
 			began: logBegan, status: httpResponse.StatusCode,
 			err: refusal, responseBody: payload,
 		})
-		c.refuseUpstream(request, knobs, refusal)
+		c.refuseUpstream(request, knobs, refusal, "", retryAfter(httpResponse))
 		return nil, false, refusal
 	}
 	// AN ENDPOINT THAT ANSWERED IN ONE PIECE IS NOT A STREAM, AND SAYS SO IN ITS
@@ -1572,16 +1572,19 @@ func (c *Client) completeWithMessagesStreaming(
 		// exactly as the same refusal arriving before the headers would (sse.go
 		// says what it cost when this field was not read at all).
 		if refusal := streamRefusal(chunk.Error); refusal != nil {
-			if named, ok := RefusalFrom(refusal); ok && named.Provider == "" && served != "" {
-				// The stream named who was serving it even when the error object
-				// did not, and that name is what the ledger and the journal need.
-				named.Provider = served
-			}
+			// THE DOOR IS ASKED BEFORE THE ROW IS WRITTEN, because it is the
+			// door that folds the name of the machine this stream was being
+			// served by onto a refusal that carried none (velocity.go's
+			// [Client.refuseUpstream] → [nameServed]) — and that name is what
+			// the ledger, every later reader of [RefusalFrom], and this row
+			// need. A 429 in here is paced against that machine exactly as the
+			// same 429 arriving as a status would be; the two paths share one
+			// function so they cannot drift apart again.
+			c.refuseUpstream(request, knobs, refusal, served, 0)
 			c.record(recordFacts{
 				ctx: ctx, request: request, knobs: knobs, stream: true,
 				began: logBegan, status: httpResponse.StatusCode, served: served, err: refusal,
 			})
-			c.refuseUpstream(request, knobs, refusal)
 			c.releaseEndpoint(ctx, c.modelFor(request))
 			c.settle(ctx, c.modelFor(request), response, receiptRefusalReason, content.Len())
 			return nil, false, refusal
