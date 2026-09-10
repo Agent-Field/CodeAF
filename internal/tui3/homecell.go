@@ -107,6 +107,10 @@ func (a *app) homeLineRows(line homeLine, at, width int, pal palette, heading bo
 		texts = []string{homeCellHead(cell, width, pal, heading)}
 	case cellWhisper, cellFold:
 		texts = []string{homeCellQuiet(cell, width, pal, lit)}
+	case cellBar:
+		texts = []string{homeCellBand(homeCellLeadBlank+homeSpendBar(cell.share, width-homeGridLead, pal), width, pal, lit)}
+	case cellSpark:
+		texts = []string{homeCellBand(homeCellLeadBlank+homeSpendSpark(cell, width-homeGridLead, pal), width, pal, lit)}
 	default:
 		texts = a.homeCellRow(cell, at, width, pal, lit)
 	}

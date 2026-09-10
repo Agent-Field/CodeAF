@@ -226,6 +226,8 @@ type homeGridInput struct {
 	last map[string]session.Summary
 	// repos is each workspace's last `git status` reading (homeband_repo.go).
 	repos map[string]homeRepoReading
+	// spend is the day's figure and the fortnight behind it (homepanel_spend.go).
+	spend homeSpendReading
 	seen  time.Time
 	now   time.Time
 }
@@ -239,7 +241,7 @@ func (h *homeView) gridInput() homeGridInput {
 	reading := readSwitcher(world, h.items, h.fired, here, h.gone, h.seen, h.world.Read,
 		switcherView{all: true}, h.ledger)
 	in := homeGridInput{world: world, items: h.items, errands: h.switchExchanges(),
-		bucket: h.bucket, tilde: h.tilde, last: h.last, repos: h.repos,
+		bucket: h.bucket, tilde: h.tilde, last: h.last, repos: h.repos, spend: h.spend,
 		seen: h.seen, now: h.world.Read}
 	for _, line := range reading.lines {
 		if line.row == nil || line.row.fold {
@@ -280,6 +282,10 @@ const (
 	cellHead
 	cellWhisper
 	cellFold
+	// cellBar and cellSpark are the spend panel's two drawings: the day against
+	// its allowance, and the fortnight.
+	cellBar
+	cellSpark
 )
 
 // homeCellMark is the one mark a row may wear. There are two (law 8): the
@@ -312,6 +318,9 @@ type homeCell struct {
 	// sub is the line under the row, and subRight what that line carries at
 	// its right — the answers a digit sends.
 	sub, subRight string
+	// share is how full the spend bar is, and spark the fortnight's days.
+	share float64
+	spark []float64
 	// row is the switcher's own row behind a conversation or a watch, which is
 	// what its verbs are read from (place_home.go's [app.homeRowVerbs]).
 	row *switcherRow
