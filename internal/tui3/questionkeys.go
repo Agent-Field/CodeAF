@@ -198,6 +198,9 @@ const (
 	// teaching arithmetic instead of a choice. The routing reads `left` and
 	// `right` individually ([app.questionOptionKey]); this is the SPELLING.
 	questionWalkKey = "←→"
+	// questionWalkDownKey is the same walk spelled for a card, whose answers
+	// stand in a column.
+	questionWalkDownKey = "↑↓"
 	// The room's own keys (lane S2). `a` and `b` are the two sides of a pair and
 	// `a` is also the checklist's "take its suggestion" — the one collision the
 	// grammar has, and it is the same instinct at two shapes: take the thing on
@@ -227,7 +230,7 @@ const (
 // on it, and let the person type. Nothing is cancelled, so the word may not say
 // cancelled.
 var questionKeys = []questionVerb{
-	{key: questionEnterKey, word: "take the pick", forms: formsBlock | formsRoom | formsSheet, needs: needPick, giveUp: 1},
+	{key: questionEnterKey, word: "take it", forms: formsBlock | formsRoom | formsSheet, needs: needPick, giveUp: 1},
 	// THE SHEET'S TWO SIT WHERE A PERSON REACHES FOR THEM — beside `enter`,
 	// because answering a batch is open-one, answer, send — and only `g` is ever
 	// given up: `s` is the reason the sheet exists (a batch answered row by row
@@ -242,7 +245,14 @@ var questionKeys = []questionVerb{
 	{key: questionAskBackKey, word: "ask back", forms: formsCard | formsRoom, needs: needWords, giveUp: 4},
 	{key: questionDecideKey, word: "you decide", forms: formsCard | formsRoom, needs: needHands, giveUp: 4},
 	{key: questionDialKey, word: "decide these from now on", forms: formsCard | formsRoom, needs: needDial, giveUp: 7},
-	{key: questionWalkKey, word: "pick", forms: formsBlock | formsRoom, needs: needWalk},
+	// THE POINTER'S KEYS ARE SPELLED THE WAY THE FORM LAYS ITS ANSWERS OUT:
+	// across on a line, down on a card. Both pairs walk on both.
+	// Both are given up early: the arrows work whether or not the row names
+	// them, and the band on the pointed answer already says there is a
+	// pointer — a row that kept `choose` and lost the line form for it would
+	// have spent the small shape on its own legend.
+	{key: questionWalkKey, word: "choose", forms: formsLine | formsRatify | formsRoom, needs: needWalk, giveUp: 2},
+	{key: questionWalkDownKey, word: "choose", forms: formsCard, needs: needWalk, giveUp: 2},
 	// THE RULE OFFER IS THE LAST THING GIVEN UP AFTER THE WAY OUT, because it
 	// is the only key here that is on the row ONCE: the third same-shaped yes
 	// happens once, and a row that dropped it to keep `[c] change` would have
@@ -385,12 +395,21 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 		if q.question.Input.Kind == session.InputChecklist {
 			return false
 		}
-		if q.question.Ask == session.AskConfirmation {
-			// A CONFIRMATION ALWAYS HAS A PICK AND IT IS THE CURSOR. It is the
-			// one shape on this block where the person's own keyboard chooses
-			// which answer `enter` takes ([questionSafeAt] puts it on the answer
-			// that loses nothing), so the key is always offered — where every
-			// other question offers it only when the ASKER recommended something.
+		// EVERY QUESTION WITH ANSWERS HAS A POINTER AND ENTER TAKES IT
+		// ([questionPointerStart]); a question with none written down offers
+		// enter only when the asker recommended something.
+		if room := a.qroom; room != nil && room.head.token() == q.token() {
+			// THE ROOM'S ENTER SENDS WHAT THE ROOM HAS PICKED, and its foot
+			// says `nothing chosen yet` until something is; enter is offered
+			// there only when there is something for it to send.
+			return len(room.picked) > 0 || (q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != "")
+		}
+		if q.question.Kind == session.QuestionConnect {
+			// The connect offer's box is the answer, and enter over it empty
+			// takes nothing ([app.questionEnter]).
+			return q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != ""
+		}
+		if len(q.question.Options) > 0 {
 			return true
 		}
 		return q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != ""
@@ -406,7 +425,15 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 		return q.question.Kind != "" && q.question.Asker.Kind != session.AskerSurface &&
 			a.questionOffers(q, needHands)
 	case needWalk:
-		return q.question.Ask == session.AskConfirmation && len(q.question.Options) > 1
+		// Every question with answers has the pointer ([questionPointerStart]);
+		// a checklist walks its own ticks with the same keys and says so on
+		// its `next row` line instead, and where `←→` move a hole
+		// ([needMoves]) the row says that — one key, one meaning — while the
+		// vertical pair still walks the pointer.
+		if q.question.Input.Kind == session.InputChecklist || a.questionOffers(q, needMoves) {
+			return false
+		}
+		return len(q.question.Options) > 1
 	case needHands:
 		if q.question.Ask == session.AskConfirmation ||
 			q.question.Stakes == session.StakesIrreversible {

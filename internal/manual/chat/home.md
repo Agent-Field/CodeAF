@@ -1110,7 +1110,7 @@ surface is drawn:
      open in another window · working
      1  move it here     its reply stops there; its tasks come here
      2  leave it there   nothing changes
-   [esc] leave it there · [←→] pick
+   [esc] leave it there · [←→] choose
 ```
 
 **The cursor starts on `leave it there`.** That is the law every confirmation here keeps:

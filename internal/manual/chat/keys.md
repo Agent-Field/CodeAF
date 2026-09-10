@@ -2276,7 +2276,7 @@ The tasks pages describe what rooms and the roster are for.
      Its work halts; the branch it wrote on is kept.
      1  stop it
      2  keep going
-   [enter] take the pick · [esc] keep going · [←→] pick
+   [enter] take it · [esc] keep going · [←→] choose
 ```
 
 The head is the question and nothing else; the sentence under it is the promise —

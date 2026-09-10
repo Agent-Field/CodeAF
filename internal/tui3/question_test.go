@@ -415,33 +415,34 @@ func TestACardDrawsARowPerAnswerAndMarksTheAskersPick(t *testing.T) {
 	if !strings.Contains(rows[3], "nothing runs") {
 		t.Fatalf("the consequence is missing: %q", rows[3])
 	}
-	if !strings.Contains(rows[4], "[enter] take the pick") {
-		t.Fatalf("the answers row does not offer the pick: %q", rows[4])
+	if !strings.Contains(rows[4], "[enter] take it") {
+		t.Fatalf("the answers row does not offer enter: %q", rows[4])
 	}
 }
 
-// TestEnterTakesThePickOnlyWhereThereIsOne is the emptiness law on a key: no
-// pick, no `enter →` line, and enter goes back to meaning whatever it meant.
-func TestEnterTakesThePickOnlyWhereThereIsOne(t *testing.T) {
+// ENTER TAKES THE POINTED ANSWER, AND THE POINTER STARTS ON THE PICK where the
+// asker named one and on the first answer where it did not — so enter alone
+// still takes the recommendation, and a question with no recommendation is
+// still one keystroke from its first answer, the way every picker a person
+// already knows works. (It used to do nothing without a pick.)
+func TestEnterTakesThePointedAnswerWhichStartsOnThePick(t *testing.T) {
 	lab := newQuestionLab(t)
 	ask := consentAsk()
 	ask.Form = session.FormCard
 	lab.raise(ask)
 	lab.tick(questionSettle)
-	if got := lab.plain(); strings.Contains(got, "take the pick") {
-		t.Fatalf("a question with no pick offered one:\n%s", got)
+	if got := lab.plain(); !strings.Contains(got, "[enter] take it") {
+		t.Fatalf("a question with answers does not offer enter:\n%s", got)
 	}
-	if lab.press("enter") {
-		t.Fatal("enter was taken by a question with no pick")
+	if !lab.press("enter") || len(lab.answer) != 1 || lab.answer[0].Key != "1" {
+		t.Fatalf("enter did not take the first answer · %+v", lab.answer)
 	}
-	ask.Pick = &session.Pick{Key: "1", Reason: "the narrow answer"}
+	ask.ID++
+	ask.Pick = &session.Pick{Key: "3", Reason: "the narrow answer"}
 	lab.raise(ask)
-	lab.rows()
-	if !lab.press("enter") {
-		t.Fatal("enter was not taken by a question WITH a pick")
-	}
-	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != "1" {
-		t.Fatalf("enter took something other than the pick: %+v", lab.answer)
+	lab.tick(questionSettle)
+	if !lab.press("enter") || len(lab.answer) != 2 || lab.answer[1].Key != "3" {
+		t.Fatalf("enter did not take the pick · %+v", lab.answer)
 	}
 }
 
@@ -1030,7 +1031,7 @@ func TestAChecklistAskedForAsALineIsACardWithARowPerAnswer(t *testing.T) {
 	if !strings.Contains(screen, "Turner, Hokusai") {
 		t.Fatalf("the note under the first answer is not drawn:\n%s", screen)
 	}
-	if !strings.Contains(screen, "5  Impressionism · suggested") {
+	if !strings.Contains(screen, "5  Impressionism") || !strings.Contains(screen, "Impressionism                    suggested") {
 		t.Fatalf("the asker's pick is not said on its row:\n%s", screen)
 	}
 	if !strings.Contains(screen, tokens.GlyphCollapsed+" 1  Landscapes") {
@@ -1198,5 +1199,181 @@ func TestALongNoteUnderEveryAnswerIsCutToWhatTheScreenHolds(t *testing.T) {
 	lab.a.height = 80
 	if screen = lab.plain(); !strings.Contains(screen, "Chardin") {
 		t.Fatalf("a tall screen still cuts the note to one row:\n%s", screen)
+	}
+}
+
+// EVERY QUESTION HAS A POINTER THE ARROWS WALK AND ENTER TAKES. It starts on
+// the asker's pick, `↓` moves the ▸, `enter` answers the pointed row, and the
+// key row says both; a digit still answers at once.
+func TestArrowsWalkThePointerOnACardAndEnterTakesIt(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.a.width = 100
+	lab.raise(session.Question{
+		ID: 45, Kind: session.QuestionAsk, Ask: session.AskChoice,
+		Asker: session.Asker{Kind: session.AskerModel}, Head: "How is the breath paced?",
+		Reason: "the orb's behaviour is undefined", Stakes: session.StakesReversible,
+		Options: []session.AnswerOption{
+			{Key: "1", Label: "Fixed guided pacing", Body: "Deterministic 4 in, 2 hold, 6 out", Consequence: "no sensors"},
+			{Key: "2", Label: "Adaptive to the body", Body: "Dwell lengthens as HRV rises", Consequence: "needs a watch"},
+			{Key: "3", Label: "Free timer", Consequence: "cheapest"},
+		},
+		Pick: &session.Pick{Key: "2", Reason: "most guidance"},
+	})
+	screen := lab.plain()
+	if !strings.Contains(screen, tokens.GlyphCollapsed+" 2  Adaptive") {
+		t.Fatalf("the pointer does not start on the asker's pick:\n%s", screen)
+	}
+	if !strings.Contains(screen, "needs a watch · suggested") {
+		t.Fatalf("the asker's pick is not said on its row:\n%s", screen)
+	}
+	if !strings.Contains(screen, "[↑↓] choose") || !strings.Contains(screen, "[enter] take it") {
+		t.Fatalf("the key row does not say how the pointer works:\n%s", screen)
+	}
+	lab.tick(time.Second)
+	lab.press("down")
+	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphCollapsed+" 3  Free timer") {
+		t.Fatalf("down did not walk the pointer:\n%s", screen)
+	}
+	lab.press("up")
+	lab.press("up")
+	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphCollapsed+" 1  Fixed") {
+		t.Fatalf("up did not walk the pointer back:\n%s", screen)
+	}
+	lab.press("up")
+	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphCollapsed+" 1  Fixed") {
+		t.Fatalf("the pointer walked off the top:\n%s", screen)
+	}
+	lab.press("enter")
+	if len(lab.answer) != 1 || lab.answer[0].Key != "1" {
+		t.Fatalf("enter did not take the pointed answer · %+v", lab.answer)
+	}
+}
+
+// AND ON A LINE THE POINTED ANSWER WEARS THE BAND: `→` moves it, enter takes it.
+func TestArrowsWalkThePointerOnALineAndEnterTakesIt(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.a.width = 100
+	lab.raise(session.Question{
+		ID: 46, Kind: session.QuestionAsk, Ask: session.AskChoice, Form: session.FormLine,
+		Asker: session.Asker{Kind: session.AskerModel}, Head: "Which format?",
+		Reason: "both fit", Stakes: session.StakesReversible,
+		Options: []session.AnswerOption{{Key: "1", Label: "json"}, {Key: "2", Label: "yaml"}, {Key: "3", Label: "toml"}},
+	})
+	screen := lab.plain()
+	if !strings.Contains(screen, "[1] json · [2] yaml · [3] toml") {
+		t.Fatalf("the line did not draw:\n%s", screen)
+	}
+	if !strings.Contains(screen, "[enter] take it") {
+		t.Fatalf("enter is not offered on a question with answers:\n%s", screen)
+	}
+	lab.tick(time.Second)
+	lab.press("right")
+	lab.press("right")
+	lab.press("enter")
+	if len(lab.answer) != 1 || lab.answer[0].Key != "3" {
+		t.Fatalf("enter did not take the pointed answer · %+v", lab.answer)
+	}
+}
+
+// THE PAGE `enter` LANDS ON FROM A NEEDS-YOU ROW SHOWS THE QUESTION IT NEEDS
+// YOU FOR. The task record card draws the landing's head, reason and answers
+// row above its foot, walks the pointer with `←→`, and `enter`/`a`/`n` answer
+// through the block's own door — a page that showed the report and hid the
+// three answers was the owner's "i get this without question" (2026-09-10).
+func TestTheTaskRecordPageDrawsTheLandingQuestionAndTakesItsKeys(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.a.width, lab.a.height = 120, 40
+	lab.a.file = t.TempDir() + "/abc123/transcript.jsonl"
+	lab.raise(session.Question{
+		ID: 6, Kind: session.QuestionLanding, Ask: session.AskLanding,
+		Asker: session.Asker{Kind: session.AskerModel}, Head: "tier-B subs landed",
+		Reason: "nobody could check it", Stakes: session.StakesReversible,
+		Options: session.AnswerOptions(session.QuestionLanding),
+	})
+	lab.a.raisePlace(pageTasks)
+	lab.a.taskSheet = tasksPlace{detailOn: true, detail: session.TaskIndexEntry{
+		ID: "6", SessionID: "abc123", Title: "tier-B subs", Label: "tier-B subs",
+		Status: string(session.TaskUnverified),
+	}}
+	width, height := lab.a.size()
+	lines, _, _, _ := lab.a.taskCardFrame(width, height)
+	screen := ansi.Strip(strings.Join(lines, "\n"))
+	for _, want := range []string{"tier-B subs landed", "nobody could check it", "[a] accept · [n] not right · [s] tell it", "←→ choose · enter take it"} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("the record page is missing %q:\n%s", want, screen)
+		}
+	}
+	// Another session's task wearing the same number draws no question.
+	lab.a.taskSheet.detail.SessionID = "zzz999"
+	lines, _, _, _ = lab.a.taskCardFrame(width, height)
+	if strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "[a] accept") {
+		t.Fatal("another session's task borrowed this one's question")
+	}
+	lab.a.taskSheet.detail.SessionID = "abc123"
+	lab.tick(time.Second)
+	lab.a.taskCardKey("right")
+	lab.a.taskCardKey("enter")
+	if len(lab.answer) != 1 || lab.answer[0].Key != session.LandingNoKey {
+		t.Fatalf("enter did not take the pointed answer · %+v", lab.answer)
+	}
+}
+
+// `c` AND `?` POINT THE BOX AT THE QUESTION, VISIBLY. The answers row becomes
+// a prompt saying what the box is writing now, every letter types (a `d` is a
+// letter, not `you decide`), enter sends the words with the pointed answer
+// (`c`) or to the asker with the question still open (`?`), and esc points the
+// box back at the conversation. Before this the keys changed nothing on the
+// screen and the words went out as a chat message (the owner, 2026-09-10).
+func TestChangeAndAskBackTurnTheRowIntoAPromptAndEnterSendsTheWords(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.a.width = 120
+	lab.raise(session.Question{
+		ID: 47, Kind: session.QuestionAsk, Ask: session.AskChoice,
+		Asker: session.Asker{Kind: session.AskerModel}, Head: "How is the breath paced?",
+		Reason: "undefined", Stakes: session.StakesReversible,
+		Options: []session.AnswerOption{{Key: "1", Label: "Fixed"}, {Key: "2", Label: "Adaptive"}, {Key: "3", Label: "Free timer"}},
+		Pick:    &session.Pick{Key: "2", Reason: "most guidance"},
+	})
+	lab.tick(time.Second)
+	lab.press("c")
+	screen := lab.plain()
+	if !strings.Contains(screen, "change: say what you want different, then enter · it goes with [2] Adaptive · esc back") {
+		t.Fatalf("c did not turn the row into a prompt:\n%s", screen)
+	}
+	if strings.Contains(screen, "[d] you decide") {
+		t.Fatalf("the keys are still offered while the box is writing:\n%s", screen)
+	}
+	if lab.press("d") {
+		t.Fatal("a letter was taken as a verb while the box is writing")
+	}
+	if len(lab.answer) != 0 {
+		t.Fatalf("a letter answered: %+v", lab.answer)
+	}
+	lab.a.input.setText("keep the sensors optional")
+	lab.press("enter")
+	if len(lab.answer) != 1 || lab.answer[0].Key != "2" || lab.answer[0].Change != "keep the sensors optional" {
+		t.Fatalf("enter did not send the words with the pointed answer · %+v", lab.answer)
+	}
+	if lab.a.input.String() != "" {
+		t.Fatalf("the box kept the words: %q", lab.a.input.String())
+	}
+	// `?` — and esc points the box back.
+	lab.raise(session.Question{
+		ID: 48, Kind: session.QuestionAsk, Ask: session.AskChoice,
+		Asker: session.Asker{Kind: session.AskerModel}, Head: "Which store?",
+		Reason: "two fit", Stakes: session.StakesReversible,
+		Options: []session.AnswerOption{{Key: "1", Label: "sqlite"}, {Key: "2", Label: "postgres"}},
+	})
+	lab.tick(time.Second)
+	lab.press("?")
+	if screen = lab.plain(); !strings.Contains(screen, "ask back: type your question, then enter · the question stays open · esc back") {
+		t.Fatalf("? did not turn the row into a prompt:\n%s", screen)
+	}
+	lab.press("esc")
+	if screen = lab.plain(); !strings.Contains(screen, "[enter] take it") || strings.Contains(screen, "ask back: type") {
+		t.Fatalf("esc did not point the box back at the conversation:\n%s", screen)
+	}
+	if len(lab.a.questions) != 1 {
+		t.Fatal("esc folded the question instead of ending the prompt")
 	}
 }
