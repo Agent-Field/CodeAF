@@ -197,11 +197,12 @@ While the pane has the keyboard the hint reads `enter sends a follow-up · tab o
 the list`, with the card's own answers in front of it when a card is up and
 `↓ continue as a conversation` after it when that row is on screen.
 
-**The answers in that line are the chips the card actually drew, and never one more.** A
-card that offers all three reads `1 yes · 2 change when or where · 3 just once · 0 no`; a
-one-off reminder's card, which has no `just once` to give, reads
-`1 yes · 2 change when or where · 0 no`. The line is built from the row of chips rather
-than written out, so it cannot name a digit that would do nothing.
+**The answers in that line are the ones the card actually drew, and never one more.** A
+card that offers all three reads
+`1 yes, set it up · 3 just once · 0 no · c change`; a one-off reminder's card,
+which has no `just once` to give, reads `1 yes, set it up · 0 no · c change`.
+The line is built from the question rather than written out, so it cannot name a digit that
+would do nothing.
 
 `continue as a conversation` is reached with `↓` inside the pane and left again with `↑`,
 `tab` or `esc`. It also lights up under the pointer and takes one click.
@@ -232,9 +233,9 @@ the keyboard to the column, so the next `↑` or `↓` walks from there. A secon
 same row opens it, which is home's ordinary two-step — one click that switched conversations
 would make a mis-aimed pointer close the session you are in.
 
-A click on a card's chip in the pane answers the card, the same way clicking one answers it
-in a conversation. A press anywhere on the row of chips counts as that row's, so missing the
-gap between two answers costs nothing.
+A click on one of the card's answers in the pane answers the card, the same way clicking one
+answers it in a conversation. Each answer owns its whole row, so there is no gap between two
+of them to miss.
 
 `ctrl+enter` only reaches aforge on a terminal that can tell it apart from a plain `enter`
 (the kitty keyboard protocol, Windows terminals). `alt+enter` is bound to the same thing and
@@ -269,16 +270,17 @@ no project at all. A reminder belongs to no repository; a watch on CI belongs to
 row is drawn at the top of the list whichever project it ended up in, and the project it
 belongs to is what the errand's own record says.
 
-## How do I answer the card, or say no to it — 1 yes, 2 change when or where, 3 just once, 0 no
+## How do I answer the card, or say no to it — 1 yes, c change when or where, 3 just once, 0 no
 
 When the exchange gets far enough to propose something that keeps working, a card appears in
 the pane with your own words, when it would wake, and what it would cost per run. Nothing is
 created until you answer it:
 
 - `1` — yes. It stands as proposed, and the keyboard goes back to the list.
-- `2` — change it. The pane says `type the change and press enter`; write the correction in
+- `c` — change it. The pane says `type the change and press enter`; write the correction in
   your own words ("make it 8pm", "every weekday") and the model proposes again. Nothing is
-  created by a change.
+  created by a change. (This was `2` before the card's answers moved onto the question every
+  screen here draws; `c` is that question's own key for "not as it stands".)
 - `3` — once. The action runs now and nothing standing is created. **Not every card offers
   it**: a one-off reminder draws no `3 just once` chip, because doing "remind me at six"
   now says the wrong thing hours early. The hint under the box names the digit only where
@@ -290,7 +292,8 @@ created until you answer it:
   where `esc` also declines.
 
 Those four answers are the only four, and a card draws three of them where `3` is not one
-it can offer. There is no default: a card nobody answers creates
+it can offer. Each answer is a row of its own and **a click anywhere along it takes that
+answer**. There is no default: a card nobody answers creates
 nothing — and nothing answers it for you. **There is no clock on it.** It waits, and its row
 on home says `? waiting on you` for as long as it does.
 
@@ -298,12 +301,12 @@ on home says `? waiting on you` for as long as it does.
 out, and its bottom edge carries what was decided in the same words a card in a conversation
 uses: `yes, set it up · set up`, `just once · done now, nothing kept`,
 `change when or where · you asked for something different`,
-`not set up`, `ended · nothing was set up`. The chips go, so `1`, `2`, `3` and `0` are
-ordinary characters again and can be typed into a follow-up. The only card that ever replaces it is the new one the
-model sends after `2 change when or where`.
+`not set up`, `ended · nothing was set up`. The answers go, so `1`, `3`, `0` and `c` are
+ordinary characters again and can be typed into a follow-up. The only card that ever
+replaces it is the new one the model sends after a change.
 
 The digits belong to a card only while it is still a question. With no card up, or with an
-answered one on screen, `2` in the middle of "make it 2pm" is just a `2`.
+answered one on screen, `3` in the middle of "make it 3pm" is just a `3`.
 
 ## Where did that exchange go — the folder, at every stage
 

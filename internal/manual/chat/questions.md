@@ -17,15 +17,13 @@ The model can raise one through its `ask` tool. Questions reach home, another wi
 `--host` as the same question object. Every surface draws the answers that object
 offered; it never substitutes positional yes/no keys.
 
-Questions come in two shapes on screen right now, and it is worth knowing which
-you are looking at. The **question block** is the new one — it is described
-under "How a question looks" below, it never takes the keyboard, and `esc` on it
-means later. The older blocks — the approval question before a command runs, a
-task proposal, a standing card, a connect offer, an offer to run a saved program
-— each still draw themselves the way they always did, with their own keys, and
-the approval question still takes the keyboard while it is up: typing under it
-does nothing until it is answered. They are being moved onto the block one at a
-time.
+Nearly every question is drawn by one thing now — the **question block**,
+described under "How a question looks" below. It never takes the keyboard, the
+answers are numbered, and `esc` on it means *later*. The approval question before
+a command runs, a task proposal, a standing card, an offer to run a saved
+program and a finished harness design are all on it. **A connect offer is the
+last one that is not**: it still draws itself the way it always did, with its own
+keys.
 
 A question with more behind it than the block draws **opens out into a page of
 its own** — `o` opens it, `esc` closes it, and the sections below say what you
@@ -365,8 +363,10 @@ anything: the question is still open, whatever was waiting on it is still
 waiting, and the count in the status line does not drop. What goes away is the
 rows, so the box underneath is yours again.
 
-This is what changed about the approval question, where `esc` used to deny.
-Nothing is ever decided by making something go away.
+This is what changed about the approval question, where `esc` used to deny, and
+about the standing card, where `esc` used to be the outright no. Nothing is ever
+decided by making something go away — which is why both of those grew a visible
+answer for the refusal (`[3] deny`, `0 no`) on the way here.
 
 To bring it back, press `alt+a`.
 
@@ -645,6 +645,31 @@ has all of the above: the digits, `esc` for later, the chip, the receipt, the
 settle guard, the narrow card and the phone sheet. `permissions` is its own page
 and states what each answer banks.
 
+**So does the standing card** — `wants to keep an eye on:` with `1 yes, set it up`,
+`3 just once` where the item can be done once at all, and `0 no`. What is left in
+the conversation is the card itself: your own words, the `when ·`, `where ·` and
+`costs ·` bands, and the meter where the engine put a deadline on it. The answers
+are up above the box with everything else you are being waited on for, and each
+one says what it costs beside it. `c` is how you change when or where — it turns
+the box into the correction lane, and `enter` sends your words back to be
+re-proposed.
+
+**`esc` on a standing card means *later* now, and it used to mean no.** It is
+the one key whose meaning this move changed. Nothing is set up either way, so
+nothing is lost: the question folds to the chip, the card stays open, and the
+count goes on counting it. The outright no is `0 no`, which is drawn on the card
+as an answer you can see and click — where `esc` never was.
+
+**So does the harness lane's pair.** An offer to run a saved program is one line —
+`run harness "research"?` with `1 run it` and `2 not now`. A finished harness
+design is a card — `wrote a program: <name>` with `1 save it`, `2 change it` and
+`3 drop it`, each saying what it costs beside it. `2` resolves nothing: it walks
+into the design's own room, where a change is typed, and the page stays waiting
+until the rewrite lands. The page itself stays down in the conversation, where it
+can be scrolled and read; only the asking is above the box. A design waiting on
+you is answered with the same three digits from inside its own room, which used
+to have a second row and two chords of its own.
+
 **So does the task proposal** — `wants to start a task:` with `[1] start it` and
 `[2] no`, and its clock on the end of the row. **So do the two cards you raise
 yourself**: `x` on running work (`Stop this task?`) and `ctrl+w` on a busy tab
@@ -690,5 +715,5 @@ The count of open questions in the status line IS built: that is the chip
 described above. So is the sheet, and so is the per-project setting that answers
 a whole kind of question while you are away (`/autonomy`, and `D` on a row).
 
-Some older blocks have not moved onto this one yet and keep their own keys until
-they do: a standing card, a connect offer, and an offer to run a saved program.
+One older block has not moved onto this one yet and keeps its own keys until it
+does: a connect offer.

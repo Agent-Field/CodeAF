@@ -289,13 +289,11 @@ type homeExchange struct {
 	// same reading every other row on this screen has ([homeView.hover]) and it
 	// is here rather than there because the pane's rows are not the list's.
 	hover bool
-	// offerAt and cardAt are where the last draw PUT the two things a pointer
-	// can hit — `continue as a conversation`, and the card's row of chips — as
-	// indexes into the pane's own rows, or -1 for a thing that is not on screen.
-	// Written by the render and read by the hit-testing, exactly as
-	// [standingCard.choiceRow] is, so a click can never answer a question the
-	// frame drew somewhere else.
-	offerAt, cardAt int
+	// offerAt is where the last draw PUT `continue as a conversation` — an index
+	// into the pane's own rows, or -1 when it is not on screen. Written by the
+	// render and read by the hit-testing, so a click can never promote an
+	// exchange the frame no longer offers to promote.
+	offerAt int
 
 	rows []exchangeRow
 	// live is the reply being streamed into, and -1 between turns.
@@ -303,6 +301,32 @@ type homeExchange struct {
 	working bool
 	// card is the ratification card waiting for an answer, and nil when none is.
 	card *session.StandingNotice
+	// askAt is where the last draw PUT the answers of that question, as pane row
+	// indexes: one entry per answer, in the order the card drew them, or nil when
+	// no card is on screen. Written by the render and read by the hit-testing, so
+	// a click can never answer a question the frame drew somewhere else.
+	//
+	// EVERY ANSWER IS PRESSABLE ALONG ITS WHOLE ROW, which is the card's own
+	// bargain in the conversation ([app.questionCardBody] records the same thing
+	// as [questionBand]): the card puts each answer on a row of its own, so a
+	// press is resolved BY ROW.
+	askAt []int
+	// ask is that card's QUESTION — the object the block draws and routes, held
+	// here rather than on [app.questions] or on [homeView.ask].
+	//
+	// IT IS THE PANE'S OWN AND NOT THE BLOCK'S QUEUE, because it is about
+	// ANOTHER conversation: this pane is an errand running in a folder of its
+	// own, and a question about it queued above the message box would be a
+	// decision offered in a window that has no way to show what it is about. It
+	// is not home's card either ([app.raiseHomeAsk]), because that one is taken
+	// down the moment the cursor moves off the row it is about and this one has
+	// to keep asking while somebody reads their list.
+	//
+	// What it shares with both is everything that matters: the renderer
+	// ([app.questionCardRows]) and the router ([app.questionOptionKey]), so the
+	// answers, their consequences and the digits that take them are the block's
+	// and not a third set.
+	ask *questionShown
 	// changing arms the correction: `2` on the card says the next enter is not
 	// a follow-up but the person's own wording of what is wrong with it.
 	changing bool
@@ -592,6 +616,92 @@ func (a *app) exchangeProposal(ex *homeExchange, notice session.StandingNotice) 
 	// would make the answer depend on the terminal having repainted.
 	ex.view = a.standingCardFor(kept)
 	ex.rows = append(ex.rows, exchangeRow{kind: exchangeCard, card: ex.view})
+	ex.ask = a.exchangeShown(ex, kept)
+}
+
+// exchangeShown is the pane's card as the question block holds it.
+//
+// THE TOKEN CARRIES THE FOLDER, which is the one thing this question needs that
+// the conversation's does not: an errand is a DIFFERENT session, so its
+// proposal's id belongs to another id space entirely and `standing:7` here and
+// `standing:7` in the window behind it would be one token for two decisions
+// ([session.Question.Token] prefers the Ref).
+//
+// AND IT IS ANSWERED THROUGH THE CLOSURE. The errand has its own agent
+// ([homeExchange.agent]) and this window's door reaches this window's engine, so
+// the answer goes where the card came from ([questionShown.local]).
+func (a *app) exchangeShown(ex *homeExchange, notice session.StandingNotice) *questionShown {
+	built := a.standingQuestion(ex.view, notice)
+	built.Ref = ex.id + "/" + itoa(int(notice.ID))
+	// A CARD IN THIS PANE HAS NO ROW ABOVE IT THE BLOCK CAN FIND. The transcript
+	// the subject would name is the errand's, drawn in the pane by the pane, so
+	// the question says its own reason rather than pointing at a row
+	// ([app.questionSubjectAt] would answer -1 anyway; this says so out loud).
+	built.Subject = session.SubjectRef{}
+	kept := notice
+	shown := questionShown{
+		question: built,
+		local: func(answer session.Answer) tea.Cmd {
+			return a.answerExchangeCard(ex, &kept, answer)
+		},
+		commented: func() { ex.changing = true },
+	}
+	// THE STAMP IS WRITTEN AT THE RAISE, which is [app.raiseHomeAsk]'s own
+	// bargain: the settle guard exists to catch a key aimed at the screen a
+	// quarter-second ago, and the pane redraws this card on every frame it is on
+	// — so a stamp waiting for the block's own draw would never be written at
+	// all, and the digits would never answer.
+	shown.shown = a.now()
+	return &shown
+}
+
+// answerExchangeCard is the one place the errand's own standing lane is
+// answered, whichever key or press gave the answer.
+//
+// IT IS [app.answerCard] AND [app.exchangeEnter]'S CHANGE ARM, FOLDED. The three
+// endings a standing card has are the engine's own three ([session.
+// AnswerFromKey]) plus the correction, and each one settles the row in the
+// conversation's words so that a card met here and a card met mid-conversation
+// cannot settle into two vocabularies.
+func (a *app) answerExchangeCard(ex *homeExchange, notice *session.StandingNotice, answer session.Answer) tea.Cmd {
+	if ex.view == nil || ex.view.settled() {
+		return nil
+	}
+	if words := strings.TrimSpace(answer.Words()); words != "" && answer.FirstKey() == "" {
+		return a.changeExchangeCard(ex, notice, words)
+	}
+	action, ok := session.AnswerFromKey(session.QuestionStanding, answer.FirstKey())
+	if !ok {
+		return nil
+	}
+	verdict, chosen := standVerdictOf(ex.view, answer)
+	ex.settle(verdict, chosen)
+	a.resolveStanding(ex, notice, action.Standing)
+	if !action.Standing.Once {
+		// AND THE KEYBOARD GOES BACK TO THE LIST on a yes and on a no alike. The
+		// question is over either way, and a hand left in a pane with nothing
+		// left to answer is how the arrows stop moving the column. The exchange
+		// stays alive beside it — tab or a click brings it back for a follow-up.
+		ex.focused, ex.onOffer = false, false
+	}
+	return nil
+}
+
+// changeExchangeCard is the correction: nothing is created, the model
+// re-proposes on the person's own words, and a second card arrives to replace
+// this one.
+func (a *app) changeExchangeCard(ex *homeExchange, notice *session.StandingNotice, words string) tea.Cmd {
+	ex.box.reset()
+	ex.changing = false
+	ex.settle(standChangedWord, standChangeWord)
+	ex.rows = append(ex.rows, exchangeRow{kind: exchangeSaid, text: words})
+	ex.said = a.now()
+	// THE CORRECTION IS A TURN LIKE ANY OTHER from the pane's point of view: the
+	// model is going to answer it, so the strip and the state line have to start
+	// counting or the screen sits still while it does.
+	ex.startTurn(a.now())
+	a.resolveStanding(ex, notice, session.StandingAnswer{Change: words})
+	return nil
 }
 
 // asking reports whether a card is up AND still a question. It is what owns
@@ -612,7 +722,10 @@ func (ex *homeExchange) settle(verdict, answer string) {
 		return
 	}
 	ex.view.verdict, ex.view.answer = verdict, answer
-	ex.view.typing = false
+	// AND THE QUESTION GOES WITH IT. A settled card is not a question, so the
+	// object the pane routes keys through has to stop being there — otherwise
+	// the digits would go on answering a card that already says what it came to.
+	ex.ask, ex.changing = nil, false
 }
 
 // closeExchangeTool puts a call's result on the row that opened it — the newest row of
@@ -892,8 +1005,8 @@ func (a *app) askHereWith(text string, orders ErrandOrders) tea.Cmd {
 		agent: agent, dir: dir, id: id,
 		workspace: workspace, bucket: bucket,
 		focused: true, live: -1, working: true,
-		offerAt: -1, cardAt: -1,
-		spoke: text, began: now, said: now,
+		offerAt: -1,
+		spoke:   text, began: now, said: now,
 		turnBegan: now,
 	}
 	// AND HOME'S TRAY COMES WITH THE SENTENCE, because the sentence came out of
@@ -1166,31 +1279,33 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 		ex.focused, ex.onOffer, ex.changing = false, false, false
 		return nil
 
-	case "1", "2", "3":
-		// A CARD OWNS ALL THREE DIGITS WHILE IT IS STILL A QUESTION, and
-		// answers with the ones it drew. Settled, or with no card up at all,
-		// they fall through to the box below and are typed, which is what a
-		// person pressing `2` in the middle of "make it 2pm" meant.
-		if ex.asking() {
-			// AND A DIGIT WITH NO CHIP UNDER IT IS INERT RATHER THAN TYPED, for
-			// the reason [app.standingKey] states: the card owns all three while
-			// it is asking, and a stray `3` left in the box would turn the next
-			// `1` into a correction instead of a yes.
-			if ex.view.offers(msg.String()) {
-				return a.answerCard(ex, msg.String())
+	case "1", "2", "3", session.StandingNoKey, questionCommentKey:
+		// THE CARD OWNS ITS OWN DIGITS WHILE IT IS STILL A QUESTION, and it is
+		// the BLOCK'S router that says which they are ([app.questionOptionKey],
+		// [app.questionVerbKey]) — one grammar, whether the card is met here or
+		// in a conversation. Settled, or with no card up at all, they fall
+		// through to the box below and are typed, which is what a person pressing
+		// `2` in the middle of "make it 2pm" meant.
+		//
+		// `0` IS THE DECLINE AND IN THIS PANE IT IS THE ONLY ONE THERE IS. In a
+		// conversation `esc` is *later*; here esc is the one-layer undo that
+		// hands the keyboard back to the list, and a card left standing on the
+		// column is not an answer.
+		//
+		// AND `c` ARMS THE CORRECTION, which is what `2 change when or where`
+		// used to be — a chip that asked for the box rather than an answer. It is
+		// the same key on every question this surface asks.
+		if ex.asking() && ex.ask != nil {
+			if cmd, took := a.questionOptionKey(*ex.ask, msg.String()); took {
+				return cmd
 			}
+			if cmd, took := a.questionVerbKey(*ex.ask, msg.String()); took {
+				return cmd
+			}
+			// AND A KEY WITH NO ANSWER UNDER IT IS INERT RATHER THAN TYPED: the
+			// card owns its digits while it is asking, and a stray `3` left in
+			// the box would turn the next `1` into a correction instead of a yes.
 			return nil
-		}
-
-	case session.StandingNoKey:
-		// THE DECLINE, AND IN THIS PANE IT IS THE ONLY ONE THERE IS. In a
-		// conversation `esc` is the outright no; here `esc` is the one-layer
-		// undo that hands the keyboard back to the list, and a card left
-		// standing on the column is not an answer. So `0` is how a person says
-		// no to a card they asked for from home ([session.StandingNoKey]), and
-		// like the digits it is inert with no card up and typed into the box.
-		if ex.asking() {
-			return a.answerCard(ex, msg.String())
 		}
 
 	case "enter":
@@ -1247,25 +1362,16 @@ func (a *app) exchangeEnter(ex *homeExchange) tea.Cmd {
 	text := strings.TrimSpace(ex.box.String())
 	switch {
 	case ex.changing:
-		// The correction the card asked for. Nothing is created on a change:
-		// the model re-proposes and a second card arrives, which replaces this
-		// one — and until it does, this one stands in the transcript wearing
-		// what was asked of it.
-		if text == "" {
+		// The correction the card asked for, which is the question answered in
+		// WORDS — so it goes through the question's own door and settles the row
+		// exactly as a digit would ([app.answerExchangeCard]). Nothing is created
+		// on a change: the model re-proposes and a second card arrives, which
+		// replaces this one, and until it does this one stands in the transcript
+		// wearing what was asked of it.
+		if text == "" || ex.ask == nil {
 			return nil
 		}
-		card := ex.card
-		ex.box.reset()
-		ex.changing = false
-		ex.settle(standChangedWord, standChangeWord)
-		ex.rows = append(ex.rows, exchangeRow{kind: exchangeSaid, text: text})
-		ex.said = a.now()
-		// THE CORRECTION IS A TURN LIKE ANY OTHER from the pane's point of view:
-		// the model is going to answer it, so the strip and the state line have
-		// to start counting or the screen sits still while it does.
-		ex.startTurn(a.now())
-		a.resolveStanding(ex, card, session.StandingAnswer{Change: text})
-		return nil
+		return a.answerQuestion(*ex.ask, session.Answer{Change: text})
 	case ex.onOffer:
 		return a.promoteExchange(ex)
 	case text == "" && len(ex.chips) == 0:
@@ -1300,56 +1406,6 @@ func (ex *homeExchange) startTurn(now time.Time) {
 	// see, and an exchange swept while it is answering would be the pane going
 	// out from under the person who typed into it.
 	ex.seen = false
-}
-
-// answerCard is a digit on the ratification card.
-//
-// THE ANSWERS ARE THE CONTRACT'S, and no fifth is invented here: yes stands it
-// up as proposed, a change goes back to the model to re-propose, once runs the
-// action now and creates nothing, and `0` sets nothing up at all
-// ([session.StandingAnswer], whose zero value is that last one).
-//
-// WHICH OF THEM THE CARD HAS IS THE ENGINE'S ANSWER and not this pane's
-// ([standingCard.chips], from [session.StandingOptions]): a one-off reminder
-// draws two chips, and its `3` reaches here only if a caller ignored
-// [standingCard.offers], so it is refused rather than acted on. The decline is
-// the one answer that is NOT under that gate, because it is not a chip on the
-// numbered row and every standing card there is takes it.
-func (a *app) answerCard(ex *homeExchange, pressed string) tea.Cmd {
-	card := ex.card
-	if pressed == session.StandingNoKey {
-		ex.settle(standNoWord, "")
-		a.resolveStanding(ex, card, session.StandingAnswer{})
-		// AND THE KEYBOARD GOES BACK TO THE LIST, exactly as it does on a yes:
-		// the question is over either way, and a hand left in a pane with
-		// nothing left to answer is how the arrows stop moving the column.
-		ex.focused, ex.onOffer = false, false
-		return nil
-	}
-	if !ex.view.offers(pressed) {
-		return nil
-	}
-	switch pressed {
-	case "1":
-		ex.settle(standSetWord, standYesWord)
-		a.resolveStanding(ex, card, session.StandingAnswer{Approved: true})
-		// AND THE KEYBOARD GOES BACK TO THE LIST ON A YES. The thing they asked
-		// for is being made; the list is where a person goes next, and leaving
-		// the hand in a pane whose question has just been answered is how the
-		// arrows stop moving the column for no reason anybody can see. The
-		// exchange stays alive beside it — tab or a click brings it back for a
-		// follow-up.
-		ex.focused, ex.onOffer = false, false
-	case "2":
-		// The card stays a QUESTION: the person has said what is wrong with it
-		// but not yet what would be right, and settling it here would put an
-		// answer on a card nobody has answered.
-		ex.changing = true
-	case "3":
-		ex.settle(standOnceDone, standOnceWord)
-		a.resolveStanding(ex, card, session.StandingAnswer{Once: true})
-	}
-	return nil
 }
 
 // resolveStanding hands one answer back. An agent with no standing lane on it is
@@ -1500,7 +1556,7 @@ func (a *app) exchangePane(ex *homeExchange, width, room int, pal palette) []str
 	// The hit targets are rebuilt with the rows that carry them, and cleared
 	// first: a stale offer row is a click that promotes an exchange the frame
 	// no longer offers to promote ([standingCard.choiceRow] states the law).
-	ex.offerAt, ex.cardAt = -1, -1
+	ex.offerAt, ex.askAt = -1, nil
 	var out []string
 	out = append(out, pal.bold(pal.ink(fit(homeAskHereWord, width))))
 	out = append(out, "")
@@ -1509,12 +1565,25 @@ func (a *app) exchangePane(ex *homeExchange, width, room int, pal palette) []str
 			if row.card == nil {
 				continue
 			}
-			at := len(out)
 			out = append(out, StandingCardRows(a, row.card, width, true)...)
-			if row.card == ex.view && row.card.choiceRow >= 0 {
-				// The chips landed inside the card's own rows; the pane's row is
-				// where the card started plus where the renderer put them.
-				ex.cardAt = at + row.card.choiceRow
+			if row.card == ex.view && ex.ask != nil {
+				// AND THE QUESTION DIRECTLY UNDER THE CARD IT IS ABOUT, drawn by
+				// the block's own renderer. It is not pinned above a message box
+				// here because there is no message box in this pane that belongs
+				// to this errand's conversation — the card and its answers are one
+				// thing on the column, and separating them would put a decision on
+				// a different part of the screen from the thing being decided.
+				at := len(out)
+				out = append(out, a.questionCardBody(*ex.ask, width)...)
+				ex.askAt = make([]int, len(ex.ask.question.Options))
+				for i := range ex.askAt {
+					ex.askAt[i] = -1
+				}
+				for _, band := range a.questionBands {
+					if band.at >= 0 && band.at < len(ex.askAt) {
+						ex.askAt[band.at] = at + band.row
+					}
+				}
 			}
 			out = separated(out)
 			continue
@@ -1547,7 +1616,9 @@ func (a *app) exchangePane(ex *homeExchange, width, room int, pal palette) []str
 		cut := len(out) - room
 		out = out[cut:]
 		ex.offerAt -= cut
-		ex.cardAt -= cut
+		for i := range ex.askAt {
+			ex.askAt[i] -= cut
+		}
 	}
 	return out
 }
@@ -1996,21 +2067,17 @@ func (a *app) exchangePress(x, row int) tea.Cmd {
 		ex.onOffer = true
 		return a.promoteExchange(ex)
 	}
-	if row >= 0 && row == ex.cardAt && ex.asking() {
-		// A PRESS ANYWHERE ON THE CHIPS ROW IS THE ROW'S, which is the call
-		// [app.standingPress] makes for the same reason: a click in the gap
-		// between two answers falling through would make the row a place where
-		// missing costs you something.
-		for _, span := range ex.view.spans {
-			if x >= span.from && x < span.to {
-				// THE CARD SAYS WHICH KEY A POSITION IS, and this pane does not
-				// work it out again: the row draws the numbered chips and then
-				// the way out, whose key is off that numbering by design
-				// ([standingCard.answerKey]).
-				return a.answerCard(ex, ex.view.answerKey(span.at))
+	if ex.asking() && ex.ask != nil {
+		for at, drawn := range ex.askAt {
+			if drawn < 0 || drawn != row {
+				continue
 			}
+			// A PRESS ANYWHERE ALONG AN ANSWER'S ROW IS THAT ANSWER'S, which is
+			// the card's own rule wherever it is drawn: the answers are a column
+			// here, so a press is resolved by row and there is no gap between two
+			// of them to fall through.
+			return a.questionPick(*ex.ask, at)
 		}
-		return nil
 	}
 	// A press in the body is the zone change and nothing else: the box keeps
 	// what is in it, and the pane's own cursor stays where it was.
@@ -2040,6 +2107,24 @@ func (a *app) exchangeHover(row int) {
 // somebody looked at their list.
 func errandContext() context.Context { return context.Background() }
 
+// exchangeAnswerWords is one card's answers as the pane's hint names them:
+// every key the card drew and the word beside it, and nothing about the way out.
+//
+// IT IS THE QUESTION'S OWN OPTION LIST and never a second one — the same list
+// [app.questionCardRows] draws a row apiece from, so a hint can never name an
+// answer the card is not offering.
+func exchangeAnswerWords(q session.Question) string {
+	parts := make([]string, 0, len(q.Options))
+	for _, option := range q.Options {
+		key, word := strings.TrimSpace(option.Key), strings.TrimSpace(option.Label)
+		if key == "" || word == "" {
+			continue
+		}
+		parts = append(parts, key+" "+word)
+	}
+	return strings.Join(parts, railSep)
+}
+
 // exchangeHint is the line under the foot while the exchange holds the
 // keyboard: what the keys do here, and how to get back to the list. It names
 // only what is actually on screen — a card's three answers appear when a card
@@ -2050,18 +2135,33 @@ func exchangeHint(ex *homeExchange) string {
 	}
 	var parts []string
 	if ex.asking() {
-		// THE ANSWERS THE CARD DREW, off the very row that drew them
-		// (standing.go's [standHintFields]). This clause used to be a third
-		// hardcoded copy of a line standing.go already kept two correct
-		// spellings of, and it named `3 just once` over a one-off reminder's
-		// card, which offers no such chip — a hint naming a digit the chips do
-		// not is the same defect as a chip that does nothing (#189).
+		// THE ANSWERS THE CARD DREW, off the question that drew them
+		// ([app.questionHintOn]). This clause used to be a hardcoded copy of a
+		// line kept correctly elsewhere, and it named `3 just once` over a
+		// one-off reminder's card, which offers no such chip — a hint naming a
+		// digit the chips do not is the same defect as a chip that does nothing
+		// (#189).
 		//
-		// The decline is named as `0` and nothing else because in this pane it
-		// is the ONLY way to say no: esc here goes back to the list rather than
-		// answering ([app.answerCard]), where a conversation's own line says `0
-		// or esc, no`.
-		parts = append(parts, rowAll(standHintFields(ex.view, standNoWordChip)))
+		// THE WAY OUT IS NOT NAMED HERE, which is the one thing this pane says
+		// differently: the block's own line ends in `esc later`, and esc in this
+		// pane hands the keyboard back to the list rather than putting anything
+		// off. The decline is the `0` chip and the way out is named two clauses
+		// down, in the pane's own words.
+		if ex.ask != nil {
+			parts = append(parts, exchangeAnswerWords(ex.ask.question))
+			// AND THE KEY THAT ASKS FOR THE BOX, which is the one answer with no
+			// row on the card: `c` says "I will take one of these, but not as it
+			// stands", and the sentence that follows is the correction.
+			//
+			// ITS WORD IS THE KEY TABLE'S OWN (questionkeys.go) and not this
+			// lane's, because a key spelled in two places is a key that means two
+			// things the first week one of them moves. On a standing card it is
+			// `change when or where`, which the card itself says on the row it
+			// settles into; here it is the one word every question spells it with.
+			if verb, ok := questionVerbFor(questionCommentKey); ok {
+				parts = append(parts, verb.key+" "+verb.word)
+			}
+		}
 	}
 	parts = append(parts, "enter sends a follow-up")
 	if ex.offering() {

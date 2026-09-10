@@ -1852,7 +1852,7 @@ func (a *app) overlayHeight() int {
 	// conversation — a list that left neither would be a list that took the
 	// screen.
 	room := height - 2 - a.inputHeight() - a.questionHeight() - a.connectAskHeight() -
-		a.harnessAskHeight() - a.followHeight() - a.landHeight() - a.parkedHeight()
+		a.followHeight() - a.landHeight() - a.parkedHeight()
 	if commands {
 		want = a.menu.height(width, room)
 	}

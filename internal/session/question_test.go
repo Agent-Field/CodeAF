@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -650,9 +651,25 @@ func TestAFinishedDesignAsksThreeThingsAndAnOfferAsksTwo(t *testing.T) {
 		t.Fatalf("an offer offers %v, want run it and not now", got)
 	}
 
-	design := agent.harnessQuestion(4, Event{Kind: EventHarnessDesignDone, Text: "weekly-digest", Hint: "reads the log and writes it up"})
+	// THE FINISHED PAGE IS WHAT MAKES IT A DESIGN, and the fixture carries one
+	// for that reason: it is the fact both roads agree on ([HarnessQuestion]),
+	// and the surface refuses a design event without one (tui3's
+	// askHarnessDesign).
+	page := subharness.Harness{Id: subharness.Id{Name: "weekly-digest", Desc: "reads the log and writes it up"}}
+	design := agent.harnessQuestion(4, Event{Kind: EventHarnessDesignDone, Text: "write up the week", Harness: &page})
 	if design.Ask != AskJudgement {
 		t.Fatalf("a design asks %q, want a judgement", design.Ask)
+	}
+	if design.Head != harnessDesignLead+"weekly-digest" {
+		t.Fatalf("a design's head is %q — it names the request rather than the page", design.Head)
+	}
+	// AND IT STOPS ITS OWN NODE AND NOT THE CONVERSATION, which is what keeps the
+	// box a person's while they read it (tui3's [questionOwnsBox]).
+	if design.Blocking.Turn {
+		t.Fatal("a finished page stops the turn, and the box under it stops being the person's")
+	}
+	if !design.Blocking.Blocks() {
+		t.Fatal("a finished page stops nothing at all, and its row would say so")
 	}
 	if got := optionKeys(design.Options); !sameStrings(got, []string{HarnessSaveKey, HarnessChangeKey, HarnessDropKey}) {
 		t.Fatalf("a design offers %v, want save, change and drop", got)

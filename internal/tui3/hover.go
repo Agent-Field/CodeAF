@@ -93,14 +93,6 @@ const (
 	// kind of its own rather than another hoverChoices because the two blocks can
 	// be on screen together, and a pointer over one must not brighten the other.
 	hoverConnectAsk
-	// hoverHarnessAsk is the sub-harness offer's row (harness.go). One row and
-	// one target, like the offer above it.
-	hoverHarnessAsk
-	// hoverRoomApproval is the answers row of a design room's approval block
-	// (roomapproval.go), and a kind of its own for the reason above it: it can be
-	// on screen at the same time as any of the three offers, because it is not a
-	// question the session is blocked on.
-	hoverRoomApproval
 	// hoverSettle is one CHIP of a landed card's answers row (tasksettle.go);
 	// entry is the card and index is which of its chips. It is a kind of its own
 	// rather than a hoverEntry because a hoverEntry brightens the whole card,
@@ -586,18 +578,10 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// needed and the narrow sheet does: its answers are a row each
 			// (questionsheet.go's [app.questionBandRow]).
 			return hoverAt{kind: hoverChoices, index: mark.index}
-		case chromeHarnessAsk:
-			// One row again, and the same reason: the offer is the only
-			// pressable row that block has (harness.go).
-			return hoverAt{kind: hoverHarnessAsk}
 		case chromeConnectAsk:
 			// One row, so there is no index to carry: the offer is the only
 			// pressable row that block has (connect.go).
 			return hoverAt{kind: hoverConnectAsk}
-		case chromeRoomApproval:
-			// One row again, and the same reason: the answers row is the only
-			// pressable row a design room's approval block has (roomapproval.go).
-			return hoverAt{kind: hoverRoomApproval}
 		case chromeParked:
 			// One waiting message, whichever of its rows the pointer is on. The dim
 			// line under the block carries no mark and answers to nothing, which is

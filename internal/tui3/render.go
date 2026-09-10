@@ -67,11 +67,6 @@ const (
 	// row nothing in the conversation produced — the line is drawn between two
 	// blocks, and it exists only while the mode is up.
 	hitRewind
-	// hitStandChoice is the standing card's row of answers (standing.go). It is
-	// a hit of its own rather than another [hitChoice] for that constant's own
-	// reason: two blocks answer the same gesture with different questions, and
-	// the press must not be resolved against the other card's columns.
-	hitStandChoice
 	// hitForming is a row of the forming block at the transcript tail
 	// (formingblock.go): the tail under a wait, and — where several are forming —
 	// the compact row of each. A press points at that wait and opens or shuts its
@@ -651,14 +646,10 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		// [taskLink]).
 		links := 0
 		for n, text := range rows {
-			at := hit
-			// AND THE STANDING CARD'S ANSWERS ROW, which is the only row of that
-			// block a click acts on: the block itself has no fold to open, so
-			// pressing anywhere else on it does nothing (standing.go).
-			if e.kind == entryStanding && e.stand != nil && !e.stand.settled() && n == e.stand.choiceRow {
-				at = hitStandChoice
-			}
-			drawn := row{text: text, entry: i, hit: at}
+			// A STANDING CARD HAS NO PRESSABLE ROW ANY MORE. Its answers are the
+			// question, and the question is drawn — and pressed — above the box
+			// like every other one (standing.go, question.go's [app.questionPress]).
+			drawn := row{text: text, entry: i, hit: hit}
 			// THE LINK PASS RUNS ON THE MODEL'S OWN ROWS AND ON NOTHING ELSE
 			// (markdown.go). It is applied HERE — after the block was rendered and
 			// wrapped, at the moment its rows become screen geometry — because a
@@ -3877,11 +3868,6 @@ func (a *app) hintWord() string {
 		return "tab take · enter run · esc"
 	case a.menu.open || a.comp.open:
 		return "↑↓ · enter · esc"
-	case a.awaitingStanding():
-		// And the standing card owns the digits it drew — three, or two on a
-		// one-off reminder, and the follow-up's two the moment the yes is given
-		// (standing.go).
-		return standAskHint(a.stand)
 	case a.shaping():
 		// The widening answer is part-way given and the block is on its second
 		// beat (question.go): the numbers bank a shape and esc puts the question

@@ -378,7 +378,11 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// buys by being here rather than lower is that `esc` means LATER on a
 	// question before it means anything else to anything underneath.
 	if cmd, taken := a.questionKey(msg); taken {
-		return cmd
+		// AND WHATEVER THE ANSWER PARKED IS HANDED ON. `change it` on a finished
+		// design walks into that design's room (harnesscard.go), and a room whose
+		// lane was never started is a page that never updates. It is nothing at
+		// all on every other answer, which is every other key that reaches here.
+		return tea.Batch(cmd, a.takeRoomPump())
 	}
 
 	// AND THE ONE KEY THE PROPOSAL STILL OWNS, which is not an answer: ctrl+e
@@ -388,15 +392,6 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	if cmd, taken := a.taskKey(msg); taken {
 		return cmd
 	}
-	// THE STANDING CARD IS READ HERE, on the terms the approval question and the
-	// task proposal were read on before the block took them over: it is a
-	// question the SESSION is blocked on, so it outranks every overlay below it,
-	// and it is not modal — the box under it is the correction lane
-	// (standing.go).
-	if cmd, taken := a.standingKey(msg); taken {
-		return cmd
-	}
-
 	// The connect offer is the next rung down, and it is modal for the same
 	// reason at a lower urgency: the session is waiting on this answer too, and
 	// a key that is not one of the two answers is a key that does nothing rather
@@ -405,12 +400,6 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
-	// And the harness offer under that, modal for the same reason at the lowest
-	// urgency of the three: the session is holding a turn — before its first
-	// request — on this one answer (harness.go).
-	if cmd, taken := a.harnessAskKey(msg); taken {
-		return cmd
-	}
 	// And a LANDED card that is still asking, on the same rung and for the same
 	// reason: a card in the transcript with a question on it answers its own
 	// keys while it is the selected block (tasksettle.go). Every guard `x` has is
@@ -419,12 +408,6 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// were typing a sentence would be unforgivable.
 	if a.settleCardKey(msg) {
 		return nil
-	}
-	if a.harnessCardKey(msg) {
-		// `e` on that card walks into the design's room now (harnesscard.go), so
-		// whatever door it parked is handed on here: a room whose lane was never
-		// started is a page that never updates.
-		return a.takeRoomPump()
 	}
 
 	// THE SWITCHER IS READ HERE, ABOVE THE PLACES AND BELOW THE THREE QUESTIONS,

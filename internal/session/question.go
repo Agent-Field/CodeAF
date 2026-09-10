@@ -210,6 +210,16 @@ const (
 	SubjectPage SubjectKind = "page"
 	// SubjectRun is an adaptive run, named by [SubjectRef.Ref].
 	SubjectRun SubjectKind = "run"
+	// SubjectOrder is one standing order waiting to be agreed to, named by
+	// [SubjectRef.ID]. It is the card the transcript is already drawing — the
+	// person's own sentence, when it wakes, what it costs and how far it reaches
+	// — so a surface that finds it says the question's reason once rather than
+	// under both.
+	//
+	// IT IS `order` AND NOT `standing` because [SubjectStanding] is already
+	// taken, by the spend ledger, for the thing money was spent inside
+	// (usage_spend.go). Two names for two ideas.
+	SubjectOrder SubjectKind = "order"
 	// SubjectAccount is one of the person's connected accounts, named by
 	// [SubjectRef.Ref] and read out in [SubjectRef.Name].
 	SubjectAccount SubjectKind = "account"
@@ -1473,6 +1483,18 @@ func (a *Agent) applyToLane(answer Answer) error {
 		wait <- answer
 		return nil
 	case QuestionConsent, QuestionTask, QuestionStanding:
+		if answer.Kind == QuestionStanding && key == "" && words != "" {
+			// A STANDING CARD ANSWERED IN WORDS IS A CORRECTION, and it is not a
+			// yes. "make it 2pm" says the arrangement is nearly right and names
+			// what is wrong with it; the model re-proposes on those words
+			// ([StandingAnswer.Change]), so nothing stands until the corrected
+			// card is agreed to. It is the answer the card's own `change when or
+			// where` chip asked for before the block drew this lane, and the
+			// block asks for it the way every other question does — `c`, then the
+			// box (tui3's questionkeys.go).
+			a.ResolveStanding(answer.ID, StandingAnswer{Change: words})
+			return nil
+		}
 		if answer.Kind == QuestionTask && key == "" && words != "" {
 			// A PROPOSAL ANSWERED IN WORDS IS APPROVED, AND THE WORDS ARE THE
 			// REDIRECT. It is the one lane on this door where a sentence is a
@@ -1542,7 +1564,7 @@ func (a *Agent) applyToLane(answer Answer) error {
 			// an answer ([HarnessChangeKey]).
 			return nil
 		}
-		a.ResolveHarness(answer.ID, key == HarnessSaveKey, strings.TrimSpace(answer.Comments[questionModelNote]))
+		a.ResolveHarness(answer.ID, key == HarnessSaveKey, strings.TrimSpace(answer.Comments[HarnessModelNote]))
 		return nil
 	case QuestionSubharness:
 		a.ResolveSubharness(answer.ID, key == "1", nil)
@@ -1562,11 +1584,16 @@ func (a *Agent) applyToLane(answer Answer) error {
 	return errAnswerUnknownLane
 }
 
-// questionModelNote is the key a harness answer carries the model under, in
+// HarnessModelNote is the key a harness answer carries the model under, in
 // [Answer.Comments]. It is a comment rather than a field because it is one
 // lane's own extra and every other lane would carry it empty
 // ([Event.Model] is where the question offered it).
-const questionModelNote = "model"
+//
+// IT IS EXPORTED BECAUSE THE SURFACE FILLS IT. The model the OFFER SHOWED is
+// what the person read before they pressed a key, so it travels back with the
+// answer rather than being looked up again on the far side — where the lane may
+// by then be holding something else ([Agent.ResolveHarness] takes it).
+const HarnessModelNote = "model"
 
 // AnswerBanked is the key a widening answer carries under, in [Answer.Comments],
 // when the SURFACE has already written the permission down somewhere the person
@@ -1581,7 +1608,7 @@ const questionModelNote = "model"
 // instead, which is the scope that tells this engine to write nothing beside it
 // (consent.go's askAnswer says the same from the other end).
 //
-// It is a comment rather than a field for [questionModelNote]'s reason: it is
+// It is a comment rather than a field for [HarnessModelNote]'s reason: it is
 // one lane's own extra, and every other lane would carry it empty.
 const AnswerBanked = "banked"
 
@@ -1856,16 +1883,35 @@ func (a *Agent) connectQuestion(id string, ask connectAsk) Question {
 }
 
 // harnessQuestion is a sub-harness offer, or a written design waiting to be
-// approved, as a question. The card the lane already holds is where its words
-// come from: Text is the harness's name and Hint its one sentence.
+// approved, as a question.
 func (a *Agent) harnessQuestion(id uint64, card Event) Question {
-	token := strconv.FormatUint(id, 10)
-	head := strings.TrimSpace(card.Text)
+	return a.said(QuestionHarness, strconv.FormatUint(id, 10), HarnessQuestion(id, card))
+}
+
+// HarnessQuestion is that object, built from the card the lane already holds:
+// Text is the harness's name and Hint its one sentence.
+//
+// IT IS ONE BUILDER AND NOT TWO. Every other lane in this file has a twin on the
+// surface — a window has the event before the questions lane reaches it and
+// raises the question from that, so the two must be one sentence
+// ([TaskProposalLead] states the cost of a drift). This lane is the first to be
+// written the honest way round: the surface calls THIS, so there is nothing to
+// drift.
+func HarnessQuestion(id uint64, card Event) Question {
+	head, name, reason := strings.TrimSpace(card.Text), strings.TrimSpace(card.Text), harnessOfferReason(card)
 	if head == "" {
 		head = "run a saved program for this?"
 	}
 	ask, form, stakes := AskPermission, FormLine, StakesReversible
-	if card.Kind == EventHarnessDesignDone {
+	// AN OFFER STOPS THE TURN, because the turn asked whether to run the program
+	// and cannot go on until it is told.
+	blocking := Blocking{Turn: true}
+	// THE FINISHED PAGE IS THE TEST, AND NOT THE EVENT'S NAME. A design done
+	// event is the only one of this lane's events that carries a written program,
+	// and the surface refuses one without it (tui3's askHarnessDesign) — so the
+	// page itself is the fact both roads agree on, where a kind is a field a
+	// caller building the object by hand can forget.
+	if card.Harness != nil {
 		// A DESIGN IS A JUDGEMENT AND NOT A PERMISSION: the page is written,
 		// and what is being asked is whether it is right — which is a thing
 		// nothing but a person ever answers.
@@ -1875,23 +1921,89 @@ func (a *Agent) harnessQuestion(id uint64, card Event) Question {
 		// wrote it and there is no way back to it, which is [StakesCostly] and
 		// not the reversible an offer wears.
 		ask, form, stakes = AskJudgement, FormCard, StakesCostly
+		// AND THE QUESTION IS ABOUT THE PAGE, so it is the PAGE that is named.
+		// `card.Text` on this event is the goal the design was asked for, which
+		// is what the designer was told rather than what it wrote — and a head
+		// naming the request over a card showing the result would be two subjects
+		// on one decision.
+		name = strings.TrimSpace(card.Harness.Id.Name)
+		head = harnessDesignLead + name
+		if desc := strings.TrimSpace(card.Harness.Id.Desc); desc != "" {
+			reason = desc
+		}
+		// AND A DESIGN STOPS ITS OWN NODE AND NOT THE CONVERSATION. The page was
+		// written by a task and lands in the transcript as ordinary scrollable
+		// content; the conversation carried on while it was being written and
+		// carries on now. What waits is the design's own thread.
+		//
+		// IT MATTERS MORE THAN A LABEL. A question that stops the turn OWNS THE
+		// BOX (tui3's [questionOwnsBox]), so `enter` over a half-typed sentence
+		// would send it as this question's answer — and an answer to a design
+		// with no key on it resolves the lane, which is the DROP. That is the
+		// exact destruction `change it` was rewritten to stop doing, arriving by
+		// a second road.
+		blocking = Blocking{}
+		if goal := strings.TrimSpace(card.Text); goal != "" {
+			blocking.Tasks = []string{goal}
+		}
+	} else {
+		head = harnessOfferLead + strconv.Quote(head) + "?"
 	}
-	return a.said(QuestionHarness, token, Question{
+	return Question{
 		ID:      id,
 		Kind:    QuestionHarness,
 		Ask:     ask,
 		Form:    form,
 		Asker:   Asker{Kind: AskerEngine},
 		Head:    head,
-		Reason:  strings.TrimSpace(card.Hint),
-		Subject: SubjectRef{Kind: SubjectPage, Name: strings.TrimSpace(card.Text)},
+		Reason:  reason,
+		Subject: SubjectRef{Kind: SubjectPage, Name: name},
 		// THE ANSWERS ARE THE SHAPE'S AND NOT THE KIND'S. This lane asks two
 		// questions with two different rows ([HarnessOptions] says why), and the
-		// shape decided three lines up is the one fact that tells them apart.
+		// shape decided above is the one fact that tells them apart.
 		Options:  HarnessOptions(ask),
 		Stakes:   stakes,
-		Blocking: Blocking{Turn: true},
-	})
+		Blocking: blocking,
+	}
+}
+
+// harnessOfferLead opens the sentence an offer asks with, and the harness's own
+// name closes it. It is a constant so the row, the presence file and this object
+// cannot become three accounts of one offer.
+const harnessOfferLead = "run harness "
+
+// harnessDesignLead opens the sentence a FINISHED PAGE asks with, and the name
+// the designer gave it closes the line. It is the designer's own act stated
+// plainly — a program has been written, and the three answers under it are what
+// can be done about that — where the offer above asks for permission to run one
+// that already exists.
+const harnessDesignLead = "wrote a program: "
+
+// harnessOfferReason is the dim line under an offer: where the turn's own words
+// chose what it would run on, and what the saved program says it does.
+//
+// THE MODEL COMES FIRST SO THAT IT OUTLIVES THE DESCRIPTION, which is the row's
+// own ranking kept through the move onto the block. A surface cuts a reason it
+// has no room for from the END, so the order IS the ranking: the description is
+// context for a name a person can already read, and the model is the one thing on
+// the offer that says this run would not be the ordinary one — "run this
+// harness?" is a different question when the answer costs what opus costs.
+//
+// Where the turn named a model this install does not have, the session's own note
+// stands in its place. It is never a refusal: the question is the same question
+// either way, and yes still runs the harness.
+func harnessOfferReason(card Event) string {
+	parts := make([]string, 0, 2)
+	switch {
+	case strings.TrimSpace(card.Model) != "":
+		parts = append(parts, "model: "+strings.TrimSpace(card.Model))
+	case strings.TrimSpace(card.ModelNote) != "":
+		parts = append(parts, strings.TrimSpace(card.ModelNote))
+	}
+	if hint := strings.TrimSpace(card.Hint); hint != "" {
+		parts = append(parts, hint)
+	}
+	return strings.Join(parts, " · ")
 }
 
 // standingQuestion is a standing card as a question. Its answers are the ONE
@@ -1907,7 +2019,8 @@ func (a *Agent) standingQuestion(id uint64) Question {
 		Form:    FormCard,
 		Asker:   Asker{Kind: AskerEngine},
 		Head:    a.presenceAsk().Text,
-		Reason:  "nothing stands until you say so",
+		Reason:  StandingAskReason,
+		Subject: SubjectRef{Kind: SubjectOrder, ID: id},
 		Options: AnswerOptions(QuestionStanding),
 		Stakes:  StakesReversible,
 		Scope:   []AnswerScope{ScopeOnce, ScopeAlways},

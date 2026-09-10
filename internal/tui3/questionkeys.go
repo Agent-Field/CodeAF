@@ -452,3 +452,31 @@ func questionTakesWords(q session.Question) bool {
 	}
 	return true
 }
+
+// questionOwnsBox reports whether a sentence already in the box, sent with
+// `enter`, is an ANSWER TO THIS QUESTION rather than a message to the
+// conversation.
+//
+// THE DEFAULT IS THAT IT IS NOT. A question the engine asks leaves the box alone
+// — the letters are the person's, the question waits, and enter sends the
+// sentence — because a block that swallowed every draft would make it impossible
+// to say anything while a question was open. Two shapes are the exception, and
+// both of them are the same fact said twice:
+//
+//   - A QUESTION HOLDING THE TURN HAS NOWHERE ELSE FOR THE SENTENCE TO GO. The
+//     conversation cannot move until it is answered, so a sentence sent at it
+//     would sit in the composer unread.
+//   - A QUESTION THAT ASKED FOR WORDS OWNS THE BOX BY SAYING SO. [session.
+//     InputText] is the asker stating that the answer IS a sentence — a standing
+//     card's correction ("make it 2pm"), a connect key, a running sub-harness's
+//     own question — and the box under the question is the answer lane the whole
+//     block is built on. The sub-harness lane is why this is not simply
+//     `Blocking.Turn`: its question blocks a TASK and not the turn, and its only
+//     answer is words, so the one thing it can be answered with used to go to the
+//     conversation instead.
+func questionOwnsBox(q session.Question) bool {
+	if !questionTakesWords(q) {
+		return false
+	}
+	return q.Blocking.Turn || q.Input.Kind == session.InputText
+}

@@ -1514,19 +1514,6 @@ type app struct {
 	// A flow is held only so it can be ABANDONED — the conversation being
 	// replaced, or a second attempt at the same account — because a listener
 	// nobody is going to answer is a listener outliving its reason.
-	// THE HARNESS SIDE (harness.go). harnessAsks are the subharness offers
-	// waiting for an answer, oldest first — a question about the TURN rather
-	// than about a call or an account, one row under the connect offer and
-	// owning the keyboard on the same terms. harnessTaps is where that row's two
-	// answers were last drawn, which is the bargain the two blocks above it make.
-	harnessAsks []harnessAsk
-	harnessTaps []harnessTap
-	// roomApprovalTaps is where the design approval row's two chords were last
-	// drawn, on exactly the terms harnessTaps is kept: the spans are written by
-	// the layout and read by the pointer, so a press can never answer about a row
-	// drawn on an earlier frame (roomapproval.go). There is no queue beside it —
-	// a room stands in front of one design and no more.
-	roomApprovalTaps []roomApprovalTap
 	// harnessStep is the step a running subharness last finished, as one line
 	// (harness.go's [app.stepHarness]). It is a FIELD and not an entry because it
 	// is replaced in place: the run's report carries the whole trail, and a step
@@ -3499,7 +3486,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// which is the block's own not-modal law said to the pointer
 			// (question.go's [app.questionPress]).
 			if a.questionPress(msg.Mouse().X, msg.Mouse().Y) {
-				return a, nil
+				// AND WHATEVER THE ANSWER PARKED IS HANDED ON. `change it` on a
+				// finished design walks into that design's room (harnesscard.go),
+				// and a room whose lane was never started is a page that never
+				// updates.
+				return a, a.takeRoomPump()
 			}
 			// THE QUESTION BLOCK IS READ FIRST OF THE FRAME'S OWN ROWS, which is
 			// the pointer's half of the keyboard's order (input.go): a question
@@ -3514,17 +3505,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// blocks the session is waiting on, and a call parked mid-batch is
 			// the more urgent of the two (connect.go).
 			if a.connectPress(msg.Mouse().X, msg.Mouse().Y) {
-				return a, nil
-			}
-			// AND THE HARNESS OFFER LAST OF THE THREE, drawn last and read last
-			// (harness.go).
-			if a.harnessPress(msg.Mouse().X, msg.Mouse().Y) {
-				return a, nil
-			}
-			// AND A DESIGN ROOM'S APPROVAL ROW UNDER ALL THREE, drawn under them
-			// and read under them (roomapproval.go). It is the same answer the
-			// card in the conversation takes, offered where the person is standing.
-			if a.roomApprovalPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
 			// AND THE TWO REGISTRY PANELS TAKE EVERY PRESS WHILE THEY ARE UP,
@@ -3634,12 +3614,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// which one was pressed is a question about x (room.go). A rail row
 			// is a door into that node's room.
 			if cmd, took := a.railPress(msg.Mouse().X, msg.Mouse().Y); took {
-				return a, cmd
-			}
-			// AND THE STANDING CARD'S ANSWERS ROW, which is the same gesture over
-			// the same shape of row and is resolved against ITS OWN spans
-			// (standing.go's [app.standingPress]).
-			if cmd, took := a.standingPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// AND THE `keeping an eye on N` SEGMENT IS A DOOR ONTO /standing,
@@ -6048,16 +6022,6 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		// a press that missed them all is swallowed rather than expanding the card
 		// under somebody who was reaching for one (tasksettle.go).
 		a.settlePress(r.entry, x)
-	case hitHarness:
-		a.harnessCardPress(r.entry, x)
-		// The middle column of that card opens the design's ROOM now
-		// (harnesscard.go), so whatever door it parked has to be handed on — a
-		// room whose lane was never started is a page that never updates.
-		cmd = a.takeRoomPump()
-	case hitStandChoice:
-		// The row was offered this click before the body and took it (see
-		// [app.standingPress]); reaching here means the pointer was in a column
-		// no option occupies, and empty space on this surface does nothing.
 	}
 	// THE NAMED RESULT, AND NOT nil. This used to end `return nil`, which threw
 	// away the one command this switch parks — the design room's pump above —

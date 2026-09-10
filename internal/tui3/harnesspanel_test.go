@@ -318,7 +318,7 @@ func TestTheOfferAndThePanelAreDifferentThings(t *testing.T) {
 	if a.asksHarness() {
 		t.Fatal("opening the list raised the offer question")
 	}
-	if a.harnessAskHeight() != 0 {
-		t.Fatal("the list took the offer's rows")
+	if a.questionHeight() != 0 {
+		t.Fatal("the list took the question block's rows")
 	}
 }

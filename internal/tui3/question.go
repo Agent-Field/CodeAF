@@ -242,6 +242,17 @@ type questionShown struct {
 	// so ([session.AnswerBanked]) rather than letting a second, wider one be
 	// written beside it.
 	answered func(session.Answer) session.Answer
+	// commented is the lane's own hand on `c` — the key that says "I will take
+	// one of these, but not as it stands" and hands the answer to the box.
+	//
+	// IT IS NIL ON EVERY QUESTION DRAWN ABOVE THE MESSAGE BOX, which is nearly
+	// all of them: the box down there is already the answer lane and the next
+	// `enter` carries the sentence ([app.questionEnter]), so the key's whole work
+	// is to be taken rather than typed. A question drawn somewhere whose box is
+	// NOT that box — home's errand pane, which has a box of its own pointed at
+	// another conversation — has to be told that the next enter is an answer
+	// rather than a message, and this is where it is told.
+	commented func()
 	// held is the lane's own hand on the first evidence that somebody is AT THE
 	// KEYBOARD, and it is called once per question.
 	//
@@ -430,6 +441,19 @@ func (a *app) raiseQuestion(q questionShown) {
 		if q.clockFor == 0 {
 			q.clockAt, q.clockFor = a.questions[i].clockAt, a.questions[i].clockFor
 		}
+		// AND THE WORDS ON THE ANSWERS DO NOT CHANGE UNDER A HAND. A lane that
+		// dresses the engine's option list with the card's own spelling — the
+		// standing card's `yes, set it up` where the kind's list says `yes`,
+		// consent's `always, this command` where it says `always` — would
+		// otherwise have that dressing wiped off by the bare object a
+		// reattaching watcher re-sends, respelling every answer on screen while
+		// somebody read them. THE KEYS ARE THE TEST AND THE WORDS ARE NOT: a
+		// list offering the same answers is the same question said twice, and a
+		// list offering different ones is a different question and is taken
+		// whole.
+		if questionSameAnswers(q.question.Options, a.questions[i].question.Options) {
+			q.question.Options = a.questions[i].question.Options
+		}
 		// AND A HOLE SOMEBODY HAS MOVED KEEPS WHAT THEY MOVED IT TO. The bare
 		// object re-sent by a reattaching watcher carries the ASKER's default, so
 		// taking it whole would walk a person's model choice back to the closest
@@ -446,6 +470,21 @@ func (a *app) raiseQuestion(q questionShown) {
 	a.questions = append(a.questions, q)
 	a.questionRule(&a.questions[len(a.questions)-1])
 	a.touch()
+}
+
+// questionSameAnswers reports whether two readings of one question offer the
+// same answers — the same keys, in the same order. The WORDS are deliberately
+// not compared: which spelling is on screen is exactly what this is protecting.
+func questionSameAnswers(fresh, held []session.AnswerOption) bool {
+	if len(fresh) != len(held) || len(held) == 0 {
+		return false
+	}
+	for i := range fresh {
+		if fresh[i].Key != held[i].Key {
+			return false
+		}
+	}
+	return true
 }
 
 // questionSameHoles reports whether two readings of one question's small form
@@ -562,12 +601,8 @@ func (a *app) questionSettled(q questionShown) bool {
 // the question was actually on a screen — the settle guard is a claim about
 // what a person could have seen.
 func (a *app) markQuestionShown(token string) {
-	for i := range a.questions {
-		if a.questions[i].token() != token || !a.questions[i].shown.IsZero() {
-			continue
-		}
-		a.questions[i].shown = a.now()
-		return
+	if open := a.questionHeld(token); open != nil && open.shown.IsZero() {
+		open.shown = a.now()
 	}
 }
 
@@ -795,6 +830,30 @@ const questionAllowWord = "allow? "
 // questionCardRows is the card form// questionCardRows is the card form: head, the reason and who asked, one row
 // per answer, then the answers row.
 func (a *app) questionCardRows(q questionShown, width int) []string {
+	out := a.questionCardBody(q, width)
+	a.questionSpans, a.questionSpanRow = nil, len(out)
+	if len(q.beat) > 0 {
+		// THE BEAT REPLACES THE ANSWERS ROW AND NOTHING ABOVE IT. The rows above
+		// are the question, which has not changed; what is one step further in
+		// is how it is being answered.
+		return append(out, a.questionBeatRow(q, formsCard, len(out), width))
+	}
+	row, _ := a.questionOffer(q, "", formsCard, len(out), width)
+	return append(out, row)
+}
+
+// questionCardBody is the card WITHOUT the row of keys at the foot of it: the
+// head, the attribution, the sentence with a hole in it, and one row per answer.
+//
+// IT IS SPLIT OFF FOR THE ONE PLACE A CARD IS DRAWN WHERE THE BLOCK'S KEYS ARE
+// NOT THE KEYS. Home's errand pane has a message box of its own pointed at
+// another conversation, so `enter` there sends a follow-up and `esc` hands the
+// keyboard back to the list — and an offer row promising `[enter] take the pick
+// · [esc] later` under that box would name two keys that do something else,
+// which is the one failure an answers row exists to prevent (room.go's
+// [app.roomHint] states it). The pane draws this and names its own keys
+// (homeexchange.go's [exchangeHint]).
+func (a *app) questionCardBody(q questionShown, width int) []string {
 	out := make([]string, 0, 8)
 	out = append(out, a.questionMark()+" "+a.pal.ask(fit(strings.TrimSpace(q.question.Head), width-2)))
 	// THE REASON IS NOT SAID TWICE ON ONE SCREEN. Where the transcript is
@@ -850,16 +909,6 @@ func (a *app) questionCardRows(q questionShown, width int) []string {
 			row: row, span: hudSpan{from: 0, to: width}, at: i,
 		})
 	}
-	a.questionSpans, a.questionSpanRow = nil, len(out)
-	if len(q.beat) > 0 {
-		// THE BEAT REPLACES THE ANSWERS ROW AND NOTHING ABOVE IT. The rows above
-		// are the question, which has not changed; what is one step further in
-		// is how it is being answered.
-		out = append(out, a.questionBeatRow(q, formsCard, len(out), width))
-		return out
-	}
-	row, _ := a.questionOffer(q, "", formsCard, len(out), width)
-	out = append(out, row)
 	return out
 }
 
@@ -921,6 +970,17 @@ func (a *app) questionSubjectRow(q questionShown, width int) (string, bool) {
 // otherwise attach to the first bash row on screen — three questions annotating
 // one line and two calls the person never saw asked about.
 func (a *app) questionSubjectAt(q session.Question) int {
+	if q.Subject.Kind == session.SubjectOrder {
+		// A STANDING ORDER'S SUBJECT IS ITS OWN CARD IN THE TRANSCRIPT
+		// (standing.go). It is paired on the id the engine minted before anybody
+		// was asked, exactly as a node's is, so there is no walk-by-name arm.
+		for i := range a.entries {
+			if e := &a.entries[i]; e.kind == entryStanding && e.stand != nil && e.stand.id == q.Subject.ID {
+				return i
+			}
+		}
+		return -1
+	}
 	if q.Subject.Kind == session.SubjectNode {
 		// A NODE'S SUBJECT IS ITS OWN BLOCK IN THE TRANSCRIPT (task.go). It is
 		// paired on the id, which the engine minted before anybody was asked, so
@@ -1934,6 +1994,14 @@ func (a *app) closeQuestion(q questionShown, answer session.Answer) {
 	if a.home.ask != nil && a.home.ask.token() == token {
 		a.home.ask = nil
 	}
+	for _, ex := range a.exchanges {
+		// AND THE ERRAND PANE'S (homeexchange.go). It is a third place a question
+		// is held, and a lookup that forgot it would leave a settled card still
+		// answering to digits.
+		if ex != nil && ex.ask != nil && ex.ask.token() == token {
+			ex.ask = nil
+		}
+	}
 	kept := a.questions[:0]
 	for _, open := range a.questions {
 		if open.token() == token {
@@ -2075,6 +2143,17 @@ func (a *app) questionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// sheet has the rows, so the sheet has the keyboard (questionsheet.go).
 		return a.questionSheetKey(msg)
 	}
+	if a.questionOffFrame() && !questionRaisedHere(head.question) {
+		// AND A BLOCK THAT IS NOT ON THE FRAME TAKES NO KEYS EITHER, which is
+		// the same law about a different way of being invisible. The stamp below
+		// is written by the draw and never cleared, so a question drawn once in
+		// the conversation and then covered by a place, a job's page or the
+		// rewind timeline would still have been answering digits from behind it
+		// — and on home, where every printable key belongs to the box a
+		// conversation starts in, that is somebody's first sentence resolving a
+		// design they cannot see.
+		return nil, false
+	}
 	if head.shown.IsZero() && !questionRaisedHere(head.question) {
 		// A QUESTION THAT HAS NEVER BEEN DRAWN TAKES NO KEYS. The stamp is
 		// written by the DRAW ([app.markQuestionShown]), so a zero one means one
@@ -2088,6 +2167,19 @@ func (a *app) questionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	return a.questionKeyOn(head, msg)
+}
+
+// questionOffFrame reports whether a surface that takes the frame WHOLE is up,
+// so that none of the block is on the screen.
+//
+// IT IS THE SAME LIST view.go's [app.frameBody] WALKS, in the same order, and it
+// is a list rather than one flag because each of these surfaces is opened by its
+// own door. A room is deliberately not on it: a room keeps the chrome under it,
+// which is exactly why the block is the only place a design's page is answered
+// from now (harnesscard.go).
+func (a *app) questionOffFrame() bool {
+	return a.pasteEdit.open || a.setup.open || a.showing() != nil ||
+		a.jobPageOpen() || a.rewSheet.open || a.deck.open || a.expandShowing()
 }
 
 // questionKeyOn is the routing itself, against a question this caller has
@@ -2175,9 +2267,10 @@ func (a *app) questionKeyOn(head questionShown, msg tea.KeyPressMsg) (tea.Cmd, b
 // did.
 func (a *app) questionEnter(head questionShown, typing bool) (tea.Cmd, bool) {
 	if typing {
-		if !head.question.Blocking.Turn || !questionTakesWords(head.question) {
+		if !questionOwnsBox(head.question) {
 			// The conversation can carry this sentence, so it does. A question
-			// that is not holding the turn has no claim on the box.
+			// with no claim on the box has none ([questionOwnsBox] says which
+			// two shapes have one and why).
 			return nil, false
 		}
 		words := strings.TrimSpace(a.input.String())
@@ -2273,6 +2366,25 @@ func (a *app) questionHeld(token string) *questionShown {
 	}
 	if a.home.ask != nil && a.home.ask.token() == token {
 		return a.home.ask
+	}
+	for _, ex := range a.exchanges {
+		// AND THE ERRAND PANE'S OWN CARD, which is the third (homeexchange.go's
+		// [homeExchange.ask] says why it is not on either of the two above).
+		if ex != nil && ex.ask != nil && ex.ask.token() == token {
+			return ex.ask
+		}
+	}
+	return nil
+}
+
+// questionOpenOn is the block's open question on one lane and one id, or nil.
+// It is what a door OTHER than the block uses to answer through the block —
+// home's answer band reaching this window's own card (homeband_answer.go).
+func (a *app) questionOpenOn(kind session.QuestionKind, id uint64) *questionShown {
+	for i := range a.questions {
+		if a.questions[i].question.Kind == kind && a.questions[i].question.ID == id {
+			return &a.questions[i]
+		}
 	}
 	return nil
 }
@@ -2390,6 +2502,11 @@ func (a *app) questionVerbKey(head questionShown, key string) (tea.Cmd, bool) {
 	case questionUndoKey:
 		return a.questionUndo(head), true
 	case questionCommentKey, questionAskBackKey:
+		if head.commented != nil {
+			// A LANE WHOSE BOX IS NOT THE BOX IS TOLD ([questionShown.commented]).
+			head.commented()
+			a.touch()
+		}
 		// BOTH OPEN THE BOX RATHER THAN ANSWERING. `c` is "I will take one of
 		// these but not as it stands" and `?` is "answer me this first"; each
 		// needs a sentence, and the box is where sentences are typed on this
@@ -2881,6 +2998,21 @@ func (a *app) questionDrawnHere(q session.Question) bool {
 		// the transcript — the brief, where the work will run, what it will run
 		// on — which is what the question is ABOUT rather than a second copy of
 		// the asking.
+		return true
+	case session.QuestionStanding:
+		// THE STANDING CARD, whose chip row, cursor, digits and hint line are
+		// deleted (standing.go, pickrow.go). What is left there is the head, the
+		// bands, the draining meter and the news line — what the card SHOWS, as
+		// against what it ASKS.
+		return true
+	case session.QuestionHarness:
+		// THE HARNESS LANE'S TWO QUESTIONS, which are one lane and were two
+		// grammars. The offer to run a saved program had a row and a pair of
+		// digits of its own (harness.go); the finished design had `enter`/`e`/`esc`
+		// on the card in the feed and a second row with `ctrl+k`/`ctrl+x` pinned
+		// in its room (harnesscard.go, roomapproval.go). All three are deleted.
+		// What is left is the PAGE in the transcript, which is what is being
+		// judged, and the one line it keeps afterwards saying what became of it.
 		return true
 	}
 	return false

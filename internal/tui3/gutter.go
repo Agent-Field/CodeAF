@@ -140,17 +140,8 @@ func (a *app) gutterCards(d deck, width int) {
 	lead := textGutterCols(width)
 	for i := range d.entries {
 		e := &d.entries[i]
-		gutStandingCard(e.stand, lead)
 		gutDoneCard(e.done, lead)
 	}
-}
-
-func gutStandingCard(card *standingCard, lead int) {
-	if card == nil || card.gut == lead {
-		return
-	}
-	shiftChoiceSpans(card.spans, lead-card.gut)
-	card.gut = lead
 }
 
 func gutDoneCard(card *taskDone, lead int) {
@@ -162,17 +153,4 @@ func gutDoneCard(card *taskDone, lead int) {
 		card.chips[i].span = card.chips[i].span.shift(by)
 	}
 	card.gut = lead
-}
-
-// shiftChoiceSpans is [hudSpan.shift] for the other span shape this surface
-// uses. The two stay two types because a choice carries WHICH answer it is
-// (task.go's [choiceSpan]) and a span on a row carries nothing but its columns.
-func shiftChoiceSpans(spans []choiceSpan, by int) {
-	if by == 0 {
-		return
-	}
-	for i := range spans {
-		spans[i].from += by
-		spans[i].to += by
-	}
 }

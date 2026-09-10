@@ -387,11 +387,14 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 		}
 	case session.QuestionStanding:
 		if card := a.stand; card != nil && card.id == question.ID && !card.settled() {
-			// THE THREE ANSWERS ARE READ FROM THE ACTION AND NOT FROM THE KEY,
-			// so the words this card settles with cannot drift from what the
-			// engine was told ([session.AnswerFromKey] is the one mapping). The
-			// last arm is the decline — a zero [session.StandingAnswer] — and it
-			// keeps the same row `esc` would have left in this window.
+			// AND IT IS THE BLOCK'S OWN ANSWER, not a second one beside it: the
+			// same receipt, the same record and the same settled row as the same
+			// answer pressed in front of the card (standing.go). The words the
+			// row keeps are read off the answer that settled it, so they cannot
+			// drift from what the engine was told.
+			if open := a.questionOpenOn(session.QuestionStanding, question.ID); open != nil {
+				return a.answerQuestion(*open, session.Answer{Key: key}), true
+			}
 			switch {
 			case action.Standing.Once:
 				return a.answerStanding(action.Standing, standOnceDone, standOnceWord), true

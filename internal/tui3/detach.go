@@ -343,7 +343,11 @@ func (a *app) clearConversation() {
 	// session no longer reads.
 	a.waits, a.waitAt = nil, 0
 	a.connAsks, a.connPanel = nil, connectPanel{}
-	a.harnessAsks, a.harnPanel = nil, harnessPanel{}
+	// The harness offer's own question goes with the conversation that raised it
+	// (harness.go); what is left here is the panel and the live step row, which
+	// are drawings rather than questions.
+	a.dropHarnessAsks()
+	a.harnPanel = harnessPanel{}
 	a.harnessStep = ""
 	// And the picked harness with them: a chip is a choice about the NEXT
 	// message of this conversation (harnesspick.go).

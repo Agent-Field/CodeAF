@@ -156,17 +156,22 @@ func TestAPasteDismissesTheWelcomeBox(t *testing.T) {
 func TestHomeKeepsItsLettersOverEveryQuestionAboveIt(t *testing.T) {
 	for _, tc := range []struct {
 		name string
+		// answer is the key that answers this question in its OWN grammar, which
+		// is no longer one letter for all three: the harness offer is on the
+		// block now and the block answers by the NUMBER beside an answer
+		// (questionkeys.go's one table).
+		answer string
 		// start builds a surface with this question's session under it, the
 		// event that raises the question, and a way to ask whether it has been
 		// answered.
 		start func(t *testing.T) (*app, session.Event, func() bool)
 	}{
-		{"the connect offer", func(t *testing.T) (*app, session.Event, func() bool) {
+		{"the connect offer", "y", func(t *testing.T) (*app, session.Event, func() bool) {
 			agent, a, _ := connectApp(t)
 			return a, askConnectEvent("c1", "notion", "Notion"),
 				func() bool { return len(agent.resolved) > 0 }
 		}},
-		{"the harness offer", func(t *testing.T) (*app, session.Event, func() bool) {
+		{"the harness offer", session.HarnessRunKey, func(t *testing.T) (*app, session.Event, func() bool) {
 			agent := &harnessAgent{fakeAgent: &fakeAgent{model: "m"}}
 			a := newTestApp(agent)
 			return a, session.Event{
@@ -175,7 +180,7 @@ func TestHomeKeepsItsLettersOverEveryQuestionAboveIt(t *testing.T) {
 				},
 				func() bool { return len(agent.answers) > 0 }
 		}},
-		{"the task proposal", func(t *testing.T) (*app, session.Event, func() bool) {
+		{"the task proposal", "y", func(t *testing.T) (*app, session.Event, func() bool) {
 			a, agent, _ := taskApp(t)
 			return a, proposal(a, 7, 0), func() bool { return len(agent.answered) > 0 }
 		}},
@@ -213,7 +218,7 @@ func TestHomeKeepsItsLettersOverEveryQuestionAboveIt(t *testing.T) {
 			// terminal does before a hand reaches the keyboard.
 			a.chrome(a.width)
 			settleAsk(a)
-			drive(t, a, key("y"))
+			drive(t, a, key(tc.answer))
 			if tc.name == "the task proposal" {
 				if answered() {
 					t.Fatal("y answered the task proposal before enter")

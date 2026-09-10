@@ -1737,15 +1737,6 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, taken := a.guardKey(msg); taken {
 		return cmd, true
 	}
-	// AND THE DESIGN'S APPROVAL CHORDS ARE READ UNDER THE GUARD, which is the
-	// right order for the one moment both are on screen: the guard is a question
-	// raised by a sentence the person just tried to send, and it has to be
-	// answered before anything else in the room means anything. These two take
-	// only ctrl+k and ctrl+x and let every other key past — a row that swallowed
-	// keys would make the box it points at unusable (roomapproval.go).
-	if a.roomApprovalKey(msg) {
-		return nil, true
-	}
 	// AND THE FOUR LETTERS THAT DECIDE ABOUT A NODE THAT NEEDS A LOOK, under the
 	// guard for the same reason, and only ever over an EMPTY box: the box in here
 	// steers the worker, and a letter that decided somebody's work was finished

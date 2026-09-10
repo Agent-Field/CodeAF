@@ -42,11 +42,15 @@ func TestAClickIntoADesignsRoomKeepsTheFrameClockTurning(t *testing.T) {
 	}
 	card.task = 7
 
+	// THE DOOR IS THE BLOCK'S ANSWER ROW NOW and no longer a column on the card
+	// (harnesscard.go): a finished page is a question, and every question on this
+	// surface is answered above the box (question.go). So this is where the click
+	// that opens a design's room actually lands.
 	y, x := -1, -1
 	for at, row := range strings.Split(plain(frame(a)), "\n") {
-		if col := strings.Index(row, harnessCardChange); col >= 0 {
+		if col := strings.Index(row, session.HarnessChangeKey+"  change it"); col >= 0 {
 			// THE COLUMN IS READ OFF THE DRAWN ROW rather than counted from the
-			// answers in front of it. The card is inset by the reading gutter
+			// answers in front of it. The block is inset by the reading gutter
 			// (gutter.go) like everything else a person reads, so a column
 			// counted from zero presses two cells to the left of the word it
 			// names — which is the exact defect the gutter pass exists to not
@@ -55,7 +59,7 @@ func TestAClickIntoADesignsRoomKeepsTheFrameClockTurning(t *testing.T) {
 		}
 	}
 	if y < 0 {
-		t.Fatalf("the card drew no actions row:\n%s", plain(frame(a)))
+		t.Fatalf("the block drew no answer row for the design:\n%s", plain(frame(a)))
 	}
 
 	// The clock is stood down first, because the roster this fixture is built on
@@ -66,12 +70,13 @@ func TestAClickIntoADesignsRoomKeepsTheFrameClockTurning(t *testing.T) {
 
 	// Update rather than drive: the harness swallows the paint clock's own
 	// message so that its queue can end, and the whole of this test is whether
-	// that message was ever asked for. The body acts on RELEASE now
-	// (dragselect.go), so the release is the call whose command carries the
-	// room's pump and the frame.
-	model, _ := a.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	// that message was ever asked for. THE BLOCK ANSWERS ON THE PRESS — it is
+	// read above the body, which acts on release (dragselect.go) — so the click
+	// is the call whose command carries the room's pump and the frame, and the
+	// release that follows it has nothing left to take.
+	model, cmd := a.Update(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	a = model.(*app)
-	model, cmd := a.Update(tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
+	model, _ = a.Update(tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	a = model.(*app)
 	if !a.roomOpen() {
 		t.Fatal("the click did not walk into the design's room")

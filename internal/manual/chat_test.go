@@ -625,6 +625,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"a card popped up offering to run a program", "subharnesses"},
 		{"how do I say no to the offer to run something", "subharnesses"},
 		{"what happens if I ignore the card it raised", "subharnesses"},
+		// The harness lane's two questions after they moved onto the block, asked
+		// in the words of somebody who learned the keys that are gone: enter no
+		// longer runs an offer, e no longer asks for a change, and the two chords
+		// pinned in a design's room do not exist.
+		{"how do I keep the harness design it just wrote", "saved-shapes-of-work"},
+		{"how do I ask for a design to be different", "saved-shapes-of-work"},
+		{"what key runs the harness it offered", "saved-shapes-of-work"},
+		{"how do I approve a design without leaving its room", "saved-shapes-of-work"},
+		{"what happened to ctrl+k and ctrl+x on a design", "saved-shapes-of-work"},
 		{"how do I start aforge", "starting-aforge"},
 		{"why did it refuse to run git stash", "starting-aforge"},
 		{"it would not stash my changes on an unattended run", "starting-aforge"},
@@ -1824,6 +1833,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// when a card is up and they do not want the thing.
 		{"how do I say no to a reminder from home", "home"},
 		{"how do I decline a standing card", "keeping-an-eye"},
+		// The wave that moved the standing card's answers onto the question
+		// block. `esc` on that card used to be the outright no and is *later*
+		// now, and the change chip became a key — both are what a person types
+		// when the hand they learned stops doing what it did.
+		{"I pressed esc on a reminder card and it did not say no", "keeping-an-eye"},
+		{"where did 2 change when or where go on the standing card", "keeping-an-eye"},
+		{"how do I change the time on a standing card", "keeping-an-eye"},
 		// The wave that gave the engine on the far machine its own ambient
 		// side. This is what a person asks before they rely on it.
 		{"do reminders work over --host", "keeping-an-eye"},

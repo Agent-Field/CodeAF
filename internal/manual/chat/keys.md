@@ -1463,8 +1463,15 @@ box a `y` is a `y`.
 every key goes into that box except `enter`, which submits, and `esc`, which
 declines.
 
-**A harness offer:** `enter` or `y` yes · `esc` or `n` no. Everything else does
-nothing.
+**A harness offer:** `1` run it · `2` not now · `esc` **later**. It is on the question
+block, so everything else falls through to the message box rather than doing nothing, and a
+digit is the offer's only over an empty box. `enter` and `y` no longer answer it, and `esc`
+is no longer the no.
+
+**A finished harness design:** `1` save it · `2` change it, which walks into the design's
+own room · `3` drop it · `esc` **later**. The page in the conversation carries no answers of
+its own, and the same three digits answer it from inside the design's room. It was `enter`,
+`e` and `esc` on the card and `ctrl+k`/`ctrl+x` in the room; all five are gone.
 
 **The steer guard**, raised when you press `enter` in a room whose node is not
 listening: `r` revive and send · `m` send to main · `esc` cancel and keep your words ·

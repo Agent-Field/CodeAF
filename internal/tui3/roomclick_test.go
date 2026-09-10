@@ -218,28 +218,36 @@ func TestTheColumnsStowLineStillAnswersFromInsideARoom(t *testing.T) {
 	}
 }
 
-// THE IN-ROOM APPROVAL ROW STILL ANSWERS A PRESS (roomapproval.go). It is read
+// THE BLOCK STILL ANSWERS A PRESS FROM INSIDE A ROOM (question.go). It is read
 // above the body, so nothing about the body's miss can reach it — this is the
 // test that keeps the ladder in that order.
-func TestTheRoomApprovalRowStillAnswersAPress(t *testing.T) {
+//
+// The row used to be the room's own (roomapproval.go, deleted): a second drawing
+// of one decision, with two chords of its own. A design's page is a question, and
+// a question is drawn once, above the box, wherever the person is standing.
+func TestTheBlockStillAnswersAPressFromInsideARoom(t *testing.T) {
 	a, agent := awaitingDesign(t)
-	at := -1
+	// Laying the chrome out is what writes the bands; reading them before it
+	// would be reading where the answers were drawn on the previous frame.
+	chromeText(a)
+	at, want := -1, session.HarnessSaveKey+"  save it"
 	for y := 0; y < a.height; y++ {
-		if mark, ok := a.chromeAt(y); ok && mark.kind == chromeRoomApproval && mark.index == 1 {
+		mark, ok := a.chromeAt(y)
+		if !ok || mark.kind != chromeQuestion {
+			continue
+		}
+		if rows := a.questionRows(a.width); mark.index < len(rows) && strings.Contains(plain(rows[mark.index]), want) {
 			at = y
 			break
 		}
 	}
 	if at < 0 {
-		t.Fatal("the design's room drew no approval row to press")
+		t.Fatalf("the design's room drew no answer row to press:\n%s", chromeText(a))
 	}
-	if len(a.roomApprovalTaps) == 0 {
-		t.Fatal("the approval row recorded no answers to press")
-	}
-	drive(t, a, tea.MouseClickMsg{X: a.roomApprovalTaps[0].span.from, Y: at, Button: tea.MouseLeft})
-	drive(t, a, tea.MouseReleaseMsg{X: a.roomApprovalTaps[0].span.from, Y: at, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: 4, Y: at, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: 4, Y: at, Button: tea.MouseLeft})
 	if len(agent.answers) == 0 {
-		t.Fatal("a press on the approval row answered nothing")
+		t.Fatal("a press on the block's answer row answered nothing")
 	}
 	if !a.roomOpen() {
 		t.Fatal("answering the design's question walked out of its room")

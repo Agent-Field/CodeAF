@@ -305,8 +305,8 @@ func TestAGuestPageNeverDescribesOrTouchesTheLocalTaskWearingTheSameNumber(t *te
 	if _, ok := a.effortTaskHere(); ok {
 		t.Fatal("the guest page offers an effort rung, which would set the local task's")
 	}
-	if a.roomApprovalCard() != nil || a.roomApprovalAsking() {
-		t.Fatal("the guest page drew this window's own approval card")
+	if len(a.questions) != 0 {
+		t.Fatal("the guest page raised this window's own question")
 	}
 	if _, ok := a.roomSteerDoors(); ok {
 		t.Fatal("the guest page has a steering door, which would steer the local task")
