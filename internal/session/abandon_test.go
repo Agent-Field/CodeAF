@@ -165,6 +165,12 @@ func TestAnAbandonedTurnLeavesTheSessionFreeForTheNextPrompt(t *testing.T) {
 	agent.Interrupt()
 	agent.Abandon(AbandonStopTimeout)
 
+	// THE COUNT IS TAKEN BEFORE THE PROMPT GOES IN. Submit hands the turn to
+	// its own goroutine and returns; on a loaded box that goroutine can reach
+	// the model before this one reads the counter, and a reading taken after
+	// Submit then equals the reading taken at the end, which reported a turn
+	// that did run as one that never reached the model.
+	before := completer.requests()
 	next, err := agent.Submit(context.Background(), "and now something else")
 	if err != nil {
 		t.Fatalf("the session refused the next prompt after an abandoned turn: %v", err)
@@ -173,7 +179,6 @@ func TestAnAbandonedTurnLeavesTheSessionFreeForTheNextPrompt(t *testing.T) {
 	// completer's business and not this law's — the turn's own auxiliary calls
 	// (the title, the memory reflex) take steps off the same script, so pinning
 	// a sentence here would pin the number of errands a turn happens to make.
-	before := completer.requests()
 	var answered bool
 	for event := range next {
 		if event.Kind == EventTurnDone {
