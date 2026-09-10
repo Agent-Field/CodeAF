@@ -360,7 +360,17 @@ func TestNoWholeNumberArgumentIsDeclaredANumber(t *testing.T) {
 	}
 }
 
-// NO SCHEMA ON THE BELT CARRIES A REFERENCE. `$ref` into `$defs` is legal JSON
+// EVERY SCHEMA ON THE BELT IS ONE WELL-FORMED JSON DOCUMENT, AND NONE CARRIES A
+// REFERENCE. The first half is here because the second half's own first cut
+// broke it: a block spliced into the template with one brace too many left
+// `ask` with a schema encoding/json could not read, and the belt's answer to
+// that is to keep the tool off the shelf — `The questions tools could not be
+// loaded: … malformed schema` — so the model wrote the question out as prose and
+// the person never saw one. Every unit test was green. A schema is bytes the
+// model reads and this program never does, so nothing but a test can notice it
+// is broken.
+//
+// `$ref` into `$defs` is legal JSON
 // Schema and it is the one shape a provider is free to flatten, ignore or
 // mis-render, because nothing else on this belt ever used it and the models are
 // steered by what the belt has always looked like. `ask` was the only tool that
@@ -369,7 +379,7 @@ func TestNoWholeNumberArgumentIsDeclaredANumber(t *testing.T) {
 // every one refused, and the person never saw a question. A shape used in one
 // place is written out in full at every place it stands (askBlockSchemaJSON),
 // which costs bytes on the wire and nothing else.
-func TestNoBeltSchemaCarriesAReference(t *testing.T) {
+func TestEveryBeltSchemaIsWellFormedAndCarriesNoReference(t *testing.T) {
 	agent := &Agent{config: Config{Workspace: t.TempDir(), ProfileDir: t.TempDir()}}
 	agent.tools = agent.belt()
 	tools := agent.offeredTools()
@@ -378,6 +388,10 @@ func TestNoBeltSchemaCarriesAReference(t *testing.T) {
 	}
 	for _, tool := range tools {
 		schema := string(tool.Schema)
+		if !json.Valid(tool.Schema) {
+			t.Errorf("%s's schema is not one well-formed JSON document; it ends %q", tool.Name, schema[max(0, len(schema)-80):])
+			continue
+		}
 		for _, mark := range []string{`"$ref"`, `"$defs"`, `"definitions"`} {
 			if strings.Contains(schema, mark) {
 				t.Errorf("%s's schema carries %s — write the shape out in full where it stands "+
