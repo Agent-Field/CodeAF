@@ -90,6 +90,22 @@ func (c Config) mayAsk() bool { return true }
 // live agent, and task.go states the fan-out law it comes from).
 func (c Config) mayProposeTask() bool { return !c.InTask || c.mayFanOut() }
 
+// mayQuickTask says whether `quick_task` belongs on this belt, and it is
+// [Config.mayProposeTask] and not a second reading of it (task_quick.go).
+//
+// THE TWO VERBS COME AND GO TOGETHER because they answer one question — is
+// there anywhere for work to go from here — and a belt that carried one without
+// the other would be telling a model half a truth about its own depth. It is
+// written as its own predicate rather than as the other one spelled twice
+// because the page's bullet is about THIS verb, and a fact naming the wrong
+// predicate is a sentence nobody can check.
+func (c Config) mayQuickTask() bool { return c.mayProposeTask() }
+
+// mayTickItems says whether `items` belongs on this belt (task_quick.go), and
+// it is the presence of the node's own list door and nothing else: a quick
+// task's worker has one, and every other agent this package builds has none.
+func (c Config) mayTickItems() bool { return c.quickItems != nil }
+
 // hasConnect says whether the accounts pair belongs on this belt
 // (tools_connect.go). It is written as the hub CONSTRUCTOR'S OWN ANSWER rather
 // than as a second reading of the two fields, so that a door that starts
@@ -284,6 +300,19 @@ var handoffFacts = []beltFact{{
 		"    touch: `fork`, mid-work only, once you can name the slices.",
 	// A hand is told nothing, because the fork is one deep and there is no
 	// second-best road to point it at (fork.go's forkTools).
+	absent: "",
+}, {
+	// AND THE LIGHTEST ROAD OF ALL, which is not a hand-off at all in the sense
+	// the two above it are: nothing is copied, nothing is checked, and the answer
+	// comes back to be read. The judge that decides between this and a task is
+	// written once, in `quick_task`'s own description (task_quick.go), so this
+	// line says only which verb it is and what it does.
+	tools:   []string{quickTaskToolName},
+	holds:   Config.mayQuickTask,
+	present: "  - Work you will read the result of and carry on: `quick_task` — it starts now, where you are, and lands as its last message.",
+	// A node on the floor of the tree is told nothing, for the reason the fork's
+	// own row is silent: there is no second-best road to point it at, and the
+	// `WORK IS YOURS TO DO HERE` sentence above has already said so.
 	absent: "",
 }, {
 	tools:   []string{"build_harness", loadCapabilityToolName},

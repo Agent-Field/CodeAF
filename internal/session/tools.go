@@ -165,6 +165,18 @@ func (a *Agent) belt() []bare.Tool {
 		tools = append(tools, a.tasksTool())
 	}
 	tools = append(tools, a.taskTools()...)
+	// quick_task rides beside propose_task and on the same predicate: it is the
+	// other way work leaves a turn — not handed away into a copy of its own, but
+	// started HERE, where the caller works, its last message its answer
+	// (task_quick.go). The judge that decides between the two is written once, in
+	// its description.
+	tools = append(tools, a.quickTools()...)
+	// items is the verb a QUICK WORKER carries and nothing else does: a node with
+	// no list has no door behind the tool, so it is absent rather than present
+	// and refusing — the law every conditional family on this belt is built on.
+	if a.config.mayTickItems() {
+		tools = append(tools, a.itemsTool())
+	}
 	// revise_assignment is a WORKER'S verb and nothing else's (assignment.go): it
 	// folds a direction the person gave this node into what the node is judged by.
 	// A conversation has no assignment to revise and an auditor is handed no

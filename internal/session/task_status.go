@@ -381,10 +381,16 @@ func ProjectTask(facts TaskFacts) TaskStatus {
 		Changes:  taskChangesOf(facts.Merge),
 	}
 	switch {
-	case facts.Consent && !facts.State.settled():
+	case facts.Consent && !facts.State.settled() && facts.Kind != TaskKindQuick:
 		// NOTHING HAS RUN YET, which outranks every state below: a proposal in
 		// front of somebody has no lifecycle to read, and whichever state a caller
 		// happens to be carrying for it describes work that has not started.
+		//
+		// A QUICK NODE IS NEVER IN THIS ARM, and the kind is asked rather than
+		// trusted to the flag. There is no card, no countdown and nothing to agree
+		// to — the id returns and the work is already running (task_quick.go) — so
+		// a consent flag arriving on one is a caller's mistake, and reading it
+		// would put `your call` over work nobody can answer a question about.
 		status = taskConsentStatus(status, facts)
 	case taskStoppedByPerson(facts) && facts.State != TaskRunning:
 		// A stop still going through is not a stop yet: the context is cut, the
@@ -831,7 +837,7 @@ func taskStatusWords(status TaskStatus, facts TaskFacts) TaskStatus {
 func taskAskOf(facts TaskFacts) TaskAsk {
 	ask := TaskAsk{Owner: taskDeciderOf(facts)}
 	switch {
-	case facts.Consent:
+	case facts.Consent && facts.Kind != TaskKindQuick:
 		ask.Kind, ask.Reason = TaskAskStart, taskAskStartReason
 		ask.Yes, ask.No = taskAskStartYes, taskAskStartNo
 	case facts.Paused:

@@ -1742,6 +1742,20 @@ type Config struct {
 	// never given the verb at all. It is private for roomThread's reason — no
 	// surface sets it, the executor wires it from the node.
 	reviseDesign func(string) error
+
+	// quickItems is the one extra hand a QUICK task's worker has, and the whole
+	// of what puts `items` on its belt (task_quick.go). It ticks one item off the
+	// node's list or appends steps to it, moves the row the person is watching,
+	// and answers with the sentence the model reads back.
+	//
+	// IT IS NIL EVERYWHERE ELSE, and that nil is the gate rather than a check
+	// inside the tool — [Config.reviseDesign]'s own law, one field down: a
+	// capability with nothing behind it is ABSENT and not broken, so an agent
+	// with no list behind it is never given the verb. It is private for the same
+	// reason too: no surface sets it, the executor wires it from the node
+	// (task_run.go's newTaskAgentOn).
+	quickItems func(done int, add []string) string
+
 	// memoryBrief is the <memory> block a task node OPENS WITH: the parent
 	// routed it against this node's brief at the spawn seam, because a node has
 	// no turn of its own to route against and no store of its own to route into

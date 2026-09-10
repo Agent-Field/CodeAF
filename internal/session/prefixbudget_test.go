@@ -140,7 +140,30 @@ import (
 // discovery carries 26,740, including its 708-byte loader. Measure whole JSON
 // arrays rather than adding separately encoded array sizes.
 // widestPage weighs the larger direct/deferred wording for each fact.
-const fixedPrefixBudget = 48_000
+// AND THE QUICK TASK IS THE FIRST WAVE SINCE THIS FILE WAS WRITTEN THAT RAISED
+// IT (2026-09-10), which is worth saying plainly rather than burying under the
+// ledger above: every entry there paid for itself out of a sentence said twice,
+// and this one could not, because it is not a sentence — it is a VERB the
+// product did not have.
+//
+// `quick_task` encodes to 1,196 bytes and the belt's own bullet for it is 129
+// more, and both were cut to the bone before this line moved. The description is
+// the judge and nothing else — the six sentences that decide between a task, a
+// quick task and doing the thing yourself (task_quick.go) — with the "the id
+// returns at once, so never poll" sentence left off because [taskDescription]
+// carries it and the two verbs are on a belt together or on neither. The schema
+// is six fields whose descriptions are one clause each, and `depends_on` and
+// `model` give up their rules entirely to `propose_task`'s copies of the same
+// two fields. For comparison, `propose_task` encodes to 5,720.
+//
+// WHAT IS STILL OWED, AND WHERE IT SHOULD COME FROM. Three second copies of the
+// planner rule are now in the prefix at once — `taskDescription`'s "do not reach
+// for a planner", the `WIDE WORK` bullet's "never split related work", and
+// prompts/system.md's own `THERE IS NO PLANNER ON YOUR BELT` paragraph — and
+// prompts/system.md's `small work ... is answered here` sentence is a routing
+// call the judge now makes better and in the place the call is made. Any of
+// them pays this back; none of them belonged to the lane that added the verb.
+const fixedPrefixBudget = 49_000
 
 // widestPage is the page at its heaviest: prompts/system.md with every one of
 // its tool-naming facts in the PRESENT case (beltfacts.go).
