@@ -100,12 +100,28 @@ endpoint, that endpoint is tried before repeating the failed request. Rate
 limits still respect their retry delay. Without an affordable alternative, the
 existing bounded retries and wait reporting remain.
 
-## Pinning one lane yourself — does aforge do use the lane I pinned, and is my pinned provider used from a terminal
+## Pinning one lane yourself — how to change the provider for a model, left and right arrows in the model picker, the @ after the model name, and whether aforge do uses the lane I pinned
 
-You can name the lane yourself. In the model picker, the lanes under a model are
-its endpoints; picking one pins it, and every request for that model goes
-there until you say otherwise. On the default service there is a plain `openrouter` row too, which
-means "no opinion from me — let the router balance it".
+You can name the lane yourself. Open `/model` and press `→` (or `tab`) on the model:
+its lanes — the endpoints serving it — open under it, the cursor **moves into them**,
+onto the lane you pinned or onto `auto` when you have not, and the list scrolls so the
+model and every lane are in view. `enter` pins the lane under the cursor — every request
+for that model goes there until you say otherwise — and `←` (or `tab`) walks back out.
+The hint slot says which: `→ lanes · enter switch · esc` on a model,
+`enter choose · ← back · esc` inside. On the default service, the `openrouter` row means
+"no opinion from me — let the router balance it".
+
+**A model nobody has measured still opens**, onto `auto` and `openrouter`, with one
+line where the machines would be:
+`no machine has been measured for this model yet — machines show up after its first answer`.
+Opening it asks for that model's list of machines in the background. With the routing
+row at `off` nothing opens at all.
+
+**The lane you are pinned to is written on the model's name** — `deepseek-v4-flash@cloudflare`
+on the line above the box and on a phone's status deck — with the same `@` you would
+type in `/model @cloudflare`. `/status` says it on a `lane` line under `model`. On `auto`
+and `openrouter` there is no `@`, and none once a pin has been retired. Pressing the
+name opens the picker with the cursor on the pinned lane.
 
 A pin is an instruction, so aforge keeps it. It does not quietly send your work
 somewhere else because it thinks it knows better.
@@ -197,6 +213,24 @@ that model's thinking, and only the ceiling on silence can end a hung one. That
 is why a model you have been using feels quicker to rescue than one you have
 just picked.
 
+**The ceiling on silence is a ceiling on a still wire.** A model writing
+reasoning is writing, so the clock the ceiling runs on is the time since the
+endpoint last sent anything at all — readable or not. A thought that has been
+arriving steadily for two minutes has never been silent for one second of it,
+and nothing acts on it. The moment the deltas stop, the ceiling starts from
+there and fires exactly where it always did.
+
+Keepalives buy nothing. A router that holds the connection open by saying
+nothing in a well-formed way is proof about the path and about nothing else, so
+a lane that has stopped writing reaches the ceiling however politely it keeps
+the line open.
+
+Before 2026-09-09 that clock ran from the last word you could READ, which is
+none at all during a thought — so every model that thought for longer than the
+ceiling was reported as a stall at exactly the ceiling while it was writing at
+full rate, and one measured turn wrote 6,174 tokens of reasoning in 108 seconds
+and was called slow ten seconds in.
+
 ## Why is it writing one word at a time — it never stopped, it just crawled
 
 A stream does not have to stop completely to need rescuing. Once aforge has
@@ -211,9 +245,11 @@ One slow gap is still only one slow gap. The judgment comes from the run of
 visible gaps, fades over the same time as the ceiling, and clears when the
 stream recovers. A batch containing several visible tokens is counted at its
 per-token rate, so ordinary batching does not look like a crawl.
-Hidden thinking does not count as a visible word; a model that
-interleaves long thoughts between single words can therefore be rescued after
-a ceiling of text arriving too slowly.
+Hidden thinking does not count as a visible word, so a model that interleaves
+long thoughts between single words can still be rescued this way — but only
+once its MEASURED visible rate has collapsed. A pause between words is not
+enough on its own, however long, as long as the endpoint is still writing
+something.
 
 If aforge has never measured a visible rate for that lane, it invents none and
 cannot judge a crawl this way. Only a period with no visible progress long
@@ -244,6 +280,7 @@ it is asking you to sit through.
 | what you see | what happened |
 | --- | --- |
 | `via cloudflare · 0.6s · 61 t/s` | an ordinary answer, and who wrote it |
+| `deepseek-v4-flash@cloudflare` | you pinned cloudflare, and every request for the model goes there |
 | `slow · trying parasail…` | a machine was late or its visible answer had slowed to a crawl; a second request is out and the first to answer wins |
 | `refused · trying parasail…` | a machine said it will not serve this model; the answer has already moved |
 | `parasail refused` | the machine that second request went to said no as well |
@@ -278,6 +315,31 @@ cut, the cut is the failure aforge acts on. The partial reply is cleared and the
 existing bounded call retry routes around the machine that failed. An earlier
 `No endpoints found` answer is not shown as the final error after another
 machine demonstrably accepted the request.
+
+## When a machine is too busy — a rate limit, too many requests, a 429, and how long aforge stays away from it
+
+**Too many requests is not a refusal.** A machine that answers
+`API error (429): Provider returned error (via Io Net)` has not said anything
+about your request — its queue is full for the moment. So it is not written off
+the way a refusal is. It is **stepped around for a while**, and it comes back on
+its own.
+
+- **When the answer names the machine, aforge stops sending there.** Every
+  request after it goes to a different machine for as long as that one asked to
+  be left alone, and for **five minutes** when it named no time. The request
+  that collected the rate limit keeps waiting out its own retries, because its
+  body was already written and sent.
+- **It counts wherever the message arrived.** A rate limit can come back before
+  a single word is written, or in the middle of a reply that had already started
+  arriving. The machine is stepped around either way. Before 2026-09-10 only the
+  first kind counted, so a busy machine that said "too many requests" halfway
+  through a reply was handed the next request, and the one after that — three
+  times in a minute and a half, on one measured turn.
+- **A rate limit that names nobody is your whole account**, not one machine, and
+  nothing is stepped around: there is nowhere better to go. aforge waits it out —
+  up to **two minutes** on a turn you are sitting in front of, ten inside a task —
+  and then hands you what the provider said. Sending the same request to a second
+  machine would only spend the account's allowance faster.
 
 ## What all providers have been ignored means — a refusal from nobody
 

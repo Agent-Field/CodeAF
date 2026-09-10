@@ -81,8 +81,16 @@ type Agent interface {
 	// session's standing_mark.go). It refuses — with an error and no stream —
 	// where this build has no ambient side to hold one.
 	SubmitStanding(ctx context.Context, text string) (<-chan session.Event, error)
-	// Interrupt cancels the in-flight turn, keeping its partial reply.
+	// Interrupt cancels the in-flight turn, keeping its partial reply. It is
+	// THE PERSON'S OWN STOP and nothing else.
 	Interrupt()
+	// InterruptFor is the same stop for a door that is not a person: this
+	// conversation being taken over by another window, left for another
+	// conversation, or closed under a turn that was still running. The engine
+	// writes the door down and says one sentence about a reply that never
+	// arrived, which a person's own stop is owed neither of (internal/session's
+	// stopcause.go).
+	InterruptFor(door session.StopDoor)
 	// Compact runs a compaction pass now.
 	Compact(ctx context.Context) error
 	// Close flushes the session file.
@@ -358,6 +366,23 @@ type TaskOwnerView struct {
 	// says that it is the last thing this window was told, rather than claiming a
 	// present it cannot see.
 	Watch func() (<-chan session.Event, func())
+	// Questions is THE OWNER'S OWN ACCOUNT OF WHAT IT IS WAITING ON A PERSON
+	// FOR: the standing questions subscription that conversation publishes
+	// ([remote.MethodQuestionWatch]), which replays everything still open the
+	// moment it is opened and then pushes one event per question raised,
+	// withdrawn or answered. It hands back the lane and the way out of it.
+	//
+	// IT IS READ AND NEVER ANSWERED. The page draws that the work has stopped on
+	// a question, dim, and offers no key: answering belongs to the window that
+	// owns the work, and the wire refuses this connection the answering door by
+	// construction (internal/remote's watcherReads). What it ends is the page
+	// drawing a running clock over a conversation that has been waiting on
+	// somebody for an hour — which the roster cannot say, because a node sitting
+	// on a question is still `running`.
+	//
+	// Nil is a door that cannot offer it. The page then says exactly what it said
+	// before, which is what a capability that cannot work is owed.
+	Questions func() (<-chan session.Event, func())
 	// Close gives back THIS VIEW'S connection and nothing else. The conversation
 	// goes on running, the window that owns it keeps its keyboard, and the
 	// engine is untouched.
@@ -718,12 +743,29 @@ type Options struct {
 	// MUST NOT block — a picker that waits on a fetch is a picker that answered
 	// a question with a spinner. Nil, or an empty answer, falls through to
 	// ~/.aforge/v3/models.json and then to [BuiltinModels] (see models.go).
+	//
+	// THE ONE FETCH IS ASKED FOR, AND IT STILL DOES NOT BLOCK: [Options.
+	// RefreshModels] runs as a command off the loop while the picker keeps
+	// answering, and this function goes on returning what it returned until
+	// the door has swapped in what that fetch brought back.
 	Models func() []Model
 
 	// Sources is the ordered set of places the model picker can read from. The
 	// default service is first. Empty preserves the old single-service picker;
 	// a local surface can rebuild the set from ProfileDir after a connection.
 	Sources modelsource.Set
+	// RefreshModels asks the router for today's list, on the key the open
+	// /model picker offers for it (modelrefresh.go's [refreshModelsKey]). It
+	// returns the whole list, when those rows left the router, and why not.
+	//
+	// A DOOR THAT IMPLEMENTS IT OWES THREE THINGS: [Options.Models] reads the
+	// new list from then on, ~/.aforge/v3/models.json is written with it
+	// ([WriteModelCache]), and a failure changes nothing and says why — the
+	// surface keeps the list it was showing either way.
+	//
+	// Nil is a door with no refresh behind it, and the capability is then
+	// ABSENT: the key does nothing and no line on the surface names it.
+	RefreshModels func(ctx context.Context) ([]Model, time.Time, error)
 
 	// ProfileDir is the profile the settings panel reads and writes — the same
 	// directory internal/config resolves every other row out of. Empty is the

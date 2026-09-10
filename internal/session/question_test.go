@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -94,6 +95,7 @@ func TestEveryRefusalTellsTheAskerWhatToDoInstead(t *testing.T) {
 	for _, err := range []error{
 		errQuestionNoHead, errQuestionNoReason, errQuestionNoStakes,
 		errQuestionTooFewOptions, errQuestionTooManyOptions,
+		errQuestionChecklistWithoutOptions,
 		errQuestionClockOnIrreversible, errQuestionAutoOnIrreversible,
 		errQuestionAutoWithoutPick,
 	} {
@@ -560,5 +562,220 @@ func waitForAsk(t *testing.T, asks <-chan Event, want EventKind) Event {
 			t.Fatalf("no %v reached the questions lane; it sent %v", want, seen)
 			return Event{}
 		}
+	}
+}
+
+// TestABankedRuleAnswersAsARuleAndNotAsAToolWideMemo is the one thing the
+// widening answer's scope has to get right.
+//
+// The session memo this engine writes for a [ConsentToolSession] answer is keyed
+// by the tool's NAME alone, so on `bash` it means every command for the rest of
+// the conversation. A person who reads `git status*` and presses a key must not
+// buy silence for `rm -rf` — so when the SURFACE has already written the rule
+// down, the answer says so ([AnswerBanked]) and this door applies it as a
+// [ConsentRule], which is the scope [Agent.askAnswer] writes nothing beside.
+func TestABankedRuleAnswersAsARuleAndNotAsAToolWideMemo(t *testing.T) {
+	widening := AnswerAction{Kind: QuestionConsent, Allow: true, Scope: ConsentToolSession}
+	banked := Answer{Kind: QuestionConsent, Key: "2", Comments: map[string]string{AnswerBanked: "git status*"}}
+	if got := ConsentScopeOf(widening, banked); got != ConsentRule {
+		t.Fatalf("a banked shape answered as %q, want %q", got, ConsentRule)
+	}
+	// AND EVERY OTHER ANSWER IS UNTOUCHED. A widening yes with nothing written
+	// behind it is still the memo it always was — that is what stops the asking
+	// for a plain tool — and neither the narrow yes nor the no is widened by a
+	// comment that happens to be on them.
+	if got := ConsentScopeOf(widening, Answer{Kind: QuestionConsent, Key: "2"}); got != ConsentToolSession {
+		t.Fatalf("a widening yes with nothing banked answered as %q", got)
+	}
+	once := AnswerAction{Kind: QuestionConsent, Allow: true, Scope: ConsentOnce}
+	if got := ConsentScopeOf(once, banked); got != ConsentOnce {
+		t.Fatalf("the narrow yes was widened to %q by a comment", got)
+	}
+	deny := AnswerAction{Kind: QuestionConsent, Scope: ConsentOnce}
+	if got := ConsentScopeOf(deny, banked); got != ConsentOnce {
+		t.Fatalf("a refusal answered as %q", got)
+	}
+	// A comment with nothing in it is a claim with nothing behind it.
+	empty := Answer{Kind: QuestionConsent, Key: "2", Comments: map[string]string{AnswerBanked: "  "}}
+	if got := ConsentScopeOf(widening, empty); got != ConsentToolSession {
+		t.Fatalf("an empty banked comment claimed a rule: %q", got)
+	}
+}
+
+// TestAProposalAsksAboutItsModelOnlyWhenThereIsSomethingToAsk is
+// [TaskModelShape]'s whole bound, and it is the emptiness law said about a
+// question: a hole offering the one model the work was already going to run on
+// is a question that has answered itself.
+func TestAProposalAsksAboutItsModelOnlyWhenThereIsSomethingToAsk(t *testing.T) {
+	options := []string{"anthropic/claude-opus-5", "anthropic/claude-opus-4.8"}
+	shape := TaskModelShape(TaskNotice{Model: options[0], ModelOptions: options})
+	if shape.Kind != InputBlanks || len(shape.Blanks) != 1 {
+		t.Fatalf("a shortlist of two did not become one blank: %+v", shape)
+	}
+	blank := shape.Blanks[0]
+	if blank.Label != TaskModelBlank || blank.Kind != BlankChoice {
+		t.Fatalf("the hole is not a choice called %q: %+v", TaskModelBlank, blank)
+	}
+	// THE DEFAULT IS AN ANSWER ALREADY GIVEN: the leading option is what the
+	// card shows and what the clock takes, so somebody who changes nothing has
+	// confirmed the model the work was always going to run on.
+	if blank.Default != options[0] {
+		t.Fatalf("the hole opens on %q, not on the closest match", blank.Default)
+	}
+	if !strings.Contains(shape.Prompt, "{"+TaskModelBlank+"}") {
+		t.Fatalf("the sentence has no hole in it: %q", shape.Prompt)
+	}
+	for _, none := range []TaskNotice{
+		{},
+		{Model: options[0]},
+		{Model: options[0], ModelOptions: options[:1]},
+	} {
+		if shape := TaskModelShape(none); shape.Kind != InputNone {
+			t.Fatalf("a proposal with nothing to ask carried %+v", shape)
+		}
+	}
+}
+
+// THE HARNESS LANE ASKS TWO QUESTIONS AND THEY DO NOT SHARE A ROW. An offer is
+// a permission with a free no; a finished design is a judgement about a page
+// somebody spent minutes writing, and drawing it with two answers would leave a
+// person with no way to ask for the third thing they always want — that it be
+// different.
+func TestAFinishedDesignAsksThreeThingsAndAnOfferAsksTwo(t *testing.T) {
+	agent, _ := questionSession(t, "qqqq7777qqqq7777", nil)
+
+	offer := agent.harnessQuestion(3, Event{Kind: EventHarnessOffer, Text: `run harness "research"?`, Hint: "finds an answer across sources"})
+	if offer.Ask != AskPermission {
+		t.Fatalf("an offer asks %q, want a permission", offer.Ask)
+	}
+	if got := optionKeys(offer.Options); !sameStrings(got, []string{HarnessRunKey, HarnessNotNowKey}) {
+		t.Fatalf("an offer offers %v, want run it and not now", got)
+	}
+
+	// THE FINISHED PAGE IS WHAT MAKES IT A DESIGN, and the fixture carries one
+	// for that reason: it is the fact both roads agree on ([HarnessQuestion]),
+	// and the surface refuses a design event without one (tui3's
+	// askHarnessDesign).
+	page := subharness.Harness{Id: subharness.Id{Name: "weekly-digest", Desc: "reads the log and writes it up"}}
+	design := agent.harnessQuestion(4, Event{Kind: EventHarnessDesignDone, Text: "write up the week", Harness: &page})
+	if design.Ask != AskJudgement {
+		t.Fatalf("a design asks %q, want a judgement", design.Ask)
+	}
+	if design.Head != harnessDesignLead+"weekly-digest" {
+		t.Fatalf("a design's head is %q — it names the request rather than the page", design.Head)
+	}
+	// AND IT STOPS ITS OWN NODE AND NOT THE CONVERSATION, which is what keeps the
+	// box a person's while they read it (tui3's [questionOwnsBox]).
+	if design.Blocking.Turn {
+		t.Fatal("a finished page stops the turn, and the box under it stops being the person's")
+	}
+	if !design.Blocking.Blocks() {
+		t.Fatal("a finished page stops nothing at all, and its row would say so")
+	}
+	if got := optionKeys(design.Options); !sameStrings(got, []string{HarnessSaveKey, HarnessChangeKey, HarnessDropKey}) {
+		t.Fatalf("a design offers %v, want save, change and drop", got)
+	}
+	if design.Stakes != StakesCostly {
+		t.Fatalf("a design's stakes are %q — a dropped page cannot be got back", design.Stakes)
+	}
+	// AND THE GATE TAKES IT. A question this engine builds and no surface can be
+	// refused by [Question.Check] is a question that would never be asked.
+	if err := design.Check(nil); err != nil {
+		t.Fatalf("the gate refused the design's own question: %v", err)
+	}
+	for _, option := range design.Options {
+		if strings.TrimSpace(option.Label) == "" || strings.TrimSpace(option.Consequence) == "" {
+			t.Fatalf("an answer with nothing beside it: %+v", option)
+		}
+	}
+}
+
+// ASKING FOR A DESIGN TO BE DIFFERENT RESOLVES NOTHING. `change it` used to be
+// spelled `improve` and it DROPPED the page (tui3's harnesscard.go tells that
+// story); on the one door it must leave the lane exactly as it found it, or the
+// page a person asked to have rewritten is a page that is already gone.
+func TestAskingForADesignToBeDifferentLeavesItWaiting(t *testing.T) {
+	agent, _ := questionSession(t, "qqqq8888qqqq8888", nil)
+	answers := make(chan harnessAnswer, 1)
+	agent.mu.Lock()
+	agent.harnessAsks = map[uint64]harnessAsk{7: {answers: answers, card: Event{
+		Kind: EventHarnessDesignDone, ID: 7, Text: "weekly-digest", Hint: "reads the log and writes it up",
+	}}}
+	agent.mu.Unlock()
+
+	change := Answer{Kind: QuestionHarness, Ask: AskJudgement, ID: 7, Picked: []string{HarnessChangeKey}}
+	if AnswerResolves(change) {
+		t.Fatal("AnswerResolves says `change it` ends the question — the page would go with it")
+	}
+	if err := agent.ResolveQuestion(change); err != nil {
+		t.Fatalf("ResolveQuestion: %v", err)
+	}
+	select {
+	case got := <-answers:
+		t.Fatalf("the lane was answered %+v — nothing was decided", got)
+	default:
+	}
+	open := agent.OpenQuestions()
+	if len(open) != 1 || open[0].Kind != QuestionHarness {
+		t.Fatalf("the design is no longer waiting: %+v", open)
+	}
+
+	// AND THE SAME DIGIT ON AN OFFER STILL ENDS IT: `2` is `not now` there, and
+	// one key means two things only because the shape tells them apart.
+	notNow := Answer{Kind: QuestionHarness, Ask: AskPermission, ID: 7, Picked: []string{HarnessNotNowKey}}
+	if !AnswerResolves(notNow) {
+		t.Fatal("`not now` on an offer left the question open")
+	}
+	if err := agent.ResolveQuestion(notNow); err != nil {
+		t.Fatalf("ResolveQuestion: %v", err)
+	}
+	select {
+	case got := <-answers:
+		if got.run {
+			t.Fatalf("`not now` ran it: %+v", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the decline never reached the lane")
+	}
+}
+
+// optionKeys is the keys of an answer list, in the order they are drawn.
+func optionKeys(options []AnswerOption) []string {
+	out := make([]string, 0, len(options))
+	for _, option := range options {
+		out = append(out, option.Key)
+	}
+	return out
+}
+
+func sameStrings(one, two []string) bool {
+	if len(one) != len(two) {
+		return false
+	}
+	for i := range one {
+		if one[i] != two[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// A model asked for a checklist writes its items under input.blanks more often
+// than under options — the schema's word for a list of things to fill in is
+// right there — and the gate has to name that move, not just refuse it, or the
+// model's next try is a free-text box.
+func TestAChecklistWithItsItemsInBlanksIsToldToMoveThemIntoOptions(t *testing.T) {
+	q := wellFormed()
+	q.Ask = AskChoice
+	q.Options = nil
+	q.Input = InputShape{Kind: InputChecklist, Blanks: []Blank{
+		{Label: "Landscapes"}, {Label: "Portraits"},
+	}}
+	err := q.Check(nil)
+	if err != errQuestionChecklistWithoutOptions {
+		t.Fatalf("a checklist with no options was refused with %v, not the checklist refusal", err)
+	}
+	if !strings.Contains(err.Error(), "options") {
+		t.Fatalf("the refusal does not say where the items go: %q", err)
 	}
 }

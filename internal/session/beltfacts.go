@@ -55,16 +55,8 @@ const (
 // functions read these SAME predicates, which is what makes it impossible for
 // the two to disagree about a tool.
 
-// hasStore says whether this agent was opened with the store behind it. The
-// store is memory AND the FTS index over every message ever posted, so it is
-// the one fact under both `remember` and `search_conversations` (memory.go,
-// tools_conversations.go). A task node is handed none (task_run.go sets no
-// Config.Memory), and neither is a conversation with memory off.
-//
-// [Agent.remembers] is the same fact asked of a live agent — it reads the brain
-// newAgent builds from exactly this field — and the belt keeps asking it there
-// because every memory road dereferences that brain. prompt_belt_test.go pins
-// the two to the same answer for every shape.
+// hasStore controls writable memory and its prompt extraction. Conversation
+// search has its own read-only predicate so workers can inherit just that door.
 func (c Config) hasStore() bool { return c.Memory != nil }
 
 // maySeeSettings says whether the settings pair belongs on this belt
@@ -176,8 +168,8 @@ type beltFact struct {
 var beltFacts = []beltFact{{
 	tools:   []string{"ask", loadCapabilityToolName},
 	holds:   Config.mayAsk,
-	present: "- Use `ask` only as the last rung of the decision ladder.",
-	shelved: "- `ask` waits in the `questions` group. When the decision ladder reaches its last rung, call `load_capability`; its full schema arrives on the next request, this same turn.",
+	present: "- Use `ask` only as the last rung of the decision ladder — and when you do ask, ask through `ask`, never in prose; a question typed out has no keys and no record.",
+	shelved: "- `ask` waits in the `questions` group. When the decision ladder reaches its last rung — or the person asks you to ask them something — call `load_capability`, then `ask` in this same turn; a question typed out in prose has no keys and no record.",
 }, {
 	// THE CLOCK, whose second sentence is the one place the session facts named a
 	// conditional verb for everybody. The first sentence is true of every shape —
@@ -204,7 +196,13 @@ var beltFacts = []beltFact{{
 		// continues or settles one piece of work and is how you look inside
 		// running work. What paid for `propose_task`'s `checks` field is this
 		// second copy of a law the model holds whenever it holds the verb.
-		"- To send the person's current correction to a running task, use `tasks` with `id` and `forward: true`. `say` is your own coordination.\n" +
+		// AND THE CLAUSE ABOUT `say` IS HERE BECAUSE THIS IS WHERE `say` IS NAMED.
+		// A model asked to stop a task and holding no stop verb reached for the
+		// nearest thing on the belt and said "stop, do not continue" into the work;
+		// it kept running, and the check read what came back as an ordinary
+		// unfinished run. The verb exists now ([tasksDescription] carries what it
+		// does), so what this line owes is the boundary between the two.
+		"- To send the person's current correction to a running task, use `tasks` with `id` and `forward: true`. `say` is your own coordination and ends nothing; `stop` ends a task.\n" +
 		// THE CONTINUE SENTENCE IS NOT REPEATED HERE. `tasks` own description
 		// carries it word for word ([tasksDescription]), and the prefix is a
 		// budget: what pays for the handoff law in prompts/system.md is this
@@ -218,8 +216,8 @@ var beltFacts = []beltFact{{
 	absent: "- THE RECORD OF EARLIER WORK IS NOT REACHABLE FROM HERE and none of this work goes to anybody else: answer from the brief and from what is in front of you, and say plainly when something earlier is referred to that you cannot see. A `[Task reference: ...]` block you were handed carries transcript URIs, and `read` takes one exactly as printed, `file://` and all: `grep` a journal or `read` it with `offset`/`limit`, and never expand an outcome line into work you did not read.",
 }, {
 	tools:   []string{"search_conversations"},
-	holds:   Config.hasStore,
-	present: "- For what was said, call `search_conversations` ONCE with their own words.",
+	holds:   Config.hasConversationHistory,
+	present: "- When asked to find a past conversation or report what was said or decided elsewhere, call `search_conversations` BEFORE answering, even if a saved memory suggests the answer. Memories guide the query; source messages establish what was said. Copy a returned ref to read more and check corrections.",
 	absent:  "- What was said in earlier conversations cannot be looked up from here, so answer out of what is in this window rather than reconstructing it.",
 }, {
 	tools:   []string{"watch"},

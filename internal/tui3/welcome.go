@@ -522,7 +522,7 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 	// of the person who asked for it. The previous conversation is already ended,
 	// by the engine, as part of the swap (internal/remote's Session.swap).
 	if leaving != nil && !a.shared {
-		leaving.Interrupt()
+		leaving.InterruptFor(session.StopByLeaving)
 		if err := leaving.Close(); err != nil {
 			a.note("close failed: " + err.Error())
 		}
@@ -984,7 +984,16 @@ func (a *app) welcomeUnit(width int) ([]string, []welcomeMark, int, int) {
 		// the unit and the status row have taken theirs.
 		_, height := a.size()
 		box := max(1, min(draftRows, height-a.statusHeight(width)-8))
-		block, x, row := draftBlockWithTags(&a.input, pal, unit, box, "", a.roomLead(unit), a.input.demotedTags)
+		// AND A SECRET IS MASKED WHEREVER THE BOX IS DRAWN. The greeting lifts
+		// the real draft into the middle of the frame, and a question asking for
+		// a credential is answered in exactly that box — so the one rule about
+		// never drawing a key back has to be read here too (input.go's
+		// [app.secretDraftBlock]). It was not, and a key typed on a conversation
+		// nobody had spoken in yet went onto the screen in the clear.
+		block, x, row := a.secretDraftBlock(unit)
+		if block == nil {
+			block, x, row = draftBlockWithTags(&a.input, pal, unit, box, "", a.roomLead(unit), a.input.demotedTags)
+		}
 		caretX, caretRow = lead+x, len(rows)+row
 		for _, line := range block {
 			add(line, welcomeMark{kind: welcomeRowInput})

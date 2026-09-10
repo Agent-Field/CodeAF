@@ -418,3 +418,65 @@ func TestHomeDecliningItsOwnStandingCardSettlesItAsNotSetUp(t *testing.T) {
 		t.Fatalf("the card in this window settled as %q, want %q", a.stand.verdict, standNoWord)
 	}
 }
+
+// askQuestion is a question the MODEL raised, as another window reads it: the
+// whole object beside the four fields every older reader knows, and answers that
+// are the model's own words rather than a lane's fixed table.
+func askQuestion(id uint64, head string) session.PresenceQuestion {
+	whole := session.Question{
+		ID: id, Kind: session.QuestionAsk, Ask: session.AskPermission,
+		Form: session.FormLine, Asker: session.Asker{Kind: session.AskerModel},
+		Head: head, Reason: "the draft has not been read by anybody else",
+		Options: []session.AnswerOption{
+			{Key: "1", Label: "publish it"},
+			{Key: "2", Label: "hold it", Safe: true},
+		},
+		Stakes: session.StakesReversible, Asked: time.Now(),
+	}
+	return session.PresenceQuestion{
+		Kind: whole.Kind, ID: whole.ID, Text: whole.Head,
+		Options: whole.Options, Asked: whole.Asked, Full: &whole,
+	}
+}
+
+// EVERY LANE'S ANSWERS REACH THE ROW, AND THE DOORSTEP TAKES THEM.
+//
+// This is the whole path a person walks when a conversation in another window
+// stops on a question the model raised: the chips come off the question's own
+// options, the digit is checked against those options, and the answer is left in
+// the folder that session drains. The seam here is the REAL one
+// ([session.WriteAnswer]) and not the lab's recorder, because the defect was
+// entirely on the far side of it — the door refused every lane whose keys the
+// kind's own table does not fix, so the chips drew, the key landed, and home
+// said `could not leave that answer` about a question it had just offered to
+// answer.
+func TestHomeAnswersAQuestionTheModelRaisedThroughTheRealDoorstep(t *testing.T) {
+	lab := newAnswerLab(t, askQuestion(7, "publish the draft?"), time.Now())
+	lab.a.leaveAnswer = session.WriteAnswer
+
+	text := homeText(lab.a)
+	for _, chip := range []string{"1 publish it", "2 hold it"} {
+		if !strings.Contains(text, chip) {
+			t.Fatalf("home does not offer %q for the model's own question:\n%s", chip, text)
+		}
+	}
+
+	lab.a.homeKey(key("1"))
+	if said := homeText(lab.a); strings.Contains(said, answerFailedWord) {
+		t.Fatalf("the doorstep refused an answer home had just offered:\n%s", said)
+	}
+	raw, err := os.ReadFile(session.AnswersPath(lab.dir))
+	if err != nil {
+		t.Fatalf("nothing reached the doorstep: %v", err)
+	}
+	var answer session.Answer
+	if err := json.Unmarshal(raw, &answer); err != nil {
+		t.Fatalf("the doorstep holds %q: %v", raw, err)
+	}
+	if answer.Kind != session.QuestionAsk || answer.ID != 7 || answer.FirstKey() != "1" {
+		t.Fatalf("the answer reads %+v, want the ask lane's question 7 answered 1", answer)
+	}
+	if said := homeText(lab.a); !strings.Contains(said, answerSentWord+"publish it") {
+		t.Fatalf("home did not say what it just answered:\n%s", said)
+	}
+}

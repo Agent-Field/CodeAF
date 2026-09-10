@@ -851,7 +851,15 @@ func (a *app) lastConversation() tea.Cmd {
 // THIS IS THE ONE PLACE AN AGENT IS CLOSED BY A PERSON'S KEYSTROKE, and the
 // close is the whole difference between it and a switch.
 func (a *app) closeFront() (tea.Cmd, bool) {
-	return a.leaveFront(a.endAgent, true)
+	return a.closeFrontFor(session.StopByLeaving)
+}
+
+// closeFrontFor is the same close with the DOOR it came through on it. The
+// engine writes that word down and says one sentence about a reply that never
+// arrived, and "you closed this conversation" and "another window took it" are
+// two different sentences to be owed (internal/session's stopcause.go).
+func (a *app) closeFrontFor(door session.StopDoor) (tea.Cmd, bool) {
+	return a.leaveFront(func(agent Agent) { a.endAgentFor(agent, door) }, true)
 }
 
 // stepBackFront is the same act for a window that is NOT ending anything: another
@@ -874,8 +882,14 @@ func (a *app) stepBackFront() (tea.Cmd, bool) {
 
 // endAgent is a person ending a conversation: interrupt whatever is running and
 // close it, with the failure said where they can see it.
-func (a *app) endAgent(agent Agent) {
-	agent.Interrupt()
+func (a *app) endAgent(agent Agent) { a.endAgentFor(agent, session.StopByLeaving) }
+
+// endAgentFor is the same ending, naming the door. A turn still in flight is
+// stopped by machinery here whatever the key was — the person asked for the
+// CONVERSATION to go, not for the reply to be thrown away — so the engine owes
+// them a sentence about the answer that never came.
+func (a *app) endAgentFor(agent Agent, door session.StopDoor) {
+	agent.InterruptFor(door)
 	if err := agent.Close(); err != nil {
 		a.note("close failed: " + err.Error())
 	}
@@ -979,7 +993,7 @@ func leaveAgent(agent Agent) {
 		_ = hosted.Detach()
 		return
 	}
-	agent.Interrupt()
+	agent.InterruptFor(session.StopByLeaving)
 	_ = agent.Close()
 }
 
@@ -1073,7 +1087,7 @@ func (a *app) closeKept(file string) bool {
 	a.forgetSteerOwner(draftOwnerOf(a.host, held.conv.Workspace, held.conv.SessionFile))
 	held.watch.stop()
 	if held.conv.Agent != nil {
-		held.conv.Agent.Interrupt()
+		held.conv.Agent.InterruptFor(session.StopByLeaving)
 		if err := held.conv.Agent.Close(); err != nil {
 			a.note("close failed: " + err.Error())
 		}

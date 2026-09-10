@@ -277,8 +277,8 @@ func (a *app) detachConversation() *aside {
 		cursor = len([]rune(side.draft))
 	}
 	side.draftCursor = &cursor
-	if left, ok := a.askLeft(); ok {
-		side.askLeft, side.askPaused = left, a.askPaused
+	if left, held, ok := a.questionReadingLeft(); ok {
+		side.askLeft, side.askPaused = left, held
 	}
 	if a.room != nil {
 		side.room = a.room.id
@@ -328,7 +328,8 @@ func (a *app) clearConversation() {
 	// index into a transcript that has been replaced points at somebody else's
 	// row, and a confirmation arriving after the swap would take the mark off it.
 	a.echoAt = -1
-	a.asks, a.follows = nil, nil
+	a.dropAsks()
+	a.follows = nil
 	// A warm ctrl+c names what a second press would stop IN THIS CONVERSATION,
 	// and after this line that is a different one (quitarm.go).
 	a.disarmQuit()
@@ -341,8 +342,13 @@ func (a *app) clearConversation() {
 	// door left to answer it, because the answer comes back on a lane this
 	// session no longer reads.
 	a.waits, a.waitAt = nil, 0
-	a.connAsks, a.connPanel = nil, connectPanel{}
-	a.harnessAsks, a.harnPanel = nil, harnessPanel{}
+	a.dropConnectAsks()
+	a.connPanel = connectPanel{}
+	// The harness offer's own question goes with the conversation that raised it
+	// (harness.go); what is left here is the panel and the live step row, which
+	// are drawings rather than questions.
+	a.dropHarnessAsks()
+	a.harnPanel = harnessPanel{}
 	a.harnessStep = ""
 	// And the picked harness with them: a chip is a choice about the NEXT
 	// message of this conversation (harnesspick.go).
@@ -473,7 +479,13 @@ func (a *app) closeForSwitch() {
 // conv is the bundle — the agent and the seams minted around it — and side is
 // the sidecar a detach left, or nil for a conversation that was just opened.
 func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
+	was := a.agent
 	a.takeUp(conv, true)
+	// ANOTHER CONVERSATION'S QUESTIONS DO NOT COME ALONG ([app.forgetQuestions]);
+	// the new lane below replays its own.
+	if a.agent != was {
+		a.forgetQuestions()
+	}
 	agent := a.agent
 	// WHEN THIS ONE CAME FORWARD, stamped on the way in so the switcher's own row
 	// can say how long you have been sitting here (hop.go). Every other row
@@ -565,6 +577,12 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	if joined != nil {
 		cmds = append(cmds, joined)
 	}
+	// AND A QUESTION THIS CONVERSATION WAS NEVER ANSWERED IS ASKED AGAIN. It is
+	// last because it is the one thing here that can START work rather than draw
+	// what is already there, and it must see the screen exactly as the replay
+	// above left it — including whether that replay handed this window a turn
+	// that is still running (takeover.go's [app.resumeStoppedTurn]).
+	cmds = append(cmds, a.resumeStoppedTurn())
 	a.touch()
 	return tea.Batch(cmds...)
 }

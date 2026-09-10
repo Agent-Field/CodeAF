@@ -323,7 +323,7 @@ with a fresh agent and a fresh session file.
 
 **It adds one rather than closing this one.** The conversation you were in is left open
 behind it — still streaming its turn, still running its tasks — and `tab` over an empty
-message box goes back. The status line then reads `2 open`.
+message box goes back. The **tab strip** above the transcript then shows both.
 
 **The one exception is a conversation nobody has used yet**: no transcript, no turn ever
 run, nothing out and nothing waiting. That one is closed and replaced, because closing it
@@ -643,10 +643,17 @@ session holds right now.
 
 The labels come in this order, and each is dropped when its value is empty: `session`,
 `task` (only inside a task room), `model` (the full routing address, with `:level` when a
-reasoning level is set), `crew`, `task model` (only in a room), `served`, then the telemetry
-words — `search`, `background`, `changes`, `spend`, `context`, `compacts at`, `cache`,
-`rate`, `compaction`, `approvals`, `connection`, `state` — then `tasks`, `keeping watch`,
-`place`, `keys`, and last `build` and `file`. Labels are padded into two aligned columns.
+reasoning level is set), `crew`, `task model` (only in a room), `served`, `search`, then the
+telemetry words — `spend`, `cache`, `context`, `compacts at`, `compaction`, `background`,
+`approvals`, `changes`, `rate`, `open`, `watching`, `speed`, `connection`, `state` — then
+`tasks`, `keeping watch`, `place`, `keys`, and last `build` and `file`. Labels are padded
+into two aligned columns.
+
+Four of those words are facts this command and the phone's sheet carry and the status row
+does not: `changes` (`Σ +128 −14`), `rate` (`1.2k tok/s avg`, this turn's output over its
+whole wall time — the right edge of the row shows the live `38 tok/s` instead), `open`
+(`2 open · 1 waiting`) and `watching` (the standing count, which is drawn at the foot of the
+task column). `crew` is a fifth and has its own line above.
 
 The `crew` line sits directly under `model` and reads the preset word — or `custom` — and
 the three classes:
@@ -655,13 +662,13 @@ the three classes:
 crew     max · brain kimi-k3 · hands glm-5.3 · checks kimi-k3
 ```
 
-On the live status line the same fact is one short segment — `crew max`, or
-`crew custom` — at the head of the telemetry, beside the model on the left, and it is among
-the first segments a narrow row gives up. The `crew` line here and on the phone's status
-sheet is the full reading. Every ordinary launch has a crew — one is never unset, only
-`custom` — so the line and the segment are always there; the one session that shows
-neither is a **remote** one opened with `--host`, where the crew belongs to the other
-machine.
+The crew is **not on the status line**. It was one short segment there — `crew max`, or
+`crew custom` — at the head of the telemetry until 2026-09-09, and it came off: the row is
+a ledger of things you act on from it, and a preset is changed on a page. The `crew` line
+here and on the phone's status sheet is where it is read now, in full. Every ordinary
+launch has a crew — one is never unset, only `custom` — so the line is always there; the
+one session that shows none is a **remote** one opened with `--host`, where the crew
+belongs to the other machine.
 
 `/status` differs from the on-screen status sheet in two deliberate ways:
 
@@ -834,7 +841,7 @@ memories are dropped with `/forget`.
 `/model` with nothing after it opens the model picker: a filter box in the input line's
 place with a short list of models under it. It is bottom-anchored, so the conversation
 shrinks above it and nothing pops up over what you were reading. Pressing the model's
-name in the status line opens the same picker.
+name on the legend line above the box opens the same picker.
 
 `/model <slug>` switches straight to that slug: no list, no confirmation, and no check
 that the slug exists in any list. If the slug is in no known list, the context window is
@@ -851,17 +858,24 @@ Moving in the picker: type to filter; ↑ / ctrl+p and ↓ / ctrl+n move; pgup/p
 under the cursor through off → low → medium → high → off reasoning effort. enter
 switches.
 
+**→ or tab on a model opens its lanes and walks the cursor into them**, onto the pinned
+lane or `auto`; enter pins, ← or tab walks back out. *Lanes → Pinning one lane yourself*
+has the rest.
+
 esc leaves and changes **nothing** — your half-typed draft, the model in use and the
 frame all come back as they were. The filter is forgotten when the picker closes.
 
 The cursor opens on the model in use, which is also the marked row, so enter with nothing
-typed confirms rather than changes.
+typed confirms rather than changes. Emptying the filter with ctrl+u puts it back there.
 
-The placeholder in the empty filter box is the only place the picker explains itself:
+The placeholder in the empty filter box reads:
 
 ```
-filter · ↑↓ · → lanes · ctrl+t effort · enter · esc
+filter · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc
 ```
+
+and the hint slot above the box follows the cursor: `→ lanes · enter switch · esc` on a
+model, `enter choose · ← back · esc` inside its lanes.
 
 Choosing a model sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
@@ -871,7 +885,8 @@ model a remote session opens on is that machine's to resolve.
 
 ## What the model picker lists, and what it will not do
 
-The picker **never fetches**. The list is what is already known, tried in this order,
+The picker **never fetches on its own** — it fetches only when you ask, with `ctrl+r` (see
+"Refreshing the model list" below). The list is what is already known, tried in this order,
 each rung used only when the one above it came back empty after filtering:
 
 1. the catalog handed in at launch,
@@ -907,6 +922,33 @@ Limits:
 - The reasoning level lives on the agent, per model id, so it survives switching away and
   back. `/new` forgets it.
 - There is no mouse commit on the picker's rows.
+
+## Refreshing the model list — a new model is not in /model, the list is out of date
+
+The list `/model` shows is fetched from the router at most once a day, so a model a
+provider shipped this morning may not be in it yet. With the picker open, press
+**`ctrl+r`** to fetch the newest list now. The placeholder names it — `ctrl+r refresh` —
+and when your filter matches nothing the list says `no model matches · ctrl+r fetches the
+newest list`. Nothing on screen shows how old the list is; when in doubt, press it.
+
+While it runs, the list's first line reads `fetching the newest list…` and the picker keeps
+working: type, move, switch. A second `ctrl+r` while one is out does nothing. It waits at
+most fifteen seconds.
+
+When it lands, the list is filtered again by what you typed, the cursor goes back to the
+model in use, and the conversation gets one note: `models · 612 · 9 new ·` and up to three
+of the new ids, or `models · 612 · nothing new`. A model that left the list is not
+mentioned. The new list is saved (`~/.aforge/v3/models.json`), so the next `aforge` opens on
+it. From a terminal, `aforge models --refresh` does the same.
+
+If it fails, the list stays exactly as it was and the note says why in one line —
+`could not fetch the model list · dial tcp: lookup openrouter.ai: no such host` — and
+`ctrl+r` is offered again.
+
+Where it is absent: only `/model` (and the model word in a task's status line, which opens
+the same list) has the key. Every other model list — the settings panel's rows, home's, the
+`alt+o model` one — does not: there `ctrl+r` does nothing and nothing names it. Over `--host` it works and fetches on this
+machine, whose list of names the picker shows.
 
 ## /resume — open an earlier conversation
 
@@ -1392,7 +1434,7 @@ each of the five can be pinned on its own in /settings → Providers
 ```
 
 The first line says what the presets change and what they do not. The second is **seat
-one** — `you talk to · <model>`, spelled as the status line spells it — with no marker and
+one** — `you talk to · <model>`, spelled as the legend above the box spells it — with no marker and
 no highlight, because nothing in this chooser can move it. Then the three presets: the one
 in force wears a highlighted ground, `›` is where **enter** is aimed and it opens on yours,
 ↑ / ctrl+p and ↓ / ctrl+n move, and **esc** closes without changing anything. The last
@@ -1424,15 +1466,15 @@ a command you can type. See "Why is one word in a line brighter than the rest" o
 screen page.
 
 The last clause names, by id, the one seat the command did not touch: the model you are
-talking to, in the same spelling the status line's model segment uses, so you can check it
-against the foot of the frame. `/crew` never changes that model and never offers to; only
+talking to, in the same spelling the legend above the box uses, so you can check it
+against the line over your own prompt. `/crew` never changes that model and never offers to; only
 `/model` does. When the session has no model yet the clause reads
 `the model you talk to is untouched — /model changes that`.
 
 **The change is live.** The next call aforge makes on its own uses the new crew — no
 relaunch, and no waiting for the next session. To read the crew back afterwards: the live
-status line says `crew max` beside the model, `/status` prints the `crew` line under
-`model`, `/settings` → Providers has the crew row, and bare `/crew` opens on yours.
+`/status` prints the `crew` line under `model`, the phone's status sheet has the same row,
+`/settings` → Providers has the crew row, and bare `/crew` opens on yours.
 
 **That promise is local-session only.** Over `--host` the session resolves its crew from
 the other machine, and there is no crew write across the connection — so `/crew` refuses
@@ -1442,8 +1484,8 @@ rather than writing this laptop's profile behind your back:
 devbox owns the crew · change it on that machine
 ```
 
-For the same reason a remote window shows no `crew` segment on the status line and no
-`crew` line in `/status`. Change that machine's profile there.
+For the same reason a remote window shows no `crew` line in `/status` and none on the
+status sheet. Change that machine's profile there.
 
 ## /connect — your connected accounts
 
@@ -1736,8 +1778,10 @@ hear, and everything else follows the general chat rule. Its legend is
 Because the picker is the same component, everything true of `/model`'s ranking, its rows
 and its ctrl+t effort knob is true here too — **including the lanes** on the row that has
 them. On **your model**, `→` or `tab` unfolds the endpoints serving the model under the
-cursor and `enter` on one pins it, exactly as under `/model`, and the legend says
-`↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter`. The media slots
+cursor, walks the cursor into them, and `enter` on one pins it, exactly as under
+`/model`. The legend says `↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter`
+on a model and `↑↓ move · ← or tab back · enter choose · esc cancel · type to filter`
+inside its lanes. The media slots
 have no lane row behind them, so nothing unfolds there and the legend does not offer the
 key.
 
@@ -1874,8 +1918,8 @@ run `aforge --help` for every command and the environment table.
 It goes to **standard output** and the command leaves with **0**. Asking a program what
 it takes is not a failure, so a Makefile or a CI step that runs `aforge do --help` to
 check the binary is healthy reads a command that worked. This includes the commands that take
-no flags at all — `aforge show --help`, `aforge models --help` and `aforge cache --help`
-answer the same way rather than reading `--help` as a filename or ignoring it.
+no flags at all — `aforge show --help` and `aforge cache --help` answer the same way
+rather than reading `--help` as a filename or ignoring it.
 
 **A flag that does not exist is still a refusal**, and it is said once, on the **error
 stream**, and leaves with **1**:

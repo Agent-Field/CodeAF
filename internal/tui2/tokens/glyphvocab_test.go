@@ -13,8 +13,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
-
-	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 )
 
 // The vocabulary gates: one table, one meaning per glyph, one cell per glyph in
@@ -134,29 +132,6 @@ func TestOneGlyphOneMeaning(t *testing.T) {
 	}
 }
 
-// TestBlocksTwinsAreOneMark extends the seam TestCutMarkIsOneMark opened.
-//
-// blocks cannot import this package — the edge runs tokens → blocks so blocks
-// stays a leaf — so a mark blocks has to draw itself is spelled twice: once as
-// the vocabulary's authority here, once as a byte there. tokens is the only
-// package that can hold both spellings and fail when they part. The cut mark
-// was the first; the accent edge and the body indent are the two that followed,
-// and the arrangement is deliberate in blocks/card.go for the same reason.
-func TestBlocksTwinsAreOneMark(t *testing.T) {
-	if GlyphAccentRail != blocks.AccentEdge {
-		t.Errorf("two vocabularies for one accent rail: tokens %q, blocks %q",
-			GlyphAccentRail, blocks.AccentEdge)
-	}
-	if GlyphTreeDash != blocks.RuleMark {
-		t.Errorf("two vocabularies for one rule stroke: tokens %q, blocks %q",
-			GlyphTreeDash, blocks.RuleMark)
-	}
-	if LensIndent != blocks.BodyIndent {
-		t.Errorf("two numbers for one left edge (5.13): tokens.LensIndent %d, blocks.BodyIndent %d",
-			LensIndent, blocks.BodyIndent)
-	}
-}
-
 // -- the source scan ---------------------------------------------------------
 
 // scannedPackages are the consumer packages held to the table by
@@ -168,21 +143,14 @@ func TestBlocksTwinsAreOneMark(t *testing.T) {
 var scannedPackages = []string{
 	"../modelui",
 	// Not yet, and each for the same reason — the sweep is a later wave, and the
-	// remaining sites are few since the v2 surface's packages were removed on
-	// 2026-08-31: blocks (a leaf, so it needs twin constants rather than an
-	// import), prose, and internal/tui2 itself (placeholder.go, dialog.go).
-	// reltime was scanned during the audit and is already clean, so it can join
-	// the day somebody wants it pinned.
+	// remaining sites are few: prose has not joined the source scan yet. reltime
+	// was scanned during the audit and is already clean, so it can join the day
+	// somebody wants it pinned.
 }
 
-// literalExemptions are the files allowed to spell a vocabulary byte, with the
-// reason each one is out. A reason is required: an exemption without one is how
-// a list like this stops meaning anything.
-var literalExemptions = map[string]string{
-	"../golden/diff.go": "the invisible-character legend of a TEST diff — `·` there is a SPACE, " +
-		"not the telemetry separator, and the line that draws it also names it. Developer " +
-		"output, never a rendered surface, so the vocabulary does not reach it",
-}
+// literalExemptions is empty on purpose. A new exemption still needs a stated
+// reason, because an unexplained exception is how this law stops meaning anything.
+var literalExemptions = map[string]string{}
 
 // proseMarks are the vocabulary bytes that are also ordinary punctuation. They
 // are allowed inside a sentence — a literal carrying at least a few letters —

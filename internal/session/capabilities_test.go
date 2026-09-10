@@ -966,3 +966,136 @@ func TestShelvingTakesMoreOffTheToolBlockThanItPutsOn(t *testing.T) {
 		t.Fatalf("shelving holds back %d bytes and spends %d to do it, which is not a trade worth a round trip", len(held), loader)
 	}
 }
+
+// ── a load that is never used ───────────────────────────────────────────────
+
+// A TURN THAT LOADS A GROUP AND STOPS WITHOUT CALLING ANYTHING IN IT IS SENT
+// BACK ONCE. `load_capability` says "Continue in this same turn"; a model that
+// answers with a plan and no call has ended the turn with the thing it loaded
+// for never done. Seen on 2026-09-10 in the person's own conversation: the
+// model loaded `ask`, wrote "Let me make the question." and stopped.
+func TestATurnThatLoadsAGroupAndStopsIsSentBackOnce(t *testing.T) {
+	recorder := &blockRecorder{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("c1", loadCapabilityToolName, `{"group":"settings"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("Now I will look up the budget. Let me read the setting."), nil
+		},
+		// The nudge lands and the model does what it said it would.
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("c2", "settings", `{"search":"budget"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("here is what that row says"), nil
+		},
+		// A later turn that calls nothing is left alone: the load belongs to
+		// the turn before, and that turn used it.
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("you are welcome"), nil
+		},
+	}}
+	agent := shelfAgent(t, recorder, func(config *Config) {
+		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+		config.Media = &scriptedMedia{}
+		config.MediaModel = allMediaModels()
+	})
+
+	events, err := agent.Submit(context.Background(), "what is my daily budget set to?")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	if got := recorder.requests(); got != 4 {
+		t.Fatalf("the loop made %d requests; want 4 — load, the stop, the nudged call, the answer", got)
+	}
+	transcript := transcriptText(agent)
+	if !strings.Contains(transcript, checkpointLoadNudgeLead([]string{"settings", "change_setting"})) {
+		t.Errorf("the turn was not sent back naming what it loaded:\n%s", transcript)
+	}
+	if !saidSomething(noticeTexts(collected), checkpointLoadNudgeNote) {
+		t.Errorf("nobody told the person why the turn went on; notices were %q", noticeTexts(collected))
+	}
+	answer := recorder.resultAt(t, 3, "c2")
+	if !strings.Contains(answer, `settings mentioning "budget"`) {
+		t.Errorf("the nudged call did not run the loaded tool:\n%s", answer)
+	}
+
+	events, err = agent.Submit(context.Background(), "thanks")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	later := collect(t, events)
+	if got := recorder.requests(); got != 5 {
+		t.Fatalf("the second turn made %d requests in all; want 5 — a turn that loaded nothing is not sent back", got)
+	}
+	if saidSomething(noticeTexts(later), checkpointLoadNudgeNote) {
+		t.Error("a turn that loaded nothing was sent back for a load an earlier turn made")
+	}
+}
+
+// AND ONCE MEANS ONCE. A model that ignores the nudge has decided, and the turn
+// ends on its second stop rather than being argued with.
+func TestTheLoadNudgeIsGivenOnceATurn(t *testing.T) {
+	recorder := &blockRecorder{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("c1", loadCapabilityToolName, `{"group":"settings"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("Let me read the setting."), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("On reflection you can read it under /settings yourself."), nil
+		},
+	}}
+	agent := shelfAgent(t, recorder, func(config *Config) {
+		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+		config.Media = &scriptedMedia{}
+		config.MediaModel = allMediaModels()
+	})
+	events, err := agent.Submit(context.Background(), "what is my daily budget set to?")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+	if got := recorder.requests(); got != 3 {
+		t.Fatalf("the loop made %d requests; want 3 — one nudge and then the turn ends", got)
+	}
+	if n := strings.Count(transcriptText(agent), "[carry on] You loaded"); n != 1 {
+		t.Errorf("the turn was sent back %d times; want exactly once", n)
+	}
+	if n := strings.Count(strings.Join(noticeTexts(collected), "\n"), checkpointLoadNudgeNote); n != 1 {
+		t.Errorf("the person was told %d times; want once", n)
+	}
+}
+
+// AND A TURN THAT ENDS BY ASKING THE PERSON SOMETHING IS LEFT ALONE, as
+// everywhere else: a question addressed to somebody else is not the harness's
+// to answer with a nudge.
+func TestALoadFollowedByAQuestionToThePersonIsNotSentBack(t *testing.T) {
+	recorder := &blockRecorder{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("c1", loadCapabilityToolName, `{"group":"settings"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("Do you mean today's limit, or the monthly one?"), nil
+		},
+	}}
+	agent := shelfAgent(t, recorder, func(config *Config) {
+		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+		config.Media = &scriptedMedia{}
+		config.MediaModel = allMediaModels()
+	})
+	events, err := agent.Submit(context.Background(), "what is my budget set to?")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+	if got := recorder.requests(); got != 2 {
+		t.Fatalf("the loop made %d requests; want 2 — a question to the person ends the turn", got)
+	}
+	if saidSomething(noticeTexts(collected), checkpointLoadNudgeNote) {
+		t.Error("a turn that ended asking the person was sent back")
+	}
+}

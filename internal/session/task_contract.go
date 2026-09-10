@@ -587,6 +587,13 @@ type TaskNotice struct {
 	// sentences a row reads, so that nothing has to tell them apart by their
 	// prose.
 	Shifted bool
+	// GroundHeld says the landing was refused by THE PERSON'S OWN UNTRACKED COPIES
+	// of the files this task wrote, sitting in the folder the branch merges into
+	// (groundcarry.go). It is the third road to the conflict's one question, and
+	// it is the road whose `resolve it` carries those copies aside rather than
+	// spending a merge round: a file git is not watching is on no branch, so
+	// there is nothing for a round to merge.
+	GroundHeld bool
 	// Decider is WHO HOLDS THIS NODE'S DECISION right now ([TaskAskOwner]). It is
 	// the person on every ordinary landing; `task.settle = auto` and a person
 	// pressing "let aforge decide this one" ([Agent.HandUnverifiedToModel]) are the
@@ -653,8 +660,8 @@ const (
 	//
 	// IT IS A LIFE OF THE NODE AND NOT A STEP OF A TOOL CALL, which is why it
 	// belongs on this list beside the other three. The reading is a full call to
-	// the tier that thinks — measured at thirteen seconds, and bounded at
-	// [divideReviewPatience] — and it happens twice in a node's life where the
+	// the tier that thinks — measured at thirteen seconds, and bounded by the
+	// role's own tier — and it happens twice in a node's life where the
 	// harness submits a drawing on the worker's behalf before its first request
 	// (task_divide_sketch.go): a card that has just appeared, with a clock going
 	// up and nothing else on it, for as long as the reading lasts.

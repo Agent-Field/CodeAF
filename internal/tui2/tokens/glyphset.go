@@ -110,9 +110,11 @@ const (
 	GNeedsHuman
 	GWaitsOn
 	GWithdrawn
+	GAssumed
 	GCollapsed
 	GExpanded
 	GScopeUp
+	GTarget
 	GTruncated
 	GEllipsis
 	GCut
@@ -343,10 +345,9 @@ func (g GlyphSet) Glyph(id GlyphID) string {
 // [GlyphBinding.AutoUpgrade] slot's plain glyph. Never a substring rewrite
 // anywhere in a line, and never an ASCII slot.
 //
-// The warrant for the whole-cell rule is blocks' own header grammar: the glyph
-// cell is painted as its own span (blocks/header.go), so it arrives at a Styler
-// as a one-rune string, which is how a surface built before this tier existed
-// gets the tier for free.
+// The warrant for the whole-cell rule is the renderer grammar: a glyph cell is
+// painted as its own span, so it arrives at a Styler as a one-rune string. A
+// surface built before this tier existed therefore gets the tier for free.
 func (g GlyphSet) Upgrade(cell string) string {
 	if g != NerdFont || cell == "" {
 		return cell
@@ -362,19 +363,14 @@ func (g GlyphSet) Upgrade(cell string) string {
 }
 
 // UpgradeChrome is the EXPLICIT door for a chrome string that leads with a
-// glyph and then says something — blocks.Disclose's "▸ 12 lines" is the
-// case it exists for. It upgrades a whole cell exactly as [GlyphSet.Upgrade]
-// does, and additionally rewrites a leading glyph that is followed by a space.
+// glyph and then says something — "▸ 12 lines" is the case it exists for. It
+// upgrades a whole cell exactly as [GlyphSet.Upgrade] does, and additionally
+// rewrites a leading glyph that is followed by a space.
 //
-// It is deliberately NOT wired into [Styler.Paint] under blocks.StateChrome,
-// which is what 12.7 D.2 proposed as rule (b). The rule's warrant was that
-// StateChrome means "separators, meta, fold lines, hints" and therefore that
-// prose never travels that path — and in this tree it does: the v2 chat surface
-// paints a receipt's own headline as a chrome-state header Title and a
-// commission's summary of the user's words as a chrome-state Desc. Both are
-// content read out of the journal, and an automatic lead-rune rewrite would
-// edit a user's sentence. D.2 named the remedy for exactly this finding: the
-// rule is dropped and the callers that want it ask for it by name.
+// It is deliberately not automatic for all chrome strings. Chrome can carry
+// content read out of a journal, and an automatic lead-rune rewrite would edit
+// a user's sentence. D.2 named the remedy for exactly this boundary: the rule
+// is explicit and callers that want it ask for it by name.
 func (g GlyphSet) UpgradeChrome(cell string) string {
 	if g != NerdFont || cell == "" {
 		return cell

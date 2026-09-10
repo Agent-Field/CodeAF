@@ -83,6 +83,9 @@ type WrappedAgent interface {
 	FollowUp(text string) (<-chan session.Event, error)
 	Steer(text string) (<-chan session.Event, error)
 	Interrupt()
+	// InterruptFor is the stop with the door it came through on it, for the
+	// machinery stops that are not a person (internal/session's stopcause.go).
+	InterruptFor(door session.StopDoor)
 	Compact(ctx context.Context) error
 	Close() error
 	Model() string
@@ -390,6 +393,15 @@ type Session struct {
 	// (tasklane.go states the whole of it).
 	tasklanes map[*server]*taskFeed
 
+	// newsfeeds is one outbox per surface for the live status row — the phase
+	// clock and the lane sighting, which are pushed at this process by
+	// internal/session's two global readers and have to be steered to the
+	// connection they belong to (news.go). It is keyed by surface for the task
+	// lane's reason and drained by a goroutine per surface for one this file
+	// has nowhere else: the fan-out runs on a turn's own stream goroutine, and
+	// a status line may not be able to stall the turn it is measuring.
+	newsfeeds map[*server]*newsFeed
+
 	// lanes is the same arrangement for the harness subscription version 11
 	// added, keyed by lane and then by the surface holding it
 	// (standinglane.go). It is a map by lane rather than one field because
@@ -439,6 +451,7 @@ func NewSession(engine *Engine, persistent bool) *Session {
 		surfaces:   map[*server]struct{}{},
 		tasklanes:  map[*server]*taskFeed{},
 		lanes:      map[laneName]map[*server]*laneFeed{},
+		newsfeeds:  map[*server]*newsFeed{},
 		empty:      time.Now(),
 	}
 	// The conversation watches its own turns from the moment it exists, so a
@@ -446,6 +459,10 @@ func NewSession(engine *Engine, persistent bool) *Session {
 	// arriving surface reads in its welcome — and the turn itself is journalled
 	// either way, because the engine is the only writer of the session file.
 	sess.watchOwnTurns()
+	// AND THE CONVERSATION IS FILED UNDER THE NAME ITS OWN NEWS ARRIVES UNDER,
+	// from the moment it exists, so the phase of a wake that runs before
+	// anybody attaches has somewhere to be steered to (news.go).
+	sess.fileNews()
 	return sess
 }
 
@@ -623,10 +640,16 @@ func (sess *Session) shutDown(agent WrappedAgent, already bool) error {
 	// a rail left open on a conversation being flushed is a subscription the
 	// sweep has already decided is over (wakelane.go).
 	sess.stopWakeLane()
+	// AND THE NEWSROOM LOSES THIS CONVERSATION, which is what puts the two
+	// global readers back when the last one on this process goes: a host
+	// holding nothing has to read as a build with nobody watching, because that
+	// is what decides whether a stalled pinned lane is asked about or quietly
+	// borrowed against (news.go).
+	sess.dropNews()
 	if agent == nil || already {
 		return nil
 	}
-	agent.Interrupt()
+	agent.InterruptFor(session.StopByRetired)
 	return agent.Close()
 }
 
@@ -865,6 +888,10 @@ func (sess *Session) attach(s *server, hello Hello) error {
 			return err
 		}
 	}
+	// THE LIVE ROW OPENS LAST, after the welcome and the replay are on the wire,
+	// so a phase measured while this surface was being welcomed cannot overtake
+	// the welcome that tells it which conversation it is in (news.go).
+	sess.watchNews(s)
 	return nil
 }
 
@@ -879,6 +906,7 @@ func (sess *Session) detach(s *server) {
 	// pipe that is closing (tasklane.go).
 	sess.dropTaskLane(s)
 	sess.dropLanes(s)
+	sess.dropNewsFeed(s)
 	sess.mu.Lock()
 	delete(sess.surfaces, s)
 	// THE KEYBOARD IS NEVER LEFT ON A WINDOW THAT HAS GONE. It goes to the
@@ -978,6 +1006,11 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// ([Session.agentOf]), so the answer is about the wire and not the agent.
 		SteerOwner: true,
 		TaskSetup:  taskSetupKnown(sess.agent),
+		// Whether this engine has a dial on the conversation's own thinking,
+		// asked of the agent it has open — for [Welcome.Effort]'s stated reason:
+		// neither a type assertion at the far end nor the rung itself can tell an
+		// engine without a dial from a conversation whose dial is off.
+		Effort:     effortKnown(sess.agent),
 		TaskSettle: taskSettleKnown(sess.agent),
 	}
 }
@@ -1277,7 +1310,7 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	sess.mu.Unlock()
 
 	if previous != nil {
-		previous.Interrupt()
+		previous.InterruptFor(session.StopByLeaving)
 		_ = previous.Close()
 	}
 	// AND EVERY RAIL IN THE ROOM IS RE-POINTED AT THE CONVERSATION THAT IS
@@ -1290,6 +1323,11 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	sess.retakeTaskLanes()
 	sess.retakeLanes()
 	sess.retakeWakeLane()
+	// AND THE NEWSROOM IS TOLD THE ROOM'S NAME HAS CHANGED. /new and /resume
+	// mint a whole new agent, whose news arrives under a name of its own, and a
+	// conversation still filed under the old one would draw a status row that
+	// stopped moving the moment it was replaced (news.go).
+	sess.fileNews()
 	return json.Marshal(welcome)
 }
 
@@ -1790,6 +1828,14 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// (standinglane.go).
 		sess.watchLane(s, laneDesign)
 		return nil, nil
+	case MethodQuestionWatch:
+		// THE QUESTIONS LANE, SUBSCRIBED. Like the two above it, it answers
+		// nothing: what it buys is every question this conversation raises,
+		// withdraws or has answered arriving as a "question" frame from here on,
+		// including everything still open replayed the moment the subscription
+		// opens (internal/session's [Agent.WatchQuestions]).
+		sess.watchLane(s, laneQuestion)
+		return nil, nil
 	case MethodTitleWatch:
 		// THE NAMING LANE, SUBSCRIBED. It answers nothing: what it buys is the
 		// name this conversation gives itself arriving as a "title" frame,
@@ -2007,8 +2053,35 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return nil, door.StopWork()
 
 	case MethodInterrupt:
+		// A STOP WITH NO DOOR ON IT IS A PERSON'S OWN, which is what every
+		// surface older than this argument means by sending nothing.
+		args, err := arg[InterruptArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		if door := session.StopDoor(strings.TrimSpace(args.Door)); door != "" && door != session.StopByPerson {
+			agent.InterruptFor(door)
+			return nil, nil
+		}
 		agent.Interrupt()
 		return nil, nil
+
+	case MethodAnswerLaneOffer:
+		// THE ANSWER TO THE ONE QUESTION THE PHASE SEAM RAISES, and it is
+		// asserted rather than required of [WrappedAgent] for the task lane's
+		// reason: an engine with no transport under it has no offer to answer,
+		// and false — "there was nothing to answer" — is the honest word for
+		// that as much as for a question that aged out (wire.go's
+		// [MethodAnswerLaneOffer]).
+		yes, err := arg[bool](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(laneOfferDoor)
+		if !ok {
+			return mustJSON(false), nil
+		}
+		return mustJSON(door.AnswerLaneOffer(yes)), nil
 
 	case MethodCompact:
 		return nil, agent.Compact(context.Background())
@@ -2076,6 +2149,33 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		agent.SetReasoningFor(args.Model, args.Level)
 		s.session.announce()
 		return nil, nil
+
+	case MethodEffort, MethodResolvedEffort, MethodSetEffort:
+		door, ok := agent.(effortDoor)
+		if !ok {
+			// A surface reading [Welcome.Effort] never gets here, and one that
+			// asked anyway is told the fact rather than left with a zero value it
+			// would draw as a rung of its own (effort.go).
+			return nil, errors.New("engine: this conversation has no thinking dial; update the engine and reconnect")
+		}
+		if call.Method == MethodEffort {
+			return json.Marshal(door.ConversationEffort())
+		}
+		if call.Method == MethodResolvedEffort {
+			return json.Marshal(door.ResolvedEffort())
+		}
+		rung, err := arg[string](call)
+		if err != nil {
+			return nil, err
+		}
+		took := door.SetConversationEffort(rung)
+		// AND EVERY SURFACE IS TOLD, on [MethodSetModel]'s terms: the rung rides
+		// the fact set every window on this conversation draws from, and a dial
+		// moved in one of them is a cell the others are painting right now.
+		if took {
+			s.session.announce()
+		}
+		return json.Marshal(took)
 
 	case MethodConsent:
 		args, err := arg[ConsentArgs](call)

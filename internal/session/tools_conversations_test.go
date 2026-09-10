@@ -96,7 +96,7 @@ func TestSearchingConversationsAnswersWithTheWordsTheirAgeAndTheirTranscript(t *
 	if !strings.Contains(out, "'the pricing thread'") {
 		t.Fatalf("the conversation is not named:\n%s", out)
 	}
-	if !strings.Contains(out, "them: ") {
+	if !strings.Contains(out, "user: ") {
 		t.Fatalf("nobody is said to have spoken:\n%s", out)
 	}
 	if !strings.Contains(out, "just now") && !strings.Contains(out, "ago") {
@@ -146,7 +146,7 @@ func TestSearchingConversationsClampsWhatItWillAnswerWith(t *testing.T) {
 	lines := func(out string) int {
 		count := 0
 		for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-			if strings.Contains(line, "the deploy runs on friday") {
+			if strings.Contains(line, "the deploy runs on friday") && strings.HasPrefix(line, "  message ") {
 				count++
 			}
 		}
@@ -204,4 +204,177 @@ func post(t *testing.T, brain *store.Store, session string, role store.Role, bod
 	if _, err := brain.PostMessage(store.Message{SessionID: session, Role: role, Body: body}); err != nil {
 		t.Fatalf("post message: %v", err)
 	}
+}
+
+// A correction can share no query words with the decision it replaces. One
+// lookup must retain that exchange and a second lookup must work across places
+// even when the old conversation has no sibling transcript file.
+func TestConversationSearchFindsThePassageAndOpensItsCorrectionByID(t *testing.T) {
+	agent, brain := brainAgent(t, &scriptedCompleter{}, nil)
+	post(t, brain, "elsewhere", store.RoleAgent, strings.Repeat("background detail ", 100)+"The amber launch code is CEDAR-81.")
+	post(t, brain, "unrelated", store.RoleUser, "private unrelated neighbour must not leak")
+	post(t, brain, "elsewhere", store.RoleUser, "Correction: use MAPLE-92 instead.")
+	out := searchConversations(t, agent, `{"query":"amber","limit":1}`)
+	for _, want := range []string{"CEDAR-81", "MAPLE-92", "Conversation elsewhere", "message "} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q: %s", want, out)
+		}
+	}
+	if strings.Contains(out, "private unrelated") {
+		t.Fatal("context crossed conversations")
+	}
+	hits, err := brain.FindConversationMessages(context.Background(), "amber", "elsewhere", "", 1)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("hits: %v %v", hits, err)
+	}
+	opened := searchConversations(t, agent, conversationReadArgs("elsewhere", hits[0].Seq))
+	if !strings.Contains(opened, "MAPLE-92") {
+		t.Fatalf("cannot open correction: %s", opened)
+	}
+	scoped := searchConversations(t, agent, `{"query":"amber","session_id":"unrelated"}`)
+	if strings.Contains(scoped, "CEDAR-81") {
+		t.Fatalf("scope ignored: %s", scoped)
+	}
+}
+
+func TestConversationSearchCanBrowseAConversationAndRefusesAmbiguousIDs(t *testing.T) {
+	agent, brain := brainAgent(t, &scriptedCompleter{}, nil)
+	post(t, brain, "room", store.RoleUser, "our current decision")
+	if got := searchConversations(t, agent, `{"session_id":"room"}`); !strings.Contains(got, "our current decision") {
+		t.Fatal(got)
+	}
+	for _, args := range []string{`{"message_id":1}`, `{"session_id":"room","message_id":-1}`, `{"session_id":"room","message_id":1,"query":"decision"}`} {
+		_, failed, err := agent.searchConversationsTool(context.Background(), json.RawMessage(args))
+		if !failed || err != nil {
+			t.Fatalf("ambiguous input accepted: %s", args)
+		}
+	}
+}
+
+// The real worker constructor must carry search authority through every depth,
+// without turning its inherited reader into writable long-term memory.
+func TestTaskWorkersInheritConversationReadsWithoutMemoryWrites(t *testing.T) {
+	parent, brain := brainAgent(t, &scriptedCompleter{}, nil)
+	post(t, brain, "other-project", store.RoleUser, "the launch receipt is SILVER-731")
+	post(t, brain, parent.sessionID(), store.RoleUser, "Before handing off: the copper receipt is GOLD-842")
+	owner := parent
+	for depth := 0; depth < 3; depth++ {
+		graph := owner.graph()
+		graph.run = func(*TaskNode) {}
+		id := graph.reserve()
+		graph.admit(id, taskSpec{title: "look up earlier decision", brief: "find the launch receipt", acceptance: "quote the receipt"})
+		worker, err := owner.newTaskAgent(context.Background(), t.TempDir(), graph.node(id), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer worker.Close()
+		if !historyCarriesTool(worker, "search_conversations") || historyCarriesTool(worker, "remember") || worker.config.Memory != nil || worker.memory != nil {
+			t.Fatalf("depth %d: worker must carry read-only history, with no memory writer", depth)
+		}
+		if got := searchConversations(t, worker, `{"query":"SILVER"}`); !strings.Contains(got, "SILVER-731") {
+			t.Fatal(got)
+		}
+		if got := searchConversations(t, worker, `{"query":"GOLD"}`); !strings.Contains(got, "GOLD-842") {
+			t.Fatalf("worker lost its parent history: %s", got)
+		}
+		owner = worker
+	}
+}
+
+// Searching for another chat must not find the question that just asked for it.
+// An explicit scope remains the way to inspect this conversation's older text.
+func TestConversationSearchExcludesItsOwnQueryButAllowsExplicitScope(t *testing.T) {
+	agent, brain := brainAgent(t, &scriptedCompleter{}, nil)
+	post(t, brain, agent.sessionID(), store.RoleUser, "find my sandbox browser conversation")
+	post(t, brain, "elsewhere", store.RoleUser, "we chose the sandbox browser called cedar")
+	out := searchConversations(t, agent, `{"query":"sandbox browser"}`)
+	if strings.Contains(out, "find my sandbox") || !strings.Contains(out, "called cedar") {
+		t.Fatal(out)
+	}
+	args, _ := json.Marshal(map[string]any{"query": "sandbox browser", "session_id": agent.sessionID()})
+	if got := searchConversations(t, agent, string(args)); !strings.Contains(got, "find my sandbox") {
+		t.Fatal(got)
+	}
+}
+
+func TestTaskSearchMissNamesConversationSearchOnlyWhenItExists(t *testing.T) {
+	with, _ := brainAgent(t, &scriptedCompleter{}, nil)
+	without, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	if got := with.taskSearchText("missing-specific-topic", 1, taskScopeProject); !strings.Contains(got, "search_conversations") {
+		t.Fatal(got)
+	}
+	if got := without.taskSearchText("missing-specific-topic", 1, taskScopeProject); strings.Contains(got, "search_conversations") {
+		t.Fatal(got)
+	}
+}
+
+func TestForkedHandsInheritOnlyConversationReads(t *testing.T) {
+	parent, brain := brainAgent(t, &scriptedCompleter{}, nil)
+	post(t, brain, "elsewhere", store.RoleUser, "the shared receipt is FIR-555")
+	seed, system := parent.forkSeed()
+	hand, err := parent.newHandAgent(forkPart{Role: "read the sources", Scope: []string{}}, seed, system, &handLeash{limit: forkRounds})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer hand.Close()
+	if !historyCarriesTool(hand, "search_conversations") || historyCarriesTool(hand, "remember") || hand.config.Memory != nil {
+		t.Fatal("fork did not inherit only history reads")
+	}
+	if got := searchConversations(t, hand, `{"query":"FIR"}`); !strings.Contains(got, "FIR-555") {
+		t.Fatal(got)
+	}
+}
+
+func TestTaskCheckerCanReadConversationEvidenceWithoutWriters(t *testing.T) {
+	parent, brain := brainAgent(t, &scriptedCompleter{}, nil)
+	post(t, brain, "earlier", store.RoleUser, "the checked receipt is BIRCH-333")
+	graph := parent.graph()
+	graph.run = func(*TaskNode) {}
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "read history", brief: "find the receipt", acceptance: "quote it"})
+	checker, err := parent.newAuditAgent(t.TempDir(), graph.node(id), plainDoor(auditReadCommands), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer checker.Close()
+	if !historyCarriesTool(checker, "search_conversations") || historyCarriesTool(checker, "remember") || historyCarriesTool(checker, "write") || checker.config.Memory != nil {
+		t.Fatal("checker must inherit only read access")
+	}
+	for _, tool := range checker.tools {
+		if tool.Name == "search_conversations" {
+			out, failed, err := tool.Execute(context.Background(), json.RawMessage(`{"query":"BIRCH"}`))
+			if err != nil || failed || !strings.Contains(out, "BIRCH-333") {
+				t.Fatalf("checker cannot inspect source: %s %v", out, err)
+			}
+		}
+	}
+}
+
+func TestOpeningAConversationMessagePreservesItsWholeIndexedBody(t *testing.T) {
+	agent, brain := brainAgent(t, &scriptedCompleter{}, nil)
+	body := strings.Repeat("Background paragraph.\n", 300) + "```go\nfinal := \"CEDAR-19\"\n```"
+	msg, err := brain.PostMessage(store.Message{SessionID: "source", Role: store.RoleAgent, Body: body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := searchConversations(t, agent, conversationReadArgs("source", msg.Seq))
+	if !strings.Contains(out, strings.ReplaceAll(body, "\n", "\n    ")) || !strings.Contains(out, "Beginning of indexed conversation reached") || !strings.Contains(out, "End of indexed conversation reached") {
+		t.Fatal(out)
+	}
+}
+
+// Restricted hands replace their initial belt after construction. The actual
+// carried tools, not a fresh call to belt(), are what a model can invoke.
+func historyCarriesTool(agent *Agent, name string) bool {
+	for _, tool := range agent.tools {
+		if tool.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func conversationReadArgs(id string, seq int64) string {
+	raw, _ := json.Marshal(map[string]string{"ref": ConversationReference(id, seq)})
+	return string(raw)
 }

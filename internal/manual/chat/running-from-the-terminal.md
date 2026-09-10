@@ -706,9 +706,10 @@ that, and of what a mistyped command is answered with, is on the *commands* page
 
 Two things that account does not cover:
 
-- **The doors that parse no flags at all answer the gesture too.** `aforge plan show`,
-  `aforge models` and `aforge cache` take a positional or nothing, and each reads `--help`
-  as the question rather than as an argument. `aforge plan show --help` used to answer
+- **The doors that parse no flags at all answer the gesture too.** `aforge plan show` and
+  `aforge cache` take a positional or nothing, and each reads `--help` as the question
+  rather than as an argument. (`aforge models` has one flag, `--refresh`, which fetches
+  today's model list first — what `ctrl+r` does in `/model`.) `aforge plan show --help` used to answer
   `open --help: no such file or directory` — a filesystem error about a flag.
 - **`help env` is the environment table.** It moved off `--help` when that page was 127
   lines and more than half of them were this table, so the last thing on the screen after

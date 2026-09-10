@@ -1547,7 +1547,7 @@ func checkerConclusion(node *TaskNode, fallback string) string {
 // auditQuestion is what the auditor is asked: the frozen acceptance, the work's
 // own claim, and where to look.
 //
-// The BRIEF IS NOT HERE, and that is deliberate. The brief is the executor's
+// The BRIEF IS NOT HERE for an explicit acceptance, and that is deliberate. The brief is the executor's
 // instruction — its goal, its constraints, the conventions it was told to
 // follow — and an auditor reading it starts grading effort and intention. The
 // acceptance is the contract (Argus's two-tier goal contract,
@@ -1555,6 +1555,10 @@ func checkerConclusion(node *TaskNode, fallback string) string {
 // it is the SAME frozen text the node was finished against. The node's own last
 // words are included as a CLAIM, labelled as one: it is the thing under audit,
 // not evidence about it.
+//
+// The unshaped fallback is the one exception: its acceptance explicitly says
+// to complete the brief. Omitting that referenced contract makes a checker
+// reconstruct the request from the worker's claim or from unrelated history.
 //
 // AND IT NAMES THE DOOR. The auditor's bash will run the checks this work
 // declares or ran and nothing else (task_checks.go), so the packet says which
@@ -1565,7 +1569,15 @@ func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door audit
 	var out strings.Builder
 	out.WriteString("The work: " + node.title() + "\n\n")
 	out.WriteString("ACCEPTANCE (this is the contract; judge against this and nothing else):\n")
-	out.WriteString(node.acceptance() + "\n\n")
+	node.graph.mu.Lock()
+	acceptance := node.assignmentLocked().acceptance
+	brief := node.spec.brief
+	node.graph.mu.Unlock()
+	out.WriteString(acceptance + "\n\n")
+	if acceptance == taskPersonAcceptance {
+		out.WriteString("THE BRIEF REFERENCED BY THAT ACCEPTANCE (the requested deliverable, not the worker's claim):\n")
+		out.WriteString(brief + "\n\n")
+	}
 	// AND WHERE THE PERSON MOVED IT, THE PACKET SAYS SO AND SAYS WHICH ONE WINS.
 	// A revised task has two done-conditions in its history and exactly one it is
 	// judged by (assignment.go); an auditor handed both without being told that
@@ -1580,6 +1592,9 @@ func auditQuestion(node *TaskNode, tree taskTree, ground auditGround, door audit
 	if claim = strings.TrimSpace(claim); claim != "" {
 		out.WriteString("What it CLAIMS it did — this is the claim under audit, not evidence:\n")
 		out.WriteString(claim + "\n\n")
+		// A retained answer can be the requested deliverable without a file.
+		// Its persistence is a runtime fact; its factual claims still need checks.
+		out.WriteString("The task's final response is retained in its task record. When the acceptance asks for an answer or report in the final response, that retained text is the deliverable; do not invent a requirement to create a file. A file is required when the acceptance requires one or the work claims to have created one. The answer's factual claims still require independent evidence.\n\n")
 	}
 	if len(files.own) > 0 {
 		out.WriteString("Files it wrote: " + strings.Join(files.own, ", ") + "\n")
@@ -2314,6 +2329,20 @@ func (n *TaskNode) startedAt() time.Time {
 // It is exported because two callers need it: a surface with a person in front
 // of it, and the model through the `tasks` tool (tools_tasks.go).
 func (a *Agent) ResolveUnverified(id uint64, resolution TaskResolution, why string) error {
+	return a.resolveUnverifiedBy(id, resolution, why, TaskAskOwnerPerson)
+}
+
+// resolveUnverifiedBy is that door with WHICH DOOR WAS USED carried through it.
+//
+// THE RECEIPT SAYS WHO DECIDED, AND IT IS A FACT RATHER THAN AN INFERENCE. A
+// node settled under `task.settle = auto` and a node the person pressed `[a]` on
+// reach the same three answers, and reading the policy afterwards to guess which
+// happened is wrong the moment a person answers a card on a node the model was
+// holding — which is exactly what `[t] take it back` is for. So the two callers
+// name themselves: the surface goes through [Agent.ResolveUnverified] and the
+// model's own `tasks … resolve` goes through here (tools_tasks.go), and the
+// report leads with the one that spent the verb ([acceptedLine]).
+func (a *Agent) resolveUnverifiedBy(id uint64, resolution TaskResolution, why string, by TaskAskOwner) error {
 	node := a.taskNode(id)
 	if node == nil {
 		return fmt.Errorf("no task %d in this session", id)
@@ -2330,9 +2359,9 @@ func (a *Agent) ResolveUnverified(id uint64, resolution TaskResolution, why stri
 	why = strings.TrimSpace(why)
 	switch resolution {
 	case TaskAccept:
-		return a.acceptTask(node, why)
+		return a.acceptTask(node, why, by)
 	case TaskRefute:
-		return a.refuteTask(node, why)
+		return a.refuteTask(node, why, by)
 	case TaskReaudit:
 		return a.reauditTask(node)
 	}
@@ -2381,6 +2410,15 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 	if state := node.stateNow(); state != TaskUnverified {
 		return settledAlready(id, state)
 	}
+	// AND A SECOND PRESS IS NOT A SECOND HAND-OVER. On 2026-09-09 the card was
+	// pressed twice twenty-seven seconds apart and the model was handed the same
+	// decision twice, in two identical lines — a second instruction about a
+	// question it was already holding, which is an invitation to answer it twice.
+	// The honest answer to the second press is what is already true, and the card
+	// draws it exactly as it draws every other refusal these doors give.
+	if node.wasHandedOver() {
+		return fmt.Errorf("task %d is %s: %w", id, handedAlreadyWord, ErrTaskHandedOver)
+	}
 	// AND THE NODE RECORDS WHO IS HOLDING IT, so that the card in front of the
 	// person stops offering them chips they have just handed over and says who is
 	// deciding instead. It is the same mark `task.settle = auto` makes at the
@@ -2394,6 +2432,63 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 	return nil
 }
 
+// handedAlreadyWord is what a repeated hand-over answers with, in the person's
+// own vocabulary for the thing they pressed — the card says aforge is deciding,
+// so the refusal says the same word back rather than naming a field.
+const handedAlreadyWord = "already handed to aforge"
+
+// ErrTaskHandedOver says the second press changed nothing because the first one
+// already did it, and it is a SEPARATE sentinel from [ErrTaskDecided] because
+// the two are opposite facts about the card in front of somebody. A decided node
+// is over and its card stops asking; a handed-over one is still `your call`,
+// still waiting on an answer, and the only thing that moved is whose hands the
+// question is in — so a surface that drew "already answered" over it would be
+// reporting a decision nobody has made (internal/tui3's tasksettle.go).
+var ErrTaskHandedOver = errors.New("session: that task is already handed to aforge")
+
+// wasHandedOver reports that THIS DOOR has already given the model this node's
+// decision and nothing has taken it back.
+//
+// IT IS NOT "THE MODEL IS DECIDING", and the difference is the whole of why it
+// is its own fact. Under `task.settle = auto` — and in every headless run, where
+// nobody is there to be asked — a landing marks the model as the decider by
+// POLICY (task_run.go's [Agent.handToModelOnAuto]), which is not a press and
+// carries no note. Refusing the press on that would refuse the first one.
+//
+// IT IS IN MEMORY AND NEVER ON THE RECORD, for [taskRecord.Decider]'s own
+// reason: a hand-over lasts at most one turn — the floor takes it back at the
+// end of the model's turn and a resumed session takes it back on load — so a
+// receipt that survived either would refuse a press for a turn that is over.
+func (n *TaskNode) wasHandedOver() bool {
+	if n == nil || n.graph == nil {
+		return false
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.handed
+}
+
+// decidedBy reads who is holding one node's question, with the graph taken for
+// the read the way every other reader of a node's fields takes it.
+func (n *TaskNode) decidedBy() TaskAskOwner {
+	if n == nil || n.graph == nil {
+		return ""
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.decider
+}
+
+// givesBackLocked puts one node's question back in the person's hands, with the
+// graph held. It is a function because the receipt above has to move with the
+// owner wherever the owner moves, and there are three roads that move it: the
+// person taking it back, the end-of-turn floor, and a resumed session's load
+// (task_run.go). A road that wrote only the owner would leave a receipt behind
+// and refuse the next press.
+func (n *TaskNode) givesBackLocked() {
+	n.decider, n.handed = TaskAskOwnerPerson, false
+}
+
 // holdsDecision writes who is holding one node's question. It is the graph's
 // lock and one field, and it is here rather than beside the door because both
 // doors that move a decision — this one and the settle policy's — have to write
@@ -2404,7 +2499,15 @@ func (n *TaskNode) holdsDecision(owner TaskAskOwner) {
 	}
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	n.decider = owner
+	if owner != TaskAskOwnerModel {
+		n.givesBackLocked()
+		return
+	}
+	// AND THE RECEIPT IS WRITTEN WITH THE OWNER. A press that gets this far is
+	// the one that hands the model the note, and the next press on the same node
+	// is answered with what is already true rather than sending a second copy of
+	// one decision ([TaskNode.wasHandedOver]).
+	n.decider, n.handed = owner, true
 }
 
 // TakeBackDecision is [Agent.HandUnverifiedToModel] in reverse: the person
@@ -2454,7 +2557,7 @@ const (
 // is pretend an auditor said so: the report leads with who accepted it and on
 // what grounds, because a card that read "VERIFIED" over a verdict nobody gave
 // would be the same lie as the one this file was fixed to stop telling.
-func (a *Agent) acceptTask(node *TaskNode, why string) error {
+func (a *Agent) acceptTask(node *TaskNode, why string, by TaskAskOwner) error {
 	// THE CLAIM IS TAKEN BEFORE THE WORKING COPY IS LOOKED FOR, and it covers
 	// everything down to the resettle. What sits between the two is an os.Stat, a
 	// `git rev-parse` and a merge — long enough for a second accept in the same
@@ -2481,6 +2584,15 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 	// same whole product a verified one laid at once. The fold is idempotent, so
 	// a list that is already complete costs a walk of itself.
 	changed, merge, detail, refusal := landHome(node, tree, changed)
+	if refusal == refusedByYourFiles {
+		// AND THE ROAD IS MARKED HERE TOO. An accept is the second time a node's
+		// branch is offered to the ground, and it can be refused by the person's
+		// own untracked copies exactly as the first was (groundcarry.go) — so the
+		// card that comes back asks the same question with the answer that can
+		// actually spend it behind it, rather than falling back to a branch
+		// conflict that is not what happened.
+		node.heldByYourFiles()
+	}
 	// AN ACCEPT IS NOT A MERGE, and a branch that would not go is not done
 	// however sure the person was about the work. The node stays where it was —
 	// needing a look — with the conflicting files named, because what is being
@@ -2494,17 +2606,17 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 		// work where the sentence under it says it is, and the next resolution on
 		// this node is answered as already decided ([settledAlready]).
 		if refusal == refusedByTheTree {
-			node.finish(withReport(keptWhereItIsLead+detail, withReport(acceptedLine(why), report)),
+			node.finish(withReport(keptWhereItIsLead+detail, withReport(acceptedLine(why, by), report)),
 				changed, tree.branch, merge)
 			node.graph.resettle(node, TaskDone)
 			return nil
 		}
-		node.finish(withReport(withYourCallLead(TaskFacts{Merge: merge, Conflicts: node.clashes()}, detail), withReport(acceptedLine(why), report)),
+		node.finish(withReport(withYourCallLead(node.landingFacts(merge), detail), withReport(acceptedLine(why, by), report)),
 			changed, tree.branch, merge)
 		node.graph.resettle(node, TaskUnverified)
 		return nil
 	}
-	node.finish(withReport(acceptedLine(why), withReport(report, detail)), changed, tree.branch, merge)
+	node.finish(withReport(acceptedLine(why, by), withReport(report, detail)), changed, tree.branch, merge)
 	node.graph.resettle(node, TaskDone)
 	return nil
 }
@@ -2514,7 +2626,7 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 // REFUTED verdict, which drops the node's claim because the auditor's evidence
 // has already answered it. Here the auditor answered nothing, so what the node
 // said is still the only account of the work there is.
-func (a *Agent) refuteTask(node *TaskNode, why string) error {
+func (a *Agent) refuteTask(node *TaskNode, why string, by TaskAskOwner) error {
 	if err := node.claimSettle(claimRefute); err != nil {
 		return err
 	}
@@ -2524,7 +2636,7 @@ func (a *Agent) refuteTask(node *TaskNode, why string) error {
 	node.checkSaid(provider.VerdictSemanticFailure, 0)
 	report, changed, branch, merge := node.leavings()
 	node.end(TaskEndingRefused)
-	node.finish(withReport(refutedLine(why), report), changed, branch, merge)
+	node.finish(withReport(refutedLine(why, by), report), changed, branch, merge)
 	node.graph.resettle(node, TaskFailed)
 	return nil
 }
@@ -2674,19 +2786,52 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 // work back to them, so the vocabulary law holds here exactly as it holds on
 // every other landing: what happened is that a person looked and made a call,
 // and no part of that is worth spelling in the harness's own courtroom.
-func acceptedLine(why string) string {
-	line := "you looked at this yourself and took it as done"
+func acceptedLine(why string, by TaskAskOwner) string {
+	line := acceptedTookLine(by)
 	if why != "" {
 		line += ": " + clip(firstLine(why), taskReportLineLimit)
 	}
 	return line
 }
 
-func refutedLine(why string) string {
+// The two voices a resolved landing is written in, spelled once and read by the
+// card, the room, the row and the `tasks` reply.
+//
+// THEY SAY WHO, AND THEY MUST. A node the model settled under `task.settle =
+// auto` carried `you looked at this yourself and took it as done` into the
+// person's own transcript — a sentence about something they never did, on work
+// nobody had read. The person's own press keeps `you`; the model's verb says
+// `aforge`, which is what this product is called everywhere a person reads it.
+const (
+	acceptedByYou    = "you took this as done"
+	acceptedByAforge = "aforge took this as done"
+	notRightByYou    = "you said it is not finished"
+	notRightByAforge = "aforge said it is not finished"
+)
+
+// acceptedTookLine and notRightSaidLine pick the voice off the door that spent
+// the verb, never off the settle policy: a person answering a card on a node the
+// model was holding is the person, and `[t] take it back` exists to make that
+// happen.
+func acceptedTookLine(by TaskAskOwner) string {
+	if by == TaskAskOwnerModel {
+		return acceptedByAforge
+	}
+	return acceptedByYou
+}
+
+func notRightSaidLine(by TaskAskOwner) string {
+	if by == TaskAskOwnerModel {
+		return notRightByAforge
+	}
+	return notRightByYou
+}
+
+func refutedLine(why string, by TaskAskOwner) string {
 	// It leads with the same word a node that ran out of repair rounds leads
 	// with, because it is the same news: the work is not finished. Who decided is
 	// the second half of the sentence, not the headline.
-	line := incompleteLead + "you looked at this yourself and said so"
+	line := incompleteLead + notRightSaidLine(by)
 	if why != "" {
 		line += ": " + clip(firstLine(why), taskReportLineLimit)
 	}
@@ -2770,6 +2915,9 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		judge = named
 	}
 	auditor, err := newAgent(Config{
+		// A checker can independently read the source a worker cited, without
+		// gaining the writable memory store or any additional mutation tool.
+		ConversationHistory: parent.conversationHistory(),
 		// The auditor reads rather than writes, but reading is what makes a
 		// dropping: a long file it looks at is stubbed on its way out of the live
 		// context (stub.go), and with nothing here those bytes landed in the
@@ -2821,6 +2969,9 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 	// the auditor's belt unless somebody remembered this rule. Composed here,
 	// a new tool reaches the auditor only when this list names it.
 	tools := auditBelt(dir, door, parent.droppingsPlace())
+	for _, tool := range auditor.conversationTools() {
+		tools = append(tools, boundedResult(tool, parent.droppingsPlace(), dir))
+	}
 	definitions, err := toolDefinitions(tools)
 	if err != nil {
 		_ = auditor.Close()

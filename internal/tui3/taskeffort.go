@@ -192,23 +192,21 @@ func (a *app) taskEffortClause(node *taskNode) string {
 // look` is the surface standing still waiting for a person, and the three words
 // that answer it were reachable only from inside the node's room — so the `!`
 // summoned somebody to a column that told them nothing about what to press
-// (tasksettle.go's [app.railSettleKey] is the other half). While the cursor is
-// on such a row the slot says the answers and nothing else: the move keys are
-// still there, they are still the keys a person already knows, and the one thing
-// they do not know is the one thing this line is for.
+// While the cursor is on such a row the slot says the answers and nothing else:
+// the move keys are still there, they are still the keys a person already knows,
+// and the one thing they do not know is the one thing this line is for.
 //
-// It is spelled from the card's own chips ([app.roomSettleHintFor]), so the
-// roster, the card and the room cannot name three different letters for one
-// question.
+// It is spelled from the QUESTION'S own answers ([app.landingHintAt]), so the
+// block, the room's slot and this one cannot name three different letters for
+// one question.
 func (a *app) railHoldHintWord() string {
-	if card := a.railSettleCard(); card != nil {
+	if node := a.railFocusNode(); node != nil && a.landingAsked(node.id) {
 		// AND IT IS SPELLED TO THE FRAME. The slot takes a line whole or not at
 		// all ([app.legend]), so the full sentence plus `esc` — four cells too
 		// long at sixty columns — left the narrowest terminal naming NONE of the
-		// keys that answer the row the cursor is sitting on. [app.settleHintAt]
-		// is the ranked prefix of it that fits, and `esc` is the last thing it
-		// gives up.
-		return a.settleHintAt(card, a.width, railSep+"esc")
+		// keys that answer the row the cursor is sitting on. The hint is the
+		// ranked prefix of it that fits, and `esc` is the last thing it gives up.
+		return a.landingHintAt(node.id, a.width, railSep+"esc")
 	}
 	if !a.taskRungMovable(a.railFocusNode()) {
 		return a.chords.say(railHoldHint)

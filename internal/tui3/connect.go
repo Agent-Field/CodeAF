@@ -131,17 +131,41 @@ type connAsk struct {
 	blank  string
 	secret bool
 	ask    string
-	// key is the typed-answer box, and nil until the offer has been accepted. It
-	// hangs off the ask rather than off the surface so that everything which drops
-	// an offer — the turn settling, /new, a resumed session — drops the half-typed
-	// answer with it, in the one assignment it already makes.
-	key *editor
 }
 
-// entering reports whether the offer at the head of the queue is collecting a
-// key right now.
+// connAskOf is the lane's own facts about one open offer, found by the token the
+// question carries.
+//
+// THE QUESTION IS THE QUESTION AND THIS IS WHAT IS LEFT. The block draws and
+// answers the offer (question.go); what it does not carry is the three things
+// only this lane knows — the service id the transcript is keyed by, whether the
+// typed answer is a secret or the missing half of an address, and the word the
+// catalog puts over the box — so they stay here, keyed by the same token.
+func (a *app) connAskOf(id string) (connAsk, bool) {
+	for _, ask := range a.connAsks {
+		if ask.id == id {
+			return ask, true
+		}
+	}
+	return connAsk{}, false
+}
+
+// entering reports whether the open offer is collecting a typed answer right
+// now, which on the block is the whole of what a key offer is: the box under the
+// question IS the answer lane ([session.InputText]).
 func (a *app) entering() bool {
-	return len(a.connAsks) > 0 && a.connAsks[0].key != nil
+	head, ok := a.connectAsking()
+	return ok && head.question.Input.Kind == session.InputText
+}
+
+// connectAsking is the open connect question, and false where there is none.
+func (a *app) connectAsking() (questionShown, bool) {
+	for _, open := range a.questions {
+		if open.question.Kind == session.QuestionConnect {
+			return open, true
+		}
+	}
+	return questionShown{}, false
 }
 
 // keyBox is whichever box on this surface is collecting a key, or nil. There are
@@ -151,7 +175,11 @@ func (a *app) entering() bool {
 func (a *app) keyBox() *editor {
 	switch {
 	case a.entering():
-		return a.connAsks[0].key
+		// THE BLOCK'S BOX IS THE MAIN DRAFT, which is the whole of what moving
+		// this question onto the block bought: the answer is typed where every
+		// answer is typed ([questionOwnsBox]), and the clipboard asks the same
+		// box it always asks.
+		return &a.input
 	case a.connPanel.open && a.connPanel.entry != nil:
 		return &a.connPanel.entry.box
 	case a.at(pageSettings) && a.sheet.conn.entry != nil:
@@ -197,12 +225,90 @@ func (a *app) askConnect(ev session.Event) {
 			ask = strings.TrimSpace(service.KeyAsk)
 		}
 	}
-	a.connAsks = append(a.connAsks, connAsk{
+	held := connAsk{
 		id: ev.ConnectID, service: ev.Service, name: name, needsKey: ev.NeedsKey,
 		blank: blank, secret: secret, ask: ask,
-	})
+	}
+	a.connAsks = append(a.connAsks, held)
+	a.raiseQuestion(a.connectShown(held))
 	a.follow()
 	a.touch()
+}
+
+// connectShown is one offer as the block holds it: the engine's own question
+// object, plus what this program does about an answer.
+//
+// THE OBJECT IS THE ENGINE'S OWN BUILDER ([session.ConnectQuestion]). The lane
+// hands the surface the event a moment before the questions lane reaches it, and
+// the block keys a question by its lane and its token — so one builder, called
+// from both roads, with the three words only this surface has passed into it.
+func (a *app) connectShown(ask connAsk) questionShown {
+	q := session.ConnectQuestion(ask.id, ask.name, ask.needsKey,
+		firstNonEmpty(ask.ask, connectKeyHint(ask.name, ask.blank)), ask.secret)
+	if a.hostedBrowserSignInFor(ask) {
+		// A BROWSER SIGN-IN CANNOT BE FINISHED FROM HERE, so the offer does not
+		// pretend it can: the reason says what is actually true and the `connect`
+		// answer is taken off, leaving `not now` and `esc` (host.go says why the
+		// line is the browser and not the account).
+		q.Reason = connectAskRemoteWord
+		q.Options = connectRemoteOptions(q.Options)
+	}
+	return questionShown{
+		question: q,
+		answered: func(answer session.Answer) session.Answer {
+			a.settleConnectAsk(ask, answer)
+			return answer
+		},
+	}
+}
+
+// connectRemoteOptions is the offer's answers with the one that cannot work
+// taken off. A key drawn as an affordance and answering as a failure is worse
+// than an answer that is not there.
+func connectRemoteOptions(options []session.AnswerOption) []session.AnswerOption {
+	out := make([]session.AnswerOption, 0, len(options))
+	for _, option := range options {
+		if option.Safe {
+			out = append(out, option)
+		}
+	}
+	return out
+}
+
+// settleConnectAsk is what this PROGRAM does about an answer: the lane's own
+// facts are forgotten, and a key that was actually given opens the block that
+// says the far end is being asked about it.
+//
+// IT DECIDES NOTHING. The answer is already on its way to
+// [session.Agent.ResolveQuestion], which reads the lane off it and sends words
+// through `ResolveConnectKey` and a bare pick through `ResolveConnect`.
+//
+// Nothing is written to the transcript on a no, in either shape. An approval's
+// next line is the browser opening, which the session announces and
+// [app.connectAuth] draws; a decline changed nothing, and a surface that
+// recorded "you said not now" would be keeping a note about a thing that did not
+// happen.
+func (a *app) settleConnectAsk(ask connAsk, answer session.Answer) {
+	a.forgetConnectAsk(ask.id)
+	words := strings.TrimSpace(answer.Words())
+	if words == "" || ask.blank != "" {
+		return
+	}
+	// The key is on its way to the far end, which takes a network trip and can
+	// take a while. That is a thing that HAPPENED, so it lands in the
+	// conversation the way the browser handoff does, and the outcome settles it
+	// in place ([app.settleConnect]).
+	a.openConnectCheck(ask.service, ask.name)
+}
+
+// forgetConnectAsk drops the lane's own facts about one offer.
+func (a *app) forgetConnectAsk(id string) {
+	for i, ask := range a.connAsks {
+		if ask.id == id {
+			a.connAsks = append(a.connAsks[:i], a.connAsks[i+1:]...)
+			return
+		}
+	}
 }
 
 // connectServiceForAsk finds the catalog words that belong over one typed
@@ -225,268 +331,66 @@ func (a *app) connectServiceForAsk(id string) (connect.Service, bool) {
 	return connect.Service{}, false
 }
 
-// asksConnect reports whether an offer owns the keyboard.
-func (a *app) asksConnect() bool { return len(a.connAsks) > 0 }
-
-// answerConnect resolves the offer at the head of the queue.
+// asksConnect reports whether an offer is open on the block.
 //
-// A YES WHEN THE SERVICE NEEDS A TYPED ANSWER IS NOT AN ANSWER YET, it is the
-// start of one: the block opens a box in place and waits for the key, or the one
-// thing the browser address is missing ([app.connectKeyRow]). The session hears
-// nothing until that box is submitted or backed out of — exactly one answer per
-// offer, sent when the person has actually given one.
-func (a *app) answerConnect(approve bool) {
-	if len(a.connAsks) == 0 {
-		return
-	}
-	if approve && a.connAsks[0].needsKey && a.connAsks[0].key == nil {
-		a.connAsks[0].key = &editor{}
-		a.touch()
-		return
-	}
-	head := a.connAsks[0]
-	a.connAsks = a.connAsks[1:]
-	switch {
-	case a.agent == nil:
-	case head.needsKey:
-		// The key path has ONE road back into the session, and a decline takes it
-		// with an empty key rather than reaching for the other method: two ways
-		// to say no about one offer is two things the engine has to keep in step.
-		a.agent.ResolveConnectKey(head.id, "")
-	default:
-		a.agent.ResolveConnect(head.id, approve)
-	}
-	// Nothing is written to the transcript here, in either direction. An
-	// approval's next line is the browser opening, which the session announces
-	// and [app.connectAuth] draws; a decline changed nothing, and a surface that
-	// recorded "you said not now" would be keeping a note about a thing that did
-	// not happen.
-	a.touch()
+// IT IS NO LONGER "OWNS THE KEYBOARD", and that is the whole of what changed
+// here: the block is not modal (question.go), so every key it has not drawn
+// falls straight through to the message box. What is still true — and what the
+// callers of this actually want — is that the session is waiting on somebody
+// about an account.
+func (a *app) asksConnect() bool {
+	_, ok := a.connectAsking()
+	return ok
 }
 
-// submitConnectKey ends the offer at the head of the queue with whatever is in
-// its box: the key, or nothing at all.
-//
-// AN EMPTY BOX IS A DECLINE and not an error. A person who pressed enter on a
-// box they never typed into has said "not now" as plainly as esc would have, and
-// a surface that answered them with a complaint would be holding a session open
-// to argue about a form.
-func (a *app) submitConnectKey() {
-	if !a.entering() {
-		return
-	}
-	head := a.connAsks[0]
-	a.connAsks = a.connAsks[1:]
-	key := strings.TrimSpace(head.key.String())
-	if a.agent != nil {
-		a.agent.ResolveConnectKey(head.id, key)
-	}
-	if key != "" && head.blank == "" {
-		// The key is on its way to the far end, which takes a network trip and
-		// can take a while. That is a thing that HAPPENED, so it lands in the
-		// conversation the way the browser handoff does, and the outcome settles
-		// it in place ([app.settleConnect]).
-		a.openConnectCheck(head.service, head.name)
-	}
-	a.touch()
-}
-
-// dropConnectAsks forgets every unanswered offer. It runs where the approval
+// dropConnectAsks takes back every unanswered offer. It runs where the approval
 // questions are dropped and for the same reason (app.go's [app.settle]): the
 // turn that raised them is over, so the answers are late.
+//
+// IT SAYS SO RATHER THAN VANISHING ([app.withdrawQuestion] writes the one dim
+// line), because an offer that was on screen a moment ago and is simply gone
+// leaves somebody hunting for what they were about to answer.
 func (a *app) dropConnectAsks() {
 	if len(a.connAsks) == 0 {
 		return
+	}
+	for _, ask := range a.connAsks {
+		a.withdrawQuestion(session.ConnectQuestion(ask.id, ask.name, ask.needsKey, ask.ask, ask.secret),
+			connectOfferGoneWord)
 	}
 	a.connAsks = nil
 	a.touch()
 }
 
-// ── the keys ────────────────────────────────────────────────────────────────
+// connectOfferGoneWord is why an offer was taken back: the turn that wanted the
+// account has finished, so there is nothing left for a yes to unblock.
+const connectOfferGoneWord = "the turn that asked for it has finished"
 
-// The two answers, as the keys that give them. enter and esc are what the block
-// NAMES, because they are the two keys every overlay on this surface already
-// answers to — an offer is a yes-or-nothing, and this surface's yes is enter.
+// ── what the lane keeps of its own ──────────────────────────────────────────
 //
-// y and n are read silently beside them. They are the letters the approval
-// question uses one row up (consent.go), a hand that has learned them there will
-// reach for them here, and neither can collide with anything while the draft is
-// suspended. They are not on the offer: a line naming four keys for two answers
-// would be teaching the keyboard instead of the choice.
-func (a *app) connectAskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
-	if !a.asksConnect() {
-		return nil, false
-	}
-	// AND NOT BEHIND HOME, on the terms the approval question states in full
-	// (consent.go): home is the whole frame, so the offer and both its answers
-	// are off screen, and every printable key up there belongs to the box a
-	// conversation starts in. The offer keeps until home is closed — and an
-	// offer that ARRIVES closes it (app.go's EventConnectAsk), so this is only
-	// reached by a home opened over one already up.
-	if a.at(pageHome) {
-		return nil, false
-	}
-	if msg.String() == "ctrl+c" {
-		// Leaving is never modal, and mid-turn ctrl+c is the interrupt — which
-		// releases the blocked call the honest way.
-		return nil, false
-	}
-	// THE BOX TAKES EVERY OTHER KEY WHILE IT IS OPEN, y and n included: they are
-	// two letters of a key, and a surface that read them as answers would be a
-	// box that declined halfway through a paste. Only the two keys the offer
-	// named survive, meaning what they meant one row up.
-	if a.entering() {
-		switch msg.String() {
-		case "enter":
-			a.submitConnectKey()
-		case "esc":
-			// Back out to not now. The block is gone, the session is told, and
-			// what was typed is dropped rather than kept somewhere for later —
-			// a half-entered secret is not a draft.
-			a.answerConnect(false)
-		default:
-			// The filter box's key map, which is this surface's ONE way of
-			// typing into a one-line box (palette.go's [listNavigate]). There is
-			// no list under this one, so the walk and the page are no-ops.
-			listNavigate(msg, a.connAsks[0].key, func(int) {}, func() {}, 1)
-		}
-		a.touch()
-		return nil, true
-	}
-	switch msg.String() {
-	case "enter", "y":
-		// The one key this block refuses over --host, and it refuses by DOING
-		// NOTHING rather than by answering something else: approving is what opens
-		// the browser, the browser is on the wrong machine, and a yes turned
-		// quietly into a no would be the surface answering a question in somebody
-		// else's name. The row above has already dropped the offer (host.go), so
-		// this catches the muscle memory and the y.
-		if a.hostedBrowserSignIn() {
-			return nil, true
-		}
-		a.answerConnect(true)
-	case "esc", "n":
-		a.answerConnect(false)
-	}
-	// Everything else does nothing rather than typing into a conversation that
-	// cannot move — the modal rule the approval question states in full.
-	return nil, true
-}
-
-// ── the block ───────────────────────────────────────────────────────────────
-
-// connectOfferRow is where the offer sits inside the block: under the heading
-// and the sentence. The frame needs it to know which row the pointer can be
-// over (view.go).
-const connectOfferRow = 2
-
-// connectAskHeight is how many rows the block takes: the service, the sentence,
-// the offer, and the count of the offers behind it when there are any.
-func (a *app) connectAskHeight() int {
-	if !a.asksConnect() {
-		return 0
-	}
-	if len(a.connAsks) > 1 {
-		return 4
-	}
-	return 3
-}
-
-// connectAskRows draws the block, directly under the approval question's slot
-// and above the draft — which is where this surface puts everything it wants
-// answered.
-func (a *app) connectAskRows(width int) []string {
-	// The targets are rewritten by every layout and by nothing else: a stale
-	// span is a tap that answers about the previous offer.
-	a.connTaps = nil
-	if !a.asksConnect() {
-		return nil
-	}
-	head := a.connAsks[0]
-	out := make([]string, 0, 4)
-	out = append(out, a.pal.askBold(a.icon(tokens.GNeedsHuman))+" "+a.pal.bold(a.pal.ink(fit(head.name, width-2))))
-	// THE SENTENCE IS THE REASON THE BLOCK IS THERE, and over --host the reason
-	// has changed: the session reached for an account and this surface cannot get
-	// one connected, so the row says that instead of asking for something it
-	// cannot deliver (host.go). The offer below it drops to "not now" for the
-	// same reason.
-	sentence := connectPurpose(head.name)
-	if a.hostedBrowserSignIn() {
-		sentence = connectAskRemoteWord
-	} else if head.key != nil && head.blank != "" {
-		sentence = head.ask
-	}
-	out = append(out, a.pal.dim(fit("  "+sentence, width)))
-	// THE BOX TAKES THE OFFER'S OWN ROW, so the block does not grow, shift or
-	// re-flow under a hand that has just pressed a key on it. The sentence above
-	// stays because it is still the reason the box is there.
-	if head.key != nil {
-		out = append(out, a.connectKeyRow(head, width))
-	} else {
-		out = append(out, a.connectOffer(width))
-	}
-	if more := len(a.connAsks) - 1; more > 0 {
-		out = append(out, a.pal.dim(fit("  "+itoa(more)+" more", width)))
-	}
-	return out
-}
+// THE ROW, THE KEYS AND THE POINTER ARE GONE. The offer had a three-row block of
+// its own directly under the approval question's, with `[enter] connect · [esc]
+// not now` on the third row, its own click targets, and a key router that took
+// every keystroke on the frame while it was up — including `y` and `n`, read
+// silently beside the two it named. All of it is deleted. The offer is a card on
+// the question block now: `1` connects, `2` is not now, `esc` is *later*, and
+// every other key falls through to the message box, which is where the typed
+// answer goes.
+//
+// What is left in this file is the lane's own three things — the service id the
+// transcript is keyed by, the catalog's sentence over the box and whether the
+// answer is a secret ([connAsk]) — the masked box those decide the shape of
+// (below), and the browser flow the answer raises.
 
 // connectPurpose is the one quiet sentence: who is asking, and what for. The
 // product names itself from the one constant that holds its name (styles.go), so
 // a rename is a rename and not a search.
+//
+// It is the /connect panel's heading now. The offer above the box says
+// [session.ConnectAskReason] instead, which is the same fact in the engine's own
+// voice — one question, one sentence, whichever road it arrived by.
 func connectPurpose(name string) string {
 	return product + " wants to connect your " + name + " account"
-}
-
-// connectMark is what the pointer is over on row i of the block, which is the
-// frame's half of the same geometry ([app.chrome]).
-//
-// The offer is the one row of it that is pressable. The heading and the sentence
-// are statements, and a statement that lit up under the pointer would be
-// claiming to be a thing you could press.
-func (a *app) connectMark(i int) chromeRow {
-	if i == connectOfferRow {
-		return chromeRow{kind: chromeConnectAsk, index: i}
-	}
-	return chromeRow{}
-}
-
-// connectOffer is the answers. The whole line takes the question hue and the
-// keys are bold within it, exactly as the approval question's offer is: a person
-// looking for which key to press finds the key, and the sentence around it is
-// there to be recognized rather than read twice.
-func (a *app) connectOffer(width int) string {
-	// Pairs: the words at even indices, the keys — the only bold cells on the
-	// line — at odd ones, which is what [app.recordConnectTaps] reads.
-	parts := []string{"  ", "[enter]", " connect · ", "[esc]", " not now"}
-	// OVER --HOST THERE IS ONE ANSWER, and the row offers only that one. An
-	// [enter] that could not connect anything would be a key drawn as an
-	// affordance and answering as a failure, which is the exact thing the
-	// sentence above it has just said will not work (host.go).
-	if a.hostedBrowserSignIn() {
-		parts = []string{"  ", "[esc]", " not now"}
-	}
-	line := strings.Join(parts, "")
-	if ansi.StringWidth(line) > width {
-		// Too narrow for both answers spelled out. The line is cut rather than
-		// re-spelled — there is no shorter honest wording for two words — and it
-		// records no targets, because a target under an ellipsis is a press that
-		// answers something a person cannot read.
-		return a.pal.ask(fit(line, width))
-	}
-	a.recordConnectTaps(parts)
-	var out string
-	for i, part := range parts {
-		if i%2 == 1 {
-			out += a.pal.askBold(part)
-			continue
-		}
-		out += a.pal.ask(part)
-	}
-	if a.hoveringConnectAsk() {
-		return a.pal.cursor(out, width)
-	}
-	return out
 }
 
 // ── the key, typed in place ─────────────────────────────────────────────────
@@ -705,17 +609,12 @@ func envExampleFor(name string) string {
 	return "$" + word + "_KEY"
 }
 
-// connectKeyRow is the offer's row while a key is being typed into it.
-func (a *app) connectKeyRow(head connAsk, width int) string {
-	line, _ := keyLine(head.key, connectKeyHint(head.name, head.blank), head.secret, a.pal, width-2)
-	return "  " + line
-}
-
 // keyLine draws one key being typed — the mark, the mask, and the count — and
-// says which column the caret sits in. It is shared by the offer's row and by
-// the panel's own box (connectpanel.go), because there is ONE way of entering a
-// key on this surface and a second one that looked almost like it would be a
-// second thing to trust.
+// says which column the caret sits in. It is shared by the MESSAGE BOX while a
+// question asked for a secret (input.go's [app.secretDraftBlock]) and by the
+// panel's own box (connectpanel.go), because there is ONE way of entering a key
+// on this surface and a second one that looked almost like it would be a second
+// thing to trust.
 func keyLine(box *editor, hint string, secret bool, pal palette, width int) (string, int) {
 	lead := ansi.StringWidth(prompt)
 	mark := pal.dim(prompt)
@@ -743,80 +642,6 @@ func keyLine(box *editor, hint string, secret bool, pal palette, width int) (str
 	shown := min(len(box.value), room)
 	return mark + pal.ink(strings.Repeat(bullet, shown)) + pal.dim("  "+count), lead + shown
 }
-
-// ── the pointer ─────────────────────────────────────────────────────────────
-
-// connTap is one answer's columns on the offer row. A press inside
-// [span.from, span.to) is that answer, and nothing outside any span answers
-// anything.
-type connTap struct {
-	span    hudSpan
-	approve bool
-}
-
-// recordConnectTaps writes the offer line's columns: every key chip on it, and
-// the word beside it, are one target.
-//
-// THE WORD IS PART OF THE TARGET, for the reason the approval question's is:
-// `[esc]` is five cells, `[esc] not now` is thirteen, and that is the difference
-// between a target a person hits and one they aim at. The separator between the
-// two answers belongs to neither — a press in the gap must not resolve as
-// either.
-func (a *app) recordConnectTaps(parts []string) {
-	taps := make([]connTap, 0, 2)
-	at := 0
-	for i, part := range parts {
-		width := ansi.StringWidth(part)
-		approve, ok := false, false
-		switch part {
-		case "[enter]":
-			approve, ok = true, true
-		case "[esc]":
-			approve, ok = false, true
-		}
-		if !ok {
-			at += width
-			continue
-		}
-		to := at + width
-		if i+1 < len(parts) {
-			to += ansi.StringWidth(strings.TrimSuffix(parts[i+1], " · "))
-		}
-		taps = append(taps, connTap{span: hudSpan{from: at, to: to}, approve: approve})
-		at += width
-	}
-	a.connTaps = taps
-}
-
-// connectPress resolves a click on the block, and reports whether it took it.
-//
-// THE BLOCK SWALLOWS EVERY PRESS IN IT, answer or no answer, for the reason the
-// approval question's does: it is a thing the session is waiting on, and a press
-// that missed the offer and fell through would expand a tool call while somebody
-// was trying to answer a question about their account.
-func (a *app) connectPress(x, y int) bool {
-	if !a.asksConnect() || a.copy.on || a.at(pageSettings) {
-		return false
-	}
-	// THE ROW IS RESOLVED BEFORE THE COLUMN: laying the chrome out is what writes
-	// the spans, and reading them first would be reading where the answers were
-	// drawn on the frame before this one.
-	mark, ok := a.chromeAt(y)
-	if !ok || mark.kind != chromeConnectAsk {
-		return false
-	}
-	for _, tap := range a.connTaps {
-		if !tap.span.holds(x) {
-			continue
-		}
-		a.answerConnect(tap.approve)
-		return true
-	}
-	return true
-}
-
-// hoveringConnectAsk reports whether the pointer is on the offer row.
-func (a *app) hoveringConnectAsk() bool { return a.hot.kind == hoverConnectAsk }
 
 // ── the browser, and what came of it ────────────────────────────────────────
 //

@@ -144,11 +144,27 @@ func drawAnswerBand(a *app, ctx bandContext) []string {
 	if a.leaveAnswer == nil && !a.answeringHere(row) {
 		return nil
 	}
+	if a.answersStepAside(row) {
+		return nil
+	}
 	lines := a.answerChipLines(question, ctx.width, pal)
 	if len(lines) == 0 {
 		return nil
 	}
 	return lines
+}
+
+// answersStepAside is whether the row's own answers stay off the screen for now
+// — the card band's chips and the foot's strip both ask it, so the two cannot
+// come to disagree.
+//
+// NOT WHILE HOME'S OWN CARD IS UP ON THIS ROW. Enter on a held row raises `Move
+// this conversation here?` beside it (homeconfirm.go), and that card takes the
+// digits first — so chips promising `1 publish it` under a card where `1` is
+// `move it here` would be two questions on one keyboard. The chips step aside
+// while the card stands and are back the moment it is answered or put down.
+func (a *app) answersStepAside(row session.SessionRow) bool {
+	return a.home.ask != nil && a.home.armed == row.Transcript
 }
 
 // answerChip is one chip as it is drawn and as it is pressed: the key and its
@@ -365,8 +381,12 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 	}
 	switch action.Kind {
 	case session.QuestionConsent:
-		if len(a.asks) > 0 && a.asks[0].id == question.ID {
-			a.answerWith(action.Allow, action.Scope, answerConsentWord(action))
+		if a.consentAsking(question.ID) {
+			// AND IT IS THE BLOCK'S OWN ANSWER, not a second one beside it
+			// (consent.go's [app.answerWith]): the same receipt, the same record
+			// and the same annotated row as the same answer pressed in front of
+			// the question.
+			a.answerWith(action.Allow, action.Scope)
 			return nil, true
 		}
 		if a.agent != nil {
@@ -374,8 +394,7 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 			return nil, true
 		}
 	case session.QuestionTask:
-		if card := a.task; card != nil && card.id == question.ID && !card.settled() {
-			a.answerTask(action.Task.Approved, "")
+		if a.answerTaskWith(question.ID, key) {
 			return nil, true
 		}
 		if agent, ok := a.tasker(); ok {
@@ -384,11 +403,14 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 		}
 	case session.QuestionStanding:
 		if card := a.stand; card != nil && card.id == question.ID && !card.settled() {
-			// THE THREE ANSWERS ARE READ FROM THE ACTION AND NOT FROM THE KEY,
-			// so the words this card settles with cannot drift from what the
-			// engine was told ([session.AnswerFromKey] is the one mapping). The
-			// last arm is the decline — a zero [session.StandingAnswer] — and it
-			// keeps the same row `esc` would have left in this window.
+			// AND IT IS THE BLOCK'S OWN ANSWER, not a second one beside it: the
+			// same receipt, the same record and the same settled row as the same
+			// answer pressed in front of the card (standing.go). The words the
+			// row keeps are read off the answer that settled it, so they cannot
+			// drift from what the engine was told.
+			if open := a.questionOpenOn(session.QuestionStanding, question.ID); open != nil {
+				return a.answerQuestion(*open, session.Answer{Key: key}), true
+			}
 			switch {
 			case action.Standing.Once:
 				return a.answerStanding(action.Standing, standOnceDone, standOnceWord), true
@@ -434,21 +456,3 @@ func (a *app) answerWholeQuestion(question session.PresenceQuestion, key string)
 	}
 	return nil, true
 }
-
-// answerConsentWord is what the row in this window keeps.
-//
-// THE ALWAYS IS SPELLED WITH ITS REACH ON IT, because from home it is the
-// tool-wide one and nothing narrower: the second beat that turns a shell always
-// into a shape is a thing you do while looking at the command, and home has the
-// one line the session is stopped on rather than the command
-// ([session.AnswerFromKey] states the same at the other end). A row that said
-// `always · saved` would be claiming a rule nobody wrote.
-func answerConsentWord(action session.AnswerAction) string {
-	if action.Allow && action.Scope == session.ConsentToolSession {
-		return answerAlwaysWord
-	}
-	return decisionWord(action.Allow)
-}
-
-// answerAlwaysWord is that spelling.
-const answerAlwaysWord = "always · this tool, this session"

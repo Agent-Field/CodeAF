@@ -479,8 +479,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// Asked at the moment the picker opens, never at boot: a catalog that
 		// resolved while the person was reading is a catalog the picker can
 		// use, and one that has not resolved answers nil instead of waiting.
-		Models:  func() []tui3.Model { return v3Models(models) },
-		Sources: settings.Sources,
+		// It reads the shelf, which ctrl+r in /model refills with today's list.
+		Models:        func() []tui3.Model { return v3Models(proc.Shelf) },
+		RefreshModels: proc.Shelf.refresh,
+		Sources:       settings.Sources,
 		// The same deliverables index the session's config carries, so the
 		// surface's /export rows and the session's own land in one file.
 		ArtifactsIndex: artifactsIndexPath(),
@@ -674,6 +676,21 @@ type v3Options struct {
 	// posture every session has always had, where the model stopping is the
 	// session stopping.
 	Budget session.Budget
+	// NoStandingTicks says THIS PROCESS IS NOT THE ONE THAT KEEPS TIME for the
+	// machine's standing items, however complete the config it is about to build.
+	//
+	// It exists for exactly one caller, and the zero value is the posture every
+	// other door has always had. On the engine road the screen and the sessions
+	// live in two processes: the ENGINE holds this project's conversations, and a
+	// firing is delivered into an open conversation of the same project through
+	// the live registry of the process that ran the pass (internal/standing, and
+	// internal/manual/chat/keeping-an-eye.md's three roads). So a client that
+	// ticked would win the store's lock every so often and fire an item into a
+	// registry holding nothing but its own errand — filing the words in the
+	// project's inbox for the next launch while the person sat in front of the
+	// conversation they were meant to land in. One process keeps time, and on
+	// that road it is the one holding the conversations.
+	NoStandingTicks bool
 }
 
 // joinV3Notices puts the launch's dim lines on one row, in the order they were
@@ -870,8 +887,10 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// Whether the model in use can LOOK at a picture, from the catalog's
 		// published input modalities. It is a closure rather than a value
 		// because the answer is about the model the NEXT turn rides, and this
-		// session's model changes under /model (see [v3SeesImages]).
-		SupportsImages: v3SeesImages(activeModels),
+		// session's model changes under /model (see [v3SeesImages]). It reads
+		// the SHELF, so a model picked out of a list somebody refreshed a moment
+		// ago is answered from that list rather than refused as unknown.
+		SupportsImages: v3SeesImages(proc.Shelf),
 		// The published answer to "may this call carry this knob", which the
 		// adapter asks before it lets an optional field travel. It was wired to
 		// nothing on this path, so a reasoning level set with ctrl+t or
@@ -892,8 +911,8 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// The models a task may be handed to, asked at the moment a proposal
 		// names one and never at boot — the picker's own bargain, because both
 		// questions are about a catalog that may still be warming and neither of
-		// them may wait for it.
-		TaskModels: v3TaskModels(activeModels),
+		// them may wait for it. The shelf, for the vision gate's reason.
+		TaskModels: v3TaskModels(proc.Shelf),
 		// The two halves of the harness offer (internal/session's harness.go):
 		// what a turn is matched against, and what a yes reaches. They are
 		// filled together because either one alone is detection off — a
@@ -1015,7 +1034,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// (chatv3_standing.go). It is here, beside [startPlaceSweep], because every
 	// v3 door assembles through this function — and the first pass is a whole
 	// interval away, so a launch that exits immediately has ticked nothing.
-	if cfg.Standing != nil {
+	if cfg.Standing != nil && !opts.NoStandingTicks {
 		startStandingTicks(cfg.Standing.Store)
 	}
 
@@ -2245,6 +2264,28 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 		fmt.Fprintln(os.Stderr, notice+": "+cfg.SessionFile)
 	}
 	defer func() { _ = agent.Close() }()
+
+	// A DECISION TAKEN ON NOBODY'S BEHALF IS SAID OUT LOUD.
+	//
+	// With nobody at a keyboard the question gate applies the policy and answers
+	// itself (internal/session's tools_ask.go), and DESIGN.md's HEADLESS law is
+	// that this is PRINTED: `asked: <head> → 1 (default · nobody to ask)`. The
+	// sentence rides the answer, and the answer rides the questions lane rather
+	// than the turn's stream, because a question outlives the turn that raised
+	// one — so it is read here, beside the turn, and written to stderr with the
+	// tool lines rather than into the reply a caller is piping somewhere.
+	questions, stopQuestions := agent.WatchQuestions()
+	defer stopQuestions()
+	guard.Go("chatv3/once-questions", func() {
+		for event := range questions {
+			if event.Kind != session.EventQuestionAnswered || event.Answer == nil {
+				continue
+			}
+			if line := strings.TrimSpace(event.Answer.From); line != "" {
+				fmt.Fprintln(os.Stderr, line)
+			}
+		}
+	})
 
 	events, err := agent.Submit(ctx, text)
 	if err != nil {

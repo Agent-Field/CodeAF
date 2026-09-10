@@ -280,22 +280,46 @@ type rows struct {
 // to a stale cache, then on the default base to a very small set of known
 // modality defaults.
 func Load(ctx context.Context, options Options) *Catalog {
-	return &Catalog{ready: loadOrFallback(ctx, options)}
+	resolved, _ := loadOrFallback(ctx, options)
+	return &Catalog{ready: resolved}
 }
+
+// Refresh is [Load] with [Options.Refresh] set, for the one caller that has to
+// SAY what happened: a person who pressed a key asking for today's list.
+//
+// The catalog it hands back is exactly the one Load would have — a failed fetch
+// still degrades to the cache and then to the built-ins, because asking for
+// fresher facts must never leave a surface with fewer. The error beside it is
+// why the fetch did not land, and nil when it did. Load drops that error on
+// purpose, since a launch nobody asked for has nobody to tell; a refresh
+// somebody asked for owes them a sentence.
+func Refresh(ctx context.Context, options Options) (*Catalog, error) {
+	options.Refresh = true
+	resolved, err := loadOrFallback(ctx, options)
+	return &Catalog{ready: resolved}, err
+}
+
+// errUnreadable is what a fault inside discovery is reported as. The fault
+// itself goes to the guard's log; the person who asked is told only that the
+// list could not be read, which is the whole of what they can act on.
+var errUnreadable = &statusError{status: "the list could not be read"}
 
 // loadOrFallback is the only way a catalog is resolved, because a fault in
 // discovery must degrade the way a failed fetch does — to the known defaults —
 // rather than escape. Inside a sync.OnceValue it would escape twice over: once
 // on the warming goroutine, and again on whichever caller first asked a
 // capability question, since the future replays the panic to every reader.
-func loadOrFallback(ctx context.Context, options Options) (resolved *rows) {
+func loadOrFallback(ctx context.Context, options Options) (resolved *rows, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			_ = guard.Note("catalog/load", recovered)
+			// THE FALLBACK ROWS ARE THE DEFAULT SERVICE'S IDS and nobody
+			// else's, so a panic on another service resolves to nothing
+			// rather than to eleven names it never published.
 			if strings.TrimSpace(options.Source) == "" && normalizeBase(options.BaseURL) == DefaultBaseURL {
-				resolved = newRows(hardcodedFallbacks())
+				resolved, err = newRows(hardcodedFallbacks()), errUnreadable
 			} else {
-				resolved = newRows(nil)
+				resolved, err = newRows(nil), errUnreadable
 			}
 		}
 	}()
@@ -311,7 +335,7 @@ func loadOrFallback(ctx context.Context, options Options) (resolved *rows) {
 func LoadLazy(ctx context.Context, options Options) *Catalog {
 	resolved := &Catalog{}
 	resolve := sync.OnceValue(func() *rows {
-		loaded := loadOrFallback(ctx, options)
+		loaded, _ := loadOrFallback(ctx, options)
 		resolved.warm.Store(loaded)
 		return loaded
 	})
@@ -320,7 +344,10 @@ func LoadLazy(ctx context.Context, options Options) *Catalog {
 	return resolved
 }
 
-func load(ctx context.Context, options Options) *rows {
+// load resolves one catalog, and reports why the fetch failed when it spent the
+// network and did not land. A fresh cache that needed no fetch is not a failure
+// and answers nil.
+func load(ctx context.Context, options Options) (*rows, error) {
 	now := time.Now
 	if options.Now != nil {
 		now = options.Now
@@ -330,31 +357,32 @@ func load(ctx context.Context, options Options) *rows {
 	path := cachePath(options.Dir, source, base)
 	cached, cachedOK := readCache(path, source, base)
 	if cachedOK && !options.Refresh && now().Before(cached.FetchedAt.Add(TTL)) {
-		return newRowsAt(cached.Models, cached.FetchedAt)
+		return newRowsAt(cached.Models, cached.FetchedAt), nil
 	}
 
+	// fetch refuses an empty listing itself, so a nil error here is always rows.
 	models, err := fetch(ctx, options)
-	if err == nil && len(models) > 0 {
+	if err == nil {
 		fetchedAt := now().UTC()
 		if path != "" {
 			_ = writeCache(path, cache{FetchedAt: fetchedAt, Models: models, Source: source, Base: base})
 		}
-		return newRowsAt(models, fetchedAt)
+		return newRowsAt(models, fetchedAt), nil
 	}
 	if cachedOK {
 		// The network is gone and the cache is old. It is still the truest
 		// answer anyone has, so it is served WITH ITS DATE rather than
 		// withheld: a stale catalog a surface can date is worth more than an
 		// empty one it cannot explain.
-		return newRowsAt(cached.Models, cached.FetchedAt)
+		return newRowsAt(cached.Models, cached.FetchedAt), err
 	}
 	if source == "" && base == DefaultBaseURL {
-		return newRows(hardcodedFallbacks())
+		return newRows(hardcodedFallbacks()), err
 	}
 	// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN — handing eleven
 	// OpenRouter ids to a service that never published them puts four verbs on
 	// the belt that cannot succeed.
-	return newRows(nil)
+	return newRows(nil), err
 }
 
 // FetchedAt is when this catalog's rows left the provider, or the zero time

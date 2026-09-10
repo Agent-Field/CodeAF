@@ -213,13 +213,8 @@ func (a *Agent) belt() []bare.Tool {
 	// attached to furrow, which is the same absence law `stand` and the memory
 	// pair are built on and is stated at length where they are built.
 	tools = append(tools, a.workspaceTools()...)
-	// search_conversations (tools_conversations.go) is the other half of memory
-	// and is conditional for the same reason `remember` is: what it reads is the
-	// FTS index over every message ever posted, which lives in the store, and
-	// a session opened with memory off has opened no store. A task node is
-	// handed no store either (task_run.go sets no Config.Memory), so it does not
-	// get the verb — which is the same wall that already keeps a node from
-	// writing memories, read from the other side.
+	// Conversation search needs only a history reader. Task workers and forked
+	// hands inherit it without gaining the writable memory store.
 	tools = append(tools, a.conversationTools()...)
 	tools = append(tools, a.stateTools()...)
 	tools = append(tools, a.searchTools()...)

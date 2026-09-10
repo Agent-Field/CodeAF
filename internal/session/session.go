@@ -383,6 +383,14 @@ const (
 	// typed belongs to a response that will never exist, and leaving it on screen
 	// would show half a dead answer above the live one.
 	//
+	// AND IT FIRES WHEN THE STEP MOVES TO ANOTHER MODEL, which is the same news
+	// about the same attempt and a different thing to draw: the rest of the reply
+	// arrives in a different voice, at a different price. [Event.Retry] is what
+	// tells the two apart — its Next names the model being moved to and is empty
+	// on an ordinary retry (retrynews.go) — and Text carries the whole sentence
+	// either way, so a surface that reads only Text is exactly as correct as it
+	// has always been.
+	//
 	// It is also the one place a surface learns that a wait is a RETRY rather
 	// than a first attempt, which is the difference between "waiting for" and
 	// "trying again". It never ends a turn: either the next attempt streams, or
@@ -820,6 +828,18 @@ type Event struct {
 	// it is the token a surface hands back to [Agent.ResolveSubharness].
 	Subharness *SubharnessCard
 
+	// Retry carries one [EventRetrying]'s payload in parts (retrynews.go): which
+	// model was being asked, how far into its patience the step is, why the
+	// attempt is void, and — when the step is moving — which model the rest of
+	// the reply will come from. It is nil on every other kind.
+	//
+	// It rides behind a json tag of its own so a peer built before it existed
+	// simply does not see it (internal/remote's [EventWire] embeds this struct
+	// whole), and an older engine's retry arrives with none — which is the same
+	// thing this build's surface must already handle, because [Event.Text] is
+	// still the whole line and always has been.
+	Retry *RetryNews `json:"Retry,omitempty"`
+
 	// Steer carries one sentence spliced into a running turn, on
 	// EventSteerAccepted, EventSteerConsumed and EventSteerFellThrough alone; it
 	// is nil on every other kind (steer.go). The same [SteerNote] value rides
@@ -1080,6 +1100,11 @@ type Config struct {
 	// memory.enabled row is read. A door that turns memory off hands nothing
 	// here, which is what makes "no calls" structural.
 	Memory *store.Store
+
+	// ConversationHistory grants only indexed history reads. Workers inherit
+	// this interface without receiving memory extraction, writes, or journaling.
+	// Nil falls back to Memory, so a memory-off root grants no history access.
+	ConversationHistory ConversationHistoryReader
 
 	// MemoryImport is the legacy memory.md this session carries into the store
 	// on its first turn, once, before it is renamed to memory.md.imported
@@ -2441,7 +2466,13 @@ type Agent struct {
 	// Explicit conversation stops suppress autonomous wakes until fresh input.
 	workStopped  bool
 	workStopping bool
-	cancel       context.CancelFunc
+	// cancel ends the turn in flight AND SAYS WHICH DOOR IT CAME THROUGH. It is
+	// a [context.CancelCauseFunc] rather than a plain one because a turn that
+	// ends with nothing said has to be able to account for itself afterwards —
+	// on the row, in the journal and in one sentence to the person
+	// (stopcause.go). Every caller passes a cause; nil is reserved for the
+	// turn's own cleanup, which cancels a context nothing is waiting on.
+	cancel context.CancelCauseFunc
 	// interrupt is ONE ESC'S WORTH of planner and title spend (interrupt_fan.go).
 	// It sits outside mu and holds its own lock: Interrupt is the one call that
 	// must always be answerable, and the handlers it serializes must never need
@@ -2459,6 +2490,9 @@ type Agent struct {
 	// There is at most one, it is replaced rather than added to, and every exit
 	// stops it.
 	steerGrace *steerWatch
+	// steerAge is the foreground-command age seam used by steer tests. A nil
+	// seam reads the process's real start through [bare.BashCall.RunningFor].
+	steerAge func(*bare.BashCall) time.Duration
 	// ambient is periodic watch news that must wait for a TURN boundary.
 	//
 	// It is separate from steering because a step boundary is not a turn
@@ -2495,6 +2529,17 @@ type Agent struct {
 	// process has not let go of it yet (takeover.go). Set once, never cleared:
 	// the only way out is the close the ask is for.
 	takenOver bool
+	// stoppedTurn is THE DOOR THAT ENDED THIS CONVERSATION'S LAST TURN WITH
+	// NOTHING SAID, read off the journal when the session was opened and spent
+	// the first time anybody asks (resume.go). It is empty on every conversation
+	// that was answered, on every one the person stopped themselves, and on
+	// every one this build has already asked again.
+	stoppedTurn StopDoor
+	// turnBegan is when the turn now running opened, and the zero time when
+	// none is. It is read by exactly one thing: the takeover beat, which will
+	// not let a request that was already on the disk before this turn started
+	// end it (takeover.go says why that request has had its chance).
+	turnBegan time.Time
 	// steerSeq names the sentences the person has spliced into a running turn
 	// (steer.go). It is an atomic rather than a field under mu because minting an
 	// identity is not a fact about the transcript, and an id that could only be
@@ -2802,6 +2847,12 @@ type Agent struct {
 	// lane is the roster's, its readers walk a strict sequence of rows, and a
 	// question is not a row.
 	questionWatchers []*eventStream
+	// landingQuestions is which shape each landed node's `your call` was last
+	// PUT OUT AS — `landing` or `conflict` — so that a question can be taken back
+	// in the kind it was raised in when the node settles or changes shape
+	// (task_landing_question.go). It holds no question and is not a second
+	// registry of what is open: [Agent.PendingDecisions] is still the one list.
+	landingQuestions map[uint64]QuestionKind
 
 	// taskWatchers are the standing subscriptions to task updates
 	// ([Agent.TaskUpdates]). They are not the turn's hub and do not close with

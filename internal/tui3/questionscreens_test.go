@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -88,6 +90,52 @@ func TestQuestionScreens(t *testing.T) {
 		})
 	})
 
+	// THE MODEL SHORTLIST, WHICH IS A HOLE IN A SENTENCE. It is the same card
+	// with one row more: a proposal whose `model` argument fitted two models
+	// this install has ([session.TaskModelShape]), drawn with `←→` on the offer
+	// row and nothing about it on the digits.
+	shot("card-model", func(l *questionLab) {
+		options := []string{"anthropic/claude-opus-5", "anthropic/claude-opus-4.8"}
+		l.raise(session.Question{
+			ID: 12, Kind: session.QuestionTask, Ask: session.AskPermission, Form: session.FormCard,
+			Asker:  session.Asker{Kind: session.AskerModel},
+			Head:   session.TaskProposalLead + "rewrite the packer",
+			Reason: "it will run on its own branch and open a pull request",
+			Options: []session.AnswerOption{
+				{Key: "1", Label: "start it", Consequence: "on a branch of its own"},
+				{Key: "2", Label: "no", Safe: true, Consequence: "nothing runs"},
+			},
+			Input:    session.TaskModelShape(session.TaskNotice{Model: options[0], ModelOptions: options}),
+			Pick:     &session.Pick{Key: "1", Reason: session.TaskProposalPickReason},
+			Policy:   session.Policy{Kind: session.PolicyRecommendThenAuto, After: 9 * time.Second},
+			Deadline: l.at.Add(9 * time.Second),
+			Stakes:   session.StakesCostly,
+		})
+	})
+
+	// AND THE SAME CARD AFTER `→`, so what the key DOES is on a screen rather
+	// than only in a sentence about it.
+	shot("card-model-moved", func(l *questionLab) {
+		options := []string{"anthropic/claude-opus-5", "anthropic/claude-opus-4.8"}
+		l.raise(session.Question{
+			ID: 12, Kind: session.QuestionTask, Ask: session.AskPermission, Form: session.FormCard,
+			Asker:  session.Asker{Kind: session.AskerModel},
+			Head:   session.TaskProposalLead + "rewrite the packer",
+			Reason: "it will run on its own branch and open a pull request",
+			Options: []session.AnswerOption{
+				{Key: "1", Label: "start it", Consequence: "on a branch of its own"},
+				{Key: "2", Label: "no", Safe: true, Consequence: "nothing runs"},
+			},
+			Input:    session.TaskModelShape(session.TaskNotice{Model: options[0], ModelOptions: options}),
+			Pick:     &session.Pick{Key: "1", Reason: session.TaskProposalPickReason},
+			Policy:   session.Policy{Kind: session.PolicyRecommendThenAuto, After: 9 * time.Second},
+			Deadline: l.at.Add(9 * time.Second),
+			Stakes:   session.StakesCostly,
+		})
+		l.tick(questionSettle)
+		l.press("right")
+	})
+
 	// TYPING IS ANSWERING: the block up, words in the box under it, and `enter`
 	// about to send them as the answer rather than as a message.
 	shot("typing", func(l *questionLab) {
@@ -139,7 +187,7 @@ func TestQuestionScreens(t *testing.T) {
 				Stakes: session.StakesReversible, Asked: l.at,
 			},
 			undoable: true,
-			local:    func(session.Answer) {},
+			local:    func(session.Answer) tea.Cmd { return nil },
 		})
 	})
 
@@ -176,7 +224,7 @@ func TestQuestionScreens(t *testing.T) {
 				},
 				Stakes: session.StakesIrreversible, Asked: l.at,
 			},
-			local: func(session.Answer) {},
+			local: func(session.Answer) tea.Cmd { return nil },
 		})
 		l.rows()
 	})

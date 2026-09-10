@@ -17,25 +17,42 @@ The model can raise one through its `ask` tool. Questions reach home, another wi
 `--host` as the same question object. Every surface draws the answers that object
 offered; it never substitutes positional yes/no keys.
 
-Questions come in two shapes on screen right now, and it is worth knowing which
-you are looking at. The **question block** is the new one — it is described
-under "How a question looks" below, it never takes the keyboard, and `esc` on it
-means later. The older blocks — the approval question before a command runs, a
-task proposal, a standing card, a connect offer, an offer to run a saved program
-— each still draw themselves the way they always did, with their own keys, and
-the approval question still takes the keyboard while it is up: typing under it
-does nothing until it is answered. They are being moved onto the block one at a
-time.
+Every question is drawn by one thing now — the **question block**, described
+under "How a question looks" below. It never takes the keyboard, the answers are
+numbered, and `esc` on it means *later*. The approval question before a command
+runs, a task proposal, a standing card, a connect offer, an offer to run a saved
+program and a finished harness design are all on it, and so are the two cards you
+raise yourself.
 
 A question with more behind it than the block draws **opens out into a page of
 its own** — `o` opens it, `esc` closes it, and the sections below say what you
 can do in there.
 
+## The squiggle, the tick and the amber mark at the start of a card
+
+Every question opens with **one cell**, and it says whether the card in front of
+you is waiting for you at all:
+
+| mark | what it means |
+| --- | --- |
+| amber `?` | it is waiting on you and nothing moves until you answer |
+| dim `≈` | it took something for granted and went on — strike a line to change it |
+| dim `✓` | it did the reversible thing already and is telling you |
+| dim `⊘` | it stopped needing an answer and was taken back |
+
+**Only the first is amber.** Amber on this screen means waiting on you and
+nothing else, so the three cards that are not waiting on anybody do not wear it —
+a squiggle or a tick in the attention colour would be the screen asking you for
+something it has just said it does not need.
+
+On a terminal with a patched font these are drawn as icons instead of as shapes;
+`/settings` → **step icons** → `plain` puts the characters above back.
+
 ## The kinds of question
 
 Eight shapes. The shape is what says whether anything but you may answer it and
-what a safe answer would be. Not all eight are raised today — nothing yet asks
-you to strike an assumption or to unwind something already done.
+what a safe answer would be, and it also decides which of the marks above the
+card opens with.
 
 - **permission** — may this happen. The approval gate before a command runs, an
   offer to connect one of your accounts, an offer to run a saved program. The
@@ -61,10 +78,19 @@ Most of them wait. A wait that ended is not a no: an approval question, a
 standing card and a page waiting to be approved carry no clock at all, and they
 stay up until somebody answers them.
 
-**A task proposal and a reversible recommendation may carry a clock.** The card says how long is left, and
-when the time runs out the work STARTS — the card is your chance to redirect it,
-not a gate the work waits on. A proposal you hold loses its deadline and then
-waits like everything else.
+**A task proposal and a reversible recommendation may carry a clock.** The answers
+row says which answer is about to be taken and when — `start it in 9s` — and when
+the time runs out the work STARTS. It is your chance to correct it, not a gate the
+work waits on. Any key you press stops that clock, and a proposal you hold loses
+its deadline and then waits like everything else, with `waiting` on the end of the
+row instead of a countdown.
+
+**A clock says what it is going to do, in that shape's own words.** Where there
+is a recommended answer the tail is that answer — `start it in 9s`. Where there
+is not, the words depend on the shape: a proposal reads `starts on its own in 9s`
+because something begins when it runs out, and an assumptions card reads
+`goes on in 9s`, because nothing begins — the asker simply stops waiting for you
+to strike a line and carries on with what it said it was assuming.
 
 **Nothing that cannot be taken back ever runs on a clock**, and only you ever answer
 one. aforge refuses to raise a question that says otherwise.
@@ -121,6 +147,23 @@ It did not always. A task on `your call` used to leave every one of those saying
 the conversation was idle, and the only way to find it was to open the
 conversation and look.
 
+## The task page shows no accept or not right keys — where the landing question is when I press enter on home
+
+`enter` on a task that is waiting on you (home's needs-you row, or the tasks
+page) opens that task's record: what it was called, what it said at the end,
+its files and its transcript. **The question is drawn on that page too**, above
+the foot, in the block's own shape — the task's head, why it is asking (`nobody
+could check it`), and the answers row `[a] accept · [n] not right · [s] tell
+it`. `←` and `→` move the pointer between the answers, `enter` takes the one it
+is on, and `a`, `n` and `s` answer at once; `s tell it` puts the page down and
+opens the task's room. The foot says `←→ choose · enter take it` while a
+question is on the page. It is the same question the conversation's block above
+your box is holding, so answering it in either place answers it in both.
+
+The page draws only questions belonging to the conversation you are in — a task
+from another conversation wearing the same number shows its record and no
+question; open that conversation to answer.
+
 ## Answer from home or another window
 
 Home lists what a conversation is waiting on and lets you answer it there, and so
@@ -136,6 +179,17 @@ the one door that knows which lane it belongs to.
 A window attached over `--host` draws a question the far machine raises, but
 cannot yet answer one — answering across the link is not built (see *What is not
 built yet*). Answer it in a window on the machine holding the conversation.
+
+## The row on home shows the question but my key does nothing over it
+
+A question the model raised with `ask` is drawn on the row like any other — the
+mark, the conversation's name, what was asked, and the count in the band at the
+top — and no key pressed over that row takes it. The lanes that wrote their own
+card before questions became one object are the ones a row still takes a key for:
+a permission, a task proposal, a standing offer.
+
+Press `enter` on the row instead. It brings that conversation here, and the
+question is above the box where it was raised, with its own keys on it.
 
 ## The other window answered it, or two windows answered at the same time
 
@@ -237,14 +291,15 @@ beside it, `?` is one still waiting.
   answer, and `g` will not treat them as one
 - `s` sends everything you answered and lets each remaining question take its
   own recommended answer. Anything nobody recommended an answer for stays open,
-  and one line says `still needs you`
+  and one line says `still needs you`. Every answer it sends leaves the same dim
+  `decided …` line one answered on its own would
 - `esc` puts the whole sheet off; nothing is answered, the count does not drop,
   and the chip's key brings it back
 
 A question something is blocked on never waits for a boundary. It arrives at
 once, on its own.
 
-## The question disappeared — withdrawal
+## The question disappeared — it vanished without me answering, withdrawal
 
 A question can stop needing an answer: what it was about went away, the plan
 changed, or another answer settled it. It is taken back by whoever asked, and one
@@ -259,6 +314,9 @@ The count in the chip drops, and an open sheet loses that row and re-flows —
 question and not to the position it was drawn in. A question still gathering
 inside a step is dropped from that batch too, so a boundary never delivers a
 decision that stopped needing to be made.
+
+It is never called cancelled: nothing failed, and nobody decided anything. The
+decision simply stopped needing to be made.
 
 ## Questions aforge refuses to put to you
 
@@ -293,28 +351,62 @@ command about to run — that row is drawn above it, the same row you already
 read, not a second description of it.
 
 ```
-  ? allow this? [1] allow once · [2] always · [3] deny · [esc] later
+    ╰─▶ bash rm -rf build
+  ? allow? [1] allow once · [2] always, this command · [3] deny · [esc] later · 7s
     bash pattern "rm -rf *"
 ```
 
 **A card** — for a decision with more behind each answer. The question, then why
 it is being asked and who is asking, then one row per answer with what taking it
-produces, then the keys. A `▸` marks the answer that was recommended; it is not
-where your cursor is.
+produces, then the keys. **The `▸` is your pointer**: `↑` and `↓` walk it from
+answer to answer (`←→`, `tab` and `shift+tab` do the same), `enter` takes the
+answer it is on, and a digit still takes that answer at once. It starts on the
+answer the asker recommended, when there is one, and that answer says
+`suggested` in its consequence column wherever the pointer is. On a checklist
+the pointer is the row `space` ticks. **Every answer gets a row of its own,
+however many there are** (the model may raise up to four, eight on a
+checklist), a note the asker wrote under an answer is drawn beneath its label
+in the ordinary text ink — the consequence beside the label is the dim aside,
+the note is the sentence you weigh — and a long answer wraps onto as many rows
+as it needs —
+nothing on a card ends in `…` except a note the screen has no room for, which
+is held to a row or two so the question itself stays on the screen, with `o`
+opening the page that has all of it. The keys
+are always digits, `1` upward in the order the answers came, whatever the asker
+called them. The model may ask for a line; it gets one only when every answer is
+plain and fits — a checklist, blanks, pairs, a dial, or an answer with a
+consequence beside it, is a card whatever was asked for. A click on any row of
+an answer presses it, and the row under the pointer lights up.
 
 ```
   ? wants to start a task: rewrite the packer
     it will run on its own branch · aforge
-      1  start it   on a branch of its own
-    ▸ 2  not now    nothing runs
-    [enter] take the pick · [d] you decide · [esc] later
+    ▸ 1  start it   on a branch of its own · suggested
+      2  not now    nothing runs
+    [enter] take it · [d] you decide · [esc] later · [↑↓] choose
 ```
+
+**On a line** the pointer is the highlighted answer: `←` and `→` move it along
+the row, `enter` takes it, and the key row says `[enter] take it` and
+`[←→] choose` while there is room for them (the arrows work either way).
 
 **A ratify line** — one row, with a `✓`, about something already done. Nothing
 is waiting on it. Reading past it is accepting it.
 
 ```
   ✓ renamed 12 files under src/ · [u] undo · [c] change
+```
+
+**An assumptions card** wears `≈` instead of `?` for the same reason: it is not
+asking, it is telling you what it took for granted, and everything on it stands
+until you strike one.
+
+```
+  ≈ going ahead on these unless you strike one
+    nobody said which store to use · aforge
+      1  the sqlite file is the source of truth
+      2  the old rows can be dropped
+    [esc] later · [c] change · goes on in 9m 57s
 ```
 
 ## Every key on a question
@@ -326,16 +418,17 @@ the row.
 | key | what it does |
 | --- | --- |
 | `1`–`9` | take that answer |
-| `enter` | take the recommended answer — only shown when there is one |
+| `enter` | take the answer the pointer is on — it starts on the recommended one |
+| `↑` `↓` `←` `→` | move the pointer (`↑↓` on a card, `←→` on a line; both pairs work on both). On the **page** a question opens into, `↑↓` walk the answers and `←→` fold and open the one you are on |
 | `esc` | later. Nothing is cancelled |
-| `o` | open it out into its own page, where there is more to see |
-| `c` | change — take an answer, but say what you want different |
-| `?` | ask back before answering |
+| `o` | open it out into its own page, where there is more to see. Inside the page it opens and folds the answer you are on |
+| `c` | change — take an answer, but say what you want different. The answers row becomes `change: say what you want different, then enter · it goes with [2] …`; type in the box below, `enter` sends the words with the pointed answer, `esc` gives the box back |
+| `?` | ask back before answering. The row becomes `ask back: type your question, then enter · the question stays open`; the reply lands in the conversation and the question is still there to answer |
 | `d` | you decide |
 | `D` | decide questions like this from now on |
 | `r` | make it a rule |
 | `u` | undo, while what was done is still real |
-| `←` `→` | walk the two answers of a confirmation |
+| `←` `→` | walk the two answers of a confirmation, or change what is in the hole where the question has one |
 | `s` | on a sheet: send what you answered, and let the rest take their own picks |
 | `g` | on a sheet: same answer for all like this |
 
@@ -359,8 +452,10 @@ anything: the question is still open, whatever was waiting on it is still
 waiting, and the count in the status line does not drop. What goes away is the
 rows, so the box underneath is yours again.
 
-This is different from the older approval question, where `esc` denies. On the
-block, nothing is ever decided by making something go away.
+This is what changed about the approval question, where `esc` used to deny, and
+about the standing card, where `esc` used to be the outright no. Nothing is ever
+decided by making something go away — which is why both of those grew a visible
+answer for the refusal (`[3] deny`, `0 no`) on the way here.
 
 To bring it back, press `alt+a`.
 
@@ -402,6 +497,21 @@ without you, and nothing that cannot be taken back ever will.
 If an answer was not yours, the line left behind names whoever gave it, so you
 can always tell by reading it — see "What stays behind after you answer" below.
 
+## Nobody to ask — a question in `--once`, an errand or a task lane
+
+With nobody at a keyboard there is no block to draw, so what the settings decide
+is printed rather than shown:
+
+```
+asked: which store should the ledger sit on? → 1 (default · nobody to ask)
+```
+
+It goes to the error stream beside the `tool:` lines and never into the reply, so
+a run whose output you are piping somewhere still says what was taken in your
+absence. Where the asker recommended nothing there is nothing to take: the line
+reads `your call: <what was asked> (nobody to ask)` and the work stops there
+rather than guessing.
+
 ## What stays behind after you answer
 
 Answering leaves one dim line where the question was:
@@ -421,6 +531,33 @@ where you handed it back with `d`. It is the same line that goes into
 
 The line stays for half a minute and then goes — it is news, and after that it
 is history, which lives in the transcript and in the record.
+
+**There is one line however you answered.** Answering from the page a question
+opens into folds that page away and leaves the same receipt above the box —
+not a second account of the same decision in different words, and never one
+saying `another window` about a key you pressed yourself.
+
+## Part of the receipt is missing — a narrow window, and what it gives up first
+
+A receipt too long for the window **gives up a whole clause** rather than running
+off the right-hand edge, and the order is fixed:
+
+1. `with: …` — what you typed beside your pick. It goes first, and it is the one
+   clause the transcript and `decisions.jsonl` both still carry in full, so
+   nothing is lost by dropping it from a line that is news.
+2. the time.
+
+**What is never given up**: the question and what you picked, **who decided**,
+`cannot change`, and `c change`. Who decided is the one thing on that line you
+cannot work out for yourself — `another window` and `aforge, on your settings`
+are the whole reason it is written — and the last two are not details about the
+decision, they are what is still possible about it. A line that dropped
+`cannot change` would read as something you could walk back. If a window is
+narrow enough that even the question will not fit beside all of that, the
+question is what is cut and they stay.
+
+Widen the window, or open the conversation: the transcript and the record always
+have the whole line.
 
 ## A question that stops needing you
 
@@ -456,12 +593,18 @@ standing refusal is something you write in your settings on purpose.
 Two keys, and which one you get depends on whether the thing has happened yet.
 
 `u` is on a ratify line — something reversible was already done, and pressing it
-puts it back. It is only offered while there is really something to undo; a
-ratify line about something that cannot be taken back does not draw the key at
-all.
+puts it back. It is only offered while there is really something to undo, and
+that is two things at once: the work has to be **reversible**, and whatever did
+it has to have written down the answer that puts it back. A ratify line about
+something costly or irreversible does not draw the key, and neither does one that
+named no way back — pressing `u` there would send an answer nobody described.
 
 `c` is on the receipt after you answer, spelled `c change` on the line. It shows
 what unwinding would cost before it reopens the question.
+
+Today `u` is never drawn: nothing yet tells a ratify row that the work behind it
+can still be put back, so the row reads `✓ <what was done> · [esc] later ·
+[c] change` and `c` is the way back.
 
 A decision that cannot be taken back says `cannot change` on its receipt and
 offers neither. Those are the ones that were never on a clock and that nobody
@@ -483,6 +626,8 @@ The page has, from the top:
 - the question in one sentence, with the amber `?`
 - who is asking and why now, dim
 - what is waiting on it and what carries on without it
+- anything it drew for the whole decision, under one dim heading `what it showed
+  you`
 - one section per answer, folded shut except the one it would take
 - a foot pinned above the box saying what `enter` would send
 
@@ -493,6 +638,44 @@ answer you did not give.
 **A letter is a letter the moment there is a sentence in the box.** Every key
 below works only while the box is empty; type anything and they all go back to
 being text.
+
+## Moving around the page — the arrows, and clicking an answer
+
+`↑` and `↓` walk down the answers. The one you are on wears a band, and the foot
+says `[↑↓] choose`.
+
+`→` opens the answer you are on and `←` folds it again. They say what they want
+rather than toggling, so holding one down is safe.
+
+`enter` **takes** the answer you are on — that is the answer, sent. The page
+opens standing on the one it would take, so `enter` straight away still takes
+its recommendation. A digit `1`–`9` answers at once from anywhere, whichever
+answer you are standing on.
+
+**Clicking works too, and it takes two clicks to answer.** The first click on an
+answer's row moves onto it and opens it; a second click on that same row is
+`enter`. One press to read, one to decide — so a click on a page you have not
+finished reading cannot decide anything. Clicking a body, a diagram or a note of
+your own does nothing: only an answer's own row answers to the mouse, and it is
+the only row that lights up under the pointer.
+
+## What each line under an answer means
+
+An open answer reads in three tiers, and every line says which it is:
+
+- the **label** — the digit and the word, bold and amber, the heading of that
+  section
+- what it **means** — the asker's own paragraph, in ordinary ink
+- the asides, dim, each with its own word in front:
+  - `then ·` what taking it would leave true
+  - `why this one ·` why the asker would take it, on the one it recommends
+  - `would switch if` what would change the asker's mind, which is usually
+    exactly what you disagree with if you disagree
+- anything it drew for that answer — a diagram, a diff, a table — under a dim
+  title of its own, a blank row above it
+
+A blank row closes each open answer, so the next answer's label is not just a
+different indent.
 
 ## Compare the options
 
@@ -510,6 +693,23 @@ Where there is neither, `x` is not offered at all.
 Under eighty columns the table stacks: each answer gets its own heading with its
 readings underneath, because a column cut to nine characters is a column that
 lies. `x` again goes back to the answers.
+
+## Where do I type my answer — the box under the question, change and ask back, why typing did nothing
+
+There is no separate typing place: **the message box under the question is where
+the words go**, and the block says what they will mean. With nothing pressed,
+what you type is a message to the conversation and the question waits. Press
+`c` first and the answers row turns into `change: say what you want different,
+then enter · it goes with [2] Adaptive · esc back` — now the box is the
+question's: every letter types (even `d`), `enter` sends the sentence together
+with the answer the pointer is on, and `esc` turns the row back into the keys
+without answering. Press `?` and the row says `ask back: type your question,
+then enter · the question stays open`: `enter` sends the question to the asker,
+its reply lands in the conversation, and the block is still above the box to
+answer afterwards.
+
+If the row still shows the keys — `[enter] take it · [esc] later · …` — the box
+is the conversation's, and what you type there goes to the model as a message.
 
 ## Comment on one option
 
@@ -570,7 +770,7 @@ there is nothing for it to decide, because the whole question is what you meant.
 asked and press enter; it goes back to the asker as a reframe rather than as a
 pick, and nothing is chosen.
 
-## Fill in the blanks
+## Fill in the blanks — the holes in a sentence, and what the arrows do on the question above your box
 
 Some questions are a sentence with holes in it rather than a list of answers:
 
@@ -585,16 +785,42 @@ Under the sentence, one dim line says what the hole you are in takes — a file 
 folder, a number, a time — or why what is in it will not do. Press enter when it
 reads right; the holes come back as fields, keyed by their own names.
 
-## Pick several
+**A card can carry a hole too, not only a page.** The one you will meet is a task
+proposal whose model shortlist the harness could not settle: it draws
 
-A question that wants several answers at once draws a tick beside each one.
+```
+     run it on [ anthropic/claude-opus-5 ▾ ]
+```
 
-`space` ticks the one you are on, `a` takes what the asker would tick, and
-`enter` sends them. Where the order matters, `shift+↑` and `shift+↓` move a row
+above the proposal's own answers, and `←→` walks the shortlist. **Moving what is
+in a hole answers nothing** — the countdown on the proposal keeps running, and
+what is in the hole when you answer travels with the answer. On a card the holes
+are `←→` only: `tab` is the page's key, and the sentence a card carries is one
+line with one hole in it.
+
+## Pick several — a checklist, tick more than one, what space and enter do on the card
+
+A question that wants several answers at once draws a tick beside each one,
+**on the card above your box as well as on the page** it opens into.
+
+On the card, a **digit ticks its row** (press it again to untick), `space` ticks
+the row the `▸` is on, `tab` moves the `▸` (`[tab] next row`; `shift+tab` back),
+and `enter` sends what is ticked — the key row says `[enter] send what is ticked`
+once something is, and `enter` over nothing ticked sends nothing. There is no
+`take it` on a checklist: the answer the asker would tick says `· suggested`
+on its row, and ticking it is yours to do. On the page, `space` ticks the one you
+are on, `a` takes what the asker would tick, and `enter` sends them. Where the order matters, `shift+↑` and `shift+↓` move a row
 past its neighbour and the answer carries the order you put them in.
 
 The foot lists what is ticked, in that order, so what you can see is what would
 be sent.
+
+The asker writes a checklist as an `ask` with `input.kind` set to `checklist`
+and the answers themselves in `options` — up to eight of them, each with a key
+and a label. Items written under `input.blanks` with nothing in `options` are
+refused with `a checklist ticks its answers, so they go in options`, and more
+than eight are refused with `a question offers at most 4 answers, or 8 when
+several may be ticked at once`.
 
 ## This or that, asked over and over — a run of two-way questions
 
@@ -616,11 +842,20 @@ Some settings are a dial rather than a choice:
 
     how much may it decide on its own here?
     ask me everything · [ tell me, then act ] · just do it
-    it will tell me, then act
+    tell me, then act
 
-`←` and `→` move it, and the line underneath says what the setting you are on
-actually does. On a screen reader it is drawn as `2 of 3 · tell me, then act`
-instead of as a picture, and the same two keys move it.
+`←` and `→` move it. The row of words is the SCALE — every notch this dial has —
+and the line under it is the READING, which is where it is standing right now.
+
+**The reading is whatever wrote the dial called that notch, word for word.**
+Nothing builds a sentence around it, because not every label is a verb phrase: a
+how-many dial reading `once · three times · five times` came out as
+`it will five times` when it did.
+
+On a screen reader the scale is drawn as `2 of 3 · tell me, then act` instead of
+as a picture, and the same two keys move it. A dial with no words on it at all is
+a bar with its number beside it, and has no reading underneath — the number is
+already there.
 
 ## What an answer carries
 
@@ -632,6 +867,131 @@ Whatever you send goes with everything you did on the way:
 - anything you asked back and what came of it
 - how long the answer lasts, where the question offered a choice of that
 
+## It asked me in plain text instead of a question block — numbered options in the reply, no keys
+
+The model is told that every question it puts to you goes through its `ask` tool and never
+as prose: a question typed out as a numbered list has no keys under it, leaves no record in
+`decisions.jsonl`, and cannot be answered from home or another window. A model can still
+disobey that, and when it does the reply is only words — type your answer as you would any
+message. If it loaded the tool and then stopped without calling it, the turn is sent back
+once (`it loaded a tool and stopped before using it · asking it to go on`); see *Why did it
+say "loaded" before making a picture* on **what I can do**.
+
+## Which questions draw this way
+
+**The approval question does** — the one aforge asks before it runs a tool. It
+has all of the above: the digits, `esc` for later, the chip, the receipt, the
+settle guard, the narrow card and the phone sheet. `permissions` is its own page
+and states what each answer banks.
+
+**So does the standing card** — `wants to keep an eye on:` with `1 yes, set it up`,
+`3 just once` where the item can be done once at all, and `0 no`. What is left in
+the conversation is the card itself: your own words, the `when ·`, `where ·` and
+`costs ·` bands, and the meter where the engine put a deadline on it. The answers
+are up above the box with everything else you are being waited on for, and each
+one says what it costs beside it. `c` is how you change when or where — it turns
+the box into the correction lane, and `enter` sends your words back to be
+re-proposed.
+
+**`esc` on a standing card means *later* now, and it used to mean no.** It is
+the one key whose meaning this move changed. Nothing is set up either way, so
+nothing is lost: the question folds to the chip, the card stays open, and the
+count goes on counting it. The outright no is `0 no`, which is drawn on the card
+as an answer you can see and click — where `esc` never was.
+
+**So does the connect offer** — `connect your <Name> account?` with `1 connect`
+and `2 not now`. A service connected by a KEY has no `1`: a bare yes to one of
+those connects nothing, so the question asks for the key in the message box under
+it, masked to a bullet a character with the count beside it, and `enter` sends it.
+The one answer it keeps is `2 not now`, because a question the turn is waiting on
+with no visible no is a question nobody can end.
+
+**So does the harness lane's pair.** An offer to run a saved program is one line —
+`run harness "research"?` with `1 run it` and `2 not now`. A finished harness
+design is a card — `wrote a program: <name>` with `1 save it`, `2 change it` and
+`3 drop it`, each saying what it costs beside it. `2` resolves nothing: it walks
+into the design's own room, where a change is typed, and the page stays waiting
+until the rewrite lands. The page itself stays down in the conversation, where it
+can be scrolled and read; only the asking is above the box. A design waiting on
+you is answered with the same three digits from inside its own room, which used
+to have a second row and two chords of its own.
+
+**So does the task proposal** — `wants to start a task:` with `[1] start it` and
+`[2] no`, and its clock on the end of the row. **So do the two cards you raise
+yourself**: `x` on running work (`Stop this task?`) and `ctrl+w` on a busy tab
+(`Close this tab?`). Those two are **confirmations**, and a confirmation differs
+from every other question here in three ways worth knowing:
+
+- **`esc` does not mean later.** There is nothing to come back to — you raised it
+  with your own hand a second ago — so `esc` gives the answer that loses nothing:
+  `keep going` on the stop card, `cancel` on the close card.
+- **A digit moves the cursor rather than answering.** `1` and `2` walk the cursor
+  onto the answer they name and light its row; `enter` is what decides. Nothing is
+  decided by one keystroke.
+- **They are answerable at once, and they take the whole keyboard.** The settle
+  guard does not apply — your hand is already on the key that raised it — and
+  while one is up your half-typed sentence stays in the box, unsent, because
+  `enter` belongs to the card.
+
+A question that is not simply a line of answers still fits here. The approval
+question's widening yes, `[2] always`, has a **second beat** on a shell command:
+it replaces the answers row with the shapes the rule could be written as, and
+picks one before anything is written.
+
+```
+  always? [1] git status*  ·  [2] git *  ·  [3] just this line  ·  [esc] never mind
+```
+
+While a beat is up, the digits belong to it — `3` is the third shape and not the
+third answer — and `esc` backs out of the beat rather than putting the question
+off.
+## Questions on another machine, and on the engine behind an ordinary aforge
+
+**A question reaches you wherever the conversation is, and you answer it where
+you are standing.** That is true on all three roads and there is nothing to turn
+on:
+
+- **an ordinary `aforge` or `aforge chat` in a project.** The conversation is not
+  kept in your terminal — it lives in this machine's engine, so the work goes on
+  when you close the window — and questions travel that link in both directions.
+- **`--host`**, a terminal here attached to a conversation on another machine. The
+  question crosses, and so does your answer, whole: the pick, the words beside
+  it, your notes on the parts, anything you asked back, the blanks, the dial and
+  how long the answer lasts.
+- **in this terminal**, with `--no-host`, `--once` or `--debug`.
+
+**A question raised while nothing was attached is waiting when you attach**,
+however long that took, and so is one you were looking at when you walked away.
+Nothing expires and nothing is lost: the engine says what it is still waiting on
+the moment a terminal attaches, so a question asked an hour ago draws the same
+block now that it would have drawn then. The count in the status line is the same
+count. See *It asked me something while I was away* in **staying on that
+machine** for what it says about how long it sat there.
+
+**An engine of a different build is refused at the door, and says so.** Two
+programs that might disagree about what a frame means never guess at each other,
+so `aforge` tells you the engine is an older or newer aforge rather than starting
+a session in which questions would silently never appear.
+
+## Why can I not answer the question on this task page
+
+Pressing a row of work on the **tasks** place opens that task's own page even
+when the work belongs to a chat you are not sitting in — it reads that chat over
+the same link, and it says so at the top.
+
+If that conversation has stopped and is waiting on somebody, the page says so
+under what it has read:
+
+    ? which storage shape should this use? · answer it in that conversation
+
+It is dim and it takes no key. **A page you are only reading cannot answer** —
+amber and a key would be this page promising something it does not have. Go to
+the chat itself (`esc`, then the row on home) and the question is there with its
+answers on it.
+
+Without that line, a page like this drew a running clock over work that had not
+moved since somebody was asked something an hour ago.
+
 ## What is not built yet
 
 `o` opens a question out into a page of its own — see the sections above, from
@@ -639,15 +999,15 @@ Whatever you send goes with everything you did on the way:
 `.aforge/autonomy.json` beside the project AND answers the question in front of
 you; a conversation with no project to keep it in says so.
 
-**Answering over `--host` is not built.** A window attached to another machine
-draws a question that machine raises, but the answer does not cross the link, so
-it has to be given in a window on the machine holding the conversation.
+**A row on home shows a question the model raised and does not take a key for
+it** — see *The row on home shows the question but my key does nothing over it*.
 
 The count of open questions in the status line IS built: that is the chip
 described above. So is the sheet, and so is the per-project setting that answers
 a whole kind of question while you are away (`/autonomy`, and `D` on a row).
 
-The older blocks — the approval question, a task proposal, a standing card, a
-connect offer, an offer to run a saved program, and the cards that ask before
-stopping work or closing a busy tab — have not moved onto the block yet and keep
-their own keys until they do.
+**Every question the block draws is drawn only by the block now.** The last of the
+older blocks — the connect offer, with its own answers row and its own keys — is
+gone. The one card in this program that still answers to keys of its own is the
+intake form `/subharness` opens for a saved program, which is a fullscreen page
+with fields to fill in rather than a question above the box.

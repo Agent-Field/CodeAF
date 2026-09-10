@@ -86,20 +86,9 @@ const (
 	hoverBrief
 	// hoverPictures lights only the attachment expansion control.
 	hoverPictures
-	// hoverChoices is the consent block's offer line.
+	// hoverChoices is the question block's answers — one row of it at the wide
+	// tiers, and any of the narrow sheet's bands.
 	hoverChoices
-	// hoverConnectAsk is the connect offer's answers line (connect.go). It is a
-	// kind of its own rather than another hoverChoices because the two blocks can
-	// be on screen together, and a pointer over one must not brighten the other.
-	hoverConnectAsk
-	// hoverHarnessAsk is the sub-harness offer's row (harness.go). One row and
-	// one target, like the offer above it.
-	hoverHarnessAsk
-	// hoverRoomApproval is the answers row of a design room's approval block
-	// (roomapproval.go), and a kind of its own for the reason above it: it can be
-	// on screen at the same time as any of the three offers, because it is not a
-	// question the session is blocked on.
-	hoverRoomApproval
 	// hoverSettle is one CHIP of a landed card's answers row (tasksettle.go);
 	// entry is the card and index is which of its chips. It is a kind of its own
 	// rather than a hoverEntry because a hoverEntry brightens the whole card,
@@ -185,6 +174,12 @@ const (
 	// of its own for [hoverRailDoor]'s reason: it belongs to no node, and it does
 	// something different from every other line of the footer.
 	hoverRailMore
+	// hoverRailStanding is the footer's standing count — `◦ 2 standing orders`,
+	// a door onto /standing (standdoor.go). It is a kind of its own for
+	// [hoverRailDoor]'s reason and one more: it was a segment of the status row
+	// until 2026-09-09, and what lights has to be what the press acts on
+	// wherever the line is drawn.
+	hoverRailStanding
 	// hoverTaskSheet is one row of the task page; index is its item
 	// (taskview.go). It is a kind of its own rather than another [hoverSheet]
 	// because the two pages number their rows out of different lists, and a
@@ -205,17 +200,24 @@ const (
 	// where the press would do nothing, the render records no span and this
 	// answers nothing (room.go's [app.roomModelMovable]).
 	hoverStatusModel
-	// hoverKeeping is the `keeping an eye on N` segment of the status row, which
-	// is a door onto /standing (standdoor.go). It is a kind of its own rather
-	// than a second reading of [hoverStatusModel] for the reason that one covers
-	// both of ITS subjects with one kind: what lights has to be what the press
-	// acts on, and these two segments open two different things.
-	hoverKeeping
+	// hoverEffort is the THINKING RUNG on the seam, the cell drawn immediately
+	// after the model's name (effortchip.go). It is a kind of its own rather than
+	// a second reading of [hoverStatusModel] for [hoverKeeping]'s reason: two
+	// cells side by side that do two different things — one opens the picker, one
+	// walks the ladder a step — and what lights has to be what the press acts on.
+	hoverEffort
 	// hoverMoney is the money segment of the status row, which is a door onto
-	// the Spending tab (moneydoor.go). It is a kind of its own for
-	// [hoverKeeping]'s reason: three doors on one row that open three different
-	// things, and what lights has to be what the press acts on.
+	// the Spending tab (moneydoor.go). It is a kind of its own rather than a
+	// second reading of [hoverStatusModel] for the reason that one covers both of
+	// ITS subjects with one kind: what lights has to be what the press acts on,
+	// and two doors on one row open two different things.
 	hoverMoney
+	// hoverMeter and hoverPosture are two more doors the status row grew when it
+	// became a ledger (foot.go): the context meter onto /status, the YOLO badge
+	// onto /permissions. The open count was a third and is off the row entirely;
+	// the standing count was a fourth and is [hoverRailStanding] now.
+	hoverMeter
+	hoverPosture
 	// hoverTable is the foot under a markdown table that was cut (mdtable.go);
 	// entry is the answer it belongs to and index is which of that answer's
 	// tables. It is a kind of its own rather
@@ -306,6 +308,12 @@ const (
 	// a hover on item nine would light somebody else's row the moment the other
 	// opened.
 	hoverRewindSheet
+	// hoverQuestionOption is one ANSWER on the page a question opens into;
+	// index is which (questionroom.go). Only the answer's own row lights,
+	// because only that row answers to a press: its body is prose, evidence and
+	// the person's own notes, and a paragraph that brightened would be
+	// promising a door on every sentence of it.
+	hoverQuestionOption
 )
 
 // hoverAt is what the pointer is over, as an identity rather than as a screen
@@ -367,6 +375,12 @@ func (a *app) setHover(x, y int) {
 	// finished and stopped asking for frames.
 	if a.room != nil {
 		a.room.dirty = true
+	}
+	// AND A QUESTION'S PAGE IS CACHED THE SAME WAY AND DROPPED ON THE SAME
+	// TERMS, so the answer under the pointer lights on the frame the pointer
+	// reaches it rather than on the next keystroke (questionroom.go).
+	if a.qroom != nil {
+		a.qroom.dirty = true
 	}
 	a.touch()
 }
@@ -460,6 +474,12 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	if a.railDoorAt(x, y) {
 		return hoverAt{kind: hoverRailDoor}
 	}
+	// AND THE FOOTER'S STANDING COUNT, on exactly those terms: it is a line of
+	// the footer, it belongs to no node, and it answers to a click
+	// (standdoor.go's [app.railStandingAt]).
+	if a.railStandingAt(x, y) {
+		return hoverAt{kind: hoverRailStanding}
+	}
 	// AND THE MARGIN'S OWN LINES, asked on the same terms as the footer's above
 	// them: a `+` row and a standing order's row belong to no node, and both
 	// answer to a click (margin.go).
@@ -491,6 +511,15 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	if key, ok := a.orchHoverAt(x, y); ok {
 		return hoverAt{kind: hoverOrch, key: key}
 	}
+	// AND A QUESTION'S PAGE ANSWERS FOR ITS OWN ROWS ABOVE BOTH, in the order
+	// [app.press] resolves them: it is the body region while it is up, so a
+	// pointer answered from the transcript underneath would brighten a tool call
+	// in a conversation the person cannot see (questionroom.go).
+	if a.questionRoomOpen() {
+		if at, ok := a.questionRoomOptionAt(y); ok {
+			return hoverAt{kind: hoverQuestionOption, index: at}
+		}
+	}
 	if r, ok := a.rowAt(y); ok {
 		// A TASK REFERENCE IS THE ONE TARGET INSIDE A SENTENCE, so it is asked
 		// before the row's own answer for the reason [app.linkPress] is resolved
@@ -513,23 +542,6 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// expansion; this span keeps the command under the pointer, so it wins
 			// its own columns before the whole-block arm below.
 			return hoverAt{kind: hoverKeep, entry: r.entry}
-		case r.hit == hitSettle:
-			// NARROWER THAN ITS ROW, with four of them on one line: which chip the
-			// pointer is
-			// on is a question about the column, and a row that lit as a whole would
-			// promise that pressing anywhere on it did something (tasksettle.go).
-			//
-			// A ROOM'S FOOT IS THE SAME ROW WITH NO ENTRY UNDER IT, so the card is
-			// asked for through the seam that knows which of the two it is
-			// (tasksettle.go's [app.settleCardOf]).
-			if card := a.settleCardOf(r.entry); card != nil {
-				for i, chip := range card.chips {
-					if chip.span.holds(x) {
-						return hoverAt{kind: hoverSettle, entry: r.entry, index: i}
-					}
-				}
-			}
-			return hoverAt{}
 		case r.hit == hitFold:
 			return hoverAt{kind: hoverFold, turn: r.turn}
 		case r.hit == hitCaption:
@@ -547,16 +559,14 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// which is what the row carries in place of an entry.
 			return hoverAt{kind: hoverForming, index: r.turn}
 		case r.hit == hitTool, r.hit == hitMore, r.hit == hitTask, r.hit == hitDone,
-			r.hit == hitHarness, r.hit == hitChoice, r.hit == hitModel:
-			// THE THREE THAT WERE MISSING FROM THIS LIST, and every one of them is
+			r.hit == hitHarness:
+			// THE ONES THAT WERE MISSING FROM THIS LIST, and every one of them is
 			// a row [app.press] already acts on. A sub-harness card opens the same
-			// way a landed task's does (harnesscard.go), and a proposal's answers
-			// and models rows are pressable along their whole width
-			// (app.go's [app.choicePress]) — so a card that lit up and then went
-			// dark the moment the pointer reached the row a person was aiming for
-			// was the surface withdrawing the affordance at the exact cell where it
-			// mattered. The whole block lights, because the block is what the press
-			// belongs to.
+			// way a landed task's does (harnesscard.go) — so a card that lit up
+			// and then went dark the moment the pointer reached the row a person
+			// was aiming for was the surface withdrawing the affordance at the
+			// exact cell where it mattered. The whole block lights, because the
+			// block is what the press belongs to.
 			return hoverAt{kind: hoverEntry, entry: r.entry}
 		case r.entry >= 0 && r.entry < len(a.bodyDeck().entries) &&
 			a.bodyDeck().entries[r.entry].kind == entryThinking:
@@ -582,50 +592,11 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	}
 	if mark, ok := a.chromeAt(y); ok {
 		switch mark.kind {
-		case chromeChoices:
-			// The index is the row WITHIN the block, which the one-line offer
-			// never needed and the phone sheet does: its answers are a row each
-			// (consent.go's [app.hoveringChoice]).
+		case chromeQuestion:
+			// The index is the row WITHIN the block, which the answers row never
+			// needed and the narrow sheet does: its answers are a row each
+			// (questionsheet.go's [app.questionBandRow]).
 			return hoverAt{kind: hoverChoices, index: mark.index}
-		case chromeHarnessAsk:
-			// One row again, and the same reason: the offer is the only
-			// pressable row that block has (harness.go).
-			return hoverAt{kind: hoverHarnessAsk}
-		case chromeConnectAsk:
-			// One row, so there is no index to carry: the offer is the only
-			// pressable row that block has (connect.go).
-			return hoverAt{kind: hoverConnectAsk}
-		case chromeRoomApproval:
-			// One row again, and the same reason: the answers row is the only
-			// pressable row a design room's approval block has (roomapproval.go).
-			return hoverAt{kind: hoverRoomApproval}
-		case chromeStop:
-			// THE CARD'S TWO ANSWERS, which share one row — so which of them the
-			// pointer is on is a question about the column, and a row that lit as a
-			// whole would say "you can press here" about the answer nobody is aiming
-			// at (stop.go). The question above them is a sentence and lights not at
-			// all.
-			if a.stop == nil || mark.index != 1 {
-				return hoverAt{}
-			}
-			for at, span := range a.stop.spans {
-				if span.holds(x) {
-					return hoverAt{kind: hoverStopAnswer, index: at}
-				}
-			}
-		case chromeTabClose:
-			// THE SAME SHAPE ONE CARD OVER, and the same reason: three answers
-			// share one row, so which of them the pointer is on is a question
-			// about the column (tabclose.go). The question above them and the
-			// line under them are sentences and light not at all.
-			if a.tabClose == nil || mark.index != 1 {
-				return hoverAt{}
-			}
-			for at, span := range a.tabClose.spans {
-				if span.holds(x) {
-					return hoverAt{kind: hoverTabCloseAnswer, index: at}
-				}
-			}
 		case chromeParked:
 			// One waiting message, whichever of its rows the pointer is on. The dim
 			// line under the block carries no mark and answers to nothing, which is
@@ -657,6 +628,23 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			if a.jumpSpan.holds(x) {
 				return hoverAt{kind: hoverJump}
 			}
+		case chromeLegend:
+			// THE MODEL'S NAME ON THE SEAM, out of a room (foot.go). The home door
+			// at the other end of the same line lights through its own reading
+			// (home.go's [app.hoverHomeDoor]).
+			if a.roomOpen() || a.copy.on || a.pick.open {
+				return hoverAt{}
+			}
+			if a.seamModelSpan.holds(x) {
+				return hoverAt{kind: hoverStatusModel}
+			}
+			// AND THE THINKING RUNG BESIDE IT, on its own columns and its own
+			// kind: pressing it walks the ladder rather than opening the picker
+			// (effortchip.go), and this file's law is that the two cannot share
+			// one light.
+			if a.seamEffortSpan.holds(x) {
+				return hoverAt{kind: hoverEffort}
+			}
 		case chromeStatus:
 			// THE SAME THREE QUESTIONS [app.statusPress] ASKS, IN THE SAME ORDER,
 			// because this file's law is that the set which lights is the set the
@@ -675,16 +663,15 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			if width, _ := a.size(); layoutTier(width) == tierPhone {
 				return hoverAt{kind: hoverDeck, index: mark.index}
 			}
-			// The two doors on this row, in the order [app.press] reads them
-			// (app.go): the keeping segment onto /standing, then the model's name
-			// onto the picker (standdoor.go).
-			if mark.index == a.keepRow && a.keepSpan.holds(x) {
-				return hoverAt{kind: hoverKeeping}
+			// The doors on this row, in the order [app.press] reads them (app.go):
+			// the ledger's table first (foot.go), then the room chip's model.
+			if door, ok := a.doorAt(x, mark.index); ok {
+				if door.kind == segKeeping && a.at(pageStanding) {
+					return hoverAt{}
+				}
+				return hoverAt{kind: doorHover(door.kind)}
 			}
-			if mark.index == a.moneyRow && a.moneySpan.holds(x) {
-				return hoverAt{kind: hoverMoney}
-			}
-			if mark.index == 0 && a.modelSpan.holds(x) {
+			if a.roomOpen() && mark.index == 0 && a.modelSpan.holds(x) {
 				return hoverAt{kind: hoverStatusModel}
 			}
 		}
@@ -728,6 +715,12 @@ func (a *app) hoveringFold(turn int) bool {
 // hoveringChoices reports whether the pointer is on the consent offer.
 func (a *app) hoveringChoices() bool { return a.hot.kind == hoverChoices }
 
+// hoveringQuestionOption is whether the pointer is on this answer of the page a
+// question opened into (questionroom.go).
+func (a *app) hoveringQuestionOption(at int) bool {
+	return a.hot.kind == hoverQuestionOption && a.hot.index == at
+}
+
 // hoveringRail reports whether the pointer is on this node's roster row.
 func (a *app) hoveringRail(node *taskNode) bool {
 	return node != nil && a.hot.kind == hoverRail && a.hot.id == node.id
@@ -740,7 +733,7 @@ func (a *app) hoveringRailMore() bool { return a.hot.kind == hoverRailMore }
 // hoveringRailArea reports whether the pointer is anywhere over the roster.
 func (a *app) hoveringRailArea() bool {
 	switch a.hot.kind {
-	case hoverRail, hoverRailArea, hoverRailSeam, hoverRailMore:
+	case hoverRail, hoverRailArea, hoverRailSeam, hoverRailMore, hoverRailStanding:
 		return true
 	}
 	return false

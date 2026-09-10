@@ -4,11 +4,9 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // STOPPING WORK, AND ASKING FIRST.
@@ -22,8 +20,17 @@ import (
 // So there is a key and there is a button, and between them and the work there
 // is exactly one card.
 //
-//	 ? Stop this run? In-flight nodes halt; partial results stay.
-//	   [stop it]  ▌[keep going]
+//	 ?  Stop this run?
+//	      In-flight nodes halt; partial results stay.
+//	      1  stop it
+//	      2  keep going
+//	    [enter] take the pick · [esc] keep going · [←→] pick
+//
+// The block draws those rows (question.go) and this file owns the words in them.
+// The head is the QUESTION and the row under it is the PROMISE — what stopping
+// does not take away — on rows of their own, because one sentence carrying both
+// said the promise twice. The answer the cursor is on is lit across its whole
+// row and the whole row is pressable.
 //
 // ── THE CARD IS ALWAYS ASKED, AND ITS DEFAULT IS "NO" ──
 //
@@ -41,8 +48,9 @@ import (
 // `x` raises it — on the roster's focused chip, and inside a room or a run's
 // page — and a ✕ in the room's header and on the focused chip raises exactly
 // the same card. One question, two hands, no second grammar: ←/→ walk the two
-// answers, enter takes the one under the cursor, esc is "keep going", and a
-// press on either answer is that answer.
+// answers, a DIGIT MOVES THE CURSOR onto the answer it names rather than giving
+// it, enter takes the one under the cursor, esc is "keep going", and a press
+// anywhere on an answer's row is that answer.
 //
 // `x` IS TAKEN OVER AN EMPTY BOX AND NOWHERE ELSE, which is the rule every key
 // on this surface that is also a letter is held to (task.go's [app.taskKey],
@@ -96,8 +104,14 @@ func (t stopTarget) empty() bool { return t.id == "" }
 
 // question is the card's whole first line.
 func (t stopTarget) question() string {
-	return "Stop this " + t.noun + "? " + t.detail
+	return "Stop this " + t.noun + "?"
 }
+
+// promise is what stopping this work does NOT take away, and it is the question's
+// reason on the block ([app.stopShown]). It is a row of its own now rather than
+// the tail of the question: the block draws the head and the reason on separate
+// rows, and a sentence carrying both would say the promise twice.
+func (t stopTarget) promise() string { return t.detail }
 
 // The two nouns and the two promises. Each promise is what actually happens —
 // not a reassurance — because the person reading it is deciding whether they
@@ -125,17 +139,16 @@ const (
 	stopJobDetail = "The process is ended; its log is kept."
 )
 
-// stopCard is one raised confirmation: what it is about, and which answer the
-// cursor is on.
+// stopCard is one raised confirmation, and what is left of it is what it is
+// ABOUT.
+//
+// THE BLOCK DRAWS IT AND THE BLOCK HOLDS THE CURSOR (question.go). Where the
+// cursor is, which answer `enter` takes, which columns a press lands in and how
+// the two rows are painted are the block's now — one renderer for every decision
+// this program hands a person — and every law they carried is the same law said
+// once instead of nine times.
 type stopCard struct {
 	target stopTarget
-	// pick indexes [stopAnswers]. It opens on the SAFE one and this is the only
-	// place that is decided.
-	pick int
-	// spans are the two answers' columns on the row they were drawn on, written
-	// by the layout and read by the press — the same bargain every other
-	// pointer target on this surface makes (render.go's [hudSpan] callers).
-	spans []hudSpan
 }
 
 // stopActWord is ENDING THIS WORK, said once for every surface that offers it:
@@ -147,10 +160,29 @@ const stopActWord = "stop it"
 // stopAnswers are the two answers, in the order they are drawn: the act first
 // because it is what the card is about, the refusal second because it is where
 // the cursor starts.
-var stopAnswers = [...]string{stopActWord, "keep going"}
+var stopAnswers = [...]string{stopActWord, stopKeepWord}
+
+// stopKeepWord is the answer that loses nothing, and it is marked
+// [session.AnswerOption.Safe] on the question this file raises — which is what
+// puts the cursor on it, what `esc` answers with, and what the row calls `esc`
+// ([questionSafeAt], [questionLaterWord]). The law it carries is unchanged: a
+// card whose destructive answer is under the enter key is a card that stops work
+// when somebody presses enter for the reason people press enter, which is to
+// make a question go away.
+const stopKeepWord = "keep going"
 
 // stopKeepAt is which of them is "no", and it is the cursor's home.
 const stopKeepAt = 1
+
+// stopQuestionKind is the lane this file's question travels under.
+//
+// IT IS NOT ONE OF internal/session's, and that is the point: nothing in the
+// engine raises this question, nothing in the engine answers it, and it never
+// goes through [session.Agent.ResolveQuestion] — it is answered by the closure
+// the block carries for exactly this ([questionShown.local]). A surface question
+// borrowing an engine lane's name would be a token two different things could
+// collide on.
+const stopQuestionKind session.QuestionKind = "surface-stop"
 
 // stopping reports whether the card owns the keyboard.
 func (a *app) stopping() bool { return a.stop != nil }
@@ -169,11 +201,77 @@ func (a *app) raiseStop(target stopTarget) {
 		a.note(stopUnavailableWord)
 		return
 	}
-	a.stop = &stopCard{target: target, pick: stopKeepAt}
+	a.stop = &stopCard{target: target}
+	// AND A JOB'S PAGE STEPS ASIDE FOR THE CARD. The block draws every question
+	// above the message box (question.go, view.go's [app.chrome]) and a job's
+	// page takes the frame WHOLE (jobpage.go) — so a card raised over it was a
+	// question nobody could see, holding the keyboard, answered by whatever the
+	// next keystroke happened to be. Closing puts the question where it is read,
+	// and the engine's own sentence about what stopped lands in the conversation
+	// directly under it ([app.stopSay]). The log is not going anywhere: the
+	// job's row in the column opens the page again. Every OTHER place this card
+	// is raised from — a room, a run's page — is drawn over the conversation
+	// frame and keeps its chrome, so none of them needs this.
+	if a.jobPageOpen() {
+		a.closeJobPage()
+	}
 	// The typed lists follow the draft, and the draft is spoken for while a
 	// question is up — the same law the approval question states (consent.go).
 	a.closeLists()
+	a.raiseQuestion(a.stopShown(target))
 	a.touch()
+}
+
+// stopShown is the question the block puts up, and the closure that answers it.
+//
+// IT IS A CONFIRMATION, which is the shape on that block whose whole job is this
+// card's law: the cursor starts on the answer that loses nothing, a key that
+// NAMES an answer moves the cursor onto it rather than giving it, `enter` takes
+// what the cursor is on, and `esc` is the safe answer and never the act. Nothing
+// is decided by one keystroke.
+//
+// It BLOCKS NOTHING, and says so by carrying no Blocking at all: the person
+// raised it with their own hand, no work is waiting behind it, and a clock on
+// the end of its row would be a countdown to something nobody set.
+func (a *app) stopShown(target stopTarget) questionShown {
+	return questionShown{
+		question: session.Question{
+			Kind:    stopQuestionKind,
+			Ref:     target.id,
+			Ask:     session.AskConfirmation,
+			Form:    session.FormCard,
+			Asker:   session.Asker{Kind: session.AskerSurface},
+			Head:    target.question(),
+			Reason:  target.promise(),
+			Options: stopOptions(),
+			Stakes:  session.StakesIrreversible,
+			Asked:   a.now(),
+		},
+		pick: stopKeepAt,
+		local: func(answer session.Answer) tea.Cmd {
+			a.stopTake(stopAnswerAt(answer.FirstKey()))
+			return nil
+		},
+	}
+}
+
+// stopOptions is the two answers as the block takes them. The refusal wears the
+// SAFE mark, which is the one place the cursor's home is decided.
+func stopOptions() []session.AnswerOption {
+	return []session.AnswerOption{
+		{Key: "1", Label: stopAnswers[0]},
+		{Key: "2", Label: stopAnswers[stopKeepAt], Safe: true},
+	}
+}
+
+// stopAnswerAt reads one answer key back as its index in [stopAnswers]. An
+// answer this card does not know is the refusal, which is the reading that
+// cannot end work nobody meant to end.
+func stopAnswerAt(key string) int {
+	if key == "1" {
+		return 0
+	}
+	return stopKeepAt
 }
 
 // stopUnavailableWord is the degraded case, in the vocabulary the other two
@@ -185,8 +283,25 @@ func (a *app) dropStop() {
 	if a.stop == nil {
 		return
 	}
+	// AND THE QUESTION GOES WITH THE CARD. The block closes its own the moment
+	// an answer is sent ([app.closeQuestion]), so this is for every other way the
+	// card comes down — and a question left standing for a card that is gone
+	// would be the chip counting a decision nobody can reach.
+	a.dropStopQuestion()
 	a.stop = nil
 	a.touch()
+}
+
+// dropStopQuestion takes this file's question off the block if it is still
+// there.
+func (a *app) dropStopQuestion() {
+	for _, open := range a.questions {
+		if open.question.Kind != stopQuestionKind {
+			continue
+		}
+		a.closeQuestion(open, session.Answer{})
+		return
+	}
 }
 
 // stopTake answers the card. Anything but the act is the card simply going
@@ -381,18 +496,16 @@ func (a *app) stopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	if a.stopping() {
-		switch key {
-		case "left":
-			a.moveStop(-1)
-		case "right":
-			a.moveStop(1)
-		case "enter":
-			a.stopTake(a.stop.pick)
-		case "esc":
-			// esc IS "keep going" and never the act. The dismiss key on this
-			// surface takes questions away; a dismiss that also ended work would
-			// be the one key nobody could press safely.
-			a.dropStop()
+		// EVERY KEY THAT ANSWERS THIS CARD IS THE BLOCK'S (question.go): ←/→ walk
+		// the two answers, a digit moves the cursor onto the answer it names,
+		// `enter` takes what the cursor is on and `esc` is *keep going*. It is
+		// offered the key HERE rather than at its own rung because this rung is
+		// read first — a question about ending work outranks the pages it is
+		// about — and what the block hands back is SWALLOWED rather than passed
+		// on: the block is not modal, but this card is raised over a page whose
+		// own keys would otherwise act underneath it.
+		if cmd, took := a.questionKey(msg); took {
+			return cmd, true
 		}
 		return nil, true
 	}
@@ -414,96 +527,6 @@ func (a *app) stopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // stopRaiseKey is the one key that raises the card.
 const stopRaiseKey = "x"
 
-// moveStop walks the two answers and STOPS at the ends rather than wrapping.
-// Two answers are read at a glance, and a cursor that reappeared at the far end
-// would put "stop it" under a key pressed to reach "keep going" — which is the
-// one mistake this whole card exists to prevent.
-func (a *app) moveStop(delta int) {
-	card := a.stop
-	if card == nil {
-		return
-	}
-	at := card.pick + delta
-	switch {
-	case at < 0:
-		at = 0
-	case at >= len(stopAnswers):
-		at = len(stopAnswers) - 1
-	}
-	card.pick = at
-	a.touch()
-}
-
-// ── the card, drawn ─────────────────────────────────────────────────────────
-
-// stopHeight is what the card costs the frame: the question, and the answers
-// under it.
-func (a *app) stopHeight() int {
-	if !a.stopping() {
-		return 0
-	}
-	return 2
-}
-
-// stopRows draws it, in the question hue every other thing on this surface that
-// is blocked on a keystroke wears (consent.go, room.go's guard). It shares the
-// guard's slot above the draft — see [app.guardRows], which is the one place
-// that says so.
-func (a *app) stopRows(width int) []string {
-	card := a.stop
-	if card == nil || width < 4 {
-		return nil
-	}
-	head := card.target.question()
-	ask := a.icon(tokens.GNeedsHuman)
-	rows := []string{a.pal.askBold(ask) + a.pal.ask(fit(" "+head, width-ansi.StringWidth(ask)))}
-
-	card.spans = card.spans[:0]
-	line, at := stopAnswerPad, len(stopAnswerPad)
-	for i, word := range stopAnswers {
-		if i > 0 {
-			line += stopAnswerGap
-			at += len(stopAnswerGap)
-		}
-		// The cursor is the ROSTER'S OWN MARKER, borrowed through the helper the
-		// run's page already borrows it with (roomorch.go's [app.orchLead]): it is
-		// constant width, so moving between the two answers never reflows the row,
-		// and it is the same cell this surface puts in front of "where enter goes"
-		// everywhere else.
-		lead := a.orchLead(i == card.pick)
-		text := lead + "[" + word + "]"
-		cols := ansi.StringWidth(text)
-		painted := a.pal.ask(text)
-		if i == card.pick {
-			painted = a.pal.askBold(text)
-		}
-		// THE POINTER LIGHTS THE ANSWER AND NOT THE ROW, which is the settle row's
-		// own answer to the same shape (tasksettle.go): two presses share this line
-		// and they are the two ends of one decision, so a band across all of it would
-		// promise "stop it" under a hand reaching for "keep going". The band goes
-		// round exactly the answer's cells, OVER whatever ink it already wears —
-		// weight says where the keyboard is and the background says where the pointer
-		// is, and two channels stay legible together where two shades of one would
-		// not.
-		if a.hoveringStopAnswer(i) {
-			painted = a.pal.cursor(painted, 0)
-		}
-		line += painted
-		card.spans = append(card.spans, hudSpan{from: at, to: at + cols})
-		at += cols
-	}
-	return append(rows, fit(line, width))
-}
-
-const (
-	// stopAnswerPad is the answers' indent under the question, and
-	// stopAnswerGap is what separates the two. The gap is wide because these are
-	// the two ends of one decision and a person aiming a finger at one of them
-	// must not be able to hit the other.
-	stopAnswerPad = "  "
-	stopAnswerGap = "   "
-)
-
 // ── the pointer ─────────────────────────────────────────────────────────────
 
 // stopPress resolves a click aimed at stopping something and reports whether it
@@ -514,33 +537,13 @@ func (a *app) stopPress(x, y int) bool {
 		return false
 	}
 	if a.stopping() {
-		return a.stopCardPress(x, y)
-	}
-	return a.stopMarkPress(x, y)
-}
-
-// stopCardPress answers a press on the raised card.
-//
-// A PRESS ANYWHERE ON THE ANSWERS ROW IS THE ROW'S, whether or not it landed on
-// an answer: the gap between them is three cells wide and it is a place people
-// miss, and a miss that fell through to the draft box under it would put the
-// caret in a sentence instead of answering a question about ending work.
-func (a *app) stopCardPress(x, y int) bool {
-	card := a.stop
-	mark, ok := a.chromeAt(y)
-	if card == nil || !ok || mark.kind != chromeStop {
+		// THE CARD'S OWN ANSWERS ARE THE BLOCK'S TARGETS NOW (question.go's
+		// [app.questionPress], which the frame offers a press to before this).
+		// Reaching here with the card up means the press was aimed somewhere
+		// else, and the ✕ that raised it must not raise a second one.
 		return false
 	}
-	if mark.index != 1 {
-		return true // the question's own row; there is nothing on it to press
-	}
-	for at, span := range card.spans {
-		if span.holds(x) {
-			a.stopTake(at)
-			return true
-		}
-	}
-	return true
+	return a.stopMarkPress(x, y)
 }
 
 // stopMarkPress answers a press on the ✕ in a room's header.

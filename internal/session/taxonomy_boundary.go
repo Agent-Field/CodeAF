@@ -172,16 +172,138 @@ func isDeadlineSentence(message string) bool {
 		strings.Contains(message, "deadline exceeded")
 }
 
-// readCallFailure is what the turn loop and the errand ladder ask about one
-// failed request. It classifies, journals, and records a transport failure
-// against the piece of work this agent belongs to — which is what stops the gate
-// three layers up from mistaking the wire for the model.
+// transportLadder is what a caller knows about the ladder ONE request is on, in
+// the boundary's own vocabulary.
+//
+// It exists so that the loop hands the boundary FACTS and takes back a decision,
+// rather than keeping a decision of its own beside the boundary's. Before it, the
+// turn loop counted stream cuts, held its own three budgets for them, and hopped
+// to the next model on its own authority — while the identical question about a
+// refusal was answered by [taxonomy.Verdict] and answered differently, which is
+// why one 502 and three 429s ended a turn that had two other models to ask.
+type transportLadder struct {
+	// attempt is which outright failure of this model this is, 1-based: a
+	// refusal, a reset, a deadline. It does not count cut streams.
+	attempt int
+	// cuts is how many of this model's attempts were streams the guard ended,
+	// this one included, and zero when this failure is not a cut.
+	cuts int
+	// degenerate says the cut was the reply ceasing to be language rather than
+	// the stream going quiet, and rerouted says the cut actually took an
+	// endpoint out of the routing underneath.
+	degenerate bool
+	rerouted   bool
+	// fallback says the caller has a next model to ask. It is the whole
+	// difference between moving on and giving up, and it is the caller's fact.
+	fallback bool
+}
+
+// mark writes the ladder onto the evidence the wire already answered for.
+func (l transportLadder) mark(evidence *taxonomy.Evidence) {
+	evidence.Attempt = l.attempt
+	evidence.Cuts = l.cuts
+	evidence.Degenerate = l.degenerate
+	evidence.Rerouted = l.rerouted
+	evidence.FallbackAvailable = l.fallback
+}
+
+// readCallFailure is what the errand ladder and every caller with one model asks
+// about one failed request: the plain shape, with nowhere else to go.
+//
+// A caller that HAS somewhere else to go asks [Agent.readLadderFailure] instead
+// and gets [taxonomy.ActionHop] where this gets [taxonomy.ActionGiveUp]. The
+// default is the conservative one on purpose: a caller that says nothing about a
+// chain is a caller with no chain, and a move it could not make would be a
+// verdict it had to ignore.
 func (a *Agent) readCallFailure(err error, model, role string, attempt int) taxonomy.Verdict {
-	verdict := a.classify(wireEvidence(err, attempt), model, role)
+	return a.readLadderFailure(err, model, role, transportLadder{attempt: attempt})
+}
+
+// readLadderFailure is the same reading with the whole ladder on it. It
+// classifies, journals, and records a transport failure against the piece of work
+// this agent belongs to — which is what stops the gate three layers up from
+// mistaking the wire for the model.
+func (a *Agent) readLadderFailure(err error, model, role string, ladder transportLadder) taxonomy.Verdict {
+	evidence := wireEvidence(err, ladder.attempt)
+	ladder.mark(&evidence)
+	return a.readWireEvidence(evidence, model, role)
+}
+
+// readWireEvidence is the last step both readings share: classify, journal, and
+// record a transport failure against the piece of work this agent belongs to. It
+// is a door of its own so that a caller holding the EVIDENCE as well as the
+// verdict — [Agent.readErrandFailure] — reads one failure once rather than
+// building the evidence twice.
+func (a *Agent) readWireEvidence(evidence taxonomy.Evidence, model, role string) taxonomy.Verdict {
+	verdict := a.classify(evidence, model, role)
 	if verdict.Class == taxonomy.Transport {
 		a.config.failures.Wire()
 	}
 	return verdict
+}
+
+// transportWords is the person's spelling of a wire failure — the same shape the
+// journal names, said the way somebody watching a reply would say it.
+//
+// THE TWO SPELLINGS ARE NOT THE SAME SENTENCE AND MUST NOT BE. A journal line
+// wants one grouping word per shape, so `the endpoint refused` is exactly right
+// there and exactly wrong on a screen: `endpoint` is machinery, and no sentence a
+// person reads in this build is allowed to use it. So the shapes are named once,
+// in [taxonomy], and the words for them are written here.
+func transportWords(verdict taxonomy.Verdict) string {
+	switch verdict.Reason {
+	case taxonomy.ReasonEmpty:
+		return "nothing came back from the model"
+	case taxonomy.ReasonMalformed:
+		return "the model's tool call arrived broken"
+	case taxonomy.ReasonTimeout:
+		return "the model did not answer in time"
+	case taxonomy.ReasonIdle:
+		return "the model went quiet"
+	case taxonomy.ReasonDegenerate:
+		return "the reply lost its thread"
+	case taxonomy.ReasonCut:
+		return "the reply stopped part-way"
+	case taxonomy.ReasonWire:
+		return "the connection to the model dropped"
+	case taxonomy.ReasonRefused:
+		return "the model would not take the request"
+	case taxonomy.ReasonUnserved:
+		return "the model could not be reached"
+	}
+	return "the request did not get through"
+}
+
+// transportKeptWords is the same shape said about a whole spent budget rather
+// than about one attempt: what KEPT happening, which is what a person watching a
+// step move to another model is owed.
+//
+// It is a second spelling of one list rather than a second list. The shapes are
+// [taxonomy]'s, named once; this says them in the past-repeated tense because
+// "the model would not take the request — finishing this one on X" reads as one
+// bad minute, and the thing that actually happened was every attempt failing.
+func transportKeptWords(verdict taxonomy.Verdict) string {
+	switch verdict.Reason {
+	case taxonomy.ReasonEmpty:
+		return "nothing kept coming back from the model"
+	case taxonomy.ReasonMalformed:
+		return "the model's tool calls kept arriving broken"
+	case taxonomy.ReasonTimeout:
+		return "the model kept not answering in time"
+	case taxonomy.ReasonIdle:
+		return "the model kept going quiet"
+	case taxonomy.ReasonDegenerate:
+		return "the reply kept losing its thread"
+	case taxonomy.ReasonCut:
+		return "the reply kept stopping part-way"
+	case taxonomy.ReasonWire:
+		return "the connection to the model kept dropping"
+	case taxonomy.ReasonRefused:
+		return "the model kept turning the request away"
+	case taxonomy.ReasonUnserved:
+		return "the model could not be reached"
+	}
+	return "the request kept failing"
 }
 
 // readEmptyReply is what the turn loop asks about an HTTP 200 that carried no
@@ -437,6 +559,15 @@ func (a *Agent) billLift(node *TaskNode, child *Agent) {
 // session is not news a person needs — but it is news the FILE needs, because
 // the measured version of this left a session with no title, no brief and no
 // word anywhere of why. The row is the whole action.
-func (a *Agent) readErrandFailure(err error, role roles.Role, model string, attempt int) taxonomy.Verdict {
-	return a.readCallFailure(err, model, string(role), attempt)
+// AND IT ASKS AS A LADDER, because it is one. `fallback` is the errand's own
+// fact — a rung remains — which is what turns the transport budget being spent
+// into [taxonomy.ActionHop] rather than [taxonomy.ActionGiveUp]
+// ([Agent.readLadderFailure]). The evidence comes back beside the verdict because
+// the ladder asks one question the verdict does not carry: see [errandWalksOn].
+func (a *Agent) readErrandFailure(err error, role roles.Role, model string,
+	ladder transportLadder,
+) (taxonomy.Verdict, taxonomy.Evidence) {
+	evidence := wireEvidence(err, ladder.attempt)
+	ladder.mark(&evidence)
+	return a.readWireEvidence(evidence, model, string(role)), evidence
 }

@@ -129,6 +129,25 @@ var vocabulary = []GlyphBinding{
 		ASCII:     "-",
 		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
 	},
+	{
+		ID: GAssumed, Name: "Assumed", Meaning: "taken for granted and gone on with; strike it to change it",
+		// nf-fa-lightbulb_o is the ASKER'S OWN IDEA standing in for a fact
+		// nobody supplied, which is exactly what an assumption is — and the
+		// FA4.7 outline family is the one this table already ships beside
+		// nf-fa-question_circle_o and nf-fa-circle_o. The tier has no icon for
+		// `≈` itself: nf-md-approximately_equal lives above the BMP, which
+		// TestNerdFontIsBMPPrivateUse refuses, so the two sides are the
+		// mathematical and the pictographic spelling of one meaning rather than
+		// one shape at two weights.
+		//
+		// The tint is TERTIARY and never Amber, for [GWithdrawn]'s reason said
+		// about the other end of the same card: amber is a person being waited
+		// on, and an assumption is the asker NOT waiting.
+		Plain: GlyphAssumed, NerdFont: "\uF0EB", NFName: "nf-fa-lightbulb_o",
+		ASCII:          "~",
+		UsualTint:      TextTertiary,
+		PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
+	},
 
 	// -- disclosure and navigation -------------------------------------------
 	//
@@ -155,6 +174,13 @@ var vocabulary = []GlyphBinding{
 		Plain: GlyphScopeUp, UsualTint: TextTertiary, Geometry: true,
 	},
 	{
+		ID: GTarget, Name: "Target", Meaning: "where the next thing goes — the destination of a draft",
+		// Tinted with the identity of the room the draft will land in, exactly as
+		// the steer prompt is: both of them are about somewhere that does not
+		// exist yet.
+		Plain: GlyphTarget, UsualTint: Identity0, PlainAmbiguous: true, Geometry: true,
+	},
+	{
 		ID: GTruncated, Name: "Truncated", Meaning: "clickable overflow — there is more, ask for it",
 		Plain: GlyphTruncated, NerdFont: "\uF141", NFName: "nf-fa-ellipsis_h",
 		ASCII:     ">",
@@ -165,8 +191,8 @@ var vocabulary = []GlyphBinding{
 		// Deliberately not upgraded, for two reasons that each suffice on their
 		// own. First, the tier's ellipsis icon is already spent on GTruncated,
 		// and two slots upgrading to one icon would erase the distinction the
-		// plain tier draws. Second, this mark lands INSIDE prose — it is what
-		// blocks.Truncate leaves at the end of a sentence somebody wrote — so a
+		// plain tier draws. Second, this mark lands INSIDE prose — it is what a
+		// width-bounded renderer leaves at the end of a sentence somebody wrote — so a
 		// repertoire swap here would read as an edit, which is the same finding
 		// that dropped 12.7 D.2's rule (b).
 		Plain: GlyphEllipsis, UsualTint: TextTertiary, PlainAmbiguous: true, Geometry: true,
@@ -177,13 +203,10 @@ var vocabulary = []GlyphBinding{
 		// nf-fa-scissors U+F0C4 for this slot. Three reasons, in the order the
 		// glyph audit found them:
 		//
-		//  1. Nothing could draw it. The only renderer of the cut is
-		//     blocks.CutRule, which spells blocks.CutMark — a raw byte in a leaf
-		//     package that cannot import this one and never consults the tier —
-		//     and the rail spells the tier-blind [GlyphCut] constant. The parity
-		//     golden records the consequence in plain sight: the cut row is
-		//     byte-identical in both tiers. An icon nothing draws is a lie in
-		//     the table and a row in the width gate that gates nothing.
+		//  1. The cut is drawn as the tier-blind [GlyphCut] geometry slot. The
+		//     parity golden records the consequence in plain sight: the cut row
+		//     is byte-identical in both tiers. An icon nothing draws would be a
+		//     lie in the table and a row in the width gate that gates nothing.
 		//  2. The mark is line geometry, which is B.2's own rule. `╌` is a
 		//     dashed rule FRAGMENT that tiles with the `─` run it leads
 		//     ("╌ cut off — output cap ──────"); a pictograph in that cell
