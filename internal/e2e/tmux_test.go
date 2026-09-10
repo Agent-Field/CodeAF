@@ -454,6 +454,17 @@ func (r *rig) mouseTo(col, row int) {
 	time.Sleep(400 * time.Millisecond)
 }
 
+// mouseClick is a left-button press and release at a 1-based cell. The body
+// acts on release (dragselect.go), so a motion alone is not a click — the same
+// SGR pair the unit harness builds as MouseClickMsg + MouseReleaseMsg.
+func (r *rig) mouseClick(col, row int) {
+	r.t.Helper()
+	r.lit(fmt.Sprintf("\x1b[<0;%d;%dM", col, row))
+	time.Sleep(50 * time.Millisecond)
+	r.lit(fmt.Sprintf("\x1b[<0;%d;%dm", col, row))
+	time.Sleep(400 * time.Millisecond)
+}
+
 // capture is the screen, exactly as it stands.
 func (r *rig) capture() string {
 	r.t.Helper()

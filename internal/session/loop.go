@@ -2326,13 +2326,20 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		// OVER, and what it cost, is known here and is stale by the time the
 		// slowest sibling returns. Sent from inside the execution so the early
 		// start (warmBatch.consider) is measured the same way the batch is.
+		took := time.Since(started)
+		// AND THE RECORD KEEPS THE FIGURE where the event is sent, with the same
+		// id: a page opened after the batch — or a room rebuilt from the journal
+		// after a landing — has no stream to watch, and without this line the
+		// rows came back with Args and Output but no duration (sessionfile.go's
+		// [sessionFile.appendTook]).
+		a.file.appendTook(call.ID, took)
 		if hub != nil {
 			hub.send(Event{
 				Kind:   EventToolFinished,
 				Tool:   call.Function.Name,
 				Args:   rendered,
 				CallID: call.ID,
-				Took:   time.Since(started),
+				Took:   took,
 			})
 		}
 		if err != nil {
