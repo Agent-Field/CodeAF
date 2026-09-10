@@ -168,6 +168,25 @@ class Run:
     def calllog_rows(self):
         return [row for row in self.wire if row.get("source") == "calllog"]
 
+    def by_cell(self):
+        """Guard rows grouped by the cell that made them.
+
+        The guard's evidence directory is named `<scenario>-<arm>`, and that
+        tail is what the tables are keyed by. Rolling the arm off is safe here
+        because this bench runs one arm — it is comparing two builds of aforge,
+        not aforge against a peer — and keeping it would put `-aforge` on the
+        end of every row of every table for no information at all."""
+        groups = {}
+        for row in self.guard_rows():
+            name = os.path.basename(row.get("cell") or "")
+            if name.endswith("-aforge"):
+                name = name[: -len("-aforge")]
+            groups.setdefault(name or "unnamed", []).append(row)
+        return groups
+
+    def cell_wall(self):
+        return {row.get("scenario"): row.get("wall_s") for row in self.cells}
+
 
 def outcome_table(before, after, kind):
     """One row per named thing, and the verdict word for the pair."""
@@ -296,6 +315,37 @@ def main():
             name, figure(left, spelling), figure(right, spelling),
             delta(left, right), percent(left, right)))
     add("")
+
+    # ── per cell ────────────────────────────────────────────────────────────
+    #
+    # The aggregate above can hide the shape that matters: one cell that got
+    # much cheaper and one that got much dearer average out to no change at
+    # all, and it is the pair, not the average, that says what the diet did.
+    left_cells, right_cells = before.by_cell(), after.by_cell()
+    if left_cells or right_cells:
+        left_outcomes, right_outcomes = before.cell_outcomes(), after.cell_outcomes()
+        left_wall, right_wall = before.cell_wall(), after.cell_wall()
+        add("## Per cell")
+        add("")
+        add("| cell · run | outcome | requests | median prompt tok "
+            "| median cached tok | median completion tok | $ | wall s |")
+        add("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |")
+        for name in sorted(set(left_cells) | set(right_cells)):
+            key = "conversation/" + name
+            was = left_outcomes.get(key, "—")
+            now = right_outcomes.get(key, "—")
+            for label, group, outcome, wall in (
+                (before.label, left_cells.get(name, []), was, left_wall.get(name)),
+                (after.label, right_cells.get(name, []), now, right_wall.get(name)),
+            ):
+                add("| `%s` · %s | %s | %d | %s | %s | %s | %s | %s |" % (
+                    name, label, outcome, len(group),
+                    figure(middle([row.get("prompt_tokens") for row in group])),
+                    figure(middle([row.get("cached_tokens") for row in group])),
+                    figure(middle([row.get("completion_tokens") for row in group])),
+                    figure(total([row.get("cost_usd") for row in group]), "{:.4f}"),
+                    figure(wall, "{}")))
+        add("")
 
     # ── recorded, not ruled on ──────────────────────────────────────────────
     add("## Recorded, not ruled on")
