@@ -448,11 +448,11 @@ func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 	rows := make([]string, 0, height)
 	if tabs != "" {
 		// THE HEAD IS THE PLACES' HEAD — the pulse, the strip, the rule and the
-		// blank — drawn by the one function both frames call (head.go). A room
-		// takes it down to the strip and lays its trail under that instead of the
-		// rule (chattabs.go's [app.headSealHeight]). The prefix is cut at exactly
-		// the count [app.headHeight] charges, so the rows the frame draws and the
-		// rows the scrolling subtracts are the same rows by construction.
+		// blank — drawn by the one function both frames call (head.go), and a
+		// room lays its trail under the blank (chattabs.go's
+		// [app.headSealHeight]). The prefix is cut at exactly the count
+		// [app.headHeight] charges, so the rows the frame draws and the rows the
+		// scrolling subtracts are the same rows by construction.
 		head := a.headRows(width, tabs, a.pal)
 		rows = append(rows, head[:a.tabsHeight(width)+a.headSealHeight(width)]...)
 	}
@@ -1165,19 +1165,19 @@ func (a *app) headHeight() int {
 	// they are drawn over the conversation and over every page inside it,
 	// because which conversation this is stays true wherever you have walked to
 	// inside one.
+	//
+	// AND THE SEAM UNDER THE STRIP — the rule and the blank that are the head's
+	// last two rows on every frame, a room's included — which is what closes the
+	// head off from the transcript and from the roster beside it on a terminal
+	// whose background this program does not control (chattabs.go's
+	// [app.headSealHeight]).
 	width, _ := a.size()
-	head := a.tabsHeight(width)
+	head := a.tabsHeight(width) + a.headSealHeight(width)
 	if a.room == nil {
 		// AND THE CONVERSATION ITSELF HAS NO TRAIL ROW. `main` with nothing after
 		// it is the tab above it said twice, and the emptiness law is exactly this:
 		// a row that carries no news is a row that is not drawn.
-		//
-		// WHAT IT DOES HAVE IS THE SEAM UNDER THE STRIP — the rule and the blank
-		// that are the head's last two rows on every frame — which is what closes
-		// the head off from the transcript and from the roster beside it on a
-		// terminal whose background this program does not control
-		// (chattabs.go's [app.headSealHeight]).
-		return head + a.headSealHeight(width)
+		return head
 	}
 	// A ROOM'S OWN ROWS ARE CHARGED FOR THROUGH THEIR OWN LADDER, which knows the
 	// two floors the header stands on — too narrow for a trail and a way out, too

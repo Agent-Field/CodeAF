@@ -74,9 +74,9 @@ func TestARoomPinsAFocusHeader(t *testing.T) {
 	// AND IT COSTS THE PAGE ITS ROW, in the one number every geometric question
 	// resolves through — a header the scrolling did not know about would push
 	// the room's last row under the input box. The tab strip and the room's
-	// trail and facts are pinned here, with their breathing room. The task
-	// strip stands down wherever this header is drawn.
-	wantHead := a.tabsHeight(a.width) + a.roomHeadHeight(a.width)
+	// trail and facts are pinned here, under the whole head, with their
+	// breathing room. The task strip stands down wherever this header is drawn.
+	wantHead := a.roomHeadRow() + a.roomHeadHeight(a.width)
 	if a.headHeight() != wantHead || a.stripHeight() != 0 || a.bodyTop() != wantHead {
 		t.Fatalf("the pinned rows are drawn but not budgeted: head=%d strip=%d top=%d",
 			a.headHeight(), a.stripHeight(), a.bodyTop())

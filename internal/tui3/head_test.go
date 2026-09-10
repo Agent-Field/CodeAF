@@ -88,6 +88,54 @@ func TestTheConversationWearsThePlacesHead(t *testing.T) {
 	}
 }
 
+// headFrameSizes are the three frames a person walks between chats, rooms and
+// places at: the classic terminal, and a tall one at two widths — the wider two
+// being where a task room lays itself out beside its roster
+// (roompanel.go's [app.roomOrganized]).
+var headFrameSizes = []struct{ w, h int }{{80, 24}, {120, 45}, {180, 45}}
+
+// A TASK ROOM SPENDS THE PLACES' HEAD ABOVE ITS BODY, as the conversation it
+// opened from does and as every place does: the pulse, the strip, the rule and
+// a blank, and the room's own trail on the first row under them — where a
+// place's heading is. It used to lay the trail where the rule stands and its
+// facts where the blank does, so walking into a task moved the rule down a row,
+// and two in the roomy layout (PLACES-AUDIT.md, lane K).
+func TestATaskRoomSpendsThePlacesHeadAboveItsBody(t *testing.T) {
+	room, chat := crumbApp(t), headLab(t)
+	for _, size := range headFrameSizes {
+		for _, f := range []struct {
+			where string
+			a     *app
+			to    page
+		}{{"the task room", room, pageNone}, {"the conversation", chat, pageNone}, {"the tasks place", chat, pageTasks}} {
+			f.a.width, f.a.height = size.w, size.h
+			if f.to != pageNone {
+				walkTo(t, f.a, f.to)
+			}
+			f.a.touch()
+			head := headOf(t, f.a)
+			if !strings.HasPrefix(head[0], " "+product) || head[2] != strings.Repeat("─", size.w) || head[3] != "" {
+				t.Fatalf("at %dx%d %s's head is not the pulse, a row, the rule and a blank:\n%s",
+					size.w, size.h, f.where, strings.Join(head, "\n"))
+			}
+			if f.to != pageNone {
+				f.a.showPage(pageNone)
+			}
+		}
+		// The room's heading is the first row under the head, and the rows the
+		// frame drew there are the rows the geometry charged for.
+		rows := strings.Split(plain(frame(room)), "\n")
+		if room.roomHeadRow() != placeHeadRows || !strings.Contains(rows[placeHeadRows], "Write the tree") {
+			t.Fatalf("at %dx%d the room's trail is on row %d, not under the %d-row head:\n%q",
+				size.w, size.h, room.roomHeadRow(), placeHeadRows, rows[placeHeadRows])
+		}
+		if room.bodyTop() != room.headHeight()+room.stripHeight() || room.headHeight() < placeHeadRows+room.roomHeadCount() {
+			t.Fatalf("at %dx%d the room's head is charged %d rows, body at %d",
+				size.w, size.h, room.headHeight(), room.bodyTop())
+		}
+	}
+}
+
 // AND THE PULSE IS ONE LINE, NOT TWO THAT AGREE. The tasks place and the
 // conversation draw it from one function over one memo, so over the same
 // machine they draw the same characters.
