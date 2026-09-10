@@ -360,6 +360,10 @@ being looked at, and `2 of 5` is how far a run has got. Only the first row turns
 brings its conversation here. **`→` then `s stop` ends a task this window is running**,
 asking you first; another window's work offers no such verb.
 
+**A standing order in the middle of firing is a row here too**: its own words, what the
+pass is doing, and how long ago it began. It is still the item — `enter` opens the
+conversation that set it up, `→` offers `pause`, and `ctrl+v` raises how hard it thinks.
+
 Two other places say the same thing more briefly:
 
 - **the pulse line** at the top — `4 moving` — which is the same count over the whole
@@ -2213,7 +2217,9 @@ forever, so they are held to the cheapest rung on purpose — an install set to
 `max` does not turn every check on the machine into a deep pass.
 
 **`ctrl+v` on an item's row is how you raise the one that deserves it.** Put the
-cursor on the standing item (or point at it) and press it: the rung climbs one step
+cursor on the standing item — on home at rest it has a row while it is firing (under
+`running`) or asking you something (under `needs you`), and typing its words finds it
+any time — and press it: the rung climbs one step
 each press — `low`, `medium`, `high`, `xhigh`, `max`, then back to `low` — and
 home says `thinking high · <your words>` at the foot. The card then carries a
 dim `thinking high` clause, read straight back from the item's own document.

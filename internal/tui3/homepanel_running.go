@@ -41,6 +41,8 @@ const (
 	// conversation's task 3 and its job 3 are two rows.
 	runningTaskKey = "task:"
 	runningJobKey  = "job:"
+	// runningItemKey prefixes a firing standing item's key, by its id.
+	runningItemKey = "item:"
 )
 
 // runningItem is one row before the panel orders it.
@@ -52,6 +54,10 @@ type runningItem struct {
 func (runningPanel) rows(in *homeGridInput) homePanelRows {
 	var items []runningItem
 	for _, row := range in.rows {
+		if row.kind == switcherStanding && row.moving {
+			items = append(items, runningItem{row.at, runningStandingLine(row)})
+			continue
+		}
 		if row.kind != switcherConversation || !row.session.Presence.Fresh(in.now) {
 			continue
 		}
@@ -148,6 +154,21 @@ func runningJobLine(row switcherRow, job session.PresenceJob, project string, no
 	}
 	cell := &homeCell{panel: panelRunning, title: title + rowSep + runningJobWord, key: runningJobKey + job.ID}
 	homeLiveMargin(cell, row, clock)
+	return switcherRowLine(row, cell)
+}
+
+// runningStandingLine is a watch or a reminder IN THE MIDDLE OF FIRING: work the
+// machine started on its own, which is exactly what this panel is about. It
+// carries the words the item was set up with, what its pass is doing, and how
+// long ago the pass began ([switcherItemAt] reads the running mark).
+//
+// IT STAYS AN ITEM'S LINE ([switcherRowLine] makes it a [homeItem]), so every
+// door an item has — enter to the conversation that asked for it, `→` for its
+// pause verb, `ctrl+v` for its own rung — is the door it had on the retired list.
+func runningStandingLine(row switcherRow) homeLine {
+	cell := &homeCell{panel: panelRunning, title: row.title, sub: row.note,
+		key: runningItemKey + row.item.Item.ID}
+	homeLiveMargin(cell, row, row.age)
 	return switcherRowLine(row, cell)
 }
 
