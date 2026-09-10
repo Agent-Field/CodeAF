@@ -230,13 +230,9 @@ func NewMemoryTidy(parent Config, brainPath, root string, idle standing.Idle) st
 			if built != nil {
 				return
 			}
-			client, built = provider.NewClient(provider.Config{
-				APIKey:  parent.APIKey,
-				BaseURL: parent.BaseURL,
-				Model:   model,
-				Timeout: providerTimeout,
-				Routing: provider.StaticRouting(parent.Routing),
-			})
+			settings := parent.clientConfig(model, providerTimeout)
+			settings.Routing = provider.StaticRouting(parent.Routing)
+			client, built = provider.NewClient(settings)
 		})
 		if built != nil {
 			return standing.Tidied{}, built

@@ -44,27 +44,22 @@ const jobShutdownGrace = 2 * time.Second
 // network request: the client is constructed, the prompt rendered, and the
 // session file — if configured and present — replayed into the transcript.
 func New(config Config) (*Agent, error) {
-	client, err := provider.NewClient(provider.Config{
-		APIKey:  config.APIKey,
-		BaseURL: config.BaseURL,
-		Model:   config.Model,
-		Timeout: providerTimeout,
-		// The routing row, already resolved. It is handed down as a source
-		// rather than as a path so that nothing under here ever reads a settings
-		// file to decide how a request is routed.
-		Routing: provider.StaticRouting(config.Routing),
-		// The catalog gate on optional knobs, and the two answers to "what
-		// else could serve this?" when no endpoint will take the request at all
-		// (internal/provider's endpoints.go). All three are seams the surface
-		// resolves; a caller that hands over none of them keeps today's
-		// behaviour exactly — knobs travel only when explicit, and a refusal
-		// ends in the diagnosis rather than on another model.
-		SupportsParameter: config.SupportsParameter,
-		ReasoningProfile:  config.ReasoningProfile,
-		ModelPrice:        config.ModelPrice,
-		Fallbacks:         config.ModelFallbacks,
-		NearestModels:     config.NearestModels,
-	})
+	settings := config.clientConfig(config.Model, providerTimeout)
+	// The session passes its current model on every request, so it keeps the
+	// assembled bare slug too; otherwise that per-call choice would put the
+	// thinking suffix back after the client door had split it off.
+	config.Model = settings.Model
+	// The routing row, already resolved. It is handed down as a source rather
+	// than as a path so that nothing under here ever reads a settings file to
+	// decide how a request is routed.
+	settings.Routing = provider.StaticRouting(config.Routing)
+	// The two answers to "what else could serve this?" when no endpoint will
+	// take the request at all (internal/provider's endpoints.go) are seams the
+	// surface resolves; a caller that hands over neither keeps today's behaviour
+	// exactly — a refusal ends in the diagnosis rather than on another model.
+	settings.Fallbacks = config.ModelFallbacks
+	settings.NearestModels = config.NearestModels
+	client, err := provider.NewClient(settings)
 	if err != nil {
 		return nil, err
 	}
