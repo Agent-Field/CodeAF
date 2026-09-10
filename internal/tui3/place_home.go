@@ -258,8 +258,9 @@ func (a *app) homeRowVerbs() []verb {
 		return nil
 	}
 	// A RUNNING ROW IS A PIECE OF WORK AND NOT ITS CONVERSATION, so its verbs
-	// are the work's (homepanel_running.go) and never `put it away`.
-	if line.cell != nil && line.cell.panel == panelRunning {
+	// are the work's (homepanel_running.go) and never `put it away`. A firing
+	// watch on it is still an item, and falls through to the item's own verbs.
+	if line.cell != nil && line.cell.panel == panelRunning && line.kind != homeItem {
 		return a.runningVerbs(line)
 	}
 	// A ROW OF THE GRID CARRIES THE SWITCHER'S OWN ROW ON ITS CELL, so its verbs

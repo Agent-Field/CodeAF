@@ -295,6 +295,27 @@ func TestRunningGrowsToItsBudgetAndFoldsTheRestIntoTasks(t *testing.T) {
 	}
 }
 
+// A WATCH IN THE MIDDLE OF FIRING IS RUNNING WORK: its words, what its pass is
+// doing and how long ago the pass began — and it is still an item, so `→`
+// offers the item's own verb and never a task's stop.
+func TestRunningDrawsAFiringStandingItemWithItsOwnVerb(t *testing.T) {
+	a, _ := itemHome(t)
+	var item homeLine
+	for _, line := range panelLines(a, panelRunning) {
+		if line.kind == homeItem {
+			item = line
+		}
+	}
+	if item.cell == nil || item.cell.title != "remind me on Fridays" ||
+		item.cell.sub != "reading the calendar" || item.cell.right != "1m" {
+		t.Fatalf("the firing item is not words, doing and clock on running: %+v", item.cell)
+	}
+	verbs := a.homeRowVerbs()
+	if len(verbs) != 1 || verbs[0].key != 'p' || verbs[0].word != homeItemPauseWord {
+		t.Fatalf("the firing item's strip is not its own pause: %+v", verbs)
+	}
+}
+
 // AN EMPTY PANEL WHISPERS.
 func TestRunningWhispersWhenNothingIsOut(t *testing.T) {
 	a := newLiveLab(t).open()

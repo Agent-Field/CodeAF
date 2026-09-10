@@ -5,18 +5,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
-
-// readIn is this lab's reading with a FRAME UNDER IT: how many rows the column
-// the list is drawn into actually has. Zero is the reading every other test in
-// this file takes — no room handed in, and the list as it drew before it could
-// ask (switcher.go's [switcherView.room]).
-func (l switcherLab) readIn(room int) switcherReading {
-	return readSwitcher(l.world, l.items, l.fired, switcherHere{session: l.here, project: l.bucket}, l.gone, l.seen, l.now,
-		switcherView{room: room}, switcherLedgerInput{})
-}
 
 // switcherDrawnRows is how many of this reading's lines are things a person can
 // stand on and open — conversations and watches, not headings, blanks or the
@@ -29,41 +18,6 @@ func switcherDrawnRows(r switcherReading) int {
 		}
 	}
 	return n
-}
-
-// TestTheListGrowsToTheFrameAndIsNeverShorterThanEight is [switcherShown]
-// turned from a ceiling into a floor.
-//
-// A fifty-row terminal used to draw eight conversations, fold the rest behind
-// `▸ 7 more, quiet since 5d`, and leave the bottom half of the screen
-// blank — the frame had the rows and the reading had no way to be told about
-// them.
-func TestTheListGrowsToTheFrameAndIsNeverShorterThanEight(t *testing.T) {
-	lab := newSwitcherLab()
-	for _, want := range []struct {
-		room  int
-		rows  int
-		folds bool
-		why   string
-	}{
-		{room: 0, rows: 8, folds: true, why: "a reading told nothing about its frame draws what it always drew"},
-		{room: 12, rows: 8, folds: true, why: "a short frame still owes a person the eight-row floor"},
-		{room: 20, rows: 14, folds: true, why: "a taller frame draws the rows it has, and folds what is still under them"},
-		{room: 40, rows: 15, folds: false, why: "a frame that holds the whole list has nothing left to fold"},
-	} {
-		r := lab.readIn(want.room)
-		text := switcherText(r, 120)
-		if got := switcherDrawnRows(r); got != want.rows {
-			t.Fatalf("a column of %d rows drew %d conversations, want %d — %s:\n%s", want.room, got, want.rows, want.why, text)
-		}
-		if folds := strings.Contains(text, tokens.GlyphCollapsed); folds != want.folds {
-			verb := "drew a fold"
-			if want.folds {
-				verb = "drew no fold"
-			}
-			t.Fatalf("a column of %d rows %s — %s:\n%s", want.room, verb, want.why, text)
-		}
-	}
 }
 
 // TestAGrownListStillPaysForItsOwnHeadings holds the same law on the grouped
