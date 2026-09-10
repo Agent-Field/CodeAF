@@ -919,25 +919,29 @@ type DecisionClause struct {
 // left behind by an answer stopped saying who gave it, when, or that it could
 // still be changed. The rank says what is actually worth keeping:
 //
-//   - the head and what was picked are the record and are never given up;
-//   - `cannot change` is never given up either — it is the one clause that is a
-//     LIMIT rather than a detail, and a row that dropped it would read as a
-//     decision somebody could still walk back;
+//   - the head and what was picked are the record itself and are never given
+//     up — a row with no room for them is cut rather than emptied;
+//   - WHO DECIDED is never given up either. It is the one thing on the line
+//     nobody can work out for themselves, and it is what keeps a receipt from
+//     reading as something this person did: `another window` and `aforge, on
+//     your settings` are the whole reason the field exists;
+//   - `cannot change` stays for the same kind of reason — it is a LIMIT rather
+//     than a detail, and a row that dropped it would read as a decision
+//     somebody could still walk back;
 //   - the change said beside the pick goes first, because it is the one clause
 //     the transcript and `decisions.jsonl` both still carry in full;
-//   - then the time, then who decided — in that order, because a receipt that
-//     has room for exactly one more thing is better spent saying whose answer it
-//     was than saying what minute it was.
+//   - then the time, which is the only clause on the line a person can usually
+//     get from where the row is sitting.
 func (r DecisionRecord) LineClauses() []DecisionClause {
 	clauses := []DecisionClause{{Text: strings.TrimSpace(r.Head) + " → " + r.Words()}}
 	if change := strings.TrimSpace(r.Change); change != "" {
-		clauses = append(clauses, DecisionClause{Text: "with: " + change, GiveUp: 3})
+		clauses = append(clauses, DecisionClause{Text: "with: " + change, GiveUp: 2})
 	}
 	if by := strings.TrimSpace(string(r.By)); by != "" {
-		clauses = append(clauses, DecisionClause{Text: decidedByWord(r.By), GiveUp: 1})
+		clauses = append(clauses, DecisionClause{Text: decidedByWord(r.By)})
 	}
 	if !r.At.IsZero() {
-		clauses = append(clauses, DecisionClause{Text: r.At.Format("15:04"), GiveUp: 2})
+		clauses = append(clauses, DecisionClause{Text: r.At.Format("15:04"), GiveUp: 1})
 	}
 	if !r.Reversible() {
 		clauses = append(clauses, DecisionClause{Text: "cannot change"})

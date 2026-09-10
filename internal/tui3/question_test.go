@@ -946,6 +946,12 @@ func TestTheReceiptGivesUpAClauseRatherThanLosingItsTail(t *testing.T) {
 	if strings.Contains(row, "with:") {
 		t.Fatalf("the receipt kept the clause it should have given up first: %q", row)
 	}
+	// AND WHO DECIDED SURVIVES A ROW TOO NARROW EVEN FOR THE QUESTION, because
+	// it is the one thing on the line nobody can work out for themselves.
+	narrow := plain(lab.a.questionRecordRow(lab.a.questionRecords[0], 70))
+	if !strings.Contains(narrow, "you") || !strings.Contains(narrow, questionCommentKey+" change") {
+		t.Fatalf("a narrow receipt stopped saying who decided: %q", narrow)
+	}
 	// AND AT A WIDTH THAT HOLDS EVERYTHING, NOTHING IS GIVEN UP.
 	lab.a.width = 200
 	wide := plain(lab.a.questionRecordRow(lab.a.questionRecords[0], lab.a.width))
