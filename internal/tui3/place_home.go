@@ -267,6 +267,9 @@ func (a *app) homeRowVerbs() []verb {
 	if line.cell != nil && line.cell.row != nil {
 		return a.homeReadingVerbs(line, *line.cell.row)
 	}
+	if line.kind == homeProjectRow {
+		return a.homeProjectVerbs(line)
+	}
 	if line.sw == nil || line.sw.row == nil {
 		// A ROW THE TYPED SURFACE BUILT, WHICH THE READING NEVER SAW. Under a
 		// query the column is [homeRank]'s drop-up and a standing item's row is
@@ -969,7 +972,9 @@ func (placeHome) body(a *app, width, room int) []placeRow {
 		a.home.room, a.home.cols = room, cols
 		a.home.build()
 	}
-	if a.home.gridOn() {
+	// AN ERRAND HOLDING THE KEYBOARD STACKS OVER THE GRID, which has no pane
+	// column to draw it in ([app.homeStacked]); [app.homeBody] draws that shape.
+	if _, stacked := a.homeStacked(); a.home.gridOn() && !stacked {
 		return a.homeGridRows(width, room, a.pal)
 	}
 	left, right := homeColumns(width)
@@ -1179,4 +1184,54 @@ func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	a.sweepExchanges()
 	a.touch()
 	return cmd, true
+}
+
+// ── a project's doors ───────────────────────────────────────────────────────
+
+// homeProjectEnter is enter on a project of the grid: A FRESH CONVERSATION IN
+// THAT FOLDER, down the road `ctrl+t` has always taken — the folder is pinned as
+// the target and home's own start door opens there, stepping the conversation in
+// front aside into the keeper when the folder is somewhere else (keeper.go's
+// [app.startBeside]).
+func (a *app) homeProjectEnter(line homeLine) tea.Cmd {
+	where := strings.TrimSpace(line.proj.Path)
+	if where == "" {
+		return nil
+	}
+	if !homeFolderThere(where) {
+		a.home.say(homeGoneWord+rowSep+where, "")
+		return nil
+	}
+	a.target.where = where
+	return a.homeStart("")
+}
+
+// The two verbs a project offers. `its chats` puts the project's name in the box,
+// where the live query answers with every conversation in it.
+const (
+	homeProjectChatsWord  = "its chats"
+	homeProjectFolderWord = "open folder"
+)
+
+// homeProjectVerbs is `→` on a project: its chats, and its folder in the
+// machine's file manager — the second absent where the folder is on another
+// machine or not recorded at all, for [app.homeRowVerbs]' reason.
+func (a *app) homeProjectVerbs(line homeLine) []verb {
+	verbs := []verb{{key: 'c', word: homeProjectChatsWord, do: func() tea.Cmd {
+		a.home.box.setText(line.project)
+		a.home.build()
+		return nil
+	}}}
+	where := strings.TrimSpace(line.proj.Path)
+	if where == "" || a.hosted() || a.home.gone[where] {
+		return verbs
+	}
+	return append(verbs, verb{key: 'o', word: homeProjectFolderWord, do: func() tea.Cmd {
+		if processOpener(where) != nil {
+			a.home.say("could not open "+where, "")
+			return nil
+		}
+		a.home.say("opened "+where, where)
+		return nil
+	}})
 }

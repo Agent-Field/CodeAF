@@ -4,6 +4,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // ── THE PANELS (docs/design/home-mission-control/DESIGN.md §1, §3 G2–G6) ────
@@ -97,5 +100,226 @@ func TestSinceYouLeftIsItsOwnPanelOfDoors(t *testing.T) {
 	a.homeKey(key("enter"))
 	if !a.at(pageMemory) {
 		t.Fatal("enter on the memory line did not open the memory place")
+	}
+}
+
+// WHERE YOU WERE: this window's own conversation first with `here`, the last
+// thing said in it under it, then the most recent quiet ones, then the fold.
+func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.open(120, 45)
+	a.home.last[lab.mine] = session.Summary{LastUser: "explain open addressing vs chaining"}
+	a.home.build()
+	frame := homeText(a)
+	head, _ := homeRowOf(frame, "where you were")
+	own, _ := homeRowOf(frame, "Porting the Resume Picker")
+	if head < 0 || own != head+1 {
+		t.Fatalf("this window's own conversation is not the first row of where you were:\n%s", frame)
+	}
+	lines := strings.Split(frame, "\n")
+	if !strings.Contains(lines[own], homeHereWord) || !strings.Contains(lines[own+1], "explain open addressing") {
+		t.Fatalf("the own row does not say here with its last words under it:\n%s", frame)
+	}
+	if !strings.Contains(frame, "5 more · "+homeFindWord) {
+		t.Fatalf("the quiet tail is not folded behind one line:\n%s", frame)
+	}
+	// AND A ROW FROM ANOTHER FOLDER SAYS WHICH, where one from this folder does
+	// not.
+	if quiet := lines[own+2]; !strings.Contains(quiet, "Quiet Chat a") || !strings.Contains(quiet, "beta") {
+		t.Fatalf("a row from another folder does not carry its project:\n%s", frame)
+	}
+	// AND THE TWO ROWS THAT ARE ON OTHER PANELS ARE NOT HERE A SECOND TIME.
+	if strings.Count(frame, "Swarm Task Splitting") != 1 || strings.Count(frame, "Bounty Reward Companies") != 1 {
+		t.Fatalf("a conversation is drawn on two panels:\n%s", frame)
+	}
+}
+
+// PRESELECT THE PREVIOUS THING (law 6): home opened from a conversation puts the
+// cursor on the one this window was in before it, so enter is a switch in two
+// keys.
+func TestHomePreselectsTheConversationThisWindowWasInBefore(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.app(lab.mine)
+	a.width, a.height = 120, 45
+	var before string
+	for _, row := range a.readWorld().Sessions() {
+		if row.Title == "quiet chat c" {
+			before = row.Transcript
+		}
+	}
+	a.prev = []string{before}
+	a.openHome()
+	homeText(a)
+	if got := a.home.focused(); got.Transcript != before {
+		t.Fatalf("the cursor opened on %q, want the previous conversation %q", got.Title, before)
+	}
+}
+
+// AND TYPING IS UNTOUCHED: with anything in the box the body is the search's
+// drop-up, exactly as it was, and not a panel.
+func TestTypingOnHomeStillRaisesTheSearch(t *testing.T) {
+	a := newSwitchLab(t).open(120, 45)
+	for _, r := range "quiet" {
+		a.homeKey(key(string(r)))
+	}
+	if a.home.gridOn() {
+		t.Fatal("the grid is still up under a query")
+	}
+	for _, line := range a.home.lines {
+		if line.cell != nil {
+			t.Fatal("a line of the drop-up carries a panel's cell")
+		}
+	}
+	if frame := homeText(a); !strings.Contains(frame, "Quiet Chat a") {
+		t.Fatalf("the query did not find its rows:\n%s", frame)
+	}
+}
+
+// homeLineOf puts the cursor on the first line a test predicate names.
+func homeLineOf(t *testing.T, a *app, want func(homeLine) bool) {
+	t.Helper()
+	for at, line := range a.home.lines {
+		if want(line) {
+			a.home.cursor = at
+			return
+		}
+	}
+	t.Fatal("no line on home is the one the test wants")
+}
+
+// PROJECTS: this window's folder first, each with its chats and what is running
+// in it, and the repository's state at the right.
+func TestProjectsListsThisFolderFirstWithItsCountsAndRepository(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.open(120, 45)
+	beta := lab.workspace("beta")
+	a.home.tilde = lab.work
+	a.home.repos = map[string]homeRepoReading{beta: {line: "master · 2 files dirty"}}
+	a.home.build()
+	frame := homeText(a)
+	head, _ := homeRowOf(frame, "projects")
+	lines := strings.Split(frame, "\n")
+	if head < 0 || head+2 >= len(lines) {
+		t.Fatalf("projects is not drawn:\n%s", frame)
+	}
+	if !strings.Contains(lines[head+1], "~/alpha") || !strings.Contains(lines[head+1], "2 chats") {
+		t.Fatalf("this window's folder is not the first project:\n%s", frame)
+	}
+	second := lines[head+2]
+	for _, want := range []string{"beta", "10 chats · 1 running", "master, 2 files dirty"} {
+		if !strings.Contains(second, want) {
+			t.Fatalf("the beta row does not say %q:\n%s", want, frame)
+		}
+	}
+}
+
+// ENTER ON A PROJECT STARTS A CONVERSATION THERE, and home steps aside for it.
+func TestEnterOnAProjectStartsAConversationInThatFolder(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.open(120, 45)
+	beta := lab.workspace("beta")
+	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeProjectRow && l.proj.Path == beta })
+	a.homeKey(key("enter"))
+	if a.at(pageHome) || a.workspace != beta {
+		t.Fatalf("enter on the beta project left home=%v in %q, want a conversation in %q", a.at(pageHome), a.workspace, beta)
+	}
+}
+
+// AND ITS VERBS ARE ITS CHATS AND ITS FOLDER.
+func TestAProjectOffersItsChatsAndItsFolder(t *testing.T) {
+	a := newSwitchLab(t).open(120, 45)
+	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeProjectRow && l.project == "beta" })
+	verbs := a.homeRowVerbs()
+	if len(verbs) != 2 || verbs[0].word != homeProjectChatsWord || verbs[1].word != homeProjectFolderWord {
+		t.Fatalf("a project offers %+v", verbs)
+	}
+	verbs[0].do()
+	if a.home.box.String() != "beta" || a.home.gridOn() {
+		t.Fatalf("its chats did not search the project: box %q", a.home.box.String())
+	}
+}
+
+// `~` IS NEVER A PROJECT NAME: the home directory's row draws nothing where a
+// name would be, and so does a project that recorded no folder.
+func TestTheHomeDirectoryIsNotAProjectName(t *testing.T) {
+	if got := projectWord(session.Project{Name: "~", Path: "/home/pat"}, "/home/pat"); got != "" {
+		t.Fatalf("the home directory is called %q", got)
+	}
+	if got := projectWord(session.Project{Name: "-bucket"}, "/home/pat"); got != "" {
+		t.Fatalf("a folderless project is called %q", got)
+	}
+	if got := projectWord(session.Project{Name: "site", Path: "/home/pat/site"}, "/home/pat"); got != "~/site" {
+		t.Fatalf("a project under home is called %q, want ~/site", got)
+	}
+}
+
+// SPEND READS THE FORTNIGHT THE SPEND PLACE READS: today's figure, the total,
+// and the model most of it went to.
+func TestSpendReadsTodayAndTheFortnight(t *testing.T) {
+	now := time.Date(2026, 9, 10, 15, 0, 0, 0, time.Local)
+	lines := []session.UsageLine{
+		{At: now.Add(-time.Hour), USD: 0.25, Model: "anthropic/claude-opus-5"},
+		{At: now.AddDate(0, 0, -3), USD: 0.75, Model: "anthropic/claude-opus-5"},
+		{At: now.AddDate(0, 0, -5), USD: 1.00, Model: "deepseek/deepseek-v4-flash"},
+		{At: now.AddDate(0, 0, -30), USD: 9.00, Model: "anthropic/claude-opus-5"},
+	}
+	s := readHomeSpend(lines, now, 20)
+	if s.today != 0.25 || s.total != 2.00 || len(s.days) != homeSpendDays {
+		t.Fatalf("today %v, fortnight %v over %d days", s.today, s.total, len(s.days))
+	}
+	if s.share != 0.5 || s.top == "" {
+		t.Fatalf("the top model is %q at %v, want half the fortnight", s.top, s.share)
+	}
+}
+
+// AND THE PANEL SAYS IT: today against the allowance on the heading, the bar
+// under it, the fortnight after that — and every row opens the spend place.
+func TestSpendDrawsTodayTheBarAndTheFortnightAsDoors(t *testing.T) {
+	a := newSwitchLab(t).open(120, 45)
+	days := make([]float64, homeSpendDays)
+	days[3], days[13] = 2, 0.14
+	a.home.spend = homeSpendReading{today: 0.14, ceiling: 20, days: days, total: 34.10, top: "opus", share: 0.63}
+	a.home.build()
+	frame := homeText(a)
+	if row, _ := homeRowOf(frame, "today $0.14 of $20.00"); row < 0 {
+		t.Fatalf("the spend heading does not carry today:\n%s", frame)
+	}
+	if row, _ := homeRowOf(frame, "14 days $34.10 · opus 63%"); row < 0 {
+		t.Fatalf("the fortnight is not drawn:\n%s", frame)
+	}
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.kind == cellSpark })
+	a.homeKey(key("enter"))
+	if !a.at(pageSpend) {
+		t.Fatal("enter on the fortnight did not open the spend place")
+	}
+}
+
+// NEXT UP IS SOONEST FIRST, three of them, then the fold into standing.
+func TestNextUpIsSoonestFirstAndFoldsIntoStanding(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.open(120, 45)
+	due := func(id, words string, in time.Duration) StandingItemView {
+		return StandingItemView{Item: standing.Item{ID: id, Words: words, Status: standing.StatusActive,
+			When: standing.When{Kind: standing.WhenAt}, NextDue: lab.now.Add(in)}}
+	}
+	dir := a.home.world.Projects[0].Dir
+	a.home.items = map[string][]StandingItemView{dir: {
+		due("w4", "the fourth thing", 9*time.Hour), due("w1", "the 6am repo watch", 20*time.Hour),
+		due("w2", "top movers before the open", 2*time.Hour), due("w3", "water the plants", 5*time.Hour),
+	}}
+	a.home.build()
+	frame := homeText(a)
+	first, _ := homeRowOf(frame, "top movers before the open")
+	second, _ := homeRowOf(frame, "water the plants")
+	if first < 0 || second != first+1 || !strings.Contains(strings.Split(frame, "\n")[first], " in 1h") {
+		t.Fatalf("next up is not soonest first with its clause:\n%s", frame)
+	}
+	if row, _ := homeRowOf(frame, "1 more · standing"); row < 0 {
+		t.Fatalf("the fourth order is not behind the fold:\n%s", frame)
+	}
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelNext && l.stop() })
+	a.homeKey(key("enter"))
+	if !a.at(pageStanding) {
+		t.Fatal("enter on a next-up row did not open standing")
 	}
 }

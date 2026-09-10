@@ -87,8 +87,9 @@ func runningNewer(a, b time.Time) bool {
 // runningTaskLine is one task or adaptive run: its title and how long it has
 // been going, and under it what it is doing.
 func runningTaskLine(row switcherRow, task session.PresenceTask, now time.Time) homeLine {
-	cell := &homeCell{panel: panelRunning, title: runningTitle(row, task), tag: homeDoorTag(row),
-		right: sinceAt(task.StartedAt, now), sub: runningDoing(task), key: runningTaskKey + task.ID}
+	cell := &homeCell{panel: panelRunning, title: runningTitle(row, task), sub: runningDoing(task),
+		key: runningTaskKey + task.ID}
+	homeLiveMargin(cell, row, sinceAt(task.StartedAt, now))
 	return switcherRowLine(row, cell)
 }
 
@@ -140,12 +141,12 @@ func runningJobLine(row switcherRow, job session.PresenceJob, now time.Time) hom
 	if row.project != "" {
 		title += rowSep + row.project
 	}
-	right := ""
+	clock := ""
 	if age := sinceAt(job.StartedAt, now); age != "" {
-		right = runningUpWord + age
+		clock = runningUpWord + age
 	}
-	cell := &homeCell{panel: panelRunning, title: title + rowSep + runningJobWord, tag: homeDoorTag(row),
-		right: right, key: runningJobKey + job.ID}
+	cell := &homeCell{panel: panelRunning, title: title + rowSep + runningJobWord, key: runningJobKey + job.ID}
+	homeLiveMargin(cell, row, clock)
 	return switcherRowLine(row, cell)
 }
 

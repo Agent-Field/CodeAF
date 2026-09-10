@@ -207,7 +207,9 @@ func TestSinceYouLeftLinesAreDoorsIntoTheirPlaces(t *testing.T) {
 	}
 	doors := map[string]bool{}
 	for i, line := range a.home.lines {
-		if line.kind != homeLedger {
+		// THE LEDGER IS ITS OWN PANEL ON THE GRID, and the other panels' doors
+		// into the same places (next up's rows open standing too) are not it.
+		if line.kind != homeLedger || line.cell == nil || line.cell.panel != panelLeft {
 			continue
 		}
 		if _, ok := parsePageWord(line.project); !ok {
