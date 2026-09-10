@@ -447,8 +447,7 @@ func tabsCapped(tabs []chatTab, prev []string) []chatTab {
 // EVERY POINTER TARGET AND EVERY SUBTRACTION UP HERE RESOLVES THROUGH THESE
 // FUNCTIONS. The head is the places' head — the pulse, the strip, the rule and
 // a blank (head.go) — wherever the strip is drawn at all, a room lays its trail
-// where the rule would be, and a terminal under the strip's floors draws none of
-// it. A press answered against a hard-coded row would open the wrong one the
+// under the blank, and a terminal under the strip's floors draws none of it. A press answered against a hard-coded row would open the wrong one the
 // moment a floor moved (hover.go's law). Nothing outside this block may spell
 // those numbers.
 
@@ -477,9 +476,8 @@ func (a *app) tabsHeight(width int) int {
 	return placeTabRow + 1
 }
 
-// headSealHeight is the rule and the blank under the strip OUT IN THE
-// CONVERSATION — the rest of the head's [placeHeadRows] — where there is no
-// trail and no facts row to close the head off.
+// headSealHeight is the rule and the blank under the strip — the rest of the
+// head's [placeHeadRows] — in the conversation and in every room inside it.
 //
 // IT IS WHAT SEPARATES THE HEAD FROM THE TRANSCRIPT AND FROM THE ROSTER BESIDE
 // IT, and it is a drawn rule rather than a blank because a blank separates
@@ -487,18 +485,23 @@ func (a *app) tabsHeight(width int) int {
 // stands on the strip's floors and on no floor of its own: a place draws its
 // rule at every height it draws a bar, and the conversation is now drawn under
 // the same head.
+//
+// A ROOM PAYS IT TOO. A node's trail and facts used to stand where the rule and
+// the blank are, so the rule was a row lower in a room than out in the
+// conversation, and a room's body started where no place's does; now the trail
+// is the first row under the blank, as a place's heading is (head.go).
 func (a *app) headSealHeight(width int) int {
-	if a.room != nil || a.tabsHeight(width) == 0 {
+	if a.tabsHeight(width) == 0 {
 		return 0
 	}
 	return placeHeadRows - a.tabsHeight(width)
 }
 
 // roomHeadRow is the frame row a room's TRAIL is drawn on — the breadcrumbs and
-// the way out — which is the row under the tab strip wherever there is one.
+// the way out — which is the row under the head wherever the head is drawn.
 func (a *app) roomHeadRow() int {
 	width, _ := a.size()
-	return a.tabsHeight(width)
+	return a.tabsHeight(width) + a.headSealHeight(width)
 }
 
 // roomFactsRow is the row under that one: what the work is doing, what it has

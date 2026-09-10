@@ -20,15 +20,17 @@ package tui3
 // draws the head for both, and the middle row is the only thing a frame hands
 // it.
 //
-// A ROOM KEEPS ITS TRAIL UNDER THE STRIP. Inside a node's page the trail and its
-// facts close the head off themselves, so the conversation takes the head down
-// to the strip and lays the room's own rows under it in place of the rule and
-// the blank (chattabs.go's [app.headSealHeight]).
+// A ROOM WEARS THE WHOLE HEAD TOO, and its trail and facts are the first rows
+// under it — the room's own heading, where a place's heading is. Inside a
+// node's page they used to take the place of the rule and the blank, which put
+// the rule a row lower in a room than in the conversation it opened from, and
+// two rows lower in the roomy layout: walking into a task moved the one line a
+// person's eye uses to find where the head ends (PLACES-AUDIT.md, lane K).
 
 // headRows is the head, drawn at `width` in `pal`, with `middle` on its second
-// row. It is always [placeHeadRows] rows; a frame that draws fewer — a room,
-// which draws its trail where the rule would be — takes a prefix of it, so the
-// rows a frame draws and the rows it charges are one count.
+// row. It is always [placeHeadRows] rows; a frame that draws fewer — a terminal
+// under the strip's floors, which draws none of it — takes a prefix of it, so
+// the rows a frame draws and the rows it charges are one count.
 func (a *app) headRows(width int, middle string, pal palette) []string {
 	// HOME'S LINE LEAVES ITS COUNTS TO THE PANELS UNDER IT, and every other
 	// frame's carries them (pulse.go's [pulseBudget]).
