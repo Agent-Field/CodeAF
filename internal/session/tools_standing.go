@@ -1188,7 +1188,12 @@ func (a *Agent) askStanding(ctx context.Context, notice *StandingNotice) (Standi
 
 	select {
 	case answer := <-answers:
-		answer.answeredBy = "person"
+		// THE RECEIPT IS FOR WHAT STANDS. Only a yes creates an item and only an
+		// item carries an adoption receipt, so a decline, a once or a change
+		// stays the plain answer it was — nothing downstream reads who said no.
+		if answer.Approved {
+			answer.answeredBy = "person"
+		}
 		return answer, nil
 	case <-ctx.Done():
 		a.forgetStanding(id)

@@ -299,6 +299,17 @@ clean:
 	rm -rf bin
 
 # Organization's hermetic contracts run in ordinary touched-package CI as well.
+.PHONY: test-local-work demo-local-work
+# The local-files journey for ongoing work. test-local-work drives bin/aforge
+# with a scripted loopback model (no key, deterministic, not live-model
+# acceptance); demo-local-work is the same journey with a real model in a
+# disposable AFORGE_HOME and needs OPENROUTER_API_KEY.
+test-local-work: build
+	go test -tags e2e -count=1 -timeout 10m -run '^TestLocalWorkJourney$$' -v ./internal/e2e/
+
+demo-local-work: build
+	bash scripts/demo-local-work.sh
+
 .PHONY: test-organization test-organization-live
 test-organization:
 	go test -timeout 15m ./internal/workspace/ ./internal/workspaceview/
