@@ -224,6 +224,19 @@ here is a proposal, and the template is for defects.
 
 ## Tests
 
+**FULL TESTS RUN ON SPARK, NEVER ON THE LAPTOP.** This is the owner's standing
+instruction for every session and worktree. Run final end-to-end tests, full
+suites, full affected-package suites, and pre-merge acceptance on Spark over SSH
+through the fleet workflow. This includes `make check`, broad `make test` runs,
+and the live TUI, model, and remote integration suites below. The commands in
+this section describe what to run on Spark, not permission to run them locally.
+
+Read the fleet skill before submitting, submit from the repository root, and
+retain the remote job ID, exact tested revision or snapshot, and results. If
+Spark is unavailable, report the blocker; do not fall back to full local testing
+or merge without required results. Small focused local checks do not replace
+remote acceptance. Pass this rule explicitly to agents and sessions you coordinate.
+
 The 2026-09-08 constrained-runner baseline (`GOMAXPROCS=4`, `GOFLAGS=-p=2`) put
 `internal/tui3` at 563 seconds and `internal/session` at 210 seconds. Give tui3
 `-timeout 15m`, never `8m`, or the ceiling can report whichever test happened to
