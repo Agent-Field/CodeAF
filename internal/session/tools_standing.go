@@ -256,7 +256,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"rails":{"type":"object","description":"Optional quiet backstops. Name money only when the person did; otherwise the card quotes the machine-wide daily allowance. A hold takes none — it never wakes, so it never spends. Only expires means anything on one.","properties":{` +
 	`"per_run_usd":{"type":"number","description":"The most one firing may spend, judgment included. Send only when they named a per-run limit; otherwise it quietly defaults to ` + strconv.FormatFloat(standDefaultPerRunUSD, 'f', 2, 64) + `."},` +
 	`"max_per_day":{"type":"integer","description":"Firings allowed in one local day. Send only when they named a count; otherwise it quietly defaults to ` + strconv.Itoa(standDefaultMaxPerDay) + `."},` +
-	`"expires":{"type":"string","description":"Local RFC3339 stamp after which it retires. Omit for never. A stamp already gone is refused, as when.at is — and so is one at or before the item's OWN first firing, which would retire it before it ever ran: an end for a one-off has to be later than when.at to the SECOND, and a one-off needs none at all, since it retires the moment it fires."}` +
+	`"expires":{"type":"string","description":"Local RFC3339 stamp after which it retires. Omit for never. A stamp already gone is refused, as when.at is — and so is one less than one check (` + standing.Interval.String() + `) after the item's OWN first firing, which would retire it before it ever ran: checks are that far apart and a check asks about the end before it asks what is due, so an end a minute after a one-minute reminder is found expired at the moment it would have been found due. A one-off needs no end at all, since it retires the moment it fires."}` +
 	`},"additionalProperties":false},` +
 	`"when_words":{"type":"string","description":"The cadence said back plainly — \"Mondays at 9am\". The card quotes this and never the spec, so never cron."},` +
 	`"cost_words":{"type":"string","description":"When the person named money, quote their limit in their words — \"at most a dollar a run\". Omit when they named none; aforge quotes the shared allowance."},` +
@@ -390,6 +390,21 @@ func standingRetires(moment, firing time.Time, named, tail string) string {
 	return "Invalid arguments: rails.expires " + standingClockExact(moment) +
 		" is not after " + named + " " + standingClockExact(firing) +
 		", so it would retire before it ever fired. " + tail
+}
+
+// standingOutlivedByACheck is the refusal an end earns for falling between the
+// item's first firing and the next time anything looks at it.
+//
+// IT IS [standingRetires]' OTHER HALF AND IT NAMES THE CADENCE. A person reading
+// "is not after" can see the mistake in the two stamps; a person reading "is less
+// than one check after" cannot, unless the sentence says how far apart the checks
+// are — so the figure is interpolated from [standing.Interval] rather than
+// written out, because a cadence spelled twice is a cadence that will drift.
+func standingOutlivedByACheck(moment, firing time.Time, named, tail string) string {
+	return "Invalid arguments: rails.expires " + standingClockExact(moment) +
+		" is less than one check after " + named + " " + standingClockExact(firing) +
+		", so a check can find it out of time at the same moment it would have found it due. " +
+		"Checks are " + standing.Interval.String() + " apart. " + tail
 }
 
 // standDispatch dispatches the six ops. Everything it can answer badly is an
@@ -762,12 +777,29 @@ func standingRails(parsed standArguments, when standing.When, now time.Time) (st
 		// from the same words, while the engine resolved the moment to
 		// 23:11:11 — eleven seconds later. So the refusal is spelled to the
 		// SECOND, or it would read as a moment that is not after itself.
-		if firing, named, has := standingFirstFiring(when, now); has && !moment.After(firing) {
-			tail := "Put it after that moment, or leave it out for something that never expires."
-			if when.Kind == standing.WhenAt {
-				tail = "Put it after that moment, or leave it out — a one-off retires as it fires and needs no end at all."
+		if firing, named, has := standingFirstFiring(when, now); has {
+			switch {
+			case !moment.After(firing):
+				tail := "Put it after that moment, or leave it out for something that never expires."
+				if when.Kind == standing.WhenAt {
+					tail = "Put it after that moment, or leave it out — a one-off retires as it fires and needs no end at all."
+				}
+				return rails, standingRetires(moment, firing, named, tail)
+			// AND AN END INSIDE ONE CHECK IS THE SAME DEATH ARRIVING A MINUTE
+			// LATER. Nothing looks at an item continuously: a pass runs every
+			// [standing.Interval] and asks about the END FIRST, so an end that
+			// falls between the moment and the next pass is an item the pass
+			// finds expired at the same instant it would have found it due. It is
+			// arithmetic the refusal above cannot see — the end IS after the
+			// moment, by twenty-five seconds — and the outcome is identical: run
+			// 0 times, marked `expired`, one line in a log nobody reads.
+			case moment.Before(firing.Add(standing.Interval)):
+				tail := "Put the end at least that far after the moment, or leave it out for something that never expires."
+				if when.Kind == standing.WhenAt {
+					tail = "Put the end at least that far after the moment, or leave it out — a one-off retires as it fires and needs no end at all."
+				}
+				return rails, standingOutlivedByACheck(moment, firing, named, tail)
 			}
-			return rails, standingRetires(moment, firing, named, tail)
 		}
 		rails.Expires = moment
 	}
