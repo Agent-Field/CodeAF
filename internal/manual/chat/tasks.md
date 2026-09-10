@@ -164,9 +164,11 @@ with the task it is waiting for named on it, and it begins by itself the moment 
 done. Quick tasks that claim different paths — or claim nothing at all — run at the same
 time.
 
-This is a promise made in advance, not a lock: it is about the paths a task *said* it
-would write. A quick task that claims nothing may write anything in your folder, and two
-of those can collide the ordinary way.
+This is a promise made in advance, and naming nothing does not make a free-for-all: a
+quick task that named no files may write anywhere in your folder, but the first one to
+write a file owns that file until it finishes, and a second one aiming at the same path is
+refused with the holder named. What naming files up front buys is the *waiting* — the two
+never start together at all, so neither one has to find out halfway through.
 
 ## Stopping a quick task — where the half-made work goes, and why there is no branch to go back to
 
@@ -1406,10 +1408,12 @@ src/analysis.rs is in the working copy task 4 (repair the parser) is using right
 nothing was written.
 ```
 
-**A quick task is in place always.** It is defined by having no copy of its own, so it is
-writing the folder you are in for as long as it runs, and the chat's writes there are
-refused with it named exactly as above. That is the trade for its having nothing to merge:
-*What a quick task is*.
+**A quick task is in your folder and does not hold it.** It has no copy of its own, so it
+writes where you are — but the folder stays yours: keep editing, and the chat's `edit` and
+`write` go on working everywhere else in it. Its claim is **files, not the directory**: a
+file it named at the start, or one it has written, is held by it and refused with its name
+on it, the first case above. Two quick tasks that name one file never write it at once
+either — the second waits (*Why it said waits for task 5*).
 
 Either hold ends when the task lands, fails or is stopped. *How work runs* has the whole of
 it, under *A task that has written a file holds that file* and *A task working in place

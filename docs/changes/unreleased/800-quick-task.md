@@ -10,6 +10,7 @@ invalidates:
   - "`fork` was on the chat's belt for parallel hands inside one reply. It is off the belt; work of that shape is a quick task now."
   - "The tool a worker uses to tick its checklist did not exist. `items` is on a quick worker's belt and nowhere else: `{done: n}` ticks an item, `{add: [...]}` appends."
   - "Two pieces of work that wanted the same file both wrote it and the merge was yours. Two quick tasks claiming one path run one after the other, and the second's start line says ` · waits for task 5 (both claim <path>)`."
+  - "A task working in your own folder took the folder off you: the chat could read it and not write it. A quick task does not — the folder stays yours while it runs, and its only claim is the files it named plus the ones it has already written."
   - "The manual said work handed off always leaves on a branch you can inspect. A quick task leaves nothing to inspect: stopped or out of rounds, what it wrote is in your folder as it left it, possibly half made."
 ---
 
