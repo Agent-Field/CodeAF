@@ -254,6 +254,11 @@ func (a *app) homeRowVerbs() []verb {
 	if !ok {
 		return nil
 	}
+	// A ROW OF THE GRID CARRIES THE SWITCHER'S OWN ROW ON ITS CELL, so its verbs
+	// are the reading's exactly as they were on the list (homegrid.go).
+	if line.cell != nil && line.cell.row != nil {
+		return a.homeReadingVerbs(line, *line.cell.row)
+	}
 	if line.sw == nil || line.sw.row == nil {
 		// A ROW THE TYPED SURFACE BUILT, WHICH THE READING NEVER SAW. Under a
 		// query the column is [homeRank]'s drop-up and a standing item's row is
@@ -269,7 +274,12 @@ func (a *app) homeRowVerbs() []verb {
 			{key: 's', word: homeItemStopWord, do: func() tea.Cmd { return a.homeItemWrite(line, standing.StatusRetired) }},
 		}
 	}
-	row := *line.sw.row
+	return a.homeReadingVerbs(line, *line.sw.row)
+}
+
+// homeReadingVerbs is [switcherVerbsFor]'s verbs for one row, less the ones
+// this window cannot perform, wired to the doors home already had for them.
+func (a *app) homeReadingVerbs(line homeLine, row switcherRow) []verb {
 	var verbs []verb
 	for _, v := range switcherVerbsFor(row) {
 		if a.hosted() && (v.key == 'o' || v.key == 'c' || v.key == 't') {
