@@ -3822,7 +3822,8 @@ const hopDoorWord = hopOpenKey + " switch"
 //
 //	the pointer is theirs drag to select · any key ends it
 //	the door is armed     ctrl+c again to quit · a task will stop  (quitarm.go)
-//	the picker is open    enter switch · esc · crew max
+//	the picker is open    → lanes · enter switch · esc · crew max
+//	  inside a fold       enter choose · ← back · esc · crew max
 //	the sessions are up   enter open · esc
 //	copy mode is on       v select · a block · y yank · esc
 //	rewind is armed       esc again to rewind        (rewind.go's double esc)
@@ -3889,10 +3890,15 @@ func (a *app) hintWord() string {
 		// settings panel ([picker.rowsOwned]), so it has no header or foot of its
 		// own to spend on a sentence; this slot is the line that is already there.
 		// It says nothing on a door with no profile ([app.crewHint]).
+		//
+		// AND THE KEYS ARE THE ROW'S, not the list's: `→ lanes` on a model,
+		// `← back` inside its fold ([picker.keysHint] says why the slot has to
+		// follow the cursor to be true at all).
+		keys := a.pick.keysHint()
 		if crew := a.crewHint(); crew != "" {
-			return "enter switch · esc · " + crew
+			return keys + " · " + crew
 		}
-		return "enter switch · esc"
+		return keys
 	case a.crewPick.open:
 		return "↑↓ · enter apply · esc"
 	case a.effPick.open:

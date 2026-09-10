@@ -555,15 +555,19 @@ func TestTheSettingsModelRowUnfoldsItsLanes(t *testing.T) {
 			t.Fatalf("the unfolded settings picker never said %q:\n%s", want, screen)
 		}
 	}
-	// AND THE FOOT SAYS THE KEY IS THERE, which is the only place this list
-	// explains itself.
-	if !strings.Contains(a.sheet.keysLine(), "tab lanes") {
-		t.Fatalf("the hint does not offer the fold: %q", a.sheet.keysLine())
+	// AND THE FOOT SAYS THE WAY BACK OUT, because `→` walked the cursor in and
+	// the keys the foot names are the row's.
+	if !strings.Contains(a.sheet.keysLine(), "← or tab back") {
+		t.Fatalf("the foot inside the fold reads %q", a.sheet.keysLine())
 	}
 	// `←` closes it again, from the start of an empty filter box.
 	drive(t, a, key("left"))
 	if a.sheet.sel.pick.unfold != "" {
 		t.Fatal("← left the lanes open")
+	}
+	// Back on the model's row, the foot offers the fold again.
+	if !strings.Contains(a.sheet.keysLine(), "→ or tab lanes") {
+		t.Fatalf("the foot on the model row reads %q", a.sheet.keysLine())
 	}
 }
 

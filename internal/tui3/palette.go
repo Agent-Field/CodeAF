@@ -1533,6 +1533,56 @@ var pickerHintFields = []rowField{
 // pickerHintAt is the hint in the cells the box actually has.
 func pickerHintAt(room int) string { return rowTail(pickerHintFields, room) }
 
+// The hint slot's words while this list is open, by where the cursor is
+// ([picker.keysHint]). They are written out whole rather than assembled, so the
+// manual and the tests quote what the frame draws.
+const (
+	// pickerKeysModel is a model's row on a list that folds: `→` opens the
+	// machines behind it and walks in, enter switches.
+	pickerKeysModel = "→ lanes · enter switch · esc"
+	// pickerKeysModelTab is the same row with the caret somewhere inside what is
+	// typed, where `→` steps over a character instead ([picker.foldKey]) and
+	// only `tab` opens.
+	pickerKeysModelTab = "tab lanes · enter switch · esc"
+	// pickerKeysFold is a row inside an open fold: enter chooses that machine,
+	// `←` walks back out to the model.
+	pickerKeysFold = "enter choose · ← back · esc"
+	// pickerKeysFoldTab is the same with characters before the caret, where
+	// `←` edits the box and `tab` is the way out.
+	pickerKeysFoldTab = "enter choose · tab back · esc"
+	// pickerKeysSwitch is a list with no fold at all — a task's model, an
+	// empty result — where the keys are the two every list has.
+	pickerKeysSwitch = "enter switch · esc"
+)
+
+// keysHint is what the hint slot says this list's keys do RIGHT NOW, read off
+// the row the cursor is on and the caret in the box — the two things
+// [picker.foldKey] reads before it decides what `→`, `←` and `tab` mean.
+//
+// IT IS CURSOR-AWARE BECAUSE THE FOLD WAS INVISIBLE WITHOUT IT. The slot used to
+// read `enter switch · esc` wherever the cursor stood, and the only mention of
+// `→ lanes` was the filter box's placeholder — which vanishes on the first
+// typed character, exactly when a person has found their model and wants its
+// machines. The owner opened /model, pressed `←` and `→`, and asked how anybody
+// changes the provider of a model (2026-09-10).
+func (p *picker) keysHint() string {
+	row, ok := pickRow{}, p.cursor >= 0 && p.cursor < len(p.list)
+	if ok {
+		row = p.list[p.cursor]
+	}
+	switch {
+	case !ok || p.laneSlot == "":
+		return pickerKeysSwitch
+	case row.lane != laneNone && p.filter.cursor > 0:
+		return pickerKeysFoldTab
+	case row.lane != laneNone:
+		return pickerKeysFold
+	case p.filter.cursor < len(p.filter.value):
+		return pickerKeysModelTab
+	}
+	return pickerKeysModel
+}
+
 // ── the app's side of the overlay ───────────────────────────────────────────
 
 // openPicker is /model with no argument. It names the chat law out loud rather

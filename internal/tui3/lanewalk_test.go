@@ -78,6 +78,47 @@ func TestArrowWalksIntoTheFoldAndBringsItIntoView(t *testing.T) {
 	}
 }
 
+// C. THE HINT SLOT SAYS WHAT `→` DOES RIGHT NOW. On a model's row it offers the
+// fold; inside it, the way back out; and with text typed before the caret —
+// where `←` would edit the box — it names `tab` instead of promising a key that
+// does something else.
+func TestTheHintSlotSaysWhatTheArrowDoesNow(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := laneApp(t)
+	a.width = 130
+	typeLine(t, a, "/model")
+
+	if got := a.hintWord(); !strings.HasPrefix(got, pickerKeysModel) {
+		t.Fatalf("on a model row the slot reads %q, want it to lead with %q", got, pickerKeysModel)
+	}
+	if !strings.Contains(plain(frame(a)), pickerKeysModel) {
+		t.Fatalf("the frame does not draw %q:\n%s", pickerKeysModel, plain(frame(a)))
+	}
+	drive(t, a, key("right"))
+	if got := a.hintWord(); !strings.HasPrefix(got, pickerKeysFold) {
+		t.Fatalf("inside the fold the slot reads %q, want %q", got, pickerKeysFold)
+	}
+	drive(t, a, key("left"))
+	if got := a.hintWord(); !strings.HasPrefix(got, pickerKeysModel) {
+		t.Fatalf("back on the model the slot reads %q", got)
+	}
+
+	// Found by typing: `→` still opens from the end of the box, and inside the
+	// fold `tab` is the way out.
+	typeInto(t, a, "flash")
+	if got := a.hintWord(); !strings.HasPrefix(got, pickerKeysModel) {
+		t.Fatalf("with the caret at the end the slot reads %q", got)
+	}
+	drive(t, a, key("right"))
+	if got := a.hintWord(); !strings.HasPrefix(got, pickerKeysFoldTab) {
+		t.Fatalf("inside a fold with text typed the slot reads %q, want %q", got, pickerKeysFoldTab)
+	}
+	drive(t, a, key("tab"))
+	if a.pick.unfold != "" {
+		t.Fatal("tab inside the fold did not close it")
+	}
+}
+
 // DEFECT 6. EMPTYING THE BOX PUTS THE CURSOR BACK ON THE MODEL IN USE, which
 // is where the picker opened it: a list with nothing typed is the list the
 // picker opened on, and enter on it confirms.

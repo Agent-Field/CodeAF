@@ -2851,10 +2851,15 @@ func (s *sheet) keysLine() string {
 		// THE LEGEND SAYS `→ lanes` ONLY WHERE `→` OPENS THEM — on a row that
 		// has a lane row behind it. Offering the key on the drawing slot would
 		// be the foot of the screen promising a gesture that does nothing.
-		if s.sel.pick.laneSlot != "" {
-			return "↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter"
+		// And INSIDE the fold it says the way back out, for the reason /model's
+		// hint slot does ([picker.keysHint]): the keys are the row's.
+		if s.sel.pick.laneSlot == "" {
+			return "↑↓ move · enter choose · esc cancel · type to filter"
 		}
-		return "↑↓ move · enter choose · esc cancel · type to filter"
+		if _, inside := s.sel.pick.laneUnder(); inside {
+			return "↑↓ move · ← or tab back · enter choose · esc cancel · type to filter"
+		}
+		return "↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter"
 	case s.onConnections():
 		return s.connKeysLine()
 	default:
