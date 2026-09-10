@@ -1941,7 +1941,36 @@ func (a *Agent) landingQuestion(pending PendingDecision) Question {
 		// finished; what is waiting is the decision about whether it holds, and
 		// a person may leave it as long as they like.
 		Blocking: Blocking{},
+		// AND WHO MAY ANSWER IT IS READ OFF THE ASK'S OWNER AND NOWHERE ELSE.
+		// task-states already keeps one holder for a landing — [TaskAsk.Owner],
+		// which the node carries, the notice publishes and the checkpoint now
+		// survives (task_store.go's [taskRecord.Decider]) — so this dresses that
+		// one fact as the policy this object spells it in rather than minting a
+		// second holder to disagree with it.
+		Policy: landingPolicy(status.Ask.Owner),
 	})
+}
+
+// landingPolicy is [TaskAsk.Owner] as a [Policy], and it is the whole of this
+// wave's composition with the auto-settle floor.
+//
+// ONE HOLDER, TWO VOCABULARIES. `task.settle = auto` and `[d] let aforge decide
+// this one` both write the model onto the node, and that mark is what the card,
+// the roster and the floor all read; a landing question is DERIVED from the same
+// mark, so a person asking "who is deciding this" gets one answer whichever
+// surface they ask.
+//
+// AND THERE IS NO CLOCK ON THIS ROAD. [PolicyRecommendThenAuto] is the timed
+// shape and it belongs to the `ask` tool's own assumptions, which mint a deadline
+// and run the one timer this program has (tools_ask.go). The floor is not a
+// timer: it is the end of a turn, and a landing the model was handed comes back
+// when that turn ends however long or short it was — so this says `decide` with
+// no [Policy.After], and a second timer is never started for it.
+func landingPolicy(owner TaskAskOwner) Policy {
+	if owner == TaskAskOwnerModel {
+		return Policy{Kind: PolicyDecide}
+	}
+	return Policy{Kind: PolicyAsk}
 }
 
 // landingOptions dresses one [TaskAsk] as the three answers the row draws:

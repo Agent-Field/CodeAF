@@ -48,6 +48,7 @@ func TestTaskStatesE2E(t *testing.T) {
 	t.Run("your_call_asks_in_three_columns_and_a_accepts_it", testStatesYourCall)
 	t.Run("a_branch_that_clashes_with_yours", testStatesConflict)
 	t.Run("a_run_out_of_steps_is_incomplete_with_its_reason", testStatesIncomplete)
+	t.Run("the_auto_settle_floor_hands_a_restart_back", testStatesAutoFloorAcrossARestart)
 	t.Run("the_auto_settle_floor_hands_it_back", testStatesAutoFloor)
 	t.Run("the_rail_and_the_roster_say_the_same_word", testStatesRailAndRoster)
 }
@@ -336,12 +337,14 @@ func testStatesIncomplete(t *testing.T) {
 // became of the work, or the turn ended unsettled and the floor handed the
 // question back and the chips are drawn again.
 //
-// IT MUST REALLY RUN, and that is a fact about where the owner is written down
-// rather than a preference: who holds a decision lives on the live node
-// (task_run.go's handToModelOnAuto) and is not among the fields a checkpoint
-// carries, so no fixture can seed a card the model is holding. If the landing
-// does not come home as the person's call, there is nothing to hand over and the
-// shape is skipped out loud.
+// IT MUST REALLY RUN, and that is a fact about which half of the floor it
+// measures. [testStatesAutoFloorAcrossARestart] above it seeds the holder and
+// measures the half that is deterministic — a landing the record says aforge was
+// deciding comes back the person's — and no fixture can catch the LIVE window
+// where the model is still holding one, because that window is however long the
+// model takes to answer. So this one runs the work and reads whichever of the two
+// honest endings arrives; if the landing does not come home as anybody's call at
+// all, there was nothing to hand over and the shape is skipped out loud.
 func testStatesAutoFloor(t *testing.T) {
 	home := newHome(t, map[string]any{"task.settle": "auto"})
 	ws := newWorkspace(t, "autows", false)
@@ -389,6 +392,79 @@ func testStatesAutoFloor(t *testing.T) {
 		t.Skipf("the work landed %q rather than as anybody's call, so there was nothing to hand over:\n%s", found, screen)
 	}
 	r.quit()
+}
+
+// testStatesAutoFloorAcrossARestart is the same law measured where it is a fact
+// rather than a race: A TASK NEVER STAYS UNOWNED, and a process that died while
+// aforge was holding one is the hardest case, because the turn it was going to be
+// decided in died with it.
+//
+// THE FIXTURE IS THE RECORD A KILLED PROCESS LEAVES. The checkpoint carries who
+// was holding each landing (session's taskRecord.Decider), so this seeds one that
+// says `model` and opens the conversation on it. What must be on the screen is
+// the chips — the floor hands the question back on the way in, before anything is
+// drawn — and what must NOT be on it is `aforge is deciding`, which would be a
+// card naming a decider that no longer exists and offering no way to act.
+//
+// IT PAYS FOR NO MODEL. Every fact this reads is one the record carries and the
+// engine acts on, which is the same trade [testStatesRailAndRoster] makes.
+func testStatesAutoFloorAcrossARestart(t *testing.T) {
+	home := newHome(t, map[string]any{"task.settle": "auto"})
+	ws := newWorkspace(t, "autoloadws", false)
+	seedModelHeld(t, home, ws)
+	r := start(t, "afe2e_states_autoload", home, ws, tuiWide, 40)
+	statesPastTheDoor(t, r)
+
+	screen := r.waitFor(45*time.Second, say(t, "taskLookWord"), say(t, "settleAnswersRow"))
+	t.Logf("a landing the record said aforge was deciding, after the restart:\n%s", screen)
+	if head := statesHeadLine(screen, say(t, "unverifiedGlyph"), say(t, "taskLookWord")); head != "" {
+		t.Logf("HEAD · %s", head)
+	}
+	if strings.Contains(screen, say(t, "taskAutoDecidingWord")) {
+		t.Errorf("the card still says %q about a turn that died with the last process, so the question "+
+			"is held by nobody and the person is offered no way to act on it:\n%s",
+			say(t, "taskAutoDecidingWord"), screen)
+	}
+	statesNoDeletedWords(t, screen)
+	r.quit()
+}
+
+// seedModelHeld writes one conversation holding a landing NOBODY COULD CHECK
+// that the record says AFORGE WAS DECIDING — the checkpoint a process killed
+// under `task.settle = auto` leaves behind.
+//
+// IT IS [seedUnchecked]'S FIXTURE PLUS ONE FIELD, and the field is the whole
+// subject: `decider` is what the auto-settle floor fires on when the graph comes
+// off the disk, and until it was on the record this shape could not be staged at
+// all.
+func seedModelHeld(t *testing.T, home, ws string) string {
+	t.Helper()
+	if canonical, err := filepath.EvalSymlinks(ws); err == nil {
+		ws = canonical
+	}
+	bucket := strings.ReplaceAll(filepath.Clean(ws), string(filepath.Separator), "-")
+	sid := fmt.Sprintf("%016x", 0x3000000000000006)
+	dir := filepath.Join(home, "v3", "projects", bucket, sid)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("seed the model's landing: %v", err)
+	}
+	statesSeedTranscript(t, dir, sid, ws, "port the parser for me")
+	at := time.Now().Add(-3 * time.Minute)
+	writeJSON(t, filepath.Join(dir, "meta.json"), map[string]any{
+		"id": sid, "title": "The landing aforge was deciding", "workspace": ws,
+		"created": at.Format(time.RFC3339Nano), "lastUserAt": at.Format(time.RFC3339Nano),
+	})
+	writeJSON(t, filepath.Join(dir, "tasks.json"), map[string]any{
+		"type": "tasks", "version": 1, "seq": 1,
+		"nodes": []map[string]any{{
+			"id": 1, "title": "Port the parser", "brief": "port it", "acceptance": "it parses",
+			"state": "unverified", "merge": "inplace", "decider": "model",
+			"report":  "the parser is ported and its tests run",
+			"changed": []string{"parser.go"},
+			"ground":  ws, "groundMode": "folder", "elapsed_ms": 42000,
+		}},
+	})
+	return dir
 }
 
 // ── 6 · the rail and the roster ─────────────────────────────────────────────

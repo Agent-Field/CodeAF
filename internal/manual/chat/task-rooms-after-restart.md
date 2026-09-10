@@ -178,6 +178,12 @@ and the card draws its chips, whether or not you noticed it had been handed over
 aforge's last message asked you something about that task, those chips are the answer
 surface for that question — its words above, the chips below, one ask.
 
+**Closing aforge ends that turn too, so after a restart it is yours again.** Who was
+deciding is kept with the task, and a conversation reopened — tomorrow, or after a crash,
+or from another window — hands every question aforge was holding straight back to you: the
+card draws its chips instead of the `aforge is deciding` row, because the turn it was going
+to be decided in is gone and nothing is going to finish that thought.
+
 **A conflict is never handed over at all.** Whatever `task.settle` says, a landing whose
 branch would not merge stays yours: aforge cannot merge by decree, and which of two
 versions of your own file survives is yours to say.

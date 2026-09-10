@@ -560,11 +560,16 @@ type TaskNode struct {
 	// under `task.settle = auto` and after somebody has handed this one card over
 	// ([Agent.HandUnverifiedToModel]).
 	//
-	// IT IS NOT ON THE CHECKPOINT, for [TaskNode.adjudicated]'s reason: a restart
-	// loses the turn the model was going to decide in, so the floor that hands the
-	// question back (agent.go's [Agent.handBackUnsettled]) never gets to run for
-	// it. A node that comes back from disk comes back the person's, which is where
-	// every unowned question belongs.
+	// IT IS ON THE CHECKPOINT (task_store.go's [taskRecord.Decider]), and what a
+	// restart does with it is the floor rather than forgetfulness: a node that
+	// comes back from disk saying the model was holding it is handed to the person
+	// on the way in ([TaskGraph.handBackOnLoad]), because the turn the model was
+	// going to decide in died with the process and no other turn is going to run
+	// for it. It used to be kept off the record on the argument that the zero
+	// value read as the person anyway — which was the right answer arrived at by
+	// accident, and it left the floor with nothing to fire on, no fixture able to
+	// seed a card aforge is holding, and an engine that died mid-turn quietly
+	// dropping the hand-back it owed.
 	decider TaskAskOwner
 	started time.Time
 	// ended is the instant this node last landed. It is stamped at the live
@@ -4051,6 +4056,48 @@ func (a *Agent) handBackUnsettled() {
 	for _, node := range handed {
 		a.emitTaskUpdate(node.notice())
 	}
+}
+
+// handBackOnLoad is THE SAME FLOOR APPLIED TO A GRAPH COMING OFF THE DISK, and
+// it is the half [Agent.handBackUnsettled] cannot reach.
+//
+// A TURN IS WHAT HOLDS A DECISION FOR THE MODEL, AND A RESTART HAS NONE. The
+// checkpoint carries who was holding each landing ([taskRecord.Decider]), so a
+// process that died while the model held one — or a window attaching to a
+// conversation whose last life ended that way — reads the fact back rather than
+// guessing at it. There is no turn to answer in, nothing is going to wake one for
+// work that landed in another life, and a question nobody can now answer is the
+// exact shape this floor exists to end: so every node the record says the model
+// was holding comes back to the person here, before anything draws a card.
+//
+// IT ASKS NONE OF [Agent.readsTheDecisionLocked]'s QUESTION. That guard exists so
+// that one turn ending does not take a question out of another turn's hands; on
+// this road there are no turns at all, and every agent that was holding anything
+// died with the process.
+//
+// IT IS INDISCRIMINATE ON PURPOSE. Every model-held node is handed back, whatever
+// state it is in, because the person is the floor every other answer falls back
+// to — and only the ones still WAITING on a decision are news, which is the same
+// line [Agent.handBackUnsettled] draws for the same reason: a node the model
+// actually settled has published its own landing already.
+func (g *TaskGraph) handBackOnLoad() []*TaskNode {
+	if g == nil {
+		return nil
+	}
+	var handed []*TaskNode
+	g.mu.Lock()
+	for _, id := range g.order {
+		node := g.nodes[id]
+		if node == nil || node.decider != TaskAskOwnerModel {
+			continue
+		}
+		node.decider = TaskAskOwnerPerson
+		if node.state == TaskUnverified {
+			handed = append(handed, node)
+		}
+	}
+	g.mu.Unlock()
+	return handed
 }
 
 // readsTheDecisionLocked reports that THIS agent's turn is the turn one node's

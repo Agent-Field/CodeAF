@@ -412,6 +412,30 @@ type taskRecord struct {
 	// recovery has consumed that fact. It is the consume-once receipt.
 	Interrupted bool `json:"interrupted,omitempty"`
 
+	// Decider is WHO WAS HOLDING THIS NODE'S DECISION when the file was written
+	// ([TaskAskOwner], task_run.go's [TaskNode.decider]): the person, or the model
+	// under `task.settle = auto` or after somebody handed this one card over.
+	//
+	// IT IS WRITTEN SO THAT THE FLOOR HAS SOMETHING TO FIRE ON. A node the model
+	// was holding is handed back to the person the moment this file is read
+	// ([TaskGraph.handBackOnLoad]), because the turn it was going to be decided in
+	// died with the process — so the value that survives is never the value that
+	// is restored, and what it buys is a hand-back that HAPPENS and can be watched
+	// rather than a zero value that happened to look like one.
+	//
+	// THE EMPTINESS LAW HOLDS. Absent — every checkpoint written before this field
+	// existed, and every node nobody ever handed over — reads as the person, which
+	// is where every unowned question belongs ([taskDeciderOf] says the same thing
+	// on the reading side).
+	//
+	// AND THE PROJECT INDEX DELIBERATELY DOES NOT CARRY IT. That file is what work
+	// CAME TO, appended once and never rewritten, and who is holding a question
+	// lasts at most one turn — a row on disk saying `aforge is deciding` about a
+	// conversation that closed hours ago would be a claim nothing could ever
+	// correct. It is [TaskIndexEntry.Activity]'s rule about a present that ends
+	// seconds after it is recorded, said about a second momentary fact.
+	Decider TaskAskOwner `json:"decider,omitempty"`
+
 	// Kind is what sort of node this was ([TaskKind]), and empty is the ordinary
 	// one: work in a worktree. It is on the record for ONE reader — the recovery
 	// that has to say what an interrupted node left behind — because the two
@@ -1031,6 +1055,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		NotedState:     n.notedState,
 		Attempt:        n.attempt,
 		Interrupted:    n.interrupted,
+		Decider:        n.decider,
 		Kind:           n.kind,
 		Offer:          n.offer,
 		Assignment:     recordedAssignment(n.assignment),
@@ -1212,6 +1237,20 @@ type taskRecovery struct {
 	// notes are the completion notes that were never handed over, in the shape
 	// [taskNote] would have produced for them.
 	notes []string
+	// handedBack are the landings the AUTO-SETTLE FLOOR took off the model on the
+	// way in ([TaskGraph.handBackOnLoad]) and that are still waiting on a decision.
+	// They are here for the caller to publish once it holds an agent, because a
+	// notice is read with the graph let go of ([TaskNode.notice] states the
+	// ordering) and this half of recovery is a pure function of a file.
+	//
+	// THEY ARE DELIBERATELY NOT AMONG THE NOTES. The model has already been told
+	// about each of these landings — that is what put the question in its hands —
+	// and a resumed session opening by telling it the same landing again would be
+	// news about nothing that happened. What changed is who is holding the
+	// question, and the person is the one who needs to see that: it reaches them
+	// as an ordinary task update, which is the same lane the end-of-turn floor
+	// publishes on.
+	handedBack []*TaskNode
 }
 
 // any reports whether the recovery restored anything at all. A checkpoint that
@@ -1326,6 +1365,18 @@ func (a *Agent) recoverTasks() {
 	// second crash between here and the first turn must not hand the same
 	// interrupt to a second recovery.
 	graph.checkpoint()
+	// AND THE HAND-BACK IS TOLD. Every landing the floor took off the model on the
+	// way in is one ordinary task update, on the lane a surface already folds into
+	// the row it is drawing — the same lane and the same shape the end-of-turn
+	// floor publishes on (task_run.go's [Agent.handBackUnsettled]). Nothing is
+	// attached yet on a fresh process and the sends fall on an empty room, which is
+	// correct: what the surface reads then is the roster replay, and these nodes
+	// are in it saying the person is deciding. On a window attaching to a
+	// conversation that is already open, this is the update that takes the `aforge
+	// is deciding` row off the card.
+	for _, node := range recovery.handedBack {
+		a.emitTaskUpdate(node.notice())
+	}
 
 	if note := recovery.note(); note != "" {
 		// THE AMBIENT LANE, not the waking one (agent.go): this runs at
@@ -1471,6 +1522,13 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 	notes, deliveries := g.owedNotes(unannounced, settle, address)
 	recovery.notes = append(recovery.notes, notes...)
 	recovery.deliveries = append(recovery.deliveries, deliveries...)
+	// AND THE FLOOR, WHICH IS THE ONE RECONCILIATION THIS FILE MAKES BESIDE THE
+	// INTERRUPT. A node the record says the model was holding has no turn left to
+	// be decided in, so it comes back to the person here — before the frontier
+	// turns, before anything is drawn, and before the checkpoint above it is
+	// rewritten, so the file on disk stops saying it too
+	// ([TaskGraph.handBackOnLoad] states the law).
+	recovery.handedBack = g.handBackOnLoad()
 	return recovery
 }
 
@@ -1592,8 +1650,15 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		notedState:     record.NotedState,
 		attempt:        record.Attempt,
 		interrupted:    record.Interrupted,
-		offer:          record.Offer,
-		assignment:     restoredAssignment(record.Assignment),
+		// AND WHO WAS HOLDING ITS DECISION, which is read back exactly as it was
+		// written and then put right by the floor a few lines above this node's
+		// arrival ([TaskGraph.handBackOnLoad], called out of [TaskGraph.rehydrate]).
+		// Restoring it faithfully and handing it back deliberately is the whole
+		// point: the alternative — dropping it here — is the right answer with no
+		// act behind it, which is what nothing could seed and nothing could watch.
+		decider:    record.Decider,
+		offer:      record.Offer,
+		assignment: restoredAssignment(record.Assignment),
 	}
 	// AND WHETHER THIS WORK MAY STILL DISCOVER THAT IT IS WIDE. The road is not
 	// on the record, because it is not a fact about the work — it is a reading
