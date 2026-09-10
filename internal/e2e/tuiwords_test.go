@@ -195,13 +195,14 @@ var tuiWords = map[string]tuiWord{
 		why: "the pulse INSIDE A CHAT, which keeps the machine's counts on its top line (DESIGN §1 law 11); " +
 			"on home the pulse leaves them to the panels",
 	},
-	"homeVerbsWord": {
-		screen: "→ verbs",
-		why:    "the last line of the card beside a search, which names the key and the words and never the letters",
+	"homeCardMoreWord": {
+		screen: "→ more",
+		why: "the last clause of the keys legend that closes the card beside a search (homeband_keys.go). " +
+			"It was `→ verbs` on the resting card, which the grid retired; the search card never spelled that",
 	},
 	"homeHereWord": {
 		screen: "here",
-		why:    "this window's own row on `where you were`, and the door word on the narrow search card",
+		why:    "this window's own row on `where you were`, the row the person's last words sit under",
 	},
 	"homeFactsActive": {
 		screen: "last active ",
