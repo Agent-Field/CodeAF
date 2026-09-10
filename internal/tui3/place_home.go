@@ -965,11 +965,12 @@ func (placeHome) close(a *app)        { a.dropHome() }
 // the hit is a [homeMark] rather than a line number.
 func (placeHome) body(a *app, width, room int) []placeRow {
 	// AT REST THE BODY IS THE GRID (homegrid.go), and its shape is settled
-	// before it is drawn: the column count and the room both decide which rows
-	// exist, so either moving is a rebuild — the same one number compared, and
-	// the lines made again only when it moved.
-	if cols := homeGridCols(width); !a.home.searching() && !a.home.phone && (room != a.home.room || cols != a.home.cols) {
-		a.home.room, a.home.cols = room, cols
+	// before it is drawn: the column count, the width and the room all decide
+	// which rows exist — a whisper wraps at its column's width — so any of them
+	// moving is a rebuild, and the lines are made again only when one moved.
+	if cols := homeGridCols(width); !a.home.searching() && !a.home.phone &&
+		(room != a.home.room || cols != a.home.cols || width != a.home.gridWidth) {
+		a.home.room, a.home.cols, a.home.gridWidth = room, cols, width
 		a.home.build()
 	}
 	// AN ERRAND HOLDING THE KEYBOARD STACKS OVER THE GRID, which has no pane

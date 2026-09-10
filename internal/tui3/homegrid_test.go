@@ -152,6 +152,35 @@ func TestAnEmptyPanelWhispersWhatArrivesAndNeverThatItIsEmpty(t *testing.T) {
 	}
 }
 
+// A WHISPER WRAPS; IT IS NEVER CUT. At every column width a person meets —
+// fifty-eight at 120 cells, eighty, a hundred and twenty — every whisper is all
+// of its words, on lines that fit inside the row's lead, with no ellipsis.
+func TestAWhisperWrapsAtItsColumnAndIsNeverCut(t *testing.T) {
+	for _, width := range []int{58, 80, 120} {
+		for id, words := range homeWhisper {
+			lines := homeWhisperLines(words, width)
+			for _, line := range lines {
+				if strings.Contains(line, glyphMore) || len([]rune(line)) > width-homeGridLead {
+					t.Fatalf("panel %d at %d cells whispers %q", id, width, line)
+				}
+			}
+			if got := strings.Join(lines, " "); got != words {
+				t.Fatalf("panel %d at %d cells whispers %q, want every word of %q", id, width, got, words)
+			}
+		}
+	}
+	// AND A REAL FRAME DRAWS THE SECOND LINE: at 120 cells a column is 58 wide,
+	// and the end of the needs whisper is on the line under its first half,
+	// standing in the row's lead.
+	a := newLiveLab(t).open()
+	frame := homeText(a)
+	first, _ := homeRowOf(frame, "questions from any chat")
+	second, at := homeRowOf(frame, "answers them")
+	if first < 0 || second != first+1 || at != homeGridMargin+homeGridLead {
+		t.Fatalf("the needs whisper is cut rather than wrapped:\n%s", frame)
+	}
+}
+
 // focusedTitle is the title of the row the cursor is on.
 func focusedTitle(a *app) string {
 	if line, ok := a.home.focusedLine(); ok && line.cell != nil {

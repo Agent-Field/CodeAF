@@ -193,6 +193,11 @@ sentence like them are the emptiness law inverted into words and stay banned
 (docs/DESIGN-LANGUAGE.md, "presence over labels"). The exception is the label,
 not the announcement.
 
+A whisper WRAPS at its column's width and is never cut: it takes the dim lines
+it needs, indented like a row, and the panel's floor is its heading and all of
+them. So no whisper carries an ellipsis, quoted or not — a `…` on one of these
+lines would read as the screen running out of room (owner, 2026-09-10).
+
 | Panel | Whisper |
 |---|---|
 | needs you | `questions from any chat or task land here · a digit answers them` |
@@ -200,7 +205,7 @@ not the announcement.
 | since you left | `what watches and tasks did while the terminal was shut` |
 | where you were | `your conversations · what you type below starts one` |
 | spend | `every chat and task is priced here` |
-| next up | `reminders and routines · "remind me at 6" or "every morning, …"` |
+| next up | `reminders and routines · "remind me at 6" or "every morning at 9"` |
 | projects | never empty: the launch folder is always a row |
 
 ## 5. Lanes

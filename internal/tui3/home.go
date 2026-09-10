@@ -814,8 +814,12 @@ type homeView struct {
 	// as [homeView.room] is; grid is the shape the last build laid the lines out
 	// in; tilde is what `~` abbreviates in a project's path. gridX and gridMarks
 	// are the pointer's half, written by the draw: where each column starts, and
-	// for each screen row which line every column drew there.
+	// for each screen row which line every column drew there. gridWidth is the frame
+	// width the lines were laid out for, settled beside cols, because a whisper
+	// wraps at its column's width and so how many rows it takes is the width's
+	// answer too.
 	cols      int
+	gridWidth int
 	spend     homeSpendReading
 	grid      homeGrid
 	tilde     string
