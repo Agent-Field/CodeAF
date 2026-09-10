@@ -52,12 +52,14 @@ type rig struct {
 }
 
 // requireTmuxAndKey skips the whole suite unless it can be run honestly.
+//
+// THE KEY IS RESOLVED THE WAY THE PRODUCT RESOLVES IT, through [liveKey] — the
+// two variables and then the profile's own `api_key` row. A gate that read one
+// variable skipped on every machine whose key was pasted into the first-run
+// setup, and printed `ok` for a suite that never talked to anything (#576).
 func requireTmuxAndKey(t *testing.T) string {
 	t.Helper()
-	key := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
-	if key == "" {
-		t.Skip("no OPENROUTER_API_KEY: this suite talks to a real model or it says nothing")
-	}
+	key := liveKey(t)
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("no tmux on PATH: this suite drives the real binary in a real terminal")
 	}
@@ -206,7 +208,10 @@ func workspaceAt(t *testing.T, ws string, dirty bool) string {
 // outright and is the one that always lands.
 func start(t *testing.T, name, home, ws string, cols, rows int, args ...string) *rig {
 	t.Helper()
-	r := startWithEnv(t, []string{"OPENROUTER_API_KEY=" + strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))},
+	// THE RIG IS HANDED THE KEY THE PRODUCT WOULD HAVE FOUND, whichever road it
+	// came down: a key that lives only in the profile reaches the child through
+	// the variable here, exactly as a key exported in the shell does.
+	r := startWithEnv(t, []string{config.APIKeyEnv + "=" + liveKey(t)},
 		name, home, ws, cols, rows, args...)
 	r.skipSetup(t)
 	return r
