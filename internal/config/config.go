@@ -748,9 +748,9 @@ func (c Config) ExecContext(ctx context.Context) context.Context {
 // interface, so nothing above this line changes.
 func (c Config) Client() (router.Client, error) {
 	if len(c.Panel.Models) == 0 {
-		return provider.NewClient(c.providerConfig(c.Model))
+		return provider.NewClient(c.ClientConfig(c.Model))
 	}
-	return router.New(c.Panel, c.providerConfig(c.Model), c.ProfileDir)
+	return router.New(c.Panel, c.ClientConfig(c.Model), c.ProfileDir)
 }
 
 // PlanModelResolved is the model planning-class calls run on: the plan slot
@@ -772,19 +772,19 @@ func (c Config) PlanSplit() bool {
 // provider's slug.
 func (c Config) ClientFor(model string) (router.Client, error) {
 	// The pin is a model id like any other and is stripped of its level for the
-	// same reason providerConfig strips one: a router pinned to a slug nobody
+	// same reason ClientConfig strips one: a router pinned to a slug nobody
 	// publishes never opens on the model it was pinned to.
 	bare, _ := roles.SplitEffort(model)
 	if len(c.Panel.Models) > 0 {
-		return router.NewPinned(c.Panel, c.providerConfig(model), c.ProfileDir, bare)
+		return router.NewPinned(c.Panel, c.ClientConfig(model), c.ProfileDir, bare)
 	}
-	return provider.NewClient(c.providerConfig(model))
+	return provider.NewClient(c.ClientConfig(model))
 }
 
 // MediaClient builds the non-chat OpenRouter endpoint client with the same
 // bearer key, base URL, attribution, timeout, and transport configuration.
 func (c Config) MediaClient() (*provider.MediaClient, error) {
-	return provider.NewMediaClient(c.providerConfig(c.Model))
+	return provider.NewMediaClient(c.ClientConfig(c.Model))
 }
 
 // VisionClient is deliberately direct rather than panel-routed. view_image
@@ -792,22 +792,26 @@ func (c Config) MediaClient() (*provider.MediaClient, error) {
 // per call; routing it again could substitute a text-only model and would make
 // the proxy attribution dishonest.
 func (c Config) VisionClient() (*provider.Client, error) {
-	return provider.NewClient(c.providerConfig(c.Model))
+	return provider.NewClient(c.ClientConfig(c.Model))
 }
 
 // DocumentClient is direct for the same reason as VisionClient: read_document
 // selects an explicit parser engine and model at the leaf boundary, and a
 // second router substitution would make both capability and cost opaque.
 func (c Config) DocumentClient() (*provider.Client, error) {
-	configured := c.providerConfig(c.Model)
-	// The document path builds its own raw body with no reasoning object. Clear
-	// a seat pin here so the raw request and model-call row describe the same
-	// call; document extraction has no effort-pin request path of its own.
-	configured.Effort = provider.EffortNone
-	return provider.NewClient(configured)
+	return provider.NewClient(WithoutSeatPin(c.ClientConfig(c.Model)))
 }
 
-func (c Config) providerConfig(model string) provider.Config {
+// ClientConfigFor assembles the provider settings for one model out of an
+// account a caller already holds.
+//
+// IT IS THE ONE PLACE A KEY AND A BASE URL BECOME A provider.Config, and that
+// is the law rather than a convenience: six sites used to compose that literal
+// themselves, so a level that belongs beside the slug travelled inside it and
+// a second service would have reached none of them. A caller that holds a whole
+// profile wants [Config.ClientConfig]; this door is for internal/session, whose
+// own Config carries the account and nothing else.
+func ClientConfigFor(apiKey, baseURL, model string) provider.Config {
 	// THE THINKING LEVEL IS NOT PART OF A MODEL ID, and this is the one place
 	// that has to know it. `moonshotai/kimi-k3:low` is how a tier row, a
 	// --plan-model flag and AFORGE_PLAN_MODEL all say "that model, thinking a
@@ -824,24 +828,48 @@ func (c Config) providerConfig(model string) provider.Config {
 	model, level := roles.SplitEffort(model)
 	effort, _ := provider.ParseEffort(level)
 	return provider.Config{
-		APIKey:  c.APIKey,
-		BaseURL: c.BaseURL,
+		APIKey:  apiKey,
+		BaseURL: baseURL,
 		Model:   model,
 		Effort:  effort,
-		Timeout: c.Timeout,
-		// The published answer to "does this model take this field", from rows
-		// already in memory. A nil catalog and a catalog still warming both say
-		// "unknown", which the adapter treats as "send nothing on your own
-		// initiative" — never as permission.
-		SupportsParameter: c.Models.SupportsParameter,
-		// And what the row says about the model's thinking pass, under the
-		// same contract, translated into the adapter's words at this seam.
-		ReasoningProfile: ReasoningProfileSeam(c.Models),
-		// And the model's own list price, which is what the adapter bounds a
-		// latency-sorted request against. Same contract: never blocks, and
-		// "nobody published one" sends no ceiling at all.
-		ModelPrice: c.Models.PriceNow,
 	}
+}
+
+// WithoutSeatPin is the settings a raw request path takes: the same account,
+// the same model, and the seat's thinking level dropped.
+//
+// The document path builds its own raw body with no reasoning object, so a seat
+// pin left on the client would make the raw request and the model-call row
+// describe different calls. This door is exported because internal/session
+// reads documents through the same shape and may not spell the adapter's effort
+// vocabulary itself: its effort law (effortguard_test.go) treats a file that
+// names provider.Effort as claiming a depth, while the document path is
+// declining to carry one.
+func WithoutSeatPin(configured provider.Config) provider.Config {
+	configured.Effort = provider.EffortNone
+	return configured
+}
+
+// ClientConfig is this profile's answer to "how do I talk to that model". It
+// is what every client outside this package is built from; a caller sets only
+// what legitimately differs — a timeout, a routing strategy, or seams its own
+// surface owns — never APIKey and never BaseURL.
+func (c Config) ClientConfig(model string) provider.Config {
+	configured := ClientConfigFor(c.APIKey, c.BaseURL, model)
+	configured.Timeout = c.Timeout
+	// The published answer to "does this model take this field", from rows
+	// already in memory. A nil catalog and a catalog still warming both say
+	// "unknown", which the adapter treats as "send nothing on your own
+	// initiative" — never as permission.
+	configured.SupportsParameter = c.Models.SupportsParameter
+	// And what the row says about the model's thinking pass, under the same
+	// contract, translated into the adapter's words at this seam.
+	configured.ReasoningProfile = ReasoningProfileSeam(c.Models)
+	// And the model's own list price, which is what the adapter bounds a
+	// latency-sorted request against. Same contract: never blocks, and
+	// "nobody published one" sends no ceiling at all.
+	configured.ModelPrice = c.Models.PriceNow
+	return configured
 }
 
 // ReasoningProfileSeam hands the catalog's published reasoning profile to the
