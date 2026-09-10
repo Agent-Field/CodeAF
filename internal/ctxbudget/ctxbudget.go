@@ -560,6 +560,14 @@ const ToolResultWindowShare = 10
 // An unknown window spends nothing and takes the caller's default, which is the
 // [BytesOr] law and what keeps behaviour without a catalog byte-for-byte what
 // it was.
+//
+// IT IS A SHARE OF THE WINDOW AND NOT OF THE WORKING SET, which is the one way
+// it differs from internal/exec's toolBudgetsFor, and the difference is the two
+// questions rather than two answers to one. That function bounds what a leaf
+// CARRIES turn after turn, so it is rightly taken of the material a leaf holds
+// in front of itself ([WithinWorkingSet]). This one bounds what ONE call may
+// put on the wire, which is a claim about the single request the result has to
+// fit inside. Both live here so that neither is a formula somebody has to find.
 func ToolResultBytes(contextTokens, defaultBytes int) int {
 	if defaultBytes <= 0 || contextTokens <= 0 {
 		return defaultBytes

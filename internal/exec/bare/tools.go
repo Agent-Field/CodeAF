@@ -273,7 +273,16 @@ func newReadTool(cwd string, caps Caps) Tool {
 // This is for belts that reserve part of their total result bound for the
 // footer; values outside the ordinary range use the ordinary 50KB ceiling.
 func ReadTool(cwd string, maxBytes int) Tool {
-	return readTool(cwd, capsAt(maxBytes))
+	// ONLY THE BYTE BUDGET IS THE CALLER'S HERE. A composed belt is reserving
+	// room for its own footer, which is a statement about bytes and about
+	// nothing else — scaling the line cap down with it would cut a thin file
+	// that fits the budget whole, which is a behaviour change no caller asked
+	// for. A belt sizing itself to a model's window says so with [CapsFor].
+	caps := DefaultCaps()
+	if maxBytes > 0 && maxBytes < caps.MaxBytes {
+		caps.MaxBytes = maxBytes
+	}
+	return readTool(cwd, caps)
 }
 
 func readTool(cwd string, caps Caps) Tool {
