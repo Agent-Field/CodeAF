@@ -289,6 +289,11 @@ func TestAClickOnARowIsEnterOnEveryPlace(t *testing.T) {
 		{"as opened", func(*testing.T, *app) {}},
 		{"squeezed and scrolled", func(t *testing.T, a *app) {
 			a.width, a.height = 60, 16
+			// THE FRAME IS DRAWN ONCE AT THE NEW SIZE BEFORE THE WALK, as the
+			// program draws after every message: home lays its lines out for the
+			// room it is drawn in, so a walk between a resize and a draw is a
+			// walk over the taller frame's lines, and "line 6" means two rows.
+			_ = placeFrameText(a)
 			for i := 0; i < 20; i++ {
 				drive(t, a, key("down"))
 			}
