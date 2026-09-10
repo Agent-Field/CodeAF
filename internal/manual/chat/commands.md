@@ -1215,7 +1215,7 @@ through the marked door when its turn comes. On a build with no ambient side it 
 conversation, on up to three shelves, with `p` to pause one, `s` to stop one, `n` to except
 this place and `enter` to open the conversation that asked for it. With nothing standing it
 opens all the same, on its heading `standing orders` and one dim line:
-`reminders, watches and routines · "remind me at 6" or "every morning, …"`
+`reminders, watches and routines · "remind me at 6" or "every morning at 9"`
 Nothing is written into the conversation either way.
 
 Nothing on the page is ever named at the command line — the words are always a new order,

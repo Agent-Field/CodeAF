@@ -558,7 +558,7 @@ what arrives there and what puts it there:
 
 ```
 standing orders
-  reminders, watches and routines · "remind me at 6" or "every morning, …"
+  reminders, watches and routines · "remind me at 6" or "every morning at 9"
 ```
 
 No shelf is drawn under it, and no time window beside the heading: a control naming a span
