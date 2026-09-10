@@ -536,11 +536,28 @@ under a running reply, and it cannot start a task. This also applies if the inte
 arrives while the handover is preparing its brief: a canceled model call does not fall
 back to starting a worker from your original message.
 
-**What this does not cover: a sketch naming work you have already done.** Where the second
-reader draws independent parts still to do, the work moves — even if those parts landed in
-the seconds after that reader was shown its account of them. The reading is one line drawn
-from a snapshot. What was closed is the opposite mistake: silence, a fault, or a shape with
-no parts in it are no longer read as a reader saying work remains.
+**Both writers of the handover are told that finished work is not what is left.** The
+second reader's question ends with it in as many words: work already handed out is not a
+part, and work that is already done is not a part either — what the account it was shown
+says is finished is not what remains, and drawing it sends somebody to do it a second time.
+The model that writes the brief underneath is told the same thing about its prose: nothing
+already done goes under *what is left to do*, because what has been read, run or found out
+is what the worker **already knows**. Before that clause existed, a sketch naming reading
+the answer had already finished put it at the top of the brief under **WHAT IS LEFT, AS
+PARTS**, the worker obeyed the loudest and earliest line in its document, and it spent its
+first minutes re-reading what the conversation above it had read.
+
+**And the worker is told which half of its brief wins.** The list of calls that had already
+run is authoritative about what has happened: where the parts or the brief read as though
+one of those calls were still to be made, it has been made already, and the worker is told
+to read it through the pointer on its line rather than run it again — running it again only
+where the line says it failed or where what it reads disagrees with the brief.
+
+**What that still does not cover: the seconds after the account was taken.** The reading is
+one line drawn from a snapshot, so a part that lands while the reader is answering is still
+drawn as remaining and the work still moves. What was closed separately is the opposite
+mistake: silence, a fault, or a shape with no parts in it are no longer read as a reader
+saying work remains.
 
 ## Can I give a task a short name?
 
@@ -548,7 +565,9 @@ no parts in it are no longer read as a reader saying work remains.
 every task on this page and it is never rewritten. On top of it comes the brief: an
 instruction for whoever picks the work up, saying what is left, what was already found out
 that they would otherwise have to find again, what was ruled out, and how anybody could tell
-when it is done. Where the work was handed over because it had parts, the sketch and its
+when it is done. **Those first two are not the same list**: anything already done belongs
+under what is already known, never under what is left — see *It made a task out of work that
+was already done*. Where the work was handed over because it had parts, the sketch and its
 sentence sit at the top of that brief, so the worker starts with the pieces already named.
 Its name is cut from your own message too, and a short name replaces that a second later.
 
@@ -4035,6 +4054,13 @@ What that does, exactly:
 - **It takes effect on the task's next turn.** The call the worker is in the middle of
   finishes on the model it started on — killing a request in flight would throw away work
   you have already paid and waited for — and everything after it is on the new model.
+- **Unless the work is already being checked, in which case the pick is saved for the next
+  run.** A running task is running across three lives: its own worker, the gate reading
+  what that worker left, and any repair round. Once the gate is reading, the worker has
+  stopped, so there is no next turn for the pick to reach. It is kept the way a finished
+  task's pick is kept — the room reads `next model <id>`, the sidebar heads itself `Next
+  run setup` — and it applies if you continue the work. The model on the row does not move,
+  because that model is the one the work actually ran on.
 - **It moves that task and nothing else.** The conversation stays on its own model, and so
   does every other task. Walk back out with `esc` and the status line is the
   conversation's model again.
@@ -4045,7 +4071,9 @@ What that does, exactly:
   class, otherwise the model the conversation is on. A pick made inside one room is not a
   preference the session learns.
 - **The row, the roster and the finished card all say the new model** from that moment on,
-  and the change survives a restart.
+  and the change survives a restart. A pick that was saved for the next run instead leaves
+  all three naming the model the work ran on, which is what a bill can be reconciled
+  against.
 
 The picker offers the same rows `/model` offers, and it opens with the cursor on the model
 the task is already running — so `enter` confirms rather than changes. `esc` leaves
