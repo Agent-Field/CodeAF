@@ -79,3 +79,7 @@ covers the simplified logical diagram, not every serialized runtime field.
 [Memory and context review](MEMORY-AND-CONTEXT-REVIEW.md) checks dev after #769,
 separates learned memory from conversation history and the organization draft,
 and identifies the applicability and instruction overlap to groom next.
+
+[Proposed base-model refactor](BASE-MODEL-REFACTOR.md) maps the existing code to
+the desired folder/context/work structure, including migration boundaries and
+the role of lexical search, embeddings and model-driven source exploration.
