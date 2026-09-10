@@ -229,6 +229,12 @@ func TestLocalWorkJourney(t *testing.T) {
 	if !strings.Contains(notes, "rules seen: "+ruleMarketing) || strings.Contains(notes, ruleLaunch) {
 		t.Fatalf("review notes did not get exactly the Marketing rule:\n%s", notes)
 	}
+	// The review tried to save its notes itself: refused, as an unattended
+	// write is, and not a question for the person — aforge published the
+	// report the run wrote, not the model's own copy and not its apology.
+	if strings.Contains(notes, "the model's own copy") || strings.Contains(notes, "I cannot write") || strings.Contains(notes, scriptPreface) {
+		t.Fatalf("the review notes are not the report the run wrote:\n%s", notes)
+	}
 	j.expectCause(reviews[0], []string{ruleMarketing}, []string{ruleLaunch})
 	runs = j.expectRuns(inbox, 8)
 	j.expectCause(runs[0], []string{ruleLaunch}, []string{ruleMarketing})
@@ -746,7 +752,20 @@ func (m *scriptedModel) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	// The live model's habit, kept on purpose: a sentence about what it did,
 	// in the same turn as the report. Only the delimited report is published.
-	m.reply(w, body.Stream, "", "", scriptPreface+"\n<report>\n"+report.String()+"</report>")
+	said := scriptPreface + "\n<report>\n" + report.String() + "</report>"
+	if strings.Contains(answered, "nobody to ask") {
+		// What the live review said after its refused write (2026-09-10).
+		m.reply(w, body.Stream, "", "", "I cannot write the file myself; someone with permission needs to place it.")
+		return
+	}
+	if strings.Contains(ask, "FOCUS: claims") {
+		// And the live review's other habit: it wrote its report, then tried
+		// to save the report file itself, which an unattended run may not.
+		args, _ := json.Marshal(map[string]string{"path": "marketing/review-notes.md", "content": "the model's own copy"})
+		m.reply(w, body.Stream, "write", string(args), said)
+		return
+	}
+	m.reply(w, body.Stream, "", "", said)
 }
 
 func (m *scriptedModel) reply(w http.ResponseWriter, stream bool, tool, args, text string) {
@@ -754,7 +773,7 @@ func (m *scriptedModel) reply(w http.ResponseWriter, stream bool, tool, args, te
 	if !stream {
 		w.Header().Set("Content-Type", "application/json")
 		if tool != "" {
-			fmt.Fprintf(w, `{"id":"s","object":"chat.completion","model":"stub/scripted","choices":[{"index":0,"message":{"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":%q,"arguments":%q}}]},"finish_reason":"tool_calls"}],%s}`, tool, args, usage)
+			fmt.Fprintf(w, `{"id":"s","object":"chat.completion","model":"stub/scripted","choices":[{"index":0,"message":{"role":"assistant","content":%q,"tool_calls":[{"id":"call_1","type":"function","function":{"name":%q,"arguments":%q}}]},"finish_reason":"tool_calls"}],%s}`, text, tool, args, usage)
 			return
 		}
 		fmt.Fprintf(w, `{"id":"s","object":"chat.completion","model":"stub/scripted","choices":[{"index":0,"message":{"role":"assistant","content":%q},"finish_reason":"stop"}],%s}`, text, usage)
@@ -778,6 +797,9 @@ func (m *scriptedModel) reply(w http.ResponseWriter, stream bool, tool, args, te
 	}
 	send(chunk(`{"role":"assistant","content":""}`, ""))
 	if tool != "" {
+		if text != "" {
+			send(chunk(fmt.Sprintf(`{"content":%q}`, text), ""))
+		}
 		send(chunk(fmt.Sprintf(`{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":%q,"arguments":%q}}]}`, tool, args), ""))
 		send(chunk(`{}`, "tool_calls"))
 	} else {

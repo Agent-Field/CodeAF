@@ -626,8 +626,13 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	// It is what a report is published from. cut is the error a turn ended on,
 	// if one did: a reply streamed up to a deadline is half a report.
 	final := ""
+	// delimited is the latest report the run wrote between its two lines
+	// ([standingReportBody]), in whichever turn it wrote it: a run that wrote
+	// its report and then said something more has still written its report.
+	delimited := ""
 	var cut error
 	needs, saved, capped := "", false, false
+	report := strings.TrimSpace(item.Does.Report)
 	drain := func(events <-chan Event) {
 		var said, since strings.Builder
 		for event := range events {
@@ -637,6 +642,9 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 				since.WriteString(event.Text)
 			case EventToolBegin, EventToolAnnounced:
 				since.Reset()
+				// A new line between one response and the next, so the last
+				// line of one is never glued to the first line of the other.
+				said.WriteString("\n")
 			case EventError:
 				if event.Err != nil {
 					cut = event.Err
@@ -674,10 +682,21 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 					agent.InterruptFor(StopByWorkStopped)
 				}
 			case EventToolFailed:
-				if line := standingRefusal(event); line != "" && needs == "" {
+				// A REFUSED WRITE OF THE RUN'S OWN REPORT IS NOT A QUESTION FOR
+				// THE PERSON. aforge publishes that one path itself, so a run that
+				// tried to write it anyway — told not to, and refused, as every
+				// unattended write is — has asked for nothing a person must
+				// allow. The call stays refused; it just does not stop the run
+				// (the live review of 2026-09-10 wrote its report, then tried to
+				// save it, and waited on the person for a file aforge would have
+				// written).
+				if line := standingRefusal(event); line != "" && needs == "" && !writesTheReport(event, item.Workspace, report) {
 					needs = line
 				}
 			}
+		}
+		if body, found := delimitedReport(said.String()); found {
+			delimited = body
 		}
 		// THE OUTCOME IS THE LAST THING THIS FIRING ACTUALLY SAID. A run that
 		// divided opens by announcing that it split the work into three parts
@@ -745,6 +764,17 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		graph.stopChildren(root.id)
 	}
 
+	// THE REPORT IS THE DELIMITED ONE when the run wrote one; otherwise the
+	// words after its last tool call, taken whole ([standingReportBody]).
+	reportOf := func() string {
+		if delimited != "" {
+			return delimited
+		}
+		return standingReportBody(final)
+	}
+	if report != "" {
+		final = reportOf()
+	}
 	outcome := standing.Outcome{
 		Kind: standingCameTo(saved, reply, needs),
 		Text: clip(reply, standingOutcomeClip),
@@ -782,16 +812,29 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	// something clean publishes one: a run that stopped on a question or said
 	// nothing leaves the last good report where it was rather than replacing
 	// it with a refusal or an empty page (internal/standing's Action.Report).
-	report := strings.TrimSpace(item.Does.Report)
-	if report != "" {
-		final = standingReportBody(final)
-	}
 	publish := report != "" && outcome.Kind == "landed" && needs == "" && final != ""
 	if publish {
 		// AND IT IS READ AGAINST THE RULES THAT REACHED THE RUN FIRST
 		// (standing_rules.go). A report that still breaks one after its one
 		// correction is held back, and the run waits on the person instead.
-		if held := r.checkAgainstRules(ctx, agent, runDir, &final, drain, &cut, capped, item); held != "" {
+		//
+		// redo is the one correction turn, drained by the run's own reader so
+		// its steps, spend and refusals count exactly as the first turn's did.
+		redo := func(correction string) (string, error) {
+			next, err := agent.Submit(ctx, correction)
+			if err != nil {
+				return "", err
+			}
+			final, delimited, cut = "", "", nil
+			drain(next)
+			if cut != nil || ctx.Err() != nil || needs != "" {
+				return "", errors.New("the corrected report did not arrive")
+			}
+			return reportOf(), nil
+		}
+		checked, held := r.checkAgainstRules(ctx, agent, runDir, final, redo, capped, item)
+		final = checked
+		if held != "" {
 			publish = false
 			outcome.Kind = standing.OutcomeNeedsYou
 			outcome.NeedsPerson = clip(held, standingOutcomeClip)
@@ -866,42 +909,34 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 const heldReportFile = "held-report.md"
 
 // checkAgainstRules reads the run's final report against the rules that reached
-// the run (standing_rules.go) and answers "" when it may be published, or the
-// line the run waits on the person with when it may not. On a finding the run
-// is sent back ONCE, in the same session, and final becomes what it answered;
-// drain is the run's own event reader, so the correction's steps, spend and
-// refusals are counted exactly as the first turn's were. The check is written
-// into the occurrence record, found or not.
-func (r *standingRunner) checkAgainstRules(ctx context.Context, agent *Agent, runDir string, final *string, drain func(<-chan Event), cut *error, capped bool, item standing.Item) string {
+// the run (standing_rules.go) and answers the report to publish with "", or
+// the line the run waits on the person with when it may not be published. On a
+// finding the run is sent back ONCE through redo, in the same session, and the
+// report becomes what it answered. The check is written into the occurrence
+// record, found or not.
+func (r *standingRunner) checkAgainstRules(ctx context.Context, agent *Agent, runDir, draft string, redo func(string) (string, error), capped bool, item standing.Item) (string, string) {
 	rules := agent.standingRules()
 	if len(rules) == 0 {
-		return ""
+		return draft, ""
 	}
 	check := &standing.RuleCheck{}
 	for _, rule := range rules {
 		check.Rules = append(check.Rules, rule.ID)
 	}
-	draft := *final
 	verdict := agent.checkStandingReport(ctx, rules, draft)
 	overRail := item.Rails.PerRunUSD > 0 && agent.Usage().CostUSD >= item.Rails.PerRunUSD
 	if verdict.answered && !verdict.kept && !capped && !overRail && ctx.Err() == nil {
 		check.First = verdict.finding()
 		check.Rewrote = true
-		next, err := agent.Submit(ctx, standingCorrection(verdict))
-		if err != nil {
-			verdict = standingRuleVerdict{trouble: "the run could not be sent back to correct it: " + oneLine(err.Error())}
-		} else {
-			*final, *cut = "", nil
-			drain(next)
-			*final = standingReportBody(*final)
-			if *final != "" {
-				draft = *final
-			}
-			if *cut != nil || ctx.Err() != nil || *final == "" {
-				verdict = standingRuleVerdict{trouble: "the corrected report did not arrive"}
-			} else {
-				verdict = agent.checkStandingReport(ctx, rules, draft)
-			}
+		corrected, err := redo(standingCorrection(verdict))
+		switch {
+		case err != nil:
+			verdict = standingRuleVerdict{trouble: oneLine(err.Error())}
+		case corrected == "":
+			verdict = standingRuleVerdict{trouble: "the corrected report did not arrive"}
+		default:
+			draft = corrected
+			verdict = agent.checkStandingReport(ctx, rules, draft)
 		}
 	}
 	held := ""
@@ -929,7 +964,7 @@ func (r *standingRunner) checkAgainstRules(ctx context.Context, agent *Agent, ru
 		occurrence.RuleCheck = check
 		_ = standing.WriteOccurrence(runDir, occurrence)
 	}
-	return held
+	return draft, held
 }
 
 // stoppedSince answers whether the person stopped this item while the run was
@@ -1049,7 +1084,19 @@ const (
 // whole, as before, so a model that ignores the request still publishes — with
 // whatever else it said.
 func standingReportBody(final string) string {
-	lines := strings.Split(final, "\n")
+	if body, found := delimitedReport(final); found {
+		return body
+	}
+	return strings.TrimSpace(final)
+}
+
+// delimitedReport answers the body of the LAST report in text, and whether
+// there was one. The opening must be a line of its own — so a sentence that
+// merely mentions the tag opens nothing — and the report runs to the first
+// closing tag after it, wherever on its line that falls, or to the end of the
+// text when none came.
+func delimitedReport(text string) (string, bool) {
+	lines := strings.Split(text, "\n")
 	open := -1
 	for i, line := range lines {
 		if strings.TrimSpace(line) == standingReportOpen {
@@ -1057,16 +1104,45 @@ func standingReportBody(final string) string {
 		}
 	}
 	if open < 0 {
-		return strings.TrimSpace(final)
+		return "", false
 	}
-	body := lines[open+1:]
-	for i, line := range body {
-		if strings.TrimSpace(line) == standingReportClose {
-			body = body[:i]
-			break
-		}
+	body := strings.Join(lines[open+1:], "\n")
+	if end := strings.Index(body, standingReportClose); end >= 0 {
+		body = body[:end]
 	}
-	return strings.TrimSpace(strings.Join(body, "\n"))
+	return strings.TrimSpace(body), true
+}
+
+// writesTheReport answers whether a failed call was a write or an edit of the
+// item's own report path — the exact file, however the call spelled it.
+func writesTheReport(event Event, workspace, report string) bool {
+	if report == "" || (event.Tool != "write" && event.Tool != "edit") {
+		return false
+	}
+	var args struct {
+		Path string `json:"path"`
+	}
+	if json.Unmarshal([]byte(event.Args), &args) != nil || strings.TrimSpace(args.Path) == "" {
+		return false
+	}
+	path := args.Path
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(workspace, path)
+	}
+	target := filepath.Join(workspace, report)
+	if filepath.Clean(path) == filepath.Clean(target) {
+		return true
+	}
+	// The same file through a symlinked workspace (/tmp on some systems).
+	root, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		return false
+	}
+	resolved := path
+	if dir, err := filepath.EvalSymlinks(filepath.Dir(path)); err == nil {
+		resolved = filepath.Join(dir, filepath.Base(path))
+	}
+	return filepath.Clean(resolved) == filepath.Join(root, filepath.Clean(report))
 }
 
 // publishStandingReport writes a run's report to its declared path inside the

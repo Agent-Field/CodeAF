@@ -310,6 +310,13 @@ test-local-work: build
 demo-local-work: build
 	bash scripts/demo-local-work.sh
 
+# The report check before publication, on a real model, against the report the
+# live journey actually published with a forbidden address in it. Three small
+# calls; SKIPS without OPENROUTER_API_KEY.
+.PHONY: test-rules-check-live
+test-rules-check-live:
+	go test -tags e2e -count=1 -timeout 10m -run '^TestRealRulesCheckOnTheLiveViolation$$' -v ./internal/session/
+
 .PHONY: test-organization test-organization-live
 test-organization:
 	go test -timeout 15m ./internal/workspace/ ./internal/workspaceview/
