@@ -399,7 +399,7 @@ func (a *app) askTakeover(line homeLine) tea.Cmd {
 // takeoverBeat schedules the next look at the flock.
 func (a *app) takeoverBeat() tea.Cmd {
 	gen := a.takeover.gen
-	return tea.Tick(takeoverBeatEvery, func(time.Time) tea.Msg { return takeoverTickMsg{gen: gen} })
+	return surfaceTick(takeoverBeatEvery, func(time.Time) tea.Msg { return takeoverTickMsg{gen: gen} })
 }
 
 // takeoverTick is one look. The lock is the ONLY thing consulted: the request

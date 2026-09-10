@@ -2006,7 +2006,7 @@ func (a *app) setupDemoCmd() tea.Cmd {
 	}
 	s.demoTicking = true
 	gen := s.demoGen
-	return tea.Tick(setupDemoBeat, func(time.Time) tea.Msg { return setupDemoMsg{gen: gen} })
+	return surfaceTick(setupDemoBeat, func(time.Time) tea.Msg { return setupDemoMsg{gen: gen} })
 }
 
 // setupDemoBeatAt is one beat arriving. A beat from a previous generation is

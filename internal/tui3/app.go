@@ -5359,8 +5359,8 @@ func (a *app) dropForming() {
 // not a ticker on purpose — see [hudFadeMsg].
 func fadeTicks() tea.Cmd {
 	return tea.Batch(
-		tea.Tick(hudFresh, func(time.Time) tea.Msg { return hudFadeMsg{} }),
-		tea.Tick(hudWarm, func(time.Time) tea.Msg { return hudFadeMsg{} }),
+		surfaceTick(hudFresh, func(time.Time) tea.Msg { return hudFadeMsg{} }),
+		surfaceTick(hudWarm, func(time.Time) tea.Msg { return hudFadeMsg{} }),
 	)
 }
 
@@ -5765,7 +5765,7 @@ func (a *app) wake() tea.Cmd {
 // frameTick asks for the next frame, at whatever cadence the link earns
 // (link.go's [app.frameEvery]).
 func (a *app) frameTick() tea.Cmd {
-	return tea.Tick(a.frameEvery(), func(time.Time) tea.Msg { return frameMsg{} })
+	return surfaceTick(a.frameEvery(), func(time.Time) tea.Msg { return frameMsg{} })
 }
 
 // running reports whether any call of the current turn is still unresolved —
