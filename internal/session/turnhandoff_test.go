@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -263,6 +264,62 @@ func TestTheHandedOffTaskWakesTheConversationOnceWhenItLands(t *testing.T) {
 	time.Sleep(250 * time.Millisecond)
 	if got := woke.Load(); got != 1 {
 		t.Errorf("the landing started %d turns, want one", got)
+	}
+}
+
+// A SETTLED TASK WITH GREEN CHECKS IS NOT RE-ASKED AS UNFINISHED.
+//
+// THE MEASURED FAILURE (#468): the task landed done, its own checks passed, the
+// card showed the settled mark, and the end-of-turn reader — looking at a
+// digest of the transcript, not the tree — said the ask was unfinished. The
+// turn was carried on three times and then told the person the work was not
+// finished. The live-task gate covers work still out; this is the landing's
+// half, driven through the same wake [TestAWokenTurnThatStopsShortIsReopenedEvenWhenCheap]
+// uses, because what the person saw was that woken reply being re-opened.
+func TestASettledTaskWithGreenChecksIsNotCarriedOnAsUnfinished(t *testing.T) {
+	const asked = "port the parser and get the tests green"
+	const answer = "the parser is ported and the suite is green"
+
+	var woke, remainsAsks atomic.Int64
+	steps := stoppingSteps(3, answer, func() string {
+		remainsAsks.Add(1)
+		return "the tests have not been run and the parser is still unfinished"
+	})
+	for index := range steps {
+		inner := steps[index]
+		steps[index] = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
+			if strings.Contains(userTextIn(messages), "the suite is green") && !askedForRemains(messages) {
+				woke.Add(1)
+			}
+			return inner(ctx, messages)
+		}
+	}
+	completer := &scriptedCompleter{steps: steps}
+	agent := checkpointAgent(t, completer)
+	agent.mu.Lock()
+	agent.personAsk = asked
+	agent.mu.Unlock()
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		node.checkSaid(provider.VerdictVerifiedSuccess, 0)
+		node.finish("the suite is green", nil, "", "")
+		node.graph.complete(node, TaskDone)
+	})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{
+		title: "port the parser", brief: "port it", acceptance: "the suite is green",
+		request: asked,
+	})
+	waitDoneNode(t, graph.node(id))
+	waitFor(t, "the landing to reach the person", func() bool {
+		return woke.Load() > 0 && strings.Contains(transcriptText(agent), answer)
+	})
+	waitForQuiet(t, agent)
+
+	if got := remainsAsks.Load(); got != 0 {
+		t.Errorf("a settled task with green checks was read %d times for what remains", got)
+	}
+	if strings.Contains(transcriptText(agent), checkpointCarryOnLead) {
+		t.Errorf("a settled task with green checks was carried on as unfinished:\n%s", transcriptText(agent))
 	}
 }
 
@@ -667,6 +724,67 @@ func TestTheHandoffFactIsQualifiedToTheTurnThatMadeIt(t *testing.T) {
 	graph.complete(node, TaskDone)
 	if agent.turnHandedItsAskOff() {
 		t.Error("a landed node still read as work this turn is waiting on")
+	}
+}
+
+// AND A SETTLED LANDING WITH GREEN CHECKS IS THE OTHER HALF OF THE SAME FACT.
+//
+// The live gate above stays shut once the node has landed. This is the
+// landing's own gate: the turn that is answering that result, owing only that
+// result's request, over a done node whose check passed.
+func TestASettledCheckedLandingIsTheAskFinished(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	node := landOne(agent, TaskDone, "port the parser", "done")
+
+	oweResult := func() {
+		agent.mu.Lock()
+		agent.turnResults = []uint64{node.id}
+		agent.owedAsks = []owedAsk{{text: "port the parser", from: owedByResult, task: node.id}}
+		agent.mu.Unlock()
+	}
+
+	oweResult()
+	if agent.turnSettledItsAsk() {
+		t.Fatal("a done landing nobody checked read as the ask finished")
+	}
+
+	node.checkSaid(provider.VerdictVerifiedSuccess, 0)
+	if !agent.turnSettledItsAsk() {
+		t.Fatal("a done landing whose check passed did not read as the ask finished")
+	}
+
+	agent.mu.Lock()
+	agent.owedAsks = append(agent.owedAsks, owedAsk{text: "and wire the handlers", from: owedByPerson})
+	agent.mu.Unlock()
+	if agent.turnSettledItsAsk() {
+		t.Error("a person's own later sentence was treated as covered by the landing")
+	}
+
+	oweResult()
+	agent.mu.Lock()
+	agent.owedAsks = nil
+	agent.mu.Unlock()
+	if agent.turnSettledItsAsk() {
+		t.Error("a landing with no owed request — the broader ask — read as finished")
+	}
+
+	failed := landOne(agent, TaskFailed, "wire the handlers", "incomplete")
+	failed.checkSaid(provider.VerdictVerifiedSuccess, 0)
+	agent.mu.Lock()
+	agent.turnResults = []uint64{failed.id}
+	agent.owedAsks = []owedAsk{{text: "wire the handlers", from: owedByResult, task: failed.id}}
+	agent.mu.Unlock()
+	if agent.turnSettledItsAsk() {
+		t.Error("an incomplete landing read as the ask finished")
+	}
+
+	worker, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.InTask = true })
+	worker.mu.Lock()
+	worker.turnResults = []uint64{1}
+	worker.owedAsks = []owedAsk{{text: "a piece", from: owedByResult, task: 1}}
+	worker.mu.Unlock()
+	if worker.turnSettledItsAsk() {
+		t.Error("a task worker's turn read as a settled ask")
 	}
 }
 
