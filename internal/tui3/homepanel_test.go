@@ -250,3 +250,44 @@ func TestTheHomeDirectoryIsNotAProjectName(t *testing.T) {
 		t.Fatalf("a project under home is called %q, want ~/site", got)
 	}
 }
+
+// SPEND READS THE FORTNIGHT THE SPEND PLACE READS: today's figure, the total,
+// and the model most of it went to.
+func TestSpendReadsTodayAndTheFortnight(t *testing.T) {
+	now := time.Date(2026, 9, 10, 15, 0, 0, 0, time.Local)
+	lines := []session.UsageLine{
+		{At: now.Add(-time.Hour), USD: 0.25, Model: "anthropic/claude-opus-5"},
+		{At: now.AddDate(0, 0, -3), USD: 0.75, Model: "anthropic/claude-opus-5"},
+		{At: now.AddDate(0, 0, -5), USD: 1.00, Model: "deepseek/deepseek-v4-flash"},
+		{At: now.AddDate(0, 0, -30), USD: 9.00, Model: "anthropic/claude-opus-5"},
+	}
+	s := readHomeSpend(lines, now, 20)
+	if s.today != 0.25 || s.total != 2.00 || len(s.days) != homeSpendDays {
+		t.Fatalf("today %v, fortnight %v over %d days", s.today, s.total, len(s.days))
+	}
+	if s.share != 0.5 || s.top == "" {
+		t.Fatalf("the top model is %q at %v, want half the fortnight", s.top, s.share)
+	}
+}
+
+// AND THE PANEL SAYS IT: today against the allowance on the heading, the bar
+// under it, the fortnight after that — and every row opens the spend place.
+func TestSpendDrawsTodayTheBarAndTheFortnightAsDoors(t *testing.T) {
+	a := newSwitchLab(t).open(120, 45)
+	days := make([]float64, homeSpendDays)
+	days[3], days[13] = 2, 0.14
+	a.home.spend = homeSpendReading{today: 0.14, ceiling: 20, days: days, total: 34.10, top: "opus", share: 0.63}
+	a.home.build()
+	frame := homeText(a)
+	if row, _ := homeRowOf(frame, "today $0.14 of $20.00"); row < 0 {
+		t.Fatalf("the spend heading does not carry today:\n%s", frame)
+	}
+	if row, _ := homeRowOf(frame, "14 days $34.10 · opus 63%"); row < 0 {
+		t.Fatalf("the fortnight is not drawn:\n%s", frame)
+	}
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.kind == cellSpark })
+	a.homeKey(key("enter"))
+	if !a.at(pageSpend) {
+		t.Fatal("enter on the fortnight did not open the spend place")
+	}
+}
