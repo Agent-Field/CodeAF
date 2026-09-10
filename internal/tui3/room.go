@@ -3705,7 +3705,14 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 	// one never could, and the reading word is exactly as true of a landed task
 	// as of a running one. The foot beside it carries the owner-aware finished
 	// sentence ([app.roomDoneRefusal]), so nothing here has to.
-	if a.room.done && !a.roomIsGuest() {
+	// AND A NODE THAT IS STILL SOMEBODY'S CALL KEEPS ITS STEER LANE. The work has
+	// stopped, but the box has not: `[s] tell it` is one of the three answers
+	// standing on the block above it, and what it does is point this box at this
+	// task (tasksettle.go's [app.landingTell]). A placeholder reading `this task
+	// has finished — say it to main` over a question the person is being asked
+	// here would send them somewhere else to answer it, which is the room half of
+	// the screen #767 was filed about.
+	if a.room.done && !a.roomIsGuest() && !a.roomLandingAsking() {
 		lane = a.roomFinishedRefusal().fit(room)
 	}
 	// The attachment/effort tray can precede the draft. Put the placeholder
