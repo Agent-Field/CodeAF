@@ -18,7 +18,10 @@ because they can disagree:
               baseline took six has a smaller bill and a bigger per-turn figure,
               and it is the per-turn figure that says whether the prefix got
               lighter. The round count is printed beside it so that the other
-              reading is never hidden.
+              reading is never hidden. And a TURN is a request that carried the
+              tool block — see `Run.carries_the_belt`, which exists because the
+              first comparison this bench ran reported a 94% cut that was a
+              change of call mix and not a diet at all.
 
 WHAT IS RECORDED RATHER THAN RULED ON: wall clock and dollars. `bench/e2e`'s own
 README sets the thresholds this follows and the reason — two runs of IDENTICAL
@@ -184,6 +187,33 @@ class Run:
     def guard_rows(self):
         return [row for row in self.wire if row.get("source") == "guard"]
 
+    @staticmethod
+    def carries_the_belt(row):
+        """Whether this request carried the tool block, and so the prefix.
+
+        THIS IS THE WHOLE DIFFERENCE BETWEEN A REAL NUMBER AND A FLATTERING
+        ONE. A conversation does not only send turns: a title call, a memory
+        reflex, a judge and a router all go out on the same wire with a few
+        hundred prompt tokens and no belt at all. The first comparison this
+        bench ever ran took the median over every request and reported median
+        prompt tokens falling 16,473 → 938, a 94% cut — which was not a diet at
+        all but a change of MIX. The candidate made 19 turn calls where the
+        baseline made 67, so its median landed among the small auxiliary calls
+        that both runs make. Over the requests that actually carry the prefix
+        the same two runs read 17,815 → 13,962, or 21.6%: a real result, and a
+        quarter of the size of the one the average told.
+
+        A request carrying at least one tool definition is a turn. Nothing else
+        on the wire carries a belt, and the count is on the guard's own
+        admission row, so no body has to be kept to ask the question."""
+        return (row.get("tool_count") or 0) > 0
+
+    def turn_rows(self):
+        return [row for row in self.guard_rows() if self.carries_the_belt(row)]
+
+    def aside_rows(self):
+        return [row for row in self.guard_rows() if not self.carries_the_belt(row)]
+
     def calllog_rows(self):
         return [row for row in self.wire if row.get("source") == "calllog"]
 
@@ -315,15 +345,25 @@ def main():
     # be six rounds of tool calls, and the prefix rides every one of them.
     add("## Tokens per turn (layer D)")
     add("")
+    add("Over the requests that CARRY THE BELT, and so carry the prefix. A title")
+    add("call, a memory reflex, a judge and a router go out on the same wire with a")
+    add("few hundred prompt tokens and no tool block at all; a median over all of")
+    add("them measures the mix of call kinds rather than the size of the prompt, and")
+    add("it moves when a build simply needs fewer rounds. Those are counted in their")
+    add("own row underneath, where they cannot flatter anything.")
+    add("")
     add("| | %s | %s | Δ | |" % (before.label, after.label))
     add("| --- | ---: | ---: | ---: | ---: |")
     pairs = [
-        ("requests", lambda run: len(run.guard_rows()) or None, "{:,}"),
-        ("median prompt tokens", lambda run: middle([row.get("prompt_tokens") for row in run.guard_rows()]), "{:,}"),
-        ("median cached tokens", lambda run: middle([row.get("cached_tokens") for row in run.guard_rows()]), "{:,}"),
-        ("median completion tokens", lambda run: middle([row.get("completion_tokens") for row in run.guard_rows()]), "{:,}"),
-        ("median request bytes", lambda run: middle([row.get("request_bytes") for row in run.guard_rows()]), "{:,}"),
+        ("turn requests", lambda run: len(run.turn_rows()) or None, "{:,}"),
+        ("median prompt tokens", lambda run: middle([row.get("prompt_tokens") for row in run.turn_rows()]), "{:,}"),
+        ("median cached tokens", lambda run: middle([row.get("cached_tokens") for row in run.turn_rows()]), "{:,}"),
+        ("median completion tokens", lambda run: middle([row.get("completion_tokens") for row in run.turn_rows()]), "{:,}"),
+        ("median request bytes", lambda run: middle([row.get("request_bytes") for row in run.turn_rows()]), "{:,}"),
+        ("median tools on the belt", lambda run: middle([row.get("tool_count") for row in run.turn_rows()]), "{:,}"),
         ("median tool block bytes", lambda run: middle([row.get("tool_block_bytes") for row in run.calllog_rows()]), "{:,}"),
+        ("asides (no belt)", lambda run: len(run.aside_rows()) or None, "{:,}"),
+        ("median aside prompt tokens", lambda run: middle([row.get("prompt_tokens") for row in run.aside_rows()]), "{:,}"),
     ]
     prompt_before = prompt_after = None
     for name, reader, spelling in pairs:
@@ -346,23 +386,26 @@ def main():
         left_wall, right_wall = before.cell_wall(), after.cell_wall()
         add("## Per cell")
         add("")
-        add("| cell · run | outcome | requests | median prompt tok "
+        add("| cell · run | outcome | turn calls | median prompt tok "
             "| median cached tok | median completion tok | $ | wall s |")
         add("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |")
         for name in sorted(set(left_cells) | set(right_cells)):
             key = "conversation/" + name
             was = left_outcomes.get(key, "—")
             now = right_outcomes.get(key, "—")
-            for label, group, outcome, wall in (
+            for label, everything, outcome, wall in (
                 (before.label, left_cells.get(name, []), was, left_wall.get(name)),
                 (after.label, right_cells.get(name, []), now, right_wall.get(name)),
             ):
+                # The tokens are the turn calls'; the spend is every call the
+                # cell made, because an aside is still money.
+                group = [row for row in everything if Run.carries_the_belt(row)]
                 add("| `%s` · %s | %s | %d | %s | %s | %s | %s | %s |" % (
                     name, label, outcome, len(group),
                     figure(middle([row.get("prompt_tokens") for row in group])),
                     figure(middle([row.get("cached_tokens") for row in group])),
                     figure(middle([row.get("completion_tokens") for row in group])),
-                    figure(total([row.get("cost_usd") for row in group]), "{:.4f}"),
+                    figure(total([row.get("cost_usd") for row in everything]), "{:.4f}"),
                     figure(wall, "{}")))
         add("")
 
