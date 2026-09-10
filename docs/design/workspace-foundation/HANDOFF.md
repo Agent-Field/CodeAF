@@ -346,3 +346,15 @@ the audit checkout is `/Users/santoshkumar/af-behavior-audit-review`.
 Required PR gate run `34393609975` passed on production head `11c92fd1d6`.
 That is ordinary CI evidence, not a passing behavioral audit. Keep #662 draft
 and unmerged; fix confirmed reporting/recovery failures before claiming readiness.
+
+## Governing-context update — 2026-09-10
+
+The single maintained draft #662 now includes explicit governing placements,
+folder-scoped holds, read-only execution inheritance and journaled context
+inspection. Exact candidate `792a9dffc` passed Spark job
+`20260910-170155-000415` with focused backend checks and `make build`.
+See `grooming/BUILD-WAVE-02.md` for the cause/effect table and limitations, and
+`grooming/NEXT-STEPS.md` for checked delivery and remaining work. All compilation
+and tests are now Spark-only; no local binary was built or installed in this wave.
+Full causal handoffs, automatic source adoption and real Slack acceptance remain
+unchecked. Existing draft is not merged into dev or deployed.

@@ -54,10 +54,10 @@ A checked item means completed with the evidence named here, not merely discusse
   `20260910-154640-000411`: small backend packages, selected session cases and
   `make build`. Independent tests use the production status API.
 - [ ] T11c — Broader admission/cancellation/recovery contracts remain future work.
-- [ ] T12a — Explicit governing placements and folder-scoped holds, separate from references.
-- [ ] T12b — Read-only governing context across chat, workers, independent checking and scheduled runs.
-- [ ] T12c — Durable consumed-context records and bounded in-aforge inspection (C24).
-- [ ] T12d — Exact automatic source-backed retention, clause-specific exceptions, action-boundary re-admission and complete causal handoffs.
+- [x] T12a — Explicit governing placements and folder-scoped holds, separate from references.
+- [x] T12b — Read-only governing context across chat, workers, independent checking and scheduled runs.
+- [x] T12c — Consumed-context records for journaled turns and bounded in-aforge inspection (C24); gaps remain below.
+- [ ] T12d — Exact automatic source-backed retention, clause-specific exceptions, action-boundary re-admission, ephemeral fork receipts and complete causal handoffs.
 - [ ] T13 — Complete the daily Slack journey, including setup, delivery, edits,
   unanswered questions, pause/stop and restart.
 - [ ] T14 — Complete cross-work Product-to-Marketing impact, including worker
@@ -202,3 +202,25 @@ Implementation in isolated `codex/governing-context`; destination remains #662.
 C23 scope behavior and C24 runtime evidence are accepted. Source lanes are
 parallel; a source commit alone does not tick delivery. Spark evidence will be
 recorded after combined integration. All local builds/tests are prohibited (C25).
+
+## Governing-context functional slice — completed
+
+- Exact tested source/manual/test revision: `792a9dffc1a372ebcf8a9e217afbf6a62cfdbe66`.
+- Spark job `20260910-170155-000415`, **PASS**, exit 0, 17:01:56–17:02:21 UTC
+  (25 seconds). Standing 0.177s, workspace 6.403s, workspaceview 0.301s;
+  selected session cases including scope, actual child constructors, trace,
+  organization and manual tool registration passed in 1.608s. `make build` passed.
+- [Exact receipt](validation/governing-functional-pass.log). Initial combined
+  source had an early-return compilation error (job000413), fixed before the
+  passing job000414; the final run also includes the unfiled identity correction.
+- Independent review caught and repaired background placement widening, nil-reader
+  interface panic, old compaction mislabeling, oversized trace rows and stale
+  call/result links. Retained absent provenance stays absent; no invented causal
+  relationship fills a missing execution edge.
+- No local build or test ran in this wave. Stale local test-log pollers were
+  stopped; remote-log followers were closed after receipt capture.
+- No tui3 suite, broad UI/E2E, paid model or real Slack acceptance was run.
+  No live installation, user-state migration or merge into dev is claimed.
+- Next: T12d authority/source and cause propagation, then T13 complete daily Slack
+  journey and T14 cross-work impact. A source selection is not proof that the
+  model complied; journal windows are not a complete cause/effect graph.

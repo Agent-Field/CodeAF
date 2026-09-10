@@ -58,3 +58,18 @@ remain visible in T12d/T13/T14 instead of being hidden by a new generic audit st
 Schema boundary: standing schema 3 and organization schema 3. Stop/restart old
 engines and tickers together before any deployment; mixed writers are unsupported.
 This wave does not deploy or migrate the person's live installation.
+
+## Change → intended effect → evidence
+
+| Change | Effect to inspect | Evidence boundary |
+| --- | --- | --- |
+| Separate placement relation | Adding a shortcut leaves governing direction unchanged; explicit placement changes subsequent selections. | Placement/migration tests and recorded governing depths. |
+| Folder scope on existing hold owner | Direct-only rules do not reach descendants; opted-in rules do. | Owner resolution tests and exact selected scope in journal. |
+| Read-only inherited scope | Worker/checker/fork reads the work's direction without acquiring rule mutation capability. | Actual constructor tests; fork lacks standalone receipt. |
+| Duty identity on scheduled runs | New run folder does not lose duty scope or borrow setup-chat folders. | Scheduled and descendant identity fixtures; live Slack still pending. |
+| Same-selection receipt | Later edits do not rewrite what an earlier journaled execution received. | Exact text/revision/approval snapshot tests and `context_trace`. |
+| Conservative trace reader | Compacted copies and orphan replies do not become invented original effects. | Unknown-window, overlap, reused-ID and oversize regression cases. |
+| Limits and read errors | Missing or oversized governing inputs do not silently become a weaker instruction set. | Error/limit cases; no external cancellation claim. |
+
+Candidate `792a9dffc` passed Spark job `20260910-170155-000415`, including focused
+backend scenarios and the normal build. See the checklist for the full receipt.
