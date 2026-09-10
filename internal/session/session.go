@@ -1079,6 +1079,11 @@ type Config struct {
 	// here, which is what makes "no calls" structural.
 	Memory *store.Store
 
+	// ConversationHistory grants only indexed history reads. Workers inherit
+	// this interface without receiving memory extraction, writes, or journaling.
+	// Nil falls back to Memory, so a memory-off root grants no history access.
+	ConversationHistory ConversationHistoryReader
+
 	// MemoryImport is the legacy memory.md this session carries into the store
 	// on its first turn, once, before it is renamed to memory.md.imported
 	// (memory.go). Empty imports nothing, which is every caller but the v3 door

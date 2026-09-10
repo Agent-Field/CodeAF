@@ -107,6 +107,9 @@ func (s *Store) MessageWindowFloor(sessionID string, keep int) (int64, error) {
 // MessageHit is one remembered line of conversation with enough around it to be
 // quoted honestly: who said it, when, and in which thread.
 type MessageHit struct {
+	// Complete is true only when the reader returned the entire indexed body.
+	// Older excerpt-only readers leave it false.
+	Complete  bool
 	Seq       int64
 	SessionID string
 	Role      Role

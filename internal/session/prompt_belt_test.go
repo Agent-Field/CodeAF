@@ -102,6 +102,12 @@ var beltShapes = []beltShape{{
 	name:  "a conversation with memory off",
 	build: func(t *testing.T, config *Config) {},
 }, {
+	name: "a worker with inherited conversation reads",
+	build: func(t *testing.T, config *Config) {
+		config.InTask = true
+		config.ConversationHistory = openTestBrain(t)
+	},
+}, {
 	// A task node one level down that was handed the conversation's graph, so
 	// it may hand parts of its own work further out (task_run.go's
 	// newTaskAgent, task.go's fan-out law).

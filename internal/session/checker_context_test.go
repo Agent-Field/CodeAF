@@ -10,6 +10,23 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
+// The fallback contract references the person's brief instead of spelling out
+// an acceptance. A checker needs that request without inventing it from claims.
+func TestCheckerReceivesBriefOnlyWhenFallbackAcceptanceReferencesIt(t *testing.T) {
+	for _, acceptance := range []string{taskPersonAcceptance, "The approval phrase and its source are present."} {
+		node := loneTestNode(t, "look up an earlier decision")
+		node.spec.brief = "Save decision.json with the approval phrase and the source's stored metadata."
+		node.spec.acceptance = acceptance
+		question := auditQuestion(node, taskTree{}, auditGround{}, auditDoor{}, checkGround{}, landingFiles{}, "I saved the result", nil)
+		if strings.Contains(question, node.spec.brief) != (acceptance == taskPersonAcceptance) {
+			t.Fatalf("checker received the wrong contract for %q: %s", acceptance, question)
+		}
+		if !strings.Contains(question, "that retained text is the deliverable") || !strings.Contains(question, "factual claims still require independent evidence") {
+			t.Fatal("checker was not told to evaluate a retained answer without inventing a file requirement")
+		}
+	}
+}
+
 // The real check boundary must see the conclusion after the display summary,
 // including on a repaired result and a later check with no supplied claim.
 func TestCheckerReadsKeptConclusionAtEveryCheck(t *testing.T) {
