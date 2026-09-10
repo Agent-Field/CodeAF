@@ -273,6 +273,12 @@ A refusal is final for that machine, immediately:
   demand for one machine is the first thing dropped — and the answer usually
   arrives from wherever the router picks.
 
+If a later machine accepts the request and starts writing but that stream is
+cut, the cut is the failure aforge acts on. The partial reply is cleared and the
+existing bounded call retry routes around the machine that failed. An earlier
+`No endpoints found` answer is not shown as the final error after another
+machine demonstrably accepted the request.
+
 ## What all providers have been ignored means — a refusal from nobody
 
 When the router answers `All

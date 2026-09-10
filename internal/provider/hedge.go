@@ -317,9 +317,23 @@ func (r *hedgeRace) run(ctx context.Context, messages []ai.Message, options ...a
 				continue
 			}
 			if len(seen) == r.count() {
-				// Nobody committed and everybody is done, which means every arm
-				// failed. The primary's failure is the one to report: it is the
-				// request the caller actually made.
+				// CRITICAL: AN ACCEPTED STREAM'S CUT OUTRANKS AN EARLIER REFUSAL.
+				// The turn loop recognises the typed cut, clears the partial answer,
+				// and owns both its retry budget and the next routing decision. Hiding
+				// it behind the primary's 404 skips all three and reports that nobody
+				// accepted a request an endpoint demonstrably streamed. Pick the
+				// furthest rescue deterministically when more than one stream cut;
+				// this layer must not send another request after exposed output.
+				for index := r.count() - 1; index >= 0; index-- {
+					candidate, ok := seen[index]
+					if _, cut := CutFrom(candidate.err); ok && cut {
+						return r.settle(candidate, seen)
+					}
+				}
+				// Nobody committed and everybody is done. For failures that never
+				// became an accepted stream, retain the primary's error: it is the
+				// request the caller actually made and preserves the existing
+				// authentication, connection and refusal semantics.
 				if primary, ok := seen[0]; ok {
 					return r.settle(primary, seen)
 				}
