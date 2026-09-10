@@ -18,9 +18,12 @@ already reading.
 There is no argument form. The screen is how you name what you want; a command that took a
 project name would be asking you to type out the very thing home exists to show you.
 
-Under the tab bar it is **one flat list**, ranked by what wants you first, with the project
-demoted to a tag out at the right of each row. There is no project tree and no folded block
-of other projects; `alt+g` groups the same list by project when you want that shape.
+Under the tab bar it is **panels** — one column under 110 cells, two under 170, three
+past that: `needs you`, `where you were` and `projects` on the left, `running`,
+`since you left`, `spend` and `next up` on the right. An empty panel keeps its heading and
+one dim line naming what arrives there. `↑↓` walk a panel, `←` `→` cross columns, and a digit
+answers the top question in `needs you`. On a project row `enter` starts a chat in that
+folder, and `→` offers `its chats` and `open folder`.
 
 Home is the **first of the four places on the tab bar** — `home  tasks  spend  settings`,
 drawn under the top line, with `tab` and `alt+1`…`alt+4` between them. Standing, memory and
