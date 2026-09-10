@@ -70,13 +70,30 @@ func RenderWhole(sections []Section) string {
 // Markdown heading because that is the one line shape the pages themselves can
 // never carry inside a body — see renderSections.
 func personSectionLabel(section Section) string {
-	return fmt.Sprintf("## %s · %s", section.Page, section.Title)
+	return PersonSectionOpen(section.Page) + section.Title
 }
 
 // modelSectionLabel is the bracketed label the model has always read, kept as
 // it is because the prompts and the tests around the belt tool quote it.
 func modelSectionLabel(section Section) string {
-	return fmt.Sprintf("[%s · %s]", section.Page, section.Title)
+	return ModelSectionOpen(section.Page) + section.Title + "]"
+}
+
+// PersonSectionOpen is the start of the label [RenderWhole] writes for one page
+// — `## permissions · ` — so the command-line door and every test that reads
+// what a person saw share one spelling. The model's bracketed form is
+// [ModelSectionOpen]; the two must never be swapped, because a person reading
+// `aforge manual "…"` is reading Markdown headings and the belt tool is reading
+// brackets.
+func PersonSectionOpen(page string) string {
+	return "## " + page + " · "
+}
+
+// ModelSectionOpen is the start of the label [Render] writes for the model —
+// `[permissions · ` — kept beside [PersonSectionOpen] so a test that meant the
+// person's door cannot quietly pass on the model's shape, or the other way round.
+func ModelSectionOpen(page string) string {
+	return "[" + page + " · "
 }
 
 // renderSections is the arrangement itself, and there is one of it because the

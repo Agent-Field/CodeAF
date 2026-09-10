@@ -49,6 +49,25 @@ func TestTabWalksTheBlanksAndStopsAtTheEnd(t *testing.T) {
 	}
 }
 
+// THE BLANKS FOOT KEEPS `[tab] next blank` AT THE GALLERY WIDTH. It is the
+// shape's own verb — the same law that keeps `[space] tick it` on a checklist —
+// and it was ranked sixth, so at a hundred columns (the e2e gallery and the
+// width the give-up order was tuned against) the foot kept `[c] change` and
+// gave up the only key that walks the holes.
+func TestABlanksFootKeepsNextBlankAtAHundredColumns(t *testing.T) {
+	a, _ := standingInAQuestion(t, demoQuestionBlanks())
+	a.width = 100
+	foot := footText(a)
+	if !strings.Contains(foot, "[tab] next blank") {
+		t.Errorf("a blanks page at 100 columns must keep [tab] next blank:\n%s", foot)
+	}
+	// AND IT OUTRANKS THE SECONDARY KEYS THAT USED TO CROWD IT OFF. A foot that
+	// kept compare and lost the walk is the defect this pins.
+	if !strings.Contains(foot, "[esc] later") {
+		t.Errorf("esc later must stay too:\n%s", foot)
+	}
+}
+
 // `←→` WALKS A CHOICE HOLE'S CHOICES, which is a dial one shape down: the hole
 // has a short list and the arrows are how a person sees it without opening
 // anything.
