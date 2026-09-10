@@ -950,6 +950,22 @@ type TaskGraph struct {
 	seq     uint64
 	running int
 
+	// quickGate serialises the ADMISSION of quick nodes, and it is the one lock
+	// in this file that is not `mu` (task_quick.go).
+	//
+	// IT EXISTS BECAUSE THE WRITE CLAIM IS READ BEFORE IT IS WRITTEN. A quick
+	// node's claim is compared against every running or queued quick node's at
+	// admission and a collision becomes an edge, and a model fanning out emits
+	// its calls TOGETHER and the loop runs them concurrently (loop.go) — so two
+	// doors claiming one path would each look, each find the graph empty of the
+	// other, and each start. That is the exact case the serialisation exists for,
+	// and it is the one it would have missed.
+	//
+	// It is held across the look and the admit and nothing else, so it is never
+	// held while anything is spent or awaited, and it is never taken with `mu`
+	// held. Nothing but a quick node's door touches it.
+	quickGate sync.Mutex
+
 	// limit is how many nodes may RUN AT ONCE, and 0 IS NO LIMIT
 	// (session.Config's TaskParallel, config.KeyTaskParallel).
 	//

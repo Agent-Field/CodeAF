@@ -230,6 +230,16 @@ func (a *Agent) startQuickTask(_ context.Context, args json.RawMessage) (string,
 	if err := json.Unmarshal(args, &parsed); err != nil {
 		return "Invalid arguments: " + err.Error(), true, nil
 	}
+	// THE LOOK AND THE ADMIT ARE ONE MOVE. The write claim is read out of the
+	// graph by [Agent.newQuickSpec] and written into it by [TaskGraph.admit], and
+	// a batch of quick calls runs concurrently (loop.go) — so without this gate
+	// two doors claiming one path would each find the graph empty of the other
+	// and each start. Any other door that grows a quick node has to hold it over
+	// the same pair; nothing else in this package touches it.
+	graph := a.graph()
+	graph.quickGate.Lock()
+	defer graph.quickGate.Unlock()
+
 	spec, refusal := a.newQuickSpec(parsed.Line, parsed.Items, parsed.Files, parsed.DependsOn)
 	if refusal != "" {
 		return refusal, true, nil
@@ -250,7 +260,6 @@ func (a *Agent) startQuickTask(_ context.Context, args json.RawMessage) (string,
 	if len(choice.options) > 0 {
 		spec.model = settleTaskModel(choice.options, "")
 	}
-	graph := a.graph()
 	// THE SLOT IS TAKEN BEFORE THE NODE IS, so a batch of quick calls emitted
 	// together cannot walk through the fan cap ([TaskGraph.claimChild]). Nothing
 	// between here and admission can fail, and [TaskGraph.admit] hands the slot
