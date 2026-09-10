@@ -2524,6 +2524,9 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	// the row itself, and a key the screen is visibly advertising may take the
 	// press.
 	if h.box.empty() {
+		if cmd, took := a.homeGridAnswer(msg.String()); took {
+			return cmd
+		}
 		if cmd, took := a.answerKey(msg.String()); took {
 			return cmd
 		}
