@@ -5,6 +5,13 @@ and implementation preparation. [DECISIONS.md](DECISIONS.md) remains the authori
 for accepted behavior; [CRITICAL-REVIEW.md](CRITICAL-REVIEW.md) contains the evidence.
 A checked item means completed with the evidence named here, not merely discussed.
 
+**Active continuation checkpoint (2026-09-10):**
+[CONTINUE-WAVE-03.md](CONTINUE-WAVE-03.md) records the running Claude Code Opus
+job on Spark, queued independent review, exact worktree/branch, failed and passing
+local-file E2E evidence, and the remaining integration steps. Read it before
+starting another agent or interpreting this checklist as current runtime status.
+Wave 03 is still in progress; its final live journey and integration are not checked off.
+
 ## Completed
 
 - [x] Consolidate architecture, persistence and seven operating sequences.
