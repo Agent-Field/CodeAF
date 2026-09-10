@@ -21,6 +21,7 @@ invalidates:
   - "A `running` row's verb read `s stop`. It reads `s stop it`, and `ctrl+x` asks to stop a held running task from any column, so a three-column home, where `→` crosses out of the middle column instead of opening the strip, still has the door; the foot names it."
   - "A short frame dropped panels by priority alone, so at 120×14 home could keep `needs you`'s whisper and drop every conversation. A whispering panel now drops before any panel with rows."
   - "`TestWalkingPastTheWindowScrollsEveryPlacesList` covered home. The grid has no window to scroll — it squeezes, grows and folds — so the test leaves home to the places that scroll."
+  - "A part that asked `your call` on its card and was then decided stayed `your call` in the conversation; only the task column knew (since #776). It lands a second time, as done or incomplete, where the question was, and a folded batch counts work rather than landings."
 ---
 
 The ruling is `docs/design/home-mission-control/DESIGN.md`. Home answers the
