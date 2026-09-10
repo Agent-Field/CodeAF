@@ -1667,7 +1667,12 @@ func (g *TaskGraph) owedNotes(unannounced []*TaskNode, settle TaskSettle, addres
 		// it opens on the same lead ([landingNoteLead]). A resumed session is in
 		// fact the shape that needs it most: nobody has typed, the note is the
 		// whole message, and the model has no turn behind it to infer who wrote it.
-		notes = append(notes, landingNoteLead(node.notice())+taskNote(node.notice(), taskURI(node.journalPath()), settle, address))
+		//
+		// THE NOTICE IS READ ONCE, for [Agent.reportTaskNode]'s reason: a lead and
+		// a head composed from two readings of a node could name two different
+		// landings of it.
+		notice := node.notice()
+		notes = append(notes, landingNoteLead(notice)+taskNote(notice, taskURI(node.journalPath()), settle, address))
 		node.noteQueued(claim)
 		deliveries = append(deliveries, delivery)
 	}
