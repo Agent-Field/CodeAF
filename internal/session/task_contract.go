@@ -206,14 +206,9 @@ const (
 	// because it is the one ending a person can fix by re-grounding,
 	// re-dividing or re-briefing rather than by reading a stack of steps.
 	TaskEndingStale TaskEnding = "stale"
-	// TaskEndingNotes says the worker was stopped by the write-your-notes rule:
-	// it was asked twice to write down what it was doing, its tool calls were
-	// held until it did, and it sent three more replies with nothing visible in
-	// them (processrule.go). It is its own ending rather than [TaskEndingCircling]
-	// because the worker was not repeating itself — it was working in silence,
-	// and what it worked out never reached the record its room, its check and its
-	// parent all read. The work it did do is on its branch like any other halted
-	// node's.
+	// TaskEndingNotes preserves historical records from the retired mandatory
+	// narration rule. New workers never acquire this ending; old rows keep
+	// their original reason and stopped classification.
 	TaskEndingNotes TaskEnding = "notes"
 	// TaskEndingUpstream says the provider refused the request or would not
 	// serve it — an API error, a refusal, a model that is not there. Like
