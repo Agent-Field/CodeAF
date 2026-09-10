@@ -13,6 +13,12 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
+type voiceRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn voiceRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
+
 // windowCatalog is two models and one difference: what they can hold. The wide
 // one publishes a 200k window, the quiet one publishes none — which is how a
 // real catalog says "I cannot tell you", and the case every budget in the tree

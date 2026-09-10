@@ -476,12 +476,12 @@ actually *says* about itself at runtime comes from `internal/manual` — a
 small set of user-voice markdown pages embedded in the binary, searched
 by the `manual` tool on the head's tool belt and injected into the
 router's grounding context when a self-question is recognized. Those
-pages are the authority: where they and this file disagree, they win, and
-completeness tests in `internal/head` and `internal/tui` fail the build
-when a slash command, a model slot, a key chord, a belt tool, or a
-command kind lands without a page mentioning it. Add a feature, add its
-paragraph there; update this entry afterwards if you like, but never
-instead.
+pages are the authority: where they and this file disagree, they win. The
+retrieval probes in `internal/manual`, the slash-command and alias gate in
+`internal/tui3/manual_test.go`, and the tool-belt gate in
+`internal/session/manual_test.go` fail the build when the runtime corpus cannot
+answer for what the live chat exposes. Add a feature, add its paragraph there;
+update this entry afterwards if you like, but never instead.
 
 ---
 

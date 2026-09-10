@@ -8,10 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
-	homepkg "github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
@@ -19,7 +17,6 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/revision"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/tui"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -731,59 +728,6 @@ func TestNamedGapEarnsARevisionThatIsToldWhereTheAnswerGoes(t *testing.T) {
 	} {
 		if !strings.Contains(revision.GateRevisionContract, required) {
 			t.Fatalf("the revision contract no longer says where the answer goes: %q missing", required)
-		}
-	}
-}
-
-// The trace window is the last sixty-four kilobytes of a file the worker keeps
-// appending to. Cut at a byte, its first line is a fragment that is a different
-// fragment on every poll — the window's first block is re-keyed each cycle, the
-// reader's anchor with it, and the parser's kept prefix can never hold. The
-// head lands on a line boundary instead.
-func TestNodeTraceWindowStartsOnALineBoundary(t *testing.T) {
-	root := t.TempDir()
-	graph, err := store.Open(filepath.Join(root, "graph.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer graph.Close()
-	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
-		{ID: "job", Brief: "produce the artifact", Stage: 0},
-	}}, store.Provenance{Origin: store.OriginUser, Intent: "produce the artifact"}); err != nil {
-		t.Fatal(err)
-	}
-	node, found, err := graph.Node("job")
-	if err != nil || !found {
-		t.Fatalf("read the job: found=%t err=%v", found, err)
-	}
-	workspaceRoot := homepkg.StoreDir(filepath.Join(root, "graph.db"), "workspace")
-	observed := filepath.Join(workspaceRoot, "job", ".obs")
-	if err := os.MkdirAll(observed, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	var log strings.Builder
-	for index := 0; index < 40; index++ {
-		fmt.Fprintf(&log, "text: thought number %d\n", index)
-	}
-	path := filepath.Join(observed, fmt.Sprintf("%d.trace.log", node.CreatedSeq))
-	if err := os.WriteFile(path, []byte(log.String()), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	commander := command.New(command.Options{Store: graph, WorkspaceRoot: workspaceRoot,
-		JobID: func(node store.Node) string { return jobIDOf(graph, node) }})
-	whole, _, _ := commander.NodeTraceSince("job", 1<<16, tui.NodeTraceStamp{})
-	if whole != log.String() {
-		t.Fatal("a log inside the budget was not returned whole")
-	}
-	// A budget that lands mid-line: what comes back still begins at one.
-	for _, budget := range []int{200, 201, 202, 317} {
-		text, _, _ := commander.NodeTraceSince("job", budget, tui.NodeTraceStamp{})
-		if text == "" || !strings.HasPrefix(text, "text: thought number ") {
-			t.Fatalf("a %d-byte window began mid-line: %q", budget, text)
-		}
-		if !strings.HasSuffix(text, "\n") || !strings.HasSuffix(log.String(), text) {
-			t.Fatalf("a %d-byte window is not a tail of the log: %q", budget, text)
 		}
 	}
 }

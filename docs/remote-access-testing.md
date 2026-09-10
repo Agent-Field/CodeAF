@@ -70,9 +70,8 @@ Last full runs: **4 pass, 1 skip, 60s** on darwin/arm64 → linux/amd64 containe
 | `TwoSurfacesAtOnce` | a second window attaches mid-stream and gets the tail of a turn it did not start |
 | `AnAttachmentLandsOverThere` | **SKIPPED** — `/attach` is a slash command and `--once` has no tray; needs a pty driver |
 
-Also relevant, and expected to fail for reasons that predate this branch: `internal/plan`,
-`cmd/aforge TestHarnessEntriesFromStore`, `internal/tui
-TestSettingsSheetIsOneCalmColumnAtEveryWidth`. `cmd/aforge`'s two `TestTick*` need
+Also relevant, and expected to fail for reasons that predate this branch: `internal/plan`
+and `cmd/aforge TestHarnessEntriesFromStore`. `cmd/aforge`'s two `TestTick*` need
 `OPENROUTER_API_KEY` in the environment. See CLAUDE.md.
 
 ---

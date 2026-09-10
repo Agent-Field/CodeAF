@@ -32,7 +32,8 @@ import (
 
 // surfaces are the packages held to the table: every package that draws marks
 // on a screen a person looks at. A package joins this list the day its sweep
-// lands, and never leaves it.
+// lands and leaves only when the package stops existing, which is not the same
+// as a live surface quietly dropping out of the sweep.
 //
 // internal/tui2 is deliberately NOT here. It holds the vocabulary itself, where
 // the private-use codepoints are the table rather than a spelling of it, and its
@@ -45,7 +46,6 @@ import (
 // nothing but this test stands between it and its own private spelling of the
 // flag.
 var surfaces = []string{
-	"../tui",      // v1, and the visual north star
 	"../tui3",     // v3, the live chat
 	"../head",     // the resident's head
 	"../resident", // the resident itself
@@ -151,8 +151,8 @@ func TestNoSurfaceSpellsAnIconItself(t *testing.T) {
 						continue
 					}
 					t.Errorf("%s: the literal %s spells %U, which is %s. Ask for the slot through "+
-						"this surface's own glyph door — palette.glyph or app.icon in internal/tui3, "+
-						"Model.icon in internal/tui — so the line gets this terminal's repertoire "+
+						"this surface's own glyph door — palette.glyph or app.icon in internal/tui3 — "+
+						"so the line gets this terminal's repertoire "+
 						"(docs/design/icons/DESIGN.md)",
 						fset.Position(lit.Pos()), lit.Value, r, slot)
 				}
