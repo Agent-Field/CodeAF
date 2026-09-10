@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: blanks keep [tab] next blank at a hundred columns, and a stood order refreshes the column count
-pr: 815
+pr: 821
 surface: [chat]
 invalidates:
   - "`[tab] next blank` was ranked sixth on the room's foot, so at a hundred columns — the e2e gallery width and the width the give-up order was tuned against — a blanks page kept `[c] change` / `[x] compare` and gave up the only key that walks the holes. It is ranked with the answers now (giveUp 0), the same law that kept `[space] tick it` on a checklist; offered only where there is more than one hole."
