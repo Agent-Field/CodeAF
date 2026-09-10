@@ -260,7 +260,7 @@ func (a *app) rewindReady() bool {
 		a.at(pageSettings), a.at(pageTasks), a.deck.open, a.expand.open, a.pick.open, a.roster.open,
 		a.connPanel.open, a.menu.open, a.comp.open, a.welcome.open,
 		a.copy.on, a.recalling(), a.roomOpen(), a.railHold, a.railFull(),
-		a.asking(), a.awaitingTask(), a.guard != nil, len(a.connAsks) > 0,
+		a.asking(), a.awaitingTask(), a.guard != nil, a.asksConnect(),
 		a.asksHarness():
 		return false
 	}

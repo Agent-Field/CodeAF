@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -60,22 +58,27 @@ func TestThePlaceNamesTheMachineInFrontOfThePath(t *testing.T) {
 }
 
 // TestTheLegendNamesTheMachineAsItsOwnSegment pins how a connection reaches the
-// border under the input now that the path has left it: the machine leads, and
-// it leads with the legend's own separator rather than with the path's colon.
+// border under the input now that the path has left it: the machine LEADS the
+// cluster, with the legend's own separator rather than with the path's colon,
+// and the conversation's name and model follow it (foot.go's [app.seamIdentity]).
 func TestTheLegendNamesTheMachineAsItsOwnSegment(t *testing.T) {
 	a, _ := hostLab(t)
 	a.title = "porting the parser"
+	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox · porting the parser · model" {
+		t.Fatalf("the remote legend = %q, want the machine leading the identity", got)
+	}
 	line := plain(a.legend(a.width))
-	if !strings.Contains(line, "devbox") || strings.Contains(line, "porting the parser") {
-		t.Fatalf("the legend does not carry only the machine: %q", line)
+	if strings.Contains(line, "devbox:") {
+		t.Fatalf("the machine is spelled with the path's colon: %q", line)
 	}
 	if strings.Contains(line, "/s/c/app") {
 		t.Fatalf("the legend is still carrying the path: %q", line)
 	}
-	// Unnamed, the machine is still the whole of what the border can say — the
-	// branch probe is off over a connection, so there is nothing else true.
+	// AND THE MACHINE IS NAMED ONCE. Unnamed, the folder stands in for the
+	// conversation's name — and [app.place] is written `devbox:app` for the row
+	// that had no host segment of its own, so the stand-in is the folder alone.
 	a.title = ""
-	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox" {
+	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox · app · model" {
 		t.Fatalf("an unnamed remote legend = %q", got)
 	}
 }
@@ -107,10 +110,12 @@ func TestALocalSessionSaysNothingAboutAMachine(t *testing.T) {
 		t.Fatalf("place = %q", a.place)
 	}
 	a.title = "porting the parser"
-	// The legend gave the name to the status line (render.go): a local session
-	// with no machine and no branch has a legend with nothing on its left.
-	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "" {
-		t.Fatalf("a local legend = %q — neither a machine nor a name belongs on it", got)
+	// The seam carries the conversation's name and model (foot.go), and a local
+	// session with no machine says nothing about one: no host segment, and no
+	// colon that would read as scp syntax.
+	got, _ := a.legendLeft(a.width, legendRoom(a.width, ""))
+	if got != "porting the parser · model" {
+		t.Fatalf("a local legend = %q — nothing about a machine belongs on it", got)
 	}
 }
 
@@ -137,9 +142,15 @@ func TestTheBranchProbeDoesNotRunAgainstAPathOnAnotherMachine(t *testing.T) {
 		t.Fatal("probeGit produced work over --host")
 	}
 	a.title = "porting the parser"
-	// The machine stays on the legend; the name lives on the status line now.
-	if got, _ := a.legendLeft(a.width, legendRoom(a.width, "")); got != "devbox" {
-		t.Fatalf("the legend grew a branch or a name: %q", got)
+	// The machine and the identity are on the legend, and NO BRANCH is: the
+	// probe would read this machine's repository at the other one's path, so
+	// nothing is shown rather than something possibly wrong.
+	got, _ := a.legendLeft(a.width, legendRoom(a.width, ""))
+	if got != "devbox · porting the parser · model" {
+		t.Fatalf("the remote legend = %q", got)
+	}
+	if strings.Contains(got, "*") || strings.Contains(got, "main") {
+		t.Fatalf("the legend grew a branch over --host: %q", got)
 	}
 }
 
@@ -172,54 +183,39 @@ func TestConnectSaysWhyItCannotOverHost(t *testing.T) {
 func TestABrowserSignInOffersOnlyNotNow(t *testing.T) {
 	a, _ := hostLab(t)
 	a.askConnect(session.Event{Kind: session.EventConnectAsk, ConnectID: "1", Service: "google", ServiceName: "Google"})
-	rows := a.connectAskRows(a.width)
-	block := plain(strings.Join(rows, "\n"))
+	block := strings.Join(connectBlock(a), "\n")
 	if !strings.Contains(block, connectAskRemoteWord) {
 		t.Fatalf("the card does not say what is wrong: %s", block)
 	}
-	if strings.Contains(block, "[enter]") {
-		t.Fatalf("the card still offers a key that cannot work: %s", block)
+	if strings.Contains(block, "1  connect") {
+		t.Fatalf("the card still offers an answer that cannot work: %s", block)
 	}
-	// And the key itself does nothing rather than answering in somebody's name.
-	a.connectAskKey(tea.KeyPressMsg{Code: 'y', Text: "y"})
-	if len(a.connAsks) != 1 {
-		t.Fatal("y answered a browser sign-in over --host")
-	}
-	a.connectAskKey(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if len(a.connAsks) != 0 {
-		t.Fatal("esc did not decline")
+	if !strings.Contains(block, "2  not now") {
+		t.Fatalf("the card left no way out at all: %s", block)
 	}
 }
 
 func TestAKeySignInStillWorksOverHost(t *testing.T) {
 	a, _ := hostLab(t)
 	a.askConnect(session.Event{Kind: session.EventConnectAsk, ConnectID: "1", Service: "notion", ServiceName: "Notion", NeedsKey: true})
-	block := plain(strings.Join(a.connectAskRows(a.width), "\n"))
+	block := strings.Join(connectBlock(a), "\n")
 	if strings.Contains(block, connectAskRemoteWord) {
 		t.Fatalf("a key sign-in was refused, and a key needs no browser: %s", block)
 	}
-	if !strings.Contains(block, "[enter]") {
-		t.Fatalf("a key sign-in lost its offer: %s", block)
-	}
-	a.connectAskKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if !a.entering() {
-		t.Fatal("enter did not open the key box over --host")
+		t.Fatal("a key sign-in over --host is not collecting a key")
 	}
 }
 
 func TestABrowserSignInWithAnAddressAnswerIsStillRefusedOverHost(t *testing.T) {
 	a, _ := hostLab(t)
 	a.askConnect(askDatadogEvent("1"))
-	block := plain(strings.Join(a.connectAskRows(a.width), "\n"))
+	block := strings.Join(connectBlock(a), "\n")
 	if !strings.Contains(block, connectAskRemoteWord) {
 		t.Fatalf("the browser sign-in was offered over --host: %s", block)
 	}
-	if strings.Contains(block, "[enter]") {
-		t.Fatalf("the refused trip still offers enter: %s", block)
-	}
-	a.connectAskKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if a.entering() {
-		t.Fatal("enter opened the site box for a browser trip over --host")
+	if strings.Contains(block, "1  connect") {
+		t.Fatalf("the refused trip still offers a way to start it: %s", block)
 	}
 }
 

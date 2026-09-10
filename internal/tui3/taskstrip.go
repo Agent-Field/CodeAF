@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // THE TASK STRIP: ONE ROW THAT ALWAYS HAS A DOOR IN IT.
@@ -135,7 +136,8 @@ const (
 // run that has spent its tank publishes its OWN row held at the gate until
 // somebody tops it up, finishes it or stops it, and the workers under it keep
 // publishing whatever they are actually doing. The run's page still asks the
-// question; the ⏸ is how the column says the run is standing still while it does.
+// question; the paused mark is how the column says the run is standing still
+// while it does.
 //
 // THE KEY IS A STRING AND THE ID IS NOT, on purpose. The thing that will fill
 // it is an orchestrate node id (internal/orchestrate's [orchestrate.Node.ID] —
@@ -159,15 +161,6 @@ func (n *taskNode) Paused() bool { return n.paused }
 
 // stripKey is a node's own key in the alphabet [taskNode.ParentID] speaks.
 func stripKey(node *taskNode) string { return itoa(int(node.id)) }
-
-// glyphPaused marks work held at a gate. It is the transport bar every device a
-// person owns pauses with, and it is deliberately NOT the queued circle: a
-// queued node has not started and this one has, and the difference is the whole
-// of what the gate is asking about.
-const (
-	glyphPaused      = "⏸"
-	glyphPausedASCII = "="
-)
 
 // stripOrder is the order the chips come in, and it is not the roster's.
 //
@@ -482,7 +475,7 @@ func (a *app) stripGlyph(node *taskNode) string {
 // other state that is waiting on a person to say something (task.go's
 // [app.railGlyph] paints the unverified question the same way).
 func (a *app) stripPausedGlyph() string {
-	return a.pal.warn(a.linearMark(glyphPaused, glyphPausedASCII))
+	return a.pal.warn(a.icon(tokens.GPaused))
 }
 
 // stripTitle paints an already-cut name: the accent on the room a person is

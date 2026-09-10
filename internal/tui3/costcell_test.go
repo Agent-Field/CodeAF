@@ -27,22 +27,27 @@ import (
 // last sub-cent cost, the first whole cent, and a session that has run a while.
 var aTurnsBills = []float64{0, 0.000004, 0.0052, 0.0099, 0.01, 0.47, 12.34}
 
-// billNeighbour is the segment standing immediately in front of the money on
-// this row. It is what a widening bill shoves.
-const billNeighbour = "crew balanced"
+// billNeighbour is the segment standing immediately AFTER the money on this
+// row. It is what a widening bill shoves.
+//
+// It used to be the crew word in FRONT of the bill, because the whole telemetry
+// cluster was flushed against the frame's right edge and a segment that grew
+// pushed everything to its left. Since 2026-09-09 the ledger is laid from the
+// LEFT edge and the bill is the first thing on it, so what a widening figure
+// would shove is the meter behind it (foot.go).
+const billNeighbour = "12.4k/128k"
 
 // billEdgesIn is where the money segment's two edges fall on a real status row,
-// in display cells: the column the segment BEFORE it ends at, and the column the
-// figure itself ends at.
+// in display cells: the column the figure itself ends at, and the column the
+// segment AFTER it starts at.
 //
-// BOTH ARE ASSERTED BECAUSE THE ROW IS FLUSHED RIGHT. The telemetry cluster is
-// laid against the frame's right edge, so a segment that changes width pushes
-// everything to its LEFT — the crew word, the gap after the identity cluster,
-// the whole front of the row — while the state word at the end never moves at
-// all. A test that watched only the right-hand end would pass against the very
-// defect it is named for. It was written that way first and it did pass against
-// the reverted fix; this is the rewrite.
-func billEdgesIn(t *testing.T, row, figure string) (before, end int) {
+// BOTH ARE ASSERTED. The figure is right-aligned inside a cell of fixed width
+// ([costCell]), so its own end is what holds still as it grows from `<$0.0001`
+// to `$12.34`; and the neighbour's start is what proves the CELL held its width
+// rather than the figure merely being padded. A test that watched only one of
+// them would pass against the very defect it is named for. It was written that
+// way first and it did pass against the reverted fix; this is the rewrite.
+func billEdgesIn(t *testing.T, row, figure string) (end, after int) {
 	t.Helper()
 	at := strings.Index(row, figure)
 	if at < 0 {
@@ -50,9 +55,9 @@ func billEdgesIn(t *testing.T, row, figure string) (before, end int) {
 	}
 	mark := strings.Index(row, billNeighbour)
 	if mark < 0 {
-		t.Fatalf("the status row is missing the segment before the bill (%q):\n%q", billNeighbour, row)
+		t.Fatalf("the status row is missing the segment after the bill (%q):\n%q", billNeighbour, row)
 	}
-	return ansi.StringWidth(row[:mark+len(billNeighbour)]), ansi.StringWidth(row[:at+len(figure)])
+	return ansi.StringWidth(row[:at+len(figure)]), ansi.StringWidth(row[:mark])
 }
 
 // THE MONEY SEGMENT HOLDS ONE WIDTH WHILE A TURN SPENDS, so nothing beside it
@@ -60,23 +65,26 @@ func billEdgesIn(t *testing.T, row, figure string) (before, end int) {
 func TestTheMoneySegmentReservesTheRoomItWillNeedAndNeverShovesTheCluster(t *testing.T) {
 	now := time.Date(2026, 9, 3, 9, 0, 0, 0, time.UTC)
 	for _, width := range []int{160, 120} {
-		var firstBefore, firstEnd int
+		var firstAfter, firstEnd int
 		var firstBill float64
 		var firstRow string
 		for at, spent := range aTurnsBills {
 			a := phaseApp(t, now)
 			a.title = "porting the parser"
+			// The meter is the segment behind the bill, and the thing a widening
+			// figure would shove.
+			a.ctxWindow, a.ctxTokens = 128_000, 12_400
 			a.cost, a.shownCost = spent, spent
 			row := plain(a.status(width))
-			before, end := billEdgesIn(t, row, dollars(spent))
+			end, after := billEdgesIn(t, row, dollars(spent))
 			if at == 0 {
-				firstBefore, firstEnd, firstBill, firstRow = before, end, spent, row
+				firstEnd, firstAfter, firstBill, firstRow = end, after, spent, row
 				continue
 			}
-			if before != firstBefore || end != firstEnd {
-				t.Fatalf("at %d columns the money segment ran from column %d to column %d at $%.6f "+
-					"and from column %d to column %d at $%.6f, so the row moved around it:\n%q\n%q",
-					width, firstBefore, firstEnd, firstBill, before, end, spent, firstRow, row)
+			if end != firstEnd || after != firstAfter {
+				t.Fatalf("at %d columns the money segment ended at column %d with the meter at %d at $%.6f "+
+					"and ended at column %d with the meter at %d at $%.6f, so the row moved around it:\n%q\n%q",
+					width, firstEnd, firstAfter, firstBill, end, after, spent, firstRow, row)
 			}
 		}
 	}

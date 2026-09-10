@@ -27,16 +27,17 @@ func TestOneTokenNamesAreReadBackAsWords(t *testing.T) {
 	}
 }
 
-// The status line draws the read-back name, and the session keeps the raw one:
-// a name is for a person, an id is for a resume.
-func TestTheStatusLineDrawsTheReadableName(t *testing.T) {
+// The seam above the box draws the read-back name, and the session keeps the raw
+// one: a name is for a person, an id is for a resume. It was the status row's
+// left until 2026-09-09 (foot.go's [app.seamIdentity]).
+func TestTheSeamDrawsTheReadableName(t *testing.T) {
 	agent := &fakeAgent{model: "openai/gpt-4.1-mini"}
 	a := newTestApp(agent)
 	a.width = 120
 	a.setTitle("port_b_parser_fix")
 
-	if got := plain(a.status(a.width)); !strings.Contains(got, "Port B Parser Fix") {
-		t.Fatalf("the status line drew a machine name:\n%s", got)
+	if got := plain(a.legend(a.width)); !strings.Contains(got, "Port B Parser Fix") {
+		t.Fatalf("the seam drew a machine name:\n%s", got)
 	}
 	if a.title != "port_b_parser_fix" {
 		t.Fatalf("the session's own name was rewritten: %q", a.title)

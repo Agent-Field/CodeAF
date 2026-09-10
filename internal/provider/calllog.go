@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -223,7 +224,7 @@ func (c *Client) record(facts recordFacts) {
 		EmptyAtCeiling: c.emptyAtCeiling(facts.request, facts.response),
 	}
 	if facts.err != nil {
-		record.Error = calllog.ClipError(facts.err.Error())
+		record.Error = calllog.ClipError(namedCancel(facts.ctx, facts.err))
 	}
 	if facts.response != nil {
 		record.Finish = FinishReason(facts.response)
@@ -252,7 +253,18 @@ func (c *Client) record(facts recordFacts) {
 		record.Action = wait.action
 		record.Reason = wait.reason
 		record.Refused = wait.refused
-		record.WaitS, record.CostS = wait.wait, wait.cost
+		// THE TWO FIGURES ARE WRITTEN ONLY WHEN THERE ARE TWO FIGURES. A wait
+		// nobody could price and a rescue that had nowhere to go are both
+		// NOTHING, and under the emptiness law a row with nothing to say about
+		// a number says nothing — it does not carry a sentence explaining a
+		// float (internal/calllog's finite.go, which is now the last line of
+		// defence rather than the ordinary road).
+		if seconds, known := wait.wait.Get(); known {
+			record.WaitS = seconds
+		}
+		if seconds, known := wait.cost.Get(); known {
+			record.CostS = seconds
+		}
 		record.Hedged = wait.hedged
 		record.WasteUSD = wait.waste
 		record.Note = wait.note
@@ -275,6 +287,37 @@ func (c *Client) record(facts recordFacts) {
 		record.ResponseBody = string(facts.responseBody)
 	}
 	calllog.Append(record)
+}
+
+// namedCancel is the error a row carries, with WHOEVER CANCELLED THE CALL on it.
+//
+// `context canceled` is the same eight characters for a person's stop key, for
+// a window taking a conversation over, for a session shutting down and for a
+// hedge arm that lost its race — and a row that cannot tell them apart is a row
+// nobody can autopsy. It was exactly what a healthy 109-second reply left
+// behind on 2026-09-09 when something ended it and nothing said what.
+//
+// Whoever cancels attaches a cause ([context.WithCancelCause]; internal/
+// session's stopcause.go is where this build's turn doors do it), and a cause
+// propagates to every child context — which is what makes this readable from
+// the arm rather than only from the turn. A cancellation NOBODY named reads as
+// itself, because inventing a door would be worse than the eight characters.
+func namedCancel(ctx context.Context, err error) string {
+	said := err.Error()
+	if ctx == nil || !errors.Is(err, context.Canceled) {
+		return said
+	}
+	switch cause := context.Cause(ctx); {
+	case cause == nil, errors.Is(cause, context.DeadlineExceeded):
+		return said
+	case cause.Error() == context.Canceled.Error():
+		// Nobody named a door: [context.Cause] answers the plain cancellation
+		// for a context cancelled without one, and repeating it would be a row
+		// saying the same thing twice.
+		return said
+	default:
+		return said + " (" + cause.Error() + ")"
+	}
 }
 
 // recordedEffort is the reasoning knob AS IT TRAVELLED, spelled the way the

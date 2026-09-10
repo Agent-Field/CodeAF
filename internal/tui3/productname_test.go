@@ -58,8 +58,9 @@ func TestTheFirstScreensWordmarkAndItsProseNameOneProduct(t *testing.T) {
 	}{
 		{"the connect step's prose", setupKeyWord},
 		{"the sign-in step's prose", setupConnectWord},
-		{"the crew step's prose", setupCrewWord},
-		{"the spending step's title", setupRailsTitle},
+		{"the day's limit explanation", controlLimitWord},
+		{"the day's limit detail", controlLimitDetail},
+		{"the door onto what esc walked past", setupStepLater(setupControls)},
 		{"the OAuth consent line", connectPurpose("Google")},
 		{"the desktop notification's title", notifyTitle},
 	}

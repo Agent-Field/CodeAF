@@ -276,8 +276,11 @@ func TestTheStripIsChargedToTheBodyRegionAndMovesTheHeaderUnderIt(t *testing.T) 
 	if a.roomHeadRow() != a.tabsHeight(a.width) {
 		t.Fatalf("the room's header is on row %d", a.roomHeadRow())
 	}
-	if got := plain(rows[a.roomHeadRow()]); !strings.Contains(got, "Cut the goldens") {
+	if got := plain(rows[a.roomHeadRow()]); !strings.Contains(got, "Write the tree") {
 		t.Fatalf("the trail is not on the row under the strip: %q", got)
+	}
+	if got := plain(rows[a.roomHeadRow()+1]); !strings.Contains(got, "Cut the goldens") {
+		t.Fatalf("task title is not below its ancestors: %q", got)
 	}
 	if a.bodyTop() != a.headHeight()+a.stripHeight() || a.headHeight() < 2 {
 		t.Fatalf("the pinned rows are drawn but not budgeted: head=%d top=%d",

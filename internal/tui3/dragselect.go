@@ -172,7 +172,11 @@ func (a *app) dragSel() (dragSelect, bool) {
 	if a.drag.on {
 		return a.drag, true
 	}
-	if a.dragCopied > 0 && time.Now().Before(a.dragUntil) {
+	// A COPY MADE IN A TEXT BOX LIGHTS NOTHING HERE. dragLit is a span of body
+	// rows and a box's copy has none, so the transcript would light row zero of
+	// whatever happened to be on screen; the box draws its own selection from
+	// its own text (boxselect.go, editselect.go).
+	if a.dragCopied > 0 && !a.dragInBox && time.Now().Before(a.dragUntil) {
 		return a.dragLit, true
 	}
 	return dragSelect{}, false
@@ -419,6 +423,12 @@ func (a *app) dragMotion(x, y int) bool {
 // copied, a parked click is spent on the body at the row it pressed, and a
 // release nothing owns is nothing.
 func (a *app) dragRelease() tea.Cmd {
+	// A SWEEP INSIDE A TEXT BOX ENDS HERE FIRST. It is the same button coming
+	// up, and the two gestures can never both be live — a press the box took
+	// never parked a body drag (boxselect.go).
+	if cmd, took := a.boxRelease(); took {
+		return cmd
+	}
 	drag := a.drag
 	a.drag = dragSelect{}
 	if drag.on {
@@ -524,6 +534,15 @@ func (a *app) dragWord() string {
 // mark step — padded to its full width, so a selection that runs past the end
 // of a short row still shows how far it goes.
 func (a *app) markCells(text string, from, to int) string {
+	return markCells(a.pal, text, from, to)
+}
+
+// markCells is that same paint with the palette handed in, so a box can light
+// its own selection with it (editselect.go's [markDraftRow]). ONE STEP LIGHTS
+// EVERY SELECTION ON THIS SURFACE: a highlight in the message box that did not
+// look like a highlight in the transcript six rows above it would read as two
+// unrelated things.
+func markCells(pal palette, text string, from, to int) string {
 	if from >= to {
 		return text
 	}
@@ -535,5 +554,5 @@ func (a *app) markCells(text string, from, to int) string {
 	if pad := (to - from) - ansi.StringWidth(mid); pad > 0 {
 		mid += strings.Repeat(" ", pad)
 	}
-	return head + a.pal.mark(mid, to-from) + ansi.Cut(text, to, ansi.StringWidth(text))
+	return head + pal.mark(mid, to-from) + ansi.Cut(text, to, ansi.StringWidth(text))
 }

@@ -246,7 +246,7 @@ func ActionCategoryForTool(tool string) ActionCategory {
 		return ActionTransfer
 
 	// Saying something to a person.
-	case "slack_send", "gmail_send", "speak":
+	case "slack_send", "gmail_send", "speak", "ask":
 		return ActionCommunicate
 
 	// Work handed out, or this mind copied to run beside itself.

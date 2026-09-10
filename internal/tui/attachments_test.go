@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/cas"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -323,7 +324,7 @@ func TestUnsupportedDragsStayInTheDraft(t *testing.T) {
 	if cleaned, paths := detectImageAttachments(draft); cleaned != draft || len(paths) != 0 {
 		t.Fatalf("cleaned=%q paths=%v", cleaned, paths)
 	}
-	if attachmentGlyph("/tmp/a.pdf") != "▤" || attachmentGlyph("/tmp/a.png") != "⌾" {
+	if attachmentSlot("/tmp/a.pdf") != tokens.GFileDocument || attachmentSlot("/tmp/a.png") != tokens.GFileImage {
 		t.Fatal("attachment glyphs do not separate documents from images")
 	}
 }
@@ -359,6 +360,10 @@ func TestMediaArtifactLinksAreGlyphPrefixedAndWidthSafe(t *testing.T) {
 	}
 }
 
+// The video chip wears the vocabulary's moving-picture mark. It is the OUTLINE
+// triangle rather than the filled one this window used to spell: the filled one
+// is the queue pill's byte, one plain glyph may upgrade exactly one way, and the
+// outline sits at the same weight as the three file marks beside it.
 func TestVideoArtifactsUsePlayGlyph(t *testing.T) {
 	path := imageFixture(t, "result.mp4")
 	commander := &artifactCommander{fakeCommander: &fakeCommander{current: map[string]string{}}, target: path}
@@ -367,7 +372,7 @@ func TestVideoArtifactsUsePlayGlyph(t *testing.T) {
 	_ = model.renderMediaArtifacts(artifact, 40)
 	settleWorkspaceLinks(t, model)
 	rendered := model.renderMediaArtifacts(artifact, 40)
-	if !strings.Contains(ansi.Strip(rendered), "▶ media/result.mp4") {
+	if !strings.Contains(ansi.Strip(rendered), tokens.GlyphFileVideo+" media/result.mp4") {
 		t.Fatalf("video artifact = %q", rendered)
 	}
 }

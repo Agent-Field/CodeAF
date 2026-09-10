@@ -536,6 +536,62 @@ const (
 	// EventKind as an integer, so inserting a kind above this point would make
 	// an older binary read every later event as a different fact.
 	EventAssistantDone
+	// EventMoved says a WINDOW SOMEWHERE ELSE HAS OPENED THIS CONVERSATION and
+	// is now the one in it. Text carries [MovedWord].
+	//
+	// IT IS NOT [EventTakeover] AND THE DIFFERENCE IS WHAT HAPPENS TO THE WORK.
+	// A takeover is asked for on this machine's disk and answered by a window
+	// that OWNS the engine: it interrupts, closes, and the work lands paused for
+	// the window that asked to resume. A move is announced by an engine that
+	// holds the conversation itself (internal/enginehost) to every other surface
+	// attached to it: nothing is interrupted and nothing pauses, because the
+	// engine goes on running the turn while the surfaces around it change. The
+	// window hearing this DETACHES — it does not close.
+	//
+	// IT RIDES THE STANDING TASK LANE for EventTakeover's reason exactly: it is
+	// the one subscription that outlives every turn, and a move happens most
+	// often in the middle of one.
+	EventMoved
+	// EventQuestion carries one whole [Question] in Question: a decision this
+	// engine is handing to the person, with its evidence, its answers, the
+	// asker's own pick, what is waiting on it and what an answer costs
+	// (question.go).
+	//
+	// IT ARRIVES AFTER THE ROWS IT IS ABOUT, exactly as EventConsentRequest
+	// already orders itself against its batch's EventToolBegin rows, and for
+	// the same reason: a question attaches to a row a surface has already
+	// drawn, and one that arrived first would be a question about nothing.
+	//
+	// IT IS A SECOND DESCRIPTION AND NEVER A REPLACEMENT. Every lane goes on
+	// emitting the event it always emitted — EventConsentRequest,
+	// EventTaskProposal, EventStandingProposal and the rest — so a surface that
+	// ignores this kind is exactly what it was. A surface that draws it draws
+	// one object for every lane instead of thirteen cards.
+	//
+	// IT RIDES THE TURN IT WAS RAISED IN, AND [Agent.WatchQuestions] BESIDE IT —
+	// never the standing TASK lane, which is the roster's and whose readers walk
+	// a strict sequence of rows.
+	EventQuestion
+	// EventQuestionWithdrawn says a question stopped being one: the subject
+	// settled, the clock took it, the plan changed, another answer made it
+	// moot. Question carries the same object with [Question.Withdrawn] filled
+	// in, so a surface has the head it drew and the sentence to retire it with.
+	//
+	// A QUESTION IS NEVER SIMPLY GONE. A count that drops for no reason a
+	// person can see is a count they stop believing, so the reason travels with
+	// the withdrawal and is drawn once, dim.
+	EventQuestionWithdrawn
+	// EventQuestionAnswered carries the whole [Answer] in Answer: what was
+	// picked, what was said beside it, who decided and how long it lasts.
+	//
+	// THIS ONE IS KEPT. It is written to the session's own decisions.jsonl as
+	// it is emitted ([Agent.Decisions] reads it back), because it is the
+	// DECISION RECORD — the first rung of the ladder, the thing an asker reads
+	// before it puts anything to anybody. Consent is deliberately not journaled
+	// (a question about work that has not happened yet); an ANSWER is the
+	// opposite of that: it is the one thing about a question that stays true
+	// afterwards.
+	EventQuestionAnswered
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -848,6 +904,18 @@ type Event struct {
 	// the question is what decides whether it is ever written down.
 	Harness *subharness.Harness
 
+	// Question is the whole decision on EventQuestion and
+	// EventQuestionWithdrawn, and nil on every other kind (question.go). It is
+	// a POINTER so that "no question here" is spelled once, and the value it
+	// points at is this event's own copy — nothing else holds it, and the
+	// answer is what decides whether it is ever written down.
+	Question *Question
+
+	// Answer is the whole answer on EventQuestionAnswered, and nil on every
+	// other kind. It is the same value [Agent.ResolveQuestion] was handed, after
+	// the door filled in what the caller left out.
+	Answer *Answer
+
 	// ModelNote is why a model the turn NAMED is not in Model: a word no model
 	// here answers to, a word too many of them answer to. It is set on
 	// EventHarnessOffer alone.
@@ -1010,6 +1078,11 @@ type Config struct {
 	// memory.enabled row is read. A door that turns memory off hands nothing
 	// here, which is what makes "no calls" structural.
 	Memory *store.Store
+
+	// ConversationHistory grants only indexed history reads. Workers inherit
+	// this interface without receiving memory extraction, writes, or journaling.
+	// Nil falls back to Memory, so a memory-off root grants no history access.
+	ConversationHistory ConversationHistoryReader
 
 	// MemoryImport is the legacy memory.md this session carries into the store
 	// on its first turn, once, before it is renamed to memory.md.imported
@@ -2236,12 +2309,12 @@ type Agent struct {
 	// person is not currently saying under their live authority
 	// (task_forward.go).
 	personHeard uint64
-	// callOutcomes is whether a finished call came back a failure, by call id
+	// callOutcomes is whether a finished call came back a failure, by call occurrence
 	// (admission_compile.go). It is recorded at the batch's own fan-out because
 	// the flag the tool returned does not survive into the transcript, and it is
 	// per-process: after a restart the outcome of an older call is unknown and
 	// the admission context says so rather than assuming it went well.
-	callOutcomes map[string]callOutcome
+	callOutcomes map[*ai.ToolCall]callOutcome
 	// replyTags are finished-task identities placed in the transcript but not
 	// yet handed to the surface. They persist across the turn-end seam.
 	replyTags []TaskReplyTag
@@ -2371,7 +2444,13 @@ type Agent struct {
 	// Explicit conversation stops suppress autonomous wakes until fresh input.
 	workStopped  bool
 	workStopping bool
-	cancel       context.CancelFunc
+	// cancel ends the turn in flight AND SAYS WHICH DOOR IT CAME THROUGH. It is
+	// a [context.CancelCauseFunc] rather than a plain one because a turn that
+	// ends with nothing said has to be able to account for itself afterwards —
+	// on the row, in the journal and in one sentence to the person
+	// (stopcause.go). Every caller passes a cause; nil is reserved for the
+	// turn's own cleanup, which cancels a context nothing is waiting on.
+	cancel context.CancelCauseFunc
 	// interrupt is ONE ESC'S WORTH of planner and title spend (interrupt_fan.go).
 	// It sits outside mu and holds its own lock: Interrupt is the one call that
 	// must always be answerable, and the handlers it serializes must never need
@@ -2425,12 +2504,27 @@ type Agent struct {
 	// process has not let go of it yet (takeover.go). Set once, never cleared:
 	// the only way out is the close the ask is for.
 	takenOver bool
+	// stoppedTurn is THE DOOR THAT ENDED THIS CONVERSATION'S LAST TURN WITH
+	// NOTHING SAID, read off the journal when the session was opened and spent
+	// the first time anybody asks (resume.go). It is empty on every conversation
+	// that was answered, on every one the person stopped themselves, and on
+	// every one this build has already asked again.
+	stoppedTurn StopDoor
+	// turnBegan is when the turn now running opened, and the zero time when
+	// none is. It is read by exactly one thing: the takeover beat, which will
+	// not let a request that was already on the disk before this turn started
+	// end it (takeover.go says why that request has had its chance).
+	turnBegan time.Time
 	// steerSeq names the sentences the person has spliced into a running turn
 	// (steer.go). It is an atomic rather than a field under mu because minting an
 	// identity is not a fact about the transcript, and an id that could only be
 	// taken while holding this lock would be an id nothing outside a locked
 	// section could ask for.
 	steerSeq atomic.Uint64
+	// askSeq and askWaits are the model question lane's identity and wait. The
+	// question words remain in questionWords; this map holds only who is parked.
+	askSeq   atomic.Uint64
+	askWaits map[uint64]chan Answer
 	// taskNotes counts the reports this agent's OWN sub-tasks have handed over
 	// that no request has carried yet, and taskNews is the generation channel
 	// closed each time one lands. They exist for one reader — the runner holding
@@ -2588,7 +2682,7 @@ type Agent struct {
 	// question would mean a second thing to answer about work that has not moved.
 	// So the node's number is the token, which is also the number on the roster
 	// row, the number in the ✕, and the number a person says out loud.
-	subharnessAsks map[uint64]chan subharnessReply
+	subharnessAsks map[uint64]*subharnessQuestion
 
 	// subharnessOffers is the intake cards chat has raised and nobody has
 	// answered yet, keyed by the id the EventSubharnessProposal carried, and
@@ -2704,6 +2798,37 @@ type Agent struct {
 	// reserved, nothing is admitted, and the only thing the number has to do is
 	// name one outstanding question until it is answered (tools_standing.go).
 	standingSeq uint64
+	// questionWords is THE WORDS of the questions this session has put, keyed by
+	// lane and token (question.go's [questionToken]).
+	//
+	// IT IS NOT A REGISTRY OF WHAT IS OPEN, and the difference is the whole of
+	// why it is allowed to exist beside pending.go's law. Whether a question is
+	// still a question is the LANE's own fact — the consent map still holds a
+	// channel, the proposal is still in taskAnswers, the node is still
+	// unverified — and [Agent.OpenQuestions] walks those waits and asks this map
+	// only what the question SAID. An entry with no wait behind it is never
+	// returned, and is swept on the next beat.
+	//
+	// It exists because the words were being thrown away. A consent wait is a
+	// bare channel; the sentence the person is reading — the tool, the rule the
+	// policy matched, the gloss of the call — went out on the event and was kept
+	// nowhere, so a second window, home, or the phone had at best the one line
+	// the presence file carried and at worst nothing at all.
+	questionWords map[string]Question
+
+	// questionWatchers are the standing subscriptions to questions
+	// ([Agent.WatchQuestions]), and they are a lane of their own rather than a
+	// share of [Agent.taskWatchers] for the reason that door states: the task
+	// lane is the roster's, its readers walk a strict sequence of rows, and a
+	// question is not a row.
+	questionWatchers []*eventStream
+	// landingQuestions is which shape each landed node's `your call` was last
+	// PUT OUT AS — `landing` or `conflict` — so that a question can be taken back
+	// in the kind it was raised in when the node settles or changes shape
+	// (task_landing_question.go). It holds no question and is not a second
+	// registry of what is open: [Agent.PendingDecisions] is still the one list.
+	landingQuestions map[uint64]QuestionKind
+
 	// taskWatchers are the standing subscriptions to task updates
 	// ([Agent.TaskUpdates]). They are not the turn's hub and do not close with
 	// it: a node's most important event lands minutes after the turn that

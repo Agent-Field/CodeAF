@@ -524,10 +524,10 @@ func (a *app) roomHeadRow() int {
 // (room.go's [app.roomHeadHeight] states why it is the row that gives way).
 func (a *app) roomFactsRow() int {
 	width, _ := a.size()
-	if a.roomHeadHeight(width) < roomHeadRowCount {
+	if a.roomHeadHeight(width) < a.roomHeadCount() {
 		return -1
 	}
-	return a.roomHeadRow() + 1
+	return a.roomHeadRow() + a.roomHeadCount() - 1
 }
 
 // ── THE ROW, LAID OUT ───────────────────────────────────────────────────────

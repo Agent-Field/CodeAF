@@ -295,7 +295,7 @@ func TestAFirstTokenPastTheCrossingIsHedged(t *testing.T) {
 	crossing := 0
 	for ms := int(ActionFloor / time.Millisecond); ms <= 10_000; ms++ {
 		waited := float64(ms) / 1000
-		if odd(waited) && plan.First.Remaining(waited) > cost {
+		if left, known := plan.First.Remaining(waited).Get(); odd(waited) && known && left > cost {
 			crossing = ms
 			break
 		}

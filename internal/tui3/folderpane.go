@@ -312,7 +312,7 @@ func folderMarkGlyph(pal palette) string {
 	if pal.ascii {
 		return "*"
 	}
-	return "▪"
+	return tokens.GlyphActionWork
 }
 
 // folderTrayGap is the space between two cells of the mark tray, and it is

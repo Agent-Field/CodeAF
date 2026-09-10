@@ -1351,7 +1351,7 @@ func TestAuditNonVerdictRetriesAndLandsUnverified(t *testing.T) {
 	if notice.State != TaskUnverified {
 		t.Fatalf("state = %q, want unverified — a non-verdict is not a failure (report %q)", notice.State, notice.Report)
 	}
-	if !strings.HasPrefix(notice.Report, needsLookLead) {
+	if !strings.HasPrefix(notice.Report, yourCallLead(notice.StatusFacts())) {
 		t.Fatalf("report = %q, want it to lead with the plain non-answer", notice.Report)
 	}
 	if strings.HasPrefix(notice.Report, incompleteLead) {
@@ -1549,7 +1549,7 @@ func TestDependentWaitsOnUnverifiedAndRunsWhenItIsAccepted(t *testing.T) {
 		t.Fatalf("an accepted node is %q, want done", state)
 	}
 	report := graph.node(first).notice().Report
-	if !strings.HasPrefix(report, "you looked at this yourself and took it as done") || !strings.Contains(report, "I read the diff myself") {
+	if !strings.HasPrefix(report, "you took this as done") || !strings.Contains(report, "I read the diff myself") {
 		t.Fatalf("report = %q, want the person's decision and their reason", report)
 	}
 	if started := ran.await(t); started.id != second {

@@ -180,3 +180,30 @@ func TestAShortManualPageIsUnchanged(t *testing.T) {
 		t.Errorf("page %s (%d bytes, under the cap) came back changed at %d bytes", name, len(text), len(result))
 	}
 }
+
+// THE BUDGET IS A NUMBER SOMEBODY HAS TO SEE COMING. When a page's headings
+// outgrow [manualListCap] the list quietly stops naming the last ones, and the
+// only thing that fails is [TestEverySectionTheCutNamesComesBackWhole] — on a
+// section whoever broke it never touched. That is exactly how a heading added
+// to the tasks page on 2026-09-09 came back as a regression in a section about
+// returning to main from a nested task, which cost two lanes an afternoon
+// between them. So the budget is asserted here in its own words, and the
+// failure names the page that is closest to it and by how much.
+func TestNoPagesHeadingsOutgrowTheListThatOffersThem(t *testing.T) {
+	fullest, used := "", 0
+	for _, page := range manual.Chat().Pages() {
+		total := 0
+		for _, section := range manual.Chat().PageSections(page) {
+			total += len(listItemPrefix) + len(section.Title)
+		}
+		if total > used {
+			fullest, used = page, total
+		}
+		if total > manualListCap {
+			t.Errorf("the headings of %s come to %d bytes, over the %d the list that offers them holds — "+
+				"the cut will stop naming its last sections, so shorten a heading or raise manualListCap",
+				page, total, manualListCap)
+		}
+	}
+	t.Logf("the fullest page is %s at %d bytes of %d, with %d to spare", fullest, used, manualListCap, manualListCap-used)
+}

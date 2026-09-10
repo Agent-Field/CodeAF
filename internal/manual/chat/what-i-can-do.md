@@ -770,9 +770,10 @@ composition, any text verbatim, and anything malformed.
 It reads **png, jpeg, webp and gif**, up to **10MB**. The answer names who
 looked: `seen by <model>: <what it saw>`. The picture itself is **not** added to
 the conversation, so everything you need about one image is worth asking in a
-single call. **You see it too**: the picture is drawn under the `view_image` row
-in colour as soon as the call finishes, and opening the row shows it bigger with
-what the looking model said beneath.
+single call. **You can see it too**: the finished `view_image` row has **preview**
+and **open original** controls. It starts collapsed. Opening the preview shows a
+low-resolution terminal picture with what the looking model said beneath; opening
+the original uses your system viewer for full-quality inspection.
 
 Refusals, in its own words. The last three name the picture by its **whole
 absolute path**, however you spelled it in the call:
@@ -990,6 +991,11 @@ note in square brackets that begins `[Cut: … bytes of …. The rest of this pa
 in its sections — ask for the same page again with section set to one of:` and
 then lists every heading on that page, one to a line, before it closes.
 
+That list is bounded too — half of what one read hands over, which is twice the
+room the longest page in this manual needs — and if a page ever had more headings
+than that the list would stop and close with `(… and 3 more)` rather than run on.
+No page is near it today.
+
 Those headings are the addresses of the rest. Ask for the same page with one of
 them in `section` and that part comes back whole, however far past the cut it
 sat. A heading that is not on the page is refused by name, and the refusal lists
@@ -1062,8 +1068,9 @@ when needed. `load_capability` adds one group to the tool list. The full descrip
 and arguments arrive on the next model request **within the same turn**; aforge
 continues without waiting for another message from you.
 
-There are up to three groups. The catalog lists only tools available on this machine:
+There are up to four groups. The catalog lists only tools available on this machine:
 
+- **`questions`** — `ask`, the model's own question to you (the questions page).
 - **`media`** — `generate_image`, `speak`, `generate_music`, `generate_video` and
   `edit_video`, where configured. `edit_video` needs ffmpeg; the generation tools
   each need a model. `view_image` stays directly available.
@@ -1079,6 +1086,13 @@ Deferring these descriptions reduces ordinary request size, at the cost of one
 extra model request on first use and a changed provider prefix when a group loads.
 The small catalog still travels with ordinary requests. This saves schema bytes;
 it does not guarantee a lower bill or a faster answer on every task.
+
+**If it loads a group and then stops without using it**, the turn is sent back once:
+the status line says `it loaded a tool and stopped before using it · asking it to go on`,
+and the model is told, in the same turn, that the tool is in its list and to call it or
+say why it no longer needs it. It happens once per turn; a model that stops again has
+decided, and the turn ends. It never happens when the model's last words were a question
+to you.
 
 **How long it lasts.** Loaded tools remain available while the engine runs. A group
 cannot be unloaded, and loading it again changes nothing. Reopening restores groups

@@ -21,6 +21,13 @@ package remote
 // per event, no call on a repaint, and a pump that keeps draining after it goes
 // quiet so no goroutine is parked on a channel. The task rail is not rewritten
 // onto this — it predates the lane and is tested as it stands.
+//
+// AND IT IS THE SHAPE EVERY STANDING LANE SINCE HAS TAKEN. The conversation's
+// name rides it (version 12) and so do its QUESTIONS (version 14): each is a
+// subscription internal/session keeps for the whole session, each replays what
+// is still true onto a surface that has only just attached, and each was a
+// capability that simply did not exist over a connection until its two lines
+// were added to the two maps below.
 
 import (
 	"encoding/json"
@@ -35,9 +42,17 @@ import (
 // for cannot be produced by a build that has one.
 type laneName string
 
-// laneDesign is the harness lane. It is the only standing lane here today; the
-// adaptive run lane is stated as unbuilt in lanes.go, with the exact reason.
+// laneDesign is the harness lane. The adaptive run lane is stated as unbuilt in
+// lanes.go, with the exact reason.
 const laneDesign laneName = "design"
+
+// laneQuestion is the questions lane: every decision this conversation hands to
+// a person, withdrawn or answered, with the whole object on each event
+// (internal/session's question.go). It is a standing lane rather than a turn's
+// event because most questions outlive the turn that raised them and many —
+// a landed task's `your call`, a question withdrawn on the presence beat, an
+// answer somebody left in another window — never had one.
+const laneQuestion laneName = "question"
 
 // laneTitle is the naming lane: the one event a session sends when it has named
 // itself. It is a standing lane rather than a turn's event because the name is
@@ -61,6 +76,16 @@ var laneDoors = map[laneName]laneDoor{
 			return nil, nil, false
 		}
 		lane, stop := door.WatchHarnessDesigns()
+		return lane, stop, true
+	},
+	laneQuestion: func(agent WrappedAgent) (<-chan session.Event, func(), bool) {
+		door, ok := agent.(interface {
+			WatchQuestions() (<-chan session.Event, func())
+		})
+		if !ok {
+			return nil, nil, false
+		}
+		lane, stop := door.WatchQuestions()
 		return lane, stop, true
 	},
 	laneTitle: func(agent WrappedAgent) (<-chan session.Event, func(), bool) {

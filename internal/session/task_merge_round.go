@@ -39,6 +39,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // mergeRoundLimit is how many resolver rounds one node buys itself. ONE — the
@@ -127,10 +129,10 @@ func (a *Agent) mergeRoundAtLanding(ctx context.Context, node *TaskNode, tree ta
 	// anybody checked: a worker has just edited the very files the deliverable is
 	// made of, and landing that on the strength of the check the round STARTED
 	// from would be merging unread work under a verdict about something else.
-	verdict := a.auditNode(ctx, node, tree, outcome.changed, report, log)
+	verdict := a.auditNode(ctx, node, tree, outcome.changed, "", log)
 	if !verdict.verified {
 		fmt.Fprintf(log, "merge round: the check did not pass what the round left — %s\n", verdict.report())
-		a.undoMergeRound(tree, log)
+		a.undoMergeRound(node, tree, log)
 		return "", false, mergeRoundFailedSentence(tree.branch, outcome.files)
 	}
 	// AND THE LANDING IS RETRIED, through the one road every landing takes
@@ -316,16 +318,21 @@ func markedFiles(dir string, files []string) []string {
 // The ref stays where it is. It is the record of what the node produced, and a
 // person reading the card is owed it whether or not this round put the branch
 // back onto it.
-func (a *Agent) undoMergeRound(tree taskTree, log io.Writer) {
+func (a *Agent) undoMergeRound(node *TaskNode, tree taskTree, log io.Writer) {
 	ref := beforeMergeRef(tree.branch)
 	if strings.TrimSpace(ref) == "" {
 		return
 	}
+	var note string
 	if out, err := git(tree.dir, "reset", "--hard", ref); err != nil {
-		fmt.Fprintf(log, "merge round: %s could not be put back on %s — %s\n", tree.branch, ref, firstLine(out))
-		return
+		note = fmt.Sprintf("Rollback failed: %s could not be restored to %s — %v: %s. Inspect the current files; restoration was not confirmed.", tree.branch, ref, err, firstLine(out))
+	} else {
+		note = fmt.Sprintf("Rollback completed: %s was restored to %s after the check rejected the resolution. The resolver's conclusion and receipts below describe the abandoned attempt, not changes retained in the current files.", tree.branch, ref)
 	}
-	fmt.Fprintf(log, "merge round: %s is back on %s\n", tree.branch, ref)
+	fmt.Fprintf(log, "merge round: %s\n", note)
+	// The rollback happens after the resolver's answer was kept. Put this fact
+	// first so a bounded later check cannot mistake that answer for current work.
+	node.keepResultNoting(withReport(note, checkerConclusion(node, "")), log)
 }
 
 // ── the resolver ────────────────────────────────────────────────────────────
@@ -356,6 +363,10 @@ func (a *Agent) runResolver(ctx context.Context, node *TaskNode, tree taskTree, 
 	defer room.speaking(spoke)
 
 	wrote, stopped, runErr := runTaskChild(ctx, child, node, resolveInstruction(node, tree, home, files, changed), tree.dir, a.taskLimits(node), room, log)
+	// The recheck reads this resolver's conclusion and evidence, not the report
+	// written before the files were merged and changed again.
+	node.keepWorkerConclusion(lastSaid(child), log)
+	node.keepReceipts(lastToolReceipts(child, auditReceiptCount))
 	switch {
 	case stopped != "":
 		fmt.Fprintf(log, "merge round: %s\n", stopped)
@@ -439,16 +450,22 @@ func (n *TaskNode) spendMergeRoundCount() {
 // [Agent.ResolveConflict] owes a surface: a person pressing the key twice must
 // read one plain line rather than start a second worker in the same working copy
 // as the first.
+//
+// AND THE CLAIM IS WRITTEN DOWN, which is what lets a resume say the round was
+// cut rather than say nothing at all ([taskRecord.Resolving]). The checkpoint is
+// taken with the lock let go of, because [TaskGraph.checkpoint] takes it itself.
 func (n *TaskNode) claimResolving() bool {
 	if n == nil || n.graph == nil {
 		return false
 	}
 	n.graph.mu.Lock()
-	defer n.graph.mu.Unlock()
 	if n.resolving {
+		n.graph.mu.Unlock()
 		return false
 	}
 	n.resolving = true
+	n.graph.mu.Unlock()
+	n.graph.checkpoint()
 	return true
 }
 
@@ -459,10 +476,19 @@ func (n *TaskNode) releaseResolving() {
 	n.graph.mu.Lock()
 	n.resolving = false
 	n.graph.mu.Unlock()
+	n.graph.checkpoint()
 }
 
 // ResolveConflict spends ONE MORE merge round on a node whose branch would not
 // fasten, on the person's word — the `[a] resolve it` of the card.
+//
+// AND ON A NODE WHOSE GROUND MOVED, which reaches the same card by the other
+// road (task_run.go's [Agent.landShifted]). The round is exactly the right verb
+// there and it needs nothing added: the person's branch is merged into the
+// task's branch — often with nothing at all to resolve, since the branch would
+// have fastened — the check runs again over the two changes together, and the
+// landing is retried. Nothing here asks whether a marker was ever written, so
+// the shift road was never refused; what it lacked was a card that offered it.
 //
 // IT RETURNS BEFORE THE ROUND DOES, for [Agent.reauditTask]'s reason: a round
 // buys a model call, and a keypress that blocked on one would be a wedged
@@ -518,6 +544,19 @@ func (a *Agent) ResolveConflict(id uint64) error {
 	return nil
 }
 
+// carryOnTheirWord is the tree this node's branch lands into WITH THE PERSON'S
+// OWN WORD ON IT: their untracked copies of the files the task wrote may be
+// moved aside for the merge and put back afterwards.
+//
+// IT IS SET AT EXACTLY ONE DOOR and nowhere else. The mark travels on the tree
+// rather than on the node because the thing being authorised is a merge, and the
+// merge is what holds the tree (groundcarry.go's [taskTree.carryUntrackedGround]
+// states what it then does with them, and states that it never deletes one).
+func carryOnTheirWord(tree taskTree) taskTree {
+	tree.carry = true
+	return tree
+}
+
 // landResolved is what an on-demand round does with what it produced, and it is
 // the landing road rather than the run's: this node has already settled once, so
 // what a resolved branch reaches is a RESETTLE, exactly as an accept and a late
@@ -528,21 +567,40 @@ func (a *Agent) ResolveConflict(id uint64) error {
 // saying the same thing in the same words is the noise the design's one-question
 // law exists against.
 func (a *Agent) landResolved(ctx context.Context, node *TaskNode, tree taskTree, changed []string, report string, log io.Writer) {
+	// THE PERSON'S OWN UNTRACKED COPIES ARE NOT A MERGE ROUND'S PROBLEM, and a
+	// round spent on them is a worker and a model call spent on nothing: the round
+	// merges the person's BRANCH into the task's, and a file git is not watching
+	// is on no branch at all. So this road goes straight to the carry, on the word
+	// the person just gave by pressing it (groundcarry.go).
+	if node.groundHeldNow() {
+		a.landCarried(node, tree, changed, report, log)
+		return
+	}
 	outcome, ran := a.spendMergeRound(ctx, node, tree, changed, log)
 	if !ran || !outcome.resolved || ctx.Err() != nil {
 		return
 	}
 	tree = outcome.tree
-	verdict := a.auditNode(ctx, node, tree, outcome.changed, report, log)
+	verdict := a.auditNode(ctx, node, tree, outcome.changed, "", log)
 	if ctx.Err() != nil {
 		return
 	}
 	if !verdict.verified {
 		fmt.Fprintf(log, "merge round: the check did not pass what the round left — %s\n", verdict.report())
-		a.undoMergeRound(tree, log)
+		a.undoMergeRound(node, tree, log)
 		return
 	}
-	landed, merge, detail, _ := landHome(node, tree, outcome.changed)
+	landed, merge, detail, why := landHome(node, tree, outcome.changed)
+	if why == refusedByYourFiles {
+		// AND A ROUND THAT DISCOVERS THE OTHER ROAD ON ITS WAY HOME TAKES IT. A
+		// checkpoint written before this road had a name comes back with nothing
+		// marked, so the round is what finds out — and the person has already said
+		// `resolve it`, which is the one word this needs.
+		fmt.Fprintf(log, "merge round: it is your own copies in the way, not the branch\n")
+		node.heldByYourFiles()
+		a.landCarried(node, outcome.tree, outcome.changed, report, log)
+		return
+	}
 	if !cameHome(merge) {
 		fmt.Fprintf(log, "merge round: it still would not land — %s\n", detail)
 		return
@@ -550,5 +608,37 @@ func (a *Agent) landResolved(ctx context.Context, node *TaskNode, tree taskTree,
 	fmt.Fprintf(log, "merge round: resolved, and %s landed\n", tree.branch)
 	node.checkSaid(auditGrade(verdict), 0)
 	node.finish(withReport(report, withReport(verdict.doneOutcome(), detail)), landed, tree.branch, merge)
+	node.graph.resettle(node, TaskDone)
+}
+
+// landCarried is `[a] resolve it` on the one road a merge round cannot help:
+// the person's own untracked copies of the files the task wrote are sitting in
+// the folder the branch lands into (groundcarry.go).
+//
+// IT SPENDS NO MODEL CALL AND ASKS NO CHECKER. There is nothing to resolve
+// between two versions of a file when only one of them is on a branch: what the
+// person answered is whether their own copies may be moved for the merge, and
+// the answer was yes. So the landing is simply offered again with that word on
+// the tree, and the node settles on what comes back.
+//
+// A CARRY THAT WOULD NOT GO LEAVES THE NODE EXACTLY WHERE IT WAS. Their tree is
+// put back to the byte before this returns, the branch is still kept, and the
+// card is still asking — which is the same bargain every other road out of
+// [taskTree.comeHome] keeps.
+func (a *Agent) landCarried(node *TaskNode, tree taskTree, changed []string, report string, log io.Writer) {
+	landed, merge, detail, _ := landHome(node, carryOnTheirWord(tree), changed)
+	if !cameHome(merge) {
+		fmt.Fprintf(log, "resolve: your own copies could not be carried aside — %s\n", detail)
+		node.finish(withReport(withYourCallLead(node.landingFacts(merge), detail), report), landed, tree.branch, merge)
+		a.emitTaskUpdate(node.notice())
+		return
+	}
+	fmt.Fprintf(log, "resolve: %s landed, and your own copies were carried aside — %s\n", tree.branch, detail)
+	// AND IT SETTLES AS THE PERSON'S OWN CALL, because that is what it was: the
+	// check never answered on this node, nobody has read the work since, and the
+	// only new fact is that the branch is now home. The receipt says who
+	// (task_audit.go's [acceptedTookLine]).
+	node.checkSaid(provider.VerdictVerifiedSuccess, 0)
+	node.finish(withReport(acceptedLine("", TaskAskOwnerPerson), withReport(report, detail)), landed, tree.branch, merge)
 	node.graph.resettle(node, TaskDone)
 }

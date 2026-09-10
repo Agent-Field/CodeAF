@@ -223,10 +223,15 @@ func TestTypingAtHomeOffersAskHereDirectlyAboveStartingAConversation(t *testing.
 	if !strings.Contains(frame, homeStartWord+`: "remind me at 6"`) {
 		t.Fatalf("the action row is gone:\n%s", frame)
 	}
-	// The hint under the box names both readings of the same characters.
-	if hint := errandRows(a)[len(errandRows(a))-1]; !strings.Contains(hint, "ctrl+enter ask here") ||
+	// The hint under the box names both readings of the same characters, and it
+	// names the ask by the ARROW that reaches it rather than by a chord most
+	// terminals cannot send (home.go's [app.homeHintWords] holds the argument).
+	if hint := errandRows(a)[len(errandRows(a))-1]; !strings.Contains(hint, "↑ ask here") ||
 		!strings.Contains(hint, "enter starts a new conversation") {
 		t.Fatalf("the hint does not say both things enter can do:\n%s", hint)
+	}
+	if hint := errandRows(a)[len(errandRows(a))-1]; strings.Contains(hint, "ctrl+enter") {
+		t.Fatalf("the foot still advertises a chord most terminals cannot send:\n%s", hint)
 	}
 }
 
@@ -375,7 +380,7 @@ func TestTheCardInThePaneIsAnsweredWithOne(t *testing.T) {
 	drive(t, a, key("up"), key("enter"))
 
 	frame := homeText(a)
-	for _, want := range []string{"remind me at 6 to leave", "at 6 today", "about $0.02, once", "1 yes · 2 change when or where · 3 just once"} {
+	for _, want := range []string{"remind me at 6 to leave", "at 6 today", "about $0.02, once", "1 yes, set it up"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("the card does not say %q:\n%s", want, frame)
 		}
@@ -428,15 +433,16 @@ func standingProposalNarrowed(id uint64, item standing.Item) session.Event {
 	}
 }
 
-// THE PANE'S HINT NAMES EXACTLY THE CHIPS THE CARD DREW AND NEVER A DIGIT MORE.
+// THE PANE'S HINT NAMES EXACTLY THE ANSWERS THE CARD DREW AND NEVER A DIGIT
+// MORE.
 //
 // It used to be a third hardcoded copy of a line standing.go already kept two
 // correct spellings of, so a one-off reminder — whose card correctly draws no
 // `just once`, because doing that action "now" is meaningless — was offered `3
 // just once` in the sentence under it, and nothing at all answered to the `3`
-// (#189). The line is read off [standingCard.row] now, which is the very row
-// the chips are painted from ([standHintFields]), so an answer the card did not
-// draw cannot be named: it is not in the list the sentence walks.
+// (#189). The line is read off the QUESTION now, which is the very object the
+// answers are painted from ([app.questionCardBody]), so an answer the card did
+// not draw cannot be named: it is not in the list the sentence walks.
 func TestTheErrandHintNamesOnlyTheAnswersTheCardDrew(t *testing.T) {
 	for _, c := range []struct {
 		what  string
@@ -447,10 +453,10 @@ func TestTheErrandHintNamesOnlyTheAnswersTheCardDrew(t *testing.T) {
 		// A one-off reminder. "Do it once, now" says the wrong thing at the
 		// wrong moment for a line that was meant for six o'clock, so the card
 		// draws two numbered chips and the hint may name two digits.
-		{"a one-off reminder", standReminder(), "1 yes · 2 change when or where · 0 no", 2},
+		{"a one-off reminder", standReminder(), "1 yes, set it up · 0 no · c change", 2},
 		// A watch is a thing a person may reasonably want done once, now — the
-		// third chip is drawn, so the third digit is named.
-		{"a watch", standItem(), "1 yes · 2 change when or where · 3 just once · 0 no", 3},
+		// third answer is drawn, so the third digit is named.
+		{"a watch", standItem(), "1 yes, set it up · 3 just once · 0 no · c change", 3},
 	} {
 		lab := newErrandLab(t)
 		mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
@@ -468,8 +474,11 @@ func TestTheErrandHintNamesOnlyTheAnswersTheCardDrew(t *testing.T) {
 		if ex == nil || ex.view == nil {
 			t.Fatalf("%s never put a card in the pane", c.what)
 		}
-		if got := len(ex.view.chips()); got != c.chips {
-			t.Fatalf("%s drew %d numbered chips, want %d", c.what, got, c.chips)
+		if ex.ask == nil {
+			t.Fatalf("%s put no question on the pane's card", c.what)
+		}
+		if got := len(ex.ask.question.Options); got != c.chips {
+			t.Fatalf("%s drew %d answers, want %d", c.what, got, c.chips)
 		}
 		// THE SENTENCE ITSELF, spelled out rather than derived, because a hint
 		// built from the chips would agree with a derivation of itself however
@@ -493,9 +502,10 @@ func TestTheErrandHintNamesOnlyTheAnswersTheCardDrew(t *testing.T) {
 		// EVERY CHIP THAT WAS DRAWN IS NAMED, which is the other half of
 		// "exactly": a hint that quietly dropped an answer would pass every
 		// assertion above.
-		for at, word := range ex.view.chips() {
-			if !strings.Contains(hint, itoa(at+1)+" "+standHintWord(word)) {
-				t.Fatalf("%s drew %q as chip %d and the hint %q does not name it", c.what, word, at+1, hint)
+		for _, option := range ex.ask.question.Options {
+			if !strings.Contains(hint, option.Key+" "+option.Label) {
+				t.Fatalf("%s drew %q under %q and the hint %q does not name it",
+					c.what, option.Label, option.Key, hint)
 			}
 		}
 	}
@@ -1110,8 +1120,8 @@ func TestAClickInThePaneTakesTheKeyboardAndAnswersTheCard(t *testing.T) {
 		t.Fatal("tab left the keyboard in the pane")
 	}
 	homeText(a)
-	if ex.cardAt < 0 {
-		t.Fatal("the card's chips were not drawn on the pane")
+	if len(ex.askAt) == 0 || ex.askAt[0] < 0 {
+		t.Fatal("the card's answers were not drawn on the pane")
 	}
 	// A PRESS ON THE PANE'S BODY IS THE ZONE CHANGE AND NOTHING ELSE.
 	if bx, by, ok := paneRowAt(a, 0); ok {
@@ -1122,19 +1132,18 @@ func TestAClickInThePaneTakesTheKeyboardAndAnswersTheCard(t *testing.T) {
 		t.Fatal("a click in the pane did not take the keyboard")
 	}
 	drive(t, a, key("tab"))
-	x, y, ok := paneRowAt(a, ex.cardAt)
+	x, y, ok := paneRowAt(a, ex.askAt[0])
 	if !ok {
-		t.Fatal("the chips row is not on the screen")
+		t.Fatal("the yes row is not on the screen")
 	}
-	// The yes chip's own columns, taken from where the renderer put them — a
-	// chip that did not fit was dropped rather than truncated, so the spans are
-	// the authority on where the answers actually are ([app.standChips]).
-	span := ex.view.spans[0]
-	drive(t, a, tea.MouseClickMsg{Button: tea.MouseLeft, X: x - 1 + span.from, Y: y})
-	drive(t, a, tea.MouseReleaseMsg{Button: tea.MouseLeft, X: x - 1 + span.from, Y: y})
+	// THE YES'S OWN ROW, taken from where the renderer put it: every answer is
+	// pressable along its whole width, so anywhere on the row is the answer
+	// ([homeExchange.askAt]).
+	drive(t, a, tea.MouseClickMsg{Button: tea.MouseLeft, X: x, Y: y})
+	drive(t, a, tea.MouseReleaseMsg{Button: tea.MouseLeft, X: x, Y: y})
 	// The yes hands the keyboard straight back to the list, which is the whole
-	// of [app.answerCard]'s last line — so what a click on a chip proves about
-	// the zones is proved above, on a press that landed on the body.
+	// of [app.answerExchangeCard]'s last line — so what a click on an answer
+	// proves about the zones is proved above, on a press that landed on the body.
 	if ex.focused {
 		t.Fatal("a yes clicked in the pane kept the keyboard")
 	}
@@ -1147,7 +1156,7 @@ func TestAClickInThePaneTakesTheKeyboardAndAnswersTheCard(t *testing.T) {
 }
 
 // TestAChangedCardIsReplacedByTheOneThatFollowsIt is the one case where a card
-// leaves the pane: `2 change when`, a correction typed, and the model proposing
+// leaves the pane: `c change`, a correction typed, and the model proposing
 // again. Two cards about one proposal would be one question asked twice.
 func TestAChangedCardIsReplacedByTheOneThatFollowsIt(t *testing.T) {
 	lab := newErrandLab(t)
@@ -1159,14 +1168,14 @@ func TestAChangedCardIsReplacedByTheOneThatFollowsIt(t *testing.T) {
 	a.openHome()
 	typeHome(a, "remind me at 6 to leave")
 	drive(t, a, key("up"), key("enter"))
-	drive(t, a, key("2"))
+	drive(t, a, key(questionCommentKey))
 
 	ex := theExchange(a)
 	if !ex.changing {
-		t.Fatal("`2` did not arm the correction")
+		t.Fatalf("`%s` did not arm the correction", questionCommentKey)
 	}
 	if ex.view.settled() {
-		t.Fatal("`2` settled the card; it is still a question until the words arrive")
+		t.Fatalf("`%s` settled the card; it is still a question until the words arrive", questionCommentKey)
 	}
 	if !strings.Contains(homeText(a), homeAskChangeWord) {
 		t.Fatalf("the pane does not ask for the change:\n%s", homeText(a))

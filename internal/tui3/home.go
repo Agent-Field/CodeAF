@@ -130,10 +130,15 @@ func (a *app) homeBeat(gen int) tea.Cmd {
 		return nil
 	}
 	a.refreshHome()
+	// AND THE ROW A MOVE LEFT BEHIND IS AIMED AT AGAIN, because the reading above
+	// has just put the cursor back on this window's own conversation and the row
+	// somebody was told to press enter on is the one that matters this minute
+	// (takeover.go's [app.pointMovedRow]).
+	a.pointMovedRow()
 	// THE BEAT REBUILDS THE LIST AND THE CURSOR FOLLOWS ITS CONVERSATION
 	// ([homeView.build]), so the row the card is about may be a row nothing has
 	// read for. It is an arrival like a key (homecardread.go).
-	asked := a.refreshHomeCard(a.now())
+	asked := tea.Batch(a.refreshHomeCard(a.now()), a.askEngines())
 	// A task starting in another window arrives on this beat, and the spinner it
 	// earns needs the fast clock — woken here because this is the only moment
 	// home learns anything ([app.homeAnimating]; paint keeps it turning and lets
@@ -224,15 +229,21 @@ const homeGutter = 4
 // vocabulary: it is the difference between "this is running" and "this is what
 // the machine is doing at this instant", which is the distinction the one-spinner
 // law exists to draw.
+// AND `✕` FOR A CONVERSATION LEFT MID-WAY, which is the one mark this block
+// changed when the surface moved onto the shared vocabulary. It used to be `◌`,
+// a shape that existed nowhere else and that a person had to be taught; work
+// that did not finish is `✕` on the card, on the rail, on the roster and on the
+// task page, dim rather than loud unless something actually broke, and this
+// screen says the same thing with the same cell.
 const (
-	homeAskGlyph   = "?"
-	homeLiveGlyph  = "◐"
-	homeStuckGlyph = "◌"
-	homeIdleGlyph  = "○"
+	homeAskGlyph   = tokens.GlyphNeedsHuman
+	homeLiveGlyph  = tokens.GlyphWorking
+	homeStuckGlyph = tokens.GlyphFailed
+	homeIdleGlyph  = tokens.GlyphQueued
 
 	homeAskASCII   = "!"
 	homeLiveASCII  = "*"
-	homeStuckASCII = "o"
+	homeStuckASCII = "x"
 	homeIdleASCII  = "-"
 )
 
@@ -331,6 +342,15 @@ const (
 	// left for the name it is about.
 	homeHeldWord  = "open in another window"
 	homeHeldShort = "another window"
+	// homeEngineWord is what the detail column says instead when the journal is
+	// held by this machine's ENGINE rather than by a window (internal/enginehost).
+	//
+	// A HOST-HELD ROW IS NOT IN ANOTHER WINDOW AND SAYING SO WAS THE DEFECT. The
+	// engine keeps a conversation running with every terminal shut — that is what
+	// the engine road buys — so a row somebody ctrl-c'd an hour ago, still working
+	// four tasks, was drawn as a window to go and find. There is no such window.
+	// The engine is where it is, and enter opens it here.
+	homeEngineWord = "open in the engine"
 	// homeLandedWord trails a count on a quiet row whose work finished since
 	// home was last closed — `2 landed · 3h` — and homeFreshWord is the dim
 	// caption the detail column hangs over those rows. Both are the delta the
@@ -603,6 +623,16 @@ type homeView struct {
 	// beside the world rather than folded into it because the world is a
 	// reading of the projects root and these are not in it.
 	bare []homeBare
+	// fired is what is NOT in [homeView.items] and belongs on the screen anyway:
+	// standing things that went off and stood down since the look stamp, taken
+	// from the same reading (homestanding.go's [app.standItems]).
+	//
+	// A ONE-OFF RETIRES IN THE PASS THAT FIRES IT, so it is never in a band and
+	// never on the list — and the `since you left` block, which is the one place
+	// on this screen whose whole subject is what happened while nobody was
+	// looking, could not see the commonest thing that happens while nobody is
+	// looking. The bands say what is true now; this says what went.
+	fired []StandingItemView
 	// itemsOpen is the bands somebody opened by hand, by the same key. It is a
 	// second map and not a flag beside [homeView.expanded] because they are two
 	// folds over two different things, and a person who opened the watches
@@ -675,12 +705,19 @@ type homeView struct {
 	msg     string
 	msgPath string
 
-	// armed is the transcript of the row whose SECOND enter moves a conversation
-	// out of the window that is holding it (takeover.go). One enter arms it and
-	// says what the next one will do and what it costs; anything that moves the
+	// armed is the transcript of the row whose enter has RAISED THE QUESTION
+	// about moving a conversation out of the window that is holding it
+	// (takeover.go). It is the row's state and nothing more: what is asked, and
+	// what answers it, is the card in `ask` below. Anything that moves the
 	// cursor, esc, and any rebuild that loses the row all clear it, because an
 	// arming a person cannot see is a keystroke with a memory.
 	armed string
+
+	// ask is the ONE question home is holding about a row on its own list, or
+	// nil (homeconfirm.go). It is not on the block: home takes the frame whole,
+	// so the block's rows are not on screen here, and a card home raised about a
+	// row on home is not a thing to meet after walking away from home.
+	ask *questionShown
 
 	// tier is which of home's three shapes this frame has room for — the list
 	// alone, the list and a card, or the zones in a column of their own beside
@@ -1365,6 +1402,13 @@ func (h *homeView) build() {
 	// line, matched back afterwards by what it STANDS FOR rather than by its
 	// number ([homeLine.sameRow]).
 	previousLine, hadLine := h.focusedLine()
+	// AND THE FOLD AT THE FOOT IS FOLLOWED TOO. It stands for no conversation,
+	// item, project or errand, so none of the four followers above can see it and
+	// every rebuild used to drop the cursor off it — including the one this
+	// screen takes every three seconds on its own beat ([app.refreshHome]), which
+	// is what made an opened fold last exactly one beat (place_home.go's
+	// [homeView.pointFold] states what a person saw).
+	previousFold := hadLine && previousLine.kind == homeSwitchFold
 	// An empty box is not a choice anybody has made yet, so the next character
 	// typed starts on the action row again.
 	if !h.searching() {
@@ -1406,6 +1450,10 @@ func (h *homeView) build() {
 		// Either way the cursor is where it belongs: [homeView.pointSame] put it
 		// back on the row that was chosen, and the followers below are about a
 		// list nobody is filtering.
+		return
+	}
+	if previousFold {
+		h.pointFold()
 		return
 	}
 	if previousExchange != nil {
@@ -2298,6 +2346,11 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	h := &a.home
+	// A KEY IS THE PERSON TAKING THE CURSOR BACK. Home aims at the row a move
+	// left behind on every beat until this happens, and a screen that went on
+	// dragging the cursor after somebody pressed an arrow would be arguing with
+	// them (takeover.go's [app.pointMovedRow]).
+	a.movedFrom = ""
 	// phone lane: a sheet over the inbox holds the keyboard (homesheet.go).
 	if cmd, took := a.homeSheetKeyFirst(msg); took {
 		return cmd
@@ -2345,12 +2398,25 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	defer a.touch()
 	h.say("", "")
-	// ANYTHING BUT A SECOND ENTER DISARMS A HELD ROW. The arming is a promise
-	// made by the sentence on the foot line, and that sentence has just been
-	// cleared — an arming a person can no longer see is a keystroke with a
-	// memory, and the keystroke it changes the meaning of is the one that ends
-	// another window (takeover.go).
-	if msg.String() != "enter" {
+	// THE CARD HOME RAISED TAKES ITS OWN KEYS FIRST (homeconfirm.go). It is the
+	// question block's card and its router, so `1`/`2` move the cursor, `←→`
+	// walk it, `enter` takes what it is on, and `esc` is the answer that loses
+	// nothing — and none of those may reach the list underneath while a question
+	// this window asked is on the screen.
+	if cmd, took := a.homeAskKey(msg); took {
+		// AND THE FOOT FOLLOWS THE CARD. `h.say("", "")` above cleared it because
+		// what is on the foot is about the key just pressed; on a frame with no
+		// card the foot IS the question, so a key that moved its cursor has to
+		// leave the question where it was rather than clearing it off the screen.
+		a.sayHomeAsk()
+		return cmd
+	}
+	// ANYTHING THAT MOVES THE CURSOR TAKES THE QUESTION DOWN. The card is drawn
+	// in the band beside the row it is about, so a question left standing over
+	// another row would be a card asking about a conversation nobody is looking
+	// at — and its `enter` would move the wrong one (takeover.go).
+	if a.home.ask != nil {
+		a.dropHomeAsk()
 		h.armed = ""
 	}
 	// AND A WAIT THAT IS STILL RUNNING SAYS SO AGAIN. The line above is cleared
@@ -2359,6 +2425,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	if word := a.takeoverLine(); word != "" {
 		h.say(word, "")
 	}
+	a.sayHomeAsk()
 	// AND THE ROUTER'S OWN LINE COMES DOWN WITH HOME'S. A refusal that put a
 	// person back here is about the key they just pressed; the next key is a new
 	// question, and a sentence that outlived it would be an answer to nothing
@@ -2386,6 +2453,12 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	// letters and `ctrl+e`, and every one of those is read below under its own
 	// guard.
 	if editorMotion(&h.box, msg.String()) {
+		return nil
+	}
+	// AND ctrl+z TAKES BACK WHAT WAS TYPED, in every box on this surface and not
+	// only in the message one (editundo.go).
+	if editorUndo(&h.box, msg.String()) {
+		h.build()
 		return nil
 	}
 	if editorWordKill(&h.box, msg.String()) {
@@ -2490,21 +2563,29 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "ctrl+t":
 		// A FRESH CONVERSATION IN THE ROW'S OWN FOLDER, on enter's law: a row
 		// from somewhere else starts one THERE and puts the conversation in
-		// front into the keeper (keeper.go's [app.startBeside]). A half-typed
-		// message stays a message: [app.homeStart] carries it into the fresh
-		// conversation here, and for a folder the keeper cannot carry it into,
-		// the key refuses rather than quietly throwing the sentence away.
+		// front into the keeper (keeper.go's [app.startBeside]).
+		//
+		// IT IS `enter` FOR THE ROW UNDER THE CURSOR NOW, and the refusal it used
+		// to answer a typed sentence with is gone. `clear or send your message
+		// first · ctrl+t starts fresh in <path>` was the surface asking a person
+		// to choose between a target and a sentence, on a screen whose whole job
+		// is to carry both — and `enter` carries both, because the row the cursor
+		// is on IS the target (homedraft.go). So this key pins that row's folder
+		// and takes enter's own road.
 		if line, ok := h.previewLine(); ok && line.kind == homeSession {
 			if where := homeWhere(line); where != "" && where != a.workspace {
 				if !homeFolderThere(where) {
 					h.say(homeGoneWord+" · "+where, "")
 					return nil
 				}
-				if !h.box.empty() {
-					h.say("clear or send your message first · ctrl+t starts fresh in "+where, "")
-					return nil
+				// A ROW MAY RECORD A NAME WHERE IT RECORDED NO PATH ([homeWhere]),
+				// and a pin is an ADDRESS or it is nothing — pages.go's
+				// [scopeAddress] states that law about the reading this pin
+				// replaces. The list's own resolver answers the name.
+				if resolved := h.typedPlace(where); resolved != "" {
+					where = resolved
 				}
-				return a.homeStart(where)
+				a.target.where = where
 			}
 			return a.homeStart(strings.TrimSpace(h.box.String()))
 		}
@@ -3034,17 +3115,64 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 		// wastes a keystroke and a second of somebody's attention on a raw error.
 		//
 		// AND ON THIS MACHINE IT IS NOT THE END OF THE ROAD. The conversation
-		// can be MOVED here — asked for, let go of when the other window's reply
-		// ends, and then opened by the ordinary door below (takeover.go). Over
-		// --host it is: the holder is a window on this laptop and the journal is
-		// on the far machine, so there is nobody to ask.
+		// comes here — instantly where an engine holds it, and by asking the
+		// window that does where one does not ([app.homeHeldEnter]). Over --host
+		// it is the end: the holder is a window on this laptop and the journal is
+		// on the far machine, so there is nobody to ask and nothing to attach to.
 		if !a.hosted() {
-			return a.homeTakeoverEnter(line)
+			return a.homeHeldEnter(line)
 		}
 		h.say(sessionBusyWord, "")
 		return nil
 	}
 	return a.homeOpenDoor(line)
+}
+
+// homeHeldEnter is enter on a row somebody else is holding, and it is where the
+// two roads part.
+//
+// AN ENGINE-HELD CONVERSATION IS SIMPLY OPENED, WITH NO CEREMONY AT ALL. The
+// engine owns the journal and holds the session; the ordinary door asks it for
+// that session and gets it back mid-turn, in well under a second, with the work
+// still moving (internal/enginehost's Host.open — "THE WHOLE PRODUCT IS THIS
+// LINE"). Nothing is taken from anybody: the window that had it is told by the
+// engine and steps back on its own ([app.movedAway]), and the way back is this
+// same keystroke from the other side. A confirmation would be asking somebody to
+// agree to something that costs one enter to undo.
+//
+// AND THE OLD ROAD IS WHAT IS LEFT WHEN THAT FAILS. A window with no engine
+// behind it holds the journal in its own process, and the only thing anybody can
+// do is ask ([app.homeTakeoverEnter]). Two answers land here: no engine
+// answering at all, and an engine that answered and then refused the journal —
+// which is exactly a bare window holding the lock in a workspace that also has
+// an engine. The refusal is read rather than guessed at, because between the
+// question and the open a window can appear.
+func (a *app) homeHeldEnter(line homeLine) tea.Cmd {
+	if !a.engineHolds(homeWhere(line)) {
+		return a.homeTakeoverEnter(line)
+	}
+	cmd, refusal := a.homeWalkIn(line)
+	if refusal == sessionBusyWord {
+		return a.homeTakeoverEnter(line)
+	}
+	if refusal != "" {
+		a.home.say(refusal, "")
+		return nil
+	}
+	return cmd
+}
+
+// engineHolds is [Options.EngineAnswers] asked about one project, and false for
+// every window that has no engine road.
+//
+// IT IS ASKED ON A KEYSTROKE AND NEVER ON A FRAME, which is the same law
+// [app.homeHeldNow] keeps about the flock beside it: this is a connect to a
+// socket, and a row's LABEL may not cost one.
+func (a *app) engineHolds(workspace string) bool {
+	if a.engineAnswers == nil || a.open == nil || strings.TrimSpace(workspace) == "" {
+		return false
+	}
+	return a.engineAnswers(workspace)
 }
 
 // homeOpenDoor is the ORDINARY open, from the folder check onward, and it is on
@@ -3053,7 +3181,24 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 // spellings of "open the row" is two answers to whether a folder that vanished
 // is checked, and the second road is the one where the most time has passed.
 func (a *app) homeOpenDoor(line homeLine) tea.Cmd {
-	h := &a.home
+	cmd, refusal := a.homeWalkIn(line)
+	if refusal != "" {
+		// HOME TAKES THE REFUSAL ITSELF rather than letting it be said in the
+		// conversation. A refusal on this screen belongs to this screen: notes
+		// stack in a transcript, and pressing enter twice on a locked row is
+		// exactly how somebody would find that out.
+		a.home.say(refusal, "")
+		return nil
+	}
+	return cmd
+}
+
+// homeWalkIn is that same door with its refusal HANDED BACK rather than said,
+// because one caller has somewhere else to go with it: a held row whose engine
+// turned out not to be holding the conversation after all falls to the asking
+// road, and reading the refusal is the only way to tell those apart
+// ([app.homeHeldEnter]).
+func (a *app) homeWalkIn(line homeLine) (tea.Cmd, string) {
 	where := homeWhere(line)
 	if !homeFolderThere(where) {
 		// ONE os.Stat, ON THE KEYSTROKE, in the same place the flock probe puts
@@ -3062,23 +3207,17 @@ func (a *app) homeOpenDoor(line homeLine) tea.Cmd {
 		// standing in the folder. It stops being free the moment enter opens
 		// somebody else's: an agent whose tool root does not exist fails every
 		// bash and every relative path in a way nothing on screen explains.
-		h.say(homeGoneWord+" · "+where, "")
-		return nil
+		return nil, homeGoneWord + " · " + where
 	}
 	// AND THE CONVERSATION THIS WINDOW WAS IN GOES ON RUNNING. It is detached
 	// rather than closed and put in the keeper, which is the whole of what makes
 	// home a switcher rather than a list of places to go to in another terminal.
 	cmd, refusal := a.openBeside(where, line.row.Transcript)
 	if refusal != "" {
-		// HOME TAKES THE REFUSAL ITSELF rather than letting it be said in the
-		// conversation. A refusal on this screen belongs to this screen: notes
-		// stack in a transcript, and pressing enter twice on a locked row is
-		// exactly how somebody would find that out.
-		h.say(refusal, "")
-		return nil
+		return nil, refusal
 	}
 	a.closeHome()
-	return tea.Batch(cmd, a.homeLandOnTask(line))
+	return tea.Batch(cmd, a.homeLandOnTask(line)), ""
 }
 
 // homeLandOnTask is the SECOND HALF of a door whose row was named after one
@@ -3264,31 +3403,33 @@ func (a *app) homeStart(text string) tea.Cmd {
 			return nil
 		}
 		a.closeHome()
+		// AND THE PINNED MODEL COMES WITH IT. A path typed into the box is still
+		// a conversation started from home, and the rule above the box said what
+		// it would answer on (homedraft.go).
+		a.applyTargetModel()
 		// AND THE FIRST MESSAGE IS NOT SENT FOR THEM. What was typed named a
 		// place and not a sentence, so there is nothing to send — the pictures
 		// and the files are on the new conversation's tray, in front of the
 		// person, waiting for the words they were dropped to go with.
 		return cmd
 	}
-	a.closeHome()
-	// THE TRAY COMES TOO, and it comes through [app.renew] rather than around it:
-	// the conversation being left hands its chips to the aside and the renew hands
-	// them back, on the law that the draft goes with the PERSON (detach.go).
-	renewed, started := a.renew()
-	// THE SENTENCE IS ONLY SENT INTO A CONVERSATION THE RENEW ACTUALLY OPENED,
-	// which is what remains of this door's repair now that the keeper refuses
-	// nothing. Home used to close itself, ask for a conversation, and submit
-	// whether or not one came back — so a refusal met after the close sent the
-	// words into whatever was already on screen. There is no cap to be refused
-	// by any more, but a door can still fail (a session folder that cannot be
-	// made), and the bool is what tells the two apart.
-	if !started {
-		// The door itself failed — a session folder that could not be made — and
-		// [app.renew] has said so where a person is now standing. The sentence
-		// goes into the box in front of them rather than into a conversation it
-		// was not meant for: it is still theirs to send, and this door has always
-		// promised the words go with the PERSON.
-		a.input.setText(text)
+	// AND EVERYTHING ELSE OPENS AT THE TARGET (homedraft.go). This is the half of
+	// the repair a person actually feels: the rule above the box says `→ new
+	// conversation in ~/src/parser`, and until this wave `enter` opened one in
+	// THIS WINDOW'S workspace and ignored it. The row under the cursor and the
+	// key disagreed about where a sentence went, which is exactly the drift the
+	// scope chip existed to end and could not, because nothing read it.
+	started, opened := a.homeOpenAtTarget()
+	if !opened {
+		// A door that failed has already said so where the person is standing —
+		// [app.renew] into home's own line, [app.startBeside]'s refusal onto it.
+		// Where the screen went with it, the sentence goes into the box in front
+		// of them rather than into a conversation it was not meant for: it is
+		// still theirs to send, and this door has always promised the words go
+		// with the PERSON.
+		if !a.at(pageHome) {
+			a.input.setText(text)
+		}
 		return nil
 	}
 	// A FULL TRAY IS A MESSAGE, which is input.go's law about enter said at the
@@ -3296,9 +3437,74 @@ func (a *app) homeStart(text string) tea.Cmd {
 	// is not an empty message, and the door that carries the pictures is the
 	// tray's own (attach.go's [app.submitImages]).
 	if len(a.chips) > 0 {
-		return tea.Batch(renewed, a.submitImages(text))
+		return tea.Batch(started, a.submitImages(text))
 	}
-	return tea.Batch(renewed, a.submit(text))
+	if strings.TrimSpace(text) == "" {
+		return started
+	}
+	return tea.Batch(started, a.submit(text))
+}
+
+// homeOpenAtTarget is the ONE DOOR onto a conversation started from home: the
+// folder on the rule, the model on the rule, and home closing behind you. It
+// sends nothing — what to send is the caller's question, and there are three
+// callers with three answers ([app.homeStart] sends the sentence, `ctrl+t`
+// sends whatever was typed, and homeslash.go's gate sends a command).
+//
+// TWO ROADS, AND WHICH ONE IS THE TARGET'S OWN ANSWER. A target somewhere other
+// than this window's workspace is [app.startBeside] — a fresh conversation
+// THERE, with the one in front stepped aside into the keeper. The window's own
+// workspace is [app.renew], which additionally TAKES THE PLACE of the
+// conversation behind home when that one is fresh and empty, and that is the
+// behaviour a person has had since before home had a target.
+//
+// THE FOLDER PIN IS SPENT HERE AND THE MODEL PIN IS NOT (homedraft.go's owner
+// ruling). It is spent on the way OUT rather than on the way in, so a door that
+// refused leaves the pin a person set exactly where they set it.
+func (a *app) homeOpenAtTarget() (tea.Cmd, bool) {
+	where := strings.TrimSpace(a.targetWhere())
+	if where != "" && where != strings.TrimSpace(a.workspace) {
+		// THE TRAY GOES WITH THE PERSON, and carrying it means taking it OUT of
+		// the conversation being stepped aside from before the aside is stowed —
+		// the law the typed-path branch above states in full.
+		carried := a.chips
+		a.chips = nil
+		cmd, refusal := a.startBeside(where)
+		a.chips = carried
+		if refusal != "" {
+			a.home.say(refusal, "")
+			return nil, false
+		}
+		a.spendTargetWhere()
+		a.closeHome()
+		a.applyTargetModel()
+		return cmd, true
+	}
+	a.closeHome()
+	// THE TRAY COMES TOO, and it comes through [app.renew] rather than around it:
+	// the conversation being left hands its chips to the aside and the renew hands
+	// them back, on the law that the draft goes with the PERSON (detach.go).
+	renewed, started := a.renew()
+	if !started {
+		return nil, false
+	}
+	a.spendTargetWhere()
+	a.applyTargetModel()
+	return renewed, true
+}
+
+// applyTargetModel puts the pinned model onto the conversation that has just
+// opened, and does nothing at all where nobody pinned one.
+//
+// IT IS CALLED AFTER THE ATTACH AND NEVER BEFORE IT. [app.startBeside] and
+// [app.renew] both swap the agent synchronously, so `a.model` here is the new
+// conversation's — which is what makes "pinned, and different from what this
+// would have used anyway" the honest test ([app.targetModelPinned]).
+func (a *app) applyTargetModel() {
+	if !a.targetModelPinned() {
+		return
+	}
+	a.switchModel(strings.TrimSpace(a.target.model), 0)
 }
 
 // homeDroppedLine is the enter net over home's own box, and it reports whether
@@ -3970,6 +4176,13 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 		// placemouse.go's [app.placeBoxPress]). Emptying it here is the same
 		// answer the clamp gives a box it cut off: no rows, no press.
 		a.boxRow, a.boxRows = 0, 0
+		// AND THE RULE'S DOORS GO WITH IT. The phone tier draws the target as a
+		// label and never as two pressable segments — there is no `alt` on a
+		// phone and nothing to press it with — so a span left standing from the
+		// wide frame would be a press answered by a door this frame never drew
+		// (homedraft.go, placemouse.go's [app.placeTargetPress]).
+		a.targetRow = -1
+		a.targetFolderSpan, a.targetModelSpan = hudSpan{}, hudSpan{}
 		return a.homePhoneFrame(width, height)
 	}
 	// EVERYTHING ABOVE AND BELOW THE BODY BELONGS TO THE ROUTER NOW (pages.go).
@@ -4255,6 +4468,10 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 			// AND HOW THIS TERMINAL SPELLS A CHORD, for the section line's own two
 			// keys (chords.go).
 			chords: a.chords,
+			// AND WHETHER A QUESTION THIS WINDOW RAISED IS ALREADY ON THE CARD
+			// beside the row, which costs the row its grown door
+			// (homeconfirm.go).
+			asking: a.home.ask != nil,
 		})
 	}
 	switch line.kind {
@@ -4741,10 +4958,7 @@ func (a *app) homeRowGlyph(row session.SessionRow, spins bool) string {
 		return a.homeSpinGlyph()
 	}
 	if row.Tasks.Running == 0 && row.Tasks.Incomplete == 0 && a.homeFresh(row) > 0 {
-		if a.pal.ascii {
-			return glyphDoneASCII
-		}
-		return glyphDone
+		return a.icon(tokens.GSettled)
 	}
 	return homeGlyph(row, a.pal.ascii)
 }
@@ -5021,7 +5235,15 @@ func (a *app) homeHolding(row session.SessionRow) string {
 	case a.holding(row.Transcript):
 		word = "open here"
 	case row.Open || row.Live:
+		// WHICH KIND OF HOLDER IT IS COMES FROM THE LAST ASK AND NEVER FROM THIS
+		// FRAME. The engine is asked over a socket, which is a keystroke's cost
+		// and not a label's ([app.homeHeld] states that law), so home asks about
+		// the held rows on its own beat and this reads the answer
+		// ([app.engineHeld]).
 		word = homeHeldWord
+		if a.engineHeld(row) {
+			word = homeEngineWord
+		}
 	default:
 		return ""
 	}
@@ -5047,7 +5269,7 @@ func (a *app) homeHolding(row session.SessionRow) string {
 //
 // THE WORDS THEMSELVES ARE NOT THIS FILE'S. They are [taskStateWord]
 // (taskview.go), which the task page's own record rows and the record card both
-// answer through — one vocabulary, so a task called `needs your look` on this
+// answer through — one vocabulary, so a task called `your call` on this
 // screen is not called something else on the next one. What belongs to home is
 // the LIVENESS QUESTION: this screen judges a row against the conversation that
 // wrote it, and the task page judges it against the windows that are open.
@@ -5061,8 +5283,8 @@ func homeTaskWord(entry session.TaskIndexEntry, row session.SessionRow) string {
 // has the node out, exactly as the counts and the old state words did. So:
 //
 //	⠋ (accent)  running this instant — the spinner, home's one moving part
-//	◌ (dim)     queued, or left mid-way by a window that went — nothing turns
-//	✗ (bad)     failed;  ? (warn)  finished and needs your look
+//	○ (dim)     queued, or left mid-way by a window that went — nothing turns
+//	✕ (bad)     a fault;  ? (warn)  the person's call
 //	✓ (muted)   landed — and ACCENT when it landed since you last looked
 //
 // The one departure from the task surfaces: a queued node and an incomplete one
@@ -5073,50 +5295,20 @@ func homeTaskWord(entry session.TaskIndexEntry, row session.SessionRow) string {
 func (a *app) homeTaskGlyph(entry session.TaskIndexEntry, row session.SessionRow) string {
 	pal := a.pal
 	status := taskEntryStatus(entry, row.Runs(entry))
-	switch status.Presence {
-	case session.TaskPresenceWorking, session.TaskPresenceWaiting, session.TaskPresenceFinishing:
-		if a.linear {
-			return pal.accent(glyphRunASCII)
-		}
-		return pal.accent(tokens.Spinner(a.paints / spinnerStep))
-	case session.TaskPresenceIncomplete:
-		// A row nothing holds any more is "started and not turning", which is the
-		// empty circle and not the steer mark: nothing was found wrong with work a
-		// window walked away from.
-		if status.Liveness == session.TaskLivenessUnclaimed {
-			if pal.ascii {
-				return pal.dim(glyphQueuedASCII)
-			}
-			return pal.dim(glyphQueued)
-		}
-		if !status.Fault {
-			if pal.ascii {
-				return pal.warn(homeStuckASCII)
-			}
-			return pal.warn(homeStuckGlyph)
-		}
-		return pal.bad(pal.badGlyph())
-	case session.TaskPresenceStopped:
-		if pal.ascii {
-			return pal.dim(glyphStoppedASCII)
-		}
-		return pal.dim(glyphStopped)
-	case session.TaskPresenceNeedsLook:
-		return pal.warn(glyphUnverified)
-	case session.TaskPresenceQueued:
-		if pal.ascii {
-			return pal.dim(glyphQueuedASCII)
-		}
-		return pal.dim(glyphQueued)
+	// A ROW NOTHING HOLDS ANY MORE is "started and not turning", which is the
+	// empty circle and not a state it never reached: nothing was found wrong with
+	// work a window walked away from. It is the one reading this screen makes
+	// that the tier cannot, and it is home's own liveness question.
+	if status.Presence == session.TaskPresenceIncomplete && status.Liveness == session.TaskLivenessUnclaimed {
+		return pal.dim(pal.glyph(tokens.GQueued))
 	}
-	mark := glyphDone
-	if pal.ascii {
-		mark = glyphDoneASCII
+	// AND A LANDING SINCE YOU LAST LOOKED IS LIT. It is the same tick in the same
+	// place; what the accent says is that it is NEW, which is the only fact on
+	// this screen the reading has no way to know.
+	if status.Presence == session.TaskPresenceDone && a.homeEntryFresh(row, entry) {
+		return pal.accent(tierGlyph(pal, status))
 	}
-	if a.homeEntryFresh(row, entry) {
-		return pal.accent(mark)
-	}
-	return pal.muted(mark)
+	return a.tierCell(status)
 }
 
 // homeFilesTouched is how many files this conversation's work wrote, summed
@@ -5140,6 +5332,13 @@ func homeFilesTouched(row session.SessionRow) int {
 // this is deliberately not. Every other row says what ITS keys do and takes the
 // router's two on the end.
 func (a *app) homeHint() string {
+	// AND THE MODEL LIST OVER THE TARGET NAMES ITS OWN THREE KEYS AND NOTHING
+	// ELSE. It has the whole keyboard while it is up (homedraft.go), so the
+	// router's tail would be two keys that do nothing — which is the one state
+	// this surface may never be in.
+	if a.targetPickShowing() {
+		return targetPickWord
+	}
 	hint := a.homeHintWords()
 	if hint == homeFootWord {
 		return homeRestHint
@@ -5195,17 +5394,24 @@ func (a *app) homeHintWords() string {
 		// true of a "/" line — the words can be asked about as words — so the
 		// clause that changes is the one that stopped being true.
 		//
-		// AND THE ORDER IS THE DROP ORDER. This sentence is a hundred and fourteen
-		// cells with the router's two keys on it, so a hundred-column frame cannot
-		// hold all of it and [hintFit] drops the clause nearest the way out —
-		// `↑ pick a match` — first. That is the right one to lose: ↑↓ walking a
-		// list is the key the resting foot already names (`↑↓ pick`) and the map
-		// names again, while `ctrl+enter` is a chord no other surface spells. A
-		// wide frame still says all three.
+		// `ask here` IS ↑ AND NOT A CHORD ANY MORE. `ctrl+enter` is still bound
+		// (above) and is no longer advertised: most terminals cannot send it at
+		// all, and `alt+enter` — the spelling that survives everywhere — belongs
+		// to the task layer on every place (placekeys.go). What every terminal
+		// CAN do is press the arrow key, and the row is already there: `? ask
+		// here: "…"` sits directly above `+ start a new conversation: "…"` with
+		// the cursor resting on the latter (homeexchange.go), so one ↑ is the ask
+		// and two is the first match. A foot that went on naming a chord a hand
+		// cannot send was the screen advertising a key that does not exist.
+		//
+		// AND THE ORDER IS THE DROP ORDER. [hintFit] drops the clause nearest the
+		// way out — `↑↑ pick a match` — first, which is the right one to lose:
+		// ↑↓ walking a list is the key the resting foot already names (`↑↓ pick`)
+		// and the map names again. A wide frame still says all three.
 		if a.home.runLabel(strings.TrimSpace(a.home.box.String())) != "" {
-			return "enter runs this command · ctrl+enter ask here · ↑ pick a match · esc clear"
+			return "enter runs this command · ↑ ask here · ↑↑ pick a match · esc clear"
 		}
-		return "enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · esc clear"
+		return "enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear"
 	case line.kind == homeQuiet && line.folded:
 		return "enter or → show them · esc close"
 	case line.kind == homeQuiet:

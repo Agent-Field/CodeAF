@@ -13,6 +13,7 @@ package session
 // — the half that matters most — what does NOT move with it.
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -193,29 +194,68 @@ func TestRetargetTaskMovesNothingButTheNodeItNames(t *testing.T) {
 	land()
 }
 
-// A SETTLED NODE IS REFUSED IN THE ROOM'S OWN WORDS. Its model is a fact about
-// what happened: a person may read it and nothing may edit it.
-func TestRetargetTaskRefusesANodeThatIsNotRunning(t *testing.T) {
-	agent, node, _, land := retargetAgent(t)
+// A saved continuation choice leaves the completed attempt and its worker intact.
+func TestRetargetTaskSavesContinuationWithoutRewritingTheAttempt(t *testing.T) {
+	agent, node, child, land := retargetAgent(t)
 	land()
 	waitDoneNode(t, node)
-
-	err := agent.RetargetTask(node.id, "claude-sonnet-5")
-	if err == nil {
-		t.Fatal("a settled node accepted a new model")
+	before := node.notice()
+	if before.Brief != "b" || before.Acceptance != "a" {
+		t.Fatal("task snapshot omitted its original contract")
 	}
-	if want := "is done, not running"; !strings.Contains(err.Error(), want) {
-		t.Fatalf("the refusal reads %q, want the room's own wording %q", err, want)
+	if err := agent.RetargetTask(node.id, "claude-sonnet-5"); err != nil {
+		t.Fatal(err)
 	}
-	// And the refusal changed nothing: the row still names what the work ran on.
-	if got := node.model(); got != "anthropic/claude-opus-5" {
-		t.Fatalf("a refused retarget still moved the node to %q", got)
+	if err := agent.SetTaskEffort(node.id, "high"); err != nil {
+		t.Fatal(err)
+	}
+	after := node.notice()
+	if after.State != before.State || after.Model != before.Model || after.Report != before.Report || child.Model() != before.Model {
+		t.Fatal("saving continuation settings changed the completed attempt")
+	}
+	if after.NextModel != "anthropic/claude-sonnet-5" {
+		t.Fatalf("next model: %q", after.NextModel)
+	}
+	node.graph.mu.Lock()
+	record := node.recordLocked()
+	node.graph.mu.Unlock()
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var disk taskRecord
+	if err := json.Unmarshal(encoded, &disk); err != nil {
+		t.Fatal(err)
+	}
+	restored := restoreNode(newTaskGraph(), disk)
+	if restored.nextModel != after.NextModel || restored.nextEffort == nil || *restored.nextEffort != "high" || restored.spec.model != before.Model {
+		t.Fatal("continuation setup did not survive the checkpoint record")
+	}
+	seen := make(chan string, 1)
+	node.graph.mu.Lock()
+	node.graph.run = func(n *TaskNode) {
+		seen <- n.model() + "/" + n.effortRung().String()
+		n.finish("continued", nil, "", "")
+		n.graph.complete(n, TaskDone)
+	}
+	node.graph.mu.Unlock()
+	if err := agent.ContinueTask(node.id, "continue the work"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-seen:
+		if got != "anthropic/claude-sonnet-5/high" {
+			t.Fatalf("continued worker setup: %s", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("continuation never ran")
+	}
+	waitDoneNode(t, node)
+	if node.notice().NextModel != "" {
+		t.Fatal("consumed model choice remains pending")
 	}
 }
 
-// THE OTHER TWO REFUSALS: an id this session never admitted, and a word no model
-// here answers to. Both are sentences a caller can act on rather than a silent
-// no-op.
 func TestRetargetTaskRefusesAnUnknownIdAndAnUnknownModel(t *testing.T) {
 	agent, node, _, land := retargetAgent(t)
 	defer land()

@@ -8,21 +8,25 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// NO ANSWER IS EVER CUT, at any width this surface draws at. The card is the
+// question block's now (question.go), which puts every answer on a row of its
+// own and degrades by giving up its TAIL — so the three answers survive a
+// twenty-six-column frame that the old one-row layout had to shorten them for.
 func TestClosingAWorkingTabKeepsEveryAnswerVisibleOnANarrowTerminal(t *testing.T) {
 	for _, width := range []int{26, 38, 60, 120} {
 		a, _, first := asyncApp(t)
+		a.width = width
 		turning(a, first)
 		a.askTabClose(a.frontChatTab())
-		rows := a.tabCloseRows(width)
-		plain := ansi.Strip(rows[1])
-		for _, word := range []string{"keep", "stop", "cancel"} {
-			if !strings.Contains(plain, word) {
-				t.Fatalf("width %d lost %q: %q", width, word, plain)
+		rows := ansi.Strip(strings.Join(a.questionRows(width), "\n"))
+		for _, word := range []string{"keep running", "stop work", "cancel"} {
+			if !strings.Contains(rows, word) {
+				t.Fatalf("width %d lost %q:\n%s", width, word, rows)
 			}
 		}
-		for _, span := range a.tabClose.spans {
-			if span.from < 0 || span.to > width {
-				t.Fatalf("width %d has an invisible answer: %+v", width, span)
+		for _, band := range a.questionBands {
+			if band.span.from < 0 || band.span.to > width {
+				t.Fatalf("width %d has an unreachable answer: %+v", width, band)
 			}
 		}
 	}
@@ -65,14 +69,16 @@ func TestTypedConnectionInputAllowsSafeTabCloseAndCancel(t *testing.T) {
 	a, _, first := asyncApp(t)
 	turning(a, first)
 	a.askConnect(session.Event{Kind: session.EventConnectAsk, ConnectID: "typed", Service: "stripe", ServiceName: "Stripe", NeedsKey: true})
-	a.connAsks[0].key = &editor{}
-	a.connAsks[0].key.setText("unsent fixture")
+	// The typed answer goes into the MESSAGE BOX now, which is what the question
+	// owning the box means ([questionOwnsBox]) — so this is the half-typed key,
+	// where it actually lives.
+	a.input.setText("unsent fixture")
 	drive(t, a, key("ctrl+w"))
 	if !a.closingTab() {
 		t.Fatal("typed input swallowed the close-tab chord")
 	}
 	drive(t, a, key("esc"))
-	if a.closingTab() || !a.entering() || a.connAsks[0].key.String() != "unsent fixture" {
+	if a.closingTab() || !a.entering() || a.input.String() != "unsent fixture" {
 		t.Fatal("cancel changed the pending input")
 	}
 }

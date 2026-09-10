@@ -121,15 +121,15 @@ func TestTheSetupOpensOnAnOrdinaryLaunchWithNoKey(t *testing.T) {
 }
 
 // AND IT ASKS ONLY WHAT IS MISSING, on the ordinary launch too. A key in the
-// shell drops the provider step and leaves the two first-run preferences — the
-// law [TestAKeyInTheShellSkipsTheKeyStepSilently] states over a named profile,
+// shell drops the provider step and leaves the controls screen — the law
+// [TestAKeyInTheShellSkipsTheKeyStepSilently] states over a named profile,
 // asked here of the launch nearly everybody actually takes.
 func TestAKeyInTheShellDropsTheProviderStepOnAnOrdinaryLaunch(t *testing.T) {
 	a := ordinaryLaunch(t, Options{Setup: true, ConnectOpenRouter: ordinaryConnect}, func() {
 		t.Setenv(config.APIKeyEnv, "sk-or-v1-from-the-shell-0123456789")
 	})
-	if !a.setup.open || len(a.setup.steps) != 2 || a.setup.steps[0] != setupCrew {
-		t.Fatalf("with the key in the shell only the crew and the ceiling are asked, got open=%v steps=%v",
+	if !a.setup.open || len(a.setup.steps) != 1 || a.setup.steps[0] != setupControls {
+		t.Fatalf("with the key in the shell only the controls are asked, got open=%v steps=%v",
 			a.setup.open, a.setup.steps)
 	}
 	if screen := ordinaryScreen(a); strings.Contains(screen, "connect openrouter") {

@@ -400,9 +400,10 @@ func taskKindWordSet(kind string) map[string]bool {
 // is the vocabulary a person already reads on a row: work that landed, work the
 // check would not accept, work that did not finish, work somebody stopped, and
 // work waiting on somebody to look at it. No machinery vocabulary reaches this
-// string — it goes into a file a person may open, and `needs your look` is the
-// surface's own words for that state rather than a second spelling of them
-// (CLAUDE.md's vocabulary law).
+// string — it goes into a file a person may open, and the tier's own word
+// ([taskWordYourCall]) is read from where every surface reads it rather than
+// spelled a second time here. `needs your look`, which this line used to write,
+// is deleted (CLAUDE.md's vocabulary law, docs/design/task-states/DESIGN.md).
 //
 // THE ENDING IS READ AND NOT ONLY THE STATE, because a node fails for two
 // completely different reasons and one of them is not about the work at all. A
@@ -423,7 +424,7 @@ func taskGradeOutcome(state TaskState, ending TaskEnding, stopped bool) string {
 	case state == TaskDone:
 		return "landed"
 	case state == TaskUnverified:
-		return "needs your look"
+		return taskWordYourCall
 	case state == TaskFailed && ending == TaskEndingRefused:
 		return "not accepted"
 	case state == TaskFailed && stoppedByProcessRule(ending):

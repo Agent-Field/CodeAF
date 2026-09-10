@@ -252,7 +252,7 @@ func TestARunningCardLeadsTheRowWithItsState(t *testing.T) {
 	}
 	card := homeCardFor(t, a, other)
 	work := cardLine(card, "Port the picker")
-	state := cardLine(card, homeLiveGlyph+" running")
+	state := cardLine(card, homeLiveGlyph+" working")
 	if work < 0 || state < 0 {
 		t.Fatalf("the running card is missing a band (work %d, state %d):\n%s",
 			work, state, strings.Join(card, "\n"))

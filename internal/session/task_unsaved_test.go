@@ -152,7 +152,7 @@ func TestAcceptingWorkThatCannotBeSavedSettlesWhereItStands(t *testing.T) {
 	node.finish("wrote the parser", []string{"parser.py"}, tree.branch, tree.merge)
 	readOnlyGitDir(t, tree)
 
-	if err := agent.acceptTask(node, "I read it myself"); err != nil {
+	if err := agent.acceptTask(node, "I read it myself", TaskAskOwnerPerson); err != nil {
 		t.Fatalf("acceptTask: %v", err)
 	}
 
@@ -163,7 +163,7 @@ func TestAcceptingWorkThatCannotBeSavedSettlesWhereItStands(t *testing.T) {
 	if !strings.HasPrefix(report, keptWhereItIsLead) {
 		t.Fatalf("the report leads with %q, want the words a person reads for work that stayed where it is", report)
 	}
-	if strings.Contains(report, needsLookLead) {
+	if strings.Contains(report, yourCallLead(node.notice().StatusFacts())) {
 		t.Fatalf("the report still asks somebody to look at a decision they already made:\n%s", report)
 	}
 	if !strings.Contains(report, tree.dir) {
@@ -265,7 +265,7 @@ func TestAcceptingAFolderFamilyThatCannotBeLaidSettlesWhereItStands(t *testing.T
 	node.setTree(parent)
 	node.finish("wrote the report", []string{"a.md", "sub/b.md"}, parent.branch, parent.merge)
 
-	if err := agent.acceptTask(node, "I read it myself"); err != nil {
+	if err := agent.acceptTask(node, "I read it myself", TaskAskOwnerPerson); err != nil {
 		t.Fatalf("acceptTask: %v", err)
 	}
 
@@ -524,7 +524,7 @@ func TestASettledLandingThatSavedNothingSaysSoInTheJobLog(t *testing.T) {
 
 	var log strings.Builder
 	state := agent.landConflicted(context.Background(), node, tree, []string{"parser.py"},
-		"it wrote the parser", mergeAborted, detail, &log)
+		"it wrote the parser", mergeAborted, detail, refusedByTheWork, &log)
 
 	if state != TaskUnverified {
 		t.Fatalf("state = %q, want it to need a look", state)

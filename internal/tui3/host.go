@@ -332,7 +332,19 @@ func (a *app) hostedPath(path string) string {
 // this is the narrowest true statement of what is off, and the card, the offer
 // row and the enter key all read it rather than each deciding for themselves.
 func (a *app) hostedBrowserSignIn() bool {
-	return a.hosted() && a.asksConnect() && (!a.connAsks[0].needsKey || a.connAsks[0].blank != "")
+	head, ok := a.connectAsking()
+	if !ok {
+		return false
+	}
+	ask, found := a.connAskOf(head.question.Token())
+	return found && a.hostedBrowserSignInFor(ask)
+}
+
+// hostedBrowserSignInFor is the same sentence about ONE offer, which is what the
+// offer's own question is built from before it is on the block to be found by
+// [app.hostedBrowserSignIn] (connect.go's [app.connectShown]).
+func (a *app) hostedBrowserSignInFor(ask connAsk) bool {
+	return a.hosted() && (!ask.needsKey || ask.blank != "")
 }
 
 // pathRoot is where a relative path the person typed is anchored.

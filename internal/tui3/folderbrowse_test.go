@@ -773,6 +773,10 @@ func TestTheRepositorySnapIsSaidOutLoud(t *testing.T) {
 func TestTheTrayShowsTheFoldersAndTakesOneOff(t *testing.T) {
 	a, agent, root := browseLab(t)
 	a.entries = nil
+	// The greeting holds the box on an untouched conversation and draws its own
+	// draft with no tray on it (welcome.go), so there is no tray row to press
+	// until it is put away — which the first keystroke does.
+	a.dismissWelcome()
 	if got := a.placeTrayCells(); len(got) != 0 {
 		t.Fatalf("a conversation about nowhere drew %v", got)
 	}
@@ -791,10 +795,11 @@ func TestTheTrayShowsTheFoldersAndTakesOneOff(t *testing.T) {
 	}
 
 	// The press goes off the loop and the cell comes off when the answer lands.
-	_, height := a.size()
-	rows, _, _, _ := a.chrome(a.width)
-	at := len(rows) - 1 - a.overlayHeight() - a.inputHeight()
-	drive(t, a, tea.MouseClickMsg{X: len(inputPad), Y: height - len(rows) + at, Button: tea.MouseLeft})
+	// The tray is the input block's FIRST row, read off the layout's own marks
+	// rather than counted back from the foot of the chrome: the breathing blank
+	// moved under the box on 2026-09-09 and a count would be a row out
+	// (attach.go's [app.chipTrayTarget] says the whole of it).
+	drive(t, a, tea.MouseClickMsg{X: len(inputPad), Y: trayRow(a), Button: tea.MouseLeft})
 	if len(agent.places) != 0 {
 		t.Fatalf("the folder is still on the conversation: %+v", agent.places)
 	}
@@ -841,6 +846,8 @@ func (h halfDoorAgent) ReferPlace(path string, arrival session.PlaceArrival) (se
 // the box.
 func TestTheTrayCountsTheFoldersItCannotName(t *testing.T) {
 	a, agent, root := browseLab(t)
+	// As above: the tray is only on the frame once the greeting is away.
+	a.dismissWelcome()
 	for _, name := range []string{"one", "two", "three", "four", "five"} {
 		agent.places = append(agent.places, session.PlaceRef{Path: filepath.Join(root, name), Arrival: session.PlaceSaid})
 	}
@@ -858,9 +865,11 @@ func TestTheTrayCountsTheFoldersItCannotName(t *testing.T) {
 	}
 	// AND IT DOES NOT LIGHT EITHER, which is the same law read the other way:
 	// what brightens under the pointer is what a press acts on.
-	_, height := a.size()
-	rows, _, _, _ := a.chrome(a.width)
-	row := height - len(rows) + len(rows) - 1 - a.overlayHeight() - a.inputHeight()
+	// The tray is the input block's FIRST row, read off the layout's own marks
+	// rather than counted back from the foot of the chrome: the breathing blank
+	// moved under the box on 2026-09-09 and a count would be a row out
+	// (attach.go's [app.chipTrayTarget] says the whole of it).
+	row := trayRow(a)
 	over := len(inputPad) + placeTrayWidth(cells[:placeTrayCap])
 	if at, ok := a.chipTrayTarget(over, row); ok && at <= trayPlaceChip {
 		t.Fatalf("the counting cell answered as folder %d", trayPlaceChip-at)

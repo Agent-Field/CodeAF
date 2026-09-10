@@ -786,6 +786,12 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if editorMotion(&a.taskSheet.query, key) {
 		return nil, true
 	}
+	// AND ctrl+z TAKES BACK WHAT WAS TYPED, in every box on this surface and not
+	// only in the message one (editundo.go).
+	if editorUndo(&a.taskSheet.query, key) {
+		a.taskSheetTyped()
+		return nil, true
+	}
 	if editorWordKill(&a.taskSheet.query, key) {
 		a.taskSheetTyped()
 		return nil, true

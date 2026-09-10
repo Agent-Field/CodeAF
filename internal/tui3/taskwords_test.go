@@ -181,8 +181,8 @@ func heldNotice(why string) session.TaskNotice {
 // survives.
 func TestAHeldNodeSaysWhatIsHoldingItAtEveryWidth(t *testing.T) {
 	for _, tc := range []struct{ why, full, slim string }{
-		{waitWordMachine, "waiting · machine busy", "waiting · machine b…"},
-		{waitWordSlot, "waiting · slot", "waiting · slot"},
+		{waitWordMachine, "queued · machine busy", "queued · machine bu…"},
+		{waitWordSlot, "queued · slot", "queued · slot"},
 	} {
 		t.Run(tc.why, func(t *testing.T) {
 			a, _, _ := taskApp(t)
@@ -207,7 +207,7 @@ func TestAHeldNodeSaysWhatIsHoldingItAtEveryWidth(t *testing.T) {
 			// AND THE COLUMN ITSELF DRAWS IT, at both widths the roster has.
 			for _, width := range []int{200, 110} {
 				a.width = width
-				if roster := rosterText(a, 12); !strings.Contains(roster, taskHeldWord+" · ") {
+				if roster := rosterText(a, 12); !strings.Contains(roster, a.taskStatus(node).Word+" · ") {
 					t.Fatalf("the roster at %d columns does not say the node is held:\n%s", width, roster)
 				}
 			}
@@ -306,7 +306,7 @@ func TestAWaitingDependencyOutranksTheHoldWord(t *testing.T) {
 	// unblocked, it is still not running, and the row says why.
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskDone,
 		session.TaskNotice{Merge: mergeWordMerged})})
-	if got := plain(strings.Join(a.railUnder(node, underWidth(railCols)), "\n")); got != "waiting · slot" {
+	if got := plain(strings.Join(a.railUnder(node, underWidth(railCols)), "\n")); got != "queued · slot" {
 		t.Fatalf("the unblocked node says %q, want the hold", got)
 	}
 }
@@ -328,8 +328,11 @@ func TestTheRoomHeaderSaysWaitingWhileANodeIsHeld(t *testing.T) {
 			a, _, _ := taskApp(t)
 			drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Write the report", tc.state, heldNotice(tc.why))})
 			node := a.tasks[7]
-			if got := a.roomStateWord(node); got != taskHeldWord {
-				t.Fatalf("the header calls a held node %q, want %q", got, taskHeldWord)
+			// AND THE HOLD TRAVELS WITH THE WORD. A row never reads a bare
+			// `waiting`: the reason is the half a person can act on, so the header
+			// says the reading's whole sentence (tasktier.go).
+			if got := a.roomStateWord(node); got != a.taskStatus(node).RowWord() || !strings.Contains(got, tc.why) {
+				t.Fatalf("the header calls a held node %q, want its word and %q", got, tc.why)
 			}
 			// The header is asserted through the rows a person actually reads: the
 			// trail is one row and the state, the clock and the spend are the row
@@ -337,7 +340,7 @@ func TestTheRoomHeaderSaysWaitingWhileANodeIsHeld(t *testing.T) {
 			a.room = a.newRoom(7, "Write the report")
 			head := plain(roomHeadAll(a, 120))
 			if !strings.Contains(head, a.chatCrumbWord()+roomCrumbSep+"Write the report") ||
-				!strings.Contains(head, taskHeldWord) {
+				!strings.Contains(head, tc.why) {
 				t.Fatalf("the room header is %q", head)
 			}
 
@@ -435,23 +438,23 @@ func TestNoTerminalStateEverSpeaksOfTheMachinery(t *testing.T) {
 	}
 }
 
-// THE THREE WORDS THE THIRD STATE IS SPELLED WITH say what is true of it from
-// the outside and nothing about what put it there: it finished, and it is on you
-// to look. They are asserted as literals because the whole point of them is the
-// wording — a constant renamed is a refactor, a constant reworded is a decision.
-func TestTheStateNobodyCouldJudgeReadsAsNeedingYourLook(t *testing.T) {
-	for _, tc := range []struct{ got, want string }{
-		{taskUnverifiedWord, "needs your look"},
-		{taskUnverifiedWaits, "finished — look it over"},
-		{taskUnverifiedGloss, "finished, but needs your look"},
-	} {
-		if tc.got != tc.want {
-			t.Fatalf("the state is spelled %q, want %q", tc.got, tc.want)
-		}
+// THE ONE WORD THE THIRD STATE IS SPELLED WITH says what is true of it from the
+// outside and nothing about what put it there: the machine has done what it can,
+// and the next move is yours. It is asserted as a literal because the whole point
+// of it is the wording — a constant renamed is a refactor, a constant reworded is
+// a decision — and against the engine's own answer, because the surface may not
+// hold a second spelling of a word internal/session already spells.
+func TestTheStateNobodyCouldJudgeReadsAsYourCall(t *testing.T) {
+	if tierYourCallWord != "your call" {
+		t.Fatalf("the state is spelled %q, want %q", tierYourCallWord, "your call")
+	}
+	status := session.ProjectTask(session.TaskFacts{State: session.TaskUnverified})
+	if status.Word != tierYourCallWord {
+		t.Fatalf("the surface says %q and the engine says %q", tierYourCallWord, status.Word)
 	}
 
 	// AND THE GROUP HEADING ALREADY COMPLIED: a column that files this under
-	// "needs you" and then calls the row "unverified" was saying one thing twice
+	// "needs you" and then calls the row something else was saying one thing twice
 	// and getting one of them wrong.
 	if railGroupWords[railAttention] != "needs you" {
 		t.Fatalf("the attention group is headed %q", railGroupWords[railAttention])
@@ -521,10 +524,11 @@ func TestNoSurfaceDrawsTheEnginesOwnMergeWord(t *testing.T) {
 		"the room's header": plain(roomHeadAll(a, 160)),
 		"the roster's row":  plain(strings.Join(a.railUnder(node, 60), "\n")),
 	}
-	card := &taskDone{merge: mergeWordInPlace, branch: "work/7", open: true, span: 55 * time.Second}
-	card.open = false
-	said["the settled card's collapsed tail"] = plain(a.doneTail(card))
-	card.open = true
+	card := &taskDone{
+		merge: mergeWordInPlace, branch: "work/7", open: true, span: 55 * time.Second,
+		status: doneStatus(session.TaskFacts{
+			State: session.TaskDone, Merge: mergeWordInPlace, Branch: "work/7"}),
+	}
 	said["the settled card's expansion"] = plain(strings.Join(a.doneDetail(card, 80), "\n"))
 
 	for where, line := range said {
@@ -534,6 +538,16 @@ func TestNoSurfaceDrawsTheEnginesOwnMergeWord(t *testing.T) {
 		if !strings.Contains(line, taskInPlaceLanding) {
 			t.Errorf("%s does not say where the work landed (%q):\n%s", where, taskInPlaceLanding, line)
 		}
+	}
+	// AND THE LANDING CARD'S HEAD SAYS NOTHING AT ALL ABOUT IT. The head carries
+	// the merge as a FACT — `merged`, `branch kept`, or nothing — and work done in
+	// the person's own folder has no delivery to report: it is already where they
+	// are (docs/design/task-states/DESIGN.md). The expansion above still names the
+	// place beside the branch, which is where somebody looks it up.
+	card.open = false
+	if tail := plain(a.doneTail(card)); strings.Contains(tail, taskInPlaceLanding) ||
+		strings.Contains(tail, mergeWordInPlace) {
+		t.Errorf("the settled card's head reports a delivery for work done in place:\n%s", tail)
 	}
 }
 
@@ -603,7 +617,11 @@ func TestC13AKeptLandingSaysBranchKeptEverywhere(t *testing.T) {
 	if got := plain(strings.Join(a.railUnder(node, 60), "\n")); got != want {
 		t.Fatalf("the rail says %q, want %q", got, want)
 	}
-	card := &taskDone{merge: mergeWordKept, branch: "task/protect"}
+	card := &taskDone{
+		merge: mergeWordKept, branch: "task/protect",
+		status: doneStatus(session.TaskFacts{
+			State: session.TaskDone, Merge: mergeWordKept, Branch: "task/protect"}),
+	}
 	if got := plain(a.doneTail(card)); !strings.Contains(got, " · "+want) {
 		t.Fatalf("the settled card says %q, want it to contain %q", got, want)
 	}

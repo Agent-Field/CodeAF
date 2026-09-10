@@ -639,7 +639,7 @@ func TestAcceptingWorkOverAMergeConflictStillNeedsALook(t *testing.T) {
 	node.setTree(tree)
 	node.finish("edited the shared file", []string{"shared.txt"}, tree.branch, tree.merge)
 
-	if err := agent.acceptTask(node, "I read it myself"); err != nil {
+	if err := agent.acceptTask(node, "I read it myself", TaskAskOwnerPerson); err != nil {
 		t.Fatalf("acceptTask: %v", err)
 	}
 
@@ -650,7 +650,7 @@ func TestAcceptingWorkOverAMergeConflictStillNeedsALook(t *testing.T) {
 	if merge != mergeConflicted {
 		t.Fatalf("merge = %q, want %q", merge, mergeConflicted)
 	}
-	if !strings.HasPrefix(report, needsLookLead) {
+	if !strings.HasPrefix(report, yourCallLead(node.notice().StatusFacts())) {
 		t.Fatalf("the report leads with %q, want the words a person reads for a landing nobody could finish", report)
 	}
 	if strings.Contains(report, keptWhereItIsLead) {
@@ -684,7 +684,7 @@ func TestATreeThatIsNoRepositorySettlesTheAcceptWhereItStands(t *testing.T) {
 	node.setTree(tree)
 	node.finish("wrote the parser", []string{"parser.py"}, tree.branch, tree.merge)
 
-	if err := agent.acceptTask(node, "I read it myself"); err != nil {
+	if err := agent.acceptTask(node, "I read it myself", TaskAskOwnerPerson); err != nil {
 		t.Fatalf("acceptTask: %v", err)
 	}
 
@@ -726,7 +726,7 @@ func TestAnAcceptWithNothingToCommitStillComesHome(t *testing.T) {
 	node.setTree(tree)
 	node.finish("read the parser and found nothing to change", nil, tree.branch, tree.merge)
 
-	if err := agent.acceptTask(node, "I read it myself"); err != nil {
+	if err := agent.acceptTask(node, "I read it myself", TaskAskOwnerPerson); err != nil {
 		t.Fatalf("acceptTask: %v", err)
 	}
 
@@ -1076,7 +1076,7 @@ func TestAWindowOneStallClosedIsDecidedByThePosture(t *testing.T) {
 				if notice.State != TaskUnverified {
 					t.Fatalf("state = %q, want it waiting on somebody (report %q)", notice.State, notice.Report)
 				}
-				if !strings.HasPrefix(notice.Report, needsLookLead) {
+				if !strings.HasPrefix(notice.Report, yourCallLead(notice.StatusFacts())) {
 					t.Fatalf("a watched run stopped asking:\n%s", notice.Report)
 				}
 				return
@@ -1100,7 +1100,12 @@ func TestAWindowOneStallClosedIsDecidedByThePosture(t *testing.T) {
 			if strings.Contains(notice.Report, "nobody could check it in") {
 				t.Fatalf("the landing says nobody was asked, and two checkers were:\n%s", notice.Report)
 			}
-			if strings.Contains(notice.Report, needsLookLead) {
+			// AND IT DOES NOT OPEN WITH A QUESTION. The checker's own sentence
+			// says "nobody could check it" wherever it is quoted, so what tells
+			// the two landings apart is whether the report LEADS with the
+			// question — this one leads with the work's own account and settles
+			// under it.
+			if strings.HasPrefix(strings.TrimSpace(notice.Report), yourCallLead(notice.StatusFacts())) {
 				t.Fatalf("an unattended run still asks somebody who is not there:\n%s", notice.Report)
 			}
 			// AND THE VOCABULARY LAW HOLDS ON THE NEW SENTENCE.

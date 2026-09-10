@@ -20,13 +20,13 @@ func TestTheRoomHeaderSaysTheNodeNeedsALook(t *testing.T) {
 		unverifiedNotice("finished, but needs your look — nothing came back either way"))})
 	node := a.tasks[7]
 
-	if got := a.roomStateWord(node); got != taskUnverifiedWord {
-		t.Fatalf("the header calls a node that needs a look %q, want %q", got, taskUnverifiedWord)
+	if got := a.roomStateWord(node); got != tierYourCallWord {
+		t.Fatalf("the header calls a node that needs a look %q, want %q", got, tierYourCallWord)
 	}
 	// THE MARK IS THE RAIL'S OWN THIRD ONE, not the queued glyph a settled node
 	// was wearing on its own page.
-	if got := a.roomMark(node); got != glyphUnverified {
-		t.Fatalf("the room draws it with %q, want %q", got, glyphUnverified)
+	if got := a.roomMark(node); got != glyphAsk {
+		t.Fatalf("the room draws it with %q, want %q", got, glyphAsk)
 	}
 
 	// And the line a person actually reads, in one piece.
@@ -36,7 +36,7 @@ func TestTheRoomHeaderSaysTheNodeNeedsALook(t *testing.T) {
 	// nothing to do with.
 	head := plain(roomHeadAll(a, 120))
 	trail := a.chatCrumbWord() + roomCrumbSep + "Port the parser"
-	facts := glyphUnverified + " " + taskUnverifiedWord
+	facts := glyphAsk + " " + tierYourCallWord
 	for _, want := range []string{trail, facts} {
 		if !strings.Contains(head, want) {
 			t.Fatalf("the room header is %q, want it to contain %q", head, want)

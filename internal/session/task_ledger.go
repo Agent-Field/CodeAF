@@ -174,10 +174,10 @@ func (a *Agent) landFinished(ctx context.Context, node *TaskNode, tree taskTree,
 	// was when the node started — so it says nothing at all about a file another
 	// window has landed in since. That is the one question left before a merge,
 	// and taskground.go is where it is asked.
-	if shift := a.groundShift(node, changed); shift != "" {
-		return a.landShifted(node, tree, changed, withReport(head, tail), shift, log)
+	if shift, moved := a.groundShift(node, changed); shift != "" {
+		return a.landShifted(node, tree, changed, moved, withReport(head, tail), shift, log)
 	}
-	landed, merge, detail, _ := landHome(node, tree, changed)
+	landed, merge, detail, why := landHome(node, tree, changed)
 	fmt.Fprintf(log, "merge: %s %s%s\n", merge, detail, note)
 	// AND THE ONE QUESTION EVERY ROAD ASKS OF THE OUTCOME: did the work get where
 	// the person can see it ([cameHome], task_land_unsaved.go)? A branch that
@@ -187,7 +187,7 @@ func (a *Agent) landFinished(ctx context.Context, node *TaskNode, tree taskTree,
 	// two apart. Testing for a conflict by hand is exactly how the second reason
 	// walked past all five of these roads (#255).
 	if !cameHome(merge) {
-		return a.landConflicted(ctx, node, tree, landed, withReport(head, tail), merge, detail, log)
+		return a.landConflicted(ctx, node, tree, landed, withReport(head, tail), merge, detail, why, log)
 	}
 	// THE WORK'S OWN ACCOUNT LEADS, AND WHAT IT WAS CHECKED ON STANDS UNDER IT.
 	// Everything downstream reads this report from the top: the settle card quotes
@@ -217,4 +217,17 @@ func (n *TaskNode) clashesWith(files []string) {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	n.clashing = append([]string(nil), files...)
+}
+
+// clashes reads that list back, under the same lock, for the landing that is
+// about to write the question into its report ([yourCallLead]). A copy is
+// handed out rather than the slice itself, because the caller is outside the
+// lock the moment this returns.
+func (n *TaskNode) clashes() []string {
+	if n == nil || n.graph == nil {
+		return nil
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return append([]string(nil), n.clashing...)
 }

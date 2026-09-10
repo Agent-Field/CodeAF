@@ -125,7 +125,7 @@ func TestAnApprovedProposalsBlockDrawsNoTail(t *testing.T) {
 	a := newTestApp(&taskCommandFake{Agent: &fakeAgent{model: "m"}})
 	a.task = &taskCard{id: 41, title: "index the adapters", name: "adapter index"}
 	a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: a.task})
-	a.answerTask(true, "")
+	a.taskAnswered(a.task.id, session.Answer{Key: "1", Picked: []string{"1"}})
 	rows := a.preflightRows(72)
 	if len(rows) != 3 {
 		t.Fatalf("the proposal's block drew %d rows, want 3:\n%s", len(rows), plainRowsText(rows))

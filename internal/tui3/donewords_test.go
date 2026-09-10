@@ -10,26 +10,28 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // ONE SEPARATOR MEANS ONE THING ON THE ROW. The span used to be joined to the
 // state word with a bare space while every other fact on the same row was joined
-// with ` · `, so `needs your look 12m00s` read as one phrase — the state word,
-// which is the reason the card is asking for a hand at all, fused into a
-// duration — beside `4 files · merged`, which was properly separated.
+// with ` · `, so `your call 12m00s` read as one phrase — the state word, which is
+// the reason the card is asking for a hand at all, fused into a duration —
+// beside `4 files · merged`, which was properly separated.
 func TestALandedCardSeparatesItsStateWordFromItsClock(t *testing.T) {
 	a, _, _ := taskApp(t)
 	card := &taskDone{
-		title: roomLongName, unverified: true,
-		span: 12 * time.Minute, changed: []string{"a", "b", "c", "d"},
-		merge: mergeWordMerged,
+		title:  roomLongName,
+		status: doneStatus(session.TaskFacts{State: session.TaskUnverified, Merge: mergeWordMerged}),
+		span:   12 * time.Minute, changed: []string{"a", "b", "c", "d"},
 	}
 	tail := plain(a.doneTail(card))
-	want := " · " + taskUnverifiedWord + " · " + taskSpanWord(12*time.Minute)
+	want := " · " + taskYourCallWord + " · " + taskSpanWord(12*time.Minute)
 	if !strings.Contains(tail, want) {
 		t.Fatalf("the card's head reads\n\t%q\nand its state word and its clock should be two facts:\n\t%q", tail, want)
 	}
-	if strings.Contains(tail, taskUnverifiedWord+" 12m00s") {
+	if strings.Contains(tail, taskYourCallWord+" 12m00s") {
 		t.Fatalf("the card still fuses the state word into the duration:\n\t%q", tail)
 	}
 	// AND EVERY OTHER JOIN ON THE ROW IS THE SAME ONE, so the single separator

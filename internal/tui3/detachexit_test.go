@@ -175,7 +175,7 @@ func TestQuittingSavesTheDraftAndLeavesAQuestionStanding(t *testing.T) {
 	a.draftFile = t.TempDir() + "/draft"
 	a.input.setText("half a sentence")
 	a.parks = []parked{{text: "and one waiting"}}
-	a.asks = []ask{{id: 7, tool: "bash"}}
+	raiseAsk(a, 7, "bash")
 
 	a.quit()
 
@@ -183,8 +183,8 @@ func TestQuittingSavesTheDraftAndLeavesAQuestionStanding(t *testing.T) {
 	if !strings.Contains(saved, "half a sentence") || !strings.Contains(saved, "and one waiting") {
 		t.Errorf("the draft written on the way out is %q", saved)
 	}
-	if len(a.asks) != 1 {
-		t.Errorf("quitting left %d questions standing, want the one it was asked", len(a.asks))
+	if askCount(a) != 1 {
+		t.Errorf("quitting left %d questions standing, want the one it was asked", askCount(a))
 	}
 	if hosted.closes != 0 || hosted.stops != 0 {
 		t.Error("quitting ended the hosted conversation the question belongs to")

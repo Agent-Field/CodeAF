@@ -28,6 +28,7 @@ package tui3
 // being taught; a mark per language would be a second alphabet on the sheet.
 
 import (
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	"path/filepath"
 	"strings"
 )
@@ -50,9 +51,11 @@ const (
 // The marks, and the floor under them. They are constants because the manual
 // quotes the set exactly as it is spelled here.
 const (
-	folderGlyphDir     = "▸"
-	folderGlyphSource  = "◆"
-	folderGlyphText    = "▤"
+	folderGlyphDir    = "▸"
+	folderGlyphSource = "◆"
+	// A page of text is the vocabulary's own read mark (tokens.GActionRead),
+	// which is the same shape for the same thing one surface over.
+	folderGlyphText    = tokens.GlyphActionRead
 	folderGlyphPicture = "▣"
 	folderGlyphMedia   = "▶"
 	folderGlyphBundle  = "▦"

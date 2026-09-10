@@ -39,6 +39,12 @@ import (
 
 const loadCapabilityToolName = "load_capability"
 
+// loadedLead opens a successful load's answer, and it is one constant because
+// checkpoint.go reads the armed names back off that very line
+// ([loadedAndNeverUsed]): a lead spelled twice is a nudge that stops firing the
+// day one of them moves.
+const loadedLead = "Loaded: "
+
 // capabilityGroup is one named shelf: the word the model asks for it by, and the
 // tools it claims BY NAME. A name no belt builds is simply never matched.
 type capabilityGroup struct {
@@ -54,6 +60,9 @@ type capabilityGroup struct {
 // stays carried and the other making verbs do not: looking at something the
 // person has just put in front of you is ordinary work, and making a film is not.
 var capabilityGroups = []capabilityGroup{{
+	name:    "questions",
+	members: []string{"ask"},
+}, {
 	name:    "media",
 	members: []string{"generate_image", "speak", "generate_music", "generate_video", "edit_video"},
 }, {
@@ -252,7 +261,7 @@ func (a *Agent) loadCapability(want string) (string, bool) {
 		return "Already loaded — " + strings.Join(toolNames(tools), ", ") +
 			" are in your tool list now. Use them; do not ask again.", false
 	}
-	return "Loaded: " + strings.Join(armed, ", ") +
+	return loadedLead + strings.Join(armed, ", ") +
 		". Full schemas arrive on your next model request. Continue in this same turn. " +
 		"These tools remain loaded while this engine runs.", false
 }

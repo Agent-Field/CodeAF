@@ -370,11 +370,9 @@ const (
 	// that it had failed.
 	checkpointResultBytes = 400
 
-	// The newest completed write/edit input travels whole beside its result: a
-	// receipt alone cannot establish which bytes were submitted (#672). Larger
-	// inputs are explicitly omitted, not cut into a misleading partial JSON
-	// object. Keeping one input prevents a batch of writes from evicting older
-	// test failures. It competes within the existing whole-digest budget.
+	// One completed write input travels beside its outcome. A path and a byte
+	// count cannot establish what was written. Larger inputs are explicitly
+	// omitted, and this evidence competes within the existing digest budget.
 	checkpointWriteArgumentBytes = 4 * checkpointResultBytes
 
 	// checkpointSaidBytes is how much of the turn's last words the reader is
@@ -741,6 +739,77 @@ func checkpointCarriedOnNote(observed []string) string {
 // next request, and anything reading a request's last message to tell the ask
 // apart from the answer read the continuation as the question. Two lanes, two
 // markers.
+// checkpointLoadNudgeNote is the one line a person reads when a turn is sent
+// back for loading a tool it never used. It is in the register of the other
+// carry-on notes: an observation, a middle dot, what happens next.
+const checkpointLoadNudgeNote = "it loaded a tool and stopped before using it · asking it to go on"
+
+// checkpointLoadNudgeLead is the synthetic continuation itself, and it names
+// the tools by the names the load answered with, so a model that has forgotten
+// what it fetched is told rather than left to search its own history.
+func checkpointLoadNudgeLead(names []string) string {
+	quoted := make([]string, 0, len(names))
+	for _, name := range names {
+		quoted = append(quoted, "`"+name+"`")
+	}
+	return "[carry on] You loaded " + strings.Join(quoted, ", ") + " this turn and then stopped without calling it. " +
+		"It is in your tool list now: call it in this same turn, or say in one line why you no longer need it."
+}
+
+// loadedAndNeverUsed reads the transcript for the shape [Agent.checkpointReopen]
+// sends back: the newest tool call of THIS turn was a `load_capability` that
+// answered `Loaded: …`, and nothing was called after it.
+//
+// THE WALK IS BACKWARD AND STOPS AT THE PERSON'S OWN MESSAGE, so a load an
+// earlier turn made and used cannot be mistaken for this turn's. A synthetic
+// continuation is a user-role message too and is walked THROUGH, because the
+// turn it re-opened is still this turn. What the load armed is read off the
+// load's own answer — the line `load_capability` wrote — rather than off the
+// group name, because the group is a word and the answer is the fact.
+func loadedAndNeverUsed(messages []ai.Message) ([]string, bool) {
+	for i := len(messages) - 1; i >= 0; i-- {
+		message := messages[i]
+		switch message.Role {
+		case "user":
+			if strings.HasPrefix(partsText(message), "[carry on] ") {
+				continue
+			}
+			return nil, false
+		case "assistant":
+			if len(message.ToolCalls) == 0 {
+				continue
+			}
+			if len(message.ToolCalls) != 1 || strings.TrimSpace(message.ToolCalls[0].Function.Name) != loadCapabilityToolName {
+				return nil, false
+			}
+			id := strings.TrimSpace(message.ToolCalls[0].ID)
+			for j := i + 1; j < len(messages); j++ {
+				if messages[j].Role != "tool" || strings.TrimSpace(messages[j].ToolCallID) != id {
+					continue
+				}
+				answer := strings.TrimSpace(partsText(messages[j]))
+				if !strings.HasPrefix(answer, loadedLead) {
+					return nil, false
+				}
+				names := strings.Split(strings.TrimSpace(strings.SplitN(strings.TrimPrefix(answer, loadedLead), ".", 2)[0]), ", ")
+				return names, len(names) > 0 && names[0] != ""
+			}
+			return nil, false
+		}
+	}
+	return nil, false
+}
+
+// partsText is a message's text parts joined, which is the only reading a
+// transcript walk needs of it.
+func partsText(message ai.Message) string {
+	var text strings.Builder
+	for _, part := range message.Content {
+		text.WriteString(part.Text)
+	}
+	return text.String()
+}
+
 const checkpointCarryOnLead = "[carry on] A reader of a bounded account of the work raised the observation below. " +
 	"Check it against the actual current work and the person's request before changing anything. " +
 	"Fix any confirmed gap. If the observation is mistaken or already satisfied, preserve the correct work, " +
@@ -769,6 +838,11 @@ type checkpointMeter struct {
 	// fact about ONE answer. A counter that remembered yesterday's carry-ons
 	// would refuse to carry on a conversation that had never asked for it.
 	carriedOn int
+	// loadNudged says this turn has already been sent back once for stopping
+	// right after a `load_capability` it never used ([Agent.checkpointReopen],
+	// [loadedAndNeverUsed]). ONCE: a model that ignores the nudge too is a model
+	// that has decided, and a second nudge would be an argument.
+	loadNudged bool
 	// claimedDone is the REQUEST a completion claim has already been believed
 	// about, and empty on a turn that has made none ([Agent.handOverRunningTurn]).
 	//
@@ -2009,9 +2083,9 @@ func carryLine(line, carried string, top carryStep) string {
 //     is. A ledger says a suite was run; a result says it reported `Passed: 0`,
 //     which is the difference between a reader that can subtract the finished part
 //     of the ask and a reader guessing at it.
-//   - WRITE OR EDIT ATTEMPTS, deduplicated out of the same ledger. The newest
-//     one with a result carries its bounded exact arguments beside that result;
-//     the attempt alone never establishes that the change succeeded.
+//   - WHAT HAS BEEN WRITTEN OR CHANGED, deduplicated out of the same ledger,
+//     because a thing already produced is a part of the ask already discharged and
+//     that is exactly what the reader is being asked to subtract.
 //   - THE LAST THING SAID, clipped, which is the running model's own account of
 //     where it has got to and the only part of this a person would recognise.
 //
@@ -2172,56 +2246,40 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 	// writer's call is the work moving, a result is lines that were or were not
 	// new (novelty.go).
 	lines := newLineNovelty()
-	// The step each call took, by id, so a result that arrives after a later
-	// batch's write is not counted against it.
-	at := make(map[string]int)
-	// The line each call wrote, by id, so its result can be printed under the same
-	// words the ledger used and a reader can match the two.
-	calls := make(map[string]string)
-	writeArguments := make(map[string]string)
+	// Steps and labels belong to call occurrences. An orphan or duplicate
+	// result must not borrow a prior batch's label or advance its work clock.
+	at := make(map[*ai.ToolCall]int)
+	calls := make(map[*ai.ToolCall]string)
+	paired := toolResultCalls(messages)
 	writeResult, writeStep := -1, 0
 	var writeInput string
-	for _, message := range messages {
-		for _, call := range message.ToolCalls {
+	for messageIndex, message := range messages {
+		for callIndex := range message.ToolCalls {
+			call := &message.ToolCalls[callIndex]
 			name := strings.TrimSpace(call.Function.Name)
 			if name == "" {
 				continue
 			}
-			// A writer already has a known target below. Keep that target in
-			// the ledger even when its path is long; a clipped payload looks
-			// like an incomplete report rather than a label for the operation.
-			path, argument := "", ""
-			if checkpointWriters[name] {
-				path = checkpointArgumentNamed(call.Function.Arguments, "path")
-			}
-			if path != "" {
-				argument = clip(path, checkpointLedgerBytes)
-			} else {
-				argument = checkpointArgument(call.Function.Arguments)
-			}
 			line := name
+			argument := checkpointArgument(call.Function.Arguments)
+			if checkpointWriters[name] {
+				if path := checkpointArgumentNamed(call.Function.Arguments, "path"); path != "" {
+					argument = clip(path, checkpointLedgerBytes)
+				}
+			}
 			if argument != "" {
 				line += " " + argument
 			}
 			ledger = append(ledger, line)
 			moved.step()
 			if id := strings.TrimSpace(call.ID); id != "" {
-				calls[id] = line
-				at[id] = moved.steps
-				if checkpointWriters[name] {
-					// Keep the raw object, including append/edit options and
-					// JSON types. A payload is an attempted input until its
-					// matching result arrives; it is never a success receipt.
-					if len(call.Function.Arguments) <= checkpointWriteArgumentBytes {
-						writeArguments[id] = "\nsubmitted arguments: " + call.Function.Arguments
-					} else {
-						writeArguments[id] = fmt.Sprintf("\nsubmitted arguments omitted (%d bytes); inspect the current file before judging its contents", len(call.Function.Arguments))
-					}
-				}
+				calls[call] = line
+				at[call] = moved.steps
 			}
 			if !checkpointWriters[name] {
 				continue
 			}
+			path := checkpointArgumentNamed(call.Function.Arguments, "path")
 			if path == "" {
 				continue
 			}
@@ -2238,8 +2296,8 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 		if message.Role != "tool" {
 			continue
 		}
-		id := strings.TrimSpace(message.ToolCallID)
-		line, known := calls[id]
+		call := paired[messageIndex]
+		line, known := calls[call]
 		if !known {
 			continue
 		}
@@ -2247,14 +2305,19 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 		for _, part := range message.Content {
 			came.WriteString(part.Text)
 		}
-		if at[id] > moved.changedAt {
+		if at[call] > moved.changedAt {
 			fresh, weighed := lines.measure(line, stripJobFooter(came.String()))
 			moved.read(fresh, weighed)
 		}
 		if tail := checkpointResultTail(came.String()); tail != "" {
 			results = append(results, line+checkpointResultArrow+tail)
-			if input := writeArguments[id]; input != "" && at[id] > writeStep {
-				writeResult, writeStep, writeInput = len(results)-1, at[id], input
+			if checkpointWriters[call.Function.Name] && at[call] > writeStep {
+				writeResult, writeStep = len(results)-1, at[call]
+				if len(call.Function.Arguments) <= checkpointWriteArgumentBytes {
+					writeInput = "\nsubmitted arguments: " + call.Function.Arguments
+				} else {
+					writeInput = fmt.Sprintf("\nsubmitted arguments omitted (%d bytes); inspect the current file before judging its contents", len(call.Function.Arguments))
+				}
 			}
 		}
 	}
@@ -2716,6 +2779,27 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 		return false, false
 	}
 	said := response.Text()
+	// A TURN THAT LOADED A TOOL AND STOPPED WITHOUT USING IT IS SENT BACK ONCE,
+	// AND THIS COSTS NO READER. It stands ahead of every gate below because it is
+	// not a reading of the work at all: it is the harness finishing something it
+	// started. `load_capability` answers "Continue in this same turn", the model
+	// answers with a plan — "Let me make the question." — and the turn ends with
+	// the question never asked, the picture never made, the setting never read.
+	// Measured on 2026-09-10 with the person's own words, on a model that loaded
+	// `ask` and then wrote 416 tokens of intention and no call. It is read
+	// structurally off the transcript ([loadedAndNeverUsed]), never off what was
+	// said, and a turn whose last words asked the person something is left alone
+	// as everywhere else in this file. It applies to a typed turn as much as a
+	// woken one, which is why it sits ABOVE [Agent.checkpoints]: the price gate
+	// is about spending a reader, and nothing is spent here.
+	if meter != nil && ctx.Err() == nil && !meter.loadNudged && !endsAskingThePerson(said) {
+		if names, ok := loadedAndNeverUsed(a.snapshot()); ok {
+			meter.loadNudged = true
+			hub.send(Event{Kind: EventNotice, Text: checkpointLoadNudgeNote})
+			a.record(textMessage("user", checkpointLoadNudgeLead(names)))
+			return true, false
+		}
+	}
 	if !a.checkpoints(ctx, user) {
 		return false, false
 	}
@@ -3139,9 +3223,6 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 	ctx, done := context.WithTimeout(ctx, checkpointSketchWindow)
 	defer done()
 	messages := []ai.Message{textMessage("user", page+"\n\n"+checkpointRemainsAsk)}
-	// A short verdict still needs room to reason about the evidence. The
-	// sketch's 300-token generation ceiling cut off a real comparison (#672).
-	// Keep the existing wall deadline and provider/operator generation defaults.
 	response, reader, err := a.callRole(ctx, roles.RoleMarkReader, "", messages)
 	if err != nil || response == nil {
 		return readerLine{unreachable: true}
@@ -3724,11 +3805,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 		// for the reason in a ladder that may not even have one.
 		return checkpointHandover{decision: checkpointCeilingHeldWork, reason: carryHeldWork}
 	}
-	// A check for the whole request does not become permission to repeat it in
-	// only one remainder. Checks for retained work are not assigned to this child.
-	if len(read.held) > 0 || strings.TrimSpace(read.ownRemainder) != "" {
-		verdict.Checks = nil
-	}
+	verdict = a.handoffChecks(verdict, asked, request, read)
 	// AND THE DRAWING TRAVELS WITH THE WORK, which is the whole of what changed
 	// after the parts stopped being only a paragraph.
 	//
@@ -3852,6 +3929,26 @@ type checkpointHandover struct {
 	// carries one where an autopsy grepping the word would otherwise be left
 	// looking (sessionfile.go's [journalCeiling]).
 	reason string
+}
+
+// handoffChecks carries an existing declaration only when this handoff still
+// represents the whole request it was declared for. A remainder inherits no
+// whole-request checks, and a routing declaration keeps its own validity rules.
+func (a *Agent) handoffChecks(verdict routeVerdict, asked, request string, read checkpointRead) routeVerdict {
+	if len(read.held) > 0 || strings.TrimSpace(read.ownRemainder) != "" {
+		verdict.Checks = nil
+		return verdict
+	}
+	if len(verdict.Checks) > 0 || request == "" || asked != request {
+		return verdict
+	}
+	steward := a.steward()
+	if steward == nil || steward.Ask() != request {
+		return verdict
+	}
+	verdict.Checks = steward.declaredChecks()
+	verdict.checksRequest = request
+	return verdict
 }
 
 // endTurnUnderSteward puts a HANDOVER to the session's goal owner, and ends the

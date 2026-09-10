@@ -230,7 +230,7 @@ func TestAConflictedMergeNeedsYourLookRatherThanDone(t *testing.T) {
 	tree := taskTree{dir: filepath.Join(repo, "tree"), root: repo, branch: "task/edit-the-shared-file"}
 	detail := conflictSentence(tree.branch, []string{"shared.txt"}, "")
 	state := agent.landConflicted(context.Background(), node, tree, []string{"shared.txt"},
-		"the parser now takes the shared line", mergeConflicted, detail, io.Discard)
+		"the parser now takes the shared line", mergeConflicted, detail, refusedByTheWork, io.Discard)
 
 	if state != TaskUnverified {
 		t.Fatalf("a conflicted landing is %q, want it to need a look", state)
@@ -242,7 +242,7 @@ func TestAConflictedMergeNeedsYourLookRatherThanDone(t *testing.T) {
 	if branch != tree.branch || !containsString(changed, "shared.txt") {
 		t.Fatalf("the landing lost the branch or the files: %q %v", branch, changed)
 	}
-	if !strings.HasPrefix(report, needsLookLead) {
+	if !strings.HasPrefix(report, yourCallLead(TaskFacts{Merge: mergeConflicted})) {
 		t.Fatalf("the report does not lead with the person's own words:\n%s", report)
 	}
 	if !strings.Contains(report, "shared.txt") {
@@ -596,7 +596,7 @@ func TestWorkOnlyAPersonCanDoLandsNeedingTheirLook(t *testing.T) {
 	}
 	// THE PERSON'S OWN WORDS, in the register every other undecided landing uses,
 	// with the reader's reason as the thing they are being asked to look at.
-	if !strings.HasPrefix(report, needsLookLead) {
+	if !strings.HasPrefix(report, yourCallLead(TaskFacts{})) {
 		t.Fatalf("the report does not lead with the person's own words:\n%s", report)
 	}
 	if !strings.Contains(report, why) {

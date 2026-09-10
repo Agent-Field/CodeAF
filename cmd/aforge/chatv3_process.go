@@ -487,7 +487,9 @@ func (s *v3Seam) open(launch *v3Launch, cfg session.Config, resumed bool) (tui3.
 	// the boot conversation asks (chatv3_lanes.go), so a conversation opened by
 	// /new is not a lesser one than the conversation it replaced.
 	cfg, open := v3Shape(cfg, v3LanesHere())
-	agent, cfg, notice, err := openV3Agent(cfg, launch.Workspace, open)
+	// The PROJECT and not the tools root: the sentence a held journal answers
+	// with names the directory a host is keyed by ([v3Launch.Project]).
+	agent, cfg, notice, err := openV3Agent(cfg, launch.Project, open)
 	if err != nil {
 		return tui3.Conversation{}, err
 	}

@@ -43,25 +43,27 @@ func TestAnUnverifiedLandingIsNeitherDoneNorFailed(t *testing.T) {
 		// THE HEAD: the question mark, the node's own identity cell, the state's
 		// own word — and the branch named in the half of the stopped sentence
 		// that is true of work which ran to the end.
-		glyphUnverified + " " + plain(a.taskMark(identFor(7))) + " Port the parser",
+		glyphAsk + " " + plain(a.taskMark(identFor(7))) + " Port the parser",
 		// THE SPAN IS A FACT OF ITS OWN, joined with the row's own separator since
-		// 2026-09-03: `needs your look 6m40s` fused the state word — the reason
-		// this card is asking for a hand at all — into a duration (taskdone.go's
+		// 2026-09-03: `your call 6m40s` fused the state word — the reason this card
+		// is asking for a hand at all — into a duration (taskdone.go's
 		// [app.doneTail]).
-		"· " + taskUnverifiedWord + " · " + taskSpanWord(400*time.Second),
+		"· " + taskYourCallWord + " · " + taskSpanWord(400*time.Second),
 		"2 files",
 		"· " + taskBranchKept + " · task/parser",
-		// THE OUTCOME LINE IS THE ENGINE'S OWN SENTENCE, quoted, exactly as a
-		// failure's is: it is what a person reads to decide.
-		`"` + said + `"`,
+		// AND THE SECOND ROW IS THE REASON, in the engine's own spelling. It stands
+		// INSTEAD of the quoted report, which is behind ctrl+o: two accounts of one
+		// landing on one row is the wall this card was split apart to stop being.
+		askCheckReason,
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the unverified card is missing %q:\n%s", want, text)
 		}
 	}
 	for _, never := range []string{
-		glyphDone, doneWord + " ", doneFailWord, glyphBad, taskStoppedKept, mergeWordAborted,
-		"the key table is the part to read first", // the rest of the report is behind ctrl+o
+		glyphDone, doneWord + " ", "failed", glyphBad, "stopped — branch kept", mergeWordAborted,
+		said, // the landing's own sentence is behind ctrl+o while a reason is showing
+		"the key table is the part to read first",
 	} {
 		if strings.Contains(text, never) {
 			t.Fatalf("the unverified card claims %q:\n%s", never, text)
@@ -70,8 +72,8 @@ func TestAnUnverifiedLandingIsNeitherDoneNorFailed(t *testing.T) {
 
 	// THE CARD IS NOT A FAILURE, in the field the rest of the surface reads.
 	card := a.doneCardAt(len(a.entries) - 1)
-	if card == nil || card.failed || !card.unverified {
-		t.Fatalf("the card landed as %+v, want unverified and not failed", card)
+	if card == nil || card.status.Tier != session.TaskTierYourCall {
+		t.Fatalf("the card landed as %+v, want the person's call", card)
 	}
 
 	// THE RAIL SAYS THE SAME THING IN ITS OWN COLUMN: the question glyph, and a
@@ -84,27 +86,39 @@ func TestAnUnverifiedLandingIsNeitherDoneNorFailed(t *testing.T) {
 	for _, want := range []string{
 		// The column leads with the STATE and nothing else — the card's identity
 		// cell is not spent here (task.go's [app.railLead]).
-		glyphUnverified + " Port the parser",
-		taskUnverifiedWaits,
+		glyphAsk + " Port the parser",
+		// AND THE ROW READS ITS REASON. A bare `your call` sends a person to the
+		// card to find out what for; the reason is the half they can act on
+		// (tasktier.go, docs/design/task-states/DESIGN.md). The under-block WRAPS
+		// rather than truncating at this width, so the sentence is asserted in the
+		// two halves it is drawn in.
+		tierYourCallWord + " · nobody could",
+		"check it",
 	} {
 		if !strings.Contains(rail, want) {
 			t.Fatalf("the rail is missing %q:\n%s", want, rail)
 		}
 	}
-	if strings.Contains(rail, taskStoppedKept) {
-		t.Fatalf("the rail says an unverified node stopped:\n%s", rail)
+	if strings.Contains(rail, taskStoppedWord) {
+		t.Fatalf("the rail says a your-call node stopped:\n%s", rail)
 	}
 }
 
-// A NODE THAT LANDED WITH NOTHING TO SAY still says which of the three states it
-// is in — the gloss stands in for the missing sentence and never for the state.
+// A NODE THAT LANDED WITH NOTHING TO SAY STILL SAYS WHY IT IS ASKING. The gloss
+// this surface used to write into an empty outcome — `finished, but needs your
+// look` — was the card telling a person the state twice, in its own second
+// vocabulary; the reason row says it once, in the engine's.
 func TestAnUnverifiedLandingWithNoReportSaysWhyItIsThere(t *testing.T) {
 	a, _, _ := taskApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskUnverified,
 		session.TaskNotice{Elapsed: 30 * time.Second})})
 
-	if text := taskText(a); !strings.Contains(text, `"`+taskUnverifiedGloss+`"`) {
-		t.Fatalf("a silent unverified landing does not fall back to %q:\n%s", taskUnverifiedGloss, text)
+	text := taskText(a)
+	if !strings.Contains(text, askCheckReason) {
+		t.Fatalf("a silent landing does not say why it is asking:\n%s", text)
+	}
+	if strings.Contains(text, "finished, but needs your look") {
+		t.Fatalf("the card still writes its own gloss:\n%s", text)
 	}
 }
 
@@ -123,7 +137,7 @@ func TestARollupWithAnUnverifiedNodeStopsSayingDone(t *testing.T) {
 			unverifiedNotice("finished, but needs your look — nobody could say either way"))},
 	)
 	text := taskText(a)
-	if !strings.Contains(text, glyphUnverified+" 3"+doneRollupMix) {
+	if !strings.Contains(text, glyphAsk+" 3"+doneRollupMix) {
 		t.Fatalf("the rollup head does not carry the question:\n%s", text)
 	}
 	if strings.Contains(text, doneRollupWord) {
@@ -140,12 +154,12 @@ func TestARollupWithAnUnverifiedNodeStopsSayingDone(t *testing.T) {
 func TestTheMentionListMarksAnUnverifiedRow(t *testing.T) {
 	for _, ascii := range []bool{false, true} {
 		entry := session.TaskIndexEntry{Status: string(session.TaskUnverified)}
-		if got := taskStatusGlyph(entry, ascii); got != glyphUnverified {
-			t.Fatalf("an unverified row is marked %q (ascii=%v), want %q", got, ascii, glyphUnverified)
+		if got := taskStatusGlyph(entry, palOf(ascii)); got != glyphAsk {
+			t.Fatalf("an unverified row is marked %q (ascii=%v), want %q", got, ascii, glyphAsk)
 		}
 	}
 	done := session.TaskIndexEntry{Status: string(session.TaskDone)}
-	if got := taskStatusGlyph(done, false); got != glyphDone {
+	if got := taskStatusGlyph(done, palOf(false)); got != glyphDone {
 		t.Fatalf("a done row is marked %q, want %q", got, glyphDone)
 	}
 }

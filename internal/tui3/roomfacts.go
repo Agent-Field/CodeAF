@@ -35,6 +35,19 @@ func (f roomFactFields) ranked() []rowField {
 // the existing ranked fitter decides which facts survive on the compact row.
 func (a *app) roomGroupedFacts(node *taskNode, width int, stop string) (string, bool) {
 	f := a.roomFactsOf(node)
+	if a.roomOrganized() {
+		left := a.taskStateInk(node)(a.roomMark(node) + " " + rowAll([]rowField{f.state}))
+		if f.live.known() {
+			left += a.pal.muted(rowSep + rowAll([]rowField{f.live}))
+		}
+		right := a.pal.muted(rowAll([]rowField{f.clock, f.spend}))
+		if stop != "" {
+			right += "   " + a.pal.ink(stop)
+		}
+		room := max(width-headLabelAt-2-ansi.StringWidth(right), 0)
+		left = fit(left, max(room-2, 0))
+		return strings.Repeat(" ", headLabelAt) + left + strings.Repeat(" ", max(room-ansi.StringWidth(left), 0)) + right + "  ", true
+	}
 	state := strings.TrimSpace(a.roomMark(node) + " " + rowAll([]rowField{f.state}))
 	activity := rowAll([]rowField{f.clock, f.calls, f.live})
 	setup := a.roomSetupInk(rowAll([]rowField{f.model, f.effort, f.spend}), node)
@@ -62,6 +75,9 @@ func (a *app) roomGroupedFacts(node *taskNode, width int, stop string) (string, 
 // Add this last air row only after the tab row has gained its own padding.
 // Staggering the thresholds keeps a taller terminal from losing reading rows.
 func (a *app) roomHeaderPad() int {
+	if a.roomOrganized() {
+		return 1
+	}
 	width, height := a.size()
 	if width >= 4*roomHeadFloor && height >= 2*airyFloor+8 {
 		return 1

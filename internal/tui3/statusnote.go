@@ -323,11 +323,11 @@ func tokenHalves(in, out, both int) string {
 // worth.
 //
 // The cash is printed ONLY when it is real, on the terms [app.cacheSaved] is
-// held: it is accumulated per turn at the moment BOTH a prompt price and a
-// cache-read price are published, and a session that had neither cannot have it
-// worked out afterwards. So a session on a model that publishes no cache-read
-// price says how much it read and stops there, rather than learning to say it
-// saved the whole prompt price. The count leads and the money follows it, which is
+// held: it is the session's cache reads priced at the model this conversation
+// is on, and only where BOTH a prompt price and a cache-read price are
+// published. So a session on a model that publishes no cache-read price says
+// how much it read and stops there, rather than learning to say it saved the
+// whole prompt price. The count leads and the money follows it, which is
 // the order [app.warmSegment] puts the same pair in on the status line.
 func cacheWords(read int, saved float64) string {
 	if read <= 0 {

@@ -14,8 +14,11 @@ import "github.com/charmbracelet/x/ansi"
 // a reply can be arriving three screens below the last row on the frame, and the
 // only sign of it was the status line saying something was working.
 //
-// So the surface says it, in the smallest way it can: one dim chip, right
-// aligned, floating on a row of whitespace that already existed. It is chrome —
+// So the surface says it, in the smallest way it can: one dim chip, at the LEFT
+// edge — where the eye is, at the head of the row it is reading — floating on
+// a row of whitespace that already existed. It was right-aligned until
+// 2026-09-09, and out there, against the rail, it was the one thing on the
+// frame nobody saw. It is chrome —
 // dim — until the pointer is on it, and then it is accent, because at that
 // moment it is the live thing on the frame. Clicking it rejoins the live edge
 // and the chip is gone on the next frame, which is the whole of its behaviour.
@@ -111,8 +114,8 @@ func (a *app) jumpChip(width int) string {
 		// rest of the frame already speaks.
 		paint = a.pal.accent
 	}
-	a.jumpSpan = hudSpan{from: width - ansi.StringWidth(label), to: width}
-	return rightAlign(paint(label), label, width)
+	a.jumpSpan = hudSpan{from: 0, to: ansi.StringWidth(label)}
+	return paint(label)
 }
 
 // hoveringJump reports whether the pointer is on the chip (hover.go).

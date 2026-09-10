@@ -61,7 +61,10 @@ import (
 const groundListNamed = 2
 
 // groundShift is the reason this node should not settle quietly, and the empty
-// string when it should.
+// string when it should. Beside it come THE FILES THE SHIFT IS IN, because the
+// landing that follows asks the person which of two versions of those files
+// survives and a row cannot name what it was never handed
+// (task_status.go's [taskShiftReason]).
 //
 // wrote is the node's own leavings — the paths it changed, repo-relative and
 // slash-spelled, exactly as [changedPath] made them. A node that wrote nothing
@@ -77,9 +80,9 @@ const groundListNamed = 2
 // This comment used to say the rebuilt row's EndedAt is NOW, and it was right
 // until the record started carrying the instant. The conclusion did not move;
 // the reason did.
-func (a *Agent) groundShift(node *TaskNode, wrote []string) string {
+func (a *Agent) groundShift(node *TaskNode, wrote []string) (string, []string) {
 	if node == nil || len(wrote) == 0 {
-		return ""
+		return "", nil
 	}
 	// THE QUESTION IS ABOUT WHAT WOULD SHIP, and for a node that handed work out
 	// that is the family's ledger rather than its own worker's slice of it
@@ -92,13 +95,13 @@ func (a *Agent) groundShift(node *TaskNode, wrote []string) string {
 		// NO WINDOW, NO QUESTION. A node whose start nothing knows cannot say
 		// which side of it anything landed on, and a check that guessed the
 		// moment would be flagging work on the strength of an invented clock.
-		return ""
+		return "", nil
 	}
 	a.mu.Lock()
 	session := a.sessionID()
 	a.mu.Unlock()
 	rows := groundOthers(ReadTaskIndex(a.config.taskIndexFile()), session, node.family())
-	return groundShiftReason(rows, a.Elsewhere(), wrote, after)
+	return groundShiftFound(rows, a.Elsewhere(), wrote, after)
 }
 
 // groundOthers drops this node's own family out of the project's rows, on the
@@ -118,11 +121,18 @@ func groundOthers(rows []TaskIndexEntry, session string, own map[string]bool) []
 	return out
 }
 
-// groundShiftReason is the whole of the judgement, with the reading handed in.
+// groundShiftReason is the sentence alone, for every caller and every test that
+// only ever asks what a person would read.
+func groundShiftReason(rows []TaskIndexEntry, elsewhere Elsewhere, files []string, after time.Time) string {
+	said, _ := groundShiftFound(rows, elsewhere, files, after)
+	return said
+}
+
+// groundShiftFound is the whole of the judgement, with the reading handed in.
 //
-// It is pure — rows in, claims in, one sentence or two out — so that the wording
-// a person reads can be held to its own tests without a graph, a worktree or a
-// clock behind it.
+// It is pure — rows in, claims in, one sentence or two and the moved files out —
+// so that the wording a person reads can be held to its own tests without a
+// graph, a worktree or a clock behind it.
 //
 // THE TWO SOURCES GET TWO SENTENCES, because they are two different facts and
 // one sentence over both would have to lie about one of them. A landed row is
@@ -130,11 +140,17 @@ func groundOthers(rows []TaskIndexEntry, session string, own map[string]bool) []
 // this ran" is exactly true of it. A live claim is a window that has already
 // written those paths and is still going, and nothing says WHEN it wrote them —
 // so it gets the present tense it has earned and no more.
-func groundShiftReason(rows []TaskIndexEntry, elsewhere Elsewhere, files []string, after time.Time) string {
+//
+// THE FILES ARE ANSWERED SEPARATELY FROM THE SENTENCE, and over both sources at
+// once, because the row that follows is asking ONE question about them: two
+// versions of these files exist and somebody has to say which survives. The
+// sentence stops counting out loud after two names ([groundList]); the list this
+// answers with does not, because the landing spells it for itself.
+func groundShiftFound(rows []TaskIndexEntry, elsewhere Elsewhere, files []string, after time.Time) (string, []string) {
 	if len(files) == 0 || after.IsZero() {
-		return ""
+		return "", nil
 	}
-	var lines []string
+	var lines, moved []string
 	// The unknown half of both answers is deliberately dropped on the floor; see
 	// this file's first law.
 	if landed, _ := LandedTouching(rows, files, after); len(landed) > 0 {
@@ -144,6 +160,7 @@ func groundShiftReason(rows []TaskIndexEntry, elsewhere Elsewhere, files []strin
 			shared = append(shared, SharedFiles(files, row.Files)...)
 		}
 		lines = append(lines, groundList(who)+" changed "+groundList(groundPaths(shared))+" while this ran")
+		moved = append(moved, shared...)
 	}
 	if touching, _ := elsewhere.Touching(files); len(touching) > 0 {
 		var who, shared []string
@@ -152,8 +169,9 @@ func groundShiftReason(rows []TaskIndexEntry, elsewhere Elsewhere, files []strin
 			shared = append(shared, SharedFiles(files, at.Task.Files)...)
 		}
 		lines = append(lines, groundList(who)+" is also working in "+groundList(groundPaths(shared)))
+		moved = append(moved, shared...)
 	}
-	return strings.Join(lines, "\n")
+	return strings.Join(lines, "\n"), groundPaths(moved)
 }
 
 // groundName is what to CALL one piece of work: its own title, in quotes,
