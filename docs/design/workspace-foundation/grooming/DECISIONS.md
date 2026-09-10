@@ -171,3 +171,11 @@ execution on Spark, including targeted checks and `make build`. Local work is
 source editing, formatting and inspection only. The two stale local test-log
 pollers were stopped; no Go build/test processes were found. Tui3 and broad
 expensive acceptance remain deferred under C21.
+
+C26: the user explicitly reaffirmed Claude Code with Opus on Spark for subsequent
+implementation, instead of Codex implementation/subagent tokens. Codex coordinates,
+checks results and maintains the existing draft/checklist; substantial coding and
+analysis run through Claude Code Opus on Spark. Do not silently fall back to Codex
+coding if Opus is slow or unavailable. Report an actual access blocker. Claude Code
+availability and an authenticated Claude subscription were checked on Spark on
+2026-09-10. C25 Spark-only compilation/testing and C21 expensive-test deferral remain.
