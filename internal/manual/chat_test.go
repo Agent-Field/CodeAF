@@ -1565,6 +1565,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// Somebody watching that happen asks about the half-answer, not about a
 		// judge — and they say the line back in its own words.
 		{"this has parts handing it to a task", "tasks"},
+		{"a quick task took over my answer", "tasks"},
+		{"why was there no copy of the folder", "tasks"},
 		{"why did it hand my answer to a team", "tasks"},
 		{"it started answering and then handed the work over", "tasks"},
 		{"why did my reply stop halfway and become a task", "tasks"},
