@@ -298,13 +298,20 @@ make test-e2e                                                 # whole tagged pac
 go test -tags e2e -run TestTUIE2E -count=1 -timeout 40m -v ./internal/e2e/
 ```
 
-It needs `OPENROUTER_API_KEY` and `tmux`, costs a few cents. `TestTUIE2E` alone is
+It needs a provider key and `tmux`, costs a few cents. `TestTUIE2E` alone is
 about **seventeen minutes** (most of it one subtest waiting out a five-minute
 standing pass). The whole tagged package does not fit in forty minutes —
 ManualOnTheWire, QuestionsE2E and the roomfeed twins run first and eat the
 budget — so `make test-e2e` gives it two hours. It SKIPS
 rather than fails with no key, no tmux or no `bin/aforge`, so run `make build`
-first. Iterate one subtest at a time — `-run 'TestTUIE2E/<name>'` — rather than
+first. **The key is resolved the way the product resolves one** — `liveKey` in
+`internal/e2e/livekey_test.go` goes through `config.APIKeyAt`, so
+`OPENROUTER_API_KEY`, `OPENAI_API_KEY` and the profile's own `api_key` row all
+run the suite. Gating on the variable alone skipped on every machine whose key
+was pasted into the first-run setup, and a skipped end-to-end suite reports
+green without running (#576); the untagged
+`TestEveryLaneAsksForItsKeyTheWayTheProductDoes` fails a lane that reads a key
+variable itself. Iterate one subtest at a time — `-run 'TestTUIE2E/<name>'` — rather than
 paying for the whole thing, and capture the output to a file: the screens it logs
 are far too wide to read through a pipe.
 

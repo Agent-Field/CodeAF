@@ -10,9 +10,10 @@
 // model, do what the manual says it does. So this file starts tmux, sends the
 // bytes a keyboard sends, and reads the screen back with `capture-pane`.
 //
-// IT SKIPS RATHER THAN FAILS when it cannot be honest: no OPENROUTER_API_KEY,
-// no tmux, no built binary. A suite that "passes" by not talking to a model is
-// a suite lying about the only thing it was written to check.
+// IT SKIPS RATHER THAN FAILS when it cannot be honest: no provider key on any
+// road the product reads, no tmux, no built binary. A suite that "passes" by
+// not talking to a model is a suite lying about the only thing it was written
+// to check. The key is resolved through [liveKey], not by reading one variable.
 //
 // EVERY RUN IS ITS OWN MACHINE. Each rig gets its own AFORGE_HOME under
 // t.TempDir() — the whole state root moves with that one variable
@@ -52,12 +53,14 @@ type rig struct {
 }
 
 // requireTmuxAndKey skips the whole suite unless it can be run honestly.
+//
+// THE KEY IS RESOLVED THE WAY THE PRODUCT RESOLVES IT, through [liveKey] — the
+// two variables and then the profile's own `api_key` row. A gate that read one
+// variable skipped on every machine whose key was pasted into the first-run
+// setup, and printed `ok` for a suite that never talked to anything (#576).
 func requireTmuxAndKey(t *testing.T) string {
 	t.Helper()
-	key := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
-	if key == "" {
-		t.Skip("no OPENROUTER_API_KEY: this suite talks to a real model or it says nothing")
-	}
+	key := liveKey(t)
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("no tmux on PATH: this suite drives the real binary in a real terminal")
 	}
@@ -206,7 +209,10 @@ func workspaceAt(t *testing.T, ws string, dirty bool) string {
 // outright and is the one that always lands.
 func start(t *testing.T, name, home, ws string, cols, rows int, args ...string) *rig {
 	t.Helper()
-	r := startWithEnv(t, []string{"OPENROUTER_API_KEY=" + strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))},
+	// THE RIG IS HANDED THE KEY THE PRODUCT WOULD HAVE FOUND, whichever road it
+	// came down: a key that lives only in the profile reaches the child through
+	// the variable here, exactly as a key exported in the shell does.
+	r := startWithEnv(t, []string{config.APIKeyEnv + "=" + liveKey(t)},
 		name, home, ws, cols, rows, args...)
 	r.skipSetup(t)
 	return r
