@@ -978,6 +978,11 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// ([Session.agentOf]), so the answer is about the wire and not the agent.
 		SteerOwner: true,
 		TaskSetup:  taskSetupKnown(sess.agent),
+		// Whether this engine has a dial on the conversation's own thinking,
+		// asked of the agent it has open — for [Welcome.Effort]'s stated reason:
+		// neither a type assertion at the far end nor the rung itself can tell an
+		// engine without a dial from a conversation whose dial is off.
+		Effort: effortKnown(sess.agent),
 	}
 }
 
@@ -2042,6 +2047,33 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		agent.SetReasoningFor(args.Model, args.Level)
 		s.session.announce()
 		return nil, nil
+
+	case MethodEffort, MethodResolvedEffort, MethodSetEffort:
+		door, ok := agent.(effortDoor)
+		if !ok {
+			// A surface reading [Welcome.Effort] never gets here, and one that
+			// asked anyway is told the fact rather than left with a zero value it
+			// would draw as a rung of its own (effort.go).
+			return nil, errors.New("engine: this conversation has no thinking dial; update the engine and reconnect")
+		}
+		if call.Method == MethodEffort {
+			return json.Marshal(door.ConversationEffort())
+		}
+		if call.Method == MethodResolvedEffort {
+			return json.Marshal(door.ResolvedEffort())
+		}
+		rung, err := arg[string](call)
+		if err != nil {
+			return nil, err
+		}
+		took := door.SetConversationEffort(rung)
+		// AND EVERY SURFACE IS TOLD, on [MethodSetModel]'s terms: the rung rides
+		// the fact set every window on this conversation draws from, and a dial
+		// moved in one of them is a cell the others are painting right now.
+		if took {
+			s.session.announce()
+		}
+		return json.Marshal(took)
 
 	case MethodConsent:
 		args, err := arg[ConsentArgs](call)

@@ -55,6 +55,22 @@ type Facts struct {
 	// A model with no level set has NO ENTRY, never an empty one: the agent
 	// stores absence as absence, and so does this.
 	Reasoning map[string]string `json:"reasoning,omitempty"`
+	// Thinking is the RESOLVED rung this conversation's next turn will ask for
+	// ([Agent.ResolvedEffort]) — whichever scope decided it, and "" for a
+	// conversation asking for no thinking at all, which the emptiness law draws
+	// as nothing.
+	//
+	// IT IS THE RESOLVED RUNG AND NOT THE STORED ONE, because that is the word
+	// the dial on the seam draws (internal/tui3's effortchip.go states the law:
+	// what the cell says is what will happen). The stored rung is a question
+	// asked once, by a person opening the dial, and it goes over the wire as its
+	// own call rather than riding a photograph every frame reads.
+	//
+	// It is spelled `thinking` because that is the word every person-facing
+	// surface already uses for this setting — the settings row, the task clause,
+	// the dial itself — and a fact named one thing in the protocol and another on
+	// the screen is two vocabularies for one ladder.
+	Thinking string `json:"thinking,omitempty"`
 	// Places is the folders this conversation is about, newest first
 	// ([Agent.Places]) — the person's own attachments among them, told apart by
 	// [PlaceRef.Arrival].
@@ -134,6 +150,15 @@ func FactsOf(source FactSource) Facts {
 	}
 	if door, ok := source.(interface{ NeedsPerson() bool }); ok {
 		facts.NeedsPerson = door.NeedsPerson()
+	}
+	// AND THE THINKING RUNG, ASSERTED FOR THE FOLDERS' REASON. A source with no
+	// dial on it is not a conversation thinking at nothing: it is one nobody can
+	// ask, and the surface at the other end of a wire must be able to tell those
+	// two apart — which is what [remote.Welcome]'s own flag is for. A CAPABILITY
+	// THAT CANNOT WORK IS ABSENT, NOT BROKEN, so the field stays empty here and
+	// the dial is simply not drawn.
+	if door, ok := source.(interface{ ResolvedEffort() string }); ok {
+		facts.Thinking = door.ResolvedEffort()
 	}
 	return facts
 }

@@ -329,6 +329,17 @@ const (
 	MethodSetContext      = "SetContextWindow"       // legacy version-5 hint; current remote surfaces do not send it
 	MethodReasoningFor    = "ReasoningFor"           // string → string
 	MethodSetReasoningFor = "SetReasoningFor"        // ReasoningArgs → nothing
+	// The conversation's own place on the thinking ladder (internal/session's
+	// effort.go). Three doors and not one, because the stored rung and the
+	// resolved rung are two different answers: the dial DRAWS the resolved one
+	// and a person opening it CHOSE the stored one, and a wire that carried only
+	// one of them would make the surface derive the other.
+	//
+	// The resolved rung also rides [session.Facts] unasked, which is what a frame
+	// reads; these are the keystroke's doors (effort.go).
+	MethodEffort         = "Effort"         // nothing → string (the stored rung, "" for none)
+	MethodResolvedEffort = "ResolvedEffort" // nothing → string (the rung the next turn asks for)
+	MethodSetEffort      = "SetEffort"      // string → bool (false when the word is not a rung)
 	MethodConsent         = "ResolveConsent"         // ConsentArgs → nothing
 	MethodConsentRemember = "ResolveConsentRemember" // ConsentArgs → nothing
 	MethodStandingResolve = "ResolveStanding"        // StandingArgs → nothing
@@ -815,6 +826,25 @@ type Welcome struct {
 	SteerOwner bool `json:"steerOwner,omitempty"`
 	// TaskSetup advertises task-scoped model and thinking controls.
 	TaskSetup bool `json:"taskSetup,omitempty"`
+
+	// Effort says this engine HAS A DIAL ON THE CONVERSATION'S OWN THINKING —
+	// that its agent answers [MethodEffort], [MethodResolvedEffort] and
+	// [MethodSetEffort] rather than refusing them (effort.go).
+	//
+	// IT IS CARRIED FOR [Welcome.Folders]'S REASON, WHICH IS THE ONE THAT MATTERS
+	// MOST HERE. A surface at this end holds a *remote.Agent, which ALWAYS has
+	// the three methods on it, so the type assertion a local surface uses to tell
+	// a dial from no dial answers yes for every connection and says nothing about
+	// the far machine. And the honest reading cannot be taken from the ANSWER
+	// either: "" is a real rung on this ladder — a conversation asking for no
+	// thinking at all — so silence and absence are the same string, and the flag
+	// is the only thing that separates them.
+	//
+	// ABSENCE IS false AND false IS THE SAFE READING: A CAPABILITY THAT CANNOT
+	// WORK IS ABSENT, NOT BROKEN, so the seam draws no rung, the chord does
+	// nothing, and nothing on the screen offers to move a knob the far engine
+	// has never heard of.
+	Effort bool `json:"effort,omitempty"`
 
 	// Folders says this engine CAN HOLD THE FOLDERS A CONVERSATION IS ABOUT —
 	// that its agent answers [MethodPlacesRefer] and [MethodPlacesRemove] rather
