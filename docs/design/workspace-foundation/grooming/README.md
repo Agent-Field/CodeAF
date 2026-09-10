@@ -169,3 +169,6 @@ separate grooming study, not a finalized product surface or new backend contract
 The [critical review](CRITICAL-REVIEW.md) challenges the architecture, traces the
 actual #662 execution paths and orders the required refactoring. It separates
 design plausibility, static source evidence and fresh Spark test receipts.
+
+Use [NEXT-STEPS.md](NEXT-STEPS.md) for the active checklist and decision session;
+accepted choices continue to live in [DECISIONS.md](DECISIONS.md).

@@ -21,3 +21,7 @@ The critical review withdraws any implication that mapping journeys onto diagram
 validates implementation. It records backend identity/authority/transition gaps,
 a source-pinned draft comparison and fresh Spark validation evidence. The target
 remains a proposal; backend records are independent of final product labels.
+
+The active checklist now separates completed evidence, pending architecture
+decisions, baseline selection and future delivery. Read-only baseline subagents
+were explicitly requested; no baseline replacement has been selected.

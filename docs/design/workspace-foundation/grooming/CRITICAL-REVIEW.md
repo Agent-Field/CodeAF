@@ -222,3 +222,8 @@ control was overwritten: saved retired during firing, got active
 No runtime fix, schema migration, upstream integration or merge was performed.
 The next implementation slice should address R1 and the authority/execution
 contracts; adding more organization metadata cannot resolve them.
+
+A subsequent explicitly requested [baseline review](NEXT-STEPS.md) found the
+reviewed draft and dev standing tick/store files byte-identical. This strengthens
+the inference of shared exposure; it is not a fresh execution of the reproducer
+on dev. The baseline review also records actual integration overlap and conflicts.

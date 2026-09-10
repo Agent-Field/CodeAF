@@ -50,6 +50,28 @@ Existing isolated-build and integration safeguards still apply.
 | D09 | How do successful ways of working become reusable and improve? | Reuse existing saved methods/programs; separate reusable method from personal inputs; retain run version and feedback. Repetition alone is not proof of quality. |
 | D10 | How does the person see, correct and steer this without constant reading? | Sketch ordinary chat, context/decision inspection, ongoing work, meaningful coordination and return-to-work flows; exact home/header/rail layout is open. |
 
+## Backend architecture decisions added after critical review
+
+The following extend D01–D10 rather than replacing confirmed constraints. The user
+asked on 2026-09-10 to settle architecture decisions and explicitly launch
+subagents to compare retaining the draft with starting from dev. That authorizes
+read-only baseline analysis; it does not confirm the alternatives below.
+
+| ID | Decision | Recommendation, not yet confirmed |
+| --- | --- | --- |
+| D11 | Backend extension model | Typed entities, owned versioned components and values; avoid universal entity/property storage. UI labels do not determine backend types. |
+| D12 | Persistent execution identity | Separate identity from profile, duty and process where a named role spans duties. Do not require identities for ordinary direct work. |
+| D13 | Effective-input and lifecycle versions | Distinguish specification/control revisions, attempt identity, wait token and fence; retain the full effective-input manifest. |
+| D14 | Occurrence, continuation and reporting policies | New recurrence versus resumed unfinished outcome is explicit; missed runs, overlap and reporting are configured behavior, not inferred from a generic trigger. |
+| D15 | Dependency and ownership transfer | Dependencies track output versions; shared investigations and owner handoff have atomic claims and origin-aware messages. |
+| D16 | Capability and execution-resource boundaries | Narrow effective permissions; explicit host/account/browser/worktree binding; copied profiles do not copy grants or private state. |
+| D17 | Durable persistence and recovery | Preserve authoritative lifecycle owners, durable publication/admission and uncertain-effect reconciliation; justify any new coordinator store with concrete transactions. |
+| D18 | Extensibility and compatibility | Typed versioned adapters declare authority, replay, cancellation and delivery contracts; unknown behavioral variants remain inactive and inspectable. |
+
+[The working checklist](NEXT-STEPS.md) records discussion order and delivery progress.
+Baseline choice is an implementation decision currently under review; C07 remains
+in force until the user settles an alternative integration destination.
+
 ## Confirmation record format
 
 For each settled choice add: decision ID; date and confirming user message/task;
