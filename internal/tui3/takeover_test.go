@@ -975,6 +975,9 @@ func TestAConversationArrivingOnAnUnansweredQuestionAsksItAgain(t *testing.T) {
 	a.openHome()
 	a.home.point(theirs)
 	a.homeKey(key("enter"))
+	// The card home raises has the cursor on `leave it there`; `1` moves it onto
+	// `bring it here` and the second enter answers (homeconfirm.go).
+	a.homeKey(key("1"))
 	a.homeKey(key("enter"))
 	release()
 	drive(t, a, takeoverTickMsg{gen: a.takeover.gen})
@@ -1014,6 +1017,9 @@ func TestAClaimThatSucceedsLeavesNoQuestionBehind(t *testing.T) {
 	a.openHome()
 	a.home.point(theirs)
 	a.homeKey(key("enter"))
+	// The card home raises has the cursor on `leave it there`; `1` moves it onto
+	// `bring it here` and the second enter answers (homeconfirm.go).
+	a.homeKey(key("1"))
 	a.homeKey(key("enter"))
 	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); err != nil {
 		t.Fatalf("no request was left for the other window: %v", err)
@@ -1025,6 +1031,8 @@ func TestAClaimThatSucceedsLeavesNoQuestionBehind(t *testing.T) {
 	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); !os.IsNotExist(err) {
 		t.Fatal("the window opened the conversation and left its own question in the folder")
 	}
+}
+
 // AND THEN SOMEBODY LOOKS AT IT.
 //
 // The card home raises about moving a conversation is the question block's own
