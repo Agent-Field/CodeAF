@@ -1903,6 +1903,17 @@ func (a *app) answerQuestion(q questionShown, answer session.Answer) tea.Cmd {
 			return nil
 		}
 	}
+	if !session.AnswerResolves(answer) {
+		// AN ANSWER THAT DID NOT END THE QUESTION LEAVES IT ON THE BLOCK. Two
+		// answers on this surface send WORDS rather than settle anything — `tell
+		// it` steers a landed task, `change it` hands a finished design back to
+		// its designer — and the engine goes on holding the lane for both
+		// ([session.AnswerResolves] is the one reading). A block that cleared its
+		// rows and wrote a receipt here would tell a person a decision had been
+		// made while the thing that has to decide it went on waiting for them.
+		a.touch()
+		return cmd
+	}
 	a.closeQuestion(q, answer)
 	return cmd
 }

@@ -1420,9 +1420,35 @@ func answerToken(answer Answer) string {
 // and that is the whole of what this function is for: `tell it` sends words to
 // the work and the question stays exactly where it was, because "looks good"
 // typed on a card must not silently become accept.
-func resolvesQuestion(answer Answer) bool {
-	if answer.Kind == QuestionLanding && answer.FirstKey() == LandingTellKey {
-		return false
+func resolvesQuestion(answer Answer) bool { return AnswerResolves(answer) }
+
+// AnswerResolves reports whether this answer ENDS the question it was given to,
+// or leaves it open for another one.
+//
+// IT IS EXPORTED BECAUSE THE SURFACE HAS TO ASK THE SAME QUESTION. A block that
+// took every answer as the end of a question would clear the rows, write the
+// receipt and stop counting the question — while the engine, correctly, left the
+// lane waiting — so the person would be looking at a decision that was still
+// theirs to make with nothing on screen to make it with. One reading, at both
+// ends (tui3's [app.answerQuestion] calls this before it closes anything).
+//
+// Two answers do it, and both for the same reason: what they send is WORDS, and
+// words are how you ask for something different rather than how you settle.
+//
+//   - `tell it` on a landed task steers the work and leaves the `your call`
+//     exactly where it was (docs/design/task-states/DESIGN.md).
+//   - `change it` on a finished design hands the page back to the designer, which
+//     rewrites it and puts it in front of you again ([HarnessChangeKey]).
+func AnswerResolves(answer Answer) bool {
+	switch answer.Kind {
+	case QuestionLanding:
+		return answer.FirstKey() != LandingTellKey
+	case QuestionHarness:
+		// THE SHAPE IS PART OF THE TEST. `2` is `not now` on an OFFER, which
+		// ends the question outright, and `change it` on a DESIGN, which does
+		// not — one digit, two questions, told apart by the shape the asker gave
+		// them ([HarnessOptions]).
+		return answer.Ask != AskJudgement || answer.FirstKey() != HarnessChangeKey
 	}
 	return true
 }
@@ -1509,7 +1535,14 @@ func (a *Agent) applyToLane(answer Answer) error {
 		a.ResolveConnect(answer.Ref, key == "1")
 		return nil
 	case QuestionHarness:
-		a.ResolveHarness(answer.ID, key == "1", strings.TrimSpace(answer.Comments[questionModelNote]))
+		if !AnswerResolves(answer) {
+			// `change it` ON A DESIGN TOUCHES NOTHING. The page is still waiting,
+			// the lane is still holding it, and what actually happens next is a
+			// sentence said to the design's own thread — which is a turn and not
+			// an answer ([HarnessChangeKey]).
+			return nil
+		}
+		a.ResolveHarness(answer.ID, key == HarnessSaveKey, strings.TrimSpace(answer.Comments[questionModelNote]))
 		return nil
 	case QuestionSubharness:
 		a.ResolveSubharness(answer.ID, key == "1", nil)
@@ -1831,24 +1864,32 @@ func (a *Agent) harnessQuestion(id uint64, card Event) Question {
 	if head == "" {
 		head = "run a saved program for this?"
 	}
-	ask, form := AskPermission, FormLine
+	ask, form, stakes := AskPermission, FormLine, StakesReversible
 	if card.Kind == EventHarnessDesignDone {
 		// A DESIGN IS A JUDGEMENT AND NOT A PERMISSION: the page is written,
 		// and what is being asked is whether it is right — which is a thing
 		// nothing but a person ever answers.
-		ask, form = AskJudgement, FormCard
+		//
+		// AND IT COSTS SOMETHING TO ANSWER WRONG. Declining an offer loses
+		// nothing; dropping a finished page loses the minutes of model work that
+		// wrote it and there is no way back to it, which is [StakesCostly] and
+		// not the reversible an offer wears.
+		ask, form, stakes = AskJudgement, FormCard, StakesCostly
 	}
 	return a.said(QuestionHarness, token, Question{
-		ID:       id,
-		Kind:     QuestionHarness,
-		Ask:      ask,
-		Form:     form,
-		Asker:    Asker{Kind: AskerEngine},
-		Head:     head,
-		Reason:   strings.TrimSpace(card.Hint),
-		Subject:  SubjectRef{Kind: SubjectPage, Name: strings.TrimSpace(card.Text)},
-		Options:  AnswerOptions(QuestionHarness),
-		Stakes:   StakesReversible,
+		ID:      id,
+		Kind:    QuestionHarness,
+		Ask:     ask,
+		Form:    form,
+		Asker:   Asker{Kind: AskerEngine},
+		Head:    head,
+		Reason:  strings.TrimSpace(card.Hint),
+		Subject: SubjectRef{Kind: SubjectPage, Name: strings.TrimSpace(card.Text)},
+		// THE ANSWERS ARE THE SHAPE'S AND NOT THE KIND'S. This lane asks two
+		// questions with two different rows ([HarnessOptions] says why), and the
+		// shape decided three lines up is the one fact that tells them apart.
+		Options:  HarnessOptions(ask),
+		Stakes:   stakes,
 		Blocking: Blocking{Turn: true},
 	})
 }

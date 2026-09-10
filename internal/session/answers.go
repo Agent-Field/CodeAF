@@ -257,10 +257,11 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 			{Key: "2", Label: "not now", Safe: true},
 		}
 	case QuestionHarness, QuestionSubharness:
-		return []AnswerOption{
-			{Key: "1", Label: "run it"},
-			{Key: "2", Label: "not now", Safe: true},
-		}
+		// THE OFFER'S PAIR, and it is [HarnessOptions]' own answer for the shape
+		// an offer is. The harness lane asks TWO different questions and this
+		// list is the one a kind alone can name; the other is a judgement about a
+		// page and takes three answers ([HarnessOptions] holds both).
+		return HarnessOptions(AskPermission)
 	case QuestionFuel:
 		return []AnswerOption{
 			{Key: "1", Label: "add more", Consequence: "the run carries on"},
@@ -281,6 +282,67 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 		}
 	}
 	return nil
+}
+
+// The keys the harness lane's two questions are answered with.
+//
+// THE LANE ASKS TWO DIFFERENT QUESTIONS AND THEY DO NOT SHARE A ROW. An OFFER —
+// "run harness research?" — is a permission with a free no; a finished DESIGN is
+// a judgement about a page somebody spent minutes writing, and the three things
+// a person wants to do with it are keep it, ask for it to be different, and
+// throw it away. Both go back through [Agent.ResolveHarness] and both are
+// [QuestionHarness], which is why the keys are spelled here together rather than
+// in two files that would drift.
+//
+// `1` IS THE YES ON BOTH, which is what lets [Agent.applyToLane] read one digit:
+// `run it` and `save it` are the answer that makes the thing real.
+const (
+	// HarnessRunKey runs the offered program.
+	HarnessRunKey = "1"
+	// HarnessNotNowKey declines the offer, and costs nothing: the turn the
+	// person typed runs unchanged.
+	HarnessNotNowKey = "2"
+	// HarnessSaveKey keeps the finished design.
+	HarnessSaveKey = "1"
+	// HarnessChangeKey asks for it to be different, and RESOLVES NOTHING — the
+	// page stays exactly where it is, still waiting, and the answer is a
+	// sentence said to the design's own thread ([AnswerResolves] is where that
+	// is enforced, and tui3's harnesscard.go tells the story of what this key
+	// used to do instead: it dropped the page).
+	HarnessChangeKey = "2"
+	// HarnessDropKey throws the page away.
+	HarnessDropKey = "3"
+)
+
+// HarnessOptions is what one of the harness lane's two questions may be
+// answered with, and the SHAPE OF THE DECISION is what tells them apart.
+//
+// IT IS THE SHAPE AND NOT A SECOND KIND. [Agent.harnessQuestion] already reads a
+// finished page as [AskJudgement] and an offer as [AskPermission] — "a design is
+// a judgement and not a permission: the page is written, and what is being asked
+// is whether it is right" — so asking the shape is asking the one fact that has
+// already been decided, rather than minting a lane whose answers travel back
+// through the same resolver anyway.
+//
+// THE WORDS ARE THE CARD'S OWN. A design card in the conversation said
+// `[enter] save · [e] change it · [esc] drop` before this list existed, and a
+// person who learned those three verbs there must read the same three here.
+func HarnessOptions(ask AskKind) []AnswerOption {
+	if ask == AskJudgement {
+		return []AnswerOption{
+			{Key: HarnessSaveKey, Label: "save it", Consequence: "it is kept, and can be run from now on"},
+			{Key: HarnessChangeKey, Label: "change it", Consequence: "say what is wrong and it is written again"},
+			// NOT MARKED SAFE, AND NOTHING HERE IS. Dropping a page is minutes of
+			// work gone and there is nothing to go back to; `later` is the answer
+			// that loses nothing on a judgement, and `later` is esc rather than an
+			// option ([AskKind] has no clock on this shape, so waiting is free).
+			{Key: HarnessDropKey, Label: "drop it", Consequence: "the page is thrown away"},
+		}
+	}
+	return []AnswerOption{
+		{Key: HarnessRunKey, Label: "run it"},
+		{Key: HarnessNotNowKey, Label: "not now", Safe: true},
+	}
 }
 
 // The keys a landed task's `your call` is answered with, and the two beside

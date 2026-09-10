@@ -633,3 +633,111 @@ func TestAProposalAsksAboutItsModelOnlyWhenThereIsSomethingToAsk(t *testing.T) {
 		}
 	}
 }
+
+// THE HARNESS LANE ASKS TWO QUESTIONS AND THEY DO NOT SHARE A ROW. An offer is
+// a permission with a free no; a finished design is a judgement about a page
+// somebody spent minutes writing, and drawing it with two answers would leave a
+// person with no way to ask for the third thing they always want — that it be
+// different.
+func TestAFinishedDesignAsksThreeThingsAndAnOfferAsksTwo(t *testing.T) {
+	agent, _ := questionSession(t, "qqqq7777qqqq7777", nil)
+
+	offer := agent.harnessQuestion(3, Event{Kind: EventHarnessOffer, Text: `run harness "research"?`, Hint: "finds an answer across sources"})
+	if offer.Ask != AskPermission {
+		t.Fatalf("an offer asks %q, want a permission", offer.Ask)
+	}
+	if got := optionKeys(offer.Options); !sameStrings(got, []string{HarnessRunKey, HarnessNotNowKey}) {
+		t.Fatalf("an offer offers %v, want run it and not now", got)
+	}
+
+	design := agent.harnessQuestion(4, Event{Kind: EventHarnessDesignDone, Text: "weekly-digest", Hint: "reads the log and writes it up"})
+	if design.Ask != AskJudgement {
+		t.Fatalf("a design asks %q, want a judgement", design.Ask)
+	}
+	if got := optionKeys(design.Options); !sameStrings(got, []string{HarnessSaveKey, HarnessChangeKey, HarnessDropKey}) {
+		t.Fatalf("a design offers %v, want save, change and drop", got)
+	}
+	if design.Stakes != StakesCostly {
+		t.Fatalf("a design's stakes are %q — a dropped page cannot be got back", design.Stakes)
+	}
+	// AND THE GATE TAKES IT. A question this engine builds and no surface can be
+	// refused by [Question.Check] is a question that would never be asked.
+	if err := design.Check(nil); err != nil {
+		t.Fatalf("the gate refused the design's own question: %v", err)
+	}
+	for _, option := range design.Options {
+		if strings.TrimSpace(option.Label) == "" || strings.TrimSpace(option.Consequence) == "" {
+			t.Fatalf("an answer with nothing beside it: %+v", option)
+		}
+	}
+}
+
+// ASKING FOR A DESIGN TO BE DIFFERENT RESOLVES NOTHING. `change it` used to be
+// spelled `improve` and it DROPPED the page (tui3's harnesscard.go tells that
+// story); on the one door it must leave the lane exactly as it found it, or the
+// page a person asked to have rewritten is a page that is already gone.
+func TestAskingForADesignToBeDifferentLeavesItWaiting(t *testing.T) {
+	agent, _ := questionSession(t, "qqqq8888qqqq8888", nil)
+	answers := make(chan harnessAnswer, 1)
+	agent.mu.Lock()
+	agent.harnessAsks = map[uint64]harnessAsk{7: {answers: answers, card: Event{
+		Kind: EventHarnessDesignDone, ID: 7, Text: "weekly-digest", Hint: "reads the log and writes it up",
+	}}}
+	agent.mu.Unlock()
+
+	change := Answer{Kind: QuestionHarness, Ask: AskJudgement, ID: 7, Picked: []string{HarnessChangeKey}}
+	if AnswerResolves(change) {
+		t.Fatal("AnswerResolves says `change it` ends the question — the page would go with it")
+	}
+	if err := agent.ResolveQuestion(change); err != nil {
+		t.Fatalf("ResolveQuestion: %v", err)
+	}
+	select {
+	case got := <-answers:
+		t.Fatalf("the lane was answered %+v — nothing was decided", got)
+	default:
+	}
+	open := agent.OpenQuestions()
+	if len(open) != 1 || open[0].Kind != QuestionHarness {
+		t.Fatalf("the design is no longer waiting: %+v", open)
+	}
+
+	// AND THE SAME DIGIT ON AN OFFER STILL ENDS IT: `2` is `not now` there, and
+	// one key means two things only because the shape tells them apart.
+	notNow := Answer{Kind: QuestionHarness, Ask: AskPermission, ID: 7, Picked: []string{HarnessNotNowKey}}
+	if !AnswerResolves(notNow) {
+		t.Fatal("`not now` on an offer left the question open")
+	}
+	if err := agent.ResolveQuestion(notNow); err != nil {
+		t.Fatalf("ResolveQuestion: %v", err)
+	}
+	select {
+	case got := <-answers:
+		if got.run {
+			t.Fatalf("`not now` ran it: %+v", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the decline never reached the lane")
+	}
+}
+
+// optionKeys is the keys of an answer list, in the order they are drawn.
+func optionKeys(options []AnswerOption) []string {
+	out := make([]string, 0, len(options))
+	for _, option := range options {
+		out = append(out, option.Key)
+	}
+	return out
+}
+
+func sameStrings(one, two []string) bool {
+	if len(one) != len(two) {
+		return false
+	}
+	for i := range one {
+		if one[i] != two[i] {
+			return false
+		}
+	}
+	return true
+}
