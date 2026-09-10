@@ -254,7 +254,10 @@ func TestAJobsLogReaderTakesOneLastReadingAfterTheJobEnds(t *testing.T) {
 	job.State = session.JobDone
 	a.jobUpdate(job)
 
-	msg := next()
+	// The reader's beat is [farRoomEvery], longer than the harness clock's
+	// budget, so each beat is waited out deliberately rather than asked of a
+	// clock that answers polls with nothing.
+	msg := waitOut(next)
 	tick, ok := msg.(farRoomTickMsg)
 	if !ok {
 		t.Fatalf("the running beat produced %T, want a tick", msg)
@@ -268,7 +271,7 @@ func TestAJobsLogReaderTakesOneLastReadingAfterTheJobEnds(t *testing.T) {
 		t.Fatalf("the last lines the process wrote never reached the page:\n%s", text)
 	}
 
-	msg = next()
+	msg = waitOut(next)
 	tick, ok = msg.(farRoomTickMsg)
 	if !ok {
 		t.Fatalf("the last reading's beat produced %T, want a tick", msg)

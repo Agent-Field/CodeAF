@@ -476,6 +476,26 @@ func TestAWakeupInsideABurstWaitsAgainAndArmsNoSecondTimer(t *testing.T) {
 	}
 }
 
+// A WAKEUP THAT FINDS NOTHING NEW SINCE IT WAS ARMED IS THE QUIET WINDOW, even
+// on a clock that has not moved. The wakeup lands a whole [dropQuiet] after it
+// was armed by construction, so only a character arriving after that needs the
+// clock asked — and a clock that delivers the wakeup without moving, which is
+// the test harness's, must not make the fold wait again forever.
+func TestAWakeupWithNothingNewSinceItWasArmedSettlesOnAStillClock(t *testing.T) {
+	a, dir, _ := dropLab(t, map[string]int{"server.log": 8})
+	typeBurst(a, filepath.Join(dir, "server.log"))
+	// The first wakeup finds the rest of the burst typed after it was armed.
+	a.Update(dropMsg{})
+	if a.drop.took != 0 {
+		t.Fatalf("a wakeup inside a burst took %d drops, want none", a.drop.took)
+	}
+	// The second finds nothing new, and the clock has still not moved.
+	a.Update(dropMsg{})
+	if a.drop.took != 1 {
+		t.Fatalf("a wakeup with nothing new since it was armed took %d drops, want one", a.drop.took)
+	}
+}
+
 // A SETTLED BURST THAT NAMES NOTHING BUILDS NO FRAME. It provably mutated
 // nothing [app.View] reads — the characters were already in the draft, typed by
 // the keys that carried them — so the frame Bubble Tea asks for next is the one

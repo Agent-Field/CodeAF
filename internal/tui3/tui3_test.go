@@ -9,6 +9,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -67,11 +68,35 @@ func TestMain(m *testing.M) {
 //go:noinline
 func harnessTick(after time.Duration, callback func(time.Time) tea.Msg) tea.Cmd {
 	return func() tea.Msg {
-		if after > tickBudget {
+		if after > tickAdmits {
 			return nil
 		}
 		return callback(time.Time{})
 	}
+}
+
+// tickAdmits is the longest delay [harnessTick] delivers. It is [tickBudget]
+// for every command the harness runs, and it is lifted only inside [waitOut].
+//
+// A plain variable is safe here because a harness tick is only ever called on
+// the test's own goroutine: [harnessDriver.run] resolves it synchronously
+// rather than overlapping it, and this package runs no test in parallel.
+var tickAdmits = tickBudget
+
+// waitOut runs one delayed command as though its whole delay had passed, and
+// returns the message it delivers. It is for the test whose claim IS a beat —
+// "the key arms the panel's next beat", "the reader re-arms after the job
+// ends" — which the harness clock otherwise answers with nothing, because a
+// beat longer than [tickBudget] is a poll the harness never waits for.
+//
+// IT COSTS NO WALL TIME EITHER: the harness clock starts no timer, so waiting
+// out a 250ms beat is one function call. A command that is not a tick is
+// simply called.
+func waitOut(cmd tea.Cmd) tea.Msg {
+	was := tickAdmits
+	tickAdmits = math.MaxInt64
+	defer func() { tickAdmits = was }()
+	return cmd()
 }
 
 // runTests is TestMain's body as a function with a return value, so the
