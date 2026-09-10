@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -119,9 +120,11 @@ type callTrace struct {
 	// row written after the transport returned always names the attempt that
 	// actually produced the answer.
 	attemptID string
-	// body is the request as it was last encoded, kept ONLY when the bodies pin
-	// is set. It is nil on every ordinary run, which is what keeps a person's
-	// prompts out of a file they did not ask to have them in.
+	// body is the request as it was last encoded, kept ONLY when somebody
+	// asked for it: the old bodies pin, which puts it on the line of the
+	// model-call log, or the debug record, which is where bodies live now
+	// (recordBodies). It is nil on every ordinary run, which is what keeps a
+	// person's prompts out of a file they did not ask to have them in.
 	body []byte
 }
 
@@ -169,6 +172,11 @@ type recordFacts struct {
 	// the call has learned so far: a repaired 400 carries its own lesson.
 	learned      []string
 	responseBody []byte
+	// reasoning is the working the endpoint sent on a channel of its own, kept
+	// only by the streamed path and only while somebody is recording — a
+	// streamed answer has no whole body to read it back out of afterwards
+	// (client.go's stream loop).
+	reasoning string
 	// phase is calllog.PhaseStart on the row written as a call goes out, and
 	// empty on the row that ends it.
 	phase string
@@ -287,6 +295,68 @@ func (c *Client) record(facts recordFacts) {
 		record.ResponseBody = string(facts.responseBody)
 	}
 	calllog.Append(record)
+	c.recordBodies(facts, record, model)
+}
+
+// recordBodies puts the whole request and the whole answer in the debug record
+// (internal/trace), and it is written HERE for the reason the log above is:
+// every outbound call in the process passes through this one door, so a body
+// cannot be missed by a caller who forgot to keep one.
+//
+// The two records are deliberately different shapes. The log is the INDEX — one
+// line per call, always on, holding none of the person's own words — and the
+// record is the bodies, kept only for the run somebody switched it on for. The
+// recorder is asked FIRST, because it answers nil in two atomic loads on every
+// run nobody is debugging and everything below it costs real work.
+//
+// ONLY THE ROW THAT ENDS AN ATTEMPT WRITES A BODY. The start row is written
+// before the wire has said anything, and its body file would be overwritten by
+// its own successor a moment later — the same record, paid for twice.
+func (c *Client) recordBodies(facts recordFacts, record calllog.Record, model string) {
+	recorder := trace.For(facts.ctx)
+	if recorder == nil || facts.phase == calllog.PhaseStart {
+		return
+	}
+	body := trace.CallBody{
+		CallID:    record.ID,
+		Node:      record.Node,
+		Model:     model,
+		Response:  facts.responseBody,
+		Finish:    record.Finish,
+		Reasoning: facts.reasoning,
+	}
+	if facts.knobs.trace != nil {
+		body.Request = facts.knobs.trace.body
+	}
+	if facts.err != nil {
+		// UNCLIPPED, unlike the log's own field. The reason to keep a record at
+		// all is that the exact words of the refusal are what is wrong, and a
+		// sentence cut at the log's width is a sentence somebody has to go back
+		// to the provider to finish reading.
+		body.Error = namedCancel(facts.ctx, facts.err)
+	}
+	if len(body.Response) == 0 && facts.response != nil {
+		// A STREAMED ANSWER HAS NO WHOLE BODY. It arrived as hundreds of frames
+		// and was assembled as it came, so what the record keeps is the
+		// ASSEMBLED reply — the same answer, in one document. Without this the
+		// commonest call this build makes would leave a record with a request
+		// in it and nothing that came back.
+		if assembled, err := json.Marshal(facts.response); err == nil {
+			body.Response = assembled
+		}
+	}
+	recorder.Call(facts.ctx, body)
+}
+
+// builtString reads a builder that may never have been made. The streamed
+// path only builds one while a record is open, and the emptiness law is the
+// same in a struct literal as it is on a screen: nothing recorded is nothing
+// written, not an empty field somebody could read as a model that said nothing.
+func builtString(builder *strings.Builder) string {
+	if builder == nil {
+		return ""
+	}
+	return builder.String()
 }
 
 // namedCancel is the error a row carries, with WHOEVER CANCELLED THE CALL on it.

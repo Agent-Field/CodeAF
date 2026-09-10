@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/calllog"
+	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -123,10 +124,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	attempts := 0
 	var recoveryCtx context.Context
 	reconnected := false
-	// The body this call is carrying, kept for the model-call log and ONLY when
-	// somebody asked for bodies (calllog.go). On every ordinary run this is nil
-	// and the person's prompts never leave the process.
-	if knobs.trace != nil && calllog.Bodies() {
+	// The body this call is carrying, kept ONLY when somebody asked for it: the
+	// old bodies pin, which puts it on the line of the model-call log, or the
+	// debug record, which is where bodies are moving to (calllog.go). On every
+	// ordinary run this is nil and the person's prompts never leave the process.
+	if knobs.trace != nil && (calllog.Bodies() || trace.For(ctx) != nil) {
 		knobs.trace.body = body
 	}
 	// Rate limits get more patience than faults: they are the provider

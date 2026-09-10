@@ -383,6 +383,10 @@ func (ep *episode) preAction(ctx context.Context, hub *eventHub, call ai.ToolCal
 	for _, hook := range ep.plane.preAction {
 		rewritten, refused, allowed := hook.PreAction(ctx, ep, hub, call)
 		if !allowed {
+			// WHO SAID NO IS RECORDED HERE, at the one place every veto passes
+			// through, rather than inside each citizen — a hook added next
+			// month cannot forget to name itself.
+			refused.refusedBy = hook.Name()
 			return call, refused, false
 		}
 		call = rewritten

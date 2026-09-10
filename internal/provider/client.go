@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lane/control"
+	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -1392,6 +1393,16 @@ func (c *Client) completeWithMessagesStreaming(
 	// counts come from. Zero until one arrives, which is "the provider did not
 	// break its output down" and never "it did not think".
 	reasoningTokens := 0
+	// The working itself, kept ONLY while somebody is recording this run
+	// (internal/trace). A streamed answer is assembled from its frames and the
+	// thinking is never part of the assembled reply, so this is the one moment
+	// the record can see it at all — and holding a model's whole deliberation
+	// in memory on every ordinary run, for nobody, is exactly the cost the
+	// switch exists to avoid.
+	var thoughtRecord *strings.Builder
+	if trace.For(ctx) != nil {
+		thoughtRecord = &strings.Builder{}
+	}
 
 	// Read once per call rather than once per event: the session does not
 	// change mid-stream, and this loop already runs against the connection's
@@ -1733,6 +1744,9 @@ func (c *Client) completeWithMessagesStreaming(
 				for _, event := range events[:count] {
 					event.Session = session
 					split.reasoning(event.Delta)
+					if thoughtRecord != nil {
+						thoughtRecord.WriteString(event.Delta)
+					}
 					observer(event)
 					if thoughts != nil && event.Delta != "" && thoughts.write(event.Delta) {
 						return soup()
@@ -1756,6 +1770,9 @@ func (c *Client) completeWithMessagesStreaming(
 					// folded back like any other (answer.go, and the close above).
 					thinking, thoughtBegan = true, c.clock()
 					observer(StreamEvent{Kind: StreamThinking, Session: session})
+				}
+				if thoughtRecord != nil {
+					thoughtRecord.WriteString(workingText)
 				}
 				observer(StreamEvent{Kind: StreamReasoning, Delta: workingText, FromAnswer: true, Session: session})
 			}
@@ -1914,6 +1931,7 @@ func (c *Client) completeWithMessagesStreaming(
 		ctx: ctx, request: request, knobs: knobs, stream: true,
 		began: logBegan, status: httpResponse.StatusCode, served: served,
 		response: response, reasoningTokens: reasoningTokens, learned: learned,
+		reasoning: builtString(thoughtRecord),
 	})
 	// Both paths or neither, exactly as the learning above: a streamed answer
 	// is billed by the provider the same way a whole-body one is, and a ledger
