@@ -61,6 +61,8 @@ package session
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -78,6 +80,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/workspace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -462,7 +465,13 @@ func (r *standingRunner) deliver(item standing.Item, kind, text, run string) {
 	// so a note written into it is a note no screen in this product ever opens.
 	// The project's inbox is the address that IS read: home draws it under the
 	// project, and the next ordinary conversation opened there folds it in.
-	if strings.TrimSpace(item.Origin.Exchange) != "" && r.root != "" {
+	//
+	// AND AN ITEM WITH NO CONVERSATION BEHIND IT IS THE SAME CASE. One the
+	// person wrote whole at the terminal (`aforge standing add`) was never
+	// asked for in a room, so it has no origin inbox at all — and a note with
+	// no address is a firing nobody reads, which this file's header forbids.
+	// The project's inbox is where its news waits.
+	if (strings.TrimSpace(item.Origin.Exchange) != "" || standingSessionDir(item) == "") && r.root != "" {
 		_ = standing.DeliverProject(r.root, item.Workspace, note)
 		return
 	}
@@ -555,9 +564,34 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	if err != nil {
 		return standing.Outcome{}, err
 	}
+	// THE CAUSE THE PASS WROTE BEFORE THIS RUN BEGAN (internal/standing's
+	// occurrence.go), carried into the run's own journal so the first thing it
+	// records says what started it. A folder with no record — a pass from an
+	// older build, a test driving the runner directly — records no cause
+	// rather than one guessed from timing.
+	occurrence, occurred := standingOccurrence(runDir)
+	if occurred {
+		cfg.cause = &executionCause{
+			Kind:    causeStandingOccurrence,
+			ID:      occurrence.ID,
+			Owner:   cfg.OrganizationRef,
+			Spec:    occurrence.Spec,
+			Receipt: filepath.Join(runDir, standing.OccurrenceFile),
+		}
+		if !occurrence.Due.IsZero() {
+			due := occurrence.Due
+			cfg.cause.Due = &due
+		}
+	}
 	brief := standingEvidence(item.Does.Brief, evidence)
 	if acceptance := strings.TrimSpace(item.Does.Acceptance); acceptance != "" {
 		brief += "\n\nDONE WHEN: " + acceptance
+	}
+	if occurred {
+		brief += "\n\n" + standingOccurrenceBlock(occurrence)
+	}
+	if report := strings.TrimSpace(item.Does.Report); report != "" {
+		brief += "\n\n" + standingReportBlock(item, report)
 	}
 	// THE BRIEF IS BUILT BEFORE THE SESSION IS, because whether this firing may
 	// discover it is wide is read off the brief and has to be settled while the
@@ -586,14 +620,29 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	if limit <= 0 {
 		limit = standingRunSteps
 	}
-	reply := ""
-	needs, saved, capped := "", false, false
+	// end is what the run's turns came to, and the one thing the outcome and
+	// the publication are read from (standing_publish.go).
+	var end firingEnd
+	report := strings.TrimSpace(item.Does.Report)
 	drain := func(events <-chan Event) {
-		var said strings.Builder
+		var said, since strings.Builder
 		for event := range events {
 			switch event.Kind {
 			case EventTextDelta:
 				said.WriteString(event.Text)
+				since.WriteString(event.Text)
+			case EventToolBegin, EventToolAnnounced:
+				since.Reset()
+				// A new line between one response and the next, so the last
+				// line of one is never glued to the first line of the other.
+				said.WriteString("\n")
+			case EventError:
+				// A reply streamed up to a deadline or a failure is half a report.
+				if event.Err != nil {
+					end.cut = event.Err
+				} else {
+					end.cut = errors.New("the turn ended abnormally")
+				}
 			case EventToolEnd:
 				// A CALL THAT SAVED SOMETHING IS THE LANDING, and [producedAFile]
 				// is the one place this build says which calls those are
@@ -608,7 +657,7 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 				// one outcome the sweep may never reap, so its run folder was kept
 				// for ever by a call that left nothing in it.
 				if producedAFile(event.Tool, event.Args) {
-					saved = true
+					end.saved = true
 				}
 			case EventToolFinished:
 				steps++
@@ -620,16 +669,38 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 				// lands, and the only thing an interrupt can still prevent is the
 				// NEXT request. Asking on every streamed delta would take this
 				// agent's lock a thousand times to learn the same figure.
+				//
+				// AND THE TURN IT ENDS ENDS NORMALLY. The interrupt closes it like
+				// any other turn, with no error, so it is this mark and not the
+				// turn's ending that says the run did not finish.
 				if steps >= limit || (item.Rails.PerRunUSD > 0 && agent.Usage().CostUSD >= item.Rails.PerRunUSD) {
-					capped = true
+					end.capped = true
 					agent.InterruptFor(StopByWorkStopped)
 				}
+			case EventTurnDone:
+				// THE TURN SAYS HOW IT ENDED. An answer the loop stopped asking the
+				// rest of at the output limit ends its turn like any other, so it
+				// is this mark and not the turn's ending that says the answer is
+				// partial ([Event.Truncated]). The last turn's ending is the one
+				// that counts, as the last turn's words are.
+				end.truncated = event.Truncated
 			case EventToolFailed:
-				if line := standingRefusal(event); line != "" && needs == "" {
-					needs = line
+				// A REFUSED WRITE OF THE RUN'S OWN REPORT IS NOT A QUESTION FOR
+				// THE PERSON. aforge publishes that one path itself, so there is
+				// nothing a person could allow. It is recorded, not asked: the
+				// call stays refused, and whether the run still published is
+				// the decision's to say ([firingEnd.withheld]).
+				line := standingRefusal(event)
+				switch {
+				case line == "":
+				case writesTheReport(event, item.Workspace, report):
+					end.ownReportWrite = true
+				case end.needs == "":
+					end.needs = line
 				}
 			}
 		}
+		end.readReport(said.String())
 		// THE OUTCOME IS THE LAST THING THIS FIRING ACTUALLY SAID. A run that
 		// divided opens by announcing that it split the work into three parts
 		// and closes by saying what came of them, and the person reads ONE
@@ -638,7 +709,8 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		// nothing replaces nothing: silence is not a newer account, and a run
 		// whose last re-entry was wordless still came to what it said before it.
 		if words := strings.TrimSpace(said.String()); words != "" {
-			reply = words
+			end.reply = words
+			end.final = strings.TrimSpace(since.String())
 		}
 	}
 	drain(events)
@@ -662,7 +734,7 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	// cut at either of them takes its unfinished parts down with it
 	// ([TaskGraph.stopChildren]) rather than leaving them spending for a run
 	// nobody is going to read.
-	for graph != nil && !capped && ctx.Err() == nil {
+	for graph != nil && !end.capped && ctx.Err() == nil {
 		// The generation is taken BEFORE the question, so a report landing
 		// between the two closes the channel this select is about to wait on.
 		news := agent.taskNewsWait()
@@ -691,24 +763,105 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		}
 		drain(next)
 	}
-	if graph != nil && (capped || ctx.Err() != nil) {
+	if graph != nil && (end.capped || ctx.Err() != nil) {
 		graph.stopChildren(root.id)
 	}
 
-	outcome := standing.Outcome{
-		Kind: standingCameTo(saved, reply, needs),
-		Text: clip(reply, standingOutcomeClip),
-		USD:  agent.Usage().CostUSD,
-	}
-	if needs != "" {
-		// NOTHING PRETENDS THIS LANDED. A run that stopped on something only a
-		// person can allow is not a failure and is not a success; it is work
-		// waiting for them, and home sorts on exactly that.
-		outcome.NeedsPerson = needs
-		if outcome.Text == "" {
-			outcome.Text = needs
+	// ONE ANSWER DECIDES WHAT THE RUN CAME TO AND WHETHER IT PUBLISHES
+	// (standing_publish.go), and the outcome's line is that answer's line.
+	withheld := end.withheld(report != "", ctx.Err())
+	outcome := end.outcome(withheld, ctx.Err())
+	// THE REPORT IS PUBLISHED BY THE OWNER, and only a run that came to
+	// something clean publishes one: a run that stopped on a question, was cut
+	// off, was stopped at a limit or said nothing leaves the last good report
+	// where it was (internal/standing's Action.Report).
+	final := end.body()
+	publish := report != "" && withheld == notWithheld && outcome.Kind == "landed"
+	if publish {
+		// AND IT IS READ AGAINST THE RULES THAT REACHED THE RUN FIRST
+		// (standing_rules.go). A report that still breaks one after its one
+		// correction is held back, and the run waits on the person instead.
+		//
+		// redo is the one correction turn, drained by the run's own reader so
+		// its steps, spend and refusals count exactly as the first turn's did,
+		// and answered by the same decision.
+		redo := func(correction string) (string, error) {
+			next, err := agent.Submit(ctx, correction)
+			if err != nil {
+				return "", err
+			}
+			end.beginCorrection()
+			drain(next)
+			if w := end.withheld(true, ctx.Err()); w != notWithheld {
+				return "", errors.New(end.why(w, ctx.Err()))
+			}
+			return end.body(), nil
+		}
+		checked, held := r.checkAgainstRules(ctx, agent, runDir, final, redo, item)
+		final = checked
+		// THE ANSWER IS READ AGAIN after the correction, which may itself
+		// have been stopped at a limit, cut off, or left its report unclosed.
+		if w := end.withheld(true, ctx.Err()); w != notWithheld {
+			publish, withheld = false, w
+			outcome = end.outcome(w, ctx.Err())
+		} else if held != "" {
+			publish, withheld = false, withheldByRules
+			outcome.Kind = standing.OutcomeNeedsYou
+			outcome.NeedsPerson = clip(held, standingOutcomeClip)
+			outcome.Text = outcome.NeedsPerson
+		}
+		if occurred {
+			// The check's record was written into the folder by the check;
+			// this copy must not write over it.
+			if current, err := standing.ReadOccurrence(runDir); err == nil {
+				occurrence = current
+			}
 		}
 	}
+	outcome.USD = agent.Usage().CostUSD
+	// ── STOPPED WHILE IT RAN ──
+	//
+	// A stop does not reach into a run that has already started: what the run
+	// did with its own tools has been done, and nothing here undoes it. What
+	// aforge has NOT done yet is its own last two acts — replacing the report
+	// and delivering the note — and the person who said stop was told the work
+	// will not run again, so neither happens now. A PAUSE IS NOT A STOP: work
+	// admitted before a pause finishes as it was admitted, report and all, and
+	// the pause holds back the next occurrence (currentAdmission, in the pass).
+	if r.stoppedSince(item) {
+		outcome.NeedsPerson = ""
+		if !end.saved {
+			outcome.Kind = standing.OutcomeNothing
+		}
+		outcome.Text = "stopped while it ran: no note was sent"
+		if report != "" {
+			outcome.Text = "stopped while it ran: its report was not published and no note was sent; the previous report is unchanged"
+		}
+		recordWithheld(&outcome, withheldStopped, report != "")
+		return outcome, nil
+	}
+	if publish {
+		published, err := publishStandingReport(item.Workspace, report, final)
+		if err != nil {
+			withheld = withheldUnwritten
+			outcome.Kind = standing.OutcomeFailed
+			outcome.Text = "could not publish the report to " + report + ": " + err.Error()
+		} else {
+			outcome.Published = published
+			if occurred {
+				// Recorded the moment it exists, so a process that dies before
+				// the pass finishes still leaves the receipt behind — and the
+				// pass that finds it records the occurrence rather than running
+				// it again (internal/standing's finishedOccurrence).
+				occurrence.Published = published
+				_ = standing.WriteOccurrence(runDir, occurrence)
+			}
+			outcome.Text = clip("report updated: "+report+" — "+final, standingOutcomeClip)
+		}
+	}
+	// The answer is recorded beside the outcome, as a code (occurrence.json's
+	// "withheld"), for whatever reads the record rather than the line.
+	recordWithheld(&outcome, withheld, report != "")
 	if outcome.Kind == standing.OutcomeNothing {
 		// A RUN THAT CAME TO NOTHING TELLS NOBODY, because there is nothing to
 		// tell: no line, no landing, nothing waiting. Walking the delivery roads
@@ -724,6 +877,85 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	}
 	r.deliver(item, outcome.Kind, outcome.Text, runDir)
 	return outcome, nil
+}
+
+// heldReportFile is the run-folder file a draft is kept in when the report was
+// held back rather than published.
+const heldReportFile = "held-report.md"
+
+// checkAgainstRules reads the run's final report against the rules that reached
+// the run (standing_rules.go) and answers the report to publish with "", or
+// the line the run waits on the person with when it may not be published. On a
+// finding the run is sent back ONCE through redo, in the same session, and the
+// report becomes what it answered. The check is written into the occurrence
+// record, found or not.
+func (r *standingRunner) checkAgainstRules(ctx context.Context, agent *Agent, runDir, draft string, redo func(string) (string, error), item standing.Item) (string, string) {
+	rules := agent.standingRules()
+	if len(rules) == 0 {
+		return draft, ""
+	}
+	check := &standing.RuleCheck{}
+	for _, rule := range rules {
+		check.Rules = append(check.Rules, rule.ID)
+	}
+	verdict := agent.checkStandingReport(ctx, rules, draft)
+	overRail := item.Rails.PerRunUSD > 0 && agent.Usage().CostUSD >= item.Rails.PerRunUSD
+	if verdict.answered && !verdict.kept && !overRail && ctx.Err() == nil {
+		check.First = verdict.finding()
+		check.Rewrote = true
+		corrected, err := redo(standingCorrection(verdict))
+		switch {
+		case err != nil:
+			verdict = standingRuleVerdict{trouble: oneLine(err.Error())}
+		case corrected == "":
+			verdict = standingRuleVerdict{trouble: "the corrected report did not arrive"}
+		default:
+			draft = corrected
+			verdict = agent.checkStandingReport(ctx, rules, draft)
+		}
+	}
+	held := ""
+	switch {
+	case verdict.answered && verdict.kept:
+		check.Verdict = "kept"
+	case verdict.answered:
+		check.Verdict, check.Rule, check.Quote, check.Why = "broken", verdict.rule, verdict.quote, verdict.why
+		held = "it breaks a rule placed on this work — " + verdict.finding()
+	default:
+		check.Verdict, check.Why = "no answer", verdict.trouble
+		held = "its check against the rules placed on this work gave no answer: " + verdict.trouble
+	}
+	if held != "" {
+		path := filepath.Join(runDir, heldReportFile)
+		if err := os.WriteFile(path, []byte(strings.TrimSpace(draft)+"\n"), 0o600); err == nil {
+			check.Held = path
+		}
+		held = "report held back, not published: " + held + ". The previous report is unchanged"
+		if check.Held != "" {
+			held += "; the draft is in " + check.Held
+		}
+	}
+	if occurrence, err := standing.ReadOccurrence(runDir); err == nil {
+		occurrence.RuleCheck = check
+		_ = standing.WriteOccurrence(runDir, occurrence)
+	}
+	return draft, held
+}
+
+// stoppedSince answers whether the person stopped this item while the run was
+// working. It reads the item's document as it is NOW; a store that cannot be
+// read, or an item it does not hold, is not a stop — a runner driven without a
+// store has nobody who could have said one.
+func (r *standingRunner) stoppedSince(item standing.Item) bool {
+	if r.root == "" || item.ID == "" {
+		return false
+	}
+	store, err := standing.Open(r.root)
+	if err != nil {
+		return false
+	}
+	current, err := store.Get(item.ID)
+	return err == nil && current.Status == standing.StatusRetired
 }
 
 // standingCameTo decides what one firing's work came to, from the three things
@@ -757,6 +989,137 @@ func standingCameTo(saved bool, report, needs string) string {
 	return standing.OutcomeNothing
 }
 
+// standingOccurrence reads the record the pass wrote into this run folder.
+func standingOccurrence(runDir string) (standing.Occurrence, bool) {
+	occurrence, err := standing.ReadOccurrence(runDir)
+	if err != nil {
+		return standing.Occurrence{}, false
+	}
+	return occurrence, true
+}
+
+// standingOccurrenceBlock is what this run is told about why it is running:
+// which version of the instructions, what woke it, when the last occurrence
+// ran and what it came to, and whether an earlier attempt was cut off. It is
+// the owner's record read back, never the model's guess about its own history.
+func standingOccurrenceBlock(occurrence standing.Occurrence) string {
+	var out strings.Builder
+	out.WriteString("THIS OCCURRENCE:\n")
+	if occurrence.Spec > 0 {
+		fmt.Fprintf(&out, "- instructions: version %d\n", occurrence.Spec)
+	}
+	if because := strings.TrimSpace(occurrence.Because); because != "" {
+		out.WriteString("- woken because: " + because + "\n")
+	}
+	if !occurrence.Due.IsZero() {
+		out.WriteString("- scheduled for: " + occurrence.Due.Local().Format(time.RFC3339) + "\n")
+	}
+	if occurrence.PreviousFired.IsZero() {
+		out.WriteString("- previous occurrence: none; this is the first\n")
+	} else {
+		out.WriteString("- previous occurrence: " + occurrence.PreviousFired.Local().Format(time.RFC3339) + "\n")
+	}
+	if occurrence.Attempt > 1 {
+		fmt.Fprintf(&out, "- attempt %d: an earlier attempt at this same occurrence was interrupted before it finished; do the whole occurrence again\n", occurrence.Attempt)
+	}
+	return strings.TrimRight(out.String(), "\n")
+}
+
+// standingReportBlock is the one instruction a run with a report is given: its
+// final reply IS the report, and aforge writes it. It says where the previous
+// version is so the run can carry forward what still holds, and it says that
+// the run must not write the file itself — an unattended write would be refused
+// anyway, and a run that tried would spend its steps on the refusal.
+func standingReportBlock(item standing.Item, report string) string {
+	path := filepath.Join(item.Workspace, report)
+	line := "REPORT: your FINAL REPLY is the complete report. aforge publishes it to " + report +
+		" in the project, replacing the previous version. Write the whole report in Markdown between a line " + standingReportOpen + " and a line " + standingReportClose +
+		"; only what is between them is published, so say nothing inside them about what you read or did. Do not write that file yourself."
+	if _, err := os.Stat(path); err == nil {
+		line += " The previous version is at " + report + "; read it if you need what it said."
+	}
+	return line
+}
+
+// publishStandingReport writes a run's report to its declared path inside the
+// workspace, atomically, and answers the receipt.
+//
+// THE PATH IS RE-CHECKED AGAINST THE WORKSPACE HERE, not only at admission:
+// the report's folder is resolved through the filesystem as it is NOW, and a
+// symlink planted since the item was made must not carry the write outside the
+// project the person pointed it at.
+func publishStandingReport(workspace, report, text string) (*standing.Publication, error) {
+	root, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		return nil, err
+	}
+	target := filepath.Join(root, filepath.Clean(report))
+	dir := filepath.Dir(target)
+	// THE CHECK COMES BEFORE THE FOLDERS ARE MADE. The deepest part of the
+	// report's folder that already exists is resolved first, so a symlinked
+	// parent pointing out of the project refuses the write before a single
+	// folder is created on the far side of it.
+	existing := dir
+	for {
+		if _, err := os.Lstat(existing); err == nil || existing == root || filepath.Dir(existing) == existing {
+			break
+		}
+		existing = filepath.Dir(existing)
+	}
+	if err := insideProject(root, existing); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	// And once more after, for whatever changed between the two.
+	if err := insideProject(root, dir); err != nil {
+		return nil, err
+	}
+	if info, err := os.Lstat(target); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("the report path is a symbolic link")
+	}
+	body := strings.TrimSpace(text) + "\n"
+	temp, err := os.CreateTemp(dir, ".report-*")
+	if err != nil {
+		return nil, err
+	}
+	name := temp.Name()
+	defer func() { _ = os.Remove(name) }()
+	if _, err := temp.WriteString(body); err != nil {
+		_ = temp.Close()
+		return nil, err
+	}
+	if err := temp.Sync(); err != nil {
+		_ = temp.Close()
+		return nil, err
+	}
+	if err := temp.Close(); err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(name, 0o644); err != nil {
+		return nil, err
+	}
+	if err := os.Rename(name, target); err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256([]byte(body))
+	return &standing.Publication{Path: report, SHA256: hex.EncodeToString(sum[:]), Bytes: len(body), At: time.Now().UTC()}, nil
+}
+
+// insideProject refuses a folder that resolves, through the filesystem as it
+// is now, anywhere but inside root.
+func insideProject(root, dir string) error {
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return err
+	}
+	if rel, err := filepath.Rel(root, resolved); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return errors.New("the report folder resolves outside the project")
+	}
+	return nil
+}
+
 // standingRunConfig is the run's own session: the parent launch, pointed at a
 // fresh folder in the item's project, with nobody to ask and nothing standing.
 //
@@ -785,6 +1148,15 @@ func standingRunConfig(parent Config, item standing.Item, runDir string) (Config
 	// pile of one-run conversations and no way to say that they were all the same
 	// promise, kept every morning for a month (usage_ledger.go).
 	cfg.standingItemID = item.ID
+	cfg.OrganizationRef = workspace.Ref{Kind: workspace.StandingKind, ID: item.ID}
+	if parent.Governing != nil {
+		g := *parent.Governing
+		g.Workspace, g.SessionID = item.Workspace, item.Origin.SessionID
+		g.Owners = []workspace.Ref{cfg.OrganizationRef}
+		cfg.Governing = &g
+	} else if parent.Standing != nil && parent.Standing.Store != nil {
+		cfg.Governing = &Governing{Reader: parent.Standing.Store, Workspace: item.Workspace, SessionID: item.Origin.SessionID, Owners: []workspace.Ref{cfg.OrganizationRef}}
+	}
 	if model := strings.TrimSpace(item.Does.Model); model != "" {
 		cfg.Model = model
 	}

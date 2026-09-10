@@ -68,7 +68,6 @@ func (t *Ticker) Tick(ctx context.Context) (Pass, error) {
 		if err := t.one(ctx, &pass, item); err != nil {
 			pass.Errors++
 			pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": "+oneLine(err.Error()))
-			t.noteFailure(item, err)
 		}
 	}
 	// THE TIDY GOES LAST AND IS NOT AN ITEM. Everything the person actually
@@ -139,8 +138,24 @@ func (t *Ticker) clock() time.Time {
 }
 
 // one is a single item's whole pass: the rails, the look, and the firing.
-func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) error {
+func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) (failure error) {
+	before := item
+	ownedByFire := false
 	now := t.clock()
+	// Keep the observed spend and schedule changes on failure too. The outer
+	// list's stale copy cannot describe what this check actually consumed.
+	defer func() {
+		if failure != nil && !ownedByFire {
+			t.noteFailure(before, item, failure)
+		}
+	}()
+	admitted, err := t.Store.currentAdmission(before)
+	if err != nil {
+		return err
+	}
+	if !admitted {
+		return nil
+	}
 
 	// RAIL ONE: it ran out of time.
 	if deadline, has := expiryOf(item); has && !now.Before(deadline) {
@@ -148,10 +163,19 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) error {
 		item.RetiredWhy = "expired"
 		item.LastChecked = now
 		item.LastCheckLine = "its time ran out"
-		pass.Skipped++
-		pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": its time ran out")
-		_ = t.Store.Log(item.ID, "its time ran out — no longer watching")
-		return t.Store.Save(item)
+		if err := t.Store.recordRuntime(before, item); err != nil {
+			return err
+		}
+		current, err := t.Store.Get(item.ID)
+		if err != nil {
+			return err
+		}
+		if current.Status == StatusRetired && current.RetiredWhy == "expired" {
+			pass.Skipped++
+			pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": its time ran out")
+			_ = t.Store.Log(item.ID, "its time ran out — no longer watching")
+		}
+		return nil
 	}
 
 	// AND A HOLD IS WALKED PAST IN SILENCE. It has no moment, no rhythm and no
@@ -174,7 +198,7 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) error {
 	}
 	if item.Rails.MaxPerDay > 0 && mine.Fired >= item.Rails.MaxPerDay {
 		pass.Skipped++
-		return t.quiet(item, now, "it has already run today as often as you allowed")
+		return t.quiet(before, item, now, "it has already run today as often as you allowed")
 	}
 
 	// RAIL THREE: everything standing has spent what the day allows.
@@ -186,7 +210,7 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) error {
 		if all.USD >= t.DailyRailUSD {
 			pass.Skipped++
 			pass.Notes = append(pass.Notes, "today's spending limit is reached; nothing standing runs again until tomorrow")
-			return t.quiet(item, now, "today's spending limit is reached")
+			return t.quiet(before, item, now, "today's spending limit is reached")
 		}
 	}
 
@@ -216,10 +240,18 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) error {
 		return nil
 	case stateQuiet:
 		pass.Checked++
-		return t.quiet(item, now, found.line)
+		return t.quiet(before, item, now, found.line)
 	}
 	pass.Checked++
-	return t.fire(ctx, pass, item, now, found)
+	admitted, err = t.Store.currentAdmission(before)
+	if err != nil {
+		return err
+	}
+	if !admitted {
+		return t.quiet(before, item, now, "the item changed while it was being checked")
+	}
+	ownedByFire = true
+	return t.fire(ctx, pass, before, item, now, found)
 }
 
 // state is what one look at the world came to. The names are spelled out
@@ -240,6 +272,12 @@ type sighting struct {
 	state    state
 	line     string
 	evidence string
+	// changes are the files a watch saw change, and changesUnknown says the
+	// previous reading could not be read — never the same as "none changed".
+	changes        []Change
+	changesUnknown bool
+	// since is the reading the change list was measured from.
+	since string
 }
 
 // look decides whether an item wants to fire, and updates the parts of the item
@@ -248,6 +286,11 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 	found := sighting{}
 	switch item.When.Kind {
 	case WhenAt:
+		// A one-shot that finished while paused is still consumed when resumed.
+		// Preserve the pause, without delivering that same moment twice.
+		if !item.LastFired.IsZero() && !item.LastFired.Before(item.When.At) {
+			return sighting{state: stateAsleep}, nil
+		}
 		if now.Before(item.When.At) {
 			return sighting{state: stateAsleep}, nil
 		}
@@ -274,13 +317,19 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		found = sighting{state: stateReady, line: "it was the time you asked for"}
 
 	case WhenFile:
-		digest, listing, err := fingerprint(item.Workspace, item.When.Glob)
+		digest, listing, files, err := fingerprint(item.Workspace, item.When.Glob)
 		if err != nil {
 			return sighting{}, err
 		}
-		first := item.Fingerprint == ""
-		changed := !first && digest != item.Fingerprint
+		previous := item.Fingerprint
+		first := previous == ""
+		changed := !first && digest != previous
 		item.Fingerprint = digest
+		since := previous
+		if item.Does.Kind == ActionTask {
+			since = t.Store.unreportedSince(item.ID, previous)
+		}
+		t.Store.keepReading(item.ID, digest, files, previous, since)
 		switch {
 		case first:
 			// THE FIRST READING IS THE BASELINE AND IS SILENT. Everything on
@@ -291,7 +340,12 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		case !changed:
 			return sighting{state: stateQuiet, line: "nothing has changed"}, nil
 		}
-		found = sighting{state: stateReady, line: "the files you are watching changed", evidence: listing}
+		changes, readErr := t.Store.changesSince(item.ID, since, files)
+		found = sighting{
+			state: stateReady, line: "the files you are watching changed",
+			evidence: changesText(changes, readErr != nil, since != previous) + "\nALL MATCHING FILES:\n" + listing,
+			changes:  changes, changesUnknown: readErr != nil, since: since,
+		}
 
 	case WhenIdle:
 		if t.Idle == nil {
@@ -319,6 +373,13 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		item.NextDue = now.Add(every)
 		if err != nil {
 			return sighting{}, err
+		}
+		admitted, admissionErr := t.Store.currentAdmission(*item)
+		if admissionErr != nil {
+			return sighting{}, admissionErr
+		}
+		if !admitted {
+			return sighting{state: stateQuiet, line: "the item changed while it was being checked"}, nil
 		}
 		evidence = clipTail(evidence, ProbeClip)
 		yes, line, err := t.judge(ctx, item, now, evidence)
@@ -375,14 +436,20 @@ func (t *Ticker) judge(ctx context.Context, item *Item, now time.Time, evidence 
 
 // quiet is the whole of a check that found nothing: the item remembers it
 // looked, and NOTHING ELSE IS WRITTEN ANYWHERE.
-func (t *Ticker) quiet(item Item, now time.Time, line string) error {
+func (t *Ticker) quiet(before, item Item, now time.Time, line string) error {
 	item.LastChecked = now
 	item.LastCheckLine = oneLine(line)
-	return t.Store.Save(item)
+	return t.Store.recordRuntime(before, item)
 }
 
 // fire is the firing and everything it leaves behind.
-func (t *Ticker) fire(ctx context.Context, pass *Pass, item Item, now time.Time, found sighting) error {
+func (t *Ticker) fire(ctx context.Context, pass *Pass, before, item Item, now time.Time, found sighting) (failure error) {
+	recorded := false
+	defer func() {
+		if failure != nil && !recorded {
+			t.noteFailure(before, item, failure)
+		}
+	}()
 	if t.Runner == nil {
 		return errors.New("there is nothing in this build to run it with")
 	}
@@ -399,11 +466,29 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item Item, now time.Time,
 	case ActionSay:
 		outcome, err = t.Runner.Say(ctx, item, strings.ReplaceAll(item.Does.Say, "{{evidence}}", found.evidence))
 	case ActionTask:
+		key := occurrenceKey(before, now)
+		// AN OCCURRENCE THAT ALREADY FINISHED IS RECORDED, NOT RUN AGAIN. Its
+		// record says it ended; only the item's document never heard, because
+		// the process stopped between the two writes. Running it again would
+		// publish and deliver the same occurrence twice (occurrence.go).
+		if done, finished := t.Store.finishedOccurrence(item.ID, key); finished {
+			recorded = true
+			pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": recorded an occurrence that had finished before its process stopped")
+			return t.recoverFinished(before, item, done)
+		}
 		runDir, err = t.Store.newRunDir(item.ID)
 		if err != nil {
 			return err
 		}
+		// THE CAUSE IS WRITTEN BEFORE THE WORK STARTS, and a firing whose cause
+		// cannot be written does not start: a run folder that cannot say what
+		// woke it is the question this record exists to answer (occurrence.go).
+		occurrence := t.admit(before, item, now, found, key, runDir)
+		if err := WriteOccurrence(runDir, occurrence); err != nil {
+			return fmt.Errorf("could not record this occurrence: %w", err)
+		}
 		outcome, err = t.Runner.Run(ctx, item, runDir, found.evidence)
+		t.finishOccurrence(runDir, occurrence, outcome, err)
 	default:
 		return errors.New("standing: an unknown kind of action: " + string(item.Does.Kind))
 	}
@@ -456,10 +541,108 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item Item, now time.Time,
 	}
 	if item.NeedsPerson != "" {
 		pass.NeedsYou++
+		pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": "+oneLine(shorten(item.NeedsPerson, 240)))
+	} else if outcome.Kind == OutcomeFailed {
+		// A RUN THAT DID NOT FINISH IS SAID, by name and in its own words, so
+		// whoever ran the pass by hand learns it from the pass rather than from
+		// a report that silently stayed as it was.
+		pass.Failed++
+		pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": "+oneLine(shorten(outcome.Text, 240)))
 	}
 	ledgerErr := t.Store.Append(Entry{At: now, ItemID: item.ID, Kind: string(item.Does.Kind), USD: outcome.USD, Run: runDir})
 	logErr := t.Store.Log(item.ID, firingLine(found, outcome))
-	return errors.Join(ledgerErr, logErr, t.Store.Save(item))
+	runtimeErr := t.Store.recordRuntime(before, item)
+	recorded = runtimeErr == nil
+	return errors.Join(ledgerErr, logErr, runtimeErr)
+}
+
+// admit is the occurrence record for one firing, before it runs: which item
+// state it was admitted from, which version of the instructions it runs on,
+// what woke it, and which interrupted attempts of the same occurrence it
+// supersedes.
+func (t *Ticker) admit(before, item Item, now time.Time, found sighting, key, runDir string) Occurrence {
+	id := item.ID + "/" + filepath.Base(runDir)
+	supersedes, attempts := t.Store.interruptedAttempts(item.ID, key, id)
+	occurrence := Occurrence{
+		ID: id, ItemID: item.ID, Key: key,
+		Spec: before.SpecRevision, Revision: before.Revision,
+		Words: item.Words, Brief: item.Does.Brief, Report: item.Does.Report,
+		Trigger: item.When, Because: oneLine(found.line),
+		Changes: found.changes, ChangesUnknown: found.changesUnknown, Since: found.since,
+		PreviousRun: before.LastRun, PreviousFired: before.LastFired,
+		Admitted: now, PID: os.Getpid(),
+		Attempt: attempts + 1, Supersedes: supersedes,
+		Phase: PhaseAdmitted,
+	}
+	switch item.When.Kind {
+	case WhenEvery:
+		occurrence.Due = before.NextDue
+	case WhenFile:
+		occurrence.Reading = item.Fingerprint
+	}
+	return occurrence
+}
+
+// finishOccurrence completes the record with what the run came to. It keeps a
+// publication the runner already wrote into the record ([Outcome.Published]),
+// so a receipt made before a failure is not erased by the failure.
+func (t *Ticker) finishOccurrence(runDir string, admitted Occurrence, outcome Outcome, failure error) {
+	record := admitted
+	if current, err := ReadOccurrence(runDir); err == nil {
+		record = current
+	}
+	record.Phase = PhaseFinished
+	record.Finished = t.clock()
+	record.Outcome = outcome.Kind
+	record.OutcomeText = outcome.Text
+	record.USD = outcome.USD
+	if outcome.Published != nil {
+		record.Published = outcome.Published
+	}
+	record.Withheld = outcome.Withheld
+	if failure != nil {
+		record.Outcome = OutcomeFailed
+		record.Error = oneLine(failure.Error())
+	}
+	_ = WriteOccurrence(runDir, record)
+}
+
+// recoverFinished records an occurrence whose run finished before the item's
+// document said so: the firing is counted once, the watch moves to the reading
+// that occurrence reported on, and nothing is run, published or delivered.
+func (t *Ticker) recoverFinished(before, item Item, done Occurrence) error {
+	if done.Phase == PhaseAdmitted {
+		// ITS REPORT WAS PUBLISHED AND ITS PROCESS STOPPED BEFORE THE REST WAS
+		// WRITTEN ([Store.finishedOccurrence]). It landed — the receipt is the
+		// proof — and the record says so now, with what cannot be known: the
+		// note is delivered after the report and may or may not have gone, and
+		// the run's cost was known only to that process.
+		done.Phase = PhaseFinished
+		done.Finished = t.clock()
+		done.Outcome = "landed"
+		done.OutcomeText = "report published to " + done.Published.Path + "; its process stopped before the rest was recorded, so whether its note was delivered, and what it cost, is not known"
+		_ = WriteOccurrence(done.RunDir, done)
+	}
+	// The firing is dated when it was admitted, as [Ticker.fire] dates one.
+	at := done.Admitted
+	if at.IsZero() {
+		at = done.Finished
+	}
+	item.Runs++
+	item.LastFired = at
+	item.LastChecked = t.clock()
+	item.LastCheckLine = "recorded an occurrence that had finished before its process stopped"
+	item.LastOutcome = done.Outcome
+	item.LastRun = done.RunDir
+	if item.When.Kind == WhenFile && done.Reading != "" {
+		// THE WATCH MOVES TO WHAT THAT RUN SAW, NOT TO WHAT THIS LOOK SAW. A
+		// change made after that run began has not been reported yet, and the
+		// next pass has to find it.
+		item.Fingerprint = done.Reading
+	}
+	writeCameTo(done.RunDir, done.Outcome)
+	logErr := t.Store.Log(item.ID, "recorded "+filepath.Base(done.RunDir)+" — it finished before its process stopped; not run again")
+	return errors.Join(logErr, t.Store.recordRuntime(before, item))
 }
 
 // writeCameTo leaves [CameTo] in the run folder: one word saying what this run
@@ -509,11 +692,11 @@ func firingLine(found sighting, outcome Outcome) string {
 
 // noteFailure writes a failure onto the item so the card can say what went
 // wrong, rather than showing a watch that silently stopped working weeks ago.
-func (t *Ticker) noteFailure(item Item, failure error) {
+func (t *Ticker) noteFailure(before, item Item, failure error) {
 	now := t.clock()
 	item.LastChecked = now
 	item.LastCheckLine = "could not check: " + shorten(oneLine(failure.Error()), 200)
-	_ = t.Store.Save(item)
+	_ = t.Store.recordRuntime(before, item)
 	_ = t.Store.Log(item.ID, item.LastCheckLine)
 }
 
@@ -539,18 +722,19 @@ func expiryOf(item Item) (time.Time, bool) {
 // modification times of everything the glob matches, hashed. The listing beside
 // it is what the firing is told, since a hash is evidence of nothing to a model
 // or to a person.
-func fingerprint(workspace, glob string) (string, string, error) {
+func fingerprint(workspace, glob string) (string, string, map[string]fileEntry, error) {
 	pattern := glob
 	if !filepath.IsAbs(pattern) {
 		pattern = filepath.Join(workspace, pattern)
 	}
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
-		return "", "", fmt.Errorf("standing: cannot read the pattern %q: %w", glob, err)
+		return "", "", nil, fmt.Errorf("standing: cannot read the pattern %q: %w", glob, err)
 	}
 	sort.Strings(matches)
 	digest := sha256.New()
 	listing := &strings.Builder{}
+	files := make(map[string]fileEntry, len(matches))
 	for _, match := range matches {
 		info, err := os.Stat(match)
 		if err != nil {
@@ -563,11 +747,12 @@ func fingerprint(workspace, glob string) (string, string, error) {
 			name = relative
 		}
 		fmt.Fprintf(digest, "%s|%d|%d\n", name, info.Size(), info.ModTime().UnixNano())
+		files[name] = fileEntry{Size: info.Size(), MTime: info.ModTime().UnixNano()}
 		if listing.Len() < ProbeClip {
 			fmt.Fprintf(listing, "%s  %d bytes  %s\n", name, info.Size(), info.ModTime().Format(time.RFC3339))
 		}
 	}
-	return hex.EncodeToString(digest.Sum(nil)), listing.String(), nil
+	return hex.EncodeToString(digest.Sum(nil)), listing.String(), files, nil
 }
 
 // appendWake writes the one line per pass that "last wake" and "next check" are

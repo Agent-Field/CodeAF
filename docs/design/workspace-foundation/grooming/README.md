@@ -1,0 +1,179 @@
+# Personal AI: living design and delivery record
+
+Updated 2026-09-10. Consolidated design and implementation record for draft #662.
+The earlier discussion originated in Codex task `01a08653-1fcf-7880-b64f-dae46f29b86a`.
+
+Start with the [active checklist](NEXT-STEPS.md), the
+[first build contract](BUILD-WAVE-01.md) and the [critical review](CRITICAL-REVIEW.md).
+Earlier studies below preserve reasoning history; they are not competing active
+plans. The decision ledger records which proposals are confirmed.
+
+Start here when continuing this discussion. Read [decisions](DECISIONS.md) before
+interpreting a proposal as accepted behavior. [Journeys](JOURNEYS.md) define the
+product examples and evidence boundaries. [Delivery](DELIVERY.md) governs future
+build tasks, branch ownership and integration.
+
+**2026-09-10 consolidated architecture.** Start with
+[Architecture: objects, storage and operating sequences](ARCHITECTURE.md) for the
+current target proposal, and then the separately written
+[twenty-three-scenario review](ARCHITECTURE-SCENARIOS.md). They include logical versus
+physical folders, context/authority, seven operating sequences, crash and stop
+semantics, draft/upstream reuse, comparator coverage and remaining decisions.
+[Rendered diagrams](diagrams/README.md) are available as standalone SVGs.
+This consolidation incorporates the continuation discussion about chat as the main
+input surface, ongoing-work run conversations and automatic impact assessment.
+It does not promote the proposed placement/reference or coordination-storage
+choices to confirmed decisions, change runtime behavior, or replace the existing
+decision ledger's acceptance history. Older drawings remain historical studies.
+
+[Task-space comparison](LANDSCAPE.md) places the aforge design alongside Claude
+Code, OpenClaw and Grok Bot using official documentation. It distinguishes
+expressible behavior, shipped mechanisms and verified outcomes; it does not
+claim that aforge is a superset or add new primitives to the product.
+
+[Common model and task coverage](FRAMEWORK.md) revisits the earlier mathematical
+study, defines a practical comparison under resource and authority constraints,
+and compares five requests across all four systems. It is a discussion proposal.
+
+[System design diagram](SYSTEM.svg) is the whole-system logical map requested
+after the user found the step-through presentation unclear. It separates durable
+records from activation/execution, labels the main relationships and marks open
+integration/design. It is not a UI mockup, a deployment topology, a new set of
+services, or a claim that every shown path works today.
+
+[Numbered discussion map](DISCUSSION.md) matches the diagram's seven anchors,
+records the current implementation checkpoint and groups the remaining product
+and engineering questions without introducing a new delivery roadmap.
+
+[Logical data shapes](DATA-MODEL.md) defines the structures beneath the view:
+ordered memberships, chat journals, task relations, ongoing records and context
+revisions, plus the implications for existing storage.
+
+[Containment and links](CONTAINMENT-AND-LINKS.md) and its [SVG](CONTAINMENT-AND-LINKS.svg)
+are the latest minimal structure explanation: what folders list, what work owns,
+how an unfiled chat still connects, and the scope question exposed by sharing.
+
+[Current-model desktop explorer](CURRENT-MODEL-EXPLORER.md) is the latest
+interactive study: actual backend record shapes and stored links, synthetic
+data, opened in Chrome. The user explicitly excluded mobile work and proposed
+audit/memory capabilities from this viewer.
+
+[Information structure](INFORMATION-GRAPH.md) and [the small graph](INFORMATION-GRAPH.svg)
+address the latest question: what records and relationships accumulate, and what
+zooming into learned information would expose. This is a conceptual model, not a
+claim of an implemented universal knowledge graph. The earlier [year-one study](YEAR-ONE.md)
+is retained as history; the person found its large boxes unhelpful.
+
+[Expectation probes](EXPECTATIONS.md) records the user-requested reusable
+multi-model experiment, its evidence limits and the navigation hypotheses under
+discussion. Synthetic answers expand our questions; they do not settle them.
+
+## The product we are preserving
+
+Aforge is one personal AI work environment for development, research, marketing,
+email, calendars and everyday work. The person can think in ordinary chat, make
+things directly, delegate finite work, entrust ongoing responsibilities, and
+return to inspect or steer them. Useful context and ways of working accumulate
+through experience. Connections between efforts should reduce the person's need
+to repeat information or route messages.
+
+Preserve the [agreed model](../CONSTRAINTS.md): familiar folders organize
+conversations, work and artifacts, with meaningful references, sources,
+dependencies and explicit applicability. Decisions and instructions remain
+identifiable. The organization of work does not dictate a hierarchy of permanent
+agents, departments or managers. Organization, relevance and authority differ.
+
+The user explicitly rejected adding primitives or architecture merely to fit a
+new example. The terms below name delivery tracks and test slices ONLY. They are
+not new product objects, modules, services or required UI labels. Customization
+and specialized views are future boundary checks, not an add-on platform to
+build now. Reuse existing methods/programs, task ownership, standing behavior,
+memory and runtime boundaries where they suffice.
+
+## Current work and integration destination
+
+The main working branch for this effort is `codex/personal-ai-backend`, draft
+PR #662, in `/Users/santoshkumar/af-personal-ai-backend`. It stays unmerged into
+`dev`. “Bring it back to the main working branch” does not mean Git branch
+`main`, `dev`, `staging`, or publishing a release.
+
+The existing implementation task is **Ideate seamless home chat UX**,
+`01a0839c-a6c1-7a93-94f2-be0e4c528f64`. The current evidence checkpoint is kept in
+[DISCUSSION.md](DISCUSSION.md) and [DEMONSTRATION.md](DEMONSTRATION.md), including
+the remaining completion-judgment and behavioral-audit gaps. Consult those records rather than
+interpreting an earlier bounded pass as proof of the whole product.
+
+Its first wave owns collections, resolved owner state, explicit sourced context,
+revision/withdrawal, ordinary chat/task context refresh and memory-off behavior.
+It has acknowledged the five-domain acceptance in [JOURNEYS.md](JOURNEYS.md).
+Scheduled application of that new context, autonomous triggers, live peer
+consultation and global discovery are not yet proved by the first wave. Existing
+docs may lag in-flight code; completion requires receipts on an identified commit.
+
+This grooming record has its own documentation worktree and branch,
+`/Users/santoshkumar/af-personal-ai-grooming`, `codex/personal-ai-grooming`, based
+on pushed integration commit `81de2f213`. Keep proposal edits out of the active
+implementation checkout. The discussion owner updates these files as the person
+settles decisions; builders return evidence and proposed corrections rather than
+silently changing the product contract.
+
+## Active working method: one evolving demonstration
+
+The user rejected the earlier multi-step roadmap as inefficient and accepted
+working with one system drawing and one real demonstration together. Choose the
+next experiment by the uncertainty it resolves. The five domains substitute into
+the same model and reveal counterexamples; they do not each get a separate
+architecture. See [DEMONSTRATION.md](DEMONSTRATION.md) for the current experiment.
+
+Here we settle the next uncertain behavior and its visible consequences. The
+implementation task makes the last agreed behavior work and returns real
+receipts or concrete failures. Keep enough design ahead to unblock implementation;
+do not groom a speculative platform first. UI observation, correction and stop
+are considered with the behavior they control. The isolated branch, confirmed
+contract and integration evidence rules in [DELIVERY.md](DELIVERY.md) remain.
+
+The current experiment reuses the existing API-contract case: one sourced record,
+three explicitly targeted collections and consumer chats, a revision, then
+sequential explicit resumption. A fresh run passed at `12017ee2a`; its seven
+artifact contents and full receipt are retained in the demonstration record.
+The accompanying interactive drawing is an
+illustration, not a connection to aforge or a new product E2E result.
+
+The first missing transition is a person's ordinary explicit decision becoming
+retained applicable direction. Automatic no-extra-save retention is confirmed
+(C09); exact scope and authority remain open (D01-D04). Existing shared context
+is information. Do not equate sourcing with person acceptance or implement new
+semantics merely to make the demonstration appear complete.
+
+## Folder inspector study
+
+The user requested a Finder-like drawing to clarify a folder's contents versus
+its properties. The exploratory interactive study is retained in the discussion's
+artifact directory:
+
+- Editable fragment: `/Users/santoshkumar/.codex/visualizations/2026/09/09/01a08653-1fcf-7880-b64f-dae46f29b86a/folder-inspector.html`.
+- Standalone preview: `/Users/santoshkumar/.codex/visualizations/2026/09/09/01a08653-1fcf-7880-b64f-dae46f29b86a/folder-inspector-preview.html`.
+
+It shows contents and a selected-item inspector. The folder's own proposed
+properties stay small; applicable decisions, memory and connections remain
+inspectable records. Selecting an ongoing responsibility reveals its activation
+and permitted actions, rather than treating these as properties of the folder.
+An alternative places decisions/memory in the contents list instead of the
+inspector. The study is not a finalized TUI layout, implemented capability or
+confirmation of scope inheritance. Selection, both placements, light/dark and
+narrow/wide layouts were checked locally. No product E2E claim follows from that.
+
+## Current record model and navigation study
+
+[Logical shapes](DATA-MODEL.md) and their [SVG](DATA-MODEL.svg) distinguish owned
+sequences from typed references. The [workspace model lab](WORKSPACE-MODEL-LAB.md)
+adds Browse, Connections and Records representations over one synthetic fixture,
+with inspectable details, relationship directions and logical fields. It is a
+separate grooming study, not a finalized product surface or new backend contract.
+
+The [critical review](CRITICAL-REVIEW.md) challenges the architecture, traces the
+actual #662 execution paths and orders the required refactoring. It separates
+design plausibility, static source evidence and fresh Spark test receipts.
+
+Use [NEXT-STEPS.md](NEXT-STEPS.md) for the active checklist and decision session;
+accepted choices continue to live in [DECISIONS.md](DECISIONS.md).

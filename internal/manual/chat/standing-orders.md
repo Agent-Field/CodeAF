@@ -515,6 +515,11 @@ Three different things, and they are not the same:
   what it last saw. `p` again starts it.
 - **Not here.** `n`, when the order itself is right and this one place is the exception.
 
+Pausing or stopping preserves completed history, and a check or action finishing
+later cannot turn it back on. A check that notices a pause, stop or edit before
+starting its action leaves that old decision unused. An action already started
+may still finish; stopping does not undo an external action already taken.
+
 Anything you say in words needs no page at all; the page is there for when you want to
 see what is true before you decide.
 
@@ -641,10 +646,10 @@ Honest limits, so you do not rely on something that is not built:
   report. So "never touch the public API" is in front of a task before it writes a line.
   What is **not** built is the other direction: nothing re-reads your orders *after* a
   change lands and starts work to put it right, so a change that slipped past one is
-  still yours to catch. That half is a later wave.
-- **At most eight orders ride along.** When more than eight stand over one place, the
-  rules that hold go first — whatever their age — and the longest-standing of the rest
-  fill what room is left. What was cut is counted rather than dropped quietly: `…3 more`.
+  still yours to catch. That half is a later wave. The one exception is a report aforge
+  publishes for ongoing work: it is read against the rules before it is published
+  (*Does the report keep my folder's rules*).
+- **Rules are never silently omitted.** All governing holds are retained (up to 64 holds and 64 KiB of rendered governing text); optional appointments fill the remaining room up to eight ordinary rows. Oversized governing inputs stop execution with an explicit error.
 - **Money is not per order.** The card says it shares the day's allowance — the same
   machine-wide `daily_budget_usd` setting everything standing uses. If you named a
   per-run or per-day limit yourself, the card says your limit back instead.
@@ -662,4 +667,155 @@ Honest limits, so you do not rely on something that is not built:
   brief already names. Asking a model every night whether a sentence that has not changed
   is wide would be a bill you never agreed to. (What splitting is, and everything that
   decides it, are on the tasks page.)
-- **Nothing is armed silently.** Every order on the page is one you answered a card for.
+- **Approval has an owner.** Ordinary proposals wait for your answer. An active delegated goal owner can answer existing bounded proposals; folder-scoped rules require your answer. New receipts preserve the difference.
+
+## Rules for a folder and its subfolders
+
+A hold proposed through `stand` can name `folder_scope` with existing
+`collection_ids` and an optional `descendants` flag. This replaces project or
+machine scope for that rule. The proposal names the selected folders before you
+answer. Only work explicitly placed under those folders receives the rule;
+shortcuts alone do not qualify. Subfolders are included only when explicitly
+selected. A delegated goal owner cannot approve this new folder scope.
+
+New proposals retain whether you or a delegated goal owner answered them. Older
+items have no new approval receipt; the system does not reconstruct one. A receipt
+records acceptance of the proposed text, not proof of a verbatim original quote.
+Folder bindings and rules change inputs at subsequent context refreshes; they do
+not cancel an already-running external action or rewrite existing outputs.
+
+## Set up ongoing work without the chat — aforge standing add, edit, pause, resume, stop
+
+`aforge standing` is the terminal's door onto the same orders the card makes. There
+you write the order whole, so there is no card and no model reading your sentence:
+the command is your yes, and the order's receipt says `set up by: person, through the
+terminal`.
+
+```
+aforge standing add --words "<your sentence>" --instructions "<the work>" --watch 'inbox/*' \
+    [--report reports/inbox-report.md] [--workspace <dir>] [--place <folder-id>]
+aforge standing add --hold --words "<a rule>" [--scope <folder-id>] [--descendants]
+aforge standing edit <id> --instructions "..."       # or --words, --watch, --every, --report
+aforge standing pause|resume|stop <id>
+aforge standing list | show <id> | check
+```
+
+`--every` takes a cron line or a duration instead of `--watch`. `--place` files the
+work in a folder as a **placement**, so that folder's rules reach it; `--scope` is a
+rule's folder. `aforge collections place|unplace <folder> standing <id>` changes
+placement later, while `aforge collections add` only files a reference.
+
+**An edit is a new version of the instructions.** `edit` prints `revised <id> to
+version N: instructions`; the next run uses
+it, a run already under way keeps what it started with, and each run's record keeps the
+brief it ran on. `--version N` refuses the edit if someone changed the instructions
+since you read version N. A stopped order cannot be resumed or edited: `a stopped item
+must be set up afresh`.
+
+**Pause and stop while a run is working.** A pause lets that run finish and publish; it
+holds back the next one. A stop does not undo what the run already did, but its report
+is not published and no note is sent: `stopped while it ran`.
+
+This door never turns on the background timer. Its orders are checked when a window
+is open, when the timer is already on, or when you run `aforge standing check`. News
+from an order with no conversation behind it waits in its project's inbox.
+
+## Watch a folder and keep a report current — --watch, --report and what changed
+
+A `--watch` order reads the files its glob matches on every pass. The first reading is
+the baseline and runs nothing. After that a run starts only when a matching file was
+added, changed or removed, and the run is told exactly which: `added inbox/a.md`,
+`modified inbox/a.md`. Modified means its size or modification time moved; contents are
+not compared. If the earlier reading is missing the run is told the changes are
+unknown, never that nothing changed.
+
+`--report <path>` names one file inside the workspace. The run's **final answer** is the
+report, and aforge — not the run — writes it there, replacing the previous version; the
+run is told where the previous version is so it can carry things forward. The run is
+asked to put the report between a line `<report>` and a line `</report>`, and only what
+is between them is published. An answer with no `<report>` line and no `</report>`
+anywhere is published whole; one with a `</report>` but no `<report>` line is not
+published, because nobody can tell where its report began. An unattended run may only
+do what your approval rules allow without asking — reading, not writing or shell
+commands — so a run that tries to write the report file itself is refused, and that is
+not a question for you. If it also replied with a finished report between the lines,
+that report is published; if not, nothing is. **Only a run that came back clean
+publishes** — the next section lists every reason a report is not.
+
+A report inside its own watch, or inside a folder the watch matches (`*` watching
+`reports`), is refused when you set it up, because every report would wake it again.
+A run that failed or was held back does not use up its changes: the next run is told
+about them again. Nothing here uses an account or a connector: the order reads local
+files and writes one local file.
+
+## Why wasn't my report published — the reason, and the withheld code in the record
+
+Only a run that came back clean publishes. Anything else fails the run, or waits on
+you, and leaves the last good report exactly where it was. `aforge standing show <id>`
+prints the reason on the run's `came to:` line followed by `· withheld: <code>`; the
+same code is `"withheld"` in the run's `occurrence.json` and in `--json`. A run that
+published, and an order with no `--report`, carry no code.
+
+| Code | The line |
+|---|---|
+| `waiting-on-person` | the call it stopped on, which only you can allow |
+| `cut-off` | `the run was cut off before it finished` |
+| `output-limit` | `the run's answer was cut off at the model's output limit` |
+| `at-a-limit` | `the run reached its step or spending limit before it finished` |
+| `unclosed-report` | `the run's report was never finished — it has no closing line` |
+| `unopened-report` | `the run's report has a closing line but no opening line` |
+| `empty-report` | `the run's report was empty` |
+| `self-write` | `the run tried to write its report instead of replying with it` |
+| `no-report` | `the run ended without a report` |
+| `held-by-rules` | `report held back, not published: …` |
+| `stopped` | `stopped while it ran` |
+| `not-written` | `could not publish the report to …` |
+
+An answer is cut at the output limit only after aforge has asked for the rest twice. A
+finished report is still withheld when the run was then stopped at a limit, because it
+was written before the work that was stopped. All of it holds for the one correction
+the rules check asks for, too. The codes are fixed names to search or script against.
+
+## What woke each run and what it made — aforge standing show, check, and a run killed midway
+
+`aforge standing check` runs one pass now — the same pass the timer runs — and prints
+what it did: `2 checked · 1 ran`, or `nothing was due`. A pass may last up to 5 minutes.
+It exits 0 only when every run it started finished: **2** when a run did not finish
+(`1 did not finish`) and **4** when one is waiting on you (`1 need you`), each naming
+`not finished: aforge standing show <id> says why; its last good report is unchanged`.
+
+`aforge standing show <id>` prints the order, its folder, the rules that reach it, and
+every run newest first: which instructions version it ran on, what woke it, which
+files changed, what it came to, its check against the rules, the report it published
+with its size and sha256, its cost, and the run's journal. `--json` prints the same records. Each run folder holds
+`occurrence.json`, written **before** the run starts, and the run's own journal names
+that occurrence as its cause (`parent_cause: standing_occurrence`), so you can go from
+the order to the run and from the run back to the order.
+
+**If aforge is killed mid-run**, nothing is lost and nothing doubles. The next pass
+finds the half-done run, marks it `interrupted`, and retries the same change as
+`attempt 2`, naming the run it replaces. A run that finished, or whose report was
+already published, but was not yet recorded is recorded, not run again.
+
+A run that fails is recorded as failed and is not retried by itself; the next change
+starts a new run.
+
+## Does the report keep my folder's rules — the check before a report is published
+
+When rules reach an order's work, its report is **checked against them before aforge
+publishes it**. A model in a fresh context, with no tools, is shown only those rules
+and the report. To say a rule is broken it has to quote the words in the report that
+break it; a finding that quotes nothing in the report is not taken.
+
+On a finding the run is sent back **once**, told the rule and the quoted words, and
+asked for the whole corrected report, which is checked again. If it still breaks the
+rule, or the check gave no answer twice, nothing is published: the previous report
+stays, the draft is kept as `held-report.md` in the run's folder, and the order waits
+on you — `report held back, not published: it breaks a rule placed on this work`.
+`aforge standing show` prints `checked against 1 rule(s): kept after one correction`,
+or `held back, not published` with the draft's path.
+
+What it is not: a proof. It is a model's reading, and it can miss a breach or see one
+that is not there. It reads the report aforge publishes, not what the run did with its
+tools and not the text of a note. It runs only when rules reached the run, and its cost
+is part of the run's cost.

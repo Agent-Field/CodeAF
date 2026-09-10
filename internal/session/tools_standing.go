@@ -65,6 +65,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/workspace"
 )
 
 // The rails a proposal takes when the model names none. ONE POOL, NOT N KNOBS:
@@ -78,7 +79,7 @@ const (
 	standDefaultPerRunUSD = standing.DefaultPerRunUSD
 	// standDefaultMaxPerDay is how many times an item may fire in a local
 	// day.
-	standDefaultMaxPerDay = 10
+	standDefaultMaxPerDay = standing.DefaultMaxPerDay
 )
 
 // standingPastGrace is how far behind the clock a named moment may be and still
@@ -152,6 +153,9 @@ const standingBackgroundUpdate = "background"
 type standingStore interface {
 	Create(standing.Item) (standing.Item, error)
 	Save(standing.Item) error
+	SetStatus(string, standing.Status, string) (standing.Item, error)
+	AddException(string, standing.Exception) error
+	FileExchange(string, string, string) (standing.Item, error)
 	Get(id string) (standing.Item, error)
 	ForWorkspace(workspace string) ([]standing.Item, error)
 	Root() string
@@ -228,6 +232,7 @@ var standDescription = "Set up something that keeps working after this window is
 	"Nothing stands until the person says yes: the card waits for them with no clock on it, and a session nobody is watching cannot set one up at all. Money is not yours to negotiate — omit rails and cost_words unless they named a limit. op=list shows what already stands here; op=pause, op=resume and op=stop take an id or the person's own words, and stop is permanent. op=change is not yours to call — it is what the card answers when they want it different."
 
 var standSchemaJSON = `{"type":"object","properties":{` +
+	`"folder_scope":{"type":"object","description":"Explicit folder scope for a hold only; replaces altitude. Use existing collection IDs, never infer from shortcuts. Requires a person's answer to the proposal.","properties":{"collection_ids":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":32},"descendants":{"type":"boolean","description":"True only when the person includes subfolders."}},"required":["collection_ids"],"additionalProperties":false},` +
 	`"op":{"type":"string","enum":["propose","list","pause","resume","stop","change"],"description":"propose a new one, list what stands here, or pause, resume or stop one that does."},` +
 	`"words":{"type":"string","description":"THE PERSON'S OWN SENTENCE, verbatim, never a paraphrase: every card, row and note leads with it. On pause, resume and stop it names an item instead of its id."},` +
 	`"when":{"type":"object","description":"What wakes it. Only the fields this kind names are read.","properties":{` +
@@ -269,16 +274,17 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 
 // standArguments is the wire form.
 type standArguments struct {
-	Op        string `json:"op"`
-	Words     string `json:"words"`
-	WhenWords string `json:"when_words"`
-	CostWords string `json:"cost_words"`
-	Guessed   bool   `json:"guessed"`
-	ID        string `json:"id"`
-	Altitude  string `json:"altitude"`
-	Title     string `json:"title"`
-	Grant     string `json:"grant"`
-	When      struct {
+	FolderScope *standing.Scope `json:"folder_scope"`
+	Op          string          `json:"op"`
+	Words       string          `json:"words"`
+	WhenWords   string          `json:"when_words"`
+	CostWords   string          `json:"cost_words"`
+	Guessed     bool            `json:"guessed"`
+	ID          string          `json:"id"`
+	Altitude    string          `json:"altitude"`
+	Title       string          `json:"title"`
+	Grant       string          `json:"grant"`
+	When        struct {
 		Kind    string `json:"kind"`
 		At      string `json:"at"`
 		In      string `json:"in"`
@@ -463,6 +469,44 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	if err := item.Validate(); err != nil {
 		return "Invalid arguments: " + err.Error(), true, nil
 	}
+	if item.Scope != nil {
+		if a.steward() != nil {
+			return "folder rules need the person's answer in a conversation", true, nil
+		}
+		if a.config.Organization == nil {
+			return "folder organization is unavailable here", true, nil
+		}
+		s, err := a.config.Organization.open(false)
+		if err != nil {
+			return err.Error(), true, nil
+		}
+		folders, err := s.Collections(ctx)
+		s.Close()
+		if err != nil {
+			return err.Error(), true, nil
+		}
+		names := make(map[string]string, len(folders))
+		for _, folder := range folders {
+			names[folder.ID] = folder.Name
+		}
+		var selected []string
+		for _, id := range item.Scope.CollectionIDs {
+			if err := (workspace.Ref{Kind: workspace.CollectionKind, ID: id}).Validate(); err != nil {
+				return err.Error(), true, nil
+			}
+			name, exists := names[id]
+			if !exists {
+				return "folder not found: " + id, true, nil
+			}
+			selected = append(selected, name)
+		}
+		item.When.Words = "applies in " + strings.Join(selected, ", ")
+		if item.Scope.Descendants {
+			item.When.Words += " and their subfolders"
+		} else {
+			item.When.Words += " (directly placed work only)"
+		}
+	}
 
 	notice := StandingNotice{
 		Item: item,
@@ -509,6 +553,7 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		return "nothing was set up: the person said no.", false, nil
 	}
 
+	item.Adoption = &standing.Adoption{Actor: answer.answeredBy, ProposalID: notice.ID, At: time.Now().UTC()}
 	created, err := store.Create(item)
 	if err != nil {
 		// SAID PLAINLY AND NOT SWALLOWED. The person answered yes to a card, so
@@ -525,7 +570,11 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	a.standingBackgroundOn(store, created)
 	line := fmt.Sprintf("set up %s: %s", created.ID, created.Words)
 	if when := strings.TrimSpace(notice.WhenWords); when != "" {
-		line += "\nit wakes: " + when
+		if created.Scope != nil {
+			line += "\n" + when
+		} else {
+			line += "\nit wakes: " + when
+		}
 	}
 	line += "\n" + standingRatifiedLine
 	return line, false, nil
@@ -576,6 +625,10 @@ func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Ite
 	if words := strings.TrimSpace(parsed.WhenWords); words != "" && when.Kind != standing.WhenHold {
 		when.Words = words
 	}
+	altitude := a.standingAltitude(parsed.Altitude)
+	if parsed.FolderScope != nil && parsed.Altitude == "" {
+		altitude = ""
+	}
 	return standing.Item{
 		Schema:    standing.Schema,
 		Words:     words,
@@ -584,7 +637,8 @@ func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Ite
 		When:      when,
 		Does:      does,
 		Rails:     rails,
-		Altitude:  a.standingAltitude(parsed.Altitude),
+		Altitude:  altitude,
+		Scope:     parsed.FolderScope,
 		// THE BRIEF IS HALF WRITTEN IN THIS WAVE, and honestly so: a title for a
 		// row too narrow for a sentence is something the model can write at
 		// proposal time, and the compiled prompt is not — nothing follows one
@@ -1039,9 +1093,9 @@ func (a *Agent) standingFileTheExchange(store standingStore, item standing.Item)
 		return item
 	}
 	filed := store.ExchangeDir(item.ID)
-	item.Origin.Exchange = filed
-	item.Origin.Transcript = filepath.Join(filed, placeTranscript)
-	_ = store.Save(item)
+	if updated, err := store.FileExchange(item.ID, filed, filepath.Join(filed, placeTranscript)); err == nil {
+		item = updated
+	}
 	return item
 }
 
@@ -1111,7 +1165,7 @@ func (a *Agent) askStanding(ctx context.Context, notice *StandingNotice) (Standi
 		// waited on: nothing is going to answer it, and a map entry nobody clears
 		// is a card the session thinks is still up.
 		a.forgetStanding(id)
-		return StandingAnswer{Approved: true}, nil
+		return StandingAnswer{Approved: true, answeredBy: "delegated"}, nil
 	}
 	// AND ANOTHER WINDOW LEARNS WHAT THIS ONE IS STOPPED ON (taskpresence.go).
 	// The line is the PERSON'S OWN SENTENCE, which is the anchor every surface
@@ -1134,6 +1188,12 @@ func (a *Agent) askStanding(ctx context.Context, notice *StandingNotice) (Standi
 
 	select {
 	case answer := <-answers:
+		// THE RECEIPT IS FOR WHAT STANDS. Only a yes creates an item and only an
+		// item carries an adoption receipt, so a decline, a once or a change
+		// stays the plain answer it was — nothing downstream reads who said no.
+		if answer.Approved {
+			answer.answeredBy = "person"
+		}
 		return answer, nil
 	case <-ctx.Done():
 		a.forgetStanding(id)
@@ -1443,16 +1503,18 @@ func (a *Agent) standingMove(store standingStore, item standing.Item, status sta
 		// The person's own reason, in the words [standing.Item] reserves for it.
 		item.RetiredWhy = standingStoppedWhy
 	}
-	if err := store.Save(item); err != nil {
+	updated, err := store.SetStatus(item.ID, status, item.RetiredWhy)
+	if err != nil {
 		return item, word, err
 	}
+	item = updated
 	a.emitStandingUpdate(word, item, "")
 	return item, word, nil
 }
 
 // standingStoppedWhy is what a stopped item's document records, and it is one
 // of the cases [standing.Item.RetiredWhy] spells out.
-const standingStoppedWhy = "stopped by you"
+const standingStoppedWhy = standing.StoppedWhy
 
 // standingNamed resolves an id OR the person's own words to one item.
 //

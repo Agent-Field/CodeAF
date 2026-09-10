@@ -134,6 +134,8 @@ func v3StandingTicker(store *standing.Store) (*standing.Ticker, error) {
 		return nil, err
 	}
 	idle := session.StandingIdle()
+	posture.Governing = &session.Governing{Reader: store}
+	posture.Organization = v3Organization(&session.Standing{Store: store})
 	return &standing.Ticker{
 		Store:    store,
 		Sentinel: session.NewStandingSentinel(posture),
@@ -178,6 +180,7 @@ func v3StandingPosture(settings config.Config) (session.Config, error) {
 		root = os.TempDir()
 	}
 	cfg := session.Config{
+		Organization:   v3Organization(nil),
 		Workspace:      root,
 		Model:          v3TalkModel("", settings),
 		APIKey:         settings.APIKey,
@@ -337,7 +340,10 @@ func v3StandingSeam(seam *session.Standing) tui3.StandingSeam {
 			}
 			return items
 		},
-		Save: store.Save,
+		Save: func(item standing.Item) error {
+			_, err := store.SetStatus(item.ID, item.Status, item.RetiredWhy)
+			return err
+		},
 		// AND THE RUNG ONE ITEM THINKS AT, through the store's own door and never
 		// through Save above: the rung is a read-modify-write under the item's
 		// lock, so a card that had been on screen for a beat cannot write back the

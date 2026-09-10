@@ -1386,7 +1386,9 @@ func (g *TaskGraph) runFrontier() {
 	// in one place, so the answer is the same for all of them, and reading a
 	// folder per starting node would be the same question asked ten times
 	// (standing_world.go).
-	orders := g.standingWorld()
+	// Governing directions are refreshed by each worker at its turn boundary.
+	// Do not freeze another authoritative copy into the persisted task brief.
+	orders := ""
 
 	g.mu.Lock()
 	// A CLOSED SESSION HAS NO RUNNING NODES, so a pass that arrives after the
@@ -6710,6 +6712,8 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	}
 	a.mu.Lock()
 	parent := a.config
+	governing := a.governingLocked()
+	owner := a.workOrganizationRefLocked(node.id)
 	if strings.TrimSpace(model) == "" {
 		model = a.model
 	}
@@ -6813,6 +6817,9 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	}
 
 	return newAgent(Config{
+		Governing:       governing,
+		OrganizationRef: owner,
+		Organization:    parent.Organization,
 		// Search authority follows the work without enabling memory writes.
 		ConversationHistory: parent.conversationHistory(),
 		memoryBrief:         a.memoryBlock(ctx, node.assembledBrief()),

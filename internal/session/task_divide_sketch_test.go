@@ -36,7 +36,7 @@ import (
 func batchSketch(shape, legend string) drawnDivision {
 	return drawnDivision{
 		sketch: checkpointSketch{shape: shape, legend: legend, parts: topLevelParts(shape)},
-		digest: "WHAT WAS ASKED\n" + personSentence + "\n\nWHAT HAS BEEN DONE SO FAR, ONE LINE PER STEP\nread cmd/main.go\ngrep flake",
+		digest: checkpointDigestAsked + "\n" + personSentence + "\n\n" + checkpointDigestDone + "\nread cmd/main.go\ngrep flake",
 	}
 }
 
@@ -51,7 +51,7 @@ func batchSketch(shape, legend string) drawnDivision {
 // parts unchanged, and what reaches the graph is exactly what this file built.
 func countedSketch(shape, legend string) drawnDivision {
 	drawn := batchSketch(shape, legend)
-	drawn.digest += "\n\nWHAT HAS BEEN WRITTEN OR CHANGED\n" + wideEvidence
+	drawn.digest += "\n\n" + checkpointDigestWritten + "\n" + wideEvidence
 	return drawn
 }
 
@@ -149,7 +149,7 @@ func TestTheHarnessSubmittedDivisionIsReadByTheSameReviewer(t *testing.T) {
 	}
 	// AND IT IS SHOWN WHAT THE MARK'S READER WAS SHOWN, which is the only honest
 	// evidence there is for a division nobody worked for: a drawing is not evidence.
-	if !strings.Contains(reviewer.saw(), "A | B") || !strings.Contains(reviewer.saw(), "WHAT HAS BEEN DONE SO FAR") {
+	if !strings.Contains(reviewer.saw(), "A | B") || !strings.Contains(reviewer.saw(), checkpointDigestDone) {
 		t.Fatalf("the reviewer saw %q, want the drawing and the account it was drawn from", reviewer.saw())
 	}
 	for _, kid := range nest.graph.children(nest.parent.id) {

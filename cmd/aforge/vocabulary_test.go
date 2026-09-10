@@ -695,7 +695,9 @@ func TestTheHelpPageIsGroupedCommandsAndExamplesAndNotTheEnvironmentTable(t *tes
 	if strings.Contains(usageText, "AFORGE_CALL_LOG_BODIES") {
 		t.Error("the environment table is back on `aforge --help`; it belongs at `aforge help env`")
 	}
-	if lines := strings.Count(usageText, "\n") + 1; lines > 110 {
+	// 111 since `aforge standing` took one line: the only terminal door onto
+	// ongoing work has to be findable from the page that lists the doors.
+	if lines := strings.Count(usageText, "\n") + 1; lines > 111 {
 		t.Errorf("`aforge --help` is %d lines; it was cut down to fit a screen and a bit", lines)
 	}
 	if !strings.Contains(usageText, "an agent you talk to, and hand work to when you walk away") {

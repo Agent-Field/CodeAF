@@ -11,8 +11,9 @@ circular membership is refused. Renaming a collection preserves its ID.
 This command does not change the home dashboard, chat tabs or `/folder`.
 `/folder` chooses filesystem context for a conversation. Collection membership
 does not move transcripts, attach a working directory, grant write permissions,
-start work or change an assignment. There is no collection slash command or
-automatic context injection yet.
+start work or change an assignment. There is no collection slash command. Chat can inspect and organize logical
+collections through the `collections` tool. Explicitly shared context can reach
+chats and task workers without enabling learned memory.
 
 ## Where do I file a task
 
@@ -67,3 +68,125 @@ record nor stops ongoing work. Repeating add or remove is harmless, and removing
 something that was never there is not an error. Collection deletion, automatic
 organization, inherited instructions and communication between conversations are
 not implemented by these commands.
+
+
+## Can I organize and inspect work by asking in chat
+
+Ask to create a collection, file this chat in it, or inspect its work. The
+`collections` tool supports list, show, find, create, add and remove. Omitting
+`ref` on add or find means this conversation. Show resolves direct members
+through their existing owners: chat titles, task state, ongoing items and file
+availability. It does not resume a closed conversation or start its work.
+Unavailable sources remain listed. Find accepts a case-insensitive name fragment
+or a member reference. Omitting both finds collections containing this chat;
+name and reference cannot be combined. Results are paged with `next_offset`.
+The local `aforge collections show` command still prints references only.
+Task workers can inspect collections but cannot reorganize them.
+
+## How do I share a decision or finding across chats
+
+Use `shared_context` to create a titled record with text and explicit targets.
+Create and revise require a targets array; an explicit empty array is allowed.
+Targets may name chats, tasks, collections, ongoing items or artifacts. Automatic
+turn context currently reaches chats and ordinary task workers: their own
+address, the worker's owning chat, and direct collections of those addresses.
+Ongoing-item and artifact targets can be inspected explicitly, but do not yet
+receive automatic delivery. A record aimed at a collection reaches its direct
+member chats and tasks; ancestor folders are not implicitly included. Merely linking two records
+does not share every message between them. One shared record keeps one ID even
+when it has several targets.
+
+Each revision records the conversation that wrote it; a revision from a different
+chat carries that chat as its source, while history preserves earlier sources.
+The runtime supplies the address; the model
+cannot substitute somebody else's source. That address identifies where it was
+recorded, not proof that the person endorsed every sentence. These records are
+information, not instructions or permissions. Use the existing standing-order
+flow for instructions or scheduled responsibilities.
+
+## How do I revise, withdraw or inspect shared context
+
+`shared_context` supports list, read, history, create, revise and withdraw.
+Read the current revision before changing a record. Revise supplies its replacement
+title, text and complete target set; omitting targets is refused (an explicit empty
+array clears them). A stale revision is refused, so simultaneous
+edits do not silently overwrite one another. Withdraw retains its history but
+removes it from applicable-context queries. History preserves earlier text,
+sources and targets.
+
+At each supported chat, worker, checker, fork or scheduled turn, a bounded snapshot includes current
+context for that work and its direct collections. Revised or withdrawn context
+replaces earlier snapshots at the next turn; it does not interrupt an in-flight
+model response. List and history return metadata in pages of 25; use `next_offset`. Read returns
+up to 4,000 Unicode characters and `next_text_offset` when more remains. Continue
+with the returned revision to avoid mixing versions. Create, revise and withdraw
+return metadata; read by ID for the text. Records allow a 256-byte title, 65,536
+bytes of text and 64 distinct targets. A turn includes at most six records with
+1,200 characters each; truncation and additional records are identified. Task workers
+can read shared context but cannot create, revise or withdraw it. This works
+with learned memory disabled. It does not yet implement automatic consultation,
+semantic discovery beyond links, or automatic cross-work activation. Scheduled runs read context for their owning standing item; they do not acquire the setup chat's folder bindings.
+The conversation's completion reader sees the same bounded snapshot as the turn.
+A task's separate read-only checker also receives shared context and fresh governing directions for its owning work. It keeps its existing acceptance and file checks.
+
+## Can I still read a record after removing my chat from its collection
+
+Yes. Reading `shared_context` by ID can reach records outside this conversation;
+reading them does not add membership or restore their applicability. A read
+returns `applicable_here`: whether this exact revision is current, not withdrawn,
+and explicitly applies to the current conversation or ordinary worker's scope.
+An old revision, withdrawn record or record outside this scope returns false
+while its text remains readable. `scope_note` explains that distinction.
+
+Use list without explicit targets to inspect what currently applies here. Removing
+one collection link still leaves context available through another matching link.
+Removing the last link retires that context at the next turn, including after
+reopening a chat. Rejoining restores it if the record is still current and active.
+A record's existence is not proof that it applies here, and its information is
+not an instruction or permission.
+
+## Which folder rules apply here, and how do I change them
+
+A reference made with `collections` action `add` helps navigation and shared
+information. It does not make that folder's instructions govern the work.
+In a conversation with you, `place` explicitly adds a governing folder binding;
+`unplace` removes that binding. Both take `id` for the folder and optional `ref`
+for the work (default: this chat). Several bindings may apply. These actions do
+not move files, change old outputs or remove navigation references. A move between
+governing folders currently requires removing one binding and adding the other.
+
+Use action `governing` to inspect current governing folders and their depths:
+zero means direct, higher values mean ancestors through governing placements.
+Folder rules reach those ancestors' descendants only when explicitly declared.
+Workers and unattended sessions can inspect these bindings but cannot change them.
+The terminal has the same two verbs: `aforge collections place|unplace
+<folder> <kind> <id>`, beside `add|remove`, which only file a reference.
+Existing reference memberships are never promoted into governing bindings when
+the database upgrades.
+
+## Why did this run use those instructions or call that tool
+
+Ask to inspect `context_trace`. It reads the current execution journal and returns
+recorded context selections plus original journal-line references for tool calls,
+replies and outcomes. A selection records the inputs supplied to execution; it
+does not prove the model followed them. Standing input text is retained with its
+revision because those records can later change. Shared context points to its
+immutable source revision.
+
+Pages contain at most 40 rows with a bounded preview. Continue with `next_line`;
+when detail is omitted, the original journal line contains it. Tool arguments,
+reply bodies and model reasoning are not duplicated in this view. A returned
+loop is not a successful outcome, and a tool reply is not proof of an external
+effect. Overlapping execution windows are marked ambiguous. A run started by a
+standing order records its cause (`parent_cause: standing_occurrence`, with the
+order, its instructions version and its `occurrence.json`); every other
+execution says `not_recorded`. This is local execution evidence, not a complete
+history of why every background decision happened. Journals written before this feature
+have no retrospective context selection receipts.
+
+Recording requires a writable journal. A journaled turn reports when its context receipt could not be saved. Missing
+or failed journal writes do not create a retrospective receipt; absence is not proof that no work ran. Inspection
+stops after a bounded 16 MiB scan and reports the limitation explicitly.
+
+Forked hands receive fresh governing context but have no separate journaled
+selection receipt yet. Their parent retains its existing fork call and result.

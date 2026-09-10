@@ -1503,11 +1503,8 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// when it has gone stale enough to be worth the cold prefix (prompt.go's
 	// clockRefresh says why that is free).
 	a.refreshClockLocked(time.Now())
-	// AND SO ARE THE PERSON'S STANDING ORDERS, on the same trigger and for the
-	// same reason the clock has one: a turn must reason with the conditions that
-	// hold now, and an order stood up while this conversation was open is not
-	// something the next turn may still be blind to (standing_world.go).
-	a.refreshStandingLocked()
+	// Governing selections are refreshed together with their exposure receipt
+	// in the loop, so the journal and the actual request share one reading.
 	a.refreshSystemLocked()
 	hub := newEventHub()
 	a.hub = hub
@@ -2283,6 +2280,14 @@ func (a *Agent) markTurnTruncated() {
 	a.mu.Unlock()
 }
 
+// turnDone is the event that ends a turn: its usage, and whether its last
+// answer was cut at the output limit ([Event.Truncated]). EVERY TURN THAT ENDS
+// THROUGH THE MODEL LOOP ENDS THROUGH THIS, so the stream says what the flag
+// says.
+func (a *Agent) turnDone(usage Usage) Event {
+	return Event{Kind: EventTurnDone, Usage: usage, Truncated: a.turnTruncated()}
+}
+
 // turnTruncated is the reporting side of [Agent.markTurnTruncated].
 func (a *Agent) turnTruncated() bool {
 	a.mu.Lock()
@@ -2361,7 +2366,7 @@ const volatileNoteOpening = "A note from the session, not from the person: where
 // Empty is empty: a conversation with no card and no other window produces no
 // note at all, which is the emptiness law and not an optimisation.
 func (a *Agent) volatileBlockLocked() string {
-	return strings.TrimSpace(a.cardText + a.elsewhereText)
+	return strings.TrimSpace(a.cardText + a.elsewhereText + a.organizationText)
 }
 
 // landVolatileLocked appends the volatile note to the transcript when what it

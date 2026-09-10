@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="620" viewBox="0 0 1000 620"><title>Aforge as a graph of records and relationships</title><defs><marker id="a" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0L7 3.5L0 7Z" fill="#829697"/></marker></defs><style>text{font-family:Arial,sans-serif;fill:#263f42;font-size:19px}.edge{fill:none;stroke:#829697;stroke-width:1.6;marker-end:url(#a)}.label{font-size:16px;fill:#5c7374;paint-order:stroke;stroke:#fafbf8;stroke-width:7px}.type{font-size:13px;fill:#6b8181;letter-spacing:1px}</style><rect width="1000" height="620" fill="#fafbf8"/><text x="30" y="40" style="font-size:27px;font-weight:600">One graph. Different meanings for its connections.</text><text x="30" y="69" style="font-size:16px;fill:#607879">Conceptual information model · a small slice, not an implemented “all knowledge” screen</text>
+<path d="M100 291 V151 H309" class="edge"/><text x="121" y="213" class="label">contains</text>
+<path d="M100 312 V471 H309" class="edge"/><text x="120" y="400" class="label">contains</text>
+<path d="M331 150 H659" class="edge"/><text x="442" y="115" class="label">is the source of</text>
+<path d="M320 162 C390 300 670 230 730 308" class="edge"/><text x="453" y="248" class="label">supports an inference</text>
+<path d="M670 162 C630 310 405 291 329 458" class="edge"/><text x="450" y="350" class="label">applies to</text>
+<path d="M332 470 H659" class="edge"/><text x="477" y="433" class="label">produced</text>
+<path d="M670 459 C670 399 705 389 727 334" class="edge"/><text x="728" y="403" class="label">is evidence for</text>
+<circle cx="100" cy="302" r="11" fill="#537f98"/><text x="120" y="297">App</text><text x="120" y="319" class="type">FOLDER</text>
+<circle cx="320" cy="150" r="11" fill="#537f98"/><text x="340" y="145">Deployment chat</text><text x="340" y="167" class="type">CONVERSATION</text>
+<circle cx="670" cy="150" r="11" fill="#967946"/><text x="690" y="145">Ask before deploying</text><text x="690" y="167" class="type">EXPLICIT DECISION</text>
+<circle cx="730" cy="320" r="11" fill="#967946"/><text x="750" y="315">Prefers short updates</text><text x="750" y="337" class="type">INFERRED MEMORY</text>
+<circle cx="320" cy="470" r="11" fill="#458a75"/><text x="340" y="465">Improve onboarding</text><text x="340" y="487" class="type">WORK</text>
+<circle cx="670" cy="470" r="11" fill="#537f98"/><text x="690" y="465">Review notes</text><text x="690" y="487" class="type">ARTIFACT</text>
+<text x="30" y="554" style="font-size:17px">Each node has its own identity and state. Each link says how two records relate.</text>
+<text x="30" y="584" style="font-size:16px;fill:#607879">Selecting a memory should expose its sources, scope and corrections. Inference does not mean instruction.</text></svg>

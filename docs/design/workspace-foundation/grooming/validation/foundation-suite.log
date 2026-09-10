@@ -1,0 +1,16 @@
+# job    20260910-150118-000406
+# cwd    /home/santosh/work/af-personal-ai-backend
+# cmd    make test PKGS="./internal/workspace ./internal/workspaceview ./internal/session ./internal/standing" TEST_FLAGS="-count=1 -timeout=15m"
+# start  2026-09-10T15:01:19Z
+# ---
+[fleet-guard] cgroup memory cap 107G
+fatal: not a git repository: /Users/santoshkumar/Documents/agentfield/code/aforge-v2/.git/worktrees/af-personal-ai-backend
+fatal: not a git repository: /Users/santoshkumar/Documents/agentfield/code/aforge-v2/.git/worktrees/af-personal-ai-backend
+go test -timeout 15m -count=1 -timeout=15m -skip '^(TestEveryLockInTheGuardedTreeUnlocksFromADefer)$' ./internal/workspace ./internal/workspaceview ./internal/session ./internal/standing
+ok  	github.com/Agent-Field/aforge-v2/internal/workspace	5.504s
+ok  	github.com/Agent-Field/aforge-v2/internal/workspaceview	0.289s
+ok  	github.com/Agent-Field/aforge-v2/internal/session	193.162s
+ok  	github.com/Agent-Field/aforge-v2/internal/standing	0.119s
+# ---
+# exit   0
+# end    2026-09-10T15:04:42Z

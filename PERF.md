@@ -2217,6 +2217,40 @@ title subscription once, without polling or model work. Background title redraws
 consume completion flags nor raise attention banners. Metadata read-modify-write is
 serialized per agent, with owned-field patches so stale spend snapshots preserve titles.
 
+## Organization context and reads
+
+`internal/session/organization.go` supplies at most `organizationContextLimit`
+(six) records and `organizationTextLimit` (1,200) Unicode characters per record.
+Omissions and truncation are explicit. The immutable system prefix is unchanged:
+refresh happens outside the agent mutex and the snapshot joins the existing
+volatile tail. A metadata bit remembers previous exposure across reopen, so
+removal from a collection can retire stale context without copying its contents.
+
+`ContextPage` limits identities in SQL before loading bodies; `MaxContextPage`
+is 50. Automatic selection uses six; tool list/history use
+`organizationPageSize` (25). Exact historical reads use `ContextAt`, not a scan
+of all revisions. Read text windows use `organizationReadRunes` (4,000), and
+continuations pin the returned revision. Mutation receipts carry metadata.
+Storage bounds text at 65,536 bytes, titles at 256 bytes, and explicit targets
+at `MaxContextTargets` (64 after deduplication). Direct collection applicability
+uses a SQL membership join, so belonging to many folders does not consume that
+explicit-target limit. Historical applicability uses a separate existence query;
+its cost grows with retained history and should be profiled before large-scale use.
+
+Opening a current database verifies its schema without reserving the writer;
+creation and v1 migration remain atomic. Reads use `OpenExisting` and cannot
+recreate a missing database. Identity reads add one indexed `EXISTS` query using
+the same direct-scope predicate as selection, so `applicable_here` distinguishes
+readability from current applicability without enumerating records or bodies.
+The check compares the exact returned revision to the current revision; a
+concurrent revision can therefore conservatively make the old read non-applicable. Work resolution receives only the requested page,
+uses the existing open store, and reads the owner world once per batch. Collection
+metadata list/find still enumerate their small index before paging; they do not
+scan transcripts. Ordinary workers inherit the read seam and cannot mutate it.
+The completion reader receives the same bounded snapshot beside its existing
+bounded evidence digest. This adds no lookup or model call; the per-reader
+input can grow by one `organizationContextLimit`/`organizationTextLimit`
+snapshot. Old tool receipts must not override current applicability.
 ## Checker observations remain bounded and recoverable
 
 The checker keeps its existing **8,000-byte** per-result ceiling
@@ -2269,3 +2303,17 @@ plus at most two 400-byte neighbours on each side. They do not read whole
 transcripts or invoke an embedding model. Search tokenization accepts at most
 32 Unicode word/number tokens, quoted as FTS data. History access inherited by
 tasks grants reads only and introduces no background memory calls or writes.
+
+## Governing folder scope and context receipts (#662)
+
+Explicit governing bindings use the existing organization database, schema 3.
+The ancestry query deduplicates equal-depth paths and returns each collection at
+its nearest depth; it never traverses reference memberships. A rule's explicit
+folder scope accepts at most 32 distinct collection IDs. Governing input is capped at 64 holds and
+64 KiB of rendered text; exceeding either stops execution instead of dropping
+a mandatory condition. A context receipt is
+written at an execution boundary to the existing journal, retaining effective
+standing text and immutable shared-context revision references. The inspection
+tool returns at most 40 rows and approximately 24,000 encoded row bytes per page; oversized detail
+is omitted with its source line retained. This wave's compilation and checks run
+on Spark only; local editing/formatting is not performance acceptance.

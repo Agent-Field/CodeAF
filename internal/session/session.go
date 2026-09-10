@@ -32,9 +32,11 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/search"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
+	"github.com/Agent-Field/aforge-v2/internal/workspace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -645,6 +647,17 @@ type Event struct {
 	Usage         Usage
 	TaskReplyTags []TaskReplyTag
 
+	// Truncated is set on EventTurnDone when the turn's last answer stopped at
+	// the provider's output limit and its continuations ran out
+	// ([truncationContinuations]): the words that streamed are the start of an
+	// answer, not an answer. It is read off the same bit
+	// [Agent.markTurnTruncated] sets ([Agent.turnDone]), so the event and the
+	// flag cannot disagree about one turn, and a reader of the stream — an
+	// unattended run deciding whether it may publish (standing_publish.go) —
+	// learns it without reaching into the agent. It rides the wire behind a tag
+	// of its own for the same reason [Event.Category] does.
+	Truncated bool `json:"Truncated,omitempty"`
+
 	// Category is the FAMILY OF WORK an EventCaption's sentence is about — one
 	// word from the closed list in actioncategory.go — and it is zero on every
 	// other kind.
@@ -1197,6 +1210,12 @@ type Config struct {
 	// Standing is the ambient side (standing_contract.go, internal/standing).
 	// Nil is off: no belt tool, no card, no ticking from this process.
 	Standing *Standing
+	// Organization is independent of optional learned memory and UI lifetime.
+	Organization *Organization
+	// OrganizationRef identifies the owning work, independently of a generated
+	// worker journal. Governing grants reads only, never scheduling or mutation.
+	OrganizationRef workspace.Ref
+	Governing       *Governing
 
 	// standingItems overrides where [Standing.Store] would be read, and it is
 	// unexported because it exists for THIS PACKAGE'S TESTS and for nothing
@@ -1853,6 +1872,13 @@ type Config struct {
 	// thing that knows which promise is the runner that built this config.
 	standingItemID string
 
+	// cause is what admitted this execution, when the door that built it knows
+	// (context_trace.go's [executionCause]). Only the standing runner fills it
+	// today, from the occurrence record the pass wrote into the run folder
+	// before the run began; every other execution records "not_recorded"
+	// rather than a cause inferred from timing.
+	cause *executionCause
+
 	// SpendRailUSD stops a session that has spent this much. 0 is off. The
 	// check happens BEFORE a turn starts (rail.go) and reads the session's own
 	// journaled usage, so the rail is exact rather than an estimate, and a turn
@@ -2349,7 +2375,10 @@ type Agent struct {
 	// lastTurnTruncated is the honest takeover from the model loop to headless
 	// node reporters. The finish reason is response metadata and is not part of
 	// the transcript, so without this bit a digest can only repeat the cut-off
-	// prose and falsely make the node look complete.
+	// prose and falsely make the node look complete. It leaves the agent on the
+	// turn's closing event ([Agent.turnDone]), which is how a standing run's
+	// reader learns it: a reader that watched the stream and a reader that asked
+	// the flag cannot disagree, because the event is built from the flag.
 	lastTurnTruncated bool
 	// memoryText is the <memory> block message[0] currently carries: what the
 	// router asked for at the start of this turn, or the block a task node was
@@ -2369,7 +2398,15 @@ type Agent struct {
 	// below for their reason, and it is re-rendered at the start of every turn —
 	// an unchanged set renders the same bytes, so a conversation whose orders
 	// have not moved leaves message[0] exactly as the provider cached it.
-	standingText string
+	standingText           string
+	organizationText       string
+	organizationRecords    []workspace.ContextRecord
+	governingCollections   map[string]int
+	governingRecords       []standing.Item
+	organizationReadError  string
+	governingReadError     string
+	organizationSeen       bool
+	organizationSeenLoaded bool
 	// placesText is the `# Attached folders` block message[0] currently carries
 	// (placescontext.go): the folders the PERSON attached to this conversation,
 	// named absolutely, with each one's own house rules scoped to it. It sits

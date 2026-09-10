@@ -82,7 +82,13 @@ import (
 // Schema is the document version every [Item] carries. Bump it when a field
 // changes meaning; a reader that meets a newer schema than it knows skips the
 // document and says so in the pass.
-const Schema = 1
+// Schema 2 adds revision-fenced writes; schema 3 adds explicit folder scope;
+// schema 4 adds the person's specification revision and a published report.
+// Older readers refuse these documents rather than applying a folder rule broadly
+// or running work whose report they would silently never publish.
+// Deployment must stop old engines and tickers before restarting with this build:
+// a pre-upgrade process already holding an item can still overwrite its old copy.
+const Schema = 4
 
 // Interval is how often a pass runs, whether a window runs it or the OS timer
 // does. It is the cadence the ratification card quotes for "checked every …".
@@ -97,7 +103,14 @@ const Interval = 5 * time.Minute
 // needs a third reading of the same figure — how long a pass may last is how
 // long a marker may be believed. Three copies of a ceiling is three chances for
 // one of them to move.
-const TickWindow = 120 * time.Second
+//
+// IT IS ONE INTERVAL, NOT TWO MINUTES, since ongoing work began publishing
+// reports. A firing that reads a folder and writes a report on a real model
+// took from under a minute to past two on 2026-09-10, and the old 120 seconds
+// cut one while its final answer was still streaming. A pass may now last as
+// long as the gap before the next one; a pass still running when the next tick
+// comes is simply held ([ErrHeld]), which was already the design.
+const TickWindow = Interval
 
 // RunKeep is how long a run that delivered nothing is kept before the sweep
 // reaps it. A run that delivered something — a note, a task landing, a
@@ -225,6 +238,20 @@ type Action struct {
 	Effort string `json:"effort,omitempty"`
 
 	MaxSteps int `json:"maxSteps,omitempty"`
+
+	// Report is where a task firing's report is kept current: a path relative
+	// to the item's workspace. The firing's FINAL REPLY is the report, and the
+	// runner — the owner of the firing, not the model — writes it there,
+	// replacing the previous version. Empty publishes nothing and the reply
+	// reaches the person only as a note, which is what every item did before.
+	//
+	// IT IS THE OWNER'S WRITE ON PURPOSE. An unattended firing may not write a
+	// file its person's approval rules would have asked about, and widening
+	// those rules to every path so that one report can land would hand a
+	// nightly job the whole disk. One declared path, written by the runner,
+	// is the narrow form of that permission, and the occurrence record keeps
+	// the receipt ([Publication]).
+	Report string `json:"report,omitempty"`
 }
 
 // DefaultPerRunUSD is what ONE FIRING of a standing item may spend when nobody
@@ -244,6 +271,15 @@ type Action struct {
 // protection that matters is still the machine-wide daily rail plus the
 // max-per-day count, not this.
 const DefaultPerRunUSD = 5.0
+
+// DefaultMaxPerDay is how many times an item may fire in one local day when
+// nobody named a count. Every door that makes an item — the conversation's card
+// and the terminal's `aforge standing add` — reads it from here.
+const DefaultMaxPerDay = 10
+
+// StoppedWhy is the retirement reason every door writes when the person stops
+// an item, so a card, a page and the terminal all say the same words back.
+const StoppedWhy = "stopped by you"
 
 // Rails bound an item. MaxPerDay is mandatory by construction: [Store.Create]
 // refuses an item that may fire zero times a day, which is an item that would
@@ -336,6 +372,16 @@ type Exception struct {
 type Item struct {
 	Schema int    `json:"schema"`
 	ID     string `json:"id"`
+	// Revision fences stale whole-document edits. Older documents begin at zero.
+	Revision uint64 `json:"revision,omitempty"`
+	// SpecRevision counts the person's versions of what the item IS — its
+	// words, brief, cadence and rails — and nothing else. Revision moves on
+	// every quiet check and every pause, so it cannot say which version of
+	// the instructions an occurrence ran on; this can ([Occurrence.Spec]).
+	// Create stamps 1 and only [Store.Revise] moves it. An item written before
+	// the field existed reads as zero, which is "the original, not yet revised
+	// by this build" and never a guessed number.
+	SpecRevision uint64 `json:"specRevision,omitempty"`
 	// Words are the person's verbatim sentence. Permanent anchor; every
 	// surface leads with it.
 	Words string `json:"words"`
@@ -349,6 +395,12 @@ type Item struct {
 	Rails     Rails  `json:"rails"`
 	// Altitude is the item's reach (see [Altitude]); empty reads as project.
 	Altitude Altitude `json:"altitude,omitempty"`
+	// Scope explicitly binds a hold to logical folders. Legacy altitudes do not
+	// also apply: a folder rule must never become a project rule in an old reader.
+	Scope *Scope `json:"scope,omitempty"`
+	// Adoption records who answered the proposal, independently of its wording.
+	// Missing provenance on older items remains unknown rather than fabricated.
+	Adoption *Adoption `json:"adoption,omitempty"`
 	// Brief is the working title and compiled prompt; empty reads as Words.
 	Brief Brief `json:"brief,omitempty"`
 	// Grant is one sentence of what acting on this item may do without asking,
@@ -415,6 +467,9 @@ type Item struct {
 // admission law in one place: words, a workspace, a kind with its fields, an
 // action with its text, and rails that are not zero.
 func (it Item) Validate() error {
+	if err := it.validateScope(); err != nil {
+		return err
+	}
 	switch {
 	case it.Words == "":
 		return errors.New("an item needs the person's words")
@@ -489,6 +544,52 @@ func (it Item) Validate() error {
 	default:
 		return errors.New("unknown action: " + string(it.Does.Kind))
 	}
+	return it.validateReport()
+}
+
+// validateReport is the admission law for [Action.Report]: a task's own
+// report, somewhere inside its workspace, that its own watch cannot see.
+//
+// A REPORT INSIDE ITS OWN WATCH IS A LOOP. A firing that publishes into the
+// files it is watching changes them, the next pass sees a change, and the item
+// fires again to report on its own report — forever, a firing per pass, on the
+// person's money. It is refused here, where it is one sentence, rather than
+// suppressed later, where it would be a rule about which changes to ignore.
+func (it Item) validateReport() error {
+	report := strings.TrimSpace(it.Does.Report)
+	if report == "" {
+		return nil
+	}
+	if it.Does.Kind != ActionTask {
+		return errors.New("only an item that runs work can keep a report")
+	}
+	if report != it.Does.Report || filepath.IsAbs(report) || strings.ContainsAny(report, "\x00\r\n") {
+		return errors.New("a report path is relative to the item's workspace")
+	}
+	clean := filepath.Clean(report)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return errors.New("a report path must stay inside the item's workspace")
+	}
+	if it.When.Kind == WhenFile {
+		pattern := it.When.Glob
+		target := clean
+		if filepath.IsAbs(pattern) {
+			target = filepath.Join(it.Workspace, clean)
+		}
+		if matched, err := filepath.Match(pattern, target); err == nil && matched {
+			return errors.New("the report would be one of the files it watches, so every report would wake it again; keep the report outside " + pattern)
+		}
+		// A WATCHED FOLDER WAKES IT TOO. The reading records a matched
+		// folder's modification time ([fingerprint]), and publishing writes a
+		// temporary file beside the report and renames it into place, which
+		// moves the time of the folder it lands in — so `*` watching `reports`
+		// would read its own report as a change on every pass.
+		for dir := filepath.Dir(target); dir != "." && dir != string(filepath.Separator) && dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
+			if matched, err := filepath.Match(pattern, dir); err == nil && matched {
+				return errors.New("the report would land in a folder it watches, so every report would wake it again; keep the report outside " + pattern)
+			}
+		}
+	}
 	return nil
 }
 
@@ -538,6 +639,9 @@ func (it Item) Prompt() string {
 // arithmetic written a second time. Callers pass what they know; an empty
 // sessionID is a place with no conversation (a task's worktree, a firing).
 func (it Item) Reaches(workspace, sessionID string) bool {
+	if it.Scope != nil {
+		return false
+	}
 	switch it.Level() {
 	case AltitudeMachine:
 		return true
@@ -748,6 +852,12 @@ type Outcome struct {
 	USD  float64
 	// NeedsPerson is the one line the run stopped on, when Kind is needs-you.
 	NeedsPerson string
+	// Published is the receipt for the report the runner wrote, when the item
+	// has one ([Action.Report]) and the firing came to something to publish.
+	Published *Publication
+	// Withheld is the code of the one reason the runner did not publish the
+	// report ([Occurrence.Withheld]); "" when it published, or keeps none.
+	Withheld string
 }
 
 // OutcomeNothing is the [Outcome.Kind] of a run that delivered nothing at all:
@@ -863,8 +973,11 @@ type Pass struct {
 	Fired    int
 	Said     int
 	NeedsYou int
-	Skipped  int
-	Errors   int
+	// Failed is how many firings came back failed: cut off, ended without the
+	// report they owed, or could not publish it.
+	Failed  int
+	Skipped int
+	Errors  int
 	// Tidied is how many remembered lines the consolidation pass moved, which
 	// is zero on all but a handful of passes a day (see [Tidy]).
 	Tidied int

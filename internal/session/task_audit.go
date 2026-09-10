@@ -2933,6 +2933,8 @@ func (a *Agent) auditorModel() string {
 func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on string) (*Agent, error) {
 	a.mu.Lock()
 	parent := a.config
+	governing := a.governingLocked()
+	owner := a.workOrganizationRefLocked(node.id)
 	model := a.model
 	client := unwrapCompleter(a.client)
 	// EVERY ATTEMPT GETS ITS OWN JOURNAL, AND THE NONCE IS WHAT MAKES THE NEXT
@@ -2964,6 +2966,9 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 		judge = named
 	}
 	auditor, err := newAgent(Config{
+		Governing:       governing,
+		OrganizationRef: owner,
+		Organization:    parent.Organization,
 		// A checker can independently read the source a worker cited, without
 		// gaining the writable memory store or any additional mutation tool.
 		ConversationHistory: parent.conversationHistory(),
@@ -3017,7 +3022,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode, door auditDoor, on str
 	// the auditor's belt unless somebody remembered this rule. Composed here,
 	// a new tool reaches the auditor only when this list names it.
 	tools := auditBelt(dir, door, parent.droppingsPlace())
-	for _, tool := range auditor.conversationTools() {
+	for _, tool := range append(auditor.conversationTools(), auditor.organizationTools()...) {
 		tools = append(tools, boundedResult(tool, parent.droppingsPlace(), dir))
 	}
 	definitions, err := toolDefinitions(tools)
