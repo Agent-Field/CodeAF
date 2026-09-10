@@ -100,6 +100,10 @@ type Model struct {
 	Group       string `json:"-"`
 	GroupOrder  int    `json:"-"`
 	Unavailable bool   `json:"-"`
+	// Direct is true when the row belongs to a connected non-default service.
+	// Such a service has one road, so router lane facts and controls do not
+	// belong on its row.
+	Direct bool `json:"-"`
 }
 
 // modelCacheName is the file under the aforge state root. It is v3's own list
@@ -676,6 +680,13 @@ func modelNoteVia(model Model, pin string) string { return rowAll(modelFields(mo
 // that is last to be drawn is a field that should be said in words or not at
 // all.
 func modelFields(model Model, pin string) []rowField {
+	if model.Direct {
+		return []rowField{
+			{}, {}, priceField(model.PromptPrice, model.CompletionPrice),
+			rowSay(contextWord(model.ContextLength)), {},
+			rowSay(eloWord(model.ArenaElo)), rowSay(ModalityWord(model.Input, model.Output)),
+		}
+	}
 	// THE CLOCK IS READ HERE AND NOT PASSED IN because ageing a belief by a few
 	// milliseconds cannot change a figure rounded to a tenth of a second, and
 	// [laneAuto] asks typically — posterior means, no Thompson draw — so the

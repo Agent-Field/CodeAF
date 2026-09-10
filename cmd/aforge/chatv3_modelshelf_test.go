@@ -2,13 +2,18 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource/sourcestub"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
 
@@ -22,6 +27,84 @@ func shelfRouter(rows string, fail error) *http.Client {
 		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: make(http.Header),
 			Body: io.NopCloser(strings.NewReader(`{"data":[` + rows + `]}`)), Request: request}, nil
 	})}
+}
+
+func TestAConnectedServiceRefreshLandsOnTheProcessShelf(t *testing.T) {
+	t.Setenv("AFORGE_HOME", t.TempDir())
+	defaultHost := sourcestub.New("openai/gpt-4.1-mini")
+	defer defaultHost.Close()
+	directHost := sourcestub.New("fake-small", "fake-large")
+	defer directHost.Close()
+	dir := t.TempDir()
+	defaultSource := modelsource.DefaultSource(defaultHost.URL())
+	directSource := modelsource.Source{
+		ID: "custom", Written: "localhost", Name: "Something else",
+		Address: directHost.URL(), Listing: modelsource.ListingModels,
+	}
+	defaultService := modelsource.Connected{Source: defaultSource, Key: "default-key", Address: defaultHost.URL()}
+	directService := modelsource.Connected{Source: directSource, Key: "direct-key", Address: directHost.URL()}
+	sources := modelsource.NewSet(defaultService, directService)
+	discovery := catalog.Options{BaseURL: defaultHost.URL(), APIKey: defaultService.Key, Dir: dir}
+	launch := catalog.Load(t.Context(), discovery)
+	shelf := newV3ModelShelf(launch, discovery)
+	shelf.setSources(sources)
+	rows, err := shelf.refreshService(t.Context(), directService)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := shelf.modelsForService(directService); len(rows) != 2 || len(got) != 2 || got[0].ID != "fake-small" {
+		t.Fatalf("process shelf rows = %+v (refresh %+v)", got, rows)
+	}
+	if cached := tui3.CachedModelsFor("custom", directHost.URL()); len(cached) != 2 {
+		t.Fatalf("picker cache rows = %+v", cached)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundCatalog := false
+	for _, entry := range entries {
+		foundCatalog = foundCatalog || strings.HasPrefix(entry.Name(), "model-catalog-")
+	}
+	if !foundCatalog {
+		t.Fatal("the connected service wrote no source-scoped catalog cache")
+	}
+
+	agent, err := session.New(session.Config{Workspace: t.TempDir(), Model: "localhost/fake-small", Sources: sources})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer agent.Close()
+	events, err := agent.Submit(t.Context(), "answer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for event := range events {
+		if event.Kind == session.EventError {
+			t.Fatal(event.Err)
+		}
+	}
+	requests := directHost.Requests()
+	foundTurn := false
+	for _, request := range requests {
+		if request.Method == http.MethodPost && request.Bearer == "Bearer direct-key" {
+			var envelope struct {
+				Model string `json:"model"`
+			}
+			if err := json.Unmarshal(request.Body, &envelope); err != nil {
+				t.Fatal(err)
+			}
+			foundTurn = envelope.Model == "fake-small"
+		}
+	}
+	if !foundTurn {
+		t.Fatalf("the real agent did not reach the connected host with its bearer: %+v", requests)
+	}
+	for _, request := range defaultHost.Requests() {
+		if request.Method == http.MethodPost {
+			t.Fatalf("the default host received the direct turn: %+v", defaultHost.Requests())
+		}
+	}
 }
 
 const shelfRow = `{"id":"vendor/old","architecture":{"input_modalities":["text"],"output_modalities":["text"]}}`

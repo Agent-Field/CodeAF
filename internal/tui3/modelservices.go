@@ -69,8 +69,26 @@ func (a *app) prepareModelServices() {
 		if strings.EqualFold(service.Source.ID, modelsource.DefaultID) || service.Source.Listing != modelsource.ListingModels {
 			continue
 		}
-		a.sourceModels[service.Source.ID] = CachedModelsFor(service.Source.ID, service.Address)
+		a.sourceModels[service.Source.ID] = a.modelsForConnectedService(service)
 	}
+}
+
+// modelsForConnectedService reads the process shelf first, then the small disk
+// cache for a surface whose door predates the shelf seam. It never fetches: the
+// connect command and ctrl+r are the only network doors onto model lists.
+func (a *app) modelsForConnectedService(service modelsource.Connected) []Model {
+	if service.Source.Listing != modelsource.ListingModels {
+		return nil
+	}
+	if a.modelsForService != nil {
+		if models := cleanModels(a.modelsForService(service)); len(models) > 0 {
+			return models
+		}
+	}
+	if models := cleanModels(a.sourceModels[service.Source.ID]); len(models) > 0 {
+		return models
+	}
+	return CachedModelsFor(service.Source.ID, service.Address)
 }
 
 func (a *app) reloadModelSources() {
@@ -350,35 +368,32 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 	}
 	dir := a.profileDir
 	authors := modelAuthorSegments(a.defaultServiceModels())
+	refresh := a.serviceModelRefresh
 	return func() tea.Msg {
 		outcome, err := config.ConnectService(ctx, dir, draft.row, draft.source, authors)
 		var models []Model
 		if err == nil && outcome.Kind == modelsource.OutcomeConnected && draft.source.Listing == modelsource.ListingModels {
-			address := modelServiceAddress(draft.source, draft.row)
-			key := config.SourceKeyAt(dir, draft.row, draft.source)
-			catalog := modelcatalog.Load(ctx, modelcatalog.Options{
-				Source: draft.source.ID, BaseURL: address, APIKey: key, Dir: dir,
-			})
-			models = surfaceModels(catalog.ModelsNow())
-			_ = WriteModelCacheFor(draft.source.ID, address, models)
+			// Resolve the row back through config after ConnectService writes it.
+			// That is the one door which owns key and address precedence; rebuilding
+			// a Connected here would create a second, subtly different account door.
+			connected, found := config.ResolveSources(dir, "", "").ByID(draft.source.ID)
+			if found {
+				if refresh != nil {
+					models, _ = refresh(ctx, connected)
+				} else {
+					catalog := modelcatalog.Load(ctx, modelcatalog.Options{
+						Source: draft.source.ID, BaseURL: connected.Address, APIKey: connected.Key, Dir: dir,
+					})
+					models = surfaceModels(catalog.ModelsNow())
+					_ = WriteModelCacheFor(draft.source.ID, connected.Address, models)
+				}
+			}
 		}
 		return modelConnectResultMsg{
-			service: draft.source.ID, name: draft.source.Name,
+			service: draft.source.ID, name: draft.source.Name, written: draft.row.Written,
 			outcome: outcome, models: models, err: err,
 		}
 	}
-}
-
-func modelServiceAddress(source modelsource.Source, row config.PersistedSource) string {
-	if source.ID == "custom" {
-		return strings.TrimRight(strings.TrimSpace(row.Address), "/")
-	}
-	for _, region := range source.Regions {
-		if strings.EqualFold(region.ID, row.Region) {
-			return strings.TrimRight(strings.TrimSpace(region.Address), "/")
-		}
-	}
-	return strings.TrimRight(strings.TrimSpace(source.Address), "/")
 }
 
 func surfaceModels(rows []modelcatalog.Model) []Model {
@@ -434,8 +449,11 @@ func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 		a.modelServiceMessage(msg.err.Error())
 		return
 	}
-	service := msg.service
-	if source, ok := a.modelSource(service); ok && strings.TrimSpace(source.Written) != "" {
+	service := strings.TrimSpace(msg.written)
+	if service == "" {
+		service = msg.service
+	}
+	if source, ok := a.modelSource(msg.service); ok && service == msg.service && strings.TrimSpace(source.Written) != "" {
 		service = source.Written
 	}
 	service = strings.ToLower(service)
@@ -538,6 +556,22 @@ func (a *app) modelServiceMessage(line string) {
 	a.note(line)
 }
 
+func (a *app) modelServiceFollowup(line string) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return
+	}
+	if a.at(pageSettings) {
+		if a.sheet.msg == "" {
+			a.sheet.msg = line
+		} else {
+			a.sheet.msg += "\n" + line
+		}
+		return
+	}
+	a.note(line)
+}
+
 func (a *app) disconnectModelService(id string) {
 	connected, ok := a.sources.ByID(id)
 	if !ok || strings.EqualFold(id, modelsource.DefaultID) {
@@ -556,13 +590,14 @@ func (a *app) disconnectModelService(id string) {
 	}
 	delete(a.sourceModels, id)
 	a.reloadModelSources()
+	a.modelServiceMessage(serviceDisconnectedWord(written))
 	if !conversationUsed {
-		a.modelServiceMessage(serviceDisconnectedWord(written))
+		// The disconnect acknowledgement is the whole answer.
 	} else if next, ok := a.reachableModelAfterDisconnect(); ok {
 		a.switchModel(next, 0)
-		a.modelServiceMessage(serviceMovedWord(was, next))
+		a.modelServiceFollowup(serviceMovedWord(was, next))
 	} else {
-		a.modelServiceMessage(serviceStrandedWord(was))
+		a.modelServiceFollowup(serviceStrandedWord(was))
 	}
 	if a.connPanel.open {
 		a.connPanel.adopt(a.connectionRows())
@@ -571,6 +606,14 @@ func (a *app) disconnectModelService(id string) {
 		a.sheet.sources = a.sources
 		a.sheet.build()
 	}
+}
+
+func (a *app) modelIsDirect(model string) bool {
+	if a.sources.Empty() {
+		return false
+	}
+	service, _ := a.sources.For(model)
+	return service.Source.ID != "" && !strings.EqualFold(service.Source.ID, modelsource.DefaultID)
 }
 
 func modelUsesService(model, written string) bool {

@@ -480,9 +480,11 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// resolved while the person was reading is a catalog the picker can
 		// use, and one that has not resolved answers nil instead of waiting.
 		// It reads the shelf, which ctrl+r in /model refills with today's list.
-		Models:        func() []tui3.Model { return v3Models(proc.Shelf) },
-		RefreshModels: proc.Shelf.refresh,
-		Sources:       settings.Sources,
+		Models:                  func() []tui3.Model { return v3Models(proc.Shelf) },
+		RefreshModels:           proc.Shelf.refresh,
+		ModelsForService:        proc.Shelf.modelsForService,
+		RefreshModelsForService: proc.Shelf.refreshService,
+		Sources:                 settings.Sources,
 		// The same deliverables index the session's config carries, so the
 		// surface's /export rows and the session's own land in one file.
 		ArtifactsIndex: artifactsIndexPath(),

@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -155,7 +156,12 @@ func (placeSettings) note(a *app, width int) []string {
 		// box cannot say — which setting this is.
 		return []string{" " + pal.dim(noteFit(a.sheet.edit.label, width-2))}
 	case a.sheet.msg != "":
-		return []string{" " + pal.bad(noteFit(a.sheet.msg, width-2))}
+		lines := strings.Split(a.sheet.msg, "\n")
+		out := make([]string, 0, len(lines))
+		for _, line := range lines {
+			out = append(out, " "+pal.bad(noteFit(line, width-2)))
+		}
+		return out
 	}
 	return []string{" " + pal.dim(noteFit(a.sheet.footNote(), width-2))}
 }

@@ -177,11 +177,13 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	}
 	models := catalog.LoadLazy(context.Background(), discovery)
+	shelf := newV3ModelShelf(models, discovery)
+	shelf.setSources(settings.Sources)
 	return &v3Process{
 		Settings:   settings,
 		ProfileDir: settings.ProfileDir,
 		Models:     models,
-		Shelf:      newV3ModelShelf(models, discovery),
+		Shelf:      shelf,
 		Harnesses:  subharness.Default(),
 		Memory:     v3Memory(settings.ProfileDir),
 		Artifacts:  artifactsIndexPath(),
@@ -267,6 +269,7 @@ func (p *v3Process) setModelSources(sources modelsource.Set) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.Settings.Sources = sources
+	p.Shelf.setSources(sources)
 	for _, agent := range p.agents {
 		agent.SetSources(sources)
 	}

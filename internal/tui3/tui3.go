@@ -749,6 +749,11 @@ type Options struct {
 	// answering, and this function goes on returning what it returned until
 	// the door has swapped in what that fetch brought back.
 	Models func() []Model
+	// ModelsForService is the process shelf's never-waiting reading for one
+	// connected service. Keeping it beside Models makes the picker read one
+	// shelf for every group instead of a surface-only map that a restart happens
+	// to refill.
+	ModelsForService func(modelsource.Connected) []Model
 
 	// Sources is the ordered set of places the model picker can read from. The
 	// default service is first. Empty preserves the old single-service picker;
@@ -766,6 +771,10 @@ type Options struct {
 	// Nil is a door with no refresh behind it, and the capability is then
 	// ABSENT: the key does nothing and no line on the surface names it.
 	RefreshModels func(ctx context.Context) ([]Model, time.Time, error)
+	// RefreshModelsForService fetches one newly connected service into that same
+	// shelf. The connect command runs it off the event loop, just as ctrl+r runs
+	// RefreshModels, so opening /model never waits on the network.
+	RefreshModelsForService func(context.Context, modelsource.Connected) ([]Model, error)
 
 	// ProfileDir is the profile the settings panel reads and writes — the same
 	// directory internal/config resolves every other row out of. Empty is the

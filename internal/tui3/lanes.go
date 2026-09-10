@@ -1080,7 +1080,7 @@ const laneAtSign = "@"
 // lane at all, [app.routingOff]), and over a connection, where the pin in force
 // is the far machine's and this process cannot see it.
 func (a *app) pinnedNow() string {
-	if a.hosted() || a.routingOff || a.model == "" {
+	if a.hosted() || a.routingOff || a.model == "" || a.modelIsDirect(a.model) {
 		return ""
 	}
 	return strings.ToLower(provider.PinnedFor(a.model))
@@ -1102,6 +1102,10 @@ func (a *app) pinnedNow() string {
 // to the router is the unremarkable state and says no word.
 func (a *app) modelWord() string {
 	model := modelBase(a.model)
+	if !a.sources.Empty() {
+		service, bare := a.sources.For(a.model)
+		model = service.Qualify(bare)
+	}
 	if model == "" {
 		return ""
 	}
@@ -1180,6 +1184,9 @@ func (a *app) openPickerFromChip() {
 // the LAST answer's average. Who served is attribution and belongs beside the
 // model; how fast is a claim about now and has one place on the frame.
 func (a *app) laneRider(timed bool) string {
+	if a.modelIsDirect(a.model) {
+		return ""
+	}
 	news, ok := laneNewsFor(a.model)
 	if !ok || a.now().Sub(news.At) > servedWindow {
 		return ""

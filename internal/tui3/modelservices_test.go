@@ -1,16 +1,37 @@
 package tui3
 
 import (
+	"context"
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
 
+	modelcatalog "github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/modelsource/sourcestub"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
+
+func installModelServiceShelf(a *app, dir string) {
+	held := make(map[string][]Model)
+	a.modelsForService = func(service modelsource.Connected) []Model {
+		return append([]Model(nil), held[service.Source.ID]...)
+	}
+	a.serviceModelRefresh = func(ctx context.Context, service modelsource.Connected) ([]Model, error) {
+		models, err := modelcatalog.Refresh(ctx, modelcatalog.Options{
+			Source: service.Source.ID, BaseURL: service.Address, APIKey: service.Key, Dir: dir,
+		})
+		if err != nil {
+			return nil, err
+		}
+		rows := surfaceModels(models.ModelsNow())
+		held[service.Source.ID] = append([]Model(nil), rows...)
+		return rows, nil
+	}
+}
 
 func modelServiceTestApp(t *testing.T, dir string, model string, sources modelsource.Set, models []Model) *app {
 	return modelServiceTestAppWithAgent(t, dir, model, sources, models, &fakeAgent{model: model})
@@ -67,6 +88,7 @@ func TestAConnectedServicesModelsAppearGroupedWithoutARestart(t *testing.T) {
 	}
 	defer agent.Close()
 	a := modelServiceTestAppWithAgent(t, dir, defaults[0].ID, sources, defaults, agent)
+	installModelServiceShelf(a, dir)
 	a.openConnect()
 	rowAt := -1
 	for at := range a.connPanel.hits {
@@ -130,7 +152,7 @@ func TestAConnectedServicesModelsAppearGroupedWithoutARestart(t *testing.T) {
 	}
 	a.switchModel(written+"/deepseek-chat", 0)
 	drainModelServiceTurn(t, agent, "use the newly connected service")
-	if got := completionRequests(server); len(got) != 1 || got[0].Bearer != "Bearer sk-direct-1234567890" || got[0].Host == "" {
+	if got := completionRequests(server); len(got) != 1 || got[0].Bearer != "Bearer sk-direct-1234567890" || got[0].Host == "" || completionModel(t, got[0]) != "deepseek-chat" {
 		t.Fatalf("direct service requests = %+v", got)
 	}
 	if got := completionRequests(defaultServer); len(got) != 0 {
@@ -159,6 +181,17 @@ func completionRequests(server *sourcestub.Server) []sourcestub.Request {
 		}
 	}
 	return found
+}
+
+func completionModel(t *testing.T, request sourcestub.Request) string {
+	t.Helper()
+	var envelope struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(request.Body, &envelope); err != nil {
+		t.Fatalf("decode completion request: %v", err)
+	}
+	return envelope.Model
 }
 
 func TestOneServiceDrawsThePickerExactlyAsItDidBefore(t *testing.T) {
@@ -190,12 +223,24 @@ func TestAServiceWithNoListingDrawsNoCount(t *testing.T) {
 	if got := serviceConnectedWord("custom", modelsource.Outcome{Kind: modelsource.OutcomeConnected, Listed: true}); got != "custom is connected" {
 		t.Fatalf("an answered empty listing drew a count: %q", got)
 	}
+	defaultServer := sourcestub.New("openai/gpt-4.1-mini")
+	defer defaultServer.Close()
+	listingless := sourcestub.New("glm-4.6")
+	listingless.Listingless()
+	defer listingless.Close()
 	zai := modelsource.Vendored()[1]
-	zai.Address = "https://api.z.ai/api/paas/v4"
-	a := modelServiceTestApp(t, t.TempDir(), "openai/gpt-4.1-mini",
-		modelsource.NewSet(testDefaultService("sk-default-1234567890"), modelsource.Connected{
-			Source: zai, Key: "zai-key", Address: zai.Address,
-		}), []Model{{ID: "openai/gpt-4.1-mini"}})
+	zai.Address = listingless.URL()
+	defaultService := testDefaultService("sk-default-1234567890")
+	defaultService.Source.Address, defaultService.Address = defaultServer.URL(), defaultServer.URL()
+	sources := modelsource.NewSet(defaultService, modelsource.Connected{Source: zai, Key: "zai-key", Address: zai.Address})
+	agent, err := session.New(session.Config{Workspace: t.TempDir(), Model: "openai/gpt-4.1-mini", Sources: sources})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer agent.Close()
+	a := modelServiceTestAppWithAgent(t, t.TempDir(), "openai/gpt-4.1-mini", sources,
+		[]Model{{ID: "openai/gpt-4.1-mini"}}, agent)
+	a.modelsForService = func(modelsource.Connected) []Model { return nil }
 	list := a.modelList()
 	if len(list) != 2 || !list[1].Unavailable || list[1].ID != noServiceModelListWord {
 		t.Fatalf("listing-less picker rows = %+v", list)
@@ -204,6 +249,14 @@ func TestAServiceWithNoListingDrawsNoCount(t *testing.T) {
 	rendered := plain(strings.Join(a.pick.rows(100, a.pick.height(100), a.pal, -1, a.reasoningFor), "\n"))
 	if !strings.Contains(rendered, "z-ai") || !strings.Contains(rendered, noServiceModelListWord) {
 		t.Fatalf("listing-less group was not drawn:\n%s", rendered)
+	}
+	a.switchModel("z-ai/glm-4.6", 0)
+	drainModelServiceTurn(t, agent, "use the listing-less service")
+	if got := completionRequests(listingless); len(got) != 1 || got[0].Bearer != "Bearer zai-key" || completionModel(t, got[0]) != "glm-4.6" {
+		t.Fatalf("listing-less service request = %+v", got)
+	}
+	if got := completionRequests(defaultServer); len(got) != 0 {
+		t.Fatalf("default service received the direct turn: %+v", got)
 	}
 }
 
@@ -266,11 +319,28 @@ func TestDisconnectingAServiceLeavesTheConversationOnSomethingItCanReach(t *test
 			if err := config.WriteSources(dir, []config.PersistedSource{row}); err != nil {
 				t.Fatal(err)
 			}
-			direct := testDirectService("https://api.deepseek.com/v1")
-			a := modelServiceTestApp(t, dir, "deepseek-direct/deepseek-v4-pro",
-				modelsource.NewSet(testDefaultService(testCase.defaultKey), direct),
-				[]Model{{ID: "openai/gpt-4.1-mini"}})
+			defaultServer := sourcestub.New(config.DefaultModel)
+			defer defaultServer.Close()
+			directServer := sourcestub.New("deepseek-v4-pro")
+			defer directServer.Close()
+			base := testDefaultService(testCase.defaultKey)
+			base.Source.Address, base.Address = defaultServer.URL(), defaultServer.URL()
+			direct := testDirectService(directServer.URL())
+			sources := modelsource.NewSet(base, direct)
+			agent, err := session.New(session.Config{
+				Workspace: t.TempDir(), Model: "deepseek-direct/deepseek-v4-pro", Sources: sources,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer agent.Close()
+			drainModelServiceTurn(t, agent, "before disconnect")
+			a := modelServiceTestAppWithAgent(t, dir, agent.Model(), sources,
+				[]Model{{ID: config.DefaultModel}}, agent)
 			a.disconnectModelService("deepseek")
+			if got := noteSaying(t, a, "is disconnected"); got != "deepseek-direct is disconnected · its models are gone from the picker" {
+				t.Fatalf("disconnect acknowledgement = %q", got)
+			}
 			if got := noteSaying(t, a, "this conversation was on"); got != testCase.want {
 				t.Fatalf("disconnect note = %q, want %q", got, testCase.want)
 			}
@@ -280,8 +350,145 @@ func TestDisconnectingAServiceLeavesTheConversationOnSomethingItCanReach(t *test
 			if rows := config.PersistedSources(dir); len(rows) != 0 {
 				t.Fatalf("the profile still holds the service: %+v", rows)
 			}
+			if got := completionRequests(directServer); len(got) != 1 || got[0].Bearer != "Bearer sk-direct-1234567890" || completionModel(t, got[0]) != "deepseek-v4-pro" {
+				t.Fatalf("disconnected service requests = %+v", got)
+			}
+			if testCase.defaultKey != "" {
+				drainModelServiceTurn(t, agent, "after disconnect")
+				if got := completionRequests(defaultServer); len(got) != 1 || got[0].Bearer != "Bearer "+testCase.defaultKey || completionModel(t, got[0]) != config.DefaultModel {
+					t.Fatalf("replacement service request = %+v", got)
+				}
+			} else if got := completionRequests(defaultServer); len(got) != 0 {
+				t.Fatalf("unreachable default service received a turn: %+v", got)
+			}
 		})
 	}
+}
+
+func TestDisconnectingAnUnusedServiceDrawsOnlyItsAcknowledgement(t *testing.T) {
+	dir := t.TempDir()
+	row := config.PersistedSource{ID: "deepseek", Written: "deepseek-direct", Key: "sk-direct-1234567890", Order: 1}
+	if err := config.WriteSources(dir, []config.PersistedSource{row}); err != nil {
+		t.Fatal(err)
+	}
+	defaultServer := sourcestub.New("openai/gpt-4.1-mini")
+	defer defaultServer.Close()
+	directServer := sourcestub.New("deepseek-v4-pro")
+	defer directServer.Close()
+	base := testDefaultService("sk-default-1234567890")
+	base.Source.Address, base.Address = defaultServer.URL(), defaultServer.URL()
+	direct := testDirectService(directServer.URL())
+	sources := modelsource.NewSet(base, direct)
+	agent, err := session.New(session.Config{Workspace: t.TempDir(), Model: "openai/gpt-4.1-mini", Sources: sources})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer agent.Close()
+	a := modelServiceTestAppWithAgent(t, dir, agent.Model(), sources, []Model{{ID: agent.Model()}}, agent)
+	a.disconnectModelService("deepseek")
+	if got := noteSaying(t, a, "is disconnected"); got != "deepseek-direct is disconnected · its models are gone from the picker" {
+		t.Fatalf("disconnect acknowledgement = %q", got)
+	}
+	for _, note := range noteTexts(a) {
+		if strings.Contains(note, "this conversation was on") {
+			t.Fatalf("an unused service drew a move sentence: %q", note)
+		}
+	}
+	drainModelServiceTurn(t, agent, "after disconnect")
+	if got := completionRequests(defaultServer); len(got) != 1 || got[0].Bearer != "Bearer sk-default-1234567890" || completionModel(t, got[0]) != "openai/gpt-4.1-mini" {
+		t.Fatalf("remaining service request = %+v", got)
+	}
+	if got := completionRequests(directServer); len(got) != 0 {
+		t.Fatalf("unused removed service received a turn: %+v", got)
+	}
+}
+
+func TestACustomServiceUsesItsWrittenNameOnRefusalAndSuccess(t *testing.T) {
+	server := sourcestub.New("fake-small", "fake-large")
+	defer server.Close()
+	server.Refuse(401, `{"error":{"message":"bad key"}}`)
+	defaultServer := sourcestub.New("openai/gpt-4.1-mini")
+	defer defaultServer.Close()
+	base := testDefaultService("sk-default-1234567890")
+	base.Source.Address, base.Address = defaultServer.URL(), defaultServer.URL()
+	agent, err := session.New(session.Config{Workspace: t.TempDir(), Model: "openai/gpt-4.1-mini", Sources: modelsource.NewSet(base)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer agent.Close()
+	a := modelServiceTestAppWithAgent(t, t.TempDir(), agent.Model(), modelsource.NewSet(base), []Model{{ID: agent.Model()}}, agent)
+	draft := modelConnectDraft{
+		source: modelsource.Vendored()[4],
+		row:    config.PersistedSource{ID: "custom", Written: "localhost", Address: server.URL(), Key: "a-custom-key", Order: 1},
+	}
+	msg := a.beginModelConnect(draft)().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+	if got := noteSaying(t, a, "refused that key"); got != "localhost refused that key — bad key" {
+		t.Fatalf("custom refusal = %q", got)
+	}
+	server.Healthy()
+	installModelServiceShelf(a, a.profileDir)
+	msg = a.beginModelConnect(draft)().(modelConnectResultMsg)
+	a.adoptModelConnectResult(msg)
+	if got := noteSaying(t, a, "is connected"); got != "localhost is connected · 2 models" {
+		t.Fatalf("custom success = %q", got)
+	}
+	a.switchModel("localhost/fake-small", 0)
+	drainModelServiceTurn(t, agent, "use custom")
+	if got := completionRequests(server); len(got) != 1 || got[0].Bearer != "Bearer a-custom-key" || completionModel(t, got[0]) != "fake-small" {
+		t.Fatalf("custom service request = %+v", got)
+	}
+	if got := completionRequests(defaultServer); len(got) != 0 {
+		t.Fatalf("default service received the custom turn: %+v", got)
+	}
+}
+
+func TestADirectModelKeepsItsServiceInStatusAndCarriesNoLane(t *testing.T) {
+	dir := t.TempDir()
+	defaultServer := sourcestub.New("openai/gpt-4.1-mini")
+	defer defaultServer.Close()
+	directServer := sourcestub.New("fake-small")
+	defer directServer.Close()
+	base := testDefaultService("sk-default-1234567890")
+	base.Source.Address, base.Address = defaultServer.URL(), defaultServer.URL()
+	direct := testDirectService(directServer.URL())
+	direct.Source.ID, direct.Source.Written = "custom", "localhost"
+	sources := modelsource.NewSet(base, direct)
+	agent, err := session.New(session.Config{Workspace: t.TempDir(), Model: "localhost/fake-small", Sources: sources})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer agent.Close()
+	a := modelServiceTestAppWithAgent(t, dir, agent.Model(), sources, []Model{{ID: "openai/gpt-4.1-mini"}}, agent)
+	a.sourceModels["custom"] = []Model{{ID: "fake-small"}}
+	if err := config.SetLane(dir, laneSlotFor(a.model), "akashml"); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.modelWord(); got != "localhost/fake-small" {
+		t.Fatalf("status model = %q", got)
+	}
+	a.openPicker()
+	rendered := plain(strings.Join(a.pick.rows(100, a.pick.height(100), a.pal, -1, a.reasoningFor), "\n"))
+	if strings.Contains(rendered, "via akashml") {
+		t.Fatalf("direct row borrowed the default service's lane:\n%s", rendered)
+	}
+	for at, row := range a.pick.list {
+		if row.lane == laneNone && a.pick.all[a.pick.hits[row.hit]].ID == "localhost/fake-small" {
+			a.pick.cursor = at
+			if a.pick.unfoldHere() {
+				t.Fatal("a direct service opened a lane sheet")
+			}
+			drainModelServiceTurn(t, agent, "use direct")
+			if got := completionRequests(directServer); len(got) != 1 || got[0].Bearer != "Bearer sk-direct-1234567890" || completionModel(t, got[0]) != "fake-small" {
+				t.Fatalf("direct service request = %+v", got)
+			}
+			if got := completionRequests(defaultServer); len(got) != 0 {
+				t.Fatalf("default service received the direct turn: %+v", got)
+			}
+			return
+		}
+	}
+	t.Fatal("the direct model was not in the picker")
 }
 
 func TestDisconnectingReplacesTheLiveClientBeforeTheNextRequest(t *testing.T) {

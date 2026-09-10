@@ -521,6 +521,9 @@ func (p *picker) unfoldAt(at int, first string, now time.Time) bool {
 		return false
 	}
 	model := p.all[p.hits[at]]
+	if model.Direct {
+		return false
+	}
 	views := laneViews(model.ID, now)
 	if len(views) == 0 {
 		lane.WantSheet(model.ID)
@@ -1799,7 +1802,7 @@ func (a *app) modelsFor(keep modelFilter) []Model {
 		if order == 0 {
 			models = a.modelsForDefault(keep)
 		} else {
-			models = keepModels(a.sourceModels[service.Source.ID], keep)
+			models = keepModels(a.modelsForConnectedService(service), keep)
 		}
 		group := strings.ToLower(strings.TrimSpace(service.Source.Written))
 		if group == "" {
@@ -1814,6 +1817,7 @@ func (a *app) modelsFor(keep modelFilter) []Model {
 		for _, model := range models {
 			if order > 0 {
 				model.ID = service.Qualify(model.ID)
+				model.Direct = true
 			}
 			model.Group, model.GroupOrder = group, order
 			grouped = append(grouped, model)
