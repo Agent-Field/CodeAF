@@ -265,31 +265,67 @@ func placeWindowOf(hits []int) (first, last, drawn int) {
 // change, because its `enter` edits a value; memory's lines are the stated
 // exception and have their own test below.
 func TestAClickOnARowIsEnterOnEveryPlace(t *testing.T) {
+	// AND THE HIT MAP IS THE ONE THE FRAME DREW, so the law is asked twice: on
+	// the frame as the place opens, and on a squeezed frame whose window the
+	// arrows have scrolled — where a map computed apart from the draw would
+	// open the row above or below the one pressed.
+	frames := []struct {
+		name  string
+		shape func(t *testing.T, a *app)
+	}{
+		{"as opened", func(*testing.T, *app) {}},
+		{"squeezed and scrolled", func(t *testing.T, a *app) {
+			a.width, a.height = 60, 16
+			for i := 0; i < 20; i++ {
+				drive(t, a, key("down"))
+			}
+		}},
+	}
 	for _, place := range everyPlaceTable() {
 		if place.id == pageHome || place.id == pageSettings || place.id == pageMemory {
 			continue
 		}
-		t.Run(place.id.word(), func(t *testing.T) {
-			clicked := place.open(t)
-			y, target := placeClickTarget(t, clicked, place)
-			keyed := place.open(t)
-			for i := 0; i < 400 && place.cursor(keyed) != target; i++ {
-				drive(t, keyed, key("down"))
-			}
-			if place.cursor(keyed) != target {
-				t.Fatalf("the arrows never reached body line %d on the %s place", target, place.id.word())
-			}
-			drive(t, clicked, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft})
-			drive(t, keyed, key("enter"))
-			if clicked.page != keyed.page {
-				t.Fatalf("a click on the %s place's row landed on %q and enter on it on %q",
-					place.id.word(), clicked.page.word(), keyed.page.word())
-			}
-			if got, want := placeFrameText(clicked), placeFrameText(keyed); got != want {
-				t.Fatalf("a click and enter on the same %s row drew two frames:\nclick:\n%s\nenter:\n%s",
-					place.id.word(), got, want)
-			}
-		})
+		for _, frame := range frames {
+			t.Run(place.id.word()+"/"+frame.name, func(t *testing.T) {
+				clicked := place.open(t)
+				frame.shape(t, clicked)
+				y, target := placeClickTarget(t, clicked, place)
+				keyed := place.open(t)
+				frame.shape(t, keyed)
+				for i := 0; i < 400 && place.cursor(keyed) != target; i++ {
+					if place.cursor(keyed) < target {
+						drive(t, keyed, key("down"))
+					} else {
+						drive(t, keyed, key("up"))
+					}
+				}
+				if place.cursor(keyed) != target {
+					t.Fatalf("the arrows never reached body line %d on the %s place", target, place.id.word())
+				}
+				drive(t, clicked, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft})
+				drive(t, keyed, key("enter"))
+				if clicked.page != keyed.page {
+					t.Fatalf("a click on the %s place's row landed on %q and enter on it on %q",
+						place.id.word(), clicked.page.word(), keyed.page.word())
+				}
+				got, want := placeFrameText(clicked), placeFrameText(keyed)
+				// A DOOR THAT KEPT THE PLACE UP — a note instead of a room — is
+				// compared on the row it landed on and on the foot that answered,
+				// because two roads to one row may leave the window scrolled two
+				// ways: the arrows walked up to it, the click did not.
+				if clicked.page == place.id {
+					if place.cursor(clicked) != target {
+						t.Fatalf("the click on the %s place landed on body line %d, not %d",
+							place.id.word(), place.cursor(clicked), target)
+					}
+					got, want = placeFootText(got), placeFootText(want)
+				}
+				if got != want {
+					t.Fatalf("a click and enter on the same %s row drew two frames:\nclick:\n%s\nenter:\n%s",
+						place.id.word(), got, want)
+				}
+			})
+		}
 	}
 }
 
@@ -394,4 +430,14 @@ func placeFoldRow(a *app, mark string) int {
 		}
 	}
 	return -1
+}
+
+// placeFootText is the last rows of a frame — the rule, the box and the hint,
+// where a note a door left is drawn.
+func placeFootText(frame string) string {
+	lines := strings.Split(frame, "\n")
+	if len(lines) > 3 {
+		lines = lines[len(lines)-3:]
+	}
+	return strings.Join(lines, "\n")
 }
