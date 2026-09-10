@@ -41,6 +41,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/config"
 )
 
 // modelPatience is how long any one real turn is given. deepseek-v4-flash
@@ -692,7 +694,12 @@ func testFiringReachesThePerson(t *testing.T) {
 	if testing.Short() {
 		t.Skip("this one waits for the five-minute standing pass")
 	}
-	home := newHome(t, nil)
+	// THE TASK COLUMN IS PINNED OPEN, because the standing count below is drawn
+	// at its foot and nowhere else on the frame (internal/tui3's railFootRows).
+	// newHome copies the profile of whoever runs this, and a machine whose owner
+	// put the column away with ctrl+g — this one's does — hides the very line
+	// under test; secondwindow_e2e_test.go pins it for the same reason.
+	home := newHome(t, map[string]any{config.KeyTaskColumn: true})
 	ws := newWorkspace(t, "firews", false)
 	r := start(t, "afe2e_fire", home, ws, tuiWide, 45)
 	started := time.Now()
@@ -714,10 +721,13 @@ func testFiringReachesThePerson(t *testing.T) {
 	r.keys("Escape")
 	time.Sleep(2500 * time.Millisecond)
 
-	// /status, while something stands: the derived `keeping watch` line and the
-	// status line's own segment.
+	// /status, while something stands: the derived `keeping watch` line, and the
+	// `◦ 1 standing order` line at the foot of the task column. That count was a
+	// segment of the STATUS ROW until #747 (10800e6ee) moved it under the
+	// column's tally — the words are the same, the place is not, and this
+	// subtest went on waiting on the status row with the column put away.
 	// IT IS WAITED FOR AND NOT READ IN THE SAME INSTANT. The count behind that
-	// segment is asked on the frame, so over a connection it is answered from a
+	// line is asked on the frame, so over a connection it is answered from a
 	// cache that refreshes behind itself — the seam's stated law rather than an
 	// optimization (cmd/aforge's hostStanding) — and an item that stood a second
 	// ago reaches it on the next beat.
@@ -727,14 +737,14 @@ func testFiringReachesThePerson(t *testing.T) {
 	// quiet machine and missed it on a loaded one: the item is written by the
 	// ERRAND's process, read back by the ENGINE, held by the surface's own
 	// far-side cache on hostStandingEvery, and read off THAT by a count the
-	// status row keeps for keepEvery. How long it actually took is logged,
-	// because a segment that takes half a minute to appear is a papercut worth
-	// having a number for.
+	// column keeps for keepEvery. How long it actually took is logged, because
+	// a count that takes half a minute to appear is a papercut worth having a
+	// number for.
 	keepingAt := time.Now()
 	if _, ok := r.glimpse(time.Minute, say(t, "homeKeepingWord")); !ok {
-		t.Errorf("the status line never grew a `◦ N standing orders` segment while an item stands:\n%s", r.capture())
+		t.Errorf("the task column never grew a `◦ N standing orders` line while an item stands:\n%s", r.capture())
 	} else {
-		t.Logf("the `◦ N standing orders` segment arrived %s after the item stood", time.Since(keepingAt).Round(time.Second))
+		t.Logf("the `◦ N standing orders` line arrived %s after the item stood", time.Since(keepingAt).Round(time.Second))
 	}
 	r.lit("/status")
 	time.Sleep(700 * time.Millisecond)
