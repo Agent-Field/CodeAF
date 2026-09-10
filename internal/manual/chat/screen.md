@@ -186,8 +186,8 @@ title does not wait for the answer to finish.
 1. `+` opens the `New chat` page. A newly created conversation starts as `Untitled`.
 2. Sending your first message starts both the conversation and background naming.
 3. One response supplies a full conversation title and a one- or two-word tab label. The tab strip
-   uses the compact label; breadcrumbs, the status line, Home, the switcher, recent sessions,
-   and the terminal window title keep the full title. This also works after the answer has
+   and the terminal's own title use the compact label; breadcrumbs, the status line, Home,
+   the switcher and recent sessions keep the full title. This also works after the answer has
    finished or you have switched to another tab.
 
 Hover over a tab to reveal its full title beneath it. Long titles wrap; the tab and
@@ -206,8 +206,8 @@ when read, and saved tab labels are limited to two words. Closing the session ca
 command or tab action to rename a conversation manually.
 
 **`Untitled` labels an unnamed tab and its breadcrumb root.** Elsewhere it is named
-after the folder it is in: the status line and the window title say the project, home and
-the `ctrl+k` switcher say `new conversation`. And `Untitled` is not `main` — `main` is
+after the folder it is in: the status line says the project, and home, the `ctrl+k`
+switcher and the terminal's own title say `new conversation`. And `Untitled` is not `main` — `main` is
 where you are, the conversation you get back to from a task page, which is what `esc/←
 main` and `say it to main` both mean.
 
@@ -3674,44 +3674,49 @@ The mouse is aforge's by default for the whole session, which is what makes the 
 targets on this screen work. `ctrl+s` hands the pointer back to the terminal so you can
 drag-to-select with it, and takes those targets away until you take the mouse back.
 
-## The terminal tab and window title — why my tab is renamed after my project
+## What the terminal tab says — why my terminal title changes, and why the tab shows a path
 
-aforge sets the terminal's window title, which is what your terminal shows on the tab,
-in the cmd-tab switcher, and in a tmux or screen window name. It says which aforge this
-is: the project folder first, then the conversation's own name once it has one, joined
-with a dot — `myproject · porting the parser`. Before the conversation names itself the
-tab is just the project, and with no workspace at all it says `aforge`.
+aforge sets the terminal's own title: the words on your terminal app's tab and in its
+sidebar, in the cmd-tab switcher, and in a tmux or screen window name. It says where you
+are inside aforge, and it changes as you move:
 
-The project comes first on purpose: tabs truncate from the right, so when the bar is
-narrow the part that tells your aforge windows apart is the part that survives. The
-title only changes when a fact changes — a conversation naming itself, a question
-coming up, you switching conversations — never on a clock, so an idle window's tab
-never flickers.
+- home, with nothing waiting: `aforge`
+- home, with things waiting on you: `3 want you · aforge` — the same count and words as
+  home's top line
+- a conversation: `Token counter · aforge` — the short name its tab on the tab strip shows
+- a conversation that has not named itself yet: `new conversation · aforge`, which becomes
+  the name the moment the conversation has one
+- a task page: `Fix the nil-map crash · task · aforge`
+- the tasks, standing, memory, spend, search or settings place: its own word, as in
+  `memory · aforge`
+- over `--host`, the machine comes before the product: `Token counter @ devbox · aforge`
+  (home at rest there is `aforge @ devbox`)
 
-There is no setting to turn this off. If your tmux windows keep their own names, that
-is tmux's `allow-rename` setting refusing outside renames, and aforge respects the
-refusal by simply being refused. When aforge exits, your shell's next prompt sets the
-title back the way your shell normally does.
+The title changes only when where you are changes — a place entered, a name arriving, a
+question coming up — never on a clock, so an idle window's tab never flickers. There is
+no spinner, model, cost or time in it.
 
-## The ? and ✓ on the terminal tab — does it need me, did something finish while I was away
+It is sent both as the window title and as the tab's own name, because Terminal.app and
+iTerm2 label a tab from the second. A tab still showing the path of the program instead
+of one of the sentences above is running an older aforge.
 
-The tab can carry one glyph ahead of the name, from the same vocabulary the rest of the
-surface uses:
+## The ? on the terminal tab — which aforge tab is waiting on me, and the title after quitting
 
-- `?` — something is waiting on you: a permission question in this conversation, or in
-  any conversation this window is keeping in the background. It stays until the
-  question is answered. This is the one to come back for.
-- `✓` — a turn finished while you were looking at another window, and you have not been
-  back since. Clicking back into the window clears it; the answer itself is on screen.
+A `?` in front of a conversation's title — `? Token counter · aforge` — means that
+conversation is waiting on you: a permission question, a sign-in, an offer, or a task
+proposal waiting for your answer. It is the same fact the `?` on its tab in the tab strip
+says, and it goes the moment you answer. On home the same news is the count, `3 want
+you · aforge`, over every conversation at once.
 
-A question outranks a tick: if both are true you see `?`. While work is simply running
-there is no glyph and no spinner in the tab — a window you walked away from is assumed
-to be working, and the tab only speaks when something changed that is worth a glance
-from outside. No glyph at all means nothing is waiting and nothing landed unseen.
+The title is plain text in every tier: the `?` is always the ASCII question mark and never
+an icon, because your terminal app draws the title in the system's own font. A long name is
+cut with `…` so the whole title stays under sixty characters; the ` · aforge` at the end is
+never the part that is cut.
 
-In the screen-reader tier the same two facts are spelled `!` and `+`. The glyphs match
-the home screen's rows, so a `?` on a tab and a `?` on home are the same statement
-about the same conversation.
+When aforge exits it sets the title back to empty, so the terminal shows its own default
+again, or whatever your shell's next prompt sets. There is no setting to turn the title
+off. If your tmux windows keep their own names, that is tmux's `allow-rename` setting
+refusing outside renames, and aforge respects the refusal by simply being refused.
 
 ## The dim thought row above a reply — and models that think between their words
 
