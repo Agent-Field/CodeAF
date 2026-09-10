@@ -345,6 +345,14 @@ func (a *app) questionAnswerKeys(q questionShown, form questionForms) []question
 func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 	switch need {
 	case needPick:
+		if q.question.Ask == session.AskConfirmation {
+			// A CONFIRMATION ALWAYS HAS A PICK AND IT IS THE CURSOR. It is the
+			// one shape on this block where the person's own keyboard chooses
+			// which answer `enter` takes ([questionSafeAt] puts it on the answer
+			// that loses nothing), so the key is always offered — where every
+			// other question offers it only when the ASKER recommended something.
+			return true
+		}
 		return q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != ""
 	case needRule:
 		return q.rule

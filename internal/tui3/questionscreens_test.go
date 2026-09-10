@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -139,7 +141,7 @@ func TestQuestionScreens(t *testing.T) {
 				Stakes: session.StakesReversible, Asked: l.at,
 			},
 			undoable: true,
-			local:    func(session.Answer) {},
+			local:    func(session.Answer) tea.Cmd { return nil },
 		})
 	})
 
@@ -176,7 +178,7 @@ func TestQuestionScreens(t *testing.T) {
 				},
 				Stakes: session.StakesIrreversible, Asked: l.at,
 			},
-			local: func(session.Answer) {},
+			local: func(session.Answer) tea.Cmd { return nil },
 		})
 		l.rows()
 	})

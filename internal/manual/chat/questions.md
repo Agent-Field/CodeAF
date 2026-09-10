@@ -642,6 +642,23 @@ has all of the above: the digits, `esc` for later, the chip, the receipt, the
 settle guard, the narrow card and the phone sheet. `permissions` is its own page
 and states what each answer banks.
 
+**So does the task proposal** — `wants to start a task:` with `[1] start it` and
+`[2] no`, and its clock on the end of the row. **So do the two cards you raise
+yourself**: `x` on running work (`Stop this task?`) and `ctrl+w` on a busy tab
+(`Close this tab?`). Those two are **confirmations**, and a confirmation differs
+from every other question here in three ways worth knowing:
+
+- **`esc` does not mean later.** There is nothing to come back to — you raised it
+  with your own hand a second ago — so `esc` gives the answer that loses nothing:
+  `keep going` on the stop card, `cancel` on the close card.
+- **A digit moves the cursor rather than answering.** `1` and `2` walk the cursor
+  onto the answer they name and light its row; `enter` is what decides. Nothing is
+  decided by one keystroke.
+- **They are answerable at once, and they take the whole keyboard.** The settle
+  guard does not apply — your hand is already on the key that raised it — and
+  while one is up your half-typed sentence stays in the box, unsent, because
+  `enter` belongs to the card.
+
 A question that is not simply a line of answers still fits here. The approval
 question's widening yes, `[2] always`, has a **second beat** on a shell command:
 it replaces the answers row with the shapes the rule could be written as, and
@@ -671,6 +688,4 @@ described above. So is the sheet, and so is the per-project setting that answers
 a whole kind of question while you are away (`/autonomy`, and `D` on a row).
 
 Some older blocks have not moved onto this one yet and keep their own keys until
-they do: a task proposal, a standing card, a connect offer, an offer to run a
-saved program, and the cards that ask before stopping work or closing a busy
-tab.
+they do: a standing card, a connect offer, and an offer to run a saved program.

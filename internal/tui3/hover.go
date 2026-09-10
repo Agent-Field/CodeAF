@@ -598,33 +598,6 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// One row again, and the same reason: the answers row is the only
 			// pressable row a design room's approval block has (roomapproval.go).
 			return hoverAt{kind: hoverRoomApproval}
-		case chromeStop:
-			// THE CARD'S TWO ANSWERS, which share one row — so which of them the
-			// pointer is on is a question about the column, and a row that lit as a
-			// whole would say "you can press here" about the answer nobody is aiming
-			// at (stop.go). The question above them is a sentence and lights not at
-			// all.
-			if a.stop == nil || mark.index != 1 {
-				return hoverAt{}
-			}
-			for at, span := range a.stop.spans {
-				if span.holds(x) {
-					return hoverAt{kind: hoverStopAnswer, index: at}
-				}
-			}
-		case chromeTabClose:
-			// THE SAME SHAPE ONE CARD OVER, and the same reason: three answers
-			// share one row, so which of them the pointer is on is a question
-			// about the column (tabclose.go). The question above them and the
-			// line under them are sentences and light not at all.
-			if a.tabClose == nil || mark.index != 1 {
-				return hoverAt{}
-			}
-			for at, span := range a.tabClose.spans {
-				if span.holds(x) {
-					return hoverAt{kind: hoverTabCloseAnswer, index: at}
-				}
-			}
 		case chromeParked:
 			// One waiting message, whichever of its rows the pointer is on. The dim
 			// line under the block carries no mark and answers to nothing, which is

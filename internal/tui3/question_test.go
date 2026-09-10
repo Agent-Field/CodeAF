@@ -461,7 +461,7 @@ func TestAConfirmationStartsOnTheSafeAnswerAndWalks(t *testing.T) {
 			},
 			Stakes: session.StakesIrreversible, Asked: lab.at,
 		},
-		local: func(answer session.Answer) { took = append(took, answer.FirstKey()) },
+		local: func(answer session.Answer) tea.Cmd { took = append(took, answer.FirstKey()); return nil },
 	})
 	lab.rows()
 	lab.tick(questionSettle)
@@ -550,7 +550,7 @@ func TestTheRatifyLineSaysWhatWasDoneAndHowToUndoIt(t *testing.T) {
 			Stakes: session.StakesReversible, Asked: lab.at,
 		},
 		undoable: true,
-		local:    func(session.Answer) {},
+		local:    func(session.Answer) tea.Cmd { return nil },
 	})
 	rows := questionPlainRows(lab.rows())
 	if len(rows) != 1 {
@@ -577,7 +577,7 @@ func TestARatifyLineWithNothingRealToUndoDoesNotOfferTheKey(t *testing.T) {
 			ID: 6, Kind: session.QuestionTask, Ask: session.AskRatify,
 			Head: "sent the digest", Stakes: session.StakesIrreversible, Asked: lab.at,
 		},
-		local: func(session.Answer) {},
+		local: func(session.Answer) tea.Cmd { return nil },
 	})
 	if got := lab.plain(); strings.Contains(got, "[u] undo") {
 		t.Fatalf("a ratify line with nothing to undo offered the key: %q", got)

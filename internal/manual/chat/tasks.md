@@ -1771,12 +1771,20 @@ section, enter on the job, then `x`. That is how you stop it from the sidebar:
 the section is the door onto the page, and the page is the door onto the stop.
 
 `x` raises the same confirmation every other stop on this surface raises, with the cursor
-on the safe answer:
+on the safe answer. **The page steps aside for it** — the card is drawn above the message
+box, so the log page closes and the question comes up in the conversation, where the
+engine's own sentence about what stopped lands right under it. The job's row in the column
+opens the page again:
 
 ```
-? Stop this job? The process is ended; its log is kept.
-  [stop it]   [keep going]
+?  Stop this job?
+     The process is ended; its log is kept.
+     1  stop it
+     2  keep going
+   [enter] take the pick · [esc] keep going · [←→] pick
 ```
+
+`1` and `2` move the cursor onto the answer they name; `enter` is what decides.
 
 `enter` on `stop it` ends the process. The engine's door is `job:3` — the same number the
 handle shows. The line it answers with is `stopped job 3 (the name) — its log is kept`.
@@ -4394,7 +4402,7 @@ conversation later, a task aforge was deciding is yours again the moment the con
 opens — the card draws its chips rather than the `aforge is deciding` row, because the turn
 it was going to be decided in is gone and nothing is going to finish that thought.
 
-## Can aforge decide on its own — stop asking me about tasks that need a look
+## Can aforge decide on its own — can the chat decide on its own, stop asking me about tasks that need a look
 
 Yes. The setting is **`task.settle`**, in `/settings` under Session as
 `who settles work that needs a look`, and it takes two words:
