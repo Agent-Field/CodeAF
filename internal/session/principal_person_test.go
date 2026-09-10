@@ -174,7 +174,7 @@ func TestABudgetIsSpelledTheWayItWasTyped(t *testing.T) {
 //
 // Two roads copy the conversation's whole config to build a worker
 // (standing_run.go), so an unattended session's rows travel to agents that must
-// never have them: a node has a brief and an auditor, a fork's hand has a
+// never have them: a node has a brief and an auditor, a scoped worker has a
 // scope, an errand is a pane that closes with home. Each of them getting a
 // Steward would mean a worker spending the session's budget, sweeping the
 // session's files, and deciding for itself that the whole ask was met.
@@ -189,7 +189,6 @@ func TestOnlyAConversationIsGivenAGoalOwner(t *testing.T) {
 	}{
 		{"a task node", func(c *Config) { unattended(c); c.InTask = true }},
 		{"an errand", func(c *Config) { unattended(c); c.Errand = true }},
-		{"a fork's hand", func(c *Config) { unattended(c); c.inHand = true }},
 	} {
 		agent, _ := newTestAgent(t, &scriptedCompleter{}, c.mutate)
 		if agent.steward() != nil {

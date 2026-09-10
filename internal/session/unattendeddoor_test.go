@@ -386,7 +386,7 @@ func TestOnlyASpentBudgetSealsOverWorkThatIsMoving(t *testing.T) {
 func TestAPersonsHandoverStillMovesTheWork(t *testing.T) {
 	dir := t.TempDir()
 	transcript := filepath.Join(dir, "transcript.jsonl")
-	agent := checkpointAgent(t, splitSketchSteps(), func(config *Config) {
+	agent := checkpointWritingAgent(t, writingSplitSketchSteps(), func(config *Config) {
 		config.Workspace = dir
 		config.SessionFile = transcript
 		config.Divide = true
@@ -416,6 +416,17 @@ func TestAPersonsHandoverStillMovesTheWork(t *testing.T) {
 func splitSketchSteps() *scriptedCompleter {
 	return &scriptedCompleter{
 		steps: grindingSteps(checkpointMarkAt(1)+6, checkpointSplitSketch,
+			"Finish the four pieces\nwhat is left, and everything this turn already found out"),
+	}
+}
+
+// writingSplitSketchSteps is [splitSketchSteps] for a turn that TOUCHED THE
+// DISK, which is the turn the full handover road still takes: a drawing with
+// parts out of a turn that only read is handed to a quick node instead
+// (checkpoint_quick.go's [Agent.quickFromDrawing]).
+func writingSplitSketchSteps() *scriptedCompleter {
+	return &scriptedCompleter{
+		steps: writingGrindSteps(checkpointMarkAt(1)+6, checkpointSplitSketch,
 			"Finish the four pieces\nwhat is left, and everything this turn already found out"),
 	}
 }

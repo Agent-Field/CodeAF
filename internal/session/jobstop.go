@@ -15,9 +15,9 @@ package session
 // A stop the model asked for and a stop the person asked for travel the same
 // path through the process, and they differ only in who is told afterwards.
 //
-// THE INTERRUPT RULE IS UNTOUCHED. An interrupt kills fork hands and
-// deliberately leaves background commands running (agent.go's [Agent.Interrupt],
-// jobs.go's [jobRegistry.stopHands]). Shutdown does not call explicitStop,
+// THE INTERRUPT RULE IS UNTOUCHED. An interrupt deliberately leaves background
+// commands running (agent.go's [Agent.Interrupt]). Shutdown does not call
+// explicitStop,
 // because process exit pauses task work for resume. A person-initiated stop
 // is neither of those: it is Cancel, and only Cancel.
 
