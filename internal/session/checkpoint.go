@@ -1046,14 +1046,12 @@ func roundWasWatching(calls []ai.ToolCall) bool {
 // establishes itself, on every provider, and it is also the unit the measured
 // failure was measured in: ninety-odd tool rounds.
 //
-// A ROUND IS ONE BATCH AND NOT ONE CALL, AND A FORK BURST IS ONE BATCH. This
-// counts what it counts because the meter measures THE PERSON'S WAITING, and a
-// batch is one wait however many calls are inside it — that is why eight reads
-// asked for in one breath cost one round. A `fork` (fork.go) is the sharpest
-// case of the same fact: one call, in one batch, with two to four whole agents
-// working inside it, and the person waits once. So a lane tempted to count calls
-// here would silently price a burst at four times what the person actually
-// waited, and would move work off a conversation for having been parallel.
+// A ROUND IS ONE BATCH AND NOT ONE CALL. This counts what it counts because the
+// meter measures THE PERSON'S WAITING, and a batch is one wait however many
+// calls are inside it — that is why eight reads asked for in one breath cost one
+// round. So a lane tempted to count calls here would silently price a burst at
+// several times what the person actually waited, and would move work off a
+// conversation for having been parallel.
 func (m *checkpointMeter) round(worked bool) int {
 	if m == nil {
 		return 0
@@ -2413,12 +2411,13 @@ var checkpointWriters = map[string]bool{"write": true, "edit": true}
 // and IT KNOWS NO TOOL'S NAME FOR ANYTHING.
 //
 // IT USED TO BE A LIST OF KEYS — command, query, pattern, path, url — and the
-// list was measured being the wrong shape of rule. `fork` (fork.go) takes
-// `parts`, so a turn that had already fanned out twice was drawn in the digest as
-// two bare lines reading `fork`, and the reader sketched serial work over the top
-// of a turn that was demonstrably already parallel. A list of anticipated keys is
-// a list that is wrong about every verb added after it was written, silently, in
-// the one document a second mind reads the turn out of.
+// list was measured being the wrong shape of rule. A verb that fans work out
+// takes none of those keys, so a turn that had already fanned out twice was
+// drawn in the digest as two bare lines carrying the verb's name and nothing
+// else, and the reader sketched serial work over the top of a turn that was
+// demonstrably already parallel. A list of anticipated keys is a list that is
+// wrong about every verb added after it was written, silently, in the one
+// document a second mind reads the turn out of.
 //
 // SO IT READS THE ARGUMENTS AS THEY CAME AND TAKES THE FIRST THING THAT SAYS
 // ANYTHING: the first string, or the first array rendered as its elements. Wire
@@ -2880,8 +2879,8 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// person's answer — and re-opening it would be the harness answering
 	// something addressed to somebody else. A turn that ends while a job this
 	// conversation started is still running is in the same position: a process
-	// job, a render and a hand each queue their exit as an OWED note that starts
-	// a turn by itself the moment it lands ([Agent.enqueueJobNote]), so the
+	// job and a render each queue their exit as an OWED note that starts a turn
+	// by itself the moment it lands ([Agent.enqueueJobNote]), so the
 	// continuation the reader would buy already exists and is already on its way.
 	//
 	// A WATCH IS INCLUDED AND IT WAKES TOO, which is the half this gate was

@@ -110,12 +110,6 @@ func (c Config) hasConnect() bool { return newConnectHub(c) != nil }
 // standing section is composed from.
 func (c Config) mayStand() bool { return c.standingStore() != nil }
 
-// mayFork says whether `fork` belongs on this belt (fork.go). It is off in a
-// hand and nowhere else, which is the whole of the depth-one law: a chat turn
-// and a task worker are both minds mid-work with a context worth copying, and a
-// hand is not, because the fork is one deep.
-func (c Config) mayFork() bool { return !c.inHand }
-
 // mayDesignHarness says whether the two harness hands belong on this belt
 // (tools_harness.go): a store to write the page into, a runner to run what was
 // written, and somebody watching who can answer the card. A design nobody can
@@ -277,14 +271,6 @@ var handoffFacts = []beltFact{{
 		"stand, so a sweep across many files, research across many sources or the same\n" +
 		"change over many items is work you open and carry yourself, in the order that\n" +
 		"finishes it.",
-}, {
-	tools: []string{"fork"},
-	holds: Config.mayFork,
-	present: "  - SEVERAL PARTS OF THE REPLY YOU ARE ALREADY WRITING, on files that do not\n" +
-		"    touch: `fork`, mid-work only, once you can name the slices.",
-	// A hand is told nothing, because the fork is one deep and there is no
-	// second-best road to point it at (fork.go's forkTools).
-	absent: "",
 }, {
 	tools:   []string{"build_harness", loadCapabilityToolName},
 	holds:   Config.mayDesignHarness,

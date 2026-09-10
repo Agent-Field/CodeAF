@@ -268,8 +268,8 @@ type fileCheck struct {
 }
 
 // plainDoor is a door made of a bare list of commands and nothing else: the
-// fork's read-only shell, the reading-only belt, and every test that asks the
-// gate about a list it wrote by hand. There is no ground under it, so there are
+// reading-only belt, and every test that asks the gate about a list it wrote by
+// hand. There is no ground under it, so there are
 // no file checks in it and the gate is exactly the prefix walk it always was.
 func plainDoor(allowed []string) auditDoor {
 	return auditDoor{allowed: allowed}

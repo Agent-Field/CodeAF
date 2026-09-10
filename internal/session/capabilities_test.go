@@ -492,39 +492,6 @@ func TestLoadingAGroupDoesNotLoosenTheGateOverIt(t *testing.T) {
 	}
 }
 
-// ── a narrowed belt inherits no cupboard ────────────────────────────────────
-
-// A HAND HAS THE SHELF ITS BELT HAS, WHICH IS NONE. `forkBelt` is an allowlist
-// and never names the loading verb, so the shelf is unreachable in any case —
-// this asserts the cupboard is empty as well, because a narrowing meant to be
-// total that left one standing would be a capability surviving by accident.
-func TestAHandInheritsNeitherTheLoadingVerbNorTheShelf(t *testing.T) {
-	caller, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.System = "" })
-	seed, page := caller.forkSeed()
-	hand, err := caller.newHandAgent(forkPart{Role: "one", Scope: []string{"a"}}, seed, page, &handLeash{limit: forkRounds})
-	if err != nil {
-		t.Fatalf("newHandAgent: %v", err)
-	}
-	t.Cleanup(func() { _ = hand.Close() })
-
-	if hand.hasTool(loadCapabilityToolName) {
-		t.Fatalf("a hand carries the loading verb: %v", shelfBeltNames(hand))
-	}
-	if shelved := hand.shelvedNames(); len(shelved) != 0 {
-		t.Fatalf("a hand inherited a shelf holding %v", shelved)
-	}
-	for _, never := range []string{"settings", "change_setting", "build_harness", "generate_image"} {
-		if hand.offers(never) {
-			t.Fatalf("a hand offers %s, which its allowlist never named", never)
-		}
-	}
-	// AND THE CALLER STILL HAS ITS OWN. Clearing the hand's shelf must not reach
-	// through to the mind that forked it.
-	if len(caller.shelvedNames()) == 0 {
-		t.Fatal("forking emptied the caller's own shelf")
-	}
-}
-
 // ── a load that cannot happen is a failure ──────────────────────────────────
 
 // A CALL THAT LOADED NOTHING IS ANSWERED AS AN ERROR, THROUGH THE REAL DOOR.
@@ -634,11 +601,7 @@ func TestAShapeThatCarriesItsToolsIsNeverToldToLoadThem(t *testing.T) {
 				t.Errorf("%s: carries `%s` though it shelves nothing", shape.name, loadCapabilityToolName)
 			}
 		}
-		// A hand opens on its caller's page word for word, and the caller is a
-		// conversation that does shelve — so what this shape answers for is the
-		// tail fork.go appends (prompt_belt_test.go states the same law).
-		page := strings.TrimPrefix(minted.page, minted.inherited)
-		if strings.Contains(page, loadCapabilityToolName) {
+		if strings.Contains(minted.page, loadCapabilityToolName) {
 			t.Errorf("%s: its page names `%s`, which is not on its belt", shape.name, loadCapabilityToolName)
 		}
 	}
@@ -865,7 +828,7 @@ func TestTheEverydayVerbsAreStillCarried(t *testing.T) {
 	for _, everyday := range []string{
 		"read", "write", "edit", "bash", "grep", "find", "ls",
 		"read_document", "jobs", "watch", "manual",
-		"propose_task", "tasks", "fork", "track", "commit", "recall",
+		"propose_task", "tasks", "track", "commit", "recall",
 		"remember", "search_conversations", "view_image",
 	} {
 		if !agent.hasTool(everyday) {

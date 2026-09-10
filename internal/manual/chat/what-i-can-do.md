@@ -261,13 +261,6 @@ Three facts — it is alive, it has been alive this long, this is the last thing
 said — on every result, so "is it still going" is answered before it can be
 asked. A finished or killed job drops off the list immediately.
 
-**A forked hand is on that same footer**, named, because a hand is a job too (see
-"Hands" in the tasks page):
-
-```
-[job 4] running 12m03s · hand 2 — the docs · last: edit docs/api.md
-```
-
 **When a job ends**, its exit code, last non-empty output line, output tail and
 path to the full log arrive in the conversation on their own:
 
@@ -371,16 +364,11 @@ The `jobs` tool looks at all of this. Its `action` is `list`, `output` or `kill`
   `No background jobs.` A job that started life as a foreground command and was
   kept as a job — by the background-after clock, its timeout, or `ctrl+g` — has
   exactly this row, with no mark saying where it came from: it is a job like any
-  other. A forked **hand** is in
-  this list too, as `job 4 · hand 2 · running · 12.0s · the docs`, and its status
-  when it ends is `finished` — a hand has no exit code, it has a report.
 - `output` — the last lines from the in-memory tail, **50 by default and 200 at
   most**, with a footer naming the full log:
   `[job 1 · running · showing last 50 lines · full log: <path>]`.
 - `kill` — SIGTERM to the process group, SIGKILL after a **2-second** grace.
-  Answers `job 1 killed`. Killing a **hand** answers
-  `hand 2 (job 4) stopped; what it had already written is still in your working
-  copy and may be half-made — no report is coming`.
+  Answers `job 1 killed`.
 
 Unknown ids answer `No job 9.`; a finished job answers `Job 1 already exited(0).`
 
@@ -484,8 +472,8 @@ Nothing further ever comes from that watch: it is over, which is exactly why its
 last note is the one worth waking for. `jobs list` no longer shows it running,
 and its whole tick history stays at `jobs output <id>`.
 
-A background command exiting, a video or music render landing and a forked hand
-coming home wake a reply the same way. The tasks page has the rest of it under
+A background command exiting and a video or music render landing wake a reply the
+same way. The tasks page has the rest of it under
 *Waiting on something, and the limit on carrying on*.
 
 ## Can you tell me when something has finished — how do I know it went quiet or stopped changing?

@@ -775,8 +775,7 @@ saved cut from `edit_video`, and a shell command that names what it would change
 just looking. A `cd` inside the command is followed, so a write into somewhere else is
 somewhere else. **Reads are never counted**, in any number: `read`, `grep`, `ls`, `git log`,
 `git diff`, running your tests. Neither is a write that FAILED, and neither is anything
-outside this folder — a scratch file in `/tmp` is not your work. A hand does not bypass this
-count; see *Do hands get around the write limit* below.
+outside this folder — a scratch file in `/tmp` is not your work.
 
 **It can still decide not to move.** The move goes through the same road as the third point,
 which means it can be dropped when the model writing your answer says nothing is left AND the
@@ -946,12 +945,12 @@ own — see *Leaving it running on its own* in *starting aforge*.
 ## Waiting on something, and the limit on carrying on — it kept polling while it waited, why does it say carry on, why does it say "carried on 3 times", it turned my wait into a task
 
 **A reply that ends while something IT started is still running is never carried on.** A
-background command, a watch, a video or music render, a forked hand — while any of those is
-still going, the reply is waiting on it exactly the way a reply that ends on a question is
-waiting on you, and pushing it on would only make it poll.
+background command, a watch, a video or music render — while any of those is still going,
+the reply is waiting on it exactly the way a reply that ends on a question is waiting on
+you, and pushing it on would only make it poll.
 
 **The ending comes back and starts a new reply by itself.** A background command exiting, a
-render landing, a hand coming home, **a watch firing**: each of those wakes aforge and you get
+render landing, **a watch firing**: each of those wakes aforge and you get
 the sentence about it without typing anything. So you can start something, close the laptop
 lid on the conversation, and come back to the answer rather than to a card and silence.
 `jobs list` shows what is still running, and `jobs output <id>` shows what it has said so far.
@@ -1561,7 +1560,7 @@ root; the root then carries the family's aggregate state glyph and a `▸ +N` ba
 hidden descendants.
 
 **Workers under a task are the family's own rows and nothing else** — there is no second,
-smaller list of hands drawn beneath a row. A task that split itself into parts, and an
+smaller list drawn beneath a row. A task that split itself into parts, and an
 adaptive run and its workers, each announce themselves as tasks with a parent, so every one
 of them is an ordinary row of the forest above: its own state glyph, its own name, its own
 `#id`, reachable with `↑`/`↓` and openable with `→`. A worker you can see is a row you can
@@ -1704,8 +1703,8 @@ never arrives costs a good name and nothing else — the command stays on the ro
 **No call is made** when the job already has a label of its own, or when the command is
 already short and readable:
 
-- a watch, a render or a hand is named the moment it starts (`watch app`, the render's
-  title, the hand's part) — a second call would disagree with `jobs list`
+- a watch or a render is named the moment it starts (`watch app`, the render's
+  title) — a second call would disagree with `jobs list`
 - a command with no shell metacharacters and no more than four words is left alone —
   `npm run dev` is what a person would call that job
 
@@ -1859,7 +1858,7 @@ Type digits while the layer is up and the figure is whatever you typed.
   is the *asks* in the sentence on the line.
 
 **A task started any other way carries whatever this window carries.** `/task <brief>`, the
-proposal card and the model's own hands run under the conversation's own limit — the
+proposal card and the model's own proposals run under the conversation's own limit — the
 `per conversation` row on the **Spending** tab of `/settings`, which reads `no limit` until
 you set it — and under the day's limit above it. An adaptive run they start opens on the
 $100.00 default.
@@ -3740,171 +3739,6 @@ width floor stands under the splits that do happen, which is off unless you set 
 (*Can I make it always split the work*). Both are environment pins rather than preferences,
 which is why neither is in the settings panel.
 
-## Hands — several parts of one answer worked at the same time, inside the reply you are waiting on
-
-Sometimes the work is not big enough to hand away and still has separate parts in it. Three
-files to change that do not touch each other. A page to write and a table to fill in beside
-it. For that, aforge can **copy itself, right there in the middle of your answer**, into two,
-three or four **hands** that work side by side. Its tool for it is `fork`.
-
-A hand is not a task and it is not a part of one. Nobody writes a brief for it: it starts
-with **everything the answer has already read and said**, the whole conversation up to that
-moment, and is told exactly one line — what its part is, which files it may write, and what
-each of the others is doing so it does not redo their work. That is the whole trick, and it
-is why hands are cheap: the expensive thing about handing work over is explaining it, and a
-hand needs no explaining.
-
-**What you see** is one dim line at the moment they go out:
-
-```
-three hands on it · each one folds in as it lands
-```
-
-The answer then carries on. It does **not** go quiet and wait for all of them — see the next
-section. What they cost is folded into that turn's own cost, which is where it belongs: it is
-your answer being worked on, not work that left.
-
-Do not confuse it with `this one wants more hands · handing it over with everything found so
-far`, which is the opposite move — that one is your answer **leaving** to become a task.
-
-## Do hands get around the write limit — my reply changed six files through hands and never became a task, does forking count against the allowance
-
-**No. What a hand changes counts against the same allowance as an edit the reply makes
-itself.** The same calls count in both places: an `edit`, `write` or saved `edit_video` cut
-under this folder, and a shell command that names what it changes. Reads do not count. A
-refused write changed nothing and counts nothing, and neither does anything outside the
-folder this conversation is open on.
-
-A hand is a stream, so this count can arrive after the reply that called `fork` has already
-ended. It arrives when the hand reports back. The reply at the next step boundary reads it:
-that may be the reply already running when the report lands, or the reply the report wakes.
-If the allowance has been spent, that reply says
-`this is changing more than a quick edit · moving it to a task that is watched and can split`
-and moves what remains onto the same one-task road as an inline edit. Each hand's landed call
-is counted once.
-
-## A hand is a stream, not a wait — the answer keeps working while its hands are out
-
-`fork` **comes straight back**, naming the hands. Each hand's report then arrives on its own,
-in the conversation, the moment that hand finishes — in the order they **come home**, not the
-order they were asked for. Nothing polls and nothing waits.
-
-That matters because the alternative was measured and it was expensive. On one benchmark task
-a worker forked three hands at 00:53. The first was finished ninety seconds later. The tool
-call did not return until 01:33, when the slowest one hit its budget — so for thirty-nine
-minutes the worker sat inside a tool call doing nothing at all, while the first hand's
-finished work sat in the working copy unbuilt and unmeasured. When it finally returned, the
-worker built once, ran the check, and gained 29 passing tests. Forty minutes for work that had
-been ready after two.
-
-So now the answer builds and tests **each slice as its report lands**, while the other hands
-are still writing elsewhere in the tree.
-
-Every hand still out also rides at the foot of every result the answer reads, the way a
-background job does:
-
-```
-[job 4] running 12m03s · hand 2 — the docs · last: edit docs/api.md
-```
-
-Which hand, how old, what it last did. So a hand can never be forgotten and never has to be
-asked about.
-
-**Hands get job ids now.** They are in `jobs list` beside background commands and watches,
-each with a log on disk, and `jobs kill 4` ends one — its writes stay in your working copy and
-may be half made, and no report comes.
-
-**Every hand owns a slice of the files and can write nowhere else.** They share one working
-copy — no branches, no copies of the repository — so what keeps them out of each other's way
-is that the slices are declared before any of them starts, and two hands claiming the same
-path is refused outright. A hand reaching outside its slice is refused too, by aforge and not
-by good manners, and it carries on inside its own.
-
-**A hand that declares an empty slice only reads.** `"scope": []` asks for a hand with no
-`edit` and no `write` tool. Its shell keeps the existing restricted orientation policy;
-this is a tool policy, not an operating-system sandbox. It can inspect sources, datasets
-or files without declaring a file to change. Readers claim nothing, so **two of them may look at the same
-file** and neither collides with a writing hand beside it. A fork can mix them freely.
-
-**The `scope` key is always required.** An empty list is a request; a missing key is a slip,
-and it is refused rather than read as one — the reply is told to name the paths, or to send
-`[]` if the hand only reads.
-
-## How a hand's slice of files is spelled, and when a fork is refused over it
-
-The paths a hand may write are **relative to your working copy** — `src/parser.rs`,
-`internal/session`, `docs`. A directory claims everything under it.
-
-A path written out **in full** is accepted and means the same thing: if your working copy is
-`/work/repo`, then `/work/repo/src/parser.rs` and `src/parser.rs` are one slice, and the
-overlap check reads them as one. This is worth knowing because it used to be the opposite. A
-task worker once declared its hands' slices in full, the door accepted them, the refusal was
-made against the short form, and **every single write in every hand was refused** — the model
-kept being told that files plainly inside its slice were outside it, and it never split its
-work again. Both ends now read a path the same way, once.
-
-Three spellings are turned away at the call, before any hand starts, with a line naming the
-offending path and the form that would have worked:
-
-- a path **outside your working copy**, like `/etc` or `../secrets` — a slice is a slice of
-  this directory, and one that is not could never match anything a hand writes;
-- **`.`**, the whole working copy — that is not a slice of it, and it collides with every
-  sibling;
-- **two hands claiming one path**, in any spelling — the one shape a shared working copy
-  cannot survive.
-
-Nothing is spawned in any of those cases: the answer reads the refusal, redraws the slices
-and calls again.
-
-## What hands cannot do, and how they differ from a task
-
-**They cannot build and they cannot run tests.** All of them are writing the same working
-copy at once, so a build in the middle of that reads a half-written repository: a pass would
-prove nothing and a failure would be a neighbour's unfinished work. Their `bash` runs
-`git diff`, `git log`, `git status`, `git show`, `pwd`, `wc`, `head` and `cat` and refuses
-everything else. The build, the tests and the review happen **in the answer itself**, hand by
-hand as each report lands.
-
-**They cannot write outside their part.** An `edit` or `write` aimed anywhere but that hand's
-declared files comes back refused, naming the files it does own. So a fork cannot leave your
-repository in a state two of them fought over. A hand that declared `[]` does not carry those
-two tools in the first place. A writing hand also spends the reply's write
-allowance when its changes come home.
-
-**They cannot fork again.** One level, and it is not a rule they are asked to keep — a hand
-simply does not have the tool.
-
-**A hand has nine tools, and it is told which nine.** It opens on the whole conversation —
-the same transcript and the same instructions the answer that forked it was reading, word
-for word, because that shared page is what makes a copy of a mind cheap to make. Those
-instructions were written for the belt the **caller** carries, which is a much longer list,
-so a short note is added under them naming what is actually this reader's: `read`, `grep`,
-`find`, `ls`, `read_document`, `manual`, `edit`, `write` and `bash`. A hand that only reads
-gets seven of those — `edit` and `write` are absent — and its note says so. Nothing else is on
-a hand's belt however the page above the note reads, and a call for anything else is answered
-`Unknown tool` rather than run.
-
-**They outlive the turn, and your interrupt ends them.** A hand keeps working after the reply
-that started it has finished, and its report wakes the session when it lands — the same thing
-a background command's exit does. What stops a hand where it stands is **your interrupt**
-(that is the difference from a background job: a job is a command you asked to be left
-running, a hand is the answer itself) and closing the window. A task that forked hands does
-**not** land while a hand is still out: it waits, reads the reports, and lands after.
-
-**Each has a budget of 15 rounds of tool calls.** A hand that runs out reports it **leading**
-with `OUT OF ROUNDS`, names the files it wrote, and **quotes its last sentence back verbatim**
-— because that sentence is the only description in existence of the change it was halfway
-Nothing built or ran those files, so the change may be
-half made. The answer is told plainly that this part is not done — it is never quietly treated
-as finished.
-
-**How it differs from the other two roads.** A **task** is work that leaves: its own copy of
-the repository, its own room, a check, a landing, and it survives you closing the window. A
-**divided task** is that again, several workers under one, for material too wide for one
-worker. **Hands** are neither — they are one answer being worked on in parallel and finished
-in the same breath. If the work should still exist after this reply, it wants a task; if it
-is this reply, it wants hands.
-
 ## How deep tasks nest, and how many pieces one task may hand out
 
 Two hard bounds, and they behave differently on purpose.
@@ -3932,7 +3766,7 @@ cap is not evidence that deeper delegation cannot be useful.
 `task.parallel` still applies to the whole session: pieces queue behind it exactly as
 top-level tasks do.
 
-## How many tasks run at once — can I have it do two things at the same time
+## How many tasks run at once — can I have it do two things at the same time, can you work on several parts of my answer at once
 
 **There is no limit by default.** aforge does not cap the number of tasks running at the
 same time.

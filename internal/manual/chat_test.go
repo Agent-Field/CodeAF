@@ -605,13 +605,6 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does my task say a tool was withdrawn", "how-tasks-run"},
 		{"my task says unknown tool bash", "how-tasks-run"},
 		{"why were the files my task saved called unverified", "how-tasks-run"},
-		// And the other half: a fork whose hands declared their files in full and
-		// were refused every single write.
-		{"how do I say which files each hand may write", "tasks"},
-		// And what a hand may reach for at all: it reads the caller's own
-		// instructions, so the question is asked as "which of these are mine".
-		{"what tools does a hand have", "tasks"},
-		{"why was my fork refused over its scope", "tasks"},
 		{"what does this conversation cost", "models-and-cost"},
 		// The same question in the two plainest ways somebody types it, which
 		// are both about the money and neither of which uses the word cost as a
@@ -1056,10 +1049,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where do I set what aforge may spend", "models-and-cost"},
 		{"how much money can a task spend of its own", "models-and-cost"},
 		{"why does the limit say no limit instead of $0", "models-and-cost"},
-		// Issue #168: a fork's hands were on the machine's day figure twice, and
-		// the person who notices is the one asking what their hands are costing.
-		{"does the money on the status line include what my hands are spending", "models-and-cost"},
-		{"is a hand's spend counted twice in my daily total", "models-and-cost"},
+		// Issue #168: work a conversation started was on the machine's day figure
+		// twice, and the person who notices is the one asking what their tasks
+		// are costing.
+		{"does the money on the status line include what my tasks are spending", "models-and-cost"},
+		{"is a task's spend counted twice in my daily total", "models-and-cost"},
 		{"how do I set a limit without opening settings", "commands"},
 		{"why won't you change my approval mode", "permissions"},
 		{"why won't permissions show the rules on the machine I used with host", "running-on-another-machine"},
@@ -1466,11 +1460,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the parts all had the same done-condition and it would not split", "tasks"},
 		{"each part should only check its own files", "tasks"},
 		{"it refused the split because the parts share a check", "tasks"},
-		// Hands: the third weight, and the one a person meets as a line they did
-		// not ask for in the middle of their own answer. They ask in the words on
-		// the screen — "three hands on it" — or in the words for what they saw,
-		// which is one reply doing several things at once.
-		{"what does three hands on it mean", "tasks"},
+		// Several things at once: a person meets this as one reply doing several
+		// things, and what answers it is the task that hands its own parts out.
 		{"can you work on several parts of my answer at once", "tasks"},
 		// And the half of division a person meets from the other side: they walk
 		// into the parent's room, type, and the page does not move — because the
