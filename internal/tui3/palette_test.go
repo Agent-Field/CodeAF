@@ -131,7 +131,7 @@ func TestEnterAppliesTheChoiceAndClosesThePicker(t *testing.T) {
 	if !strings.Contains(got, "model · openai/gpt-4.1-mini") {
 		t.Fatalf("the switch has to be said out loud:\n%s", got)
 	}
-	if strings.Contains(got, pickerHint) {
+	if strings.Contains(got, rowAll(pickerHintFieldsBare)) {
 		t.Fatalf("the overlay is still on screen:\n%s", got)
 	}
 }
@@ -188,7 +188,7 @@ func TestThePickerIsBottomAnchoredAndMarksTheCurrentModel(t *testing.T) {
 		t.Fatalf("the row under the filter box is %q, want the blank", blank)
 	}
 	box := lines[len(lines)-len(pickerCatalog)-3]
-	if !strings.Contains(box, pickerHint) {
+	if !strings.Contains(box, rowAll(pickerHintFieldsBare)) {
 		t.Fatalf("the filter box is %q, want the hint", box)
 	}
 	if caretY != a.height-3-len(pickerCatalog) || caretX != len(inputPad)+2 {

@@ -742,7 +742,25 @@ type Options struct {
 	// MUST NOT block — a picker that waits on a fetch is a picker that answered
 	// a question with a spinner. Nil, or an empty answer, falls through to
 	// ~/.aforge/v3/models.json and then to [BuiltinModels] (see models.go).
+	//
+	// THE ONE FETCH IS ASKED FOR, AND IT STILL DOES NOT BLOCK: [Options.
+	// RefreshModels] runs as a command off the loop while the picker keeps
+	// answering, and this function goes on returning what it returned until
+	// the door has swapped in what that fetch brought back.
 	Models func() []Model
+
+	// RefreshModels asks the router for today's list, on the key the open
+	// /model picker offers for it (modelrefresh.go's [refreshModelsKey]). It
+	// returns the whole list, when those rows left the router, and why not.
+	//
+	// A DOOR THAT IMPLEMENTS IT OWES THREE THINGS: [Options.Models] reads the
+	// new list from then on, ~/.aforge/v3/models.json is written with it
+	// ([WriteModelCache]), and a failure changes nothing and says why — the
+	// surface keeps the list it was showing either way.
+	//
+	// Nil is a door with no refresh behind it, and the capability is then
+	// ABSENT: the key does nothing and no line on the surface names it.
+	RefreshModels func(ctx context.Context) ([]Model, time.Time, error)
 
 	// ProfileDir is the profile the settings panel reads and writes — the same
 	// directory internal/config resolves every other row out of. Empty is the

@@ -278,15 +278,14 @@ func TestExecsExitLadderIsWrittenWhereACallerLooks(t *testing.T) {
 
 // A DOOR THAT PARSES NO FLAGS STILL ANSWERS THE FIRST GESTURE. `aforge show
 // --help` used to answer `open --help: no such file or directory` — a
-// filesystem error about a flag — and `aforge models --help` ran the command
-// with the flag silently ignored.
+// filesystem error about a flag. (`aforge models` was on this list until
+// `--refresh` gave it a flag set; the help test above covers it now.)
 func TestProbingAFlaglessCommandWithHelpIsNotAnError(t *testing.T) {
 	for _, door := range []struct {
 		name string
 		run  func([]string) error
 	}{
 		{"plan show", func(args []string) error { return runShow("plan show", args) }},
-		{"models", runModels},
 		{"cache", runCache},
 	} {
 		out, _ := captureUsage(t)

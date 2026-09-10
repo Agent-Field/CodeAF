@@ -2315,6 +2315,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is the difference between keep running and stop work", "screen"},
 		{"k doesn't do anything on the close tab card any more", "screen"},
 		{"how do I close a tab without stopping the work", "screen"},
+		// ctrl+r in /model (internal/tui3's modelrefresh.go), asked the ways
+		// somebody meets a list that is missing the model they just read about.
+		{"how do I refresh the model list", "commands"},
+		{"a new model came out but it is not in /model", "commands"},
+		{"the model list is out of date", "commands"},
+		{"how old is the model list", "commands"},
+		{"fetch the newest models", "commands"},
+		{"could not fetch the model list", "commands"},
 		{"I pressed 1 on the stop card and it did not stop", "keys"},
 		{"why does the stop card need enter as well as the number", "keys"},
 		{"where did my chat go after I closed its tab", "screen"},

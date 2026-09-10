@@ -479,7 +479,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// Asked at the moment the picker opens, never at boot: a catalog that
 		// resolved while the person was reading is a catalog the picker can
 		// use, and one that has not resolved answers nil instead of waiting.
-		Models: func() []tui3.Model { return v3Models(models) },
+		// It reads the shelf, which ctrl+r in /model refills with today's list.
+		Models:        func() []tui3.Model { return v3Models(proc.Shelf) },
+		RefreshModels: proc.Shelf.refresh,
 		// The same deliverables index the session's config carries, so the
 		// surface's /export rows and the session's own land in one file.
 		ArtifactsIndex: artifactsIndexPath(),
@@ -874,8 +876,10 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// Whether the model in use can LOOK at a picture, from the catalog's
 		// published input modalities. It is a closure rather than a value
 		// because the answer is about the model the NEXT turn rides, and this
-		// session's model changes under /model (see [v3SeesImages]).
-		SupportsImages: v3SeesImages(models),
+		// session's model changes under /model (see [v3SeesImages]). It reads
+		// the SHELF, so a model picked out of a list somebody refreshed a moment
+		// ago is answered from that list rather than refused as unknown.
+		SupportsImages: v3SeesImages(proc.Shelf),
 		// The published answer to "may this call carry this knob", which the
 		// adapter asks before it lets an optional field travel. It was wired to
 		// nothing on this path, so a reasoning level set with ctrl+t or
@@ -896,8 +900,8 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// The models a task may be handed to, asked at the moment a proposal
 		// names one and never at boot — the picker's own bargain, because both
 		// questions are about a catalog that may still be warming and neither of
-		// them may wait for it.
-		TaskModels: v3TaskModels(models),
+		// them may wait for it. The shelf, for the vision gate's reason.
+		TaskModels: v3TaskModels(proc.Shelf),
 		// The two halves of the harness offer (internal/session's harness.go):
 		// what a turn is matched against, and what a yes reaches. They are
 		// filled together because either one alone is detection off — a

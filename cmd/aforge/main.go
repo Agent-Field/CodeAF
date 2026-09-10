@@ -348,7 +348,7 @@ Look at what happened — read-only, no key, nothing spent
       every model call aforge made — what was asked, which lane answered, what
       came back. The filters are exact and combine; --json prints the rows as
       they are on disk, --body one call's bodies. AFORGE_CALL_LOG=off is off
-  aforge models
+  aforge models [--refresh]
       the models this machine will use, and what each has been measured at
   aforge doctor [--db path]
       is this install healthy, and where does it keep things

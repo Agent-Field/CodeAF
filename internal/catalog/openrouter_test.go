@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -266,6 +267,43 @@ func TestTheCacheIsDailyDatedAndRefreshableByHand(t *testing.T) {
 
 // A refresh that fails must leave the reader with the facts they already had,
 // dated honestly — never with less than they started with.
+// A REFRESH SOMEBODY ASKED FOR SAYS WHY IT DID NOT LAND, and still keeps every
+// fact it had. The catalog it hands back is the cache, dated the day it was
+// really fetched; the error beside it is the one sentence a person is owed. A
+// refresh that lands answers nil and is dated now, even inside the TTL.
+func TestARefreshSaysWhyItFailedAndKeepsTheCache(t *testing.T) {
+	dir := t.TempDir()
+	day := time.Date(2026, 9, 10, 9, 0, 0, 0, time.UTC)
+	fixtureCatalog(t, dir, Options{Now: func() time.Time { return day }})
+
+	offline := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("offline")
+	})}
+	stale, err := Refresh(context.Background(), Options{
+		BaseURL: "https://openrouter.ai/api/v1", Dir: dir, HTTPClient: offline,
+		Now: func() time.Time { return day.Add(time.Hour) },
+	})
+	if err == nil || !strings.Contains(err.Error(), "offline") {
+		t.Fatalf("a refresh that could not reach the router said %v", err)
+	}
+	if _, ok := stale.Model("anthropic/claude-opus-5"); !ok || !stale.FetchedAt().Equal(day) {
+		t.Fatalf("a failed refresh lost the cache or its date (%v)", stale.FetchedAt())
+	}
+
+	raw, readErr := os.ReadFile(filepath.Join("testdata", "openrouter-models.json"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	fresh, err := Refresh(context.Background(), Options{
+		BaseURL: "https://openrouter.ai/api/v1", Dir: dir,
+		HTTPClient: catalogClient(t, http.StatusOK, string(raw), nil),
+		Now:        func() time.Time { return day.Add(time.Hour) },
+	})
+	if err != nil || !fresh.FetchedAt().Equal(day.Add(time.Hour)) {
+		t.Fatalf("a refresh inside the day answered %v, dated %v", err, fresh.FetchedAt())
+	}
+}
+
 func TestAFailedRefreshServesTheCacheWithItsOwnDate(t *testing.T) {
 	dir := t.TempDir()
 	day := time.Date(2026, 8, 11, 9, 0, 0, 0, time.UTC)

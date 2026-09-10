@@ -464,8 +464,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// the draft below is suspended untouched. ctrl+c is the one exception, for
 	// the same reason it is read first below — leaving is never modal.
 	if a.pick.open && msg.String() != "ctrl+c" {
-		a.pickerKey(msg)
-		return nil
+		return a.pickerKey(msg)
 	}
 	if a.crewPick.open && msg.String() != "ctrl+c" {
 		a.crewPickerKey(msg)
@@ -1524,7 +1523,7 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 		// prompt, since the picker's box takes no lead — so the keys go whole,
 		// from the right, on a frame too narrow for all of them (rowfit.go).
 		return draftBlock(&a.pick.filter, a.pal, width, 1,
-			pickerHintAt(width-ansi.StringWidth(prompt)), "")
+			a.pick.hintAt(width-ansi.StringWidth(prompt)), "")
 	}
 	if a.at(pageMemory) {
 		if a.mem.edit != nil {

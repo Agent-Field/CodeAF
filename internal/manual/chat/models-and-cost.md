@@ -121,14 +121,16 @@ tiers — prefix, then substring, then subsequence. So `ds v4` finds
 `deepseek/deepseek-v4-flash` and `claude 4.5` finds `anthropic/claude-sonnet-4.5`, and fuzzy
 hits sit at the bottom rather than mixed through. Twelve rows show at a time.
 
-The picker **never fetches**. The list comes from what is already known, in this order: the
+The picker **never fetches on its own** — only when you press `ctrl+r` in it, which asks the
+router for the newest list (the *commands* page, "Refreshing the model list"). Otherwise
+the list comes from what is already known, in this order: the
 catalog the door passed in, then `~/.aforge/v3/models.json`, then five names this build
 remembers (`deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
 `anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`). Each rung is
 tried only when the one above it came back empty after filtering.
 
 The placeholder in the empty filter box is the only place the overlay explains itself:
-`filter · ↑↓ · → lanes · ctrl+t effort · enter · esc`
+`filter · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc`
 
 There is no mouse commit on the picker's rows.
 
