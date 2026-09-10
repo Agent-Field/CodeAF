@@ -973,12 +973,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is my other conversation still running", "home"},
 		{"does my draft move when I switch", "home"},
 		// HOW MANY CAN BE OPEN AT ONCE, asked by somebody who remembers being
-		// refused at eight and by somebody who has never heard of the cap and
-		// simply wants to know where the ceiling is. There is no ceiling, and the
-		// page that answers is the one that says what an open conversation costs.
+		// refused at eight, by somebody who has never heard of the cap, and by
+		// somebody who watched a quiet one get let go of. Doors still never
+		// refuse another; past twelve a quiet conversation left alone may be
+		// let go of, and the page that answers is the one that says both.
 		{"how many conversations can I have open at once", "home"},
 		{"is there a limit on how many chats I can open", "home"},
 		{"why can I not open another conversation", "home"},
+		{"too many conversations open", "home"},
+		{"does aforge close old chats", "home"},
+		{"what does quiet a while mean", "home"},
+		{"what does let go mean on a conversation", "home"},
 		// WHAT A ROW SAYS WHEN ITS CONVERSATION IS ABOUT SOMEWHERE ELSE, and the
 		// search that finds it. The first is somebody reading a word off their
 		// own screen; the rest are somebody looking for a conversation they know

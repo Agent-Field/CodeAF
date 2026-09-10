@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -27,6 +28,10 @@ type switchAgent struct {
 	pending []uint64
 	stops   int
 	closed  bool
+	// left is closed once Close has returned, so a test that lets go of a
+	// conversation off the frame can wait without racing the close itself.
+	left     chan struct{}
+	leftOnce sync.Once
 }
 
 func (s *switchAgent) Attach() (<-chan session.Event, bool, func()) {
@@ -42,7 +47,14 @@ func (s *switchAgent) Attach() (<-chan session.Event, bool, func()) {
 
 func (s *switchAgent) PendingConsent() []uint64 { return s.pending }
 
-func (s *switchAgent) Close() error { s.closed = true; return s.fakeAgent.Close() }
+func (s *switchAgent) Close() error {
+	s.closed = true
+	err := s.fakeAgent.Close()
+	if s.left != nil {
+		s.leftOnce.Do(func() { close(s.left) })
+	}
+	return err
+}
 
 // TestASwitchKeepsTheTranscriptTheDraftTheScrollAndTheQuestion is the round
 // trip, asserted field by field.

@@ -152,9 +152,11 @@ const hopHereWord = "you are here"
 // hopShown is how many rows the card holds. TWELVE, because the card is a card
 // and not a page: it is a glance at the handful of conversations somebody is
 // moving between, and a person who wants the whole list wants home, which is a
-// page and has the room to be one. Nothing caps how many conversations a window
-// holds (keeper.go), so a window with more of them than this has rows this card
-// does not draw — home draws every one.
+// page and has the room to be one. The keeper's soft ceiling is this same
+// number (keeper.go's [keptCeiling]): a person who can see every conversation they
+// have open on one card has not lost track of any of them. A window whose held
+// conversations are all busy still sails past it, and those extra rows this
+// card does not draw are still on home.
 const hopShown = 12
 
 // hopDigits is how many rows wear a number: nine, because `1`…`9` is every digit
