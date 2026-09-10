@@ -12,6 +12,17 @@
 - **live6 at `1c7012818`: `DEMO PASSED`, $0.0114**, 13 calls on `deepseek/deepseek-v4-flash` ([log](validation/wave03-live6.log)). It exercised the refused-self-write path live: inbox run 0003 called `write` on its own report, was refused, then replied with a closed `<report>` block, and aforge published that block rather than the apology.
 - **Failed runs stay failed evidence.** live1 (`3afdba568`), live2 (`b427dde07`, the privacy leak) and live4 (`d73ce259a`, the refused self-write) failed. live3 passed at `f651acd9a` and live5 at `9cc7b638c`, but both are superseded by later source and are not acceptance of it. Paid model usage across the wave is about $0.055 of the $5 limit ([BUILD-WAVE-03.md](BUILD-WAVE-03.md) has the per-run table).
 - **Integrated** into `codex/personal-ai-backend` (draft #662) by an ordinary `--no-ff` merge of `origin/codex/personal-e2e-opus` at `b48387207`. Git merged it with no conflicts. `git diff b48387207 HEAD -- ':!docs' ':!*.md'` is empty, so the runtime tree is the validated lane's and no Spark revalidation was needed.
+- **The demo door works from the merged tree.** On Spark in the integration worktree at `ac23e431e`: `make build` exit 0 (`bin/aforge` reports `aforge ac23e431e`), then `SETUP_ONLY=1 DEMO_DIR=/tmp/opus-localwork/demo-integrated scripts/demo-local-work.sh` with no key in the environment, **exit 0**. It placed both folder rules, set up the inbox and review work, took both baselines (`2 checked`, `0 run(s)`) and made no model call. No paid live demo was run from the merged tree; live6 is the live evidence for this runtime.
+- **PR #662's description** was rewritten to this state: the delivered doors and journeys, the evidence table with failures kept, what is deferred, and that it stays a draft against `dev`.
+
+**The owner's demo, run from `codex/personal-ai-backend` on Spark:**
+
+```sh
+make test-local-work                          # deterministic: scripted model, no key, no spend
+OPENROUTER_API_KEY=... make demo-local-work   # live and strict: real model, a few cents
+```
+
+Both build `bin/aforge` first. The live demo uses a disposable home, prints `DEMO PASSED` or `DEMO FAILED` with the item's own account, and never touches `~/.aforge` or installs the timer. `SETUP_ONLY=1 DEMO_DIR=<dir> scripts/demo-local-work.sh` seeds the same workspace without a model and prints the commands to drive it by hand; the seeded one above is at `/tmp/opus-localwork/demo-integrated`.
 
 Handoff written 2026-09-10, approximately 20:45 UTC. **Work is still running on Spark. This is a checkpoint, not a completion claim.** Read this with [NEXT-STEPS.md](NEXT-STEPS.md), [DECISIONS.md](DECISIONS.md), and the Spark worktree's evolving `BUILD-WAVE-03.md`. Later runtime results supersede the snapshots below.
 
@@ -142,8 +153,10 @@ The retained `BUILD-WAVE-03.md` being written on Spark must be updated to includ
   Done: `origin/codex/personal-e2e-opus` at `b48387207`; `.opus-progress.md` left untracked.
 - [x] Fetch and integrate lane into the existing maintained draft, preserving this docs-only checkpoint and any new remote work. Do not force push or reset either branch. If merged source differs from validated source, validate it on Spark.
   Done: `--no-ff` merge on `codex/personal-ai-backend`, no conflicts; runtime diff against `b48387207` is empty.
-- [ ] Update **existing PR662** description with final local-file behavior, exact receipts and limits; current PR text is stale and still names Slack as missing acceptance. Keep connector work deferred and no new draft.
-- [ ] Verify one reproducible **Spark** demo command from actual script/Makefile/docs, then give it to the owner. No local installation/build implied. Keep a usable demo workspace and report paths.
+- [x] Update **existing PR662** description with final local-file behavior, exact receipts and limits; current PR text is stale and still names Slack as missing acceptance. Keep connector work deferred and no new draft.
+  Done: `gh pr edit 662` after the integration push; still draft, base `dev`; Slack appears only as deferred scope.
+- [x] Verify one reproducible **Spark** demo command from actual script/Makefile/docs, then give it to the owner. No local installation/build implied. Keep a usable demo workspace and report paths.
+  Done: `make build` and the setup-only demo exit 0 at `ac23e431e`; seeded workspace `/tmp/opus-localwork/demo-integrated`; commands in the completion section above.
 - [ ] Remove only redundant owned lane refs when safely integrated/backed up; do not delete the Spark demo/source worktree the owner needs, other agents' work, or active jobs.
 
 Broad remaining limits stay open: chat-card setup not exercised by this wave; terminal-created work does not install a timer; general semantic cross-work discovery, exact-source automatic adoption, action-boundary re-admission, clause exceptions, universal parent-cause graph, fork receipts, roles/identity/dependencies and connector journeys are not all done. Mark only evidenced subitems of T12d/T13/T14. This goal is a functional local-file vertical slice, not a claim the whole architecture is finished.
