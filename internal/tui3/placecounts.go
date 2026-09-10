@@ -120,7 +120,7 @@ func (a *app) memoryChangedSince(seen time.Time) int {
 type placeTickMsg struct{ gen int }
 
 func placeTick(gen int) tea.Cmd {
-	return tea.Tick(homeEvery, func(time.Time) tea.Msg { return placeTickMsg{gen: gen} })
+	return surfaceTick(homeEvery, func(time.Time) tea.Msg { return placeTickMsg{gen: gen} })
 }
 
 // armPlaceClock starts a clock for the place that just opened, and retires

@@ -85,12 +85,22 @@ convention.
 Run the same thing before you push:
 
 ```sh
-go build ./... && make fmt-check && go vet ./... && make test-packed-manual && git diff --exit-code
-make changelog-check
-go test ./internal/manual/ && go test -run Manual ./internal/tui3/ ./internal/session/
-make test-laws
-make test PKGS='./internal/whatever/you/touched'
+make pr-ready
 ```
+
+`make pr-ready` is the local spelling of `check`: it runs the light-gate pieces
+above, then `make test-touched`. The touched target compares `BASE..HEAD`, maps
+changed `.go` files to their surviving package directories, treats `go.mod` or
+`go.sum` as a whole-tree change, and runs the result through `make test` with
+`-count=1 -p 1`. It refuses when a Go or module file is staged, unstaged or
+untracked: commit the candidate first so the proof sees exactly what CI will
+see, without absorbing another session's work. Pass `BASE=<commit>` to
+reproduce a pull request's exact base. A docs-only change has no touched package
+and still runs the light half.
+
+This is pull-request parity, not the full-tree ritual. `make check` remains for
+Spark, staging, or an intentional full laptop run; it runs the whole test tree,
+builds the shipped binary and enforces its size budget.
 
 ## What the full gate checks
 

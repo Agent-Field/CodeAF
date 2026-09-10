@@ -52,7 +52,7 @@ var overlapExceptions = map[string]bool{
 	"watchFollowing": true,
 }
 
-// AND THE TICK OVERLAPS TOO, WHICH IS WHERE MOST OF THE TIME IS.
+// AND THE TICK DOES NOT START A WALL TIMER, WHICH IS WHERE MOST OF THE TIME WAS.
 //
 // The measurement of 2026-09-08, over the whole package at 564s: 447s of it was
 // spent on commands the harness dropped, and bubbletea's tick was 197s of that
@@ -63,22 +63,17 @@ var overlapExceptions = map[string]bool{
 // wait is running whether the harness is standing over it or not; standing over
 // it is pure loss.
 //
-// A tick may overlap because this package's tick callbacks do nothing: every one
+// A tick can use the harness clock because this package's tick callbacks do
+// nothing: every one
 // of them is `func(time.Time) tea.Msg { return someMsg{…} }` over values captured
 // when the command was built. [TestEveryTickCallbackIsAMessageAndNothingElse]
-// reads the package's own source and holds that, because it is the whole reason
-// the fn may run on another goroutine — including, for a dropped tick, minutes
-// later and inside somebody else's test.
+// reads the package's own source and holds that. [harnessTick] delivers callbacks
+// through the harness immediately when their delay was inside [tickBudget], and
+// does not call callbacks for polls the old harness could not receive.
 //
 // THE ONE EXCEPTION IS taskmention.go's, which calls the reader the surface was
-// handed (`read()`), and a test's own function is not this harness's to run
-// beside itself. It exists only when the surface has a far task index at all, so
-// [harnessDriver.ticksAreMessages] refuses to overlap any tick while the app has
-// one. The AST law names that site and this guard in the same breath: a second
-// impure tick fails it, and whoever adds one has to come here.
-func (d *harnessDriver) ticksAreMessages() bool {
-	return d.app != nil && d.app.farTasks == nil
-}
+// handed (`read()`). It is inside the budget and therefore runs synchronously
+// on the harness's own path, never beside the test.
 
 // overlappable reports whether a command may be left running while the harness
 // gets on with the next message.
@@ -94,9 +89,6 @@ func (d *harnessDriver) overlappable(cmd tea.Cmd) bool {
 	symbol := cmdSymbol(cmd)
 	if symbol == "" {
 		return false
-	}
-	if symbol == teaTickSymbol {
-		return d.ticksAreMessages()
 	}
 	for _, name := range blockingCommands {
 		if overlapExceptions[name] {
@@ -135,11 +127,9 @@ const inlineSpin = 200 * time.Microsecond
 // each command's own [inflight], written by its goroutine before it sends and
 // read by the harness after it receives — which the channel orders.
 type harnessDriver struct {
-	// app is the surface being driven, or nil for a bare [runCmd]. It is read
-	// for one question only — [harnessDriver.ticksAreMessages] — and it is kept
-	// current by [drive] on every step, because the door that arms the one
-	// impure tick can be opened in the middle of a call (app.go's
-	// [app.attachConversation]).
+	// app is the surface being driven, or nil for a bare [runCmd]. It is kept
+	// current by [drive] on every step for commands whose waiter classification
+	// depends on the current surface.
 	app  *app
 	live []*inflight
 	// doorbell is how a command that answered wakes a harness that is waiting on
@@ -182,6 +172,11 @@ func (d *harnessDriver) busy() bool { return len(d.live) > 0 }
 func (d *harnessDriver) run(cmd tea.Cmd) []tea.Msg {
 	if cmd == nil {
 		return nil
+	}
+	if cmdSymbol(cmd) == harnessTickSymbol {
+		// The harness clock is already resolved: no goroutine, timer or waiter
+		// exists to overlap. Short ticks return their message and long polls nil.
+		return d.expand(cmd())
 	}
 	if d.overlappable(cmd) {
 		p := d.start(cmd)
@@ -447,42 +442,35 @@ func TestTheHarnessOverlapsEveryWaiterItNames(t *testing.T) {
 		}
 	}
 
-	// And the tick, whose whole question is the surface it is being driven on.
-	tick := tea.Tick(time.Hour, func(time.Time) tea.Msg { return nil })
+	// And the harness tick is resolved synchronously rather than overlapped.
+	tick := harnessTick(time.Millisecond, func(time.Time) tea.Msg { return frameMsg{} })
+	if symbol := cmdSymbol(tick); symbol != harnessTickSymbol {
+		t.Fatalf("harnessTickSymbol is %q but the harness clock builds %q", harnessTickSymbol, symbol)
+	}
 	if d.overlappable(tick) {
-		t.Error("a bare driver overlaps the tick, and a bare driver cannot see whether the surface has the far task index that arms the one tick callback that calls a test's own function")
+		t.Error("the harness clock was put on the channel-waiter overlap path")
 	}
-	d.app = &a
-	if a.farTasks != nil {
-		t.Fatal("this test's app was given a far task index, so it cannot ask the question below")
+	if got := d.run(tick); len(got) != 1 {
+		t.Fatalf("the harness clock delivered %d messages, want one", len(got))
 	}
-	if !d.overlappable(tick) {
-		t.Errorf("a surface with no far task index does not overlap the tick, and the tick is the largest single line in this package's wall clock — 197s of the 447s the harness spent on dropped commands on 2026-09-08")
-	}
-	a.farTasks = func() ([]session.TaskIndexEntry, bool) { return nil, true }
-	if d.overlappable(tick) {
-		t.Error("the tick is overlapped on a surface that has a far task index, and taskmention.go's [app.tasksLoaded] arms a tick whose callback calls that index — which is a function the test wrote, running beside the test")
+	if got := d.run(harnessTick(cmdBudget, func(time.Time) tea.Msg { return frameMsg{} })); len(got) != 0 {
+		t.Fatalf("a tick outside the old tick budget delivered %d messages", len(got))
 	}
 }
 
-// tickCallbackCallers names the ONE place in this package whose tea.Tick
+// tickCallbackCallers names the ONE place in this package whose surfaceTick
 // callback does something other than name a message.
 //
-// A tick's callback runs on a goroutine of the harness's choosing and, for a
-// tick the harness dropped, it runs after the drive call that armed it is over —
-// possibly during another test. That is only safe while the callback touches
-// nothing, so [TestEveryTickCallbackIsAMessageAndNothingElse] holds the whole
-// package to it and this table is the exception list. AN ENTRY HERE IS NOT FREE:
-// [harnessDriver.ticksAreMessages] has to be able to tell, at run time, that the
-// surface in front of it cannot have armed the exception, and today it does that
-// by refusing every tick while `farTasks` is set. A second entry needs its own
-// answer to that question in the same change.
+// A short callback is run synchronously by [harnessTick], and a long callback is
+// skipped. Keeping callbacks as messages ensures the harness clock does not hide
+// work that production delays. This table names the one callback whose delayed
+// message genuinely includes a read.
 var tickCallbackCallers = map[string]string{
-	"tasksLoaded": "calls the far task index the surface was handed; [harnessDriver.ticksAreMessages] refuses to overlap any tick while app.farTasks is set",
+	"tasksLoaded": "calls the far task index the surface was handed; the 100ms callback runs synchronously on the harness path",
 }
 
 // TestEveryTickCallbackIsAMessageAndNothingElse reads the surface's own source
-// and fails when a tea.Tick has grown a callback that does work.
+// and fails when a surfaceTick has grown a callback that does work.
 func TestEveryTickCallbackIsAMessageAndNothingElse(t *testing.T) {
 	fset := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fset, ".", func(f os.FileInfo) bool {
@@ -507,11 +495,8 @@ func TestEveryTickCallbackIsAMessageAndNothingElse(t *testing.T) {
 					if !ok {
 						return true
 					}
-					sel, ok := call.Fun.(*ast.SelectorExpr)
-					if !ok || sel.Sel.Name != "Tick" {
-						return true
-					}
-					if id, ok := sel.X.(*ast.Ident); !ok || id.Name != "tea" {
+					id, ok := call.Fun.(*ast.Ident)
+					if !ok || id.Name != "surfaceTick" {
 						return true
 					}
 					ticks++
@@ -520,7 +505,7 @@ func TestEveryTickCallbackIsAMessageAndNothingElse(t *testing.T) {
 					}
 					body, ok := call.Args[1].(*ast.FuncLit)
 					if !ok {
-						t.Errorf("%s: %s passes tea.Tick a callback that is not written out here, so nothing can say what it does on the goroutine the harness runs it on", filepath.Base(path), fn.Name.Name)
+						t.Errorf("%s: %s passes surfaceTick a callback that is not written out here, so nothing can say what the harness clock would skip or deliver", filepath.Base(path), fn.Name.Name)
 						return true
 					}
 					pure := true
@@ -536,7 +521,7 @@ func TestEveryTickCallbackIsAMessageAndNothingElse(t *testing.T) {
 					}
 					seen[fn.Name.Name] = true
 					if _, known := tickCallbackCallers[fn.Name.Name]; !known {
-						t.Errorf("%s: %s arms a tea.Tick whose callback CALLS SOMETHING. The harness runs a tick on its own goroutine while it goes on driving the surface, and runs a dropped one after the drive call is over — so a callback that touches anything is a race. Make it return a message and nothing else, or add %q to tickCallbackCallers in harnessdriver_test.go AND give [harnessDriver.ticksAreMessages] a way to recognise a surface that could have armed it", filepath.Base(path), fn.Name.Name, fn.Name.Name)
+						t.Errorf("%s: %s arms a surfaceTick whose callback CALLS SOMETHING. The harness clock skips long ticks and delivers short ones synchronously, so delayed work would disappear from tests. Make it return a message and nothing else, or add %q to tickCallbackCallers in harnessdriver_test.go with the reason the callback is safe to resolve immediately", filepath.Base(path), fn.Name.Name, fn.Name.Name)
 					}
 					return true
 				})
@@ -544,11 +529,11 @@ func TestEveryTickCallbackIsAMessageAndNothingElse(t *testing.T) {
 		}
 	}
 	if ticks == 0 {
-		t.Error("nothing in the package calls tea.Tick any more, so this law and [tickBudget] are dead — delete them")
+		t.Error("nothing in the package calls surfaceTick any more, so this law and [tickBudget] are dead — delete them")
 	}
 	for name := range tickCallbackCallers {
 		if !seen[name] {
-			t.Errorf("tickCallbackCallers names %s, whose tea.Tick callback no longer calls anything — remove the line, and with it whatever [harnessDriver.ticksAreMessages] refuses on its account", name)
+			t.Errorf("tickCallbackCallers names %s, whose surfaceTick callback no longer calls anything — remove the exception", name)
 		}
 	}
 }

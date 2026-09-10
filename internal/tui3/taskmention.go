@@ -144,7 +144,7 @@ func (a *app) tasksLoaded(rows []session.TaskIndexEntry, known ...bool) tea.Cmd 
 	if len(known) > 0 && !known[0] && a.farTasks != nil {
 		a.comp.tasksHeld = true
 		read := a.farTasks
-		return tea.Tick(100*time.Millisecond, func(time.Time) tea.Msg {
+		return surfaceTick(100*time.Millisecond, func(time.Time) tea.Msg {
 			rows, ready := read()
 			return tasksLoadedMsg{rows: rows, known: ready}
 		})
