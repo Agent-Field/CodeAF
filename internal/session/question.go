@@ -73,6 +73,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -410,6 +411,46 @@ type Pick struct {
 	// generated, the other answer" — and it is the most useful line on a card,
 	// because it tells a person which fact they hold that the asker does not.
 	WouldChange string `json:"wouldChange,omitempty"`
+}
+
+// UnmarshalJSON lets a pick be written as nothing but its key. A model asked for
+// `"pick":{"key":"1"}` has sent `"pick":1` and `"pick":"1"` (deepseek-v4-flash,
+// 2026-09-10), and both say exactly one thing: the first answer. A type that
+// decodes itself decides its own grammar (toolargs.go), so the bare forms are
+// read here; the object form goes back through the one decoder, so that a key
+// written as a number inside it is corrected by the same rule as everywhere
+// else and refused in the same words when it cannot be.
+func (p *Pick) UnmarshalJSON(raw []byte) error {
+	text := strings.TrimSpace(string(raw))
+	if text == "" || text == "null" {
+		return nil
+	}
+	if text[0] != '{' {
+		var key json.RawMessage = raw
+		if text[0] != '"' {
+			// A number or a truth: its own spelling is the key.
+			key = json.RawMessage(strconv.Quote(text))
+		}
+		var bare string
+		if err := json.Unmarshal(key, &bare); err != nil {
+			return &toolArgumentError{field: "pick", repair: `pick takes an object: send {"pick":{"key":"1"}}`}
+		}
+		*p = Pick{Key: strings.TrimSpace(bare)}
+		return nil
+	}
+	// pickFields is Pick without this method, so the object form decodes
+	// without recursing into it.
+	type pickFields Pick
+	fixed, err := coerceArgument(raw, reflect.TypeOf(pickFields{}), "pick")
+	if err != nil {
+		return err
+	}
+	var fields pickFields
+	if err := json.Unmarshal(fixed, &fields); err != nil {
+		return err
+	}
+	*p = Pick(fields)
+	return nil
 }
 
 // ── what is at stake, and what may answer without a person ──────────────────

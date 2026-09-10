@@ -30,6 +30,8 @@ type argumentsForTest struct {
 	Rails     struct {
 		MaxPerDay int `json:"max_per_day"`
 	} `json:"rails"`
+	// Pick is `ask`'s own pick, a type that decodes itself.
+	Pick *Pick `json:"pick"`
 	// Options is the shape of `ask`'s answers — a list of objects that each carry
 	// a list — because that is the argument a provider was seen wrap in a string.
 	Options []struct {
@@ -148,6 +150,60 @@ func TestDecodeToolArgumentsTakesTheLooseFormsAndRefusesTheRestInWordsAModelCanA
 			},
 		},
 		{
+			name: "THE ASK DEFECT AS IT IS MOSTLY SEEN: the list and every field after it arrive inside one string",
+			args: `{"limit":3,"query":"what","options":"[{\"key\":\"1\",\"blocks\":[\"a\"]}], \"depends_on\": [7.0], \"rails\": {\"max_per_day\": 2.0}, \"query\": \"inner\"}"}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if len(got.Options) != 1 || got.Options[0].Key != "1" {
+					t.Fatalf("options: want the one answer that was inside the string, got %+v", got.Options)
+				}
+				if len(got.DependsOn) != 1 || got.DependsOn[0] != 7 {
+					t.Fatalf("depends_on: the field after the swallowed list was lost: %v", got.DependsOn)
+				}
+				equalInt(t, "max_per_day", got.Rails.MaxPerDay, 2)
+				// What the model wrote at the top level stands; the copy inside the
+				// string never overwrites it.
+				equalText(t, "query", got.Query, "what")
+				equalInt(t, "limit", got.Limit, 3)
+			},
+		},
+		{
+			name: "THE PICK DEFECT: a pick written as nothing but its key, as a number or as text",
+			args: `{"pick":1}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if got.Pick == nil || got.Pick.Key != "1" {
+					t.Fatalf("pick: want key 1, got %+v", got.Pick)
+				}
+			},
+		},
+		{
+			name: "a pick as text is that key too",
+			args: `{"pick":"2"}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if got.Pick == nil || got.Pick.Key != "2" {
+					t.Fatalf("pick: want key 2, got %+v", got.Pick)
+				}
+			},
+		},
+		{
+			name: "a pick's own key written as a number is corrected by the one rule",
+			args: `{"pick":{"key":3,"reason":"why"}}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if got.Pick == nil || got.Pick.Key != "3" || got.Pick.Reason != "why" {
+					t.Fatalf("pick: want key 3 with its reason, got %+v", got.Pick)
+				}
+			},
+		},
+		{
+			name:    "a pick's confidence written as a number is refused in the decoder's words",
+			args:    `{"pick":{"key":"1","confidence":true}}`,
+			refusal: `confidence takes text: send {"confidence":"true"}, not true`,
+		},
+		{
+			name:    "a string that is a swallowed tail of the WRONG object is not spliced in",
+			args:    `{"depends_on":"[7], \"unrelated\": 1"}`,
+			refusal: `depends_on takes a list; it arrived as text, "[7], \"unrelated\": 1" — send the value itself, not a string holding it`,
+		},
+		{
 			name:    "a string that is not holding a list is refused, and the refusal says it arrived as text",
 			args:    `{"depends_on":"seven and eight"}`,
 			refusal: `depends_on takes a list; it arrived as text, "seven and eight" — send the value itself, not a string holding it`,
@@ -182,9 +238,19 @@ func TestDecodeToolArgumentsTakesTheLooseFormsAndRefusesTheRestInWordsAModelCanA
 			},
 		},
 		{
-			name:    "a number where text belongs says how to quote it",
-			args:    `{"query":7}`,
-			refusal: `query takes text: send {"query":"7"}, not 7`,
+			name:  "THE AXIS DEFECT: a number where text belongs is that number's spelling",
+			args:  `{"query":7}`,
+			check: func(t *testing.T, got argumentsForTest) { equalText(t, "query", got.Query, "7") },
+		},
+		{
+			name:  "and a fraction where text belongs keeps every digit it was sent with",
+			args:  `{"query":0.50}`,
+			check: func(t *testing.T, got argumentsForTest) { equalText(t, "query", got.Query, "0.50") },
+		},
+		{
+			name:    "a truth where text belongs says how to quote it",
+			args:    `{"query":true}`,
+			refusal: `query takes text: send {"query":"true"}, not true`,
 		},
 		{
 			name:    "a word where a truth belongs",
@@ -249,6 +315,13 @@ func assertNoMachineryInRefusal(t *testing.T, sentence string) {
 		if strings.Contains(sentence, banned) {
 			t.Fatalf("refusal %q carries machinery vocabulary %q — nobody outside can see it", sentence, banned)
 		}
+	}
+}
+
+func equalText(t *testing.T, name, got, want string) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s: want %q, got %q", name, want, got)
 	}
 }
 
