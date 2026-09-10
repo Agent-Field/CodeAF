@@ -108,13 +108,30 @@ def percent(before, after):
     return "{:+.1f}%".format((after - before) * 100.0 / before)
 
 
+def number(value):
+    """A figure that may have travelled as a JSON string.
+
+    `bench/conversation` emits every scalar of its row through one string
+    writer, so `wall_s` arrives as "22.964" rather than as 22.964 — and a
+    reader that filtered on isinstance(value, float) silently dropped every
+    wall clock in the run and printed a dash where the sum belonged."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
 def middle(values):
-    values = [value for value in values if isinstance(value, (int, float))]
+    values = [n for n in (number(value) for value in values) if n is not None]
     return round(statistics.median(values), 1) if values else None
 
 
 def total(values):
-    values = [value for value in values if isinstance(value, (int, float))]
+    values = [n for n in (number(value) for value in values) if n is not None]
     return round(sum(values), 4) if values else None
 
 
