@@ -34,6 +34,13 @@ func (a *Agent) organizationSource() workspace.Ref {
 	// address under the same lock, without acquiring it again through journalID.
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	return a.organizationSourceLocked()
+}
+
+func (a *Agent) organizationSourceLocked() workspace.Ref {
+	if a.config.OrganizationRef.Kind != "" {
+		return a.config.OrganizationRef
+	}
 	if a.config.taskID != 0 {
 		if a.config.rootSession == "" || a.config.rootSession == "unfiled" {
 			return workspace.Ref{}
@@ -54,28 +61,36 @@ func (a *Agent) organizationSource() workspace.Ref {
 // Scope is explicit: a record aimed at a collection reaches its direct members.
 // Ancestors and merely similar conversations are not silently made applicable.
 func OrganizationContext(ctx context.Context, o *Organization, ref workspace.Ref) (string, error) {
+	block, _, err := organizationSelection(ctx, o, ref)
+	return block, err
+}
+
+func organizationSelection(ctx context.Context, o *Organization, ref workspace.Ref, targets ...workspace.Ref) (string, []workspace.ContextRecord, error) {
 	if o == nil {
-		return "", nil
+		return "", nil, nil
 	}
 	s, err := o.open(false)
 	if errors.Is(err, os.ErrNotExist) {
-		return "", nil
+		return "", nil, nil
 	}
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	defer s.Close()
-	page, err := s.ContextPage(ctx, organizationScope(ref), true, 0, organizationContextLimit)
+	if len(targets) == 0 {
+		targets = organizationScope(ref)
+	}
+	page, err := s.ContextPage(ctx, targets, true, 0, organizationContextLimit)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if len(page.Records) == 0 {
 		if page.PreviouslyApplied {
-			return organizationRetired, nil
+			return organizationRetired, nil, nil
 		}
-		return "", nil
+		return "", nil, nil
 	}
-	return renderOrganizationContext(page.Records, page.More), nil
+	return renderOrganizationContext(page.Records, page.More), page.Records, nil
 }
 
 func organizationScope(ref workspace.Ref) []workspace.Ref {
@@ -87,6 +102,36 @@ func organizationScope(ref workspace.Ref) []workspace.Ref {
 		targets = append(targets, workspace.Ref{Kind: workspace.ConversationKind, ID: ref.SessionID})
 	}
 	return targets
+}
+
+// organizationTargets carries explicit owner ancestry across execution folders.
+// A scheduled run's constructor resets this ancestry to its duty, so the chat
+// that happened to configure it does not lend it folder placement authority.
+func (a *Agent) organizationTargets() []workspace.Ref {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.organizationTargetsLocked()
+}
+
+func (a *Agent) organizationTargetsLocked() []workspace.Ref {
+	refs := organizationScope(a.organizationSourceLocked())
+	if g := a.config.Governing; g != nil {
+		for _, owner := range g.Owners {
+			for _, ref := range organizationScope(owner) {
+				found := false
+				for _, current := range refs {
+					if current == ref {
+						found = true
+						break
+					}
+				}
+				if !found {
+					refs = append(refs, ref)
+				}
+			}
+		}
+	}
+	return refs
 }
 
 const organizationContextLimit = 6
@@ -128,9 +173,14 @@ func (a *Agent) refreshOrganization(ctx context.Context) {
 	if ref.Kind == "" {
 		return
 	}
-	block, err := OrganizationContext(ctx, a.config.Organization, ref)
+	block, records, err := organizationSelection(ctx, a.config.Organization, ref, a.organizationTargets()...)
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.organizationRecords = records
+	a.organizationReadError = ""
+	if err != nil {
+		a.organizationReadError = err.Error()
+	}
 	// Remember exposure once, without storing a second copy of the context. This
 	// survives removal from a collection: current membership cannot tell us what
 	// this transcript used to see. Never-used conversations retain an empty tail.

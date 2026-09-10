@@ -78,6 +78,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
+	"github.com/Agent-Field/aforge-v2/internal/workspace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -785,6 +786,15 @@ func standingRunConfig(parent Config, item standing.Item, runDir string) (Config
 	// pile of one-run conversations and no way to say that they were all the same
 	// promise, kept every morning for a month (usage_ledger.go).
 	cfg.standingItemID = item.ID
+	cfg.OrganizationRef = workspace.Ref{Kind: workspace.StandingKind, ID: item.ID}
+	if parent.Governing != nil {
+		g := *parent.Governing
+		g.Workspace, g.SessionID = item.Workspace, item.Origin.SessionID
+		g.Owners = []workspace.Ref{cfg.OrganizationRef}
+		cfg.Governing = &g
+	} else if parent.Standing != nil && parent.Standing.Store != nil {
+		cfg.Governing = &Governing{Reader: parent.Standing.Store, Workspace: item.Workspace, SessionID: item.Origin.SessionID, Owners: []workspace.Ref{cfg.OrganizationRef}}
+	}
 	if model := strings.TrimSpace(item.Does.Model); model != "" {
 		cfg.Model = model
 	}

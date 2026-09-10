@@ -1,17 +1,10 @@
 package session
 
-// The BIRTH SEAM: what the person's standing orders put into the world of work
-// that is only just starting. docs/STANDING-ORDERS.md's D10 names three
-// enforcement seams — birth, landing, tick — and this file is the first of
-// them, on both of the places work is born: a task node's brief, assembled just
-// in time as the node starts, and a conversation's own instructions, rendered
-// at the start of every turn.
-//
-// IT IS ONE RESOLVER CALL AND ONE SECTION, DELIBERATELY. Which orders govern a
-// place is [standing.Store.Applicable]'s question and nobody else's (D5), so
-// nothing here reads an altitude, an exception or a status — a second reading
-// of reach would be a second answer to the one question every seam in this wave
-// asks, and a task, a conversation and the /standing page would drift apart.
+// Governing directions are resolved at each execution turn, through the same
+// read-only owner capability in chats, workers, checkers and scheduled runs.
+// The standing owner decides applicability; organization supplies only explicit
+// placement depths. A persisted task brief must not freeze a second authoritative
+// copy that can survive a later correction or exception.
 
 import (
 	"sort"
@@ -53,7 +46,7 @@ const standingWorldHeading = "Standing orders"
 // of what a model has to understand about the lines below it: WHOSE they are,
 // that they did not arrive with this piece of work, and that they are not
 // advice.
-const standingWorldHolding = "These are the person's own conditions over this place. They were set before this work and they hold until the person says otherwise — they are not suggestions. Work within them."
+const standingWorldHolding = "These are the person's own conditions over this place. They were set before this work and they hold until the person says otherwise — they are not suggestions. Work within every compatible condition. Never use recency or folder order to silently discard a condition. An explicit exception changes only its identified scope or clause. If conditions materially conflict, ask one focused question when the person is present; otherwise report that the affected work needs the person. Continue unaffected work within the compatible conditions."
 
 // standingWorldWaiting is the sentence every other kind rides under. It says
 // the same two things about whose they are and how long they last, and then it
@@ -127,7 +120,8 @@ func renderStandingWorld(items []standing.Item, closing string) string {
 	if total := len(holding) + len(waiting); total > standingWorldMost {
 		over = total - standingWorldMost
 		if len(holding) > standingWorldMost {
-			holding, waiting = holding[:standingWorldMost], nil
+			over = len(waiting)
+			waiting = nil
 		} else {
 			waiting = waiting[:standingWorldMost-len(holding)]
 		}
@@ -217,10 +211,11 @@ func (g *TaskGraph) standingWorld() string {
 // moved renders the same block, so message[0] is the string the provider
 // already cached (taskdelta.go makes the same argument for its own block).
 //
-// A TASK NODE RENDERS NOTHING HERE, and not by a check: a node's config carries
-// no Standing door at all (task_run.go's child config), so [Agent.standingOrders]
-// answers nil. Its orders arrive in its brief, once, where the rest of its world
-// arrives — a node told the same thing twice would be a node weighing it twice.
+// Every child now renders this same fresh block. The historical birth-only
+// behavior below is superseded: child configs carry a read-only Governing door.
+// Child execution carries no Standing mutation door. Governing is its separate
+// read capability, so the same refresh replaces previous conditions each turn.
+
 func (a *Agent) refreshStandingLocked() {
 	a.standingText = a.standingBlockLocked()
 }
@@ -231,13 +226,20 @@ func (a *Agent) refreshStandingLocked() {
 // has learned to read fenced blocks in its instructions should not have to learn
 // a fourth grammar for the fourth.
 func (a *Agent) standingBlockLocked() string {
-	store := a.standingOrders()
-	if store == nil {
-		return ""
-	}
-	items, err := store.Applicable(a.standingPlaceLocked())
+	a.governingCollections = nil
+	items, err := a.governingItemsLocked()
+	a.governingRecords = nil
+	a.governingReadError = ""
 	if err != nil {
-		return ""
+		a.governingReadError = err.Error()
+		return "\n<standing>\nCurrent governing directions could not be read. Execution is stopped until they can be read.\n</standing>\n"
+	}
+	// All holds are rendered, so the durable exposure records every effective
+	// condition. Appointments remain bounded optional background information.
+	for _, item := range items {
+		if item.When.Kind == standing.WhenHold && strings.TrimSpace(item.Prompt()) != "" {
+			a.governingRecords = append(a.governingRecords, item)
+		}
 	}
 	section := renderStandingWorld(items, "")
 	if section == "" {

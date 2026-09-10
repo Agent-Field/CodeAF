@@ -1038,6 +1038,8 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 	model := e.model()
 	a.mu.Lock()
 	parent := a.config
+	governing := a.governingLocked()
+	owner := a.organizationSourceLocked()
 	// The card's window for the model this worker will actually run, which is
 	// this session's own when they match (loop.go's [Agent.childWindow] states
 	// the whole argument, and newTaskAgent asks for it the same way).
@@ -1060,6 +1062,9 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 	a.mu.Unlock()
 
 	child, err := newAgent(Config{
+		Governing:       governing,
+		OrganizationRef: owner,
+		Organization:    parent.Organization,
 		// An adaptive run's worker shares the project's error→fix file for a task
 		// node's reason (task_run.go's newTaskAgent, fixstore.go).
 		fixesDir: a.config.fixesBucket(),

@@ -22,7 +22,7 @@ func oneNodesWorld(t *testing.T, agent *Agent, brief string) string {
 	graph.home = agent
 	assembled := make(chan string, 1)
 	graph.run = func(node *TaskNode) {
-		assembled <- node.assembledBrief()
+		assembled <- freshNodeWorld(t, agent, node)
 		node.finish("done", nil, "", "")
 		node.graph.complete(node, TaskDone)
 	}
@@ -35,6 +35,27 @@ func oneNodesWorld(t *testing.T, agent *Agent, brief string) string {
 		t.Fatal("the node never started")
 		return ""
 	}
+}
+
+// freshNodeWorld observes the two separate inputs now given to a worker:
+// the persisted task brief and its current read-only governing selection.
+func freshNodeWorld(t *testing.T, agent *Agent, node *TaskNode) string {
+	t.Helper()
+	brief := node.assembledBrief()
+	if strings.Contains(brief, standingWorldHeading) {
+		t.Error("task brief froze a governing snapshot")
+	}
+	agent.mu.Lock()
+	child := &Agent{config: Config{Governing: agent.governingLocked(), Organization: agent.config.Organization, OrganizationRef: agent.workOrganizationRefLocked(node.id)}}
+	agent.mu.Unlock()
+	items, err := child.governingItemsLocked()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if block := renderStandingWorld(items, standingWorldReport); block != "" {
+		return brief + "\n\n" + block
+	}
+	return brief
 }
 
 // theSystemPrompt is message[0] as the model will read it, re-rendered the way a
@@ -121,7 +142,7 @@ func TestTheOrdersComeAfterWhatTheWorkBeforeTaughtTheNode(t *testing.T) {
 	assembled := make(chan string, 2)
 	release := make(chan struct{})
 	graph.run = func(node *TaskNode) {
-		assembled <- node.assembledBrief()
+		assembled <- freshNodeWorld(t, agent, node)
 		if node.id == 1 {
 			<-release
 		}
