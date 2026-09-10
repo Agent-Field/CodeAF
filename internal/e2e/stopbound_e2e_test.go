@@ -284,13 +284,10 @@ func TestBoundedStopE2E(t *testing.T) {
 	// it proves is that the bound holds on the product as somebody actually uses
 	// it, at the price of being the one case in this file that costs money.
 	t.Run("a real model on an uncancellable wait", func(t *testing.T) {
-		// THE KEY IS LOOKED FOR WHERE THE PRODUCT LOOKS FOR IT. [newHome] copies
-		// the person's own profile into this run's state root, so a machine with a
-		// key in `~/.aforge/config.json` and nothing in its environment can run
-		// this exactly as the product does.
-		if config.APIKeyAt(config.ProfileDir()) == "" {
-			t.Skip("no OpenRouter key anywhere the product looks: the issue's own replication needs a real model on the wire")
-		}
+		// THE KEY IS LOOKED FOR WHERE THE PRODUCT LOOKS FOR IT, through
+		// [liveKey]: a machine with a key in `~/.aforge/config.json` and nothing
+		// in its environment can run this exactly as the product does.
+		liveKey(t)
 		if _, err := exec.LookPath("mkfifo"); err != nil {
 			t.Skip("no mkfifo: this scenario needs a named pipe to park on")
 		}
