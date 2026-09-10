@@ -1426,7 +1426,8 @@ the same labels the settled card uses, listed under *Does a task touch my workin
 
 More than two landings in a row become one rollup — `✓ 3 tasks done · 9m14s` with a compact
 row per task under it. Any failure in the batch swaps the header to `✕ N tasks landed`; any
-`your call` swaps it to `? N tasks landed`. A delivery that did not land also keeps a
+`your call` swaps it to `? N tasks landed`. A task you answered straight after it landed is
+counted once, by what became of it — the `?` goes with the answer. A delivery that did not land also keeps a
 warning on the batch and its individual row. The header's span is wall-clock, first
 spawn to last landing, not the sum of the parts, because tasks run at the same time.
 
