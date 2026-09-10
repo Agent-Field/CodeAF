@@ -924,6 +924,8 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 	}
 
 	hand, err := newAgent(Config{
+		// Search authority follows the work without enabling memory writes.
+		ConversationHistory: parent.conversationHistory(),
 		// THE SAME DIRECTORY, WHICH IS THE POINT. A worktree per hand is what
 		// makes a task a task; what stands in for it here is the scope below.
 		//

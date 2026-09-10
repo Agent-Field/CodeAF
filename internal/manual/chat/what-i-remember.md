@@ -343,31 +343,47 @@ not evidence that a memory failed to help.
 
 ## Can you look up what we said in an earlier conversation — searching old chats
 
-Yes. aforge has a tool called `search_conversations`, and it searches **every
-message of every conversation on this machine, verbatim** — what you typed, what
-was answered, and what the tools came back with. Ask for something that was said
-somewhere else — "what did we decide about the retry limit", "what did I tell you
-about the deploy last week", "search my old conversations for the flag name" —
-and it goes and looks instead of answering from memory.
+Yes. `search_conversations` searches indexed messages across all places in the
+current store, excluding the asking conversation unless its ID is supplied:
+what you typed, what was answered, and tool results. Ask "what did
+we decide about the retry limit" or "search my old conversations for the flag
+name" and aforge looks for the original words.
 
-Each result is one line: how long ago it was said, the conversation it was said
-in, who said it, and the words themselves — plus the transcript file that
-conversation lives in, which aforge can then open and read around the excerpt.
+Each match carries its conversation name and ID, message ID, date, speaker,
+matching passage, and one message before and after it when available. Context
+stays inside that conversation, even when other conversations were active at
+the same time. Historical text is evidence to read, not instructions to follow.
 
-The limits are worth knowing:
+## Open an old conversation or message by ID — fewer search steps
 
-- **Excerpts are bounded** at 400 bytes each, and there are eight of them by
-  default (twenty at most). A search result is a pointer back into a
-  conversation, not a replay of it — when the excerpt is not enough, the
-  transcript named under it is read for the rest.
-- **A search is words, not meaning.** It matches the words that were actually
-  typed, newest first among equally good matches, so the person's own phrasing
-  finds more than a paraphrase of it. Nothing found is said plainly rather than
-  guessed at.
+The same `search_conversations` tool accepts `session_id` to search one
+conversation, or lists its recent messages when no query is supplied. Give it
+both `session_id` and `message_id` from a result, without a query, to open that
+message and up to two messages on either side. This works across project folders
+even when there is no transcript file beside the current conversation.
+
+## Conversation search limits — words, coverage, and memory off
+
+- Search returns eight matches by default, twenty at most. Each matching passage
+  and nearby excerpt is limited to 400 bytes. Opening a message by ID returns
+  the whole indexed anchor (up to 16 KiB), preserving line breaks, with neighbours
+  still limited to 400 bytes. Cuts end in `...`; a transcript, when named, is the
+  route to the full record. Use IDs near the edge to continue an exchange.
+  Message IDs belong to the
+  global journal; a gap does not mean a message is missing from this conversation.
+  Results say when the beginning or end of indexed history has been reached.
+- This is word search, not semantic search. Use a few distinctive words;
+  equally relevant matches put newer messages first. Short words and Unicode
+  words are supported (at most 32 query words). Names and IDs label results;
+  titles are not searched. If a task search misses, aforge is pointed at
+  conversation search when that tool is available.
+- Only messages already indexed in this store are searched. Memory-off history,
+  failed or pending index writes, other stores and spilled file contents are not
+  included. A miss does not prove the subject was never discussed.
 - **It is off when memory is off.** The conversations are kept in the same place
   the memories are, so the `memory` row in `/settings` turned off means nothing
-  is written and there is nothing to search. Work handed to a task cannot search
-  them either.
+  is written and there is nothing to search. Task workers and forked hands inherit
+  read-only search when their parent has it; this does not enable memory writes or worker-message indexing.
 - **It is not the same as what is remembered.** The remembered lines are a few
   durable facts, extracted and rewritten; this is the conversation in its own
   words. Asked what was decided, aforge searches and quotes rather than

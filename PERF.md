@@ -2257,3 +2257,15 @@ rows). A message expands at most one attachment at a time. The shared media cont
 carry file ownership independently of their label, and original-file opening runs
 outside the paint loop through the existing local or hosted mirror route. Display
 state is not journaled. Folder preview decoding remains on its bounded worker pool.
+
+## Conversation lookup bounds
+
+`search_conversations` keeps the existing eight default and twenty maximum
+matches. Search passages and neighbouring messages are bounded by
+`store.ConversationExcerptBytes` (400 bytes); a search adds at most one actual
+message on either side from the same conversation. Explicit message-ID reads
+return the full indexed anchor, bounded by `store.MaxMessageBytes` (16 KiB),
+plus at most two 400-byte neighbours on each side. They do not read whole
+transcripts or invoke an embedding model. Search tokenization accepts at most
+32 Unicode word/number tokens, quoted as FTS data. History access inherited by
+tasks grants reads only and introduces no background memory calls or writes.

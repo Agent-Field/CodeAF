@@ -55,16 +55,8 @@ const (
 // functions read these SAME predicates, which is what makes it impossible for
 // the two to disagree about a tool.
 
-// hasStore says whether this agent was opened with the store behind it. The
-// store is memory AND the FTS index over every message ever posted, so it is
-// the one fact under both `remember` and `search_conversations` (memory.go,
-// tools_conversations.go). A task node is handed none (task_run.go sets no
-// Config.Memory), and neither is a conversation with memory off.
-//
-// [Agent.remembers] is the same fact asked of a live agent — it reads the brain
-// newAgent builds from exactly this field — and the belt keeps asking it there
-// because every memory road dereferences that brain. prompt_belt_test.go pins
-// the two to the same answer for every shape.
+// hasStore controls writable memory and its prompt extraction. Conversation
+// search has its own read-only predicate so workers can inherit just that door.
 func (c Config) hasStore() bool { return c.Memory != nil }
 
 // maySeeSettings says whether the settings pair belongs on this belt
@@ -218,8 +210,8 @@ var beltFacts = []beltFact{{
 	absent: "- THE RECORD OF EARLIER WORK IS NOT REACHABLE FROM HERE and none of this work goes to anybody else: answer from the brief and from what is in front of you, and say plainly when something earlier is referred to that you cannot see. A `[Task reference: ...]` block you were handed carries transcript URIs, and `read` takes one exactly as printed, `file://` and all: `grep` a journal or `read` it with `offset`/`limit`, and never expand an outcome line into work you did not read.",
 }, {
 	tools:   []string{"search_conversations"},
-	holds:   Config.hasStore,
-	present: "- For what was said, call `search_conversations` ONCE with their own words.",
+	holds:   Config.hasConversationHistory,
+	present: "- For what was said elsewhere, use `search_conversations` with distinctive words; the same tool opens an exchange by conversation and message IDs. Check surrounding corrections before answering.",
 	absent:  "- What was said in earlier conversations cannot be looked up from here, so answer out of what is in this window rather than reconstructing it.",
 }, {
 	tools:   []string{"watch"},

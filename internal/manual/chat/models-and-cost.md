@@ -1916,9 +1916,9 @@ real file, though a journal line is JSON and `grep` clips a long one. **A conver
 can name neither says `full: not retrievable`** rather than a path that is not there.
 
 **A `store:` id is never given as a pointer.** It used to be, whenever memory was on, and
-nothing aforge can run fetches a store message by id — `search_conversations` searches words
-and answers with one clipped line per hit. So a stub or a reduced view that named one sent
-the model somewhere it could not go. When a turn has made so many calls that even these views
+at that time no tool could fetch a store message by id. `search_conversations` now opens
+a bounded exchange by conversation and message IDs, but it does not replay a whole tool
+result. A stub still names the file containing the full bytes. When a turn has made so many calls that even these views
 are too much, the oldest fall back to the same one-line stub described next.
 
 **Rung 1 — stubbing.** At the end of every completed turn, tool results older than the last

@@ -673,9 +673,9 @@ cost-oriented working set. With an unknown context size no larger line is invent
 
 ## Can a task change my settings — can a task look up an old conversation, can a task start a watch, my task said it cannot do that from here
 
-No, to all three, and a task is now TOLD so rather than left to find out by
-calling a tool that is not there. Four things a conversation can do are absent
-from a worker's belt, and its instructions say what to do instead:
+A task can search earlier conversations when its parent has history access.
+Settings changes and watches still require the conversation. The worker's
+instructions describe the tools it actually carries:
 
 - **Change a setting.** `settings` and `change_setting` are off inside a task. A
   worker runs in a copy of its own with nobody watching, and a permanent change
@@ -683,9 +683,10 @@ from a worker's belt, and its instructions say what to do instead:
   be able to make. A task asked to change a preference says it cannot from a
   task and points you at `/settings`; it is told never to edit a config file instead.
 - **Look up an earlier conversation.** `search_conversations` reads the index in
-  the memory store, and a task is handed no store, so what was said in other
-  conversations cannot be looked up from inside one. A worker answers out of the
-  brief it was given.
+  its parent's history through a read-only interface, including in nested tasks
+  and forked hands. It can search all indexed places and open an exchange by
+  conversation and message IDs. It cannot write memories through that interface.
+  If the parent has memory off and no history source, the tool remains absent.
 - **Start a watch.** `watch` delivers its news into a conversation and a task has
   none. A worker waits with an ordinary foreground `bash` call.
 - **See the work that already ran** — but only at the bottom of the tree. A task
