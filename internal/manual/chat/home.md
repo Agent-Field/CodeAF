@@ -271,7 +271,8 @@ A row is there when something has stopped and cannot go on without you:
 - a conversation in another window stopped on a question — a command to approve, a task to
   approve, a card about something standing;
 - a task the record marks as `your call` — it opens on the task's record, where its two
-  answers are;
+  answers are. It is a row for two days after it landed; after that the panel's last line
+  counts it instead — `3 older · tasks` — and `enter` there opens tasks;
 - a reminder, watch or rule that stopped and wants an answer.
 
 The note on the row is **what it is asking**, in the question's own words — `asks: add a
@@ -312,8 +313,10 @@ and a second `enter` does it — see *Continue a conversation from another termi
 ## How do I clear a your call row — settling work that landed
 
 Work that landed as `your call` **waits until you decide about it**, however many days that
-is. It is not stale and it does not age out: nothing more happens to that work until
-somebody answers it.
+is: nothing more happens to that work until somebody answers it. Only its row on home
+ages — two days after it landed it leaves `needs you` for the count on the panel's last
+line, `3 older · tasks`, and the tasks place still lists it. A question a conversation is
+stopped on never ages off home.
 
 Three ways to settle it, and they are the same door:
 

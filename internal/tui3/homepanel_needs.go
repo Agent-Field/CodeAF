@@ -46,7 +46,8 @@ type needsItem struct {
 }
 
 func (needsPanel) rows(in *homeGridInput) homePanelRows {
-	items := append(needsAsked(in), needsCalls(in)...)
+	calls, older := needsFresh(needsCalls(in), in.now)
+	items := append(needsAsked(in), calls...)
 	sort.SliceStable(items, func(i, j int) bool { return attentionOlder(items[i].asked, items[j].asked) })
 	lines := make([]homeLine, 0, len(items))
 	drawn := false
@@ -59,7 +60,30 @@ func (needsPanel) rows(in *homeGridInput) homePanelRows {
 	}
 	out := homePanelCut(panelNeeds, lines)
 	out.said = countWord(len(lines))
+	out.older = older
 	return out
+}
+
+// needsFresh is the task calls that are still a question, and how many are
+// history.
+//
+// A YOUR-CALL OLDER THAN [homeNeedsTaskFresh] IS HISTORY, NOT A QUESTION (owner,
+// 2026-09-10: a machine with twenty-four week-old landings drew `needs you · 24`
+// over rows nobody was going to answer, and a live question arriving under them
+// would have been the twenty-fifth). They stay one door away — the fold counts
+// them into the tasks place, where every one of them still is. Only a task's
+// call ages: a conversation stopped on a question and a watch that needs
+// somebody are live, and are never aged out. A landing with no time on it is
+// not known to be old, and stays.
+func needsFresh(items []needsItem, now time.Time) (fresh []needsItem, older int) {
+	for _, item := range items {
+		if !item.asked.IsZero() && now.Sub(item.asked) > homeNeedsTaskFresh {
+			older++
+			continue
+		}
+		fresh = append(fresh, item)
+	}
+	return fresh, older
 }
 
 // needsAsked is the conversations and watches the switcher already ranks as

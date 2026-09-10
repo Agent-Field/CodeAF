@@ -162,6 +162,15 @@ var homePanelOrder = []homePanelSlot{
 // and every project on the machine.
 const homeFindWord = "type to find one"
 
+// homeNeedsTaskFresh is how long a task's call stays a row of `needs you` after
+// it landed. Past it the call is counted on the panel's fold as
+// `N older · tasks` instead ([needsFresh]).
+const homeNeedsTaskFresh = 48 * time.Hour
+
+// homeFoldOlderWord is what the fold says after the count of rows a panel aged
+// out rather than folded.
+const homeFoldOlderWord = "older"
+
 // homeWhisper is what an empty panel says under its heading — THE COPY OF
 // RECORD is DESIGN.md §4, and the manual quotes it from here.
 //
@@ -292,6 +301,10 @@ type homePanelRows struct {
 	// more is how many rows the panel is holding past these, which the grid
 	// says on the fold.
 	more int
+	// older is how many rows the panel aged out rather than folded — counted on
+	// the same fold line, separately, because they are history and not more of
+	// the same (homepanel_needs.go's [needsFresh]).
+	older int
 	// said is what the heading carries after its word — a count, an age — and
 	// "" for the word alone.
 	said string
@@ -409,10 +422,16 @@ type homeGridPanel struct {
 func (p homeGridPanel) natural() int { return min(p.slot.rest, len(p.read.lines)) }
 
 // empty reports a panel with no rows at all, which draws its whisper instead.
-func (p homeGridPanel) empty() bool { return len(p.read.lines) == 0 && p.read.more == 0 }
+// A panel whose every row aged out is not empty: its fold is the door to them.
+func (p homeGridPanel) empty() bool {
+	return len(p.read.lines) == 0 && p.read.more == 0 && p.read.older == 0
+}
 
 // hidden is how many rows the fold stands for.
 func (p homeGridPanel) hidden() int { return len(p.read.lines) - p.shown + p.read.more }
+
+// folds reports that the panel draws its fold line.
+func (p homeGridPanel) folds() bool { return p.hidden() > 0 || p.read.older > 0 }
 
 // height is how many screen rows the panel draws: its heading, its rows or its
 // whisper, and its fold.
@@ -432,7 +451,7 @@ func (p homeGridPanel) height() int {
 	for _, line := range p.read.lines[:p.shown] {
 		n += line.height()
 	}
-	if p.hidden() > 0 {
+	if p.folds() {
 		n++
 	}
 	return n
@@ -662,18 +681,25 @@ func (p homeGridPanel) lines() []homeLine {
 		return out
 	}
 	out = append(out, p.read.lines[:p.shown]...)
-	if n := p.hidden(); n > 0 {
-		out = append(out, p.fold(n))
+	if p.folds() {
+		out = append(out, p.fold())
 	}
 	return out
 }
 
-// fold is `N more · <place>` (law 9: nothing grows, and the fold is the door).
-// A fold that names a place is a door into it, the same [homeLedger] line a
-// `since you left` row is; one that names only a count or an instruction is not
-// a stop.
-func (p homeGridPanel) fold(n int) homeLine {
-	words := groupedInt(n) + " more"
+// fold is `N more · <place>` (law 9: nothing grows, and the fold is the door),
+// with `M older` between the two when the panel aged rows out. A fold that names
+// a place is a door into it, the same [homeLedger] line a `since you left` row
+// is; one that names only a count or an instruction is not a stop.
+func (p homeGridPanel) fold() homeLine {
+	var counts []string
+	if n := p.hidden(); n > 0 {
+		counts = append(counts, groupedInt(n)+" more")
+	}
+	if n := p.read.older; n > 0 {
+		counts = append(counts, groupedInt(n)+" "+homeFoldOlderWord)
+	}
+	words := strings.Join(counts, rowSep)
 	word := p.slot.foldWord()
 	if word != "" {
 		words += rowSep + word
