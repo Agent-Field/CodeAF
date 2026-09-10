@@ -2702,7 +2702,7 @@ func (a *app) questionWritingKey(head questionShown, key string) (tea.Cmd, bool)
 			return a.submit(words), true
 		}
 		answer := session.Answer{Change: words}
-		if open.pick >= 0 && open.pick < len(open.question.Options) {
+		if questionChangeCarriesThePointer(open.question) && open.pick >= 0 && open.pick < len(open.question.Options) {
 			answer.Key = strings.TrimSpace(open.question.Options[open.pick].Key)
 			answer.Picked = []string{answer.Key}
 		}
@@ -2732,11 +2732,22 @@ func (a *app) questionWritingRow(q questionShown) string {
 		return questionAskBackKeyWord + questionWritingGap + "the question stays open" + questionWritingGap + "esc back"
 	}
 	with := ""
-	if q.pick >= 0 && q.pick < len(q.question.Options) {
+	if questionChangeCarriesThePointer(q.question) && q.pick >= 0 && q.pick < len(q.question.Options) {
 		key := strings.TrimSpace(q.question.Options[q.pick].Key)
 		with = questionWritingGap + "it goes with [" + key + "] " + questionAnswerWord(q.question.Options[q.pick], key, true)
 	}
 	return questionCommentKeyWord + with + questionWritingGap + "esc back"
+}
+
+// questionChangeCarriesThePointer says whether the words `c` sends travel
+// with the pointed answer's key. THEY DO FOR THE MODEL'S OWN ASK — "2, but
+// keep the sqlite file" is one answer with a rider, and the asker reads the
+// key — and for nothing else: a standing card's change is a correction of
+// when or where and approves nothing, a consent's is a sentence beside the
+// call, and each of those lanes has read a bare [session.Answer.Change] since
+// before the block had a pointer.
+func questionChangeCarriesThePointer(q session.Question) bool {
+	return q.Kind == session.QuestionAsk
 }
 
 // The words the writing row is made of. THEY END IN "then enter", because the
