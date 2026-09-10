@@ -329,6 +329,8 @@ otherwise:
 - fewer than two answers, on a kind that needs a list
 - more than four answers — eight where you are ticking several — because a fifth
   is almost always two questions that have not been separated
+- an answer with no label on it, named by its number (`every answer needs a
+  label a person can read, and answer 2 has none`)
 - a pick that names an answer not on the list
 - a clock, or any setting that answers in your place, on something that cannot
   be taken back

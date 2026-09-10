@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"strings"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -165,11 +166,16 @@ func notifySeq(title, body string) string {
 // oscSafe strips what an OSC payload may not carry. It drops rather than
 // escapes, because there is no escape form inside an OSC string and a banner
 // with a stray backslash in it is worse than one with a missing semicolon.
+//
+// EVERY CONTROL CHARACTER GOES, NOT ONLY THE SEVEN-BIT ONES. U+009C is the
+// eight-bit string terminator and U+009B the eight-bit CSI, and a terminal that
+// honours C1 would end the payload at either and draw what followed — which is
+// the terminal's title (title.go) spilling a conversation's name into the frame.
 func oscSafe(s string) string {
 	out := make([]rune, 0, len(s))
 	for _, r := range s {
 		switch {
-		case r == ';', r == '\a', r == '\x1b', r < ' ':
+		case r == ';', unicode.IsControl(r):
 			continue
 		default:
 			out = append(out, r)
