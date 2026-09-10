@@ -883,20 +883,66 @@ func (r DecisionRecord) Words() string {
 // THE EMPTINESS LAW APPLIES TO EVERY SEGMENT. No change said, no `with:`; no
 // reason, no reason; an unknown decider, no attribution at all.
 func (r DecisionRecord) Line() string {
-	parts := []string{strings.TrimSpace(r.Head) + " → " + r.Words()}
+	clauses := r.LineClauses()
+	parts := make([]string, 0, len(clauses))
+	for _, clause := range clauses {
+		parts = append(parts, clause.Text)
+	}
+	return strings.Join(parts, DecisionSep)
+}
+
+// DecisionSep joins the clauses of a record's line, and it is the separator
+// every telemetry row on every surface uses.
+const DecisionSep = " · "
+
+// DecisionClause is one segment of [DecisionRecord.Line], with what it is worth
+// beside it.
+type DecisionClause struct {
+	// Text is the segment as it reads, with no separator on either end.
+	Text string
+	// GiveUp is the order a row too narrow for the whole line surrenders its
+	// clauses in — the HIGHEST number goes first, and zero is never given up.
+	//
+	// IT IS HERE RATHER THAN IN THE SURFACE THAT DOES THE GIVING UP, because a
+	// clause and what it is worth are one fact about the record. A surface that
+	// ranked them itself would be a second opinion about which half of a
+	// decision matters, kept in a file that never sees the other half.
+	GiveUp int
+}
+
+// LineClauses is [DecisionRecord.Line] before it is joined.
+//
+// A NARROW ROW GIVES UP A WHOLE CLAUSE AND NEVER CUTS THE LINE FROM THE RIGHT.
+// Cutting is what a receipt did before this existed, and the tail is where
+// everything a person cannot infer lives: at a hundred columns a long `with:`
+// clause took `· you · 14:02 · c change` off the end with it, so the one line
+// left behind by an answer stopped saying who gave it, when, or that it could
+// still be changed. The rank says what is actually worth keeping:
+//
+//   - the head and what was picked are the record and are never given up;
+//   - `cannot change` is never given up either — it is the one clause that is a
+//     LIMIT rather than a detail, and a row that dropped it would read as a
+//     decision somebody could still walk back;
+//   - the change said beside the pick goes first, because it is the one clause
+//     the transcript and `decisions.jsonl` both still carry in full;
+//   - then the time, then who decided — in that order, because a receipt that
+//     has room for exactly one more thing is better spent saying whose answer it
+//     was than saying what minute it was.
+func (r DecisionRecord) LineClauses() []DecisionClause {
+	clauses := []DecisionClause{{Text: strings.TrimSpace(r.Head) + " → " + r.Words()}}
 	if change := strings.TrimSpace(r.Change); change != "" {
-		parts = append(parts, "with: "+change)
+		clauses = append(clauses, DecisionClause{Text: "with: " + change, GiveUp: 3})
 	}
 	if by := strings.TrimSpace(string(r.By)); by != "" {
-		parts = append(parts, decidedByWord(r.By))
+		clauses = append(clauses, DecisionClause{Text: decidedByWord(r.By), GiveUp: 1})
 	}
 	if !r.At.IsZero() {
-		parts = append(parts, r.At.Format("15:04"))
+		clauses = append(clauses, DecisionClause{Text: r.At.Format("15:04"), GiveUp: 2})
 	}
 	if !r.Reversible() {
-		parts = append(parts, "cannot change")
+		clauses = append(clauses, DecisionClause{Text: "cannot change"})
 	}
-	return strings.Join(parts, " · ")
+	return clauses
 }
 
 // decidedByWord is who decided, in the words a person would use rather than the

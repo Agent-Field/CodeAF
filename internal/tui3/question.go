@@ -1102,11 +1102,84 @@ func (a *app) questionRecordRow(record questionRecord, width int) string {
 			" — no longer needed · " + record.withdrawn
 		return a.pal.dim(fit(text, width))
 	}
-	text := "  decided " + record.record.Line()
+	return a.pal.dim(fit(a.questionReceiptLine(record, width), width))
+}
+
+// questionReceiptLine composes the receipt at the width it has, giving up whole
+// clauses rather than letting the row be cut from the right.
+//
+// IT IS THE ANSWERS ROW'S BARGAIN, SAID ABOUT THE LINE UNDERNEATH IT. That row
+// drops its least valuable verb until what is left fits ([questionDropVerb]) and
+// never cuts an answer in half; this one had no arrangement at all, so at a
+// hundred columns a long `with:` clause carried `· you · 14:02 · c change` off
+// the end with it and the receipt stopped saying who answered, when, or that it
+// could still be changed. The rank is the record's own
+// ([session.DecisionRecord.LineClauses]); what belongs here is the ONE clause
+// that is the surface's — `c change` names a key on this keyboard, so it is
+// never given up and never counted against the record's own words.
+func (a *app) questionReceiptLine(record questionRecord, width int) string {
+	const lead = "  decided "
+	change := ""
 	if record.reversible {
-		text += " · " + questionCommentKey + " change"
+		change = session.DecisionSep + questionCommentKey + " change"
 	}
-	return a.pal.dim(fit(text, width))
+	clauses := record.record.LineClauses()
+	for {
+		text := lead + questionJoinClauses(clauses) + change
+		if ansi.StringWidth(text) <= width {
+			return text
+		}
+		dropped, ok := questionDropClause(clauses)
+		if !ok {
+			break
+		}
+		clauses = dropped
+	}
+	// WHAT IS LEFT IS RESERVED, AND THE SENTENCE IS CUT AROUND IT. This is
+	// place_home.go's law about the address row said about the receipt: `cannot
+	// change` and `c change` are not FACTS about the decision that a narrow row
+	// may spend, they are what is still possible about it, so a head too long for
+	// the row gives way instead of silencing them. Somebody who reads a cut
+	// sentence can open the question again; somebody who reads a receipt with no
+	// limit on it believes a decision can be walked back.
+	keep := change
+	if len(clauses) > 1 {
+		keep = session.DecisionSep + questionJoinClauses(clauses[1:]) + change
+	}
+	head := ""
+	if len(clauses) > 0 {
+		head = clauses[0].Text
+	}
+	return lead + fit(head, max(0, width-ansi.StringWidth(lead)-ansi.StringWidth(keep))) + keep
+}
+
+// questionJoinClauses is the clauses that are left, as one line.
+func questionJoinClauses(clauses []session.DecisionClause) string {
+	parts := make([]string, 0, len(clauses))
+	for _, clause := range clauses {
+		parts = append(parts, clause.Text)
+	}
+	return strings.Join(parts, session.DecisionSep)
+}
+
+// questionDropClause gives up the least valuable clause still on the line, and
+// reports whether it found one. It is [questionDropVerb] over the record's own
+// ranks rather than the key table's, because the two rows are one arrangement
+// applied to two different lists.
+func questionDropClause(clauses []session.DecisionClause) ([]session.DecisionClause, bool) {
+	at := -1
+	for i := range clauses {
+		if clauses[i].GiveUp == 0 {
+			continue
+		}
+		if at < 0 || clauses[i].GiveUp > clauses[at].GiveUp {
+			at = i
+		}
+	}
+	if at < 0 {
+		return clauses, false
+	}
+	return append(append([]session.DecisionClause{}, clauses[:at]...), clauses[at+1:]...), true
 }
 
 // ── answering ───────────────────────────────────────────────────────────────

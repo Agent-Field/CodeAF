@@ -449,6 +449,27 @@ opens into folds that page away and leaves the same receipt above the box —
 not a second account of the same decision in different words, and never one
 saying `another window` about a key you pressed yourself.
 
+## Part of the receipt is missing — a narrow window, and what it gives up first
+
+A receipt too long for the window **gives up a whole clause** rather than running
+off the right-hand edge, and the order is fixed:
+
+1. `with: …` — what you typed beside your pick. It goes first, and it is the one
+   clause the transcript and `decisions.jsonl` both still carry in full, so
+   nothing is lost by dropping it from a line that is news.
+2. the time.
+3. who decided.
+
+**What is never given up**: the question and what you picked, `cannot change`,
+and `c change`. The last two are not details about the decision, they are what is
+still possible about it — a line that dropped `cannot change` would read as
+something you could walk back. If a window is narrow enough that even the
+question will not fit beside them, the question is the thing that is cut and they
+stay.
+
+Widen the window, or open the conversation: the transcript and the record always
+have the whole line.
+
 ## A question that stops needing you
 
 Sometimes the thing a question was about goes away — the turn moved on, the plan

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -648,8 +649,8 @@ func TestAnAssumptionsCardWearsItsOwnMarkAndItsOwnClock(t *testing.T) {
 	lab := newQuestionLab(t)
 	lab.fromLane(session.Question{
 		ID: 12, Kind: session.QuestionAsk, Ask: session.AskAssumption,
-		Asker: session.Asker{Kind: session.AskerModel},
-		Head:  "going ahead on these unless you strike one",
+		Asker:  session.Asker{Kind: session.AskerModel},
+		Head:   "going ahead on these unless you strike one",
 		Reason: "nobody said which store to use",
 		Options: []session.AnswerOption{
 			{Key: "1", Label: "the sqlite file is the source of truth"},
@@ -908,5 +909,66 @@ func TestTheLaneRaisesOnlyWhatThisBlockHasTakenOver(t *testing.T) {
 		if a.questionDrawnHere(session.Question{Kind: kind}) {
 			t.Fatalf("%s is drawn here AND by its own block; one decision, two rows", kind)
 		}
+	}
+}
+
+// THE RECEIPT GIVES UP A CLAUSE AND IS NEVER CUT FROM THE RIGHT.
+//
+// The tail is where everything a person cannot work out for themselves lives —
+// who answered, when, and whether it can still be changed — and it was the half
+// a long `with:` clause took off the end at a hundred columns.
+func TestTheReceiptGivesUpAClauseRatherThanLosingItsTail(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.a.width = 100
+	lab.a.questionRecords = append(lab.a.questionRecords, questionRecord{
+		record: session.DecisionRecord{
+			Head: "which store should the ledger sit on?", Picked: []string{"2"},
+			Labels: []string{"sqlite beside the project"},
+			Change: "2, but keep the sqlite file as the source of truth and write the migration first",
+			By:     session.DecidedByPerson, At: lab.at,
+		},
+		at: lab.at, reversible: true,
+	})
+	row := plain(lab.a.questionRecordRow(lab.a.questionRecords[0], lab.a.width))
+	if ansi.StringWidth(row) > lab.a.width {
+		t.Fatalf("the receipt is %d cells wide at %d: %q", ansi.StringWidth(row), lab.a.width, row)
+	}
+	for _, kept := range []string{
+		"which store should the ledger sit on? → sqlite beside the project",
+		"you", "14:02", questionCommentKey + " change",
+	} {
+		if !strings.Contains(row, kept) {
+			t.Fatalf("the receipt lost %q: %q", kept, row)
+		}
+	}
+	// The change said beside the pick is the one clause that goes, because it is
+	// the one the transcript and decisions.jsonl both still carry in full.
+	if strings.Contains(row, "with:") {
+		t.Fatalf("the receipt kept the clause it should have given up first: %q", row)
+	}
+	// AND AT A WIDTH THAT HOLDS EVERYTHING, NOTHING IS GIVEN UP.
+	lab.a.width = 200
+	wide := plain(lab.a.questionRecordRow(lab.a.questionRecords[0], lab.a.width))
+	if !strings.Contains(wide, "with: 2, but keep the sqlite file") {
+		t.Fatalf("a wide receipt dropped a clause it had room for: %q", wide)
+	}
+}
+
+// AND `cannot change` IS NEVER GIVEN UP, because it is a limit rather than a
+// detail: a row that dropped it would read as a decision somebody could walk
+// back.
+func TestAnIrreversibleReceiptKeepsItsLimitAtAnyWidth(t *testing.T) {
+	lab := newQuestionLab(t)
+	record := questionRecord{
+		record: session.DecisionRecord{
+			Head: "send the quarterly digest to every address on the list?", Picked: []string{"1"},
+			Labels: []string{"send it"}, Change: "send it, but hold the two bounced addresses back until they are checked",
+			By: session.DecidedByPerson, At: lab.at, Stakes: session.StakesIrreversible,
+		},
+		at: lab.at,
+	}
+	row := plain(lab.a.questionRecordRow(record, 70))
+	if !strings.Contains(row, "cannot change") {
+		t.Fatalf("a narrow receipt gave up the one clause that is a limit: %q", row)
 	}
 }
