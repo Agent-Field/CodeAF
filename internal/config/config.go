@@ -37,7 +37,7 @@ const (
 	DefaultVoiceModel = "qwen/qwen3-asr-flash-2026-02-10"
 
 	// DefaultBaseURL is OpenRouter's OpenAI-compatible endpoint.
-	DefaultBaseURL = "https://openrouter.ai/api/v1"
+	DefaultBaseURL = catalog.DefaultBaseURL
 
 	// DefaultSiteURL, DefaultSiteName and DefaultSiteCategories are the
 	// OpenRouter app-attribution values this binary reports under
@@ -512,9 +512,8 @@ func (c Config) ResolveSpeechModel(models *catalog.Catalog) string {
 }
 
 // ResolveMusicModel prefers the Lyria 3 clip row, then Lyria 3 Pro, then the
-// first music/audio model that is not recognizably a TTS model. Unlike speech
-// and image, a verified Lyria endpoint is also the final built-in fallback when
-// discovery has no music row at all.
+// first music/audio model that is not recognizably a TTS model. AN UNAVAILABLE
+// CAPABILITY STAYS OFF THE BELT: with no published row it returns nothing.
 func (c Config) ResolveMusicModel(models *catalog.Catalog) string {
 	if configured := strings.TrimSpace(c.MusicModel); configured != "" {
 		return configured
@@ -530,7 +529,7 @@ func (c Config) ResolveMusicModel(models *catalog.Catalog) string {
 	if len(candidates) > 0 {
 		return candidates[0].ID
 	}
-	return preferredMusicModel
+	return ""
 }
 
 // ModelCandidates is the shared capability gate for every slot in the model
