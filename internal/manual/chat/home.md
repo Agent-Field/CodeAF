@@ -360,8 +360,10 @@ conversation started — the most recently started first:
 The line under a task is what its worker is doing, or `checking what it left` while it is
 being looked at, and `2 of 5` is how far a run has got. Only the first row turns; four rows
 — eight in a tall window — and then `N more · tasks`. A row another terminal holds says `another window`, and `enter`
-brings its conversation here. **`→` then `s stop` ends a task this window is running**,
-asking you first; another window's work offers no such verb.
+brings its conversation here. **`→` then `s stop it`, or `ctrl+x`, ends a task this window
+is running**, asking you first; another window's work offers no such verb. On a
+three-column home `running` is the middle column, so `→` crosses to the next column
+instead of opening the verbs, and the foot names the chord: `ctrl+x stop it`.
 
 **A standing order in the middle of firing is a row here too**: its own words, what the
 pass is doing, and how long ago it began. It is still the item — `enter` opens the
@@ -551,7 +553,7 @@ home*) — and the strip carries the first two of them in words.
 
 **The chords are unchanged and need no strip:** `ctrl+t` new chat here, `ctrl+o` open
 folder, `ctrl+y` copy path, `ctrl+e` put away or pause, `ctrl+x` stop a standing item for
-good, `ctrl+v` think harder. And every printable key still goes to the box — the foot
+good or stop a task this window is running, `ctrl+v` think harder. And every printable key still goes to the box — the foot
 promises `type to search or start something new`, and the strip is the one state on this
 screen where that is suspended, which is why it has to be visible.
 
@@ -2515,7 +2517,7 @@ the row under your pointer when there is one, the cursor's row otherwise.
 | `ctrl+o` | asks the machine to open that conversation's workspace folder |
 | `ctrl+y` | copies the workspace path |
 | `ctrl+e` | puts the conversation away, or pauses a standing item |
-| `ctrl+x` | stops a standing item for good |
+| `ctrl+x` | stops a standing item for good; on a `running` row this window holds, asks to stop that task |
 | `ctrl+v` | raises how hard a standing item thinks. It does nothing on a conversation row: that rung belongs to the window that conversation is open in, and the machine's own default is the `thinking` row of `/settings` |
 
 A row whose folder is no longer on this disk says `that folder is gone · <path>` and starts

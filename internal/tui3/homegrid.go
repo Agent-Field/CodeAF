@@ -875,6 +875,7 @@ func (a *app) homeGridCross(msg tea.KeyPressMsg) bool {
 const (
 	homeFolderChordWord = "ctrl+o " + homeProjectFolderWord
 	homePauseChordWord  = "ctrl+e " + homeItemPauseWord
+	homeStopChordWord   = "ctrl+x " + stopActWord
 )
 
 // homeCrossChord is the ONE verb chord the foot names on a grid row whose `→`
@@ -883,8 +884,10 @@ const (
 // COLUMNS WIN THE ARROW (DESIGN §6 ruling 6), so a row with a column of rows to
 // its right has verbs `→` cannot reach. The chords still reach them, and a door
 // a person cannot see is a door they never learn (docs/DESIGN-LANGUAGE.md: every
-// chord keeps a visible door beside it) — so the foot says one, the one that is
-// never destructive: a conversation's or a project's folder, a watch's pause.
+// chord keeps a visible door beside it) — so the foot says one, the one that
+// ends nothing on the key: a watch's pause, the stop on a piece of work this
+// window holds — which asks first and defaults to keep going, and is the one
+// verb such a row has — and otherwise a conversation's or a project's folder.
 func (a *app) homeCrossChord(line homeLine) string {
 	if !a.home.gridOn() || a.home.gridCrossTarget(1) < 0 {
 		return ""
@@ -892,6 +895,8 @@ func (a *app) homeCrossChord(line homeLine) string {
 	switch {
 	case line.kind == homeItem:
 		return homePauseChordWord
+	case len(a.runningVerbs(line)) > 0:
+		return homeStopChordWord
 	case homeRowFolder(line) != "" && !a.hosted() && !a.home.gone[homeRowFolder(line)]:
 		return homeFolderChordWord
 	}

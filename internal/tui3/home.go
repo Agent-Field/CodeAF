@@ -2681,8 +2681,16 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "ctrl+x":
 		// AND CTRL+X STOPS A STANDING ITEM FOR GOOD, the stronger form of the
 		// key above it on this list and on the item card's own legend.
-		if line, ok := h.previewLine(); ok && line.kind == homeItem {
+		line, ok := h.previewLine()
+		if ok && line.kind == homeItem {
 			return a.homeItemWrite(line, standing.StatusRetired)
+		}
+		// AND IT STOPS A PIECE OF WORK THIS WINDOW HOLDS, through the stop card,
+		// which asks first — the same verb the row's strip offers
+		// (homepanel_running.go's [app.runningVerbs]), reached where `→` crosses
+		// columns instead of opening the strip.
+		if verbs := a.runningVerbs(line); ok && len(verbs) > 0 {
+			return verbs[0].do()
 		}
 		return nil
 
