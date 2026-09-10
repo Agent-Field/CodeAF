@@ -708,3 +708,33 @@ func (h *homeView) gridColumnAt(x int) int {
 	}
 	return col
 }
+
+// switcherRowLine is one of the switcher's rows as a line of home's column,
+// wearing a panel's cell: a conversation is a [homeSession] line and a watch a
+// [homeItem] one, which is what keeps every door on them the door it was.
+func switcherRowLine(row switcherRow, cell *homeCell) homeLine {
+	cell.row = &row
+	if row.kind == switcherStanding {
+		return homeLine{kind: homeItem, view: row.item, item: row.item.Item, project: row.project, cell: cell}
+	}
+	return homeLine{kind: homeSession, row: row.session, project: row.project,
+		dir: homeBucketOf(row.session.Transcript), cell: cell}
+}
+
+// homeGridAnswer is a digit on the resting grid: THE TOP QUESTION, FROM
+// ANYWHERE ON HOME, WITH NO CURSOR MOVE (law 7). The top question is the first
+// row of `needs you` that draws its answers, so the key a person presses is one
+// they can see on the screen; a digit with no such row falls through to the
+// row under the cursor and then to the box, as it always did.
+func (a *app) homeGridAnswer(key string) (tea.Cmd, bool) {
+	if !a.home.gridOn() {
+		return nil, false
+	}
+	for _, line := range a.home.lines {
+		if line.cell == nil || line.cell.panel != panelNeeds || line.cell.subRight == "" {
+			continue
+		}
+		return a.answerRowKey(a.homeTrue(line.row), key)
+	}
+	return nil, false
+}

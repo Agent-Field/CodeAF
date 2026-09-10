@@ -226,7 +226,14 @@ func (a *app) answerKey(key string) (tea.Cmd, bool) {
 	if !ok || subject.kind != bandKindSession {
 		return nil, false
 	}
-	row := subject.row
+	return a.answerRowKey(subject.row, key)
+}
+
+// answerRowKey is one digit sent to one conversation's question, and false when
+// that conversation is not asking or never offered that key. It is the whole
+// door both the cursor's digits and the grid's top question ride
+// (homegrid.go's [app.homeGridAnswer]), so the two cannot answer differently.
+func (a *app) answerRowKey(row session.SessionRow, key string) (tea.Cmd, bool) {
 	question, ok := answerable(row, time.Now())
 	if !ok {
 		return nil, false
