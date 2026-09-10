@@ -4292,13 +4292,13 @@ not drawn, and its letter does nothing rather than failing when you press it.
 - **`[a] accept`** — you looked and you are taking the work. Its branch follows the same
   landing as checked work: it merges into an ordinary checked-out branch, or is kept off a
   protected, moved or detached checkout. Everything queued behind it unblocks. The report
-  leads `you looked at this yourself and took it as done`. If that merge conflicts nothing
+  leads `you took this as done`. If that merge conflicts nothing
   is forced: your checkout is left exactly as it was, the branch is kept, and the task comes
   back as `your call · conflicts with your branch` with the clashing files named.
 - **`[n] not right`** — you looked and it is not finished. The task becomes `incomplete`,
   its branch is kept, and its previous report is kept under the refusal. Its dependents do
   not advance and land `incomplete · was blocked by another task`. The report leads
-  `incomplete — you looked at this yourself and said so`.
+  `incomplete — you said it is not finished`.
 - **`[s] tell it`** — you have something to say rather than an answer to give; the next
   section but one is about that.
 

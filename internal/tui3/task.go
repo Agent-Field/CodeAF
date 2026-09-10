@@ -3864,13 +3864,10 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// ([railHoldHint]).
 		return nil, true
 	}
-	// THE ANSWERS TO THE ONE QUESTION A ROW CAN BE ASKING, on the row that is
-	// asking it (tasksettle.go's [app.railSettleKey]). It is read last so that
-	// nothing above it changes meaning, and it takes the same three letters the
-	// card and the room take, under the same guard.
-	if a.railSettleKey(msg) {
-		return nil, true
-	}
+	// THE ANSWERS TO THE ONE QUESTION A ROW CAN BE ASKING ARE NOT TAKEN HERE.
+	// They are the landing question's own, on the block above the box, which is
+	// drawn on this page like every other and read before this file
+	// (tasksettle.go says why the column stopped keeping its own copy).
 	return nil, false
 }
 
@@ -4967,6 +4964,16 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		// card to find out what for.
 		status := a.taskStatus(node)
 		paint, text = tierInk(a.pal, status), status.RowWord()
+		// THE FILE LIST IS THE FIRST THING TO GO, and it goes WHOLE. This block
+		// is [railUnderRows] tall and a reason that names sixteen files is four
+		// rows of them, so a column that simply wrapped and cut left the person
+		// reading `your call · conflicts with your branch:` — the announcement of
+		// a list, with the list cut off underneath it, which is the one shape
+		// tasktier.go's [tierWordShed] exists to prevent. The list is on the card
+		// one keypress away; what the row is read for is what to do.
+		if len(railWrap(text, width)) > railUnderRows {
+			text = tierWordShed(text)
+		}
 	default:
 		switch node.merge {
 		case mergeWordKept:
