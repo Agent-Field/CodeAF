@@ -100,14 +100,23 @@ func TestTurnsKeepGoingWhileTheBeliefFilesLockIsHeld(t *testing.T) {
 type stuckLedger struct {
 	scriptedLedger
 	entered sync.Once
+	// exited closes left once. Two Notes can both pass the hold after release
+	// is closed, and a select check-then-close is not atomic — both goroutines
+	// can see the channel open and both close it.
+	exited  sync.Once
 	inside  chan struct{}
 	release chan struct{}
+	// left closes when Note has stepped past the hold, so a test that cancelled
+	// the race while this write was in flight can wait the arm off the temporary
+	// home before RemoveAll walks it.
+	left chan struct{}
 }
 
 func (l *stuckLedger) Note(sighting lanes.Sighting) {
 	l.entered.Do(func() { close(l.inside) })
 	<-l.release
 	l.scriptedLedger.Note(sighting)
+	l.exited.Do(func() { close(l.left) })
 }
 
 // TestACancelledRaceEndsEvenWhenAnArmCannotReport is why the race's loop grew a
@@ -127,11 +136,23 @@ func TestACancelledRaceEndsEvenWhenAnArmCannotReport(t *testing.T) {
 		scriptedLedger: scriptedLedger{beliefs: map[lanes.ID]lanes.Belief{}},
 		inside:         make(chan struct{}),
 		release:        make(chan struct{}),
+		left:           make(chan struct{}),
 	}
 	lanes.Default().SetLedger(stuck)
 	// The arm is let go at the end whatever happened, so the suite never leaves
-	// a goroutine parked on a channel nobody closes.
-	t.Cleanup(func() { close(stuck.release) })
+	// a goroutine parked on a channel nobody closes. It is waited off the
+	// temporary home first: cancel ends the race while Note is still blocked,
+	// and letting the write finish during TempDir cleanup left `v3/` not
+	// empty (nightly 34033965253) and a data race the detector names in ~0.4s.
+	var letGo sync.Once
+	release := func() {
+		letGo.Do(func() { close(stuck.release) })
+		select {
+		case <-stuck.left:
+		case <-time.After(wireBound):
+		}
+	}
+	t.Cleanup(release)
 
 	ctx, stop := context.WithCancel(talking())
 	ctx = WithLaneChoice(ctx, choiceFor(rig.model, 12*time.Millisecond))
@@ -156,4 +177,5 @@ func TestACancelledRaceEndsEvenWhenAnArmCannotReport(t *testing.T) {
 	case <-time.After(wireBound):
 		t.Fatalf("the cancelled turn did not end in %s", wireBound)
 	}
+	release()
 }

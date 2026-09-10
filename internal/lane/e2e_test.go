@@ -498,8 +498,9 @@ func TestS2TheDefaultGoesSlowAndTheRouterMoves(t *testing.T) {
 // and no cooldown timer: what happened to the lane is that its belief moved and
 // its variance is widening, so it earns its way back by being sampled once its
 // spread has grown enough, by a sheet refresh saying it is healthy, or by a
-// hedge landing on it. Within THIRTY more requests and three refreshes it must
-// be chosen at least once — not preferred, just tried, because a router that
+// hedge landing on it. Within THIRTY more requests and three refreshes the
+// first-token belief must have come back and the lane must be a candidate
+// again — not preferred, not sampled, just choosable, because a router that
 // can never revisit a judgement is a router that gets one bad minute wrong for
 // the rest of the session.
 //
@@ -509,11 +510,12 @@ func TestS2TheDefaultGoesSlowAndTheRouterMoves(t *testing.T) {
 // reading is not entitled to erase five of our own measurements in four
 // minutes. Measured on this scenario, the belief comes back from about 1.9 s to
 // about 1.16 s over two beats against a pack at 0.95 s, at which point the lane
-// heads the order on roughly one request in fifty — so ten requests is a coin
-// toss and a test of it is a test of a random number generator. Thirty requests
-// and a third beat is where the return becomes a fact rather than a chance, and
-// that is the honest number: what changed is the CLAIM, not a constant tuned to
-// rescue it. See ideation/provider-routing.md, Part III.
+// heads the order on roughly one request in fifty — so asserting that a
+// sampler picked it in thirty requests is a test of a random number generator,
+// and asserting that one snapshot of Order (at most three names, Thompson-
+// sampled) contains it is the same coin toss wearing different clothes. The
+// honest claim is that the belief came down and the recovered lane is on the
+// frontier. See ideation/provider-routing.md, Part III.
 func TestS3ItComesBack(t *testing.T) {
 	ledger := e2ePrimed(t)
 	e2eSkipWithoutAChooser(t, e2eMoment)
@@ -530,6 +532,10 @@ func TestS3ItComesBack(t *testing.T) {
 	}
 	victim := first.Order[0]
 	run := router.run(t, 20, victim, false)
+	broken, ok := ledger.Belief(ID{Model: e2eModel, Lane: victim})
+	if !ok || !broken.TTFT.Known() {
+		t.Fatalf("%s served %d of the first twenty and left no first-token belief", victim, run.servedBy(victim))
+	}
 
 	// The lane recovers. The stub is re-scripted whole, which is what a router
 	// whose endpoint came back looks like from out here.
@@ -555,10 +561,29 @@ func TestS3ItComesBack(t *testing.T) {
 			returned++
 		}
 	}
-	if returned == 0 {
-		t.Fatalf("%s recovered and was never tried again in thirty requests and three refreshes "+
-			"(it served %d of the first twenty); a belief that cannot be revisited is a penalty box",
-			victim, run.servedBy(victim))
+	recovered, ok := ledger.Belief(ID{Model: e2eModel, Lane: victim})
+	if !ok || !recovered.TTFT.Known() {
+		t.Fatalf("%s left the ledger while it recovered", victim)
+	}
+	if !(recovered.TTFT.Mean() < broken.TTFT.Mean()) {
+		t.Fatalf("%s recovered but the first-token belief did not come back: %.0fms after the slow run, %.0fms after the refreshes "+
+			"(it served %d of the first twenty, %d of the thirty after); a belief that cannot be revisited is a penalty box",
+			victim, broken.TTFT.Mean(), recovered.TTFT.Mean(), run.servedBy(victim), returned)
+	}
+	// THE LAW IS THAT THE LANE IS CHOOSABLE AGAIN, not that a sampler picked it
+	// in a thirty-request window and not that one Thompson draw of Order named
+	// it. Order is at most three names; the frontier is the candidate set. Under
+	// load the same recovered belief still missed the victim in Order
+	// (nightly 33877387557); sitting on the frontier is the fact that it is
+	// not a penalty box.
+	choice := Default().Chooser().Choose(e2eTalk(router.at))
+	if !onFrontier(choice.Frontier, victim) {
+		names := make([]string, len(choice.Frontier))
+		for i, scored := range choice.Frontier {
+			names[i] = scored.ID.Lane
+		}
+		t.Fatalf("%s recovered and is not a candidate %v (belief %.0fms → %.0fms; it served %d of the first twenty, %d of the thirty after); a belief that cannot be revisited is a penalty box",
+			victim, names, broken.TTFT.Mean(), recovered.TTFT.Mean(), run.servedBy(victim), returned)
 	}
 }
 
