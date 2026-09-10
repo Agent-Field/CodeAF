@@ -136,6 +136,12 @@ func (l *homeLab) app(standing string) *app {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width, a.height = 100, 24
 	a.homeRoot = l.root
+	// THE DELIVERABLES INDEX IS THE LAB'S TOO. Left empty, [app.artifactsIndex]
+	// falls back to the package's one shared test home, which every /export
+	// test writes into — so `since you left` in one lab read the files another
+	// test made, and a firing folded under `3 more` only when the whole suite
+	// ran (a red the Spark found twice and a lone run never could).
+	a.artifacts = filepath.Join(l.root, "v3", session.ArtifactsIndexName)
 	// THE LEDGER IS THE LAB'S TOO. An empty path is the door's way of saying
 	// "this machine's" (usage_ledger.go's [UsageCache] falls back to
 	// [UsageLedgerPath]), so a lab that left it empty had the spend place read
@@ -410,10 +416,10 @@ func TestHomeCallsARowRunningWhenTheSessionSaysItHasThatNodeOut(t *testing.T) {
 		t.Fatalf("rolled up %d running / %d incomplete, want 1 / 0", row.Tasks.Running, row.Tasks.Incomplete)
 	}
 	text := homeText(a)
-	// THE ROW'S OWN NOTE CARRIES THE COUNT, in the reading's words rather than
-	// the tree's — `1 task running`, which is the one fact a person reading the
-	// list without pointing at anything needs ([switcherConversationNote]).
-	if !strings.Contains(text, "1 task running") {
+	// THE RUNNING PANEL CARRIES THE WORK, one row per node the session says it
+	// has out (homepanel_running.go) — the one fact a person reading home
+	// without pointing at anything needs.
+	if !strings.Contains(text, "Port the thing") {
 		t.Fatalf("the row does not say what is running:\n%s", text)
 	}
 	// AND THE CARD SAYS WHAT IT IS AND WHOSE WINDOW HAS IT. The work band puts
@@ -517,30 +523,26 @@ func TestHomePutsASessionThatNeedsYouFirst(t *testing.T) {
 	}
 
 	text := homeText(a)
-	// THE MARK IS THE READING'S OWN AND IT IS THE FIRST CELL OF THE ROW. It used
-	// to be [homeAskGlyph]'s triangle drawn by the tree; the switcher paints every
-	// row from one vocabulary — `?` needs you, `◐` moving, `○` at rest, `=` paused
-	// (switcher.go's [switcherPaintRow]) — so the claim is the same claim in the
-	// new alphabet.
+	// THE MARK IS THE FIRST CELL OF THE ROW. It used to be [homeAskGlyph]'s
+	// triangle drawn by the tree; the grid gives a row one of two marks — `?`
+	// needs you, the moving cell for work (homecell.go's [app.homeCellLead]) — so
+	// the claim is the same claim in the new alphabet.
 	if !strings.Contains(text, tokens.GlyphNeedsHuman+" Pricing Research") {
 		t.Fatalf("the row does not wear the needs-you mark:\n%s", text)
 	}
-	// AND WHAT IT IS STOPPED ON IS ON THE ROW ITSELF, not one keystroke away in a
-	// pane. `waiting on you` was the tree repeating the glyph in words; the note
-	// spends the same cells saying the thing nobody could otherwise know
-	// ([switcherConversationNote]), which is why this assertion got stronger
-	// rather than moving to the card — it holds with the cursor nowhere near the
-	// row and at every width down to eighty columns.
-	if !strings.Contains(text, "asks: can I run: rm -rf build/") {
-		t.Fatalf("the row does not show what it is stopped on:\n%s", text)
+	// AND WHAT IT IS STOPPED ON IS UNDER THE ROW ITSELF, not one keystroke away in
+	// a pane: the `needs you` panel draws the question on the line under the
+	// title (homepanel_needs.go), with the cursor nowhere near it.
+	lines := strings.Split(text, "\n")
+	for y, line := range lines {
+		if strings.Contains(line, tokens.GlyphNeedsHuman+" Pricing Research") &&
+			(y+1 >= len(lines) || !strings.Contains(lines[y+1], "can I run: rm -rf build/")) {
+			t.Fatalf("the row does not show what it is stopped on:\n%s", text)
+		}
 	}
-	// And it really is the first ROW of the column — asserted on the lines the
-	// left column is built from rather than on where the words land in the
-	// frame, because the detail pane repeats the focused conversation's name and
-	// a search over the whole screen would find that copy first.
-	// ONE ROW PER THING. A waiting conversation used to have two rows — its own
-	// and a `needs you` strip's — and the strips are gone: the rank IS the list
-	// now, so the waiting one is simply first (place_home.go).
+	// And it really is the first row of home — asserted on the lines the grid
+	// is built from rather than on where the words land in the frame. ONE ROW
+	// PER THING: the waiting one is on `needs you` and on no other panel.
 	var order []string
 	for _, line := range a.home.lines {
 		if line.kind == homeSession {
@@ -572,79 +574,6 @@ func TestHomeStopsSayingNeedsYouWhenTheWindowIsGone(t *testing.T) {
 	}
 	if strings.Contains(homeText(a), string(session.PresenceWaiting)) {
 		t.Fatalf("home is still asking for a window that is gone:\n%s", homeText(a))
-	}
-}
-
-// ONE FOLD FOR THE WHOLE MACHINE, AND NOT ONE PER PROJECT.
-//
-// This used to pin `…3 more` under a project's own heading: the tree drew a few
-// of each project's conversations open and whispered that project's tail away,
-// so a machine with five projects had five folds and the rows behind them were
-// hidden by WHERE they lived rather than by whether anybody wanted them. The
-// resting list is one flat ranked reading now (switcher.go), so the law those
-// folds were protecting — that a long machine does not become a long screen —
-// is kept by a single door at the foot of the whole list, standing over rows
-// from every project at once.
-//
-// The cap itself is pinned in the pure reading
-// ([TestTheSwitcherCapsAllGroupsInAttentionOrder]) and the door in
-// place_home_test.go; what belongs HERE is that the surface built from a real
-// disk obeys both ACROSS PROJECTS, which neither of those fixtures can say.
-func TestHomeFoldsTheWholeMachinesQuietTailBehindOneDoor(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	alpha, beta := lab.workspace("alpha"), lab.workspace("beta")
-	var mine string
-	for i := 0; i < switcherShown+4; i++ {
-		bucket, work := "-tmp-alpha", alpha
-		if i%2 == 1 {
-			bucket, work = "-tmp-beta", beta
-		}
-		file := lab.session(bucket, fmt.Sprintf("aaaa%012d", i+1),
-			fmt.Sprintf("chat %02d", i), work, now.Add(-time.Duration(i)*time.Hour))
-		if i == 0 {
-			mine = file
-		}
-	}
-	a := lab.app(mine)
-	// A FRAME TOO SHORT TO HOLD TWELVE ROWS, because the cap is the frame's now
-	// and never a bare number: the list draws as many conversations as the column
-	// can hold and folds only what is genuinely still under them (switcher.go's
-	// [switcherShown] is the FLOOR). At sixteen rows the floor is what is left,
-	// which is the eight this test is about.
-	a.width, a.height = 100, 17
-	a.openHome()
-	text := homeText(a)
-	if !strings.Contains(text, "more, quiet since") {
-		t.Fatalf("home did not fold the quiet tail:\n%s", text)
-	}
-
-	// EXACTLY THE CAP, COUNTED OVER THE WHOLE MACHINE. Twelve conversations in
-	// two projects come to eight rows and one door, and never to eight rows per
-	// project.
-	projects := map[string]bool{}
-	rows := 0
-	for _, line := range a.home.lines {
-		if line.kind == homeSession {
-			rows++
-			projects[line.project] = true
-		}
-	}
-	if rows != switcherShown {
-		t.Fatalf("the resting list drew %d conversations, want the cap of %d:\n%s", rows, switcherShown, text)
-	}
-	if len(projects) != 2 {
-		t.Fatalf("the eight rows came from %v, and the machine holds two projects:\n%s", projects, text)
-	}
-	// AND THERE IS ONE DOOR, not one per project.
-	folds := 0
-	for _, line := range a.home.lines {
-		if line.kind == homeSwitchFold {
-			folds++
-		}
-	}
-	if folds != 1 {
-		t.Fatalf("the resting list drew %d folds, want exactly one:\n%s", folds, text)
 	}
 }
 
@@ -930,60 +859,6 @@ func TestHomeWithNothingTypedHangsFromTheTop(t *testing.T) {
 	}
 }
 
-// THE RIGHT PANE IS DRAWN AT REST. This is the regression that shipped, and it
-// shipped because nothing asserted the obvious.
-//
-// The cause was not the anchoring itself but what the anchoring did to the
-// CURSOR. The preview card is built from the row under the cursor and draws
-// NOTHING for a heading, a fold line or the action row — so a resting cursor that
-// came to rest on a `…14 more` line left half the screen blank. Which is exactly
-// what a fresh launch did: the conversation home greets you over has no message
-// in it yet, so it sorts to the foot of the list behind the fold, so the row the
-// cursor was supposed to open on was not on the column.
-//
-// THE CARD IS ASKED FOR AT A CARD WIDTH. There is no second column at all below
-// [homeCardMin] now (homebridge.go), and the regression this test guards is
-// about WHAT the cursor came to rest on rather than about how wide the frame
-// was — so the frame is widened to a rung that has a card and the claim is
-// unchanged: with an empty box, the column beside the list is never blank.
-func TestTheRightPaneIsDrawnAtRest(t *testing.T) {
-	a, mine := homeRestLab(t, 200)
-	width, _ := a.size()
-	_, right := homeColumns(width)
-	if right <= 0 {
-		t.Fatalf("a %d-column frame lent the detail pane nothing", width)
-	}
-	if card := a.homeDetail(right, 12, a.pal); len(card) == 0 {
-		t.Fatalf("the preview pane is empty at rest, with the cursor on %q", homeName(a.home.focused()))
-	}
-	// And it is really on the frame, across the gutter from the list: the card's
-	// second line is WHERE this conversation is, with the door word after it
-	// (place_home.go's [app.homeCardPlace]).
-	//
-	// THE DOOR WORD IS `here` AND NO LONGER `open here`. The place line used to
-	// ask [app.homeHolding] first, which spells this window's own conversation
-	// `open here`; SCREEN 1d spells the whole line `~/aforge-v2 · master, 1 file
-	// dirty · here`, so the card asks [app.homeMark] first and the design's word
-	// wins (FIDELITY.md item 8). `open here` did not die — it is still what a
-	// card assembled from the registry says ([drawKeysBand] reads it through the
-	// same function) — it is simply not what the switcher's card says. The clause
-	// is demanded as a SUFFIX rather than as a substring because `here` also
-	// rides the box row's scope chip, and a bare Contains would pass on a frame
-	// with no card on it at all.
-	row := a.home.focused()
-	if row.Transcript != mine {
-		t.Fatalf("the resting cursor is on %q, want this window's conversation", homeName(row))
-	}
-	card := homeCardNow(t, a)
-	if len(card) <= homeCardPlaceRow || !strings.Contains(card[homeCardPlaceRow], filepath.Base(row.Workspace)) ||
-		!strings.HasSuffix(strings.TrimSpace(card[homeCardPlaceRow]), " · "+homeHereWord) {
-		t.Fatalf("the card's place line is not the conversation's own folder:\n%s", strings.Join(card, "\n"))
-	}
-	if !strings.Contains(homeText(a), strings.TrimSpace(card[homeCardPlaceRow])) {
-		t.Fatalf("the card is not on the resting frame:\n%s", homeText(a))
-	}
-}
-
 // HOME'S RESTING FOOT, WORD FOR WORD — the two rows the design spells and the
 // clause it deliberately leaves out (SCREEN 1a and 2b, FIDELITY.md item 3).
 //
@@ -1053,93 +928,6 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	clauses := strings.Split(hint, " · ")
 	if last := clauses[len(clauses)-1]; !strings.HasPrefix(last, "esc ") {
 		t.Fatalf("a typed home's hint reads %q, want a way out on the end", hint)
-	}
-}
-
-// AND A LAUNCH WHOSE OWN CONVERSATION IS NOT ON THE LIST OPENS ON THE FIRST
-// CONVERSATION INSTEAD, which is what became of the case that broke. A session
-// folder nobody has spoken in yet has no age for the ranking to sort on, so it
-// falls to the very bottom of the reading and the one fold hides it: the cursor
-// has no own-row to open on, and it falls to the first row a cursor may stand on
-// (homebridge.go's [homeView.openAt]), a conversation with a card of its own,
-// rather than the fold line that used to swallow it.
-func TestAFreshLaunchOpensOnTheFirstConversationWhenItsOwnIsNotListed(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	// MORE CONVERSATIONS THAN THE ONE LIST DRAWS, so there is a fold at the foot
-	// — the line the cursor wrongly came to rest on — and so that a conversation
-	// with no age at all sorts behind it.
-	work := lab.workspace("alpha")
-	for i := 0; i < switcherShown+4; i++ {
-		lab.session("-tmp-alpha", fmt.Sprintf("aaaa%012d", i+1),
-			fmt.Sprintf("chat %02d", i), work, now.Add(-time.Duration(i+1)*time.Hour))
-	}
-	// This window's own folder, written the way a launch writes one: a journal and
-	// a meta that names it, and no message spoken in it yet.
-	dir := filepath.Join(lab.project("-tmp-alpha"), "zzzz000000000001")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	mine := filepath.Join(dir, "transcript.jsonl")
-	if err := os.WriteFile(mine, []byte("{}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := session.SaveMeta(dir, session.Meta{
-		ID: "zzzz000000000001", Title: "brand new", Workspace: work, Created: now,
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	a := lab.app(mine)
-	// A card tier, because the last thing this test asks is that the row the
-	// first `↓` finds has a card, and there is none below [homeCardMin]; and a
-	// SHORT one, because the list draws as many rows as the frame can hold now
-	// (switcher.go's [switcherView.room]) and a tall window over thirteen
-	// conversations has nothing left to fold.
-	a.width, a.height = 200, 17
-	a.openHome()
-	// The window's own conversation is adopted into the world ([app.readWorld])
-	// but it has never been spoken in, so it sorts to the very bottom of the
-	// ranked reading and the one fold swallows it — which is the case this test
-	// is about: the cursor has no own-row to open on.
-	if a.home.focused().Transcript == mine {
-		t.Fatal("the list drew this window's own conversation, so this proves nothing")
-	}
-	if !strings.Contains(homeText(a), "more") {
-		t.Fatal("nothing collapsed, so the fold line this guards against is not on the screen")
-	}
-	line, ok := a.home.focusedLine()
-	if !ok || line.kind != homeSession {
-		t.Fatalf("the launch landed on kind %v, want a conversation:\n%s", line.kind, homeText(a))
-	}
-	if a.home.cursor != a.home.placesTop() {
-		t.Fatalf("the launch landed on line %d, want the first standable row at %d:\n%s",
-			a.home.cursor, a.home.placesTop(), homeText(a))
-	}
-	// AND `↑` OFF THE TOP ROW LEAVES THE LIST'S OWN CURSOR ALONE. It reaches the
-	// TAB BAR, which is a row of the frame rather than of this list (pages.go's
-	// [barCursor]); the row a person walked up off is still the row `↓` puts them
-	// back on, and home's card never stops being about it.
-	a.frame()
-	drive(t, a, key("up"))
-	if !a.bar.on {
-		t.Fatalf("↑ off the top row did not reach the tab bar:\n%s", homeText(a))
-	}
-	if a.home.cursor != a.home.placesTop() {
-		t.Fatalf("↑ onto the bar moved home's own cursor to line %d", a.home.cursor)
-	}
-	drive(t, a, key("down"))
-	if a.bar.on {
-		t.Fatal("↓ from the bar left the cursor on it")
-	}
-	line, ok = a.home.focusedLine()
-	if !ok || line.kind != homeSession {
-		t.Fatalf("the first ↓ landed on kind %v, want a conversation:\n%s", line.kind, homeText(a))
-	}
-	width, _ := a.size()
-	_, right := homeColumns(width)
-	if card := a.homeDetail(right, 12, a.pal); len(card) == 0 {
-		t.Fatalf("the row the first ↓ found draws no preview card:\n%s", homeText(a))
 	}
 }
 
@@ -1418,55 +1206,6 @@ func TestThePreviewCardFollowsTheCursorWhileTyping(t *testing.T) {
 	}
 }
 
-// AND THE DROP-UP DOES NOT MOVE THE CARD. The list lifts against the box; the
-// card is assembled downward from its title and stays where it is, which is why
-// lifting it would take the facts off the bottom rather than move it down the
-// frame.
-func TestTheDropUpDoesNotLiftTheCardWithIt(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
-	lab.session("-tmp-beta", "bbbb000000000001", "pricing sheet import", "/tmp/beta", now.Add(-time.Hour))
-
-	a := lab.app(mine)
-	// A card tier, because the subject IS the card and there is none below
-	// [homeCardMin] (homebridge.go).
-	a.width, a.height = 200, 24
-	openHomeOn(a, mine)
-	// THE CARD'S OWN TITLE ROW AND NOT THE LIST'S. Both columns draw the focused
-	// conversation's name, and the list's copy DOES move with the drop-up — which
-	// is the whole point — so a search over the whole row would find the wrong one
-	// and pass on a card that had been lifted with it. The card starts after the
-	// list's cells and the gutter, so the search begins there.
-	titleRow := func() int {
-		width, height := a.size()
-		left, _ := homeColumns(width)
-		lines, _, _, _ := a.homeFrame(width, height)
-		for y, line := range lines {
-			plain := []rune(ansi.Strip(line))
-			if len(plain) <= left+homeGutter {
-				continue
-			}
-			if strings.Contains(string(plain[left+homeGutter:]), homeName(a.home.focused())) {
-				return y
-			}
-		}
-		return -1
-	}
-	rest := titleRow()
-	if rest < 0 {
-		t.Fatal("no card on the resting frame")
-	}
-	for _, r := range "pricing" {
-		a.homeKey(key(string(r)))
-	}
-	a.homeKey(key("up"))
-	a.homeKey(key("up"))
-	if at := titleRow(); at != rest {
-		t.Fatalf("the card moved from row %d to row %d when the list became a drop-up", rest, at)
-	}
-}
-
 // A FILTER THAT CANNOT SEE WHAT IT HIDES IS A FILTER LYING ABOUT THE MACHINE.
 func TestAMatchBehindTheCollapseIsFoundAnyway(t *testing.T) {
 	lab := newHomeLab(t)
@@ -1479,9 +1218,8 @@ func TestAMatchBehindTheCollapseIsFoundAnyway(t *testing.T) {
 	lab.session("-tmp-alpha", "cccc000000000001", "buried treasure", "/tmp/alpha", now.Add(-40*time.Hour))
 
 	a := lab.app(mine)
-	// A FRAME THE ROWS DO NOT FIT IN, because the resting list draws as many as
-	// the column can hold now and folds only what is genuinely under them
-	// (switcher.go's [switcherShown] is the floor, not the cap).
+	// A FRAME THE ROWS DO NOT FIT IN, because a panel draws as many as its
+	// budget holds and folds only what is genuinely under them (homegrid.go).
 	a.width, a.height = 100, 17
 	a.openHome()
 	if !strings.Contains(homeText(a), "more") {
@@ -1497,118 +1235,11 @@ func TestAMatchBehindTheCollapseIsFoundAnyway(t *testing.T) {
 		t.Fatalf("the query could not see behind the collapse:\n%s", homeText(a))
 	}
 	a.homeKey(key("ctrl+u"))
-	if !strings.Contains(homeText(a), "more, quiet since") {
+	if !strings.Contains(homeText(a), "more · "+homeFindWord) {
 		t.Fatalf("the collapse did not come back on an empty query:\n%s", homeText(a))
 	}
 	if strings.Contains(homeText(a), "Buried Treasure") {
 		t.Fatal("the row stayed out after the query was cleared")
-	}
-}
-
-// THE FOLD AT THE FOOT IS A DOOR AND EVERY GESTURE OPENS IT: → opens, ← folds it
-// back, and a click toggles.
-//
-// It used to be one such door per project ([homeQuiet], which only the phone tier
-// builds now). The law is the one it always was — a line that says rows are being
-// hidden and cannot be asked to stop hiding them is a dead end somebody hits and
-// gives up at — carried by the single fold the flat list has ([homeSwitchFold]).
-// place_home_test.go pins `enter` on it; the other three gestures are here.
-//
-// ONE THING THE OLD DOOR DID THAT THIS ONE DOES NOT: the cursor used to stay on
-// the line that did the opening, so the gesture could be reversed without moving
-// ([homeView.fold], [homeView.foldProject] and [homeView.foldItems] all re-find
-// their own line and set `picked`). [homeView.foldSwitch] rebuilds through
-// [homeView.build], which follows a conversation, an item, a project or an errand
-// and knows nothing about a fold — so the cursor lands back at the top of the
-// list. That is why each gesture below finds the fold again first.
-func TestTheOneFoldOpensAndFoldsOnEveryGesture(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	work := lab.workspace("alpha")
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the newest one", work, now)
-	for i := 0; i < switcherShown+4; i++ {
-		lab.session("-tmp-alpha", fmt.Sprintf("bbbb%012d", i+1),
-			fmt.Sprintf("filler %02d", i), work, now.Add(-time.Duration(i+1)*time.Hour))
-	}
-	a := lab.app(mine)
-	// A FRAME THE THIRTEEN ROWS DO NOT FIT IN, because the list draws as many as
-	// the column can hold now and folds only what is genuinely under them
-	// (switcher.go's [switcherShown] is the floor, not the cap). At seventeen
-	// rows the floor is what is left, so the fold stands over five.
-	a.width, a.height = 100, 17
-	a.openHome()
-
-	// onTheFold stands the cursor on the fold wherever the last rebuild left it,
-	// and fails when the list has no fold at all.
-	onTheFold := func() {
-		t.Helper()
-		for at, line := range a.home.lines {
-			if line.kind == homeSwitchFold {
-				a.home.cursor, a.home.picked = at, true
-				return
-			}
-		}
-		t.Fatalf("the list has no fold to press:\n%s", homeText(a))
-	}
-	// hidden is the row the fold is standing over, which must be off the list
-	// while it is shut and on it once it is open. It is the FIRST row behind the
-	// fold: what a fold hides is now exactly what the frame had no room for, so
-	// the row that comes back when it opens is the one the window can just
-	// reach.
-	const hidden = "Filler 07"
-
-	onTheFold()
-	if strings.Contains(homeText(a), hidden) {
-		t.Fatalf("%q was not behind the fold to begin with:\n%s", hidden, homeText(a))
-	}
-	a.homeKey(key("right"))
-	if !a.home.moreOpen {
-		t.Fatal("→ did not open the fold")
-	}
-	if !strings.Contains(homeText(a), hidden) {
-		t.Fatalf("opening the fold did not draw the rows behind it:\n%s", homeText(a))
-	}
-	// AND THE LINE TURNS ROUND RATHER THAN VANISHING: it is the way back, so it
-	// still says how many rows it stands for and wears the opened mark
-	// ([switcherReading.addFold]).
-	//
-	// IT SAYS `fewer` AND NO LONGER `more`. This assertion used to want
-	// `▾ 5 more` over five rows that were on the frame, where the glyph was the
-	// only thing telling "five are hidden" from "five of these are the ones you
-	// asked for"; [foldWords] settles it, and `fewer` is what pressing the line
-	// again would do.
-	if !strings.Contains(homeText(a), tokens.GlyphExpanded+" 5 fewer") {
-		t.Fatalf("the opened fold is not the way back:\n%s", homeText(a))
-	}
-	if strings.Contains(homeText(a), tokens.GlyphExpanded+" 5 more") {
-		t.Fatalf("an opened fold still says it is hiding five rows:\n%s", homeText(a))
-	}
-
-	onTheFold()
-	a.homeKey(key("left"))
-	if a.home.moreOpen {
-		t.Fatal("← did not fold the rows back")
-	}
-	if strings.Contains(homeText(a), hidden) {
-		t.Fatalf("← left the hidden rows on the list:\n%s", homeText(a))
-	}
-
-	// AND A CLICK IS THE SAME DOOR. The row is resolved through the hit table the
-	// frame wrote, so a press cannot reach a line the draw did not put on screen.
-	onTheFold()
-	_, hits, _, _ := a.homeFrame(a.width, a.height)
-	row := -1
-	for y, at := range hits {
-		if at == a.home.cursor {
-			row = y
-		}
-	}
-	if row < 0 {
-		t.Fatalf("the fold line is not on screen:\n%s", homeText(a))
-	}
-	a.homePress(4, row)
-	if !a.home.moreOpen {
-		t.Fatalf("a click did not open the fold:\n%s", homeText(a))
 	}
 }
 
@@ -1716,119 +1347,6 @@ func TestEscPeelsTheQueryThenCloses(t *testing.T) {
 
 // ── the two columns ─────────────────────────────────────────────────────────
 
-// THE RIGHT PANE'S EDGE IS A STRAIGHT LINE. It is the only thing separating the
-// two columns — this surface draws no borders — so it has to be findable on
-// every row without looking for it.
-//
-// EVERY WIDTH HERE IS A CARD WIDTH NOW. The gutter is a fact about the two-column
-// rung and there is no second column at all below [homeCardMin] (homebridge.go),
-// so the widths this walks are the tier's floor and two frames above it rather
-// than the three ordinary ones it used to walk — which is the same claim asked
-// where there is something to ask it about.
-func TestTheGutterIsAStraightLine(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "a short one", "/tmp/alpha", now)
-	lab.session("-tmp-alpha", "aaaa000000000002", "a conversation with a considerably longer name than that", "/tmp/alpha", now.Add(-time.Hour))
-	lab.task("-tmp-alpha", session.TaskIndexEntry{
-		ID: "1", Name: "n", Label: "Something", Title: "Something",
-		Status: string(session.TaskDone), Cost: 1, Tokens: 100, SessionID: "aaaa000000000001",
-		EndedAt: now.Add(-time.Minute), Outcome: "It worked.",
-	})
-	a := lab.app(mine)
-	a.openHome()
-	for _, width := range []int{homeCardMin, 200, 240} {
-		a.width, a.height = width, 24
-		left, right := homeColumns(width)
-		if right == 0 {
-			t.Fatalf("width %d dropped the detail column, so there is no gutter to test", width)
-		}
-		lines, _, _, _ := a.homeFrame(width, a.height)
-		// The head is four lines and the foot three; between them is the body,
-		// which is the only part that has two columns in it.
-		for i := 4; i < len(lines)-3; i++ {
-			plain := []rune(ansi.Strip(lines[i]))
-			if len(plain) <= left+homeGutter {
-				continue
-			}
-			gutter := string(plain[left : left+homeGutter])
-			if strings.TrimSpace(gutter) != "" {
-				t.Fatalf("at width %d row %d puts %q in the gutter:\n%s",
-					width, i, gutter, ansi.Strip(strings.Join(lines, "\n")))
-			}
-		}
-	}
-}
-
-// The facts footer is the emptiness law at its most literal.
-//
-// TWO BANDS BECAME ONE LINE AND THE LAW DID NOT MOVE. What the card spends and
-// what it thinks at are one sentence now ([app.homeCardFacts]) — so the line
-// this reads is the switcher card's own rather than the `spend` band's, and it
-// is asked at a card width, since the card itself only exists past [homeCardMin].
-func TestTheFactsFooterOmitsWhatIsNotAFact(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	quiet := lab.session("-tmp-alpha", "aaaa000000000001", "just talking", lab.workspace("alpha"), now.Add(-2*time.Hour))
-	a := lab.app(quiet)
-	a.width, a.height = 200, 30
-	openHomeOn(a, quiet)
-	text := homeText(a)
-	for _, banned := range []string{"spent $0", "0 tokens", "$0.00"} {
-		if strings.Contains(text, banned) {
-			t.Fatalf("the footer drew %q:\n%s", banned, text)
-		}
-	}
-	if !strings.Contains(text, "last active 2h") {
-		t.Fatalf("the footer lost the one fact it had:\n%s", text)
-	}
-
-	lab.task("-tmp-alpha", session.TaskIndexEntry{
-		ID: "1", Name: "n", Label: "Something", Title: "Something",
-		Status: string(session.TaskDone), Cost: 1.25, Tokens: 34000,
-		SessionID: "aaaa000000000001", EndedAt: now.Add(-time.Minute),
-	})
-	a = lab.app(quiet)
-	a.width, a.height = 200, 30
-	openHomeOn(a, quiet)
-	if got := homeText(a); !strings.Contains(got, "spent $1.25 · 34k tokens · last active 1m") {
-		t.Fatalf("the footer does not read as one line of facts:\n%s", got)
-	}
-	// Auto leaves the provider's reasoning depth unknown, so there is no level
-	// to claim on the facts line until somebody explicitly chooses one.
-	if got := strings.Join(homeCardFor(t, a, quiet), "\n"); strings.Contains(got, effortClauseWord) {
-		t.Fatalf("auto invented a thinking level on the facts line:\n%s", got)
-	}
-}
-
-// A short frame drops bands from the bottom and never takes the title.
-func TestTheTitleBandSurvivesAShortFrame(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the focused one", "/tmp/alpha", now)
-	lab.task("-tmp-alpha", session.TaskIndexEntry{
-		ID: "1", Name: "n", Label: "Something", Title: "Something",
-		Status: string(session.TaskDone), Cost: 3, Tokens: 90000,
-		SessionID: "aaaa000000000001", EndedAt: now.Add(-time.Minute),
-		Outcome: "A sentence about what it came to.",
-	})
-	lab.session("-tmp-alpha", "aaaa000000000002", "another", "/tmp/alpha", now.Add(-time.Hour))
-
-	a := lab.app(mine)
-	openHomeOn(a, mine)
-	for _, height := range []int{24, 16, 12, 10, 9} {
-		a.width, a.height = 100, height
-		text := homeText(a)
-		if !strings.Contains(text, "The Focused One") {
-			t.Fatalf("at height %d the pane lost its title:\n%s", height, text)
-		}
-	}
-	a.width, a.height = 100, 9
-	if strings.Contains(homeText(a), "spent $3.00") {
-		t.Fatalf("a short frame kept the footer instead of dropping it:\n%s", homeText(a))
-	}
-}
-
 // ENTER OPENS ANY ROW ON THIS SCREEN, whichever project it belongs to, and the
 // conversation you were in stays open behind it.
 //
@@ -1933,13 +1451,11 @@ func TestHomeRefusesARowWhoseFolderIsGone(t *testing.T) {
 // the fact stands against the address it is about, wherever that address is
 // drawn.
 //
-// WHERE IT IS DRAWN CHANGED WITH THE SHAPE. The resting list is switcher.go's
-// pure reading and it is handed no disk at all, so a row of it cannot say
-// `folder gone` — the fact lives on the card's PLACE LINE, in place of the
-// branch it cannot have (place_home.go's [app.homeCardPlace]). The moment
-// something is typed the column is [homeView.buildWorld]'s drop-up again, whose
-// rows do carry [homeGoneShort] and whose card carries the legend; both halves
-// are asserted below, so neither spelling can be lost without this failing.
+// WHERE IT IS DRAWN: at rest, the row's own right margin on the grid says
+// [homeGoneShort] where its age would be — a fact about the door, cut around and
+// never dropped (homegrid.go's [homeCell] hold). The moment something is typed
+// the column is [homeView.buildWorld]'s drop-up, whose rows carry the same word
+// and whose card carries the legend; both halves are asserted below.
 func TestHomeMarksARowWhoseFolderIsGoneWhereverItsAddressIsDrawn(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -1951,13 +1467,14 @@ func TestHomeMarksARowWhoseFolderIsGoneWhereverItsAddressIsDrawn(t *testing.T) {
 	a.width, a.height = 200, 30
 	a.openHome()
 
-	// AT REST: THE CARD'S PLACE LINE, which is [homeCardPlaceRow] — the title's
-	// own second row — and never further down, because a short frame drops bands
-	// from the bottom and the address is part of the one band no band may
-	// displace.
-	card := homeCardFor(t, a, gone)
-	if at := cardLine(card, WorkspaceGoneWord); at != homeCardPlaceRow {
-		t.Fatalf("the sentence is on card line %d, want the place line:\n%s", at, strings.Join(card, "\n"))
+	// AT REST: THE ROW'S OWN MARGIN.
+	for _, line := range strings.Split(homeText(a), "\n") {
+		if strings.Contains(line, "A Project That Moved") && !strings.Contains(line, homeGoneShort) {
+			t.Fatalf("the resting row does not say %q:\n%s", homeGoneShort, homeText(a))
+		}
+	}
+	if !strings.Contains(homeText(a), "A Project That Moved") {
+		t.Fatalf("the row whose folder is gone is not on home:\n%s", homeText(a))
 	}
 
 	// TYPED: the row itself, in the width the column has for it.
@@ -2391,16 +1908,20 @@ func TestEnterOnTheRowYouAreInJustStepsIntoIt(t *testing.T) {
 	}
 }
 
-func TestHomeSaysNothingOnAMachineWithNoProjects(t *testing.T) {
+// AN EMPTY MACHINE'S HOME WHISPERS WHAT ARRIVES, panel by panel, and never
+// says it is empty (docs/design/home-mission-control/DESIGN.md §4).
+func TestAnEmptyMachinesHomeWhispersWhatArrives(t *testing.T) {
 	lab := newHomeLab(t)
 	a := lab.app("")
 	a.openHome()
-	// The sentence stands in the places column now, a clause to a row
-	// ([homeEmptyLines]), so it is looked for clause by clause.
-	for _, part := range homeEmptyLines() {
-		if !strings.Contains(homeText(a), part) {
-			t.Fatalf("an empty machine does not say so (%q):\n%s", part, homeText(a))
+	text := homeText(a)
+	for _, part := range homeEmptyWhispers() {
+		if !strings.Contains(text, part) {
+			t.Fatalf("an empty machine's home does not whisper %q:\n%s", part, text)
 		}
+	}
+	if strings.Contains(text, homeEmptyWord) {
+		t.Fatalf("an empty machine's home announces it is empty:\n%s", text)
 	}
 }
 
@@ -2458,10 +1979,10 @@ func TestHomeOverHostListsTheFarMachine(t *testing.T) {
 	}
 }
 
-// And a world the far machine has not answered yet is NOT an empty machine.
-// `nothing here yet — say something and this fills up` over a server full of
-// work is the one wrong sentence this screen can say about somebody else's disk,
-// so what is drawn in that moment is nothing at all.
+// And a world the far machine has not answered yet is NOT an empty machine. A
+// panel whispering what arrives there, over a server full of work, is a
+// sentence about somebody else's disk that is not true, so what is drawn in
+// that moment is nothing at all.
 func TestHomeDrawsNothingUntilTheFarMachineHasAnswered(t *testing.T) {
 	lab := newHomeLab(t)
 	a := lab.app("")
@@ -2469,9 +1990,9 @@ func TestHomeDrawsNothingUntilTheFarMachineHasAnswered(t *testing.T) {
 	a.world = func() (session.World, bool) { return session.World{}, false }
 	a.openHome()
 	text := homeText(a)
-	for _, part := range homeEmptyLines() {
+	for _, part := range homeEmptyWhispers() {
 		if strings.Contains(text, part) {
-			t.Fatalf("home called an unanswered machine empty (%q):\n%s", part, text)
+			t.Fatalf("home whispered over an unanswered machine (%q):\n%s", part, text)
 		}
 	}
 }
@@ -2806,8 +2327,8 @@ func TestTheDoorIsOpenWithOnlyThisConversation(t *testing.T) {
 			t.Fatalf("a one-conversation home is missing %q:\n%s", want, text)
 		}
 	}
-	if strings.Contains(text, homeEmptyLines()[0]) {
-		t.Fatalf("a home holding this conversation says it holds nothing:\n%s", text)
+	if strings.Contains(text, homeWhisper[panelRecent]) {
+		t.Fatalf("a home holding this conversation whispers that one will arrive:\n%s", text)
 	}
 }
 
@@ -2828,17 +2349,17 @@ func TestTheDoorIsOpenOnAMachineThatHoldsNothing(t *testing.T) {
 	if !a.at(pageHome) {
 		t.Fatal("two spaces did not open home on an empty machine")
 	}
-	for _, part := range homeEmptyLines() {
+	for _, part := range homeEmptyWhispers() {
 		if !strings.Contains(homeText(a), part) {
-			t.Fatalf("an empty home does not say so (%q):\n%s", part, homeText(a))
+			t.Fatalf("an empty home does not whisper %q:\n%s", part, homeText(a))
 		}
 	}
 }
 
-// AN EMPTY HOME IS THE SAME SCREEN WITH FEWER ROWS. At every width tier the
-// head, the foot and whatever furniture that tier draws stand where a full home
-// puts them, and `nothing here yet` sits where the rows will be — so a person
-// who opens home on a fresh machine sees a home, not a broken page.
+// AN EMPTY HOME IS THE SAME SCREEN WITH FEWER ROWS. At every width the head,
+// the foot and the panels' headings stand where a full home puts them, and each
+// panel whispers what will arrive where its rows will be — so a person who
+// opens home on a fresh machine sees a home, not a broken page.
 func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 	lab := newHomeLab(t)
 	cases := []struct {
@@ -2858,8 +2379,7 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 		a.width, a.height = tc.width, 20
 		a.openHome()
 		text := homeText(a)
-		// The sentence is there whole at every tier, a clause to a row, and
-		// never cut to an ellipsis ([homeEmptyLines]).
+		// The whispers are there at every width (homegrid.go's [homeWhisper]).
 		//
 		// AND THE FOOT IS THE FOOT A FULL HOME DRAWS, both of its rows: the box
 		// row every place shares (SCREEN 2b) and home's own resting hint (SCREEN
@@ -2867,19 +2387,20 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 		// the design's own foot does not name it (FIDELITY.md item 3) — so what is
 		// demanded instead is the pair of sentences the design does spell, which
 		// is a stricter claim than the two fragments this asked for before.
-		want := append(append(tc.want, homeEmptyLines()...), "› "+placeRestWord, homeRestHint)
+		want := append(append(tc.want, homeEmptyWhispers()...), "› "+placeRestWord, homeRestHint)
 		for _, want := range want {
 			if !strings.Contains(text, want) {
 				t.Fatalf("at %d columns an empty home is missing %q:\n%s", tc.width, want, text)
 			}
 		}
-		// AND AN EMPTY HOME HAS NO ROW TO STAND ON, which is the emptiness law
-		// rather than a broken cursor: the one line it draws is the sentence
-		// saying the machine is empty, and that names an absence rather than a
-		// thing to open ([homeEmptyRow]). `↑` from there reaches the tab bar,
-		// which is the whole of what this screen has to offer onward.
-		if len(placeHome{}.stops(a)) != 0 {
-			t.Fatalf("at %d columns an empty home offered a row to stand on", tc.width)
+		// AND THE ONE ROW AN EMPTY HOME HAS TO STAND ON IS THE FOLDER IT WAS
+		// OPENED IN: `projects` is never empty (DESIGN.md §4), and enter there
+		// starts the first conversation. Every other panel whispers, and a
+		// whisper names what arrives rather than a thing to open.
+		for _, at := range (placeHome{}).stops(a) {
+			if kind := a.home.lines[at].kind; kind != homeProjectRow {
+				t.Fatalf("at %d columns an empty home offered a row of kind %v to stand on", tc.width, kind)
+			}
 		}
 		// The arrows have nothing to land on and must not land on the furniture.
 		drive(t, a, key("down"))
@@ -2927,8 +2448,8 @@ func TestAFreshConversationTheWalkCannotSeeStillHasARow(t *testing.T) {
 			t.Fatalf("home opened from a fresh conversation does not list it (%q):\n%s", want, text)
 		}
 	}
-	if strings.Contains(text, homeEmptyLines()[0]) {
-		t.Fatalf("home says nothing is here while this conversation is:\n%s", text)
+	if strings.Contains(text, homeWhisper[panelRecent]) {
+		t.Fatalf("home whispers that a conversation will arrive while this one is here:\n%s", text)
 	}
 	a.home.point(mine)
 	if got := a.home.focused().Transcript; got != mine {
@@ -3217,13 +2738,11 @@ func (l *homeLab) hold(transcript string) {
 // THE SCREEN SAYS SO BEFORE THE ROW IS PRESSED. This is the half of the trap
 // that made a locked door look like every other row.
 //
-// IT IS THE SAME LAW IN THE TWO PLACES THE SHAPE LEFT FOR IT. The resting list
-// is switcher.go's pure reading, which is handed no lock table and cannot ask
-// one — so the fact rides the card's place line beside the address it is about
-// ([app.homeCardPlace] reads it through [app.homeHolding]) — and the drop-up's
-// rows, built by [homeView.buildWorld], still carry [homeHeldShort] in the width
-// the column has for it. Both are asserted, so neither spelling can go quietly.
-func TestALockedRowSaysSoOnItsCardAndOnItsRowWhenTyped(t *testing.T) {
+// IT IS THE SAME WORD IN BOTH OF HOME'S SHAPES: the resting grid's row says
+// [homeHeldShort] at its right margin, a fact about the door that is cut around
+// and never dropped, and the drop-up's rows built by [homeView.buildWorld] say
+// it too. Both are asserted, so neither spelling can go quietly.
+func TestALockedRowSaysSoOnItsRowAtRestAndWhenTyped(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	here := lab.workspace("alpha")
@@ -3234,12 +2753,12 @@ func TestALockedRowSaysSoOnItsCardAndOnItsRowWhenTyped(t *testing.T) {
 	a := lab.app(mine)
 	a.width, a.height = 200, 30
 	a.openHome()
-	card := homeCardFor(t, a, theirs)
-	if at := cardLine(card, homeHeldWord); at != homeCardPlaceRow {
-		t.Fatalf("the card says it on line %d, want the place line:\n%s", at, strings.Join(card, "\n"))
+	said := false
+	for _, line := range strings.Split(homeText(a), "\n") {
+		said = said || strings.Contains(line, "The Other Terminal") && strings.Contains(line, homeHeldShort)
 	}
-	if !strings.Contains(homeText(a), homeHeldWord) {
-		t.Fatalf("the frame does not say the conversation is open elsewhere:\n%s", homeText(a))
+	if !said {
+		t.Fatalf("the resting row does not say the conversation is open elsewhere:\n%s", homeText(a))
 	}
 
 	// AND THE DROP-UP'S ROW SAYS IT IN THE SHORT WORDS.
@@ -3442,49 +2961,6 @@ func TestTheOtherDoorsAlsoStopDumpingThePath(t *testing.T) {
 	}
 }
 
-// HOME NAMES OTHER PEOPLE'S DIRECTORIES, AND THEY ARE DOORS (pathlink.go).
-//
-// Home is the one surface whose whole subject is work that is somewhere else,
-// so the place line under a conversation's name is the fastest route to the
-// project it belongs to. It is a full-frame surface and does not pass through
-// the conversation's row pass, which is why the link is hung here by hand.
-//
-// THE ANCHOR COVERS THE WHOLE PLACE LINE NOW and not the path half of it: the
-// address and what is true about it are one reading, and a link that stopped at
-// the first clause would be a target a narrow card had already cut off
-// ([app.homeCardPlace]). The line only exists on a card, so this is asked at a
-// card width.
-func TestHomeLinksTheProjectDirectoryItNames(t *testing.T) {
-	lab := newHomeLab(t)
-	// A workspace that is REALLY THERE, because a path that is not found on
-	// disk is drawn plain and this test would then be asserting nothing.
-	workspace := t.TempDir()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the picker", workspace, time.Now())
-
-	a := lab.app(mine)
-	a.width, a.height = 200, 24
-	openHomeOn(a, mine)
-
-	width, height := a.size()
-	lines, _, _, _ := a.homeFrame(width, height)
-	frame := strings.Join(lines, "\n")
-	if !strings.Contains(frame, "\x1b]8;;"+fileURI(workspace)) {
-		t.Fatalf("home's place band is not a door to %q:\n%s", workspace, ansi.Strip(frame))
-	}
-	// AND THE SCREEN IS THE SAME SCREEN. A link occupies no cells, so nothing
-	// home drew has moved.
-	a.pathLinks = false
-	plain, _, _, _ := a.homeFrame(width, height)
-	if got, want := ansi.Strip(frame), ansi.Strip(strings.Join(plain, "\n")); got != want {
-		t.Fatalf("the link changed what home says:\n got %q\nwant %q", got, want)
-	}
-	for i := range lines {
-		if ansi.StringWidth(lines[i]) != ansi.StringWidth(plain[i]) {
-			t.Fatalf("row %d changed width when linked", i)
-		}
-	}
-}
-
 // A directory that is not on this disk is named and not linked — the honesty
 // rule, on the one surface that routinely names places this machine has never
 // had (a project recorded on another machine, a folder since deleted).
@@ -3536,64 +3012,6 @@ func homeKinds(a *app, kind homeRowKind) []string {
 		}
 	}
 	return out
-}
-
-// NOTHING IS FOLDED AWAY BY BEING IN THE WRONG PROJECT.
-//
-// The list used to be two tiers: three projects drawn open with their
-// conversations under them, and every other project on the machine one line
-// each under a dim `elsewhere` rule. That shape bought five rows of scaffolding
-// to reach twenty leaves, and it could put a conversation that needs a person
-// three folds down under six projects nobody has touched.
-//
-// THE LAW THOSE TIERS WERE PROTECTING IS THE ONE THIS TEST NOW PINS: what wants
-// you is reachable without opening anything. There is one flat ranked list, the
-// project is a tag on the row, and the only thing folded is the quiet tail past
-// the eighth row (switcher.go, place_home.go).
-func TestHomeDrawsOneListWithNoProjectTierAndNoElsewhereBlock(t *testing.T) {
-	a, _, mine := homeTierLab(t)
-	if headings := homeKinds(a, homeHeading); len(headings) != 0 {
-		t.Fatalf("the resting list still draws project headings: %v\n%s", headings, homeText(a))
-	}
-	if folded := homeKinds(a, homeProject); len(folded) != 0 {
-		t.Fatalf("the resting list still folds projects away: %v\n%s", folded, homeText(a))
-	}
-	text := homeText(a)
-	if strings.Contains(text, homeElsewhereWord) {
-		t.Fatalf("the elsewhere block survived:\n%s", text)
-	}
-	// EVERY PROJECT'S CONVERSATION IS ON THE ONE LIST, each wearing the project
-	// it came from — six projects, six rows, no door between them.
-	for _, name := range []string{"alpha", "beta", "gamma", "delta", "eps", "zeta"} {
-		if !strings.Contains(text, strings.ToUpper(name[:1])+name[1:]+" Chat") {
-			t.Fatalf("%s's conversation is not on the list:\n%s", name, text)
-		}
-	}
-	rows := 0
-	for _, line := range a.home.lines {
-		if line.kind != homeSession || line.sw == nil {
-			continue
-		}
-		rows++
-		if line.project == "" {
-			t.Fatalf("a row lost the project it came from:\n%s", text)
-		}
-	}
-	if rows != 6 {
-		t.Fatalf("the list drew %d conversations, and the machine holds six:\n%s", rows, text)
-	}
-	// AND THIS WINDOW'S OWN CONVERSATION IS THE ONE MARKED, wherever the rank
-	// happens to put it — which is what the tiers' "your project first" rule was
-	// really for.
-	for _, line := range a.home.lines {
-		if line.kind == homeSession && line.row.Transcript == mine {
-			if line.sw == nil || !line.sw.row.here {
-				t.Fatalf("this window's own conversation does not wear `here`:\n%s", text)
-			}
-			return
-		}
-	}
-	t.Fatalf("this window's own conversation is not on the list:\n%s", text)
 }
 
 // THE LIST NEVER TOUCHES THE RULE ABOVE THE BOX: one blank row, at every
@@ -3739,6 +3157,9 @@ func TestPuttingARowAwayTakesItOffTheListAndItsNameFindsItAgain(t *testing.T) {
 func TestALetterAlwaysTypesWhateverIsChosen(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "one", "/tmp/alpha", time.Now())
+	// A second conversation, so the row `↓` walks onto from this window's own is
+	// a conversation with a path to copy.
+	lab.session("-tmp-alpha", "aaaa000000000002", "two", "/tmp/alpha", time.Now().Add(-time.Hour))
 	a := lab.app(mine)
 	a.openHome()
 	a.width, a.height = 100, 30

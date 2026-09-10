@@ -212,6 +212,43 @@ Every word it draws:
 box in the conversation while your turn is being handed to a task — before the task, and its
 page, exist at all.
 
+## The status line at the bottom of a task's page — no provider, no tok/s in a task room, which model is serving this task, why is the rate blank inside a task
+
+The bottom row of a task's page is about **that task**, and it says so in two places.
+
+On the left, in front of the ledger: the room chip, the task's own model, and the machine
+answering for it.
+
+```
+⠋ Ship the parser fix · task glm-5.2 · via friendli
+```
+
+At the right edge: the task's live rate while its model is writing — `38 tok/s` — or the
+task's own phase words while it is in a stage that is producing nothing, exactly as the
+conversation's line reads them: `running go test · 41s`, `connecting · 1.2s`, `paced ·
+retry in 6s`.
+
+**It does not go quiet because your conversation is idle.** That is the ordinary state
+while a task runs: you hand the work out, your turn ends, and the task works for minutes
+with nothing happening in the conversation. The row keeps drawing the task's own reading
+throughout.
+
+**What is on that row and is still the conversation's**: the bill, the cache, the context
+meter, the job and watch counts, and the posture word. Those measure a session, and a task
+runs inside yours — the cost figure already includes what your tasks have spent (see
+"What the `$` on the status line counts" on the screen page).
+
+**A task that has said nothing recently draws nothing** — no machine and no rate, rather
+than the conversation's clock or another task's. A stage that is genuinely still going
+says so again every few seconds, so an empty right edge means this task is between things,
+not that the row has lost track. `esc` leaves the room and the row is the conversation's
+again.
+
+**Two tasks on the same model each keep their own reading.** Until 2026-09-10 they did
+not: the surface filed this news by model, so two tasks on one model overwrote each
+other, a room could show no rate and no provider at all, and the row could carry a stale
+line left from the conversation — `running ask · 4m 55s` on a page whose task was writing.
+
 ## Can't scroll in a task — the wheel and pgup do nothing
 
 You can. The wheel, `pgup`/`pgdown`, and `↑`/`↓` over an empty box with no history to
@@ -480,7 +517,10 @@ second copy of the conversation's wiring, and the copy had fallen behind.
 the moment the task reports *that* call finished, which is usually before its
 result comes back: calls in a batch run together and the result waits for the
 slowest of them, so the figure is the call's own and not the batch's. A call
-too quick to be worth a number gets none.
+too quick to be worth a number gets none. The same figure comes back when you
+open the page after the work has landed — the journal keeps each call's own
+duration, so a finished room still says `3.0s` and `7.0s` on the right rows
+rather than drawing the calls with no clock at all.
 
 **A retry inside a task** shows, in the same words the conversation uses. When
 the model's reply is cut and the step asks again, the half-answer that was cut is

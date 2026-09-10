@@ -47,8 +47,9 @@
 //	go test -tags e2e -run 'TestQuestionsE2E/ALine' -count=1 -timeout 15m -v ./internal/e2e/
 //	go test -tags e2e -run TestQuestionsE2E -count=1 -timeout 90m -v ./internal/e2e/
 //
-// It SKIPS rather than fails with no OPENROUTER_API_KEY, no tmux or no
-// bin/aforge, exactly as the suite beside it does.
+// It SKIPS rather than fails with no provider key, no tmux or no bin/aforge,
+// exactly as the suite beside it does — and the key is resolved by the product's
+// own three roads, through [liveKey].
 package e2e
 
 import (
@@ -90,6 +91,7 @@ func TestQuestionsE2E(t *testing.T) {
 	t.Run("ALineAsksAndTheKeysAnswerIt", questionsLine)
 	t.Run("ACardCountsDownToItsPickAndEnterTakesIt", questionsCard)
 	t.Run("TheRoomComparesAnnotatesAsksBackAndSends", questionsRoom)
+	t.Run("ACardWithABlockUnderEachAnswerArrivesWhole", questionsBlocksUnderAnswers)
 	t.Run("ASentenceWithHolesIsFilledIn", questionsBlanks)
 	t.Run("AChecklistTicksSeveralAnswers", questionsChecklist)
 	t.Run("PairsAreAnsweredOneRowAtATime", questionsPairs)
@@ -397,6 +399,98 @@ func questionsCard(t *testing.T) {
 	screenSays(t, receipt, "start it", "the receipt names the pick enter took")
 	screenSays(t, receipt, say(t, "questionReceiptYouWord"), "enter is a person's key and the record says so")
 	shot(t, r, "taken")
+}
+
+// questionsBlocksUnderAnswers is the call a model could not make. On 2026-09-10
+// deepseek-v4-flash was given the message below — a person's own words, on the
+// Spark, in a real terminal — and three calls running it sent the answers list
+// as a JSON STRING holding the list; every one was refused with `options takes
+// a list`, the turn ended on the loop guard and the person never saw a
+// question. Two things changed (session/toolargs.go, session/tools_ask.go), and
+// this is the scenario that says whether they were enough. THE MESSAGE IS THE
+// PERSON'S, VERBATIM, and not an argument object spelled out: the shape the
+// model reaches for on its own is the thing under test, and a cleaner steer
+// ("call ask with options [...]") went green on the very build that failed the
+// person. The law is read off the journal, where the tool calls actually are —
+// one `ask`, carrying blocks, no refusal — and off the screen, where the
+// question is drawn with a room behind it.
+func questionsBlocksUnderAnswers(t *testing.T) {
+	r := questionRig(t, "q-blocks", nil)
+	steer(t, r, `Ask me with your question tool, as a card with a diagram block under each option, `+
+		`how the breath should be paced in my meditation app: fixed 4/2/6, adaptive to HRV, free timer. `+
+		`Give each option a body, a consequence, and recommend one with a reason and what would change your mind.`)
+
+	// The needles are the person's own words for the answers, because the head
+	// and the labels are the model's to write; `open it` says the card has a
+	// room behind it, which is what bodies and blocks under the answers mean.
+	card := awaitQuestion(t, r, "HRV", say(t, "questionOpenKeyWord"))
+	screenSays(t, card, say(t, "questionTakeThePickWord"), "the asker recommended one, and the card offers it")
+	shot(t, r, "card")
+
+	// THE JOURNAL IS WHERE THE LAW IS READ. The screen can only say a question
+	// arrived; it cannot say how many calls it took, and a question that arrives
+	// on the third try after two argument refusals is the defect wearing a
+	// green screen. One `ask` that the decoder read, carrying blocks, and no
+	// argument refusal at all is the whole of what the fix promised.
+	//
+	// A call the QUESTION GATE turned away is not counted against it: the gate
+	// refuses in its own words (`nothing was asked and the person saw no
+	// question: the pick names "adaptive-hrv", which is not one of the answers`)
+	// a question whose bytes were read perfectly well, and the model writes it
+	// again. That is a different law with its own tests (session/question_test.go)
+	// and a model's own mistake, and this scenario is about the bytes.
+	asks, blocks, refusals, turnedAway := 0, 0, 0, 0
+	var refused []string
+	for _, journal := range sessionTranscripts(t, r.home) {
+		asks += strings.Count(journal, `"function":{"name":"ask"`)
+		blocks += strings.Count(journal, `blocks`)
+		refusals += strings.Count(journal, "Invalid arguments: ")
+		turnedAway += strings.Count(journal, "nothing was asked and the person saw no question: ")
+		// The refusal's own words are the evidence: a shape this decoder does
+		// not yet read is named there, and the journal is gone with the rig.
+		for _, line := range strings.Split(journal, "\n") {
+			if at := strings.Index(line, "Invalid arguments: "); at >= 0 {
+				refused = append(refused, clip(line[at:], 240))
+			}
+		}
+	}
+	if asks-turnedAway != 1 || refusals != 0 || blocks == 0 {
+		t.Errorf("the first ask did not arrive whole: %d ask calls (%d turned away by the question gate), "+
+			"%d argument refusals, blocks mentioned %d times in the journal; want one call the decoder read, "+
+			"carrying blocks, and none refused.\nRefused with:\n  %s\nThe journal is kept at %s",
+			asks, turnedAway, refusals, blocks, strings.Join(refused, "\n  "), keepJournals(t, r))
+	}
+
+	press(t, r, "o")
+	room := r.waitFor(20*time.Second, say(t, "questionRoomBackWord"), say(t, "questionRoomPickWord"))
+	screenSays(t, room, "HRV", "the room lists the answers")
+	shot(t, r, "open")
+
+	press(t, r, "Enter")
+	receipt := r.waitFor(30*time.Second, say(t, "questionReceiptWord"))
+	screenSays(t, receipt, say(t, "questionReceiptYouWord"), "enter is a person's key and the record says so")
+	shot(t, r, "taken")
+}
+
+// keepJournals copies every transcript the rig wrote to a place the rig's
+// teardown does not sweep, and names it. A refusal names the SHAPE the decoder
+// would not read only in its first twenty-four runes; the bytes themselves are
+// what the next fix is written against, and a journal under t.TempDir is gone
+// the moment the scenario ends.
+func keepJournals(t *testing.T, r *rig) string {
+	t.Helper()
+	dir := filepath.Join(os.TempDir(), "aforge-e2e-journals")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "nowhere: " + err.Error()
+	}
+	kept := []string{}
+	for path, journal := range sessionTranscripts(t, r.home) {
+		name := filepath.Join(dir, shotName(t)+"-"+filepath.Base(filepath.Dir(path))+".jsonl")
+		if err := os.WriteFile(name, []byte(journal), 0o644); err == nil {
+			kept = append(kept, name)
+		}
+	}
+	return strings.Join(kept, ", ")
 }
 
 // questionCountdown is the clock's tail: a whole number of seconds and the unit,
@@ -848,7 +942,7 @@ func questionsHeadless(t *testing.T) {
 			`pick {"key":"1"}.`)
 	command.Dir = ws
 	command.Env = append(os.Environ(), "AFORGE_HOME="+home,
-		"OPENROUTER_API_KEY="+strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY")))
+		config.APIKeyEnv+"="+liveKey(t))
 	out, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("aforge chat --once: %v\n%s", err, out)

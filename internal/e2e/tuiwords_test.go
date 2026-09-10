@@ -128,61 +128,85 @@ var tuiWords = map[string]tuiWord{
 		why:    "a row whose project folder is not there any more says so before enter is pressed",
 	},
 
-	// ── the switcher home became ─────────────────────────────────────────────
-	"switcherSectionWord": {
-		screen: "what wants you first",
-		why:    "the one section line over the flat ranked list",
+	// ── home's panels (docs/design/home-mission-control/DESIGN.md) ────────────
+	//
+	// THE FLAT RANKED LIST IS GONE, and with it the section line, `alt+g`,
+	// `alt+q` and the `quiet since` fold the suite used to wait for. Home is seven
+	// panels now, each a heading from homegrid.go's order table; an empty one
+	// keeps its heading and one whisper, so a heading on the screen says the
+	// panel is there and says nothing about whether anything is in it.
+	"homeNeedsHeading": {
+		screen: "needs you",
+		why:    "the top of the left column: every question on the machine lands in it, and every resting home draws it",
 	},
-	"switcherGroupWord": {
-		screen: "alt+g group by project",
-		why:    "the key that turns the flat list into one block per project",
+	"homePanelRecent": {
+		screen: "where you were",
+		why:    "the panel of conversations, this window's own first — the panel every resting home draws",
 	},
-	"switcherQuietWord": {
-		screen: "alt+q hide the quiet ones",
-		why:    "the key that drops everything that is neither asking nor moving",
+	"homePanelProjects": {
+		screen: "projects",
+		why:    "the panel of folders, never empty, whose enter starts a chat there — the view by project alt+g used to be",
 	},
-	"switcherQuietSince": {
-		screen: "quiet since ",
-		why:    "the clause on the fold at the foot, naming when the hidden rows went quiet",
-	},
-	"foldMoreWord": {
-		screen: " more",
-		why:    "the fold at the foot counts what it stands over — `▸ 5 more, quiet since 6d`",
-		pkg:    tui3Pkg,
-	},
-	"foldFewerWord": {
-		screen: " fewer",
-		why:    "the same fold with it standing open — the way back, said as what pressing it does (#518)",
-		pkg:    tui3Pkg,
-	},
-	// The two fold hints are the CLAUSE THE ROW OWNS and not the whole drawn
-	// line, because the router puts its own `tab next place` in front of the
-	// `esc` clause on the way to the screen (pages.go's placeTailed) — so what a
-	// person reads is `enter or → show them · tab next place · esc close`, and a
-	// needle carrying the row's clause is the half that belongs to the row.
-	"homeFoldOpenHint": {
-		screen: "enter or → show them",
-		why:    "the hint under the box while the cursor stands on a SHUT fold — the suite's oracle for where the cursor is",
-	},
-	"homeFoldShutHint": {
-		screen: "enter or ← fold them away",
-		why:    "the same hint with the fold standing open",
+	"homePanelRunning": {
+		screen: "running",
+		why:    "the top of the right column: every task, job and firing watch out on the machine",
 	},
 	"switcherSinceLeft": {
 		screen: "since you left",
-		why:    "the heading over what happened while nobody was looking",
+		why:    "the panel over what happened while nobody was looking",
 	},
-	"homeVerbsWord": {
-		screen: "→ verbs",
-		why:    "the card's last line, which names the key and the words and never the letters",
+	"homePanelSpend": {
+		screen: "spend",
+		why:    "the day and the fortnight on home, and the third word of the four-place bar",
+	},
+	"homePanelNext": {
+		screen: "next up",
+		why:    "the reminders and routines this machine will act on, soonest first",
+	},
+	"homeRunningWhisper": {
+		screen: "work you send off with /task runs here on its own",
+		why: "what `running` says with nothing under it — the whisper law (DESIGN §4): an empty panel names " +
+			"what arrives there and never announces that it is empty. It is short enough to stand on one line " +
+			"at a hundred and twenty cells, which is why it is the whisper the suite waits for",
+	},
+	"homeFindWord": {
+		screen: "type to find one",
+		why:    "the fold under `where you were` — an instruction rather than a door, because the rest are found by typing",
+	},
+	"foldMoreWord": {
+		screen: " more",
+		why:    "every panel's fold counts what it stands over — `14 more · type to find one`",
+		pkg:    tui3Pkg,
+	},
+	"barHomeWord": {
+		screen: "home",
+		why:    "the first of the four words on the tab bar",
+	},
+	"barTasksWord": {
+		screen: "tasks",
+		why:    "the second word on the bar, and the place `running` and `needs you` fold into",
+	},
+	"barSettingsWord": {
+		screen: "settings",
+		why:    "the last of the four — standing, memory and search are off the bar and reached by command",
+	},
+	"pulseWantWord": {
+		screen: " want you",
+		why: "the pulse INSIDE A CHAT, which keeps the machine's counts on its top line (DESIGN §1 law 11); " +
+			"on home the pulse leaves them to the panels",
+	},
+	"homeCardMoreWord": {
+		screen: "→ more",
+		why: "the last clause of the keys legend that closes the card beside a search (homeband_keys.go). " +
+			"It was `→ verbs` on the resting card, which the grid retired; the search card never spelled that",
 	},
 	"homeHereWord": {
 		screen: "here",
-		why:    "the narrow home card keeps the current conversation door beside its address",
+		why:    "this window's own row on `where you were`, the row the person's last words sit under",
 	},
 	"homeFactsActive": {
 		screen: "last active ",
-		why:    "the card's facts line — the arithmetic that survived the sixteen bands becoming five",
+		why:    "the facts line on the card beside a search — the one card left once the resting card went",
 	},
 	"homeStartWord": {
 		screen: "start a new conversation",
@@ -265,7 +289,7 @@ var tuiWords = map[string]tuiWord{
 	// ── what stands, and what it costs ───────────────────────────────────────
 	"homeKeepingWord": {
 		screen: " standing order",
-		why:    "the count at the foot of the task column while something stands, and a door onto the standing place — `◦ 2 standing orders`, respelled from `keeping an eye on 2` on 2026-09-09 because that named nothing a person could type, and moved off the status row on the same day",
+		why:    "the count at the foot of the task column while something stands, and a door onto the standing place — `◦ 2 standing orders`, respelled from `keeping an eye on 2` on 2026-09-09 because that named nothing a person could type, and moved off the status row on the same day; /status and the phone sheet keep the same words under `watching`",
 	},
 	"homeWatchLabel": {
 		screen: "keeping watch",
@@ -704,7 +728,7 @@ var tuiWords = map[string]tuiWord{
 	"questionBlankKeyWord": {
 		screen: "[tab] next blank",
 		source: "next blank",
-		why:    "how a sentence with holes in it is walked through",
+		why:    "how a sentence with holes in it is walked through — the blanks shape's own verb, ranked with the answers so a hundred-column foot keeps it",
 	},
 	"questionPairAWord": {
 		screen: "[a] the first",

@@ -329,6 +329,8 @@ otherwise:
 - fewer than two answers, on a kind that needs a list
 - more than four answers — eight where you are ticking several — because a fifth
   is almost always two questions that have not been separated
+- an answer with no label on it, named by its number (`every answer needs a
+  label a person can read, and answer 2 has none`)
 - a pick that names an answer not on the list
 - a clock, or any setting that answers in your place, on something that cannot
   be taken back
@@ -776,9 +778,11 @@ Some questions are a sentence with holes in it rather than a list of answers:
 
     land them in [ ~/notes ] as [ a new file ] and keep the old copy: [ no ▾ ]
 
-`tab` moves to the next hole and `shift+tab` back. Both stop at the ends rather
-than wrapping. Typing fills a hole; `←→` walks the choices where a hole has a
-short list of them.
+`tab` moves to the next hole (`[tab] next blank` on the page's foot) and
+`shift+tab` back. Both stop at the ends rather than wrapping. Typing fills a
+hole; `←→` walks the choices where a hole has a short list of them. The walk is
+the shape's own verb — it stays on the foot at a hundred columns, the way
+`[space] tick it` stays on a checklist.
 
 Each hole opens on whatever the asker already knew, so you are not retyping it.
 Under the sentence, one dim line says what the hole you are in takes — a file or
@@ -945,7 +949,7 @@ picks one before anything is written.
 While a beat is up, the digits belong to it — `3` is the third shape and not the
 third answer — and `esc` backs out of the beat rather than putting the question
 off.
-## Questions on another machine, and on the engine behind an ordinary aforge
+## Questions on another machine, and on the engine behind an ordinary aforge — do questions work over the session host
 
 **A question reaches you wherever the conversation is, and you answer it where
 you are standing.** That is true on all three roads and there is nothing to turn

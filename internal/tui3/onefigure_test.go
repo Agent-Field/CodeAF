@@ -16,6 +16,7 @@ package tui3
 // string.
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -106,6 +107,41 @@ func TestTheFourSpendSurfacesRenderOneFigure(t *testing.T) {
 	row := plain(reading.railsRow(a.width, newPalette(tokens.NoColor, false)))
 	if !strings.Contains(row, want) {
 		t.Fatalf("the /spend place's pointer line reads %q, want it to carry %q", row, want)
+	}
+}
+
+// THE SAME ONE FIGURE ON THE ENGINE HOST'S DOOR, AFTER A RECEIPT THAT CAME LATE.
+//
+// A bare `aforge` opens a window on the engine host, which reads the ledger
+// through a seam and holds no path to it. The route judge the turn finished in
+// front of was cut, the provider's receipt for it was banked under this
+// conversation twenty seconds after the turn ended, and nothing asked the agent
+// again — so the frame clock's last reading of the books, $0.41, is all this
+// window's `cost` knows. The tab must still say what `today` says, because on a
+// machine holding one conversation they are the same money read two ways (the
+// tagged suite's one_figure_on_every_spend_surface, which this failed on).
+func TestTheSpendingTabCountsALateReceiptThroughTheHostSeam(t *testing.T) {
+	a, _ := sheetApp(t)
+	folder := filepath.Join(t.TempDir(), "projects", "repo", treeConversation)
+	a.file = filepath.Join(folder, "transcript.jsonl")
+	a.usageLedger = ""
+	now := time.Now()
+	a.ledger = func(time.Time) ([]session.UsageLine, bool, bool) {
+		return []session.UsageLine{
+			{At: now.Add(-time.Minute), Session: treeConversation, Model: "m", Calls: 1, USD: 0.41},
+			{At: now, Session: treeConversation, Model: "judge", Calls: 1, USD: 0.12, Reconciled: true},
+		}, true, true
+	}
+	a.cost = 0.41
+	a.openSettings()
+
+	want := dollars(0.53)
+	if got := spendingReceipt(t, a); got != "this one "+want {
+		t.Fatalf("Spending's per-conversation receipt reads %q, want %q", got, "this one "+want)
+	}
+	today := a.todayReading()
+	if today == nil || !strings.Contains(today.value.full, want) {
+		t.Fatalf("Spending's `today` row reads %+v, want it to carry %q", today, want)
 	}
 }
 

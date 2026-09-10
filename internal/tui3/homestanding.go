@@ -849,6 +849,15 @@ func (a *app) keepingCount() (int, bool) {
 // the disk to redraw something that changes on the order of minutes".
 const keepEvery = homeEvery
 
+// refreshKeepingCount drops the cached standing count so the next frame asks
+// the store again. It is the door a `stood` / `paused` / `stopped` update takes
+// ([app.standingUpdate], [app.errandUpdated]) rather than waiting out
+// [keepEvery] on a zero that was true a beat ago and is a lie now.
+func (a *app) refreshKeepingCount() {
+	a.keepAt = time.Time{}
+	a.standRailAt = time.Time{}
+}
+
 // keepingSegment is the standing side's own presence, drawn at the foot of the
 // task column and carried by /status and the phone sheet:
 //
@@ -856,7 +865,9 @@ const keepEvery = homeEvery
 //
 // IT WAS A SEGMENT OF THE STATUS ROW until 2026-09-09, which is why it is built
 // as one and still reaches [app.telemetry] — the sheet and /status read that
-// list. The column draws it through [app.railStandingLine] (task.go).
+// list. The column draws it through [app.railStandingLine] (task.go). A `stood`
+// update drops the cached reading ([app.refreshKeepingCount]) so the count
+// arrives with the news rather than a beat later.
 //
 // NOTHING AT ALL WHEN THERE IS NOTHING, which is the emptiness law applied to a
 // whole segment and the same call [app.ambientSegment] makes about jobs: a line
@@ -1062,10 +1073,26 @@ func (a *app) readStandBands() {
 		a.home.items, a.home.bare, a.home.fired = nil, nil, nil
 		return
 	}
-	bands := make(map[string][]StandingItemView, len(a.home.world.Projects))
-	known := make(map[string]bool, len(a.home.world.Projects))
-	var fired []StandingItemView
-	for _, project := range a.home.world.Projects {
+	bands, known, fired := a.standBandsOf(a.home.world)
+	a.home.items = bands
+	bare, bareFired := a.readBareBands(bands, known)
+	a.home.bare, a.home.fired = bare, append(fired, bareFired...)
+}
+
+// standBandsOf is every project's items in one world, keyed by bucket
+// directory, with the real paths it asked about and the one-offs that fired and
+// retired on the way.
+//
+// IT TAKES THE WORLD AND NOT HOME'S VIEW OF IT, because home is not the only
+// reader: the pulse counts these bands inside a conversation, where no home is
+// open (pulsebeat.go).
+func (a *app) standBandsOf(world session.World) (bands map[string][]StandingItemView, known map[string]bool, fired []StandingItemView) {
+	if a.stands.Items == nil {
+		return nil, nil, nil
+	}
+	bands = make(map[string][]StandingItemView, len(world.Projects))
+	known = make(map[string]bool, len(world.Projects))
+	for _, project := range world.Projects {
 		// THE PROJECT'S REAL PATH IS THE KEY THE STORE ANSWERS TO
 		// ([standing.Item.Workspace] is the resolved workspace, never the bucket),
 		// and a project nothing ever recorded a path for has nothing to ask about.
@@ -1083,9 +1110,7 @@ func (a *app) readStandBands() {
 		}
 		fired = append(fired, gone...)
 	}
-	a.home.items = bands
-	bare, bareFired := a.readBareBands(bands, known)
-	a.home.bare, a.home.fired = bare, append(fired, bareFired...)
+	return bands, known, fired
 }
 
 // readBareBands is the OTHER kind of project: a workspace this machine holds

@@ -148,8 +148,14 @@ type job struct {
 	// label and detail are a watch's short name and its terms ("every 10s on
 	// change"), empty for a bash job. They are set once at start and read
 	// without the lock.
-	label   string
-	detail  string
+	label  string
+	detail string
+	// dir is the folder the job was started in — the registry's workspace AT
+	// THE FORK, taken once and never moved. It is the job's own because the
+	// workspace is not: `anchor_workspace` re-roots the registry mid-session
+	// (tools_anchor_workspace.go), and a dev server started before that still
+	// runs where it was started, which is what a row naming its folder must say.
+	dir     string
 	started time.Time
 	logPath string
 	cmd     *exec.Cmd
@@ -227,9 +233,11 @@ type jobInfo struct {
 	// report to point a person at, and the log is what it points at instead
 	// (jobnotice.go).
 	logPath string
-	state   jobState
-	code    int
-	ticks   int
+	// dir is where the job was started ([job.dir]).
+	dir   string
+	state jobState
+	code  int
+	ticks int
 	// started is when the process forked, copied out beside elapsed so a surface
 	// can count a live job's clock up on its own beat rather than re-asking the
 	// engine for a duration four times a second (jobnotice.go says why both).
@@ -248,6 +256,7 @@ func (j *job) info() jobInfo {
 		id: j.id, command: j.command, kind: j.kind, label: j.label, detail: j.detail,
 		name:    j.name,
 		logPath: j.logPath,
+		dir:     j.dir,
 		state:   j.state, code: j.exitCode, ticks: j.ticks,
 		started: j.started, elapsed: elapsed,
 	}
@@ -527,13 +536,13 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 	// was taken away. Every caller of this already answers an error by carrying
 	// on without a log, which is the honest shape for work that is ending.
 	r.mu.Lock()
-	closed, epoch := r.closed, r.epoch
+	closed, epoch, workspace := r.closed, r.epoch, r.workspace
 	r.mu.Unlock()
 	if closed {
 		return nil, errSessionClosed
 	}
 
-	directory := droppingsDir(r.place, r.workspace, droppingJobs)
+	directory := droppingsDir(r.place, workspace, droppingJobs)
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		return nil, fmt.Errorf("could not create the jobs directory: %w", err)
 	}
@@ -547,6 +556,7 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 		id:      id,
 		command: command,
 		kind:    kind,
+		dir:     workspace,
 		started: time.Now(),
 		logPath: logPath,
 		// One sink for both streams, as bare's bash does: stdout and stderr
@@ -687,7 +697,7 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	// buffering fix in it at all.
 	shell, shellArgs := bare.StreamingShell(command)
 	process := exec.Command(shell, shellArgs...)
-	process.Dir = r.workspace
+	process.Dir = started.dir
 	process.Env = bare.StreamingEnv()
 	// Setsid puts the job and everything it spawns in one process group, so a
 	// kill reaches the whole tree — the leader of a new session leads its own

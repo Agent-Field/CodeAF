@@ -5835,7 +5835,18 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		// law). So the roster-only rule holds for work that came home DECIDED, and
 		// a decision is written wherever it is. It may fold under its family; it
 		// may not be absent.
-		if node.parent == "" || node.state == session.TaskUnverified {
+		//
+		// AND THE ANSWER TO THAT QUESTION IS WRITTEN WHERE THE QUESTION WAS. A part
+		// that carded `your call` here and is then settled — by a person's `a`, by
+		// the model under `task.settle = auto` — lands a second time, as done or
+		// incomplete, and that landing is the only account the conversation gets of
+		// the decision: the card's own receipt row went with its chips when the
+		// question moved onto the block (#776), and the block's `decided …` line is
+		// news for half a minute. Without the second card the part read `your call`
+		// in the conversation for ever after it had been decided (the tmux suite's
+		// nested-landing subtest, red from #776 until this). A part that never asked
+		// here still lands on the roster alone.
+		if node.parent == "" || node.state == session.TaskUnverified || a.doneEntryFor(node.id) >= 0 {
 			a.landedCard(node)
 		}
 	}

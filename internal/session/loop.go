@@ -491,6 +491,14 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// every request a turn makes — the talk turn itself and every node under it
 	// — descends from this context (newskey.go's [Agent.newsKey]).
 	ctx = provider.WithSession(ctx, a.newsKey())
+	// AND WHAT THE ERRAND IS ABOUT, which is a different question from whose it
+	// is: a conversation and every task node under it share one conversation,
+	// and each of them is a subject a window may be looking straight at. It is
+	// stamped beside the session for the same reason — every request this turn
+	// makes descends from this context — and it is EMPTY for the conversation
+	// itself, which is what makes a build that never had the stamp behave
+	// exactly as it always did (newskey.go's [Agent.newsSubject]).
+	ctx = provider.WithNode(ctx, a.newsSubject())
 	if a.config.InTask {
 		ctx = provider.WithRoutingIntent(ctx, provider.IntentBackground)
 	}
@@ -1230,6 +1238,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		if rung != effort.None {
 			attemptCtx = provider.WithConfiguredEffortRung(ctx, rung)
 		}
+		recordEffort(attemptCtx, model, rung)
 		// What this call is FOR, for the model-call log. A conversation's own
 		// turn and a task child's turn run the identical loop, and the one thing
 		// that tells them apart is whether this agent IS a node — so the word
@@ -1785,6 +1794,12 @@ type toolResult struct {
 	// on [Event.HarnessMade], and every counter that judges the model by its
 	// steps skips it — the harness's failures are the harness's steps.
 	harness bool
+	// refusedBy names the pre-action citizen that said no, and is empty on
+	// every result that is not a veto. Nobody is shown it: it exists so the
+	// debug record can say WHO refused a call, because a refusal recorded as a
+	// failure sends somebody debugging the tool instead of the gate
+	// (internal/trace's ToolEvent).
+	refusedBy string
 }
 
 // ── the early-start law ─────────────────────────────────────────────────────
@@ -2262,7 +2277,19 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 // been found to carry the tool: a call for a tool that does not exist is
 // answered "Unknown tool", never asked about. A question about a tool nobody
 // has is a question with no right answer.
+// AND IT IS WHERE THE DEBUG RECORD LEARNS ABOUT TOOLS. Everything a call can
+// become — it ran, it failed, a door refused it before it ran, the hand was not
+// on the belt at all — comes back through this one function, so the record is
+// written around it rather than inside the four exits below (debugrecord.go).
 func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
+	started := time.Now()
+	result := a.dispatchTool(ctx, ep, hub, call, rendered)
+	recordToolCall(ctx, call, result, started, time.Since(started))
+	return result
+}
+
+// dispatchTool is the dispatch itself: find the hand, ask the doors, run it.
+func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
 	for _, tool := range a.beltTools() {
 		if tool.Name != call.Function.Name {
 			continue
@@ -2299,13 +2326,20 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 		// OVER, and what it cost, is known here and is stale by the time the
 		// slowest sibling returns. Sent from inside the execution so the early
 		// start (warmBatch.consider) is measured the same way the batch is.
+		took := time.Since(started)
+		// AND THE RECORD KEEPS THE FIGURE where the event is sent, with the same
+		// id: a page opened after the batch — or a room rebuilt from the journal
+		// after a landing — has no stream to watch, and without this line the
+		// rows came back with Args and Output but no duration (sessionfile.go's
+		// [sessionFile.appendTook]).
+		a.file.appendTook(call.ID, took)
 		if hub != nil {
 			hub.send(Event{
 				Kind:   EventToolFinished,
 				Tool:   call.Function.Name,
 				Args:   rendered,
 				CallID: call.ID,
-				Took:   time.Since(started),
+				Took:   took,
 			})
 		}
 		if err != nil {

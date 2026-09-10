@@ -13,7 +13,7 @@ Yes. Type it on the home screen, press `↑` once — which lands on the row spe
  enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear
 ```
 
-What you get is **a row at the top of home's list and a pane holding the exchange**. The row
+What you get is **a row at the top of home's `where you were` panel and a pane holding the exchange**. The row
 stays there — with what the errand is doing written in its tail — until the errand is
 finished and you have read what it came to. The pane is the exchange itself: what you said,
 the reply as it streams, one line per tool call, and the card when one arrives. On an
@@ -41,10 +41,9 @@ Every `ask here` is one row, marked `?`, named with the first line of what you a
 - **`∙ stood`** — something now stands because of it.
 - **`∙ answered`** — it finished and nothing standing came of it.
 
-The rows sort the way everything else on this screen sorts: **what wants you first, then
-what is moving, then what is done**. They sit at the very **top of home's one list**, above
-everything the machine has to say for itself — an errand is a thing you asked for a minute
-ago.
+The rows sort among themselves: **what wants you first, then what is moving, then what is
+done**. They sit at the very **top of home's `where you were` panel**, above every
+conversation — an errand is a thing you asked for a minute ago.
 
 `enter` or `→` on the row hands the keyboard to the pane. The hint under the box says so:
 `↑↓ move · enter or tab answer this ask here · esc close`. (`tab` on the row was the way in
@@ -183,8 +182,9 @@ it:
 - **`esc`** in the pane hands the keyboard to the list. One layer at a time: if you have
   half a follow-up typed, the first `esc` clears that and the second one leaves.
 - **`enter`** on the exchange's row in the list hands the keyboard to its pane.
-- **clicking** puts the keyboard where the pointer is. A click on a list row selects that
-  row *and* takes the keyboard to the column; a click anywhere in the pane brings it back.
+- **clicking** puts the keyboard where the pointer is. A click on a list row opens that
+  row, as `enter` would, *and* takes the keyboard to the column; a click anywhere in the
+  pane brings it back.
 - **answering `1`** on a card hands it back by itself. The thing you asked for is being
   made, and the list is where you go next.
 
@@ -209,11 +209,11 @@ would do nothing.
 
 ## Ask here on a narrow window — the exchange takes the whole screen
 
-On a terminal too narrow for two columns — **under 136 columns** — home has no right-hand
-pane to put an exchange in. It does not refuse. The two
-zones are **stacked** instead of sat side by side:
+Home's panels have no right-hand pane to put an exchange in **at any width**, and a search
+under **136 columns** has none either. It does not refuse. The two are **stacked** instead
+of sat side by side:
 
-- the **list** is the screen until you enter an exchange;
+- the **panels** (or the list, while you type) are the screen until you enter an exchange;
 - the **exchange** is the screen while it holds the keyboard — the same pane, the same card,
   the same live strip, drawn at the full width;
 - **`esc`** or **`tab`** brings the list back, with the exchange's row still on it wearing
@@ -226,12 +226,13 @@ Resizing between the two shapes costs nothing: it is the same exchange and the s
 keyboard, drawn in whichever geometry fits. Drag a window narrow with the pane open and the
 pane fills the frame; drag it wide again and it goes back beside the list.
 
-## Why can't I click a row while asking — you can, and it selects it
+## Why can't I click a row while asking — you can, and it opens it
 
-You can, and it does. A click on any row of the left column puts the cursor on it and gives
-the keyboard to the column, so the next `↑` or `↓` walks from there. A second click on the
-same row opens it, which is home's ordinary two-step — one click that switched conversations
-would make a mis-aimed pointer close the session you are in.
+You can, and it does. A click on any row of the left column puts the cursor on it, gives
+the keyboard to the column and opens the row, exactly as `enter` on it would — one click,
+the same as on every place. A click on the exchange's own row gives its pane the keyboard,
+and a click on `ask here` or on the row of what you typed only puts the cursor there,
+because a click never starts a paid turn.
 
 A click on one of the card's answers in the pane answers the card, the same way clicking one
 answers it in a conversation. Each answer owns its whole row, so there is no gap between two

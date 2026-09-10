@@ -95,7 +95,8 @@ func TestEveryRefusalTellsTheAskerWhatToDoInstead(t *testing.T) {
 	for _, err := range []error{
 		errQuestionNoHead, errQuestionNoReason, errQuestionNoStakes,
 		errQuestionTooFewOptions, errQuestionTooManyOptions,
-		errQuestionChecklistWithoutOptions,
+		errQuestionChecklistWithoutOptions, errQuestionUnlabelledOption(2),
+		errQuestionUnknownPick("9"),
 		errQuestionClockOnIrreversible, errQuestionAutoOnIrreversible,
 		errQuestionAutoWithoutPick,
 	} {
@@ -764,6 +765,29 @@ func sameStrings(one, two []string) bool {
 // than under options — the schema's word for a list of things to fill in is
 // right there — and the gate has to name that move, not just refuse it, or the
 // model's next try is a free-text box.
+// AN ANSWER WITH NO LABEL IS REFUSED BY ITS NUMBER. The wire accepts an answer
+// that is only a key, because a schema's `required` is advice to a model and not
+// a law on the bytes; the gate is where the law lives, and it names the row so
+// the asker can write the one label it forgot rather than the whole question
+// again.
+func TestAnAnswerWithNoLabelIsRefusedByItsNumber(t *testing.T) {
+	q := wellFormed()
+	q.Ask = AskChoice
+	q.Options = []AnswerOption{{Key: "1", Label: "keep"}, {Key: "2"}, {Key: "3", Label: "drop"}}
+	err := q.Check(nil)
+	if err == nil || !strings.Contains(err.Error(), "answer 2 has none") {
+		t.Fatalf("an unlabelled answer was refused with %v, not by its number", err)
+	}
+	q.Options[1].Label = "   "
+	if err := q.Check(nil); err == nil || !strings.Contains(err.Error(), "answer 2") {
+		t.Fatalf("a label of nothing but spaces was refused with %v", err)
+	}
+	q.Options[1].Label = "rename"
+	if err := q.Check(nil); err != nil {
+		t.Fatalf("a question with every answer labelled was refused: %v", err)
+	}
+}
+
 func TestAChecklistWithItsItemsInBlanksIsToldToMoveThemIntoOptions(t *testing.T) {
 	q := wellFormed()
 	q.Ask = AskChoice

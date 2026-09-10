@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/lane/control"
+	"github.com/Agent-Field/aforge-v2/internal/trace"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -573,9 +574,11 @@ func (r *hedgeRace) act(from int, act control.Act) {
 // past [maxArms].
 func (r *hedgeRace) hedge(from int, act control.Act, alt string) {
 	var why string
+	wanted := alt
 	alt, why = r.claim(alt, false)
 	if alt == "" {
 		r.rememberRefusal(why)
+		r.recordHedge(wanted, why, false)
 		return
 	}
 	if !r.budget.Allow(waitNow(), r.estimate(alt, r.expected)) {
@@ -584,6 +587,7 @@ func (r *hedgeRace) hedge(from int, act control.Act, alt string) {
 		r.rememberRefusalLocked("budget")
 		delete(r.tried, strings.ToLower(alt))
 		r.mu.Unlock()
+		r.recordHedge(alt, "budget", false)
 		return
 	}
 	r.mu.Lock()
@@ -609,7 +613,32 @@ func (r *hedgeRace) hedge(from int, act control.Act, alt string) {
 	quiet := primary.watch.quietFor(waitNow())
 	r.phase.switching(strings.ToLower(alt), quiet)
 	r.tellFirstPrompt(alt, quiet, true)
+	r.recordHedge(alt, act.Reason, true)
 	r.start(index, alt)
+}
+
+// recordHedge writes to the debug record what this question did about a slow
+// answer: the second machine it put on the wire, or the reason it did not.
+//
+// A REFUSED HEDGE IS RECORDED AS LOUDLY AS A FIRED ONE. Both are the same
+// choice answered two ways, and a record that only kept the rescues would leave
+// a person watching a turn that waited ninety seconds with nothing at all
+// saying why nothing was done about it.
+func (r *hedgeRace) recordHedge(alt, reason string, fired bool) {
+	recorder := trace.For(r.base)
+	if recorder == nil {
+		return
+	}
+	choice := "no second machine"
+	if fired {
+		choice = alt
+	}
+	recorder.Decision(r.base, trace.Decision{
+		Kind:    "hedge",
+		Subject: r.model,
+		Choice:  choice,
+		Reason:  reason,
+	})
 }
 
 // rescueOnStall starts the second arm a stall is owed, without waiting for

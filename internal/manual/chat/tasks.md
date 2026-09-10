@@ -802,11 +802,28 @@ under a running reply, and it cannot start a task. This also applies if the inte
 arrives while the handover is preparing its brief: a canceled model call does not fall
 back to starting a worker from your original message.
 
-**What this does not cover: a sketch naming work you have already done.** Where the second
-reader draws independent parts still to do, the work moves — even if those parts landed in
-the seconds after that reader was shown its account of them. The reading is one line drawn
-from a snapshot. What was closed is the opposite mistake: silence, a fault, or a shape with
-no parts in it are no longer read as a reader saying work remains.
+**Both writers of the handover are told that finished work is not what is left.** The
+second reader's question ends with it in as many words: work already handed out is not a
+part, and work that is already done is not a part either — what the account it was shown
+says is finished is not what remains, and drawing it sends somebody to do it a second time.
+The model that writes the brief underneath is told the same thing about its prose: nothing
+already done goes under *what is left to do*, because what has been read, run or found out
+is what the worker **already knows**. Before that clause existed, a sketch naming reading
+the answer had already finished put it at the top of the brief under **WHAT IS LEFT, AS
+PARTS**, the worker obeyed the loudest and earliest line in its document, and it spent its
+first minutes re-reading what the conversation above it had read.
+
+**And the worker is told which half of its brief wins.** The list of calls that had already
+run is authoritative about what has happened: where the parts or the brief read as though
+one of those calls were still to be made, it has been made already, and the worker is told
+to read it through the pointer on its line rather than run it again — running it again only
+where the line says it failed or where what it reads disagrees with the brief.
+
+**What that still does not cover: the seconds after the account was taken.** The reading is
+one line drawn from a snapshot, so a part that lands while the reader is answering is still
+drawn as remaining and the work still moves. What was closed separately is the opposite
+mistake: silence, a fault, or a shape with no parts in it are no longer read as a reader
+saying work remains.
 
 ## Can I give a task a short name?
 
@@ -814,7 +831,9 @@ no parts in it are no longer read as a reader saying work remains.
 every task on this page and it is never rewritten. On top of it comes the brief: an
 instruction for whoever picks the work up, saying what is left, what was already found out
 that they would otherwise have to find again, what was ruled out, and how anybody could tell
-when it is done. Where the work was handed over because it had parts, the sketch and its
+when it is done. **Those first two are not the same list**: anything already done belongs
+under what is already known, never under what is left — see *It made a task out of work that
+was already done*. Where the work was handed over because it had parts, the sketch and its
 sentence sit at the top of that brief, so the worker starts with the pieces already named.
 Its name is cut from your own message too, and a short name replaces that a second later.
 
@@ -1262,6 +1281,25 @@ not skipped. The measured failure it fixes: "hand this work to a task, run the b
 the marker, keep the conversation free while it runs" was done exactly as asked, read as
 unfinished because the marker was not known yet, and carried on into polling the task it had
 just started and a watch over its own work.
+
+## A settled task with green checks is not carried on as unfinished — it kept saying the ask was not finished over a done task, carried on 3 times then said unfinished
+
+**When the task that was this request comes home done and its own checks have passed, the
+reply that reports the landing is not carried on as unfinished.** The card already shows
+it done. The end-of-turn reader is looking at a short account of what was said, not at the
+tree or the checks that already ran, and a reader that answers "still not finished" over
+that card is not evidence — it is the same echo that used to carry a finished ask on three
+times and then tell you it was unfinished.
+
+**A piece of a larger ask is still read.** If the landing is one finished part and what you
+asked for is bigger, or the landing is incomplete, or nobody ran the task's own checks, that
+reply is still read for what remains, the way a cheap woken reply always is. The gate is the
+landing's own fact: this request, this task, done, checks green.
+
+**It is the other half of handing the work out.** While the task is queued or running, the
+reply that started it is not read. When it lands done with its checks green, the reply that
+reports it is not read either. What is in between — a failed landing, a landing nobody
+checked, a new sentence you typed after it — is still read.
 
 **And one question is carried on at most three times.** A reader that answers "still not
 finished" about the same stopped reply three times running has stopped telling aforge anything
@@ -1712,7 +1750,8 @@ the same labels the settled card uses, listed under *Does a task touch my workin
 
 More than two landings in a row become one rollup — `✓ 3 tasks done · 9m14s` with a compact
 row per task under it. Any failure in the batch swaps the header to `✕ N tasks landed`; any
-`your call` swaps it to `? N tasks landed`. A delivery that did not land also keeps a
+`your call` swaps it to `? N tasks landed`. A task you answered straight after it landed is
+counted once, by what became of it — the `?` goes with the answer. A delivery that did not land also keeps a
 warning on the batch and its individual row. The header's span is wall-clock, first
 spawn to last landing, not the sum of the parts, because tasks run at the same time.
 
@@ -2195,9 +2234,9 @@ The reason is the `+ /task` row at the foot of the task column: that row puts `/
 your box before you have said what the work is, so a `/task` sent as it stands is asking
 the only question the word can answer with no brief behind it — *what work is there.*
 
-**On a project that has never run a task it opens the page anyway**, and the page says what
-tasks are and ends `no tasks yet — /task <brief> starts one` — which is exactly what
-`/history` and `ctrl+.` do there too.
+**On a project that has never run a task it opens the page anyway**, headed `tasks` over one
+line — `work you send off with /task lands here, and its record stays` — which is exactly
+what `/history` and `ctrl+.` do there too.
 
 **The forms that start work are unchanged.** `/task <brief>` and `/task solo <brief>`
 still size, shape and start the work directly, with no proposal card in between and no
@@ -2538,7 +2577,8 @@ there is more under them. The row the cursor is on never fades wherever it sits,
 short enough to fit fades nothing at all — see *Why the bottom rows of a long list look
 dimmer* on the screen page.
 
-At the bottom: one dim line counting THE WORK THE WINDOW HOLDS, section by section —
+At the bottom, written into the rule over the composer: the dim count of THE WORK THE
+WINDOW HOLDS, section by section —
 not the rows drawn, which is why it can read a larger number than you can count on the
 screen when a family is folded. The section heading is where that difference is said. It
 reads such as
@@ -2547,16 +2587,14 @@ is not counted at all — and under it the keys.
 
 **Every door onto this place opens it, on a machine that has run nothing too.** `/history`,
 a bare `/task`, `ctrl+.`, `alt+2` and `tab` all reach the same page, and with nothing on it
-the page explains itself instead of drawing counts:
+the page is its heading and one line naming what arrives there, instead of counts:
 
 ```
-tasks is the history of work this machine has run.
-it lists work aforge ran on its own, across every project.
-enter opens a task's room when there is one here.
-no tasks yet — /task <brief> starts one
+tasks
+  work you send off with /task lands here, and its record stays
 ```
 
-That last line used to be what `/history` said **instead** of opening, with `ctrl+.` doing
+`/history` used to say one sentence **instead** of opening, with `ctrl+.` doing
 nothing at all rather than raising an empty page. On a machine aforge was installed on an
 hour ago that was every door onto the page, so the first thing anybody tried appeared not to
 work. The sentence stayed and moved onto the page it is about. A session that has run
@@ -3183,7 +3221,7 @@ local conversation the same page tails that log live.
 | how you stop the work | `esc` | `x` over an empty box, which raises the confirmation card |
 | the box's own line | the bare `› ` | a tinted segment naming the task, in its state's hue, then `› ` |
 | box placeholder | the draft prompt | `Steer this task… (esc: main)`, or `Steer <title>… (esc: main)` where the frame is too narrow for the segment |
-| pinned top rows | the tab strip and one thin rule under it; `Chats ▾` at its right end opens the chat picker | the tab strip, then a breadcrumb row (conversation → ancestor tasks → current task) and a quiet facts row under it |
+| pinned top rows | the pulse line, the tab strip under it, one thin rule and a blank — the same four rows every place draws; `Chats ▾` at the strip's right end opens the chat picker | the same four rows — pulse, tab strip, rule, blank — so the rule does not move when you walk in; then a breadcrumb row (conversation → ancestor tasks → current task) and a quiet facts row under it |
 | legend word | the branch, or remote machine | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
 | legend hint | `esc interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
 | the model on the status row | the conversation's model | `task <the task's model>` |
@@ -4161,6 +4199,13 @@ What that does, exactly:
 - **It takes effect on the task's next turn.** The call the worker is in the middle of
   finishes on the model it started on — killing a request in flight would throw away work
   you have already paid and waited for — and everything after it is on the new model.
+- **Unless the work is already being checked, in which case the pick is saved for the next
+  run.** A running task is running across three lives: its own worker, the gate reading
+  what that worker left, and any repair round. Once the gate is reading, the worker has
+  stopped, so there is no next turn for the pick to reach. It is kept the way a finished
+  task's pick is kept — the room reads `next model <id>`, the sidebar heads itself `Next
+  run setup` — and it applies if you continue the work. The model on the row does not move,
+  because that model is the one the work actually ran on.
 - **It moves that task and nothing else.** The conversation stays on its own model, and so
   does every other task. Walk back out with `esc` and the status line is the
   conversation's model again.
@@ -4171,7 +4216,9 @@ What that does, exactly:
   class, otherwise the model the conversation is on. A pick made inside one room is not a
   preference the session learns.
 - **The row, the roster and the finished card all say the new model** from that moment on,
-  and the change survives a restart.
+  and the change survives a restart. A pick that was saved for the next run instead leaves
+  all three naming the model the work ran on, which is what a bill can be reconciled
+  against.
 
 The picker offers the same rows `/model` offers, and it opens with the cursor on the model
 the task is already running — so `enter` confirms rather than changes. `esc` leaves
