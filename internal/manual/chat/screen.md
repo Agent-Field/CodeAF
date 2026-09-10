@@ -243,13 +243,16 @@ leaves both the tab and permission untouched; `stop work` cancels that reply.
 
 **Closing a tab with work in it asks first.** A card appears above the message box
 naming that conversation and what it is doing — `Close this tab? the tree walk is
-working · 2 tasks running` — with three answers under it and a dim line saying what the
-answer the cursor is on will actually do:
+working · 2 tasks running` — with one row per answer under it, each carrying its own
+digit and its own dim sentence saying what taking it does:
 
 ```
-  ? Close this tab? the tree walk is working · 2 tasks running
-    ▌[keep running]   [stop work]   [cancel]
-    it keeps going here; find it under Chats, and ctrl+shift+t brings the tab back
+?  Close this tab? the tree walk is working · 2 tasks running
+     nothing here is deleted
+     1  keep running  it keeps going here; find it under Chats, and ctrl+shift+t brings the tab back
+     2  stop work     the reply, tasks and jobs stop; nothing is deleted
+     3  cancel        nothing changes
+   [enter] take the pick · [esc] cancel · [←→] pick
 ```
 
 | Answer | What it does |
@@ -266,13 +269,22 @@ Keeping or reopening a tab does not restart stopped work.
 Chats marks a hidden reply or background job `working` even when it has no tasks. A reply that
 finishes while held there says `it finished while you were away`.
 
-Narrow terminals shorten the answers to `keep`, `stop`, and `cancel`; the smallest
-frames show their keys `k`, `s`, and `esc`. Each visible answer remains clickable.
+## The keys on the close-tab card — k and s do not answer it any more
 
-The cursor opens on **keep running**, so `enter` is the safe answer. `←` and `→` walk the
-three and stop at the ends rather than wrapping; `k` keeps running, `esc` is `cancel`, `s` is `stop work`,
-and clicking an answer takes it. `ctrl+c` puts the card away and goes on to do what it
-normally does — leaving is never something you get stuck inside.
+**`1`, `2` and `3` MOVE THE CURSOR; `enter` is what decides.** The digit beside an
+answer walks the cursor onto that answer and draws it lit — it does not take it.
+`←` and `→` walk the same three and stop at the ends rather than wrapping.
+`enter` takes whatever the cursor is on. Clicking an answer’s row takes it.
+
+**The cursor opens on `keep running`,** so `enter` is the safe answer, and so is
+`esc`: on this card `esc` is `cancel`, which changes nothing at all. `ctrl+c` puts the
+card away and goes on to do what it normally does — leaving is never something you get
+stuck inside.
+
+**`k` and `s` are not keys on this card.** They used to answer it outright — one
+keystroke, no cursor, work ended — which is the bypass this card exists to not have.
+Every answer now carries its own digit on its own row, and every one of them still
+needs `enter`.
 
 **The difference between `keep running` and `stop work` is only whether that chat is
 still working afterwards** — both take the tab off the row, and neither deletes anything.
@@ -283,9 +295,18 @@ raised only for a chat writing a reply, running tasks or holding a question. It 
 go away when that finishes underneath it, so an answer arriving a moment before your press
 cannot turn `stop work` into a press that lands on nothing.
 
-The selected answer is marked `▌` — `>` where there are no box characters. Where the frame
-is too narrow for all three the row is cut at the right and the keys still answer it;
-under four columns the card draws nothing.
+While the card is up the message box keeps whatever you had typed and will not send it:
+`enter` belongs to the card. The sentence is exactly where you left it once the card is
+answered.
+
+Where the frame is too narrow for a row, that row is cut at the right end and its digit
+still answers it. Below sixty columns the card is drawn as a full-width sheet instead,
+one band per answer.
+
+The answer the cursor is on is drawn lit. **Answering this card leaves no `decided …`
+row above the box**, unlike a permission question. What happened is already in front of
+you: the tab has gone, the work has stopped and said so in the conversation, or nothing
+at all has moved.
 
 
 Reopening a running chat through this machine’s engine restores the reply so far

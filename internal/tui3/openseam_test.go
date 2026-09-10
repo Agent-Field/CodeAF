@@ -70,7 +70,8 @@ func TestAnAlwaysAfterNewReachesTheConversationInFront(t *testing.T) {
 
 	typeLine(t, a, "/new")
 	typeLine(t, a, "look at the gate")
-	drive(t, a, key("a"))
+	settleAsk(a)
+	drive(t, a, key("2"))
 
 	if len(front.answers) != 1 || !front.answers[0].allow {
 		t.Fatalf("the new conversation was answered %+v", front.answers)
@@ -110,7 +111,8 @@ func TestAnAlwaysAfterAResumeReachesTheConversationInFront(t *testing.T) {
 		t.Fatalf("the resume refused: %s", note)
 	}
 	typeLine(t, a, "look at the gate")
-	drive(t, a, key("a"))
+	settleAsk(a)
+	drive(t, a, key("2"))
 
 	if len(banked) != 1 || banked[0] != "the conversation in front: read" {
 		t.Fatalf("the always went to %v", banked)

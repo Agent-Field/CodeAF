@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
@@ -24,8 +25,9 @@ func (f *fakeAgent) FollowUp(string) (<-chan session.Event, error) {
 }
 func (f *fakeAgent) ResolveConsent(uint64, bool)                               {}
 func (f *fakeAgent) ResolveConsentRemember(uint64, bool, session.ConsentScope) {}
-func (f *fakeAgent) ResolveHarness(uint64, bool, string)                       {}
-func (f *fakeAgent) Title() string                                             { return "" }
+
+func (f *fakeAgent) ResolveHarness(uint64, bool, string) {}
+func (f *fakeAgent) Title() string                       { return "" }
 
 // wiredAgent records the three answers this wave sends back into the session:
 // a consent resolution, a queued message, and nothing else.
@@ -53,6 +55,24 @@ func (w *wiredAgent) ResolveConsent(id uint64, allow bool) {
 
 func (w *wiredAgent) ResolveConsentRemember(id uint64, allow bool, scope session.ConsentScope) {
 	w.answers = append(w.answers, answered{id: id, allow: allow, scope: scope})
+}
+
+// ResolveQuestion is THE ONE DOOR, on the stand-in.
+//
+// IT ROUTES RATHER THAN DECIDING, exactly as the engine's does (session's
+// [Agent.ResolveQuestion]): it reads which lane the answer names, asks the ONE
+// mapping what the key means ([session.AnswerFromKey]) and how far it reaches
+// ([session.ConsentScopeOf]), and hands it to the resolver these tests already
+// record against. A stand-in that mapped keys itself would be a second table,
+// and the first hour one of them moved the tests would be green about the wrong
+// answer.
+func (w *wiredAgent) ResolveQuestion(answer session.Answer) error {
+	action, ok := session.AnswerFromKey(answer.Kind, answer.FirstKey())
+	if !ok || action.Kind != session.QuestionConsent {
+		return nil
+	}
+	w.ResolveConsentRemember(answer.ID, action.Allow, session.ConsentScopeOf(action, answer))
+	return nil
 }
 
 func (w *wiredAgent) FollowUp(text string) (<-chan session.Event, error) {
@@ -90,6 +110,94 @@ func consentEvent(id uint64, tool, hint, rule string) session.Event {
 	}
 }
 
+// ── the approval question, as a test reaches it ─────────────────────────────
+//
+// The block holds it now (question.go), so these are the three things a test
+// used to read straight off `app.asks`: which question is up, its reading clock,
+// and how many are queued behind it.
+
+// askHead is the approval question the block is drawing.
+func askHead(t *testing.T, a *app) *questionShown {
+	t.Helper()
+	open := a.consentOpen()
+	if open == nil {
+		t.Fatal("no approval question is on the block")
+	}
+	return open
+}
+
+// askCount is how many approval questions are open, queued ones included.
+func askCount(a *app) int {
+	n := 0
+	for _, open := range a.questions {
+		if open.question.Kind == session.QuestionConsent {
+			n++
+		}
+	}
+	return n
+}
+
+// raiseAsk puts one approval question on the block without a turn behind it,
+// which is what a test asserting about the QUESTION rather than about the gate
+// wants.
+func raiseAsk(a *app, id uint64, tool string) {
+	a.raiseQuestion(a.consentShown(consentEvent(id, tool, tool+" something", "")))
+}
+
+// askClockLeft is what is left of the head question's reading clock.
+func askClockLeft(a *app) time.Duration {
+	left, _, ok := a.questionReadingLeft()
+	if !ok {
+		return 0
+	}
+	return left
+}
+
+// askHeld reports whether that clock has stopped.
+func askHeld(a *app) bool {
+	_, held, ok := a.questionReadingLeft()
+	return ok && held
+}
+
+// settleAsk puts every open question far enough back that the block will take a
+// key from it ([app.questionSettled]).
+//
+// A test that pressed a key on the frame the question arrived on would be
+// testing the settle guard rather than the answer — 250ms is one keystroke at a
+// fast typing speed, and the whole point of the guard is that nothing inside it
+// counts. The guard's OWN test drives its own clock (question_test.go's lab);
+// everything else here says "the question has been on screen a moment" and gets
+// on with what it is about.
+func settleAsk(a *app) {
+	for i := range a.questions {
+		a.questions[i].shown = a.now().Add(-questionSettle - time.Millisecond)
+	}
+}
+
+// askOffer is the block's answers row as a reader sees it, and which row of the
+// block it is drawn on. Both come out of the draw itself ([app.questionSpanRow]
+// is written there), so a test and the surface cannot disagree about where the
+// answers are.
+func askOffer(t *testing.T, a *app) (string, int) {
+	t.Helper()
+	rows := a.questionRows(a.width)
+	at := a.questionSpanRow
+	if at < 0 || at >= len(rows) {
+		t.Fatalf("the block drew %d rows and put its answers on row %d", len(rows), at)
+	}
+	return rows[at], at
+}
+
+// startAskClock stamps the head question's reading clock at a moment a test
+// names, which is how a test reaches an expiry without waiting for one.
+func startAskClock(a *app, at time.Time, held bool) {
+	open := a.consentOpen()
+	if open == nil {
+		return
+	}
+	open.clockAt, open.clockFor, open.clockHeld = at, a.askWait, held
+}
+
 // ── 1. the approval question ────────────────────────────────────────────────
 
 func TestAConsentQuestionShowsTheCallTheOfferAndTheRule(t *testing.T) {
@@ -97,40 +205,49 @@ func TestAConsentQuestionShowsTheCallTheOfferAndTheRule(t *testing.T) {
 		toolBegin("bash", "bash rm -rf build"),
 		consentEvent(7, "bash", "bash rm -rf build", `bash pattern "rm -rf *"`),
 	})
+	// An ordinary terminal, which is the width the line form is measured at: a
+	// narrower one promotes to the card rather than cutting an answer off the
+	// end (see [TestANarrowFrameGivesEveryAnswerARowRatherThanCuttingOne]).
+	a.width = 80
 	typeLine(t, a, "clean the tree")
+	settleAsk(a)
 
 	got := plain(frame(a))
 	for _, want := range []string{
-		"rm -rf build",   // the row the transcript already drew
-		"allow? [y] yes", // the offer, on the answer's own first letter
-		"[n] no",
-		"[a] always",              // the widening yes
-		"[esc] cancel",            // and the way out, which is a no
+		"rm -rf build",          // the row the transcript already drew
+		"allow? [1] allow once", // the answers, by the digits every question takes
+		"[3] deny",
+		"] always",                // the widening yes
+		"[esc] later",             // and the way out, which cancels nothing
 		`bash pattern "rm -rf *"`, // the policy's own words for why
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the question is missing %q:\n%s", want, got)
 		}
 	}
-	// A FRAME WITH ROOM SAYS HOW FAR THE WIDENING YES GOES. The narrow spelling
-	// above is the same offer with one cell shortened — never one with an answer
-	// truncated off the end.
+	// A FRAME WITH ROOM SAYS HOW FAR THE WIDENING YES GOES. The short spelling
+	// on a narrower frame is the same answer with its aside dropped — never one
+	// with an answer truncated off the end.
 	a.width = 120
-	if wide := plain(frame(a)); !strings.Contains(wide, "[a] always, this tool (session)") {
-		t.Fatalf("the wide offer does not say how far always reaches:\n%s", wide)
+	if wide := plain(frame(a)); !strings.Contains(wide, "[2] always, this tool (session)") {
+		t.Fatalf("the wide answers row does not say how far always reaches:\n%s", wide)
 	}
-	a.width = 60
 
-	// While it is up the draft is suspended: a key that is not an answer types
-	// nothing into a conversation that cannot move.
+	// THE BLOCK IS NEVER MODAL. A key it does not draw belongs to the composer,
+	// which is what the ladder's last rung needs: somewhere to type the answer
+	// that was not on offer.
 	drive(t, a, key("x"))
-	if a.input.String() != "" {
-		t.Fatalf("a key reached the draft while a question was up: %q", a.input.String())
+	if a.input.String() != "x" {
+		t.Fatalf("a key the block does not draw did not reach the box: %q", a.input.String())
 	}
+	if !a.asking() {
+		t.Fatal("typing took the question off the screen")
+	}
+	a.input.reset()
 
-	drive(t, a, key("y"))
+	drive(t, a, key("1"))
 	if len(agent.answers) != 1 || agent.answers[0] != (answered{id: 7, allow: true, scope: session.ConsentOnce}) {
-		t.Fatalf("[y] resolved %+v", agent.answers)
+		t.Fatalf("[1] resolved %+v", agent.answers)
 	}
 	if a.asking() {
 		t.Fatal("the question stayed up after it was answered")
@@ -141,48 +258,54 @@ func TestAConsentQuestionShowsTheCallTheOfferAndTheRule(t *testing.T) {
 	if !strings.Contains(got, "rm -rf build") || !strings.Contains(got, "allowed") {
 		t.Fatalf("the answered call lost its row or its annotation:\n%s", got)
 	}
-	if strings.Contains(got, "allow? [y]") {
-		t.Fatalf("the offer survived the answer:\n%s", got)
+	if strings.Contains(got, "allow? [1]") {
+		t.Fatalf("the answers row survived the answer:\n%s", got)
+	}
+	// AND THE ANSWER LEFT ITS RECEIPT where the question was.
+	if !strings.Contains(got, "decided") {
+		t.Fatalf("the answer left no receipt:\n%s", got)
 	}
 }
 
-// THE ALWAYS KEY IS NOT ON A QUESTION IT WOULD DO NOTHING TO. The stuck
+// THE WIDENING ANSWER IS NOT ON A QUESTION IT WOULD DO NOTHING TO. The stuck
 // question (session's recovery.go) borrows the consent lane to ask about a TURN,
-// and the engine drops a tool-session scope on it — so the offer leaves the key
-// off, and pressing it anyway does not answer the question by accident.
+// and the engine drops a tool-session scope on it — so the row leaves the answer
+// off, and pressing its key anyway does not answer the question by accident.
 func TestTheAlwaysKeyIsHiddenAndInertOnAQuestionThatCannotRememberIt(t *testing.T) {
 	ask := consentEvent(5, "bash", "bash make test", "the turn is repeating itself")
 	ask.Memo = false
 	agent, a := wired([]session.Event{toolBegin("bash", "bash make test"), ask})
 	typeLine(t, a, "go on")
+	settleAsk(a)
 
 	got := plain(frame(a))
-	if strings.Contains(got, "[a]") || strings.Contains(got, "always") {
-		t.Fatalf("an inert option is on the offer:\n%s", got)
+	if strings.Contains(got, "always") {
+		t.Fatalf("an inert answer is on the row:\n%s", got)
 	}
-	if !strings.Contains(got, "[y] yes") || !strings.Contains(got, "[n] no") {
+	if !strings.Contains(got, "[1] allow once") || !strings.Contains(got, "[3] deny") {
 		t.Fatalf("the two real answers went with it:\n%s", got)
 	}
 
-	drive(t, a, key("a"))
+	drive(t, a, key("2"))
 	if len(agent.answers) != 0 {
-		t.Fatalf("the hidden key answered anyway: %+v", agent.answers)
+		t.Fatalf("the missing answer's key answered anyway: %+v", agent.answers)
 	}
 	if !a.asking() {
 		t.Fatal("the question was resolved by a key that is not on it")
 	}
-	drive(t, a, key("n"))
+	a.input.reset()
+	drive(t, a, key("3"))
 	if len(agent.answers) != 1 || agent.answers[0].allow {
-		t.Fatalf("[n] resolved %+v, want a deny", agent.answers)
+		t.Fatalf("[3] resolved %+v, want a deny", agent.answers)
 	}
 }
 
-// THE COUNTDOWN ANSWERS NO, AND IT STOPS THE MOMENT SOMEBODY IS THERE.
+// THE READING CLOCK HOLDS AT EXPIRY AND NEVER ANSWERS.
 //
-// The clock exists so a tool call cannot be parked forever on a prompt nobody is
-// reading. It can only ever deny — an expiry that approved would make "prompt"
-// mean "allow" on any unattended screen — and any keypress at all ends it, since
-// a key is evidence of a person mid-decision.
+// The clock exists so a tool call cannot be parked forever on a question nobody
+// is reading. It can never answer — F41 was a hidden ten-second timer that
+// recorded "denied" and killed work nobody refused — and any keypress the block
+// reads ends it, since a key is evidence of a person mid-decision.
 func TestTheApprovalCountdownPausesAtExpiryAndNeverDenies(t *testing.T) {
 	at := time.Now()
 	agent, a := wired([]session.Event{
@@ -193,10 +316,12 @@ func TestTheApprovalCountdownPausesAtExpiryAndNeverDenies(t *testing.T) {
 	// the setting's default is 10 (config), and a test that resolved it from
 	// disk would be a test of whoever is running it.
 	a.clock, a.askWait = func() time.Time { return at }, 10*time.Second
+	a.width = 120
 	typeLine(t, a, "clean it")
+	settleAsk(a)
 
 	if !strings.Contains(plain(frame(a)), "· 10s") {
-		t.Fatalf("the offer is not counting down:\n%s", plain(frame(a)))
+		t.Fatalf("the answers row is not counting down:\n%s", plain(frame(a)))
 	}
 	// Short of the deadline nothing happens.
 	at = at.Add(9 * time.Second)
@@ -225,8 +350,11 @@ func TestTheApprovalCountdownPausesAtExpiryAndNeverDenies(t *testing.T) {
 		consentEvent(4, "edit", "edit main.go", `tool "edit"`),
 	})
 	a.clock, a.askWait = func() time.Time { return at }, 10*time.Second
+	a.width = 120
 	typeLine(t, a, "edit it")
-	drive(t, a, key("x"))
+	settleAsk(a)
+	drive(t, a, key("esc"))
+	drive(t, a, tea.KeyPressMsg{Code: 'a', Mod: tea.ModAlt})
 	if !strings.Contains(plain(frame(a)), "· paused") {
 		t.Fatalf("the clock did not say it is paused:\n%s", plain(frame(a)))
 	}
@@ -240,31 +368,78 @@ func TestTheApprovalCountdownPausesAtExpiryAndNeverDenies(t *testing.T) {
 	}
 }
 
-func TestDenyAndRememberTakeTheirOwnRoads(t *testing.T) {
-	// esc is deny: the dismiss key resolves to the safe answer, not to a trap.
+// esc IS LATER AND CANCELS NOTHING, which is the one word on this block that
+// changed meaning. It was `cancel` for a year and cancel meant deny — the safe
+// reading of "get this off my screen" when the only alternative was a modal
+// nobody could leave. The block is not modal any more, so esc folds the question
+// to the chip, leaves the turn paused on it, and lets the person type.
+func TestEscapeIsLaterOnAnApprovalQuestionAndAnswersNothing(t *testing.T) {
 	agent, a := wired([]session.Event{
 		toolBegin("edit", "edit main.go"),
 		consentEvent(3, "edit", "edit main.go", `tool "edit"`),
 	})
+	a.width = 80
 	typeLine(t, a, "fix it")
+	settleAsk(a)
 	drive(t, a, key("esc"))
-	if len(agent.answers) != 1 || agent.answers[0].allow || agent.answers[0].scope != session.ConsentOnce {
-		t.Fatalf("esc resolved %+v, want a one-time deny", agent.answers)
+	if len(agent.answers) != 0 {
+		t.Fatalf("esc answered %+v, and it answers nothing", agent.answers)
 	}
-	if !strings.Contains(plain(frame(a)), "denied") {
-		t.Fatalf("the refused call is not annotated:\n%s", plain(frame(a)))
+	if !a.asking() {
+		t.Fatal("esc took the question off the block instead of folding it")
 	}
+	if got := plain(frame(a)); !strings.Contains(got, "1 question · "+questionChipKey) {
+		t.Fatalf("the folded question is not counted on the chip:\n%s", got)
+	}
+	// And the chip brings it back.
+	drive(t, a, tea.KeyPressMsg{Code: 'a', Mod: tea.ModAlt})
+	if got := plain(frame(a)); !strings.Contains(got, "allow?") {
+		t.Fatalf("the chip did not raise the folded question:\n%s", got)
+	}
+}
 
-	// [t] is the session-scoped yes, and it is the only key that widens anything.
-	agent, a = wired([]session.Event{
+// The widening yes is the only answer that widens anything, and it says which
+// scope it carried.
+func TestTheWideningYesTakesItsOwnRoad(t *testing.T) {
+	agent, a := wired([]session.Event{
 		toolBegin("read", "read go.mod"),
 		consentEvent(11, "read", "read go.mod", `tool "read"`),
 	})
 	typeLine(t, a, "look at it")
-	drive(t, a, key("t"))
+	settleAsk(a)
+	drive(t, a, key("2"))
 	want := answered{id: 11, allow: true, scope: session.ConsentToolSession}
 	if len(agent.answers) != 1 || agent.answers[0] != want {
-		t.Fatalf("[t] resolved %+v, want %+v", agent.answers, want)
+		t.Fatalf("[2] resolved %+v, want %+v", agent.answers, want)
+	}
+}
+
+// A NARROW FRAME GIVES EVERY ANSWER A ROW RATHER THAN CUTTING ONE OFF.
+//
+// The line puts the question and its answers on one row, and on a frame with no
+// room for that the honest shape is the card — an offer with its tail truncated
+// is an offer that hides an answer, and the answer it hides is the last one,
+// which on this lane is `deny`. Forms promote and never demote
+// (docs/design/questions/DESIGN.md).
+func TestANarrowFrameGivesEveryAnswerARowRatherThanCuttingOne(t *testing.T) {
+	_, a := wired([]session.Event{
+		toolBegin("bash", "bash rm -rf build"),
+		consentEvent(7, "bash", "bash rm -rf build", `bash pattern "rm -rf *"`),
+	})
+	a.width = 60
+	typeLine(t, a, "clean the tree")
+	settleAsk(a)
+
+	got := plain(frame(a))
+	for _, want := range []string{"1  allow once", "2  always", "3  deny", "[esc] later"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("at sixty columns the card is missing %q:\n%s", want, got)
+		}
+	}
+	for _, row := range a.questionRows(a.width) {
+		if w := ansi.StringWidth(row); w > a.width {
+			t.Fatalf("a row is %d cells wide on a %d-column frame: %q", w, a.width, row)
+		}
 	}
 }
 
@@ -278,28 +453,29 @@ func TestQuestionsQueueOldestFirstAndSayHowManyAreBehind(t *testing.T) {
 		consentEvent(3, "bash", "bash rm -rf .", "default"),
 	})
 	typeLine(t, a, "do the three things")
+	settleAsk(a)
 
-	if len(a.asks) != 3 {
-		t.Fatalf("%d questions are queued, want 3", len(a.asks))
+	if askCount(a) != 3 {
+		t.Fatalf("%d questions are queued, want 3", askCount(a))
 	}
 	if !strings.Contains(plain(frame(a)), "2 more") {
 		t.Fatalf("the block has to say what is behind it:\n%s", plain(frame(a)))
 	}
 
 	// Oldest first, and the count follows.
-	drive(t, a, key("a"))
+	drive(t, a, key("2"))
 	if len(agent.answers) != 1 || agent.answers[0].id != 1 {
 		t.Fatalf("the queue answered %+v first", agent.answers)
 	}
 	if !strings.Contains(plain(frame(a)), "1 more") {
 		t.Fatalf("the count did not follow the answer:\n%s", plain(frame(a)))
 	}
-	drive(t, a, key("d"))
-	drive(t, a, key("a"))
+	drive(t, a, key("3"))
+	drive(t, a, key("2"))
 	if len(agent.answers) != 3 || agent.answers[1].id != 2 || agent.answers[2].id != 3 {
 		t.Fatalf("the queue resolved out of order: %+v", agent.answers)
 	}
-	if a.asking() || strings.Contains(plain(frame(a)), "allow?") {
+	if a.asking() || strings.Contains(plain(frame(a)), "allow? [1]") {
 		t.Fatalf("the block survived an empty queue:\n%s", plain(frame(a)))
 	}
 	// Each call kept the decision that was made about it.
@@ -314,6 +490,7 @@ func TestQuestionsQueueOldestFirstAndSayHowManyAreBehind(t *testing.T) {
 func TestTheTitleReachesTheStatusLineLiveAndOnResume(t *testing.T) {
 	_, a := wired([]session.Event{{Kind: session.EventTitleChanged, Text: "porting the parser"}})
 	typeLine(t, a, "port it")
+	settleAsk(a)
 
 	status := plain(a.status(a.width))
 	if !strings.Contains(status, "porting the parser") {
@@ -338,6 +515,7 @@ func ctrlQ() tea.KeyPressMsg { return tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtr
 func TestCtrlQQueuesAMessageForAfterTheTurnAndShowsTheCount(t *testing.T) {
 	agent, a := wired([]session.Event{text(session.EventTextDelta, "working on it")})
 	typeLine(t, a, "the first thing")
+	settleAsk(a)
 	if a.state != stateWorking {
 		t.Fatalf("state is %v, want working", a.state)
 	}
@@ -395,6 +573,7 @@ func TestCtrlQQueuesAMessageForAfterTheTurnAndShowsTheCount(t *testing.T) {
 func TestAnInterruptDropsWhatWasQueued(t *testing.T) {
 	agent, a := wired([]session.Event{text(session.EventTextDelta, "working")})
 	typeLine(t, a, "go")
+	settleAsk(a)
 	typeInto(t, a, "and after that")
 	drive(t, a, ctrlQ())
 	if len(a.follows) != 1 {
@@ -417,6 +596,7 @@ func TestAnInterruptDropsWhatWasQueued(t *testing.T) {
 func TestFollowUpsDrainInOrderBeforeTheParkedMessage(t *testing.T) {
 	agent, a := wired([]session.Event{text(session.EventTextDelta, "working")})
 	typeLine(t, a, "the first turn")
+	settleAsk(a)
 	typeInto(t, a, "first follow-up")
 	drive(t, a, ctrlQ())
 	typeInto(t, a, "second follow-up")
@@ -471,6 +651,7 @@ func TestFollowUpsDrainInOrderBeforeTheParkedMessage(t *testing.T) {
 func TestEscClosesQueuedStreamsAndDropsTheParkedTurn(t *testing.T) {
 	agent, a := wired([]session.Event{text(session.EventTextDelta, "working")})
 	typeLine(t, a, "the first turn")
+	settleAsk(a)
 	for _, line := range []string{"first follow-up", "second follow-up"} {
 		typeInto(t, a, line)
 		drive(t, a, ctrlQ())
@@ -535,6 +716,7 @@ func TestTheThinkingBlockStreamsCollapsesAndExpands(t *testing.T) {
 		text(session.EventReasoning, "so read that first"),
 	})
 	typeLine(t, a, "where is the parser?")
+	settleAsk(a)
 	showLiveWork(t, a)
 
 	got := plain(frame(a))
@@ -608,6 +790,7 @@ func TestALongThoughtIsCappedAndAClickOpensIt(t *testing.T) {
 	}
 	_, a := wired([]session.Event{text(session.EventReasoning, strings.Join(lines, "\n"))})
 	typeLine(t, a, "think it through")
+	settleAsk(a)
 	showLiveWork(t, a)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: text(session.EventTextDelta, "done")})
 
@@ -634,6 +817,7 @@ func TestReasoningPersistsOnScreenAndIsNeverReplayed(t *testing.T) {
 		text(session.EventTextDelta, "yes"),
 	})
 	typeLine(t, a, "well?")
+	settleAsk(a)
 	agent.finish()
 	drive(t, a, streamClosedMsg{gen: a.gen})
 

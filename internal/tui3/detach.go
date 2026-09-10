@@ -277,8 +277,8 @@ func (a *app) detachConversation() *aside {
 		cursor = len([]rune(side.draft))
 	}
 	side.draftCursor = &cursor
-	if left, ok := a.askLeft(); ok {
-		side.askLeft, side.askPaused = left, a.askPaused
+	if left, held, ok := a.questionReadingLeft(); ok {
+		side.askLeft, side.askPaused = left, held
 	}
 	if a.room != nil {
 		side.room = a.room.id
@@ -328,7 +328,8 @@ func (a *app) clearConversation() {
 	// index into a transcript that has been replaced points at somebody else's
 	// row, and a confirmation arriving after the swap would take the mark off it.
 	a.echoAt = -1
-	a.asks, a.follows = nil, nil
+	a.dropAsks()
+	a.follows = nil
 	// A warm ctrl+c names what a second press would stop IN THIS CONVERSATION,
 	// and after this line that is a different one (quitarm.go).
 	a.disarmQuit()

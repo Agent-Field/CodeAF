@@ -20,7 +20,7 @@ func TestCloseStopUsesWholeConversationDoor(t *testing.T) {
 	door := &wholeStopAgent{asyncAgent: first}
 	a.agent = door
 	drain(t, a, a.tabDismiss(a.frontChatTab()))
-	drive(t, a, key(tabCloseStopKey))
+	takeAnswer(t, a, "2")
 	if door.calls != 1 {
 		t.Fatalf("whole stop calls = %d", door.calls)
 	}
@@ -36,7 +36,7 @@ func TestCloseStopRefusalKeepsTheTabAndWork(t *testing.T) {
 	a.agent = door
 	before := a.frontTabKey()
 	drain(t, a, a.tabDismiss(a.frontChatTab()))
-	drive(t, a, key(tabCloseStopKey))
+	takeAnswer(t, a, "2")
 	if a.frontTabKey() != before || first.stops != 0 {
 		t.Fatal("failed stop hid or interrupted the conversation")
 	}

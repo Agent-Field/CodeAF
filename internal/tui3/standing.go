@@ -609,7 +609,7 @@ func (c *standingCard) offers(key string) bool {
 	if c == nil {
 		return false
 	}
-	at, ok := taskModelKey(key)
+	at, ok := standDigitKey(key)
 	return ok && at < len(c.chips())
 }
 
@@ -663,7 +663,7 @@ func (a *app) standingKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.answerStanding(session.StandingAnswer{}, standNoWord, "")
 		return nil, true
 	}
-	if at, ok := taskModelKey(msg.String()); ok {
+	if at, ok := standDigitKey(msg.String()); ok {
 		if at < len(card.chips()) {
 			return a.takeStanding(at), true
 		}
@@ -1131,7 +1131,7 @@ func (a *app) standMeter(card *standingCard, width int) string {
 	}
 	left := card.deadline.Sub(a.now())
 	word := standEndsWord + countdownFine(left)
-	cells := taskMeterCells
+	cells := standMeterCells
 	if room := width - ansi.StringWidth(word) - 2; cells > room {
 		cells = room
 	}
@@ -1274,3 +1274,29 @@ func (a *app) standingCardFor(notice session.StandingNotice) *standingCard {
 		choiceRow: -1,
 	}
 }
+
+// standDigitKey reads a digit as one of the chips on offer, zero-indexed. Only
+// the four a row can hold are keys; anything else is not this card's.
+//
+// IT MOVED HERE WHEN THE PROPOSAL'S DIGITS LEFT (task.go). The proposal and this
+// card read the same four digits out of one function, and the proposal answers
+// on the question block now — so the reader belongs to the block that still has
+// digits of its own, until this one moves too.
+func standDigitKey(key string) (int, bool) {
+	switch key {
+	case "1":
+		return 0, true
+	case "2":
+		return 1, true
+	case "3":
+		return 2, true
+	case "4":
+		return 3, true
+	}
+	return 0, false
+}
+
+// standMeterCells is the meter's widest. Twenty cells is a bar a person reads as
+// a proportion; past that it is a progress dialog, and this surface does not
+// have those. It moved here with [standDigitKey], for that function's reason.
+const standMeterCells = 20

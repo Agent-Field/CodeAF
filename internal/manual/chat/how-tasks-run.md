@@ -2202,10 +2202,13 @@ ties alphabetically — the plain name before its variants.
 `task 7 started on anthropic/claude-opus-5: <title>`.
 
 **Two to four matches** get settled by you, on the proposal you are already being shown.
-The closest match leads, and that is what silence takes. Only a member of that shortlist
-can win: naming anything else, an empty answer, and the clock all fall back to the leading
-member. The task is admitted with one model, never a set. The shortlist is capped at 4 —
-the fifth would turn a proposal into a picker.
+It is one line above the proposal's answers — `run it on [ anthropic/claude-opus-5 ▾ ]` —
+and `←`/`→` walk it. The closest match leads, and that is what silence takes. Moving it
+answers nothing: the countdown goes on running, and the model in the hole when you answer
+is the one the work starts on. Only a member of that shortlist can win: naming anything
+else, an empty answer, and the clock all fall back to the leading member. The task is
+admitted with one model, never a set. The shortlist is capped at 4 — the fifth would turn
+a proposal into a picker.
 
 **If no model was named**, the task runs on `task.model` from settings when that is set,
 otherwise on **the model the conversation was on at the moment the task was admitted**.

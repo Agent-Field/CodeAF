@@ -74,13 +74,29 @@ func stopApp(t *testing.T) (*app, *stopFake) {
 	return base, agent
 }
 
-// stopText is the chrome as a reader sees it.
+// stopText is the block as a reader sees it, laid out at the width the frame
+// gives it. The card is the question block's now (question.go), so this is the
+// same door every other question on this surface is read through.
 func stopText(a *app) string {
-	var out []string
-	for _, line := range a.guardRows(a.bodyWidth()) {
-		out = append(out, plain(line))
+	return plain(strings.Join(a.questionRows(a.width), "\n"))
+}
+
+// showStop puts the raised card on screen and lets it settle: the block takes no
+// key from a question it has never drawn, and drops one that lands inside the
+// settle guard (question.go).
+func showStop(a *app) {
+	a.questionRows(a.width)
+	settleAsk(a)
+}
+
+// stopPick is where the cursor is on the raised card.
+func stopPick(t *testing.T, a *app) int {
+	t.Helper()
+	head, ok := a.questionHead()
+	if !ok {
+		t.Fatal("no card is up")
 	}
-	return strings.Join(out, "\n")
+	return head.pick
 }
 
 // ── the card ────────────────────────────────────────────────────────────────
@@ -93,17 +109,19 @@ func TestTheStopCardOpensOnKeepGoing(t *testing.T) {
 	if !a.stopping() {
 		t.Fatalf("x on the focused chip raised nothing")
 	}
-	if a.stop.pick != stopKeepAt {
-		t.Fatalf("the cursor opened on %q", stopAnswers[a.stop.pick])
+	showStop(a)
+	if at := stopPick(t, a); at != stopKeepAt {
+		t.Fatalf("the cursor opened on %q", stopAnswers[at])
 	}
 	text := stopText(a)
-	for _, want := range []string{"Stop this task?", stopTaskDetail, "[stop it]", "[keep going]"} {
+	for _, want := range []string{"Stop this task?", stopTaskDetail, "stop it", "keep going", "[esc] keep going"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the card is missing %q:\n%s", want, text)
 		}
 	}
 	// AND ENTER, THE KEY PEOPLE PRESS TO MAKE A QUESTION GO AWAY, does not stop
 	// anything.
+	showStop(a)
 	drive(t, a, key("enter"))
 	if a.stopping() {
 		t.Fatalf("enter left the card up")
@@ -117,7 +135,9 @@ func TestTheStopCardOpensOnKeepGoing(t *testing.T) {
 // card swallows rather than a shortcut through it.
 func TestTheStopCardHasNoBypass(t *testing.T) {
 	a, agent := stopApp(t)
-	drive(t, a, key("x"), key("x"), key("x"))
+	drive(t, a, key("x"))
+	showStop(a)
+	drive(t, a, key("x"), key("x"))
 	if !a.stopping() {
 		t.Fatalf("leaning on the key put the card away")
 	}
@@ -130,7 +150,9 @@ func TestTheStopCardHasNoBypass(t *testing.T) {
 // it always was: the way back.
 func TestEscOnTheStopCardIsNeverAStop(t *testing.T) {
 	a, agent := stopApp(t)
-	drive(t, a, key("x"), key("esc"))
+	drive(t, a, key("x"))
+	showStop(a)
+	drive(t, a, key("esc"))
 	if a.stopping() {
 		t.Fatalf("esc left the card up")
 	}
@@ -149,7 +171,9 @@ func TestEscOnTheStopCardIsNeverAStop(t *testing.T) {
 func TestTheStopCardStopsTheFocusedTask(t *testing.T) {
 	a, agent := stopApp(t)
 	agent.line = "stopping task 7 — its branch is kept"
-	drive(t, a, key("x"), key("left"), key("enter"))
+	drive(t, a, key("x"))
+	showStop(a)
+	drive(t, a, key("left"), key("enter"))
 	if a.stopping() {
 		t.Fatalf("the card is still up")
 	}
@@ -165,13 +189,15 @@ func TestTheStopCardStopsTheFocusedTask(t *testing.T) {
 // pressed to reach "keep going".
 func TestTheStopCardCursorClampsAtBothEnds(t *testing.T) {
 	a, _ := stopApp(t)
-	drive(t, a, key("x"), key("right"), key("right"))
-	if a.stop.pick != stopKeepAt {
-		t.Fatalf("→ past the end moved to %q", stopAnswers[a.stop.pick])
+	drive(t, a, key("x"))
+	showStop(a)
+	drive(t, a, key("right"), key("right"))
+	if at := stopPick(t, a); at != stopKeepAt {
+		t.Fatalf("→ past the end moved to %q", stopAnswers[at])
 	}
 	drive(t, a, key("left"), key("left"))
-	if a.stop.pick != 0 {
-		t.Fatalf("← past the start moved to %q", stopAnswers[a.stop.pick])
+	if at := stopPick(t, a); at != 0 {
+		t.Fatalf("← past the start moved to %q", stopAnswers[at])
 	}
 }
 
@@ -180,7 +206,9 @@ func TestTheStopCardCursorClampsAtBothEnds(t *testing.T) {
 func TestAStopThatWasRefusedSaysWhy(t *testing.T) {
 	a, agent := stopApp(t)
 	agent.err = errors.New("there is no task 7 in this session")
-	drive(t, a, key("x"), key("left"), key("enter"))
+	drive(t, a, key("x"))
+	showStop(a)
+	drive(t, a, key("left"), key("enter"))
 	if !strings.Contains(taskText(a), "there is no task 7") {
 		t.Fatalf("the refusal was swallowed:\n%s", taskText(a))
 	}
@@ -240,39 +268,25 @@ func TestTheHeaderMarkRaisesTheSameCard(t *testing.T) {
 
 // AND THE CARD'S OWN ANSWERS ARE PRESSABLE, which is the other half of key/tap
 // parity: everything the keyboard can answer, a finger can.
+//
+// A PRESS IS NOT A KEYSTROKE. The move-then-take law is about keys — a hand
+// resting on the row a question lands under — and a pointer put on a named
+// answer and clicked is somebody aiming at that answer, so it takes it outright.
 func TestTheStopCardAnswersToAPress(t *testing.T) {
 	a, agent := stopApp(t)
 	drive(t, a, key("x"))
-	width, _ := a.size()
-	a.guardRows(width) // the layout is what writes the spans
-	if len(a.stop.spans) != len(stopAnswers) {
-		t.Fatalf("the card recorded %d targets", len(a.stop.spans))
+	showStop(a) // the layout is what writes the bands
+	if len(a.questionBands) != len(stopAnswers) {
+		t.Fatalf("the card recorded %d targets", len(a.questionBands))
 	}
-	row, ok := stopCardRow(a)
-	if !ok {
-		t.Fatalf("the answers row is not in the frame's chrome")
-	}
-	drive(t, a, press(a.stop.spans[0].from, row))
+	band := a.questionBands[0]
+	drive(t, a, press(band.span.from, chromeRowY(t, a, band.row)))
 	if a.stopping() {
 		t.Fatalf("the press did not answer the card")
 	}
 	if len(agent.asked) != 1 {
 		t.Fatalf("the press asked for %v", agent.asked)
 	}
-}
-
-// stopCardRow is the SCREEN row the answers landed on, read back out of the
-// frame's own chrome the way [app.chromeAt] reads it — so the press lands where
-// the frame drew it rather than where a test guessed.
-func stopCardRow(a *app) (int, bool) {
-	width, height := a.size()
-	_, marks, _, _ := a.chrome(width)
-	for at, mark := range marks {
-		if mark.kind == chromeStop && mark.index == 1 {
-			return at + height - len(marks), true
-		}
-	}
-	return 0, false
 }
 
 // THE STRIP CARRIES NO ✕ AND NO CURSOR ANY MORE, and neither is a loss: the row
@@ -306,9 +320,13 @@ func TestTheRunPageStopsTheRun(t *testing.T) {
 	if !a.stopping() {
 		t.Fatalf("x on a run's page raised nothing")
 	}
-	if got := a.stop.target.question(); !strings.Contains(got, "Stop this run?") ||
-		!strings.Contains(got, stopRunDetail) {
+	// The head is the QUESTION and nothing else; what stopping does not take
+	// away is the promise on its own row under it (stop.go).
+	if got := a.stop.target.question(); got != "Stop this run?" {
 		t.Fatalf("the card asks %q", got)
+	}
+	if got := a.stop.target.promise(); got != stopRunDetail {
+		t.Fatalf("the card promises %q", got)
 	}
 	drive(t, a, key("left"), key("enter"))
 	if len(agent.asked) != 1 || agent.asked[0] != session.CancelRun+":r1" {

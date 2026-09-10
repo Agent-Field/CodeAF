@@ -460,7 +460,10 @@ func TestTheKeysMeanWhatTheChipsSay(t *testing.T) {
 		{QuestionConsent, "1", "allow once", func(a AnswerAction) bool { return a.Allow && a.Scope == ConsentOnce }},
 		{QuestionConsent, "2", "always", func(a AnswerAction) bool { return a.Allow && a.Scope == ConsentToolSession }},
 		{QuestionConsent, "3", "deny", func(a AnswerAction) bool { return !a.Allow }},
-		{QuestionTask, "1", "yes", func(a AnswerAction) bool { return a.Task.Approved }},
+		// A PROPOSAL'S ANSWERS SAY WHAT THEY DO. The clock spells the pick's own
+		// label in front of the time left — `start it in 9s` — and `yes in 9s`
+		// named no action at all (question.go's proposalQuestion).
+		{QuestionTask, "1", "start it", func(a AnswerAction) bool { return a.Task.Approved }},
 		{QuestionTask, "2", "no", func(a AnswerAction) bool { return !a.Task.Approved }},
 		{QuestionStanding, "1", "yes", func(a AnswerAction) bool { return a.Standing.Approved && !a.Standing.Once }},
 		{QuestionStanding, "3", "just once", func(a AnswerAction) bool { return a.Standing.Once && !a.Standing.Approved }},

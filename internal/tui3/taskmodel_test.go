@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -20,7 +18,7 @@ func modelProposal(a *app, id uint64, countdown time.Duration, model string, opt
 	return event
 }
 
-// A PROPOSAL SAYS WHOSE HANDS THE WORK IS GOING INTO, on the card's one meta
+// A PROPOSAL SAYS WHOSE HANDS THE WORK IS GOING INTO, on the block's one meta
 // line and beside the key that opens the brief — no extra row for it.
 func TestAProposalNamesTheModelItWillRunOn(t *testing.T) {
 	a, _, _ := taskApp(t)
@@ -33,119 +31,89 @@ func TestAProposalNamesTheModelItWillRunOn(t *testing.T) {
 	if !strings.Contains(text, taskExpandHint) {
 		t.Fatalf("the model line took the expand hint's place:\n%s", text)
 	}
-	// One model is not a choice, so nothing is offered and nothing is asked.
-	if strings.Contains(text, "[ 1 ") {
-		t.Fatalf("an unambiguous proposal drew a models row:\n%s", text)
-	}
-	if a.task.modelRow != -1 {
-		t.Fatalf("a card with nothing to pick kept a models row at %d", a.task.modelRow)
-	}
 }
 
-// A proposal the engine could not resolve to one model OFFERS them, with the
-// closest already picked: the countdown keeps running, because an ambiguity the
-// harness raised is not a reason for the work to stop.
-func TestAnAmbiguousProposalOffersTheModelsAndPicksTheClosest(t *testing.T) {
+// A PROPOSAL THE ENGINE COULD NOT RESOLVE TO ONE MODEL OFFERS THEM, ON THE
+// QUESTION, AS A SENTENCE WITH A HOLE IN IT.
+//
+// THE SHORTLIST IS A HOLE AND NO LONGER A ROW OF CHIPS. The chips were answered
+// by the digits 1–4, and the digits are the question block's ANSWERS now
+// (question.go's ONE KEY GRAMMAR) — two readers for one keystroke is exactly
+// what this wave exists to end. So the choice moved onto the shape the object
+// already had for it ([session.TaskModelShape]): one row, `←→` to change it, and
+// nothing about it answers the question.
+func TestAnAmbiguousProposalOffersTheModelsInAHoleAndPicksTheClosest(t *testing.T) {
 	a, agent, _ := taskApp(t)
 	agent.pending = []uint64{7}
 	options := []string{"anthropic/claude-opus-5", "anthropic/claude-opus-4.8"}
 	drive(t, a, streamEventMsg{gen: a.gen, ev: modelProposal(a, 7, 4*time.Second, options[0], options)})
+	taskText(a)
+	settleAsk(a)
 
-	text := taskText(a)
-	for _, want := range []string{
-		"[ 1 claude-opus-5 ]  [ 2 claude-opus-4.8 ]",
-		taskModelTag + "anthropic/claude-opus-5",
-		"auto-starts in 4.0s",
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("the ambiguous proposal is missing %q:\n%s", want, text)
+	if text := taskText(a); !strings.Contains(text, taskModelTag+options[0]) {
+		t.Fatalf("the proposal does not name the model it resolved to:\n%s", text)
+	}
+	block := questionBlockText(a)
+	for _, want := range []string{"run it on", options[0], questionKeyWord(questionWalkKey)} {
+		if !strings.Contains(block, want) {
+			t.Fatalf("the proposal's question does not offer %q:\n%s", want, block)
+		}
+	}
+	// The chips are gone from the card, and so is the second countdown they used
+	// to sit under: the question above the box owns both now.
+	for _, gone := range []string{"[ 1 claude-opus-5 ]", "auto-starts in"} {
+		if strings.Contains(taskText(a), gone) {
+			t.Fatalf("the card still draws the shortlist (%q):\n%s", gone, taskText(a))
 		}
 	}
 
-	// THE DIGIT IS THE KEY, and it moves the choice without answering the
-	// question: the work has not been approved by picking a model for it.
-	drive(t, a, key("2"))
-	if a.task.model != "anthropic/claude-opus-4.8" {
-		t.Fatalf("2 picked %q", a.task.model)
-	}
-	if !strings.Contains(taskText(a), taskModelTag+"anthropic/claude-opus-4.8") {
-		t.Fatalf("the meta line did not follow the choice:\n%s", taskText(a))
+	// `→` MOVES THE CHOICE AND ANSWERS NOTHING. The proposal is not approved by
+	// picking a model for it, which is the bargain the row of chips was built on
+	// and the reason the arrows are not one of the answers.
+	drive(t, a, key("right"))
+	if block := questionBlockText(a); !strings.Contains(block, options[1]) {
+		t.Fatalf("→ did not move the hole onto %q:\n%s", options[1], block)
 	}
 	if len(agent.answered) != 0 {
 		t.Fatalf("picking a model answered the proposal: %+v", agent.answered)
 	}
 
 	// And the answer carries it, so the node is admitted on what was picked.
-	drive(t, a, key("enter"))
+	drive(t, a, key("1"))
 	if len(agent.answered) != 1 {
 		t.Fatalf("the proposal was not answered: %+v", agent.answered)
 	}
 	got := agent.answered[0].answer
-	if !got.Approved || got.Model != "anthropic/claude-opus-4.8" {
-		t.Fatalf("the answer = %+v, want approved on the picked model", got)
-	}
-	// The settled card keeps it: this is the only place the choice is recorded.
-	if !strings.Contains(taskText(a), "anthropic/claude-opus-4.8") {
-		t.Fatalf("the settled card forgot which model was chosen:\n%s", taskText(a))
+	if !got.Approved || got.Model != options[1] {
+		t.Fatalf("the answer did not carry the chosen model: %+v", got)
 	}
 }
 
-// A CLICK ON THE MODELS ROW IS THAT ROW'S, and it lands on the option under the
-// pointer rather than on the card's expansion.
-func TestClickingAModelPicksItRatherThanOpeningTheBrief(t *testing.T) {
+// A PROPOSAL WITH ONE MODEL ASKS NOTHING ABOUT IT. One option is not a choice,
+// and a hole offering the model the work was already going to run on is a
+// question that has answered itself.
+func TestAnUnambiguousProposalDrawsNoModelHole(t *testing.T) {
 	a, agent, _ := taskApp(t)
 	agent.pending = []uint64{7}
-	options := []string{"anthropic/claude-opus-5", "anthropic/claude-opus-4.8"}
-	drive(t, a, streamEventMsg{gen: a.gen, ev: modelProposal(a, 7, 4*time.Second, options[0], options)})
+	drive(t, a, streamEventMsg{gen: a.gen, ev: modelProposal(a, 7, 4*time.Second, "anthropic/claude-opus-5", nil)})
+	taskText(a)
+	settleAsk(a)
 
-	// The layout is what writes the row and its targets, so the frame is taken
-	// first and the columns are read off it — one layout, one set of targets.
-	body, _ := a.window(a.width, a.viewHeight())
-	y := -1
-	for i, r := range body {
-		if r.hit == hitModel {
-			y = a.bodyTop() + i
-			break
-		}
+	if block := questionBlockText(a); strings.Contains(block, "run it on") {
+		t.Fatalf("a proposal with nothing to pick drew a model hole:\n%s", block)
 	}
-	if y < 0 {
-		t.Fatalf("no visible row answers to the models row:\n%s", taskText(a))
+	drive(t, a, key("1"))
+	if len(agent.answered) != 1 {
+		t.Fatalf("the proposal was not answered: %+v", agent.answered)
 	}
-	card := a.task
-	if len(card.modelSpans) != 2 {
-		t.Fatalf("the models row has %v targets, want one per option", card.modelSpans)
-	}
-	// The second chip's own columns.
-	span := card.modelSpans[1]
-	drive(t, a, tea.MouseClickMsg{X: span.from + 1, Y: y, Button: tea.MouseLeft})
-	drive(t, a, tea.MouseReleaseMsg{X: span.from + 1, Y: y, Button: tea.MouseLeft})
-
-	if a.task.model != "anthropic/claude-opus-4.8" {
-		t.Fatalf("the click picked %q", a.task.model)
-	}
-	if a.task.open {
-		t.Fatal("the click on the models row opened the brief as well")
-	}
-	if len(agent.answered) != 0 {
-		t.Fatalf("the click answered the proposal: %+v", agent.answered)
+	if got := agent.answered[0].answer; got.Model != "" {
+		t.Fatalf("the answer named a model nobody was asked about: %+v", got)
 	}
 }
 
-// A DIGIT IS A DIGIT WHILE SOMEBODY IS WRITING. The redirect lane is the same
-// trap bare answer shortcuts once made, and the models row is not exempt from it.
-func TestADigitIsTextOnceTheRedirectLaneHasTheFocus(t *testing.T) {
-	a, agent, _ := taskApp(t)
-	agent.pending = []uint64{7}
-	options := []string{"anthropic/claude-opus-5", "anthropic/claude-opus-4.8"}
-	drive(t, a, streamEventMsg{gen: a.gen, ev: modelProposal(a, 7, 4*time.Second, options[0], options)})
-
-	drive(t, a, key("right"), key("enter"), key("2"))
-	if a.task.model != "anthropic/claude-opus-5" {
-		t.Fatalf("a digit typed into the redirect lane moved the model to %q", a.task.model)
-	}
-	if got := a.input.String(); got != "2" {
-		t.Fatalf("the redirect lane holds %q, want the digit as text", got)
-	}
+// questionBlockText is the block above the box as a reader sees it.
+func questionBlockText(a *app) string {
+	return plain(strings.Join(a.questionRows(a.width), "\n"))
 }
 
 // THE NODE KEEPS ITS MODEL AFTERWARDS: the rail says it on the telemetry row

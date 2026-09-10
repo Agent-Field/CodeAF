@@ -155,7 +155,7 @@ type connectPanel struct {
 
 	// owner maps each screen line of the block back to the HIT that drew it —
 	// the geometry recorded at layout, which is the same bargain the approval
-	// question's answers make (app.go's [app.askTaps]). At [tierPhone] a row is
+	// question's answers make (app.go's [app.questionBands]). At [tierPhone] a row is
 	// two lines and the section gap is a line belonging to nothing, so the
 	// pointer cannot resolve this arithmetic on its own.
 	owner []int
