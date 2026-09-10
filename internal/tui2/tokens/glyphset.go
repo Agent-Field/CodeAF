@@ -155,6 +155,10 @@ const (
 	GGitBranch
 	GModel
 	GSpend
+	GFileDocument
+	GFileImage
+	GFileAudio
+	GFileVideo
 	GProseBullet
 	GProseQuote
 	GCodeGutter

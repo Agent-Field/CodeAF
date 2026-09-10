@@ -434,7 +434,7 @@ func (m *Model) selfBeliefRows(width int) []selfListRow {
 	now := m.standingTime()
 	rows := make([]selfListRow, 0, len(facts))
 	for _, fact := range facts {
-		body := notebookFactLine(fact, now, max(1, width-2))
+		body := notebookFactLine(m.icons, fact, now, max(1, width-2))
 		rows = append(rows, selfListRow{
 			body:  body,
 			match: strings.ToLower(fact.Body + " " + fact.Scope + " " + string(fact.Kind)),
