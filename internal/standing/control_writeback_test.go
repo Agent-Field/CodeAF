@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 )
 
 // The callback changes the saved item while an admitted operation is outside
@@ -200,8 +202,7 @@ func TestControlWritebackStalePausePreservesCompletedOccurrence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stale.Status = StatusPaused
-	if err := store.Save(stale); err != nil {
+	if _, err := store.SetStatus(stale.ID, StatusPaused, ""); err != nil {
 		t.Fatal(err)
 	}
 	got, err := store.Get(made.ID)
@@ -210,5 +211,56 @@ func TestControlWritebackStalePausePreservesCompletedOccurrence(t *testing.T) {
 	}
 	if got.Status != StatusPaused || got.Runs != completed.Runs || !got.LastFired.Equal(completed.LastFired) || got.LastOutcome != completed.LastOutcome || !got.NextDue.Equal(completed.NextDue) {
 		t.Errorf("stale pause erased the completed occurrence: before %+v, after %+v", completed, got)
+	}
+}
+
+func TestControlWritebackHarmlessEditDoesNotReplayOccurrence(t *testing.T) {
+	for _, kind := range []WhenKind{WhenAt, WhenEvery} {
+		for _, edit := range []string{"filing", "effort"} {
+			t.Run(string(kind)+"/"+edit, func(t *testing.T) {
+				store, made, now := controlWritebackItem(t)
+				if kind == WhenAt {
+					saveControlWriteback(t, store, made.ID, func(item *Item) {
+						item.When = When{Kind: WhenAt, At: now.Add(-time.Minute)}
+					})
+				}
+				runner := &controlWritebackRunner{onSay: func(Item) {
+					if edit == "filing" {
+						if _, err := store.FileExchange(made.ID, "/filed/exchange", "/filed/exchange/transcript"); err != nil {
+							t.Fatal(err)
+						}
+					} else if err := store.SetStandingEffort(made.ID, effort.High); err != nil {
+						t.Fatal(err)
+					}
+				}}
+				ticker := newTicker(store, runner, now)
+				mustTick(t, ticker)
+				got, err := store.Get(made.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got.Runs != 1 {
+					t.Errorf("completed occurrence not retained: %d runs", got.Runs)
+				}
+				if edit == "filing" && got.Origin.Exchange != "/filed/exchange" {
+					t.Errorf("filing edit was lost: %+v", got.Origin)
+				}
+				if edit == "effort" && got.Does.Effort != effort.High.String() {
+					t.Errorf("effort edit was lost: %q", got.Does.Effort)
+				}
+				if kind == WhenAt && got.Status != StatusRetired {
+					t.Errorf("consumed one-shot remains %s", got.Status)
+				}
+				if kind == WhenEvery && !got.NextDue.After(now) {
+					t.Errorf("consumed recurrence remains due at %s", got.NextDue)
+				}
+				ticker.Now = held(now.Add(time.Minute))
+				store.clock = ticker.Now
+				mustTick(t, ticker)
+				if runner.calls != 1 {
+					t.Errorf("harmless %s edit replayed the occurrence: %d actions", edit, runner.calls)
+				}
+			})
+		}
 	}
 }
