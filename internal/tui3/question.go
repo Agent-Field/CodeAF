@@ -2711,6 +2711,18 @@ func (a *app) questionWritingKey(head questionShown, key string) (tea.Cmd, bool)
 	return nil, false
 }
 
+// questionWriting reports whether the box under the block is a question's
+// right now ([questionShown.writing]), which is what the seam's own hint asks
+// before naming enter and esc.
+func (a *app) questionWriting() bool {
+	for _, q := range a.questions {
+		if q.writing != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // questionWritingRow is the answers row while the box is writing to the
 // question: what the box means now, which answer the words go with, and the
 // way back. It replaces the keys, because the keys are letters and every
