@@ -1,6 +1,8 @@
 package session
 
 import (
+	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -647,5 +649,153 @@ func TestTheFloorOnlyTakesBackWhatThisTurnWasAsked(t *testing.T) {
 	conversation.handBackUnsettled()
 	if root.decider != TaskAskOwnerPerson {
 		t.Fatalf("the conversation did not take back its own question (%q)", root.decider)
+	}
+}
+
+// ── the floor across a restart ──────────────────────────────────────────────
+
+// WHO IS DECIDING SURVIVES THE PROCESS, AND IS HANDED BACK ON THE WAY IN. The
+// checkpoint carries the holder so that the floor has something to fire on: a
+// node the record says the model was holding comes back the person's, because
+// the turn it was going to be decided in died with the process.
+func TestTheCheckpointCarriesWhoIsDecidingAndTheFloorHandsItBack(t *testing.T) {
+	graph, node := floorGraph("")
+	agent := &Agent{config: Config{tasker: graph}}
+	agent.handToModelOnAuto(node)
+
+	graph.mu.Lock()
+	record := node.recordLocked()
+	graph.mu.Unlock()
+	if record.Decider != TaskAskOwnerModel {
+		t.Fatalf("the checkpoint says %q is deciding, so a restart has nothing to hand back", record.Decider)
+	}
+
+	fresh := &TaskGraph{}
+	recovery := fresh.rehydrate(taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{record},
+	}, t.TempDir(), TaskSettleAuto)
+
+	restored := fresh.node(1)
+	if restored == nil {
+		t.Fatal("the landing did not come back at all")
+	}
+	if restored.decider != TaskAskOwnerPerson {
+		t.Fatalf("a restored landing is still held by %q, and no turn is going to answer it", restored.decider)
+	}
+	if len(recovery.handedBack) != 1 || recovery.handedBack[0].id != 1 {
+		t.Fatalf("the recovery owes %d hand-backs, want the one landing", len(recovery.handedBack))
+	}
+	if owner := ProjectTask(restored.notice().StatusFacts()).Ask.Owner; owner != TaskAskOwnerPerson {
+		t.Fatalf("the card would draw %q as the holder rather than its chips", owner)
+	}
+}
+
+// A CHECKPOINT THAT SAYS NOTHING SAYS THE PERSON. Every file written before the
+// holder was carried, and every node nobody ever handed over, decodes with no
+// decider at all — and the emptiness law's answer for it is the one every
+// unowned question falls back to.
+func TestACheckpointWithNoDeciderReadsAsThePerson(t *testing.T) {
+	var record taskRecord
+	if err := json.Unmarshal([]byte(`{"id":1,"title":"Port the parser","state":"unverified"}`), &record); err != nil {
+		t.Fatalf("decode an older record: %v", err)
+	}
+	if record.Decider != "" {
+		t.Fatalf("an older record invented a decider: %q", record.Decider)
+	}
+	graph := &TaskGraph{}
+	recovery := graph.rehydrate(taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{record},
+	}, t.TempDir(), TaskSettleAsk)
+	if owner := ProjectTask(graph.node(1).notice().StatusFacts()).Ask.Owner; owner != TaskAskOwnerPerson {
+		t.Fatalf("an older record's landing is held by %q", owner)
+	}
+	if len(recovery.handedBack) != 0 {
+		t.Fatal("a landing nobody had handed over was published as a hand-back")
+	}
+}
+
+// A CONFLICT IS NEVER MODEL-HELD, ACROSS A RESTART EITHER. Two versions of
+// somebody's own file are theirs whatever a record says, so the restored card
+// asks them and never announces that aforge is deciding it.
+func TestARestoredConflictIsNeverTheModelsToDecide(t *testing.T) {
+	graph := &TaskGraph{}
+	graph.rehydrate(taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{{
+			ID: 1, Title: "Port the parser", Brief: "port it", Acceptance: "it parses",
+			State: TaskUnverified, Merge: mergeConflicted, Branch: "task/parser",
+			Decider: TaskAskOwnerModel,
+		}},
+	}, t.TempDir(), TaskSettleAuto)
+	status := ProjectTask(graph.node(1).notice().StatusFacts())
+	if status.Ask.Kind != TaskAskConflict {
+		t.Fatalf("a restored conflicted landing asks %q", status.Ask.Kind)
+	}
+	if status.Ask.Owner != TaskAskOwnerPerson {
+		t.Fatalf("a restored conflict is held by %q", status.Ask.Owner)
+	}
+}
+
+// AND THE WHOLE RESUME MAKES THE HAND-BACK: the node comes back the person's,
+// the update goes out on the lane a surface folds into the row it is drawing,
+// and the file on disk stops saying the model is deciding.
+func TestResumingASessionHandsTheModelsLandingBackAndSaysSo(t *testing.T) {
+	repo := newTestRepo(t)
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	checkpoint := taskCheckpointPath(journal)
+	writeCheckpoint(t, checkpoint, taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{{
+			ID: 1, Title: "Port the parser", Brief: "port it", Acceptance: "it parses",
+			State: TaskUnverified, Merge: mergeInPlace, Report: "the parser is ported",
+			Noted: true, ElapsedMS: 42000, Decider: TaskAskOwnerModel,
+		}},
+	})
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = repo
+		config.SessionFile = journal
+		config.InTask = true // recover explicitly below, with somebody watching.
+	})
+	lane, stop := agent.WatchTaskUpdates()
+	defer stop()
+	drainTaskLane(lane)
+
+	agent.config.InTask = false
+	agent.recoverTasks()
+
+	notice, told := nextTaskNotice(lane)
+	if !told {
+		t.Fatal("a resume changed who is deciding and told nobody")
+	}
+	if notice.ID != 1 || notice.Decider != TaskAskOwnerPerson {
+		t.Fatalf("the update says task %d is held by %q", notice.ID, notice.Decider)
+	}
+	for _, record := range readCheckpoint(t, checkpoint).Nodes {
+		if record.ID == 1 && record.Decider == TaskAskOwnerModel {
+			t.Fatal("the file on disk still says the model is deciding a landing nothing is going to decide")
+		}
+	}
+}
+
+// AND THE LANDING QUESTION READS THAT ONE HOLDER. The questions wave derives a
+// landed `your call` from [TaskAsk] rather than keeping a holder of its own, so
+// the policy on the derived question moves with the node's own mark and there is
+// no second place for the two to disagree (question.go's [landingPolicy]).
+func TestTheLandingQuestionTakesItsPolicyFromWhoIsDeciding(t *testing.T) {
+	graph, node := floorGraph("")
+	agent := &Agent{config: Config{tasker: graph}}
+	if kind := agent.landingQuestion(PendingDecision{Notice: node.notice()}).Policy.Kind; kind != PolicyAsk {
+		t.Fatalf("a landing the person holds asks with policy %q", kind)
+	}
+	agent.handToModelOnAuto(node)
+	question := agent.landingQuestion(PendingDecision{Notice: node.notice()})
+	if question.Policy.Kind != PolicyDecide {
+		t.Fatalf("a landing the model holds carries policy %q", question.Policy.Kind)
+	}
+	if !question.Deadline.IsZero() || question.Policy.After != 0 {
+		t.Fatal("the floor is the end of a turn and not a clock, and a second timer was started for it")
 	}
 }

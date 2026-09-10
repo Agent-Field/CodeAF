@@ -1299,6 +1299,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// question asked before and after somebody notices the chips are gone.
 		{"it says aforge is deciding", "task-rooms-after-restart"},
 		{"how do I take a task back", "tasks"},
+		// And the third: closing aforge ends the turn it was deciding in, so the
+		// question is the person's again when they come back to it.
+		{"who decides a task after a restart", "task-rooms-after-restart"},
 		// The other end of the same impatience: not "decide for me" but "give me
 		// longer to speak up", which is a row in the settings panel and a page
 		// that has to name the right tab of it.
