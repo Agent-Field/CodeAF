@@ -8,7 +8,7 @@ invalidates:
   - "`agentsFileLimit` was the one bound on the project's instruction file. It is still 8KiB on a full prefix and is 2KiB on a lean one, and a lean prefix quotes only the FIRST of AGENTS.md and CLAUDE.md that it finds."
   - "The capability shelf was one table, `capabilityGroups`. A lean belt shelves four more groups — `tasks` (propose_task, tasks), `watching` (watch), `memory` (track, commit, recall), `documents` (read_document) — and is HANDED the `questions` group at construction instead of being told to fetch it, so `ask` is carried and `load_capability` does not offer it."
   - "`Config.shelvesCapabilities` used to settle whether the page's shelved wording was rendered. That question is now asked per belt fact (`Config.shelvesFact`), because a lean shape shelves plenty and still carries `ask`."
-  - "The memory reflex ran on every session with a store. It does not run on a lean one: `Config.Memory` is nil'd at construction, so there is no `<memory>` block, no `remember` verb and no reflex call, and the page says memory is off by itself."
+  - "The memory reflex ran on every session with a store. It does not run on a lean one: `Config.hasStore` is now false there, so the brain is not built, there is no `<memory>` block, no `remember` verb and no reflex call. The store itself is untouched — the chat log is still written and `search_conversations` still reads it, because reading the record costs nothing per turn."
 ---
 
 Everything in front of a request is re-sent on every round of every turn. On a

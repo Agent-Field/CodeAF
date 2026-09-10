@@ -52,7 +52,10 @@ package session
 //  4. THE MEMORY REFLEX DOES NOT RUN and the project's instruction file rides
 //     under [leanInstructionLimit]. The reflex is two model calls every turn on
 //     top of the one the person is waiting for; on this seat it is the most
-//     expensive thing in the turn that nobody asked for.
+//     expensive thing in the turn that nobody asked for. It is off by the
+//     predicate that already decides writable memory ([Config.hasStore]) rather
+//     than by a switch of its own — and the conversation's own record is
+//     untouched, because reading what was said costs nothing per turn.
 //
 // ── AND FULL IS UNTOUCHED ──
 //

@@ -113,19 +113,6 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// the belt, the shelf and the memory reflex are all built from this one
 	// config and a profile resolved twice is a profile that can answer twice.
 	config.profile = settlePromptProfile(config)
-	if config.profile.lean() {
-		// AND THE MEMORY REFLEX IS OFF BY THE SWITCH THAT ALREADY TURNS IT OFF.
-		// The reflex is two model calls on every turn on top of the one the
-		// person is waiting for, which on this seat is the most expensive thing
-		// in the turn that nobody asked for. No store is the supported off state
-		// — no block, no call and no `remember` on the belt (memory_test.go's
-		// [TestWithoutAStoreThereIsNoBlockNoCallAndNoTool], and standing_run.go
-		// nils the same field for its own reason) — so this flips that switch
-		// rather than inventing a second one for the page and the belt to
-		// disagree about. Conversation search is a different field and is
-		// untouched: reading the record costs nothing per turn.
-		config.Memory = nil
-	}
 	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {
 		system, own = renderSystem(config), true
@@ -165,7 +152,13 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// store has to exist before the tools are assembled (memory.go). The
 	// background lifetime is minted with it, because a pass started by the first
 	// turn has to have somewhere to be cancelled from.
-	if config.Memory != nil {
+	// THE PREDICATE IS [Config.hasStore] AND NOT THE FIELD, because the field is
+	// two things: the conversation's own record, which every shape writes and
+	// reads, and the writable memory this brain is, which a lean prefix does not
+	// have (promptprofile.go). The belt and the page are built from that same
+	// predicate a moment later, which is what stops them disagreeing about
+	// whether `remember` exists.
+	if config.hasStore() {
 		agent.memory = newMemoryBrain(config.Memory)
 		agent.memoryCtx, agent.memoryStop = context.WithCancel(context.Background())
 	}

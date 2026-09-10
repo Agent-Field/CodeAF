@@ -370,6 +370,17 @@ func TestALeanSessionRunsNoMemoryReflex(t *testing.T) {
 	if agent.hasTool("remember") {
 		t.Error("`remember` is on a lean belt with no store behind it: absent, not broken")
 	}
+	// AND THE CONVERSATION'S OWN RECORD IS UNTOUCHED. Config.Memory is two
+	// things — the writable memory above and the record of what was said — and
+	// an earlier draft of this profile nil'd the field, which took the chat log
+	// with it (compaction_test.go's lossless floor caught it). What a lean
+	// prefix gives up is the reflex, not the session's memory of itself.
+	if agent.chatlog == nil {
+		t.Error("a lean session with a store opened no chat log: the record went with the reflex")
+	}
+	if !agent.hasTool("search_conversations") {
+		t.Error("a lean session cannot search the record: reading what was said costs nothing per turn")
+	}
 	// AND THE PAGE AGREES, which is the whole point of flipping the same switch
 	// rather than inventing a second one: [Config.hasStore] is what the page's
 	// memory sentence is composed from, so it says memory is off by itself.
