@@ -216,6 +216,21 @@ func openChatV3Local(launch localLaunch) error {
 	// own defer hands the job over rather than closing the client twice.
 	closeClient = fleet.closeAll
 	options := hostOptions(fleet, welcome, launch.pick)
+	// AND A PLAIN LAUNCH IS STILL GREETED BY HOME ON THIS ROAD. Whether somebody
+	// is being greeted is one fact — a person opened aforge with no particular
+	// conversation in mind — and [tui3.Options.Landing] is the only place the
+	// surface reads it (internal/tui3's [app.landHome]). It was set on the
+	// in-process door alone, so the day THIS road became the ordinary one for an
+	// interactive launch ([v3TakeHostRoad] stopped requiring a host that was
+	// already answering), every plain `aforge` stopped being greeted and sat down
+	// in a conversation instead: the same launch, two roads, two behaviours.
+	//
+	// It is spelled here rather than inside [hostOptions] for [Options.EngineAnswers]'
+	// reason — the road knows what --host cannot. A remote launch is not greeted
+	// at all (its world is not an answer yet by the first frame, which is what
+	// [app.landHome] refuses on), and a launch that NAMED a conversation or asked
+	// for the picker means that one, exactly as the in-process door reads it.
+	options.Landing = strings.TrimSpace(launch.session) == "" && !launch.pick
 	// AND THE CONVERSATION THIS LAUNCH COULD NOT HAVE, POINTED AT AND ARMED.
 	// It is "" on every ordinary launch; it is set only by the refusal above,
 	// and the surface lands on home with that row under the cursor

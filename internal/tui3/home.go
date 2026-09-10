@@ -1385,6 +1385,13 @@ func (h *homeView) build() {
 	// line, matched back afterwards by what it STANDS FOR rather than by its
 	// number ([homeLine.sameRow]).
 	previousLine, hadLine := h.focusedLine()
+	// AND THE FOLD AT THE FOOT IS FOLLOWED TOO. It stands for no conversation,
+	// item, project or errand, so none of the four followers above can see it and
+	// every rebuild used to drop the cursor off it — including the one this
+	// screen takes every three seconds on its own beat ([app.refreshHome]), which
+	// is what made an opened fold last exactly one beat (place_home.go's
+	// [homeView.pointFold] states what a person saw).
+	previousFold := hadLine && previousLine.kind == homeSwitchFold
 	// An empty box is not a choice anybody has made yet, so the next character
 	// typed starts on the action row again.
 	if !h.searching() {
@@ -1426,6 +1433,10 @@ func (h *homeView) build() {
 		// Either way the cursor is where it belongs: [homeView.pointSame] put it
 		// back on the row that was chosen, and the followers below are about a
 		// list nobody is filtering.
+		return
+	}
+	if previousFold {
+		h.pointFold()
 		return
 	}
 	if previousExchange != nil {

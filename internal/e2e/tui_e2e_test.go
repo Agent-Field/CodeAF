@@ -990,12 +990,21 @@ func testHover(t *testing.T) {
 // hint under the box says which way it goes).
 func testFold(t *testing.T) {
 	home := newHome(t, nil)
-	// More than the eight rows the list draws, so there is something to fold.
-	for i, name := range []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"} {
+	// MORE CONVERSATIONS THAN THE FRAME HAS ROWS, WHICH IS WHAT MAKES A FOLD NOW.
+	// The list drew eight rows whatever the terminal was until #518; it draws as
+	// many as the column can hold and never fewer than eight
+	// ([switcherReading.capAtRest] against [switcherView.room]), so twelve rows on
+	// a forty-five-row terminal is a list with nothing left over and no fold at
+	// all. Twenty rows in a twenty-row window is a fold with ten behind it, and
+	// the eleven rows above it are a walk [walkTo] can still finish.
+	for i, name := range []string{
+		"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
+		"k", "l", "m", "n", "o", "p", "q", "r", "s", "t",
+	} {
 		seedProject(t, home, name, i, time.Duration(10*(i+1))*time.Minute)
 	}
 	ws := newWorkspace(t, "foldws", false)
-	r := start(t, "afe2e_fold", home, ws, tuiWide, 45)
+	r := start(t, "afe2e_fold", home, ws, tuiWide, 20)
 
 	screen := r.waitFor(25*time.Second, say(t, "homeFootWord"), say(t, "foldMoreWord"))
 	t.Logf("the list with a fold at its foot:\n%s", screen)
@@ -1017,8 +1026,11 @@ func testFold(t *testing.T) {
 	t.Logf("`→` opened the fold:\n%s", opened)
 
 	// AND THE FOLD IS STILL THERE, because it is the way back: an opened fold
-	// still says how many rows it is the door over.
-	if !strings.Contains(opened, say(t, "foldMoreWord")) {
+	// still says how many rows it is the door over, AND IT SAYS IT THE OTHER WAY
+	// ROUND. `12 more` over a list already showing all twelve is a sentence that
+	// is not true, so since #518 an open fold reads `12 fewer` — what pressing it
+	// does rather than what it hides (internal/tui3's [foldWords]).
+	if !strings.Contains(opened, say(t, "foldFewerWord")) {
 		t.Errorf("the fold vanished when it was opened, so there is no way back:\n%s", opened)
 	}
 	if !walkTo(r, say(t, "homeFoldShutHint"), "Down") {
