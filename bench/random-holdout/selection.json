@@ -1,0 +1,144 @@
+{
+  "created_at": "2026-09-10T03:37:44.409672+00:00",
+  "seed": "3da255c040f94d36bde903ab7bc29dfc",
+  "selection_method": "SHA256(random128bitseed + newline + image), ascending; first five distinct repositories; remaining distinct repositories are ordered reserves. Same-repository reserves only if fewer than five distinct runnable repositories remain.",
+  "population": "Spark cached SWE-rebench-v2 images, excluding all five repositories already used in this optimization campaign. Convenience sample, not a random sample of all GitHub or proof of no model-training contamination. No candidate solution outcomes consulted.",
+  "primary": [
+    {
+      "id": "hypothesisworks-hypothesis-3572",
+      "repo": "HypothesisWorks/hypothesis",
+      "pr": 3572,
+      "image": "clisterqj/swechain:swerebenchv2__hypothesisworks-hypothesis__3572-aa1ab87",
+      "rank": "0b5b91262c8be750cc9b08ce91287b424f4740cae46c1012e5634deaca586a5e"
+    },
+    {
+      "id": "alteryx-woodwork-1026",
+      "repo": "alteryx/woodwork",
+      "pr": 1026,
+      "image": "clisterqj/swechain:swerebenchv2__alteryx-woodwork__1026-7501a6e",
+      "rank": "150a3a5c43bc02d7c3f2203ba14e4bbe141360dacc4806e5b6ad9855ea41680f"
+    },
+    {
+      "id": "sdv-dev-rdt-760",
+      "repo": "sdv-dev/RDT",
+      "pr": 760,
+      "image": "clisterqj/swechain:swerebenchv2__sdv-dev-rdt__760-41ac439",
+      "rank": "47e7f278571499598a8146b8d7283d74b0303220f693297ae3416f4b29c29562"
+    },
+    {
+      "id": "copier-org-copier-1589",
+      "repo": "copier-org/copier",
+      "pr": 1589,
+      "image": "clisterqj/swechain:swerebenchv2__copier-org-copier__1589-69662e3",
+      "rank": "4aba1c2933f8f1cacb5f91008dc150e26757d97072ecc17565c6ec9132469704"
+    },
+    {
+      "id": "relekang-python-semantic-release-359",
+      "repo": "python-semantic-release/python-semantic-release",
+      "pr": 359,
+      "image": "clisterqj/swechain:swerebenchv2__relekang-python-semantic-release__359-2111d1e",
+      "rank": "6a989f86c7316c33ddd1f522984cb0d171406edcc41bc2ff04bb9e6aaaf9ce51"
+    }
+  ],
+  "reserves": [
+    {
+      "id": "pyccel-pyccel-1764",
+      "repo": "pyccel/pyccel",
+      "pr": 1764,
+      "image": "clisterqj/swechain:swerebenchv2__pyccel-pyccel__1764-18be84d",
+      "rank": "b1664be53973889cdd93224124899ec60eb51b4ae19853e5b6efbf486dba6d89"
+    },
+    {
+      "id": "codezonediitj-pydatastructs-314",
+      "repo": "codezonediitj/pydatastructs",
+      "pr": 314,
+      "image": "clisterqj/swechain:swerebenchv2__codezonediitj-pydatastructs__314-78d8254",
+      "rank": "e1d6e73f356ea13a3630856fbbda5baa08c85756b8f779d8ed7a4f38fe637a80"
+    },
+    {
+      "id": "hypothesisworks-hypothesis-2889",
+      "repo": "HypothesisWorks/hypothesis",
+      "pr": 2889,
+      "image": "clisterqj/swechain:swerebenchv2__hypothesisworks-hypothesis__2889-b4ea7ab",
+      "rank": "4bd00214e14274936bcf862d4ad6488d1bae61003aa9d90aa47c66917b331416"
+    }
+  ],
+  "pool": [
+    {
+      "id": "copier-org-copier-1589",
+      "repo": "copier-org/copier",
+      "pr": 1589,
+      "image": "clisterqj/swechain:swerebenchv2__copier-org-copier__1589-69662e3",
+      "rank": "4aba1c2933f8f1cacb5f91008dc150e26757d97072ecc17565c6ec9132469704"
+    },
+    {
+      "id": "relekang-python-semantic-release-359",
+      "repo": "python-semantic-release/python-semantic-release",
+      "pr": 359,
+      "image": "clisterqj/swechain:swerebenchv2__relekang-python-semantic-release__359-2111d1e",
+      "rank": "6a989f86c7316c33ddd1f522984cb0d171406edcc41bc2ff04bb9e6aaaf9ce51"
+    },
+    {
+      "id": "hypothesisworks-hypothesis-2889",
+      "repo": "HypothesisWorks/hypothesis",
+      "pr": 2889,
+      "image": "clisterqj/swechain:swerebenchv2__hypothesisworks-hypothesis__2889-b4ea7ab",
+      "rank": "4bd00214e14274936bcf862d4ad6488d1bae61003aa9d90aa47c66917b331416"
+    },
+    {
+      "id": "hypothesisworks-hypothesis-3572",
+      "repo": "HypothesisWorks/hypothesis",
+      "pr": 3572,
+      "image": "clisterqj/swechain:swerebenchv2__hypothesisworks-hypothesis__3572-aa1ab87",
+      "rank": "0b5b91262c8be750cc9b08ce91287b424f4740cae46c1012e5634deaca586a5e"
+    },
+    {
+      "id": "alteryx-woodwork-1026",
+      "repo": "alteryx/woodwork",
+      "pr": 1026,
+      "image": "clisterqj/swechain:swerebenchv2__alteryx-woodwork__1026-7501a6e",
+      "rank": "150a3a5c43bc02d7c3f2203ba14e4bbe141360dacc4806e5b6ad9855ea41680f"
+    },
+    {
+      "id": "pyccel-pyccel-1764",
+      "repo": "pyccel/pyccel",
+      "pr": 1764,
+      "image": "clisterqj/swechain:swerebenchv2__pyccel-pyccel__1764-18be84d",
+      "rank": "b1664be53973889cdd93224124899ec60eb51b4ae19853e5b6efbf486dba6d89"
+    },
+    {
+      "id": "codezonediitj-pydatastructs-314",
+      "repo": "codezonediitj/pydatastructs",
+      "pr": 314,
+      "image": "clisterqj/swechain:swerebenchv2__codezonediitj-pydatastructs__314-78d8254",
+      "rank": "e1d6e73f356ea13a3630856fbbda5baa08c85756b8f779d8ed7a4f38fe637a80"
+    },
+    {
+      "id": "sdv-dev-rdt-760",
+      "repo": "sdv-dev/RDT",
+      "pr": 760,
+      "image": "clisterqj/swechain:swerebenchv2__sdv-dev-rdt__760-41ac439",
+      "rank": "47e7f278571499598a8146b8d7283d74b0303220f693297ae3416f4b29c29562"
+    }
+  ],
+  "infra_policy": "Before inference only: require reproducible base failure and reference pass under identical offline grader. Record every rejection; try next predetermined reserve. No issue-specific exclusions or modified acceptance tests. Never replace scored failures.",
+  "comparison": {
+    "arms": [
+      "aforge-current-baseline-c9aff5b",
+      "aforge-optional-progress-faf9c5a",
+      "pi-0.84.2",
+      "mini-2.4.6"
+    ],
+    "seeds": [
+      1,
+      2
+    ],
+    "model": "deepseek/deepseek-v4-flash-0731",
+    "generation_and_reasoning": "omitted provider defaults; matched seed only",
+    "wall_s": 3600,
+    "known_cost_soft_stop_usd": 5,
+    "cpu": 2,
+    "memory_gb": 8
+  },
+  "selection_vs_tuning": "Held-out validation cohort: freeze harness versions before scoring; keep old five-issue tuning results separate. Future changes informed by these results must use another unseen cohort for validation."
+}

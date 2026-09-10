@@ -1,0 +1,139 @@
+[
+  {
+    "id": "hypothesisworks-hypothesis-3572",
+    "repo": "HypothesisWorks/hypothesis",
+    "pr": 3572,
+    "image": "clisterqj/swechain:swerebenchv2__hypothesisworks-hypothesis__3572-aa1ab87",
+    "rank": "0b5b91262c8be750cc9b08ce91287b424f4740cae46c1012e5634deaca586a5e",
+    "url": "https://github.com/HypothesisWorks/hypothesis/issues/3567",
+    "title": "Explicit support for special-use domains.",
+    "issues": [
+      3567
+    ],
+    "base_commit": "aa1ab874500cc8218f85e21d4df593102562cdc9",
+    "test_files": [
+      "hypothesis-python/tests/nocover/test_emails.py"
+    ],
+    "metadata_ready": true
+  },
+  {
+    "id": "alteryx-woodwork-1026",
+    "repo": "alteryx/woodwork",
+    "pr": 1026,
+    "image": "clisterqj/swechain:swerebenchv2__alteryx-woodwork__1026-7501a6e",
+    "rank": "150a3a5c43bc02d7c3f2203ba14e4bbe141360dacc4806e5b6ad9855ea41680f",
+    "url": "https://github.com/alteryx/woodwork/issues/570",
+    "title": "Handle pd.ExtensionArray inputs into Woodwork",
+    "issues": [
+      570
+    ],
+    "base_commit": "7501a6e9117edb2ef2b6de6f773dc7b828bba361",
+    "test_files": [
+      "woodwork/tests/utils/test_accessor_utils.py"
+    ],
+    "metadata_ready": true
+  },
+  {
+    "id": "sdv-dev-rdt-760",
+    "repo": "sdv-dev/RDT",
+    "pr": 760,
+    "image": "clisterqj/swechain:swerebenchv2__sdv-dev-rdt__760-41ac439",
+    "rank": "47e7f278571499598a8146b8d7283d74b0303220f693297ae3416f4b29c29562",
+    "url": "https://github.com/sdv-dev/RDT/issues/750",
+    "title": "Move the _learn_rounding_digits of the FloatFormatter into a helper",
+    "issues": [
+      750
+    ],
+    "base_commit": "41ac43997e8517d81e1df1f7ac89ef764193dd50",
+    "test_files": [
+      "tests/unit/transformers/test_numerical.py",
+      "tests/unit/transformers/test_utils.py"
+    ],
+    "metadata_ready": true
+  },
+  {
+    "id": "copier-org-copier-1589",
+    "repo": "copier-org/copier",
+    "pr": 1589,
+    "image": "clisterqj/swechain:swerebenchv2__copier-org-copier__1589-69662e3",
+    "rank": "4aba1c2933f8f1cacb5f91008dc150e26757d97072ecc17565c6ec9132469704",
+    "url": "https://github.com/copier-org/copier/issues/1483",
+    "title": "bug: `copier update` throws error if previously selected value is  disabled",
+    "issues": [
+      1483
+    ],
+    "base_commit": "69662e3a7c9c59920da2316326bd2cf923aae188",
+    "test_files": [
+      "tests/test_templated_prompt.py"
+    ],
+    "metadata_ready": true
+  },
+  {
+    "id": "relekang-python-semantic-release-359",
+    "repo": "python-semantic-release/python-semantic-release",
+    "pr": 359,
+    "image": "clisterqj/swechain:swerebenchv2__relekang-python-semantic-release__359-2111d1e",
+    "rank": "6a989f86c7316c33ddd1f522984cb0d171406edcc41bc2ff04bb9e6aaaf9ce51",
+    "url": "https://github.com/python-semantic-release/python-semantic-release/issues/358",
+    "title": "Gitlab issue references in commits can be rendered as merge-requests",
+    "issues": [
+      358
+    ],
+    "base_commit": "2111d1e81d3f6210ad00289a788ede199a17ee33",
+    "test_files": [
+      "tests/test_changelog.py"
+    ],
+    "metadata_ready": true
+  },
+  {
+    "id": "pyccel-pyccel-1764",
+    "repo": "pyccel/pyccel",
+    "pr": 1764,
+    "image": "clisterqj/swechain:swerebenchv2__pyccel-pyccel__1764-18be84d",
+    "rank": "b1664be53973889cdd93224124899ec60eb51b4ae19853e5b6efbf486dba6d89",
+    "url": "https://github.com/pyccel/pyccel/issues/1739",
+    "title": "clear : Removes all the elements from the set",
+    "issues": [
+      1739
+    ],
+    "base_commit": "18be84dd52a895cbad1dd52b4d5b0daaea8d93cf",
+    "test_files": [
+      "tests/epyccel/test_epyccel_sets.py"
+    ],
+    "metadata_ready": true
+  },
+  {
+    "id": "codezonediitj-pydatastructs-314",
+    "repo": "codezonediitj/pydatastructs",
+    "pr": 314,
+    "image": "clisterqj/swechain:swerebenchv2__codezonediitj-pydatastructs__314-78d8254",
+    "rank": "e1d6e73f356ea13a3630856fbbda5baa08c85756b8f779d8ed7a4f38fe637a80",
+    "url": "https://github.com/codezonediitj/pydatastructs/issues/273",
+    "title": "Quick Sort",
+    "issues": [
+      273
+    ],
+    "base_commit": "78d8254156e6984ff556eb16c468cb53ab132a54",
+    "test_files": [
+      "pydatastructs/linear_data_structures/tests/test_algorithms.py"
+    ],
+    "metadata_ready": true
+  },
+  {
+    "id": "hypothesisworks-hypothesis-2889",
+    "repo": "HypothesisWorks/hypothesis",
+    "pr": 2889,
+    "image": "clisterqj/swechain:swerebenchv2__hypothesisworks-hypothesis__2889-b4ea7ab",
+    "rank": "4bd00214e14274936bcf862d4ad6488d1bae61003aa9d90aa47c66917b331416",
+    "url": "https://github.com/HypothesisWorks/hypothesis/issues/2794",
+    "title": "Improve handling of self-referential strategies",
+    "issues": [
+      2794
+    ],
+    "base_commit": "b4ea7abcf0e362f72b7d5d8a8168d56f3b06e10f",
+    "test_files": [
+      "hypothesis-python/tests/nocover/test_recursive.py"
+    ],
+    "metadata_ready": true
+  }
+]
