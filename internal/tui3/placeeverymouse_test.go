@@ -253,3 +253,98 @@ func placeWindowOf(hits []int) (first, last, drawn int) {
 	}
 	return first, last, drawn
 }
+
+// A CLICK ON A ROW IS `enter` ON IT, on every place with rows to open. There
+// were three click grammars — home and the tasks place opened the row, the other
+// four moved the cursor and did nothing more — so the same gesture on the same
+// shape of row meant two things depending on the room (PLACES-AUDIT.md finding
+// 6). One lab is clicked and a second is walked to the same row with the arrows
+// and entered; the two must land in the same place drawing the same frame.
+//
+// Home keeps its own grammar (lane G's body) and settings keeps select-then-
+// change, because its `enter` edits a value; memory's lines are the stated
+// exception and have their own test below.
+func TestAClickOnARowIsEnterOnEveryPlace(t *testing.T) {
+	for _, place := range everyPlaceTable() {
+		if place.id == pageHome || place.id == pageSettings || place.id == pageMemory {
+			continue
+		}
+		t.Run(place.id.word(), func(t *testing.T) {
+			clicked := place.open(t)
+			y, target := placeClickTarget(t, clicked, place)
+			keyed := place.open(t)
+			for i := 0; i < 400 && place.cursor(keyed) != target; i++ {
+				drive(t, keyed, key("down"))
+			}
+			if place.cursor(keyed) != target {
+				t.Fatalf("the arrows never reached body line %d on the %s place", target, place.id.word())
+			}
+			drive(t, clicked, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft})
+			drive(t, keyed, key("enter"))
+			if clicked.page != keyed.page {
+				t.Fatalf("a click on the %s place's row landed on %q and enter on it on %q",
+					place.id.word(), clicked.page.word(), keyed.page.word())
+			}
+			if got, want := placeFrameText(clicked), placeFrameText(keyed); got != want {
+				t.Fatalf("a click and enter on the same %s row drew two frames:\nclick:\n%s\nenter:\n%s",
+					place.id.word(), got, want)
+			}
+		})
+	}
+}
+
+// A CLICK NEVER SPENDS. Memory's `enter` on a line asks the model about it, so a
+// press on a line opens the line's card instead and the place stays — and a
+// press on its shelf folds it, which is that row's `enter`.
+func TestAClickOnAMemoryLineOpensItsCardAndAsksNothing(t *testing.T) {
+	var place everyPlace
+	for _, p := range everyPlaceTable() {
+		if p.id == pageMemory {
+			place = p
+		}
+	}
+	a := place.open(t)
+	hits := place.hits(a)
+	for y, at := range hits {
+		stop, ok := a.mem.reading.at(at)
+		if at < 0 || !ok || stop.line == nil {
+			continue
+		}
+		drive(t, a, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft})
+		if a.page != pageMemory {
+			t.Fatalf("a click on a memory line left the place for %q", a.page.word())
+		}
+		if a.mem.expanded != stop.line.ID {
+			t.Fatalf("a click on %q opened the card %q", stop.line.ID, a.mem.expanded)
+		}
+		// AND THE CARD IS NOT THE LIST: a second press over it lands on no row.
+		cursor := a.mem.cursor
+		drive(t, a, tea.MouseClickMsg{X: 4, Y: y + 1, Button: tea.MouseLeft})
+		if a.mem.cursor != cursor || a.mem.expanded != stop.line.ID {
+			t.Fatal("a press over the open card walked the list hidden under it")
+		}
+		return
+	}
+	t.Fatal("the memory lab drew no line to click")
+}
+
+// placeClickTarget is a row of the frame a place drew that opens something and
+// that the cursor is not already on — the last such row, so the click has to
+// move the cursor to be right.
+func placeClickTarget(t *testing.T, a *app, place everyPlace) (y, target int) {
+	t.Helper()
+	stops := map[int]bool{}
+	for _, at := range a.showing().stops(a) {
+		stops[at] = true
+	}
+	y, target = -1, -1
+	for row, at := range place.hits(a) {
+		if at >= 0 && stops[at] && at != place.cursor(a) {
+			y, target = row, at
+		}
+	}
+	if y < 0 {
+		t.Fatalf("the %s place drew no row to click that the cursor is not on", place.id.word())
+	}
+	return y, target
+}

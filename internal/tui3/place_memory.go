@@ -684,7 +684,10 @@ func (placeMemory) body(a *app, width, room int) []placeRow {
 	var body []string
 	switch {
 	case p.expanded != "":
-		body = p.card(width, a.pal)
+		// The card stands on the place's one left edge, as the list does.
+		for _, line := range p.card(width-len(placeLead), a.pal) {
+			body = append(body, placeLead+line)
+		}
 	case p.reading.bare():
 		return placeWhisperRows(pageMemory, width, room, a.pal)
 	default:
@@ -895,19 +898,35 @@ func (placeMemory) hint(a *app) string {
 
 func (placeMemory) changed(a *app, since time.Time) int { return a.memoryChangedSince(since) }
 
-func (placeMemory) press(a *app, y int) bool {
-	if at, ok := placeBodyLine(y, a.mem.top, a.mem.shown); ok {
-		if _, stop := a.mem.reading.at(at); stop {
-			a.mem.cursor = at
-			a.touch()
-		}
+// press is enter on the row it lands on, with the one exception [place.press]
+// names: a line's `enter` asks the model about it, so a press on a line opens
+// its card, and the card's own `enter` and `esc` take it from there. A card
+// standing open is not the list, so a press over it lands on no row of it.
+func (placeMemory) press(a *app, y int) (tea.Cmd, bool) {
+	p := &a.mem
+	if p.expanded != "" || p.edit != nil {
+		return nil, true
 	}
-	return true
+	at, ok := placeBodyLine(y, p.top, p.shown)
+	if !ok {
+		return nil, true
+	}
+	stop, ok := p.reading.at(at)
+	if !ok {
+		return nil, true
+	}
+	p.cursor = at
+	a.touch()
+	if stop.line != nil {
+		p.openMemoryCard(a, *stop.line)
+		return nil, true
+	}
+	return placeMemory{}.enter(a), true
 }
 
 func (placeMemory) hover(a *app, y int) bool {
 	next := -1
-	if at, ok := placeBodyLine(y, a.mem.top, a.mem.shown); ok {
+	if at, ok := placeBodyLine(y, a.mem.top, a.mem.shown); ok && a.mem.expanded == "" {
 		if _, stop := a.mem.reading.at(at); stop {
 			next = at
 		}

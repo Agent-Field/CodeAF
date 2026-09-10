@@ -160,11 +160,13 @@ func (a *app) readSwitchLedger() {
 // to maintain. So the two flags live on the app — which closing home does not
 // clear — and nothing writes them to a disk.
 func (a *app) homeAlt(letter rune) bool {
-	if !a.at(pageHome) || a.home.phone || a.home.searching() {
+	if !a.at(pageHome) || a.home.phone || a.home.searching() || a.home.gridOn() {
 		// A QUERY HAS NO GROUPING TO TOGGLE. While something is typed the column
 		// is the drop-up of matches ([homeView.buildWorld]), and a key that
 		// silently changed a list that is not on the screen would be the worst
-		// kind of chord — one that does something you cannot see.
+		// kind of chord — one that does something you cannot see. THE GRID HAS
+		// NONE EITHER: its panels are not the ranked list the two views arranged
+		// (homegrid.go), so at rest the two chords are not bound.
 		return false
 	}
 	switch letter {
@@ -576,9 +578,9 @@ func (placeHome) changed(a *app, since time.Time) int { return 0 }
 // press, hover and wheel are home's own, because home resolves the pointer
 // against two maps and a column boundary rather than against a body line
 // (homemouse.go). The router hands the gesture straight over.
-func (placeHome) press(a *app, y int) bool     { return false }
-func (placeHome) hover(a *app, y int) bool     { return false }
-func (placeHome) wheel(a *app, delta int) bool { return false }
+func (placeHome) press(a *app, y int) (tea.Cmd, bool) { return nil, false }
+func (placeHome) hover(a *app, y int) bool            { return false }
+func (placeHome) wheel(a *app, delta int) bool        { return false }
 
 // key is home's whole grammar, which is the oldest on this surface and the one
 // every other place borrowed from (home.go's [app.homeKey]). The router is read

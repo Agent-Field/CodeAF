@@ -522,14 +522,10 @@ func (p *standingPlace) current() (standing.Item, bool) {
 	return row.view.Item, ok
 }
 
-// press resolves a click on one of the page's rows.
-//
-// THE POINTER MOVES THE CURSOR AND NEVER ACTS, which is where this page parts
-// company with the panel it borrows its shape from. /permissions asks before it
-// drops, so a mis-aimed click there costs a second press; every verb here is a
-// key, and enter takes a person out of the conversation they are sitting in — a
-// click that did that would be a gesture nobody could aim.
-func (p *standingPlace) press(a *app, y int) tea.Cmd {
+// press resolves a click on one of the page's rows to the order it names, and
+// reports whether it landed on one; the place then enters it ([place.press]).
+// Every verb here is still a key.
+func (p *standingPlace) press(a *app, y int) bool {
 	// A ROW OF THE TERMINAL BECOMES A ROW OF THE BODY BY SUBTRACTING THE HEAD,
 	// and the head is one number for every place ([placeHeadRows]). It used to
 	// resolve against the chrome's overlay marks, which is what an overlay had
@@ -540,11 +536,11 @@ func (p *standingPlace) press(a *app, y int) tea.Cmd {
 		// A heading, a "not here" line, a "last look" paragraph, or a blank under
 		// the last row: a line belonging to no order. It is swallowed rather than
 		// resolved to whichever row it happened to be nearest.
-		return nil
+		return false
 	}
 	p.cursor = at
 	a.touch()
-	return nil
+	return true
 }
 
 // ── the writes ──────────────────────────────────────────────────────────────
@@ -927,9 +923,11 @@ func (placeStanding) summary(a *app) string {
 	return standingSummary(a.standingPlaceViews(), a.now())
 }
 
-func (placeStanding) press(a *app, y int) bool {
-	a.orders.press(a, y)
-	return true
+func (placeStanding) press(a *app, y int) (tea.Cmd, bool) {
+	if a.orders.press(a, y) {
+		return a.orders.enter(a), true
+	}
+	return nil, true
 }
 
 // hover is A SCREEN LINE OF THE BLOCK and not a row index, because that is what

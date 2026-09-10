@@ -1637,14 +1637,8 @@ func (placeTasks) ownFrame(a *app, width, height int) ([]string, []placeHit, int
 // press, hover and wheel are this place's own: it resolves the pointer against
 // the hit map its frame wrote ([app.taskSheetPress]) rather than against a body
 // line, because a row of this list can be two screen lines tall at [tierPhone].
-func (placeTasks) press(a *app, y int) bool {
-	width, height := a.size()
-	_, hits, _, _ := a.taskSheetFrame(width, height)
-	if y >= 0 && y < len(hits) && hits[y].kind == taskSheetHitRow {
-		a.taskSheet.cursor = hits[y].index
-		a.touch()
-	}
-	return true
+func (placeTasks) press(a *app, y int) (tea.Cmd, bool) {
+	return a.taskSheetPress(0, y), true
 }
 
 func (placeTasks) hover(a *app, y int) bool {
