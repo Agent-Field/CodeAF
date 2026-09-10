@@ -63,7 +63,8 @@ screen 2a disagree the places follow home so that `tab` crosses no seam:
   subject bold, the facts lifted to `ink` — with no accent mark in the gutter;
 - an empty region keeps its heading and one dim whisper;
 - a fold line opens on one click, a row is selected by the first click and
-  opened by the second.
+  opened by the second. (The brief for the places settled this the other way:
+  on a place a click on a row is `enter` on it — see *What landed*.)
 
 Screen 2a paints section headings `dim`; DESIGN-LANGUAGE's accent budget and
 home paint them `muted`. The places follow home, and that disagreement is the
@@ -76,3 +77,29 @@ design's to settle, not a lane's.
   one row higher than a place's. The conversation's foot keeps a blank row
   between the box and the status line that no place has.
 - **Lane G**: home's headings are `muted` where screen 2a says `dim` (above).
+
+## What landed (lane Q, branch `home/mc-q`)
+
+| # | Status | Commit |
+|---|---|---|
+| 1 | Fixed. The note rides the foot rule as its legend, so every place's foot is the same three rows. Pinned over every place at three sizes (`TestEveryPlaceSpendsTheSameHeadAndFoot`). | `df940f4f7` |
+| 2 | Fixed. The paragraph is gone; the whisper is one line and gives way with `…` at 44 columns. | `0ae609f3d` |
+| 3 | Fixed. No empty place says it is empty; each says what arrives there (`placeWhisper`). | `0ae609f3d` |
+| 4 | Fixed. Every empty place is its heading and one dim whisper, from one table; memory's seven-line teaching is gone, so its first line lands without a swap. | `0ae609f3d` |
+| 5 | Fixed. Hover is the cursor's one step, ground and bold subject, with no mark. | `1619028b6` |
+| 6 | Fixed on standing, memory, spend and search: a click on a row is `enter` on it (memory's lines open their card, because a click never spends). Home keeps lane G's two-press grammar; settings keeps select-then-change because its `enter` edits a value. Fold lines are doors both ways. | `3892df47d`, `f9f99498e`, `b61acb292` |
+| 7 | Fixed. One band (`placeBand`, the cursor step) on every place. | `1619028b6`, `334cf4f1c` |
+| 8 | Fixed. Subjects are `ink`, bold under the band; facts `dim` at rest and `ink` under it. | `1619028b6`, `334cf4f1c` |
+| 9 | Fixed. Every heading is `placeHeading` (`muted`); the page name is only in the bar. | `1619028b6` |
+| 10 | Fixed. A match is `ink` against `dim` facts, not bold. | `1619028b6` |
+| 11 | Fixed. The chip is `ink` and bold on the selected ground; the inner rule is gone. | `6d09d5078` |
+| 12 | Fixed. One left edge (`placeLead`, one cell in) for every head, heading and mark. A row with no glyph (search, settings, a tasks chat row) starts its subject where the others start theirs, or on the edge where it has no mark column. | `334cf4f1c`, `6d09d5078` |
+| 13 | Fixed. No place draws a cursor mark. | `1619028b6` |
+| 14 | Fixed (`1 shelf`). | `1619028b6` |
+| 15 | Fixed. A blank under the head and above every shelf, reserved before the window is sized. | `334cf4f1c` |
+| 16 | Fixed. Spend's focus wakes on the head of `what it was for`. | `36b2e3997`, `2d2a7238a` |
+
+Still open: standing's and settings' margins are laid out inside the
+100-cell pair measure (`overlayMeasure`) rather than flushed to the frame's
+edge. That measure is a stated law shared with every picker, so changing it
+is a decision about pickers as well as places, not a lane's.
