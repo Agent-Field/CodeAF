@@ -366,8 +366,11 @@ func testHomeShape(t *testing.T) {
 // WHAT WENT, AND WHERE IT WENT. The resting card is gone (DESIGN.md §1, "what is
 // retired"): the person's last words are the line under the `here` row, and the
 // repository clause is on the project's row of `projects`. The card beside a
-// search still carries the place line, the facts line and the `→ verbs` line,
-// so those assertions are kept and reached by typing.
+// search is the band registry's card (internal/tui3's homeCardRows), which was
+// never the resting card: its repository is a band of its own, its facts are a
+// band, and its last line is the keys legend ending in `→ more`. So the card is
+// read in ITS spelling, and the resting card's `→ verbs` line and one-line
+// `path · repo · here` address are not waited for anywhere.
 func testRealConversation(t *testing.T) {
 	home := newHome(t, nil)
 	// The card caps its width, so widening the terminal cannot make an
@@ -391,10 +394,14 @@ func testRealConversation(t *testing.T) {
 	t.Logf("the model answered (%q):\n%s", hit, screen)
 
 	// The repository must agree with git, so the count is taken at the moment of
-	// the assertion rather than assumed — and its clauses are joined with a comma,
-	// because `main, 1 file dirty` is one clause about one repository.
+	// the assertion rather than assumed. TWO SURFACES JOIN ITS CLAUSES TWO WAYS,
+	// and both are the product: the projects panel writes `main, 1 file dirty` as
+	// one clause about one repository on a row that already uses ` · ` between
+	// its facts (homepanel_projects.go), and the search card's repository band
+	// keeps the reading's own ` · ` so a narrow card drops a clause whole.
 	dirty := dirtyFiles(t, ws)
-	want := fmt.Sprintf("main, %d %s dirty", len(dirty), plural("file", len(dirty)))
+	count := fmt.Sprintf("%d %s dirty", len(dirty), plural("file", len(dirty)))
+	want, cardWant := "main, "+count, "main · "+count
 	// AND WHAT MADE IT DIRTY. The test changed exactly one tracked file; a
 	// second entry is something the product itself dropped in the person's
 	// working directory, which is worth naming rather than absorbing.
@@ -413,10 +420,18 @@ func testRealConversation(t *testing.T) {
 	// it. The reading of `git status` arrives a beat after the first frame.
 	panels := r.waitFor(20*time.Second, say(t, "homeFootWord"), say(t, "homePanelRecent"), want)
 	t.Logf("home at rest, with this conversation on the panels:\n%s", panels)
-	if !strings.Contains(panels, "what is 2+2?") {
-		t.Errorf("the `here` row does not carry the person's own last words:\n%s", panels)
+	// THE `here` ROW AND THE WORDS UNDER IT. At [tuiWide] the panels are three
+	// columns of a third each, and `where you were` is the left one: its first
+	// row is this window's conversation wearing the word `here`, and the row
+	// under it is what the person last said in it (DESIGN.md §3 G3).
+	recent := strings.Split(strings.TrimRight(panelColumn(panels, say(t, "homePanelRecent"), tuiWide/3), "\n"), "\n")
+	if len(recent) < 3 || !strings.HasSuffix(recent[1], " "+say(t, "homeHereWord")) {
+		t.Errorf("`where you were` does not lead with this window's own `%s` row:\n%s",
+			say(t, "homeHereWord"), strings.Join(recent, "\n"))
+	} else if !strings.Contains(recent[2], "what is 2+2?") {
+		t.Errorf("the line under the `here` row is not the person's own last words:\n%s", strings.Join(recent, "\n"))
 	}
-	if strings.Contains(rightPane(panels), say(t, "homeVerbsWord")) {
+	if strings.Contains(rightPane(panels), say(t, "homeCardMoreWord")) {
 		t.Errorf("a card is standing beside the panels at rest:\n%s", panels)
 	}
 
@@ -427,12 +442,12 @@ func testRealConversation(t *testing.T) {
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Up")
 	r.keys("Up")
-	card := r.waitFor(20*time.Second, say(t, "homeVerbsWord"), say(t, "homeFactsActive"))
+	card := r.waitFor(20*time.Second, say(t, "homeCardMoreWord"), say(t, "homeFactsActive"), cardWant)
 	t.Logf("the card beside the match:\n%s", card)
 	pane := rightPane(card)
-	if !strings.Contains(pane, want) {
-		t.Errorf("the card's place line does not read %q — it reads %q (git says %v)",
-			want, firstMatch(pane, "main"), dirty)
+	if !strings.Contains(pane, cardWant) {
+		t.Errorf("the card's repository band does not read %q — it reads %q (git says %v)",
+			cardWant, firstMatch(pane, "main"), dirty)
 	}
 	// The facts line. `last active` is always true of a conversation somebody
 	// just spoke in; `spent` is drawn from the whole rollup (home.go's
@@ -443,15 +458,18 @@ func testRealConversation(t *testing.T) {
 		t.Logf("FINDING: no `spent $…` clause on a conversation that really spent money. "+
 			"The facts line reads: %s", firstMatch(pane, say(t, "homeFactsActive")))
 	}
-	// The same cached reading must give way whole on a narrow card, then
-	// return when the person widens the terminal again.
+	// The same cached reading on the NARROWEST card (internal/tui3's
+	// homeCardMin) gives way whole or not at all: a band drops a clause from its
+	// end rather than cutting one, so a repository line with an ellipsis on it is
+	// a fact a person cannot read and cannot tell is incomplete. Then it returns
+	// whole when the person widens the terminal again.
 	r.resize(136, 40)
-	narrow := r.waitFor(10*time.Second, ws+" · "+say(t, "homeHereWord"))
-	if strings.Contains(narrow, want) {
-		t.Errorf("the narrow card retained a repository clause that cannot fit:\n%s", narrow)
+	narrow := r.waitFor(10*time.Second, say(t, "homeFactsActive"), say(t, "homeCardMoreWord"))
+	if line := firstMatch(narrow, "main"); strings.Contains(line, "…") {
+		t.Errorf("the narrow card cut its repository band instead of dropping a clause whole: %q\n%s", line, narrow)
 	}
 	r.resize(tuiWide, 40)
-	r.waitFor(10*time.Second, want, say(t, "homeFactsActive"), say(t, "homeVerbsWord"))
+	r.waitFor(10*time.Second, cardWant, say(t, "homeFactsActive"), say(t, "homeCardMoreWord"))
 }
 
 // ── 3 ───────────────────────────────────────────────────────────────────────
