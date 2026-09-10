@@ -24,7 +24,7 @@ func (c *Client) terminalResponseError(ctx context.Context, request *ai.Request,
 		Provider: served,
 	}
 	c.notePrefsFromAnswer(ctx, served)
-	c.refuseUpstream(request, knobs, err)
+	c.refuseUpstream(request, knobs, err, served, 0)
 	c.noteLaneOutcome(c.modelFor(request), served, "error", false)
 	c.releaseEndpoint(ctx, c.modelFor(request))
 	noteServed(ctx, served, "")

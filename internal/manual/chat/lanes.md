@@ -316,6 +316,31 @@ existing bounded call retry routes around the machine that failed. An earlier
 `No endpoints found` answer is not shown as the final error after another
 machine demonstrably accepted the request.
 
+## When a machine is too busy — a rate limit, too many requests, a 429, and how long aforge stays away from it
+
+**Too many requests is not a refusal.** A machine that answers
+`API error (429): Provider returned error (via Io Net)` has not said anything
+about your request — its queue is full for the moment. So it is not written off
+the way a refusal is. It is **stepped around for a while**, and it comes back on
+its own.
+
+- **When the answer names the machine, aforge stops sending there.** Every
+  request after it goes to a different machine for as long as that one asked to
+  be left alone, and for **five minutes** when it named no time. The request
+  that collected the rate limit keeps waiting out its own retries, because its
+  body was already written and sent.
+- **It counts wherever the message arrived.** A rate limit can come back before
+  a single word is written, or in the middle of a reply that had already started
+  arriving. The machine is stepped around either way. Before 2026-09-10 only the
+  first kind counted, so a busy machine that said "too many requests" halfway
+  through a reply was handed the next request, and the one after that — three
+  times in a minute and a half, on one measured turn.
+- **A rate limit that names nobody is your whole account**, not one machine, and
+  nothing is stepped around: there is nowhere better to go. aforge waits it out —
+  up to **two minutes** on a turn you are sitting in front of, ten inside a task —
+  and then hands you what the provider said. Sending the same request to a second
+  machine would only spend the account's allowance faster.
+
 ## What all providers have been ignored means — a refusal from nobody
 
 When the router answers `All

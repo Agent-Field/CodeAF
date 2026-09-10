@@ -186,7 +186,7 @@ func TestALaneIsNotStruckForARefusalAboutAList(t *testing.T) {
 	if !refusal.Unasked || refusal.struck() {
 		t.Fatalf("refusal = %#v, want no machine on the ledger's hook for a refusal about a list", refusal)
 	}
-	if client.strikeRefusal(model, refusal) {
+	if client.refuseLane(model, refusal, 0) {
 		t.Fatal("a lane was struck for a list's verdict")
 	}
 	if _, ignore := client.velocity.preferences(model); len(ignore) != 0 {
@@ -298,7 +298,7 @@ func TestAPinIsStillRetiredWhenAListEmptiedTheSet(t *testing.T) {
 	if refusal.struck() {
 		t.Fatal("a machine that never got the request is on the ledger's hook for it")
 	}
-	if client.strikeRefusal(model, refusal) {
+	if client.refuseLane(model, refusal, 0) {
 		t.Fatal("a lane was struck for a list's verdict")
 	}
 	if _, ignore := client.velocity.preferences(model); len(ignore) != 0 {
