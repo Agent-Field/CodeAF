@@ -143,8 +143,10 @@ moving, `○` at rest, `=` a standing item you paused. The note is the one fact 
 about: `asks: add a --report-only mode?`, `needs your ok to run bash`,
 `2 tasks running · reading filings`, `3 files made`, `ran a saved shape`.
 
-**A narrow frame drops facts in one order and never the name:** the note goes first, then
-the project tag, then the age. Under **80 columns** there is no note at all.
+**A narrow frame drops facts in one order, and the age outlasts the end of the name:** the
+note goes first, then the project tag, then the name is cut short with `…` — the age, or
+`here`, stays at the margin until the name would be down to twelve cells. Under **80
+columns** there is no note at all.
 
 Both kinds of row are on the one list: a conversation, and a standing item that is asking
 you something or firing right now. An `ask here` errand sits above everything, because it
