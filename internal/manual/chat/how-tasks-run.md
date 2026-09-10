@@ -1749,11 +1749,13 @@ how**. It happens in two places:
   hands, and asked to hand it out.
 
 **How long is normal.** It is one full model call on the tier that thinks: **ten to thirty
-seconds**, measured at thirteen. It is given at most **three minutes**, and a reading nobody
-could get is not a refusal: an ordinary division goes ahead as the worker wrote it, and one
-that only this reading could have allowed does not. It carries no numbers — how many parts there are is exactly what it is deciding —
-and the roster says what happened afterwards, either `split into 3 parts:` or the task
-carrying on as one worker.
+seconds**, measured at thirteen. It is bounded at **ten minutes for the whole reading** —
+that tier's own patience — but a model that goes quiet is cut in tens of seconds by the
+guard every request runs under, so the ten minutes is what a reading being written may
+take and never how long you wait for one that is not coming. It carries no numbers — how
+many parts there are is exactly what it is deciding — and the roster says what happened
+afterwards, either `split into 3 parts:` or the task carrying on as one worker. *What the
+row under sizing the work says* below is the line that names the model being asked.
 
 **Nothing is wrong if it ends with no parts.** A reading that says the work is one job is
 a normal ending: the task runs as one worker, nothing is cancelled, and nothing is lost.
@@ -1762,6 +1764,34 @@ a normal ending: the task runs as one worker, nothing is cancelled, and nothing 
 no lane is free to pick the parts up, or a width floor you turned on says the material names
 too few items — the whole thing takes microseconds and no word is drawn for it. Only the reading is a wait,
 so only the reading is said.
+
+## What the row under sizing the work says — which model is being asked, sizing says asking a model, my task said a model did not answer in time, nobody answered going with the parts as drawn, asking again
+
+While a task says `sizing the work`, the **second row of its block says what is happening to
+the reading**, and it changes as the reading goes:
+
+```
+▏ sizing the work
+▏ asking z-ai/glm-5.3 · 1 of 2
+```
+
+`1 of 2` is which model of how many are lined up to be asked. When only one is lined up
+there is nothing to count and the row just says `asking <model>`.
+
+**If a model cannot answer, the row says so and names the next one.** It reads
+`z-ai/glm-5.3 did not answer in time · asking deepseek/deepseek-v4-flash-0731`, or
+`… could not be reached · asking …` where the request never landed at all. A model being
+given another go on the same rung reads as `asking again`.
+
+**When nobody answers**, the last thing the row says is `nobody answered · going with the
+parts as drawn`, and then the task goes back to work. That is not a failure and nothing is
+lost: a second opinion that cannot be had is not a refusal, so an ordinary division goes
+ahead exactly as the worker wrote it. The one case that does not is a division that **only**
+this reading could have allowed — one a width floor had already turned down — and there the
+task carries on as a single worker instead.
+
+**The row clears when the reading ends.** It says what is true while it is true; a task back
+at its own work never carries a line about a wait that has finished.
 
 ## What briefing a worker means — briefing a worker, the wait before a handed-over turn becomes a task, aforge froze for thirty seconds, nothing appeared on the rail
 
