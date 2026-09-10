@@ -47,8 +47,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/workspace"
 )
 
-const standingSummary = `  aforge standing [list] [--json]
-      ongoing work and rules: add, edit, show, pause, resume, stop, check`
+const standingSummary = `  aforge standing [add|edit|show|stop|check]  ongoing work and its runs`
 
 const standingUsage = `  aforge standing [list] [--json]       everything standing on this machine
   aforge standing add --words "<your sentence>" --brief "<the work>"
@@ -698,7 +697,11 @@ func writeStandingRecord(out io.Writer, record standingRecord) error {
 		fmt.Fprintln(out, "  rules could not be read: "+record.RulesError)
 	}
 	if item.Runs > 0 {
-		fmt.Fprintf(out, "  ran %d time(s); last came to %s\n", item.Runs, item.LastOutcome)
+		line := fmt.Sprintf("  ran %d time(s); last came to %s", item.Runs, item.LastOutcome)
+		if item.SpentUSD > 0 {
+			line += fmt.Sprintf(" · spent $%.4f", item.SpentUSD)
+		}
+		fmt.Fprintln(out, line)
 	}
 	if len(record.Occurrences) > 0 {
 		fmt.Fprintln(out, "runs, newest first:")
@@ -730,6 +733,9 @@ func writeStandingRecord(out io.Writer, record standingRecord) error {
 		}
 		if run.SupersededBy != "" {
 			fmt.Fprintln(out, "      interrupted; retried as "+run.SupersededBy)
+		}
+		if run.USD > 0 {
+			fmt.Fprintf(out, "      cost $%.4f\n", run.USD)
 		}
 		if run.Published != nil {
 			fmt.Fprintf(out, "      published %s (%d bytes, sha256 %s)\n", run.Published.Path, run.Published.Bytes, shortHash(run.Published.SHA256))
