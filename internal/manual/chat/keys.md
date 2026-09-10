@@ -1884,8 +1884,11 @@ to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 **Press the space bar twice with an empty message box.** That is the way back to home from
 inside a conversation, and `/home` opens it too.
 
-**There is also a number: `alt+1` (`⌥1` on a Mac).** Home is the first of seven places, and
-every one of them answers to its position on the tab bar — `alt+1` through `alt+7`. Hold
+**There is also a number: `alt+1` (`⌥1` on a Mac).** Home is the first of the four places on
+the tab bar — `home  tasks  spend  settings` — and each answers to its position there,
+`alt+1` through `alt+4`. **`alt+5`, `alt+6` and `alt+7` are kept**, on the three places that
+are off the bar — standing, memory and search — so those keys still open a room rather than
+doing nothing; `alt+.` draws all seven with their numbers. Hold
 `alt` and press the digit. On macOS aforge draws the modifier as `⌥` because that is what the
 keycap says; it is the same key and the same chord, and on Linux and on Windows it is drawn
 `alt+`. It arrives in every terminal aforge runs in, which is why the numbers are on `alt`
@@ -2062,7 +2065,8 @@ seconds quits aforge.
 ## The tab bar is a row the cursor can stand on — ↑ off the top row, and ←/→ along the words
 
 **On every place, `↑` from the first row of the page lands the cursor on the tab bar** —
-the row of seven words under the top line. The word you are standing in wears the cursor's
+the row of four words under the top line (five while you stand in standing, memory or
+search, whose word is drawn after the four). The word you are standing in wears the cursor's
 band there instead of its usual mark, and five keys mean something on that row:
 
 | Chord | What it does while the cursor is on the bar |
@@ -2094,7 +2098,7 @@ between the tabs with the arrow keys*.
 
 ## `b` on the spend place — the letter that opens the limits, and the money figure you can press
 
-On the spend place (`/spend`, or `alt+5`) two things lead to the money limits, and neither
+On the spend place (`/spend`, or `alt+3`) two things lead to the money limits, and neither
 one is an editor on that page — the page answers *what did it cost*, and the Spending tab
 of `/settings` is the one place *what may it spend* is set.
 
