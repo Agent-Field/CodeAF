@@ -160,7 +160,7 @@ import (
 // lawregistry_test.go is what keeps it there: every law above is filed under an
 // id and a class, and a second copy of one is now a build failure rather than a
 // thing the next audit finds.
-// ATTRIBUTION COST 574 BYTES AND 207 OF THEM ARE THE FEATURE (2026-09-10). Lane
+// ATTRIBUTION COST 586 BYTES AND 207 OF THEM ARE THE FEATURE (2026-09-10). Lane
 // I of the prompt diet gave the chat the law the resident has had all along:
 // aforge signs the git work it does in somebody's name, one trailer on a commit
 // and one footer line on a pull request or issue. It is a law this page did not
@@ -171,8 +171,8 @@ import (
 // the issue footer is named by the one utm parameter that differs rather than
 // spelled a second time. It is also CONDITIONAL — off with the row off, off in a
 // hand whose bash cannot commit — so this figure is the widest page and not
-// everybody's. The page went 22,714 → 23,288, the tool block is unmoved at
-// 24,044, and the prefix is 47,332: 668 under, and the cap is untouched.
+// everybody's. The page went 22,714 → 23,300, the tool block is unmoved at
+// 24,044, and the prefix is 47,344: 656 under, and the cap is untouched.
 // widestPage weighs the larger direct/deferred wording for each fact.
 const fixedPrefixBudget = 48_000
 

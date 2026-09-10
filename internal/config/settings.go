@@ -2340,8 +2340,13 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyAttribution, Category: CategoryInterface, Kind: SettingBool,
 			Label: "attribution", Env: "AFORGE_ATTRIBUTION",
-			Hint: "signs commits and PRs aforge writes for you — one trailer, one footer line. " +
-				"A change lands on the next job.",
+			// THE ROW GOVERNS BOTH SURFACES NOW, so the hint says both. The chat
+			// resolves it once when it starts (cmd/aforge's applyV3Governance) and a
+			// job resolves it when the job begins, which is why a change lands at two
+			// different moments and the person is told which.
+			Hint: "signs the commits, pull requests and issues aforge writes for you — one " +
+				"trailer, one footer line, and nothing anywhere else. A change lands on the " +
+				"next job, and in a conversation the next time aforge starts.",
 			read:  func() string { return formatBool(AttributionAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyAttribution, raw) },
 		},

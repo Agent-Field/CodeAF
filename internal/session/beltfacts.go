@@ -133,8 +133,9 @@ func (c Config) mayFork() bool { return !c.inHand }
 // request of its short life.
 func (c Config) signsGitWork() bool { return c.Attribution && !c.inHand }
 
-// signsGitWork asked of a live agent, so that the harness's OWN commits and the
-// sentence the model is told come off one predicate. The commits a landing
+// signsGitWork is [Config.signsGitWork] asked of a live agent, so that the
+// harness's OWN commits and the sentence the model is told come off one
+// predicate. The commits a landing
 // writes are not on any belt — nobody is asked about them — and a build where
 // the model was told to sign while the landing quietly did not would be two
 // answers to one row (task_run.go's [signed]).

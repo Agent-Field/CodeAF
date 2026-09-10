@@ -256,9 +256,9 @@ const AttributionIssueFooter = "Drafted with [agentfield ai](https://agentfield.
 // every turn, forever, to say what the substitution already says.
 // It is ONE PARAGRAPH so that the chat can carry it as a single belt bullet
 // beside the tools it names, which is the register that section is written in.
-const AttributionLaw = "SIGN GIT WORK DONE FOR THEM. A commit you make with `bash` ends in a blank line and `" +
+const AttributionLaw = "SIGN GIT WORK DONE FOR THEM. A commit you make with `bash` ends with a blank line and then `" +
 	AttributionTrailer + "`; a pull request or issue body ends with " + AttributionSeparator +
-	" alone on a line and `" + AttributionPullFooter + "`, `utm_medium=issue` on an issue. " +
+	" alone on a line and `" + AttributionPullFooter + "`, with `utm_medium=issue` on an issue. " +
 	"Nowhere else: not in code, a commit subject, a README, a deliverable or your reply. " +
 	"A CONTRIBUTING policy banning AI trailers wins: leave both out and say so."
 
