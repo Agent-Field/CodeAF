@@ -139,6 +139,27 @@ import (
 // saved procedure configured, the complete tool block is 40,595 bytes and
 // discovery carries 26,740, including its 708-byte loader. Measure whole JSON
 // arrays rather than adding separately encoded array sizes.
+// THE DIET'S DELETE PASS TOOK 677 BYTES AND ADDED A LAW (2026-09-10). Lane C of
+// the prompt diet (docs/design/prompt-diet/DESIGN.md §1) deleted the SECOND and
+// THIRD copies of five rules and put ONE new sentence in their place, and the
+// new sentence is the reason the deletions are safe rather than merely cheap:
+// "anything handed off — a job, a watch, a task, a quick task — reports itself
+// into this conversation; never sleep, tail or poll for it" is 142 bytes that
+// says once what ten per-tool sentences were saying separately. Against it,
+// 819 bytes came out of text that stated a law already stated: the ask law was
+// on the page twice and in the belt fact under it a third time, so the ladder
+// bullet keeps it and the other two are gone; `# Critical`'s informed-action
+// bullet was the second telling of "never ask what the record answers";
+// prompts/system.md taught `write`'s append and `read`'s offset/limit, which
+// tools_write.go's [appendSentence] and bare's readDescription own word for
+// word; "Start ONE `watch`" contradicted [watchDescription]'s own count and is
+// gone; and the ask and settings belt facts gave up the two sentences about
+// what `load_capability` does once it is called, which is that tool's own
+// description. Nothing was raised. The page went 23,391 → 22,714, the tool
+// block is unmoved at 24,044, and the prefix is 46,758 — 1,242 under.
+// lawregistry_test.go is what keeps it there: every law above is filed under an
+// id and a class, and a second copy of one is now a build failure rather than a
+// thing the next audit finds.
 // THE DIET'S ON-DEMAND LANE PAID 3,854 BYTES BACK AND ASKED FOR NOTHING
 // (2026-09-10). Four runs of prose came off prompts/system.md and message[0]
 // stopped carrying any of them, because each one is already delivered by
@@ -161,8 +182,10 @@ import (
 //     rest. `generate_image` and `generate_video` state it a third time in the
 //     `prompt` field, where it is read at the call.
 //
-// Nothing was raised and no law was dropped. The page went 23,391 → 19,537, the
-// tool block is unchanged at 24,044, and the prefix is 43,581 — 4,419 under.
+// Nothing was raised and no law was dropped, and each of the four is filed in
+// lawregistry_test.go under class `demand` with the page that now owns it. On
+// top of the delete pass above, the page went 22,714 → 18,860, the tool block is
+// unchanged at 24,044, and the prefix is 42,904 — 5,096 under.
 // widestPage weighs the larger direct/deferred wording for each fact.
 const fixedPrefixBudget = 48_000
 
