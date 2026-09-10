@@ -13,3 +13,7 @@ Spark without model requests; scoring follows calibration and client preflight.
 
 A shared grader preserves nested regression directories and requires the same
 test identities and outcomes as the calibrated reference, including skips.
+
+The holdout also has a per-trial adapter for the frozen native runners and a
+scoped copy of the native mini usage collector. Both remain unvalidated until
+the separate Spark preflight; their presence does not mean scoring has begun.

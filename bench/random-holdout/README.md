@@ -86,3 +86,18 @@ separate from the original development-set table. If these results guide a new
 harness change, this cohort has become development data and the next validation
 requires another unseen draw. Existing non-coding controls remain necessary;
 more coding issues alone do not validate a general-purpose harness.
+
+## Native trial binding
+
+`run_cell.py` binds the previously frozen Aforge, Pi and mini runners to the
+new fixture paths in a separate process for each arm. It does not implement a
+new agent loop. It refuses existing trial directories, checks the scoring plan's
+input hashes, and uses the shared grader for all arms. For mini,
+`native_usage_watch.py` is the existing per-generation collector scoped to one
+trial; native cost-stop classification is retained separately in accounting.json.
+
+These adapters are preparatory code, not a launched campaign. Runner resources,
+Pi runtime overlays, the actual-client preflight and the final scoring manifest
+still have to be assembled and verified on Spark. The already queued fixture
+and grader jobs do not exercise these additional files. No holdout inference
+may start until that separate validation passes.
