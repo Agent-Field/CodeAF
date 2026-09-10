@@ -8,6 +8,19 @@ interpreting a proposal as accepted behavior. [Journeys](JOURNEYS.md) define the
 product examples and evidence boundaries. [Delivery](DELIVERY.md) governs future
 build tasks, branch ownership and integration.
 
+**2026-09-10 consolidated architecture.** Start with
+[Architecture: objects, storage and operating sequences](ARCHITECTURE.md) for the
+current target proposal, and then the separately written
+[twenty-three-scenario review](ARCHITECTURE-SCENARIOS.md). They include logical versus
+physical folders, context/authority, seven operating sequences, crash and stop
+semantics, draft/upstream reuse, comparator coverage and remaining decisions.
+[Rendered diagrams](diagrams/README.md) are available as standalone SVGs.
+This consolidation incorporates the continuation discussion about chat as the main
+input surface, ongoing-work run conversations and automatic impact assessment.
+It does not promote the proposed placement/reference or coordination-storage
+choices to confirmed decisions, change runtime behavior, or replace the existing
+decision ledger's acceptance history. Older drawings remain historical studies.
+
 [Task-space comparison](LANDSCAPE.md) places the aforge design alongside Claude
 Code, OpenClaw and Grok Bot using official documentation. It distinguishes
 expressible behavior, shipped mechanisms and verified outcomes; it does not
