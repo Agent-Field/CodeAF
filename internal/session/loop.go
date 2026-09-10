@@ -237,6 +237,26 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// panic.
 	defer a.endPhase()
 
+	// Resolve and retain governing input before any alternate routing, baseline
+	// command or principal model call can start this turn's work.
+	a.refreshOrganization(ctx)
+	owner := a.organizationSource()
+	a.mu.Lock()
+	a.refreshStandingLocked()
+	a.refreshSystemLocked()
+	governingError := a.governingReadError
+	executionID := a.recordContextExposureLocked(owner, a.organizationRecords, a.governingRecords, a.organizationReadError+governingError, a.governingCollections)
+	traceFailed := a.file != nil && executionID == ""
+	a.mu.Unlock()
+	defer a.finishContextExposure(executionID)
+	if traceFailed {
+		hub.send(Event{Kind: EventNotice, Text: "The context record could not be saved."})
+	}
+	if governingError != "" {
+		hub.send(Event{Kind: EventError, Err: fmt.Errorf("cannot read governing directions: %s", governingError), Usage: a.sealTurn(turn, started, a.Model())})
+		return false
+	}
+
 	// BEFORE ANY OF IT: WHAT IS THIS SESSION WORKING TOWARDS? On an unattended
 	// session with a budget the goal owner is a [Steward] (principal.go), and a
 	// Steward that carries work on has to be carrying it on towards something.
@@ -332,23 +352,6 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// open the same way: no folder, no index and no other window each answer an
 	// empty block, and a turn with an empty block is a turn as it always was.
 	a.refreshElsewhere()
-	a.refreshOrganization(ctx)
-	owner := a.organizationSource()
-	a.mu.Lock()
-	a.refreshStandingLocked()
-	a.refreshSystemLocked()
-	governingError := a.governingReadError
-	executionID := a.recordContextExposureLocked(owner, a.organizationRecords, a.governingRecords, a.organizationReadError+governingError, a.governingCollections)
-	traceFailed := a.file != nil && executionID == ""
-	a.mu.Unlock()
-	defer a.finishContextExposure(executionID)
-	if traceFailed {
-		hub.send(Event{Kind: EventNotice, Text: "The context record could not be saved."})
-	}
-	if governingError != "" {
-		hub.send(Event{Kind: EventError, Err: fmt.Errorf("cannot read governing directions: %s", governingError), Usage: a.sealTurn(turn, started, model)})
-		return false
-	}
 
 	// partial accumulates what the model has streamed for the CURRENT step.
 	// It is the transcript's answer for an interrupted step, where no response
