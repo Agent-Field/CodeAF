@@ -275,13 +275,19 @@ func (s *Store) ForWorkspace(workspace string) ([]Item, error) {
 // conversation ([Item.AppliesTo]), which is what a task's worktree and a firing
 // both are.
 func (s *Store) Applicable(workspace, sessionID string) ([]Item, error) {
+	return s.ApplicableScope(workspace, sessionID, nil)
+}
+
+// ApplicableScope is the same resolver with explicit governing folder bindings.
+// A caller without those bindings cannot infer them from navigation membership.
+func (s *Store) ApplicableScope(workspace, sessionID string, collections map[string]int) ([]Item, error) {
 	items, err := s.List()
 	if err != nil {
 		return nil, err
 	}
 	kept := items[:0]
 	for _, item := range items {
-		if item.Status != StatusActive || !item.AppliesTo(workspace, sessionID) {
+		if item.Status != StatusActive || !item.AppliesToScope(workspace, sessionID, collections) {
 			continue
 		}
 		kept = append(kept, item)

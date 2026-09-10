@@ -82,10 +82,11 @@ import (
 // Schema is the document version every [Item] carries. Bump it when a field
 // changes meaning; a reader that meets a newer schema than it knows skips the
 // document and says so in the pass.
-// Schema 2 adds revision-fenced writes. Older readers refuse these documents.
+// Schema 2 adds revision-fenced writes; schema 3 adds explicit folder scope.
+// Older readers refuse these documents rather than applying a folder rule broadly.
 // Deployment must stop old engines and tickers before restarting with this build:
 // a pre-upgrade process already holding an item can still overwrite its old copy.
-const Schema = 2
+const Schema = 3
 
 // Interval is how often a pass runs, whether a window runs it or the OS timer
 // does. It is the cadence the ratification card quotes for "checked every …".
@@ -354,6 +355,12 @@ type Item struct {
 	Rails     Rails  `json:"rails"`
 	// Altitude is the item's reach (see [Altitude]); empty reads as project.
 	Altitude Altitude `json:"altitude,omitempty"`
+	// Scope explicitly binds a hold to logical folders. Legacy altitudes do not
+	// also apply: a folder rule must never become a project rule in an old reader.
+	Scope *Scope `json:"scope,omitempty"`
+	// Adoption records who answered the proposal, independently of its wording.
+	// Missing provenance on older items remains unknown rather than fabricated.
+	Adoption *Adoption `json:"adoption,omitempty"`
 	// Brief is the working title and compiled prompt; empty reads as Words.
 	Brief Brief `json:"brief,omitempty"`
 	// Grant is one sentence of what acting on this item may do without asking,
@@ -420,6 +427,9 @@ type Item struct {
 // admission law in one place: words, a workspace, a kind with its fields, an
 // action with its text, and rails that are not zero.
 func (it Item) Validate() error {
+	if err := it.validateScope(); err != nil {
+		return err
+	}
 	switch {
 	case it.Words == "":
 		return errors.New("an item needs the person's words")
@@ -543,6 +553,9 @@ func (it Item) Prompt() string {
 // arithmetic written a second time. Callers pass what they know; an empty
 // sessionID is a place with no conversation (a task's worktree, a firing).
 func (it Item) Reaches(workspace, sessionID string) bool {
+	if it.Scope != nil {
+		return false
+	}
 	switch it.Level() {
 	case AltitudeMachine:
 		return true

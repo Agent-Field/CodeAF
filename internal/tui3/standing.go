@@ -836,7 +836,11 @@ func (a *app) standBands(card *standingCard, width int) []string {
 	// (docs/STANDING-ORDERS.md: the card always names it before anything
 	// stands). It is drawn in the person's own words and never the field's
 	// ([standLevelWord]).
-	for _, line := range wrap(standWhereTag+standLevelWord(card.item.Level()), width) {
+	where := standLevelWord(card.item.Level())
+	if card.item.Scope != nil {
+		where = card.item.When.Words
+	}
+	for _, line := range wrap(standWhereTag+where, width) {
 		out = append(out, a.pal.dim(line))
 	}
 	// AND A RULE HAS NO COST BAND AT ALL. A hold never wakes, so it never runs a
