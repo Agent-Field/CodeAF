@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -43,12 +44,57 @@ func fillKeeper(a *app, count int, left time.Time) []*switchAgent {
 	agents := make([]*switchAgent, 0, count)
 	for i := 0; i < count; i++ {
 		file := "/tmp/lab/cold" + itoa(i) + "/transcript.jsonl"
-		agent := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+		agent := &switchAgent{fakeAgent: &fakeAgent{model: "m"}, left: make(chan struct{})}
 		agents = append(agents, agent)
 		a.behind[file] = coldKept(agent, file, left.Add(time.Duration(i)*time.Minute))
 		a.prev = append(a.prev, file)
 	}
 	return agents
+}
+
+// awaitLeft waits until the sweep's off-frame close has actually run. The
+// keeper forgets the conversation on the calling goroutine; Interrupt and Close
+// happen afterwards, and reading those counts before this returns is a race.
+func awaitLeft(t *testing.T, agent *switchAgent) {
+	t.Helper()
+	if agent.left == nil {
+		t.Fatal("awaitLeft needs an agent whose Close signals left")
+	}
+	select {
+	case <-agent.left:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the sweep did not let go of the conversation")
+	}
+}
+
+// hostedLeave is a hosted conversation the sweep lets go of, with a way for a
+// test to wait until Detach has actually run — that call now happens off the
+// frame, the same as Interrupt and Close on an in-process conversation.
+type hostedLeave struct {
+	*hostedAgent
+	left chan struct{}
+	once sync.Once
+}
+
+func (h *hostedLeave) Detach() error {
+	err := h.hostedAgent.Detach()
+	h.once.Do(func() { close(h.left) })
+	return err
+}
+
+// blockLeave is a conversation whose Close waits until the test unblocks it,
+// which is how [TestTheSweepDoesNotWaitOnTheAgentLeaving] can tell the sweep
+// returned without waiting on the close.
+type blockLeave struct {
+	*switchAgent
+	started chan struct{}
+	block   chan struct{}
+}
+
+func (b *blockLeave) Close() error {
+	close(b.started)
+	<-b.block
+	return b.switchAgent.Close()
 }
 
 // Past the ceiling the coldest quiet conversation is let go of, and it is the one
@@ -64,6 +110,7 @@ func TestPastTheCeilingTheKeeperLetsGoOfTheColdestQuietConversation(t *testing.T
 	// of them cold.
 	agents := fillKeeper(a, keptCeiling, now.Add(-2*time.Hour))
 	a.sweepKept()
+	awaitLeft(t, agents[0])
 
 	if got := a.openCount(); got != keptCeiling {
 		t.Fatalf("the sweep left this window holding %d conversations, and the ceiling is %d", got, keptCeiling)
@@ -225,6 +272,7 @@ func TestAConversationFinishingCollectsAColdOne(t *testing.T) {
 	a.behind[oldest].watch.tasking.Store(false)
 	// The returned command waits on the stir lane; the sweep itself runs here.
 	_ = a.behindStir(behindStirMsg{key: oldest})
+	awaitLeft(t, agents[0])
 
 	if agents[0].closes == 0 {
 		t.Fatal("a conversation finishing did not collect a cold one")
@@ -247,6 +295,7 @@ func TestOpeningAnotherConversationCollectsAColdOneAndNeverTheOneJustLeft(t *tes
 	agents := fillKeeper(a, keptCeiling-1, now.Add(-2*time.Hour))
 
 	stowOne(t, a, &switchAgent{fakeAgent: &fakeAgent{model: "m"}}, "/tmp/lab/another/transcript.jsonl")
+	awaitLeft(t, agents[0])
 
 	if got := a.openCount(); got != keptCeiling {
 		t.Fatalf("this window holds %d conversations after opening one past the ceiling", got)
@@ -269,12 +318,18 @@ func TestASweptHostedConversationIsDetachedAndSaysItsWorkKeepsRunning(t *testing
 	a.clock = func() time.Time { return now }
 
 	hosted := &hostedAgent{fakeAgent: &fakeAgent{model: "m"}}
+	left := make(chan struct{})
 	fillKeeper(a, keptCeiling-1, now.Add(-time.Hour))
 	file := "/tmp/lab/hosted/transcript.jsonl"
-	a.behind[file] = coldKept(hosted, file, now.Add(-3*time.Hour))
+	a.behind[file] = coldKept(&hostedLeave{hostedAgent: hosted, left: left}, file, now.Add(-3*time.Hour))
 	a.prev = append([]string{file}, a.prev...)
 
 	a.sweepKept()
+	select {
+	case <-left:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the sweep did not detach the hosted conversation")
+	}
 
 	if hosted.detaches != 1 {
 		t.Fatalf("the hosted conversation was detached %d times", hosted.detaches)
@@ -284,6 +339,44 @@ func TestASweptHostedConversationIsDetachedAndSaysItsWorkKeepsRunning(t *testing
 	}
 	if got := plain(lastNote(t, a)); !strings.Contains(got, keptSweptOnWord) {
 		t.Fatalf("the sweep said %q about a conversation whose work keeps running", got)
+	}
+}
+
+// THE CLOSE IS NOT THIS KEYSTROKE. [app.sweepKept] runs on the update path, and
+// Interrupt-and-Close can wait; if the sweep called [leaveAgent] itself, a
+// conversation whose Close blocked would stall the window until it returned.
+func TestTheSweepDoesNotWaitOnTheAgentLeaving(t *testing.T) {
+	now := time.Date(2026, 9, 10, 15, 0, 0, 0, time.UTC)
+	a := newTestApp(&switchAgent{fakeAgent: &fakeAgent{model: "m"}})
+	a.file = "/tmp/lab/front/transcript.jsonl"
+	a.stirs = make(chan behindStirMsg, stirDepth)
+	a.clock = func() time.Time { return now }
+
+	agents := fillKeeper(a, keptCeiling, now.Add(-2*time.Hour))
+	started := make(chan struct{})
+	block := make(chan struct{})
+	slow := &blockLeave{switchAgent: agents[0], started: started, block: block}
+	a.behind["/tmp/lab/cold0/transcript.jsonl"].conv.Agent = slow
+
+	returned := make(chan struct{})
+	go func() {
+		a.sweepKept()
+		close(returned)
+	}()
+	defer close(block)
+
+	select {
+	case <-returned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the sweep stayed on this keystroke waiting for the conversation to close")
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the sweep never started leaving the conversation")
+	}
+	if a.behind["/tmp/lab/cold0/transcript.jsonl"] != nil {
+		t.Fatal("the keeper still holds the conversation it is supposed to have let go of")
 	}
 }
 

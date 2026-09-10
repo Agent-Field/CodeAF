@@ -7,6 +7,7 @@ invalidates:
   - "Nothing evicted a conversation. `internal/tui3/keeper.go` said a window's memory grew with every conversation opened and only `/quit` or `ctrl+w` gave one back. Past twelve open, the keeper now lets go of the coldest quiet one — idle fifteen minutes, nothing turning, nothing waiting, no unseen news, no words still in its box."
   - "The manual said there is no cap and nothing closes a conversation for you. Doors still never refuse another conversation, but past twelve open a quiet one left for fifteen minutes is let go of, with `let go · <name> — quiet a while — open it again from home` (or `its work keeps running` when the engine keeps it)."
   - "`docs/changes/unreleased/137-remove-conv-cap.md` said nothing evicts. That was true of the eight-cap removal; it is not true now. The eight-cap refusal is still gone."
+  - "Letting go of a quiet conversation waited on Interrupt and Close on the keystroke that collected it. The keeper still forgets it on that frame; the agent is taken off afterwards, so a close cannot stall the window."
 ---
 
 The owner's ruling that no door may refuse a conversation for how many are already

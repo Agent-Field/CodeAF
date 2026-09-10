@@ -56,6 +56,8 @@ import (
 // same judgement `quit` makes: a hosted conversation is detached and goes on
 // running on its engine, and an in-process one — which nothing else could run —
 // is closed. Either way its transcript is on disk and every door reopens it.
+// The keeper forgets the conversation on the frame; the agent is taken off
+// afterwards ([leaveOffFrame]), so Interrupt and Close cannot stall a keystroke.
 
 // WorkspaceGoneWord is what any door says about a workspace that is not there.
 // It names the path the caller gave and nothing beyond it, because the caller is
@@ -1034,6 +1036,15 @@ func leaveAgent(agent Agent) {
 	_ = agent.Close()
 }
 
+// leaveOffFrame is [leaveAgent] started away from the caller. Detach and
+// Interrupt-and-Close can wait; the update path cannot. [app.leaveEverything]
+// starts the same work in a goroutine and waits, because the process is going
+// away. The sweep only starts it — the keeper has already forgotten the
+// conversation, and a keystroke is not charged for the close.
+func leaveOffFrame(agent Agent) {
+	go leaveAgent(agent)
+}
+
 // workOutlivesExit reports whether this conversation's work would keep going
 // after the window closed. It is what the quit warning is written from
 // (quitarm.go), so the sentence and the act cannot disagree.
@@ -1198,6 +1209,13 @@ const (
 // surface and this is not the lane that gets one (render.go) — so a window left
 // completely alone keeps what it holds, and the first keystroke that opens
 // another conversation is what collects it.
+//
+// THE AGENT LEAVES OFF THIS FRAME. Both callers sit on Bubble Tea's update
+// path, and [leaveAgent] is the same wait `quit` makes — a Detach on a hosted
+// conversation, Interrupt and Close on an in-process one. The keeper forgets
+// the conversation here so the ceiling and the switcher move on this keystroke;
+// the agent is taken off afterwards ([leaveOffFrame]), the way
+// [app.leaveEverything] already starts that work in a goroutine.
 func (a *app) sweepKept() {
 	if len(a.behind) == 0 {
 		return
@@ -1212,7 +1230,7 @@ func (a *app) sweepKept() {
 		// gone: the name comes off its own agent, and whether its work outlives
 		// this window is what picks the sentence (quitarm.go's own question).
 		name, running := hopTitle(held.conv.Agent, held.side), workOutlivesExit(held.conv.Agent)
-		a.letGoKept(key, held, leaveAgent)
+		a.letGoKept(key, held, leaveOffFrame)
 		said := keptSweptWord
 		if running {
 			said = keptSweptOnWord
