@@ -87,12 +87,18 @@ convention. `.github/rulesets/` holds the rules ready to apply.
   than touching their tree. (`chat-v3-task` was the trunk until 2026-08-31 and no
   longer exists; anything still naming it is stale.)
 
-`make pr-ready` is the laptop pull-request ritual: the light gate plus fresh
-tests for the Go packages changed from `origin/dev` (or `BASE=<commit>`).
-`make check` remains the full-tree build, test and size ritual for Spark,
-staging, or an intentional full laptop run. The performance laws those targets
-enforce — and the rule that changing any cap changes the doc in the same commit
-— are in [PERF.md](PERF.md).
+**Before opening a pull request on this laptop, run `make pr-ready`.** That is
+the light gate plus fresh tests for the Go packages changed from `origin/dev`
+(or `BASE=<commit>`). It is the same bar CI uses to merge into `dev`. Do **not**
+run `make check`, bare `go test ./...`, or a full `go test ./internal/tui3` /
+`./internal/session` as the merge ritual — those thrash the box and are not what
+the pull-request gate demands. Edit with `make test-focus`; prove the change
+with `make test-touched` or `make pr-ready`. `make check` remains the full-tree
+build, test and size ritual for Spark, staging, or an intentional full laptop
+run. Concurrent full runs of `tui3` or `session` share one per-box lock so two
+agents cannot stack those binaries. The performance laws those targets enforce —
+and the rule that changing any cap changes the doc in the same commit — are in
+[PERF.md](PERF.md).
 
 `make demo-home` builds a **throwaway home with something on every place** — three
 projects, twelve conversations, standing orders, memories, a fourteen-day spending
