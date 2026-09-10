@@ -308,6 +308,12 @@ const (
 	// a hover on item nine would light somebody else's row the moment the other
 	// opened.
 	hoverRewindSheet
+	// hoverQuestionOption is one ANSWER on the page a question opens into;
+	// index is which (questionroom.go). Only the answer's own row lights,
+	// because only that row answers to a press: its body is prose, evidence and
+	// the person's own notes, and a paragraph that brightened would be
+	// promising a door on every sentence of it.
+	hoverQuestionOption
 )
 
 // hoverAt is what the pointer is over, as an identity rather than as a screen
@@ -369,6 +375,12 @@ func (a *app) setHover(x, y int) {
 	// finished and stopped asking for frames.
 	if a.room != nil {
 		a.room.dirty = true
+	}
+	// AND A QUESTION'S PAGE IS CACHED THE SAME WAY AND DROPPED ON THE SAME
+	// TERMS, so the answer under the pointer lights on the frame the pointer
+	// reaches it rather than on the next keystroke (questionroom.go).
+	if a.qroom != nil {
+		a.qroom.dirty = true
 	}
 	a.touch()
 }
@@ -498,6 +510,15 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	// resolved by column against the targets the layout recorded (roomorch.go).
 	if key, ok := a.orchHoverAt(x, y); ok {
 		return hoverAt{kind: hoverOrch, key: key}
+	}
+	// AND A QUESTION'S PAGE ANSWERS FOR ITS OWN ROWS ABOVE BOTH, in the order
+	// [app.press] resolves them: it is the body region while it is up, so a
+	// pointer answered from the transcript underneath would brighten a tool call
+	// in a conversation the person cannot see (questionroom.go).
+	if a.questionRoomOpen() {
+		if at, ok := a.questionRoomOptionAt(y); ok {
+			return hoverAt{kind: hoverQuestionOption, index: at}
+		}
 	}
 	if r, ok := a.rowAt(y); ok {
 		// A TASK REFERENCE IS THE ONE TARGET INSIDE A SENTENCE, so it is asked
@@ -693,6 +714,12 @@ func (a *app) hoveringFold(turn int) bool {
 
 // hoveringChoices reports whether the pointer is on the consent offer.
 func (a *app) hoveringChoices() bool { return a.hot.kind == hoverChoices }
+
+// hoveringQuestionOption is whether the pointer is on this answer of the page a
+// question opened into (questionroom.go).
+func (a *app) hoveringQuestionOption(at int) bool {
+	return a.hot.kind == hoverQuestionOption && a.hot.index == at
+}
 
 // hoveringRail reports whether the pointer is on this node's roster row.
 func (a *app) hoveringRail(node *taskNode) bool {

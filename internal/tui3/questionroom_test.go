@@ -173,18 +173,29 @@ func TestADigitTakesAnAnswerAndTheFootSaysWhatWouldBeSent(t *testing.T) {
 	}
 }
 
-// THE EMPTINESS LAW ON THE FOOT: nothing chosen draws no answer line and no
-// promise about enter.
+// THE EMPTINESS LAW ON THE FOOT: nothing chosen draws no answer line, and a
+// question with nothing for enter to take does not name the key.
+//
+// A QUESTION WITH ANSWERS ALWAYS HAS SOMETHING TO TAKE, which is the pointer's
+// own law (#789): `enter` takes the answer the pointer is standing on, whether
+// or not the asker recommended one. So the shape that drops the key is the one
+// with no answers written down at all.
 func TestTheFootOffersNoAnswerUntilThereIsOne(t *testing.T) {
 	q := demoQuestionReading()
 	q.Pick = nil
 	a, _ := standingInAQuestion(t, q)
+	if foot := footText(a); !strings.Contains(foot, questionNoPickWord) {
+		t.Errorf("the foot should say nothing is chosen:\n%s", foot)
+	}
+	bare := demoQuestionReading()
+	bare.Pick, bare.Options, bare.Attach = nil, nil, nil
+	a, _ = standingInAQuestion(t, bare)
 	foot := footText(a)
 	if !strings.Contains(foot, questionNoPickWord) {
 		t.Errorf("the foot should say nothing is chosen:\n%s", foot)
 	}
 	if strings.Contains(foot, questionKeyWord(questionEnterKey)) {
-		t.Errorf("a question with no pick must not offer enter as taking one:\n%s", foot)
+		t.Errorf("a question with nothing to take must not offer enter:\n%s", foot)
 	}
 }
 
@@ -779,5 +790,300 @@ func TestTheLanesNewsAboutAnAnswerGivenHereAddsNoSecondLine(t *testing.T) {
 	block := plain(strings.Join(a.questionRows(a.width), "\n"))
 	if got := strings.Count(block, "decided "); got != 1 {
 		t.Fatalf("the lane's news made it %d records:\n%s", got, block)
+	}
+}
+
+// ── THE POINTER ON THE PAGE, AND WHAT IT LOOKS LIKE ─────────────────────────
+//
+// The owner opened a question out on 2026-09-10 and reported two things about
+// the page it opened into: "no arrow or click", and "make sure there is some
+// textual hierarchy in design in options like the same line and next line in
+// options look same and a bit weird". These are what closes both.
+
+// pagePlainRows is the page, a row at a time, with every escape taken off — for
+// the assertions that are about WHICH ROW a thing landed on.
+func pagePlainRows(a *app) []string {
+	rows := a.questionRoomRows(a.width)
+	out := make([]string, len(rows))
+	for i, r := range rows {
+		out[i] = plain(r.text)
+	}
+	return out
+}
+
+// questionRoomRowY is the screen row one of the page's rows is drawn on, so a
+// test can press what a person presses rather than calling the hit-test's own
+// arithmetic back at it.
+func questionRoomRowY(a *app, at int) int {
+	rows := a.questionRoomRows(a.bodyWidth())
+	offset := a.questionRoomOffsetFor(len(rows), a.viewHeight())
+	return a.bodyTop() + at - offset
+}
+
+// questionRoomOptionRow is where one ANSWER's own row landed, by the map the
+// drawing wrote.
+func questionRoomOptionRow(t *testing.T, a *app, want int) int {
+	t.Helper()
+	a.questionRoomRows(a.bodyWidth())
+	for at, owner := range a.qroom.spots {
+		if owner == want {
+			return at
+		}
+	}
+	t.Fatalf("answer %d has no row of its own", want)
+	return -1
+}
+
+// `↑` AND `↓` WALK THE ANSWERS AND `→`/`←` OPEN AND FOLD ONE. Every one of them
+// did nothing before, on a page whose own foot named a pair of arrows.
+func TestTheArrowsWalkTheAnswersAndOpenAndFoldThem(t *testing.T) {
+	a, _ := standingInAQuestion(t, demoQuestionReading())
+	if a.qroom.focus != 0 {
+		t.Fatalf("the page should open on the pick, not on %d", a.qroom.focus)
+	}
+	tapNamed(a, tea.KeyDown, 0)
+	if a.qroom.focus != 1 {
+		t.Errorf("down should walk to the second answer, got %d", a.qroom.focus)
+	}
+	if a.qroom.open[1] {
+		t.Errorf("walking to an answer must not open it")
+	}
+	tapNamed(a, tea.KeyRight, 0)
+	if !a.qroom.open[1] {
+		t.Errorf("right should open the answer under the pointer")
+	}
+	if drawn := pageText(a); !strings.Contains(drawn, "One file in the repository") {
+		t.Errorf("the opened answer's body should be on the page:\n%s", drawn)
+	}
+	tapNamed(a, tea.KeyLeft, 0)
+	if a.qroom.open[1] {
+		t.Errorf("left should fold the answer under the pointer")
+	}
+	tapNamed(a, tea.KeyUp, 0)
+	if a.qroom.focus != 0 {
+		t.Errorf("up should walk back, got %d", a.qroom.focus)
+	}
+}
+
+// AND `enter` TAKES THE ANSWER THE POINTER IS ON, which is the block's own law
+// (#789) arriving on the page. It still takes the asker's pick off a fresh
+// room, because the room opens standing on it.
+func TestEnterTakesTheAnswerThePointerIsOn(t *testing.T) {
+	a, agent := standingInAQuestion(t, demoQuestionReading())
+	tapNamed(a, tea.KeyDown, 0)
+	tapNamed(a, tea.KeyEnter, 0)
+	if len(agent.answers) != 1 {
+		t.Fatalf("expected one answer, got %d", len(agent.answers))
+	}
+	if got := agent.answers[0].Key; got != "2" {
+		t.Errorf("enter should take the answer the pointer is on, got %q", got)
+	}
+
+	fresh, freshAgent := standingInAQuestion(t, demoQuestionReading())
+	tapNamed(fresh, tea.KeyEnter, 0)
+	if len(freshAgent.answers) != 1 || freshAgent.answers[0].Key != "1" {
+		t.Errorf("enter on a fresh page should still take the pick: %+v", freshAgent.answers)
+	}
+}
+
+// A CLICK OPENS AN ANSWER AND A SECOND CLICK ON IT TAKES IT. One press to read
+// and one to decide: a page where the first click answered would answer with
+// evidence somebody had not read, and a page where no click ever answered would
+// be one a person has to leave the mouse to finish.
+func TestAClickOpensAnAnswerAndASecondClickTakesIt(t *testing.T) {
+	a, agent := standingInAQuestion(t, demoQuestionReading())
+	at := questionRoomOptionRow(t, a, 2)
+	a.press(4, questionRoomRowY(a, at))
+	if a.qroom == nil {
+		t.Fatalf("one click must not answer the question")
+	}
+	if a.qroom.focus != 2 || !a.qroom.open[2] {
+		t.Fatalf("a click should move the pointer onto that answer and open it: focus %d open %v",
+			a.qroom.focus, a.qroom.open[2])
+	}
+	if len(agent.answers) != 0 {
+		t.Fatalf("one click must not answer the question: %+v", agent.answers)
+	}
+	at = questionRoomOptionRow(t, a, 2)
+	a.press(4, questionRoomRowY(a, at))
+	if len(agent.answers) != 1 {
+		t.Fatalf("a second click on the same answer should take it, got %d", len(agent.answers))
+	}
+	if got := agent.answers[0].Key; got != "3" {
+		t.Errorf("the click should have taken the answer it was on, got %q", got)
+	}
+}
+
+// AND WHAT LIGHTS IS EXACTLY WHAT A PRESS ACTS ON (hover.go's law). Only the
+// answer's own row answers to a click, so only that row brightens under the
+// pointer — a body, a diagram or somebody's own note does not.
+func TestThePointerLightsTheAnswerAPressWouldTake(t *testing.T) {
+	a, _ := standingInAQuestion(t, demoQuestionReading())
+	at := questionRoomOptionRow(t, a, 1)
+	if hot := a.hoverTarget(4, questionRoomRowY(a, at)); hot.kind != hoverQuestionOption || hot.index != 1 {
+		t.Errorf("the pointer on an answer's row should light that answer: %+v", hot)
+	}
+	body := questionRoomRowY(a, questionRoomOptionRow(t, a, 0)+1)
+	if hot := a.hoverTarget(8, body); hot.kind == hoverQuestionOption {
+		t.Errorf("an answer's body is prose and must not light as a target: %+v", hot)
+	}
+}
+
+// ── THE HIERARCHY ───────────────────────────────────────────────────────────
+
+// EVERY LINE UNDER AN OPEN ANSWER SAYS WHICH LINE IT IS. The consequence, the
+// asker's reason and what would change its mind are all dim and all one
+// sentence long, so without their own words they are three grey rows a person
+// has to read in full to tell apart.
+func TestAnOpenAnswerSaysWhichOfItsLinesIsWhich(t *testing.T) {
+	a, _ := standingInAQuestion(t, demoQuestionReading())
+	drawn := pageText(a)
+	for _, want := range []string{
+		questionThenWord + "the ledger and the rest of the project share one connection",
+		questionWhyWord + "because it is the only store the reporting job already reads",
+		questionWouldSwitchWord + "the ledger ever has to run on a machine with no server on it",
+	} {
+		if !strings.Contains(drawn, want) {
+			t.Errorf("the page does not say %q:\n%s", want, drawn)
+		}
+	}
+}
+
+// AND THE THREE TIERS ARE THREE INKS: the label is the question hue and the
+// weight together, the body is the prose ink, and every aside under it is dim.
+func TestAnAnswersLabelBodyAndAsidesAreThreeDifferentInks(t *testing.T) {
+	a, _ := standingInAQuestion(t, demoQuestionReading())
+	rows := a.questionRoomRows(a.width)
+	var head, body, aside string
+	for _, r := range rows {
+		switch {
+		case strings.Contains(plain(r.text), "▾ 1 postgres"):
+			head = r.text
+		case strings.Contains(plain(r.text), "Rows already carry a foreign key"):
+			body = r.text
+		case strings.Contains(plain(r.text), questionThenWord):
+			aside = r.text
+		}
+	}
+	if head == "" || body == "" || aside == "" {
+		t.Fatalf("the open answer should draw a heading, a body and an aside:\n%s", pageText(a))
+	}
+	if !strings.Contains(head, a.pal.askBold("1 postgres")) {
+		t.Errorf("the label should be bold in the question hue: %q", head)
+	}
+	if !strings.Contains(body, a.pal.ink("Rows already carry a foreign key into it and the migration is one file.")) {
+		t.Errorf("the body should be the prose ink: %q", body)
+	}
+	if !strings.Contains(aside, a.pal.dim(questionThenWord+"the ledger and the rest of the project share one connection")) {
+		t.Errorf("the consequence should be dim: %q", aside)
+	}
+}
+
+// AND ONE BLANK ROW CLOSES AN OPEN ANSWER, so the next answer's heading is
+// separated from the paragraph above it by something other than an indent.
+func TestAnOpenAnswerIsClosedByABlankRowBeforeTheNext(t *testing.T) {
+	a, _ := standingInAQuestion(t, demoQuestionReading())
+	rows := a.questionRoomRows(a.width)
+	next := questionRoomOptionRow(t, a, 1)
+	if next == 0 || strings.TrimSpace(plain(rows[next-1].text)) != "" {
+		t.Errorf("the row above the second answer should be blank, got %q", plain(rows[next-1].text))
+	}
+}
+
+// WHAT WOULD CHANGE THE ASKER'S MIND NEVER READS `if If`. A model answers that
+// question with a sentence — "If you are targeting…" — and the row is a clause.
+func TestWhatWouldChangeItsMindReadsAsOneClause(t *testing.T) {
+	q := demoQuestionReading()
+	q.Pick.WouldChange = "If you are targeting a calm audience"
+	a, _ := standingInAQuestion(t, q)
+	drawn := pageText(a)
+	if strings.Contains(drawn, "if If") || strings.Contains(drawn, "if if") {
+		t.Errorf("the row says the word twice:\n%s", drawn)
+	}
+	if !strings.Contains(drawn, questionWouldSwitchWord+"you are targeting a calm audience") {
+		t.Errorf("the sentence should join onto the clause:\n%s", drawn)
+	}
+	if got := questionAfterIf("SQLite ever grows a second writer"); got != "SQLite ever grows a second writer" {
+		t.Errorf("a name the asker wrote must be left alone: %q", got)
+	}
+}
+
+// ── THE EVIDENCE, LAID OUT WITH WHAT IT BELONGS TO ──────────────────────────
+
+// AN ANSWER'S OWN BLOCKS ARE DRAWN UNDER IT, at its body's indent, with a blank
+// row before each.
+func TestAnAnswersBlocksAreDrawnUnderTheAnswer(t *testing.T) {
+	a, _ := standingInAQuestion(t, demoQuestionReading())
+	rows := pagePlainRows(a)
+	head, title := -1, -1
+	for at, line := range rows {
+		switch {
+		case strings.Contains(line, "▾ 1 postgres"):
+			head = at
+		case strings.Contains(line, "what it would look like"):
+			title = at
+		case strings.Contains(line, "▸ 2 sqlite") && title < 0:
+			t.Fatalf("the block should be drawn before the next answer:\n%s", strings.Join(rows, "\n"))
+		}
+	}
+	if head < 0 || title < 0 || title < head {
+		t.Fatalf("the block should sit under its own answer:\n%s", strings.Join(rows, "\n"))
+	}
+	if !strings.HasPrefix(rows[title], questionBodyIndent) {
+		t.Errorf("the block's title should be indented like the body: %q", rows[title])
+	}
+	if strings.TrimSpace(rows[title-1]) != "" {
+		t.Errorf("a blank row should stand above a block, got %q", rows[title-1])
+	}
+}
+
+// AND THE QUESTION'S OWN EVIDENCE IS ONE TITLED SECTION ABOVE THE ANSWERS,
+// never a run of unowned pictures at the gutter after them.
+func TestTheQuestionsOwnEvidenceIsOneTitledSectionAboveTheAnswers(t *testing.T) {
+	q := demoQuestionReading()
+	q.Attach = []session.Block{
+		{Kind: session.BlockDiagram, Title: "where the rows are today", Body: "app --> sqlite"},
+		{Kind: session.BlockDiagram, Title: "where they would be", Body: "app --> pg"},
+	}
+	a, _ := standingInAQuestion(t, q)
+	rows := pagePlainRows(a)
+	section, first, answers := -1, -1, -1
+	for at, line := range rows {
+		switch {
+		case strings.Contains(line, questionAttachWord):
+			section = at
+		case strings.Contains(line, "where the rows are today"):
+			first = at
+		case strings.Contains(line, "▾ 1 postgres"):
+			answers = at
+		}
+	}
+	if section < 0 || first < 0 || answers < 0 {
+		t.Fatalf("the page should title the question's own evidence:\n%s", strings.Join(rows, "\n"))
+	}
+	if !(section < first && first < answers) {
+		t.Errorf("the evidence should be one section above the answers: %d %d %d", section, first, answers)
+	}
+	if !strings.HasPrefix(rows[section], questionIndent) || strings.HasPrefix(rows[section], questionIndent+" ") {
+		t.Errorf("the section's title should sit at the page's own indent: %q", rows[section])
+	}
+	if !strings.HasPrefix(rows[first], questionAttachIndent) {
+		t.Errorf("a block should be indented under its title, never at the gutter: %q", rows[first])
+	}
+}
+
+// ── THE FOOT ────────────────────────────────────────────────────────────────
+
+// THE KEYS ROW NAMES THE PAIR THAT ACTUALLY WALKS THIS PAGE. Its answers stand
+// in a column of sections, so the pair is `↑↓`; the row said `←→` while neither
+// of those keys moved anything on it.
+func TestTheFootNamesTheArrowsThatWalkTheSections(t *testing.T) {
+	a, _ := standingInAQuestion(t, demoQuestionReading())
+	foot := footText(a)
+	if !strings.Contains(foot, "["+questionWalkDownKey+"] "+questionKeyWord(questionWalkDownKey)) {
+		t.Errorf("the foot should offer the pair that walks the sections:\n%s", foot)
+	}
+	if strings.Contains(foot, "["+questionWalkKey+"] "+questionKeyWord(questionWalkKey)) {
+		t.Errorf("the foot must not name a pair that walks nothing here:\n%s", foot)
 	}
 }

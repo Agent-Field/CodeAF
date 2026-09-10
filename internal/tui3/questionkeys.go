@@ -251,8 +251,14 @@ var questionKeys = []questionVerb{
 	// them, and the band on the pointed answer already says there is a
 	// pointer — a row that kept `choose` and lost the line form for it would
 	// have spent the small shape on its own legend.
-	{key: questionWalkKey, word: "choose", forms: formsLine | formsRatify | formsRoom, needs: needWalk, giveUp: 2},
-	{key: questionWalkDownKey, word: "choose", forms: formsCard, needs: needWalk, giveUp: 2},
+	{key: questionWalkKey, word: "choose", forms: formsLine | formsRatify, needs: needWalk, giveUp: 2},
+	// AND THE ROOM SPELLS ITS WALK DOWNWARDS BECAUSE ITS ANSWERS STAND IN A
+	// COLUMN OF SECTIONS. It said `←→ choose` and neither key moved anything on
+	// it — the pair that walks its sections is `↑↓`, and the side arrows there
+	// open a section and fold it (questionroom.go). A row that names the keys
+	// that do nothing is worse than a row that names none: the owner pressed
+	// them, 2026-09-10, and reported "no arrow or click".
+	{key: questionWalkDownKey, word: "choose", forms: formsCard | formsRoom, needs: needWalk, giveUp: 2},
 	// THE RULE OFFER IS THE LAST THING GIVEN UP AFTER THE WAY OUT, because it
 	// is the only key here that is on the row ONCE: the third same-shaped yes
 	// happens once, and a row that dropped it to keep `[c] change` would have
@@ -435,22 +441,7 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 		}
 		return len(q.question.Options) > 1
 	case needHands:
-		if q.question.Ask == session.AskConfirmation ||
-			q.question.Stakes == session.StakesIrreversible {
-			return false
-		}
-		// AND A PERMISSION THAT IS NOT CHEAP TO TAKE BACK IS NEVER HANDED OVER.
-		// The approval gate asks because a policy said a person has to see this
-		// call; `you decide` on it would give that decision straight back to the
-		// thing the gate was put in front of, which is the gate answering itself
-		// with one keystroke. docs/design/questions/DESIGN.md's kind table says
-		// the same about the clock — a permission may act on its own "only when
-		// Stakes == reversible" — and a key that skips a question is a clock a
-		// person wound by hand.
-		if q.question.Ask == session.AskPermission {
-			return q.question.Stakes == session.StakesReversible
-		}
-		return true
+		return !questionHandsOnly(q.question)
 	case needChecklist:
 		return q.question.Input.Kind == session.InputChecklist
 	case needTicked:
@@ -493,6 +484,39 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 		return false
 	}
 	return true
+}
+
+// questionHandsOnly reports whether this is a decision NOBODY BUT A PERSON MAY
+// EVER MAKE.
+//
+// It is stop.go's law widened to every question of that shape: "There is no
+// bypass key, no modifier that skips the question, and no don't-ask-me-again."
+// A confirmation is asked because the act cannot be taken back, so handing it to
+// the asker would be the surface deciding an irreversible thing on somebody's
+// behalf — which is exactly what the question exists to prevent.
+//
+// AND A PERMISSION THAT IS NOT CHEAP TO TAKE BACK IS ONE OF THEM. The approval
+// gate asks because a policy said a person has to see this call; `you decide` on
+// it would give that decision straight back to the thing the gate was put in
+// front of, which is the gate answering itself with one keystroke.
+// docs/design/questions/DESIGN.md's kind table says the same about the clock — a
+// permission may act on its own "only when Stakes == reversible" — and a key
+// that skips a question is a clock a person wound by hand.
+//
+// TWO READERS AGREE THROUGH IT, which is why it is a function and not two
+// conditions: `d`/`D` are refused on these ([needHands]) and the pointer opens
+// on the answer that loses nothing ([questionPointerStart]). They are the same
+// claim about the same question — nobody may answer this but the person — and a
+// surface that read it twice would one day offer to decide a gate its own
+// pointer was standing clear of.
+func questionHandsOnly(q session.Question) bool {
+	if q.Ask == session.AskConfirmation || q.Stakes == session.StakesIrreversible {
+		return true
+	}
+	if q.Ask == session.AskPermission {
+		return q.Stakes != session.StakesReversible
+	}
+	return false
 }
 
 // questionHasMore reports whether opening this question would show anything the

@@ -589,7 +589,16 @@ func questionSameHoles(fresh, held questionInput) bool {
 // nothing for a confirmation, which is the one shape where enter must never
 // land on the act by default ([questionSafeAt], stop.go's law).
 func questionPointerStart(q session.Question) int {
-	if q.Ask == session.AskConfirmation {
+	// A DECISION NOBODY BUT A PERSON MAY MAKE OPENS ON THE ANSWER THAT LOSES
+	// NOTHING, and never on the asker's own pick ([questionHandsOnly]).
+	//
+	// IT IS THE HALF OF THE POINTER THAT KEEPS IT SAFE. `enter` takes the answer
+	// the pointer is on, so a pointer that started on the first answer of a
+	// consent gate made `enter` mean `allow once` — on a question the engine
+	// raised BECAUSE the call could not be taken back. Measured on the gate for
+	// `rm -rf *`: enter allowed it. It was stop.go's law on the confirmation
+	// kind alone, and the gate is the other shape it was always about.
+	if questionHandsOnly(q) {
 		return questionSafeAt(q)
 	}
 	if q.Pick != nil {
@@ -599,6 +608,11 @@ func questionPointerStart(q session.Question) int {
 			}
 		}
 	}
+	// AND EVERY OTHER QUESTION OPENS ON ITS FIRST ANSWER. The safe mark is NOT
+	// read here: on a question a person may hand back — a landing row, a
+	// proposal, a choice — the answer that loses nothing is usually the one that
+	// does nothing, and a pointer parked on it would make `enter` mean "no" on
+	// every card this surface draws.
 	return 0
 }
 
