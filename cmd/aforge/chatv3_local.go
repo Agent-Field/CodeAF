@@ -241,6 +241,21 @@ func openChatV3Local(launch localLaunch) error {
 	// rather than inside that function because it is a fact about THIS ROAD's
 	// dial and not about the conversation the engine opened.
 	options.Notice = joinNotice(options.Notice, link.said())
+	// AND HOME CAN ASK SOMETHING WITHOUT OPENING A CONVERSATION. `ask here` is
+	// the second action row on home, and it is answered by an agent this process
+	// builds against a folder under the standing root ([localErrandDoor],
+	// chatv3_exchange.go) — so before this line, every launch that took the
+	// engine road met `this window cannot ask from home`, which since #653 made
+	// this road the ordinary one was every ordinary launch.
+	//
+	// IT IS BOUND ON THIS ROAD AND NO OTHER, like [tui3.Options.EngineAnswers]
+	// above it, and for the same fact: the engine here is a process on THIS
+	// machine, so a session opened in this terminal writes to the disk the
+	// errand's own folder and standing store live on. Over --host the folder
+	// would be made on the laptop and the work would run against the wrong
+	// machine, so there the seam stays absent and home says so once.
+	options.Errand = localErrandDoor(launch, welcome)
+	options.StandingRoot = v3StandingRoot()
 	// AND THE TASKS PAGE CAN LOOK INTO THE CONVERSATIONS NEXT DOOR. It is bound
 	// here rather than inside [hostOptions] because it is a second DIAL of this
 	// road and not a use of this client's connection, and this is the door that
@@ -467,4 +482,65 @@ func v3MachineIsSetUp() bool {
 // localBesideHello carries the ordinary terminal's settings to a sibling chat.
 func localBesideHello(ask engineAsk, launch localLaunch) remote.Hello {
 	return remote.Hello{Workspace: ask.workspace, Session: ask.session, New: ask.mint, Model: launch.model, Level: launch.level, Launch: launch.shape}
+}
+
+// localErrandDoor is [tui3.Options.Errand] on the engine road: home's `ask here`,
+// answered by a session THIS process opens against the folder the surface made.
+//
+// THE BOOT HALF IS OPENED ON THE FIRST ASK AND NEVER AT LAUNCH. Everything
+// [v3Errand] needs — the profile, the catalog, the crew rows, the harness
+// registry, the gate — is what [openV3ProcessWith] and [openV3Launch] assemble,
+// and this road exists precisely so that a launch does not pay for them: the
+// engine on the other end of the socket has already done all of it. So the
+// assembly hangs off a sync.Once behind the closure, where it is paid for by the
+// one keystroke that needs it and by no other launch — and a machine whose
+// profile has since broken says so on home's own line rather than at the door.
+//
+// IT RESOLVES THE CONVERSATION THE ENGINE IS ALREADY HOLDING, by name, rather
+// than asking for "this workspace's latest". A launch resolution with no session
+// named mints or reaps folders ([v3ResolveSession]), and neither is anything an
+// errand may do to a project a daemon is sitting in. Nothing here takes that
+// journal's flock — only [openV3Agent] does — and the config is immediately
+// pointed somewhere else ([v3Errand] hands it the errand's own folder).
+func localErrandDoor(launch localLaunch, welcome remote.Welcome) func(tui3.ErrandOrders) (tui3.Agent, error) {
+	var (
+		once  sync.Once
+		open  func(tui3.ErrandOrders) (tui3.Agent, error)
+		fault error
+	)
+	return func(orders tui3.ErrandOrders) (tui3.Agent, error) {
+		once.Do(func() {
+			proc, err := openV3ProcessWith("chat", true)
+			if err != nil {
+				fault = err
+				return
+			}
+			boot, err := openV3Launch(proc, v3Options{
+				Model:       launch.model,
+				Interactive: true,
+				Workspace:   welcome.Workspace,
+				Session:     welcome.SessionFile,
+			})
+			if err != nil {
+				fault = err
+				return
+			}
+			// AND IT IS SHAPED THE WAY AN INTERACTIVE DOOR SHAPES ONE, which is
+			// two facts [openV3Launch] deliberately does not settle. Every lane is
+			// a channel here because the errand's session and this screen are one
+			// program (chatv3_lanes.go's [v3LanesHere]), and the gate may ASK,
+			// because there is a surface and it answers — chatv3.go states both
+			// beside the same pair of lines. Without the second the errand's
+			// `stand` refused every proposal with `nobody is here to say yes —
+			// this can only be set up in a conversation`, which is the honest
+			// answer for a headless run and a lie about a card on somebody's home.
+			cfg, _ := v3Shape(boot.Config, v3LanesHere())
+			cfg.AskConsent = true
+			open = v3Errand(cfg, welcome.Workspace, boot.Settings.ProfileDir, launch.shape != nil && launch.shape.Yolo)
+		})
+		if fault != nil {
+			return nil, fault
+		}
+		return open(orders)
+	}
 }

@@ -364,7 +364,15 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	// opened on a later step — which is exactly what a state root whose profile
 	// is complete does now. The flow's FOOT is on every step of it, and the
 	// greeting's foot is the other screen a launch lands on, so both are here.
-	if hit, _ := r.waitForAny(45*time.Second, say(t, "homeFootWord"),
+	//
+	// AND A PLACE IS RECOGNISED BY ITS BOX AND NOT BY ITS FOOT. Home's resting
+	// foot is one sentence among several: a launch that meets a lock lands on
+	// home with the held row pointed and armed, and the foot then says what the
+	// next enter would do instead (internal/tui3's takeover.go) — so a window
+	// that had arrived, drawn the whole screen and offered somebody a keystroke
+	// was declared dead by this list. [placeRestWord] is the prompt in the box at
+	// the foot of EVERY place at rest, whatever the line under it says.
+	if hit, _ := r.waitForAny(45*time.Second, say(t, "homeFootWord"), say(t, "placeRestWord"),
 		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "setupSkipWord"),
 		say(t, "landingKeysWord"), say(t, "welcomeStarterKeysWord")); hit == "" {
 		t.Fatal("the terminal never reached an interactive surface")

@@ -480,17 +480,15 @@ func testAskHere(t *testing.T) {
 	working := r.waitFor(25*time.Second, "? remind me in 1 minute", say(t, "homeAskWorkingWord"))
 	t.Logf("the exchange row is working:\n%s", working)
 
-	// AND WITH SOMETHING MOVING, THE LIST WEARS ITS SECTION LINE — the one
-	// heading over the flat ranked list, with the two keys that change its shape
-	// out at the right margin. It is drawn only while something is asking or
-	// moving, which is exactly now.
-	for _, want := range []string{
-		say(t, "switcherSectionWord"), say(t, "switcherGroupWord"), say(t, "switcherQuietWord"),
-	} {
-		if !strings.Contains(working, want) {
-			t.Errorf("the section line is missing %q while an errand is running:\n%s", want, working)
-		}
-	}
+	// THE SECTION LINE IS NOT ASSERTED HERE, and that is a finding rather than
+	// an omission. `what wants you first` is the heading over the RANKED LIST and
+	// it is drawn when a row of that list is asking or moving
+	// ([switcherReading.hasAttention]) — an errand stands OVER the reading and is
+	// never in it (place_home.go says so outright), so on this screen the list
+	// holds one quiet conversation and the heading would be a sentence about
+	// nothing. The three needles are read where the line is genuinely true: on
+	// the second window's home in [testAnswerFromHome], whose list really does
+	// hold a conversation stopped on a person.
 
 	// The pane's own clock, caught in flight. It lives for seconds, so this is
 	// a fast poll and it is a finding rather than a failure when it is missed.
@@ -891,6 +889,19 @@ func testAnswerFromHome(t *testing.T) {
 		}
 	}
 	t.Logf("the chips home offered: %s", firstMatch(row, say(t, "answersAllowOnce")))
+
+	// AND WITH SOMETHING ASKING, THE LIST WEARS ITS SECTION LINE — the one
+	// heading over the flat ranked list, with the two keys that change its shape
+	// out at the right margin. It is drawn only while a row of the list is asking
+	// or moving ([switcherReading.hasAttention]), and window A's conversation,
+	// stopped on a consent card, is exactly such a row.
+	for _, want := range []string{
+		say(t, "switcherSectionWord"), say(t, "switcherGroupWord"), say(t, "switcherQuietWord"),
+	} {
+		if !strings.Contains(row, want) {
+			t.Errorf("the section line is missing %q while a conversation is asking:\n%s", want, row)
+		}
+	}
 
 	b.lit("1")
 	time.Sleep(1500 * time.Millisecond)
@@ -1429,8 +1440,13 @@ func testInheritedWorkSeat(t *testing.T) {
 
 	// Whichever door the launch took — home on a machine with several
 	// conversations, and straight into a greeted conversation on a fresh one,
-	// which is what a state root built one minute ago always is.
-	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "starterTaskWord"))
+	// which is what a state root built one minute ago always is. THE GREETED
+	// CONVERSATION HAS TWO SHAPES and this waits for both: the starter line under
+	// the wordmark, and the starting POINTS a conversation nobody has typed in
+	// yet stands on, whose foot is [welcomeStarterKeysWord] — the screen that
+	// entry's own `why` warns a subtest about waiting past.
+	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "starterTaskWord"),
+		say(t, "welcomeStarterKeysWord"))
 	r.keys("Escape")
 	r.lit("/task solo write a file called hello.txt containing the word hello")
 	r.keys("Enter")
