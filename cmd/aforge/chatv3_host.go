@@ -784,10 +784,11 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) tui3.Opt
 	// cached behind the surface, and a second copy per tab would be a second walk
 	// of the far machine's places on every switch.
 	fleet.machine = machineReadings{
-		recent: options.RecentSessions,
-		world:  options.World,
-		window: func(model string) int { return v3Window(models, model) },
-		draft:  options.DraftFile,
+		recent:  options.RecentSessions,
+		world:   options.World,
+		window:  func(model string) int { return v3Window(models, model) },
+		draft:   options.DraftFile,
+		history: options.History,
 	}
 	// THIS CONVERSATION'S OWN ROWS, out of the same shared walk every conversation
 	// beside it reads its own out of (chatv3_beside.go's [farTaskRows]). It
