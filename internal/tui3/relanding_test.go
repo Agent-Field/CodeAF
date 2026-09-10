@@ -78,10 +78,16 @@ func TestARelandedNodesQuestionReplacesTheFirst(t *testing.T) {
 		t.Fatalf("%d questions stand open about one node, want 1", n)
 	}
 	block := plain(strings.Join(a.questionRows(a.width), "\n"))
-	for _, want := range []string{askGroundReason, "resolve it", "drop it"} {
-		if !strings.Contains(block, want) {
-			t.Fatalf("the block is missing %q:\n%s", want, block)
-		}
+	// THE THREE COLUMNS, IN ONE ROW, IN THE ONE ORDER. It is asserted as a
+	// single string for the reason the tmux table states beside the same words:
+	// three separate searches would pass on a block that drew the columns on
+	// three rows, or in the other order, or without the third — and the third is
+	// the one docs/design/task-states/DESIGN.md is emphatic about.
+	if !strings.Contains(block, "[a] resolve it · [n] drop it · [s] tell it") {
+		t.Fatalf("the block does not draw the task-states row:\n%s", block)
+	}
+	if !strings.Contains(block, askGroundReason) {
+		t.Fatalf("the block is missing %q:\n%s", askGroundReason, block)
 	}
 	if strings.Contains(block, askCheckReason) {
 		t.Fatalf("the block still asks the question that was withdrawn:\n%s", block)

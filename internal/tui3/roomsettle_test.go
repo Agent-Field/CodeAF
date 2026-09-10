@@ -56,7 +56,11 @@ func landingAsk(id uint64, kind session.QuestionKind, title, reason, yes, no str
 		}
 	}
 	return session.Question{
-		ID: id, Kind: kind, Ask: session.AskLanding, Form: session.FormCard,
+		// THE FORM IS THE ENGINE'S (session's landingForm): a landing asks on ONE
+		// ROW — `[a] <yes> · [n] <no> · [s] tell it`, the task-states row
+		// unchanged (docs/design/questions/DESIGN.md) — and promotes to the card
+		// only on the one road that carries a consequence beside its yes.
+		ID: id, Kind: kind, Ask: session.AskLanding, Form: session.FormLine,
 		Asker:   session.Asker{Kind: session.AskerTask, Name: title},
 		Head:    title,
 		Reason:  reason,

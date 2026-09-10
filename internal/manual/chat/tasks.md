@@ -4283,6 +4283,10 @@ the `/tasks` page. The landing card in the transcript keeps the head and the sen
 what is being asked; the answers are on the block. The letters work only over an **empty**
 message box, exactly like `x`: a letter typed into a sentence stays a letter.
 
+**The three answers sit on one row.** The one exception is the landing whose `[a]` moves
+files of your own — *Your folder already has files the task wrote*, below — where the block
+gives each answer a line so it can say what pressing it will do.
+
 **No sentence on a card ends in `…` hiding the thing you need.** Where a reason is too long
 for the width, the list of files is what gets cut — never the verb, and a chip that will not
 fit is dropped off the end with a dim count of what went (`· +1`) rather than squeezed.
@@ -4389,13 +4393,25 @@ was, and asks:
 ```
 ? ◆ Emails for the leads · your call · 25m · 15 files · branch kept · task/emails
   your folder already has files the task wrote: leads-contact-sheet.md, research/method.md
-  [a] resolve it · [n] drop it · [s] tell it
+
+? Emails for the leads
+  a  resolve it  lands the branch, and your own copies are carried aside and put back —
+                 kept beside the task's as .yours where both wrote the same file
+  n  drop it
+  s  tell it
 ```
 
 **`[a] resolve it`** lands the branch and carries your own copies aside and back: where the
 task wrote the same file, your copy is kept beside it as `<name>.yours`, and where it did
 not, your copy goes straight back where it was. **Nothing of yours is ever deleted.** The
 answer says so before you press it. **`[n] drop it`** keeps the branch and takes nothing.
+
+**This is the one landing that asks on a card rather than on one row.** Every other `your
+call` puts its three answers on a single row above the message box — `[a] <yes> · [n] <no>
+· [s] tell it` — because the reason is already on the landing card in the conversation and
+one row is enough. Here `[a]` **moves files of yours**, and a sentence saying so has
+nowhere to go on a row, so the block gives each answer a line of its own and writes the
+consequence beside the one it belongs to. You never press this key blind.
 
 This road used to read `conflicts with your branch`, which was untrue — there was no branch
 of yours in it — and `[a]` spent a merge round, which merges *branches* and cannot see an

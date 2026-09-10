@@ -307,3 +307,45 @@ func TestTheLandingsRoadAndFilesRideTheCheckpoint(t *testing.T) {
 		t.Fatalf("the restored node lost the road or the files: %+v", back)
 	}
 }
+
+// THE LANDING ASKS ON ONE ROW, AND PROMOTES ONLY WHERE IT HAS SOMETHING MORE TO
+// SAY.
+//
+// docs/design/questions/DESIGN.md's defaults table says `card / room` beside
+// this kind AND says why in the same cell — `task-states row unchanged`. That
+// row is `[a] <yes> · [n] <no> · [s] tell it`, three columns in one order, which
+// is the LINE form: the card spends a row per answer and never composes it. The
+// head, the facts and the reason of a landing are already drawn by the card the
+// surface lands in the transcript, so a second head above the box would be two
+// renderings of one thing rather than more evidence.
+//
+// The one road that promotes is the one with a consequence beside its yes — the
+// person's own uncommitted copies, whose `resolve it` MOVES FILES OF THEIRS —
+// because a consequence is drawn beside its answer on the card and nowhere on a
+// row, and forms promote and never demote.
+func TestALandingAsksOnOneRowAndPromotesForAConsequence(t *testing.T) {
+	plain := ProjectTask(TaskFacts{State: TaskUnverified, Merge: mergeAborted})
+	if got := landingForm(plain.Ask); got != FormLine {
+		t.Fatalf("an ordinary landing asks in the %q form, want %q", got, FormLine)
+	}
+	conflict := ProjectTask(TaskFacts{State: TaskUnverified, Merge: mergeConflicted,
+		Conflicts: []string{"parser.go"}})
+	if got := landingForm(conflict.Ask); got != FormLine {
+		t.Fatalf("a branch conflict asks in the %q form, want %q", got, FormLine)
+	}
+	held := ProjectTask(TaskFacts{State: TaskUnverified, Merge: mergeConflicted,
+		GroundHeld: true, Conflicts: []string{"leads.md"}})
+	if got := landingForm(held.Ask); got != FormCard {
+		t.Fatalf("the road that moves the person's own files asks in the %q form, want %q", got, FormCard)
+	}
+	// AND THE CONSEQUENCE RIDES THE ANSWER IT BELONGS TO, once, on the yes — so
+	// the card draws it beside `resolve it` and nothing anywhere restates it.
+	for _, option := range landingOptions(held.Ask) {
+		if option.Key == LandingYesKey && option.Consequence != held.Ask.Consequence {
+			t.Fatalf("the yes carries %q, want %q", option.Consequence, held.Ask.Consequence)
+		}
+		if option.Key != LandingYesKey && option.Consequence != "" {
+			t.Fatalf("%q carries a consequence it did not earn: %q", option.Key, option.Consequence)
+		}
+	}
+}

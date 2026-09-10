@@ -2113,7 +2113,7 @@ func (a *Agent) landingQuestion(pending PendingDecision) Question {
 		ID:      notice.ID,
 		Kind:    kind,
 		Ask:     AskLanding,
-		Form:    FormCard,
+		Form:    landingForm(status.Ask),
 		Asker:   Asker{Kind: AskerTask, Name: strings.TrimSpace(notice.Title)},
 		Head:    strings.TrimSpace(notice.Title),
 		Reason:  landingReason(status.Ask),
@@ -2134,6 +2134,31 @@ func (a *Agent) landingQuestion(pending PendingDecision) Question {
 		// second holder to disagree with it.
 		Policy: landingPolicy(status.Ask.Owner),
 	})
+}
+
+// landingForm is which shape a landing asks to be drawn in, and it is decided
+// by HOW MUCH EVIDENCE THIS PARTICULAR LANDING CARRIES rather than by the kind.
+//
+// THE TASK-STATES ROW IS UNCHANGED (docs/design/questions/DESIGN.md's defaults
+// table says exactly that beside this kind): `[a] <yes> · [n] <no> · [s] tell
+// it`, one row, the three columns in the one order — which is the line form,
+// because the card form spends a row per answer and never composes that row.
+// The landing's head, its facts and its reason are already drawn by the card
+// this surface lands in the transcript (internal/tui3's taskdone.go), so a
+// second head and a second reason above the box would be the two-renderings
+// defect rather than more evidence.
+//
+// ONE ROAD PROMOTES, and it is the road with something to say that no verb can
+// carry: a landing held by the person's own uncommitted copies, whose `[a]`
+// MOVES FILES OF THEIRS (task_status.go's [taskAskGroundConsequence]). A
+// consequence is drawn beside its answer on the card and nowhere on a row, and
+// forms promote and never demote — so the lane that knows the evidence is here
+// asks for the card exactly where the evidence exists.
+func landingForm(ask TaskAsk) QuestionForm {
+	if strings.TrimSpace(ask.Consequence) != "" {
+		return FormCard
+	}
+	return FormLine
 }
 
 // landingReason is the row's own sentence, plus WHO IS DECIDING where that is
