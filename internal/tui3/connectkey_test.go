@@ -256,6 +256,32 @@ func TestAKeyNeverReachesTheScreen(t *testing.T) {
 	}
 }
 
+// AND THE MASK HOLDS WHEREVER THE BOX IS DRAWN, which is the half a screen
+// capture found and no test had.
+//
+// The greeting LIFTS the real draft into the middle of the frame and lays it out
+// itself (welcome.go), so a key typed on a conversation nobody had spoken in yet
+// went onto the screen in the clear — every character of it, on the first screen
+// a fresh install shows.
+func TestAKeyIsMaskedInTheGreetingsOwnBoxToo(t *testing.T) {
+	_, a, _ := keyOfferApp(t)
+	a.width, a.height = 120, 34
+	a.openWelcome()
+	drive(t, a, streamOf(a, askKeyEvent("c1", "notion", "Notion")))
+	drive(t, a, tea.PasteMsg{Content: theKey})
+
+	screen := plain(frame(a))
+	if strings.Contains(screen, theKey) {
+		t.Fatalf("the key reached the greeting's box in the clear:\n%s", screen)
+	}
+	if !strings.Contains(screen, "••") {
+		t.Fatalf("the greeting's box did not mask the key at all:\n%s", screen)
+	}
+	if !strings.Contains(screen, itoa(len(theKey))) {
+		t.Fatalf("the count is not what was pasted:\n%s", screen)
+	}
+}
+
 // THE MASK GIVES WAY AND THE COUNT DOES NOT. A key is longer than any row this
 // surface draws, so the bullets are cut and the number stays whole.
 func TestALongKeyKeepsItsCountWhenTheMaskIsCut(t *testing.T) {
