@@ -9,7 +9,7 @@
 # docs/design/polish/frames/<name>.<cols>x<rows>.txt (plain) and .ans (colour).
 set -uo pipefail
 
-ROOT="${ROOT:-/home/santosh/af-polish}"
+ROOT="${ROOT:-$(git rev-parse --show-toplevel)}"
 HOME_DIR="${DEMO_HOME:?set DEMO_HOME}"
 OUT="${OUT:-$ROOT/docs/design/polish/frames}"
 BIN="${BIN:-$ROOT/bin/aforge}"
