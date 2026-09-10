@@ -331,7 +331,14 @@ func stubLine(tool, text, pointer string) string {
 
 // stubOutcome is the one line a result is reduced to: its first non-empty line,
 // bounded, and its size.
+//
+// THE JOB FOOTER IS OFF BOTH OF THEM. It is not what the tool said (jobfooter.go
+// appends it after the fact and it is stale the moment it is written), so a
+// result whose own output was empty quoted a background job's elapsed time as
+// though it were the outcome, and every byte count in every stub was inflated by
+// whatever the jobs happened to be doing at that instant.
 func stubOutcome(text string) string {
+	text = stripJobFooter(text)
 	first := ""
 	for _, line := range strings.Split(text, "\n") {
 		if line = strings.TrimSpace(line); line != "" {

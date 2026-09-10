@@ -2381,6 +2381,18 @@ type Agent struct {
 	// Empty is the ordinary state and renders nothing at all, which is nearly
 	// every conversation: a person who has attached no folder is told about none.
 	placesText string
+	// recordText is the `the record` block message[0] carries (question.go's
+	// [DecisionsSection]) and recordKey is the state of `decisions.jsonl` it was
+	// rendered from — its size and its modification time, which both move when a
+	// line is appended, by this window or by another one.
+	//
+	// IT IS CACHED BECAUSE message[0] IS REBUILT WHENEVER ANYTHING IN IT MOVES —
+	// a folder, a standing order, a memory set, a decision — and every one of
+	// those rebuilds used to open the file, scan it and unmarshal every line, for
+	// a string that changes only when a question is answered. The stat is the
+	// whole check, and it is cheap enough to make on every rebuild.
+	recordText string
+	recordKey  string
 	// elsewhereText is the <elsewhere> block (taskdelta.go): what the OTHER
 	// windows on this project landed and are running. It sits under mu beside
 	// cardText and rides where cardText rides, at the tail of the transcript —
