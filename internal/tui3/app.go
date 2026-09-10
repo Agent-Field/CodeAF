@@ -2351,12 +2351,12 @@ type app struct {
 	// nobody has opened.
 	autonomyRules map[session.AskKind]session.Policy
 
-	// landedAway is a turn that finished while the window was blurred and has
-	// not been looked at since — the tab's ✓ (windowtitle.go). It is the
-	// notification's fact kept as state: the banner says it once at the moment
-	// it becomes true, and this keeps saying it on the tab until the person
-	// comes back, at which point the reply on screen says it better.
-	landedAway bool
+	// titleSent is the terminal's title as it was last sent (title.go): the
+	// sentence that says where in aforge this tab is standing. It is what
+	// [app.retitle] compares against so an unchanged title is never sent twice,
+	// and what [app.View] declares as the window title, so the tab's half and
+	// the window's half are one sentence.
+	titleSent string
 
 	// linear is the screen-reader tier (Options.Linear): one column, no
 	// animation, no hover, ASCII markers. It is read by the rendering branches
@@ -2741,6 +2741,10 @@ func newApp(ctx context.Context, opts Options) *app {
 	// person presses; it exists so that the page a question opens into can be
 	// looked at on a real screen before anything raises a real one.
 	a.openDemoQuestion(env)
+	// AND THE TERMINAL'S TITLE IS READ ONCE THE SURFACE KNOWS WHERE IT OPENED,
+	// which is only now — home, a picker or a conversation. [app.Init] sends it,
+	// and from then on [app.retitle] sends it again only when it moves.
+	a.titleSent = terminalTitle(a)
 	return a
 }
 
@@ -2862,7 +2866,7 @@ func (a *app) Init() tea.Cmd {
 		// AND THE SETUP SCREEN'S EXAMPLE PANEL, when the setup is the first frame
 		// and the controls screen is its first step. It answers nil in every other
 		// case, which is most launches (onboarding.go).
-		a.setupDemoCmd()}
+		a.setupDemoCmd(), titleSend(a.titleSent)}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -2918,6 +2922,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// card fact so a start and a keep can never disagree (task.go).
 	if a.levelsWaiting() || a.waiting() || a.formingCardLive() {
 		cmd = tea.Batch(cmd, a.wake())
+	}
+	// AND THE TERMINAL'S TITLE IS ASKED AFTER EVERY MESSAGE, because this is
+	// the one place every change to where a person stands has already happened
+	// by — a place entered, a name arriving, a question coming up — and it is
+	// sent only when the sentence moved (title.go).
+	if say := a.retitle(); say != nil {
+		cmd = tea.Batch(cmd, say)
 	}
 	return model, cmd
 }
@@ -3074,9 +3085,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The terminal reports focus (View asks for it in view.go), so the
 		// notification has something honest to gate on — see notify.go.
 		a.focused, a.seenFocus = true, true
-		// The tab's ✓ has been seen by the act of coming back to it; from here
-		// the reply itself is on screen (windowtitle.go).
-		a.landedAway = false
 		// AND A QUESTION THAT WAS WAITING GETS ITS WHOLE READING TIME BACK. The
 		// ten seconds are ten seconds of a person reading, and this is the first
 		// frame there has been anybody to read it (question.go's
@@ -5141,15 +5149,6 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		a.changedNote()
 		a.cacheNote(ev.Usage)
 		a.take(ev.Usage)
-		// A turn that ends on a blurred window marks the tab as well as sending
-		// the banner (windowtitle.go): the banner is gone in seconds, and the
-		// tab is what the person scans when they come back to the terminal.
-		// Gated on focus alone, not on [app.seenFocus] — a terminal that never
-		// reports focus leaves focused true, so the flag never sets and the tab
-		// stays quiet, which is the same honest default the banner takes.
-		if !a.focused {
-			a.landedAway = true
-		}
 		after = tea.Batch(a.settle(), a.notifyDone())
 
 	case session.EventError:
