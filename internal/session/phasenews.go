@@ -35,6 +35,12 @@ import (
 // this package's own name, so a surface imports one package rather than two.
 type PhaseNews = provider.PhaseNews
 
+// Phase is the word for what is happening, and it is [provider.Phase] under
+// this package's own name for [PhaseNews]'s reason: ONE VOCABULARY, and a
+// reader that has to import two packages to name a phase and the news carrying
+// it is two spellings waiting to happen.
+type Phase = provider.Phase
+
 // The phases a turn has that a request does not. They are spelled in
 // internal/provider for the reason above — one vocabulary — and named here so a
 // reader of this package can see the whole list in one place.
