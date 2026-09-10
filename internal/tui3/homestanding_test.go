@@ -423,6 +423,53 @@ func TestTheStandingOrdersSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	}
 }
 
+// A STOOD EVENT DROPS THE CACHED ZERO so the column's foot and /status can
+// draw the count on the next frame rather than waiting out [keepEvery].
+// `ask here` stands on the errand's stream ([app.errandUpdated]); a firing in
+// this conversation stands through [app.standingUpdate] — both take the same
+// door.
+func TestAStoodEventRefreshesTheStandingCountWithoutWaitingOutTheBeat(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.width, a.height = 180, 45
+	a.welcome.open = false
+	a.workspace = "/tmp/lab"
+	a.railAway = false
+	now := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
+	a.clock = func() time.Time { return now }
+
+	item := bandItem("one", "remind me in 1 minute to drink water", "/tmp/lab", standing.WhenAt, "in 1 minute")
+	band := &standBand{}
+	band.wire(a)
+	// Seed the cache at zero WHILE the seam answers, then put the item on the
+	// store without advancing the clock — the shape a window hits when
+	// hostStanding has just answered empty and an errand stands one a beat later.
+	if got := a.keepingSegment(); got != "" {
+		t.Fatalf("empty store claimed standing chrome: %q", got)
+	}
+	band.items = []standing.Item{item}
+	if got := a.keepingSegment(); got != "" {
+		t.Fatalf("cached zero should still be held before the stood event: %q", got)
+	}
+	a.standingUpdate(session.Event{
+		Kind: session.EventStandingUpdate,
+		Standing: &session.StandingNotice{
+			Update: "stood",
+			Item:   item,
+		},
+	})
+	want := standWaitGlyph + " 1" + homeKeepingWord
+	if got := a.keepingSegment(); got != want {
+		t.Fatalf("after stood, keepingSegment=%q want %q", got, want)
+	}
+	if note := a.statusText(); !strings.Contains(note, homeKeepingWord) {
+		t.Fatalf("/status missing the count after stood:\n%s", note)
+	}
+	screen := strings.Join(screenLines(a), "\n")
+	if !strings.Contains(screen, homeKeepingWord) {
+		t.Fatalf("the frame missing ◦ N standing order after stood:\n%s", screen)
+	}
+}
+
 // /status SAYS WHETHER ANYTHING IS LOOKED AT WITH NO WINDOW OPEN, and says
 // nothing at all when it cannot know.
 func TestStatusPrintsKeepingWatchOnlyWhenTheSeamAnswers(t *testing.T) {

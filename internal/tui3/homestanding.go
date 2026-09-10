@@ -849,6 +849,15 @@ func (a *app) keepingCount() (int, bool) {
 // the disk to redraw something that changes on the order of minutes".
 const keepEvery = homeEvery
 
+// refreshKeepingCount drops the cached standing count so the next frame asks
+// the store again. It is the door a `stood` / `paused` / `stopped` update takes
+// ([app.standingUpdate], [app.errandUpdated]) rather than waiting out
+// [keepEvery] on a zero that was true a beat ago and is a lie now.
+func (a *app) refreshKeepingCount() {
+	a.keepAt = time.Time{}
+	a.standRailAt = time.Time{}
+}
+
 // keepingSegment is the standing side's own presence, drawn at the foot of the
 // task column and carried by /status and the phone sheet:
 //
@@ -856,7 +865,9 @@ const keepEvery = homeEvery
 //
 // IT WAS A SEGMENT OF THE STATUS ROW until 2026-09-09, which is why it is built
 // as one and still reaches [app.telemetry] — the sheet and /status read that
-// list. The column draws it through [app.railStandingLine] (task.go).
+// list. The column draws it through [app.railStandingLine] (task.go). A `stood`
+// update drops the cached reading ([app.refreshKeepingCount]) so the count
+// arrives with the news rather than a beat later.
 //
 // NOTHING AT ALL WHEN THERE IS NOTHING, which is the emptiness law applied to a
 // whole segment and the same call [app.ambientSegment] makes about jobs: a line

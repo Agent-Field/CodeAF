@@ -382,6 +382,12 @@ func (a *app) standingUpdate(ev session.Event) {
 	if word == "" {
 		return
 	}
+	// THE COUNT AT THE FOOT OF THE COLUMN IS THE SAME NEWS. It is cached on
+	// home's beat ([app.keepingCount]), and a `stood` that left that cache on
+	// zero until the next beat was a column that still said nothing while the
+	// transcript already wore the row — the e2e gallery waited a minute for a
+	// line that should have arrived with this event.
+	a.refreshKeepingCount()
 	a.closeLive()
 	a.entries = append(a.entries, entry{kind: entryStanding, turn: a.turn, stand: &standingCard{
 		item:   notice.Item,

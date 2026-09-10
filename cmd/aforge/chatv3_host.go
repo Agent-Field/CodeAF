@@ -1041,11 +1041,13 @@ const hostStandingEvery = 5 * time.Second
 // seam's own doc comment leads with: /home does not open over --host at all
 // (internal/tui3's homeRemoteWord), so home's item band and its `p` and `s` keys
 // are unreachable here and homestanding.go's per-project standItems is never
-// called. The live reader is THE STATUS LINE — [app.keepingCount] feeds the
-// `◦ 2 standing orders` segment, and it asks about the window's own workspace,
-// which over --host is the ENGINE's path. That makes the count a true sentence
-// about the right machine, and it is a real thing to have: a remote window says
-// how many things are keeping an eye on the project it is sitting in.
+// called. The live reader is THE TASK COLUMN'S FOOT AND /status —
+// [app.keepingCount] feeds the `◦ 2 standing orders` line at the foot of the
+// column (and the same words under `watching` on /status and the phone sheet),
+// and it asks about the window's own workspace, which over --host is the
+// ENGINE's path. That makes the count a true sentence about the right machine,
+// and it is a real thing to have: a remote window says how many things are
+// keeping an eye on the project it is sitting in.
 //
 // AND IT EXISTS FOR ONE LAW, which is [tui3.StandingSeam.Items]': it MUST NOT
 // BLOCK. That segment is asked on EVERY FRAME and twice per frame while a turn
