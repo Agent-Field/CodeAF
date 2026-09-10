@@ -552,7 +552,7 @@ empty standing page* below has them.
 
 ## Nothing stands here yet — the empty standing page
 
-A machine nothing stands on **still opens the page**. `alt+3`, `tab`, `/standing` and
+A machine nothing stands on **still opens the page**. `alt+5`, `/standing` and
 `/orders` all reach it, and what they reach is three dim lines saying what a standing order
 is:
 

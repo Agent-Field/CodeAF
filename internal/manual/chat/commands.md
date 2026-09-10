@@ -217,8 +217,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/history` | — | — | opens the full-screen tasks place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
-| `/search` | — | — | opens the search place — everything said on this machine (also `alt+6`) |
-| `/spend` | — | — | opens the spend place — what this machine has cost, by the day (also `alt+5`) |
+| `/search` | — | — | opens the search place — everything said on this machine (also `alt+7`) |
+| `/spend` | — | — | opens the spend place — what this machine has cost, by the day (also `alt+3`) |
 | `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
 | `/budget` | `/limits` | — | what aforge may spend · every limit on one tab |
 | `/budget` | `/limits` | `<amount>` | sets the day's limit · `none` removes it |
@@ -716,12 +716,12 @@ and the note's leading `· `; strip those before feeding it to a parser.
 ## /search and /spend — the typed doors onto those two places
 
 `/search` opens the **search place** — everything that has been said on this machine,
-found by the words you remember of it. It is the same place `alt+6` opens and the same
+found by the words you remember of it. It is the same place `alt+7` opens and the same
 place `tab` walks to. It takes no argument: the place *is* a box, and typing in it
 searches.
 
 `/spend` opens the **spend place** — what this machine has cost, by the day, by the model
-and by what it was for. It is the same place `alt+5` opens.
+and by what it was for. It is the same place `alt+3` opens.
 
 **`/spend` used to be an alias of `/cost` and is not any more.** The two answer different
 questions: `/cost` is *this conversation's* bill, printed into the conversation, and the

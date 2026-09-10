@@ -32,10 +32,10 @@ below is made, and the background tidy never runs. With it off, `/remember`,
 memory is off for this session · turn it on under /settings
 ```
 
-**The memory PLACE still opens with it off.** `alt+4`, `tab` and `/memory` all reach it, and
+**The memory PLACE still opens with it off.** `alt+6` and `/memory` both reach it, and
 what they reach is the three sentences saying what memory is for with that same line said
 once under them, above the composer — *What the memory place shows when there is nothing in
-it* below. It used to refuse to open at all, which made `alt+4` on a fresh machine a key
+it* below. It used to refuse to open at all, which made the memory key on a fresh machine a key
 that did nothing.
 
 ## It said memory is off and I never turned it off
@@ -85,7 +85,7 @@ they are gone; nothing else keeps a second copy.
 
 ## How do I see what aforge remembers about me?
 
-Open `/memory` — or `/memories`, or `alt+4`, or `tab` from any other place. **Memory is a
+Open `/memory` — or `/memories`, or `alt+6` from anywhere (memory is not on the tab bar). **Memory is a
 place**, one of seven, taking the whole screen with the tab bar above it and a composer at
 the foot.
 

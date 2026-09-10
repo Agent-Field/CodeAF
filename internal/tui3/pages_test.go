@@ -108,10 +108,10 @@ func TestTabWalksThePlacesAndTheNumbersJump(t *testing.T) {
 	if a.page == pageHome {
 		t.Fatal("tab from home stayed on home")
 	}
-	// alt+5 IS THE SPEND PLACE WHEREVER YOU ARE STANDING.
-	drive(t, a, key("alt+5"))
+	// SPEND'S DIGIT IS THE SPEND PLACE WHEREVER YOU ARE STANDING.
+	drive(t, a, key(placeChord(pageSpend)))
 	if a.page != pageSpend {
-		t.Fatalf("alt+5 did not open the spend place: the router is standing on %q", a.page.word())
+		t.Fatalf("%s did not open the spend place: the router is standing on %q", placeChord(pageSpend), a.page.word())
 	}
 	if text := placeFrameText(a); !strings.Contains(text, "What this machine has cost") {
 		t.Fatalf("the spend place does not say what it is for:\n%s", text)
@@ -201,10 +201,15 @@ func TestNothingIsEverPutBackBecauseNothingRefuses(t *testing.T) {
 
 // THE TAB BAR GIVES UP WORDS IN A STATED ORDER RATHER THAN BEING CUT IN HALF. A
 // bar trimmed mid-word is a bar lying about how many places there are.
+//
+// THE COUNT IS OF THE BAR'S OWN WORDS. The bar is four places (DESIGN.md's law
+// 10); a fold that counted the three reached by command would say `▸ 5` over a
+// bar that only ever had four to give up.
 func TestTheTabBarFoldsRatherThanBeingCut(t *testing.T) {
 	a := placeApp(t)
+	shown := barPages(a.page, false)
 	wide := plain(a.placeTabBar(160, false, a.pal))
-	for _, id := range pages() {
+	for _, id := range shown {
 		if !strings.Contains(wide, id.word()) {
 			t.Fatalf("the wide bar is missing %q: %q", id.word(), wide)
 		}
@@ -217,6 +222,15 @@ func TestTheTabBarFoldsRatherThanBeingCut(t *testing.T) {
 	// something you can still reach; this is the one fact the bar exists for.
 	if !strings.Contains(narrow, a.page.word()) {
 		t.Fatalf("the narrow bar dropped the place you are on: %q", narrow)
+	}
+	missing := 0
+	for _, id := range shown {
+		if !strings.Contains(narrow, id.word()) {
+			missing++
+		}
+	}
+	if want := tokens.GlyphCollapsed + " " + itoa(missing); missing == 0 || !strings.Contains(narrow, want) {
+		t.Fatalf("the narrow bar left %d of its four words off and should end in %q: %q", missing, want, narrow)
 	}
 }
 
@@ -264,8 +278,11 @@ func TestTheMapDrawsInTheCellsThatWereAlreadyThere(t *testing.T) {
 	if len(before) != len(after) {
 		t.Fatalf("the map moved the frame: %d rows became %d", len(before), len(after))
 	}
-	// THE NUMBERS ARE ON THE TABS.
-	if bar := after[1]; !strings.Contains(bar, "1 home") || !strings.Contains(bar, "7 settings") {
+	// THE NUMBERS ARE ON THE TABS, and the three places off the bar are drawn
+	// after the four with theirs: the map is the one surface whose job is to show
+	// every key, so `alt+5`…`alt+7` are on it.
+	if bar := after[placeTabRow]; !strings.Contains(bar, "1 home") || !strings.Contains(bar, "4 settings") ||
+		!strings.Contains(bar, "5 standing") || !strings.Contains(bar, "7 search") {
 		t.Fatalf("the map put no numbers on the tab bar: %q", bar)
 	}
 	// AND THE CHORD LIST IS THE HINT LINE.
@@ -739,9 +756,9 @@ func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 		t.Fatalf("alt+2 from the conversation landed on %q (open %v)", a.page.word(), a.at(pageTasks))
 	}
 	drive(t, a, key("esc"))
-	drive(t, a, key("alt+3"))
+	drive(t, a, key(placeChord(pageStanding)))
 	if a.page != pageStanding || !a.at(pageStanding) {
-		t.Fatalf("alt+3 from the conversation landed on %q", a.page.word())
+		t.Fatalf("%s from the conversation landed on %q", placeChord(pageStanding), a.page.word())
 	}
 	// AND `tab` IS STILL THE CONVERSATION'S OWN KEY THERE.
 	drive(t, a, key("esc"))
@@ -752,17 +769,29 @@ func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 	}
 }
 
-// THE TAB BAR CARRIES ALL SEVEN WORDS AT EVERY WIDTH A PERSON ACTUALLY USES.
-// The ladder that gives words up is for terminals narrower than any of these
-// ([app.placeTabBar]); at 80 columns and up nothing is dropped.
-func TestTheTabBarCarriesAllSevenAtEveryUsableWidth(t *testing.T) {
+// THE TAB BAR CARRIES ITS FOUR WORDS AT EVERY WIDTH A PERSON ACTUALLY USES, and
+// only those four: `home tasks spend settings` (DESIGN.md's law 10). The ladder
+// that gives words up is for terminals narrower than any of these
+// ([app.placeTabBar]); at 80 columns and up nothing is dropped. Standing,
+// memory and search are rooms reached by command, by their digit and by the
+// map — not words on the row a person reads a hundred times a day.
+func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	a := placeApp(t)
 	for _, width := range []int{80, 120, 200} {
 		bar := plain(a.placeTabBar(width, false, a.pal))
-		for _, id := range pages() {
-			if !strings.Contains(bar, id.word()) {
-				t.Fatalf("at %d columns the bar has no %q: %q", width, id.word(), bar)
+		if !strings.Contains(bar, "home   tasks   spend   settings") {
+			t.Fatalf("at %d columns the bar is not the four places in order: %q", width, bar)
+		}
+		for _, id := range []page{pageStanding, pageMemory, pageSearch} {
+			if strings.Contains(bar, id.word()) {
+				t.Fatalf("at %d columns the bar still carries %q: %q", width, id.word(), bar)
 			}
 		}
+	}
+	// AND A ROOM OFF THE BAR IS ON IT WHILE YOU STAND IN IT. A bar with no word
+	// lit is a bar that does not know where you are.
+	walkTo(t, a, pageMemory)
+	if bar := plain(a.placeTabBar(120, false, a.pal)); !strings.Contains(bar, "settings   memory") {
+		t.Fatalf("standing in memory, the bar does not say so: %q", bar)
 	}
 }
