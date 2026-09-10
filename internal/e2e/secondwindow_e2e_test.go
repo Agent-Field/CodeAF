@@ -205,6 +205,13 @@ func shortHome(t *testing.T, root string) string {
 	rows["model.talk"] = "deepseek/deepseek-v4-flash"
 	rows[config.KeyIcons] = config.IconsPlain
 	rows["tools.approvalMode"] = "allow"
+	// AND THE ROSTER COLUMN IS PINNED OPEN, because it is the subject of this
+	// scenario and it is a PERSON'S standing answer that survives the process
+	// (internal/tui3's railAway, config's ui.task_column). The rows above are
+	// copied out of whoever's profile is on the machine running this, and on a
+	// machine where somebody has put the column away with ctrl+g every
+	// assertion here would be about their taste rather than about the surface.
+	rows[config.KeyTaskColumn] = true
 	raw, err := json.MarshalIndent(rows, "", " ")
 	if err != nil {
 		t.Fatalf("config: %v", err)
