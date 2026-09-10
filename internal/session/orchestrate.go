@@ -1042,7 +1042,6 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 	// this session's own when they match (loop.go's [Agent.childWindow] states
 	// the whole argument, and newTaskAgent asks for it the same way).
 	window := a.childWindow(model)
-	client := unwrapCompleter(a.client)
 	journal := orchestrateJournalPath(a.sessionID(), e.id, node.ID)
 	// The rung this session's own next turn would ask for, carried into the node
 	// as its floor exactly as a task node inherits it (task_run.go's
@@ -1059,7 +1058,7 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 	}
 	a.mu.Unlock()
 
-	child, err := newAgent(Config{
+	child, err := a.newChildAgent(Config{
 		// An adaptive run's worker shares the project's error→fix file for a task
 		// node's reason (task_run.go's newTaskAgent, fixstore.go).
 		fixesDir: a.config.fixesBucket(),
@@ -1111,7 +1110,7 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		MediaModel:                 parent.MediaModel,
 		MediaPick:                  parent.MediaPick,
 		DocumentEngine:             parent.DocumentEngine,
-	}, client)
+	})
 	if err != nil {
 		return nil, err
 	}

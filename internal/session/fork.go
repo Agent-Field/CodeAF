@@ -898,8 +898,7 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 	// The provider client itself, past this session's own request wrapper, for
 	// the reason a node takes it that way (task_run.go): routing, the fallback
 	// chain and the nearest-model rescue are facts about the CONNECTION, and
-	// there is one connection.
-	client := unwrapCompleter(a.client)
+	// the account-keyed pool below is that shared connection.
 	// AND THE CONVERSATION EVERY DOLLAR THIS HAND SPENDS BELONGS TO, resolved
 	// here because here is the only place that can — the same question a node's
 	// worker answers where it is built (task_run.go's [Agent.newTaskAgent]).
@@ -923,7 +922,7 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 		model = a.carefulModel(model)
 	}
 
-	hand, err := newAgent(Config{
+	hand, err := a.newChildAgent(Config{
 		// Search authority follows the work without enabling memory writes.
 		ConversationHistory: parent.conversationHistory(),
 		// THE SAME DIRECTORY, WHICH IS THE POINT. A worktree per hand is what
@@ -1015,7 +1014,7 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 		// conversation does: the same mind, reading the same file, must not drop
 		// to a different engine because it is inside a fork.
 		DocumentEngine: parent.DocumentEngine,
-	}, client)
+	})
 	if err != nil {
 		return nil, err
 	}

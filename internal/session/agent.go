@@ -69,9 +69,36 @@ func New(config Config) (*Agent, error) {
 	agent.managedClient = true
 	agent.clientAccount = accountFor(config, config.Model)
 	if wrapper, ok := agent.client.(sessionCompleter); ok {
-		agent.clientsByAccount = map[modelAccount]Completer{agent.clientAccount: wrapper.inner}
+		agent.clientPool = newModelClientPool(config, config.Model, wrapper.inner)
+	} else {
+		agent.clientPool = newModelClientPool(config, config.Model, agent.client)
 	}
 	return agent, nil
+}
+
+// newChildAgent is the production door for another Agent inside this session.
+// Tests keep using newAgent with scripted completers; real workers share the
+// parent's account-keyed pool and resolve their own model before their first
+// request, rather than inheriting whichever adapter the parent last used.
+func (a *Agent) newChildAgent(config Config) (*Agent, error) {
+	if a == nil {
+		return nil, errNoCompleter
+	}
+	if !a.managedClient || a.clientPool == nil {
+		return newAgent(config, unwrapCompleter(a.client))
+	}
+	client, _, account, err := a.clientPool.clientFor(config.Model)
+	if err != nil {
+		return nil, err
+	}
+	child, err := newAgent(config, client)
+	if err != nil {
+		return nil, err
+	}
+	child.managedClient = true
+	child.clientAccount = account
+	child.clientPool = a.clientPool
+	return child, nil
 }
 
 // newAgent is the seam New and the tests share: everything except which
@@ -481,6 +508,12 @@ func laneBeatModels(config Config) []string {
 	var models []string
 	seen := make(map[string]bool, 2)
 	for _, slot := range []string{config.Model, config.TaskModel} {
+		account := config.clientConfig(slot, 0)
+		if account.Direct {
+			// A direct service has one road. Its model belongs on no endpoints
+			// queue, even while another account in this process has a live beat.
+			continue
+		}
 		slot = lanes.LedgerModel(slot)
 		if slot == "" || seen[slot] {
 			continue
@@ -631,6 +664,7 @@ func (a *Agent) SetSources(sources modelsource.Set) {
 	}
 	a.mu.Lock()
 	a.config.Sources = sources
+	a.clientPool.setSources(sources)
 	if !a.running {
 		a.rebindClientLocked(a.model)
 	}
@@ -654,6 +688,12 @@ func (a *Agent) SetSources(sources modelsource.Set) {
 // says nothing rather than starting a fetch nobody asked for.
 func (a *Agent) noteLaneModel(model string) {
 	if a == nil || !a.laneBeating {
+		return
+	}
+	a.mu.Lock()
+	configured := a.config.clientConfig(model, 0)
+	a.mu.Unlock()
+	if configured.Direct {
 		return
 	}
 	lanes.WantSheet(model)
@@ -682,9 +722,12 @@ func (a *Agent) SetAPIKey(key string) error {
 	// left the first model request on the empty bearer it opened with. Reach the
 	// same underlying client task children use, then update it before recording
 	// the key for workers spawned later.
-	oldAccount := a.clientAccount
 	inner := unwrapCompleter(a.client)
-	if keyed, ok := inner.(interface{ SetAPIKey(string) error }); ok {
+	if a.managedClient && a.clientPool != nil {
+		if err := a.clientPool.setDefaultKey(key); err != nil {
+			return err
+		}
+	} else if keyed, ok := inner.(interface{ SetAPIKey(string) error }); ok {
 		if err := keyed.SetAPIKey(key); err != nil {
 			return err
 		}
@@ -692,10 +735,6 @@ func (a *Agent) SetAPIKey(key string) error {
 	a.config.APIKey = key
 	a.config.Sources = a.config.Sources.WithDefaultKey(key)
 	a.clientAccount = accountFor(a.config, a.model)
-	if a.clientsByAccount != nil {
-		delete(a.clientsByAccount, oldAccount)
-		a.clientsByAccount[a.clientAccount] = inner
-	}
 	return nil
 }
 

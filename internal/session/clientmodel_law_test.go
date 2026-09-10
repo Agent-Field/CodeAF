@@ -67,3 +67,44 @@ func TestOnlyTheClientDoorCanOverrideAModel(t *testing.T) {
 		t.Errorf("clientdoor.go contains %d ai.WithModel calls, want the one model-override door", doors)
 	}
 }
+
+// Every production Agent is born through agent.go's account-aware doors.
+// newAgent remains the scripted-completer seam for tests, but calling it from
+// another production file recreates the unmanaged child that bypassed model
+// account resolution.
+func TestEveryProductionAgentGetsTheAccountPool(t *testing.T) {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || filepath.Ext(name) != ".go" || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		files := token.NewFileSet()
+		file, err := parser.ParseFile(files, name, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", name, err)
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			function, ok := call.Fun.(*ast.Ident)
+			if !ok || function.Name != "newAgent" {
+				return true
+			}
+			calls++
+			if name != "agent.go" {
+				t.Errorf("%s:%d builds an unmanaged Agent outside agent.go", name, files.Position(call.Pos()).Line)
+			}
+			return true
+		})
+	}
+	if calls != 3 {
+		t.Errorf("production contains %d newAgent calls, want only the public and child doors in agent.go", calls)
+	}
+}

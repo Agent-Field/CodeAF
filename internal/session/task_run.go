@@ -6754,17 +6754,13 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	// default. Compacting early costs a fold and a cold prompt cache;
 	// overflowing costs the turn.
 	window := a.childWindow(model)
-	// AND THE PROVIDER REPAIR TRAVELS WITH THE CLIENT, WHICH IS WHY IT IS NOT IN
-	// THE LITERAL BELOW. Routing, ModelFallbacks and NearestModels are read in
-	// exactly one place — [New], where they are handed to the provider client
-	// (agent.go) — and this hands the node THAT CLIENT. So a worker asks through
-	// the person's own routing strategy, falls back down the person's own list,
-	// and gets the catalog's nearest-model rescue when there is no list, without
-	// carrying a copy of any of the three: they are facts about the connection,
-	// and there is one connection. Copying them onto the node's Config would be
-	// three fields nothing reads. What a node must NOT share is the request
-	// wrapper around that client — see [unwrapCompleter] for the cache lineage.
-	client := unwrapCompleter(a.client)
+	// AND THE PROVIDER REPAIR TRAVELS WITH THE ACCOUNT POOL, WHICH IS WHY IT IS
+	// NOT IN THE LITERAL BELOW. Routing, ModelFallbacks and NearestModels are
+	// read in exactly one place — [New], where they are handed to the pool's
+	// clients — so a worker asks through the person's own routing strategy and
+	// resolves the whole account for its own model. What a node must NOT share is
+	// the request wrapper around that client; [Agent.newChildAgent] gives it a
+	// fresh wrapper with the node's own cache lineage.
 	// ONE PLACE ANSWERS BOTH QUESTIONS ABOUT THIS WORKER'S FILES, and they are the
 	// same question: the transcript it writes and the litter it leaves both belong
 	// to the family, never to the directory it happens to be working in
@@ -6806,7 +6802,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		node.setJournal(journal)
 	}
 
-	return newAgent(Config{
+	return a.newChildAgent(Config{
 		// Search authority follows the work without enabling memory writes.
 		ConversationHistory: parent.conversationHistory(),
 		memoryBrief:         a.memoryBlock(ctx, node.assembledBrief()),
@@ -6996,7 +6992,7 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// asks the node it was armed on. This line is only the person's yes
 		// travelling with the work.
 		Divide: parent.Divide,
-	}, client)
+	})
 }
 
 // sessionID names the conversation a node's journal belongs under. A session

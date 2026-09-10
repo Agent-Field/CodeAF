@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	account "github.com/Agent-Field/aforge-v2/internal/config"
@@ -18,8 +19,110 @@ type modelAccount struct {
 	optional bool
 }
 
+// modelClientPool is the account boundary shared by a conversation and every
+// production child it creates. The whole account is the key: source identity,
+// bearer, address, and whether a blank bearer is an explicit capability.
+// Sharing the pool keeps a task worker from falling back to whichever adapter
+// its parent happened to be using when the worker was constructed.
+type modelClientPool struct {
+	mu      sync.Mutex
+	config  Config
+	clients map[modelAccount]Completer
+}
+
+func newModelClientPool(config Config, model string, client Completer) *modelClientPool {
+	pool := &modelClientPool{config: config, clients: make(map[modelAccount]Completer)}
+	pool.clients[accountFor(config, model)] = client
+	return pool
+}
+
+// clientFor resolves model and its wire slug from one snapshot, then reuses or
+// constructs the adapter for that complete account. Construction opens no
+// connection, so holding the lock prevents two simultaneous children from
+// minting two adapters and, more importantly, two competing lane-prober seams.
+func (p *modelClientPool) clientFor(model string) (Completer, string, modelAccount, error) {
+	if p == nil {
+		return nil, "", modelAccount{}, errNoCompleter
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	configured := p.config.clientConfig(model, providerTimeout)
+	want := accountFor(p.config, model)
+	if client := p.clients[want]; client != nil {
+		return client, configured.Model, want, nil
+	}
+	client, err := newProviderClient(p.config, model)
+	if err != nil {
+		return nil, "", modelAccount{}, err
+	}
+	p.clients[want] = client
+	return client, configured.Model, want, nil
+}
+
+// setSources moves the pool to a freshly resolved profile and forgets every
+// adapter whose complete account is no longer present. Before an evicted
+// provider can remain reachable through a call already holding its interface,
+// its bearer is cleared; a removed key may not leave the process again.
+func (p *modelClientPool) setSources(sources modelsource.Set) {
+	if p == nil || sources.Empty() {
+		return
+	}
+	p.mu.Lock()
+	p.config.Sources = sources
+	keep := make(map[modelAccount]bool)
+	for _, service := range sources.All() {
+		keep[accountForService(service)] = true
+	}
+	var evicted []Completer
+	for account, client := range p.clients {
+		if !keep[account] {
+			delete(p.clients, account)
+			evicted = append(evicted, client)
+		}
+	}
+	p.mu.Unlock()
+	for _, client := range evicted {
+		if keyed, ok := unwrapCompleter(client).(interface{ SetAPIKey(string) error }); ok {
+			_ = keyed.SetAPIKey("")
+		}
+	}
+}
+
+func (p *modelClientPool) setDefaultKey(key string) error {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	old := accountForService(p.config.Sources.OrDefault(p.config.APIKey, p.config.BaseURL).Default())
+	p.config.APIKey = key
+	p.config.Sources = p.config.Sources.WithDefaultKey(key)
+	next := accountForService(p.config.Sources.OrDefault(p.config.APIKey, p.config.BaseURL).Default())
+	current := p.clients[old]
+	if current != nil {
+		delete(p.clients, old)
+	}
+	p.mu.Unlock()
+	if current == nil {
+		return nil
+	}
+	inner := unwrapCompleter(current)
+	if keyed, ok := inner.(interface{ SetAPIKey(string) error }); ok {
+		if err := keyed.SetAPIKey(key); err != nil {
+			return err
+		}
+	}
+	p.mu.Lock()
+	p.clients[next] = inner
+	p.mu.Unlock()
+	return nil
+}
+
 func accountFor(config Config, model string) modelAccount {
 	service := config.serviceFor(model)
+	return accountForService(service)
+}
+
+func accountForService(service modelsource.Connected) modelAccount {
 	return modelAccount{
 		id: strings.ToLower(strings.TrimSpace(service.Source.ID)), key: service.Key,
 		address: strings.TrimSpace(service.Address), optional: service.Source.KeyOptional,
@@ -50,22 +153,12 @@ func (a *Agent) rebindClientLocked(model string) {
 	if !a.managedClient {
 		return
 	}
-	want := accountFor(a.config, model)
+	inner, _, want, err := a.clientPool.clientFor(model)
 	if want == a.clientAccount {
 		return
 	}
-	inner, ok := a.clientsByAccount[want]
-	if !ok {
-		client, err := newProviderClient(a.config, model)
-		if err != nil {
-			inner = unavailableCompleter{err: err}
-		} else {
-			inner = client
-		}
-		if a.clientsByAccount == nil {
-			a.clientsByAccount = make(map[modelAccount]Completer)
-		}
-		a.clientsByAccount[want] = inner
+	if err != nil {
+		inner = unavailableCompleter{err: err}
 	}
 	if wrapper, ok := a.client.(sessionCompleter); ok {
 		wrapper.inner = inner
@@ -93,31 +186,22 @@ func (a *Agent) completerFor(model string) (Completer, string, error) {
 	if a.client == nil {
 		return nil, "", errNoCompleter
 	}
-	configured := a.config.clientConfig(model, providerTimeout)
 	if !a.managedClient {
+		configured := a.config.clientConfig(model, providerTimeout)
 		return a.client, configured.Model, nil
 	}
-	want := accountFor(a.config, model)
+	inner, wire, want, err := a.clientPool.clientFor(model)
+	if err != nil {
+		return nil, "", err
+	}
 	if want == a.clientAccount {
-		return a.client, configured.Model, nil
-	}
-	inner, ok := a.clientsByAccount[want]
-	if !ok {
-		client, err := newProviderClient(a.config, model)
-		if err != nil {
-			return nil, "", err
-		}
-		inner = client
-		if a.clientsByAccount == nil {
-			a.clientsByAccount = make(map[modelAccount]Completer)
-		}
-		a.clientsByAccount[want] = inner
+		return a.client, wire, nil
 	}
 	if wrapper, ok := a.client.(sessionCompleter); ok {
 		wrapper.inner = inner
-		return wrapper, configured.Model, nil
+		return wrapper, wire, nil
 	}
-	return inner, configured.Model, nil
+	return inner, wire, nil
 }
 
 // completeWithModel is [Agent.completerFor] joined to the one wire-model

@@ -3,6 +3,8 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -25,20 +27,32 @@ type clientDoorCall struct {
 	body          map[string]json.RawMessage
 }
 
+type clientDoorRequest struct {
+	method        string
+	path          string
+	authorization string
+}
+
 // clientDoorServer is a real provider boundary that answers both the streamed
 // conversation road and the unstreamed errand roads while retaining the exact
 // account and JSON shape each caller put on the wire.
 type clientDoorServer struct {
 	*httptest.Server
-	mu      sync.Mutex
-	calls   []clientDoorCall
-	content string
+	mu       sync.Mutex
+	calls    []clientDoorCall
+	requests []clientDoorRequest
+	content  string
 }
 
 func newClientDoorServer(t *testing.T, content string) *clientDoorServer {
 	t.Helper()
 	server := &clientDoorServer{content: content}
 	server.Server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		server.mu.Lock()
+		server.requests = append(server.requests, clientDoorRequest{
+			method: request.Method, path: request.URL.Path, authorization: request.Header.Get("Authorization"),
+		})
+		server.mu.Unlock()
 		if !answersChatOnly(writer, request) {
 			return
 		}
@@ -96,6 +110,12 @@ func (s *clientDoorServer) allCalls() []clientDoorCall {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]clientDoorCall(nil), s.calls...)
+}
+
+func (s *clientDoorServer) allRequests() []clientDoorRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]clientDoorRequest(nil), s.requests...)
 }
 
 func clientDoorModel(t *testing.T, call clientDoorCall) string {
@@ -229,6 +249,101 @@ func TestTheCrewReachesItsOwnServiceWhileTheChatIsElsewhere(t *testing.T) {
 	chat := directServer.allCalls()
 	if len(chat) != 1 || chat[0].authorization != "Bearer direct-chat-key" || clientDoorModel(t, chat[0]) != "fake-small" {
 		t.Fatalf("direct service calls = %+v, want only the chat model on its own bearer", chat)
+	}
+}
+
+// A production child is a request-carrying Agent in its own right. Repeating
+// the crossing catches the old split identity, where a role call happened to
+// use the account pool but a task-shaped child inherited the conversation's
+// direct client and sent the same unqualified id to another host.
+func TestTheCrewNeverReachesAServiceThatDoesNotServeIt(t *testing.T) {
+	for attempt := 0; attempt < 5; attempt++ {
+		t.Run(fmt.Sprintf("attempt-%d", attempt+1), func(t *testing.T) {
+			defaultServer := newClientDoorServer(t, "crew done")
+			directServer := newClientDoorServer(t, "chat done")
+			defaultSource := modelsource.DefaultSource(defaultServer.URL)
+			directSource := modelsource.Source{ID: "direct", Written: "localhost", Address: directServer.URL}
+			agent, err := New(Config{
+				Workspace: t.TempDir(), Model: "localhost/fake-small",
+				Sources: modelsource.NewSet(
+					modelsource.Connected{Source: defaultSource, Key: "default-crew-key", Address: defaultServer.URL},
+					modelsource.Connected{Source: directSource, Key: "direct-chat-key", Address: directServer.URL},
+				),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = agent.Close() })
+
+			graph := agent.graph()
+			graph.run = func(*TaskNode) {}
+			id := graph.reserve()
+			graph.admit(id, taskSpec{title: "crew crossing", brief: "answer", acceptance: "done", model: "crew/worker"})
+			child, err := agent.newTaskAgent(t.Context(), t.TempDir(), graph.node(id), "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = child.Close() })
+			if _, err := child.completeWithModel(t.Context(), []ai.Message{textMessage("user", "work")}, "crew/worker"); err != nil {
+				t.Fatal(err)
+			}
+			drainTurn(t, agent, "chat")
+
+			crew := defaultServer.allCalls()
+			if len(crew) != 1 || crew[0].authorization != "Bearer default-crew-key" || clientDoorModel(t, crew[0]) != "crew/worker" {
+				t.Fatalf("default service calls = %+v", crew)
+			}
+			chat := directServer.allCalls()
+			if len(chat) != 1 || chat[0].authorization != "Bearer direct-chat-key" || clientDoorModel(t, chat[0]) != "fake-small" {
+				t.Fatalf("direct service calls = %+v", chat)
+			}
+			for _, request := range directServer.allRequests() {
+				if request.method != http.MethodPost || request.path != modelsource.ChatCompletionsPath {
+					t.Fatalf("direct service received a non-chat request: %+v", directServer.allRequests())
+				}
+			}
+		})
+	}
+}
+
+func TestRemovingAServiceEvictsAndDisarmsItsClient(t *testing.T) {
+	lanes.Default().Reset()
+	t.Cleanup(func() { lanes.Default().Reset() })
+	defaultServer := newClientDoorServer(t, "default done")
+	directServer := newClientDoorServer(t, "direct done")
+	defaultSource := modelsource.DefaultSource(defaultServer.URL)
+	directSource := modelsource.Source{ID: "direct", Written: "localhost", Address: directServer.URL}
+	defaults := modelsource.NewSet(modelsource.Connected{
+		Source: defaultSource, Key: "default-key", Address: defaultServer.URL,
+	})
+	agent, err := New(Config{
+		Workspace: t.TempDir(), Model: "localhost/fake-small",
+		Sources: modelsource.NewSet(
+			defaults.Default(),
+			modelsource.Connected{Source: directSource, Key: "deleted-key", Address: directServer.URL},
+		),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+	stale := unwrapCompleter(agent.client)
+	drainTurn(t, agent, "before disconnect")
+	agent.SetSources(defaults)
+	agent.SetModel("default/chat")
+	if _, err := stale.CompleteWithMessages(t.Context(), []ai.Message{textMessage("user", "after disconnect")}); !errors.Is(err, provider.ErrNoAPIKey) {
+		t.Fatalf("evicted client answered with %v, want no-key refusal", err)
+	}
+	// Exercise the process sheet after the account change, just as the live beat
+	// does while picker refresh and turns continue. Its 404 is expected; which
+	// host receives the request is the assertion below.
+	_ = lanes.Default().Sheet().Refresh(t.Context(), "default/chat")
+	drainTurn(t, agent, "after disconnect")
+	if got := directServer.allRequests(); len(got) != 1 || got[0].authorization != "Bearer deleted-key" || got[0].method != http.MethodPost || got[0].path != modelsource.ChatCompletionsPath {
+		t.Fatalf("removed service received another request: %+v", got)
+	}
+	if got := defaultServer.allCalls(); len(got) != 1 || got[0].authorization != "Bearer default-key" || clientDoorModel(t, got[0]) != "default/chat" {
+		t.Fatalf("remaining service calls = %+v", got)
 	}
 }
 
