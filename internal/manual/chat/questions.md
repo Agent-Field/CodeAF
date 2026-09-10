@@ -246,7 +246,7 @@ beside it, `?` is one still waiting.
 A question something is blocked on never waits for a boundary. It arrives at
 once, on its own.
 
-## The question disappeared — withdrawal
+## The question disappeared — it vanished without me answering, withdrawal
 
 A question can stop needing an answer: what it was about went away, the plan
 changed, or another answer settled it. It is taken back by whoever asked, and one
@@ -261,6 +261,9 @@ The count in the chip drops, and an open sheet loses that row and re-flows —
 question and not to the position it was drawn in. A question still gathering
 inside a step is dropped from that batch too, so a boundary never delivers a
 decision that stopped needing to be made.
+
+It is never called cancelled: nothing failed, and nobody decided anything. The
+decision simply stopped needing to be made.
 
 ## Questions aforge refuses to put to you
 
@@ -424,19 +427,6 @@ where you handed it back with `d`. It is the same line that goes into
 
 The line stays for half a minute and then goes — it is news, and after that it
 is history, which lives in the transcript and in the record.
-
-## A question that stops needing you
-
-Sometimes the thing a question was about goes away — the turn moved on, the plan
-changed, another answer settled it. When that happens the question is taken back
-by whoever asked it and one dim line says so, once:
-
-```
-  ⊘ allow this? — no longer needed · the turn moved on without it
-```
-
-Then the count in the status line drops. It is never called cancelled: nothing
-failed, the decision simply stopped needing to be made.
 
 ## Stop asking me about this — rules
 
