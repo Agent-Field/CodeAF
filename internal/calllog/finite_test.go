@@ -35,6 +35,9 @@ func TestAnInfiniteFieldStillLeavesItsRow(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "calls.jsonl")
 	t.Setenv(EnvVar, path)
 	fresh(t, path)
+	// The row is kept and the DEFECT goes to stderr; this test is about the
+	// row, so the line is caught rather than spent on the test binary's output.
+	quiet(t)
 	Append(Record{ID: "start", Phase: PhaseStart, Model: "m"})
 	Append(Record{ID: "end-inf", Model: "m", Status: 200, CostS: math.Inf(1)})
 	Append(Record{ID: "end-ok", Model: "m", Status: 200, CostS: 1})
@@ -124,7 +127,10 @@ func TestSeveralNonFiniteNumbersLeaveTheCallsOwnSentenceAloneAndAreSaidOnceOnStd
 	if lines := strings.Count(said.String(), "\n"); lines != 1 {
 		t.Fatalf("the complaint is made exactly once; it said:\n%s", said.String())
 	}
-	for _, want := range []string{"cost_s", "+Inf"} {
+	// The one line names the FIRST figure the table reached, which is the order
+	// [measured] lists them in: a complaint per figure per row would be the
+	// noise this Once exists to prevent.
+	for _, want := range []string{"waste_usd", "NaN"} {
 		if !strings.Contains(said.String(), want) {
 			t.Errorf("the complaint should name %s: %q", want, said.String())
 		}
