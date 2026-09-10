@@ -73,6 +73,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -412,6 +413,46 @@ type Pick struct {
 	WouldChange string `json:"wouldChange,omitempty"`
 }
 
+// UnmarshalJSON lets a pick be written as nothing but its key. A model asked for
+// `"pick":{"key":"1"}` has sent `"pick":1` and `"pick":"1"` (deepseek-v4-flash,
+// 2026-09-10), and both say exactly one thing: the first answer. A type that
+// decodes itself decides its own grammar (toolargs.go), so the bare forms are
+// read here; the object form goes back through the one decoder, so that what
+// is inside it is read, and refused, by the same rules and in the same words as
+// every other argument on the belt.
+func (p *Pick) UnmarshalJSON(raw []byte) error {
+	text := strings.TrimSpace(string(raw))
+	if text == "" || text == "null" {
+		return nil
+	}
+	if text[0] != '{' {
+		var key json.RawMessage = raw
+		if text[0] != '"' {
+			// A number or a truth: its own spelling is the key.
+			key = json.RawMessage(strconv.Quote(text))
+		}
+		var bare string
+		if err := json.Unmarshal(key, &bare); err != nil {
+			return &toolArgumentError{field: "pick", repair: `pick takes an object: send {"pick":{"key":"1"}}`}
+		}
+		*p = Pick{Key: strings.TrimSpace(bare)}
+		return nil
+	}
+	// pickFields is Pick without this method, so the object form decodes
+	// without recursing into it.
+	type pickFields Pick
+	fixed, err := coerceArgument(raw, reflect.TypeOf(pickFields{}), "pick")
+	if err != nil {
+		return err
+	}
+	var fields pickFields
+	if err := json.Unmarshal(fixed, &fields); err != nil {
+		return err
+	}
+	*p = Pick(fields)
+	return nil
+}
+
 // ── what is at stake, and what may answer without a person ──────────────────
 
 // Stakes is what an answer costs if it turns out wrong. It, and not the kind,
@@ -710,6 +751,17 @@ var (
 // errQuestionUnknownPick is the refusal for a pick naming an answer nobody
 // offered. It names the key, because the asker's own list is right in front of
 // it and the fix is one word.
+// errQuestionUnlabelledOption is the refusal for an answer with nothing on it a
+// person can read. The key is never the problem — an asker's keys are
+// renumbered to digits on the way in (askDigitKeys) — but a row with no label is
+// a row the person is asked to choose blind, and the asker is the only one who
+// knows what it was for. Answers are counted from one, the way the keys read.
+func errQuestionUnlabelledOption(nth int) error {
+	return fmt.Errorf(
+		"every answer needs a label a person can read, and answer %d has none: write one, or drop that answer",
+		nth)
+}
+
 func errQuestionUnknownPick(key string) error {
 	return fmt.Errorf(
 		"the pick names %q, which is not one of the answers this question offers: pick one of them, or add it to the list",
@@ -762,6 +814,11 @@ func (q Question) Check(records []DecisionRecord) error {
 		return errQuestionChecklistWithoutOptions
 	case q.Ask.needsOptions() && len(q.Options) < 2:
 		return errQuestionTooFewOptions
+	}
+	for at, option := range q.Options {
+		if strings.TrimSpace(option.Label) == "" {
+			return errQuestionUnlabelledOption(at + 1)
+		}
 	}
 	if q.Pick != nil {
 		if _, ok := q.Option(q.Pick.Key); !ok {
