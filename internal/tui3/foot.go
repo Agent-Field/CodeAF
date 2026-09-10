@@ -422,17 +422,7 @@ func (a *app) runStatusNote() tea.Cmd {
 //
 //	devbox · porting the parser · glm-5.3-flash · ⠿ high · via deepinfra · main*
 //
-// THE LADDER GIVES UP THE CHEAPEST TRUE THING FIRST, and it never clips:
-//
-//	1  the branch goes — the shell prompt behind this pane still says it
-//	2  the rider is said shorter, then not at all — it is the one part with a
-//	   shorter true spelling ([app.modelRiderAt])
-//	3  the thinking rung goes, WHOLE — half a rung word is a word somebody reads
-//	   as another rung, and the ladder it belongs to is one command away
-//	4  the name is cut, one ellipsis, never under [legendNameFloor] cells
-//	5  the model goes — the name is what tells two panes apart
-//	6  the name goes — and the machine, on a --host session, is the last thing
-//	   standing, because it is the half nobody can reconstruct from elsewhere
+// THE LADDER IS [seamLadder], read top to bottom, and it never clips.
 //
 // TWO CELLS ON THIS CLUSTER ARE CONTROLS AND BOTH RETURN THEIR COLUMNS: the
 // model opens the picker ([app.legendModelPress]) and the rung walks one step
@@ -442,6 +432,28 @@ func (a *app) runStatusNote() tea.Cmd {
 // (effortchip.go). A room does not come through here: its legend says the way
 // out, and its status row carries the room chip ([app.identityParts]).
 func (a *app) seamIdentity(width, room int) (string, hudSpan, hudSpan) {
+	pieces := a.seamPieces(width)
+	for _, try := range seamLadder {
+		if cluster, named, dial, ok := pieces.lay(try, room); ok {
+			return cluster, named, dial
+		}
+	}
+	return "", hudSpan{}, hudSpan{}
+}
+
+// seamPieces is everything the identity cluster can be made of, gathered once
+// per frame so the ladder below is only ever choosing between them.
+type seamPieces struct {
+	host, name, model, rung, branch string
+	// rider is the WHOLE rider — `· via relace`, `· via parasail · rescued` —
+	// and fit is the door that says it shorter when there is less room, or
+	// says nothing ([app.modelRiderAt]). The two are kept apart because the
+	// ladder needs to know whether a rung seated the rider entire.
+	rider string
+	fit   func(room int) string
+}
+
+func (a *app) seamPieces(width int) seamPieces {
 	name := a.sessionName()
 	if name == "" {
 		// THE FOLDER STANDS IN UNTIL THE SESSION HAS NAMED ITSELF, so this slot
@@ -462,147 +474,142 @@ func (a *app) seamIdentity(width, room int) (string, hudSpan, hudSpan) {
 	// The id is BUILT here rather than lent through [app.model] the way the phone
 	// deck's row is (view.go's [app.statusRow]), because a lent id no longer
 	// matches the endpoint sighting the `via` rider is looked up by.
-	model := modelBase(a.model)
-	thinking := a.effortChipText()
-	if model == "" {
+	pieces := seamPieces{host: a.host, name: name, model: modelBase(a.model)}
+	if pieces.model != "" {
 		// A rung with no model beside it has nothing to be about, and the ladder
 		// it belongs to is reached by name (`/effort`) rather than from a cell
-		// floating on its own.
-		thinking = ""
+		// floating on its own. The same goes for the rider.
+		pieces.rung = a.effortChipText()
+		pieces.rider = a.modelRiderAt(-1)
+		pieces.fit = a.modelRiderAt
 	}
-	branch := a.branchWord()
-	if width < hudTight {
-		branch = ""
+	if width >= hudTight {
+		pieces.branch = a.branchWord()
 	}
-	// The pieces before the model, joined, and the pieces after it.
-	head := dotted(a.host, name)
-	// spans is where the model and the rung fell inside a cluster built from
-	// these pieces. Both are measured off [head], which is the only thing drawn
-	// before them, and a cluster too short to hold one of them yields no span at
-	// all — a door is recorded only where it was actually drawn.
-	spans := func(cluster, rung string) (hudSpan, hudSpan) {
-		if model == "" {
-			return hudSpan{}, hudSpan{}
-		}
-		from := 0
-		if head != "" {
-			from = ansi.StringWidth(head + legendJoin)
-		}
-		to := from + ansi.StringWidth(model)
-		if ansi.StringWidth(cluster) < to {
-			return hudSpan{}, hudSpan{}
-		}
-		named := hudSpan{from: from, to: to}
-		if rung == "" {
-			return named, hudSpan{}
-		}
-		at := to + ansi.StringWidth(legendJoin)
-		end := at + ansi.StringWidth(rung)
-		if ansi.StringWidth(cluster) < end {
-			return named, hudSpan{}
-		}
-		return named, hudSpan{from: at, to: end}
+	return pieces
+}
+
+// seamTry is one rung of the ladder: which of the pieces are on the line, and
+// whether the name may be cut to seat them.
+type seamTry struct {
+	branch, rung, model, name bool
+	// rider is how the rider is treated: [riderWhole] means the step fails
+	// unless the rider fits entire, [riderFit] takes whatever spelling the room
+	// allows (which may be none), [riderNone] leaves it off.
+	rider riderWant
+	// cut allows the name to be shortened with one ellipsis, never under
+	// [legendNameFloor] cells, to make the rest fit.
+	cut bool
+}
+
+type riderWant uint8
+
+const (
+	riderNone riderWant = iota
+	riderFit
+	riderWhole
+)
+
+// seamLadder is THE LADDER, top to bottom: the first rung that fits is drawn.
+// It gives up the cheapest true thing first and never clips a word:
+//
+//	1  everything, the rider entire
+//	2  the branch goes — the shell prompt behind this pane still says it
+//	3  the name is cut to seat the rider entire — which machine is answering
+//	   is the one fact on this line about NOW (the owner's ruling of
+//	   2026-09-10), and the rest of the title is in the tab strip
+//	4  the rider is said shorter, then not at all, with the branch back on
+//	5  and without it
+//	6  the thinking rung goes, WHOLE — half a rung word is a word somebody
+//	   reads as another rung, and its ladder is one command away
+//	7  the name is cut for the model alone
+//	8  the model goes — the name is what tells two panes apart
+//	9  the name goes — and the machine, on a --host session, is the last
+//	   thing standing, because it is the half nobody can reconstruct
+var seamLadder = []seamTry{
+	{name: true, model: true, rung: true, rider: riderWhole, branch: true},
+	{name: true, model: true, rung: true, rider: riderWhole},
+	{name: true, model: true, rung: true, rider: riderWhole, cut: true},
+	{name: true, model: true, rung: true, rider: riderFit, branch: true},
+	{name: true, model: true, rung: true, rider: riderFit},
+	{name: true, model: true, rider: riderFit},
+	{name: true, model: true, cut: true},
+	{name: true, cut: true},
+	{},
+}
+
+// lay draws one rung of the ladder into the room, and reports false when what
+// that rung asks for does not fit. The two spans are where the model and the
+// rung fell, measured off the head that was actually drawn, so a door is only
+// ever recorded where its cell is.
+func (p seamPieces) lay(try seamTry, room int) (string, hudSpan, hudSpan, bool) {
+	model, rung, branch, rider := "", "", "", ""
+	if try.model {
+		model = p.model
 	}
-	// A step: a cluster with the rung and the rider it can afford, or false when
-	// what is fixed about it does not fit at all. With `keep` the rider is part
-	// of what is fixed: a step that cannot seat the whole rider fails, so the
-	// ladder can give up something ABOVE the rider before the rider itself.
-	full := ""
-	if model != "" {
-		full = a.modelRiderAt(-1)
+	if try.rung && model != "" {
+		rung = p.rung
 	}
-	step := func(rung, tail string, keep bool) (string, hudSpan, hudSpan, bool) {
-		bare := dotted(head, dotted(model, rung), tail)
+	if try.branch {
+		branch = p.branch
+	}
+	// A rung that wants the rider entire fails outright when there is none to
+	// seat, so the ladder moves on to the rungs that do not ask for it.
+	if try.rider == riderWhole && (model == "" || p.rider == "") {
+		return "", hudSpan{}, hudSpan{}, false
+	}
+	if try.rider == riderWhole {
+		rider = p.rider
+	}
+	// The name is the one piece with a floor rather than a fixed width: what
+	// it has is the room less everything else on the line.
+	name := ""
+	if try.name {
+		name = p.name
+		if try.cut {
+			rest := dotted(p.host, dotted(model, rung)+rider, branch)
+			left := room - ansi.StringWidth(rest)
+			if rest != "" {
+				left -= ansi.StringWidth(legendJoin)
+			}
+			if left < legendNameFloor {
+				return "", hudSpan{}, hudSpan{}, false
+			}
+			name = fit(name, left)
+		}
+	}
+	head := dotted(p.host, name)
+	if try.rider == riderFit && model != "" {
+		bare := dotted(head, dotted(model, rung), branch)
 		if ansi.StringWidth(bare) > room {
 			return "", hudSpan{}, hudSpan{}, false
 		}
-		rider := ""
-		if model != "" {
-			rider = a.modelRiderAt(room - ansi.StringWidth(bare))
-		}
-		if keep && rider != full {
-			return "", hudSpan{}, hudSpan{}, false
-		}
-		cluster := dotted(head, dotted(model, rung)+rider, tail)
-		named, dial := spans(cluster, rung)
-		return cluster, named, dial, true
+		rider = p.fit(room - ansi.StringWidth(bare))
 	}
-	// THE RIDER OUTRANKS THE BRANCH AND THE NAME'S TAIL. `via relace` is the one
-	// fact on this line that says what is happening NOW — which machine is
-	// answering — and the owner's ruling is that it is always on the seam. The
-	// branch is on the folder's own line and the name's tail is in the tab
-	// strip; so a rider that does not fit beside them takes the branch's cells
-	// first, then the name's, and drops only when the name is at its floor. It
-	// used to be the filler after everything else, and a conversation with a
-	// long title never showed who served it.
-	if full != "" {
-		if cluster, named, dial, ok := step(thinking, branch, true); ok {
-			return cluster, named, dial
-		}
-		if branch != "" {
-			if cluster, named, dial, ok := step(thinking, "", true); ok {
-				return cluster, named, dial
-			}
-		}
-		fixed := dotted(a.host, dotted(model, thinking)+full)
-		left := room - ansi.StringWidth(fixed)
-		if fixed != "" {
-			left -= ansi.StringWidth(legendJoin)
-		}
-		if model != "" && name != "" && left >= legendNameFloor {
-			cut := dotted(a.host, fit(name, left))
-			cluster := dotted(cut, dotted(model, thinking)+full)
-			// The spans are measured off the cut head, which is what was drawn.
-			from := ansi.StringWidth(cut + legendJoin)
-			named := hudSpan{from: from, to: from + ansi.StringWidth(model)}
-			dial := hudSpan{}
-			if thinking != "" {
-				at := named.to + ansi.StringWidth(legendJoin)
-				dial = hudSpan{from: at, to: at + ansi.StringWidth(thinking)}
-			}
-			return cluster, named, dial
-		}
+	cluster := dotted(head, dotted(model, rung)+rider, branch)
+	if ansi.StringWidth(cluster) > room {
+		return "", hudSpan{}, hudSpan{}, false
 	}
-	if cluster, named, dial, ok := step(thinking, branch, false); ok {
-		return cluster, named, dial
+	named, dial := seamSpans(head, model, rung)
+	return cluster, named, dial, true
+}
+
+// seamSpans is where the model and the rung stand in a cluster that begins
+// with head, or empty spans for a cluster with no model on it.
+func seamSpans(head, model, rung string) (hudSpan, hudSpan) {
+	if model == "" {
+		return hudSpan{}, hudSpan{}
 	}
-	if branch != "" {
-		if cluster, named, dial, ok := step(thinking, "", false); ok {
-			return cluster, named, dial
-		}
+	from := 0
+	if head != "" {
+		from = ansi.StringWidth(head + legendJoin)
 	}
-	// THE RUNG GOES WHOLE OR NOT AT ALL, which is the same law the chip kept on
-	// the tray and pickrow.go's about an answer: `hig` is a word somebody reads
-	// as another rung.
-	if thinking != "" {
-		if cluster, named, dial, ok := step("", "", false); ok {
-			return cluster, named, dial
-		}
+	named := hudSpan{from: from, to: from + ansi.StringWidth(model)}
+	if rung == "" {
+		return named, hudSpan{}
 	}
-	// The name is cut. What it has is the room less the machine and the model.
-	fixed := dotted(a.host, model)
-	left := room - ansi.StringWidth(fixed)
-	if fixed != "" {
-		left -= ansi.StringWidth(legendJoin)
-	}
-	if model != "" && left >= legendNameFloor {
-		head = dotted(a.host, fit(name, left))
-		cluster := dotted(head, model)
-		named, _ := spans(cluster, "")
-		return cluster, named, hudSpan{}
-	}
-	// The model goes.
-	left = room - ansi.StringWidth(a.host)
-	if a.host != "" {
-		left -= ansi.StringWidth(legendJoin)
-	}
-	if left >= legendNameFloor {
-		return dotted(a.host, fit(name, left)), hudSpan{}, hudSpan{}
-	}
-	if ansi.StringWidth(a.host) <= room {
-		return a.host, hudSpan{}, hudSpan{}
-	}
-	return "", hudSpan{}, hudSpan{}
+	at := named.to + ansi.StringWidth(legendJoin)
+	return named, hudSpan{from: at, to: at + ansi.StringWidth(rung)}
 }
 
 // legendModelPress is a click on the model's name in the seam, and reports
