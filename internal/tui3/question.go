@@ -804,14 +804,22 @@ func (a *app) questionCardRows(q questionShown, width int) []string {
 	// size smaller. What is left is who asked, which the block above cannot say.
 	drawn := a.questionSubjectAt(q.question) >= 0
 	if line := a.questionAttribution(q.question, !drawn); line != "" {
-		out = append(out, a.pal.dim(fit("  "+line, width)))
+		// AND IT WRAPS RATHER THAN CUTS. This row is the one sentence a person
+		// has to READ before they answer — the stop card's promise, what moving
+		// a conversation costs — and half of a promise is worse than two rows
+		// of it. Home lends this card fifty columns and less, which is where a
+		// cut one was found: `its reply stops there; i…`. Every other row on the
+		// card is a word and a key and is cut as it always was.
+		for _, wrapped := range wrap(line, max(1, width-2)) {
+			out = append(out, a.pal.dim("  "+wrapped))
+		}
 	}
 	// THE SENTENCE WITH A HOLE IN IT GOES ABOVE THE ANSWERS, because it is part
 	// of what the answers are about: `start it` on a proposal starts it on the
 	// model in the hole, so the hole has to be read before the answer is given.
 	// It is the room's own renderer (questioninput.go), not a second one.
 	if q.holes.kind == session.InputBlanks {
-		out = append(out, a.questionBlankRows(&q.holes, width)...)
+		out = append(out, a.questionCardBlankRows(&q.holes, width)...)
 	}
 	options := q.question.Options
 	if len(options) > questionCardOptions {
@@ -1729,6 +1737,14 @@ func (a *app) questionHint() string {
 	if !ok {
 		return ""
 	}
+	return a.questionHintOn(head)
+}
+
+// questionHintOn is that sentence for a question the caller already has, which
+// is what home's narrow foot asks for: below [homeCardMin] there is no card at
+// all, so the one row home has left is the only place its question can spell its
+// own answers (homeconfirm.go).
+func (a *app) questionHintOn(head questionShown) string {
 	if len(head.beat) > 0 {
 		return "1-" + itoa(len(head.beat)) + " shape · " + questionLaterKey + " " + questionBeatBack
 	}
@@ -1901,6 +1917,12 @@ func (a *app) answerQuestion(q questionShown, answer session.Answer) tea.Cmd {
 // it again.
 func (a *app) closeQuestion(q questionShown, answer session.Answer) {
 	token := q.token()
+	// AND HOME'S OWN CARD GOES WITH IT (homeconfirm.go). A question answered is a
+	// question gone from wherever it was drawn, and home is the one place that
+	// holds one outside the queue below.
+	if a.home.ask != nil && a.home.ask.token() == token {
+		a.home.ask = nil
+	}
 	kept := a.questions[:0]
 	for _, open := range a.questions {
 		if open.token() == token {
@@ -2054,6 +2076,21 @@ func (a *app) questionKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// would be modal in the one place nobody could tell.
 		return nil, false
 	}
+	return a.questionKeyOn(head, msg)
+}
+
+// questionKeyOn is the routing itself, against a question this caller has
+// already found.
+//
+// IT IS SPLIT FROM [app.questionKey] BECAUSE THE BLOCK IS NOT THE ONLY PLACE A
+// QUESTION IS DRAWN. Home takes the frame whole and draws its own copy of a
+// confirmation it raised about a row on its list (homeconfirm.go); that card and
+// this block have to answer to the same keys, in the same order, with the same
+// law about which of them takes the cursor and which of them takes the answer —
+// and two routers for one grammar is the defect the one key table exists to
+// prevent. What is above this line is the BLOCK's own two guards (which question
+// is the head, and whether it has been drawn), which home answers for itself.
+func (a *app) questionKeyOn(head questionShown, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	key := msg.String()
 	if key == "ctrl+c" {
 		// Leaving is never modal, and mid-turn ctrl+c is the interrupt, which
@@ -2203,13 +2240,30 @@ func (a *app) questionOptionKey(head questionShown, key string) (tea.Cmd, bool) 
 
 // moveQuestionPick walks the cursor on the one form that has one.
 func (a *app) moveQuestionPick(head questionShown, to int) {
+	if open := a.questionHeld(head.token()); open != nil {
+		open.pick = to
+		a.touch()
+	}
+}
+
+// questionHeld is one open question BY REFERENCE, so a key that moves something
+// on it moves the one this window is holding rather than a copy.
+//
+// IT LOOKS IN TWO PLACES, and they are the two places a question is drawn: the
+// block's queue above the message box, and the one card home raises about a row
+// on its own list (homeconfirm.go). Home takes the frame whole, so its card can
+// never be on screen beside the block's — but a lookup that knew about only one
+// of them would leave whichever it forgot with a cursor that could not be moved.
+func (a *app) questionHeld(token string) *questionShown {
 	for i := range a.questions {
-		if a.questions[i].token() == head.token() {
-			a.questions[i].pick = to
-			a.touch()
-			return
+		if a.questions[i].token() == token {
+			return &a.questions[i]
 		}
 	}
+	if a.home.ask != nil && a.home.ask.token() == token {
+		return a.home.ask
+	}
+	return nil
 }
 
 // moveQuestionHole walks the choices in the hole this question's sentence
@@ -2222,17 +2276,12 @@ func (a *app) moveQuestionPick(head questionShown, to int) {
 // not the person's. What the arrows buy is the seconds in which that choice is
 // free to change — the proposal is not approved by changing it.
 func (a *app) moveQuestionHole(head questionShown, key string) bool {
-	for i := range a.questions {
-		if a.questions[i].token() != head.token() {
-			continue
-		}
-		if !questionWalkChoice(&a.questions[i].holes, key) {
-			return false
-		}
-		a.touch()
-		return true
+	open := a.questionHeld(head.token())
+	if open == nil || !questionWalkChoice(&open.holes, key) {
+		return false
 	}
-	return false
+	a.touch()
+	return true
 }
 
 // questionPick answers with the option at an index, which is what the cursor

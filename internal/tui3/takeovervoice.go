@@ -267,11 +267,13 @@ func (a *app) takeoverCard(row session.SessionRow, width int, pal palette) []str
 	case takeoverRest:
 		dim(takeoverDoorWord)
 	case takeoverArmed:
-		// THE ANSWER IS INK AND THE COST IS DIM. An armed row is the one moment
-		// this door asks a person for something, and the thing it is asking is
-		// the first line; what it costs is what they are deciding WITH.
-		ink(takeoverAgainWord)
-		rows = append(rows, bandClauses(width, 0, pal.dim, takeoverCostWords...)...)
+		// AN ARMED ROW IS A QUESTION, AND THE CARD IS THE QUESTION BLOCK'S OWN
+		// (homeconfirm.go). This used to be two lines the band painted itself —
+		// `enter again moves it here` over the two clauses saying what it costs
+		// — which is a card describing a decision beside a block built to draw
+		// one. What the answers cost is on the answers now, in a column, and the
+		// keys are the ones every other question on this surface takes.
+		return a.homeAskRows(width)
 	case takeoverMoving, takeoverHolding:
 		dim(a.takeoverHeadWord())
 		switch {

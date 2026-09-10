@@ -369,7 +369,7 @@ func TestARowThatIsWaitingIsADoorOfTheKindItAlwaysWas(t *testing.T) {
 		t.Fatalf("the row answered %+v", answer)
 	}
 	a.homeEnter()
-	if !strings.Contains(a.home.msg, "enter again to move it here") {
+	if _, up := a.homeAsking(); !up {
 		t.Fatalf("enter on the row did not walk the conversation's door: %q", a.home.msg)
 	}
 }

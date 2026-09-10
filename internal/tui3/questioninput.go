@@ -532,6 +532,26 @@ func (a *app) questionBlankRows(in *questionInput, width int) []string {
 	return out
 }
 
+// questionCardBlankRows is the same sentence on a CARD, which is one row and not
+// the page's shape.
+//
+// WHAT IS DROPPED IS THE NOTE, AND ONLY WHEN IT HAS NOTHING TO REFUSE. The page
+// draws `model · one of these` under the sentence because a page is where a
+// person is filling several holes in and has to learn what each of them takes; a
+// card carries one hole and its offer row already says `[←→] move it`, so the
+// note there is the same fact twice on two rows. A refusal is not the same fact
+// twice — it is the one thing the sentence cannot say — so it stays.
+func (a *app) questionCardBlankRows(in *questionInput, width int) []string {
+	rows := a.questionBlankRows(in, width)
+	if len(rows) == 0 || in.focus < 0 || in.focus >= len(in.blanks) {
+		return rows
+	}
+	if questionBlankRefusal(in.blanks[in.focus]) != "" {
+		return rows
+	}
+	return rows[:len(rows)-1]
+}
+
 // questionBlankSentence draws the prompt with its holes substituted in, and
 // reports false where the prompt names none of them.
 func (a *app) questionBlankSentence(in *questionInput, width int) (string, bool) {
