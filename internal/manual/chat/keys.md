@@ -2236,8 +2236,14 @@ or a part of one it handed out itself:
 | `a` | the ask's own yes — take the work; on a card whose branch clashed with yours it reads `resolve it`, which spends one more merge round and takes nothing as done |
 | `n` | the ask's own no — `not right`, or `drop it` on a conflict; the task becomes incomplete and keeps its branch, and its dependents still fail because it did not finish |
 | `s` | tell it — opens the task's own page with the message box pointed at it. What you type is sent as a correction; **it never answers the question by itself**, so "looks good" typed there does not become an accept |
-| `d` | you decide — hands **this one question** to aforge and **changes no setting**. The standing choice is `task.settle` in `/settings` under Session |
 | `esc` | later — the question folds to the chip in the status line and nothing is answered |
+
+**`d` you decide is not on a landing's row.** The three answers and the way out are the
+whole of it, and no key on this surface ever does something that is not drawn on the screen
+in front of you. Where a landing draws each answer on a line of its own — the one road that
+does, because its `[a]` moves files of yours — `[d] you decide` is on it. The standing
+choice is `task.settle` in `/settings` under Session, and it is the right place for it: a
+letter that hands one landing over changes nothing about the next one.
 
 While `task.settle` is `auto` the reason row also reads `aforge is deciding`; the answers
 stay drawn, and pressing one yourself is how you take the question back.
@@ -2337,8 +2343,8 @@ Only the left button acts. A press is resolved in this order:
    spawn card, which opens the node's room, or its brief if there is no node yet; and
    a landed card, which opens its full context. The answers to a landing that is your
    call are not on that card: they are on the question block above the message box,
-   where each of `[a] accept`, `[n] not right`, `[s] tell it` and `[d] you decide` is
-   its own target and a press between them does nothing.
+   where each of `[a] accept`, `[n] not right` and `[s] tell it` is its own target and a
+   press between them does nothing.
 
 **A file path is a different kind of target.** Everything numbered above is a click
 aforge itself answers. A real file path — in a reply, in a note, on a `read`/`edit`/
