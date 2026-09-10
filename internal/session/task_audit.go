@@ -785,6 +785,24 @@ type auditPace struct {
 	until time.Time
 }
 
+// auditNow is the clock every sentence about the checking window is measured
+// against, and it is ONE DOOR so that a test can move it ([Config.auditClock]).
+//
+// The window is read four times on the way to a second call — when the node's
+// window opens, when a call starts, when a stalled call is cut, and again before
+// a fresh checker is asked for — and what those readings decide between them is
+// which sentence a person ends up reading. THE GAP BETWEEN THE LAST TWO IS THE
+// ONE THAT MATTERS: the harness asks whether a retry is worth building, builds
+// one, and asks again with the clock in hand, and a window that closes in
+// between is a retry nobody made. On a real clock that gap is microseconds wide
+// and opens only when the box is loaded, which is no way to prove anything.
+func (a *Agent) auditNow() time.Time {
+	if a.config.auditClock != nil {
+		return a.config.auditClock()
+	}
+	return time.Now()
+}
+
 // newAuditPace opens one node's window.
 func newAuditPace(window time.Duration, now time.Time) auditPace {
 	return auditPace{
@@ -1016,7 +1034,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// AND THE WINDOW IS OPENED ONCE, HERE, FOR THE WHOLE OF THIS NODE'S CHECKING.
 	// Both attempts below spend the same one ([auditPace]), so the figure a
 	// landing quotes is the figure the checking actually had.
-	pace := newAuditPace(a.auditWindowFor(door), time.Now())
+	pace := newAuditPace(a.auditWindowFor(door), a.auditNow())
 	if len(door.checks) == 0 {
 		fmt.Fprintf(log, "audit: nothing this work declares or ran is a re-runnable check — judging from reading, within %s\n",
 			pace.window)
@@ -1026,7 +1044,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// the other half of the law: a claim is a finding, or it holds, or it is said
 	// out loud — never silently passed ([withOpenClaims]).
 	open := checklist.open()
-	verdict, again := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, open, "", log)
+	verdict, again, _ := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, open, "", log)
 	verdict.alreadyRed = checks.alreadyRed()
 	switch {
 	case verdict.answered, !again:
@@ -1041,7 +1059,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// what the first attempt found is the only account there is of where the time
 	// went: a retry that answered `nobody could check it` in its place would tell
 	// a person nobody was asked, when somebody was asked and abandoned.
-	if _, worthAsking := pace.bound(time.Now()); !worthAsking {
+	if _, worthAsking := pace.bound(a.auditNow()); !worthAsking {
 		fmt.Fprintf(log, "audit: %s\n", checkerWindowClosed)
 		return withOpenClaims(verdict.andTheWindowClosed(), open)
 	}
@@ -1059,7 +1077,21 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	} else {
 		fmt.Fprintf(log, "audit: no verdict — asking a fresh auditor\n")
 	}
-	retried, _ := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, open, elsewhere, log)
+	retried, _, asked := a.auditOnce(ctx, node, tree, ground, pace, door, checks, files, claim, open, elsewhere, log)
+	// AND THE WINDOW IS READ TWICE ON THE WAY HERE, SO IT CAN CLOSE IN BETWEEN.
+	// The reading above was taken before a fresh checker was built; the one
+	// inside the attempt is taken with it built, against the time the call
+	// actually has — and on a loaded box the building is enough to spend what was
+	// left. A retry the window refused is not an attempt, so this lands exactly
+	// where the branch above lands: on the first call's own account, with the
+	// window's closing as a clause on the end of it. Saying `asked twice` over a
+	// call nobody made would tell a person two checkers were asked when one was,
+	// and the sentence it prefixes is [checkerRanOut]'s — which says nobody could
+	// check the work a second time in the same breath ([auditVerdict.twice]).
+	if !asked {
+		fmt.Fprintf(log, "audit: %s\n", checkerWindowClosed)
+		return withOpenClaims(verdict.andTheWindowClosed(), open)
+	}
 	retried.alreadyRed = checks.alreadyRed()
 	if retried.answered {
 		// AND THE LANDING SAYS WHICH TRY ANSWERED. A verdict the first call did
@@ -1085,10 +1117,16 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 // ([auditPace]) and the check is asked again inside what is left — where before
 // it, one hung call spent the whole five minutes and the node landed on a
 // sentence claiming nobody could check it (#513).
-func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, pace auditPace, door auditDoor, checks checkGround, files landingFiles, claim string, open []claimFinding, on string, log io.Writer) (auditVerdict, bool) {
+//
+// THE THIRD RETURN SAYS WHETHER A CALL WAS MADE AT ALL, and it is false in
+// exactly one place: the window had closed before this attempt could ask
+// anybody anything. The caller needs it because it read the same window a
+// moment earlier and was told there was room, and what it must not do with a
+// call that never happened is say two of them were made ([Agent.auditNode]).
+func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ground auditGround, pace auditPace, door auditDoor, checks checkGround, files landingFiles, claim string, open []claimFinding, on string, log io.Writer) (auditVerdict, bool, bool) {
 	auditor, err := a.newAuditAgent(ground.dir, node, door, on)
 	if err != nil {
-		return noVerdict("the checker could not start: "+err.Error(), ""), true
+		return noVerdict("the checker could not start: "+err.Error(), ""), true, true
 	}
 	defer func() {
 		_ = auditor.Close()
@@ -1114,9 +1152,9 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	// measured against the time this call actually has; a retry that would get
 	// less than the floor is not made at all, and what the landing then says is
 	// that the window closed rather than that a call it never made stalled.
-	bound, worthAsking := pace.bound(time.Now())
+	bound, worthAsking := pace.bound(a.auditNow())
 	if !worthAsking {
-		return noVerdict(checkerRanOut(pace.window), ""), false
+		return noVerdict(checkerRanOut(pace.window), ""), false, false
 	}
 	auditCtx, done := context.WithTimeout(ctx, bound)
 	defer done()
@@ -1124,7 +1162,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	fmt.Fprintf(log, "audit: verifying against the acceptance\n")
 	events, err := auditor.Submit(auditCtx, auditQuestion(node, tree, ground, door, checks, files, claim, open))
 	if err != nil {
-		return noVerdict("the checker could not be asked: "+err.Error(), ""), true
+		return noVerdict("the checker could not be asked: "+err.Error(), ""), true, true
 	}
 	// The turn's own failure is watched for, and it is watched for HERE rather
 	// than inferred from an empty reply, because the two are different news with
@@ -1159,19 +1197,19 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 		// ([auditVerdict.andTheWindowClosed]), and [checkerRanOut] is left for
 		// the case it is true of: no call stalled, and the window simply ran out.
 		stalled := noVerdict(checkerStalled(bound), said)
-		if pace.left(time.Now()) > 0 {
+		if pace.left(a.auditNow()) > 0 {
 			fmt.Fprintf(log, "audit: %s\n", checkerStalled(bound))
-			return stalled, true
+			return stalled, true, true
 		}
 		fmt.Fprintf(log, "audit: %s%s\n", checkerStalled(bound), checkerWindowClosedTail)
-		return stalled.andTheWindowClosed(), false
+		return stalled.andTheWindowClosed(), false, true
 	}
 	if failure != nil && strings.TrimSpace(said) == "" {
 		// NOTHING WAS DELIVERED. There is no reply to have parsed and no auditor
 		// left to ask for a word — the call itself did not land — so this goes to
 		// the rung that builds a new one, exactly as it did before the nudge
 		// existed.
-		return noVerdict("the checker could not be asked: "+failure.Error(), ""), true
+		return noVerdict("the checker could not be asked: "+failure.Error(), ""), true, true
 	}
 
 	verdict := parseAuditVerdict(said)
@@ -1186,7 +1224,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 		verdict = a.nudgeAudit(auditCtx, auditor, verdict, log)
 	}
 	fmt.Fprintf(log, "audit: %s\n", verdict.report())
-	return verdict, true
+	return verdict, true, true
 }
 
 // nudgeAudit asks the SAME auditor, once, for the word it did not say.
