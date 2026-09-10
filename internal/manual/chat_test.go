@@ -1977,6 +1977,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the report keep my folder's rules before it is published", "standing-orders"},
 		{"my report was held back and not published, why", "standing-orders"},
 		{"why did aforge standing check exit 4", "standing-orders"},
+		{"the run hit its step limit and my report was not published", "standing-orders"},
 		{"edit a standing order after it is set up", "standing-orders"},
 		{"how do I make this permanent", "standing-orders"},
 		{"it didn't notice this was a rule and did it once", "standing-orders"},

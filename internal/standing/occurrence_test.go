@@ -358,7 +358,7 @@ func TestAnOccurrenceThatPublishedBeforeItsProcessDiedIsRecordedNotRerun(t *test
 		t.Fatalf("a published occurrence ran again: calls %d pass %+v", runner.calls, pass)
 	}
 	records, _ := store.Occurrences(made.ID, 0)
-	if len(records) != 1 || records[0].Phase != PhaseFinished || records[0].Outcome != "landed" || records[0].Published == nil || !strings.Contains(records[0].OutcomeText, "no note was delivered") {
+	if len(records) != 1 || records[0].Phase != PhaseFinished || records[0].Outcome != "landed" || records[0].Published == nil || !strings.Contains(records[0].OutcomeText, "whether its note was delivered, and what it cost, is not known") {
 		t.Fatalf("the published record was not recovered as landed: %+v", records)
 	}
 	item, _ := store.Get(made.ID)
