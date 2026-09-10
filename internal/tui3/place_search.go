@@ -46,6 +46,8 @@ type searchPage struct {
 	// the box, so a stale tick or a slow read can be recognised and dropped.
 	ask  searchAsk
 	hits []store.ConversationHit
+	// unfolded is whether the results' fold is open ([searchReading.unfolding]).
+	unfolded bool
 	// world is the reading the hits are joined against for a project name and
 	// the transcript a door opens. It is read when this place opens and on the
 	// place clock's beat, never per keystroke: a conversation absent from it is
@@ -92,7 +94,13 @@ func (a *app) refreshSearch() {
 
 func (a *app) rebuildSearch() {
 	p := &a.search
-	p.reading = readSearch(p.ask.query, p.hits, p.world, p.read)
+	next := readSearch(p.ask.query, p.hits, p.world, p.read)
+	// A NEW QUESTION STARTS WITH ITS FOLD SHUT: the rest of an old answer is
+	// not the rest of this one.
+	if next.query != p.reading.query {
+		p.unfolded = false
+	}
+	p.reading = next.unfolding(p.unfolded)
 	// AND WHETHER THERE IS AN INDEX AT ALL IS A FACT ABOUT THE SURFACE, not
 	// about the words: it is read here, where the reading is made, so the page
 	// can tell "nothing was said" from "nothing looked" ([searchNoIndexWord]).
@@ -204,7 +212,7 @@ func (a *app) nearestSearchStop(from int) int {
 		from = 0
 	}
 	for i := from; i < len(a.search.reading.hits)+2; i++ {
-		if _, ok := a.search.reading.at(i); ok {
+		if a.search.reading.stop(i) {
 			return i
 		}
 	}
@@ -217,7 +225,7 @@ func (a *app) nearestSearchStop(from int) int {
 func (a *app) moveSearch(delta int) {
 	var doors []int
 	for i := 0; i < len(a.search.reading.hits)+2; i++ {
-		if _, ok := a.search.reading.at(i); ok {
+		if a.search.reading.stop(i) {
 			doors = append(doors, i)
 		}
 	}
@@ -254,6 +262,9 @@ func (a *app) searchKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.touch()
 		return nil
 	case "enter":
+		if a.search.reading.foldAt(a.search.cursor) {
+			return placeSearch{}.enter(a)
+		}
 		if hit, ok := a.search.reading.at(a.search.cursor); ok {
 			return a.openSearchHit(hit)
 		}
@@ -409,7 +420,7 @@ func (placeSearch) body(a *app, width, room int) []placeRow {
 			break
 		}
 		text := body[i]
-		if _, ok := a.search.reading.at(i); ok && lit(i) {
+		if a.search.reading.stop(i) && lit(i) {
 			text = placeBand(text, width, a.pal)
 		}
 		rows = append(rows, placeRow{text: text, hit: i})
@@ -427,7 +438,7 @@ func (placeSearch) body(a *app, width, room int) []placeRow {
 func (placeSearch) stops(a *app) []int {
 	var doors []int
 	for i := 0; i < len(a.search.reading.hits)+2; i++ {
-		if _, ok := a.search.reading.at(i); ok {
+		if a.search.reading.stop(i) {
 			doors = append(doors, i)
 		}
 	}
@@ -439,6 +450,14 @@ func (placeSearch) stops(a *app) []int {
 func (placeSearch) cursorAt(a *app) int { return a.search.cursor }
 
 func (placeSearch) enter(a *app) tea.Cmd {
+	// THE FOLD LINE OPENS WHERE IT STANDS and the cursor stays on it, now
+	// reading `fewer`, so the next `enter` undoes it.
+	if a.search.reading.foldAt(a.search.cursor) {
+		a.search.unfolded = !a.search.unfolded
+		a.rebuildSearch()
+		a.touch()
+		return nil
+	}
 	if hit, ok := a.search.reading.at(a.search.cursor); ok {
 		return a.openSearchHit(hit)
 	}
@@ -447,7 +466,7 @@ func (placeSearch) enter(a *app) tea.Cmd {
 
 func (placeSearch) press(a *app, y int) (tea.Cmd, bool) {
 	if at, ok := placeBodyLine(y, a.search.top, a.search.shown); ok {
-		if _, stop := a.search.reading.at(at); stop {
+		if a.search.reading.stop(at) {
 			a.search.cursor = at
 			a.touch()
 			return placeSearch{}.enter(a), true
@@ -459,7 +478,7 @@ func (placeSearch) press(a *app, y int) (tea.Cmd, bool) {
 func (placeSearch) hover(a *app, y int) bool {
 	next := -1
 	if at, ok := placeBodyLine(y, a.search.top, a.search.shown); ok {
-		if _, stop := a.search.reading.at(at); stop {
+		if a.search.reading.stop(at) {
 			next = at
 		}
 	}
@@ -501,6 +520,9 @@ const (
 // [place.hint]) — and on the teaching page and the no-hit line there is no row,
 // so the foot says only the two things that are true there.
 func (placeSearch) hint(a *app) string {
+	if a.search.reading.foldAt(a.search.cursor) {
+		return foldEnterWord(a.search.unfolded) + " · ↑↓ pick · type to search · esc clears the words"
+	}
 	if _, ok := a.search.reading.at(a.search.cursor); ok {
 		return searchHitHint
 	}

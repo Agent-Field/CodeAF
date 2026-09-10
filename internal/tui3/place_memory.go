@@ -210,7 +210,7 @@ func (p *memoryPlace) remeasure(width int) {
 // land somebody on a memory they never chose, with `f forget it` one keypress
 // away.
 func (p *memoryPlace) followStop(was memoryStop) {
-	if was.shelf == "" && was.line == nil {
+	if was.shelf == "" && was.line == nil && was.fold == "" {
 		return
 	}
 	for i := range p.reading.lines {
@@ -222,7 +222,10 @@ func (p *memoryPlace) followStop(was memoryStop) {
 		case was.line != nil && stop.line != nil && stop.line.ID == was.line.ID:
 			p.cursor = i
 			return
-		case was.line == nil && stop.line == nil && stop.shelf == was.shelf:
+		case was.fold != "" && stop.fold == was.fold:
+			p.cursor = i
+			return
+		case was.line == nil && was.fold == "" && stop.line == nil && stop.fold == "" && stop.shelf == was.shelf:
 			p.cursor = i
 			return
 		}
@@ -298,7 +301,7 @@ func (p *memoryPlace) choice() (store.Memory, bool) {
 // its own door.
 func (p *memoryPlace) shelfUnder() (string, bool) {
 	stop, ok := p.reading.at(p.cursor)
-	if !ok || stop.line != nil {
+	if !ok || stop.line != nil || stop.fold != "" {
 		return "", false
 	}
 	return stop.shelf, true
@@ -758,6 +761,12 @@ func (placeMemory) enter(a *app) tea.Cmd {
 		p.toggleShelf(scope)
 		return nil
 	}
+	// A FOLD LINE OPENS WHERE IT STANDS and the cursor stays on it, now
+	// reading `fewer`, so the next `enter` undoes it.
+	if stop, ok := p.reading.at(p.cursor); ok && stop.fold != "" {
+		p.toggleShelf(stop.fold)
+		return nil
+	}
 	memory, ok := p.choice()
 	if !ok {
 		return nil
@@ -889,6 +898,9 @@ func (placeMemory) hint(a *app) string {
 	}
 	if _, ok := a.mem.shelfUnder(); ok {
 		return memoryShelfHint
+	}
+	if stop, ok := a.mem.reading.at(a.mem.cursor); ok && stop.fold != "" {
+		return foldEnterWord(a.mem.shelfOpen[stop.fold]) + " · type to filter · alt+s walk the shelves"
 	}
 	if _, ok := a.mem.choice(); ok {
 		return memoryLineHint

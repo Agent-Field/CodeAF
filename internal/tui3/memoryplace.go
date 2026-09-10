@@ -27,7 +27,19 @@ var memoryShelfNames = map[string]string{
 type memoryStop struct {
 	shelf string
 	line  *store.Memory
+	// fold is the key a fold line opens and shuts in the place's open map
+	// ([memoryFoldKey], [memoryShelvesFold]); empty on every other stop.
+	fold string
 }
+
+// memoryFoldKey is the open-map key for the fold under one shelf's lines, and
+// memoryShelvesFold the key for the fold under the shelves themselves. They sit
+// in the map the shelves' own open state lives in because they are the same
+// kind of fact — what this visit has unrolled — and a scope is never empty,
+// so neither can collide with one.
+func memoryFoldKey(scope string) string { return "\x00" + scope }
+
+const memoryShelvesFold = "\x00"
 
 type memoryReading struct {
 	held int
@@ -140,6 +152,9 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingSection, label: memorySectionWord, facts: memoryTypeLegend(ranked)})
 	}
 	shownShelves := min(len(ranked), memoryShelvesShown)
+	if open[memoryShelvesFold] {
+		shownShelves = len(ranked)
+	}
 	for i := 0; i < shownShelves; i++ {
 		shelf := ranked[i]
 		key := shelf.shelf.Scope
@@ -166,6 +181,9 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 			continue
 		}
 		shown := min(len(shelf.lines), memoryShelfShown)
+		if open[memoryFoldKey(key)] {
+			shown = len(shelf.lines)
+		}
 		for j := 0; j < shown; j++ {
 			memory := shelf.lines[j]
 			copy := memory
@@ -176,12 +194,18 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 				age:   sinceAt(memory.UpdatedAt, now),
 			})
 		}
-		if more := len(shelf.lines) - shown; more > 0 {
-			r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingFold, label: foldLine(more, "on this shelf")})
+		// THE FOLD LINES ARE DOORS BOTH WAYS: `▸ 37 more, on this shelf`
+		// unrolls the rest of the shelf where it stands and `▾ 37 fewer` rolls
+		// it back, on `enter` or a click ([foldDoor]).
+		if hidden := len(shelf.lines) - memoryShelfShown; hidden > 0 {
+			fold := memoryFoldKey(key)
+			r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingFold, shelf: fold,
+				label: foldDoor(open[fold], hidden, "on this shelf")})
 		}
 	}
-	if more := len(ranked) - shownShelves; more > 0 {
-		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingFold, label: foldLine(more, "shelves")})
+	if hidden := len(ranked) - memoryShelvesShown; hidden > 0 {
+		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingFold, shelf: memoryShelvesFold,
+			label: foldDoor(open[memoryShelvesFold], hidden, "shelves")})
 	}
 	return r
 }
@@ -414,7 +438,7 @@ func (r memoryReading) paint(width int, pal palette, lit func(row int) bool) []s
 			}
 			rows = append(rows, " "+memoryRow(paintLabel, line, on, pal, room))
 		case memoryReadingFold:
-			rows = append(rows, " "+pal.dim(fit(line.label, room)))
+			rows = append(rows, " "+placeFactInk(on, pal)(fit(line.label, room)))
 		}
 	}
 	return rows
@@ -537,6 +561,8 @@ func (r memoryReading) at(i int) (memoryStop, bool) {
 		return memoryStop{shelf: line.shelf}, true
 	case memoryReadingMemory:
 		return memoryStop{shelf: line.shelf, line: line.memory}, true
+	case memoryReadingFold:
+		return memoryStop{fold: line.shelf}, true
 	}
 	return memoryStop{}, false
 }

@@ -66,6 +66,9 @@ type spendPage struct {
 	// POINTER PREVIEWS AND THE CURSOR SELECTS: it is drawn at the same rung as
 	// the cursor's own row and moves nothing.
 	hover int
+	// unfolded is whether the subjects' fold is open. It lasts while the place
+	// is up and a fresh visit starts it shut, as every fold on a place does.
+	unfolded bool
 	// read is the instant the lines were read, and every figure and age on the
 	// page is measured from it rather than from a fresh clock.
 	read time.Time
@@ -260,7 +263,7 @@ func (a *app) rebuildSpend() {
 	p := &a.spend
 	p.reading = readSpend(p.lines, p.win, p.read).naming(p.names).crewed(a.spendCrewNow()).
 		railed(a.machineAllowance()).lost(session.UsageDrops()).
-		todayed(spendDayTotal(p.lines, p.read))
+		todayed(spendDayTotal(p.lines, p.read)).unfolding(p.unfolded)
 	// THE DOORS ARE SETTLED HERE AS WELL AS AT THE DRAW, and the two agree
 	// because WHICH rows exist does not depend on the width — only what each of
 	// them can fit does. Waiting for a draw would leave the cursor standing on
@@ -446,6 +449,13 @@ func (a *app) openSpendRow() (tea.Cmd, bool) {
 	if stop.rails {
 		return a.openSpending(spendTodayKey), true
 	}
+	// THE FOLD LINE OPENS WHERE IT STANDS, and the cursor stays on it: the
+	// line is still there, now saying `fewer`, so the next `enter` undoes it.
+	if stop.fold {
+		a.spend.unfolded = !a.spend.unfolded
+		a.rebuildSpend()
+		return nil, true
+	}
 	switch stop.subject.Kind {
 	case session.SubjectTask:
 		return a.showPage(pageTasks), true
@@ -607,7 +617,7 @@ func (placeSpend) window(a *app, key string) bool { return a.spendWindowKey(key)
 // a compromise — so `b` is drawn before it works, and it works on every row of
 // this place because every row of this place is about money.
 func (placeSpend) verbs(a *app) []verb {
-	if !a.spendStopAt(a.spend.cursor).ok {
+	if stop := a.spendStopAt(a.spend.cursor); !stop.ok || stop.fold {
 		return nil
 	}
 	return []verb{{key: 'b', word: "the limits", do: func() tea.Cmd {
@@ -641,7 +651,9 @@ const (
 // surface advertising a key that does nothing.
 func (placeSpend) hint(a *app) string {
 	var parts []string
-	if a.spendStopAt(a.spend.cursor).ok {
+	if stop := a.spendStopAt(a.spend.cursor); stop.fold {
+		parts = append(parts, foldEnterWord(a.spend.unfolded))
+	} else if stop.ok {
 		parts = append(parts, spendEnterWord)
 		for _, v := range (placeSpend{}).verbs(a) {
 			parts = append(parts, spendVerbLead+v.word)

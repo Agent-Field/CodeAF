@@ -53,6 +53,45 @@ type searchReading struct {
 	// that "nobody has said that" and "nothing looked" are two different
 	// sentences on the page rather than one ([searchNoIndexWord]).
 	noIndex bool
+	// unfolded is whether every result is drawn rather than the first
+	// [searchShown] and a fold line ([searchReading.unfolding]).
+	unfolded bool
+}
+
+// unfolding is this reading with its fold open or shut, as a copy.
+func (r searchReading) unfolding(open bool) searchReading {
+	r.unfolded = open
+	return r
+}
+
+// drawn is how many results the page draws: all of them with the fold open,
+// the first [searchShown] with it shut.
+func (r searchReading) drawn() int {
+	if r.unfolded || len(r.hits) <= searchShown {
+		return len(r.hits)
+	}
+	return searchShown
+}
+
+// foldAt is whether body line i is the fold line under the results, which is a
+// door both ways: `▸ 38 more` draws the rest where they stand and `▾ 38 fewer`
+// puts them back.
+func (r searchReading) foldAt(i int) bool {
+	if r.query == "" || len(r.hits) <= searchShown {
+		return false
+	}
+	start := 0
+	if len(r.facets) > 0 {
+		start = 1
+	}
+	return i == start+r.drawn()
+}
+
+// stop is whether body line i is one the cursor may stand on: a result, or the
+// fold line.
+func (r searchReading) stop(i int) bool {
+	_, ok := r.at(i)
+	return ok || r.foldAt(i)
 }
 
 // readSearch joins the store's remembered turns to the already-read world.
@@ -150,16 +189,13 @@ func (r searchReading) paint(width int, pal palette, lit func(line int) bool) []
 	if legend := r.legend(room, pal); legend != "" {
 		out = append(out, " "+legend)
 	}
-	shown := len(r.hits)
-	if shown > searchShown {
-		shown = searchShown
-	}
-	for _, hit := range r.hits[:shown] {
+	for _, hit := range r.hits[:r.drawn()] {
 		on := lit != nil && lit(len(out))
 		out = append(out, " "+searchRowAt(hit, r.query, room, r.now, pal, on))
 	}
-	if more := len(r.hits) - shown; more > 0 {
-		out = append(out, " "+pal.dim(fit(foldLine(more, ""), room)))
+	if hidden := len(r.hits) - searchShown; hidden > 0 {
+		on := lit != nil && lit(len(out))
+		out = append(out, " "+placeFactInk(on, pal)(fit(foldDoor(r.unfolded, hidden, ""), room)))
 	}
 	return out
 }
@@ -301,7 +337,7 @@ func (r searchReading) at(i int) (searchHit, bool) {
 		start = 1
 	}
 	at := i - start
-	if at < 0 || at >= len(r.hits) || at >= searchShown {
+	if at < 0 || at >= r.drawn() {
 		return searchHit{}, false
 	}
 	return r.hits[at], true

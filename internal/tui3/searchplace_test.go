@@ -101,6 +101,25 @@ func TestSearchShowsTwelveConversationsThenFoldsTheRest(t *testing.T) {
 	if strings.Count(page, "   conversation ") != searchShown || !strings.Contains(page, tokens.GlyphCollapsed+" 3 more") {
 		t.Fatalf("the result cap did not draw twelve doors and a fold:\n%s", page)
 	}
+	// AND THE FOLD IS A DOOR BOTH WAYS: it is a stop, and open it draws every
+	// result and the line that puts them back, on the same row index.
+	fold := -1
+	for i, row := range r.rows(120, newPalette(tokens.NoColor, false)) {
+		if strings.Contains(row, "3 more") {
+			fold = i
+		}
+	}
+	if !r.foldAt(fold) || !r.stop(fold) {
+		t.Fatalf("the fold line at body line %d is not a stop", fold)
+	}
+	open := r.unfolding(true)
+	page = strings.Join(open.rows(120, newPalette(tokens.NoColor, false)), "\n")
+	if strings.Count(page, "   conversation ") != len(hits) || !strings.Contains(page, tokens.GlyphExpanded+" 3 fewer") {
+		t.Fatalf("the open fold did not draw every result and the way back:\n%s", page)
+	}
+	if !open.foldAt(fold+len(hits)-searchShown) || open.foldAt(fold) {
+		t.Fatal("the open fold line is not where the open page drew it")
+	}
 }
 
 func TestSearchTeachesAnEmptyPageAndSaysWhenNothingMatches(t *testing.T) {

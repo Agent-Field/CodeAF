@@ -470,8 +470,10 @@ The page is **shelves** — you, this project, this machine — biggest first, w
 one open and the rest rolled up. Type to filter what is already on the page, **every letter
 including `u`**; the store is read when you walk in and on the place beat, never on a
 keystroke. `enter` opens or closes a shelf; `enter` on a LINE is `ask me about it` — the
-line goes into a fresh conversation as its opening message and you are taken there. `alt+s`
-walks the shelves one at a time. `→` opens the verbs on a line — `c open the card`, which is
+line goes into a fresh conversation as its opening message and you are taken there. A shelf
+shows three lines and five shelves show at once; `enter` on `▸ 37 more, on this shelf` or
+`▸ 2 more, shelves` draws the rest where they stand, and the same line, now `▾ 37 fewer`,
+puts them back. `alt+s` walks the shelves one at a time. `→` opens the verbs on a line — `c open the card`, which is
 where the full text and where it was learned live, `e fix the wording`, `f forget it`, and
 `u put it back` while there is something to put back.
 
@@ -497,7 +499,9 @@ over `--host` whose calls are still made here. For this session alone, ask `/cos
 
 Three blocks: the window with its sparkline, `what ran it` by the model and the role that
 model is **bound** to, and `what it was for`. `enter` on a row of the last one opens the
-thing the money went on — a task, a standing promise, or a conversation. `shift+←` and `shift+→` move the window by its own length;
+thing the money went on — a task, a standing promise, or a conversation. The first three
+are shown; `enter` or a click on `▸ 11 more` draws the rest, and `▾ 11 fewer` folds them
+back. `shift+←` and `shift+→` move the window by its own length;
 `shift+↑` and `shift+↓` change how coarse it is.
 
 **There is nothing to set here, and the page says where to go instead.** Its first line is
@@ -540,7 +544,9 @@ place`. With nothing typed there is no row to stand on, so the foot drops to `ty
 search · esc clears the words · tab next place` — `enter` is not named where it does
 nothing. (This foot used to be the router's own default, which said `enter talk about it`
 and was wrong in both states.) Above the results, a legend counts the projects the matches
-came from. Twelve conversations are shown and the rest fold into one line.
+came from. Twelve conversations are shown and the rest fold into one line, `▸ 38 more`;
+`enter` or a click on it draws them all, and `▾ 38 fewer` folds them back. A new search
+starts folded.
 
 **`/search` is the typed door onto this place**, beside `alt+7` and the map. It
 takes no argument: the place is a box, and typing in it searches.

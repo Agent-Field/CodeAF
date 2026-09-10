@@ -348,3 +348,50 @@ func placeClickTarget(t *testing.T, a *app, place everyPlace) (y, target int) {
 	}
 	return y, target
 }
+
+// A FOLD LINE IS A HIT TARGET, AND A DOOR BOTH WAYS. `▸ 11 more` on a place's
+// own list opens the rest where they stand on one click, and the same line —
+// now `▾ 11 fewer`, wherever it has moved to — puts them back on the next. It
+// was drawn with the fold mark and answered nothing, which is a door painted on
+// a wall.
+func TestAClickOpensEveryPlacesFoldAndTheNextShutsIt(t *testing.T) {
+	for _, place := range everyPlaceTable() {
+		if place.id == pageHome || place.id == pageTasks || place.id == pageSettings {
+			continue
+		}
+		t.Run(place.id.word(), func(t *testing.T) {
+			a := place.open(t)
+			// A frame tall enough that a lab's fold is on it rather than below
+			// the window.
+			a.width, a.height = 120, 45
+			y := placeFoldRow(a, tokens.GlyphCollapsed)
+			if y < 0 {
+				t.Skipf("the %s lab draws no fold", place.id.word())
+			}
+			drive(t, a, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft})
+			if a.page != place.id {
+				t.Fatalf("a click on the %s place's fold left the place for %q", place.id.word(), a.page.word())
+			}
+			back := placeFoldRow(a, tokens.GlyphExpanded)
+			if back < 0 || !strings.Contains(placeFrameText(a), "fewer") {
+				t.Fatalf("a click on the %s place's fold did not open it:\n%s", place.id.word(), placeFrameText(a))
+			}
+			drive(t, a, tea.MouseClickMsg{X: 4, Y: back, Button: tea.MouseLeft})
+			if again := placeFoldRow(a, tokens.GlyphCollapsed); again != y || strings.Contains(placeFrameText(a), "fewer") {
+				t.Fatalf("the second click on the %s place's fold did not put the page back:\n%s",
+					place.id.word(), placeFrameText(a))
+			}
+		})
+	}
+}
+
+// placeFoldRow is the first frame row under the head whose words start with a
+// fold mark, and -1 for none.
+func placeFoldRow(a *app, mark string) int {
+	for y, line := range strings.Split(placeFrameText(a), "\n") {
+		if y >= placeHeadRows && strings.HasPrefix(strings.TrimSpace(line), mark+" ") {
+			return y
+		}
+	}
+	return -1
+}

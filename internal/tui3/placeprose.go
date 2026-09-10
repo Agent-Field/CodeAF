@@ -397,10 +397,31 @@ func foldWords(open bool, n int, clause string) string {
 }
 
 // foldLine is [foldWords] wearing the shut mark, for the folds that are only
-// ever shut — the shelves on the memory place, a search's tail, the spend
-// sheet's, the command list's.
+// ever shut — the command list's, home's quiet tail. A fold a place draws
+// over its own rows is a door both ways instead ([foldDoor]).
 func foldLine(n int, clause string) string {
 	return tokens.GlyphCollapsed + " " + foldWords(false, n, clause)
+}
+
+// foldDoor is a fold line that is a door both ways — `▸ 11 more` shut and
+// `▾ 11 fewer` open — for the lists that draw their first few rows and the rest
+// on `enter` or a click (the spend place's subjects, a search's tail, a memory
+// shelf). hidden is how many rows the shut fold keeps back.
+func foldDoor(open bool, hidden int, clause string) string {
+	mark := tokens.GlyphCollapsed
+	if open {
+		mark = tokens.GlyphExpanded
+	}
+	return mark + " " + foldWords(open, hidden, clause)
+}
+
+// foldEnterWord is the foot's `enter` clause while the cursor is on a
+// [foldDoor].
+func foldEnterWord(open bool) string {
+	if open {
+		return "enter folds them"
+	}
+	return "enter shows the rest"
 }
 
 // foldSpellings is the fold line at EVERY LENGTH IT WILL GIVE WAY THROUGH,
