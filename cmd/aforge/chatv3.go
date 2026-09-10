@@ -2259,7 +2259,7 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 	// tool lines rather than into the reply a caller is piping somewhere.
 	questions, stopQuestions := agent.WatchQuestions()
 	defer stopQuestions()
-	go func() {
+	guard.Go("chatv3/once-questions", func() {
 		for event := range questions {
 			if event.Kind != session.EventQuestionAnswered || event.Answer == nil {
 				continue
@@ -2268,7 +2268,7 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 				fmt.Fprintln(os.Stderr, line)
 			}
 		}
-	}()
+	})
 
 	events, err := agent.Submit(ctx, text)
 	if err != nil {
