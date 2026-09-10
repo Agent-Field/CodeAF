@@ -492,11 +492,10 @@ func (a *app) openMemory() tea.Cmd {
 	// refuse twice — once when this build was not remembering anything, once when
 	// the store would not answer — and both refusals put the person back on the
 	// page they came from, so `alt+4` on a fresh machine was a key that did
-	// nothing. SCREEN 1f'S PREAMBLE is the law: the place opens on its own three
-	// sentences ([memoryTeaching]), which is exactly the reading somebody who has
-	// never seen this page needs, and the one fact those sentences cannot carry —
-	// that there is no store here to hold any of it — is said once on the note
-	// line under them ([memoryOffNote], [memoryPlace.footer]).
+	// nothing. SCREEN 1f'S PREAMBLE is the law: the place opens on its heading
+	// and whisper ([placeWhisper]), and the one fact those cannot carry — that
+	// there is no store here to hold any of it — is said once on the note
+	// ([memoryOffNote], [memoryPlace.footer]).
 	shelves, why := a.memorySnapshot()
 	// AND IT JOINS THE EXCLUSION LAW, for the standing place's reason exactly
 	// ([app.standDownFullscreen]).
@@ -686,6 +685,8 @@ func (placeMemory) body(a *app, width, room int) []placeRow {
 	switch {
 	case p.expanded != "":
 		body = p.card(width, a.pal)
+	case p.reading.bare():
+		return placeWhisperRows(pageMemory, width, room, a.pal)
 	default:
 		body = p.reading.rows(width, a.pal)
 	}
@@ -878,8 +879,8 @@ func (placeMemory) hint(a *app) string {
 	// there are shelves and was drawn over a bare page too — so a machine that
 	// has remembered nothing read `enter open a shelf · type to filter · alt+s
 	// walk the shelves` under a body with nothing to open, nothing to filter and
-	// no shelves to walk. What is true there is the way out and the sentence the
-	// body already gave ([memoryEmptyWord]).
+	// no shelves to walk. What is true there is the way out, under the whisper
+	// the body already gave ([placeWhisper]).
 	if a.mem.reading.bare() {
 		return memoryBareHint
 	}

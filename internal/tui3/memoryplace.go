@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	memoryTeachBelow   = 8
 	memoryShelfShown   = 3
 	memoryShelvesShown = 5
 )
@@ -24,29 +23,6 @@ var memoryShelfNames = map[string]string{
 	store.MemoryScopeProject: "this project",
 	store.MemoryScopeEnv:     "this machine",
 }
-
-var memoryTeaching = []string{
-	"What I hold true about you and this machine.",
-	"I put a line in here when it looked like it would matter later, and I only carry it into a chat it bears on.",
-	"Corrections are the point — a wrong line here is wrong in every chat.",
-}
-
-// memoryEmptyWord is the FOURTH line, and it is drawn only on a machine that has
-// remembered nothing at all.
-//
-// AN EMPTY PLACE MUST SAY WHAT TO DO NEXT, IN A VERB. The three sentences above
-// are all about the machine's behaviour — what it holds, when it writes, why a
-// correction matters — and the closest thing to an act on the page was a footer
-// reading `nothing here is a setting, all of it is editable`, which names no key
-// and no words to type. The tasks place ends its teaching with `no tasks yet —
-// /task <brief> starts one` ([tasksTeach]) and this is that shape.
-//
-// IT IS CONDITIONAL ON THE PAGE BEING BARE and not on the teaching state, which
-// are two different things: [memoryTeachBelow] keeps the prose up until there
-// are eight lines, so a machine with three memories is still being taught — and
-// telling that machine "nothing learned yet" over three shelves it can see would
-// be the page contradicting its own body.
-const memoryEmptyWord = `nothing learned yet — say "remember that …" and the first line lands here`
 
 type memoryStop struct {
 	shelf string
@@ -64,7 +40,6 @@ type memoryReading struct {
 	total    int
 	shelves  int
 	filter   string
-	teach    bool
 	lines    []memoryReadingLine
 }
 
@@ -78,7 +53,6 @@ const (
 	memoryReadingShelf
 	memoryReadingMemory
 	memoryReadingFold
-	memoryReadingFooter
 )
 
 type memoryReadingLine struct {
@@ -113,18 +87,16 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 	r := memoryReading{
 		held: shelves.Held, letGo: shelves.LetGo, replaced: shelves.Superseded,
 		total: shelves.Total, shelves: len(shelves.Shelves), filter: query,
-		teach: shelves.Total < memoryTeachBelow,
 	}
-	if r.teach {
-		for _, sentence := range memoryTeaching {
-			r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingProse, label: sentence})
-		}
-		if r.bare() {
-			r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingProse, label: memoryEmptyWord})
-		}
-	} else {
-		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingHeader})
+	// A MACHINE THAT HAS REMEMBERED NOTHING HAS NO LINES AT ALL, and the place
+	// draws its heading and its whisper instead ([placeWhisper]). Every other
+	// machine gets the head row over its shelves from the first line on — the
+	// page used to teach in three paragraphs until it held eight lines and then
+	// swap them for the head row in one frame (PLACES-AUDIT.md finding 4).
+	if r.bare() {
+		return r
 	}
+	r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingHeader})
 
 	var ranked []rankedMemoryShelf
 	for _, shelf := range shelves.Shelves {
@@ -211,9 +183,6 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 	if more := len(ranked) - shownShelves; more > 0 {
 		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingFold, label: foldLine(more, "shelves")})
 	}
-	if r.teach {
-		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingFooter})
-	}
 	return r
 }
 
@@ -240,7 +209,7 @@ func (r memoryReading) wrapped(width int) memoryReading {
 	if measure < 1 {
 		return r
 	}
-	out := make([]memoryReadingLine, 0, len(r.lines)+len(memoryTeaching))
+	out := make([]memoryReadingLine, 0, len(r.lines))
 	for _, line := range r.lines {
 		if line.kind != memoryReadingProse {
 			out = append(out, line)
@@ -436,13 +405,6 @@ func (r memoryReading) rows(width int, pal palette) []string {
 			rows = append(rows, memoryRow(paintLabel, line, pal, width))
 		case memoryReadingFold:
 			rows = append(rows, pal.dim(fit(line.label, width)))
-		case memoryReadingFooter:
-			text := memoryCounts(r.held, 0, r.letGo, r.replaced)
-			if text != "" {
-				text += " · "
-			}
-			text += "nothing here is a setting, all of it is editable"
-			rows = append(rows, " "+pal.dim(fit(text, width-1)))
 		}
 	}
 	return rows
@@ -473,7 +435,7 @@ func memoryCounts(held, shelves, letGo, replaced int) string {
 		parts = append(parts, groupedInt(held)+" held")
 	}
 	if shelves > 0 {
-		parts = append(parts, groupedInt(shelves)+" shelves")
+		parts = append(parts, groupedInt(shelves)+" "+memoryShelfWord(shelves))
 	}
 	if letGo > 0 {
 		parts = append(parts, groupedInt(letGo)+" "+memoryLetGoWord)
@@ -482,6 +444,16 @@ func memoryCounts(held, shelves, letGo, replaced int) string {
 		parts = append(parts, groupedInt(replaced)+" "+memoryReplacedWord)
 	}
 	return strings.Join(parts, " · ")
+}
+
+// memoryShelfWord is the noun a count of shelves takes. `1 shelves` stood on the
+// head row of every page with one shelf on it (PLACES-AUDIT.md finding 14), and
+// [plural] would say `shelfs`.
+func memoryShelfWord(n int) string {
+	if n == 1 {
+		return "shelf"
+	}
+	return "shelves"
 }
 
 func memoryJoin(left, paintedRight, plainRight string, width int) string {
@@ -559,10 +531,8 @@ func (r memoryReading) at(i int) (memoryStop, bool) {
 }
 
 // bare says this page has NOTHING ON IT — no shelf, no line, nothing to open,
-// filter or walk. It is a stricter question than [memoryReading.teach], which is
-// still true with seven memories on the page, and the two are asked separately
-// because only one of them may put "nothing learned yet" on the screen or take
-// the shelf keys off the foot ([memoryEmptyWord], place_memory.go's hint).
+// filter or walk — which is when the place draws its whisper instead of a body
+// and takes the shelf keys off the foot (place_memory.go's hint).
 func (r memoryReading) bare() bool { return r.total == 0 }
 
 // THERE IS ONE EMPTY STATE HERE AND THE READING ITSELF IS IT.
@@ -571,8 +541,7 @@ func (r memoryReading) bare() bool { return r.total == 0 }
 // and then repeated the command surface's `memory is off for this session` note
 // under it. Both halves were wrong on a PLACE, and they are wrong in the same
 // way: the reading is the empty state. A machine that has remembered nothing
-// meets [memoryTeaching] — the three sentences that say what this is for, which
-// is what a nearly-empty page is worth — and a machine with memory switched off
-// meets exactly the same three sentences, with [memoryOffNote] said ONCE on the
-// note line under them ([app.openMemory] puts it there). Neither state is a
-// second body, and neither is a refusal: the place opens on both.
+// meets the place's heading and whisper ([placeWhisper]), and a machine with
+// memory switched off meets exactly the same two lines, with [memoryOffNote]
+// said ONCE on the note under them ([app.openMemory] puts it there). Neither
+// state is a second body, and neither is a refusal: the place opens on both.

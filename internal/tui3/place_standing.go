@@ -120,8 +120,7 @@ type standingPlace struct {
 // person is on for their first week, and the owner found it by running the
 // binary on a fresh home: the tab was drawn, the key did nothing. SCREEN 1f'S
 // PREAMBLE IS THE LAW: an almost-empty place is the best teacher on the machine,
-// so the sentence that used to be the refusal ([standNothingWord]) is the first
-// line of the body instead ([standingTeach]).
+// so the place opens on its heading and whisper instead ([placeWhisper]).
 func (p *standingPlace) open(a *app) tea.Cmd {
 	rows, win := a.standingPlaceReading()
 	// WHETHER THE MACHINE HOLDS ANYTHING IS ASKED OF THE UNSCOPED PARTS, because
@@ -158,23 +157,13 @@ func (p *standingPlace) close(a *app) {
 // "nothing reads the disk on a draw".
 func (p *standingPlace) body(a *app, width, room int) []placeRow {
 	if !p.held {
-		// THE TEACHING PROSE IS THE WHOLE OF AN EMPTY PLACE, drawn instead of the
+		// THE WHISPER IS THE WHOLE OF AN EMPTY PLACE, drawn instead of the
 		// header row rather than under it: the header carries the time window
 		// ([standingHeaderRow]), and a control naming a span of days on a machine
 		// that has never held a standing order is a control about nothing. A list
 		// emptied by the window keeps its header ([standingPlace.held] says why).
-		rows := make([]placeRow, 0, room)
-		for _, line := range standingTeach(a.pal) {
-			if len(rows) >= room {
-				break
-			}
-			rows = append(rows, placeRow{text: " " + line, hit: -1})
-		}
-		for len(rows) < room {
-			rows = append(rows, placeRow{text: "", hit: -1})
-		}
 		p.top, p.shown, p.owner = 0, 0, nil
-		return rows
+		return placeWhisperRows(pageStanding, width, room, a.pal)
 	}
 	lines, owner, top, shown := standingLines(
 		p.rows, p.win, p.cursor, p.top, width, room, p.hover, a.pal, a.now())

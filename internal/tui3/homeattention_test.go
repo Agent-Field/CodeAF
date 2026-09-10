@@ -488,16 +488,16 @@ func TestTheLedgerLineAboutLandedWorkOpensTheTasksPlace(t *testing.T) {
 	a.home.cursor = at
 	runCmd(a.homeEnter())
 	// AND ENTER ASKS THAT PLACE. The conversation this window is holding has run
-	// nothing of its own, so the tasks place answers with its own refusal — which
-	// is the proof the door went THERE, rather than opening a conversation that
-	// happened to have run one of the tasks the line counted.
+	// nothing of its own, and the tasks place opens all the same — which is the
+	// proof the door went THERE, rather than opening a conversation that happened
+	// to have run one of the tasks the line counted.
 	//
 	// THE REFUSAL IS SAID ON THE FRAME AND NO LONGER IN THE TRANSCRIPT. It used
 	// to be a note under a screen drawn over the top of it, which is a sentence
 	// written where nobody can read it (pages.go's [app.refusePage]); the law
 	// this line has always pinned — the door reached the place, and the place
 	// answered — is unchanged.
-	if a.page != pageTasks && a.pageMsg != taskSheetEmpty {
+	if a.page != pageTasks {
 		t.Fatalf("enter on the line left page %v with nothing said: %q", a.page, a.pageMsg)
 	}
 }

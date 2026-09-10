@@ -1881,8 +1881,8 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 // SCREEN 1f'S PREAMBLE IS THE LAW NOW: an almost-empty place is the best teacher
 // on the machine, so it always opens and spends the whole frame saying what it
 // is for. There is no refusal path left here to put anything back with, and each
-// place answers an empty world with its own teaching prose ([tasksTeach],
-// [standingTeach], [memoryTeaching]) rather than with a bounce. The one fact a
+// place answers an empty world with its heading and its whisper
+// (placeprose.go's [placeWhisper]) rather than with a bounce. The one fact a
 // place cannot teach its way around — a reading that belongs to a machine this
 // process cannot see — is drawn as a single dim line in the place's body
 // ([place.remote]), which is still the place being open and saying why it is

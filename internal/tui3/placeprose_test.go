@@ -119,3 +119,43 @@ func TestAWindowIsBoundOnlyWhereItsControlIsDrawn(t *testing.T) {
 		t.Fatal("a window nobody has chosen yet drew a control over no reading")
 	}
 }
+
+// whisperOf is the first clause of one empty place's whisper — the part every
+// frame keeps, however narrow, because a whisper gives up its example before
+// it gives up what arrives ([placeWhisperLines]).
+func whisperOf(id page) string {
+	return strings.Split(placeWhisper[id].whisper, railSep)[0]
+}
+
+// AN EMPTY PLACE IS ITS HEADING AND ONE WHISPER, AND NOTHING ELSE.
+//
+// Four of them used to spend the frame on a paragraph ending in the sentence
+// the emptiness law bans — `no tasks yet`, `nothing learned yet`, `nothing
+// spent yet`, `nothing stands here yet` — and standing's ran off an
+// eighty-column frame (PLACES-AUDIT.md findings 2–4). Each place is opened on
+// a machine that put nothing in it, at three sizes, and its body has to be the
+// two rows home's own empty panels draw.
+func TestEveryEmptyPlaceDrawsItsHeadingAndOneWhisper(t *testing.T) {
+	for _, lab := range everyEmptyPlace() {
+		for _, size := range [][2]int{{80, 24}, {120, 45}, {180, 45}} {
+			a := lab.open(t)
+			a.width, a.height = size[0], size[1]
+			lines, _, _, _ := a.placeDraw(placeFor(lab.id), a.width, a.height)
+			body := make([]string, 0, len(lines))
+			for _, line := range lines[placeHeadRows : len(lines)-3] {
+				body = append(body, strings.TrimRight(plain(line), " "))
+			}
+			want := placeWhisperLines(lab.id, a.width, newPalette(tokens.NoColor, false))
+			if len(body) < 2 || body[0] != want[0] || body[1] != want[1] {
+				t.Fatalf("the empty %s place at %dx%d does not open on its heading and whisper:\n%s",
+					lab.id.word(), size[0], size[1], strings.Join(body, "\n"))
+			}
+			for i, row := range body[2:] {
+				if strings.TrimSpace(row) != "" {
+					t.Fatalf("the empty %s place at %dx%d says more than one line, row %d: %q",
+						lab.id.word(), size[0], size[1], i+2, row)
+				}
+			}
+		}
+	}
+}

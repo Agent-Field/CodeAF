@@ -170,6 +170,22 @@ func placeTeachProse(text string, width int, pal palette) []string {
 	return out
 }
 
+// placeWhisperRows is a place with nothing in it, as the body the frame asked
+// for: its heading and its whisper ([placeWhisperLines]), then air to the foot.
+// Neither row is a door — there is nothing yet for either to open.
+func placeWhisperRows(id page, width, room int, pal palette) []placeRow {
+	rows := make([]placeRow, 0, room)
+	for _, line := range placeWhisperLines(id, width, pal) {
+		if len(rows) < room {
+			rows = append(rows, placeRow{text: line})
+		}
+	}
+	for len(rows) < room {
+		rows = append(rows, placeRow{})
+	}
+	return rows
+}
+
 // placeTeachRows puts a place's teaching prose in the body's own column and pads
 // it out to the room the frame reserved. The prose hangs from the top the way
 // every list on this surface does, and answers the pointer with nothing.

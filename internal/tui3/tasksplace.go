@@ -1898,24 +1898,3 @@ func tasksGlyph(item tasksItem, pal palette) (string, func(string) string) {
 func (r tasksReading) step(win session.UsageWindow, key string) session.UsageWindow {
 	return placeWindowStep(win, key)
 }
-
-// tasksTeach spends an empty page on explaining the place rather than drawing
-// headings for lists that do not exist.
-//
-// EVERY DOOR ONTO THIS PLACE REACHES IT NOW. `ctrl+.` and /history used to
-// refuse to raise a page with nothing on it, so the teaching was only what a
-// person who walked in with `tab` found; they go through the router with every
-// other door ([app.showTaskPlace] tells the story), and this is what all of them
-// answer with on a machine that has run nothing.
-//
-// THE LAST LINE IS WHAT /history USED TO SAY INSTEAD OF OPENING
-// ([taskSheetEmpty]), spelled once and moved rather than written again: what a
-// person does about an empty page belongs on the empty page.
-func tasksTeach(pal palette) []string {
-	return []string{
-		pal.dim("tasks is the history of work this machine has run."),
-		pal.dim("it lists work aforge ran on its own, across every project."),
-		pal.dim("enter opens a task's room when there is one here."),
-		pal.dim(taskSheetEmpty),
-	}
-}

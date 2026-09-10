@@ -232,7 +232,7 @@ func TestSinceYouLeftLinesAreDoorsIntoTheirPlaces(t *testing.T) {
 		// untouched — the line is a door — so it is asked for directly: the place
 		// is what the frame is now on, and the watch is on it. The refusal itself
 		// is still pinned where it is still true, over a machine holding nothing
-		// at all ([standNothingWord]'s own tests).
+		// at all (the standing whisper's own tests, [placeWhisper]).
 		if a.page != pageStanding || !a.at(pageStanding) {
 			t.Fatalf("the standing ledger line opened nothing: page %v, notes %q",
 				a.page, homeNotes(a))

@@ -75,10 +75,10 @@ type spendPage struct {
 	//
 	// A WINDOW EMPTIED BY THE ARROWS IS NOT AN EMPTY MACHINE. Both draw no rows,
 	// and the right answer to each is the opposite of the other: a machine that
-	// has spent nothing wants the frame spent saying what this place is for
-	// ([spendTeach]), while a window paged onto a quiet fortnight wants the
+	// has spent nothing wants the frame to say what arrives here
+	// ([placeWhisper]), while a window paged onto a quiet fortnight wants the
 	// HEADER — the control that pages it back — above nothing at all. Drawing the
-	// teaching in both cases swallowed the only way out of the second.
+	// whisper in both cases swallowed the only way out of the second.
 	held bool
 	// world is THIS PLACE'S OWN SCAN of the projects root, taken on the way in
 	// and again on the beat. It is what `what it was for` joins its ids against
@@ -516,38 +516,8 @@ func (placeSpend) tick(a *app, now time.Time) bool {
 	return true
 }
 
-// spendTeach is what this place says on a machine that has spent nothing.
-//
-// AN ALMOST-EMPTY PAGE IS THE BEST TEACHER ON THE MACHINE (SCREEN 1f). Nobody
-// arrives at spend by accident — you walk into it from the tab bar, from
-// `alt+5`, or by typing the word — and that arrival is the one moment a person
-// is asking "what is this". So the place answers, in three sentences of dim
-// prose in the body's own column, and says nothing else at all.
-//
-// IT IS NOT A PLACEHOLDER AND IT MUST NOT PRETEND TO BE ONE. There is no
-// "coming soon", no greyed-out table with headings over it — a capability that
-// cannot work is absent rather than broken (CLAUDE.md), and a page that draws
-// the furniture of a feature it does not have looks like a bug rather than like
-// a plan. Every sentence here is true today.
-// AND THE LAST SENTENCE SAYS WHAT IS TRUE OF THIS MACHINE RIGHT NOW, in a verb,
-// the way the tasks place ends its own teaching with `no tasks yet — /task
-// <brief> starts one` ([tasksTeach]). Three sentences about what a ledger is,
-// drawn over a ledger that is empty, leave a person unable to tell "nothing has
-// been spent" from "the ledger could not be read" — and the emptiness law, which
-// is why no `$0.00` appears anywhere above, is exactly what makes those two
-// silences look identical. So the page says which one it is.
-const spendTeach = "What this machine has cost, by the day, by the model, and by what it was for. " +
-	"Every model call writes a line, so the figures here are the bill and not an estimate. " +
-	"There is nothing to set here — the allowance is edited on the status line that shows it. " +
-	spendTeachEmptyWord
-
-// spendTeachEmptyWord is that last sentence, named because it is the one clause
-// of [spendTeach] a test asserts by itself and the one a person is actually
-// looking for.
-const spendTeachEmptyWord = "nothing spent yet — the first model call writes a line here."
-
-// body is the ledger, or — on a machine that has spent nothing inside the window
-// it is showing — the three sentences saying what this place is for.
+// body is the ledger, or — on a machine that has spent nothing at all — the
+// place's heading and its whisper (placeprose.go's [placeWhisper]).
 //
 // IT ASKS THE TOTAL rather than drawing the body to see whether it is empty,
 // because drawing it twice a frame to answer one question is the kind of waste a
@@ -565,7 +535,7 @@ func (placeSpend) remote(a *app) string {
 func (placeSpend) body(a *app, width, room int) []placeRow {
 	if a.spend.reading.empty() {
 		if !a.spend.held {
-			return placeTeachRows(placeTeachProse(spendTeach, width, a.pal), room)
+			return placeWhisperRows(pageSpend, width, room, a.pal)
 		}
 		// THE HEADER STAYS, because it is the only thing on this frame naming the
 		// window the four arrow keys move ([spendPage.held] holds the argument).

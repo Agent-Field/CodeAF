@@ -75,17 +75,6 @@ const (
 	// it appears: the dim line under a shelf, the verb on the row's strip, and
 	// the receipt for the key that wrote it.
 	standNotHereWord = "not here"
-	// standNothingWord is the standing place on a machine nothing stands on at
-	// all, and it is the first line of that place's teaching prose
-	// ([standingTeach]).
-	//
-	// IT USED TO BE A REFUSAL. `/standing` said it and opened nothing, on the
-	// argument that a place with no rows is a screen which has to be dismissed
-	// before it can be told it was useless. On a fresh machine that is every
-	// door onto the place, so the tab was drawn and the key did nothing — and
-	// SCREEN 1f'S PREAMBLE says the opposite: an almost-empty place is the best
-	// teacher on the machine. The sentence stayed and the refusal went.
-	standNothingWord = "nothing stands here yet — say what should always be true, and I'll hold it."
 	// standHereWord is enter on the order this very conversation asked for.
 	// There is a door and it leads exactly where the person already is, so the
 	// page says the fact instead of moving them nowhere.
@@ -106,6 +95,60 @@ const (
 	// nothing and said nothing is indistinguishable from a key that is broken.
 	standNotOursWord = "that one does not stand over this conversation"
 )
+
+// ── a place with nothing in it ──────────────────────────────────────────────
+
+// placeBlank is what one place says while it holds nothing: the heading its
+// list will stand under, and the one line under that heading.
+type placeBlank struct {
+	// heading is "" where the place's own word is the heading, which is every
+	// place but standing — whose page has always been headed `standing orders`.
+	heading string
+	whisper string
+}
+
+// placeWhisper is THE COPY OF RECORD for an empty place, one line each, and the
+// manual quotes it from here.
+//
+// A WHISPER NAMES WHAT ARRIVES AND THE ONE THING THAT PUTS IT THERE — the rule
+// home's panels already keep (homegrid.go's [homeWhisper], DESIGN.md §4). It
+// never says the place is empty: `no tasks yet`, `nothing learned yet` and
+// `nothing spent yet` were each a paragraph ending in that sentence, which is
+// the emptiness law inverted into words (docs/DESIGN-LANGUAGE.md, "presence
+// over labels"). Settings is absent because it is never empty.
+var placeWhisper = map[page]placeBlank{
+	pageTasks:    {whisper: "work you send off with /task lands here, and its record stays"},
+	pageSpend:    {whisper: "every chat and task is priced here as it runs"},
+	pageStanding: {heading: standHeading, whisper: `reminders, watches and routines · "remind me at 6" or "every morning, …"`},
+	pageMemory:   {whisper: "what it has learned about you and this machine · /remember adds a line"},
+	pageSearch:   {whisper: "type a word · every conversation on this machine is searched"},
+}
+
+// placeWhisperLead is where the whisper hangs: under its heading, one gutter
+// in, exactly as home hangs a panel's (homegrid.go's [homeGridLead]).
+const placeWhisperLead = "   "
+
+// placeWhisperLines is an empty place's two rows: the heading in the muted tier
+// every heading on this surface wears, and the whisper dim under it.
+//
+// THE WHISPER GIVES UP A CLAUSE RATHER THAN WRAPPING. It is one line on every
+// frame, so a place does not grow a second row of prose at eighty columns that
+// it did not have at a hundred and twenty; the clause after the middle dot is
+// the example, and it is the half a narrow frame can spare ([noteFit]).
+func placeWhisperLines(id page, width int, pal palette) []string {
+	blank, ok := placeWhisper[id]
+	if !ok || width < len(placeWhisperLead)+1 {
+		return nil
+	}
+	heading := blank.heading
+	if heading == "" {
+		heading = id.word()
+	}
+	return []string{
+		" " + pal.muted(fit(heading, width-1)),
+		placeWhisperLead + pal.dim(noteFit(blank.whisper, width-len(placeWhisperLead))),
+	}
+}
 
 // placeWindowStep is SCREEN 3d'S FOUR KEYS, and it is one function because
 // there is one answer.

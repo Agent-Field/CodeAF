@@ -1178,8 +1178,8 @@ through the marked door when its turn comes. On a build with no ambient side it 
 **Bare, it opens a page.** A short list under the message box of what stands over this
 conversation, on up to three shelves, with `p` to pause one, `s` to stop one, `n` to except
 this place and `enter` to open the conversation that asked for it. With nothing standing it
-opens all the same, on three dim lines beginning
-`nothing stands here yet — say what should always be true, and I'll hold it.`
+opens all the same, on its heading `standing orders` and one dim line:
+`reminders, watches and routines · "remind me at 6" or "every morning, …"`
 Nothing is written into the conversation either way.
 
 Nothing on the page is ever named at the command line — the words are always a new order,
@@ -1206,8 +1206,8 @@ immediately after the tag makes it plain prose.
 
 **A bare `/task` opens the full-screen task page** — the same page `/history` and `ctrl+.`
 open, holding every task this project has ever run. It does *not* print a usage line, and
-it starts nothing. On a project that has never run one it opens the page anyway, and the
-page says what tasks are and ends `no tasks yet — /task <brief> starts one`. The `+ /task`
+it starts nothing. On a project that has never run one it opens the page anyway, headed
+`tasks` over one line: `work you send off with /task lands here, and its record stays`. The `+ /task`
 row at the foot of the task column types `/task ` into your box, which is why the word on
 its own has an answer worth giving.
 
@@ -1369,8 +1369,9 @@ this directory has out right now**, marked `another window` on the right. Those 
 no cursor and `enter` does nothing on them: there is no room here and nothing has landed for
 a mention to point at. They are how you find out that the directory is busy somewhere else.
 
-On a project that has never run a task the page opens on its own teaching prose, ending
-`no tasks yet — /task <brief> starts one`. The tasks pages describe the page in full.
+On a project that has never run a task the page opens on its heading and one line,
+`work you send off with /task lands here, and its record stays`. The tasks pages describe the
+page in full.
 
 ## /crew — the five models aforge uses on its own behalf, read beside the one you talk to
 

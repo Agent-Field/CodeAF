@@ -1169,24 +1169,20 @@ func (p *tasksPlace) body(a *app, width, room int) []placeRow {
 	r := a.tasksFiltered()
 	lines := r.lay(width)
 	if len(lines) == 0 {
-		// THE TEACHING PROSE IS THE ONLY THING AN EMPTY PLACE DRAWS, and it is
-		// drawn INSTEAD of a count rather than beside one — the emptiness law
-		// forbids the pair on one frame ([tasksPlace.note] keeps the other half).
+		// AN EMPTY PLACE DRAWS ITS HEADING AND ITS WHISPER, and no count beside
+		// them — the emptiness law forbids the pair on one frame
+		// ([tasksPlace.note] keeps the other half, placeprose.go's [placeWhisper]
+		// the words).
 		//
 		// A QUERY THAT MATCHED NOTHING IS NOT AN EMPTY PLACE. There IS work here;
 		// the words a person typed are hiding it, and teaching them what tasks are
 		// would be answering a question nobody asked. What that frame says is on
 		// the note line — `filter · zzz · nothing matches` — and the body stays
 		// blank under it.
-		rows := make([]placeRow, 0, room)
 		if p.reading.held == 0 {
-			for _, line := range tasksTeach(a.pal) {
-				if len(rows) >= room {
-					break
-				}
-				rows = append(rows, placeRow{text: " " + line})
-			}
+			return placeWhisperRows(pageTasks, width, room, a.pal)
 		}
+		rows := make([]placeRow, 0, room)
 		for len(rows) < room {
 			rows = append(rows, placeRow{})
 		}
