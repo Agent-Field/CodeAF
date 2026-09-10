@@ -769,6 +769,14 @@ type TaskNode struct {
 	// decision it was — a flag written afterwards would be a flag the update
 	// announcing the end raced past.
 	stopped bool
+	// handed is the receipt for THIS SESSION'S own hand-over press: the person
+	// asked aforge to decide this one card, and the note that asks it has been
+	// put in front of the model. It is not the same fact as [TaskNode.decider]
+	// being the model — a landing under `task.settle = auto` writes that by
+	// policy and presses nothing — and it travels with the owner through
+	// [TaskNode.givesBackLocked] so a hand-back leaves no receipt behind
+	// (task_audit.go's [TaskNode.wasHandedOver] states the whole rule).
+	handed bool
 	// stopReason is what whoever pulled the stop said they were stopping it FOR,
 	// and "" for every stop that came with no words — which is every one a person
 	// pulls, their card being a decision and not a sentence (cancel.go). It is
@@ -4054,7 +4062,7 @@ func (a *Agent) handBackUnsettled() {
 		if node == nil || node.decider != TaskAskOwnerModel || !a.readsTheDecisionLocked(node) {
 			continue
 		}
-		node.decider = TaskAskOwnerPerson
+		node.givesBackLocked()
 		// A NODE THAT WAS ACTUALLY SETTLED IS NOT NEWS. The model spent its verb,
 		// the resolution published its own landing, and a second update saying the
 		// question is back with the person would put a card up over work that has
@@ -4105,7 +4113,7 @@ func (g *TaskGraph) handBackOnLoad() []*TaskNode {
 		if node == nil || node.decider != TaskAskOwnerModel {
 			continue
 		}
-		node.decider = TaskAskOwnerPerson
+		node.givesBackLocked()
 		if node.state == TaskUnverified {
 			handed = append(handed, node)
 		}
