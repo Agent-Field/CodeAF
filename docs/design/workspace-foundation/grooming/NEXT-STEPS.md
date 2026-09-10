@@ -24,7 +24,8 @@ A checked item means completed with the evidence named here, not merely discusse
   isolated candidate. Integrated and validated; existing #662 remains the single implementation draft.
 - [x] T02a / D11 — Typed backend entities and composable components accepted (C19).
 - [ ] T02b / D12 — Independent persistent identities remain to settle.
-- [ ] T03 — Settle accepted direction, governing scope and conflicts (D01/D02).
+- [x] T03a — Recommended governing scope/conflict behavior accepted (C23).
+- [ ] T03b — Complete source-backed retention and authority implementation (D01/D02).
   Preserve C09/C15/C16: explicit decisions are retained; references do not move work;
   actual moves change folder-scoped guidance for future work; exceptions are narrow.
 - [ ] T04 — Settle work/run/control transitions and in-flight changes (D03/D06/D13).
@@ -53,8 +54,10 @@ A checked item means completed with the evidence named here, not merely discusse
   `20260910-154640-000411`: small backend packages, selected session cases and
   `make build`. Independent tests use the production status API.
 - [ ] T11c — Broader admission/cancellation/recovery contracts remain future work.
-- [ ] T12 — Unify governing context across chat, workers, independent checking and
-  scheduled runs, with exact sources and revision-aware effective inputs.
+- [ ] T12a — Explicit governing placements and folder-scoped holds, separate from references.
+- [ ] T12b — Read-only governing context across chat, workers, independent checking and scheduled runs.
+- [ ] T12c — Durable consumed-context records and bounded in-aforge inspection (C24).
+- [ ] T12d — Exact automatic source-backed retention, clause-specific exceptions, action-boundary re-admission and complete causal handoffs.
 - [ ] T13 — Complete the daily Slack journey, including setup, delivery, edits,
   unanswered questions, pause/stop and restart.
 - [ ] T14 — Complete cross-work Product-to-Marketing impact, including worker
@@ -192,3 +195,10 @@ Broad CI remains deferred under C21; candidate publication is not merge approval
 Next unchecked delivery is T12, preceded by the remaining authority/scope
 contract decisions in T03. This completed slice establishes safe owner updates;
 it does not complete the entire personal AI architecture.
+
+## Current governing-context wave
+
+Implementation in isolated `codex/governing-context`; destination remains #662.
+C23 scope behavior and C24 runtime evidence are accepted. Source lanes are
+parallel; a source commit alone does not tick delivery. Spark evidence will be
+recorded after combined integration. All local builds/tests are prohibited (C25).

@@ -648,9 +648,7 @@ Honest limits, so you do not rely on something that is not built:
   What is **not** built is the other direction: nothing re-reads your orders *after* a
   change lands and starts work to put it right, so a change that slipped past one is
   still yours to catch. That half is a later wave.
-- **At most eight orders ride along.** When more than eight stand over one place, the
-  rules that hold go first — whatever their age — and the longest-standing of the rest
-  fill what room is left. What was cut is counted rather than dropped quietly: `…3 more`.
+- **Rules are never silently omitted.** All governing holds are retained within the execution limit; optional appointments fill the remaining room up to eight ordinary rows. Oversized governing inputs stop execution with an explicit error.
 - **Money is not per order.** The card says it shares the day's allowance — the same
   machine-wide `daily_budget_usd` setting everything standing uses. If you named a
   per-run or per-day limit yourself, the card says your limit back instead.
@@ -668,4 +666,19 @@ Honest limits, so you do not rely on something that is not built:
   brief already names. Asking a model every night whether a sentence that has not changed
   is wide would be a bill you never agreed to. (What splitting is, and everything that
   decides it, are on the tasks page.)
-- **Nothing is armed silently.** Every order on the page is one you answered a card for.
+- **Approval has an owner.** Ordinary proposals wait for your answer. An active delegated goal owner can answer existing bounded proposals; folder-scoped rules require your answer. New receipts preserve the difference.
+
+## Rules for a folder and its subfolders
+
+A hold proposed through `stand` can name `folder_scope` with existing
+`collection_ids` and an optional `descendants` flag. This replaces project or
+machine scope for that rule. The proposal names the selected folders before you
+answer. Only work explicitly placed under those folders receives the rule;
+shortcuts alone do not qualify. Subfolders are included only when explicitly
+selected. A delegated goal owner cannot approve this new folder scope.
+
+New proposals retain whether you or a delegated goal owner answered them. Older
+items have no new approval receipt; the system does not reconstruct one. A receipt
+records acceptance of the proposed text, not proof of a verbatim original quote.
+Folder bindings and rules change inputs at subsequent context refreshes; they do
+not cancel an already-running external action or rewrite existing outputs.

@@ -147,3 +147,27 @@ and avoiding hanging open draft PRs. Consolidate design/checklist records into
 #662, preserve their history, then close superseded grooming #663. Do not create
 another implementation draft merely for the isolated candidate. Keep #662 draft
 and unmerged into dev, and retain test deferrals visibly.
+
+## Governing scope and causal records — C23–C25
+
+2026-09-10, C23: the user accepted the recommended scope rules and authorized
+implementation. An explicit item exception alters only conflicting guidance;
+compatible budget, access and publication conditions remain. Folder guidance
+reaches descendants only when explicitly included. A shortcut or discovered
+association supplies relevance, not authority. A material unresolved conflict
+requires one focused question; unaffected work may continue. This confirms the
+behavior, not a universal newest-wins or nearest-folder-wins algorithm.
+
+C24: the same instruction requests inspectable runtime cause/effect evidence for
+product review: what started work, which scope and revisions it used, what changed,
+and what actually happened. Reuse the existing execution journal, distinguish
+observed operations from model explanations, and expose gaps rather than invent
+causal links. This does not require storing private reasoning or a second audit
+service. Source approvals distinguish the person, delegated principals and unknown
+legacy provenance. A model-written accepted flag is not authority.
+
+C25: the subsequent laptop-heat instruction requires ALL compilation and test
+execution on Spark, including targeted checks and `make build`. Local work is
+source editing, formatting and inspection only. The two stale local test-log
+pollers were stopped; no Go build/test processes were found. Tui3 and broad
+expensive acceptance remain deferred under C21.
