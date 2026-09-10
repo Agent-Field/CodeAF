@@ -1106,7 +1106,7 @@ func placeFrameWithBar(a *app, width, height int,
 		// them the letters they typed rather than the resting sentence. The
 		// picker's own hint stands in while nothing is typed.
 		draftRows, draftCX, draftCY = draftBlock(&a.target.pick.filter, pal, width-2, 1,
-			pickerHintAt(width-2-ansi.StringWidth(prompt)), "")
+			a.target.pick.hintAt(width-2-ansi.StringWidth(prompt)), "")
 	case box != nil && !box.empty():
 		draftRows, draftCX, draftCY = draftBlock(box, pal, width-2, homeDraftRows, "", "")
 	}

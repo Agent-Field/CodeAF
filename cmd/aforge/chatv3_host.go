@@ -599,9 +599,12 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) tui3.Opt
 		settings = config.Config{BaseURL: config.DefaultBaseURL}
 		profileDir = os.Getenv("AFORGE_PROFILE_DIR")
 	}
-	models := catalog.LoadLazy(context.Background(), catalog.Options{
-		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: profileDir,
-	})
+	discovery := catalog.Options{BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: profileDir}
+	models := catalog.LoadLazy(context.Background(), discovery)
+	// The refresh key in /model asks the same router THIS machine's list came
+	// from, and refills the same shelf — the list is this laptop's list of
+	// names on both doors (chatv3_modelshelf.go).
+	shelf := newV3ModelShelf(models, discovery)
 	seams := newHostSeams(client)
 	// EVERY BACKGROUND READING IS ARMED THROUGH ONE SEAM: the connection, and the
 	// notice line a duty that fell over speaks to once (chatv3_host_duty.go). A
@@ -641,7 +644,8 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) tui3.Opt
 		// timer that is already armed around a far process.
 		BashBackgroundAfterSeconds: welcome.BashBackgroundAfterSeconds,
 		ContextWindow:              v3Window(models, welcome.Model),
-		Models:                     func() []tui3.Model { return v3Models(models) },
+		Models:                     func() []tui3.Model { return v3Models(shelf) },
+		RefreshModels:              shelf.refresh,
 		// /export writes on THIS machine (host.go's honesty table), so its row
 		// goes in this machine's index — the same one the local launch spells.
 		ArtifactsIndex: artifactsIndexPath(),
