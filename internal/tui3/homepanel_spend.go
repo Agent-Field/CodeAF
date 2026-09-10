@@ -83,13 +83,11 @@ type homeSpendModel struct {
 // readHomeSpend is the pure half: the ledger's lines, a clock and an allowance
 // in, the panel's figures out. The fortnight, its loudest day and its models
 // are the spend place's own reading of the same lines ([readSpend]), so the two
-// surfaces cannot disagree.
-//
-// OWED: lane E — today's figure moves to session.SpendToday (DESIGN §3 E4) once
-// it lands; it is the pulse's own sum until then ([spendDayTotal]).
+// surfaces cannot disagree; today's figure is the engine's one reading of the
+// day ([session.SpendToday], DESIGN §3 E4).
 func readHomeSpend(lines []session.UsageLine, now time.Time, ceiling float64) homeSpendReading {
 	week := readSpend(lines, session.LastDays(now, homeSpendDays), now)
-	out := homeSpendReading{today: spendDayTotal(lines, now), ceiling: ceiling,
+	out := homeSpendReading{today: session.SpendToday(lines, now), ceiling: ceiling,
 		days: week.dayValues(), total: week.totals.USD}
 	if week.loudest.USD > 0 {
 		out.loud, out.loudUSD = spendDayWord(week.loudest.At, now), week.loudest.USD
@@ -151,13 +149,8 @@ func spendLine(key string, cell *homeCell) homeLine {
 }
 
 // used is how much of the day's allowance is gone, and nothing for a machine
-// that has none.
-func (s homeSpendReading) used() float64 {
-	if s.ceiling <= 0 {
-		return 0
-	}
-	return s.today / s.ceiling
-}
+// that has none ([session.SpendShare]).
+func (s homeSpendReading) used() float64 { return session.SpendShare(s.today, s.ceiling) }
 
 // todayWords is the heading's clause: `today $6.51 of $500`, the allowance
 // spelled the way the pulse spells a figure somebody typed ([railFigure]).
