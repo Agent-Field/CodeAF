@@ -18,10 +18,9 @@ Pin one published build instead with `VERSION=v0.2.0` (or another complete tag):
 curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | VERSION=v0.2.0 bash
 ```
 
-While the repository is private, export `GITHUB_TOKEN` first. The last installer
-line is `aforge version`; it shows the tag installed, when it was built, and the
-Go and operating-system target. Nothing self-updates: run the curl command again
-when you want a newer build.
+The last installer line is `aforge version`; it shows the tag installed, when it
+was built, and the Go and operating-system target. Nothing self-updates: run the
+curl command again when you want a newer build.
 
 ## Running aforge from the terminal — can I run this without the chat
 
@@ -346,7 +345,7 @@ the value of the `node` field in `logs --json`.
 ## Where is the record of my headless run — reading a kept one-shot's store
 
 `why` reads a store, and by default that store is `~/.aforge/graph.db`. A headless
-`aforge do` run does **not** work there: it uses a private store of its own, kept only when
+`aforge do` run does **not** work there: it uses a separate store of its own, kept only when
 the run failed or you asked for it with `--keep`, and the last line on the error stream
 says where:
 

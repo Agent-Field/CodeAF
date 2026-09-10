@@ -17,5 +17,4 @@ Pin one published tag with `VERSION`:
 curl -fsSL https://raw.githubusercontent.com/Agent-Field/aforge-v2/main/scripts/install.sh | VERSION=v0.2.0 bash
 ```
 
-While this repository is private, export `GITHUB_TOKEN` before using any of
-these commands. The installer puts aforge at `~/.aforge/bin/aforge` by default.
+The installer puts aforge at `~/.aforge/bin/aforge` by default.

@@ -10,6 +10,7 @@ NO_MODIFY_PATH="${AFORGE_NO_MODIFY_PATH:-0}"
 INSTALL_DIR="${AFORGE_INSTALL_DIR:-${HOME}/.aforge/bin}"
 GITHUB_API="${AFORGE_GITHUB_API:-https://api.github.com}"
 GITHUB_DOWNLOAD="${AFORGE_GITHUB_DOWNLOAD:-https://github.com}"
+# GitHub answers anonymous API calls sixty times an hour per address; a token raises that.
 TOKEN="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
 
 usage() {
@@ -35,7 +36,7 @@ Flags:
 
 Environment:
   CHANNEL, VERSION, AFORGE_INSTALL_DIR, AFORGE_NO_MODIFY_PATH, VERBOSE
-  GITHUB_TOKEN or GH_TOKEN for a private repository
+  GITHUB_TOKEN or GH_TOKEN: GitHub answers anonymous API calls sixty times an hour per address; a token raises that.
   AFORGE_GITHUB_API and AFORGE_GITHUB_DOWNLOAD for mirrors and tests
 EOF
 }
@@ -98,13 +99,14 @@ http_get() {
   local url="$1"
   local destination="$2"
   local accept="${3:-application/vnd.github+json}"
+  local authenticate="${4:-0}"
   local status
   if [[ "$VERBOSE" == "1" ]]; then
     printf 'aforge: GET %s\n' "$url"
   fi
   if command -v curl >/dev/null 2>&1; then
     local args=(-sSL --output "$destination" --write-out '%{http_code}' -H "Accept: ${accept}")
-    if [[ -n "$TOKEN" ]]; then
+    if [[ "$authenticate" == "1" && -n "$TOKEN" ]]; then
       args+=(-H "Authorization: Bearer ${TOKEN}")
     fi
     if ! status=$(curl "${args[@]}" "$url"); then
@@ -121,35 +123,13 @@ http_get() {
   local headers="$TMP_ROOT/http.headers"
   local wget_code
   local args=(-O "$destination" -S --header="Accept: ${accept}")
-  if [[ -z "$TOKEN" ]]; then
-    if wget "${args[@]}" "$url" 2> "$headers"; then
-      wget_code=0
-    else
-      wget_code=$?
-    fi
+  if [[ "$authenticate" == "1" && -n "$TOKEN" ]]; then
+    args+=(--header="Authorization: Bearer ${TOKEN}")
+  fi
+  if wget "${args[@]}" "$url" 2> "$headers"; then
+    wget_code=0
   else
-    args+=(--max-redirect=0 --header="Authorization: Bearer ${TOKEN}")
-    if wget "${args[@]}" "$url" 2> "$headers"; then
-      wget_code=0
-    else
-      wget_code=$?
-    fi
-    status=$(awk '$1 ~ /^HTTP\/[0-9.]+$/ && $2 ~ /^[0-9][0-9][0-9]$/ {status=$2} END {print status}' "$headers")
-    if [[ "$status" == 3* ]]; then
-      local location
-      location=$(awk 'tolower($1) == "location:" {value=$2; sub(/\r$/, "", value); print value; exit}' "$headers")
-      [[ -n "$location" ]] || { HTTP_STATUS="$status"; return 1; }
-      # AN AUTHORIZATION HEADER NEVER FOLLOWS A REDIRECT. GitHub's asset
-      # destination carries signed credentials of its own, while wget would
-      # otherwise forward the repository token to a different host.
-      headers="$TMP_ROOT/http.redirect.headers"
-      args=(-O "$destination" -S --header="Accept: ${accept}")
-      if wget "${args[@]}" "$location" 2> "$headers"; then
-        wget_code=0
-      else
-        wget_code=$?
-      fi
-    fi
+    wget_code=$?
   fi
   status=$(awk '$1 ~ /^HTTP\/[0-9.]+$/ && $2 ~ /^[0-9][0-9][0-9]$/ {status=$2} END {print status}' "$headers")
   HTTP_STATUS="$status"
@@ -160,7 +140,7 @@ http_get() {
 }
 
 api_problem() {
-  fail "GitHub could not be reached; export GITHUB_TOKEN or pin VERSION=<tag> and try again"
+  fail "GitHub's API could not be reached or refused (a rate limit?); pin VERSION=<tag>, or export GITHUB_TOKEN to raise the limit"
 }
 
 extract_tags() {
@@ -170,17 +150,11 @@ extract_tags() {
 
 release_file="$TMP_ROOT/release.json"
 if [[ -n "$VERSION" ]]; then
-  if ! http_get "$GITHUB_API/repos/$REPOSITORY/releases/tags/$VERSION" "$release_file"; then
-    if [[ "$HTTP_STATUS" == "404" ]]; then
-      fail "release $VERSION was not found; see $GITHUB_DOWNLOAD/$REPOSITORY/releases"
-    fi
-    api_problem
-  fi
   TAG="$VERSION"
 else
   case "$CHANNEL" in
     stable)
-      if ! http_get "$GITHUB_API/repos/$REPOSITORY/releases/latest" "$release_file"; then
+      if ! http_get "$GITHUB_API/repos/$REPOSITORY/releases/latest" "$release_file" "application/vnd.github+json" 1; then
         if [[ "$HTTP_STATUS" == "404" ]]; then
           fail "no stable build has been published yet"
         fi
@@ -190,7 +164,7 @@ else
       ;;
     rc|dev|staging)
       list_file="$TMP_ROOT/releases.json"
-      if ! http_get "$GITHUB_API/repos/$REPOSITORY/releases?per_page=100" "$list_file"; then
+      if ! http_get "$GITHUB_API/repos/$REPOSITORY/releases?per_page=100" "$list_file" "application/vnd.github+json" 1; then
         api_problem
       fi
       TAG=""
@@ -206,9 +180,6 @@ else
       done < <(extract_tags "$list_file")
       if [[ -z "$TAG" ]]; then
         fail "no $CHANNEL build has been published yet"
-      fi
-      if ! http_get "$GITHUB_API/repos/$REPOSITORY/releases/tags/$TAG" "$release_file"; then
-        api_problem
       fi
       ;;
   esac
@@ -251,129 +222,11 @@ if [[ "$OS" == "windows" ]]; then
 fi
 ASSET="aforge-${OS}-${ARCH}${extension}"
 
-asset_id() {
-  local name="$1"
-  # Release asset names are ASCII strings created by this repository's own
-  # workflow, so this scanner deliberately does not decode JSON \u escapes.
-  awk -v wanted="$name" '
-    { document = document $0 "\n" }
-    END {
-      depth = 0
-      for (position = 1; position <= length(document); position++) {
-        character = substr(document, position, 1)
-        if (character == "{") {
-          parent = depth
-          candidate = parent > 0 && kinds[parent] == "array" && asset_arrays[parent]
-          if (parent > 0 && kinds[parent] == "object" && expects_value[parent]) {
-            expects_value[parent] = 0
-          }
-          depth++
-          kinds[depth] = "object"
-          asset_objects[depth] = candidate
-          names[depth] = ""
-          ids[depth] = ""
-          keys[depth] = ""
-          expects_value[depth] = 0
-          continue
-        }
-        if (character == "}") {
-          if (asset_objects[depth] && names[depth] == wanted && ids[depth] != "") {
-            print ids[depth]
-            exit
-          }
-          delete kinds[depth]
-          delete asset_objects[depth]
-          delete names[depth]
-          delete ids[depth]
-          delete keys[depth]
-          delete expects_value[depth]
-          depth--
-          continue
-        }
-        if (character == "[") {
-          parent = depth
-          assets = parent == 1 && kinds[parent] == "object" && expects_value[parent] && keys[parent] == "assets"
-          if (parent > 0 && kinds[parent] == "object" && expects_value[parent]) {
-            expects_value[parent] = 0
-          }
-          depth++
-          kinds[depth] = "array"
-          asset_arrays[depth] = assets
-          continue
-        }
-        if (character == "]") {
-          delete kinds[depth]
-          delete asset_arrays[depth]
-          depth--
-          continue
-        }
-        if (character == "\"") {
-          token = ""
-          escaped = 0
-          for (position++; position <= length(document); position++) {
-            character = substr(document, position, 1)
-            if (escaped) {
-              token = token character
-              escaped = 0
-            } else if (character == "\\") {
-              token = token character
-              escaped = 1
-            } else if (character == "\"") {
-              break
-            } else {
-              token = token character
-            }
-          }
-          after = position + 1
-          while (substr(document, after, 1) ~ /[[:space:]]/) {
-            after++
-          }
-          if (kinds[depth] == "object" && substr(document, after, 1) == ":") {
-            keys[depth] = token
-            expects_value[depth] = 1
-          } else if (kinds[depth] == "object" && expects_value[depth]) {
-            if (asset_objects[depth] && keys[depth] == "name") {
-              names[depth] = token
-            }
-            expects_value[depth] = 0
-          }
-          continue
-        }
-        if (kinds[depth] == "object" && expects_value[depth] && character ~ /[0-9]/) {
-          value = character
-          while (substr(document, position + 1, 1) ~ /[0-9]/) {
-            position++
-            value = value substr(document, position, 1)
-          }
-          if (asset_objects[depth] && keys[depth] == "id") {
-            ids[depth] = value
-          }
-          expects_value[depth] = 0
-          continue
-        }
-        if (character == "," && kinds[depth] == "object") {
-          keys[depth] = ""
-          expects_value[depth] = 0
-        }
-      }
-    }
-  ' "$release_file"
-}
-
 download_asset() {
   local name="$1"
   local destination="$2"
-  if [[ -n "$TOKEN" ]]; then
-    local id
-    id=$(asset_id "$name")
-    [[ -n "$id" ]] || fail "release $TAG has no $name asset"
-    if ! http_get "$GITHUB_API/repos/$REPOSITORY/releases/assets/$id" "$destination" "application/octet-stream"; then
-      api_problem
-    fi
-  else
-    if ! http_get "$GITHUB_DOWNLOAD/$REPOSITORY/releases/download/$TAG/$name" "$destination" "application/octet-stream"; then
-      fail "could not download $name; export GITHUB_TOKEN if the repository is private"
-    fi
+  if ! http_get "$GITHUB_DOWNLOAD/$REPOSITORY/releases/download/$TAG/$name" "$destination" "application/octet-stream"; then
+    fail "could not download $name; check the tag on the Releases page"
   fi
 }
 

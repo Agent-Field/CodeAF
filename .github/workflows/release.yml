@@ -277,7 +277,6 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/${RELEASE_REPOSITORY}/${RELEASE_SHA}/scripts/install.sh | VERSION=${TAG} bash
           \`\`\`
 
-          While the repository is private, both commands need \`GITHUB_TOKEN\` exported.
           EOF
           if [ "$CHANNEL" = "stable" ]; then
             if awk -v tag="## ${TAG} " 'index($0, tag) == 1 {f=1; next} f && /^## / {exit} f' \

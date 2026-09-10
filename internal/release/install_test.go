@@ -17,50 +17,21 @@ import (
 )
 
 type fakeRelease struct {
-	ID      int         `json:"id,omitempty"`
-	Name    string      `json:"name,omitempty"`
-	TagName string      `json:"tag_name"`
-	Assets  []fakeAsset `json:"assets"`
-}
-
-type fakeAsset struct {
-	ID          int          `json:"id"`
-	URL         string       `json:"url"`
-	NodeID      string       `json:"node_id"`
-	Name        string       `json:"name"`
-	Label       string       `json:"label"`
-	Uploader    fakeUploader `json:"uploader"`
-	ContentType string       `json:"content_type"`
-	State       string       `json:"state"`
-	Size        int          `json:"size"`
-}
-
-type fakeUploader struct {
-	Login string `json:"login"`
-	ID    int    `json:"id"`
-	Name  string `json:"name,omitempty"`
+	TagName string `json:"tag_name"`
 }
 
 type installGitHub struct {
-	t             *testing.T
-	server        *httptest.Server
-	releases      []string
-	missing       map[string]bool
-	badChecksum   bool
-	failAPI       bool
-	prettyJSON    bool
-	nestedName    bool
-	releaseName   bool
-	omitPlatform  bool
-	assetRedirect string
-	mu            sync.Mutex
-	requests      []*http.Request
-	assetRequests []string
+	server      *httptest.Server
+	releases    []string
+	badChecksum bool
+	failAPI     bool
+	mu          sync.Mutex
+	requests    []*http.Request
 }
 
 func newInstallGitHub(t *testing.T, releases ...string) *installGitHub {
 	t.Helper()
-	github := &installGitHub{t: t, releases: releases, missing: make(map[string]bool)}
+	github := &installGitHub{releases: releases}
 	github.server = httptest.NewServer(http.HandlerFunc(github.serve))
 	t.Cleanup(github.server.Close)
 	return github
@@ -84,38 +55,14 @@ func (github *installGitHub) serve(w http.ResponseWriter, request *http.Request)
 				http.NotFound(w, request)
 				return
 			}
-			github.writeRelease(w, github.releases[0])
+			github.writeJSON(w, fakeRelease{TagName: github.releases[0]})
 			return
 		case path == prefix+"releases":
 			var releases []fakeRelease
 			for _, tag := range github.releases {
-				releases = append(releases, github.release(tag))
+				releases = append(releases, fakeRelease{TagName: tag})
 			}
 			github.writeJSON(w, releases)
-			return
-		case strings.HasPrefix(path, prefix+"releases/tags/"):
-			tag := strings.TrimPrefix(path, prefix+"releases/tags/")
-			if github.missing[tag] || !contains(github.releases, tag) {
-				http.NotFound(w, request)
-				return
-			}
-			github.writeRelease(w, tag)
-			return
-		case strings.HasPrefix(path, prefix+"releases/assets/"):
-			id := strings.TrimPrefix(path, prefix+"releases/assets/")
-			github.mu.Lock()
-			github.assetRequests = append(github.assetRequests, id)
-			github.mu.Unlock()
-			name, tag := github.assetForID(id)
-			if name == "" {
-				http.NotFound(w, request)
-				return
-			}
-			if github.assetRedirect != "" {
-				http.Redirect(w, request, github.assetRedirect+"/"+name+"?tag="+tag, http.StatusFound)
-				return
-			}
-			github.writeAsset(w, tag, name)
 			return
 		}
 	}
@@ -134,62 +81,9 @@ func (github *installGitHub) serve(w http.ResponseWriter, request *http.Request)
 	http.NotFound(w, request)
 }
 
-func (github *installGitHub) release(tag string) fakeRelease {
-	asset := platformAsset()
-	base := releaseID(tag) * 10
-	assets := make([]fakeAsset, 0, 2)
-	if !github.omitPlatform {
-		assets = append(assets, github.asset(base+1, asset, len(fakeBinary(tag))))
-	}
-	assets = append(assets, github.asset(base+2, "checksums.txt", 80))
-	release := fakeRelease{TagName: tag, Assets: assets}
-	if github.releaseName {
-		release.ID = base + 9
-		release.Name = asset
-	}
-	return release
-}
-
-func (github *installGitHub) asset(id int, name string, size int) fakeAsset {
-	uploader := fakeUploader{Login: "release-bot", ID: 7}
-	if github.nestedName {
-		uploader.Name = name
-	}
-	return fakeAsset{
-		ID:          id,
-		URL:         fmt.Sprintf("%s/repos/Agent-Field/aforge-v2/releases/assets/%d", github.server.URL, id),
-		NodeID:      fmt.Sprintf("RA_%d", id),
-		Name:        name,
-		Label:       "",
-		Uploader:    uploader,
-		ContentType: "application/octet-stream",
-		State:       "uploaded",
-		Size:        size,
-	}
-}
-
-func (github *installGitHub) writeRelease(w http.ResponseWriter, tag string) {
-	github.writeJSON(w, github.release(tag))
-}
-
 func (github *installGitHub) writeJSON(w http.ResponseWriter, value any) {
 	w.Header().Set("Content-Type", "application/json")
-	encoder := json.NewEncoder(w)
-	if github.prettyJSON {
-		encoder.SetIndent("", "  ")
-	}
-	_ = encoder.Encode(value)
-}
-
-func (github *installGitHub) assetForID(id string) (string, string) {
-	for _, tag := range github.releases {
-		for _, asset := range github.release(tag).Assets {
-			if fmt.Sprint(asset.ID) == id {
-				return asset.Name, tag
-			}
-		}
-	}
-	return "", ""
+	_ = json.NewEncoder(w).Encode(value)
 }
 
 func (github *installGitHub) writeAsset(w http.ResponseWriter, tag, name string) {
@@ -207,14 +101,6 @@ func (github *installGitHub) writeAsset(w http.ResponseWriter, tag, name string)
 	default:
 		http.NotFound(w, nil)
 	}
-}
-
-func releaseID(tag string) int {
-	value := 1
-	for _, char := range tag {
-		value += int(char)
-	}
-	return value
 }
 
 func fakeBinary(tag string) []byte {
@@ -366,7 +252,7 @@ func TestInstallerPinsAReleaseAndNamesAMissingOne(t *testing.T) {
 	}
 
 	missing := runInstaller(t, github, []string{"--version", "v9.9.9"}, "AFORGE_NO_MODIFY_PATH=1")
-	if missing.code != 1 || !strings.Contains(missing.output, "v9.9.9") || !strings.Contains(missing.output, "/releases") {
+	if missing.code != 1 || !strings.Contains(missing.output, "v9.9.9") || !strings.Contains(missing.output, "check the tag on the Releases page") {
 		t.Fatalf("missing release: exit %d:\n%s", missing.code, missing.output)
 	}
 }
@@ -469,64 +355,77 @@ func TestInstallerChecksBeforeReplacingAndCanRunTwice(t *testing.T) {
 	}
 }
 
-func TestInstallerUsesAuthenticatedAssetRoutesWithoutLeakingTheToken(t *testing.T) {
-	for _, pretty := range []bool{false, true} {
-		name := "compact"
-		if pretty {
-			name = "pretty"
-		}
-		t.Run(name, func(t *testing.T) {
-			github := newInstallGitHub(t, "v1.2.3")
-			github.prettyJSON = pretty
+func TestInstallerSendsTheTokenOnAPICalls(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		arguments []string
+		path      string
+	}{
+		{name: "latest", path: "/repos/Agent-Field/aforge-v2/releases/latest"},
+		{name: "list", arguments: []string{"--rc"}, path: "/repos/Agent-Field/aforge-v2/releases"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			github := newInstallGitHub(t, "v1.2.3", "v1.3.0-rc.1")
 			const token = "secret-installer-token"
-			run := runInstaller(t, github, nil, "GITHUB_TOKEN="+token, "VERBOSE=1", "AFORGE_NO_MODIFY_PATH=1")
-			if run.code != 0 || strings.Contains(run.output, token) {
-				t.Fatalf("authenticated install exit %d or leaked token:\n%s", run.code, run.output)
+			run := runInstaller(t, github, test.arguments, "GITHUB_TOKEN="+token, "AFORGE_NO_MODIFY_PATH=1")
+			if run.code != 0 {
+				t.Fatalf("token install exit %d:\n%s", run.code, run.output)
 			}
 			github.mu.Lock()
 			defer github.mu.Unlock()
-			if len(github.assetRequests) != 2 {
-				t.Fatalf("asset API requests = %v", github.assetRequests)
-			}
 			for _, request := range github.requests {
-				if strings.Contains(request.URL.Path, "/repos/") && request.Header.Get("Authorization") != "Bearer "+token {
-					t.Errorf("API request %s has Authorization %q", request.URL.Path, request.Header.Get("Authorization"))
+				if request.URL.Path == test.path {
+					if authorization := request.Header.Get("Authorization"); authorization != "Bearer "+token {
+						t.Fatalf("API request Authorization = %q", authorization)
+					}
+					return
 				}
-				if strings.Contains(request.URL.Path, "/releases/assets/") && request.Header.Get("Accept") != "application/octet-stream" {
-					t.Errorf("asset request Accept = %q", request.Header.Get("Accept"))
+			}
+			t.Fatalf("API request %s was not made", test.path)
+		})
+	}
+}
+
+func TestInstallerNeverSendsAuthorizationOnDownloads(t *testing.T) {
+	for _, token := range []string{"", "GITHUB_TOKEN=secret-installer-token"} {
+		name := "without_token"
+		if token != "" {
+			name = "with_token"
+		}
+		t.Run(name, func(t *testing.T) {
+			github := newInstallGitHub(t, "v1.2.3")
+			environment := []string{"AFORGE_NO_MODIFY_PATH=1"}
+			if token != "" {
+				environment = append(environment, token)
+			}
+			run := runInstaller(t, github, nil, environment...)
+			if run.code != 0 {
+				t.Fatalf("install exit %d:\n%s", run.code, run.output)
+			}
+			github.mu.Lock()
+			defer github.mu.Unlock()
+			downloads := 0
+			for _, request := range github.requests {
+				if strings.Contains(request.URL.Path, "/releases/download/") {
+					downloads++
+					if authorization := request.Header.Get("Authorization"); authorization != "" {
+						t.Errorf("download %s has Authorization %q", request.URL.Path, authorization)
+					}
 				}
+			}
+			if downloads != 2 {
+				t.Fatalf("download requests = %d, want 2", downloads)
 			}
 		})
 	}
 }
 
-func TestInstallerFindsOnlyDirectAssetsDespiteNestedMatchingNames(t *testing.T) {
+func TestInstallerDoesNotPrintTheTokenWithVerboseOutput(t *testing.T) {
 	github := newInstallGitHub(t, "v1.2.3")
-	github.nestedName = true
-	run := runInstaller(t, github, nil, "GITHUB_TOKEN=secret-installer-token", "AFORGE_NO_MODIFY_PATH=1")
-	if run.code != 0 {
-		t.Fatalf("nested-name install exit %d:\n%s", run.code, run.output)
-	}
-	github.mu.Lock()
-	defer github.mu.Unlock()
-	if len(github.assetRequests) != 2 || contains(github.assetRequests, "7") {
-		t.Fatalf("nested uploader IDs were treated as assets: %v", github.assetRequests)
-	}
-}
-
-func TestInstallerDoesNotTreatAReleaseTitleAsAnAsset(t *testing.T) {
-	github := newInstallGitHub(t, "v1.2.3")
-	github.releaseName = true
-	github.omitPlatform = true
-	run := runInstaller(t, github, nil, "GITHUB_TOKEN=secret-installer-token", "AFORGE_NO_MODIFY_PATH=1")
-	want := "release v1.2.3 has no " + platformAsset() + " asset"
-	if run.code != 1 || !strings.Contains(run.output, want) {
-		t.Fatalf("release-title collision exit %d:\n%s", run.code, run.output)
-	}
-	github.mu.Lock()
-	defer github.mu.Unlock()
-	if len(github.assetRequests) != 0 {
-		t.Fatalf("a release ID was requested as an asset: %v", github.assetRequests)
+	const token = "secret-installer-token"
+	run := runInstaller(t, github, nil, "GITHUB_TOKEN="+token, "VERBOSE=1", "AFORGE_NO_MODIFY_PATH=1")
+	if run.code != 0 || strings.Contains(run.output, token) {
+		t.Fatalf("verbose install exit %d or leaked token:\n%s", run.code, run.output)
 	}
 }
 
@@ -557,57 +456,8 @@ func TestInstallerUsesWgetWhenCurlIsAbsent(t *testing.T) {
 		t.Fatalf("wget install exit %d:\n%s", run.code, run.output)
 	}
 	missing := runInstaller(t, github, []string{"--version", "v9.9.9"}, "PATH="+minimalPath(t, false), "AFORGE_NO_MODIFY_PATH=1")
-	if missing.code != 1 || !strings.Contains(missing.output, "v9.9.9") || !strings.Contains(missing.output, "/releases") {
+	if missing.code != 1 || !strings.Contains(missing.output, "v9.9.9") || !strings.Contains(missing.output, "check the tag on the Releases page") {
 		t.Fatalf("wget missing release exit %d:\n%s", missing.code, missing.output)
-	}
-}
-
-func TestInstallerWgetDropsAuthorizationBeforeFollowingAssetRedirect(t *testing.T) {
-	if _, err := exec.LookPath("wget"); err != nil {
-		t.Skip("wget is not installed")
-	}
-	github := newInstallGitHub(t, "v1.2.3")
-	var mu sync.Mutex
-	var redirectedAuthorization []string
-	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		mu.Lock()
-		redirectedAuthorization = append(redirectedAuthorization, request.Header.Get("Authorization"))
-		mu.Unlock()
-		github.writeAsset(w, request.URL.Query().Get("tag"), strings.TrimPrefix(request.URL.Path, "/"))
-	}))
-	t.Cleanup(target.Close)
-	github.assetRedirect = target.URL
-	run := runInstaller(t, github, nil,
-		"PATH="+minimalPath(t, false),
-		"GITHUB_TOKEN=secret-installer-token",
-		"AFORGE_NO_MODIFY_PATH=1",
-	)
-	if run.code != 0 {
-		t.Fatalf("redirected wget install exit %d:\n%s", run.code, run.output)
-	}
-	github.mu.Lock()
-	assetAPIRequests := 0
-	for _, request := range github.requests {
-		if strings.Contains(request.URL.Path, "/releases/assets/") {
-			assetAPIRequests++
-			if request.Header.Get("Authorization") != "Bearer secret-installer-token" {
-				t.Errorf("asset API request has Authorization %q", request.Header.Get("Authorization"))
-			}
-		}
-	}
-	github.mu.Unlock()
-	if assetAPIRequests != 2 {
-		t.Fatalf("asset API requests = %d, want 2", assetAPIRequests)
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if len(redirectedAuthorization) != 2 {
-		t.Fatalf("redirect target requests = %d, want 2", len(redirectedAuthorization))
-	}
-	for _, authorization := range redirectedAuthorization {
-		if authorization != "" {
-			t.Fatalf("redirect target received Authorization %q", authorization)
-		}
 	}
 }
 
