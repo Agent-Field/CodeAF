@@ -95,6 +95,7 @@ func TestEveryRefusalTellsTheAskerWhatToDoInstead(t *testing.T) {
 	for _, err := range []error{
 		errQuestionNoHead, errQuestionNoReason, errQuestionNoStakes,
 		errQuestionTooFewOptions, errQuestionTooManyOptions,
+		errQuestionChecklistWithoutOptions,
 		errQuestionClockOnIrreversible, errQuestionAutoOnIrreversible,
 		errQuestionAutoWithoutPick,
 	} {
@@ -757,4 +758,24 @@ func sameStrings(one, two []string) bool {
 		}
 	}
 	return true
+}
+
+// A model asked for a checklist writes its items under input.blanks more often
+// than under options — the schema's word for a list of things to fill in is
+// right there — and the gate has to name that move, not just refuse it, or the
+// model's next try is a free-text box.
+func TestAChecklistWithItsItemsInBlanksIsToldToMoveThemIntoOptions(t *testing.T) {
+	q := wellFormed()
+	q.Ask = AskChoice
+	q.Options = nil
+	q.Input = InputShape{Kind: InputChecklist, Blanks: []Blank{
+		{Label: "Landscapes"}, {Label: "Portraits"},
+	}}
+	err := q.Check(nil)
+	if err != errQuestionChecklistWithoutOptions {
+		t.Fatalf("a checklist with no options was refused with %v, not the checklist refusal", err)
+	}
+	if !strings.Contains(err.Error(), "options") {
+		t.Fatalf("the refusal does not say where the items go: %q", err)
+	}
 }

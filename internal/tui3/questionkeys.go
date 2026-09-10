@@ -130,6 +130,9 @@ const (
 
 	// needChecklist is a question answered by ticking several rows.
 	needChecklist
+	// needTicked is a checklist with at least one row ticked, which is the
+	// moment `enter` has something to send.
+	needTicked
 	// needBlanks is a sentence with holes in it. It is a condition of its own
 	// rather than a shape the room simply draws, because `tab` walks BETWEEN
 	// holes and a form with none of them would be offering a key that moves
@@ -257,7 +260,17 @@ var questionKeys = []questionVerb{
 	// the only verb that works it and drew as an ordinary list. Measured on a
 	// real screen: four answers, no marks anybody could act on, and `[c] change`
 	// kept in its place.
-	{key: questionToggleKey, word: "tick it", forms: formsRoom, needs: needChecklist},
+	{key: questionToggleKey, word: "tick it", forms: formsCard | formsRoom, needs: needChecklist},
+	// A CHECKLIST IN THE CARD SENDS ON ENTER, once something is ticked. The
+	// card's rows carry the ticks themselves now, so the block is where a
+	// checklist is answered and not only where it is read; the row is offered
+	// only when there is something to send, because `enter` over an empty
+	// checklist would send nothing and say it sent.
+	{key: questionEnterKey, word: "send what is ticked", forms: formsCard, needs: needTicked},
+	// `tab` WALKS THE POINTER ON THE CARD, and it is on the row because a key
+	// that moves a mark nobody was told about is a key nobody presses; it is
+	// given up with `open it`, well after the verbs that change the question.
+	{key: questionBlankKey, word: "next row", forms: formsCard, needs: needChecklist, giveUp: 3},
 	// The room's own four. `a` is the one collision in the grammar — "take its
 	// suggestion" on a checklist and "the first one" on a pair — and it is two
 	// rows here rather than one key with two words, because the offer row prints
@@ -365,6 +378,13 @@ func (a *app) questionAnswerKeys(q questionShown, form questionForms) []question
 func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 	switch need {
 	case needPick:
+		// A CHECKLIST HAS NO PICK TO TAKE: `enter` sends what is ticked
+		// ([app.questionTickKey]), and a row saying `take the pick` beside
+		// `send what is ticked` is two promises on one key. The asker's
+		// suggestion is a word on its row instead ([questionSuggestedWord]).
+		if q.question.Input.Kind == session.InputChecklist {
+			return false
+		}
 		if q.question.Ask == session.AskConfirmation {
 			// A CONFIRMATION ALWAYS HAS A PICK AND IT IS THE CURSOR. It is the
 			// one shape on this block where the person's own keyboard chooses
@@ -406,6 +426,16 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 		return true
 	case needChecklist:
 		return q.question.Input.Kind == session.InputChecklist
+	case needTicked:
+		if q.holes.kind != session.InputChecklist {
+			return false
+		}
+		for _, ticked := range q.holes.ticks {
+			if ticked {
+				return true
+			}
+		}
+		return false
 	case needBlanks:
 		return q.question.Input.Kind == session.InputBlanks && len(q.question.Input.Blanks) > 1
 	case needOrdered:

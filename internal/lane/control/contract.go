@@ -374,13 +374,14 @@ const RateReason = "rate collapsed"
 
 // Reading is one moment of a stream's life as the read loop sees it.
 //
-// THE THREE COUNTS ARE NOT INTERCHANGEABLE. Visible is text on the screen and
-// is the only thing that can reset the deadline, while its measured rate keeps
-// up. Hidden is the endpoint writing where nobody can read — a run of thought,
-// a tool call being assembled — and it keeps the stream alive and moves the
-// phase without counting as progress. Beat is the router's own comment line:
-// proof about the PATH and about nothing else, so it never resets the silence
-// clock.
+// THE THREE COUNTS ARE NOT INTERCHANGEABLE. Visible is the answer arriving —
+// text on the screen, or the arguments of a tool call being assembled, which
+// are the answer as surely as text is and are what a rescue would have to
+// write again — and it is the only thing that can reset the deadline, while its
+// measured rate keeps up. Hidden is the endpoint writing where nobody can read —
+// a run of thought — and it keeps the stream alive and moves the phase without
+// counting as progress. Beat is the router's own comment line: proof about the
+// PATH and about nothing else, so it never resets the silence clock.
 type Reading struct {
 	At      time.Time
 	Visible int

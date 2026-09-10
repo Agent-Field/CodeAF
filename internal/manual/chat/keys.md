@@ -217,9 +217,11 @@ jobs at random — each is scoped, and each row says its scope:
   the hint slot says `ctrl+r spell it out`, and it does nothing at all otherwise.
 - `ctrl+r` **in `/files`** reveals the folder a landed file is in, with `ctrl+y` beside it
   to copy the file somewhere.
+- `ctrl+r` **in `/model`** fetches the newest model list; the picker's placeholder says
+  `ctrl+r refresh`. It is not on the `/help` sheet — the placeholder is where it is named.
 
-`/files` is a full-screen list with its own keyboard, so the two never contend for one
-keystroke on one screen.
+`/files` is a full-screen list with its own keyboard, and the model picker takes every key
+while it is open, so none of them contend for one keystroke on one screen.
 
 ## ? — the key that opens the key sheet
 
@@ -1467,8 +1469,10 @@ in the status row, or by `enter` on the **your model** row of the settings panel
 Providers tab (the same list and the same keys, drawn in the panel's place):
 
 `esc` close · `enter` switch to the highlighted model · `ctrl+t` cycle the reasoning
-effort · `tab` and `→` open the lanes under the model the cursor is on, `tab` and
-`←` close them again · `up`/`ctrl+p`, `down`/`ctrl+n`, `pgup`, `pgdown` walk the list ·
+effort · `ctrl+r` fetch the newest model list (`/model` only — not the settings panel's
+rows) · `tab` and `→` open the lanes under the model the cursor is on and move the
+cursor into them, `tab` and `←` close them and put it back on the model ·
+`up`/`ctrl+p`, `down`/`ctrl+n`, `pgup`, `pgdown` walk the list ·
 `backspace`, `delete`, `ctrl+u`, `ctrl+w`, `left`/`ctrl+b`, `right`/`ctrl+f`,
 `home`/`ctrl+a`, `end`/`ctrl+e` edit the filter · anything else types into it.
 
@@ -1477,7 +1481,11 @@ have typed — with anything to step over, they move the caret through the filte
 instead. `tab` always opens and closes. With the lanes open, `enter` on one of them pins
 it instead of switching model.
 
-Its placeholder reads exactly `filter · ↑↓ · → lanes · ctrl+t effort · enter · esc`.
+Its placeholder reads exactly `filter · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc`;
+on a narrow terminal the keys drop from the right, `esc` first. The hint slot follows the
+cursor: `→ lanes · enter switch · esc` on a model, `enter choose · ← back · esc` inside its
+lanes — with `tab lanes` and `tab back` in place of the arrows while there is typed text the
+arrow would step over.
 
 **Sessions roster** — opened by `/resume`: the same key map, except `enter` opens the
 selected session. Its placeholder reads `filter · ↑↓ · enter open · esc cancel`.
@@ -2263,7 +2271,7 @@ raises a card, and the card is answered below.
 
 The tasks pages describe what rooms and the roster are for.
 
-## Stopping work with `x` — the confirmation card
+## Stopping work with `x` — the confirmation card, why the stop card needs enter as well as the number
 
 `x` raises one card above the message box:
 
@@ -2807,7 +2815,7 @@ answer:
 | `cmd+enter` | **Bound**, in one state: while a turn is running with something typed, it holds that message above the box for the next turn. It does **not** open a new line. Over an empty box, or with nothing running, it does nothing. Needs a terminal that can spell it |
 | `ctrl+d` | Not bound |
 | `ctrl+k` | **The switcher**: the card of every conversation this terminal has open. Inside a harness design's room, while its approval row is up, it saves the design instead — that row is modal and takes the key first |
-| `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — and in the `/files` list it opens the folder a file is in. Nowhere else |
+| `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — in the `/files` list it opens the folder a file is in, and in the `/model` picker it fetches the newest model list. Nowhere else |
 | `ctrl+v` | **Bound**, on three surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, or a standing item on home. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "ctrl+v — how hard the thing you are looking at thinks". Anywhere else it does nothing. It is **not** paste: most terminals spend `ctrl+v` (or `cmd+v`) on pasting before aforge ever sees it, and a paste arrives as bracketed text rather than as this chord. Where your terminal does hand the chord over, it dials thinking |
 | `ctrl+x` | Bound in the same one place: it drops a harness design from inside its room. Not bound anywhere else |
 | `ctrl+y`, `ctrl+z` | Not bound |

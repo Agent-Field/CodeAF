@@ -166,7 +166,8 @@ type hedgeRace struct {
 	// arms are the requests in flight, primary first.
 	arms []*hedgeArm
 	// speaker is the arm the person is hearing, winner the arm that took the
-	// answer (-1 until one does), and spoken whether any text has been shown.
+	// answer (-1 until one does), and spoken whether any of the answer — text,
+	// or a call forming — has been shown ([shown]).
 	speaker int
 	winner  int
 	spoken  bool
@@ -1156,11 +1157,25 @@ func (r *hedgeRace) flip(to int) {
 		if event.Kind == StreamStarted {
 			continue
 		}
-		if event.Kind == StreamDelta {
+		if shown(event.Kind) {
 			r.spoken = true
 		}
 		r.observer(event)
 	}
+}
+
+// shown reports whether an event puts the answer in front of a person: a word
+// of text, or a tool call taking shape as it arrives.
+//
+// A CALL FORMING ON THE SCREEN IS THE ANSWER BEING READ. The read loop reports a
+// call's arguments as visible progress (client.go), because a `write` streaming
+// for ten minutes is the reply arriving — and so the first fragment of a
+// RESCUE'S call would take the voice from a speaker whose own call the person
+// had been watching form, if "somebody is already being read" still counted
+// only text. The one-voice rule is about what is on the screen, and a forming
+// call is on it.
+func shown(kind StreamEventKind) bool {
+	return kind == StreamDelta || kind == StreamToolCallForming
 }
 
 // observerFor is one arm's door to the person.
@@ -1207,7 +1222,7 @@ func (r *hedgeRace) emit(arm int, event StreamEvent) {
 		}
 		return
 	}
-	if event.Kind == StreamDelta {
+	if shown(event.Kind) {
 		r.spoken = true
 	}
 	r.observer(event)

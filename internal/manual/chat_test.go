@@ -2232,6 +2232,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// The wait nothing can end, and the row that turns it off.
 		{"what does all lanes slow still waiting mean", "lanes"},
 		{"how do I turn off endpoint routing", "lanes"},
+		// The picker's lanes, asked by somebody who pressed the arrows and saw
+		// nothing move, and by somebody reading `@cloudflare` on the name
+		// (docs/design/lanes-picker/DESIGN.md).
+		{"how do I change the provider for a model", "lanes"},
+		{"which provider am I pinned to", "lanes"},
+		{"left and right arrows in the model picker do nothing", "lanes"},
+		{"what does the @ after the model name mean", "lanes"},
+		{"the model picker says no machine has been measured for this model yet", "lanes"},
 		{"how do I read the manual", "commands"},
 		{"is there a help page", "commands"},
 		{"show me the page about a command", "commands"},
@@ -2307,6 +2315,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is the difference between keep running and stop work", "screen"},
 		{"k doesn't do anything on the close tab card any more", "screen"},
 		{"how do I close a tab without stopping the work", "screen"},
+		// ctrl+r in /model (internal/tui3's modelrefresh.go), asked the ways
+		// somebody meets a list that is missing the model they just read about.
+		{"how do I refresh the model list", "commands"},
+		{"a new model came out but it is not in /model", "commands"},
+		{"the model list is out of date", "commands"},
+		{"how old is the model list", "commands"},
+		{"fetch the newest models", "commands"},
+		{"could not fetch the model list", "commands"},
 		{"I pressed 1 on the stop card and it did not stop", "keys"},
 		{"why does the stop card need enter as well as the number", "keys"},
 		{"where did my chat go after I closed its tab", "screen"},
@@ -2477,6 +2493,30 @@ func TestTheCutReplyCostQuestionReachesTheReceiptAnswer(t *testing.T) {
 		}
 	}
 	t.Fatalf("the cut-reply cost question does not reach the section that says %q", said)
+}
+
+// 2026-09-10: a task writing one large file was cut at its wall three times
+// while it streamed at full speed. The wall now asks whether a reply kept pace
+// before it cuts, and a person who watched a long write die, or who reads the
+// cut sentence on an error row, has to reach the section that says so — not the
+// silence clocks beside it.
+func TestALongWriteCutAtTheWallReachesThePaceAnswer(t *testing.T) {
+	for _, probe := range []struct{ asked, page, says string }{
+		{"why does writing a big file keep getting cut off", "what-i-can-do", "is **not** cut for taking a long time"},
+		{"the reply ran past 2m30s without finishing and was cut", "models-and-cost", "checks its speed before it cuts"},
+		{"a long reply that is still writing gets cut", "models-and-cost", "checks its speed before it cuts"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == probe.page && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the %s section that says %q", probe.asked, probe.page, probe.says)
+		}
+	}
 }
 
 // #578: a ground never climbs out of the machine's scratch, so a workspace under

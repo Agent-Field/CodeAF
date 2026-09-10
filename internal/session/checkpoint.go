@@ -739,6 +739,126 @@ func checkpointCarriedOnNote(observed []string) string {
 // next request, and anything reading a request's last message to tell the ask
 // apart from the answer read the continuation as the question. Two lanes, two
 // markers.
+// checkpointLoadNudgeNote is the one line a person reads when a turn is sent
+// back for loading a tool it never used. It is in the register of the other
+// carry-on notes: an observation, a middle dot, what happens next.
+const checkpointLoadNudgeNote = "it loaded a tool and stopped before using it · asking it to go on"
+
+// checkpointAskNudgeNote is the line a person reads when a turn is sent back
+// for an `ask` the gate refused and the model never made again.
+const checkpointAskNudgeNote = "its question was refused and it stopped without asking again · asking it to go on"
+
+// checkpointAskNudgeLead is that continuation, carrying the refusal itself so
+// the model has the fix in front of it rather than in its history.
+func checkpointAskNudgeLead(refusal string) string {
+	return "[carry on] Your `ask` this turn was refused — " + strings.TrimSpace(refusal) + " — and the person saw no question. " +
+		"Ask again in this same turn with that fixed, or say in one line why you no longer need to."
+}
+
+// askRefusedAndNotRetried reads the transcript for the shape
+// [checkpointAskNudgeLead] answers: the newest `ask` of THIS turn came back
+// refused ([askRefusedLead]) and no `ask` was made after it. The walk is the
+// one [loadedAndNeverUsed] makes — backward, through a synthetic continuation,
+// stopping at the person's own message — and it returns the refusal's own
+// words, without the lead.
+func askRefusedAndNotRetried(messages []ai.Message) (string, bool) {
+	for i := len(messages) - 1; i >= 0; i-- {
+		message := messages[i]
+		switch message.Role {
+		case "user":
+			if strings.HasPrefix(partsText(message), "[carry on] ") {
+				continue
+			}
+			return "", false
+		case "assistant":
+			for _, call := range message.ToolCalls {
+				if strings.TrimSpace(call.Function.Name) != "ask" {
+					continue
+				}
+				id := strings.TrimSpace(call.ID)
+				for j := i + 1; j < len(messages); j++ {
+					if messages[j].Role != "tool" || strings.TrimSpace(messages[j].ToolCallID) != id {
+						continue
+					}
+					answer := strings.TrimSpace(partsText(messages[j]))
+					if !strings.HasPrefix(answer, askRefusedLead) {
+						return "", false
+					}
+					return strings.TrimPrefix(answer, askRefusedLead), true
+				}
+				return "", false
+			}
+		}
+	}
+	return "", false
+}
+
+// checkpointLoadNudgeLead is the synthetic continuation itself, and it names
+// the tools by the names the load answered with, so a model that has forgotten
+// what it fetched is told rather than left to search its own history.
+func checkpointLoadNudgeLead(names []string) string {
+	quoted := make([]string, 0, len(names))
+	for _, name := range names {
+		quoted = append(quoted, "`"+name+"`")
+	}
+	return "[carry on] You loaded " + strings.Join(quoted, ", ") + " this turn and then stopped without calling it. " +
+		"It is in your tool list now: call it in this same turn, or say in one line why you no longer need it."
+}
+
+// loadedAndNeverUsed reads the transcript for the shape [Agent.checkpointReopen]
+// sends back: the newest tool call of THIS turn was a `load_capability` that
+// answered `Loaded: …`, and nothing was called after it.
+//
+// THE WALK IS BACKWARD AND STOPS AT THE PERSON'S OWN MESSAGE, so a load an
+// earlier turn made and used cannot be mistaken for this turn's. A synthetic
+// continuation is a user-role message too and is walked THROUGH, because the
+// turn it re-opened is still this turn. What the load armed is read off the
+// load's own answer — the line `load_capability` wrote — rather than off the
+// group name, because the group is a word and the answer is the fact.
+func loadedAndNeverUsed(messages []ai.Message) ([]string, bool) {
+	for i := len(messages) - 1; i >= 0; i-- {
+		message := messages[i]
+		switch message.Role {
+		case "user":
+			if strings.HasPrefix(partsText(message), "[carry on] ") {
+				continue
+			}
+			return nil, false
+		case "assistant":
+			if len(message.ToolCalls) == 0 {
+				continue
+			}
+			if len(message.ToolCalls) != 1 || strings.TrimSpace(message.ToolCalls[0].Function.Name) != loadCapabilityToolName {
+				return nil, false
+			}
+			id := strings.TrimSpace(message.ToolCalls[0].ID)
+			for j := i + 1; j < len(messages); j++ {
+				if messages[j].Role != "tool" || strings.TrimSpace(messages[j].ToolCallID) != id {
+					continue
+				}
+				answer := strings.TrimSpace(partsText(messages[j]))
+				if !strings.HasPrefix(answer, loadedLead) {
+					return nil, false
+				}
+				names := strings.Split(strings.TrimSpace(strings.SplitN(strings.TrimPrefix(answer, loadedLead), ".", 2)[0]), ", ")
+				return names, len(names) > 0 && names[0] != ""
+			}
+			return nil, false
+		}
+	}
+	return nil, false
+}
+
+// partsText is a message's text parts joined, which is the only reading a
+// transcript walk needs of it.
+func partsText(message ai.Message) string {
+	var text strings.Builder
+	for _, part := range message.Content {
+		text.WriteString(part.Text)
+	}
+	return text.String()
+}
+
 const checkpointCarryOnLead = "[carry on] A reader of a bounded account of the work raised the observation below. " +
 	"Check it against the actual current work and the person's request before changing anything. " +
 	"Fix any confirmed gap. If the observation is mistaken or already satisfied, preserve the correct work, " +
@@ -767,6 +887,12 @@ type checkpointMeter struct {
 	// fact about ONE answer. A counter that remembered yesterday's carry-ons
 	// would refuse to carry on a conversation that had never asked for it.
 	carriedOn int
+	// loadNudged says this turn has already been sent back once for stopping
+	// right after a `load_capability` it never used, or an `ask` that was
+	// refused and never made again ([Agent.checkpointReopen],
+	// [loadedAndNeverUsed], [askRefusedAndNotRetried]). ONCE: a model that ignores the nudge too is a model
+	// that has decided, and a second nudge would be an argument.
+	loadNudged bool
 	// claimedDone is the REQUEST a completion claim has already been believed
 	// about, and empty on a turn that has made none ([Agent.handOverRunningTurn]).
 	//
@@ -2703,6 +2829,37 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 		return false, false
 	}
 	said := response.Text()
+	// A TURN THAT LOADED A TOOL AND STOPPED WITHOUT USING IT IS SENT BACK ONCE,
+	// AND THIS COSTS NO READER. It stands ahead of every gate below because it is
+	// not a reading of the work at all: it is the harness finishing something it
+	// started. `load_capability` answers "Continue in this same turn", the model
+	// answers with a plan — "Let me make the question." — and the turn ends with
+	// the question never asked, the picture never made, the setting never read.
+	// Measured on 2026-09-10 with the person's own words, on a model that loaded
+	// `ask` and then wrote 416 tokens of intention and no call. It is read
+	// structurally off the transcript ([loadedAndNeverUsed]), never off what was
+	// said, and a turn whose last words asked the person something is left alone
+	// as everywhere else in this file. It applies to a typed turn as much as a
+	// woken one, which is why it sits ABOVE [Agent.checkpoints]: the price gate
+	// is about spending a reader, and nothing is spent here.
+	if meter != nil && ctx.Err() == nil && !meter.loadNudged && !endsAskingThePerson(said) {
+		if names, ok := loadedAndNeverUsed(a.snapshot()); ok {
+			meter.loadNudged = true
+			hub.send(Event{Kind: EventNotice, Text: checkpointLoadNudgeNote})
+			a.record(textMessage("user", checkpointLoadNudgeLead(names)))
+			return true, false
+		}
+		// THE SAME SHAPE ONE RUNG LATER: the question was asked, the gate
+		// refused it, and the turn ended telling the person to answer a
+		// question that was never drawn. Read off the tool's own answer
+		// ([askRefusedLead]), once a turn under the same flag.
+		if refusal, ok := askRefusedAndNotRetried(a.snapshot()); ok {
+			meter.loadNudged = true
+			hub.send(Event{Kind: EventNotice, Text: checkpointAskNudgeNote})
+			a.record(textMessage("user", checkpointAskNudgeLead(refusal)))
+			return true, false
+		}
+	}
 	if !a.checkpoints(ctx, user) {
 		return false, false
 	}

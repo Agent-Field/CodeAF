@@ -998,3 +998,205 @@ func TestAnIrreversibleReceiptKeepsItsLimitAtAnyWidth(t *testing.T) {
 		t.Fatalf("a narrow receipt gave up the one clause that is a limit: %q", row)
 	}
 }
+
+// ── the size of the evidence decides the form ───────────────────────────────
+
+// THE ASKER'S `line` IS A WISH AND THE EVIDENCE DECIDES. A model wrote
+// `form: line` over a checklist of eight, and what came out was one row cut at
+// the edge — `[landscape] Landscapes & seascapes · … [surrealis…` — with no
+// key under any answer past the fourth. A checklist is rows by nature.
+func TestAChecklistAskedForAsALineIsACardWithARowPerAnswer(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.a.width = 100
+	labels := []string{"Landscapes & seascapes", "Portraits", "Still life & botanical", "Abstract",
+		"Impressionism", "Surrealism", "History / mythological painting", "Street scenes / cityscapes"}
+	options := make([]session.AnswerOption, 0, len(labels))
+	for i, label := range labels {
+		options = append(options, session.AnswerOption{Key: itoa(i + 1), Label: label})
+	}
+	options[0].Body = "Turner, Hokusai and the Hudson River School"
+	lab.raise(session.Question{
+		ID: 41, Kind: session.QuestionAsk, Ask: session.AskChoice, Form: session.FormLine,
+		Asker: session.Asker{Kind: session.AskerModel}, Head: "Which painting genres do you like?",
+		Reason: "you asked to be asked with choices", Options: options,
+		Input: session.InputShape{Kind: session.InputChecklist}, Stakes: session.StakesReversible,
+		Pick: &session.Pick{Key: "5", Reason: "every gallery has a wall of it"},
+	})
+	screen := lab.plain()
+	// THE NOTE UNDER AN ANSWER IS DRAWN, the asker's pick is a word on its row
+	// rather than the pointer, the pointer is the person's and starts on the
+	// first row, and the key row offers the walk and the tick — never `take
+	// the pick`, which a checklist's enter does not do.
+	if !strings.Contains(screen, "Turner, Hokusai") {
+		t.Fatalf("the note under the first answer is not drawn:\n%s", screen)
+	}
+	if !strings.Contains(screen, "5  Impressionism · suggested") {
+		t.Fatalf("the asker's pick is not said on its row:\n%s", screen)
+	}
+	if !strings.Contains(screen, tokens.GlyphCollapsed+" 1  Landscapes") {
+		t.Fatalf("the pointer does not start on the first row:\n%s", screen)
+	}
+	if strings.Contains(screen, "take the pick") || !strings.Contains(screen, "[tab] next row") {
+		t.Fatalf("the key row is wrong for a checklist:\n%s", screen)
+	}
+	if strings.Contains(screen, "…") {
+		t.Fatalf("an answer was cut instead of given its own row:\n%s", screen)
+	}
+	for i, label := range labels {
+		if !strings.Contains(screen, itoa(i+1)+"  "+label) {
+			t.Fatalf("answer %d is not on a row of its own:\n%s", i+1, screen)
+		}
+	}
+	if strings.Contains(screen, "[1] Landscapes") {
+		t.Fatalf("the answers were also spelled on the offer row:\n%s", screen)
+	}
+	// THE ROWS ARE THE TICKS. A digit ticks its row, enter sends what is ticked
+	// — in the block, without opening the page — and enter over nothing ticked
+	// sends nothing. (Past the settle guard, which drops the first quarter
+	// second of keys on every question.)
+	lab.tick(time.Second)
+	if !lab.press("enter") || len(lab.answer) != 0 {
+		t.Fatalf("enter over an empty checklist answered · %+v", lab.answer)
+	}
+	lab.press("3")
+	lab.press("7")
+	screen = lab.plain()
+	if !strings.Contains(screen, tokens.GlyphSettled+" 3  Still life") || !strings.Contains(screen, tokens.GlyphSettled+" 7  History") {
+		t.Fatalf("the ticked rows do not wear their ticks:\n%s", screen)
+	}
+	if !strings.Contains(screen, "send what is ticked") {
+		t.Fatalf("the key row does not say enter sends:\n%s", screen)
+	}
+	lab.press("3")
+	if screen = lab.plain(); strings.Contains(screen, tokens.GlyphSettled+" 3  Still life") {
+		t.Fatalf("a second press did not untick the row:\n%s", screen)
+	}
+	// A digit leaves the pointer on its row, tab walks it on, and space ticks
+	// where it stands.
+	lab.press("tab")
+	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphCollapsed+" 4  Abstract") {
+		t.Fatalf("tab did not walk the pointer to the next row:\n%s", screen)
+	}
+	lab.press("space")
+	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphSettled+" 4  Abstract") {
+		t.Fatalf("space did not tick the pointed row:\n%s", screen)
+	}
+	lab.press("space")
+	lab.press("enter")
+	if len(lab.answer) != 1 || strings.Join(lab.answer[0].Picked, ",") != "7" {
+		t.Fatalf("the answer is not what was ticked · %+v", lab.answer)
+	}
+}
+
+// AND A LONG ANSWER WRAPS RATHER THAN BEING CUT, on rows that all press the
+// same answer.
+func TestALongAnswerWrapsOntoRowsThatPressTheSameAnswer(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.a.width = 60
+	long := "Keep the sqlite file as the source of truth and rebuild every derived table from it on start"
+	lab.raise(session.Question{
+		ID: 42, Kind: session.QuestionAsk, Ask: session.AskChoice,
+		Asker: session.Asker{Kind: session.AskerModel}, Head: "Which storage shape?",
+		Reason: "two shapes fit", Stakes: session.StakesReversible,
+		Options: []session.AnswerOption{
+			{Key: "1", Label: long, Consequence: "one file, slower starts"},
+			{Key: "2", Label: "Postgres", Consequence: "a server to run"},
+		},
+	})
+	screen := lab.plain()
+	if strings.Contains(screen, "…") {
+		t.Fatalf("an answer was cut:\n%s", screen)
+	}
+	for _, piece := range []string{"1  Keep the sqlite file", "derived table", "one file, slower starts", "2  Postgres"} {
+		if !strings.Contains(screen, piece) {
+			t.Fatalf("the wrapped answer lost %q:\n%s", piece, screen)
+		}
+	}
+	rows := lab.rows()
+	first, last := -1, -1
+	for i, band := range lab.a.questionBands {
+		if band.at == 0 {
+			if first < 0 {
+				first = band.row
+			}
+			last = band.row
+		}
+		_ = i
+	}
+	if first < 0 || last <= first {
+		t.Fatalf("the wrapped answer is not pressable on every row it took · bands=%+v rows=%d", lab.a.questionBands, len(rows))
+	}
+}
+
+// A PLAIN LINE STAYS A LINE. Three short answers and nothing beside them fit
+// one row, whatever the asker called the form.
+func TestThreePlainAnswersStillDrawAsOneRow(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.raise(session.Question{
+		ID: 43, Kind: session.QuestionAsk, Ask: session.AskChoice, Form: session.FormLine,
+		Asker: session.Asker{Kind: session.AskerModel}, Head: "publish the draft?",
+		Reason: "nobody has read it", Stakes: session.StakesReversible,
+		Options: []session.AnswerOption{{Key: "1", Label: "publish it"}, {Key: "2", Label: "hold it"}, {Key: "3", Label: "ask Sam"}},
+	})
+	if screen := lab.plain(); !strings.Contains(screen, "[1] publish it · [2] hold it · [3] ask Sam") {
+		t.Fatalf("three plain answers left the line:\n%s", screen)
+	}
+}
+
+// ── a conversation switch leaves the other one's questions behind ────────────
+
+func TestSwitchingConversationsLeavesTheOtherOnesQuestionsBehind(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.raise(session.Question{
+		ID: 44, Kind: session.QuestionAsk, Ask: session.AskChoice,
+		Asker: session.Asker{Kind: session.AskerModel}, Head: "Which painting genres do you like?",
+		Reason: "you asked", Stakes: session.StakesReversible,
+		Options: []session.AnswerOption{{Key: "1", Label: "landscape"}, {Key: "2", Label: "portrait"}},
+	})
+	lab.a.withdrawQuestion(lab.a.questions[0].question, "the turn moved on without it")
+	if !strings.Contains(lab.plain(), "Which painting genres") {
+		t.Fatal("the withdrawn line is not on the screen to begin with")
+	}
+	other := &questionScript{fakeAgent: &fakeAgent{}}
+	drain(t, lab.a, lab.a.attachConversation(Conversation{Agent: other, SessionFile: t.TempDir() + "/other.jsonl"}, nil))
+	if screen := lab.plain(); strings.Contains(screen, "Which painting genres") {
+		t.Fatalf("the other conversation's question followed the switch:\n%s", screen)
+	}
+	if len(lab.a.questions) != 0 || len(lab.a.questionRecords) != 0 {
+		t.Fatalf("questions or records survived the switch · %d / %d", len(lab.a.questions), len(lab.a.questionRecords))
+	}
+}
+
+// AND THE CARD MAY NOT PUSH ITS OWN HEAD OFF THE SCREEN: on a short terminal
+// the note under each of eight answers is held to one row ending in the more
+// mark, and the whole card stays inside half the screen.
+func TestALongNoteUnderEveryAnswerIsCutToWhatTheScreenHolds(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.a.width, lab.a.height = 120, 36
+	note := "Compositions of objects, vanitas pieces, floral arrangements, the Dutch Golden Age, Chardin, Morandi, and modern tabletop work that carries the same stillness"
+	options := make([]session.AnswerOption, 0, 8)
+	for i := 0; i < 8; i++ {
+		options = append(options, session.AnswerOption{Key: itoa(i + 1), Label: "Genre " + itoa(i+1), Body: note})
+	}
+	lab.raise(session.Question{
+		ID: 44, Kind: session.QuestionAsk, Ask: session.AskChoice,
+		Asker: session.Asker{Kind: session.AskerModel}, Head: "Which genres?",
+		Reason: "a tour needs a shape", Options: options,
+		Input: session.InputShape{Kind: session.InputChecklist}, Stakes: session.StakesReversible,
+	})
+	screen := lab.plain()
+	if n := strings.Count(screen, glyphMore); n != 8 {
+		t.Fatalf("expected every note cut once, saw %d marks:\n%s", n, screen)
+	}
+	if strings.Contains(screen, "same stillness") {
+		t.Fatalf("a note ran to its end on a screen that has no room for it:\n%s", screen)
+	}
+	if rows := lab.a.questionHeight(); rows > 8*2+3 {
+		t.Fatalf("the card spends %d rows of a 36-row screen:\n%s", rows, screen)
+	}
+	// On a tall screen the same note gets two rows.
+	lab.a.height = 80
+	if screen = lab.plain(); !strings.Contains(screen, "Chardin") {
+		t.Fatalf("a tall screen still cuts the note to one row:\n%s", screen)
+	}
+}

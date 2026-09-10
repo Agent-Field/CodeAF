@@ -29,9 +29,10 @@ import (
 //     answer: the belief that combined them, aged to this moment. Two surfaces
 //     computing their own would drift the first time one was fixed.
 //   - UNKNOWN DRAWS NOTHING. A model whose lanes nobody has measured gets no
-//     speed on its row, no lanes to unfold and no `via`. A blank row is
-//     readable; an invented number is a router steering on a measurement
-//     nobody took (design-law-v2 §16).
+//     speed on its row and no machines in its fold — only the two answers
+//     that name none, `auto` and `openrouter` (palette.go's [picker.unfoldAt]).
+//     A blank row is readable; an invented number is a router steering on a
+//     measurement nobody took (design-law-v2 §16).
 //   - THE WORD "SLOW" IS ONLY SAID WHILE SOMETHING IS BEING DONE ABOUT IT.
 //     That is the whole of [app.laneRider]'s middle state.
 //
@@ -218,6 +219,9 @@ type laneView struct {
 	TTFT float64
 	Rate float64
 	Tail float64
+	// Vague says the belief has aged past saying anything about this lane's
+	// worst case ([laneTail]), so neither a tail nor its absence is drawn.
+	Vague bool
 	// Wait is the first token at the NINETIETH PERCENTILE, in seconds. It is
 	// what the ordering is done on and it is never drawn: a person remembers
 	// the twelve-second wait and not the four-hundred-millisecond one, so a
@@ -289,15 +293,34 @@ func laneViews(model string, now time.Time) []laneView {
 		view.TTFT = ttft.Mean() / 1000
 		view.Rate = rate.Mean()
 		view.Wait = ttft.Quantile(laneWaitZ) / 1000
-		// The tail is the p99 in seconds, and it is only a tail when it is far
-		// enough past the median to be a different experience: five times.
-		if p99 := ttft.Quantile(laneTailZ) / 1000; view.TTFT > 0 && p99 > laneTailRatio*view.TTFT {
-			view.Tail = p99
-		}
+		view.Tail, view.Vague = laneTail(ttft.Quantile(laneTailZ)/1000, view.TTFT)
 		views = append(views, view)
 	}
 	sortLanes(views)
 	return views
+}
+
+// laneTail is the p99 first token in seconds when it is worth a word on a row,
+// and zero when it is not; vague says the belief has aged past saying anything
+// about its worst case at all.
+//
+// A TAIL IS ONLY A TAIL WHEN IT IS FAR ENOUGH PAST THE MEDIAN to be a different
+// experience — five times — AND WHEN IT IS A WAIT SOMEBODY COULD HAVE HAD. The
+// ageing widens a belief's spread by half-lives ([lane.Posterior.Predict]), so a
+// lane nobody has heard from since yesterday has a p99 of exp(something huge):
+// +Inf, which the row printed as `tail 9223372036854775807s`. A figure that is
+// not finite, or longer than any request is allowed to stay open
+// ([provider.WallCeiling]), is arithmetic and not a measurement, and the
+// emptiness law draws it as nothing — including not as `no tail`, which is a
+// claim about the worst case too.
+func laneTail(p99, median float64) (tail float64, vague bool) {
+	if math.IsNaN(p99) || math.IsInf(p99, 0) || p99 > provider.WallCeiling.Seconds() {
+		return 0, true
+	}
+	if median > 0 && p99 > laneTailRatio*median {
+		return p99, false
+	}
+	return 0, false
 }
 
 // laneTailZ is the standard-normal quantile of the 99th percentile, and
@@ -464,9 +487,12 @@ func laneSlotForRow(key string) string {
 // the keyboard.
 //
 // A list nobody arms folds nothing, which is the honest reading of "this row
-// has no machine to choose" — a task's model, a role, a media slot.
+// has no machine to choose" — a task's model, a role, a media slot — and a
+// session launched with routing `off`, which sends no lane choice and measures
+// nothing, so a fold would offer machines no request asks for and promise
+// measurements that never come.
 func (a *app) armLanes(p *picker, slot string) {
-	if slot == "" {
+	if slot == "" || a.routingOff {
 		return
 	}
 	p.laneSlot = slot
@@ -728,7 +754,7 @@ func laneWhy(view laneView) string {
 	if word := laneRateWord(view.Rate); word != "" {
 		parts = append(parts, "steady "+word)
 	}
-	if view.Tail == 0 {
+	if view.Tail == 0 && !view.Vague {
 		parts = append(parts, "no tail")
 	}
 	line := strings.ToLower(view.Name) + ": " + strings.Join(parts, ", ")
@@ -1038,6 +1064,69 @@ func (a *app) laneRowChanged() {
 	}
 	slot := laneSlotFor(a.model)
 	provider.RepinLane(config.LanePinAt(a.profileDir, slot))
+}
+
+// ── THE PIN, WRITTEN ON THE MODEL ───────────────────────────────────────────
+
+// laneAtSign is what joins a model to the machine it is pinned to. It is the
+// `@` of the picker's own filter grammar ([parseLaneTerm]) and of `/model
+// @cloudflare`, so what a person reads on the chrome is what they would type.
+const laneAtSign = "@"
+
+// pinnedNow is the machine this conversation's requests are held to, as the
+// transport will act on it ([provider.PinnedFor]), lowercased the way every
+// lane name this surface draws is — and empty on `auto`, on `openrouter`, on a
+// pin the wire has retired for this model, under routing `off` (which sends no
+// lane at all, [app.routingOff]), and over a connection, where the pin in force
+// is the far machine's and this process cannot see it.
+func (a *app) pinnedNow() string {
+	if a.hosted() || a.routingOff || a.model == "" {
+		return ""
+	}
+	return strings.ToLower(provider.PinnedFor(a.model))
+}
+
+// modelWord is THE MODEL AS THE CHROME NAMES IT: its basename ([modelBase]),
+// and — while a lane is pinned — `@` and that lane: `deepseek-v4-flash@cloudflare`.
+//
+// A PIN IS AN INSTRUCTION THAT CHANGES EVERY FUTURE REQUEST, and until this the
+// chrome never said it. The picker's row said `via inception` only while the
+// picker was open, the status rider said `via …` only for ten minutes after an
+// answer, and the frame's head read `mercury-2.5 · ⠿ auto` — whose `auto` is the
+// thinking rung, which the owner read as "lane: auto" and concluded the pin had
+// failed (2026-09-10). So the pin rides the one word every place that names the
+// model already draws: the seam, the status row's identity and the phone deck's
+// chip all take it from here, and none of them spells it.
+//
+// On `auto` and `openrouter` it adds nothing — the emptiness law: a choice left
+// to the router is the unremarkable state and says no word.
+func (a *app) modelWord() string {
+	model := modelBase(a.model)
+	if model == "" {
+		return ""
+	}
+	if pin := a.pinnedNow(); pin != "" {
+		return model + laneAtSign + pin
+	}
+	return model
+}
+
+// openPickerFromChip is a press on the model's name wherever the chrome draws
+// it. It is /model's list; and while a lane is pinned it opens with the model's
+// fold already open and the cursor on that lane, because the name pressed was
+// `model@lane` — the door to the provider is the door to the model, and a press
+// on a word that names a machine should land on that machine.
+func (a *app) openPickerFromChip() {
+	a.openPicker()
+	if a.pinnedNow() == "" {
+		return
+	}
+	// THE FOLD HAS TO BE THE ONE THE CHIP NAMES, for [app.openLaneList]'s
+	// reason: a model the list does not carry leaves the cursor on row zero,
+	// and unfolding whatever sorted first would open somebody else's machines.
+	if chosen, ok := a.pick.choice(); ok && chosen.ID == a.model {
+		a.pick.unfoldHere()
+	}
 }
 
 // ── THE STATUS LINE ─────────────────────────────────────────────────────────

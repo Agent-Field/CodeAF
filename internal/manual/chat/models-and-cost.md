@@ -97,8 +97,8 @@ Type to filter. The keys:
 | pgup / pgdown | move 12 rows |
 | left, right, home, end, ctrl+u, ctrl+w | edit the filter text |
 | ctrl+t | walk the reasoning effort of the model under the cursor |
-| tab, → | open the lanes — the providers serving the model under the cursor |
-| tab, ← | close them again |
+| tab, → | open the lanes — the providers serving the model under the cursor — and move the cursor into them |
+| tab, ← | close them again, back on the model |
 | enter | switch to the row under the cursor — or, on an open lane, pin it |
 | esc | cancel, changing nothing |
 
@@ -121,14 +121,16 @@ tiers — prefix, then substring, then subsequence. So `ds v4` finds
 `deepseek/deepseek-v4-flash` and `claude 4.5` finds `anthropic/claude-sonnet-4.5`, and fuzzy
 hits sit at the bottom rather than mixed through. Twelve rows show at a time.
 
-The picker **never fetches**. The list comes from what is already known, in this order: the
+The picker **never fetches on its own** — only when you press `ctrl+r` in it, which asks the
+router for the newest list (the *commands* page, "Refreshing the model list"). Otherwise
+the list comes from what is already known, in this order: the
 catalog the door passed in, then `~/.aforge/v3/models.json`, then five names this build
 remembers (`deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
 `anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`). Each rung is
 tried only when the one above it came back empty after filtering.
 
 The placeholder in the empty filter box is the only place the overlay explains itself:
-`filter · ↑↓ · → lanes · ctrl+t effort · enter · esc`
+`filter · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc`
 
 There is no mouse commit on the picker's rows.
 
@@ -1140,14 +1142,30 @@ few seconds resets both of them forever, and for a long time nothing in aforge e
 request like that: a turn could sit there for half an hour with the reply still technically
 arriving, and the session log recorded nothing at all while it did.
 
-So every request also carries a **wall** — the longest it may run before it is cut, whether
-or not it is still writing.
+So every request also carries a **wall**. **A long reply that is still writing at its
+endpoint's normal speed is not cut at the wall** — only a reply that has stopped keeping
+up, or one that reaches 20 minutes.
 
 **The wall is not a fixed number.** It is worked out from what that endpoint has actually
 done for you: **five times the longest reply it has finished** in this session, never less
 than **2m30s** and never more than **20 minutes**. Two endpoints serving the same model
 therefore get two different walls, and one that routinely writes long answers earns a
 longer one by writing them.
+
+**When a reply reaches the wall, aforge checks its speed before it cuts.** If the reply
+wrote at least a fifth of what that endpoint normally writes in the same time, it is a long
+answer and not a stuck one, and it gets another wall's worth of time. It is checked again at
+the end of that, and again, up to **20 minutes**, which is the one limit nothing extends. A
+reply that is dripping — a token every few seconds from an endpoint that writes forty a
+second — is cut at the first wall. The speed of an endpoint aforge has not timed yet is
+taken as 30 tokens a second, so the check is six a second.
+
+**A long file write is a long reply like any other.** A tool call that writes a whole file
+streams its contents the way an answer streams words, and it counts as the reply arriving.
+Before this, a model writing one large file on an endpoint that had only ever finished short
+turns was cut at 2m30s every time, on every retry, while it wrote at full speed — the wall
+was too short for the file, and the endpoint could never finish a long reply to earn a
+longer wall.
 
 **A model aforge has not spoken to yet gets 5 minutes**, because there is nothing measured
 to work from. That figure used to be the floor under *everybody*, which meant the
@@ -1161,7 +1179,7 @@ The lower clamp is 2m30s and not less, because that is the longest an endpoint i
 go quiet while assembling an answer on its own side (above). A wall shorter than that would
 cut a reply the silence clocks were still being patient with.
 
-When a reply hits the wall it is cut and asked again exactly like a reply that went quiet —
+When a reply is cut at the wall it is asked again exactly like a reply that went quiet —
 the endpoint is avoided on the retry, and a dim line lands:
 
 ```
@@ -1180,6 +1198,10 @@ with the same ending when there is nowhere to move:
 error: the reply ran past 15m0s without finishing and was cut, three times. a different model may answer — /model, or set models.fallbacks so this can move on its own
 ```
 
+The time in that sentence is the whole limit the reply reached — after extensions, if it
+got any — and the session log records how many tokens had arrived before the cut, a file
+being written included.
+
 **Nothing you can set changes the wall.** It has no settings row, because a number you had
 to pick would be a number nobody could pick correctly — that is the whole reason it is
 measured instead.
@@ -1191,7 +1213,8 @@ second for every 64 tokens it may write, never less than 5 minutes and never mor
 Once that endpoint has finished a reply for you, the measured wall applies to those calls
 too, and whichever of the two is shorter is the one that cuts. A model aforge has not heard
 back from yet keeps the room-sized deadline, because a first reply from a model that thinks
-at length may need all of it.
+at length may need all of it. **That wall is never extended**: a reply that arrives in one
+piece has no speed to check until it is over.
 
 **A cut reply is thrown away whole**, like every other cut: none of the text reaches the
 conversation, and the retry starts the reply from the beginning.
@@ -2355,7 +2378,8 @@ left to aforge, `pinned: cloudflare` when it is not, `openrouter` when you have 
 no endpoint at all. A session that has measured nothing shows the model id alone.
 
 In the model picker — `/model`, or `enter` on that **your model** row — press `→` or
-`tab` on a row and the model's lanes open underneath it:
+`tab` on a row and the model's lanes open underneath it, with the cursor already on the
+lane in force (`auto` when nothing is pinned):
 
 ```
  deepseek-v4-flash   via cloudflare · ▲0.8s · $0.09/$0.18 per M · 1M · 58t/s
@@ -2388,14 +2412,18 @@ means you want that name served from there.
 `enter` on the **lane** row opens that same fold directly, on the model you are talking
 to, with the cursor already on the lane in force — so choosing an endpoint is reading
 the measured numbers and pressing enter, never guessing at a word. When nothing has been
-measured there are no machines to list, and the row walks between the only two honest
-answers instead: `auto` and `openrouter`.
+measured it opens all the same, onto the only two honest answers: `auto` and `openrouter`.
 
 From the keyboard alone: `/model @cloudflare` pins, `/model auto` un-pins.
 
-**A model nobody has measured has no lanes to open, and `→` does nothing on it.** There
-is nothing truthful to put under it, so nothing is drawn — the same rule that leaves the
-speed off its row.
+**A model nobody has measured opens onto its two answers and no machines.** `→` shows
+`auto` and `openrouter`, and in the machines' place one line —
+`no machine has been measured for this model yet — machines show up after its first answer`
+— with no number anywhere, the same rule that leaves the speed off its row. Opening it
+asks for that model's list of machines in the background.
+
+A pinned lane is written on the model's name as `model@lane` — see *Lanes → Pinning one
+lane yourself*.
 
 ## What the note on a lane row means — no tools, out ≤ 65k, tail 12s, fp4
 
