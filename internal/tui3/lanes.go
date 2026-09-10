@@ -487,9 +487,12 @@ func laneSlotForRow(key string) string {
 // the keyboard.
 //
 // A list nobody arms folds nothing, which is the honest reading of "this row
-// has no machine to choose" — a task's model, a role, a media slot.
+// has no machine to choose" — a task's model, a role, a media slot — and a
+// session launched with routing `off`, which sends no lane choice and measures
+// nothing, so a fold would offer machines no request asks for and promise
+// measurements that never come.
 func (a *app) armLanes(p *picker, slot string) {
-	if slot == "" {
+	if slot == "" || a.routingOff {
 		return
 	}
 	p.laneSlot = slot
@@ -1073,10 +1076,11 @@ const laneAtSign = "@"
 // pinnedNow is the machine this conversation's requests are held to, as the
 // transport will act on it ([provider.PinnedFor]), lowercased the way every
 // lane name this surface draws is — and empty on `auto`, on `openrouter`, on a
-// pin the wire has retired for this model, and over a connection, where the
-// pin in force is the far machine's and this process cannot see it.
+// pin the wire has retired for this model, under routing `off` (which sends no
+// lane at all, [app.routingOff]), and over a connection, where the pin in force
+// is the far machine's and this process cannot see it.
 func (a *app) pinnedNow() string {
-	if a.hosted() || a.model == "" {
+	if a.hosted() || a.routingOff || a.model == "" {
 		return ""
 	}
 	return strings.ToLower(provider.PinnedFor(a.model))

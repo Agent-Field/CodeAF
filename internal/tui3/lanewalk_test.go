@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/lane"
 )
 
@@ -184,6 +185,36 @@ func TestAPinnedLaneIsWrittenOnTheModelsName(t *testing.T) {
 	typeLine(t, a, "/model auto")
 	if seam := plain(frame(a)); strings.Contains(seam, laneAtSign+"cloudflare") {
 		t.Fatalf("auto left the pin on the name:\n%s", seam)
+	}
+}
+
+// AND UNDER ROUTING `off` THERE IS NEITHER. That row sends no lane choice and
+// measures nothing, so a fold would offer machines no request asks for and a
+// line promising measurements that never come, and `@cloudflare` on the name
+// would be a pin the wire is not carrying. The capability is absent.
+func TestRoutingOffOpensNoFoldAndWritesNoPin(t *testing.T) {
+	laneLab(t, threeLanes())
+	dir := t.TempDir()
+	row, ok := config.NewSettings(config.SettingsOptions{ProfileDir: dir}).Row(config.KeyRouting)
+	if !ok || row.Apply(config.RoutingOff) != nil {
+		t.Fatal("could not write the routing row")
+	}
+	t.Setenv("AFORGE_HOME", t.TempDir())
+	a := newApp(t.Context(), Options{Agent: &fakeAgent{model: flash}, Workspace: "/tmp/lab", ProfileDir: dir})
+	a.models = func() []Model { return laneCatalog }
+	a.width, a.height = 120, 24
+	a.pinLane(flash, "cloudflare")
+
+	if a.modelWord() != "deepseek-v4-flash" {
+		t.Fatalf("under routing off the name reads %q", a.modelWord())
+	}
+	typeLine(t, a, "/model")
+	drive(t, a, key("right"))
+	if a.pick.unfold != "" {
+		t.Fatalf("under routing off → opened the fold at %q", a.pick.unfold)
+	}
+	if got := a.hintWord(); strings.Contains(got, "lanes") {
+		t.Fatalf("under routing off the slot offers the fold: %q", got)
 	}
 }
 
