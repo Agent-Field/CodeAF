@@ -410,9 +410,9 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 			// there only when there is something for it to send.
 			return len(room.picked) > 0 || (q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != "")
 		}
-		if q.question.Kind == session.QuestionConnect {
-			// The connect offer's box is the answer, and enter over it empty
-			// takes nothing ([app.questionEnter]).
+		if q.question.Input.Kind == session.InputText {
+			// A question answered in words has nothing for enter to take
+			// while the box is empty ([app.questionEnter]).
 			return q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != ""
 		}
 		if len(q.question.Options) > 0 {

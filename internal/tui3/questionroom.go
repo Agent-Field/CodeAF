@@ -1209,22 +1209,6 @@ func (a *app) questionRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if typing || room.commenting != "" || room.asking != "" || room.reframing {
 		return nil, false
 	}
-	// `→` OPENS AN ANSWER AND `←` FOLDS IT, which is the other half of the walk
-	// `↑`/`↓` began: a person reading a page of folded sections reaches sideways
-	// to open one, and on this page they were reaching at nothing at all — the
-	// row said `[←→] choose` and neither key did anything (the owner,
-	// 2026-09-10: "no arrow or click").
-	//
-	// IT IS READ AFTER THE BOX AND BEFORE THE OFFER TABLE for two separate
-	// reasons. After the box, because `←` inside a sentence somebody is typing
-	// is the caret and nothing else. Before the table, because where the
-	// question carries a shape of its own — a dial, a hole with choices — the
-	// side arrows are that shape's ([needMoves]), and the two can never both be
-	// true on one page.
-	if room.input.kind == session.InputNone && (key == "left" || key == "right") {
-		a.questionFoldFocus(key == "right")
-		return nil, true
-	}
 	// ANY KEY BUT `d` PUTS THE HAND BACK ON THE WHEEL. The you-decide row is a
 	// promise about the NEXT keystroke, and reaching for any other key is that
 	// promise being answered.
@@ -1242,6 +1226,22 @@ func (a *app) questionRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if room.refused != "" {
 		room.refused = ""
 		a.questionRoomTouched()
+	}
+	// `→` OPENS AN ANSWER AND `←` FOLDS IT, which is the other half of the walk
+	// `↑`/`↓` began: a person reading a page of folded sections reaches sideways
+	// to open one, and on this page they were reaching at nothing at all — the
+	// row said `[←→] choose` and neither key did anything (the owner,
+	// 2026-09-10: "no arrow or click").
+	//
+	// IT IS READ AFTER THE BOX AND BEFORE THE OFFER TABLE for two separate
+	// reasons. After the box, because `←` inside a sentence somebody is typing
+	// is the caret and nothing else. Before the table, because where the
+	// question carries a shape of its own — a dial, a hole with choices — the
+	// side arrows are that shape's ([needMoves]), and the two can never both be
+	// true on one page.
+	if room.input.kind == session.InputNone && (key == "left" || key == "right") {
+		a.questionFoldFocus(key == "right")
+		return nil, true
 	}
 	// NO KEY DOES ANYTHING THAT IS NOT DRAWN ON SCREEN RIGHT NOW, which is the
 	// law question.go holds its block to and this page holds itself to through
