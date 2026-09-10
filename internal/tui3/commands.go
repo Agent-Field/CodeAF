@@ -124,9 +124,10 @@ var commands = []command{
 	{name: "home", desc: "every project and conversation on this machine"},
 	// AND THE TWO PLACES THAT HAD NO TYPED DOOR, directly under the one that
 	// does. /home, /memory, /standing, /history and /settings each open a place
-	// from the box; search and spend were reachable only by `alt+6`, `alt+5`,
+	// from the box; search and spend were reachable only by their `alt+` digit,
 	// `tab`, the tab bar, or typing a word on home — every one of which has to be
-	// learned somewhere else first.
+	// learned somewhere else first. The digit on each row is read off the bar's
+	// order table ([placeChord]).
 	//
 	// /spend IS A PLACE AND NOT A READING, WHICH IS WHY IT MOVED. It used to be
 	// an alias of /cost, so the one word a person guesses for "what has this cost
@@ -136,8 +137,8 @@ var commands = []command{
 	// belongs to the bigger one. /cost keeps /usage and /tokens, and says on its
 	// own row which question it is answering, so nobody who typed either word
 	// lands nowhere.
-	{name: "search", desc: "everything said on this machine · alt+6"},
-	{name: "spend", desc: "what this machine has cost, by the day · alt+5"},
+	{name: "search", desc: "everything said on this machine · " + placeChord(pageSearch)},
+	{name: "spend", desc: "what this machine has cost, by the day · " + placeChord(pageSpend)},
 	// It sits AFTER /compact and before /help because those two are the pair a
 	// person reads together when a conversation has gone wrong: compacting is
 	// what you do when the turn was right and too long, rewinding is what you do

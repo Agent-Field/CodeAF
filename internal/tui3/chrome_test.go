@@ -1448,11 +1448,11 @@ func TestTheFrameDrawsThePageThatWasOpenedLast(t *testing.T) {
 	if !strings.Contains(plain(spend), "What this machine has cost") {
 		t.Fatalf("the spend place is not what the frame draws:\n%s", spend)
 	}
-	// AND THE TAB BAR IS ON EVERY ONE OF THEM, naming the seven places and never
+	// AND THE TAB BAR IS ON EVERY ONE OF THEM, naming the four places and never
 	// a settings section — the negative this test asserts above depends on those
 	// two vocabularies staying apart, so a place may never be renamed to a word
 	// the settings panel already spells (pages.go).
-	for _, id := range pages() {
+	for _, id := range barPages(a.page, false) {
 		if !strings.Contains(plain(spend), id.word()) {
 			t.Fatalf("the tab bar does not name the %s place:\n%s", id.word(), spend)
 		}

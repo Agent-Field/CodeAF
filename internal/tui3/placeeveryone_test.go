@@ -226,6 +226,42 @@ func settingsPlaceLab(t *testing.T) *app {
 	return a
 }
 
+// everyEmptyPlace is each place that can hold nothing, opened on a machine
+// that has put nothing in it. Settings is absent because it is never empty, and
+// home because its empty panels are lane G's and are pinned beside the grid.
+func everyEmptyPlace() []everyPlace {
+	opened := func(id page) func(t *testing.T) *app {
+		return func(t *testing.T) *app {
+			t.Helper()
+			a := placeApp(t)
+			a.showPage(id)
+			return a
+		}
+	}
+	return []everyPlace{
+		{id: pageTasks, open: func(t *testing.T) *app {
+			t.Helper()
+			a := newTestApp(&fakeAgent{model: "m"})
+			a.showPage(pageTasks)
+			return a
+		}},
+		{id: pageStanding, open: func(t *testing.T) *app {
+			t.Helper()
+			a, _ := standingPlaceApp(t, nil, nil)
+			a.openStanding()
+			return a
+		}},
+		{id: pageMemory, open: func(t *testing.T) *app {
+			t.Helper()
+			a, _ := memoryPlaceApp(t, nil)
+			a.showPage(pageMemory)
+			return a
+		}},
+		{id: pageSpend, open: opened(pageSpend)},
+		{id: pageSearch, open: func(t *testing.T) *app { return searchLab(t, &searchFakeStore{}) }},
+	}
+}
+
 // ── the four questions ──────────────────────────────────────────────────────
 
 // tab AND shift+tab LEAVE EVERY PLACE. The circle is the whole point of the
