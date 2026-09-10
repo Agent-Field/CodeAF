@@ -417,7 +417,7 @@ func (a *Agent) endPhase() {
 	a.mu.Lock()
 	model := a.model
 	a.mu.Unlock()
-	over := PhaseNews{Model: model, Role: a.laneRole()}
+	over := PhaseNews{Model: model, Role: a.laneRole(), Session: a.newsKey()}
 	a.phase.mu.Lock()
 	defer a.phase.mu.Unlock()
 	a.dropHeldPhaseLocked()
