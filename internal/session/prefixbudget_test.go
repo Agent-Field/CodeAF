@@ -157,7 +157,7 @@ import (
 // two fields. For comparison, `propose_task` encodes to 5,720.
 //
 // AND THE CHOICE WAVE PAID IT BACK THE NEXT DAY (2026-09-10), so the cap is
-// 48,000 again and the measured prefix is 46,096, which is 1,904 under. Two
+// 48,000 again and the measured prefix is 46,245, which is 1,755 under. Two
 // things happened in one commit. The belt's hand-off section stopped being a
 // list of bullets that sorted work by WIDTH and became one picture of what the
 // model HAS and what each thing COSTS (beltfacts.go says why, and what a real
@@ -167,7 +167,7 @@ import (
 // on: one clause per field, the dowry prose dropped from `brief` because
 // prompts/system.md teaches it and a test pins it there, and the em dashes
 // taken out of every description string, small models tokenising them badly.
-// The tool block went 23,369 → 21,862 and the page reads 24,234.
+// The tool block went 23,369 → 21,808 and the page reads 24,437.
 //
 // WHAT IS STILL OWED. The planner rule is in the prefix twice —
 // `taskDescription`'s "do not reach for a planner" and prompts/system.md's own
