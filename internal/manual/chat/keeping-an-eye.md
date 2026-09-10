@@ -876,7 +876,9 @@ reasons, in the order worth checking:
   terminal. It is never delivered into the `ask here` pane on home.
 - **Nothing was open when it fired**, so it is waiting: home shows the project
   with `◆ N things since you left`, and the rows appear the moment you open a
-  conversation there.
+  conversation there. Home's own `since you left` block names the firing as well
+  — `fired 3 minutes ago — it told you` — and it does so for a one-off too, which
+  is over and off every list by the time you get back.
 - **It has not fired yet.** A window checks its items every five minutes, the
   first check five minutes after it opened, so a one-minute reminder can arrive
   up to five minutes late. `/status` shows `keeping an eye on N` while something

@@ -16,7 +16,7 @@ import (
 // this file takes — no room handed in, and the list as it drew before it could
 // ask (switcher.go's [switcherView.room]).
 func (l switcherLab) readIn(room int) switcherReading {
-	return readSwitcher(l.world, l.items, switcherHere{session: l.here, project: l.bucket}, l.gone, l.seen, l.now,
+	return readSwitcher(l.world, l.items, l.fired, switcherHere{session: l.here, project: l.bucket}, l.gone, l.seen, l.now,
 		switcherView{room: room}, switcherLedgerInput{})
 }
 
@@ -74,7 +74,7 @@ func TestTheListGrowsToTheFrameAndIsNeverShorterThanEight(t *testing.T) {
 func TestAGrownListStillPaysForItsOwnHeadings(t *testing.T) {
 	lab := newSwitcherLab()
 	const room = 20
-	r := readSwitcher(lab.world, lab.items, switcherHere{session: lab.here, project: lab.bucket}, lab.gone, lab.seen, lab.now,
+	r := readSwitcher(lab.world, lab.items, lab.fired, switcherHere{session: lab.here, project: lab.bucket}, lab.gone, lab.seen, lab.now,
 		switcherView{grouped: true, room: room}, switcherLedgerInput{})
 	drawn := len(r.lines)
 	if drawn > room {
