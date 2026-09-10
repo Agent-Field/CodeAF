@@ -20,11 +20,10 @@ A checked item means completed with the evidence named here, not merely discusse
 
 - [x] T01a — Complete two independent baseline reviews, including an isolated
   merge-tree simulation. Findings and differing recommendations are recorded below.
-- [ ] T01b — Choose the baseline route. Recommendation: preserve the draft, integrate
-  current dev in an isolated candidate, then validate. No actual integration or
-  branch replacement has been performed; preserve C07 until a change is agreed.
-- [ ] T02 — Settle backend composition and independent identities (D11/D12).
-  First question is pending: typed entities/components versus generic properties.
+- [x] T01b — Baseline route accepted: preserve the draft and integrate dev in an
+  isolated candidate. Implementation is in progress; parent draft remains intact.
+- [x] T02a / D11 — Typed backend entities and composable components accepted (C19).
+- [ ] T02b / D12 — Independent persistent identities remain to settle.
 - [ ] T03 — Settle accepted direction, governing scope and conflicts (D01/D02).
   Preserve C09/C15/C16: explicit decisions are retained; references do not move work;
   actual moves change folder-scoped guidance for future work; exceptions are narrow.
@@ -35,16 +34,18 @@ A checked item means completed with the evidence named here, not merely discusse
 - [ ] T07 — Settle execution identity, access/resource isolation and reusable
   configuration (D09/D12/D16).
 - [ ] T08 — Settle persistence/recovery and extension boundaries (D11/D17/D18).
-- [ ] T09 — Produce one implementation-ready contract for the first agreed slice:
-  exact baseline, source owners, transitions, interfaces, migrations and positive /
-  negative end-to-end assertions. Do not wait to design every future adapter.
+- [x] T09a — Record the bounded [first build contract](BUILD-WAVE-01.md): baseline
+  integration and safe standing control persistence.
+- [ ] T09b — Expand contracts as subsequent architecture decisions are settled.
 
 ## Subsequent delivery
 
-- [ ] T10 — Prepare the chosen isolated implementation baseline; preserve the old
-  draft and evidence until replacement/integration is explicitly settled.
-- [ ] T11 — Fix lifecycle correctness, beginning with the stop/pause overwrite;
-  verify concurrency and next-occurrence behavior on Spark.
+- [ ] T10 — IN PROGRESS: integration subagent owns isolated candidate, retains
+  draft ancestry and reconciles newer dev changes. Preserve parent #662.
+- [ ] T11a — IN PROGRESS: lifecycle implementation subagent fixes stale writeback.
+- [ ] T11b — IN PROGRESS: independent validation subagent writes functional
+  concurrency/next-occurrence checks. Root validates the combined candidate on Spark.
+- [ ] T11c — Broader admission/cancellation/recovery contracts remain future work.
 - [ ] T12 — Unify governing context across chat, workers, independent checking and
   scheduled runs, with exact sources and revision-aware effective inputs.
 - [ ] T13 — Complete the daily Slack journey, including setup, delivery, edits,
@@ -118,3 +119,24 @@ slices, branch from dev and port the final storage/projection patch followed by 
 adapted application seams. Preserve migration tests, IDs and immutable history.
 Avoid blindly cherry-picking broad mixed commits or recreating the implementation.
 Keep #662 and its evidence until the replacement has been accepted.
+
+## Active iteration constraints
+
+C19–C21 authorize the first build and parallel subagents. No tui3 suite or broad
+expensive UI/E2E acceptance in this iteration. Use focused backend functional
+checks on Spark, retain exact revision and receipts, and mark broader acceptance
+as deferred. Do not mark the full target or all lifecycle work complete after
+fixing one defect. The root owns combined integration, checklist and review.
+
+## Draft consolidation
+
+The user requested one maintained draft instead of hanging parallel drafts.
+Use #662 as the single active implementation/design record. Consolidate #663's
+committed grooming history into the validated candidate, update #662 with the
+exact baseline and evidence, then close #663 only after its records are retained.
+No successor implementation PR is to be opened for this iteration. Internal lane
+branches/worktrees are temporary integration tools, not separate product drafts.
+
+Current baseline integration commit: `1cfdbd28be78e29d28eac6c63d25b1f766af95e3`,
+parents backend `c63e03b7` and dev `996117314`. Independent semantic review found
+no introduced merge regression; the build and functional checks remain pending.

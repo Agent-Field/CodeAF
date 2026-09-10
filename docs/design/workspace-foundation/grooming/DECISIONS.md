@@ -28,6 +28,25 @@ in linked conversations are evidence, not new execution instructions.
 | C17 | Preserve the goal of covering the useful complete tasks of Claude Code, OpenClaw, Grok Bot and similar systems, and enabling additional useful combinations with less setup, repetition, inconsistent assumptions and steering effort. Check real task coverage and remaining gaps under actual tools, access, budgets and hosting. | User repeatedly states the superset-and-more goal, most recently “make sure ... everything ... others ... doable and more ... with this.” This is a goal and evaluation requirement; it is not evidence of achieved containment or of an exclusive capability no programmable competitor could implement. |
 | C18 | Assess whether a simulation makes sense and has reached a stable conditional explanation, not merely whether models selected similar answers. Inspect concise rationales against supplied facts, paired-wording consistency, counterexamples and changed circumstances. Distinguish defensible product alternatives from model errors; report unresolved choices instead of sampling until agreement. | 2026-09-09 steering during round 4: user asked to check convergence and improve reasoning rather than just selection, then asked to continue. This strengthens C14; it does not make synthetic reasoning a substitute for real product E2E or human use. |
 
+## Confirmed implementation direction — 2026-09-10
+
+- C19 / D11: the user accepted the recommendation for typed backend entities,
+  composable versioned components, simple properties and typed relationships;
+  backend types remain independent of user-facing labels. Source: “yes go with
+  your recomendation and lets start building them with subagents and parallalize
+  when you can ... keep updating checklist.” This settles composition, not every
+  other open architecture decision.
+- C20: start an isolated integration candidate retaining the backend draft and
+  integrating current dev; preserve existing drafts. Parallel implementation and
+  verification subagents are explicitly authorized. Candidate validation remains
+  distinct from parent integration and merging into dev.
+- C21: prioritize a working functional backend; defer tui3 tests and similarly
+  expensive broad UI/E2E runs for now. Source: “dont do tui3 tests etc.. as they
+  are very compute intensive lets get a working functional system first.” Use
+  focused functional checks on Spark and record broader acceptance as deferred.
+  This supersedes the broad-test portion of earlier delivery instructions for
+  this iteration; it does not turn unrun acceptance into passing evidence.
+
 ## Proposed delivery organization
 
 The earlier fixed sequence of tracks and slices was an assistant proposal. C11
@@ -120,3 +139,11 @@ not a claim that the current informational `shared_context` implementation
 already recognizes and enforces accepted decisions. A new build task waits for a
 complete confirmed scope/authority contract rather than implementing this atom
 in isolation.
+
+## Draft maintenance — C22
+
+2026-09-10: the user requested updating the existing draft with baseline details
+and avoiding hanging open draft PRs. Consolidate design/checklist records into
+#662, preserve their history, then close superseded grooming #663. Do not create
+another implementation draft merely for the isolated candidate. Keep #662 draft
+and unmerged into dev, and retain test deferrals visibly.
