@@ -647,6 +647,56 @@ func TestHandingTheSameDecisionOverTwiceSaysItIsAlreadyHandedOver(t *testing.T) 
 	}
 }
 
+// TestAnsweringLetAforgeDecideTwiceStandsRatherThanRefusing is the same press
+// from the OTHER side — the door a person's key goes through
+// ([Agent.applyLanding]). The row somebody is looking at was drawn before the
+// hand-over reached it, so a second press is a press on a stale card and the
+// state it asks for is the state that already holds; answering it with a
+// refusal would put trouble on a card whose question was answered correctly.
+// Every other refusal on that key is still handed back.
+func TestAnsweringLetAforgeDecideTwiceStandsRatherThanRefusing(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.AskConsent = true
+	})
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+		node.graph.complete(node, TaskUnverified)
+	})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Hidden rental digs", named: true, brief: "b", acceptance: "a"})
+	waitDoneNode(t, graph.node(id))
+
+	answer := Answer{Kind: QuestionLanding, ID: id}
+	if err := agent.applyLanding(answer, LandingDecideKey, ""); err != nil {
+		t.Fatalf("the first press: %v", err)
+	}
+	said := len(steeringQueue(agent))
+	if err := agent.applyLanding(answer, LandingDecideKey, ""); err != nil {
+		t.Fatalf("the second press was refused: %v", err)
+	}
+	// AND IT SENT NOTHING A SECOND TIME. Standing is not repeating: the model is
+	// already holding this decision and a second identical line about it is the
+	// defect, not the refusal.
+	if again := len(steeringQueue(agent)); again != said {
+		t.Fatalf("the second press enqueued %d more lines for the model", again-said)
+	}
+	if node := agent.taskNode(id); node == nil || node.decidedBy() != TaskAskOwnerModel {
+		t.Fatal("the node is not held by aforge after two presses")
+	}
+	// AND A REFUSAL THAT IS NOT THIS ONE STILL ARRIVES: taking the decision back
+	// and settling it makes the next press a press on work that has stopped
+	// asking, and that is trouble a person has to be told about.
+	if err := agent.TakeBackDecision(id); err != nil {
+		t.Fatalf("taking the decision back: %v", err)
+	}
+	if err := agent.ResolveUnverified(id, TaskAccept, ""); err != nil {
+		t.Fatalf("settling it: %v", err)
+	}
+	if err := agent.applyLanding(answer, LandingDecideKey, ""); err == nil {
+		t.Fatal("a press on a settled node was taken as a hand-over")
+	}
+}
+
 // agedTaskNode backdates one settled node's landing, so a test can build the
 // clock a recovered graph has: work that finished hours ago, beside rows that
 // landed since.

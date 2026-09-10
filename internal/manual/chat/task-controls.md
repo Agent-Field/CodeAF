@@ -90,9 +90,10 @@ it in` and pointed at a worktree belonging to work it had never seen. A number n
 still means the newest task anywhere in the project that wears it, which is what a name is for.
 
 **Pressing it twice does nothing the first press did not do.** The second press answers
-`already handed to aforge` and sends the model nothing further; the card keeps reading
-`handed to aforge for this one`. If you want it back, press `take it back` and the chips
-return.
+`already handed to aforge` and sends the model nothing further — no second instruction, no
+second line about the same decision — and it is not shown to you as trouble, because the
+state it asks for is the state that already holds: the reason row goes on reading `aforge
+is deciding`. If you want it back, press `take it back` and the answers return to you.
 
 **A recovered task is this conversation's task.** Reopening a conversation brings its
 graph back — `recovered task graph: 1 done · 1 your call` — and everything the card offers

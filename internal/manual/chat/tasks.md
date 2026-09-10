@@ -1402,7 +1402,7 @@ instant — the stamp is **absent** rather than invented.
   roster. The `?` is deliberately neither a tick nor a cross: it claims neither a finding
   nor a judgement nobody made. The card carries the reason it is asking on its own row and
   the answers under that — unless you have set `task.settle` to `auto`, in which case the
-  reason row says `aforge is deciding` and the answers are one press away.
+  reason row says `aforge is deciding` and the answers are drawn beside it.
 
 After the name the card carries the span, the file count, and how the branch came home:
 `merged`, `in your own folder`, `conflicted · <branch>`, or `branch kept · <branch>` —
@@ -4257,13 +4257,15 @@ sentences, because there are two ways to end up with two versions of the same fi
 | `the check did not pass it: <gaps>` | `accept anyway` | `not right` |
 | `conflicts with your branch: <files>` | `resolve it` | `drop it` |
 | `your branch changed the same files while it worked: <files>` | `resolve it` | `drop it` |
+| `your folder already has files the task wrote: <files>` | `resolve it` | `drop it` |
 | `starts on your word` — a proposal with no clock on it | `start` | `don't` |
 | `design ready to approve` — a subharness wrote its design | `approve` | `decline` |
 | `paused at the $5.00 cap` | `raise the cap` | `stop it` |
 
-The third and fourth are **one question with two true sentences**: either the branch would
+The third, fourth and fifth are **one question with three true sentences**: the branch would
 not merge, or it would have merged and your own branch changed those files while the task
-worked. Both hand you the same two answers, and the sentence says which happened.
+worked, or your folder already holds your own uncommitted copies of the very files the task
+wrote. All three hand you the same two answers, and the sentence says which happened.
 
 **The first four are the ones a landing card asks**, and there the two answers are chips,
 always the same three columns in the same order with the same keys — only the words on them
@@ -4281,10 +4283,16 @@ has its own card with its own answers: the proposal card (`yes · redirect · no
 subharness design's own page, and an adaptive run's spend gate. The row and the note read
 the same six sentences whichever card is drawing them.
 
-Every chip is a key **and** a click. The keys work on the **selected** card — walk to it
-with `↑`/`↓` — and only over an **empty** message box, exactly like `x`: a letter typed
-into a sentence stays a letter. Clicking a chip presses it; clicking anywhere else on that
-row does nothing rather than expanding the card under your hand.
+Every chip is a key **and** a click, and they are drawn on the **question block** above the
+message box — the same block every other decision in aforge is put to you on — so they are
+in the same place whichever page you are standing on: the conversation, the task's own room,
+the `/tasks` page. The landing card in the transcript keeps the head and the sentence saying
+what is being asked; the answers are on the block. The letters work only over an **empty**
+message box, exactly like `x`: a letter typed into a sentence stays a letter.
+
+**The three answers sit on one row.** The one exception is the landing whose `[a]` moves
+files of your own — *Your folder already has files the task wrote*, below — where the block
+gives each answer a line so it can say what pressing it will do.
 
 **No sentence on a card ends in `…` hiding the thing you need.** Where a reason is too long
 for the width, the list of files is what gets cut — never the verb, and a chip that will not
@@ -4299,13 +4307,13 @@ not drawn, and its letter does nothing rather than failing when you press it.
 - **`[a] accept`** — you looked and you are taking the work. Its branch follows the same
   landing as checked work: it merges into an ordinary checked-out branch, or is kept off a
   protected, moved or detached checkout. Everything queued behind it unblocks. The report
-  leads `you looked at this yourself and took it as done`. If that merge conflicts nothing
+  leads `you took this as done`. If that merge conflicts nothing
   is forced: your checkout is left exactly as it was, the branch is kept, and the task comes
   back as `your call · conflicts with your branch` with the clashing files named.
 - **`[n] not right`** — you looked and it is not finished. The task becomes `incomplete`,
   its branch is kept, and its previous report is kept under the refusal. Its dependents do
   not advance and land `incomplete · was blocked by another task`. The report leads
-  `incomplete — you looked at this yourself and said so`.
+  `incomplete — you said it is not finished`.
 - **`[s] tell it`** — you have something to say rather than an answer to give; the next
   section but one is about that.
 
@@ -4381,6 +4389,41 @@ untouched — no markers, no half-merge.
 says `their own branch changed the same files while this worked, and that is not yours to
 accept`, so what it does is tell you what moved and leave the choice with you.
 
+## Your folder already has files the task wrote — your own uncommitted copies
+
+The third way to end up with two versions of one file is the one you are likeliest to have
+caused yourself: the files the task wrote are **already sitting in your folder**, written by
+hand or by an earlier turn, and git is not watching them at all. A merge would have to write
+over work nothing else has a copy of, so the landing refuses, leaves your tree exactly as it
+was, and asks:
+
+```
+? ◆ Emails for the leads · your call · 25m · 15 files · branch kept · task/emails
+  your folder already has files the task wrote: leads-contact-sheet.md, research/method.md
+
+? Emails for the leads
+  a  resolve it  lands the branch, and your own copies are carried aside and put back —
+                 kept beside the task's as .yours where both wrote the same file
+  n  drop it
+  s  tell it
+```
+
+**`[a] resolve it`** lands the branch and carries your own copies aside and back: where the
+task wrote the same file, your copy is kept beside it as `<name>.yours`, and where it did
+not, your copy goes straight back where it was. **Nothing of yours is ever deleted.** The
+answer says so before you press it. **`[n] drop it`** keeps the branch and takes nothing.
+
+**This is the one landing that asks on a card rather than on one row.** Every other `your
+call` puts its three answers on a single row above the message box — `[a] <yes> · [n] <no>
+· [s] tell it` — because the reason is already on the landing card in the conversation and
+one row is enough. Here `[a]` **moves files of yours**, and a sentence saying so has
+nowhere to go on a row, so the block gives each answer a line of its own and writes the
+consequence beside the one it belongs to. You never press this key blind.
+
+This road used to read `conflicts with your branch`, which was untrue — there was no branch
+of yours in it — and `[a]` spent a merge round, which merges *branches* and cannot see an
+untracked file at all, so it refused a second time in exactly the same words.
+
 ## Tell it something instead of answering — [s] tell it, and why saying looks good does not accept
 
 `[s] tell it` is the third chip on **every** `your call` card, and it is not a third answer.
@@ -4394,19 +4437,22 @@ never a silent accept. If you mean accept, press `[a]` or say "accept task 7".
 The card keeps its chips while a steer is in flight, because nothing about the question has
 changed yet.
 
-## Why did it stop asking me — it says aforge is deciding, and how do I take a task back
+## Why does it say aforge is deciding — and how do I take a task back
 
-If a card shows no chips, `task.settle` is set to `auto` and aforge is deciding this one.
-**The card says so rather than going quiet**, on the reason row, with the way back on it:
+When `task.settle` is `auto`, or after you press `[d] you decide` on one card, aforge is
+reading that work and will answer it. **The row says so rather than going quiet**, on the
+reason line:
 
 ```
-nobody could check it · aforge is deciding · [t] take it back
+? Port the parser
+  nobody could check it · aforge is deciding
+  [a] accept · [n] not right · [s] tell it
 ```
 
-Pressing `t` hands the question back to you and draws the chips again. **It resolves
-nothing** — the task is exactly where it was, and what changed is who is holding the
-question. Anything the model was about to say it may still say; what it may no longer do is
-have the last word.
+**The answers stay drawn, and answering is how you take it back.** Pressing `[a]` or `[n]`
+yourself settles it and ends aforge's turn at it; a card with a sentence on it and no handle
+is the one shape this surface must never draw. Anything aforge was about to say it may still
+say; what it may no longer do is have the last word.
 
 **A task never stays unowned past the end of a turn.** If aforge's turn ends with a task it
 was handed still unanswered, the question comes back to you by itself and the card draws
@@ -4562,17 +4608,21 @@ Whichever door is used first wins; the other two find the question already gone 
 
 If a landed task is asking and you cannot see anything to press, you are on a row that only
 reports the tier: a roster row, home's `needs you` strip, or the card's own head. The
-answers are in exactly two places on screen:
+answers are in **one** place on screen, and it is the same place wherever you are standing:
+the question block above the message box, reading
 
-- **the foot of the task's room** — the reason it is asking, and under it
-  `[a] <yes> · [n] <no> · [s] tell it`. Enter on the roster row opens the room; the chips
-  are at the bottom of the page and the hint slot under the message box names the keys;
-- **the landing card in the conversation**, under the reason row, once the card is selected.
+```
+? <the task's name>
+  <the reason it is asking>
+  [a] <yes> · [n] <no> · [s] tell it
+```
 
-Both need an **empty** message box: the letters are held to the same rule `x` is, so a
-letter typed into a sentence stays a letter. If neither place shows the chips, the reason
-row says `aforge is deciding` and `[t] take it back` is how you get them — that is
-`task.settle = auto`, and "ask me about these again" changes it for good.
+It is there in the conversation, in the task's own room, and on the `/tasks` page — the
+landing card in the transcript keeps the head and the sentence saying what is being asked,
+and the answers are on the block. The letters need an **empty** message box: they are held
+to the same rule `x` is, so a letter typed into a sentence stays a letter. If the reason row
+also reads `aforge is deciding`, that is `task.settle = auto` — the answers are still yours
+to press, and "ask me about these again" changes the setting for good.
 
 ## Stopping an adaptive run
 

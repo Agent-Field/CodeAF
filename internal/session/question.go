@@ -1631,6 +1631,14 @@ func ConsentScopeOf(action AnswerAction, answer Answer) ConsentScope {
 // the audit's reason: [Agent.TakeBackDecision] had no caller anywhere, so a
 // decision the model settled could not be undone by anybody.
 func (a *Agent) applyLanding(answer Answer, key, words string) error {
+	// A CONFLICT'S YES IS NOT AN ACCEPT, and this is the one arm where the two
+	// lanes part. `[a] resolve it` on a branch that would not fasten spends the
+	// merge round or the carry ([Agent.ResolveConflict]); accepting would offer
+	// the same branch to the same ground and be refused in the same words, which
+	// is what it did (docs/design/task-states/DESIGN.md's conflict row).
+	if answer.Kind == QuestionConflict && key == LandingYesKey {
+		return a.ResolveConflict(answer.ID)
+	}
 	switch key {
 	case LandingYesKey:
 		return a.ResolveUnverified(answer.ID, TaskAccept, words)
@@ -1639,7 +1647,17 @@ func (a *Agent) applyLanding(answer Answer, key, words string) error {
 	case LandingAgainKey:
 		return a.ResolveUnverified(answer.ID, TaskReaudit, words)
 	case LandingDecideKey:
-		return a.HandUnverifiedToModel(answer.ID)
+		// A SECOND PRESS IS THE SAME ANSWER AND NOT A REFUSAL. `let aforge decide
+		// this one` pressed twice used to hand the model the same decision twice,
+		// in two identical lines, because the row a person is looking at was drawn
+		// before the hand-over reached it. The engine says the question is already
+		// in its hands ([ErrTaskHandedOver]), and what this door owes for that is
+		// the answer standing: the state is exactly the one that was asked for.
+		// EVERY OTHER REFUSAL IS STILL ONE.
+		if err := a.HandUnverifiedToModel(answer.ID); err != nil && !errors.Is(err, ErrTaskHandedOver) {
+			return err
+		}
+		return nil
 	case LandingTakeBackKey:
 		return a.TakeBackDecision(answer.ID)
 	case LandingTellKey:
@@ -2105,10 +2123,10 @@ func (a *Agent) landingQuestion(pending PendingDecision) Question {
 		ID:      notice.ID,
 		Kind:    kind,
 		Ask:     AskLanding,
-		Form:    FormCard,
+		Form:    landingForm(status.Ask),
 		Asker:   Asker{Kind: AskerTask, Name: strings.TrimSpace(notice.Title)},
 		Head:    strings.TrimSpace(notice.Title),
-		Reason:  strings.TrimSpace(status.Ask.Reason),
+		Reason:  landingReason(status.Ask),
 		Subject: SubjectRef{Kind: SubjectNode, ID: notice.ID, Name: strings.TrimSpace(notice.Title)},
 		Options: landingOptions(status.Ask),
 		// ACCEPTING BRINGS A BRANCH HOME AND REFUSING KEEPS ONE. Neither is free
@@ -2127,6 +2145,57 @@ func (a *Agent) landingQuestion(pending PendingDecision) Question {
 		Policy: landingPolicy(status.Ask.Owner),
 	})
 }
+
+// landingForm is which shape a landing asks to be drawn in, and it is decided
+// by HOW MUCH EVIDENCE THIS PARTICULAR LANDING CARRIES rather than by the kind.
+//
+// THE TASK-STATES ROW IS UNCHANGED (docs/design/questions/DESIGN.md's defaults
+// table says exactly that beside this kind): `[a] <yes> · [n] <no> · [s] tell
+// it`, one row, the three columns in the one order — which is the line form,
+// because the card form spends a row per answer and never composes that row.
+// The landing's head, its facts and its reason are already drawn by the card
+// this surface lands in the transcript (internal/tui3's taskdone.go), so a
+// second head and a second reason above the box would be the two-renderings
+// defect rather than more evidence.
+//
+// ONE ROAD PROMOTES, and it is the road with something to say that no verb can
+// carry: a landing held by the person's own uncommitted copies, whose `[a]`
+// MOVES FILES OF THEIRS (task_status.go's [taskAskGroundConsequence]). A
+// consequence is drawn beside its answer on the card and nowhere on a row, and
+// forms promote and never demote — so the lane that knows the evidence is here
+// asks for the card exactly where the evidence exists.
+func landingForm(ask TaskAsk) QuestionForm {
+	if strings.TrimSpace(ask.Consequence) != "" {
+		return FormCard
+	}
+	return FormLine
+}
+
+// landingReason is the row's own sentence, plus WHO IS DECIDING where that is
+// not the person.
+//
+// THE CARD MUST SAY SO ON THE REASON LINE (docs/design/task-states/DESIGN.md).
+// Under `task.settle = auto`, and after somebody hands one card over, the model
+// is reading the work and will spend a verb on it — and a row that said nothing
+// about that is a person answering a question somebody else is already
+// answering. THE ANSWERS STAY DRAWN: the floor hands an unanswered question back
+// at the end of the turn anyway, and a card with a sentence and no handle is the
+// exact shape #767 was filed about. Answering it IS taking it back.
+func landingReason(ask TaskAsk) string {
+	reason := strings.TrimSpace(ask.Reason)
+	if ask.Owner != TaskAskOwnerModel {
+		return reason
+	}
+	if reason == "" {
+		return landingDecidingWord
+	}
+	return reason + " · " + landingDecidingWord
+}
+
+// landingDecidingWord is that clause, and it is a WHOLE CLAUSE rather than a
+// word: a row reading `nobody could check it · auto` would have told a person
+// the name of a setting instead of who is deciding.
+const landingDecidingWord = "aforge is deciding"
 
 // landingPolicy is [TaskAsk.Owner] as a [Policy], and it is the whole of this
 // wave's composition with the auto-settle floor.
@@ -2166,6 +2235,12 @@ func landingOptions(ask TaskAsk) []AnswerOption {
 			if word := strings.TrimSpace(ask.Yes); word != "" {
 				options[at].Label = word
 			}
+			// AND WHAT IT WILL DO, WHERE THE VERB DOES NOT SAY IT. One road carries
+			// a consequence — a landing held by the person's own untracked copies,
+			// whose `resolve it` moves files of theirs (task_status.go's
+			// [taskAskGroundConsequence]) — and every other ask leaves it empty,
+			// which is the emptiness law and draws no row.
+			options[at].Consequence = strings.TrimSpace(ask.Consequence)
 		case LandingNoKey:
 			if word := strings.TrimSpace(ask.No); word != "" {
 				options[at].Label = word
