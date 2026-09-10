@@ -2429,7 +2429,7 @@ func (a *app) servedRiderAt(width int) string {
 	// are assembled in lanes.go, which this wave does not own; the rebase that
 	// lands internal/tui3/rowfit.go is where it becomes a [phaseSegment] like
 	// the two around it.
-	if rider := a.laneRider(); rider != "" {
+	if rider := a.laneRider(true); rider != "" {
 		return rider
 	}
 	sighting, ok := servedSighting(a.model)
@@ -2492,7 +2492,7 @@ func (a *app) modelRiderAt(width int) string {
 			room = 0
 		}
 	}
-	if rider := a.laneRider(); rider != "" {
+	if rider := a.laneRider(false); rider != "" {
 		if width < 0 || ansi.StringWidth(rider) <= width {
 			return rider
 		}

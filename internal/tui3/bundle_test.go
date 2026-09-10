@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -4939,5 +4940,29 @@ func TestTheSeamKeepsTheRiderBeforeTheBranchAndTheNamesTail(t *testing.T) {
 	}
 	if ansi.StringWidth(line) != 80 {
 		t.Fatalf("the legend is %d cells wide, want 80", ansi.StringWidth(line))
+	}
+}
+
+// THE SEAM'S RIDER IS ATTRIBUTION ALONE. On 2026-09-10 the owner read `via
+// relace · 1.3s · 79 t/s` beside the model while an answer was being written
+// and took the figure for the live rate — which stood, that same frame, at the
+// right edge of the status row. The last answer's wait and average stay on the
+// sheet's `served` row, where a person goes to ask about the last answer.
+func TestTheSeamRiderNamesTheMachineAndNotTheLastAnswersFigures(t *testing.T) {
+	a, _, now := hudApp(t)
+	a.title = "porting the parser"
+	a.state = stateWorking
+	PostLaneNews(LaneNews{Model: a.model, Lane: "relace", Winner: "relace", TTFT: 1300 * time.Millisecond, Rate: 79, Role: lane.RoleTalk, At: now.Add(-time.Second)})
+	t.Cleanup(forgetLanes)
+
+	line := plain(a.legend(140))
+	if !strings.Contains(line, "· via relace") {
+		t.Fatalf("the seam lost the machine: %q", line)
+	}
+	if strings.Contains(line, "t/s") || strings.Contains(line, "1.3s") {
+		t.Fatalf("the seam carried the last answer's figures: %q", line)
+	}
+	if got := a.servedRider(); !strings.Contains(got, "1.3s") || !strings.Contains(got, "79 t/s") {
+		t.Fatalf("the sheet's served row lost the figures: %q", got)
 	}
 }

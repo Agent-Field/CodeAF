@@ -1081,7 +1081,16 @@ func (a *app) laneRowChanged() {
 // clock takes the segment away from them while a request is actually in flight
 // (render.go's [app.servedRider]). These read the past tense; that reads the
 // present one.
-func (a *app) laneRider() string {
+// timed says whether the answer's own figures — the wait before its first word
+// and, while a turn runs, how fast it was written — ride after the machine's
+// name. The sheet's `served` row wants them (statusdeck.go); THE SEAM DOES NOT.
+// On 2026-09-10 the owner read `via relace · 1.3s · 79 t/s` on the seam while
+// an answer was being written and took the figure for the live rate, which by
+// then stood at the right edge of the status row as `34 tok/s` (render.go's
+// [app.liveRiderAt]) — one frame, two rates, and the one beside the model was
+// the LAST answer's average. Who served is attribution and belongs beside the
+// model; how fast is a claim about now and has one place on the frame.
+func (a *app) laneRider(timed bool) string {
 	news, ok := laneNewsFor(a.model)
 	if !ok || a.now().Sub(news.At) > servedWindow {
 		return ""
@@ -1138,6 +1147,9 @@ func (a *app) laneRider() string {
 		return ""
 	}
 	rider := " · via " + served
+	if !timed {
+		return rider
+	}
 	if word := laneSecondsWord(news.TTFT.Seconds()); word != "" {
 		rider += " · " + word
 	}
