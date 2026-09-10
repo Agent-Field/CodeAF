@@ -232,9 +232,10 @@ const (
 	GlyphModel = "◇"
 	GlyphSpend = "$"
 
-	// The file kinds an attachment or media chip names. A chip says WHAT KIND
-	// OF THING is on the end of the path before it says the path, and the four
-	// kinds a person can hand this program are the four here.
+	// The file kinds. A chip says WHAT KIND OF THING is on the end of a path
+	// before it says the path, and so does the gutter beside a call that made
+	// one or opened one; the four kinds a person can hand this program are the
+	// four here.
 	//
 	// GlyphFileDocument is [GlyphActionRead]'s byte on purpose — a page of text
 	// is a page of text whether a call opened it or a person dragged it in, and

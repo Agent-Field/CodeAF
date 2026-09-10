@@ -118,7 +118,7 @@ The gutter says what family a step is and NEVER how it went: `test` draws a
 flask and never a checkmark, because the family is the act of checking and not
 its verdict.
 
-### File kinds (internal/tui's attachment and media chips)
+### File kinds (chips, and the gutter beside a call that made or opened one)
 
 | Kind | Slot | Plain | Nerd font | ASCII |
 | --- | --- | --- | --- | --- |
@@ -127,8 +127,11 @@ its verdict.
 | a sound | `GFileAudio` | `♪` | nf-fa-file_audio_o | `a` |
 | a moving picture | `GFileVideo` | `▷` | nf-fa-file_video_o | `v` |
 
-One chip, four kinds, and the set is closed because it is the set a person can
-hand this program. They are one block rather than four scattered slots for the
+Four kinds, and the set is closed because it is the set a person can hand this
+program and the set this program can hand back. A KIND IS NOT AN ACTION: the
+step gutter's families say what a call was DOING, these say what the thing on the
+end of the path IS, which is why `generate_video` and a dragged-in `.mp4` draw
+the same mark. They are one block rather than four scattered slots for the
 reason the block exists at all: a row of chips that upgraded three kinds and left
 the fourth on the plain floor would draw the exact mixed-repertoire line the tier
 was built to end.

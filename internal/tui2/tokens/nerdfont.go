@@ -488,19 +488,25 @@ var vocabulary = []GlyphBinding{
 		UsualTint: Green, NFAmbiguous: true,
 	},
 
-	// -- the file kinds an attachment chip names -----------------------------
+	// -- the file kinds --------------------------------------------------------
 	//
-	// One chip, four kinds, and the set is closed because it is the set a
-	// person can hand this program: a document, an image, a sound, a moving
-	// picture. They are one BLOCK rather than four scattered slots for the
-	// reason the block exists at all — a row of chips that upgraded three
-	// kinds and left the fourth on the plain floor would draw the exact
-	// mixed-repertoire line the tier was built to end.
+	// Four kinds, and the set is closed because it is the set a person can hand
+	// this program and the set this program can hand back: a document, an
+	// image, a sound, a moving picture. A chip on a message names one; so does
+	// the gutter beside a call that made one or opened one. They are one BLOCK
+	// rather than four scattered slots for the reason the block exists at all —
+	// a row of chips that upgraded three kinds and left the fourth on the plain
+	// floor would draw the exact mixed-repertoire line the tier was built to
+	// end.
+	//
+	// A KIND IS NOT AN ACTION. The step gutter's families say what a call was
+	// DOING; these say what the thing on the end of the path IS, which is why
+	// `generate_video` and a dragged-in `.mp4` draw the same mark.
 	//
 	// The addresses are Font Awesome 4's outlined file family, so the four sit
 	// at one line weight beside each other.
 	{
-		ID: GFileDocument, Name: "FileDocument", Meaning: "a document on a chip — a page of text",
+		ID: GFileDocument, Name: "FileDocument", Meaning: "a document — a page of text",
 		// The read action's byte AND its icon. A page of text is a page of
 		// text whether a call opened it or a person dragged it in, so the
 		// tier collapses nothing the floor draws apart, which is the one
@@ -510,19 +516,19 @@ var vocabulary = []GlyphBinding{
 		UsualTint: TextSecondary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
 	},
 	{
-		ID: GFileImage, Name: "FileImage", Meaning: "an image on a chip",
+		ID: GFileImage, Name: "FileImage", Meaning: "an image",
 		Plain: GlyphFileImage, NerdFont: "\uF1C5", NFName: "nf-fa-file_image_o",
 		ASCII:     "i",
 		UsualTint: TextSecondary, NFAmbiguous: true, AutoUpgrade: true,
 	},
 	{
-		ID: GFileAudio, Name: "FileAudio", Meaning: "a sound on a chip",
+		ID: GFileAudio, Name: "FileAudio", Meaning: "a sound",
 		Plain: GlyphFileAudio, NerdFont: "\uF1C7", NFName: "nf-fa-file_audio_o",
 		ASCII:     "a",
 		UsualTint: TextSecondary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
 	},
 	{
-		ID: GFileVideo, Name: "FileVideo", Meaning: "a moving picture on a chip",
+		ID: GFileVideo, Name: "FileVideo", Meaning: "a moving picture",
 		// U+25B7, the OUTLINE triangle, and the choice is forced twice over. One
 		// plain byte may upgrade exactly one way, and the filled U+25B6 a chip
 		// used to draw is already [GQueuePill]'s — so a whole-cell rewrite could
