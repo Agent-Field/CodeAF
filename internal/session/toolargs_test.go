@@ -224,6 +224,20 @@ func TestDecodeToolArgumentsTakesTheLooseFormsAndRefusesTheRestInWordsAModelCanA
 			},
 		},
 		{
+			name: "a backslash before a real newline inside the wrapped string is the newline it meant",
+			args: badEscapeArguments,
+			check: func(t *testing.T, got argumentsForTest) {
+				if len(got.Options) != 1 || len(got.Options[0].Blocks) != 1 || got.Options[0].Blocks[0] != "top\n│ mid\nbottom" {
+					t.Fatalf("want the diagram with its line breaks, got %+v", got.Options)
+				}
+			},
+		},
+		{
+			name:    "any other bad escape inside the wrapped string is still refused",
+			args:    `{"depends_on":"[7, \"\\q\"]"}`,
+			refusal: `depends_on takes a list; it arrived as text, "[7, \"\\q\"]" — send the value itself, not a string holding it`,
+		},
+		{
 			name: "and a swallowed tail followed by prose is that tail, with nothing read out of the prose",
 			args: `{"depends_on":"[7], \"limit\": 2} and \"limit\": 9 is what I meant"}`,
 			check: func(t *testing.T, got argumentsForTest) {
@@ -361,6 +375,16 @@ func assertNoMachineryInRefusal(t *testing.T, sentence string) {
 		}
 	}
 }
+
+// badEscapeArguments is the wrapped-string shape with the model's one bad
+// escape in it: inside the held list, a diagram's line breaks are written as a
+// backslash followed by a REAL newline. It is built rather than spelled because
+// three layers of quoting in one literal is where a fixture goes wrong.
+var badEscapeArguments = func() string {
+	held := "[{\"key\":\"1\",\"blocks\":[\"top\\\n│ mid\\\nbottom\"]}]"
+	wrapped, _ := json.Marshal(held)
+	return `{"options":` + string(wrapped) + `}`
+}()
 
 func equalText(t *testing.T, name, got, want string) {
 	t.Helper()

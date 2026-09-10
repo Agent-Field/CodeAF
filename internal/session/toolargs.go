@@ -518,7 +518,7 @@ func unswallowTail(fields map[string]json.RawMessage, t reflect.Type) {
 		// leaked control token and prose. Once the object has closed it is
 		// whole, and nothing after it can add to it (the spill law, below).
 		var tail map[string]json.RawMessage
-		if err := json.NewDecoder(strings.NewReader(`{"` + name + `":` + held)).Decode(&tail); err != nil {
+		if err := json.NewDecoder(strings.NewReader(`{"` + name + `":` + heldText(held))).Decode(&tail); err != nil {
 			continue
 		}
 		own, has := tail[name]
@@ -571,10 +571,20 @@ func unwrapEncoded(raw json.RawMessage, text string, opener byte) (json.RawMessa
 		return nil, false
 	}
 	var first json.RawMessage
-	if err := json.NewDecoder(strings.NewReader(held)).Decode(&first); err != nil {
+	if err := json.NewDecoder(strings.NewReader(heldText(held))).Decode(&first); err != nil {
 		return nil, false
 	}
 	return first, true
+}
+
+// heldText is the one escape a model has been seen get wrong inside a string
+// it wrapped by mistake: a backslash followed by a REAL newline, where a
+// diagram's line break should have been `\n`. Inside JSON text a backslash
+// before a newline is not an escape at all, and there is nothing else it could
+// have meant, so it is read as the newline. No other bad escape is touched — a
+// `\q` is still a refusal, because guessing at it would be inventing.
+func heldText(held string) string {
+	return strings.ReplaceAll(held, "\\\n", "\\n")
 }
 
 // THE SPILL LAW, which both repairs above share and which is stated once
