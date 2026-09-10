@@ -139,6 +139,27 @@ import (
 // saved procedure configured, the complete tool block is 40,595 bytes and
 // discovery carries 26,740, including its 708-byte loader. Measure whole JSON
 // arrays rather than adding separately encoded array sizes.
+// THE DIET'S DELETE PASS TOOK 677 BYTES AND ADDED A LAW (2026-09-10). Lane C of
+// the prompt diet (docs/design/prompt-diet/DESIGN.md §1) deleted the SECOND and
+// THIRD copies of five rules and put ONE new sentence in their place, and the
+// new sentence is the reason the deletions are safe rather than merely cheap:
+// "anything handed off — a job, a watch, a task, a quick task — reports itself
+// into this conversation; never sleep, tail or poll for it" is 142 bytes that
+// says once what ten per-tool sentences were saying separately. Against it,
+// 819 bytes came out of text that stated a law already stated: the ask law was
+// on the page twice and in the belt fact under it a third time, so the ladder
+// bullet keeps it and the other two are gone; `# Critical`'s informed-action
+// bullet was the second telling of "never ask what the record answers";
+// prompts/system.md taught `write`'s append and `read`'s offset/limit, which
+// tools_write.go's [appendSentence] and bare's readDescription own word for
+// word; "Start ONE `watch`" contradicted [watchDescription]'s own count and is
+// gone; and the ask and settings belt facts gave up the two sentences about
+// what `load_capability` does once it is called, which is that tool's own
+// description. Nothing was raised. The page went 23,391 → 22,714, the tool
+// block is unmoved at 24,044, and the prefix is 46,758 — 1,242 under.
+// lawregistry_test.go is what keeps it there: every law above is filed under an
+// id and a class, and a second copy of one is now a build failure rather than a
+// thing the next audit finds.
 // AND THE EVENT LANE PAID NOTHING AND TOOK 2,189 BYTES BACK (2026-09-10). The
 // prompt diet's WITH THE EVENT pass (docs/design/prompt-diet/DESIGN.md §2): a
 // harness-authored message now carries its own reading instruction, so the page
@@ -152,8 +173,9 @@ import (
 // copy of the four words and the resolve verbs — [settleClause] interpolates
 // those from [TaskResolutions] on the note itself, and `tasks` own description
 // owns "To END running work use stop". Nothing was raised and no law left the
-// build: the page went 23,391 → 21,202 and the prefix is 45,246, which is
-// 2,754 under.
+// build. On dev alone it was 23,391 → 21,202; landing after lane C's delete
+// pass it is 22,714 → 20,525, and the two together leave the prefix at 44,569,
+// which is 3,431 under. Neither raised the budget.
 // widestPage weighs the larger direct/deferred wording for each fact.
 const fixedPrefixBudget = 48_000
 
