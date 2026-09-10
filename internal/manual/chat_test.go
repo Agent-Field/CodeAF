@@ -689,6 +689,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it stopped and said the same thing was still left", "starting-aforge"},
 		{"it kept repeating the same thing", "starting-aforge"},
 		{"why does it say carry on", "tasks"},
+		// AND THE SAME LOOP OVER WORK OF ITS OWN: one of two quick tasks landed,
+		// the reply that answered the landing was pushed on three times over the
+		// other, and the person met it as a reply that would not leave a running
+		// task alone.
+		{"it keeps asking about a task that is still running", "tasks"},
 		{"it said a file does not pass", "starting-aforge"},
 		{"a task waiting on one that did not finish", "starting-aforge"},
 		// AND THE THREE ENDINGS OF THE SAME RUN (#513), asked the ways somebody

@@ -1162,7 +1162,7 @@ the tree; a green check can stand in for the reader, while a red one is carried 
 Having no configured reader is an absence, not a failed call, and never runs checks on its
 own — see *Leaving it running on its own* in *starting aforge*.
 
-## Waiting on something, and the limit on carrying on — it kept polling while it waited, why does it say carry on, why does it say "carried on 3 times", it turned my wait into a task
+## Waiting on something, and the limit on carrying on — it kept polling while it waited, why does it say carry on, why does it say "carried on 3 times", it turned my wait into a task, why does it keep asking about a task that is still running
 
 **A reply that ends while something IT started is still running is never carried on.** A
 background command, a watch, a video or music render — while any of those is still going,
@@ -1194,10 +1194,20 @@ the running-long point moved the wait into a task whose done-condition nobody co
 reply handed *this* request's work to a task and that task is queued or running, the reply
 stops there and is not read: the outcome is the task's to deliver, its landing wakes a reply
 here on its own, and *that* reply is read for what remains with the report in front of it. It
-is narrow on purpose — a task started for an **earlier** message excuses nothing, so a reply
-that hands nothing over is read exactly as it was before; **anything you say after the
-handoff**, including a correction typed into the running reply, puts the reading back; and a
-task that has already **failed or finished** is news to answer rather than work to wait for.
+is narrow on purpose — **anything you say after the handoff**, including a correction typed
+into the running reply, puts the reading back; and a task that has already **failed or
+finished** is news to answer rather than work to wait for.
+
+**And a reply you did not type is left alone while any of its own tasks is still out.** A
+landing wakes a reply here, and that reply often has nothing to do but say so: one of two quick
+tasks is in, the other is still running. While a task or a quick task this conversation started
+is queued or running, that reply is not read and not carried on — what it is waiting for is the
+other landing, and that landing is what wakes it. **Your own words outrank this**: the moment
+you type or steer anything, the reply is read for what you asked exactly as it always was,
+whatever is still out, so a task from an earlier message excuses nothing you say. Measured on a
+real drive: a chat started two quick tasks, answered the first one's landing, and was then
+pushed on three times over the second — each push another reading and another `tasks` poll of
+the node that was about to report, each answered "still running, no gap to fix".
 
 **What that says is who owes the outcome, not that it is finished.** Nothing is marked done and
 no done-condition is answered. A reply that hands one part of your message over and quietly

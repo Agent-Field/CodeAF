@@ -1907,12 +1907,43 @@ const (
 // other three for the same reason they are spelled apart from each other: a bench
 // reading the file has to tell a turn the clock moved from a turn the counters
 // moved, and it can only do that if the row says so.
+//
+// AND THE CARRY-ON ROAD IS A FIFTH, which is not a handover at all and writes a
+// row for the same reason the other four do. It is the one seam that can end a
+// turn WITHOUT reading it ([Agent.checkpointReopen]'s gates), and a refusal
+// nobody can find afterwards is exactly what #567 was: two runs that behaved
+// completely differently leaving identical journals. A row with this seam on it
+// therefore never says `moved` — nothing was handed anywhere — it says which
+// ending the road stood down for.
 const (
 	checkpointSeamMark    = "mark"
 	checkpointSeamWrite   = "write"
 	checkpointSeamCeiling = "ceiling"
 	checkpointSeamWall    = "wall"
+	checkpointSeamCarry   = "carry-on"
 )
+
+// journalCarryOnAwaited writes down the one ending the carry-on road takes on
+// its own account: the turn is left alone because a task this conversation
+// started has not come back yet (turnhandoff.go's
+// [Agent.turnIsWaitingOnItsOwnTasks]).
+//
+// IT BORROWS THE HANDOVER'S OWN WORD, `dropped:awaiting-own-work`, because it is
+// the same fact about the same conversation — the obligation is still OPEN and
+// the wake that was always coming is what brings the result back — and a bench
+// counting waits should not have to know which road noticed. Seam is what tells
+// the two apart, and the reason names the node rather than a job.
+func (a *Agent) journalCarryOnAwaited(rounds int, node uint64) {
+	a.file.appendCeiling(journalCeiling{
+		Rounds:   rounds,
+		Seam:     checkpointSeamCarry,
+		Decision: checkpointCeilingAwaiting,
+		// TaskID is deliberately not set: it names a node this row ADMITTED, and
+		// this row admits nothing (sessionfile.go's [journalCeiling]). The id
+		// rides in the reason, the way the delivery seam's does.
+		Reason: fmt.Sprintf("awaiting task %d", node),
+	})
+}
 
 // ── the carry ladder ────────────────────────────────────────────────────────
 //
@@ -2921,6 +2952,26 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	if a.turnHandedItsAskOff() {
 		return false, false
 	}
+	// AND A TURN THAT ENDED WITH WORK OF ITS OWN STILL RUNNING IS WAITING, NOT
+	// STOPPED SHORT.
+	//
+	// The gate above is qualified to the turn that made the handoff, and a turn
+	// STARTED BY ONE PIECE LANDING while another is still out falls straight
+	// through it: nobody typed it, the epoch is new, and the reader is armed by
+	// the wake rule below. Measured on 2026-09-10 — a chat with two quick tasks
+	// out answered the first one's landing, and the road then re-opened that
+	// answer three times over the second, each time to be told it was still
+	// running (turnhandoff.go's [Agent.turnIsWaitingOnItsOwnTasks], which is
+	// where the person's own veto is stated).
+	//
+	// IT IS ASKED BEFORE THE READER IS PAID, unlike the cap below, because there
+	// is nothing here for a reading to change: the piece is out, its landing
+	// wakes this conversation with the report in front of it, and that turn is
+	// read for what remains at wake prices.
+	if node, waiting := a.turnIsWaitingOnItsOwnTasks(); waiting {
+		a.journalCarryOnAwaited(meter.rounds, node)
+		return false, false
+	}
 	// A WOKEN TURN OUTRANKS THE PRICE, WHICH IS THE WHOLE OF WHAT THE MEASURED RUN
 	// STILL GOT WRONG.
 	//
@@ -2998,6 +3049,17 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// cap that fired before the reader would have to guess that the ask was still
 	// unfinished, and would say so out loud on the turn where the model had
 	// finally finished it.
+	// AND THE WAIT IS READ AGAIN AT THE MOMENT THE ANSWER IS ACTED ON, for
+	// [Agent.stillGranted]'s reason: a reading taken a model call ago is
+	// evidence about a conversation that may have moved since, and the reader
+	// walks a digest and can re-run this session's declared checks before it
+	// answers. A gap named while a piece of this conversation's own work is out
+	// is dropped exactly as it would have been a call earlier — same word, same
+	// row — rather than being believed because it arrived late.
+	if node, waiting := a.turnIsWaitingOnItsOwnTasks(); waiting {
+		a.journalCarryOnAwaited(meter.rounds, node)
+		return false, false
+	}
 	if meter.carriedOn >= checkpointCarryOnCap {
 		hub.send(Event{Kind: EventNotice, Text: checkpointCarriedOnNote(decision.Observed)})
 		return false, false
