@@ -9,7 +9,7 @@ before you read.
 | --- | --- |
 | `internal/tui3` | **v3 — the live surface.** Entry `cmd/aforge/chatv3.go`. Bare `aforge` and `aforge chat` both open it. |
 | `internal/session` | **the v3 engine** — the agent, the turn loop, the toolbelt, tasks. |
-| `internal/tui2` | REMOVED as a surface on 2026-08-31. What remains (`tokens`, `blocks`, `prose`, `modelui`, `reltime`) is the shared component library v3 draws with. |
+| `internal/tui2` | REMOVED as a surface on 2026-08-31, and its compositor, its `blocks` engine and its model picker followed. What remains (`tokens`, `prose`, `reltime`, and `modelui`'s model words) is the shared component library v3 draws with. |
 | `internal/tui` | v1, and the visual north star: restrained, dim telemetry, no borders. |
 | `internal/head`, `internal/resident` | the v1 **resident** — a different product in the same binary. |
 
