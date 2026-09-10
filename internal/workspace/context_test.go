@@ -589,7 +589,7 @@ CREATE TABLE context_revisions (seq INTEGER PRIMARY KEY AUTOINCREMENT, context_i
  source_id TEXT NOT NULL, source_session TEXT NOT NULL, withdrawn INTEGER NOT NULL);
 PRAGMA application_id=%d; PRAGMA user_version=2`, versionOneSchema, applicationID)},
 		{"newer than this binary", fmt.Sprintf(`%s
-PRAGMA application_id=%d; PRAGMA user_version=3`, versionOneSchema, applicationID)},
+PRAGMA application_id=%d; PRAGMA user_version=99`, versionOneSchema, applicationID)},
 		{"another feature's database", "CREATE TABLE memories(id INTEGER)"},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
