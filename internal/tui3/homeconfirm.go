@@ -153,7 +153,9 @@ func (a *app) homeAskFoot() string {
 // sayHomeAsk puts that sentence on the foot, and does nothing on a frame that
 // has a card to draw the question properly on.
 func (a *app) sayHomeAsk() {
-	if a.homeTierNow() != homeTierList {
+	// THE GRID HAS NO CARD AT ANY WIDTH (homegrid.go), so on it the foot is
+	// where the question is said, as it is on every narrow frame.
+	if a.homeTierNow() != homeTierList && !a.home.gridOn() {
 		return
 	}
 	if word := a.homeAskFoot(); word != "" {

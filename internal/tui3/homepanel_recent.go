@@ -52,7 +52,7 @@ func (recentPanel) rows(in *homeGridInput) homePanelRows {
 // that reading has come back.
 func recentOwnCell(row switcherRow, in *homeGridInput) *homeCell {
 	said := switcherFirstLine(in.last[row.session.Transcript].LastUser)
-	return &homeCell{panel: panelRecent, title: row.title, right: switcherMarginWord(row), bold: true, sub: said}
+	return &homeCell{panel: panelRecent, title: row.title, right: switcherMarginWord(row), hold: true, bold: true, sub: said}
 }
 
 // recentCell is any other row: its age, or the one fact that decides what enter
@@ -61,6 +61,10 @@ func recentOwnCell(row switcherRow, in *homeGridInput) *homeCell {
 // row.
 func recentCell(row switcherRow, in *homeGridInput) *homeCell {
 	cell := &homeCell{panel: panelRecent, title: row.title, right: switcherMarginWord(row)}
+	cell.hold = cell.right != row.age
+	if row.door && cell.right == homeHeldShort {
+		cell.door = takeoverHeldDoorWord
+	}
 	if homeBucketOf(row.session.Transcript) != in.bucket {
 		cell.tag = row.project
 	}

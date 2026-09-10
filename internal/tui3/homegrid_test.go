@@ -151,3 +151,54 @@ func TestAnEmptyPanelWhispersWhatArrivesAndNeverThatItIsEmpty(t *testing.T) {
 		t.Fatalf("an empty running panel does not whisper:\n%s", frame)
 	}
 }
+
+// focusedTitle is the title of the row the cursor is on.
+func focusedTitle(a *app) string {
+	if line, ok := a.home.focusedLine(); ok && line.cell != nil {
+		return line.cell.title
+	}
+	return ""
+}
+
+// ↑↓ WALK A COLUMN AND ←→ CROSS TO THE NEAREST ROW OF THE NEXT, through the real
+// door every key on a place takes — and `↑` off the top of a column is the tab
+// bar, from whichever column it is.
+func TestTheArrowsWalkAColumnAndCrossToTheNext(t *testing.T) {
+	a := newSwitchLab(t).open(120, 45)
+	if got := focusedTitle(a); got != "Porting the Resume Picker" {
+		t.Fatalf("home opened on %q", got)
+	}
+	a.placeKeyPress(key("down"))
+	if got := focusedTitle(a); got != "Quiet Chat a" {
+		t.Fatalf("↓ went to %q, want the next row of where you were", got)
+	}
+	a.placeKeyPress(key("right"))
+	if got := focusedTitle(a); got != "Bounty Reward Companies" || a.strip.open {
+		t.Fatalf("→ went to %q (strip %v), want the right column's row", got, a.strip.open)
+	}
+	a.placeKeyPress(key("left"))
+	if got := focusedTitle(a); got != "Swarm Task Splitting" {
+		t.Fatalf("← went to %q, want the left column's row nearest", got)
+	}
+	a.placeKeyPress(key("right"))
+	a.placeKeyPress(key("up"))
+	if !a.bar.on {
+		t.Fatal("↑ off the top of the right column did not reach the tab bar")
+	}
+}
+
+// A CLICK IN THE RIGHT COLUMN SELECTS THE ROW DRAWN THERE, not the left
+// column's row that shares its screen line.
+func TestAClickResolvesTheColumnItLandedIn(t *testing.T) {
+	a := newSwitchLab(t).open(120, 45)
+	lines := strings.Split(homeText(a), "\n")
+	for y, line := range lines {
+		if x := strings.Index(line, "Bounty Reward Companies"); x >= 0 {
+			a.homePress(len([]rune(line[:x])), y)
+			break
+		}
+	}
+	if got := focusedTitle(a); got != "Bounty Reward Companies" {
+		t.Fatalf("the click selected %q", got)
+	}
+}

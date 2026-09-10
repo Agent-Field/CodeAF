@@ -315,6 +315,12 @@ type homeCell struct {
 	note, tag, right string
 	// bold is this window's own conversation.
 	bold bool
+	// hold says the right-hand word is a fact about the DOOR — `folder gone`,
+	// `another window`, `coming here`, `here` — and is cut around rather than
+	// dropped, because it is what enter will do; door is the longer sentence a
+	// held row grows into under the cursor ([app.homeCellDoor]).
+	hold bool
+	door string
 	// sub is the line under the row, and subRight what that line carries at
 	// its right — the answers a digit sends.
 	sub, subRight string
@@ -460,9 +466,16 @@ func homeGridLayout(in *homeGridInput, cols, room int) [][]*homeGridPanel {
 // bottom, so a line's index still means what [homeView.cursor] has always
 // meant.
 func (h *homeView) buildGrid() {
-	in := h.gridInput()
 	cols := max(1, h.cols)
 	h.grid = homeGrid{cols: cols}
+	// A WORLD THAT IS NOT AN ANSWER YET DRAWS NOTHING. Over --host the first
+	// frames come before the far machine has replied, and a panel whispering
+	// what arrives there over a machine full of work would be a sentence about
+	// somebody else's disk that is not true ([homeView.known]).
+	if !h.known {
+		return
+	}
+	in := h.gridInput()
 	for at, column := range homeGridLayout(&in, cols, h.room) {
 		first := true
 		for _, p := range column {
@@ -646,7 +659,10 @@ func (h *homeView) gridCross(dir int) bool {
 // Nothing else that holds the arrows is overruled: the tab bar, an open strip, a
 // question this window raised about a row.
 func (a *app) homeGridCross(msg tea.KeyPressMsg) bool {
-	if a.bar.on || a.strip.open || a.home.ask != nil || !a.home.gridOn() {
+	// AN ERRAND'S ROW KEEPS ITS `→`, which takes the keyboard into the errand
+	// (home.go's [app.homeKey]) — the one row on home whose arrow already meant
+	// "into what is beside me".
+	if a.bar.on || a.strip.open || a.home.ask != nil || !a.home.gridOn() || a.paneExchange() != nil {
 		return false
 	}
 	dir := 0
@@ -741,12 +757,41 @@ func (a *app) homeGridAnswer(key string) (tea.Cmd, bool) {
 		return nil, false
 	}
 	for _, line := range a.home.lines {
-		if line.cell == nil || line.cell.panel != panelNeeds || line.cell.subRight == "" {
+		if line.cell == nil || line.cell.panel != panelNeeds {
 			continue
 		}
-		return a.answerRowKey(a.homeTrue(line.row), key)
+		if words := a.homeRowAnswers(line); words != "" && words != answerWaitingWord {
+			return a.answerRowKey(a.homeTrue(line.row), key)
+		}
 	}
 	return nil, false
+}
+
+// homeRowAnswers is what a `needs you` row draws at the right of its question:
+// the answers, under the answer band's own four rules ([drawAnswerBand]) — the
+// question is fresh and offered answers, this window has somewhere to leave
+// one, it has not already sent one (the waiting word stands in for a moment
+// after it has), and no question this window raised about the row is standing
+// over it ([app.answersStepAside]). Every fact is in memory; nothing is read.
+func (a *app) homeRowAnswers(line homeLine) string {
+	if line.cell == nil || line.cell.subRight == "" || line.kind != homeSession {
+		return ""
+	}
+	row, now := a.homeTrue(line.row), a.home.world.Read
+	question, ok := answerable(row, now)
+	if !ok {
+		return ""
+	}
+	if sent, ok := a.answerSent(row, question); ok {
+		if now.Sub(sent.at) < answerHoldFor {
+			return answerWaitingWord
+		}
+		return ""
+	}
+	if (a.leaveAnswer == nil && !a.answeringHere(row)) || a.answersStepAside(row) {
+		return ""
+	}
+	return line.cell.subRight
 }
 
 // ── the readings the grid asks for ─────────────────────────────────────────
