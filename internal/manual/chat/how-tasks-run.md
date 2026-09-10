@@ -778,9 +778,21 @@ rewritten as the same address inside the task's own copy — so
 is allowed to. A path that is **not** under the project is left exactly as written, so a
 contract that really does point somewhere else still earns the refusal below. **Your own
 words are never rewritten**: they are quoted to the task exactly as you typed them, with the
-two folders named beside them so it knows which one a path in your sentence means here. And
+folders named beside them so it knows which one a path in your sentence means here. And
 what it reads at that address is **its own copy, as the project stood when it started** —
 not the original, which you may still be changing while it works.
+
+**A conversation with no project of its own has one more folder, and it moves the same
+way.** A conversation you opened nowhere in particular keeps what it makes in its own `work`
+folder, and that is the address anything looking for somewhere to put a finished document
+answers with — so a brief written in such a conversation names it. It is not under the
+project the task is about, so the task cannot write there either. Its addresses are handed
+over as the same path under a `work` folder **inside the task's own copy**, and the section
+that names the folders says so outright: `…/work/flow.md` reaches the task as
+`…/trees/1/work/flow.md`, and what it leaves there comes home with the rest of its work. A
+conversation opened **in** a project keeps no such folder and nothing extra is rewritten for
+it. Before this, the brief named the conversation's own folder, the task's first write there
+was refused, and it had to invent that address for itself.
 
 **Writing anywhere else is refused before it runs**, and the task reads the refusal and
 carries on. It covers every hand that names its target:
@@ -2828,6 +2840,18 @@ requirements — the brief and the done-condition above them are still what the 
 graded against. A constraint you typed twenty turns ago, or one buried in the middle of a
 long message, may not be in the selection at all; if it has to bind the work, put it in the
 message that starts the task.
+
+**The quoted lines and the calls are read differently, and only one of them outranks the
+brief.** A quoted line that contradicts the work is news for the report, not a rule the
+worker applies on its own. The list of calls is not an opinion — those calls ran — so it
+**is** authoritative about what has already happened: where the brief, or the parts at the
+top of it, read as though one of them were still to be made, the task is told it has been
+made already, to read it through the pointer on its line instead of running it again, and to
+run it again only where the line says it **FAILED** or where what it reads disagrees with
+the brief. Nothing carries the result itself; the bytes stay where they are and the task
+fetches what it needs. This exists because a handover once opened on parts naming reading
+the conversation had already finished, while the list below said the same calls were done —
+and the worker obeyed the louder, earlier half and did the work twice.
 
 **A part with nothing in it gets no heading.** A task you wrote yourself with `/task` has no
 separate deliverable, so it reads as your words, the work and a done-condition. A task

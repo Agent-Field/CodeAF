@@ -137,7 +137,7 @@ func composeBrief(role briefRole, request, work, deliverable, acceptance, expect
 	// brief in the system to answer a question nobody in it had asked.
 	quoted, evidence := admissionQuotesSection(heard), admissionEvidenceSection(heard)
 	stated := ""
-	if own.real() && namesGround(own.ground, request, work, deliverable, acceptance, expects, quoted, evidence) {
+	if own.real() && own.names(request, work, deliverable, acceptance, expects, quoted, evidence) {
 		stated = own.note()
 	}
 	// AND THE MODEL-AUTHORED HALF IS BOUND TO THE COPY, and only that half. The
@@ -223,16 +223,33 @@ func composeBrief(role briefRole, request, work, deliverable, acceptance, expect
 // `<session>/trees/<partID>` — the identical mismatch. Every node reaches its
 // worker through [Agent.workTaskNode] and [TaskNode.instructionOn], so both
 // depths are bound by this one map.
+// AND THE CONVERSATION'S OWN FOLDER IS THE SAME DEFECT FROM THE OTHER SIDE.
+// A conversation opened nowhere in particular keeps its deliverables in a folder
+// of its own — `<session>/work`, which [Place.Work] names and which
+// landing.go's [deliverablesDir] hands to anything looking for somewhere to put
+// a finished document — so a handoff writing that address into `deliverable` is
+// following the system's own answer to "where does this go". That folder is NOT
+// under the ground, so the rule above rightly left it alone, and the worker
+// standing in `<session>/trees/<id>` was refused at its first write with "is
+// outside your copy". Measured 2026-09-10: the worker read the refusal, invented
+// a folder of the same name inside its own copy, wrote there, and reported the
+// deviation — one wasted round and a deliverable at an address nobody had
+// agreed. Binding it is that self-correction made the contract instead.
 type taskCopy struct {
 	// ground is the folder the work is ABOUT and dir is the folder the work
 	// HAPPENS IN — [taskTree]'s own two fields under their own two names,
 	// carried here so that composing a brief needs to know nothing else about a
 	// tree.
 	ground, dir string
+	// work is THE CONVERSATION'S OWN FOLDER, and it is empty for every session
+	// that has none — a borrowed session keeps no work/ at all — and for every
+	// tree whose ground or copy already holds it, where the rule above is
+	// already the whole answer and a second one would move an address twice.
+	work string
 }
 
 // newTaskCopy is the ONE PLACE A FOLDER IS SPELLED FOR THIS TYPE, and it exists
-// so that no reader of the two fields has to know the rule.
+// so that no reader of the three fields has to know the rule.
 //
 // A FOLDER IS STORED CLEANED, WITHOUT ITS TRAILING SEPARATOR. Everything below
 // reads the ground as a whole path — the byte behind an occurrence has to be
@@ -243,8 +260,21 @@ type taskCopy struct {
 // four times, which is the drift CLAUDE.md's one-source-of-truth law is about.
 // Production grounds already arrive through [canonicalPath], so this is a
 // property of the type rather than a repair of any caller.
-func newTaskCopy(ground, dir string) taskCopy {
-	return taskCopy{ground: cleanFolder(ground), dir: cleanFolder(dir)}
+//
+// AND A SESSION FOLDER THE GROUND OR THE COPY ALREADY HOLDS IS DROPPED HERE,
+// once, rather than guarded at each of the three places that read it. A task
+// whose ground IS the conversation's own workspace — the ordinary shape for a
+// session with no project — would otherwise have every address under it moved by
+// the ground rule and then moved again by this one, which is an address in a
+// folder that does not exist. The question is asked with [withinDir] because
+// "at or under" is exactly what it answers, and it answers it about `/x/repo`
+// and `/x/repo-old` the way the rest of this file does.
+func newTaskCopy(ground, dir, work string) taskCopy {
+	own := taskCopy{ground: cleanFolder(ground), dir: cleanFolder(dir), work: cleanFolder(work)}
+	if own.work == "/" || withinDir(own.ground, own.work) || withinDir(own.dir, own.work) {
+		own.work = ""
+	}
+	return own
 }
 
 // cleanFolder is [filepath.Clean] with the empty path left empty, because
@@ -294,17 +324,58 @@ func (c taskCopy) real() bool {
 // Mac — so [groundAliases] resolves the rest and they are rewritten by the same
 // whole-path rule. Without it a contract naming the ground through an alias
 // bound nothing, and the worker was left pointing at the person's checkout.
+//
+// AND THE CONVERSATION'S OWN FOLDER MOVES BY THE SAME RULE, second, into a
+// folder of its own name at the copy's root ([taskCopy.workInCopy]). It is
+// second rather than first because it is the narrower of the two and because the
+// ground rule has already taken every address the copy genuinely mirrors; the
+// two folders cannot overlap, since a work/ at or under either of them was
+// dropped by the constructor.
+//
+// THE PERSON'S OWN WORDS DO NOT COME THROUGH HERE AT ALL, and that is what makes
+// both rules safe: [composeBrief] binds the model-authored half and hands the
+// request to the document unedited, so a path in somebody's own sentence is
+// still the path they typed and the mapping is STATED to the worker instead
+// ([taskCopy.note]).
 func (c taskCopy) bind(text string) string {
 	if !c.real() {
 		return text
 	}
-	if strings.Contains(text, c.ground) {
-		text = replaceWholePath(text, c.ground, c.dir)
+	text = bindFolder(text, c.ground, c.dir)
+	return bindFolder(text, c.work, c.workInCopy())
+}
+
+// bindFolder rewrites one folder — its own spelling and every alias of it — into
+// the folder it maps onto, and nothing else. It is lifted out of
+// [taskCopy.bind] so the two folders that map move by ONE rule rather than by
+// two copies of it that can drift apart.
+func bindFolder(text, folder, into string) string {
+	if folder == "" || into == "" {
+		return text
 	}
-	for _, alias := range groundAliases(c.ground, text) {
-		text = replaceWholePath(text, alias.spelling, filepath.Join(c.dir, alias.under))
+	if strings.Contains(text, folder) {
+		text = replaceWholePath(text, folder, into)
+	}
+	for _, alias := range groundAliases(folder, text) {
+		text = replaceWholePath(text, alias.spelling, filepath.Join(into, alias.under))
 	}
 	return text
+}
+
+// workInCopy is where the conversation's own folder stands inside the copy: a
+// directory of THE SAME NAME at the copy's root.
+//
+// THE NAME IS TAKEN FROM THE FOLDER RATHER THAN SPELLED AGAIN, because place.go
+// already owns what that folder is called and a second spelling of it here is
+// the drift the one-source-of-truth law is about. Keeping the name is what makes
+// the mapping legible from either end: a person reading the report sees the same
+// last two components they asked for, and the deliverable is not scattered into
+// the root of a working copy that is a checkout of something else.
+func (c taskCopy) workInCopy() string {
+	if c.work == "" || c.dir == "" {
+		return ""
+	}
+	return filepath.Join(c.dir, filepath.Base(c.work))
 }
 
 // replaceWholePath rewrites every occurrence of one address that stands as a
@@ -328,11 +399,41 @@ func replaceWholePath(text, address, with string) string {
 // the person's own sentence, which is quoted and never edited. It says the two
 // folders in the two roles they actually hold, and then what that makes true of
 // every address under them.
+//
+// AND THE CONVERSATION'S OWN FOLDER IS NAMED WHERE THERE IS ONE, because the
+// sentence in front of it would otherwise be FALSE about exactly one directory
+// on the machine: "a path that is not under the ground stands as written" was
+// the whole rule until this folder began to bind too, and a worker that trusted
+// it would go on writing at an address it is still refused. A limit stated
+// wrongly is worse than one not stated at all.
 func (c taskCopy) note() string {
-	return "The work is about " + c.ground + ".\n" +
+	note := "The work is about " + c.ground + ".\n" +
 		"Your own copy of it is " + c.dir + ", and that is where you are standing.\n\n" +
 		"Every address below is written as its address in your copy. The person's own message is quoted as they typed it, so a path in it that begins " + c.ground +
 		" means the same path under " + c.dir + ". A path that is not under " + c.ground + " is somewhere else on the machine and stands as written."
+	if work := c.workInCopy(); work != "" {
+		note += "\n\nThis conversation's own folder, " + c.work + ", is the one exception. You cannot write there either, so an address under it is written below as the same path under " +
+			work + ", and what you leave there comes home with the rest of your work."
+	}
+	return note
+}
+
+// names answers whether EITHER folder this map moves is spelled as a whole path
+// in what is about to be composed, which is the question the section that
+// explains the mapping is drawn on.
+//
+// IT IS BOTH FOLDERS BECAUSE THE NOTE NOW EXPLAINS BOTH. A contract whose only
+// address is in the conversation's own folder has had an address moved, and a
+// worker handed that document with nothing said about why would be reading a
+// path it never saw written down anywhere.
+func (c taskCopy) names(sections ...string) bool {
+	if namesGround(c.ground, sections...) {
+		return true
+	}
+	// The empty folder is asked about nowhere: [namesGround] reads an empty
+	// spelling as standing at the end of every text, which would draw the
+	// section over every brief in the system.
+	return c.work != "" && namesGround(c.work, sections...)
 }
 
 // namesGround answers whether the folder is spelled AS A WHOLE PATH anywhere in
