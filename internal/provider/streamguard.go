@@ -277,6 +277,13 @@ func paceFor(rate float64) float64 {
 	return rate
 }
 
+// WallCeiling is [streamWallCeiling] for a reader outside the transport: the
+// longest one request is allowed to stay open, whatever its lane's history
+// claims. A surface quoting a wait longer than this is quoting arithmetic on a
+// belief that has forgotten, not a wait anybody could have sat through
+// (internal/tui3's lanes.go draws no tail past it).
+const WallCeiling = streamWallCeiling
+
 // stallFirstBound and stallGapBound are what the watchdog actually reads. The
 // constants above are the figures — one source of truth for the manual page and
 // for the sentence a cut is named with — and these exist only so a test can

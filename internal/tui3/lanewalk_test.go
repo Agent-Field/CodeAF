@@ -2,10 +2,14 @@ package tui3
 
 import (
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/aforge-v2/internal/lane"
 )
 
 // ── THE PICKER IS A TREE, AND THE LANE IS WRITTEN ON THE MODEL ──────────────
@@ -180,6 +184,41 @@ func TestAPinnedLaneIsWrittenOnTheModelsName(t *testing.T) {
 	typeLine(t, a, "/model auto")
 	if seam := plain(frame(a)); strings.Contains(seam, laneAtSign+"cloudflare") {
 		t.Fatalf("auto left the pin on the name:\n%s", seam)
+	}
+}
+
+// DEFECT 5. A BELIEF WHOSE CONFIDENCE HAS DECAYED HAS NO TAIL. A day without a
+// sighting doubles the spread a hundred and forty-four times, and the p99 of
+// that is +Inf — which a row once printed as `tail 9223372036854775807s`.
+func TestADecayedBeliefDrawsNoTail(t *testing.T) {
+	old := laneBelief(flash, "Cloudflare", 800, 58, 0.5, lane.Facts{
+		Tools: true, Uptime5m: 100, MaxOut: 345_000, Quant: "fp8",
+	})
+	old.At = time.Now().Add(-24 * time.Hour)
+	laneLab(t, map[string][]lane.Belief{flash: {old}})
+
+	views := laneViews(flash, timeNow())
+	if len(views) != 1 {
+		t.Fatalf("want one view, got %+v", views)
+	}
+	view := views[0]
+	if view.Tail != 0 || !view.Vague {
+		t.Fatalf("a decayed belief has tail %v (vague=%v)", view.Tail, view.Vague)
+	}
+	if note := laneNote(view); strings.Contains(note, "tail") {
+		t.Fatalf("a decayed belief is noted %q", note)
+	}
+	if why := laneWhy(view); strings.Contains(why, "no tail") {
+		t.Fatalf("a decayed belief claims a worst case: %q", why)
+	}
+	left, right := laneRowText(view, 120)
+	if strings.Contains(left+right, "922337") || strings.Contains(left+right, "tail") {
+		t.Fatalf("the row draws a tail nobody measured: %q %q", left, right)
+	}
+	// And a p99 that is finite but past the longest a request may stay open is
+	// the same arithmetic, not a wait.
+	if tail, vague := laneTail(math.MaxFloat64, 1); tail != 0 || !vague {
+		t.Fatalf("an absurd p99 became tail %v", tail)
 	}
 }
 

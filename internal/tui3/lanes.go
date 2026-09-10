@@ -219,6 +219,9 @@ type laneView struct {
 	TTFT float64
 	Rate float64
 	Tail float64
+	// Vague says the belief has aged past saying anything about this lane's
+	// worst case ([laneTail]), so neither a tail nor its absence is drawn.
+	Vague bool
 	// Wait is the first token at the NINETIETH PERCENTILE, in seconds. It is
 	// what the ordering is done on and it is never drawn: a person remembers
 	// the twelve-second wait and not the four-hundred-millisecond one, so a
@@ -290,15 +293,34 @@ func laneViews(model string, now time.Time) []laneView {
 		view.TTFT = ttft.Mean() / 1000
 		view.Rate = rate.Mean()
 		view.Wait = ttft.Quantile(laneWaitZ) / 1000
-		// The tail is the p99 in seconds, and it is only a tail when it is far
-		// enough past the median to be a different experience: five times.
-		if p99 := ttft.Quantile(laneTailZ) / 1000; view.TTFT > 0 && p99 > laneTailRatio*view.TTFT {
-			view.Tail = p99
-		}
+		view.Tail, view.Vague = laneTail(ttft.Quantile(laneTailZ)/1000, view.TTFT)
 		views = append(views, view)
 	}
 	sortLanes(views)
 	return views
+}
+
+// laneTail is the p99 first token in seconds when it is worth a word on a row,
+// and zero when it is not; vague says the belief has aged past saying anything
+// about its worst case at all.
+//
+// A TAIL IS ONLY A TAIL WHEN IT IS FAR ENOUGH PAST THE MEDIAN to be a different
+// experience — five times — AND WHEN IT IS A WAIT SOMEBODY COULD HAVE HAD. The
+// ageing widens a belief's spread by half-lives ([lane.Posterior.Predict]), so a
+// lane nobody has heard from since yesterday has a p99 of exp(something huge):
+// +Inf, which the row printed as `tail 9223372036854775807s`. A figure that is
+// not finite, or longer than any request is allowed to stay open
+// ([provider.WallCeiling]), is arithmetic and not a measurement, and the
+// emptiness law draws it as nothing — including not as `no tail`, which is a
+// claim about the worst case too.
+func laneTail(p99, median float64) (tail float64, vague bool) {
+	if math.IsNaN(p99) || math.IsInf(p99, 0) || p99 > provider.WallCeiling.Seconds() {
+		return 0, true
+	}
+	if median > 0 && p99 > laneTailRatio*median {
+		return p99, false
+	}
+	return 0, false
 }
 
 // laneTailZ is the standard-normal quantile of the 99th percentile, and
@@ -729,7 +751,7 @@ func laneWhy(view laneView) string {
 	if word := laneRateWord(view.Rate); word != "" {
 		parts = append(parts, "steady "+word)
 	}
-	if view.Tail == 0 {
+	if view.Tail == 0 && !view.Vague {
 		parts = append(parts, "no tail")
 	}
 	line := strings.ToLower(view.Name) + ": " + strings.Join(parts, ", ")
