@@ -1265,11 +1265,14 @@ for it, and each door has its own sentence:
 | you stopped all the work in the conversation | `everything running here was stopped, the reply with it` |
 | nobody was left watching a conversation on another machine | `nobody was left watching this conversation, so the reply stopped — ask again to pick it up` |
 
-Whatever the door, the ending is also written into the conversation's own file,
-so a transcript you come back to says what happened rather than trailing off
-after your question. And the model-call log names it too: a row that used to
-read `context canceled` now reads `context canceled (turn ended: taken over)`,
-which is the one thing an autopsy of a vanished reply needs and did not have.
+Whatever the door, the ending is also written into the conversation's own file
+as a failed call naming the door — for whoever reads the file afterwards, not
+for the screen: an error line is never replayed into a conversation, so a
+reopened conversation shows what was said and not a note about how the last turn
+ended. The model-call log names it too. A row that used to read `context
+canceled` now reads `context canceled (turn ended: taken over)`, which is the
+one thing an autopsy of a vanished reply needs and did not have. `aforge logs`
+is where to look.
 
 **A request cut out from under a turn that is still going is asked again rather
 than reported.** You see `the reply was cut short — asking again`, the text that
