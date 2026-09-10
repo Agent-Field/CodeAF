@@ -1102,6 +1102,12 @@ var OperatorEnvPins = []string{
 	"AFORGE_RESPONSE_ATTEMPTS",
 	"AFORGE_RESPONSE_LIFT_AFTER",
 	"AFORGE_RESPONSE_LIFT_CAP",
+	// The fixture door onto the question page (internal/tui3/questiondemo.go).
+	// It names a case for one launch so the page can be SEEN full before
+	// anything in the program raises such a question — `make demo-home`'s
+	// shape, under `make demo-home`'s terms. A row offering to persist a
+	// fixture would put a demo question in front of a person every morning.
+	"AFORGE_QUESTION_DEMO",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.

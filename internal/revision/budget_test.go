@@ -97,11 +97,16 @@ func TestAnEmptyFirstVerdictIsAskedAgainWithRoomAndItsAnswerStands(t *testing.T)
 	if judgment.Quote != "include the benchmark numbers" {
 		t.Fatalf("the retry's citation was lost: %+v", judgment)
 	}
-	if judge.caps[1] <= judge.caps[0] {
-		t.Fatalf("the retry did not get more room: %v", judge.caps)
-	}
-	if ceiling := ctxbudget.CompletionReserve(); judge.caps[1] > ceiling {
-		t.Fatalf("the retry demanded %d tokens, past the reserve of %d", judge.caps[1], ceiling)
+	// NO max_tokens TRAVELS, on the first ask or the retry (shaped.go's
+	// [shaped.Ask.request], since #665 left generation to the provider). The
+	// room a retry gets is what the seam COUNTS the reply as worth, never a cap
+	// it sends — so the retry's extra room is not on the wire, and asking the
+	// scripted judge for a bigger cap was asking for a number the seam stopped
+	// sending on 2026-09-09.
+	for i, cap := range judge.caps {
+		if cap != 0 {
+			t.Fatalf("call %d went out with max_tokens %d; the seam sends none", i, cap)
+		}
 	}
 }
 
