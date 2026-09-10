@@ -654,8 +654,22 @@ func (n *TaskNode) quickListChange(done int, add []string) (string, string) {
 	if reply == "" {
 		reply = "nothing to do: say `done` with the item you finished, or `add` with the steps to append."
 	}
+	// THE LAST TICK SAYS WHAT COMES NEXT. A worker whose list is all ticked has
+	// one thing left to do, and it is the thing prompts/quick.md says last: its
+	// next message is the answer. Said here, in the reply it reads before its
+	// next call, because a measured run ticked 4/4 and then spent eleven minutes
+	// reading on — the model that had the list in front of it lost the thread on
+	// a hop to another model, and the only sentence that model saw about ending
+	// was one hop away in a system prompt. This is the tool's own reply, and a
+	// reply is the one line a worker cannot skip.
+	if len(spec.items) > 0 && spec.doneCountLocked() == len(spec.items) {
+		reply += quickListDoneWord
+	}
 	return reply, quickDoing(spec)
 }
+
+// quickListDoneWord is what the last tick's reply ends on.
+const quickListDoneWord = " · every item is ticked: your next message is your answer, and the last thing you say"
 
 // ── the body ────────────────────────────────────────────────────────────────
 

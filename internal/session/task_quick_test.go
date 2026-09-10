@@ -631,6 +631,37 @@ func TestASpecWhoseTicksAreShortOfItsItemsGrowsRatherThanFaulting(t *testing.T) 
 	}
 }
 
+// THE LAST TICK TELLS THE WORKER TO ANSWER.
+//
+// A list that is all ticked has one move left, and the reply to the tick that
+// finished it says so. Pinned on a measured run: a quick worker ticked 4/4,
+// lost its answer twice to a provider fault, hopped to another model and read
+// on for eleven minutes without ever saying anything — the sentence about
+// ending was in a system prompt the hop did not re-read, and nothing in the
+// transcript itself said the work was over. The tool's reply is in the
+// transcript, so it is the one place that sentence cannot be missed.
+func TestTheLastTickTellsTheWorkerItsNextMessageIsTheAnswer(t *testing.T) {
+	graph := &TaskGraph{}
+	node := &TaskNode{graph: graph, spec: taskSpec{quick: newQuickTaskSpec("walk the two", []string{"one", "two"}, nil)}}
+
+	reply, _ := node.quickListChange(1, nil)
+	if strings.Contains(reply, quickListDoneWord) {
+		t.Fatalf("the first tick of two already says to answer: %q", reply)
+	}
+	reply, _ = node.quickListChange(2, nil)
+	if !strings.HasSuffix(reply, quickListDoneWord) {
+		t.Fatalf("the tick that finished the list replied %q, want it to end on %q", reply, quickListDoneWord)
+	}
+
+	// AND A TICK THAT ADDS IN THE SAME BREATH IS NOT THE LAST: the list grew,
+	// so the worker is told the new count and nothing about ending.
+	node = &TaskNode{graph: graph, spec: taskSpec{quick: newQuickTaskSpec("walk the one", []string{"one"}, nil)}}
+	reply, _ = node.quickListChange(1, []string{"and then two"})
+	if strings.Contains(reply, quickListDoneWord) {
+		t.Fatalf("a tick that appended a step still says to answer: %q", reply)
+	}
+}
+
 // A FAULT UNDER THE LIST DOOR DOES NOT KEEP THE GRAPH'S LOCK.
 //
 // This is the difference between a tool that faults and a session that stops. A
