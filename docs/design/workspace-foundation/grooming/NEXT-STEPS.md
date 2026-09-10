@@ -43,8 +43,11 @@ A checked item means completed with the evidence named here, not merely discusse
 - [ ] T10 — IN PROGRESS: integration subagent owns isolated candidate, retains
   draft ancestry and reconciles newer dev changes. Preserve parent #662.
 - [ ] T11a — IN PROGRESS: lifecycle implementation subagent fixes stale writeback.
-- [ ] T11b — IN PROGRESS: independent validation subagent writes functional
-  concurrency/next-occurrence checks. Root validates the combined candidate on Spark.
+- [x] T11b1 — Independent regression suite written; baseline Spark job
+  `20260910-153136-000409` fails all five top-level tests (13 scenarios), including
+  unwanted subsequent execution. Test commit `8dedb0bb6`; runtime 0.020s.
+- [ ] T11b2 — Root validates the combined corrected candidate on Spark; tests may
+  adapt to the explicit production control API without weakening assertions.
 - [ ] T11c — Broader admission/cancellation/recovery contracts remain future work.
 - [ ] T12 — Unify governing context across chat, workers, independent checking and
   scheduled runs, with exact sources and revision-aware effective inputs.
@@ -140,3 +143,7 @@ branches/worktrees are temporary integration tools, not separate product drafts.
 Current baseline integration commit: `1cfdbd28be78e29d28eac6c63d25b1f766af95e3`,
 parents backend `c63e03b7` and dev `996117314`. Independent semantic review found
 no introduced merge regression; the build and functional checks remain pending.
+
+The [independent old-behavior receipt](validation/lifecycle-baseline.log) is
+retained separately from the earlier two-case reproducer. It is failing baseline
+evidence, not a test result for the implementation candidate.

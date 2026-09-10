@@ -1,0 +1,48 @@
+# job    20260910-153136-000409
+# cwd    /home/santosh/work/af-standing-validation
+# cmd    go test ./internal/standing -run ^TestControlWriteback -count=1 -timeout=2m
+# start  2026-09-10T15:34:35Z
+# ---
+[fleet-guard] cgroup memory cap 107G
+--- FAIL: TestControlWritebackPreservesPauseAndStopDuringFiring (0.01s)
+    --- FAIL: TestControlWritebackPreservesPauseAndStopDuringFiring/paused/success (0.00s)
+        control_writeback_test.go:86: late result undid paused: got active
+        control_writeback_test.go:101: controlled item ran again: 2 calls
+    --- FAIL: TestControlWritebackPreservesPauseAndStopDuringFiring/paused/failure (0.00s)
+        control_writeback_test.go:86: late result undid paused: got active
+        control_writeback_test.go:101: controlled item ran again: 2 calls
+    --- FAIL: TestControlWritebackPreservesPauseAndStopDuringFiring/retired/success (0.00s)
+        control_writeback_test.go:86: late result undid retired: got active
+        control_writeback_test.go:89: stop reason lost: ""
+        control_writeback_test.go:101: controlled item ran again: 2 calls
+    --- FAIL: TestControlWritebackPreservesPauseAndStopDuringFiring/retired/failure (0.00s)
+        control_writeback_test.go:86: late result undid retired: got active
+        control_writeback_test.go:89: stop reason lost: ""
+        control_writeback_test.go:101: controlled item ran again: 2 calls
+--- FAIL: TestControlWritebackPreservesControlDuringJudgment (0.01s)
+    --- FAIL: TestControlWritebackPreservesControlDuringJudgment/paused/quiet (0.00s)
+        control_writeback_test.go:134: judgment undid paused: got active
+    --- FAIL: TestControlWritebackPreservesControlDuringJudgment/paused/ready (0.00s)
+        control_writeback_test.go:134: judgment undid paused: got active
+        control_writeback_test.go:137: a result admitted action after paused: 1 calls
+    --- FAIL: TestControlWritebackPreservesControlDuringJudgment/paused/failure (0.00s)
+        control_writeback_test.go:134: judgment undid paused: got active
+    --- FAIL: TestControlWritebackPreservesControlDuringJudgment/retired/quiet (0.00s)
+        control_writeback_test.go:134: judgment undid retired: got active
+    --- FAIL: TestControlWritebackPreservesControlDuringJudgment/retired/ready (0.00s)
+        control_writeback_test.go:134: judgment undid retired: got active
+        control_writeback_test.go:137: a result admitted action after retired: 1 calls
+    --- FAIL: TestControlWritebackPreservesControlDuringJudgment/retired/failure (0.00s)
+        control_writeback_test.go:134: judgment undid retired: got active
+--- FAIL: TestControlWritebackPreservesRevisedConfiguration (0.00s)
+    control_writeback_test.go:164: completion overwrote revised instructions or schedule: got {Schema:1 ID:ffaeab63dd7f0a68 Words:Every 30 minutes report Workspace:/tmp/project Origin:{SessionID: Transcript: Exchange: TaskID:0 TurnIDs:[]} When:{Kind:every Words:every 30 minutes At:0001-01-01 00:00:00 +0000 UTC Every:30m Glob: IdleFor:0s Probe:{Command: Tool: Args:[]} ProbeEvery:0s Hint:} Does:{Kind:say Say:leave now Brief: Acceptance: Model: Effort: MaxSteps:0} Rails:{PerRunUSD:0.05 MaxPerDay:3 Expires:0001-01-01 00:00:00 +0000 UTC} Altitude: Brief:{Title: Prompt:} Grant: Exceptions:[] Status:active Created:2026-09-10 12:00:00 +0000 UTC Updated:2026-09-10 12:31:00 +0000 UTC RetiredWhy: LastChecked:2026-09-10 12:31:00 +0000 UTC LastCheckLine:it was the time you asked for NextDue:2026-09-10 13:01:00 +0000 UTC Fingerprint: Previous:[it was the time you asked for → said] Runs:1 LastFired:2026-09-10 12:31:00 +0000 UTC LastOutcome:said LastRun: SpentUSD:0.02 NeedsPerson: CleanRuns:1}, want configuration {Schema:1 ID:ffaeab63dd7f0a68 Words:Every 30 minutes report Workspace:/tmp/project Origin:{SessionID: Transcript: Exchange: TaskID:0 TurnIDs:[]} When:{Kind:every Words:every two hours At:0001-01-01 00:00:00 +0000 UTC Every:2h Glob: IdleFor:0s Probe:{Command: Tool: Args:[]} ProbeEvery:0s Hint:} Does:{Kind:say Say:The revised report Brief: Acceptance: Model: Effort: MaxSteps:0} Rails:{PerRunUSD:0.05 MaxPerDay:2 Expires:0001-01-01 00:00:00 +0000 UTC} Altitude: Brief:{Title:New responsibility Prompt:Use the revised instructions} Grant:Only prepare a draft; do not send Exceptions:[{Workspace: SessionID:private-conversation At:0001-01-01 00:00:00 +0000 UTC}] Status:active Created:2026-09-10 12:00:00 +0000 UTC Updated:2026-09-10 12:00:00 +0000 UTC RetiredWhy: LastChecked:0001-01-01 00:00:00 +0000 UTC LastCheckLine: NextDue:2026-09-10 14:31:00 +0000 UTC Fingerprint: Previous:[] Runs:0 LastFired:0001-01-01 00:00:00 +0000 UTC LastOutcome: LastRun: SpentUSD:0 NeedsPerson: CleanRuns:0}
+--- FAIL: TestControlWritebackDoesNotRetireARevisedOneShot (0.00s)
+    control_writeback_test.go:188: completed one-shot retired its replacement or lost completion: {Schema:1 ID:69a9de7f9ca76716 Words:Every 30 minutes report Workspace:/tmp/project Origin:{SessionID: Transcript: Exchange: TaskID:0 TurnIDs:[]} When:{Kind:at Words: At:2026-09-10 12:30:00 +0000 UTC Every: Glob: IdleFor:0s Probe:{Command: Tool: Args:[]} ProbeEvery:0s Hint:} Does:{Kind:say Say:leave now Brief: Acceptance: Model: Effort: MaxSteps:0} Rails:{PerRunUSD:0.05 MaxPerDay:3 Expires:0001-01-01 00:00:00 +0000 UTC} Altitude: Brief:{Title: Prompt:} Grant: Exceptions:[] Status:retired Created:2026-09-10 12:00:00 +0000 UTC Updated:2026-09-10 12:31:00 +0000 UTC RetiredWhy:fired LastChecked:2026-09-10 12:31:00 +0000 UTC LastCheckLine:it was the time you asked for NextDue:2026-09-10 12:30:00 +0000 UTC Fingerprint: Previous:[it was the time you asked for → said] Runs:1 LastFired:2026-09-10 12:31:00 +0000 UTC LastOutcome:said LastRun: SpentUSD:0.02 NeedsPerson: CleanRuns:1}
+--- FAIL: TestControlWritebackStalePausePreservesCompletedOccurrence (0.00s)
+    control_writeback_test.go:212: stale pause erased the completed occurrence: before {Schema:1 ID:d8364368427b5beb Words:Every 30 minutes report Workspace:/tmp/project Origin:{SessionID: Transcript: Exchange: TaskID:0 TurnIDs:[]} When:{Kind:every Words:every 30 minutes At:0001-01-01 00:00:00 +0000 UTC Every:30m Glob: IdleFor:0s Probe:{Command: Tool: Args:[]} ProbeEvery:0s Hint:} Does:{Kind:say Say:leave now Brief: Acceptance: Model: Effort: MaxSteps:0} Rails:{PerRunUSD:0.05 MaxPerDay:3 Expires:0001-01-01 00:00:00 +0000 UTC} Altitude: Brief:{Title: Prompt:} Grant: Exceptions:[] Status:active Created:2026-09-10 12:00:00 +0000 UTC Updated:2026-09-10 12:31:00 +0000 UTC RetiredWhy: LastChecked:2026-09-10 12:31:00 +0000 UTC LastCheckLine:it was the time you asked for NextDue:2026-09-10 13:01:00 +0000 UTC Fingerprint: Previous:[it was the time you asked for → said] Runs:1 LastFired:2026-09-10 12:31:00 +0000 UTC LastOutcome:said LastRun: SpentUSD:0.02 NeedsPerson: CleanRuns:1}, after {Schema:1 ID:d8364368427b5beb Words:Every 30 minutes report Workspace:/tmp/project Origin:{SessionID: Transcript: Exchange: TaskID:0 TurnIDs:[]} When:{Kind:every Words:every 30 minutes At:0001-01-01 00:00:00 +0000 UTC Every:30m Glob: IdleFor:0s Probe:{Command: Tool: Args:[]} ProbeEvery:0s Hint:} Does:{Kind:say Say:leave now Brief: Acceptance: Model: Effort: MaxSteps:0} Rails:{PerRunUSD:0.05 MaxPerDay:3 Expires:0001-01-01 00:00:00 +0000 UTC} Altitude: Brief:{Title: Prompt:} Grant: Exceptions:[] Status:paused Created:2026-09-10 12:00:00 +0000 UTC Updated:2026-09-10 12:31:00 +0000 UTC RetiredWhy: LastChecked:0001-01-01 00:00:00 +0000 UTC LastCheckLine: NextDue:2026-09-10 12:30:00 +0000 UTC Fingerprint: Previous:[] Runs:0 LastFired:0001-01-01 00:00:00 +0000 UTC LastOutcome: LastRun: SpentUSD:0 NeedsPerson: CleanRuns:0}
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/standing	0.020s
+FAIL
+# ---
+# exit   1
+# end    2026-09-10T15:34:36Z

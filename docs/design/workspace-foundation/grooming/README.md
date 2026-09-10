@@ -1,7 +1,12 @@
 # Personal AI: living design and delivery record
 
-Updated 2026-09-09. Discussion owner: Codex task
-`01a08653-1fcf-7880-b64f-dae46f29b86a`.
+Updated 2026-09-10. Consolidated design and implementation record for draft #662.
+The earlier discussion originated in Codex task `01a08653-1fcf-7880-b64f-dae46f29b86a`.
+
+Start with the [active checklist](NEXT-STEPS.md), the
+[first build contract](BUILD-WAVE-01.md) and the [critical review](CRITICAL-REVIEW.md).
+Earlier studies below preserve reasoning history; they are not competing active
+plans. The decision ledger records which proposals are confirmed.
 
 Start here when continuing this discussion. Read [decisions](DECISIONS.md) before
 interpreting a proposal as accepted behavior. [Journeys](JOURNEYS.md) define the

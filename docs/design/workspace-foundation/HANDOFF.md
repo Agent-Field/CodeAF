@@ -1,9 +1,29 @@
 # Personal AI backend: continuation record
 
-Updated: 2026-09-09. This is the starting point for a new implementation chat.
+Updated: 2026-09-10. This is the starting point for a new implementation chat.
 Keep this file current in the same commits as the work it describes. A plan,
 an isolated package, and a working end-to-end capability are different states;
 do not mark one as the other.
+
+## Active continuation — 2026-09-10
+
+Use [the consolidated checklist](grooming/NEXT-STEPS.md) for current status and
+[the first build contract](grooming/BUILD-WAVE-01.md) for this iteration's scope.
+The user accepted typed backend composition and parallel implementation. Current
+dev `996117314` has been integrated into an isolated candidate retaining backend
+`c63e03b7`; initial integration commit is `1cfdbd28`. Newer dev completion,
+history and control behavior is preserved alongside organization/context.
+
+The first functional fix addresses standing control-state writeback. Candidate
+validation and exact final revision are recorded in the checklist. Existing
+historical receipts below do not validate the combined candidate automatically.
+The user explicitly deferred tui3 and similarly expensive broad UI/E2E tests;
+focused functional checks run on Spark. Keep broad acceptance visibly deferred.
+
+The user requested a single maintained draft. #662 remains the active draft;
+grooming #663's committed documents are being consolidated here and it is closed
+only after those records are retained on the pushed branch. No successor draft,
+merge into dev, promotion or release is part of this iteration.
 
 ## Current instruction: keep this work separate
 
