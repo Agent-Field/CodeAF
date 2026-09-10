@@ -1248,7 +1248,7 @@ different machine, which is what the next try asks for. Only when all four come 
 does the turn end. Before this, one empty reply ended a whole turn, and a measured run
 stopped eighteen minutes in with hours of budget unspent.
 
-## My reply just stopped and nothing was said — a turn that ended with no answer, no error and no note, my answer disappeared when I opened the conversation in another window, who ended my reply
+## My reply just stopped and nothing was said — a turn that ended with no answer, no error and no note, my answer disappeared when I opened the conversation in another window, who ended my reply, do I have to type my question again
 
 If a reply ends without arriving, aforge says one sentence about it. There is
 exactly one case where it says nothing, and that is when **you** stopped it: the
@@ -1259,11 +1259,35 @@ for it, and each door has its own sentence:
 
 | what ended it | what you read |
 | --- | --- |
-| this conversation was opened in another window | `this conversation was opened in another window, so the reply stopped here — ask again to pick it up` |
+| this conversation was opened in another window | `this conversation was opened in another window, so the reply stopped here — ask again to pick it up`, said in the window letting go. The window you moved it to asks your question again by itself — see below |
 | the conversation was closed or left under the turn | `the reply stopped when this conversation was left — ask again to pick it up` |
 | your stop took too long and was let go of | `the reply was let go of after the stop took too long` |
 | you stopped all the work in the conversation | `everything running here was stopped, the reply with it` |
 | nobody was left watching a conversation on another machine | `nobody was left watching this conversation, so the reply stopped — ask again to pick it up` |
+
+**You do not have to type your question again when a conversation moved.** If the
+reply had said *nothing at all* when another window took the conversation — which
+is what a long stretch of thinking looks like, because working is not kept — the
+window it arrived in asks your question again for you, straight away, through the
+ordinary turn door. Your question is on the page once, where it always was; under
+it is one dim line,
+
+```
+  the reply stopped when this conversation moved — asking again
+```
+
+and then the answer. The stopped attempt's thinking and any half-written words
+are gone, because nothing kept them.
+
+**A reply that had already started is not asked again.** Whatever had been
+written is in the transcript that arrives with the conversation, and tasks that
+were running land `paused — it resumes` and start again from their checkpoint —
+so nothing is run a second time. This only ever fires on the one shape the
+conversation's own file ends in: your words, and then aforge stopping the turn
+that was answering them with nothing said. A turn **you** stopped is never asked
+again, and neither is one that ended any other way — a conversation you left, a
+window that closed, a session on another machine nobody was watching. Those keep
+their sentence and wait for you.
 
 Whatever the door, the ending is also written into the conversation's own file
 as a failed call naming the door — for whoever reads the file afterwards, not

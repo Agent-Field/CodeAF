@@ -2820,6 +2820,14 @@ func (a *Agent) journalFailedCall(ctx context.Context, model, role string, err e
 		Input:    estimate,
 		Message:  clip(err.Error(), errorRowMessage),
 	}
+	// AND A STOP OF OURS SAYS SO IN A FIELD AND NOT ONLY IN ITS SENTENCE. The
+	// message already reads `turn ended: taken over`, which is enough for a
+	// person opening the file and not enough for the reader that has to decide
+	// whether the question above this row is still owed an answer: that reader
+	// must not be parsing prose (stopcause.go, resume.go).
+	if door, ours := StoppedBy(err); ours {
+		row.Door = string(door)
+	}
 	if refusal, ok := provider.RefusalFrom(err); ok {
 		row.Status = refusal.Status
 		row.Provider = strings.TrimSpace(refusal.Provider)

@@ -17,7 +17,9 @@ package session
 //     tasks land "paused — it resumes", and the window that asked resumes them
 //     from the checkpoint. The engine never closes itself from inside a tick.
 //
-//   - A REQUEST IS ANSWERED AT ONCE, MID-REPLY OR NOT. It used to be held back
+//   - A REQUEST IS ANSWERED AT ONCE, MID-REPLY OR NOT — WITH ONE EXCEPTION,
+//     which is a request that was already lying on the disk before the running
+//     turn opened ([Agent.drainTakeover] states it). It used to be held back
 //     until the running turn ended, on the reasoning that a reply is never cut
 //     — and the cost of that reasoning was the defect this road was reported
 //     for: a person pressed enter, confirmed, and watched `coming here · 4m50s`
@@ -25,7 +27,15 @@ package session
 //     by answering now. The holder interrupts and closes the way /new does
 //     (internal/tui3's takeOver), which lands its running work as
 //     `paused — it resumes`, and the window that asked resumes it from the
-//     checkpoint with the partial reply already in the journal.
+//     checkpoint with whatever the reply had said already in the journal.
+//
+//     AND A TURN THAT HAD SAID NOTHING AT ALL IS ASKED AGAIN THERE. This law
+//     used to end at "the partial reply", which quietly assumed there was one:
+//     a turn that had only been THINKING keeps no partial, so the conversation
+//     arrived in the new window as a question with nothing under it and the
+//     person was told to ask again. They do not have to any more — the window
+//     that took it re-asks their question itself, off the shape the journal
+//     ends in (resume.go).
 //
 //   - A REQUEST IS TAKEN OFF DISK BEFORE IT IS ANNOUNCED, so a holder that is
 //     slow to let go is asked once and never a second time on the next beat,
@@ -160,24 +170,29 @@ func CancelTakeover(sessionDir string) {
 	_ = os.Remove(TakeoverPath(sessionDir))
 }
 
-// takeoverAsked reports whether a live request is waiting for the session in
-// dir, WITHOUT taking it. A request older than [TakeoverStale] is a window that
-// died asking, and it is removed here so it is never answered.
-func takeoverAsked(sessionDir string, now time.Time) bool {
+// takeoverAsked answers WHEN a live request was made for the session in dir,
+// WITHOUT taking it, and false when there is none. A request older than
+// [TakeoverStale] is a window that died asking, and it is removed here so it is
+// never answered.
+//
+// THE INSTANT IS HANDED BACK RATHER THAN COMPARED HERE because the holder has a
+// second question to ask of it: whether the request is older than the turn it
+// would end (see [Agent.drainTakeover]).
+func takeoverAsked(sessionDir string, now time.Time) (time.Time, bool) {
 	if strings.TrimSpace(sessionDir) == "" {
-		return false
+		return time.Time{}, false
 	}
 	path := TakeoverPath(sessionDir)
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return false
+		return time.Time{}, false
 	}
 	var request takeoverRequest
 	if err := json.Unmarshal(raw, &request); err != nil || request.At.IsZero() || now.Sub(request.At) > TakeoverStale {
 		_ = os.Remove(path)
-		return false
+		return time.Time{}, false
 	}
-	return true
+	return request.At, true
 }
 
 // takeTakeover removes the request for the session in dir and reports whether
@@ -208,13 +223,34 @@ func (a *Agent) drainTakeover() {
 		return
 	}
 	dir := a.config.Place.Dir
-	if !takeoverAsked(dir, time.Now()) {
+	asked, waiting := takeoverAsked(dir, time.Now())
+	if !waiting {
 		return
 	}
 	a.mu.Lock()
 	closed, told := a.closed, a.takenOver
+	running, began := a.running, a.turnBegan
 	a.mu.Unlock()
 	if closed || told {
+		return
+	}
+	// AND A REQUEST OLDER THAN THE TURN IT WOULD END HAS ALREADY HAD ITS CHANCE.
+	// The beat above runs every [takeoverDoorstep], so a request somebody is
+	// actually waiting on is answered a quarter of a second after it is written
+	// — which means a request still lying here when a LATER turn opened is one
+	// this session could not answer at the time (it was closing, or it had
+	// already been asked once) or one nobody is waiting for at all: the asking
+	// window died, or it opened the conversation by another road and left its
+	// question behind. Either way it is a request from BEFORE the person typed
+	// what they are now waiting for, and letting it end that turn would be this
+	// program taking a reply away on the strength of a file nobody is reading.
+	//
+	// IT IS HELD, NOT DROPPED. The request stays on the disk and stays live for
+	// the rest of its [TakeoverStale] life, so a window that really is waiting
+	// gets its answer on the first beat after this turn ends — which is exactly
+	// the old behaviour, applied now only to the one case that cannot be
+	// somebody sitting there watching a reply they asked for.
+	if running && !began.IsZero() && asked.Before(began) {
 		return
 	}
 	if !takeTakeover(dir) {
