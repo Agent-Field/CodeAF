@@ -2583,7 +2583,7 @@ func (a *Agent) acceptTask(node *TaskNode, why string, by TaskAskOwner) error {
 	// divider that landed unverified and is accepted in the morning must lay the
 	// same whole product a verified one laid at once. The fold is idempotent, so
 	// a list that is already complete costs a walk of itself.
-	changed, merge, detail, refusal := landHome(node, tree, changed)
+	changed, merge, detail, refusal := landHome(node, tree, changed, a.signsGitWork())
 	if refusal == refusedByYourFiles {
 		// AND THE ROAD IS MARKED HERE TOO. An accept is the second time a node's
 		// branch is offered to the ground, and it can be refused by the person's
@@ -2744,7 +2744,7 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		node.finish(gapsOutcome([][]string{verdict.evidence}), changed, branch, abortedMerge(tree))
 		node.graph.resettle(node, TaskFailed)
 	default:
-		changed, merged, detail, refusal := landHome(node, tree, changed)
+		changed, merged, detail, refusal := landHome(node, tree, changed, a.signsGitWork())
 		// A VERDICT THAT ARRIVES LATE CANNOT MERGE A BRANCH THAT WILL NOT GO
 		// EITHER. The node keeps the one state that is true of it — somebody has
 		// to look — with the work committed on its branch and the clashing files

@@ -65,7 +65,7 @@ func TestALandingWillNotMoveYourUntrackedCopiesByItself(t *testing.T) {
 	// watching it at all, which is the whole of the shape.
 	writeFile(t, filepath.Join(repo, "sheet.md"), "my own draft\n")
 
-	merge, detail, clashing, why := tree.comeHome("write the sheet", []string{"sheet.md"})
+	merge, detail, clashing, why := tree.comeHome("write the sheet", []string{"sheet.md"}, false)
 	if merge != mergeConflicted {
 		t.Fatalf("merge = %q (%s), want it refused", merge, detail)
 	}
@@ -94,7 +94,7 @@ func TestTheirWordCarriesTheirCopiesAsideAndKeepsBoth(t *testing.T) {
 	writeFile(t, filepath.Join(repo, "sheet.md"), "my own draft\n")
 	writeFile(t, filepath.Join(repo, "notes.md"), "my own notes\n")
 
-	merge, detail, _, _ := carryOnTheirWord(tree).comeHome("write the sheet", []string{"sheet.md", "notes.md"})
+	merge, detail, _, _ := carryOnTheirWord(tree).comeHome("write the sheet", []string{"sheet.md", "notes.md"}, false)
 	if !cameHome(merge) {
 		t.Fatalf("merge = %q (%s), want it home on their word", merge, detail)
 	}
@@ -129,7 +129,7 @@ func TestACarriedCopyThatDoesNotClashGoesStraightBack(t *testing.T) {
 	_ = os.Remove(filepath.Join(tree.dir, "sheet.md"))
 	writeFile(t, filepath.Join(tree.dir, "other.md"), "the task's other file\n")
 
-	merge, detail, _, _ := carryOnTheirWord(tree).comeHome("write the sheet", []string{"other.md"})
+	merge, detail, _, _ := carryOnTheirWord(tree).comeHome("write the sheet", []string{"other.md"}, false)
 	if !cameHome(merge) {
 		t.Fatalf("merge = %q (%s), want it home", merge, detail)
 	}

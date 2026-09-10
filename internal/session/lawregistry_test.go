@@ -174,12 +174,18 @@ var lawRegistry = []lawUnit{
 	{id: "tasks.look-inside", class: lawCore, key: "Look inside running or landed work with `tasks` and its id"},
 	{id: "tasks.continue-is-not-a-new-task", class: lawCore, key: "never a fresh `propose_task`"},
 	{id: "read.what-read-cannot-turn-into-text", class: lawCore, key: "What `read` cannot turn into text → `read_document`"},
+	// ── the mark aforge leaves on work it did in somebody's name. It is core
+	// rather than verb: `bash` is where it happens, but `bash` is pi's own
+	// description and this law is aforge's, and it is stated in ONE place for
+	// both surfaces there are — the leaf loop's contract and this page read the
+	// same constant (internal/exec's [exec.AttributionLaw]).
+	{id: "attribution.sign-git-work", class: lawCore, key: "SIGN GIT WORK YOU DO WITH `bash`, GENTLY AND ONCE."},
 
 	// ── and the laws the page gave up to the verb that owns them. Each of
 	// these was a page sentence until the diet; the description had said it all
 	// along, in more words and with the field names beside it.
-	{id: "write.in-parts", class: lawVerb, tool: "write", key: "Write very large files in parts"},
-	{id: "read.offset-limit", class: lawVerb, tool: "read", key: "Use offset/limit for large files"},
+	{id: "write.in-parts", class: lawVerb, tool: "write", key: "Write a very large file in parts"},
+	{id: "read.offset-limit", class: lawVerb, tool: "read", key: "page the rest with offset/limit"},
 	{id: "capabilities.continue-this-turn", class: lawVerb, tool: loadCapabilityToolName, key: "Full schemas arrive on the next model request; continue in this same turn"},
 	{id: "task.lands-as-a-turn", class: lawVerb, tool: "propose_task", key: "starts a turn here when it lands, so never wait or poll"},
 	{id: "tasks.stop-ends-work", class: lawVerb, tool: "tasks", key: "To END running work use stop"},
