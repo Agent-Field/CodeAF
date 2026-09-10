@@ -429,14 +429,22 @@ func questionsBlocksUnderAnswers(t *testing.T) {
 	// THE JOURNAL IS WHERE THE LAW IS READ. The screen can only say a question
 	// arrived; it cannot say how many calls it took, and a question that arrives
 	// on the third try after two argument refusals is the defect wearing a
-	// green screen. One `ask` in the journal, carrying blocks, and no refusal at
-	// all is the whole of what the fix promised.
-	asks, blocks, refusals := 0, 0, 0
+	// green screen. One `ask` that the decoder read, carrying blocks, and no
+	// argument refusal at all is the whole of what the fix promised.
+	//
+	// A call the QUESTION GATE turned away is not counted against it: the gate
+	// refuses in its own words (`nothing was asked and the person saw no
+	// question: the pick names "adaptive-hrv", which is not one of the answers`)
+	// a question whose bytes were read perfectly well, and the model writes it
+	// again. That is a different law with its own tests (session/question_test.go)
+	// and a model's own mistake, and this scenario is about the bytes.
+	asks, blocks, refusals, turnedAway := 0, 0, 0, 0
 	var refused []string
 	for _, journal := range sessionTranscripts(t, r.home) {
 		asks += strings.Count(journal, `"function":{"name":"ask"`)
 		blocks += strings.Count(journal, `blocks`)
 		refusals += strings.Count(journal, "Invalid arguments: ")
+		turnedAway += strings.Count(journal, "nothing was asked and the person saw no question: ")
 		// The refusal's own words are the evidence: a shape this decoder does
 		// not yet read is named there, and the journal is gone with the rig.
 		for _, line := range strings.Split(journal, "\n") {
@@ -445,10 +453,11 @@ func questionsBlocksUnderAnswers(t *testing.T) {
 			}
 		}
 	}
-	if asks != 1 || refusals != 0 || blocks == 0 {
-		t.Errorf("the first ask did not arrive whole: %d ask calls, %d argument refusals, blocks mentioned %d times "+
-			"in the journal; want one call carrying blocks and none refused.\nRefused with:\n  %s\nThe journal is kept at %s",
-			asks, refusals, blocks, strings.Join(refused, "\n  "), keepJournals(t, r))
+	if asks-turnedAway != 1 || refusals != 0 || blocks == 0 {
+		t.Errorf("the first ask did not arrive whole: %d ask calls (%d turned away by the question gate), "+
+			"%d argument refusals, blocks mentioned %d times in the journal; want one call the decoder read, "+
+			"carrying blocks, and none refused.\nRefused with:\n  %s\nThe journal is kept at %s",
+			asks, turnedAway, refusals, blocks, strings.Join(refused, "\n  "), keepJournals(t, r))
 	}
 
 	press(t, r, "o")
