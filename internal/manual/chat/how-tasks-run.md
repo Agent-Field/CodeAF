@@ -1104,8 +1104,10 @@ that counts. Working toward the brief: the task gets another hour, up to five in
 land now — one final turn to write the deliverable from what it already has — and only
 then is it stopped, with the threshold and the evidence in the report.
 
-**What the landing turn may still do.** It keeps only the tools that SAVE something
-before the call returns: `write`, `edit`, `edit_video` where this machine has ffmpeg,
+**What the landing turn may still do.** It keeps `read` to retrieve existing evidence,
+including full results that context reduction replaced with file references. It also
+keeps tools that save something before the call returns: `write`, `edit`,
+`edit_video` where this machine has ffmpeg,
 and — when the task had them — `generate_image`
 and `speak`. Everything else comes off, and the instruction names exactly the hands it
 kept, so a task whose deliverable is a picture, a voiceover or a joined cut can still
@@ -1113,8 +1115,9 @@ produce it.
 `generate_video` and `generate_music` are **not** kept, even by a task that had them: they
 answer with a background job and land minutes later, and the task is closed the moment
 its landing turn ends — a render started there would be stopped before the file existed.
-Reading, searching and running commands are gone for that turn too: it is a turn for
-finishing, not for one more look.
+Searching and running commands are gone for that turn. Reading existing evidence is
+still available so the task can finish accurately; the instruction forbids starting new
+exploration.
 
 **Time a task spends waiting for its own command still spends the hour.** When a foreground
 command runs past `background after` and keeps running as a job, the task waits for it
