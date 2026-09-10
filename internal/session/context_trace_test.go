@@ -157,3 +157,61 @@ func TestContextTraceRecordsScopeAndAnswerFromSelectedSnapshot(t *testing.T) {
 		t.Errorf("end misidentified: %+v", page.Rows[1])
 	}
 }
+
+func TestContextTraceStopsAtUnknownCompactionWindow(t *testing.T) {
+	path := traceFixture(t,
+		`{"type":"context_exposure","context_exposure":{"execution_id":"a","phase":"selected"}}`,
+		`{"type":"compaction","summary":"legacy summary"}`,
+		`{"type":"message","role":"assistant","toolCalls":[{"id":"copy","function":{"name":"write"}}]}`,
+	)
+	page, err := readContextTrace(context.Background(), path, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Rows) != 1 || !strings.Contains(page.Unreadable, "unknown compaction window") {
+		t.Fatalf("copied legacy actions presented as originals: %+v", page)
+	}
+}
+
+func TestContextTraceBoundsOversizedCallRowsIncludingFirstRow(t *testing.T) {
+	calls := make([]string, 1200)
+	for i := range calls {
+		calls[i] = fmt.Sprintf(`{"id":"call-%d","function":{"name":"read"}}`, i)
+	}
+	path := traceFixture(t, `{"type":"message","role":"assistant","toolCalls":[`+strings.Join(calls, ",")+`]}`)
+	page, err := readContextTrace(context.Background(), path, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(payload) > 24000 || len(page.Rows) != 1 || !page.Rows[0].DetailOmitted || page.Rows[0].Line != 1 || page.Rows[0].Kind != "tool_calls" {
+		t.Fatalf("first oversized row escaped its bound or lost its source: bytes=%d page=%+v", len(payload), page)
+	}
+}
+
+func TestContextTraceDoesNotPairOrphansAcrossBatchOrExecutionBoundaries(t *testing.T) {
+	for _, boundary := range []string{
+		`{"type":"message","role":"assistant","content":"a later answer"}`,
+		`{"type":"message","role":"assistant","toolCalls":[{"id":"new","function":{"name":"read"}}]}`,
+		`{"type":"context_exposure","context_exposure":{"execution_id":"b","phase":"selected"}}`,
+		`{"type":"context_exposure","context_exposure":{"execution_id":"a","phase":"loop_returned"}}`,
+	} {
+		path := traceFixture(t,
+			`{"type":"context_exposure","context_exposure":{"execution_id":"a","phase":"selected"}}`,
+			`{"type":"message","role":"assistant","toolCalls":[{"id":"old","function":{"name":"read"}}]}`,
+			boundary,
+			`{"type":"message","role":"tool","toolCallId":"old","content":"orphaned reply"}`,
+		)
+		page, err := readContextTrace(context.Background(), path, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		last := page.Rows[len(page.Rows)-1]
+		if last.Kind != "tool_reply" || last.CallLine != 0 {
+			t.Errorf("orphan linked across %s: %+v", boundary, last)
+		}
+	}
+}
