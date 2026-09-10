@@ -213,11 +213,16 @@ func (c *Client) announceTitle(title, short string) {
 // The welcome restores the cache, but the UI also needs a notification if the
 // name arrived during the gap. If it is still pending, the new server needs its
 // own subscription; the old pipe's subscription was closed with that pipe.
+//
+// IT IS ONE OF THREE AND IT ASKS THE ONE QUESTION THEY ALL ASK. Whether this
+// window is still in the conversation it left is [conversationSwitched]'s
+// answer, spelled once for the rail, the harness lane and this one
+// (redial.go's [Client.retakeLanes] is what calls this).
 func (c *Client) retakeTitle(left string, welcome Welcome) {
 	c.mu.Lock()
 	watching := c.titles != nil
 	c.mu.Unlock()
-	if !watching || left != welcome.SessionFile {
+	if !watching || conversationSwitched(left, welcome.SessionFile) {
 		return
 	}
 	if welcome.Facts != nil {
