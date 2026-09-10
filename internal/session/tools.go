@@ -196,6 +196,7 @@ func (a *Agent) belt() []bare.Tool {
 	// something that spends forever.
 	tools = append(tools, a.standingTools()...)
 	tools = append(tools, a.organizationTools()...)
+	tools = append(tools, a.contextTraceTools()...)
 	tools = append(tools, a.harnessTools()...)
 	// The saved PROGRAMS, and the list that says which ones there are
 	// (tools_subharness.go). They are conditional on the same terms the three

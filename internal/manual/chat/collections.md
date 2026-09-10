@@ -114,7 +114,7 @@ edits do not silently overwrite one another. Withdraw retains its history but
 removes it from applicable-context queries. History preserves earlier text,
 sources and targets.
 
-At each chat or ordinary task-worker turn, a bounded snapshot includes current
+At each supported chat, worker, checker, fork or scheduled turn, a bounded snapshot includes current
 context for that work and its direct collections. Revised or withdrawn context
 replaces earlier snapshots at the next turn; it does not interrupt an in-flight
 model response. List and history return metadata in pages of 25; use `next_offset`. Read returns
@@ -125,10 +125,9 @@ bytes of text and 64 distinct targets. A turn includes at most six records with
 1,200 characters each; truncation and additional records are identified. Task workers
 can read shared context but cannot create, revise or withdraw it. This works
 with learned memory disabled. It does not yet implement automatic consultation,
-semantic discovery beyond links, or sharing context with a scheduled firing.
+semantic discovery beyond links, or automatic cross-work activation. Scheduled runs read context for their owning standing item; they do not acquire the setup chat's folder bindings.
 The conversation's completion reader sees the same bounded snapshot as the turn.
-A task's separate read-only checker still uses its existing acceptance and file
-checks; it does not receive the shared-context tool or a separate snapshot.
+A task's separate read-only checker also receives shared context and fresh governing directions for its owning work. It keeps its existing acceptance and file checks.
 
 ## Can I still read a record after removing my chat from its collection
 
@@ -145,3 +144,43 @@ Removing the last link retires that context at the next turn, including after
 reopening a chat. Rejoining restores it if the record is still current and active.
 A record's existence is not proof that it applies here, and its information is
 not an instruction or permission.
+
+## Which folder rules apply here, and how do I change them
+
+A reference made with `collections` action `add` helps navigation and shared
+information. It does not make that folder's instructions govern the work.
+In a conversation with you, `place` explicitly adds a governing folder binding;
+`unplace` removes that binding. Both take `id` for the folder and optional `ref`
+for the work (default: this chat). Several bindings may apply. These actions do
+not move files, change old outputs or remove navigation references. A move between
+governing folders currently requires removing one binding and adding the other.
+
+Use action `governing` to inspect current governing folders and their depths:
+zero means direct, higher values mean ancestors through governing placements.
+Folder rules reach those ancestors' descendants only when explicitly declared.
+Workers and unattended sessions can inspect these bindings but cannot change them.
+These actions are on the chat tool; the local collections command retains its
+existing reference operations. Existing reference memberships are never promoted
+into governing bindings when the database upgrades.
+
+## Why did this run use those instructions or call that tool
+
+Ask to inspect `context_trace`. It reads the current execution journal and returns
+recorded context selections plus original journal-line references for tool calls,
+replies and outcomes. A selection records the inputs supplied to execution; it
+does not prove the model followed them. Standing input text is retained with its
+revision because those records can later change. Shared context points to its
+immutable source revision.
+
+Pages contain at most 40 rows with a bounded preview. Continue with `next_line`;
+when detail is omitted, the original journal line contains it. Tool arguments,
+reply bodies and model reasoning are not duplicated in this view. A returned
+loop is not a successful outcome, and a tool reply is not proof of an external
+effect. Overlapping execution windows are marked ambiguous. Parent causal links
+are not yet recorded; this is local execution evidence, not a complete history
+of why every background decision happened. Journals written before this feature
+have no retrospective context selection receipts.
+
+Recording requires a writable journal. Missing or failed journal writes do not
+create a retrospective receipt; absence is not proof that no work ran. Inspection
+stops after a bounded 16 MiB scan and reports the limitation explicitly.

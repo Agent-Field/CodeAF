@@ -2303,3 +2303,15 @@ plus at most two 400-byte neighbours on each side. They do not read whole
 transcripts or invoke an embedding model. Search tokenization accepts at most
 32 Unicode word/number tokens, quoted as FTS data. History access inherited by
 tasks grants reads only and introduces no background memory calls or writes.
+
+## Governing folder scope and context receipts (#662)
+
+Explicit governing bindings use the existing organization database, schema 3.
+The ancestry query deduplicates equal-depth paths and returns each collection at
+its nearest depth; it never traverses reference memberships. A rule's explicit
+folder scope accepts at most 32 distinct collection IDs. A context receipt is
+written at an execution boundary to the existing journal, retaining effective
+standing text and immutable shared-context revision references. The inspection
+tool returns at most 40 rows and approximately 24 KiB per page; oversized detail
+is omitted with its source line retained. This wave's compilation and checks run
+on Spark only; local editing/formatting is not performance acceptance.

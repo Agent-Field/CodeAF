@@ -89,6 +89,9 @@ func (a *Agent) collectionsTool(ctx context.Context, raw json.RawMessage) (strin
 	if !read && a.config.InTask {
 		return organizationResult(nil, errors.New("task workers can inspect collections but cannot reorganize them"))
 	}
+	if (p.Action == "place" || p.Action == "unplace") && (!a.config.AskConsent || a.steward() != nil) {
+		return organizationResult(nil, errors.New("governing folder bindings can only change in a conversation with the person"))
+	}
 	if p.Action == "find" && p.Name != "" && p.Ref.Kind != "" {
 		return organizationResult(nil, errors.New("find accepts either a name or a member ref, not both"))
 	}
@@ -227,7 +230,7 @@ func (a *Agent) sharedContextTool(ctx context.Context, raw json.RawMessage) (str
 		targets := p.Targets
 		implicit := len(targets) == 0
 		if implicit {
-			targets = organizationScope(a.organizationSource())
+			targets = a.organizationTargets()
 		}
 		var page workspace.ContextSelection
 		page, err = s.ContextPage(ctx, targets, implicit, p.Offset, organizationPageSize)
@@ -251,7 +254,7 @@ func (a *Agent) sharedContextTool(ctx context.Context, raw json.RawMessage) (str
 	}
 	if err == nil && p.Action == "read" {
 		record := result.(workspace.ContextRecord)
-		applies, scopeErr := s.ContextApplies(ctx, record.ID, record.Revision, organizationScope(a.organizationSource()), true)
+		applies, scopeErr := s.ContextApplies(ctx, record.ID, record.Revision, a.organizationTargets(), true)
 		if scopeErr != nil {
 			return organizationResult(nil, scopeErr)
 		}
