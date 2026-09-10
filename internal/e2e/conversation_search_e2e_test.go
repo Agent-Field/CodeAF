@@ -70,12 +70,16 @@ func TestConversationSearchLive(t *testing.T) {
 			}
 			out := w.say(agent, sc.ask, answerNo)
 			searches := 0
+			queries := 0
 			evidence := ""
 			seen := map[string]bool{}
 			for _, call := range conversationReceiptCalls(t, place.Transcript()) {
 				if call.Name == "search_conversations" {
 					var args map[string]any
 					_ = json.Unmarshal([]byte(call.Args), &args)
+					if ref, _ := args["ref"].(string); ref == "" {
+						queries++
+					}
 					canonical, _ := json.Marshal(args)
 					if seen[string(canonical)] {
 						t.Errorf("repeated identical lookup: %s", canonical)
@@ -91,8 +95,11 @@ func TestConversationSearchLive(t *testing.T) {
 					t.Errorf("lookup detoured through %s", call.Name)
 				}
 			}
-			if searches < 1 || searches > sc.maxSearch {
-				t.Errorf("search calls=%d, want 1..%d", searches, sc.maxSearch)
+			// Opening the original and its correction is evidence gathering,
+			// not another discovery query. Limit discovery without penalizing
+			// distinct source reads; identical calls are still rejected above.
+			if searches < 1 || queries > sc.maxSearch {
+				t.Errorf("history calls=%d, discovery queries=%d; want history access and at most %d queries", searches, queries, sc.maxSearch)
 			}
 			answerMatches := strings.Contains(out.Reply, sc.want)
 			if sc.displayLabel {
@@ -109,7 +116,7 @@ func TestConversationSearchLive(t *testing.T) {
 			if sc.want == "" && !strings.Contains(strings.ToLower(out.Reply), "find") && !strings.Contains(strings.ToLower(out.Reply), "match") {
 				t.Errorf("reply did not explain the miss: %s", out.Reply)
 			}
-			t.Logf("RESULT model=%s searches=%d cost=$%.6f reply=%s", agent.Model(), searches, agent.Usage().CostUSD, out.Reply)
+			t.Logf("RESULT model=%s history_calls=%d discovery_queries=%d cost=$%.6f reply=%s", agent.Model(), searches, queries, agent.Usage().CostUSD, out.Reply)
 			// The journal is the full record if the event display clipped an excerpt.
 			if _, err := os.Stat(place.Transcript()); err != nil {
 				t.Fatal(err)
