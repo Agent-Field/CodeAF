@@ -148,11 +148,18 @@ func TestATaskModelNeverWearsTheConversationsReasoningSuffix(t *testing.T) {
 	if strings.Contains(line, ":high") {
 		t.Fatalf("the task's model is wearing the conversation's reasoning level:\n%q", line)
 	}
-	// And the level is real: it is on the seam the moment the window is the
-	// conversation again, which is what makes the absence above a decision.
+	// And the level is real: it is the conversation's, held against the
+	// conversation's own model, and the sheet spells it there whole
+	// (statusdeck.go). THE SEAM DOES NOT SPELL IT AT ALL SINCE 2026-09-09 — that
+	// line carries one thinking rung and it is the resolved one, which this level
+	// is folded into (effortchip.go) — so the absence above is a decision about
+	// the ROOM's model rather than about the level having gone.
 	a.closeRoom()
-	if seam := plain(a.legend(a.width)); !strings.Contains(seam, "deepseek-v4-flash:high") {
-		t.Fatalf("the conversation's own level went missing with the room:\n%q", seam)
+	if got := a.reasoningFor("deepseek/deepseek-v4-flash"); got != "high" {
+		t.Fatalf("the conversation's own level went missing with the room: %q", got)
+	}
+	if seam := plain(a.legend(a.width)); strings.Contains(seam, ":high") {
+		t.Fatalf("the seam still spells a level onto the model id:\n%q", seam)
 	}
 }
 
