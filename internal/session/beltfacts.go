@@ -259,112 +259,84 @@ var beltFacts = []beltFact{{
 	absent:  "- YOU CANNOT CHANGE A PREFERENCE FROM INSIDE A TASK: say so and point at `/settings`, and never `edit` or `write` a config file instead.",
 }}
 
-// handoffFacts is `## Work or words`: the ways work leaves this turn, one row
-// per verb, so that the list a model reads is the list of verbs it has.
+// handoffFacts is `## Work or words`: the ways work leaves this turn, composed
+// from the belt so that what a model reads is what it actually has.
 //
-// THE LEAD-IN RIDES `propose_task` AND NOT THE LIST. "Launch first, then
-// answer" is the instruction of an agent that has somewhere to launch at; on
-// the floor of the tree there is nowhere, and the truth there is the opposite
-// instruction — the work is yours, so open it. Everything else in the section
-// names no verb and stays in the page for everybody: what a hand-off costs,
-// that the question is asked again while you work, and that what you learned
-// goes with it.
+// IT IS A PICTURE AND NOT A RULE LIST, which is the owner's ruling of
+// 2026-09-10 and a reversal of how this section was written. What it hands the
+// model is what it HAS and what each thing COSTS — one mind with a clock; a
+// quick task that is a copy of its abilities where it stands; a task that is a
+// worker in a copy of the folder, checked and merged; the arithmetic that
+// pieces kept cost their sum and pieces handed out cost the longest of them —
+// and the model does its own reasoning from that. There are no shapes of work
+// enumerated here, because a list of shapes is a list somebody has to keep
+// true: the moment it says "a survey is quick" it has stopped teaching and
+// started matching, and the next request is one nobody wrote a row for.
 //
-// AND THE FIRST BULLET SORTS ON WHAT HAPPENS TO THE RESULT, NEVER ON WIDTH.
-// It said the opposite until 2026-09-10 — "WIDE WORK … ONE `propose_task` with
-// `wide` set. That is the default road" — and a real model read it exactly as
-// written: asked for a READ-ONLY survey of four packages it answered "wide
-// survey across four packages, sizing it before I hand it off" and proposed a
-// task, buying a worktree, a check and a landing for four files it was only
-// going to read. Width was never the question. What decides is whether the
-// answer comes back to be READ and carried on with here — which is a quick
-// task, one per independent part — or whether it must be CHECKED AND LANDED on
-// its own, which is a task. The "one task that hands its own parts out" road is
-// still the right road, and it is the road for a wide CHANGE; both bullets say
-// so, because the defect was the model applying the change road to a read.
-// Both verbs are on a belt together or on neither ([Config.mayQuickTask]), so
-// this one bullet may name them both and be true wherever it renders.
+// IT REPLACED A LIST THAT SORTED ON WIDTH, and the list was measurably wrong.
+// Until this ruling the first bullet read "WIDE WORK — a sweep across many
+// files, research across many sources … ONE `propose_task` with `wide` set.
+// That is the default road", and a real model applied it exactly as written:
+// asked for a READ-ONLY survey of four packages it answered "wide survey across
+// four packages — sizing it before I hand it off" and bought a worktree, a
+// check and a landing for four files nothing was going to write. Width was
+// never the question, and a second rule saying so would have been one more row
+// to match against.
+//
+// THE CLOCK IS THE HALF THAT WAS NEVER STATED AT ALL. A model left to itself
+// does independent pieces one after another, because that is what one thread
+// of reasoning feels like from the inside, and the person waits the sum of them
+// for an answer that could have cost the longest. So the middle paragraph is
+// the arithmetic, and the last one is the conduct that keeps the win: do the
+// piece you kept, never look in on running work, and end the turn when nothing
+// independent of it is left. Both lean on laws already written — the page's own
+// `HANDED-OFF WORK IS NOT WORK THAT REMAINS` and [taskHandoffWakeSentence] on
+// every receipt — and say only the part neither of them says.
+//
+// THE ABSENT CASE IS THE OPPOSITE INSTRUCTION AND NOT A SHORTER ONE. On the
+// floor of the tree there is nowhere to hand anything, so a picture of two
+// roads is a picture of two roads that are not there; what is true there is
+// that the work is yours, so open it. Both verbs are on a belt together or on
+// neither ([Config.mayQuickTask]), which is what lets one fragment name them
+// both and be true wherever it renders.
 var handoffFacts = []beltFact{{
 	tools: []string{"propose_task", quickTaskToolName},
 	holds: Config.mayProposeTask,
-	present: "WORK — research across sources, changes across files, anything with several\n" +
-		"independent parts, anything they would otherwise watch a spinner for — is NOT\n" +
-		"yours to do inline. Launch first, then answer:\n" +
-		"  - WORK YOU WILL READ AND CARRY ON WITH — a survey, a comparison, research, a\n" +
-		"    draft, reading across many files or packages: `quick_task`, ONE PER\n" +
-		"    INDEPENDENT PART in one breath, each a few files and a few minutes, or\n" +
-		"    one with `items` where the parts share what they learn. Width is no\n" +
-		"    reason to make it a task; you write the answer from what they bring back.\n" +
-		"  - WORK THAT MUST BE CHECKED AND LANDED on its own — edits that need a build,\n" +
-		"    a branch, a merge — or must outlive this window: `propose_task`. A WIDE\n" +
-		"    CHANGE is ONE of them with `wide` set, and that worker opens the material\n" +
-		"    and hands the real parts out under itself; a wide READ never is.\n" +
-		"  - One self-contained linear job: `propose_task`, without `wide`.",
+	present: "You are one mind with a clock, and two ways to put more minds on the work run\n" +
+		"beside you. A `quick_task` is a copy of your abilities working where you stand:\n" +
+		"it starts the instant you ask, reads and writes in this same folder, and its\n" +
+		"last message comes back to you as a note. A `propose_task` is a worker in a copy\n" +
+		"of the folder, checked and merged when it finishes, that outlives this window.\n" +
+		"Both are yours to steer and to stop, and both wake you when they land.\n" +
+		"\n" +
+		"So wherever more than one thing is ahead, WEIGH THE CLOCK. Pieces done in your\n" +
+		"own hands cost their sum; independent pieces handed out in one breath cost the\n" +
+		"longest of them. When what remains has parts that do not need each other, hand\n" +
+		"them out and keep one. When the parts feed each other, keep them together — your\n" +
+		"own steps, or one quick task's items. One read, one edit, one command is never\n" +
+		"worth a hand-off. What must be checked and landed on its own, or must survive\n" +
+		"you, is a task; what you will read and carry on with is quick, and a quick task\n" +
+		"is a small thing: a few files, a few minutes.\n" +
+		"\n" +
+		"AFTER HANDING OUT YOU ARE NOT WAITING. Do the piece you kept, or answer what you\n" +
+		"can. The landings come to you as notes, and if your turn has ended they start\n" +
+		"one; looking in on running work gains nothing. When nothing independent of it\n" +
+		"remains, end your turn — that is how you wait.",
 	absent: "WORK IS YOURS TO DO HERE. There is nowhere to launch it at from where you\n" +
 		"stand, so a sweep across many files, research across many sources or the same\n" +
 		"change over many items is work you open and carry yourself, in the order that\n" +
 		"finishes it.",
 }, {
-	// AND ONE FACT ABOUT THE VERB THAT NOTHING ELSE HOLDS. Which work it is for
-	// is the bullet above; what it IS — where it runs, what it lands — is the
-	// judge in its own description (task_quick.go). What neither of those says
-	// is that there is no card and no countdown in front of it, which the model
-	// would otherwise assume from `propose_task`, so that is the whole line and
-	// the rest of it was a second copy paid for on every request.
-	tools:   []string{quickTaskToolName},
-	holds:   Config.mayQuickTask,
-	present: "  - `quick_task` has no card and no countdown: it starts the moment you call.",
-	// A node on the floor of the tree is told nothing: there is no second-best
-	// road to point it at, and the `WORK IS YOURS TO DO HERE` sentence above has
-	// already said so.
-	absent: "",
-}, {
-	// AND THE WALL CLOCK IS A DECISION, ASKED EVERY TURN. The two bullets above
-	// answer WHICH ROAD a piece of work takes; this one answers a question the
-	// page never put at all — whether the pieces go one after another or all at
-	// once. A model left to itself does them in turn, because that is what a
-	// single thread of reasoning feels like from inside, and the person waits
-	// the sum of the parts for an answer that could have cost the longest one.
-	// Owner's ruling, 2026-09-10: an agent that can start other agents should
-	// weigh that every turn and take it when the pieces are independent.
-	//
-	// IT CARRIES THE AFTER-SPAWN CONDUCT WITH IT, in the same breath, because
-	// the two failures are one failure. A turn that hands three pieces out and
-	// then spends its steps reading their state has bought the wall-clock win
-	// and handed it straight back. The laws it leans on are already written —
-	// `HANDED-OFF WORK IS NOT WORK THAT REMAINS` in the page's Critical list and
-	// [taskHandoffWakeSentence] on every receipt — so this says only the part
-	// neither of them says: keep a piece, start on it now, and fold each landing
-	// as it arrives.
-	//
-	// It is composed rather than written into prompts/system.md because that
-	// page is read by EVERY shape this package builds, the floor of the tree
-	// included (prompt.go), and a node with nowhere to hand work to must not be
-	// told to weigh handing it out.
-	tools: []string{quickTaskToolName},
-	holds: Config.mayQuickTask,
-	present: "AND WEIGH THE WALL CLOCK EVERY TURN. Pieces that do not need each other are\n" +
-		"work you would otherwise do one after another while they wait the sum of it:\n" +
-		"start them in one breath as quick tasks instead, each a worker of its own\n" +
-		"reading and writing beside you, and keep one piece yourself and begin it at\n" +
-		"once. Then carry on with your own piece: never poll a running task and never\n" +
-		"re-read it — each landing arrives as a note and wakes you if your turn has\n" +
-		"ended — and fold each one as it comes. When nothing independent of what you\n" +
-		"handed out is left, end the turn; waiting is not a step. NOT this way:\n" +
-		"pieces that share what they learn (one quick task's items), one edit, one\n" +
-		"read or one command, and anything that must be checked and landed on its own.",
-	absent: "",
-}, {
 	tools:   []string{"build_harness", loadCapabilityToolName},
 	holds:   Config.mayDesignHarness,
-	present: "  - A shape of work that will recur: `build_harness`.",
-	shelved: "  - A shape of work that will recur: `build_harness`, in the `harnesses` group.",
+	present: "AND A SHAPE OF WORK THAT WILL RECUR is neither of them: `build_harness` designs it once and saves it.",
+	shelved: "AND A SHAPE OF WORK THAT WILL RECUR is neither of them: `build_harness` designs it once and saves it, in the `harnesses` group.",
 	absent:  "",
 }, {
 	tools:   []string{"propose_subharness", loadCapabilityToolName},
 	holds:   Config.mayProposeSubharness,
-	present: "  - A shape of work a saved program ALREADY does: `propose_subharness`.",
-	shelved: "  - A shape of work a saved program ALREADY does: `propose_subharness`, in the `harnesses` group.",
+	present: "AND A SHAPE OF WORK A SAVED PROGRAM ALREADY DOES: `propose_subharness`.",
+	shelved: "AND A SHAPE OF WORK A SAVED PROGRAM ALREADY DOES: `propose_subharness`, in the `harnesses` group.",
 	absent:  "",
 }}
 
@@ -516,7 +488,7 @@ type promptSection struct {
 
 var promptSections = []promptSection{
 	{token: beltFactsToken, facts: beltFacts, join: "\n"},
-	{token: handoffFactsToken, facts: handoffFacts, join: "\n"},
+	{token: handoffFactsToken, facts: handoffFacts, join: "\n\n"},
 	{token: programFactsToken, facts: programFacts, join: "\n\n"},
 	{token: standingFactsToken, facts: standingFacts, join: "\n\n"},
 }

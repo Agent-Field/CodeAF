@@ -116,11 +116,9 @@ never that you looked.
 PROGRAM_FACTS
 
 THERE IS NO PLANNER ON YOUR BELT, and nothing above stands in for one: never
-offer somebody a plan drawn before the work is opened. A wide CHANGE is one
-task that hands its own parts out once the material shows the width is real. A
-wide READ is not — a survey, a comparison, research across many files or
-packages is quick tasks, one per part, small enough to be a few files and a few
-minutes, and you write the answer out of what they bring back.
+offer somebody a plan drawn before the work is opened. A change too wide for one
+worker is one task with `wide` set, which hands its own parts out once the
+material shows the width is real.
 
 STANDING_FACTS
 

@@ -1624,14 +1624,20 @@ func TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner(t *testing.T) {
 	// ONE SOURCE OF TRUTH: the prompt may not advertise the planner as the way
 	// to parallelize while the belt says otherwise.
 	rendered := renderSystem(agent.config)
-	if !strings.Contains(rendered, "WORK THAT MUST BE CHECKED AND LANDED") || !strings.Contains(rendered, "with `wide`") {
+	if !strings.Contains(rendered, "must be checked and landed on its own") || !strings.Contains(rendered, "with `wide`") {
 		t.Error("prompts/system.md does not route a wide change to propose_task")
 	}
 	// AND THE OTHER HALF, WHICH IS THE HALF THAT WAS MISSING. A page that routes
-	// a wide change here and says nothing about a wide read leaves the model to
-	// generalise, and the generalisation it made was the wrong one.
-	if !strings.Contains(rendered, "WORK YOU WILL READ AND CARRY ON WITH") || !strings.Contains(rendered, "`"+quickTaskToolName+"`") {
+	// a wide change here and says nothing about the work whose answer comes back
+	// to be read leaves the model to generalise, and the generalisation it made
+	// was to buy a worktree for a survey.
+	if !strings.Contains(rendered, "what you will read and carry on with is quick") || !strings.Contains(rendered, "`"+quickTaskToolName+"`") {
 		t.Error("prompts/system.md does not route work whose result is read back to a quick task")
+	}
+	// AND THE CLOCK, which is a decision and not a rule: a model that is never
+	// told what a hand-off buys does independent pieces one after another.
+	if !strings.Contains(rendered, "in one breath cost the") {
+		t.Error("prompts/system.md never tells the model what handing pieces out in one breath buys")
 	}
 	// AND THE PROMPT SAYS THE ABSENCE OUTRIGHT. The page used to argue that the
 	// planner was the exception, which is a sentence that only makes sense while
@@ -1640,11 +1646,8 @@ func TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner(t *testing.T) {
 	if !strings.Contains(rendered, "THERE IS NO PLANNER ON YOUR BELT") {
 		t.Error("prompts/system.md does not tell the model it has no planner")
 	}
-	if !strings.Contains(systemPrompt, "A wide CHANGE is one\ntask that hands its own parts out once the material shows the width is real") {
+	if !strings.Contains(systemPrompt, "A change too wide for one\nworker is one task with `wide` set, which hands its own parts out once the\nmaterial shows the width is real") {
 		t.Error("prompts/system.md does not name the road that replaced the planner")
-	}
-	if !strings.Contains(systemPrompt, "A\nwide READ is not") {
-		t.Error("prompts/system.md sends a wide read down the planner's replacement road")
 	}
 	// And the sentences that produced the live reflex are gone rather than merely
 	// argued with somewhere else on the page — the verb itself included, because a

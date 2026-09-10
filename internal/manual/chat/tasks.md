@@ -216,16 +216,23 @@ The rule is written once, in the words the model itself reads:
 > it is quick. If it must be checked and merged on its own, or survive the window
 > closing, it is a task. One edit, one read, one command is a step: do it yourself.
 > Related steps that share what they learn are one quick task's items, not several quick
-> tasks. A survey of four packages is four quick tasks, one each; a change that must
-> build is a task.
+> tasks. Keep one small — a few files and a few minutes: reading is not progress, so
+> six steps that only read end it.
 
 **What decides is what happens to the answer, never how wide the work is.** Work whose
-result comes back for the conversation to read and carry on with — a survey, a
-comparison, research, a draft, reading across many files or packages — is quick tasks,
-one per independent part, however many parts there are. Work that has to be *checked and
-landed on its own* — edits that need a build, a branch, a merge — is a task. Width only
-decides the shape of the second one: a wide **change** is one task whose worker hands the
-real parts out from inside once it has opened the material, and a wide **read** never is.
+result comes back for the conversation to read and carry on with is quick tasks, one per
+independent part, however many parts there are — a survey of four packages is four of
+them, not one task with a branch. Work that has to be *checked and landed on its own*, or
+to outlive the window you are looking at, is a task. Width only decides the shape of the
+second one: a wide **change** is one task whose worker hands the real parts out from
+inside once it has opened the material, and a wide **read** never comes down that road.
+
+**And the model is told what each one costs**, rather than given a list of which kinds of
+work go where. Its own instructions describe a quick task as a copy of its abilities
+working where it stands and a task as a worker in a copy of the folder that is checked and
+merged, and then the arithmetic: pieces it keeps cost their sum, independent pieces handed
+out in one breath cost the longest of them. Everything on this page follows from that, and
+so does anything this page did not think to list.
 
 Three consequences worth knowing. **Small things still do not become work at all** — one
 edit, one read, one command is done in the reply, and it was never a candidate for either

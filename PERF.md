@@ -1249,25 +1249,27 @@ pinned by `TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner`). Paying it
 back lowers this cap again, and the cap only ever moves with this section in
 the same commit.
 
-**The choice fix spent 1,410 of it and paid two debts (2026-09-10).** The cap
-did not move; the measured prefix went **46,635 → 48,045**, which is 955 under.
-What it bought was the routing itself: the belt's first bullet sorted on WIDTH
-and a real model read a read-only survey of four packages as wide work and
-bought it a worktree, a check and a landing, so the bullet now sorts on what
-happens to the answer — read and carry on is `quick_task`, checked and landed is
-`propose_task`, and the "one task that hands its own parts out" road is a wide
-CHANGE. Beside it went the wall-clock law the owner ruled on the same day
-(independent pieces start in one breath, keep one and begin it, never poll, end
-the turn when nothing independent is left) and the GRAIN one quick task is cut
-at, which quotes `taskNoProgress` rather than a figure typed twice — a quick
-task cut at twenty files died `out of rounds — stopped: 6 steps without
-progress` and cost $0.62 for nothing.
+**The choice fix spent 515 of it and paid two debts (2026-09-10).** The cap did
+not move; the measured prefix went **46,635 → 47,150**, which is 1,850 under.
+What it bought is one picture where three rule lists used to be. The belt's
+routing bullets sorted on WIDTH — and a real model read a read-only survey of
+four packages as wide work and bought it a worktree, a check and a landing — so
+they were replaced whole (owner's ruling) by what the model HAS and what each
+thing COSTS: a quick task is a copy of its abilities where it stands, a task is
+a worker in a copy of the folder that is checked and merged, pieces kept cost
+their sum, and independent pieces handed out in one breath cost the longest of
+them. The clock was never stated at all before, and neither was the conduct
+after a hand-off; both are in the same fragment now, and it names no shapes of
+work, so nothing on it has to be kept true as the product changes.
 
-Two of the three duplicate rules named above paid part of it: prompts/system.md's
-`small work ... is answered here` sentence is gone, the routing call being one
-the judge now makes better and in the place the call is made, and the `WIDE
-WORK` bullet's `never split related work` is gone, that rule being stated in
-`quick_task`'s own description and again in the wall-clock fact.
+That fragment is a net saving over what it replaced, and two of the three
+duplicate rules named above paid the rest: prompts/system.md's `small work ...
+is answered here` sentence is gone, the routing call being one the picture makes
+better and in the place the call is made, and the `WIDE WORK` bullet's `never
+split related work` is gone with the bullet itself. What was ADDED to a
+description is one clause, in `quick_task`: the GRAIN, quoting `taskNoProgress`
+rather than a figure typed twice, because a quick task cut at twenty files died
+`out of rounds — stopped: 6 steps without progress` and cost $0.62 for nothing.
 
 ## Following through on a completion claim
 

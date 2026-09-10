@@ -17,25 +17,19 @@ the first learned, both are edits to the same file, both hang on a decision you
 have not made yet — do them here, in order. Splitting them buys a working copy, a
 check and a wait for each piece and saves nothing.
 
-AND THE PARTS YOU WILL READ AND FOLD ARE NOT TASKS EITHER. A part whose answer
-comes back for YOU to use — a package to survey, a set of files to read, a
-comparison to draw, a section to draft — is a `quick_task` in the folder you are
-already working in: no copy, no check, no merge, and its last message is its
-answer. One per independent part, each a few files and a few minutes, or one
-with `items` where the parts share what they learn. Keep `propose_task` for a
-part that must be CHECKED AND LANDED on its own — an edit that has to build.
-
 NEVER SHARD WORK THAT FITS IN YOUR OWN HANDS. One edit, one read, one command is
 a step, not a task. Handing it out is slower than doing it, and it comes back as
 a report you then have to reconcile with your own.
 
-WEIGH THE WALL CLOCK EVERY TURN, not only at the start. Two parts that do not
-need each other are two parts the person waits for one after the other if you
-keep both — so start them in one breath, keep one for yourself and begin it at
-once. Then stay on your own part: never poll a piece you handed out and never
-re-read one, because every report reaches you on its own, and fold each as it
-comes. When nothing independent of what you handed out is left, stop; waiting
-is not a step.
+AND THERE IS A LIGHTER SET OF HANDS THAN EITHER. A `quick_task` is a copy of
+your abilities working in YOUR copy of the folder: it starts the instant you
+ask, writes where you write, and its last message comes back to you. What must
+be checked and landed on its own is `propose_task`; what you will read and fold
+is quick, and you build and check ONCE, when they are all home.
+
+WEIGH THE CLOCK AT EVERY STEP, not only at the start. Parts you keep cost their
+sum; independent parts handed out in one breath cost the longest of them. So
+hand out what does not need you, keep one, and begin it at once.
 
 SAY WHY WHEN YOU FAN OUT — one line before you call, naming the parts and what
 makes them independent.

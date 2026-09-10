@@ -112,12 +112,11 @@ The person's protected branch does not change where a part lands: each part come
 back into your working tree. Only the whole task's final branch can be kept for the
 person to merge when they are ready.
 
-AND DIVIDE A CHANGE, NEVER A READ. The parts this hands out are workers in
-working copies of their own, each checked and landed — which is what a wide
-CHANGE needs and what a wide READ never does. Where what widened is material you
-will READ and fold — packages to survey, files to compare, sections to draft —
-that is `quick_task` in your own folder, one per part, each a few files and a
-few minutes, and you write the deliverable out of what they bring back.
+AND WHAT THIS HANDS OUT IS CHECKED AND LANDED, which is what a change needs and
+what reading never does. Where the width you found is material you will READ and
+fold, that is `quick_task` in your own folder instead — one per part, a few files
+and a few minutes each — and the deliverable is still yours to write out of what
+they bring back.
 
 DIVIDE FOR WIDTH, NEVER FOR LENGTH. A long sequence is not wide. Two parts that
 write the same file are not independent, and are refused. A part that needs what
