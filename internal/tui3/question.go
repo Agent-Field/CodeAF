@@ -599,6 +599,28 @@ func questionPointerStart(q session.Question) int {
 			}
 		}
 	}
+	// AND WHERE NOBODY RECOMMENDED ANYTHING AND NOBODY BUT A PERSON MAY ANSWER,
+	// THE POINTER OPENS ON THE ANSWER THAT LOSES NOTHING ([questionHandsOnly]).
+	//
+	// IT IS THE HALF OF THE POINTER THAT KEEPS IT SAFE. `enter` takes the answer
+	// the pointer is on, so a pointer that started on the first answer of a
+	// consent gate made `enter` mean `allow once` — on a question the engine
+	// raised BECAUSE the call could not be taken back. Measured on the gate for
+	// `rm -rf *`: enter allowed it.
+	//
+	// IT IS BELOW THE PICK AND NOT ABOVE IT, which is the whole of why a task
+	// proposal is unaffected: an asker that recommended an answer said so on the
+	// row a person is reading (`suggested`), and `enter` taking the
+	// recommendation IS the pointer's law. A gate recommends nothing — there is
+	// no pick on one — so the two conditions can never both be true, and the
+	// answer that loses nothing is the only honest place left to stand.
+	if questionHandsOnly(q) {
+		return questionSafeAt(q)
+	}
+	// AND EVERY OTHER QUESTION OPENS ON ITS FIRST ANSWER. The safe mark is not
+	// read for one of those: on a landing row or an ordinary choice the answer
+	// that loses nothing is the one that does nothing, and a pointer parked
+	// there would make `enter` mean "no" on every card this surface draws.
 	return 0
 }
 
@@ -2649,11 +2671,15 @@ func (a *app) questionEnter(head questionShown, typing bool) (tea.Cmd, bool) {
 	if head.holes.kind == session.InputChecklist {
 		return a.questionTickKey(head, questionEnterKey)
 	}
-	// A QUESTION WHOSE BOX IS ITS ANSWER TAKES NOTHING FROM AN EMPTY BOX. The
-	// connect offer's box is where a key is typed (connectkey.go), and enter
-	// over nothing typed is not an answer at all — not the pointer's, not a
-	// decline. It is the one kind whose answers are a sentence first.
-	if head.question.Kind == session.QuestionConnect {
+	// A QUESTION WHOSE ANSWER IS A SENTENCE TAKES NOTHING FROM AN EMPTY BOX.
+	// [session.InputText] is the asker stating that the answer IS words — a
+	// connect key, a correction, a running sub-harness's own question — and its
+	// options are the way OUT rather than something for a pointer to take. Enter
+	// over an empty box on one of those used to send an empty key, which reads
+	// as a decline; it does nothing, the question stands, and the way out is the
+	// answer that says so ([questionOwnsBox] is the same fact from the other
+	// side, and takes this key while there ARE words).
+	if head.question.Input.Kind == session.InputText {
 		return nil, false
 	}
 	// ENTER TAKES THE ANSWER THE POINTER IS ON, through the same door a digit

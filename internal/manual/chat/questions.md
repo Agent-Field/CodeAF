@@ -419,9 +419,9 @@ the row.
 | --- | --- |
 | `1`–`9` | take that answer |
 | `enter` | take the answer the pointer is on — it starts on the recommended one |
-| `↑` `↓` `←` `→` | move the pointer (`↑↓` on a card, `←→` on a line; both pairs work on both) |
+| `↑` `↓` `←` `→` | move the pointer (`↑↓` on a card, `←→` on a line; both pairs work on both). On the **page** a question opens into, `↑↓` walk the answers and `←→` fold and open the one you are on |
 | `esc` | later. Nothing is cancelled |
-| `o` | open it out into its own page, where there is more to see |
+| `o` | open it out into its own page, where there is more to see. Inside the page it opens and folds the answer you are on |
 | `c` | change — take an answer, but say what you want different. The answers row becomes `change: say what you want different, then enter · it goes with [2] …`; type in the box below, `enter` sends the words with the pointed answer, `esc` gives the box back |
 | `?` | ask back before answering. The row becomes `ask back: type your question, then enter · the question stays open`; the reply lands in the conversation and the question is still there to answer |
 | `d` | you decide |
@@ -626,6 +626,8 @@ The page has, from the top:
 - the question in one sentence, with the amber `?`
 - who is asking and why now, dim
 - what is waiting on it and what carries on without it
+- anything it drew for the whole decision, under one dim heading `what it showed
+  you`
 - one section per answer, folded shut except the one it would take
 - a foot pinned above the box saying what `enter` would send
 
@@ -636,6 +638,44 @@ answer you did not give.
 **A letter is a letter the moment there is a sentence in the box.** Every key
 below works only while the box is empty; type anything and they all go back to
 being text.
+
+## Moving around the page — the arrows, and clicking an answer
+
+`↑` and `↓` walk down the answers. The one you are on wears a band, and the foot
+says `[↑↓] choose`.
+
+`→` opens the answer you are on and `←` folds it again. They say what they want
+rather than toggling, so holding one down is safe.
+
+`enter` **takes** the answer you are on — that is the answer, sent. The page
+opens standing on the one it would take, so `enter` straight away still takes
+its recommendation. A digit `1`–`9` answers at once from anywhere, whichever
+answer you are standing on.
+
+**Clicking works too, and it takes two clicks to answer.** The first click on an
+answer's row moves onto it and opens it; a second click on that same row is
+`enter`. One press to read, one to decide — so a click on a page you have not
+finished reading cannot decide anything. Clicking a body, a diagram or a note of
+your own does nothing: only an answer's own row answers to the mouse, and it is
+the only row that lights up under the pointer.
+
+## What each line under an answer means
+
+An open answer reads in three tiers, and every line says which it is:
+
+- the **label** — the digit and the word, bold and amber, the heading of that
+  section
+- what it **means** — the asker's own paragraph, in ordinary ink
+- the asides, dim, each with its own word in front:
+  - `then ·` what taking it would leave true
+  - `why this one ·` why the asker would take it, on the one it recommends
+  - `would switch if` what would change the asker's mind, which is usually
+    exactly what you disagree with if you disagree
+- anything it drew for that answer — a diagram, a diff, a table — under a dim
+  title of its own, a blank row above it
+
+A blank row closes each open answer, so the next answer's label is not just a
+different indent.
 
 ## Compare the options
 
