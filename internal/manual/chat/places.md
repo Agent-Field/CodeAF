@@ -629,7 +629,7 @@ an hour ago, `alt+2`, `alt+5` and `alt+6` all open:
 - **tasks**, headed `tasks`:
   `work you send off with /task lands here, and its record stays`
 - **standing**, headed `standing orders`:
-  `reminders, watches and routines · "remind me at 6" or "every morning, …"`
+  `reminders, watches and routines · "remind me at 6" or "every morning at 9"`
   No shelf and no time window is drawn under it.
 - **memory**, headed `memory`:
   `what it has learned about you and this machine · /remember adds a line`

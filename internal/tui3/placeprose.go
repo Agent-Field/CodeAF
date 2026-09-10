@@ -189,7 +189,7 @@ type placeBlank struct {
 var placeWhisper = map[page]placeBlank{
 	pageTasks:    {whisper: "work you send off with /task lands here, and its record stays"},
 	pageSpend:    {whisper: "every chat and task is priced here as it runs"},
-	pageStanding: {heading: standHeading, whisper: `reminders, watches and routines · "remind me at 6" or "every morning, …"`},
+	pageStanding: {heading: standHeading, whisper: `reminders, watches and routines · "remind me at 6" or "every morning at 9"`},
 	pageMemory:   {whisper: "what it has learned about you and this machine · /remember adds a line"},
 	pageSearch:   {whisper: "type a word · every conversation on this machine is searched"},
 }
