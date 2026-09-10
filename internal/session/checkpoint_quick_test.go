@@ -1,0 +1,261 @@
+package session
+
+// THE QUICK ROAD: what happens to a turn that only READ.
+//
+// checkpoint_test.go holds the full handover — the worktree, the brief a second
+// model writes, the arming, the division. Everything on this page is the other
+// answer to the same moment: a drawing with parts in it, out of a turn that
+// touched nothing under the workspace, is one worker working through the parts
+// IN ORDER, WHERE THE PERSON IS STANDING (checkpoint_quick.go).
+//
+// The three things that could quietly stop being true are pinned here: that the
+// road is chosen off the write seam's own counter and nothing else, that the
+// drawing arrives as the node's items rather than as a division to hand out, and
+// that a turn which wrote is untouched by any of it.
+
+import (
+	"context"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+)
+
+// A WRITE-FREE TURN WHOSE DRAWING HAS PARTS IS TAKEN BY A QUICK TASK.
+//
+// The turn here is the ordinary research grind: rounds of `ls`, nothing written,
+// and a sidecar at the first mark that draws three independent parts. Before
+// this road existed that bought a worktree, a ninety-second writer and a checker
+// for what is a reading; now it buys one node, started here, with the drawing as
+// its list.
+func TestAWriteFreeTurnWithPartsIsTakenByAQuickTask(t *testing.T) {
+	const asked = "work through the four things I listed and report back"
+	const dowry = "Finish the four pieces\nwhat is left, and everything this turn already found out"
+
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	completer := &scriptedCompleter{steps: grindingSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, dowry)}
+	agent := checkpointAgent(t, completer, func(config *Config) {
+		config.Divide = true
+		config.SessionFile = path
+	})
+	ran := make(ranNodes, 2)
+	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+
+	events, err := agent.Submit(context.Background(), asked)
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := collect(t, events)
+	node := ran.await(t)
+
+	// EXACTLY ONE NODE, on the one road.
+	if count := admitted(graph); count != 1 {
+		t.Fatalf("%d tasks were admitted at the first mark, want exactly one", count)
+	}
+	// AND IT IS A QUICK ONE.
+	if node.spec.quick == nil {
+		t.Fatalf("a turn that wrote nothing was handed to a full task; the brief was %q", node.spec.brief)
+	}
+	// THE LINE IS THE PERSON'S OWN SENTENCE, verbatim, exactly as the request is.
+	if node.spec.quick.line != asked {
+		t.Errorf("the quick node's line is %q, want the person's own words %q", node.spec.quick.line, asked)
+	}
+	if node.spec.request != asked {
+		t.Errorf("the node's request is %q, want the person's own words %q", node.spec.request, asked)
+	}
+	// AND THE ITEMS ARE THE DRAWING, in the legend's words and in shape order.
+	want := []string{"the validation workflow", "the arithmetic module", "the currency module."}
+	if !reflect.DeepEqual(node.spec.quick.items, want) {
+		t.Errorf("the quick node's items are %q, want the parts the sidecar drew %q", node.spec.quick.items, want)
+	}
+	// NOTHING IS CLAIMED, because a turn that wrote nothing has named no file it
+	// is going to write ([quickTaskSpec.files], the emptiness law).
+	if len(node.spec.quick.files) != 0 {
+		t.Errorf("the quick node claimed %q, want nothing", node.spec.quick.files)
+	}
+	// AND THE DRAWING IS NOT ALSO CARRIED AS A DIVISION. The items ARE the parts;
+	// a spec holding both would hand the same work out twice
+	// (task_divide_sketch.go's [Agent.divideFromSketch]).
+	if node.spec.drawn.proposes() {
+		t.Error("the quick node also carries the drawing as a division to hand out")
+	}
+	if node.dividing() {
+		t.Error("a quick node was armed to split")
+	}
+
+	// THE ONE LINE, EXACTLY — and neither of the two it stands in for.
+	said := noticeTexts(collected)
+	if !saidSomething(said, checkpointQuickNote) {
+		t.Fatalf("the quick road never said its line; notices were %q", said)
+	}
+	if saidSomething(said, checkpointSplitNote) || saidSomething(said, checkpointCeilingNote) {
+		t.Errorf("a quick start drew the watched road's line as well; notices were %q", said)
+	}
+	if saidSomething(said, "this looked like work, so task ") {
+		t.Errorf("a quick start said the started-task line under its own; notices were %q", said)
+	}
+	// AND IT IS ONE NOTICE AND NOT TWO. The whole point of the wording is that a
+	// person meets one small event.
+	if quick := linesSaying(said, checkpointQuickNote); len(quick) != 1 {
+		t.Errorf("the quick line was said %d times, want once: %q", len(quick), quick)
+	}
+
+	// THE TRANSCRIPT IS NOT LEFT WITH A REQUEST NOBODY REPLIED TO.
+	if last := lastMessage(agent); last.Role != "assistant" ||
+		!strings.Contains(messageText(last), checkpointQuickNote) {
+		t.Errorf("the turn did not end on its own line; the transcript ends with a %s saying %q",
+			last.Role, messageText(last))
+	}
+
+	// AND THE FILE SAYS WHICH ROAD IT WAS. `quick` is the word a bench reads to
+	// tell this handover from every other, and it stands where a rung would
+	// because no ladder was walked ([carryRungQuick]).
+	ceilings := journaledCeilings(t, path)
+	if len(ceilings) != 1 {
+		t.Fatalf("the handover journaled %+v, want exactly one ending", ceilings)
+	}
+	if ceilings[0].Decision != checkpointCeilingMoved {
+		t.Errorf("the ending journaled %q, want %q", ceilings[0].Decision, checkpointCeilingMoved)
+	}
+	if ceilings[0].Carry != carryRungQuick {
+		t.Errorf("the ending journaled carry %q, want %q", ceilings[0].Carry, carryRungQuick)
+	}
+	if ceilings[0].TaskID != node.id {
+		t.Errorf("the ending named task %d, want the node it started (%d)", ceilings[0].TaskID, node.id)
+	}
+}
+
+// AND A TURN THAT WROTE A FILE STILL TAKES THE WATCHED ROAD.
+//
+// The counter is the whole of the difference: the same drawing, the same mark,
+// the same ask — one write call under the workspace, and what the work is handed
+// to is the task in its own copy of the folder, briefed and armed.
+func TestATurnThatWroteAFileStillTakesTheWatchedRoad(t *testing.T) {
+	const asked = "work through the four things I listed and report back"
+	const dowry = "Finish the four pieces\nwhat is left, and everything this turn already found out"
+
+	completer := &scriptedCompleter{steps: writingGrindSteps(checkpointMarkAt(1)+6, checkpointSplitSketch, dowry)}
+	agent := checkpointWritingAgent(t, completer, func(config *Config) { config.Divide = true })
+	ran := make(ranNodes, 2)
+	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
+
+	collected := collect(t, mustSubmit(t, agent, asked))
+	node := ran.await(t)
+
+	if node.spec.quick != nil {
+		t.Fatalf("a turn that wrote a file was handed to a quick node: %+v", node.spec.quick)
+	}
+	if !strings.HasPrefix(node.spec.brief, "WHAT IS LEFT, AS PARTS: A | B | C") {
+		t.Errorf("the brief does not open on the parts the sidecar drew:\n%s", node.spec.brief)
+	}
+	if !node.dividing() {
+		t.Error("a writing turn's split armed nothing")
+	}
+	said := noticeTexts(collected)
+	if !saidSomething(said, checkpointSplitNote) {
+		t.Fatalf("the watched road never said its line; notices were %q", said)
+	}
+	if saidSomething(said, checkpointQuickNote) {
+		t.Errorf("a turn that wrote a file was announced as a quick start; notices were %q", said)
+	}
+}
+
+// ── the drawing, read out as a list ─────────────────────────────────────────
+
+// EVERY LETTER IS AN ITEM, IN THE ORDER IT WAS DRAWN.
+//
+// This is where the quick road reads a shape differently from the division road,
+// and the difference is the whole of why it has a reader of its own: `A | B | C
+// > D` is THREE parts to hand out side by side and FOUR things for one worker to
+// do in order. A reader that reused the division's would drop D or bury it.
+func TestTheItemsAreEveryLetterOfTheDrawingInOrder(t *testing.T) {
+	for _, shape := range []struct {
+		name   string
+		sketch checkpointSketch
+		want   []string
+	}{
+		{
+			name: "an arrow behind a part is still an item",
+			sketch: parseCheckpointSketch("A | B | C > D\n" +
+				"A is the parser, B is the handlers, C is the migration, D is the release notes."),
+			want: []string{"the parser", "the handlers", "the migration", "the release notes."},
+		},
+		{
+			name: "a gathering stage behind the parts is the last item",
+			sketch: parseCheckpointSketch("(A | B | C) > D\n" +
+				"A is the parser, B is the handlers, C is the migration, D is the summary."),
+			want: []string{"the parser", "the handlers", "the migration", "the summary."},
+		},
+		{
+			name: "a drawing that needs no legend is its own list",
+			sketch: parseCheckpointSketch("read the parser | read the handlers | read the migration\n" +
+				"Three files, one each."),
+			want: []string{"read the parser", "read the handlers", "read the migration"},
+		},
+	} {
+		t.Run(shape.name, func(t *testing.T) {
+			if got := sketchItems(shape.sketch); !reflect.DeepEqual(got, shape.want) {
+				t.Errorf("the drawing reads as %q, want %q", got, shape.want)
+			}
+		})
+	}
+}
+
+// AND THE QUICK LINE IS IN THE HOUSE REGISTER, like every other dim one-liner
+// the harness writes over somebody's turn.
+//
+// It says something the other three cannot: not that the work is watched, not
+// that it can split, but WHERE it is happening — here, in this folder — which is
+// the whole of what tells a quick node from the task a person would otherwise
+// assume had started somewhere else.
+func TestTheQuickLineIsTheLineAndCarriesNoMachinery(t *testing.T) {
+	const want = "this has parts · a quick task is taking them here, in this folder: "
+	if checkpointQuickNote != want {
+		t.Fatalf("the quick line reads %q, want %q", checkpointQuickNote, want)
+	}
+	inTheHouseRegister(t, checkpointQuickLine("the four pieces"))
+	if checkpointQuickNote == checkpointSplitNote || checkpointQuickNote == checkpointCeilingNote {
+		t.Error("the quick line says what another moment says, and the three have seen different things")
+	}
+	if strings.Contains(checkpointQuickNote, "running long") {
+		t.Errorf("the quick line claims the turn has run long: %q", checkpointQuickNote)
+	}
+}
+
+// ── the gate ────────────────────────────────────────────────────────────────
+
+// A SESSION WITH NO COUNTER CANNOT PROVE THE DISK WAS LEFT ALONE.
+//
+// The fail-safe direction, and it is the opposite of the one the completion
+// claim takes: a doubt about whether a turn wrote is not a proof that it did
+// not, and the road it would open is the one that skips the worktree.
+func TestATurnWithNoWriteCounterIsNeverTakenAsWriteFree(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	if agent.turnWroteNothing() {
+		t.Error("a session that never ran an episode claimed its turn wrote nothing")
+	}
+	meter := newWriteMeter()
+	if !meter.untouched() {
+		t.Error("a fresh counter says something was written")
+	}
+	meter.wrote([]string{"notes.md"})
+	if meter.untouched() {
+		t.Error("a counter that took a write still says the turn wrote nothing")
+	}
+	// AND IT IS THE SAME COUNTER THE ALLOWANCE IS READ OFF, so one write is not
+	// yet past it.
+	if meter.past() {
+		t.Error("one write spent the whole allowance")
+	}
+}
+
+// linesSaying is every notice that opens on one line.
+func linesSaying(said []string, opening string) []string {
+	var found []string
+	for _, line := range said {
+		if strings.HasPrefix(line, opening) {
+			found = append(found, line)
+		}
+	}
+	return found
+}

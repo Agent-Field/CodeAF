@@ -1834,8 +1834,8 @@ func (a *Agent) Interrupt() { a.interruptFor(StopByPerson) }
 // taking the conversation over, a tab closing, a hosted session being retired.
 //
 // IT EXISTS SO THAT THE TURN CAN ACCOUNT FOR ITSELF AFTERWARDS. Everything
-// below is identical either way — the same queues are dropped, the same hands
-// are stopped — and the only difference is the word the cancelled context
+// below is identical either way — the same queues are dropped, the same work is
+// cut — and the only difference is the word the cancelled context
 // carries, which is what decides whether the person is owed a sentence about a
 // reply that never arrived (stopcause.go).
 func (a *Agent) InterruptFor(door StopDoor) { a.interruptFor(door) }
@@ -1847,7 +1847,6 @@ func (a *Agent) interruptFor(door StopDoor) {
 	a.interrupt.begin()
 	a.mu.Lock()
 	cancel := a.cancel
-	jobs := a.jobs
 	a.dropFollowUpsLocked()
 	// AND THE SECOND LOOK AT A YOUNG COMMAND IS RELEASED BEFORE THIS LOCK IS,
 	// not later by the turn's own cleanup. The cancel below is made with the
@@ -1863,12 +1862,6 @@ func (a *Agent) interruptFor(door StopDoor) {
 	if cancel != nil {
 		cancel(stopFor(door))
 	}
-	// AND EVERY HAND STOPS WITH THE ANSWER IT WAS PART OF. A background job
-	// deliberately survives this — it is a command the person asked to be left
-	// running — but a forked hand is THIS MIND, copied, finishing a reply nobody
-	// is waiting for any more (fork.go), and it runs on its own context now
-	// rather than the turn's, so the cancel above does not reach it.
-	jobs.stopHands()
 }
 
 // Title is the session's name, empty until it has one (title.go).
@@ -3009,9 +3002,9 @@ func (a *Agent) taskNewsStanding() (owed int, working bool) {
 // to the model — one step as far as [Agent.taskNewsStanding] is concerned.
 //
 // THE FACT DIFFERS BY ROAD AND THE WAKE DOES NOT. A divided part's report marks
-// its node reported ([TaskNode.noteHandedOver]); a forked hand's report counts
-// the hand home ([jobRegistry.handHome]). The parent parked on them cannot tell
-// the two apart and must not have to, so both roads hand their news over here.
+// its node reported ([TaskNode.noteHandedOver]), and a road written next year
+// will mark something else. The parent parked on them cannot tell the roads
+// apart and must not have to, so every one of them hands its news over here.
 //
 // NOTHING SLOW GOES INSIDE. The seam holds two writes and the small locks they
 // take; the checkpoint a mark owes the disk is written by the caller after this

@@ -1046,14 +1046,12 @@ func roundWasWatching(calls []ai.ToolCall) bool {
 // establishes itself, on every provider, and it is also the unit the measured
 // failure was measured in: ninety-odd tool rounds.
 //
-// A ROUND IS ONE BATCH AND NOT ONE CALL, AND A FORK BURST IS ONE BATCH. This
-// counts what it counts because the meter measures THE PERSON'S WAITING, and a
-// batch is one wait however many calls are inside it — that is why eight reads
-// asked for in one breath cost one round. A `fork` (fork.go) is the sharpest
-// case of the same fact: one call, in one batch, with two to four whole agents
-// working inside it, and the person waits once. So a lane tempted to count calls
-// here would silently price a burst at four times what the person actually
-// waited, and would move work off a conversation for having been parallel.
+// A ROUND IS ONE BATCH AND NOT ONE CALL. This counts what it counts because the
+// meter measures THE PERSON'S WAITING, and a batch is one wait however many
+// calls are inside it — that is why eight reads asked for in one breath cost one
+// round. So a lane tempted to count calls here would silently price a burst at
+// several times what the person actually waited, and would move work off a
+// conversation for having been parallel.
 func (m *checkpointMeter) round(worked bool) int {
 	if m == nil {
 		return 0
@@ -1909,12 +1907,43 @@ const (
 // other three for the same reason they are spelled apart from each other: a bench
 // reading the file has to tell a turn the clock moved from a turn the counters
 // moved, and it can only do that if the row says so.
+//
+// AND THE CARRY-ON ROAD IS A FIFTH, which is not a handover at all and writes a
+// row for the same reason the other four do. It is the one seam that can end a
+// turn WITHOUT reading it ([Agent.checkpointReopen]'s gates), and a refusal
+// nobody can find afterwards is exactly what #567 was: two runs that behaved
+// completely differently leaving identical journals. A row with this seam on it
+// therefore never says `moved` — nothing was handed anywhere — it says which
+// ending the road stood down for.
 const (
 	checkpointSeamMark    = "mark"
 	checkpointSeamWrite   = "write"
 	checkpointSeamCeiling = "ceiling"
 	checkpointSeamWall    = "wall"
+	checkpointSeamCarry   = "carry-on"
 )
+
+// journalCarryOnAwaited writes down the one ending the carry-on road takes on
+// its own account: the turn is left alone because a task this conversation
+// started has not come back yet (turnhandoff.go's
+// [Agent.turnIsWaitingOnItsOwnTasks]).
+//
+// IT BORROWS THE HANDOVER'S OWN WORD, `dropped:awaiting-own-work`, because it is
+// the same fact about the same conversation — the obligation is still OPEN and
+// the wake that was always coming is what brings the result back — and a bench
+// counting waits should not have to know which road noticed. Seam is what tells
+// the two apart, and the reason names the node rather than a job.
+func (a *Agent) journalCarryOnAwaited(rounds int, node uint64) {
+	a.file.appendCeiling(journalCeiling{
+		Rounds:   rounds,
+		Seam:     checkpointSeamCarry,
+		Decision: checkpointCeilingAwaiting,
+		// TaskID is deliberately not set: it names a node this row ADMITTED, and
+		// this row admits nothing (sessionfile.go's [journalCeiling]). The id
+		// rides in the reason, the way the delivery seam's does.
+		Reason: fmt.Sprintf("awaiting task %d", node),
+	})
+}
 
 // ── the carry ladder ────────────────────────────────────────────────────────
 //
@@ -1949,6 +1978,17 @@ const (
 	carryRungHandoff = "handoff"
 	carryRungDraft   = "draft"
 	carryRungAsk     = "ask"
+
+	// AND ONE ROAD WALKS NO LADDER AT ALL, so it names itself on the ceiling row
+	// rather than naming a rung it never tried. A write-free turn whose drawing
+	// came back with parts is handed over as a QUICK NODE, and the drawing is the
+	// brief: its parts are the node's items, in order, and there is nothing for a
+	// second model to write out of them (checkpoint_quick.go). Nothing was
+	// skipped and nothing failed — there was nothing to ask for — so `skipped`
+	// and `empty` would both be a rung reporting on a call this road does not
+	// make. A bench reading the file tells this road from every other by this
+	// word alone.
+	carryRungQuick = "quick"
 
 	// What one rung DID. `written` is words somebody could work from;
 	// `degenerate` is words that were not words, or words that had stopped
@@ -2413,12 +2453,13 @@ var checkpointWriters = map[string]bool{"write": true, "edit": true}
 // and IT KNOWS NO TOOL'S NAME FOR ANYTHING.
 //
 // IT USED TO BE A LIST OF KEYS — command, query, pattern, path, url — and the
-// list was measured being the wrong shape of rule. `fork` (fork.go) takes
-// `parts`, so a turn that had already fanned out twice was drawn in the digest as
-// two bare lines reading `fork`, and the reader sketched serial work over the top
-// of a turn that was demonstrably already parallel. A list of anticipated keys is
-// a list that is wrong about every verb added after it was written, silently, in
-// the one document a second mind reads the turn out of.
+// list was measured being the wrong shape of rule. A verb that fans work out
+// takes none of those keys, so a turn that had already fanned out twice was
+// drawn in the digest as two bare lines carrying the verb's name and nothing
+// else, and the reader sketched serial work over the top of a turn that was
+// demonstrably already parallel. A list of anticipated keys is a list that is
+// wrong about every verb added after it was written, silently, in the one
+// document a second mind reads the turn out of.
 //
 // SO IT READS THE ARGUMENTS AS THEY CAME AND TAKES THE FIRST THING THAT SAYS
 // ANYTHING: the first string, or the first array rendered as its elements. Wire
@@ -2880,8 +2921,8 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// person's answer — and re-opening it would be the harness answering
 	// something addressed to somebody else. A turn that ends while a job this
 	// conversation started is still running is in the same position: a process
-	// job, a render and a hand each queue their exit as an OWED note that starts
-	// a turn by itself the moment it lands ([Agent.enqueueJobNote]), so the
+	// job and a render each queue their exit as an OWED note that starts a turn
+	// by itself the moment it lands ([Agent.enqueueJobNote]), so the
 	// continuation the reader would buy already exists and is already on its way.
 	//
 	// A WATCH IS INCLUDED AND IT WAKES TOO, which is the half this gate was
@@ -2909,6 +2950,26 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// qualified to THIS turn's handoff: an old task, a failed one, and a worker's
 	// own turn all leave this gate shut (turnhandoff.go).
 	if a.turnHandedItsAskOff() {
+		return false, false
+	}
+	// AND A TURN THAT ENDED WITH WORK OF ITS OWN STILL RUNNING IS WAITING, NOT
+	// STOPPED SHORT.
+	//
+	// The gate above is qualified to the turn that made the handoff, and a turn
+	// STARTED BY ONE PIECE LANDING while another is still out falls straight
+	// through it: nobody typed it, the epoch is new, and the reader is armed by
+	// the wake rule below. Measured on 2026-09-10 — a chat with two quick tasks
+	// out answered the first one's landing, and the road then re-opened that
+	// answer three times over the second, each time to be told it was still
+	// running (turnhandoff.go's [Agent.turnIsWaitingOnItsOwnTasks], which is
+	// where the person's own veto is stated).
+	//
+	// IT IS ASKED BEFORE THE READER IS PAID, unlike the cap below, because there
+	// is nothing here for a reading to change: the piece is out, its landing
+	// wakes this conversation with the report in front of it, and that turn is
+	// read for what remains at wake prices.
+	if node, waiting := a.turnIsWaitingOnItsOwnTasks(); waiting {
+		a.journalCarryOnAwaited(meter.rounds, node)
 		return false, false
 	}
 	// A WOKEN TURN OUTRANKS THE PRICE, WHICH IS THE WHOLE OF WHAT THE MEASURED RUN
@@ -2988,6 +3049,17 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// cap that fired before the reader would have to guess that the ask was still
 	// unfinished, and would say so out loud on the turn where the model had
 	// finally finished it.
+	// AND THE WAIT IS READ AGAIN AT THE MOMENT THE ANSWER IS ACTED ON, for
+	// [Agent.stillGranted]'s reason: a reading taken a model call ago is
+	// evidence about a conversation that may have moved since, and the reader
+	// walks a digest and can re-run this session's declared checks before it
+	// answers. A gap named while a piece of this conversation's own work is out
+	// is dropped exactly as it would have been a call earlier — same word, same
+	// row — rather than being believed because it arrived late.
+	if node, waiting := a.turnIsWaitingOnItsOwnTasks(); waiting {
+		a.journalCarryOnAwaited(meter.rounds, node)
+		return false, false
+	}
 	if meter.carriedOn >= checkpointCarryOnCap {
 		hub.send(Event{Kind: EventNotice, Text: checkpointCarriedOnNote(decision.Observed)})
 		return false, false
@@ -3693,6 +3765,18 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// for a task nobody starts (taskname.go's [nameAhead]).
 	ahead := a.nameAhead(asked)
 	defer ahead.release()
+	// AND A TURN THAT ONLY READ GOES SOMEWHERE ELSE ENTIRELY, on a road that
+	// writes no brief because the drawing already is one (checkpoint_quick.go).
+	//
+	// IT IS DECIDED HERE, AFTER EVERY ENDING AND BEFORE EVERY MODEL CALL. After,
+	// because a turn that is finishing, awaiting or overruled must not be moved
+	// at all and the kind of node it would have moved to changes none of that.
+	// Before, because the two calls below are the whole of what this road exists
+	// to skip: a worktree nobody opens and a ninety-second writer producing a
+	// paragraph the items say better.
+	if quick := a.quickFromDrawing(read, asked); quick != nil {
+		return a.handOverAsQuick(ctx, hub, turn, started, model, verdict, asked, quick, ahead)
+	}
 	// AND THE BRIEF IS WRITTEN BY SOMEBODY WHO DID NOT SPEND THE TURN.
 	//
 	// THE DRAFT IS THE FINDINGS AND THE WRITER IS THE JUDGEMENT, which is the split
@@ -3931,7 +4015,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// closing remark of a finished answer. The person's sentence is the one thing
 	// on this road nobody writes, so it is the one thing that cannot come back as
 	// machinery — and the namer improves it a second later anyway (taskname.go).
-	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead)
+	said, id := a.launchRouteTask(hub, verdict, asked, drawn, ahead, nil)
 
 	// THE GAP IS SPENT, because the person has just been interrupted by a task and
 	// does not care which of the moments noticed. routeJudgeGap exists so that work

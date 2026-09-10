@@ -352,7 +352,7 @@ func TestBothDoorsCarryTheManifestAndBothSchemasParse(t *testing.T) {
 func TestTheManifestSchemaIsWrittenDownOnlyOnce(t *testing.T) {
 	// A fragment of the description rather than the whole constant, so the
 	// assertion survives an honest edit to the wording and still catches a copy.
-	const fragment = "WHAT THIS BRIEF ASSUMES IS ALREADY TRUE"
+	const fragment = "What this brief assumes is already true"
 	if !strings.Contains(expectsSchemaJSON, fragment) {
 		t.Fatalf("the constant no longer says %q, so this test is measuring nothing", fragment)
 	}

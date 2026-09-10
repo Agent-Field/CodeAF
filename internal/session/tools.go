@@ -181,6 +181,18 @@ func (a *Agent) belt() []bare.Tool {
 		tools = append(tools, a.tasksTool())
 	}
 	tools = append(tools, a.taskTools()...)
+	// quick_task rides beside propose_task and on the same predicate: it is the
+	// other way work leaves a turn — not handed away into a copy of its own, but
+	// started HERE, where the caller works, its last message its answer
+	// (task_quick.go). The judge that decides between the two is written once, in
+	// its description.
+	tools = append(tools, a.quickTools()...)
+	// items is the verb a QUICK WORKER carries and nothing else does: a node with
+	// no list has no door behind the tool, so it is absent rather than present
+	// and refusing — the law every conditional family on this belt is built on.
+	if a.config.mayTickItems() {
+		tools = append(tools, a.itemsTool())
+	}
 	// revise_assignment is a WORKER'S verb and nothing else's (assignment.go): it
 	// folds a direction the person gave this node into what the node is judged by.
 	// A conversation has no assignment to revise and an auditor is handed no
@@ -195,14 +207,6 @@ func (a *Agent) belt() []bare.Tool {
 	// narrow task's belt byte-identical to what it was before that road
 	// existed.
 	tools = append(tools, a.divideTools()...)
-	// fork is the third weight of parallelism and the lightest (fork.go): not
-	// work handed away, but this mind copied two to four times INSIDE the turn,
-	// each copy opening on the whole transcript and told one line about what
-	// makes it different. It is absent from a hand's own belt and present on
-	// everything else, because a chat turn and a task worker are both minds
-	// mid-work with a context worth copying — and a hand is not, since the fork
-	// is one deep.
-	tools = append(tools, a.forkTools()...)
 	// stand (tools_standing.go) is the ambient side's one verb, and it is
 	// CONDITIONAL for the sharpest version of the absence law on this belt: a
 	// model told it can set up a reminder will plan a whole reply around one,

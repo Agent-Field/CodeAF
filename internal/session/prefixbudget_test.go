@@ -88,7 +88,7 @@ import (
 // prompts/system.md lost the media-making essay (the manual's own
 // making-pictures-audio-and-video page teaches all of it, and `manual` is a
 // tool the model can call), the paragraphs restating `bash`, `jobs`, `tasks`,
-// `fork`, `manual`, `build_harness` and `change_setting`'s own descriptions
+// `manual`, `build_harness` and `change_setting`'s own descriptions
 // back at the model, and the three-part propose_task contract its own schema
 // fields spell out field by field. It went 23,954 → 20,589; the tool block went
 // 26,678 → 26,579; the prefix is 47,168, which is 832 under.
@@ -284,6 +284,40 @@ import (
 // figure below is what it and lane F's pass weigh together, since both cut
 // `read`.
 // widestPage weighs the larger direct/deferred wording for each fact.
+// AND THE QUICK TASK IS THE FIRST WAVE SINCE THIS FILE WAS WRITTEN THAT RAISED
+// IT (2026-09-10), which is worth saying plainly rather than burying under the
+// ledger above: every entry there paid for itself out of a sentence said twice,
+// and this one could not, because it is not a sentence — it is a VERB the
+// product did not have.
+//
+// `quick_task` encodes to 1,196 bytes and the belt's own bullet for it is 129
+// more, and both were cut to the bone before this line moved. The description is
+// the judge and nothing else — the six sentences that decide between a task, a
+// quick task and doing the thing yourself (task_quick.go) — with the "the id
+// returns at once, so never poll" sentence left off because [taskDescription]
+// carries it and the two verbs are on a belt together or on neither. The schema
+// is six fields whose descriptions are one clause each, and `depends_on` and
+// `model` give up their rules entirely to `propose_task`'s copies of the same
+// two fields. For comparison, `propose_task` encodes to 5,720.
+//
+// AND THE CHOICE WAVE PAID IT BACK THE NEXT DAY (2026-09-10), so the cap is
+// 48,000 again and the measured prefix is 46,245, which is 1,755 under. Two
+// things happened in one commit. The belt's hand-off section stopped being a
+// list of bullets that sorted work by WIDTH and became one picture of what the
+// model HAS and what each thing COSTS (beltfacts.go says why, and what a real
+// model did with the list); the picture is a net saving on the three rule lists
+// it replaced, and it states "never poll" once for every road rather than per
+// verb. And `propose_task`'s schema went on the same diet its description went
+// on: one clause per field, the dowry prose dropped from `brief` because
+// prompts/system.md teaches it and a test pins it there, and the em dashes
+// taken out of every description string, small models tokenising them badly.
+// The tool block went 23,369 → 21,808 and the page reads 24,437.
+//
+// WHAT IS STILL OWED. The planner rule is in the prefix twice —
+// `taskDescription`'s "do not reach for a planner" and prompts/system.md's own
+// `THERE IS NO PLANNER ON YOUR BELT` paragraph — and both are pinned by
+// TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner, so paying it back is a
+// change to that test's mind and not only to the bytes.
 const fixedPrefixBudget = 48_000
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
@@ -298,25 +332,30 @@ const fixedPrefixBudget = 48_000
 // WHAT IT MEASURES AND WHERE IT HAS TO GET TO. On a 16k window the lean prefix
 // is what this test prints. On the profile's own branch it was 34,343 bytes
 // against the full arm's 47,435; merged onto the rest of the diet — lane C's
-// delete pass, lane D's self-describing messages, lane E's pulled mechanics and
-// lane F's contract-only descriptions — it is 31,238 against 39,494, which is
-// page 15,553 plus tool block 15,685.
+// delete pass and routing table, lane D's self-describing messages, lane E's
+// pulled mechanics, lane F's contract-only descriptions, lane B's window-scaled
+// caps and the quick-task wave that took `fork` off the belt — it is 31,006
+// against 38,742: page 16,825 plus tool block 14,181 over twelve tools.
+//
+// THE BELT IT WEIGHS IS THE SHAPE THE DESIGN ASKED FOR: the seven pi tools,
+// `quick_task`, `jobs`, `manual`, `load_capability` and `ask`, with
+// `propose_task`, `tasks`, `watch`, `track`, `commit`, `recall` and
+// `read_document` one call away.
 //
 // The diet's target for this arm is 12,000 bytes
-// (docs/design/prompt-diet/DESIGN.md §6) and nothing in this wave reaches it. Of
-// the 15,685 bytes of tool block left, `ask`'s schema is 4,277 and `fork`'s
-// 2,157; the seven pi tools are 7,038 of the rest and are not aforge's to trim.
-// So the honest reading is that lean is HALF WAY, and the two things that would
-// close it are a terser `ask` and a ruling on whether a one-call-per-message
-// model should be carrying `fork` at all. The page's own 15,780 is the shared
-// CORE minus one section, and it comes down when CORE does.
+// (docs/design/prompt-diet/DESIGN.md §6) and nothing in this wave reaches it,
+// which is worth saying plainly rather than rounding away. The two numbers that
+// would move it are both named: `ask`'s schema is 4,277 bytes — thirty percent
+// of the whole lean tool block, and the one carried verb nobody has been through
+// — and the page's 16,825 is the shared CORE minus one section, so it comes down
+// when CORE does and not before.
 //
 // AND IT CARRIES A LITTLE HEADROOM, DELIBERATELY. Pinned to the exact
 // measurement it was the one number in the tree that made the shared page
-// unmovable: the routing-table commit above added 226 bytes of CORE, which both
-// arms read, and a lean budget with no slack would have failed a change the full
-// budget waved through with 8,280 to spare. So the figure it LANDS at is the
-// measurement plus about three percent — room for four more moves of that size,
+// unmovable: the routing-table commit added 226 bytes of CORE, which both arms
+// read, and a lean budget with no slack failed a change the full budget waved
+// through with thousands to spare. So the figure it LANDS at is about three
+// percent over what it measured on landing — room for a few moves of that size,
 // and not room for a paragraph.
 //
 // THEREAFTER IT ONLY EVER RATCHETS DOWN, in the ledger discipline the full

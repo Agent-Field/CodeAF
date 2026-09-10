@@ -85,27 +85,12 @@ var schemaLawAllowed = map[string]schemaLawException{
 		reason: "a judge paragraph: the model writes a self-contained brief TO this " +
 			"specification, and each clause names a way briefs have come back wrong",
 	},
-	"quick_task.judge": {
-		bytes: 1000,
-		reason: "a judge paragraph: the one-shot verb's whole contract is what its " +
-			"answer is judged by, stated in the verb rather than on the page",
-	},
 	"edit.edits": {bytes: 240, reason: "pi's own words, byte-identical (internal/exec/bare); the diet is measured against them"},
 	// Registered rather than edited, because the lane that owns the file is
 	// cutting it in this same wave and two lanes editing one string is a merge
-	// conflict for no gain. Each of these is reported to its lane by name.
-	"bash.background":            {bytes: 260, reason: schemaFieldOwnedElsewhere + " (lane B, internal/exec/bare)"},
-	"propose_task.ground":        {bytes: 240, reason: schemaFieldOwnedElsewhere + " (the quick-task lane, task.go)"},
-	"propose_task.deliverable":   {bytes: 260, reason: schemaFieldOwnedElsewhere + " (the quick-task lane, task.go)"},
-	"propose_task.expects":       {bytes: 440, reason: schemaFieldOwnedElsewhere + " (the quick-task lane, task.go)"},
-	"propose_task.checks":        {bytes: 340, reason: schemaFieldOwnedElsewhere + " (the quick-task lane, task.go)"},
-	"propose_task.wide":          {bytes: 330, reason: schemaFieldOwnedElsewhere + " (the quick-task lane, task.go)"},
-	"propose_task.model":         {bytes: 320, reason: schemaFieldOwnedElsewhere + " (the quick-task lane, task.go)"},
-	"propose_task.no_progress":   {bytes: 280, reason: schemaFieldOwnedElsewhere + " (the quick-task lane, task.go)"},
-	"propose_task.depends_on":    {bytes: 240, reason: schemaFieldOwnedElsewhere + " (the quick-task lane, task.go)"},
-	"propose_task.expects.holds": {bytes: 200, reason: schemaFieldOwnedElsewhere + " (the quick-task lane, task.go)"},
-	"fork.parts.role":            {bytes: 200, reason: schemaFieldOwnedElsewhere + " (the quick-task lane is removing fork)"},
-	"fork.parts.scope":           {bytes: 260, reason: schemaFieldOwnedElsewhere + " (the quick-task lane is removing fork)"},
+	// conflict for no gain. The quick-task wave's fields came into line on
+	// its own branch and their entries left with it; `fork` left with the verb.
+	"bash.background": {bytes: 260, reason: schemaFieldOwnedElsewhere + " (lane B, internal/exec/bare)"},
 }
 
 func TestEverySchemaStringIsAContractInOneClause(t *testing.T) {

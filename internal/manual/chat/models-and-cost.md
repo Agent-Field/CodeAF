@@ -1644,7 +1644,7 @@ which is the whole machine's ledger rather than this conversation's — it was a
 |---|---|
 | `spend` | the money, printed only when it is above zero — this conversation **and every task it started** |
 | `conversation` | what the conversation's own calls cost |
-| `tasks` | what the work it started has cost, running or finished — tasks, the hands a reply forked, and the nodes of an adaptive run |
+| `tasks` | what the work it started has cost, running or finished — tasks and the nodes of an adaptive run |
 | `tokens` | `48.1k in · 3.2k out`, or one half alone, or the combined figure |
 | `cache` | `31.2k read · saved $0.0180` — the money half only when a price pair was published |
 | `model calls` | **requests to the provider**, deliberately not "turns" |
@@ -1666,15 +1666,15 @@ books stay exact; only what the line paints is in motion.
 resumed conversation, or switching to another one, lands on that conversation's own
 bill at once. A screen-reader session never eases a number.
 
-## Does the status line's money include what my tasks are spending, or what its hands are spending — yes, live
+## Does the status line's money include what my tasks are spending — yes, live
 
 **The `$` on the status line is the whole tree: this conversation and every task it
 started, at every depth, while they are still running.** It is one figure, not two, and it
 is the same figure `/cost` leads with.
 
-**Hands and adaptive runs are in it too.** A reply that splits itself into hands, and a
-node of an adaptive run, are both work this conversation started: their money is on the
-row while they are still working, under `tasks` when you ask `/cost` for the halves.
+**Adaptive runs are in it too.** A node of an adaptive run is work this conversation
+started: its money is on the row while it is still working, under `tasks` when you ask
+`/cost` for the halves.
 
 It used to be the conversation's own half alone. A task's money only reaches the
 conversation's books when the task **closes**, so a family working for two hours left the
@@ -1814,10 +1814,10 @@ Five things are worth knowing about it:
 - **Work is counted once.** A task's own requests are recorded where they were made. Its total
   is added to the conversation that started it afterwards, and that addition is deliberately
   not written here, or the same money would be counted twice. **That holds for every kind of
-  work, not only tasks** — the hands a reply forks and the nodes of an adaptive run each
-  record their own requests and are added up afterwards the same way. Until this was fixed
-  both were on this file twice, so a day that included a fork or a run read high, and the
-  daily limit was reached before that much had actually been spent.
+  work, not only tasks** — the nodes of an adaptive run record their own requests and are
+  added up afterwards the same way. Until this was fixed they were on this file twice, so a
+  day that included a run read high, and the daily limit was reached before that much had
+  actually been spent.
 
 The status line shows **this conversation and its task family**, combining the current
 ledger reading with the conversation meter. `/cost` prints that same scope with its
@@ -2018,7 +2018,7 @@ above — do not describe this conversation as filling to 60%.
 
 ## A task or a worker on another model gets that model's window
 
-Work that leaves the conversation — a task's worker, an adaptive run's worker, a fork, the
+Work that leaves the conversation — a task's worker, an adaptive run's worker, the
 reader that checks a task — often runs on a different model from the one you are talking
 to. Each of those asks the same model catalog the conversation asks, for **its own** model,
 so a worker on a million-token model folds at a million-token model's line.
