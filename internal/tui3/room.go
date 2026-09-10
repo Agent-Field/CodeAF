@@ -856,7 +856,7 @@ func (a *app) farRoomRead(msg roomRecordMsg) tea.Cmd {
 const farRoomEvery = 250 * time.Millisecond
 
 func farRoomTick(gen int) tea.Cmd {
-	return tea.Tick(farRoomEvery, func(time.Time) tea.Msg { return farRoomTickMsg{gen: gen} })
+	return surfaceTick(farRoomEvery, func(time.Time) tea.Msg { return farRoomTickMsg{gen: gen} })
 }
 
 func (a *app) farRoomPoll(gen int) tea.Cmd {

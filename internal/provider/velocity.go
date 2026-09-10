@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"sort"
 	"strings"
 	"sync"
@@ -907,8 +906,16 @@ func (c *Client) completionWall(model string) (time.Duration, bool) {
 // there. A 4xx over our own bytes that demanded no machine names no lane and
 // strikes nothing — there is no endpoint to blame for a malformed request, and
 // refusing endpoints over our own bytes would empty the ledger one attempt at a
-// time. A 429 is left to [Client.notePacedProvider], which knows the wait the
-// provider named.
+// time. A 429 is paced rather than struck, for the wait it named
+// ([Client.refuseLane]).
+//
+// `served` is the machine this process knows was answering, empty when it knows
+// of none, and `wait` is the comeback the provider asked for, zero when it
+// asked for none.
+// It is carried on this signature rather than looked up because only the caller
+// holding the response can read a `Retry-After` header, and a 429 that reaches
+// the ledger without its named wait is held for the flat cooldown instead of
+// the minute the pool actually asked for.
 //
 // ── AND THE ROUTER'S OWN REFUSAL IS NO LONGER EXEMPT ────────────────────────
 //
@@ -923,30 +930,70 @@ func (c *Client) completionWall(model string) (time.Duration, bool) {
 // a router refusal against a demanded machine is terminal for that pairing: it
 // is both paced here and written out of the serving set, because a pin the
 // frontier can still choose is a pin that comes back on the next turn.
-func (c *Client) refuseUpstream(request *ai.Request, knobs callKnobs, err error) bool {
-	return c.strikeRefusal(c.modelFor(request), c.refusalObject(request, knobs, err))
+func (c *Client) refuseUpstream(request *ai.Request, knobs callKnobs, err error, served string, wait time.Duration) bool {
+	// THE SERVED NAME IS STAMPED FIRST, AND HERE. A refusal delivered inside an
+	// open stream carries no `provider_name` — the stream named its provider in
+	// the chunks — so the name is folded onto the error before anything reads
+	// it, and the ledger below, [RefusalFrom]'s callers and the journal's error
+	// row all see one fact instead of two ([nameServed]).
+	err = nameServed(err, served)
+	return c.refuseLane(c.modelFor(request), c.refusalObject(request, knobs, err), wait)
 }
 
-// strikeRefusal is the strike itself, asked by a caller that has already
-// classified the refusal.
+// refuseLane is THE ONE REFUSAL DOOR: everything this client does to the ledger
+// about a refusal happens here, once, whatever transport the refusal arrived
+// over and whatever status it wore.
 //
-// IT IS AN ENTRANCE AND NOT A SECOND STRIKE, for [Client.laneRefusalFor]'s
-// reason exactly: the fork every routing refusal passes through
-// (client.go's [Client.sendRecovered]) holds the object already, and asking the
-// classifier a second time from there would be the classification happening
-// twice — which is the whole defect refusalobject.go closed. Everything a
-// strike DOES is here, once, and [Client.refuseUpstream] is this function with
-// the classification in front of it.
+// ── THE MEASURED FAILURE (2026-09-10) ───────────────────────────────────────
+//
+// A chat turn on deepseek/deepseek-v4.1-flash died after four transport
+// attempts: one 502 from DeepInfra, and then three 429s served by Io Net at
+// 13:00:39, 13:01:04 and 13:01:32. All three arrived INSIDE an already-open
+// HTTP 200 — the journal's rows say status 200 and
+// `API error (429): Provider returned error (via Io Net)` — and the pacing note
+// lived on the status path alone, where it was reached by reading
+// `response.StatusCode` (retry.go). A 429 delivered inside a 200 never got
+// there, so it reached NO ledger at all: nothing was written, the next encode
+// carried the same preferences, and the router handed the request straight back
+// to the saturated pool three times in ninety-three seconds.
+//
+// THE LAW: A REFUSAL IS ACTED ON FROM WHAT IT SAYS, NEVER FROM WHERE IT WAS
+// READ. Both transports build the same [APIError] by the same function
+// ([streamRefusal] → [apiError]) and both classify it with the same object
+// (refusalobject.go), so both reach this door with the same value and cannot
+// drift apart again. The door then does one of exactly three things:
+//
+//	a paced lane   held for the wait it named ([Client.notePacedProvider])
+//	a struck lane  written out of the serving set and routed around
+//	nothing        an account-wide limit, or our own bytes being wrong
+//
+// IT IS ALSO AN ENTRANCE FOR A CALLER THAT HAS ALREADY CLASSIFIED, for
+// [Client.laneRefusalFor]'s reason exactly: the fork every routing refusal
+// passes through (client.go's [Client.sendRecovered]) holds the object already,
+// and asking the classifier a second time from there would be the
+// classification happening twice — which is the whole defect refusalobject.go
+// closed. [Client.refuseUpstream] is this function with the classification in
+// front of it.
 //
 // STRIKING TWICE IS HARMLESS AND IS RELIED ON. A refusal that reaches a caller
 // as a 4xx is struck at this seam and struck again by whoever reads the status;
 // both halves are writes of a state rather than counters ([lane.RefuseServing]
 // files a moment, [velocityLedger.pace] sets strikes rather than incrementing
 // them), so the second is the first said again.
-func (c *Client) strikeRefusal(model string, refusal laneRefusal) bool {
+func (c *Client) refuseLane(model string, refusal laneRefusal, wait time.Duration) bool {
 	// A BELIEF SITE (#433), under the same gate as the two paces above.
 	if c.velocity == nil || !c.carriesPreferences() || c.routing() == RoutingOff {
 		return false
+	}
+	if refusal.paced() {
+		// A NAMED POOL IS PACED, NOT WRITTEN OFF. It said its queue is full, not
+		// that it cannot serve this model, so it is held for the wait it asked
+		// for and comes back on its own — and meanwhile every request encoded
+		// from here on routes around it instead of queueing behind it. The
+		// retries of the call that drew the 429 keep the body they were built
+		// with and wait as they always did.
+		c.notePacedProvider(model, refusal.Lane, wait)
+		return true
 	}
 	if !refusal.struck() {
 		return false
@@ -955,26 +1002,12 @@ func (c *Client) strikeRefusal(model string, refusal laneRefusal) bool {
 	return c.velocity.pace(model, refusal.Lane, 0)
 }
 
-// pacedProviderName reads which endpoint a 429 came from, "" when the body
-// does not say. OpenRouter names the upstream in the error's metadata when the
-// limit is one provider's shared pool rather than this account — exactly the
-// case where another endpoint could answer right now and waiting is the wrong
-// move. Decoded leniently and separately from errorBody: metadata is the
-// router's dialect, and a provider that shapes its errors differently simply
-// answers "" here and keeps the pacing behaviour it always had.
-func pacedProviderName(payload []byte) string {
-	var decoded struct {
-		Error struct {
-			Metadata struct {
-				ProviderName string `json:"provider_name"`
-			} `json:"metadata"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(payload, &decoded); err != nil {
-		return ""
-	}
-	return strings.TrimSpace(decoded.Error.Metadata.ProviderName)
-}
+// WHICH ENDPOINT A 429 CAME FROM IS READ IN ONE PLACE, and it is [apiError]:
+// the refusal object already carries `error.metadata.provider_name` in its
+// Provider field, for every status and both transports. A second decoder of the
+// same field used to sit here for the retry loop's use, which is how the status
+// path and the stream path came to know different things about the same
+// sentence — see [Client.refuseLane] for what that cost.
 
 // ── THE LAG LAW ─────────────────────────────────────────────────────────────
 //

@@ -47,6 +47,7 @@ import (
 // and those readings are about the real one.
 func TestMain(m *testing.M) {
 	startCmdProfile()
+	surfaceTick = harnessTick
 	code := runTests(m)
 	writeCmdProfile()
 	// EVERY DROPPED COMMAND LEAVES A GOROUTINE PARKED on a channel nobody will
@@ -55,6 +56,22 @@ func TestMain(m *testing.M) {
 	// printed rather than asserted: it moves with which tests ran.
 	fmt.Fprintf(os.Stderr, "tui3: %d goroutines still parked at the end of the run\n", runtime.NumGoroutine())
 	os.Exit(code)
+}
+
+// harnessTick turns the surface clock into a command the harness can settle
+// without starting a real timer. Ticks beyond [tickBudget] are the same ticks
+// the old harness dropped; shorter callbacks are pure messages and can be
+// delivered deterministically. The callback time is deliberately zero: the AST
+// law below guarantees callbacks only construct messages and never read it.
+//
+//go:noinline
+func harnessTick(after time.Duration, callback func(time.Time) tea.Msg) tea.Cmd {
+	return func() tea.Msg {
+		if after > tickBudget {
+			return nil
+		}
+		return callback(time.Time{})
+	}
 }
 
 // runTests is TestMain's body as a function with a return value, so the
@@ -397,8 +414,9 @@ func runCmd(cmd tea.Cmd) []tea.Msg {
 // goes on waiting for on its own, and the package gets slower by 150ms a call
 // with nothing failing.
 //
-// WHAT IS CHEAPENED IS THE TICK, where the question needs no scheduler at all. A
-// tick is a real timer, so the surface's own constants decide it: the shortest
+// WHAT IS CHEAPENED IS THE TICK, where the question needs no scheduler at all.
+// [surfaceTick] is replaced by [harnessTick] for this binary, so the surface's
+// own constants decide it without starting a real timer: the shortest
 // are the paint clock and [resizeGrace] at 80ms and taskmention's at 100ms, and
 // every tick at 150ms or longer — the polls, [homeEvery], [farRoomEvery],
 // [hostPingEvery] and their kind — is dropped today and would be dropped whatever
@@ -419,6 +437,10 @@ const (
 // pinned rather than pattern-matched, and [TestTheHarnessKnowsEveryCommandThatCannotAnswer]
 // builds a real tick and fails if an upgrade moves the symbol.
 const teaTickSymbol = "charm.land/bubbletea/v2.Tick.func1"
+
+// harnessTickSymbol is the closure behind the test clock. The driver executes
+// it synchronously; a symbol check below catches compiler or refactor drift.
+const harnessTickSymbol = "github.com/Agent-Field/aforge-v2/internal/tui3.harnessTick.func1"
 
 // blockingCommands is THE ONE TABLE. It names every command in this package that
 // parks on a channel a test's fakes usually never write to and never close.
@@ -512,10 +534,8 @@ func TestTheHarnessKnowsEveryCommandThatCannotAnswer(t *testing.T) {
 		for path, file := range pkg.Files {
 			ast.Inspect(file, func(n ast.Node) bool {
 				if call, ok := n.(*ast.CallExpr); ok {
-					if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Tick" {
-						if id, ok := sel.X.(*ast.Ident); ok && id.Name == "tea" {
-							ticks++
-						}
+					if id, ok := call.Fun.(*ast.Ident); ok && id.Name == "surfaceTick" {
+						ticks++
 					}
 					return true
 				}
@@ -532,7 +552,7 @@ func TestTheHarnessKnowsEveryCommandThatCannotAnswer(t *testing.T) {
 		}
 	}
 	if ticks == 0 {
-		t.Errorf("nothing in the package calls tea.Tick any more, so teaTickSymbol and tickBudget are dead — delete them")
+		t.Errorf("nothing in the package calls surfaceTick any more, so the harness clock and tickBudget are dead — delete them")
 	}
 	var stale []string
 	for _, name := range blockingCommands {

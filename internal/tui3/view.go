@@ -1350,7 +1350,7 @@ func (a *app) resized(width, height int) tea.Cmd {
 		return nil
 	}
 	a.sizing = true
-	return tea.Tick(resizeGrace, func(time.Time) tea.Msg { return resizeSettledMsg{} })
+	return surfaceTick(resizeGrace, func(time.Time) tea.Msg { return resizeSettledMsg{} })
 }
 
 // follow is what every append calls: content grew, and a reader at the live

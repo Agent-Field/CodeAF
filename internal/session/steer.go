@@ -310,7 +310,7 @@ func (a *Agent) steerRunningBashLocked(words string, calls []*bare.BashCall) (st
 		// harness holding a cancellation the way it holds a correction — while
 		// every other sentence still lets a young call have its few seconds and
 		// is looked at again when they are up (steer_grace.go).
-		if !stop && call.RunningFor() < steerBashAge {
+		if !stop && a.steerBashRunningFor(call) < steerBashAge {
 			continue
 		}
 		var started *job
@@ -328,7 +328,7 @@ func (a *Agent) steerRunningBashLocked(words string, calls []*bare.BashCall) (st
 			}, adoption{quiet: true})
 		} else {
 			started, adopted = a.adoptRunningBashAs(call, func(one *job) string {
-				return steerPromotedSentence(one.id, call.Command(), call.RunningFor())
+				return steerPromotedSentence(one.id, call.Command(), a.steerBashRunningFor(call))
 			}, adoption{quiet: true})
 		}
 		if !adopted {

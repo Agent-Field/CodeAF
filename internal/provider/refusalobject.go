@@ -54,8 +54,8 @@ type refusalKind uint8
 
 const (
 	// refusalNone is everything this classifier has no opinion about: a
-	// success, a 429 (which is pacing and has its own patience, retry.go), a
-	// transport error, a refusal on a model the catalog has never heard of.
+	// success, a transport error, a refusal on a model the catalog has never
+	// heard of.
 	refusalNone refusalKind = iota
 	// refusalUpstream is the endpoint the ROUTER CHOSE saying no. Another
 	// endpoint may well serve the same request, and the lane is paced rather
@@ -64,6 +64,13 @@ const (
 	// refusalRouting is the ROUTER ITSELF saying nothing it can reach will
 	// serve this request's shape (endpoints.go's [Client.routingRefusal]).
 	refusalRouting
+	// refusalPaced is a 429: the pool that answered is not judging this request,
+	// it is saying its queue is full for now. It is a class of its own rather
+	// than an absence, because it is acted on differently from every other
+	// refusal — the lane is HELD for the wait the provider itself named rather
+	// than written off ([Client.refuseLane]) — and because a fact that reaches
+	// no reader at all is the defect this class closes.
+	refusalPaced
 )
 
 // laneRefusal is one refusal as every reader of it needs it.
@@ -103,12 +110,29 @@ type laneRefusal struct {
 	Unasked bool
 }
 
-// struck reports whether there is a lane here for the ledger to act on.
+// struck reports whether there is a lane here for the ledger to WRITE OFF — a
+// machine the next encode should route around because it said no.
 //
 // A MACHINE THAT WAS NEVER ASKED IS NOT ONE OF THEM, whatever this request
 // demanded of it (see [laneRefusal.Unasked]).
+//
+// AND NEITHER IS A PACED ONE. A pool with a full queue has refused nothing; it
+// has named a wait, and the wait is what the ledger holds it for
+// ([laneRefusal.paced]). The two are separated here rather than at the door so
+// that both transports read the same separation.
 func (r laneRefusal) struck() bool {
-	return r.Kind != refusalNone && r.Lane != "" && !r.Unasked
+	return (r.Kind == refusalUpstream || r.Kind == refusalRouting) && r.Lane != "" && !r.Unasked
+}
+
+// paced reports that this refusal is ONE MACHINE'S QUEUE being full, and that
+// the wire named which machine.
+//
+// A 429 THAT NAMES NOBODY IS THIS ACCOUNT'S OWN CEILING and answers false: no
+// lane is implicated, nothing is written, and the call waits it out exactly as
+// it always did (retry.go). Asking another machine for an account-wide limit
+// would multiply the traffic that earned it.
+func (r laneRefusal) paced() bool {
+	return r.Kind == refusalPaced && r.Lane != ""
 }
 
 // RescueNews is a rescue as a SURFACE may read it, narrowed from [laneRefusal]
@@ -151,6 +175,35 @@ func (r laneRefusal) news(alt string) RescueNews {
 	return RescueNews{Alt: alt, Reason: reason}
 }
 
+// nameServed stamps the machine that WAS SERVING onto a refusal that did not
+// name one, and leaves every other refusal exactly as it arrived.
+//
+// IT IS THE ONE PLACE A SERVED NAME REACHES A REFUSAL, and it runs inside the
+// refusal door ([Client.refuseUpstream]) rather than at a call site, so that
+// EVERY reader downstream sees the same two facts about an in-stream refusal
+// that it sees about an HTTP one: the status it wore and the machine it came
+// from. `error.metadata.provider_name` is how the router names an upstream it
+// is relaying for, and it omits the field when a refusal is delivered inside an
+// already-open stream — the stream named its provider in the chunks instead. A
+// reader that only has the error would therefore have read the same refusal as
+// two different facts depending on which transport carried it: the ledger here,
+// [RefusalFrom] and through it internal/taxonomy's Evidence, and the journal's
+// error row.
+//
+// IT NEVER OVERWRITES A NAME THE ROUTER GAVE. The metadata is the router saying
+// whose refusal this is; the served name is only this process's memory of who
+// was answering, and it fills a silence rather than correcting a statement.
+func nameServed(err error, served string) error {
+	served = strings.TrimSpace(served)
+	if served == "" {
+		return err
+	}
+	if named, ok := RefusalFrom(err); ok && strings.TrimSpace(named.Provider) == "" {
+		named.Provider = served
+	}
+	return err
+}
+
 // refusalObject is THE classifier. Everything this process does about a refusal
 // is decided here, once, from the request that earned it.
 //
@@ -174,10 +227,22 @@ func (c *Client) refusalObject(request *ai.Request, knobs callKnobs, err error) 
 // re-derive. Every rule about what a refusal means is here, once.
 func (c *Client) laneRefusalFor(model, demanded string, err error) laneRefusal {
 	refusal, ok := RefusalFrom(err)
-	if !ok || refusal.Status == http.StatusTooManyRequests {
-		// A 429 is pacing rather than a verdict on the request, and it is
-		// answered by the wait the provider itself named (retry.go).
+	if !ok {
 		return laneRefusal{}
+	}
+	if refusal.Status == http.StatusTooManyRequests {
+		// A 429 IS PACING RATHER THAN A VERDICT ON THE REQUEST, and that half is
+		// unchanged: the lane is held for the wait the provider itself named
+		// rather than written off.
+		//
+		// WHAT IS NEW IS THAT IT IS A FACT ABOUT A MACHINE whenever the wire
+		// named one — `error.metadata.provider_name`, or the name the stream
+		// itself was serving under (client.go fills that in before it asks) —
+		// and a fact about a machine belongs in the ledger the next encode
+		// reads. This used to return nothing at all, which was right for the
+		// account-wide case below and wrong for every 429 that named its pool:
+		// see [Client.refuseLane] for the ninety-three seconds it cost.
+		return laneRefusal{Kind: refusalPaced, Lane: strings.TrimSpace(refusal.Provider)}
 	}
 	// THE UPSTREAM'S OWN REFUSAL IS READ FIRST, because a named provider is the
 	// router telling us it found something to try and that something said no —

@@ -5371,8 +5371,8 @@ func (a *app) dropForming() {
 // not a ticker on purpose — see [hudFadeMsg].
 func fadeTicks() tea.Cmd {
 	return tea.Batch(
-		tea.Tick(hudFresh, func(time.Time) tea.Msg { return hudFadeMsg{} }),
-		tea.Tick(hudWarm, func(time.Time) tea.Msg { return hudFadeMsg{} }),
+		surfaceTick(hudFresh, func(time.Time) tea.Msg { return hudFadeMsg{} }),
+		surfaceTick(hudWarm, func(time.Time) tea.Msg { return hudFadeMsg{} }),
 	)
 }
 
@@ -5777,7 +5777,7 @@ func (a *app) wake() tea.Cmd {
 // frameTick asks for the next frame, at whatever cadence the link earns
 // (link.go's [app.frameEvery]).
 func (a *app) frameTick() tea.Cmd {
-	return tea.Tick(a.frameEvery(), func(time.Time) tea.Msg { return frameMsg{} })
+	return surfaceTick(a.frameEvery(), func(time.Time) tea.Msg { return frameMsg{} })
 }
 
 // running reports whether any call of the current turn is still unresolved —
@@ -6020,6 +6020,17 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 			return a.welcomeRowPress(mark.index)
 		}
 		a.dismissWelcome()
+	}
+	// A QUESTION'S PAGE ANSWERS FOR ITS OWN ROWS, above the run's page for the
+	// reason it owns the keyboard above it (questionroom.go): it is the body
+	// region while it is up, so a press resolved anywhere else would act on rows
+	// nobody can see. A press that lands on none of its answers falls through
+	// untouched and then does nothing, which is what the empty parts of any page
+	// on this surface do.
+	if a.questionRoomOpen() {
+		if cmd, took := a.questionRoomPress(y); took {
+			return cmd
+		}
 	}
 	// A RUN'S PAGE ANSWERS FOR ITS OWN ROWS, before the transcript's hit-testing
 	// is asked anything: its rows are chips and links and a gate rather than
