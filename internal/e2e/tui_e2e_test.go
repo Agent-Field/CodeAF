@@ -16,10 +16,14 @@ package e2e
 //
 // ── HOW TO RUN IT ───────────────────────────────────────────────────────────
 //
-//	go test -tags e2e -count=1 -timeout 40m -v ./internal/e2e/
+//	go test -tags e2e -count=1 -timeout 120m -v ./internal/e2e/
 //
-// It needs OPENROUTER_API_KEY and tmux, costs a few cents, and takes about
-// seventeen minutes. CLAUDE.md's Tests section says the same thing.
+// Forty minutes is enough for TestTUIE2E alone (about seventeen). The FULL
+// tagged package — ManualOnTheWire, QuestionsE2E, roomfeed, families, custody,
+// contracts — does not fit in forty: Spark's #807 run hit the ceiling before
+// TestTUIE2E started. Prefer `make test-e2e-tui` for the ambient surface, or
+// give the whole package two hours. It needs OPENROUTER_API_KEY and tmux,
+// costs a few cents. CLAUDE.md's Tests section says the same thing.
 //
 // ── TWO WIDTHS, AND THE REASON IS IN THE PRODUCT ────────────────────────────
 //
