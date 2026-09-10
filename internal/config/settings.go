@@ -1021,6 +1021,16 @@ var OperatorEnvPins = []string{
 	// answers. It is plumbing: diagnostic output a preference sheet has no
 	// business persisting.
 	"AFORGE_WIRE_LOG",
+	// AFORGE_QUESTION_DEMO names one of the fixture questions the question page
+	// draws itself with (internal/tui3's questiondemo.go), so that a page whose
+	// real questions do not exist yet can be SEEN full rather than only through
+	// a test's string comparison. It is the same trade `make demo-home` makes
+	// and it is plumbing under the same terms the wire log is: the file itself
+	// says there is no key, no slash command and no row that mentions it, it
+	// writes nothing anywhere, and it goes the day the ask tool and the cards
+	// give the page real questions. A row offering to persist it would be
+	// offering to open a fixture over somebody's conversation every launch.
+	"AFORGE_QUESTION_DEMO",
 	// AFORGE_GROWTH_GATE is the growth governor's rollback switch
 	// (internal/resident/grow.go): set to 0 and the governor keeps its three
 	// free checks and never asks the paid satisfaction question. It is
