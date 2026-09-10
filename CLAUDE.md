@@ -170,8 +170,10 @@ error).
 Violations get rejected in review, and some are pinned by tests.
 
 - **The emptiness law.** Unknown or zero renders as *nothing* — never `$0.00`, never
-  `0 tok`. (One deliberate exception: the live status line keeps `$0.00` so its segments
-  do not jump sideways. `/status` and `/cost` drop the line.)
+  `0 tok`. (Two deliberate exceptions: the live status line keeps `$0.00` so its segments
+  do not jump sideways, and `/status` and `/cost` drop the line; and a home PANEL with
+  nothing in it keeps its heading and one dim line naming what arrives there — never
+  a sentence saying it is empty — docs/design/home-mission-control/DESIGN.md §4.)
 - **No machinery vocabulary in anything a person reads.** `auditor`, `verdict`,
   `verified`, `refuted` are banned. Work is *running*, *finishing*, *done*, *incomplete*,
   or *your call*. (`needs your look`, `awaiting review` and `unverified` were the old
