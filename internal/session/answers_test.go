@@ -490,3 +490,57 @@ func TestTheKeysMeanWhatTheChipsSay(t *testing.T) {
 		t.Error("a question kind nothing raises took an answer")
 	}
 }
+
+// A QUESTION THE MODEL RAISED IS ANSWERED FROM ANOTHER WINDOW LIKE ANY OTHER.
+//
+// The `ask` lane has no entry in [AnswerOptions] and never will: its answers are
+// the ones the model wrote on the question, so the kind's table has nothing to
+// say about them. [WriteAnswer] used to read that empty table as a refusal, and
+// every chip home drew off [PresenceQuestion.Options] for this lane came back
+// `could not leave that answer` when it was pressed.
+func TestAModelsOwnQuestionTravelsInPresenceAndAnAnswerComesBack(t *testing.T) {
+	agent, dir := questionSession(t, "eeee1111eeee2222", func(config *Config) {
+		config.Interactive = true
+	})
+	watched(agent)
+
+	results := make(chan string, 1)
+	go func() {
+		out, _, err := agent.executeAsk(context.Background(), json.RawMessage(`{
+			"head": "publish the draft?",
+			"kind": "permission",
+			"form": "line",
+			"reason": "the draft has not been read by anybody else",
+			"stakes": "reversible",
+			"options": [{"key": "1", "label": "publish it"}, {"key": "2", "label": "hold it"}]
+		}`))
+		if err != nil {
+			t.Errorf("the ask ended in an error: %v", err)
+		}
+		results <- out
+	}()
+
+	question := waitForQuestion(t, dir)
+	if question.Kind != QuestionAsk {
+		t.Fatalf("the question reads %+v", question)
+	}
+	// The chips another window draws are the MODEL'S own words, off the object
+	// the lane banked beside the four older fields.
+	if question.Label("1") != "publish it" || question.Full == nil {
+		t.Fatalf("the presence row carries %+v", question)
+	}
+
+	if err := WriteAnswer(dir, question.Kind, question.ID, "1"); err != nil {
+		t.Fatalf("leaving the answer: %v", err)
+	}
+	agent.drainAnswers()
+
+	var answer Answer
+	if err := json.Unmarshal([]byte(<-results), &answer); err != nil {
+		t.Fatalf("the ask handed back %v", err)
+	}
+	if answer.FirstKey() != "1" {
+		t.Fatalf("the model was handed %+v", answer)
+	}
+	waitForNoQuestion(t, dir)
+}
