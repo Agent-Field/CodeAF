@@ -1,0 +1,18 @@
+---
+kind: fixed
+title: a plain launch is greeted by home again, asks from it, and shows what it has spent
+pr: 756
+surface: [chat, engine]
+invalidates:
+  - "A plain `aforge` in a folder with other conversations on the machine opened INTO a conversation rather than onto home. It opens onto home again: whether somebody is being greeted is tui3.Options.Landing and that field was set on the in-process door alone, so it went dark for every launch on the day #653 made this workspace's session host the ordinary road (v3TakeHostRoad stopped requiring a host that was already answering). cmd/aforge's openChatV3Local carries it now."
+  - "Home's `ask here` answered `this window cannot ask from home` on an ordinary launch. It works again: tui3.Options.Errand was set on the same one call site, and the engine road binds it too — the engine is a process on THIS machine, so the errand's folder, its standing store and its work are one disk. The refusal now belongs to --host and --at alone, which is what internal/manual/chat/asking-from-home.md says. The errand's own session is shaped like an interactive door's (v3LanesHere, AskConsent true), without which `stand` refused every proposal with `nobody is here to say yes — this can only be set up in a conversation`."
+  - "The /spend place and the Spending tab were frozen at what the launch found. The far ledger reading was replaced only when a WIDER window was asked for, so the prime's answer was served for the life of the process and money spent in front of somebody left `nothing spent yet — the first model call writes a line here` under it. It ages on hostLedgerEvery, the two-second beat hostWorldEvery already uses, and a refresh never asks for less than is held."
+  - "Opening the fold at the foot of home's list lasted one beat. homeView.build follows the fold now, as it already followed a conversation, an item, a project and an errand — before this, the three-second rebuild threw the cursor to the top of the list, which on a frame whose rows the fold's count is measured against scrolled the revealed rows AND the way back off the bottom of the screen."
+  - "internal/e2e's TestTUIE2E had seven failing subtests and none of them was written down in .github/known-red.txt. All fifteen pass; nothing was added to that file. Four of its needles had rotted rather than found a defect: the fold fixture assumed the eight-row list #518 replaced with `as many as the column holds`, an open fold reads `N fewer` rather than `N more` since the same commit, the harness recognised a launched window only by home's RESTING foot (a launch that meets a lock lands with the takeover line there instead), and the crew subtest waited past the starting-points screen welcomeStarterKeysWord exists for."
+---
+
+Six of the seven were one story: #653 made this workspace's engine the ordinary
+road for an interactive launch, and three of the seams the in-process door sets
+were never carried onto it — the greeting, `ask here`, and a spending reading that
+moves. Each is a thing a person meets on the first screen, and each was invisible
+to every test but the one that drives the real binary in a real terminal.
