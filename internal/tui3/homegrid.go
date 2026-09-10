@@ -222,9 +222,9 @@ type homeGridInput struct {
 	// errands are the `ask here` exchanges this window is holding, already as
 	// lines of the column (homeexchange.go).
 	errands []homeLine
-	// bucket is this window's own project directory, and tilde what `~`
-	// abbreviates in a path.
-	bucket, tilde string
+	// bucket is this window's own project directory, launch the folder it is
+	// working in, and tilde what `~` abbreviates in a path.
+	bucket, launch, tilde string
 	// last is the tail of each conversation's journal the beat has read
 	// (homecardread.go), by transcript.
 	last map[string]session.Summary
@@ -245,7 +245,7 @@ func (h *homeView) gridInput() homeGridInput {
 	reading := readSwitcher(world, h.items, h.fired, here, h.gone, h.seen, h.world.Read,
 		switcherView{all: true}, h.ledger)
 	in := homeGridInput{world: world, items: h.items, errands: h.switchExchanges(),
-		bucket: h.bucket, tilde: h.tilde, last: h.last, repos: h.repos, spend: h.spend,
+		bucket: h.bucket, launch: h.launch, tilde: h.tilde, last: h.last, repos: h.repos, spend: h.spend,
 		seen: h.seen, now: h.world.Read}
 	for _, line := range reading.lines {
 		if line.row == nil || line.row.fold {
@@ -384,6 +384,11 @@ func (p homeGridPanel) height() int {
 		return 0
 	}
 	if p.empty() {
+		// A HEADING NEVER DRAWS OVER NOTHING. A panel with no rows and no
+		// whisper is not on the page at all.
+		if len(p.whisper) == 0 {
+			return 0
+		}
 		return 1 + len(p.whisper)
 	}
 	n := 1
@@ -515,14 +520,15 @@ func (h *homeView) buildGrid() {
 	for at, column := range homeGridLayout(&in, cols, h.gridWidth, h.room) {
 		first := true
 		for _, p := range column {
-			if p.dropped {
+			lines := p.lines()
+			if len(lines) == 0 {
 				continue
 			}
 			if !first {
 				h.addGridLine(homeLine{kind: homeBlank}, at)
 			}
 			first = false
-			for _, line := range p.lines() {
+			for _, line := range lines {
 				h.addGridLine(line, at)
 			}
 		}
@@ -538,6 +544,9 @@ func (h *homeView) addGridLine(line homeLine, col int) {
 // lines is one laid-out panel as lines of the column: its heading, its rows or
 // its whisper, and its fold.
 func (p homeGridPanel) lines() []homeLine {
+	if p.height() == 0 {
+		return nil
+	}
 	id := p.slot.panel.id()
 	head := p.slot.word
 	if p.read.said != "" {

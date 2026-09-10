@@ -31,14 +31,7 @@ const (
 const homeProjectRow homeRowKind = 244
 
 func (projectsPanel) rows(in *homeGridInput) homePanelRows {
-	ordered := make([]session.Project, 0, len(in.world.Projects))
-	for _, project := range in.world.Projects {
-		if project.Dir == in.bucket {
-			ordered = append([]session.Project{project}, ordered...)
-			continue
-		}
-		ordered = append(ordered, project)
-	}
+	ordered := projectsOrdered(in)
 	shown := min(homeProjectRows, len(ordered))
 	pad := 0
 	for _, project := range ordered[:shown] {
@@ -53,20 +46,46 @@ func (projectsPanel) rows(in *homeGridInput) homePanelRows {
 	return homePanelRows{lines: lines, more: len(ordered) - shown}
 }
 
+// projectsOrdered is the panel's projects: THIS WINDOW'S FOLDER FIRST, and then
+// every other one with a folder, in the world's order.
+//
+// THE LAUNCH FOLDER IS ALWAYS A ROW (DESIGN §4), with no chats in it or with
+// no bucket at all — a window opened a moment ago in a folder nobody has spoken
+// in is still standing somewhere, and `projects` over nothing was the owner's
+// first binary. A project that recorded no folder is left off: its row would be
+// a count under no name, and enter on it has nowhere to start a conversation.
+func projectsOrdered(in *homeGridInput) []session.Project {
+	launch := strings.TrimSpace(in.launch)
+	var own *session.Project
+	out := make([]session.Project, 0, len(in.world.Projects)+1)
+	for _, project := range in.world.Projects {
+		path := strings.TrimSpace(project.Path)
+		switch {
+		case path == "":
+		case own == nil && (project.Dir == in.bucket || path == launch):
+			mine := project
+			own = &mine
+		default:
+			out = append(out, project)
+		}
+	}
+	if own == nil && launch != "" {
+		own = &session.Project{Path: launch, Name: standBareName(launch)}
+	}
+	if own == nil {
+		return out
+	}
+	return append([]session.Project{*own}, out...)
+}
+
 // projectWord is what a project is called on its row: its folder, with the
-// person's home written `~/`. THE HOME DIRECTORY ITSELF IS NOT A NAME — a row
-// for the conversations launched in `~` draws nothing in that cell rather than
-// a lone tilde — and a project that never recorded a folder draws nothing there
-// either, because the bucket it lives in is an address and not a place.
+// person's home written `~/` — and the home directory itself `~`, because in
+// this cell it is a PATH and not a name (the rule that retired `~` as a project
+// name is about a tag standing alone on a chat row, homepanel_recent.go). A
+// project that never recorded a folder draws nothing here, because the bucket
+// it lives in is an address and not a place.
 func projectWord(project session.Project, tilde string) string {
-	path := strings.TrimSpace(project.Path)
-	if path == "" || project.Name == "~" {
-		return ""
-	}
-	if word := tildePath(path, tilde); word != "~" {
-		return word
-	}
-	return ""
+	return tildePath(strings.TrimSpace(project.Path), tilde)
 }
 
 // projectCounts is `12 chats · 1 running`, each half only when it is not zero.
