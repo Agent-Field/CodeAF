@@ -51,7 +51,8 @@ own keys, each a door to the place that owns it. The chat list is one panel.
 3. **Stable order, flexible height.** A panel keeps its column and its rank in
    it. Its height is what it holds. Position is a rank, not a pixel.
 4. **An empty panel whispers.** It stays as its heading and one dim line that
-   says what would be here and the one thing that puts something there.
+   names what arrives here and the one thing that puts it there — never that
+   the panel is empty.
    This is a deliberate narrowing of the emptiness law, which keeps its full
    force for numbers (`$0.00`, `0 tasks`, a blank age all still draw nothing)
    and yields for panels, because a panel that vanishes teaches nothing. The
@@ -183,14 +184,20 @@ shows `Outcome`. Reconsider after a week of real receipts.
 
 ## 4. The whispers (copy of record)
 
+A whisper names what ARRIVES in the panel and the one thing that puts it there.
+It never announces emptiness: `nothing is running`, `no chats yet` and every
+sentence like them are the emptiness law inverted into words and stay banned
+(docs/DESIGN-LANGUAGE.md, "presence over labels"). The exception is the label,
+not the announcement.
+
 | Panel | Whisper |
 |---|---|
-| needs you | `nothing waits on you · a question from any chat or task lands here` |
-| running | `nothing is running · /task sends work off to run on its own` |
-| since you left | `nothing happened while you were away · watches and tasks report here` |
-| where you were | `no chats yet · what you type below starts one` |
-| spend | `nothing spent yet · every chat and task is priced here` |
-| next up | `nothing scheduled · "remind me at 6" or "every morning, …" puts one here` |
+| needs you | `questions from any chat or task land here · a digit answers them` |
+| running | `work you send off with /task runs here on its own` |
+| since you left | `what watches and tasks did while the terminal was shut` |
+| where you were | `your conversations · what you type below starts one` |
+| spend | `every chat and task is priced here` |
+| next up | `reminders and routines · "remind me at 6" or "every morning, …"` |
 | projects | never empty: the launch folder is always a row |
 
 ## 5. Lanes
