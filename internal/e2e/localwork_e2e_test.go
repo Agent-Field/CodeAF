@@ -106,6 +106,9 @@ func TestLocalWorkJourney(t *testing.T) {
 	// script's first draft quotes the address, as the live model's did; the
 	// check before publication found it, the run was sent back once with the
 	// quote, and only the corrected report was published.
+	if strings.Contains(report, scriptPreface) || strings.Contains(report, "<report>") {
+		t.Fatalf("the published report carries the words around it:\n%s", report)
+	}
 	if strings.Contains(report, "alice@example.com") || !strings.Contains(report, "[redacted]") {
 		t.Fatalf("a raw contact detail survived the Launch rule:\n%s", report)
 	}
@@ -579,6 +582,9 @@ var focusLine = regexp.MustCompile(`FOCUS: (\w+)`)
 // own check has no pattern in it and reads the rule's words with a model.
 var emailAddress = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
 
+// scriptPreface is what the script says before its report, as a live model did.
+const scriptPreface = "Now let me write the report from what I read."
+
 // rulesCheckLead is the start of aforge's instruction to its report check.
 const rulesCheckLead = "You check one report against the rules"
 
@@ -738,7 +744,9 @@ func (m *scriptedModel) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		report.WriteString("read: " + read + "\n")
 	}
-	m.reply(w, body.Stream, "", "", report.String())
+	// The live model's habit, kept on purpose: a sentence about what it did,
+	// in the same turn as the report. Only the delimited report is published.
+	m.reply(w, body.Stream, "", "", scriptPreface+"\n<report>\n"+report.String()+"</report>")
 }
 
 func (m *scriptedModel) reply(w http.ResponseWriter, stream bool, tool, args, text string) {

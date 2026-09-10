@@ -59,7 +59,7 @@ func TestAFiringIsToldWhyItRunsAndWhereItsReportGoes(t *testing.T) {
 	workspace := t.TempDir()
 	item := standing.Item{Workspace: workspace, Does: standing.Action{Kind: standing.ActionTask, Report: "reports/r.md"}}
 	block := standingReportBlock(item, "reports/r.md")
-	if !strings.Contains(block, "FINAL REPLY is the complete report") || strings.Contains(block, "previous version is at") {
+	if !strings.Contains(block, "FINAL REPLY is the complete report") || !strings.Contains(block, "between a line <report> and a line </report>") || strings.Contains(block, "previous version is at") {
 		t.Fatalf("first report block: %s", block)
 	}
 	if err := os.MkdirAll(filepath.Join(workspace, "reports"), 0o755); err != nil {
@@ -367,5 +367,32 @@ func TestAStopWhileARunIsWorkingWithholdsItsReportButAPauseDoesNot(t *testing.T)
 				t.Fatalf("a stopped run's outcome: %+v", outcome)
 			}
 		})
+	}
+}
+
+// THE REPORT IS WHAT IS BETWEEN ITS LINES. The live journey's reports opened
+// with the model's own sentence on the way to writing them, in the same turn;
+// a delimited report is published without it, and an answer with no delimiter
+// is still taken whole.
+func TestAReportIsWhatIsBetweenItsLinesAndNotTheSentenceBeforeIt(t *testing.T) {
+	for final, want := range map[string]string{
+		"Now let me check the standing order.\n<report>\n# Report\n- ship Friday\n</report>\nDone.": "# Report\n- ship Friday",
+		"<report>\n# Report\n- cut before the close":                                                "# Report\n- cut before the close",
+		"# Report\nno delimiter at all":                                                             "# Report\nno delimiter at all",
+		"a draft\n<report>\nfirst\n</report>\nthen again\n<report>\nsecond\n</report>":              "second",
+	} {
+		if got := standingReportBody(final); got != want {
+			t.Errorf("standingReportBody(%q) = %q, want %q", final, got, want)
+		}
+	}
+	root, workspace := t.TempDir(), t.TempDir()
+	model := &scriptedCompleter{steps: []step{saying("Now let me check the standing order — it matches.\n<report>\n# Review\n- claim unsupported\n</report>")}}
+	outcome, err := standingChildRunner(t, root, model).Run(context.Background(), reporting(workspace), filepath.Join(root, "runs", "0001"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(workspace, "reports", "r.md"))
+	if string(raw) != "# Review\n- claim unsupported\n" || outcome.Published == nil {
+		t.Fatalf("published %q outcome %+v", raw, outcome)
 	}
 }
