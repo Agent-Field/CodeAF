@@ -2116,7 +2116,7 @@ func (a *Agent) landingQuestion(pending PendingDecision) Question {
 		Form:    FormCard,
 		Asker:   Asker{Kind: AskerTask, Name: strings.TrimSpace(notice.Title)},
 		Head:    strings.TrimSpace(notice.Title),
-		Reason:  strings.TrimSpace(status.Ask.Reason),
+		Reason:  landingReason(status.Ask),
 		Subject: SubjectRef{Kind: SubjectNode, ID: notice.ID, Name: strings.TrimSpace(notice.Title)},
 		Options: landingOptions(status.Ask),
 		// ACCEPTING BRINGS A BRANCH HOME AND REFUSING KEEPS ONE. Neither is free
@@ -2135,6 +2135,32 @@ func (a *Agent) landingQuestion(pending PendingDecision) Question {
 		Policy: landingPolicy(status.Ask.Owner),
 	})
 }
+
+// landingReason is the row's own sentence, plus WHO IS DECIDING where that is
+// not the person.
+//
+// THE CARD MUST SAY SO ON THE REASON LINE (docs/design/task-states/DESIGN.md).
+// Under `task.settle = auto`, and after somebody hands one card over, the model
+// is reading the work and will spend a verb on it — and a row that said nothing
+// about that is a person answering a question somebody else is already
+// answering. THE ANSWERS STAY DRAWN: the floor hands an unanswered question back
+// at the end of the turn anyway, and a card with a sentence and no handle is the
+// exact shape #767 was filed about. Answering it IS taking it back.
+func landingReason(ask TaskAsk) string {
+	reason := strings.TrimSpace(ask.Reason)
+	if ask.Owner != TaskAskOwnerModel {
+		return reason
+	}
+	if reason == "" {
+		return landingDecidingWord
+	}
+	return reason + " · " + landingDecidingWord
+}
+
+// landingDecidingWord is that clause, and it is a WHOLE CLAUSE rather than a
+// word: a row reading `nobody could check it · auto` would have told a person
+// the name of a setting instead of who is deciding.
+const landingDecidingWord = "aforge is deciding"
 
 // landingPolicy is [TaskAsk.Owner] as a [Policy], and it is the whole of this
 // wave's composition with the auto-settle floor.

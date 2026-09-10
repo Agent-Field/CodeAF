@@ -2225,17 +2225,22 @@ stopped run keep.
 
 ## Deciding about a landed task from the keyboard — accept, not right, tell it
 
-A landing that reads **your call** is the one card in the transcript that is still a
-question, and the letters below answer it. **Any landing that is your call, at any
-depth** — a task you asked for, or a part of one it handed out itself:
+A landing that reads **your call** is a question, and it is put to you on the **question
+block** above the message box — the same block every other decision in aforge arrives on —
+so the letters below work wherever you are standing: the conversation, the task's own room,
+the `/tasks` page. **Any landing that is your call, at any depth** — a task you asked for,
+or a part of one it handed out itself:
 
 | Key | What it does |
 | --- | --- |
 | `a` | the ask's own yes — take the work; on a card whose branch clashed with yours it reads `resolve it`, which spends one more merge round and takes nothing as done |
 | `n` | the ask's own no — `not right`, or `drop it` on a conflict; the task becomes incomplete and keeps its branch, and its dependents still fail because it did not finish |
 | `s` | tell it — opens the task's own page with the message box pointed at it. What you type is sent as a correction; **it never answers the question by itself**, so "looks good" typed there does not become an accept |
-| `d` | let aforge decide this one — hands **this card** to aforge and **changes no setting**. The standing choice is `task.settle` in `/settings` under Session |
-| `t` | take it back — only while the card reads `aforge is deciding`. It draws the answers again and resolves nothing |
+| `d` | you decide — hands **this one question** to aforge and **changes no setting**. The standing choice is `task.settle` in `/settings` under Session |
+| `esc` | later — the question folds to the chip in the status line and nothing is answered |
+
+While `task.settle` is `auto` the reason row also reads `aforge is deciding`; the answers
+stay drawn, and pressing one yourself is how you take the question back.
 
 **The words on `a` and `n` change with the question and the keys never do.** A card whose
 branch clashed with yours reads `[a] resolve it · [n] drop it`; one the check did not pass
@@ -2330,11 +2335,10 @@ Only the left button acts. A press is resolved in this order:
    or the full-frame sheet on a narrow terminal; the
    `N earlier tool calls` fold; the `… N more lines` foot, which lifts the cap; a
    spawn card, which opens the node's room, or its brief if there is no node yet; and
-   a landed card, which opens its full context — except on the answers row of a card
-   that is your call, where each of `[a] accept`, `[n] not right`, `[s] tell it` and
-   `[d] let aforge decide this one` is its own target and a press between them does
-   nothing. On a card that reads `aforge is deciding`, `[t] take it back` is the one
-   target on that row.
+   a landed card, which opens its full context. The answers to a landing that is your
+   call are not on that card: they are on the question block above the message box,
+   where each of `[a] accept`, `[n] not right`, `[s] tell it` and `[d] you decide` is
+   its own target and a press between them does nothing.
 
 **A file path is a different kind of target.** Everything numbered above is a click
 aforge itself answers. A real file path — in a reply, in a note, on a `read`/`edit`/
