@@ -269,6 +269,45 @@ func TestTheHomeDirectoryIsAPathOnTheProjectsPanel(t *testing.T) {
 	}
 }
 
+// A PROJECT ROW NEVER WRAPS: a long path is cut from the left, at a folder,
+// so its count and its repository stay on the row — `…/code/aforge-v2`.
+func TestALongProjectPathIsCutFromTheLeftAndKeepsItsFacts(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	cell := &homeCell{panel: panelProjects, path: true, pad: homeProjectPad,
+		title: "~/Documents/agentfield/code/aforge-v2", note: "61 chats", right: "master, 3 files dirty"}
+	for _, width := range []int{56, 48} {
+		row := plain(homeCellBody(cell, width, a.pal, false))
+		if len([]rune(row)) > width || !strings.Contains(row, glyphMore+"/") || !strings.Contains(row, "/aforge-v2") ||
+			!strings.Contains(row, "61 chats") || !strings.Contains(row, "master, 3 files dirty") {
+			t.Fatalf("at %d cells the project row reads %q", width, row)
+		}
+	}
+	if got := homeFitPathLeft("~/Documents/agentfield/code/aforge-v2", 20); got != glyphMore+"/code/aforge-v2" {
+		t.Fatalf("the path is cut to %q, want it to start at a folder", got)
+	}
+}
+
+// `~` IS NEVER A TAG: a chat in the home directory or in a scratch folder at the
+// top of /tmp wears no project word — while a checkout that merely lives under
+// a temporary directory keeps its name.
+func TestAChatRowWearsNoTagForHomeOrAScratchFolder(t *testing.T) {
+	row := func(project, workspace string) switcherRow {
+		return switcherRow{project: project, session: session.SessionRow{Workspace: workspace}}
+	}
+	for _, r := range []switcherRow{row("~", "/home/pat"), row("af-stop-ws", "/tmp/af-stop-ws"), row("pat", "/home/pat")} {
+		if tag := chatProjectTag(r, "/home/pat"); tag != "" {
+			t.Fatalf("a chat in %s wears the tag %q", r.session.Workspace, tag)
+		}
+	}
+	if tag := chatProjectTag(row("site", "/tmp/build/site"), "/home/pat"); tag != "site" {
+		t.Fatalf("a checkout under /tmp/build lost its tag: %q", tag)
+	}
+	// AND THE PROJECTS PANEL STILL LISTS THE SCRATCH FOLDER, as a path.
+	if got := projectWord(session.Project{Name: "af-stop-ws", Path: "/tmp/af-stop-ws"}, "/home/pat"); got != "/tmp/af-stop-ws" {
+		t.Fatalf("the scratch folder is listed as %q", got)
+	}
+}
+
 // THE LAUNCH FOLDER IS ALWAYS A ROW (DESIGN §4): a window opened in a folder
 // nobody has spoken in, on a machine with no conversations at all, still draws
 // `projects` with this folder under it — its path and no count clause.
