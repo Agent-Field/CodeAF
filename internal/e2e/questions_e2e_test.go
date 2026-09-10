@@ -447,8 +447,8 @@ func questionsBlocksUnderAnswers(t *testing.T) {
 	}
 	if asks != 1 || refusals != 0 || blocks == 0 {
 		t.Errorf("the first ask did not arrive whole: %d ask calls, %d argument refusals, blocks mentioned %d times "+
-			"in the journal; want one call carrying blocks and none refused.\nRefused with:\n  %s",
-			asks, refusals, blocks, strings.Join(refused, "\n  "))
+			"in the journal; want one call carrying blocks and none refused.\nRefused with:\n  %s\nThe journal is kept at %s",
+			asks, refusals, blocks, strings.Join(refused, "\n  "), keepJournals(t, r))
 	}
 
 	press(t, r, "o")
@@ -460,6 +460,27 @@ func questionsBlocksUnderAnswers(t *testing.T) {
 	receipt := r.waitFor(30*time.Second, say(t, "questionReceiptWord"))
 	screenSays(t, receipt, say(t, "questionReceiptYouWord"), "enter is a person's key and the record says so")
 	shot(t, r, "taken")
+}
+
+// keepJournals copies every transcript the rig wrote to a place the rig's
+// teardown does not sweep, and names it. A refusal names the SHAPE the decoder
+// would not read only in its first twenty-four runes; the bytes themselves are
+// what the next fix is written against, and a journal under t.TempDir is gone
+// the moment the scenario ends.
+func keepJournals(t *testing.T, r *rig) string {
+	t.Helper()
+	dir := filepath.Join(os.TempDir(), "aforge-e2e-journals")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "nowhere: " + err.Error()
+	}
+	kept := []string{}
+	for path, journal := range sessionTranscripts(t, r.home) {
+		name := filepath.Join(dir, shotName(t)+"-"+filepath.Base(filepath.Dir(path))+".jsonl")
+		if err := os.WriteFile(name, []byte(journal), 0o644); err == nil {
+			kept = append(kept, name)
+		}
+	}
+	return strings.Join(kept, ", ")
 }
 
 // questionCountdown is the clock's tail: a whole number of seconds and the unit,
