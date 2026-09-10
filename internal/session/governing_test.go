@@ -107,3 +107,29 @@ func TestGoverningNeverClipsMandatoryHolds(t *testing.T) {
 		t.Fatal("full mandatory set described as truncated")
 	}
 }
+
+type governingFixture []standing.Item
+
+func (items governingFixture) ApplicableScope(string, string, map[string]int) ([]standing.Item, error) {
+	return items, nil
+}
+
+func TestGoverningInputLimitStopsInsteadOfTruncating(t *testing.T) {
+	for _, name := range []string{"count", "bytes"} {
+		t.Run(name, func(t *testing.T) {
+			var items governingFixture
+			if name == "count" {
+				for i := 0; i <= governingHoldLimit; i++ {
+					items = append(items, standing.Item{Words: fmt.Sprint("rule", i), When: standing.When{Kind: standing.WhenHold}})
+				}
+			} else {
+				items = append(items, standing.Item{Words: strings.Repeat("x", governingPromptBytes+1), When: standing.When{Kind: standing.WhenHold}})
+			}
+			agent := &Agent{config: Config{Governing: &Governing{Reader: items}}}
+			block := agent.standingBlockLocked()
+			if block != "" || agent.governingReadError == "" || len(agent.governingRecords) != 0 {
+				t.Fatalf("partial governing execution admitted: %d records, %q, %q", len(agent.governingRecords), block, agent.governingReadError)
+			}
+		})
+	}
+}
