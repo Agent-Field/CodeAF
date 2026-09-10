@@ -1845,8 +1845,19 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	// recorded, move onto its child row to inspect the task's own door.
 	bucket := waitForRecord(t, home, 5*time.Minute)
 	first.keys("Down")
-	started := first.waitFor(30*time.Second, say(t, "tasksEnterRoomWord"))
-	t.Logf("the selected task is held by this window:\n%s", started)
+	// AND EITHER FOOT WILL DO, BECAUSE HOW THE WORK LANDED IS THE MODEL'S
+	// BUSINESS AND NOT THIS SUBTEST'S. When the checker answers, the node lands
+	// `done` and the roster's foot offers the live room. When it does not — a
+	// checking call that returns nothing inside its window, which this brief
+	// draws about one run in four on `deepseek-v4-flash` — the node lands `your
+	// call`, the landing asks the person something, and the foot says where that
+	// question is waiting instead. Both are a recorded task on the roster, which
+	// is the only fact the rest of this test needs; measured on `dev` at
+	// 6aa6a946e, one run in four (2026-09-10) died here on the second shape
+	// while the paging it exists to prove worked perfectly.
+	_, started := first.waitForAny(30*time.Second,
+		say(t, "tasksEnterRoomWord"), say(t, "questionWaitingWord"))
+	t.Logf("the selected task is on the roster of the window that started it:\n%s", started)
 	first.quit()
 
 	// ── and the window that reads it back ────────────────────────────────────
@@ -1872,7 +1883,12 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	// AND NOW THE OTHER DOOR. No window is holding the node any more, so the
 	// foot offers the record rather than the room — which is the mode this test
 	// is about.
-	r.waitFor(30*time.Second, "finished today")
+	//
+	// THE FOOT IS THE WHOLE SYNCHRONISATION AND THE GROUP HEADING WAS NEVER PART
+	// OF IT. This wait used to sit behind `finished today`, which is the roster's
+	// heading for work that ENDED today — and a node the checker could not judge
+	// ends under `your call` instead, so the heading was a claim about how the
+	// model's work landed standing in front of a test about paging a record.
 	roster := r.waitFor(30*time.Second, say(t, "tasksEnterInsideWord"))
 	t.Logf("the roster is offering the record of work nothing is holding:\n%s", roster)
 
