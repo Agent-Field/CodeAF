@@ -71,6 +71,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -408,24 +409,81 @@ func bareLabel(name string) bool {
 // each letter is" ([checkpointSketchAsk]), and what a model writes for that is
 // one sentence with the letters separated by commas — "A is the validation
 // workflow, B is the docs sweep, C is the release notes" — or, about as often, a
-// line apiece. So the cuts are newlines, semicolons and commas, and nothing
-// cleverer: a parser that tried to understand the sentence would be a second
-// reading of an answer whose whole value is that it was cheap.
+// line apiece. So punctuation is the first cut and nothing cleverer: a parser
+// that tried to understand the sentence would be a second reading of an answer
+// whose whole value is that it was cheap.
+//
+// AND THE LABEL ITSELF IS THE SECOND CUT, which punctuation alone missed. The
+// legend on task 1 of conversation 57d51779f63ac603 read
+//
+//	**A:** read `seam.start` in `cmd/aforge/chatv3.go` … **B:** trace the
+//	folder-pick path — `folderConfirm` in `folderact.go` → … **C:** …
+//
+// on ONE line with no separator between the clauses. A's clause swallowed the
+// whole of it, B and C matched nothing, and the parts went out called "read
+// seam.start in" and "part 2" — the second being [sketchName]'s answer for a
+// letter the legend never named, about a letter the legend named perfectly well.
+// A label opening a clause is a boundary wherever it stands, so it is one here:
+// see [legendInlineLabel] for the four spellings.
 //
 // A LEGEND THAT MATCHES NOTHING COSTS NOTHING. Every part falls back to the piece
 // the shape drew, and the division is put with the letters as their own names —
 // which is worse and is not wrong.
 func legendSegments(legend string) []string {
-	fields := strings.FieldsFunc(legend, func(letter rune) bool {
-		return letter == '\n' || letter == ';' || letter == ','
-	})
-	segments := make([]string, 0, len(fields))
-	for _, field := range fields {
-		if trimmed := strings.TrimSpace(field); trimmed != "" {
-			segments = append(segments, trimmed)
+	segments := make([]string, 0, 8)
+	for _, clause := range legendClauses(legend) {
+		for _, field := range strings.FieldsFunc(clause, func(letter rune) bool {
+			return letter == '\n' || letter == ';' || letter == ','
+		}) {
+			if trimmed := strings.TrimSpace(field); trimmed != "" {
+				segments = append(segments, trimmed)
+			}
 		}
 	}
 	return segments
+}
+
+// legendInlineLabel is a legend opening a clause about one letter: `**B:**`,
+// `B:`, `B —`, `B - `, or `(B)`.
+//
+// IT DEMANDS A SEPARATOR AFTER THE LETTER, and that is the whole of what keeps it
+// from cutting a sentence to pieces. `(wired at line 519 as ...)` is not a label
+// because `w` is not followed by one; `folder-pick` is not a label because the
+// hyphen has a letter in front of it rather than a space; a `—` that opens a
+// clause of its own is not a label because there is no single letter before it.
+// The letter may carry one digit, because `C1` is a coordinate a drawing writes.
+//
+// THE `is` FORM IS DELIBERATELY NOT HERE. "A is the workflow and B is the sweep"
+// is already cut by the comma or the newline a model writes it with, and a rule
+// that started a clause at every "x is" would cut inside the words it was trying
+// to keep — "the one place the answer is assembled" being a legend clause, not
+// two.
+var legendInlineLabel = regexp.MustCompile(
+	`(?:^|\s)(?:` +
+		"\\*{0,2}\\(?[A-Za-z][0-9]?\\)?\\*{0,2}\\s*(?:[:：]|—|–|-\\s)" +
+		`|\([A-Za-z][0-9]?\)\s` +
+		`)`)
+
+// legendClauses cuts a legend wherever it opens a clause about a letter, and
+// answers the whole legend when it never does.
+func legendClauses(legend string) []string {
+	cuts := legendInlineLabel.FindAllStringIndex(legend, -1)
+	if len(cuts) == 0 {
+		return []string{legend}
+	}
+	clauses := make([]string, 0, len(cuts)+1)
+	last := 0
+	for _, cut := range cuts {
+		// A cut at the very start of the legend opens nothing: the first clause
+		// begins there anyway, and an empty leading piece would be a segment with
+		// no label that every reader below has to skip.
+		if cut[0] <= last {
+			continue
+		}
+		clauses = append(clauses, legend[last:cut[0]])
+		last = cut[0]
+	}
+	return append(clauses, legend[last:])
 }
 
 // sketchSaid is the legend's own words for one piece of the shape, or an empty
