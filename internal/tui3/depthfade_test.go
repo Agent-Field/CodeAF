@@ -131,18 +131,14 @@ func historyApp(t *testing.T, count int) *app {
 func fadeWord(i int) string { return strings.Repeat("i", i%7+1) + itoa(i) }
 
 // historyRows is the place's list region: the lines between the head the router
-// draws ([placeHeadRows]) and the foot it draws under the body — a blank, a
-// rule, the place's own note, the composer and the hint.
+// draws ([placeHeadRows]) and the foot it draws under the body — a blank, the
+// rule carrying the place's own note, the composer and the hint.
 func historyRows(a *app) []string {
 	width, height := a.size()
 	lines, _, _, _ := a.taskSheetFrame(width, height)
-	// The foot the router draws is five rows: a blank, a rule, the place's own
-	// note, the composer and the hint. A filter adds a second note row.
-	foot := 5
-	if a.taskSheetFiltering() {
-		foot++
-	}
-	return lines[placeHeadRows : len(lines)-foot]
+	// The foot the router draws is four rows on every place, filtering or not:
+	// the note rides the rule (placebodies.go's [placeNoteRule]).
+	return lines[placeHeadRows : len(lines)-placeFootRows]
 }
 
 // THE TAIL OF THE RECORD FADES AND ITS HEAD DOES NOT. A page holding two hundred

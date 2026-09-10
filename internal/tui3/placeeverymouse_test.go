@@ -1,9 +1,12 @@
 package tui3
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // ── THE POINTER, ASKED OF ALL SEVEN ─────────────────────────────────────────
@@ -137,35 +140,33 @@ func TestAMotionMessageMovesHomesCardWithoutMovingTheCursor(t *testing.T) {
 // promoted place placemouse_test.go's preview law does not reach — its rows are
 // its own hit kinds rather than body lines — and it is the longest list on the
 // surface, which is exactly where a pointer is worth having.
+//
+// THE LIGHT IS A GROUND AND A WEIGHT AND NO LONGER A MARK, so it is read off the
+// painted frame: the row under the pointer wears the cursor step, as the row
+// under the cursor does (placeprose.go's [placeBand]).
 func TestHoveringARowOfTheTasksPlaceLightsIt(t *testing.T) {
 	a := historyApp(t, 200)
 	a.width, a.height = 120, 30
+	a.pal = newPalette(tokens.ANSI256, false)
+	ground := a.pal.onPlaces().cursor("x", 1)
+	ground = ground[:strings.Index(ground, "x")]
 	_, hits, _, _ := a.taskSheetFrame(a.width, a.height)
-	lit := false
 	for y, hit := range hits {
 		if hit.kind != taskSheetHitRow || hit.index == a.taskSheet.cursor {
 			continue
 		}
 		cursor := a.taskSheet.cursor
-		before := placeFrameText(a)
 		drive(t, a, tea.MouseMotionMsg{X: 4, Y: y})
 		if a.taskSheet.cursor != cursor {
 			t.Fatalf("the pointer over row %d moved the cursor from %d to %d", y, cursor, a.taskSheet.cursor)
 		}
-		after := placeFrameText(a)
-		beforeLines, afterLines := splitLines(before), splitLines(after)
-		if y < len(beforeLines) && y < len(afterLines) && beforeLines[y] != afterLines[y] {
-			lit = true
-			break
+		painted, _, _ := a.frame()
+		if lines := splitLines(painted); y < len(lines) && strings.Contains(lines[y], ground) {
+			return
 		}
-		if before != after {
-			lit = true
-			break
-		}
+		t.Fatalf("row %d of the tasks place does not wear the cursor step under the pointer", y)
 	}
-	if !lit {
-		t.Fatal("no row of the tasks place lights under the pointer")
-	}
+	t.Fatal("the tasks place drew no row the pointer could stand on")
 }
 
 // ── the window moves, and not just the cursor ───────────────────────────────

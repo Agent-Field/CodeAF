@@ -19,7 +19,6 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/store"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 const (
@@ -112,7 +111,11 @@ func searchOneLine(text string) string { return strings.Join(strings.Fields(text
 // rows keeps one physical line per conversation. The project is the first
 // optional fact to leave a narrow frame; the quoted turn leaves next, while
 // the title and its door remain.
-func (r searchReading) rows(width int, pal palette) []string {
+func (r searchReading) rows(width int, pal palette) []string { return r.paint(width, pal, nil) }
+
+// paint is [searchReading.rows] with the lines the cursor or the pointer is on
+// lit (placeprose.go's THE FIVE-LEVEL SCALE); a nil lit lights nothing.
+func (r searchReading) paint(width int, pal palette, lit func(line int) bool) []string {
 	if width <= 0 {
 		return nil
 	}
@@ -152,7 +155,8 @@ func (r searchReading) rows(width int, pal palette) []string {
 		shown = searchShown
 	}
 	for _, hit := range r.hits[:shown] {
-		out = append(out, " "+searchRowAt(hit, r.query, room, r.now, pal))
+		on := lit != nil && lit(len(out))
+		out = append(out, " "+searchRowAt(hit, r.query, room, r.now, pal, on))
 	}
 	if more := len(r.hits) - shown; more > 0 {
 		out = append(out, " "+pal.dim(fit(foldLine(more, ""), room)))
@@ -194,14 +198,18 @@ func (r searchReading) legend(width int, pal palette) string {
 	return pal.dim(fit(strings.Join(parts, " · "), width))
 }
 
-func searchRowAt(hit searchHit, query string, width int, now time.Time, pal palette) string {
-	lead := pal.dim(tokens.GlyphPromptChat + " ")
+func searchRowAt(hit searchHit, query string, width int, now time.Time, pal palette, lit bool) string {
+	// THE LEAD IS AIR, as it is on every row of every place. It was the chat
+	// prompt's `›` on every row — the one shape this surface spends on the
+	// cursor — over a list whose every row is a conversation anyway.
+	lead := searchLead
+	facts := placeFactInk(lit, pal)
 	age := sinceAt(hit.when, now)
 	project := hit.project
 	if width < 80 {
 		project = ""
 	}
-	tail := searchTail(project, age, pal)
+	tail := searchTail(project, age, facts)
 	room := width - ansi.StringWidth(lead) - ansi.StringWidth(tail)
 	if tail != "" {
 		room--
@@ -227,7 +235,7 @@ func searchRowAt(hit searchHit, query string, width int, now time.Time, pal pale
 	if remaining < 6 {
 		plainMiddle = ""
 	}
-	left := lead + pal.ink(title) + searchMarked(plainMiddle, query, pal)
+	left := lead + placeSubject(title, lit, pal) + searchMarked(plainMiddle, query, facts, pal)
 	pad := width - ansi.StringWidth(left) - ansi.StringWidth(tail)
 	if tail != "" && pad < 1 {
 		tail = ""
@@ -239,7 +247,10 @@ func searchRowAt(hit searchHit, query string, width int, now time.Time, pal pale
 	return fit(left+strings.Repeat(" ", pad)+tail, width)
 }
 
-func searchTail(project, age string, pal palette) string {
+// searchLead is the two cells in front of every result.
+const searchLead = "  "
+
+func searchTail(project, age string, ink func(string) string) string {
 	words := make([]string, 0, 2)
 	if project != "" {
 		words = append(words, project)
@@ -247,13 +258,17 @@ func searchTail(project, age string, pal palette) string {
 	if age != "" {
 		words = append(words, age)
 	}
-	return pal.dim(strings.Join(words, " · "))
+	return ink(strings.Join(words, " · "))
 }
 
-func searchMarked(text, query string, pal palette) string {
+// searchMarked is a result's quoted turn with the words a person searched for
+// picked out. A MATCH IS A DATUM, and it steps up one role the way every datum
+// in a quiet line does (THE PAYLOAD RULE) — never bold, which is the band's own
+// mark on a place and nowhere else.
+func searchMarked(text, query string, rest func(string) string, pal palette) string {
 	terms := strings.Fields(query)
 	if text == "" || len(terms) == 0 {
-		return pal.dim(text)
+		return rest(text)
 	}
 	sort.Slice(terms, func(i, j int) bool { return len(terms[i]) > len(terms[j]) })
 	quoted := make([]string, 0, len(terms))
@@ -264,11 +279,11 @@ func searchMarked(text, query string, pal palette) string {
 	var out strings.Builder
 	last := 0
 	for _, loc := range re.FindAllStringIndex(text, -1) {
-		out.WriteString(pal.dim(text[last:loc[0]]))
-		out.WriteString(pal.bold(text[loc[0]:loc[1]]))
+		out.WriteString(rest(text[last:loc[0]]))
+		out.WriteString(pal.data(text[loc[0]:loc[1]]))
 		last = loc[1]
 	}
-	out.WriteString(pal.dim(text[last:]))
+	out.WriteString(rest(text[last:]))
 	return out.String()
 }
 

@@ -64,12 +64,18 @@ func TestSearchGroupsSeveralTurnsIntoOneConversation(t *testing.T) {
 	}
 }
 
-func TestSearchMarksMatchingWordsInBold(t *testing.T) {
+// A MATCH IS A DATUM AND IT STEPS UP ONE ROLE (THE PAYLOAD RULE), and it is not
+// bold: bold is the band's mark on a place, so a word bold on every row was a
+// second emphasis spent outside it (PLACES-AUDIT.md finding 10).
+func TestSearchLiftsMatchingWordsAsData(t *testing.T) {
 	hits, world := searchFixture()
-	pal := newPalette(tokens.TrueColor, false)
+	pal := newPalette(tokens.TrueColor, false).onPlaces()
 	page := strings.Join(readSearch("report", hits, world, searchTestNow).rows(120, pal), "\n")
-	if !strings.Contains(page, pal.bold("report")) && !strings.Contains(page, pal.bold("Report")) {
-		t.Fatalf("the matching word was not bold in %q", page)
+	if !strings.Contains(page, pal.data("report")) && !strings.Contains(page, pal.data("Report")) {
+		t.Fatalf("the matching word was not lifted in %q", page)
+	}
+	if strings.Contains(page, pal.bold("report")) {
+		t.Fatalf("the matching word is bold outside the band in %q", page)
 	}
 }
 
@@ -92,7 +98,7 @@ func TestSearchShowsTwelveConversationsThenFoldsTheRest(t *testing.T) {
 	}
 	r := readSearch("needle", hits, session.World{}, searchTestNow)
 	page := strings.Join(r.rows(120, newPalette(tokens.NoColor, false)), "\n")
-	if strings.Count(page, tokens.GlyphPromptChat) != searchShown || !strings.Contains(page, tokens.GlyphCollapsed+" 3 more") {
+	if strings.Count(page, "   conversation ") != searchShown || !strings.Contains(page, tokens.GlyphCollapsed+" 3 more") {
 		t.Fatalf("the result cap did not draw twelve doors and a fold:\n%s", page)
 	}
 }
@@ -128,9 +134,10 @@ func TestSearchCursorStopsOnlyOnConversationRows(t *testing.T) {
 	stops := 0
 	for i, row := range rows {
 		_, ok := r.at(i)
-		// The body's one-cell lead comes off first: every row of this place hangs
-		// from column 2 now, the way tasks, standing and spend already did.
-		want := strings.HasPrefix(row, " "+tokens.GlyphPromptChat+" ")
+		// A result wears the row's two-cell lead after the body's one, and nothing
+		// else on the page does: the legend and the fold hang from the body's own
+		// column (placeprose.go's THE FIVE-LEVEL SCALE).
+		want := strings.HasPrefix(row, " "+searchLead)
 		if ok != want {
 			t.Fatalf("row %d mapped=%v, conversation-row=%v: %q", i, ok, want, row)
 		}
