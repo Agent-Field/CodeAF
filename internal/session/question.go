@@ -1647,7 +1647,17 @@ func (a *Agent) applyLanding(answer Answer, key, words string) error {
 	case LandingAgainKey:
 		return a.ResolveUnverified(answer.ID, TaskReaudit, words)
 	case LandingDecideKey:
-		return a.HandUnverifiedToModel(answer.ID)
+		// A SECOND PRESS IS THE SAME ANSWER AND NOT A REFUSAL. `let aforge decide
+		// this one` pressed twice used to hand the model the same decision twice,
+		// in two identical lines, because the row a person is looking at was drawn
+		// before the hand-over reached it. The engine says the question is already
+		// in its hands ([ErrTaskHandedOver]), and what this door owes for that is
+		// the answer standing: the state is exactly the one that was asked for.
+		// EVERY OTHER REFUSAL IS STILL ONE.
+		if err := a.HandUnverifiedToModel(answer.ID); err != nil && !errors.Is(err, ErrTaskHandedOver) {
+			return err
+		}
+		return nil
 	case LandingTakeBackKey:
 		return a.TakeBackDecision(answer.ID)
 	case LandingTellKey:

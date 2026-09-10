@@ -72,7 +72,22 @@ const (
 // surface that answered the fuel gate is ([Agent.ResolveOrchestrate]). An error
 // is only ever an id this session cannot place — an unknown kind, an id that is
 // not a number, or work this session has never heard of.
-func (a *Agent) Cancel(id string) (string, error) {
+func (a *Agent) Cancel(id string) (string, error) { return a.CancelWithReason(id, "") }
+
+// CancelWithReason is the same door with the words of whoever pulled it.
+//
+// THERE IS ONE STOP AND THIS IS IT. The person's card asks nothing and carries
+// no words (internal/tui3's stop.go), and the model's `tasks … stop` carries the
+// sentence it was given — but a stop that behaved differently depending on which
+// hand pulled it would be two stops, and the one thing every surface here agrees
+// on is that stopping means the same thing whoever asked for it. So the reason is
+// the ONLY difference: it rides onto the node's record and into the line, and
+// nothing else about the ending changes.
+//
+// THE REASON REACHES A TASK AND NOTHING ELSE. A run, a sub-harness run and a
+// background job settle with no report of their own for one to be written on, and
+// a reason accepted and dropped would be worse than one never taken.
+func (a *Agent) CancelWithReason(id, why string) (string, error) {
 	kind, rest, prefixed := strings.Cut(strings.TrimSpace(id), ":")
 	if !prefixed {
 		kind, rest = CancelTask, kind
@@ -84,7 +99,7 @@ func (a *Agent) Cancel(id string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return a.cancelTask(number)
+		return a.cancelTask(number, why)
 	case CancelRun:
 		return a.cancelRun(rest)
 	case CancelHarness:
@@ -114,14 +129,14 @@ func cancelNumber(kind, rest string) (uint64, error) {
 // ── a task node ─────────────────────────────────────────────────────────────
 
 // cancelTask stops one node of the work graph.
-func (a *Agent) cancelTask(id uint64) (string, error) {
+func (a *Agent) cancelTask(id uint64, why string) (string, error) {
 	a.mu.Lock()
 	graph := a.tasks
 	a.mu.Unlock()
 	if graph == nil {
 		return "", fmt.Errorf("there is no task %d in this session", id)
 	}
-	return graph.stop(id)
+	return graph.stopFor(id, why)
 }
 
 // stop ends one node on a person's word, and answers with the line to show.
@@ -144,7 +159,15 @@ func (a *Agent) cancelTask(id uint64) (string, error) {
 // coming to settle it. That node DID take a slot, at the moment the frontier
 // marked it running, and this is the one road out of it that has to hand the
 // slot back by hand ([TaskGraph.handBackSlotLocked]).
-func (g *TaskGraph) stop(id uint64) (string, error) {
+func (g *TaskGraph) stop(id uint64) (string, error) { return g.stopFor(id, "") }
+
+// stopFor is [TaskGraph.stop] with the reason whoever pulled it gave, and it is
+// where that reason is written down: onto the node, so the landing this stop
+// causes carries it, and into the line, so the hand that pulled it reads back
+// what it said. Every road out of here spells it the same way a person's own
+// accept and refute spell theirs ([stopBecause], task_audit.go's acceptedLine).
+func (g *TaskGraph) stopFor(id uint64, why string) (string, error) {
+	why = strings.TrimSpace(why)
 	g.mu.Lock()
 	node := g.nodes[id]
 	if node == nil {
@@ -164,7 +187,7 @@ func (g *TaskGraph) stop(id uint64) (string, error) {
 		g.mu.Unlock()
 		return name + " is already stopping", nil
 	case node.state == TaskRunning:
-		node.stopped = true
+		node.stopped, node.stopReason = true, why
 		cut = node.cancel
 		// A RUNNING NODE NOBODY HAS TAKEN UP SETTLES HERE. The frontier marks a
 		// node running and gives it its handle one hold of the lock before its
@@ -181,7 +204,7 @@ func (g *TaskGraph) stop(id uint64) (string, error) {
 		// node finds it already ended and returns without opening anything.
 		dropped = !node.claimed
 		if dropped {
-			node.state, node.report, node.held = TaskFailed, taskStoppedWord, ""
+			node.state, node.report, node.held = TaskFailed, stopBecause(taskStoppedWord, why), ""
 			// AND THE SLOT COMES BACK HERE, because nothing else is going to
 			// bring it. This node took one when the frontier marked it running
 			// (task_run.go's [TaskGraph.runFrontier]). The runner that would
@@ -193,7 +216,7 @@ func (g *TaskGraph) stop(id uint64) (string, error) {
 			// rest of the session — which is the same fault, in the other
 			// direction, as the decrement the queued road refuses.
 			g.handBackSlotLocked(node)
-			line = "stopped " + name
+			line = "stopped " + stopBecause(name, why)
 			break
 		}
 		// THE BRANCH IS NAMED IN THE PROMISE AND NOT IN THE PAST TENSE. What the
@@ -206,7 +229,10 @@ func (g *TaskGraph) stop(id uint64) (string, error) {
 		// of this sentence that says where the work is kept would be pointing at
 		// nothing — and what a person stopping a design wants to know is the other
 		// thing, which is that the registry is untouched.
-		line = "stopping " + name
+		// THE REASON SITS WITH THE NAME AND NOT AT THE END, because the clause
+		// after the dash is a promise about the work and a reason wedged behind it
+		// would read as the promise's own cause.
+		line = "stopping " + stopBecause(name, why)
 		switch node.kind {
 		case TaskKindHarness:
 			line += " — nothing was saved"
@@ -219,10 +245,12 @@ func (g *TaskGraph) stop(id uint64) (string, error) {
 			line += " — its branch is kept"
 		}
 	case node.state == TaskQueued:
-		node.stopped = true
-		node.state, node.report, node.held = TaskFailed, taskStoppedQueuedWord, ""
+		node.stopped, node.stopReason = true, why
+		node.state, node.report, node.held = TaskFailed, stopBecause(taskStoppedQueuedWord, why), ""
 		dropped = true
-		line = "stopped " + name + " before it started"
+		// Here the reason DOES go last, because "before it started" is part of
+		// what happened rather than a promise about what survives it.
+		line = stopBecause("stopped "+name+" before it started", why)
 	default:
 		g.mu.Unlock()
 		return name + " has already finished; there is nothing to stop", nil
@@ -271,6 +299,21 @@ const (
 	taskStoppedWord       = "stopped"
 	taskStoppedQueuedWord = "stopped before it started"
 )
+
+// stopBecause puts the reason a stop was given onto the sentence that reports
+// it, and answers the bare sentence when there was none — which is every stop a
+// person pulls, because their card asks for a decision and not for an essay.
+//
+// IT IS THE SPELLING THE OTHER TWO DECISIONS ALREADY USE: `<what happened>: <the
+// words>`, one line, clipped to the same limit (task_audit.go's [acceptedLine]
+// and [refutedLine]). A third grammar for the same kind of clause would be a
+// third thing for somebody reading a record to learn.
+func stopBecause(lead, why string) string {
+	if why = strings.TrimSpace(why); why == "" {
+		return lead
+	}
+	return lead + ": " + clip(firstLine(why), taskReportLineLimit)
+}
 
 // taskStopName is how a stop line names one node: its own title where it has
 // one, and its id where it does not — the floor [taskTitleOf] keeps on the

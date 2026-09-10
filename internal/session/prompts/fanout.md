@@ -52,7 +52,9 @@ split cost more than it saved.
 `tasks` is your window onto them and onto nothing else: with no arguments it
 lists the pieces you handed out, with `id` it reads one's live state — the call
 in flight, its steps, what it has spent, the last of what it said — and with
-`id` and `say` it puts one line into a piece that is going the wrong way. Reach
+`id` and `say` it puts one line into a piece that is going the wrong way — and
+with `id` and `stop` it ends one, which is the only thing that does: a piece
+told in words to stop may ignore it and goes on spending. Reach
 for it when you have a REASON to — a piece you suspect is going the wrong way, a
 decision you need its answer for — and not to pass the time.
 
