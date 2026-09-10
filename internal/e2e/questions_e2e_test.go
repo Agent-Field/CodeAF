@@ -401,55 +401,55 @@ func questionsCard(t *testing.T) {
 }
 
 // questionsBlocksUnderAnswers is the call a model could not make. On 2026-09-10
-// deepseek-v4-flash was asked, in prose, for a question with a block of evidence
-// under each answer, and three calls running it sent the answers list as a JSON
-// STRING holding the list; every one was refused with `options takes a list`,
-// the turn ended on the loop guard and the person never saw a question. Two
-// things changed (session/toolargs.go, session/tools_ask.go), and this is the
-// scenario that says whether they were enough: the message is PROSE, not the
-// argument object spelled out, because the shape the model reaches for on its
-// own is the thing under test. The law is read off the journal, where the tool
-// calls actually are — one `ask`, no refusal — and off the room, where the
-// blocks stand under the answers they belong to.
+// deepseek-v4-flash was given the message below — a person's own words, on the
+// Spark, in a real terminal — and three calls running it sent the answers list
+// as a JSON STRING holding the list; every one was refused with `options takes
+// a list`, the turn ended on the loop guard and the person never saw a
+// question. Two things changed (session/toolargs.go, session/tools_ask.go), and
+// this is the scenario that says whether they were enough. THE MESSAGE IS THE
+// PERSON'S, VERBATIM, and not an argument object spelled out: the shape the
+// model reaches for on its own is the thing under test, and a cleaner steer
+// ("call ask with options [...]") went green on the very build that failed the
+// person. The law is read off the journal, where the tool calls actually are —
+// one `ask`, carrying blocks, no refusal — and off the screen, where the
+// question is drawn with a room behind it.
 func questionsBlocksUnderAnswers(t *testing.T) {
 	r := questionRig(t, "q-blocks", nil)
-	steer(t, r, `Call the ask tool now, exactly once, and run nothing else. `+
-		`Ask me which index the ledger table should get: a card, kind choice, stakes reversible, `+
-		`the reason being that the migration is written next and an index is cheaper before rows exist. `+
-		`Offer three answers, keyed 1 to 3, labelled "a btree on day", "a hash on account" and "none yet", `+
-		`each with a one-line consequence, and under EACH answer attach one table block titled `+
-		`"rows read per query" whose rows compare a cold read and a warm read for that index. `+
-		`Your pick is the btree, because the reporting job groups by day. `+
-		`When the answer comes back, say in one sentence which answer was taken.`)
+	steer(t, r, `Ask me with your question tool, as a card with a diagram block under each option, `+
+		`how the breath should be paced in my meditation app: fixed 4/2/6, adaptive to HRV, free timer. `+
+		`Give each option a body, a consequence, and recommend one with a reason and what would change your mind.`)
 
-	card := awaitQuestion(t, r, "which index", say(t, "questionOpenKeyWord"))
-	screenEchoes(t, card, "btree", "the card lists the answers, and the room behind them is on offer")
+	// The needles are the person's own words for the answers, because the head
+	// and the labels are the model's to write; `open it` says the card has a
+	// room behind it, which is what bodies and blocks under the answers mean.
+	card := awaitQuestion(t, r, "HRV", say(t, "questionOpenKeyWord"))
+	screenSays(t, card, say(t, "questionTakeThePickWord"), "the asker recommended one, and the card offers it")
 	shot(t, r, "card")
 
 	// THE JOURNAL IS WHERE THE LAW IS READ. The screen can only say a question
 	// arrived; it cannot say how many calls it took, and a question that arrives
 	// on the third try after two argument refusals is the defect wearing a
-	// green screen. One `ask` in the journal and no refusal at all is the whole
-	// of what the fix promised.
-	asks, refusals := 0, 0
+	// green screen. One `ask` in the journal, carrying blocks, and no refusal at
+	// all is the whole of what the fix promised.
+	asks, blocks, refusals := 0, 0, 0
 	for _, journal := range sessionTranscripts(t, r.home) {
 		asks += strings.Count(journal, `"function":{"name":"ask"`)
+		blocks += strings.Count(journal, `blocks`)
 		refusals += strings.Count(journal, "Invalid arguments: ")
 	}
-	if asks != 1 || refusals != 0 {
-		t.Errorf("the first ask did not arrive whole: %d ask calls and %d argument refusals in the journal, "+
-			"want one call and none refused", asks, refusals)
+	if asks != 1 || refusals != 0 || blocks == 0 {
+		t.Errorf("the first ask did not arrive whole: %d ask calls, %d argument refusals, blocks mentioned %d times "+
+			"in the journal; want one call carrying blocks and none refused", asks, refusals, blocks)
 	}
 
 	press(t, r, "o")
 	room := r.waitFor(20*time.Second, say(t, "questionRoomBackWord"), say(t, "questionRoomPickWord"))
-	screenSays(t, room, "rows read per query", "the block stands under its answer")
-	screenSays(t, room, "warm", "and it is the table the asker wrote, not its title alone")
+	screenSays(t, room, "HRV", "the room lists the answers")
 	shot(t, r, "open")
 
 	press(t, r, "Enter")
-	receipt := r.waitFor(30*time.Second, say(t, "questionReceiptWord"), "which index")
-	screenSays(t, receipt, "btree", "the receipt names the answer enter took")
+	receipt := r.waitFor(30*time.Second, say(t, "questionReceiptWord"))
+	screenSays(t, receipt, say(t, "questionReceiptYouWord"), "enter is a person's key and the record says so")
 	shot(t, r, "taken")
 }
 
