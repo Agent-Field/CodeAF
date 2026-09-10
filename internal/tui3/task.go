@@ -3242,7 +3242,25 @@ func (a *app) railLines(entries []railEntry, width int) []railLine {
 // what the executor can actually run at once — and a person who expands `done
 // 300` pays for it on the frames they are looking at it, which are frames with
 // nothing animating on them (see [app.tasksAnimating]).
+// The return door is outside both scrolling layouts, so depth and a long task
+// list cannot move the way back to the conversation off screen.
+const railMainAction = "main"
+const railMainWord = "Back to main"
+
 func (a *app) railView(height int) ([]railLine, int) {
+	if height <= 0 || !a.railStanding() {
+		return nil, -1
+	}
+	if !a.roomOpen() {
+		return a.railContentView(height)
+	}
+	rows, focus := a.railContentView(height - 1)
+	word := a.icon(tokens.GScopeUp) + " " + railMainWord
+	head := railLine{text: a.pal.accent(fit(word, a.railRoom())), entry: -1, roomAction: railMainAction}
+	return append([]railLine{head}, rows...), focus
+}
+
+func (a *app) railContentView(height int) ([]railLine, int) {
 	if height <= 0 || !a.railStanding() {
 		return nil, -1
 	}
