@@ -1885,6 +1885,13 @@ type app struct {
 	// between, and it must never be waited for. Nil falls through to the cache
 	// and the built-ins (see [app.modelList]).
 	models func() []Model
+	// refreshModels is the door's fetch of today's list ([Options.
+	// RefreshModels]), nil where the door has none — which removes the key.
+	// modelsFetching is whether one is out, kept here rather than on the
+	// picker because closing the picker does not call the fetch back, and a
+	// list reopened while it is out must not start a second one.
+	refreshModels  func(ctx context.Context) ([]Model, time.Time, error)
+	modelsFetching bool
 
 	// sheet is the settings panel (settings.go): the FIRST fullscreen thing this
 	// surface drew, and the only overlay that is modal for the pointer as well
@@ -2482,6 +2489,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		build:               strings.TrimSpace(opts.Build),
 		resumed:             opts.Resumed,
 		models:              opts.Models,
+		refreshModels:       opts.RefreshModels,
 		history:             opts.History,
 		draftFile:           opts.DraftFile,
 		artifacts:           opts.ArtifactsIndex,
@@ -4243,6 +4251,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// ignored the format all arrive here as an empty block and are answered by
 		// putting the hint back (spellout.go).
 		a.spelled(msg)
+		return a, nil
+
+	case modelsFetchedMsg:
+		// Today's model list, or why not (modelrefresh.go).
+		a.modelsFetched(msg)
 		return a, nil
 
 	case taskSizedMsg:

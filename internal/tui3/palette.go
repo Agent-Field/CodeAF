@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -26,8 +27,10 @@ import (
 //
 // Three properties are the whole design:
 //
-//   - It never fetches. The list was resolved before it opened (models.go), so
-//     the first frame after /model is a list and never a spinner.
+//   - It never fetches on its own. The list was resolved before it opened
+//     (models.go), so the first frame after /model is a list and never a
+//     spinner; the one fetch it makes is asked for with a key, and the list
+//     stays usable while it runs (modelrefresh.go).
 //   - It is bottom-anchored and takes the input line's place. The conversation
 //     shrinks above it; nothing pops up over the middle of what somebody was
 //     reading.
@@ -136,6 +139,14 @@ type picker struct {
 	// cancelled list is the next /model retargeting a task nobody was looking at.
 	task uint64
 
+	// refresh is whether this list may ask the door for today's list, and
+	// fetching whether that ask is out (modelrefresh.go). Both are set by the
+	// app that opened it and read by what it draws: a list with no refresh
+	// behind it — the settings panel's, home's, a door with none — never names
+	// the key.
+	refresh  bool
+	fetching bool
+
 	filter editor
 }
 
@@ -152,7 +163,16 @@ func (p *picker) startFor(models []Model, current string, keep modelFilter) {
 
 // start opens the picker over models with current marked.
 func (p *picker) start(models []Model, current string) {
-	*p = picker{open: true, all: models, current: current}
+	*p = picker{open: true, current: current}
+	p.restock(models)
+}
+
+// restock puts a new list under an open picker and keeps everything else it
+// holds — the filter text, the subject, the pin, the rows it has already drawn
+// — which is what a refreshed list needs and what [picker.start] would forget.
+// The list is ranked against the filter as typed.
+func (p *picker) restock(models []Model) {
+	p.all = models
 	p.shared = sharedSlugs(models)
 	p.lower = make([]string, len(models))
 	for i, model := range models {
@@ -1190,9 +1210,11 @@ func (p *picker) height(width int) int {
 	case len(p.list) == 0:
 		return 1
 	}
-	// The line under a row rides with the row it explains, so it is counted
-	// the same way: one line, inside the ceiling, and never half of a pair.
-	lines := 0
+	// The why line rides with the row it explains, so it is counted the same
+	// way: one line, inside the ceiling, and never half of a pair. The fetching
+	// line is counted inside the same ceiling, so the overlay does not grow
+	// while a refresh is out.
+	lines := p.headLines()
 	for at := p.top; at < len(p.list) && lines < pickerRows; at++ {
 		_, note := p.entryText(at, width, nil)
 		take := overlayItemLines(width, note)
@@ -1228,10 +1250,13 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 		return nil, nil
 	}
 	if len(p.list) == 0 {
-		return []string{pal.dim("  no model matches")}, []int{-1}
+		return []string{pal.dim("  " + p.emptyLine())}, []int{-1}
 	}
-	p.follow(overlayItems(n, width))
 	fill := newOverlayFill(width, n, pal, hover)
+	if p.headLines() > 0 {
+		fill.plain(pal.dim("  " + modelsFetching))
+	}
+	p.follow(overlayItems(n-p.headLines(), width))
 	for at := p.top; at < len(p.list) && fill.room(); at++ {
 		label, note := p.entryText(at, width, level)
 		if !fill.add(at, label, note, at == p.cursor, p.marked(at)) {
@@ -1508,18 +1533,19 @@ func (a *app) cycleReasoning() {
 // pickerHint is the placeholder in the empty filter box. It is the only place
 // this overlay explains itself, and it costs no row of its own.
 //
-// THE LINE IS BUDGETED. It is drawn WHOLE inside the box on a sixty-cell frame
-// — a hint cut off at "e…" is a hint that has to be guessed at — which leaves
-// about fifty-five cells for it. The fold earned its seven, and what paid for
-// them are the two verbs a modal list does not have to explain: enter commits
-// and esc leaves, everywhere on this surface and in every other program.
+// THE LINE IS BUDGETED. A hint cut off at "e…" is a hint that has to be guessed
+// at, so it is the same RANKED TAIL every row is (rowfit.go): the keys go from
+// the right, whole, and the box never draws a key spelled `es…`. Which is why
+// the written order is also the order they are given up in — `filter` is what
+// the box IS and survives every width, and the two universal verbs at the end
+// are the two a person already knows without being told: enter commits and esc
+// leaves, everywhere on this surface and in every other program.
 //
-// UNDER SIXTY IT IS THE SAME RANKED TAIL EVERY ROW IS (rowfit.go): the keys go
-// from the right, whole, and the box never draws a key spelled `es…`. Which is
-// why the written order is also the order they are given up in — `filter` is
-// what the box IS and survives every width, and the two universal verbs at the
-// end are the two a person already knows without being told.
-const pickerHint = "filter · ↑↓ · → lanes · ctrl+t effort · enter · esc"
+// So on a sixty-cell frame, with about fifty-eight cells in the box, the line
+// is WHOLE where the door offers no refresh and gives up exactly `enter · esc`
+// where it does — the refresh key earned its fourteen cells from the two verbs
+// nobody has to be taught, the way the fold earned its seven.
+const pickerHint = "filter · ↑↓ · → lanes · ctrl+t effort · " + refreshModelsHint + " · enter · esc"
 
 // pickerHintFields is that same line as the fields it is made of, ranked. The
 // test that joins them and compares against [pickerHint] is what keeps the two
@@ -1527,11 +1553,27 @@ const pickerHint = "filter · ↑↓ · → lanes · ctrl+t effort · enter · e
 // list read by the fitter would otherwise drift).
 var pickerHintFields = []rowField{
 	rowSay("filter"), rowSay("↑↓"), rowSay("→ lanes"),
-	rowSay("ctrl+t effort"), rowSay("enter"), rowSay("esc"),
+	rowSay("ctrl+t effort"), rowSay(refreshModelsHint), rowSay("enter"), rowSay("esc"),
 }
 
-// pickerHintAt is the hint in the cells the box actually has.
-func pickerHintAt(room int) string { return rowTail(pickerHintFields, room) }
+// pickerHintFieldsBare is the line for a list that cannot be refreshed: the
+// same fields with the refresh key taken out, since a key that does nothing is
+// a key that must not be named.
+var pickerHintFieldsBare = slices.DeleteFunc(slices.Clone(pickerHintFields),
+	func(field rowField) bool { return field.full == refreshModelsHint })
+
+// pickerHintAt is the hint in the cells the box actually has, naming the
+// refresh key only when refresh says the list answers it.
+func pickerHintAt(room int, refresh bool) string {
+	if refresh {
+		return rowTail(pickerHintFields, room)
+	}
+	return rowTail(pickerHintFieldsBare, room)
+}
+
+// hintAt is this list's own placeholder: the refresh key is named while the
+// list answers it and not while a fetch is already out.
+func (p *picker) hintAt(room int) string { return pickerHintAt(room, p.offersRefresh()) }
 
 // The hint slot's words while this list is open, by where the cursor is
 // ([picker.keysHint]). They are written out whole rather than assembled, so the
@@ -1595,6 +1637,7 @@ func (a *app) openPicker() {
 	// row inside an open fold, and what the row in use says `via`, and neither
 	// of those can change while a modal overlay owns the keyboard.
 	a.armLanes(&a.pick, laneSlotFor(a.model))
+	a.armRefresh()
 	a.touch()
 }
 
@@ -1629,6 +1672,7 @@ func (a *app) openTaskPicker(id uint64) {
 	}
 	a.pick.startFor(a.modelList(), current, chatModel)
 	a.pick.task = id
+	a.armRefresh()
 	a.touch()
 }
 
@@ -1796,7 +1840,11 @@ func (a *app) rememberModel(id string) {
 // esc means the overlay here and not the turn: a modal that cannot be dismissed
 // by the dismiss key is a trap. A turn is still interruptible the moment the
 // picker closes.
-func (a *app) pickerKey(msg tea.KeyPressMsg) {
+//
+// It returns a command for the one key that has to leave the loop — the
+// refresh — and nil for every other.
+func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
+	var cmd tea.Cmd
 	switch msg.String() {
 	case "esc":
 		a.pick.close()
@@ -1824,7 +1872,7 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) {
 			}
 			a.applyLaneChoice(chosen.ID, row, lanes)
 			a.touch()
-			return
+			return nil
 		}
 		if ok {
 			// One list, two subjects, decided where the list was opened: a node when
@@ -1843,6 +1891,11 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) {
 	case "ctrl+t":
 		a.cycleReasoning()
 
+	// Today's list, asked of the door (modelrefresh.go). Where the door has no
+	// refresh, or one is already out, the key does nothing at all.
+	case refreshModelsKey:
+		cmd = a.fetchModels()
+
 	// THE FOLD IS ITS OWN KEY MAP and it is the list's, not this door's
 	// ([picker.foldKey]) — the settings panel's model row reads the very same
 	// three keys, and a fold that opened from one door and not the other would
@@ -1853,6 +1906,7 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) {
 		}
 	}
 	a.touch()
+	return cmd
 }
 
 // navigate is EVERY KEY THE PICKER OWNS that is not a decision: the walk, the

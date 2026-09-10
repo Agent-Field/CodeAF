@@ -456,7 +456,7 @@ func TestModelThenEscLeavesNoPickerOverTheConversation(t *testing.T) {
 	if a.pick.open || a.target.pick.open {
 		t.Fatal("a model list is standing over the conversation home was in front of")
 	}
-	if text := ansi.Strip(mustFrame(a)); strings.Contains(text, pickerHintAt(80)) {
+	if text := ansi.Strip(mustFrame(a)); strings.Contains(text, pickerHintAt(80, false)) {
 		t.Fatalf("the picker is drawn over the conversation:\n%s", text)
 	}
 }
