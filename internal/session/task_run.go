@@ -1984,7 +1984,7 @@ func (n *TaskNode) wasStopped() bool {
 	return n.stopped
 }
 
-// stoppedLead is the first line of a stopped node's report: the word, and under
+// stoppedLead is the first line of a stopped node's report: the word, and after
 // it the reason whoever pulled the stop gave, where there was one.
 func (n *TaskNode) stoppedLead() string {
 	n.graph.mu.Lock()
