@@ -491,6 +491,14 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// every request a turn makes — the talk turn itself and every node under it
 	// — descends from this context (newskey.go's [Agent.newsKey]).
 	ctx = provider.WithSession(ctx, a.newsKey())
+	// AND WHAT THE ERRAND IS ABOUT, which is a different question from whose it
+	// is: a conversation and every task node under it share one conversation,
+	// and each of them is a subject a window may be looking straight at. It is
+	// stamped beside the session for the same reason — every request this turn
+	// makes descends from this context — and it is EMPTY for the conversation
+	// itself, which is what makes a build that never had the stamp behave
+	// exactly as it always did (newskey.go's [Agent.newsSubject]).
+	ctx = provider.WithNode(ctx, a.newsSubject())
 	if a.config.InTask {
 		ctx = provider.WithRoutingIntent(ctx, provider.IntentBackground)
 	}
