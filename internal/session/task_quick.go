@@ -151,28 +151,36 @@ func quickDoing(spec *quickTaskSpec) string {
 // (beltfacts.go); what the page says is how to be a quick worker
 // (prompts/quick.md); the choice is this paragraph.
 //
-// AND IT IS WRITTEN FOR DENSITY, for [taskDescription]'s reason about itself:
-// this string rides in the tool block in front of every request of every turn,
-// so it says each rule once and it says nothing twice.
-const quickTaskDescription = "Start work that runs WHERE YOU ARE, now — no copy of the folder, no check, no card. " +
-	"A task gets its own copy of the folder, is checked, and lands. A quick task works where you are and " +
-	"its last message is its answer. If you will read the result and carry on, it is quick. If it must be " +
-	"checked and merged on its own, or survive the window closing, it is a task. One edit, one read, one " +
-	"command is a step: do it yourself. Related steps that share what they learn are one quick task's items, " +
-	"not several quick tasks. " +
-	"The id returns at once and its answer starts a turn here when it lands, so never wait or poll."
+// AND IT IS THE JUDGE AND NOTHING ELSE, for [taskDescription]'s reason about
+// itself: this string rides in the tool block in front of every request of
+// every turn, so a sentence here is paid some sixty times over one turn. What
+// would otherwise open it — that the id returns at once and its answer starts a
+// turn here, so there is nothing to poll — is [taskDescription]'s already, and
+// the two verbs are on a belt together or on neither ([Config.mayQuickTask]).
+const quickTaskDescription = "A task gets its own copy of the folder, is checked, and lands. A quick task works " +
+	"where you are and its last message is its answer. If you will read the result and carry on, it is quick. " +
+	"If it must be checked and merged on its own, or survive the window closing, it is a task. One edit, one " +
+	"read, one command is a step: do it yourself. Related steps that share what they learn are one quick " +
+	"task's items, not several quick tasks."
 
 // quickTaskSchemaJSON is the wire schema. Every field but `line` is optional,
 // which is the whole shape of the verb: there is no contract to groom, no
 // deliverable to name and nothing to be checked against, so a caller that knows
 // only what it wants done can call it with one string.
+//
+// AND THE FIELDS SAY THEIR RULE ONCE AND NOWHERE ELSE. `depends_on` and `model`
+// are `propose_task`'s fields with the same meanings and the same refusals, and
+// that schema spells both in full (task.go); the two verbs are on a belt
+// together or on neither ([Config.mayQuickTask]), so a second copy here would be
+// bytes the person pays for on every request of every turn to be told a rule
+// their model is already holding.
 const quickTaskSchemaJSON = `{"type":"object","properties":{` +
 	`"line":{"type":"string","description":"What to do, one sentence"},` +
-	`"items":{"type":"array","items":{"type":"string"},"description":"Optional ordered steps it works through and ticks. Leave it out when the line is the whole job"},` +
-	`"files":{"type":"array","items":{"type":"string"},"description":"Optional paths it will write, relative to the working copy or in full inside it. Two quick tasks claiming one path run one after the other; left out, it may write anywhere"},` +
-	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Optional ids whose result it needs, only ids this session returned. An unknown or failed id refuses it rather than queueing it"},` +
-	`"title":{"type":"string","description":"Optional row title; the line is used when it is left out"},` +
-	`"model":{"type":"string","description":"Optional, ONLY when the person asked for a particular model: a catalog id or part of one, never a class word"}` +
+	`"items":{"type":"array","items":{"type":"string"},"description":"Ordered steps it works through and ticks off"},` +
+	`"files":{"type":"array","items":{"type":"string"},"description":"Paths it will write. Two claiming one path run one after the other; named none, it writes anywhere"},` +
+	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids whose result it needs"},` +
+	`"title":{"type":"string","description":"Row title; the line is used without one"},` +
+	`"model":{"type":"string","description":"ONLY where the person named a model"}` +
 	`},"required":["line"],"additionalProperties":false}`
 
 // quickArguments is the wire form.

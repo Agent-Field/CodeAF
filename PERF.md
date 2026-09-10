@@ -1214,7 +1214,8 @@ belts. No new inference call selects or constructs a group, although first use
 needs an additional model request to call the loaded tool.
 
 The standard prefix fixture measured **47,606 → 44,347 bytes**, including the
-heavier wording that explains discovery; `fixedPrefixBudget` stays **48,000**.
+heavier wording that explains discovery; `fixedPrefixBudget` was **48,000** and
+is now **49,000** (see below).
 The fully enabled tool block measured **40,595 → 26,740 bytes**, including its
 **708-byte** loader. `TestShelvingTakesMoreOffTheToolBlockThanItPutsOn` compares
 complete encoded blocks and requires net savings at least **four times** the
@@ -1222,6 +1223,32 @@ loader's encoded size. Byte savings are not measured provider tokens, cache
 hits, latency or bills. Loading changes the prefix once; repeat loading leaves
 it unchanged. Reopening restores load calls still in saved history; a load
 compacted away may be needed again.
+
+## The fixed prefix budget, and the one wave that raised it
+
+`fixedPrefixBudget` (`internal/session/prefixbudget_test.go`) bounds what every
+request carries before anybody has said anything: the widest system page plus
+the encoded tool block. It was **48,000** from the shelving wave until
+2026-09-10, and every wave in between paid for its own additions out of a
+sentence that was already being said twice — the ledger in that file's header
+records each payment.
+
+**Quick tasks raised it to 49,000 (2026-09-10).** A new verb is not a sentence,
+so there was nothing of its own for it to pay with. `quick_task` encodes to
+**1,196 bytes** and the belt bullet naming it is **129** more, against
+`propose_task`'s 5,720. Both were cut to the bone first: the description is the
+routing judge and nothing else, with the "the id returns at once, so never poll"
+sentence left to `propose_task`'s description, which is on the belt whenever
+this one is; the schema's six fields carry one clause each, and `depends_on` and
+`model` give up their rules entirely to the identical fields next door. The
+measured prefix is **48,761**, which is 239 under the new cap.
+
+What is still owed, and where it should come from: the planner rule is now in
+the prefix three times (`taskDescription`, the `WIDE WORK` bullet, and
+prompts/system.md's own paragraph), and prompts/system.md's `small work ... is
+answered here` sentence is a routing call the judge now makes better and in the
+place the call is made. Paying either one back lowers this cap again, and the
+cap only ever moves with this section in the same commit.
 
 ## Following through on a completion claim
 

@@ -63,6 +63,40 @@ of work has it in full.
 A task can also break its own brief into smaller tasks when it finds independent parts in
 it, and those are drawn as a family under it — see *When a task splits its own work*.
 
+## A quick task — work that runs where you are, with no copy and no card
+
+A **quick task** is the small cousin of a task, and the difference is worth knowing because
+the two look alike on the rail and behave nothing alike.
+
+A task gets its own copy of your folder, is checked when it finishes, and lands — a branch,
+a merge, a card. A quick task gets none of that. It runs **where you are**: your own folder,
+no copy, no branch, nothing to merge. There is no card and no countdown — it starts the
+moment it is asked for — and nothing checks it afterwards. **Its last message is its
+answer**, and that is what arrives back in the conversation when it finishes.
+
+The model starts one with its `quick_task` tool. It reaches for that instead of
+`propose_task` when the work is something it will read the result of and carry straight on
+with — comparing four files, reading a directory, drafting three sections at once. Work
+that has to be checked and merged on its own, or that has to survive the window closing, is
+still a task. One edit, one read or one command is not either of them: it just does it.
+
+A quick task can carry a **list of items** it works through in order, and it ticks each one
+off with its `items` tool as it goes. That is what a row reading
+
+```
+quick · 2/4 · reading foo.go
+```
+
+is telling you: four steps, two of them finished, and the one it is on now.
+
+It can also name the **files it will write**. Two quick tasks that claim the same path run
+one after the other rather than at the same time, so they cannot land on top of each other;
+two that claim different files run side by side. A quick task that names no files is not
+holding your folder — you can go on editing while it works, and so can another one.
+
+Everything else is what any task has: a row on the rail, a room you can open, an id, and an
+`x` that stops it. A quick task started by a running task hangs under it on the rail.
+
 ## Why my task's brief is longer than what I typed — the brief is shaped
 
 A task you start with `/task` does not go out as the sentence you typed. Between the
