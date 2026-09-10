@@ -547,29 +547,28 @@ four.
 - **`shift+←` and `shift+→`** move the time window in the header — *When it fired* below.
 
 Typing remains composer text and `tab` moves to the next place. When nothing at all stands
-on this computer the place opens on its own three sentences — *Nothing stands here yet — the
+on this computer the place opens on its heading and one line — *Nothing stands here yet — the
 empty standing page* below has them.
 
 ## Nothing stands here yet — the empty standing page
 
 A machine nothing stands on **still opens the page**. `alt+5`, `/standing` and
-`/orders` all reach it, and what they reach is three dim lines saying what a standing order
-is:
+`/orders` all reach it, and what they reach is the page's heading and one dim line naming
+what arrives there and what puts it there:
 
 ```
-nothing stands here yet — say what should always be true, and I'll hold it.
-an order stands until you stop it, and it can reach just this conversation, this project, or everywhere.
-enter opens the conversation that made one, when there is one here.
+standing orders
+  reminders, watches and routines · "remind me at 6" or "every morning, …"
 ```
 
-No shelf heading is drawn over it, and neither is the time window in the header: a control
-naming a span of days on a machine that has never held an order is a control about nothing.
+No shelf is drawn under it, and no time window beside the heading: a control naming a span
+of days on a machine that has never held an order is a control about nothing.
 The tab bar, the composer and the top line are all there as usual, so `tab` walks on and
 anything you type is still the first sentence of something new.
 
-The first of those lines used to be what `/standing` said **instead** of opening, with no
-page behind it. On a machine aforge was installed on an hour ago that is every door onto the
-page, so the sentence stayed and the refusal went.
+`/standing` used to say one sentence **instead** of opening, with no page behind it. On a
+machine aforge was installed on an hour ago that is every door onto the page, so the refusal
+went and the page opens.
 
 A list emptied by the **time window** rather than by the machine is a different screen: it
 keeps its header, because the header is the control that pages the window back.

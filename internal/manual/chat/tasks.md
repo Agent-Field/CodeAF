@@ -1909,9 +1909,9 @@ The reason is the `+ /task` row at the foot of the task column: that row puts `/
 your box before you have said what the work is, so a `/task` sent as it stands is asking
 the only question the word can answer with no brief behind it — *what work is there.*
 
-**On a project that has never run a task it opens the page anyway**, and the page says what
-tasks are and ends `no tasks yet — /task <brief> starts one` — which is exactly what
-`/history` and `ctrl+.` do there too.
+**On a project that has never run a task it opens the page anyway**, headed `tasks` over one
+line — `work you send off with /task lands here, and its record stays` — which is exactly
+what `/history` and `ctrl+.` do there too.
 
 **The forms that start work are unchanged.** `/task <brief>` and `/task solo <brief>`
 still size, shape and start the work directly, with no proposal card in between and no
@@ -2252,7 +2252,8 @@ there is more under them. The row the cursor is on never fades wherever it sits,
 short enough to fit fades nothing at all — see *Why the bottom rows of a long list look
 dimmer* on the screen page.
 
-At the bottom: one dim line counting THE WORK THE WINDOW HOLDS, section by section —
+At the bottom, written into the rule over the composer: the dim count of THE WORK THE
+WINDOW HOLDS, section by section —
 not the rows drawn, which is why it can read a larger number than you can count on the
 screen when a family is folded. The section heading is where that difference is said. It
 reads such as
@@ -2261,16 +2262,14 @@ is not counted at all — and under it the keys.
 
 **Every door onto this place opens it, on a machine that has run nothing too.** `/history`,
 a bare `/task`, `ctrl+.`, `alt+2` and `tab` all reach the same page, and with nothing on it
-the page explains itself instead of drawing counts:
+the page is its heading and one line naming what arrives there, instead of counts:
 
 ```
-tasks is the history of work this machine has run.
-it lists work aforge ran on its own, across every project.
-enter opens a task's room when there is one here.
-no tasks yet — /task <brief> starts one
+tasks
+  work you send off with /task lands here, and its record stays
 ```
 
-That last line used to be what `/history` said **instead** of opening, with `ctrl+.` doing
+`/history` used to say one sentence **instead** of opening, with `ctrl+.` doing
 nothing at all rather than raising an empty page. On a machine aforge was installed on an
 hour ago that was every door onto the page, so the first thing anybody tried appeared not to
 work. The sentence stayed and moved onto the page it is about. A session that has run

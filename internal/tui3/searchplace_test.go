@@ -100,10 +100,8 @@ func TestSearchShowsTwelveConversationsThenFoldsTheRest(t *testing.T) {
 func TestSearchTeachesAnEmptyPageAndSaysWhenNothingMatches(t *testing.T) {
 	pal := newPalette(tokens.NoColor, false)
 	teach := strings.Join(readSearch("", nil, session.World{}, searchTestNow).rows(120, pal), "\n")
-	for _, want := range []string{"every message in every conversation", "typing here searches", "enter opens the conversation at the matching turn"} {
-		if !strings.Contains(teach, want) {
-			t.Fatalf("the empty page did not teach %q:\n%s", want, teach)
-		}
+	if !strings.Contains(teach, placeWhisper[pageSearch].whisper) {
+		t.Fatalf("the empty page does not say what arrives here:\n%s", teach)
 	}
 	none := strings.Join(readSearch("amber rail", nil, session.World{}, searchTestNow).rows(120, pal), "\n")
 	if !strings.Contains(none, `nothing on this machine says "amber rail"`) {
@@ -211,7 +209,7 @@ func TestTypingOnTheSearchPlaceAsksOnlyAfterTheQuietInterval(t *testing.T) {
 	hits, _ := searchFixture()
 	fake := &searchFakeStore{hits: hits}
 	a := searchLab(t, fake)
-	if !strings.Contains(placeFrameText(a), "search reads every message") {
+	if !strings.Contains(placeFrameText(a), whisperOf(pageSearch)) {
 		t.Fatalf("the empty place did not say what it is for:\n%s", placeFrameText(a))
 	}
 	typeInto(t, a, "report")

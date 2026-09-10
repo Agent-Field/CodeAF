@@ -266,11 +266,11 @@ func TestTheSpendPlaceDrawsTheLedgerItWalkedInOn(t *testing.T) {
 			t.Fatalf("the spend place does not carry %q:\n%s", want, text)
 		}
 	}
-	// AND A MACHINE THAT HAS SPENT NOTHING MEETS THE TEACHING INSTEAD, which is
-	// the router's own three sentences and not a second set of words.
+	// AND A MACHINE THAT HAS SPENT NOTHING MEETS ITS WHISPER INSTEAD, which is
+	// the one table's words and not a second set (placeprose.go's [placeWhisper]).
 	empty := spendLab(t, nil)
-	if got := placeFrameText(empty); !strings.Contains(got, "Every model call writes a line") {
-		t.Fatalf("an empty ledger did not teach:\n%s", got)
+	if got := placeFrameText(empty); !strings.Contains(got, whisperOf(pageSpend)) {
+		t.Fatalf("an empty ledger does not say what arrives here:\n%s", got)
 	}
 }
 
@@ -377,10 +377,10 @@ func TestAnEmptySpendWindowKeepsTheControlThatPagesItBack(t *testing.T) {
 	if strings.Contains(text, "$0.00") {
 		t.Fatalf("an empty window drew the figure the emptiness law forbids:\n%s", text)
 	}
-	// AND A MACHINE THAT HAS SPENT NOTHING IS STILL TAUGHT AT.
+	// AND A MACHINE THAT HAS SPENT NOTHING STILL MEETS ITS WHISPER.
 	b := spendLab(t, nil)
-	if !strings.Contains(placeFrameText(b), "There is nothing to set here") {
-		t.Fatalf("an empty machine was not taught:\n%s", placeFrameText(b))
+	if !strings.Contains(placeFrameText(b), whisperOf(pageSpend)) {
+		t.Fatalf("an empty machine does not say what arrives here:\n%s", placeFrameText(b))
 	}
 }
 

@@ -1439,13 +1439,13 @@ func TestTheFrameDrawsThePageThatWasOpenedLast(t *testing.T) {
 	}
 	// AND A PLACE WITH NOTHING OF ITS OWN TO DRAW TAKES THE FRAME ON THE SAME
 	// TERMS, which is the whole reason it is a place and not a message: it spends
-	// the frame saying what it is for (place_spend.go's [spendTeach]).
+	// the frame on its heading and its whisper (placeprose.go's [placeWhisper]).
 	a.showPage(pageSpend)
 	spend, _, _ := a.frame()
 	if strings.Contains(plain(spend), "Port the parser") {
 		t.Fatalf("the task page is still being drawn under the spend place:\n%s", spend)
 	}
-	if !strings.Contains(plain(spend), "What this machine has cost") {
+	if !strings.Contains(plain(spend), whisperOf(pageSpend)) {
 		t.Fatalf("the spend place is not what the frame draws:\n%s", spend)
 	}
 	// AND THE TAB BAR IS ON EVERY ONE OF THEM, naming the four places and never

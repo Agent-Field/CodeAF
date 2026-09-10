@@ -343,8 +343,8 @@ func TestTheTasksWindowUsesTheSharedArrowGrammar(t *testing.T) {
 
 func TestTheEmptyTasksPlaceTeachesWithoutInventingRows(t *testing.T) {
 	pal := newPalette(tokens.NoColor, false)
-	if got := tasksTeach(pal); len(got) != 4 || !strings.Contains(strings.Join(got, "\n"), "enter opens") {
-		t.Fatalf("teaching rows = %#v", got)
+	if got := placeWhisperLines(pageTasks, 120, pal); len(got) != 2 || !strings.Contains(got[1], "/task") {
+		t.Fatalf("whisper rows = %#v", got)
 	}
 	empty := readTasks(session.World{}, tasksMine{}, session.UsageWindow{}, time.Time{}, time.Time{})
 	for _, width := range tasksWidths {

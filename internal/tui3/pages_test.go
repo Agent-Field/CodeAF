@@ -113,7 +113,7 @@ func TestTabWalksThePlacesAndTheNumbersJump(t *testing.T) {
 	if a.page != pageSpend {
 		t.Fatalf("%s did not open the spend place: the router is standing on %q", placeChord(pageSpend), a.page.word())
 	}
-	if text := placeFrameText(a); !strings.Contains(text, "What this machine has cost") {
+	if text := placeFrameText(a); !strings.Contains(text, whisperOf(pageSpend)) {
 		t.Fatalf("the spend place does not say what it is for:\n%s", text)
 	}
 	// AND shift+tab IS THE SAME CIRCLE WALKED BACK.

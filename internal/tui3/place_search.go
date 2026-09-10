@@ -380,10 +380,9 @@ func (placeSearch) tick(a *app, now time.Time) bool {
 	return true
 }
 
-// body is the results, or — while the box is empty — this place's own three
-// sentences ([searchTeach]). It ALWAYS has something to say, which is why it is
-// never the teaching frame's business: a search with no words in it is a page
-// about searching, not a page that is missing.
+// body is the results, or — while the box is empty — this place's heading and
+// its whisper ([placeWhisper]): a search with no words in it is a place waiting
+// for one, not a page that is missing.
 // remote is this place over --host: the index it reads is the one this machine's
 // conversations were written into, and this conversation was written on another
 // (pages.go's [place.remote]).

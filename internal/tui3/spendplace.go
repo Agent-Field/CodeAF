@@ -573,8 +573,8 @@ func spendSpanWord(win session.UsageWindow) string {
 }
 
 // spendNothingWord is the head line over a window nothing was spent in. It is
-// NOT [spendTeach]: a machine that has spent nothing is being taught what this
-// place is for, and a machine that has simply been paged onto a quiet fortnight
+// NOT the place's whisper ([placeWhisper]): a machine that has spent nothing
+// is told what arrives here, and a machine that has simply been paged onto a quiet fortnight
 // wants the control that pages it back (place_spend.go's [spendPage.held]).
 const spendNothingWord = "nothing spent"
 
@@ -911,7 +911,7 @@ func (r spendReading) step(win session.UsageWindow, key string) session.UsageWin
 
 // THE EMPTY SPEND PAGE IS THE PLACE'S OWN TEACHING AND NOT A SECOND ONE. A
 // ledger with nothing priced in the window draws no rows at all
-// ([spendReading.body] answers nil), and the place's body then draws the three
-// sentences saying what spend is for ([spendTeach], place_spend.go). This file
-// used to carry a near-identical trio of its own; two teachings for one place is
-// two places for the wording to drift, and that one is what the manual quotes.
+// ([spendReading.body] answers nil), and the place's body then draws its heading
+// and its whisper ([placeWhisper]). This file used to carry a near-identical
+// trio of its own; two teachings for one place is two places for the wording to
+// drift, and the whisper is what the manual quotes.

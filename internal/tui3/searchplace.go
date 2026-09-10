@@ -135,18 +135,10 @@ func (r searchReading) rows(width int, pal palette) []string {
 		return searchHung(placeTeachProse(searchNoIndexWord, width, pal))
 	}
 	if r.query == "" {
-		// THE PROSE IS WRAPPED AND NEVER CUT. Every sentence went through [fit]
-		// before this wave, so at eighty columns the third one drew
-		// `enter opens the conversation at the matching t…` and its other half was
-		// simply gone — while tasks, standing and spend all wrap at the same
-		// reading measure and never lose a word. A sentence about what this place
-		// is FOR is the only thing on an empty page, and half of it is worse than
-		// none ([placeTeachProse] is the helper those three already use).
-		var out []string
-		for _, line := range searchTeachWords {
-			out = append(out, searchHung(placeTeachProse(line, width, pal))...)
-		}
-		return out
+		// NOTHING TYPED IS AN EMPTY PLACE, and it says what arrives here and the
+		// one thing that puts it there — the heading and the whisper every empty
+		// place draws (placeprose.go's [placeWhisper]).
+		return placeWhisperLines(pageSearch, width, pal)
 	}
 	if len(r.hits) == 0 {
 		return searchHung(placeTeachProse(searchNothingSaid(r.query), width, pal))
@@ -295,40 +287,6 @@ func (r searchReading) at(i int) (searchHit, bool) {
 		return searchHit{}, false
 	}
 	return r.hits[at], true
-}
-
-// searchExampleWord is the LAST line of the teaching page, and it is the only
-// one of the four with a verb in it.
-//
-// AN EMPTY PLACE MUST SAY WHAT TO DO NEXT. The three sentences above it are
-// declarative — what search reads, which box does what, what enter opens — and
-// a person who has just walked in wants to know what to type, not what the
-// index is. The tasks place one `tab` away ends its own teaching with `no tasks
-// yet — /task <brief> starts one` ([tasksTeach]), and this is that shape: the
-// asker's own words, and three examples of the kinds of thing that work, because
-// "search your conversations" does not tell anybody whether a filename is a
-// searchable thing here.
-const searchExampleWord = `type words you remember — "the docker error", a person's name, a filename`
-
-// searchTeachWords is what this place says with nothing typed into it, ONE
-// SENTENCE PER PARAGRAPH: each is wrapped on its own so that a line break falls
-// where a sentence ends rather than wherever the frame's measure lands.
-var searchTeachWords = []string{
-	"search reads every message in every conversation on this machine.",
-	"typing here searches; typing on home starts something.",
-	"enter opens the conversation at the matching turn.",
-	searchExampleWord,
-}
-
-// searchTeach is those sentences dimmed, unwrapped: the reading's own rows go
-// through [placeTeachProse] instead, and this is the plain form a test and any
-// other reader can hold.
-func searchTeach(pal palette) []string {
-	out := make([]string, 0, len(searchTeachWords))
-	for _, line := range searchTeachWords {
-		out = append(out, pal.dim(line))
-	}
-	return out
 }
 
 // SearchStore is the exact durable seam the search place needs: ONE call, which

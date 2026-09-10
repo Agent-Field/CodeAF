@@ -88,7 +88,7 @@ func TestTheEmptyMarginDrawsOnlyItsDoors(t *testing.T) {
 	}
 	// AND THE STANDING SECTION IS ITS LABEL AND ITS DOOR AND NOTHING ELSE while
 	// nothing stands: no count of nothing, no line saying the shelf is empty.
-	if strings.Contains(rail, standHoldsWord) || strings.Contains(rail, standNothingWord) {
+	if strings.Contains(rail, standHoldsWord) || strings.Contains(rail, placeWhisper[pageStanding].whisper) {
 		t.Fatalf("the empty standing section reported on its own emptiness:\n%s", rail)
 	}
 }

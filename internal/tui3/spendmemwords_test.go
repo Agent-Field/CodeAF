@@ -300,38 +300,32 @@ func TestAMemoryLetGoAndOneReplacedAreNotTheSameWord(t *testing.T) {
 	}
 }
 
-// TestTheMemoryTeachingWrapsAndHangsFromTheBodysColumn is audit-help rows 11 and
-// 12. Memory's own explanation of itself was cut with an ellipsis rather than
-// wrapped — at 80 columns the second sentence ended `and I only carr…` and its
-// other half was gone — and its rows started one cell left of every other
-// place's, so walking the bar the body stepped sideways.
-func TestTheMemoryTeachingWrapsAndHangsFromTheBodysColumn(t *testing.T) {
-	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
-	longest := memoryTeaching[1]
-	for _, width := range []int{60, 80, 120, 160} {
-		r := readMemory(store.MemoryShelves{}, nil, "", now).wrapped(width)
-		rows := r.rows(width, newPalette(tokens.NoColor, false))
-		text := strings.Join(rows, "\n")
-		for _, row := range rows {
-			if got := ansi.StringWidth(row); got > width {
-				t.Fatalf("at %d cells a teaching row measures %d: %q", width, got, row)
+// TestEveryWhisperFitsWithoutCuttingAWord is audit-help rows 11 and 12 said of
+// every empty place. Memory's own explanation of itself was cut with an
+// ellipsis mid-word at 80 columns, and its rows started one cell left of every
+// other place's. A whisper is one line on every frame, so it gives up a whole
+// clause on a narrow one before anything is cut, and it hangs where home hangs
+// a panel's (placeprose.go's [placeWhisperLines]).
+func TestEveryWhisperIsOneLineThatFits(t *testing.T) {
+	pal := newPalette(tokens.NoColor, false)
+	for id, blank := range placeWhisper {
+		for _, width := range []int{44, 60, 80, 120, 160} {
+			lines := placeWhisperLines(id, width, pal)
+			if len(lines) != 2 {
+				t.Fatalf("the %s place drew %d whisper rows at %d cells", id.word(), len(lines), width)
 			}
-			if row != "" && !strings.HasPrefix(row, " ") {
-				t.Fatalf("at %d cells a teaching row starts at the frame's own column: %q", width, row)
+			for _, row := range lines {
+				if got := ansi.StringWidth(row); got > width {
+					t.Fatalf("at %d cells the %s whisper measures %d: %q", width, id.word(), got, row)
+				}
 			}
-		}
-		for _, row := range rows {
-			// The ellipsis is a word in [memoryEmptyWord] and a cut everywhere
-			// else, so what is under test is a row that ENDS in one.
-			if strings.HasSuffix(strings.TrimRight(row, " "), glyphMore) {
-				t.Fatalf("at %d cells the teaching was cut rather than wrapped:\n%s", width, text)
+			// A WHISPER WITH NO CLAUSE LEFT TO DROP IS CUT, ONE ELLIPSIS, and what
+			// is left is still the whisper's own opening words.
+			said := strings.TrimSuffix(strings.TrimPrefix(lines[1], placeWhisperLead), glyphMore)
+			if !strings.HasPrefix(blank.whisper, said) {
+				t.Fatalf("at %d cells the %s whisper is not its own opening words: %q",
+					width, id.word(), said)
 			}
-		}
-		// EVERY WORD OF THE LONGEST SENTENCE IS STILL ON THE PAGE, in order,
-		// across however many lines the frame took to say it.
-		flat := strings.Join(strings.Fields(strings.ReplaceAll(text, "\n", " ")), " ")
-		if !strings.Contains(flat, longest) {
-			t.Fatalf("at %d cells the teaching lost half a sentence:\n%s", width, text)
 		}
 	}
 }

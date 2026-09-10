@@ -75,8 +75,8 @@ func TestShiftTabWalksTheCircleBack(t *testing.T) {
 // NO PLACE REFUSES, AND MEMORY IS THE ONE THAT REFUSED LAST. This surface has
 // no brain and no store, which used to be the state that shut the room and wrote
 // `memory is off` into a transcript nobody could see under the screen drawn over
-// it. It opens now, on the three sentences that say what memory is for, with
-// that same line said once under them where it can be read.
+// it. It opens now, on its heading and its whisper, with that same line said
+// once on the note where it can be read.
 func TestThePlaceWithNoStoreOpensAndSaysSoOnTheFrame(t *testing.T) {
 	a := placeApp(t)
 	if a.memoryReady() {
@@ -87,8 +87,8 @@ func TestThePlaceWithNoStoreOpensAndSaysSoOnTheFrame(t *testing.T) {
 		t.Fatalf("%s left the router on %q", placeChord(pageMemory), a.page.word())
 	}
 	screen := placeFrameText(a)
-	if !strings.Contains(screen, memoryTeaching[0]) {
-		t.Fatalf("the place with no store teaches nothing:\n%s", screen)
+	if !strings.Contains(screen, whisperOf(pageMemory)) {
+		t.Fatalf("the place with no store does not say what arrives here:\n%s", screen)
 	}
 	if !strings.Contains(screen, memoryOffNote) {
 		t.Fatalf("the place with no store does not say so:\n%s", screen)
