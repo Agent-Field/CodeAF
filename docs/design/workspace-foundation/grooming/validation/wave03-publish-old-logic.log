@@ -1,3 +1,4 @@
+NOTE (added in the second review's pass): the baseline 9cc7b638c below was the PRE-FIX source — the revision final review 425 found the first two blockers at — and these four tests pass from c0de4d8f9 on. The second review's regressions have their own receipt at wave03-publish-old-logic-b48387207.log.
 REVISION of the tested source: 9cc7b638c (temporary detached worktree), with internal/session/standing_publish_test.go from c0de4d8f9 copied in
 COMMAND: go test -count=1 -run 'TestARefusedWriteOfItsOwnReportWithNoReportLinesPublishesNothing|TestARunStoppedAtItsStepLimitPublishesNothing|TestAReportOpenedAndNeverClosedIsNotPublished|TestACorrectionStoppedAtTheStepLimitPublishesNothing' -v ./internal/session/
 EXPECTED: FAIL on the old logic

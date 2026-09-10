@@ -1,0 +1,24 @@
+BASELINE: b48387207 (the lane head before this pass; source identical to c0de4d8f9), throwaway detached worktree, with only internal/session/standing_publish_test.go from the fix pass copied in
+COMMAND: go test -count=1 -run 'TestAnEmptyReportBetweenItsLinesIsNotPublished|TestAnAnswerCutAtTheOutputLimitIsNotPublished|TestACorrectionCutAtTheOutputLimitIsNotPublished' -v ./internal/session/
+EXPECTED: FAIL on this baseline
+RUN: 2026-09-10T22:45:04Z host spark go version go1.26.5 linux/arm64
+    standing_publish_test.go:144: the last good report was replaced with "\n" (outcome {Kind:landed Text:report updated: reports/r.md —  USD:0 NeedsPerson: Published:0x348927d05340})
+--- FAIL: TestAnEmptyReportBetweenItsLinesIsNotPublished (0.01s)
+    standing_publish_test.go:172: the last good report was replaced with "# Report\n- the first third and the second and still not the end\n" (outcome {Kind:landed Text:report updated: reports/r.md — # Report
+--- FAIL: TestAnAnswerCutAtTheOutputLimitIsNotPublished (0.01s)
+    standing_publish_test.go:190: the last good report was replaced with "# Report\n- Ask [redacted] to confirm the venue, and\n" (outcome {Kind:landed Text:report updated: reports/r.md — # Report
+--- FAIL: TestACorrectionCutAtTheOutputLimitIsNotPublished (0.02s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/session	0.306s
+FAIL
+
+── SECOND PROOF: the unopened-report shape (the manual correction's fallback) ──
+BASELINE: b48387207, throwaway detached worktree, with one portable test file (standing_unopened_proof_test.go: the same scripted answer as the fix pass's TestAReportClosedButNeverOpenedIsNotPublished, asserting the last good report survives)
+COMMAND: go test -count=1 -run 'TestAReportClosedButNeverOpenedIsNotPublished' -v ./internal/session/
+EXPECTED: FAIL on this baseline (the whole answer, stray tag included, is published)
+RUN: 2026-09-10T22:51:30Z host spark go1.26.5 linux/arm64
+    standing_unopened_proof_test.go:22: the last good report was replaced with "Here is the update.\n# Report\n- ship Friday\n</report>\n" (outcome kind landed)
+--- FAIL: TestAReportClosedButNeverOpenedIsNotPublished (0.02s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/session	0.230s
+FAIL
