@@ -342,9 +342,12 @@ read, not a second description of it.
 **A card** — for a decision with more behind each answer. The question, then why
 it is being asked and who is asking, then one row per answer with what taking it
 produces, then the keys. A `▸` marks the answer that was recommended; it is not
-where your cursor is. **Every answer gets a row of its own, however many there
-are** (the model may raise up to four, eight on a checklist), and a long answer
-wraps onto as many rows as it needs — nothing on a card ends in `…`. The keys
+where your cursor is — except on a checklist, where the `▸` is yours (it is the
+row `space` ticks) and the recommended row says `· suggested` instead. **Every
+answer gets a row of its own, however many there are** (the model may raise up
+to four, eight on a checklist), a note the asker wrote under an answer is drawn
+dim beneath its label, and a long answer wraps onto as many rows as it needs —
+nothing on a card ends in `…`. The keys
 are always digits, `1` upward in the order the answers came, whatever the asker
 called them. The model may ask for a line; it gets one only when every answer is
 plain and fits — a checklist, blanks, pairs, a dial, or an answer with a
@@ -715,9 +718,11 @@ A question that wants several answers at once draws a tick beside each one,
 **on the card above your box as well as on the page** it opens into.
 
 On the card, a **digit ticks its row** (press it again to untick), `space` ticks
-the row the cursor is on, `tab` moves the cursor, and `enter` sends what is
-ticked — the key row says `[enter] send what is ticked` once something is, and
-`enter` over nothing ticked sends nothing. On the page, `space` ticks the one you
+the row the `▸` is on, `tab` moves the `▸` (`[tab] next row`; `shift+tab` back),
+and `enter` sends what is ticked — the key row says `[enter] send what is ticked`
+once something is, and `enter` over nothing ticked sends nothing. There is no
+`take the pick` on a checklist: the answer the asker would tick says `· suggested`
+on its row, and ticking it is yours to do. On the page, `space` ticks the one you
 are on, `a` takes what the asker would tick, and `enter` sends them. Where the order matters, `shift+↑` and `shift+↓` move a row
 past its neighbour and the answer carries the order you put them in.
 

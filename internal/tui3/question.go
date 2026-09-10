@@ -1232,8 +1232,13 @@ func (a *app) questionCardOptionRows(q questionShown, at int, option session.Ans
 	picked := q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) == key
 	cursored := q.question.Ask == session.AskConfirmation && at == q.pick
 	// A CHECKLIST'S ROWS WEAR THEIR TICKS IN THE CARD, the way the page draws
-	// them (questioninput.go): the mark says what is ticked, the band says
-	// where the cursor is, and a digit toggles rather than answers.
+	// them (questioninput.go): the tick says what is ticked, the pointer says
+	// where `space` lands, and a digit toggles rather than answers. THE POINTER
+	// IS A MARK AND NOT ONLY A BAND, because the band is a background colour
+	// and a person on a plain screen — or reading a capture — was left to
+	// guess which row `tab` had reached. The asker's own pick does not wear
+	// the pointer here, where every other card gives it the pointer: on a
+	// checklist the pointer is the person's, and the pick is said in a word.
 	ticking := q.holes.kind == session.InputChecklist
 	ticked := ticking && at < len(q.holes.ticks) && q.holes.ticks[at]
 	if ticking && at == q.holes.focus {
@@ -1244,7 +1249,7 @@ func (a *app) questionCardOptionRows(q questionShown, at int, option session.Ans
 	case ticked:
 		plainMark = a.icon(tokens.GSettled) + " "
 		mark = a.pal.askBold(plainMark)
-	case picked:
+	case ticking && cursored, !ticking && picked:
 		plainMark = a.icon(tokens.GCollapsed) + " "
 		mark = a.pal.ask(plainMark)
 	}
@@ -1252,7 +1257,17 @@ func (a *app) questionCardOptionRows(q questionShown, at int, option session.Ans
 	if word == "" {
 		word = key
 	}
+	suggested := ""
+	if ticking && picked {
+		suggested = " · " + questionSuggestedWord
+	}
 	say := strings.TrimSpace(option.Consequence)
+	// THE BODY IS DRAWN UNDER THE LABEL, dim and wrapped, because it is the
+	// note the asker wrote to tell one answer from the next — "what the tour
+	// would include" — and a card that drops it hands the person eight names
+	// and no way to weigh them. The line form has no room for it and is not
+	// chosen when there is one ([questionFitsALine]).
+	note := strings.TrimSpace(option.Body)
 	// THE LABEL WRAPS AND IS NEVER CUT. A row that fits keeps the consequence
 	// beside the label on the pad; one that does not puts the label on as many
 	// rows as it needs and the consequence dim on a row of its own under it —
@@ -1267,28 +1282,43 @@ func (a *app) questionCardOptionRows(q questionShown, at int, option session.Ans
 		}
 		return text
 	}
-	if inline {
+	out := make([]string, 0, 4)
+	if inline && suggested == "" {
 		tail := word
 		for ansi.StringWidth(tail) < pad {
 			tail += " "
 		}
-		return []string{paint(a.pal.ask("  ") + mark + a.pal.askBold(key) + a.pal.ask("  "+tail) + a.pal.dim("  "+say))}
+		out = append(out, paint(a.pal.ask("  ")+mark+a.pal.askBold(key)+a.pal.ask("  "+tail)+a.pal.dim("  "+say)))
+		say = ""
+	} else {
+		for i, wrapped := range wrap(word+suggested, room) {
+			if i == 0 {
+				first := wrapped
+				if suggested != "" && strings.HasSuffix(first, suggested) {
+					first = a.pal.ask(strings.TrimSuffix(first, suggested)) + a.pal.dim(suggested)
+				} else {
+					first = a.pal.ask(first)
+				}
+				out = append(out, paint(a.pal.ask("  ")+mark+a.pal.askBold(key)+a.pal.ask("  ")+first))
+				continue
+			}
+			out = append(out, paint(a.pal.ask(indent+wrapped)))
+		}
 	}
-	out := make([]string, 0, 3)
-	for i, wrapped := range wrap(word, room) {
-		if i == 0 {
-			out = append(out, paint(a.pal.ask("  ")+mark+a.pal.askBold(key)+a.pal.ask("  "+wrapped)))
+	for _, text := range []string{say, note} {
+		if text == "" {
 			continue
 		}
-		out = append(out, paint(a.pal.ask(indent+wrapped)))
-	}
-	if say != "" {
-		for _, wrapped := range wrap(say, room) {
+		for _, wrapped := range wrap(text, room) {
 			out = append(out, paint(a.pal.dim(indent+wrapped)))
 		}
 	}
 	return out
 }
+
+// questionSuggestedWord is what a checklist card says beside the answer the
+// asker would tick, in place of the pointer every other card gives its pick.
+const questionSuggestedWord = "suggested"
 
 // questionOffer is the answers row: the digits that pick, then the keys from
 // [questionKeys] that this question actually offers, then the clock.

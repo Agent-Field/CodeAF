@@ -1014,13 +1014,31 @@ func TestAChecklistAskedForAsALineIsACardWithARowPerAnswer(t *testing.T) {
 	for i, label := range labels {
 		options = append(options, session.AnswerOption{Key: itoa(i + 1), Label: label})
 	}
+	options[0].Body = "Turner, Hokusai and the Hudson River School"
 	lab.raise(session.Question{
 		ID: 41, Kind: session.QuestionAsk, Ask: session.AskChoice, Form: session.FormLine,
 		Asker: session.Asker{Kind: session.AskerModel}, Head: "Which painting genres do you like?",
 		Reason: "you asked to be asked with choices", Options: options,
 		Input: session.InputShape{Kind: session.InputChecklist}, Stakes: session.StakesReversible,
+		Pick:  &session.Pick{Key: "5", Reason: "every gallery has a wall of it"},
 	})
 	screen := lab.plain()
+	// THE NOTE UNDER AN ANSWER IS DRAWN, the asker's pick is a word on its row
+	// rather than the pointer, the pointer is the person's and starts on the
+	// first row, and the key row offers the walk and the tick — never `take
+	// the pick`, which a checklist's enter does not do.
+	if !strings.Contains(screen, "Turner, Hokusai") {
+		t.Fatalf("the note under the first answer is not drawn:\n%s", screen)
+	}
+	if !strings.Contains(screen, "5  Impressionism · suggested") {
+		t.Fatalf("the asker's pick is not said on its row:\n%s", screen)
+	}
+	if !strings.Contains(screen, tokens.GlyphCollapsed+" 1  Landscapes") {
+		t.Fatalf("the pointer does not start on the first row:\n%s", screen)
+	}
+	if strings.Contains(screen, "take the pick") || !strings.Contains(screen, "[tab] next row") {
+		t.Fatalf("the key row is wrong for a checklist:\n%s", screen)
+	}
 	if strings.Contains(screen, "…") {
 		t.Fatalf("an answer was cut instead of given its own row:\n%s", screen)
 	}
@@ -1053,6 +1071,17 @@ func TestAChecklistAskedForAsALineIsACardWithARowPerAnswer(t *testing.T) {
 	if screen = lab.plain(); strings.Contains(screen, tokens.GlyphSettled+" 3  Still life") {
 		t.Fatalf("a second press did not untick the row:\n%s", screen)
 	}
+	// A digit leaves the pointer on its row, tab walks it on, and space ticks
+	// where it stands.
+	lab.press("tab")
+	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphCollapsed+" 4  Abstract") {
+		t.Fatalf("tab did not walk the pointer to the next row:\n%s", screen)
+	}
+	lab.press("space")
+	if screen = lab.plain(); !strings.Contains(screen, tokens.GlyphSettled+" 4  Abstract") {
+		t.Fatalf("space did not tick the pointed row:\n%s", screen)
+	}
+	lab.press("space")
 	lab.press("enter")
 	if len(lab.answer) != 1 || strings.Join(lab.answer[0].Picked, ",") != "7" {
 		t.Fatalf("the answer is not what was ticked · %+v", lab.answer)
