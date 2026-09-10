@@ -147,6 +147,16 @@ newer merge base. `TestEverySectionTheCutNamesComesBackWhole` fails identically
 on clean `dev` commit `be1cc3749`: the tasks page's bounded heading list omits
 "Back to main from a nested task — return to the conversation". This is separate
 from conversation retrieval and was reproduced in a detached clean worktree.
+PR #772 subsequently fixed the list bound on `dev`; that fix is included in
+this branch's merge-readiness checks.
+
+The final feature run on `bda5e3d9e` passed all six maintained scenarios in
+73.5 seconds. Each foreground case used one history lookup. The task worker
+used two lookups and its checker independently used two, returned the exact
+cited answer, and finished done. Recorded cost was $0.002999 for chat and
+$0.002671 for the task. The build, quick checks and fresh affected-package
+suites also passed on that commit. These results do not erase the earlier
+file-delivery findings or extend the coverage beyond the maintained scenarios.
 
 ## Limits and follow-up criteria
 
