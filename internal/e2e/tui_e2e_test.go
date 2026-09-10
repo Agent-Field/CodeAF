@@ -804,8 +804,39 @@ func testFiringReachesThePerson(t *testing.T) {
 		t.Fatalf("the second item says nothing when it fires:\n%s", standingRecordsDump(t, home))
 	}
 	r2 := start(t, "afe2e_fire_back", home, ws, tuiWide, 45)
-	back := r2.waitFor(40*time.Second, said2, say(t, "standSaidTag"))
-	t.Logf("the window that came back was told what happened while it was shut:\n%s", back)
+	// THE INBOX BEING EMPTIED IS THE ORACLE, AND THE ROW IS A GLIMPSE. Road 4
+	// ends when the next ordinary conversation in the project drains the file
+	// whole on its way in (session's [Agent.drainStandingInbox]) — one `while
+	// you were away` fold for the model, one dim row per firing for the person —
+	// and the drain is the half that is a fact rather than a frame.
+	//
+	// THE ROW IS NOT WAITED FOR, because the same firing WAKES the conversation
+	// it lands in: the reply that wake produces closes the work fold over
+	// everything behind it (workfold.go), and the row can be gone before anybody
+	// looks. That is a real hole and it is recorded as a finding here rather than
+	// asserted, exactly as the `since you left` block below it is — the delivery
+	// itself is proved twice over above and by the drain below.
+	drained := false
+	for deadline := time.Now().Add(40 * time.Second); time.Now().Before(deadline); {
+		if strings.TrimSpace(projectInbox(t, home, ws)) == "" {
+			drained = true
+			break
+		}
+		time.Sleep(pollEvery)
+	}
+	if !drained {
+		t.Errorf("the project's inbox still holds the firing after the next window opened it:\n%s",
+			projectInbox(t, home, ws))
+	} else {
+		t.Logf("the window that came back drained the project's inbox")
+	}
+	if caught, ok := r2.glimpse(30*time.Second, said2, say(t, "standSaidTag")); ok {
+		t.Logf("the window that came back was told what happened while it was shut:\n%s", caught)
+	} else {
+		t.Logf("FINDING: the firing was drained into the conversation but its own row was never on the "+
+			"frame — the wake it carries starts a reply, and the work fold closes over what is behind "+
+			"one (workfold.go):\n%s", r2.capture())
+	}
 
 	// AND HOME'S OWN ACCOUNT OF IT IS RECORDED RATHER THAN DEMANDED. What happened
 	// while nobody was looking is a block at the top of the list, built from the
@@ -890,7 +921,19 @@ func testAnswerFromHome(t *testing.T) {
 	// from there. So B opens its own project, and A's conversation is a row on
 	// B's list like any other.
 	b := start(t, "afe2e_b", home, newWorkspace(t, "consentws-b", false), tuiPlain, 40)
-	row := b.waitFor(40*time.Second, say(t, "notifyAskWord"))
+	// THE SECTION LINE IS WHAT SAYS A's ROW HAS ARRIVED. It is drawn only while
+	// a row of the ranked list is asking or moving ([switcherReading.hasAttention]),
+	// so waiting for it waits for exactly the fact this subtest is about rather
+	// than for a title no fixture chose.
+	b.waitFor(40*time.Second, say(t, "switcherSectionWord"))
+	// AND THE CURSOR IS WALKED ONTO IT, because home's answer band and the line
+	// that says what the next enter would do both belong to the row UNDER THE
+	// CURSOR (homeband_answer.go, takeover.go) — B lands on its own project's
+	// row, which is the one it is sitting in.
+	if !walkTo(b, say(t, "notifyAskWord"), "Up") {
+		t.Fatalf("window B's home never put the cursor on the conversation A is waiting in:\n%s", b.capture())
+	}
+	row := b.capture()
 	t.Logf("window B's home says A is waiting on somebody:\n%s", row)
 	for _, chip := range []string{"1 ", say(t, "answersAllowOnce")} {
 		if !strings.Contains(row, chip) {
