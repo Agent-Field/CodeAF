@@ -1780,8 +1780,9 @@ there is nothing to count and the row just says `asking <model>`.
 
 **If a model cannot answer, the row says so and names the next one.** It reads
 `z-ai/glm-5.3 did not answer in time · asking deepseek/deepseek-v4-flash-0731`, or
-`… could not be reached · asking …` where the request never landed at all. A model being
-given another go on the same rung reads as `asking again`.
+`… could not be reached · asking …` where the request never landed at all. Each model is
+asked once: the next one along is the whole of the retry, and there is no waiting between
+them.
 
 **When nobody answers**, the last thing the row says is `nobody answered · going with the
 parts as drawn`, and then the task goes back to work. That is not a failure and nothing is

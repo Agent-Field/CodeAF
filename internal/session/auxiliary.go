@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/lane"
@@ -174,159 +173,149 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	tell := errandWatchFrom(ctx)
 
 	var lastErr error
-	// try counts every request this errand makes, ACROSS RUNGS, and it is what
-	// both the journal row and the boundary read as the attempt number. On a
-	// ladder that never asks the same rung twice it is the rung's index plus one,
-	// which is exactly the number those rows carried before — an errand that
-	// walked its whole ladder still reads as one errand rather than three.
-	try := 0
+	// The rung's index is the ATTEMPT number on a failed call's journal row and
+	// on what the boundary is asked: an errand that walked its whole ladder wrote
+	// one row per rung, and the number is what tells a reader they were one errand
+	// rather than three.
 	for attempt, rung := range rungs {
-		for {
-			try++
-			// AND THE CALLER THAT HAS SOMEBODY WATCHING IS TOLD, before the wait
-			// rather than after it. A person looking at a task being sized has one
-			// phase word and nothing under it; which model is being asked, and
-			// which of how many, is the difference between a wait and a hang.
-			tell(errandNews{Model: rung.Model, Rung: attempt + 1, Rungs: len(rungs), Try: try})
-			// WithoutStream because nobody asked for this call: left on the turn's
-			// stream it would type itself into the room in the model's voice. It
-			// takes the OBSERVER off and not the transport — the request is still
-			// served as a stream and still guarded as one, which is the sentence
-			// above about what bounds a rung.
-			//
-			// And IntentBackground for the other half of the same sentence. Nobody
-			// asked for it and nobody is waiting on it, so the fastest endpoint is
-			// worth nothing here and its price is worth everything — every errand in
-			// this package routes by price rather than by speed
-			// (internal/provider's velocity.go). This is the one place that says so,
-			// because this is the one place an errand is made.
-			//
-			// AND THE ROLE ITSELF, WHICH IS THE SENTENCE ABOVE SAID PROPERLY.
-			// internal/lane's roles.go holds what an errand's second is worth, what
-			// bar its answer has to clear, and — the half a person feels — whether
-			// anybody is reading THIS stream. Every errand made here is a side call
-			// of somebody's turn, so none of them owns the phase clock: a naming
-			// errand that answered while a person was waiting on their own slow
-			// answer used to take the status line away from it, which was half of
-			// the reported defect the clock exists for. The intent stays beside it
-			// because `provider.sort` is still built from it, and it is now a
-			// reading of the role rather than a second opinion about it.
-			callCtx := provider.WithRole(
-				provider.WithRoutingIntent(provider.WithoutStream(errandCtx), provider.IntentBackground),
-				errandRole(role))
-			// AN ERRAND ASKS THE LADDER LIKE EVERYTHING ELSE, and the ladder's
-			// answer for it is nothing (internal/effort's RoleErrand): naming a
-			// conversation and judging a route are the session's own housekeeping,
-			// and the depth a person set so their QUESTION would be thought about is
-			// not spent on the label. The scope is deliberately narrow — the role
-			// and the tier's own suffix, and none of the fields above them — because
-			// an errand belongs to the machine and not to the conversation it runs
-			// beside.
-			//
-			// The tier's suffix goes in the task scope because that is what it is: a
-			// rung somebody wrote onto this piece of work when they configured the
-			// crew, sitting above the role's floor and below nothing.
-			if tier, ok := effort.Parse(rung.Effort); ok {
-				if asked := effort.Resolve(effort.Scope{Task: tier, Role: effort.RoleErrand}); asked != effort.None {
-					// WithEffortRung and not the configured setter: a level carried
-					// on a tier value is a HARNESS default, which the adapter drops
-					// for a model no catalog can vouch for. A person's own ctrl+t is
-					// the other setter and does not reach an errand at all.
-					callCtx = provider.WithEffortRung(callCtx, asked)
-				}
+		// AND THE CALLER THAT HAS SOMEBODY WATCHING IS TOLD, before the wait
+		// rather than after it. A person looking at a task being sized has one
+		// phase word and nothing under it; which model is being asked, and
+		// which of how many, is the difference between a wait and a hang.
+		tell(errandNews{Model: rung.Model, Rung: attempt + 1, Rungs: len(rungs)})
+		// WithoutStream because nobody asked for this call: left on the turn's
+		// stream it would type itself into the room in the model's voice. It
+		// takes the OBSERVER off and not the transport — the request is still
+		// served as a stream and still guarded as one, which is the sentence
+		// above about what bounds a rung.
+		//
+		// And IntentBackground for the other half of the same sentence. Nobody
+		// asked for it and nobody is waiting on it, so the fastest endpoint is
+		// worth nothing here and its price is worth everything — every errand in
+		// this package routes by price rather than by speed
+		// (internal/provider's velocity.go). This is the one place that says so,
+		// because this is the one place an errand is made.
+		//
+		// AND THE ROLE ITSELF, WHICH IS THE SENTENCE ABOVE SAID PROPERLY.
+		// internal/lane's roles.go holds what an errand's second is worth, what
+		// bar its answer has to clear, and — the half a person feels — whether
+		// anybody is reading THIS stream. Every errand made here is a side call
+		// of somebody's turn, so none of them owns the phase clock: a naming
+		// errand that answered while a person was waiting on their own slow
+		// answer used to take the status line away from it, which was half of
+		// the reported defect the clock exists for. The intent stays beside it
+		// because `provider.sort` is still built from it, and it is now a
+		// reading of the role rather than a second opinion about it.
+		callCtx := provider.WithRole(
+			provider.WithRoutingIntent(provider.WithoutStream(errandCtx), provider.IntentBackground),
+			errandRole(role))
+		// AN ERRAND ASKS THE LADDER LIKE EVERYTHING ELSE, and the ladder's
+		// answer for it is nothing (internal/effort's RoleErrand): naming a
+		// conversation and judging a route are the session's own housekeeping,
+		// and the depth a person set so their QUESTION would be thought about is
+		// not spent on the label. The scope is deliberately narrow — the role
+		// and the tier's own suffix, and none of the fields above them — because
+		// an errand belongs to the machine and not to the conversation it runs
+		// beside.
+		//
+		// The tier's suffix goes in the task scope because that is what it is: a
+		// rung somebody wrote onto this piece of work when they configured the
+		// crew, sitting above the role's floor and below nothing.
+		if tier, ok := effort.Parse(rung.Effort); ok {
+			if asked := effort.Resolve(effort.Scope{Task: tier, Role: effort.RoleErrand}); asked != effort.None {
+				// WithEffortRung and not the configured setter: a level carried
+				// on a tier value is a HARNESS default, which the adapter drops
+				// for a model no catalog can vouch for. A person's own ctrl+t is
+				// the other setter and does not reach an errand at all.
+				callCtx = provider.WithEffortRung(callCtx, asked)
 			}
-			// AND A SLOT FOR WHOEVER ANSWERS, so the errand's own call line can name
-			// the endpoint the way a turn's does. An errand routes by price, which
-			// means it is exactly the kind of request whose server cannot be guessed
-			// from the model name. It is made fresh per attempt: a retry served by
-			// somebody else must not be billed to the endpoint that failed.
-			served := &provider.ServedEndpoint{}
-			callCtx = provider.WithServedEndpoint(callCtx, served)
-			response, callErr := client.CompleteWithMessages(callCtx, messages,
-				append(append([]ai.Option{}, options...), ai.WithModel(rung.Model))...)
-			if callErr == nil && response != nil {
-				// AND THE ERRAND WRITES ITS OWN CALL LINE, exactly as a step of the
-				// turn does (loop.go's [Agent.addUsage]). Without it the journal's
-				// call lines covered only the conversation's own requests, and a
-				// measured run's lines summed to $0.123 against a real bill of $0.739
-				// — the whole of the difference being three side-calls to a
-				// mastermind. See [journalCall] for why that is a record worth
-				// nothing and why the role rides the line.
-				a.journalRoleCall(response, role, rung.Model, served.Name())
-				if accept == nil || accept(response, rung.Model) {
-					return response, rung.Model, nil
-				}
-				// AN ANSWER THE CALLER CANNOT USE IS NOT A TRANSPORT FAILURE and is
-				// never asked for again from the same rung: the endpoint did its job
-				// and the model said something unusable, which asking again on the
-				// same model is the least likely thing to change. The ladder moves.
-				lastErr = errInvalidName
-				tell(errandNews{Model: rung.Model, Rung: attempt + 1, Rungs: len(rungs),
-					Try: try, Failed: true, Why: errandUnusableWords})
-				if ctx.Err() != nil {
-					return nil, rung.Model, ctx.Err()
-				}
-				break
+		}
+		// AND A SLOT FOR WHOEVER ANSWERS, so the errand's own call line can name
+		// the endpoint the way a turn's does. An errand routes by price, which
+		// means it is exactly the kind of request whose server cannot be guessed
+		// from the model name. It is made fresh per attempt: a retry served by
+		// somebody else must not be billed to the endpoint that failed.
+		served := &provider.ServedEndpoint{}
+		callCtx = provider.WithServedEndpoint(callCtx, served)
+		response, callErr := client.CompleteWithMessages(callCtx, messages,
+			append(append([]ai.Option{}, options...), ai.WithModel(rung.Model))...)
+		if callErr == nil && response != nil {
+			// AND THE ERRAND WRITES ITS OWN CALL LINE, exactly as a step of the
+			// turn does (loop.go's [Agent.addUsage]). Without it the journal's
+			// call lines covered only the conversation's own requests, and a
+			// measured run's lines summed to $0.123 against a real bill of $0.739
+			// — the whole of the difference being three side-calls to a
+			// mastermind. See [journalCall] for why that is a record worth
+			// nothing and why the role rides the line.
+			a.journalRoleCall(response, role, rung.Model, served.Name())
+			if accept == nil || accept(response, rung.Model) {
+				return response, rung.Model, nil
 			}
-			lastErr = callErr
-			if lastErr == nil {
-				lastErr = errEmptyAnswer
-			}
-			// AND THE ERRAND'S FAILURE IS WRITTEN DOWN TOO, on the same row shape a
-			// step of the turn writes (loop.go's [Agent.journalFailedCall]). An
-			// errand that cannot be reached is silent by design — the caller reads
-			// silence as "nothing to say" — and a silence nobody records is a bill
-			// with no explanation next to it. No estimate is written: an errand's
-			// request is a digest this session assembled, not the transcript, and the
-			// transcript's own count would be a number about something else.
-			//
-			// THE ROW IS WRITTEN BEFORE THE ERRAND IS ABANDONED, and that ordering is
-			// the measured failure. It used to come after the check below, so an
-			// errand cut by its CALLER'S deadline — the one failure that leaves the
-			// caller with nothing to say and no idea why — returned having written
-			// nothing at all. SWE-Marathon s4, 00:01:54Z: the mastermind that writes a
-			// handed-over turn's brief was asked, [checkpointHandoffWindow] elapsed
-			// ninety seconds later to the millisecond, the ladder fell to the person's
-			// bare sentence, and the journal held no error row, no call row and no
-			// word of why the worker started blind. A deadline is a failure like any
-			// other and it is now recorded like one.
-			a.journalFailedCall(callCtx, rung.Model, string(role), lastErr, try, 0)
-			// AND THE BOUNDARY READS IT, on the same row shape and for the same
-			// reason the turn's own failures are read: an errand cut by a deadline
-			// and an errand refused by an upstream are two different pieces of news
-			// and the file could not tell them apart
-			// (taxonomy_boundary.go's [Agent.readErrandFailure]).
-			//
-			// AND NOW THE LADDER ACTS ON WHAT IT SAYS. It used to be read and
-			// dropped — the rung below was the only retry an errand had, whatever
-			// the failure was — which meant an endpoint under strain spent a rung
-			// that a two-second pause would have got an answer out of, and an errand
-			// with one rung left had no move at all. [errandAsksAgain] is where the
-			// verdict is turned into this ladder's two moves.
-			verdict := a.readErrandFailure(lastErr, role, rung.Model, try)
+			// AN ANSWER THE CALLER CANNOT USE IS NOT A TRANSPORT FAILURE and is
+			// never asked for again from the same rung: the endpoint did its job
+			// and the model said something unusable, which asking again on the
+			// same model is the least likely thing to change. The ladder moves.
+			lastErr = errInvalidName
 			tell(errandNews{Model: rung.Model, Rung: attempt + 1, Rungs: len(rungs),
-				Try: try, Failed: true, Why: errandFailureWords(lastErr)})
-			// The person's own interrupt ends the errand where it stands, and the
-			// caller is handed the context's own error so it can tell "nobody
-			// answered in time" from "the provider refused" without reading the row
-			// this just wrote.
+				Failed: true, Why: errandUnusableWords})
 			if ctx.Err() != nil {
 				return nil, rung.Model, ctx.Err()
 			}
-			// AND SO DOES THE ERRAND'S OWN PATIENCE, for the same reason: walking a
-			// ladder on a budget that is already spent is more requests that cannot
-			// land.
-			if errandCtx.Err() != nil {
-				return nil, rung.Model, errandCtx.Err()
-			}
-			if !errandAsksAgain(verdict) {
-				break
-			}
-			// THE PAUSE IS THE POINT OF THE RETRY and it is spent out of the
-			// errand's own budget, never past it.
-			if !errandWaits(errandCtx, verdict.Backoff) {
-				return nil, rung.Model, errandCtx.Err()
-			}
+			continue
+		}
+		lastErr = callErr
+		if lastErr == nil {
+			lastErr = errEmptyAnswer
+		}
+		// AND THE ERRAND'S FAILURE IS WRITTEN DOWN TOO, on the same row shape a
+		// step of the turn writes (loop.go's [Agent.journalFailedCall]). An
+		// errand that cannot be reached is silent by design — the caller reads
+		// silence as "nothing to say" — and a silence nobody records is a bill
+		// with no explanation next to it. No estimate is written: an errand's
+		// request is a digest this session assembled, not the transcript, and the
+		// transcript's own count would be a number about something else.
+		//
+		// THE ROW IS WRITTEN BEFORE THE ERRAND IS ABANDONED, and that ordering is
+		// the measured failure. It used to come after the check below, so an
+		// errand cut by its CALLER'S deadline — the one failure that leaves the
+		// caller with nothing to say and no idea why — returned having written
+		// nothing at all. SWE-Marathon s4, 00:01:54Z: the mastermind that writes a
+		// handed-over turn's brief was asked, [checkpointHandoffWindow] elapsed
+		// ninety seconds later to the millisecond, the ladder fell to the person's
+		// bare sentence, and the journal held no error row, no call row and no
+		// word of why the worker started blind. A deadline is a failure like any
+		// other and it is now recorded like one.
+		a.journalFailedCall(callCtx, rung.Model, string(role), lastErr, attempt+1, 0)
+		// AND THE BOUNDARY READS IT, on the same row shape and for the same
+		// reason the turn's own failures are read: an errand cut by a deadline
+		// and an errand refused by an upstream are two different pieces of news
+		// and the file could not tell them apart
+		// (taxonomy_boundary.go's [Agent.readErrandFailure]).
+		//
+		// AND NOW THE LADDER ACTS ON WHAT IT SAYS. It used to be read and
+		// dropped — the rung below was the only retry an errand had, whatever
+		// the failure was — which meant an endpoint under strain spent a rung
+		// that a two-second pause would have got an answer out of, and an errand
+		// with one rung left had no move at all. [errandAsksAgain] is where the
+		// verdict is turned into this ladder's two moves.
+		verdict, evidence := a.readErrandFailure(lastErr, role, rung.Model, attempt+1)
+		tell(errandNews{Model: rung.Model, Rung: attempt + 1, Rungs: len(rungs),
+			Failed: true, Why: errandFailureWords(lastErr)})
+		// The person's own interrupt ends the errand where it stands, and the
+		// caller is handed the context's own error so it can tell "nobody
+		// answered in time" from "the provider refused" without reading the row
+		// this just wrote.
+		if ctx.Err() != nil {
+			return nil, rung.Model, ctx.Err()
+		}
+		// AND SO DOES THE ERRAND'S OWN PATIENCE, for the same reason: walking a
+		// ladder on a budget that is already spent is more requests that cannot
+		// land.
+		if errandCtx.Err() != nil {
+			return nil, rung.Model, errandCtx.Err()
+		}
+		if !errandWalksOn(verdict, evidence) {
+			return nil, rung.Model, lastErr
 		}
 	}
 	return nil, "", lastErr
@@ -346,9 +335,6 @@ type errandNews struct {
 	Model string
 	Rung  int
 	Rungs int
-	// Try is which request this is, 1-based and counted across the whole errand:
-	// a transport verdict may ask the same rung again before the ladder moves.
-	Try int
 	// Failed says this news is that the request above came to nothing, and Why
 	// is what to tell somebody about it in their own words.
 	Failed bool
@@ -377,42 +363,47 @@ func errandFailureWords(err error) string {
 	return errandUnreachedWords
 }
 
-// errandAsksAgain reads one failed rung's verdict the way a LADDER has to read
-// it, which is not the question the turn loop asks of the same verdict.
+// errandWalksOn reads one failed rung's verdict the way a LADDER has to read it,
+// which is not the question the turn loop asks of the same verdict.
 //
-// A TURN HAS ONE MODEL AND ONE MOVE: ask again, or stop. An errand has a rung
-// below it whose floor is the model already answering the person's own turns —
-// alive by construction — so "the transport budget for this request is spent" is
-// not the end of the errand at all. It is the ladder's cue to MOVE.
+// THE LADDER IS ALREADY THE ERRAND'S RETRY, and this file's header states it as
+// law: one rung below the resolved one, and then the failure is real. So an
+// errand does not ask the same endpoint again with a pause — it asks a DIFFERENT
+// MODEL, at once, which is more than [taxonomy.Verdict.Rotate] was asking for
+// and costs none of the transport policy's 2s-4s-8s. Both transport actions
+// therefore mean the same thing here: [taxonomy.ActionRetry] and
+// [taxonomy.ActionGiveUp] are "this request is over", and the request being over
+// is what the next rung is FOR.
 //
-// So exactly one action means "ask this same rung again", and every other action
-// — [taxonomy.ActionGiveUp] included — means the next rung.
+// WHAT THE READING DECIDES IS WHETHER THERE IS ANY POINT IN THE NEXT RUNG, and
+// there is exactly one failure where there is not: A 4XX THAT NAMED NOBODY. That
+// is the router reading OUR OWN BYTES and saying no — a request no endpoint and
+// no model will serve, internal/taxonomy's classOf says so in as many words, and
+// [Agent.movesForFailure] already acts on it one level up. A ladder walked into
+// that is a second charge for the same refusal, and the fall-through rung's whole
+// argument — that its floor is a model that WORKS — is an argument about who is
+// serving, which is not what went wrong.
+//
+// EVERY OTHER FAILURE FALLS THROUGH, including the ones the taxonomy calls work
+// because it has nothing better to call them. "That model is down" arrives as a
+// sentence this process cannot classify, and it is the exact case the ladder was
+// built for (taskname_test.go's fall-through). So the stop is asked of the
+// EVIDENCE, narrowly, rather than of the class — a class that catches both the
+// doomed request and the unreadable sentence cannot be the gate on an errand's
+// one retry.
 //
 // THE SEAM FOR AN EXPLICIT HOP. internal/taxonomy is growing an action for the
 // case this ladder has always been the answer to: a model's budget spent with a
-// fallback available. When it lands it becomes a named case here saying that an
-// errand's hop is the next rung — which is what the default below already does,
-// so naming it changes no behaviour and stops the next reader having to work out
+// fallback available. It lands as a named case here saying that an errand's hop
+// is the next rung — which is what every walking failure below already means, so
+// naming it changes no behaviour and stops the next reader having to work out
 // whether it was thought about.
-func errandAsksAgain(verdict taxonomy.Verdict) bool {
-	return verdict.Retries()
-}
-
-// errandWaits spends a verdict's backoff out of the errand's own budget and
-// reports whether there is any budget left afterwards. A pause that outlived the
-// errand would be the errand waiting to make a request it can no longer make.
-func errandWaits(ctx context.Context, backoff time.Duration) bool {
-	if backoff <= 0 {
-		return ctx.Err() == nil
-	}
-	timer := time.NewTimer(backoff)
-	defer timer.Stop()
-	select {
-	case <-timer.C:
-		return ctx.Err() == nil
-	case <-ctx.Done():
+func errandWalksOn(verdict taxonomy.Verdict, evidence taxonomy.Evidence) bool {
+	if verdict.Class != taxonomy.Transport &&
+		evidence.Status >= 400 && evidence.Status < 500 && strings.TrimSpace(evidence.Upstream) == "" {
 		return false
 	}
+	return true
 }
 
 // ── telling somebody what the errand is doing ───────────────────────────────

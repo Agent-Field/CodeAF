@@ -1105,10 +1105,6 @@ type sizingLine struct {
 	// is [sizingLine.nobodyAnswered], which says what HAPPENS rather than what
 	// went wrong.
 	owed string
-	// asked is the model the last line named, so that a rung being asked a second
-	// time reads as "asking again" and not as this row telling somebody a model
-	// failed and then naming the same model as the alternative.
-	asked string
 }
 
 // sizingSaid is the teller for one node's reading. It is a value and not a
@@ -1127,21 +1123,17 @@ func (s *sizingLine) tell(news errandNews) {
 		s.owed = strings.TrimSpace(news.Model + " " + news.Why)
 		return
 	}
-	var line string
-	switch {
-	case s.owed == "":
-		line = "asking " + news.Model
-		// THE COUNT ONLY WHERE THERE IS SOMETHING TO COUNT. A ladder of one rung
-		// saying "1 of 1" is the emptiness law broken with arithmetic.
-		if news.Rungs > 1 {
-			line += " · " + strconv.Itoa(news.Rung) + " of " + strconv.Itoa(news.Rungs)
-		}
-	case news.Model == s.asked:
-		line = s.owed + " · asking again"
-	default:
-		line = s.owed + " · asking " + news.Model
+	// THE COUNT ONLY WHERE THERE IS SOMETHING TO COUNT, and only on the opening
+	// line. A ladder of one rung saying "1 of 1" is the emptiness law broken with
+	// arithmetic, and a line that has already said a model failed is carrying the
+	// place on the ladder implicitly.
+	line := "asking " + news.Model
+	if s.owed != "" {
+		line = s.owed + " · " + line
+	} else if news.Rungs > 1 {
+		line += " · " + strconv.Itoa(news.Rung) + " of " + strconv.Itoa(news.Rungs)
 	}
-	s.owed, s.asked = "", news.Model
+	s.owed = ""
 	s.say(line)
 }
 

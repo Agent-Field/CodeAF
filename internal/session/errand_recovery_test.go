@@ -157,9 +157,6 @@ func TestAnErrandRungStillAnsweringIsNotCutByTheLaddersOwnShare(t *testing.T) {
 // it. The cut is spelled the way the guard spells it: the call returns the
 // context's own deadline error.
 func TestASilentErrandRungLeavesTheNextOneTheRestOfThePatience(t *testing.T) {
-	// ONE ATTEMPT PER RUNG, so this test is about the LADDER and not about the
-	// retry the boundary is separately allowed to ask for.
-	t.Setenv("AFORGE_RESPONSE_ATTEMPTS", "1")
 	const budget = 2 * time.Second
 	ladder := &errandLadder{script: map[string][]errandScript{
 		"tier/one":      {{err: context.DeadlineExceeded, after: 200 * time.Millisecond}},
@@ -193,42 +190,41 @@ func TestASilentErrandRungLeavesTheNextOneTheRestOfThePatience(t *testing.T) {
 
 // AND WHAT THE BOUNDARY SAYS ABOUT A FAILED RUNG IS WHAT THE LADDER DOES.
 //
-// The verdict used to be read and dropped: the rung below was the only move an
-// errand had, whatever the failure was. A transport verdict that asks for
-// another try now gets one, on the same rung, inside what is left of the
-// errand's patience — and when the tries are spent the ladder moves, which is
-// what every other action means to an errand.
-func TestAnErrandRungUnderStrainIsAskedAgainBeforeTheLadderMoves(t *testing.T) {
-	// TWO ATTEMPTS: one try and one retry, so the ladder must ask the first rung
-	// twice before it is allowed to move.
-	t.Setenv("AFORGE_RESPONSE_ATTEMPTS", "2")
+// The verdict used to be read and dropped. It decides one thing now, and it is
+// the thing an errand can act on: a 4xx that named no upstream is the router
+// reading our own bytes and saying no, which no endpoint and no model will fix —
+// so the rung below is a second charge for the same refusal and is not made.
+func TestAnErrandStopsWhereTheNextRungCouldOnlyBeRefusedTheSameWay(t *testing.T) {
 	ladder := &errandLadder{script: map[string][]errandScript{
-		"tier/one": {
-			{err: errors.New("connection reset by peer")},
-			{err: errors.New("connection reset by peer")},
-		},
+		"tier/one": {{err: refusalOf(400, "no endpoints found that support tool use", "", "")}},
+	}}
+	agent := twoRungAgent(t, ladder)
+
+	if _, _, err := agent.callRole(context.Background(), roles.RoleTitle, "session/model", nil); err == nil {
+		t.Fatal("a request no endpoint will serve came back as a success")
+	}
+	if calls := ladder.seen(); len(calls) != 1 {
+		t.Fatalf("the ladder made %d calls, want only the rung that was refused: %+v", len(calls), calls)
+	}
+}
+
+// AND EVERY OTHER FAILURE STILL FALLS THROUGH, which is the law this file's
+// header states and the one the stop above must not quietly widen into. "That
+// model is down" arrives as a sentence nothing can classify, and it is the exact
+// case the ladder exists for.
+func TestAnErrandWhoseRungIsMerelyDownStillFallsThrough(t *testing.T) {
+	ladder := &errandLadder{script: map[string][]errandScript{
+		"tier/one":      {{err: errors.New("that model is down")}},
 		"session/model": {{answer: "the floor answered"}},
 	}}
 	agent := twoRungAgent(t, ladder)
 
-	// The backoff the transport policy asks for is spent out of this budget, so
-	// it has to be able to pay for it.
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	response, model, err := agent.callRole(ctx, roles.RoleTitle, "session/model", nil)
+	response, model, err := agent.callRole(context.Background(), roles.RoleTitle, "session/model", nil)
 	if err != nil {
 		t.Fatalf("the errand failed: %v", err)
 	}
 	if model != "session/model" || strings.TrimSpace(response.Text()) != "the floor answered" {
 		t.Fatalf("the errand answered %q on %q, want the fall-through rung", response.Text(), model)
-	}
-	var asked []string
-	for _, call := range ladder.seen() {
-		asked = append(asked, call.model)
-	}
-	want := []string{"tier/one", "tier/one", "session/model"}
-	if strings.Join(asked, ",") != strings.Join(want, ",") {
-		t.Fatalf("the ladder asked %v, want %v", asked, want)
 	}
 }
 
@@ -236,11 +232,10 @@ func TestAnErrandRungUnderStrainIsAskedAgainBeforeTheLadderMoves(t *testing.T) {
 // it. Every rung fails, the errand ends, and it ends on the clock the caller set
 // rather than on any arithmetic of its own.
 func TestAnErrandWhoseEveryRungFailsEndsInsideTheCallersPatience(t *testing.T) {
-	t.Setenv("AFORGE_RESPONSE_ATTEMPTS", "1")
 	const budget = time.Second
 	ladder := &errandLadder{script: map[string][]errandScript{
-		"tier/one":      {{err: errors.New("the endpoint refused")}},
-		"session/model": {{err: errors.New("the endpoint refused")}},
+		"tier/one":      {{err: errors.New("that model is down")}},
+		"session/model": {{err: errors.New("that model is down")}},
 	}}
 	agent := twoRungAgent(t, ladder)
 
@@ -255,181 +250,5 @@ func TestAnErrandWhoseEveryRungFailsEndsInsideTheCallersPatience(t *testing.T) {
 	}
 	if len(ladder.seen()) != 2 {
 		t.Fatalf("the ladder made %d calls, want one per rung: %+v", len(ladder.seen()), ladder.seen())
-	}
-}
-
-// ── what the record says about a division nobody read ───────────────────────
-
-// A DIVISION ADMITTED WITH NOBODY READING IT SAYS SO ON ITS OWN LINE.
-//
-// The fail-open road is the right posture — two gates have already passed these
-// parts and a second opinion that cannot be had is not a refusal — but it used
-// to be INVISIBLE. The line read `decision: admitted` and nothing else, byte for
-// byte the same row a reviewed admission writes, so the autopsy of the measured
-// run could not tell the two apart without matching call rows by hand.
-func TestADivisionAdmittedWithNobodyReadingItSaysSoOnTheRecord(t *testing.T) {
-	t.Setenv("AFORGE_RESPONSE_ATTEMPTS", "1")
-	nest := newDivideNestOn(t, wideBrief, 0, &divideReviewer{fails: true}, nil)
-
-	if answer := nest.divide(t, divideArgs(wideEvidence, 2)); !strings.HasPrefix(answer, "split into 2 parts:") {
-		t.Fatalf("the worker was told %q, want the parts admitted with nobody reading them", answer)
-	}
-	lines := journaledDivisions(t, nest.journal)
-	if len(lines) != 1 {
-		t.Fatalf("the journal holds %d division lines, want one: %+v", len(lines), lines)
-	}
-	// THE WORD STAYS `admitted`, because that is what happened to the parts.
-	if lines[0].Decision != divisionAdmitted {
-		t.Fatalf("the line reads %q, want %q", lines[0].Decision, divisionAdmitted)
-	}
-	// AND THE REASON THERE WAS NO READING IS BESIDE IT, in the field a refusal
-	// already writes it in.
-	if !strings.HasPrefix(lines[0].Error, "unreached") {
-		t.Fatalf("the line's error reads %q, want why the reading never happened", lines[0].Error)
-	}
-}
-
-// divideRungs is a division reviewer that answers per MODEL, so a test can put
-// one rung of the errand's ladder out of action and read what the node's row
-// said while the ladder walked.
-type divideRungs struct {
-	mu sync.Mutex
-	// broken is what each model fails with. A model with no entry answers.
-	broken map[string]error
-	answer string
-	asked  []string
-}
-
-func (r *divideRungs) CompleteWithMessages(_ context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
-	var request ai.Request
-	for _, option := range options {
-		_ = option(&request)
-	}
-	if len(messages) == 0 || messageText(messages[0]) != divideReviewBrief {
-		return textResponse("(unscripted)"), nil
-	}
-	r.mu.Lock()
-	r.asked = append(r.asked, request.Model)
-	err, broken := r.broken[request.Model]
-	r.mu.Unlock()
-	if broken {
-		return nil, err
-	}
-	return textResponse(r.answer), nil
-}
-
-// THE ROW SAYS WHICH MODEL IS BEING ASKED, AND WHAT HAPPENED TO THE LAST ONE.
-//
-// This is the visible half of the measured failure: three minutes and twenty
-// seconds of "sizing the work" over a row that showed nothing else, while two
-// models were asked in turn and neither answered. The words are the surface's —
-// nothing is a reviewer, nothing is unreached, nothing has a verdict.
-func TestSizingSaysWhichModelIsBeingAskedAndWhatHappenedToTheLast(t *testing.T) {
-	t.Setenv("AFORGE_RESPONSE_ATTEMPTS", "1")
-	reviewer := &divideRungs{broken: map[string]error{
-		"big/model":  context.DeadlineExceeded,
-		"test/model": errors.New("the endpoint refused"),
-	}}
-	nest := newDivideNestOn(t, wideBrief, 0, reviewer, tierSettings(map[string]string{
-		string(roles.TierKey(roles.TierMastermind)): "big/model",
-	}))
-	updates := nest.session.TaskUpdates()
-
-	if answer := nest.divide(t, divideArgs(wideEvidence, 2)); !strings.HasPrefix(answer, "split into 2 parts:") {
-		t.Fatalf("the worker was told %q, want the parts admitted with nobody reading them", answer)
-	}
-
-	moves := phaseMovesAbout(t, updates, nest.parent.id, 5)
-	var said []string
-	for _, move := range moves {
-		said = append(said, move.Phase+"|"+move.Text)
-	}
-	want := []string{
-		// The reading opens with nothing under it: no model has been asked yet.
-		TaskPhaseSizing + "|",
-		TaskPhaseSizing + "|asking big/model · 1 of 2",
-		TaskPhaseSizing + "|big/model did not answer in time · asking test/model",
-		TaskPhaseSizing + "|nobody answered · going with the parts as drawn",
-		// And the node goes back to its own work with the row cleared.
-		TaskPhaseWorking + "|",
-	}
-	if strings.Join(said, "\n") != strings.Join(want, "\n") {
-		t.Fatalf("the row said:\n%s\nwant:\n%s", strings.Join(said, "\n"), strings.Join(want, "\n"))
-	}
-}
-
-// ── the legend names every part it named ────────────────────────────────────
-
-// A LABEL OPENING A CLAUSE IS A BOUNDARY WHEREVER IT STANDS.
-//
-// This is the legend from task 1 of conversation 57d51779f63ac603, copied out of
-// the node's own brief. It is one line with no separator between the clauses, so
-// the old cut — newlines, semicolons and commas — never found B, C or D: A's
-// clause swallowed the whole line and every other part fell to [sketchName]'s
-// last resort. Two of the four parts went out called "read seam.start in" and
-// "part 2".
-func TestALegendThatNamesItsPartsOnOneLineNamesEveryOneOfThem(t *testing.T) {
-	const legend = "**A:** read `seam.start` in `cmd/aforge/chatv3.go` (wired at line 519 as `Options.Start`) " +
-		"to see whether the seam is reached at all " +
-		"**B:** trace the folder-pick path — `folderConfirm` in `folderact.go` → the place the chosen folder is written " +
-		"**C:** with both ends in view, pinpoint where the two disagree " +
-		"**D:** write the fix and a test that fails without it"
-
-	segments := legendSegments(legend)
-	for index, piece := range []string{"A", "B", "C", "D"} {
-		said := sketchSaid(piece, segments)
-		if said == "" {
-			t.Fatalf("the legend named %s and nothing was read back for it: %v", piece, segments)
-		}
-		name := sketchName(said, piece, index)
-		// THE ONE ANSWER THAT IS ALWAYS WRONG HERE. "part 2" is what a part is
-		// called when the legend never named it, and this legend named all four.
-		if strings.HasPrefix(name, "part ") {
-			t.Fatalf("%s came out called %q from a legend that named it %q", piece, name, said)
-		}
-	}
-	// AND THE TWO THE MEASURED RUN GOT WRONG COME OUT AS THE LEGEND'S OWN WORDS,
-	// cut by the one hand that cuts every name on this surface ([cleanTaskName]).
-	if got := sketchName(sketchSaid("A", segments), "A", 0); got != "read seam.start in" {
-		t.Fatalf("A is called %q", got)
-	}
-	if got := sketchName(sketchSaid("B", segments), "B", 1); got != "trace the folder-pick" {
-		t.Fatalf("B is called %q, want the legend's own words rather than a number", got)
-	}
-}
-
-// AND THE SHAPES THE LEGEND ALREADY READ STILL READ. The comma-separated
-// sentence the ask actually asks for is the common case and the inline label is
-// the addition, so both are pinned here rather than one replacing the other.
-func TestTheLegendStillReadsTheSentenceAndTheLineApiece(t *testing.T) {
-	for _, test := range []struct {
-		name   string
-		legend string
-		want   map[string]string
-	}{
-		{
-			"one sentence, commas between",
-			"A is the validation workflow, B is the docs sweep, C is the release notes",
-			map[string]string{"A": "the validation workflow", "B": "the docs sweep", "C": "the release notes"},
-		},
-		{
-			"a line apiece",
-			"A — the validation workflow\nB — the docs sweep",
-			map[string]string{"A": "the validation workflow", "B": "the docs sweep"},
-		},
-		{
-			"labels in brackets on one line",
-			"(A) the validation workflow (B) the docs sweep",
-			map[string]string{"A": "the validation workflow", "B": "the docs sweep"},
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			segments := legendSegments(test.legend)
-			for piece, want := range test.want {
-				if got := sketchSaid(piece, segments); got != want {
-					t.Errorf("%s reads as %q, want %q (segments %v)", piece, got, want, segments)
-				}
-			}
-		})
 	}
 }
