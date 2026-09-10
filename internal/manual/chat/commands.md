@@ -858,17 +858,24 @@ Moving in the picker: type to filter; ↑ / ctrl+p and ↓ / ctrl+n move; pgup/p
 under the cursor through off → low → medium → high → off reasoning effort. enter
 switches.
 
+**→ or tab on a model opens its lanes and walks the cursor into them**, onto the pinned
+lane or `auto`; enter pins, ← or tab walks back out. *Lanes → Pinning one lane yourself*
+has the rest.
+
 esc leaves and changes **nothing** — your half-typed draft, the model in use and the
 frame all come back as they were. The filter is forgotten when the picker closes.
 
 The cursor opens on the model in use, which is also the marked row, so enter with nothing
-typed confirms rather than changes.
+typed confirms rather than changes. Emptying the filter with ctrl+u puts it back there.
 
-The placeholder in the empty filter box is the only place the picker explains itself:
+The placeholder in the empty filter box reads:
 
 ```
 filter · ↑↓ · → lanes · ctrl+t effort · enter · esc
 ```
+
+and the hint slot above the box follows the cursor: `→ lanes · enter switch · esc` on a
+model, `enter choose · ← back · esc` inside its lanes.
 
 Choosing a model sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
@@ -1741,8 +1748,10 @@ hear, and everything else follows the general chat rule. Its legend is
 Because the picker is the same component, everything true of `/model`'s ranking, its rows
 and its ctrl+t effort knob is true here too — **including the lanes** on the row that has
 them. On **your model**, `→` or `tab` unfolds the endpoints serving the model under the
-cursor and `enter` on one pins it, exactly as under `/model`, and the legend says
-`↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter`. The media slots
+cursor, walks the cursor into them, and `enter` on one pins it, exactly as under
+`/model`. The legend says `↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter`
+on a model and `↑↓ move · ← or tab back · enter choose · esc cancel · type to filter`
+inside its lanes. The media slots
 have no lane row behind them, so nothing unfolds there and the legend does not offer the
 key.
 

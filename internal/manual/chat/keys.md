@@ -1467,8 +1467,9 @@ in the status row, or by `enter` on the **your model** row of the settings panel
 Providers tab (the same list and the same keys, drawn in the panel's place):
 
 `esc` close · `enter` switch to the highlighted model · `ctrl+t` cycle the reasoning
-effort · `tab` and `→` open the lanes under the model the cursor is on, `tab` and
-`←` close them again · `up`/`ctrl+p`, `down`/`ctrl+n`, `pgup`, `pgdown` walk the list ·
+effort · `tab` and `→` open the lanes under the model the cursor is on and move the
+cursor into them, `tab` and `←` close them and put it back on the model ·
+`up`/`ctrl+p`, `down`/`ctrl+n`, `pgup`, `pgdown` walk the list ·
 `backspace`, `delete`, `ctrl+u`, `ctrl+w`, `left`/`ctrl+b`, `right`/`ctrl+f`,
 `home`/`ctrl+a`, `end`/`ctrl+e` edit the filter · anything else types into it.
 
@@ -1477,7 +1478,10 @@ have typed — with anything to step over, they move the caret through the filte
 instead. `tab` always opens and closes. With the lanes open, `enter` on one of them pins
 it instead of switching model.
 
-Its placeholder reads exactly `filter · ↑↓ · → lanes · ctrl+t effort · enter · esc`.
+Its placeholder reads exactly `filter · ↑↓ · → lanes · ctrl+t effort · enter · esc`, and
+the hint slot follows the cursor: `→ lanes · enter switch · esc` on a model,
+`enter choose · ← back · esc` inside its lanes — with `tab lanes` and `tab back` in
+place of the arrows while there is typed text the arrow would step over.
 
 **Sessions roster** — opened by `/resume`: the same key map, except `enter` opens the
 selected session. Its placeholder reads `filter · ↑↓ · enter open · esc cancel`.
