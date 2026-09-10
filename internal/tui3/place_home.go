@@ -15,8 +15,8 @@ import (
 // ── THE HOME PLACE ──────────────────────────────────────────────────────────
 //
 // THIS FILE IS HOME AS A PLACE (docs/design/home-rethink/ARCHITECTURE.md): the
-// switcher it draws, the two views it can be shown in, the verbs its rows offer,
-// and the card beside them. The reading is switcher.go's and is PURE; the frame
+// switcher it reads, the verbs its rows offer, and the card beside a typed
+// search. The reading is switcher.go's and is PURE; the frame
 // around it is the router's and knows no place by name; nothing here switches on
 // a page id, and the shared router files carry a call into this file rather than
 // a home-shaped body.
@@ -31,14 +31,14 @@ import (
 //	                               ledger once, then builds
 //	close    [app.closeHome]       home.go — writes the look stamp
 //	tick     [app.refreshHome]     home.go — the three-second beat
-//	body     [app.homeBody]        home.go, with [app.homeSwitchCard] here
+//	body     [app.homeBody]        home.go, the grid in homegrid.go
 //	stops    [homeLine.stop]       home.go
 //	enter    [app.homeEnter]       home.go — the doors and their refusals
 //	verbs    [app.homeRowVerbs]    HERE
-//	alt      [app.homeAlt]         HERE
+//	alt      —                     the grid is home's one shape
 //	window   —                     home has no time window
 //	box      [homeView.box]        the one foot box: filter and message at once
-//	note     —                     home says its count on the section line
+//	note     —                     each panel says its own count
 //	hint     [app.homeHint]        home.go
 //	changed  —                     the per-place look stamps are another lane's
 //
@@ -69,8 +69,7 @@ import (
 // home's own column so that every door, card, digit and key that already worked
 // on a conversation or a standing item goes on working on it untouched. A
 // switcher row for a conversation IS a [homeSession] row; a switcher row for a
-// watch IS a [homeItem] row. What it carries in addition is [homeLine.sw], the
-// reading's own line, which is what paints it.
+// watch IS a [homeItem] row, painted from the panel cell it wears (homegrid.go).
 //
 // AND TYPING IS UNTOUCHED. The moment there is something in the box the column
 // is [homeView.buildWorld]'s drop-up again, ranked by [homeRank], with `ask
@@ -88,14 +87,9 @@ const (
 	// than by inventories, so you learn the memory place exists on the day it
 	// tells you it learned something, and enter on the line goes there.
 	homeLedger homeRowKind = 241
-	// homeSwitchFold is the one fold at the foot of the list — `▸ 15 more, quiet
-	// since aug 21` — and it is a door exactly as [homeQuiet] was, with the same
-	// two marks and the same gestures.
-	homeSwitchFold homeRowKind = 242
-	// homeSwitchHead is a line of the reading that names rather than opens: the
-	// `20 chats · what wants you first` claim, the `since you left · 3h` heading,
-	// and a project's name while `alt+g` is grouping. It is not a cursor stop,
-	// for [homeHeading]'s reason.
+	// homeSwitchHead is a line that names rather than opens: a panel's heading
+	// and its whisper on the grid (homegrid.go). It is not a cursor stop, for
+	// [homeHeading]'s reason.
 	homeSwitchHead homeRowKind = 243
 )
 
@@ -148,41 +142,6 @@ func (a *app) readSwitchLedger() {
 	a.home.ledger.learned, a.home.ledger.letGo = learned, letGo
 }
 
-// ── the two views ───────────────────────────────────────────────────────────
-
-// homeAlt is `alt+g` and `alt+q`: the two things this place can be shown
-// differently as, and the only two letters home declares to the router's
-// alt+<letter> class (placekeys.go's [app.placeAlt]).
-//
-// BOTH ARE REMEMBERED FOR THE PROCESS AND NEITHER IS A SETTING. A person who
-// groups the list expects it grouped the next time they open home in this
-// terminal; they do not expect to have found a preference they now own and have
-// to maintain. So the two flags live on the app — which closing home does not
-// clear — and nothing writes them to a disk.
-func (a *app) homeAlt(letter rune) bool {
-	if !a.at(pageHome) || a.home.phone || a.home.searching() || a.home.gridOn() {
-		// A QUERY HAS NO GROUPING TO TOGGLE. While something is typed the column
-		// is the drop-up of matches ([homeView.buildWorld]), and a key that
-		// silently changed a list that is not on the screen would be the worst
-		// kind of chord — one that does something you cannot see. THE GRID HAS
-		// NONE EITHER: its panels are not the ranked list the two views arranged
-		// (homegrid.go), so at rest the two chords are not bound.
-		return false
-	}
-	switch letter {
-	case 'g':
-		a.switchGrouped = !a.switchGrouped
-		a.home.grouped = a.switchGrouped
-	case 'q':
-		a.switchQuiet = !a.switchQuiet
-		a.home.hideQuiet = a.switchQuiet
-	default:
-		return false
-	}
-	a.home.build()
-	return true
-}
-
 // ── the doors ───────────────────────────────────────────────────────────────
 
 // homeLedgerEnter is enter on a `since you left` line: GO TO THE PLACE THAT OWNS
@@ -200,42 +159,6 @@ func (a *app) homeLedgerEnter(line homeLine) tea.Cmd {
 		return nil
 	}
 	return a.showPage(id)
-}
-
-// foldSwitch is enter or an arrow on the fold at the foot: show every row, or
-// fold them back away. It is a DOOR and not a setting, which is why it dies with
-// the screen where `alt+g` and `alt+q` do not.
-//
-// AND IT LEAVES THE CURSOR ON THE LINE THAT DID IT, so the gesture can be
-// reversed without moving — the law every other fold on this column keeps
-// (home.go's [homeView.fold], [homeView.foldItems]). [homeView.build] follows a
-// conversation, an item, a project or an errand and knows nothing about a fold,
-// so without this the key that opened the list would throw the hand to the top
-// of it and `←` would have nothing under it to close.
-func (h *homeView) foldSwitch(open bool) {
-	h.moreOpen = open
-	h.build()
-	h.pointFold()
-}
-
-// pointFold puts the cursor back on the one fold at the foot of the list, and
-// leaves it where it was when the list has none.
-//
-// IT IS A FOLLOWER LIKE THE FOUR ABOVE IT (home.go's [homeView.build]) AND NOT
-// ONLY A DOOR'S TIDY-UP. [homeView.build] runs again every three seconds on
-// home's own beat, and a rebuild that could not find the fold sent the cursor to
-// the top of the list — so an opened fold stood for one beat and then threw the
-// hand away from it, which on a frame whose rows the fold's own count is
-// measured against ([switcherReading.capAtRest]) scrolls the rows it just
-// revealed, and the way back, straight off the bottom of the screen. Three
-// seconds after `→` a person had a longer list they could see none of.
-func (h *homeView) pointFold() {
-	for at, line := range h.lines {
-		if line.kind == homeSwitchFold {
-			h.cursor, h.picked = at, true
-			return
-		}
-	}
 }
 
 // ── the strip ───────────────────────────────────────────────────────────────
@@ -271,22 +194,18 @@ func (a *app) homeRowVerbs() []verb {
 	if line.kind == homeProjectRow {
 		return a.homeProjectVerbs(line)
 	}
-	if line.sw == nil || line.sw.row == nil {
-		// A ROW THE TYPED SURFACE BUILT, WHICH THE READING NEVER SAW. Under a
-		// query the column is [homeRank]'s drop-up and a standing item's row is
-		// the one thing on it with verbs — the two actions home has been
-		// ADVERTISING on such a row without binding (`homeItemActions`,
-		// homestanding.go), bound to ctrl+e and ctrl+x, which the line never
-		// named, and whose bare `p` and `s` typed.
-		if line.kind != homeItem {
-			return nil
-		}
-		return []verb{
-			{key: 'p', word: homeItemPauseWord, do: func() tea.Cmd { return a.homeItemWrite(line, standing.StatusPaused) }},
-			{key: 's', word: homeItemStopWord, do: func() tea.Cmd { return a.homeItemWrite(line, standing.StatusRetired) }},
-		}
+	// A ROW THE TYPED SURFACE BUILT, WHICH THE READING NEVER SAW. Under a query
+	// the column is [homeRank]'s drop-up and a standing item's row is the one
+	// thing on it with verbs — the two actions home has been ADVERTISING on such
+	// a row without binding (`homeItemActions`, homestanding.go), bound to ctrl+e
+	// and ctrl+x, which the line never named, and whose bare `p` and `s` typed.
+	if line.kind != homeItem {
+		return nil
 	}
-	return a.homeReadingVerbs(line, *line.sw.row)
+	return []verb{
+		{key: 'p', word: homeItemPauseWord, do: func() tea.Cmd { return a.homeItemWrite(line, standing.StatusPaused) }},
+		{key: 's', word: homeItemStopWord, do: func() tea.Cmd { return a.homeItemWrite(line, standing.StatusRetired) }},
+	}
 }
 
 // homeReadingVerbs is [switcherVerbsFor]'s verbs for one row, less the ones
@@ -550,10 +469,6 @@ func (placeHome) rowID(a *app) string {
 	}
 	return strings.Join(parts, "\x00")
 }
-
-// alt is `alt+g` and `alt+q`: the two views home can actually be shown in
-// ([app.homeAlt] holds the argument for why there are only two).
-func (placeHome) alt(a *app, letter rune) bool { return a.homeAlt(letter) }
 
 // box is home's own one foot box — new message AND live query at once, no mode —
 // or a focused errand's line, because THE FOOT BELONGS TO WHOEVER HOLDS THE

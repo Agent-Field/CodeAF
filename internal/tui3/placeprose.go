@@ -381,15 +381,13 @@ func placeHeadRow(width int, head, painted string, win session.UsageWindow, pal 
 
 // foldWords is THE ONE SENTENCE a fold says, and the reason it lives here
 // rather than beside either of its callers is that home spelled it twice for a
-// wave: the list said `▸ 4 more, quiet since sep 1` ([switcherReading.addFold])
-// while the phone and the project tails said `▸ …7 more, quiet since 3h`
+// wave: the retired flat list said `▸ 4 more, quiet since sep 1` while the phone and the project tails said `▸ …7 more, quiet since 3h`
 // ([homeQuietWord]) — a leading ellipsis on one and not the other, and a
 // calendar date against an elapsed span, for one idea.
 //
 // A SHUT FOLD SAYS HOW MANY IT HIDES; AN OPEN ONE SAYS THE WAY BACK. The count
 // is the same number both ways — what a fold stands over is counted at the cap
-// and never at what is drawn ([switcherReading.addRowsAndFold] states that law)
-// — but `12 more` over a list already showing all twelve is a sentence that is
+// and never at what is drawn — but `12 more` over a list already showing all twelve is a sentence that is
 // not true, so an open fold is `12 fewer`, which is what pressing it does.
 //
 // THE MARK IS THE CALLER'S. Home draws `>` and `v` in an ASCII palette and the

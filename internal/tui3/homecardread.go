@@ -80,10 +80,6 @@ func (a *app) refreshHomeCard(now time.Time) tea.Cmd {
 	}
 	var asked []tea.Cmd
 	switch {
-	case line.kind == homeSession && line.sw != nil:
-		// The switcher's own card: the place line wants the branch and nothing
-		// else on it reads anything.
-		asked = append(asked, a.refreshRepoOf(strings.TrimSpace(line.row.Workspace), now))
 	case line.kind == homeSession:
 		asked = append(asked,
 			a.refreshRepoOf(strings.TrimSpace(line.row.Workspace), now),

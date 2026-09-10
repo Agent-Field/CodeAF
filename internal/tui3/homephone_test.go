@@ -624,3 +624,28 @@ func TestAnErrandOnAPhoneIsTheSameSheet(t *testing.T) {
 		t.Fatal("tab did not put the list back")
 	}
 }
+
+// TestAPhoneInboxDrawsAStandingItemOnlyOnce is homephone.go's second law — A ROW
+// APPEARS ONCE — held for the third kind of row on that screen.
+//
+// A watch that needs somebody was lifted into `waiting on you` AND drawn again
+// under its own project four rows later: two lines each, four of the twenty-six
+// a pocket terminal has, on the one tier with none to spare.
+func TestAPhoneInboxDrawsAStandingItemOnlyOnce(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "port the picker", "/tmp/alpha", now)
+	a := phoneHome(t, lab, mine)
+	const words = "tell me when CI goes red on master"
+	a.home.items = map[string][]StandingItemView{lab.project("-tmp-alpha"): {{Item: standing.Item{
+		ID: "watch", Words: words, NeedsPerson: "may I re-run the typecheck job?", Updated: now,
+	}}}}
+	a.home.rebuild()
+	text := phoneText(a)
+	if n := strings.Count(text, words); n != 1 {
+		t.Fatalf("the watch was drawn %d times, want once — lifted into `waiting on you` and not again under its project:\n%s", n, text)
+	}
+	if !strings.Contains(text, homePhoneWaitingWord) {
+		t.Fatalf("the watch was not lifted into %q at all:\n%s", homePhoneWaitingWord, text)
+	}
+}

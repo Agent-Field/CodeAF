@@ -128,18 +128,10 @@ var tuiWords = map[string]tuiWord{
 		why:    "a row whose project folder is not there any more says so before enter is pressed",
 	},
 
-	// ── the switcher home became ─────────────────────────────────────────────
-	"switcherSectionWord": {
-		screen: "what wants you first",
-		why:    "the one section line over the flat ranked list",
-	},
-	"switcherGroupWord": {
-		screen: "alt+g group by project",
-		why:    "the key that turns the flat list into one block per project",
-	},
-	"switcherQuietWord": {
-		screen: "alt+q hide the quiet ones",
-		why:    "the key that drops everything that is neither asking nor moving",
+	// ── the panels home became ───────────────────────────────────────────────
+	"homeNeedsHeading": {
+		screen: "needs you",
+		why:    "the panel every question on the machine lands in, drawn on every resting home",
 	},
 	"switcherQuietSince": {
 		screen: "quiet since ",

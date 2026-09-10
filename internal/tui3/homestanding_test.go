@@ -527,10 +527,9 @@ func TestEnterOnAnItemOpensWhereItWasAsked(t *testing.T) {
 // with no conversation to compare against does not wear it at all.
 //
 // IT IS DRAWN WHEREVER [StandingItemRow] IS, which since the switcher landed is
-// the band under the phone tier and the drop-up under a query — the resting list
-// paints its own rows from the reading ([switcherPaintRow]) and has three marks
-// rather than five, and an item that only has NEWS earns no row on it at all
-// ([readSwitcher]). So this is pinned at the tier that still draws the band; the
+// the band under the phone tier and the drop-up under a query — the resting grid
+// paints its own rows from panel cells and has two marks rather than five, and an
+// item that only has NEWS earns no row on it at all ([readSwitcher]). So this is pinned at the tier that still draws the band; the
 // derivation itself is one function and [TestNewsNeverOverwritesTheLouderMarks]
 // holds it straight.
 func TestTheNewsGlyphIsDerivedFromWhenYouLastSpoke(t *testing.T) {
