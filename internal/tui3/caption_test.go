@@ -59,7 +59,10 @@ func TestTheCompositeStandsWhenTheModelSaidNothing(t *testing.T) {
 	es := captionFixture()
 	es = append(es[:1], es[2:]...)
 	got := captionsOf(es, 0)
-	if len(got) != 1 || got[0].text != "reading 2 files in internal/tui3" || got[0].source != captionMade {
+	// The fixture's reads have both come back, so the composed floor is in the
+	// past (caption.go's [captionPast]); what this test is about is that there
+	// IS a composed floor when the model narrated nothing.
+	if len(got) != 1 || got[0].text != "read 2 files in internal/tui3" || got[0].source != captionMade {
 		t.Fatalf("composite = %#v", got)
 	}
 }
