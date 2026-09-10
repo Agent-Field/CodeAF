@@ -2,10 +2,13 @@ package session
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/taxonomy"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -266,4 +269,263 @@ func textsOfKind(events []Event, kind EventKind) []string {
 		}
 	}
 	return said
+}
+
+// ── AND A MODEL THAT KEEPS REFUSING IS GIVEN UP ON THE SAME WAY ─────────────
+//
+// A cut stream and a refused request are one story: this model's budget is
+// spent, and there is another model. It did not used to be. The hop lived on
+// the cut road only, so a refusal storm walked the transport ladder and ended
+// the turn with a fallback chain that had never been asked — measured on
+// 2026-09-10, one 502 and three 429s between 13:00:17 and 13:01:32, while a
+// second model in the same session answered every call put to it.
+
+// refusedStep is one request the provider would not serve: a status, the
+// router's sentence, and the upstream it named. A 4xx that NAMED an upstream is
+// that upstream's refusal and another endpoint may serve it, which is what makes
+// it the wire rather than our own bytes ([provider.APIError.OurRequest]).
+func refusedStep(status int, message, upstream string) step {
+	return func(context.Context, []ai.Message) (*ai.Response, error) {
+		return nil, refusalOf(status, message, upstream, "")
+	}
+}
+
+// impatient shortens the wait between rungs to nothing, and nothing else.
+//
+// The ladder's SHAPE is what these tests are about — how many attempts, on which
+// model, in what order — and the schedule in front of it is 2s, 4s and 8s of
+// real time per model, which is a fixture that tests the clock. The count is
+// left at the product's own so the assertions below are about the budget a
+// person actually gets.
+func impatient(t *testing.T, agent *Agent, attempts int) {
+	t.Helper()
+	agent.limitsOnce.Do(func() {
+		agent.limits = taxonomy.Limits{
+			TransportAttempts: attempts,
+			TransportBackoff:  time.Millisecond,
+		}.Floored()
+	})
+}
+
+// retryNewsOf is the structured half of every retry this turn announced, with a
+// failure message that names any line that arrived without one — the payload is
+// promised on EVERY EventRetrying, and a surface reading it cannot tell "no news
+// here" from "this engine forgot".
+func retryNewsOf(t *testing.T, events []Event) []*RetryNews {
+	t.Helper()
+	var news []*RetryNews
+	for _, event := range events {
+		if event.Kind != EventRetrying {
+			continue
+		}
+		if event.Retry == nil {
+			t.Fatalf("a retry announced %q carried no news beside it", event.Text)
+		}
+		if strings.TrimSpace(event.Text) == "" {
+			t.Fatalf("a retry carried news and no sentence: %+v", *event.Retry)
+		}
+		news = append(news, event.Retry)
+	}
+	return news
+}
+
+// The whole shape, in one turn: the ladder is spent on refusals, the step moves,
+// and the answer arrives on the fallback with every row naming who did what.
+func TestARefusalStormMovesToTheNextModelAndTheReplyFinishesThere(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	completer := chained([]string{"other/model"},
+		refusedStep(502, "Bad gateway", "Together"),
+		refusedStep(429, "rate limited", "DeepInfra"),
+		refusedStep(429, "rate limited", "Fireworks"),
+		refusedStep(429, "rate limited", "Novita"),
+		func(_ context.Context, _ []ai.Message) (*ai.Response, error) {
+			return textResponse("the whole answer"), nil
+		},
+	)
+	agent, _ := newTestAgent(t, completer, func(config *Config) { config.SessionFile = path })
+	impatient(t, agent, taxonomy.DefaultTransportAttempts)
+	collected := collect(t, mustSubmit(t, agent, "go on"))
+
+	if failure, failed := firstOfKind(collected, EventError); failed {
+		t.Fatalf("the turn failed although a fallback answered: %v", failure.Err)
+	}
+	if got := completer.requests(); got != taxonomy.DefaultTransportAttempts+1 {
+		t.Fatalf("requests = %d, want the whole ladder and the answer on the fallback", got)
+	}
+	for index := 0; index < taxonomy.DefaultTransportAttempts; index++ {
+		if got := completer.model(index); got != "test/model" {
+			t.Fatalf("attempt %d rode %q, want the model the turn started on", index+1, got)
+		}
+	}
+	if got := completer.model(taxonomy.DefaultTransportAttempts); got != "other/model" {
+		t.Fatalf("the answering request rode %q, want other/model", got)
+	}
+
+	// THE MOVE IS SAID, AND IT IS SAID IN PARTS. The sentence names the model
+	// because the rest of the reply arrives in a different voice; Next names it
+	// again where a surface can read it without parsing anybody's prose.
+	news := retryNewsOf(t, collected)
+	var moved *RetryNews
+	for _, item := range news {
+		if item.Next != "" {
+			moved = item
+		}
+	}
+	if moved == nil {
+		t.Fatalf("no retry said the step was moving; they were %+v", news)
+	}
+	if moved.Next != "other/model" {
+		t.Fatalf("the step said it was moving to %q, want other/model", moved.Next)
+	}
+	if moved.Model != "test/model" {
+		t.Fatalf("the move blamed %q, want the model whose budget was spent", moved.Model)
+	}
+	if moved.Attempt != taxonomy.DefaultTransportAttempts || moved.Attempts != taxonomy.DefaultTransportAttempts {
+		t.Fatalf("the move was announced at %d of %d, want the whole budget spent",
+			moved.Attempt, moved.Attempts)
+	}
+	if !strings.Contains(moved.Reason, "turn") && !strings.Contains(moved.Reason, "take the request") {
+		t.Fatalf("the move's reason %q does not say what kept happening", moved.Reason)
+	}
+	// AND NO MACHINERY WORD REACHES THE PERSON, in the sentence or beside it.
+	for _, said := range []string{moved.Reason, textsOfKind(collected, EventRetrying)[len(news)-1]} {
+		for _, banned := range []string{"endpoint", "transport", "fallback", "verdict", "budget"} {
+			if strings.Contains(strings.ToLower(said), banned) {
+				t.Fatalf("%q leaks the machinery word %q", said, banned)
+			}
+		}
+	}
+
+	// THE RECORD NAMES WHO FAILED AND WHO ANSWERED. Four classifications, all on
+	// the model that could not serve it, numbered the way a person counts.
+	rows := journaledFailures(t, path)
+	if len(rows) != taxonomy.DefaultTransportAttempts {
+		t.Fatalf("%d classification rows, want one per spent attempt: %+v", len(rows), rows)
+	}
+	for i, row := range rows {
+		if row.Model != "test/model" {
+			t.Fatalf("row %d blamed %q; the fallback never failed at all", i+1, row.Model)
+		}
+		if row.Attempt != i+1 {
+			t.Fatalf("row %d is numbered %d", i+1, row.Attempt)
+		}
+		if row.Class != string(taxonomy.Transport) {
+			t.Fatalf("row %d was classified %q; nothing about who SERVED a request is evidence about who was asked",
+				i+1, row.Class)
+		}
+	}
+	if last := rows[len(rows)-1]; last.Action != string(taxonomy.ActionHop) {
+		t.Fatalf("the spent ladder did %q, want the step moved to the next model", last.Action)
+	}
+	// AND THE SEALED TURN NAMES THE MODEL THAT ACTUALLY ANSWERED.
+	sealed := ""
+	for _, entry := range journaledEntries(t, path, "usage") {
+		if entry.Usage != nil && !entry.Usage.Aux {
+			sealed = entry.Usage.Model
+		}
+	}
+	if sealed != "other/model" {
+		t.Fatalf("the turn was sealed on %q, want the model that answered it", sealed)
+	}
+	// The person's own pick is untouched: the move rescues this turn.
+	if got := agent.Model(); got != "test/model" {
+		t.Fatalf("the session moved to %q; a move rescues a turn, it does not re-pick a model", got)
+	}
+}
+
+// AND WHEN THE CHAIN IS WALKED OUT TOO, THE SENTENCE NAMES EVERY MODEL TRIED.
+// "A different model may answer" said to somebody who has just watched two of
+// them refuse is the surface not knowing what it did.
+func TestARefusalStormThatWalksTheWholeChainNamesEveryModelTried(t *testing.T) {
+	steps := make([]step, 0, 2*taxonomy.DefaultTransportAttempts)
+	for i := 0; i < 2*taxonomy.DefaultTransportAttempts; i++ {
+		steps = append(steps, refusedStep(429, "rate limited", "Together"))
+	}
+	completer := chained([]string{"second/model"}, steps...)
+	agent, _ := newTestAgent(t, completer, nil)
+	impatient(t, agent, taxonomy.DefaultTransportAttempts)
+	collected := collect(t, mustSubmit(t, agent, "go on"))
+
+	failure, failed := firstOfKind(collected, EventError)
+	if !failed {
+		t.Fatalf("a walked-out chain did not end the turn; events were %v", kinds(collected))
+	}
+	said := failure.Err.Error()
+	for _, want := range []string{"test/model", "second/model", "could not finish it either", "/model"} {
+		if !strings.Contains(said, want) {
+			t.Fatalf("the sentence %q does not contain %q", said, want)
+		}
+	}
+	for _, banned := range []string{"endpoint", "fallback", "transport", "budget"} {
+		if strings.Contains(strings.ToLower(said), banned) {
+			t.Fatalf("the sentence %q leaks the machinery word %q", said, banned)
+		}
+	}
+	if got := completer.requests(); got != 2*taxonomy.DefaultTransportAttempts {
+		t.Fatalf("requests = %d, want a whole budget on each of two models", got)
+	}
+	// EACH MODEL GOT A BUDGET OF ITS OWN. A fallback that inherited a spent one
+	// would be given up on before it had answered once.
+	for index := taxonomy.DefaultTransportAttempts; index < 2*taxonomy.DefaultTransportAttempts; index++ {
+		if got := completer.model(index); got != "second/model" {
+			t.Fatalf("request %d rode %q after the move, want second/model", index+1, got)
+		}
+	}
+}
+
+// `--one-model` IS A PERSON SAYING NO TO THIS, and it makes the move ABSENT
+// rather than broken: the ladder is walked, the turn ends on the sentence it has
+// always ended on, and nothing is ever asked of another model.
+func TestUnderOneModelARefusalStormNeverMoves(t *testing.T) {
+	steps := make([]step, 0, taxonomy.DefaultTransportAttempts)
+	for i := 0; i < taxonomy.DefaultTransportAttempts; i++ {
+		steps = append(steps, refusedStep(429, "rate limited", "Together"))
+	}
+	completer := chained([]string{"other/model"}, steps...)
+	agent, _ := newTestAgent(t, completer, func(config *Config) { config.OneModel = true })
+	impatient(t, agent, taxonomy.DefaultTransportAttempts)
+	collected := collect(t, mustSubmit(t, agent, "go on"))
+
+	if _, failed := firstOfKind(collected, EventError); !failed {
+		t.Fatalf("the spent ladder did not end the turn; events were %v", kinds(collected))
+	}
+	if got := completer.requests(); got != taxonomy.DefaultTransportAttempts {
+		t.Fatalf("requests = %d, want one budget and no move", got)
+	}
+	for index := 0; index < completer.requests(); index++ {
+		if got := completer.model(index); got != "test/model" {
+			t.Fatalf("request %d rode %q; the person pinned one model", index+1, got)
+		}
+	}
+	for _, item := range retryNewsOf(t, collected) {
+		if item.Next != "" {
+			t.Fatalf("a retry said it was moving to %q under --one-model", item.Next)
+		}
+	}
+}
+
+// AND OUR OWN BYTES ARE STILL ANSWERED AT ONCE. A 4xx that named no upstream is
+// the router reading the request we assembled and saying no; every endpoint
+// alive will say the same thing about the same bytes, and so will every model —
+// so there is nothing to ask again and nowhere to move.
+func TestARefusalOfOurOwnRequestNeitherRetriesNorMoves(t *testing.T) {
+	completer := chained([]string{"other/model"},
+		refusedStep(400, "messages: at least one message is required", ""),
+		func(_ context.Context, _ []ai.Message) (*ai.Response, error) {
+			return textResponse("never asked"), nil
+		},
+	)
+	agent, _ := newTestAgent(t, completer, nil)
+	impatient(t, agent, taxonomy.DefaultTransportAttempts)
+	collected := collect(t, mustSubmit(t, agent, "go on"))
+
+	if _, failed := firstOfKind(collected, EventError); !failed {
+		t.Fatalf("a refusal of our own request did not end the turn; events were %v", kinds(collected))
+	}
+	if got := completer.requests(); got != 1 {
+		t.Fatalf("requests = %d, want the one refusal and nothing after it", got)
+	}
+	if got := countOfKind(collected, EventRetrying); got != 0 {
+		t.Fatalf("%d retries were announced for a request no endpoint would take", got)
+	}
 }

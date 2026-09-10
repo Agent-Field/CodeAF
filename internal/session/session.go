@@ -382,6 +382,14 @@ const (
 	// typed belongs to a response that will never exist, and leaving it on screen
 	// would show half a dead answer above the live one.
 	//
+	// AND IT FIRES WHEN THE STEP MOVES TO ANOTHER MODEL, which is the same news
+	// about the same attempt and a different thing to draw: the rest of the reply
+	// arrives in a different voice, at a different price. [Event.Retry] is what
+	// tells the two apart — its Next names the model being moved to and is empty
+	// on an ordinary retry (retrynews.go) — and Text carries the whole sentence
+	// either way, so a surface that reads only Text is exactly as correct as it
+	// has always been.
+	//
 	// It is also the one place a surface learns that a wait is a RETRY rather
 	// than a first attempt, which is the difference between "waiting for" and
 	// "trying again". It never ends a turn: either the next attempt streams, or
@@ -818,6 +826,18 @@ type Event struct {
 	// (subharness_contract.go). It is nil on every other kind, and the ID beside
 	// it is the token a surface hands back to [Agent.ResolveSubharness].
 	Subharness *SubharnessCard
+
+	// Retry carries one [EventRetrying]'s payload in parts (retrynews.go): which
+	// model was being asked, how far into its patience the step is, why the
+	// attempt is void, and — when the step is moving — which model the rest of
+	// the reply will come from. It is nil on every other kind.
+	//
+	// It rides behind a json tag of its own so a peer built before it existed
+	// simply does not see it (internal/remote's [EventWire] embeds this struct
+	// whole), and an older engine's retry arrives with none — which is the same
+	// thing this build's surface must already handle, because [Event.Text] is
+	// still the whole line and always has been.
+	Retry *RetryNews `json:"Retry,omitempty"`
 
 	// Steer carries one sentence spliced into a running turn, on
 	// EventSteerAccepted, EventSteerConsumed and EventSteerFellThrough alone; it
