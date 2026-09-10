@@ -1250,7 +1250,7 @@ change to that test's mind and not only to the bytes. The cap only ever moves
 with this section in the same commit.
 
 **The choice wave paid it back and the cap is 48,000 again (2026-09-10).** The
-measured prefix is **45,961**, which is 2,039 under the restored cap and 674
+measured prefix is **46,096**, which is 1,904 under the restored cap and 539
 below where the day started.
 What it bought is one picture where three rule lists used to be. The belt's
 routing bullets sorted on WIDTH — and a real model read a read-only survey of
@@ -1281,7 +1281,7 @@ a rule in two places is the cheapest thing in a budget to spend twice. `wide`,
 `no_progress`, `max_steps`, `depends_on`, `deliverable`, `acceptance`, `ground`,
 `expects` and `checks` each kept their rule and lost the paragraph around it;
 `model` is unchanged. Every em dash came out of every description string, small
-models tokenising them badly. The tool block went **23,369 → 21,916**.
+models tokenising them badly. The tool block went **23,369 → 21,862**.
 
 ## Following through on a completion claim
 

@@ -177,7 +177,7 @@ var taskDescription = "Hand self-contained work to a task outside this conversat
 var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"title":{"type":"string","description":"One line naming the work as a person would say it"},` +
 	`"summary":{"type":"string","description":"Two or three lines the person reads to decide whether to redirect it"},` +
-	`"brief":{"type":"string","description":"THE WORK, self-contained: what to do, the material and the names in it, constraints, and what you have already found and ruled out. It cannot ask you anything, so settle here everything it would stop and ask. Name the plausible-looking wrong answer and forbid it; every line must be one the worker could disobey."},` +
+	`"brief":{"type":"string","description":"THE WORK, self-contained: what to do, the material and the names in it, constraints, and what you have already found and ruled out. It cannot ask you anything, so settle here everything it would stop and ask. Name the plausible-looking wrong answer and forbid it; every line must be one the worker could disobey. Replacing a failed task, carry its findings here: the new worker inherits neither its transcript nor its report."},` +
 	`"deliverable":{"type":"string","description":"What must exist at the end, and where. Name the thing, not the activity"},` +
 	`"where":{"type":"string","description":"Path the person named, or 'in place'; never guess"},` +
 	`"ground":{"type":"string","description":"Optional absolute path: the repository or folder the work is about, when it is not this conversation's own"},` +
