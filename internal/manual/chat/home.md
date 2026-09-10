@@ -38,6 +38,10 @@ Every kind of question can be answered this way, not a chosen few: the whole que
 in the file home reads, and the answer goes back through the one door that knows which
 part of the engine is waiting on it.
 
+**Not yet a question the model raised with `ask`.** That one is drawn on the row
+like any other and no key over it takes it; press `enter` to bring the conversation
+here and answer it above the box where it was raised.
+
 Home leaves the answer on the other window's doorstep, so the band says
 `answered · waiting for it to pick that up` until that window applies it — a second or
 two. If it could not be left at all, it says
