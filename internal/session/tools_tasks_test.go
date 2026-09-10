@@ -12,9 +12,13 @@ package session
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A MODEL CAN LOOK AT WORK THAT IS STILL GOING. It names the task, and what
@@ -459,5 +463,197 @@ func TestTheTasksSchemaSaysStopEndsWorkAndSayDoesNot(t *testing.T) {
 	if say := schema.Properties["say"].Description; !strings.Contains(say, "It ends nothing") ||
 		!strings.Contains(say, "stop is the door that ends work") {
 		t.Fatalf("say does not say that it ends nothing:\n%s", say)
+	}
+}
+
+// ── which task a bare number names ──────────────────────────────────────────
+
+// THE INDEX IS THE PROJECT'S, AND IDS RESTART WITH EVERY CONVERSATION.
+//
+// Every conversation in a project appends to one file, so a project that has had
+// four conversations has four task 2s in it, and [LookupTask] answers with the
+// newest — right for a slug, wrong for a number. On 2026-09-09 a conversation
+// holding a recovered task 2 asked to settle it; the number matched another
+// conversation's newer row, and the model was told there was "no graph left to
+// settle it in" and pointed at a worktree belonging to work it had never seen.
+//
+// A number said in a conversation means that conversation's task.
+func TestABareIdNamesThisConversationsTaskAndNotAnotherConversationsRow(t *testing.T) {
+	bucket := t.TempDir()
+	mine := filepath.Join(bucket, "mine")
+	if err := os.MkdirAll(mine, 0o700); err != nil {
+		t.Fatalf("session folder: %v", err)
+	}
+	// The other conversation's task 2, landed a minute ago — NEWER than ours, so
+	// it is the row the newest-wins search hands back.
+	appendTaskIndex(filepath.Join(bucket, taskIndexName), TaskIndexEntry{
+		ID: "2", Name: "somebody-elses-work", Label: "Somebody else's work",
+		Title: "Somebody else's work", Status: string(TaskDone), SessionID: "theirs",
+		EndedAt: time.Now(), ArtifactURI: "file:///somewhere/else/trees/2",
+	})
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Place = Place{Dir: mine}
+	})
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+		node.graph.complete(node, TaskUnverified)
+	})
+	// Two nodes, so that ours is task 2 as well: the collision is the test.
+	first := graph.reserve()
+	graph.admit(first, taskSpec{title: "Read the journals", named: true, brief: "b", acceptance: "a"})
+	waitDoneNode(t, graph.node(first))
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Hidden rental digs", named: true, brief: "b", acceptance: "a"})
+	waitDoneNode(t, graph.node(id))
+	if id != 2 {
+		t.Fatalf("the node under test is %d, want 2", id)
+	}
+	// OURS IS THE OLDER PIECE OF WORK, which is the shape the defect needs and
+	// the shape it was found in: task 2 ran in an earlier conversation and this
+	// one recovered it from the checkpoint, while the row it collided with landed
+	// minutes ago. The newest-wins search hands back the newest, and by the clock
+	// that is the stranger.
+	agedTaskNode(graph, first, time.Now().Add(-3*time.Hour))
+	agedTaskNode(graph, id, time.Now().Add(-3*time.Hour))
+
+	// A READ BY NUMBER IS THIS CONVERSATION'S TASK.
+	read, isError := runTool(t, agent, "tasks", `{"id":"2"}`)
+	if isError {
+		t.Fatalf("reading task 2 was refused:\n%s", read)
+	}
+	if !strings.Contains(read, "Hidden rental digs") || strings.Contains(read, "Somebody else's work") {
+		t.Fatalf("task 2 read the wrong conversation's row:\n%s", read)
+	}
+
+	// AND SO IS A SETTLE. This is the call that was refused.
+	text, isError := runTool(t, agent, "tasks", `{"id":"2","resolve":"accept","say":"I read the branch"}`)
+	if isError {
+		t.Fatalf("settling this conversation's task 2 was refused:\n%s", text)
+	}
+	if strings.Contains(text, "somewhere/else") {
+		t.Fatalf("the answer points at another conversation's worktree:\n%s", text)
+	}
+	if state := graph.node(id).stateNow(); state != TaskDone {
+		t.Fatalf("this conversation's task 2 is %q, want done", state)
+	}
+
+	// A NAME STILL MEANS THE NEWEST, whoever ran it: a slug carries no
+	// conversation in it, and "the X task" said out loud means the last one.
+	byName, isError := runTool(t, agent, "tasks", `{"id":"somebody-elses-work"}`)
+	if isError || !strings.Contains(byName, "Somebody else's work") {
+		t.Fatalf("a slug no longer reaches the newest row that wears it:\n%s", byName)
+	}
+}
+
+// HANDING A DECISION TO AFORGE IS A PROMISE ITS OWN DOOR HAS TO BE ABLE TO KEEP.
+//
+// The person presses "let aforge decide", the engine marks the node and hands the
+// model a line about it, and the model answers with `tasks … resolve`. That is
+// one road, and it ran through the id collision above: the person's door found
+// the node by id and the model's door found somebody else's row, so the card went
+// on saying `your call` with nothing able to move it.
+func TestHandingAYourCallToTheModelAndItsResolveAreOneRoad(t *testing.T) {
+	bucket := t.TempDir()
+	mine := filepath.Join(bucket, "mine")
+	if err := os.MkdirAll(mine, 0o700); err != nil {
+		t.Fatalf("session folder: %v", err)
+	}
+	appendTaskIndex(filepath.Join(bucket, taskIndexName), TaskIndexEntry{
+		ID: "1", Name: "another-conversations-one", Label: "Another conversation's one",
+		Title: "Another conversation's one", Status: string(TaskDone), SessionID: "theirs",
+		EndedAt: time.Now(), ArtifactURI: "file:///somewhere/else/trees/1",
+	})
+	// AskConsent is what tells the engine somebody is sitting there, and it is
+	// what leaves a your-call landing in the PERSON'S hands: with nobody watching
+	// the model holds every one of them by policy ([Agent.settlePolicy]) and the
+	// card this test is about is never drawn.
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Place, config.AskConsent = Place{Dir: mine}, true
+	})
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+		node.graph.complete(node, TaskUnverified)
+	})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Hidden rental digs", named: true, brief: "b", acceptance: "a"})
+	waitDoneNode(t, graph.node(id))
+	if owner := graph.node(id).decidedBy(); owner == TaskAskOwnerModel {
+		t.Fatal("the landing handed itself over, so there is no press to test")
+	}
+	// Recovered work: it ran hours ago, and the row it shares a number with
+	// landed since — which is what sent the model's door to the wrong task.
+	agedTaskNode(graph, id, time.Now().Add(-3*time.Hour))
+
+	if err := agent.HandUnverifiedToModel(id); err != nil {
+		t.Fatalf("handing the decision over: %v", err)
+	}
+	if owner := graph.node(id).notice().Decider; owner != TaskAskOwnerModel {
+		t.Fatalf("the node says %q is deciding, want the model", owner)
+	}
+	text, isError := runTool(t, agent, "tasks",
+		fmt.Sprintf(`{"id":"%d","resolve":"accept","say":"the branch has the change and the test"}`, id))
+	if isError {
+		t.Fatalf("the model could not settle what it was handed:\n%s", text)
+	}
+	if state := graph.node(id).stateNow(); state != TaskDone {
+		t.Fatalf("the handed-over node is %q, want done", state)
+	}
+}
+
+// AND A SECOND PRESS IS NOT A SECOND HAND-OVER. Pressing "let aforge decide"
+// twice sent the model two identical lines about one decision it was already
+// holding; the answer now is the plain fact.
+func TestHandingTheSameDecisionOverTwiceSaysItIsAlreadyHandedOver(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.AskConsent = true
+	})
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+		node.graph.complete(node, TaskUnverified)
+	})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Hidden rental digs", named: true, brief: "b", acceptance: "a"})
+	waitDoneNode(t, graph.node(id))
+
+	if err := agent.HandUnverifiedToModel(id); err != nil {
+		t.Fatalf("handing the decision over: %v", err)
+	}
+	said := len(steeringQueue(agent))
+	err := agent.HandUnverifiedToModel(id)
+	if err == nil {
+		t.Fatal("a second hand-over was taken as a fresh one")
+	}
+	if !strings.Contains(err.Error(), handedAlreadyWord) {
+		t.Fatalf("the second press answers %q, want it to say it is already handed over", err)
+	}
+	// AND IT IS ITS OWN SENTINEL. A card told the question was "already answered"
+	// would stop asking over work that is still waiting on one, so the surface has
+	// to be able to tell this apart from a node somebody settled elsewhere
+	// (internal/tui3's settleRefused).
+	if !errors.Is(err, ErrTaskHandedOver) || errors.Is(err, ErrTaskDecided) {
+		t.Fatalf("the second press answers with %v, which a surface cannot tell from a settled node", err)
+	}
+	if again := len(steeringQueue(agent)); again != said {
+		t.Fatalf("the second press enqueued %d more lines for the model", again-said)
+	}
+	// AND TAKING IT BACK MAKES A HAND-OVER POSSIBLE AGAIN: the refusal is about
+	// who is holding the question, not a door that closes for good.
+	if err := agent.TakeBackDecision(id); err != nil {
+		t.Fatalf("taking the decision back: %v", err)
+	}
+	if err := agent.HandUnverifiedToModel(id); err != nil {
+		t.Fatalf("handing it over after taking it back: %v", err)
+	}
+}
+
+// agedTaskNode backdates one settled node's landing, so a test can build the
+// clock a recovered graph has: work that finished hours ago, beside rows that
+// landed since.
+func agedTaskNode(graph *TaskGraph, id uint64, when time.Time) {
+	graph.mu.Lock()
+	defer graph.mu.Unlock()
+	if node := graph.nodes[id]; node != nil {
+		node.ended = when
 	}
 }

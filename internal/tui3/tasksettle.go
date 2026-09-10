@@ -956,7 +956,14 @@ func (a *app) settleCard(card *taskDone, answer settleAnswer) {
 		// `task.settle` to `auto` on the way past, which is a preference disguised
 		// as an answer; this hands over THIS card and nothing else, and the standing
 		// row is in /settings under Session.
-		if err := doors.HandUnverifiedToModel(card.id); err != nil {
+		// A SECOND PRESS IS THE SAME ANSWER AND NOT A REFUSAL. Pressing this twice
+		// used to hand the model the same decision twice, in two identical lines;
+		// the engine now says the question is already in its hands
+		// ([session.ErrTaskHandedOver]), and what the card owes for that is the row
+		// it would have drawn anyway — the state is exactly what the person asked
+		// for. Every other refusal is still one.
+		if err := doors.HandUnverifiedToModel(card.id); err != nil &&
+			!errors.Is(err, session.ErrTaskHandedOver) {
 			a.settleRefused(card, err)
 			return
 		}

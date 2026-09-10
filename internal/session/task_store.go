@@ -436,6 +436,28 @@ type taskRecord struct {
 	// seconds after it is recorded, said about a second momentary fact.
 	Decider TaskAskOwner `json:"decider,omitempty"`
 
+	// Resolving says A MERGE ROUND WAS IN FLIGHT when this file was written
+	// (task_merge_round.go's [TaskNode.claimResolving]): the person pressed
+	// `resolve it` on a conflict card, a worker was opened in the working copy,
+	// and it had not landed yet.
+	//
+	// IT IS ON THE RECORD FOR THE SENTENCE A RESUME OWES. That worker dies with
+	// the process, and the node it was working on is left exactly as it was —
+	// `your call`, its files still clashing, its card still offering the same
+	// three answers. Without this the resume said nothing at all about it, and a
+	// person who had pressed a button and watched a round start came back to a
+	// card that looked as though they never had (2026-09-09, task 2 of an
+	// apartment search: the round's own journal ends mid-read at 03:09:02 and the
+	// node still reads `conflicts with your branch`).
+	//
+	// IT IS NEVER RESTORED AS TRUE. The claim it records exists to stop TWO
+	// workers editing one working copy, and the worker it was held for is gone —
+	// so a resume that kept the flag would refuse the person's next press forever
+	// ([TaskGraph.rehydrate] clears it as it counts it). Nothing restarts the
+	// round: a round costs a model call, and a session that spent one on its own
+	// initiative on the way up is a session spending the person's money for them.
+	Resolving bool `json:"resolving,omitempty"`
+
 	// Kind is what sort of node this was ([TaskKind]), and empty is the ordinary
 	// one: work in a worktree. It is on the record for ONE reader — the recovery
 	// that has to say what an interrupted node left behind — because the two
@@ -1056,6 +1078,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Attempt:        n.attempt,
 		Interrupted:    n.interrupted,
 		Decider:        n.decider,
+		Resolving:      n.resolving,
 		Kind:           n.kind,
 		Offer:          n.offer,
 		Assignment:     recordedAssignment(n.assignment),
@@ -1206,10 +1229,17 @@ type taskRecovery struct {
 	// the note ([durableDelivery]). Without them a resume marked its own
 	// re-telling as said the moment it composed it, so a session closed unread
 	// twice lost the landing exactly as the first enqueue-time mark did.
-	deliveries  []durableDelivery
-	done        int
-	failed      int
-	unverified  int
+	deliveries []durableDelivery
+	done       int
+	failed     int
+	unverified int
+	// cutRounds is how many of those `your call` nodes had a MERGE ROUND in
+	// flight when the process ended (task_merge_round.go). They are a subset of
+	// unverified and never a category of their own: the node is in exactly the
+	// state it was in before the round started, and what the clause adds is the
+	// one thing the card cannot say for itself — that the press the person
+	// remembers making did happen, and bought nothing.
+	cutRounds   int
 	interrupted int
 	waiting     int
 	// designs is counted apart from interrupted, and has to be: an interrupted
@@ -1271,6 +1301,28 @@ func (r taskRecovery) any() bool {
 // the one interrupted node that does NOT resume ([interrupt]):
 //
 //	recovered task graph: 2 done · 1 design did not finish (nothing saved) · 1 waiting
+//
+// cutRoundsWord is the clause under the your-call count for the rounds that
+// died with the process, and "" when none did.
+//
+// IT SAYS "WAS CUT" AND NEVER "FAILED". Nothing was found wrong with the work
+// and nothing was lost: the round's worker stopped existing, the working copy is
+// where it was, and the card is offering the same three answers. The one thing
+// it must NOT imply is that anything is being retried — nothing restarts a round
+// but the person pressing again.
+func cutRoundsWord(unverified, cut int) string {
+	switch {
+	case cut <= 0:
+		return ""
+	case cut == 1 && unverified == 1:
+		return "its merge round was cut"
+	case cut == 1:
+		return "1 with a merge round cut"
+	default:
+		return strconv.Itoa(cut) + " with a merge round cut"
+	}
+}
+
 func (r taskRecovery) note() string {
 	if !r.any() {
 		return ""
@@ -1287,7 +1339,11 @@ func (r taskRecovery) note() string {
 		parts = append(parts, strconv.Itoa(r.failed)+" "+taskWordIncomplete)
 	}
 	if r.unverified > 0 {
-		parts = append(parts, strconv.Itoa(r.unverified)+" "+taskWordYourCall)
+		clause := strconv.Itoa(r.unverified) + " " + taskWordYourCall
+		if word := cutRoundsWord(r.unverified, r.cutRounds); word != "" {
+			clause += " (" + word + ")"
+		}
+		parts = append(parts, clause)
 	}
 	if r.interrupted > 0 {
 		parts = append(parts, strconv.Itoa(r.interrupted)+" interrupted ("+keptBranches(r.branches)+")")
@@ -1401,6 +1457,44 @@ func (a *Agent) recoverTasks() {
 	}
 }
 
+// countSettled files ONE node that was not running when the file was written,
+// and it is a function of its own because [TaskGraph.rehydrate] is at its
+// ending budget (internal/session's complexity ratchet) — the counting is a
+// decision about one record and nothing about the graph, so it reads better
+// here anyway.
+//
+// It takes a POINTER because one of the four answers edits the record: a merge
+// round's claim is dropped as it is counted, and the record the caller goes on
+// to restore has to be the edited one.
+func (r *taskRecovery) countSettled(record *taskRecord) {
+	switch record.State {
+	case TaskDone:
+		r.done++
+	case TaskFailed:
+		r.failed++
+	case TaskUnverified:
+		// Counted apart from both: it is not work that failed and it is not work
+		// still to come, it is work waiting on a person (task_contract.go's
+		// TaskUnverified). A resumed session that filed it under "waiting" would
+		// be telling somebody the scheduler will get to it, and the scheduler
+		// never will.
+		r.unverified++
+		// AND A ROUND THAT WAS IN FLIGHT IS SAID OUT LOUD. The person pressed
+		// `resolve it`, a worker opened in the working copy, and the process died
+		// under it — so the card is back offering the same three answers it
+		// offered before they pressed, which without a word about it reads as a
+		// press that never happened. The claim itself is dropped here: it existed
+		// to stop a second worker joining the first, and the first is gone
+		// ([taskRecord.Resolving] states the whole rule).
+		if record.Resolving {
+			r.cutRounds++
+			record.Resolving = false
+		}
+	default:
+		r.waiting++
+	}
+}
+
 // rehydrate rebuilds the graph from a checkpoint and reconciles it with the
 // disk. It is the pure half of recovery: no provider, no scheduling, nothing
 // that cannot be done with a file and a repository.
@@ -1438,21 +1532,7 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 				recovery.branches = append(recovery.branches, kept)
 			}
 		} else {
-			switch record.State {
-			case TaskDone:
-				recovery.done++
-			case TaskFailed:
-				recovery.failed++
-			case TaskUnverified:
-				// Counted apart from both: it is not work that failed and it is
-				// not work still to come, it is work waiting on a person
-				// (task_contract.go's TaskUnverified). A resumed session that
-				// filed it under "waiting" would be telling somebody the
-				// scheduler will get to it, and the scheduler never will.
-				recovery.unverified++
-			default:
-				recovery.waiting++
-			}
+			recovery.countSettled(&record)
 		}
 		records = append(records, record)
 	}

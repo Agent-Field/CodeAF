@@ -28,10 +28,27 @@ const (
 	// two numbers for one bargain drift apart.
 	manualPageCap = bare.ResultByteCap
 	// manualListCap bounds the lists that tell the model what to ask for next
-	// — the page names, a page's headings. A quarter of a page is room for
-	// every heading of the longest page there is, twice over, so the list is
-	// whole in practice and cannot become the flood it exists to prevent.
-	manualListCap = manualPageCap / 4
+	// — the page names, a page's headings. HALF A PAGE, which is room for every
+	// heading of the longest page there is with a page's worth of growth left in
+	// it, so the list is whole in practice and cannot become the flood it exists
+	// to prevent.
+	//
+	// IT WAS A QUARTER, AND A QUARTER STOPPED BEING TRUE. `tasks` is the longest
+	// page and its headings — deliberately long, because a heading is the search
+	// index and people search in their own words — reached 12,798 bytes of a
+	// 12,800-byte budget. Two bytes. The next `##` anybody added to that page
+	// pushed four headings out of the cut notice and turned
+	// TestEverySectionTheCutNamesComesBackWhole red on dev, over a change that had
+	// nothing to do with this file (#771, 2026-09-09) — and a bound that fails a
+	// stranger's pull request for writing a manual section is a bound that will be
+	// worked around rather than read.
+	//
+	// THE LIST IS WHAT THE CUT IS FOR. A page held back with headings it will not
+	// name is a page whose rest is unreachable, which is the exact failure this
+	// whole file exists to stop; the notice is subtracted from the page text
+	// shown, so what a bigger list spends is prose the reader can ask for by name
+	// afterwards. That is the right way round.
+	manualListCap = manualPageCap / 2
 )
 
 // boundedPage returns a page whole when it fits and a cut one when it does not,

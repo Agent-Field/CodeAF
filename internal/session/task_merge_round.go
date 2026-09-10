@@ -448,16 +448,22 @@ func (n *TaskNode) spendMergeRoundCount() {
 // [Agent.ResolveConflict] owes a surface: a person pressing the key twice must
 // read one plain line rather than start a second worker in the same working copy
 // as the first.
+//
+// AND THE CLAIM IS WRITTEN DOWN, which is what lets a resume say the round was
+// cut rather than say nothing at all ([taskRecord.Resolving]). The checkpoint is
+// taken with the lock let go of, because [TaskGraph.checkpoint] takes it itself.
 func (n *TaskNode) claimResolving() bool {
 	if n == nil || n.graph == nil {
 		return false
 	}
 	n.graph.mu.Lock()
-	defer n.graph.mu.Unlock()
 	if n.resolving {
+		n.graph.mu.Unlock()
 		return false
 	}
 	n.resolving = true
+	n.graph.mu.Unlock()
+	n.graph.checkpoint()
 	return true
 }
 
@@ -468,6 +474,7 @@ func (n *TaskNode) releaseResolving() {
 	n.graph.mu.Lock()
 	n.resolving = false
 	n.graph.mu.Unlock()
+	n.graph.checkpoint()
 }
 
 // ResolveConflict spends ONE MORE merge round on a node whose branch would not

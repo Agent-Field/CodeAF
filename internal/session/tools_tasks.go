@@ -494,7 +494,7 @@ func (a *Agent) oneTask(ctx context.Context, token string, parsed tasksArguments
 		return "stop ends the task, so it cannot be combined with continue, resolve or forward; send one action at a time.", true, nil
 	}
 	rows := a.taskRows()
-	entry, found := LookupTask(rows, token)
+	entry, found := a.taskByToken(rows, token)
 	if !found {
 		// CONTINUE ON A MISS IS NOT "NO TASK". The person named a number and
 		// asked to re-arm it; answering as a search miss lets the model
@@ -745,11 +745,60 @@ func (a *Agent) taskRows() []TaskIndexEntry {
 	return rows
 }
 
+// taskByToken finds the ONE task a token names, and it asks THIS CONVERSATION'S
+// LIVE GRAPH BEFORE IT ASKS THE FILE.
+//
+// THE INDEX IS THE PROJECT'S AND NOT THE CONVERSATION'S, which is the whole
+// reason this function exists. Every conversation in a project appends to one
+// file (task_index.go's [Config.taskIndexFile]) and ids restart with every
+// conversation, so the project's rows hold as many task 2s as it has had
+// conversations — and [LookupTask] answers with the NEWEST of them, which is
+// right for a slug and wrong for a number. On 2026-09-09 a conversation holding
+// a recovered task 2 asked to settle it, the number matched a DIFFERENT
+// conversation's newer row, and the model was refused with "there is no graph
+// left to settle it in" and pointed at a stranger's worktree — over a node this
+// session was holding all along.
+//
+// A NAME STILL MEANS THE NEWEST. A slug is derived from a title and carries no
+// conversation in it, so "the nil-map task" said out loud means the last one
+// whoever ran it, exactly as it always did.
+//
+// AND A NODE ASKS FOR NOTHING WIDER THAN ITS OWN FAMILY. Inside a node
+// [Agent.taskRows] is already only the pieces it handed out, and reaching into
+// the graph by id here would walk straight past that scope — so this preference
+// is a conversation's alone.
+func (a *Agent) taskByToken(rows []TaskIndexEntry, token string) (TaskIndexEntry, bool) {
+	token = strings.ToLower(strings.TrimSpace(token))
+	if token == "" {
+		return TaskIndexEntry{}, false
+	}
+	if a.config.taskID == 0 {
+		if id := taskIDNumber(token); id != 0 && a.taskNode(id) != nil {
+			a.mu.Lock()
+			session := a.sessionID()
+			a.mu.Unlock()
+			for _, entry := range rows {
+				if entry.SessionID == session && strings.TrimSpace(entry.ID) == token {
+					return entry, true
+				}
+			}
+		}
+	}
+	return LookupTask(rows, token)
+}
+
 // thisSessionTask resolves a row to a node of THIS session's graph. A row from
-// an earlier conversation, or one whose id this graph never held, is not one:
-// ids restart with every conversation (see [TaskIndexEntry.ID]), so the pair is
-// what identifies a node and matching on the number alone would read a live
-// task 7 as last month's task 7.
+// another conversation, or one whose id this graph never held, is not one: ids
+// restart with every conversation (see [TaskIndexEntry.ID]), so the pair is what
+// identifies a node and matching on the number alone would read a live task 7 as
+// last month's task 7.
+//
+// A RECOVERED GRAPH IS THIS SESSION'S GRAPH. A conversation that reopened a
+// checkpoint is holding those nodes now — the person's own doors reach them by
+// id ([Agent.HandUnverifiedToModel], [Agent.Cancel]) — and the rows the graph
+// writes for them carry THIS session's id ([Agent.liveTaskRows]), so the test
+// below is already true for them. What was not true was the row this reached:
+// see [Agent.taskByToken], which is where that was fixed.
 func (a *Agent) thisSessionTask(entry TaskIndexEntry) (uint64, bool) {
 	a.mu.Lock()
 	session := a.sessionID()

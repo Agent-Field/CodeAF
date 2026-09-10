@@ -2381,6 +2381,15 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 	if state := node.stateNow(); state != TaskUnverified {
 		return settledAlready(id, state)
 	}
+	// AND A SECOND PRESS IS NOT A SECOND HAND-OVER. On 2026-09-09 the card was
+	// pressed twice twenty-seven seconds apart and the model was handed the same
+	// decision twice, in two identical lines — a second instruction about a
+	// question it was already holding, which is an invitation to answer it twice.
+	// The honest answer to the second press is what is already true, and the card
+	// draws it exactly as it draws every other refusal these doors give.
+	if node.decidedBy() == TaskAskOwnerModel {
+		return fmt.Errorf("task %d is %s: %w", id, handedAlreadyWord, ErrTaskHandedOver)
+	}
 	// AND THE NODE RECORDS WHO IS HOLDING IT, so that the card in front of the
 	// person stops offering them chips they have just handed over and says who is
 	// deciding instead. It is the same mark `task.settle = auto` makes at the
@@ -2392,6 +2401,31 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 		taskNote(notice, taskURI(node.journalPath()), TaskSettleAuto, a.quietAddress()))
 	a.emitTaskUpdate(notice)
 	return nil
+}
+
+// handedAlreadyWord is what a repeated hand-over answers with, in the person's
+// own vocabulary for the thing they pressed — the card says aforge is deciding,
+// so the refusal says the same word back rather than naming a field.
+const handedAlreadyWord = "already handed to aforge"
+
+// ErrTaskHandedOver says the second press changed nothing because the first one
+// already did it, and it is a SEPARATE sentinel from [ErrTaskDecided] because
+// the two are opposite facts about the card in front of somebody. A decided node
+// is over and its card stops asking; a handed-over one is still `your call`,
+// still waiting on an answer, and the only thing that moved is whose hands the
+// question is in — so a surface that drew "already answered" over it would be
+// reporting a decision nobody has made (internal/tui3's tasksettle.go).
+var ErrTaskHandedOver = errors.New("session: that task is already handed to aforge")
+
+// decidedBy reads who is holding one node's question, with the graph taken for
+// the read the way every other reader of a node's fields takes it.
+func (n *TaskNode) decidedBy() TaskAskOwner {
+	if n == nil || n.graph == nil {
+		return ""
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.decider
 }
 
 // holdsDecision writes who is holding one node's question. It is the graph's

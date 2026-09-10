@@ -475,6 +475,42 @@ func TestLettingAforgeDecideThisOneWritesNoSetting(t *testing.T) {
 	}
 }
 
+// AND A SECOND PRESS IS THE SAME ANSWER, NOT A REFUSAL. The owner pressed this
+// twice twenty-seven seconds apart and the model was handed one decision in two
+// identical lines; the engine refuses the repeat now, and what the card owes for
+// that refusal is the row it would have drawn anyway — the question really is in
+// aforge's hands, which is what the person asked for.
+func TestPressingLetAforgeDecideTwiceStillReadsAsHandedOver(t *testing.T) {
+	a, agent := settleApp(t)
+	card := landUnverified(t, a)
+
+	a.settleCard(card, settleHand)
+	// THE SECOND PRESS LANDS ON A CARD THAT HAS NOT CAUGHT UP, which is the only
+	// way it can happen and the way it did: the surface stops offering this the
+	// moment it knows the model is holding the question, so a repeat is a press on
+	// a row drawn before that. The engine is the backstop, and this is what the
+	// stale card does with its answer.
+	agent.refuse = fmt.Errorf("task 7 is already handed to aforge: %w", session.ErrTaskHandedOver)
+	card.status.Ask.Owner = session.TaskAskOwnerPerson
+	card.decided, card.trouble = "", ""
+	a.settleCard(card, settleHand)
+
+	if card.decided != settleHandedLine {
+		t.Fatalf("the second press reads %q, want %q", card.decided, settleHandedLine)
+	}
+	if card.trouble != "" {
+		t.Fatalf("the second press drew trouble: %q", card.trouble)
+	}
+	if card.status.Ask.Owner != session.TaskAskOwnerModel {
+		t.Fatalf("the card says %q is holding it after a second press", card.status.Ask.Owner)
+	}
+	// AND IT IS NEVER READ AS A NODE SOMEBODY ELSE SETTLED: that card stops
+	// asking, and this one is still waiting on an answer.
+	if strings.Contains(card.decided, settleGoneLine) {
+		t.Fatalf("a handed-over card reads as already answered: %q", card.decided)
+	}
+}
+
 // `[s] tell it` OPENS THE PAGE AND RESOLVES NOTHING. "Looks good" typed on a
 // card must never silently become an accept.
 func TestTellingItSaysSomethingAndSettlesNothing(t *testing.T) {

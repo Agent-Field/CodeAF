@@ -414,6 +414,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// existed all it could do was say "stop" into the task.
 		{"can I tell the chat to stop a task", "task-controls"},
 		{"I asked it to stop task 2 and it kept going", "task-controls"},
+		// The your-call doors, asked the four ways somebody arrives at them: the
+		// hand-over that did not take, the model's own account of why, the second
+		// press, and a merge round that died with the process it was running in.
+		{"I told aforge to decide and it still says your call", "task-controls"},
+		{"the model says the task graph expired", "task-controls"},
+		{"I pressed let aforge decide twice", "task-controls"},
+		{"I pressed resolve it and nothing happened", "task-controls"},
 		// The navigation wave: opening a task somebody else's conversation is
 		// running, what that page can and cannot say, and the two things about the
 		// tasks place a person meets before any of it — what the box does, and why

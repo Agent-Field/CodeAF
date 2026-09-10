@@ -73,6 +73,52 @@ and spending. A real stop never reaches the check and is never handed back for a
 done`, or `stopped`, or `your call`, in the words your screen is showing. Work running in
 **another aforge window** cannot be stopped from here — the window that owns it has to.
 
+## I told aforge to decide and it still says your call — the model says there is no graph left, the task graph expired, I pressed let aforge decide twice
+
+Pressing `let aforge decide` on a your-call card hands **that one card** to the model
+(it changes no setting) and puts a line in front of it about the work. The model then
+reads the branch and answers with accept, not right, or check it again.
+
+**If the card stayed `your call`, the model's door used to be narrower than yours.** Your
+press finds the task by its id in the conversation you are sitting in. The model's `tasks`
+tool looked the number up in the **project's** list of finished work — and every
+conversation in a project appends to that one list, while task numbers start again at 1
+in each conversation. So "task 2" could match a different conversation's task 2, and the
+model was told `task 2 ran in an earlier conversation, so there is no graph left to settle
+it in` and pointed at a worktree belonging to work it had never seen. A number now means
+**this conversation's** task, so the two doors reach the same work. A *name* — `@hidden-rental-digs` —
+still means the newest task anywhere in the project that wears it, which is what a name is for.
+
+**Pressing it twice does nothing the first press did not do.** The second press answers
+`already handed to aforge` and sends the model nothing further; the card keeps reading
+`handed to aforge for this one`. If you want it back, press `take it back` and the chips
+return.
+
+**A recovered task is this conversation's task.** Reopening a conversation brings its
+graph back — `recovered task graph: 1 done · 1 your call` — and everything the card offers
+works on those tasks, the model's answers included.
+
+## The merge round stopped when aforge restarted — I pressed resolve it and nothing happened, my conflict still says your call
+
+`resolve it` on a conflict card starts one round: your branch is merged into the task's
+branch inside the task's own copy, a worker settles the clashing files, the work is checked
+again and the landing is retried. It costs a model call and it takes minutes.
+
+**If aforge is restarted or the engine is replaced while that round is running, the round
+dies with it.** Nothing is lost and nothing is broken: the task is exactly where it was —
+`your call`, its files still clashing, its branch untouched — and the card offers the same
+three answers. What was missing was any word about it, so the card read as though you had
+never pressed. The line when the conversation comes back now says so:
+
+```
+recovered task graph: 1 done · 1 your call (its merge round was cut)
+```
+
+**Nothing restarts it for you.** A round spends a model call, and a session that spent one
+on its own while opening would be spending your money on a decision you did not make. Press
+`resolve it` again if you still want the round, or take the branch yourself — `git merge task/…`
+— or answer the card another way.
+
 ## Change this task's model
 
 `/model` and the model row under Task setup target the open ordinary task.
