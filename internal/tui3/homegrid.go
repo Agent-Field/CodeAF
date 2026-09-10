@@ -160,13 +160,17 @@ const homeFindWord = "type to find one"
 // into words, and stays banned (docs/DESIGN-LANGUAGE.md, "presence over
 // labels"). Projects has no whisper because it is never empty — the launch
 // folder is always a row.
+//
+// NO WHISPER CARRIES AN ELLIPSIS, not even a quoted one. A whisper wraps rather
+// than being cut ([homeWhisperLines]), so a `…` on one of these lines could only
+// be read as the screen having run out of room.
 var homeWhisper = map[homePanelID]string{
 	panelNeeds:   "questions from any chat or task land here · a digit answers them",
 	panelRunning: "work you send off with /task runs here on its own",
 	panelLeft:    "what watches and tasks did while the terminal was shut",
 	panelRecent:  "your conversations · what you type below starts one",
 	panelSpend:   "every chat and task is priced here",
-	panelNext:    `reminders and routines · "remind me at 6" or "every morning, …"`,
+	panelNext:    `reminders and routines · "remind me at 6" or "every morning at 9"`,
 }
 
 // homeSlotOf is one panel's row of the table.
@@ -358,11 +362,17 @@ type homeGrid struct {
 type homeGridPanel struct {
 	slot homePanelSlot
 	read homePanelRows
+	// whisper is the panel's whisper as the lines it takes at its column's
+	// width ([homeWhisperLines]), and nothing for a panel with rows.
+	whisper []string
 	// shown is how many of the panel's rows it keeps, and dropped is the panel
 	// gone from the page.
 	shown   int
 	dropped bool
 }
+
+// empty reports a panel with no rows at all, which draws its whisper instead.
+func (p homeGridPanel) empty() bool { return len(p.read.lines) == 0 && p.read.more == 0 }
 
 // hidden is how many rows the fold stands for.
 func (p homeGridPanel) hidden() int { return len(p.read.lines) - p.shown + p.read.more }
@@ -373,8 +383,8 @@ func (p homeGridPanel) height() int {
 	if p.dropped {
 		return 0
 	}
-	if len(p.read.lines) == 0 && p.read.more == 0 {
-		return 2
+	if p.empty() {
+		return 1 + len(p.whisper)
 	}
 	n := 1
 	for _, line := range p.read.lines[:p.shown] {
@@ -449,19 +459,40 @@ func (p *homeGridPanel) shrink() {
 }
 
 // homeGridLayout reads every panel and fits each column: the panels in table
-// order, each in the column the ladder puts it in.
-func homeGridLayout(in *homeGridInput, cols, room int) [][]*homeGridPanel {
+// order, each in the column the ladder puts it in, at that column's width.
+func homeGridLayout(in *homeGridInput, cols, width, room int) [][]*homeGridPanel {
 	columns := make([][]*homeGridPanel, cols)
+	_, widths := homeGridGeometry(width, cols)
 	for _, slot := range homePanelOrder {
 		read := slot.panel.rows(in)
-		p := &homeGridPanel{slot: slot, read: read, shown: len(read.lines)}
 		at := slot.column(cols)
+		p := &homeGridPanel{slot: slot, read: read, shown: len(read.lines)}
+		if p.empty() {
+			p.whisper = homeWhisperLines(slot.panel.whisper(), widths[at])
+		}
 		columns[at] = append(columns[at], p)
 	}
 	for _, column := range columns {
 		squeezeColumn(column, room)
 	}
 	return columns
+}
+
+// homeWhisperLines is a whisper at one column's width, standing in a row's lead.
+//
+// A WHISPER WRAPS; IT IS NEVER CUT. It is the one sentence an empty panel has,
+// and the half after an ellipsis — `a digit answers them`, `"every morning, …"`
+// — is the half that says what to do. So it takes the dim lines it needs, and
+// the panel's height is its heading and all of them. A build before the first
+// frame knows no width, and keeps the sentence on one line until one arrives.
+func homeWhisperLines(text string, width int) []string {
+	if text == "" {
+		return nil
+	}
+	if width <= homeGridLead {
+		return []string{text}
+	}
+	return wrap(text, width-homeGridLead)
 }
 
 // ── the build ──────────────────────────────────────────────────────────────
@@ -481,7 +512,7 @@ func (h *homeView) buildGrid() {
 		return
 	}
 	in := h.gridInput()
-	for at, column := range homeGridLayout(&in, cols, h.room) {
+	for at, column := range homeGridLayout(&in, cols, h.gridWidth, h.room) {
 		first := true
 		for _, p := range column {
 			if p.dropped {
@@ -513,8 +544,11 @@ func (p homeGridPanel) lines() []homeLine {
 		head += rowSep + p.read.said
 	}
 	out := []homeLine{{kind: homeSwitchHead, cell: &homeCell{kind: cellHead, panel: id, title: head, right: p.read.right}}}
-	if len(p.read.lines) == 0 && p.read.more == 0 {
-		return append(out, homeLine{kind: homeSwitchHead, cell: &homeCell{kind: cellWhisper, panel: id, title: p.slot.panel.whisper()}})
+	if p.empty() {
+		for _, words := range p.whisper {
+			out = append(out, homeLine{kind: homeSwitchHead, cell: &homeCell{kind: cellWhisper, panel: id, title: words}})
+		}
+		return out
 	}
 	out = append(out, p.read.lines[:p.shown]...)
 	if n := p.hidden(); n > 0 {
