@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/standing"
 )
 
 // ── THE PANELS (docs/design/home-mission-control/DESIGN.md §1, §3 G2–G6) ────
@@ -289,5 +290,35 @@ func TestSpendDrawsTodayTheBarAndTheFortnightAsDoors(t *testing.T) {
 	a.homeKey(key("enter"))
 	if !a.at(pageSpend) {
 		t.Fatal("enter on the fortnight did not open the spend place")
+	}
+}
+
+// NEXT UP IS SOONEST FIRST, three of them, then the fold into standing.
+func TestNextUpIsSoonestFirstAndFoldsIntoStanding(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.open(120, 45)
+	due := func(id, words string, in time.Duration) StandingItemView {
+		return StandingItemView{Item: standing.Item{ID: id, Words: words, Status: standing.StatusActive,
+			When: standing.When{Kind: standing.WhenAt}, NextDue: lab.now.Add(in)}}
+	}
+	dir := a.home.world.Projects[0].Dir
+	a.home.items = map[string][]StandingItemView{dir: {
+		due("w4", "the fourth thing", 9*time.Hour), due("w1", "the 6am repo watch", 20*time.Hour),
+		due("w2", "top movers before the open", 2*time.Hour), due("w3", "water the plants", 5*time.Hour),
+	}}
+	a.home.build()
+	frame := homeText(a)
+	first, _ := homeRowOf(frame, "top movers before the open")
+	second, _ := homeRowOf(frame, "water the plants")
+	if first < 0 || second != first+1 || !strings.Contains(strings.Split(frame, "\n")[first], " in 1h") {
+		t.Fatalf("next up is not soonest first with its clause:\n%s", frame)
+	}
+	if row, _ := homeRowOf(frame, "1 more · standing"); row < 0 {
+		t.Fatalf("the fourth order is not behind the fold:\n%s", frame)
+	}
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.panel == panelNext && l.stop() })
+	a.homeKey(key("enter"))
+	if !a.at(pageStanding) {
+		t.Fatal("enter on a next-up row did not open standing")
 	}
 }
