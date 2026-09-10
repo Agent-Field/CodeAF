@@ -409,11 +409,12 @@ func commandLine(line, name string) bool {
 
 // askedForHelp is the same gesture read by a door that parses NO flags at all.
 //
-// `show`, `manual` and `models` take a positional and nothing else, so
-// `aforge show --help` answered `open --help: no such file or directory` — a
-// filesystem error about a flag — and `aforge models --help` ran the command
-// with the flag silently ignored. A person probing an unfamiliar command types
-// this first and is owed the usage, not a stat error.
+// `show` and `manual` take a positional and nothing else, so `aforge show
+// --help` answered `open --help: no such file or directory` — a filesystem
+// error about a flag — and `aforge models --help`, before `--refresh` gave it a
+// flag set of its own, ran the command with the flag silently ignored. A person
+// probing an unfamiliar command types this first and is owed the usage, not a
+// stat error.
 func askedForHelp(args []string) bool {
 	for _, argument := range args {
 		switch argument {

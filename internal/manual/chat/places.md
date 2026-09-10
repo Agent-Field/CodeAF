@@ -287,7 +287,8 @@ of them, so they can never move a view out from under you while you are aiming a
 destination; pressed with no layer up, they do nothing.
 
 The last two classes are bound where there is something to bind. `alt+<letter>` today is
-`alt+s` on the memory place, which changes which shelf it is showing. `shift+<arrow>` is a place's time
+`alt+s` on the memory place, which changes which shelf it is showing; home's panels have no
+second shape, so `alt+g` and `alt+q` do nothing there. `shift+<arrow>` is a place's time
 window — `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is — and
 three places have one: **tasks** (when it ran), **standing** (when it fired) and **spend**
 (which days). All three draw the same control on their own head row, at the right of the
@@ -415,7 +416,8 @@ empty panel keeps its heading and one dim line naming what arrives there.
 
 Its own keys are in the **Home** page: `↑↓` walk a panel, `←→` cross columns, a digit
 answers the top question in `needs you`, and `enter` opens a row. `tab` is the way to the
-next place. Home has no `alt+<letter>` keys — `alt+g` and `alt+q` are unbound there.
+next place, and the errand pane is taken into with `→` rather than `tab`. Home has no
+`alt+<letter>` keys — `alt+g` and `alt+q` are unbound there.
 
 ## tasks — the tasks page, and how to get to it without a command
 
@@ -614,7 +616,8 @@ places at once and no single one of them is the answer.
 **The key that reaches them is `tab`**, and it is named on the foot of every place —
 `… · tab next place` — which is the last clause a narrow foot gives up. `alt+1`…`alt+7`
 still go straight to a place whether or not its word is on the row, and the numbers never
-move: they are the full seven-place order, not the order of what happens to be drawn.
+move: the four on the bar are `alt+1`…`alt+4`, then standing, memory and search are
+`alt+5`…`alt+7`, whatever happens to be drawn.
 
 ## Why a nearly-empty place says what it is for — why is the tasks page empty
 
@@ -631,7 +634,7 @@ an hour ago, `alt+2`, `alt+5` and `alt+6` all open:
 - **tasks**, headed `tasks`:
   `work you send off with /task lands here, and its record stays`
 - **standing**, headed `standing orders`:
-  `reminders, watches and routines · "remind me at 6" or "every morning, …"`
+  `reminders, watches and routines · "remind me at 6" or "every morning at 9"`
   No shelf and no time window is drawn under it.
 - **memory**, headed `memory`:
   `what it has learned about you and this machine · /remember adds a line`
@@ -641,8 +644,8 @@ an hour ago, `alt+2`, `alt+5` and `alt+6` all open:
 - **search** with an empty box, headed `search`:
   `type a word · every conversation on this machine is searched`
 
-On a narrow window the line gives up its example — the part after the middle dot — before
-anything is cut. The moment the first thing arrives the line goes and the list begins under
+On a narrow window the line wraps onto a second or third dim line under the first; it is
+never cut, and never ends in `…`. The moment the first thing arrives the line goes and the list begins under
 the same heading; nothing above it moves.
 - **spend**, **search** and **memory** over `--host` each say one dim line where their rows
   would be — see *The places over --host* below for the exact words and why three of the

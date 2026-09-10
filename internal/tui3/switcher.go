@@ -12,7 +12,6 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // ── THE SWITCHER'S READING ──────────────────────────────────────────────────
@@ -25,18 +24,8 @@ import (
 // opens a file or asks the disk anything: the facts are gathered on home's own
 // three-second beat and handed in whole (docs/design/home-rethink/ARCHITECTURE.md
 // states the three layers and which may know what). That is what lets the whole
-// reading be tested with fixtures at sixty, eighty, a hundred and twenty and two
-// hundred columns, and what keeps the place that draws it (place_home.go) down
-// to a cursor, two view flags and a fold.
-
-// switcherShown is the FLOOR on how many rows this list draws, and never the
-// ceiling. Eight is what a short terminal owes a person — enough rows that the
-// fold under them is a summary rather than a stub — and a taller frame draws as
-// many as it can hold ([switcherReading.capAtRest] does the arithmetic against
-// [switcherView.room]). It was a bare cap for a wave, which is how a fifty-row
-// terminal came to draw eight conversations, fold the other four behind
-// `▸ 4 more, quiet since 6d`, and leave twenty-eight blank rows under them.
-const switcherShown = 8
+// reading be tested with fixtures, and what keeps the panels that draw it
+// (homepanel_*.go) pure over it too.
 
 // switcherVerb is one thing the strip can offer for a row: the letter, the word
 // it is spelled with, and — for the two verbs that ANSWER a question — the
@@ -53,37 +42,6 @@ type switcherVerb struct {
 	answer string
 }
 
-// switcherView is HOW this reading is shown, as opposed to what is in it: the
-// three things `alt+g`, `alt+q` and the fold line change about one list of
-// facts. They travel together because they are one question — what shape is this
-// list in — and a reader that took three bools in a row would be a reader whose
-// call sites are three unlabelled trues.
-type switcherView struct {
-	// grouped is `alt+g`: the flat ranked list becomes one block per project.
-	grouped bool
-	// hideQuiet is `alt+q`: nothing that is neither asking nor moving is drawn,
-	// and the fold at the foot says so in one word.
-	hideQuiet bool
-	// all is the fold standing open — every row drawn, with no cap at all. It is
-	// a door and not a setting ([homeQuiet] states the rule this inherits): a
-	// line that says rows are being hidden and cannot be asked to stop hiding
-	// them is a dead end somebody hits and gives up at.
-	all bool
-	// room is how many rows the column this reading is drawn into actually has,
-	// and it is the answer to "how many rows may the list draw" that this file
-	// spent a wave not having: [switcherShown] alone made the list eight rows on
-	// a fifty-row terminal and eight on a twenty-four-row one.
-	//
-	// IT IS A NUMBER HANDED IN AND NEVER A NUMBER ASKED FOR. This file's header
-	// states the law — nothing here takes an *app, opens a file or measures a
-	// frame — so the room arrives with the rest of the facts, counted by the
-	// place that owns the column (place_home.go's [homeView.buildSwitch]). ZERO
-	// IS NO ANSWER, not a room of nothing: a reading told nothing about its
-	// frame draws exactly what it drew before this field existed, which is what
-	// keeps every fixture in switcher_test.go true.
-	room int
-}
-
 type switcherLedgerInput struct {
 	learned int
 	letGo   int
@@ -98,7 +56,6 @@ const (
 	switcherConversation switcherKind = iota
 	switcherStanding
 	switcherLedger
-	switcherFold
 )
 
 // switcherRow holds every kind of door the router can open. Zero fields are
@@ -131,11 +88,9 @@ type switcherRow struct {
 	// its own has nowhere to leave a request — both are held, and neither has a
 	// door. A row that promised a key it would then refuse is the worst thing a
 	// word on a margin can do, which is the rule `here` is already written to.
-	door     bool
-	gone     bool
-	fold     bool
-	foldWord string
-	options  []session.AnswerOption
+	door    bool
+	gone    bool
+	options []session.AnswerOption
 	// task is the landed piece of work a `since you left` line names, and path
 	// the file one names; each is the line's door (place_home.go's
 	// [app.homeLedgerEnter]). margin is what such a line carries at its right —
@@ -145,42 +100,31 @@ type switcherRow struct {
 	margin string
 }
 
-type switcherLine struct {
-	row     *switcherRow
-	heading string
-	section bool
-	blank   bool
-}
-
+// switcherReading is the whole of what the grid's panels read off the machine:
+// every conversation and every standing thing that needs somebody or is firing,
+// ranked, and the `since you left` lines beside them (homegrid.go's
+// [homeView.gridInput]).
 type switcherReading struct {
-	lines        []switcherLine
-	chatCount    int
-	hasAttention bool
-	view         switcherView
-	now          time.Time
-	// hidden is how many rows the fold at the foot is standing for, and zero
-	// when there is no fold. It is what the door needs to know whether opening
-	// it would show anything.
-	hidden int
+	// rows is ranked: what needs you (oldest first), then what is moving, then
+	// the rest by recency ([switcherLess]).
+	rows []switcherRow
+	// ledger is `since you left`, newest first, and empty on a first look.
+	ledger []switcherRow
+	now    time.Time
 }
 
-// switcherHere is WHERE THIS WINDOW IS STANDING, and it is two addresses because
-// two different questions are asked of it: `session` is the conversation on
-// screen — the one row that wears `here` instead of an age — and `project` is
-// the bucket it lives in, which is what puts a person's own project first when
-// `alt+g` groups the list.
+// switcherHere is WHERE THIS WINDOW IS STANDING: `session` is the conversation
+// on screen — the one row that wears `here` instead of an age.
 //
-// THE CONVERSATION IS THE EXACT ANSWER AND THE PROJECT IS THE BROAD ONE. A
-// window standing in a project with no conversation of its own has the second
-// and not the first, and a reading that only had the project would have to guess
-// which of its rows was `here` (it used to, and it guessed the first open one).
+// IT IS THE EXACT ANSWER AND NEVER THE BROAD ONE. A reading that only had the
+// project would have to guess which of its rows was `here` (it used to, and it
+// guessed the first open one).
 type switcherHere struct {
 	session string
-	project string
 	// coming is the transcript this window has asked another window to let go
 	// of, and "" when it has asked for nothing. It is a fact about THIS window
-	// rather than about the world, which is why it travels with the two
-	// addresses above rather than being read off any row.
+	// rather than about the world, which is why it travels with the address
+	// above rather than being read off any row.
 	coming string
 	// hosted is this window looking at ANOTHER MACHINE's home over --host, in
 	// which case no row has a door out of `another window`: the window holding
@@ -202,17 +146,14 @@ type switcherGone map[string]bool
 // outranks everything; moving is Tasks.Running or a fresh PresenceWorking
 // conversation, and a standing item moves only while view.Running. An item's
 // own NeedsPerson likewise outranks its running marker.
-func readSwitcher(world session.World, items map[string][]StandingItemView, fired []StandingItemView, here switcherHere, gone switcherGone, seen time.Time, now time.Time, view switcherView, ledger switcherLedgerInput) switcherReading {
-	r := switcherReading{view: view, now: now}
-	projectByDir := make(map[string]session.Project, len(world.Projects))
+func readSwitcher(world session.World, items map[string][]StandingItemView, fired []StandingItemView, here switcherHere, gone switcherGone, seen time.Time, now time.Time, ledger switcherLedgerInput) switcherReading {
+	r := switcherReading{now: now}
 	var all []switcherRow
 	for _, project := range world.Projects {
-		projectByDir[filepath.Clean(project.Dir)] = project
 		for _, row := range project.Sessions {
 			if row.Archived {
 				continue
 			}
-			r.chatCount++
 			needs := row.NeedsPerson()
 			moving := !needs && (row.Tasks.Running > 0 || row.Live && row.Presence.State == session.PresenceWorking)
 			// EXACTLY THE ONE CONVERSATION THIS WINDOW IS HOLDING. A broader test
@@ -267,44 +208,9 @@ func readSwitcher(world session.World, items map[string][]StandingItemView, fire
 		}
 	}
 	sort.SliceStable(all, func(i, j int) bool { return switcherLess(all[i], all[j]) })
-	for _, row := range all {
-		if row.needs || row.moving {
-			r.hasAttention = true
-			break
-		}
-	}
-
+	r.rows = all
 	r.addLedger(items, fired, world, seen, ledger)
-	if view.grouped {
-		r.addGrouped(all, here.project, projectByDir)
-	} else {
-		r.addFlat(all)
-	}
 	return r
-}
-
-// capAtRest is how many rows this reading draws before the rest go behind one
-// door: what the frame can hold, and never fewer than [switcherShown].
-//
-// IT IS THE CAP WITH THE FOLD SHUT WHETHER OR NOT THE FOLD IS OPEN, because it
-// is also the number the fold's own count is measured at — an opened fold draws
-// every row and still says how many it is the door over, which is the way back.
-// The two callers take the opened case themselves, in one line each, so that
-// this function answers exactly one question.
-//
-// extra is what this shape will spend on the page BESIDES the rows themselves —
-// the grouped list's project headings — because a heading takes a row from the
-// same frame a conversation would have had.
-func (r switcherReading) capAtRest(n, extra int) int {
-	shown := switcherShown
-	// THE ROWS ALREADY ON THE PAGE ARE SPENT. The `since you left` block and the
-	// section line above the list are written before this is asked, so what is
-	// left of the frame is the room less what is on it — less one more line for
-	// the fold itself, which is the row that says what did not fit.
-	if left := r.view.room - len(r.lines) - extra - 1; r.view.room > 0 && left > shown {
-		shown = left
-	}
-	return min(shown, n)
 }
 
 // switcherWhere is the project a row belongs to, in the words [homeView.gone] is
@@ -546,418 +452,13 @@ func (r *switcherReading) addLedger(items map[string][]StandingItemView, fired [
 		return
 	}
 	sort.SliceStable(events, func(i, j int) bool { return events[i].at.After(events[j].at) })
-	age := sinceAt(seen, r.now)
-	head := "since you left"
-	if age != "" {
-		head += " · " + age
-	}
-	r.addSectionLine(switcherLine{heading: head})
-	for i := range events {
-		row := events[i]
-		r.lines = append(r.lines, switcherLine{row: &row})
-	}
-}
-
-// switcherHeadRows is what a grouped list spends on names rather than on rows:
-// one heading per project, and the blank line [switcherReading.addSectionLine]
-// puts above each of them.
-func switcherHeadRows(rows []switcherRow) int {
-	seen := map[string]bool{}
-	for _, row := range rows {
-		seen[row.project] = true
-	}
-	return 2 * len(seen)
-}
-
-func (r *switcherReading) addFlat(all []switcherRow) {
-	if r.hasAttention {
-		r.addSectionLine(switcherLine{section: true})
-	}
-	r.addRowsAndFold(all)
-}
-
-func (r *switcherReading) addGrouped(all []switcherRow, bucket string, projects map[string]session.Project) {
-	var active, quiet []switcherRow
-	for _, row := range all {
-		if row.needs || row.moving {
-			active = append(active, row)
-		} else {
-			quiet = append(quiet, row)
-		}
-	}
-	selected := append([]switcherRow(nil), active...)
-	if !r.view.hideQuiet {
-		selected = append(selected, quiet...)
-	}
-	// THE SECTION LINE IS PUT ON THE PAGE BEFORE THE CAP IS TAKEN, and not
-	// after: it is two of the frame's rows, and a cap that counted the rows
-	// already drawn while this one was still to come would hand the column two
-	// lines more than it has. Nothing is appended between here and the headings
-	// below, so the list reads in exactly the order it always did.
-	if r.hasAttention {
-		r.addSectionLine(switcherLine{section: true})
-	}
-	// A GROUPED LIST PAYS FOR ITS OWN HEADINGS OUT OF THE SAME FRAME: every
-	// project on the page costs a name and the blank above it, so the cap is
-	// settled by asking how many rows fit, counting the headings those rows
-	// would bring with them, and asking again. Each pass can only take rows
-	// away, so it settles — and it settles in one pass on the frames anybody
-	// actually has.
-	capped := r.capAtRest(len(selected), 0)
-	for i := 0; i < 4; i++ {
-		next := r.capAtRest(len(selected), switcherHeadRows(selected[:capped]))
-		if next >= capped {
-			break
-		}
-		capped = next
-	}
-	shown := capped
-	if r.view.all {
-		shown = len(selected)
-	}
-	selected = selected[:shown]
-	byProject := map[string][]switcherRow{}
-	for _, row := range selected {
-		byProject[row.project] = append(byProject[row.project], row)
-	}
-	type group struct {
-		name string
-		at   time.Time
-		here bool
-	}
-	var groups []group
-	for name, rows := range byProject {
-		g := group{name: name}
-		for _, row := range rows {
-			if row.at.After(g.at) {
-				g.at = row.at
-			}
-			g.here = g.here || row.here
-		}
-		for dir, project := range projects {
-			if bucket != "" && dir != "" && project.Name == name && filepath.Clean(dir) == filepath.Clean(bucket) {
-				g.here = true
-			}
-		}
-		groups = append(groups, g)
-	}
-	sort.SliceStable(groups, func(i, j int) bool {
-		if groups[i].here != groups[j].here {
-			return groups[i].here
-		}
-		return groups[i].at.After(groups[j].at)
-	})
-	for _, group := range groups {
-		r.addSectionLine(switcherLine{heading: group.name})
-		for _, row := range byProject[group.name] {
-			copy := row
-			r.lines = append(r.lines, switcherLine{row: &copy})
-		}
-	}
-	hidden := len(active) + len(quiet) - capped
-	if hidden > 0 {
-		clause := ""
-		if capped >= len(active) {
-			quietAt := capped - len(active)
-			if r.view.hideQuiet {
-				clause = "quiet"
-			} else if quietAt < len(quiet) {
-				clause = quietFoldClause(quiet[quietAt].at, r.now)
-			}
-		}
-		r.hidden = hidden
-		r.addFold(hidden, clause)
-	}
-}
-
-func (r *switcherReading) addRowsAndFold(all []switcherRow) {
-	eligible := all
-	if r.view.hideQuiet {
-		eligible = nil
-		for _, row := range all {
-			if row.needs || row.moving {
-				eligible = append(eligible, row)
-			}
-		}
-	}
-	// WHAT THE FOLD STANDS FOR IS COUNTED AT THE CAP AND NEVER AT WHAT IS DRAWN.
-	// An opened fold draws every row and still says how many rows it is the door
-	// over, because it is the way back — a fold that vanished when it was opened
-	// would leave the list with no way to become a summary again.
-	capped := r.capAtRest(len(eligible), 0)
-	shown := capped
-	if r.view.all {
-		shown = len(eligible)
-	}
-	for _, row := range eligible[:shown] {
-		copy := row
-		r.lines = append(r.lines, switcherLine{row: &copy})
-	}
-	if more := len(all) - capped; more > 0 {
-		clause := ""
-		if capped < len(all) && !all[capped].needs && !all[capped].moving {
-			if r.view.hideQuiet {
-				clause = "quiet"
-			} else {
-				clause = quietFoldClause(all[capped].at, r.now)
-			}
-		}
-		r.hidden = more
-		r.addFold(more, clause)
-	}
-}
-
-// addFold puts the one door over everything this reading is not drawing, and
-// wears the mark that says which way it goes — `▸` while it is hiding rows,
-// `▾` once it has been opened, the same two marks every other fold on this
-// surface uses.
-//
-// THE SENTENCE IS [foldWords] AND NOT THIS FILE'S OWN. This fold used to be
-// handed a finished [foldLine] and swap the glyph on the front of it, which left
-// an opened fold still saying `▾ 5 more` over five rows a person could see, and
-// left the list spelling the same idea differently from the phone and the
-// project tails. Both callers now hand in the count and the clause, and the one
-// speller says whether it is `more` or `fewer`.
-func (r *switcherReading) addFold(n int, clause string) {
-	mark := tokens.GlyphCollapsed
-	if r.view.all {
-		mark = tokens.GlyphExpanded
-	}
-	row := switcherRow{kind: switcherFold, fold: true, foldWord: mark + " " + foldWords(r.view.all, n, clause)}
-	r.lines = append(r.lines, switcherLine{row: &row})
-}
-
-// addSectionLine keeps headings on the shared one-blank rhythm while leaving
-// the first block flush with the top of its reading.
-func (r *switcherReading) addSectionLine(line switcherLine) {
-	for len(r.lines) > 0 && r.lines[len(r.lines)-1].blank {
-		r.lines = r.lines[:len(r.lines)-1]
-	}
-	if len(r.lines) > 0 {
-		r.lines = append(r.lines, switcherLine{blank: true})
-	}
-	r.lines = append(r.lines, line)
-}
-
-func (r switcherReading) rows(width int, pal palette) []string {
-	if width < 1 {
-		return nil
-	}
-	out := make([]string, 0, len(r.lines))
-	for _, line := range r.lines {
-		out = append(out, r.paint(line, width, pal, switcherPaint{}))
-	}
-	return out
-}
-
-// switcherPaint is what the SURFACE knows about one line that the reading
-// cannot: where the keyboard and the pointer are standing, which heading the
-// cursor is under, and which single row on the page is allowed to animate.
-//
-// IT IS THREE VALUES AND NOT AN *app, which is what keeps this file pure. Each
-// of them is a fact the drawing surface holds and the reading has no way to ask
-// for (docs/design/home-rethink/ARCHITECTURE.md's three layers).
-type switcherPaint struct {
-	sel   bool
-	hover bool
-	// head is the ink a HEADING takes. The heading over the section the cursor is
-	// standing in steps up one ink tier and wears no ground (homesection.go); nil
-	// is the dim every other heading takes.
-	head func(string) string
-	// spin is THE ONE MOVING CELL ON THE PAGE, and "" on every other row. However
-	// many things are running, exactly one row animates (homespinner.go), so the
-	// moving mark gives way to the turning cell on that row alone.
-	spin string
-	// chords is HOW THIS TERMINAL SPELLS A CHORD, which is the fourth fact the
-	// drawing surface holds and the reading cannot ask for: the section line names
-	// two of home's own keys, and on a Mac they are called `⌥g` and `⌥q` rather
-	// than `alt+g` and `alt+q` (chords.go). It is a plain value and not an *app,
-	// so this file stays as pure as the three above it — and its zero value is the
-	// `alt+` spelling, which is what the constants already say.
-	chords chordSpelling
-	// asking says a question this window raised is already on screen about the
-	// row under the cursor (homeconfirm.go). It is the fifth fact this drawing
-	// surface holds and the reading cannot ask for, and it costs the row its
-	// grown door: `enter brings it here` is an OFFER, and while the card beside
-	// the row is asking `Move this conversation here?` the offer has been taken
-	// up — repeating it would advertise a door somebody is already standing in.
-	asking bool
-}
-
-// paint is one line of the reading, with the band on the row the keyboard or the
-// pointer is standing on.
-//
-// THE BAND IS THE WHOLE OF THE SELECTION AND THERE IS NO LEAD. This list has its
-// state mark in the first cell of every row (SCREEN 1a), so two more cells spent
-// on a `›` would push every name two columns right for a fact the ground already
-// carries — which is the one device SCREEN 2a names for the cursor: "the band —
-// where the cursor is — selection, and the subject goes bold inside it".
-func (r switcherReading) paint(line switcherLine, width int, pal palette, p switcherPaint) string {
-	if width < 1 {
-		return ""
-	}
-	switch {
-	case line.section:
-		left := "what wants you first"
-		if r.chatCount > 0 {
-			left = fmt.Sprintf("%d chats · %s", r.chatCount, left)
-		}
-		// AND THE KEYS ARE SPELLED BEFORE THEY ARE MEASURED. `⌥g` is three cells
-		// narrower than `alt+g`, so a line that fitted the ASCII spelling and drew
-		// the Mac one would leave the section heading's right end short of the
-		// margin it was measured against.
-		right := p.chords.say(switcherGroupWord)
-		quiet := p.chords.say(switcherQuietWord)
-		if ansi.StringWidth(left)+ansi.StringWidth(right)+3 <= width && ansi.StringWidth(left)+ansi.StringWidth(right)+ansi.StringWidth(" · "+quiet)+3 <= width {
-			right += " · " + quiet
-		}
-		leftInk := pal.dim
-		if p.head != nil {
-			leftInk = p.head
-		}
-		return switcherSides(width, left, right, leftInk, pal.dim)
-	case line.heading != "":
-		ink := pal.dim
-		if p.head != nil {
-			ink = p.head
-		}
-		return ink(fit(line.heading, width))
-	case line.row != nil:
-		return switcherPaintRow(*line.row, width, pal, r.view.grouped, p)
-	}
-	return ""
+	r.ledger = events
 }
 
 // switcherResumeWord is the undoing of a pause, and it is spelled here because
 // nothing else on this surface offers it: an item's card and the standing place
 // both pause and stop, and only a row that is ALREADY paused has a resume.
 const switcherResumeWord = "resume it"
-
-// The two views this list offers and the keys that reach them. They are quoted
-// on the section line and in the manual from this one spelling.
-const (
-	switcherGroupWord = "alt+g group by project"
-	switcherQuietWord = "alt+q hide the quiet ones"
-)
-
-func switcherPaintRow(row switcherRow, width int, pal palette, grouped bool, p switcherPaint) string {
-	if row.fold {
-		return switcherBand(pal.dim(fit(row.foldWord, width)), width, pal, p)
-	}
-	if row.kind == switcherLedger {
-		// A LEDGER LINE IS A DOOR, so it takes the band like any other stop, and
-		// the place it names sits out at the right margin where every row's tail
-		// sits.
-		return switcherBand(switcherSides(width, row.title, row.place, pal.ink, pal.dim), width, pal, p)
-	}
-	glyph, glyphInk := tokens.GlyphQueued, pal.dim
-	if row.paused {
-		glyph = tokens.GlyphPaused
-	}
-	if row.moving {
-		// THE ONE MOVING CELL. A row that is the page's spinner turns; every other
-		// live row holds the still mark, which is what makes a machine with twenty
-		// things out cost the wire exactly what a machine with one costs
-		// (homespinner.go).
-		glyph, glyphInk = tokens.GlyphWorking, pal.accent
-		if p.spin != "" {
-			glyph = p.spin
-		}
-	}
-	if row.needs {
-		glyph, glyphInk = tokens.GlyphNeedsHuman, pal.warn
-	}
-	age := switcherMarginWord(row)
-	project, note := row.project, row.note
-	if grouped {
-		project = ""
-	}
-	if width < 80 {
-		note = ""
-	}
-	// THE NAME IS WHOLE BEFORE ANY FACT GETS A CELL (rowfit.go's law 1). The
-	// facts drop in rank order — the note first, then the project tag, then the
-	// margin — until the conversation's own title fits BESIDE what is left, and
-	// the title is cut only when the frame will not hold it alone, which is the
-	// one case that law allows a cut in.
-	//
-	// THE GUARD USED TO BE AN EIGHT-CELL FLOOR ON THE NAME, and eight cells is
-	// not a name: the ladder never fired while the title had eight cells left,
-	// so a hundred-column frame drew `? tell me when CI goe…` beside seventy-
-	// eight cells of somebody's question — eighteen cells spent on the one fact
-	// the row exists to carry and the rest on a sentence the card is there to
-	// carry properly. Eight survives as the LAST resort below: a row whose facts
-	// have all gone and whose name still will not fit is a row where every
-	// answer is a cut one, and this is where [rowPlan.fit] stops too.
-	parts := []string{project, note, age}
-	whole := ansi.StringWidth(row.title)
-	for switcherTailWidth(parts)+ansi.StringWidth(glyph)+2+whole > width {
-		if parts[1] != "" {
-			parts[1] = ""
-			continue
-		}
-		if parts[0] != "" {
-			parts[0] = ""
-			continue
-		}
-		if parts[2] != "" {
-			parts[2] = ""
-			continue
-		}
-		break
-	}
-	// AND THEN THE ROW UNDER THE CURSOR GROWS `another window` INTO THE DOOR, if
-	// what is left of the width will take the whole clause (takeovervoice.go's
-	// [takeoverHeldDoorWord]).
-	//
-	// IT IS ASKED AFTER THE DROPS AND NEVER BEFORE THEM, which is the whole of
-	// giving way gracefully here. This row's facts are ranked — the note goes
-	// first, then the project tag, then the margin itself — and a clause that
-	// bid for cells in that auction would win them off the note it was standing
-	// beside. So it spends only what nothing else wanted, and a width that will
-	// not hold it hands back the short word WHOLE rather than half a sentence:
-	// `another window · enter brings i` would be the row spending the name's
-	// cells on an instruction nobody can follow.
-	//
-	// AND THE NAME IS WHAT IT MAY NOT SPEND. The test is the whole title fitting
-	// beside the grown tail — not the eight-cell floor the drops above settle
-	// for — because this list's job is choosing between conversations, and a
-	// door sentence that cost `The Other Terminal` its last four letters would
-	// have taken the one fact the row exists to carry.
-	//
-	// THE CURSOR AND NOT THE POINTER. `p.hover` paints the same band, but enter
-	// goes to the cursor's row — a promise about a key on a row the key would
-	// not act on is a lie the band makes look true.
-	//
-	// AND A ROW WHOSE QUESTION IS ALREADY ASKED KEEPS THE SHORT WORD
-	// ([switcherPaint.asking]).
-	if row.door && p.sel && !p.asking && parts[2] == homeHeldShort {
-		grown := []string{parts[0], parts[1], takeoverHeldDoorWord}
-		if ansi.StringWidth(glyph)+1+switcherTailWidth(grown)+ansi.StringWidth(row.title) <= width {
-			parts = grown
-		}
-	}
-	tail := switcherTailWidth(parts)
-	room := max(0, width-ansi.StringWidth(glyph)-1-tail)
-	// THE SUBJECT GOES BOLD INSIDE THE BAND and the tail steps up with it: dim
-	// grey on a raised ground is grey on grey, which is the rule every row on
-	// this surface is painted under (palette.go's [overlayRowTinted]).
-	name, tailInk := pal.ink(fit(row.title, room)), pal.dim
-	if p.sel || p.hover {
-		name, tailInk = pal.bold(name), pal.ink
-	}
-	line := glyphInk(glyph) + " " + name
-	used := ansi.StringWidth(line)
-	if pad := width - used - tail; pad > 0 {
-		line += strings.Repeat(" ", pad)
-	}
-	for _, part := range parts {
-		if part != "" {
-			line += " " + tailInk(part)
-		}
-	}
-	return switcherBand(fit(line, width), width, pal, p)
-}
 
 // switcherMarginWord is a row's right margin: THE ONE THING THAT DECIDES WHAT
 // ENTER WILL DO, and an age when nothing does. A folder that is gone outranks a
@@ -978,27 +479,6 @@ func switcherMarginWord(row switcherRow) string {
 	return row.age
 }
 
-// switcherBand is the one ground this list paints: the row the keyboard is on,
-// and the row the pointer is over, at the same rung — whether a person arrived
-// with `↓` or with the mouse, the row they are on is the row they are on
-// (palette.go's ladder).
-func switcherBand(line string, width int, pal palette, p switcherPaint) string {
-	if !p.sel && !p.hover {
-		return line
-	}
-	return pal.cursor(line, width)
-}
-
-func switcherTailWidth(parts []string) int {
-	n := 0
-	for _, p := range parts {
-		if p != "" {
-			n += 1 + ansi.StringWidth(p)
-		}
-	}
-	return n
-}
-
 func switcherSides(width int, left, right string, leftInk, rightInk func(string) string) string {
 	if right == "" {
 		return leftInk(fit(left, width))
@@ -1009,21 +489,6 @@ func switcherSides(width int, left, right string, leftInk, rightInk func(string)
 	room := width - ansi.StringWidth(right) - 1
 	l, lw := fitWidth(left, room)
 	return leftInk(l) + strings.Repeat(" ", max(1, width-lw-ansi.StringWidth(right))) + rightInk(right)
-}
-
-func (r switcherReading) at(i int) (switcherRow, bool) {
-	if i < 0 || i >= len(r.lines) || r.lines[i].row == nil {
-		return switcherRow{}, false
-	}
-	return *r.lines[i].row, true
-}
-
-func (r switcherReading) verbs(i int) []switcherVerb {
-	row, ok := r.at(i)
-	if !ok {
-		return nil
-	}
-	return switcherVerbsFor(row)
 }
 
 // switcherVerbsFor is the same answer taken from a row rather than from its

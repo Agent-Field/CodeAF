@@ -1956,10 +1956,11 @@ func (a *app) activate() tea.Cmd {
 // would have to be kept saying the same thing about the same machines — and the
 // fold is where a person has already learnt to read them.
 //
-// IT ANSWERS FALSE WHEN THERE IS NOTHING TO OPEN. A session that has measured
-// no lane for this model has no fold ([picker.unfoldAt] refuses one), and the
-// row falls back to the walk between the only two answers that exist without a
-// measurement.
+// IT ANSWERS FALSE ONLY WHEN THE MODEL IS NOT ON THE LIST. A fold always has
+// its two answers ([picker.unfoldAt]), so a model nobody has measured opens
+// onto `auto` and `openrouter` here exactly as it does under /model; what is
+// left for the walk ([app.cycleLane]) is a model the catalog does not carry,
+// where there is no row to unfold at all.
 func (a *app) openLaneList() bool {
 	slot := laneSlotFor(a.model)
 	if slot == "" {
@@ -1979,10 +1980,10 @@ func (a *app) openLaneList() bool {
 	if chosen, ok := sel.pick.choice(); !ok || chosen.ID != a.model {
 		return false
 	}
+	// Opening walks in: the cursor lands on the lane in force ([picker.unfoldHere]).
 	if !sel.pick.unfoldHere() {
 		return false
 	}
-	sel.pick.cursorToPin()
 	a.sheet.sel = sel
 	return true
 }
@@ -1992,10 +1993,14 @@ func (a *app) openLaneList() bool {
 // that the panel, the picker and the `settings` tool all read one spelling
 // (config's [config.LaneRowWord]).
 //
+// IT IS THE FALLBACK, reached only when [app.openLaneList] has no row to open —
+// a model the catalog does not carry.
+//
 // THE PINNED RUNGS ARE SKIPPED WHEN THERE IS NO MACHINE TO NAME. On a session
 // that has measured nothing there is no honest lane to pin, so the walk is auto
 // ↔ openrouter and the two missing rungs are simply not there — which is the
-// emptiness law applied to a gesture rather than to a number.
+// emptiness law applied to a gesture rather than to a number, and the same two
+// answers the fold offers such a model.
 func (a *app) cycleLane(item sheetItem) {
 	slot := laneSlotFor(a.model)
 	name, pinned := config.LanePinned(a.profileDir, slot)
@@ -2850,10 +2855,15 @@ func (s *sheet) keysLine() string {
 		// THE LEGEND SAYS `→ lanes` ONLY WHERE `→` OPENS THEM — on a row that
 		// has a lane row behind it. Offering the key on the drawing slot would
 		// be the foot of the screen promising a gesture that does nothing.
-		if s.sel.pick.laneSlot != "" {
-			return "↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter"
+		// And INSIDE the fold it says the way back out, for the reason /model's
+		// hint slot does ([picker.keysHint]): the keys are the row's.
+		if s.sel.pick.laneSlot == "" {
+			return "↑↓ move · enter choose · esc cancel · type to filter"
 		}
-		return "↑↓ move · enter choose · esc cancel · type to filter"
+		if _, inside := s.sel.pick.laneUnder(); inside {
+			return "↑↓ move · ← or tab back · enter choose · esc cancel · type to filter"
+		}
+		return "↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter"
 	case s.onConnections():
 		return s.connKeysLine()
 	default:

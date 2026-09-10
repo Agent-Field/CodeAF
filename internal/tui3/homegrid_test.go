@@ -270,6 +270,38 @@ func focusedTitle(a *app) string {
 	return ""
 }
 
+// COLUMNS WIN THE ARROW, SO THE FOOT NAMES A CHORD (DESIGN §6 ruling 6). On a
+// left-column row whose `→` crosses to the right, the foot says `ctrl+o open
+// folder`, and the chord opens that row's folder — a project's too. On a row
+// whose `→` is its strip, the foot is the resting sentence.
+func TestTheFootNamesAChordWhereTheArrowCrossesColumns(t *testing.T) {
+	var opened string
+	was := processOpener
+	processOpener = func(target string) error { opened = target; return nil }
+	t.Cleanup(func() { processOpener = was })
+
+	a := newSwitchLab(t).open(120, 45)
+	if hint := a.homeHint(); !strings.Contains(hint, homeFolderChordWord) || !strings.HasSuffix(hint, placeHintTail) {
+		t.Fatalf("a left-column conversation's foot is %q, want it to name %q before the way out", hint, homeFolderChordWord)
+	}
+	a.placeKeyPress(key("ctrl+o"))
+	if opened == "" || !strings.HasSuffix(opened, "alpha") {
+		t.Fatalf("ctrl+o opened %q, want the conversation's folder", opened)
+	}
+	homeLineOf(t, a, func(l homeLine) bool { return l.kind == homeProjectRow && l.project == "beta" })
+	a.placeKeyPress(key("ctrl+o"))
+	if !strings.HasSuffix(opened, "beta") {
+		t.Fatalf("ctrl+o on a project opened %q, want its folder", opened)
+	}
+	a.placeKeyPress(key("right"))
+	if a.home.columnOf(a.home.cursor) != 1 || a.strip.open {
+		t.Fatal("→ on a project did not cross to the right column")
+	}
+	if hint := a.homeHint(); hint != homeRestHint {
+		t.Fatalf("a right-column row's foot is %q, want the resting sentence", hint)
+	}
+}
+
 // ↑↓ WALK A COLUMN AND ←→ CROSS TO THE NEAREST ROW OF THE NEXT, through the real
 // door every key on a place takes — and `↑` off the top of a column is the tab
 // bar, from whichever column it is.

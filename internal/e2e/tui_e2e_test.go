@@ -270,7 +270,7 @@ func testHomeShape(t *testing.T) {
 	// EVERY PANEL IS ON THE PAGE. Forty rows is room for all seven at their
 	// floors in two columns, so a heading missing here is a panel the grid lost
 	// rather than one a short frame squeezed out.
-	for _, name := range []string{"homePanelNeeds", "homePanelRecent", "homePanelProjects",
+	for _, name := range []string{"homeNeedsHeading", "homePanelRecent", "homePanelProjects",
 		"homePanelRunning", "switcherSinceLeft", "homePanelSpend", "homePanelNext"} {
 		if !strings.Contains(screen, say(t, name)) {
 			t.Errorf("home has no %q panel:\n%s", say(t, name), screen)
@@ -1016,6 +1016,14 @@ func testAnswerFromHome(t *testing.T) {
 	}
 	if strings.Contains(row, "wants to "+say(t, "consentRowLine")) {
 		t.Errorf("home's row wrote its own grammar around the gate's sentence:\n%s", firstMatch(row, say(t, "consentRowLine")))
+	}
+
+	// AND THE ROW STANDS UNDER `needs you`, the panel every question on the
+	// machine lands in — window A's conversation, stopped on a consent card, is
+	// exactly such a row. The heading is matched with its count, because the
+	// bare word is also the front of the gate's own `needs your ok …`.
+	if head, line := strings.Index(row, say(t, "homeNeedsHeading")+" · "), strings.Index(row, say(t, "consentRowLine")); head < 0 || line < head {
+		t.Errorf("the asking row is not under %q:\n%s", say(t, "homeNeedsHeading"), row)
 	}
 
 	// AND THE PULSE INSIDE A CHAT COUNTS IT. On home the top line is the budget

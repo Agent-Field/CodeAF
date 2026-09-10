@@ -58,6 +58,11 @@ type v3Process struct {
 	// Models is ONE lazy warm and one cache on disk. N catalogs would be N
 	// network round trips for one answer.
 	Models *catalog.Catalog
+	// Shelf holds Models until somebody asks /model for today's list, and the
+	// refreshed catalog after (chatv3_modelshelf.go). The picker and the two
+	// session readers that answer about a model somebody may have just picked
+	// out of that list — can it see, may a task be handed to it — read here.
+	Shelf *v3ModelShelf
 	// Harnesses is the registry under the state root. The law is already written
 	// at [openV3Launch]: two stores at one directory is how /harness and the
 	// offer card come to name different harnesses.
@@ -167,13 +172,15 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	// Model discovery starts here and is waited for NOWHERE. On a cold cache
 	// resolving it is a network round-trip, and everything it feeds has a good
 	// answer without it.
-	models := catalog.LoadLazy(context.Background(), catalog.Options{
+	discovery := catalog.Options{
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
-	})
+	}
+	models := catalog.LoadLazy(context.Background(), discovery)
 	return &v3Process{
 		Settings:   settings,
 		ProfileDir: settings.ProfileDir,
 		Models:     models,
+		Shelf:      newV3ModelShelf(models, discovery),
 		Harnesses:  subharness.Default(),
 		Memory:     v3Memory(settings.ProfileDir),
 		Artifacts:  artifactsIndexPath(),

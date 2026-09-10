@@ -88,6 +88,113 @@ func TestTheConversationWearsThePlacesHead(t *testing.T) {
 	}
 }
 
+// headFrameSizes are the three frames a person walks between chats, rooms and
+// places at: the classic terminal, and a tall one at two widths — the wider two
+// being where a task room lays itself out beside its roster
+// (roompanel.go's [app.roomOrganized]).
+var headFrameSizes = []struct{ w, h int }{{80, 24}, {120, 45}, {180, 45}}
+
+// A TASK ROOM SPENDS THE PLACES' HEAD ABOVE ITS BODY, as the conversation it
+// opened from does and as every place does: the pulse, the strip, the rule and
+// a blank, and the room's own trail on the first row under them — where a
+// place's heading is. It used to lay the trail where the rule stands and its
+// facts where the blank does, so walking into a task moved the rule down a row,
+// and two in the roomy layout (PLACES-AUDIT.md, lane K).
+func TestATaskRoomSpendsThePlacesHeadAboveItsBody(t *testing.T) {
+	room, chat := crumbApp(t), headLab(t)
+	for _, size := range headFrameSizes {
+		for _, f := range []struct {
+			where string
+			a     *app
+			to    page
+		}{{"the task room", room, pageNone}, {"the conversation", chat, pageNone}, {"the tasks place", chat, pageTasks}} {
+			f.a.width, f.a.height = size.w, size.h
+			if f.to != pageNone {
+				walkTo(t, f.a, f.to)
+			}
+			f.a.touch()
+			head := headOf(t, f.a)
+			if !strings.HasPrefix(head[0], " "+product) || head[2] != strings.Repeat("─", size.w) || head[3] != "" {
+				t.Fatalf("at %dx%d %s's head is not the pulse, a row, the rule and a blank:\n%s",
+					size.w, size.h, f.where, strings.Join(head, "\n"))
+			}
+			if f.to != pageNone {
+				f.a.showPage(pageNone)
+			}
+		}
+		// The room's heading is the first row under the head, and the rows the
+		// frame drew there are the rows the geometry charged for.
+		rows := strings.Split(plain(frame(room)), "\n")
+		if room.roomHeadRow() != placeHeadRows || !strings.Contains(rows[placeHeadRows], "Write the tree") {
+			t.Fatalf("at %dx%d the room's trail is on row %d, not under the %d-row head:\n%q",
+				size.w, size.h, room.roomHeadRow(), placeHeadRows, rows[placeHeadRows])
+		}
+		if room.bodyTop() != room.headHeight()+room.stripHeight() || room.headHeight() < placeHeadRows+room.roomHeadCount() {
+			t.Fatalf("at %dx%d the room's head is charged %d rows, body at %d",
+				size.w, size.h, room.headHeight(), room.bodyTop())
+		}
+	}
+}
+
+// ── THE ONE FOOT ────────────────────────────────────────────────────────────
+
+// footEdges is where a frame's foot stands: the rule, the composer's row, and
+// the last row — the status line in a chat, the hint on a place.
+type footEdges struct{ rule, box, status int }
+
+// footOf reads those rows off a drawn frame, from the bottom up: the composer
+// is the lowest row that opens on the prompt, and the rule is the row over it.
+func footOf(rows []string) footEdges {
+	got := footEdges{rule: -1, box: -1, status: -1}
+	for i := len(rows) - 1; i >= 0 && got.box < 0; i-- {
+		if strings.HasPrefix(rows[i]+" ", inputPad+prompt) {
+			got.box = i
+		}
+	}
+	if got.box > 0 && strings.HasPrefix(rows[got.box-1], "─") {
+		got.rule = got.box - 1
+	}
+	if last := len(rows) - 1; last >= 0 && strings.TrimSpace(rows[last]) != "" {
+		got.status = last
+	}
+	return got
+}
+
+// THE CONVERSATION'S FOOT IS A PLACE'S FOOT: a blank, the rule, the box, and
+// the status line where a place draws its hint. The chat used to keep a second
+// blank between the box and the status line, so `esc` from home into a chat
+// moved the rule and the box up a row and walking back moved them down again
+// (PLACES-AUDIT.md, lane K). Walked chat → home → tasks → chat at three sizes,
+// and the rule, the box and the last row never move.
+func TestWalkingBetweenAChatAndThePlacesMovesNothingAtTheFoot(t *testing.T) {
+	a := headLab(t)
+	for _, size := range headFrameSizes {
+		a.width, a.height = size.w, size.h
+		want := footEdges{rule: size.h - placeFootRows + 1, box: size.h - 2, status: size.h - 1}
+		for _, to := range []page{pageNone, pageHome, pageTasks, pageNone} {
+			if to == pageNone {
+				a.showPage(pageNone)
+			} else {
+				walkTo(t, a, to)
+			}
+			a.touch()
+			rows := strings.Split(plain(frame(a)), "\n")
+			if got := footOf(rows); got != want || strings.TrimSpace(rows[want.rule-1]) != "" {
+				t.Fatalf("at %dx%d %s puts its foot at %+v, and every frame puts it at %+v under a blank:\n%s",
+					size.w, size.h, pageName(to), got, want, strings.Join(rows[len(rows)-placeFootRows-1:], "\n"))
+			}
+		}
+	}
+}
+
+// pageName is what a failure calls the frame it was standing on.
+func pageName(id page) string {
+	if id == pageNone {
+		return "the conversation"
+	}
+	return "the " + id.word() + " place"
+}
+
 // AND THE PULSE IS ONE LINE, NOT TWO THAT AGREE. The tasks place and the
 // conversation draw it from one function over one memo, so over the same
 // machine they draw the same characters.

@@ -74,8 +74,9 @@ func TestPeekFallsBackToTheAnswerWhenTheLastMessageHadNoWords(t *testing.T) {
 	}
 }
 
-// LastUser IS THE PERSON'S OWN LAST LINE: the `while you worked:` note the
-// session journals into the user role after it is not something they said.
+// Last AND LastUser ARE THE PERSON'S OWN LAST LINE: the `while you worked:`
+// note the session journals into the user role after it is not something they
+// said, on home's `where you were` row or on the picker's.
 func TestPeekLastUserSkipsTheSessionsOwnNotes(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	writeTranscript(t, path, peekHeader, peekAsked, peekSaid, peekAgain,
@@ -87,6 +88,9 @@ func TestPeekLastUserSkipsTheSessionsOwnNotes(t *testing.T) {
 	}
 	if summary.LastUser != "now run the migration" {
 		t.Fatalf("last user is %q, want the person's own last line", summary.LastUser)
+	}
+	if summary.Last != "now run the migration" {
+		t.Fatalf("the picker's last line is %q, want the person's own last line", summary.Last)
 	}
 }
 

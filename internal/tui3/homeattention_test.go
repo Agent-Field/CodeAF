@@ -48,8 +48,6 @@ func switchNames(a *app) []string {
 		switch {
 		case line.cell != nil && line.cell.row != nil:
 			row = line.cell.row
-		case line.sw != nil && line.sw.row != nil:
-			row = line.sw.row
 		default:
 			continue
 		}
@@ -122,8 +120,9 @@ func switchNameAt(names []string, want string) int {
 
 // ONE THING HAS ONE ROW. A conversation used to be a strip row AND a row under
 // its project at the same moment, which is what forced the cursor restore to
-// prefer one of them; with one flat list there is nothing left to prefer
-// ([homeView.pointAt]), and a rescan three seconds later must leave the cursor
+// prefer one of them. On the grid a conversation has one row that stands for it
+// as a whole; a task it has out is a row of `running` about that piece of work
+// ([homeLine.cellKey]), and a rescan three seconds later must leave the cursor
 // exactly where a person put it.
 func TestOneConversationHasOneRowAndARescanLeavesTheCursorOnIt(t *testing.T) {
 	lab := newSwitchLab(t)
@@ -139,12 +138,12 @@ func TestOneConversationHasOneRowAndARescanLeavesTheCursorOnIt(t *testing.T) {
 	}
 	rows := 0
 	for _, line := range a.home.lines {
-		if line.kind == homeSession && line.row.Transcript == row {
+		if line.kind == homeSession && line.row.Transcript == row && line.cellKey() == "" {
 			rows++
 		}
 	}
 	if rows != 1 {
-		t.Fatalf("one conversation has %d rows on the flat list:\n%s", rows, homeText(a))
+		t.Fatalf("one conversation has %d rows standing for it on the grid:\n%s", rows, homeText(a))
 	}
 	a.home.point(row)
 	stood := a.home.cursor
@@ -228,15 +227,15 @@ func TestNoArrowLeavesTheCursorOnAHeadingOrABlank(t *testing.T) {
 	}
 }
 
-// THE WORDS THIS LIST STANDS ON SAY WHAT IS THERE AND NEVER WHAT IS NOT.
+// THE WORDS THE GRID STANDS ON SAY WHAT IS THERE AND NEVER WHAT IS NOT.
 //
 // The teaching lines under the empty zones were held to this and they are gone;
 // the law is not. `no tasks yet` and every sentence like it were taken off this
-// surface on purpose, and the four sentences the switcher owns — the claim over
-// the list and the two views it names, and the fold at the foot — may not
-// smuggle one back in a quieter voice.
-func TestTheSwitchersOwnWordsNeverAnnounceAbsence(t *testing.T) {
-	for _, word := range []string{switcherGroupWord, switcherQuietWord, foldLine(15, "quiet since aug 21")} {
+// surface on purpose, and the words a panel's fold is spelled with — the count,
+// the quiet clause, the way to the rest — may not smuggle one back in a quieter
+// voice.
+func TestTheGridsOwnWordsNeverAnnounceAbsence(t *testing.T) {
+	for _, word := range []string{foldLine(15, "quiet since aug 21"), homeFindWord} {
 		for _, banned := range []string{"nothing", "empty", " yet", "no "} {
 			if strings.Contains(word, banned) {
 				t.Fatalf("%q announces absence with %q", word, banned)
@@ -248,11 +247,9 @@ func TestTheSwitchersOwnWordsNeverAnnounceAbsence(t *testing.T) {
 // ONE BLANK ROW BETWEEN TWO BLOCKS, NEVER TWO AND NEVER ONE AT THE TOP.
 //
 // The two strips were two blocks and THE SPACING LADDER gave their boundary
-// exactly one blank row. The list has more blocks than that now — the errands,
-// the `since you left` ledger, the claim over the ranked rows, a heading per
-// project under `alt+g` — and they are all separated by the same one row
-// ([switcherReading.addSectionLine] holds the rule), so the ladder is asked of
-// the whole column rather than of one seam in it.
+// exactly one blank row. The grid's blocks are its panels, and they are all
+// separated by the same one row, so the ladder is asked of every column rather
+// than of one seam in it.
 func TestOneBlankRowSeparatesTheBlocksOfTheList(t *testing.T) {
 	lab := newSwitchLab(t)
 	a := lab.open(120, 40)
@@ -499,13 +496,13 @@ func TestTypingTakesTheSwitcherAway(t *testing.T) {
 		t.Fatal("typing into the box did not put home into a search")
 	}
 	text := homeText(a)
-	for _, gone := range []string{"where you were", "since you left", "more · " + homeFindWord, switcherGroupWord} {
+	for _, gone := range []string{"where you were", "since you left", "more · " + homeFindWord} {
 		if strings.Contains(text, gone) {
 			t.Fatalf("a search kept the switcher's %q:\n%s", gone, text)
 		}
 	}
 	for _, line := range a.home.lines {
-		if line.sw != nil || line.cell != nil {
+		if line.cell != nil {
 			t.Fatalf("a search kept a line of the reading:\n%s", text)
 		}
 	}

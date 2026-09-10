@@ -58,29 +58,6 @@ func homeCardFor(t *testing.T, a *app, transcript string) []string {
 	return out
 }
 
-// homeCardPainted is [homeCardFor] with the paint left on, for the assertions
-// whose subject is an INK rather than a word.
-//
-// The card's one remaining news claim is a colour: a piece of work that landed
-// since home was last closed wears its tick in the accent
-// ([app.homeTaskGlyph] reads [app.homeEntryFresh]), and one that was already
-// looked at wears the same tick muted. A stripped reading cannot tell those two
-// rows apart, so the tests about news ask for the painted one.
-func homeCardPainted(t *testing.T, a *app, transcript string) []string {
-	t.Helper()
-	if width, _ := a.size(); width < homeCardMin {
-		a.width, a.height = homeCardMin, max(a.height, 30)
-		a.home.build()
-	}
-	a.home.point(transcript)
-	width, _ := a.size()
-	_, right := homeColumns(width)
-	if right <= 0 {
-		t.Fatalf("no detail column at width %d", width)
-	}
-	return a.homeDetail(right, 20, a.pal)
-}
-
 // cardLine finds the first card line containing a phrase, or -1.
 func cardLine(card []string, phrase string) int {
 	for at, line := range card {
@@ -126,17 +103,10 @@ func TestBelowTheCardTierTheRowCarriesTheFactInstead(t *testing.T) {
 	if tier := a.homeTierNow(); tier != homeTierList {
 		t.Fatalf("a %d-cell frame is tier %v, want the list", a.width, tier)
 	}
-	// AND THE FACT THE CARD CARRIED IS ON THE ROW'S OWN NOTE, which is why there
-	// is nothing to miss: the note is the reading, not a consolation for one.
-	// (What a running node is DOING rides beside it — `· reading filings` — and
-	// is never on disk, so no lab can put it there: [session.TaskIndexEntry]'s
-	// Activity is built live and marked `json:"-"`.)
-	text := homeText(a)
-	if !strings.Contains(text, "1 task running") {
-		t.Fatalf("the row does not carry the fact the card was for:\n%s", text)
-	}
-	if strings.Contains(text, "Read the filings") {
-		t.Fatalf("a card was drawn under the tier:\n%s", text)
+	// AND THE FACT THE CARD CARRIED IS ON THE GRID, which is why there is
+	// nothing to miss: the work is its own row of `running`, named after itself.
+	if text := homeText(a); !strings.Contains(text, "Read the filings") {
+		t.Fatalf("the grid does not carry the fact the card was for:\n%s", text)
 	}
 
 	// AND ONE CELL WIDER THERE IS ONE, about the same row.

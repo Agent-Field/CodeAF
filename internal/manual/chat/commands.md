@@ -859,17 +859,24 @@ Moving in the picker: type to filter; ↑ / ctrl+p and ↓ / ctrl+n move; pgup/p
 under the cursor through off → low → medium → high → off reasoning effort. enter
 switches.
 
+**→ or tab on a model opens its lanes and walks the cursor into them**, onto the pinned
+lane or `auto`; enter pins, ← or tab walks back out. *Lanes → Pinning one lane yourself*
+has the rest.
+
 esc leaves and changes **nothing** — your half-typed draft, the model in use and the
 frame all come back as they were. The filter is forgotten when the picker closes.
 
 The cursor opens on the model in use, which is also the marked row, so enter with nothing
-typed confirms rather than changes.
+typed confirms rather than changes. Emptying the filter with ctrl+u puts it back there.
 
-The placeholder in the empty filter box is the only place the picker explains itself:
+The placeholder in the empty filter box reads:
 
 ```
-filter · ↑↓ · → lanes · ctrl+t effort · enter · esc
+filter · ↑↓ · → lanes · ctrl+t effort · ctrl+r refresh · enter · esc
 ```
+
+and the hint slot above the box follows the cursor: `→ lanes · enter switch · esc` on a
+model, `enter choose · ← back · esc` inside its lanes.
 
 Choosing a model sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
@@ -879,7 +886,8 @@ model a remote session opens on is that machine's to resolve.
 
 ## What the model picker lists, and what it will not do
 
-The picker **never fetches**. The list is what is already known, tried in this order,
+The picker **never fetches on its own** — it fetches only when you ask, with `ctrl+r` (see
+"Refreshing the model list" below). The list is what is already known, tried in this order,
 each rung used only when the one above it came back empty after filtering:
 
 1. the catalog handed in at launch,
@@ -915,6 +923,33 @@ Limits:
 - The reasoning level lives on the agent, per model id, so it survives switching away and
   back. `/new` forgets it.
 - There is no mouse commit on the picker's rows.
+
+## Refreshing the model list — a new model is not in /model, the list is out of date
+
+The list `/model` shows is fetched from the router at most once a day, so a model a
+provider shipped this morning may not be in it yet. With the picker open, press
+**`ctrl+r`** to fetch the newest list now. The placeholder names it — `ctrl+r refresh` —
+and when your filter matches nothing the list says `no model matches · ctrl+r fetches the
+newest list`. Nothing on screen shows how old the list is; when in doubt, press it.
+
+While it runs, the list's first line reads `fetching the newest list…` and the picker keeps
+working: type, move, switch. A second `ctrl+r` while one is out does nothing. It waits at
+most fifteen seconds.
+
+When it lands, the list is filtered again by what you typed, the cursor goes back to the
+model in use, and the conversation gets one note: `models · 612 · 9 new ·` and up to three
+of the new ids, or `models · 612 · nothing new`. A model that left the list is not
+mentioned. The new list is saved (`~/.aforge/v3/models.json`), so the next `aforge` opens on
+it. From a terminal, `aforge models --refresh` does the same.
+
+If it fails, the list stays exactly as it was and the note says why in one line —
+`could not fetch the model list · dial tcp: lookup openrouter.ai: no such host` — and
+`ctrl+r` is offered again.
+
+Where it is absent: only `/model` (and the model word in a task's status line, which opens
+the same list) has the key. Every other model list — the settings panel's rows, home's, the
+`alt+o model` one — does not: there `ctrl+r` does nothing and nothing names it. Over `--host` it works and fetches on this
+machine, whose list of names the picker shows.
 
 ## /resume — open an earlier conversation
 
@@ -1176,7 +1211,7 @@ through the marked door when its turn comes. On a build with no ambient side it 
 conversation, on up to three shelves, with `p` to pause one, `s` to stop one, `n` to except
 this place and `enter` to open the conversation that asked for it. With nothing standing it
 opens all the same, on its heading `standing orders` and one dim line:
-`reminders, watches and routines · "remind me at 6" or "every morning, …"`
+`reminders, watches and routines · "remind me at 6" or "every morning at 9"`
 Nothing is written into the conversation either way.
 
 Nothing on the page is ever named at the command line — the words are always a new order,
@@ -1739,8 +1774,10 @@ hear, and everything else follows the general chat rule. Its legend is
 Because the picker is the same component, everything true of `/model`'s ranking, its rows
 and its ctrl+t effort knob is true here too — **including the lanes** on the row that has
 them. On **your model**, `→` or `tab` unfolds the endpoints serving the model under the
-cursor and `enter` on one pins it, exactly as under `/model`, and the legend says
-`↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter`. The media slots
+cursor, walks the cursor into them, and `enter` on one pins it, exactly as under
+`/model`. The legend says `↑↓ move · → or tab lanes · enter choose · esc cancel · type to filter`
+on a model and `↑↓ move · ← or tab back · enter choose · esc cancel · type to filter`
+inside its lanes. The media slots
 have no lane row behind them, so nothing unfolds there and the legend does not offer the
 key.
 
@@ -1877,8 +1914,8 @@ run `aforge --help` for every command and the environment table.
 It goes to **standard output** and the command leaves with **0**. Asking a program what
 it takes is not a failure, so a Makefile or a CI step that runs `aforge do --help` to
 check the binary is healthy reads a command that worked. This includes the commands that take
-no flags at all — `aforge show --help`, `aforge models --help` and `aforge cache --help`
-answer the same way rather than reading `--help` as a filename or ignoring it.
+no flags at all — `aforge show --help` and `aforge cache --help` answer the same way
+rather than reading `--help` as a filename or ignoring it.
 
 **A flag that does not exist is still a refusal**, and it is said once, on the **error
 stream**, and leaves with **1**:

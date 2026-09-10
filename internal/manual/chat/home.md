@@ -362,9 +362,11 @@ cursor is in — and that is how you tell which column your arrows are in. The r
 wears the same ground and its title goes bold; the row under your mouse pointer wears it too
 while the pointer is on it.
 
-**`→` opens a row's verbs only where no column with rows lies to its right** — on the right
-column, and everywhere at one column. On a row of the left column the verbs are on their
-chords instead: `ctrl+o` open folder, `ctrl+y` copy path, `ctrl+e` put away or pause.
+**Columns win the arrow: `→` opens a row's verbs only where no column with rows lies to its
+right** — on the right column, and everywhere at one column. On a row where `→` crosses
+instead, **the foot names the chord that still reaches them** — `ctrl+o open folder`, or
+`ctrl+e pause` on a standing order — and the rest are on their chords too: `ctrl+y` copy
+path, `ctrl+e` put away. `ctrl+o` on a `projects` row opens that project's folder.
 
 A digit answers the top question in `needs you` wherever you are standing. `enter` acts on
 the row under the cursor. `alt+.` draws the map.
@@ -1406,7 +1408,8 @@ three ways:**
 - **while it is asking you something**, it is a row of `needs you`, with the amber `?` and
   what it is asking under it;
 - **while it is firing**, it is a row of `running`: your own words, what the pass is doing,
-  and how long ago the pass began;
+  and how long ago the pass began. It is still the item — `→` offers `pause`, and `ctrl+v`
+  raises how hard it thinks;
 - **while it is simply waiting for its time**, it is a row of `next up`, soonest first, with
   when it goes off at the right — `in 20h`, `mon 8:30`.
 
@@ -1705,9 +1708,10 @@ conversation's `a put it away` and, where it has a folder, `t new chat here`,
 `o open folder`, `c copy path`; a standing item's `p pause it` or `r resume it`; a task this
 window runs, `s stop`; a project's `its chats` and `open folder`.
 
-**On the left column `→` crosses to the right instead**, so a question there is answered
-with its digit, and a conversation's verbs are on their chords — `ctrl+e`, `ctrl+o`,
-`ctrl+y`, `ctrl+t`.
+**On the left column `→` crosses to the right instead** — columns win the arrow — so a
+question there is answered with its digit, and a conversation's verbs are on their chords —
+`ctrl+e`, `ctrl+o`, `ctrl+y`, `ctrl+t`. The foot names the one that matters on such a row:
+`ctrl+o open folder`, or `ctrl+e pause` on a standing order.
 
 ## The work on the right of home — what each task came to
 

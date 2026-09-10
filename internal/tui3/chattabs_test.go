@@ -276,11 +276,13 @@ func TestTheStripIsChargedToTheBodyRegionAndMovesTheHeaderUnderIt(t *testing.T) 
 	if got := plain(rows[placeTabRow]); !strings.Contains(got, a.chatDisplayName()) {
 		t.Fatalf("the row under the pulse is not the strip: %q", got)
 	}
-	if a.roomHeadRow() != a.tabsHeight(a.width) {
-		t.Fatalf("the room's header is on row %d", a.roomHeadRow())
+	// THE ROOM'S TRAIL IS THE FIRST ROW UNDER THE WHOLE HEAD — the rule and the
+	// blank under the strip are drawn in a room too (head.go).
+	if a.roomHeadRow() != placeHeadRows {
+		t.Fatalf("the room's header is on row %d, not under the %d-row head", a.roomHeadRow(), placeHeadRows)
 	}
 	if got := plain(rows[a.roomHeadRow()]); !strings.Contains(got, "Write the tree") {
-		t.Fatalf("the trail is not on the row under the strip: %q", got)
+		t.Fatalf("the trail is not on the row under the head: %q", got)
 	}
 	if got := plain(rows[a.roomHeadRow()+1]); !strings.Contains(got, "Cut the goldens") {
 		t.Fatalf("task title is not below its ancestors: %q", got)

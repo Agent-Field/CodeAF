@@ -135,9 +135,9 @@ var tuiWords = map[string]tuiWord{
 	// panels now, each a heading from homegrid.go's order table; an empty one
 	// keeps its heading and one whisper, so a heading on the screen says the
 	// panel is there and says nothing about whether anything is in it.
-	"homePanelNeeds": {
+	"homeNeedsHeading": {
 		screen: "needs you",
-		why:    "the top of the left column: every question on the machine waiting on a person",
+		why:    "the top of the left column: every question on the machine lands in it, and every resting home draws it",
 	},
 	"homePanelRecent": {
 		screen: "where you were",

@@ -517,11 +517,10 @@ func TestHomePutsASessionThatNeedsYouFirst(t *testing.T) {
 	}
 
 	text := homeText(a)
-	// THE MARK IS THE READING'S OWN AND IT IS THE FIRST CELL OF THE ROW. It used
-	// to be [homeAskGlyph]'s triangle drawn by the tree; the switcher paints every
-	// row from one vocabulary — `?` needs you, `◐` moving, `○` at rest, `=` paused
-	// (switcher.go's [switcherPaintRow]) — so the claim is the same claim in the
-	// new alphabet.
+	// THE MARK IS THE FIRST CELL OF THE ROW. It used to be [homeAskGlyph]'s
+	// triangle drawn by the tree; the grid gives a row one of two marks — `?`
+	// needs you, the moving cell for work (homecell.go's [app.homeCellLead]) — so
+	// the claim is the same claim in the new alphabet.
 	if !strings.Contains(text, tokens.GlyphNeedsHuman+" Pricing Research") {
 		t.Fatalf("the row does not wear the needs-you mark:\n%s", text)
 	}
@@ -1213,9 +1212,8 @@ func TestAMatchBehindTheCollapseIsFoundAnyway(t *testing.T) {
 	lab.session("-tmp-alpha", "cccc000000000001", "buried treasure", "/tmp/alpha", now.Add(-40*time.Hour))
 
 	a := lab.app(mine)
-	// A FRAME THE ROWS DO NOT FIT IN, because the resting list draws as many as
-	// the column can hold now and folds only what is genuinely under them
-	// (switcher.go's [switcherShown] is the floor, not the cap).
+	// A FRAME THE ROWS DO NOT FIT IN, because a panel draws as many as its
+	// budget holds and folds only what is genuinely under them (homegrid.go).
 	a.width, a.height = 100, 17
 	a.openHome()
 	if !strings.Contains(homeText(a), "more") {
@@ -2389,12 +2387,14 @@ func TestAnEmptyHomeKeepsItsShapeAtEveryWidth(t *testing.T) {
 				t.Fatalf("at %d columns an empty home is missing %q:\n%s", tc.width, want, text)
 			}
 		}
-		// AND AN EMPTY HOME HAS NO ROW TO STAND ON, which is the emptiness law
-		// rather than a broken cursor: a whisper names what arrives rather than
-		// a thing to open. `↑` from there reaches the tab bar,
-		// which is the whole of what this screen has to offer onward.
-		if len(placeHome{}.stops(a)) != 0 {
-			t.Fatalf("at %d columns an empty home offered a row to stand on", tc.width)
+		// AND THE ONE ROW AN EMPTY HOME HAS TO STAND ON IS THE FOLDER IT WAS
+		// OPENED IN: `projects` is never empty (DESIGN.md §4), and enter there
+		// starts the first conversation. Every other panel whispers, and a
+		// whisper names what arrives rather than a thing to open.
+		for _, at := range (placeHome{}).stops(a) {
+			if kind := a.home.lines[at].kind; kind != homeProjectRow {
+				t.Fatalf("at %d columns an empty home offered a row of kind %v to stand on", tc.width, kind)
+			}
 		}
 		// The arrows have nothing to land on and must not land on the furniture.
 		drive(t, a, key("down"))

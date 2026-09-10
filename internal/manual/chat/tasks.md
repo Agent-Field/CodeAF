@@ -2896,7 +2896,7 @@ local conversation the same page tails that log live.
 | how you stop the work | `esc` | `x` over an empty box, which raises the confirmation card |
 | the box's own line | the bare `› ` | a tinted segment naming the task, in its state's hue, then `› ` |
 | box placeholder | the draft prompt | `Steer this task… (esc: main)`, or `Steer <title>… (esc: main)` where the frame is too narrow for the segment |
-| pinned top rows | the pulse line, the tab strip under it, one thin rule and a blank — the same four rows every place draws; `Chats ▾` at the strip's right end opens the chat picker | the pulse line and the tab strip, then a breadcrumb row (conversation → ancestor tasks → current task) and a quiet facts row under it |
+| pinned top rows | the pulse line, the tab strip under it, one thin rule and a blank — the same four rows every place draws; `Chats ▾` at the strip's right end opens the chat picker | the same four rows — pulse, tab strip, rule, blank — so the rule does not move when you walk in; then a breadcrumb row (conversation → ancestor tasks → current task) and a quiet facts row under it |
 | legend word | the branch, or remote machine | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
 | legend hint | `esc interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
 | the model on the status row | the conversation's model | `task <the task's model>` |

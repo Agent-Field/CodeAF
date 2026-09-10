@@ -479,7 +479,13 @@ func (a *app) closeForSwitch() {
 // conv is the bundle — the agent and the seams minted around it — and side is
 // the sidecar a detach left, or nil for a conversation that was just opened.
 func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
+	was := a.agent
 	a.takeUp(conv, true)
+	// ANOTHER CONVERSATION'S QUESTIONS DO NOT COME ALONG ([app.forgetQuestions]);
+	// the new lane below replays its own.
+	if a.agent != was {
+		a.forgetQuestions()
+	}
 	agent := a.agent
 	// WHEN THIS ONE CAME FORWARD, stamped on the way in so the switcher's own row
 	// can say how long you have been sitting here (hop.go). Every other row

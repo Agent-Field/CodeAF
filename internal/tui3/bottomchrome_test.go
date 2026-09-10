@@ -53,9 +53,9 @@ func scrolledApp(t *testing.T, height int) *app {
 
 // ── 1. the breathing room ───────────────────────────────────────────────────
 
-// THE GAP IS A LADDER AND EVERY RUNG IS COUNTED. Two blank rows on a window
-// with the height to lend them, one on the everyday window, none on a short one
-// — and whatever it draws, [app.chromeHeight] charges the conversation for
+// THE GAP IS A LADDER AND EVERY RUNG IS COUNTED. The foot keeps its one blank
+// above the rule on a window with a rung to lend it and none on a short one —
+// and whatever it draws, [app.chromeHeight] charges the conversation for
 // exactly the rows [app.chrome] drew.
 func TestTheBreathingGapStepsDownWithTheWindow(t *testing.T) {
 	for _, c := range []struct {
@@ -97,26 +97,22 @@ func TestTheBreathingGapStepsDownWithTheWindow(t *testing.T) {
 			if rule < 1 {
 				t.Fatalf("the rule is at row %d:\n%s", rule, plain(frame(a)))
 			}
-			// THE PROMPT IS THE ROW DIRECTLY UNDER THE RULE, and the blank the box
-			// has always been given is BELOW it (view.go's [app.chrome]): from
-			// 2026-09-09 a person starts writing at the top of the room the box has
-			// rather than at the bottom of it, and the draft grows down into that
-			// blank as it wraps.
+			// THE PROMPT IS THE ROW DIRECTLY UNDER THE RULE and the status line is
+			// the row directly under the prompt: the conversation's foot is a
+			// place's foot, one blank over the rule and none under the box (view.go's
+			// [app.footClearance]).
 			if !strings.Contains(plain(frameRows[rule+1]), "›") {
 				t.Fatalf("the draft is not directly under the rule:\n%s", plain(frame(a)))
 			}
-			if !blankRow(frameRows[rule+2]) {
-				t.Fatalf("the row under the draft is %q, want the gap below the box",
+			if rule+2 != len(frameRows)-1 || blankRow(frameRows[rule+2]) {
+				t.Fatalf("the row under the draft is %q, want the status line",
 					plain(frameRows[rule+2]))
 			}
-			// And the SECOND helping goes above it, where the conversation stops.
-			above := blankRow(frameRows[rule-1])
-			if want := c.gap == 2; above != want {
-				t.Fatalf("the row above the rule is %q (blank=%v), want blank=%v",
-					plain(frameRows[rule-1]), above, want)
-			}
-			if c.gap == 2 && blankRow(frameRows[rule-2]) {
-				t.Fatalf("the gap above the rule is more than one row:\n%s", plain(frame(a)))
+			// And the one blank goes above the rule, where the conversation stops,
+			// on both rungs that draw a rule at all.
+			if !blankRow(frameRows[rule-1]) {
+				t.Fatalf("the row above the rule is %q, want the foot's clearance",
+					plain(frameRows[rule-1]))
 			}
 		})
 	}
@@ -169,21 +165,20 @@ func TestTheJumpChipOnlyShowsWhileTheReaderHasScrolledAway(t *testing.T) {
 	}
 }
 
-// ONE ROW OF THE GAP, WHICHEVER ONE THERE IS. The everyday window keeps a single
-// blank and the chip rides that instead of asking for a row of its own. Since
-// 2026-09-09 that blank is UNDER the box rather than over it, so on this window
-// the chip is drawn one row below the draft — directly under what you are
-// typing — rather than between the rule and the prompt.
-func TestTheJumpChipFallsBackToTheGapUnderTheDraft(t *testing.T) {
+// THE SAME ROW ON THE EVERYDAY WINDOW. The short window keeps the foot's one
+// blank above the rule as the tall one does, and the chip rides that instead of
+// asking for a row of its own. It used to fall back to a blank under the draft,
+// which the foot no longer keeps (view.go's [app.footClearance]).
+func TestTheJumpChipRidesTheFootsClearanceOnTheEverydayWindow(t *testing.T) {
 	a := scrolledApp(t, 10)
 	a.scroll(-3)
 	rows := strings.Split(frame(a), "\n")
 	at, rule := chipAtRow(rows), ruleAt(rows)
-	if at < 0 || rule < 0 || at != rule+2 {
+	if at < 0 || rule < 0 || at != rule-1 {
 		t.Fatalf("the chip is on row %d and the rule on %d:\n%s", at, rule, plain(frame(a)))
 	}
 	if !strings.Contains(plain(rows[rule+1]), "›") {
-		t.Fatalf("the draft is not between the rule and the chip:\n%s", plain(frame(a)))
+		t.Fatalf("the draft is not directly under the rule:\n%s", plain(frame(a)))
 	}
 	if len(rows) != a.height {
 		t.Fatalf("the chip took a row: the frame is %d tall, want %d", len(rows), a.height)

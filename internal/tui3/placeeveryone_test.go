@@ -50,6 +50,16 @@ func everyPlaceTable() []everyPlace {
 			cursor: func(a *app) int { return a.home.cursor },
 			hits: func(a *app) []int {
 				_, hits, _, _ := a.homeFrame(a.width, a.height)
+				// ON THE GRID ONE SCREEN ROW HOLDS A LINE OF EVERY COLUMN
+				// ([homeMark.cells]), and the column a walk is about is the
+				// cursor's own.
+				if col := a.home.columnOf(a.home.cursor); col >= 0 {
+					for y, mark := range a.home.gridMarks {
+						if mark.grid && y < len(hits) {
+							hits[y] = mark.cells[col]
+						}
+					}
+				}
 				return hits
 			},
 		},
@@ -129,8 +139,7 @@ func everyPlaceTable() []everyPlace {
 // ── the labs ────────────────────────────────────────────────────────────────
 
 // switchPlaceLab is home over a machine with more conversations than the frame
-// can hold, with the fold at its foot standing open — so the list genuinely runs
-// on past the bottom of the window.
+// can hold.
 func switchPlaceLab(t *testing.T) *app {
 	t.Helper()
 	lab := newHomeLab(t)
@@ -148,9 +157,6 @@ func switchPlaceLab(t *testing.T) *app {
 	a := lab.app(mine)
 	a.width, a.height = 120, 20
 	openHomeOn(a, mine)
-	// THE FOLD STANDS OPEN, because the resting list caps itself at
-	// [switcherShown] and a capped list has nothing under its window to scroll to.
-	a.home.foldSwitch(true)
 	return a
 }
 
