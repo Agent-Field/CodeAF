@@ -136,6 +136,12 @@ func (l *homeLab) app(standing string) *app {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width, a.height = 100, 24
 	a.homeRoot = l.root
+	// THE DELIVERABLES INDEX IS THE LAB'S TOO. Left empty, [app.artifactsIndex]
+	// falls back to the package's one shared test home, which every /export
+	// test writes into — so `since you left` in one lab read the files another
+	// test made, and a firing folded under `3 more` only when the whole suite
+	// ran (a red the Spark found twice and a lone run never could).
+	a.artifacts = filepath.Join(l.root, "v3", session.ArtifactsIndexName)
 	// THE LEDGER IS THE LAB'S TOO. An empty path is the door's way of saying
 	// "this machine's" (usage_ledger.go's [UsageCache] falls back to
 	// [UsageLedgerPath]), so a lab that left it empty had the spend place read
