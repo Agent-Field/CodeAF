@@ -293,6 +293,33 @@ type taskGuest struct {
 	notices   <-chan session.Event
 	stopWatch func()
 	told      bool
+
+	// asking is what the conversation that OWNS this work is waiting on a person
+	// for, oldest first, off its own questions lane ([TaskOwnerView.Questions]).
+	//
+	// IT IS DRAWN AND NEVER ANSWERED, and that is the whole posture of this page.
+	// A window that came to READ one task must not decide for the window that
+	// owns it — the wire refuses the answering door to a reading surface by
+	// construction (internal/remote's watcherReads) — but a page that drew
+	// `working` over a conversation which has stopped and is waiting on somebody
+	// would be telling the same lie the owner's task lane was added to end.
+	//
+	// stopAsking leaves the subscription. It is given back with the view, because
+	// the lane and the connection are the same connection.
+	asking     []session.Question
+	questions  <-chan session.Event
+	stopAsking func()
+}
+
+// waiting is the question this page says the owner is stopped on: the oldest,
+// which is the one the block in the owning window has at its head. Nothing is
+// said where there is no lane or nothing open, which is the emptiness law — a
+// page with no reading draws no row about one.
+func (g *taskGuest) waiting() (session.Question, bool) {
+	if g == nil || len(g.asking) == 0 {
+		return session.Question{}, false
+	}
+	return g.asking[0], true
 }
 
 // taskGuestGoneWord is what a page says when the conversation under it was
@@ -448,6 +475,79 @@ func (a *app) tookGuestNotice(msg taskGuestNoticeMsg) tea.Cmd {
 	return next
 }
 
+// taskGuestQuestionMsg is one question the owner's conversation raised, withdrew
+// or had answered, on its way to the page that is reading it.
+type taskGuestQuestionMsg struct {
+	gen int
+	ev  session.Event
+	// closed is the lane ending — the connection went, or the view was given
+	// back. Nothing is re-armed after it.
+	closed bool
+}
+
+// waitGuestQuestions takes one event off the owner's questions lane and asks for
+// the next, in the shape every other lane on this surface is pumped in.
+func waitGuestQuestions(ch <-chan session.Event, gen int) tea.Cmd {
+	return func() tea.Msg {
+		ev, ok := <-ch
+		if !ok {
+			return taskGuestQuestionMsg{gen: gen, closed: true}
+		}
+		return taskGuestQuestionMsg{gen: gen, ev: ev}
+	}
+}
+
+// tookGuestQuestion folds ONE of the owner's questions into the page.
+//
+// IT KEEPS THE ENGINE'S OWN ORDER, oldest first, replacing a question already
+// held rather than appending it — the lane replays everything open on arrival
+// and re-emits a question whose words changed, and a page that appended would
+// say a conversation was waiting on two answers when it is waiting on one.
+func (a *app) tookGuestQuestion(msg taskGuestQuestionMsg) tea.Cmd {
+	room := a.room
+	if room == nil || room.gen != msg.gen || room.guest == nil {
+		return nil
+	}
+	guest := room.guest
+	if guest.lost || msg.closed || guest.questions == nil {
+		// A LANE THAT ENDED IS NOT RE-ARMED. A command built around a nil channel
+		// never returns, so asking for the next event here would park a goroutine
+		// for the life of the window rather than end the subscription.
+		guest.questions = nil
+		a.roomTouched()
+		a.touch()
+		return nil
+	}
+	if asked := msg.ev.Question; asked != nil {
+		token := questionTokenOf(*asked)
+		switch msg.ev.Kind {
+		case session.EventQuestion:
+			replaced := false
+			for at := range guest.asking {
+				if questionTokenOf(guest.asking[at]) == token {
+					guest.asking[at], replaced = *asked, true
+					break
+				}
+			}
+			if !replaced {
+				guest.asking = append(guest.asking, *asked)
+			}
+		case session.EventQuestionWithdrawn, session.EventQuestionAnswered:
+			kept := guest.asking[:0]
+			for _, standing := range guest.asking {
+				if questionTokenOf(standing) == token {
+					continue
+				}
+				kept = append(kept, standing)
+			}
+			guest.asking = kept
+		}
+	}
+	a.roomTouched()
+	a.touch()
+	return waitGuestQuestions(guest.questions, msg.gen)
+}
+
 // roomGuestStale reports that this page will NEVER hear from the conversation
 // that owns the work — so everything it says about what the work is doing is the
 // row the person pressed, and is not a present this window can see.
@@ -483,6 +583,14 @@ func (g *taskGuest) dropWatch() {
 		g.stopWatch = nil
 	}
 	g.notices = nil
+	// AND THE QUESTIONS LANE GOES WITH IT. A page that has its final answer has
+	// nothing left to hear on either subscription, and what it last knew about a
+	// question is not re-asserted as a present this window can see.
+	if g.stopAsking != nil {
+		g.stopAsking()
+		g.stopAsking = nil
+	}
+	g.questions, g.asking = nil, nil
 }
 
 // release gives the view's connection back, once. It is idempotent because the
@@ -494,11 +602,14 @@ func (g *taskGuest) release() {
 		return
 	}
 	g.freed = true
-	// THE SUBSCRIPTION GOES FIRST AND THEN THE CONNECTION, because the lane rides
-	// the connection: leaving it afterwards would be leaving a lane on a socket
+	// THE SUBSCRIPTIONS GO FIRST AND THEN THE CONNECTION, because the lanes ride
+	// the connection: leaving one afterwards would be leaving a lane on a socket
 	// that has already gone.
 	if g.stopWatch != nil {
 		g.stopWatch()
+	}
+	if g.stopAsking != nil {
+		g.stopAsking()
 	}
 	if g.close != nil {
 		_ = g.close()
@@ -518,6 +629,11 @@ const (
 	// roomGuestOwnerWord opens the line naming whose conversation this page is,
 	// so nothing on it can be read as this window's own work.
 	roomGuestOwnerWord = "reading in "
+	// roomGuestAskedWord is the clause after a question the OWNER is waiting on:
+	// what is true about it here, which is that this window is not where it gets
+	// answered. It names the door rather than refusing — the page a person wants
+	// is one keystroke away on the tasks place, and `esc` is still the way out.
+	roomGuestAskedWord = "answered in the window that owns this work"
 	// taskOwnerOpeningWord stands on the tasks page while the engine is being
 	// asked. It is a beat or two on a socket, and the page a person just pressed
 	// saying nothing at all is what makes a surface feel broken.
@@ -734,6 +850,15 @@ func (a *app) tookTaskOwner(msg taskOwnerMsg) tea.Cmd {
 	if msg.view.Watch != nil {
 		guest.notices, guest.stopWatch = msg.view.Watch()
 	}
+	// AND WHETHER THAT WORK HAS STOPPED AND IS WAITING ON A PERSON. It is the one
+	// thing the roster cannot say — a node sitting on a question is still
+	// `running` — and it is the same shape of reading: a standing subscription
+	// that replays what is already open, so the first thing this page hears is
+	// every question that conversation is holding (internal/remote's
+	// questionlane.go).
+	if msg.view.Questions != nil {
+		guest.questions, guest.stopAsking = msg.view.Questions()
+	}
 	// The list is stood down before the page goes up, so `esc` from the room is
 	// the ordinary way back to the conversation and the rail beside it is this
 	// window's own — which is what makes this a page rather than a mode.
@@ -760,10 +885,14 @@ func (a *app) tookTaskOwner(msg taskOwnerMsg) tea.Cmd {
 	// with a running clock and nothing coming to replace it, for ever.
 	a.armRoomRecord()
 	if guest.notices != nil {
-		// TWO PUMPS, ONE PAGE: the journal reading on its own beat, and the owner's
-		// notices whenever the owner has something to say. Both are stamped with
-		// this room's generation, so leaving the page discards either of them.
+		// THREE PUMPS, ONE PAGE: the journal reading on its own beat, the owner's
+		// notices whenever the owner has something to say, and the owner's
+		// questions. All are stamped with this room's generation, so leaving the
+		// page discards every one of them.
 		a.roomPump = tea.Batch(a.roomPump, waitGuestNotices(guest.notices, room.gen))
+	}
+	if guest.questions != nil {
+		a.roomPump = tea.Batch(a.roomPump, waitGuestQuestions(guest.questions, room.gen))
 	}
 	return a.takeRoomPump()
 }
