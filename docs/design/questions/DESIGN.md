@@ -179,7 +179,7 @@ never resolves a task by itself.
 ## The forms
 
 - **line** — one row + one answers row, pinned above the box. Permission, confirmation, ratify.
-- **card** — head · reason/attribution · one row per option (word · consequence · pick mark) · answers row. Transcript, home strip, other window, room foot.
+- **card** — head · reason/attribution · one row per option (word · consequence · pick mark; a long word wraps, never cut; a checklist's rows carry its ticks and a digit toggles) · answers row. Transcript, home strip, other window, room foot. Every option is a row: the engine's cap (4, 8 on a checklist) is the only bound. Keys are digits `1`… in order; `ask` renumbers whatever the model wrote and hands the answer back in the model's own names. The asker's `form: line` is honoured only for plain options with no structured input; width decides the rest.
 - **room** — a page over the conversation (the task-room idiom): head and attribution, options as sections (`▸`/`▾`, bodies, blocks), `x` compare on the asker's dimensions (fallback: `+`/`−` lines), `c` comment on the focused part, `?` ask back (one exchange per option, answered in place, closes with the question), the foot composes the answer (pick · with · notes · scope), `d` you decide shows the pick and reason first, `D` sets the dial for the kind.
 - **sheet** — many questions from one step or many hands: grouped by shape, `✓`/`?` per row, `enter` opens one, `s` sends what is answered and delegates the rest, "same answer for all like this" on a group; dependent questions withdraw with a reason and the sheet re-flows.
 
