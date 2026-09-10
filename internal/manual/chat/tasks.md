@@ -1227,7 +1227,7 @@ the tree; a green check can stand in for the reader, while a red one is carried 
 Having no configured reader is an absence, not a failed call, and never runs checks on its
 own — see *Leaving it running on its own* in *starting aforge*.
 
-## Waiting on something, and the limit on carrying on — it kept polling while it waited, why does it say carry on, why does it say "carried on 3 times", it turned my wait into a task, why does it keep asking about a task that is still running
+## Waiting on something is not carried on — it kept polling while it waited, it turned my wait into a task, why does it keep asking about a task that is still running
 
 **A reply that ends while something IT started is still running is never carried on.** A
 background command, a watch, a video or music render — while any of those is still going,
@@ -1263,6 +1263,26 @@ is narrow on purpose — **anything you say after the handoff**, including a cor
 into the running reply, puts the reading back; and a task that has already **failed or
 finished** is news to answer rather than work to wait for.
 
+**What that says is who owes the outcome, not that it is finished.** Nothing is marked done and
+no done-condition is answered. A reply that hands one part of your message over and quietly
+drops another ends here too, and what catches that is the reading the landing brings — deferred,
+not skipped. The measured failure it fixes: "hand this work to a task, run the build and tell me
+the marker, keep the conversation free while it runs" was done exactly as asked, read as
+unfinished because the marker was not known yet, and carried on into polling the task it had
+just started and a watch over its own work.
+
+## Why does it say carry on — what carry on means, carried on, why does it say "carried on 3 times", the reply was pushed on
+
+**Carry on is the reply being pushed on past its own ending.** When a reply stops, its
+ending is read against what you asked. If something you asked for is still missing, the reply
+is not left there: it is carried on, with the missing piece as its brief, and the row says so.
+`carried on 3 times` is the count, and three is the limit — after the third the reply stops
+where it is and tells you, rather than being pushed on again over the same gap.
+
+**It is never carried on over its own running work.** A reply waiting on a task, a quick
+task, a background command or a watch it started is waiting, not unfinished; the ending it
+waits for wakes a new reply here on its own.
+
 **And a reply you did not type is left alone while any of its own tasks is still out.** A
 landing wakes a reply here, and that reply often has nothing to do but say so: one of two quick
 tasks is in, the other is still running. While a task or a quick task this conversation started
@@ -1273,14 +1293,6 @@ whatever is still out, so a task from an earlier message excuses nothing you say
 real drive: a chat started two quick tasks, answered the first one's landing, and was then
 pushed on three times over the second — each push another reading and another `tasks` poll of
 the node that was about to report, each answered "still running, no gap to fix".
-
-**What that says is who owes the outcome, not that it is finished.** Nothing is marked done and
-no done-condition is answered. A reply that hands one part of your message over and quietly
-drops another ends here too, and what catches that is the reading the landing brings — deferred,
-not skipped. The measured failure it fixes: "hand this work to a task, run the build and tell me
-the marker, keep the conversation free while it runs" was done exactly as asked, read as
-unfinished because the marker was not known yet, and carried on into polling the task it had
-just started and a watch over its own work.
 
 ## A settled task with green checks is not carried on as unfinished — it kept saying the ask was not finished over a done task, carried on 3 times then said unfinished
 
