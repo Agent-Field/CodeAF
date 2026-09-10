@@ -1041,6 +1041,68 @@ func (a *app) laneRowChanged() {
 	provider.RepinLane(config.LanePinAt(a.profileDir, slot))
 }
 
+// ── THE PIN, WRITTEN ON THE MODEL ───────────────────────────────────────────
+
+// laneAtSign is what joins a model to the machine it is pinned to. It is the
+// `@` of the picker's own filter grammar ([parseLaneTerm]) and of `/model
+// @cloudflare`, so what a person reads on the chrome is what they would type.
+const laneAtSign = "@"
+
+// pinnedNow is the machine this conversation's requests are held to, as the
+// transport will act on it ([provider.PinnedFor]), lowercased the way every
+// lane name this surface draws is — and empty on `auto`, on `openrouter`, on a
+// pin the wire has retired for this model, and over a connection, where the
+// pin in force is the far machine's and this process cannot see it.
+func (a *app) pinnedNow() string {
+	if a.hosted() || a.model == "" {
+		return ""
+	}
+	return strings.ToLower(provider.PinnedFor(a.model))
+}
+
+// modelWord is THE MODEL AS THE CHROME NAMES IT: its basename ([modelBase]),
+// and — while a lane is pinned — `@` and that lane: `deepseek-v4-flash@cloudflare`.
+//
+// A PIN IS AN INSTRUCTION THAT CHANGES EVERY FUTURE REQUEST, and until this the
+// chrome never said it. The picker's row said `via inception` only while the
+// picker was open, the status rider said `via …` only for ten minutes after an
+// answer, and the frame's head read `mercury-2.5 · ⠿ auto` — whose `auto` is the
+// thinking rung, which the owner read as "lane: auto" and concluded the pin had
+// failed (2026-09-10). So the pin rides the one word every place that names the
+// model already draws: the seam, the status row's identity and the phone deck's
+// chip all take it from here, and none of them spells it.
+//
+// On `auto` and `openrouter` it adds nothing — the emptiness law: a choice left
+// to the router is the unremarkable state and says no word.
+func (a *app) modelWord() string {
+	model := modelBase(a.model)
+	if model == "" {
+		return ""
+	}
+	if pin := a.pinnedNow(); pin != "" {
+		return model + laneAtSign + pin
+	}
+	return model
+}
+
+// openPickerFromChip is a press on the model's name wherever the chrome draws
+// it. It is /model's list; and while a lane is pinned it opens with the model's
+// fold already open and the cursor on that lane, because the name pressed was
+// `model@lane` — the door to the provider is the door to the model, and a press
+// on a word that names a machine should land on that machine.
+func (a *app) openPickerFromChip() {
+	a.openPicker()
+	if a.pinnedNow() == "" {
+		return
+	}
+	// THE FOLD HAS TO BE THE ONE THE CHIP NAMES, for [app.openLaneList]'s
+	// reason: a model the list does not carry leaves the cursor on row zero,
+	// and unfolding whatever sorted first would open somebody else's machines.
+	if chosen, ok := a.pick.choice(); ok && chosen.ID == a.model {
+		a.pick.unfoldHere()
+	}
+}
+
 // ── THE STATUS LINE ─────────────────────────────────────────────────────────
 
 // laneRider is the served segment when the lane layer has something to say, and

@@ -2267,7 +2267,8 @@ func (a *app) identityParts(width int) (string, hudSpan) {
 	if name == "" {
 		name = a.place
 	}
-	model := modelBase(a.model)
+	// THE MODEL IS THE CHROME'S WORD FOR IT, pin and all ([app.modelWord]).
+	model := a.modelWord()
 	if model == "" {
 		return name, hudSpan{}
 	}

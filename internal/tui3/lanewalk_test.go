@@ -1,8 +1,11 @@
 package tui3
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 // ── THE PICKER IS A TREE, AND THE LANE IS WRITTEN ON THE MODEL ──────────────
@@ -116,6 +119,67 @@ func TestTheHintSlotSaysWhatTheArrowDoesNow(t *testing.T) {
 	drive(t, a, key("tab"))
 	if a.pick.unfold != "" {
 		t.Fatal("tab inside the fold did not close it")
+	}
+}
+
+// D. A PIN IS WRITTEN ON THE MODEL'S NAME, everywhere the chrome names the
+// model — the seam, the phone deck's chip — and on /status as its own `lane`
+// line, with /status --json's `model` exactly what it was. On `auto` nothing is
+// added.
+func TestAPinnedLaneIsWrittenOnTheModelsName(t *testing.T) {
+	laneLab(t, threeLanes())
+	a := laneApp(t)
+	a.width, a.height = 120, 24
+	if seam := plain(frame(a)); !strings.Contains(seam, "deepseek-v4-flash") || strings.Contains(seam, laneAtSign) {
+		t.Fatalf("on auto the chrome should name the model alone:\n%s", seam)
+	}
+
+	typeLine(t, a, "/model @cloudflare")
+	if seam := plain(frame(a)); !strings.Contains(seam, "deepseek-v4-flash@cloudflare") {
+		t.Fatalf("the seam does not carry the pin:\n%s", seam)
+	}
+	a.width = 44
+	if chip := plain(a.deckModelRow(44)); !strings.Contains(chip, "deepseek-v4-flash@cloudflare") {
+		t.Fatalf("the phone deck's chip does not carry the pin: %q", chip)
+	}
+	a.width = 120
+
+	a.slash("/status")
+	if note := lastNote(t, a); !strings.Contains(note, "\nlane ") || !strings.Contains(note, "cloudflare") {
+		t.Fatalf("/status does not name the pinned lane:\n%s", note)
+	}
+	a.slash("/status --json")
+	var object map[string]string
+	if err := json.Unmarshal([]byte(lastNote(t, a)), &object); err != nil {
+		t.Fatalf("/status --json is not an object: %v", err)
+	}
+	if object["model"] != flash || object["lane"] != "cloudflare" {
+		t.Fatalf("/status --json reads model %q lane %q", object["model"], object["lane"])
+	}
+
+	// PRESSING THE NAME OPENS THE PICKER ON THE PIN, fold open and cursor on it.
+	_ = frame(a)
+	x, y := a.seamModelSpan.from+1, markedRowY(a, chromeLegend, 0)
+	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
+	if !a.pick.open || a.pick.unfold != flash {
+		t.Fatalf("the press opened the picker=%v with fold %q", a.pick.open, a.pick.unfold)
+	}
+	if row, on := a.pick.laneUnder(); !on || row.lane < 0 || !strings.EqualFold(a.pick.lanes[row.lane].Name, "cloudflare") {
+		t.Fatalf("the press did not land on the pinned lane: %+v (on=%v)", row, on)
+	}
+	drive(t, a, key("esc"))
+
+	// A hosted window cannot see the far machine's pin, so it says none.
+	a.host = "devbox"
+	if a.modelWord() != "deepseek-v4-flash" {
+		t.Fatalf("a hosted window wrote %q", a.modelWord())
+	}
+	a.host = ""
+
+	typeLine(t, a, "/model auto")
+	if seam := plain(frame(a)); strings.Contains(seam, laneAtSign+"cloudflare") {
+		t.Fatalf("auto left the pin on the name:\n%s", seam)
 	}
 }
 

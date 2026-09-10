@@ -124,6 +124,26 @@ func CurrentLanePin() LanePin {
 	return lanePin
 }
 
+// PinnedFor is the machine a request for model is held to RIGHT NOW, and empty
+// when it is held to none — `auto`, `openrouter`, or a pin the wire has already
+// retired for this model ([retirePinnedLane]).
+//
+// It is the pin as the transport will act on it, which is the only thing a
+// surface naming the pin may say: a status line still reading `@coreweave`
+// after coreweave refused the model would be the chrome promising a machine the
+// next request does not ask for. It is memory only and cheap when nothing is
+// pinned, because the chrome asks it on every frame.
+func PinnedFor(model string) string {
+	if CurrentLanePin().pinned() == "" {
+		return ""
+	}
+	pin, retired := lanePinFor(model)
+	if retired {
+		return ""
+	}
+	return pin.pinned()
+}
+
 // SetLaneGuard turns the speed guard on or off, and it is the ONE switch: it
 // moves the hedge budget and the probe together, because both are the same
 // promise to a person — that this build may spend a little extra to keep an

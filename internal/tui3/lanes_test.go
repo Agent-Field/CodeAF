@@ -54,13 +54,20 @@ func laneBelief(model, name string, ttftMS, rate float64, spread float64, facts 
 
 // laneLab installs a ledger for the duration of one test and empties the desk
 // of anything a previous one posted.
+//
+// AND IT PUTS THE PIN IN FORCE BACK. A pin made here lands on the transport's
+// process-wide knob ([provider.RepinLane]), and the chrome writes that knob on
+// the model's name ([app.modelWord]) — so a pin this test left behind would be
+// every later test's seam reading `m@cloudflare`.
 func laneLab(t *testing.T, rows map[string][]lane.Belief) {
 	t.Helper()
 	forgetLanes()
 	lane.Default().SetLedger(&fakeLedger{rows: rows})
+	pin := provider.CurrentLanePin()
 	t.Cleanup(func() {
 		lane.Default().Reset()
 		forgetLanes()
+		provider.SetLanePin(pin)
 	})
 }
 
