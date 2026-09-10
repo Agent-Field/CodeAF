@@ -1,8 +1,22 @@
 # Continue the local-file E2E wave
 
+## Second review — NOT DONE, and what the pass after it changed (2026-09-10, about 23:10 UTC)
+
+**The completion below was premature.** An independent review of `b48387207` confirmed that blockers 1–2 were fixed, then returned **NOT DONE** on two new publish-path blockers. The same implementation session (`847eb4c6`) fixed them, and the lane is at **`c7ec2566f`** (source `40cd31e8c`). It is merged here by an ordinary `--no-ff` merge with no conflicts, and `git diff c7ec2566f HEAD -- ':!docs' ':!*.md'` is empty.
+
+- **A — an empty closed report overwrote the last good one.** `firingEnd.withheld` now returns `withheldEmpty` for a closed report whose trimmed body is empty. The rule is inside the one decision, with no second gate.
+- **B — an answer whose output-limit continuations ran out was published**, in the first turn and in the rules correction. `EventTurnDone` now carries `Truncated`, built by one constructor (`Agent.turnDone`) from the bit `markTurnTruncated` sets, so the stream and the flag cannot disagree. The standing reader records the last turn's ending, and `beginCorrection` clears it. The decision maps it to `withheldOutputLimit`. No new event kind was added, so the tui3 and remote consumers are untouched.
+- **A closing tag with no opening line is refused** (`unopened-report`) rather than published whole. An answer with neither tag is still published whole.
+- **Owner-approved addition:** `occurrence.json` records `withheld`, a stable kebab-case code, on withheld runs only. It is additive, and older records stay valid. The twelve codes are pinned by `TestTheWithheldCodesArePinned`, and `aforge standing show` prints `· withheld: <code>` on the `came to:` line. The manual has a new section, *Why wasn't my report published*, and one probe. The self-write exception is qualified: a refused self-write with a finished report still publishes it.
+- **Regressions fail at `b48387207` and pass at `40cd31e8c`:** `TestAnEmptyReportBetweenItsLinesIsNotPublished`, `TestAnAnswerCutAtTheOutputLimitIsNotPublished`, `TestACorrectionCutAtTheOutputLimitIsNotPublished` and `TestAReportClosedButNeverOpenedIsNotPublished` ([receipt](validation/wave03-publish-old-logic-b48387207.log)).
+- **Focused validation at `40cd31e8c`: 11/11, STATUS 0** ([receipt](validation/wave03-validate-second.log)). The first run at the same head failed and is kept ([run1](validation/wave03-validate-second-run1.log)). The implementer's own mid-run doc edit tripped the checkout guard. Two concurrency tests also failed once (`TestEachHandsReportArrivesWhenThatHandFinishes`, `TestAReportThatRacesTheWithdrawalIsNotSwallowed`) and did not reproduce in 48 reruns. They are undiagnosed.
+- **live7 at `40cd31e8c`: `DEMO PASSED`, 12 calls, $0.0134** on `deepseek/deepseek-v4-flash` ([log](validation/wave03-live7.log)). Recorded wave spend is about $0.069 of $5.
+- **Recorded, not fixed:** a stop or deadline arriving after the last context check can still publish. `publishStandingReport` takes no context. [BUILD-WAVE-03.md](BUILD-WAVE-03.md) gives the file:line under *Boundaries*.
+- No independent review of `40cd31e8c` itself is recorded yet.
+
 ## Completion — 2026-09-10, about 22:40 UTC
 
-**Wave 03's implementation is finished and integrated into the maintained draft.** Everything below this section is the earlier checkpoint, kept as history; where it and this section disagree, this section is the later account.
+**Wave 03's implementation is finished and integrated into the maintained draft.** (Superseded: the second review above found it NOT DONE.) Everything below this section is the earlier checkpoint, kept as history; where it and this section disagree, this section is the later account.
 
 - **Implementation 423 finished.** Fleet `20260910-200408-000423`, exit 0, 20:04:10–20:52:21 UTC, Claude session `847eb4c6-f1e8-4b82-a078-38d0995acf49`. It fixed live4's refused self-write in `9cc7b638c`, live5 passed at that source, and it pushed the lane at `b917016ce`.
 - **Final review 425 ran on that head.** Fleet `20260910-202146-000425`, exit 0, 20:55:54–21:00:04 UTC, JSON `/tmp/aforge-opus-e2e-review-final.json`. It confirmed the prior findings 1–5 fixed, and found two blockers in the publish path at `9cc7b638c`: a refused own-report write followed by an apology published the apology, and a run stopped at its step or spending limit (or with an unclosed report) still published.
