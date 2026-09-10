@@ -92,8 +92,11 @@ own keys, each a door to the place that owns it. The chat list is one panel.
   panel lines: `leftoff` is the snippet under the `here` row, `made for you`
   lines are receipts, the facts line is gone (the number is on the row where it
   is not zero).
-- The ten registered bands with no resting call site (`homebands.go`). What a
-  panel needs it takes from the reading; the registry goes.
+- The ten registered bands as anything the resting grid draws (`homebands.go`).
+  What a panel needs it takes from the reading. The band registry itself stays,
+  because three surfaces still read it: the card beside the typed search
+  (`homeCardRows`), the standing item's card (`StandingItemCard`) and the phone
+  sheet (`homeSheetBody`). It goes when the last of them stops asking.
 - `ctrl+t` as the way to start in another folder. Enter on a project row is.
 - Per-panel key hints, project tags on rows in this window's own folder, and
   `~` as a project name. A chat whose workspace is the home directory or a
