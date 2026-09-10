@@ -1902,6 +1902,17 @@ type Config struct {
 	// aforge has been replaced on disk. It is private because the session owns
 	// when the reading reaches a turn; tests replace only the reading itself.
 	newerBuild func() string
+
+	// profile is which of the two fixed prefixes this session sends, SETTLED
+	// ONCE by newAgent before anything is built from it (promptprofile.go).
+	//
+	// It is a field on the config rather than on the agent because everything
+	// that reads it reads it before the agent exists — the page is rendered
+	// first and the belt is built from the same config a moment later — which is
+	// the law beltfacts.go's predicates are already written under. Empty means
+	// nobody has settled it, and [Config.promptProfile] then derives the answer
+	// live, which is what a test asking the question of a bare Config wants.
+	profile promptProfile
 }
 
 // Agent is one conversation. It is safe for concurrent use, but Submit
@@ -2015,6 +2026,12 @@ type Agent struct {
 	// ([Agent.rearmLoadedCapabilities]).
 	shelf      map[string][]bare.Tool
 	shelfOrder []string
+	// prearm is the third part of the same partition: the groups this shape is
+	// HANDED rather than asked to fetch, held here between [Agent.shelveDeferred]
+	// and [Agent.armPrearmed] so the loading verb's catalog never offers a group
+	// already on its way onto the belt (tools_capabilities.go). Nil on every
+	// shape that pre-arms nothing, which is every full-profile belt.
+	prearm []bare.Tool
 	// withdrawn is the record of a belt narrowed ON PURPOSE (withdrawn.go): the
 	// hands the harness took, why, and what is left. Nil whenever the belt is
 	// whole, which is nearly always.

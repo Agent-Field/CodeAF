@@ -106,6 +106,26 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if config.newerBuild == nil {
 		config.newerBuild = buildinfo.StaleNotice
 	}
+	// WHICH OF THE TWO FIXED PREFIXES THIS SESSION SENDS, SETTLED ONCE AND
+	// BEFORE ANYTHING IS BUILT FROM IT (promptprofile.go). It is derived rather
+	// than configured — the model's window and the crew's worker seat are the
+	// two facts — and it is settled HERE, above the render, because the page,
+	// the belt, the shelf and the memory reflex are all built from this one
+	// config and a profile resolved twice is a profile that can answer twice.
+	config.profile = settlePromptProfile(config)
+	if config.profile.lean() {
+		// AND THE MEMORY REFLEX IS OFF BY THE SWITCH THAT ALREADY TURNS IT OFF.
+		// The reflex is two model calls on every turn on top of the one the
+		// person is waiting for, which on this seat is the most expensive thing
+		// in the turn that nobody asked for. No store is the supported off state
+		// — no block, no call and no `remember` on the belt (memory_test.go's
+		// [TestWithoutAStoreThereIsNoBlockNoCallAndNoTool], and standing_run.go
+		// nils the same field for its own reason) — so this flips that switch
+		// rather than inventing a second one for the page and the belt to
+		// disagree about. Conversation search is a different field and is
+		// untouched: reading the record costs nothing per turn.
+		config.Memory = nil
+	}
 	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {
 		system, own = renderSystem(config), true
@@ -193,6 +213,15 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		return nil, err
 	}
 	agent.definitions = definitions
+	// AND THE GROUPS THIS PROFILE HANDS OVER RATHER THAN ASKING FOR. A lean belt
+	// is given `ask` at construction because a one-call-per-message model cannot
+	// do load-then-ask inside a turn (promptprofile.go's [Config.prearmedGroups]
+	// states the whole of it). It goes on through [Agent.armFamily], the one
+	// arming door, so the append law and the dedupe are the same ones a
+	// connected account and a loaded group ride.
+	if err := agent.armPrearmed(); err != nil {
+		return nil, err
+	}
 	agent.messages = []ai.Message{textMessage("system", system)}
 	agent.messageReasoning = make([]provider.MessageReasoning, 1)
 	agent.refreshSystemLocked()

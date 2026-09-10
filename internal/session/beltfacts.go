@@ -461,12 +461,15 @@ func renderBeltFacts(config Config, facts []beltFact, join string) string {
 		text := fact.absent
 		if fact.holds(config) {
 			text = fact.present
-			// AND THE SHELVED WORDING ONLY WHERE THE SHAPE ACTUALLY SHELVES.
-			// A worker or a task node carries these tools directly, so telling
-			// it to call `load_capability` — which is not on its belt at all —
-			// would be the very defect this file exists to prevent, written the
-			// other way round.
-			if fact.shelved != "" && config.shelvesCapabilities() {
+			// AND THE SHELVED WORDING ONLY WHERE THE SHAPE ACTUALLY SHELVES
+			// THESE TOOLS. A worker or a task node carries them directly, so
+			// telling it to call `load_capability` — which is not on its belt at
+			// all — would be the very defect this file exists to prevent,
+			// written the other way round. The question is asked per FACT rather
+			// than per shape because a lean prefix is handed the `questions`
+			// group at construction (promptprofile.go's [Config.shelvesFact]):
+			// it shelves plenty and carries `ask`.
+			if fact.shelved != "" && config.shelvesFact(fact) {
 				text = fact.shelved
 			}
 		}
