@@ -54,6 +54,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1034,11 +1035,47 @@ func (a *Agent) refreshSystemLocked() {
 	if len(a.messages) == 0 {
 		return
 	}
-	record := DecisionsSection(a.Decisions())
+	record := a.recordSectionLocked()
 	if record != "" {
 		record = "\n\n" + record + "\n"
 	}
 	a.messages[0] = textMessage("system", a.system+a.placesText+a.standingText+a.memoryText+record)
+}
+
+// recordSectionLocked is [DecisionsSection] over this session's own record, held
+// against the file it was rendered from.
+//
+// EVERY REBUILD OF message[0] USED TO RE-READ decisions.jsonl. There are seven
+// callers of [Agent.refreshSystemLocked] and they fire on things that have
+// nothing to do with decisions — a folder attached, a standing order changed, a
+// turn's memory set routed — and each one opened the file, scanned it, and
+// unmarshalled every line of it to produce a string that changes only when a
+// question is answered. The record is answered from the last rendering unless
+// the file has moved.
+//
+// THE KEY IS THE FILE'S OWN STATE, not a flag this session sets when it writes.
+// A decision made in ANOTHER window lands in the same file (question.go's
+// DecidedByWindow), and a cache keyed on this session's own writes would carry a
+// record that was out of date in exactly the case the record exists for. A
+// record only ever grows by appending, so its size and its modification time
+// both move with it.
+//
+// A session with no folder has no record and nothing to stat, and renders
+// nothing every time — which is what [Agent.Decisions] answers for it anyway.
+func (a *Agent) recordSectionLocked() string {
+	dir := strings.TrimSpace(a.config.Place.Dir)
+	if dir == "" {
+		return ""
+	}
+	key := ""
+	if info, err := os.Stat(DecisionsPath(dir)); err == nil {
+		key = strconv.FormatInt(info.Size(), 10) + "@" + strconv.FormatInt(info.ModTime().UnixNano(), 10)
+	}
+	if key != "" && key == a.recordKey {
+		return a.recordText
+	}
+	a.recordKey, a.recordText = key, DecisionsSection(a.Decisions())
+	return a.recordText
 }
 
 // refreshCardLocked holds the state card's new text for the note that carries

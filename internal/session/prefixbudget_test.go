@@ -160,6 +160,22 @@ import (
 // lawregistry_test.go is what keeps it there: every law above is filed under an
 // id and a class, and a second copy of one is now a build failure rather than a
 // thing the next audit finds.
+// AND THE EVENT LANE PAID NOTHING AND TOOK 2,189 BYTES BACK (2026-09-10). The
+// prompt diet's WITH THE EVENT pass (docs/design/prompt-diet/DESIGN.md §2): a
+// harness-authored message now carries its own reading instruction, so the page
+// stopped explaining messages it may never see. A landed task's note opens on
+// [landingNoteLead] — 234 bytes on the turn a task lands, with the tier word
+// interpolated — and a job's ending carries [jobExitNewsRule]. In exchange
+// `# Interrupts and steering` lost the woken-turn and `[carry on]` paragraphs
+// (the messages say all of it, and [checkpointCarryOnLead] has said its own
+// half since it was written), `# Session facts` lost the four-words, `your
+// call` and saying-stop bullets, and the belt's `tasks` fact lost its second
+// copy of the four words and the resolve verbs — [settleClause] interpolates
+// those from [TaskResolutions] on the note itself, and `tasks` own description
+// owns "To END running work use stop". Nothing was raised and no law left the
+// build. On dev alone it was 23,391 → 21,202; landing after lane C's delete
+// pass it is 22,714 → 20,525, and the two together leave the prefix at 44,569,
+// which is 3,431 under. Neither raised the budget.
 // AND THE TOOL DESCRIPTIONS GAVE BACK 1,221 BYTES AND ADDED A LAW (2026-09-10,
 // the prompt diet, lane F). The tool block went 24,044 → 22,823 and nothing was
 // raised; the prompt is untouched by this lane, so the prefix went 47,435 →
@@ -175,12 +191,12 @@ import (
 // 819 → 754, recall 324 → 269, manual 616 → 603, commit 330 → 325, track 787
 // unchanged. schemalaw_test.go is the gate that keeps it: a parameter
 // description past 200 bytes, or shouting, or reaching for a dash, now fails the
-// build instead of waiting for this number to notice it. Merged with lane C's
-// delete pass above, the prefix is 45,537 — page 22,714 and tools 22,823, which
-// is 2,463 under a cap neither lane moved. And `watch.instead-of-polling` left
-// lawregistry_test.go with the sentence it filed: `handoff.reports-itself` now
-// matches on "never sleep, tail or poll", so putting any of the four per-tool
-// copies back fails that gate wherever it is put.
+// build instead of waiting for this number to notice it. Merged with the page
+// passes above, the prefix is 43,348 — page 20,525 and tools 22,823, which is
+// 4,652 under a cap no lane of this wave moved. And `watch.instead-of-polling`
+// left lawregistry_test.go with the sentence it filed: `handoff.reports-itself`
+// now matches on "never sleep, tail or poll", so putting any of the four
+// per-tool copies back fails that gate wherever it is put.
 // widestPage weighs the larger direct/deferred wording for each fact.
 const fixedPrefixBudget = 48_000
 
