@@ -83,30 +83,6 @@ func (l *homeLab) asks(bucket, id, text string, at time.Time) {
 	}
 }
 
-// alt+g GROUPS BY PROJECT AND alt+q HIDES THE QUIET ONES, and both survive the
-// screen being closed and opened again.
-func TestHomeGroupsAndHidesTheQuietOnesAndRemembersBoth(t *testing.T) {
-	lab := newSwitchLab(t)
-	a := lab.open(120, 40)
-	if !a.placeAlt('g') {
-		t.Fatal("alt+g did nothing on home")
-	}
-	if !strings.Contains(switchFrame(a), "alpha") {
-		t.Fatalf("grouping drew no project heading:\n%s", switchFrame(a))
-	}
-	if !a.placeAlt('q') {
-		t.Fatal("alt+q did nothing on home")
-	}
-	if strings.Contains(switchFrame(a), "Quiet Chat A") {
-		t.Fatalf("alt+q kept a quiet row:\n%s", switchFrame(a))
-	}
-	a.closeHome()
-	a.openHome()
-	if !a.home.grouped || !a.home.hideQuiet {
-		t.Fatal("the two views were forgotten when home closed")
-	}
-}
-
 // THE LEDGER IS A DOOR. Each `since you left` line opens the place that owns
 // what it is about.
 func TestSinceYouLeftLinesAreDoorsIntoTheirPlaces(t *testing.T) {

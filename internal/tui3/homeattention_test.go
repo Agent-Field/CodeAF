@@ -196,20 +196,16 @@ func TestAQuietMachineDrawsNothingForAStateItIsNotIn(t *testing.T) {
 }
 
 // A LINE THAT NAMES ROWS IS NOT A ROW. The teaching line under an empty zone
-// was the first of these; the switcher's headings are the ones left
-// ([homeSwitchHead] — the claim over the list, the `since you left` heading and
-// a project's name while `alt+g` groups). No key may leave the cursor standing
-// on one, in either direction, which is the whole of what "not a stop" means to
-// a person's hands.
+// was the first of these; the grid's are a panel's heading and its whisper. No
+// key may leave the cursor standing on one, in either direction, which is the
+// whole of what "not a stop" means to a person's hands.
 func TestNoArrowLeavesTheCursorOnAHeadingOrABlank(t *testing.T) {
 	lab := newSwitchLab(t)
 	a := lab.open(120, 40)
-	// A ledger and a grouping, so that every kind of heading this list has is on
-	// the column while the walk goes over it.
+	// A ledger, so that every kind of heading this grid has is on it while the
+	// walk goes over it.
 	a.home.seen = lab.now.Add(-30 * time.Minute)
-	if !a.placeAlt('g') {
-		t.Fatal("alt+g did nothing, so the project headings are not on the column")
-	}
+	a.home.build()
 	if (homeLine{kind: homeSwitchHead}).stop() {
 		t.Fatal("a heading of the list says a cursor may rest on it")
 	}
@@ -224,7 +220,7 @@ func TestNoArrowLeavesTheCursorOnAHeadingOrABlank(t *testing.T) {
 			if at < 0 {
 				continue
 			}
-			if kind := a.home.lines[at].kind; kind == homeSwitchHead || kind == homeBlank {
+			if !a.home.lines[at].stop() {
 				t.Fatalf("%s %d times left the cursor on line %d, which names rows rather than being one:\n%s",
 					step.word, i+1, at, homeText(a))
 			}
@@ -261,23 +257,24 @@ func TestOneBlankRowSeparatesTheBlocksOfTheList(t *testing.T) {
 	lab := newSwitchLab(t)
 	a := lab.open(120, 40)
 	a.home.seen = lab.now.Add(-30 * time.Minute)
-	if !a.placeAlt('g') {
-		t.Fatal("alt+g did nothing, so this column has only one block in it")
-	}
+	a.home.build()
+	// ON THE GRID THE BLOCKS ARE PANELS, and the rule is asked of each column:
+	// its lines are one run of [homeView.lines], column after column.
+	h := &a.home
 	blanks := 0
-	for at, line := range a.home.lines {
+	for at, line := range h.lines {
 		if line.kind != homeBlank {
 			continue
 		}
 		blanks++
-		if at == 0 {
-			t.Fatalf("the column opened with a blank row:\n%s", homeText(a))
+		if at == 0 || h.columnOf(at-1) != h.columnOf(at) {
+			t.Fatalf("a column opened with a blank row:\n%s", homeText(a))
 		}
-		if a.home.lines[at-1].kind == homeBlank {
+		if h.lines[at-1].kind == homeBlank {
 			t.Fatalf("two blank rows stand between two blocks at line %d:\n%s", at, homeText(a))
 		}
-		if at+1 >= len(a.home.lines) {
-			t.Fatalf("the column ends on a blank row:\n%s", homeText(a))
+		if at+1 >= len(h.lines) || h.columnOf(at+1) != h.columnOf(at) {
+			t.Fatalf("a column ends on a blank row:\n%s", homeText(a))
 		}
 	}
 	if blanks == 0 {

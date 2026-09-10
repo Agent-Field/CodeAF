@@ -214,44 +214,19 @@ line appears with no other change.
 
 ## How do I group home by project — alt+g
 
-**Press `alt+g`.** The same rows are drawn in blocks, one per project, each under a dim
-heading with the project's name — **this window's own project first**, then the rest by
-what has happened in them most recently. The project tag comes off the rows, because the
-heading is saying it.
-
-Press it again and the flat ranked list comes back.
-
-- **The rows are chosen before they are grouped.** Home still draws as many rows as the
-  window holds and then a fold; grouping arranges the rows it was going to draw, so a
-  project whose only conversation is behind the fold has no heading either. The project
-  headings are paid for out of the same window, so a grouped list shows a few rows fewer
-  than a flat one on the same screen.
-- **A heading is not a row.** `↑`/`↓` walk straight over the project names; there is
-  nothing to open on one and no card for one.
-- **It is remembered for as long as aforge is running** — closing home and opening it
-  again keeps it — and it is **not a setting**: nothing is written to disk, and a fresh
-  aforge starts flat.
-- **It does nothing while you are typing**, and nothing at phone width. With something in
-  the box the column is the matches rising out of it, and under 60 columns home is already
-  an inbox with the projects under it — in both cases a key that silently changed a list
-  that is not on screen would be the worst kind of chord.
+**You cannot any more, and `alt+g` does nothing.** Home is panels now, and the
+`projects` panel is the by-project view: every folder with a conversation in it, this
+window's own first, each with `N chats · M running` and its branch, and `enter` on one
+starts a conversation there. `→` on a project row offers `its chats` — which types the
+project's name into the box, so the search lists every conversation in it — and
+`open folder`.
 
 ## How do I hide the quiet chats — alt+q hide the quiet ones
 
-**Press `alt+q`.** Everything that is neither asking you something nor moving leaves the
-list, and the fold at the foot says so in one word — `▸ 12 more, quiet`. Press it again
-and they come back.
-
-It is the same key everywhere the section line names it: the right of that line reads
-`alt+g group by project · alt+q hide the quiet ones`, and on a frame with no room for both
-clauses it keeps `alt+g group by project` alone.
-
-Like `alt+g` it is **remembered for as long as the program is running and is not a
-setting** — nothing goes to disk — and like `alt+g` it does nothing while something is
-typed or at phone width, because then this list is not what is on the screen.
-
-`alt+q` never hides a row that wants you. That is what it is for: on a machine with two
-questions and eighteen quiet conversations it leaves the two.
+**You cannot any more, and `alt+q` does nothing.** The panels already keep the quiet
+ones out of the way: `needs you` and `running` hold what wants you or is moving, and
+`where you were` shows this window's conversation and the four most recent, folding the
+rest behind `N more · type to find one`. Typing finds any conversation on the machine.
 
 ## Where did the rest of my chats go — the list fills the window, then one fold
 

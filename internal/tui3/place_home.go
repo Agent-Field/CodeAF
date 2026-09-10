@@ -160,11 +160,13 @@ func (a *app) readSwitchLedger() {
 // to maintain. So the two flags live on the app — which closing home does not
 // clear — and nothing writes them to a disk.
 func (a *app) homeAlt(letter rune) bool {
-	if !a.at(pageHome) || a.home.phone || a.home.searching() {
+	if !a.at(pageHome) || a.home.phone || a.home.searching() || a.home.gridOn() {
 		// A QUERY HAS NO GROUPING TO TOGGLE. While something is typed the column
 		// is the drop-up of matches ([homeView.buildWorld]), and a key that
 		// silently changed a list that is not on the screen would be the worst
-		// kind of chord — one that does something you cannot see.
+		// kind of chord — one that does something you cannot see. THE GRID HAS
+		// NONE EITHER: its panels are not the ranked list the two views arranged
+		// (homegrid.go), so at rest the two chords are not bound.
 		return false
 	}
 	switch letter {
