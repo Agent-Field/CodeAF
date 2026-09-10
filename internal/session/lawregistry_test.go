@@ -41,6 +41,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/manual"
 )
 
 // lawClass is the delivery class from the diet's taxonomy
@@ -77,6 +79,54 @@ type lawUnit struct {
 	// tool, on a lawVerb unit, is the tool whose description owns the sentence.
 	// The belt must carry it; anything else is prose for a verb nobody has.
 	tool string
+	// at, on a unit whose class is NOT delivered in the fixed prefix, names the
+	// one place that IS. A demand law lives on a manual page or in a capability
+	// group's prose; an event law lives in the harness message that announces
+	// the event. [lawElsewhere] resolves the spelling:
+	//
+	//	manual:<page>  a page of internal/manual/chat
+	//	group:<name>   a capabilityGroup's prose (tools_capabilities.go)
+	//	code:<symbol>  a const in this package that a message is built from
+	//
+	// For those classes the gate runs BACKWARDS: the key sentence must be
+	// absent from the page and the tool block — that is the whole point of
+	// moving it — and present where `at` says.
+	at string
+}
+
+// lawElsewhere is the text behind an `at`, for the classes that are not
+// delivered in the fixed prefix.
+func lawElsewhere(t *testing.T, at string) string {
+	t.Helper()
+	kind, name, ok := strings.Cut(at, ":")
+	if !ok {
+		t.Fatalf("%q is not a place: it wants manual:<page>, group:<name> or code:<symbol>", at)
+	}
+	switch kind {
+	case "manual":
+		page, found := manual.Chat().Page(name)
+		if !found {
+			t.Fatalf("there is no chat manual page called %q", name)
+		}
+		return page
+	case "group":
+		prose := capabilityProse(name)
+		if strings.TrimSpace(prose) == "" {
+			t.Fatalf("the %s capability group has no prose", name)
+		}
+		return prose
+	case "code":
+		// The harness messages a law can ride on, by the symbol a lane would go
+		// and edit. A name missing here is a message nobody has registered yet.
+		messages := map[string]string{"standingNewsRule": standingNewsRule}
+		text, known := messages[name]
+		if !known {
+			t.Fatalf("code:%s is not a message this test knows; add it beside standingNewsRule", name)
+		}
+		return text
+	}
+	t.Fatalf("%q names no kind of place this test can read", at)
+	return ""
 }
 
 // lawRegistry is the filed corpus. It is not every sentence in the prompt — it
@@ -115,6 +165,16 @@ var lawRegistry = []lawUnit{
 	{id: "images.travel-with-the-message", class: lawCore, key: "ATTACHED PICTURES TRAVEL IN THE MESSAGE WITH YOU"},
 	{id: "elsewhere.other-windows", class: lawCore, key: "OTHER AFORGE WINDOWS ON THIS PROJECT ARE VISIBLE TO YOU"},
 
+	// ── the routing triggers, which are the page's own and nobody else's. A
+	// description says what a verb DOES; it cannot say when to reach for it
+	// without teaching every model that carries the belt a rule it did not ask
+	// for (docs/design/prompt-diet/DESIGN.md §4), so the trigger is core law and
+	// the contract is verb law, and these three came back to the page when lane
+	// F took the routing prose off the descriptions.
+	{id: "tasks.look-inside", class: lawCore, key: "Look inside running or landed work with `tasks` and its id"},
+	{id: "tasks.continue-is-not-a-new-task", class: lawCore, key: "never a fresh `propose_task`"},
+	{id: "read.what-read-cannot-turn-into-text", class: lawCore, key: "What `read` cannot turn into text → `read_document`"},
+
 	// ── and the laws the page gave up to the verb that owns them. Each of
 	// these was a page sentence until the diet; the description had said it all
 	// along, in more words and with the field names beside it.
@@ -124,6 +184,24 @@ var lawRegistry = []lawUnit{
 	{id: "task.lands-as-a-turn", class: lawVerb, tool: "propose_task", key: "starts a turn here when it lands, so never wait or poll"},
 	{id: "tasks.stop-ends-work", class: lawVerb, tool: "tasks", key: "To END running work use stop"},
 	{id: "tasks.not-to-wait", class: lawVerb, tool: "tasks", key: "Never to WAIT for handed-off work"},
+
+	// ── and the laws the page gave up to whoever PULLS them. Each of these was
+	// a run of prose in prompts/system.md, paid for on every request of every
+	// turn, for a verb the belt was not carrying and a moment most turns never
+	// reach. Each now arrives with the load that fetches those verbs, or on the
+	// manual page a person asks the question on, and the gate here runs
+	// backwards: it fails if one of them comes BACK onto the page.
+	{id: "media.prompt-decides-quality", class: lawDemand, at: "group:media", key: "a prompt built from the genre's own clichés"},
+	{id: "harness.recipe-or-program", class: lawDemand, at: "group:harnesses", key: "a saved PROGRAM rather than a recipe"},
+	{id: "settings.refusal-is-theirs", class: lawDemand, at: "group:settings", key: "relay it exactly as written, and point them at `/settings`"},
+	{id: "standing.background-checks", class: lawDemand, at: "manual:keeping-an-eye", key: "background checks are on out of the box, and nobody asks you first"},
+	{id: "standing.a-minute-is-a-timer", class: lawDemand, at: "manual:keeping-an-eye", key: "ordinary standing one-off"},
+	{id: "accounts.never-sent-twice", class: lawDemand, at: "manual:accounts", key: "Each outgoing mail or Slack message goes out **once**"},
+
+	// ── and the one that rides with the EVENT. A fired standing item announces
+	// itself and says what to do about itself, so the page explaining that
+	// message was the second copy of a rule the message already carries.
+	{id: "standing.news-is-not-a-request", class: lawEvent, at: "code:standingNewsRule", key: "Do not call stand again for it"},
 }
 
 // lawPlace is one searchable region of the fixed prefix, named the way a lane
@@ -180,6 +258,28 @@ func TestEveryLawIsStatedOnceAndInItsOwnPlace(t *testing.T) {
 				continue
 			}
 			found = append(found, place.name)
+		}
+
+		// A LAW THAT IS NOT DELIVERED IN THE PREFIX IS CHECKED THE OTHER WAY
+		// ROUND: absent from the page and the tool block, present in the one
+		// place its class delivers it from.
+		if law.class == lawDemand || law.class == lawEvent {
+			if law.at == "" {
+				t.Errorf("%s is %s law and names no place, so nothing says where it is actually delivered", law.id, law.class)
+				continue
+			}
+			if total > 0 {
+				sort.Strings(found)
+				t.Errorf("%s is %s law and its key sentence is back in the fixed prefix: %q\n  in %s\n"+
+					"it is delivered from %s, and a copy on the page is the byte the diet took out — delete it there",
+					law.id, law.class, law.key, strings.Join(found, "\n  in "), law.at)
+			}
+			if !strings.Contains(lawElsewhere(t, law.at), law.key) {
+				t.Errorf("%s is registered at %s and its key sentence is not there: %q\n"+
+					"a law moved out of the prefix and then edited out of its new home is a law nobody sends at all",
+					law.id, law.at, law.key)
+			}
+			continue
 		}
 
 		switch {

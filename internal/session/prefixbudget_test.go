@@ -197,6 +197,51 @@ import (
 // left lawregistry_test.go with the sentence it filed: `handoff.reports-itself`
 // now matches on "never sleep, tail or poll", so putting any of the four
 // per-tool copies back fails that gate wherever it is put.
+// THE DIET'S ON-DEMAND LANE PAID 3,854 BYTES BACK AND ASKED FOR NOTHING
+// (2026-09-10). Four runs of prose came off prompts/system.md and message[0]
+// stopped carrying any of them, because each one is already delivered by
+// whoever needs it and only then (docs/design/prompt-diet/DESIGN.md §2):
+//   - the standing section, 2,482 bytes, is one existence line. Its mechanics
+//     are tools_standing.go's [standDescription] and [standSchemaJSON], beside
+//     the field each governs; its `[something you set up fired]` frame is
+//     standing_run.go's [standingNewsRule], already under the firing's own line;
+//     the rest is the chat manual's keeping-an-eye page.
+//   - the two paragraphs defining a saved recipe and a saved program are the
+//     `harnesses` group's own prose (tools_capabilities.go), emitted under the
+//     `Loaded:` line by the load that fetches the four verbs. The page keeps the
+//     routing line that names `list_harnesses` and `build_harness`.
+//   - the accounts block, 1,142 bytes over three bullets, is one existence line.
+//     [serviceRequestDescription] already names the address and says which half
+//     the person turned off; the send verbs already say they are asked about
+//     first and cannot be called back.
+//   - the media-making essay is the `media` group's prose, and the page keeps
+//     one line: anchor in a real medium, specify positively, `manual` for the
+//     rest. `generate_image` and `generate_video` state it a third time in the
+//     `prompt` field, where it is read at the call.
+//
+// Nothing was raised and no law was dropped, and each of the four is filed in
+// lawregistry_test.go under class `demand` with the place that now owns it. On
+// its own, on top of lane C's delete pass, it took the page 22,714 → 18,860;
+// landing beside the event and description lanes above it leaves the page at
+// 16,671, the tool block at 22,823 which it did not touch, and the prefix at
+// 39,494 — 8,506 under.
+// AND THE ROUTING TABLE BOUGHT BACK 226 BYTES OF WHAT THE DESCRIPTIONS GAVE UP
+// (2026-09-10). A description states a contract and never when to reach for the
+// verb (DESIGN.md §4), so when the tool lane took the routing prose off
+// `tasks`, `read_document` and the rest, three triggers had nowhere left to be
+// said: that a look inside running or landed work is `tasks` with its id, that
+// "continue task N" is that id with `continue` and never a fresh
+// `propose_task` — which mints a second task with a fresh brief and a fresh
+// working copy (task_continue.go) — and that `read` is the door for text,
+// source and a PDF that has a text layer, `read_document` only for what `read`
+// cannot turn into text at all. The first two ride the `tasks` belt fact,
+// because a floor node carries neither verb; the third is two clauses folded
+// into the `read` bullet that was already there. Nothing was raised, nothing
+// was said twice (all three are filed in lawregistry_test.go under class
+// `core`), and the "earlier work referred to but not pointed at" trigger was
+// left exactly where it already was rather than restated here. The page went
+// 16,671 → 16,897, the tool block is unmoved at 22,823, and the prefix is
+// 39,720 — 8,280 under.
 // AND THE RESULT CAPS PAID 652 BYTES ON THE WAY TO FIXING A DEFECT (2026-09-10).
 // Lane B (§5 item 1) made every result cap a share of the model's window instead
 // of a flat 2000 lines / 50KB, which meant the figures had to be rendered from
