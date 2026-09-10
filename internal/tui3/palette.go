@@ -179,9 +179,14 @@ func (p *picker) restock(models []Model) {
 		p.lower[i] = strings.ToLower(model.ID)
 	}
 	p.score = make([]int, len(models))
-	// The cursor opens ON the model in use — [picker.rank] puts it there for an
-	// empty box, which is what an opening list has.
+	// THE CURSOR GOES BACK TO THE MODEL IN USE WHATEVER IS TYPED. [picker.rank]
+	// only does that for an empty box, because a keystroke that narrows the list
+	// must not yank the cursor away from the row a person was walking towards —
+	// but a landed list is not a keystroke, and the row they were on may no
+	// longer exist. The model in use is the one row that is always there to land
+	// on (the same rule [picker.start] opens with).
 	p.rank()
+	p.cursorToCurrent()
 }
 
 // cursorToCurrent puts the cursor on the model in use. A picker that opened on
