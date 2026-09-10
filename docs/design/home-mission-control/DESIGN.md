@@ -250,6 +250,10 @@ useful.
    only where no column with rows lies to its right. A row whose verbs `→` cannot
    reach keeps them on their chords (`ctrl+o`, `ctrl+e`, …), and the foot names one
    so the door is never invisible.
+7. **A whisper never outranks a row.** When a squeeze has to drop a whole panel, every
+   whispering (empty) panel goes before any panel with rows, each group lowest keep
+   first (`byDrop` in homegrid.go). Found by lane R2 at 120×14: the old order kept
+   `needs you`'s whisper and dropped every conversation.
 
 ## 7. Where the work runs
 

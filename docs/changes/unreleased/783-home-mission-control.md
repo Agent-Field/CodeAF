@@ -16,6 +16,11 @@ invalidates:
   - "The chat's head had adaptive blank rows around the tab strip that grew and shrank with the terminal, and no pulse. Every frame — home, every place, the chat — has the same four-row head: pulse, strip or bar, rule, blank; inside a chat the pulse carries `N want you · N moving` and the budget, on home only the budget and the clock."
   - "The emptiness law said nothing zero or unknown is ever drawn, and an empty zone drew nothing. It is narrowed for panels only: an empty panel keeps its heading and one dim whisper naming what arrives there (`work you send off with /task runs here on its own`); numbers still draw nothing at zero."
   - "The manual's home page described the flat list, the card and its five bands, `alt+g`/`alt+q` and the fold. `internal/manual/chat/home.md` is rewritten around the panels, and states what home cannot do: stop another window's task (the row says `another window`), or show a `something is wrong` panel, which is wave 2."
+  - "A click on a home row selected it and a second click opened it, while every other place opened on one. One click is `enter` on home too, a click on a panel heading opens the place it names, and a click on a fold line is `enter` on it."
+  - "Home's panel headings were inert. Each opens its place: `needs you`, `running` and `since you left` open tasks, `spend` opens spend, `next up` opens standing, `where you were` opens the search."
+  - "A `running` row's verb read `s stop`. It reads `s stop it`, and `ctrl+x` asks to stop a held running task from any column, so a three-column home, where `→` crosses out of the middle column instead of opening the strip, still has the door; the foot names it."
+  - "A short frame dropped panels by priority alone, so at 120×14 home could keep `needs you`'s whisper and drop every conversation. A whispering panel now drops before any panel with rows."
+  - "`TestWalkingPastTheWindowScrollsEveryPlacesList` covered home. The grid has no window to scroll — it squeezes, grows and folds — so the test leaves home to the places that scroll."
 ---
 
 The ruling is `docs/design/home-mission-control/DESIGN.md`. Home answers the

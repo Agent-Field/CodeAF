@@ -190,6 +190,29 @@ func TestTheSqueezeAtOneTwentyByTwentyFourKeepsNeedsAndRecent(t *testing.T) {
 	}
 }
 
+// A WHISPER NEVER OUTRANKS A ROW. When a short frame has to drop a whole
+// panel, the panels that are only whispering go first, whatever their keep:
+// a person can open a row and cannot open a whisper. Lane R2 found a 120×14
+// home that was two whispers and no conversation at all.
+func TestAShortFrameDropsWhisperingPanelsBeforeAnyPanelWithRows(t *testing.T) {
+	lab := newHomeLab(t)
+	here := lab.workspace("alpha")
+	mine := lab.session("-alpha", "aaaa000000000001", "the one I am in", here, time.Now())
+	for i := 2; i <= 6; i++ {
+		lab.session(fmt.Sprintf("-alpha-%d", i), fmt.Sprintf("aaaa00000000000%d", i), fmt.Sprintf("quiet chat %d", i), here, time.Now().Add(-time.Duration(i)*time.Hour))
+	}
+	a := lab.app(mine)
+	a.width, a.height = 120, 14
+	a.openHome()
+	frame := homeText(a)
+	if row, _ := homeRowOf(frame, "where you were"); row < 0 {
+		t.Fatalf("a 120×14 home kept a whisper and dropped every conversation:\n%s", frame)
+	}
+	if row, _ := homeRowOf(frame, homeWhisper[panelNeeds]); row >= 0 {
+		t.Fatalf("a 120×14 home spent its rows on the needs-you whisper:\n%s", frame)
+	}
+}
+
 // AN EMPTY PANEL WHISPERS (law 4): its heading and one dim line naming what
 // arrives there — and never a sentence saying it is empty.
 func TestAnEmptyPanelWhispersWhatArrivesAndNeverThatItIsEmpty(t *testing.T) {

@@ -441,7 +441,10 @@ under the shorter column.
 **A short terminal squeezes them in a fixed order**: `next up` gives way first, then `spend`,
 then `since you left`, then `running`, then `projects`; `where you were` and `needs you`
 shrink last. A squeezed panel keeps its heading, the rows that fit and its `N more` line;
-only when every panel is down to that is a panel dropped, lowest first.
+only when every panel is down to that is a panel dropped — and the panels that are only
+whispering go before any panel with rows, whatever their rank, so a very short window
+(fourteen rows) still shows a conversation you can open rather than a sentence about what
+would be there.
 
 **Typing sees straight through every fold**: a search matches every conversation on the
 machine, including the ones no panel is drawing.

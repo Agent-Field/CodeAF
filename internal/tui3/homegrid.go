@@ -504,13 +504,34 @@ func squeezeColumn(column []*homeGridPanel, room int) {
 		}
 		p.shrink()
 	}
-	for _, p := range order {
+	for _, p := range byDrop(order) {
 		if homeColumnHeight(column) <= room {
 			break
 		}
 		p.dropped = true
 	}
 	regrowColumn(order, column, room)
+}
+
+// byDrop is the order a squeeze drops panels in: EVERY WHISPERING PANEL BEFORE
+// ANY PANEL WITH ROWS, each group lowest keep first. A whisper says what would
+// be here; a row is something a person can stand on and open. At 120×14 with
+// no question waiting, the old order kept `needs you`'s whisper and dropped
+// `where you were` whole, so the page had no row at all — a home with nothing
+// to press is not a home, whatever its priorities say.
+func byDrop(order []*homeGridPanel) []*homeGridPanel {
+	drop := make([]*homeGridPanel, 0, len(order))
+	for _, p := range order {
+		if p.empty() {
+			drop = append(drop, p)
+		}
+	}
+	for _, p := range order {
+		if !p.empty() {
+			drop = append(drop, p)
+		}
+	}
+	return drop
 }
 
 // regrowColumn hands back what the squeeze did not need, a row at a time, to
