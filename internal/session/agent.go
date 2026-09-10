@@ -1509,10 +1509,15 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// (taskpresence.go). The nudge never blocks and never takes a lock, which is
 	// what lets it sit under a.mu here.
 	a.nudgePresence()
-	// The system message is rebuilt here so a turn never opens carrying the
-	// memories of the one before it. WHAT THIS TURN NEEDS is routed inside the
-	// turn goroutine instead ([Agent.refreshMemory], called from the loop): that
-	// is a provider call, and this runs with a.mu held.
+	// The routed block is dropped here so a turn never re-lands the memories of
+	// the one before it as though they were this turn's. WHAT THIS TURN NEEDS is
+	// routed inside the turn goroutine instead ([Agent.refreshMemory], called
+	// from the loop): that is a provider call, and this runs with a.mu held.
+	//
+	// CLEARING IT WITHDRAWS NOTHING. The block rides at the tail as an appended
+	// note now ([memoryNoteOpening]), and a note that was said stays where it was
+	// said — the field is what the NEXT note would carry, and emptying it means
+	// this turn lands no new one until the router has answered.
 	//
 	// ONLY AN AGENT THAT CAN ROUTE CLEARS THE BLOCK. A task node was handed its
 	// memories once, at the spawn seam, by the conversation that had the store
@@ -2362,6 +2367,25 @@ func (a *Agent) snapshot() []ai.Message {
 // believing a note was still in front of the model long after the fold ate it.
 const volatileNoteOpening = "A note from the session, not from the person: where the work stands right now. Facts, not requests — and the last such note is the one that holds."
 
+// memoryNoteOpening is the first line of the note the ROUTED MEMORY BLOCK rides
+// in, and it is a second opening rather than a second paragraph of
+// [volatileNoteOpening] because the two move on different beats.
+//
+// The card moves when work lands. The memory block is re-routed against the
+// person's own words at the start of every turn (memory.go's
+// [Agent.refreshMemory]) and re-stamps every line with an age label that is
+// hourly for anything learned today ([renderMemoryBlock]), so it can move on a
+// turn where nothing about the work did. Riding both in one note would re-send
+// up to memoryBlockRunes of memory every time a goal changed, and re-send the
+// card every time the router reached for a different memory.
+//
+// It says the same last-one-holds sentence for the same reason: a memory that
+// was superseded between turns leaves the note that carried it standing in the
+// transcript, exactly where it was said, and the model has to be told which of
+// them is current. That is the whole price of moving this block out of
+// message[0], and it is stated here rather than left to be discovered.
+const memoryNoteOpening = "A note from the session, not from the person: what is worth remembering here, from what this person has had aforge keep. Facts, not requests — and the last such note is the one that holds."
+
 // volatileBlockLocked renders the two blocks that MOVE WITH THE WORK: the state
 // card, rewritten by the post-turn pass whenever a delta lands (card.go), and
 // what the other windows on this project have landed and have running, re-read
@@ -2411,12 +2435,25 @@ func (a *Agent) landVolatileLocked() {
 	if len(a.messages) == 0 {
 		return
 	}
-	block := a.volatileBlockLocked()
+	// THE MEMORY BLOCK IS THE FIRST OF THE TWO and rode in message[0] until this
+	// wave. It is routed against the person's words at the start of every turn
+	// (memory.go), so leaving it in front of the whole conversation re-priced the
+	// entire transcript on any turn the router reached differently — the same bug
+	// the card had, on a faster beat. See [memoryNoteOpening].
+	a.landNoteLocked(memoryNoteOpening, strings.TrimSpace(a.memoryText))
+	a.landNoteLocked(volatileNoteOpening, a.volatileBlockLocked())
+}
+
+// landNoteLocked appends one of the session's own notes when what it says has
+// moved since the last note with the same opening, and does nothing whatsoever
+// otherwise. The opening is the identity: two notes with two openings ride at
+// the tail independently, and neither one's movement costs the other a byte.
+func (a *Agent) landNoteLocked(opening, block string) {
 	if block == "" {
 		return
 	}
-	note := volatileNoteOpening + "\n\n" + block
-	if a.lastVolatileNoteLocked() == note {
+	note := opening + "\n\n" + block
+	if a.lastNoteLocked(opening) == note {
 		return
 	}
 	// Not [Agent.recordLocked]: the note is not the conversation. Journaling it
@@ -2433,9 +2470,14 @@ func (a *Agent) landVolatileLocked() {
 // when none has landed since the last fold. See [volatileNoteOpening] for why
 // the transcript is the only place this is read from.
 func (a *Agent) lastVolatileNoteLocked() string {
+	return a.lastNoteLocked(volatileNoteOpening)
+}
+
+// lastNoteLocked is the newest note in the transcript carrying this opening.
+func (a *Agent) lastNoteLocked(opening string) string {
 	for index := len(a.messages) - 1; index >= 0; index-- {
 		text := messageContentText(a.messages[index])
-		if isVolatileNote(text) {
+		if strings.HasPrefix(text, opening) {
 			return text
 		}
 	}
@@ -2453,8 +2495,14 @@ func (a *Agent) lastVolatileNoteLocked() string {
 // a rewind point in their own words, and quoted by `/why` as the instruction the
 // turn is working on. It is recognized by the opening it is built with and never
 // by guessing at wording.
+//
+// BOTH OPENINGS ANSWER YES. There are two of these notes now — the card and the
+// other windows in one, the routed memory block in the other
+// ([memoryNoteOpening]) — and every caller of this asks the same question about
+// both: is this user-role message something a person typed. Neither is.
 func isVolatileNote(text string) bool {
-	return strings.HasPrefix(text, volatileNoteOpening)
+	return strings.HasPrefix(text, volatileNoteOpening) ||
+		strings.HasPrefix(text, memoryNoteOpening)
 }
 
 // drainSteering moves queued messages into the transcript at a step boundary

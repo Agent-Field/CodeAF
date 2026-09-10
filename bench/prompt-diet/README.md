@@ -58,7 +58,15 @@ bench/prompt-diet/run.sh 6aa6a946e dev                    # A + C + D
 bench/prompt-diet/run.sh 6aa6a946e dev --layers a,b,c,d   # everything, ~40 min
 bench/prompt-diet/run.sh prompt-diet/integrate diet --layers a,b,c,d
 bench/prompt-diet/compare.py dev diet
+bench/prompt-diet/prefixdiff.py ~/bench-diet-out/dev ~/bench-diet-out/diet
 ```
+
+`prefixdiff.py` is free and reads only what a run already wrote. It answers the
+question `compare.py` cannot — a cached share is an OUTCOME, and a share that
+fell because the prefix moved wants the opposite response from one that fell
+because the run made fewer, shorter conversations. It needs request bodies, so
+the run must have set `AFORGE_CALL_LOG_BODIES=1`, which `run.sh` does. BENCH.md
+§1c is the worked example and the finding it convicted.
 
 `compare.py` exits non-zero when an outcome got worse, so it is usable as a
 gate.
@@ -116,6 +124,7 @@ where it lives and whether a substring test pins it. **It is prepared, not run**
 | --- | --- |
 | `run.sh` | one branch's whole measurement, four layers |
 | `compare.py` | two labels side by side, and the parity/efficiency ruling |
+| `prefixdiff.py` | one run's request bodies: where the cached prefix broke, and what broke it |
 | `ablate.sh` | one law unit removed, then the cells |
 | `units.tsv` | the law units, largest first, with their key sentences |
 | `lib/outcomes.py` | `go test -v` logs → one word per subtest |
