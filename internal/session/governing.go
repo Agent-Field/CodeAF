@@ -35,7 +35,7 @@ func (a *Agent) governingLocked() *Governing {
 		g.Owners = append([]workspace.Ref(nil), g.Owners...)
 	} else {
 		g.Workspace, g.SessionID = a.standingPlaceLocked()
-		if a.config.Standing != nil {
+		if a.config.Standing != nil && a.config.Standing.Store != nil {
 			g.Reader = a.config.Standing.Store
 		}
 	}
