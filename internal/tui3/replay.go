@@ -430,9 +430,6 @@ func (a *app) shiftBlockIndices(by int) {
 	move(&a.think)
 	move(&a.sel)
 	move(&a.expand.entry)
-	for i := range a.asks {
-		move(&a.asks[i].entry)
-	}
 }
 
 // earlierMark is the one line at the top of a part-drawn conversation, and it

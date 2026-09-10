@@ -231,7 +231,7 @@ is wider than one worker's share, which is *When a task turns out to be too wide
 worker*. What `single` costs you is only the reading: nothing is judged up front, so the
 split has to come off what your brief already spelled out.
 
-## The card that asks whether to run the work
+## The card that asks whether to run the work — what happened to the proposal card
 
 While the model is still writing the proposal, a grey block opens in the transcript and
 grows: a still `○`, the title (or just the word `task` until the title arrives), and one
@@ -242,24 +242,35 @@ yet — there are no options. If the turn ends before the proposal finishes arri
 block settles as `cancelled · the proposal never arrived`. If the call is refused before
 there is a proposal to ask about, it settles as `not started · the call was refused`.
 
-When the proposal is complete, that same block turns into the question. The card shows:
+When the proposal is complete, that same block becomes the ASSIGNMENT, and the question
+about it is asked above the message box with every other question aforge puts to you. The
+block in the conversation shows:
 
 - a head with the task's own identity mark and a two-or-three-word name;
 - one dim sentence under it — the first sentence of the summary, capped at 90 cells, and
   left out entirely when it would only repeat the name;
-- a row of model chips, but only when more than one model matched what was asked for;
-- the three options `yes`, `redirect`, `no`;
-- the countdown meter;
+- the facts about the work: which other window is already in these files, `where:` it will
+  run, and `from your folder as it stands — unsaved edits included`;
 - a dim meta line reading `model <full id> · ctrl+e for the brief`. The model id leads
   because it is the one fact nothing else on screen will say again; on a narrow frame the
   hint is dropped and the model kept.
 
-The card is **not modal**. Unlike the permission question, it leaves the input box live —
-the box becomes the redirect lane, with the placeholder
-`redirect this task… (enter sends it, esc declines)`.
+**There is no row of answers on it and no meter.** Those were a decision drawn in a place
+no other decision on this screen is drawn. The question is above the box:
+
+```
+? wants to start a task: Fix the nil-map crash
+  The parser drops a key on an empty map. · aforge
+  ▸ 1  start it
+    2  no
+  [enter] take the pick · [esc] later · [c] change · start it in 9s
+```
+
+`▸` marks the answer the clock is about to take. The question is **not modal**: the message
+box stays live, and what you type into it is the correction.
 
 Only one proposal is a live question at a time. If a second one arrives while the first is
-unanswered, the older card settles as `expired · the turn ended`, because a question that
+unanswered, the older block settles as `expired · the turn ended`, because a question that
 can no longer be answered must stop looking like one.
 
 ## The forming card is not moving — proposal card frozen
@@ -411,10 +422,10 @@ the material, what has been ruled out and why, what would have been done next. N
 trims it — a long brief reaches the worker whole — so the work starts knowing what the
 conversation knew instead of reading it all again.
 
-**The card still appears, and the countdown still runs.** This is not the same road as a
-task that started on its own (above): this work was groomed by the model, so it is offered
-the way every other proposal is offered — `yes`, `redirect`, `no`, and a countdown whose
-silence starts it. You are told, and it opens; what the card gives you on top of that is
+**The proposal still appears, and the countdown still runs.** This is not the same road as
+a task that started on its own (above): this work was groomed by the model, so it is
+offered the way every other proposal is offered — `1 start it`, `2 no`, and a countdown
+whose silence starts it. You are told, and it opens; what the card gives you on top of that is
 the window to redirect it before it spends anything.
 
 ## An answer that runs long is read and moved — a reply that stops halfway to become a task, my answer was moved, this has parts, this is running long, carrying the ask only, no second model is set
@@ -996,50 +1007,63 @@ no number to raise and no setting that turns it off.
 forty rounds and carrying on can add three, so a reply that gets handed to a task got there on
 rounds of its own work, which is exactly the reply that point was written for.
 
-## Every key the proposal card takes
+## Every key a task proposal takes — how to decline a task
+
+The proposal is answered on the question block above the message box, in the ONE key
+grammar every question on this screen takes:
 
 | key | when | what it does |
 | --- | --- | --- |
-| `enter` | always | submits a typed answer, or answers the focused option when the box is empty |
-| `esc` | always | outright **no** — declines |
-| `ctrl+e` | box empty | opens or closes the brief |
-| `←` `→` | box empty, picker closed | move the focus between the three options |
-| `1`–`4` | same | pick that model from the models row |
+| `1` | box empty | **start it** — admits the work exactly as briefed |
+| `2` | box empty | **no** — declines it |
+| `enter` | box has words | sends what you typed as a correction, and starts the corrected work |
+| `enter` | box empty | takes the answer marked `▸`, which is the one the clock would take |
+| `esc` | always | **later** — folds the question to the chip and answers nothing |
+| `c` | box empty | answer in words: the same thing as typing and pressing `enter` |
+| `ctrl+e` | box empty | opens or closes the brief in the conversation |
 
-The card opens with `yes` focused, because that is what the block is proposing and what the
-clock will do. `←`/`→` clamp at the ends and never wrap. You can also click any chip.
+**Bare letters are ordinary text.** The question is not modal: the moment there is anything
+in the message box every printable key belongs to that box, and the only key still the
+question's is `esc`. This is why `run tests first` can be typed into an empty box without
+losing its first letter.
 
-The digits are given straight back the moment there is a sentence in the box, or the moment
-the redirect lane has been asked for. Every bare letter is ordinary answer text: type the
-whole answer, then press `enter`. This is why `no`, `run tests first`, `yes`, and "yes, but
-keep the tests" can all begin in an empty proposal box without losing or acting on their
-first letter. `←`/`→` still work in the redirect lane, because there is no caret to move in
-an empty box.
+**Any key you press stops the countdown**, whether or not it answers anything, and tells
+the engine so. Deleting your draft does not restart it.
 
-While the card is up, the legend hint reads `enter answer · esc no`. A question the
-session is blocked on outranks the roster, any open room, every overlay and the draft.
+**A key pressed in the first quarter-second is dropped**, so a proposal landing under a
+moving hand is not answered by a keystroke aimed at your sentence.
 
-Expanding the brief: `ctrl+e` with an empty box, or `ctrl+o` on a card you selected with
+You can also click an answer: each answer's row is pressable along its whole width.
+
+**Honest limit:** there is no longer any way to pick the model from the proposal. When a
+word matched more than one model the card used to offer them on a row of chips answered by
+`1`–`4`, and those digits are the question's answers now. The work runs on the closest
+match — the one the chips opened on and the one the clock would have taken — and it is
+named on the block's meta line. To ask for a different one, say so in words.
+
+While the question is up, a decision the session is blocked on outranks the roster, any
+open room, every overlay and the draft.
+
+Expanding the brief: `ctrl+e` with an empty box, or `ctrl+o` on a block you selected with
 `↑`/`↓`. It shows the whole summary, then the whole brief, then `done when: <acceptance>`
-on its own labelled line. Clicking the card body does not open the brief — it opens the
+on its own labelled line. Clicking the block's body does not open the brief — it opens the
 task's room.
 
-## The countdown on the proposal card
+## The countdown on a task proposal — start it in 9s
 
-The meter is a draining bar and a number, recomputed every frame:
-`████████░░░░  auto-starts in 3.2s`. The bar is at most 20 cells. Under ten seconds the
-number is spelled in tenths (`3.2s`); above it, `47s` or `2m 13s`, always rounded up, so
-the last second you have is drawn as a second.
+The clock is the last thing on the question's own answers row, and it says which answer is
+about to be taken and when: `start it in 9s`. It is rounded up, so the last second you have
+is drawn as a second; above a minute it reads `2m 13s`.
 
-**The clock runs toward yes.** Silence approves the work as briefed, with no redirect
-appended, and the card settles as `approved · the clock`. This is the opposite of the
-permission card's countdown, which runs toward denying. A task proposal is not a permission
-gate — it is your window to redirect the work or wave it off before it starts.
+**The clock runs toward yes.** Silence approves the work as briefed, with no correction
+appended, and the block settles as `approved · the clock`. This is the opposite of the
+permission question's countdown, which never answers at all: a task proposal is not a
+permission gate — it is your window to correct the work or wave it off before it starts.
 
-While that countdown runs, the main footer says `starting task`. You do not have to
-answer. Holding the proposal removes the countdown; the footer then says
-`waiting · your call`, and other windows report `waiting on you` too. An automatic
-proposal does not hide a separate question that really needs an answer.
+While that countdown runs, the main footer says `starting task`. You do not have to answer.
+Holding the proposal removes the countdown; the footer then says `waiting · your call`, and
+other windows report `waiting on you` too. An automatic proposal does not hide a separate
+question that really needs an answer.
 
 The default window is 15 seconds. **Where is the setting for how long a proposal waits?** It
 is `task.autoapprove_seconds`, and it lives on the **`Safety`** tab of the settings panel —
@@ -1052,80 +1076,80 @@ before work starts on its own, so `change_setting` refuses it and points you bac
 `/settings`. Same for `task.parallel` below, and for the whole approval and spending
 family — the permissions page lists them.
 
-Set that window to 0 and there is no clock at all: no bar is drawn and the row reads
-`starts on your word`. The card then waits until you answer it, however long that takes.
+Set that window to 0 and there is no clock at all: the answers row ends in `waiting`, and
+the question sits there until you answer it, however long that takes.
 
-Typing the first character in the message box also stops a running proposal clock. The
-bar changes to `starts on your word` immediately and the task cannot start while you finish
-your answer. Deleting everything you typed does not restart the clock: `esc` still says
-no, empty `enter` says yes, and `enter` with words answers from those words.
+Pressing any key the question reads also stops a running clock. The tail stops counting
+immediately and the task cannot start while you finish your answer. Deleting everything you
+typed does not restart it.
 
-## What yes, redirect and no each do
+## What start it and no each do
 
-**yes** admits the work exactly as briefed.
+**`1` start it** admits the work exactly as briefed.
 
-**redirect** with an empty box does not answer — it takes the focus and waits for your
-words. The `enter` after it carries the sentence. Your words travel verbatim and are
-appended to the brief; this is the last moment the brief may change. Only `enter` reads a
-typed answer. Clicking `yes` approves as briefed, clicking `no` declines, and clicking
-`redirect` focuses the lane regardless of what the box already holds. The box is cleared
-on an answer, so your next `enter` does not send the correction to the model as a message.
+**`2` no** declines. Nothing is spawned, no row appears on the roster, and no room exists.
+This is a normal answer, not an error.
 
-**no** (or `esc`) declines. Nothing is spawned, no row appears on the roster, and no room
-exists. This is a normal answer, not an error.
+**Anything you type is a correction**, and a correction is a yes to the corrected version.
+Your words travel verbatim and are appended to the brief; this is the last moment the brief
+may change. Only `enter` sends them. The box is cleared on an answer, so your next `enter`
+does not send the correction to the model as a message.
 
-A complete answer typed in the box is also understood. `no`, `nope`, `n`, `stop`,
-`cancel`, `don't` and `dont` decline. `yes`, `y`, `ok`, `okay`, `go` and `sure` approve
-without adding a redirect. Case does not matter, and a final `.` or `!` is ignored. Only
-the whole answer counts: `no, use the flag` is a redirect and approves the corrected
-brief rather than declining it.
+**There are no hidden word answers.** Typing `no` into the box and pressing `enter` does
+NOT decline — it starts the work with the word "no" appended to its brief. A bare `no`,
+`nope`, `n`, `stop`, `cancel`, `don't`, `yes`, `y`, `ok`, `okay`, `go` and `sure` used to
+be thirteen secret answers, none of them drawn anywhere; the answers are on the row with
+their keys now, and the box is words. **To decline, press `2`.**
 
-Once answered, the card collapses to its head and one foot line that keeps both halves —
+**`esc` does not decline either.** It is *later*: the rows fold to the chip
+`? 1 question · alt+a`, the proposal stays open, the engine stays waiting, and nothing is
+decided. `alt+a` brings it back.
+
+Once answered, the block collapses to its head and one foot line that keeps both halves —
 what you reached for and what it came to, joined by ` · `:
 
 | what you did | the foot line |
 | --- | --- |
-| approved | `yes · approved` |
-| approved with words in the box | `redirect · approved · you redirected it` |
-| declined | `no · declined` |
+| pressed `1` | `start it · approved` |
+| typed a correction and pressed `enter` | `change · approved · you redirected it` |
+| pressed `2` | `no · declined` |
 | let the clock run out | `approved · the clock` |
 | the turn ended under the question | `expired · the turn ended` |
 
-When the card offered a choice of model, the model you picked is written on the end of that
-line — it is the only place your own pick is recorded.
+And one dim receipt is left above the message box, in the same words the answer is written
+into `decisions.jsonl` with:
 
-**Honest limit:** once a card has been answered, its brief is no longer reachable from the
-card. `ctrl+e` and `ctrl+o` on a settled card do nothing you can see. The whole of a task's
-life is in its room instead.
+```
+  decided wants to start a task: Fix the nil-map crash → start it · you · 14:02 · c change
+```
 
 ## The task started before I could say no
 
 A proposal starts on silence only while its countdown is still moving. The default window
-is 15 seconds. Typing the first character in the message box stops that clock immediately;
-the meter changes to `starts on your word`, and deleting the character does not restart it.
-Press `esc` to decline, or type a complete no answer and press `enter`.
+is 15 seconds. Pressing any key the question reads stops that clock immediately, and
+deleting what you typed does not restart it. Press `2` to decline.
 
-If nothing was typed before the meter reached zero, the work was already admitted and a
+If nothing was pressed before the clock reached zero, the work was already admitted and a
 later answer cannot pull it back. Use `task.autoapprove_seconds` in the Safety settings to
 give yourself a longer window, or set it to 0 so every watched proposal waits for you.
 
 ## I typed no and it started anyway
 
-Type a complete no answer and press `enter`: `no`, `nope`, `n`, `stop`, `cancel`, `don't`
-and `dont` all decline a proposed task. Case does not matter, and a final `.` or `!` is
-ignored. The first character also stops the countdown, so the task waits while you finish.
+**Typing `no` into the message box does not decline a proposal.** It is a correction, so
+the work starts with the word "no" appended to its brief. This changed: `no`, `nope`, `n`,
+`stop`, `cancel`, `don't` and `dont` were once complete answers you could type, and they
+were the only answers on this screen that nothing on screen named.
 
-Only a bare answer declines. A longer sentence such as `no, use the flag` is treated as a
-correction, so the task is approved with those words appended to its brief. Press `esc` for
-an unconditional no from any proposal.
+**Press `2`.** It is drawn on the question's own row as `2  no`, and it is the only thing
+that declines. `esc` folds the question away without answering it, and the clock will
+still start the work when it runs out — so a proposal you `esc` and forget is a proposal
+that starts.
 
 ## How do I stop a proposed task from starting?
 
-Press `esc`, choose `no`, or type one of the complete no answers — `no`, `nope`, `n`,
-`stop`, `cancel`, `don't`, `dont` — and press `enter`. Typing the first character stops a
-running countdown and changes the meter to `starts on your word`; erasing your draft does
-not restart it. Set `task.autoapprove_seconds` to 0 in Safety settings if every proposal on a
-watched session should wait until you answer.
+Press `2`, or click the `no` row. Pressing any key the question reads stops a running
+countdown; erasing your draft does not restart it. Set `task.autoapprove_seconds` to 0 in
+Safety settings if every proposal on a watched session should wait until you answer.
 
 ## Why it warned me another window is already in these files — two windows working on the same files
 
@@ -1747,12 +1771,20 @@ section, enter on the job, then `x`. That is how you stop it from the sidebar:
 the section is the door onto the page, and the page is the door onto the stop.
 
 `x` raises the same confirmation every other stop on this surface raises, with the cursor
-on the safe answer:
+on the safe answer. **The page steps aside for it** — the card is drawn above the message
+box, so the log page closes and the question comes up in the conversation, where the
+engine's own sentence about what stopped lands right under it. The job's row in the column
+opens the page again:
 
 ```
-? Stop this job? The process is ended; its log is kept.
-  [stop it]   [keep going]
+?  Stop this job?
+     The process is ended; its log is kept.
+     1  stop it
+     2  keep going
+   [enter] take the pick · [esc] keep going · [←→] pick
 ```
+
+`1` and `2` move the cursor onto the answer they name; `enter` is what decides.
 
 `enter` on `stop it` ends the process. The engine's door is `job:3` — the same number the
 handle shows. The line it answers with is `stopped job 3 (the name) — its log is kept`.
@@ -2544,7 +2576,7 @@ Clicking a row's title does what `enter` on it does, on the **first** press — 
 it does not change them. The row under the pointer takes the hover step. The wheel walks the
 cursor.
 
-## Main chats and their subtasks — the conversation tree, folds, holds 3 more
+## Main chats and their subtasks — the conversation tree, folds, holds 3 more, what the +3 under a row means
 
 The **main chat is the parent** of the work it requested. Tasks hang beneath their
 conversation; a task's children hang beneath that task, including deeper levels.
@@ -3946,13 +3978,23 @@ leading `~` are ignored. Three things can happen.
 **One match — it is used and nobody is asked.** The card's meta line names the full id,
 and the model's receipt reads `task 7 started on anthropic/claude-opus-5: <title>`.
 
-**A few matches — a shortlist on the card.** Two to four candidates become the models row.
-It is a correction, not a gate: the countdown is already running on the closest match,
-which is chip 1, and that is what silence takes. Click a chip or press its digit `1`–`4`.
-Picking a model answers nothing — the question is still whether the work goes at all. Only
-a chip on the row can win. Chips are spelled with the part after the vendor unless two
-vendors share a tail, in which case all of them keep their full id; a chip that does not fit
-is dropped rather than cut, and a row that would show one chip is not drawn at all.
+**A few matches — a hole in the question.** Two to four candidates put one line on the
+proposal, above its answers:
+
+```
+     run it on [ anthropic/claude-opus-5 ▾ ]
+```
+
+`←` and `→` walk the shortlist. It is a correction, not a gate: the countdown is already
+running on the closest match, which is what the hole opens on and what silence takes.
+**Moving it answers nothing** — the question is still whether the work goes at all, and the
+clock keeps running while you look. Whichever model is in the hole when you press `1` is
+the model the work starts on. Only a member of the shortlist can win, and a shortlist with
+one member draws no hole at all: there is nothing to ask.
+
+The digits are the question's answers and never the models — `1` is `start it`, `2` is
+`no`. That is the same grammar on every question aforge asks you, which is why the models
+moved off the digits and onto the arrows.
 
 Name nothing and the task runs on `task.model` if you have set it, otherwise on your crew's
 **worker** class (`hands` in the `/crew` line — `z-ai/glm-5.3-flash` on the shipped
@@ -4370,7 +4412,7 @@ conversation later, a task aforge was deciding is yours again the moment the con
 opens — the card draws its chips rather than the `aforge is deciding` row, because the turn
 it was going to be decided in is gone and nothing is going to finish that thought.
 
-## Can aforge decide on its own — stop asking me about tasks that need a look
+## Can aforge decide on its own — can the chat decide on its own, stop asking me about tasks that need a look
 
 Yes. The setting is **`task.settle`**, in `/settings` under Session as
 `who settles work that needs a look`, and it takes two words:

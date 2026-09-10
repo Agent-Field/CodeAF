@@ -62,18 +62,6 @@ const (
 	// — and it needs the COLUMN as well as the row, the way hitChoice does.
 	hitSettle
 	hitHarness
-	// hitChoice is the proposal's choices row, and it is the one hit on this
-	// surface that needs the COLUMN as well as the row: three answers share one
-	// line, so which of them was pressed is a question about x (app.go's
-	// [app.choicePress], the same shape the rail's click has).
-	hitChoice
-	// hitModel is the proposal's MODELS row, on the rare card that has one:
-	// one word fitted several models, so the card offers them (task.go). It is a
-	// hit of its own rather than another hitChoice because the two rows answer
-	// different questions with the same gesture — one settles which model, the
-	// other settles whether the work goes at all — and [app.choicePress] must not
-	// resolve a press on one against the other's columns.
-	hitModel
 	// hitRewind is the rewind mode's cut line (rewind.go): a click on it commits
 	// the cut it is drawn at. It is the one hit on this surface that belongs to a
 	// row nothing in the conversation produced — the line is drawn between two
@@ -664,14 +652,6 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		links := 0
 		for n, text := range rows {
 			at := hit
-			if e.kind == entryTask && e.card != nil && !e.card.settled() {
-				switch n {
-				case e.card.choiceRow:
-					at = hitChoice
-				case e.card.modelRow:
-					at = hitModel
-				}
-			}
 			// AND THE STANDING CARD'S ANSWERS ROW, which is the only row of that
 			// block a click acts on: the block itself has no fold to open, so
 			// pressing anywhere else on it does nothing (standing.go).
@@ -887,10 +867,12 @@ func (a *app) entryRows(d deck, i, width int) []string {
 	if e.kind == entryCompact && e.ended.IsZero() {
 		return a.renderEntry(i, e, width)
 	}
-	// AN OPEN PROPOSAL IS NOT CACHED EITHER, and for the same reason: its
-	// countdown or count-up is a function of the frame (task.go). It rejoins the
-	// cache the moment it is answered, which is the moment the clock stops.
-	if e.kind == entryTask && e.card != nil && !e.card.settled() {
+	// A PROPOSAL STILL ARRIVING IS NOT CACHED EITHER, and for the same reason:
+	// its count-up and its spinner are functions of the frame (task.go). It
+	// rejoins the cache the moment the call lands, which is the moment the row
+	// stops moving — the countdown that used to keep the answered card out of
+	// the cache as well is the question block's now, and the block is chrome.
+	if e.kind == entryTask && e.card != nil && e.card.forming && !e.card.settled() {
 		return a.renderEntry(i, e, width)
 	}
 	// AND A SIGN-IN THAT IS STILL WAITING, for the reason both of those are not:
@@ -3895,39 +3877,24 @@ func (a *app) hintWord() string {
 		return "tab take · enter run · esc"
 	case a.menu.open || a.comp.open:
 		return "↑↓ · enter · esc"
-	case a.awaitingTask():
-		// The proposal owns these keys while it is up, and it owns them ahead of
-		// the consent letters below: a card and a consent question cannot be open
-		// at once, and the keys a person needs are the ones on screen (task.go).
-		return taskProposalHint
 	case a.awaitingStanding():
 		// And the standing card owns the digits it drew — three, or two on a
 		// one-off reminder, and the follow-up's two the moment the yes is given
 		// (standing.go).
 		return standAskHint(a.stand)
 	case a.shaping():
-		// The always is part-way answered and the block is on its second beat
-		// (consent.go): the numbers bank a shape and esc puts the question back.
+		// The widening answer is part-way given and the block is on its second
+		// beat (question.go): the numbers bank a shape and esc puts the question
+		// back exactly as it was.
 		return "1-3 shape · esc never mind"
 	case a.asking() || a.awaitingDecision():
-		// THE KEYS THE BLOCK ACTUALLY DRAWS. This line said "a allow · t always"
-		// for a year after the answers took their own first letters, so the hint
-		// under the box named `a` as allow while the block above it named `a` as
-		// always — one keystroke, two readings, and the wrong one widens a
-		// permission.
-		//
-		// AND IT NAMES THE ALWAYS KEY ONLY WHERE THAT KEY WOULD ACT. A stuck
-		// question borrows this lane to ask about a TURN, and the engine drops a
-		// tool-session scope on it — so the offer above leaves `[a]` off
-		// (consent.go's [app.consentOffer], from this same `memo` field) and the
-		// press does nothing. A hint that named it anyway would be this line
-		// promising a keystroke the block above it has already refused. It went
-		// unseen until this wave for one reason: the slot was silent under
-		// [hudTight], and that is the width the case is met at.
-		if len(a.asks) > 0 && !a.asks[0].memo {
-			return "y allow · n deny"
-		}
-		return "y allow · n deny · a always"
+		// THE KEYS THE BLOCK ACTUALLY DRAWS, read off the question itself. This
+		// line said "a allow · t always" for a year after the answers took their
+		// own first letters, so the hint under the box named `a` as allow while
+		// the block above it named `a` as always — one keystroke, two readings,
+		// and the wrong one widens a permission. It is derived now, so it cannot
+		// come apart from the row again.
+		return a.questionHint()
 	case a.railHold:
 		// The roster has the keyboard (alt+t, task.go) — the one state on this
 		// surface where the arrows have left the box entirely. It ranks HERE, under

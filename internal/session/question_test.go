@@ -562,3 +562,74 @@ func waitForAsk(t *testing.T, asks <-chan Event, want EventKind) Event {
 		}
 	}
 }
+
+// TestABankedRuleAnswersAsARuleAndNotAsAToolWideMemo is the one thing the
+// widening answer's scope has to get right.
+//
+// The session memo this engine writes for a [ConsentToolSession] answer is keyed
+// by the tool's NAME alone, so on `bash` it means every command for the rest of
+// the conversation. A person who reads `git status*` and presses a key must not
+// buy silence for `rm -rf` — so when the SURFACE has already written the rule
+// down, the answer says so ([AnswerBanked]) and this door applies it as a
+// [ConsentRule], which is the scope [Agent.askAnswer] writes nothing beside.
+func TestABankedRuleAnswersAsARuleAndNotAsAToolWideMemo(t *testing.T) {
+	widening := AnswerAction{Kind: QuestionConsent, Allow: true, Scope: ConsentToolSession}
+	banked := Answer{Kind: QuestionConsent, Key: "2", Comments: map[string]string{AnswerBanked: "git status*"}}
+	if got := ConsentScopeOf(widening, banked); got != ConsentRule {
+		t.Fatalf("a banked shape answered as %q, want %q", got, ConsentRule)
+	}
+	// AND EVERY OTHER ANSWER IS UNTOUCHED. A widening yes with nothing written
+	// behind it is still the memo it always was — that is what stops the asking
+	// for a plain tool — and neither the narrow yes nor the no is widened by a
+	// comment that happens to be on them.
+	if got := ConsentScopeOf(widening, Answer{Kind: QuestionConsent, Key: "2"}); got != ConsentToolSession {
+		t.Fatalf("a widening yes with nothing banked answered as %q", got)
+	}
+	once := AnswerAction{Kind: QuestionConsent, Allow: true, Scope: ConsentOnce}
+	if got := ConsentScopeOf(once, banked); got != ConsentOnce {
+		t.Fatalf("the narrow yes was widened to %q by a comment", got)
+	}
+	deny := AnswerAction{Kind: QuestionConsent, Scope: ConsentOnce}
+	if got := ConsentScopeOf(deny, banked); got != ConsentOnce {
+		t.Fatalf("a refusal answered as %q", got)
+	}
+	// A comment with nothing in it is a claim with nothing behind it.
+	empty := Answer{Kind: QuestionConsent, Key: "2", Comments: map[string]string{AnswerBanked: "  "}}
+	if got := ConsentScopeOf(widening, empty); got != ConsentToolSession {
+		t.Fatalf("an empty banked comment claimed a rule: %q", got)
+	}
+}
+
+// TestAProposalAsksAboutItsModelOnlyWhenThereIsSomethingToAsk is
+// [TaskModelShape]'s whole bound, and it is the emptiness law said about a
+// question: a hole offering the one model the work was already going to run on
+// is a question that has answered itself.
+func TestAProposalAsksAboutItsModelOnlyWhenThereIsSomethingToAsk(t *testing.T) {
+	options := []string{"anthropic/claude-opus-5", "anthropic/claude-opus-4.8"}
+	shape := TaskModelShape(TaskNotice{Model: options[0], ModelOptions: options})
+	if shape.Kind != InputBlanks || len(shape.Blanks) != 1 {
+		t.Fatalf("a shortlist of two did not become one blank: %+v", shape)
+	}
+	blank := shape.Blanks[0]
+	if blank.Label != TaskModelBlank || blank.Kind != BlankChoice {
+		t.Fatalf("the hole is not a choice called %q: %+v", TaskModelBlank, blank)
+	}
+	// THE DEFAULT IS AN ANSWER ALREADY GIVEN: the leading option is what the
+	// card shows and what the clock takes, so somebody who changes nothing has
+	// confirmed the model the work was always going to run on.
+	if blank.Default != options[0] {
+		t.Fatalf("the hole opens on %q, not on the closest match", blank.Default)
+	}
+	if !strings.Contains(shape.Prompt, "{"+TaskModelBlank+"}") {
+		t.Fatalf("the sentence has no hole in it: %q", shape.Prompt)
+	}
+	for _, none := range []TaskNotice{
+		{},
+		{Model: options[0]},
+		{Model: options[0], ModelOptions: options[:1]},
+	} {
+		if shape := TaskModelShape(none); shape.Kind != InputNone {
+			t.Fatalf("a proposal with nothing to ask carried %+v", shape)
+		}
+	}
+}

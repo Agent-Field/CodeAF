@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // THE READING GUTTER (gutter.go). These are the questions the pass has to keep
@@ -150,31 +152,40 @@ func TestATaskLinksColumnsMoveWithItsWords(t *testing.T) {
 	}
 }
 
-// AND SO DO A PROPOSAL'S ANSWERS. They are the most-pressed columns on this
-// surface and they live on a card rather than on the row, which is why they
-// need a pass of their own ([app.gutterCards]).
-func TestAProposalsAnswersCoverTheChipsThatWereDrawn(t *testing.T) {
-	a, agent, _ := taskApp(t)
-	agent.pending = []uint64{7}
-	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)})
+// AND SO DO A CARD'S ANSWERS. They are the most-pressed columns on this surface
+// and they live on a card rather than on the row, which is why they need a pass
+// of their own ([app.gutterCards]).
+//
+// THE CARD IS THE STANDING ONE because it is the block in the transcript that
+// still has answers on it. The task proposal's went to the question block above
+// the box (task.go, question.go), and the chrome is drawn at the frame's own
+// width with no gutter to pay — which is exactly why this pass has to be tested
+// against a card that has one.
+func TestACardsAnswersCoverTheChipsThatWereDrawn(t *testing.T) {
+	a, _, _ := standApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+		WhenWords: "Mondays at 9am",
+		CostWords: "about $0.02 a run, at most once a day",
+		Deadline:  a.now().Add(30 * time.Second),
+	})})
 	if textGutterCols(a.bodyWidth()) == 0 {
 		t.Fatalf("the fixture is too narrow to have a gutter at all")
 	}
 	body, _ := a.window(a.bodyWidth(), a.viewHeight())
 	var chips row
 	for _, r := range body {
-		if r.hit == hitChoice {
+		if r.hit == hitStandChoice {
 			chips = r
 			break
 		}
 	}
 	if chips.text == "" {
-		t.Fatalf("no choices row on the frame:\n%s", strings.Join(plainRows(a), "\n"))
+		t.Fatalf("no answers row on the frame:\n%s", strings.Join(plainRows(a), "\n"))
 	}
-	if len(a.task.spans) == 0 {
-		t.Fatalf("the open proposal recorded no answers at all")
+	if len(a.stand.spans) == 0 {
+		t.Fatalf("the open card recorded no answers at all")
 	}
-	for _, span := range a.task.spans {
+	for _, span := range a.stand.spans {
 		word := strings.TrimSpace(cellsOf(chips.text, span.from, span.to))
 		if word == "" || !strings.Contains(plain(chips.text), word) {
 			t.Fatalf("answer %d covers %q on a row reading %q", span.at, word, plain(chips.text))
@@ -190,30 +201,33 @@ func TestAProposalsAnswersCoverTheChipsThatWereDrawn(t *testing.T) {
 // rather than settling a difference would walk its answers off the end of the
 // row one frame at a time (gutter.go's [app.gutterCards]).
 func TestTheGutterIsPaidOnceHoweverManyFramesGoBy(t *testing.T) {
-	a, agent, _ := taskApp(t)
-	agent.pending = []uint64{7}
-	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)})
+	a, _, _ := standApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+		WhenWords: "Mondays at 9am",
+		CostWords: "about $0.02 a run, at most once a day",
+		Deadline:  a.now().Add(30 * time.Second),
+	})})
 	// The spans are written by the layout that draws them, so the card has none
-	// until a frame has been laid out (task.go's [app.taskCardRows]).
+	// until a frame has been laid out (standing.go's [StandingCardRows]).
 	_ = a.visible(a.bodyWidth())
-	if len(a.task.spans) == 0 {
-		t.Fatalf("the open proposal recorded no answers at all")
+	if len(a.stand.spans) == 0 {
+		t.Fatalf("the open card recorded no answers at all")
 	}
-	first := append([]choiceSpan(nil), a.task.spans...)
+	first := append([]choiceSpan(nil), a.stand.spans...)
 	for range 5 {
 		a.dirty = true
 		_ = a.visible(a.bodyWidth())
 	}
-	for i, span := range a.task.spans {
+	for i, span := range a.stand.spans {
 		if span != first[i] {
 			t.Fatalf("answer %d drifted from %+v to %+v over five frames", i, first[i], span)
 		}
 	}
 	// And a card the pass never touched again is where it was put, not further
 	// right: the same question asked of the card directly.
-	if a.task.gut != textGutterCols(a.bodyWidth()) {
+	if a.stand.gut != textGutterCols(a.bodyWidth()) {
 		t.Fatalf("the card carries %d cells of gutter, the frame buys %d",
-			a.task.gut, textGutterCols(a.bodyWidth()))
+			a.stand.gut, textGutterCols(a.bodyWidth()))
 	}
 }
 

@@ -85,8 +85,9 @@ func TestEnterOnAWindowHeldRowStillArmsTheTakeover(t *testing.T) {
 	if a.home.armed != theirs {
 		t.Fatalf("the row was not armed · armed=%q", a.home.armed)
 	}
-	if !strings.Contains(a.home.msg, "enter again to move it here") {
-		t.Fatalf("the armed sentence never appeared:\n%s", a.home.msg)
+	ask, up := a.homeAsking()
+	if !up || ask.question.Head != takeoverAskWord {
+		t.Fatalf("enter raised no question about moving it here · up=%v", up)
 	}
 }
 

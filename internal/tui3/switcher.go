@@ -737,6 +737,13 @@ type switcherPaint struct {
 	// so this file stays as pure as the three above it — and its zero value is the
 	// `alt+` spelling, which is what the constants already say.
 	chords chordSpelling
+	// asking says a question this window raised is already on screen about the
+	// row under the cursor (homeconfirm.go). It is the fifth fact this drawing
+	// surface holds and the reading cannot ask for, and it costs the row its
+	// grown door: `enter brings it here` is an OFFER, and while the card beside
+	// the row is asking `Move this conversation here?` the offer has been taken
+	// up — repeating it would advertise a door somebody is already standing in.
+	asking bool
 }
 
 // paint is one line of the reading, with the band on the row the keyboard or the
@@ -897,7 +904,10 @@ func switcherPaintRow(row switcherRow, width int, pal palette, grouped bool, p s
 	// THE CURSOR AND NOT THE POINTER. `p.hover` paints the same band, but enter
 	// goes to the cursor's row — a promise about a key on a row the key would
 	// not act on is a lie the band makes look true.
-	if row.door && p.sel && parts[2] == homeHeldShort {
+	//
+	// AND A ROW WHOSE QUESTION IS ALREADY ASKED KEEPS THE SHORT WORD
+	// ([switcherPaint.asking]).
+	if row.door && p.sel && !p.asking && parts[2] == homeHeldShort {
 		grown := []string{parts[0], parts[1], takeoverHeldDoorWord}
 		if ansi.StringWidth(glyph)+1+switcherTailWidth(grown)+ansi.StringWidth(row.title) <= width {
 			parts = grown

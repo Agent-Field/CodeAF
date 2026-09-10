@@ -695,12 +695,19 @@ type homeView struct {
 	msg     string
 	msgPath string
 
-	// armed is the transcript of the row whose SECOND enter moves a conversation
-	// out of the window that is holding it (takeover.go). One enter arms it and
-	// says what the next one will do and what it costs; anything that moves the
+	// armed is the transcript of the row whose enter has RAISED THE QUESTION
+	// about moving a conversation out of the window that is holding it
+	// (takeover.go). It is the row's state and nothing more: what is asked, and
+	// what answers it, is the card in `ask` below. Anything that moves the
 	// cursor, esc, and any rebuild that loses the row all clear it, because an
 	// arming a person cannot see is a keystroke with a memory.
 	armed string
+
+	// ask is the ONE question home is holding about a row on its own list, or
+	// nil (homeconfirm.go). It is not on the block: home takes the frame whole,
+	// so the block's rows are not on screen here, and a card home raised about a
+	// row on home is not a thing to meet after walking away from home.
+	ask *questionShown
 
 	// tier is which of home's three shapes this frame has room for — the list
 	// alone, the list and a card, or the zones in a column of their own beside
@@ -2381,12 +2388,25 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	defer a.touch()
 	h.say("", "")
-	// ANYTHING BUT A SECOND ENTER DISARMS A HELD ROW. The arming is a promise
-	// made by the sentence on the foot line, and that sentence has just been
-	// cleared — an arming a person can no longer see is a keystroke with a
-	// memory, and the keystroke it changes the meaning of is the one that ends
-	// another window (takeover.go).
-	if msg.String() != "enter" {
+	// THE CARD HOME RAISED TAKES ITS OWN KEYS FIRST (homeconfirm.go). It is the
+	// question block's card and its router, so `1`/`2` move the cursor, `←→`
+	// walk it, `enter` takes what it is on, and `esc` is the answer that loses
+	// nothing — and none of those may reach the list underneath while a question
+	// this window asked is on the screen.
+	if cmd, took := a.homeAskKey(msg); took {
+		// AND THE FOOT FOLLOWS THE CARD. `h.say("", "")` above cleared it because
+		// what is on the foot is about the key just pressed; on a frame with no
+		// card the foot IS the question, so a key that moved its cursor has to
+		// leave the question where it was rather than clearing it off the screen.
+		a.sayHomeAsk()
+		return cmd
+	}
+	// ANYTHING THAT MOVES THE CURSOR TAKES THE QUESTION DOWN. The card is drawn
+	// in the band beside the row it is about, so a question left standing over
+	// another row would be a card asking about a conversation nobody is looking
+	// at — and its `enter` would move the wrong one (takeover.go).
+	if a.home.ask != nil {
+		a.dropHomeAsk()
 		h.armed = ""
 	}
 	// AND A WAIT THAT IS STILL RUNNING SAYS SO AGAIN. The line above is cleared
@@ -2395,6 +2415,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	if word := a.takeoverLine(); word != "" {
 		h.say(word, "")
 	}
+	a.sayHomeAsk()
 	// AND THE ROUTER'S OWN LINE COMES DOWN WITH HOME'S. A refusal that put a
 	// person back here is about the key they just pressed; the next key is a new
 	// question, and a sentence that outlived it would be an answer to nothing
@@ -4355,6 +4376,10 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 			// AND HOW THIS TERMINAL SPELLS A CHORD, for the section line's own two
 			// keys (chords.go).
 			chords: a.chords,
+			// AND WHETHER A QUESTION THIS WINDOW RAISED IS ALREADY ON THE CARD
+			// beside the row, which costs the row its grown door
+			// (homeconfirm.go).
+			asking: a.home.ask != nil,
 		})
 	}
 	switch line.kind {

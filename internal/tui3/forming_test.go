@@ -296,8 +296,11 @@ func TestTheSpawnCardFormsBeforeItAsks(t *testing.T) {
 		t.Fatalf("the landed proposal did not take the answer lane: %+v", a.task)
 	}
 	body = strings.Join(plainRows(a), "\n")
-	if !strings.Contains(body, "[ yes ]") {
-		t.Fatalf("the proposal is not asking:\n%s", body)
+	// AND THE ASKING IS ABOVE THE BOX, which is where every decision on this
+	// surface is put (question.go): the block in the transcript is the
+	// assignment, and the question about it is the block's.
+	if ask := plain(strings.Join(a.questionRows(a.width), "\n")); !strings.Contains(ask, "1  start it") {
+		t.Fatalf("the proposal is not asking:\n%s", ask)
 	}
 	if strings.Contains(body, taskFormingWord) {
 		t.Fatalf("the landed proposal is still forming:\n%s", body)

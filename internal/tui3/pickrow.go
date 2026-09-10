@@ -58,7 +58,7 @@ import (
 // window is where a person is most likely to be missing an answer they need, and
 // the choice a row makes there is between saying every answer briefly and saying
 // some of them fully — the consent gate settled that question first
-// ([app.consentOffer]) and settled it the same way. A choice with no short
+// ([app.questionOffer]) and settled it the same way. A choice with no short
 // spelling simply keeps its word at both lengths.
 type pickChoice struct{ key, word, short string }
 

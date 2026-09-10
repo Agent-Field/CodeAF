@@ -231,9 +231,19 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 			{Key: "3", Label: "deny", Safe: true},
 		}
 	case QuestionTask:
+		// THE WORD IS WHAT THE ANSWER DOES, and it is spelled that way because
+		// of the clock. A proposal is the one question in this engine whose
+		// silence answers, and a surface says so by putting the pick's own
+		// label in front of the time left — `start it in 9s`. `yes in 9s`
+		// named no action at all, which is a promise a person cannot check.
 		return []AnswerOption{
-			{Key: "1", Label: "yes"},
-			{Key: "2", Label: "no"},
+			{Key: "1", Label: "start it"},
+			// AND THE ONE THAT LOSES NOTHING SAYS SO. The decline is where a
+			// proposal's safety is: no work opens, no branch is cut, nothing
+			// is spent. A surface reads that mark to know which answer a
+			// cursor may rest on and which yes is worth counting towards a
+			// habit ([AnswerOption.Safe]).
+			{Key: "2", Label: "no", Safe: true},
 		}
 	case QuestionStanding:
 		return []AnswerOption{

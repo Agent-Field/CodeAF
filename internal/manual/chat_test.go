@@ -84,6 +84,29 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is there a countdown on this question", "questions"},
 		{"what does your rule mean on a question", "questions"},
 		{"can I answer a question over --host", "questions"},
+		// The hole on a CARD rather than on a page, which is where the task
+		// proposal's model shortlist went. People ask about the arrows and about
+		// whether moving one is an answer.
+		{"what do the arrows do on the question above my box", "questions"},
+		{"does changing the hole answer the question", "questions"},
+		// AND THE APPROVAL QUESTION AS IT IS DRAWN NOW that it is that block
+		// (internal/tui3's consent.go), asked the four ways somebody meets the
+		// keys that moved: the digits, the key that used to deny, the shape of
+		// the question on a small screen, and the widening yes.
+		{"what key allows a command now", "permissions"},
+		{"I pressed esc on the allow question and nothing happened", "permissions"},
+		{"the allow question turned into a card on my narrow terminal", "permissions"},
+		{"what does always this command write down", "permissions"},
+		// AND THE TASK PROPOSAL AS IT IS DRAWN NOW that it is that block too
+		// (internal/tui3's task.go), asked the four ways somebody meets the
+		// keys that moved: the answers row that replaced the chips, the typed
+		// `no` that used to decline and now corrects, and the model shortlist,
+		// which is a hole in a sentence walked with the arrows rather than a
+		// row of chips answered with the digits.
+		{"how do I say no to a task it wants to start", "tasks"},
+		{"I typed no to the task and it started anyway", "tasks"},
+		{"where did the model chips on the proposal go", "tasks"},
+		{"change which model a task runs on before it starts", "tasks"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},
 		// Lanes behind a base of the person's own: the question the hostname gate
@@ -1733,6 +1756,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"that window did not answer", "home"},
 		{"I pressed enter to move a chat and nothing happened", "home"},
 		{"how do I cancel moving a conversation here", "home"},
+		// And the card the first enter raises now, asked the two ways somebody
+		// meets it: they pressed enter twice and nothing moved, and they want
+		// the key that does move it.
+		{"I pressed enter twice on the held row and it did not move", "home"},
+		{"move this conversation here what do I press", "home"},
 		// And the resting row's own words, which is where somebody looking at
 		// `another window` starts: they are staring at a margin, not at a card.
 		{"the row says another window, how do I get it back", "home"},
@@ -2197,6 +2225,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what happens to a running chat when I close its tab", "screen"},
 		{"what does keep running do", "screen"},
 		{"what is the difference between keep running and stop work", "screen"},
+		{"k doesn't do anything on the close tab card any more", "screen"},
+		{"how do I close a tab without stopping the work", "screen"},
+		{"I pressed 1 on the stop card and it did not stop", "keys"},
+		{"why does the stop card need enter as well as the number", "keys"},
 		{"where did my chat go after I closed its tab", "screen"},
 		{"how do I stop just this chat without touching the others", "screen"},
 	}

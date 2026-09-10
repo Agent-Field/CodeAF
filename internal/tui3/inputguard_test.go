@@ -206,7 +206,14 @@ func TestHomeKeepsItsLettersOverEveryQuestionAboveIt(t *testing.T) {
 			// proposal keeps the y in its box until enter sees the complete answer;
 			// the two modal offers still answer on their single key.
 			a, ev, answered = tc.start(t)
-			drive(t, a, streamOf(a, ev), key("y"))
+			drive(t, a, streamOf(a, ev))
+			// THE BLOCK TAKES NO KEY FROM A QUESTION IT HAS NEVER DRAWN
+			// (question.go's [app.questionKey]), and the harness draws no
+			// frames — so the question is put on screen here, which is what a
+			// terminal does before a hand reaches the keyboard.
+			a.chrome(a.width)
+			settleAsk(a)
+			drive(t, a, key("y"))
 			if tc.name == "the task proposal" {
 				if answered() {
 					t.Fatal("y answered the task proposal before enter")

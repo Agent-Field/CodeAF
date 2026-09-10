@@ -553,5 +553,5 @@ func consentReason(decision approval.Decision) string {
 	if rule := strings.TrimSpace(decision.Rule); rule != "" {
 		return rule
 	}
-	return consentFallbackReason
+	return ConsentFallbackReason
 }

@@ -3282,7 +3282,7 @@ func TestEnterOnALockedRowOffersToMoveItInHomesOwnVoice(t *testing.T) {
 	if a.file != mine {
 		t.Fatalf("the offer moved this window to %q", a.file)
 	}
-	if !strings.Contains(a.home.msg, "enter again to move it here") {
+	if !strings.Contains(a.home.msg, takeoverAskWord) {
 		t.Fatalf("home said %q", a.home.msg)
 	}
 	if len(a.entries) != before {
@@ -3297,9 +3297,15 @@ func TestEnterOnALockedRowOffersToMoveItInHomesOwnVoice(t *testing.T) {
 	}
 }
 
-// A SECOND PRESS ASKS, AND A THIRD ASKS NOTHING MORE. The line lives in home's
-// own foot and is replaced, where a note in the conversation would have stacked
-// — and the request itself is one file, written once.
+// ONCE THE QUESTION IS ANSWERED, PRESSING ENTER AGAIN ASKS NOTHING MORE. The
+// line lives in home's own foot and is replaced, where a note in the
+// conversation would have stacked — and the request itself is one file, written
+// once.
+//
+// The presses are `enter` to raise the question, `1` to move the cursor onto
+// `move it here`, then `enter` to take it (takeover.go's card): the digit is
+// there because nothing on this door is decided by one keystroke, and the two
+// enters after it are somebody leaning on the key.
 func TestPressingEnterOverAndOverOnAHeldRowAsksOnce(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -3313,13 +3319,15 @@ func TestPressingEnterOverAndOverOnAHeldRowAsksOnce(t *testing.T) {
 	a.home.point(theirs)
 	before := len(a.entries)
 	a.homeKey(key("enter"))
+	a.homeKey(key("1"))
+	a.homeKey(key("enter"))
 	a.homeKey(key("enter"))
 	a.homeKey(key("enter"))
 	if len(a.entries) != before {
-		t.Fatalf("three presses wrote %d lines into the conversation", len(a.entries)-before)
+		t.Fatalf("the presses wrote %d lines into the conversation", len(a.entries)-before)
 	}
 	if !a.waitingToTakeOver() {
-		t.Fatal("three presses left the window waiting for nothing")
+		t.Fatal("the presses left the window waiting for nothing")
 	}
 	if got := strings.Count(homeText(a), "moving it here"); got != 1 {
 		t.Fatalf("the moving line is on the screen %d times", got)

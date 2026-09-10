@@ -94,7 +94,8 @@ func TestAToolWalksFromQueuedThroughConsentToDone(t *testing.T) {
 	}
 
 	// Answered, it runs — and now, and only now, it spins.
-	drive(t, a, key("a"))
+	settleAsk(a)
+	drive(t, a, key("1"))
 	if got := a.entries[at].status; got != toolRunning {
 		t.Fatalf("the allowed call is in state %v, want running", got)
 	}
@@ -262,7 +263,7 @@ func TestTheConsentQuestionIsVioletEverywhereAtOnce(t *testing.T) {
 	if !strings.Contains(block, violet) {
 		t.Fatalf("the question block is not violet:\n%q", block)
 	}
-	offer := painted[consentOfferRow+1] // the rule sits above the block: [rule, call, offer, …]
+	offer := painted[2] // the rule sits above the block: [rule, call, offer, …]
 	if !strings.Contains(offer, "allow?") {
 		// The rule row is only drawn when the frame is roomy; find the offer.
 		for _, line := range painted {
@@ -306,7 +307,8 @@ func TestAnsweringTheQuestionEndsTheViolet(t *testing.T) {
 	})
 	a.pal = newPalette(tokens.TrueColor, false)
 	typeLine(t, a, "clean it")
-	drive(t, a, key("a"))
+	settleAsk(a)
+	drive(t, a, key("1"))
 
 	violet := "\x1b[38;2;192;143;232m"
 	if got := frame(a); strings.Contains(got, violet) {
@@ -643,24 +645,26 @@ func TestHoverReachesTheChoicesAndThePickerRows(t *testing.T) {
 	a.pal = newPalette(tokens.ANSI256, false)
 	typeLine(t, a, "clean it")
 
+	_, block := askOffer(t, a)
 	_, marks, _, _ := a.chrome(a.width)
 	_, height := a.size()
 	offerY := -1
 	for i, mark := range marks {
-		if mark.kind == chromeChoices {
+		if mark.kind == chromeQuestion && mark.index == block {
 			offerY = height - len(marks) + i
 		}
 	}
 	if offerY < 0 {
-		t.Fatal("the offer line has no chrome mark")
+		t.Fatal("the answers row has no chrome mark")
 	}
 	drive(t, a, motionAt(offerY))
 	if !a.hoveringChoices() {
 		t.Fatalf("the choices did not answer the pointer: %v", a.hot)
 	}
 	background := "\x1b[48;5;" + itoa(int(hueCursor.idx)) + "m"
-	if !strings.Contains(a.consentOffer(a.width), background) {
-		t.Fatalf("the hovered choices have no hover background: %q", a.consentOffer(a.width))
+	offer, _ := askOffer(t, a)
+	if !strings.Contains(offer, background) {
+		t.Fatalf("the hovered choices have no hover background: %q", offer)
 	}
 
 	// And the model picker.

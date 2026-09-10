@@ -32,10 +32,12 @@ func TestAProposalSaysWhichWindowIsAlreadyInTheseFiles(t *testing.T) {
 	if !strings.Contains(text, line) {
 		t.Fatalf("the card never said who else is in these files:\n%s", text)
 	}
-	// IT IS A FACT AND NOT A GATE: the same three answers and the same clock.
-	for _, want := range []string{"[ yes ]  [ redirect ]  [ no ]", "auto-starts in 4.0s"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("the warning changed the question: %q is gone:\n%s", want, text)
+	// IT IS A FACT AND NOT A GATE: the same answers and the same clock, on the
+	// question the block is drawing above the box (question.go).
+	ask := plain(strings.Join(a.questionRows(a.width), "\n"))
+	for _, want := range []string{"1  start it", "2  no", "start it in 4s"} {
+		if !strings.Contains(ask, want) {
+			t.Fatalf("the warning changed the question: %q is gone:\n%s", want, ask)
 		}
 	}
 	// The words this surface must never use about it. Nothing is being prevented,

@@ -1447,6 +1447,25 @@ func (a *Agent) applyToLane(answer Answer) error {
 		wait <- answer
 		return nil
 	case QuestionConsent, QuestionTask, QuestionStanding:
+		if answer.Kind == QuestionTask && key == "" && words != "" {
+			// A PROPOSAL ANSWERED IN WORDS IS APPROVED, AND THE WORDS ARE THE
+			// REDIRECT. It is the one lane on this door where a sentence is a
+			// whole answer rather than a note beside one: the most valuable
+			// thing a person can do with a groomed piece of work is CORRECT
+			// it, and correcting it is saying yes to the corrected version.
+			// The words are appended to the brief by the runner
+			// ([TaskAnswer.Redirect]), so what travels is verbatim.
+			//
+			// IT IS NOT A HIDDEN DIALECT. The surface that raised this door
+			// used to read a bare "no" typed into the box as a decline and
+			// anything longer as a redirect, which meant one of the two
+			// answers was reachable by a word nothing on screen had named.
+			// The answers are on the row with their keys; the box is words.
+			a.ResolveTask(answer.ID, TaskAnswer{
+				Approved: true, Redirect: words, Model: answer.Blanks[TaskModelBlank],
+			})
+			return nil
+		}
 		// The three lanes answers.go already mapped, through the mapping it
 		// already wrote: [AnswerFromKey] says what a key MEANS, and a key the
 		// kind does not take is applied to nothing.
@@ -1456,9 +1475,18 @@ func (a *Agent) applyToLane(answer Answer) error {
 		}
 		switch action.Kind {
 		case QuestionConsent:
-			a.ResolveConsentRemember(answer.ID, action.Allow, action.Scope)
+			a.ResolveConsentRemember(answer.ID, action.Allow, ConsentScopeOf(action, answer))
 		case QuestionTask:
-			a.ResolveTask(answer.ID, action.Task)
+			// AND THE HOLE IN THE SENTENCE IS PART OF THE YES. A proposal whose
+			// shortlist the harness could not settle carries one choice blank
+			// ([TaskModelShape]); what a person left in it travels on the answer
+			// they gave, so `start it` starts it on the model the card was
+			// showing them. [TaskAnswer.Model] states what an empty one means and
+			// what happens to a name outside the shortlist — both are the leading
+			// option, which is what the card was showing.
+			task := action.Task
+			task.Model = answer.Blanks[TaskModelBlank]
+			a.ResolveTask(answer.ID, task)
 		case QuestionStanding:
 			a.ResolveStanding(answer.ID, action.Standing)
 		}
@@ -1506,6 +1534,41 @@ func (a *Agent) applyToLane(answer Answer) error {
 // lane's own extra and every other lane would carry it empty
 // ([Event.Model] is where the question offered it).
 const questionModelNote = "model"
+
+// AnswerBanked is the key a widening answer carries under, in [Answer.Comments],
+// when the SURFACE has already written the permission down somewhere the person
+// can find and change it — the shape of a shell command, in the words they
+// picked out of it.
+//
+// IT IS WHAT KEEPS A NARROW YES FROM WIDENING ITSELF. The session memo this
+// engine writes for a [ConsentToolSession] answer is keyed by the tool's NAME
+// alone, so on `bash` it means every command for the rest of the conversation —
+// and a person who read `git status*` and pressed a key must not buy silence for
+// `rm -rf`. When the surface has banked a rule the answer is a [ConsentRule]
+// instead, which is the scope that tells this engine to write nothing beside it
+// (consent.go's askAnswer says the same from the other end).
+//
+// It is a comment rather than a field for [questionModelNote]'s reason: it is
+// one lane's own extra, and every other lane would carry it empty.
+const AnswerBanked = "banked"
+
+// ConsentScopeOf is how far one consent answer actually reaches.
+//
+// It is the key's own scope ([AnswerFromKey]) in every case but one: a widening
+// yes whose rule the surface has already written down is a [ConsentRule], and
+// [AnswerBanked] is where that fact rides.
+//
+// It is exported for the same reason [AnswerFromKey] is: anything that applies
+// an answer to this lane without going through [Agent.ResolveQuestion] — a
+// stand-in, a link that resolves on the far side — has to reach the one mapping
+// rather than write a second.
+func ConsentScopeOf(action AnswerAction, answer Answer) ConsentScope {
+	if action.Allow && action.Scope == ConsentToolSession &&
+		strings.TrimSpace(answer.Comments[AnswerBanked]) != "" {
+		return ConsentRule
+	}
+	return action.Scope
+}
 
 // applyLanding answers a landed task's `your call`, and it is the one arm of
 // this door with more than two outcomes — because a landed task is the one
@@ -1714,18 +1777,23 @@ func (a *Agent) consentQuestion(id uint64) Question {
 		Form:     FormLine,
 		Asker:    Asker{Kind: AskerEngine},
 		Head:     a.presenceAsk().Text,
-		Reason:   consentFallbackReason,
+		Reason:   ConsentFallbackReason,
 		Options:  AnswerOptions(QuestionConsent),
 		Stakes:   StakesCostly,
 		Blocking: Blocking{Turn: true},
 	})
 }
 
-// consentFallbackReason is why the gate is asking, in the one sentence that is
+// ConsentFallbackReason is why the gate is asking, in the one sentence that is
 // true of every question on this lane whatever the policy matched. The policy's
 // own phrasing is better and rides on the banked question; this is what is left
 // when there is none.
-const consentFallbackReason = "it will not run this without your word"
+//
+// It is exported because a SURFACE builds the same question out of the same
+// request event (tui3's [app.consentQuestion]) and the two are keyed by one
+// token — so a sentence spelled twice would be two questions replacing each
+// other on screen while somebody read one of them.
+const ConsentFallbackReason = "it will not run this without your word"
 
 // connectQuestion is a connect offer as a question. An account that needs a
 // typed answer is a question with a box rather than a pick, because a bare yes
@@ -1820,25 +1888,84 @@ func (a *Agent) proposalQuestion(id uint64, notice TaskNotice) Question {
 		Ask:      AskPermission,
 		Form:     FormCard,
 		Asker:    Asker{Kind: AskerModel},
-		Head:     taskProposalLead + strings.TrimSpace(notice.Title),
+		Head:     TaskProposalLead + strings.TrimSpace(notice.Title),
 		Reason:   strings.TrimSpace(notice.Summary),
 		Subject:  SubjectRef{Kind: SubjectNode, ID: id, Name: strings.TrimSpace(notice.Title)},
 		Options:  AnswerOptions(QuestionTask),
 		Stakes:   StakesCostly,
 		Blocking: Blocking{Turn: true},
 		Deadline: notice.Deadline,
+		Input:    TaskModelShape(notice),
 	}
 	if !notice.Deadline.IsZero() {
-		built.Pick = &Pick{Key: "1", Reason: "it starts on its own unless you say otherwise", Confidence: ConfidenceFairly}
+		built.Pick = &Pick{Key: "1", Reason: TaskProposalPickReason, Confidence: ConfidenceFairly}
 		built.Policy = Policy{Kind: PolicyRecommendThenAuto, After: time.Until(notice.Deadline)}
 	}
 	return a.said(QuestionTask, token, built)
 }
 
-// taskProposalLead opens the sentence a task proposal asks with, and it is
+// TaskModelBlank is the label of the hole a proposal carries when the harness
+// could not settle which model the work runs on, and it is the key the answer
+// carries the chosen one back under ([Answer.Blanks]).
+//
+// IT IS ONE NAME READ AT BOTH ENDS. The card fills that map by the blank's own
+// label (tui3's questioninput.go does the filling) and [Agent.applyToLane] reads
+// [TaskAnswer.Model] straight back out of it, so a label spelled twice would be
+// a choice somebody made and nothing acted on.
+const TaskModelBlank = "model"
+
+// TaskModelPrompt is the sentence the hole sits in, with `{model}` where the
+// hole goes — so what a person reads is `run it on [ anthropic/claude-opus-5 ▾ ]`
+// rather than a form with a field name over it.
+const TaskModelPrompt = "run it on {" + TaskModelBlank + "}"
+
+// TaskModelShape is the small form a proposal carries when — and only when — the
+// harness raised a shortlist it could not choose within
+// ([TaskNotice.ModelOptions]).
+//
+// ONE OPTION IS NOT A CHOICE, so an ordinary proposal carries no shape at all and
+// the card draws no hole: a row offering the one model the work was already going
+// to run on is a question that has answered itself. That is the same bound the
+// row of model chips this replaced kept, said once instead of in the renderer.
+//
+// IT IS EXPORTED BECAUSE THE SURFACE BUILDS THE SAME QUESTION, for the reason
+// [TaskProposalLead] states: two builders that drifted would put two questions on
+// screen about one proposal.
+func TaskModelShape(notice TaskNotice) InputShape {
+	if len(notice.ModelOptions) < 2 {
+		return InputShape{}
+	}
+	return InputShape{
+		Kind:   InputBlanks,
+		Prompt: TaskModelPrompt,
+		Blanks: []Blank{{
+			Label:   TaskModelBlank,
+			Kind:    BlankChoice,
+			Choices: append([]string(nil), notice.ModelOptions...),
+			// THE DEFAULT IS AN ANSWER ALREADY GIVEN ([Blank] says so). The
+			// leading option is the closest match, it is what the card shows, and
+			// it is what the clock settles on — so a person who changes nothing
+			// has confirmed the model the work was always going to run on.
+			Default: strings.TrimSpace(notice.Model),
+		}},
+	}
+}
+
+// TaskProposalLead opens the sentence a task proposal asks with, and it is
 // task.go's own lead repeated here so the card, the presence file and this
 // object cannot become three accounts of one proposal.
-const taskProposalLead = "wants to start a task: "
+//
+// IT IS EXPORTED BECAUSE THE SURFACE BUILDS THE SAME QUESTION. A window that
+// draws the proposal has the notice before the questions lane reaches it and
+// raises the question from that, so the two objects must be one sentence — the
+// block keys a question by its lane and its id, and two builders that drifted
+// would put two questions on screen about one proposal.
+const TaskProposalLead = "wants to start a task: "
+
+// TaskProposalPickReason is why the clock recommends starting it, in the words
+// the recommendation is made in. It is exported for [TaskProposalLead]'s
+// reason.
+const TaskProposalPickReason = "it starts on its own unless you say otherwise"
 
 // subharnessOfferQuestion is an intake card chat raised for a saved program.
 func (a *Agent) subharnessOfferQuestion(id uint64, card Event) Question {

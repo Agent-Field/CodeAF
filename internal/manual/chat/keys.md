@@ -1431,23 +1431,27 @@ seconds quits aforge with the picker still up.
 
 ## Keys when aforge asks you a question — what key answers switch to auto, and the other offers
 
-**An approval question:** `y` allow once · `a` or `t` always — refused when it would
-do nothing · `n`, `d` or `esc` deny. Every other key does nothing, but it **stops the
-countdown**. `ctrl+c` is handed back to the message box, where it arms the door and a
-second press within 1.5 seconds quits. On the second beat of
-"always" for a bash command, `1`–`9` pick a shape and `esc` goes back.
+**An approval question:** `1` allow once · `2` always — not drawn and inert when it
+would do nothing · `3` deny · `c` answer in words · `esc` **later**, which folds the
+question to the chip and answers nothing. It is **not modal**: every other key belongs
+to your message box, and a key it does read also **stops the countdown**. A key pressed
+in the first quarter-second is dropped, so a question landing under a moving hand is not
+answered by a keystroke aimed at your sentence. `ctrl+c` is handed back to the message
+box, where it arms the door and a second press within 1.5 seconds quits. On the second
+beat of "always" for a bash command, `1`–`9` pick a shape and `esc` goes back — and
+while that beat is up the digits are the shapes', not the answers'.
 
-**A task proposal** is not modal — the message box stays live as a redirect lane.
-Always available: `enter` submits a typed answer or takes the focused option over
-an empty box, `esc` says no, and `ctrl+e` opens the brief over an empty box. Over
-an **empty box only**: `left`/`right` move the focus, and `1`–`4` pick the model.
-Bare letters are ordinary answer text, not immediate shortcuts. Typing the first
-character stops the countdown and changes the meter to `starts on your word`;
-deleting the draft does not restart it. On
-`enter`, a bare `no`, `nope`, `n`, `stop`, `cancel`, `don't` or `dont` declines,
-while a bare `yes`, `y`, `ok`, `okay`, `go` or `sure` approves. Longer text is a
-redirect. Clicking `no` or pressing `esc` always declines, whatever is in the
-box; only `enter` interprets the typed answer.
+`alt+a` raises the newest question you put off, from any page.
+
+**A task proposal** is answered on that same block, in that same grammar: `1` start
+it · `2` no · `c` answer in words · `esc` **later**, which folds it to the chip and
+answers nothing. `enter` over an empty box takes the answer marked `▸` — the one
+the clock is about to take — and `enter` with words in the box sends them as a
+correction, which starts the corrected work. `ctrl+e` over an empty box opens the
+brief in the conversation. Bare letters are ordinary answer text: typing `no` is a
+correction and does NOT decline, because the answers are on the row with their
+keys. Any key the question reads also stops the countdown, and deleting the draft
+does not restart it.
 
 **A slow lane's offer**, raised on the status line when a machine you pinned has gone
 quiet: the row reads `coreweave is slow · switch to auto? (y)` and `y`, **over an empty
@@ -2180,20 +2184,34 @@ The tasks pages describe what rooms and the roster are for.
 `x` raises one card above the message box:
 
 ```
-? Stop this task? Its work halts; the branch it wrote on is kept.
-  [stop it]   [keep going]
+?  Stop this task?
+     Its work halts; the branch it wrote on is kept.
+     1  stop it
+     2  keep going
+   [enter] take the pick · [esc] keep going · [←→] pick
 ```
 
-On an adaptive run's page it reads `Stop this run? In-flight nodes halt; partial
-results stay.` A harness being designed is a task, so `x` on its row reaches it like
-any other — and the card says what is actually true of it: `Stop this task? The page
-it is writing is dropped; nothing was saved.` It has no branch and wrote no files, so
-the reassurance about a kept branch would be pointing at nothing.
+The head is the question and nothing else; the sentence under it is the promise —
+what stopping does **not** take away.
+
+On an adaptive run's page the head reads `Stop this run?` and the promise is
+`In-flight nodes halt; partial results stay.` A harness being designed is a task, so
+`x` on its row reaches it like any other — and the promise says what is actually true
+of it: `The page it is writing is dropped; nothing was saved.` It has no branch and
+wrote no files, so the reassurance about a kept branch would be pointing at nothing.
 
 **The cursor opens on `keep going`.** `left`/`right` move it, `enter` takes the
 answer under it, `esc` is `keep going`, and every other key does nothing while the
-card is up. A click on either answer is that answer, and a click anywhere else on
-that row does nothing rather than falling through to the box.
+card is up. A click on either answer's row is that answer, and a click anywhere else
+does nothing rather than falling through to the box.
+
+**`1` and `2` move the cursor; they do not answer.** The digit beside an answer walks
+the cursor onto that answer and lights its row. `enter` is still what decides, which is
+this card's whole rule said in the digits' own grammar.
+
+**Your half-typed message is safe under this card and cannot be sent by it.** `enter`
+belongs to the card while it is up; the sentence in the box is exactly where you left
+it once you have answered.
 
 **There is no bypass key and no "don't ask me again".** Stopping cannot be undone —
 the worker's turn ends where it stands — so the card is always asked, and pressing

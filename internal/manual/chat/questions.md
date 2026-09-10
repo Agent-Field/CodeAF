@@ -61,10 +61,12 @@ Most of them wait. A wait that ended is not a no: an approval question, a
 standing card and a page waiting to be approved carry no clock at all, and they
 stay up until somebody answers them.
 
-**A task proposal and a reversible recommendation may carry a clock.** The card says how long is left, and
-when the time runs out the work STARTS — the card is your chance to redirect it,
-not a gate the work waits on. A proposal you hold loses its deadline and then
-waits like everything else.
+**A task proposal and a reversible recommendation may carry a clock.** The answers
+row says which answer is about to be taken and when — `start it in 9s` — and when
+the time runs out the work STARTS. It is your chance to correct it, not a gate the
+work waits on. Any key you press stops that clock, and a proposal you hold loses
+its deadline and then waits like everything else, with `waiting` on the end of the
+row instead of a countdown.
 
 **Nothing that cannot be taken back ever runs on a clock**, and only you ever answer
 one. aforge refuses to raise a question that says otherwise.
@@ -244,7 +246,7 @@ beside it, `?` is one still waiting.
 A question something is blocked on never waits for a boundary. It arrives at
 once, on its own.
 
-## The question disappeared — withdrawal
+## The question disappeared — it vanished without me answering, withdrawal
 
 A question can stop needing an answer: what it was about went away, the plan
 changed, or another answer settled it. It is taken back by whoever asked, and one
@@ -259,6 +261,9 @@ The count in the chip drops, and an open sheet loses that row and re-flows —
 question and not to the position it was drawn in. A question still gathering
 inside a step is dropped from that batch too, so a boundary never delivers a
 decision that stopped needing to be made.
+
+It is never called cancelled: nothing failed, and nobody decided anything. The
+decision simply stopped needing to be made.
 
 ## Questions aforge refuses to put to you
 
@@ -293,7 +298,8 @@ command about to run — that row is drawn above it, the same row you already
 read, not a second description of it.
 
 ```
-  ? allow this? [1] allow once · [2] always · [3] deny · [esc] later
+    ╰─▶ bash rm -rf build
+  ? allow? [1] allow once · [2] always, this command · [3] deny · [esc] later · 7s
     bash pattern "rm -rf *"
 ```
 
@@ -335,7 +341,7 @@ the row.
 | `D` | decide questions like this from now on |
 | `r` | make it a rule |
 | `u` | undo, while what was done is still real |
-| `←` `→` | walk the two answers of a confirmation |
+| `←` `→` | walk the two answers of a confirmation, or change what is in the hole where the question has one |
 | `s` | on a sheet: send what you answered, and let the rest take their own picks |
 | `g` | on a sheet: same answer for all like this |
 
@@ -359,8 +365,8 @@ anything: the question is still open, whatever was waiting on it is still
 waiting, and the count in the status line does not drop. What goes away is the
 rows, so the box underneath is yours again.
 
-This is different from the older approval question, where `esc` denies. On the
-block, nothing is ever decided by making something go away.
+This is what changed about the approval question, where `esc` used to deny.
+Nothing is ever decided by making something go away.
 
 To bring it back, press `alt+a`.
 
@@ -421,19 +427,6 @@ where you handed it back with `d`. It is the same line that goes into
 
 The line stays for half a minute and then goes — it is news, and after that it
 is history, which lives in the transcript and in the record.
-
-## A question that stops needing you
-
-Sometimes the thing a question was about goes away — the turn moved on, the plan
-changed, another answer settled it. When that happens the question is taken back
-by whoever asked it and one dim line says so, once:
-
-```
-  ⊘ allow this? — no longer needed · the turn moved on without it
-```
-
-Then the count in the status line drops. It is never called cancelled: nothing
-failed, the decision simply stopped needing to be made.
 
 ## Stop asking me about this — rules
 
@@ -570,7 +563,7 @@ there is nothing for it to decide, because the whole question is what you meant.
 asked and press enter; it goes back to the asker as a reframe rather than as a
 pick, and nothing is chosen.
 
-## Fill in the blanks
+## Fill in the blanks — the holes in a sentence, and what the arrows do on the question above your box
 
 Some questions are a sentence with holes in it rather than a list of answers:
 
@@ -584,6 +577,19 @@ Each hole opens on whatever the asker already knew, so you are not retyping it.
 Under the sentence, one dim line says what the hole you are in takes — a file or
 folder, a number, a time — or why what is in it will not do. Press enter when it
 reads right; the holes come back as fields, keyed by their own names.
+
+**A card can carry a hole too, not only a page.** The one you will meet is a task
+proposal whose model shortlist the harness could not settle: it draws
+
+```
+     run it on [ anthropic/claude-opus-5 ▾ ]
+```
+
+above the proposal's own answers, and `←→` walks the shortlist. **Moving what is
+in a hole answers nothing** — the countdown on the proposal keeps running, and
+what is in the hole when you answer travels with the answer. On a card the holes
+are `←→` only: `tab` is the page's key, and the sentence a card carries is one
+line with one hole in it.
 
 ## Pick several
 
@@ -632,6 +638,43 @@ Whatever you send goes with everything you did on the way:
 - anything you asked back and what came of it
 - how long the answer lasts, where the question offered a choice of that
 
+## Which questions draw this way
+
+**The approval question does** — the one aforge asks before it runs a tool. It
+has all of the above: the digits, `esc` for later, the chip, the receipt, the
+settle guard, the narrow card and the phone sheet. `permissions` is its own page
+and states what each answer banks.
+
+**So does the task proposal** — `wants to start a task:` with `[1] start it` and
+`[2] no`, and its clock on the end of the row. **So do the two cards you raise
+yourself**: `x` on running work (`Stop this task?`) and `ctrl+w` on a busy tab
+(`Close this tab?`). Those two are **confirmations**, and a confirmation differs
+from every other question here in three ways worth knowing:
+
+- **`esc` does not mean later.** There is nothing to come back to — you raised it
+  with your own hand a second ago — so `esc` gives the answer that loses nothing:
+  `keep going` on the stop card, `cancel` on the close card.
+- **A digit moves the cursor rather than answering.** `1` and `2` walk the cursor
+  onto the answer they name and light its row; `enter` is what decides. Nothing is
+  decided by one keystroke.
+- **They are answerable at once, and they take the whole keyboard.** The settle
+  guard does not apply — your hand is already on the key that raised it — and
+  while one is up your half-typed sentence stays in the box, unsent, because
+  `enter` belongs to the card.
+
+A question that is not simply a line of answers still fits here. The approval
+question's widening yes, `[2] always`, has a **second beat** on a shell command:
+it replaces the answers row with the shapes the rule could be written as, and
+picks one before anything is written.
+
+```
+  always? [1] git status*  ·  [2] git *  ·  [3] just this line  ·  [esc] never mind
+```
+
+While a beat is up, the digits belong to it — `3` is the third shape and not the
+third answer — and `esc` backs out of the beat rather than putting the question
+off.
+
 ## What is not built yet
 
 `o` opens a question out into a page of its own — see the sections above, from
@@ -647,7 +690,5 @@ The count of open questions in the status line IS built: that is the chip
 described above. So is the sheet, and so is the per-project setting that answers
 a whole kind of question while you are away (`/autonomy`, and `D` on a row).
 
-The older blocks — the approval question, a task proposal, a standing card, a
-connect offer, an offer to run a saved program, and the cards that ask before
-stopping work or closing a busy tab — have not moved onto the block yet and keep
-their own keys until they do.
+Some older blocks have not moved onto this one yet and keep their own keys until
+they do: a standing card, a connect offer, and an offer to run a saved program.

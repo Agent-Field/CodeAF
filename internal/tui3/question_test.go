@@ -461,7 +461,7 @@ func TestAConfirmationStartsOnTheSafeAnswerAndWalks(t *testing.T) {
 			},
 			Stakes: session.StakesIrreversible, Asked: lab.at,
 		},
-		local: func(answer session.Answer) { took = append(took, answer.FirstKey()) },
+		local: func(answer session.Answer) tea.Cmd { took = append(took, answer.FirstKey()); return nil },
 	})
 	lab.rows()
 	lab.tick(questionSettle)
@@ -550,7 +550,7 @@ func TestTheRatifyLineSaysWhatWasDoneAndHowToUndoIt(t *testing.T) {
 			Stakes: session.StakesReversible, Asked: lab.at,
 		},
 		undoable: true,
-		local:    func(session.Answer) {},
+		local:    func(session.Answer) tea.Cmd { return nil },
 	})
 	rows := questionPlainRows(lab.rows())
 	if len(rows) != 1 {
@@ -577,7 +577,7 @@ func TestARatifyLineWithNothingRealToUndoDoesNotOfferTheKey(t *testing.T) {
 			ID: 6, Kind: session.QuestionTask, Ask: session.AskRatify,
 			Head: "sent the digest", Stakes: session.StakesIrreversible, Asked: lab.at,
 		},
-		local: func(session.Answer) {},
+		local: func(session.Answer) tea.Cmd { return nil },
 	})
 	if got := lab.plain(); strings.Contains(got, "[u] undo") {
 		t.Fatalf("a ratify line with nothing to undo offered the key: %q", got)
@@ -792,14 +792,22 @@ func TestTheLaneRaisesOnlyWhatThisBlockHasTakenOver(t *testing.T) {
 	for _, kind := range []session.QuestionKind{
 		session.QuestionSubharnessAsk, session.QuestionFuel, session.QuestionConflict,
 		session.QuestionAsk,
+		// AND THE APPROVAL GATE, whose own block is deleted: consent.go draws
+		// nothing now and what is left there is the lane's three surface-side
+		// facts (the row, the widening write, the reading clock's length).
+		session.QuestionConsent,
+		// AND THE TASK PROPOSAL, whose choices row, meter and keyboard lane are
+		// deleted: task.go draws the ASSIGNMENT in the transcript, which is what
+		// the question is about rather than a second copy of the asking.
+		session.QuestionTask,
 	} {
 		if !a.questionDrawnHere(session.Question{Kind: kind}) {
 			t.Fatalf("%s has no other block and is not drawn here either", kind)
 		}
 	}
 	for _, kind := range []session.QuestionKind{
-		session.QuestionConsent, session.QuestionConnect, session.QuestionHarness,
-		session.QuestionStanding, session.QuestionTask,
+		session.QuestionConnect, session.QuestionHarness,
+		session.QuestionStanding,
 	} {
 		if a.questionDrawnHere(session.Question{Kind: kind}) {
 			t.Fatalf("%s is drawn here AND by its own block; one decision, two rows", kind)
