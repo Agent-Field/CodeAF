@@ -64,17 +64,14 @@ reason in it: `stopping task 2 (Port the parser): I changed my mind — its bran
 
 **Telling a task to stop is not stopping it.** A line sent *into* a running task — the
 model's `say`, or your own words typed in its room — is a message, and a message can be
-ignored, or answered "stopped as instructed" while the work carries on. It is worse than
-nothing: a worker that ends a turn having delivered nothing looks exactly like a worker that
-ran out of road, so the check says it is not done, `closing gaps · round 1 of 1` opens, and
-the task keeps working and keeps spending. A real stop never reaches the check at all and is
-never handed back for another round.
+ignored, or answered "stopped as instructed" while the work carries on. Worse: a worker that
+ends a turn having delivered nothing looks exactly like one that ran out of road, so the
+check says it is not done, `closing gaps · round 1 of 1` opens, and the task keeps working
+and spending. A real stop never reaches the check and is never handed back for a round.
 
-**A task that is not running answers with what it is.** "Stop task 2" over work that landed
-a minute ago is a reasonable thing to have said, so it is not refused: the reply is `task 2
-is done`, or `stopped`, or `your call`, in the same words your screen is showing. Work
-running in **another aforge window** cannot be stopped from here at all — it has no id in
-this conversation, and the window that owns it has to stop it.
+**A task that is not running answers with what it is**, rather than refusing: `task 2 is
+done`, or `stopped`, or `your call`, in the words your screen is showing. Work running in
+**another aforge window** cannot be stopped from here — the window that owns it has to.
 
 ## Change this task's model
 
