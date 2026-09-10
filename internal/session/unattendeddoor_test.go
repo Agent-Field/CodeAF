@@ -385,7 +385,7 @@ func TestOnlyASpentBudgetSealsOverWorkThatIsMoving(t *testing.T) {
 func TestAPersonsHandoverStillMovesTheWork(t *testing.T) {
 	dir := t.TempDir()
 	transcript := filepath.Join(dir, "transcript.jsonl")
-	agent := checkpointAgent(t, splitSketchSteps(), func(config *Config) {
+	agent := checkpointWritingAgent(t, writingSplitSketchSteps(), func(config *Config) {
 		config.Workspace = dir
 		config.SessionFile = transcript
 		config.Divide = true
@@ -415,6 +415,17 @@ func TestAPersonsHandoverStillMovesTheWork(t *testing.T) {
 func splitSketchSteps() *scriptedCompleter {
 	return &scriptedCompleter{
 		steps: grindingSteps(checkpointMarkAt(1)+6, checkpointSplitSketch,
+			"Finish the four pieces\nwhat is left, and everything this turn already found out"),
+	}
+}
+
+// writingSplitSketchSteps is [splitSketchSteps] for a turn that TOUCHED THE
+// DISK, which is the turn the full handover road still takes: a drawing with
+// parts out of a turn that only read is handed to a quick node instead
+// (checkpoint_quick.go's [Agent.quickFromDrawing]).
+func writingSplitSketchSteps() *scriptedCompleter {
+	return &scriptedCompleter{
+		steps: writingGrindSteps(checkpointMarkAt(1)+6, checkpointSplitSketch,
 			"Finish the four pieces\nwhat is left, and everything this turn already found out"),
 	}
 }
@@ -796,7 +807,7 @@ func TestACommitRefusedInAWritableTreeIsAboutTheWork(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(refs, 0o755) })
 
-	_, problem, _, refusal := tree.comeHome("add the parser", []string{"parser.py"})
+	_, problem, _, refusal := tree.comeHome("add the parser", []string{"parser.py"}, false)
 
 	if !strings.Contains(strings.ToLower(problem), "permission denied") {
 		t.Skipf("git refused the commit with %q, which is not the sentence this test is about", problem)

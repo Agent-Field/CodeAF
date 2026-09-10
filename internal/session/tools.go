@@ -57,6 +57,22 @@ import (
 // history, searchable, so that work handed off weeks ago is still findable by
 // the model that has to build on it.
 //
+// resultCaps is how much of one tool result this conversation's model can
+// afford to be handed, and it is the answer the whole belt is built with.
+//
+// IT FOLLOWS THE WINDOW. pi's flat caps — 2000 lines or 50KB — were measured
+// against a 128,000-token window, which is exactly what [Agent.window] answers
+// when no model card says otherwise, so a frontier conversation gets them
+// unchanged and is byte-identical to what it was. A model with a smaller window
+// gets a smaller share of it, because a read that fills 78% of everything the
+// model can hold leaves it the file and no room to think about the file.
+//
+// It reads [Agent.window] rather than [Agent.trustedWindow]: the caps are
+// rendered into the descriptions in message[0], and a bound that moved when
+// this process learned something about an endpoint would re-price the whole
+// conversation cold.
+func (a *Agent) resultCaps() bare.Caps { return bare.CapsFor(a.window()) }
+
 // build_harness and list_harnesses (tools_harness.go) are the ONE big machine
 // left on this belt and the list that says whether the thing about to be built
 // already exists: a saved procedure this project can be offered again. They are
@@ -116,7 +132,7 @@ import (
 // is exactly what the conversation has, which is the point: it is the same
 // worker, working somewhere quieter.
 func (a *Agent) belt() []bare.Tool {
-	tools := bare.AllTools(a.config.Workspace)
+	tools := bare.AllToolsCapped(a.config.Workspace, a.resultCaps())
 	for index, tool := range tools {
 		switch tool.Name {
 		case "bash":
@@ -165,6 +181,18 @@ func (a *Agent) belt() []bare.Tool {
 		tools = append(tools, a.tasksTool())
 	}
 	tools = append(tools, a.taskTools()...)
+	// quick_task rides beside propose_task and on the same predicate: it is the
+	// other way work leaves a turn — not handed away into a copy of its own, but
+	// started HERE, where the caller works, its last message its answer
+	// (task_quick.go). The judge that decides between the two is written once, in
+	// its description.
+	tools = append(tools, a.quickTools()...)
+	// items is the verb a QUICK WORKER carries and nothing else does: a node with
+	// no list has no door behind the tool, so it is absent rather than present
+	// and refusing — the law every conditional family on this belt is built on.
+	if a.config.mayTickItems() {
+		tools = append(tools, a.itemsTool())
+	}
 	// revise_assignment is a WORKER'S verb and nothing else's (assignment.go): it
 	// folds a direction the person gave this node into what the node is judged by.
 	// A conversation has no assignment to revise and an auditor is handed no
@@ -179,14 +207,6 @@ func (a *Agent) belt() []bare.Tool {
 	// narrow task's belt byte-identical to what it was before that road
 	// existed.
 	tools = append(tools, a.divideTools()...)
-	// fork is the third weight of parallelism and the lightest (fork.go): not
-	// work handed away, but this mind copied two to four times INSIDE the turn,
-	// each copy opening on the whole transcript and told one line about what
-	// makes it different. It is absent from a hand's own belt and present on
-	// everything else, because a chat turn and a task worker are both minds
-	// mid-work with a context worth copying — and a hand is not, since the fork
-	// is one deep.
-	tools = append(tools, a.forkTools()...)
 	// stand (tools_standing.go) is the ambient side's one verb, and it is
 	// CONDITIONAL for the sharpest version of the absence law on this belt: a
 	// model told it can set up a reminder will plan a whole reply around one,

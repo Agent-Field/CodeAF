@@ -112,6 +112,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I pressed esc on the allow question and nothing happened", "permissions"},
 		{"the allow question turned into a card on my narrow terminal", "permissions"},
 		{"what does always this command write down", "permissions"},
+		// AND THE MARK AFORGE LEAVES ON WORK IT DID FOR YOU, asked the five ways
+		// somebody meets it: reading their own git log, reading a pull request
+		// they did not write the last line of, looking up a name they have never
+		// seen, and wanting it gone.
+		{"why is there a co-author on my commit", "permissions"},
+		{"does aforge sign my commits", "permissions"},
+		{"who is agentfield-bot", "permissions"},
+		{"what is the drafted with line at the bottom of my pull request", "permissions"},
+		{"stop adding a co-author trailer to my commits", "permissions"},
+		{"does it sign every comment it leaves on my pull request", "permissions"},
+		{"what is the small drafted with line under its comment", "permissions"},
 		// AND THE TASK PROPOSAL AS IT IS DRAWN NOW that it is that block too
 		// (internal/tui3's task.go), asked the four ways somebody meets the
 		// keys that moved: the answers row that replaced the chips, the typed
@@ -610,13 +621,6 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does my task say a tool was withdrawn", "how-tasks-run"},
 		{"my task says unknown tool bash", "how-tasks-run"},
 		{"why were the files my task saved called unverified", "how-tasks-run"},
-		// And the other half: a fork whose hands declared their files in full and
-		// were refused every single write.
-		{"how do I say which files each hand may write", "tasks"},
-		// And what a hand may reach for at all: it reads the caller's own
-		// instructions, so the question is asked as "which of these are mine".
-		{"what tools does a hand have", "tasks"},
-		{"why was my fork refused over its scope", "tasks"},
 		{"what does this conversation cost", "models-and-cost"},
 		// The same question in the two plainest ways somebody types it, which
 		// are both about the money and neither of which uses the word cost as a
@@ -696,6 +700,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it stopped and said the same thing was still left", "starting-aforge"},
 		{"it kept repeating the same thing", "starting-aforge"},
 		{"why does it say carry on", "tasks"},
+		// AND THE SAME LOOP OVER WORK OF ITS OWN: one of two quick tasks landed,
+		// the reply that answered the landing was pushed on three times over the
+		// other, and the person met it as a reply that would not leave a running
+		// task alone.
+		{"it keeps asking about a task that is still running", "tasks"},
 		{"it said a file does not pass", "starting-aforge"},
 		{"a task waiting on one that did not finish", "starting-aforge"},
 		// AND THE THREE ENDINGS OF THE SAME RUN (#513), asked the ways somebody
@@ -1061,10 +1070,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where do I set what aforge may spend", "models-and-cost"},
 		{"how much money can a task spend of its own", "models-and-cost"},
 		{"why does the limit say no limit instead of $0", "models-and-cost"},
-		// Issue #168: a fork's hands were on the machine's day figure twice, and
-		// the person who notices is the one asking what their hands are costing.
-		{"does the money on the status line include what my hands are spending", "models-and-cost"},
-		{"is a hand's spend counted twice in my daily total", "models-and-cost"},
+		// Issue #168: work a conversation started was on the machine's day figure
+		// twice, and the person who notices is the one asking what their tasks
+		// are costing.
+		{"does the money on the status line include what my tasks are spending", "models-and-cost"},
+		{"is a task's spend counted twice in my daily total", "models-and-cost"},
 		{"how do I set a limit without opening settings", "commands"},
 		{"why won't you change my approval mode", "permissions"},
 		{"why won't permissions show the rules on the machine I used with host", "running-on-another-machine"},
@@ -1471,11 +1481,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the parts all had the same done-condition and it would not split", "tasks"},
 		{"each part should only check its own files", "tasks"},
 		{"it refused the split because the parts share a check", "tasks"},
-		// Hands: the third weight, and the one a person meets as a line they did
-		// not ask for in the middle of their own answer. They ask in the words on
-		// the screen — "three hands on it" — or in the words for what they saw,
-		// which is one reply doing several things at once.
-		{"what does three hands on it mean", "tasks"},
+		// Several things at once: a person meets this as one reply doing several
+		// things, and what answers it is the task that hands its own parts out.
 		{"can you work on several parts of my answer at once", "tasks"},
 		// And the half of division a person meets from the other side: they walk
 		// into the parent's room, type, and the page does not move — because the
@@ -1556,6 +1563,40 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did commit become a task", "tasks"},
 		{"undo started a task", "tasks"},
 		{"fix this one line became a task", "tasks"},
+
+		// The quick task (docs/design/quick-task/DESIGN.md), asked the ten ways
+		// somebody meets it. Nobody types the word `quick_task`: they describe
+		// the shape of what they wanted or read the row back off the screen, so
+		// each probe is the sentence somebody actually says at the surface —
+		// the one that asks for the road, the one that reads the row, the one
+		// that reads the waiting line, and the four limits they run into.
+		{"can you do something quickly without making a branch", "tasks"},
+		{"start a small task in this folder", "tasks"},
+		{"do it here instead of on a branch", "tasks"},
+		{"is there a slash command for a quick task", "tasks"},
+		{"what does quick mean next to the task", "tasks"},
+		{"what does 2/4 mean on a task row", "tasks"},
+		{"why did it say waits for task 5", "tasks"},
+		{"why is one task waiting for another to finish with a file", "tasks"},
+		{"can I add a step to a running quick task", "tasks"},
+		{"how do I tick off an item myself", "tasks"},
+		{"I stopped a quick task and there is no branch", "tasks"},
+		{"the quick task left the file half written", "tasks"},
+		{"does a quick task get checked", "tasks"},
+		{"why did it make a quick task instead of a real one", "tasks"},
+		{"can a quick task start another quick task", "tasks"},
+		{"a quick task appeared under my task", "tasks"},
+		// The sixteenth wave, and every one of these is a real model choosing
+		// wrongly before the wording was fixed: a READ-ONLY survey that got a
+		// branch, a quick task cut at twenty files that ran out of rounds, and
+		// three independent pieces done one after another when they could have
+		// gone at once (docs/changes/unreleased).
+		{"I asked for a survey and it made a full task with a branch, why", "tasks"},
+		{"when do you use quick tasks instead of a task", "tasks"},
+		{"how many files should one quick task cover", "tasks"},
+		{"a quick task stopped saying out of rounds", "tasks"},
+		{"why did it start three quick tasks at once", "tasks"},
+		{"why did it stop instead of waiting for the quick tasks", "tasks"},
 		// And the other end of the same day: the task finished, and the reply
 		// that was delivering its work became a second task with none of the
 		// first one's staged files. Asked by somebody looking at the commit
@@ -1570,6 +1611,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// Somebody watching that happen asks about the half-answer, not about a
 		// judge — and they say the line back in its own words.
 		{"this has parts handing it to a task", "tasks"},
+		{"a quick task took over my answer", "tasks"},
+		{"why was there no copy of the folder", "tasks"},
 		{"why did it hand my answer to a team", "tasks"},
 		{"it started answering and then handed the work over", "tasks"},
 		{"why did my reply stop halfway and become a task", "tasks"},

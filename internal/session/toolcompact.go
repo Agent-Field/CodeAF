@@ -275,8 +275,17 @@ func toolResultName(call *ai.ToolCall) string {
 // The elided count is measured, not the size minus the two bounds: a rune
 // boundary moves both cuts, and a count that is nearly right is one a model
 // cannot decide from.
+//
+// THE JOB FOOTER IS NOT PART OF THE RESULT AND IS NOT CARRIED INTO THE VIEW.
+// The tail is the half of a long result that is worth keeping — a command's
+// verdict is at the end of it — and a footer appended after the fact
+// (jobfooter.go) sits exactly there, so a compacted build log ended in the
+// elapsed time of an unrelated background job instead of the line that said
+// whether it passed. The state of the jobs is fresh on the result the model is
+// reading NOW; a stale copy of it four turns back is not worth the tail it
+// takes.
 func reducedResultView(tool, text, source string) string {
-	trimmed := strings.TrimSpace(text)
+	trimmed := strings.TrimSpace(stripJobFooter(text))
 	head := compactHead(trimmed, compactHeadBytes)
 	tail := compactTail(trimmed, checkpointResultBytes)
 	elided := len(trimmed) - len(head) - len(tail)

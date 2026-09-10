@@ -1663,7 +1663,16 @@ func (g *TaskGraph) owedNotes(unannounced []*TaskNode, settle TaskSettle, addres
 			delivery.settled()
 			continue
 		}
-		notes = append(notes, taskNote(node.notice(), taskURI(node.journalPath()), settle, address))
+		// A RE-TELLING IS READ THE SAME WAY THE FIRST TELLING WOULD HAVE BEEN, so
+		// it opens on the same lead ([landingNoteLead]). A resumed session is in
+		// fact the shape that needs it most: nobody has typed, the note is the
+		// whole message, and the model has no turn behind it to infer who wrote it.
+		//
+		// THE NOTICE IS READ ONCE, for [Agent.reportTaskNode]'s reason: a lead and
+		// a head composed from two readings of a node could name two different
+		// landings of it.
+		notice := node.notice()
+		notes = append(notes, landingNoteLead(notice)+taskNote(notice, taskURI(node.journalPath()), settle, address))
 		node.noteQueued(claim)
 		deliveries = append(deliveries, delivery)
 	}
@@ -1901,6 +1910,27 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 		// finish, and what it got through is in its journal.
 		record.State = TaskFailed
 		record.Report = subharnessInterruptedReport
+		record.EndedAt = interruptedAt(record)
+		return record, ""
+	}
+
+	if record.Kind == TaskKindQuick {
+		// A QUICK TASK IS NEVER RE-RUN EITHER, and this is the line that makes it
+		// true. The argument is the two above it, arrived at from a third side.
+		//
+		// What tells [Agent.runTaskNode] to hand a node to the quick body rather
+		// than to a worker is [taskSpec.quick], and that field is not in the
+		// checkpoint: the list it carries is being ticked while the node runs, and
+		// there is no finished record here that could rebuild it. So a quick node
+		// put back on the frontier is a node the next session would run as an
+		// ORDINARY WORKER — a copy of the folder, a branch and a check, for work
+		// whose whole promise was that it had none of those.
+		//
+		// It settles instead, saying the one thing that is true of it: it did not
+		// finish, and because it was working in the person's own folder rather
+		// than a copy, whatever it managed is already in front of them.
+		record.State = TaskFailed
+		record.Report = quickInterruptedReport
 		record.EndedAt = interruptedAt(record)
 		return record, ""
 	}

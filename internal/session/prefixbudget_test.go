@@ -83,7 +83,7 @@ import (
 // prompts/system.md lost the media-making essay (the manual's own
 // making-pictures-audio-and-video page teaches all of it, and `manual` is a
 // tool the model can call), the paragraphs restating `bash`, `jobs`, `tasks`,
-// `fork`, `manual`, `build_harness` and `change_setting`'s own descriptions
+// `manual`, `build_harness` and `change_setting`'s own descriptions
 // back at the model, and the three-part propose_task contract its own schema
 // fields spell out field by field. It went 23,954 → 20,589; the tool block went
 // 26,678 → 26,579; the prefix is 47,168, which is 832 under.
@@ -139,7 +139,180 @@ import (
 // saved procedure configured, the complete tool block is 40,595 bytes and
 // discovery carries 26,740, including its 708-byte loader. Measure whole JSON
 // arrays rather than adding separately encoded array sizes.
+// THE DIET'S DELETE PASS TOOK 677 BYTES AND ADDED A LAW (2026-09-10). Lane C of
+// the prompt diet (docs/design/prompt-diet/DESIGN.md §1) deleted the SECOND and
+// THIRD copies of five rules and put ONE new sentence in their place, and the
+// new sentence is the reason the deletions are safe rather than merely cheap:
+// "anything handed off — a job, a watch, a task, a quick task — reports itself
+// into this conversation; never sleep, tail or poll for it" is 142 bytes that
+// says once what ten per-tool sentences were saying separately. Against it,
+// 819 bytes came out of text that stated a law already stated: the ask law was
+// on the page twice and in the belt fact under it a third time, so the ladder
+// bullet keeps it and the other two are gone; `# Critical`'s informed-action
+// bullet was the second telling of "never ask what the record answers";
+// prompts/system.md taught `write`'s append and `read`'s offset/limit, which
+// tools_write.go's [appendSentence] and bare's readDescription own word for
+// word; "Start ONE `watch`" contradicted [watchDescription]'s own count and is
+// gone; and the ask and settings belt facts gave up the two sentences about
+// what `load_capability` does once it is called, which is that tool's own
+// description. Nothing was raised. The page went 23,391 → 22,714, the tool
+// block is unmoved at 24,044, and the prefix is 46,758 — 1,242 under.
+// lawregistry_test.go is what keeps it there: every law above is filed under an
+// id and a class, and a second copy of one is now a build failure rather than a
+// thing the next audit finds.
+// AND THE EVENT LANE PAID NOTHING AND TOOK 2,189 BYTES BACK (2026-09-10). The
+// prompt diet's WITH THE EVENT pass (docs/design/prompt-diet/DESIGN.md §2): a
+// harness-authored message now carries its own reading instruction, so the page
+// stopped explaining messages it may never see. A landed task's note opens on
+// [landingNoteLead] — 234 bytes on the turn a task lands, with the tier word
+// interpolated — and a job's ending carries [jobExitNewsRule]. In exchange
+// `# Interrupts and steering` lost the woken-turn and `[carry on]` paragraphs
+// (the messages say all of it, and [checkpointCarryOnLead] has said its own
+// half since it was written), `# Session facts` lost the four-words, `your
+// call` and saying-stop bullets, and the belt's `tasks` fact lost its second
+// copy of the four words and the resolve verbs — [settleClause] interpolates
+// those from [TaskResolutions] on the note itself, and `tasks` own description
+// owns "To END running work use stop". Nothing was raised and no law left the
+// build. On dev alone it was 23,391 → 21,202; landing after lane C's delete
+// pass it is 22,714 → 20,525, and the two together leave the prefix at 44,569,
+// which is 3,431 under. Neither raised the budget.
+// AND THE TOOL DESCRIPTIONS GAVE BACK 1,221 BYTES AND ADDED A LAW (2026-09-10,
+// the prompt diet, lane F). The tool block went 24,044 → 22,823 and nothing was
+// raised; the prompt is untouched by this lane, so the prefix went 47,435 →
+// 46,214. Every byte came out of text that said something a SECOND time. The
+// handed-off-work-reports-itself law was written four times across the belt —
+// twice in `jobs`, once in `watch`, once in `propose_task` — and is now on the
+// page once; `read`'s senses sentence enumerated what a picture, a recording and
+// a video each come back as, where "described, never as bytes" is the whole rule
+// (322 → 95); and the routing sentences left `tasks` (three of them),
+// `read_document` and `recall` for the page's routing table, which states each
+// once for the whole belt rather than once per tool. Per tool: tasks 2,738 →
+// 2,272, read 1,169 → 952, jobs 1,103 → 802, watch 1,495 → 1,396, read_document
+// 819 → 754, recall 324 → 269, manual 616 → 603, commit 330 → 325, track 787
+// unchanged. schemalaw_test.go is the gate that keeps it: a parameter
+// description past 200 bytes, or shouting, or reaching for a dash, now fails the
+// build instead of waiting for this number to notice it. Merged with the page
+// passes above, the prefix is 43,348 — page 20,525 and tools 22,823, which is
+// 4,652 under a cap no lane of this wave moved. And `watch.instead-of-polling`
+// left lawregistry_test.go with the sentence it filed: `handoff.reports-itself`
+// now matches on "never sleep, tail or poll", so putting any of the four
+// per-tool copies back fails that gate wherever it is put.
+// THE DIET'S ON-DEMAND LANE PAID 3,854 BYTES BACK AND ASKED FOR NOTHING
+// (2026-09-10). Four runs of prose came off prompts/system.md and message[0]
+// stopped carrying any of them, because each one is already delivered by
+// whoever needs it and only then (docs/design/prompt-diet/DESIGN.md §2):
+//   - the standing section, 2,482 bytes, is one existence line. Its mechanics
+//     are tools_standing.go's [standDescription] and [standSchemaJSON], beside
+//     the field each governs; its `[something you set up fired]` frame is
+//     standing_run.go's [standingNewsRule], already under the firing's own line;
+//     the rest is the chat manual's keeping-an-eye page.
+//   - the two paragraphs defining a saved recipe and a saved program are the
+//     `harnesses` group's own prose (tools_capabilities.go), emitted under the
+//     `Loaded:` line by the load that fetches the four verbs. The page keeps the
+//     routing line that names `list_harnesses` and `build_harness`.
+//   - the accounts block, 1,142 bytes over three bullets, is one existence line.
+//     [serviceRequestDescription] already names the address and says which half
+//     the person turned off; the send verbs already say they are asked about
+//     first and cannot be called back.
+//   - the media-making essay is the `media` group's prose, and the page keeps
+//     one line: anchor in a real medium, specify positively, `manual` for the
+//     rest. `generate_image` and `generate_video` state it a third time in the
+//     `prompt` field, where it is read at the call.
+//
+// Nothing was raised and no law was dropped, and each of the four is filed in
+// lawregistry_test.go under class `demand` with the place that now owns it. On
+// its own, on top of lane C's delete pass, it took the page 22,714 → 18,860;
+// landing beside the event and description lanes above it leaves the page at
+// 16,671, the tool block at 22,823 which it did not touch, and the prefix at
+// 39,494 — 8,506 under.
+// AND THE ROUTING TABLE BOUGHT BACK 226 BYTES OF WHAT THE DESCRIPTIONS GAVE UP
+// (2026-09-10). A description states a contract and never when to reach for the
+// verb (DESIGN.md §4), so when the tool lane took the routing prose off
+// `tasks`, `read_document` and the rest, three triggers had nowhere left to be
+// said: that a look inside running or landed work is `tasks` with its id, that
+// "continue task N" is that id with `continue` and never a fresh
+// `propose_task` — which mints a second task with a fresh brief and a fresh
+// working copy (task_continue.go) — and that `read` is the door for text,
+// source and a PDF that has a text layer, `read_document` only for what `read`
+// cannot turn into text at all. The first two ride the `tasks` belt fact,
+// because a floor node carries neither verb; the third is two clauses folded
+// into the `read` bullet that was already there. Nothing was raised, nothing
+// was said twice (all three are filed in lawregistry_test.go under class
+// `core`), and the "earlier work referred to but not pointed at" trigger was
+// left exactly where it already was rather than restated here. The page went
+// 16,671 → 16,897, the tool block is unmoved at 22,823, and the prefix is
+// 39,720 — 8,280 under.
+// ATTRIBUTION COST 863 BYTES AND 333 OF THEM ARE THE FEATURE (2026-09-10). Lane
+// I of the prompt diet gave the chat the law the resident has had all along, and
+// a third case with it: aforge signs the git work it does in somebody's name —
+// one trailer on a commit, one footer line on a pull request or issue body, and
+// one small `<sub>` line on the FIRST comment it leaves in a thread and no later
+// one. It is a law this page did not state at all, so nothing was deleted for it;
+// there was no second copy to delete.
+//
+// THE FLOOR IS THE CONSTANTS AND THE FLOOR IS 333 BYTES. The trailer, the pull
+// footer and the comment line are constants because the exact bytes are what
+// attributes — a footer the model half-remembers counts as nothing — so this is
+// the one law on the belt that cannot be paraphrased down. What IS paid for: the
+// issue footer is named by the single utm parameter that differs rather than
+// spelled a second time (145 bytes), and the law is four sentences, three places
+// and one nowhere-else, with no example and no reasoning.
+//
+// It is also CONDITIONAL — off with the row off, off in a hand whose bash cannot
+// commit — so this figure is the widest page and not everybody's. On dev alone
+// the page was 22,714 → 23,577; landing after lanes A, C, D and F it is
+// 16,898 → 17,761, the tool block is unmoved by this lane at 22,823, and the
+// prefix is 40,584 — 7,416 under, and the cap is untouched.
+// AND THE RESULT CAPS PAID 652 BYTES ON THE WAY TO FIXING A DEFECT (2026-09-10).
+// Lane B (§5 item 1) made every result cap a share of the model's window instead
+// of a flat 2000 lines / 50KB, which meant the figures had to be rendered from
+// the caps in force rather than typed — and a description built at belt time is
+// a description that can be weighed. So the same pass cut `read` and `bash` to
+// their contract: `bash` gave up the routing sentence naming `propose_task`
+// (which road work belongs on is `## Work or words`, and the manual's own "a job
+// is the wrong door for work whose result is a deliverable"), and the arrival
+// law's three copies — the sentence, the timeout sentence and the `background`
+// argument — went to nought, on the strength of the page's new
+// `handoff.reports-itself`. `write`'s append and salvage clause says the same
+// two rules in 165 fewer bytes. Nothing was raised: the tool block went
+// 24,044 → 23,392 on its own branch and the page is unmoved by this lane. The
+// figure below is what it and lane F's pass weigh together, since both cut
+// `read`.
 // widestPage weighs the larger direct/deferred wording for each fact.
+// AND THE QUICK TASK IS THE FIRST WAVE SINCE THIS FILE WAS WRITTEN THAT RAISED
+// IT (2026-09-10), which is worth saying plainly rather than burying under the
+// ledger above: every entry there paid for itself out of a sentence said twice,
+// and this one could not, because it is not a sentence — it is a VERB the
+// product did not have.
+//
+// `quick_task` encodes to 1,196 bytes and the belt's own bullet for it is 129
+// more, and both were cut to the bone before this line moved. The description is
+// the judge and nothing else — the six sentences that decide between a task, a
+// quick task and doing the thing yourself (task_quick.go) — with the "the id
+// returns at once, so never poll" sentence left off because [taskDescription]
+// carries it and the two verbs are on a belt together or on neither. The schema
+// is six fields whose descriptions are one clause each, and `depends_on` and
+// `model` give up their rules entirely to `propose_task`'s copies of the same
+// two fields. For comparison, `propose_task` encodes to 5,720.
+//
+// AND THE CHOICE WAVE PAID IT BACK THE NEXT DAY (2026-09-10), so the cap is
+// 48,000 again and the measured prefix is 46,245, which is 1,755 under. Two
+// things happened in one commit. The belt's hand-off section stopped being a
+// list of bullets that sorted work by WIDTH and became one picture of what the
+// model HAS and what each thing COSTS (beltfacts.go says why, and what a real
+// model did with the list); the picture is a net saving on the three rule lists
+// it replaced, and it states "never poll" once for every road rather than per
+// verb. And `propose_task`'s schema went on the same diet its description went
+// on: one clause per field, the dowry prose dropped from `brief` because
+// prompts/system.md teaches it and a test pins it there, and the em dashes
+// taken out of every description string, small models tokenising them badly.
+// The tool block went 23,369 → 21,808 and the page reads 24,437.
+//
+// WHAT IS STILL OWED. The planner rule is in the prefix twice —
+// `taskDescription`'s "do not reach for a planner" and prompts/system.md's own
+// `THERE IS NO PLANNER ON YOUR BELT` paragraph — and both are pinned by
+// TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner, so paying it back is a
+// change to that test's mind and not only to the bytes.
 const fixedPrefixBudget = 48_000
 
 // widestPage is the page at its heaviest: prompts/system.md with every one of

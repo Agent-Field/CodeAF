@@ -2583,7 +2583,7 @@ func (a *Agent) acceptTask(node *TaskNode, why string, by TaskAskOwner) error {
 	// divider that landed unverified and is accepted in the morning must lay the
 	// same whole product a verified one laid at once. The fold is idempotent, so
 	// a list that is already complete costs a walk of itself.
-	changed, merge, detail, refusal := landHome(node, tree, changed)
+	changed, merge, detail, refusal := landHome(node, tree, changed, a.signsGitWork())
 	if refusal == refusedByYourFiles {
 		// AND THE ROAD IS MARKED HERE TOO. An accept is the second time a node's
 		// branch is offered to the ground, and it can be refused by the person's
@@ -2744,7 +2744,7 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		node.finish(gapsOutcome([][]string{verdict.evidence}), changed, branch, abortedMerge(tree))
 		node.graph.resettle(node, TaskFailed)
 	default:
-		changed, merged, detail, refusal := landHome(node, tree, changed)
+		changed, merged, detail, refusal := landHome(node, tree, changed, a.signsGitWork())
 		// A VERDICT THAT ARRIVES LATE CANNOT MERGE A BRANCH THAT WILL NOT GO
 		// EITHER. The node keeps the one state that is true of it — somebody has
 		// to look — with the work committed on its branch and the clashing files
@@ -3039,10 +3039,10 @@ func boundedResult(tool bare.Tool, droppings Place, workspace string) bare.Tool 
 		pointer, fileErr := writeStub(droppings, workspace, text)
 		if fileErr != nil || pointer == "" {
 			footer := "\n[cut here; full output could not be saved — ask for a narrower path, pattern, or range]"
-			return capBytes(text, auditResultLimit-len(footer)-32) + footer, isError, nil
+			return capBytes(text, auditResultLimit-len(footer)-capMarkerRoom) + footer, isError, nil
 		}
 		footer := fmt.Sprintf("\n[cut here; whole output: %s — use read with offset/limit]", pointer)
-		return capBytes(text, auditResultLimit-len(footer)-32) + footer, isError, nil
+		return capBytes(text, auditResultLimit-len(footer)-capMarkerRoom) + footer, isError, nil
 	}
 	return tool
 }

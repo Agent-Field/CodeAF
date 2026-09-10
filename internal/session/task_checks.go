@@ -183,10 +183,8 @@ const (
 // must never go in it. The last clause is the whole of the fourth measured
 // failure above, said in the words a model writing a proposal can act on.
 const checksSchemaJSON = `"checks":{"type":"array","items":{"type":"string"},` +
-	`"description":"Optional. Commands that RE-ESTABLISH the result, each ONE simple command safe to run again: ` +
-	`a test, a build, a probe. The independent checker runs these and nothing else; work declaring none is judged ` +
-	`by reading. NEVER the work itself — a deploy, a send, a job asked for once — re-running that repeats the ` +
-	`effect"}`
+	`"description":"Optional. Commands that re-establish the result, each one simple command safe to run again. ` +
+	`The checker runs these and nothing else; work declaring none is judged by reading. Never the work itself"}`
 
 // auditReadCommands is source (b): commands that PRINT and cannot change
 // the thing under judgement.
@@ -268,8 +266,8 @@ type fileCheck struct {
 }
 
 // plainDoor is a door made of a bare list of commands and nothing else: the
-// fork's read-only shell, the reading-only belt, and every test that asks the
-// gate about a list it wrote by hand. There is no ground under it, so there are
+// reading-only belt, and every test that asks the gate about a list it wrote by
+// hand. There is no ground under it, so there are
 // no file checks in it and the gate is exactly the prefix walk it always was.
 func plainDoor(allowed []string) auditDoor {
 	return auditDoor{allowed: allowed}
