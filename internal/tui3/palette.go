@@ -176,7 +176,11 @@ func (p *picker) restock(models []Model) {
 	p.shared = sharedSlugs(models)
 	p.lower = make([]string, len(models))
 	for i, model := range models {
-		p.lower[i] = strings.ToLower(model.ID)
+		label := model.ID
+		if model.Unavailable {
+			label = model.Notice
+		}
+		p.lower[i] = strings.ToLower(label)
 	}
 	p.score = make([]int, len(models))
 	// THE CURSOR GOES BACK TO THE MODEL IN USE WHATEVER IS TYPED. [picker.rank]
@@ -521,7 +525,7 @@ func (p *picker) unfoldAt(at int, first string, now time.Time) bool {
 		return false
 	}
 	model := p.all[p.hits[at]]
-	if model.Direct {
+	if model.Unavailable || model.Direct {
 		return false
 	}
 	views := laneViews(model.ID, now)
@@ -1316,7 +1320,7 @@ func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(stri
 		}
 		if p.rowUnavailable(at) {
 			model := p.all[p.hits[p.list[at].hit]]
-			if !fill.plain(pal.dim(fit("  "+model.ID, width))) {
+			if !fill.plain(pal.dim(fit("  "+model.Notice, width))) {
 				break
 			}
 			continue
@@ -1810,7 +1814,7 @@ func (a *app) modelsFor(keep modelFilter) []Model {
 		}
 		if len(models) == 0 {
 			grouped = append(grouped, Model{
-				ID: noServiceModelListWord, Group: group, GroupOrder: order, Unavailable: true,
+				Notice: noServiceModelListWord, Group: group, GroupOrder: order, Unavailable: true,
 			})
 			continue
 		}

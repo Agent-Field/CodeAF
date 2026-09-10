@@ -100,6 +100,10 @@ type Model struct {
 	Group       string `json:"-"`
 	GroupOrder  int    `json:"-"`
 	Unavailable bool   `json:"-"`
+	// Notice is display text for an unavailable group row. Such a row has no
+	// ID: a sentence explaining an empty service is not a model and therefore
+	// cannot be selected, pinned, unfolded, or handed to a wire-facing path.
+	Notice string `json:"-"`
 	// Direct is true when the row belongs to a connected non-default service.
 	// Such a service has one road, so router lane facts and controls do not
 	// belong on its row.

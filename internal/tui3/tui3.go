@@ -775,7 +775,7 @@ type Options struct {
 	// RefreshModelsForService fetches one newly connected service into that same
 	// shelf. The connect command runs it off the event loop, just as ctrl+r runs
 	// RefreshModels, so opening /model never waits on the network.
-	RefreshModelsForService func(context.Context, modelsource.Connected) ([]Model, error)
+	RefreshModelsForService func(context.Context, modelsource.Connected, []Model) ([]Model, error)
 
 	// ProfileDir is the profile the settings panel reads and writes — the same
 	// directory internal/config resolves every other row out of. Empty is the

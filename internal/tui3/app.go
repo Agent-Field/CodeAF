@@ -1909,7 +1909,7 @@ type app struct {
 	// picker because closing the picker does not call the fetch back, and a
 	// list reopened while it is out must not start a second one.
 	refreshModels       func(ctx context.Context) ([]Model, time.Time, error)
-	serviceModelRefresh func(context.Context, modelsource.Connected) ([]Model, error)
+	serviceModelRefresh func(context.Context, modelsource.Connected, []Model) ([]Model, error)
 	modelsFetching      bool
 
 	// sheet is the settings panel (settings.go): the FIRST fullscreen thing this
