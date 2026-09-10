@@ -38,6 +38,10 @@ Every kind of question can be answered this way, not a chosen few: the whole que
 in the file home reads, and the answer goes back through the one door that knows which
 part of the engine is waiting on it.
 
+**Not yet a question the model raised with `ask`.** That one is drawn on the row
+like any other and no key over it takes it; press `enter` to bring the conversation
+here and answer it above the box where it was raised.
+
 Home leaves the answer on the other window's doorstep, so the band says
 `answered · waiting for it to pick that up` until that window applies it — a second or
 two. If it could not be left at all, it says
@@ -109,7 +113,7 @@ the right*). Top to bottom:
 
  20 chats · what wants you first     alt+g group by project · alt+q hide the quiet ones
  ? Swarm Task Splitting     aforge-v2   asks: add a --report-only mode?              2h
- ? Gmail cleanup routine    ~           wants to send on your behalf                 6h
+ ? Gmail cleanup routine    ~           needs your ok to run bash                    6h
  ◐ Bounty Reward Companies  leadgen     2 tasks running · reading filings            3h
  ○ Researching Santosh      aforge-v2   3 files made                               here
  ▸ 15 more, quiet since 6d
@@ -129,7 +133,7 @@ the right*). Top to bottom:
 tag, the note, and the age — or the word `here` in place of the age on the conversation
 this window is holding. The marks are `?` (amber) it is asking you something, `◐` it is
 moving, `○` at rest, `=` a standing item you paused. The note is the one fact the row is
-about: `asks: add a --report-only mode?`, `wants to send on your behalf`,
+about: `asks: add a --report-only mode?`, `needs your ok to run bash`,
 `2 tasks running · reading filings`, `3 files made`, `ran a saved shape`.
 
 **A narrow frame drops facts in one order and never the name:** the note goes first, then
@@ -177,6 +181,12 @@ Three kinds of line, newest first:
 - **a standing item that fired** — its own last-look line, in its own words;
 - **`N tasks landed`** — work that finished anywhere on the machine since your last look;
 - **what memory learned or let go** — `learned 2 things, let go of 1`.
+
+**A one-off that fired and stood down is here too.** `remind me in 1 minute to drink
+water` is over the moment it goes off — it stops being something that is keeping an eye on
+anything, so it is on no list and in no band — and it is still the commonest thing that
+happens while nobody is looking. Its line reads the way any firing's does: `fired 3 minutes
+ago — it told you`. What is over is not on the list; what happened is in this block.
 
 **Every line is a door.** The lowercase word out at the right of the line is the place it
 goes to — `standing`, `tasks`, `memory` — and `enter` takes you there. That is the whole
@@ -275,8 +285,13 @@ A row is there when something has stopped and cannot go on without you:
 - an `ask here` errand holding a card.
 
 The note on the row is **what it is asking**, in the question's own words — `asks: add a
---report-only mode?`, or `wants to send on your behalf` for a command it wants to run —
-and the age is **how long it has been waiting**. The longest wait is at the top.
+--report-only mode?`, or `needs your ok to run bash` for a tool it needs permission to use
+— and the age is **how long it has been waiting**. The longest wait is at the top.
+
+**A permission question is repeated exactly and nothing is added to it.** The session that
+is stopped writes one sentence — `needs your ok to run ` and the tool's name — and home's
+row is that sentence, whole. It reads as a clause about the conversation named beside it,
+so nothing on this screen puts a `wants to` in front of it.
 
 **You can answer most of them without going anywhere.** With the cursor on the row, the
 question and its answers are drawn on the line above the box and the digits answer it
@@ -1765,7 +1780,7 @@ safe direction to fail in.
 A session that has asked you something and can go no further writes that down, and home is
 where you see it without opening the window it is in. The row wears an amber `?`, its note
 is **what it is asking** in the question's own words — `asks: add a --report-only mode?`,
-or `wants to <the command>` for something it needs permission to run — and **it sorts to
+or `needs your ok to run <the tool>` for something it needs permission to run — and **it sorts to
 the very top of the whole list**, above work that is running and above everything you spoke
 in more recently, longest wait first.
 

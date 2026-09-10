@@ -392,19 +392,20 @@ func TestTheHarnessOverlapsEveryWaiterItNames(t *testing.T) {
 	// The map is written out rather than derived so that a waiter added to the
 	// table without a case here fails this test rather than slipping through.
 	built := map[string]tea.Cmd{
-		"pumpShaping":      a.pumpShaping(1, shaping),
-		"waitDesign":       waitDesign(events, 1),
-		"waitEvent":        waitEvent(events, 1),
-		"waitGuestNotices": waitGuestNotices(events, 1),
-		"waitPilot":        waitPilot(events, 1, 1),
-		"waitQuestion":     waitQuestion(events, 1),
-		"waitRoom":         waitRoom(events, 1),
-		"waitRun":          waitRun(events, 1),
-		"waitSteerLane":    waitSteerLane(events, 1),
-		"waitStir":         waitStir(stirs),
-		"waitTask":         waitTask(events, 1),
-		"waitTitle":        waitTitle(events, 1),
-		"waitWake":         waitWake(wakes, 1),
+		"pumpShaping":        a.pumpShaping(1, shaping),
+		"waitDesign":         waitDesign(events, 1),
+		"waitEvent":          waitEvent(events, 1),
+		"waitGuestNotices":   waitGuestNotices(events, 1),
+		"waitGuestQuestions": waitGuestQuestions(events, 1),
+		"waitPilot":          waitPilot(events, 1, 1),
+		"waitQuestion":       waitQuestion(events, 1),
+		"waitRoom":           waitRoom(events, 1),
+		"waitRun":            waitRun(events, 1),
+		"waitSteerLane":      waitSteerLane(events, 1),
+		"waitStir":           waitStir(stirs),
+		"waitTask":           waitTask(events, 1),
+		"waitTitle":          waitTitle(events, 1),
+		"waitWake":           waitWake(wakes, 1),
 	}
 	d := newHarnessDriver()
 	for name, cmd := range built {

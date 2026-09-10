@@ -69,6 +69,15 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 		answer := defaultAnswer(q, "")
 		answer.From = headlessAnswerLine(q, answer)
 		a.recordDecision(decisionRecordOf(q, answer))
+		// AND THE LINE LEAVES THE ENGINE. docs/design/questions/DESIGN.md's
+		// HEADLESS law is that the policy applies AND IS PRINTED — a run that
+		// took a default silently is a run whose decision nobody can find
+		// afterwards. The engine does not print; the answer carries the sentence
+		// in [Answer.From] and this is what puts it where a door with nobody at
+		// it can read it (cmd/aforge's --once). Nothing was ever asked here, so
+		// a surface hearing this about a question it never drew does nothing
+		// with it, which is what [app.foldOthersAnswer] already does.
+		a.emitQuestion(EventQuestionAnswered, q, &answer)
 		return marshalAnswer(answer)
 	}
 	wait := make(chan Answer, 1)

@@ -1793,6 +1793,14 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// (standinglane.go).
 		sess.watchLane(s, laneDesign)
 		return nil, nil
+	case MethodQuestionWatch:
+		// THE QUESTIONS LANE, SUBSCRIBED. Like the two above it, it answers
+		// nothing: what it buys is every question this conversation raises,
+		// withdraws or has answered arriving as a "question" frame from here on,
+		// including everything still open replayed the moment the subscription
+		// opens (internal/session's [Agent.WatchQuestions]).
+		sess.watchLane(s, laneQuestion)
+		return nil, nil
 	case MethodTitleWatch:
 		// THE NAMING LANE, SUBSCRIBED. It answers nothing: what it buys is the
 		// name this conversation gives itself arriving as a "title" frame,

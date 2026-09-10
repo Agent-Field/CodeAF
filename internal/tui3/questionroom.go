@@ -1411,6 +1411,14 @@ func (a *app) questionAnswer(answer session.Answer) tea.Cmd {
 		return nil
 	}
 	a.input.reset()
+	// AND THE BLOCK IS TOLD. This is not bookkeeping: [app.closeQuestion] is what
+	// takes the question off the block and writes the record where it stood, and
+	// without it the block goes on holding a question this page has just
+	// answered — so the [session.EventQuestionAnswered] coming back from the lane
+	// finds it still open and is read as SOMEBODY ELSE'S key ([app.foldOthersAnswer],
+	// which is right to assume that). Measured on a real screen: an answer given
+	// on this page, in this window, drew `another window` on its own receipt.
+	a.closeQuestion(room.head, answer)
 	room.answered = &answer
 	a.questionRoomTouched()
 	return nil
