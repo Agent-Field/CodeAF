@@ -266,7 +266,7 @@ digit and its own dim sentence saying what taking it does:
      1  keep running  it keeps going here; find it under Chats, and ctrl+shift+t brings the tab back
      2  stop work     the reply, tasks and jobs stop; nothing is deleted
      3  cancel        nothing changes
-   [enter] take the pick · [esc] cancel · [←→] pick
+   [enter] take it · [esc] cancel · [←→] choose
 ```
 
 | Answer | What it does |

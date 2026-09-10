@@ -696,8 +696,8 @@ var tuiWords = map[string]tuiWord{
 			"answers nor traps, and the word may not say cancelled",
 	},
 	"questionTakeThePickWord": {
-		screen: "[enter] take the pick",
-		source: "take the pick",
+		screen: "[enter] take it",
+		source: "take it",
 		why:    "`enter` is offered ONLY where the asker named a pick — the emptiness law on a key",
 	},
 	"questionOpenKeyWord": {
