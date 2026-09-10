@@ -805,7 +805,7 @@ the OS timer with no window open at all, or by a window in another terminal,
 still shows `◐` on your home and in your status line.
 
 A marker is always doubted before it is believed. If the process that wrote it
-is gone, or the marker is older than the **2 minutes** one pass may last, it is
+is gone, or the marker is older than the **5 minutes** one pass may last, it is
 read as a leftover and no dot is drawn — a machine that lost power mid-firing
 never leaves a watch reading "checking now" for the rest of the week.
 
