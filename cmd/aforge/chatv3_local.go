@@ -527,6 +527,12 @@ func localErrandDoor(launch localLaunch, welcome remote.Welcome) (func(tui3.Erra
 				Interactive: true,
 				Workspace:   welcome.Workspace,
 				Session:     welcome.SessionFile,
+				// AND THIS PROCESS DOES NOT KEEP TIME. The engine on the other end
+				// of the socket holds this project's conversations, so it is the
+				// one whose pass can put a firing into the conversation somebody is
+				// sitting in rather than into the project's inbox
+				// ([v3Options.NoStandingTicks] carries the whole of why).
+				NoStandingTicks: true,
 			})
 			if err != nil {
 				fault = err

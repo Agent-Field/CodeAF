@@ -1407,6 +1407,7 @@ func newHostLedger(far hostFar) *hostLedger {
 	far.arm(&h.duty, "reading what has been spent")
 	return h
 }
+
 // hostLedgerEvery is how stale a held reading of the far ledger is allowed to be
 // before the next reading asks for a fresh one behind itself.
 //

@@ -880,7 +880,16 @@ func testAnswerFromHome(t *testing.T) {
 	asked := a.waitFor(modelPatience, say(t, "consentAskWord"))
 	t.Logf("window A stopped on a consent card:\n%s", asked)
 
-	b := start(t, "afe2e_b", home, ws, tuiPlain, 40)
+	// WINDOW B IS A SECOND PROJECT AND NOT A SECOND TERMINAL IN THE SAME ONE.
+	// Since #653 this workspace's engine is the ordinary road, and two windows
+	// opened in one folder SIT DOWN IN THE SAME CONVERSATION — the second one
+	// draws A's consent card itself under `another window is on this conversation
+	// — typing is here now`, which is the feature working and not this scenario.
+	// What this subtest is about is the other thing entirely: a question raised in
+	// a conversation somebody is NOT in, reaching them on home and being answered
+	// from there. So B opens its own project, and A's conversation is a row on
+	// B's list like any other.
+	b := start(t, "afe2e_b", home, newWorkspace(t, "consentws-b", false), tuiPlain, 40)
 	row := b.waitFor(40*time.Second, say(t, "notifyAskWord"))
 	t.Logf("window B's home says A is waiting on somebody:\n%s", row)
 	for _, chip := range []string{"1 ", say(t, "answersAllowOnce")} {
