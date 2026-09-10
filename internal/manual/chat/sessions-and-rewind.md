@@ -765,8 +765,9 @@ runs — in every spelling, `$(gh auth token)` inside another command included. 
 how tasks run has the whole of it. Here, in the conversation, the command is yours and runs as it always
 did.
 
-**What is recognised**, by shape rather than by service, so a provider that mints the same
-shape is covered without aforge having heard of it:
+**What is recognised** includes every key aforge holds: its exact value is redacted,
+whatever its shape. Results are also checked for these familiar shapes when the value did
+not come from aforge's own settings:
 
 - GitHub tokens — `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, and fine-grained `github_pat_`
 - keys in the `sk-` family — OpenAI, Anthropic, OpenRouter, and everything else using it

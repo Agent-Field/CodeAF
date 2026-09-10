@@ -3,7 +3,9 @@
 aforge can act on accounts you already hold — your mail, your calendar, your Notion
 pages, a billing service you have a key for. This page covers what connecting one
 gives aforge, how to connect, what you can turn on and off per account, and where
-the keys are kept.
+the keys are kept. A connected account gives aforge tools it may use in your name; a
+connected model service is a place models come from and is covered by the
+[services page](services.md).
 
 ## What a connected account is
 
@@ -382,6 +384,11 @@ A tool an MCP server serves that is marked read-only is governed by the account'
 it goes."
 
 ## Where your keys are kept on disk
+
+Account keys and model-service keys are different stores. An account adds tools aforge
+may use in your name and keeps its credential in `credentials.json`; a model service is a
+place models come from and keeps its key in the profile `config.json`. The
+[services page](services.md) covers those model keys.
 
 Everything the accounts layer writes lives in your profile directory —
 `$AFORGE_PROFILE_DIR` when set, otherwise aforge's state root `$AFORGE_HOME` or

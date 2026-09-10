@@ -280,6 +280,8 @@ that followed your conversation would put the most expensive model in the build 
 cheapest questions in it — a call made twice every turn on a frontier model is a bill nobody
 agreed to. Closed models that are cheaper on their own vendor's platform than through the
 router are deliberately not in any preset; you can still pin one on any row.
+You can also connect that vendor yourself as a direct service; the
+[services page](services.md) explains its names, limits and missing Phase 1 cost record.
 
 **Why these ids.** They were picked on 2026-09-01 off the catalog's own published scores —
 OpenRouter republishes Artificial Analysis's coding and agentic indexes on every model row
@@ -2221,7 +2223,7 @@ With `routing: off` there is nothing measured, so there is no lane to choose, no
 
 ## "0 endpoints … guardrail restrictions and data policy" — paid model training violation, what it means and what aforge does
 
-This sentence means OpenRouter applied aforge's price cap first, leaving one endpoint, and
+On the default service, this sentence means OpenRouter applied aforge's price cap first, leaving one endpoint, and
 then excluded that endpoint under your OpenRouter account's privacy setting because its
 provider may train on prompts. It does not mean the model disappeared or that your prompt
 was rejected.
@@ -2237,6 +2239,9 @@ You can change the account policy at `https://openrouter.ai/settings/privacy`, c
 another model, or pin a lane that serves this model. Pinning chooses the provider for this
 home — including terminal runs and background work; it does not change your OpenRouter
 privacy setting.
+
+A direct service does not use OpenRouter's endpoint list, price cap, or data-policy
+negotiation. Its single lane sends directly to the service you connected.
 
 ## Choose a provider — pinning the endpoint that serves your model, and what the lanes under a model row are
 

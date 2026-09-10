@@ -104,7 +104,7 @@ existing bounded retries and wait reporting remain.
 
 You can name the lane yourself. In the model picker, the lanes under a model are
 its endpoints; picking one pins it, and every request for that model goes
-there until you say otherwise. There is a plain `openrouter` row too, which
+there until you say otherwise. On the default service there is a plain `openrouter` row too, which
 means "no opinion from me — let the router balance it".
 
 A pin is an instruction, so aforge keeps it. It does not quietly send your work
@@ -374,6 +374,10 @@ not honoured there, and you know rather than guess.
 
 Neither question costs an extra call of its own, and pointing `AFORGE_BASE_URL`
 somewhere else asks the new address afresh about both.
+
+A directly connected service is simpler: it has one lane, so there is nothing to choose
+between and no lane sheet to open. That is not a fault. The service name carried by the
+model id is already the whole route.
 
 ## Turning lane routing off
 
