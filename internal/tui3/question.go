@@ -43,7 +43,7 @@ import (
 //	    1  start it        on a branch of its own
 //	  ▸ 2  not now         nothing runs
 //	    3  change it first
-//	  [enter] take the pick · [d] you decide · [esc] later · 9s
+//	  [enter] take it · [d] you decide · [esc] later · 9s · [↑↓] choose
 //
 // The ratify line — the third rung of the ladder, where the work is already
 // done and what is being asked is whether it holds. Nothing waits on it:
@@ -427,7 +427,7 @@ func (a *app) raiseQuestion(q questionShown) {
 	if q.question.Asked.IsZero() {
 		q.question.Asked = a.now()
 	}
-	q.pick = questionSafeAt(q.question)
+	q.pick = questionPointerStart(q.question)
 	// THE WAY BACK IS THE ASKER'S OWN CLAIM AND NOT THIS SURFACE'S GUESS. A
 	// caller that already knows this window can put the work back says so; for
 	// every question that arrived from the engine the object is the only thing
@@ -571,6 +571,29 @@ func questionSameHoles(fresh, held questionInput) bool {
 // The lane says which answer that is by marking it [session.AnswerOption.Safe];
 // a lane that marked none gets the last, which is where every card on this
 // surface has always put its way out.
+// questionPointerStart is where the person's pointer stands when a question
+// arrives. EVERY QUESTION WITH ANSWERS HAS A POINTER — the row `↑`/`↓` walk
+// and `enter` takes — because a block that answered only to digits, with the
+// arrows doing nothing, was one nobody could tell how to work (the owner,
+// 2026-09-10: "none of my arrow keys make it obvious"). It starts on the
+// asker's pick when there is one, so `enter` alone still takes the
+// recommendation; on the first answer otherwise; and on the answer that loses
+// nothing for a confirmation, which is the one shape where enter must never
+// land on the act by default ([questionSafeAt], stop.go's law).
+func questionPointerStart(q session.Question) int {
+	if q.Ask == session.AskConfirmation {
+		return questionSafeAt(q)
+	}
+	if q.Pick != nil {
+		for i, option := range q.Options {
+			if strings.TrimSpace(option.Key) == strings.TrimSpace(q.Pick.Key) {
+				return i
+			}
+		}
+	}
+	return 0
+}
+
 func questionSafeAt(q session.Question) int {
 	for i, option := range q.Options {
 		if option.Safe {
@@ -1252,7 +1275,7 @@ func (a *app) questionCardOptionRows(q questionShown, at int, option session.Ans
 		key = itoa(at + 1)
 	}
 	picked := q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) == key
-	cursored := q.question.Ask == session.AskConfirmation && at == q.pick
+	cursored := at == q.pick
 	// A CHECKLIST'S ROWS WEAR THEIR TICKS IN THE CARD, the way the page draws
 	// them (questioninput.go): the tick says what is ticked, the pointer says
 	// where `space` lands, and a digit toggles rather than answers. THE POINTER
@@ -1266,12 +1289,15 @@ func (a *app) questionCardOptionRows(q questionShown, at int, option session.Ans
 	if ticking && at == q.holes.focus {
 		cursored = true
 	}
+	// THE POINTER IS THE PERSON'S ON EVERY CARD and the asker's pick is a word
+	// on its row, never the pointer: a `▸` that meant "recommended" on one card
+	// and "where your enter lands" on the next was two marks in one glyph.
 	mark, plainMark := "  ", "  "
 	switch {
 	case ticked:
 		plainMark = a.icon(tokens.GSettled) + " "
 		mark = a.pal.askBold(plainMark)
-	case ticking && cursored, !ticking && picked:
+	case cursored:
 		plainMark = a.icon(tokens.GCollapsed) + " "
 		mark = a.pal.ask(plainMark)
 	}
@@ -1279,11 +1305,16 @@ func (a *app) questionCardOptionRows(q questionShown, at int, option session.Ans
 	if word == "" {
 		word = key
 	}
-	suggested := ""
-	if ticking && picked {
-		suggested = " · " + questionSuggestedWord
-	}
 	say := strings.TrimSpace(option.Consequence)
+	// THE ASKER'S PICK IS SAID IN THE CONSEQUENCE COLUMN, after what taking
+	// it produces, so the row keeps its one line and the labels their column.
+	if picked {
+		if say != "" {
+			say += " · " + questionSuggestedWord
+		} else {
+			say = questionSuggestedWord
+		}
+	}
 	// THE BODY IS DRAWN UNDER THE LABEL, dim and wrapped, because it is the
 	// note the asker wrote to tell one answer from the next — "what the tour
 	// would include" — and a card that drops it hands the person eight names
@@ -1305,7 +1336,7 @@ func (a *app) questionCardOptionRows(q questionShown, at int, option session.Ans
 		return text
 	}
 	out := make([]string, 0, 4)
-	if inline && suggested == "" {
+	if inline {
 		tail := word
 		for ansi.StringWidth(tail) < pad {
 			tail += " "
@@ -1313,15 +1344,9 @@ func (a *app) questionCardOptionRows(q questionShown, at int, option session.Ans
 		out = append(out, paint(a.pal.ask("  ")+mark+a.pal.askBold(key)+a.pal.ask("  "+tail)+a.pal.dim("  "+say)))
 		say = ""
 	} else {
-		for i, wrapped := range wrap(word+suggested, room) {
+		for i, wrapped := range wrap(word, room) {
 			if i == 0 {
-				first := wrapped
-				if suggested != "" && strings.HasSuffix(first, suggested) {
-					first = a.pal.ask(strings.TrimSuffix(first, suggested)) + a.pal.dim(suggested)
-				} else {
-					first = a.pal.ask(first)
-				}
-				out = append(out, paint(a.pal.ask("  ")+mark+a.pal.askBold(key)+a.pal.ask("  ")+first))
+				out = append(out, paint(a.pal.ask("  ")+mark+a.pal.askBold(key)+a.pal.ask("  "+wrapped)))
 				continue
 			}
 			out = append(out, paint(a.pal.ask(indent+wrapped)))
@@ -1333,13 +1358,17 @@ func (a *app) questionCardOptionRows(q questionShown, at int, option session.Ans
 		}
 	}
 	if note != "" {
+		// THE NOTE READS IN THE PROSE INK, NOT THE DIM: it is what the answer
+		// means, the sentence a person weighs, where the consequence beside
+		// the label is the aside. Two dim rows under one label read as one
+		// grey paragraph nobody could tell apart (the owner, 2026-09-10).
 		rows := wrap(note, room)
 		if len(rows) > noteRows {
 			rows = rows[:noteRows]
 			rows[len(rows)-1] = ansi.Truncate(rows[len(rows)-1]+" "+glyphMore, room, glyphMore)
 		}
 		for _, wrapped := range rows {
-			out = append(out, paint(a.pal.dim(indent+wrapped)))
+			out = append(out, paint(a.pal.ink(indent+wrapped)))
 		}
 	}
 	return out
@@ -1370,13 +1399,13 @@ func (a *app) questionOffer(q questionShown, lead string, form questionForms, ro
 	clock := a.questionClock(q)
 	terse := false
 	for {
-		parts, spans := a.questionAnswerParts(q, lead, form, terse)
+		parts, spans, pointed := a.questionAnswerParts(q, lead, form, terse)
 		tail := a.questionVerbParts(q, keys, len(parts) > 0)
 		line := strings.Join(parts, "") + strings.Join(tail, "")
 		if ansi.StringWidth("  "+line+clock) <= width {
 			parts = append(parts, tail...)
 			a.questionSpans, a.questionSpanRow = spans, row
-			return a.questionHovered(a.questionPaint(q, parts, clock, form), row, width), true
+			return a.questionHovered(a.questionPaint(q, parts, clock, form, pointed), row, width), true
 		}
 		if dropped, ok := questionDropVerb(keys); ok {
 			keys = dropped
@@ -1413,15 +1442,16 @@ func (a *app) questionOffer(q questionShown, lead string, form questionForms, ro
 // Pairs: the words at even indices, the keys — the only bold cells on the row —
 // at odd ones, which is the approval block's own painting and is kept because
 // the keys are what a person is scanning for.
-func (a *app) questionAnswerParts(q questionShown, lead string, form questionForms, terse bool) ([]string, []choiceSpan) {
+func (a *app) questionAnswerParts(q questionShown, lead string, form questionForms, terse bool) ([]string, []choiceSpan, int) {
 	parts := make([]string, 0, len(q.question.Options)*2+8)
 	if lead != "" {
 		parts = append(parts, lead)
 	}
 	spans := make([]choiceSpan, 0, len(q.question.Options))
+	pointed := -1
 	if form == formsCard {
 		// The card already drew a row per answer, keys and all.
-		return parts, spans
+		return parts, spans, pointed
 	}
 	// Both forms open with two cells — the line's mark and its space, the card's
 	// plain indent — so an answer's columns are the same arithmetic on either,
@@ -1434,6 +1464,10 @@ func (a *app) questionAnswerParts(q questionShown, lead string, form questionFor
 		}
 		word := questionAnswerWord(option, key, terse)
 		chip, tail := "["+key+"]", " "+word
+		if i == q.pick && len(q.question.Options) > 1 {
+			// The pointed answer is the pair of parts the painter bands.
+			pointed = len(parts)
+		}
 		spans = append(spans, choiceSpan{
 			from: at, to: at + ansi.StringWidth(chip+tail), at: i,
 		})
@@ -1444,7 +1478,7 @@ func (a *app) questionAnswerParts(q questionShown, lead string, form questionFor
 			at += 3
 		}
 	}
-	return parts, spans
+	return parts, spans, pointed
 }
 
 // questionAnswerWord is one answer's word on a row, with its parenthetical left
@@ -1542,7 +1576,7 @@ func (a *app) questionBeatRow(q questionShown, form questionForms, row, width in
 	if ansi.StringWidth("  "+line) > width {
 		return a.pal.ask(fit("  "+line, width))
 	}
-	return a.questionPaint(q, parts, "", form)
+	return a.questionPaint(q, parts, "", form, -1)
 }
 
 // questionBeatShapeWord is how one shape reads on the beat. The last one is the
@@ -1755,17 +1789,25 @@ func (a *app) questionKeyTail(q questionShown, keys []questionVerb) string {
 
 // questionPaint inks one answers row: the words in the question hue, the keys —
 // the only bold cells on it — inside them, and the clock's tail dim on the end.
-func (a *app) questionPaint(q questionShown, parts []string, clock string, form questionForms) string {
+//
+// THE POINTED ANSWER WEARS THE SELECTED BAND on a line, chip and word together
+// (`pointed` is the chip's index in parts, -1 for none), because a line has no
+// column for a pointer mark and the band is what every other list on this
+// surface puts under the row a key would take.
+func (a *app) questionPaint(q questionShown, parts []string, clock string, form questionForms, pointed int) string {
 	out := a.pal.ask("  ")
 	if form == formsLine {
 		out = a.questionMarkFor(q.question) + " "
 	}
 	for i, part := range parts {
+		ink := a.pal.ask(part)
 		if i%2 == 1 {
-			out += a.pal.askBold(part)
-			continue
+			ink = a.pal.askBold(part)
 		}
-		out += a.pal.ask(part)
+		if pointed >= 0 && (i == pointed || i == pointed+1) {
+			ink = a.pal.background(ink, 0, a.pal.ramp.selected)
+		}
+		out += ink
 	}
 	return out + a.pal.dim(clock)
 }
@@ -2585,6 +2627,13 @@ func (a *app) questionEnter(head questionShown, typing bool) (tea.Cmd, bool) {
 	if head.holes.kind == session.InputChecklist {
 		return a.questionTickKey(head, questionEnterKey)
 	}
+	// ENTER TAKES THE ANSWER THE POINTER IS ON, through the same door a digit
+	// goes through, so a widening answer still gets its second beat and a
+	// landing's `tell it` still opens its page. A question with no answers
+	// written down has nothing for enter to take.
+	if head.pick >= 0 && head.pick < len(head.question.Options) {
+		return a.questionOptionKey(head, strings.TrimSpace(head.question.Options[head.pick].Key))
+	}
 	if head.question.Pick == nil || strings.TrimSpace(head.question.Pick.Key) == "" {
 		return nil, false
 	}
@@ -2596,31 +2645,49 @@ func (a *app) questionEnter(head questionShown, typing bool) (tea.Cmd, bool) {
 // `n`, `s` are the only letters any lane uses, and they are read off the option
 // rather than re-decided here).
 func (a *app) questionOptionKey(head questionShown, key string) (tea.Cmd, bool) {
-	if head.question.Ask == session.AskConfirmation {
-		// ←/→ WALK THE ANSWERS, which is stop.go's and tabclose.go's own
-		// grammar and the one form on this block that has a cursor at all.
-		switch key {
-		case "left", "shift+tab":
-			if head.pick > 0 {
-				a.moveQuestionPick(head, head.pick-1)
-			}
-			return nil, true
-		case "right", "tab":
-			if head.pick < len(head.question.Options)-1 {
-				a.moveQuestionPick(head, head.pick+1)
-			}
-			return nil, true
+	// THE ARROWS WALK THE POINTER ON EVERY QUESTION WITH ANSWERS — `↑`/`↓`
+	// always, `←`/`→` where there is no hole for them to move, `tab` and
+	// `shift+tab` beside them for the hand that reaches for those. It was
+	// stop.go's and tabclose.go's grammar on the confirmation alone, and every
+	// other form answered to digits only, which left a person with a card in
+	// front of them and no key that visibly did anything to it.
+	walk := 0
+	switch key {
+	case "up", "down":
+		// UNDER A PLACE THE VERTICAL ARROWS ARE THE PLACE'S. Home routes its
+		// own card here ([app.homeAskKey]) and `↓` there moves home's cursor,
+		// which is what disarms a held row; a card that swallowed it would
+		// leave an arming nobody can see. On the block above the box there
+		// is no list under the card, and the pair walks the pointer.
+		if a.questionOffFrame() {
+			break
 		}
-	}
-	if key == "left" || key == "right" {
-		// AND WHERE THERE IS NO CURSOR THE ARROWS MOVE THE HOLE. The two are
-		// never both on one question — [needWalk] is the confirmation kind and
-		// [needMoves] steps aside for it — so `←→` has one meaning on whatever
-		// card is in front of somebody, which the offer row spells out ("pick" or
-		// "move it") rather than leaving them to guess.
+		walk = 1
+		if key == "up" {
+			walk = -1
+		}
+	case "shift+tab":
+		walk = -1
+	case "tab":
+		walk = 1
+	case "left", "right":
+		// WHERE THERE IS A HOLE THE SIDE ARROWS MOVE IT, and the pointer walks
+		// on the other pair — the offer row spells which is on this card
+		// ("choose" or "move it") rather than leaving them to guess.
 		if a.moveQuestionHole(head, key) {
 			return nil, true
 		}
+		walk = 1
+		if key == "left" {
+			walk = -1
+		}
+	}
+	if walk != 0 && len(head.question.Options) > 1 {
+		to := head.pick + walk
+		if to >= 0 && to < len(head.question.Options) {
+			a.moveQuestionPick(head, to)
+		}
+		return nil, true
 	}
 	for at, option := range head.question.Options {
 		if strings.TrimSpace(option.Key) != key {
@@ -3126,6 +3193,10 @@ func (a *app) questionChipKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	a.closeSettings()
 	a.closeExpand()
 	a.closeHome()
+	// The tasks place and the record card over it are places too, and the
+	// chip's promise held from neither ("5 questions · alt+a" on a page that
+	// did nothing with the key).
+	a.closeTaskSheet()
 	a.raiseFolded()
 	return nil, true
 }
