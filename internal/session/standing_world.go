@@ -7,6 +7,7 @@ package session
 // copy that can survive a later correction or exception.
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -66,6 +67,11 @@ const standingWorldReport = "If you cannot honour one of these, say so in your r
 // context somebody pays for on every request of every turn, and a person with
 // forty orders over a project has a working agreement, not a preamble.
 const standingWorldMost = 8
+
+// Governing input has a hard admission bound, not a truncation rule. A turn
+// whose complete conditions cannot fit must stop before any action is started.
+const governingHoldLimit = 64
+const governingPromptBytes = 64 * 1024
 
 // renderStandingWorld is the section itself: the heading, the orders that hold
 // under the sentence that binds, the orders that are waiting under the sentence
@@ -241,7 +247,17 @@ func (a *Agent) standingBlockLocked() string {
 			a.governingRecords = append(a.governingRecords, item)
 		}
 	}
+	if len(a.governingRecords) > governingHoldLimit {
+		a.governingReadError = fmt.Sprintf("%d governing conditions exceed the limit of %d; narrow the governing scope before continuing", len(a.governingRecords), governingHoldLimit)
+		a.governingRecords = nil
+		return ""
+	}
 	section := renderStandingWorld(items, "")
+	if len(section) > governingPromptBytes {
+		a.governingReadError = fmt.Sprintf("governing input exceeds %d bytes; narrow the governing scope before continuing", governingPromptBytes)
+		a.governingRecords = nil
+		return ""
+	}
 	if section == "" {
 		return ""
 	}

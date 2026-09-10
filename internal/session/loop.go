@@ -339,8 +339,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	a.refreshSystemLocked()
 	governingError := a.governingReadError
 	executionID := a.recordContextExposureLocked(owner, a.organizationRecords, a.governingRecords, a.organizationReadError+governingError, a.governingCollections)
+	traceFailed := a.file != nil && executionID == ""
 	a.mu.Unlock()
 	defer a.finishContextExposure(executionID)
+	if traceFailed {
+		hub.send(Event{Kind: EventNotice, Text: "The context record could not be saved."})
+	}
 	if governingError != "" {
 		hub.send(Event{Kind: EventError, Err: fmt.Errorf("cannot read governing directions: %s", governingError), Usage: a.sealTurn(turn, started, model)})
 		return false
