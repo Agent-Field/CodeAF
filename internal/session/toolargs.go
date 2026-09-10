@@ -511,8 +511,19 @@ func unswallowTail(fields map[string]json.RawMessage, t reflect.Type) {
 			// that last one is unwrapEncoded's case, not this one.
 			continue
 		}
+		// The object is read with a decoder rather than Unmarshal because the
+		// same model, having lost its place, sometimes closes the tail with `}]`
+		// — a bracket after the brace, closing a list it was no longer in.
+		// Closers that close nothing carry nothing, and are the only thing
+		// allowed to follow the object; any other trailing text is a shape
+		// this decoder has not seen and will not guess at.
+		doc := `{"` + name + `":` + held
+		reader := json.NewDecoder(strings.NewReader(doc))
 		var tail map[string]json.RawMessage
-		if err := json.Unmarshal([]byte(`{"`+name+`":`+held), &tail); err != nil {
+		if err := reader.Decode(&tail); err != nil {
+			continue
+		}
+		if rest := doc[reader.InputOffset():]; strings.Trim(rest, "]} \t\r\n") != "" {
 			continue
 		}
 		own, has := tail[name]

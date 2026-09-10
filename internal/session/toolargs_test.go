@@ -206,6 +206,20 @@ func TestDecodeToolArgumentsTakesTheLooseFormsAndRefusesTheRestInWordsAModelCanA
 			refusal: `confidence takes text: send {"confidence":"true"}, not true`,
 		},
 		{
+			name: "a swallowed tail closed with a bracket after its brace is still that tail",
+			args: `{"options":"[{\"key\":\"1\"}], \"depends_on\": [7]}]"}`,
+			check: func(t *testing.T, got argumentsForTest) {
+				if len(got.Options) != 1 || len(got.DependsOn) != 1 || got.DependsOn[0] != 7 {
+					t.Fatalf("want the answer and the field after it, got %+v %v", got.Options, got.DependsOn)
+				}
+			},
+		},
+		{
+			name:    "but a swallowed tail followed by anything else is not guessed at",
+			args:    `{"depends_on":"[7], \"limit\": 2} trailing words"}`,
+			refusal: `depends_on takes a list; it arrived as text, "[7], \"limit\": 2} trailin… — send the value itself, not a string holding it`,
+		},
+		{
 			name:    "a string that is a swallowed tail of the WRONG object is not spliced in",
 			args:    `{"depends_on":"[7], \"unrelated\": 1"}`,
 			refusal: `depends_on takes a list; it arrived as text, "[7], \"unrelated\": 1" — send the value itself, not a string holding it`,
