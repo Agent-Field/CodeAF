@@ -34,8 +34,11 @@ can do in there.
 ## The kinds of question
 
 Eight shapes. The shape is what says whether anything but you may answer it and
-what a safe answer would be. Not all eight are raised today — nothing yet asks
-you to strike an assumption or to unwind something already done.
+what a safe answer would be, and it also decides which one-cell glyph the block
+opens with: amber `?` for the six that are waiting on you, dim `≈` for an
+assumption and dim `✓` for a ratify line. Amber means waiting on you and nothing
+else on this screen, so the two shapes that are not waiting on anybody do not
+wear it.
 
 - **permission** — may this happen. The approval gate before a command runs, an
   offer to connect one of your accounts, an offer to run a saved program. The
@@ -65,6 +68,13 @@ stay up until somebody answers them.
 when the time runs out the work STARTS — the card is your chance to redirect it,
 not a gate the work waits on. A proposal you hold loses its deadline and then
 waits like everything else.
+
+**A clock says what it is going to do, in that shape's own words.** Where there
+is a recommended answer the tail is that answer — `start it in 9s`. Where there
+is not, the words depend on the shape: a proposal reads `starts on its own in 9s`
+because something begins when it runs out, and an assumptions card reads
+`goes on in 9s`, because nothing begins — the asker simply stops waiting for you
+to strike a line and carries on with what it said it was assuming.
 
 **Nothing that cannot be taken back ever runs on a clock**, and only you ever answer
 one. aforge refuses to raise a question that says otherwise.
@@ -315,6 +325,18 @@ is waiting on it. Reading past it is accepting it.
 
 ```
   ✓ renamed 12 files under src/ · [u] undo · [c] change
+```
+
+**An assumptions card** wears `≈` instead of `?` for the same reason: it is not
+asking, it is telling you what it took for granted, and everything on it stands
+until you strike one.
+
+```
+  ≈ going ahead on these unless you strike one
+    nobody said which store to use · aforge
+      1  the sqlite file is the source of truth
+      2  the old rows can be dropped
+    [esc] later · [c] change · goes on in 9m 57s
 ```
 
 ## Every key on a question

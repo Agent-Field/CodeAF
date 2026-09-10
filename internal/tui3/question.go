@@ -587,6 +587,36 @@ func (a *app) questionMark() string {
 	return a.pal.warnBold(a.icon(tokens.GNeedsHuman))
 }
 
+// questionAskSlot is the vocabulary slot ONE SHAPE of question wears, and
+// whether that shape is one somebody is being waited on for.
+//
+// TWO RUNGS OF THE LADDER ARE NOT WAITING ON ANYBODY, and until this existed
+// both wore the attention mark anyway. An assumptions card says what the asker
+// took for granted and goes on after its clock; a ratify line says what it has
+// already done. Drawing either in amber tells a person to answer something that
+// is not asking them anything — and amber on this surface means waiting-on-you
+// and nothing else (docs/design/questions/DESIGN.md's HUE), so a mark that
+// spends it on a card nobody has to touch is a mark that spends it everywhere.
+func questionAskSlot(ask session.AskKind) (tokens.GlyphID, bool) {
+	switch ask {
+	case session.AskAssumption:
+		return tokens.GAssumed, false
+	case session.AskRatify:
+		return tokens.GSettled, false
+	}
+	return tokens.GNeedsHuman, true
+}
+
+// questionMarkFor is [app.questionMark] for one question: its own shape's mark,
+// in its own shape's hue.
+func (a *app) questionMarkFor(q session.Question) string {
+	slot, waiting := questionAskSlot(q.Ask)
+	if waiting {
+		return a.pal.warnBold(a.icon(slot))
+	}
+	return a.pal.dim(a.icon(slot))
+}
+
 // questionLineRows is the line form: the subject's own row where there is one,
 // then head and answers together on one row, then the reason.
 func (a *app) questionLineRows(q questionShown, width int) []string {
@@ -607,7 +637,7 @@ func (a *app) questionLineRows(q questionShown, width int) []string {
 // per answer, then the answers row.
 func (a *app) questionCardRows(q questionShown, width int) []string {
 	out := make([]string, 0, 8)
-	out = append(out, a.questionMark()+" "+a.pal.ask(fit(strings.TrimSpace(q.question.Head), width-2)))
+	out = append(out, a.questionMarkFor(q.question)+" "+a.pal.ask(fit(strings.TrimSpace(q.question.Head), width-2)))
 	if line := a.questionAttribution(q.question); line != "" {
 		out = append(out, a.pal.dim(fit("  "+line, width)))
 	}
@@ -637,7 +667,7 @@ func (a *app) questionCardRows(q questionShown, width int) []string {
 func (a *app) questionRatifyRows(q questionShown, width int) []string {
 	head := strings.TrimSpace(q.question.Head)
 	a.questionSpans, a.questionSpanRow = nil, 0
-	line := a.pal.dim(a.icon(tokens.GSettled)) + " " + a.pal.ink(head)
+	line := a.questionMarkFor(q.question) + " " + a.pal.ink(head)
 	keys := a.questionAnswerKeys(q, formsRatify)
 	tail := a.questionKeyTail(q, keys)
 	if tail != "" && ansi.StringWidth(head)+ansi.StringWidth(tail)+2 <= width {
@@ -919,7 +949,7 @@ func (a *app) questionKeyTail(q questionShown, keys []questionVerb) string {
 func (a *app) questionPaint(q questionShown, parts []string, clock string, form questionForms) string {
 	out := a.pal.ask("  ")
 	if form == formsLine {
-		out = a.questionMark() + " "
+		out = a.questionMarkFor(q.question) + " "
 	}
 	for i, part := range parts {
 		if i%2 == 1 {
@@ -947,6 +977,37 @@ func (a *app) questionClock(q questionShown) string {
 	return ""
 }
 
+// questionClockDefault is what the clock says will happen for a question that
+// named no pick — which is a shape's own sentence and NOT one borrowed from the
+// task proposal.
+//
+// `starts on its own` is a sentence about WORK BEGINNING, and it was written for
+// the one lane that had a clock when this row was built: a proposal to start a
+// task, where the countdown ends with something running. An assumptions card has
+// no pick and never will — everything on it stands, which is the whole of the
+// ladder's second rung — so every one of them read `starts on its own in 9m 57s`
+// about a card that starts nothing. What the clock actually means there is that
+// the asker stops waiting for a strike and carries on with what it said, and
+// `goes on` is that in the words a person would use.
+func questionClockDefault(ask session.AskKind) string {
+	if ask == session.AskAssumption {
+		return questionAssumptionClockWord
+	}
+	return questionProposalClockWord
+}
+
+// The two sentences, spelled once because the manual quotes them and the tmux
+// suite waits for them.
+const (
+	// questionAssumptionClockWord ends `… in 9s` on an assumptions card: nothing
+	// is decided at the end of it, the asker simply carries on.
+	questionAssumptionClockWord = "goes on"
+	// questionProposalClockWord ends the same tail where the countdown really
+	// does start something, and it is the fallback for every shape that named no
+	// pick to put its own word there.
+	questionProposalClockWord = "starts on its own"
+)
+
 // questionClockWord is that tail without the separator that joins it to a line
 // of words.
 func (a *app) questionClockWord(q questionShown) string {
@@ -960,7 +1021,7 @@ func (a *app) questionClockWord(q questionShown) string {
 	// THE POLICY LINE, NOT A BARE NUMBER. `auto-starts in 9s` was machinery
 	// describing itself; what a person needs is which answer is about to be
 	// taken and when, which is the pick's own word and the clock together.
-	word := "starts on its own"
+	word := questionClockDefault(q.question.Ask)
 	if q.question.Pick != nil {
 		if option, ok := q.question.Option(q.question.Pick.Key); ok {
 			if label := strings.TrimSpace(option.Label); label != "" {

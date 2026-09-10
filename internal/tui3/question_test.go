@@ -636,6 +636,58 @@ func TestARatifyLineWithNothingRealToUndoDoesNotOfferTheKey(t *testing.T) {
 	}
 }
 
+// TestAnAssumptionsCardWearsItsOwnMarkAndItsOwnClock is the ladder's SECOND rung
+// drawn as what it is: nothing is waiting on anybody, so it does not wear the
+// mark that says something is, and the countdown says what actually happens when
+// it runs out.
+//
+// Both halves were the task proposal's before this landed — the amber `?` and
+// `starts on its own in 9m 57s` — about a card that asks nothing and starts
+// nothing.
+func TestAnAssumptionsCardWearsItsOwnMarkAndItsOwnClock(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.fromLane(session.Question{
+		ID: 12, Kind: session.QuestionAsk, Ask: session.AskAssumption,
+		Asker: session.Asker{Kind: session.AskerModel},
+		Head:  "going ahead on these unless you strike one",
+		Reason: "nobody said which store to use",
+		Options: []session.AnswerOption{
+			{Key: "1", Label: "the sqlite file is the source of truth"},
+			{Key: "2", Label: "the old rows can be dropped"},
+		},
+		Stakes:   session.StakesReversible,
+		Policy:   session.Policy{Kind: session.PolicyRecommendThenAuto, After: 10 * time.Minute},
+		Deadline: lab.at.Add(9*time.Minute + 57*time.Second),
+	})
+	got := lab.plain()
+	// The mark is read off the HEAD ROW alone: `?` is also the ask-back key's
+	// own cell further down the block, and that one is a key rather than a mark.
+	head := questionPlainRows(lab.rows())[0]
+	if !strings.HasPrefix(head, tokens.Plain.Glyph(tokens.GAssumed)+" ") {
+		t.Fatalf("the assumptions card does not open with %q: %q", tokens.Plain.Glyph(tokens.GAssumed), head)
+	}
+	if strings.HasPrefix(head, tokens.Plain.Glyph(tokens.GNeedsHuman)) {
+		t.Fatalf("the assumptions card wears the attention mark; nothing is waiting on it: %q", head)
+	}
+	if !strings.Contains(got, questionAssumptionClockWord+" in ") {
+		t.Fatalf("the clock does not say what an assumption's clock does:\n%s", got)
+	}
+	if strings.Contains(got, questionProposalClockWord) {
+		t.Fatalf("the assumptions card borrowed the task proposal's sentence:\n%s", got)
+	}
+}
+
+// TestAQuestionThatIsWaitingKeepsTheAttentionMark is the other side of the same
+// reading: the shapes that DO want a key are unmoved.
+func TestAQuestionThatIsWaitingKeepsTheAttentionMark(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.raise(consentAsk())
+	head := questionPlainRows(lab.rows())[0]
+	if !strings.HasPrefix(head, tokens.Plain.Glyph(tokens.GNeedsHuman)+" ") {
+		t.Fatalf("a permission lost the attention mark: %q", head)
+	}
+}
+
 // TestTheChipCountsWhatIsWaitingAndNamesAKeyThatIsFree is the chip, and the
 // half of it a terminal can break: the chord must be free in this surface's own
 // table, or it means two things.
