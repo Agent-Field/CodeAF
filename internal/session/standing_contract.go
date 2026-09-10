@@ -72,6 +72,8 @@ type StandingNotice struct {
 
 // StandingAnswer is what the person said to a card.
 type StandingAnswer struct {
+	// answeredBy is stamped by the answer route, never supplied by the model.
+	answeredBy string
 	// Approved stands the item up as proposed, or as changed below.
 	Approved bool
 	// Once says "do it once, not standing": the action runs now as an
