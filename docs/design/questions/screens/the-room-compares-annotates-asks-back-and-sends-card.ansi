@@ -1,0 +1,36 @@
+
+  [38;5;243m Home    [1m[38;5;237m[48;5;252m ◐ schema choice  × [0m[38;5;243m  + [39m
+
+[38;5;243m────────────────────────────────────────────────────────────────────────────────────────────────────
+
+[39m    [38;5;243m· still yours to set · [38;5;146m[48;5;237m/budget[38;5;243m[49m sets what aforge may spend · [38;5;146m[48;5;237m/model[38;5;243m[49m and [38;5;146m[48;5;237m/crew[38;5;243m[49m pick the models[39m
+    [38;5;243m· [38;5;116mesc[38;5;243m interrupts · [38;5;116mctrl+c[38;5;243m twice quits · [38;5;116m?[38;5;243m for help[39m
+
+  [38;5;146m› [38;5;110mCall the ask tool now, exactly once, and run nothing else. head "which store should the[39m
+    [38;5;110mledger sit on?", kind choice, form room, reason "a schema change is next and it is cheaper[39m
+    [38;5;110mbefore rows exist", stakes reversible, blocking {"turn":true}, three options, each with key,[39m
+    [38;5;110mlabel, body, consequence and a dimensions object holding "ops cost" and "speed": 1 postgres,[39m
+    [38;5;110m2 sqlite, 3 a file per day. pick {"key":"1","reason":"the reporting job already reads[39m
+    [38;5;110mit","confidence":"medium","wouldChange":"the ledger ever has to run without a server"}.[39m
+    [38;5;110mattach one text block titled "what it would look like". When the answer comes back, say in[39m     [38;5;252m❮
+[39m    [38;5;110mone sentence which option was picked and what was typed beside it.[39m
+
+    [38;5;238m$ load_capability 1 call[39m
+    [38;5;103m» ask 1 call[39m                                                                  [38;5;235m↑[38;5;243m 16.5k[39m  [38;5;235m↓[38;5;243m 314[39m
+
+
+
+
+
+
+
+[38;5;243m─ main ───────────────────────────────────────────────────────────────────────────── [38;5;116mesc[38;5;243m interrupt ─
+[1m[38;5;186m?[0m [38;5;140mwhich store should the ledger sit on?[39m
+[38;5;243m  a schema change is next and it is cheaper before rows exist · aforge[39m
+[38;5;140m  ▸ [1m1[0m[38;5;140m  Postgres[38;5;243m  schema migration on the reporting DB, one more table[39m
+[38;5;140m  [39m  [1m[38;5;140m2[0m[38;5;140m  SQLite[38;5;243m  new backup procedure, no cross-table joins with reporting[39m
+[38;5;140m  [39m  [1m[38;5;140m3[0m[38;5;140m  file per day[38;5;243m  no schema at write time, separate ETL pipeline for queries[39m
+[38;5;140m  [enter][1m take the pick · [0m[38;5;140m[esc][1m later · [0m[38;5;140m[o][1m open it · [0m[38;5;140m[c][1m change · [0m[38;5;140m[?][1m ask back · [0m[38;5;140m[d][1m you decide[0m
+
+ [38;5;243m› [39m
+[38;5;173mYOLO[38;5;243m · [38;5;186m? 1 question · alt+a[38;5;243m · [38;5;146m⠴[39m [38;5;146mworking[38;5;243m · [38;5;146m11s[39m

@@ -381,12 +381,19 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
-	// An approval question outranks even the model overlay: it is the one state
-	// where the SESSION is blocked on this keyboard — a tool call is parked
-	// mid-batch waiting for the answer — and everything else on this surface can
-	// wait for one keystroke. ctrl+c is the exception it makes for itself
-	// (consent.go).
-	if cmd, taken := a.consentKey(msg); taken {
+	// AND THE ONE KEY THE PROPOSAL STILL OWNS, which is not an answer: ctrl+e
+	// unfolds the assignment in the transcript (task.go). It is below the block
+	// because the block is where the proposal is answered and a key it draws
+	// must reach it first.
+	if cmd, taken := a.taskKey(msg); taken {
+		return cmd
+	}
+	// THE STANDING CARD IS READ HERE, on the terms the approval question and the
+	// task proposal were read on before the block took them over: it is a
+	// question the SESSION is blocked on, so it outranks every overlay below it,
+	// and it is not modal — the box under it is the correction lane
+	// (standing.go).
+	if cmd, taken := a.standingKey(msg); taken {
 		return cmd
 	}
 
@@ -480,8 +487,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// person leaves it (expand.go). It is read AFTER the status sheet because
 	// the deck is raised over whatever the body was drawing, this one included.
 	if a.expandShowing() && msg.String() != "ctrl+c" {
-		a.expandKey(msg)
-		return nil
+		return a.expandKey(msg)
 	}
 
 	// The model overlay is modal: while it is up every key belongs to it and
@@ -873,6 +879,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// The other way to say something to a working session: after the work,
 		// not into it (followup.go). Enter stays steering.
 		return a.followUp()
+
+	case "alt+o":
+		return a.openVisiblePicture()
+
+	case "alt+i":
+		a.toggleVisiblePictures()
+		return nil
 
 	case "ctrl+o":
 		// A SELECTED COMPLETION CARD OWNS THIS KEY, because that card is the one
@@ -1289,8 +1302,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.editTags(at, at, len([]rune(text)))
 		// THE FIRST RUNE HOLDS AN OPEN TASK PROPOSAL. This is the typed-character
 		// door; app.paste applies the same hold after the clipboard changes this
-		// box, so both roads share the engine-owned clock policy.
-		a.holdTask()
+		// box, so both roads share the engine-owned clock policy. The question
+		// block holds it too, off any key it reads (question.go's
+		// [app.holdQuestionClocks]) — this is the half that fires for a rune the
+		// question never sees, which is every rune once the box has words in it.
+		if a.task != nil {
+			a.holdTask(a.task.id)
+		}
 		// AND THE ENGINE IS TOLD SOMEBODY IS WRITING (internal/session's Typing).
 		// It is here, on the one line every typed character passes through,
 		// because that is exactly what it is for: seconds before a request is

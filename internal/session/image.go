@@ -404,7 +404,7 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 	a.running = true
 	hub := newEventHub()
 	a.hub = hub
-	turnCtx, cancel := context.WithCancel(ctx)
+	turnCtx, cancel := context.WithCancelCause(ctx)
 	a.cancel = cancel
 	done := make(chan struct{})
 	a.done = done
@@ -413,7 +413,8 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 
 	go func() {
 		completed := false
-		defer cancel()
+		// No cause: the turn is finishing, not being stopped (stopcause.go).
+		defer cancel(nil)
 		defer hub.close()
 		defer func() {
 			a.mu.Lock()

@@ -209,8 +209,88 @@ func (c *Client) lost(cause error) bool {
 		return false
 	}
 	c.reconcile(left, welcome)
-	c.retakeTitle(left, welcome)
+	c.retakeLanes(left, welcome)
 	return true
+}
+
+// conversationSwitched reports whether the engine came back with a DIFFERENT
+// conversation open than the one this window left.
+//
+// A WINDOW THAT NEVER LEARNED A NAME HAS NOTHING TO HAVE BEEN SWITCHED AWAY
+// FROM, which is why an empty `left` is not a switch: a scripted engine and an
+// `aforge engine` on a pipe both answer no transcript at all, and a surface
+// roaming onto one of those has been in the same conversation the whole time.
+// It is spelled once because three roads out of a repaired link ask it and a
+// second spelling of the same question is how two of them come to disagree.
+func conversationSwitched(left, now string) bool {
+	left, now = strings.TrimSpace(left), strings.TrimSpace(now)
+	return left != "" && now != left
+}
+
+// retakeLanes reopens every STANDING SUBSCRIPTION this surface holds, on the
+// link that has just replaced the one that died.
+//
+// THIS IS WHAT MAKES A REPAIRED LINK WHOLE RATHER THAN MERELY OPEN. A turn's
+// events survive a redial by themselves — the engine numbers them, the welcome
+// says where this window got to, and the gap arrives as ordinary replay — so a
+// window that came back drew its transcript and its status line and looked
+// entirely well. The standing lanes are not numbered and are not replayed:
+// each one is a subscription the engine hung on the CONNECTION ([Session.attach]
+// files it against the *server), and the connection is exactly what died. So
+// the rail, the harness cards and the name went quiet for the rest of the
+// session while everything beside them kept moving, and the tasks a person
+// could see running in the engine's own record drew as `+ /task` — an empty
+// column inviting them to start the work a second time (#761).
+//
+// EVERY LANE IS ASKED FOR AGAIN AND NONE IS REBUILT HERE. The subscription the
+// engine opens replays what is still true onto the lane the surface is already
+// reading — the whole task roster (internal/session's replayTaskRoster), a
+// harness card still standing, the conversation's name — and the surface's own
+// (id, state) de-dup makes a replayed row and a live row one row. So a window
+// whose wifi blipped, whose lid was shut, or whose engine host was replaced
+// under it comes back to the column it had.
+//
+// A CONVERSATION THAT WAS SWITCHED UNDER THE WINDOW IS NOT RE-WATCHED. The
+// person has just been told that what is above belongs to the old one
+// ([Client.reconcile]), and replaying the NEW conversation's roster into the
+// column drawn for the old one would be the wrong-owner failure the lane's own
+// binding exists to end (tasklane.go's laneIsOwnedLocked).
+//
+// THE CALLS ARE MADE OFF THIS GOROUTINE. This runs on the reader, and a call
+// waits for an answer only the reader can deliver — so a call made here would
+// wait for itself.
+func (c *Client) retakeLanes(left string, welcome Welcome) {
+	c.retakeTitle(left, welcome)
+	if conversationSwitched(left, welcome.SessionFile) {
+		return
+	}
+	c.mu.Lock()
+	held := map[string]bool{
+		MethodTaskWatch:     c.tasks != nil,
+		MethodDesignWatch:   c.designs != nil,
+		MethodQuestionWatch: c.questions != nil,
+	}
+	c.mu.Unlock()
+	if held[MethodQuestionWatch] {
+		// AND THE QUESTIONS THIS WINDOW BELIEVED WERE OPEN ARE FORGOTTEN BEFORE
+		// THEY ARE ASKED FOR AGAIN. The engine replays everything still open onto
+		// the new subscription, so the list is rebuilt from its account — and one
+		// answered in another window while this link was down would otherwise sit
+		// on this replica forever, since the frame that took it off went to a
+		// connection that had already died (questionlane.go).
+		c.asked.forgetAll()
+	}
+	for method, watching := range held {
+		if !watching {
+			// A LANE THIS SURFACE NEVER OPENED IS NOT OPENED HERE. Asking for a
+			// subscription nobody is reading would leave the engine pumping
+			// frames at a stream that is nil, which is a lane's worth of work
+			// for a column that is not drawn.
+			continue
+		}
+		method := method
+		guard.Go("remote/"+method+" rewatch", func() { _, _ = c.call(nil, method, nil) })
+	}
 }
 
 // redial is the backoff loop: a pause, an attempt, a longer pause, until the
@@ -278,7 +358,7 @@ func (c *Client) redial(roam *Roaming) (Welcome, error) {
 // either keeps a stream because the engine still holds it, ends it with the
 // sentence that says why, or hands it to [Client.watchTail].
 func (c *Client) reconcile(left string, welcome Welcome) {
-	switched := strings.TrimSpace(left) != "" && strings.TrimSpace(welcome.SessionFile) != strings.TrimSpace(left)
+	switched := conversationSwitched(left, welcome.SessionFile)
 	switch {
 	case switched:
 		c.note(fmt.Sprintf("%s came back with a different conversation open than the one this window left — what is above is the old one, and anything from here on belongs to the new one", c.where()))

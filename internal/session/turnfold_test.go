@@ -67,15 +67,16 @@ func installTurnFoldReader(t *testing.T, agent *Agent, output string) {
 	t.Fatal("test agent has no read tool to replace")
 }
 
-func consumedTurnReads(messages []ai.Message, start, end int) map[string]bool {
-	consumed := make(map[string]bool)
+func consumedTurnReads(messages []ai.Message, start, end int) map[*ai.ToolCall]bool {
+	consumed := make(map[*ai.ToolCall]bool)
 	if end > len(messages) {
 		end = len(messages)
 	}
 	for _, message := range messages[start:end] {
-		for _, call := range message.ToolCalls {
+		for index := range message.ToolCalls {
+			call := &message.ToolCalls[index]
 			if earlyTools[call.Function.Name] {
-				consumed[call.ID] = true
+				consumed[call] = true
 			}
 		}
 	}

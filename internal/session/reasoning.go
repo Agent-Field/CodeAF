@@ -3,6 +3,7 @@ package session
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -63,16 +64,16 @@ func (b *reasoningBuffer) snapshot() provider.MessageReasoning {
 		return provider.MessageReasoning{}
 	}
 	kept := b.reasoning
-	kept.Details = append(json.RawMessage(nil), kept.Details...)
+	kept.Details = assembledReasoningDetails(kept.Details)
 	if kept.Text != "" || len(kept.Details) > 0 {
 		kept.Model = b.model
 	}
 	return kept
 }
 
-// joinReasoningDetails joins arrays without decoding their elements. The
-// providers require the detail objects back unmodified and decoding them into
-// interface values would rewrite numbers and object bytes on the way out.
+// joinReasoningDetails captures streamed fragments without interpreting them.
+// Assembly happens once at snapshot, rather than reparsing growing reasoning
+// text on every token. Raw elements preserve unknown fields and opaque blocks.
 func joinReasoningDetails(current, next json.RawMessage) json.RawMessage {
 	next = bytes.TrimSpace(next)
 	if len(next) < 2 || next[0] != '[' || next[len(next)-1] != ']' {
@@ -96,6 +97,80 @@ func joinReasoningDetails(current, next json.RawMessage) json.RawMessage {
 	joined = append(joined, right...)
 	joined = append(joined, ']')
 	return joined
+}
+
+// assembledReasoningDetails joins streamed text/summary fragments once, at the
+// completed assistant boundary. CRITICAL: transport chunks are not separate
+// reasoning blocks; replay must preserve the completed block across tool calls.
+// OpenRouter's client does the same before replay:
+// https://github.com/OpenRouterTeam/ai-sdk-provider/blob/main/src/chat/index.ts
+// Explicit identity changes remain boundaries. Opaque blocks stay byte-identical.
+func assembledReasoningDetails(raw json.RawMessage) json.RawMessage {
+	var fragments []json.RawMessage
+	if len(raw) == 0 || json.Unmarshal(raw, &fragments) != nil {
+		return append(json.RawMessage(nil), raw...)
+	}
+	out := []byte{'['}
+	var pending json.RawMessage
+	var metadata map[string]json.RawMessage
+	var field string
+	var text strings.Builder
+	merged := false
+	flush := func() {
+		if pending == nil {
+			return
+		}
+		if merged {
+			metadata[field], _ = json.Marshal(text.String())
+			pending, _ = json.Marshal(metadata)
+		}
+		if len(out) > 1 {
+			out = append(out, ',')
+		}
+		out = append(out, pending...)
+	}
+	for _, fragment := range fragments {
+		var next map[string]json.RawMessage
+		_ = json.Unmarshal(fragment, &next)
+		var kind string
+		_ = json.Unmarshal(next["type"], &kind)
+		nextField := ""
+		switch kind {
+		case "reasoning.text":
+			nextField = "text"
+		case "reasoning.summary":
+			nextField = "summary"
+		}
+		var delta string
+		if value, present := next[nextField]; present && json.Unmarshal(value, &delta) != nil {
+			nextField = ""
+		}
+		compatible := field != "" && field == nextField
+		for key, value := range next {
+			if key == "signature" && (string(metadata[key]) == "null" || string(value) == "null") {
+				continue
+			}
+			if old, present := metadata[key]; key != field && present && !bytes.Equal(bytes.TrimSpace(old), bytes.TrimSpace(value)) {
+				compatible = false
+			}
+		}
+		if compatible {
+			for key, value := range next {
+				if key != "signature" || string(value) != "null" || len(metadata[key]) == 0 {
+					metadata[key] = value
+				}
+			}
+			text.WriteString(delta)
+			merged = true
+			continue
+		}
+		flush()
+		pending, metadata, field, merged = fragment, next, nextField, false
+		text.Reset()
+		text.WriteString(delta)
+	}
+	flush()
+	return append(out, ']')
 }
 
 func (a *Agent) recordAssistant(message ai.Message, reasoning provider.MessageReasoning) {

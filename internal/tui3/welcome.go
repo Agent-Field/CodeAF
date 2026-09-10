@@ -522,7 +522,7 @@ func (a *app) openSession(chosen Session) (tea.Cmd, string) {
 	// of the person who asked for it. The previous conversation is already ended,
 	// by the engine, as part of the swap (internal/remote's Session.swap).
 	if leaving != nil && !a.shared {
-		leaving.Interrupt()
+		leaving.InterruptFor(session.StopByLeaving)
 		if err := leaving.Close(); err != nil {
 			a.note("close failed: " + err.Error())
 		}
@@ -827,6 +827,15 @@ type welcomeMark struct {
 // the window has the room stated above.
 func (a *app) welcomeFits() bool {
 	if !a.welcome.open {
+		return false
+	}
+	// AND NEVER UNDER A QUESTION SOMEBODY OPENED OUT (questionroom.go). The
+	// greeting is a unit drawn in the MIDDLE of the frame and the question's page
+	// is the body region, so the two would be drawn through each other — which is
+	// exactly the reason the start page is answered in [app.bodyRows] rather than
+	// in the draw alone. A question raised on the first turn of a session is not
+	// rare: it is the ladder working.
+	if a.questionRoomOpen() {
 		return false
 	}
 	return a.welcomeRoom()

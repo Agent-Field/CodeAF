@@ -44,6 +44,10 @@ const (
 	// with different things — hitMore lifts a cap and can never put it back,
 	// while a fold is a thing a person opens AND shuts.
 	hitBrief
+	// hitPictures expands the attached pictures without folding the message.
+	hitPictures
+	// hitPictureOriginal makes the preview itself a full-quality file action.
+	hitPictureOriginal
 	hitTask // a task proposal (task.go): click opens its brief
 	// hitDone is a landed task's card (taskdone.go): click opens its full
 	// context, enter opens the node's room, ctrl+o is the key the card itself
@@ -58,18 +62,6 @@ const (
 	// — and it needs the COLUMN as well as the row, the way hitChoice does.
 	hitSettle
 	hitHarness
-	// hitChoice is the proposal's choices row, and it is the one hit on this
-	// surface that needs the COLUMN as well as the row: three answers share one
-	// line, so which of them was pressed is a question about x (app.go's
-	// [app.choicePress], the same shape the rail's click has).
-	hitChoice
-	// hitModel is the proposal's MODELS row, on the rare card that has one:
-	// one word fitted several models, so the card offers them (task.go). It is a
-	// hit of its own rather than another hitChoice because the two rows answer
-	// different questions with the same gesture — one settles which model, the
-	// other settles whether the work goes at all — and [app.choicePress] must not
-	// resolve a press on one against the other's columns.
-	hitModel
 	// hitRewind is the rewind mode's cut line (rewind.go): a click on it commits
 	// the cut it is drawn at. It is the one hit on this surface that belongs to a
 	// row nothing in the conversation produced — the line is drawn between two
@@ -125,6 +117,9 @@ type row struct {
 	// target resolved by column; the one-frame-ahead geometry is what lets a
 	// pointer land straight on the hidden clause and light only those words.
 	keep hudSpan
+	// Picture controls retain their index and original-file action through gutter layout.
+	pictureIndex int
+	pictureOpen  hudSpan
 }
 
 // toolWindow is how many of a turn's tool calls stay on screen. Three is the
@@ -657,14 +652,6 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		links := 0
 		for n, text := range rows {
 			at := hit
-			if e.kind == entryTask && e.card != nil && !e.card.settled() {
-				switch n {
-				case e.card.choiceRow:
-					at = hitChoice
-				case e.card.modelRow:
-					at = hitModel
-				}
-			}
 			// AND THE STANDING CARD'S ANSWERS ROW, which is the only row of that
 			// block a click acts on: the block itself has no fold to open, so
 			// pressing anywhere else on it does nothing (standing.go).
@@ -714,6 +701,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				entry: i, hit: hitBrief,
 			})
 		}
+		out = append(out, a.mediaRows(e, i, width, userLead)...)
 		wasCluster = false
 		wasNote = e.kind == entryNote
 		wasBlock = e.kind == entryTask || (e.kind == entryStanding && e.stand != nil && !e.stand.news())
@@ -746,6 +734,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		for i := range out {
 			if rowIsWork(out[i], es, folds) && !strings.HasPrefix(ansi.Strip(out[i].text), "  ") {
 				out[i].text = "  " + out[i].text
+				out[i].pictureOpen = out[i].pictureOpen.shift(workIndentCols(width))
 				if out[i].keep.pressable() {
 					out[i].keep.from += workIndentCols(width)
 					out[i].keep.to += workIndentCols(width)
@@ -808,6 +797,8 @@ func (a *app) isHot(r row) bool {
 		return r.hit == hitCaption && r.turn == a.hot.turn
 	case hoverWorkFold:
 		return r.hit == hitWorkFold && r.turn == a.hot.turn
+	case hoverPictures:
+		return r.hit == hitPictures && r.entry == a.hot.entry && r.pictureIndex == a.hot.index
 	case hoverBrief:
 		// THE DOOR AND NOT THE BLOCK (brieffold.go): the lines above it are the
 		// person's own words, and nothing happens when they are pressed.
@@ -876,10 +867,12 @@ func (a *app) entryRows(d deck, i, width int) []string {
 	if e.kind == entryCompact && e.ended.IsZero() {
 		return a.renderEntry(i, e, width)
 	}
-	// AN OPEN PROPOSAL IS NOT CACHED EITHER, and for the same reason: its
-	// countdown or count-up is a function of the frame (task.go). It rejoins the
-	// cache the moment it is answered, which is the moment the clock stops.
-	if e.kind == entryTask && e.card != nil && !e.card.settled() {
+	// A PROPOSAL STILL ARRIVING IS NOT CACHED EITHER, and for the same reason:
+	// its count-up and its spinner are functions of the frame (task.go). It
+	// rejoins the cache the moment the call lands, which is the moment the row
+	// stops moving — the countdown that used to keep the answered card out of
+	// the cache as well is the question block's now, and the block is chrome.
+	if e.kind == entryTask && e.card != nil && e.card.forming && !e.card.settled() {
 		return a.renderEntry(i, e, width)
 	}
 	// AND A SIGN-IN THAT IS STILL WAITING, for the reason both of those are not:
@@ -1101,18 +1094,8 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		if e.pending {
 			words = a.pal.narr
 		}
-		// Decide the preview rung once. Besides avoiding a second cache lookup,
-		// this tells the marker pass whether this terminal is on a picture-capable
-		// rung: fallback tiers must remain byte-for-byte ordinary prose. The door
-		// does not depend on decoding succeeding — a hosted file can still be
-		// opened even when its mirror has not arrived or its bytes are malformed.
-		cap := previewCap(layoutTier(width) == tierPhone)
-		pictures := make([][]string, len(e.pictures))
-		pictureDrawn := make([]bool, len(e.pictures))
-		for i, path := range e.pictures {
-			pictures[i], pictureDrawn[i] = a.pictureRowsFor(path, e.picturesHere, userBodyCols(width), cap)
-		}
-		pictureDoors := a.pathLinks && a.pal.paintsPictures() && userBodyCols(width) >= pictureColsMin && cap > 0
+		// The original-file link is independent of the terminal's ability to paint pixels.
+		pictureDoors := a.pathLinks
 		marked, pictureMasks := a.maskPictureMarkers(requestDisplayText(e), e, pictureDoors)
 		body := wrap(marked, userBodyCols(width))
 		if strings.TrimSpace(e.text) == "" {
@@ -1165,19 +1148,6 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		out = a.linkPaths(out)
 		out = a.restorePictureMarkers(out, pictureMasks, e.picturesHere)
 		out = a.turnContextRows(out, e.context, width)
-		// THE PICTURE COMES LAST. The context pass above may append to its final
-		// prose row, and the path pass must never scan the thumbnail's SGR bytes;
-		// appending here makes both relationships structural rather than hopeful.
-		// Each picture is its own stacked block in tray order, fitted to the
-		// sentence's column and to the same unasked-for cap tool rows use.
-		for i, picture := range pictures {
-			if !pictureDrawn[i] {
-				continue
-			}
-			for _, row := range picture {
-				out = append(out, userLead+row)
-			}
-		}
 		return out
 
 	case entrySteer:
@@ -3998,39 +3968,24 @@ func (a *app) hintWord() string {
 		return "tab take · enter run · esc"
 	case a.menu.open || a.comp.open:
 		return "↑↓ · enter · esc"
-	case a.awaitingTask():
-		// The proposal owns these keys while it is up, and it owns them ahead of
-		// the consent letters below: a card and a consent question cannot be open
-		// at once, and the keys a person needs are the ones on screen (task.go).
-		return taskProposalHint
 	case a.awaitingStanding():
 		// And the standing card owns the digits it drew — three, or two on a
 		// one-off reminder, and the follow-up's two the moment the yes is given
 		// (standing.go).
 		return standAskHint(a.stand)
 	case a.shaping():
-		// The always is part-way answered and the block is on its second beat
-		// (consent.go): the numbers bank a shape and esc puts the question back.
+		// The widening answer is part-way given and the block is on its second
+		// beat (question.go): the numbers bank a shape and esc puts the question
+		// back exactly as it was.
 		return "1-3 shape · esc never mind"
 	case a.asking() || a.awaitingDecision():
-		// THE KEYS THE BLOCK ACTUALLY DRAWS. This line said "a allow · t always"
-		// for a year after the answers took their own first letters, so the hint
-		// under the box named `a` as allow while the block above it named `a` as
-		// always — one keystroke, two readings, and the wrong one widens a
-		// permission.
-		//
-		// AND IT NAMES THE ALWAYS KEY ONLY WHERE THAT KEY WOULD ACT. A stuck
-		// question borrows this lane to ask about a TURN, and the engine drops a
-		// tool-session scope on it — so the offer above leaves `[a]` off
-		// (consent.go's [app.consentOffer], from this same `memo` field) and the
-		// press does nothing. A hint that named it anyway would be this line
-		// promising a keystroke the block above it has already refused. It went
-		// unseen until this wave for one reason: the slot was silent under
-		// [hudTight], and that is the width the case is met at.
-		if len(a.asks) > 0 && !a.asks[0].memo {
-			return "y allow · n deny"
-		}
-		return "y allow · n deny · a always"
+		// THE KEYS THE BLOCK ACTUALLY DRAWS, read off the question itself. This
+		// line said "a allow · t always" for a year after the answers took their
+		// own first letters, so the hint under the box named `a` as allow while
+		// the block above it named `a` as always — one keystroke, two readings,
+		// and the wrong one widens a permission. It is derived now, so it cannot
+		// come apart from the row again.
+		return a.questionHint()
 	case a.railHold:
 		// The roster has the keyboard (alt+t, task.go) — the one state on this
 		// surface where the arrows have left the box entirely. It ranks HERE, under

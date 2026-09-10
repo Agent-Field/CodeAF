@@ -323,7 +323,17 @@ func Route(ctx context.Context, c Completer, userMsg string, index []Stub) (Rout
 	// including repair and model fallback, shares the interactive silence cap.
 	// A deadline here lets the caller proceed without memory when a provider
 	// stalls instead of inheriting the transport's multi-minute safety bound.
-	ctx, cancel := context.WithTimeout(ctx, lane.VisiblePatience)
+	//
+	// IT IS THE ROLE'S OWN CEILING AND NOT A SECOND COPY OF THE FIGURE UNDER IT.
+	// This call declares [lane.RoleRecall] four lines down, and a role is what
+	// decides how long a silence on its behalf may last ([lane.Role.Ceiling]);
+	// reading [lane.VisiblePatience] directly was the same number today and a
+	// bound that would not have followed the role's patience if it moved.
+	//
+	// AND WHAT IT COSTS TO REACH IT IS A TURN WITHOUT ITS MEMORY, never a turn
+	// without its answer: the caller proceeds, which is why a flat bound is
+	// honest here and would not be on the reply itself.
+	ctx, cancel := context.WithTimeout(ctx, lane.RoleRecall.Ceiling())
 	defer cancel()
 	known := make(map[string]bool, len(index))
 	for _, stub := range index {

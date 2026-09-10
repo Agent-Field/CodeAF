@@ -278,6 +278,9 @@ type entry struct {
 	// would make the hot entry carry a distinction no renderer can read.
 	pictures     []string
 	picturesHere bool
+	// pictureExpanded is a one-based attachment index; zero keeps every image collapsed.
+	// Only one attachment in a message expands at a time, and replay resets it.
+	pictureExpanded int
 
 	// steer is THE ONE CORRECTION this block is, on [entrySteer] and nil on every
 	// other kind (steerelbow.go). It is a pointer for the reason [entry.card] and
@@ -1479,26 +1482,22 @@ type app struct {
 	questionTyped time.Time
 	// questionSpans is where the head question's answers landed in columns, and
 	// questionSpanRow which row of the block they are on. Written by the draw
-	// and read by the press, which is [app.askTaps]'s own bargain: a hit-test
+	// and read by the press, which is [app.questionBands]'s own bargain: a hit-test
 	// that recomputed the geometry would be measuring a block the frame has not
 	// drawn.
 	questionSpans   []choiceSpan
 	questionSpanRow int
-	// asks are the approval questions waiting for an answer, oldest first
-	// (consent.go). While one is up it owns the keyboard: the draft below is
-	// suspended untouched, exactly as the model picker suspends it.
-	asks []ask
-	// askAt is when the question at the head of that queue was RAISED, and it
-	// is the near end of the countdown drawn on the offer line (consent.go).
-	// askWait is how long that countdown runs — the setting, read at boot and
-	// re-read at every turn end — and zero is a clock that is off. askPaused
-	// says a key has been pressed since the question came up, which stops the
-	// clock for good: a person who has touched the keyboard is a person who is
-	// answering, and a prompt that expired under their hands would be the
-	// surface deciding something they were in the middle of deciding.
-	askAt     time.Time
-	askWait   time.Duration
-	askPaused bool
+	// questionBands is where the NARROW sheet's answers landed — a row each
+	// rather than columns on one row, which is the whole of that tier
+	// (questionsheet.go). It is written by the same draw and read by the same
+	// press, and it is empty at every width the sheet is not drawn at.
+	questionBands []questionBand
+	// askWait is how long an approval question's reading clock runs — the
+	// setting, read at boot and re-read at every turn end (consent.go's
+	// [app.consentWait]) — and zero is a clock that is off. What the clock DOES
+	// is the block's ([app.tickQuestion]), and what it does is hold: silence is
+	// never a no.
+	askWait time.Duration
 	// askResume is a countdown handed back by a switch: what was LEFT of the
 	// clock on a question this surface stopped drawing when it went to another
 	// conversation, and askResumePaused whether that question was already
@@ -1512,18 +1511,11 @@ type app struct {
 	// it. Zero is the ordinary case and means "stamp the whole clock".
 	askResume       time.Duration
 	askResumePaused bool
-	// askTaps is where the question's answers were last drawn, in columns and
-	// in rows of the block — the same bargain [app.modelSpan] and the strip's
-	// chips make (taskstrip.go's [stripSpan]): the geometry is recorded at
-	// layout, because a hit-test that recomputed it would be measuring a block
-	// the frame has not drawn. It is what makes every answer a TAP as well as a
-	// key, which is the whole of the phone sheet (consent.go).
-	askTaps []consentTap
 	// THE CONNECT SIDE (connect.go). connAsks are the offers waiting for an
 	// answer, oldest first — a question about an ACCOUNT rather than about a
 	// call, drawn one slot under the approval question and owning the keyboard
 	// on the same terms. connTaps is where that offer's two answers were last
-	// drawn, in columns, which is the bargain [app.askTaps] makes one block up.
+	// drawn, in columns, which is the bargain [app.questionBands] makes one block up.
 	//
 	// conns is the door onto the accounts themselves (Options.Connections) and
 	// connPanel the list /connect opens over it. Nil conns is a surface that
@@ -1825,6 +1817,17 @@ type app struct {
 	// resolves through the transcript.
 	room    *taskRoom
 	roomGen int
+	// qroom is the QUESTION's page, when a person has opened one out
+	// (questionroom.go), and nil is the ordinary state. It is a field beside the
+	// node's page and not a kind of it: the two draw different things, take
+	// different keys and are raised from different places, and the only thing
+	// they share is that both are the body region while they are up.
+	//
+	// THEY CAN BE UP TOGETHER, which is why this is not one field. A question
+	// raised about work a person is standing inside is exactly the case the room
+	// form is for, and the question is drawn OVER the node's page for the reason
+	// every question on this surface is drawn over what it is about.
+	qroom *questionRoom
 	// Recently visited tasks keep bounded display state across navigation.
 	roomReadings     map[roomReadingKey]roomReading
 	roomReadingOrder []roomReadingKey
@@ -2318,6 +2321,35 @@ type app struct {
 	// not need to be told what they are looking at.
 	focused   bool
 	seenFocus bool
+	// lastQuestionKey is the last proof somebody was at this keyboard. Question
+	// delivery alone reads it, against awayAfter, so every arrival agrees on
+	// when this window became unattended.
+	lastQuestionKey time.Time
+	// questionReach is PRESENCE-AWARE DELIVERY and BATCHED AT THE BOUNDARY in
+	// the ONE place both are decided (questiondelivery.go). It holds the quiet
+	// questions a step is still gathering and remembers which blocking question
+	// has already rung, so neither fact can be re-derived differently by home,
+	// by the phone or by a second page.
+	questionReach questionDeliveryRule
+	// questionBatch is the sheet a step's boundary released, or nil
+	// (questionsheet.go). It is APART FROM [app.questions] rather than a flag on
+	// them, because a question in a sheet is not a question on the block: it has
+	// no settle stamp, no cursor and no rule offer, and the moment `enter` takes
+	// one out it gains all three.
+	questionBatch *questionSheet
+	// questionBatchFolded is `esc` on the sheet. It is THE SAME `later` the
+	// block's fold is — the questions stay open, the chip keeps counting them —
+	// and [app.raiseFolded] brings it back.
+	questionBatchFolded bool
+	// questionStepAt names the step quiet questions are being gathered under.
+	// It moves when the model speaks again or the turn ends, which is the
+	// boundary this surface can honestly see (questiondelivery.go).
+	questionStepAt int
+	// autonomyRules is this project's stored question rules as this surface last
+	// read them, or nil for "not read yet" (autonomysheet.go). Nil rather than
+	// an empty map is the difference between a project with no rules and a file
+	// nobody has opened.
+	autonomyRules map[session.AskKind]session.Policy
 
 	// landedAway is a turn that finished while the window was blurred and has
 	// not been looked at since — the tab's ✓ (windowtitle.go). It is the
@@ -2510,7 +2542,9 @@ func newApp(ctx context.Context, opts Options) *app {
 		// is the quiet assumption: the cost of getting it wrong is a notification
 		// nobody got, and the cost of the other default is a notification every
 		// turn on a screen somebody is watching (notify.go).
-		focused: true,
+		focused:         true,
+		lastQuestionKey: time.Now(),
+		questionReach:   newQuestionDeliveryRule(),
 	}
 	a.copy.mark = -1
 	// AND THE REDUCER IS BUILT WITH WHAT THIS PAGE IS, which is the whole of the
@@ -2700,6 +2734,11 @@ func newApp(ctx context.Context, opts Options) *app {
 	// conversation is stamped by [app.attachConversation]; this is the first one,
 	// which no switch ever brought forward.
 	a.frontAt = a.now()
+	// AND LAST OF ALL, THE QUESTION FIXTURE, where the environment names one
+	// (questiondemo.go). It is not a feature and it is reached by nothing a
+	// person presses; it exists so that the page a question opens into can be
+	// looked at on a real screen before anything raises a real one.
+	a.openDemoQuestion(env)
 	return a
 }
 
@@ -2928,6 +2967,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// already holds the news, and a frame is the only thing this can add.
 		return a, nil
 
+	case questionGatherMsg:
+		// The step's own clock, going off (questionsheet.go). It releases the
+		// batch it was armed for and never a later one.
+		return a, a.questionBoundaryFor(msg.step)
+
 	case sigQuitMsg:
 		// A REAL SIGNAL, forwarded by this package's own handler (tui3.go's
 		// [forwardSignals]) because Bubble Tea answers an interrupt by returning
@@ -2939,6 +2983,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.quit()
 
 	case tea.KeyPressMsg:
+		a.lastQuestionKey = time.Now()
 		// THE DOOR DISARMS ON ANY KEY BUT ITS OWN, and it is done HERE rather
 		// than at the top of [app.key] — where the pointer handover is — because
 		// this is the only line every keypress passes through. The stop
@@ -3003,6 +3048,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// takes — esc to leave, enter to steer — belong to input.go, and it
 		// restates that file's precedence law rather than jumping it: everything
 		// that outranks the draft there outranks the room here.
+		// THE QUESTION'S PAGE READS BEFORE THE NODE'S, and only ever while one is
+		// open (questionroom.go). It is above the room for the reason the stop
+		// card is above both: it is drawn OVER whatever it was raised about, so a
+		// key that reached the page underneath would be a key aimed at something
+		// the person cannot see. It takes a bare letter only over an empty box,
+		// which is this surface's own law about letters, so nothing it claims is
+		// taken from somebody mid-sentence.
+		if cmd, took := a.questionRoomKey(msg); took {
+			return a, tea.Batch(flushed, cmd)
+		}
 		if cmd, took := a.roomKey(msg); took {
 			return a, tea.Batch(flushed, cmd)
 		}
@@ -3017,10 +3072,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The tab's ✓ has been seen by the act of coming back to it; from here
 		// the reply itself is on screen (windowtitle.go).
 		a.landedAway = false
-		// AND A QUESTION THAT WAS WAITING GETS ITS WHOLE COUNTDOWN BACK. The ten
-		// seconds are ten seconds of a person reading, and this is the first
-		// frame there has been anybody to read it (consent.go's [app.tickAsk]).
-		a.refocusAsk()
+		// AND A QUESTION THAT WAS WAITING GETS ITS WHOLE READING TIME BACK. The
+		// ten seconds are ten seconds of a person reading, and this is the first
+		// frame there has been anybody to read it (question.go's
+		// [app.tickQuestion]).
+		a.refocusQuestions()
 		return a, nil
 
 	case tea.BlurMsg:
@@ -3154,6 +3210,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case exportedMsg:
 		a.exportDone(msg)
+		return a, nil
+
+	case pictureOpenedMsg:
+		if msg.err != nil {
+			a.note(filesOpenFailedWord + drawableLine(msg.path))
+		}
 		return a, nil
 
 	case copiedMsg:
@@ -3328,6 +3390,17 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The room is the body region while it is up, so the wheel is the room's:
 		// a wheel that moved the transcript under it would scroll a list that is
 		// not on screen (room.go).
+		// AND THE QUESTION'S PAGE OWNS IT ABOVE THE NODE'S, for the reason it owns
+		// the keyboard above it: it is the body region while it is up.
+		if a.questionRoomOpen() {
+			switch msg.Mouse().Button {
+			case tea.MouseWheelUp:
+				a.questionRoomScroll(-3)
+			case tea.MouseWheelDown:
+				a.questionRoomScroll(3)
+			}
+			return a, nil
+		}
 		if a.roomOpen() {
 			switch msg.Mouse().Button {
 			case tea.MouseWheelUp:
@@ -3456,8 +3529,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// fell through to the conversation underneath would be a tap that
 			// expanded a call nobody can see (expand.go).
 			if a.expandShowing() {
-				a.expandPress(msg.Mouse().Y)
-				return a, nil
+				return a, a.expandPress(msg.Mouse().Y)
 			}
 			// THE QUESTION BLOCK IS READ FIRST OF THE FRAME'S OWN ROWS, which is
 			// the pointer's half of the keyboard's order (input.go's rungs):
@@ -3469,19 +3541,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.questionPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
-			// THE APPROVAL QUESTION IS READ FIRST OF THE FRAME'S OWN ROWS, which
-			// is the pointer's half of the keyboard's order (input.go): a question
+			// THE QUESTION BLOCK IS READ FIRST OF THE FRAME'S OWN ROWS, which is
+			// the pointer's half of the keyboard's order (input.go): a question
 			// the SESSION is blocked on outranks every surface below it. It comes
-			// after the three fullscreen overlays above for the reason
-			// [app.consentPress] already refuses while the settings panel is up —
-			// the block is not on the frame at all while one of them has it, so a
-			// press resolved against it would answer a question nobody could see.
-			// It claims the whole block and nothing else — a press on any other row
-			// falls straight through, exactly as it did before there were targets
-			// there.
-			if a.consentPress(msg.Mouse().X, msg.Mouse().Y) {
-				return a, nil
-			}
+			// after the three fullscreen overlays above because the block is not
+			// on the frame at all while one of them has it, so a press resolved
+			// against it would answer a question nobody could see. It claims the
+			// answers it drew and nothing else — a press on any other row falls
+			// straight through, exactly as a key does (question.go).
 			// THE CONNECT OFFER IS READ NEXT, one rung under the approval
 			// question for the reason it is drawn one row under it: both are
 			// blocks the session is waiting on, and a call parked mid-batch is
@@ -3619,14 +3686,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// which one was pressed is a question about x (room.go). A rail row
 			// is a door into that node's room.
 			if cmd, took := a.railPress(msg.Mouse().X, msg.Mouse().Y); took {
-				return a, cmd
-			}
-			// AND THE PROPOSAL'S CHOICES ROW IS THE THIRD, for the same reason
-			// again: three answers share one line, so which was pressed is a
-			// question about x (task.go). It is read before the body because a
-			// click on that row answers the question rather than opening the
-			// brief — which is what the rest of the card does with a press.
-			if cmd, took := a.choicePress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// AND THE STANDING CARD'S ANSWERS ROW, which is the same gesture over
@@ -3822,6 +3881,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case submittedMsg:
 		return a, a.adopt(msg)
 
+	case resumedTurnMsg:
+		// A question this conversation was never answered, being answered
+		// (takeover.go's [app.tookResumedTurn]). It is beside the submit above
+		// because it is the same shape of answer to the same shape of question —
+		// a door that took the agent's lock off the Update loop and is reporting
+		// back with a turn to draw.
+		return a, a.tookResumedTurn(msg)
+
 	case steeredMsg:
 		// What the session did with a sentence sent INTO the running turn
 		// (steer.go). It is beside the submit above because it is the same shape of
@@ -3959,6 +4026,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// keystroke because reaching the engine is a round trip and this loop draws
 		// the frames.
 		return a, tea.Batch(a.tookTaskOwner(msg), a.wake())
+
+	case taskGuestQuestionMsg:
+		// AND THAT CONVERSATION HAS STOPPED AND IS WAITING ON SOMEBODY. It is the
+		// one thing its task lane cannot say, and this page draws it and never
+		// answers it (taskowner.go's [app.tookGuestQuestion]).
+		return a, tea.Batch(a.tookGuestQuestion(msg), a.wake())
 
 	case taskGuestNoticeMsg:
 		// AND THE CONVERSATION THAT OWNS THE WORK HAS SAID SOMETHING ABOUT IT. It
@@ -4429,13 +4502,13 @@ func (a *app) paint() tea.Cmd {
 	// AND THE STANDING CARD'S, which drains toward a decline rather than toward
 	// an approval (standing.go).
 	a.tickStanding()
-	// And the approval question's, on the same terms (consent.go). It is the one
-	// clock here that ANSWERS at expiry rather than stopping asking, because it
-	// is the one question the engine is blocked on.
-	a.tickAsk()
+	// And the question block's reading clock, on the same terms (question.go).
+	// It is the one clock here that NEVER answers at expiry: it holds, the tail
+	// says paused, and the work goes on waiting (F41).
 	// AND THE REWIND ARM RUNS DOWN HERE TOO (rewind.go): the half-second the first
 	// esc buys, and the sentence the mode says when there is nothing to cut. Both
 	// are windows with an end, and neither is worth a goroutine.
+	a.tickQuestion()
 	a.rewindSweep()
 	// AND THE DOOR'S OWN ARM RUNS DOWN HERE ON THE SAME TERMS (quitarm.go): the
 	// second and a half the first ctrl+c buys, and the sentence in the hint slot
@@ -4460,10 +4533,9 @@ func (a *app) paint() tea.Cmd {
 	// even though a question can only be up mid-turn: the clock that draws it
 	// must not depend on a second fact staying true.
 	if a.state == stateWorking || a.welcome.animating() || a.tasksAnimating() ||
-		a.askAnimating() ||
-		// The question block's own clock, on the same terms: a policy line
-		// counting down is the one thing on that block that changes without a
-		// key being pressed (question.go).
+		// The question block's own clocks, on the same terms: a policy line
+		// counting down and a reading clock running out are the two things on
+		// that block that change without a key being pressed (question.go).
 		a.questionAnimating() ||
 		// AND THE STANDING SIDE IS THE NINTH: a card's meter draining toward a
 		// decline, and the status segment breathing while a firing is in flight.
@@ -4836,6 +4908,23 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 	switch ev.Kind {
 	case session.EventTextDelta, session.EventThinking, session.EventReasoning:
 		a.lastDelta = time.Now()
+		// THE STEP'S BOUNDARY IS THE MODEL SPEAKING AGAIN. Quiet questions
+		// raised while the tools were running arrive here, together, as the
+		// sheet (questionsheet.go's [app.questionBoundary]). It is a no-op on
+		// the overwhelmingly common delta, which is one with nothing gathered.
+		if cmd := a.questionBoundary(); cmd != nil {
+			after = tea.Batch(after, cmd)
+		}
+
+	case session.EventQuestion, session.EventQuestionWithdrawn, session.EventQuestionAnswered:
+		// THE OBJECT ALSO RIDES THE TURN'S OWN STREAM, and this is where a
+		// window that has no standing subscription meets it — a `--host` window,
+		// whose events cross the wire and whose lane does not. The fold is
+		// idempotent ([app.raiseQuestion] replaces by token), so a window with
+		// BOTH roads sees one question rather than two.
+		if cmd := a.questionFold(ev); cmd != nil {
+			after = tea.Batch(after, cmd)
+		}
 
 	case session.EventConsentRequest:
 		// A question outranks a panel. The consent block is drawn above the
@@ -5036,6 +5125,12 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		a.retrying = true
 
 	case session.EventTurnDone:
+		// AND A TURN ENDING IS THE LAST BOUNDARY THERE IS. A question the model
+		// raised in its final step has no next sentence to wait for, and one
+		// held past the end of the turn would be held forever.
+		if cmd := a.questionBoundary(); cmd != nil {
+			after = tea.Batch(after, cmd)
+		}
 		// Both notes go in BEFORE the turn settles, so they land under the reply
 		// they are about rather than above whatever is said next. What was
 		// CHANGED comes first and what it COST second: the files are the work,
@@ -6003,6 +6098,13 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.toggleWorkfold(r.turn)
 	case hitMore:
 		a.showAll(r.entry)
+	case hitPictureOriginal:
+		return a.openPictureAt(r.entry, r.pictureIndex)
+	case hitPictures:
+		if r.pictureOpen.holds(x) {
+			return a.openPictureAt(r.entry, r.pictureIndex)
+		}
+		a.togglePictureAt(r.entry, r.pictureIndex)
 	case hitBrief:
 		a.toggleBriefFoldAt(r.entry)
 	case hitForming:
@@ -6046,11 +6148,10 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		// (harnesscard.go), so whatever door it parked has to be handed on — a
 		// room whose lane was never started is a page that never updates.
 		cmd = a.takeRoomPump()
-	case hitChoice, hitModel, hitStandChoice:
-		// All three rows were offered this click before the body and took it (see
-		// [app.choicePress] and [app.standingPress]); reaching here means the
-		// pointer was in a column no option occupies, and empty space on this
-		// surface does nothing.
+	case hitStandChoice:
+		// The row was offered this click before the body and took it (see
+		// [app.standingPress]); reaching here means the pointer was in a column
+		// no option occupies, and empty space on this surface does nothing.
 	}
 	// THE NAMED RESULT, AND NOT nil. This used to end `return nil`, which threw
 	// away the one command this switch parks — the design room's pump above —
@@ -6166,49 +6267,6 @@ func (a *app) statusPress(x, y int) bool {
 	return true
 }
 
-// choicePress resolves a click on a proposal's choices row to the option under
-// the pointer, and reports whether it took the click.
-//
-// A press anywhere on that ROW is the row's, whether or not it landed on an
-// option: the alternative is a click in the gap between two answers falling
-// through to the card and collapsing the brief, which would make the row a place
-// where missing costs you the thing you were reading.
-func (a *app) choicePress(x, y int) (tea.Cmd, bool) {
-	if a.roomOpen() || a.welcome.open {
-		return nil, false
-	}
-	r, ok := a.rowAt(y)
-	if !ok || r.entry < 0 || r.entry >= len(a.entries) {
-		return nil, false
-	}
-	if r.hit != hitChoice && r.hit != hitModel {
-		return nil, false
-	}
-	card := a.entries[r.entry].card
-	// The open question is the only one that can be answered, and it is the one
-	// the lane holds: an older card still on screen has already settled.
-	if card == nil || card != a.task || card.settled() {
-		return nil, true
-	}
-	// Each row is resolved against ITS OWN spans: the models row settles which
-	// model, the choices row settles the question (task.go).
-	if r.hit == hitModel {
-		for _, span := range card.modelSpans {
-			if x >= span.from && x < span.to {
-				a.takeModel(span.at)
-				break
-			}
-		}
-		return nil, true
-	}
-	for _, span := range card.spans {
-		if x >= span.from && x < span.to {
-			return a.takeChoice(span.at), true
-		}
-	}
-	return nil, true
-}
-
 // selectTool moves the selection through the tool calls that are actually on
 // the row list — the folded ones are not selectable, because selecting a row
 // nobody can see is a cursor that has vanished. Walking off either end returns
@@ -6296,6 +6354,14 @@ func (a *app) slash(line string) tea.Cmd {
 	// The unknown-command hint below says back what was typed and not what it
 	// resolved to, so the name as written is kept.
 	switch canonicalCommand(name) {
+	case "autonomy":
+		if rest != "" {
+			a.noteBlock(a.changeAutonomy(rest))
+			return nil
+		}
+		a.noteBlock(a.autonomySheetText())
+		return nil
+
 	case "quit":
 		// /quit CLOSES THE CONVERSATION IN FRONT, and leaves only when it was the
 		// last one this terminal was holding (keeper.go's [app.closeFront]). It
@@ -6990,7 +7056,7 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 		// the engine swapped to, so this close would land on the conversation
 		// /new had just made ([Options.SharedAgent]).
 		if leaving != nil && !a.shared {
-			leaving.Interrupt()
+			leaving.InterruptFor(session.StopByLeaving)
 			if err := leaving.Close(); err != nil {
 				a.note("close failed: " + err.Error())
 			}
@@ -7753,8 +7819,8 @@ func (a *app) paste(text string) tea.Cmd {
 	// a typed rune. Compare the box rather than the clipboard so settings, home,
 	// key boxes, refused drops, and other overlays do not hold a proposal they
 	// never edited; folded pastes and image tokens do because they changed it.
-	if a.input.String() != before {
-		a.holdTask()
+	if a.input.String() != before && a.task != nil {
+		a.holdTask(a.task.id)
 	}
 	cmd := a.edited()
 	// A QUESTION SUSPENDS THE LISTS, and it suspends them against the clipboard

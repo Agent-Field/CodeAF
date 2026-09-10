@@ -462,7 +462,8 @@ so `/attach` is the general word and `/image` is the specific one.
 
 On the tray the two are told apart by their own glyph — `▣ #1 shot.png` for a picture,
 `▤ server.log` for a file — and by the number, which only a picture carries. In the
-transcript a picture keeps its `[#1 shot.png]` marker and draws a thumbnail underneath;
+transcript a picture keeps its `[#1 shot.png]` marker and a collapsed control underneath
+with **preview** and **open original** actions;
 an ordinary file remains the `[server.log]` marker alone.
 
 ## Drag a file in, or paste a path

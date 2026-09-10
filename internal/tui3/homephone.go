@@ -896,7 +896,7 @@ func (a *app) homePhonePress(x, y int) tea.Cmd {
 	if a.homeSheetShowing() {
 		return a.homeSheetPress(x, y)
 	}
-	// THE FRAME IS LAID OUT BEFORE IT IS READ, which is [app.consentPress]'s law
+	// THE FRAME IS LAID OUT BEFORE IT IS READ, which is [app.questionPress]'s law
 	// and load-bearing for the same reason: drawing the bar is what writes its
 	// spans, and reading them first would be reading where the targets were on
 	// the frame before this one.

@@ -2287,10 +2287,13 @@ func TestTheHintSlotFollowsTheStateAndIsEmptyAtRest(t *testing.T) {
 	a.pick.open = false
 
 	// A call parked on a person offers the keys that answer it — the SAME keys
-	// consent.go reads, which is what makes the hint safe to act on.
+	// the question block draws, which is what makes the hint safe to act on and
+	// is why the slot is DERIVED from the question rather than spelled here
+	// (question.go's [app.questionHint]).
 	a.entries = append(a.entries, entry{kind: entryTool, tool: "bash", status: toolConsent})
+	raiseAsk(a, 7, "bash")
 	hint := a.hintWord()
-	for _, want := range []string{"y allow", "n deny", "a always"} {
+	for _, want := range []string{"1 allow once", "3 deny", "2 always", "esc later"} {
 		if !strings.Contains(hint, want) {
 			t.Fatalf("the consent hint %q is missing %q", hint, want)
 		}
@@ -2654,6 +2657,35 @@ func (f *taskFake) ResolveTask(id uint64, answer session.TaskAnswer) {
 
 func (f *taskFake) HoldTask(id uint64) { f.held = append(f.held, id) }
 
+// ResolveQuestion is THE ONE DOOR, on this stand-in: the proposal is answered
+// on the question block now, so this is the road every answer takes.
+//
+// IT ROUTES RATHER THAN DECIDING, exactly as the engine's does (session's
+// applyToLane): the key's meaning comes from the ONE mapping
+// ([session.AnswerFromKey]), and a typed answer with no key is the redirect —
+// a correction is a yes to the corrected version. A stand-in that decided any
+// of that itself would be a second table, and the first hour one of them moved
+// these tests would be green about the wrong answer.
+func (f *taskFake) ResolveQuestion(answer session.Answer) error {
+	if answer.Kind != session.QuestionTask {
+		return nil
+	}
+	if words := answer.Words(); answer.FirstKey() == "" && words != "" {
+		f.ResolveTask(answer.ID, session.TaskAnswer{
+			Approved: true, Redirect: words, Model: answer.Blanks[session.TaskModelBlank],
+		})
+		return nil
+	}
+	action, ok := session.AnswerFromKey(answer.Kind, answer.FirstKey())
+	if !ok {
+		return nil
+	}
+	task := action.Task
+	task.Model = answer.Blanks[session.TaskModelBlank]
+	f.ResolveTask(answer.ID, task)
+	return nil
+}
+
 func (f *taskFake) TaskUpdates() <-chan session.Event { return f.updates }
 func (f *taskFake) PendingTasks() []uint64            { return f.pending }
 func (f *taskFake) WorkingNow() []session.WorkNode    { return f.work }
@@ -2723,16 +2755,36 @@ func taskText(a *app) string {
 	return strings.Join(out, "\n")
 }
 
-// THE PROPOSAL IS A DECISION MOMENT, INLINE: the title and the summary are what
-// a person decides on, and the brief — the node's whole contract with its runner
-// — is behind the expansion every other detail on this surface is behind.
+// askTask puts one proposal in front of a person and lets its question settle,
+// which is what a real screen does between the block arriving and a hand
+// reaching the keyboard (question.go's SETTLE GUARD). Every test below goes
+// through it, because a key pressed on the frame a question arrives on is
+// DROPPED — and a test that drove keys straight at a fresh question would be
+// asserting against the guard rather than against the answer.
+func askTask(t *testing.T, a *app, id uint64, countdown time.Duration) {
+	t.Helper()
+	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, id, countdown)})
+	taskText(a)
+	settleAsk(a)
+}
+
+// taskAsk is the question block as a reader sees it: the rows above the box,
+// which is where every decision on this surface is put (question.go).
+func taskAsk(a *app) string {
+	return plain(strings.Join(a.questionRows(a.width), "\n"))
+}
+
+// THE PROPOSAL IS TWO THINGS IN TWO PLACES. The assignment is a block in the
+// TRANSCRIPT — part of what happened, and readable a week later — and the ASKING
+// is above the box with every other question this surface puts (question.go).
+// The brief is behind the expansion every other detail on this surface is behind.
 func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
 	a, _, _ := taskApp(t)
-	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)})
+	askTask(t, a, 7, 4*time.Second)
 
 	text := taskText(a)
-	// THE BLOCK: a head with the title in it, the summary, the three answers, the
-	// meter, and a foot under the lot.
+	// THE BLOCK IN THE TRANSCRIPT: a head with the name in it, the sentence
+	// under it, the facts about the work, and a foot under the lot.
 	for _, want := range []string{
 		// THE HEAD IS THE NAME AND THE NODE'S OWN MARK (taskident.go): the title
 		// the engine wrote is cut to the two-or-three-word name, and the identity
@@ -2741,12 +2793,18 @@ func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
 		// nothing but tasks, so the mark tells nothing apart there.
 		taskHeadCorner + " " + glyphAsk + " " + plain(a.taskMark(identFor(7))) + " Fix the nil-map",
 		"The parser drops a key",
-		"[ yes ]  [ redirect ]  [ no ]",
-		"auto-starts in 4.0s",
 		taskFootCorner,
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the proposal is missing %q:\n%s", want, text)
+		}
+	}
+	// AND THE ANSWERS ARE NOT ON IT. They were a decision drawn in a place no
+	// other decision on this surface is drawn; every one of them is above the
+	// box now, and the block below is what the question is ABOUT.
+	for _, gone := range []string{"[ yes ]", "[ redirect ]", "auto-starts in", meterFull} {
+		if strings.Contains(text, gone) {
+			t.Fatalf("the transcript block still draws its own answers (%q):\n%s", gone, text)
 		}
 	}
 	for _, hidden := range []string{"builds its map lazily", "go test ./internal/parse"} {
@@ -2754,8 +2812,21 @@ func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
 			t.Fatalf("the collapsed proposal leaked %q:\n%s", hidden, text)
 		}
 	}
+	// THE ASKING, in the block's own grammar: the head, the summary, one row per
+	// answer, and the clock saying which answer silence takes and when.
+	ask := taskAsk(a)
+	for _, want := range []string{
+		session.TaskProposalLead + "Fix the nil-map crash",
+		"1  start it",
+		"2  no",
+		"start it in 4s",
+	} {
+		if !strings.Contains(ask, want) {
+			t.Fatalf("the question is missing %q:\n%s", want, ask)
+		}
+	}
 	// IT IS A QUESTION, SO IT TAKES THE QUESTION HUE — the same violet the
-	// consent block spends and nothing else on this surface does. The card is
+	// approval question spends and nothing else on this surface does. The card is
 	// found rather than assumed to lead the frame: the conversation's opening
 	// breath (render.go's [app.layout]) is a blank row above everything.
 	painted := ""
@@ -2771,9 +2842,6 @@ func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
 	// This proposal has a clock: it starts automatically unless redirected.
 	if word, _ := a.stateWord(); word != taskStartingWord {
 		t.Fatalf("the status word is %q while a proposal is open", word)
-	}
-	if hint := a.hintWord(); hint != taskProposalHint {
-		t.Fatalf("the hint slot says %q while a proposal is open", hint)
 	}
 
 	// The expansion is the tool rows' own mechanic: ctrl+e on an empty draft,
@@ -2792,41 +2860,31 @@ func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
 }
 
 // V1: A proposal using the fresh-profile countdown announces the full fifteen
-// seconds on its card.
+// seconds, in the words of the answer that is about to be taken.
 func TestTheDefaultTaskCountdownRendersFifteenSeconds(t *testing.T) {
 	a, _, _ := taskApp(t)
 	window := time.Duration(config.DefaultTaskAutoApprove) * time.Second
-	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, window)})
-	if !strings.Contains(taskText(a), "auto-starts in 15s") {
-		t.Fatalf("default proposal card does not announce 15s:\n%s", taskText(a))
+	askTask(t, a, 7, window)
+	if !strings.Contains(taskAsk(a), "start it in 15s") {
+		t.Fatalf("default proposal does not announce 15s:\n%s", taskAsk(a))
 	}
 }
 
 // THE COUNTDOWN TICKS ON THE FRAME CLOCK — no ticker of its own — and at the
-// deadline the row stops asking: the engine's clock owns the answer, and a card
-// still counting down would be a question nobody can answer any more.
+// deadline the question STOPS BEING ONE: the engine's clock owns the answer, and
+// a row still counting down would be a question nobody can answer any more.
 func TestTheProposalCountdownTicksAndStopsAtTheDeadline(t *testing.T) {
 	a, agent, advance := taskApp(t)
 	agent.pending = []uint64{7}
-	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)})
+	askTask(t, a, 7, 4*time.Second)
 
-	if !strings.Contains(taskText(a), "auto-starts in 4.0s") {
-		t.Fatalf("the countdown did not open at 4s:\n%s", taskText(a))
-	}
-	// THE METER IS THE COUNTDOWN, and at the moment the question arrives it is
-	// full: the whole of the time is still ahead.
-	if full := strings.Count(taskText(a), meterFull); full != taskMeterCells {
-		t.Fatalf("the meter opened with %d of %d cells full:\n%s", full, taskMeterCells, taskText(a))
+	if !strings.Contains(taskAsk(a), "start it in 4s") {
+		t.Fatalf("the countdown did not open at 4s:\n%s", taskAsk(a))
 	}
 	advance(3200 * time.Millisecond)
 	drive(t, a, frameMsg{})
-	if !strings.Contains(taskText(a), "auto-starts in 0.8s") {
-		t.Fatalf("the countdown did not tick down:\n%s", taskText(a))
-	}
-	// Four fifths of the span is gone, so four fifths of the bar is: the meter is
-	// recomputed from the deadline on the frame tick, never stepped.
-	if full := strings.Count(taskText(a), meterFull); full != 4 {
-		t.Fatalf("the meter drained to %d of %d cells, want 4:\n%s", full, taskMeterCells, taskText(a))
+	if !strings.Contains(taskAsk(a), "start it in 1s") {
+		t.Fatalf("the countdown did not tick down:\n%s", taskAsk(a))
 	}
 	if !a.awaitingTask() {
 		t.Fatal("the proposal stopped asking before its deadline")
@@ -2839,6 +2897,15 @@ func TestTheProposalCountdownTicksAndStopsAtTheDeadline(t *testing.T) {
 	if !strings.Contains(taskText(a), taskClockWord) {
 		t.Fatalf("the settled row does not keep the clock's verdict:\n%s", taskText(a))
 	}
+	// AND THE QUESTION IS WITHDRAWN RATHER THAN ANSWERED. Nobody decided
+	// anything, so nothing is recorded as though somebody had, and the reason is
+	// what the row promised would happen.
+	if a.questioning() {
+		t.Fatalf("the block is still asking past the deadline:\n%s", taskAsk(a))
+	}
+	if !strings.Contains(taskAsk(a), taskStartedItselfReason) {
+		t.Fatalf("the withdrawn line does not say what happened:\n%s", taskAsk(a))
+	}
 	// The clock is the ENGINE's: the surface stops asking and answers nothing.
 	if len(agent.answered) != 0 {
 		t.Fatalf("the surface raced the engine's clock: %+v", agent.answered)
@@ -2850,13 +2917,14 @@ func TestTheProposalCountdownTicksAndStopsAtTheDeadline(t *testing.T) {
 func TestTypingHoldsTheProposalClock(t *testing.T) {
 	a, agent, advance := taskApp(t)
 	agent.pending = []uint64{7}
-	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 15*time.Second)}, key("x"))
+	askTask(t, a, 7, 15*time.Second)
+	drive(t, a, key("x"))
 
 	if len(agent.held) != 1 || agent.held[0] != 7 {
 		t.Fatalf("first rune held proposals %v, want [7]", agent.held)
 	}
-	if !a.task.deadline.IsZero() || !strings.Contains(taskText(a), taskWaitingWord) {
-		t.Fatalf("typed proposal did not change to waiting on you:\n%s", taskText(a))
+	if !a.task.deadline.IsZero() || strings.Contains(taskAsk(a), "start it in") {
+		t.Fatalf("a typed rune did not stop the countdown:\n%s", taskAsk(a))
 	}
 	card := a.task
 	held := proposal(a, 7, 0)
@@ -2870,8 +2938,8 @@ func TestTypingHoldsTheProposalClock(t *testing.T) {
 		streamEventMsg{gen: watcher.gen, ev: proposal(watcher, 7, 15*time.Second)},
 		streamEventMsg{gen: watcher.gen, ev: proposal(watcher, 7, 0)},
 	)
-	if !strings.Contains(taskText(watcher), taskWaitingWord) {
-		t.Fatalf("a watching surface kept the old countdown:\n%s", taskText(watcher))
+	if strings.Contains(taskAsk(watcher), "start it in") {
+		t.Fatalf("a watching surface kept the old countdown:\n%s", taskAsk(watcher))
 	}
 
 	drive(t, a, key("backspace"))
@@ -2882,20 +2950,18 @@ func TestTypingHoldsTheProposalClock(t *testing.T) {
 		t.Fatalf("deleting after hold restarted or answered the proposal: draft=%q awaiting=%v answers=%+v",
 			a.input.String(), a.awaitingTask(), agent.answered)
 	}
-	if !strings.Contains(taskText(a), taskWaitingWord) {
-		t.Fatalf("held proposal stopped saying waiting on you:\n%s", taskText(a))
+	if strings.Contains(taskAsk(a), "start it in") {
+		t.Fatalf("a held proposal started counting again:\n%s", taskAsk(a))
 	}
 }
 
 // V2: A clipboard edit holds the same proposal clock as a typed rune, and the
-// old deadline cannot take the waiting card away.
+// old deadline cannot take the waiting question away.
 func TestPastingHoldsTheProposalClock(t *testing.T) {
 	a, agent, advance := taskApp(t)
 	agent.pending = []uint64{7}
-	drive(t, a,
-		streamEventMsg{gen: a.gen, ev: proposal(a, 7, 15*time.Second)},
-		tea.PasteMsg{Content: "wait"},
-	)
+	askTask(t, a, 7, 15*time.Second)
+	drive(t, a, tea.PasteMsg{Content: "wait"})
 
 	if len(agent.held) != 1 || agent.held[0] != 7 {
 		t.Fatalf("paste held proposals %v, want [7]", agent.held)
@@ -2905,29 +2971,30 @@ func TestPastingHoldsTheProposalClock(t *testing.T) {
 	}
 	advance(16 * time.Second)
 	drive(t, a, frameMsg{})
-	if !a.awaitingTask() || len(agent.answered) != 0 || !strings.Contains(taskText(a), taskWaitingWord) {
+	if !a.awaitingTask() || len(agent.answered) != 0 || strings.Contains(taskAsk(a), "start it in") {
 		t.Fatalf("pasted proposal did not remain waiting past its old deadline: awaiting=%v answers=%+v\n%s",
-			a.awaitingTask(), agent.answered, taskText(a))
+			a.awaitingTask(), agent.answered, taskAsk(a))
 	}
 }
 
-// V3: Once typing has held the clock, escape declines, text redirects, and an
-// empty enter approves exactly as the proposal row promises.
+// V3: Once typing has held the clock, the answers still mean exactly what the
+// row says they mean.
 func TestHeldProposalAnswersKeepTheirMeanings(t *testing.T) {
-	t.Run("escape declines", func(t *testing.T) {
+	t.Run("the decline is a digit", func(t *testing.T) {
 		a, agent, _ := taskApp(t)
 		agent.pending = []uint64{7}
-		drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 15*time.Second)}, key("x"), key("esc"))
+		askTask(t, a, 7, 15*time.Second)
+		drive(t, a, key("x"), key("backspace"), key("2"))
 		if len(agent.answered) != 1 || agent.answered[0].answer.Approved {
-			t.Fatalf("escape after hold = %+v", agent.answered)
+			t.Fatalf("the decline after hold = %+v", agent.answered)
 		}
 	})
 
 	t.Run("text redirects", func(t *testing.T) {
 		a, agent, _ := taskApp(t)
 		agent.pending = []uint64{7}
-		drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 15*time.Second)}, key("u"))
-		for _, typed := range "se the flag" {
+		askTask(t, a, 7, 15*time.Second)
+		for _, typed := range "use the flag" {
 			drive(t, a, key(string(typed)))
 		}
 		drive(t, a, key("enter"))
@@ -2937,10 +3004,11 @@ func TestHeldProposalAnswersKeepTheirMeanings(t *testing.T) {
 		}
 	})
 
-	t.Run("empty enter approves", func(t *testing.T) {
+	t.Run("empty enter takes the pick", func(t *testing.T) {
 		a, agent, _ := taskApp(t)
 		agent.pending = []uint64{7}
-		drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 15*time.Second)}, key("x"), key("backspace"), key("enter"))
+		askTask(t, a, 7, 15*time.Second)
+		drive(t, a, key("x"), key("backspace"), key("enter"))
 		if len(agent.answered) != 1 || !agent.answered[0].answer.Approved ||
 			agent.answered[0].answer.Redirect != "" {
 			t.Fatalf("empty enter after hold = %+v", agent.answered)
@@ -2948,69 +3016,56 @@ func TestHeldProposalAnswersKeepTheirMeanings(t *testing.T) {
 	})
 }
 
-// V4: Every settled bare word typed directly into the empty proposal box
-// answers once on enter, punctuation and case are ignored, and a longer
-// sentence remains a redirect rather than leaking into a chat turn.
-func TestBareTaskAnswersAreExactWords(t *testing.T) {
-	cases := []struct {
-		name     string
-		text     string
-		approve  bool
-		redirect string
-	}{
-		{name: "no", text: "no"},
-		{name: "nope", text: "nope"},
-		{name: "n", text: "n"},
-		{name: "stop", text: "stop"},
-		{name: "cancel", text: "cancel"},
-		{name: "don't", text: "don't"},
-		{name: "dont", text: "dont"},
-		{name: "yes", text: "yes", approve: true},
-		{name: "y", text: "y", approve: true},
-		{name: "ok", text: "ok", approve: true},
-		{name: "okay", text: "okay", approve: true},
-		{name: "go", text: "go", approve: true},
-		{name: "sure", text: "sure", approve: true},
-		{name: "exact mixed-case period", text: "No."},
-		{name: "case and bang", text: "NO!  "},
-		{name: "case and period", text: "Okay.", approve: true},
-		{name: "longer redirect", text: "no, use the flag", approve: true, redirect: "no, use the flag"},
-	}
-	for _, test := range cases {
-		t.Run(test.name, func(t *testing.T) {
+// EVERY SENTENCE IN THE BOX IS A CORRECTION, INCLUDING THE ONES THAT LOOK LIKE
+// ANSWERS.
+//
+// This block used to keep a dialect: a bare `no`, `nope`, `n`, `stop`, `cancel`,
+// `don't` typed into the box declined, and `yes`, `y`, `ok`, `okay`, `go`,
+// `sure` approved — thirteen words, none of them drawn anywhere, each one a
+// different answer from the sentence that merely began with it. The answers are
+// on the row with their keys now, so the box is words: what a person types is a
+// correction, and a correction is a yes to the corrected version.
+func TestEveryTypedSentenceIsACorrectionAndNotAHiddenAnswer(t *testing.T) {
+	// The words are chosen not to open with a key the question DRAWS: `c` is
+	// `[c] change` and `?` is `[?] ask back` over an empty box, which is the
+	// trade every letter on this block is held to (question.go's key grammar).
+	// Everything else is a letter.
+	for _, text := range []string{"no", "nope", "stop", "don't", "yes", "ok", "sure", "no, use the flag"} {
+		t.Run(text, func(t *testing.T) {
 			a, agent, _ := taskApp(t)
 			agent.pending = []uint64{7}
-			drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 15*time.Second)})
-			for _, typed := range test.text {
+			askTask(t, a, 7, 15*time.Second)
+			for _, typed := range text {
 				drive(t, a, key(string(typed)))
 			}
 			drive(t, a, key("enter"))
 			if len(agent.answered) != 1 {
-				t.Fatalf("%q answered %d proposals", test.text, len(agent.answered))
+				t.Fatalf("%q answered %d proposals", text, len(agent.answered))
 			}
 			got := agent.answered[0].answer
-			if got.Approved != test.approve || got.Redirect != test.redirect {
-				t.Fatalf("%q = %+v, want approved=%v redirect=%q", test.text, got, test.approve, test.redirect)
+			if !got.Approved || got.Redirect != text {
+				t.Fatalf("%q = %+v, want approved with the words verbatim", text, got)
 			}
 			if agent.answered[0].id != 7 || len(agent.sent) != 0 || a.input.String() != "" {
 				t.Fatalf("%q leaked after answering: draft=%q sent=%v answers=%+v",
-					test.text, a.input.String(), agent.sent, agent.answered)
+					text, a.input.String(), agent.sent, agent.answered)
 			}
 		})
 	}
 }
 
-// THE INPUT BOX IS THE REDIRECT LANE. Typing is a correction that reaches the
-// engine as the person wrote it; a bare enter starts the work as briefed.
+// THE INPUT BOX IS THE CORRECTION LANE. Typing is a correction that reaches the
+// engine as the person wrote it; a bare enter takes the pick the clock is about
+// to take anyway.
 func TestTheRedirectLaneReachesResolveTask(t *testing.T) {
 	a, agent, _ := taskApp(t)
 	agent.pending = []uint64{7}
-	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)})
+	askTask(t, a, 7, 4*time.Second)
 
 	// The box says what it is for while the question is open.
 	block, _, _, _ := a.chrome(a.width)
 	if !strings.Contains(plain(strings.Join(block, "\n")), taskRedirectLane) {
-		t.Fatalf("the input box does not offer the redirect lane:\n%s", plain(strings.Join(block, "\n")))
+		t.Fatalf("the input box does not offer the correction lane:\n%s", plain(strings.Join(block, "\n")))
 	}
 
 	a.input.setText("leave the tests alone")
@@ -3034,34 +3089,36 @@ func TestTheRedirectLaneReachesResolveTask(t *testing.T) {
 		t.Fatalf("the redirect was also sent to the model: %v", agent.sent)
 	}
 
-	// A bare enter is approval as briefed.
+	// A bare enter is approval as briefed, on a proposal that has a pick.
 	agent.pending = []uint64{8}
-	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 8, 0)}, key("enter"))
+	askTask(t, a, 8, 4*time.Second)
+	drive(t, a, key("enter"))
 	last := agent.answered[len(agent.answered)-1]
 	if last.id != 8 || !last.answer.Approved || last.answer.Redirect != "" {
 		t.Fatalf("a bare enter reached the engine as %+v", last)
 	}
-	// A proposal with no clock draws no countdown: zero is a clock that is off.
-	// It says so in words where the meter would have been, because a bar with
-	// nothing to drain toward would be an animation inventing a deadline.
+	// A proposal with no clock draws no countdown: zero is a clock that is off,
+	// and a number counting down to nothing is a promise the engine did not
+	// make. What stands there instead is the one word every question that is
+	// waiting on somebody says (question.go's [app.questionHeldWord]).
 	agent.pending = []uint64{9}
-	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 9, 0)})
-	page := taskText(a)
-	if strings.Contains(page, "auto-starts in") || strings.Contains(page, meterFull) {
-		t.Fatalf("a proposal with no deadline drew a countdown:\n%s", page)
+	askTask(t, a, 9, 0)
+	ask := taskAsk(a)
+	if strings.Contains(ask, "start it in") || strings.Contains(ask, meterFull) {
+		t.Fatalf("a proposal with no deadline drew a countdown:\n%s", ask)
 	}
-	if !strings.Contains(page, taskWaitingWord) {
-		t.Fatalf("a proposal with no deadline does not say what it is waiting for:\n%s", page)
+	if !strings.Contains(ask, session.ConsentWaiting) {
+		t.Fatalf("a proposal with no deadline does not say it is waiting:\n%s", ask)
 	}
 }
 
-// A REDIRECT MAY BEGIN WITH ANY LETTER. This drives the same key router the
-// terminal does, from the empty proposal box through ResolveTask, so a future
-// bare chord cannot silently eat the first rune again.
+// A CORRECTION MAY BEGIN WITH ANY LETTER. This drives the same key router the
+// terminal does, from the empty box through ResolveTask, so a future bare chord
+// cannot silently eat the first rune again.
 func TestARedirectStartingWithRReachesResolveTaskVerbatim(t *testing.T) {
 	a, agent, _ := taskApp(t)
 	agent.pending = []uint64{7}
-	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 15*time.Second)})
+	askTask(t, a, 7, 15*time.Second)
 
 	const redirect = "run tests first"
 	for _, typed := range redirect {
@@ -3078,89 +3135,114 @@ func TestARedirectStartingWithRReachesResolveTaskVerbatim(t *testing.T) {
 	}
 }
 
-// THE ANSWERS ARE ON SCREEN AND THEY ARE REACHABLE BY POINTER OR BY ARROWS WITH
-// enter. Settled, the block collapses to its head and keeps both halves of what
-// happened — the option that was chosen and what it came to.
+// THE ANSWERS ARE ON THE BLOCK AND THEY ARE REACHABLE BY DIGIT OR BY POINTER —
+// the one key grammar every question on this surface takes. Settled, the block
+// in the transcript collapses to its head and keeps both halves of what
+// happened: the answer that was chosen and what it came to.
 func TestTheProposalChoicesAnswerByPointerAndByKey(t *testing.T) {
 	a, agent, _ := taskApp(t)
 	agent.pending = []uint64{7}
-	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)})
+	askTask(t, a, 7, 4*time.Second)
 
-	// Arrow and enter take the redirect option to the box and answer NOTHING,
-	// which is the whole difference between it and the other two.
-	drive(t, a, key("right"), key("enter"))
-	if len(agent.answered) != 0 {
-		t.Fatalf("redirect resolved the proposal by itself: %+v", agent.answered)
-	}
-	if !a.task.typing || a.task.choice != choiceRedirect {
-		t.Fatalf("the redirect option did not focus the lane: typing=%v choice=%d", a.task.typing, a.task.choice)
-	}
-	// And with the lane focused the letters are letters again — "no, keep the
-	// tests" must not decline the very thing it is correcting.
+	// A LETTER IS TEXT WHILE THE BOX HAS WORDS IN IT — "no, keep the tests" must
+	// not decline the very thing it is correcting.
 	drive(t, a, key("n"), key("o"))
 	if a.input.String() != "no" {
-		t.Fatalf("the redirect lane lost its letters to the choices row: %q", a.input.String())
+		t.Fatalf("the box lost its letters to the answers row: %q", a.input.String())
 	}
 	if len(agent.answered) != 0 {
-		t.Fatalf("typing into the lane answered the question: %+v", agent.answered)
+		t.Fatalf("typing into the box answered the question: %+v", agent.answered)
 	}
 	a.input.reset()
 
-	// ← walks back to yes, and enter takes what the row is pointing at.
-	drive(t, a, key("left"), key("enter"))
+	// The digit answers, and it is the option's own key.
+	drive(t, a, key("1"))
 	if len(agent.answered) != 1 || !agent.answered[0].answer.Approved {
-		t.Fatalf("enter on the focused option did not approve: %+v", agent.answered)
+		t.Fatalf("1 did not start the work: %+v", agent.answered)
 	}
-	// SETTLED, THE BLOCK IS TWO ROWS: the head, and the option beside the verdict.
+	// SETTLED, THE BLOCK IS TWO ROWS: the head, and the answer beside the verdict.
 	text := taskText(a)
-	if !strings.Contains(text, taskChoiceWords[choiceYes]+" · "+taskApprovedWord) {
-		t.Fatalf("the settled block does not keep the option and its verdict:\n%s", text)
+	if !strings.Contains(text, "start it · "+taskApprovedWord) {
+		t.Fatalf("the settled block does not keep the answer and its verdict:\n%s", text)
 	}
-	if strings.Contains(text, "[ yes ]") || strings.Contains(text, meterFull) {
-		t.Fatalf("the settled block is still offering answers:\n%s", text)
+	// AND THE RECEIPT IS ABOVE THE BOX, in the words the engine writes into
+	// decisions.jsonl (question.go's [app.recordQuestion]).
+	if !strings.Contains(taskAsk(a), "decided "+session.TaskProposalLead+"Fix the nil-map crash") {
+		t.Fatalf("the answer left no receipt:\n%s", taskAsk(a))
 	}
 
-	// THE POINTER: the row's third option is "no", and a click on its columns
-	// declines even when the box holds a correction. A press on the row is the
-	// row's whatever column it landed in, so the target is taken from the spans
-	// the renderer published.
+	// THE POINTER: a press on the answers row is that row's, resolved against the
+	// spans the renderer published — one layout, one set of targets.
 	agent.pending = []uint64{8}
-	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 8, 4*time.Second)})
-	for _, typed := range "use the flag" {
-		drive(t, a, key(string(typed)))
-	}
-	x, y := choiceAt(t, a, choiceNo)
+	askTask(t, a, 8, 4*time.Second)
+	x, y := taskAnswerAt(t, a, 1)
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	last := agent.answered[len(agent.answered)-1]
 	if last.id != 8 || last.answer.Approved || last.answer.Redirect != "" {
-		t.Fatalf("a click on [ no ] reached the engine as %+v", last)
+		t.Fatalf("a click on the decline reached the engine as %+v", last)
 	}
-	if len(agent.sent) != 0 || a.input.String() != "" {
-		t.Fatalf("a click on [ no ] leaked its draft: draft=%q sent=%v", a.input.String(), agent.sent)
-	}
-	if !strings.Contains(taskText(a), taskChoiceWords[choiceNo]+" · "+taskDeclinedWord) {
-		t.Fatalf("the declined block does not keep the option it was declined with:\n%s", taskText(a))
+	if !strings.Contains(taskText(a), "no · "+taskDeclinedWord) {
+		t.Fatalf("the declined block does not keep the answer it was declined with:\n%s", taskText(a))
 	}
 }
 
-// choiceAt is the screen position of one option on the open proposal's choices
-// row — the same spans the click resolves through, which is the point: a test
-// that computed its own columns would be testing a second layout.
-func choiceAt(t *testing.T, a *app, want int) (int, int) {
-	t.Helper()
-	body, _ := a.window(a.bodyWidth(), a.viewHeight())
-	for i, r := range body {
-		if r.hit != hitChoice {
-			continue
-		}
-		for _, span := range a.task.spans {
-			if span.at == want {
-				return span.from, a.bodyTop() + i
-			}
+// ONE PROPOSAL IS ONE BLOCK AND ONE RECEIPT, however many times the engine
+// sends it.
+//
+// THIS IS A DEFECT A REAL SCREEN FOUND. Answering holds the clock — the block
+// tells the engine on the first key a question reads — and holding rebroadcasts
+// the notice ([session.Agent.HoldTask]), so the surface hears about the proposal
+// again a moment AFTER it answered. It drew a second block, raised the question a
+// second time, and then wrote a second receipt when the engine's own answer came
+// back to a question that was open again: one proposal, two blocks, two receipts,
+// all from one keystroke.
+func TestARebroadcastProposalIsNotASecondProposal(t *testing.T) {
+	a, agent, _ := taskApp(t)
+	agent.pending = []uint64{7}
+	askTask(t, a, 7, 15*time.Second)
+	drive(t, a, key("1"))
+
+	// The hold that the answer's own keystroke caused, coming back.
+	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 0)})
+
+	blocks := 0
+	for _, e := range a.entries {
+		if e.kind == entryTask && e.card != nil {
+			blocks++
 		}
 	}
-	t.Fatalf("no visible choices row offers option %d:\n%s", want, taskText(a))
+	if blocks != 1 {
+		t.Fatalf("one proposal drew %d blocks:\n%s", blocks, taskText(a))
+	}
+	if a.questioning() {
+		t.Fatalf("the answered proposal is asking again:\n%s", taskAsk(a))
+	}
+	if len(a.questionRecords) != 1 {
+		t.Fatalf("one answer left %d receipts:\n%s", len(a.questionRecords), taskAsk(a))
+	}
+	if len(agent.answered) != 1 {
+		t.Fatalf("one answer reached the engine %d times: %+v", len(agent.answered), agent.answered)
+	}
+}
+
+// taskAnswerAt is the screen position of one of the question's answers — the
+// same spans the click resolves through, which is the point: a test that
+// computed its own columns would be testing a second layout.
+func taskAnswerAt(t *testing.T, a *app, want int) (int, int) {
+	t.Helper()
+	a.questionRows(a.width)
+	for _, band := range a.questionBands {
+		if band.at == want {
+			return band.span.from, chromeRowY(t, a, band.row)
+		}
+	}
+	for _, span := range a.questionSpans {
+		if span.at == want {
+			return span.from, chromeRowY(t, a, a.questionSpanRow)
+		}
+	}
+	t.Fatalf("the block offers no answer %d:\n%s", want, taskAsk(a))
 	return 0, 0
 }
 
@@ -3222,25 +3304,47 @@ func TestTheProposalBlockAndTheLandedCardEndInABlank(t *testing.T) {
 	}
 }
 
-// ESC DECLINES, and it declines the PROPOSAL rather than interrupting the turn:
-// while a question is up, the dismiss key is the answer "no".
-func TestEscDeclinesTheProposalRatherThanTheTurn(t *testing.T) {
+// ESC IS LATER, AND IT IS NOT THE TURN'S EITHER.
+//
+// It used to decline the proposal, which was the honest reading of "get this off
+// my screen" while the block was modal and there was no other way out of it.
+// There is one now (question.go): the rows fold to the chip, the proposal stays
+// open, the engine stays waiting, and NOTHING IS DECIDED BY MAKING SOMETHING GO
+// AWAY. The decline is `2`, which is drawn on the row beside it.
+func TestEscFoldsTheProposalRatherThanDecliningItOrTheTurn(t *testing.T) {
 	a, agent, _ := taskApp(t)
 	agent.pending = []uint64{7}
 	a.state = stateWorking
-	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)}, key("esc"))
+	askTask(t, a, 7, 4*time.Second)
+	drive(t, a, key("esc"))
 
-	if len(agent.answered) != 1 || agent.answered[0].answer.Approved {
-		t.Fatalf("esc did not decline the proposal: %+v", agent.answered)
+	if len(agent.answered) != 0 {
+		t.Fatalf("esc answered the proposal: %+v", agent.answered)
 	}
 	if agent.stops != 0 {
-		t.Fatal("esc interrupted the turn as well as declining the proposal")
+		t.Fatal("esc interrupted the turn")
+	}
+	if !a.awaitingTask() || a.questionCount() != 1 {
+		t.Fatalf("esc closed the proposal: awaiting=%v open=%d", a.awaitingTask(), a.questionCount())
+	}
+	// The rows are off the screen and the chip is counting it, which is the
+	// whole of what folding is.
+	if strings.Contains(taskAsk(a), "1  start it") {
+		t.Fatalf("the folded question is still drawing its answers:\n%s", taskAsk(a))
+	}
+	if seg := plain(a.questionSegment()); !strings.Contains(seg, "1 question") {
+		t.Fatalf("the chip does not carry the folded question: %q", seg)
+	}
+	// And the decline is the digit the row draws.
+	a.raiseFolded()
+	taskText(a)
+	settleAsk(a)
+	drive(t, a, key("2"))
+	if len(agent.answered) != 1 || agent.answered[0].answer.Approved {
+		t.Fatalf("2 did not decline the proposal: %+v", agent.answered)
 	}
 	if !strings.Contains(taskText(a), taskDeclinedWord) {
 		t.Fatalf("the declined row does not keep its verdict:\n%s", taskText(a))
-	}
-	if a.awaitingTask() {
-		t.Fatal("the proposal is still asking after it was declined")
 	}
 }
 
@@ -4865,10 +4969,13 @@ func TestTheFrameSaysAPersonIsInARoom(t *testing.T) {
 func TestTheKeyboardWalksIntoARoom(t *testing.T) {
 	a, agent, _ := roomApp(t)
 	agent.pending = []uint64{7}
-	drive(t, a,
-		streamEventMsg{gen: a.gen, ev: proposal(a, 7, 0)},
-		key("enter"), // approve it, so the card is settled and the walk can reach it
-	)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 0)})
+	// `1` starts it, so the block in the transcript is settled and the walk can
+	// reach it. The question has to have been drawn first: the block takes no
+	// key from a question it has never put on screen (question.go).
+	taskText(a)
+	settleAsk(a)
+	drive(t, a, key("1"))
 	drive(t, a, key("up"))
 	if a.sel < 0 || a.entries[a.sel].kind != entryTask {
 		t.Fatalf("the walk did not reach the proposal (sel %d)", a.sel)

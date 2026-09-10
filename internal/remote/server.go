@@ -83,6 +83,9 @@ type WrappedAgent interface {
 	FollowUp(text string) (<-chan session.Event, error)
 	Steer(text string) (<-chan session.Event, error)
 	Interrupt()
+	// InterruptFor is the stop with the door it came through on it, for the
+	// machinery stops that are not a person (internal/session's stopcause.go).
+	InterruptFor(door session.StopDoor)
 	Compact(ctx context.Context) error
 	Close() error
 	Model() string
@@ -646,7 +649,7 @@ func (sess *Session) shutDown(agent WrappedAgent, already bool) error {
 	if agent == nil || already {
 		return nil
 	}
-	agent.Interrupt()
+	agent.InterruptFor(session.StopByRetired)
 	return agent.Close()
 }
 
@@ -1007,7 +1010,8 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// asked of the agent it has open — for [Welcome.Effort]'s stated reason:
 		// neither a type assertion at the far end nor the rung itself can tell an
 		// engine without a dial from a conversation whose dial is off.
-		Effort: effortKnown(sess.agent),
+		Effort:     effortKnown(sess.agent),
+		TaskSettle: taskSettleKnown(sess.agent),
 	}
 }
 
@@ -1306,7 +1310,7 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	sess.mu.Unlock()
 
 	if previous != nil {
-		previous.Interrupt()
+		previous.InterruptFor(session.StopByLeaving)
 		_ = previous.Close()
 	}
 	// AND EVERY RAIL IN THE ROOM IS RE-POINTED AT THE CONVERSATION THAT IS
@@ -1824,12 +1828,47 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// (standinglane.go).
 		sess.watchLane(s, laneDesign)
 		return nil, nil
+	case MethodQuestionWatch:
+		// THE QUESTIONS LANE, SUBSCRIBED. Like the two above it, it answers
+		// nothing: what it buys is every question this conversation raises,
+		// withdraws or has answered arriving as a "question" frame from here on,
+		// including everything still open replayed the moment the subscription
+		// opens (internal/session's [Agent.WatchQuestions]).
+		sess.watchLane(s, laneQuestion)
+		return nil, nil
 	case MethodTitleWatch:
 		// THE NAMING LANE, SUBSCRIBED. It answers nothing: what it buys is the
 		// name this conversation gives itself arriving as a "title" frame,
 		// including the one it is already carrying (standinglane.go).
 		sess.watchLane(s, laneTitle)
 		return nil, nil
+	case MethodQuestionResolve:
+		args, err := arg[QuestionArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		// THE OPTIONAL-DOOR PATTERN, on the terms the two frames below it keep: an
+		// engine that cannot resolve a question loses the ANSWERING and not the
+		// connection, and the sentence it refuses with is one a person can read.
+		door, ok := agent.(interface {
+			ResolveQuestion(session.Answer) error
+		})
+		if !ok {
+			return nil, errors.New("engine: this session cannot answer questions from here")
+		}
+		return nil, door.ResolveQuestion(args.Answer)
+	case MethodSetAutonomy:
+		args, err := arg[AutonomyArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			SetAutonomy(session.AskKind, session.Policy) error
+		})
+		if !ok {
+			return nil, errors.New("engine: this session keeps no settings about what may answer by itself")
+		}
+		return nil, door.SetAutonomy(args.Kind, args.Policy)
 	case MethodSubharnessResolve:
 		args, err := arg[SubharnessResolveArgs](call)
 		if err != nil {
@@ -1858,6 +1897,12 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			Approved: args.Approved, Redirect: args.Redirect, Model: args.Model,
 		})
 		return nil, nil
+	case MethodTaskSettle:
+		args, err := arg[TaskSettleArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		return settleTask(agent, args)
 	case MethodTaskHold:
 		args, err := arg[TaskHoldArgs](call)
 		if err != nil {
@@ -2008,6 +2053,16 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return nil, door.StopWork()
 
 	case MethodInterrupt:
+		// A STOP WITH NO DOOR ON IT IS A PERSON'S OWN, which is what every
+		// surface older than this argument means by sending nothing.
+		args, err := arg[InterruptArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		if door := session.StopDoor(strings.TrimSpace(args.Door)); door != "" && door != session.StopByPerson {
+			agent.InterruptFor(door)
+			return nil, nil
+		}
 		agent.Interrupt()
 		return nil, nil
 

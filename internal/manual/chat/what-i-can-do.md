@@ -770,9 +770,10 @@ composition, any text verbatim, and anything malformed.
 It reads **png, jpeg, webp and gif**, up to **10MB**. The answer names who
 looked: `seen by <model>: <what it saw>`. The picture itself is **not** added to
 the conversation, so everything you need about one image is worth asking in a
-single call. **You see it too**: the picture is drawn under the `view_image` row
-in colour as soon as the call finishes, and opening the row shows it bigger with
-what the looking model said beneath.
+single call. **You can see it too**: the finished `view_image` row has **preview**
+and **open original** controls. It starts collapsed. Opening the preview shows a
+low-resolution terminal picture with what the looking model said beneath; opening
+the original uses your system viewer for full-quality inspection.
 
 Refusals, in its own words. The last three name the picture by its **whole
 absolute path**, however you spelled it in the call:
@@ -989,6 +990,11 @@ the page — ending at a whole line, and never inside an example — followed by
 note in square brackets that begins `[Cut: … bytes of …. The rest of this page is
 in its sections — ask for the same page again with section set to one of:` and
 then lists every heading on that page, one to a line, before it closes.
+
+That list is bounded too — half of what one read hands over, which is twice the
+room the longest page in this manual needs — and if a page ever had more headings
+than that the list would stop and close with `(… and 3 more)` rather than run on.
+No page is near it today.
 
 Those headings are the addresses of the rest. Ask for the same page with one of
 them in `section` and that part comes back whole, however far past the cut it

@@ -332,18 +332,18 @@ is dropped is taken from the clause *nearest* that protected tail, working backw
 clause — what `enter` does on the row you are standing on — is the last thing to go, being
 the only one on the line about the thing under the cursor.
 
-**A foot that is a sentence rather than a key list is cut the same way.** Home's own foot
-says things like
+**A foot that is a sentence rather than a key list is cut the same way.** A sentence like
 
 ```
  open in another window — enter again to move it here (that window's reply stops there; its tasks resume here)
 ```
 
-which has no `·` in it at all. The bracketed gloss goes first, because it explains a clause
-that is still on the line; then the clause hanging off the dash; and what a 40-column
-terminal is left with is the statement, `open in another window`. It used to read
+has no `·` in it at all. The bracketed gloss goes first, because it explains a clause that is
+still on the line; then the clause hanging off the dash; and what a 40-column terminal is
+left with is the statement, `open in another window`. It used to read
 `open in another window — enter again to move it here (it …`, which named a key and then ate
-it.
+it. That particular sentence is gone — moving a conversation asks with a card on home now,
+see *home* — but the rule it taught is what every foot on this surface is cut by.
 
 **A clause that begins `or` goes first, because it is an alternative and not a way out.**
 The gate card in an adaptive run says

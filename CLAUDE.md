@@ -182,13 +182,17 @@ Violations get rejected in review, and some are pinned by tests.
   designer are both written this way.
 - **Comments are full-sentence prose** stating the *why*, with ALL-CAPS for a stated law.
   Match the surrounding density; this codebase comments heavily and deliberately.
-- **Every icon comes from the vocabulary, through its one door.** `internal/tui2/tokens`
-  holds every mark a person sees — task states, the step gutter's action families, chrome —
-  each a slot with three spellings (a Font Awesome 4 icon, the geometric floor, one ASCII
-  character for a screen reader), resolved by `tokens.GlyphSet.Glyph(id)` and reached from
-  the surface through `palette.glyph` / `app.icon`. A mark spelled as a literal draws the
-  plain floor forever, because a literal cannot know which repertoire the terminal is on.
-  `internal/tui3/iconvocab_test.go` fails the build on one, on every pull request;
+- **Every icon comes from the vocabulary, through its one door — in EVERY surface
+  package.** `internal/tui2/tokens` holds every mark a person sees — task states, the step
+  gutter's action families, file kinds, chrome — each a slot with three spellings (a Font
+  Awesome 4 icon, the geometric floor, one ASCII character for a screen reader), resolved by
+  `tokens.GlyphSet.Glyph(id)` and reached from the surface through `palette.glyph` /
+  `app.icon` in `internal/tui3` and `Model.icon` in `internal/tui`. A mark spelled as a
+  literal draws the plain floor forever, because a literal cannot know which repertoire the
+  terminal is on. One terminal shows ONE tier everywhere: every surface folds the Display row
+  (`step icons`) over `tokens.DetectGlyphSet` the same way. `internal/iconlaw` walks
+  `internal/tui`, `internal/tui3`, `internal/head` and `internal/resident` and fails the
+  build on one, on every pull request;
   [docs/design/icons/DESIGN.md](docs/design/icons/DESIGN.md) is the law and the table.
 - **One source of truth.** A number that appears in two places will drift — interpolate it
   from the constant. `propose_task`'s schema said the step default was 40 while the

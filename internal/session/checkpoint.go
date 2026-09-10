@@ -370,6 +370,11 @@ const (
 	// that it had failed.
 	checkpointResultBytes = 400
 
+	// One completed write input travels beside its outcome. A path and a byte
+	// count cannot establish what was written. Larger inputs are explicitly
+	// omitted, and this evidence competes within the existing digest budget.
+	checkpointWriteArgumentBytes = 4 * checkpointResultBytes
+
 	// checkpointSaidBytes is how much of the turn's last words the reader is
 	// shown. It is the one part of the digest that is the model's own account of
 	// where it has got to, and a paragraph of it is the whole of what a reader
@@ -393,14 +398,14 @@ const (
 // answer about the emptiness.
 const (
 	checkpointDigestAsked = "WHAT WAS ASKED"
-	checkpointDigestDone  = "WHAT HAS BEEN DONE SO FAR, ONE LINE PER STEP"
+	checkpointDigestDone  = "TOOLS CALLED, ONE LINE PER STEP"
 	// checkpointDigestFound heads the results, and its heading SAYS THE ORDER
 	// because the order is not the one a reader would assume. The newest call is
 	// printed first, so a reader that runs out of attention has spent it on the
 	// evidence in front of the turn rather than on the evidence behind it — and
 	// the same order is what the fitting drops from, oldest end first.
 	checkpointDigestFound   = "WHAT CAME BACK, NEWEST FIRST"
-	checkpointDigestWritten = "WHAT HAS BEEN WRITTEN OR CHANGED"
+	checkpointDigestWritten = "WRITE OR EDIT ATTEMPTS (CHECK THE RESULTS)"
 	// checkpointDigestMoved heads ONE LINE: when the work last changed, and what
 	// has come back since (novelty.go's [workClock]). It is the fact a reader of
 	// a ledger cannot get from the ledger — ninety lines of activity look the
@@ -633,7 +638,14 @@ const checkpointHandoffWriteAsk = "[write the handoff] The work above is being h
 // AND IT NAMES NOTHING ABOUT THE KIND OF WORK, by the law [checkpointSketchAsk]
 // is held to.
 const checkpointRemainsAsk = "[still asked] Above is what the person asked for and what has been done towards it. " +
-	"The model working on it has just stopped. In one line, say what of the ASK is still not done. " +
+	"The model working on it has just stopped. This is a bounded account, not a fresh inspection of the files. " +
+	"Submitted write/edit arguments show intended changes; their tool results say whether they succeeded. " +
+	"Compare the requested deliverable and its explicit value/type constraints with those inputs and results before deciding. " +
+	"A successful write confirms only that bytes were written; it does not prove their contents meet the request. " +
+	"Tool failures and exact data mismatches outweigh an assistant claim of success. " +
+	"Abbreviated or omitted content is unknown, not evidence of a defect. " +
+	"Ground any claimed defect in the evidence shown; if a necessary check is missing, name that check instead of inventing its result. " +
+	"In one line, say what of the ASK is still not done. " +
 	"If everything they asked for is done, answer with the single line " + checkpointNothingLeft +
 	" and write nothing else at all. Otherwise write that one line and nothing else: no preamble, " +
 	"no list, no question."
@@ -727,9 +739,10 @@ func checkpointCarriedOnNote(observed []string) string {
 // next request, and anything reading a request's last message to tell the ask
 // apart from the answer read the continuation as the question. Two lanes, two
 // markers.
-const checkpointCarryOnLead = "[carry on] You stopped, but what was asked is not finished. " +
-	"Somebody reading the work against the request says this is what is left. " +
-	"Carry on with it, and do not summarise what you have already done:\n"
+const checkpointCarryOnLead = "[carry on] A reader of a bounded account of the work raised the observation below. " +
+	"Check it against the actual current work and the person's request before changing anything. " +
+	"Fix any confirmed gap. If the observation is mistaken or already satisfied, preserve the correct work, " +
+	"explain the evidence briefly, and finish; do not invent a change to satisfy the observation.\n"
 
 // ── the meter ───────────────────────────────────────────────────────────────
 
@@ -2157,27 +2170,35 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 	// writer's call is the work moving, a result is lines that were or were not
 	// new (novelty.go).
 	lines := newLineNovelty()
-	// The step each call took, by id, so a result that arrives after a later
-	// batch's write is not counted against it.
-	at := make(map[string]int)
-	// The line each call wrote, by id, so its result can be printed under the same
-	// words the ledger used and a reader can match the two.
-	calls := make(map[string]string)
-	for _, message := range messages {
-		for _, call := range message.ToolCalls {
+	// Steps and labels belong to call occurrences. An orphan or duplicate
+	// result must not borrow a prior batch's label or advance its work clock.
+	at := make(map[*ai.ToolCall]int)
+	calls := make(map[*ai.ToolCall]string)
+	paired := toolResultCalls(messages)
+	writeResult, writeStep := -1, 0
+	var writeInput string
+	for messageIndex, message := range messages {
+		for callIndex := range message.ToolCalls {
+			call := &message.ToolCalls[callIndex]
 			name := strings.TrimSpace(call.Function.Name)
 			if name == "" {
 				continue
 			}
 			line := name
-			if argument := checkpointArgument(call.Function.Arguments); argument != "" {
+			argument := checkpointArgument(call.Function.Arguments)
+			if checkpointWriters[name] {
+				if path := checkpointArgumentNamed(call.Function.Arguments, "path"); path != "" {
+					argument = clip(path, checkpointLedgerBytes)
+				}
+			}
+			if argument != "" {
 				line += " " + argument
 			}
 			ledger = append(ledger, line)
 			moved.step()
 			if id := strings.TrimSpace(call.ID); id != "" {
-				calls[id] = line
-				at[id] = moved.steps
+				calls[call] = line
+				at[call] = moved.steps
 			}
 			if !checkpointWriters[name] {
 				continue
@@ -2199,8 +2220,8 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 		if message.Role != "tool" {
 			continue
 		}
-		id := strings.TrimSpace(message.ToolCallID)
-		line, known := calls[id]
+		call := paired[messageIndex]
+		line, known := calls[call]
 		if !known {
 			continue
 		}
@@ -2208,13 +2229,24 @@ func checkpointLedger(messages []ai.Message) (ledger, written, results []string,
 		for _, part := range message.Content {
 			came.WriteString(part.Text)
 		}
-		if at[id] > moved.changedAt {
+		if at[call] > moved.changedAt {
 			fresh, weighed := lines.measure(line, stripJobFooter(came.String()))
 			moved.read(fresh, weighed)
 		}
 		if tail := checkpointResultTail(came.String()); tail != "" {
 			results = append(results, line+checkpointResultArrow+tail)
+			if checkpointWriters[call.Function.Name] && at[call] > writeStep {
+				writeResult, writeStep = len(results)-1, at[call]
+				if len(call.Function.Arguments) <= checkpointWriteArgumentBytes {
+					writeInput = "\nsubmitted arguments: " + call.Function.Arguments
+				} else {
+					writeInput = fmt.Sprintf("\nsubmitted arguments omitted (%d bytes); inspect the current file before judging its contents", len(call.Function.Arguments))
+				}
+			}
 		}
+	}
+	if writeResult >= 0 {
+		results[writeResult] += writeInput
 	}
 	return ledger, written, results, moved
 }
@@ -3673,11 +3705,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 		// for the reason in a ladder that may not even have one.
 		return checkpointHandover{decision: checkpointCeilingHeldWork, reason: carryHeldWork}
 	}
-	// A check for the whole request does not become permission to repeat it in
-	// only one remainder. Checks for retained work are not assigned to this child.
-	if len(read.held) > 0 || strings.TrimSpace(read.ownRemainder) != "" {
-		verdict.Checks = nil
-	}
+	verdict = a.handoffChecks(verdict, asked, request, read)
 	// AND THE DRAWING TRAVELS WITH THE WORK, which is the whole of what changed
 	// after the parts stopped being only a paragraph.
 	//
@@ -3801,6 +3829,26 @@ type checkpointHandover struct {
 	// carries one where an autopsy grepping the word would otherwise be left
 	// looking (sessionfile.go's [journalCeiling]).
 	reason string
+}
+
+// handoffChecks carries an existing declaration only when this handoff still
+// represents the whole request it was declared for. A remainder inherits no
+// whole-request checks, and a routing declaration keeps its own validity rules.
+func (a *Agent) handoffChecks(verdict routeVerdict, asked, request string, read checkpointRead) routeVerdict {
+	if len(read.held) > 0 || strings.TrimSpace(read.ownRemainder) != "" {
+		verdict.Checks = nil
+		return verdict
+	}
+	if len(verdict.Checks) > 0 || request == "" || asked != request {
+		return verdict
+	}
+	steward := a.steward()
+	if steward == nil || steward.Ask() != request {
+		return verdict
+	}
+	verdict.Checks = steward.declaredChecks()
+	verdict.checksRequest = request
+	return verdict
 }
 
 // endTurnUnderSteward puts a HANDOVER to the session's goal owner, and ends the

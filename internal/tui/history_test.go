@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -46,7 +47,8 @@ func TestHistoryBareShowsMostRecentSettledJobs(t *testing.T) {
 		t.Fatalf("recent history order = %#v", model.historyEntries)
 	}
 	plain := ansi.Strip(model.renderMessages())
-	for _, wanted := range []string{"Audit the current provider", "Write the earlier release note", "✗", "✓"} {
+	for _, wanted := range []string{"Audit the current provider", "Write the earlier release note",
+		tokens.GlyphFailed, tokens.GlyphSettled} {
 		if !strings.Contains(plain, wanted) {
 			t.Fatalf("bare history missing %q:\n%s", wanted, plain)
 		}

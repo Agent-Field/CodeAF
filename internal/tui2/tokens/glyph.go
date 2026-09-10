@@ -50,6 +50,24 @@ const (
 	// the one shape in the geometric register that says "this does not apply"
 	// without claiming an outcome.
 	GlyphWithdrawn = "⊘"
+	// GlyphAssumed is the ladder's SECOND rung drawn: the asker has taken
+	// something for granted, said so, and gone on — and everything on the card
+	// stands until somebody strikes it (docs/design/questions/DESIGN.md names
+	// this mark for the assumption kind).
+	//
+	// IT IS NOT [GlyphNeedsHuman], and that is the whole reason the slot exists.
+	// `?` means "waiting on a person" and is the one mark on this surface that
+	// is always amber; an assumptions card is waiting on nobody — it is going
+	// ahead, and the offer to strike a line is a courtesy rather than a gate.
+	// Drawing it with the attention mark told a person to answer something that
+	// was not asking them anything, which is the fastest way to make the amber
+	// mark stop meaning what it says.
+	//
+	// It is also not [GlyphEstimate]. A tilde is bound to a NUMBER — 10.2.8's
+	// "estimated number" — and this stands alone at the head of a card; the two
+	// are near neighbours in shape and say different things, which is exactly
+	// the distinction the one-glyph-one-meaning gate exists to keep.
+	GlyphAssumed = "≈"
 
 	// Disclosure and navigation.
 	GlyphCollapsed = "▸"
@@ -100,6 +118,17 @@ const (
 	// which surface the draft will land in (5.15).
 	GlyphPromptChat  = "›"
 	GlyphPromptSteer = "↦"
+	// GlyphReplyIn is AN ANSWER DRAWN UNDER THE THING IT ANSWERS: the reply to a
+	// question a person put back to the asker, the response landing on the row
+	// that asked for it (docs/design/questions/DESIGN.md's room form). It is a
+	// prompt mark in the same family as the two above — punctuation saying whose
+	// turn a line is — which is why it is geometry and neither tier swaps it.
+	//
+	// It is deliberately NOT [GlyphPromptChat]: `›` is the person typing and this
+	// is what came back, and a page that drew both with one mark would make an
+	// exchange unreadable at exactly the moment it matters. U+21B3 is
+	// East_Asian_Width=Neutral and one cell under both shipping rulers.
+	GlyphReplyIn = "↳"
 
 	// The execution voices (5.5). A work record is four speakers and no
 	// labels: the model thinking, the tools it reached for, the reader
@@ -233,6 +262,29 @@ const (
 	// in its named-exceptions table so a THIRD `$` slot has to be argued for.
 	GlyphModel = "◇"
 	GlyphSpend = "$"
+
+	// The file kinds. A chip says WHAT KIND OF THING is on the end of a path
+	// before it says the path, and so does the gutter beside a call that made
+	// one or opened one; the four kinds a person can hand this program are the
+	// four here.
+	//
+	// GlyphFileDocument is [GlyphActionRead]'s byte on purpose — a page of text
+	// is a page of text whether a call opened it or a person dragged it in, and
+	// the tier draws the SAME icon for both rather than inventing a distinction
+	// the floor does not draw. It is the one collision in this block, and it is
+	// carried in glyphvocab_test.go's named-exceptions table.
+	//
+	// GlyphFileVideo is U+25B7 WHITE RIGHT-POINTING TRIANGLE and NOT the filled
+	// U+25B6 a chip used to draw: the filled triangle is [GlyphQueuePill]'s, one
+	// plain byte may upgrade exactly one way, and an outline triangle is the
+	// right weight beside three outlined file icons anyway.
+	//
+	// GlyphFileImage is U+233E APL FUNCTIONAL SYMBOL CIRCLE JOT and
+	// GlyphFileAudio is U+266A EIGHTH NOTE, both one cell under both rulers.
+	GlyphFileDocument = "▤"
+	GlyphFileImage    = "⌾"
+	GlyphFileAudio    = "♪"
+	GlyphFileVideo    = "▷"
 )
 
 // GaugeCells is the one-cell context gauge (5.17): context % as a single
@@ -338,6 +390,7 @@ func Glyphs() []GlyphInfo {
 		{"NeedsHuman", GlyphNeedsHuman, '?', false},
 		{"WaitsOn", GlyphWaitsOn, '⚑', false},
 		{"Withdrawn", GlyphWithdrawn, '⊘', false},
+		{"Assumed", GlyphAssumed, '≈', true},
 		{"Collapsed", GlyphCollapsed, '▸', false},
 		{"Expanded", GlyphExpanded, '▾', false},
 		{"ScopeUp", GlyphScopeUp, '‹', false},
@@ -347,6 +400,7 @@ func Glyphs() []GlyphInfo {
 		{"Cut", GlyphCut, '╌', false},
 		{"PromptChat", GlyphPromptChat, '›', false},
 		{"PromptSteer", GlyphPromptSteer, '↦', false},
+		{"ReplyIn", GlyphReplyIn, '↳', false},
 		{"Thought", GlyphThought, '✳', false},
 		{"Shell", GlyphShell, '$', false},
 		{"Search", GlyphSearch, '⌕', false},
@@ -386,6 +440,10 @@ func Glyphs() []GlyphInfo {
 		{"GitBranch", GlyphGitBranch, '⋔', false},
 		{"Model", GlyphModel, '◇', true},
 		{"Spend", GlyphSpend, '$', false},
+		{"FileDocument", GlyphFileDocument, '▤', true},
+		{"FileImage", GlyphFileImage, '⌾', false},
+		{"FileAudio", GlyphFileAudio, '♪', true},
+		{"FileVideo", GlyphFileVideo, '▷', true},
 		// The prose slots (code.go). They are named there because a slot is a
 		// MEANING and not a byte, and they are walked HERE because the width
 		// gate is the one place a glyph may not hide: GlyphCodeGutter arrived

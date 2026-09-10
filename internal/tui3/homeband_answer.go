@@ -353,12 +353,24 @@ func (a *app) answeringHere(row session.SessionRow) bool {
 func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd, bool) {
 	action, ok := session.AnswerFromKey(question.Kind, key)
 	if !ok {
-		return nil, false
+		// EVERY OTHER LANE GOES THROUGH THE ONE DOOR. [session.AnswerFromKey]
+		// knows the three lanes that were answerable from home before questions
+		// became one object, and it is deliberately not being taught the other
+		// eight: the object the session left in its presence file carries its
+		// own answers, and [session.Agent.ResolveQuestion] reads the lane off
+		// the answer and hands it to that lane's own resolver. So a question
+		// this build has never heard of is still answerable from home, which is
+		// the whole point of there being one object.
+		return a.answerWholeQuestion(question, key)
 	}
 	switch action.Kind {
 	case session.QuestionConsent:
-		if len(a.asks) > 0 && a.asks[0].id == question.ID {
-			a.answerWith(action.Allow, action.Scope, answerConsentWord(action))
+		if a.consentAsking(question.ID) {
+			// AND IT IS THE BLOCK'S OWN ANSWER, not a second one beside it
+			// (consent.go's [app.answerWith]): the same receipt, the same record
+			// and the same annotated row as the same answer pressed in front of
+			// the question.
+			a.answerWith(action.Allow, action.Scope)
 			return nil, true
 		}
 		if a.agent != nil {
@@ -366,8 +378,7 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 			return nil, true
 		}
 	case session.QuestionTask:
-		if card := a.task; card != nil && card.id == question.ID && !card.settled() {
-			a.answerTask(action.Task.Approved, "")
+		if a.answerTaskWith(question.ID, key) {
 			return nil, true
 		}
 		if agent, ok := a.tasker(); ok {
@@ -398,20 +409,31 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 	return nil, false
 }
 
-// answerConsentWord is what the row in this window keeps.
+// answerWholeQuestion answers from the object the session left behind, for the
+// lanes home has no older path for.
 //
-// THE ALWAYS IS SPELLED WITH ITS REACH ON IT, because from home it is the
-// tool-wide one and nothing narrower: the second beat that turns a shell always
-// into a shape is a thing you do while looking at the command, and home has the
-// one line the session is stopped on rather than the command
-// ([session.AnswerFromKey] states the same at the other end). A row that said
-// `always · saved` would be claiming a rule nobody wrote.
-func answerConsentWord(action session.AnswerAction) string {
-	if action.Allow && action.Scope == session.ConsentToolSession {
-		return answerAlwaysWord
+// IT DRAWS ITS ANSWER OUT OF THE QUESTION AND NEVER OUT OF THE KEY. The key is
+// looked up in that question's OWN options ([session.Question.Option]), so a
+// digit this question did not offer answers nothing rather than answering
+// whatever the kind's general table says a digit means.
+func (a *app) answerWholeQuestion(question session.PresenceQuestion, key string) (tea.Cmd, bool) {
+	whole := question.Full
+	if whole == nil {
+		return nil, false
 	}
-	return decisionWord(action.Allow)
+	if _, ok := whole.Option(key); !ok {
+		return nil, false
+	}
+	doors, ok := a.questionDoors()
+	if !ok {
+		return nil, false
+	}
+	answer := session.Answer{
+		At: time.Now(), Kind: whole.Kind, ID: whole.ID, Ref: whole.Ref, Ask: whole.Ask,
+		Key: key, Picked: []string{key}, DecidedBy: session.DecidedByPerson,
+	}
+	if err := doors.ResolveQuestion(answer); err != nil {
+		return nil, false
+	}
+	return nil, true
 }
-
-// answerAlwaysWord is that spelling.
-const answerAlwaysWord = "always · this tool, this session"

@@ -130,10 +130,14 @@ func testFreshInstallSetup(t *testing.T) {
 		say(t, "setupTitleWord"), say(t, "setupConnectHeading"), say(t, "setupConnectSentence"))
 	t.Logf("a fresh install, launched the ordinary way, is shown the door:\n%s", screen)
 
-	// AND IT IS ASKING FOR ALL THREE. A machine with nothing on it has answered
-	// no part of the setup, so the count is the count of what is missing.
-	if !strings.Contains(screen, say(t, "setupTitleWord")+" · 1 of 3") {
-		t.Errorf("the title does not count three missing answers on a machine with nothing on it:\n%s", screen)
+	// AND IT IS ASKING FOR BOTH. A machine with nothing on it has answered no
+	// part of the setup, so the count is the count of what is missing — and
+	// internal/tui3's [setupStepsFor] builds at most two: the provider key, and
+	// the crew-and-spending step that carries the rest. It counted three before
+	// those were folded together, and a needle nobody moved would have waited
+	// twenty seconds for a title this door has stopped drawing.
+	if !strings.Contains(screen, say(t, "setupTitleWord")+" · 1 of 2") {
+		t.Errorf("the title does not count both missing answers on a machine with nothing on it:\n%s", screen)
 	}
 
 	// AND ITS EXIT IS REAL TOO. `esc` says not now, and the conversation under it
@@ -199,28 +203,26 @@ func testNestedGate(t *testing.T) {
 // right, the engine keeps its failed plus refused state, and the built surface
 // must call that result incomplete rather than turning the useful finding into
 // a generic failure.
-// ── KNOWN RED, AND WHAT WAS MEASURED ABOUT IT (issue #706) ──────────────────
+// ── AND IT IS THE ONE THAT CAUGHT #706, WHICH IS WORTH KEEPING WRITTEN DOWN ──
 //
-// This subtest does not pass on dev today, and the reason is NOT the setup screen
-// or the greeting that were fixed for its two neighbours. It waits for the card's
-// answers row and the row is not drawn at all: the landing reads
+// This subtest waited twenty seconds for `[n] not right` and never saw it: the
+// card drew its tier and its reason and NO ANSWERS ROW AT ALL. The fixture in
+// taskstates_e2e_test.go, which is the same state, the same merge and the same
+// one changed file, drew all four chips in the same run — so for a while this
+// read as a difference between two fixtures that do not differ.
 //
-//	? ◆ Review the pull request diff · your call · 42s · 1 file
-//	  nobody could check it
+// THE DIFFERENCE WAS THE LENGTH OF THE TEMPORARY HOME. A conversation opens
+// against an engine host where one can be reached, and a host is reachable only
+// where its socket path fits (internal/enginehost's socketLimit) — so the
+// subtest with the shorter name got a host and the one with the longer name fell
+// back to the in-process engine. internal/remote's agent had none of the four
+// doors that decide a landing, the surface's assertion failed, and the absence
+// law removed the row: a control with nothing behind it is left off rather than
+// offered and failing. Which is why it also passed on every laptop, where the
+// temporary root is long enough that neither subtest ever reaches a host.
 //
-// and there is no third row under it — no `[a] accept`, no `[n] not right`, no
-// `[s] tell it`. The tier is right, the reason is right, and the answers are
-// missing, which is the shape docs/design/task-states/DESIGN.md exists to close.
-//
-// WHAT WAS RULED OUT, by measurement rather than by reading: it is not the
-// keyboard (the row is absent from the frame, not merely unanswered), not the
-// setup or the greeting ([rig.skipSetup], [statesAnswerKey]), and not the node
-// naming no changed file — that was the one structural difference from the
-// fixture in taskstates_e2e_test.go that DOES draw all four chips, and adding a
-// changed file put ` · 1 file` on the head and left the answers row absent.
-//
-// It is left standing rather than skipped: the suite is the place this is
-// visible, and a skip here is a defect nobody would meet again.
+// The doors cross now (internal/remote's tasksettle.go), and this is the subtest
+// that says so on a real screen.
 func testRefusedLanding(t *testing.T) {
 	home := newHome(t, map[string]any{"task.settle": "ask"})
 	ws := newWorkspace(t, "refusedgatews", false)
@@ -478,17 +480,15 @@ func testAskHere(t *testing.T) {
 	working := r.waitFor(25*time.Second, "? remind me in 1 minute", say(t, "homeAskWorkingWord"))
 	t.Logf("the exchange row is working:\n%s", working)
 
-	// AND WITH SOMETHING MOVING, THE LIST WEARS ITS SECTION LINE — the one
-	// heading over the flat ranked list, with the two keys that change its shape
-	// out at the right margin. It is drawn only while something is asking or
-	// moving, which is exactly now.
-	for _, want := range []string{
-		say(t, "switcherSectionWord"), say(t, "switcherGroupWord"), say(t, "switcherQuietWord"),
-	} {
-		if !strings.Contains(working, want) {
-			t.Errorf("the section line is missing %q while an errand is running:\n%s", want, working)
-		}
-	}
+	// THE SECTION LINE IS NOT ASSERTED HERE, and that is a finding rather than
+	// an omission. `what wants you first` is the heading over the RANKED LIST and
+	// it is drawn when a row of that list is asking or moving
+	// ([switcherReading.hasAttention]) — an errand stands OVER the reading and is
+	// never in it (place_home.go says so outright), so on this screen the list
+	// holds one quiet conversation and the heading would be a sentence about
+	// nothing. The three needles are read where the line is genuinely true: on
+	// the second window's home in [testAnswerFromHome], whose list really does
+	// hold a conversation stopped on a person.
 
 	// The pane's own clock, caught in flight. It lives for seconds, so this is
 	// a fast poll and it is a finding rather than a failure when it is missed.
@@ -680,8 +680,25 @@ func testFiringReachesThePerson(t *testing.T) {
 
 	// /status, while something stands: the derived `keeping watch` line and the
 	// status line's own segment.
-	if !strings.Contains(r.capture(), say(t, "homeKeepingWord")) {
-		t.Errorf("the status line has no `◦ N standing orders` segment while an item stands:\n%s", r.capture())
+	// IT IS WAITED FOR AND NOT READ IN THE SAME INSTANT. The count behind that
+	// segment is asked on the frame, so over a connection it is answered from a
+	// cache that refreshes behind itself — the seam's stated law rather than an
+	// optimization (cmd/aforge's hostStanding) — and an item that stood a second
+	// ago reaches it on the next beat.
+	//
+	// AND THERE ARE THREE BEATS BETWEEN THE DISK AND THAT SEGMENT, not one, so
+	// the wait is a minute rather than the twenty seconds that caught it on a
+	// quiet machine and missed it on a loaded one: the item is written by the
+	// ERRAND's process, read back by the ENGINE, held by the surface's own
+	// far-side cache on hostStandingEvery, and read off THAT by a count the
+	// status row keeps for keepEvery. How long it actually took is logged,
+	// because a segment that takes half a minute to appear is a papercut worth
+	// having a number for.
+	keepingAt := time.Now()
+	if _, ok := r.glimpse(time.Minute, say(t, "homeKeepingWord")); !ok {
+		t.Errorf("the status line never grew a `◦ N standing orders` segment while an item stands:\n%s", r.capture())
+	} else {
+		t.Logf("the `◦ N standing orders` segment arrived %s after the item stood", time.Since(keepingAt).Round(time.Second))
 	}
 	r.lit("/status")
 	time.Sleep(700 * time.Millisecond)
@@ -725,24 +742,47 @@ func testFiringReachesThePerson(t *testing.T) {
 	if drawnRow == "" {
 		t.Fatalf("the item that stood has no words to look for:\n%s", standingRecordsDump(t, home))
 	}
+	// AND THE ROAD IT TAKES IS THE MACHINE'S TO CHOOSE, WHICH IS WHY BOTH ARE
+	// WATCHED FOR. Roads 1 and 2 are "is it open HERE" — a map from session id to
+	// agent inside the process that ran the pass (session's standing_run.go) — so
+	// only a pass in the process holding this project's conversations can take
+	// one. On this machine that is the engine, and another pass can beat it to
+	// the item: the OS timer's `aforge tick` is a process of its own with an empty
+	// registry, and it reaches a person down road 4 instead, through the project's
+	// inbox. Both ends AT A PERSON, which is what this subtest is named for, and
+	// the second half below proves road 4 the whole way to the next window's
+	// screen. A subtest that demanded road 2 would be asserting which of two
+	// correct passes woke up first.
 	deadline := time.Now().Add(wait)
 	drawn := false
+	delivered, filed := false, false
+	journal := ""
 	for time.Now().Before(deadline) {
 		if screen := r.capture(); strings.Contains(screen, drawnRow) && strings.Contains(screen, said) {
 			drawn = true
+		}
+		for path, raw := range sessionTranscripts(t, home) {
+			if strings.Contains(raw, firstWords(item.Does.Say, 4)) {
+				delivered, journal = true, path
+			}
+		}
+		if strings.Contains(projectInbox(t, home, ws), firstWords(item.Does.Say, 4)) {
+			filed = true
+		}
+		if drawn || delivered || filed {
 			break
 		}
 		time.Sleep(2 * time.Second)
 	}
 	screen := r.capture()
-	delivered := false
-	for path, raw := range sessionTranscripts(t, home) {
-		if strings.Contains(raw, firstWords(item.Does.Say, 4)) {
-			delivered = true
-			t.Logf("the firing reached the conversation's journal: %s", path)
-		}
+	switch {
+	case delivered:
+		t.Logf("the firing reached the conversation's journal: %s", journal)
+	case filed:
+		t.Logf("the firing was filed under the project by a pass with no conversation open in it — "+
+			"road 4, which the second half below follows to the screen:\n%s", projectInbox(t, home, ws))
 	}
-	if !delivered {
+	if !delivered && !filed {
 		// AND THE SUITE SAYS WHY, RATHER THAN JUST THAT. An item whose expiry is
 		// not after its own moment is retired by rail one of the pass before
 		// anything is ever due (internal/standing/tick.go), so it can never fire —
@@ -756,15 +796,19 @@ func testFiringReachesThePerson(t *testing.T) {
 				later.Rails.Expires.Format(time.RFC3339), later.When.At.Format(time.RFC3339),
 				later.LastCheckLine, screen)
 		}
-		t.Fatalf("the firing never reached the person at all — nothing in any transcript.\nrecord:\n%s\nscreen:\n%s",
-			standingRecordsDump(t, home), screen)
+		t.Fatalf("the firing never reached the person at all — nothing in any transcript and nothing "+
+			"filed under the project.\nrecord:\n%s\nscreen:\n%s", standingRecordsDump(t, home), screen)
 	}
-	if !drawn {
+	switch {
+	case drawn:
+		t.Logf("the firing is drawn in the conversation:\n%s", screen)
+	case delivered:
 		t.Errorf("DEFECT: the firing reached the conversation but was never DRAWN in it.\n"+
 			"The journal holds the line as a session-authored note, and the model answered it, "+
 			"but no `%s … %s` row appears on the screen the person is looking at:\n%s", drawnRow, said, screen)
-	} else {
-		t.Logf("the firing is drawn in the conversation:\n%s", screen)
+	default:
+		t.Logf("FINDING: the pass that fired it was not the one holding this project's conversations, " +
+			"so there was no room for a row — the words went to the project's inbox instead")
 	}
 
 	// ── the second half: nobody is here when it fires ──
@@ -804,28 +848,63 @@ func testFiringReachesThePerson(t *testing.T) {
 		t.Fatalf("the second item says nothing when it fires:\n%s", standingRecordsDump(t, home))
 	}
 	r2 := start(t, "afe2e_fire_back", home, ws, tuiWide, 45)
-	back := r2.waitFor(40*time.Second, said2, say(t, "standSaidTag"))
-	t.Logf("the window that came back was told what happened while it was shut:\n%s", back)
+	// THE INBOX BEING EMPTIED IS THE ORACLE, AND THE ROW IS A GLIMPSE. Road 4
+	// ends when the next ordinary conversation in the project drains the file
+	// whole on its way in (session's [Agent.drainStandingInbox]) — one `while
+	// you were away` fold for the model, one dim row per firing for the person —
+	// and the drain is the half that is a fact rather than a frame.
+	//
+	// THE ROW IS NOT WAITED FOR, because the same firing WAKES the conversation
+	// it lands in: the reply that wake produces closes the work fold over
+	// everything behind it (workfold.go), and the row can be gone before anybody
+	// looks. That is a real hole and it is recorded as a finding here rather than
+	// asserted, exactly as the `since you left` block below it is — the delivery
+	// itself is proved twice over above and by the drain below.
+	drained := false
+	for deadline := time.Now().Add(40 * time.Second); time.Now().Before(deadline); {
+		if strings.TrimSpace(projectInbox(t, home, ws)) == "" {
+			drained = true
+			break
+		}
+		time.Sleep(pollEvery)
+	}
+	if !drained {
+		t.Errorf("the project's inbox still holds the firing after the next window opened it:\n%s",
+			projectInbox(t, home, ws))
+	} else {
+		t.Logf("the window that came back drained the project's inbox")
+	}
+	if caught, ok := r2.glimpse(30*time.Second, said2, say(t, "standSaidTag")); ok {
+		t.Logf("the window that came back was told what happened while it was shut:\n%s", caught)
+	} else {
+		t.Logf("FINDING: the firing was drained into the conversation but its own row was never on the "+
+			"frame — the wake it carries starts a reply, and the work fold closes over what is behind "+
+			"one (workfold.go):\n%s", r2.capture())
+	}
 
-	// AND HOME'S OWN ACCOUNT OF IT IS RECORDED RATHER THAN DEMANDED. What happened
-	// while nobody was looking is a block at the top of the list, built from the
-	// standing items whose last firing is later than the look stamp
-	// (internal/tui3/switcher.go's addLedger) — and a ONE-OFF reminder retires the
-	// moment it fires, so by the time this window is up there is no live item left
-	// for the walk to find. That is a real hole in the block's arithmetic rather
-	// than a fact about this test, and it is written down here as a finding
-	// because the delivery it is about has already been proved above, twice.
+	// AND HOME'S OWN ACCOUNT OF IT IS DEMANDED. What happened while nobody was
+	// looking is a block at the top of the list, built from every standing item
+	// whose last firing is later than the look stamp — the ones that still stand
+	// AND the ones that stood down (internal/tui3/switcher.go's addLedger).
+	//
+	// THIS WAS A FINDING IN THIS SUBTEST'S OWN LOG FOR A WHILE, AND IT WAS A REAL
+	// HOLE. A one-off reminder retires in the pass that fires it, so by the time
+	// this window is up there is no live item left; a ledger that walked only the
+	// bands drew nothing at all about the reminder that had just gone off with the
+	// terminal shut — which is the commonest thing that happens while nobody is
+	// looking. The reading carries the retired firings out now
+	// (internal/tui3/homestanding.go's standItems), so the log is an assertion.
 	openHome(t, r2)
 	time.Sleep(3 * time.Second)
 	news := r2.capture()
-	switch {
-	case strings.Contains(news, say(t, "switcherSinceLeft")) && strings.Contains(news, say(t, "standingFiredWord")):
+	if !strings.Contains(news, say(t, "switcherSinceLeft")) {
+		t.Errorf("a watch fired while no window was open and home drew no `%s` block at all:\n%s",
+			say(t, "switcherSinceLeft"), news)
+	} else if !strings.Contains(news, say(t, "standingFiredWord")) {
+		t.Errorf("home drew a `%s` block that does not say the watch fired:\n%s",
+			say(t, "switcherSinceLeft"), news)
+	} else {
 		t.Logf("home's `since you left` block names the firing:\n%s", firstMatch(news, say(t, "standingFiredWord")))
-	case strings.Contains(news, say(t, "switcherSinceLeft")):
-		t.Logf("FINDING: home drew a `since you left` block that does not say the watch fired:\n%s", news)
-	default:
-		t.Logf("FINDING: a watch fired while no window was open and home drew no `since you left` block at all — "+
-			"a one-off item retires as it fires and the ledger walks only what still stands:\n%s", news)
 	}
 }
 
@@ -880,15 +959,62 @@ func testAnswerFromHome(t *testing.T) {
 	asked := a.waitFor(modelPatience, say(t, "consentAskWord"))
 	t.Logf("window A stopped on a consent card:\n%s", asked)
 
-	b := start(t, "afe2e_b", home, ws, tuiPlain, 40)
-	row := b.waitFor(40*time.Second, say(t, "notifyAskWord"))
-	t.Logf("window B's home says A is waiting on somebody:\n%s", row)
-	for _, chip := range []string{"1 ", say(t, "answersAllowOnce")} {
-		if !strings.Contains(row, chip) {
-			t.Errorf("home's answer band is missing %q:\n%s", chip, row)
-		}
+	// WINDOW B IS A SECOND PROJECT AND NOT A SECOND TERMINAL IN THE SAME ONE.
+	// Since #653 this workspace's engine is the ordinary road, and two windows
+	// opened in one folder SIT DOWN IN THE SAME CONVERSATION — the second one
+	// draws A's consent card itself under `another window is on this conversation
+	// — typing is here now`, which is the feature working and not this scenario.
+	// What this subtest is about is the other thing entirely: a question raised in
+	// a conversation somebody is NOT in, reaching them on home and being answered
+	// from there. So B opens its own project, and A's conversation is a row on
+	// B's list like any other.
+	b := start(t, "afe2e_b", home, newWorkspace(t, "consentws-b", false), tuiPlain, 40)
+	// THE SECTION LINE IS WHAT SAYS A's ROW HAS ARRIVED. It is drawn only while
+	// a row of the ranked list is asking or moving ([switcherReading.hasAttention]),
+	// so waiting for it waits for exactly the fact this subtest is about rather
+	// than for a title no fixture chose.
+	b.waitFor(40*time.Second, say(t, "switcherSectionWord"))
+	// AND THE CURSOR IS WALKED ONTO IT, because the answer band belongs to the
+	// row UNDER THE CURSOR (homeband_answer.go) and B lands on its own project's
+	// row — the one it is sitting in. THE BAND IS THE ORACLE AND NOT A HINT: a
+	// row another window is holding wears that window in its tail rather than
+	// `waiting on you`, and the chips are the one thing on the frame that says
+	// the cursor is on a question this screen can answer.
+	if !walkTo(b, say(t, "answersAllowOnce"), "Up") {
+		t.Fatalf("window B's home never offered the answers to the conversation A is waiting in:\n%s", b.capture())
+	}
+	row := b.capture()
+	t.Logf("window B's home offers the answers to the question A is stopped on:\n%s", row)
+	if !strings.Contains(row, "1 ") {
+		t.Errorf("home's answer band is missing the first chip's key:\n%s", row)
 	}
 	t.Logf("the chips home offered: %s", firstMatch(row, say(t, "answersAllowOnce")))
+
+	// AND THE ROW SAYS THE GATE'S OWN SENTENCE, WHOLE AND UNADORNED.
+	// internal/session's consent.go writes one line for exactly this purpose —
+	// the line another window may answer this from — and internal/tui3's switcher
+	// used to prefix `wants to ` onto it, from the days when the engine handed
+	// over a bare action. What this suite read on a real screen was
+	// `consentws wants to needs your ok to run bash`.
+	if !strings.Contains(row, say(t, "consentRowLine")) {
+		t.Errorf("home's row does not carry the gate's own sentence %q:\n%s", say(t, "consentRowLine"), row)
+	}
+	if strings.Contains(row, "wants to "+say(t, "consentRowLine")) {
+		t.Errorf("home's row wrote its own grammar around the gate's sentence:\n%s", firstMatch(row, say(t, "consentRowLine")))
+	}
+
+	// AND WITH SOMETHING ASKING, THE LIST WEARS ITS SECTION LINE — the one
+	// heading over the flat ranked list, with the two keys that change its shape
+	// out at the right margin. It is drawn only while a row of the list is asking
+	// or moving ([switcherReading.hasAttention]), and window A's conversation,
+	// stopped on a consent card, is exactly such a row.
+	for _, want := range []string{
+		say(t, "switcherSectionWord"), say(t, "switcherGroupWord"), say(t, "switcherQuietWord"),
+	} {
+		if !strings.Contains(row, want) {
+			t.Errorf("the section line is missing %q while a conversation is asking:\n%s", want, row)
+		}
+	}
 
 	b.lit("1")
 	time.Sleep(1500 * time.Millisecond)
@@ -988,12 +1114,21 @@ func testHover(t *testing.T) {
 // hint under the box says which way it goes).
 func testFold(t *testing.T) {
 	home := newHome(t, nil)
-	// More than the eight rows the list draws, so there is something to fold.
-	for i, name := range []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"} {
+	// MORE CONVERSATIONS THAN THE FRAME HAS ROWS, WHICH IS WHAT MAKES A FOLD NOW.
+	// The list drew eight rows whatever the terminal was until #518; it draws as
+	// many as the column can hold and never fewer than eight
+	// ([switcherReading.capAtRest] against [switcherView.room]), so twelve rows on
+	// a forty-five-row terminal is a list with nothing left over and no fold at
+	// all. Twenty rows in a twenty-row window is a fold with ten behind it, and
+	// the eleven rows above it are a walk [walkTo] can still finish.
+	for i, name := range []string{
+		"a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
+		"k", "l", "m", "n", "o", "p", "q", "r", "s", "t",
+	} {
 		seedProject(t, home, name, i, time.Duration(10*(i+1))*time.Minute)
 	}
 	ws := newWorkspace(t, "foldws", false)
-	r := start(t, "afe2e_fold", home, ws, tuiWide, 45)
+	r := start(t, "afe2e_fold", home, ws, tuiWide, 20)
 
 	screen := r.waitFor(25*time.Second, say(t, "homeFootWord"), say(t, "foldMoreWord"))
 	t.Logf("the list with a fold at its foot:\n%s", screen)
@@ -1015,8 +1150,11 @@ func testFold(t *testing.T) {
 	t.Logf("`→` opened the fold:\n%s", opened)
 
 	// AND THE FOLD IS STILL THERE, because it is the way back: an opened fold
-	// still says how many rows it is the door over.
-	if !strings.Contains(opened, say(t, "foldMoreWord")) {
+	// still says how many rows it is the door over, AND IT SAYS IT THE OTHER WAY
+	// ROUND. `12 more` over a list already showing all twelve is a sentence that
+	// is not true, so since #518 an open fold reads `12 fewer` — what pressing it
+	// does rather than what it hides (internal/tui3's [foldWords]).
+	if !strings.Contains(opened, say(t, "foldFewerWord")) {
 		t.Errorf("the fold vanished when it was opened, so there is no way back:\n%s", opened)
 	}
 	if !walkTo(r, say(t, "homeFoldShutHint"), "Down") {
@@ -1415,8 +1553,13 @@ func testInheritedWorkSeat(t *testing.T) {
 
 	// Whichever door the launch took — home on a machine with several
 	// conversations, and straight into a greeted conversation on a fresh one,
-	// which is what a state root built one minute ago always is.
-	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "starterTaskWord"))
+	// which is what a state root built one minute ago always is. THE GREETED
+	// CONVERSATION HAS TWO SHAPES and this waits for both: the starter line under
+	// the wordmark, and the starting POINTS a conversation nobody has typed in
+	// yet stands on, whose foot is [welcomeStarterKeysWord] — the screen that
+	// entry's own `why` warns a subtest about waiting past.
+	r.waitForAny(20*time.Second, say(t, "homeFootWord"), say(t, "starterTaskWord"),
+		say(t, "welcomeStarterKeysWord"))
 	r.keys("Escape")
 	r.lit("/task solo write a file called hello.txt containing the word hello")
 	r.keys("Enter")

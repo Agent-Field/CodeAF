@@ -27,6 +27,29 @@ them. See **Places**.
 It still does nothing on its own: no notifications, no charts, no history graphs. You open
 it, you see where things stand, and you either act on something or leave.
 
+## Answer from home — questions use their own options
+
+When a conversation is waiting on a question, its home band shows **that question's own
+answers**, on that question's own keys. Press the key printed beside one. There is no
+home-specific `y`/`n` translation anywhere on this screen — a home that renamed somebody
+else's answers would be offering a key the conversation would drop.
+
+Every kind of question can be answered this way, not a chosen few: the whole question is
+in the file home reads, and the answer goes back through the one door that knows which
+part of the engine is waiting on it.
+
+**Not yet a question the model raised with `ask`.** That one is drawn on the row
+like any other and no key over it takes it; press `enter` to bring the conversation
+here and answer it above the box where it was raised.
+
+Home leaves the answer on the other window's doorstep, so the band says
+`answered · waiting for it to pick that up` until that window applies it — a second or
+two. If it could not be left at all, it says
+`could not leave that answer — open the conversation and answer it there`.
+
+**The first answer wins.** When two windows answer one question, the second is told who
+answered and what they chose; it is never merged into a third answer nobody gave.
+
 ## Why did a dashboard open when I started aforge — home greets you
 
 **Home is the first thing you see when you open aforge.** The conversation your launch
@@ -90,7 +113,7 @@ the right*). Top to bottom:
 
  20 chats · what wants you first     alt+g group by project · alt+q hide the quiet ones
  ? Swarm Task Splitting     aforge-v2   asks: add a --report-only mode?              2h
- ? Gmail cleanup routine    ~           wants to send on your behalf                 6h
+ ? Gmail cleanup routine    ~           needs your ok to run bash                    6h
  ◐ Bounty Reward Companies  leadgen     2 tasks running · reading filings            3h
  ○ Researching Santosh      aforge-v2   3 files made                               here
  ▸ 15 more, quiet since 6d
@@ -110,7 +133,7 @@ the right*). Top to bottom:
 tag, the note, and the age — or the word `here` in place of the age on the conversation
 this window is holding. The marks are `?` (amber) it is asking you something, `◐` it is
 moving, `○` at rest, `=` a standing item you paused. The note is the one fact the row is
-about: `asks: add a --report-only mode?`, `wants to send on your behalf`,
+about: `asks: add a --report-only mode?`, `needs your ok to run bash`,
 `2 tasks running · reading filings`, `3 files made`, `ran a saved shape`.
 
 **A narrow frame drops facts in one order and never the name:** the note goes first, then
@@ -158,6 +181,12 @@ Three kinds of line, newest first:
 - **a standing item that fired** — its own last-look line, in its own words;
 - **`N tasks landed`** — work that finished anywhere on the machine since your last look;
 - **what memory learned or let go** — `learned 2 things, let go of 1`.
+
+**A one-off that fired and stood down is here too.** `remind me in 1 minute to drink
+water` is over the moment it goes off — it stops being something that is keeping an eye on
+anything, so it is on no list and in no band — and it is still the commonest thing that
+happens while nobody is looking. Its line reads the way any firing's does: `fired 3 minutes
+ago — it told you`. What is over is not on the list; what happened is in this block.
 
 **Every line is a door.** The lowercase word out at the right of the line is the place it
 goes to — `standing`, `tasks`, `memory` — and `enter` takes you there. That is the whole
@@ -256,8 +285,13 @@ A row is there when something has stopped and cannot go on without you:
 - an `ask here` errand holding a card.
 
 The note on the row is **what it is asking**, in the question's own words — `asks: add a
---report-only mode?`, or `wants to send on your behalf` for a command it wants to run —
-and the age is **how long it has been waiting**. The longest wait is at the top.
+--report-only mode?`, or `needs your ok to run bash` for a tool it needs permission to use
+— and the age is **how long it has been waiting**. The longest wait is at the top.
+
+**A permission question is repeated exactly and nothing is added to it.** The session that
+is stopped writes one sentence — `needs your ok to run ` and the tool's name — and home's
+row is that sentence, whole. It reads as a clause about the conversation named beside it,
+so nothing on this screen puts a `wants to` in front of it.
 
 **You can answer most of them without going anywhere.** With the cursor on the row, the
 question and its answers are drawn on the line above the box and the digits answer it
@@ -1050,35 +1084,60 @@ has** — it does not mint a second chat on top of it, and it never says
 only after the first conversation that engine opened had ended: the launch dropped back into
 this terminal with a brand-new chat, and `enter` on the held row then had no engine to ask.
 
-**The one road where it still takes two enters** is a window with no engine behind it —
+**The one road where it still asks first** is a window with no engine behind it —
 `aforge chat --no-host`, `--debug`, or a build old enough to predate the engine. There is no
 engine to ask, so the only thing anybody can do is ask that window to let go, and moving the
-conversation really does end it. See *Moving a conversation from a window with no engine*.
+conversation really does end it — so `enter` there puts a question up rather than moving
+anything. See *Moving a conversation from a window with no engine*.
 
 **And `--host` is the one place it cannot happen at all.** The holder is a window on this
 laptop and the journal is on the other machine, so there is nobody to ask, and the row says
 `open in another window — go there, or start a new conversation here`.
 
-## Moving a conversation from a window with no engine — why is moving a conversation slow, it says coming here and nothing happens, how do I cancel the move, that window did not answer
+## Moving a conversation from a window with no engine asks first — the move card, enter moves nothing, the cursor starts on leave it there
 
 This is the road a window takes when there is no engine holding the conversation —
 `--no-host`, `--debug`, a test. On the ordinary `aforge chat` you will not meet it: see
 *Continue a conversation from another terminal*, where one `enter` opens the conversation
 instantly.
 
-**It takes two enters, and the first one only offers**, because this move really does end
-the other window. The first press arms the row. The card beside it says `enter again moves
-it here`, then `its reply stops there · its tasks come here`, and the foot line says the
-whole of it once more:
+**`enter` asks a question and moves nothing**, because this move really does end the other
+window. The card beside the row becomes that question, drawn the way every question on this
+surface is drawn:
 
 ```
-open in another window · working — enter again to move it here (that window's reply stops there; its tasks resume here)
+?  Move this conversation here?
+     open in another window · working
+     1  move it here     its reply stops there; its tasks come here
+     2  leave it there   nothing changes
+   [esc] leave it there · [←→] pick
 ```
 
-Anything else — an arrow, a letter, `esc` — disarms it. Nothing has been written and nothing
-in the other window knows you looked.
+**The cursor starts on `leave it there`.** That is the law every confirmation here keeps:
+`enter` is the key people press to make a question go away, so the answer under it has to be
+the one that loses nothing. To move it, press `1` or `→` — which moves the cursor and
+answers nothing — and then `enter`. `esc` is `leave it there`. Anything that moves the cursor
+off the row takes the question down; nothing has been written and nothing in the other
+window knows you looked.
 
-**The second press asks, and the row says it is coming.** The right margin stops saying
+**Below about a hundred and sixty columns there is no card at all**, so the same question is
+home's foot line instead, in one row:
+
+```
+Move this conversation here? · 1 move it here · 2 leave it there · its reply stops there; its tasks come here · esc leave it there
+```
+
+The keys are identical. A narrower terminal drops whole clauses off the end of it — what
+moving costs goes first, then the answers — and what a very narrow one is left with is the
+question and `esc leave it there`.
+
+It used to be two enters, with the offer on a foot line thirty rows from the row it was
+about and the second `enter` doing the move — so leaning on `enter` down a list of
+conversations ended another window with it.
+
+## Moving a conversation from a window with no engine — why is moving a conversation slow, it says coming here and nothing happens, how do I cancel the move, that window did not answer
+
+**Answering `move it here` asks the other window, and the row says it is coming.** The right margin stops saying
 `another window` and says `coming here`, the row takes the page's one turning cell, and the
 card carries the state:
 
@@ -1093,6 +1152,15 @@ answered, which is what made a move take minutes with nothing on screen to expla
 now stops where it is and hands the conversation over on its next look — four times a
 second — so `enter` and the conversation arriving are one gesture. The reply it had written
 so far is in the transcript that arrives with it.
+
+**And if it had written nothing yet, this window asks your question again for you.** A model
+that has been thinking for a minute has said nothing that can be kept, so a move used to
+land you on your own question with nothing under it and a line telling you to ask again.
+Now the question is asked again here, by itself, the moment the conversation arrives: one
+dim line — `the reply stopped when this conversation moved — asking again` — and then the
+answer. Nothing is typed twice and nothing is on the page twice. A reply that had already
+started is *not* asked again: what it wrote came with it, and its tasks resume from their
+checkpoints rather than running a second time.
 
 Past fifteen seconds with nothing happening over there, the card says `that window has not
 answered yet` and stops at that: a window wedged on a disk, one whose machine went to sleep
@@ -1849,7 +1917,7 @@ safe direction to fail in.
 A session that has asked you something and can go no further writes that down, and home is
 where you see it without opening the window it is in. The row wears an amber `?`, its note
 is **what it is asking** in the question's own words — `asks: add a --report-only mode?`,
-or `wants to <the command>` for something it needs permission to run — and **it sorts to
+or `needs your ok to run <the tool>` for something it needs permission to run — and **it sorts to
 the very top of the whole list**, above work that is running and above everything you spoke
 in more recently, longest wait first.
 

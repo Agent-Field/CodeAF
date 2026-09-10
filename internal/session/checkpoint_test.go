@@ -1679,7 +1679,8 @@ func TestTheMarkReaderIsSentTheDigestAndNotTheTranscript(t *testing.T) {
 		},
 	}}
 	agent := checkpointAgent(t, completer)
-	workedTurn(agent, "read the four modules and fix what is broken", 3)
+	// The result immediately follows the assistant batch that requested it.
+	workedTurn(agent, "read the four modules and fix what is broken", 1)
 	agent.mu.Lock()
 	agent.messages = append(agent.messages,
 		ai.Message{Role: "tool", ToolCallID: "call-0", Content: []ai.ContentPart{{Type: "text", Text: bulk}}},

@@ -85,17 +85,19 @@ func runTests(m *testing.M) int {
 // reason [Agent] is an interface — the surface is driven without a provider, a
 // key, or a file.
 type fakeAgent struct {
-	turns   [][]session.Event
-	turn    int
-	live    chan session.Event
-	model   string
-	window  int
-	usage   session.Usage
-	sent    []string
-	stops   int
-	closes  int
-	packs   int
-	failing error
+	turns  [][]session.Event
+	turn   int
+	live   chan session.Event
+	model  string
+	window int
+	usage  session.Usage
+	sent   []string
+	stops  int
+	// stopDoor is the door the last stop named (internal/session's stopcause.go).
+	stopDoor session.StopDoor
+	closes   int
+	packs    int
+	failing  error
 	// past is what a resumed session already holds — what [app.replay] draws.
 	past            []session.DisplayEntry
 	transcriptReads int
@@ -212,7 +214,11 @@ func (f *fakeAgent) finish() {
 	}
 }
 
-func (f *fakeAgent) Interrupt()                       { f.stops++ }
+func (f *fakeAgent) Interrupt() { f.stops++ }
+func (f *fakeAgent) InterruptFor(door session.StopDoor) {
+	f.stopDoor = door
+	f.stops++
+}
 func (f *fakeAgent) Compact(context.Context) error    { f.packs++; return nil }
 func (f *fakeAgent) Close() error                     { f.closes++; return nil }
 func (f *fakeAgent) Model() string                    { return f.model }
@@ -432,6 +438,7 @@ var blockingCommands = []string{
 	"waitDesign",
 	"waitEvent",
 	"waitGuestNotices",
+	"waitGuestQuestions",
 	"waitPilot",
 	"waitQuestion",
 	"waitRoom",

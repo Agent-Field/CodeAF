@@ -1292,6 +1292,14 @@ transcript and the journal keep every byte (`internal/session/toolcompact.go`).
 | all consumed results together | **5,000 tokens** (`checkpointDigestBytes`) | the same account the checkpoint digest is held to. Over it, the oldest shrink to stub.go's one-line account, oldest first. It is a ceiling to walk towards: several hundred calls weigh more than it even as single lines. |
 | the walk itself | one pass, running total | re-adding every old result on every iteration is quadratic in the call count, on the hot path of every request. The call-id→tool-name index is built once for the same reason. |
 
+The newest completed write/edit may retain its whole argument object up to
+**1,600 bytes** (`checkpointWriteArgumentBytes = 4 * checkpointResultBytes`),
+within the existing whole-digest budget. Larger objects are marked omitted rather
+than sliced into misleading partial JSON; only one input rides, so a write batch
+cannot evict older failures with all its payloads. Admission materializes a full
+result pointer only for selected evidence, at most `admissionHandlesKept` results;
+if the pointer does not fit, the existing journal reference stays.
+
 The checkpoint readers keep ordinary requests inside that same **5,000-token** digest.
 Only an original request too large to fit there with its heading is sent as a complete
 separate section, once, with the work evidence independently held to the existing bound.
@@ -1741,7 +1749,7 @@ and the run met none of them.
 | **A reply that never ends is cut at a wall derived from the LANE'S OWN history** — the longest reply that endpoint has actually finished for this process, times `streamWallFactor`, clamped to `streamWallMeasuredFloor`…`streamWallCeiling`. A lane with NO history gets `streamWallFloor`, 5m, and that figure is now the outer bound for a stranger rather than the floor under everybody: it used to outrank the derivation, so a lane whose longest finished reply was twenty-four seconds still waited out five whole minutes, and two streams in the dogfood run of 2026-08-31 did exactly that on endpoints sustaining 83–270 tok/s. `streamWallMeasuredFloor` is `bufferedQuietBound` rather than a number of its own: the shortest honest wall is the longest honest silence, or the wall would cut a stream the silence bounds are still being patient with. | `internal/provider/velocity.go`'s `runs` ledger. A model-size table is a claim this process cannot check; a completed reply is a measurement. | `internal/provider/streamguard_test.go`, `internal/provider/patience_measured_test.go` |
 | **An endpoint whose ANSWERS cannot be used loses standing, and wins it back by serving.** A guard cut — silence, stall, overrun, soup, unparsed tool grammar — and an answer with nothing in it are reported to the lane belief as outcomes that were not accepted; every answer that survives every guard is reported as one that was. The belief decays toward the lane's prior over `lane.QualityHalfLife` and the frontier gate reads it against the role's own `QualityNeed`. | No new number: `lane.Outcome` and `Ledger.NoteOutcome` have existed since the routing wave and had no production caller until this. The decay, the recovery and the gate are all `internal/lane`'s own. | `internal/provider/lanequality_test.go`, `internal/lane/garbage_test.go` |
 | **An endpoint that STALLS is treated exactly like one that REFUSES**: its lane is struck, memoized for `ignoreCooldown`, and every request encoded afterwards routes around it. | `velocityLedger.pace`, per model, sourced from the endpoint the wire itself named. | `internal/provider/unwatched_test.go` |
-| **A cut retries the CALL, never the leaf**, and says so on the stream a person is reading. | `cutBudget` — 2 attempts when the ledger routed around the endpoint, 1 when it could not. | `internal/session/loop.go` |
+| **A cut retries the CALL, never the leaf**, and says so on the stream a person is reading. When every arm fails, an accepted rescue's typed cut reaches this retry instead of being hidden by the primary arm's earlier routing refusal; the retry clears any partial reply before sending. | `cutBudget` — 2 attempts when the ledger routed around the endpoint, 1 when it could not. The provider does not add another retry after exposed output. | `internal/provider/hedge_terminal_test.go`, `internal/session/loop.go` |
 
 ### The claim reaper is the backstop, not the detector
 
@@ -2240,3 +2248,12 @@ one `treeIndentCols` child stem. An ellipsis marks omitted outer connectors.
 Task setup reads thinking levels from the standing task notices on hosted pages.
 Frames and pointer motion make **zero network calls**. The expanded sidebar
 reserves its resize hint even before hover, keeping controls at stable rows.
+
+## Compact transcript images
+
+Unopened image tools and sent attachments are one text control per image, with no
+pixel rows, file stats or decodes. Explicit expansion retains `pictureRowsMax` (20
+rows). A message expands at most one attachment at a time. The shared media controls
+carry file ownership independently of their label, and original-file opening runs
+outside the paint loop through the existing local or hosted mirror route. Display
+state is not journaled. Folder preview decoding remains on its bounded worker pool.

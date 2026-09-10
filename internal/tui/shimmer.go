@@ -6,6 +6,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -127,7 +128,7 @@ func (m *Model) renderShimmerLines(width int) string {
 		if title == "" {
 			title = firstLine(card.Ask)
 		}
-		line := "◐ " + title
+		line := m.icon(tokens.GWorking) + " " + title
 		if current != "" && current != title {
 			line += " · " + current
 		}

@@ -1,0 +1,36 @@
+
+  [38;5;243m Home    [1m[38;5;237m[48;5;252m ◐ footing two  × [0m[38;5;243m  + [39m
+
+[38;5;243m────────────────────────────────────────────────────────────────────────────────────────────────────
+
+[39m    [38;5;243m· still yours to set · [38;5;146m[48;5;237m/budget[38;5;243m[49m sets what aforge may spend · [38;5;146m[48;5;237m/model[38;5;243m[49m and [38;5;146m[48;5;237m/crew[38;5;243m[49m pick the models[39m
+    [38;5;243m· [38;5;116mesc[38;5;243m interrupts · [38;5;116mctrl+c[38;5;243m twice quits · [38;5;116m?[38;5;243m for help[39m
+
+  [38;5;146m› [38;5;110mCall the ask tool TWICE IN THE SAME MESSAGE — two tool calls at once, not one after the other[39m
+    [38;5;110m— and run nothing else. The first: head "read package.json?", kind permission, form line,[39m
+    [38;5;110mreason "the dependency list decides the rest", stakes reversible, options[39m
+    [38;5;110m[{"key":"1","label":"allow once"},{"key":"2","label":"skip it"}]. The second: head "read[39m
+    [38;5;110mgo.mod?", kind permission, form line, reason "the module path decides the import", stakes[39m
+    [38;5;110mreversible, options [{"key":"1","label":"allow once"},{"key":"2","label":"skip it"}].[39m
+
+    [38;5;238m$ load_capability 1 call[39m                                                                       [38;5;252m❮
+[39m    [38;5;103m» ask 2 calls[39m                                                                 [38;5;235m↑[38;5;243m 32.7k[39m  [38;5;235m↓[38;5;243m 625[39m
+
+
+
+
+
+
+
+
+
+
+[38;5;243m─ main ───────────────────────────────────────────────────────────────────────────── [38;5;116mesc[38;5;243m interrupt ─
+[1m[38;5;186m?[0m [38;5;140m2 questions raised together[39m
+[38;5;243m  asking permission[39m
+[38;5;140m  [38;5;243m✓[38;5;140m read package.json?[39m  [38;5;243mallow once[39m
+[38;5;140m▸ [1m[38;5;186m?[0m[38;5;140m read go.mod?[39m        [38;5;140m1 allow once · 2 skip it[39m
+[38;5;140m  [enter][1m open it · [0m[38;5;140m[s][1m send what is answered (1) · [0m[38;5;140m[g][1m same answer for all like this · [0m[38;5;140m[esc][1m later[0m
+
+ [38;5;243m› [39m
+[38;5;243mfooting two tool calls · deepseek-v4-flash[39m            [38;5;173mYOLO[38;5;243m · [38;5;186m? 2 questions · alt+a[38;5;243m · [38;5;146m⠼[39m [38;5;146mworking[38;5;243m · [38;5;146m15s

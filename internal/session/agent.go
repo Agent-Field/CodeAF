@@ -236,6 +236,11 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// session that wrote the file.
 		agent.messages = append(agent.messages, restored...)
 		agent.messageReasoning = append(agent.messageReasoning, replayed.reasoning...)
+		// AND WHETHER THE CONVERSATION ENDS ON A QUESTION NOBODY ANSWERED. It is
+		// carried off the journal rather than derived from the transcript because
+		// the fact lives on a line the transcript does not keep — which door
+		// stopped the turn (resume.go).
+		agent.stoppedTurn = replayed.stopped
 		// AND WHICH OF THOSE LINES THE PERSON ACTUALLY TYPED, which the messages
 		// alone cannot say (admission_compile.go). Work handed out of a reopened
 		// session would otherwise carry none of the conversation that preceded
@@ -1058,6 +1063,21 @@ type userMessage struct {
 	// [sessionEntry.Note]).
 	authored bool
 
+	// resumed marks THE PERSON'S OWN WORDS, ALREADY IN THE RECORD: a question
+	// this session is asking again because the turn that was answering it ended
+	// with nothing said (resume.go). It is set by one door and read by one line
+	// of [Agent.startTurnLocked] — the record is skipped, and everything else a
+	// turn does with the message it opened on happens exactly as it always does,
+	// because the words really are the words the person typed.
+	//
+	// IT IS NOT [userMessage.empty]. An empty message is a turn about something
+	// on the steering queue and has no words at all; this one has the words and
+	// they are already written down. Spelling it as empty would take the
+	// person's question out of everything a turn reasons about it with — what
+	// work handed out of here would carry (task_brief.go), what the turn was
+	// woken to answer (wakecause.go) — to avoid one append.
+	resumed bool
+
 	// steered marks A LINE SAID INTO A RUNNING NODE FROM OUTSIDE IT
 	// (task_room.go's [Agent.SteerTask] and [Agent.relayToTask]). Such lines ride
 	// this queue because a node's turns are its runner's to start and this is the
@@ -1491,7 +1511,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.refreshSystemLocked()
 	hub := newEventHub()
 	a.hub = hub
-	turnCtx, cancel := context.WithCancel(ctx)
+	turnCtx, cancel := context.WithCancelCause(ctx)
 	a.cancel = cancel
 	// AND THE TURN CARRIES ITS OWN SECOND STAGE (abandon.go). The signal rides on
 	// the context because the waits that need it are several frames down inside
@@ -1513,7 +1533,11 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// below, after the turn's last message is journaled.
 	done := make(chan struct{})
 	a.done = done
-	if !user.empty() {
+	// AND WHEN IT OPENED, which is the one fact the takeover beat needs to tell a
+	// request somebody is waiting on from one that was already lying on the disk
+	// before this turn existed (takeover.go).
+	a.turnBegan = time.Now()
+	if !user.empty() && !user.resumed {
 		a.recordUserLocked(user)
 		// AND THE SESSION STARTS NAMING ITSELF NOW, on the person's own words,
 		// beside the answer rather than behind it (title.go). The message is in
@@ -1556,7 +1580,10 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		// without a tool call and nobody interrupted. It is what decides
 		// whether a queued follow-up may start (see [Agent.FollowUp]).
 		completed := false
-		defer cancel()
+		// NO CAUSE, BECAUSE NOTHING WAS STOPPED. This is the turn's own tidying
+		// on the way out and there is nobody left waiting on the context; a door
+		// named here would put a stop on a turn that finished (stopcause.go).
+		defer cancel(nil)
 		defer hub.close()
 		defer func() {
 			// A TASK NEVER STAYS UNOWNED PAST THE END OF A TURN. Anything the settle
@@ -1779,7 +1806,19 @@ func (a *Agent) dropFollowUpsLocked() {
 // it into the transcript (the person typed it, so it is part of the record) —
 // and that drain starts nothing, so it cannot resurrect anything. Both queues
 // are empty once the interrupted turn has finished.
-func (a *Agent) Interrupt() {
+func (a *Agent) Interrupt() { a.interruptFor(StopByPerson) }
+
+// InterruptFor is the same door for machinery that is not a person: a window
+// taking the conversation over, a tab closing, a hosted session being retired.
+//
+// IT EXISTS SO THAT THE TURN CAN ACCOUNT FOR ITSELF AFTERWARDS. Everything
+// below is identical either way — the same queues are dropped, the same hands
+// are stopped — and the only difference is the word the cancelled context
+// carries, which is what decides whether the person is owed a sentence about a
+// reply that never arrived (stopcause.go).
+func (a *Agent) InterruptFor(door StopDoor) { a.interruptFor(door) }
+
+func (a *Agent) interruptFor(door StopDoor) {
 	// ONE GENERATION FOR THIS STOP, minted before the turn context dies so a
 	// leftover handler that has not yet entered callRole shares the same
 	// "what changed" decision as the redirect that follows (interrupt_fan.go).
@@ -1800,7 +1839,7 @@ func (a *Agent) Interrupt() {
 	a.stopSteerGraceLocked()
 	a.mu.Unlock()
 	if cancel != nil {
-		cancel()
+		cancel(stopFor(door))
 	}
 	// AND EVERY HAND STOPS WITH THE ANSWER IT WAS PART OF. A background job
 	// deliberately survives this — it is a command the person asked to be left
@@ -2056,7 +2095,7 @@ func (a *Agent) Close() error {
 		titleStop()
 	}
 	if cancel != nil {
-		cancel()
+		cancel(stopFor(StopByClosing))
 	}
 	if memoryStop != nil {
 		a.waitForMemory(memoryStop)
@@ -3820,8 +3859,9 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 			// model has to read it as (steer.go).
 			Steer: journal.steerMark(msg),
 		})
-		for _, call := range msg.ToolCalls {
-			result, answered := results[call.ID]
+		for callIndex := range msg.ToolCalls {
+			call := &msg.ToolCalls[callIndex]
+			result, answered := results[call]
 			// The step's own title, off the journal's `caption` line, keyed by
 			// the anchor the narration was recorded against. Every call that is
 			// not a batch anchor answers empty and carries nothing.
@@ -3830,7 +3870,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 				Role:   "tool",
 				Tool:   call.Function.Name,
 				CallID: call.ID,
-				Hint:   gloss(call),
+				Hint:   gloss(*call),
 
 				Caption:         told,
 				CaptionCategory: family,
@@ -3838,7 +3878,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 				// applied to the same fields the journal kept: a replayed row and
 				// the row it replaces are the same row, or replay is a second
 				// rendering of one conversation.
-				Args:     argsText(call),
+				Args:     argsText(*call),
 				Output:   capOutput(result),
 				Answered: answered,
 			})
@@ -3846,6 +3886,13 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 	}
 	return entries
 }
+
+// legacyCheckpointCarryOnLead is the reserved continuation prefix written by
+// older journals. Match the complete prefix so ordinary words typed by a person
+// beginning with "[carry on]" remain visible.
+const legacyCheckpointCarryOnLead = "[carry on] You stopped, but what was asked is not finished. " +
+	"Somebody reading the work against the request says this is what is left. " +
+	"Carry on with it, and do not summarise what you have already done:\n"
 
 // entryRows is how many rows the shaping above makes of ONE message: none at
 // all for system messages and private continuation context, and otherwise the
@@ -3867,7 +3914,7 @@ func entryRows(msg ai.Message) int {
 		// The continuation's full reserved lead identifies older journals too:
 		// they wrote it as an unmarked user message even though nobody typed it.
 		// Keep the model's record intact; only its display projection omits it.
-		if isVolatileNote(text) || strings.HasPrefix(text, checkpointCarryOnLead) {
+		if isVolatileNote(text) || strings.HasPrefix(text, checkpointCarryOnLead) || strings.HasPrefix(text, legacyCheckpointCarryOnLead) {
 			return 0
 		}
 	}
@@ -3891,19 +3938,14 @@ func countEntries(messages []ai.Message) int {
 	return rows
 }
 
-// toolResults indexes a run of messages by the call each one answered. A result
-// with no id is skipped rather than kept under "": it is a message no call can
-// claim, and a call with no id would otherwise pick it up.
-func toolResults(messages []ai.Message) map[string]string {
-	var results map[string]string
-	for _, msg := range messages {
-		if msg.Role != "tool" || msg.ToolCallID == "" {
-			continue
-		}
-		if results == nil {
-			results = make(map[string]string, 8)
-		}
-		results[msg.ToolCallID] = messageContentText(msg)
+// toolResults indexes the text answered by each call occurrence. The pairing
+// respects assistant batches, so a reused provider ID cannot rewrite an earlier
+// result or make a later, unanswered call look complete.
+func toolResults(messages []ai.Message) map[*ai.ToolCall]string {
+	paired := toolResultCalls(messages)
+	results := make(map[*ai.ToolCall]string, len(paired))
+	for index, call := range paired {
+		results[call] = messageContentText(messages[index])
 	}
 	return results
 }

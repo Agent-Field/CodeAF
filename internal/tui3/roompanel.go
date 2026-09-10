@@ -190,7 +190,7 @@ func (a *app) roomControlRows(width int) []railLine {
 }
 
 func (a *app) roomPanelActionAt(x, y int) string {
-	if !a.roomPanelShowing(a.viewHeight()) || !a.railAt(x, y) || a.railSeamAt(x, y) {
+	if !a.roomOpen() || !a.railAt(x, y) || a.railSeamAt(x, y) {
 		return ""
 	}
 	line, ok := a.railLineAt(y)
@@ -202,6 +202,9 @@ func (a *app) roomPanelActionAt(x, y int) string {
 
 func (a *app) roomPanelTake(action string) {
 	switch action {
+	case railMainAction:
+		a.closeRoom()
+		a.railHold = false
 	case "model":
 		if a.roomModelMovable() {
 			a.openTaskPicker(a.room.id)

@@ -231,9 +231,19 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 			{Key: "3", Label: "deny", Safe: true},
 		}
 	case QuestionTask:
+		// THE WORD IS WHAT THE ANSWER DOES, and it is spelled that way because
+		// of the clock. A proposal is the one question in this engine whose
+		// silence answers, and a surface says so by putting the pick's own
+		// label in front of the time left — `start it in 9s`. `yes in 9s`
+		// named no action at all, which is a promise a person cannot check.
 		return []AnswerOption{
-			{Key: "1", Label: "yes"},
-			{Key: "2", Label: "no"},
+			{Key: "1", Label: "start it"},
+			// AND THE ONE THAT LOSES NOTHING SAYS SO. The decline is where a
+			// proposal's safety is: no work opens, no branch is cut, nothing
+			// is spent. A surface reads that mark to know which answer a
+			// cursor may rest on and which yes is worth counting towards a
+			// habit ([AnswerOption.Safe]).
+			{Key: "2", Label: "no", Safe: true},
 		}
 	case QuestionStanding:
 		return []AnswerOption{
@@ -599,16 +609,34 @@ const answerFromHome = "home"
 // session being answered is in another process. A key the kind does not take is
 // refused here rather than written and dropped later — the surface that offered
 // the chip is the one that can still say something about it.
+//
+// THE REFUSAL IS THE KIND'S OWN LIST WHERE THERE IS ONE, AND THE QUESTION'S
+// EVERYWHERE ELSE. [AnswerOptions] answers for the eight lanes whose keys are
+// fixed by the lane rather than by what is being asked; for the rest — the
+// model's own `ask`, a running sub-harness, the stuck-turn question — THE
+// QUESTION CARRIES ITS OWN OPTIONS ([PresenceQuestion.Options], written by the
+// session that is waiting) and this table has nothing to say about them. It used
+// to refuse them anyway, so every answer given from home to a question the model
+// raised came back `could not leave that answer — open the conversation and
+// answer it there`: the chips were drawn off the question's own options, the key
+// was checked against them, and then this door threw it away. A surface has
+// already asked [PresenceQuestion.Label] before it reaches here, which is the
+// narrower list and the honest one.
 func WriteAnswer(sessionDir string, kind QuestionKind, id uint64, key string) error {
-	if _, ok := AnswerFromKey(kind, key); !ok {
+	if strings.TrimSpace(key) == "" {
+		return errUnknownAnswer
+	}
+	if _, ok := AnswerFromKey(kind, key); !ok && len(AnswerOptions(kind)) > 0 {
 		return errUnknownAnswer
 	}
 	return deliverAnswer(sessionDir, Answer{
-		At:   time.Now(),
-		Kind: kind,
-		ID:   id,
-		Key:  strings.TrimSpace(key),
-		From: answerFromHome,
+		At:        time.Now(),
+		Kind:      kind,
+		ID:        id,
+		Key:       strings.TrimSpace(key),
+		Picked:    []string{strings.TrimSpace(key)},
+		DecidedBy: DecidedByPerson,
+		From:      answerFromHome,
 	})
 }
 

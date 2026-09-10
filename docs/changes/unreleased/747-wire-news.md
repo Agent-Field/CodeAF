@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: The live rate, the via rider and the phase words reach a conversation whose engine is another process
+title: The live rate, the via rider and the phase words cross to a conversation on an engine host
 pr: 747
 surface: [chat]
 invalidates:

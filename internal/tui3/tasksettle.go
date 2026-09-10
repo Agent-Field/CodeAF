@@ -206,17 +206,47 @@ type conflictAgent interface {
 	ResolveConflict(id uint64) error
 }
 
+// settleReach is THE SECOND QUESTION AN AGENT ON A WIRE HAS TO ANSWER, and the
+// whole of why it exists is that a type assertion cannot see across one.
+//
+// A window attached to an engine host holds internal/remote's agent, which has
+// every method above on it for every connection — so the assertion answers yes
+// and says nothing whatever about the machine at the far end. It answered NO for
+// the whole of this door's life instead: the remote agent had none of the three,
+// the absence law removed the answers row, and a landing card on an ordinary
+// hosted launch drew its reason with nothing to press (#706). Now the methods
+// are there and the welcome says whether the engine behind them is, which is the
+// only honest reading — and an engine too old to have them puts the card back
+// exactly where the absence law wants it: no chips, not broken ones.
+//
+// An agent that does not answer this question at all is the in-process one, and
+// its doors are as reachable as the process is.
+type settleReach interface{ SettleSupported() bool }
+
 // settleDoors is the deciding half of the agent under this surface, when it has
-// one.
+// one and can reach it.
 func (a *app) settleDoors() (settleAgent, bool) {
 	doors, ok := a.agent.(settleAgent)
-	return doors, ok
+	if !ok || !a.settleReaches() {
+		return nil, false
+	}
+	return doors, true
 }
 
 // conflictDoors is the merge round under this surface, when it has one.
 func (a *app) conflictDoors() (conflictAgent, bool) {
 	doors, ok := a.agent.(conflictAgent)
-	return doors, ok
+	if !ok || !a.settleReaches() {
+		return nil, false
+	}
+	return doors, true
+}
+
+// settleReaches is [settleReach] asked of whatever this window is holding, with
+// silence read as yes.
+func (a *app) settleReaches() bool {
+	reach, asked := a.agent.(settleReach)
+	return !asked || reach.SettleSupported()
 }
 
 // ── the row, drawn ──────────────────────────────────────────────────────────

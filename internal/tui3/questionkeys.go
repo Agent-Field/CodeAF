@@ -74,6 +74,10 @@ const (
 	formsCard
 	formsRatify
 	formsRoom
+	// formsSheet is the batch form (questionsheet.go). Its two own keys are in
+	// this table for the reason every other key is: the manual's page and the
+	// row a person reads have to be spelt from one place.
+	formsSheet
 )
 
 // formsBlock is the three forms THIS lane draws — the pinned block above the
@@ -117,6 +121,38 @@ const (
 	// would be the surface deciding an irreversible thing on somebody's behalf
 	// — which is exactly what the question exists to prevent.
 	needHands
+	// ── the room's own conditions (lane S2) ────────────────────────────────
+	//
+	// They are HERE and not in a second table beside this one, because a key is
+	// a key wherever it is drawn: the room's `a`/`b`/`=` and its `n` have to be
+	// spelled once for the manual's key list to be true, and the day one of them
+	// moves it moves in one place.
+
+	// needChecklist is a question answered by ticking several rows.
+	needChecklist
+	// needBlanks is a sentence with holes in it. It is a condition of its own
+	// rather than a shape the room simply draws, because `tab` walks BETWEEN
+	// holes and a form with none of them would be offering a key that moves
+	// nothing — the same reason `space` is conditional beside it.
+	needBlanks
+	// needOrdered is a checklist whose ORDER is part of the answer. It is the
+	// same shape as [needChecklist] with a second promise, so the two keys are
+	// separate rows rather than one that sometimes does nothing.
+	needOrdered
+	// needPairs is a run of two-way questions.
+	needPairs
+	// needOptions is a question with answers to say "none of these" about. A
+	// reframe on a question with no list is just words, and the box already
+	// takes words.
+	needOptions
+	// needMoves is a question with something the ARROWS move that is not a
+	// cursor: a dial, or a hole with a short list of choices in it. It is a
+	// second row on [questionWalkKey] rather than a second word on the first,
+	// because `←→ pick` and `←→ move it` are different promises — one walks a
+	// cursor between two answers and the other changes the answer itself — and
+	// the two can never be true at once ([needWalk] is the confirmation kind,
+	// which carries neither).
+	needMoves
 )
 
 // The keys, by the name each is referred to by. They are constants rather than
@@ -134,13 +170,44 @@ const (
 	questionRuleKey    = "r"
 	questionUndoKey    = "u"
 	questionBlankKey   = "tab"
-	questionToggleKey  = " "
+	// questionToggleKey IS `space` AND NOT `" "`, which the table's own contract
+	// demands: "key is the key as bubbletea spells it, which is what a comparison
+	// against tea.KeyPressMsg.String() has to match" — and that library spells a
+	// space bar `space`, whichever way the press arrives. It was the byte until
+	// the room became the first form to route this key, and a comparison against
+	// the byte matched nothing at all.
+	questionToggleKey = "space"
+	// questionSendKey and questionAlikeKey are the sheet's, and they are LETTERS
+	// where a question's answers are digits because a sheet's digits are already
+	// its answers: `1`-`9` answer the row the cursor is on, so the two acts that
+	// are about the WHOLE batch cannot also be digits.
+	//
+	// AND IT IS `g` RATHER THAN THE ROOM'S `=` ([questionSameKey]) because the
+	// two are not the same act. The room's `=` says "this pair keeps coming up,
+	// answer it the same way from now on" — a rule about the future. The sheet's
+	// `g` says "these rows in front of me take the answer I just gave" — one
+	// batch, now, nothing written down.
+	questionSendKey  = "s"
+	questionAlikeKey = "g"
 	// questionWalkKey is the PAIR of arrow keys, and it is spelled as the pair
 	// because that is how it is drawn and how it is learnt: `←→ pick` is one
 	// affordance, and a row that listed two keys for one act would be a row
 	// teaching arithmetic instead of a choice. The routing reads `left` and
 	// `right` individually ([app.questionOptionKey]); this is the SPELLING.
 	questionWalkKey = "←→"
+	// The room's own keys (lane S2). `a` and `b` are the two sides of a pair and
+	// `a` is also the checklist's "take its suggestion" — the one collision the
+	// grammar has, and it is the same instinct at two shapes: take the thing on
+	// the left.
+	questionSuggestKey = "a"
+	questionPairAKey   = "a"
+	questionPairBKey   = "b"
+	questionSameKey    = "="
+	questionReframeKey = "n"
+	// questionOrderKey is the PAIR of shifted arrows, spelled as a pair for
+	// [questionWalkKey]'s reason: `shift+↑↓ order them` is one affordance. The
+	// routing reads `shift+up` and `shift+down` individually.
+	questionOrderKey = "shift+↑↓"
 )
 
 // questionKeys IS THE TABLE. Order is the order the answers row prints them in,
@@ -157,12 +224,19 @@ const (
 // on it, and let the person type. Nothing is cancelled, so the word may not say
 // cancelled.
 var questionKeys = []questionVerb{
-	{key: questionEnterKey, word: "take the pick", forms: formsBlock | formsRoom, needs: needPick, giveUp: 1},
-	{key: questionLaterKey, word: "later", forms: formsBlock | formsRoom},
-	{key: questionOpenKey, word: "open it", forms: formsLine | formsCard | formsRoom, needs: needRoom, giveUp: 3},
+	{key: questionEnterKey, word: "take the pick", forms: formsBlock | formsRoom | formsSheet, needs: needPick, giveUp: 1},
+	// THE SHEET'S TWO SIT WHERE A PERSON REACHES FOR THEM — beside `enter`,
+	// because answering a batch is open-one, answer, send — and only `g` is ever
+	// given up: `s` is the reason the sheet exists (a batch answered row by row
+	// and then not sent is a batch nobody answered), so it is ranked zero beside
+	// `esc`.
+	{key: questionSendKey, word: questionSheetSendWord, forms: formsSheet},
+	{key: questionAlikeKey, word: questionSheetSameWord, forms: formsSheet, giveUp: 2},
+	{key: questionLaterKey, word: "later", forms: formsBlock | formsRoom | formsSheet},
+	{key: questionOpenKey, word: "open it", forms: formsLine | formsCard, needs: needRoom, giveUp: 3},
 	{key: questionCommentKey, word: "change", forms: formsBlock | formsRoom, needs: needWords, giveUp: 5},
 	{key: questionCompareKey, word: "compare", forms: formsRoom, giveUp: 4},
-	{key: questionAskBackKey, word: "ask back", forms: formsCard | formsRoom, needs: needWords, giveUp: 6},
+	{key: questionAskBackKey, word: "ask back", forms: formsCard | formsRoom, needs: needWords, giveUp: 4},
 	{key: questionDecideKey, word: "you decide", forms: formsCard | formsRoom, needs: needHands, giveUp: 4},
 	{key: questionDialKey, word: "decide these from now on", forms: formsCard | formsRoom, needs: needDial, giveUp: 7},
 	{key: questionWalkKey, word: "pick", forms: formsBlock | formsRoom, needs: needWalk},
@@ -173,8 +247,46 @@ var questionKeys = []questionVerb{
 	// ratify line whose undo is off the row is a ratify line with no undo.
 	{key: questionRuleKey, word: "make it a rule", forms: formsBlock | formsRoom, needs: needRule, giveUp: 2},
 	{key: questionUndoKey, word: "undo", forms: formsRatify | formsRoom, needs: needUndo, giveUp: 2},
-	{key: questionBlankKey, word: "next blank", forms: formsRoom, giveUp: 6},
-	{key: questionToggleKey, word: "tick it", forms: formsRoom, giveUp: 6},
+	{key: questionBlankKey, word: "next blank", forms: formsRoom, needs: needBlanks, giveUp: 6},
+	// `space` IS THE CHECKLIST'S ANSWER AND IS RANKED WITH THE ANSWERS, which is
+	// this table's own law read on the one shape that was breaking it: "The
+	// options are never dropped at all: an offer with an answer missing is an
+	// offer that hides an answer" ([app.questionOffer]). Every other shape's
+	// answer key is already ranked zero — `a`/`b` on a pair, `←→` on a dial —
+	// and this one was ranked sixth, so at a hundred columns a checklist gave up
+	// the only verb that works it and drew as an ordinary list. Measured on a
+	// real screen: four answers, no marks anybody could act on, and `[c] change`
+	// kept in its place.
+	{key: questionToggleKey, word: "tick it", forms: formsRoom, needs: needChecklist},
+	// The room's own four. `a` is the one collision in the grammar — "take its
+	// suggestion" on a checklist and "the first one" on a pair — and it is two
+	// rows here rather than one key with two words, because the offer row prints
+	// the word and the row a person reads may not be ambiguous even where the
+	// key is. Which of the two is live is decided by which shape is on screen,
+	// and the needs below are what decide it.
+	{key: questionSuggestKey, word: "take its suggestion", forms: formsRoom, needs: needChecklist, giveUp: 5},
+	{key: questionOrderKey, word: "order them", forms: formsRoom, needs: needOrdered, giveUp: 7},
+	{key: questionPairAKey, word: "the first", forms: formsRoom, needs: needPairs},
+	{key: questionPairBKey, word: "the second", forms: formsRoom, needs: needPairs},
+	{key: questionSameKey, word: "same either way", forms: formsRoom, needs: needPairs, giveUp: 3},
+	// THE ANSWER THAT IS NOT ON THE LIST. It is last in the table and nearly
+	// first to be given up, because it is the rarest answer to any question —
+	// and it is on the row at all because a person who thinks the question is
+	// wrong has no other way to say so without it reading as a refusal.
+	{key: questionReframeKey, word: "none of these", forms: formsRoom, needs: needOptions, giveUp: 8},
+	// `←→ move it` IS ON THE CARD AS WELL AS IN THE ROOM, because the card draws
+	// the sentence with a hole in it too — a task proposal's model shortlist is
+	// exactly that shape ([session.TaskModelShape]). It is a second row on
+	// [questionWalkKey] rather than a second word on the first for the reason
+	// [needMoves] states: `pick` walks a cursor between two answers and `move it`
+	// changes the answer itself, and the two are never true at once.
+	{key: questionWalkKey, word: "move it", forms: formsCard | formsRoom, needs: needMoves},
+	// INSIDE THE ROOM `o` OPENS AN ANSWER RATHER THAN THE PAGE, which is why it
+	// is a second row rather than a second word: `[o] open it` on a card is a
+	// promise about a page, and repeating that promise on the page itself would
+	// be an offer to go where somebody already is. It is the first thing a narrow
+	// row gives up, because every answer already wears its own ▸/▾.
+	{key: questionOpenKey, word: "open this answer", forms: formsRoom, needs: needOptions, giveUp: 9},
 }
 
 // questionVerbFor is one key's row in the table, by key. It is what a caller
@@ -186,6 +298,22 @@ func questionVerbFor(key string) (questionVerb, bool) {
 		}
 	}
 	return questionVerb{}, false
+}
+
+// questionSheetKeyWord is one key's word ON A SHEET, which is the table's word
+// for every key but `enter`.
+//
+// `enter` IS ONE KEY WITH ONE MEANING AND TWO SENTENCES. It always means "act on
+// what the cursor is on"; on the block that is the answer the asker recommends,
+// and on a sheet the cursor is on a ROW rather than an answer, so acting on it
+// opens that row. The substitution is done here for the same reason `r`'s is
+// done in [app.questionVerbParts] — the table holds one row per key, and a word
+// that depends on what is being drawn is filled in by the drawer.
+func questionSheetKeyWord(verb questionVerb) string {
+	if verb.key == questionEnterKey {
+		return questionSheetOpenWord
+	}
+	return verb.word
 }
 
 // questionKeyWord is one key's word, or "" where the table does not have it.
@@ -237,6 +365,14 @@ func (a *app) questionAnswerKeys(q questionShown, form questionForms) []question
 func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 	switch need {
 	case needPick:
+		if q.question.Ask == session.AskConfirmation {
+			// A CONFIRMATION ALWAYS HAS A PICK AND IT IS THE CURSOR. It is the
+			// one shape on this block where the person's own keyboard chooses
+			// which answer `enter` takes ([questionSafeAt] puts it on the answer
+			// that loses nothing), so the key is always offered — where every
+			// other question offers it only when the ASKER recommended something.
+			return true
+		}
 		return q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != ""
 	case needRule:
 		return q.rule
@@ -252,8 +388,52 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 	case needWalk:
 		return q.question.Ask == session.AskConfirmation && len(q.question.Options) > 1
 	case needHands:
-		return q.question.Ask != session.AskConfirmation &&
-			q.question.Stakes != session.StakesIrreversible
+		if q.question.Ask == session.AskConfirmation ||
+			q.question.Stakes == session.StakesIrreversible {
+			return false
+		}
+		// AND A PERMISSION THAT IS NOT CHEAP TO TAKE BACK IS NEVER HANDED OVER.
+		// The approval gate asks because a policy said a person has to see this
+		// call; `you decide` on it would give that decision straight back to the
+		// thing the gate was put in front of, which is the gate answering itself
+		// with one keystroke. docs/design/questions/DESIGN.md's kind table says
+		// the same about the clock — a permission may act on its own "only when
+		// Stakes == reversible" — and a key that skips a question is a clock a
+		// person wound by hand.
+		if q.question.Ask == session.AskPermission {
+			return q.question.Stakes == session.StakesReversible
+		}
+		return true
+	case needChecklist:
+		return q.question.Input.Kind == session.InputChecklist
+	case needBlanks:
+		return q.question.Input.Kind == session.InputBlanks && len(q.question.Input.Blanks) > 1
+	case needOrdered:
+		// AN ORDER KEY IS OFFERED ONLY WHERE THERE IS AN ORDER TO CHANGE. Two
+		// rows have one arrangement and no second one, so the key would move a
+		// list a person cannot see move.
+		return q.question.Input.Kind == session.InputChecklist && len(q.question.Options) > 2
+	case needPairs:
+		return q.question.Input.Kind == session.InputPairs
+	case needOptions:
+		return len(q.question.Options) > 0
+	case needMoves:
+		// A CONFIRMATION'S ARROWS ARE ITS CURSOR AND NOTHING ELSE ([needWalk]),
+		// which is stop.go's law: the cursor starts on the answer that loses
+		// nothing and the arrows are how it is moved. So this condition steps
+		// aside for that kind rather than the two sharing `←→` on one screen.
+		if q.question.Ask == session.AskConfirmation {
+			return false
+		}
+		if q.question.Input.Dial != nil {
+			return true
+		}
+		for _, blank := range q.question.Input.Blanks {
+			if len(blank.Choices) > 0 {
+				return true
+			}
+		}
+		return false
 	}
 	return true
 }

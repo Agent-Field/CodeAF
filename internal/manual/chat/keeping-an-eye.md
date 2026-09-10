@@ -8,6 +8,25 @@ something behind that keeps working after this window is closed.
 The tool behind all of them is `stand`. You never type it; aforge recognises the
 words. Nothing is ever set up without a card you answer.
 
+## It asked while I was away
+
+**Ten minutes with nobody touching the keyboard** makes a window away — measured from the
+last key, not from which window is in front.
+
+After that, a question this project has a rule for may take its own recommended answer,
+and its receipt says `aforge, on your settings` decided it. Only a **reversible** question
+with a recommended answer can go that way. Everything else stays open: it is on home, the
+desktop notification says the conversation is `waiting on you`, and the terminal bell rings
+**once** — only for a question something is blocked on, and never twice for the same one.
+
+Two kinds never run on a clock however you set it up: **confirmation always asks**, because
+it is what is asked before something destructive, and **clarification never runs on a
+clock**, because the answer is something only you have.
+
+`/autonomy` shows and changes those rules, per project. A question that is about to be
+taken by one says `your rule` on its own row while the clock runs — there are no hidden
+rules.
+
 ## Remind me about something
 
 Say it the way you would say it to a person: "remind me at 6 to leave", "remind
@@ -201,6 +220,20 @@ The mistake it exists to catch is arithmetic, not carelessness: a reminder said
 as "in 1 minute — 23:11" lands at 23:11:11, and an end taken from the same words
 lands at 23:11:00 — eleven seconds too early. That is why the refusal spells
 both stamps out to the second.
+
+**And the end has to outlive a check, not just the moment.** Nothing watches an
+item continuously: a check runs every five minutes, so an end that falls between
+the moment and the next check is found expired at the same instant it would have
+been found due. An end twenty-five seconds after a one-minute reminder is after
+the moment and still dead, and the second refusal says so:
+
+```
+Invalid arguments: rails.expires 21:05:00 -04:00 is less than one check after
+when.at 21:04:35 -04:00, so a check can find it out of time at the same moment
+it would have found it due. Checks are 5m0s apart. Put the end at least that far
+after the moment, or leave it out — a one-off retires as it fires and needs no
+end at all.
+```
 
 **A one-off reminder never needs an end.** It retires the moment it fires, and
 if nothing ever picks it up it stops being watched a day after its moment
@@ -843,7 +876,9 @@ reasons, in the order worth checking:
   terminal. It is never delivered into the `ask here` pane on home.
 - **Nothing was open when it fired**, so it is waiting: home shows the project
   with `◆ N things since you left`, and the rows appear the moment you open a
-  conversation there.
+  conversation there. Home's own `since you left` block names the firing as well
+  — `fired 3 minutes ago — it told you` — and it does so for a one-off too, which
+  is over and off every list by the time you get back.
 - **It has not fired yet.** A window checks its items every five minutes, the
   first check five minutes after it opened, so a one-minute reminder can arrive
   up to five minutes late. `/status` shows `◦ N standing orders` while something

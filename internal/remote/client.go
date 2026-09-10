@@ -171,6 +171,17 @@ type Client struct {
 	// (clientlanes.go).
 	titles *stream
 
+	// questions is version 14's questions lane, held on exactly the terms
+	// designs is: one at a time, replaced rather than added to, and nil for a
+	// surface that draws no questions or a connection that has ended
+	// (questionlane.go).
+	questions *stream
+
+	// asked is what this surface believes is still open on that lane, kept so
+	// [Agent.OpenQuestions] can be answered from memory rather than from a
+	// round trip (questionlane.go says why a replica and not a call).
+	asked questionsOpen
+
 	// following carries the turns this surface did not start, so the screen can
 	// draw one. It is BUFFERED AND DROPS WHEN FULL: the reader goroutine must
 	// never block, and a surface that is not draining this is one that does not
@@ -765,6 +776,13 @@ func (c *Client) read() {
 			}
 		case string(laneTitle):
 			c.titleFrame(frame.Payload)
+		case string(laneQuestion):
+			// One event off the questions lane: a question raised, withdrawn or
+			// answered, whole. The replica is moved on THIS goroutine, before
+			// the surface is handed the event, so [Agent.OpenQuestions] and the
+			// block a person is looking at can never disagree about what is
+			// still open (questionlane.go).
+			c.questionFrame(frame.Payload)
 		case string(laneDesign):
 			// One event off the harness lane: a design card, a subharness intake
 			// card, or a note about one. Queued for the surface's loop for the
@@ -1537,7 +1555,14 @@ func (a *Agent) open(ctx context.Context, method string, args any) (<-chan sessi
 // the interface says so, and a key that is pressed to stop something must not
 // itself become a thing that blocks. A dead connection swallows it, which is
 // exactly what a dead connection does to the turn as well.
-func (a *Agent) Interrupt() { _, _ = a.c.call(nil, MethodInterrupt, nil) }
+func (a *Agent) Interrupt() { a.InterruptFor(session.StopByPerson) }
+
+// InterruptFor is the same stop with the door on it, for the machinery stops
+// that are not a person. An engine too old to read the argument sees the stop it
+// always saw.
+func (a *Agent) InterruptFor(door session.StopDoor) {
+	_, _ = a.c.call(nil, MethodInterrupt, InterruptArgs{Door: string(door)})
+}
 
 // AnswerLaneOffer answers the question a stalled PINNED lane raises: the
 // machine this person named has gone quiet, there is somewhere else to go, and
@@ -1700,6 +1725,35 @@ func (a *Agent) ResolveConsentRemember(id uint64, allow bool, scope session.Cons
 // of the difference.
 func (a *Agent) ResolveStanding(id uint64, answer session.StandingAnswer) {
 	_, _ = a.c.call(nil, MethodStandingResolve, StandingArgs{ID: id, Answer: answer})
+}
+
+// ResolveQuestion answers ONE QUESTION OF ANY LANE, whole, over the wire.
+//
+// IT IS THE METHOD THAT MAKES A QUESTION ANSWERABLE FROM A SURFACE AT ALL, and
+// [Agent.ResolveStanding]'s note above says why in the older case: internal/tui3
+// asserts an OPTIONAL interface on whatever agent it is holding and draws a page
+// that can be READ and not answered for one that does not implement it. Every
+// local chat surface holds this type — the engine runs in its own process even
+// on this machine — so without this the question page was a page nobody could
+// answer anywhere.
+//
+// THE ERROR COMES BACK. Every other resolver here drops it, because their
+// answers cannot be refused: an approval either applies or the question is
+// already gone. A question CAN be refused with something a person needs to read
+// — the work it was about finished, somebody else answered it first — and the
+// page draws exactly that sentence where its foot was.
+func (a *Agent) ResolveQuestion(answer session.Answer) error {
+	_, err := a.c.call(nil, MethodQuestionResolve, QuestionArgs{Answer: answer})
+	return err
+}
+
+// SetAutonomy is `D`: it says which shape of question may be answered without
+// asking, from now on, in this project. It carries the refusal back for
+// [Agent.ResolveQuestion]'s reason — "clarification always waits for an answer"
+// and "this conversation has no project" are both sentences a person has to read.
+func (a *Agent) SetAutonomy(kind session.AskKind, policy session.Policy) error {
+	_, err := a.c.call(nil, MethodSetAutonomy, AutonomyArgs{Kind: kind, Policy: policy})
+	return err
 }
 
 // ResolveHarness answers one sub-harness offer.

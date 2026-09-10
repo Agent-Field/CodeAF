@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -395,7 +396,7 @@ func TestSpeakerVoicesAreDifferentiatedWithinThePalette(t *testing.T) {
 // ── defect #7 · tool-call block anatomy in the flight recorder ──────────────
 
 func TestToolCallBlockSeparatesCallLineFromGutteredOutput(t *testing.T) {
-	call := toolCallBlock(`sh {"cmd":"go test ./..."}`, 80)
+	call := toolCallBlock(tokens.Plain, `sh {"cmd":"go test ./..."}`, 80)
 	if len(call.brief) < 2 || call.brief[0] != "" {
 		t.Fatalf("call block must lead with a breathing line: %#v", call.brief)
 	}
@@ -404,23 +405,23 @@ func TestToolCallBlockSeparatesCallLineFromGutteredOutput(t *testing.T) {
 		t.Fatalf("call line lost its glyph+name+command anatomy: %q", line)
 	}
 
-	ok := toolResultBlock("1438B: total 3984⏎drwx------", 80)
+	ok := toolResultBlock(tokens.Plain, "1438B: total 3984⏎drwx------", 80)
 	okText := strings.Join(ok.brief, "\n")
 	if !strings.Contains(okText, "│ ") || !strings.Contains(okText, "1.4KB") {
 		t.Fatalf("output is not guttered under the call: %q", okText)
 	}
-	if strings.Contains(okText, "✗") {
+	if strings.Contains(okText, tokens.GlyphFailed) {
 		t.Fatalf("success grew a failure marker: %q", okText)
 	}
 
-	failed := toolResultBlock("902B ERROR: exit status 2⏎go: build failed", 80)
+	failed := toolResultBlock(tokens.Plain, "902B ERROR: exit status 2⏎go: build failed", 80)
 	failedText := strings.Join(failed.brief, "\n")
-	if !strings.Contains(failedText, "✗") || !strings.Contains(failedText, "exit status 2") {
-		t.Fatalf("failure lost its ✗ marker or detail: %q", failedText)
+	if !strings.Contains(failedText, tokens.GlyphFailed) || !strings.Contains(failedText, "exit status 2") {
+		t.Fatalf("failure lost its %q marker or detail: %q", tokens.GlyphFailed, failedText)
 	}
 
 	// A collapsed long output ends in the truncation glyph and expands whole.
-	long := toolResultBlock("9000B: "+strings.Repeat("word ", 200), 40)
+	long := toolResultBlock(tokens.Plain, "9000B: "+strings.Repeat("word ", 200), 40)
 	if !long.expandable() || !strings.Contains(strings.Join(long.brief, "\n"), "⋯") {
 		t.Fatalf("long output did not collapse behind ⋯: %#v", long.brief)
 	}
@@ -428,7 +429,7 @@ func TestToolCallBlockSeparatesCallLineFromGutteredOutput(t *testing.T) {
 
 func TestToolCallLineTruncatesAnsiSafely(t *testing.T) {
 	command := strings.Repeat("go test ./internal/tui -run Everything ", 8)
-	block := toolCallBlock(`sh {"cmd":"`+command+`"}`, 40)
+	block := toolCallBlock(tokens.Plain, `sh {"cmd":"`+command+`"}`, 40)
 	for _, line := range block.brief {
 		if width := lipgloss.Width(line); width > 40 {
 			t.Fatalf("call line is %d cells, budget 40: %q", width, line)
@@ -569,7 +570,7 @@ func TestDockRendersItsThreeStatesWithExactFrameHeight(t *testing.T) {
 	model.setSize(90, 24)
 	_ = model.View()
 	dock = model.renderActivityBar()
-	if !strings.Contains(dock, "▸ 6 running · 1 waiting ⚑") || lipgloss.Height(dock) != 1 {
+	if !strings.Contains(dock, "▸ 6 running · 1 waiting "+tokens.GlyphNeedsHuman) || lipgloss.Height(dock) != 1 {
 		t.Fatalf("overflow dock should be a one-line summary: %q", dock)
 	}
 	if view := model.View(); lipgloss.Height(view) != 24 {

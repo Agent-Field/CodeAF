@@ -110,6 +110,7 @@ const (
 	GNeedsHuman
 	GWaitsOn
 	GWithdrawn
+	GAssumed
 	GCollapsed
 	GExpanded
 	GScopeUp
@@ -119,6 +120,7 @@ const (
 	GCut
 	GPromptChat
 	GPromptSteer
+	GReplyIn
 	GThought
 	GShell
 	GSearch
@@ -155,6 +157,10 @@ const (
 	GGitBranch
 	GModel
 	GSpend
+	GFileDocument
+	GFileImage
+	GFileAudio
+	GFileVideo
 	GProseBullet
 	GProseQuote
 	GCodeGutter

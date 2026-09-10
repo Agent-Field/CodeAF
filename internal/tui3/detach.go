@@ -124,16 +124,17 @@ type aside struct {
 // agent in a test that never heard of the Watch… variants. Calling through this
 // struct is always safe.
 type laneStops struct {
-	tasks   func()
-	wakes   func()
-	designs func()
-	runs    func()
-	titles  func()
+	tasks     func()
+	wakes     func()
+	designs   func()
+	runs      func()
+	titles    func()
+	questions func()
 }
 
 // leave gives every standing lane back and forgets the stops.
 func (l *laneStops) leave() {
-	for _, stop := range []func(){l.tasks, l.wakes, l.designs, l.runs, l.titles} {
+	for _, stop := range []func(){l.tasks, l.wakes, l.designs, l.runs, l.titles, l.questions} {
 		if stop != nil {
 			stop()
 		}
@@ -276,8 +277,8 @@ func (a *app) detachConversation() *aside {
 		cursor = len([]rune(side.draft))
 	}
 	side.draftCursor = &cursor
-	if left, ok := a.askLeft(); ok {
-		side.askLeft, side.askPaused = left, a.askPaused
+	if left, held, ok := a.questionReadingLeft(); ok {
+		side.askLeft, side.askPaused = left, held
 	}
 	if a.room != nil {
 		side.room = a.room.id
@@ -327,7 +328,8 @@ func (a *app) clearConversation() {
 	// index into a transcript that has been replaced points at somebody else's
 	// row, and a confirmation arriving after the swap would take the mark off it.
 	a.echoAt = -1
-	a.asks, a.follows = nil, nil
+	a.dropAsks()
+	a.follows = nil
 	// A warm ctrl+c names what a second press would stop IN THIS CONVERSATION,
 	// and after this line that is a different one (quitarm.go).
 	a.disarmQuit()
@@ -564,6 +566,12 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	if joined != nil {
 		cmds = append(cmds, joined)
 	}
+	// AND A QUESTION THIS CONVERSATION WAS NEVER ANSWERED IS ASKED AGAIN. It is
+	// last because it is the one thing here that can START work rather than draw
+	// what is already there, and it must see the screen exactly as the replay
+	// above left it — including whether that replay handed this window a turn
+	// that is still running (takeover.go's [app.resumeStoppedTurn]).
+	cmds = append(cmds, a.resumeStoppedTurn())
 	a.touch()
 	return tea.Batch(cmds...)
 }

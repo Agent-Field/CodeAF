@@ -672,6 +672,21 @@ type v3Options struct {
 	// posture every session has always had, where the model stopping is the
 	// session stopping.
 	Budget session.Budget
+	// NoStandingTicks says THIS PROCESS IS NOT THE ONE THAT KEEPS TIME for the
+	// machine's standing items, however complete the config it is about to build.
+	//
+	// It exists for exactly one caller, and the zero value is the posture every
+	// other door has always had. On the engine road the screen and the sessions
+	// live in two processes: the ENGINE holds this project's conversations, and a
+	// firing is delivered into an open conversation of the same project through
+	// the live registry of the process that ran the pass (internal/standing, and
+	// internal/manual/chat/keeping-an-eye.md's three roads). So a client that
+	// ticked would win the store's lock every so often and fire an item into a
+	// registry holding nothing but its own errand — filing the words in the
+	// project's inbox for the next launch while the person sat in front of the
+	// conversation they were meant to land in. One process keeps time, and on
+	// that road it is the one holding the conversations.
+	NoStandingTicks bool
 }
 
 // joinV3Notices puts the launch's dim lines on one row, in the order they were
@@ -1002,7 +1017,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// (chatv3_standing.go). It is here, beside [startPlaceSweep], because every
 	// v3 door assembles through this function — and the first pass is a whole
 	// interval away, so a launch that exits immediately has ticked nothing.
-	if cfg.Standing != nil {
+	if cfg.Standing != nil && !opts.NoStandingTicks {
 		startStandingTicks(cfg.Standing.Store)
 	}
 
@@ -2232,6 +2247,28 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 		fmt.Fprintln(os.Stderr, notice+": "+cfg.SessionFile)
 	}
 	defer func() { _ = agent.Close() }()
+
+	// A DECISION TAKEN ON NOBODY'S BEHALF IS SAID OUT LOUD.
+	//
+	// With nobody at a keyboard the question gate applies the policy and answers
+	// itself (internal/session's tools_ask.go), and DESIGN.md's HEADLESS law is
+	// that this is PRINTED: `asked: <head> → 1 (default · nobody to ask)`. The
+	// sentence rides the answer, and the answer rides the questions lane rather
+	// than the turn's stream, because a question outlives the turn that raised
+	// one — so it is read here, beside the turn, and written to stderr with the
+	// tool lines rather than into the reply a caller is piping somewhere.
+	questions, stopQuestions := agent.WatchQuestions()
+	defer stopQuestions()
+	guard.Go("chatv3/once-questions", func() {
+		for event := range questions {
+			if event.Kind != session.EventQuestionAnswered || event.Answer == nil {
+				continue
+			}
+			if line := strings.TrimSpace(event.Answer.From); line != "" {
+				fmt.Fprintln(os.Stderr, line)
+			}
+		}
+	})
 
 	events, err := agent.Submit(ctx, text)
 	if err != nil {

@@ -1597,27 +1597,16 @@ func (a *app) guardSend(revive bool) tea.Cmd {
 
 // ── the guard, drawn ────────────────────────────────────────────────────────
 
-// ONE SLOT, TWO QUESTIONS. The stop confirmation (stop.go) is drawn in exactly
-// the rows the steer guard is drawn in, and the three functions below are where
-// that is arranged: the frame asks the guard how tall it is, what it says, and
-// what each of its rows IS for the pointer, and it never learns there are two
-// kinds of question down there.
-//
-// They share rather than stack because they are the same shape of thing — the
-// surface holding a keystroke back until it is told whether to act on it — and
-// because they can never be up together: a guard is raised by an enter in a
-// room's box, and the stop card is raised by a key that is only ever taken over
-// an empty one.
+// ONE SLOT, ONE QUESTION NOW. The stop confirmation (stop.go) and the tab-close
+// card (tabclose.go) were drawn in exactly these rows, and both are the question
+// block's (question.go) — so what is left here is the steer guard alone, which
+// is not a question the block draws: it is the surface holding a SENTENCE back
+// until it is told where to send it, and what it offers are two destinations
+// rather than two answers.
 
 // guardHeight is how many rows the question takes: the offer, and the engine's
 // reason under it when there is one.
 func (a *app) guardHeight() int {
-	if n := a.tabCloseHeight(); n > 0 {
-		return n
-	}
-	if n := a.stopHeight(); n > 0 {
-		return n
-	}
 	if !a.guarding() {
 		return 0
 	}
@@ -1627,29 +1616,17 @@ func (a *app) guardHeight() int {
 	return 2
 }
 
-// guardMark says what one row of the slot is for the pointer. The steer guard
-// answers to no press — it is three keys and nothing else — and the stop card's
-// answers are a row somebody can put a finger on.
-func (a *app) guardMark(at int) chromeRow {
-	if a.closingTab() {
-		return chromeRow{kind: chromeTabClose, index: at}
-	}
-	if a.stopping() {
-		return chromeRow{kind: chromeStop, index: at}
-	}
-	return chromeRow{}
-}
+// guardMark says what one row of the slot is for the pointer, and the answer is
+// NOTHING: the steer guard is three keys and nothing else. It is a function
+// rather than a bare zero at the call site because the frame asks every block on
+// the chrome the same question, and a slot that answered it differently would be
+// the one place a reader has to check.
+func (a *app) guardMark(int) chromeRow { return chromeRow{} }
 
 // guardRows draws it, in the question hue the approval block wears and for the
 // same reason: this is the surface blocked on a keyboard, and the one thing on
 // screen that is blocked on you must not look like the things that are not.
 func (a *app) guardRows(width int) []string {
-	if rows := a.tabCloseRows(width); len(rows) > 0 {
-		return rows
-	}
-	if rows := a.stopRows(width); len(rows) > 0 {
-		return rows
-	}
 	if !a.guarding() {
 		return nil
 	}
@@ -3309,6 +3286,23 @@ func (a *app) roomRows(width int) []row {
 	// [app.roomGuestStale]).
 	if a.roomGuestStale() {
 		out = append(out, row{text: a.pal.dim(fit(roomGuestStaleWord, inner)), entry: -1})
+	}
+	// AND A CONVERSATION THAT HAS STOPPED AND IS WAITING ON SOMEBODY SAYS SO,
+	// under what it has done so far. The roster cannot say it — a node sitting on
+	// a question is still `running` — so a page reading somebody else's work drew
+	// a clock over work that had not moved since somebody was asked something
+	// (taskowner.go's questions lane).
+	//
+	// IT IS DIM AND NOT AMBER, AND THAT IS THE HUE LAW RATHER THAN AN OVERSIGHT.
+	// Amber is waiting on YOU and nothing else (docs/design/questions/DESIGN.md);
+	// this question is waiting on the window that owns the work, this page has no
+	// key that would answer it, and a row here in the colour that means "press
+	// something" would be asking a person for a keystroke that does not exist.
+	if asked, waiting := a.roomGuest().waiting(); waiting {
+		if head := strings.TrimSpace(asked.Head); head != "" {
+			line := a.icon(tokens.GNeedsHuman) + " " + head + railSep + roomGuestAskedWord
+			out = append(out, row{text: a.pal.dim(fit(line, inner)), entry: -1})
+		}
 	}
 	if room.done {
 		// THE FOOT. A room on a node that has landed says so once, at the bottom,

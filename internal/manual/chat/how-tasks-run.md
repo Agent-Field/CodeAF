@@ -1337,7 +1337,7 @@ read-only checker** is put in a clean restore of what the task wrote, runs the c
 declared, reads the diff, and answers. Only a pass merges.
 
 The checker has no shared context and no memory of the work. Its whole world is the
-acceptance you set, the task's own claim (labelled as a claim, not as evidence), the list
+acceptance you set, the task's full bounded conclusion (labelled as a claim, not as evidence), the list
 of files written, and where to look. **The brief is deliberately withheld** so it grades
 the contract, not the effort.
 
@@ -2202,10 +2202,13 @@ ties alphabetically — the plain name before its variants.
 `task 7 started on anthropic/claude-opus-5: <title>`.
 
 **Two to four matches** get settled by you, on the proposal you are already being shown.
-The closest match leads, and that is what silence takes. Only a member of that shortlist
-can win: naming anything else, an empty answer, and the clock all fall back to the leading
-member. The task is admitted with one model, never a set. The shortlist is capped at 4 —
-the fifth would turn a proposal into a picker.
+It is one line above the proposal's answers — `run it on [ anthropic/claude-opus-5 ▾ ]` —
+and `←`/`→` walk it. The closest match leads, and that is what silence takes. Moving it
+answers nothing: the countdown goes on running, and the model in the hole when you answer
+is the one the work starts on. Only a member of that shortlist can win: naming anything
+else, an empty answer, and the clock all fall back to the leading member. The task is
+admitted with one model, never a set. The shortlist is capped at 4 — the fifth would turn
+a proposal into a picker.
 
 **If no model was named**, the task runs on `task.model` from settings when that is set,
 otherwise on **the model the conversation was on at the moment the task was admitted**.
@@ -2755,8 +2758,8 @@ true.
 · the assistant, alongside grep (…): "<what it said as it called that tool>"
 
 CALLS THAT HAVE ALREADY RUN
-· grep {"pattern":"StreamCSV"} — came back; grep call-3 in <journal path>
-· bash {"command":"go build ./..."} — FAILED: undefined: streamCSV; grep call-4 in <journal path>
+· grep {"pattern":"StreamCSV"} — came back; read <full result path>
+· bash {"command":"go build ./..."} — FAILED: undefined: streamCSV; read <full result path>
 
 THE PERSON'S ORIGINAL MESSAGE
 The restatement above is bounded. Their original words are at this path and line — read them if that is not enough. The brief still governs what ships.
@@ -2776,7 +2779,9 @@ see *Can the task see the original request* below.
 a bounded selection: at most eight lines, each cut to about 600 characters with the middle
 marked `[…]` when it is longer, and at most six calls that had already run. Each line says
 who said it and names the session journal it came out of, so the worker can grep the words —
-or, for a call, the call id — and read the whole of it. The selection is made newest-first,
+or follow a call's full-result file — and read the whole of it. A result file names the
+specific output even if a provider reuses a call id. When only a journal reference is
+available, match the call arguments as well as its id. The selection is made newest-first,
 so the last thing you said before the work started is the line that always survives; older
 ones are dropped when the budget runs out. There is no line number: finding one would mean
 reading the whole journal every time a task starts.
@@ -2962,3 +2967,29 @@ pending names before closing its records. Those calls share up to two seconds
 of shutdown time, in addition to the existing waits for the current turn, task
 graph and background jobs. A provider that ignores cancellation can outlast
 that grace; this is a bounded wait, not a guarantee about every external process.
+
+## Does checking see the full task answer and the right tool results?
+
+Checking receives the worker's full bounded conclusion, not the shortened card summary.
+A longer answer carries its existing full-result address. A later repair or merge attempt
+replaces that conclusion; an attempt that said nothing does not reuse an older success.
+If a merge attempt is rolled back, the next check is told that its changes were undone.
+
+Tool results stay paired with the call that produced them, even when the model reuses
+an identifier in a later round. New workers can follow the specific full-result file;
+reopening a conversation without its in-memory success/failure metadata says the outcome
+is unknown. An unanswered call never borrows another call's successful result.
+
+The checker is told its actual working directory and comparison. A completed committed
+change is not described as an uncommitted staged diff. With no declared executable check,
+it reads the available files and evidence; it is not told to install dependencies it
+cannot install. Existing current checks travel through a handoff of the whole request;
+checks for a larger request do not automatically become a smaller part's checks.
+
+## Can the completion reader see what I just wrote?
+
+The completion reader sees the newest completed write or edit's small submitted argument
+object beside its matching tool result, within the existing context budget. A larger
+input is explicitly marked omitted, rather than shown as a partial object. Earlier
+failures remain part of the evidence. The model continuing the work is told to check a
+reader's objection against the actual work before changing an already-correct result.

@@ -968,6 +968,17 @@ never dialled sends no reasoning field at all. The conversation you set the item
 still does not reach it — that is what keeps an install dialled to `max` from turning
 every check on the machine into a deep pass.
 
+## Thinking between tool calls
+
+A completed model reply keeps the reasoning supplied by that model alongside its
+tool calls, so the next step can continue from the same work. Streamed pieces of
+one text or summary block are joined before that history is sent back. Separate
+blocks stay separate, and encrypted reasoning is retained without rewriting it.
+
+This does not choose a thinking level or add a token budget. An unfinished attempt
+does not supply a completed reasoning continuation, and switching models does not
+send one model's private reasoning to another.
+
 ## What a request carries when nobody has chosen anything
 
 Nothing about how the model generates. A turn you have not dialled goes out with the
@@ -1266,6 +1277,66 @@ broken, and waiting eight seconds gets you the same nothing. What helps is being
 different machine, which is what the next try asks for. Only when all four come back empty
 does the turn end. Before this, one empty reply ended a whole turn, and a measured run
 stopped eighteen minutes in with hours of budget unspent.
+
+## My reply just stopped and nothing was said — a turn that ended with no answer, no error and no note, my answer disappeared when I opened the conversation in another window, who ended my reply, do I have to type my question again
+
+If a reply ends without arriving, aforge says one sentence about it. There is
+exactly one case where it says nothing, and that is when **you** stopped it: the
+screen already drew your stop, and repeating it back to you would be noise.
+
+Everything else is machinery taking a reply away from somebody who was waiting
+for it, and each door has its own sentence:
+
+| what ended it | what you read |
+| --- | --- |
+| this conversation was opened in another window | `this conversation was opened in another window, so the reply stopped here — ask again to pick it up`, said in the window letting go. The window you moved it to asks your question again by itself — see below |
+| the conversation was closed or left under the turn | `the reply stopped when this conversation was left — ask again to pick it up` |
+| your stop took too long and was let go of | `the reply was let go of after the stop took too long` |
+| you stopped all the work in the conversation | `everything running here was stopped, the reply with it` |
+| nobody was left watching a conversation on another machine | `nobody was left watching this conversation, so the reply stopped — ask again to pick it up` |
+
+**You do not have to type your question again when a conversation moved.** If the
+reply had said *nothing at all* when another window took the conversation — which
+is what a long stretch of thinking looks like, because working is not kept — the
+window it arrived in asks your question again for you, straight away, through the
+ordinary turn door. Your question is on the page once, where it always was; under
+it is one dim line,
+
+```
+  the reply stopped when this conversation moved — asking again
+```
+
+and then the answer. The stopped attempt's thinking and any half-written words
+are gone, because nothing kept them.
+
+**A reply that had already started is not asked again.** Whatever had been
+written is in the transcript that arrives with the conversation, and tasks that
+were running land `paused — it resumes` and start again from their checkpoint —
+so nothing is run a second time. This only ever fires on the one shape the
+conversation's own file ends in: your words, and then aforge stopping the turn
+that was answering them with nothing said. A turn **you** stopped is never asked
+again, and neither is one that ended any other way — a conversation you left, a
+window that closed, a session on another machine nobody was watching. Those keep
+their sentence and wait for you.
+
+Whatever the door, the ending is also written into the conversation's own file
+as a failed call naming the door — for whoever reads the file afterwards, not
+for the screen: an error line is never replayed into a conversation, so a
+reopened conversation shows what was said and not a note about how the last turn
+ended. The model-call log names it too. A row that used to read `context
+canceled` now reads `context canceled (turn ended: taken over)`, which is the
+one thing an autopsy of a vanished reply needs and did not have. `aforge logs`
+is where to look.
+
+**A request cut out from under a turn that is still going is asked again rather
+than reported.** You see `the reply was cut short — asking again`, the text that
+had arrived is thrown away, and the turn carries on. Nothing is silently lost:
+if every attempt is spent, the turn ends with the reason said out loud.
+
+Before 2026-09-09 none of this existed. A turn whose reply was taken away ended
+with no answer, no error, no note and an idle status line, and there was no way
+— on the screen, in the transcript, or in the log — to tell your own stop from a
+second window taking the conversation over.
 
 ## Why did my task not move to a stronger model — trouble with the connection never buys a dearer model
 
@@ -2690,10 +2761,18 @@ itself.
 a call goes *out* as well as when it comes back: a planning call four minutes into a
 65,536-token ceiling used to look exactly like a machine doing nothing.
 
-**A line may leave a number out and say which one in its `note`** — `cost_s was +Inf
-and is not on this row.` — because a figure the endpoint or the wait never really measured
-is missing rather than invented, so a row short of `cost_s`, `wait_s`, `waste_usd` or
-`cost` beside a sentence like that is an honest line and not a broken one.
+**A line leaves a number out when nothing measured it.** A row short of `cost_s`,
+`wait_s`, `waste_usd` or `cost` is an honest line and not a broken one: `cost_s` is
+what a rescue would have cost and there is none to price on a call with nowhere else
+to go, and `wait_s` is how much longer the wait was expected to run, which a belief
+nobody has measured cannot say. A figure that was never measured is missing rather
+than invented, and the row says nothing about it.
+
+Rows written before 2026-09-09 may carry a sentence in their `note` instead —
+`cost_s was +Inf and is not on this row.` The wait controller used to price "nowhere
+to act to" as infinity, which JSON cannot write, so the figure came off the row and
+the sentence explained it. It no longer produces one, and a row that is short of a
+figure now simply says nothing.
 
 **The headless waiting line reads the same record.** When `aforge do` has nothing new to
 say it prints `still waiting: … · last call <model> <n> ago`, and that `last call` is the

@@ -48,6 +48,7 @@ func TestTaskStatesE2E(t *testing.T) {
 	t.Run("your_call_asks_in_three_columns_and_a_accepts_it", testStatesYourCall)
 	t.Run("a_branch_that_clashes_with_yours", testStatesConflict)
 	t.Run("a_run_out_of_steps_is_incomplete_with_its_reason", testStatesIncomplete)
+	t.Run("the_auto_settle_floor_hands_a_restart_back", testStatesAutoFloorAcrossARestart)
 	t.Run("the_auto_settle_floor_hands_it_back", testStatesAutoFloor)
 	t.Run("the_rail_and_the_roster_say_the_same_word", testStatesRailAndRoster)
 }
@@ -196,6 +197,14 @@ func testStatesConflict(t *testing.T) {
 	// branch and the person's branch have a shared parent to disagree about.
 	statesCommit(t, ws, "notes.txt", "one\n", "seed the file")
 
+	// AND THE CHECKOUT IS MOVED OFF ITS TRUNK BEFORE ANYTHING RUNS, which is what
+	// makes this shape reachable at all. `main` is on the protected list
+	// (internal/session's task_branch_protection.go), and a landing onto a
+	// protected checkout keeps its branch and never merges — so on the repository
+	// [newWorkspace] builds, nothing the person did could ever clash with
+	// anything. That is the engine behaving; it is the FIXTURE that was wrong.
+	statesWorkBranch(t, ws)
+
 	r := start(t, "afe2e_states_conflict", home, ws, tuiWide, 40)
 	statesPastTheDoor(t, r)
 	r.lit("/task solo replace the whole contents of notes.txt with the single line: from the task")
@@ -211,10 +220,19 @@ func testStatesConflict(t *testing.T) {
 	// a sentence a model happened to write, and it is the only moment at which
 	// committing over the same file can still clash with anything.
 	if !statesWaitForTaskBranch(t, ws, 4*time.Minute) {
-		t.Skipf("no task branch was cut in four minutes, so there was nothing for a commit to clash with:\n%s", r.capture())
+		t.Skipf("no task branch was cut in four minutes, so there was nothing for the person's own edit to clash with:\n%s", r.capture())
 	}
-	t.Logf("the work is out on its own branch; committing over the same file on the person's branch")
-	statesCommit(t, ws, "notes.txt", "two, from the person\n", "the person's own edit")
+	// THE PERSON'S EDIT IS NOT COMMITTED, AND THAT IS THE WHOLE OF WHAT MAKES A
+	// CLASH POSSIBLE. A commit on the checkout while the work is out MOVES the
+	// branch, and a branch that moved since the cut is one aforge will not write
+	// either ([keptLandingSentence]'s last arm) — so a committing fixture buys the
+	// same `branch kept` the protected trunk did, one reason further along. An
+	// open editor with unsaved-to-git changes in the file is the shape a person is
+	// actually in while a task is out, and it is the shape the landing carries:
+	// the work of theirs standing in the way is set aside, the branch merges, and
+	// their own goes back on top (internal/session's groundcarry.go).
+	t.Logf("the work is out on its own branch; writing over the same file in the person's checkout")
+	statesEdit(t, ws, "notes.txt", "two, from the person\n")
 
 	found, screen := statesAwait(r, 8*time.Minute,
 		say(t, "taskConflictReason"), say(t, "taskDoneWord"))
@@ -249,12 +267,15 @@ func testStatesConflict(t *testing.T) {
 		if strings.Contains(head, say(t, "taskBranchKeptFact")) {
 			// THE BRANCH NEVER CAME HOME, so nothing was ever merged and nothing
 			// could clash. This is NOT the merge round winning and it must not be
-			// reported as one: the person's commit and the task's edit are still
-			// sitting on two branches that have never met.
-			t.Skipf("the landing kept its branch (%q) rather than merging it, so the person's commit "+
-				"was never merged against and no clash was reached. FINDING: docs/design/task-states/"+
-				"DESIGN.md says a done row carries `branch kept` only when keeping was asked for, and "+
-				"nothing asked here — an ordinary `/task solo` landing on a repository draws it anyway:\n\t%s",
+			// reported as one: the person's edit and the task's are still on two
+			// sides that have never met.
+			//
+			// AND ON THIS CHECKOUT THERE IS NOTHING LEFT TO EXCUSE IT. It is on a
+			// plain branch nothing has moved, so none of the four reasons a landing
+			// keeps its branch applies (task_branch_protection.go) and the work had
+			// a destination to go to.
+			t.Fatalf("the landing kept its branch (%q) off a checkout that is on an ordinary "+
+				"branch nothing has moved, so it had a destination and did not take it:\n\t%s",
 				say(t, "taskBranchKeptFact"), head)
 		}
 		// It merged, so the clash either never happened or one round closed it —
@@ -316,12 +337,14 @@ func testStatesIncomplete(t *testing.T) {
 // became of the work, or the turn ended unsettled and the floor handed the
 // question back and the chips are drawn again.
 //
-// IT MUST REALLY RUN, and that is a fact about where the owner is written down
-// rather than a preference: who holds a decision lives on the live node
-// (task_run.go's handToModelOnAuto) and is not among the fields a checkpoint
-// carries, so no fixture can seed a card the model is holding. If the landing
-// does not come home as the person's call, there is nothing to hand over and the
-// shape is skipped out loud.
+// IT MUST REALLY RUN, and that is a fact about which half of the floor it
+// measures. [testStatesAutoFloorAcrossARestart] above it seeds the holder and
+// measures the half that is deterministic — a landing the record says aforge was
+// deciding comes back the person's — and no fixture can catch the LIVE window
+// where the model is still holding one, because that window is however long the
+// model takes to answer. So this one runs the work and reads whichever of the two
+// honest endings arrives; if the landing does not come home as anybody's call at
+// all, there was nothing to hand over and the shape is skipped out loud.
 func testStatesAutoFloor(t *testing.T) {
 	home := newHome(t, map[string]any{"task.settle": "auto"})
 	ws := newWorkspace(t, "autows", false)
@@ -371,6 +394,79 @@ func testStatesAutoFloor(t *testing.T) {
 	r.quit()
 }
 
+// testStatesAutoFloorAcrossARestart is the same law measured where it is a fact
+// rather than a race: A TASK NEVER STAYS UNOWNED, and a process that died while
+// aforge was holding one is the hardest case, because the turn it was going to be
+// decided in died with it.
+//
+// THE FIXTURE IS THE RECORD A KILLED PROCESS LEAVES. The checkpoint carries who
+// was holding each landing (session's taskRecord.Decider), so this seeds one that
+// says `model` and opens the conversation on it. What must be on the screen is
+// the chips — the floor hands the question back on the way in, before anything is
+// drawn — and what must NOT be on it is `aforge is deciding`, which would be a
+// card naming a decider that no longer exists and offering no way to act.
+//
+// IT PAYS FOR NO MODEL. Every fact this reads is one the record carries and the
+// engine acts on, which is the same trade [testStatesRailAndRoster] makes.
+func testStatesAutoFloorAcrossARestart(t *testing.T) {
+	home := newHome(t, map[string]any{"task.settle": "auto"})
+	ws := newWorkspace(t, "autoloadws", false)
+	seedModelHeld(t, home, ws)
+	r := start(t, "afe2e_states_autoload", home, ws, tuiWide, 40)
+	statesPastTheDoor(t, r)
+
+	screen := r.waitFor(45*time.Second, say(t, "taskLookWord"), say(t, "settleAnswersRow"))
+	t.Logf("a landing the record said aforge was deciding, after the restart:\n%s", screen)
+	if head := statesHeadLine(screen, say(t, "unverifiedGlyph"), say(t, "taskLookWord")); head != "" {
+		t.Logf("HEAD · %s", head)
+	}
+	if strings.Contains(screen, say(t, "taskAutoDecidingWord")) {
+		t.Errorf("the card still says %q about a turn that died with the last process, so the question "+
+			"is held by nobody and the person is offered no way to act on it:\n%s",
+			say(t, "taskAutoDecidingWord"), screen)
+	}
+	statesNoDeletedWords(t, screen)
+	r.quit()
+}
+
+// seedModelHeld writes one conversation holding a landing NOBODY COULD CHECK
+// that the record says AFORGE WAS DECIDING — the checkpoint a process killed
+// under `task.settle = auto` leaves behind.
+//
+// IT IS [seedUnchecked]'S FIXTURE PLUS ONE FIELD, and the field is the whole
+// subject: `decider` is what the auto-settle floor fires on when the graph comes
+// off the disk, and until it was on the record this shape could not be staged at
+// all.
+func seedModelHeld(t *testing.T, home, ws string) string {
+	t.Helper()
+	if canonical, err := filepath.EvalSymlinks(ws); err == nil {
+		ws = canonical
+	}
+	bucket := strings.ReplaceAll(filepath.Clean(ws), string(filepath.Separator), "-")
+	sid := fmt.Sprintf("%016x", 0x3000000000000006)
+	dir := filepath.Join(home, "v3", "projects", bucket, sid)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("seed the model's landing: %v", err)
+	}
+	statesSeedTranscript(t, dir, sid, ws, "port the parser for me")
+	at := time.Now().Add(-3 * time.Minute)
+	writeJSON(t, filepath.Join(dir, "meta.json"), map[string]any{
+		"id": sid, "title": "The landing aforge was deciding", "workspace": ws,
+		"created": at.Format(time.RFC3339Nano), "lastUserAt": at.Format(time.RFC3339Nano),
+	})
+	writeJSON(t, filepath.Join(dir, "tasks.json"), map[string]any{
+		"type": "tasks", "version": 1, "seq": 1,
+		"nodes": []map[string]any{{
+			"id": 1, "title": "Port the parser", "brief": "port it", "acceptance": "it parses",
+			"state": "unverified", "merge": "inplace", "decider": "model",
+			"report":  "the parser is ported and its tests run",
+			"changed": []string{"parser.go"},
+			"ground":  ws, "groundMode": "folder", "elapsed_ms": 42000,
+		}},
+	})
+	return dir
+}
+
 // ── 6 · the rail and the roster ─────────────────────────────────────────────
 
 // testStatesRailAndRoster is the other half of "one word per state across every
@@ -409,25 +505,19 @@ func testStatesRailAndRoster(t *testing.T) {
 	// row is read to find out whether it needs anything and the word is the half
 	// that answers that (docs/design/task-states/DESIGN.md).
 	//
-	// THE RAIL HALF IS OPEN AS ISSUE #707 AND IS THEREFORE RECORDED RATHER THAN
-	// FAILED. A red that a lane did not cause may not sit on dev — the ledger in
-	// .github/known-red.txt only ever shrinks — so this half states exactly what
-	// it measured, the roster half below is still asserted, and the subtest ends
-	// skipped with the issue named. When #707 lands, the skip goes and the
-	// Errorf this replaced comes back.
-	railSaysTheWord := true
-	switch {
-	case strings.Contains(rail, say(t, "settleAskWord")):
-		t.Logf("the column was wide enough for the reason as well as the word")
-	case strings.Contains(rail, say(t, "taskLookWord")):
-		t.Logf("the column kept the title and the word; the reason gave ground first, as the ruling says it does")
-	default:
-		railSaysTheWord = false
-		t.Logf("FINDING (issue #707): the column's row says neither %q nor %q — it names the work "+
-			"and stops, while the card in the same frame says the word, which leaves the one "+
-			"question every row is read to answer unanswered on the surface that exists to answer "+
-			"it at a glance:\n\t%s\n%s",
-			say(t, "taskLookWord"), say(t, "settleAskWord"), rail, r.capture())
+	// THE ROW IS READ WITH ITS BLOCK ([statesRailRow] says why). Thirty cells will
+	// not hold a name and a reason side by side, so the reading is laid over the
+	// row and the lines under it — and a reader that took the first line alone was
+	// what filed issue #707 against a column that was saying the word all along.
+	if !strings.Contains(rail, say(t, "taskLookWord")) {
+		t.Errorf("the column's row says nothing about %q — it names the work and stops, while "+
+			"the card in the same frame says the word, which leaves the one question every row "+
+			"is read to answer unanswered on the surface that exists to answer it at a glance:"+
+			"\n\t%s\n%s", say(t, "taskLookWord"), rail, r.capture())
+	}
+	if !strings.Contains(rail, say(t, "settleAskWord")) {
+		t.Errorf("the column's row says %q and never what for; the reason is the half a person "+
+			"can act on:\n\t%s", say(t, "taskLookWord"), rail)
 	}
 
 	// AND THE ROSTER SAYS THE SAME WORD. `/history` is the door; the chord the
@@ -439,11 +529,6 @@ func testStatesRailAndRoster(t *testing.T) {
 	t.Logf("the roster, saying the same word:\n%s", roster)
 	statesNoDeletedWords(t, roster)
 	r.quit()
-	if !railSaysTheWord {
-		t.Skipf("the roster says %q about this landing and the card says it too; the column does not "+
-			"(issue #707), so this subtest measured the disagreement rather than passing over it",
-			say(t, "taskLookWord"))
-	}
 }
 
 // ── the doors this file shares ──────────────────────────────────────────────
@@ -646,7 +731,10 @@ func statesRail(t *testing.T, r *rig, glyph string) string {
 		return row
 	}
 	// No column at all, so ask for it back. The answer is remembered per machine
-	// and a fresh state root has none recorded either way.
+	// — a state root copied from a machine whose column is closed opens closed,
+	// which is how this ran green on one box and failed on another — so the key
+	// is spent only after looking, and looking is the whole of the guard: a press
+	// on a window that already has a column takes it away.
 	r.keys("C-g")
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
@@ -658,22 +746,71 @@ func statesRail(t *testing.T, r *rig, glyph string) string {
 	return ""
 }
 
-// statesRailRow is one line of the column: the tier cell on a row that is not a
-// landing card's head and not the person's own.
+// statesRailRow is ONE ROW OF THE COLUMN, WITH THE BLOCK UNDER IT, as one
+// string: the tier cell, the name, and whatever the rows beneath it say about
+// the same node.
+//
+// IT READS THE COLUMN AND NOT WHATEVER LINE HAPPENS TO START WITH THE GLYPH,
+// and the first measured run of this file is why. The column stands to the RIGHT
+// of the conversation, so no line of a capture that has one ever begins with a
+// tier cell — every one of them begins with the transcript. A reader that
+// matched on the whole line therefore found nothing, [statesRail] then pressed
+// ctrl+g "because there was no column", and what it measured was the tab strip
+// that appears in the column's place: one chip, one glyph, one name. The column
+// itself was saying `your call · nobody could check it` the whole time, one row
+// below the name, and that misreading is the whole of what issue #707 recorded.
+//
+// THE BLOCK IS PART OF THE ROW because the column is thirty cells wide and the
+// reading does not fit beside the name at that width. `<tier glyph> <title> ·
+// <word or reason>`, cut from the right, is laid over the row and the two lines
+// under it (internal/tui3's [app.railUnder] wraps them), so the row and its
+// block are read together or the word is not read at all.
+// IT IS THE COLUMN OR IT IS NOTHING. An empty answer means this frame has no
+// column on it, and the caller's job is then to ask for one — never to settle
+// for the strip that stands in its place, which is a tab bar with one glyph and
+// one name on it and is not the surface this is about. Reading the strip and
+// calling it the column is precisely what filed #707.
 func statesRailRow(t *testing.T, screen, glyph string) string {
 	t.Helper()
+	return statesRailBlock(statesRailColumn(screen), glyph)
+}
+
+// statesRailColumn is the column's own cells, cut off the right of the seam it
+// is drawn behind. An empty answer means this frame has no column on it.
+func statesRailColumn(screen string) []string {
+	var out []string
 	for _, line := range strings.Split(screen, "\n") {
-		if !strings.Contains(line, glyph) {
+		at := strings.Index(line, statesRailSeam)
+		if at < 0 {
 			continue
 		}
-		if strings.Contains(line, say(t, "taskCardKindGlyph")) {
-			// The card's own head, which the conversation draws and this is not
-			// about.
+		out = append(out, strings.TrimRight(line[at+len(statesRailSeam):], " "))
+	}
+	return out
+}
+
+// statesRailSeam is the rule the column is drawn behind (internal/tui3's
+// [app.railJoin]).
+const statesRailSeam = "│"
+
+// statesRailBlock is one node's row and the rows indented under it, joined.
+// The row itself sits one cell in from the seam and its block sits further in,
+// which is what ends the block: the next row of work starts where this one did.
+func statesRailBlock(column []string, glyph string) string {
+	for i, line := range column {
+		text := strings.TrimSpace(line)
+		if text == "" || !strings.HasPrefix(text, glyph) {
 			continue
 		}
-		if text := strings.TrimSpace(line); text != "" && strings.HasPrefix(text, glyph) {
-			return text
+		lead := len(line) - len(strings.TrimLeft(line, " "))
+		for _, under := range column[i+1:] {
+			said := strings.TrimSpace(under)
+			if said == "" || len(under)-len(strings.TrimLeft(under, " ")) <= lead {
+				break
+			}
+			text += " " + said
 		}
+		return text
 	}
 	return ""
 }
@@ -777,6 +914,29 @@ func statesWaitForTaskBranch(t *testing.T, ws string, within time.Duration) bool
 		time.Sleep(time.Second)
 	}
 	return false
+}
+
+// statesEdit writes one file in the person's own checkout and LEAVES IT
+// UNCOMMITTED — a person carrying on working while a task is out, which is the
+// shape a real clash is made in ([testStatesConflict] says why a commit is not).
+func statesEdit(t *testing.T, ws, name, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(ws, name), []byte(body), 0o644); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+}
+
+// statesWorkBranch moves the person's checkout onto a branch tasks are allowed
+// to merge into. Every name on internal/session's protected list is one a
+// landing keeps its branch off rather than writing, and `main` — which
+// [newWorkspace] builds on — is the first entry.
+func statesWorkBranch(t *testing.T, ws string) {
+	t.Helper()
+	command := exec.Command("git", "checkout", "-q", "-b", "work")
+	command.Dir = ws
+	if out, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git checkout -b work: %v\n%s", err, out)
+	}
 }
 
 // statesCommit writes one file in the person's own checkout and commits it — the

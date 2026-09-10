@@ -2302,12 +2302,12 @@ type Agent struct {
 	// person is not currently saying under their live authority
 	// (task_forward.go).
 	personHeard uint64
-	// callOutcomes is whether a finished call came back a failure, by call id
+	// callOutcomes is whether a finished call came back a failure, by call occurrence
 	// (admission_compile.go). It is recorded at the batch's own fan-out because
 	// the flag the tool returned does not survive into the transcript, and it is
 	// per-process: after a restart the outcome of an older call is unknown and
 	// the admission context says so rather than assuming it went well.
-	callOutcomes map[string]callOutcome
+	callOutcomes map[*ai.ToolCall]callOutcome
 	// replyTags are finished-task identities placed in the transcript but not
 	// yet handed to the surface. They persist across the turn-end seam.
 	replyTags []TaskReplyTag
@@ -2434,7 +2434,13 @@ type Agent struct {
 	// Explicit conversation stops suppress autonomous wakes until fresh input.
 	workStopped  bool
 	workStopping bool
-	cancel       context.CancelFunc
+	// cancel ends the turn in flight AND SAYS WHICH DOOR IT CAME THROUGH. It is
+	// a [context.CancelCauseFunc] rather than a plain one because a turn that
+	// ends with nothing said has to be able to account for itself afterwards —
+	// on the row, in the journal and in one sentence to the person
+	// (stopcause.go). Every caller passes a cause; nil is reserved for the
+	// turn's own cleanup, which cancels a context nothing is waiting on.
+	cancel context.CancelCauseFunc
 	// interrupt is ONE ESC'S WORTH of planner and title spend (interrupt_fan.go).
 	// It sits outside mu and holds its own lock: Interrupt is the one call that
 	// must always be answerable, and the handlers it serializes must never need
@@ -2488,6 +2494,17 @@ type Agent struct {
 	// process has not let go of it yet (takeover.go). Set once, never cleared:
 	// the only way out is the close the ask is for.
 	takenOver bool
+	// stoppedTurn is THE DOOR THAT ENDED THIS CONVERSATION'S LAST TURN WITH
+	// NOTHING SAID, read off the journal when the session was opened and spent
+	// the first time anybody asks (resume.go). It is empty on every conversation
+	// that was answered, on every one the person stopped themselves, and on
+	// every one this build has already asked again.
+	stoppedTurn StopDoor
+	// turnBegan is when the turn now running opened, and the zero time when
+	// none is. It is read by exactly one thing: the takeover beat, which will
+	// not let a request that was already on the disk before this turn started
+	// end it (takeover.go says why that request has had its chance).
+	turnBegan time.Time
 	// steerSeq names the sentences the person has spliced into a running turn
 	// (steer.go). It is an atomic rather than a field under mu because minting an
 	// identity is not a fact about the transcript, and an id that could only be

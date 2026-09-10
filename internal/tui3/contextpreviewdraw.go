@@ -487,6 +487,9 @@ func previewFoot(pal palette, pv filePreview, width int) string {
 		// Already said above, in the space where the contents would have been.
 		note = ""
 	}
+	if pv.Kind == previewPicture && pv.Thumb != nil && pal.paintsPictures() && note == "" {
+		note = pictureResolutionWord
+	}
 	facts := previewFacts(pv)
 	switch {
 	case note == "" && facts == "":

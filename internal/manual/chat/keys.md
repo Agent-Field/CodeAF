@@ -1362,26 +1362,31 @@ session. If the model you are talking to cannot see, the picture is shown to a m
 that can and its answer comes back prefixed `[vision: <model>]`; if nothing available
 can see, the message is refused before anything is sent and your pictures stay on the
 tray. Once the message is sent, the transcript keeps the numbered marker and draws a
-small thumbnail of each picture under your line.
+compact control for each picture under your line.
 
 A command with a full tray is still a command: `/image` adds a second picture rather
 than sending the first.
 
 ## Do I see my own screenshot in the conversation?
 
-Yes. After you send a message with pictures, each one is drawn under your line in tray
-order. The dim `[#1 shot.png]` marker stays in the sentence above it, numbered to match
-`[image #1]` and still clickable as the file door.
+Yes. After sending, each image has a compact filename row in tray order, with **preview**
+and **open original** actions. The numbered `[#1 shot.png]` marker remains above it.
+Images start collapsed; your words are never folded with them.
 
-Each thumbnail is at most **12 rows**, or **4 rows** at phone width, with no heading,
-border, path line or `… N more lines` foot. It uses half-block colour in TrueColor and
-the 256-colour xterm cube. On a sixteen-colour or colourless terminal, an ASCII-only or
-screen-reader display, a very narrow row, or when the file is missing or unreadable, no
-thumbnail is added and the marker remains exactly as it was.
+Click **preview** to show a low-resolution terminal view, and **collapse** to close it.
+Only one attached picture per message expands at a time. **alt+i** toggles the last
+visible image in chat or a task page. The terminal preview is at most **20 rows**;
+it is not suitable for reading screenshot text.
 
-This applies to a live message, a resumed conversation while the referenced file is
-available, and a task room's journal. A waiting message in the parked block remains its
-words and markers; its picture appears after that message is actually sent.
+Click the expanded picture itself or **[open original]**, or use **alt+o**, for the
+full-quality image in your system's
+viewer. The phone-width detail sheet also accepts **o**. In `--host` sessions,
+engine-owned files are fetched to this machine first. In a plain SSH login, the
+action explains how to use the local client and gives the original path instead
+of opening a viewer on the server.
+The original action works even when the terminal cannot draw pictures. If a requested
+preview is missing, unsupported or unreadable, it says **Preview unavailable · open
+the original**. Replaying a conversation starts its attachments collapsed again.
 
 ## Completing a path with `@`
 
@@ -1488,23 +1493,27 @@ seconds quits aforge with the picker still up.
 
 ## Keys when aforge asks you a question — what key answers switch to auto, and the other offers
 
-**An approval question:** `y` allow once · `a` or `t` always — refused when it would
-do nothing · `n`, `d` or `esc` deny. Every other key does nothing, but it **stops the
-countdown**. `ctrl+c` is handed back to the message box, where it arms the door and a
-second press within 1.5 seconds quits. On the second beat of
-"always" for a bash command, `1`–`9` pick a shape and `esc` goes back.
+**An approval question:** `1` allow once · `2` always — not drawn and inert when it
+would do nothing · `3` deny · `c` answer in words · `esc` **later**, which folds the
+question to the chip and answers nothing. It is **not modal**: every other key belongs
+to your message box, and a key it does read also **stops the countdown**. A key pressed
+in the first quarter-second is dropped, so a question landing under a moving hand is not
+answered by a keystroke aimed at your sentence. `ctrl+c` is handed back to the message
+box, where it arms the door and a second press within 1.5 seconds quits. On the second
+beat of "always" for a bash command, `1`–`9` pick a shape and `esc` goes back — and
+while that beat is up the digits are the shapes', not the answers'.
 
-**A task proposal** is not modal — the message box stays live as a redirect lane.
-Always available: `enter` submits a typed answer or takes the focused option over
-an empty box, `esc` says no, and `ctrl+e` opens the brief over an empty box. Over
-an **empty box only**: `left`/`right` move the focus, and `1`–`4` pick the model.
-Bare letters are ordinary answer text, not immediate shortcuts. Typing the first
-character stops the countdown and changes the meter to `starts on your word`;
-deleting the draft does not restart it. On
-`enter`, a bare `no`, `nope`, `n`, `stop`, `cancel`, `don't` or `dont` declines,
-while a bare `yes`, `y`, `ok`, `okay`, `go` or `sure` approves. Longer text is a
-redirect. Clicking `no` or pressing `esc` always declines, whatever is in the
-box; only `enter` interprets the typed answer.
+`alt+a` raises the newest question you put off, from any page.
+
+**A task proposal** is answered on that same block, in that same grammar: `1` start
+it · `2` no · `c` answer in words · `esc` **later**, which folds it to the chip and
+answers nothing. `enter` over an empty box takes the answer marked `▸` — the one
+the clock is about to take — and `enter` with words in the box sends them as a
+correction, which starts the corrected work. `ctrl+e` over an empty box opens the
+brief in the conversation. Bare letters are ordinary answer text: typing `no` is a
+correction and does NOT decline, because the answers are on the row with their
+keys. Any key the question reads also stops the countdown, and deleting the draft
+does not restart it.
 
 **A slow lane's offer**, raised on the status line when a machine you pinned has gone
 quiet: the row reads `coreweave is slow · switch to auto? (y)` and `y`, **over an empty
@@ -2246,20 +2255,34 @@ The tasks pages describe what rooms and the roster are for.
 `x` raises one card above the message box:
 
 ```
-? Stop this task? Its work halts; the branch it wrote on is kept.
-  [stop it]   [keep going]
+?  Stop this task?
+     Its work halts; the branch it wrote on is kept.
+     1  stop it
+     2  keep going
+   [enter] take the pick · [esc] keep going · [←→] pick
 ```
 
-On an adaptive run's page it reads `Stop this run? In-flight nodes halt; partial
-results stay.` A harness being designed is a task, so `x` on its row reaches it like
-any other — and the card says what is actually true of it: `Stop this task? The page
-it is writing is dropped; nothing was saved.` It has no branch and wrote no files, so
-the reassurance about a kept branch would be pointing at nothing.
+The head is the question and nothing else; the sentence under it is the promise —
+what stopping does **not** take away.
+
+On an adaptive run's page the head reads `Stop this run?` and the promise is
+`In-flight nodes halt; partial results stay.` A harness being designed is a task, so
+`x` on its row reaches it like any other — and the promise says what is actually true
+of it: `The page it is writing is dropped; nothing was saved.` It has no branch and
+wrote no files, so the reassurance about a kept branch would be pointing at nothing.
 
 **The cursor opens on `keep going`.** `left`/`right` move it, `enter` takes the
 answer under it, `esc` is `keep going`, and every other key does nothing while the
-card is up. A click on either answer is that answer, and a click anywhere else on
-that row does nothing rather than falling through to the box.
+card is up. A click on either answer's row is that answer, and a click anywhere else
+does nothing rather than falling through to the box.
+
+**`1` and `2` move the cursor; they do not answer.** The digit beside an answer walks
+the cursor onto that answer and lights its row. `enter` is still what decides, which is
+this card's whole rule said in the digits' own grammar.
+
+**Your half-typed message is safe under this card and cannot be sent by it.** `enter`
+belongs to the card while it is up; the sentence in the box is exactly where you left
+it once you have answered.
 
 **There is no bypass key and no "don't ask me again".** Stopping cannot be undone —
 the worker's turn ends where it stands — so the card is always asked, and pressing
