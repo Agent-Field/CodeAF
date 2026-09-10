@@ -22,8 +22,10 @@ package e2e
 // tagged package — ManualOnTheWire, QuestionsE2E, roomfeed, families, custody,
 // contracts — does not fit in forty: Spark's #807 run hit the ceiling before
 // TestTUIE2E started. Prefer `make test-e2e-tui` for the ambient surface, or
-// give the whole package two hours. It needs OPENROUTER_API_KEY and tmux,
-// costs a few cents. CLAUDE.md's Tests section says the same thing.
+// give the whole package two hours. It needs a provider key and tmux, costs a
+// few cents. The key is resolved the way the product resolves one ([liveKey]:
+// OPENROUTER_API_KEY, OPENAI_API_KEY, then the profile's api_key row).
+// CLAUDE.md's Tests section says the same thing.
 //
 // ── TWO WIDTHS, AND THE REASON IS IN THE PRODUCT ────────────────────────────
 //

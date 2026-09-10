@@ -10,9 +10,10 @@
 // model, do what the manual says it does. So this file starts tmux, sends the
 // bytes a keyboard sends, and reads the screen back with `capture-pane`.
 //
-// IT SKIPS RATHER THAN FAILS when it cannot be honest: no OPENROUTER_API_KEY,
-// no tmux, no built binary. A suite that "passes" by not talking to a model is
-// a suite lying about the only thing it was written to check.
+// IT SKIPS RATHER THAN FAILS when it cannot be honest: no provider key on any
+// road the product reads, no tmux, no built binary. A suite that "passes" by
+// not talking to a model is a suite lying about the only thing it was written
+// to check. The key is resolved through [liveKey], not by reading one variable.
 //
 // EVERY RUN IS ITS OWN MACHINE. Each rig gets its own AFORGE_HOME under
 // t.TempDir() — the whole state root moves with that one variable

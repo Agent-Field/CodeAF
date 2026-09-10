@@ -42,9 +42,12 @@ var keyGateDoorFiles = map[string]bool{
 }
 
 // TestEveryLaneAsksForItsKeyTheWayTheProductDoes fails on a lane that reads a
-// key variable out of the environment instead of going through [liveKey].
+// key variable out of the environment instead of going through [liveKey], and
+// on a door that has stopped asking the product.
 func TestEveryLaneAsksForItsKeyTheWayTheProductDoes(t *testing.T) {
 	dir := filepath.Join(moduleRoot(t), "internal", "e2e")
+	theDoorStillAsksTheProduct(t, dir)
+
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("the e2e suite is not where this gate expects it: %v", err)
@@ -70,16 +73,20 @@ func TestEveryLaneAsksForItsKeyTheWayTheProductDoes(t *testing.T) {
 			if !ok {
 				return true
 			}
+			if isAPIKeyAt(call) {
+				t.Errorf("%s:%d calls config.APIKeyAt itself. That is the product's resolver, "+
+					"but lanes here move AFORGE_HOME out from under themselves, so a resolution "+
+					"at the gate answers for the fixture rather than for the machine. Ask liveKey(t) "+
+					"instead, which reads those same three roads once at init (#576).",
+					name, fset.Position(call.Pos()).Line)
+				return true
+			}
 			if !readsTheEnvironment(call) {
 				return true
 			}
 			for _, argument := range call.Args {
-				lit, ok := argument.(*ast.BasicLit)
-				if !ok || lit.Kind != token.STRING {
-					continue
-				}
-				text, err := strconv.Unquote(lit.Value)
-				if err != nil || !keyEnvNames[text] {
+				text, ok := keyEnvArgument(argument)
+				if !ok {
 					continue
 				}
 				t.Errorf("%s:%d reads %s out of the environment. The product resolves a key "+
@@ -87,7 +94,7 @@ func TestEveryLaneAsksForItsKeyTheWayTheProductDoes(t *testing.T) {
 					"row), so a lane gated on one variable SKIPS on a machine that talks to a "+
 					"model every day — and a skipped end-to-end suite reports green without "+
 					"running (#576, #184). Ask liveKey(t) instead.",
-					name, fset.Position(lit.Pos()).Line, text)
+					name, fset.Position(argument.Pos()).Line, text)
 			}
 			return true
 		})
@@ -95,6 +102,73 @@ func TestEveryLaneAsksForItsKeyTheWayTheProductDoes(t *testing.T) {
 	if checked == 0 {
 		t.Fatalf("%s holds no lanes beside this gate, so it guards nothing", dir)
 	}
+}
+
+// theDoorStillAsksTheProduct fails if livekey_test.go has stopped calling
+// config.APIKeyAt. The other half of this gate excludes that file, so a door
+// that went back to os.Getenv would go green on the exact skip #576 closed.
+func theDoorStillAsksTheProduct(t *testing.T, dir string) {
+	t.Helper()
+	path := filepath.Join(dir, "livekey_test.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatalf("parsing the liveKey door: %v", err)
+	}
+	found := false
+	ast.Inspect(file, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if isAPIKeyAt(call) {
+			found = true
+		}
+		return true
+	})
+	if !found {
+		t.Errorf("internal/e2e/livekey_test.go is the one door this suite asks for a provider " +
+			"key through, and it no longer calls config.APIKeyAt. That is the product's " +
+			"three-road resolver; a door that reads one variable instead SKIPS on a machine " +
+			"that talks to a model every day (#576).")
+	}
+}
+
+// keyEnvArgument reports whether an argument names a key variable, either as a
+// string literal or as config.APIKeyEnv — so a lane cannot hide the first road
+// behind the constant the product spells.
+func keyEnvArgument(argument ast.Expr) (string, bool) {
+	switch arg := argument.(type) {
+	case *ast.BasicLit:
+		if arg.Kind != token.STRING {
+			return "", false
+		}
+		text, err := strconv.Unquote(arg.Value)
+		if err != nil || !keyEnvNames[text] {
+			return "", false
+		}
+		return text, true
+	case *ast.SelectorExpr:
+		pkg, ok := arg.X.(*ast.Ident)
+		if !ok || pkg.Name != "config" || arg.Sel.Name != "APIKeyEnv" {
+			return "", false
+		}
+		return "config.APIKeyEnv", true
+	default:
+		return "", false
+	}
+}
+
+// isAPIKeyAt reports whether a call is config.APIKeyAt. The product's
+// resolver belongs in [liveKey]; a lane that calls it after AFORGE_HOME has
+// moved is answering for the fixture.
+func isAPIKeyAt(call *ast.CallExpr) bool {
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != "APIKeyAt" {
+		return false
+	}
+	pkg, ok := selector.X.(*ast.Ident)
+	return ok && pkg.Name == "config"
 }
 
 // readsTheEnvironment reports whether a call is os.Getenv or os.LookupEnv, which
