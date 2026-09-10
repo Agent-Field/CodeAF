@@ -11,4 +11,6 @@ invalidates:
 Seven of the nine load-, path- and order-dependent reds named by #814 were
 already fixed on `dev` (#417's TERM seam, #559's harness steering note, #631's
 duty latch, #805's question-demo pin and retry room). These two were not.
+`TestS3ItComesBack` now asserts the recovered first-token belief and that the
+lane is on the frontier, not that a Thompson sample picked it.
 The known-red ledger is unchanged.
