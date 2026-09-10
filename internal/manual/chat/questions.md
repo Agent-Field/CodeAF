@@ -705,6 +705,52 @@ picks one before anything is written.
 While a beat is up, the digits belong to it — `3` is the third shape and not the
 third answer — and `esc` backs out of the beat rather than putting the question
 off.
+## Questions on another machine, and on the engine behind an ordinary aforge
+
+**A question reaches you wherever the conversation is, and you answer it where
+you are standing.** That is true on all three roads and there is nothing to turn
+on:
+
+- **an ordinary `aforge` or `aforge chat` in a project.** The conversation is not
+  kept in your terminal — it lives in this machine's engine, so the work goes on
+  when you close the window — and questions travel that link in both directions.
+- **`--host`**, a terminal here attached to a conversation on another machine. The
+  question crosses, and so does your answer, whole: the pick, the words beside
+  it, your notes on the parts, anything you asked back, the blanks, the dial and
+  how long the answer lasts.
+- **in this terminal**, with `--no-host`, `--once` or `--debug`.
+
+**A question raised while nothing was attached is waiting when you attach**,
+however long that took, and so is one you were looking at when you walked away.
+Nothing expires and nothing is lost: the engine says what it is still waiting on
+the moment a terminal attaches, so a question asked an hour ago draws the same
+block now that it would have drawn then. The count in the status line is the same
+count. See *It asked me something while I was away* in **staying on that
+machine** for what it says about how long it sat there.
+
+**An engine of a different build is refused at the door, and says so.** Two
+programs that might disagree about what a frame means never guess at each other,
+so `aforge` tells you the engine is an older or newer aforge rather than starting
+a session in which questions would silently never appear.
+
+## Why can I not answer the question on this task page
+
+Pressing a row of work on the **tasks** place opens that task's own page even
+when the work belongs to a chat you are not sitting in — it reads that chat over
+the same link, and it says so at the top.
+
+If that conversation has stopped and is waiting on somebody, the page says so
+under what it has read:
+
+    ? which storage shape should this use? · answer it in that conversation
+
+It is dim and it takes no key. **A page you are only reading cannot answer** —
+amber and a key would be this page promising something it does not have. Go to
+the chat itself (`esc`, then the row on home) and the question is there with its
+answers on it.
+
+Without that line, a page like this drew a running clock over work that had not
+moved since somebody was asked something an hour ago.
 
 ## What is not built yet
 
@@ -712,18 +758,6 @@ off.
 "Open a question up and read it properly" down. `D` writes the setting into
 `.aforge/autonomy.json` beside the project AND answers the question in front of
 you; a conversation with no project to keep it in says so.
-
-**A question does not cross the session-host link.** An ordinary `aforge` or
-`aforge chat` in a project does not keep the conversation in the terminal — it
-attaches this machine's session host, so the work goes on when the window closes.
-Questions do not travel that link in either direction: one raised behind it
-reaches no screen, nothing counts it, and the turn waits. Open a conversation you
-want to be asked in with `aforge chat --no-host`, which keeps it here; `--once`
-and `--debug` keep it here too.
-
-**Answering over `--host` is not built either.** A window attached to another
-machine draws a question that machine raises, but the answer does not cross the
-link, so it has to be given in a window on the machine holding the conversation.
 
 **A row on home shows a question the model raised and does not take a key for
 it** — see *The row on home shows the question but my key does nothing over it*.

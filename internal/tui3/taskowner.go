@@ -630,10 +630,17 @@ const (
 	// so nothing on it can be read as this window's own work.
 	roomGuestOwnerWord = "reading in "
 	// roomGuestAskedWord is the clause after a question the OWNER is waiting on:
-	// what is true about it here, which is that this window is not where it gets
-	// answered. It names the door rather than refusing — the page a person wants
-	// is one keystroke away on the tasks place, and `esc` is still the way out.
-	roomGuestAskedWord = "answered in the window that owns this work"
+	// what is true about it here, which is that this page is not where it gets
+	// answered. It names the door rather than refusing — the conversation a
+	// person wants is `esc` and one row on home away, and going there brings the
+	// question with it.
+	//
+	// IT IS SHORT BECAUSE IT SHARES A ROW WITH THE QUESTION ITSELF. The head is
+	// the asker's own sentence and can be long; the room's body is narrower than
+	// the screen whenever the task rail is up; and this clause is the half that
+	// would be lost to the truncation, which is the half that says the key a
+	// person is about to look for is not here.
+	roomGuestAskedWord = "answer it in that conversation"
 	// taskOwnerOpeningWord stands on the tasks page while the engine is being
 	// asked. It is a beat or two on a socket, and the page a person just pressed
 	// saying nothing at all is what makes a surface feel broken.
