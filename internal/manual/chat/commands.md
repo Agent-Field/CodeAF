@@ -946,8 +946,8 @@ If it fails, the list stays exactly as it was and the note says why in one line 
 `ctrl+r` is offered again.
 
 Where it is absent: only `/model` (and the model word in a task's status line, which opens
-the same list) has the key. The settings panel's model rows and home's model list do not —
-there `ctrl+r` does nothing and nothing names it. Over `--host` it works and fetches on this
+the same list) has the key. Every other model list — the settings panel's rows, home's, the
+`alt+o model` one — does not: there `ctrl+r` does nothing and nothing names it. Over `--host` it works and fetches on this
 machine, whose list of names the picker shows.
 
 ## /resume — open an earlier conversation

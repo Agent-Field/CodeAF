@@ -42,8 +42,9 @@ it does; the list it was showing is never taken away.**
 
 - The picker does not show the list's age. `FetchedAt` travels with the answer and is used
   only to refuse rows nobody fetched; a dated placeholder would spend the cells the keys need.
-- The settings panel's model rows and home's model list do not offer the key. They are the
-  same `picker` type but their own keyboards; wiring them is a follow-up, not a flag.
+- The settings panel's model rows, home's model list and the `alt+o model` list do not
+  offer the key. They are the same `picker` type on their own keyboards; wiring them is a
+  follow-up, not a flag — and until then `refresh` stays false there, so nothing names it.
 - `ContextWindowFor`, `NearestModels` and the price/parameter seams still read the launch
   catalog, so a model that exists only in a refreshed list is answered by the session's
   defaults for those until the next launch (which opens on the refreshed cache).
