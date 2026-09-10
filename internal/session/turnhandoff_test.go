@@ -274,17 +274,27 @@ func TestTheHandedOffTaskWakesTheConversationOnceWhenItLands(t *testing.T) {
 // digest of the transcript, not the tree — said the ask was unfinished. The
 // turn was carried on three times and then told the person the work was not
 // finished. The live-task gate covers work still out; this is the landing's
-// half, driven through [Agent.Submit] the same way, because what the person saw
-// was whole turns.
+// half, driven through the same wake [TestAWokenTurnThatStopsShortIsReopenedEvenWhenCheap]
+// uses, because what the person saw was that woken reply being re-opened.
 func TestASettledTaskWithGreenChecksIsNotCarriedOnAsUnfinished(t *testing.T) {
 	const asked = "port the parser and get the tests green"
 	const answer = "the parser is ported and the suite is green"
 
-	var remainsAsks atomic.Int64
-	completer := &scriptedCompleter{steps: stoppingSteps(3, answer, func() string {
+	var woke, remainsAsks atomic.Int64
+	steps := stoppingSteps(3, answer, func() string {
 		remainsAsks.Add(1)
 		return "the tests have not been run and the parser is still unfinished"
-	})}
+	})
+	for index := range steps {
+		inner := steps[index]
+		steps[index] = func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
+			if strings.Contains(userTextIn(messages), "the suite is green") && !askedForRemains(messages) {
+				woke.Add(1)
+			}
+			return inner(ctx, messages)
+		}
+	}
+	completer := &scriptedCompleter{steps: steps}
 	agent := checkpointAgent(t, completer)
 	agent.mu.Lock()
 	agent.personAsk = asked
@@ -301,7 +311,7 @@ func TestASettledTaskWithGreenChecksIsNotCarriedOnAsUnfinished(t *testing.T) {
 	})
 	waitDoneNode(t, graph.node(id))
 	waitFor(t, "the landing to reach the person", func() bool {
-		return strings.Contains(transcriptText(agent), answer)
+		return woke.Load() > 0 && strings.Contains(transcriptText(agent), answer)
 	})
 	waitForQuiet(t, agent)
 
