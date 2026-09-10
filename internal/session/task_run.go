@@ -6302,13 +6302,15 @@ var landsLater = map[string]bool{
 	"generate_video": true,
 }
 
-// landingBelt is the belt a node keeps for its LAND NOW turn: [savingTools]
-// minus [landsLater], in the order the node already had them so the model sees
-// the same list minus the hands it is being told not to reach for.
+// landingBelt keeps saving tools that finish before the call returns, plus read.
+// CRITICAL: compaction replaces old evidence with readable archive references.
+// Finishing must retain their retrieval door or an accurate save becomes
+// impossible even though the evidence is still on disk. Reading is not saving
+// and must not be added to savingTools, which also measures actual progress.
 func landingBelt(tools []bare.Tool) []bare.Tool {
 	kept := make([]bare.Tool, 0, len(savingTools))
 	for _, tool := range tools {
-		if savingTools[tool.Name] && !landsLater[tool.Name] {
+		if tool.Name == "read" || (savingTools[tool.Name] && !landsLater[tool.Name]) {
 			kept = append(kept, tool)
 		}
 	}
@@ -6329,8 +6331,8 @@ func landingInstruction(tools []bare.Tool) string {
 		names = append(names, tool.Name)
 	}
 	return "LAND NOW. Write the deliverable or final summary from what you already have. " +
-		"Do no new exploration. Do not call tools except " + englishList(names) +
-		" when needed to save the deliverable."
+		"Read existing evidence if needed; do not start new exploration. Do not call tools except " + englishList(names) +
+		" when needed to finish the deliverable."
 }
 
 // englishList joins names the way a sentence does: "a", "a or b", "a, b or c".
