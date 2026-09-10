@@ -63,6 +63,199 @@ of work has it in full.
 A task can also break its own brief into smaller tasks when it finds independent parts in
 it, and those are drawn as a family under it — see *When a task splits its own work*.
 
+**And a copy of its own is the ordinary task, not every task.** The other kind is the
+**quick task**: no copy of the folder, no branch, no check and no merge — it works in the
+folder you are already in, and its last message is its answer. It is the next several
+sections, starting with *What a quick task is*. Everything below about briefs, cards,
+branches, checks and landings is about the ordinary kind unless it says otherwise.
+
+## What a quick task is — a small job done here in the folder you are in, instead of on a branch, with no check and no merge
+
+**A quick task is a task with everything optional taken off.** It is the other kind of
+handed-off work, and it differs from an ordinary task in four ways:
+
+- **It works where you work.** No working copy of your repository, no branch, no copy of
+  the folder — the folder this conversation is standing in, the one you are looking at.
+- **It starts the instant it is asked for.** No sizing call, no shaped brief, no card
+  asking whether to run it, no countdown, nothing to accept: the row is simply there,
+  already running.
+- **Nothing checks it, and nothing lands.** There is no branch to merge and no check over
+  the work. **Its last message is its answer**, and it arrives as the ordinary note a
+  finished task sends back — into the conversation, or into the task that started it.
+- **It carries a checklist.** One line saying what to do, and an ordered list of items it
+  works through, ticking each as it goes.
+
+Everything else is the task machinery you already know: a row on the column with a state
+and a clock, a room you can walk into and read, `enter` to steer it, `x` to stop it, its
+own spend, its own model. The word for what it is, on the row and on the card, is `quick`.
+
+Because it wrote in your own folder, its card carries no branch and no merge word — only
+the files, if it changed any.
+
+## How a quick task starts — there is no /quick command, aforge starts one itself
+
+**You cannot type a quick task into being.** There is no `/quick` command and `/task`
+never makes one: `/task` is the ordinary road, with its sizing call and its shaped brief.
+A quick task is started by the model, with its `quick_task` tool, when it judges that the
+work in front of it is that shape — most often when you have asked for several small
+things that can go at once.
+
+So you ask in words. *"Read those four config files and tell me which one sets the
+timeout"* becomes four quick tasks and a reply that reads their answers. Nothing asks you
+to confirm: the rows appear, and the answers come back into the reply you are waiting on.
+
+When it starts one, the model may hand the tool a title, the files it means to write, ids
+it must wait for, and a model to run on. What it gets back is one line, at once:
+
+```
+quick task 7 started: compare the four configs · 4 items
+```
+
+That is the whole of the ceremony. If you want the other road instead, say so — *"do that
+as a proper task"* — and the model proposes an ordinary task, card, branch, check and all.
+*"Just do it quickly"* goes the other way.
+
+## What quick means next to a task on the row — `quick · 2/4 · reading server.go`
+
+Where an ordinary task's row shows the state it is in, a running quick task's row shows
+what it is doing:
+
+```
+quick · 2/4 · read the timeout out of server.go
+```
+
+Three parts, joined the way every row joins its facts. `quick` says what kind of work this
+is. `2/4` is how many of its items are ticked off out of how many it has. The rest is the
+item it is on now. A quick task with no items at all — a one-line job — reads just
+`quick`.
+
+The counter moves when the worker ticks an item off, not on a clock, so a row sitting on
+`1/3` for a while is a worker still on item 2 rather than a stalled one. When it ends, the
+row settles like any other: `done` with the answer under it, or the reason it did not
+finish.
+
+## Steering a quick task — adding an item, changing one, telling it to skip the rest
+
+The same as steering any other task: `enter` on its row opens its room, you type, and your
+line reaches the worker at its next step. Nothing about a quick task's box is different.
+
+What you are usually changing is the checklist, because that is a quick task's whole plan.
+*"Also check the staging config"* adds an item; *"skip the third one and tell me what you
+have"* takes one off the end. The worker keeps the list itself, with its `items` tool — it
+ticks an item as it finishes it and appends the ones you ask for — and the row's counter
+and next item move as it does.
+
+**You cannot edit the list yourself.** There is no checklist to click, and no key that
+ticks a box. The items belong to the worker; the words belong to you.
+
+## Why it said waits for task 5 — two quick tasks that would write the same file
+
+A quick task may name the files it intends to write. When it does, and another quick task
+that is running or queued in the same folder has already claimed one of those paths, the
+second one **waits for the first to finish** instead of both editing at once. The line the
+model reads says which and over what:
+
+```
+quick task 7 started: rewrite the retry helper · 3 items · waits for task 5 (both claim internal/net/retry.go)
+```
+
+Nothing is refused and nothing is lost. The row is on the column from the start, waiting
+with the task it is waiting for named on it, and it begins by itself the moment task 5 is
+done. Quick tasks that claim different paths — or claim nothing at all — run at the same
+time.
+
+This is a promise made in advance, not a lock: it is about the paths a task *said* it
+would write. A quick task that claims nothing may write anything in your folder, and two
+of those can collide the ordinary way.
+
+## Stopping a quick task — where the half-made work goes, and why there is no branch to go back to
+
+`x` stops it, from its row or inside its room, and it asks before it does, the way
+stopping any task does. What is different is what is left behind.
+
+**There is no branch, so nothing is kept anywhere else.** An ordinary task you stop leaves
+its work committed on its own branch for you to look at. A quick task was writing in your
+folder the whole time, so what you are left with is your folder: the changes it had
+already made, exactly as it left them, **possibly half made**. A file it was in the middle
+of is as far as it got. Your own git is the undo — `git diff` shows the whole of what it
+did, and `git checkout -- <file>` throws it away.
+
+The same is true of a quick task that runs out of its rounds rather than being stopped by
+you. Its report leads with `out of rounds — ` and quotes its own last sentence back,
+because that sentence is the only account in existence of the change it was halfway
+through.
+
+## What a quick task cannot do — no check of its own, nothing to inspect, and it goes when the window goes
+
+Five limits, and they are the price of there being no ceremony:
+
+- **Nothing checks the work.** No check reads what it did against what was asked. A quick
+  task is never `your call` and never waits for your approval — what you get is what it
+  says it did, in its own last message.
+- **There is nothing to inspect afterwards.** No branch, no copy of the folder, no diff of
+  its own. The only record of what it changed is your folder and its room.
+- **It does not outlive this window.** Work that has to keep going while the terminal is
+  closed is an ordinary task.
+- **It cannot be divided.** A quick task never splits itself into parts. Work too wide for
+  one worker was never quick.
+- **It cannot land anything.** No merge, no branch kept, no conflict to resolve — those
+  words never appear on a quick task's card, because there was never a second copy of
+  anything.
+
+None of these are settings. A quick task that turns out to need any of them is a sign the
+work wanted an ordinary task, and you can say so mid-flight: stop it and ask for a task.
+
+## Quick task or a proper task — why it went quick instead of a real task, and how aforge decides which road your work takes
+
+The rule is written once, in the words the model itself reads:
+
+> A task gets its own copy of the folder, is checked, and lands. A quick task works where
+> you are and its last message is its answer. If you will read the result and carry on,
+> it is quick. If it must be checked and merged on its own, or survive the window
+> closing, it is a task. One edit, one read, one command is a step: do it yourself.
+> Related steps that share what they learn are one quick task's items, not several quick
+> tasks.
+
+Two consequences worth knowing. **Small things still do not become work at all** — one
+edit, one read, one command is done in the reply, and it was never a candidate for either
+road. And **related steps are one quick task's items, not several quick tasks**: reading
+four files to answer one question about them is one quick task with four items, because
+the fourth read is worth more to somebody who has seen the first three.
+
+You can overrule it either way in words, and the model follows.
+
+## Can a quick task start more work — quick tasks inside quick tasks, and the two bounds
+
+**Yes, under exactly the bounds every task is under.** A quick task's worker carries
+`quick_task` and `propose_task` on the same terms as any other worker.
+
+**Depth is two levels.** The conversation starts work; that work may start more; the third
+level may not. A worker at the floor has neither tool on its belt — `quick_task` is
+withheld there the same way `propose_task` is — so a child saying it cannot hand work out
+is describing a limit and not a choice.
+
+**Fan-out is five pieces per parent**, counting quick tasks and ordinary tasks together. A
+worker asking for a sixth is told it has handed out as many as one task may, and to do the
+rest itself.
+
+And a quick task takes a slot like anything else: if you have set `task.parallel`, quick
+tasks queue behind it with everything else.
+
+## A quick task started inside a task — a quick row appeared under my task, and who reads its answer
+
+A quick task started by a task hangs **under that task** on the column, in its family,
+folding and unfolding with it. Its row reads the same `quick · 2/4 · …` it would read
+anywhere.
+
+**Its answer goes to the worker that started it, not to you.** The note with its last
+message in it is delivered to its parent, which reads it and carries on — the same road a
+part's report takes. You see the row and can open its room, but the conversation is not
+handed the answer; what reaches the conversation is what the parent task says when *it*
+lands.
+
+The other direction is the same shape: a quick task started by the conversation reports
+into the conversation, and its note is what you read.
+
 ## Why my task's brief is longer than what I typed — the brief is shaped
 
 A task you start with `/task` does not go out as the sentence you typed. Between the
@@ -1213,6 +1406,11 @@ src/analysis.rs is in the working copy task 4 (repair the parser) is using right
 nothing was written.
 ```
 
+**A quick task is in place always.** It is defined by having no copy of its own, so it is
+writing the folder you are in for as long as it runs, and the chat's writes there are
+refused with it named exactly as above. That is the trade for its having nothing to merge:
+*What a quick task is*.
+
 Either hold ends when the task lands, fails or is stopped. *How work runs* has the whole of
 it, under *A task that has written a file holds that file* and *A task working in place
 holds the directory*.
@@ -1418,6 +1616,10 @@ does not by itself request a merge or a checkout change.
 Click anywhere on the card, or press `ctrl+o` with it selected, to expand it. `enter` on the
 selected card opens the task's room instead. What the expansion holds, and in what order, is
 under *What an expanded landing card shows* below. Each long field caps at 20 rows.
+
+**A quick task always comes home `in your own folder`**, with no branch row at all, because
+it never had a branch or a copy to bring back. Its card is the state, the clock, the files
+if it wrote any, and its own last message as the answer.
 
 The branch row is labelled with **where the work was done**, in plain words rather than in
 git's: `a branch of your repository`, `its own copy of the folder`, or `your own folder` —
@@ -3909,6 +4111,9 @@ is this reply, it wants hands.
 
 Two hard bounds, and they behave differently on purpose.
 
+**Both bounds count quick tasks and ordinary ones together**, and `quick_task` is withheld
+at the floor exactly as `propose_task` is.
+
 **Depth: two levels.** The conversation proposes a task; that task may propose pieces; a
 piece may not. Neither `propose_task` nor `tasks` is on a second-level task's belt.
 `propose_task` creates children; `tasks` lets a task inspect and manage only its own
@@ -4131,7 +4336,9 @@ told its prerequisite will never finish. Either way:
 
 - **its branch is kept, with its work on it.** Nothing it wrote is thrown away: whatever
   reached disk is committed onto the branch, and the landing card names the branch and the
-  files, exactly as it does for every other early ending.
+  files, exactly as it does for every other early ending. **A quick task has no branch**,
+  so there is nothing to commit anywhere: what it had written is in your folder as it left
+  it, possibly half made (*Stopping a quick task*).
 - **what it spent is what it spent.** The figure freezes where it was.
 - **it is not a failure.** The roster draws `■` rather than the failure cross, the room's
   header reads `stopped`, and the model is told the task was *stopped* — so nobody goes

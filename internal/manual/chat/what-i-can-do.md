@@ -913,6 +913,16 @@ assigned work while below the two-level depth limit; a leaf at that limit does
 the remaining work itself. `tasks` inside a task is scoped to the pieces it
 handed out. `watch` remains absent inside tasks.
 
+**There is a second, smaller road: `quick_task`.** It starts a task that works in
+the folder this conversation is in — no copy of the folder, no branch, no check,
+no merge — with a `line` saying what to do and an ordered list of `items` it
+works through and ticks off. It starts at once, with no card to accept, and its
+**last message is its answer**. The worker keeps its own checklist with the
+`items` tool (`items` is on a quick worker's belt and nowhere else), and the row
+reads `quick · 2/4 · <what it is on>` while it runs. Which road a piece of work
+takes: if you will read the result and carry on, it is quick; if it must be
+checked and merged on its own, or survive the window closing, it is a task.
+
 The tasks pages in this manual cover how a task runs, what it costs and what you
 see while it works.
 
