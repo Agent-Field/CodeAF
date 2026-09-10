@@ -68,6 +68,12 @@ type guestDoor struct {
 	// left counts the way out of that lane being taken, so "the subscription was
 	// given back with the connection" is an assertion rather than a hope.
 	left int
+	// asking is the OWNER'S QUESTIONS LANE, nil until a test arms it for the same
+	// reason notices is: a door that cannot offer it is a real door
+	// ([TaskOwnerView.Questions]), and the page holds up without one.
+	asking chan session.Event
+	// leftAsking counts that lane's way out being taken.
+	leftAsking int
 }
 
 // watching arms this door with the owner's task lane and hands the test the end
@@ -75,6 +81,13 @@ type guestDoor struct {
 func (d *guestDoor) watching() chan session.Event {
 	d.notices = make(chan session.Event, 8)
 	return d.notices
+}
+
+// askingWith arms this door with the owner's questions lane and hands the test
+// the end it writes into.
+func (d *guestDoor) askingWith() chan session.Event {
+	d.asking = make(chan session.Event, 8)
+	return d.asking
 }
 
 func (d *guestDoor) open(ask TaskOwnerAsk) (TaskOwnerView, error) {
@@ -110,6 +123,18 @@ func (d *guestDoor) open(ask TaskOwnerAsk) (TaskOwnerView, error) {
 			}
 		}
 	}
+	if d.asking != nil {
+		lane := d.asking
+		view.Questions = func() (<-chan session.Event, func()) {
+			return lane, func() {
+				d.leftAsking++
+				if d.asking != nil {
+					close(d.asking)
+					d.asking = nil
+				}
+			}
+		}
+	}
 	return view, nil
 }
 
@@ -121,6 +146,16 @@ func ownerSays(t *testing.T, a *app, ev session.Event) tea.Cmd {
 		t.Fatal("no page for the owner to say anything to")
 	}
 	return a.tookGuestNotice(taskGuestNoticeMsg{gen: a.room.gen, ev: ev})
+}
+
+// ownerAsks delivers one of the owner's questions to the page the way the
+// program loop would.
+func ownerAsks(t *testing.T, a *app, ev session.Event) tea.Cmd {
+	t.Helper()
+	if a.room == nil {
+		t.Fatal("no page for the owner to ask anything on")
+	}
+	return a.tookGuestQuestion(taskGuestQuestionMsg{gen: a.room.gen, ev: ev})
 }
 
 // THE STATE ON A READING PAGE COMES FROM THE CONVERSATION THAT OWNS THE WORK.

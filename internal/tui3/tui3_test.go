@@ -438,6 +438,7 @@ var blockingCommands = []string{
 	"waitDesign",
 	"waitEvent",
 	"waitGuestNotices",
+	"waitGuestQuestions",
 	"waitPilot",
 	"waitQuestion",
 	"waitRoom",

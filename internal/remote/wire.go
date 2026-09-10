@@ -254,17 +254,53 @@ import (
 // precisely why an engine may not be left to guess: a version-12 ENGINE would
 // leave two windows both believing they are the one in the conversation, and
 // only the door can tell those two builds apart.
-const Version = 13
+// VERSION 14 CARRIES THE QUESTIONS LANE, and it is the last of the standing
+// lanes to cross. A question is one decision handed to a person with its
+// evidence attached (docs/design/questions/DESIGN.md), and internal/session
+// speaks every one of them on a subscription of its own that outlives the turn
+// — [session.Agent.WatchQuestions], which replays everything still open the
+// moment a surface attaches. That subscription had no frame here, so a hosted
+// surface asserted the questions half of its agent, found no
+// [Agent.WatchQuestions] on it, and drew nothing: an `ask` on the road a plain
+// `aforge` takes stopped the turn with no block, no chip and no row on any
+// screen, for as long as the person left it. Measured at three minutes.
+//
+// The delta is one intent up and one fact down, on the shape versions 8 and 11
+// named:
+//
+//   - [MethodQuestionWatch] is the surface saying it draws questions. The
+//     engine opens one subscription per surface that asks, which REPLAYS WHAT
+//     IS STILL OPEN before its first live event, so a window that attached an
+//     hour into the wait still learns the question.
+//   - the "question" frame carries each of that lane's events onward —
+//     [session.EventQuestion], [session.EventQuestionWithdrawn] and
+//     [session.EventQuestionAnswered], each with the whole object on it. It
+//     belongs to the CONNECTION and not to a stream, because most questions
+//     outlive the turn that raised them and many never had one.
+//
+// THE ANSWER'S OWN DOOR WAS ALREADY HERE and is unchanged:
+// [MethodQuestionResolve] has carried [session.Answer] whole since it landed.
+// That is what made the gap so quiet — the half a person presses worked
+// perfectly and the half that puts the question on the screen did not exist.
+//
+// The number moves rather than riding version 13 for [MethodTaskWatch]'s
+// reason, and the reason is the whole of the discipline here: a version-13
+// engine answers this subscription with "no such method" and leaves the lane
+// permanently dark, with nothing on the screen saying why. Refused at the door,
+// a person is told their engine is an older aforge; accepted, they would be told
+// nothing at all and their turn would simply stop. NEVER TO SILENCE.
+const Version = 14
 
 // Frame is one line on the wire, either direction.
 type Frame struct {
 	// Kind says what this frame is: "hello", "welcome", "call", "result",
-	// "event", "closed", "facts", "task", "design", "turn", "driver", "moved",
-	// "fatal".
+	// "event", "closed", "facts", "task", "design", "question", "turn",
+	// "driver", "moved", "fatal".
 	//
-	// "facts", "task" and "design" are the KINDS THAT ANSWER NOTHING. The last
-	// is version 11's harness lane and carries one [EventWire], exactly as
-	// "task" does (standinglane.go). Every other
+	// "facts", "task", "design" and "question" are the KINDS THAT ANSWER
+	// NOTHING. The last two are version 11's harness lane and version 14's
+	// questions lane, and each carries one [EventWire], exactly as "task" does
+	// (standinglane.go). Every other
 	// frame from the engine either replies to a call or belongs to a stream a
 	// call opened; these are the engine saying something the surface did
 	// not ask for on that frame, because the whole point of them is that the
@@ -344,6 +380,17 @@ const (
 	// are: they are what an older window on the other end of this wire sends, and
 	// this one is what a window that has the whole object sends.
 	MethodQuestionResolve = "ResolveQuestion" // QuestionArgs → nothing (or a refusal)
+	// MethodQuestionWatch is the surface saying it draws questions, and it buys
+	// exactly what [MethodTaskWatch] and [MethodDesignWatch] buy: "question"
+	// frames from here on, including everything already open replayed the
+	// moment the subscription opens ([session.Agent.WatchQuestions]). It is sent
+	// once per conversation the surface takes up, never on a frame.
+	//
+	// IT IS THE OTHER HALF OF THE DOOR ABOVE. An answer with no way for the
+	// question to arrive is a key nobody will ever press; internal/tui3 asserts
+	// the lane and the answer as ONE interface for that reason, and a wire
+	// carrying one of them leaves a turn stopped on a question no screen shows.
+	MethodQuestionWatch = "Question.Watch" // nothing → nothing, then "question" frames
 	// MethodSetAutonomy is `D`: let the engine answer every question of one SHAPE
 	// from now on ([session.Agent.SetAutonomy]). The setting is kept per project
 	// on the engine's side, which is why it is a call and not a local file: a

@@ -265,6 +265,15 @@ const watchingWord = "this window is reading this conversation, not typing into 
 // link that could not ask it would be a link that cannot measure itself, and the
 // refusal would arrive as a fault on a connection that is working perfectly.
 //
+// AND THE QUESTIONS SUBSCRIPTION IS ON IT FOR THE SAME REASON, WITH ITS ANSWER
+// DELIBERATELY LEFT OFF. A page reading somebody else's work is owed the fact
+// that the work has STOPPED and is waiting on a person — a task room that drew
+// `running` over a conversation sitting on a question would be the same lie the
+// roster subscription was added to end. [MethodQuestionWatch] opens a standing
+// read and changes nothing (questionlane.go). [MethodQuestionResolve] is not
+// here and must not be: answering is exactly the kind of change this list
+// refuses, and the window that owns the work owns the answer.
+//
 // AND THE TASK ROSTER SUBSCRIPTION IS ON IT BECAUSE THE OWNER'S GRAPH IS THE
 // ONLY TRUTHFUL SOURCE FOR WHAT THE WORK IS DOING. [MethodTaskWatch] opens a
 // standing read — the engine replays its roster and then pushes one frame per
@@ -272,10 +281,11 @@ const watchingWord = "this window is reading this conversation, not typing into 
 // from files on the machine it happens to be running on
 // (internal/tui3's taskowner.go).
 var watcherReads = map[string]bool{
-	MethodTaskRoom:  true,
-	MethodTaskWatch: true,
-	MethodDetach:    true,
-	MethodPing:      true,
+	MethodTaskRoom:      true,
+	MethodTaskWatch:     true,
+	MethodQuestionWatch: true,
+	MethodDetach:        true,
+	MethodPing:          true,
 }
 
 func watcherMay(method string) bool { return watcherReads[method] }

@@ -144,6 +144,24 @@ type questionResolver interface {
 	ResolveQuestion(session.Answer) error
 }
 
+// DrawsQuestions reports whether an agent carries the WHOLE questions seam this
+// surface needs: the standing lane, the reading of what is already open, and the
+// door an answer goes back through.
+//
+// IT IS EXPORTED FOR [DrawsTasks]'S REASON, AND FOR THE SAME DEFECT. internal/remote
+// implements this surface's agent over a wire and cannot import this package to
+// check that it kept up, so the door that wires the two together asserts it
+// instead (cmd/aforge). The seam is ALL-OR-NOTHING — [app.questionDoors] is one
+// type assertion — so a single method missing on the far half is not a question
+// drawn smaller, it is a question that never reaches a screen at all. That is
+// exactly what happened: the wire carried ResolveQuestion and neither
+// WatchQuestions nor OpenQuestions, and on the road a plain `aforge` takes every
+// `ask` stopped the turn with nothing on any screen.
+func DrawsQuestions(agent Agent) bool {
+	_, ok := agent.(questionAgent)
+	return ok
+}
+
 // questionDoors is that half of the agent, when it has one.
 func (a *app) questionDoors() (questionAgent, bool) {
 	doors, ok := a.agent.(questionAgent)
@@ -271,7 +289,16 @@ type questionShown struct {
 // [session.Question.Token] with the lane written in — two lanes may both be
 // waiting on id 7.
 func (q questionShown) token() string {
-	return string(q.question.Kind) + ":" + q.question.Token()
+	return questionTokenOf(q.question)
+}
+
+// questionTokenOf names one question the way the whole product names it — the
+// lane it belongs to and that lane's own token ([session.Question.Token]) —
+// spelled once here because every place that holds a LIST of questions has to
+// agree about when two of them are the same one: the block, the sheet, and the
+// page reading another conversation's work (taskowner.go).
+func questionTokenOf(q session.Question) string {
+	return string(q.Kind) + ":" + q.Token()
 }
 
 // questionRecord is a question that has stopped being one: answered, and

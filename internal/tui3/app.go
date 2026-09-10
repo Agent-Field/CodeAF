@@ -3980,6 +3980,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the frames.
 		return a, tea.Batch(a.tookTaskOwner(msg), a.wake())
 
+	case taskGuestQuestionMsg:
+		// AND THAT CONVERSATION HAS STOPPED AND IS WAITING ON SOMEBODY. It is the
+		// one thing its task lane cannot say, and this page draws it and never
+		// answers it (taskowner.go's [app.tookGuestQuestion]).
+		return a, tea.Batch(a.tookGuestQuestion(msg), a.wake())
+
 	case taskGuestNoticeMsg:
 		// AND THE CONVERSATION THAT OWNS THE WORK HAS SAID SOMETHING ABOUT IT. It
 		// is the only authority for what another window's task is doing, and the

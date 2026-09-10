@@ -171,6 +171,17 @@ type Client struct {
 	// (clientlanes.go).
 	titles *stream
 
+	// questions is version 14's questions lane, held on exactly the terms
+	// designs is: one at a time, replaced rather than added to, and nil for a
+	// surface that draws no questions or a connection that has ended
+	// (questionlane.go).
+	questions *stream
+
+	// asked is what this surface believes is still open on that lane, kept so
+	// [Agent.OpenQuestions] can be answered from memory rather than from a
+	// round trip (questionlane.go says why a replica and not a call).
+	asked questionsOpen
+
 	// following carries the turns this surface did not start, so the screen can
 	// draw one. It is BUFFERED AND DROPS WHEN FULL: the reader goroutine must
 	// never block, and a surface that is not draining this is one that does not
@@ -765,6 +776,13 @@ func (c *Client) read() {
 			}
 		case string(laneTitle):
 			c.titleFrame(frame.Payload)
+		case string(laneQuestion):
+			// One event off the questions lane: a question raised, withdrawn or
+			// answered, whole. The replica is moved on THIS goroutine, before
+			// the surface is handed the event, so [Agent.OpenQuestions] and the
+			// block a person is looking at can never disagree about what is
+			// still open (questionlane.go).
+			c.questionFrame(frame.Payload)
 		case string(laneDesign):
 			// One event off the harness lane: a design card, a subharness intake
 			// card, or a note about one. Queued for the surface's loop for the
