@@ -44,12 +44,18 @@ func switchRowLine(a *app, name string) string {
 func switchNames(a *app) []string {
 	var out []string
 	for _, line := range a.home.lines {
-		if line.sw == nil || line.sw.row == nil {
+		var row *switcherRow
+		switch {
+		case line.cell != nil && line.cell.row != nil:
+			row = line.cell.row
+		case line.sw != nil && line.sw.row != nil:
+			row = line.sw.row
+		default:
 			continue
 		}
-		switch line.sw.row.kind {
+		switch row.kind {
 		case switcherConversation, switcherStanding:
-			out = append(out, line.sw.row.title)
+			out = append(out, row.title)
 		}
 	}
 	return out
@@ -151,68 +157,13 @@ func TestOneConversationHasOneRowAndARescanLeavesTheCursorOnIt(t *testing.T) {
 	}
 }
 
-// THE CAP AND ITS DOOR BELONG TO THE WHOLE LIST NOW. The `moving` strip capped
-// at five and folded; the one list caps at [switcherShown] and folds once, and
-// the fold is the same two-arrow gesture every other fold on this surface has —
-// `→` opens what is closed and `←` closes what is open.
-//
-// That enter opens and closes it is place_home_test.go's; what is here is the
-// ARROWS, which are the gesture a hand already knows from the task column and
-// from a project's own tail.
-func TestTheOneFoldOpensAndClosesOnTheArrows(t *testing.T) {
-	lab := newSwitchLab(t)
-	// A FRAME THE LIST CANNOT FILL, because the list now grows to the frame it is
-	// given (switcher.go's [switcherView.room]) and a forty-row window over twelve
-	// conversations has nothing left to fold.
-	a := lab.open(120, 19)
-	foldAt := func() int {
-		for at, line := range a.home.lines {
-			if line.kind == homeSwitchFold {
-				return at
-			}
-		}
-		t.Fatalf("the list drew no fold at all:\n%s", homeText(a))
-		return homeNoLine
-	}
-	// AND THE ROW THE FOLD STANDS OVER IS LOOKED FOR ON THE LIST RATHER THAN ON
-	// THE FRAME. What a fold hides is now exactly what the window could not have
-	// shown anyway, so opening it puts the rows on the list — where `↓` reaches
-	// them — and not necessarily on the visible frame.
-	onTheList := func(title string) bool {
-		for _, line := range a.home.lines {
-			if line.kind == homeSession && strings.Contains(homeName(line.row), title) {
-				return true
-			}
-		}
-		return false
-	}
-	a.home.cursor = foldAt()
-	if !strings.Contains(homeText(a), "more, quiet since") {
-		t.Fatalf("the fold does not say what it stands for:\n%s", homeText(a))
-	}
-	if onTheList("Quiet Chat I") {
-		t.Fatalf("the shut fold is standing over a row that is on the list anyway:\n%s", homeText(a))
-	}
-	a.homeKey(key("right"))
-	if !onTheList("Quiet Chat I") {
-		t.Fatalf("→ did not open the fold:\n%s", homeText(a))
-	}
-	a.home.cursor = foldAt()
-	a.homeKey(key("left"))
-	if onTheList("Quiet Chat I") {
-		t.Fatalf("← did not fold the tail back away:\n%s", homeText(a))
-	}
-}
-
 // NOTHING IS DRAWN FOR A STATE THE MACHINE IS NOT IN, AT EVERY WIDTH.
 //
-// This is where the strips' one exception died. `needs you` and `moving` used to
-// keep their labels over nothing at the widest tier — stable geography beating
-// emptiness, because a map that redraws itself is not a map — and the labels
-// were the map. With one list there is no map to keep still: the claim over the
-// list, the `since you left` heading and the fold are each a sentence about
-// something that has happened, and a quiet morning has none of them to say. So
-// the emptiness law applies here with no exception left in it.
+// The panels are the map now and they keep their headings over nothing — a map
+// that redraws itself is not a map — with one dim whisper naming what arrives
+// (docs/design/home-mission-control/DESIGN.md §4). What stays banned is a
+// sentence about something that has happened: the old list's claim over it,
+// and a fold over rows that do not exist.
 func TestAQuietMachineDrawsNothingForAStateItIsNotIn(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -231,7 +182,7 @@ func TestAQuietMachineDrawsNothingForAStateItIsNotIn(t *testing.T) {
 	for _, width := range []int{80, 120, homeCardMin, 200} {
 		a.width = width
 		text := homeText(a)
-		for _, claim := range []string{"what wants you first", "since you left", "more, quiet"} {
+		for _, claim := range []string{"what wants you first", "more, quiet", "more · " + homeFindWord} {
 			if strings.Contains(text, claim) {
 				t.Fatalf("a %d-column quiet machine claimed %q:\n%s", width, claim, text)
 			}
@@ -295,11 +246,6 @@ func TestTheSwitchersOwnWordsNeverAnnounceAbsence(t *testing.T) {
 				t.Fatalf("%q announces absence with %q", word, banned)
 			}
 		}
-	}
-	lab := newSwitchLab(t)
-	a := lab.open(120, 40)
-	if !strings.Contains(homeText(a), "what wants you first") {
-		t.Fatalf("the list's own claim is not on the screen:\n%s", homeText(a))
 	}
 }
 
@@ -416,34 +362,6 @@ func TestAWaitingConversationIsNotAlsoAMovingOne(t *testing.T) {
 // frame animates wears instead (homespinner.go).
 func movingMark(a *app, row string) bool {
 	return strings.HasPrefix(row, tokens.GlyphWorking) || strings.HasPrefix(row, a.homeSpinGlyph())
-}
-
-// A CONVERSATION MID-TURN IS MOVING WITH NOTHING COMMISSIONED. The model
-// thinking is work in flight, and it is the fact the presence file writes off
-// the turn rather than off the task graph — so the row wears the moving mark
-// with an empty task rollup behind it.
-func TestAConversationMidTurnIsMovingWithNoTasksAtAll(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	mine := lab.session("-alpha", "aaaa000000000001", "the newest chat", lab.workspace("alpha"), now)
-	lab.session("-beta", "bbbb000000000001", "pricing research", lab.workspace("beta"), now.Add(-3*time.Minute))
-	lab.presence("-beta", "bbbb000000000001", session.PresenceWorking, "", now)
-
-	a := lab.app(mine)
-	a.width, a.height = 120, 30
-	a.openHome()
-
-	// THE ONE MOVING ROW IS ALSO THE ONE THE PAGE ANIMATES, so the mark it wears
-	// is the turning cell rather than the still `◐` (homespinner.go). They are the
-	// same claim at two tiers, and the still one is what every OTHER live row
-	// holds — which is what [TestExactlyOneRowIsGivenTheSpinnerHoweverManyAreMoving]
-	// pins one file over.
-	if row := switchRowLine(a, "Pricing Research"); !movingMark(a, row) {
-		t.Fatalf("the mid-turn row reads %q, want a moving mark:\n%s", row, homeText(a))
-	}
-	if names := switchNames(a); len(names) == 0 || names[0] != "Pricing Research" {
-		t.Fatalf("the mid-turn conversation is not what is moving: %v\n%s", names, homeText(a))
-	}
 }
 
 // A LINE ABOUT A PIECE OF WORK LANDS ON THAT WORK'S PLACE.
@@ -576,86 +494,25 @@ func TestTypingTakesTheSwitcherAway(t *testing.T) {
 	a := lab.open(120, 40)
 	a.home.seen = lab.now.Add(-30 * time.Minute)
 	a.home.build()
-	if !strings.Contains(homeText(a), "what wants you first") {
-		t.Fatalf("the switcher was not there to begin with:\n%s", homeText(a))
+	if !strings.Contains(homeText(a), "where you were") {
+		t.Fatalf("the panels were not there to begin with:\n%s", homeText(a))
 	}
 	typeHome(a, "quiet")
 	if !a.home.searching() {
 		t.Fatal("typing into the box did not put home into a search")
 	}
 	text := homeText(a)
-	for _, gone := range []string{"what wants you first", "since you left", "more, quiet", switcherGroupWord} {
+	for _, gone := range []string{"where you were", "since you left", "more · " + homeFindWord, switcherGroupWord} {
 		if strings.Contains(text, gone) {
 			t.Fatalf("a search kept the switcher's %q:\n%s", gone, text)
 		}
 	}
 	for _, line := range a.home.lines {
-		if line.sw != nil {
+		if line.sw != nil || line.cell != nil {
 			t.Fatalf("a search kept a line of the reading:\n%s", text)
 		}
 	}
 	if a.placeAlt('g') {
 		t.Fatal("alt+g regrouped a list that is not on the screen")
-	}
-}
-
-// THE MARK CARRIES THE MEANING AND THE TEXT STAYS CALM. Four states, four marks
-// in the first cell of a row, and only the two that are about RIGHT NOW spend
-// ink: amber on the row waiting for a hand, the live hue on the row that is
-// moving, and the dim on everything simply sitting there.
-//
-// The strips wore their hue on a label; the list wears it on the one cell that
-// says what a row is doing, which is the same budget spent one scale down.
-func TestEachStateHasItsOwnMarkAndOnlyTheTwoThatWantYouSpendInk(t *testing.T) {
-	marks := []string{tokens.GlyphNeedsHuman, tokens.GlyphWorking, tokens.GlyphPaused, tokens.GlyphQueued}
-	for i, mark := range marks {
-		for j, other := range marks {
-			if i != j && mark == other {
-				t.Fatalf("two states wear the same mark %q", mark)
-			}
-		}
-	}
-	lab := newHomeLab(t)
-	now := time.Now()
-	alpha := lab.workspace("alpha")
-	mine := lab.session("-alpha", "aaaa000000000001", "the quiet one", alpha, now.Add(-time.Hour))
-	lab.session("-alpha", "aaaa000000000002", "the asking one", alpha, now.Add(-2*time.Hour))
-	lab.asking("-alpha", "aaaa000000000002", consentQuestion(7, "needs your ok to run bash"), now)
-	lab.session("-beta", "bbbb000000000001", "the moving one", lab.workspace("beta"), now.Add(-3*time.Minute))
-	lab.presence("-beta", "bbbb000000000001", session.PresenceWorking, "", now)
-
-	a := lab.app(mine)
-	a.width, a.height = 120, 30
-	a.openHome()
-	for _, want := range []struct {
-		name string
-		mark string
-	}{
-		{"The Asking One", tokens.GlyphNeedsHuman},
-		{"The Quiet One", tokens.GlyphQueued},
-	} {
-		if row := switchRowLine(a, want.name); !strings.HasPrefix(row, want.mark) {
-			t.Fatalf("%q reads %q, want the %q mark:\n%s", want.name, row, want.mark, homeText(a))
-		}
-	}
-	// AND THE MOVING ONE WEARS A MOVING MARK — the still `◐` on every live row
-	// but the one this frame gave the spinner to, and the turning cell on that one
-	// (homespinner.go). With a single thing in flight it is always that one.
-	if row := switchRowLine(a, "The Moving One"); !movingMark(a, row) {
-		t.Fatalf("%q reads %q, want a moving mark:\n%s", "The Moving One", row, homeText(a))
-	}
-	// AND THE STILL ROW IS STILL IN EVERY CHANNEL. A quiet conversation spends
-	// neither the amber that means a hand is wanted nor the accent that means
-	// something is happening this instant.
-	pal := newPalette(tokens.TrueColor, false)
-	for _, line := range a.home.reading.rows(120, pal) {
-		if !strings.Contains(plain(line), "The Quiet One") {
-			continue
-		}
-		for word, paint := range map[string]func(string) string{"amber": pal.warn, "the accent": pal.accent} {
-			if strings.Contains(line, paint(tokens.GlyphNeedsHuman)) || strings.Contains(line, paint(tokens.GlyphWorking)) {
-				t.Fatalf("a quiet row spent %s: %q", word, line)
-			}
-		}
 	}
 }

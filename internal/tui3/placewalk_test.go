@@ -168,7 +168,7 @@ func TestTheLaunchHomeMarksTheConversationYouAreIn(t *testing.T) {
 	}
 	found := false
 	for _, line := range a.home.lines {
-		if line.sw != nil && line.sw.row != nil && line.sw.row.here {
+		if line.cell != nil && line.cell.row != nil && line.cell.row.here {
 			found = true
 		}
 	}

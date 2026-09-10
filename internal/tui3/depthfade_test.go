@@ -346,56 +346,6 @@ func TestTheRosterNeverFadesTheRowItsCursorIsOn(t *testing.T) {
 
 // ── home ────────────────────────────────────────────────────────────────────
 
-// THE LEFT COLUMN OF HOME IS AN INDEX, and an index that runs past its window
-// fades into the fold like every other list on this surface.
-func TestHomesListFadesItsTailOnlyWhenItRunsPastTheWindow(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", now)
-	for i := 1; i < 40; i++ {
-		lab.session("-tmp-alpha", "aaaa0000000000"+padTwo(i+1), "errand "+itoa(i), "/tmp/alpha",
-			now.Add(-time.Duration(i)*time.Minute))
-	}
-	a := lab.app(mine)
-	a.width, a.height = 100, 24
-	openHomeOn(a, mine)
-	// THE RESTING LIST DRAWS EIGHT ROWS AND ONE DOOR, which is home refusing to
-	// be long in the first place ([switcherShown]). The subject here is what
-	// happens when it IS long, so the one fold is opened — every row on the
-	// column, no cap at all ([switcherReading.cap]) — and the cursor is put back
-	// on the row the test arrived on.
-	a.home.foldSwitch(true)
-	a.home.point(mine)
-	if len(a.home.lines) < 40 {
-		t.Fatalf("the opened fold left %d lines, which fits the frame:\n%s", len(a.home.lines), homeText(a))
-	}
-
-	width, height := a.size()
-	lines, _, _, _ := a.homeFrame(width, height)
-	stops := map[int]int{}
-	for _, line := range lines {
-		if stop := fadeStopOf(a.pal, line); stop >= 0 {
-			stops[stop]++
-		}
-	}
-	for stop := 0; stop < fadeSteps; stop++ {
-		if stops[stop] != 1 {
-			t.Fatalf("home drew %d rows at stop %d, want exactly one:\n%s",
-				stops[stop], stop, plain(strings.Join(lines, "\n")))
-		}
-	}
-
-	// AND A HOME THAT FITS FADES NOTHING.
-	small := newHomeLab(t)
-	only := small.session("-tmp-alpha", "aaaa000000000001", "one errand", "/tmp/alpha", now)
-	b := small.app(only)
-	b.width, b.height = 100, 24
-	openHomeOn(b, only)
-	width, height = b.size()
-	short, _, _, _ := b.homeFrame(width, height)
-	noFadeAnywhere(t, b.pal, short, "a one-conversation home")
-}
-
 // padTwo keeps the lab's session ids the same length, which is what makes their
 // order on disk the order the test wrote them in.
 func padTwo(i int) string {
