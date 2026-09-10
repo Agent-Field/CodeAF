@@ -5105,10 +5105,13 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		a.touch()
 
 	case session.EventRetrying:
-		// The rows the dead attempt drew are gone already ([feed.retry], which
-		// the card hook is installed on). What is left is this page's own word
-		// for itself: the status line says "trying again" until the new stream
-		// speaks (the wait clock above clears it).
+		// The rows the dead attempt drew are gone already, and the row saying
+		// WHY has been written in its place ([feed.retry], which the card hook is
+		// installed on). What is left is this page's own word for itself: the
+		// status line says "trying again" until the new stream speaks (the wait
+		// clock above clears it), and it says it out of the same struct the row
+		// was composed from ([feed.lastAsk], failurerow.go) so that the two
+		// readings of one moment cannot disagree.
 		a.retrying = true
 
 	case session.EventTurnDone:
@@ -5137,7 +5140,12 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		after = tea.Batch(a.settle(), a.notifyDone())
 
 	case session.EventError:
-		a.note("error: " + errText(ev.Err))
+		// AND A TURN THAT RAN OUT OF TRIES SAYS SO IN THOSE WORDS. The line used
+		// to be `error: after 3 retries: API error (429) …` — the engine's
+		// arithmetic and the provider's sentence, one inside the other, with
+		// nothing in it that reads as an ending. [feed.failureNote] composes it
+		// from the tries this page watched go past.
+		a.note(a.failureNote(ev.Err))
 		// A turn that failed still paid for the steps it took, and its cache
 		// reads are as real as a completed turn's.
 		a.cacheNote(ev.Usage)

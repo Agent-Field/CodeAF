@@ -1074,8 +1074,9 @@ stops being the first pick for the next request.
 A cut request is asked again **twice**. When the router named the endpoint that went
 quiet, that endpoint is avoided on the retry so another endpoint serving the same model
 can answer. The screen says `trying again · 12s` while it is (see *What is on the
-screen*), and a dim line lands saying `nothing came back from the model — asking again`
-or `the model went quiet mid-reply — asking again`.
+screen*), and a dim row lands in the conversation saying which — `nothing came back from
+the model · asking again · 2 of 3`, or `the model went quiet mid-reply · asking again ·
+2 of 3`.
 
 **If all three attempts come back with nothing, aforge finishes the reply on another
 model** — the next one in your `fallback models` row, or the nearest same-class model in
@@ -1083,7 +1084,7 @@ the catalog when you have written no row. It is said out loud before it happens,
 where the rest of the answer is coming from:
 
 ```
-the model kept going quiet mid-reply — finishing this one on openai/gpt-5-mini
+the model went quiet mid-reply · moving to gpt-5-mini
 ```
 
 The turn finishes there and the cost lands against the model that actually answered. **It
@@ -1183,13 +1184,13 @@ When a reply is cut at the wall it is asked again exactly like a reply that went
 the endpoint is avoided on the retry, and a dim line lands:
 
 ```
-the reply kept going and never finished — asking again
+the reply kept going and never finished · asking again · 2 of 3
 ```
 
 and if it keeps happening, the turn moves to your next fallback model:
 
 ```
-the reply kept running on without finishing — finishing this one on openai/gpt-5-mini
+the reply kept going and never finished · moving to gpt-5-mini
 ```
 
 with the same ending when there is nowhere to move:
@@ -1260,14 +1261,14 @@ your model, a `502`, a torn connection, a deadline — is sent again, up to **fo
 all**, waiting 2s, then 4s, then 8s, with a dim line each time:
 
 ```
-the request failed — asking again
+the model would not take the request · asking again · 2 of 4
 ```
 
 When all four are gone, the turn does not end. It moves, and says so before the next words
 appear in a different voice:
 
 ```
-the model kept turning the request away — finishing this one on openai/gpt-5-mini
+the model would not take the request · moving to gpt-5-mini
 ```
 
 The new model gets a full four tries of its own — what the last one did says nothing about
@@ -1351,6 +1352,59 @@ different machine, which is what the next try asks for. Only when all four come 
 does the turn end. Before this, one empty reply ended a whole turn, and a measured run
 stopped eighteen minutes in with hours of budget unspent.
 
+## Where do I see that it is asking again — the retry rows in the conversation, gave up, moving to another model, and the request that did not answer in time
+
+**Every failed attempt at a request leaves a row where you are reading**, in the
+dim lane aforge writes everything about itself in. You do not have to be looking
+at the status line at the moment it happens, and you do not lose the story by
+looking away:
+
+```
+· the model went quiet · asking again · 2 of 4
+· the model would not take the request · asking again · 3 of 4
+· the model kept going quiet · moving to glm-5.3
+· gave up after 4 tries · API error (429) rate limited
+```
+
+The first three are **something still being done**. A row is three things: what
+went wrong, what is being done about it, and how far in it is.
+
+- **What went wrong** is aforge's own reading of the failure, in the same words
+  everywhere: `nothing came back from the model`, `the model did not answer in
+  time`, `the model went quiet`, `the reply lost its thread`, `the reply stopped
+  part-way`, `the connection to the model dropped`, `the model would not take the
+  request`, `the model could not be reached`.
+- **`asking again`** means the same model, once more. **`moving to <model>`**
+  means that model's tries are spent and the rest of the answer arrives from
+  another one — a different voice at a different price, which is why it is said
+  before the text starts appearing.
+- **`2 of 4`** is which try this is out of how many that model gets. It is the
+  budget the run is actually walking rather than a number aforge holds, so it
+  moves with your settings and with the kind of failure. **A row that is moving
+  to another model carries no count**: the count belonged to the model being
+  left, and beside a new name it would read as that new model's.
+
+The last one is **the end**. `gave up after 4 tries · …` is drawn when a turn
+that was asked again runs out of tries, and what follows the dot is what the
+provider actually said. It is the row that used to be missing: a turn could fail
+four requests over ninety seconds, give up, and leave nothing in the
+conversation at all except a two-word state on the status line, which is gone by
+the next redraw. If nothing is being done any more, a row says so.
+
+**An error nobody tried again for is still just an error.** A turn that failed
+on its first and only attempt — a request too large for the window, a refusal of
+the request itself — draws `error: <what went wrong>`. "Gave up" is a claim about
+a struggle, and aforge does not make it about a single attempt.
+
+**The status line has its own short form of the same event** while a second
+attempt is on the wire, with a count-up beside it — the words are in *The model
+went quiet, or stopped answering halfway through* above. The row and the status
+line are two readings of one moment, so they cannot disagree.
+
+**A task's own page draws the same rows.** A step of a task that is asked again,
+or that gives up, says so on the task's page in exactly these words, so a task
+whose work keeps failing is not a page that says nothing has arrived yet.
+
 ## My reply just stopped and nothing was said — a turn that ended with no answer, no error and no note, my answer disappeared when I opened the conversation in another window, who ended my reply, do I have to type my question again
 
 If a reply ends without arriving, aforge says one sentence about it. There is
@@ -1402,7 +1456,7 @@ one thing an autopsy of a vanished reply needs and did not have. `aforge logs`
 is where to look.
 
 **A request cut out from under a turn that is still going is asked again rather
-than reported.** You see `the reply was cut short — asking again`, the text that
+than reported.** You see `the reply was cut short · asking again · 2 of 4`, the text that
 had arrived is thrown away, and the turn carries on. Nothing is silently lost:
 if every attempt is spent, the turn ends with the reason said out loud.
 
@@ -1451,12 +1505,12 @@ conversation, and the model reads its own nonsense before writing the next one.
 So aforge watches the reply as it arrives and cuts it where it went wrong. **None of that
 text is kept**: it is not in the conversation, not in the session file, not sent back to
 the model, and it comes off your screen. A dim line says so —
-`the reply lost its thread — that text was dropped, asking again` — and the same question
+`the reply lost its thread · asking again · 2 of 2` — and the same question
 is asked **once** more. If the second reply comes apart too, aforge finishes it on the next
 model in your `fallback models` row, saying so first:
 
 ```
-the reply kept losing its thread — finishing this one on openai/gpt-5-mini
+the reply lost its thread · moving to gpt-5-mini
 ```
 
 With nowhere to go, the turn ends in the sentence that says what to do about it instead:
@@ -1563,7 +1617,7 @@ aside first, so the retry genuinely lands somewhere else. If the markup keeps co
 turn moves to the next model in your `fallback models` row, saying so:
 
 ```
-the model kept answering in its own internal markup — finishing this one on openai/gpt-5-mini
+the model answered in its own internal markup instead of words · moving to gpt-5-mini
 ```
 
 With nowhere left to go, the turn ends in

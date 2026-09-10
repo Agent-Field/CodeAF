@@ -53,7 +53,9 @@ func callsRoom(t *testing.T) (*app, int) {
 	a.openRoom(7, "Port the loader")
 	a.touch()
 	compact := roomText(a)
-	if !strings.Contains(compact, "reading "+strconv.Itoa(n)+" files") || strings.Contains(compact, "file0.go") {
+	// Every call in the journal was answered, so the step has CLOSED and its
+	// floor caption is in the past (caption.go's [captionPast]).
+	if !strings.Contains(compact, "read "+strconv.Itoa(n)+" files") || strings.Contains(compact, "file0.go") {
 		t.Fatalf("new room did not start with a compact caption:\n%s", compact)
 	}
 	openRoomCompactWork(t, a)
@@ -91,7 +93,7 @@ func TestARoomWithManyCallsFillsItsFrameAndFoldsOnlyTheOverflow(t *testing.T) {
 		t.Fatalf("%d calls on the page at %d rows high — the fold starved the screen:\n%s",
 			calls, height, roomText(a))
 	}
-	if want := "reading " + strconv.Itoa(n) + " files"; !strings.Contains(fold, want) {
+	if want := "read " + strconv.Itoa(n) + " files"; !strings.Contains(fold, want) {
 		t.Fatalf("the room's fold reads %q, want %q", fold, want)
 	}
 	visible, pad := a.roomWindow(width, height)

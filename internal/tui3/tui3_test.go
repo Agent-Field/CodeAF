@@ -1257,7 +1257,9 @@ func TestTheClusterFoldsPastThreeCalls(t *testing.T) {
 
 	list := plainRows(a)
 	page := strings.Join(list, "\n")
-	if !strings.Contains(page, "reading 5 files") {
+	// The turn is over and all five reads came back, so the floor caption is in
+	// the past (caption.go's [captionPast]).
+	if !strings.Contains(page, "read 5 files") {
 		t.Fatalf("the caption is missing:\n%s", page)
 	}
 	if strings.Contains(page, "earlier tool calls") {
