@@ -487,12 +487,10 @@ type tasksLine struct {
 	kids int
 }
 
-// tasksBareLead is the two cells in front of every row of work. On the row a
-// person is on they carry the mark in the accent — `›` where the keyboard is and
-// `·` where the pointer is — which is what every other list on this surface
-// leads with ([overlayLead]); the lead is chosen by the frame and passed in,
-// because the reading does not know where anybody is standing.
-const tasksBareLead = "  "
+// tasksBareLead is the cell in front of every row of work: the place's one left
+// edge ([placeLead]), where the row's state glyph stands. It carries no mark —
+// the band says which row a hand is on.
+const tasksBareLead = placeLead
 
 // lay is the one walk of the reading: what line the page draws, in order, and
 // which of them a person can act on.
@@ -1123,7 +1121,7 @@ func (r tasksReading) paint(lines []tasksLine, i, width int, pal palette, lit bo
 			// exact defect verbstrip.go's law was written against.
 			return placeHeadRow(width, line.text, placeHeading(line.text, pal), r.win, pal)
 		}
-		return placeHeading(fit(line.text, width), pal)
+		return placeLead + placeHeading(fit(line.text, width-len(placeLead)), pal)
 	case tasksLineChat:
 		kin := pal.dim(line.kin)
 		room -= ansi.StringWidth(line.kin)

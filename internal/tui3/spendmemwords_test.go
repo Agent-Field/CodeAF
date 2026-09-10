@@ -247,7 +247,8 @@ func TestTheShelvesHeadingIsWholeBeforeItsLegend(t *testing.T) {
 	}
 	kinds := 0
 	for _, width := range []int{200, 120, 80, 60} {
-		row := plain(r.rows(width, newPalette(tokens.NoColor, false))[at])
+		// The heading stands on the place's one left edge ([placeLead]).
+		row := strings.TrimPrefix(plain(r.rows(width, newPalette(tokens.NoColor, false))[at]), placeLead)
 		if !strings.HasPrefix(row, memorySectionWord) {
 			t.Fatalf("at %d cells the heading reads %q, want %q whole in front of the legend", width, row, memorySectionWord)
 		}

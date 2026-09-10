@@ -881,7 +881,10 @@ func overlayLead(selected, hovered bool, pal palette) string {
 	case pal.placeRows:
 		// A PLACE'S ROW WEARS NO MARK. The ground says which row a hand is on and
 		// the bold subject says it again; an accent `›` beside them was a second
-		// accent on a screen whose one accent belongs to the live thing.
+		// accent on a screen whose one accent belongs to the live thing. The one
+		// cell left is the place's own edge ([placeLead]), where the row's own
+		// glyph stands.
+		return placeLead
 	case selected:
 		return pal.accent("› ")
 	case hovered:
