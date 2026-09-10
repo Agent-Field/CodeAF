@@ -303,7 +303,7 @@ func TestAPanelWithNoRowsAndNoWhisperDrawsNothing(t *testing.T) {
 }
 
 // SPEND READS THE FORTNIGHT THE SPEND PLACE READS: today's figure, the total,
-// and the model most of it went to.
+// the loudest day, and the two models most of it went to.
 func TestSpendReadsTodayAndTheFortnight(t *testing.T) {
 	now := time.Date(2026, 9, 10, 15, 0, 0, 0, time.Local)
 	lines := []session.UsageLine{
@@ -316,30 +316,107 @@ func TestSpendReadsTodayAndTheFortnight(t *testing.T) {
 	if s.today != 0.25 || s.total != 2.00 || len(s.days) != homeSpendDays {
 		t.Fatalf("today %v, fortnight %v over %d days", s.today, s.total, len(s.days))
 	}
-	if s.share != 0.5 || s.top == "" {
-		t.Fatalf("the top model is %q at %v, want half the fortnight", s.top, s.share)
+	if len(s.models) != 2 || s.models[0].share != 0.5 || s.models[1].share != 0.5 {
+		t.Fatalf("the models are %+v, want two halves of the fortnight", s.models)
+	}
+	if want := strings.ToLower(now.AddDate(0, 0, -5).Format("Mon")); s.loud != want || s.loudUSD != 1.00 {
+		t.Fatalf("the loudest day is %q at %v, want %q at $1", s.loud, s.loudUSD, want)
 	}
 }
 
-// AND THE PANEL SAYS IT: today against the allowance on the heading, the bar
-// under it, the fortnight after that — and every row opens the spend place.
-func TestSpendDrawsTodayTheBarAndTheFortnightAsDoors(t *testing.T) {
-	a := newSwitchLab(t).open(120, 45)
+// homeSpendLab is a fortnight a person would recognise: fourteen days, one loud
+// sunday, two models, and a day of three chats and one task.
+func homeSpendLab(t *testing.T) *app {
+	t.Helper()
+	lab := newSwitchLab(t)
+	a := lab.open(120, 45)
 	days := make([]float64, homeSpendDays)
-	days[3], days[13] = 2, 0.14
-	a.home.spend = homeSpendReading{today: 0.14, ceiling: 20, days: days, total: 34.10, top: "opus", share: 0.63}
+	for i := range days {
+		days[i] = 4
+	}
+	days[6], days[13] = 88.10, 170
+	a.home.spend = homeSpendReading{today: 170, ceiling: 500, days: days, total: 204.36, loud: "sun", loudUSD: 88.10,
+		models: []homeSpendModel{{name: "glm-5.3", share: 0.55}, {name: "opus", share: 0.31}}}
 	a.home.build()
-	frame := homeText(a)
-	if row, _ := homeRowOf(frame, "today $0.14 of $20.00"); row < 0 {
-		t.Fatalf("the spend heading does not carry today:\n%s", frame)
+	return a
+}
+
+// spendPanelText is the spend panel painted at one column's width, a line of
+// plain text a screen row.
+func spendPanelText(a *app, width int) []string {
+	var out []string
+	for at, line := range a.home.lines {
+		if got, ok := line.panelOf(); !ok || got != panelSpend {
+			continue
+		}
+		for _, row := range a.homeLineRows(line, at, width, a.pal, false) {
+			out = append(out, plain(row.text))
+		}
 	}
-	if row, _ := homeRowOf(frame, "14 days $34.10 · opus 63%"); row < 0 {
-		t.Fatalf("the fortnight is not drawn:\n%s", frame)
+	return out
+}
+
+// SPEND IS A SMALL HUD: today against the allowance spelled the pulse's way on
+// the heading, one thin meter, the fortnight in block cells with its total and
+// its loudest day, and the models beside what the day was spent on.
+func TestSpendIsASmallHudOfThreeLines(t *testing.T) {
+	a := homeSpendLab(t)
+	rows := spendPanelText(a, 58)
+	if len(rows) != 4 {
+		t.Fatalf("the spend panel is %d rows at 58 cells, want a heading and three lines:\n%s", len(rows), strings.Join(rows, "\n"))
 	}
-	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.kind == cellSpark })
+	if !strings.HasSuffix(rows[0], "today $170.00 of $500") || strings.Contains(rows[0], "$500.00") {
+		t.Fatalf("the heading does not say today against the allowance the pulse's way: %q", rows[0])
+	}
+	if !strings.Contains(rows[1], homeSpendRun+homeSpendRest) || !strings.HasSuffix(rows[1], " 34%") {
+		t.Fatalf("the meter is not one thin line with its share: %q", rows[1])
+	}
+	spark := strings.TrimSpace(rows[2])
+	if !strings.HasPrefix(spark, "▁▁▁▁▁▁▅▁▁▁▁▁▁█") || !strings.Contains(spark, "14 days $204.36 · loudest sun $88.10") {
+		t.Fatalf("the fortnight is not fourteen block cells with its total and loudest day: %q", rows[2])
+	}
+	for _, braille := range tokensBraille {
+		if strings.Contains(strings.Join(rows, ""), braille) {
+			t.Fatalf("the panel still draws braille: %q", rows[2])
+		}
+	}
+	if !strings.Contains(rows[3], "glm-5.3 55% · opus 31%") {
+		t.Fatalf("the models are not on the last line: %q", rows[3])
+	}
+	// AT FORTY CELLS every line still fits and no clause is cut mid-word: the
+	// loudest day gives way whole, and the fortnight keeps its fourteen cells.
+	for _, row := range spendPanelText(a, 40) {
+		if len([]rune(row)) > 40 || strings.Contains(row, glyphMore) {
+			t.Fatalf("at 40 cells the panel draws %q", row)
+		}
+	}
+	// AND ENTER ON ANY OF ITS ROWS OPENS THE SPEND PLACE.
+	homeLineOf(t, a, func(l homeLine) bool { return l.cell != nil && l.cell.kind == cellFacts })
 	a.homeKey(key("enter"))
 	if !a.at(pageSpend) {
-		t.Fatal("enter on the fortnight did not open the spend place")
+		t.Fatal("enter on the spend panel's last line did not open the spend place")
+	}
+}
+
+// tokensBraille is the braille spark ramp the panel no longer draws.
+var tokensBraille = []string{"⣀", "⣄", "⣤", "⣦", "⣶", "⣷", "⣿"}
+
+// UNDER A TWENTIETH OF THE ALLOWANCE THERE IS NO METER, and with nothing on the
+// ledger the panel is its heading and its whisper.
+func TestSpendDrawsNoMeterForASliverAndWhispersOverAnEmptyLedger(t *testing.T) {
+	a := homeSpendLab(t)
+	a.home.spend.today = 6.51
+	a.home.build()
+	for _, row := range spendPanelText(a, 58) {
+		if strings.Contains(row, homeSpendRun) || strings.Contains(row, "%") && !strings.Contains(row, "glm") {
+			t.Fatalf("a day at 1%% of its allowance draws a meter: %q", row)
+		}
+	}
+	a.home.spend = homeSpendReading{}
+	a.home.build()
+	rows := spendPanelText(a, 58)
+	if len(rows) != 2 || strings.TrimSpace(rows[0]) != "spend" || strings.TrimSpace(rows[1]) != homeWhisper[panelSpend] {
+		t.Fatalf("an empty ledger draws %q, want the heading and the whisper", rows)
 	}
 }
 

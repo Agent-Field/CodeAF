@@ -109,9 +109,11 @@ func (a *app) homeLineRows(line homeLine, at, width int, pal palette, heading bo
 	case cellWhisper, cellFold:
 		texts = []string{homeCellQuiet(cell, width, pal, lit)}
 	case cellBar:
-		texts = []string{homeCellBand(homeCellLeadBlank+homeSpendBar(cell.share, width-homeGridLead, pal), width, pal, lit)}
+		texts = []string{homeCellBand(homeCellLeadBlank+homeSpendMeter(cell.share, width-homeGridLead, pal), width, pal, lit)}
 	case cellSpark:
 		texts = []string{homeCellBand(homeCellLeadBlank+homeSpendSpark(cell, width-homeGridLead, pal), width, pal, lit)}
+	case cellFacts:
+		texts = []string{homeCellBand(homeCellLeadBlank+homeSpendFacts(cell, width-homeGridLead, pal), width, pal, lit)}
 	default:
 		texts = a.homeCellRow(line, at, width, pal, lit)
 	}
@@ -146,11 +148,49 @@ var homeCellLeadBlank = strings.Repeat(" ", homeGridLead)
 // (docs/DESIGN-LANGUAGE.md, "the section holding the cursor marks its own
 // heading") — one heading per frame, following the keyboard only.
 func homeCellHead(cell *homeCell, width int, pal palette, marked bool) string {
-	text := switcherSides(width, cell.title, cell.right, pal.muted, pal.dim)
+	text := switcherSides(width, cell.title, cell.right, pal.muted, homeCellMoneyInk(cell.money, pal))
 	if marked {
 		return pal.cursor(text, width)
 	}
 	return text
+}
+
+// homeCellMoneyInk is the heading clause's ink: dim, with the one figure in
+// it that is money in the money ink (docs/DESIGN-LANGUAGE.md — money is a
+// number, and it is findable because it is the one mint thing on the line).
+func homeCellMoneyInk(money string, pal palette) func(string) string {
+	return func(text string) string {
+		at := strings.Index(text, money)
+		if money == "" || at < 0 {
+			return pal.dim(text)
+		}
+		return pal.dim(text[:at]) + placeMoneyInk(pal)(money) + pal.dim(text[at+len(money):])
+	}
+}
+
+// homeSparkSteps is the eight-step block ramp home's fortnight is drawn in, a
+// cell a value. It is not [sparkline]'s braille: at a column's width the braille
+// ramp's low steps are dots a person cannot tell apart, and the spend place,
+// which draws a whole frame's width, keeps it.
+var homeSparkSteps = [...]string{"▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
+
+// homeSparkCells is a series as one step a value, scaled to its own peak; a
+// zero draws the lowest step, so the line keeps its length and a quiet day is
+// the floor rather than a hole. A series with no spend in it is no cells.
+func homeSparkCells(values []float64) []string {
+	peak := 0.0
+	for _, value := range values {
+		peak = max(peak, value)
+	}
+	if peak <= 0 {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	top := len(homeSparkSteps) - 1
+	for _, value := range values {
+		out = append(out, homeSparkSteps[min(top, max(0, int(value/peak*float64(top)+0.5)))])
+	}
+	return out
 }
 
 // homeCellQuiet is a whisper or a fold: dim words under the rows' own lead.

@@ -295,8 +295,9 @@ type homePanelRows struct {
 	// said is what the heading carries after its word — a count, an age — and
 	// "" for the word alone.
 	said string
-	// right is a clause the heading carries at its right margin.
-	right string
+	// right is a clause the heading carries at its right margin, and money the
+	// figure inside it drawn in the money ink — the day's spend on `spend`.
+	right, money string
 }
 
 // homeCellKind is which shape one line of a panel is drawn in.
@@ -309,10 +310,12 @@ const (
 	cellHead
 	cellWhisper
 	cellFold
-	// cellBar and cellSpark are the spend panel's two drawings: the day against
-	// its allowance, and the fortnight.
+	// cellBar, cellSpark and cellFacts are the spend panel's three lines: the
+	// day against its allowance, the fortnight, and who it went to and what for
+	// (homepanel_spend.go).
 	cellBar
 	cellSpark
+	cellFacts
 )
 
 // homeCellMark is the one mark a row may wear. There are two (law 8): the
@@ -354,6 +357,9 @@ type homeCell struct {
 	// share is how full the spend bar is, and spark the fortnight's days.
 	share float64
 	spark []float64
+	// money is the figure inside a heading's right-hand clause that is drawn
+	// in the money ink rather than the dim.
+	money string
 	// row is the switcher's own row behind a conversation or a watch, which is
 	// what its verbs are read from (place_home.go's [app.homeRowVerbs]).
 	row *switcherRow
@@ -644,7 +650,7 @@ func (p homeGridPanel) lines() []homeLine {
 	if p.read.said != "" {
 		head += rowSep + p.read.said
 	}
-	out := []homeLine{{kind: homeSwitchHead, cell: &homeCell{kind: cellHead, panel: id, title: head, right: p.read.right}}}
+	out := []homeLine{{kind: homeSwitchHead, cell: &homeCell{kind: cellHead, panel: id, title: head, right: p.read.right, money: p.read.money}}}
 	if p.empty() {
 		for _, words := range p.whisper {
 			out = append(out, homeLine{kind: homeSwitchHead, cell: &homeCell{kind: cellWhisper, panel: id, title: words}})

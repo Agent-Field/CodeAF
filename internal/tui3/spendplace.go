@@ -656,9 +656,9 @@ func (r spendReading) dayValues() []float64 {
 
 // sparkline is a series as one row of the vocabulary's spark cells, scaled to
 // its own peak and given as many cells per value as the width allows, up to
-// [spendSparkCells]. It is the one drawing of a spend series on this surface:
-// the spend place draws the window with it and home's spend panel the
-// fortnight (homepanel_spend.go).
+// [spendSparkCells]. It is the spend place's drawing of its window; home's
+// spend panel, a column wide, draws its fortnight in block cells instead
+// ([homeSparkCells]).
 func sparkline(values []float64, width int) string {
 	peak := 0.0
 	for _, value := range values {
