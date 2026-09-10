@@ -240,20 +240,21 @@ type cancelFake struct{ *fakeAgent }
 
 func (cancelFake) Cancel(string) (string, error) { return "stopping", nil }
 
-// RUNNING FOLDS AT FOUR, and the fold is a door into tasks.
-func TestRunningFoldsAtFourIntoTasks(t *testing.T) {
+// RUNNING GROWS INTO A TALL FRAME UP TO ITS BUDGET, and folds the rest behind a
+// door into tasks.
+func TestRunningGrowsToItsBudgetAndFoldsTheRestIntoTasks(t *testing.T) {
 	l := newLiveLab(t)
 	var out []session.PresenceTask
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 10; i++ {
 		out = append(out, session.PresenceTask{ID: itoa(i + 1), Title: "part " + itoa(i+1), State: "running",
 			StartedAt: l.now.Add(-time.Duration(i+1) * time.Minute)})
 	}
 	l.live("-alpha", "aaaa000000000002", session.SessionPresence{RunningTasks: out})
 	a := l.open()
-	if rows := panelRows(a, panelRunning); len(rows) != homeLiveFoldAt {
-		t.Fatalf("running drew %d rows, want %d", len(rows), homeLiveFoldAt)
+	if rows, most := panelRows(a, panelRunning), homeSlotOf(panelRunning).most; len(rows) != most {
+		t.Fatalf("running drew %d rows, want its budget of %d", len(rows), most)
 	}
-	if frame := homeText(a); !strings.Contains(frame, "2 more · tasks") || !strings.Contains(frame, "running · 6") {
+	if frame := homeText(a); !strings.Contains(frame, "2 more · tasks") || !strings.Contains(frame, "running · 10") {
 		t.Fatalf("the fold does not name what it holds:\n%s", frame)
 	}
 }

@@ -4,25 +4,10 @@ package tui3
 //
 // `needs you`, `running` and `since you left` are the panels whose rows come and
 // go while a person watches (docs/design/home-mission-control/DESIGN.md §3
-// P1–P3). They hold to the same two rules — a panel keeps four rows and folds
-// the rest behind one door, and a row names what enter will do when that is not
-// simply "open it" — so the rules are written once, here, and each panel's own
-// file says only what it holds.
-
-// homeLiveFoldAt is how many rows a live panel draws before `N more · <place>`
-// (law 9: nothing grows). It is the ceiling at rest; a short terminal squeezes
-// the panel further, in priority order ([squeezeColumn]).
-const homeLiveFoldAt = 4
-
-// homeLiveFold is a panel's lines cut at [homeLiveFoldAt], with the count of
-// what the fold stands for.
-func homeLiveFold(lines []homeLine) homePanelRows {
-	out := homePanelRows{lines: lines}
-	if len(lines) > homeLiveFoldAt {
-		out.lines, out.more = lines[:homeLiveFoldAt], len(lines)-homeLiveFoldAt
-	}
-	return out
-}
+// P1–P3). They fold what they cannot draw behind one door at the budget the
+// order table gives each of them ([homePanelCut]), and a row names what enter
+// will do when that is not simply "open it" — which is written once, here, and
+// each panel's own file says only what it holds.
 
 // homeLiveMargin puts a row's facts at its right: its clock, and — when enter
 // will do something other than open it — THE DOOR WORD, which takes the margin

@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -124,6 +125,10 @@ type homePanelSlot struct {
 	// least is how many rows the panel keeps when it is squeezed, heading and
 	// fold line included.
 	least int
+	// rest is how many rows the panel draws before its fold at its natural
+	// height, and most how many it may grow to in a tall frame
+	// ([growColumn]); a panel whose most is its rest never grows.
+	rest, most int
 	// place is where the fold line opens; the zero page opens nothing.
 	place page
 	// more is what the fold says after its count when it is not a place's
@@ -137,14 +142,19 @@ type homePanelSlot struct {
 //
 //	two columns     needs · recent · projects  |  running · left · spend · next
 //	three columns   needs · recent  |  running · left · next  |  projects · spend
+//
+// The keep column is the order a short frame takes rows away in and a tall one
+// hands them out in, and rest and most are each panel's natural height and its
+// growth budget (owner, 2026-09-10: a fifty-five-row terminal was two short
+// columns over thirty rows of air). Spend's budget is its rest: it never grows.
 var homePanelOrder = []homePanelSlot{
-	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", col2: 0, col3: 0, keep: 6, least: 4, place: pageTasks},
-	{panel: recentPanel{homePanelBase{panelRecent}}, word: "where you were", col2: 0, col3: 0, keep: 5, least: 4, more: homeFindWord},
-	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", col2: 0, col3: 2, keep: 4, least: 3, more: homeFindWord},
-	{panel: runningPanel{homePanelBase{panelRunning}}, word: "running", col2: 1, col3: 1, keep: 3, least: 4, place: pageTasks},
-	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", col2: 1, col3: 1, keep: 2, least: 3, place: pageTasks},
-	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", col2: 1, col3: 2, keep: 1, least: 3, place: pageSpend},
-	{panel: nextPanel{homePanelBase{panelNext}}, word: "next up", col2: 1, col3: 1, keep: 0, least: 3, place: pageStanding},
+	{panel: needsPanel{homePanelBase{panelNeeds}}, word: "needs you", col2: 0, col3: 0, keep: 6, least: 4, rest: 4, most: 8, place: pageTasks},
+	{panel: recentPanel{homePanelBase{panelRecent}}, word: "where you were", col2: 0, col3: 0, keep: 5, least: 4, rest: 5, most: 10, more: homeFindWord},
+	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", col2: 0, col3: 2, keep: 4, least: 3, rest: 5, most: 8, more: homeFindWord},
+	{panel: runningPanel{homePanelBase{panelRunning}}, word: "running", col2: 1, col3: 1, keep: 3, least: 4, rest: 4, most: 8, place: pageTasks},
+	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", col2: 1, col3: 1, keep: 2, least: 3, rest: 4, most: 8, place: pageTasks},
+	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", col2: 1, col3: 2, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend},
+	{panel: nextPanel{homePanelBase{panelNext}}, word: "next up", col2: 1, col3: 1, keep: 0, least: 3, rest: 3, most: 5, place: pageStanding},
 }
 
 // homeFindWord is what a fold says where the rest are reached by typing rather
@@ -171,6 +181,19 @@ var homeWhisper = map[homePanelID]string{
 	panelRecent:  "your conversations · what you type below starts one",
 	panelSpend:   "every chat and task is priced here",
 	panelNext:    `reminders and routines · "remind me at 6" or "every morning at 9"`,
+}
+
+// homePanelCut is a panel's rows cut at its growth budget, with the count of
+// what the fold stands for past it. Which of the kept rows are drawn is the
+// layout's to say ([homeGridLayout]); a panel only ever hands it at most this
+// many, so a machine with four hundred conversations builds ten lines and not
+// four hundred.
+func homePanelCut(id homePanelID, lines []homeLine) homePanelRows {
+	most := homeSlotOf(id).most
+	if len(lines) <= most {
+		return homePanelRows{lines: lines}
+	}
+	return homePanelRows{lines: lines[:most], more: len(lines) - most}
 }
 
 // homeSlotOf is one panel's row of the table.
@@ -416,20 +439,36 @@ func homeColumnHeight(column []*homeGridPanel) int {
 	return n
 }
 
+// fitColumn fits one column into room: a column taller than its room is
+// squeezed, and one with room to spare grows. ZERO ROOM IS NO ANSWER — a build
+// before the first frame has no height to fit, and every panel keeps its
+// natural height.
+func fitColumn(column []*homeGridPanel, room int) {
+	switch {
+	case room <= 0:
+	case homeColumnHeight(column) > room:
+		squeezeColumn(column, room)
+	default:
+		growColumn(column, room)
+	}
+}
+
+// byKeep is a column's panels in the order a squeeze takes from them: the
+// lowest keep first.
+func byKeep(column []*homeGridPanel) []*homeGridPanel {
+	order := append([]*homeGridPanel(nil), column...)
+	sort.SliceStable(order, func(i, j int) bool { return order[i].slot.keep < order[j].slot.keep })
+	return order
+}
+
 // squeezeColumn fits one column into room (law 5): the lowest-priority panel is
 // shrunk to its floor first, then the next, and only when every panel is at its
-// floor are panels dropped, lowest first. ZERO ROOM IS NO ANSWER — a build
-// before the first frame has no height to fit, and squeezes nothing.
+// floor are panels dropped, lowest first.
 func squeezeColumn(column []*homeGridPanel, room int) {
 	if room <= 0 {
 		return
 	}
-	order := append([]*homeGridPanel(nil), column...)
-	for i := 1; i < len(order); i++ {
-		for j := i; j > 0 && order[j].slot.keep < order[j-1].slot.keep; j-- {
-			order[j], order[j-1] = order[j-1], order[j]
-		}
-	}
+	order := byKeep(column)
 	for _, p := range order {
 		if homeColumnHeight(column) <= room {
 			return
@@ -441,6 +480,31 @@ func squeezeColumn(column []*homeGridPanel, room int) {
 			return
 		}
 		p.dropped = true
+	}
+}
+
+// growColumn hands a tall column's spare rows to its panels, IN THE SQUEEZE'S
+// ORDER REVERSED — what a person came for first — one row each, round and
+// round, until no panel wants another or the next would not fit. A panel wants
+// one while it holds rows past its fold, up to its budget ([homePanelCut]); the
+// fold line goes when the last of them is shown. What room is left stays as air
+// under the column, never between its panels.
+func growColumn(column []*homeGridPanel, room int) {
+	order := byKeep(column)
+	for grew := true; grew; {
+		grew = false
+		for i := len(order) - 1; i >= 0; i-- {
+			p := order[i]
+			if p.dropped || p.shown >= len(p.read.lines) {
+				continue
+			}
+			p.shown++
+			if homeColumnHeight(column) > room {
+				p.shown--
+				continue
+			}
+			grew = true
+		}
 	}
 }
 
@@ -471,14 +535,14 @@ func homeGridLayout(in *homeGridInput, cols, width, room int) [][]*homeGridPanel
 	for _, slot := range homePanelOrder {
 		read := slot.panel.rows(in)
 		at := slot.column(cols)
-		p := &homeGridPanel{slot: slot, read: read, shown: len(read.lines)}
+		p := &homeGridPanel{slot: slot, read: read, shown: min(slot.rest, len(read.lines))}
 		if p.empty() {
 			p.whisper = homeWhisperLines(slot.panel.whisper(), widths[at])
 		}
 		columns[at] = append(columns[at], p)
 	}
 	for _, column := range columns {
-		squeezeColumn(column, room)
+		fitColumn(column, room)
 	}
 	return columns
 }
