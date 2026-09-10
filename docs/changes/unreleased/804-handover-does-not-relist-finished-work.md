@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a handover no longer lists finished work as work that is left
-pr: 801
+pr: 804
 surface: [engine, chat]
 invalidates:
   - "`checkpointSketchAsk` ended at \"Work you have already handed out is not a part\" and said nothing about work the conversation had already finished, so the second reader drew reads and runs it could see completed in the account above it. It now ends with a second exclusion in the same voice: \"Work that is already done is not a part either: what the account above shows finished is not what remains, and drawing it sends somebody to do it a second time.\" The measured wording of the rest is untouched and still pinned by `TestTheSketchAskIsTheMeasuredWording`."
