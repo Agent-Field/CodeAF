@@ -264,9 +264,12 @@ const (
 // brief is assembled once at start (runFrontier's JIT assembly) from spec.brief
 // plus prerequisites' reports and is not the spec.
 type TaskNode struct {
-	graph     *TaskGraph
-	id        uint64
-	dependsOn []uint64
+	// Continuation choices preserve the completed attempt until work is reopened.
+	nextModel  string
+	nextEffort *string
+	graph      *TaskGraph
+	id         uint64
+	dependsOn  []uint64
 	// parent is the node this one was handed out BY, and 0 for the work a
 	// conversation proposed. It is the family seam [TaskNotice.Parent] carries,
 	// and it is not an edge: dependsOn says what must finish first, this says
@@ -540,16 +543,40 @@ type TaskNode struct {
 	// and it is empty on every node whose branch went home and on one where git
 	// would not say which files it was about.
 	clashing []string
+	// shifted says the names in clashing were put there by THE GROUND MOVING and
+	// not by a refused merge ([Agent.landShifted], taskground.go): the branch
+	// would fasten, and the person's own branch changed those same files while
+	// this node worked.
+	//
+	// IT IS THE FACT THAT TELLS THE TWO ROADS APART, and it is a field rather
+	// than a reading of the sentence because a surface parsing prose to work out
+	// which question it is asking is this program reading its own writing. Both
+	// roads ask the same question — two versions of these files, which survives —
+	// so both land on [TaskAskConflict]; only the reason sentence differs
+	// (task_status.go's [taskShiftReason]).
+	shifted bool
+	// groundHeld says the names in clashing are the PERSON'S OWN UNTRACKED COPIES
+	// of the files this task wrote, sitting in the folder the branch merges into
+	// (groundcarry.go). It is the third road to one question — two versions of
+	// these files, which survives — and it is the only one of the three whose
+	// `resolve it` is a carry rather than a merge round, because a file git is
+	// not watching is on no branch for a round to merge.
+	groundHeld bool
 	// decider is WHO HOLDS THIS NODE'S DECISION ([TaskAskOwner]), for the one
 	// state that has a decision in it. The person is the answer everywhere except
 	// under `task.settle = auto` and after somebody has handed this one card over
 	// ([Agent.HandUnverifiedToModel]).
 	//
-	// IT IS NOT ON THE CHECKPOINT, for [TaskNode.adjudicated]'s reason: a restart
-	// loses the turn the model was going to decide in, so the floor that hands the
-	// question back (agent.go's [Agent.handBackUnsettled]) never gets to run for
-	// it. A node that comes back from disk comes back the person's, which is where
-	// every unowned question belongs.
+	// IT IS ON THE CHECKPOINT (task_store.go's [taskRecord.Decider]), and what a
+	// restart does with it is the floor rather than forgetfulness: a node that
+	// comes back from disk saying the model was holding it is handed to the person
+	// on the way in ([TaskGraph.handBackOnLoad]), because the turn the model was
+	// going to decide in died with the process and no other turn is going to run
+	// for it. It used to be kept off the record on the argument that the zero
+	// value read as the person anyway — which was the right answer arrived at by
+	// accident, and it left the floor with nothing to fire on, no fixture able to
+	// seed a card aforge is holding, and an engine that died mid-turn quietly
+	// dropping the hand-back it owed.
 	decider TaskAskOwner
 	started time.Time
 	// ended is the instant this node last landed. It is stamped at the live
@@ -749,6 +776,20 @@ type TaskNode struct {
 	// decision it was — a flag written afterwards would be a flag the update
 	// announcing the end raced past.
 	stopped bool
+	// handed is the receipt for THIS SESSION'S own hand-over press: the person
+	// asked aforge to decide this one card, and the note that asks it has been
+	// put in front of the model. It is not the same fact as [TaskNode.decider]
+	// being the model — a landing under `task.settle = auto` writes that by
+	// policy and presses nothing — and it travels with the owner through
+	// [TaskNode.givesBackLocked] so a hand-back leaves no receipt behind
+	// (task_audit.go's [TaskNode.wasHandedOver] states the whole rule).
+	handed bool
+	// stopReason is what whoever pulled the stop said they were stopping it FOR,
+	// and "" for every stop that came with no words — which is every one a person
+	// pulls, their card being a decision and not a sentence (cancel.go). It is
+	// written beside the flag and for the same reason: the landing this stop
+	// causes is the one place the reason can still be put on the record.
+	stopReason string
 	// ending is why this node stopped where it did, once it has (task_contract.go's
 	// [TaskEnding]), and "" until then and forever on a node that finished. THE
 	// FIRST CAUSE WINS: [TaskNode.end] refuses to overwrite one already written,
@@ -1958,6 +1999,14 @@ func (n *TaskNode) wasStopped() bool {
 	return n.stopped
 }
 
+// stoppedLead is the first line of a stopped node's report: the word, and after
+// it the reason whoever pulled the stop gave, where there was one.
+func (n *TaskNode) stoppedLead() string {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return stopBecause(taskStoppedWord, n.stopReason)
+}
+
 func (n *TaskNode) markStopped() {
 	n.graph.mu.Lock()
 	n.stopped = true
@@ -2060,6 +2109,11 @@ func (n *TaskNode) model() string {
 func (n *TaskNode) retarget(model string) {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
+	n.retargetLocked(model)
+}
+
+// The caller holds the graph lock while choosing the attempt this model belongs to.
+func (n *TaskNode) retargetLocked(model string) {
 	n.spec.model = model
 	n.spec.modelWord = model
 	if n.ran != "" {
@@ -3334,11 +3388,20 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 	// downstream because a notice is copied into every watcher's lane and held by
 	// whoever draws a row.
 	delivery := n.carriedResultLocked()
+	thinking := n.spec.effort.String()
+	if n.nextEffort != nil {
+		thinking = *n.nextEffort
+	}
 	return TaskNotice{
-		ID:    n.id,
-		Title: n.spec.title,
-		Kind:  n.kind,
-		Where: where,
+		Thinking: thinking,
+		ID:       n.id,
+		Title:    n.spec.title,
+		// Reopened task pages need the contract even when no proposal card survives.
+		Brief:      n.spec.brief,
+		Summary:    n.spec.summary,
+		Acceptance: n.spec.acceptance,
+		Kind:       n.kind,
+		Where:      where,
 		// AND WHICH PROJECT THAT DIRECTORY IS A COPY OF, on every update and not
 		// only on the proposal: a row drawn from a checkpoint, a roster replayed
 		// after a resize and a card watching work land all ask the same question,
@@ -3369,12 +3432,16 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		Waiting:     waiting,
 		Stopped:     n.stopped,
 		Ending:      n.endingLocked(),
-		// AND WHAT CLASHED, AND WHOSE DECISION IT IS. Neither is derivable from
-		// anything else on this notice: the names live only in the index git has
-		// since thrown away, and the owner is a policy this session applied at the
-		// moment the node landed (task_status.go's [TaskAsk]).
-		Conflicts: n.clashing,
-		Decider:   n.decider,
+		// AND WHAT CLASHED, WHICH ROAD PUT IT THERE, AND WHOSE DECISION IT IS. None
+		// of the three is derivable from anything else on this notice: the names
+		// live only in the index git has since thrown away, the road is the
+		// difference between a branch that would not fasten and a ground that moved
+		// under one that would, and the owner is a policy this session applied at
+		// the moment the node landed (task_status.go's [TaskAsk]).
+		Conflicts:  n.clashing,
+		Shifted:    n.shifted,
+		GroundHeld: n.groundHeld,
+		Decider:    n.decider,
 		// AND WHAT ITS OWN CHECK SAID, which is not the same fact as its state: a
 		// node taken as it stands, one landed with the check switched off and one
 		// a person accepted are all done and none of them was checked
@@ -3383,8 +3450,9 @@ func (n *TaskNode) noticeLocked(cost float64) TaskNotice {
 		// WHAT IT IS RUNNING ON, WHICH IS THE SPEC'S UNLESS SOMETHING SWAPPED IT.
 		// See [TaskNode.ran] for why the swap is a second field rather than an
 		// edit to the frozen spec.
-		Model:   n.runModelLocked(),
-		CostUSD: cost,
+		Model:     n.runModelLocked(),
+		NextModel: n.nextModel,
+		CostUSD:   cost,
 	}
 }
 
@@ -3674,7 +3742,7 @@ func (a *Agent) taskNoteReaders(node *TaskNode) []mailbox {
 // panel to turn `task.settle` to auto in, and nobody to read a landing that says
 // it is waiting on them. A node that landed needing a look in such a session is
 // a run that has stopped, and it was measured stopping: on a ten-hour benchmark
-// the main task landed "finished, but needs your look" and the harness sat there
+// the main task landed as the person's call and the harness sat there
 // until the wall clock ran out.
 //
 // So an unattended session reads as AUTO, which is not a bypass and not a new
@@ -3758,6 +3826,17 @@ const (
 // and leave the choice where it belongs (docs/design/task-states/DESIGN.md).
 const conflictNotYours = "\nits branch conflicts with the person's and that is not yours to accept: no verb of yours merges it, and which of two versions of their own file survives is theirs to say. Tell them what conflicts and leave the choice with them."
 
+// shiftNotYours is the same refusal on the other road: the branch WOULD fasten
+// and the work holds, but the person's own branch changed the same files while
+// it ran ([Agent.landShifted]). Accepting merges the task's version over
+// theirs, which is exactly the decision no verb of the model's is allowed to
+// take — so it reads the shift and stands aside, as it does for a conflict.
+//
+// IT IS ITS OWN SENTENCE because [conflictNotYours] opens by saying the branch
+// conflicts, which is not true here, and a note that told the model the wrong
+// thing about the branch would send it to say the wrong thing to the person.
+const shiftNotYours = "\ntheir own branch changed the same files while this worked, and that is not yours to accept: no verb of yours merges it, and which of two versions of their own file survives is theirs to say. Tell them what moved and leave the choice with them."
+
 // settleClause is the tail of an unverified landing note, under one policy.
 func settleClause(id uint64, settle TaskSettle) string {
 	address := strconv.FormatUint(id, 10) + " resolve " + TaskResolveVerbs()
@@ -3788,11 +3867,12 @@ type landingAddress struct {
 func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address landingAddress) string {
 	var note strings.Builder
 	status := ProjectTask(notice.StatusFacts())
-	// THE REPORT'S OWN LEAD IS NOT SAID TWICE. "finished, but needs your look — "
-	// was the head of this note and the head of the report under it, in two
-	// vocabularies; the head above now says `your call` and the sentence the
-	// checker wrote is what is left (task_audit.go's [needsLookLead]).
-	report := strings.TrimPrefix(strings.TrimSpace(notice.Report), needsLookLead)
+	// THE REPORT'S OWN LEAD IS NOT SAID TWICE. A your-call landing's report opens
+	// with the question the row is asking (task_audit.go's [yourCallLead]), the
+	// head below writes that question once, and what is left under it is the
+	// sentence the checker or the merge wrote. The prefix is taken off with the
+	// reading's own reason rather than with a copy of it, so the two cannot drift.
+	report := strings.TrimSpace(notice.Report)
 	fmt.Fprintf(&note, "task %d", notice.ID)
 	if status.Word != "" {
 		note.WriteString(" " + status.Word)
@@ -3803,6 +3883,7 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 	// `your call` on its own does not say what they are being asked.
 	if status.Reason != "" {
 		note.WriteString(" · " + status.Reason)
+		report = strings.TrimPrefix(report, status.Reason+yourCallDash)
 	}
 	if transcript != "" {
 		note.WriteString(" · transcript " + transcript)
@@ -3826,9 +3907,17 @@ func taskNote(notice TaskNotice, transcript string, settle TaskSettle, address l
 		// clause offers `accept`, and accepting is exactly the thing this landing
 		// is not asking for. A landing that is not asking anybody anything — work
 		// taken as it stands that the disk then refused (#513) — gets neither.
-		if notice.Merge == mergeConflicted {
+		//
+		// AND THE GROUND MOVING IS THE SECOND ROAD TO THE SAME REFUSAL. It keeps the
+		// merge word `kept` — the branch would have fastened — so a note that read
+		// the merge word alone offered the model `accept` while the card beside it
+		// offered `resolve it`, which is two accounts of one landing.
+		switch {
+		case notice.Shifted:
+			note.WriteString(shiftNotYours)
+		case notice.Merge == mergeConflicted:
 			note.WriteString(conflictNotYours)
-		} else {
+		default:
 			note.WriteString(settleClause(notice.ID, settle))
 		}
 	}
@@ -3929,6 +4018,11 @@ func taskMergeNote(notice TaskNotice) string {
 // person holding it under auto exactly as it does under ask
 // (docs/design/task-states/DESIGN.md).
 //
+// AND A GROUND THAT MOVED IS THE SAME REFUSAL. The branch would fasten and the
+// work holds; what is being asked is still which of two versions of the person's
+// own files survives ([Agent.landShifted]). The mark on the node is what says
+// so, because by the time this runs the merge word is `kept` on both roads.
+//
 // AND IT IS ONLY EVER ABOUT THE ONE STATE THAT HAS A DECISION IN IT. A node that
 // landed done, incomplete or stopped is not waiting on anybody's word, and
 // writing an owner onto it would invent a question nobody is asking.
@@ -3938,7 +4032,7 @@ func (a *Agent) handToModelOnAuto(node *TaskNode) {
 	}
 	node.graph.mu.Lock()
 	defer node.graph.mu.Unlock()
-	if node.state != TaskUnverified || node.merge == mergeConflicted {
+	if node.state != TaskUnverified || node.merge == mergeConflicted || node.shifted {
 		return
 	}
 	node.decider = TaskAskOwnerModel
@@ -3976,7 +4070,7 @@ func (a *Agent) handBackUnsettled() {
 		if node == nil || node.decider != TaskAskOwnerModel || !a.readsTheDecisionLocked(node) {
 			continue
 		}
-		node.decider = TaskAskOwnerPerson
+		node.givesBackLocked()
 		// A NODE THAT WAS ACTUALLY SETTLED IS NOT NEWS. The model spent its verb,
 		// the resolution published its own landing, and a second update saying the
 		// question is back with the person would put a card up over work that has
@@ -3992,6 +4086,48 @@ func (a *Agent) handBackUnsettled() {
 	for _, node := range handed {
 		a.emitTaskUpdate(node.notice())
 	}
+}
+
+// handBackOnLoad is THE SAME FLOOR APPLIED TO A GRAPH COMING OFF THE DISK, and
+// it is the half [Agent.handBackUnsettled] cannot reach.
+//
+// A TURN IS WHAT HOLDS A DECISION FOR THE MODEL, AND A RESTART HAS NONE. The
+// checkpoint carries who was holding each landing ([taskRecord.Decider]), so a
+// process that died while the model held one — or a window attaching to a
+// conversation whose last life ended that way — reads the fact back rather than
+// guessing at it. There is no turn to answer in, nothing is going to wake one for
+// work that landed in another life, and a question nobody can now answer is the
+// exact shape this floor exists to end: so every node the record says the model
+// was holding comes back to the person here, before anything draws a card.
+//
+// IT ASKS NONE OF [Agent.readsTheDecisionLocked]'s QUESTION. That guard exists so
+// that one turn ending does not take a question out of another turn's hands; on
+// this road there are no turns at all, and every agent that was holding anything
+// died with the process.
+//
+// IT IS INDISCRIMINATE ON PURPOSE. Every model-held node is handed back, whatever
+// state it is in, because the person is the floor every other answer falls back
+// to — and only the ones still WAITING on a decision are news, which is the same
+// line [Agent.handBackUnsettled] draws for the same reason: a node the model
+// actually settled has published its own landing already.
+func (g *TaskGraph) handBackOnLoad() []*TaskNode {
+	if g == nil {
+		return nil
+	}
+	var handed []*TaskNode
+	g.mu.Lock()
+	for _, id := range g.order {
+		node := g.nodes[id]
+		if node == nil || node.decider != TaskAskOwnerModel {
+			continue
+		}
+		node.givesBackLocked()
+		if node.state == TaskUnverified {
+			handed = append(handed, node)
+		}
+	}
+	g.mu.Unlock()
+	return handed
 }
 
 // readsTheDecisionLocked reports that THIS agent's turn is the turn one node's
@@ -4043,6 +4179,11 @@ func (a *Agent) emitTaskUpdate(notice TaskNotice) {
 	for _, watcher := range watchers {
 		watcher.send(event)
 	}
+	// AND EVERY MOVE OF A NODE IS A MOVE OF ITS QUESTION. A landing that is
+	// somebody's call is put in front of them here, on the one door every move
+	// goes through, and taken back here when it settles
+	// (task_landing_question.go states why nothing did this before).
+	a.publishLandingQuestion(notice)
 }
 
 // TaskUpdates is a standing subscription to every task update this session
@@ -4087,6 +4228,18 @@ func (a *Agent) TaskUpdates() <-chan Event {
 //
 // stop is never nil and calling it twice is calling it once.
 func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
+	// AND A SURFACE ATTACHING IS THE OTHER MOMENT SOMEBODY CAME BACK. The
+	// inbox road ends in a drain that ran inside New ([Agent.drainStandingInbox]),
+	// which was the whole story while every window built its own engine. Since
+	// #653 an interactive launch joins this workspace's session host, and a host
+	// that outlived the last window hands the next one the SAME agent
+	// (internal/enginehost's Host.join) — so a firing filed under the project
+	// while nobody was here would sit in that file forever, read by nothing,
+	// because no agent was ever constructed to read it. Draining here is the
+	// same fold and the same rows, asked for by the surface rather than by the
+	// boot; the file is emptied as it is read, so a second lane finds nothing
+	// and this costs a stat on every attach.
+	a.drainStandingInbox()
 	stream := newEventStream()
 	a.mu.Lock()
 	if a.closed {
@@ -4671,7 +4824,7 @@ func (a *Agent) settleUnfinished(ctx context.Context, node *TaskNode, tree taskT
 		if node.wasStopped() {
 			merge, changed := keepHome(node, tree, changed)
 			node.end(TaskEndingStopped)
-			node.finish(withReport("stopped", report), changed, tree.branch, merge)
+			node.finish(withReport(node.stoppedLead(), report), changed, tree.branch, merge)
 			return TaskFailed, true
 		}
 		// Lifecycle cancellation is an interruption, never a finding about the
@@ -4890,7 +5043,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// kept here because this is the last moment the worker's transcript is
 		// open — `retire` closes it — and because everything downstream that needs
 		// the work rather than the card reads the node (task_result.go).
-		node.keepResultNoting(said, log)
+		node.keepWorkerConclusion(said, log)
 		// AND WHAT IT ACTUALLY RAN, kept for the judge that never watched it happen.
 		// The check a worker runs last is usually the most expensive thing in the
 		// task, and an auditor made to rediscover and repeat it from nothing is an
@@ -5073,7 +5226,7 @@ func (a *Agent) landUnchecked(ctx context.Context, node *TaskNode, tree taskTree
 	// halves, what the work says it did and what the checker said instead of an
 	// answer (task_contract.go's TaskUnverified).
 	merge, changed := keepHome(node, tree, changed)
-	node.finish(withReport(verdict.lookOutcome(), report), changed, tree.branch, merge)
+	node.finish(withReport(verdict.lookOutcome(TaskFacts{Merge: merge}), report), changed, tree.branch, merge)
 	return TaskUnverified
 }
 
@@ -5149,12 +5302,26 @@ func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, 
 //
 // IT IS NOT A NEW ENDING. It is [TaskUnverified]'s ending, reached by a third
 // road: the branch is committed and kept ([keptWork]) exactly as it is for the
-// landing nobody could judge, the report leads with [needsLookLead] in the same
+// landing nobody could judge, the report leads with [yourCallLead] in the same
 // person's words, and everything downstream — the settle card, the rail, the
-// note's "needs your look" verb, the bubbling of a still-undecided child up to
+// note's `your call` word, the bubbling of a still-undecided child up to
 // whoever is left to decide ([Agent.bubbleUnverifiedChildren]) — is the machinery
 // that was already there. Nothing about this landing has to know why it was
 // asked for.
+//
+// AND IT IS NOT A NEW QUESTION EITHER. THE GROUND MOVING IS THE CONFLICT SHAPE:
+// two versions of the same files exist, one on this task's branch and one on the
+// person's, and somebody has to say which survives. So the files are written onto
+// the node the way a refused merge writes them ([TaskNode.clashesWith]) and the
+// row asks [TaskAskConflict] — `resolve it` spends a merge round
+// ([Agent.ResolveConflict]), `drop it` keeps the branch and takes neither. It
+// used to fall through to the default arm and read `nobody could check it`,
+// which was false in both halves: it WAS checked, and it holds.
+//
+// THE MARK SAYS WHICH ROAD, AND THE SENTENCE FOLLOWS FROM THE MARK. A branch
+// that would not fasten reads `conflicts with your branch: …`; this one reads
+// `your branch changed the same files while it worked: …`, and neither is told
+// from the other by reading prose (task_status.go's [taskShiftReason]).
 //
 // THE REASON RIDES IN THE REPORT AND NOWHERE ELSE, which is what puts it in front
 // of BOTH readers without a second channel: the person reads it on the card,
@@ -5168,11 +5335,33 @@ func (a *Agent) landStopped(ctx context.Context, node *TaskNode, tree taskTree, 
 // merging and marking: the person's branch is the thing being protected, and a
 // merge that has already happened is not a warning, it is a cleanup. Accepting on
 // the card merges it the ordinary way ([Agent.acceptTask]).
-func (a *Agent) landShifted(node *TaskNode, tree taskTree, changed []string, report, shift string, log io.Writer) TaskState {
+func (a *Agent) landShifted(node *TaskNode, tree taskTree, changed, moved []string, report, shift string, log io.Writer) TaskState {
 	merge, kept := keepHome(node, tree, changed)
 	fmt.Fprintf(log, "not merged: %s\n", shift)
-	node.finish(withReport(needsLookLead+shift, report), kept, tree.branch, merge)
+	// THE NAMES GO ON THE NODE BEFORE THE REPORT IS WRITTEN, because the report's
+	// own lead is the row's question read back off the projection — and the
+	// projection cannot name a file nothing handed it.
+	node.shiftedBy(moved)
+	node.finish(withReport(withYourCallLead(TaskFacts{Merge: merge, Shifted: true, Conflicts: node.clashes()}, shift), report),
+		kept, tree.branch, merge)
 	return TaskUnverified
+}
+
+// shiftedBy records the files a ground shift is in, and marks WHICH ROAD put
+// them there. It is [TaskNode.clashesWith] with the mark, and it goes through
+// that one door so the two roads cannot grow two lists.
+//
+// A shift with no names still marks the node: the sentence stops after `while it
+// worked` exactly as the conflict's stops after `your branch`, and the question
+// is the same question either way.
+func (n *TaskNode) shiftedBy(files []string) {
+	if n == nil || n.graph == nil {
+		return
+	}
+	n.clashesWith(files)
+	n.graph.mu.Lock()
+	n.shifted = true
+	n.graph.mu.Unlock()
 }
 
 // landConflicted settles a node whose work holds and whose branch WOULD NOT
@@ -5186,7 +5375,7 @@ func (a *Agent) landShifted(node *TaskNode, tree taskTree, changed []string, rep
 // no reviewable diff, its own report admitting the branch had not merged —
 // while the card read as finished work. Nothing about "done" was true.
 //
-// SO IT ENDS WHERE [Agent.landShifted] ENDS: needs your look, the branch kept
+// SO IT ENDS WHERE [Agent.landShifted] ENDS: the person's call, the branch kept
 // with the work committed on it, the conflicting files named in the report. The
 // person's tree is untouched — no markers, no half-merge ([abandonMerge]) — and
 // merging is a thing they do when they are ready, which is what the completion
@@ -5209,17 +5398,62 @@ func (a *Agent) landShifted(node *TaskNode, tree taskTree, changed []string, rep
 // again on the result and the landing is retried (task_merge_round.go). Only a
 // round that fails arrives here, which is why the sentence below still names the
 // files — they are what is left when the machine has done what it can.
-func (a *Agent) landConflicted(ctx context.Context, node *TaskNode, tree taskTree, changed []string, report, merge, detail string, log io.Writer) TaskState {
-	state, landed, round := a.mergeRoundAtLanding(ctx, node, tree, changed, report, log)
-	if landed {
-		return state
+func (a *Agent) landConflicted(ctx context.Context, node *TaskNode, tree taskTree, changed []string, report, merge, detail string, why landingRefusal, log io.Writer) TaskState {
+	// AND THE PERSON'S OWN UNTRACKED COPIES DO NOT GET A MERGE ROUND. That round
+	// merges the person's BRANCH into the task's, and a file git is not watching
+	// is on no branch at all — so the round would resolve nothing, spend a worker
+	// and a model call, and refuse for the same reason a second time. The road is
+	// marked instead, the card asks its own question, and `resolve it` spends the
+	// carry (groundcarry.go's [taskTree.carryUntrackedGround]).
+	if why == refusedByYourFiles {
+		node.heldByYourFiles()
+	} else {
+		state, landed, round := a.mergeRoundAtLanding(ctx, node, tree, changed, report, log)
+		if landed {
+			return state
+		}
+		report = withReport(round, report)
 	}
 	fmt.Fprintf(log, "not merged: %s\n", detail)
 	// AND WHAT THE ROUND TRIED STANDS BETWEEN THE REFUSAL AND THE WORK'S OWN
 	// ACCOUNT, or is nothing at all where no round ran — the emptiness law, and
 	// [withReport] drops it either way.
-	node.finish(withReport(needsLookLead+detail, withReport(round, report)), changed, tree.branch, merge)
+	node.finish(withReport(withYourCallLead(node.landingFacts(merge), detail), report), changed, tree.branch, merge)
 	return TaskUnverified
+}
+
+// heldByYourFiles marks the one landing road whose refusal is the person's own
+// untracked copies of the files the task wrote (groundcarry.go).
+//
+// IT IS A FACT AND NOT A READING OF THE SENTENCE, for [TaskNode.shiftedBy]'s
+// reason exactly: a surface working out which question a card is asking by
+// looking at the prose is this program reading its own writing, and the two
+// roads to a conflicted merge close with different sentences and the same two
+// answers (task_status.go's [taskShiftReason]).
+func (n *TaskNode) heldByYourFiles() {
+	if n == nil || n.graph == nil {
+		return
+	}
+	n.graph.mu.Lock()
+	n.groundHeld = true
+	n.graph.mu.Unlock()
+}
+
+// groundHeldNow is that mark, read by a caller that does not hold the graph.
+func (n *TaskNode) groundHeldNow() bool {
+	if n == nil || n.graph == nil {
+		return false
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.groundHeld
+}
+
+// landingFacts is the handful of facts a your-call landing's own report leads
+// with, read off the node so that every road writes the SAME question in front
+// of the same landing ([yourCallLead], task_audit.go).
+func (n *TaskNode) landingFacts(merge string) TaskFacts {
+	return TaskFacts{Merge: merge, Conflicts: n.clashes(), GroundHeld: n.groundHeldNow()}
 }
 
 // resumeTree reuses the durable working copy after a process interruption, and
@@ -6574,7 +6808,9 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 
 	return newAgent(Config{
 		Organization: parent.Organization,
-		memoryBrief:  a.memoryBlock(ctx, node.assembledBrief()),
+		// Search authority follows the work without enabling memory writes.
+		ConversationHistory: parent.conversationHistory(),
+		memoryBrief:         a.memoryBlock(ctx, node.assembledBrief()),
 		// The node learns from, and into, the PROJECT'S error→fix file rather
 		// than one of its own (fixstore.go states why a node cannot find it
 		// alone). A worker hammering a build in a worktree is the richest source
@@ -6994,6 +7230,14 @@ type taskTree struct {
 	// universe is the furrow fork's name, when a fork made this world, and it is
 	// the only handle furrow takes for dropping the record afterwards.
 	universe string
+	// carry is THE PERSON'S OWN WORD that their untracked copies of the files
+	// this task wrote may be moved aside so the branch can land
+	// (groundcarry.go's [taskTree.carryUntrackedGround]). It is false on every
+	// ordinary landing and is set by exactly one door — the merge round a person
+	// spends with `resolve it` — because a landing that moved somebody's
+	// unfinished work without being asked is the carry-and-leave that file
+	// forbids.
+	carry bool
 	// note is the one sentence this world owes the node standing in it, and it
 	// is empty for every world that came out as promised — which is nearly all
 	// of them. It exists because a promise that quietly did not hold is worse
@@ -7561,7 +7805,7 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string, []stri
 	// where it cannot be put back the tree goes back exactly as it was and the
 	// branch is kept with the files NAMED. It never fails with a sentence that
 	// names nothing, which is what this used to do.
-	landed, said, clashing := t.mergeIntoGround()
+	landed, said, clashing, refusal := t.mergeIntoGround()
 	if landed && !branchFastened(t.root, t.branch) {
 		// A MERGE THAT EXITED ZERO DID NOT NECESSARILY FASTEN THE BRANCH.
 		// git merge --no-edit can succeed (already up to date against a stale
@@ -7570,6 +7814,7 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string, []stri
 		// the work arrived — F31, a commit on no branch. The mark the notice
 		// reads is this one: not fastened is not a landing.
 		landed = false
+		refusal = refusedByTheWork
 		if said == "" {
 			said = unfastenedSentence(t.branch)
 		}
@@ -7579,8 +7824,12 @@ func (t taskTree) comeHome(title string, wrote []string) (string, string, []stri
 		// worktree registered would leave the person's repository pointing into a
 		// task folder that a later sweep may remove underneath it.
 		t.releaseKeptLocked()
+		// AND WHY IT WOULD NOT GO TRAVELS WITH IT. The person's own untracked
+		// copies are the one refusal only THEY can get past, and every road that
+		// draws this landing has to be able to tell it from a conflict between two
+		// branches (task_land_unsaved.go's [refusedByYourFiles]).
 		return mergeConflicted, withReport(withReport(said, stranded),
-			leftBehindSentence(left, true)), clashing, refusedByTheWork
+			leftBehindSentence(left, true)), clashing, refusal
 	}
 	// The working copy is given back only once its work is in, and which road
 	// that takes is the rung's own (groundladder.go's [taskTree.releaseLanded]).

@@ -370,16 +370,16 @@ func TestTheDoorTheTripLineNamesIsRealFromTheBox(t *testing.T) {
 
 // ── 7 ───────────────────────────────────────────────────────────────────────
 //
-// The rails screen is pinned in firstrun_test.go, which walks the whole flow.
+// The controls screen is pinned in firstrun_test.go, which walks the whole flow.
 // What this test owns is the design's own claim about it: what it writes is
 // BYTE-IDENTICAL to what the settings row writes, because it is the same writer.
 
-func TestTheRailsScreenWritesWhatTheSettingsRowWrites(t *testing.T) {
+func TestTheControlsScreenWritesWhatTheSettingsRowWrites(t *testing.T) {
 	a, dir := sheetApp(t)
-	a.setup = setupFlow{open: true, steps: []setupStep{setupBudget}}
-	a.setup.text = "42"
-	if !a.setupRail(0) {
-		t.Fatalf("the rails screen refused a figure: %s", a.setup.refusal)
+	a.setup = setupFlow{open: true, steps: []setupStep{setupControls}}
+	a.setup.limitText, a.setup.limitTyped = "42", true
+	if !a.commitSetupLimit() {
+		t.Fatalf("the controls screen refused a figure: %s", a.setup.refusal)
 	}
 	through := profileBytes(t, dir)
 	if err := mustSpendRow(t, a, config.KeyDailyBudget).Apply("42"); err != nil {
@@ -388,13 +388,14 @@ func TestTheRailsScreenWritesWhatTheSettingsRowWrites(t *testing.T) {
 	if got := profileBytes(t, dir); got != through {
 		t.Fatalf("the screen wrote\n%s\nand the row wrote\n%s", through, got)
 	}
-	// And the header's own offer is real: none removes the limit.
-	a.setup.text = setupNoneWord
-	if !a.setupRail(2) {
-		t.Fatalf("the rails screen refused none: %s", a.setup.refusal)
+	// AND NO LIMIT IS A FIRST-CLASS ANSWER. The screen's own legend offers `none`,
+	// and what it writes is the zero every reader of the rail resolves to.
+	a.setup.limitText, a.setup.limitTyped = setupNoneWord, true
+	if !a.commitSetupLimit() {
+		t.Fatalf("the controls screen refused none: %s", a.setup.refusal)
 	}
-	if rail := config.SpendRailUSDAt(dir); rail != 0 {
-		t.Fatalf("none on the conversation ceiling wrote %v", rail)
+	if rail, err := config.DailyBudgetUSDAt(dir); err != nil || rail != 0 {
+		t.Fatalf("none on the day's limit wrote %v (%v), want no limit", rail, err)
 	}
 }
 

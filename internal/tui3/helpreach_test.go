@@ -158,8 +158,8 @@ func TestTheSetupRefusesInSentencesAndNeverInGoErrors(t *testing.T) {
 	// which is where the operating system's own error came from.
 	d, dir, _ := setupApp(t, nil)
 	pressSetup(d, key("enter"))
-	if d.setup.step() != setupCrew {
-		t.Fatalf("the fixture is not on the crew step (%v)", d.setup.step())
+	if d.setup.step() != setupControls {
+		t.Fatalf("the fixture is not on the controls step (%v)", d.setup.step())
 	}
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Skipf("this filesystem cannot be made read-only: %v", err)
@@ -169,8 +169,8 @@ func TestTheSetupRefusesInSentencesAndNeverInGoErrors(t *testing.T) {
 	if d.setup.refusal != setupSaveFailedWord {
 		t.Fatalf("a profile that cannot be written said %q, want %q", d.setup.refusal, setupSaveFailedWord)
 	}
-	if d.setup.step() != setupCrew {
-		t.Fatal("a step that could not be written walked on anyway")
+	if !d.setup.open || d.setup.step() != setupControls {
+		t.Fatal("a control that could not be written walked on anyway")
 	}
 	for _, machinery := range []string{"/", ":", "config", "denied"} {
 		if strings.Contains(d.setup.refusal, machinery) {
@@ -187,16 +187,16 @@ func TestTheSetupRefusesInSentencesAndNeverInGoErrors(t *testing.T) {
 // keeps them and replaces only the operating system's.
 func TestTheSetupKeepsASettingsOwnRefusalAboutWhatWasTyped(t *testing.T) {
 	a, _, _ := setupApp(t, nil)
-	pressSetup(a, key("enter"), key("enter"))
-	if a.setup.step() != setupBudget {
-		t.Fatalf("the fixture is not on the rails step (%v)", a.setup.step())
+	pressSetup(a, key("enter"))
+	if a.setup.step() != setupControls {
+		t.Fatalf("the fixture is not on the controls step (%v)", a.setup.step())
 	}
 	pressSetup(a, key("a"), key("b"), key("c"), key("enter"))
 	if a.setup.refusal == setupSaveFailedWord || a.setup.refusal == "" {
 		t.Fatalf("a figure the setting refused was answered with %q, want the row's own words", a.setup.refusal)
 	}
 	if !strings.Contains(a.setup.refusal, "dollar amount") {
-		t.Fatalf("the rails step said %q, want the setting's own refusal about what was typed", a.setup.refusal)
+		t.Fatalf("the limit said %q, want the setting's own refusal about what was typed", a.setup.refusal)
 	}
 }
 

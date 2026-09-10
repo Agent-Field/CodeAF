@@ -75,7 +75,7 @@ func TestTheTrailNamesEveryStepOfTheActualChain(t *testing.T) {
 	if got := a.roomTrail(); got != chain {
 		t.Fatalf("the trail is %q, want %q", got, chain)
 	}
-	if head := plain(strings.Join(a.roomHeadRows(a.width), "\n")); !strings.Contains(head, chain) {
+	if head := plain(strings.Join(a.roomHeadRows(a.width), "\n")); !strings.Contains(head, "Untitled ▸ Ship the port ▸ Write the tree") || !strings.Contains(plain(a.roomHeadRows(a.width)[1]), "Cut the goldens") {
 		t.Fatalf("the header does not draw the chain:\n%q", head)
 	}
 	// AND THE PAGE ONE STEP UP IS THE CHAIN WITHOUT ITS LAST STEP: the trail is
@@ -126,8 +126,8 @@ func TestACycleInTheFamilyEndsTheTrailRatherThanTheProgram(t *testing.T) {
 // because there is nowhere for it to go.
 func TestAnAncestorCrumbOpensThatPageAndTheCurrentOneIsInert(t *testing.T) {
 	a := crumbApp(t)
-	here := crumbSpanFor(t, a, "Cut the goldens")
-	clickHead(t, a, here.from+1)
+	// The current page is a heading in the expanded layout, not a navigation target.
+	drive(t, a, tea.MouseClickMsg{X: headLabelAt + 1, Y: a.roomHeadRow() + 1, Button: tea.MouseLeft})
 	if roomID(a) != 4 {
 		t.Fatalf("a press on the page's own crumb moved to %d", roomID(a))
 	}
@@ -137,12 +137,10 @@ func TestAnAncestorCrumbOpensThatPageAndTheCurrentOneIsInert(t *testing.T) {
 	if roomID(a) != 3 {
 		t.Fatalf("the parent's crumb opened %d, want node 3", roomID(a))
 	}
-	// AND IT IS THE ROSTER'S DOOR, WHICH IS IDEMPOTENT. A second press on the
-	// crumb of the page you are already on does not close it — the page keeps its
-	// scroll, its subscription and the draft written for it.
+	// The newly opened page also has an inert heading. Pressing it keeps the
+	// page, its scroll, its subscription and the draft written for it.
 	strings.Join(a.roomHeadRows(a.width), "\n")
-	again := crumbSpanFor(t, a, "Write the tree")
-	clickHead(t, a, again.from+1)
+	drive(t, a, tea.MouseClickMsg{X: headLabelAt + 1, Y: a.roomHeadRow() + 1, Button: tea.MouseLeft})
 	if roomID(a) != 3 {
 		t.Fatalf("pressing the crumb of the open page closed it: room=%d", roomID(a))
 	}
@@ -492,15 +490,15 @@ func TestTheTrailAndTheFactsDegradeOnTheirOwnRows(t *testing.T) {
 		a.width = width
 		a.touch()
 		rows := a.roomHeadRows(width)
-		if len(rows) != a.roomHeadHeight(width) || len(rows) < roomHeadRowCount {
+		if len(rows) != a.roomHeadHeight(width) || len(rows) < a.roomHeadCount() {
 			t.Fatalf("at %d columns the header is %d rows", width, len(rows))
 		}
-		for _, row := range rows[roomHeadRowCount:] {
-			if strings.TrimSpace(plain(row)) != "" {
+		for _, row := range rows[a.roomHeadCount():] {
+			if !a.roomOrganized() && strings.TrimSpace(plain(row)) != "" {
 				t.Fatalf("at %d columns the header padding contains content: %q", width, plain(row))
 			}
 		}
-		trail, facts := plain(rows[0]), plain(rows[1])
+		trail, facts := plain(rows[0]), plain(rows[a.roomHeadCount()-1])
 		// THE TRAIL ROW CARRIES NO TELEMETRY AT ANY WIDTH. That is the whole of the
 		// separation: a path with a state word threaded into it is a path nobody
 		// reads as a path.
@@ -512,7 +510,11 @@ func TestTheTrailAndTheFactsDegradeOnTheirOwnRows(t *testing.T) {
 			t.Fatalf("at %d columns the facts row lost the state word:\n%q", width, facts)
 		}
 		// The page's own name survives on the trail row, cut where it must be.
-		if !strings.Contains(trail, "long name") {
+		nameRow := trail
+		if a.roomOrganized() {
+			nameRow = plain(rows[1])
+		}
+		if !strings.Contains(nameRow, "long name") {
 			t.Fatalf("at %d columns the trail lost the page's own name:\n%q", width, trail)
 		}
 	}

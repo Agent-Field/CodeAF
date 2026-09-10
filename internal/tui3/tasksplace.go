@@ -36,7 +36,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -1294,7 +1293,7 @@ func tasksWindowStart(win session.UsageWindow) string {
 //
 // IT IS WHERE THE ROW IS DRAWN AND NOT WHAT THE ROW IS. The two used to be one
 // field and cannot be: a piece of work that finished this morning inside a
-// conversation still waiting on a person is drawn under `needs your look`, with
+// conversation still waiting on a person is drawn under `your call`, with
 // the conversation, because that is where a person will look for it — and it is
 // still a finished piece of work, which is what its own mark and its own words
 // say ([tasksItem.section] is that answer, and [tasksTree.filed] this one).
@@ -1396,7 +1395,11 @@ func tasksSectionHead(section tasksSection, held, shown int) string {
 func tasksSectionWord(section tasksSection) string {
 	switch section {
 	case tasksNeeds:
-		return "needs your look"
+		// THE WORD IS THE READING'S. `needs your look` was this page's own name
+		// for the tier internal/session calls `your call`, and a heading that
+		// spells a state differently from the rows under it is two states
+		// (tasktier.go's [tierYourCallWord]).
+		return tierYourCallWord
 	case tasksRunning:
 		return taskSheetNowHead
 	case tasksParked:
@@ -1800,9 +1803,6 @@ func tasksLabelInk(item tasksItem, pal palette) func(string) string {
 // ended hours ago. What is drawn is [taskRecordStoppedWord] — not a judgement
 // about the work, only the fact that the window went.
 func tasksNote(item tasksItem) string {
-	if item.status().Reason == taskReviewPendingWord {
-		return taskReviewPendingWord
-	}
 	if item.away {
 		// A CONVERSATION OF THIS TERMINAL IS NOT `another window`. It arrives
 		// through the same presence reading, because that is the only authority for
@@ -1840,7 +1840,10 @@ func tasksMiddle(entry session.TaskIndexEntry) string {
 		if outcome := strings.TrimSpace(entry.Outcome); outcome != "" {
 			return outcome
 		}
-		return endingWordRefused
+		// THE REASON IS THE ENGINE'S SENTENCE AND NOT THIS PAGE'S. A row whose
+		// record carried no account of itself still says why it ended, in the one
+		// spelling of that table there is ([session.TaskReasonOf]).
+		return session.TaskReasonOf(entry.Ending, "")
 	}
 	if entry.Status == string(session.TaskFailed) && strings.TrimSpace(entry.Outcome) != "" {
 		// ONE STATE WORD ON BOTH SURFACES. The row used to read `gave up, said
@@ -1861,39 +1864,34 @@ func tasksMiddle(entry session.TaskIndexEntry) string {
 	return strings.Join(parts, " · ")
 }
 
+// tasksGlyph is one roster row's cell and the hue it is said in, and IT IS THE
+// COLUMN'S OWN TABLE ASKED, not a second one (tasktier.go).
+//
+// This page used to keep a vocabulary of its own — one circle for queued where
+// the rail drew another, one cross where the rail drew a different one — so a
+// person who had learned the marks in the column beside their conversation had
+// to learn them again one keypress away. There is one vocabulary now
+// (internal/tui2/tokens) and this page draws out of it.
+//
+// A ROW NOTHING IS RUNNING is the one thing the reading cannot see and this page
+// can: the record is a file and the file cannot correct itself, so a row that
+// claims to be running with no window behind it wears [glyphIdle] rather than a
+// state it never reached.
 func tasksGlyph(item tasksItem, pal palette) (string, func(string) string) {
-	if item.section == tasksNeeds {
-		return tokens.GlyphNeedsHuman, pal.warn
-	}
 	status := item.status()
-	switch status.Presence {
-	case session.TaskPresenceIncomplete:
-		// A row nothing is running wears neither the running glyph nor the steer
-		// mark: [glyphIdle] takes its place, because a frozen spinner would claim
-		// the work is alive and a dot claims nothing.
-		if status.Liveness == session.TaskLivenessUnclaimed {
-			if pal.ascii {
-				return glyphIdleASCII, pal.dim
-			}
-			return glyphIdle, pal.dim
-		}
-		if !status.Fault {
-			return glyphHalted, pal.warn
-		}
-		return tokens.GlyphFailed, pal.bad
-	case session.TaskPresenceStopped:
+	if status.Presence == session.TaskPresenceIncomplete && status.Liveness == session.TaskLivenessUnclaimed {
 		if pal.ascii {
-			return glyphStoppedASCII, pal.dim
+			return glyphIdleASCII, pal.dim
 		}
-		return glyphStopped, pal.dim
-	case session.TaskPresenceNeedsLook:
-		return glyphUnverified, pal.warn
-	case session.TaskPresenceWorking, session.TaskPresenceWaiting, session.TaskPresenceFinishing:
-		return tokens.GlyphWorking, pal.live
-	case session.TaskPresenceDone:
-		return tokens.GlyphSettled, pal.muted
+		return glyphIdle, pal.dim
 	}
-	return tokens.GlyphQueued, pal.dim
+	// AND THE FOLD MARK IS NO LONGER THE WORKING MARK. This page shuts a family
+	// with `▸` ([tasksFoldShut], tokens.GlyphCollapsed), and while the tier drew
+	// work in flight with the same character a person had to tell "there is more
+	// under this" from "this is working" by position alone. The vocabulary's
+	// working mark is the half-filled circle, which means nothing else on this
+	// surface, and the rail draws it too — the two pages agree now.
+	return tierGlyph(pal, status), tierInk(pal, status)
 }
 
 // step keeps the four time keys in one grammar shared with spend.

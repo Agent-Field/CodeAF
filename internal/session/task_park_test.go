@@ -737,19 +737,16 @@ func TestTheLastTwoPartsLandingTogetherStillCostOneTurn(t *testing.T) {
 					return textResponse("both parts are in; here is the one deliverable"), nil
 				},
 			}}
-			var partsMu sync.Mutex
-			var parts []*TaskNode
+			parts := make(chan *TaskNode, 2)
 			nest := newNest(t, completer, func(node *TaskNode) {
 				if node.parent == 0 {
 					return
 				}
-				partsMu.Lock()
-				parts = append(parts, node)
-				partsMu.Unlock()
+				parts <- node
 			})
 			for _, title := range []string{"arithmetic", "currency"} {
-				if _, _, err := nest.node.proposeTask(context.Background(), pieceArgs(title)); err != nil {
-					t.Fatalf("propose_task: %v", err)
+				if answer, failed, err := nest.node.proposeTask(context.Background(), pieceArgs(title)); err != nil || failed {
+					t.Fatalf("propose_task: %v, failed=%v: %s", err, failed, answer)
 				}
 			}
 
@@ -759,11 +756,18 @@ func TestTheLastTwoPartsLandingTogetherStillCostOneTurn(t *testing.T) {
 			// being submitted — and it would not touch the window this pins.
 			waitParked(t, nest.parent, 0)
 
-			partsMu.Lock()
-			landing := append([]*TaskNode(nil), parts...)
-			partsMu.Unlock()
-			if len(landing) != 2 {
-				t.Fatalf("%d parts were admitted, want the two that were proposed", len(landing))
+			// Parking observes admitted children, not their asynchronous runner
+			// callbacks. Wait for both callbacks before releasing their landings.
+			var landing []*TaskNode
+			timer := time.NewTimer(10 * time.Second)
+			defer timer.Stop()
+			for len(landing) < 2 {
+				select {
+				case part := <-parts:
+					landing = append(landing, part)
+				case <-timer.C:
+					t.Fatalf("%d child runners started, want two", len(landing))
+				}
 			}
 			release := make(chan struct{})
 			var landed sync.WaitGroup

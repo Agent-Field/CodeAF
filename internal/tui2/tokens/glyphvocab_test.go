@@ -90,6 +90,11 @@ func TestOneGlyphOneMeaning(t *testing.T) {
 		GlyphProseBullet: "a middle dot: the telemetry separator's byte, a different slot",
 		GlyphProseQuote:  "an eighth block: the code fence's gutter, and the blockquote's — both are a margin beside a block set apart",
 		GlyphShell:       "a dollar: the spend mark's byte, told apart by what follows it",
+		GlyphActionCreate: "a plus: the diffstat's byte, and the step gutter's mark for a thing " +
+			"that was not there — one is bound to a number, the other stands alone in a gutter",
+		GlyphFileDocument: "a page of text, at two scales: a call that read one, and one on an " +
+			"attachment chip — and the tier draws BOTH as nf-fa-file_text, so nothing the floor " +
+			"draws apart is collapsed",
 	}
 	plainOwner := map[string]string{}
 	for _, b := range Vocabulary() {
@@ -177,6 +182,10 @@ var literalExemptions = map[string]string{
 	"../golden/diff.go": "the invisible-character legend of a TEST diff — `·` there is a SPACE, " +
 		"not the telemetry separator, and the line that draws it also names it. Developer " +
 		"output, never a rendered surface, so the vocabulary does not reach it",
+	"../modelui/result.go": "the ` \u2192 ` inside SetRole.String, which the function's own " +
+		"comment names as \"a log line or a test failure\" — provenance rather than a rendered " +
+		"row. The vocabulary took U+2192 for GTarget on 2026-09-09 (home's rule) and a log " +
+		"line has no repertoire tier to get wrong",
 }
 
 // proseMarks are the vocabulary bytes that are also ordinary punctuation. They

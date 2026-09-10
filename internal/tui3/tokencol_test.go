@@ -291,9 +291,9 @@ func TestATaskRoomCarriesItsOwnColumn(t *testing.T) {
 // A TURN SPLIT INTO TWO RUNS IS STILL ONE TURN. A kept row — here the first
 // call failed, and its step is kept whole because only failure speaks — splits
 // the running turn's machinery into a run holding only the reasoning above it
-// and a run below, and each run draws its own door. The pair rides the
-// frontier alone: the same figures on both doors read as the turn running
-// twice, which is what the owner's screenshot showed.
+// and a run below. The pair rides the frontier alone: the same figures drawn
+// twice read as the turn running twice, which is what the owner's screenshot
+// showed.
 func TestASplitTurnCarriesTheColumnOnItsFrontierAlone(t *testing.T) {
 	a := tokenColApp(t)
 	a.entries[3].status = toolFailed
@@ -327,5 +327,75 @@ func TestASplitTurnCarriesTheColumnOnItsFrontierAlone(t *testing.T) {
 			t.Fatalf("a run below the column has its own door — the column is not on the frontier:\n%s",
 				strings.Join(page, "\n"))
 		}
+	}
+}
+
+// AND THE RUN ABOVE THE SPLIT DRAWS NO DOOR OF ITS OWN. It holds nothing but
+// reasoning that is over — no step — and a window with no steps in it draws
+// itself as `▸ Work · ctrl+e` (livesteps.go). Two of those on one page, keyed
+// alike, is one turn claiming to be two pieces of running work; the owner read
+// it as "things opening that don't need to". The reasoning goes back under the
+// ordinary `thought for …` row, which is the chip a finished turn draws and
+// which carries its own door onto the working.
+//
+// Every `ctrl+e` on the page is counted and named, because the defect was not a
+// missing row but a second one that looked exactly like the right one.
+func TestASplitTurnDrawsNoSecondWorkDoorAboveTheKeptStep(t *testing.T) {
+	a := tokenColApp(t)
+	a.entries[3].status = toolFailed
+	a.touch()
+	d := a.conversation()
+	stampHierarchy(d.entries, a.deckFolds(d))
+	d.captions = deriveCaptions(d.entries, d.runningTurn)
+	if runs := liveWorkRuns(d); len(runs) < 2 {
+		t.Fatalf("the fixture did not split into two runs: %d", len(runs))
+	}
+
+	doors := func(page []string) (thought, work int) {
+		for _, line := range page {
+			if !strings.Contains(line, "ctrl+e") {
+				continue
+			}
+			switch {
+			case strings.Contains(line, "thought for"):
+				thought++
+			case strings.Contains(line, "Work · ctrl+e"),
+				strings.Contains(line, "Working · ctrl+e"),
+				strings.Contains(line, liveWorkWord+" · ctrl+e"):
+				work++
+			default:
+				t.Fatalf("an unaccounted ctrl+e row on the page: %q\n%s", line, strings.Join(page, "\n"))
+			}
+		}
+		return thought, work
+	}
+
+	page := plainRows(a)
+	thought, work := doors(page)
+	if work != 0 {
+		t.Fatalf("the shut page drew %d work doors, want none — the compact block IS the shut state:\n%s",
+			work, strings.Join(page, "\n"))
+	}
+	if thought != 1 {
+		t.Fatalf("the reasoning above the kept step is not behind exactly one thought row (%d):\n%s",
+			thought, strings.Join(page, "\n"))
+	}
+	// The step the failure kept still stands between the two, whole and above
+	// the working block, exactly where it happened.
+	if !strings.Contains(strings.Join(page, "\n"), "Reading the loader first") {
+		t.Fatalf("the kept step is not on the page:\n%s", strings.Join(page, "\n"))
+	}
+
+	// And the work is still one window with one way in and out of it: opening it
+	// draws exactly one `working · ctrl+e`, and the thought row is still its own.
+	showLiveWork(t, a)
+	page = plainRows(a)
+	thought, work = doors(page)
+	if work != 1 {
+		t.Fatalf("the opened work drew %d doors, want exactly one:\n%s", work, strings.Join(page, "\n"))
+	}
+	if thought != 1 {
+		t.Fatalf("the thought row is not on the opened page exactly once (%d):\n%s",
+			thought, strings.Join(page, "\n"))
 	}
 }

@@ -403,3 +403,19 @@ func TestAMarginDoorLightsItsMarkUnderThePointer(t *testing.T) {
 		t.Fatalf("the door under the pointer wears no ground:\n%s", strings.Join(a.railRows(a.viewHeight()), "\n"))
 	}
 }
+
+// Short task windows still draw the standing door when no orders exist.
+// The real fourteen-row terminal reached this through a three-row margin.
+func TestEmptyStandingMarginFitsShortTaskWindow(t *testing.T) {
+	a, _ := marginApp(t)
+	for room := 1; room <= marginStandCost+1; room++ {
+		rows := a.marginRows(28, room)
+		if len(rows) > room {
+			t.Fatalf("margin drew %d rows in %d", len(rows), room)
+		}
+	}
+	a.width, a.height = 120, 14
+	a.input.value = []rune(strings.Repeat("a long task request ", 20))
+	a.touch()
+	_ = frame(a)
+}

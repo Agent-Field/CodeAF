@@ -231,21 +231,102 @@ import (
 // builds — and a version-11 engine enforces it against a version-12 surface
 // using code that has been there since version 1. That is the only mechanism in
 // this protocol an old peer can be trusted to run.
-const Version = 12
+//
+// VERSION 13 IS THE MOVE, AND IT IS A RULING ABOUT WHAT A SECOND WINDOW MEANS.
+// Versions 4 to 12 let several surfaces sit in one conversation and arbitrated
+// between them with a keyboard ([Driver]): the newest arrival typed, the others
+// watched. The ruling is that a person opening a conversation in the terminal
+// they are standing at MEANS TO BE IN IT, and the window they walked away from
+// should say so and step back — one conversation, one window, and the way back
+// is the same keystroke from the other side.
+//
+// The delta is one frame down, and nothing goes up:
+//
+//   - the "moved" frame carries a [Moved] to every OTHER surface in the room
+//     when a window arrives that is neither a watcher ([Hello.Watch]) nor a
+//     link coming back ([Hello.Back]). The surface hearing it DETACHES — the
+//     engine holds the conversation and the work never stops — and lands on
+//     home with that row under the cursor.
+//
+// THE NUMBER MOVES BECAUSE THE OLD BEHAVIOUR WAS A BEHAVIOUR AND NOT A GAP. A
+// version-12 surface joined by a version-13 one never hears the frame and stays
+// attached, watching, exactly as it did before — which is not broken, and is
+// precisely why an engine may not be left to guess: a version-12 ENGINE would
+// leave two windows both believing they are the one in the conversation, and
+// only the door can tell those two builds apart.
+// VERSION 14 CARRIES THE QUESTIONS LANE, and it is the last of the standing
+// lanes to cross. A question is one decision handed to a person with its
+// evidence attached (docs/design/questions/DESIGN.md), and internal/session
+// speaks every one of them on a subscription of its own that outlives the turn
+// — [session.Agent.WatchQuestions], which replays everything still open the
+// moment a surface attaches. That subscription had no frame here, so a hosted
+// surface asserted the questions half of its agent, found no
+// [Agent.WatchQuestions] on it, and drew nothing: an `ask` on the road a plain
+// `aforge` takes stopped the turn with no block, no chip and no row on any
+// screen, for as long as the person left it. Measured at three minutes.
+//
+// The delta is one intent up and one fact down, on the shape versions 8 and 11
+// named:
+//
+//   - [MethodQuestionWatch] is the surface saying it draws questions. The
+//     engine opens one subscription per surface that asks, which REPLAYS WHAT
+//     IS STILL OPEN before its first live event, so a window that attached an
+//     hour into the wait still learns the question.
+//   - the "question" frame carries each of that lane's events onward —
+//     [session.EventQuestion], [session.EventQuestionWithdrawn] and
+//     [session.EventQuestionAnswered], each with the whole object on it. It
+//     belongs to the CONNECTION and not to a stream, because most questions
+//     outlive the turn that raised them and many never had one.
+//
+// THE ANSWER'S OWN DOOR WAS ALREADY HERE and is unchanged:
+// [MethodQuestionResolve] has carried [session.Answer] whole since it landed.
+// That is what made the gap so quiet — the half a person presses worked
+// perfectly and the half that puts the question on the screen did not exist.
+//
+// The number moves rather than riding version 13 for [MethodTaskWatch]'s
+// reason, and the reason is the whole of the discipline here: a version-13
+// engine answers this subscription with "no such method" and leaves the lane
+// permanently dark, with nothing on the screen saying why. Refused at the door,
+// a person is told their engine is an older aforge; accepted, they would be told
+// nothing at all and their turn would simply stop. NEVER TO SILENCE.
+const Version = 14
+
+// AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
+// rode version 5's: neither half can be surprised by them. "phase" and "lane"
+// are pushes the surface never asks for, and a version-13 surface that does not
+// know either kind IGNORES it (client.go's reader, and the law stated on
+// [Frame.Kind]); a version-13 engine that does not send them leaves a surface
+// drawing exactly what it drew before, which is nothing. There is no state on
+// either side that a missing frame can leave wrong, so there is nothing for a
+// door to refuse — and refusing an engine over a status line would be this
+// protocol turning a live conversation away for a decoration.
+//
+// [MethodAnswerLaneOffer] rides it too, and that one is a METHOD, which
+// Decision 3 in docs/REMOTE.md normally refuses across a version. It is the
+// documented exception: an older engine answers "no such method", the surface
+// reads that as false, and false is a REAL ANSWER on this door rather than a
+// failure — the lane came good, or the request ended, or the offer aged out
+// ([provider.AnswerOffer] says so). A person on an old engine presses `y` and
+// nothing happens, which is exactly what happened before the door existed.
 
 // Frame is one line on the wire, either direction.
 type Frame struct {
 	// Kind says what this frame is: "hello", "welcome", "call", "result",
-	// "event", "closed", "facts", "task", "design", "turn", "driver", "fatal".
+	// "event", "closed", "facts", "task", "design", "question", "phase", "lane",
+	// "turn", "driver", "moved", "fatal".
 	//
-	// "facts", "task" and "design" are the KINDS THAT ANSWER NOTHING. The last
-	// is version 11's harness lane and carries one [EventWire], exactly as
-	// "task" does (standinglane.go). Every other
+	// "facts", "task", "design", "question", "phase" and "lane" are the KINDS
+	// THAT ANSWER NOTHING. The third and fourth are version 11's harness lane
+	// and version 14's questions lane, and each carries one [EventWire],
+	// exactly as "task" does (standinglane.go); the last two carry the phase
+	// clock and the lane sighting (news.go). Every other
 	// frame from the engine either replies to a call or belongs to a stream a
 	// call opened; these are the engine saying something the surface did
 	// not ask for on that frame, because the whole point of them is that the
 	// surface never has to ask. "facts" carries a [FactsPush]; "task" carries
-	// one [EventWire] off the standing task lane (tasklane.go). Neither has an
+	// one [EventWire] off the standing task lane (tasklane.go); "phase" carries
+	// a [PhaseWire] and "lane" a [LaneWire], both off the news desk this engine
+	// keeps for every conversation it is running (news.go). None of them has an
 	// ID, and a build that does not know the kind ignores it, which is what the
 	// reader in client.go already does with every kind it has no case for.
 	Kind string `json:"kind"`
@@ -297,7 +378,7 @@ const (
 	MethodFollowUp        = "FollowUp"               // SubmitArgs → StreamRef, then "event" frames
 	MethodSteer           = "Steer"                  // SubmitArgs → StreamRef, then "event" frames
 	MethodStopWork        = "StopWork"               // nothing → nothing; stop this conversation, retaining history
-	MethodInterrupt       = "Interrupt"              // nothing → nothing
+	MethodInterrupt       = "Interrupt"              // InterruptArgs, or nothing → nothing
 	MethodCompact         = "Compact"                // nothing → nothing (error carries the failure)
 	MethodClose           = "Close"                  // nothing → nothing
 	MethodModel           = "Model"                  // nothing → string
@@ -308,17 +389,75 @@ const (
 	MethodConsent         = "ResolveConsent"         // ConsentArgs → nothing
 	MethodConsentRemember = "ResolveConsentRemember" // ConsentArgs → nothing
 	MethodStandingResolve = "ResolveStanding"        // StandingArgs → nothing
-	MethodHarness         = "ResolveHarness"         // HarnessArgs → nothing
-	MethodConnect         = "ResolveConnect"         // ConnectArgs → nothing
-	MethodConnectKey      = "ResolveConnectKey"      // ConnectArgs → nothing
-	MethodNoteConnected   = "NoteConnected"          // ConnectedArgs → nothing
-	MethodTitle           = "Title"                  // nothing → string
-	MethodUsage           = "Usage"                  // nothing → session.Usage
-	MethodContextTokens   = "ContextTokens"          // nothing → int
-	MethodTranscript      = "Transcript"             // nothing → []session.DisplayEntry
-	MethodEarlier         = "EarlierHistory"         // nothing → session.EarlierHistory
-	MethodRewindPoints    = "RewindPoints"           // nothing → []session.RewindPoint
-	MethodRewindAt        = "RewindAt"               // int → []session.DisplayEntry
+	// MethodQuestionResolve is the ONE door for an answer to any question, over
+	// the wire (docs/design/questions/DESIGN.md). It carries
+	// [session.Answer] whole — the lane, the token, the keys, the words beside
+	// them, the notes on parts, the exchanges, the blanks, the dial, the scope —
+	// and the engine reads the lane off it and applies it through that lane's own
+	// resolver ([session.Agent.ResolveQuestion]).
+	//
+	// IT IS ONE FRAME AND NOT ELEVEN because the object it carries already says
+	// which lane it belongs to. The per-lane frames above stay exactly as they
+	// are: they are what an older window on the other end of this wire sends, and
+	// this one is what a window that has the whole object sends.
+	MethodQuestionResolve = "ResolveQuestion" // QuestionArgs → nothing (or a refusal)
+	// MethodQuestionWatch is the surface saying it draws questions, and it buys
+	// exactly what [MethodTaskWatch] and [MethodDesignWatch] buy: "question"
+	// frames from here on, including everything already open replayed the
+	// moment the subscription opens ([session.Agent.WatchQuestions]). It is sent
+	// once per conversation the surface takes up, never on a frame.
+	//
+	// IT IS THE OTHER HALF OF THE DOOR ABOVE. An answer with no way for the
+	// question to arrive is a key nobody will ever press; internal/tui3 asserts
+	// the lane and the answer as ONE interface for that reason, and a wire
+	// carrying one of them leaves a turn stopped on a question no screen shows.
+	MethodQuestionWatch = "Question.Watch" // nothing → nothing, then "question" frames
+	// MethodSetAutonomy is `D`: let the engine answer every question of one SHAPE
+	// from now on ([session.Agent.SetAutonomy]). The setting is kept per project
+	// on the engine's side, which is why it is a call and not a local file: a
+	// window attached over `--host` is setting the dial on the machine the work
+	// is happening on.
+	MethodSetAutonomy   = "SetAutonomy"       // AutonomyArgs → nothing (or a refusal)
+	MethodHarness       = "ResolveHarness"    // HarnessArgs → nothing
+	MethodConnect       = "ResolveConnect"    // ConnectArgs → nothing
+	MethodConnectKey    = "ResolveConnectKey" // ConnectArgs → nothing
+	MethodNoteConnected = "NoteConnected"     // ConnectedArgs → nothing
+	MethodTitle         = "Title"             // nothing → string
+	MethodUsage         = "Usage"             // nothing → session.Usage
+	MethodContextTokens = "ContextTokens"     // nothing → int
+	MethodTranscript    = "Transcript"        // nothing → []session.DisplayEntry
+	MethodEarlier       = "EarlierHistory"    // nothing → session.EarlierHistory
+	MethodRewindPoints  = "RewindPoints"      // nothing → []session.RewindPoint
+	MethodRewindAt      = "RewindAt"          // int → []session.DisplayEntry
+	// The conversation's own place on the thinking ladder (internal/session's
+	// effort.go). Three doors and not one, because the stored rung and the
+	// resolved rung are two different answers: the dial DRAWS the resolved one
+	// and a person opening it CHOSE the stored one, and a wire that carried only
+	// one of them would make the surface derive the other.
+	//
+	// The resolved rung also rides [session.Facts] unasked, which is what a frame
+	// reads; these are the keystroke's doors (effort.go).
+	MethodEffort         = "Effort"         // nothing → string (the stored rung, "" for none)
+	MethodResolvedEffort = "ResolvedEffort" // nothing → string (the rung the next turn asks for)
+	MethodSetEffort      = "SetEffort"      // string → bool (false when the word is not a rung)
+
+	// MethodAnswerLaneOffer answers the one question the phase seam can raise:
+	// the machine a person PINNED has gone quiet, there is somewhere else to
+	// go, and a pin is asked rather than overridden ([provider] offer.go). The
+	// surface presses `y` and this is the road that keystroke takes home.
+	//
+	// IT EXISTS BECAUSE THE PHASE CROSSED. Until "phase" frames did, a hosted
+	// engine had nobody reading phases at all and BORROWED the other lane
+	// without asking — which was right, since a question nobody can hear is a
+	// wait that never ends. With the phase on the wire the question is asked
+	// and drawn, so the answer needs the same road back or the surface would be
+	// showing `switch to auto? (y)` over a key that does nothing.
+	//
+	// It takes the ANSWER and not the question: which lane the rescue goes to
+	// was settled when the offer was raised, because the moment a rescue is
+	// wanted is the worst possible moment to start choosing one. False means
+	// there was nothing to answer, which is a real answer and not a failure.
+	MethodAnswerLaneOffer = "AnswerLaneOffer" // bool → bool
 
 	// Session doors.
 	MethodSessionsRecent = "Sessions.Recent" // nothing → []session.Summary
@@ -789,6 +928,38 @@ type Welcome struct {
 	// CORRECTION AT ALL. An unenforced claim is worse than no claim: the surface
 	// would believe the engine was guarding something nobody is guarding.
 	SteerOwner bool `json:"steerOwner,omitempty"`
+	// TaskSetup advertises task-scoped model and thinking controls.
+	TaskSetup bool `json:"taskSetup,omitempty"`
+	// TaskSettle says this engine can be ASKED TO DECIDE A LANDING — accept, not
+	// right, one more merge round, the hand-over and the take-back
+	// ([MethodTaskSettle]).
+	//
+	// IT IS CARRIED FOR [Welcome.Folders]'S REASON, and the cost of not carrying
+	// it was measured: internal/tui3 asserts these doors on the agent it holds and
+	// draws no answers row at all where the assertion fails, so a window on an
+	// engine host drew a landing card with its reason and nothing to press (#706).
+	// Every *Agent has the methods; only the welcome knows whether the machine at
+	// the far end does.
+	TaskSettle bool `json:"taskSettle,omitempty"`
+
+	// Effort says this engine HAS A DIAL ON THE CONVERSATION'S OWN THINKING —
+	// that its agent answers [MethodEffort], [MethodResolvedEffort] and
+	// [MethodSetEffort] rather than refusing them (effort.go).
+	//
+	// IT IS CARRIED FOR [Welcome.Folders]'S REASON, WHICH IS THE ONE THAT MATTERS
+	// MOST HERE. A surface at this end holds a *remote.Agent, which ALWAYS has
+	// the three methods on it, so the type assertion a local surface uses to tell
+	// a dial from no dial answers yes for every connection and says nothing about
+	// the far machine. And the honest reading cannot be taken from the ANSWER
+	// either: "" is a real rung on this ladder — a conversation asking for no
+	// thinking at all — so silence and absence are the same string, and the flag
+	// is the only thing that separates them.
+	//
+	// ABSENCE IS false AND false IS THE SAFE READING: A CAPABILITY THAT CANNOT
+	// WORK IS ABSENT, NOT BROKEN, so the seam draws no rung, the chord does
+	// nothing, and nothing on the screen offers to move a knob the far engine
+	// has never heard of.
+	Effort bool `json:"effort,omitempty"`
 
 	// Folders says this engine CAN HOLD THE FOLDERS A CONVERSATION IS ABOUT —
 	// that its agent answers [MethodPlacesRefer] and [MethodPlacesRemove] rather
@@ -834,7 +1005,41 @@ type Driver struct {
 	Here bool `json:"here,omitempty"`
 }
 
+// Moved is the engine telling ONE surface that another window has opened this
+// conversation and is now the one in it.
+//
+// IT IS A FACT ABOUT THE ROOM AND NOT AN INSTRUCTION. The engine goes on holding
+// the conversation, running whatever turn is in flight and keeping every task on
+// its feet; what has changed is who is sitting in front of it. The surface that
+// hears this detaches, which is the road that leaves the work alone
+// (internal/tui3's movedAway), and a surface that ignores the kind is left
+// attached and reading — the honest floor for a build that predates the frame.
+//
+// IT NAMES THE MACHINE FOR [Driver]'s REASON, in [Driver]'s words: `another
+// window` is the true and weaker claim when the name is missing or is this
+// surface's own, and the name is what a person needs when the conversation
+// walked to a different computer.
+type Moved struct {
+	// Machine is the arriving surface's machine name as [Hello.Surface] gave
+	// it, sanitized ([machineLabel]) because it is drawn. Empty is a surface
+	// that sent none.
+	Machine string `json:"machine,omitempty"`
+	// Here says the window that took it is on THIS surface's own machine.
+	Here bool `json:"here,omitempty"`
+}
+
 // SubmitArgs carries Submit and FollowUp.
+// InterruptArgs names the door a stop came through, so that a hosted engine can
+// write down what ended a turn and say one sentence about a reply that never
+// arrived (internal/session's stopcause.go).
+//
+// AN EMPTY DOOR IS A PERSON'S OWN STOP, which is what an older surface that
+// sends no arguments at all means and what it always meant. That is the one
+// direction this may fail in that costs nothing: a stop is still a stop.
+type InterruptArgs struct {
+	Door string `json:"door,omitempty"`
+}
+
 type SubmitArgs struct {
 	Text string `json:"text"`
 	// Standing says the person MARKED this draft as something to keep true
@@ -1114,6 +1319,97 @@ type FactsPush struct {
 	Facts session.Facts `json:"facts"`
 }
 
+// PhaseWire is one moment of one far turn's life: what the request is doing
+// right now, on which machine, and how fast it is writing
+// ([provider.PhaseNews]).
+//
+// IT CARRIES NO CONVERSATION AND NO OFFER TOKEN. The engine files its news by
+// conversation to decide WHICH connection each piece goes down (news.go), and
+// once it is on a connection the connection IS the conversation — a name on the
+// frame would be a second answer to a question already settled, and it would
+// put a room's id on a wire that has no use for one. The offer token stays
+// behind for the same reason: the token is the engine's own bookkeeping, and
+// the surface answers by pressing `y` at the conversation it is sitting in
+// ([MethodAnswerLaneOffer]), never by naming a token it was handed.
+//
+// THE MOMENTS ARE ELAPSED TIMES AND NEVER WALL CLOCKS. A surface ages a phase
+// out fifteen seconds after it was said ([provider.PhaseWindow]) and counts a
+// clock up from when it began, both against ITS OWN now — so a wall clock from
+// another machine, even a few seconds out, would either drop every phase on
+// arrival or draw one that had been running since before it started. SinceMS is
+// how long the phase had already lasted when the engine said so and DeadlineMS
+// how long was left; the surface adds both to the moment the frame landed
+// (client.go's [Client.phaseFrame]).
+type PhaseWire struct {
+	// Phase is [provider.Phase] — the person's own word for what is happening.
+	// An empty phase is the end of the story and is carried as such, because a
+	// stale clock left running is the defect the phase seam exists to fix.
+	Phase string `json:"phase,omitempty"`
+	// Model is the model this request is on and Role who it is for
+	// ([lane.Role]). EVERY ROLE CROSSES AND THE SURFACE DECIDES: a task node's
+	// phases are drawn where a node is drawn and a conversation's on the status
+	// row, and that filter is already written on the surface (internal/tui3's
+	// phase.go). An engine that filtered here would be a second opinion about
+	// the same question.
+	Model string `json:"model,omitempty"`
+	Role  string `json:"role,omitempty"`
+	// Lane is the machine answering when one has named itself, and Rate how
+	// fast it is writing in tokens a second. Zero for both is "not measured",
+	// never "nothing" — the emptiness law, carried across the wire intact.
+	Lane string  `json:"lane,omitempty"`
+	Rate float64 `json:"rate,omitempty"`
+	// Detail is the phase's own noun, already in a person's words, and Then
+	// what will be done about the wait when a deadline is real.
+	Detail string `json:"detail,omitempty"`
+	Then   string `json:"then,omitempty"`
+	// SinceMS is how long this phase had lasted when the engine said so, and
+	// DeadlineMS how long was left before something is done about it. Both in
+	// milliseconds; zero DeadlineMS is no deadline, which is the honest answer
+	// wherever no alternative lane exists.
+	SinceMS    int64 `json:"sinceMs,omitempty"`
+	DeadlineMS int64 `json:"deadlineMs,omitempty"`
+}
+
+// LaneWire is one finished far answer's lane story: which machine it went to,
+// which one finished it, and whether a rescue went out while somebody was
+// waiting ([session.LaneNews]).
+//
+// It carries no moment at all, for [PhaseWire]'s reason one step further: a
+// sighting is drawn for ten minutes after it was taken (internal/tui3's
+// servedWindow) and the only clock that reading can be taken against is the
+// surface's own, so the surface stamps it when the frame lands. What is lost is
+// the pipe's own latency, which on the road this exists for — a surface and an
+// engine host on one machine — is a fraction of a millisecond against ten
+// minutes.
+type LaneWire struct {
+	// Model is the model the answer came back on. A news with no model belongs
+	// to nobody and is dropped on both sides of the wire.
+	Model string `json:"model"`
+	// Lane is the machine the request WENT TO and Winner the one that finished
+	// it; they differ only when a rescue landed, which is the whole of what a
+	// surface means by "rescued". Alt is whichever of the pair was not asked
+	// first.
+	Lane   string `json:"lane,omitempty"`
+	Alt    string `json:"alt,omitempty"`
+	Winner string `json:"winner,omitempty"`
+	// TTFTMS is the wait before the first token in milliseconds, and Rate how
+	// fast the answer was written.
+	TTFTMS int64   `json:"ttftMs,omitempty"`
+	Rate   float64 `json:"rate,omitempty"`
+	// Hedged says a second request went out for this answer; Trying says one is
+	// out RIGHT NOW and nobody has committed yet.
+	Hedged bool `json:"hedged,omitempty"`
+	Trying bool `json:"trying,omitempty"`
+	// Reason is why the rescue went out, in the transport's own two words, and
+	// Failed WITHDRAWS a claim already made: the lane in Alt was what a
+	// `trying X…` was about and it has now failed.
+	Reason string `json:"reason,omitempty"`
+	Failed bool   `json:"failed,omitempty"`
+	// Role is who the answer was for. It crosses unfiltered for [PhaseWire.Role]'s
+	// reason.
+	Role string `json:"role,omitempty"`
+}
+
 type StreamRef struct {
 	Stream uint64 `json:"stream"`
 }
@@ -1143,6 +1439,21 @@ type ConsentArgs struct {
 type StandingArgs struct {
 	ID     uint64                 `json:"id"`
 	Answer session.StandingAnswer `json:"answer"`
+}
+
+// AutonomyArgs is one shape of question and what may answer it from now on.
+type AutonomyArgs struct {
+	Kind   session.AskKind `json:"kind"`
+	Policy session.Policy  `json:"policy"`
+}
+
+// QuestionArgs is one answer, whole. It carries [session.Answer] rather than a
+// flattened set of fields for the reason the object exists at all: the fields on
+// it are what a person's intent looks like, and a wire that carried only the key
+// would be the wire deciding that the notes, the exchange and the words beside
+// the pick are not part of the answer.
+type QuestionArgs struct {
+	Answer session.Answer `json:"answer"`
 }
 
 type HarnessArgs struct {

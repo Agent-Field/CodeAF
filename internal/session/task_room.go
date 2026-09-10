@@ -656,9 +656,8 @@ func (a *Agent) spoken(text string, waiting bool, origin messageOrigin, directio
 	return delivery{origin: origin, kind: msgDirection, note: carryingDirection(note, direction)}
 }
 
-// RetargetTask moves ONE RUNNING NODE onto another model, from its next turn on.
-// Unknown id, a node that is not running, and a word no model here answers to are
-// each an error naming which.
+// RetargetTask chooses one task's model for its next turn or continuation.
+// Unknown ids, unsupported task kinds and unknown models are refused.
 //
 // IT IS THE SANCTIONED EXCEPTION TO THE FREEZE, and the header of this file says
 // why in full: the id is settled at admission so that a `/model` in the
@@ -668,11 +667,8 @@ func (a *Agent) spoken(text string, waiting bool, origin messageOrigin, directio
 // after this one still takes the ordinary ladder — `task.model` from settings,
 // else the conversation's ([Agent.defaultTaskModel]).
 //
-// A SETTLED NODE IS REFUSED IN THE SAME WORDS EVERY OTHER ROOM DOOR REFUSES ONE:
-// `task 7 is done, not running`. There is nothing left to move it onto — the run
-// is over, the child agent is closed, the report is written — and the model on a
-// landed row is a fact about what happened, which a person may read and must not
-// be able to edit.
+// Settled ordinary tasks save a separate continuation choice. Their historical
+// model and state stay unchanged until ContinueTask starts the next attempt.
 //
 // THE WORD RESOLVES THROUGH ADMISSION'S OWN LADDER (taskmodel.go), so a room and
 // a proposal cannot disagree about what "opus 5" means. A word that fits more
@@ -697,9 +693,6 @@ func (a *Agent) RetargetTask(id uint64, model string) error {
 	if node == nil {
 		return fmt.Errorf("no task %d in this session", id)
 	}
-	if state := node.stateNow(); state != TaskRunning {
-		return fmt.Errorf("task %d is %s, not running", id, state)
-	}
 	choice := a.resolveTaskModel(model)
 	switch {
 	case choice.problem != "":
@@ -707,7 +700,23 @@ func (a *Agent) RetargetTask(id uint64, model string) error {
 	case len(choice.options) > 0:
 		return errors.New(taskModelVague(model, choice.options))
 	}
-	node.retarget(choice.model)
+	node.graph.mu.Lock()
+	running := node.state == TaskRunning
+	switch node.state {
+	case TaskRunning, TaskQueued:
+		node.retargetLocked(choice.model)
+	case TaskDone, TaskFailed, TaskUnverified:
+		if node.kind == TaskKindHarness || node.kind == TaskKindSubharness {
+			node.graph.mu.Unlock()
+			return fmt.Errorf("task %d cannot be continued", id)
+		}
+		node.nextModel = choice.model
+	default:
+		state := node.state
+		node.graph.mu.Unlock()
+		return fmt.Errorf("task %d is %s, not available for model changes", id, state)
+	}
+	node.graph.mu.Unlock()
 	// The child is told directly as well as through the spec, because the two
 	// answer for two different moments. A node whose worker is already up reads
 	// its model off the agent, so the agent has to be moved; a node that is
@@ -717,7 +726,7 @@ func (a *Agent) RetargetTask(id uint64, model string) error {
 	// the only reason a nil child here is silence rather than the error
 	// [Agent.SteerTask] returns for it: there is nobody to talk to, but there is
 	// something to change, and it has just been changed.
-	if child := node.openRoom().speaker(); child != nil {
+	if child := node.openRoom().speaker(); running && child != nil {
 		child.SetModel(choice.model)
 	}
 	// The checkpoint is what makes the pick survive the session, exactly as the

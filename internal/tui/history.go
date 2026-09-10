@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -179,7 +180,7 @@ func (m *Model) renderRecallHistory(width, atLine int, track bool) string {
 			age = "—"
 		}
 		prefix := mutedStyle.Render(disclosure + " " + string(rune('1'+index)) + "  " + padANSI(age, 10) + "  ")
-		glyph := historyStatusGlyph(entry.status)
+		glyph := historyStatusGlyph(m.icons, entry.status)
 		intentWidth := max(1, width-lipgloss.Width(prefix)-lipgloss.Width(glyph)-1)
 		row := prefix + inputTextStyle.Render(truncate(firstLine(entry.hit.Intent), intentWidth)) + " " + glyph
 		lines = append(lines, truncate(row, width))
@@ -203,18 +204,18 @@ func (m *Model) renderRecallHistory(width, atLine int, track bool) string {
 	return strings.Join(lines, "\n")
 }
 
-func historyStatusGlyph(status store.Status) string {
+func historyStatusGlyph(g tokens.GlyphSet, status store.Status) string {
 	switch status {
 	case store.Done:
-		return mintStyle.Render("✓")
+		return mintStyle.Render(g.Glyph(tokens.GSettled))
 	case store.Failed, store.Cancelled:
-		return roseStyle.Render("✗")
+		return roseStyle.Render(g.Glyph(tokens.GFailed))
 	case store.Running, store.Claimed:
-		return peachStyle.Render("◐")
+		return peachStyle.Render(g.Glyph(tokens.GWorking))
 	case store.Pending:
-		return mutedStyle.Render("○")
+		return mutedStyle.Render(g.Glyph(tokens.GQueued))
 	default:
-		return mutedStyle.Render("·")
+		return mutedStyle.Render(g.Glyph(tokens.GSeparator))
 	}
 }
 

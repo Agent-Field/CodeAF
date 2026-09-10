@@ -225,6 +225,42 @@ func (a *app) walkPage(back bool) tea.Cmd {
 	return a.showPage(nextPage(a.page, back))
 }
 
+// ── the pointer, on home's rule ─────────────────────────────────────────────
+
+// placeTargetPress is a press on one of the two doors home's rule carries: the
+// model, and the folder the next conversation opens in. It reports whether it
+// took the press.
+//
+// EACH FACT IS EDITED ON THE LINE THAT SHOWS IT, which is the law the money
+// segment in the status line already follows and the reason there is no
+// settings page anywhere in this gesture: pressing the model is `alt+o` and
+// pressing the folder is `alt+w`, so the pointer and the keyboard reach the
+// same two doors by the same two names.
+//
+// THE COLUMNS ARE THE ONES THE FRAME DREW (homedraft.go's [app.targetLegend]
+// writes them as the line is laid out) — never a second computation of where
+// the label should have been, which is this file's own first law.
+func (a *app) placeTargetPress(x, y int) (tea.Cmd, bool) {
+	// A layer or a list that has taken the keyboard has taken the rule with it:
+	// the legend under the composer layer is that layer's, and the model list
+	// over the target is drawn where the body was.
+	if !a.at(pageHome) || a.composer.open || a.target.pick.open {
+		return nil, false
+	}
+	if a.targetRow < 1 || y != a.targetRow {
+		return nil, false
+	}
+	switch {
+	case a.targetModelSpan.holds(x):
+		a.openTargetPicker()
+		return nil, true
+	case a.targetFolderSpan.holds(x):
+		a.moveTarget()
+		return nil, true
+	}
+	return nil, false
+}
+
 // ── the pointer, in the box ─────────────────────────────────────────────────
 
 // placeBoxPress answers a click on the composer a place draws at its foot, and
@@ -262,17 +298,31 @@ func (a *app) placeBoxPress(x, y int) bool {
 	if at < 0 || at >= a.boxRows {
 		return false
 	}
+	box.cursor = a.placeBoxOffsetIn(at, x)
+	// AND THE PRESS ARMS THE SWEEP over this box, on the message box's own
+	// terms and for its reason (boxselect.go, draftclick.go).
+	a.boxPressed(box, true, x, y)
+	return true
+}
+
+// placeBoxOffsetIn is the rune offset a pointer names on row `at` of a place's
+// composer, at column x of the frame — the arithmetic the press and the sweep
+// share, so the two can never disagree about which letter is under the pointer.
+//
+// The same three numbers [placeFrameWithBar] handed [draftBlock]: the box gets
+// the frame less its one-cell margin, the rows are capped at [homeDraftRows],
+// and the head is the prompt with no lead in front of it. The margin is why the
+// column starts one cell in.
+func (a *app) placeBoxOffsetIn(at, x int) int {
+	box := a.placeBox()
+	if box == nil {
+		return 0
+	}
 	width, _ := a.size()
-	// The same three numbers [placeFrameWithBar] handed [draftBlock]: the box
-	// gets the frame less its one-cell margin, the rows are capped at
-	// [homeDraftRows], and the head is the prompt with no lead in front of it.
-	// The margin is why the column starts one cell in.
 	head := ansi.StringWidth(prompt)
 	room := width - 2 - head
 	if room < 4 {
 		room = 4
 	}
-	box.cursor = draftClickIndex(box.value, box.cursor, at, x-1-head, room, homeDraftRows)
-	a.touch()
-	return true
+	return draftClickIndex(box.value, box.cursor, at, x-1-head, room, homeDraftRows)
 }

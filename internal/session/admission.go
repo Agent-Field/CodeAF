@@ -92,6 +92,9 @@ type AdmissionHandle struct {
 	// something read or grep can open (loop.go states the same rule for a fold
 	// marker). The call id is the token to grep for.
 	Source string `json:"source,omitempty"`
+	// Result is the existing full-result pointer, when available. Unlike a raw
+	// provider ID in a journal, it names this result even when IDs repeat.
+	Result string `json:"result,omitempty"`
 	From   string `json:"from,omitempty"`
 	Depth  int    `json:"depth,omitempty"`
 }
@@ -168,7 +171,7 @@ const (
 	admissionQuotesHeading   = "SOME OF WHAT WAS SAID AROUND THIS WORK"
 	admissionQuotesRule      = "A FEW LINES FROM THE CONVERSATION THIS CAME OUT OF, OLDEST FIRST — a bounded selection, not the whole record and not a list of your requirements. They are what was SAID, not what is true: check anything you are about to depend on, and grep the record named on the line for the whole of it. A later line may have replaced an earlier one. Where one of them plainly contradicts the work above, say so in your report rather than quietly choosing."
 	admissionEvidenceHeading = "CALLS THAT HAVE ALREADY RUN"
-	admissionEvidenceRule    = "The opening of what each one was called with — cut where you see a `…`, never the whole arguments — and what is known about how it ended. \"outcome unknown\" means nobody recorded the outcome, not that it went well. Nothing here says what a result MEANT: grep the call id in the record named on the line to read the whole of it."
+	admissionEvidenceRule    = "The opening of what each one was called with — cut where you see a `…`, never the whole arguments — and what is known about how it ended. \"outcome unknown\" means nobody recorded the outcome, not that it went well. Nothing here says what a result MEANT: read the full-result pointer when present; otherwise grep the call id in the record and match the call arguments, because IDs can repeat."
 )
 
 // admissionQuotesSection and admissionEvidenceSection are the two lists as the
@@ -258,8 +261,17 @@ func (h AdmissionHandle) line() string {
 	default:
 		line += " — outcome unknown"
 	}
-	if h.Source != "" {
-		line += "; grep " + h.Call + " in " + h.Source
+	if h.Result != "" {
+		line += "; read " + h.Result
+	} else if h.Source != "" {
+		line += "; grep " + h.Call + " in " + h.Source + " and match the call arguments above"
 	}
 	return line
+}
+
+// identity compares the evidence itself when inheriting it. A repeated provider
+// ID is not enough to discard a different command or a different outcome.
+func (h AdmissionHandle) identity() AdmissionHandle {
+	h.Depth = 0
+	return h
 }

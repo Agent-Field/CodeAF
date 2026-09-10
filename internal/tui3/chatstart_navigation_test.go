@@ -125,7 +125,7 @@ func TestStartPageFooterBelongsToTheNewChat(t *testing.T) {
 		if len(rows) != a.statusHeight(width) || strings.Contains(plain(strings.Join(rows, " ")), "Shipping") {
 			t.Fatal("start footer exposes old identity")
 		}
-		if a.modelSpan.to != 0 || a.moneySpan.to != 0 || a.keepSpan.to != 0 {
+		if a.modelSpan.to != 0 || a.moneySpan.to != 0 || len(a.doors) != 0 {
 			t.Fatal("hidden old footer retains click targets")
 		}
 	}

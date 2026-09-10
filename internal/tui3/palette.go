@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // The model palette: /model with nothing after it, and omp's picker opens.
@@ -1273,9 +1274,9 @@ func (p *picker) mark(filled bool) string {
 	case p.ascii:
 		return "o"
 	case filled:
-		return "●"
+		return tokens.GlyphStepDone
 	}
-	return "○"
+	return tokens.GlyphStepPending
 }
 
 // laneAutoNote is what the auto row says it does. It is a sentence and not a
@@ -1478,7 +1479,7 @@ func (a *app) openPickerFiltered(query string) {
 func (a *app) openTaskPicker(id uint64) {
 	current := ""
 	if node := a.tasks[id]; node != nil {
-		current = node.model
+		current = firstNonEmpty(node.nextModel, node.model)
 	}
 	a.pick.startFor(a.modelList(), current, chatModel)
 	a.pick.task = id
@@ -1737,6 +1738,12 @@ func listNavigate(msg tea.KeyPressMsg, filter *editor, move func(int), rank func
 	if editorMotion(filter, msg.String()) {
 		return
 	}
+	// AND ctrl+z TAKES BACK WHAT WAS TYPED, in every box on this surface and not
+	// only in the message one (editundo.go).
+	if editorUndo(filter, msg.String()) {
+		rank()
+		return
+	}
 	switch msg.String() {
 	case "up", "ctrl+p":
 		move(-1)
@@ -1844,8 +1851,8 @@ func (a *app) overlayHeight() int {
 	// frame. The two reserved rows are the status line and one row of
 	// conversation — a list that left neither would be a list that took the
 	// screen.
-	room := height - 2 - a.inputHeight() - a.consentHeight() - a.connectAskHeight() -
-		a.harnessAskHeight() - a.followHeight() - a.landHeight() - a.parkedHeight()
+	room := height - 2 - a.inputHeight() - a.questionHeight() -
+		a.followHeight() - a.landHeight() - a.parkedHeight()
 	if commands {
 		want = a.menu.height(width, room)
 	}

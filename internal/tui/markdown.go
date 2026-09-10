@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/cas"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -353,10 +354,11 @@ func (m *Model) renderMediaPaths(nodeID string, paths []string, width int) strin
 			continue
 		}
 		seen[path] = true
-		glyph, ok := mediaGlyph(path)
+		slot, ok := mediaSlot(path)
 		if !ok {
 			continue
 		}
+		glyph := m.icon(slot)
 		target := path
 		if !filepath.IsAbs(target) {
 			var found bool
@@ -455,7 +457,7 @@ func mediaReferences(body string) []string {
 	for _, field := range strings.Fields(body) {
 		candidate := strings.Trim(field, "\"'`()[]{}<>,.!?:;")
 		if strings.HasPrefix(filepath.ToSlash(candidate), "media/") {
-			if _, ok := mediaGlyph(candidate); ok {
+			if _, ok := mediaSlot(candidate); ok {
 				paths = append(paths, candidate)
 			}
 		}
@@ -463,18 +465,23 @@ func mediaReferences(body string) []string {
 	return paths
 }
 
-func mediaGlyph(path string) (string, bool) {
+// mediaSlot says WHAT KIND of thing a path names, as a slot in the shared
+// vocabulary rather than as a character, so the chip a person sees is drawn in
+// whichever repertoire their terminal has (icons.go). It reports false for
+// anything this surface does not draw a chip for, which is what the reference
+// scanner reads it for.
+func mediaSlot(path string) (tokens.GlyphID, bool) {
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".png", ".jpg", ".jpeg", ".webp", ".gif":
-		return "⌾", true
+		return tokens.GFileImage, true
 	case ".pdf":
-		return "▤", true
+		return tokens.GFileDocument, true
 	case ".mp3", ".wav", ".m4a", ".ogg", ".flac":
-		return "♪", true
+		return tokens.GFileAudio, true
 	case ".mp4", ".mov", ".m4v", ".webm":
-		return "▶", true
+		return tokens.GFileVideo, true
 	default:
-		return "", false
+		return tokens.GFileDocument, false
 	}
 }
 

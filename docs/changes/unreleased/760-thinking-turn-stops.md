@@ -1,0 +1,36 @@
+---
+kind: fixed
+title: a thinking model is not a silent one, and no turn ends with nothing said
+pr: 760
+surface: [chat, engine]
+invalidates:
+  - "The waiting controller's ceiling measured from the last VISIBLE token, and internal/lane/control's own header said the thinking phase was governed by the wire. Only the drift clock was: hidden deltas move `delta` and the phase and never `progress`, so `verdict`'s ceiling branch fired at exactly the ceiling — ten seconds for a person, whatever the role scales it to — on every model that thinks for longer than that, while the stream was writing at full rate. The measured turn wrote 6,174 reasoning tokens in 108 seconds and was reported as a stall at ten. The ceiling now reads `hazard.still`: the time since the endpoint last wrote ANYTHING, readable or not. The one exception is unchanged — a visible rate that has collapsed against the lane's own gap belief keeps its old clock and its `rate collapsed` word — and so is the absolute: a heartbeat never moves `delta`, so a router holding the line open by saying nothing in a well-formed way still reaches the ceiling, and a wire that stops is bounded from the moment it stopped. `firesAt`, `Deadline` and `verdict` read one origin, so the deadline search and the verdict still cannot drift apart."
+  - "`internal/manual/chat/lanes.md` said a thinking model \"is not a stall, so aforge does not treat it as one\" and that only \"the ceiling on silence\" could end a hung one. The first half was what the design intended and not what the code did; the second half is now spelled for what it protects — the ceiling on silence is a ceiling on a STILL WIRE. The same page said a model interleaving long thoughts between single words \"can be rescued after a ceiling of text arriving too slowly\"; that happens only once its MEASURED visible rate has collapsed, and a pause between words is not enough on its own however long."
+  - "`Survival.Remaining` answered +Inf far into the tail and 0 on an unmeasured belief, and `hazard.cost()` answered +Inf with no alternative or with Lambda at zero. Both are `control.Seconds` now — a figure, NOTHING, or PAST PRICING — and `Seconds.Over` is the only comparison the package makes, needing a figure on both sides before it can say yes. Zero was a claim that a wait was over and infinity was a number the ladder reasoned with; neither was true."
+  - "`internal/calllog/finite.go` took a non-finite figure off a row and wrote a sentence naming it (`cost_s was +Inf and is not on this row.`). That was the right repair while an infinity was a legitimate answer from the controller, and #334's own test pinned it. Nothing in the request path can produce one now, so a value reaching that repair is a builder defect: the row keeps its silence — the emptiness law — and the complaint goes to stderr, once per process. `internal/manual/chat/models-and-cost.md` said a row \"may leave a number out and say which one in its note\"; it says why a missing figure is honest, and records the old sentence as something rows written before 2026-09-09 may carry."
+  - "A row's `refused` was written wherever any gate anywhere said no, and `internal/calllog`'s field doc called that \"why a hedge the controller called for never reached the wire\". A race that put THREE arms on the wire and was then declined a fourth carried `hedged arms=3 refused=budget`, and a question answered while a stall rescue was still being priced carried the same word for a rescue nobody needed. It names what the question was LEFT WITHOUT: remembered only while there is no answer in and no rescue already running, and read back off the row only where the question really ended with the one arm it started with. What the purse spends is unchanged."
+  - "Every door that ended a turn cancelled a plain `context.CancelFunc`, so the stop key, another window taking the conversation over, a tab closing, a hosted session being retired and the session quitting were all the same eight characters. `internal/session/loop.go` read `ctx.Err() != nil`, wrote no journal line and sent no event, so a turn that was still THINKING — no partial text to keep — ended as a transcript with a question in it and nothing after. Every door now names itself (`internal/session/stopcause.go`), `Agent.cancel` is a `context.CancelCauseFunc`, and machinery stops go through the new `Agent.InterruptFor(StopDoor)` — on the tui3 and remote agent interfaces, and over the wire as `InterruptArgs` on `MethodInterrupt`, where an empty door means a person's own stop."
+  - "A turn that ended without an answer left no record and said nothing. `Agent.endStoppedTurn` is the one boundary now: the machine's account goes in the journal as a failed call naming the door, and the person's goes to the surface as ONE sentence — \"this conversation was opened in another window, so the reply stopped here — ask again to pick it up\" and its five siblings. Their own stop is the one door owed neither, because the surface already drew it. `internal/manual/chat/models-and-cost.md` carries the table."
+  - "A model-call row said `decode stream: context canceled` and nothing else about who cancelled it. It reads `decode stream: context canceled (turn ended: taken over)` where a door was named (`provider.namedCancel`); a cancellation nobody named reads as itself, because inventing a door would be worse than the eight characters."
+  - "A generation cut with the turn still alive ended the turn unless it was a steer. It is re-asked through the ladder already in `completeWithRetryReasoning` — the three resets at the head of that loop are exactly what such a cut needs — at the cost of one ordinary attempt, with `the reply was cut short — asking again` said while it happens."
+  - "`internal/reflex`'s recall deadline read `lane.VisiblePatience` directly while the call declares `lane.RoleRecall`. It reads that role's own ceiling, which is the same number today and would not have followed the role's patience if it moved."
+---
+
+The five defects came out of one autopsy, and four of them were only visible
+because the first one kept firing: a healthy stream reported as a stall every ten
+seconds, with `+Inf` on the rows it wrote and `refused=budget` on rows where
+three arms had gone out.
+
+The figures deliberately left, each with its reason. `lane.VisiblePatience` and
+`control.fallbackCeiling` are statements about PEOPLE and now bound only the
+silence people are actually in. `internal/provider/streamguard`'s three silence
+bounds already count reasoning as writing, are scaled by the role, and must sit
+above the controller's ceiling by `transportHeadroom`; its wall is derived from
+the longest reply the lane itself has finished. `lane.ActionFloor` is a fact
+about a second request's own handshake and `lane.Hysteresis` about the smallest
+difference in waiting anybody notices. `DefaultBudget(2, 0.10)` is a ratio the
+simulator measured and its spend half already reads the session's own bill.
+`routeRaceWindow`, `titleWindow`, `auxiliary`'s per-rung share and every other
+`WithTimeout` on that side bound an ERRAND whose failure degrades the answer
+rather than removing it; the person's own turn carries no wall-clock deadline at
+all, by design.

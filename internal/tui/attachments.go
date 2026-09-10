@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	"os"
 	"path/filepath"
 	"strings"
@@ -185,9 +186,13 @@ func hasImageAttachments(paths []string) bool {
 	return false
 }
 
-func attachmentGlyph(path string) string {
+// attachmentSlot says WHAT KIND of thing is on the end of a path, as a slot in
+// the shared vocabulary rather than as a character: the chip upgrades with the
+// rest of the surface (icons.go). Only two kinds can be attached to a message,
+// so the answer is total.
+func attachmentSlot(path string) tokens.GlyphID {
 	if isDocumentAttachment(path) {
-		return "▤"
+		return tokens.GFileDocument
 	}
-	return "⌾"
+	return tokens.GFileImage
 }

@@ -265,12 +265,18 @@ type waitFacts struct {
 	ttft     time.Duration
 	// silence is how long the wait had run when something was done about it,
 	// action what was done, reason why the controller did it, and wait and cost
-	// the two numbers the inequality was decided on.
+	// the two figures the inequality was decided on.
+	//
+	// THE TWO FIGURES MAY BE NOTHING and they carry their own answer to that:
+	// a request with nowhere to act to was never priced, and a wait past what
+	// its belief can put a number on has no number either. They used to be
+	// floats holding an infinity, and the row paid for it — see
+	// [control.Seconds] and internal/calllog's finite.go.
 	silence time.Duration
 	action  string
 	reason  string
-	wait    float64
-	cost    float64
+	wait    control.Seconds
+	cost    control.Seconds
 	// arms is how many requests this one question became, hedged whether that
 	// was more than one, and waste what the arms that did not answer cost.
 	arms   int

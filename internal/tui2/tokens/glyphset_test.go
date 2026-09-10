@@ -103,13 +103,24 @@ func TestVocabularyIsCompleteAndFallsBackToFiveSeventeen(t *testing.T) {
 		}
 		// The ASCII carve-out (12.7 D.3), stated as a law rather than as a
 		// habit: a plain side a user can type is never rewritten automatically.
-		ascii := b.Plain[0] < utf8.RuneSelf
-		if ascii && b.AutoUpgrade {
+		typeable := b.Plain[0] < utf8.RuneSelf
+		if why, named := typedPlainSides[b.Plain]; named {
+			typeable = true
+			if b.AutoUpgrade {
+				t.Errorf("%s has a plain side a person types (%q: %s) and must not auto-upgrade",
+					b.Name, b.Plain, why)
+			}
+		}
+		if typeable && b.AutoUpgrade {
 			t.Errorf("%s has an ASCII plain side (%q) and must not auto-upgrade: a painted cell "+
 				"that is exactly that character is plausible content (5.20 rule 3)", b.Name, b.Plain)
 		}
-		if !ascii && !b.AutoUpgrade {
+		if !typeable && !b.AutoUpgrade {
 			t.Errorf("%s is a non-ASCII semantic slot and should upgrade automatically", b.Name)
+		}
+		if !b.Geometry && b.ASCII == "" {
+			t.Errorf("%s is an icon slot and owes an ASCII spelling: the screen-reader tier "+
+				"names a character where the other two draw a shape", b.Name)
 		}
 	}
 
@@ -117,12 +128,52 @@ func TestVocabularyIsCompleteAndFallsBackToFiveSeventeen(t *testing.T) {
 		if !seenID[id] {
 			t.Errorf("glyph slot %d has no binding; Vocabulary() must cover every declared GlyphID", id)
 		}
-		if Plain.Glyph(id) == "" {
-			t.Errorf("slot %d resolves to nothing under the plain tier", id)
+		for set := GlyphSet(0); set < glyphSetCount; set++ {
+			if set.Glyph(id) == "" {
+				t.Errorf("slot %d resolves to nothing under the %s tier", id, set)
+			}
 		}
-		if NerdFont.Glyph(id) == "" {
-			t.Errorf("slot %d resolves to nothing under the nerd-font tier", id)
+	}
+}
+
+// typedPlainSides are the plain glyphs that are NOT ASCII and are still things
+// a person types, with the reason each is one. They take the same carve-out an
+// ASCII plain side takes: the automatic whole-cell rewrite may not touch them,
+// because a painted cell that is exactly one of these is plausible CONTENT and
+// a mechanism that rewrote it would be a mechanism that can lie (12.7 D.3).
+var typedPlainSides = map[string]string{
+	GlyphActionCommunicate: "the guillemet, which is a quotation mark in half of Europe",
+}
+
+// TestTheASCIITierNamesACharacterForEveryIcon is the third tier's own gate.
+//
+// THE FLOOR UNDER THE FLOOR IS ONE CHARACTER A READER CAN NAME. A screen reader
+// announces "▤" as a character nobody has a word for; it announces "<" as
+// "less than". So every ICON slot owes a spelling here, that spelling is one
+// ASCII byte so no column moves when the tier flips, and every GEOMETRY slot
+// resolves to its plain character — because the ASCII spelling of a grid is a
+// RUN ("+-> ") owned by the renderer that draws the run.
+func TestTheASCIITierNamesACharacterForEveryIcon(t *testing.T) {
+	for _, b := range Vocabulary() {
+		got := ASCII.Glyph(b.ID)
+		if b.Geometry {
+			if b.ASCII != "" {
+				t.Errorf("%s is geometry and must not carry an ASCII spelling of its own", b.Name)
+			}
+			if got != b.Plain {
+				t.Errorf("%s is geometry and draws %q under the ascii tier, want its plain %q", b.Name, got, b.Plain)
+			}
+			continue
 		}
+		if got != b.ASCII {
+			t.Errorf("%s draws %q under the ascii tier, want %q", b.Name, got, b.ASCII)
+		}
+		if len(b.ASCII) != 1 || b.ASCII[0] >= utf8.RuneSelf || b.ASCII[0] < 0x20 {
+			t.Errorf("%s: the ascii spelling %q is not one printable ASCII byte", b.Name, b.ASCII)
+		}
+	}
+	if got := ASCII.Upgrade(GlyphWorking); got != GlyphWorking {
+		t.Errorf("the ascii tier rewrote a painted cell to %q; only the nerd-font tier upgrades", got)
 	}
 }
 
@@ -148,6 +199,7 @@ func TestTierResolutionIsTotal(t *testing.T) {
 		{"none", Plain, true}, {"0", Plain, true}, {"false", Plain, true},
 		{"nerd", NerdFont, true}, {"nerdfont", NerdFont, true}, {"nf", NerdFont, true},
 		{"nerd-font", NerdFont, true}, {"on", NerdFont, true}, {"1", NerdFont, true},
+		{"ascii", ASCII, true}, {"TEXT", ASCII, true}, {" linear ", ASCII, true},
 		{"", Plain, false}, {"fancy", Plain, false},
 	} {
 		got, ok := ParseGlyphSet(c.in)
@@ -155,7 +207,7 @@ func TestTierResolutionIsTotal(t *testing.T) {
 			t.Errorf("ParseGlyphSet(%q) = %v, %v; want %v, %v", c.in, got, ok, c.want, c.ok)
 		}
 	}
-	if Plain.String() != "plain" || NerdFont.String() != "nerdfont" {
+	if Plain.String() != "plain" || NerdFont.String() != "nerdfont" || ASCII.String() != "ascii" {
 		t.Error("the tier names are the spellings the flag, the env pin and the log line share")
 	}
 }

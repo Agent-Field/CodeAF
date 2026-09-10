@@ -348,6 +348,8 @@ func settleOrAsk(word string) TaskSettle {
 // the top half, an update the bottom, and no surface reads a field its kind
 // did not set.
 type TaskNotice struct {
+	// Thinking is the effective setup, including a saved continuation choice.
+	Thinking string
 	// ID is the proposal's token: a surface hands it back to
 	// [Agent.ResolveTask]. On updates it names the node the update is about.
 	ID uint64
@@ -577,6 +579,21 @@ type TaskNotice struct {
 	// empty on one where git would not say which files it was about, which is the
 	// emptiness law and not a claim that nothing clashed.
 	Conflicts []string
+	// Shifted says THE GROUND MOVED rather than the merge failing: the branch
+	// would have fastened, and the person's own branch changed the same files
+	// while this node worked (taskground.go, task_run.go's [Agent.landShifted]).
+	// The question is the conflict's question either way — two versions of these
+	// files, which survives — and this is the fact that decides which of the two
+	// sentences a row reads, so that nothing has to tell them apart by their
+	// prose.
+	Shifted bool
+	// GroundHeld says the landing was refused by THE PERSON'S OWN UNTRACKED COPIES
+	// of the files this task wrote, sitting in the folder the branch merges into
+	// (groundcarry.go). It is the third road to the conflict's one question, and
+	// it is the road whose `resolve it` carries those copies aside rather than
+	// spending a merge round: a file git is not watching is on no branch, so
+	// there is nothing for a round to merge.
+	GroundHeld bool
 	// Decider is WHO HOLDS THIS NODE'S DECISION right now ([TaskAskOwner]). It is
 	// the person on every ordinary landing; `task.settle = auto` and a person
 	// pressing "let aforge decide this one" ([Agent.HandUnverifiedToModel]) are the
@@ -598,6 +615,8 @@ type TaskNotice struct {
 	// outlives the question — a card that lands twenty minutes later still says
 	// whose hands did it.
 	Model string
+	// NextModel is a saved continuation choice; Model still names the last attempt.
+	NextModel string
 	// CostUSD is what this node's own agent has spent, live while it runs and
 	// frozen once it lands. Zero means nobody published a price — an unpriced
 	// model, or a node that has not started — and it is NOT the same claim as

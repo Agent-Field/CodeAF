@@ -72,9 +72,10 @@ func TestWriteEvidenceRequiresAMatchingResultAndRemainsBounded(t *testing.T) {
 func TestWriteEvidencePairsEditAndAppendInputsByCallID(t *testing.T) {
 	appended := `{"path":"report.json","content":"append-value","append":true}`
 	edited := `{"path":"report.json","edits":[{"oldText":"1","newText":"2"}]}`
+	batch := toolCallMessage("append", "write", appended)
+	batch.ToolCalls = append(batch.ToolCalls, toolCallMessage("edit", "edit", edited).ToolCalls...)
 	page := checkpointCompletionPage("Update report", []ai.Message{
-		toolCallMessage("append", "write", appended),
-		toolCallMessage("edit", "edit", edited),
+		batch,
 		{Role: "tool", ToolCallID: "edit", Content: []ai.ContentPart{{Type: "text", Text: "edit failed"}}},
 		{Role: "tool", ToolCallID: "append", Content: []ai.ContentPart{{Type: "text", Text: "append succeeded"}}},
 	})

@@ -289,6 +289,12 @@ func (m *Model) applySetting(row config.Setting, value string) tea.Cmd {
 			m.splitPct = clampSplitPct(pct)
 		}
 	}
+	if row.Key == config.KeyIcons {
+		// The step-icons row applies immediately, which its own hint promises.
+		// Nothing else re-reads it, so this is where the new tier reaches the
+		// surface (icons.go).
+		m.adoptIcons()
+	}
 	m.refreshSettings()
 	m.setSize(m.width, m.height)
 	return nil

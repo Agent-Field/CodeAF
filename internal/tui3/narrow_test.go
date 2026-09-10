@@ -119,8 +119,14 @@ func TestABarTooNarrowForEveryWordSaysHowManyItDropped(t *testing.T) {
 // here (it …`, which promises a key and then eats it. It is the same defect the
 // sliced key list was, in a sentence instead of a list, and it goes through the
 // same fitter now.
+//
+// THE SENTENCE IS A LITERAL HERE AND NO LONGER THE FOOT'S OWN. That door asks
+// with a card on home now (homeconfirm.go) and the foot has stopped carrying it
+// — but the FITTER is what this test is about, the shape it defeated is the one
+// below, and a law deleted with the string that first broke it is a law that
+// comes back with the next sentence of that shape.
 func TestTheNarrowFootDropsWholeHintsAndNeverSlicesOne(t *testing.T) {
-	sentence := takeoverArmedWord("open in another window")
+	sentence := "open in another window — enter again to move it here (that window's reply stops there; its tasks resume here)"
 	for _, width := range []int{60, 80, 120, 160} {
 		foot := hintFit(sentence, width-2)
 		if strings.Contains(foot, glyphMore) {

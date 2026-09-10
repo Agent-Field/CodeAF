@@ -249,18 +249,20 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		{"↑↓ recent · enter open", []string{"↑↓", "enter"}},
 		{"tab take · enter run · esc", []string{"tab", "enter", "esc"}},
 		{"enter answer · esc no", []string{"enter", "esc"}},
-		// `0 or esc, no` names two keys for one answer, and the comma after the
-		// second is punctuation rather than part of it. The line is built from
-		// the chips a card drew rather than written down (standing.go's
-		// [standHintFields]), so this asks for the full row's spelling of it.
-		{standAskHint(nil), []string{"1", "2", "3", "0", "esc"}},
+		// A standing card's answers under the errand pane's box, built from the
+		// question rather than written down (homeexchange.go's
+		// [exchangeAnswerWords]): the digits the card drew, then the key that
+		// asks for the box instead.
+		{"1 yes, set it up · 3 just once · 0 no · c change",
+			[]string{"1", "3", "0", "c"}},
 		{"1-3 shape · esc never mind", []string{"1-3", "esc"}},
 		{"y allow · n deny · a always", []string{"y", "n", "a"}},
 		{"↑↓ move · →← tree · enter open · alt+w wide · esc",
 			[]string{"↑↓", "→←", "enter", "alt+w", "esc"}},
-		// The roster's hold hint on a row that needs your look (tasksettle.go's
-		// [roomSettleHint]): three letters, each lifted out of its own word.
-		{roomSettleHint + " · esc", []string{"a", "l", "n", "esc"}},
+		// The roster's hold hint on a row that is the person's call
+		// (tasksettle.go's [app.roomSettleHintFor]): a letter lifted out of each
+		// chip the card is actually drawing.
+		{"a accept · n not right · s tell it · esc", []string{"a", "n", "s", "esc"}},
 		{"esc stops and sends", []string{"esc"}},
 		{"space space home · tab last · / commands",
 			[]string{"space", "space", "tab", "/"}},

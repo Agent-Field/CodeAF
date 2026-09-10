@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -609,12 +610,15 @@ func TestAQuietWatchSaysItChecked(t *testing.T) {
 }
 
 // The brief's waiting rows are the only present-tense thing in it, and they
-// take the same flag a card waiting on a person carries.
+// take the same mark a card waiting on a person carries — which since the icon
+// law reached this window is the vocabulary's needs-a-person mark, not the flag
+// it keeps for work waiting on a SIBLING.
 func TestBriefWaitingRowsCarryTheNeedsYouFlag(t *testing.T) {
-	if glyph := ansi.Strip(briefItemGlyph(briefWaitingKind)); glyph != "⚑" {
-		t.Fatalf("waiting glyph = %q, want the ⚑ a waiting card already uses", glyph)
+	if glyph := ansi.Strip(briefItemGlyph(tokens.Plain, briefWaitingKind)); glyph != tokens.GlyphNeedsHuman {
+		t.Fatalf("waiting glyph = %q, want the %q a waiting card already uses",
+			glyph, tokens.GlyphNeedsHuman)
 	}
-	if glyph := ansi.Strip(briefItemGlyph(store.BriefItemKind("something-new"))); glyph != "·" {
+	if glyph := ansi.Strip(briefItemGlyph(tokens.Plain, store.BriefItemKind("something-new"))); glyph != tokens.GlyphSeparator {
 		t.Fatalf("unknown kinds must stay quiet: %q", glyph)
 	}
 
@@ -629,10 +633,10 @@ func TestBriefWaitingRowsCarryTheNeedsYouFlag(t *testing.T) {
 			{Kind: briefWaitingKind, Body: "Which vendor did you mean — waiting on you 3h."},
 		}},
 	}, 88, 0, false))
-	if !strings.Contains(rendered, "⚑ Which vendor did you mean") {
+	if !strings.Contains(rendered, tokens.GlyphNeedsHuman+" Which vendor did you mean") {
 		t.Fatalf("waiting row did not read as needing you:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, "✓ The market report landed.") {
+	if !strings.Contains(rendered, tokens.GlyphSettled+" The market report landed.") {
 		t.Fatalf("brief lost its ordinary rows:\n%s", rendered)
 	}
 }

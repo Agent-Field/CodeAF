@@ -211,6 +211,10 @@ func (a *app) jobPageKey(key string) tea.Cmd {
 		// THE DRAFT UNDERNEATH MAY STILL HOLD A SENTENCE, so [app.stopKey] will
 		// not take `x` ([app.chordsStandDown]). This page has no box; the key
 		// is the verb the foot names, and only while the job is still going.
+		//
+		// THE PAGE STEPS ASIDE FOR THE CARD, and [app.raiseStop] is what does
+		// it — this key usually never reaches here at all, because `x` is read
+		// at the stop card's own rung far above this one (stop.go).
 		if !job.Over() {
 			a.raiseStop(stopJobTarget(job))
 		}

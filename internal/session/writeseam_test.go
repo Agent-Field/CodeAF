@@ -230,7 +230,11 @@ func TestRepeatedWritesToOneFileStillHandOverAtTheCallBudget(t *testing.T) {
 
 	completer := &scriptedCompleter{steps: oneFileWritingSteps(12, "report.md",
 		checkpointChainSketch, brief)}
-	agent, workspace := writeSeamAgent(t, completer)
+	// The session's evidence belongs outside the deliverable directory, as it
+	// does for a conversation with its own folder. Count only the worker's work.
+	agent, workspace := writeSeamAgent(t, completer, func(c *Config) {
+		c.droppings = Place{Dir: t.TempDir()}
+	})
 	ran := make(ranNodes, 2)
 	graph := stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 

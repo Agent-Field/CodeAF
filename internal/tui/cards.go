@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -1148,10 +1149,12 @@ func dockSummaryCounts(active []jobCard) (running, waiting int) {
 	return running, waiting
 }
 
-func dockSummaryText(running, waiting int) string {
+func dockSummaryText(g tokens.GlyphSet, running, waiting int) string {
 	line := fmt.Sprintf("%d running", running)
 	if waiting > 0 {
-		line += fmt.Sprintf(" · %d waiting ⚑", waiting)
+		// A card counted here is a card holding a question, so the mark is the
+		// one the vocabulary keeps for work that needs a person (icons.go).
+		line += fmt.Sprintf(" · %d waiting %s", waiting, g.Glyph(tokens.GNeedsHuman))
 	}
 	return line
 }
@@ -1198,7 +1201,7 @@ func (m *Model) renderCardDock(track bool) string {
 		if questionIsStuck(active[0], m.standingTime()) {
 			chip := m.renderCompactCard(active[0], m.width)
 			summary := mutedStyle.Render("▸ ") +
-				peachStyle.Render(dockSummaryText(running, waiting))
+				peachStyle.Render(dockSummaryText(m.icons, running, waiting))
 			if track {
 				m.cardDockRows = append(m.cardDockRows, cardRow{
 					start: 0, end: 0, cardID: active[0].ID, dock: true,
@@ -1211,7 +1214,7 @@ func (m *Model) renderCardDock(track bool) string {
 			m.dockSummaryLine = 0
 		}
 		line := mutedStyle.Render("▸ ") +
-			peachStyle.Render(dockSummaryText(running, waiting))
+			peachStyle.Render(dockSummaryText(m.icons, running, waiting))
 		return truncate(line, m.width)
 	}
 
@@ -1224,7 +1227,7 @@ func (m *Model) renderCardDock(track bool) string {
 			m.dockSummaryLine = 0
 		}
 		header := mutedStyle.Render("▾ ") +
-			peachStyle.Render(dockSummaryText(running, waiting))
+			peachStyle.Render(dockSummaryText(m.icons, running, waiting))
 		lines = append(lines, truncate(header, m.width))
 		atLine = 1
 	}
@@ -1331,7 +1334,7 @@ func (m *Model) renderJobCard(card jobCard, width int, expanded bool, atLine int
 				parts = card.Parts
 			}
 			for _, part := range parts {
-				glyph := cardPartGlyph(part.Status)
+				glyph := cardPartGlyph(m.icons, part.Status)
 				result := part.Result
 				if result == "" {
 					result = string(part.Status)
@@ -1747,7 +1750,7 @@ func (m *Model) renderBrief(message store.Message, width, atLine int, track bool
 		return lines[0]
 	}
 	for _, item := range message.Brief.Items {
-		prefix := mutedStyle.Faint(true).Render("  " + briefItemGlyph(item.Kind) + " ")
+		prefix := mutedStyle.Faint(true).Render("  " + briefItemGlyph(m.icons, item.Kind) + " ")
 		indent := lipgloss.Width(prefix)
 		available := max(1, width-indent)
 		// The rows wrap rather than clip. A docked pane is 60 columns and an
@@ -1766,30 +1769,34 @@ func (m *Model) renderBrief(message store.Message, width, atLine int, track bool
 	return strings.Join(lines, "\n")
 }
 
-func briefItemGlyph(kind store.BriefItemKind) string {
+func briefItemGlyph(g tokens.GlyphSet, kind store.BriefItemKind) string {
 	switch kind {
 	case store.BriefDone:
-		return mintStyle.Render("✓")
+		return mintStyle.Render(g.Glyph(tokens.GSettled))
 	case store.BriefFailure:
-		return roseStyle.Render("✗")
+		return roseStyle.Render(g.Glyph(tokens.GFailed))
 	case store.BriefCancelled:
-		return mutedStyle.Render("–")
+		// Stopped on purpose is not the same news as broken, and one surface
+		// saying so while another paints failure's cross is two answers to one
+		// question. The vocabulary keeps a mark for exactly this — the stop
+		// square — and it is nowhere near the cross.
+		return mutedStyle.Render(g.Glyph(tokens.GStopped))
 	case store.BriefQuestion:
-		return questionStyle.Render("?")
+		return questionStyle.Render(g.Glyph(tokens.GNeedsHuman))
 	case store.BriefCharter:
 		return peachStyle.Render("↻")
 	case store.BriefSkill:
 		return powderStyle.Render("◇")
 	case store.BriefSpend:
-		return mutedStyle.Render("$")
+		return mutedStyle.Render(g.Glyph(tokens.GSpend))
 	case briefWaitingKind:
 		// The brief's one present-tense row: a question nobody answered, or a
-		// job stopped waiting for one. It takes the flag a card waiting on a
+		// job stopped waiting for one. It takes the mark a card waiting on a
 		// person already carries, so "needs you" reads the same wherever it
-		// appears — glancing down the brief, the eye finds the flag first.
-		return questionStyle.Render("⚑")
+		// appears — glancing down the brief, the eye finds it first.
+		return questionStyle.Render(g.Glyph(tokens.GNeedsHuman))
 	default:
-		return mutedStyle.Render("·")
+		return mutedStyle.Render(g.Glyph(tokens.GSeparator))
 	}
 }
 
@@ -1823,14 +1830,17 @@ func (m *Model) collapseSelectedBrief() bool {
 func (m *Model) cardGlyph(card jobCard) string {
 	switch card.State {
 	case cardCompiling:
-		return butterStyle.Render("◌")
+		// A plan being compiled IS work in flight, and the vocabulary has one
+		// mark for that. It is drawn still rather than spun because the card
+		// below it already carries the phase line that moves.
+		return butterStyle.Render(m.icon(tokens.GWorking))
 	case cardQuestion:
-		return questionStyle.Render("⚑")
+		return questionStyle.Render(m.icon(tokens.GNeedsHuman))
 	case cardSettled:
 		if card.Failed {
-			return roseStyle.Render("✗")
+			return roseStyle.Render(m.icon(tokens.GFailed))
 		}
-		return mintStyle.Render("✓")
+		return mintStyle.Render(m.icon(tokens.GSettled))
 	default:
 		frame := spinnerFrames[m.spinnerFrame%len(spinnerFrames)]
 		return peachStyle.Render(frame)
@@ -1957,21 +1967,21 @@ func cardAssumptions(receipt string) []string {
 	return assumptions
 }
 
-func cardPartGlyph(status store.Status) string {
+func cardPartGlyph(g tokens.GlyphSet, status store.Status) string {
 	switch status {
 	case store.Done:
-		return mintStyle.Render("✓")
+		return mintStyle.Render(g.Glyph(tokens.GSettled))
 	case store.Failed:
-		return roseStyle.Render("✗")
+		return roseStyle.Render(g.Glyph(tokens.GFailed))
 	case store.Cancelled:
-		// The same dash the brief already uses for cancelled work: stopped on
+		// The same mark the brief already uses for cancelled work: stopped on
 		// purpose is not the same news as broken, and one surface saying so
-		// while another paints a rose ✗ is two answers to one question.
-		return mutedStyle.Render("–")
+		// while another paints failure's cross is two answers to one question.
+		return mutedStyle.Render(g.Glyph(tokens.GStopped))
 	case store.Running, store.Claimed:
-		return peachStyle.Render("◐")
+		return peachStyle.Render(g.Glyph(tokens.GWorking))
 	default:
-		return mutedStyle.Render("○")
+		return mutedStyle.Render(g.Glyph(tokens.GQueued))
 	}
 }
 

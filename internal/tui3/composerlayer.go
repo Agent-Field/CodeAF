@@ -562,17 +562,10 @@ func (a *app) composerPickKey(msg tea.KeyPressMsg) tea.Cmd {
 // composerPickRows is that list drawn in the body's room, with the hits the
 // pointer would need. It is the settings panel's own move ([sheet.selectLines])
 // and for its reason: the list belongs inside this frame, so the frame draws it.
+// AND THE BODY OF IT IS SHARED WITH HOME'S OWN TARGET LIST, which is a second
+// door onto the same picker drawn in the same room (homedraft.go's
+// [app.targetPickRows]). Two functions padding one list to one frame would be
+// two answers to how many rows it takes.
 func (a *app) composerPickRows(width, room int, pal palette) []placeRow {
-	lines := a.composer.pick.rows(width, room, pal, -1, a.reasoningFor)
-	rows := make([]placeRow, 0, room)
-	for _, line := range lines {
-		if len(rows) >= room {
-			break
-		}
-		rows = append(rows, placeRow{text: line, hit: nil})
-	}
-	for len(rows) < room {
-		rows = append(rows, placeRow{})
-	}
-	return rows
+	return pickerRowsIn(&a.composer.pick, width, room, pal, a.reasoningFor)
 }

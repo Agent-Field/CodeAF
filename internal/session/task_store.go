@@ -333,7 +333,9 @@ type taskRecord struct {
 	// Model is the model this node was admitted to run on, and empty when it
 	// simply took the conversation's — including on every checkpoint written
 	// before a task could carry one, which resumes exactly as it always did.
-	Model string `json:"model,omitempty"`
+	Model      string  `json:"model,omitempty"`
+	NextModel  string  `json:"next_model,omitempty"`
+	NextEffort *string `json:"next_effort,omitempty"`
 
 	// Effort is the rung on the effort ladder this node's workers ask for, and
 	// empty when nobody set one and the ladder decides from further down
@@ -409,6 +411,71 @@ type taskRecord struct {
 	// Interrupted says this node was RUNNING when a session ended and that a
 	// recovery has consumed that fact. It is the consume-once receipt.
 	Interrupted bool `json:"interrupted,omitempty"`
+
+	// Decider is WHO WAS HOLDING THIS NODE'S DECISION when the file was written
+	// ([TaskAskOwner], task_run.go's [TaskNode.decider]): the person, or the model
+	// under `task.settle = auto` or after somebody handed this one card over.
+	//
+	// IT IS WRITTEN SO THAT THE FLOOR HAS SOMETHING TO FIRE ON. A node the model
+	// was holding is handed back to the person the moment this file is read
+	// ([TaskGraph.handBackOnLoad]), because the turn it was going to be decided in
+	// died with the process — so the value that survives is never the value that
+	// is restored, and what it buys is a hand-back that HAPPENS and can be watched
+	// rather than a zero value that happened to look like one.
+	//
+	// THE EMPTINESS LAW HOLDS. Absent — every checkpoint written before this field
+	// existed, and every node nobody ever handed over — reads as the person, which
+	// is where every unowned question belongs ([taskDeciderOf] says the same thing
+	// on the reading side).
+	//
+	// AND THE PROJECT INDEX DELIBERATELY DOES NOT CARRY IT. That file is what work
+	// CAME TO, appended once and never rewritten, and who is holding a question
+	// lasts at most one turn — a row on disk saying `aforge is deciding` about a
+	// conversation that closed hours ago would be a claim nothing could ever
+	// correct. It is [TaskIndexEntry.Activity]'s rule about a present that ends
+	// seconds after it is recorded, said about a second momentary fact.
+	Decider TaskAskOwner `json:"decider,omitempty"`
+
+	// Clashing, Shifted and GroundHeld are WHAT A YOUR-CALL LANDING IS ASKING
+	// ABOUT, and they are on the record for the same reason [taskRecord.Decider]
+	// is: nothing can work them out again.
+	//
+	// The names were read out of git's index while the refused merge still stood
+	// and the merge was then abandoned, so the index no longer holds them; which
+	// of the three roads to a conflicted landing this was is a fact about a merge
+	// that has already happened. A checkpoint without them came back with the
+	// question intact and the sentence hollowed out — `conflicts with your branch`
+	// with no files, on a road that was not a branch conflict at all — and a
+	// surface reading the road back out of the report's prose is this program
+	// reading its own writing (task_run.go's [TaskNode.shiftedBy] states the law).
+	//
+	// THE EMPTINESS LAW HOLDS on all three: absent is an absence and never a
+	// claim that nothing clashed.
+	Clashing   []string `json:"clashing,omitempty"`
+	Shifted    bool     `json:"shifted,omitempty"`
+	GroundHeld bool     `json:"groundHeld,omitempty"`
+
+	// Resolving says A MERGE ROUND WAS IN FLIGHT when this file was written
+	// (task_merge_round.go's [TaskNode.claimResolving]): the person pressed
+	// `resolve it` on a conflict card, a worker was opened in the working copy,
+	// and it had not landed yet.
+	//
+	// IT IS ON THE RECORD FOR THE SENTENCE A RESUME OWES. That worker dies with
+	// the process, and the node it was working on is left exactly as it was —
+	// `your call`, its files still clashing, its card still offering the same
+	// three answers. Without this the resume said nothing at all about it, and a
+	// person who had pressed a button and watched a round start came back to a
+	// card that looked as though they never had (2026-09-09, task 2 of an
+	// apartment search: the round's own journal ends mid-read at 03:09:02 and the
+	// node still reads `conflicts with your branch`).
+	//
+	// IT IS NEVER RESTORED AS TRUE. The claim it records exists to stop TWO
+	// workers editing one working copy, and the worker it was held for is gone —
+	// so a resume that kept the flag would refuse the person's next press forever
+	// ([TaskGraph.rehydrate] clears it as it counts it). Nothing restarts the
+	// round: a round costs a model call, and a session that spent one on its own
+	// initiative on the way up is a session spending the person's money for them.
+	Resolving bool `json:"resolving,omitempty"`
 
 	// Kind is what sort of node this was ([TaskKind]), and empty is the ordinary
 	// one: work in a worktree. It is on the record for ONE reader — the recovery
@@ -1012,6 +1079,8 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Journal:        n.journal,
 		Beat:           beat,
 		Model:          n.spec.model,
+		NextModel:      n.nextModel,
+		NextEffort:     n.nextEffort,
 		Effort:         n.spec.effort.String(),
 		MaxSteps:       n.spec.maxSteps,
 		NoProgress:     n.spec.noProgress,
@@ -1027,6 +1096,11 @@ func (n *TaskNode) recordLocked() taskRecord {
 		NotedState:     n.notedState,
 		Attempt:        n.attempt,
 		Interrupted:    n.interrupted,
+		Decider:        n.decider,
+		Clashing:       n.clashing,
+		Shifted:        n.shifted,
+		GroundHeld:     n.groundHeld,
+		Resolving:      n.resolving,
 		Kind:           n.kind,
 		Offer:          n.offer,
 		Assignment:     recordedAssignment(n.assignment),
@@ -1177,10 +1251,17 @@ type taskRecovery struct {
 	// the note ([durableDelivery]). Without them a resume marked its own
 	// re-telling as said the moment it composed it, so a session closed unread
 	// twice lost the landing exactly as the first enqueue-time mark did.
-	deliveries  []durableDelivery
-	done        int
-	failed      int
-	unverified  int
+	deliveries []durableDelivery
+	done       int
+	failed     int
+	unverified int
+	// cutRounds is how many of those `your call` nodes had a MERGE ROUND in
+	// flight when the process ended (task_merge_round.go). They are a subset of
+	// unverified and never a category of their own: the node is in exactly the
+	// state it was in before the round started, and what the clause adds is the
+	// one thing the card cannot say for itself — that the press the person
+	// remembers making did happen, and bought nothing.
+	cutRounds   int
 	interrupted int
 	waiting     int
 	// designs is counted apart from interrupted, and has to be: an interrupted
@@ -1208,6 +1289,20 @@ type taskRecovery struct {
 	// notes are the completion notes that were never handed over, in the shape
 	// [taskNote] would have produced for them.
 	notes []string
+	// handedBack are the landings the AUTO-SETTLE FLOOR took off the model on the
+	// way in ([TaskGraph.handBackOnLoad]) and that are still waiting on a decision.
+	// They are here for the caller to publish once it holds an agent, because a
+	// notice is read with the graph let go of ([TaskNode.notice] states the
+	// ordering) and this half of recovery is a pure function of a file.
+	//
+	// THEY ARE DELIBERATELY NOT AMONG THE NOTES. The model has already been told
+	// about each of these landings — that is what put the question in its hands —
+	// and a resumed session opening by telling it the same landing again would be
+	// news about nothing that happened. What changed is who is holding the
+	// question, and the person is the one who needs to see that: it reaches them
+	// as an ordinary task update, which is the same lane the end-of-turn floor
+	// publishes on.
+	handedBack []*TaskNode
 }
 
 // any reports whether the recovery restored anything at all. A checkpoint that
@@ -1228,6 +1323,28 @@ func (r taskRecovery) any() bool {
 // the one interrupted node that does NOT resume ([interrupt]):
 //
 //	recovered task graph: 2 done · 1 design did not finish (nothing saved) · 1 waiting
+//
+// cutRoundsWord is the clause under the your-call count for the rounds that
+// died with the process, and "" when none did.
+//
+// IT SAYS "WAS CUT" AND NEVER "FAILED". Nothing was found wrong with the work
+// and nothing was lost: the round's worker stopped existing, the working copy is
+// where it was, and the card is offering the same three answers. The one thing
+// it must NOT imply is that anything is being retried — nothing restarts a round
+// but the person pressing again.
+func cutRoundsWord(unverified, cut int) string {
+	switch {
+	case cut <= 0:
+		return ""
+	case cut == 1 && unverified == 1:
+		return "its merge round was cut"
+	case cut == 1:
+		return "1 with a merge round cut"
+	default:
+		return strconv.Itoa(cut) + " with a merge round cut"
+	}
+}
+
 func (r taskRecovery) note() string {
 	if !r.any() {
 		return ""
@@ -1244,7 +1361,11 @@ func (r taskRecovery) note() string {
 		parts = append(parts, strconv.Itoa(r.failed)+" "+taskWordIncomplete)
 	}
 	if r.unverified > 0 {
-		parts = append(parts, strconv.Itoa(r.unverified)+" "+taskWordYourCall)
+		clause := strconv.Itoa(r.unverified) + " " + taskWordYourCall
+		if word := cutRoundsWord(r.unverified, r.cutRounds); word != "" {
+			clause += " (" + word + ")"
+		}
+		parts = append(parts, clause)
 	}
 	if r.interrupted > 0 {
 		parts = append(parts, strconv.Itoa(r.interrupted)+" interrupted ("+keptBranches(r.branches)+")")
@@ -1322,6 +1443,18 @@ func (a *Agent) recoverTasks() {
 	// second crash between here and the first turn must not hand the same
 	// interrupt to a second recovery.
 	graph.checkpoint()
+	// AND THE HAND-BACK IS TOLD. Every landing the floor took off the model on the
+	// way in is one ordinary task update, on the lane a surface already folds into
+	// the row it is drawing — the same lane and the same shape the end-of-turn
+	// floor publishes on (task_run.go's [Agent.handBackUnsettled]). Nothing is
+	// attached yet on a fresh process and the sends fall on an empty room, which is
+	// correct: what the surface reads then is the roster replay, and these nodes
+	// are in it saying the person is deciding. On a window attaching to a
+	// conversation that is already open, this is the update that takes the `aforge
+	// is deciding` row off the card.
+	for _, node := range recovery.handedBack {
+		a.emitTaskUpdate(node.notice())
+	}
 
 	if note := recovery.note(); note != "" {
 		// THE AMBIENT LANE, not the waking one (agent.go): this runs at
@@ -1343,6 +1476,44 @@ func (a *Agent) recoverTasks() {
 		if unusableName(record.Title) || namesTheInstruction(record.Title) {
 			graph.nameNode(graph.node(record.ID))
 		}
+	}
+}
+
+// countSettled files ONE node that was not running when the file was written,
+// and it is a function of its own because [TaskGraph.rehydrate] is at its
+// ending budget (internal/session's complexity ratchet) — the counting is a
+// decision about one record and nothing about the graph, so it reads better
+// here anyway.
+//
+// It takes a POINTER because one of the four answers edits the record: a merge
+// round's claim is dropped as it is counted, and the record the caller goes on
+// to restore has to be the edited one.
+func (r *taskRecovery) countSettled(record *taskRecord) {
+	switch record.State {
+	case TaskDone:
+		r.done++
+	case TaskFailed:
+		r.failed++
+	case TaskUnverified:
+		// Counted apart from both: it is not work that failed and it is not work
+		// still to come, it is work waiting on a person (task_contract.go's
+		// TaskUnverified). A resumed session that filed it under "waiting" would
+		// be telling somebody the scheduler will get to it, and the scheduler
+		// never will.
+		r.unverified++
+		// AND A ROUND THAT WAS IN FLIGHT IS SAID OUT LOUD. The person pressed
+		// `resolve it`, a worker opened in the working copy, and the process died
+		// under it — so the card is back offering the same three answers it
+		// offered before they pressed, which without a word about it reads as a
+		// press that never happened. The claim itself is dropped here: it existed
+		// to stop a second worker joining the first, and the first is gone
+		// ([taskRecord.Resolving] states the whole rule).
+		if record.Resolving {
+			r.cutRounds++
+			record.Resolving = false
+		}
+	default:
+		r.waiting++
 	}
 }
 
@@ -1383,21 +1554,7 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 				recovery.branches = append(recovery.branches, kept)
 			}
 		} else {
-			switch record.State {
-			case TaskDone:
-				recovery.done++
-			case TaskFailed:
-				recovery.failed++
-			case TaskUnverified:
-				// Counted apart from both: it is not work that failed and it is
-				// not work still to come, it is work waiting on a person
-				// (task_contract.go's TaskUnverified). A resumed session that
-				// filed it under "waiting" would be telling somebody the
-				// scheduler will get to it, and the scheduler never will.
-				recovery.unverified++
-			default:
-				recovery.waiting++
-			}
+			recovery.countSettled(&record)
 		}
 		records = append(records, record)
 	}
@@ -1467,6 +1624,13 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 	notes, deliveries := g.owedNotes(unannounced, settle, address)
 	recovery.notes = append(recovery.notes, notes...)
 	recovery.deliveries = append(recovery.deliveries, deliveries...)
+	// AND THE FLOOR, WHICH IS THE ONE RECONCILIATION THIS FILE MAKES BESIDE THE
+	// INTERRUPT. A node the record says the model was holding has no turn left to
+	// be decided in, so it comes back to the person here — before the frontier
+	// turns, before anything is drawn, and before the checkpoint above it is
+	// rewritten, so the file on disk stops saying it too
+	// ([TaskGraph.handBackOnLoad] states the law).
+	recovery.handedBack = g.handBackOnLoad()
 	return recovery
 }
 
@@ -1523,7 +1687,8 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		record.Title = taskPersonTitle(subject)
 	}
 	node := &TaskNode{
-		graph:     graph,
+		nextModel:  record.NextModel,
+		nextEffort: record.NextEffort, graph: graph,
 		id:        record.ID,
 		dependsOn: record.DependsOn,
 		parent:    record.Parent,
@@ -1587,8 +1752,20 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		notedState:     record.NotedState,
 		attempt:        record.Attempt,
 		interrupted:    record.Interrupted,
-		offer:          record.Offer,
-		assignment:     restoredAssignment(record.Assignment),
+		// AND WHO WAS HOLDING ITS DECISION, which is read back exactly as it was
+		// written and then put right by the floor a few lines above this node's
+		// arrival ([TaskGraph.handBackOnLoad], called out of [TaskGraph.rehydrate]).
+		// Restoring it faithfully and handing it back deliberately is the whole
+		// point: the alternative — dropping it here — is the right answer with no
+		// act behind it, which is what nothing could seed and nothing could watch.
+		decider: record.Decider,
+		// AND WHAT ITS LANDING WAS ASKING ABOUT, faithfully: the files, and which
+		// of the three roads put them there ([taskRecord.Clashing]).
+		clashing:   record.Clashing,
+		shifted:    record.Shifted,
+		groundHeld: record.GroundHeld,
+		offer:      record.Offer,
+		assignment: restoredAssignment(record.Assignment),
 	}
 	// AND WHETHER THIS WORK MAY STILL DISCOVER THAT IT IS WIDE. The road is not
 	// on the record, because it is not a fact about the work — it is a reading

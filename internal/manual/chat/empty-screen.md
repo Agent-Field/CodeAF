@@ -25,10 +25,10 @@ shade above the middle. It shows once, arrives with a slow sweep across the lett
 over about a second and a quarter, and is then still.
 
 **Nothing else is drawn.** No column of tasks on the right, no rule with the legend in
-it, no `+ /task` or `+ /standing` doors, no `❯ ctrl+g hide`, no `$0.00` and no token
-count on the status line — only the conversation's name and model on the left of the
-status row and `idle` on the right. Every one of those arrives with the conversation
-rather than before it (see the other headings on this page).
+it — so no conversation name and no model above the box yet — no `+ /task` or
+`+ /standing` doors, no `❯ ctrl+g hide`, no `$0.00` and no token count on the status
+line — only `idle` at the right of the status row. Every one of those arrives with the
+conversation rather than before it (see the other headings on this page).
 
 **The first key, the first submit, or a click anywhere on the group except a recent
 session or the message box puts it away for good.** The message box goes back to the
@@ -37,6 +37,37 @@ and nothing brings the greeting back — not `/new`, not a resize. It never show
 resumed conversation, and it is not drawn at all on a frame under 12 rows or under 40
 columns, where the prompt simply opens at the foot as it always did. When the home
 screen greets you instead, there is no greeting of this kind at all.
+
+**Your very first conversation on this machine is drawn differently, and it leads with the
+question rather than the logo.** The greeting that follows the first-run setup drops the
+three-row wordmark and the model-and-crew line under it — you chose those on the screen
+behind this one, and the status row still says both — and puts a one-word `aforge`
+signature there instead. Under it: the heading **What would you like to work on?**, the
+line `Choose a starting point or type your request.`, the folder this conversation is
+standing in (`in ~/src/parser`), and three starting points in place of the usual dim try
+line:
+
+```
+  Understand this folder
+  Make or fix something
+  Compare two options
+↑↓ choose · enter fills the box · or just type
+```
+
+`↑`/`↓` walk them over an empty box and only the selected one gets a helper line under
+it saying what actually happens next. **`enter` on a starting point fills the message box
+and sends nothing** — the sentence lands in the composer with the cursor after it, and you
+edit it, add to it or delete it. Two of the three are deliberately unfinished (`Fix this
+for me: `) because a starting point that filled the box with a complete request about
+your project would be guessing at your work.
+
+**On that first conversation the composer does not move when you start typing.** Every
+later greeting is dismissed by the first keystroke and the box drops to the foot of the
+frame; this one stands until you actually send something, so the box you aimed at does
+not move out from under you mid-word and the three starting points stay readable while
+you decide. A starting point can only be selected while the box is empty, so it can never
+overwrite something you had already typed. A folder with earlier conversations in it is
+not having its first one, whatever the profile says, and gets the ordinary greeting.
 
 ## The message box is in the middle of the screen — why did it move, where do I type
 
@@ -79,9 +110,10 @@ key: it starts a new chat, and it works on a fresh screen like anywhere else.
 
 ## Why the status line shows no cost or token count before I type — where is the $0.00
 
-While the greeting is up the status row carries **only identity and state**: the
-conversation's name and its model on the left, `idle` on the right. There is no `$0.00`,
-no `9.4k/1.3M · 1%` context meter, no cache figure. A conversation nobody has typed into
+While the greeting is up the status row carries **only the state**: `idle` on the right,
+and nothing on the left. There is no `$0.00`, no `9.4k/1.3M · 1%` context meter, no cache
+figure. The conversation's name and model arrive on the legend line above the box with
+the conversation itself. A conversation nobody has typed into
 has nothing to bill and nothing but its own prompt to meter, and a row of zeros under a
 greeting was the first thing a person paying with their own card read.
 
@@ -114,6 +146,10 @@ empty box lists every command. On a narrower window the clauses drop from the le
 first the example, then the task door — and the last thing standing is `/ shows
 commands`. The line dissolves with the rest of the greeting on your first keystroke and
 is not drawn again.
+
+On your **first** conversation this line is not drawn at all: the three starting points
+above take its place, because a row you can press and a line telling you to type the same
+sentence are one idea drawn twice.
 
 ## Recent sessions on the empty screen — where did the recent sessions list go
 

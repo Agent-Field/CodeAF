@@ -609,7 +609,14 @@ key arrives as ordinary `enter` and the message steers instead.
 | `home` / `ctrl+a` | Start of the current line |
 | `end` | End of the current line, always |
 | `ctrl+e` | End of the line — unless the box is empty, where it opens or closes the running conversation’s compact steps, or the newest `▸ worked` chip onto its caption outline (the latest completed turn's out here, the newest settled phase's inside a task's page), falling through to the most recent thinking block when there is no chip |
-| any printing key | Types the character |
+| `shift+←` / `shift+→` | Select a character at a time, the way shift does in any text field. Does nothing over an empty box |
+| `shift+↑` / `shift+↓` | Select a line at a time |
+| `shift+home` / `shift+end` | Select to the start or end of the line |
+| `alt+shift+←` / `alt+shift+→` | Select a word at a time. `ctrl+shift+←` / `ctrl+shift+→` are the same |
+| `cmd+a` | Select the whole message. `ctrl+a` cannot be this — it is the start of the line, here and in every other box |
+| `ctrl+z` | Undo — take back what you just typed, a word at a time |
+| `ctrl+shift+z` | Redo, on a terminal that can tell it from `ctrl+z` |
+| any printing key | Types the character — over a selection it replaces it |
 
 `home`, `end`, `up` and `down` work on the logical line — the run between newlines —
 not on the row your terminal wrapped it onto. `up` only reaches history when the
@@ -619,6 +626,65 @@ A word jump crosses the same boundary the word kill deletes: spaces first, then
 the run of non-spaces, so `alt+left` then `alt+backspace` always deletes exactly
 the word it just crossed.
 
+## How do I select text in the message box — highlight what I typed, drag to select in the input bar, the input box acts like normal text
+
+**Just drag inside the box.** Put the pointer on a character of what you have typed,
+sweep to another with the left button down, and the run between them highlights — the
+same highlight a sweep over the conversation wears. On release that text is **on your
+clipboard**, and the status line says what landed: `copied · 10 chars`, `copied · 1
+word`, `copied · 2 lines`.
+
+**The highlight stays after you let go**, because it is a live selection and not a
+flash: type and the typed character **replaces** it, `backspace` or `delete` removes it
+whole, a paste drops in over it. Any arrow key, any word jump, any line jump puts the
+selection down again.
+
+**Double-click takes the word, triple-click takes the whole line.** A word is what a
+person means by one — a path, a hash, a flag, `go.mod`, a URL are each one word — the
+same boundary a double-click uses in the conversation above.
+
+**It works in every box you type into**: the message box in a conversation, the box at
+the foot of home, and the composer on tasks, standing, memory, spend, search and
+settings. Sweeping out of the box carries the selection to the end of what is in it,
+rather than stopping at the edge.
+
+**With the keyboard**, `shift` with any motion key selects: `shift+←`/`shift+→` by a
+character, `shift+↑`/`shift+↓` by a line, `alt+shift+←`/`alt+shift+→` by a word,
+`shift+home`/`shift+end` to a line's ends, and `cmd+a` takes the whole message. Those
+`shift` chords are the message box's; on the seven places `shift+←→↑↓` are already the
+time window that place is showing, so there they move the window and the pointer is how
+you select.
+
+## Undo what I typed — ctrl+z, redo, ctrl+shift+z, take back what I just wrote, I deleted too much
+
+**`ctrl+z` undoes, `ctrl+shift+z` redoes.** They work in the message box and in every
+other box on the surface — home's box, the errand pane, and every filter and search box
+on every place and panel.
+
+**A step is a word, not a keystroke.** Typing runs together into one step and the step
+breaks where a word does, so one `ctrl+z` takes back the last word rather than the last
+letter. A run of backspaces is one step too, a paste is a step of its own, and switching
+from typing to deleting starts a new one. That is what makes `ctrl+u`, `ctrl+w` and
+`alt+backspace` recoverable: each of those kills is one step, and one `ctrl+z` brings it
+back.
+
+**Sixty-four steps back**, and no further. A very large draft keeps fewer, because the
+history is bounded by how much text it holds as well as by how many steps.
+
+**Sending clears it.** Once a message has gone, `ctrl+z` will not pull it back into the
+box — `↑` walks the history of what you sent, and that is where a sent message lives.
+
+**`ctrl+shift+z` needs a terminal that can report it.** Shift is invisible on a control
+byte: a terminal that has not taken the keyboard-disambiguation protocol sends the same
+thing for `ctrl+z` and `ctrl+shift+z`, so on that terminal the redo arrives as a second
+undo. Ghostty, kitty and WezTerm report it; older terminals do not. There is no second
+redo chord — `ctrl+y` already copies a path on home and in `/files`, and taking a working
+key away would be the worse trade.
+
+**`ctrl+z` does not suspend aforge.** In an ordinary shell that chord stops the program
+and hands you back the prompt; aforge runs the terminal in raw mode, so the key arrives
+as an ordinary keystroke and is the undo instead. To leave, press `ctrl+c` twice.
+
 ## Click to move the cursor — clicking the message box places the caret
 
 A click anywhere on the message box puts the caret under the pointer: on the
@@ -627,7 +693,9 @@ at the start of the text when you click on the prompt's side of it. It works on
 a wrapped, multi-line draft — the row you click is the row the caret lands on.
 
 It is the ordinary text-field gesture, and **the box on every place answers it
-too** — home, tasks, standing, memory, spend, search, settings. While a picker's
+too** — home, tasks, standing, memory, spend, search, settings. Holding the button
+down and sweeping selects instead, and releasing copies what is lit (see "how do I
+select text in the message box" above). While a picker's
 filter box is standing in the box's place — the model picker, `/resume`,
 `/files`, the memory panel — or while the composer layer is up, a click does not
 move that box's caret; those are typed at and filtered, not edited by pointer.
@@ -821,8 +889,8 @@ multi-line editor rather than a single-line field.
 **Inside a task's room the box wears a segment in front of its `› `**, naming the work
 your words are going to: the task's state glyph and its name, on the same tinted
 background a selected row wears, in the hue that task's state is drawn in everywhere
-else — accent while it runs, the warn colour while it needs your look, muted once it is
-done, the bad hue when it failed, dim when it is queued or you stopped it. It is there
+else — accent while it runs and again while it is your call, muted once it is done, the
+bad hue when something broke, dim when it is queued or you stopped it. It is there
 whether the box is empty or full, which is the point: the placeholder that used to say
 this disappeared the moment you started typing. The name is cut to at most 18 cells; on
 a frame too narrow to spend the cells, the segment is dropped and the placeholder goes
@@ -1071,32 +1139,59 @@ remembered as well.
 With history not wired up (`--no-history`), `up` takes nothing and keeps its other
 meanings.
 
-## The thinking chip above the message box — `ctrl+v`, and making this chat think harder
+## The thinking chip above the message box — `ctrl+v`, `/effort`, and making this chat think harder
 
-The row above the message box carries a small chip naming how hard the model will think
-about your next turn:
+The line above the message box — the legend — names how hard the model will think about
+your next turn, immediately after the model that will be doing the thinking:
 
 ```
-                                                                      ⠿ high
+─ porting the parser · glm-5.3-flash · ⠿ high · via deepinfra · main* ──── / commands ─
 › what changed in the relay this week
 ```
 
 The word is one of the five rungs of the effort ladder — `low`, `medium`, `high`,
-`xhigh`, `max` — and it is **what will actually happen**, not what somebody chose: it is
-the rung the next turn will ask for, whichever setting decided it. See *Making the model
-think harder, deeper, or less* on the "Models and cost" page for the whole ladder and for
-what each rung asks the provider for.
+`xhigh`, `max` — or **`auto`**, and it is **what will actually happen**, not what somebody
+chose: it is the rung the next turn will ask for, whichever setting decided it. See
+*Making the model think harder, deeper, or less* on the "Models and cost" page for the
+whole ladder and for what each rung asks the provider for.
+
+**A conversation nobody has dialled reads `⠿ auto`**, which is what a shipped install
+says on every fresh conversation. See *What `auto` means beside the model* below.
 
 **`ctrl+v` walks it.** Each press moves one rung up and wraps off the top:
 low → medium → high → xhigh → max → low. It works with a sentence half typed — it is a
 chord, it carries no text of its own, and it leaves your draft and your caret exactly
 where they were. Ordinary letters keep typing.
 
-**Clicking the chip opens the ladder**: five rows, cheapest first, with the rung you are
-on marked. `↑`/`↓` walk it, `enter` applies, `esc` closes, and `ctrl+v` moves the cursor
-down a row while the list is up. While the list is up **every key belongs to it** — a
-plain letter does not type into the message box underneath. Clicking the chip a second
-time puts the list away, and a click on the chip never moves the caret in your draft.
+**Pressing the rung walks it too**, one step per press, which is the same gesture as
+pressing a task's thinking row inside that task. It brightens under the pointer over
+exactly its own cells first, and the press never moves the caret in your draft. It does
+not open a list: the list is `/effort`.
+
+**`/effort` opens the ladder**: six rows — `auto` first, then the five rungs cheapest
+first — with the row you are on marked. `↑`/`↓` walk it, `enter` applies, `esc` closes,
+and `ctrl+v` moves the cursor down a row while the list is up. While the list is up
+**every key belongs to it** — a plain letter does not type into the message box
+underneath. Typing `/effort` again puts the list away. `/thinking` and `/think` are the
+same command. The six rows read:
+
+```
+auto    the model decides — the shipped setting
+low     answers quickly and barely deliberates
+medium  a short think before it answers
+high    thinks before it answers
+xhigh   a deeper pass, and it takes the time that costs
+max     the deepest pass there is
+```
+
+**`/effort <rung>` sets one outright** — `/effort max`, `/effort low` — without opening
+anything. `/effort auto` clears this conversation's rung, and `/effort off` is the same
+thing under its older name. A word that is none of the six changes nothing and prints
+them all.
+
+Until 2026-09-09 the rung was a chip at the right end of the tray row above the box, and
+clicking *that* opened the ladder. The rung is on the legend now, beside the model it is
+about, and the click walks it.
 
 What it changes and what it does not:
 
@@ -1105,20 +1200,55 @@ What it changes and what it does not:
 - The rung reaches the work this conversation hands out: task workers start at it too.
 - It does **not** change other conversations. The default for those is the **thinking**
   row in `/settings`, which ships at `auto` (the provider default).
-- **`auto` is not on the chip or in the list.** The five rungs are the ladder; the
-  **thinking** settings row offers `auto` to use provider defaults. It does not disable thinking.
-- With thinking set to `auto` and no more specific level chosen, there is **no chip at all** —
-  there is nothing to report. `ctrl+v` still works and puts the chip back at `low`.
+- **`auto` is on the legend and it is the ladder's top row.** With thinking at `auto` and
+  no more specific level chosen — which is what a shipped install is — the cell reads
+  `⠿ auto`, it is pressable, and `ctrl+v` walks it onto `low`.
+- **It works on a `--host` conversation.** The rung is set on the engine machine, where
+  the conversation lives, and the word on your legend is the one that machine resolved.
+  An engine too old to know the ladder says so at the door and there is then no rung on
+  the line, no press, and no chord — rather than a knob that does nothing.
 
-**When the chip will not move.** A thinking level dialled onto the model itself — the
+**When the rung will not move.** A thinking level dialled onto the model itself — the
 model picker's `ctrl+t`, or `--reasoning` at launch — beats this conversation's rung. Press
 `ctrl+v` there and aforge says so in a note, naming the model and pointing at `ctrl+t`:
 *thinking stays low · the level set on \<model\> decides this conversation — ctrl+t in
-/model changes it*. Clear that level and the chip moves again.
+/model changes it*. Clear that level and the rung moves again.
 
-The chip is dim, like the rest of that row. It brightens for about two seconds after it
-changes, so you can see the new word without looking away from what you are typing, and
-then it goes quiet again.
+The rung is dim, like the rest of that line. It brightens for about two seconds after it
+changes — the cell takes a lit ground and its `⠿` goes cyan — so you can see the new word
+without looking away from what you are typing, and then it goes quiet again. Setting it
+back to `auto` flashes the same way and writes one line: *thinking · auto · the model
+decides*.
+
+## What `auto` means beside the model — putting thinking back to auto, and why the cell is there at all
+
+`⠿ auto` on the line above the message box means **nobody has asked this conversation to
+think any particular amount**. aforge sends no reasoning field on the request at all, and
+the model thinks however it thinks — its own published default. It is not "think as little
+as possible": that is a different request, and `low` is the rung for it.
+
+**It is what a fresh install says.** The **thinking** row in `/settings` ships at `auto`,
+so until you dial something — this conversation with `ctrl+v`, `/effort` or a press on the
+cell; one model with the picker's `ctrl+t`; one task with `ctrl+v` on it; or the machine
+itself in `/settings` — every conversation reads `⠿ auto`.
+
+**To put it back to `auto`:** type `/effort auto` (or `/effort off`, the older name for
+the same thing), or open `/effort` and pick the top row. **`ctrl+v` and pressing the cell
+will not get you there** — the wheel has five stops and wraps from `max` back to `low`, on
+purpose: clearing a rung hands the conversation back to whatever stands over it, which is
+a decision rather than something a wheel should do on its way past.
+
+Clearing it does not always change the word on the line. If a level is dialled onto the
+model itself (`ctrl+t` in `/model`, or `--reasoning` at launch), that level wins and the
+cell keeps saying it — aforge says so in a note naming the model and the key that moves it.
+
+Until 2026-09-09 there was **no cell at all** on a conversation nobody had dialled, which
+on a shipped install meant every conversation — so the dial was invisible to anyone who
+had not already found it. Both roads say `auto` now, the local one and `--host`. The cell
+is missing in exactly one case: a session with no dial behind it, which is a `--host`
+connection to an engine too old to know the ladder. There is then no rung, no press and no
+chord, and `/effort` says *how hard this conversation thinks is unavailable — this session
+has no dial onto it*.
 
 ## Attaching a picture
 
@@ -1232,26 +1362,31 @@ session. If the model you are talking to cannot see, the picture is shown to a m
 that can and its answer comes back prefixed `[vision: <model>]`; if nothing available
 can see, the message is refused before anything is sent and your pictures stay on the
 tray. Once the message is sent, the transcript keeps the numbered marker and draws a
-small thumbnail of each picture under your line.
+compact control for each picture under your line.
 
 A command with a full tray is still a command: `/image` adds a second picture rather
 than sending the first.
 
 ## Do I see my own screenshot in the conversation?
 
-Yes. After you send a message with pictures, each one is drawn under your line in tray
-order. The dim `[#1 shot.png]` marker stays in the sentence above it, numbered to match
-`[image #1]` and still clickable as the file door.
+Yes. After sending, each image has a compact filename row in tray order, with **preview**
+and **open original** actions. The numbered `[#1 shot.png]` marker remains above it.
+Images start collapsed; your words are never folded with them.
 
-Each thumbnail is at most **12 rows**, or **4 rows** at phone width, with no heading,
-border, path line or `… N more lines` foot. It uses half-block colour in TrueColor and
-the 256-colour xterm cube. On a sixteen-colour or colourless terminal, an ASCII-only or
-screen-reader display, a very narrow row, or when the file is missing or unreadable, no
-thumbnail is added and the marker remains exactly as it was.
+Click **preview** to show a low-resolution terminal view, and **collapse** to close it.
+Only one attached picture per message expands at a time. **alt+i** toggles the last
+visible image in chat or a task page. The terminal preview is at most **20 rows**;
+it is not suitable for reading screenshot text.
 
-This applies to a live message, a resumed conversation while the referenced file is
-available, and a task room's journal. A waiting message in the parked block remains its
-words and markers; its picture appears after that message is actually sent.
+Click the expanded picture itself or **[open original]**, or use **alt+o**, for the
+full-quality image in your system's
+viewer. The phone-width detail sheet also accepts **o**. In `--host` sessions,
+engine-owned files are fetched to this machine first. In a plain SSH login, the
+action explains how to use the local client and gives the original path instead
+of opening a viewer on the server.
+The original action works even when the terminal cannot draw pictures. If a requested
+preview is missing, unsupported or unreadable, it says **Preview unavailable · open
+the original**. Replaying a conversation starts its attachments collapsed again.
 
 ## Completing a path with `@`
 
@@ -1358,23 +1493,27 @@ seconds quits aforge with the picker still up.
 
 ## Keys when aforge asks you a question — what key answers switch to auto, and the other offers
 
-**An approval question:** `y` allow once · `a` or `t` always — refused when it would
-do nothing · `n`, `d` or `esc` deny. Every other key does nothing, but it **stops the
-countdown**. `ctrl+c` is handed back to the message box, where it arms the door and a
-second press within 1.5 seconds quits. On the second beat of
-"always" for a bash command, `1`–`9` pick a shape and `esc` goes back.
+**An approval question:** `1` allow once · `2` always — not drawn and inert when it
+would do nothing · `3` deny · `c` answer in words · `esc` **later**, which folds the
+question to the chip and answers nothing. It is **not modal**: every other key belongs
+to your message box, and a key it does read also **stops the countdown**. A key pressed
+in the first quarter-second is dropped, so a question landing under a moving hand is not
+answered by a keystroke aimed at your sentence. `ctrl+c` is handed back to the message
+box, where it arms the door and a second press within 1.5 seconds quits. On the second
+beat of "always" for a bash command, `1`–`9` pick a shape and `esc` goes back — and
+while that beat is up the digits are the shapes', not the answers'.
 
-**A task proposal** is not modal — the message box stays live as a redirect lane.
-Always available: `enter` submits a typed answer or takes the focused option over
-an empty box, `esc` says no, and `ctrl+e` opens the brief over an empty box. Over
-an **empty box only**: `left`/`right` move the focus, and `1`–`4` pick the model.
-Bare letters are ordinary answer text, not immediate shortcuts. Typing the first
-character stops the countdown and changes the meter to `waiting on you`; deleting
-the draft does not restart it. On
-`enter`, a bare `no`, `nope`, `n`, `stop`, `cancel`, `don't` or `dont` declines,
-while a bare `yes`, `y`, `ok`, `okay`, `go` or `sure` approves. Longer text is a
-redirect. Clicking `no` or pressing `esc` always declines, whatever is in the
-box; only `enter` interprets the typed answer.
+`alt+a` raises the newest question you put off, from any page.
+
+**A task proposal** is answered on that same block, in that same grammar: `1` start
+it · `2` no · `c` answer in words · `esc` **later**, which folds it to the chip and
+answers nothing. `enter` over an empty box takes the answer marked `▸` — the one
+the clock is about to take — and `enter` with words in the box sends them as a
+correction, which starts the corrected work. `ctrl+e` over an empty box opens the
+brief in the conversation. Bare letters are ordinary answer text: typing `no` is a
+correction and does NOT decline, because the answers are on the row with their
+keys. Any key the question reads also stops the countdown, and deleting the draft
+does not restart it.
 
 **A slow lane's offer**, raised on the status line when a machine you pinned has gone
 quiet: the row reads `coreweave is slow · switch to auto? (y)` and `y`, **over an empty
@@ -1382,12 +1521,21 @@ box only**, fetches this answer from somewhere else. There is no key to decline 
 question takes itself down when an answer starts arriving — and with anything typed in the
 box a `y` is a `y`.
 
-**A connect offer:** `enter` or `y` yes · `esc` or `n` no. While its key box is open,
-every key goes into that box except `enter`, which submits, and `esc`, which
-declines.
+**A connect offer:** `1` connect · `2` not now · `esc` **later**. It is on the question
+block, so everything else falls through to the message box. A service connected by a
+KEY has no `1` at all — a bare yes to one of those is read as a decline — and asks for
+the key in the message box itself, masked: `enter` sends it, `2` is the way out, and
+`esc` puts the question off with what you typed still in the box.
 
-**A harness offer:** `enter` or `y` yes · `esc` or `n` no. Everything else does
-nothing.
+**A harness offer:** `1` run it · `2` not now · `esc` **later**. It is on the question
+block, so everything else falls through to the message box rather than doing nothing, and a
+digit is the offer's only over an empty box. `enter` and `y` no longer answer it, and `esc`
+is no longer the no.
+
+**A finished harness design:** `1` save it · `2` change it, which walks into the design's
+own room · `3` drop it · `esc` **later**. The page in the conversation carries no answers of
+its own, and the same three digits answer it from inside the design's room. It was `enter`,
+`e` and `esc` on the card and `ctrl+k`/`ctrl+x` in the room; all five are gone.
 
 **The steer guard**, raised when you press `enter` in a room whose node is not
 listening: `r` revive and send · `m` send to main · `esc` cancel and keep your words ·
@@ -1467,11 +1615,12 @@ chosen · `esc` leaves with nothing changed.
 **Harness panel:** `esc` · `up`/`ctrl+p` · `down`/`ctrl+n` · `pgup` · `pgdown` ·
 `enter`.
 
-**Thinking ladder** (click the `⠿ high` chip above the message box): `esc` closes ·
-`up`/`ctrl+p`, `down`/`ctrl+n` walk the five rungs · `ctrl+v` moves down one · `enter`
-applies the rung under the cursor. Clicking a rung applies it; clicking either of the
-two sentences around the rungs does nothing. Its foot reads
-`↑↓ · enter apply · esc · ctrl+v next rung`.
+**Thinking ladder** (`/effort`, `/thinking`, `/think`): `esc` closes ·
+`up`/`ctrl+p`, `down`/`ctrl+n` walk the six rows — `auto` and the five rungs · `ctrl+v`
+moves down one · `enter` applies the row under the cursor. Clicking a row applies it;
+clicking either of the two sentences around them does nothing. Its foot reads
+`↑↓ · enter apply · esc · ctrl+v next rung`. Pressing the `⠿` cell above the message box
+does **not** open this list — it walks the rung one step.
 
 **Permissions panel:** `esc` — which drops an armed confirmation first, then closes ·
 `up`/`ctrl+p` · `down`/`ctrl+n` · `pgup` · `pgdown` · `enter` **or `d`** to drop the
@@ -1863,8 +2012,16 @@ it was. The hint line becomes a bar of at most three wide targets — `open · n
 ask here`, or `‹ back · open · more` on a sheet — and mouse motion is ignored, because
 there is no hover on glass. Home's own page has the whole shape.
 
-The box row reads `› say what you want done`, with the scope chip — `here ~/aforge-v2` —
-against its right edge. The line under it is the foot, and **at rest it is exactly**
+The box row reads `› say what you want done`. **The rule above it is a legend on home and
+nowhere else**, and it says what the box is a draft *for*:
+`─ → new conversation in ~/aforge-v2 · glm-5.3-flash ── alt+w folder · alt+o model · / commands ─`
+— the folder the next conversation opens in, the model it will answer on, and the two chords
+that change them. `alt+w` walks the folder round the projects on this machine and `alt+o`
+opens the model list in home's own body; pressing either label does the same as its chord.
+The scope chip that used to sit against the right of the box row — `here ~/aforge-v2` — is
+gone from home, because the rule says the same fact better and `enter` honours this one. The
+other six places keep the chip. The line under the box is the foot, and **at rest it is
+exactly**
 `type to search or start something new · ↑↓ pick · enter open · tab next place`: four keys
 and no more. `esc` still closes home from anywhere; the resting foot does not spend a cell
 naming it, and `alt+.` draws the whole map when you want it.
@@ -1873,9 +2030,9 @@ On any other row the foot says what THAT row's keys do and gains the two that ar
 everywhere — `enter opens the place this happened in · alt+. map · tab next place · esc close`
 on a `since you left` line, `enter or → show them · alt+. map · tab next place · esc close`
 on the fold, and
-`enter starts a new conversation and sends this · ctrl+enter ask here · ↑ pick a match · alt+. map · tab next place · esc clear`
+`enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+. map · tab next place · esc clear`
 on the action row — and
-`enter runs this command · ctrl+enter ask here · ↑ pick a match · alt+. map · tab next place · esc clear`
+`enter runs this command · ↑ ask here · ↑↑ pick a match · alt+. map · tab next place · esc clear`
 on that same row when what is typed is a slash command, because `enter` runs it rather than
 sending it (home's page has that rule whole).
 
@@ -1966,8 +2123,8 @@ back · `up`/`down` move · `right`/`left` open and fold · `enter` opens that r
 `alt+w` widens the column and narrows it again. Its hint reads exactly
 `↑↓ move · →← tree · enter open · alt+w wide · esc`. On a row whose work is still running or
 still queued the hint gains one more clause before `esc` — `ctrl+v think harder`, which
-moves that task's thinking rung; a finished row does not offer it, because a finished
-task's rung is a fact about what happened.
+moves that task's thinking rung. On an ordinary finished task, it saves the rung
+for when you continue; it does not restart work or rewrite the last attempt.
 
 **Widen is a chord and not the bare letter `w`.** It used to be `w`, and `w` was read
 before the message box: a sentence typed while the roster still held the keyboard came out
@@ -2107,20 +2264,34 @@ The tasks pages describe what rooms and the roster are for.
 `x` raises one card above the message box:
 
 ```
-? Stop this task? Its work halts; the branch it wrote on is kept.
-  [stop it]   [keep going]
+?  Stop this task?
+     Its work halts; the branch it wrote on is kept.
+     1  stop it
+     2  keep going
+   [enter] take the pick · [esc] keep going · [←→] pick
 ```
 
-On an adaptive run's page it reads `Stop this run? In-flight nodes halt; partial
-results stay.` A harness being designed is a task, so `x` on its row reaches it like
-any other — and the card says what is actually true of it: `Stop this task? The page
-it is writing is dropped; nothing was saved.` It has no branch and wrote no files, so
-the reassurance about a kept branch would be pointing at nothing.
+The head is the question and nothing else; the sentence under it is the promise —
+what stopping does **not** take away.
+
+On an adaptive run's page the head reads `Stop this run?` and the promise is
+`In-flight nodes halt; partial results stay.` A harness being designed is a task, so
+`x` on its row reaches it like any other — and the promise says what is actually true
+of it: `The page it is writing is dropped; nothing was saved.` It has no branch and
+wrote no files, so the reassurance about a kept branch would be pointing at nothing.
 
 **The cursor opens on `keep going`.** `left`/`right` move it, `enter` takes the
 answer under it, `esc` is `keep going`, and every other key does nothing while the
-card is up. A click on either answer is that answer, and a click anywhere else on
-that row does nothing rather than falling through to the box.
+card is up. A click on either answer's row is that answer, and a click anywhere else
+does nothing rather than falling through to the box.
+
+**`1` and `2` move the cursor; they do not answer.** The digit beside an answer walks
+the cursor onto that answer and lights its row. `enter` is still what decides, which is
+this card's whole rule said in the digits' own grammar.
+
+**Your half-typed message is safe under this card and cannot be sent by it.** `enter`
+belongs to the card while it is up; the sentence in the box is exactly where you left
+it once you have answered.
 
 **There is no bypass key and no "don't ask me again".** Stopping cannot be undone —
 the worker's turn ends where it stands — so the card is always asked, and pressing
@@ -2132,41 +2303,67 @@ order.
 Nothing is thrown away by stopping: see the tasks page for what a stopped task and a
 stopped run keep.
 
-## Deciding about a landed task from the keyboard — accept, look again, not right
+## Deciding about a landed task from the keyboard — accept, not right, tell it
 
-A landing that **needs your look** is the one card in the transcript that is still a
-question, and four letters answer it. **Any landing that needs a look, at any depth** — a
-task you asked for, or a part of one it handed out itself:
+A landing that reads **your call** is a question, and it is put to you on the **question
+block** above the message box — the same block every other decision in aforge arrives on —
+so the letters below work wherever you are standing: the conversation, the task's own room,
+the `/tasks` page. **Any landing that is your call, at any depth** — a task you asked for,
+or a part of one it handed out itself:
 
 | Key | What it does |
 | --- | --- |
-| `a` | accept — take the work; its branch merges and its dependents unblock |
-| `l` | look again — a fresh check runs; the task keeps waiting until that answers |
-| `n` | not right — the task becomes incomplete and keeps its branch; its dependents still fail because it did not finish |
-| `d` | decide these for me — hands this one to aforge and sets `task.settle` to `auto` |
+| `a` | the ask's own yes — take the work; on a card whose branch clashed with yours it reads `resolve it`, which spends one more merge round and takes nothing as done |
+| `n` | the ask's own no — `not right`, or `drop it` on a conflict; the task becomes incomplete and keeps its branch, and its dependents still fail because it did not finish |
+| `s` | tell it — opens the task's own page with the message box pointed at it. What you type is sent as a correction; **it never answers the question by itself**, so "looks good" typed there does not become an accept |
+| `esc` | later — the question folds to the chip in the status line and nothing is answered |
+
+**`d` you decide is not on a landing's row.** The three answers and the way out are the
+whole of it, and no key on this surface ever does something that is not drawn on the screen
+in front of you. Where a landing draws each answer on a line of its own — the one road that
+does, because its `[a]` moves files of yours — `[d] you decide` is on it. The standing
+choice is `task.settle` in `/settings` under Session, and it is the right place for it: a
+letter that hands one landing over changes nothing about the next one.
+
+While `task.settle` is `auto` the reason row also reads `aforge is deciding`; the answers
+stay drawn, and pressing one yourself is how you take the question back.
+
+**The words on `a` and `n` change with the question and the keys never do.** A card whose
+branch clashed with yours reads `[a] resolve it · [n] drop it`; one the check did not pass
+reads `[a] accept anyway`. There is always a third column, `[s] tell it`.
+
+**`check again` is not offered.** aforge retries a check that never answered by itself,
+on another model, before the card ever appears — so there is nothing left for you to
+spend a round on. `l` does nothing here now.
+
+**A key that is not drawn does nothing.** If aforge has no way to spend an answer — no
+merge round behind `resolve it`, for instance — that chip is absent rather than present
+and failing, and its letter is absent with it.
 
 **They are held to the same rule `x` is.** The card must be the **selected** one — walk to
 it with `↑`/`↓`, which steps through tool calls, proposals and landed cards — and the
 message box must be **empty**, with no panel, picker or copy mode up. A letter typed into a
 sentence stays a letter, always.
 
-Once answered the four go away and one dim line takes their place saying what you chose.
-The same four are clickable on the card. See the tasks page for what each answer does to
-the work.
+Once answered the letters go away and the receipt every question leaves takes their place,
+`decided <the card's head> → accept · you · 14:02 · c change`: the answer in the card's own
+words (`accept`, `not right`, `resolve it`, `drop it`), who decided and when (the questions
+page has the shape). The task's report then leads `you took this as done` or
+`incomplete — you said it is not finished`. `d` decides nothing yet: the answers stay drawn
+and the reason row reads `aforge is deciding`. The same columns are clickable on the card.
+See the tasks page for what each answer does to the work.
 
-**Inside the task's room the same four keys need no selection.** The room is the task, so
-`a`, `l`, `n` and `d` over an empty message box answer it directly, the answers row stands
+**Inside the task's room the same keys need no selection.** The room is the task, so
+`a`, `n`, `s` and `d` over an empty message box answer it directly, the answers row stands
 at the foot of the page where `this task has finished — say it to main` would otherwise be,
-and the hint slot reads `a accept · l look again · n not right` while the question stands.
+and the hint slot names the same letters while the question stands.
 The room and the card are one question: answer in either and both show the receipt.
 
 **And the roster's row answers them too.** With the roster holding the keyboard (`alt+t`)
-and the cursor on a row that **needs your look**, the hint slot reads
-`a accept · l look again · n not right · esc` in place of the move keys, and those three
-letters answer that row's landing without opening its room. Same card, same answers, same
-receipt — the column, the card and the room cannot disagree, because there is one card
-behind all three. `d` works there too and is left off the hint for the room's own reason:
-it is a preference and not an answer to the question in front of you.
+and the cursor on a row that is **your call**, the hint slot names the same letters in place
+of the move keys, and they answer that row's landing without opening its room. Same card,
+same answers, same receipt — the column, the card and the room cannot disagree, because
+there is one card behind all three.
 
 ## The mouse: what you can click
 
@@ -2188,8 +2385,8 @@ Only the left button acts. A press is resolved in this order:
 3. The harness panel, the permissions panel, the connections panel — a press on a row
    acts, and a press anywhere else **closes** the list.
 4. The row above the message box: an **attachment chip** or a picked harness's chip
-   removes it, and the **thinking chip** at the right end of that row opens the five-rung
-   ladder (pressing it again closes it). Neither moves the caret in your draft.
+   removes it. Neither moves the caret in your draft. The **thinking rung** is not on that
+   row any more — it is on the legend above it, where a press walks it one step.
 5. The jump-to-latest chip.
 6. A stop target: the confirmation card's two answers while it is up, and the `Stop`
    at the right end of a room's **facts row** — the second row of its header, under the
@@ -2208,12 +2405,15 @@ Only the left button acts. A press is resolved in this order:
    Within the column, its own lines are asked before its task rows: a `+ /task` or
    `+ /standing` row types that command into your message box, and a row in the
    `standing` section opens `/standing` with the cursor already on that order.
-9. Three segments of the status row: `◦ keeping an eye on N`, which opens the standing
-   orders page; the model name, which opens the model picker; and the **money figure**
-   (`$0.14`), which opens the **Spending** tab of `/settings`. Each brightens under the
-   pointer over its own cells to say it is a door. A press elsewhere on
-   the status row falls through — the rest of it is figures, not controls. On a narrow
-   terminal the whole two-row deck answers.
+9. The figures on the status row: the **money figure** (`$0.14`) and the cache beside it,
+   which open the **Spending** tab of `/settings`; and the **context meter**
+   (`66.8k/1.3M · 5%`) and the compaction forecast, which print `/status`. Each brightens
+   under the pointer over its own cells to say it is a door. The model's name is on the
+   line **above** the message box and opens the model picker, and the **thinking rung**
+   beside it walks one rung up the ladder; the `◦ N standing orders`
+   count is at the foot of the task column and opens the standing orders page. A press
+   elsewhere on the status row falls through — the rest of it is readings, not controls.
+   On a narrow terminal the whole two-row deck answers.
 10. A message of yours **waiting** for the answer to finish, in the block above the
    box — a click anywhere along its line takes that message back into the box to be
    edited, and the block loses it. The whole line answers, because nothing shares it.
@@ -2227,10 +2427,10 @@ Only the left button acts. A press is resolved in this order:
    or the full-frame sheet on a narrow terminal; the
    `N earlier tool calls` fold; the `… N more lines` foot, which lifts the cap; a
    spawn card, which opens the node's room, or its brief if there is no node yet; and
-   a landed card, which opens its full context — except on the answers row of a card
-   that needs your look, where each of `[a] accept`, `[l] look again`, `[n] not right`
-   and `[d] decide these for me` is its own target and a press between them does
-   nothing.
+   a landed card, which opens its full context. The answers to a landing that is your
+   call are not on that card: they are on the question block above the message box,
+   where each of `[a] accept`, `[n] not right` and `[s] tell it` is its own target and a
+   press between them does nothing.
 
 **A file path is a different kind of target.** Everything numbered above is a click
 aforge itself answers. A real file path — in a reply, in a note, on a `read`/`edit`/
@@ -2278,7 +2478,7 @@ up drops out of it.
 
 `pgup` and `pgdown` move the height of the view minus one row, never fewer than one.
 
-**The jump-to-latest chip** is one dim right-aligned chip reading `↓ latest · ctrl+l`
+**The jump-to-latest chip** is one dim chip at the left edge reading `↓ latest · ctrl+l`
 — `v latest · ctrl+l` on the linear tier — and it appears only when you are parked
 away from the live edge. It is drawn into the first row of the frame's existing
 breathing gap, so it never takes a row of its own; on a window too short to have a
@@ -2319,6 +2519,11 @@ than `copied · 2 lines`, which is how you tell the two apart.
 
 **A wide glyph is never split.** A sweep that starts or ends inside a CJK character
 or an emoji takes the whole glyph, and the highlight covers both of its cells.
+
+**The message box answers the same sweep**, and so does the box at the foot of every
+place. The one difference is that a selection there is live — you can type over it —
+so it stays lit until you move the caret rather than fading with the status line. See
+"how do I select text in the message box" above.
 
 The sweep is drawn in **the same background copy mode's selection wears** — the strongest
 of the three this screen draws, a shade above the one under the pointer. It is the same
@@ -2549,14 +2754,15 @@ and it moves the rung of **the thing you are standing on**. One chord, three sco
 
 | Where you are | What moves |
 |---|---|
-| The message box, typing or empty | **This conversation's** rung — the chip above the box, see *The thinking chip above the message box* |
+| The message box, typing or empty | **This conversation's** rung — the one on the legend above the box, beside the model, see *The thinking chip above the message box* |
 | The task roster holds the keyboard (`alt+t`) and the cursor is on a task | That task's rung |
 | You are inside a task's page | That task's rung |
 | Home, with the cursor on a `◦` standing item row or its card | That item's rung |
 
 Everywhere else it does nothing at all. A conversation row on home is deliberately not on
 the list: a conversation's rung belongs to the window that conversation is open in, where
-the chip above its message box moves it.
+the rung on the legend above its message box moves it — by this chord, by a press on it, or
+by `/effort`.
 
 **The machine's own default is not one of the scopes.** It used to be — home had a state
 where the cursor stood on no row at all and the right-hand side became a card about the
@@ -2568,22 +2774,22 @@ roads always wrote.
 **It climbs and it wraps.** Each press goes one rung up, and `max` wraps back to `low`. It
 never returns to "nobody said" — clearing a rung hands the work back to whatever stands
 over it, which is a decision rather than something a wheel does on its way past. Set a
-thing back to nothing in the place it is written down: the `thinking` row's own `auto`.
+thing back to nothing by name instead: `/effort auto` or the top row of `/effort` for this
+conversation, and the `thinking` row's own `auto` for the machine.
 
 **The rung reads as a quiet clause where the thing already states its facts.** A task's is
-on its page's header, after the model — `◆ Fix nil-map · running · 42s · $0.31 · gpt-5 ·
-thinking high` — and on the roster's own figures row when the column is wide enough to hold
-it. An item's is on that item's card. The machine's own is the `thinking` row of
+under `Task setup` (or `Next run setup` after it settles) in the expanded
+task page, and in the compact header and roster figures when there is room. An item's is on that item's card. The machine's own is the `thinking` row of
 `/settings`. A thing nobody has dialled says nothing, which is not the same as `low`.
 
 **On a task it lands on the next call, not this one.** A worker already running keeps the
 rung it started with, so the line aforge writes says so: `task 7 · thinking · high · its
-next call takes it`. A task that has finished refuses, in the engine's own words — `task 7
-is done, not running` — because what it spent is a fact you may read and must not edit.
+next call takes it`. On an ordinary task that has finished, it instead saves
+the choice for the next continuation. The completed attempt stays unchanged.
 
 **Every card that takes it says so.** The card's dim legend reads `ctrl+v think harder`,
-and it is drawn only where the key would work: a settled task's roster row does not offer
-it, and neither does a window with nowhere to write the setting.
+and it is drawn only where the key would work. A window with nowhere to write
+the setting does not offer it.
 
 ## Chords that are not bound
 
@@ -2742,9 +2948,9 @@ Nothing is handed to a task — the same model under the same rule would be as q
 whatever the turn had already saved is on disk where it left it.
 
 **When the turn that stopped belongs to a task worker, the task says so.** Its row on the
-rail reads `would not write its notes down — branch kept`, it wears the `!` that asks you to
-pick it up rather than the cross that reports a fault, and the branch is kept. How tasks run
-has it under "What the words and the ! exclamation mark under a stopped task mean".
+rail reads `incomplete · would not write its notes down`, drawn **dim** rather than in the
+bad colour — nothing was found wrong with the work — with `branch kept` beside it as a fact
+of its own. How tasks run has it under "What the words under a stopped task mean".
 
 The loop also notices command variants that keep returning information already seen. After
 **5 consecutive tool rounds in which every result contains no fresh line**, a `[stuck]`

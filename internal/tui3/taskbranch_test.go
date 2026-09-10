@@ -48,7 +48,7 @@ func TestASettledProposalDropsTheBranchPoint(t *testing.T) {
 	a, agent, _ := taskApp(t)
 	a.branch = "work"
 	agent.pending = []uint64{7}
-	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)})
+	askTask(t, a, 7, 4*time.Second)
 	drive(t, a, key("enter"))
 
 	if text := taskText(a); strings.Contains(text, taskBranchPointWord) {

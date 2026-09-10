@@ -85,17 +85,19 @@ func runTests(m *testing.M) int {
 // reason [Agent] is an interface — the surface is driven without a provider, a
 // key, or a file.
 type fakeAgent struct {
-	turns   [][]session.Event
-	turn    int
-	live    chan session.Event
-	model   string
-	window  int
-	usage   session.Usage
-	sent    []string
-	stops   int
-	closes  int
-	packs   int
-	failing error
+	turns  [][]session.Event
+	turn   int
+	live   chan session.Event
+	model  string
+	window int
+	usage  session.Usage
+	sent   []string
+	stops  int
+	// stopDoor is the door the last stop named (internal/session's stopcause.go).
+	stopDoor session.StopDoor
+	closes   int
+	packs    int
+	failing  error
 	// past is what a resumed session already holds — what [app.replay] draws.
 	past            []session.DisplayEntry
 	transcriptReads int
@@ -212,7 +214,11 @@ func (f *fakeAgent) finish() {
 	}
 }
 
-func (f *fakeAgent) Interrupt()                       { f.stops++ }
+func (f *fakeAgent) Interrupt() { f.stops++ }
+func (f *fakeAgent) InterruptFor(door session.StopDoor) {
+	f.stopDoor = door
+	f.stops++
+}
 func (f *fakeAgent) Compact(context.Context) error    { f.packs++; return nil }
 func (f *fakeAgent) Close() error                     { f.closes++; return nil }
 func (f *fakeAgent) Model() string                    { return f.model }
@@ -432,7 +438,9 @@ var blockingCommands = []string{
 	"waitDesign",
 	"waitEvent",
 	"waitGuestNotices",
+	"waitGuestQuestions",
 	"waitPilot",
+	"waitQuestion",
 	"waitRoom",
 	"waitRun",
 	"waitSteerLane",
@@ -443,6 +451,7 @@ var blockingCommands = []string{
 	"watchDesigns",
 	"watchDriving",
 	"watchFollowing",
+	"watchQuestions",
 	"watchRuns",
 	"watchTasks",
 	"watchTitles",
@@ -593,6 +602,71 @@ func labLedger() string {
 	return labLedgerPath
 }
 
+// resolveThroughLanes is [session.Agent.applyToLane] in miniature, for the fakes
+// in this package that are answered through THE ONE DOOR.
+//
+// EVERY QUESTION ON THE BLOCK GOES THROUGH [questionResolver] and never through
+// the lane's own method (question.go's [app.answerQuestion]), which is the whole
+// point of there being one object — so a fake that carries only
+// `ResolveHarness` or `ResolveStanding` is a session no key on the block can
+// reach. This gives one to any fake that embeds it, by asking which lanes the
+// fake actually has: a real engine does the same switch over its own resolvers.
+func resolveThroughLanes(agent any, answer session.Answer) error {
+	key := answer.FirstKey()
+	switch answer.Kind {
+	case session.QuestionHarness:
+		door, ok := agent.(interface {
+			ResolveHarness(id uint64, run bool, model string)
+		})
+		if !ok {
+			return errNoSuchLane
+		}
+		if !session.AnswerResolves(answer) {
+			// `change it` on a design touches nothing (session's HarnessChangeKey).
+			return nil
+		}
+		door.ResolveHarness(answer.ID, key == session.HarnessSaveKey, answer.Comments[session.HarnessModelNote])
+		return nil
+	case session.QuestionConnect:
+		door, ok := agent.(interface {
+			ResolveConnect(id string, approve bool)
+			ResolveConnectKey(id string, key string)
+		})
+		if !ok {
+			return errNoSuchLane
+		}
+		// A YES TO A QUESTION THAT WANTED A TYPED ANSWER IS NOT AN ANSWER
+		// (session's applyToLane says it first): words go through the typed door
+		// and a bare pick through the other one.
+		if words := strings.TrimSpace(answer.Words()); words != "" {
+			door.ResolveConnectKey(answer.Ref, words)
+			return nil
+		}
+		door.ResolveConnect(answer.Ref, key == "1")
+		return nil
+	case session.QuestionStanding:
+		door, ok := agent.(standingAgent)
+		if !ok {
+			return errNoSuchLane
+		}
+		if words := strings.TrimSpace(answer.Words()); words != "" && key == "" {
+			door.ResolveStanding(answer.ID, session.StandingAnswer{Change: words})
+			return nil
+		}
+		action, found := session.AnswerFromKey(session.QuestionStanding, key)
+		if !found {
+			return errNoSuchLane
+		}
+		door.ResolveStanding(answer.ID, action.Standing)
+		return nil
+	}
+	return errNoSuchLane
+}
+
+// errNoSuchLane is what a fake answers about a lane it does not carry, which is
+// the engine's own refusal said in one word (session's errAnswerUnknownLane).
+var errNoSuchLane = errors.New("no such lane on this fake")
+
 func newTestApp(agent Agent) *app {
 	a := newApp(context.Background(), Options{
 		Agent: agent, Workspace: "/tmp/lab", UsageLedger: labLedger(),
@@ -612,6 +686,16 @@ func newTestApp(agent Agent) *app {
 	})
 	a.width, a.height = 60, 20
 	a.pal = newPalette(tokens.ANSI256, false)
+	// AND IT PINS THE GLYPH REPERTOIRE, for the fifth time for the same reason.
+	// [tokens.DetectGlyphSet] turns the nerd-font tier ON for any terminal it
+	// cannot rule out, and the pinned TERM above is one of those — so every mark
+	// in the suite would be a private-use codepoint, invisible in the frames
+	// these tests log and impossible to write down in an assertion. The plain
+	// floor is what the suite asserts against; the tests that are ABOUT the tier
+	// set [app.actionAuto] themselves and call [app.settleIcons]
+	// (actionicon_test.go).
+	a.actionAuto = tokens.Plain
+	a.settleIcons()
 	// AND IT PINS THE TASK COLUMN, for the fourth time for the same reason.
 	// [newApp] reads the profile to decide whether the column stands (task.go's
 	// ui.task_column), so a developer who pressed ctrl+g in their own aforge would
@@ -932,7 +1016,7 @@ func TestAFailedToolIsMarkedAndSaysWhy(t *testing.T) {
 	runTurn(t, a, agent, "build it")
 
 	got := plain(frame(a))
-	if !strings.Contains(got, "✗") || !strings.Contains(got, "exit 2") {
+	if !strings.Contains(got, glyphBad) || !strings.Contains(got, "exit 2") {
 		t.Fatalf("a failed tool has to say so:\n%s", got)
 	}
 }
@@ -1819,16 +1903,31 @@ func TestTheSurfaceBootsAndQuitsHeadlessly(t *testing.T) {
 		})
 	}()
 
-	deadline := time.Now().Add(10 * time.Second)
-	for !strings.Contains(out.String(), agent.model) {
-		if time.Now().After(deadline) {
-			t.Fatalf("the surface never drew its status line:\n%q", out.String())
+	// THE ALT SCREEN IS THE FIRST CLAIM THAT IT IS UP, and the seam under the
+	// box is the second: the model's name, without its vendor, on the legend
+	// line above the prompt (foot.go's [app.seamIdentity]).
+	//
+	// A first sentence is sent before that second claim is waited for, because
+	// an untouched conversation draws neither the seam nor any model at all —
+	// the greeting holds the box, and the status row under it carries only
+	// `idle` (welcome.go, and the empty-screen page). Until 2026-09-09 the model
+	// was on the status row under the greeting too, and this test waited for it
+	// there without typing anything.
+	waitFor := func(what, needle string) {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for !strings.Contains(out.String(), needle) {
+			if time.Now().After(deadline) {
+				t.Fatalf("the surface never drew %s:\n%q", what, out.String())
+			}
+			time.Sleep(5 * time.Millisecond)
 		}
-		time.Sleep(5 * time.Millisecond)
 	}
-	if wire := out.String(); !strings.Contains(wire, "\x1b[?1049h") {
-		t.Fatal("the surface did not enter the alt screen")
+	waitFor("the alt screen", "\x1b[?1049h")
+	if _, err := keyboard.Write([]byte("hi\r")); err != nil {
+		t.Fatalf("write to the surface: %v", err)
 	}
+	waitFor("the model on its seam", agent.model[strings.LastIndex(agent.model, "/")+1:])
 
 	if _, err := keyboard.Write([]byte("/quit\r")); err != nil {
 		t.Fatalf("write to the surface: %v", err)

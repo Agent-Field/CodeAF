@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -233,7 +234,7 @@ func TestTheStandingBandKeepsItsThreeRowsAndItsDoorOnAPhone(t *testing.T) {
 	if !strings.Contains(joined, "…3"+homeItemsFoldWord) {
 		t.Fatalf("the fold does not count what it is hiding:\n%s", joined)
 	}
-	if !strings.Contains(joined, "needs your look") {
+	if !strings.Contains(joined, tierYourCallWord) {
 		t.Fatalf("the row that needs somebody lost its rollup:\n%s", joined)
 	}
 	// AND THE DOOR OPENS. enter on the fold line shows the rest.
@@ -282,7 +283,7 @@ func TestAStandingRowSaysOnlyWhatItKnows(t *testing.T) {
 
 	stuck := bandItem("n", "keep main green", "/w", standing.WhenProbe, "when CI goes red")
 	stuck.NeedsPerson = "the fix touches migrations"
-	if got := standRollup(StandingItemView{Item: stuck}, now); got != "needs your look · the fix touches migrations" {
+	if got := standRollup(StandingItemView{Item: stuck}, now); got != tierYourCallWord+" · the fix touches migrations" {
 		t.Fatalf("a stopped item reads %q", got)
 	}
 }
@@ -427,9 +428,15 @@ func (h *homeView) pointItemForTest(id string) {
 	h.picked = true
 }
 
-// THE SEGMENT EXISTS ONLY WHEN THERE IS SOMETHING TO SAY, and it moves only
+// THE COUNT EXISTS ONLY WHEN THERE IS SOMETHING TO SAY, and it moves only
 // while one of them is actually firing.
-func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
+//
+// IT IS READ OFF THE SEGMENT RATHER THAN OFF A ROW, because the two surfaces
+// that draw it are tested where they draw it: the count came off the status row
+// on 2026-09-09 and is a line at the foot of the task column now
+// (standmark_test.go's own door tests, task.go's [app.railFootRows]). What this
+// test owns is the FACT — the words, the emptiness law and the breathing.
+func TestTheStandingOrdersSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width = 200
 	// THE READING IS CACHED ON HOME'S OWN BEAT ([app.keepingCount]), so the
@@ -440,8 +447,12 @@ func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	a.clock = func() time.Time { return now }
 	stale := func() { now = now.Add(keepEvery + time.Second) }
 
-	if strings.Contains(plain(a.status(200)), "keeping an eye") {
-		t.Fatalf("a surface with the ambient side off grew a segment:\n%s", plain(a.status(200)))
+	if got := a.keepingSegment(); got != "" {
+		t.Fatalf("a surface with the ambient side off grew a segment: %q", got)
+	}
+	// AND IT IS NOT ON THE STATUS ROW AT ANY WIDTH ANY MORE (foot.go's [groupOff]).
+	if line := plain(a.status(200)); strings.Contains(line, homeKeepingWord) {
+		t.Fatalf("the standing count is back on the status row:\n%s", line)
 	}
 
 	band := &standBand{items: []standing.Item{
@@ -450,13 +461,19 @@ func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	}}
 	band.wire(a)
 	stale()
-	want := standWaitGlyph + homeKeepingWord + "2"
-	if !strings.Contains(plain(a.status(200)), want) {
-		t.Fatalf("the status row is missing %q:\n%s", want, plain(a.status(200)))
+	// THE SEGMENT NAMES THE PAGE IT OPENS. It read `keeping an eye on 2` until
+	// 2026-09-09, which named nothing a person could type — the door is
+	// /standing, so the segment says `◦ 2 standing orders` (homestanding.go).
+	want := standWaitGlyph + " 2" + homeKeepingWord + "s"
+	if got := a.keepingSegment(); got != want {
+		t.Fatalf("the count reads %q, want %q", got, want)
+	}
+	if line := plain(a.status(200)); strings.Contains(line, homeKeepingWord) {
+		t.Fatalf("the standing count is back on the status row:\n%s", line)
 	}
 
 	// AT REST THE GLYPH IS STILL. It breathes only while a firing is in flight.
-	if strings.Contains(plain(a.status(200)), "keeping an eye on 2") && a.keepingWord() != want {
+	if a.keepingWord() != want {
 		t.Fatalf("a quiet band is animating: %q", a.keepingWord())
 	}
 	band.running = map[string]standing.RunningMark{
@@ -466,7 +483,7 @@ func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	if a.keepingWord() == want {
 		t.Fatalf("a firing band is not breathing: %q", a.keepingWord())
 	}
-	if !strings.HasSuffix(a.keepingWord(), homeKeepingWord+"2") {
+	if !strings.HasSuffix(a.keepingWord(), " 2"+homeKeepingWord+"s") {
 		t.Fatalf("the breathing segment lost its count: %q", a.keepingWord())
 	}
 
@@ -474,8 +491,8 @@ func TestTheKeepingAnEyeSegmentAppearsOnlyWhenThereAreItems(t *testing.T) {
 	band.items[0].Status = standing.StatusPaused
 	band.items[1].Status = standing.StatusPaused
 	stale()
-	if strings.Contains(plain(a.status(200)), "keeping an eye") {
-		t.Fatalf("a band of paused items still claims to be watching:\n%s", plain(a.status(200)))
+	if got := a.keepingSegment(); got != "" {
+		t.Fatalf("a band of paused items still claims to be watching: %q", got)
 	}
 }
 
@@ -862,7 +879,7 @@ func TestASurfaceThatCannotAskNeverDrawsTheDot(t *testing.T) {
 	a.stands.Running = nil
 	a.openHome()
 
-	views := a.standItems("/w/alpha")
+	views, _ := a.standItems("/w/alpha")
 	if len(views) != 1 || views[0].Running {
 		t.Fatalf("a surface with no seam decided something was running: %+v", views)
 	}
@@ -933,5 +950,101 @@ func TestTheBandsListRulesAfterEverythingWithATime(t *testing.T) {
 	}
 	if strings.Join(order, "") != "abdc" {
 		t.Fatalf("the band reads %v, wanted the appointments soonest first and the rules newest first behind them", order)
+	}
+}
+
+// ── what fired while nobody was here ────────────────────────────────────────
+
+// A ONE-OFF THAT FIRED AND STOOD DOWN IS STILL WHAT HAPPENED WHILE YOU WERE
+// AWAY, and home's `since you left` block says so.
+//
+// THE HOLE THIS PINS WAS FOUND ON A REAL SCREEN. internal/e2e's
+// `the_firing_reaches_the_person` stands `remind me in 1 minute`, shuts every
+// window, fires it with `aforge tick` and comes back — and home drew no block at
+// all. internal/standing's tick.go stamps LastFired and then retires a one-off in
+// the same pass, [app.standItems] drops every retired item because a thing that
+// is over is not keeping an eye on anything, and switcher.go's ledger walked the
+// bands — so the commonest standing thing there is was the one kind of firing the
+// block could never mention.
+//
+// BOTH HALVES ARE ASSERTED, because the fix must not put the dead item back on
+// the list: the row is gone from the band, and the firing is in the block.
+func TestAOneOffThatFiredWhileNobodyWasHereIsInTheSinceYouLeftBlock(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	here := lab.workspace("alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", here, now.Add(-3*time.Hour))
+	// The look stamp: home was last closed an hour ago, and the reminder went off
+	// ten minutes ago with nothing open.
+	session.NoteLook(lab.root, now.Add(-time.Hour))
+
+	item := bandItem("once", "remind me in 1 minute to drink water", here, standing.WhenAt, "in 1 minute")
+	item.Status, item.RetiredWhy = standing.StatusRetired, "fired"
+	item.Runs, item.LastFired, item.LastChecked = 1, now.Add(-10*time.Minute), now.Add(-10*time.Minute)
+	item.LastOutcome = "said"
+	band := &standBand{items: []standing.Item{item}}
+
+	a := lab.app(mine)
+	band.wire(a)
+	a.openHome()
+	text := homeText(a)
+
+	if !strings.Contains(text, "since you left") {
+		t.Fatalf("a reminder fired while nobody was here and home said nothing happened:\n%s", text)
+	}
+	// THE BLOCK SAYS THE ITEM'S OWN LAST-LOOK SENTENCE, which is
+	// [standing.LastLookLine] and nothing this surface writes.
+	want := standing.LastLookLine(item, a.home.world.Read)
+	if want == "" || !strings.HasPrefix(want, "fired ") {
+		t.Fatalf("the fixture does not read as a firing: %q", want)
+	}
+	if !strings.Contains(text, "fired ") {
+		t.Fatalf("the block does not say the reminder fired:\n%s", text)
+	}
+	if !strings.Contains(text, "it told you") {
+		t.Fatalf("the block drops what came of the firing:\n%s", text)
+	}
+
+	// AND THE DEAD ITEM IS STILL NOT ON THE LIST. It is over; the band is what is
+	// true now, and a retired reminder wearing a row would be home claiming
+	// something is being kept an eye on that is not.
+	views, fired := a.standItems(here)
+	if len(views) != 0 {
+		t.Fatalf("a retired item came back onto the band: %+v", views)
+	}
+	if len(fired) != 1 || fired[0].Item.ID != "once" {
+		t.Fatalf("the reading did not carry the firing out: %+v", fired)
+	}
+	if strings.Contains(text, standRollup(StandingItemView{Item: item}, now)) {
+		t.Fatalf("the retired item drew a band row:\n%s", text)
+	}
+}
+
+// AND A FIRST LOOK STILL MARKS NOTHING. The retired half of the reading is
+// bounded by the look stamp exactly as the block is ([standFiredSince]), so a
+// machine somebody has never closed home on does not hand the ledger every
+// reminder it ever fired for the block to throw away one line later.
+func TestTheRetiredHalfOfTheReadingPaysTheFirstLookLaw(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	here := lab.workspace("alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "the one I am in", here, now.Add(-3*time.Hour))
+
+	item := bandItem("once", "remind me in 1 minute to drink water", here, standing.WhenAt, "in 1 minute")
+	item.Status, item.RetiredWhy = standing.StatusRetired, "fired"
+	item.Runs, item.LastFired, item.LastChecked = 1, now.Add(-10*time.Minute), now.Add(-10*time.Minute)
+	band := &standBand{items: []standing.Item{item}}
+
+	a := lab.app(mine)
+	band.wire(a)
+	a.openHome()
+	if !a.home.seen.IsZero() {
+		t.Fatalf("this test is about a machine nobody has closed home on (stamp %v)", a.home.seen)
+	}
+	if len(a.home.fired) != 0 {
+		t.Fatalf("a first look carried a year of firings into the reading: %+v", a.home.fired)
+	}
+	if text := homeText(a); strings.Contains(text, "since you left") {
+		t.Fatalf("a first look drew a ledger:\n%s", text)
 	}
 }

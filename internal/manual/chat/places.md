@@ -180,12 +180,21 @@ nothing else — so the shared prompt was inviting an instruction into a slot th
 ever narrow a list. The moment you type, the box is your text on every place alike, and a
 click puts the caret where you clicked.
 
+## The scope chip — what is the here ~/aforge-v2 thing next to the box
+
 At the right of the box is the **scope chip** — the `here ~/aforge-v2` next to the box. It is where what you type
 will land — the project the cursor is on, or this window's own project. It is drawn even
 with nothing typed, because a verb that is always in reach has to always say where it goes.
 The path is shortened the same way every path on this surface is: `~` for your home
 directory, and a first letter for each folder above the last when the whole thing will not
 fit. Home used to draw it in full while every other place shortened it; both are short now.
+
+**Home has no chip.** It says the same thing one row up, on its rule, and says more:
+`→ new conversation in ~/src/parser · glm-5.3-flash` is where a sentence will land *and*
+what it will answer on, with `alt+w folder · alt+o model` naming the two chords that change
+either. The chip on home was a reading nothing acted on — `enter` opened a conversation in
+this window's folder whatever the chip said — and the rule is that reading with `enter`
+honouring it. Home's own page has the whole gesture.
 
 ## The composer layer — set which project, pick the model and set a spend limit before starting a task
 
@@ -323,18 +332,18 @@ is dropped is taken from the clause *nearest* that protected tail, working backw
 clause — what `enter` does on the row you are standing on — is the last thing to go, being
 the only one on the line about the thing under the cursor.
 
-**A foot that is a sentence rather than a key list is cut the same way.** Home's own foot
-says things like
+**A foot that is a sentence rather than a key list is cut the same way.** A sentence like
 
 ```
- open in another window — enter again to move it here (it moves when that window's reply ends; its tasks resume here)
+ open in another window — enter again to move it here (that window's reply stops there; its tasks resume here)
 ```
 
-which has no `·` in it at all. The bracketed gloss goes first, because it explains a clause
-that is still on the line; then the clause hanging off the dash; and what a 40-column
-terminal is left with is the statement, `open in another window`. It used to read
+has no `·` in it at all. The bracketed gloss goes first, because it explains a clause that is
+still on the line; then the clause hanging off the dash; and what a 40-column terminal is
+left with is the statement, `open in another window`. It used to read
 `open in another window — enter again to move it here (it …`, which named a key and then ate
-it.
+it. That particular sentence is gone — moving a conversation asks with a card on home now,
+see *home* — but the rule it taught is what every foot on this surface is cut by.
 
 **A clause that begins `or` goes first, because it is an alternative and not a way out.**
 The gate card in an adaptive run says
@@ -395,11 +404,11 @@ rather than `tab`, and home's two `alt+<letter>` keys are **`alt+g` group by pro
 ## tasks — the tasks page, and how to get to it without a command
 
 Everything this machine has run, across every project and every conversation, grouped by
-what you do next: `needs your look`, `running`, `waiting`, `finished today`, `earlier`.
+what you do next: `your call`, `running`, `waiting`, `finished today`, `earlier`.
 `/history` and `ctrl+.` both open it, and so does `alt+2`.
 
-The groups describe each task's own state. An unrelated approval in its conversation
-does not move running tasks into `needs your look`. A live design approval stays there
+The groups describe each task's own tier. An unrelated approval in its conversation
+does not move running tasks into `your call`. A live design approval stays there
 until you answer; a provider or dependency wait belongs under `waiting`. A retained
 branch stays available to inspect and does not, by itself, ask you to merge it.
 

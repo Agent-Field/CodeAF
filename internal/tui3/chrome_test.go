@@ -716,8 +716,10 @@ func TestTheStarterLineDissolvesOnTheFirstKeystroke(t *testing.T) {
 
 // A FRESH SCREEN HAS NO COLUMN AND NO NUMBERS. No `+ /task`, no `+ /standing`,
 // no `ctrl+g`, no closed-column edge, no `$0.00`, no context meter — only the
-// identity and the state word on the status row. The column arrives with the
-// conversation.
+// state word at the right of the status row. Since 2026-09-09 the name and the
+// model are not there either: they are on the seam above the box, and the seam
+// is not drawn under a greeting at all (view.go's [app.chrome]). The column
+// arrives with the conversation, and so do they.
 func TestAFreshScreenDrawsNoRailAndNoTelemetry(t *testing.T) {
 	a, _ := welcomeApp(t, fourSessions())
 	a.width = 140
@@ -740,10 +742,11 @@ func TestAFreshScreenDrawsNoRailAndNoTelemetry(t *testing.T) {
 	}
 	a.railAway = false
 	status := plain(a.status(140))
-	for _, want := range []string{"gpt-4.1-mini", "idle"} {
-		if !strings.Contains(status, want) {
-			t.Fatalf("the quiet status row lost %q: %q", want, status)
-		}
+	if !strings.Contains(status, "idle") {
+		t.Fatalf("the quiet status row lost its state word: %q", status)
+	}
+	if strings.Contains(status, "gpt-4.1-mini") {
+		t.Fatalf("the greeting's status row is still naming the model: %q", status)
 	}
 	// The first keystroke begins the conversation, and the column stands.
 	drive(t, a, key("h"))
@@ -781,6 +784,13 @@ func TestTheColumnStandsOnAFreshScreenWithAnOrderOverIt(t *testing.T) {
 func TestRecentSessionsRenderRowsOrNothing(t *testing.T) {
 	none, _ := welcomeApp(t, nil)
 	none.welcome.step = welcomeFrames
+	// THE LAW HERE IS ABOUT THE RECENT LIST AND NOT ABOUT WHICH GREETING IS
+	// DRAWN. A profile that has never met the setup gets the FIRST conversation's
+	// unit — a heading, the folder, three starting points — which is taller than
+	// the ordinary greeting whatever its list holds (welcome.go's [welcome.first]).
+	// Comparing that against a returning folder's unit would be comparing two
+	// different screens, so all three fixtures are put on the ordinary one.
+	none.welcome.first = false
 	screen := plain(frame(none))
 	for _, gone := range []string{"recent sessions", "no recent sessions"} {
 		if strings.Contains(screen, gone) {
@@ -1221,6 +1231,39 @@ func TestTheSavingsNoteSaysNoMoneyWhenOnlyThePromptPriceIsPublished(t *testing.T
 	}
 }
 
+// A RESUMED CONVERSATION READS ITS OWN CACHE ON THE FIRST FRAME.
+//
+// THE DEFECT THIS FIXES, measured: the cache reads are restored from the
+// journal whole and the money beside them was built up turn by turn, so a
+// reopened chat drew `⟲ 28% cached` with no `saved $…` until the next turn
+// happened to land — the share restored and the money not, on one of the two
+// figures a person opens a resumed session to check. The saving is derived from
+// the reads now (app.go's [app.repriceCache]), through the one door every
+// reading of them comes past.
+func TestAResumedConversationDrawsWhatItsCacheSavedOnTheFirstFrame(t *testing.T) {
+	agent := &fakeAgent{model: "vendor/priced"}
+	// What the engine restores from the journal: a conversation with a bill, a
+	// weight and a warm prefix, and no turn of this session behind any of it.
+	agent.usage = session.Usage{Input: 100_000, Output: 4_000, CacheRead: 28_000, CostUSD: 0.42}
+	a := newTestApp(agent)
+	a.models = func() []Model {
+		return []Model{{
+			ID: "vendor/priced", ContextLength: 128_000,
+			PromptPrice: 0.00001, CacheReadPrice: 0.000001,
+		}}
+	}
+	a.model = "vendor/priced"
+
+	// The boot's own synchronous reading, on the frame the conversation opens.
+	a.refreshUsage()
+	if got := a.warmSegment(); got != "⟲ saved $0.2520 · 28% cached" {
+		t.Fatalf("a resumed conversation reads %q, want the cash and the rate", got)
+	}
+	if line := plain(a.status(200)); !strings.Contains(line, "⟲ saved $0.2520 · 28% cached") {
+		t.Fatalf("the first frame is missing what the cache saved:\n%s", line)
+	}
+}
+
 // The two formatters the whole meter is written in.
 func TestTokenAndSavedWords(t *testing.T) {
 	for _, test := range []struct {
@@ -1413,5 +1456,24 @@ func TestTheFrameDrawsThePageThatWasOpenedLast(t *testing.T) {
 		if !strings.Contains(plain(spend), id.word()) {
 			t.Fatalf("the tab bar does not name the %s place:\n%s", id.word(), spend)
 		}
+	}
+}
+
+// A SAVING TOO SMALL TO SPELL IS NOT SPELLED. On 2026-09-10 a fresh conversation
+// on a model priced in millionths drew `⟲ saved $0.0000 · 4% cached` after its
+// first turn: the saving was real and the figure for it was nothing, which is
+// the one sentence THE EMPTINESS LAW keeps off the screen. The share alone is
+// still true of that session.
+func TestASavingUnderTheSmallestFigureKeepsOnlyTheShare(t *testing.T) {
+	a, _, _ := hudApp(t)
+	a.inputTokens = 15000
+	a.cacheRead = 600
+	a.cacheSaved = 0.00004
+	if got := a.warmSegment(); got != "⟲ 4% cached" {
+		t.Fatalf("the cache segment spelled a saving of nothing: %q", got)
+	}
+	a.cacheSaved = 0.0004
+	if got := a.warmSegment(); got != "⟲ saved $0.0004 · 4% cached" {
+		t.Fatalf("a saving with a figure lost it: %q", got)
 	}
 }

@@ -53,7 +53,7 @@ func TestBothOfHomesFoldsSpellTheirCountAndTheirQuietOneWay(t *testing.T) {
 	// draws eight and the fold stands over the other five, and the clause is
 	// about the ninth row, which is nine days old.
 	world := foldLab(now, 13)
-	r := readSwitcher(world, nil, switcherHere{}, nil, time.Time{}, now, switcherView{}, switcherLedgerInput{})
+	r := readSwitcher(world, nil, nil, switcherHere{}, nil, time.Time{}, now, switcherView{}, switcherLedgerInput{})
 
 	list := foldRowWord(t, r)
 	tail := homeQuietWord(homeLine{kind: homeQuiet, quiet: r.hidden, since: now.Add(-9 * 24 * time.Hour), folded: true}, now)
@@ -91,7 +91,7 @@ func TestBothOfHomesFoldsSpellTheirCountAndTheirQuietOneWay(t *testing.T) {
 func TestAnOpenedFoldOnHomeSaysHowManyItWouldTakeAway(t *testing.T) {
 	now := time.Date(2026, time.September, 1, 9, 0, 0, 0, time.UTC)
 	world := foldLab(now, 13)
-	r := readSwitcher(world, nil, switcherHere{}, nil, time.Time{}, now, switcherView{all: true}, switcherLedgerInput{})
+	r := readSwitcher(world, nil, nil, switcherHere{}, nil, time.Time{}, now, switcherView{all: true}, switcherLedgerInput{})
 
 	list := foldRowWord(t, r)
 	tail := homeQuietWord(homeLine{kind: homeQuiet, quiet: r.hidden, since: now.Add(-9 * 24 * time.Hour)}, now)

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -377,14 +378,21 @@ func TestScrollingTheSettingsSheetLaysItOutOnce(t *testing.T) {
 }
 
 func TestHelpGlyphGrammarIsComplete(t *testing.T) {
-	wanted := []string{"▸", "▾", "⋯", "⟨×⟩", "⌄", "»", "⏱", "⚒", "⚖", "⌾", "♪", "▶"}
+	// Spelled out of the shared vocabulary wherever the vocabulary owns the
+	// mark, because the legend is drawn out of it too: a wanted list that spelled
+	// its own shapes would pass on the day the legend stopped matching the rows.
+	wanted := []string{
+		tokens.GlyphCollapsed, tokens.GlyphExpanded, tokens.GlyphTruncated,
+		"⟨×⟩", "⌄", tokens.GlyphActionCommunicate, "⏱", "⚒", "⚖",
+		tokens.GlyphFileImage, tokens.GlyphFileAudio, tokens.GlyphFileVideo,
+	}
 	seen := map[string]bool{}
 	for _, category := range helpCategories() {
 		if category.title != "glyphs" {
 			continue
 		}
 		for _, row := range category.rows {
-			seen[row.key] = true
+			seen[row.keyIn(tokens.Plain)] = true
 		}
 	}
 	for _, glyph := range wanted {

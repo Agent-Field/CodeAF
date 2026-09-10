@@ -1,0 +1,36 @@
+
+  [38;5;243m Home    [1m[38;5;237m[48;5;252m ◐ delete build?  × [0m[38;5;243m  + [39m
+
+[38;5;243m────────────────────────────────────────────────────────────────────────────────────────────────────
+
+[39m    [38;5;243m· [38;5;116mesc[38;5;243m interrupts · [38;5;116mctrl+c[38;5;243m twice quits · [38;5;116m?[38;5;243m for help[39m
+
+  [38;5;146m› [38;5;110mCall the ask tool now, exactly once, and run nothing else. head "delete the build[39m
+    [38;5;110mdirectory?", kind permission, form line, reason "the build directory is stale", stakes[39m
+    [38;5;110mreversible, options [{"key":"1","label":"delete it"},{"key":"2","label":"leave it"}].[39m
+
+    [38;5;238m$ load_capability 1 call[39m
+    [38;5;103m» asking about deleting the stale build directory[38;5;243m  3m 27s[39m                      [38;5;235m↑[38;5;243m 15.3k[39m  [38;5;235m↓[38;5;243m 61[39m
+
+
+
+
+                                                                                                   [38;5;252m❮
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[38;5;243m─ main ──────────────────────────────────────────────────────── [38;5;116menter[38;5;243m steers it in · [38;5;116mesc[38;5;243m interrupt ─
+
+[39m [38;5;243m› [38;5;252m1[39m
+[38;5;243mrequest to delete stale build directory · deepseek-v4-flash[39m                [38;5;173mYOLO[38;5;243m · [38;5;146m⠹[39m [38;5;146mworking[38;5;243m · [38;5;146m3m 32s

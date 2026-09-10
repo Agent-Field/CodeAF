@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	"github.com/Agent-Field/aforge-v2/internal/voice"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -1407,7 +1408,7 @@ func TestNotebookRendersInlineKindsExpandsAndRetracts(t *testing.T) {
 		"~", "Generated section must stay last.",
 		"~", "Keep status updates compact.",
 		"·", "The entry point is runMain.",
-		"candidate", "⚒", "Run race tests after TUI changes.", "✗",
+		"candidate", "⚒", "Run race tests after TUI changes.", tokens.GlyphFailed,
 	} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("inline notebook does not contain %q:\n%s", expected, view)
@@ -2113,7 +2114,7 @@ func TestActivityFeedParsesTraceIntoGlyphs(t *testing.T) {
 	feed := model.renderActivityFeed(80)
 	for _, want := range []string{
 		"turn 1 · 45 tok", "$ sh", "ls -la clips/", "│ 1.4KB", "turn 2 · 58 tok · nudge",
-		"✳ ", "⌕ web", "ffmpeg concat mp4", "✗", "› you", "focus on scene 10 only",
+		"✳ ", "⌕ web", "ffmpeg concat mp4", tokens.GlyphFailed, "› you", "focus on scene 10 only",
 	} {
 		if !strings.Contains(feed, want) {
 			t.Fatalf("feed missing %q:\n%s", want, feed)
@@ -2167,7 +2168,10 @@ func TestRailShowsTitlesGroupsAndDependencyWaits(t *testing.T) {
 	model.snapshot = snapshot
 	model.selectedNodeID = "mix"
 	tree := model.renderTree(80, 0)
-	for _, want := range []string{"Nighttime podcast", "┄ Research", "┄ Production", "Mix audio", "◌", "waits: collect sources"} {
+	// A pending node with an edge into a sibling wears the vocabulary's
+	// waits-on mark — the same one every other surface draws for that reading.
+	for _, want := range []string{"Nighttime podcast", "┄ Research", "┄ Production", "Mix audio",
+		tokens.GlyphWaitsOn, "waits: collect sources"} {
 		if !strings.Contains(tree, want) {
 			t.Fatalf("rail missing %q:\n%s", want, tree)
 		}
@@ -2354,7 +2358,7 @@ func TestFeedExpansionSurvivesTraceTruncation(t *testing.T) {
 	// The legend that opens the document names the ⋯ affordance, so the search
 	// for a surviving collapse marker looks past it.
 	turns := func() string {
-		return strings.ReplaceAll(model.renderActivityFeed(model.nodeTrace.Width), activityLegend, "")
+		return strings.ReplaceAll(model.renderActivityFeed(model.nodeTrace.Width), activityLegend(model.icons), "")
 	}
 	if feed := turns(); strings.Contains(feed, "⋯") {
 		t.Fatalf("thought did not expand:\n%s", feed)

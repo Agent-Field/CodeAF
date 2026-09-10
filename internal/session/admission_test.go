@@ -164,7 +164,7 @@ func TestAdmissionKeepsAssistantTextThatAccompaniesACall(t *testing.T) {
 	}
 	compiled := compileAdmission(admissionSource{
 		messages: []ai.Message{said, {Role: "tool", ToolCallID: "c1", Content: []ai.ContentPart{{Type: "text", Text: "3 hits"}}}},
-		outcomes: map[string]callOutcome{"c1": {tool: "grep"}},
+		outcomes: map[*ai.ToolCall]callOutcome{&said.ToolCalls[0]: {tool: "grep"}},
 		scope:    "chat/s1",
 	})
 
@@ -201,9 +201,9 @@ func TestAdmissionNeverReadsAMissingOutcomeAsSuccess(t *testing.T) {
 	}
 	compiled := compileAdmission(admissionSource{
 		messages: messages,
-		outcomes: map[string]callOutcome{
-			"ok":  {tool: "read"},
-			"bad": {tool: "bash", failed: true, detail: "undefined: streamCSV"},
+		outcomes: map[*ai.ToolCall]callOutcome{
+			&calls.ToolCalls[0]: {tool: "read"},
+			&calls.ToolCalls[1]: {tool: "bash", failed: true, detail: "undefined: streamCSV"},
 		},
 		scope: "chat/s1",
 	})
@@ -658,7 +658,7 @@ func TestTheRenderedContextStaysInsideItsBudget(t *testing.T) {
 		return texts
 	}()...)
 	messages := transcriptOf(turns)
-	outcomes := map[string]callOutcome{}
+	outcomes := map[*ai.ToolCall]callOutcome{}
 	for index := 0; index < 12; index++ {
 		id := "call-with-a-long-identifier-" + strconv.Itoa(index)
 		name := "a_tool_with_an_unusually_long_name_" + strconv.Itoa(index)
@@ -668,7 +668,7 @@ func TestTheRenderedContextStaysInsideItsBudget(t *testing.T) {
 			ToolCalls: []ai.ToolCall{{ID: id, Function: ai.ToolCallFunction{
 				Name: name, Arguments: `{"path":"` + strings.Repeat("x", 400) + `"}`}}},
 		}, ai.Message{Role: "tool", ToolCallID: id, Content: []ai.ContentPart{{Type: "text", Text: "body"}}})
-		outcomes[id] = callOutcome{tool: name, failed: index%2 == 0,
+		outcomes[&messages[len(messages)-2].ToolCalls[0]] = callOutcome{tool: name, failed: index%2 == 0,
 			detail: strings.Repeat("why it failed. ", 40)}
 	}
 
@@ -722,28 +722,18 @@ func TestAHandlePointsAtAResultThatCanBeFetched(t *testing.T) {
 		t.Fatalf("the call this turn made is not in the context: %+v", admitted)
 	}
 	handle := admitted.Evidence[0]
-	if handle.Source == "" {
-		t.Fatalf("the handle points nowhere: %+v", handle)
+	if handle.Result == "" || !filepath.IsAbs(handle.Result) {
+		t.Fatalf("the handle has no portable result pointer: %+v", handle)
 	}
-	if !strings.Contains(handle.line(), "grep "+handle.Call+" in "+handle.Source) {
+	if !strings.Contains(handle.line(), "read "+handle.Result) {
 		t.Fatalf("the line does not say how to fetch it: %s", handle.line())
 	}
-	// The fetch, exactly as the line describes it.
-	body, err := os.ReadFile(handle.Source)
+	body, err := os.ReadFile(handle.Result)
 	if err != nil {
-		t.Fatalf("the record a worker was sent to does not open: %v", err)
+		t.Fatalf("the result a worker was sent to does not open: %v", err)
 	}
-	found := ""
-	for _, line := range strings.Split(string(body), "\n") {
-		if strings.Contains(line, handle.Call) && strings.Contains(line, `"role":"tool"`) {
-			found = line
-		}
-	}
-	if found == "" {
-		t.Fatalf("grepping %s in the record finds no result line", handle.Call)
-	}
-	if !strings.Contains(found, "keep the CSV column order") {
-		t.Fatalf("the line the call id leads to is not the result:\n%s", found)
+	if !strings.Contains(string(body), "keep the CSV column order") {
+		t.Fatalf("the pointer leads to another result: %s", body)
 	}
 }
 

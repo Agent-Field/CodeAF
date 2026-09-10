@@ -1,0 +1,36 @@
+
+  [38;5;243m Home    [1m[38;5;237m[48;5;252m ◐ pre merge  × [0m[38;5;243m  + [39m
+
+[38;5;243m────────────────────────────────────────────────────────────────────────────────────────────────────
+‹ back[39m
+[38;5;140m?[39m [38;5;252mwhich checks should run before merge?[39m
+  [38;5;243maforge · the pipeline is being rewritten[39m
+  [38;5;243mnothing is waiting on it[39m
+
+  [1m[38;5;140m✓ 1 unit tests[0m
+[48;5;235m  [1m[38;5;140m✓ 2 vet[0m[48;5;235m                                                                                         [49m
+  [38;5;252m  3 the packed manual[39m
+  [38;5;252m  4 the size budget[39m
+
+
+
+                                                                                                   [38;5;252m❮
+
+
+
+
+
+
+
+
+
+
+
+
+
+[38;5;243m─ main ───────────────────────────────────────────────────────────────────────────── [38;5;116mesc[38;5;243m interrupt ─
+[38;5;140manswering 1 unit tests, 2 vet[39m
+[38;5;140m[enter][38;5;243m take the pick · [38;5;140m[esc][38;5;243m later · [38;5;140m[x][38;5;243m compare · [38;5;140m[?][38;5;243m ask back · [38;5;140m[d][38;5;243m you decide · [38;5;140m[space][38;5;243m tick it[39m
+
+ [38;5;243m› [39m
+[38;5;243mwhich checks before merge · deepseek-v4-flash[39m          [38;5;173mYOLO[38;5;243m · [38;5;186m? 1 question · alt+a[38;5;243m · [38;5;146m⠼[39m [38;5;146mworking[38;5;243m · [38;5;146m15s

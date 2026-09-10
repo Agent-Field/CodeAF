@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -270,13 +271,26 @@ func TestAWritingHandStillEditsItsOwnScope(t *testing.T) {
 
 	agent, _ := newTestAgent(t, completer, func(config *Config) { config.Workspace = workspace })
 	completer.drive(agent)
+	wakes := agent.Wakes()
 	collect(t, mustSubmit(t, agent, "split it"))
 	handsAreHome(t, agent)
 
 	if _, err := os.Stat(filepath.Join(workspace, "adapters", "mine.md")); err != nil {
 		t.Fatalf("a writing hand could not write inside its own scope: %v", err)
 	}
-	if reports := theHandReports(t, completer); !anyContains(reports, "wrote adapters/mine.md") {
+	reports := theHandReports(t, completer)
+	if !anyContains(reports, "wrote adapters/mine.md") {
+		// A hand can return after the closing request was assembled. Its report
+		// then reaches the next wake, which the original Submit stream cannot await.
+		select {
+		case events := <-wakes:
+			collect(t, events)
+		case <-time.After(10 * time.Second):
+			t.Fatal("the writing hand's unread report never woke the caller")
+		}
+		reports = theHandReports(t, completer)
+	}
+	if !anyContains(reports, "wrote adapters/mine.md") {
 		t.Errorf("no report names what the writing hand wrote:\n%s", strings.Join(reports, "\n--\n"))
 	}
 }
