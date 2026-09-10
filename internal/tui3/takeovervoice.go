@@ -2,7 +2,7 @@ package tui3
 
 // ── WHAT MOVING A CONVERSATION LOOKS LIKE, WHERE THE EYE ALREADY IS ─────────
 //
-// takeover.go is the mechanism — two enters, a request on the disk, a beat on
+// takeover.go is the mechanism — a question, a request on the disk, a beat on
 // the flock. This file is the only thing a person sees of it, and it exists
 // because the mechanism used to speak in the one place nobody was looking.
 //
@@ -34,7 +34,8 @@ package tui3
 // ── THE STATES, AND THE LAW THAT NONE OF THEM IS SILENCE ───────────────────
 //
 //	rest         another window has it, and enter would bring it here
-//	armed        one enter is down; the next one moves it, and what that costs
+//	armed        the question is up on the card (homeconfirm.go): what moving it
+//	             costs, the two answers, and the cursor on the one that does not
 //	moving       asked, and the far window has nothing in flight
 //	holding      asked, and the far window is mid-reply — what it is doing
 //	unanswered   asked, and the request died of old age unanswered
@@ -83,11 +84,6 @@ const (
 	// which is the cursor's row and never the pointer's — the card follows a
 	// hovered row without moving the cursor (home.go's [homeView.previewLine]).
 	takeoverHeldDoorWord = homeHeldShort + " · " + takeoverDoorWord
-	// takeoverAgainWord is that door once the row is armed. The card says this
-	// where the row is, and the foot says the longer [takeoverArmedWord] — the
-	// one moment the two places carry the same fact, because the second enter
-	// ends another window and a person must not reach it by leaning on a key.
-	takeoverAgainWord = "enter again moves it here"
 	// takeoverComingWord is the row's word and the card's headline while the
 	// claim is out. It is what is HAPPENING and not what was asked for:
 	// `asked for` would be a fact about a file, and this is a fact about a
@@ -115,18 +111,16 @@ const (
 	// a person can act on and "it is still in the other window" is.
 	takeoverUnansweredWord = "that window did not answer — it still has it"
 	// takeoverRetryWord is the way out of that, and it is the same key that
-	// started it.
+	// started it — which means it raises the QUESTION again (takeover.go's card)
+	// and not the request. A row that had been through the door once used to get
+	// the ask on a single press, and that shortcut was the one place where one
+	// keystroke could still end another window.
 	takeoverRetryWord = "enter asks again"
 	// takeoverFreeWord is the conversation that came free while nobody was on
 	// home. Nothing was opened under the person — that is [app.takeoverTick]'s
 	// standing rule — so the news waits on the card for them to come back.
 	takeoverFreeWord = "it came free — enter opens it"
 )
-
-// takeoverCostWords are the two things about this door that surprise people,
-// said on the card while the row is armed. They are two clauses rather than one
-// sentence so a narrow card lays them on two rows instead of clipping one.
-var takeoverCostWords = []string{"its reply stops there", "its tasks come here"}
 
 // takeoverElapsedAfter is how long a move has to have taken before the card
 // says how long it has taken.

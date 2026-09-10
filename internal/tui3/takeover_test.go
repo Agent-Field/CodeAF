@@ -460,8 +460,19 @@ func TestAClaimThatAgesOutStopsAndSaysTheOtherWindowStillHasIt(t *testing.T) {
 	if !cardSays(card, takeoverRetryWord) {
 		t.Fatalf("the card names no way to ask again:\n%s", strings.Join(card, "\n"))
 	}
-	// AND THE KEY IT NAMES IS THE KEY IT MEANS. `enter asks again` is one press
-	// and not two: this row has been through the two-key door already.
+	// AND THE KEY IT NAMES RAISES THE QUESTION AGAIN, exactly as it does on a
+	// row that has never been asked about. A row that had been through the door
+	// once used to get the ask on a single press — a shortcut that meant one
+	// keystroke could end another window, on the one row where somebody has
+	// already pressed enter twice and learnt it does nothing.
+	a.homeKey(key("enter"))
+	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); err == nil {
+		t.Fatal("`enter asks again` asked the other window on one press")
+	}
+	if _, up := a.homeAsking(); !up {
+		t.Fatal("`enter asks again` raised no question")
+	}
+	a.homeKey(key("1"))
 	a.homeKey(key("enter"))
 	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); err != nil {
 		t.Fatalf("`enter asks again` asked nothing: %v", err)
