@@ -101,6 +101,13 @@ func openTaskOwnerView(workspace string, ask tui3.TaskOwnerAsk) (tui3.TaskOwnerV
 		// reading (internal/remote's driver.go), and it neither takes the keyboard
 		// nor starts anything.
 		Watch: agent.WatchTaskUpdates,
-		Close: client.Close,
+		// AND WHETHER THAT CONVERSATION HAS STOPPED AND IS WAITING ON A PERSON.
+		// It is the second standing read on the same connection and it is a read
+		// in the same sense: [remote.MethodQuestionWatch] is on the watcher's
+		// allow-list beside the roster's, and the ANSWERING door deliberately is
+		// not — the page draws the question and the window that owns the work
+		// answers it (internal/remote's driver.go).
+		Questions: agent.WatchQuestions,
+		Close:     client.Close,
 	}, nil
 }

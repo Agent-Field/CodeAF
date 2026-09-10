@@ -129,6 +129,25 @@ var vocabulary = []GlyphBinding{
 		ASCII:     "-",
 		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
 	},
+	{
+		ID: GAssumed, Name: "Assumed", Meaning: "taken for granted and gone on with; strike it to change it",
+		// nf-fa-lightbulb_o is the ASKER'S OWN IDEA standing in for a fact
+		// nobody supplied, which is exactly what an assumption is — and the
+		// FA4.7 outline family is the one this table already ships beside
+		// nf-fa-question_circle_o and nf-fa-circle_o. The tier has no icon for
+		// `≈` itself: nf-md-approximately_equal lives above the BMP, which
+		// TestNerdFontIsBMPPrivateUse refuses, so the two sides are the
+		// mathematical and the pictographic spelling of one meaning rather than
+		// one shape at two weights.
+		//
+		// The tint is TERTIARY and never Amber, for [GWithdrawn]'s reason said
+		// about the other end of the same card: amber is a person being waited
+		// on, and an assumption is the asker NOT waiting.
+		Plain: GlyphAssumed, NerdFont: "\uF0EB", NFName: "nf-fa-lightbulb_o",
+		ASCII:          "~",
+		UsualTint:      TextTertiary,
+		PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
+	},
 
 	// -- disclosure and navigation -------------------------------------------
 	//

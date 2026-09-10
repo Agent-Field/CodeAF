@@ -1,0 +1,36 @@
+
+  [38;5;243m Home    [1m[38;5;237m[48;5;252m ◐ naming table  × [0m[38;5;243m  + [39m
+
+[38;5;243m────────────────────────────────────────────────────────────────────────────────────────────────────
+
+[39m    [38;5;243m· still yours to set · [38;5;146m[48;5;237m/budget[38;5;243m[49m sets what aforge may spend · [38;5;146m[48;5;237m/model[38;5;243m[49m and [38;5;146m[48;5;237m/crew[38;5;243m[49m pick the models[39m
+    [38;5;243m· [38;5;116mesc[38;5;243m interrupts · [38;5;116mctrl+c[38;5;243m twice quits · [38;5;116m?[38;5;243m for help[39m
+
+  [38;5;146m› [38;5;110mCall the ask tool now, exactly once, and run nothing else. head "name the three columns",[39m
+    [38;5;110mkind clarification, form room, reason "the schema needs names before I can write it", stakes[39m
+    [38;5;110mreversible, input {"kind":"blanks","prompt":"the ledger[39m
+    [38;5;110mtable","blanks":[{"label":"table"},{"label":"key column"},{"label":"timestamp column"}]},[39m
+    [38;5;110moptions [{"key":"1","label":"use these"},{"key":"2","label":"let me think"}].[39m
+
+    [38;5;238m$ load_capability 1 call[39m
+    [38;5;103m» ask 1 call[39m                                                                  [38;5;235m↑[38;5;243m 32.6k[39m  [38;5;235m↓[38;5;243m 439[39m   [38;5;252m❮
+
+
+
+
+
+
+
+
+
+
+
+[38;5;243m─ main ───────────────────────────────────────────────────────────────────────────── [38;5;116mesc[38;5;243m interrupt ─
+[1m[38;5;186m?[0m [38;5;140mname the three columns[39m
+[38;5;243m  the schema needs names before I can write it · aforge[39m
+[38;5;140m  [39m  [1m[38;5;140m1[0m[38;5;140m  use these[39m
+[38;5;140m  [39m  [1m[38;5;140m2[0m[38;5;140m  let me think[39m
+[38;5;140m  [esc][1m later · [0m[38;5;140m[o][1m open it · [0m[38;5;140m[c][1m change · [0m[38;5;140m[?][1m ask back · [0m[38;5;140m[d][1m you decide[0m
+
+ [38;5;243m› [39m
+[38;5;173mYOLO[38;5;243m · [38;5;186m? 1 question · alt+a[38;5;243m · [38;5;146m⠧[39m [38;5;146mworking[38;5;243m · [38;5;146m12s[39m

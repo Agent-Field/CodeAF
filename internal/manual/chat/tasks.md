@@ -1244,7 +1244,7 @@ The check runs at the moment work is proposed and never again. Nothing re-checks
 while it runs, and nothing waits: two windows that decide to work the same file both work
 it, and the merge is still yours.
 
-## The states a task passes through — the three tiers, one glyph each, what the word on a task row means, and what happened to finished but needs your look
+## The states a task passes through — the tiers, what the question mark on a task means, what the word on a task row means, finished but needs your look
 
 Every task row, card, rail line and roster entry answers **one question before it says
 anything else: do I need to do anything?** There are exactly three answers, each with its
@@ -4845,3 +4845,15 @@ answer. This destination is recorded before work starts, and worker messages
 cannot change it. Missing or invalid destination information does not excuse
 changed files left on another branch. If the branch's changes later reach the
 workspace explicitly, the next completion check reads that content again.
+
+## Back to main from a nested task — return to the conversation
+
+While a task page is open and the task column is visible, **Back to main** is
+pinned above the task list. Click anywhere on that row after the column's resize
+handle to return directly to the main conversation, from any task depth. The row
+highlights under the pointer and stays above the list when you scroll it.
+Returning does not stop the work. Your conversation draft and reading position
+are restored. The row disappears when you are already in the main conversation.
+Breadcrumbs still let you choose a particular ancestor; Escape can step back
+through nested task views. If the column is hidden, the header's return control
+and breadcrumbs remain available.
