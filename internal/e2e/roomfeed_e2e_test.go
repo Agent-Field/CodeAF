@@ -137,7 +137,15 @@ func openTheOnlyRoom(t *testing.T, r *rig) {
 	// letter under the other modifier — which tmux spells `M-t`.
 	r.keys("M-t")
 	r.keys("Enter")
-	r.waitFor(20*time.Second, "room ·")
+	// THE ROOM IS OPEN WHEN ITS WAY BACK IS ON THE FRAME. At this suite's
+	// 120×40 with the rail showing, roompanel.go's [app.roomOrganized] is true:
+	// the focus header carries `esc/← main` (roomBackWord) and the legend's
+	// left end is empty — so a wait for the compact legend spelling
+	// `room · esc/←← main` never fires on a real open page. The back word is
+	// the one string every room shape shares (tuiwords' roomBackWord).
+	if screen := r.waitFor(20*time.Second, say(t, "roomBackWord")); !strings.Contains(screen, say(t, "roomBackWord")) {
+		t.Fatalf("the room did not open — wanted %q on the frame:\n%s", say(t, "roomBackWord"), screen)
+	}
 }
 
 // ── the scripted endpoint ───────────────────────────────────────────────────
