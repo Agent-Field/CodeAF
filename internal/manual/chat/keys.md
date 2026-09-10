@@ -1761,11 +1761,12 @@ else — and says so by not being there: no card, and the legend above the box d
 it. Everywhere else the legend reads `space space home · tab last · ctrl+k switch ·
 / commands`, dropping clauses from the left as the frame narrows.
 
-**There is no cap** on what one terminal holds at once: taking a row is never refused for
-having too many open. The card draws the first twelve rows and hands a digit to the first
-nine; past that the cursor is the way, and home is the page that shows every conversation
-you have. Conversations remain alive until you end one — `/quit`, or `stop work` on the
-card that a working tab's `ctrl+w` raises.
+**Taking a row is never refused for having too many open.** The card draws the first twelve
+rows and hands a digit to the first nine; past that the cursor is the way, and home is the
+page that shows every conversation you have. Past twelve open, a quiet conversation left
+alone for fifteen minutes may be let go of — see *How many conversations can one
+terminal hold* on the home page. Work, a question, a draft or news you have not seen
+keeps it.
 
 ## What did my other chats do while I was away — what each row of the switcher tells you
 
@@ -1845,8 +1846,8 @@ terminal is not holding it.
 **What actually ends things**: `Stop` on a task's page ends that work, and `/quit` closes
 the conversation in front — leaving aforge when it was the last one this terminal held.
 
-Nothing caps how many one terminal holds, over any door, so `ctrl+w` is never about
-making room — it is about what you want on the row.
+`ctrl+w` is never about making room — it is about what you want on the row. A quiet
+conversation left alone can be let go of on its own; this key is you putting one away.
 
 ## `tab` still goes straight to the last one
 
