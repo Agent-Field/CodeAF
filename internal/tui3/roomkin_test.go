@@ -187,9 +187,9 @@ func TestAFlatTasksRoomGrowsNoKinBlock(t *testing.T) {
 	if rows := kinRows(a); len(rows) != 0 {
 		t.Fatalf("a task with no family drew a kin block:\n%q", rows)
 	}
-	// The tab strip and room header include their own breathing room. None
+	// The head and the room's header include their own breathing room. None
 	// of that space is a shelf for a family this task does not have.
-	if a.headHeight() != a.tabsHeight(a.width)+a.roomHeadHeight(a.width) {
+	if a.headHeight() != a.roomHeadRow()+a.roomHeadHeight(a.width) {
 		t.Fatalf("the pinned region is %d rows over a flat task", a.headHeight())
 	}
 }

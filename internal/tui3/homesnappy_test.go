@@ -80,28 +80,20 @@ func snappyLab(t *testing.T, delay time.Duration, calls *int) *app {
 }
 
 // A KEY THAT MOVES THE CURSOR ON HOME RUNS NO COMMAND.
-//
-// It ASKS for one, which is the other half of the law: the branch on the card's
-// place line is still read, and still per workspace per [homeRepoTTL] — the
-// reading simply happens somewhere a keystroke is not waiting for it.
 func TestMovingTheCursorOnHomeRunsNoCommand(t *testing.T) {
 	ran := 0
 	a := snappyLab(t, 10*time.Millisecond, &ran)
-	asked := 0
 	for i := 0; i < 20; i++ {
-		_, cmd := a.update(key("down"))
-		if cmd != nil {
-			asked++
-		}
+		a.update(key("down"))
 		a.dirty = true
 		a.frame()
 	}
 	if ran != 0 {
 		t.Fatalf("twenty arrow keys ran git %d times on the update loop", ran)
 	}
-	if asked == 0 {
-		t.Fatal("twenty arrow keys asked for no reading at all, so the card can never learn a branch")
-	}
+	// AND THE GRID ASKS FOR ITS BRANCHES ON THE BEAT, not per key: a project's
+	// repository clause is the same whichever row the cursor is on
+	// ([app.refreshGridReadings]), so an arrow has nothing to ask.
 }
 
 // AND SO DOES A POINTER, which is the half the owner met first: a surface in
@@ -193,38 +185,25 @@ func TestAHomeBeatWalksTheWorldOnce(t *testing.T) {
 	}
 }
 
-// AND THE CARD'S OWN TWO READINGS ARE ASKED FOR RATHER THAN TAKEN.
+// AND THE GRID'S READINGS ARE ASKED FOR RATHER THAN TAKEN.
 //
 // [session.Peek] scans a whole transcript — measured at 33ms on a long one — and
-// the inbox is a second file. Both were opened while the card was DRAWING, which
-// is once per arrival, which is once per keystroke.
-func TestTheCardsReadingsAreAskedForAndNotTaken(t *testing.T) {
+// `git status` is a process. The grid draws this window's last words and each
+// project's branch, and both are asked for as commands on the beat
+// ([app.refreshGridReadings]), never opened while the grid is drawing.
+func TestTheGridsReadingsAreAskedForAndNotTaken(t *testing.T) {
 	ran := 0
 	a := snappyLab(t, 0, &ran)
-	row := a.home.lines[len(a.home.lines)-1].row
-	for _, line := range a.home.lines {
-		if line.kind == homeSession && line.row.Transcript != "" {
-			row = line.row
-			break
-		}
-	}
-	// A BAND-ASSEMBLED CARD rather than the switcher's own, because the switcher's
-	// five bands carry neither of these readings and this law is about the two
-	// that do (place_home.go's [app.homeSwitchCard]).
-	a.home.lines = []homeLine{{kind: homeSession, row: row, project: "proj0"}}
-	a.home.cursor, a.home.hover = 0, -1
-	a.home.last, a.home.news = map[string]session.Summary{}, map[string]homeNewsCache{}
-
-	cmd := a.refreshHomeCard(time.Now())
+	// Forget what opening home already asked for and heard.
+	a.home.last, a.leftOffAsking = map[string]session.Summary{}, nil
+	cmd := a.refreshGridReadings(time.Now())
 	if cmd == nil {
-		t.Fatal("a card arrived and asked for nothing")
+		t.Fatal("the grid asked for nothing")
 	}
-	if len(a.home.last) != 0 || len(a.home.news) != 0 {
-		t.Fatalf("the arrival read the disk itself: %d journals, %d inboxes", len(a.home.last), len(a.home.news))
+	if len(a.home.last) != 0 || ran != 0 {
+		t.Fatalf("asking read the disk itself: %d journals, git ran %d times", len(a.home.last), ran)
 	}
-	// AND THE ANSWERS DO COME BACK. Cheapness that costs a person the band is not
-	// cheapness, so the same gesture is followed all the way to the state it
-	// leaves behind.
+	// AND THE ANSWERS DO COME BACK.
 	drive(t, a, runCmd(cmd)...)
 	if len(a.home.last) != 1 {
 		t.Fatalf("the journal reading never landed: %v", a.home.last)

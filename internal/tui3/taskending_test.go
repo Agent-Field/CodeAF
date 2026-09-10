@@ -99,14 +99,13 @@ func TestARefusedNodeIsIncompleteAndBrokenOrOldNodesStillFail(t *testing.T) {
 	for _, tc := range []struct {
 		ending session.TaskEnding
 		mark   string
-		home   string
 		// state is the one word the rail, the room header, the record and the
 		// landing card all say about this ending.
 		state string
 	}{
-		{session.TaskEndingRefused, glyphBad, glyphBad, taskRecordStoppedWord},
-		{session.TaskEndingError, glyphBad, glyphBad, taskRecordStoppedWord},
-		{"", glyphBad, glyphBad, taskRecordStoppedWord},
+		{session.TaskEndingRefused, glyphBad, taskRecordStoppedWord},
+		{session.TaskEndingError, glyphBad, taskRecordStoppedWord},
+		{"", glyphBad, taskRecordStoppedWord},
 	} {
 		a, _, _ := taskApp(t)
 		drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskFailed,
@@ -129,9 +128,6 @@ func TestARefusedNodeIsIncompleteAndBrokenOrOldNodesStillFail(t *testing.T) {
 		entry := session.TaskIndexEntry{Status: string(session.TaskFailed), Ending: tc.ending}
 		if got := taskStateWord(entry, false); got != tc.state {
 			t.Fatalf("%q: record state = %q, want %q", tc.ending, got, tc.state)
-		}
-		if got := plain(a.homeTaskGlyph(entry, session.SessionRow{})); got != tc.home {
-			t.Fatalf("%q: home glyph = %q, want %q", tc.ending, got, tc.home)
 		}
 		// AND THE LANDING CARD SAYS `incomplete` FOR ALL THREE. `failed` is deleted
 		// as a landing's word: a fault is `incomplete` plus `a fault: <line>` on the

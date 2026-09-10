@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 )
 
 // THE CHORDS, AS A PERSON ON EACH PLATFORM MEETS THEM.
@@ -144,36 +143,6 @@ func placeChordLines(a *app) map[string]string {
 	out["note"] = plain(strings.Join(a.placeNote(a.width), "\n"))
 	a.chordLost = wasLost
 	return out
-}
-
-// AND HOME'S OWN SECTION LINE, which is the one chord sentence that is not on
-// the foot: it is drawn by the reading layer, which may never see an *app, so
-// the spelling has to be carried in beside the three facts already are.
-func TestHomesSectionLineSpellsItsTwoViewsForThisTerminal(t *testing.T) {
-	a := placeApp(t)
-	a.home.reading.chatCount = 20
-	line := homeLine{sw: &switcherLine{section: true}}
-
-	drawn := plain(a.homeLine(line, -1, 120, a.pal))
-	if !strings.Contains(drawn, "alt+g group by project") || !strings.Contains(drawn, "alt+q hide the quiet ones") {
-		t.Fatalf("home's section line lost its two views:\n%s", drawn)
-	}
-
-	a.chords = detectChords("darwin", envOf(map[string]string{"TERM_PROGRAM": "ghostty"}))
-	mac := plain(a.homeLine(line, -1, 120, a.pal))
-	if strings.Contains(mac, chordAltWord) {
-		t.Fatalf("home's section line still says alt on a mac:\n%s", mac)
-	}
-	if !strings.Contains(mac, "⌥g group by project") || !strings.Contains(mac, "⌥q hide the quiet ones") {
-		t.Fatalf("home's section line lost a view in the mac spelling:\n%s", mac)
-	}
-	// AND IT STILL ENDS AT THE MARGIN. `⌥g` is three cells narrower than `alt+g`,
-	// so a line measured against the wrong spelling would stop short of the right
-	// edge — which is the whole reason the reading is handed the spelling rather
-	// than being spelled after the fact.
-	if got := ansi.StringWidth(mac); got != 120 {
-		t.Fatalf("the mac section line is %d cells wide in a 120-cell frame:\n%s", got, mac)
-	}
 }
 
 // ── the second encoding ─────────────────────────────────────────────────────

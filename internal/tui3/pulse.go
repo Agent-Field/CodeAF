@@ -1,11 +1,14 @@
 package tui3
 
-// THE PULSE: THE ONE LINE AT THE TOP OF HOME.
+// THE PULSE: THE ONE LINE AT THE TOP OF EVERY FRAME.
 //
 //	aforge          2 want you · 4 moving · $0.55 / $20.00 · tue 1:11pm
+//	aforge                                  $0.55 / $20.00 · tue 1:11pm
 //
 // The program's name on the left, and right-aligned on the other end — quiet
-// unless it has a reason not to be — the machine's own vital signs. It is the
+// unless it has a reason not to be — the machine's own vital signs. The first
+// line is a conversation's and every place's; the second is home's, which leaves
+// its counts to the panels under it (DESIGN.md's law 11, [pulseBudget]). It is the
 // watch made visible (docs/HOME-BRIDGE.md): a person who has just sat down learns
 // in one glance how many things are stopped on them, how many are moving, what
 // the day has cost against what it is allowed, and what time it is, without
@@ -20,7 +23,7 @@ package tui3
 //
 //   - THE MONEY ON THIS LINE IS THE MONEY ON THE SPEND PLACE, and it is ONE
 //     FUNCTION rather than two that agree. Every segment comes off
-//     [app.machineFactsAt], and the day's figure inside it comes off the usage
+//     [app.machine], and the day's figure inside it comes off the usage
 //     ledger through [spendDayTotal] — the same arithmetic over the same rows that
 //     draws `today $3.42 of $500` in the body of the spend place and `today` on
 //     Settings→Spending. This line used to sum the task records hanging off home's
@@ -31,8 +34,8 @@ package tui3
 //
 //   - AND NO SEGMENT IS A FACT ABOUT A SCREEN. A place a person walked out of is
 //     not a source of facts about the machine: the figures here are read from the
-//     machine itself, on this line's own three-second beat, and [homeView] holds
-//     the memo of that reading and never the reading.
+//     machine itself, ON A BEAT AND NEVER ON A DRAW (homemachine.go's
+//     [app.readMachine]), and this line reads the memo that beat left behind.
 //
 //   - EVERY SEGMENT OBEYS THE EMPTINESS LAW. Nothing stopped on anybody draws no
 //     `want you` clause — not `0 want you` — nothing in flight draws no `moving`,
@@ -105,6 +108,23 @@ const (
 	pulseGap = " · "
 )
 
+// pulseMode is which of the line's two readings a frame draws. It is ONE
+// PARAMETER over ONE SET OF CLAUSES ([app.pulseParts]), so the two frames can
+// differ in what they leave out and never in how a clause is spelled.
+type pulseMode uint8
+
+const (
+	// pulseWhole is every clause — the two counts, the budget and the clock. It
+	// is the line over a conversation and over every place but home: inside a
+	// chat nothing else on the frame says that two things have stopped on you.
+	pulseWhole pulseMode = iota
+	// pulseBudget is the budget and the clock alone, and it is home's. HOME IS
+	// THE SUMMARY OF THE TABS and its panels ARE the counts — `needs you · 2`
+	// over the rows that need you — so a `2 want you` above them would be the
+	// same news said twice on one frame (DESIGN.md's laws 10 and 11).
+	pulseBudget
+)
+
 // pulseLine is that line, painted, exactly `width` cells wide at most.
 //
 // THE NAME NEVER GIVES WAY TO THE SEGMENTS. A frame too narrow to hold both
@@ -120,7 +140,7 @@ const (
 // [rowfit.go]'s ranked-prefix law applied to this line: the widest rung that
 // fits is the one drawn, and what a narrow frame shows is a SUBSET of what a
 // wide one shows rather than a different line.
-func (a *app) pulseLine(width int, pal palette) string {
+func (a *app) pulseLine(width int, pal palette, mode pulseMode) string {
 	// THE NAME IS STRUCTURE, SO IT WEARS A QUIET ROLE. THE ACCENT BUDGET IS ONE
 	// THING PER SCREEN and it is always the live one — the row waiting on
 	// somebody, the work in flight, the card under the cursor. A product name is
@@ -137,7 +157,7 @@ func (a *app) pulseLine(width int, pal palette) string {
 	// how the surface came to greet a fresh install with `openaf` in the wordmark
 	// and `aforge` in the prose under it.
 	name := " " + pal.bold(pal.muted(product))
-	for _, tail := range a.pulseRungs(a.now(), pal) {
+	for _, tail := range a.pulseRungs(a.now(), pal, mode) {
 		if tail == "" {
 			break
 		}
@@ -183,8 +203,8 @@ func (a *app) pulseLine(width int, pal palette) string {
 // — that is what [dollars] returning `$0.00` at zero is for. It is not this
 // line, and this line never borrows the exception: the emptiness law keeps a
 // zero day off the pulse ([app.pulseParts]) and the ladder never puts one back.
-func (a *app) pulseRungs(now time.Time, pal palette) []string {
-	p := a.pulseParts(now, pal)
+func (a *app) pulseRungs(now time.Time, pal palette, mode pulseMode) []string {
+	p := a.pulseParts(now, pal, mode)
 	rung := func(parts ...string) string {
 		var kept []string
 		for _, part := range parts {
@@ -223,7 +243,7 @@ func (a *app) pulseRungs(now time.Time, pal palette) []string {
 // so the widest line this file can draw and the line the ladder starts from can
 // never come to disagree about how a segment is spelled.
 func (a *app) pulseSegments(now time.Time, pal palette) []string {
-	p := a.pulseParts(now, pal)
+	p := a.pulseParts(now, pal, pulseWhole)
 	var out []string
 	for _, part := range []string{p.wants, p.hands, p.money, p.clock} {
 		if part != "" {
@@ -242,8 +262,14 @@ func (a *app) pulseSegments(now time.Time, pal palette) []string {
 // giving up the day's bill.
 type pulseParts struct{ wants, hands, money, spend, clock string }
 
-func (a *app) pulseParts(now time.Time, pal palette) pulseParts {
-	facts := a.machineFactsAt(now)
+func (a *app) pulseParts(now time.Time, pal palette, mode pulseMode) pulseParts {
+	facts := a.machine
+	if mode == pulseBudget {
+		// THE COUNTS ARE LEFT OUT HERE AND NOWHERE ELSE, by zeroing them in the
+		// reading rather than skipping them in the ladder: every rung below is
+		// then home's line with no second list of which clauses home may carry.
+		facts.wants, facts.hands = 0, 0
+	}
 	var p pulseParts
 	if facts.wants > 0 {
 		// AMBER, AND THE WHOLE CLAUSE. The count and the words are one fact —

@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	memoryTeachBelow   = 8
 	memoryShelfShown   = 3
 	memoryShelvesShown = 5
 )
@@ -25,33 +24,22 @@ var memoryShelfNames = map[string]string{
 	store.MemoryScopeEnv:     "this machine",
 }
 
-var memoryTeaching = []string{
-	"What I hold true about you and this machine.",
-	"I put a line in here when it looked like it would matter later, and I only carry it into a chat it bears on.",
-	"Corrections are the point — a wrong line here is wrong in every chat.",
-}
-
-// memoryEmptyWord is the FOURTH line, and it is drawn only on a machine that has
-// remembered nothing at all.
-//
-// AN EMPTY PLACE MUST SAY WHAT TO DO NEXT, IN A VERB. The three sentences above
-// are all about the machine's behaviour — what it holds, when it writes, why a
-// correction matters — and the closest thing to an act on the page was a footer
-// reading `nothing here is a setting, all of it is editable`, which names no key
-// and no words to type. The tasks place ends its teaching with `no tasks yet —
-// /task <brief> starts one` ([tasksTeach]) and this is that shape.
-//
-// IT IS CONDITIONAL ON THE PAGE BEING BARE and not on the teaching state, which
-// are two different things: [memoryTeachBelow] keeps the prose up until there
-// are eight lines, so a machine with three memories is still being taught — and
-// telling that machine "nothing learned yet" over three shelves it can see would
-// be the page contradicting its own body.
-const memoryEmptyWord = `nothing learned yet — say "remember that …" and the first line lands here`
-
 type memoryStop struct {
 	shelf string
 	line  *store.Memory
+	// fold is the key a fold line opens and shuts in the place's open map
+	// ([memoryFoldKey], [memoryShelvesFold]); empty on every other stop.
+	fold string
 }
+
+// memoryFoldKey is the open-map key for the fold under one shelf's lines, and
+// memoryShelvesFold the key for the fold under the shelves themselves. They sit
+// in the map the shelves' own open state lives in because they are the same
+// kind of fact — what this visit has unrolled — and a scope is never empty,
+// so neither can collide with one.
+func memoryFoldKey(scope string) string { return "\x00" + scope }
+
+const memoryShelvesFold = "\x00"
 
 type memoryReading struct {
 	held int
@@ -64,7 +52,6 @@ type memoryReading struct {
 	total    int
 	shelves  int
 	filter   string
-	teach    bool
 	lines    []memoryReadingLine
 }
 
@@ -78,7 +65,6 @@ const (
 	memoryReadingShelf
 	memoryReadingMemory
 	memoryReadingFold
-	memoryReadingFooter
 )
 
 type memoryReadingLine struct {
@@ -113,18 +99,16 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 	r := memoryReading{
 		held: shelves.Held, letGo: shelves.LetGo, replaced: shelves.Superseded,
 		total: shelves.Total, shelves: len(shelves.Shelves), filter: query,
-		teach: shelves.Total < memoryTeachBelow,
 	}
-	if r.teach {
-		for _, sentence := range memoryTeaching {
-			r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingProse, label: sentence})
-		}
-		if r.bare() {
-			r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingProse, label: memoryEmptyWord})
-		}
-	} else {
-		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingHeader})
+	// A MACHINE THAT HAS REMEMBERED NOTHING HAS NO LINES AT ALL, and the place
+	// draws its heading and its whisper instead ([placeWhisper]). Every other
+	// machine gets the head row over its shelves from the first line on — the
+	// page used to teach in three paragraphs until it held eight lines and then
+	// swap them for the head row in one frame (PLACES-AUDIT.md finding 4).
+	if r.bare() {
+		return r
 	}
+	r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingHeader})
 
 	var ranked []rankedMemoryShelf
 	for _, shelf := range shelves.Shelves {
@@ -168,6 +152,9 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingSection, label: memorySectionWord, facts: memoryTypeLegend(ranked)})
 	}
 	shownShelves := min(len(ranked), memoryShelvesShown)
+	if open[memoryShelvesFold] {
+		shownShelves = len(ranked)
+	}
 	for i := 0; i < shownShelves; i++ {
 		shelf := ranked[i]
 		key := shelf.shelf.Scope
@@ -194,6 +181,9 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 			continue
 		}
 		shown := min(len(shelf.lines), memoryShelfShown)
+		if open[memoryFoldKey(key)] {
+			shown = len(shelf.lines)
+		}
 		for j := 0; j < shown; j++ {
 			memory := shelf.lines[j]
 			copy := memory
@@ -204,15 +194,18 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 				age:   sinceAt(memory.UpdatedAt, now),
 			})
 		}
-		if more := len(shelf.lines) - shown; more > 0 {
-			r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingFold, label: foldLine(more, "on this shelf")})
+		// THE FOLD LINES ARE DOORS BOTH WAYS: `▸ 37 more, on this shelf`
+		// unrolls the rest of the shelf where it stands and `▾ 37 fewer` rolls
+		// it back, on `enter` or a click ([foldDoor]).
+		if hidden := len(shelf.lines) - memoryShelfShown; hidden > 0 {
+			fold := memoryFoldKey(key)
+			r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingFold, shelf: fold,
+				label: foldDoor(open[fold], hidden, "on this shelf")})
 		}
 	}
-	if more := len(ranked) - shownShelves; more > 0 {
-		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingFold, label: foldLine(more, "shelves")})
-	}
-	if r.teach {
-		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingFooter})
+	if hidden := len(ranked) - memoryShelvesShown; hidden > 0 {
+		r.lines = append(r.lines, memoryReadingLine{kind: memoryReadingFold, shelf: memoryShelvesFold,
+			label: foldDoor(open[memoryShelvesFold], hidden, "shelves")})
 	}
 	return r
 }
@@ -240,7 +233,7 @@ func (r memoryReading) wrapped(width int) memoryReading {
 	if measure < 1 {
 		return r
 	}
-	out := make([]memoryReadingLine, 0, len(r.lines)+len(memoryTeaching))
+	out := make([]memoryReadingLine, 0, len(r.lines))
 	for _, line := range r.lines {
 		if line.kind != memoryReadingProse {
 			out = append(out, line)
@@ -400,49 +393,52 @@ func sameDay(a, b time.Time) bool {
 
 // rows paints only through the palette and fits every completed line with the
 // same cell-width ruler the rest of the surface uses.
-func (r memoryReading) rows(width int, pal palette) []string {
+func (r memoryReading) rows(width int, pal palette) []string { return r.paint(width, pal, nil) }
+
+// paint is [memoryReading.rows] with the rows the cursor or the pointer is on
+// lit (placeprose.go's THE FIVE-LEVEL SCALE); a nil lit lights nothing.
+//
+// EVERY ROW HANGS FROM THE BODY'S OWN COLUMN, one cell in, where every place and
+// home hang theirs: a shelf's `▸` and a line's `·` stand in the lead, and the
+// words start two cells after them (PLACES-AUDIT.md finding 12). This page
+// started at column 0, so walking the bar left to right the body stepped aside.
+func (r memoryReading) paint(width int, pal palette, lit func(row int) bool) []string {
 	rows := make([]string, 0, len(r.lines))
+	room := width - 1
 	for _, line := range r.lines {
+		on := lit != nil && lit(len(rows))
 		switch line.kind {
 		case memoryReadingProse:
-			// THE PROSE HANGS FROM THE BODY'S OWN COLUMN, which is one cell in —
-			// where tasks, standing and spend all hang theirs (placebodies.go's
-			// [placeTeachRows]). This page started at column 1, so walking the bar
-			// left to right the body stepped sideways.
-			rows = append(rows, " "+pal.dim(fit(line.label, width-1)))
+			rows = append(rows, " "+pal.dim(fit(line.label, room)))
 		case memoryReadingBlank:
 			if len(rows) > 0 && rows[len(rows)-1] != "" {
 				rows = append(rows, "")
 			}
 		case memoryReadingHeader:
+			// THE HEAD COUNTS WHAT IS HELD AND IS NOT A SUBJECT, so it wears the
+			// heading's ink: it was the reading ink, the one heading on the bar
+			// lit like a row (PLACES-AUDIT.md finding 9).
 			left := memoryCounts(r.held, r.shelves, r.letGo, r.replaced)
-			rows = append(rows, memoryJoin(pal.ink(left), pal.dim(memoryFilterWord), memoryFilterWord, width))
+			rows = append(rows, " "+memoryJoin(placeHeading(left, pal), pal.dim(memoryFilterWord), memoryFilterWord, room))
 		case memoryReadingSection:
 			// THE HEADING IS WHOLE AND THE LEGEND IS A PREFIX OF ITSELF. The
 			// legend is fitted to what the heading leaves rather than the other
 			// way round, so a kind falls off the end before the two words that
 			// say what the section is lose a cell (rowfit's law 1).
-			legend := rowTail(line.facts, width-ansi.StringWidth(line.label)-memoryGutter)
-			rows = append(rows, memoryJoin(pal.muted(line.label), pal.dim(legend), legend, width))
+			legend := rowTail(line.facts, room-ansi.StringWidth(line.label)-memoryGutter)
+			rows = append(rows, " "+memoryJoin(placeHeading(line.label, pal), pal.dim(legend), legend, room))
 		case memoryReadingShelf:
-			rows = append(rows, memoryRow(pal.muted, line, pal, width))
+			rows = append(rows, " "+memoryRow(placeSubjectInk(on, pal), line, on, pal, room))
 		case memoryReadingMemory:
-			paintLabel := pal.ink
+			paintLabel := placeSubjectInk(on, pal)
 			if line.memory != nil && line.memory.Status != store.MemoryActive {
 				// There is no strike paint in this palette, so history takes the
 				// documented fallback and recedes instead of borrowing a raw style.
 				paintLabel = pal.dim
 			}
-			rows = append(rows, memoryRow(paintLabel, line, pal, width))
+			rows = append(rows, " "+memoryRow(paintLabel, line, on, pal, room))
 		case memoryReadingFold:
-			rows = append(rows, pal.dim(fit(line.label, width)))
-		case memoryReadingFooter:
-			text := memoryCounts(r.held, 0, r.letGo, r.replaced)
-			if text != "" {
-				text += " · "
-			}
-			text += "nothing here is a setting, all of it is editable"
-			rows = append(rows, " "+pal.dim(fit(text, width-1)))
+			rows = append(rows, " "+placeFactInk(on, pal)(fit(line.label, room)))
 		}
 	}
 	return rows
@@ -473,7 +469,7 @@ func memoryCounts(held, shelves, letGo, replaced int) string {
 		parts = append(parts, groupedInt(held)+" held")
 	}
 	if shelves > 0 {
-		parts = append(parts, groupedInt(shelves)+" shelves")
+		parts = append(parts, groupedInt(shelves)+" "+memoryShelfWord(shelves))
 	}
 	if letGo > 0 {
 		parts = append(parts, groupedInt(letGo)+" "+memoryLetGoWord)
@@ -482,6 +478,16 @@ func memoryCounts(held, shelves, letGo, replaced int) string {
 		parts = append(parts, groupedInt(replaced)+" "+memoryReplacedWord)
 	}
 	return strings.Join(parts, " · ")
+}
+
+// memoryShelfWord is the noun a count of shelves takes. `1 shelves` stood on the
+// head row of every page with one shelf on it (PLACES-AUDIT.md finding 14), and
+// [plural] would say `shelfs`.
+func memoryShelfWord(n int) string {
+	if n == 1 {
+		return "shelf"
+	}
+	return "shelves"
 }
 
 func memoryJoin(left, paintedRight, plainRight string, width int) string {
@@ -513,7 +519,8 @@ func memoryJoin(left, paintedRight, plainRight string, width int) string {
 // one separator, then the age at the right. A fact that will not fit is dropped
 // whole — which is also how the help clause stopped needing a `width >= 80` of
 // its own.
-func memoryRow(paintLabel func(string) string, line memoryReadingLine, pal palette, width int) string {
+func memoryRow(paintLabel func(string) string, line memoryReadingLine, lit bool, pal palette, width int) string {
+	facts := placeFactInk(lit, pal)
 	room := width
 	age := ansi.StringWidth(line.age)
 	if age > 0 {
@@ -522,13 +529,13 @@ func memoryRow(paintLabel func(string) string, line memoryReadingLine, pal palet
 	name, tail := memoryHalves(line.label, line.facts, room)
 	painted, spent := paintLabel(name), ansi.StringWidth(name)
 	if tail != "" {
-		painted += pal.dim(rowSep + tail)
+		painted += facts(rowSep + tail)
 		spent += ansi.StringWidth(rowSep) + ansi.StringWidth(tail)
 	}
 	if line.age == "" {
 		return painted
 	}
-	return painted + strings.Repeat(" ", max(1, width-spent-age)) + pal.dim(line.age)
+	return painted + strings.Repeat(" ", max(1, width-spent-age)) + facts(line.age)
 }
 
 // memoryHalves is [rowPlan.fit] with this page's own gutter: the identity, cut
@@ -554,15 +561,15 @@ func (r memoryReading) at(i int) (memoryStop, bool) {
 		return memoryStop{shelf: line.shelf}, true
 	case memoryReadingMemory:
 		return memoryStop{shelf: line.shelf, line: line.memory}, true
+	case memoryReadingFold:
+		return memoryStop{fold: line.shelf}, true
 	}
 	return memoryStop{}, false
 }
 
 // bare says this page has NOTHING ON IT — no shelf, no line, nothing to open,
-// filter or walk. It is a stricter question than [memoryReading.teach], which is
-// still true with seven memories on the page, and the two are asked separately
-// because only one of them may put "nothing learned yet" on the screen or take
-// the shelf keys off the foot ([memoryEmptyWord], place_memory.go's hint).
+// filter or walk — which is when the place draws its whisper instead of a body
+// and takes the shelf keys off the foot (place_memory.go's hint).
 func (r memoryReading) bare() bool { return r.total == 0 }
 
 // THERE IS ONE EMPTY STATE HERE AND THE READING ITSELF IS IT.
@@ -571,8 +578,7 @@ func (r memoryReading) bare() bool { return r.total == 0 }
 // and then repeated the command surface's `memory is off for this session` note
 // under it. Both halves were wrong on a PLACE, and they are wrong in the same
 // way: the reading is the empty state. A machine that has remembered nothing
-// meets [memoryTeaching] — the three sentences that say what this is for, which
-// is what a nearly-empty page is worth — and a machine with memory switched off
-// meets exactly the same three sentences, with [memoryOffNote] said ONCE on the
-// note line under them ([app.openMemory] puts it there). Neither state is a
-// second body, and neither is a refusal: the place opens on both.
+// meets the place's heading and whisper ([placeWhisper]), and a machine with
+// memory switched off meets exactly the same two lines, with [memoryOffNote]
+// said ONCE on the note under them ([app.openMemory] puts it there). Neither
+// state is a second body, and neither is a refusal: the place opens on both.

@@ -452,9 +452,11 @@ func TestTheConversationDrawsNoTrailRowOfItsOwn(t *testing.T) {
 	if strings.Contains(strip, "─") {
 		t.Fatalf("the tab strip drew a border across the top of the page: %q", strip)
 	}
-	// The padded strip and the seam under it are charged together.
-	want := a.tabsHeight(a.width) + a.chatRuleHeight(a.width)
-	if a.headHeight() != want || a.bodyTop() != want || a.roomHeadRow() != a.tabsHeight(a.width) {
+	// THE CONVERSATION'S HEAD IS THE PLACES' HEAD — pulse, strip, rule, blank —
+	// and the four rows are charged together (head.go). A room opened from here
+	// would lay its trail on the first row under them.
+	want := placeHeadRows
+	if a.headHeight() != want || a.bodyTop() != want || a.roomHeadRow() != want {
 		t.Fatalf("the strip is drawn but not budgeted: head=%d top=%d row=%d want=%d",
 			a.headHeight(), a.bodyTop(), a.roomHeadRow(), want)
 	}

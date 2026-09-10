@@ -75,17 +75,6 @@ const (
 	// it appears: the dim line under a shelf, the verb on the row's strip, and
 	// the receipt for the key that wrote it.
 	standNotHereWord = "not here"
-	// standNothingWord is the standing place on a machine nothing stands on at
-	// all, and it is the first line of that place's teaching prose
-	// ([standingTeach]).
-	//
-	// IT USED TO BE A REFUSAL. `/standing` said it and opened nothing, on the
-	// argument that a place with no rows is a screen which has to be dismissed
-	// before it can be told it was useless. On a fresh machine that is every
-	// door onto the place, so the tab was drawn and the key did nothing — and
-	// SCREEN 1f'S PREAMBLE says the opposite: an almost-empty place is the best
-	// teacher on the machine. The sentence stayed and the refusal went.
-	standNothingWord = "nothing stands here yet — say what should always be true, and I'll hold it."
 	// standHereWord is enter on the order this very conversation asked for.
 	// There is a door and it leads exactly where the person already is, so the
 	// page says the fact instead of moving them nowhere.
@@ -106,6 +95,146 @@ const (
 	// nothing and said nothing is indistinguishable from a key that is broken.
 	standNotOursWord = "that one does not stand over this conversation"
 )
+
+// needsUncheckedWord is the line under a `needs you` row for work that landed
+// and that nobody could check (homepanel_needs.go's [needsCall]).
+//
+// IT SAYS WHAT THE PERSON CAN DO, NOT WHAT THE MACHINE COULD NOT. The engine's
+// own reason, `nobody could check it`, is the right sentence on the task's
+// record, where the two answers stand beside it; on home, under a title and an
+// age, it read as a shrug (owner, 2026-09-10). The line names its own door, so
+// the row draws no second `enter` beside it.
+const needsUncheckedWord = "landed unchecked · enter to look"
+
+// ── THE FIVE-LEVEL SCALE (SCREEN 2a) ────────────────────────────────────────
+//
+// A terminal has no font sizes, so a place's hierarchy is five levels built
+// from brightness, weight, case and air — and each is spelled ONCE, here, so a
+// place cannot light a heading or bold a fact without saying so in this file:
+//
+//	edge      [placeLead] — one cell in, for every heading and every mark
+//	page      the tab bar alone, bold, and nowhere in a body
+//	section   [placeHeading] — lowercase, muted, one blank row above it
+//	subject   [placeSubject] — the reading ink, bold inside the band
+//	note      [placeFactInk] — dim, lifted to the reading ink inside the band
+//	margin    the same ink as a note, flushed right
+//
+// and one ground for both hands, [placeBand]. SECTIONS ARE MUTED AND NOT DIM,
+// which is where this departs from the screen's own mock: DESIGN-LANGUAGE's
+// accent budget says headings, band labels and wordmarks wear muted, and one
+// heading ink across the bar is the law this scale exists for. The accent is
+// spent on the live thing and nothing here.
+
+// placeHeading is a section heading on a place.
+func placeHeading(text string, pal palette) string { return placeHeadingInk(pal)(text) }
+
+// placeHeadingInk is THE ONE HEADING INK, for every place's section words and
+// every one of home's panel headings (homecell.go's [homeCellHead]). Moving
+// headings between muted and dim is this line and nothing else, so home and
+// the places can never be moved apart by a change that remembered one of them.
+func placeHeadingInk(pal palette) func(string) string { return pal.muted }
+
+// placeSubject is the thing a row is about. COLOUR IS STROKE, NEVER FILL: the
+// row's glyph carries its state and the words beside it keep the ordinary ink
+// (docs/DESIGN-LANGUAGE.md), so a finished task and a running one are told
+// apart by their marks rather than by a second ink on their titles.
+func placeSubject(text string, lit bool, pal palette) string { return placeSubjectInk(lit, pal)(text) }
+
+// placeSubjectInk is [placeSubject] as an ink, for the painters that are handed
+// one.
+func placeSubjectInk(lit bool, pal palette) func(string) string {
+	if lit {
+		return func(s string) string { return pal.bold(pal.ink(s)) }
+	}
+	return pal.ink
+}
+
+// placeFactInk is the ink of what is true about a row and of its margin: dim,
+// and the reading ink inside the band — dim grey on a raised ground is grey on
+// grey, and the facts are the half of the row a person stopped on it to read.
+func placeFactInk(lit bool, pal palette) func(string) string {
+	if lit {
+		return pal.ink
+	}
+	return pal.dim
+}
+
+// placeLead is THE ONE LEFT EDGE: the cell every place's body starts one in
+// from, where the pulse, the composer and the hint start and where home hangs
+// its headings. A row's mark stands on it and the row's words start two cells
+// after the mark; a heading starts on it. Before it the bodies started at
+// columns 0, 1 and 2 depending on the place, so walking the bar the body
+// stepped sideways (PLACES-AUDIT.md finding 12).
+const placeLead = " "
+
+// placeBand is the ground under the row the cursor or the pointer is on. They
+// are ONE step (THE GROUND LADDER): a place has nothing open, so nothing on it
+// wears the selected step.
+func placeBand(text string, width int, pal palette) string { return pal.cursor(text, width) }
+
+// ── a place with nothing in it ──────────────────────────────────────────────
+
+// placeBlank is what one place says while it holds nothing: the heading its
+// list will stand under, and the one line under that heading.
+type placeBlank struct {
+	// heading is "" where the place's own word is the heading, which is every
+	// place but standing — whose page has always been headed `standing orders`.
+	heading string
+	whisper string
+}
+
+// placeWhisper is THE COPY OF RECORD for an empty place, one sentence each, and
+// the manual quotes it from here.
+//
+// NO WHISPER CARRIES AN ELLIPSIS, not even a quoted one — home's rule for its
+// panels (homegrid.go's [homeWhisper]), for home's reason: a whisper wraps
+// rather than being cut ([placeWhisperLines]), so a `…` on one of these lines
+// could only be read as the screen having run out of room. Standing's example
+// was `"every morning, …"` until it took home's `"every morning at 9"`.
+//
+// A WHISPER NAMES WHAT ARRIVES AND THE ONE THING THAT PUTS IT THERE — the rule
+// home's panels already keep (homegrid.go's [homeWhisper], DESIGN.md §4). It
+// never says the place is empty: `no tasks yet`, `nothing learned yet` and
+// `nothing spent yet` were each a paragraph ending in that sentence, which is
+// the emptiness law inverted into words (docs/DESIGN-LANGUAGE.md, "presence
+// over labels"). Settings is absent because it is never empty.
+var placeWhisper = map[page]placeBlank{
+	pageTasks:    {whisper: "work you send off with /task lands here, and its record stays"},
+	pageSpend:    {whisper: "every chat and task is priced here as it runs"},
+	pageStanding: {heading: standHeading, whisper: `reminders, watches and routines · "remind me at 6" or "every morning at 9"`},
+	pageMemory:   {whisper: "what it has learned about you and this machine · /remember adds a line"},
+	pageSearch:   {whisper: "type a word · every conversation on this machine is searched"},
+}
+
+// placeWhisperLead is where the whisper hangs: the place's own lead, then the
+// gutter home hangs a panel's whisper in (homecell.go's [homeCellLeadBlank]), so
+// the two stand in one column by construction.
+var placeWhisperLead = placeLead + homeCellLeadBlank
+
+// placeWhisperLines is an empty place's rows: the heading in the muted tier
+// every heading on this surface wears, and the whisper dim under it.
+//
+// THE WHISPER WRAPS; IT IS NEVER CUT. It takes the dim lines it needs from the
+// one wrapper home's panels use ([homeWhisperLines]), handed the width to the
+// right of the place's lead. It used to give up its example after the middle
+// dot and then take an ellipsis where there was no clause left to give, so at
+// forty-four columns tasks read `work you send off with /task lands here, and…`
+// — the half a person needed was the half that went (DESIGN.md §4).
+func placeWhisperLines(id page, width int, pal palette) []string {
+	blank, ok := placeWhisper[id]
+	if !ok || width < len(placeWhisperLead)+1 {
+		return nil
+	}
+	heading := blank.heading
+	if heading == "" {
+		heading = id.word()
+	}
+	lines := []string{placeLead + placeHeading(fit(heading, width-len(placeLead)), pal)}
+	for _, words := range homeWhisperLines(blank.whisper, width-len(placeLead)) {
+		lines = append(lines, placeWhisperLead+pal.dim(words))
+	}
+	return lines
+}
 
 // placeWindowStep is SCREEN 3d'S FOUR KEYS, and it is one function because
 // there is one answer.
@@ -217,7 +346,7 @@ func placeWindowFits(width int, head string, win session.UsageWindow) (arrows, g
 	if words == "" || phoneList(width) {
 		return false, false
 	}
-	used := ansi.StringWidth(head) + ansi.StringWidth(words) + placeHeadGap
+	used := len(placeLead) + ansi.StringWidth(head) + ansi.StringWidth(words) + placeHeadGap
 	if width < used {
 		return false, false
 	}
@@ -242,11 +371,16 @@ func placeWindowFits(width int, head string, win session.UsageWindow) (arrows, g
 // An empty `painted` means "paint it dim", which is what a place name wants.
 func placeHeadRow(width int, head, painted string, win session.UsageWindow, pal palette) string {
 	if painted == "" {
-		painted = pal.dim(head)
+		painted = placeHeading(head, pal)
 	}
 	arrows, grain := placeWindowFits(width, head, win)
 	if !arrows {
-		return pal.dim(fit(head, width))
+		// A HEAD WITH NO ROOM FOR ITS CONTROL KEEPS ITS OWN INK where it fits
+		// whole; only a head too long for the row is cut, and cut dim.
+		if ansi.StringWidth(head) <= width-len(placeLead) {
+			return placeLead + painted
+		}
+		return placeLead + pal.dim(fit(head, width-len(placeLead)))
 	}
 	right := placeWindowRow(win, pal)
 	plainRight := placeWindowWords(win)
@@ -254,24 +388,22 @@ func placeHeadRow(width int, head, painted string, win session.UsageWindow, pal 
 		right += pal.dim("  " + placeGrainWords(win))
 		plainRight += "  " + placeGrainWords(win)
 	}
-	gap := width - ansi.StringWidth(head) - ansi.StringWidth(plainRight)
+	gap := width - len(placeLead) - ansi.StringWidth(head) - ansi.StringWidth(plainRight)
 	if gap < 1 {
 		gap = 1
 	}
-	return painted + strings.Repeat(" ", gap) + right
+	return placeLead + painted + strings.Repeat(" ", gap) + right
 }
 
 // foldWords is THE ONE SENTENCE a fold says, and the reason it lives here
 // rather than beside either of its callers is that home spelled it twice for a
-// wave: the list said `▸ 4 more, quiet since sep 1` ([switcherReading.addFold])
-// while the phone and the project tails said `▸ …7 more, quiet since 3h`
+// wave: the retired flat list said `▸ 4 more, quiet since sep 1` while the phone and the project tails said `▸ …7 more, quiet since 3h`
 // ([homeQuietWord]) — a leading ellipsis on one and not the other, and a
 // calendar date against an elapsed span, for one idea.
 //
 // A SHUT FOLD SAYS HOW MANY IT HIDES; AN OPEN ONE SAYS THE WAY BACK. The count
 // is the same number both ways — what a fold stands over is counted at the cap
-// and never at what is drawn ([switcherReading.addRowsAndFold] states that law)
-// — but `12 more` over a list already showing all twelve is a sentence that is
+// and never at what is drawn — but `12 more` over a list already showing all twelve is a sentence that is
 // not true, so an open fold is `12 fewer`, which is what pressing it does.
 //
 // THE MARK IS THE CALLER'S. Home draws `>` and `v` in an ASCII palette and the
@@ -289,10 +421,31 @@ func foldWords(open bool, n int, clause string) string {
 }
 
 // foldLine is [foldWords] wearing the shut mark, for the folds that are only
-// ever shut — the shelves on the memory place, a search's tail, the spend
-// sheet's, the command list's.
+// ever shut — the command list's, home's quiet tail. A fold a place draws
+// over its own rows is a door both ways instead ([foldDoor]).
 func foldLine(n int, clause string) string {
 	return tokens.GlyphCollapsed + " " + foldWords(false, n, clause)
+}
+
+// foldDoor is a fold line that is a door both ways — `▸ 11 more` shut and
+// `▾ 11 fewer` open — for the lists that draw their first few rows and the rest
+// on `enter` or a click (the spend place's subjects, a search's tail, a memory
+// shelf). hidden is how many rows the shut fold keeps back.
+func foldDoor(open bool, hidden int, clause string) string {
+	mark := tokens.GlyphCollapsed
+	if open {
+		mark = tokens.GlyphExpanded
+	}
+	return mark + " " + foldWords(open, hidden, clause)
+}
+
+// foldEnterWord is the foot's `enter` clause while the cursor is on a
+// [foldDoor].
+func foldEnterWord(open bool) string {
+	if open {
+		return "enter folds them"
+	}
+	return "enter shows the rest"
 }
 
 // foldSpellings is the fold line at EVERY LENGTH IT WILL GIVE WAY THROUGH,

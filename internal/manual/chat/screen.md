@@ -17,7 +17,7 @@ conversation tabs, the pinned room header (only while a task room is open), the 
 strip, the conversation, a breathing
 gap, the rule with the legend in it, the approval question, the connect offer, the
 sub-harness offer, the steer guard, the follow-up row, any message waiting for the
-answer to finish, another gap, the tray row above the box, the draft box where you type,
+answer to finish, the tray row above the box, the draft box where you type,
 any open list (picker, menu, completion), and the status line last.
 
 **The tray row** carries what the next message takes with it besides its words —
@@ -48,9 +48,10 @@ the strip along the top, and the legend's hint slot reads `ctrl+g tasks` once th
 session has tasks to come back to and no running-turn line owns that slot.
 
 **Seven places take the whole frame instead of sharing it**, at every width: home, tasks,
-standing, memory, spend, search and settings. `tab` walks between them, `alt+1` … `alt+7`
-(`⌥1` … `⌥7` on a Mac) jump straight to one from wherever you are standing — a place or a
-conversation — and each
+standing, memory, spend, search and settings. Four are on the tab bar — `home  tasks
+spend  settings` — and `tab` walks those; `alt+1` … `alt+7` (`⌥1` … `⌥7` on a Mac) jump
+straight to any of the seven from wherever you are standing — a place or a conversation —
+and each
 has commands of its own (`/home`, `/history`, `/standing`,
 `/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
 deliberately not one of the seven — it is something you do to this conversation rather than
@@ -60,7 +61,7 @@ While any of them is up nothing else is drawn — no conversation, no box, no st
 and `esc` gives the frame back. **Only one is ever up:** opening any one closes the rest.
 
 Every place is drawn in one frame, top to bottom: the machine's own top line, the tab bar
-naming the seven, a dim rule, the place's body, a rule, the place's own count or note, the
+naming the four (and the one you stand in, when it is off the bar), a dim rule, the place's body, a rule, the place's own count or note, the
 **composer** with its scope chip (`here ~/aforge-v2`) at the right of the box row, and the
 hint line last. See the **Places** page.
 
@@ -465,7 +466,7 @@ borders anywhere else. The draft box is inset one cell.
 If the frame is taller than your terminal, rows are lost from the **top**, never from
 the bottom. The chrome is the tail, and the tail survives.
 
-## Blank rows, the gap above the message box, and the blank row under it
+## Blank rows, the gap above the message box, and why there is no blank row under it
 
 Four rules decide every blank line in the conversation. One blank before a tool cluster
 that follows text; none between the lines of a cluster; one blank after a cluster; one
@@ -478,17 +479,19 @@ older messages you have not scrolled back into yet. Nothing else goes there.
 
 The resting whitespace around the draft box is a **height** ladder, not a width one:
 
-| terminal height | breathing rows |
+| terminal height | what it keeps |
 | --- | --- |
-| 16 rows or more | 2 |
-| 6 to 15 rows | 1 |
-| under 6 rows | 0 |
+| 16 rows or more | one blank above the rule, and the four rows of the head at the top |
+| 6 to 15 rows | one blank above the rule; no head |
+| under 6 rows | nothing |
 
-**The prompt sits directly under the rule, and the blank row is under the prompt.** The
-`›` is the first row beneath the legend line, so you start writing at the top of the room
-the box has and a draft grows *down* into the blank as it wraps, rather than pushing the
-conversation up from the bottom. The cursor therefore rests two rows above the status
-line, not one. On a window with two breathing rows the second one is above the rule.
+**The prompt sits directly under the rule, and the status line directly under the
+prompt.** The `›` is the first row beneath the legend line, so you start writing at the
+top of the room the box has, and the one blank is above the rule, where the conversation
+stops. That is the same foot every place draws — a blank, the rule, the box, the hint
+line — so going from a chat to home or tasks and back moves neither the rule nor the box.
+A draft that wraps takes its extra rows from the conversation above. Until 2026-09-10 a
+tall window kept a second blank under the box, which no place had.
 
 Below 6 rows the rule, the gap, the pinned room header and the task strip all go,
 leaving the conversation, the box and the status line. The ladder steps down, never up.
@@ -734,8 +737,8 @@ room for the name: the name is cut first, because the keys are written nowhere e
 **The key itself is drawn apart from the word beside it.** In `esc interrupt`, `esc`
 wears the soft cyan every highlighted fact wears and `interrupt` stays at the border's
 own dim — the thing you press reads at a glance and the explanation of it does not
-compete. It is the same in every hint the slot carries, in home's foot hint, in the keys
-legend at the bottom of a conversation's card on home, and on the task record's foot. See "Why is one word in a line brighter than the rest"
+compete. It is the same in every hint the slot carries, in home's foot hint, in the verbs
+line at the bottom of the card beside a search on home, and on the task record's foot. See "Why is one word in a line brighter than the rest"
 below.
 
 **At rest it carries the two doors out of the conversation.** With an empty box, it reads
@@ -993,7 +996,8 @@ expire on time.
 
 The last three rows of a list that runs on past the bottom of its window are drawn a step
 fainter each, fading toward the background. It happens on the task page (`/history`,
-`ctrl+.`), on the task column, and on home's list of projects and conversations.
+`ctrl+.`) and on the task column. Home's panels never fade: each one folds inside itself
+with `N more` instead.
 
 It means one thing: **there is more of this list below**. The head of the window is at
 full strength, the tail steps back, so a long list reads as sharp where you are and quiet
@@ -3650,8 +3654,11 @@ would be the one boxed thing on a surface with no boxes.
 
 **The pointer and the cursor share one background; the chosen thing gets the louder
 one.** Whether you reached a row with the mouse or with `↓`, the row you are on looks the
-same — it does not change appearance depending on which hand you used. What tells the two
-apart is the mark in front: `›` where enter would act, `·` where the pointer is.
+same — it does not change appearance depending on which hand you used. In a list the
+conversation opens over you, what tells the two apart is the mark in front: `›` where
+enter would act, `·` where the pointer is. On the places (tasks, standing, memory, spend,
+search, settings) there is no mark at all: the row under either hand wears the same ground
+with its name in bold, the way a row on home does.
 
 The step above that is for the thing you have actually **chosen**, and it stays drawn
 when nobody is touching the list: the roster row and the strip chip of the room you are

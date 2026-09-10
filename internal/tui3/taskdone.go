@@ -1088,7 +1088,7 @@ func (a *app) rollupRows(d deck, out []row, from, to, width int) []row {
 	last := -1
 	for i := from; i < to; i++ {
 		card := d.entries[i].done
-		if card == nil {
+		if card == nil || supersededIn(d, i, to) {
 			continue
 		}
 		last = i
@@ -1119,7 +1119,7 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 	var first, last time.Time
 	for i := from; i < to; i++ {
 		card := d.entries[i].done
-		if card == nil {
+		if card == nil || supersededIn(d, i, to) {
 			continue
 		}
 		count++
@@ -1146,6 +1146,28 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 		head += a.pal.dim(" · " + taskSpanWord(last.Sub(first)))
 	}
 	return fitPainted(head, width)
+}
+
+// supersededIn reports whether the card at i lands again LATER IN THE SAME RUN:
+// the first landing of a node that asked `your call` and was then decided.
+//
+// A BATCH COUNTS WORK, NOT LANDINGS. A decision lands a node a second time, and
+// when the answer comes straight under the question both cards fall into one
+// run — which drew `? 3 tasks landed` over two tasks, the question mark standing
+// for a question already answered. So a folded batch reads each node by its
+// newest card and draws only that one, which is the card [app.doneEntryFor]
+// already names as saying where the work stands now.
+func supersededIn(d deck, i, to int) bool {
+	card := d.entries[i].done
+	if card == nil || card.id == 0 {
+		return false
+	}
+	for j := i + 1; j < to; j++ {
+		if next := d.entries[j].done; next != nil && next.id == card.id {
+			return true
+		}
+	}
+	return false
 }
 
 // doneLouder reports whether one card outranks another for the mark a folded

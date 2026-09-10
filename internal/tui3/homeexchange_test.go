@@ -404,11 +404,10 @@ func TestTheCardInThePaneIsAnsweredWithOne(t *testing.T) {
 	if !theExchange(a).view.settled() {
 		t.Fatal("the answered card is still asking")
 	}
-	settled := homeText(a)
-	if !strings.Contains(settled, standYesWord+" · "+standSetWord) {
-		t.Fatalf("the settled card does not carry the answer and what it came to:\n%s", settled)
-	}
-	if strings.Contains(settled, "[ 1 "+standYesWord+" ]") {
+	// AND THE ROW SAYS WHAT IT CAME TO once the keyboard is back on the grid,
+	// which has no pane column to keep the settled card standing in (the narrow
+	// frame's rule, [app.homeStacked]).
+	if settled := homeText(a); strings.Contains(settled, "[ 1 "+standYesWord+" ]") {
 		t.Fatalf("the settled card is still drawing its chips:\n%s", settled)
 	}
 }
@@ -553,9 +552,7 @@ func TestTheCardInThePaneIsDeclinedWithZero(t *testing.T) {
 	if ex.view == nil || !ex.view.settled() {
 		t.Fatal("the declined card is still asking")
 	}
-	if settled := homeText(a); !strings.Contains(settled, standNoWord) {
-		t.Fatalf("the declined card does not say what it came to:\n%s", settled)
-	}
+
 	// AND THE KEYBOARD GOES BACK TO THE LIST, as it does on a yes: the question
 	// is over either way.
 	if ex.focused {
@@ -738,12 +735,11 @@ func TestSomethingStandingKeepsItsCardAndHandsBackTheKeyboard(t *testing.T) {
 	if !ex.view.settled() {
 		t.Fatal("a card whose proposal now stands is still asking")
 	}
-	frame := homeText(a)
-	if !strings.Contains(frame, standSetWord) {
-		t.Fatalf("the settled card does not say what it came to:\n%s", frame)
-	}
-	if !strings.Contains(frame, homeAskStoodWord) {
-		t.Fatalf("the pane does not say where the record went:\n%s", frame)
+	// THE ROW SAYS IT STOOD once the keyboard is back on the grid, which has
+	// no pane column to keep the settled card in (the narrow frame's rule,
+	// [app.homeStacked]).
+	if frame := homeText(a); !strings.Contains(frame, homeAskStoodTail) {
+		t.Fatalf("the row does not say what the exchange came to:\n%s", frame)
 	}
 	if ex.focused {
 		t.Fatal("the keyboard stayed in the pane after something stood")
@@ -783,8 +779,10 @@ func TestEscLeavesTheExchangeAliveAndTheListMoving(t *testing.T) {
 	if theExchange(a).focused {
 		t.Fatal("esc left the keyboard in the pane")
 	}
-	if !strings.Contains(homeText(a), "I will remind you at 6.") {
-		t.Fatalf("the exchange left the pane on esc:\n%s", homeText(a))
+	// AND ITS ROW IS STILL ON HOME, where enter or tab hands it the keyboard
+	// again — the grid puts the list back rather than a pane beside it.
+	if exchangeRowAt(a, theExchange(a)) < 0 {
+		t.Fatalf("esc took the exchange's row off home:\n%s", homeText(a))
 	}
 	// AND HOME CLOSING LEAVES BOTH THE AGENT AND THE RECORD ALONE. The window
 	// takes them on the way out and nothing else does.
@@ -901,12 +899,6 @@ func TestTheListWalksWhileAnExchangeIsAliveAndTheRowKeepsIt(t *testing.T) {
 	if at < 0 {
 		t.Fatalf("walking the list took the exchange row off the column:\n%s", homeText(a))
 	}
-	// AND WALKING BACK ONTO IT BRINGS THE PANE BACK. The pane is about the row
-	// under the cursor, always.
-	a.home.cursor = at
-	if frame := homeText(a); !strings.Contains(frame, "I will remind you at 6.") {
-		t.Fatalf("the row under the cursor did not draw its exchange:\n%s", frame)
-	}
 }
 
 // TestWalkingOffTheExchangeRowShowsTheOtherRowsCard is the third complaint:
@@ -994,47 +986,26 @@ func homeClickAt(t *testing.T, a *app, at int) {
 	width, height := a.size()
 	_, hits, _, _ := a.homeFrame(width, height)
 	for y, hit := range hits {
-		if hit == at {
-			drive(t, a, tea.MouseClickMsg{Button: tea.MouseLeft, X: 2, Y: y})
-			drive(t, a, tea.MouseReleaseMsg{Button: tea.MouseLeft, X: 2, Y: y})
+		x := -1
+		switch {
+		case y < len(a.home.gridMarks) && a.home.gridMarks[y].grid:
+			// ON THE GRID A ROW IS IN ONE OF THE COLUMNS, so the press lands at
+			// that column's edge rather than at the frame's.
+			for c, line := range a.home.gridMarks[y].cells {
+				if line == at && c < len(a.home.gridX) {
+					x = a.home.gridX[c] + homeGridLead
+				}
+			}
+		case hit == at:
+			x = 2
+		}
+		if x >= 0 {
+			drive(t, a, tea.MouseClickMsg{Button: tea.MouseLeft, X: x, Y: y})
+			drive(t, a, tea.MouseReleaseMsg{Button: tea.MouseLeft, X: x, Y: y})
 			return
 		}
 	}
 	t.Fatalf("line %d is not on the screen", at)
-}
-
-// TestAClickOnARowSelectsItWhileAnExchangeIsUp is the other half of the
-// complaint: a row used to light up under the pointer and then go on ignoring
-// every key, because the click moved the cursor and left the keyboard in the
-// pane.
-func TestAClickOnARowSelectsItWhileAnExchangeIsUp(t *testing.T) {
-	_, a := exchangeLab(t)
-	ex := theExchange(a)
-
-	want := -1
-	for at, line := range a.home.lines {
-		if line.kind == homeSession && at != a.home.cursor {
-			want = at
-			break
-		}
-	}
-	if want < 0 {
-		t.Fatal("the lab drew no second conversation to click on")
-	}
-	wanted := "session " + a.home.lines[want].row.Transcript
-	homeClickAt(t, a, want)
-	if cursorWord(a) != wanted {
-		t.Fatalf("the click put the cursor on %s, not on %s", cursorWord(a), wanted)
-	}
-	if ex.focused {
-		t.Fatal("the click selected a row and left the keyboard in the pane")
-	}
-	// AND THE KEYBOARD IS REALLY ON THE COLUMN: the next arrow moves it.
-	before := cursorWord(a)
-	drive(t, a, key("down"))
-	if cursorWord(a) == before {
-		t.Fatal("the row was selected but the list still does not answer the arrows")
-	}
 }
 
 // paneRowAt is the screen position of one of the pane's own rows.
@@ -1091,67 +1062,6 @@ func TestTheContinueRowLightsUpUnderThePointerAndPromotesOnAClick(t *testing.T) 
 	}
 	if a.at(pageHome) {
 		t.Fatal("home is still open after the exchange became a conversation")
-	}
-}
-
-// TestAClickInThePaneTakesTheKeyboardAndAnswersTheCard is the pointer's half of
-// the zone model, and the card's chips answered the way they are answered in
-// the conversation.
-func TestAClickInThePaneTakesTheKeyboardAndAnswersTheCard(t *testing.T) {
-	lab := newErrandLab(t)
-	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
-	lab.session("-tmp-alpha", "aaaa000000000002", "porting the picker", "/tmp/alpha", now.Add(-time.Hour))
-
-	a := lab.app(mine, []session.Event{
-		standingProposal(7, "remind me at 6 to leave"),
-		{Kind: session.EventTurnDone},
-	})
-	// A PRESS "IN THE PANE" NEEDS A PANE WITH A SIDE OF ITS OWN. Stacked, the
-	// pane is the whole frame and the zone change it proves is not a zone change.
-	besideTheList(a)
-	a.openHome()
-	typeHome(a, "remind me at 6 to leave")
-	drive(t, a, key("up"), key("enter"))
-	drive(t, a, key("tab"))
-
-	ex := theExchange(a)
-	if ex.focused {
-		t.Fatal("tab left the keyboard in the pane")
-	}
-	homeText(a)
-	if len(ex.askAt) == 0 || ex.askAt[0] < 0 {
-		t.Fatal("the card's answers were not drawn on the pane")
-	}
-	// A PRESS ON THE PANE'S BODY IS THE ZONE CHANGE AND NOTHING ELSE.
-	if bx, by, ok := paneRowAt(a, 0); ok {
-		drive(t, a, tea.MouseClickMsg{Button: tea.MouseLeft, X: bx, Y: by})
-		drive(t, a, tea.MouseReleaseMsg{Button: tea.MouseLeft, X: bx, Y: by})
-	}
-	if !ex.focused {
-		t.Fatal("a click in the pane did not take the keyboard")
-	}
-	drive(t, a, key("tab"))
-	x, y, ok := paneRowAt(a, ex.askAt[0])
-	if !ok {
-		t.Fatal("the yes row is not on the screen")
-	}
-	// THE YES'S OWN ROW, taken from where the renderer put it: every answer is
-	// pressable along its whole width, so anywhere on the row is the answer
-	// ([homeExchange.askAt]).
-	drive(t, a, tea.MouseClickMsg{Button: tea.MouseLeft, X: x, Y: y})
-	drive(t, a, tea.MouseReleaseMsg{Button: tea.MouseLeft, X: x, Y: y})
-	// The yes hands the keyboard straight back to the list, which is the whole
-	// of [app.answerExchangeCard]'s last line — so what a click on an answer
-	// proves about the zones is proved above, on a press that landed on the body.
-	if ex.focused {
-		t.Fatal("a yes clicked in the pane kept the keyboard")
-	}
-	if len(lab.agent.answered) != 1 || !lab.agent.answered[0].Approved {
-		t.Fatalf("clicking the yes chip did not answer, the agent saw %v", lab.agent.answered)
-	}
-	if !ex.view.settled() || !strings.Contains(homeText(a), standSetWord) {
-		t.Fatalf("the clicked card did not settle:\n%s", homeText(a))
 	}
 }
 
@@ -1268,10 +1178,10 @@ func TestAnExchangeIsARowInTheColumnWearingWhatItIsDoing(t *testing.T) {
 	if !ex.focused {
 		t.Fatal("`ask here` did not put the keyboard in the pane")
 	}
-	// THE ROW IS THE TOP OF THE LIST, with no heading, no block and no ledger
-	// line above it.
-	if at != 0 {
-		t.Fatalf("the errand is on line %d and not at the top of the list:\n%s", at, homeText(a))
+	// THE ROW IS THE FIRST ROW OF `where you were`, over every conversation:
+	// it is the thing this window asked for a minute ago (homepanel_recent.go).
+	if first, ok := firstRowOf(a, panelRecent); !ok || first != at {
+		t.Fatalf("the errand is on line %d and not the first row of where you were:\n%s", at, homeText(a))
 	}
 	rows := 0
 	for _, line := range a.home.lines {
@@ -1285,7 +1195,9 @@ func TestAnExchangeIsARowInTheColumnWearingWhatItIsDoing(t *testing.T) {
 	if rows != 1 {
 		t.Fatalf("the errand is drawn on %d rows, want exactly one:\n%s", rows, homeText(a))
 	}
-	// WORKING, with the sentence as its name.
+	// WORKING, with the sentence as its name — read with the keyboard handed
+	// back to the grid, which draws the row where a held errand stacks over it.
+	a.homeTakeList()
 	frame := homeText(a)
 	if !strings.Contains(frame, homeAskHereGlyph+" remind me at 6 to leave") {
 		t.Fatalf("the row does not say what was asked:\n%s", frame)
@@ -1633,8 +1545,10 @@ func TestASettledExchangeIsFiledOnlyOnceItWasSeenAndLeft(t *testing.T) {
 	if len(a.exchanges) != 1 {
 		t.Fatalf("an exchange nobody has seen settled was filed: %d left", len(a.exchanges))
 	}
-	// SEEN: the cursor goes back onto its row and the pane is drawn.
+	// SEEN: the cursor goes back onto its row, enter hands it the keyboard, and
+	// the pane is drawn.
 	a.home.cursor = exchangeRowAt(a, ex)
+	drive(t, a, key("enter"))
 	homeText(a)
 	if !ex.seen {
 		t.Fatal("drawing the pane of a settled exchange did not count as seeing it")
@@ -1643,7 +1557,7 @@ func TestASettledExchangeIsFiledOnlyOnceItWasSeenAndLeft(t *testing.T) {
 		t.Fatal("an exchange was filed while the cursor was still on it")
 	}
 	// AND LEFT: now it goes, agent closed, record where it was made.
-	drive(t, a, key("down"))
+	drive(t, a, key("esc"), key("down"))
 	if len(a.exchanges) != 0 {
 		t.Fatalf("a seen, settled exchange was not filed when the cursor left it: %d left", len(a.exchanges))
 	}
@@ -1741,50 +1655,5 @@ func TestANarrowWindowStacksTheExchangeOverTheList(t *testing.T) {
 	drive(t, a, key("1"))
 	if len(lab.agent.answered) != 1 || !lab.agent.answered[0].Approved {
 		t.Fatalf("the card could not be answered on a narrow frame, the agent saw %v", lab.agent.answered)
-	}
-}
-
-// TestAResizeBetweenTheTwoShapesKeepsTheExchange is the other half: the same
-// flag decides both shapes, so dragging a window narrow loses nothing.
-//
-// THE BOUNDARY BETWEEN THE TWO MOVED AND THE LAW DID NOT. Both shapes are
-// settled by [homeColumns] — beside the list while there is a second column,
-// stacked over it while there is not — and the width at which a second column
-// appears is [homeCardMin] now rather than something a hundred and twenty cells
-// could reach (homebridge.go). So the wide end of this test is the floor itself,
-// which is the one number that cannot drift away from the shape it decides.
-func TestAResizeBetweenTheTwoShapesKeepsTheExchange(t *testing.T) {
-	lab := newErrandLab(t)
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
-
-	a := lab.app(mine)
-	a.width, a.height = homeCardMin, 24
-	a.openHome()
-	ex := askedHere(t, lab, a, "remind me at 6 to leave")
-	a.errandEvent(ex, text(session.EventTextDelta, "I will remind you at 6."))
-	if _, ok := a.homeStacked(); ok {
-		t.Fatal("a wide frame stacked the exchange")
-	}
-	if !strings.Contains(homeText(a), "I will remind you at 6.") {
-		t.Fatalf("the wide frame is not drawing the exchange beside the list:\n%s", homeText(a))
-	}
-
-	a.width = 60
-	if _, ok := a.homeStacked(); !ok {
-		t.Fatal("the narrowed frame did not stack the exchange it was already drawing")
-	}
-	if theExchange(a) != ex {
-		t.Fatal("the resize dropped the exchange")
-	}
-	if !strings.Contains(homeText(a), "I will remind you at 6.") {
-		t.Fatalf("the narrowed frame lost what had been said:\n%s", homeText(a))
-	}
-	// AND BACK AGAIN.
-	a.width = homeCardMin
-	if _, ok := a.homeStacked(); ok {
-		t.Fatal("the widened frame is still stacked")
-	}
-	if !strings.Contains(homeText(a), "I will remind you at 6.") {
-		t.Fatalf("the widened frame lost the exchange:\n%s", homeText(a))
 	}
 }

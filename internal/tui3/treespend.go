@@ -40,10 +40,12 @@ import (
 // [session.Receipt] every surface here reads. This file chooses what to SHOW;
 // it never chooses what to add.
 //
-// IT IS READ ONLY WHILE THERE IS WORK TO READ ABOUT. A conversation that has
-// never started a task never touches the file: its own books are the whole
-// truth, and a stat three times a second for a number that cannot move is the
-// shape PERF.md exists to catch.
+// ON THE FRAME CLOCK IT IS READ ONLY WHILE THERE IS WORK TO READ ABOUT. A
+// conversation that has never started a task never touches the file there: a
+// stat three times a second for a number that cannot move is the shape PERF.md
+// exists to catch. The places that ask for the figure on purpose — the Spending
+// tab, /cost, /status — read it every time, because a late receipt moves the
+// ledger with no work running at all ([app.treeLines] says how).
 
 // readTreeSpend takes one reading of the ledger for this conversation's tree.
 //
@@ -53,27 +55,62 @@ import (
 // every reading after that costs a stat and the handful of rows a running tree
 // has written since the last frame.
 func (a *app) readTreeSpend() {
-	if strings.TrimSpace(a.usageLedger) == "" {
-		return
-	}
 	self := a.selfSessionID()
 	if self == "" {
 		return
 	}
-	a.treeCache.Path = a.usageLedger
-	// The error is dropped for [session.ReadUsage]'s reason at the other call
-	// sites: a ledger that cannot be read is a figure this surface does not
-	// have, and what it does about that is keep the figure it had — never say a
-	// smaller number, and never say anything about the file to somebody who is
-	// mid-sentence.
-	//
-	// THE FLOOR IS THE ZERO TIME, on purpose. A conversation held open across
-	// midnight has spent what it has spent, and a figure that reset under a
-	// person's eye would be this row answering a question about the DAY with the
-	// word for the conversation. The day's own reading is a different row on a
-	// different page (settingspend.go).
-	lines, _ := a.treeCache.Read(time.Time{})
+	lines, known := a.treeLines()
+	if !known {
+		// A ledger nobody could read, or a far one that has not answered yet, is
+		// a figure this surface does not have, and what it does about that is
+		// keep the figure it had — never say a smaller number, and never say
+		// anything about the file to somebody who is mid-sentence.
+		return
+	}
 	a.tree = session.UsageTree(lines, self)
+}
+
+// treeLines is the ledger the tree is summed over, through THE SAME TWO DOORS
+// [app.usageSince] goes through and in the same order: the seam first, the file
+// on this disk only where there is none.
+//
+// THE SEAM IS NOT OPTIONAL, AND ITS ABSENCE HERE WAS A WRONG BILL. A window on
+// the engine host — which is what a bare `aforge` opens — carries the seam and
+// no ledger path, so this reading used to stop at its first line and the
+// `this one` receipt fell back to the conversation's own books, which learn
+// about a call only when the frame clock asks the agent. A cut errand's
+// receipt that the provider answered after the turn had ended (a naming call
+// past its patience, a route judge the turn finished in front of) is banked
+// into the ledger under this conversation, and nothing asks the agent again
+// once the frames stop. So `today` counted it and `this one` did not, on a
+// machine holding one conversation (the tagged suite's
+// one_figure_on_every_spend_surface). The day's own reading was moved onto this
+// seam for the same reason and this one was left behind (settingspend.go's
+// [app.readDayCost]).
+//
+// THE FLOORS DIFFER AND BOTH ARE DELIBERATE. The file is read with none: a
+// conversation held open across midnight has spent what it has spent, and a
+// figure that reset under a person's eye would be this row answering a question
+// about the DAY with the word for the conversation. The seam is asked for the
+// spend place's own fortnight instead, because a floor under what it holds makes
+// the link fetch the far machine's whole ledger again on every beat
+// (cmd/aforge's hostLedger). What that costs is stated rather than hidden: over
+// a connection, a conversation's rows older than [spendWindowDays] are not in
+// the tree, and [app.spendShown]'s maximum leaves such a conversation on its
+// own books.
+func (a *app) treeLines() ([]session.UsageLine, bool) {
+	if a.ledger != nil {
+		lines, _, known := a.ledger(session.LastDays(a.now(), spendWindowDays).From)
+		return lines, known
+	}
+	if strings.TrimSpace(a.usageLedger) == "" {
+		return nil, false
+	}
+	a.treeCache.Path = a.usageLedger
+	// The error is dropped and the lines kept, for [session.UsageCache.Read]'s
+	// reason: a torn last line costs that line and never the figure.
+	lines, _ := a.treeCache.Read(time.Time{})
+	return lines, true
 }
 
 // spendShown is the figure the money segment, the phone deck, /status and /cost

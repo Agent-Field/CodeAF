@@ -1,8 +1,6 @@
 package tui3
 
 import (
-	"context"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -171,35 +169,6 @@ func TestThePointerLeavingTheColumnGivesTheCardBackToTheCursor(t *testing.T) {
 	}
 }
 
-// A LINE NO CURSOR MAY STOP ON IS NOT A THING TO PREVIEW, and a pointer resting
-// on one leaves the card where the keyboard is rather than emptying it.
-//
-// THE LINE USED TO BE A PROJECT HEADING AND IS NOW THE READING'S OWN CLAIM —
-// `4 chats · what wants you first` ([homeSwitchHead]). The law did not change
-// with it: the rows the cursor is not allowed to rest on have no card of their
-// own, whatever those rows happen to be, and the pointer must not blank the
-// column by drifting across one on its way somewhere.
-func TestHoveringALineNoCursorMayStopOnLeavesTheCardOnTheCursor(t *testing.T) {
-	a, _, _ := hoverLab(t)
-	at := -1
-	for i, line := range a.home.lines {
-		if line.kind == homeSwitchHead {
-			at = i
-			break
-		}
-	}
-	if at < 0 {
-		t.Fatalf("the reading drew no claim over its ranked rows:\n%s", homeText(a))
-	}
-	a.homeHover(4, homeLineY(t, a, at))
-	if a.home.hover != -1 {
-		t.Fatalf("a line no cursor may stop on was taken as a hover (line %d)", a.home.hover)
-	}
-	if title := homeCardTitle(t, a); title != "Zeta Chat" {
-		t.Fatalf("hovering the list's own claim changed the card to %q", title)
-	}
-}
-
 // EVERY ROW THE CURSOR CAN STOP ON THE POINTER CAN REACH, AND THE CARD IT GETS
 // IS THE CARD THAT ROW HAS.
 //
@@ -286,57 +255,5 @@ func TestTheVerbKeyActsOnTheRowThePointerIsOn(t *testing.T) {
 	}
 	if strings.Contains(joined, "put it away") {
 		t.Fatalf("→ acted on the cursor's conversation instead of the row on the screen: %q", joined)
-	}
-}
-
-// THE CARD'S READING IS THE CARD'S. The repository is read once, bounded, when a
-// card arrives, and a card that arrived under the pointer must read the
-// workspace of the row the pointer is on — hovering a conversation in another
-// project shows THAT project's branch, or the reading would be reporting on a
-// directory nothing on the screen is about.
-//
-// AND THE BRANCH IS ON THE CARD'S PLACE LINE NOW, not in a band of its own. The
-// switcher's card is five things that ACT (place_home.go's [homeCardBands]), and
-// a branch and a dirty count are facts about the address the place line already
-// names — so `repo` was folded into it ([app.homeCardPlace]). The reading is
-// still homeband_repo.go's and is still taken exactly once per workspace.
-func TestHoveringAnotherProjectsRowReadsThatProjectsRepository(t *testing.T) {
-	a, lab, _ := hoverLab(t)
-	alpha := lab.workspace("alpha")
-	var asked []string
-	old := homeGitStatus
-	homeGitStatus = func(_ context.Context, workspace string) ([]byte, error) {
-		asked = append(asked, workspace)
-		return []byte("# branch.head feature/" + filepath.Base(workspace) + "\n"), nil
-	}
-	t.Cleanup(func() { homeGitStatus = old })
-
-	at := homeLineOfKind(t, a, homeSession, "alpha")
-	// The reading is ASKED FOR on the hover and taken off the update loop
-	// (homeband_repo.go), so the gesture is followed the way the program follows
-	// it: the command runs and its answer is filed.
-	settleHomeRepo(a, a.homeHover(4, homeLineY(t, a, at)))
-	if len(asked) != 1 || asked[0] != alpha {
-		t.Fatalf("hovering read %v, want one reading of %s", asked, alpha)
-	}
-	width, _ := a.size()
-	_, right := homeColumns(width)
-	// THE CARD IS DRAWN WIDE ENOUGH TO HOLD THE ADDRESS AND THE BRANCH BOTH. The
-	// place line spends its cells on the address first (place_home.go's
-	// [app.homeCardPlace]) and this lab's workspace is a forty-character
-	// temporary directory, which a thirty-six-cell card cannot hold a branch
-	// beside — dropping the clause there is the layout law, not a lost reading.
-	if room := ansi.StringWidth(alpha) + 24; right < room {
-		right = room
-	}
-	card := ansi.Strip(strings.Join(a.homeDetail(right, 40, a.pal), "\n"))
-	if !strings.Contains(card, "feature/alpha") {
-		t.Fatalf("the hovered project's branch is not on the card:\n%s", card)
-	}
-	// AND ONLY WHEN THE ANSWER CHANGED. A pointer wandering along the row it is
-	// already on must not run git once per motion event.
-	a.homeHover(6, homeLineY(t, a, at))
-	if len(asked) != 1 {
-		t.Fatalf("a motion event that changed nothing read the repository again: %v", asked)
 	}
 }

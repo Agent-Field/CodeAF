@@ -32,6 +32,17 @@ func placeApp(t *testing.T) *app {
 	return a
 }
 
+// placeAppOneColumn is [placeApp] on a home one column wide, where `→` has no
+// column to cross into and opens the row's verbs (homegrid.go's
+// [app.homeGridCross]).
+func placeAppOneColumn(t *testing.T) *app {
+	t.Helper()
+	a := placeApp(t)
+	a.width = homeGridTwoAt - 1
+	placeFrameText(a)
+	return a
+}
+
 // placeFrameText is whatever place is up, as a reader sees it.
 func placeFrameText(a *app) string {
 	f, _, _ := a.frame()
@@ -108,12 +119,12 @@ func TestTabWalksThePlacesAndTheNumbersJump(t *testing.T) {
 	if a.page == pageHome {
 		t.Fatal("tab from home stayed on home")
 	}
-	// alt+5 IS THE SPEND PLACE WHEREVER YOU ARE STANDING.
-	drive(t, a, key("alt+5"))
+	// SPEND'S DIGIT IS THE SPEND PLACE WHEREVER YOU ARE STANDING.
+	drive(t, a, key(placeChord(pageSpend)))
 	if a.page != pageSpend {
-		t.Fatalf("alt+5 did not open the spend place: the router is standing on %q", a.page.word())
+		t.Fatalf("%s did not open the spend place: the router is standing on %q", placeChord(pageSpend), a.page.word())
 	}
-	if text := placeFrameText(a); !strings.Contains(text, "What this machine has cost") {
+	if text := placeFrameText(a); !strings.Contains(text, whisperOf(pageSpend)) {
 		t.Fatalf("the spend place does not say what it is for:\n%s", text)
 	}
 	// AND shift+tab IS THE SAME CIRCLE WALKED BACK.
@@ -201,10 +212,15 @@ func TestNothingIsEverPutBackBecauseNothingRefuses(t *testing.T) {
 
 // THE TAB BAR GIVES UP WORDS IN A STATED ORDER RATHER THAN BEING CUT IN HALF. A
 // bar trimmed mid-word is a bar lying about how many places there are.
+//
+// THE COUNT IS OF THE BAR'S OWN WORDS. The bar is four places (DESIGN.md's law
+// 10); a fold that counted the three reached by command would say `▸ 5` over a
+// bar that only ever had four to give up.
 func TestTheTabBarFoldsRatherThanBeingCut(t *testing.T) {
 	a := placeApp(t)
+	shown := barPages(a.page, false)
 	wide := plain(a.placeTabBar(160, false, a.pal))
-	for _, id := range pages() {
+	for _, id := range shown {
 		if !strings.Contains(wide, id.word()) {
 			t.Fatalf("the wide bar is missing %q: %q", id.word(), wide)
 		}
@@ -217,6 +233,15 @@ func TestTheTabBarFoldsRatherThanBeingCut(t *testing.T) {
 	// something you can still reach; this is the one fact the bar exists for.
 	if !strings.Contains(narrow, a.page.word()) {
 		t.Fatalf("the narrow bar dropped the place you are on: %q", narrow)
+	}
+	missing := 0
+	for _, id := range shown {
+		if !strings.Contains(narrow, id.word()) {
+			missing++
+		}
+	}
+	if want := tokens.GlyphCollapsed + " " + itoa(missing); missing == 0 || !strings.Contains(narrow, want) {
+		t.Fatalf("the narrow bar left %d of its four words off and should end in %q: %q", missing, want, narrow)
 	}
 }
 
@@ -264,8 +289,11 @@ func TestTheMapDrawsInTheCellsThatWereAlreadyThere(t *testing.T) {
 	if len(before) != len(after) {
 		t.Fatalf("the map moved the frame: %d rows became %d", len(before), len(after))
 	}
-	// THE NUMBERS ARE ON THE TABS.
-	if bar := after[1]; !strings.Contains(bar, "1 home") || !strings.Contains(bar, "7 settings") {
+	// THE NUMBERS ARE ON THE TABS, and the three places off the bar are drawn
+	// after the four with theirs: the map is the one surface whose job is to show
+	// every key, so `alt+5`…`alt+7` are on it.
+	if bar := after[placeTabRow]; !strings.Contains(bar, "1 home") || !strings.Contains(bar, "4 settings") ||
+		!strings.Contains(bar, "5 standing") || !strings.Contains(bar, "7 search") {
 		t.Fatalf("the map put no numbers on the tab bar: %q", bar)
 	}
 	// AND THE CHORD LIST IS THE HINT LINE.
@@ -307,7 +335,7 @@ func TestALetterIsAVerbOnlyWhileTheStripIsDrawn(t *testing.T) {
 // to open (switcher.go's [switcherVerbsFor]) — so a row the world recorded no
 // workspace for offers nothing, and the arrow goes on meaning what it meant.
 func TestTheArrowOnlyOpensAStripWhereTheRowHasVerbs(t *testing.T) {
-	a := placeApp(t)
+	a := placeAppOneColumn(t)
 	a.home.box.reset()
 	a.home.build()
 	drive(t, a, key("right"))
@@ -342,7 +370,7 @@ func TestTheArrowOnlyOpensAStripWhereTheRowHasVerbs(t *testing.T) {
 // cursor's, the row above them is the one the verbs act on, and the frame is
 // exactly as tall as it was before `→` was pressed.
 func TestTheVerbStripIsDrawnUnderTheRowAndPushesTheListDown(t *testing.T) {
-	a := placeApp(t)
+	a := placeAppOneColumn(t)
 	a.home.box.reset()
 	a.home.build()
 	before := strings.Split(placeFrameText(a), "\n")
@@ -411,7 +439,7 @@ func TestTheVerbStripIsDrawnUnderTheRowAndPushesTheListDown(t *testing.T) {
 // AND THE COMPOSER IS ASLEEP WHILE THE STRIP IS UP: every printable is a verb or
 // nothing, and none of them is a character.
 func TestTheComposerIsAsleepWhileTheStripIsUp(t *testing.T) {
-	a := placeApp(t)
+	a := placeAppOneColumn(t)
 	a.home.box.reset()
 	a.home.build()
 	drive(t, a, key("right"))
@@ -622,11 +650,10 @@ func TestWaitingOnYouIsOneColourOnHome(t *testing.T) {
 	if pal.warnBold(homeAskGlyph) == pal.askBold(homeAskGlyph) {
 		t.Fatal("the two hues are the same colour, so this test proves nothing")
 	}
-	// The one place the mark is painted now is the switcher's own row, where a
-	// row that needs a person wears the amber and nothing else on the screen
-	// does (switcher.go's [switcherPaintRow]).
-	row := switcherRow{kind: switcherConversation, title: "Asking", needs: true}
-	if !strings.Contains(switcherPaintRow(row, 60, pal, false, switcherPaint{}), pal.warn(tokens.GlyphNeedsHuman)) {
+	// The one place the mark is painted now is a grid row's lead, where a row
+	// that needs a person wears the amber and nothing else on the screen does
+	// (homecell.go's [app.homeCellLead]).
+	if lead := a.homeCellLead(&homeCell{mark: cellMarkNeeds}, -1, pal); !strings.Contains(lead, pal.warn(pal.glyph(tokens.GNeedsHuman))) {
 		t.Fatal("the needs-you row is not the waiting-on-you hue")
 	}
 	// AND MONEY HAS A HUE OF ITS OWN, which is not the hue of a finished tick.
@@ -739,9 +766,9 @@ func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 		t.Fatalf("alt+2 from the conversation landed on %q (open %v)", a.page.word(), a.at(pageTasks))
 	}
 	drive(t, a, key("esc"))
-	drive(t, a, key("alt+3"))
+	drive(t, a, key(placeChord(pageStanding)))
 	if a.page != pageStanding || !a.at(pageStanding) {
-		t.Fatalf("alt+3 from the conversation landed on %q", a.page.word())
+		t.Fatalf("%s from the conversation landed on %q", placeChord(pageStanding), a.page.word())
 	}
 	// AND `tab` IS STILL THE CONVERSATION'S OWN KEY THERE.
 	drive(t, a, key("esc"))
@@ -752,17 +779,29 @@ func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 	}
 }
 
-// THE TAB BAR CARRIES ALL SEVEN WORDS AT EVERY WIDTH A PERSON ACTUALLY USES.
-// The ladder that gives words up is for terminals narrower than any of these
-// ([app.placeTabBar]); at 80 columns and up nothing is dropped.
-func TestTheTabBarCarriesAllSevenAtEveryUsableWidth(t *testing.T) {
+// THE TAB BAR CARRIES ITS FOUR WORDS AT EVERY WIDTH A PERSON ACTUALLY USES, and
+// only those four: `home tasks spend settings` (DESIGN.md's law 10). The ladder
+// that gives words up is for terminals narrower than any of these
+// ([app.placeTabBar]); at 80 columns and up nothing is dropped. Standing,
+// memory and search are rooms reached by command, by their digit and by the
+// map — not words on the row a person reads a hundred times a day.
+func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	a := placeApp(t)
 	for _, width := range []int{80, 120, 200} {
 		bar := plain(a.placeTabBar(width, false, a.pal))
-		for _, id := range pages() {
-			if !strings.Contains(bar, id.word()) {
-				t.Fatalf("at %d columns the bar has no %q: %q", width, id.word(), bar)
+		if !strings.Contains(bar, "home   tasks   spend   settings") {
+			t.Fatalf("at %d columns the bar is not the four places in order: %q", width, bar)
+		}
+		for _, id := range []page{pageStanding, pageMemory, pageSearch} {
+			if strings.Contains(bar, id.word()) {
+				t.Fatalf("at %d columns the bar still carries %q: %q", width, id.word(), bar)
 			}
 		}
+	}
+	// AND A ROOM OFF THE BAR IS ON IT WHILE YOU STAND IN IT. A bar with no word
+	// lit is a bar that does not know where you are.
+	walkTo(t, a, pageMemory)
+	if bar := plain(a.placeTabBar(120, false, a.pal)); !strings.Contains(bar, "settings   memory") {
+		t.Fatalf("standing in memory, the bar does not say so: %q", bar)
 	}
 }

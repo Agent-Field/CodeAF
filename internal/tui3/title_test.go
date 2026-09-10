@@ -225,14 +225,14 @@ func TestQuittingHandsTheTabBackEmpty(t *testing.T) {
 }
 
 // homeWanting is home, standing at rest, over a machine where `wants` things
-// have stopped on a person. The count is put straight into the memo the pulse
-// reads ([app.machineFactsAt]), because the subject is the sentence and the
+// have stopped on a person. The count is put straight into the reading the
+// pulse draws ([app.machine]), because the subject is the sentence and the
 // counters have their own tests (pulsemoney_test.go).
 func homeWanting(t *testing.T, wants int) *app {
 	t.Helper()
-	a, now := pulseLab(t)
+	a, _ := pulseLab(t)
 	a.openHome()
-	a.home.machine, a.home.machineAt = machineFacts{wants: wants}, now
+	a.machine = machineFacts{wants: wants}
 	if !a.at(pageHome) {
 		t.Fatal("home never opened")
 	}

@@ -136,12 +136,12 @@ func (b *effortBand) wire(a *app) {
 
 // itemHome is home with one standing item a cursor can be put on.
 //
-// THE ITEM IS FIRING, AND IT HAS TO BE. Home at rest is one flat ranked list and
-// a watch earns a row on it only while it is asking somebody something or is
-// actually running ([readSwitcher] — a watch that is merely set is not news and
-// is reached from the standing place or by typing its name). The rung is a fact
-// about the item and not about the pass it is on, so a running mark is the
-// cheapest honest way to put the cursor on one.
+// THE ITEM IS FIRING, AND IT HAS TO BE. A watch earns a row on the resting grid
+// only while it is asking somebody something (`needs you`) or is actually
+// running (`running`, homepanel_running.go) — a watch that is merely set is not
+// news and is reached from the standing place or by typing its name. The rung is
+// a fact about the item and not about the pass it is on, so a running mark is
+// the cheapest honest way to put the cursor on one.
 func itemHome(t *testing.T) (*app, *effortBand) {
 	t.Helper()
 	lab := newHomeLab(t)

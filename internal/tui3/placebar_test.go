@@ -224,12 +224,12 @@ func TestTheBarIsNotAMode(t *testing.T) {
 	t.Run("the numbers still jump", func(t *testing.T) {
 		a := placeApp(t)
 		barTop(t, a)
-		drive(t, a, key("alt+5"))
+		drive(t, a, key(placeChord(pageSpend)))
 		if a.page != pageSpend {
-			t.Fatalf("alt+5 from the bar landed on %q", a.page.word())
+			t.Fatalf("%s from the bar landed on %q", placeChord(pageSpend), a.page.word())
 		}
 		if a.bar.on {
-			t.Fatal("alt+5 left the cursor on the bar")
+			t.Fatalf("%s left the cursor on the bar", placeChord(pageSpend))
 		}
 	})
 
@@ -249,17 +249,18 @@ func TestTheBarIsNotAMode(t *testing.T) {
 // AND THE BAR WRAPS RATHER THAN CLAMPING, which is the one cursor on this
 // surface that does. Every list clamps because it has a top and a bottom a
 // person is reading towards; the bar is the same ring `tab` walks, and two keys
-// over one row of seven words may not disagree about where its ends are.
+// over one row of words may not disagree about where its ends are.
 func TestTheBarCursorWrapsAtBothEnds(t *testing.T) {
 	a := placeApp(t)
 	barTop(t, a)
+	ring := barPages(a.page, false)
 	drive(t, a, key("left"))
-	if last := pages()[len(pages())-1]; a.bar.at != last {
+	if last := ring[len(ring)-1]; a.bar.at != last {
 		t.Fatalf("← off the first word landed on %q, want %q", a.bar.at.word(), last.word())
 	}
 	drive(t, a, key("right"))
-	if a.bar.at != pages()[0] {
-		t.Fatalf("→ off the last word landed on %q, want %q", a.bar.at.word(), pages()[0].word())
+	if a.bar.at != ring[0] {
+		t.Fatalf("→ off the last word landed on %q, want %q", a.bar.at.word(), ring[0].word())
 	}
 }
 
@@ -274,7 +275,7 @@ func TestTheBarCursorWrapsAtBothEnds(t *testing.T) {
 func TestHoveringATabWordLiftsItsInkAndNothingElse(t *testing.T) {
 	a := placeApp(t)
 	before, _, _ := a.frame()
-	span := barWordSpan(t, a, pageSearch)
+	span := barWordSpan(t, a, pageSettings)
 
 	drive(t, a, tea.MouseMotionMsg{X: span.from, Y: placeTabRow})
 	after, _, _ := a.frame()
@@ -339,21 +340,21 @@ func TestTheHoverAndTheBarCursorCompose(t *testing.T) {
 	barTop(t, a)
 	drive(t, a, key("right"))
 	a.frame()
-	if a.bar.at == pageSearch {
+	if a.bar.at == pageSettings {
 		t.Fatal("the cursor walked onto the word this test means to hover")
 	}
-	span := barWordSpan(t, a, pageSearch)
+	span := barWordSpan(t, a, pageSettings)
 	drive(t, a, tea.MouseMotionMsg{X: span.from, Y: placeTabRow})
 
-	if a.tabHover != pageSearch {
+	if a.tabHover != pageSettings {
 		t.Fatalf("the pointer is recorded over %q", a.tabHover.word())
 	}
-	if !a.bar.on || a.bar.at == pageSearch {
+	if !a.bar.on || a.bar.at == pageSettings {
 		t.Fatalf("the hover moved the cursor: it is on %q (up=%v)", a.bar.at.word(), a.bar.on)
 	}
-	// Both marks are on the one row, and the row still says the same seven words.
+	// Both marks are on the one row, and the row still says the same four words.
 	row := strings.Split(mustFrame(a), "\n")[placeTabRow]
-	for _, id := range pages() {
+	for _, id := range barPages(a.page, false) {
 		if !strings.Contains(plain(row), id.word()) {
 			t.Fatalf("the bar lost %q while wearing two marks: %q", id.word(), plain(row))
 		}

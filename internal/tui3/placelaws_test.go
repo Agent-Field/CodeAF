@@ -287,6 +287,60 @@ func TestEveryPlaceTakesExactlyTheWholeFrameAtEveryWidth(t *testing.T) {
 	}
 }
 
+// LAW 3a · EVERY PLACE SPENDS THE SAME HEAD AND THE SAME FOOT, full or empty.
+//
+// LAW 3 asks that a place fill the frame; this asks WHERE its edges are. The
+// bar, the head rule, the foot rule, the box and the hint are the furniture a
+// person's eye finds without looking, and a foot rule that stood one row higher
+// on a place with a note than on one without moved under the eye on every `tab`
+// — and moved again inside tasks the moment its first piece of work landed
+// (PLACES-AUDIT.md finding 1). One loop over the registry and over every place
+// that can be empty, at three sizes, and every edge has to be on the same row.
+//
+// placeFootRows is that foot at rest, counted: the blank over the rule, the rule
+// with the note on it, the composer and the hint.
+const placeFootRows = 4
+
+func TestEveryPlaceSpendsTheSameHeadAndFoot(t *testing.T) {
+	type edges struct{ bar, headRule, blank, footRule, box, hint int }
+	sizes := [][2]int{{80, 24}, {120, 45}, {180, 45}}
+	labs := append(everyPlaceTable(), everyEmptyPlace()...)
+	want := map[[2]int]edges{}
+	for _, size := range sizes {
+		height := size[1]
+		want[size] = edges{bar: placeTabRow, headRule: 2, blank: placeHeadRows - 1,
+			footRule: height - placeFootRows + 1, box: height - 2, hint: height - 1}
+	}
+	for _, lab := range labs {
+		for _, size := range sizes {
+			a := lab.open(t)
+			a.width, a.height = size[0], size[1]
+			lines, _, _, _ := a.placeDraw(placeFor(lab.id), a.width, a.height)
+			rows := make([]string, len(lines))
+			for i, line := range lines {
+				rows[i] = ansi.Strip(line)
+			}
+			got := edges{bar: a.tabRow, headRule: -1, blank: -1, footRule: -1, box: -1, hint: len(rows) - 1}
+			if strings.HasPrefix(rows[2], "──") {
+				got.headRule = 2
+			}
+			if strings.TrimSpace(rows[placeHeadRows-1]) == "" {
+				got.blank = placeHeadRows - 1
+			}
+			if strings.HasPrefix(rows[len(rows)-3], "─") {
+				got.footRule = len(rows) - 3
+			}
+			if strings.HasPrefix(rows[len(rows)-2], " "+prompt) {
+				got.box = len(rows) - 2
+			}
+			if got != want[size] {
+				t.Errorf("the %s place at %dx%d puts its edges at %+v, and every place puts them at %+v\n%s",
+					lab.id.word(), size[0], size[1], got, want[size], strings.Join(rows, "\n"))
+			}
+		}
+	}
+}
+
 // LAW 4 · A PLACE NEVER READS THE DISK ON A DRAW — OR ON A KEYSTROKE.
 //
 // Every fact a place shows was read on the way in or on the three-second beat
@@ -369,8 +423,10 @@ func TestAPlaceNeverReadsTheDiskOnADraw(t *testing.T) {
 			// that draws the strip.
 			pl.verbs(a)
 			pl.rowID(a)
+			// THE POINTER RESTING IS HERE AND THE PRESS IS NOT: a press on a row
+			// is `enter` on it (pages.go's [place.press]), and a door may read what
+			// it opens, as the tab bar's own press does.
 			for y := 0; y < 12; y++ {
-				pl.press(a, y)
 				pl.hover(a, y)
 			}
 			pl.wheel(a, 1)

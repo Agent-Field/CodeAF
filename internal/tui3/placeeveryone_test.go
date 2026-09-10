@@ -50,6 +50,16 @@ func everyPlaceTable() []everyPlace {
 			cursor: func(a *app) int { return a.home.cursor },
 			hits: func(a *app) []int {
 				_, hits, _, _ := a.homeFrame(a.width, a.height)
+				// ON THE GRID ONE SCREEN ROW HOLDS A LINE OF EVERY COLUMN
+				// ([homeMark.cells]), and the column a walk is about is the
+				// cursor's own.
+				if col := a.home.columnOf(a.home.cursor); col >= 0 {
+					for y, mark := range a.home.gridMarks {
+						if mark.grid && y < len(hits) {
+							hits[y] = mark.cells[col]
+						}
+					}
+				}
 				return hits
 			},
 		},
@@ -129,8 +139,7 @@ func everyPlaceTable() []everyPlace {
 // ── the labs ────────────────────────────────────────────────────────────────
 
 // switchPlaceLab is home over a machine with more conversations than the frame
-// can hold, with the fold at its foot standing open — so the list genuinely runs
-// on past the bottom of the window.
+// can hold.
 func switchPlaceLab(t *testing.T) *app {
 	t.Helper()
 	lab := newHomeLab(t)
@@ -148,9 +157,6 @@ func switchPlaceLab(t *testing.T) *app {
 	a := lab.app(mine)
 	a.width, a.height = 120, 20
 	openHomeOn(a, mine)
-	// THE FOLD STANDS OPEN, because the resting list caps itself at
-	// [switcherShown] and a capped list has nothing under its window to scroll to.
-	a.home.foldSwitch(true)
 	return a
 }
 
@@ -224,6 +230,42 @@ func settingsPlaceLab(t *testing.T) *app {
 		t.Fatal("the settings place did not open")
 	}
 	return a
+}
+
+// everyEmptyPlace is each place that can hold nothing, opened on a machine
+// that has put nothing in it. Settings is absent because it is never empty, and
+// home because its empty panels are lane G's and are pinned beside the grid.
+func everyEmptyPlace() []everyPlace {
+	opened := func(id page) func(t *testing.T) *app {
+		return func(t *testing.T) *app {
+			t.Helper()
+			a := placeApp(t)
+			a.showPage(id)
+			return a
+		}
+	}
+	return []everyPlace{
+		{id: pageTasks, open: func(t *testing.T) *app {
+			t.Helper()
+			a := newTestApp(&fakeAgent{model: "m"})
+			a.showPage(pageTasks)
+			return a
+		}},
+		{id: pageStanding, open: func(t *testing.T) *app {
+			t.Helper()
+			a, _ := standingPlaceApp(t, nil, nil)
+			a.openStanding()
+			return a
+		}},
+		{id: pageMemory, open: func(t *testing.T) *app {
+			t.Helper()
+			a, _ := memoryPlaceApp(t, nil)
+			a.showPage(pageMemory)
+			return a
+		}},
+		{id: pageSpend, open: opened(pageSpend)},
+		{id: pageSearch, open: func(t *testing.T) *app { return searchLab(t, &searchFakeStore{}) }},
+	}
 }
 
 // ── the four questions ──────────────────────────────────────────────────────

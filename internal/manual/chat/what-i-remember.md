@@ -32,10 +32,10 @@ below is made, and the background tidy never runs. With it off, `/remember`,
 memory is off for this session · turn it on under /settings
 ```
 
-**The memory PLACE still opens with it off.** `alt+4`, `tab` and `/memory` all reach it, and
-what they reach is the three sentences saying what memory is for with that same line said
-once under them, above the composer — *What the memory place shows when there is nothing in
-it* below. It used to refuse to open at all, which made `alt+4` on a fresh machine a key
+**The memory PLACE still opens with it off.** `alt+6` and `/memory` both reach it, and
+what they reach is the heading `memory` and its one line, with that same sentence written
+once into the rule above the composer — *What the memory place shows when there is nothing
+in it* below. It used to refuse to open at all, which made the memory key on a fresh machine a key
 that did nothing.
 
 ## It said memory is off and I never turned it off
@@ -85,7 +85,7 @@ they are gone; nothing else keeps a second copy.
 
 ## How do I see what aforge remembers about me?
 
-Open `/memory` — or `/memories`, or `alt+4`, or `tab` from any other place. **Memory is a
+Open `/memory` — or `/memories`, or `alt+6` from anywhere (memory is not on the tab bar). **Memory is a
 place**, one of seven, taking the whole screen with the tab bar above it and a composer at
 the foot.
 
@@ -153,21 +153,20 @@ of opening anything — a query is a question rather than a door.
 ## What the memory place shows when there is nothing in it
 
 Two machines have an empty memory place and they show **the same body**: one that has simply
-not remembered anything yet, and one where memory is switched off. Both open, and both spend
-the frame on the three sentences that say what this is:
+not remembered anything yet, and one where memory is switched off. Both open, and both show
+the heading `memory` over one dim line:
 
 ```
-What I hold true about you and this machine.
-I put a line in here when it looked like it would matter later, and I only carry it into a chat it bears on.
-Corrections are the point — a wrong line here is wrong in every chat.
+memory
+  what it has learned about you and this machine · /remember adds a line
 ```
 
-No shelf heading is drawn over an absence, and no count. The prose appears whenever fewer
-than eight lines are held, so a nearly-empty page teaches too rather than switching from a
-lesson to a list at the first memory.
+No shelf and no count is drawn under it. The first line remembered replaces that line with
+the page's own head row and its shelf, under the same heading position — nothing above it
+moves.
 
-The one thing the sentences cannot carry is said **once**, on the dim note line between the
-rule and the composer:
+The one thing that line cannot carry is said **once**, written into the dim rule just above
+the composer:
 
 - memory switched off — `memory is off for this session · turn it on under /settings`
 - a store that is there and will not answer — `what is remembered could not be read just now`

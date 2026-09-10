@@ -3,8 +3,6 @@ package tui3
 import (
 	"strings"
 	"testing"
-
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // rhythmBands is a card of one band per group, each band one row, so that what
@@ -102,25 +100,6 @@ func TestTheCardKeepsItsIdentityInAnyRoomAtAll(t *testing.T) {
 	rows := homeCardStack(rhythmBands(), 1)
 	if len(rows) != 1 || rows[0] != "name" {
 		t.Fatalf("a one-row card is %q, want the title alone", strings.Join(rows, "\n"))
-	}
-}
-
-// THE SIGNPOSTS ARE ONE ROLE ABOVE THE FACTS AND ONE UNDER THE TITLE.
-//
-// Weight on this card is made of colour: the title is ink, a section word is
-// muted, and a fact is dim. The test asks the palette rather than a hex value so
-// that it holds on every ramp this surface paints from.
-func TestTheCardsSectionWordsAreOneRoleOverTheFacts(t *testing.T) {
-	pal := newPalette(tokens.TrueColor, false)
-	head := homeCardHeading(homeCardWorkWord, 20, pal)
-	if want := pal.muted(fit(homeCardWorkWord, 20)); head != want {
-		t.Fatalf("the heading is painted %q, want the muted role %q", head, want)
-	}
-	if head == pal.dim(fit(homeCardWorkWord, 20)) {
-		t.Fatal("the heading is dim, which is the role the facts under it wear")
-	}
-	if head == pal.ink(fit(homeCardWorkWord, 20)) {
-		t.Fatal("the heading is ink, which is the role the title over it wears")
 	}
 }
 

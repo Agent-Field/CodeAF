@@ -266,11 +266,11 @@ func TestTheSpendPlaceDrawsTheLedgerItWalkedInOn(t *testing.T) {
 			t.Fatalf("the spend place does not carry %q:\n%s", want, text)
 		}
 	}
-	// AND A MACHINE THAT HAS SPENT NOTHING MEETS THE TEACHING INSTEAD, which is
-	// the router's own three sentences and not a second set of words.
+	// AND A MACHINE THAT HAS SPENT NOTHING MEETS ITS WHISPER INSTEAD, which is
+	// the one table's words and not a second set (placeprose.go's [placeWhisper]).
 	empty := spendLab(t, nil)
-	if got := placeFrameText(empty); !strings.Contains(got, "Every model call writes a line") {
-		t.Fatalf("an empty ledger did not teach:\n%s", got)
+	if got := placeFrameText(empty); !strings.Contains(got, whisperOf(pageSpend)) {
+		t.Fatalf("an empty ledger does not say what arrives here:\n%s", got)
 	}
 }
 
@@ -377,10 +377,10 @@ func TestAnEmptySpendWindowKeepsTheControlThatPagesItBack(t *testing.T) {
 	if strings.Contains(text, "$0.00") {
 		t.Fatalf("an empty window drew the figure the emptiness law forbids:\n%s", text)
 	}
-	// AND A MACHINE THAT HAS SPENT NOTHING IS STILL TAUGHT AT.
+	// AND A MACHINE THAT HAS SPENT NOTHING STILL MEETS ITS WHISPER.
 	b := spendLab(t, nil)
-	if !strings.Contains(placeFrameText(b), "There is nothing to set here") {
-		t.Fatalf("an empty machine was not taught:\n%s", placeFrameText(b))
+	if !strings.Contains(placeFrameText(b), whisperOf(pageSpend)) {
+		t.Fatalf("an empty machine does not say what arrives here:\n%s", placeFrameText(b))
 	}
 }
 
@@ -415,7 +415,7 @@ func TestEnterOnASpendRowOpensTheThingTheMoneyWentOn(t *testing.T) {
 // (settingspend.go).
 func TestTheSpendCursorStopsOnlyOnRowsThatNameSomething(t *testing.T) {
 	a := spendLab(t, spendFixture())
-	seen := 0
+	seen, folds := 0, 0
 	for i, stop := range a.spend.stops {
 		if !stop.ok {
 			continue
@@ -426,16 +426,25 @@ func TestTheSpendCursorStopsOnlyOnRowsThatNameSomething(t *testing.T) {
 			}
 			continue
 		}
-		seen++
 		if stop.rails {
 			t.Fatalf("row %d claims to be the pointer line", i)
 		}
+		// THE FOLD LINE IS A DOOR ONTO THE REST OF THE SUBJECTS, and it names
+		// nothing money was spent on, so it is counted apart.
+		if stop.fold {
+			folds++
+			continue
+		}
+		seen++
 	}
 	// THE LOUDEST DAY IS A DOOR TOO, because its row names a thing money was
 	// spent on and now says `enter opens it in tasks` out at the right — a key
 	// drawn is a key bound (spendplace.go's [spendReading.loudestRow]).
 	if want := spendSubjectCap + 1; seen != want {
 		t.Fatalf("%d doors were drawn, want %d — the %d shown subjects and the loudest day", seen, want, spendSubjectCap)
+	}
+	if len(a.spend.reading.subjects) > spendSubjectCap && folds != 1 {
+		t.Fatalf("%d fold doors were drawn under %d subjects, want 1", folds, len(a.spend.reading.subjects))
 	}
 	if !a.spend.stops[a.loudestSpendRow(t)].ok {
 		t.Fatal("the loudest day names a task and says so, but nothing opens there")
@@ -527,5 +536,23 @@ func TestTheSpendWindowMovesWithoutTouchingTheStandingStore(t *testing.T) {
 	a.placeBeat(a.placeGen)
 	if reads != 2 {
 		t.Fatalf("the beat left the standing store read %d times, want a second read", reads)
+	}
+}
+
+// FOCUS WAKES AT THE CENTRE OF MASS. The spend place is asked "what did it cost,
+// and on what", so the cursor arrives on the first thing the money went on —
+// the head of `what it was for` — and not on the pointer line, whose `enter`
+// leaves the bill for the limits editor (PLACES-AUDIT.md finding 16).
+func TestSpendFocusWakesOnTheFirstThingTheMoneyWentOn(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	stop := a.spendStopAt(a.spend.cursor)
+	if !stop.ok || stop.rails || stop.fold {
+		t.Fatalf("focus woke on body line %d, which is not a subject (%+v)", a.spend.cursor, stop)
+	}
+	if got, want := spendSubjectKey(stop.subject), spendSubjectKey(a.spend.reading.subjects[0]); got != want {
+		t.Fatalf("focus woke on %q, want the biggest subject %q", got, want)
+	}
+	if row := plainSpendRows(a.spend.reading.rows(120, newPalette(tokens.NoColor, false)))[a.spend.cursor]; strings.Contains(row, "loudest day") {
+		t.Fatalf("focus woke on the loudest day and not under `what it was for`: %q", row)
 	}
 }

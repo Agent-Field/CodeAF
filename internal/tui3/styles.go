@@ -1111,6 +1111,14 @@ type palette struct {
 	// nothing else still get the tier. The ASCII tier is not stored here: it is
 	// [palette.ascii]'s answer, which is already on this struct.
 	icons tokens.GlyphSet
+	// placeRows is THE PLACE ROW GRAMMAR, in force while a place other than home
+	// is being drawn (pages.go's [placeFrameWithBar] sets it on the frame's own
+	// copy). A list row on a place leads with no mark, rests with its subject in
+	// the reading ink, and wears the cursor step with its subject bold under the
+	// cursor AND the pointer alike — SCREEN 2a's scale, and the row home's grid
+	// draws (placeprose.go's THE FIVE-LEVEL SCALE). The overlays the
+	// conversation opens keep their own marks.
+	placeRows bool
 }
 
 // glyph is THE ONE DOOR EVERY ICON ON THIS SURFACE COMES THROUGH: a slot of the

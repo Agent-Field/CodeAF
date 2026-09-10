@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"strings"
 	"sync"
 	"testing"
 
@@ -75,17 +74,5 @@ func TestHiddenWorkSnapshotCanRaceWithSettlement(t *testing.T) {
 	tasks, jobs := w.workIDs()
 	if len(tasks)+len(jobs) != 0 {
 		t.Fatal("settled work remained in snapshot")
-	}
-}
-
-func TestHomePaintUsesLiveJobStateWhileCoveringTheLastTab(t *testing.T) {
-	a, _, _ := asyncApp(t)
-	a.jobs = []session.JobNotice{{ID: 1, State: session.JobRunning}}
-	row := session.SessionRow{Transcript: a.file, Title: "hidden job"}
-	sw := switcherLine{row: &switcherRow{kind: switcherConversation, session: row, title: "hidden job"}}
-	line := homeLine{kind: homeSession, row: row, sw: &sw}
-	text := a.homeLine(line, 0, 120, a.pal)
-	if !strings.Contains(plain(text), "working") {
-		t.Fatalf("Home lost live job: %s", plain(text))
 	}
 }

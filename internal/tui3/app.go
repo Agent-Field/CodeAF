@@ -1994,6 +1994,16 @@ type app struct {
 	// on (placecounts.go's [placeTickMsg]). Home has its own for the same reason
 	// and by the same device.
 	placeGen int
+	// machine is the MEMO of what this machine has to say about ITSELF — the
+	// reading the pulse at the top of every frame draws (homemachine.go's
+	// [app.readMachine]). It is written on a beat and at a door and read by the
+	// draw, which is how a frame paints the day's money without opening a file.
+	//
+	// IT LIVES ON THE APP AND NOT ON HOME. It used to be home's, and died with
+	// the screen — which was harmless while only places drew the pulse, and is
+	// not now that a conversation draws it too (pulsebeat.go). Every figure in it
+	// is read from the MACHINE, never from what a screen was holding (#525).
+	machine machineFacts
 	// compose is the composer on the places that have no box of their own — the
 	// standing place, spend and search. It is app-level rather than per-place on
 	// purpose: a sentence half typed on one place is still there after `tab`,
@@ -2077,16 +2087,6 @@ type app struct {
 	// sets it, because where sessions live is internal/session's answer and a
 	// second one would be a second place for it to be wrong.
 	homeRoot string
-	// switchGrouped is `alt+g` and switchQuiet is `alt+q`: the two views home's
-	// list can be shown in (place_home.go).
-	//
-	// THEY ARE ON THE APP BECAUSE THEY OUTLIVE THE SCREEN AND NOTHING ELSE. A
-	// person who grouped the list expects it grouped the next time they open home
-	// in this terminal, and expects to have chosen a view rather than to have
-	// found a preference they now own — so the flags live for as long as the
-	// process does, and nothing writes them to a disk.
-	switchGrouped bool
-	switchQuiet   bool
 	// composer is the COMPOSER LAYER: `alt+enter` over a composer with something
 	// in it, on any place (composerlayer.go, SCREEN 2e). It is the router's own
 	// layer rather than any one place's, which is why it is here beside `page`
@@ -2860,6 +2860,9 @@ func (a *app) Init() tea.Cmd {
 	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
 		a.watchRuns(), a.watchQuestions(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
 		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor,
+		// AND THE PULSE'S OWN BEAT, whose first reading is taken now rather than
+		// ten seconds from now (pulsebeat.go).
+		pulseNow,
 		// AND THE SETUP SCREEN'S EXAMPLE PANEL, when the setup is the first frame
 		// and the controls screen is its first step. It answers nil in every other
 		// case, which is most launches (onboarding.go).
@@ -3506,8 +3509,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// AND THE FOUR PLACES THE ROUTER PROMOTED AT THE SAME RUNG AND FOR
 			// THE SAME REASON: each is the whole screen, so a press that fell
 			// through to the conversation underneath would open a tool call
-			// nobody can see. A press on one of their rows moves that place's
-			// cursor and never acts (pages.go's [app.placeBodyPress]).
+			// nobody can see. A press on one of their rows is `enter` on it
+			// (pages.go's [app.placeBodyPress]).
 			if cmd, took := a.placeBodyPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
@@ -4139,6 +4142,15 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// period, re-armed only while one of them is standing (placecounts.go).
 		return a, a.placeBeat(msg.gen)
 
+	case pulseTickMsg:
+		// THE PULSE'S COUNTS, KEPT WHILE NO HOME IS OPEN: a walk of the world
+		// asked off the loop, and the next beat (pulsebeat.go).
+		return a, a.pulseBeat()
+
+	case pulseWorldMsg:
+		a.pulseCounted(msg)
+		return a, nil
+
 	case setupDemoMsg:
 		// One beat of the setup screen's example panel: the request typing itself
 		// out and the lines under it arriving. It runs ONCE per deliberate act and
@@ -4454,7 +4466,8 @@ func (a *app) paint() tea.Cmd {
 		kick = tea.Batch(kick, a.usageKick())
 		// AND WHAT THE WORK THIS CONVERSATION STARTED IS SPENDING, on the same
 		// clock and ON this loop, because that reading is a tail read of a file
-		// and not a lock or a round trip (treespend.go). A node's money reaches
+		// — or, over a connection, the cache the link keeps warm behind itself —
+		// and never a lock or a round trip (treespend.go). A node's money reaches
 		// the conversation's own books only when the node closes, so without this
 		// the figure on the row is hours behind exactly while somebody is
 		// watching it — which is issue #145. It is asked only while this

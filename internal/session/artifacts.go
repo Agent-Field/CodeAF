@@ -119,3 +119,25 @@ func ReadArtifacts(path string) []Artifact {
 	}
 	return rows
 }
+
+// ArtifactsSince is the deliverables at path that landed AFTER since, newest
+// first — the files made while a person was away, read against the look stamp
+// ([LastLook]). path is the index file itself, exactly as [ReadArtifacts]
+// takes it.
+//
+// A ZERO STAMP ANSWERS NOTHING, never everything. It is a machine with no origin
+// yet, and look.go's rule for that is that the first look marks nothing as news
+// — a ledger that called every file ever made "since you left" would be the one
+// screen on the machine telling a person something false about their absence.
+func ArtifactsSince(path string, since time.Time) []Artifact {
+	if since.IsZero() {
+		return nil
+	}
+	var out []Artifact
+	for _, row := range ReadArtifacts(path) {
+		if row.Created.After(since) {
+			out = append(out, row)
+		}
+	}
+	return out
+}

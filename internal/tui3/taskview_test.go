@@ -117,8 +117,8 @@ func TestTheTaskPageOpensOnItsKeyAndTakesTheWholeFrame(t *testing.T) {
 }
 
 // EVERY DOOR ONTO THIS PLACE OPENS IT ON A PROJECT THAT HAS RUN NOTHING, and
-// what it opens onto is three sentences saying what tasks are plus the one that
-// says what to do about it ([tasksTeach]).
+// what it opens onto is its heading and the whisper naming what arrives there
+// and the one thing that puts it there ([placeWhisper]).
 //
 // THIS TEST USED TO PIN THE OPPOSITE. `ctrl+.` fell through in silence and
 // /history wrote a line, on the argument that a fullscreen page with no rows is
@@ -134,7 +134,7 @@ func TestEveryDoorOntoTheTaskPlaceOpensItWithNoTasksAtAll(t *testing.T) {
 	if !a.at(pageTasks) {
 		t.Fatal("ctrl+. opened nothing on a project that has run nothing")
 	}
-	if text := taskSheetText(a); !strings.Contains(text, taskSheetEmpty) {
+	if text := taskSheetText(a); !strings.Contains(text, whisperOf(pageTasks)) {
 		t.Fatalf("the empty place does not say what to do about it:\n%s", text)
 	}
 	drive(t, a, key("esc"))
@@ -143,8 +143,8 @@ func TestEveryDoorOntoTheTaskPlaceOpensItWithNoTasksAtAll(t *testing.T) {
 	if !a.at(pageTasks) {
 		t.Fatal("/history opened nothing on a project that has run nothing")
 	}
-	if text := taskSheetText(a); !strings.Contains(text, "tasks is the history of work") {
-		t.Fatalf("the empty place does not say what it is for:\n%s", text)
+	if text := taskSheetText(a); !strings.Contains(text, whisperOf(pageTasks)) {
+		t.Fatalf("the empty place does not say what arrives here:\n%s", text)
 	}
 }
 
@@ -158,8 +158,8 @@ func TestEveryDoorOntoTheTaskPlaceOpensItWithNoTasksAtAll(t *testing.T) {
 func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 	a, _, _ := taskApp(t)
 
-	// Nothing anywhere: the tab bar still walks in, the body teaches, and the
-	// note says NOTHING — a count beside that prose is the pair the law forbids.
+	// Nothing anywhere: the tab bar still walks in, the body whispers, and the
+	// note says NOTHING — a count beside that line is the pair the law forbids.
 	a.showPage(pageTasks)
 	if !a.at(pageTasks) {
 		t.Fatal("the tab bar did not walk into an empty tasks place")
@@ -168,8 +168,8 @@ func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 		t.Fatalf("an empty place counted what it does not have: %q", note)
 	}
 	text := taskSheetText(a)
-	if !strings.Contains(text, "tasks is the history of work this machine has run.") {
-		t.Fatalf("the empty place does not say what it is for:\n%s", text)
+	if !strings.Contains(text, whisperOf(pageTasks)) {
+		t.Fatalf("the empty place does not say what arrives here:\n%s", text)
 	}
 	a.closeTaskSheet()
 
@@ -189,8 +189,8 @@ func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 			t.Fatalf("the note reads %q and does not count the rows the body drew (%q)", note, want)
 		}
 	}
-	if text := taskSheetText(a); strings.Contains(text, "tasks is the history of work") {
-		t.Fatalf("a place with rows on it taught what a task is:\n%s", text)
+	if text := taskSheetText(a); strings.Contains(text, whisperOf(pageTasks)) {
+		t.Fatalf("a place with rows on it kept its whisper:\n%s", text)
 	}
 
 	// AND A QUERY THAT MATCHED NOTHING IS NOT AN EMPTY PLACE. There is work here;
@@ -201,8 +201,8 @@ func TestTheTasksNoteAndItsBodyNeverDisagreeAboutBeingEmpty(t *testing.T) {
 	if !strings.Contains(note, taskSheetFilterNone) {
 		t.Fatalf("a query that matched nothing said nothing: %q", note)
 	}
-	if text := taskSheetText(a); strings.Contains(text, "tasks is the history of work") {
-		t.Fatalf("a filtered-empty place taught what a task is:\n%s", text)
+	if text := taskSheetText(a); strings.Contains(text, whisperOf(pageTasks)) {
+		t.Fatalf("a filtered-empty place whispered as if it were empty:\n%s", text)
 	}
 }
 

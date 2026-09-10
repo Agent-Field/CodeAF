@@ -1426,7 +1426,8 @@ the same labels the settled card uses, listed under *Does a task touch my workin
 
 More than two landings in a row become one rollup — `✓ 3 tasks done · 9m14s` with a compact
 row per task under it. Any failure in the batch swaps the header to `✕ N tasks landed`; any
-`your call` swaps it to `? N tasks landed`. A delivery that did not land also keeps a
+`your call` swaps it to `? N tasks landed`. A task you answered straight after it landed is
+counted once, by what became of it — the `?` goes with the answer. A delivery that did not land also keeps a
 warning on the batch and its individual row. The header's span is wall-clock, first
 spawn to last landing, not the sum of the parts, because tasks run at the same time.
 
@@ -1909,9 +1910,9 @@ The reason is the `+ /task` row at the foot of the task column: that row puts `/
 your box before you have said what the work is, so a `/task` sent as it stands is asking
 the only question the word can answer with no brief behind it — *what work is there.*
 
-**On a project that has never run a task it opens the page anyway**, and the page says what
-tasks are and ends `no tasks yet — /task <brief> starts one` — which is exactly what
-`/history` and `ctrl+.` do there too.
+**On a project that has never run a task it opens the page anyway**, headed `tasks` over one
+line — `work you send off with /task lands here, and its record stays` — which is exactly
+what `/history` and `ctrl+.` do there too.
 
 **The forms that start work are unchanged.** `/task <brief>` and `/task solo <brief>`
 still size, shape and start the work directly, with no proposal card in between and no
@@ -2252,7 +2253,8 @@ there is more under them. The row the cursor is on never fades wherever it sits,
 short enough to fit fades nothing at all — see *Why the bottom rows of a long list look
 dimmer* on the screen page.
 
-At the bottom: one dim line counting THE WORK THE WINDOW HOLDS, section by section —
+At the bottom, written into the rule over the composer: the dim count of THE WORK THE
+WINDOW HOLDS, section by section —
 not the rows drawn, which is why it can read a larger number than you can count on the
 screen when a family is folded. The section heading is where that difference is said. It
 reads such as
@@ -2261,16 +2263,14 @@ is not counted at all — and under it the keys.
 
 **Every door onto this place opens it, on a machine that has run nothing too.** `/history`,
 a bare `/task`, `ctrl+.`, `alt+2` and `tab` all reach the same page, and with nothing on it
-the page explains itself instead of drawing counts:
+the page is its heading and one line naming what arrives there, instead of counts:
 
 ```
-tasks is the history of work this machine has run.
-it lists work aforge ran on its own, across every project.
-enter opens a task's room when there is one here.
-no tasks yet — /task <brief> starts one
+tasks
+  work you send off with /task lands here, and its record stays
 ```
 
-That last line used to be what `/history` said **instead** of opening, with `ctrl+.` doing
+`/history` used to say one sentence **instead** of opening, with `ctrl+.` doing
 nothing at all rather than raising an empty page. On a machine aforge was installed on an
 hour ago that was every door onto the page, so the first thing anybody tried appeared not to
 work. The sentence stayed and moved onto the page it is about. A session that has run
@@ -2897,7 +2897,7 @@ local conversation the same page tails that log live.
 | how you stop the work | `esc` | `x` over an empty box, which raises the confirmation card |
 | the box's own line | the bare `› ` | a tinted segment naming the task, in its state's hue, then `› ` |
 | box placeholder | the draft prompt | `Steer this task… (esc: main)`, or `Steer <title>… (esc: main)` where the frame is too narrow for the segment |
-| pinned top rows | the tab strip and one thin rule under it; `Chats ▾` at its right end opens the chat picker | the tab strip, then a breadcrumb row (conversation → ancestor tasks → current task) and a quiet facts row under it |
+| pinned top rows | the pulse line, the tab strip under it, one thin rule and a blank — the same four rows every place draws; `Chats ▾` at the strip's right end opens the chat picker | the same four rows — pulse, tab strip, rule, blank — so the rule does not move when you walk in; then a breadcrumb row (conversation → ancestor tasks → current task) and a quiet facts row under it |
 | legend word | the branch, or remote machine | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
 | legend hint | `esc interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
 | the model on the status row | the conversation's model | `task <the task's model>` |

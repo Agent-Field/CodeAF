@@ -445,17 +445,26 @@ func tabsCapped(tabs []chatTab, prev []string) []chatTab {
 // ── THE HEADER'S GEOMETRY, STATED ONCE ──────────────────────────────────────
 //
 // EVERY POINTER TARGET AND EVERY SUBTRACTION UP HERE RESOLVES THROUGH THESE
-// FOUR FUNCTIONS. The panel is one, two or three rows deep depending on the page
-// and on how much terminal there is, and a press answered against a hard-coded
-// zero or one would open the wrong row the moment a floor moved (hover.go's
-// law). Nothing outside this block may spell those numbers.
+// FUNCTIONS. The head is the places' head — the pulse, the strip, the rule and
+// a blank (head.go) — wherever the strip is drawn at all, a room lays its trail
+// under the blank, and a terminal under the strip's floors draws none of it. A press answered against a hard-coded row would open the wrong one the
+// moment a floor moved (hover.go's law). Nothing outside this block may spell
+// those numbers.
 
-// tabsHeight is what the tab row costs the body region.
+// tabsHeight is what the head costs the body region DOWN TO AND INCLUDING THE
+// STRIP: the pulse, and the strip under it on the bar's own row
+// ([placeTabRow]).
 //
 // IT STANDS DOWN ON THE TWO FLOORS THE CONVERSATION'S BAR STOOD DOWN ON. A frame
 // too narrow for a name and a way out is too narrow for this, and a terminal too
 // short for a blank above the draft has no row to spare for a fact that is true
 // all day — a person on a twelve-row terminal is reading the conversation.
+//
+// ABOVE THEM IT IS THE SAME HEAD AT EVERY SIZE. It used to grow a row of air
+// over the strip at thirty-two rows and another under it at thirty-six, which
+// made the strip change rows as a window was resized and made the conversation's
+// head a different shape from every place's; the one head has no ladder of its
+// own to climb.
 //
 // IT ASKS NOTHING OF THE DISK, and nothing of the list either: there is always
 // at least one tab — the conversation on screen — so the answer is the two
@@ -464,58 +473,35 @@ func (a *app) tabsHeight(width int) int {
 	if width < roomHeadFloor || a.breathingRows() < 2 {
 		return 0
 	}
-	return 1 + a.tabsLineRow() + a.tabsBottomPad()
+	return placeTabRow + 1
 }
 
-// tabsLineRow leaves one row of air around the navigation on roomy frames.
-// Compact terminals keep the same controls without spending reading rows.
-func (a *app) tabsLineRow() int {
-	width, height := a.size()
-	if width >= 4*roomHeadFloor && height >= 2*airyFloor {
-		return 1
-	}
-	return 0
-}
-
-// tabsBottomPad adds a second navigation gap only after the frame has earned
-// another four reading rows, so resizing never trades a larger body for chrome.
-func (a *app) tabsBottomPad() int {
-	width, height := a.size()
-	if width >= 4*roomHeadFloor && height >= 2*airyFloor+4 {
-		return 1
-	}
-	return 0
-}
-
-// chatRuleHeight is the low-contrast rule under the tabs OUT IN THE CONVERSATION,
-// where there is no trail and no facts row to close the panel off.
+// headSealHeight is the rule and the blank under the strip — the rest of the
+// head's [placeHeadRows] — in the conversation and in every room inside it.
 //
-// IT IS WHAT SEPARATES THE HEADER FROM THE TRANSCRIPT AND FROM THE ROSTER BESIDE
+// IT IS WHAT SEPARATES THE HEAD FROM THE TRANSCRIPT AND FROM THE ROSTER BESIDE
 // IT, and it is a drawn rule rather than a blank because a blank separates
-// nothing on a terminal whose background this program does not control. It is
-// the FIRST piece of chrome to collapse as the frame gets short — one row of a
-// twenty-row terminal is worth more to the conversation than to a seam — so it
-// stands on a floor of its own above the strip's.
-func (a *app) chatRuleHeight(width int) int {
-	_, height := a.size()
-	if a.room != nil || a.tabsHeight(width) == 0 || height < chatRuleFloor {
+// nothing on a terminal whose background this program does not control. It
+// stands on the strip's floors and on no floor of its own: a place draws its
+// rule at every height it draws a bar, and the conversation is now drawn under
+// the same head.
+//
+// A ROOM PAYS IT TOO. A node's trail and facts used to stand where the rule and
+// the blank are, so the rule was a row lower in a room than out in the
+// conversation, and a room's body started where no place's does; now the trail
+// is the first row under the blank, as a place's heading is (head.go).
+func (a *app) headSealHeight(width int) int {
+	if a.tabsHeight(width) == 0 {
 		return 0
 	}
-	return 1
+	return placeHeadRows - a.tabsHeight(width)
 }
 
-// chatRuleFloor is the terminal height the seam is worth a row of. It is above
-// the strip's own floor on purpose: [airyFloor] is where a second blank above
-// the draft became affordable, and a window at exactly that height has eleven
-// rows of conversation left — a reply's worth, and not a row to spend on an
-// edge. Four rows further up it is.
-const chatRuleFloor = airyFloor + 4
-
 // roomHeadRow is the frame row a room's TRAIL is drawn on — the breadcrumbs and
-// the way out — which is the row under the tab strip wherever there is one.
+// the way out — which is the row under the head wherever the head is drawn.
 func (a *app) roomHeadRow() int {
 	width, _ := a.size()
-	return a.tabsHeight(width)
+	return a.tabsHeight(width) + a.headSealHeight(width)
 }
 
 // roomFactsRow is the row under that one: what the work is doing, what it has
@@ -533,7 +519,7 @@ func (a *app) roomFactsRow() int {
 // ── THE ROW, LAID OUT ───────────────────────────────────────────────────────
 
 // tabsRow lays the strip out and says where every piece landed. It is the
-// frame's FIRST row wherever it is drawn at all.
+// head's middle row, under the pulse, wherever it is drawn at all (head.go).
 func (a *app) tabsRow(width int) string {
 	a.chatTabHits = nil
 	if a.tabsHeight(width) == 0 {
@@ -952,11 +938,12 @@ func tabsAt(hits []tabHit, from int) []tabHit {
 // ── THE POINTER ─────────────────────────────────────────────────────────────
 
 // tabAt is the piece under a pointer, and whether there is one. It answers only
-// for the strip's own row, which is row zero of the frame wherever the strip is
-// drawn at all — [app.view] draws it first and [app.headHeight] charges for it.
+// for the strip's own row, which is the bar's row ([placeTabRow]) wherever the
+// strip is drawn at all — [app.view] draws it under the pulse and
+// [app.headHeight] charges for both.
 func (a *app) tabAt(x, y int) (tabHit, bool) {
 	width, _ := a.size()
-	if y != a.tabsLineRow() || a.tabsHeight(width) == 0 {
+	if y != placeTabRow || a.tabsHeight(width) == 0 {
 		return tabHit{}, false
 	}
 	for _, hit := range a.chatTabHits {
@@ -992,7 +979,7 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 	if y < 0 || y >= a.tabsHeight(width) {
 		return nil, false
 	}
-	if y != a.tabsLineRow() {
+	if y != placeTabRow {
 		return nil, true
 	}
 	hit, ok := a.tabAt(x, y)

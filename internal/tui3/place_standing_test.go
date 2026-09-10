@@ -624,20 +624,20 @@ func TestTheStandingPageObeysTheEmptinessLaw(t *testing.T) {
 			t.Fatalf("the page draws %q over nothing:\n%s", banned, screen)
 		}
 	}
-	// AND A MACHINE WITH NOTHING ON IT OPENS THE PAGE AND SPENDS IT SAYING WHAT
-	// STANDING ORDERS ARE — no heading over nothing, no window control naming a
-	// span of days that holds nothing, and no count.
+	// AND A MACHINE WITH NOTHING ON IT OPENS THE PAGE ON ITS HEADING AND ITS
+	// WHISPER — and no window control naming a span of days that holds nothing,
+	// and no count (placeprose.go's [placeWhisper]).
 	bare := newStandFarLab(t, nil)
 	typeLine(t, bare.a, "/standing")
 	if !bare.a.at(pageStanding) {
 		t.Fatal("a machine nothing stands on opened no page")
 	}
 	empty := standingPlaceScreen(bare.a)
-	if !strings.Contains(empty, standNothingWord) {
+	if !strings.Contains(empty, whisperOf(pageStanding)) {
 		t.Fatalf("the empty place does not say what it is for:\n%s", empty)
 	}
-	if strings.Contains(empty, standHeading) || strings.Contains(empty, "shift+←") {
-		t.Fatalf("the empty place draws a heading and a window over nothing:\n%s", empty)
+	if !strings.Contains(empty, standHeading) || strings.Contains(empty, "shift+←") {
+		t.Fatalf("the empty place lost its heading or draws a window over nothing:\n%s", empty)
 	}
 }
 

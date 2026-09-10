@@ -3,18 +3,25 @@
 ## What a place is, and the seven of them
 
 A **place** is a full-screen room in aforge that is not this conversation. There are seven,
-and they are always in the same order:
+and they are always in the same order — the four on the tab bar, then the three reached by
+their command:
 
-`home` · `tasks` · `standing` · `memory` · `spend` · `search` · `settings`
+`home` · `tasks` · `spend` · `settings` · `standing` · `memory` · `search`
 
-They are drawn as a **tab bar** on the second row of every place, under the top line. The
+**The tab bar draws four:** `home  tasks  spend  settings`. Standing, memory and search are
+places all the same — `/standing`, `/memory`, `/search`, their digit, the map and the typed
+box all reach them — and while you are standing in one its word is on the bar after the
+four, so the bar always says where you are.
+
+They are drawn as a **tab bar** on the second row of every place, under the top line — the
+row of words at the top of the screen, `home  tasks  spend  settings`, is this bar. The
 one you are standing in wears a filled band; the rest are dim. Nothing else on the surface
 looks like that bar, so "which place am I in" is one glance.
 
 Every place is drawn in the same frame:
 
 1. the top line — this machine's own signs: what is on watch, what today has cost, the time
-2. the tab bar — the seven words
+2. the tab bar — the four words, and the one you are in when it is not one of them
 3. a dim rule
 4. the place's own body
 5. a rule, then the **composer** — one line you can type into, wherever you are
@@ -27,10 +34,12 @@ stacked: opening one closes whichever was up, so `esc` is always one press from 
 
 Four ways, and they all reach the same seven rooms:
 
-- **`tab`** — the next place, round again from the last. **`shift+tab`** — the one before.
+- **`tab`** — the next place **on the bar**, round again from the last. **`shift+tab`** —
+  the one before. From standing, memory or search, `tab` goes on round the bar to home.
 - **`alt+1`** … **`alt+7`** (**`⌥1`** … **`⌥7`** on a Mac) — jump straight to one, **from a
-  place or from a conversation**. The numbers are the tab bar's own order, so `alt+1` is home
-  and `alt+7` is settings. Hold `alt` and press the digit. macOS draws the modifier as `⌥`
+  place or from a conversation**. `alt+1` … `alt+4` are the tab bar's own order — home,
+  tasks, spend, settings — and `alt+5`, `alt+6`, `alt+7` are the three places off the bar:
+  standing, memory, search. Hold `alt` and press the digit. macOS draws the modifier as `⌥`
   because that is what the keycap says; Linux and Windows draw it `alt+`, and it is the same
   chord either way. `tab` and the shift-arrows are not like them: in a conversation those
   already belong to path completion and to the caret, so the digits are the one class of
@@ -68,13 +77,13 @@ empty room actually wants — see **Every place opens, always** further down thi
 
 That is true of every door onto a place and not only of the walk: a number, a click on the
 word, and the command that names it all open the same room on the same machine. `/history`
-and a bare `/task` on a machine that has run nothing open the tasks place, and the page
-says what tasks are and ends `no tasks yet — /task <brief> starts one`.
+and a bare `/task` on a machine that has run nothing open the tasks place, headed `tasks`
+over one line: `work you send off with /task lands here, and its record stays`.
 
 ## How do I move between the tabs with the arrow keys — the tab bar is a row the cursor can stand on
 
 **Press `↑` from the first row of the page you are on.** The cursor leaves the list and
-lands on the **tab bar** — the row of seven words under the top line — and from there:
+lands on the **tab bar** — the row of place words under the top line — and from there:
 
 | Key | What it does on the bar |
 | --- | --- |
@@ -94,7 +103,7 @@ is still saying which room that is, on every one of its rows.
 
 **Walking the bar opens nothing.** That is the whole difference between this and `tab`:
 `tab` steps into each room as it passes, which closes the last one and throws away whatever
-you had typed into it, so looking along seven words used to cost seven openings. `←` and
+you had typed into it, so looking along the words used to cost one opening each. `←` and
 `→` move a cursor and nothing else; `enter` is what goes in.
 
 **`←` and `→` do not open a row's verbs while the cursor is on the bar**, and they do not
@@ -135,12 +144,15 @@ a press on the word you are already standing on does nothing.
 Three gestures, the same on all seven places:
 
 - **the pointer previews and the cursor selects.** Whatever your pointer is resting on is
-  what the card beside the list is about, and on home it is what the right-hand card shows.
+  what the card beside the list is about, and on home the row it lights.
   Moving the pointer moves nothing else — the cursor stays where you put it.
-- **a click puts the cursor on that row.** On the places it never acts: the verbs are keys
-  and `enter` leaves the conversation you are sitting in, so a click that opened something
-  would be a gesture nobody can aim. Home is the exception it always was — the first click
-  chooses the row, a second click on the same row opens it.
+- **a click on a row opens it**, exactly as `enter` on it would: on standing, spend and
+  search the first press puts the cursor there and opens what the row names. **A click
+  never spends**: on memory, where `enter` on a line asks the model about it, the press
+  opens the line's card instead, and on a shelf it folds the shelf. The verbs stay keys.
+  Home keeps the same grammar — one click on a row or a fold opens it, and a panel's
+  heading opens the place it names — and settings only chooses, because its `enter`
+  changes a value.
 - **the wheel walks the list**, three rows a turn, on every place. There is no separate
   scroll offset: the window follows the cursor, so scrolling and choosing are one gesture.
   Walking off the bottom with `↓` scrolls the same way.
@@ -276,8 +288,8 @@ of them, so they can never move a view out from under you while you are aiming a
 destination; pressed with no layer up, they do nothing.
 
 The last two classes are bound where there is something to bind. `alt+<letter>` today is
-`alt+g` and `alt+q` on home, which group the list by project and hide the quiet rows, and
-`alt+s` on the memory place, which changes which shelf it is showing. `shift+<arrow>` is a place's time
+`alt+s` on the memory place, which changes which shelf it is showing; home's panels have no
+second shape, so `alt+g` and `alt+q` do nothing there. `shift+<arrow>` is a place's time
 window — `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is — and
 three places have one: **tasks** (when it ran), **standing** (when it fired) and **spend**
 (which days). All three draw the same control on their own head row, at the right of the
@@ -300,7 +312,10 @@ p pause   s stop   n not here
 On memory they are `c open the card`, `e fix the wording` and `f forget it`. On home the
 verbs are the row's own — a question's first two answers in its own words on
 `y` and `n`, `a put it away`, `t new chat here`, `o open folder`, `c copy path`, and
-`p pause it` or `r resume it` on a standing item.
+`p pause it` or `r resume it` on a standing item, `s stop` on a task this window runs,
+`its chats` and `open folder` on a project. On home's panels `→` opens them only where no
+column with rows lies to the right; elsewhere it crosses columns and the chords
+(`ctrl+e`, `ctrl+o`, `ctrl+y`) reach the same verbs.
 
 While that strip is drawn, **those letters are the verbs** and the composer is asleep. The
 strip pushes the rest of the list down by its own height — the frame stays the same height
@@ -342,7 +357,7 @@ has no `·` in it at all. The bracketed gloss goes first, because it explains a 
 still on the line; then the clause hanging off the dash; and what a 40-column terminal is
 left with is the statement, `open in another window`. It used to read
 `open in another window — enter again to move it here (it …`, which named a key and then ate
-it. That particular sentence is gone — moving a conversation asks with a card on home now,
+it. That particular sentence is gone — moving a conversation from a window with no engine asks first on home's foot line now,
 see *home* — but the rule it taught is what every foot on this surface is cut by.
 
 **A clause that begins `or` goes first, because it is an alternative and not a way out.**
@@ -359,7 +374,8 @@ They are two different kinds of line and they are fitted by two different rules.
 
 - **A key line** — the foot, a filter box's placeholder, a gate card's gestures — has the
   way out at the **end**, so the end is protected and the clause nearest it is what goes.
-- **A note** — the dim line under the rule that says what just happened — has the answer at
+- **A note** — the dim words written into the rule over the composer, saying what just
+  happened or what the page holds — has the answer at
   the **front**, so the front is protected and the line gives up its later clauses. Settings
   says `saved to your profile · a project's own .aforge-v3/config.json is a hand edit`; at
   sixty columns that becomes `saved to your profile`, which is the half you asked for. The
@@ -373,7 +389,9 @@ Neither of them ever ends in `…`, and neither ever cuts inside a word.
 
 Press `alt+.` and the whole key map appears **in the cells you were already reading**:
 
-- the tab bar's words grow their numbers — `1 home`, `2 tasks`, `3 standing`, …
+- the tab bar's words grow their numbers — `1 home`, `2 tasks`, `3 spend`, `4 settings` —
+  and the three places off the bar are drawn after them with theirs: `5 standing`,
+  `6 memory`, `7 search`
 - the hint line becomes the chord list
 
 `?` over an empty box draws the same map, which is what that key means on a place — show me
@@ -390,16 +408,17 @@ it was always going to do. `esc` just takes it away.
 It is a chord rather than a hold because a terminal cannot tell a program that a modifier is
 being held down — it only reports what arrived.
 
-## home — what wants you
+## home — what wants you, as seven panels
 
-The first place, and the one aforge opens on. Every conversation on this machine, from
-every project, as **one flat ranked list** — what wants you first, then what is moving, then
-the rest — with the project as a tag on each row.
+The first place, and the one aforge opens on. Everything on this machine, from every
+project, as **seven panels** in one, two or three columns: `needs you`, `where you were` and
+`projects` on the left; `running`, `since you left`, `spend` and `next up` on the right. An
+empty panel keeps its heading and one dim line naming what arrives there.
 
-Its own keys are in the **Home** page. Under the tab bar: `tab` is the way to the next place
-rather than the way between home's old columns, the errand pane is taken into with `→`
-rather than `tab`, and home's two `alt+<letter>` keys are **`alt+g` group by project** and
-**`alt+q` hide the quiet ones**.
+Its own keys are in the **Home** page: `↑↓` walk a panel, `←→` cross columns, a digit
+answers the top question in `needs you`, and `enter` opens a row. `tab` is the way to the
+next place, and the errand pane is taken into with `→` rather than `tab`. Home has no
+`alt+<letter>` keys — `alt+g` and `alt+q` are unbound there.
 
 ## tasks — the tasks page, and how to get to it without a command
 
@@ -420,7 +439,8 @@ row on the screen was inviting a message the page cannot send. `enter` opens a t
 when this conversation is holding it, and goes inside its record card otherwise. `→` opens
 the row's verbs, and this place has one — `s stop it`, over a task this conversation is
 holding that is still queued or running. Nothing is behind a fold; the list scrolls and its
-tail fades. The count of what is on the page sits just above the composer, and the foot names
+tail fades. The count of what is on the page is written into the rule just above the
+composer — `─ 9 finished today · 191 earlier ───` — and the foot names
 only what is true of the row you are on: `enter open its room · → verbs: stop it`.
 
 ## standing — what runs without being asked, and where to type on the standing page
@@ -428,7 +448,7 @@ only what is true of the row you are on: `enter open its room · → verbs: stop
 The orders that fire on their own, on four shelves each under its own heading: this
 conversation's, this project's, the machine's, and then `in other projects` — everything
 else standing on this computer that does not reach the conversation you are in.
-`/standing` and `/orders` open it, and so does `alt+3`.
+`/standing` and `/orders` open it, and so does `alt+5`. It is not on the tab bar.
 
 `enter` opens where an order was asked for. `→` opens the row's verbs — `p pause`, `s stop`,
 and `n not here` on the three shelves that reach this conversation. Those three used to be
@@ -449,29 +469,31 @@ The standing orders page has the whole of it.
 ## memory — what is held true
 
 What aforge holds true about you and this machine, with what kind of thing each line is, how
-it has done — `helped 19 · bore on 3` — and how old it is out at the right. `/memory` and `/memories` open it, and so does `alt+4`.
+it has done — `helped 19 · bore on 3` — and how old it is out at the right. `/memory` and `/memories` open it, and so does `alt+6`. It is not on the tab bar.
 
 The page is **shelves** — you, this project, this machine — biggest first, with the biggest
 one open and the rest rolled up. Type to filter what is already on the page, **every letter
 including `u`**; the store is read when you walk in and on the place beat, never on a
 keystroke. `enter` opens or closes a shelf; `enter` on a LINE is `ask me about it` — the
-line goes into a fresh conversation as its opening message and you are taken there. `alt+s`
-walks the shelves one at a time. `→` opens the verbs on a line — `c open the card`, which is
+line goes into a fresh conversation as its opening message and you are taken there. A shelf
+shows three lines and five shelves show at once; `enter` on `▸ 37 more, on this shelf` or
+`▸ 2 more, shelves` draws the rest where they stand, and the same line, now `▾ 37 fewer`,
+puts them back. `alt+s` walks the shelves one at a time. `→` opens the verbs on a line — `c open the card`, which is
 where the full text and where it was learned live, `e fix the wording`, `f forget it`, and
 `u put it back` while there is something to put back.
 
 The foot follows the row: `enter ask me about it · e fix the wording · f forget it` on a
 line, `enter open a shelf · type to filter · alt+s walk the shelves` on a shelf heading.
 **On a machine that has remembered nothing there are no shelves, so none of those keys is
-named** — the foot is `tab next place · esc` and nothing else, and the body's last line says
-what to do instead: `nothing learned yet — say "remember that …" and the first line lands
-here`.
+named** — the foot is `tab next place · esc` and nothing else, and the body is the heading
+`memory` over one line saying what to do instead: `what it has learned about you and this
+machine · /remember adds a line`.
 
 `delete` also forgets the line under the cursor.
 
 ## spend — what it cost, and why it counts another session or another machine
 
-What this machine has cost, by the day, by the model, and by what it was for. `alt+5` opens
+What this machine has cost, by the day, by the model, and by what it was for. `alt+3` opens
 it. It reads one machine-wide ledger — a line per model call — so the figures are the bill
 and not an estimate.
 
@@ -482,7 +504,9 @@ over `--host` whose calls are still made here. For this session alone, ask `/cos
 
 Three blocks: the window with its sparkline, `what ran it` by the model and the role that
 model is **bound** to, and `what it was for`. `enter` on a row of the last one opens the
-thing the money went on — a task, a standing promise, or a conversation. `shift+←` and `shift+→` move the window by its own length;
+thing the money went on — a task, a standing promise, or a conversation. The first three
+are shown; `enter` or a click on `▸ 11 more` draws the rest, and `▾ 11 fewer` folds them
+back. The cursor arrives on the first of them — the biggest thing the money went on. `shift+←` and `shift+→` move the window by its own length;
 `shift+↑` and `shift+↓` change how coarse it is.
 
 **There is nothing to set here, and the page says where to go instead.** Its first line is
@@ -504,14 +528,14 @@ never mentioned the machine-wide ledger. It opens the place now.
 Where the head row is too narrow to draw its own arrows the window clause is dropped, and
 over an empty ledger only the way out is named.
 
-With nothing spent inside the window, the place says what it is for and then says which
-kind of empty it is: `nothing spent yet — the first model call writes a line here.`
-Without that sentence a machine that has spent nothing looks exactly like a ledger that
-could not be read, because the emptiness law keeps every `$0.00` off the page.
+On a machine that has spent nothing the place is its heading `spend` over one line:
+`every chat and task is priced here as it runs`. A window paged onto a quiet fortnight is a
+different thing — its head row stays, with the arrows that page it back.
 
 ## search — finding anything said or run
 
-Everything that has been said on this machine. `alt+6` opens it, and typing searches: the
+Everything that has been said on this machine. `alt+7` opens it — it is not on the tab
+bar — and typing searches: the
 matches come back with the conversation they were said in, how long ago, and the project it
 belongs to, with your own words picked out in the line.
 
@@ -525,15 +549,15 @@ place`. With nothing typed there is no row to stand on, so the foot drops to `ty
 search · esc clears the words · tab next place` — `enter` is not named where it does
 nothing. (This foot used to be the router's own default, which said `enter talk about it`
 and was wrong in both states.) Above the results, a legend counts the projects the matches
-came from. Twelve conversations are shown and the rest fold into one line.
+came from. Twelve conversations are shown and the rest fold into one line, `▸ 38 more`;
+`enter` or a click on it draws them all, and `▾ 38 fewer` folds them back. A new search
+starts folded.
 
-**`/search` is the typed door onto this place**, beside `alt+6`, `tab` and the tab bar. It
+**`/search` is the typed door onto this place**, beside `alt+7` and the map. It
 takes no argument: the place is a box, and typing in it searches.
 
-With nothing typed the place says what it is for, and the last of its four lines says what
-to type: `type words you remember — "the docker error", a person's name, a filename`. Those
-sentences **wrap** at a reading measure like every other place's — none of them is cut short
-with an ellipsis on a narrow window.
+With nothing typed the place is its heading `search` over one line saying what to do:
+`type a word · every conversation on this machine is searched`.
 
 **A search that finds nothing says what to do about it**:
 `nothing on this machine says "amber rail" · try fewer words, or a name`.
@@ -552,40 +576,40 @@ would be two rankings that could disagree.
 ## settings — how this machine is set
 
 Every setting, in sections, with a search that crosses all of them. `/settings`, `/set` and
-`/config` open it, and so does `alt+7`.
+`/config` open it, and so does `alt+4`.
 
 It has a **second bar** under the place bar: its own sections. Those two bars are not a
-repetition — the upper one is the seven places, the lower one is settings' own pages. `←` and
+repetition — the upper one is the places, the lower one is settings' own pages. `←` and
 `→` move between sections. `tab` does **not**: it is the way to the next place, here as
 everywhere.
 
 ## Why the tab bar looks squashed on a narrow terminal — the places at 60 columns
 
-**Every one of the seven words is still on the bar at 60 columns.** What a narrow frame
-gives up is the *air between the chips*, not a place: the seven words with the padding each
-chip carries are 57 cells, and the spaces between them are six more, so a 60-column
-terminal — a split pane, an ssh session, a phone in landscape — draws
+**All four words are on the bar at 60 columns, and down to 31.** The four words with the
+padding each chip carries and the air between them are 34 cells; under that the bar gives up
+the *air between the chips* before it gives up a place, so a 31-column pane draws
 
 ```
-  home  tasks  standing  memory  spend  search  settings
+  home  tasks  spend  settings
 ```
 
 with two cells between the words instead of three. Nothing else changes: the band under the
 word you are standing in, the counts, `tab`, `←` `→` and `alt+1`…`alt+7` all mean exactly
 what they mean on a wide screen.
 
-**Under about 57 columns the bar carries what it can and counts the rest.** It keeps the
-place you are standing in, the word the cursor is on, and any place wearing a count, then
-fills in the bar's own order until the row is full and ends with a dim `▸ 3` — the number of
-places that are not on the row:
+**Under 31 columns the bar carries what it can and counts the rest.** It keeps the place
+you are standing in, the word the cursor is on, and any place wearing a count, then fills in
+the bar's own order until the row is full and ends with a dim `▸ 2` — the number of the
+bar's words that are not on the row (standing, memory and search are never counted: they
+are not the bar's to give up):
 
 ```
-  home  tasks  standing  ▸ 4
+  home  tasks  ▸ 2
 ```
 
 `▸ 3 more` where there are cells for the longer spelling, `▸ 3` where there are not — the
 same fold mark every other list on this surface puts over the rows it is not drawing, so a
-count on the bar reads as the same idea as `▸ 15 more` at the foot of home. The word gives
+count on the bar reads as the same idea as `▸ 11 more` at the foot of the spend place. The word gives
 way before the mark does: `▸` is what says there is more behind the row. **The
 count is a sign and not a button** — pressing it does nothing, because it stands for several
 places at once and no single one of them is the answer.
@@ -593,36 +617,44 @@ places at once and no single one of them is the answer.
 **The key that reaches them is `tab`**, and it is named on the foot of every place —
 `… · tab next place` — which is the last clause a narrow foot gives up. `alt+1`…`alt+7`
 still go straight to a place whether or not its word is on the row, and the numbers never
-move: they are the bar's full seven-place order, not the order of what happens to be drawn.
+move: the four on the bar are `alt+1`…`alt+4`, then standing, memory and search are
+`alt+5`…`alt+7`, whatever happens to be drawn.
 
-## Why a nearly-empty place says what it is for
+## Why a nearly-empty place says what it is for — why is the tasks page empty
 
 You only ever arrive at a place on purpose — from the tab bar, from a number, or by typing
 the word. That arrival is the one moment somebody is asking "what is this", so a place with
-nothing of its own to draw answers, in a few sentences, and says nothing else.
+nothing of its own to draw answers with **its heading and one dim line under it** — the line
+names what arrives there and the one thing that puts it there, the way home's empty panels
+do. It never says the place is empty.
 
-**Every place opens, always.** There is no state of the machine in which one of the seven
-words on the bar is a key that does nothing. On a machine aforge was installed on an hour
-ago, `alt+2`, `alt+3` and `alt+4` all open:
+**Every place opens, always.** There is no state of the machine in which a word on the bar,
+or any of the seven digits, is a key that does nothing. On a machine aforge was installed on
+an hour ago, `alt+2`, `alt+5` and `alt+6` all open:
 
-- **tasks** on a machine that has run nothing says what tasks are, and ends
-  `no tasks yet — /task <brief> starts one`.
-- **standing** on a machine nothing stands on says
-  `nothing stands here yet — say what should always be true, and I'll hold it.`
-  and two lines about how far an order can reach. No shelf heading and no time window is
-  drawn over it.
-- **memory** on a machine that has remembered nothing says what memory is for. If this
-  build is not remembering anything at all, it says the same thing with one dim line under
-  it: `memory is off for this session · turn it on under /settings`.
-- **spend** inside a window nothing was spent in says what spend is for.
-- **search** with an empty box says what search is for.
+- **tasks**, headed `tasks`:
+  `work you send off with /task lands here, and its record stays`
+- **standing**, headed `standing orders`:
+  `reminders, watches and routines · "remind me at 6" or "every morning at 9"`
+  No shelf and no time window is drawn under it.
+- **memory**, headed `memory`:
+  `what it has learned about you and this machine · /remember adds a line`
+  If this build is not remembering anything at all, the rule under the page also says
+  `memory is off for this session · turn it on under /settings`.
+- **spend**, headed `spend`: `every chat and task is priced here as it runs`
+- **search** with an empty box, headed `search`:
+  `type a word · every conversation on this machine is searched`
+
+On a narrow window the line wraps onto a second or third dim line under the first; it is
+never cut, and never ends in `…`. The moment the first thing arrives the line goes and the list begins under
+the same heading; nothing above it moves.
 - **spend**, **search** and **memory** over `--host` each say one dim line where their rows
   would be — see *The places over --host* below for the exact words and why three of the
   seven still say them.
 
 There is no "coming soon", no greyed-out list and no empty table with headings over it. A
 page that draws the furniture of a feature it does not have looks like a bug rather than like
-a plan — which is also why a heading is never drawn over an absence.
+a plan.
 
 Commands behave the same way. `/history` on a machine that has run nothing, `/standing` on
 one nothing stands on, and `/memory` with no store all open their place and let it teach.

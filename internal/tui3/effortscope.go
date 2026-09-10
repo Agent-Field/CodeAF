@@ -167,21 +167,3 @@ func (a *app) effortInk(where string, pal palette) func(string) string {
 }
 
 // ── the install's own rung ──────────────────────────────────────────────────
-
-// effortProfile reports the profile this window writes settings into, and false
-// for a window that has none.
-//
-// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. A surface with no profile
-// draws no rung at all, rather than drawing one it could not move.
-//
-// AND THE WINDOW WITH NO PROFILE IS THE HOSTED ONE, WHICH IS NOT THE ONE WITH AN
-// EMPTY PROFILE DIRECTORY. This used to answer false on an empty
-// [app.profileDir], which is what AFORGE_PROFILE_DIR being unset looks like —
-// so the install's own rung was drawn on the rare launch that exported it and
-// for nobody else (#322). The empty string has always meant this process's own
-// profile in the state root ([config.ProfilePath]), and that profile is exactly
-// the install whose rung this line states. A connection's is another machine's,
-// and it is the one asked nothing.
-func (a *app) effortProfile() (string, bool) {
-	return a.profileDir, !a.hosted()
-}

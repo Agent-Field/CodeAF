@@ -369,8 +369,8 @@ func TestMemoryPlaceEmptyOffAndFilter(t *testing.T) {
 	a, _ := memoryPlaceApp(t, nil)
 	a.slash("/memory")
 	got := plain(frame(a))
-	if !strings.Contains(got, memoryTeaching[0]) {
-		t.Fatalf("the empty place did not teach:\n%s", got)
+	if !strings.Contains(got, whisperOf(pageMemory)) {
+		t.Fatalf("the empty place does not say what arrives here:\n%s", got)
 	}
 	if strings.Contains(got, "shelves · biggest first") {
 		t.Fatalf("a heading was drawn over no shelves:\n%s", got)
@@ -387,8 +387,8 @@ func TestMemoryPlaceEmptyOffAndFilter(t *testing.T) {
 		t.Fatal("a build with no store behind it opened no memory place")
 	}
 	offScreen := plain(frame(off))
-	if !strings.Contains(offScreen, memoryTeaching[0]) {
-		t.Fatalf("the place with no store did not teach:\n%s", offScreen)
+	if !strings.Contains(offScreen, whisperOf(pageMemory)) {
+		t.Fatalf("the place with no store does not say what arrives here:\n%s", offScreen)
 	}
 	if !strings.Contains(offScreen, memoryOffNote) {
 		t.Fatalf("the place with no store does not say so:\n%s", offScreen)

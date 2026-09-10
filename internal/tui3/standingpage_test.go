@@ -273,8 +273,8 @@ func TestAnExceptedOrderIsOneLineUnderItsShelf(t *testing.T) {
 // NOTHING STANDS, SO THE PAGE OPENS AND SAYS WHAT STANDING ORDERS ARE.
 //
 // THIS TEST USED TO PIN THE OPPOSITE — one sentence in the conversation and no
-// overlay to dismiss before it could be told it was useless. The sentence stayed
-// ([standNothingWord]) and moved into the place's own body, because a machine
+// overlay to dismiss before it could be told it was useless. The page opens on
+// its heading and whisper ([placeWhisper]) instead, because a machine
 // nothing stands on is every machine for its first week, and refusing there made
 // `alt+3` a key that did nothing at all.
 func TestStandingOnNothingOpensThePageAndTeachesIt(t *testing.T) {
@@ -283,7 +283,7 @@ func TestStandingOnNothingOpensThePageAndTeachesIt(t *testing.T) {
 	if !a.at(pageStanding) {
 		t.Fatal("a conversation nothing stands over opened no page")
 	}
-	if text := standingPlaceScreen(a); !strings.Contains(text, standNothingWord) {
+	if text := standingPlaceScreen(a); !strings.Contains(text, whisperOf(pageStanding)) {
 		t.Fatalf("the empty place does not say what it is for:\n%s", text)
 	}
 }
@@ -296,7 +296,7 @@ func TestStandingOnNothingWritesNothingIntoTheTranscript(t *testing.T) {
 	for range 4 {
 		typeLine(t, a, "/standing")
 	}
-	if n := notesSaying(a, standNothingWord); n != 0 {
+	if n := notesSaying(a, whisperOf(pageStanding)); n != 0 {
 		t.Fatalf("the place's own body was written into the transcript %d times:\n%s",
 			n, strings.Join(plainRows(a), "\n"))
 	}
@@ -316,7 +316,7 @@ func TestASessionWithNoAmbientSideStillOpensThePlace(t *testing.T) {
 	if !a.at(pageStanding) {
 		t.Fatal("a session with no ambient side opened no page")
 	}
-	if text := standingPlaceScreen(a); !strings.Contains(text, standNothingWord) {
+	if text := standingPlaceScreen(a); !strings.Contains(text, whisperOf(pageStanding)) {
 		t.Fatalf("the empty place does not say what it is for:\n%s", text)
 	}
 }

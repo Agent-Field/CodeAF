@@ -180,7 +180,9 @@ func (a *app) placeStrip(width int) []string {
 	if a.strip.open {
 		return nil
 	}
-	if a.at(pageHome) {
+	// THE GRID DRAWS A QUESTION'S ANSWERS ON ITS OWN `needs you` ROW
+	// (homecell.go's [app.homeCellRow]), so the foot would be a second copy.
+	if a.at(pageHome) && !a.home.gridOn() {
 		return a.answerStrip(width, time.Now())
 	}
 	return nil

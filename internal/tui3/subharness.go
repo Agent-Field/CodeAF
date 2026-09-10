@@ -87,8 +87,8 @@ const (
 	//
 	// THE SEVEN PLACES ANSWER THIS DIFFERENTLY AND THE DIFFERENCE IS THE FRAME.
 	// A place has a tab bar, a composer and six neighbours to walk on to, so it
-	// opens empty and teaches ([standNothingWord] is now the first line of one
-	// such lesson). This is a modal overlay with none of that, and a modal with
+	// opens empty on its heading and whisper (placeprose.go's [placeWhisper]).
+	// This is a modal overlay with none of that, and a modal with
 	// no rows is still a trap.
 	subNothingWord = "no subharnesses here yet — a subharness is a saved program for work that comes round again."
 	// subNoMatchWord is the filter that matched nothing, drawn where the rows

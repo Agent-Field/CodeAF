@@ -913,6 +913,9 @@ func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked ro
 	// lifted is whether this row wears a ground at all, which is the one thing
 	// the note's ink turns on: dim grey on a raised ground is grey on grey.
 	lifted := oncursor || hovered || marked == markFront
+	// ON A PLACE THE POINTER'S ROW IS THE CURSOR'S ROW, word for word: the
+	// same ground, the same bold subject (styles.go's [palette.placeRows]).
+	lit := oncursor || (hovered && pal.placeRows)
 
 	var painted string
 	switch {
@@ -933,12 +936,12 @@ func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked ro
 		// row's ink, so a person's eye reads "this terminal has these" as one
 		// group rather than as two unrelated paints.
 		painted = pal.muted(label)
-	case oncursor:
+	case lit || pal.placeRows:
 		painted = pal.ink(label)
 	default:
 		painted = pal.dim(label)
 	}
-	if oncursor {
+	if lit {
 		painted = pal.bold(painted)
 	}
 	line := lead + painted
@@ -974,6 +977,13 @@ func overlayRowTinted(label, note string, tint noteInk, oncursor bool, marked ro
 // way, so the label starts in the same column on both.
 func overlayLead(selected, hovered bool, pal palette) string {
 	switch {
+	case pal.placeRows:
+		// A PLACE'S ROW WEARS NO MARK. The ground says which row a hand is on and
+		// the bold subject says it again; an accent `›` beside them was a second
+		// accent on a screen whose one accent belongs to the live thing. The one
+		// cell left is the place's own edge ([placeLead]), where the row's own
+		// glyph stands.
+		return placeLead
 	case selected:
 		return pal.accent("› ")
 	case hovered:
@@ -1035,15 +1045,16 @@ func overlayLinesTinted(label, note string, tint noteInk, selected, marked, hove
 	}
 	head := overlayLead(selected, hovered, pal)
 	painted := fit(label, width-2)
+	lit := selected || (hovered && pal.placeRows)
 	switch {
 	case marked:
 		painted = pal.accent(painted)
-	case selected:
+	case lit || pal.placeRows:
 		painted = pal.ink(painted)
 	default:
 		painted = pal.dim(painted)
 	}
-	if selected {
+	if lit {
 		painted = pal.bold(painted)
 	}
 	head += painted
@@ -1052,9 +1063,12 @@ func overlayLinesTinted(label, note string, tint noteInk, selected, marked, hove
 	// because dim grey on the selection band is grey on grey — and the tail is
 	// the half of the row a person stopped on the row to read.
 	tail := strings.Repeat(" ", overlayIndent) +
-		paintNote(tint, pal, fit(note, width-overlayIndent), selected)
+		paintNote(tint, pal, fit(note, width-overlayIndent), lit)
 
 	switch {
+	case lit && pal.placeRows:
+		// ONE GROUND FOR BOTH HANDS ON A PLACE, the one the single-line row wears.
+		return []string{pal.cursor(head, width), pal.cursor(tail, width)}
 	case selected:
 		return []string{pal.selected(head, width), pal.selected(tail, width)}
 	case hovered:

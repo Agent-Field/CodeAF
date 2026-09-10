@@ -101,42 +101,6 @@ func TestTheWidthLadderIsTwoRungsAndItsFloorIsTheSumOfTheColumns(t *testing.T) {
 	}
 }
 
-// AND THE SHAPE ON THE SCREEN FOLLOWS IT. Below the floor the list is alone on
-// every screen row; above it the card stands beside it, which is visible as one
-// thing — a fact only the card knows on the SAME screen row as a row of the list.
-func TestTheCardJoinsTheListOnlyWhereTheWidthIsSpare(t *testing.T) {
-	a, mine := bridgeLab(t)
-	a.home.point(mine)
-	// The card names the strip in words and never in letters, with a colon after
-	// it ([app.homeCardVerbs]); the foot's own hint spells the same clause without
-	// one. So this is the phrase only a card ever draws.
-	only := homeVerbsWord + ":"
-	// AND BESIDE IS THE WHOLE CLAIM. The card's title stands on the same screen
-	// row as the first row of the list, which is what makes it a column rather
-	// than something further down the page.
-	beside := func(width int) bool {
-		a.width = width
-		for _, line := range homeLines(a) {
-			if strings.Contains(line, "what wants you first") && strings.Contains(line, "Porting the Picker") {
-				return true
-			}
-		}
-		return false
-	}
-	a.width = homeCardMin - 1
-	if strings.Contains(homeText(a), only) || beside(homeCardMin-1) {
-		t.Fatalf("a %d-column frame drew a card anyway:\n%s", homeCardMin-1, homeText(a))
-	}
-	a.width = homeCardMin
-	if !strings.Contains(homeText(a), only) {
-		t.Fatalf("a %d-column frame drew no card:\n%s", homeCardMin, homeText(a))
-	}
-	if !beside(homeCardMin) {
-		t.Fatalf("a %d-column frame put the card somewhere other than beside the list:\n%s",
-			homeCardMin, homeText(a))
-	}
-}
-
 // THE SECOND COLUMN IS ALWAYS THE CARD OF THE ROW UNDER THE CURSOR. There is no
 // state of this screen where it is a second list, an empty half, or a card about
 // something no row on the left names.
@@ -341,92 +305,6 @@ func TestADigitAnswersTheQuestionAtBothRungsOfTheLadder(t *testing.T) {
 	}
 }
 
-// ONE SCREEN ROW IS ONE LINE OF THE LIST.
-//
-// This used to be a test about telling two LEFT columns apart by x: a zone row
-// and a list row shared a screen row, and the pointer had to know which half it
-// was aimed at. There is one column of rows now, so the law inverts — every x
-// inside the list resolves to the SAME line — and a pointer that resolved
-// differently at the two ends of a row would be inventing a column that is not
-// there.
-func TestOneScreenRowIsOneLineOfTheList(t *testing.T) {
-	a, _ := bridgeLab(t)
-	width, height := a.size()
-	left, _ := homeColumns(width)
-	lines, hits, _, _ := a.homeFrame(width, height)
-	row := -1
-	for y := range lines {
-		if y < len(hits) && hits[y] >= 0 && a.home.lines[hits[y]].kind == homeSession &&
-			a.home.lines[hits[y]].row.Transcript != a.file {
-			row = y
-			break
-		}
-	}
-	if row < 0 {
-		t.Fatalf("no other conversation's row on the frame:\n%s", homeText(a))
-	}
-	want := hits[row]
-	for _, x := range []int{0, 1, left / 2, left - 1} {
-		a.home.cursor = homeNoLine
-		a.homePress(x, row)
-		if a.home.cursor != want {
-			t.Fatalf("a press at x=%d on screen row %d landed on line %d, want %d",
-				x, row, a.home.cursor, want)
-		}
-	}
-}
-
-// THE LIST IS THE ONLY THING THAT SCROLLS. It used to be two windows onto one
-// line list — the zones' own top and the list's — and only one of them held the
-// cursor. There is one window now, and the card beside it is not a window at all:
-// it is redrawn for whatever row the cursor reached, from its own first line.
-func TestTheListScrollsAndTheCardBesideItDoesNot(t *testing.T) {
-	// A machine with more rows than the frame can hold, with the fold standing
-	// open so that all of them are on the column at once.
-	lab := newSwitchLab(t)
-	a := lab.open(200, 12)
-	a.home.foldSwitch(true)
-	if len(a.home.lines) < 12 {
-		t.Fatalf("this column fits in the frame, so there is no scroll to test (%d lines)", len(a.home.lines))
-	}
-	width, height := a.size()
-	a.home.cursor = a.home.placesTop()
-	a.homeFrame(width, height)
-	if a.home.top != 0 {
-		t.Fatalf("the list started scrolled (top %d)", a.home.top)
-	}
-	for i := 0; i < 40; i++ {
-		a.home.move(1)
-	}
-	a.homeFrame(width, height)
-	if a.home.top == 0 {
-		t.Fatalf("walking to the bottom never scrolled the list at all (%d lines)", len(a.home.lines))
-	}
-	// AND THE CARD IS STILL THE CURSOR'S ROW, HEADED BY ITS NAME. A column that
-	// had scrolled with the list would have its title somewhere off the top. The
-	// bottom row of this list is the fold, which is a door and not a thing with a
-	// card, so the walk steps back onto the last conversation.
-	for i := 0; i < len(a.home.lines); i++ {
-		if line, ok := a.home.focusedLine(); ok && line.kind == homeSession {
-			break
-		}
-		a.home.move(-1)
-	}
-	a.homeFrame(width, height)
-	line, ok := a.home.focusedLine()
-	if !ok || line.kind != homeSession {
-		t.Fatalf("the bottom of the list holds no conversation to have a card:\n%s", homeText(a))
-	}
-	_, right := homeColumns(width)
-	card := a.homeDetail(right, height, a.pal)
-	if len(card) == 0 {
-		t.Fatalf("the bottom of the list has no card beside it:\n%s", homeText(a))
-	}
-	if !strings.Contains(plain(card[0]), homeName(line.row)) {
-		t.Fatalf("the card's first line is %q, want the cursor's row %q", plain(card[0]), homeName(line.row))
-	}
-}
-
 // ONE SPINNER. However many things move, exactly one row is given the moving
 // cell and every other live row holds the still mark — and the one that gets it
 // is the most recently active, which is the one order a person can verify: the
@@ -462,7 +340,9 @@ func TestExactlyOneRowIsGivenTheSpinnerHoweverManyAreMoving(t *testing.T) {
 			moving++
 		}
 	}
-	if moving != 3 {
+	// AT LEAST THREE: a conversation mid-turn stands on `where you were` as
+	// well as having its work on `running`, and the law is about the spinner.
+	if moving < 3 {
 		t.Fatalf("the machine is not busy enough to prove anything: %d moving rows\n%s", moving, homeText(a))
 	}
 	spun := 0

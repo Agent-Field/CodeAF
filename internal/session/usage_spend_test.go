@@ -329,3 +329,37 @@ func TestUsageTotalsAddsWhatTheBarsAdd(t *testing.T) {
 		t.Fatalf("the totals are %+v", total)
 	}
 }
+
+// TODAY IS THE WRITER'S DAY, as every bar is. A call booked on the 25th counts
+// toward the 25th's ceiling even when the stamp has turned over, and a row with
+// no day of its own falls back to its timestamp read locally.
+func TestSpendTodayIsTheMoneyOnNowsDay(t *testing.T) {
+	now := usageAt(t, "2026-08-25 21:00")
+	lines := []UsageLine{
+		spendLine(t, "2026-08-25 09:00", "a", "", 0.25),
+		spendLine(t, "2026-08-24 23:00", "a", "", 4),
+		{At: usageAt(t, "2026-08-26 00:30"), Day: "2026-08-25", Calls: 1, USD: 0.5},
+		{At: usageAt(t, "2026-08-25 13:00"), Calls: 1, USD: 2},
+	}
+	if got := SpendToday(lines, now); got != 2.75 {
+		t.Fatalf("today came to $%v, want the $2.75 booked on aug 25", got)
+	}
+	if got := SpendToday(nil, now); got != 0 {
+		t.Fatalf("an empty ledger came to $%v", got)
+	}
+}
+
+// A SHARE OF NO CEILING IS NOTHING, and a day over its ceiling says so rather
+// than stopping at the top of the bar.
+func TestSpendShareIsTheFractionOfTheBudget(t *testing.T) {
+	for _, probe := range []struct{ usd, budget, want float64 }{
+		{5, 20, 0.25},
+		{0, 20, 0},
+		{3, 0, 0},
+		{30, 20, 1.5},
+	} {
+		if got := SpendShare(probe.usd, probe.budget); got != probe.want {
+			t.Errorf("SpendShare(%v, %v) = %v, want %v", probe.usd, probe.budget, got, probe.want)
+		}
+	}
+}

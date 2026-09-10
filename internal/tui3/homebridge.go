@@ -74,13 +74,12 @@ const homeSwitchName = 70
 
 // homeSwitchTail is what a row spends on everything BUT its name at that
 // reading: the mark and the two cells after it, then a project tag and an age,
-// each carrying the one space [switcherTailWidth] puts in front of a fact.
+// each carrying the one space a row puts in front of a fact.
 const homeSwitchTail = 1 + 2 + (1 + 18) + (1 + 3)
 
 // homeSwitchFull is the width at which the flat list stops wanting cells — the
 // baseline SCREEN 1a is drawn at, where a row can carry its mark, its name, its
-// project tag and its age with none of them giving way ([switcherPaintRow] drops
-// them in that order below it).
+// project tag and its age with none of them giving way.
 //
 // THE NOTE IS NOT IN THAT LIST, AND THAT IS THE WHOLE OF THIS NUMBER. It was
 // 120, which was this same reading WITH the row's note on it — the `asks: May I
@@ -92,10 +91,9 @@ const homeSwitchTail = 1 + 2 + (1 + 18) + (1 + 3)
 // properly. A 120- and a 140-column window got neither.
 //
 // So the note is not what the list is measured at. It is ranked first out of the
-// row ([switcherPaintRow]'s ladder drops it before the project tag and the age),
-// which is the mechanism for this: past [homeCardMin] the note gives way and the
-// card takes it up, and the name, the tag and the age are untouched at every
-// width the tier exists at.
+// row, before the project tag and the age, which is the mechanism for this: past
+// [homeCardMin] the note gives way and the card takes it up, and the name, the
+// tag and the age are untouched at every width the tier exists at.
 const homeSwitchFull = homeSwitchName + homeSwitchTail
 
 // homeCardMin is the width at which a card appears beside the list — WHICH IS

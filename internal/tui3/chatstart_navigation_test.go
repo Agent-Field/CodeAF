@@ -22,7 +22,7 @@ func TestNewChatTabOwnsTheSelectionAndCloseReturnsTheDraft(t *testing.T) {
 	if plus.span.to == 0 {
 		t.Fatal("no plus control")
 	}
-	cmd, took := a.tabPress(plus.span.from, a.tabsLineRow())
+	cmd, took := a.tabPress(plus.span.from, placeTabRow)
 	if !took {
 		t.Fatal("plus did not take click")
 	}
@@ -45,7 +45,7 @@ func TestNewChatTabOwnsTheSelectionAndCloseReturnsTheDraft(t *testing.T) {
 	if active != 1 || close.span.to == 0 {
 		t.Fatalf("active=%d close=%+v", active, close)
 	}
-	cmd, _ = a.tabPress(close.span.from, a.tabsLineRow())
+	cmd, _ = a.tabPress(close.span.from, placeTabRow)
 	drain(t, a, cmd)
 	if a.startingChat() || a.input.String() != "old draft" {
 		t.Fatalf("close lost old context: %q", a.input.String())
