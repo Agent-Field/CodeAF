@@ -226,6 +226,15 @@ func (a *Agent) readCallFailure(err error, model, role string, attempt int) taxo
 func (a *Agent) readLadderFailure(err error, model, role string, ladder transportLadder) taxonomy.Verdict {
 	evidence := wireEvidence(err, ladder.attempt)
 	ladder.mark(&evidence)
+	return a.readWireEvidence(evidence, model, role)
+}
+
+// readWireEvidence is the last step both readings share: classify, journal, and
+// record a transport failure against the piece of work this agent belongs to. It
+// is a door of its own so that a caller holding the EVIDENCE as well as the
+// verdict — [Agent.readErrandFailure] — reads one failure once rather than
+// building the evidence twice.
+func (a *Agent) readWireEvidence(evidence taxonomy.Evidence, model, role string) taxonomy.Verdict {
 	verdict := a.classify(evidence, model, role)
 	if verdict.Class == taxonomy.Transport {
 		a.config.failures.Wire()
@@ -550,6 +559,15 @@ func (a *Agent) billLift(node *TaskNode, child *Agent) {
 // session is not news a person needs — but it is news the FILE needs, because
 // the measured version of this left a session with no title, no brief and no
 // word anywhere of why. The row is the whole action.
-func (a *Agent) readErrandFailure(err error, role roles.Role, model string, attempt int) taxonomy.Verdict {
-	return a.readCallFailure(err, model, string(role), attempt)
+// AND IT ASKS AS A LADDER, because it is one. `fallback` is the errand's own
+// fact — a rung remains — which is what turns the transport budget being spent
+// into [taxonomy.ActionHop] rather than [taxonomy.ActionGiveUp]
+// ([Agent.readLadderFailure]). The evidence comes back beside the verdict because
+// the ladder asks one question the verdict does not carry: see [errandWalksOn].
+func (a *Agent) readErrandFailure(err error, role roles.Role, model string,
+	ladder transportLadder,
+) (taxonomy.Verdict, taxonomy.Evidence) {
+	evidence := wireEvidence(err, ladder.attempt)
+	ladder.mark(&evidence)
+	return a.readWireEvidence(evidence, model, string(role)), evidence
 }
