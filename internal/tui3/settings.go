@@ -2294,7 +2294,6 @@ func (a *app) sheetFrame(width, height int) ([]string, []sheetHit, int, int) {
 		func(width, room int) []placeRow {
 			rows := make([]placeRow, 0, room)
 			rows = append(rows, placeRow{text: sheetTabBar(width, s.tab, pal), hit: sheetHit{kind: sheetHitTabs}})
-			rows = append(rows, placeRow{text: pal.dim(rule(width))})
 			rows = append(rows, placeRow{})
 			room -= len(rows)
 			if room < 1 {
@@ -2499,11 +2498,16 @@ func tabAtColumn(x, width, active int) (int, bool) {
 	return 0, false
 }
 
-// sheetTabBar is the one place this panel spends the accent: the tab you are
-// on. Everything else on the bar is dim, which is what makes the one word read
-// as a position rather than as a menu of five shouting words.
+// sheetTabBar is this panel's sections, with the one you are on filled. Every
+// other chip is dim, which is what makes the one word read as a position rather
+// than as a menu of nine shouting words.
 //
-// THE ACCENT NOW ARRIVES ON A BAND, and the band is why the chips are padded.
+// THE FILLED CHIP IS INK AND BOLD, NOT THE ACCENT. The accent on a place is the
+// live thing's alone (SCREEN 2a), and a section a person picked is a position,
+// not something happening — so the chip says it with the ground and the weight
+// the place's own tab bar uses (PLACES-AUDIT.md finding 11).
+//
+// THE CHIP ARRIVES ON A BAND, and the band is why the chips are padded.
 // Five words in a row with one of them brighter is a sentence with an emphasis
 // in it; five padded chips with one of them filled is a tab bar, and this panel
 // IS a tab bar — the same object the task strip is, drawn the same way, so that
@@ -2526,7 +2530,7 @@ func sheetTabBar(width, active int, pal palette) string {
 		title := settingTabs[i]
 		chip := tabPad + title + tabPad
 		if i == active {
-			line += pal.selected(pal.bold(pal.accent(chip)), tabChipCols(title))
+			line += pal.selected(pal.bold(pal.ink(chip)), tabChipCols(title))
 		} else {
 			line += pal.dim(chip)
 		}
@@ -2563,7 +2567,7 @@ func (s *sheet) listLines(width, room int, pal palette, hover int) ([]string, []
 		if s.onConnections() {
 			word = s.connEmptyWord()
 		}
-		put(pal.dim("  "+word), -1)
+		put(placeLead+pal.dim(word), -1)
 		return lines, owner
 	}
 	for i, item := range s.items {
@@ -2571,7 +2575,7 @@ func (s *sheet) listLines(width, room int, pal palette, hover int) ([]string, []
 			if len(lines) > 0 {
 				put("", -1)
 			}
-			put(pal.dim("  "+item.head), -1)
+			put(placeLead+placeHeading(item.head, pal), -1)
 			continue
 		}
 		// AN ACCOUNT IS A BLOCK AND A BLOCK HAS AIR OVER IT (connectcaps.go).
