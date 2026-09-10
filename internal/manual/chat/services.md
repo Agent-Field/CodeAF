@@ -60,6 +60,7 @@ Open `/connect` and press `enter` on a connected row. The row first says
 
 A service answering the current turn cannot be cut:
 `deepseek is answering right now · try again in a moment`. If this conversation used the removed service, aforge either says
+the disconnected sentence first and then says
 `this conversation was on deepseek-direct/deepseek-v4-pro · it is now on ~deepseek/deepseek-v4-flash-latest`, or, when nothing can replace it,
 `this conversation was on deepseek-direct/deepseek-v4-pro and nothing else here can take it · connect a service or pick a model`.
 
@@ -71,9 +72,12 @@ service is written `<service>/<model id>`, such as
 where the model can be reached. With two or more connected services, `/model` shows a dim
 heading for each service, default first, in the order shown in the Providers tab.
 
-The status line does not add another service label. The model id already carries it;
-`via <machine>` still names a serving machine when one exists and draws nothing when it
-does not.
+The status line uses the same spelling: an unqualified default-service id, and
+`<service>/<model id>` for every other service. It does not shorten
+`ollama/llama3.2:latest` to `llama3.2:latest`, because two services may publish the
+same model name. `via <machine>` belongs only to a default-service model with router
+lanes. A direct-service row and status line draw no `via` at all and open no lane
+sheet; that service has one road, not a choice of serving machines.
 
 ## Why there is no price on a direct service yet
 
@@ -102,6 +106,10 @@ The **Something else** row in `/connect` accepts an OpenAI-compatible base URL a
 Use it for a proxy, gateway, self-hosted endpoint, or vendor not already named. Aforge
 checks the address before saving it and uses a short written name derived from its host;
 if that name is already taken, the message offers a `-direct` spelling.
+
+That written host name is the row's name everywhere. A refusal from a localhost row says
+`localhost refused that key — …`, and a success says `localhost is connected · 2 models`;
+neither switches back to `custom`.
 
 In Phase 1 a **Something else** service must provide both the compatible chat path and
 `GET <base>/models`; a missing model list refuses the connection and saves nothing. The

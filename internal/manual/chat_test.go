@@ -2375,6 +2375,9 @@ func TestTheServicesPageNamesTheCustomListRequirementAndDisconnectConfirmation(t
 	}
 	for _, sentence := range []string{
 		"enter again to disconnect",
+		"the disconnected sentence first and then says",
+		"A direct-service row and status line draw no `via` at all and open no lane\nsheet",
+		"That written host name is the row's name everywhere",
 		"a **Something else** service must provide both the compatible chat path and\n`GET <base>/models`",
 		"a missing model list refuses the connection and saves nothing",
 	} {

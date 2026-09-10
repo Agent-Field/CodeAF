@@ -37,7 +37,7 @@ This affects routing estimates; it is not proof of a cache hit. A provider may
 evict cached input, and compaction or a rewrite can change earlier text even when
 the conversation identity stays the same.
 
-## Which model am I talking to, which model is it using right now, and how do I switch or change it
+## How do I pick a different model — which model am I talking to, which model is it using right now, and how do I switch or change it
 
 The model in use is written on the legend line directly above the message box, after the
 conversation's name (`porting the parser · glm-5.3-flash`). There are two doors to the
