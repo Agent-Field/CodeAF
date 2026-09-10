@@ -738,3 +738,40 @@ func (a *app) homeGridAnswer(key string) (tea.Cmd, bool) {
 	}
 	return nil, false
 }
+
+// ── the readings the grid asks for ─────────────────────────────────────────
+
+// refreshGridReadings asks for the two readings the resting grid draws that are
+// about one row rather than about the machine: the tail of this window's own
+// journal, for the line under its row, and each project's `git status`, for its
+// repository clause. Both come back as messages and rebuild the grid when they
+// land ([app.tookHomeLeftOff], [app.tookHomeRepo]); both are behind the caches
+// that keep a second ask from costing anything (homecardread.go,
+// homeband_repo.go).
+func (a *app) refreshGridReadings(now time.Time) tea.Cmd {
+	var asked []tea.Cmd
+	for _, line := range a.home.lines {
+		switch {
+		case line.cell != nil && line.cell.bold:
+			asked = append(asked, a.askHomeLeftOff(line.row.Transcript))
+		}
+	}
+	return tea.Batch(asked...)
+}
+
+// homePreselect puts the cursor on THE CONVERSATION THIS WINDOW WAS IN BEFORE
+// THIS ONE (law 6): the most recent key on this window's own stack that is not
+// the one in front and is on the grid. Enter is then a switch in two keys, and
+// esc still goes back to the conversation behind home.
+func (a *app) homePreselect() {
+	if !a.home.gridOn() {
+		return
+	}
+	front := a.frontTabKey()
+	for at := len(a.prev) - 1; at >= 0; at-- {
+		if key := a.prev[at]; key != "" && key != front {
+			a.home.point(key)
+			return
+		}
+	}
+}

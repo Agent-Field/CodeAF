@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // ── THE PANELS (docs/design/home-mission-control/DESIGN.md §1, §3 G2–G6) ────
@@ -96,5 +98,77 @@ func TestSinceYouLeftIsItsOwnPanelOfDoors(t *testing.T) {
 	a.homeKey(key("enter"))
 	if !a.at(pageMemory) {
 		t.Fatal("enter on the memory line did not open the memory place")
+	}
+}
+
+// WHERE YOU WERE: this window's own conversation first with `here`, the last
+// thing said in it under it, then the most recent quiet ones, then the fold.
+func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.open(120, 45)
+	a.home.last[lab.mine] = session.Summary{LastUser: "explain open addressing vs chaining"}
+	a.home.build()
+	frame := homeText(a)
+	head, _ := homeRowOf(frame, "where you were")
+	own, _ := homeRowOf(frame, "Porting the Resume Picker")
+	if head < 0 || own != head+1 {
+		t.Fatalf("this window's own conversation is not the first row of where you were:\n%s", frame)
+	}
+	lines := strings.Split(frame, "\n")
+	if !strings.Contains(lines[own], homeHereWord) || !strings.Contains(lines[own+1], "explain open addressing") {
+		t.Fatalf("the own row does not say here with its last words under it:\n%s", frame)
+	}
+	if !strings.Contains(frame, "5 more · "+homeFindWord) {
+		t.Fatalf("the quiet tail is not folded behind one line:\n%s", frame)
+	}
+	// AND A ROW FROM ANOTHER FOLDER SAYS WHICH, where one from this folder does
+	// not.
+	if quiet := lines[own+2]; !strings.Contains(quiet, "Quiet Chat a") || !strings.Contains(quiet, "beta") {
+		t.Fatalf("a row from another folder does not carry its project:\n%s", frame)
+	}
+	// AND THE TWO ROWS THAT ARE ON OTHER PANELS ARE NOT HERE A SECOND TIME.
+	if strings.Count(frame, "Swarm Task Splitting") != 1 || strings.Count(frame, "Bounty Reward Companies") != 1 {
+		t.Fatalf("a conversation is drawn on two panels:\n%s", frame)
+	}
+}
+
+// PRESELECT THE PREVIOUS THING (law 6): home opened from a conversation puts the
+// cursor on the one this window was in before it, so enter is a switch in two
+// keys.
+func TestHomePreselectsTheConversationThisWindowWasInBefore(t *testing.T) {
+	lab := newSwitchLab(t)
+	a := lab.app(lab.mine)
+	a.width, a.height = 120, 45
+	var before string
+	for _, row := range a.readWorld().Sessions() {
+		if row.Title == "quiet chat c" {
+			before = row.Transcript
+		}
+	}
+	a.prev = []string{before}
+	a.openHome()
+	homeText(a)
+	if got := a.home.focused(); got.Transcript != before {
+		t.Fatalf("the cursor opened on %q, want the previous conversation %q", got.Title, before)
+	}
+}
+
+// AND TYPING IS UNTOUCHED: with anything in the box the body is the search's
+// drop-up, exactly as it was, and not a panel.
+func TestTypingOnHomeStillRaisesTheSearch(t *testing.T) {
+	a := newSwitchLab(t).open(120, 45)
+	for _, r := range "quiet" {
+		a.homeKey(key(string(r)))
+	}
+	if a.home.gridOn() {
+		t.Fatal("the grid is still up under a query")
+	}
+	for _, line := range a.home.lines {
+		if line.cell != nil {
+			t.Fatal("a line of the drop-up carries a panel's cell")
+		}
+	}
+	if frame := homeText(a); !strings.Contains(frame, "Quiet Chat a") {
+		t.Fatalf("the query did not find its rows:\n%s", frame)
 	}
 }

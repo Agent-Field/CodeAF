@@ -1,7 +1,68 @@
 package tui3
 
-// recentPanel is `where you were` (docs/design/home-mission-control/DESIGN.md §1). Its rows are
-// read in the next change; until then the grid draws its heading and whisper.
+// recentPanel is `where you were`: this window's own conversation first, in
+// bold, with the last thing said in it on the line under it; then the most
+// recently active of the rest; then `N more · type to find one`.
+//
+// IT IS THE QUIET CONVERSATIONS. A conversation waiting on a person is on
+// `needs you` and one with work out is on `running`, and a row drawn twice is
+// the same reading said twice — so this panel is what is left, with one
+// exception: this window's own conversation is always its first row, because
+// `where you were` without the place you were is not an answer.
+//
+// AND THE ERRANDS STAND OVER IT. An `ask here` exchange is a conversation this
+// window started a minute ago, with no row in the world at all
+// (homeexchange.go), and the top of this panel is where the thing you asked
+// for belongs.
 type recentPanel struct{ homePanelBase }
 
-func (recentPanel) rows(in *homeGridInput) homePanelRows { return homePanelRows{} }
+// homeRecentRows is how many conversations the panel draws before its fold:
+// this window's own and the four before it.
+const homeRecentRows = 5
+
+func (recentPanel) rows(in *homeGridInput) homePanelRows {
+	var own *switcherRow
+	var rest []switcherRow
+	for _, row := range in.rows {
+		switch {
+		case row.kind != switcherConversation:
+		case row.here:
+			mine := row
+			own = &mine
+		case !row.needs && !row.moving:
+			rest = append(rest, row)
+		}
+	}
+	lines := append([]homeLine(nil), in.errands...)
+	room := homeRecentRows
+	if own != nil {
+		lines = append(lines, switcherRowLine(*own, recentOwnCell(*own, in)))
+		room--
+	}
+	shown := min(room, len(rest))
+	for _, row := range rest[:shown] {
+		lines = append(lines, switcherRowLine(row, recentCell(row, in)))
+	}
+	return homePanelRows{lines: lines, more: len(rest) - shown}
+}
+
+// recentOwnCell is this window's own row: bold, `here` at the margin, and the
+// last thing its person said on the line under it — read from the journal's
+// tail on the beat (homecardread.go), never on a draw, and nothing at all until
+// that reading has come back.
+func recentOwnCell(row switcherRow, in *homeGridInput) *homeCell {
+	said := switcherFirstLine(in.last[row.session.Transcript].LastUser)
+	return &homeCell{panel: panelRecent, title: row.title, right: switcherMarginWord(row), bold: true, sub: said}
+}
+
+// recentCell is any other row: its age, or the one fact that decides what enter
+// will do, at the margin — and its project's name beside that only when it is
+// not this window's own folder, where the tag would be the same word on every
+// row.
+func recentCell(row switcherRow, in *homeGridInput) *homeCell {
+	cell := &homeCell{panel: panelRecent, title: row.title, right: switcherMarginWord(row)}
+	if homeBucketOf(row.session.Transcript) != in.bucket {
+		cell.tag = row.project
+	}
+	return cell
+}
