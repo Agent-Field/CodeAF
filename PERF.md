@@ -1243,12 +1243,31 @@ this one is; the schema's six fields carry one clause each, and `depends_on` and
 `model` give up their rules entirely to the identical fields next door. The
 measured prefix is **48,761**, which is 239 under the new cap.
 
-What is still owed, and where it should come from: the planner rule is now in
-the prefix three times (`taskDescription`, the `WIDE WORK` bullet, and
-prompts/system.md's own paragraph), and prompts/system.md's `small work ... is
-answered here` sentence is a routing call the judge now makes better and in the
-place the call is made. Paying either one back lowers this cap again, and the
-cap only ever moves with this section in the same commit.
+What is still owed, and where it should come from: the planner rule is in the
+prefix twice (`taskDescription` and prompts/system.md's own paragraph, both
+pinned by `TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner`). Paying it
+back lowers this cap again, and the cap only ever moves with this section in
+the same commit.
+
+**The choice fix spent 1,410 of it and paid two debts (2026-09-10).** The cap
+did not move; the measured prefix went **46,635 → 48,045**, which is 955 under.
+What it bought was the routing itself: the belt's first bullet sorted on WIDTH
+and a real model read a read-only survey of four packages as wide work and
+bought it a worktree, a check and a landing, so the bullet now sorts on what
+happens to the answer — read and carry on is `quick_task`, checked and landed is
+`propose_task`, and the "one task that hands its own parts out" road is a wide
+CHANGE. Beside it went the wall-clock law the owner ruled on the same day
+(independent pieces start in one breath, keep one and begin it, never poll, end
+the turn when nothing independent is left) and the GRAIN one quick task is cut
+at, which quotes `taskNoProgress` rather than a figure typed twice — a quick
+task cut at twenty files died `out of rounds — stopped: 6 steps without
+progress` and cost $0.62 for nothing.
+
+Two of the three duplicate rules named above paid part of it: prompts/system.md's
+`small work ... is answered here` sentence is gone, the routing call being one
+the judge now makes better and in the place the call is made, and the `WIDE
+WORK` bullet's `never split related work` is gone, that rule being stated in
+`quick_task`'s own description and again in the wall-clock fact.
 
 ## Following through on a completion claim
 

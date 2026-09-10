@@ -269,36 +269,90 @@ var beltFacts = []beltFact{{
 // names no verb and stays in the page for everybody: what a hand-off costs,
 // that the question is asked again while you work, and that what you learned
 // goes with it.
+//
+// AND THE FIRST BULLET SORTS ON WHAT HAPPENS TO THE RESULT, NEVER ON WIDTH.
+// It said the opposite until 2026-09-10 — "WIDE WORK … ONE `propose_task` with
+// `wide` set. That is the default road" — and a real model read it exactly as
+// written: asked for a READ-ONLY survey of four packages it answered "wide
+// survey across four packages, sizing it before I hand it off" and proposed a
+// task, buying a worktree, a check and a landing for four files it was only
+// going to read. Width was never the question. What decides is whether the
+// answer comes back to be READ and carried on with here — which is a quick
+// task, one per independent part — or whether it must be CHECKED AND LANDED on
+// its own, which is a task. The "one task that hands its own parts out" road is
+// still the right road, and it is the road for a wide CHANGE; both bullets say
+// so, because the defect was the model applying the change road to a read.
+// Both verbs are on a belt together or on neither ([Config.mayQuickTask]), so
+// this one bullet may name them both and be true wherever it renders.
 var handoffFacts = []beltFact{{
-	tools: []string{"propose_task"},
+	tools: []string{"propose_task", quickTaskToolName},
 	holds: Config.mayProposeTask,
 	present: "WORK — research across sources, changes across files, anything with several\n" +
 		"independent parts, anything they would otherwise watch a spinner for — is NOT\n" +
 		"yours to do inline. Launch first, then answer:\n" +
-		"  - WIDE WORK — a sweep across many files, research across many sources, the\n" +
-		"    same change over many independent items: ONE `propose_task` with `wide`\n" +
-		"    set. That is the default road: the worker opens the material and hands the\n" +
-		"    real parts out under itself, each a worker in a copy of its own,\n" +
-		"    folding their reports into one deliverable. Do not decompose it\n" +
-		"    here, since the parts are only visible from inside, and never split related\n" +
-		"    work, which shards the context it shares.\n" +
+		"  - WORK YOU WILL READ AND CARRY ON WITH — a survey, a comparison, research, a\n" +
+		"    draft, reading across many files or packages: `quick_task`, ONE PER\n" +
+		"    INDEPENDENT PART in one breath, each a few files and a few minutes, or\n" +
+		"    one with `items` where the parts share what they learn. Width is no\n" +
+		"    reason to make it a task; you write the answer from what they bring back.\n" +
+		"  - WORK THAT MUST BE CHECKED AND LANDED on its own — edits that need a build,\n" +
+		"    a branch, a merge — or must outlive this window: `propose_task`. A WIDE\n" +
+		"    CHANGE is ONE of them with `wide` set, and that worker opens the material\n" +
+		"    and hands the real parts out under itself; a wide READ never is.\n" +
 		"  - One self-contained linear job: `propose_task`, without `wide`.",
 	absent: "WORK IS YOURS TO DO HERE. There is nowhere to launch it at from where you\n" +
 		"stand, so a sweep across many files, research across many sources or the same\n" +
 		"change over many items is work you open and carry yourself, in the order that\n" +
 		"finishes it.",
 }, {
-	// AND THE LIGHTEST ROAD OF ALL, which is not a hand-off at all in the sense
-	// the one above it is: nothing is copied, nothing is checked, and the answer
-	// comes back to be read. The judge that decides between this and a task is
-	// written once, in `quick_task`'s own description (task_quick.go), so this
-	// line says only which verb it is and what it does.
+	// AND ONE FACT ABOUT THE VERB THAT NOTHING ELSE HOLDS. Which work it is for
+	// is the bullet above; what it IS — where it runs, what it lands — is the
+	// judge in its own description (task_quick.go). What neither of those says
+	// is that there is no card and no countdown in front of it, which the model
+	// would otherwise assume from `propose_task`, so that is the whole line and
+	// the rest of it was a second copy paid for on every request.
 	tools:   []string{quickTaskToolName},
 	holds:   Config.mayQuickTask,
-	present: "  - Work you will read the result of and carry on: `quick_task` — it starts now, where you are, and lands as its last message.",
+	present: "  - `quick_task` has no card and no countdown: it starts the moment you call.",
 	// A node on the floor of the tree is told nothing: there is no second-best
 	// road to point it at, and the `WORK IS YOURS TO DO HERE` sentence above has
 	// already said so.
+	absent: "",
+}, {
+	// AND THE WALL CLOCK IS A DECISION, ASKED EVERY TURN. The two bullets above
+	// answer WHICH ROAD a piece of work takes; this one answers a question the
+	// page never put at all — whether the pieces go one after another or all at
+	// once. A model left to itself does them in turn, because that is what a
+	// single thread of reasoning feels like from inside, and the person waits
+	// the sum of the parts for an answer that could have cost the longest one.
+	// Owner's ruling, 2026-09-10: an agent that can start other agents should
+	// weigh that every turn and take it when the pieces are independent.
+	//
+	// IT CARRIES THE AFTER-SPAWN CONDUCT WITH IT, in the same breath, because
+	// the two failures are one failure. A turn that hands three pieces out and
+	// then spends its steps reading their state has bought the wall-clock win
+	// and handed it straight back. The laws it leans on are already written —
+	// `HANDED-OFF WORK IS NOT WORK THAT REMAINS` in the page's Critical list and
+	// [taskHandoffWakeSentence] on every receipt — so this says only the part
+	// neither of them says: keep a piece, start on it now, and fold each landing
+	// as it arrives.
+	//
+	// It is composed rather than written into prompts/system.md because that
+	// page is read by EVERY shape this package builds, the floor of the tree
+	// included (prompt.go), and a node with nowhere to hand work to must not be
+	// told to weigh handing it out.
+	tools: []string{quickTaskToolName},
+	holds: Config.mayQuickTask,
+	present: "AND WEIGH THE WALL CLOCK EVERY TURN. Pieces that do not need each other are\n" +
+		"work you would otherwise do one after another while they wait the sum of it:\n" +
+		"start them in one breath as quick tasks instead, each a worker of its own\n" +
+		"reading and writing beside you, and keep one piece yourself and begin it at\n" +
+		"once. Then carry on with your own piece: never poll a running task and never\n" +
+		"re-read it — each landing arrives as a note and wakes you if your turn has\n" +
+		"ended — and fold each one as it comes. When nothing independent of what you\n" +
+		"handed out is left, end the turn; waiting is not a step. NOT this way:\n" +
+		"pieces that share what they learn (one quick task's items), one edit, one\n" +
+		"read or one command, and anything that must be checked and landed on its own.",
 	absent: "",
 }, {
 	tools:   []string{"build_harness", loadCapabilityToolName},

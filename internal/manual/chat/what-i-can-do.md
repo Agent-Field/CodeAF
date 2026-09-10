@@ -910,6 +910,12 @@ works through and ticks off. It starts at once, with no card to accept, and its
 reads `quick · 2/4 · <what it is on>` while it runs. Which road a piece of work
 takes: if you will read the result and carry on, it is quick; if it must be
 checked and merged on its own, or survive the window closing, it is a task.
+Width does not decide it — a survey of four packages is four quick tasks, one
+each, while a wide *change* that has to build is one task. Independent pieces
+are started in the same breath rather than one after another, so you wait for
+the longest and not for the sum, and each one is kept to a few files and a few
+minutes so it does not run out of room. *Quick task or a proper task* and *How
+big one quick task should be*, on the tasks page, are the whole of it.
 
 The tasks pages in this manual cover how a task runs, what it costs and what you
 see while it works.

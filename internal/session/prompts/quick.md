@@ -19,6 +19,14 @@ that comes late is a row that is telling them something that stopped being true.
 If the work turns out to have a step your list does not name, add it with
 `items` rather than doing it silently.
 
+AND YOUR OWN ITEMS MAY BE WORK FOR MORE HANDS. Where two of them do not need
+each other and a page above gave you the verb for handing work out, starting
+both in one breath finishes sooner than doing them in turn — keep one for
+yourself and begin it at once, then carry on with it rather than watching the
+other, and fold each answer as it comes back. Items that share what they learn
+stay yours, in order. Whatever you start is smaller than you are: a few files
+and a few minutes each.
+
 Do not build, run tests or run a check unless an item says so. Nobody is going
 to audit this and nothing is waiting on a green run: what was asked for is the
 work, and a build nobody asked for is minutes of somebody's time spent on a
