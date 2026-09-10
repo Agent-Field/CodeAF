@@ -1364,7 +1364,7 @@ const laneAutoNote = "picks the fastest lane each answer"
 // nothing behind the model has been measured. It is a sentence a person would
 // say, it draws no number, and it says when that changes — which is the whole
 // of what somebody who pressed `→` on the model needs to know about the gap.
-const laneUnmeasured = "no machine has been measured for this model yet — they show up after its first answer"
+const laneUnmeasured = "no machine has been measured for this model yet — machines show up after its first answer"
 
 // lineUnder is the dim line drawn under one row, and empty under nearly all of
 // them: the why of the lane the cursor is on ([picker.whyAt]), or — under the

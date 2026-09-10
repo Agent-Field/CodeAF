@@ -2416,7 +2416,7 @@ From the keyboard alone: `/model @cloudflare` pins, `/model auto` un-pins.
 
 **A model nobody has measured opens onto its two answers and no machines.** `→` shows
 `auto` and `openrouter`, and in the machines' place one line —
-`no machine has been measured for this model yet — they show up after its first answer`
+`no machine has been measured for this model yet — machines show up after its first answer`
 — with no number anywhere, the same rule that leaves the speed off its row. Opening it
 asks for that model's list of machines in the background.
 

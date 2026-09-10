@@ -113,7 +113,7 @@ let the router balance it".
 
 **A model nobody has measured still opens**, onto `auto` and `openrouter`, with one
 line where the machines would be:
-`no machine has been measured for this model yet — they show up after its first answer`.
+`no machine has been measured for this model yet — machines show up after its first answer`.
 Opening it asks for that model's list of machines in the background. With the routing
 row at `off` nothing opens at all.
 
