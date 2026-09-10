@@ -444,6 +444,11 @@ where you handed it back with `d`. It is the same line that goes into
 The line stays for half a minute and then goes — it is news, and after that it
 is history, which lives in the transcript and in the record.
 
+**There is one line however you answered.** Answering from the page a question
+opens into folds that page away and leaves the same receipt above the box —
+not a second account of the same decision in different words, and never one
+saying `another window` about a key you pressed yourself.
+
 ## A question that stops needing you
 
 Sometimes the thing a question was about goes away — the turn moved on, the plan
