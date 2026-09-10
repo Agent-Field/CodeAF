@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -27,6 +28,12 @@ type harnessAnswer struct {
 
 func (h *harnessAgent) ResolveHarness(id uint64, run bool, model string) {
 	h.answers = append(h.answers, harnessAnswer{id: id, run: run, model: model})
+}
+
+// ResolveQuestion is THE ONE DOOR every answer on the block goes through
+// ([resolveThroughLanes] says why a fake needs it).
+func (h *harnessAgent) ResolveQuestion(answer session.Answer) error {
+	return resolveThroughLanes(h, answer)
 }
 
 func harnessOffered(t *testing.T, turn string) (*harnessAgent, *app) {
@@ -55,42 +62,54 @@ func harnessOfferedWith(t *testing.T, turn string, offer session.Event) (*harnes
 func TestTheHarnessOfferIsOneRowWithBothAnswers(t *testing.T) {
 	_, a := harnessOffered(t, "research the pricing tiers")
 
-	if got := a.harnessAskHeight(); got != 1 {
-		t.Fatalf("the offer took %d rows, want one", got)
+	// The line form: head and answers on one row, the reason under it.
+	a.width = 120
+	if got := len(a.questionRows(a.width)); got != 2 {
+		t.Fatalf("the offer took %d rows, want the question and its reason:\n%s",
+			got, plain(strings.Join(a.questionRows(a.width), "\n")))
 	}
 	got := plain(frame(a))
 	for _, want := range []string{
-		`run harness "research"?`, // the whole question
-		"[enter] run",
-		"[esc] no",
+		`run harness "research"`, // the whole question
+		"[1] run it",
+		"[2] not now",
+		"[esc] later",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the offer is missing %q:\n%s", want, got)
 		}
 	}
-	// A frame with room says what the harness is FOR; the narrow one above is
-	// the same row with the description dropped, never with an answer cut off.
+	// A frame with room says what the harness is FOR; the narrow one below is
+	// the same question with the reason cut, never with an answer dropped.
 	a.width = 120
 	if wide := plain(frame(a)); !strings.Contains(wide, "Research a question across sources") {
 		t.Fatalf("the wide row does not say what the harness does:\n%s", wide)
 	}
+	// AND A FRAME WITH NO ROOM FOR ONE ROW PROMOTES RATHER THAN CUTTING AN
+	// ANSWER: the card gives each answer a row of its own, which is the floor
+	// moving up under a narrow terminal (question.go's questionLineRows).
 	a.width = 60
 	narrow := plain(frame(a))
-	if strings.Contains(narrow, "Research a question across sources") {
-		t.Fatalf("the narrow row kept the description:\n%s", narrow)
-	}
-	if !strings.Contains(narrow, "[enter] run") || !strings.Contains(narrow, "[esc] no") {
-		t.Fatalf("the narrow row lost an answer:\n%s", narrow)
+	for _, want := range []string{"1  run it", "2  not now"} {
+		if !strings.Contains(narrow, want) {
+			t.Fatalf("the narrow form lost %q:\n%s", want, narrow)
+		}
 	}
 }
 
-// THE TWO ANSWERS, in the four keys they are given by.
+// THE TWO ANSWERS, in the digits every question on this surface takes.
+//
+// `enter`, `y`, `esc` and `n` used to be the four keys here, and none of them is
+// an answer any more: this lane answers `1` and `2` like every other question on
+// the block, and `esc` is *later* rather than the no
+// (docs/design/questions/DESIGN.md's ONE KEY GRAMMAR).
 func TestTheHarnessOfferAnswersToItsKeys(t *testing.T) {
 	for _, c := range []struct {
 		key string
 		run bool
-	}{{"enter", true}, {"y", true}, {"esc", false}, {"n", false}} {
+	}{{"1", true}, {"2", false}} {
 		agent, a := harnessOffered(t, "research the pricing tiers")
+		harnessSettled(t, a)
 		drive(t, a, key(c.key))
 		if len(agent.answers) != 1 {
 			t.Fatalf("%s sent %d answers", c.key, len(agent.answers))
@@ -102,48 +121,85 @@ func TestTheHarnessOfferAnswersToItsKeys(t *testing.T) {
 			t.Fatalf("%s left the offer up", c.key)
 		}
 	}
+
+	// AND esc IS LATER AND ANSWERS NOTHING. The offer stays open, the turn stays
+	// held, and the chip goes on counting it.
+	agent, a := harnessOffered(t, "research the pricing tiers")
+	harnessSettled(t, a)
+	drive(t, a, key("esc"))
+	if len(agent.answers) != 0 {
+		t.Fatalf("esc answered the offer: %+v", agent.answers)
+	}
+	if !a.asksHarness() || a.questionCount() != 1 {
+		t.Fatalf("esc took the offer away rather than putting it off")
+	}
 }
 
-// WHILE IT IS UP IT OWNS THE KEYBOARD. A key that is not an answer does
-// nothing — it does not type into a conversation that cannot move.
-func TestTheHarnessOfferSuspendsTheDraft(t *testing.T) {
+// AND IT DOES NOT SUSPEND THE DRAFT. The block is never modal: the box under an
+// offer is live, the letters are the person's, and the question waits.
+//
+// This is a change. The row used to own the keyboard while it was up — every key
+// that was not one of its four did nothing — which was the honest design while
+// `esc` was the only way out and the only way out was an answer. `esc` is later
+// now, so there is a way out that neither answers nor traps (question.go's THE
+// NEVER MODAL law).
+func TestTheHarnessOfferLeavesTheDraftAlone(t *testing.T) {
 	agent, a := harnessOffered(t, "research the pricing tiers")
-	before := a.input.String()
+	harnessSettled(t, a)
 	drive(t, a, key("k"), key("z"))
-	if got := a.input.String(); got != before {
-		t.Fatalf("the draft took %q while a question was up", got)
+	if got := a.input.String(); got != "kz" {
+		t.Fatalf("the box holds %q, want the letters that were typed", got)
 	}
 	if len(agent.answers) != 0 {
 		t.Fatalf("an ordinary key answered the offer: %+v", agent.answers)
 	}
+	// AND WITH WORDS IN THE BOX THE DIGITS ARE TEXT. A question the turn is
+	// waiting on still leaves a half-typed sentence alone.
+	drive(t, a, key("1"))
+	if len(agent.answers) != 0 {
+		t.Fatalf("a digit answered over a half-typed sentence: %+v", agent.answers)
+	}
+	if got := a.input.String(); got != "kz1" {
+		t.Fatalf("the box holds %q", got)
+	}
 }
 
-// AND IT IS A BUTTON. The row's two answers are targets, and a press anywhere
-// else on the row is swallowed rather than falling through to the transcript.
+// AND IT IS A BUTTON. Every answer on the row is a target, and a press that
+// missed them all is swallowed rather than falling through to the transcript.
 func TestTheHarnessOfferAnswersToThePointer(t *testing.T) {
 	agent, a := harnessOffered(t, "research the pricing tiers")
+	// The LINE form, which is what an offer is on a frame with room for one row
+	// — its two answers are spans on that row rather than rows of their own.
+	a.width = 120
+	harnessSettled(t, a)
 	y := harnessRowY(t, a)
-	if len(a.harnessTaps) != 2 {
-		t.Fatalf("the row recorded %d targets, want two", len(a.harnessTaps))
+	if len(a.questionSpans) != 2 {
+		t.Fatalf("the row recorded %d targets, want two", len(a.questionSpans))
 	}
-	at := a.harnessTaps[0]
-	drive(t, a, tea.MouseClickMsg{X: at.span.from + 1, Y: y, Button: tea.MouseLeft})
-	drive(t, a, tea.MouseReleaseMsg{X: at.span.from + 1, Y: y, Button: tea.MouseLeft})
+	at := a.questionSpans[0]
+	drive(t, a, tea.MouseClickMsg{X: at.from + 1, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: at.from + 1, Y: y, Button: tea.MouseLeft})
 	if len(agent.answers) != 1 || !agent.answers[0].run {
 		t.Fatalf("the press answered %+v, want a run", agent.answers)
 	}
 }
 
-// THE TURN ENDING TAKES IT AWAY. The session already released the turn; a row
-// left on screen would be asking about work that is over.
+// THE TURN ENDING TAKES IT AWAY. The session already released the turn; a
+// question left on screen would be asking about work that is over — and it says
+// so in one dim line rather than simply vanishing.
 func TestTheHarnessOfferDiesWithTheTurn(t *testing.T) {
 	agent, a := harnessOffered(t, "research the pricing tiers")
+	harnessSettled(t, a)
 	a.settle()
 	if a.asksHarness() {
 		t.Fatal("the offer outlived the turn")
 	}
 	if len(agent.answers) != 0 {
 		t.Fatalf("a dropped offer answered the session: %+v", agent.answers)
+	}
+	a.width = 160
+	if got := plain(strings.Join(a.questionRows(a.width), "\n")); !strings.Contains(got, harnessOfferGoneWord) {
+		t.Fatalf("the withdrawn offer said nothing:\n%s", got)
 	}
 }
 
@@ -180,12 +236,12 @@ func TestTheHarnessOfferSaysWhichModelTheTurnNamed(t *testing.T) {
 	})
 	a.width = 120
 	got := plain(frame(a))
-	// The id sheds its vendor, exactly as every other model on this surface does.
-	if !strings.Contains(got, "model: claude-opus-5") {
+	if !strings.Contains(got, "model: anthropic/claude-opus-5") {
 		t.Fatalf("the row does not say what it would run on:\n%s", got)
 	}
 	// And the model the row SHOWED is what goes back with the answer.
-	drive(t, a, key("enter"))
+	harnessSettled(t, a)
+	drive(t, a, key("1"))
 	if len(agent.answers) != 1 || agent.answers[0].model != "anthropic/claude-opus-5" {
 		t.Fatalf("the answer carried %+v", agent.answers)
 	}
@@ -200,7 +256,8 @@ func TestTheHarnessOfferIsSilentAboutAnOrdinaryModel(t *testing.T) {
 	if got := plain(frame(a)); strings.Contains(got, "model:") {
 		t.Fatalf("the row invented a model line:\n%s", got)
 	}
-	drive(t, a, key("enter"))
+	harnessSettled(t, a)
+	drive(t, a, key("1"))
 	if len(agent.answers) != 1 || agent.answers[0].model != "" {
 		t.Fatalf("the answer carried %+v", agent.answers)
 	}
@@ -219,35 +276,54 @@ func TestTheHarnessOfferPrintsTheSessionsModelNote(t *testing.T) {
 	if !strings.Contains(got, `model "gpt-9" not found, running default`) {
 		t.Fatalf("the note never reached the row:\n%s", got)
 	}
-	if !strings.Contains(got, "[enter] run") {
+	if !strings.Contains(got, "[1] run it") {
 		t.Fatalf("the note cost the row an answer:\n%s", got)
 	}
-	drive(t, a, key("enter"))
+	harnessSettled(t, a)
+	drive(t, a, key("1"))
 	if len(agent.answers) != 1 || !agent.answers[0].run {
 		t.Fatalf("a noted model changed the answer: %+v", agent.answers)
 	}
 }
 
-// AND THE MODEL OUTLIVES THE DESCRIPTION. A narrow row drops what the harness
-// is FOR before it drops what this run would cost, and it never drops a key.
+// AND THE MODEL OUTLIVES THE DESCRIPTION. A narrow reason loses what the harness
+// is FOR before it loses what this run would cost, which is why the model is
+// spelled first ([session.HarnessQuestion] says so), and it never costs a key.
 func TestTheNarrowHarnessRowKeepsTheModelAndLosesTheDescription(t *testing.T) {
 	_, a := harnessOfferedWith(t, "research the pricing tiers with opus", session.Event{
 		Kind: session.EventHarnessOffer, ID: 3, Text: "research",
 		Hint:  "Research a question across sources and write a report",
 		Model: "anthropic/claude-opus-5",
 	})
-	// Wide enough for the question, the model and both keys — and 32 cells short
-	// of the description, which is the rung this row has to choose at.
-	a.width = 80
+	// Wide enough for the question, the model and both keys — and short of the
+	// description, which is the rung this reason has to choose at.
+	a.width = 60
 	narrow := plain(frame(a))
-	if strings.Contains(narrow, "Research a question across sources") {
+	if strings.Contains(narrow, "Research a question across sources and write a report") {
 		t.Fatalf("the narrow row kept the description:\n%s", narrow)
 	}
-	if !strings.Contains(narrow, "model: claude-opus-5") {
+	if !strings.Contains(narrow, "model: anthropic/claude-opus-5") {
 		t.Fatalf("the narrow row dropped the model before the description:\n%s", narrow)
 	}
-	if !strings.Contains(narrow, "[enter] run") || !strings.Contains(narrow, "[esc] no") {
-		t.Fatalf("the narrow row lost an answer:\n%s", narrow)
+	for _, want := range []string{"1  run it", "2  not now"} {
+		if !strings.Contains(narrow, want) {
+			t.Fatalf("the narrow form lost %q:\n%s", want, narrow)
+		}
+	}
+}
+
+// harnessSettled puts the offer past the settle guard, which is where a person
+// is before their first key: drawn, and [questionSettle] gone by
+// (question.go's THE SETTLE GUARD).
+func harnessSettled(t *testing.T, a *app) {
+	t.Helper()
+	// The DRAW is what stamps a question as seen ([app.markQuestionShown]), and
+	// the stamp is what the guard is measured from — so the stamp is walked back
+	// rather than the clock forward, which leaves every other clock on this
+	// surface where the test put it.
+	_ = a.questionRows(a.width)
+	for i := range a.questions {
+		a.questions[i].shown = a.questions[i].shown.Add(-questionSettle - time.Millisecond)
 	}
 }
 
@@ -258,11 +334,11 @@ func harnessRowY(t *testing.T, a *app) int {
 	t.Helper()
 	_, marks, _, _ := a.chrome(a.width)
 	for at, mark := range marks {
-		if mark.kind == chromeHarnessAsk {
+		if mark.kind == chromeQuestion && mark.index == a.questionSpanRow {
 			return at + a.height - len(marks)
 		}
 	}
-	t.Fatalf("no row is marked as the harness offer")
+	t.Fatalf("no row is marked as the offer's answers")
 	return -1
 }
 

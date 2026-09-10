@@ -69,14 +69,16 @@ func TestTypedConnectionInputAllowsSafeTabCloseAndCancel(t *testing.T) {
 	a, _, first := asyncApp(t)
 	turning(a, first)
 	a.askConnect(session.Event{Kind: session.EventConnectAsk, ConnectID: "typed", Service: "stripe", ServiceName: "Stripe", NeedsKey: true})
-	a.connAsks[0].key = &editor{}
-	a.connAsks[0].key.setText("unsent fixture")
+	// The typed answer goes into the MESSAGE BOX now, which is what the question
+	// owning the box means ([questionOwnsBox]) — so this is the half-typed key,
+	// where it actually lives.
+	a.input.setText("unsent fixture")
 	drive(t, a, key("ctrl+w"))
 	if !a.closingTab() {
 		t.Fatal("typed input swallowed the close-tab chord")
 	}
 	drive(t, a, key("esc"))
-	if a.closingTab() || !a.entering() || a.connAsks[0].key.String() != "unsent fixture" {
+	if a.closingTab() || !a.entering() || a.input.String() != "unsent fixture" {
 		t.Fatal("cancel changed the pending input")
 	}
 }

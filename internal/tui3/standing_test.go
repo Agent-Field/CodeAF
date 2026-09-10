@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -10,7 +11,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -37,6 +37,29 @@ type standReply struct {
 
 func (f *standFake) ResolveStanding(id uint64, answer session.StandingAnswer) {
 	f.answered = append(f.answered, standReply{id: id, answer: answer})
+}
+
+// ResolveQuestion is the engine's ONE DOOR in miniature: it reads the lane off
+// the answer and hands it to that lane's own resolver, which is what
+// [session.Agent.applyToLane] does for a real engine. The card's answers go
+// through it now (standing.go), so a fake that could only be told
+// ResolveStanding would be a session no key on the block could reach.
+func (f *standFake) ResolveQuestion(answer session.Answer) error {
+	if answer.Kind != session.QuestionStanding {
+		return nil
+	}
+	if words := strings.TrimSpace(answer.Words()); words != "" && answer.FirstKey() == "" {
+		// A STANDING CARD ANSWERED IN WORDS IS A CORRECTION (session's
+		// applyToLane says so in full).
+		f.ResolveStanding(answer.ID, session.StandingAnswer{Change: words})
+		return nil
+	}
+	action, ok := session.AnswerFromKey(session.QuestionStanding, answer.FirstKey())
+	if !ok {
+		return errors.New("no answer under that key")
+	}
+	f.ResolveStanding(answer.ID, action.Standing)
+	return nil
 }
 
 // standApp is a surface that can be asked about a standing item, with a pinned
@@ -102,9 +125,6 @@ func TestAStandingProposalDrawsWhenAndCost(t *testing.T) {
 		taskHeadCorner + " " + glyphAsk + " " + standWaitGlyph,
 		standWhenTag + "Mondays at 9am",
 		standCostTag + "about $0.02 a run, at most once a day",
-		"[ 1 " + standYesWord + " ]",
-		"[ 2 " + standChangeWord + " ]",
-		"[ 3 " + standOnceWord + " ]",
 		standEndsWord + "30s",
 		taskFootCorner,
 	} {
@@ -117,6 +137,16 @@ func TestAStandingProposalDrawsWhenAndCost(t *testing.T) {
 	// what the engine does.
 	if strings.Contains(text, taskAutoWord) {
 		t.Fatalf("the standing meter claims it auto-starts:\n%s", text)
+	}
+	// AND THE ANSWERS ARE NOT ON IT. They are the question, drawn once, above the
+	// box, by the block (question.go) — a card carrying them as well would be one
+	// decision drawn twice on one screen.
+	if strings.Contains(text, standYesWord) {
+		t.Fatalf("the card in the transcript still draws its own answers:\n%s", text)
+	}
+	standDraw(a)
+	if block := standBlock(a); !strings.Contains(block, "1  "+standYesWord) {
+		t.Fatalf("the block is not asking:\n%s", block)
 	}
 }
 
@@ -167,10 +197,10 @@ func TestOnlyAWatchSaysHowOftenItIsChecked(t *testing.T) {
 func TestTheThreeKeysSendTheThreeAnswers(t *testing.T) {
 	yes := func(key string) session.StandingAnswer {
 		t.Helper()
-		a, agent, _ := standApp(t)
-		drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+		a, agent, tick := standApp(t)
+		standAsk(t, a, tick, session.StandingNotice{
 			WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
-		})})
+		})
 		drive(t, a, key2(key))
 		if len(agent.answered) != 1 {
 			t.Fatalf("%q resolved %d times, want 1", key, len(agent.answered))
@@ -185,11 +215,11 @@ func TestTheThreeKeysSendTheThreeAnswers(t *testing.T) {
 	// head and its foot, and the foot IS the answer — which is what makes a
 	// conversation read back later say what was decided rather than that
 	// something was once asked.
-	kept, keptAgent, _ := standApp(t)
-	drive(t, kept, streamEventMsg{gen: kept.gen, ev: standProposal(kept, session.StandingNotice{
+	kept, keptAgent, keptTick := standApp(t)
+	standAsk(t, kept, keptTick, session.StandingNotice{
 		WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
 		Deadline: kept.now().Add(30 * time.Second),
-	})})
+	})
 	drive(t, kept, key2("1"))
 	if len(keptAgent.answered) != 1 {
 		t.Fatalf("the card was not answered, the engine saw %v", keptAgent.answered)
@@ -208,15 +238,20 @@ func TestTheThreeKeysSendTheThreeAnswers(t *testing.T) {
 		t.Fatalf("3 sent %+v, want once and not standing", answer)
 	}
 
-	// 2 IS A REQUEST FOR THE BOX AND NOT AN ANSWER: nothing is resolved until
-	// the person has said when instead.
-	a, agent, _ := standApp(t)
-	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+	// `c` IS A REQUEST FOR THE BOX AND NOT AN ANSWER: nothing is resolved until
+	// the person has said when instead. It was `2 change when or where` on the
+	// card's own chip row and it is the block's own key for the same act
+	// everywhere now (questionkeys.go's table).
+	a, agent, tick := standApp(t)
+	standAsk(t, a, tick, session.StandingNotice{
 		WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
-	})})
-	drive(t, a, key2("2"))
+	})
+	drive(t, a, key2(questionCommentKey))
 	if len(agent.answered) != 0 {
-		t.Fatalf("2 answered before anything was typed: %+v", agent.answered)
+		t.Fatalf("`c` answered before anything was typed: %+v", agent.answered)
+	}
+	if typed := a.input.String(); typed != "" {
+		t.Fatalf("`c` was typed into the box instead of taken: %q", typed)
 	}
 	typeLine(t, a, "make it 8")
 	if len(agent.answered) != 1 || agent.answered[0].answer.Change != "make it 8" {
@@ -232,10 +267,10 @@ func TestTheThreeKeysSendTheThreeAnswers(t *testing.T) {
 // asks nobody now: background checks go on with the first item that stands and
 // the switch is a settings row from then on.
 func TestAYesOnAStandingCardResolvesItOutright(t *testing.T) {
-	a, agent, _ := standApp(t)
-	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+	a, agent, tick := standApp(t)
+	standAsk(t, a, tick, session.StandingNotice{
 		WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
-	})})
+	})
 	drive(t, a, key2("1"))
 	if len(agent.answered) != 1 {
 		t.Fatalf("the card resolved %d times, want exactly 1", len(agent.answered))
@@ -296,15 +331,15 @@ func TestAnUnansweredStandingCardEndsAsNothing(t *testing.T) {
 // A CLICK ON THE ANSWERS ROW ANSWERS THE QUESTION, and it is resolved against
 // that row's own columns.
 func TestClickingAStandingChipAnswersIt(t *testing.T) {
-	a, agent, _ := standApp(t)
-	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+	a, agent, tick := standApp(t)
+	standAsk(t, a, tick, session.StandingNotice{
 		WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
-	})})
-	x, y := standChipAt(t, a, standYes)
+	})
+	x, y := standAnswerRowAt(t, a, "1")
 	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	if len(agent.answered) != 1 || !agent.answered[0].answer.Approved {
-		t.Fatalf("a click on the first chip did not approve: %+v", agent.answered)
+		t.Fatalf("a click on the yes did not approve: %+v", agent.answered)
 	}
 }
 
@@ -343,27 +378,53 @@ func TestAStandingUpdateIsExactlyOneLine(t *testing.T) {
 	}
 }
 
-// standChipAt is the screen position of one chip on the open card's answers
-// row — resolved through the SAME spans the click goes through, because a test
-// that computed its own columns would be testing a second layout.
-func standChipAt(t *testing.T, a *app, want int) (int, int) {
+// standAnswerRowAt is the screen row one of the open question's answers landed
+// on, resolved through the SAME bands the click goes through — a test that
+// computed its own rows would be testing a second layout.
+func standAnswerRowAt(t *testing.T, a *app, key string) (int, int) {
 	t.Helper()
-	body, _ := a.window(a.bodyWidth(), a.viewHeight())
-	for i, r := range body {
-		if r.hit != hitStandChoice {
+	standDraw(a)
+	q, ok := a.questionHead()
+	if !ok {
+		t.Fatalf("nothing is on the block:\n%s", standText(a))
+	}
+	want := -1
+	for i, option := range q.question.Options {
+		if option.Key == key {
+			want = i
+		}
+	}
+	// The block sits above the box; the frame is what knows where that is.
+	_ = a.View()
+	for _, band := range a.questionBands {
+		if band.at != want {
 			continue
 		}
-		for _, span := range a.stand.spans {
-			if span.at == want {
-				return span.from, a.bodyTop() + i
+		for y := range a.height {
+			if mark, ok := a.chromeAt(y); ok && mark.kind == chromeQuestion && mark.index == band.row {
+				return band.span.from, y
 			}
 		}
 	}
-	t.Fatalf("no visible answers row offers chip %d:\n%s", want, standText(a))
+	t.Fatalf("no answers row offers %q:\n%s", key, strings.Join(a.questionRows(a.width), "\n"))
 	return 0, 0
 }
 
-// key2 spells a key the surface's own way, for the digits the chips answer to.
+// standDraw paints the chrome, which is what stamps a question as SEEN — the
+// settle guard is a claim about the screen ([app.markQuestionShown]).
+func standDraw(a *app) { _ = a.questionRows(a.width) }
+
+// standAsk puts one proposal on the surface and leaves it where a person is
+// before their first key: drawn, and [questionSettle] gone by.
+func standAsk(t *testing.T, a *app, tick func(time.Duration), notice session.StandingNotice) {
+	t.Helper()
+	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, notice)})
+	standDraw(a)
+	tick(questionSettle + time.Millisecond)
+	standDraw(a)
+}
+
+// key2 spells a key the surface's own way, for the digits the answers take.
 func key2(s string) tea.KeyPressMsg { return key(s) }
 
 // A CARD WITH NO DEADLINE HAS NO CLOCK AT ALL: no bar, no `ends in`, and no
@@ -388,8 +449,9 @@ func TestACardWithNoDeadlineDrawsNoMeterAndNeverEnds(t *testing.T) {
 		t.Fatalf("a card with no deadline spent a row saying its clock is absent:\n%s", text)
 	}
 	// It is still a question, and it stays one through a minute of frames.
-	if !strings.Contains(text, "[ 1 "+standYesWord+" ]") {
-		t.Fatalf("the card is not asking:\n%s", text)
+	standDraw(a)
+	if block := standBlock(a); !strings.Contains(block, "1  "+standYesWord) {
+		t.Fatalf("the card is not asking:\n%s", block)
 	}
 	for i := 0; i < 60; i++ {
 		tick(time.Second)
@@ -398,7 +460,8 @@ func TestACardWithNoDeadlineDrawsNoMeterAndNeverEnds(t *testing.T) {
 	if a.stand.settled() {
 		t.Fatalf("the card ended by itself after a minute: %q", a.stand.verdict)
 	}
-	if after := standText(a); !strings.Contains(after, "[ 1 "+standYesWord+" ]") {
+	standDraw(a)
+	if after := standBlock(a); !strings.Contains(after, "1  "+standYesWord) {
 		t.Fatalf("the card stopped asking after a minute of ticks:\n%s", after)
 	}
 	// And it still answers.
@@ -432,25 +495,26 @@ func standReminder() standing.Item {
 // and were told aforge could not hold a one-minute timer. It can; a standing
 // one-off IS the timer. The chip was the defect.
 func TestAOneOffReminderCardDrawsTwoChips(t *testing.T) {
-	a, agent, _ := standApp(t)
-	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+	a, agent, tick := standApp(t)
+	standAsk(t, a, tick, session.StandingNotice{
 		Item:      standReminder(),
 		WhenWords: "in 1 minute — 07:35",
 		CostWords: "about a cent, once",
 		Options:   session.StandingOptions(standReminder()),
-	})})
+	})
 
-	text := standText(a)
-	for _, want := range []string{"[ 1 " + standYesWord + " ]", "[ 2 " + standChangeWord + " ]"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("a reminder's card is missing %q:\n%s", want, text)
+	block := standBlock(a)
+	for _, want := range []string{"1  " + standYesWord, "0  " + standNoWordChip} {
+		if !strings.Contains(block, want) {
+			t.Fatalf("a reminder's card is missing %q:\n%s", want, block)
 		}
 	}
-	if strings.Contains(text, standOnceWord) {
-		t.Fatalf("a one-off reminder's card still offers `%s`:\n%s", standOnceWord, text)
+	if strings.Contains(block, standOnceWord) {
+		t.Fatalf("a one-off reminder's card still offers `%s`:\n%s", standOnceWord, block)
 	}
-	// AND THE DIGIT UNDER THE MISSING CHIP DOES NOTHING. A key that answered a
-	// question the card never asked would be the same defect wearing no paint.
+	// AND THE DIGIT UNDER THE MISSING ANSWER RESOLVES NOTHING. A key that
+	// answered a question the card never asked would be the same defect wearing
+	// no paint.
 	drive(t, a, key2("3"))
 	if len(agent.answered) != 0 {
 		t.Fatalf("`3` answered a card that never offered it: %v", agent.answered)
@@ -458,37 +522,46 @@ func TestAOneOffReminderCardDrawsTwoChips(t *testing.T) {
 	if a.stand.settled() {
 		t.Fatalf("`3` settled the card as %q", a.stand.verdict)
 	}
-	// The hint names the keys the card drew and not one more.
-	const twoHint = "1 yes · 2 change when or where · 0 or esc, no"
-	if got := standAskHint(a.stand); got != twoHint {
+	// The hint under the box names the keys the card drew and not one more.
+	const twoHint = "1 yes, set it up · 0 no · esc later"
+	if got := a.questionHint(); got != twoHint {
 		t.Fatalf("the hint is %q, want %q", got, twoHint)
 	}
-	// And the two it did draw still work.
+	// And the two it did draw still work. (The stray `3` is in the box, which is
+	// the block's own law — a key with no answer under it belongs to the
+	// composer — so it comes out before the yes is pressed.)
+	a.input.reset()
 	drive(t, a, key2("1"))
 	if len(agent.answered) != 1 || !agent.answered[0].answer.Approved {
 		t.Fatalf("`1` did not stand it up, the engine saw %v", agent.answered)
 	}
 }
 
+// standBlock is the question block above the box, plain — which is where a
+// standing card's answers are drawn (standing.go, question.go).
+func standBlock(a *app) string {
+	return plain(strings.Join(a.questionRows(a.width), "\n"))
+}
+
 // AND EVERYWHERE ELSE THE THIRD ANSWER STAYS. A watch is a thing a person may
 // reasonably want done once, now, instead of kept an eye on forever.
 func TestAWatchCardStillDrawsThreeChips(t *testing.T) {
-	a, agent, _ := standApp(t)
+	a, agent, tick := standApp(t)
 	watch := standItem()
 	watch.When = standing.When{Kind: standing.WhenProbe, Words: "every few minutes"}
-	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+	standAsk(t, a, tick, session.StandingNotice{
 		Item:      watch,
 		WhenWords: "every few minutes",
 		CostWords: "about $0.02 a check",
 		Options:   session.StandingOptions(watch),
-	})})
+	})
 
-	text := standText(a)
-	if !strings.Contains(text, "[ 3 "+standOnceWord+" ]") {
-		t.Fatalf("a watch lost its `%s` chip:\n%s", standOnceWord, text)
+	block := standBlock(a)
+	if !strings.Contains(block, "3  "+standOnceWord) {
+		t.Fatalf("a watch lost its `%s` answer:\n%s", standOnceWord, block)
 	}
-	const threeHint = "1 yes · 2 change when or where · 3 just once · 0 or esc, no"
-	if got := standAskHint(a.stand); got != threeHint {
+	const threeHint = "1 yes, set it up · 3 just once · 0 no · esc later"
+	if got := a.questionHint(); got != threeHint {
 		t.Fatalf("the hint is %q, want %q", got, threeHint)
 	}
 	drive(t, a, key2("3"))
@@ -517,12 +590,20 @@ func TestHomesChipsAgreeWithTheCard(t *testing.T) {
 	if !found {
 		t.Fatal("home would drop `once` from a card that offers it")
 	}
-	// And the words this surface draws follow the same list.
-	if words := standAnswerWords(session.StandingNotice{Item: reminder, Options: session.StandingOptions(reminder)}); len(words) != 2 {
-		t.Fatalf("a reminder's chips are %v, want two", words)
+	// And the question this surface draws follows the same list.
+	a, _, tick := standApp(t)
+	standAsk(t, a, tick, session.StandingNotice{
+		Item: reminder, WhenWords: "in 1 minute", CostWords: "about a cent, once",
+		Options: session.StandingOptions(reminder),
+	})
+	q, ok := a.questionHead()
+	if !ok || len(q.question.Options) != 2 {
+		t.Fatalf("a reminder's card offers %+v, want two answers", q.question.Options)
 	}
-	if words := standAnswerWords(session.StandingNotice{Item: watch, Options: session.StandingOptions(watch)}); len(words) != 3 {
-		t.Fatalf("a watch's chips are %v, want three", words)
+	for _, option := range q.question.Options {
+		if strings.TrimSpace(option.Label) == "" || strings.TrimSpace(option.Consequence) == "" {
+			t.Fatalf("an answer with nothing beside it: %+v", option)
+		}
 	}
 }
 
@@ -537,13 +618,13 @@ func TestZeroSaysNoToAStandingCardWhereverItIsDrawn(t *testing.T) {
 	watch := standItem()
 	watch.When = standing.When{Kind: standing.WhenProbe, Words: "every few minutes"}
 	for _, item := range []standing.Item{watch, standReminder()} {
-		a, agent, _ := standApp(t)
-		drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+		a, agent, tick := standApp(t)
+		standAsk(t, a, tick, session.StandingNotice{
 			Item:      item,
 			WhenWords: "every few minutes",
 			CostWords: "about $0.02 a check",
 			Options:   session.StandingOptions(item),
-		})})
+		})
 		drive(t, a, key2(session.StandingNoKey))
 		if len(agent.answered) != 1 {
 			t.Fatalf("`%s` resolved %d times on a %s card, want once", session.StandingNoKey, len(agent.answered), item.When.Kind)
@@ -559,26 +640,27 @@ func TestZeroSaysNoToAStandingCardWhereverItIsDrawn(t *testing.T) {
 		}
 	}
 
-	// THE HINT NAMES IT, on both shapes of card — the decline is the one key
-	// that is on every standing card there is, so a person who only ever meets
-	// one in a conversation still learns the key that works everywhere.
-	for _, chips := range [][]string{
-		{standYesWord, standChangeWord, standOnceWord},
-		{standYesWord, standChangeWord},
-	} {
-		hint := standAskHint(&standingCard{answers: chips})
-		if !strings.Contains(hint, session.StandingNoKey) {
-			t.Fatalf("the hint %q does not name the decline", hint)
+	// THE ANSWER ROW NAMES IT, on both shapes of card — the decline is the one
+	// key that is on every standing card there is, so a person who only ever
+	// meets one in a conversation still learns the key that works everywhere.
+	for _, item := range []standing.Item{watch, standReminder()} {
+		a, _, tick := standApp(t)
+		standAsk(t, a, tick, session.StandingNotice{
+			Item: item, WhenWords: "every few minutes", CostWords: "about $0.02 a check",
+			Options: session.StandingOptions(item),
+		})
+		if block := standBlock(a); !strings.Contains(block, session.StandingNoKey+"  "+standNoWordChip) {
+			t.Fatalf("the card does not draw the decline:\n%s", block)
 		}
 	}
 
-	// AND IT IS A DIGIT BEFORE IT IS AN ANSWER, exactly as 1, 2 and 3 are: a
+	// AND IT IS A DIGIT BEFORE IT IS AN ANSWER, exactly as 1 and 3 are: a
 	// correction in the box is a sentence, and "0900" is a when somebody might
 	// write. With anything typed the card lets the key go.
-	a, agent, _ := standApp(t)
-	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+	a, agent, tick := standApp(t)
+	standAsk(t, a, tick, session.StandingNotice{
 		WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
-	})})
+	})
 	drive(t, a, key("9"), key2(session.StandingNoKey), key("0"))
 	if len(agent.answered) != 0 {
 		t.Fatalf("the decline answered a card somebody was typing a when into: %v", agent.answered)
@@ -749,162 +831,95 @@ func TestARulesCardDrawsNoCadenceAndNoCost(t *testing.T) {
 // THE WAY OUT IS ON THE CARD. It used to be `esc`, and a `0` named in the hint
 // slot under the message box: a gesture whose only documentation is
 // documentation, which docs/DESIGN-LANGUAGE.md refuses by name.
-func TestTheStandingCardDrawsTheWayOutAndTakesItThreeWays(t *testing.T) {
-	a, agent, _ := standApp(t)
-	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
+//
+// AND `esc` IS NO LONGER ONE OF THE WAYS OUT. On the block esc is *later* — the
+// question folds to the chip, the card stays open and nothing is decided — which
+// is the one meaning that changed when this card moved (question.go's THE NEVER
+// MODAL law). A standing card has no clock it loses by waiting and the safe
+// answer is to leave it alone, so a person who reaches for the dismiss key gets
+// exactly that.
+func TestTheStandingCardDrawsTheWayOutAndTakesItTwoWays(t *testing.T) {
+	a, agent, tick := standApp(t)
+	standAsk(t, a, tick, session.StandingNotice{
 		WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
-	})})
-	card := a.stand
-	if card == nil {
-		t.Fatal("no card")
-	}
-	chip := pickChipText(pickChoice{key: session.StandingNoKey, word: standNoWordChip}, true)
-	if text := standText(a); !strings.Contains(text, chip) {
-		t.Fatalf("the card draws no way to say no:\n%s", text)
-	}
-	// AND IT IS THE LAST PLACE THE CURSOR WALKS TO, reachable with the arrows
-	// exactly as every other answer is.
-	for i := 0; i < len(card.row()); i++ {
-		drive(t, a, key("right"))
-	}
-	if card.choice != card.declineAt() {
-		t.Fatalf("the cursor stopped at %d, want the way out at %d", card.choice, card.declineAt())
-	}
-	drive(t, a, key("enter"))
-	if len(agent.answered) != 1 || agent.answered[0].answer != (session.StandingAnswer{}) {
-		t.Fatalf("walking to the way out and pressing enter sent %+v", agent.answered)
-	}
-	if a.stand.verdict != standNoWord {
-		t.Fatalf("the declined card settled as %q, want %q", a.stand.verdict, standNoWord)
+	})
+	if block := standBlock(a); !strings.Contains(block, session.StandingNoKey+"  "+standNoWordChip) {
+		t.Fatalf("the card draws no way to say no:\n%s", block)
 	}
 
-	// THE THREE DOORS ARE ONE ANSWER. esc, the `0` and a click on the chip all
-	// send the zero answer the engine reads as a decline.
+	// THE TWO DOORS ARE ONE ANSWER: the `0` and a click on its row both send the
+	// zero answer the engine reads as a decline.
 	for _, door := range []func(*app){
-		func(a *app) { drive(t, a, key("esc")) },
 		func(a *app) { drive(t, a, key2(session.StandingNoKey)) },
 		func(a *app) {
-			for _, span := range a.stand.spans {
-				if span.at == a.stand.declineAt() {
-					a.takeStanding(span.at)
-				}
-			}
+			x, y := standAnswerRowAt(t, a, session.StandingNoKey)
+			drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+			drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 		},
 	} {
-		a, agent, _ := standApp(t)
-		drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
-			WhenWords: "Mondays at 9am",
-		})})
-		standText(a)
+		a, agent, tick := standApp(t)
+		standAsk(t, a, tick, session.StandingNotice{WhenWords: "Mondays at 9am"})
 		door(a)
 		if len(agent.answered) != 1 || agent.answered[0].answer != (session.StandingAnswer{}) {
 			t.Fatalf("one of the ways out sent %+v, want the decline", agent.answered)
 		}
+		if a.stand.verdict != standNoWord {
+			t.Fatalf("the declined card settled as %q, want %q", a.stand.verdict, standNoWord)
+		}
+	}
+
+	// AND esc PUTS IT OFF RATHER THAN ANSWERING IT: nothing reaches the engine,
+	// the card is still open, and the chip goes on counting it.
+	drive(t, a, key("esc"))
+	if len(agent.answered) != 0 {
+		t.Fatalf("esc answered the card: %+v", agent.answered)
+	}
+	if a.stand.settled() {
+		t.Fatalf("esc settled the card as %q", a.stand.verdict)
+	}
+	if a.questionCount() != 1 {
+		t.Fatalf("the folded question stopped being counted: %d", a.questionCount())
 	}
 }
 
-// THE ANSWERS SAY WHAT THEY DO, AND THE ONE UNDER THE CURSOR SAYS IT IN FULL.
+// EVERY ANSWER SAYS WHAT IT DOES, ON ITS OWN ROW.
 //
-// The consequence line is BUILT FROM THE PROPOSAL — the person's cadence and the
-// reach off the item itself — so it cannot say something the card is not about.
-func TestTheStandingCardSaysWhatThePickedAnswerWillDo(t *testing.T) {
-	a, _, _ := standApp(t)
+// The card used to say this one clause at a time, under a row of chips, about
+// whichever answer the cursor happened to be on — so reading the question meant
+// walking it. On the block each answer carries its own consequence beside its
+// own word, which is what makes the whole decision readable at once.
+//
+// AND IT SAYS WHAT THE BANDS CANNOT. The clause used to read out the cadence and
+// the reach — `I'll keep doing this Mondays at 9am, for this project, until you
+// stop it` — which is exactly what the `when ·` and `where ·` bands two rows
+// above already say. What no band can say is how long each answer lasts.
+func TestEveryStandingAnswerSaysWhatItWillDo(t *testing.T) {
+	a, _, tick := standApp(t)
 	item := standItem()
 	item.Altitude = standing.AltitudeMachine
-	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
-		Item: item, WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
-	})})
-	card := a.stand
-
-	// THE YES READS OUT THE CARD'S OWN FACTS: the cadence it was proposed with
-	// and the reach the `where` band names, never a canned sentence.
-	says := a.standSays(card)
-	for _, want := range []string{standSaysKeep, "Mondays at 9am", standEverywhereWord, standSaysUntil} {
-		if !strings.Contains(says, want) {
-			t.Fatalf("the yes says %q, and does not carry %q", says, want)
-		}
-	}
-	if text := standText(a); !strings.Contains(text, says) {
-		t.Fatalf("the line is not under the answers:\n%s", text)
-	}
-	// AND IT FOLLOWS THE CURSOR: each answer says its own consequence.
-	for at, want := range map[int]string{
-		standChange:      standSaysChange,
-		standOnce:        standSaysOnce,
-		card.declineAt(): standSaysNo,
+	watch := item
+	watch.When = standing.When{Kind: standing.WhenProbe, Words: "every few minutes"}
+	standAsk(t, a, tick, session.StandingNotice{
+		Item: watch, WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
+		Options: session.StandingOptions(watch),
+	})
+	block := standBlock(a)
+	for key, want := range map[string]string{
+		"1":                     standYesCost,
+		session.StandingOnceKey: standOnceCost,
+		session.StandingNoKey:   standNoCost,
 	} {
-		card.choice = at
-		if got := a.standSays(card); got != want {
-			t.Fatalf("the answer at %d says %q, want %q", at, got, want)
+		if !strings.Contains(block, want) {
+			t.Fatalf("the answer under %q does not say %q:\n%s", key, want, block)
 		}
 	}
-	// A RULE HAS NO CADENCE TO READ OUT, so the clause is left out rather than
-	// filled with a word standing in for one.
-	rule := standItem()
-	rule.When = standing.When{Kind: standing.WhenHold}
-	card.item, card.when, card.choice = rule, "", standYes
-	if got := a.standSays(card); !strings.Contains(got, standProjectWord) || strings.Contains(got, "  ") {
-		t.Fatalf("a rule's yes reads %q", got)
-	}
-}
-
-// THE PICKED ANSWER IS EMPHASIZED BY THE LADDER AND NOTHING ELSE: its ground is
-// raised and its key turns accent. No outline, no new colour, and the row does
-// not reflow when the cursor moves.
-func TestTheStandingCardEmphasizesThePickedAnswerWithoutAnOutline(t *testing.T) {
-	a, _, _ := standApp(t)
-	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
-		WhenWords: "Mondays at 9am",
-	})})
-	card := a.stand
-	row, _ := a.standChips(card, 0, 200)
-	// THE GROUND IS RAISED under the picked chip and its key turns accent —
-	// the emphasis law's two moves, asserted through the palette rather than
-	// through any escape sequence retyped here.
-	if !strings.Contains(row, paintPrefix(a.pal.background("x", 0, a.pal.ramp.selected))) {
-		t.Fatalf("the picked answer's ground is not raised: %q", row)
-	}
-	if !strings.Contains(row, paintPrefix(a.pal.accent("x"))) {
-		t.Fatalf("the picked answer's key does not turn accent: %q", row)
-	}
-	// THE WIDTH IS THE SAME WHEREVER THE CURSOR IS, so walking the row moves
-	// nothing on the screen but the emphasis.
-	was := ansi.StringWidth(plain(row))
-	for at := 0; at < card.picks(); at++ {
-		card.choice = at
-		moved, _ := a.standChips(card, 0, 200)
-		if got := ansi.StringWidth(plain(moved)); got != was {
-			t.Fatalf("the row is %d cells with the cursor at %d and %d at nought", got, at, was)
+	// AND THE BANDS ARE NOT SAID TWICE. The cadence and the reach belong to the
+	// card in the transcript; a consequence repeating them would be one fact on
+	// two rows.
+	for _, band := range []string{"Mondays at 9am", standEverywhereWord} {
+		if strings.Contains(block, band) {
+			t.Fatalf("the block repeats the card's %q band:\n%s", band, block)
 		}
-	}
-}
-
-// A ROW WITH NO ROOM SAYS EVERY ANSWER BRIEFLY RATHER THAN SOME OF THEM FULLY,
-// and the way out is never the answer that is dropped.
-func TestTheStandingAnswersShortenBeforeTheyAreDropped(t *testing.T) {
-	a, _, _ := standApp(t)
-	drive(t, a, streamEventMsg{gen: a.gen, ev: standProposal(a, session.StandingNotice{
-		WhenWords: "Mondays at 9am",
-	})})
-	card := a.stand
-	long := pickRowCells(card.row(), true)
-	short := pickRowCells(card.row(), false)
-	if short >= long {
-		t.Fatalf("the short spelling is %d cells and the long one %d", short, long)
-	}
-	row, spans := a.standChips(card, 0, short)
-	if len(spans) != card.picks() {
-		t.Fatalf("a row with room for every short answer drew %d of %d: %q",
-			len(spans), card.picks(), plain(row))
-	}
-	// AND WHEN EVEN THAT IS TOO MUCH, THE WAY OUT IS WHAT SURVIVES.
-	decline := pickChipText(pickChoice{key: session.StandingNoKey, word: standNoWordChip}, false)
-	row, spans = a.standChips(card, 0, ansi.StringWidth(decline))
-	if len(spans) != 1 || spans[0].at != card.declineAt() {
-		t.Fatalf("the narrowest row drew %v, want the way out alone: %q", spans, plain(row))
-	}
-	if !strings.Contains(plain(row), decline) {
-		t.Fatalf("the narrowest row is %q, want %q", plain(row), decline)
 	}
 }
 
@@ -967,5 +982,68 @@ func TestEachStandingAnswerWordIsSpelledOnce(t *testing.T) {
 		if seen[word] != 1 {
 			t.Errorf("%q is spelled %d times, want exactly one — its own constant", word, seen[word])
 		}
+	}
+}
+
+// ONE QUESTION ARRIVING BY TWO ROADS IS ONE QUESTION.
+//
+// A standing card crosses a link TWICE on purpose. The proposal itself is an
+// event on the turn's stream — and, where nobody was attached when it was
+// raised, out of the far machine's waiting room afterwards (internal/remote's
+// held.go, replayed through [app.replayHeld] into the very same door) — while
+// the questions lane sends the OBJECT whole to every surface that attaches
+// ([session.Agent.WatchQuestions]). Both roads reach this block now that the
+// standing lane is drawn here, and a block that appended rather than replaced
+// would hand a person one decision as two.
+//
+// THE TOKEN IS WHAT MAKES THEM ONE: the lane and the lane's own id
+// ([questionShown.token]), which both builders spell the same way because the
+// surface's is the engine's builder said again ([app.standingQuestion]).
+func TestAStandingQuestionArrivingByBothRoadsDrawsOnce(t *testing.T) {
+	a, _, tick := standApp(t)
+	notice := session.StandingNotice{
+		WhenWords: "Mondays at 9am", CostWords: "about $0.02 a run",
+	}
+	standAsk(t, a, tick, notice)
+	if len(a.questions) != 1 {
+		t.Fatalf("the proposal raised %d questions", len(a.questions))
+	}
+	first := a.questions[0]
+
+	// AND NOW THE SAME QUESTION OFF THE LANE, exactly as the engine sends it:
+	// the bare object, with none of what the surface knows about it.
+	bare := a.standingQuestion(a.stand, notice)
+	bare.Options = session.StandingOptions(a.stand.item)
+	drive(t, a, questionEventMsg{gen: a.questionGen, ev: session.Event{
+		Kind: session.EventQuestion, Question: &bare,
+	}})
+	if len(a.questions) != 1 {
+		t.Fatalf("the lane's copy became a second question: %d open", len(a.questions))
+	}
+	if got := a.questionCount(); got != 1 {
+		t.Fatalf("the chip counts %d questions about one card", got)
+	}
+	// AND ONE CARD IN THE TRANSCRIPT, for the same reason from the other side.
+	cards := 0
+	for _, e := range a.entries {
+		if e.kind == entryStanding && e.stand != nil {
+			cards++
+		}
+	}
+	if cards != 1 {
+		t.Fatalf("the transcript drew %d cards about one proposal", cards)
+	}
+	// THE SHOWN STAMP SURVIVES THE REPLAY, which is what keeps a link that
+	// reconnects from handing the question a fresh settle guard every few
+	// seconds — a question that would then never become answerable at all.
+	if !a.questions[0].shown.Equal(first.shown) {
+		t.Fatalf("the replay restamped the question: %v then %v", first.shown, a.questions[0].shown)
+	}
+	// AND SO DO THE WORDS ON ITS ANSWERS. The bare object carries the kind's own
+	// spellings; the card's are richer, and respelling every answer under a hand
+	// is exactly what [questionSameAnswers] is for.
+	block := standBlock(a)
+	if !strings.Contains(block, "1  "+standYesWord) {
+		t.Fatalf("the lane's copy respelled the answers:\n%s", block)
 	}
 }

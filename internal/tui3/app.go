@@ -1511,11 +1511,11 @@ type app struct {
 	// it. Zero is the ordinary case and means "stamp the whole clock".
 	askResume       time.Duration
 	askResumePaused bool
-	// THE CONNECT SIDE (connect.go). connAsks are the offers waiting for an
-	// answer, oldest first — a question about an ACCOUNT rather than about a
-	// call, drawn one slot under the approval question and owning the keyboard
-	// on the same terms. connTaps is where that offer's two answers were last
-	// drawn, in columns, which is the bargain [app.questionBands] makes one block up.
+	// THE CONNECT SIDE (connect.go). connAsks are the LANE'S OWN FACTS about the
+	// offers still open — the service id the transcript is keyed by, the
+	// catalog's sentence over the box, and whether the answer is a secret. The
+	// question itself is on the block with every other question this engine asks
+	// (question.go); this is what the block does not carry.
 	//
 	// conns is the door onto the accounts themselves (Options.Connections) and
 	// connPanel the list /connect opens over it. Nil conns is a surface that
@@ -1529,19 +1529,6 @@ type app struct {
 	// A flow is held only so it can be ABANDONED — the conversation being
 	// replaced, or a second attempt at the same account — because a listener
 	// nobody is going to answer is a listener outliving its reason.
-	// THE HARNESS SIDE (harness.go). harnessAsks are the subharness offers
-	// waiting for an answer, oldest first — a question about the TURN rather
-	// than about a call or an account, one row under the connect offer and
-	// owning the keyboard on the same terms. harnessTaps is where that row's two
-	// answers were last drawn, which is the bargain the two blocks above it make.
-	harnessAsks []harnessAsk
-	harnessTaps []harnessTap
-	// roomApprovalTaps is where the design approval row's two chords were last
-	// drawn, on exactly the terms harnessTaps is kept: the spans are written by
-	// the layout and read by the pointer, so a press can never answer about a row
-	// drawn on an earlier frame (roomapproval.go). There is no queue beside it —
-	// a room stands in front of one design and no more.
-	roomApprovalTaps []roomApprovalTap
 	// harnessStep is the step a running subharness last finished, as one line
 	// (harness.go's [app.stepHarness]). It is a FIELD and not an entry because it
 	// is replaced in place: the run's report carries the whole trail, and a step
@@ -1566,7 +1553,6 @@ type app struct {
 	orchGen  int
 
 	connAsks  []connAsk
-	connTaps  []connTap
 	conns     Connections
 	connPanel connectPanel
 	// harn is the subharness registry (Options.Harnesses) and harnPanel the
@@ -3539,7 +3525,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// which is the block's own not-modal law said to the pointer
 			// (question.go's [app.questionPress]).
 			if a.questionPress(msg.Mouse().X, msg.Mouse().Y) {
-				return a, nil
+				// AND WHATEVER THE ANSWER PARKED IS HANDED ON. `change it` on a
+				// finished design walks into that design's room (harnesscard.go),
+				// and a room whose lane was never started is a page that never
+				// updates.
+				return a, a.takeRoomPump()
 			}
 			// THE QUESTION BLOCK IS READ FIRST OF THE FRAME'S OWN ROWS, which is
 			// the pointer's half of the keyboard's order (input.go): a question
@@ -3549,24 +3539,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// against it would answer a question nobody could see. It claims the
 			// answers it drew and nothing else — a press on any other row falls
 			// straight through, exactly as a key does (question.go).
-			// THE CONNECT OFFER IS READ NEXT, one rung under the approval
-			// question for the reason it is drawn one row under it: both are
-			// blocks the session is waiting on, and a call parked mid-batch is
-			// the more urgent of the two (connect.go).
-			if a.connectPress(msg.Mouse().X, msg.Mouse().Y) {
-				return a, nil
-			}
-			// AND THE HARNESS OFFER LAST OF THE THREE, drawn last and read last
-			// (harness.go).
-			if a.harnessPress(msg.Mouse().X, msg.Mouse().Y) {
-				return a, nil
-			}
-			// AND A DESIGN ROOM'S APPROVAL ROW UNDER ALL THREE, drawn under them
-			// and read under them (roomapproval.go). It is the same answer the
-			// card in the conversation takes, offered where the person is standing.
-			if a.roomApprovalPress(msg.Mouse().X, msg.Mouse().Y) {
-				return a, nil
-			}
 			// AND THE TWO REGISTRY PANELS TAKE EVERY PRESS WHILE THEY ARE UP,
 			// which is what modal means for a pointer: a press on a row acts on
 			// that row, and a press anywhere else closes the list
@@ -3686,12 +3658,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// which one was pressed is a question about x (room.go). A rail row
 			// is a door into that node's room.
 			if cmd, took := a.railPress(msg.Mouse().X, msg.Mouse().Y); took {
-				return a, cmd
-			}
-			// AND THE STANDING CARD'S ANSWERS ROW, which is the same gesture over
-			// the same shape of row and is resolved against ITS OWN spans
-			// (standing.go's [app.standingPress]).
-			if cmd, took := a.standingPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// AND THE MONEY SEGMENT IS A DOOR ONTO THE SPENDING TAB, read here
@@ -6136,16 +6102,6 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		// the same gesture answering the same question about the same object one
 		// state later (taskdone.go).
 		a.toggleDoneAt(r.entry)
-	case hitHarness:
-		a.harnessCardPress(r.entry, x)
-		// The middle column of that card opens the design's ROOM now
-		// (harnesscard.go), so whatever door it parked has to be handed on — a
-		// room whose lane was never started is a page that never updates.
-		cmd = a.takeRoomPump()
-	case hitStandChoice:
-		// The row was offered this click before the body and took it (see
-		// [app.standingPress]); reaching here means the pointer was in a column
-		// no option occupies, and empty space on this surface does nothing.
 	}
 	// THE NAMED RESULT, AND NOT nil. This used to end `return nil`, which threw
 	// away the one command this switch parks — the design room's pump above —

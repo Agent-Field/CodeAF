@@ -69,27 +69,35 @@ build, not a matching accident.
 
 ## The offer card and the keys it takes
 
-One row appears under the connect offer and above the message box:
+The offer is asked where every decision on this surface is asked: on the question block,
+directly above the message box.
 
 ```
-? run harness "research"? · finds an answer across sources · [enter] run · [esc] no
+? run harness "research"? · [1] run it · [2] not now · [esc] later · waiting
+  model: claude-opus-5 · finds an answer across sources
 ```
 
 | Key | What it does |
 | --- | --- |
-| `enter` or `y` | run the harness |
-| `esc` or `n` | no — the ordinary turn goes ahead |
+| `1` | run it |
+| `2` | not now — the ordinary turn goes ahead |
+| `esc` | **later**. Nothing is decided, the offer stays open, and the status line keeps counting it |
 | `ctrl+c` | not swallowed; mid-turn it is still the interrupt, which releases the held turn. It never quits on one press — the door takes two |
 
-Every other key does nothing while the row is up. It is modal, because the session is
-holding a turn on your answer.
+**`enter` and `y` no longer answer it, and `esc` is no longer the no.** Every question in
+aforge now answers to the number beside the answer, and `esc` means *later* on all of them.
+The one previous spelling that changed meaning is `esc`: it used to be the outright no.
 
-A click works too. Each key chip **and the word beside it** are one target. A press
-anywhere else on the row is swallowed rather than falling through to what is underneath.
+**The block is not modal.** Every key it has not drawn falls straight through to the message
+box, so you can keep typing while the offer stands. The one rule about letters is this
+surface's own: a printable key belongs to the box the moment there are words in it, so an
+offer answers to `1` only over an empty box.
 
-The line is assembled longest-first and shortened a piece at a time on a narrow frame: the
-description goes first, the model survives one rung longer, and **the answers are never
-dropped**. If a second question is queued behind this one, a dim row under it reads
+A click works too — **the whole answer row is one target**, the number and the words on it.
+A press anywhere the block did not draw an answer falls through to whatever is underneath.
+
+On a narrow frame the offer promotes to a card, one answer per row, rather than dropping
+words off the end. If a second question is queued behind this one, a dim row under it reads
 `  N more`.
 
 **Nothing is written to the transcript either way.** A yes is followed by the run, which
@@ -268,25 +276,44 @@ verification law, and allowed tools. Wide layouts draw a linear chain horizontal
 phone layouts stack it vertically. The card scrolls with the conversation and is never a
 popup or sheet.
 
-The focused card takes `enter` to save, `e` to open the design's own room so you can say
-what to change, and `esc` to drop it — drawn as `[enter] save   [e] change it   [esc] drop`.
-The same three actions are clickable. The card remains in the feed after an answer as
-`saved as <name> v1` or `dropped`.
+**The card carries no answers.** The page is what is being judged, and it stays in the feed
+as ordinary scrollable content; the question about it is asked above the message box like
+every other question:
 
-**The three keys are read only while the message box is empty and nothing is over the
-conversation** — not with home, the settings panel or the model picker up, not inside a
-task room, and not in copy mode or rewind. They are letters, and a letter typed into a
-sentence is a letter: a bare `e` in the middle of "even the tests pass" types an `e`. The
-card's three columns stay clickable at every one of those moments, so nothing is
-unreachable — click the one you want, or clear the box and press the key.
+```
+? wrote a program: research-helper
+  Research a topic with cited sources
 
-**`e` no longer throws the design away.** It used to be labelled "improve", and what it
+  1  save it     it is kept, and can be run from now on
+  2  change it   say what is wrong and it is written again
+  3  drop it     the page is thrown away
+```
+
+| Key | What it does |
+| --- | --- |
+| `1` | save it — written to the store as `<name> v1` |
+| `2` | change it — walks into the design's own room, where a change is actually made |
+| `3` | drop it — the page is thrown away, and there is no way back to it |
+| `esc` | **later**. The page keeps standing and nothing is decided |
+
+The card remains in the feed after an answer as `saved as <name> v1` or `dropped`.
+
+**They were `enter`, `e` and `esc` and they are not any more.** One question, one grammar:
+digits answer, `enter` takes the pick where a question has one, and `esc` means *later*.
+
+**The answers are read only while the message box is empty and nothing is over the
+conversation** — not with home, the settings panel or the model picker up, not on a
+background job's page or the rewind timeline. A printable key belongs to the box the moment
+there are words in it, so a `1` typed into "give me 100" types a `1`. The answer rows stay
+clickable at every one of those moments where the block is on screen.
+
+**`change it` throws nothing away.** It used to be `e`, labelled "improve", and what it
 actually did was discard the page and put `Improve harness <name>: ` in your message box —
 so asking for a change destroyed the thing you were asking about and started a second
 design from scratch. Nothing said so. It is a door now: the design stays exactly where it
-is, still waiting, and `e` walks you into its room, which is where a change is actually
-made. A design with no room to open says `this design has no room to open — answer the card
-here` and leaves the card alone.
+is, still waiting — the answer resolves nothing at all — and it walks you into its room,
+which is where a change is actually made. A design with no room to open says `this design
+has no room to open — save it or drop it above the box` and leaves the page alone.
 
 Under the hood: one design pass, then up to **2 retries** in which a refused design is
 shown the exact sentence it failed on and asked to fix it, then **one** review pass that
@@ -433,29 +460,37 @@ untouched either way.
 
 ## How do I approve a design from inside its room
 
-**Two chords, pinned above the message box** whenever the design you are standing in is
-waiting on you:
+**The same three answers, in the same place.** The question block is pinned above the
+message box on every screen that has one, and a task's room is one of them — so a design
+waiting on you is answered from inside its room with exactly the keys it is answered with
+out in the conversation:
 
 ```
-waiting on your approval — this design saves only if you say so
-[ctrl+k] save it · [ctrl+x] drop it · or say below what to change
+? wrote a program: research-helper
+
+  1  save it
+  2  change it
+  3  drop it
 ```
 
-`ctrl+k` saves the page. `ctrl+x` drops it. Both are clickable. Both do exactly what the
-card in the conversation does — it is one question with one id, so answering in the room
-turns the card out there into `saved as <name> v1` or `dropped`, and answering the card
-takes this row down. Whichever you answer first wins; the other finds the question gone.
+`1` saves the page, `3` drops it, `2` is the door onto this same room. The whole of each
+answer row is clickable. It is one question with one id, so answering in the room turns the
+card out in the conversation into `saved as <name> v1` or `dropped`, and answering out there
+takes these rows down. Whichever you answer first wins; the other finds the question gone.
 
-**They are chords and not letters on purpose.** `esc` leaves the room and `enter` sends your
-message, so neither can be taken, and a bare letter would stop being a letter you can type.
-`ctrl+k` and `ctrl+x` carry no text and are bound **only** while this row is up.
+**There used to be a second row in here with two chords of its own** — `ctrl+k` to save and
+`ctrl+x` to drop, drawn under the words `waiting on your approval`. It is gone. One decision
+was being drawn twice, in two grammars, and a person who learned one of them did not know
+the other.
 
-**The row never swallows your typing.** Every other key falls through to the message box,
-because the third answer to the question is a sentence you type there.
+**The room's own two keys are untouched.** `esc` still leaves the room and `enter` still
+sends your message to the design's thread; both are read before the block, so the only keys
+a waiting design takes in here are its digits. Every other key falls through to the message
+box, which is where a change is typed once `2` has walked you in.
 
-Once you answer, the row reads `saved as <name> v1` or `dropped` for the moment before the
-task's settle card arrives. While a rewrite is being written there is nothing to approve, so
-the row is gone.
+While a rewrite is being written there is nothing to judge, so the question is taken back
+with one dim line — `you asked for it to be different, and it is being written again` — and
+comes back when the next page lands.
 
 ## How do I know a message went into a subharness design — the dim words after my own line
 
@@ -793,17 +828,23 @@ you simply never got to it. Nothing reaches the registry in either case.
 The page the designer wrote is shown to you before anything is kept. It arrives by itself,
 minutes after your build request, on a standing lane rather than on any turn.
 
-The card is drawn above the question in dim text, capped at **14 lines**. A longer page is
-cut with a line reading `… N more lines` rather than quietly stopping.
+The page itself is drawn in the conversation, in the plain-speech card the *How to read a
+harness card* section below describes — the same words `/harness` and the design's own room
+show it in. It scrolls with everything else and is never a popup or a sheet.
 
-The question row changes only its verb from the run offer:
+The question asks three things where a run offer asks two, because a written page can also
+be sent back:
 
 ```
-? save harness "triage-flake"? · [enter] save · [esc] discard
+? wrote a program: triage-flake
+
+  1  save it
+  2  change it
+  3  drop it
 ```
 
-`enter` or `y` saves. `esc` or `n` discards. A design's row never repeats its description,
-because the card's own head line already carries it.
+`1` saves. `3` discards. `2` asks for it to be written again and resolves nothing. `esc` is
+*later* and decides nothing at all.
 
 A landing design closes the settings sheet and the expand view first — a question drawn
 under a fullscreen panel is an answer nobody can reach.

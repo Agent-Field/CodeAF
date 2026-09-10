@@ -210,6 +210,16 @@ const (
 	SubjectPage SubjectKind = "page"
 	// SubjectRun is an adaptive run, named by [SubjectRef.Ref].
 	SubjectRun SubjectKind = "run"
+	// SubjectOrder is one standing order waiting to be agreed to, named by
+	// [SubjectRef.ID]. It is the card the transcript is already drawing — the
+	// person's own sentence, when it wakes, what it costs and how far it reaches
+	// — so a surface that finds it says the question's reason once rather than
+	// under both.
+	//
+	// IT IS `order` AND NOT `standing` because [SubjectStanding] is already
+	// taken, by the spend ledger, for the thing money was spent inside
+	// (usage_spend.go). Two names for two ideas.
+	SubjectOrder SubjectKind = "order"
 	// SubjectAccount is one of the person's connected accounts, named by
 	// [SubjectRef.Ref] and read out in [SubjectRef.Name].
 	SubjectAccount SubjectKind = "account"
@@ -355,6 +365,14 @@ type InputShape struct {
 	// Prompt is the one line above a free-text box, and "" draws nothing above
 	// it at all.
 	Prompt string `json:"prompt,omitempty"`
+	// Secret says the answer is a CREDENTIAL and is never drawn back. A surface
+	// that honours it masks the box a character at a time and shows how many
+	// characters arrived, which is what a person pasting a key needs to know and
+	// the whole of what they need to know. It is on the question rather than
+	// decided by each surface because the asker is the only thing that knows a
+	// key from a folder name, and a box drawn in the clear once is a secret on
+	// somebody's screen.
+	Secret bool `json:"secret,omitempty"`
 }
 
 // ── the asker's own pick ────────────────────────────────────────────────────
@@ -1470,9 +1488,35 @@ func answerToken(answer Answer) string {
 // and that is the whole of what this function is for: `tell it` sends words to
 // the work and the question stays exactly where it was, because "looks good"
 // typed on a card must not silently become accept.
-func resolvesQuestion(answer Answer) bool {
-	if answer.Kind == QuestionLanding && answer.FirstKey() == LandingTellKey {
-		return false
+func resolvesQuestion(answer Answer) bool { return AnswerResolves(answer) }
+
+// AnswerResolves reports whether this answer ENDS the question it was given to,
+// or leaves it open for another one.
+//
+// IT IS EXPORTED BECAUSE THE SURFACE HAS TO ASK THE SAME QUESTION. A block that
+// took every answer as the end of a question would clear the rows, write the
+// receipt and stop counting the question — while the engine, correctly, left the
+// lane waiting — so the person would be looking at a decision that was still
+// theirs to make with nothing on screen to make it with. One reading, at both
+// ends (tui3's [app.answerQuestion] calls this before it closes anything).
+//
+// Two answers do it, and both for the same reason: what they send is WORDS, and
+// words are how you ask for something different rather than how you settle.
+//
+//   - `tell it` on a landed task steers the work and leaves the `your call`
+//     exactly where it was (docs/design/task-states/DESIGN.md).
+//   - `change it` on a finished design hands the page back to the designer, which
+//     rewrites it and puts it in front of you again ([HarnessChangeKey]).
+func AnswerResolves(answer Answer) bool {
+	switch answer.Kind {
+	case QuestionLanding:
+		return answer.FirstKey() != LandingTellKey
+	case QuestionHarness:
+		// THE SHAPE IS PART OF THE TEST. `2` is `not now` on an OFFER, which
+		// ends the question outright, and `change it` on a DESIGN, which does
+		// not — one digit, two questions, told apart by the shape the asker gave
+		// them ([HarnessOptions]).
+		return answer.Ask != AskJudgement || answer.FirstKey() != HarnessChangeKey
 	}
 	return true
 }
@@ -1497,6 +1541,18 @@ func (a *Agent) applyToLane(answer Answer) error {
 		wait <- answer
 		return nil
 	case QuestionConsent, QuestionTask, QuestionStanding:
+		if answer.Kind == QuestionStanding && key == "" && words != "" {
+			// A STANDING CARD ANSWERED IN WORDS IS A CORRECTION, and it is not a
+			// yes. "make it 2pm" says the arrangement is nearly right and names
+			// what is wrong with it; the model re-proposes on those words
+			// ([StandingAnswer.Change]), so nothing stands until the corrected
+			// card is agreed to. It is the answer the card's own `change when or
+			// where` chip asked for before the block drew this lane, and the
+			// block asks for it the way every other question does — `c`, then the
+			// box (tui3's questionkeys.go).
+			a.ResolveStanding(answer.ID, StandingAnswer{Change: words})
+			return nil
+		}
 		if answer.Kind == QuestionTask && key == "" && words != "" {
 			// A PROPOSAL ANSWERED IN WORDS IS APPROVED, AND THE WORDS ARE THE
 			// REDIRECT. It is the one lane on this door where a sentence is a
@@ -1559,7 +1615,14 @@ func (a *Agent) applyToLane(answer Answer) error {
 		a.ResolveConnect(answer.Ref, key == "1")
 		return nil
 	case QuestionHarness:
-		a.ResolveHarness(answer.ID, key == "1", strings.TrimSpace(answer.Comments[questionModelNote]))
+		if !AnswerResolves(answer) {
+			// `change it` ON A DESIGN TOUCHES NOTHING. The page is still waiting,
+			// the lane is still holding it, and what actually happens next is a
+			// sentence said to the design's own thread — which is a turn and not
+			// an answer ([HarnessChangeKey]).
+			return nil
+		}
+		a.ResolveHarness(answer.ID, key == HarnessSaveKey, strings.TrimSpace(answer.Comments[HarnessModelNote]))
 		return nil
 	case QuestionSubharness:
 		a.ResolveSubharness(answer.ID, key == "1", nil)
@@ -1579,11 +1642,16 @@ func (a *Agent) applyToLane(answer Answer) error {
 	return errAnswerUnknownLane
 }
 
-// questionModelNote is the key a harness answer carries the model under, in
+// HarnessModelNote is the key a harness answer carries the model under, in
 // [Answer.Comments]. It is a comment rather than a field because it is one
 // lane's own extra and every other lane would carry it empty
 // ([Event.Model] is where the question offered it).
-const questionModelNote = "model"
+//
+// IT IS EXPORTED BECAUSE THE SURFACE FILLS IT. The model the OFFER SHOWED is
+// what the person read before they pressed a key, so it travels back with the
+// answer rather than being looked up again on the far side — where the lane may
+// by then be holding something else ([Agent.ResolveHarness] takes it).
+const HarnessModelNote = "model"
 
 // AnswerBanked is the key a widening answer carries under, in [Answer.Comments],
 // when the SURFACE has already written the permission down somewhere the person
@@ -1598,7 +1666,7 @@ const questionModelNote = "model"
 // instead, which is the scope that tells this engine to write nothing beside it
 // (consent.go's askAnswer says the same from the other end).
 //
-// It is a comment rather than a field for [questionModelNote]'s reason: it is
+// It is a comment rather than a field for [HarnessModelNote]'s reason: it is
 // one lane's own extra, and every other lane would carry it empty.
 const AnswerBanked = "banked"
 
@@ -1868,57 +1936,196 @@ const ConsentFallbackReason = "it will not run this without your word"
 // to one of those is read as a decline (connect.go) and a chip that means no
 // while reading yes is worse than no chip.
 func (a *Agent) connectQuestion(id string, ask connectAsk) Question {
+	return a.said(QuestionConnect, id, ConnectQuestion(id, "", ask.needsKey, "", false))
+}
+
+// ConnectQuestion is that object, and it is ONE BUILDER for the two roads it
+// arrives by: this lane's own [Agent.OpenQuestions], and the surface, which has
+// the event a moment before the questions lane reaches it and builds the same
+// question from it (tui3's connect.go). The block keys a question by its lane
+// and its token, so two builders would be two questions replacing each other on
+// screen while somebody read one of them.
+//
+// The surface knows three things this engine does not — the word a person owns
+// the account by, the service's own sentence over the box, and whether what it
+// wants is a secret or the part of an address — so they are arguments with
+// honest defaults rather than facts invented here.
+//
+// AN ACCOUNT THAT NEEDS A TYPED ANSWER IS A QUESTION WITH A BOX RATHER THAN A
+// PICK, because a bare yes to one of those is read as a decline (connect.go) and
+// an answer that means no while reading yes is worse than no answer.
+func ConnectQuestion(id, name string, needsKey bool, keyAsk string, secret bool) Question {
+	head := ConnectAskHead
+	if name = strings.TrimSpace(name); name != "" {
+		head = "connect your " + name + " account?"
+	}
 	built := Question{
 		Ref:      id,
 		Kind:     QuestionConnect,
 		Ask:      AskPermission,
-		Form:     FormLine,
+		Form:     FormCard,
 		Asker:    Asker{Kind: AskerEngine},
-		Head:     "connect your account?",
-		Reason:   "the turn asked for something only that account can answer",
+		Head:     head,
+		Reason:   ConnectAskReason,
 		Subject:  SubjectRef{Kind: SubjectAccount, Ref: id},
 		Options:  AnswerOptions(QuestionConnect),
 		Stakes:   StakesReversible,
 		Blocking: Blocking{Turn: true},
 		Scope:    []AnswerScope{ScopeOnce},
 	}
-	if ask.needsKey {
-		built.Options = nil
+	if needsKey {
+		// AND THE WAY OUT SURVIVES THE BOX. A question whose only answer is words
+		// has no way to say no, and the turn is waiting: `esc` is *later* on this
+		// block and decides nothing, so the decline has to be an answer a person
+		// can see. The engine reads a bare pick on a key question as a no
+		// ([Agent.ResolveConnect] says why a yes cannot be one), so this is the
+		// one option it keeps.
+		built.Options = []AnswerOption{{Key: "2", Label: "not now", Safe: true}}
 		built.Ask = AskClarification
-		built.Input = InputShape{Kind: InputText, Prompt: "the key, or the part of the address it is missing"}
+		if keyAsk = strings.TrimSpace(keyAsk); keyAsk == "" {
+			keyAsk = ConnectKeyPrompt
+		}
+		built.Input = InputShape{Kind: InputText, Prompt: keyAsk, Secret: secret}
 	}
-	return a.said(QuestionConnect, id, built)
+	return built
 }
 
+// The three sentences a connect offer is spelled with. They are constants
+// because the surface builds the same question and the two must not drift.
+const (
+	// ConnectAskHead is the head where the session named the account only by an
+	// id nobody would recognize, which is the one case there is no better word
+	// for.
+	ConnectAskHead = "connect your account?"
+	// ConnectAskReason is why it is being asked now.
+	ConnectAskReason = "the turn asked for something only that account can answer"
+	// ConnectKeyPrompt is the line over the box where the service said nothing
+	// of its own about what it wants.
+	ConnectKeyPrompt = "the key, or the part of the address it is missing"
+)
+
 // harnessQuestion is a sub-harness offer, or a written design waiting to be
-// approved, as a question. The card the lane already holds is where its words
-// come from: Text is the harness's name and Hint its one sentence.
+// approved, as a question.
 func (a *Agent) harnessQuestion(id uint64, card Event) Question {
-	token := strconv.FormatUint(id, 10)
-	head := strings.TrimSpace(card.Text)
+	return a.said(QuestionHarness, strconv.FormatUint(id, 10), HarnessQuestion(id, card))
+}
+
+// HarnessQuestion is that object, built from the card the lane already holds:
+// Text is the harness's name and Hint its one sentence.
+//
+// IT IS ONE BUILDER AND NOT TWO. Every other lane in this file has a twin on the
+// surface — a window has the event before the questions lane reaches it and
+// raises the question from that, so the two must be one sentence
+// ([TaskProposalLead] states the cost of a drift). This lane is the first to be
+// written the honest way round: the surface calls THIS, so there is nothing to
+// drift.
+func HarnessQuestion(id uint64, card Event) Question {
+	head, name, reason := strings.TrimSpace(card.Text), strings.TrimSpace(card.Text), harnessOfferReason(card)
 	if head == "" {
 		head = "run a saved program for this?"
 	}
-	ask, form := AskPermission, FormLine
-	if card.Kind == EventHarnessDesignDone {
+	ask, form, stakes := AskPermission, FormLine, StakesReversible
+	// AN OFFER STOPS THE TURN, because the turn asked whether to run the program
+	// and cannot go on until it is told.
+	blocking := Blocking{Turn: true}
+	// THE FINISHED PAGE IS THE TEST, AND NOT THE EVENT'S NAME. A design done
+	// event is the only one of this lane's events that carries a written program,
+	// and the surface refuses one without it (tui3's askHarnessDesign) — so the
+	// page itself is the fact both roads agree on, where a kind is a field a
+	// caller building the object by hand can forget.
+	if card.Harness != nil {
 		// A DESIGN IS A JUDGEMENT AND NOT A PERMISSION: the page is written,
 		// and what is being asked is whether it is right — which is a thing
 		// nothing but a person ever answers.
-		ask, form = AskJudgement, FormCard
+		//
+		// AND IT COSTS SOMETHING TO ANSWER WRONG. Declining an offer loses
+		// nothing; dropping a finished page loses the minutes of model work that
+		// wrote it and there is no way back to it, which is [StakesCostly] and
+		// not the reversible an offer wears.
+		ask, form, stakes = AskJudgement, FormCard, StakesCostly
+		// AND THE QUESTION IS ABOUT THE PAGE, so it is the PAGE that is named.
+		// `card.Text` on this event is the goal the design was asked for, which
+		// is what the designer was told rather than what it wrote — and a head
+		// naming the request over a card showing the result would be two subjects
+		// on one decision.
+		name = strings.TrimSpace(card.Harness.Id.Name)
+		head = harnessDesignLead + name
+		if desc := strings.TrimSpace(card.Harness.Id.Desc); desc != "" {
+			reason = desc
+		}
+		// AND A DESIGN STOPS ITS OWN NODE AND NOT THE CONVERSATION. The page was
+		// written by a task and lands in the transcript as ordinary scrollable
+		// content; the conversation carried on while it was being written and
+		// carries on now. What waits is the design's own thread.
+		//
+		// IT MATTERS MORE THAN A LABEL. A question that stops the turn OWNS THE
+		// BOX (tui3's [questionOwnsBox]), so `enter` over a half-typed sentence
+		// would send it as this question's answer — and an answer to a design
+		// with no key on it resolves the lane, which is the DROP. That is the
+		// exact destruction `change it` was rewritten to stop doing, arriving by
+		// a second road.
+		blocking = Blocking{}
+		if goal := strings.TrimSpace(card.Text); goal != "" {
+			blocking.Tasks = []string{goal}
+		}
+	} else {
+		head = harnessOfferLead + strconv.Quote(head) + "?"
 	}
-	return a.said(QuestionHarness, token, Question{
-		ID:       id,
-		Kind:     QuestionHarness,
-		Ask:      ask,
-		Form:     form,
-		Asker:    Asker{Kind: AskerEngine},
-		Head:     head,
-		Reason:   strings.TrimSpace(card.Hint),
-		Subject:  SubjectRef{Kind: SubjectPage, Name: strings.TrimSpace(card.Text)},
-		Options:  AnswerOptions(QuestionHarness),
-		Stakes:   StakesReversible,
-		Blocking: Blocking{Turn: true},
-	})
+	return Question{
+		ID:      id,
+		Kind:    QuestionHarness,
+		Ask:     ask,
+		Form:    form,
+		Asker:   Asker{Kind: AskerEngine},
+		Head:    head,
+		Reason:  reason,
+		Subject: SubjectRef{Kind: SubjectPage, Name: name},
+		// THE ANSWERS ARE THE SHAPE'S AND NOT THE KIND'S. This lane asks two
+		// questions with two different rows ([HarnessOptions] says why), and the
+		// shape decided above is the one fact that tells them apart.
+		Options:  HarnessOptions(ask),
+		Stakes:   stakes,
+		Blocking: blocking,
+	}
+}
+
+// harnessOfferLead opens the sentence an offer asks with, and the harness's own
+// name closes it. It is a constant so the row, the presence file and this object
+// cannot become three accounts of one offer.
+const harnessOfferLead = "run harness "
+
+// harnessDesignLead opens the sentence a FINISHED PAGE asks with, and the name
+// the designer gave it closes the line. It is the designer's own act stated
+// plainly — a program has been written, and the three answers under it are what
+// can be done about that — where the offer above asks for permission to run one
+// that already exists.
+const harnessDesignLead = "wrote a program: "
+
+// harnessOfferReason is the dim line under an offer: where the turn's own words
+// chose what it would run on, and what the saved program says it does.
+//
+// THE MODEL COMES FIRST SO THAT IT OUTLIVES THE DESCRIPTION, which is the row's
+// own ranking kept through the move onto the block. A surface cuts a reason it
+// has no room for from the END, so the order IS the ranking: the description is
+// context for a name a person can already read, and the model is the one thing on
+// the offer that says this run would not be the ordinary one — "run this
+// harness?" is a different question when the answer costs what opus costs.
+//
+// Where the turn named a model this install does not have, the session's own note
+// stands in its place. It is never a refusal: the question is the same question
+// either way, and yes still runs the harness.
+func harnessOfferReason(card Event) string {
+	parts := make([]string, 0, 2)
+	switch {
+	case strings.TrimSpace(card.Model) != "":
+		parts = append(parts, "model: "+strings.TrimSpace(card.Model))
+	case strings.TrimSpace(card.ModelNote) != "":
+		parts = append(parts, strings.TrimSpace(card.ModelNote))
+	}
+	if hint := strings.TrimSpace(card.Hint); hint != "" {
+		parts = append(parts, hint)
+	}
+	return strings.Join(parts, " · ")
 }
 
 // standingQuestion is a standing card as a question. Its answers are the ONE
@@ -1934,7 +2141,8 @@ func (a *Agent) standingQuestion(id uint64) Question {
 		Form:    FormCard,
 		Asker:   Asker{Kind: AskerEngine},
 		Head:    a.presenceAsk().Text,
-		Reason:  "nothing stands until you say so",
+		Reason:  StandingAskReason,
+		Subject: SubjectRef{Kind: SubjectOrder, ID: id},
 		Options: AnswerOptions(QuestionStanding),
 		Stakes:  StakesReversible,
 		Scope:   []AnswerScope{ScopeOnce, ScopeAlways},
