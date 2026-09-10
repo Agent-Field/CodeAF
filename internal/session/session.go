@@ -1079,6 +1079,11 @@ type Config struct {
 	// here, which is what makes "no calls" structural.
 	Memory *store.Store
 
+	// ConversationHistory grants only indexed history reads. Workers inherit
+	// this interface without receiving memory extraction, writes, or journaling.
+	// Nil falls back to Memory, so a memory-off root grants no history access.
+	ConversationHistory ConversationHistoryReader
+
 	// MemoryImport is the legacy memory.md this session carries into the store
 	// on its first turn, once, before it is renamed to memory.md.imported
 	// (memory.go). Empty imports nothing, which is every caller but the v3 door
@@ -2812,6 +2817,12 @@ type Agent struct {
 	// lane is the roster's, its readers walk a strict sequence of rows, and a
 	// question is not a row.
 	questionWatchers []*eventStream
+	// landingQuestions is which shape each landed node's `your call` was last
+	// PUT OUT AS — `landing` or `conflict` — so that a question can be taken back
+	// in the kind it was raised in when the node settles or changes shape
+	// (task_landing_question.go). It holds no question and is not a second
+	// registry of what is open: [Agent.PendingDecisions] is still the one list.
+	landingQuestions map[uint64]QuestionKind
 
 	// taskWatchers are the standing subscriptions to task updates
 	// ([Agent.TaskUpdates]). They are not the turn's hub and do not close with

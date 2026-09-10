@@ -587,6 +587,13 @@ type TaskNotice struct {
 	// sentences a row reads, so that nothing has to tell them apart by their
 	// prose.
 	Shifted bool
+	// GroundHeld says the landing was refused by THE PERSON'S OWN UNTRACKED COPIES
+	// of the files this task wrote, sitting in the folder the branch merges into
+	// (groundcarry.go). It is the third road to the conflict's one question, and
+	// it is the road whose `resolve it` carries those copies aside rather than
+	// spending a merge round: a file git is not watching is on no branch, so
+	// there is nothing for a round to merge.
+	GroundHeld bool
 	// Decider is WHO HOLDS THIS NODE'S DECISION right now ([TaskAskOwner]). It is
 	// the person on every ordinary landing; `task.settle = auto` and a person
 	// pressing "let aforge decide this one" ([Agent.HandUnverifiedToModel]) are the

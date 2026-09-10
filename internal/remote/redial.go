@@ -266,10 +266,20 @@ func (c *Client) retakeLanes(left string, welcome Welcome) {
 	}
 	c.mu.Lock()
 	held := map[string]bool{
-		MethodTaskWatch:   c.tasks != nil,
-		MethodDesignWatch: c.designs != nil,
+		MethodTaskWatch:     c.tasks != nil,
+		MethodDesignWatch:   c.designs != nil,
+		MethodQuestionWatch: c.questions != nil,
 	}
 	c.mu.Unlock()
+	if held[MethodQuestionWatch] {
+		// AND THE QUESTIONS THIS WINDOW BELIEVED WERE OPEN ARE FORGOTTEN BEFORE
+		// THEY ARE ASKED FOR AGAIN. The engine replays everything still open onto
+		// the new subscription, so the list is rebuilt from its account — and one
+		// answered in another window while this link was down would otherwise sit
+		// on this replica forever, since the frame that took it off went to a
+		// connection that had already died (questionlane.go).
+		c.asked.forgetAll()
+	}
 	for method, watching := range held {
 		if !watching {
 			// A LANE THIS SURFACE NEVER OPENED IS NOT OPENED HERE. Asking for a

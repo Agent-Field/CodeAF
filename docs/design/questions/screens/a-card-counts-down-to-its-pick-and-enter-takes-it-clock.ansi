@@ -1,0 +1,36 @@
+
+  [38;5;243m Home    [1m[38;5;237m[48;5;252m ◐ trigger packer  × [0m[38;5;243m  + [39m
+
+[38;5;243m────────────────────────────────────────────────────────────────────────────────────────────────────
+
+[39m    [38;5;243m· still yours to set · [38;5;146m[48;5;237m/budget[38;5;243m[49m sets what aforge may spend · [38;5;146m[48;5;237m/model[38;5;243m[49m and [38;5;146m[48;5;237m/crew[38;5;243m[49m pick the models[39m
+    [38;5;243m· [38;5;116mesc[38;5;243m interrupts · [38;5;116mctrl+c[38;5;243m twice quits · [38;5;116m?[38;5;243m for help[39m
+    [38;5;243m· choice · recommend, auto in 30s · for this project[39m
+
+  [38;5;146m› [38;5;110mCall the ask tool now, exactly once, and run nothing else. head "rewrite the packer?", kind[39m
+    [38;5;110mchoice, form card, reason "it will run on its own branch and open a pull request", stakes[39m
+    [38;5;110mreversible, options [{"key":"1","label":"start it","consequence":"on a branch of its[39m
+    [38;5;110mown"},{"key":"2","label":"not now","consequence":"nothing runs"},{"key":"3","label":"change[39m
+    [38;5;110mit first"}], pick {"key":"1","reason":"the packer is the only thing left on the list"}.[39m
+                                                                                                   [38;5;252m❮
+[39m    [38;5;238m$ load_capability 1 call[39m
+    [38;5;103m» ask 1 call[39m                                                                  [38;5;235m↑[38;5;243m 32.8k[39m  [38;5;235m↓[38;5;243m 852[39m
+
+
+
+
+
+
+
+
+
+[38;5;243m─ main ───────────────────────────────────────────────────────────────────────────── [38;5;116mesc[38;5;243m interrupt ─
+[1m[38;5;186m?[0m [38;5;140mrewrite the packer?[39m
+[38;5;243m  it will run on its own branch and open a pull request · aforge[39m
+[38;5;140m  ▸ [1m1[0m[38;5;140m  start it[38;5;243m  on a branch of its own[39m
+[38;5;140m  [39m  [1m[38;5;140m2[0m[38;5;140m  not now[38;5;243m  nothing runs[39m
+[38;5;140m  [39m  [1m[38;5;140m3[0m[38;5;140m  change it first[39m
+[38;5;140m  [enter][1m take the pick · [0m[38;5;140m[esc][1m later · [0m[38;5;140m[?][1m ask back · [0m[38;5;140m[d][1m you decide[0m[38;5;243m · start it in 27s · your rule[39m
+
+ [38;5;243m› [39m
+[38;5;243mtrigger packer rewrite on a branch · deepseek-v4-flash[39m  [38;5;173mYOLO[38;5;243m · [38;5;186m? 1 question · alt+a[38;5;243m · [38;5;146m⠼[39m [38;5;146mworking[38;5;243m · [38;5;146m9s

@@ -472,14 +472,16 @@ func TestTheOpenThinkingLadderKeepsTheChordFromTheRosterBehindIt(t *testing.T) {
 	if !a.effPick.open {
 		t.Fatal("the chooser closed under a chord that belongs to it")
 	}
-	if a.effPick.cursor != 1 {
+	// The chooser's rows lead with `auto` (effortchip.go's [effortMenuRungs]), so
+	// `low` opens on the second row and one step down from it is the third.
+	if a.effPick.cursor != 2 {
 		t.Fatalf("the chord left the ladder's cursor at %d, want one step down", a.effPick.cursor)
 	}
 	// AND THE REST OF THE LIST'S OWN KEYS COME WITH IT, which is the whole of
 	// what "modal" means here: a list a person can see and cannot drive is worse
 	// than no list at all.
 	drive(t, a, key("down"))
-	if a.effPick.cursor != 2 {
+	if a.effPick.cursor != 3 {
 		t.Fatalf("↓ left the ladder's cursor at %d, want two steps down", a.effPick.cursor)
 	}
 	drive(t, a, key("esc"))
@@ -508,7 +510,7 @@ func TestTheOpenThinkingLadderKeepsTheChordFromTheRoomBehindIt(t *testing.T) {
 	if len(agent.asked) != 0 {
 		t.Fatalf("the chord reached the room's node while the ladder was open: %v", agent.asked)
 	}
-	if a.effPick.cursor != 1 {
+	if a.effPick.cursor != 2 {
 		t.Fatalf("the chord left the ladder's cursor at %d, want one step down", a.effPick.cursor)
 	}
 }

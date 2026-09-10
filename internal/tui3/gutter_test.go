@@ -149,51 +149,16 @@ func TestATaskLinksColumnsMoveWithItsWords(t *testing.T) {
 	}
 }
 
-// AND SO DO A SETTLED TASK'S ANSWERS. They are the most-pressed columns on this
-// surface and they live on a card rather than on the row, which is why they need
-// a pass of their own ([app.gutterCards]).
+// AND NOTHING IN THE TRANSCRIPT CARRIES ANSWERS FOR THIS PASS TO MOVE ANY MORE.
 //
-// THE CARD IS THE SETTLE ONE because it is the only block left in the transcript
-// with answers on it. The task proposal's went to the question block above the
-// box (task.go), and the standing card's followed them (standing.go) — and the
-// chrome is drawn at the frame's own width with no gutter to pay, which is
-// exactly why this pass has to be tested against a card that has one.
-func TestACardsAnswersCoverTheChipsThatWereDrawn(t *testing.T) {
-	card := &taskDone{chips: []settleChip{
-		{span: hudSpan{from: 0, to: 9}},
-		{span: hudSpan{from: 12, to: 20}},
-	}}
-	gutDoneCard(card, 2)
-	if card.gut != 2 {
-		t.Fatalf("the card carries %d cells of gutter, the pass bought 2", card.gut)
-	}
-	if card.chips[0].span != (hudSpan{from: 2, to: 11}) || card.chips[1].span != (hudSpan{from: 14, to: 22}) {
-		t.Fatalf("the answers landed at %+v, two cells right of where they were drawn is %+v",
-			[]hudSpan{card.chips[0].span, card.chips[1].span},
-			[]hudSpan{{from: 2, to: 11}, {from: 14, to: 22}})
-	}
-}
-
-// THE GUTTER IS PAID ONCE, HOWEVER MANY FRAMES GO BY. A card keeps its own
-// geometry across a pass that did not redraw it, so a pass that ADDED two cells
-// rather than settling a difference would walk its answers off the end of the
-// row one frame at a time (gutter.go's [app.gutterCards]).
-func TestTheGutterIsPaidOnceHoweverManyFramesGoBy(t *testing.T) {
-	card := &taskDone{chips: []settleChip{{span: hudSpan{from: 0, to: 9}}}}
-	gutDoneCard(card, 2)
-	first := card.chips[0].span
-	for range 5 {
-		gutDoneCard(card, 2)
-	}
-	if card.chips[0].span != first {
-		t.Fatalf("the answer drifted from %+v to %+v over five passes", first, card.chips[0].span)
-	}
-	// AND A WIDTH THAT CHANGED SETTLES THE DIFFERENCE rather than adding to it.
-	gutDoneCard(card, 5)
-	if card.chips[0].span != (hudSpan{from: 5, to: 14}) {
-		t.Fatalf("a wider gutter put the answer at %+v, want it five cells in from where it was drawn", card.chips[0].span)
-	}
-}
+// There used to be two tests here, about a second half of this file: three cards
+// drew their own answers in the transcript — a standing proposal's chip row, a
+// landed card's four chips, a finished design's columns — and each carried a
+// `gut` so the pass could shift their spans by the DIFFERENCE when the reading
+// gutter moved under them. Every one of those questions is drawn above the box
+// now by the one block (question.go), whose spans are re-minted on the frame that
+// draws them, and the chrome is laid out at the frame's own width with no gutter
+// to pay. The pass and its two tests went with the cards.
 
 // A TASK'S PAGE IS A TRANSCRIPT AND IS READ AS ONE. It went flush to the left
 // edge for the same reason the conversation did (room.go's [app.roomRows]).

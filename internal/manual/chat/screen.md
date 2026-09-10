@@ -21,12 +21,11 @@ answer to finish, another gap, the tray row above the box, the draft box where y
 any open list (picker, menu, completion), and the status line last.
 
 **The tray row** carries what the next message takes with it besides its words —
-a picked sub-harness, an attached picture, an attached file — and, at its right end, the
-**thinking chip** (`⠿ high`), which names how hard the model will think about your next
-turn. `ctrl+v` walks that rung and clicking the chip opens the five-rung ladder; see
-*The thinking chip above the message box* on the keys page. The tray is drawn only when
-it has something on it: with nothing attached and thinking set to `off`, the row is not
-there and the box sits straight under the gap.
+a picked sub-harness, an attached picture, an attached file. The **thinking rung** is not
+on it: it moved onto the rule above the box, beside the model, on 2026-09-09 (see *The
+line above the message box* below, and *The thinking chip above the message box* on the
+keys page). The tray is drawn only when it has something on it: with nothing attached, the
+row is not there and the box sits straight under the gap.
 
 Beside the conversation, on the right, the column — the right-hand bar, sidebar, task
 panel, whatever you call it — takes 30 columns (24 on a narrower frame)
@@ -64,6 +63,12 @@ Every place is drawn in one frame, top to bottom: the machine's own top line, th
 naming the seven, a dim rule, the place's body, a rule, the place's own count or note, the
 **composer** with its scope chip (`here ~/aforge-v2`) at the right of the box row, and the
 hint line last. See the **Places** page.
+
+On **home** that second rule is not a plain line: it is a legend reading
+`→ new conversation in ~/aforge-v2 · glm-5.3-flash` with `alt+w folder · alt+o model ·
+/ commands` at its right, and home draws no scope chip at all — the rule says where the next
+conversation opens and what it will run on, which is the same fact said better. Home's own
+page has that whole gesture.
 
 The status line is the last row of the frame, not the first. It sits at the bottom so
 you read it in the same glance as the box above it.
@@ -122,6 +127,14 @@ narrow for every tab the control reads `Chats +3 ▾`, counting the tabs that di
 On a narrower frame it drops the `▾`, then the count, and keeps the word `Chats`: the
 word is what says it is a door. Where the switcher cannot open at all, the count is drawn
 alone (`+3`) and does nothing, because it is still true.
+
+## Does opening a new chat close or stop the one I am in — no, opening another chat stops nothing
+
+No. Opening a new chat (`ctrl+t`, the `+` beside the tabs, `/new`) or switching to another
+one (`ctrl+k`, `tab`, clicking a tab) **closes nothing and stops nothing**. The chat you
+were in keeps its turn, its tasks and its draft, and is one tab away. Only closing its tab
+(`ctrl+w`, the `×`) asks what to do with running work. The next heading says what stays
+alive and where your draft goes.
 
 ## What stays alive when switching tabs — running two or three chats at the same time, saved drafts, and Home
 
@@ -452,7 +465,7 @@ borders anywhere else. The draft box is inset one cell.
 If the frame is taller than your terminal, rows are lost from the **top**, never from
 the bottom. The chrome is the tail, and the tail survives.
 
-## Blank rows, and the gap above the message box
+## Blank rows, the gap above the message box, and the blank row under it
 
 Four rules decide every blank line in the conversation. One blank before a tool cluster
 that follows text; none between the lines of a cluster; one blank after a cluster; one
@@ -463,14 +476,19 @@ One thing only is ever drawn at the very top of the conversation: the dim
 `· earlier · keep scrolling` marker, and only while a resumed conversation still has
 older messages you have not scrolled back into yet. Nothing else goes there.
 
-The resting whitespace between the conversation and the draft box is a **height**
-ladder, not a width one:
+The resting whitespace around the draft box is a **height** ladder, not a width one:
 
 | terminal height | breathing rows |
 | --- | --- |
 | 16 rows or more | 2 |
 | 6 to 15 rows | 1 |
 | under 6 rows | 0 |
+
+**The prompt sits directly under the rule, and the blank row is under the prompt.** The
+`›` is the first row beneath the legend line, so you start writing at the top of the room
+the box has and a draft grows *down* into the blank as it wraps, rather than pushing the
+conversation up from the bottom. The cursor therefore rests two rows above the status
+line, not one. On a window with two breathing rows the second one is above the rule.
 
 Below 6 rows the rule, the gap, the pinned room header and the task strip all go,
 leaving the conversation, the box and the status line. The ladder steps down, never up.
@@ -488,9 +506,13 @@ The arrow becomes `v` in the screen-reader tier. Click the chip, or press `ctrl+
 which works whether or not the chip is drawn. Either one re-arms sticking to the live
 edge.
 
-The chip is right-aligned and rides the first row of the breathing gap that is already
-there, so the conversation is exactly as tall with the chip as without it. It is dim
-normally and accent under the pointer, with no background band.
+**The chip is at the left edge** — the head of the row you are reading, where the eye
+already is — and it rides the first breathing row that is already there, so the
+conversation is exactly as tall with the chip as without it. On a tall window that row is
+above the rule; on an everyday window with one breathing row it is the blank directly
+under the message box. It is dim normally and accent under the pointer, with no
+background band. It was right-aligned until 2026-09-09, and out there beside the task
+column it was the one thing on the frame nobody saw.
 
 It is not drawn at all when there is no gap row (a short window), when the label is
 wider than the frame, in copy mode, while a room is open, or while the fullscreen
@@ -603,7 +625,7 @@ No. A scroll away from the live edge is yours and it stays.
 - **Typing** into the message box does not move you. Nor does deleting, pasting, or
   attaching a picture.
 
-The one dim chip at the bottom right, `↓ latest · ctrl+l`, is the whole of aforge's
+The one dim chip at the left of the breathing row, `↓ latest · ctrl+l`, is the whole of aforge's
 answer to being scrolled away: it offers the way back rather than taking it. Pressing
 `ctrl+l`, clicking the chip, or scrolling down to the bottom yourself re-arms following,
 and from then on new output keeps you at the edge again.
@@ -611,21 +633,73 @@ and from then on new output keeps you at the edge again.
 Three things do deliberately put you back at the bottom, because in each you asked for
 it: sending a message, queueing one with `ctrl+q`, and leaving copy mode.
 
-## The line above the message box (the legend)
+## The line above the message box (the legend) — the conversation name, the model and the branch
 
-The rule that separates the conversation from your own business carries the branch and
-the keys that work now, like the legend on a fieldset:
+The rule that separates the conversation from your own business carries **who you are
+talking to and where** on the left, and the keys that work now on the right, like the
+legend on a fieldset:
 
 ```
-─ chat-v3-task* ─────────────────────────────── / commands ─
+─ porting the parser · glm-5.3-flash · ⠿ high · via deepinfra · main* ──── space space home · / commands ─
 ```
 
-The left is the git branch, with a `*` when the tree has uncommitted work. On a session
-running over `--host` it is the machine instead. The conversation name belongs to the
-status line directly below, so the two adjacent lines do not repeat it.
+The left, in order: the machine on a `--host` session (`devbox · …`), the conversation's
+**name** (the one the session chose for itself, falling back to the folder's name until
+it has named itself, so it is never empty), the **model** as its basename
+(`glm-5.3-flash`), the **thinking rung** this conversation is running at (`⠿ high`, `~
+high` on a plain terminal — `⠿ auto` until something is dialled, which is what a fresh
+install says), a `· via deepinfra` rider naming the endpoint that answered (the name alone, never a timing: the last answer's wait and speed are the `served` row of `/status`),
+and the git **branch** with a `*` when the tree has uncommitted work. In a directory that
+is not a repository there is no branch. It never says "untitled" and never invents a
+placeholder.
 
-In a directory that is not a git repository there is no branch either, and the left end
-is simply blank rule. It never says "untitled" and never invents a placeholder.
+**Two of those are doors.** Press the model's name and the model picker opens, exactly as
+typing `/model` does. Press the thinking rung and it walks one step up the ladder —
+low → medium → high → xhigh → max, and round again — which is the same thing `ctrl+v`
+does and the same thing pressing a task's thinking row does inside a task. From `auto` the
+first press lands on `low`; the way back to `auto` is `/effort auto`, never the wheel. Each brightens
+under the pointer over exactly its own cells, so you can see which of the two you are
+about to press. With the mouse turned off (`ui.mouse`), `/model`, `/effort` and `ctrl+v`
+do all three jobs. See "The thinking chip above the message box" on the keys page.
+
+Until 2026-09-09 the rung was spelled onto the model id with a colon
+(`glm-5.3-flash:high`) and there was a second chip for it at the right end of the tray
+row. That was one ladder said two ways on one screen; there is one cell now, and it names
+the rung that will **actually** be asked for whichever setting decided it.
+
+The rate the endpoint is writing at is *not* on this line — while a turn runs it stands
+beside the state word on the status row (`38 tok/s · ⠹ working · 12s`), because how fast
+is a claim about now and who is attribution.
+
+**The `via` rider is drawn whoever served**, including a vendor serving its own model
+(`glm-5.3-flash · via z-ai`). It was hidden in that case until 2026-09-09, on the
+argument that the id already said it — but the model is spelled here as its basename,
+so the vendor half of the address is not on the screen at all, and a rider that came and
+went with the endpoint read as a lost sighting. It goes quiet only when no endpoint has
+been timed in the last ten minutes.
+
+**When the line is too narrow, it says less rather than cutting.** The left end gives
+things up in this order, and each step is a shorter *true* sentence:
+
+1. the branch goes — the shell prompt behind this pane still says it;
+2. the name is cut with one `…` to seat the `via` rider whole, never to fewer than
+   12 cells — which machine is answering is the one fact on this line about *now*, and
+   the rest of the title is in the tab strip;
+3. the `via` rider goes, only once the name is at its floor;
+4. the thinking rung goes, **whole** — half a rung word is a word you would read as
+   another rung, and `/effort` says it in full;
+5. the name is cut again, and never to fewer than 12 cells;
+6. the model goes — the name is what tells two panes apart;
+7. the name goes — on a `--host` session the machine is the last thing standing.
+
+So a long title never hides who served: `first line: casual greeting… · glm-5.3-flash ·
+via relace` is what an 80-column frame draws, and until 2026-09-10 the same frame drew
+the whole title, the branch, and no `via` at all.
+
+Under 70 columns the branch is dropped outright. Only a frame with no room for a label
+at either end falls back to the plain rule. Until 2026-09-09 this line carried only the
+branch, and the name and model were on the status row below; they moved up so that a
+long title could never push the numbers off the frame.
 
 The right is a hint slot. It names the keys that work right now when a state has keys of
 its own — for example `y allow · n deny · a always` while a question is up,
@@ -654,13 +728,8 @@ answer".
 The running-turn clauses always have this order: send, `shift+enter`, background, stop.
 When the right side is tight, aforge removes whole clauses from the right until the line
 fits. At 70 columns at least the first fitting clause remains; a running turn never loses
-the slot merely because every clause would not fit.
-
-**Under 70 columns the LEFT end gives up the branch and the slot keeps its keys.** A branch
-is on the shell prompt in the pane behind this one; `/ commands` is written nowhere else on
-a frame that narrow, and this line used to go blank at both ends there — a rule with nothing
-on it, at the width where being told about `/` matters most. Only a frame with no room for a
-label at either end falls back to the plain rule.
+the slot merely because every clause would not fit. The hint slot is never dropped to make
+room for the name: the name is cut first, because the keys are written nowhere else.
 
 **The key itself is drawn apart from the word beside it.** In `esc interrupt`, `esc`
 wears the soft cyan every highlighted fact wears and `interrupt` stays at the border's
@@ -687,7 +756,8 @@ above claims it. It costs no row either way — this line is on the frame regard
 while there is work here to stop, `↑↓ history` while a history walk is on, and nothing
 otherwise. The left end of that legend is the room too: `room · esc/←← main`, or
 `room · esc your line back` for as long as a walk is on, because that is the key's real
-meaning until the walk ends.
+meaning until the walk ends. The name and the model are not drawn in a room; the task's
+own title and model are on the status row, which a room renames.
 
 **Two lines in that slot are about the draft you are typing**, rather than about a state
 the surface is in. `ctrl+enter keeps this true` appears while your sentence looks like a
@@ -702,23 +772,13 @@ when you have closed the task column, this session has run something, and no act
 running-turn hint has the slot. It is the whole of what the frame says about a roster
 that is not on screen, and it says nothing at all when nothing has been run.
 
-While a question is waiting, the legend's left label — the branch, or the machine over
-`--host` — goes violet along with the status word below it, so the question is pointed at
-from both sides. On a session with neither there is no label to turn, and the rule stays
-the grey it always is.
+While a question is waiting, the legend's left label goes violet along with the status
+word below it, so the question is pointed at from both sides.
 
-As the terminal narrows, the hint slot gives way and below width **70** the branch is
-dropped too. The conversation name remains on the status line. With nothing true to put
-at either end the line is the plain rule it always was.
-
-While a task room is open the left says exactly `room · esc/←← main` — and exactly
-`room · esc your line back` while a history walk is on, since for those keystrokes `esc`
-gives your own draft back before the room's own `esc` gets the key. The name and the
-branch are not drawn either way; the task's own title is on the status line below, which
-a room renames. The pinned header at the top of the frame says the same
-thing in its own words, `esc/← main`, and unlike the legend it answers to a press: click it and
-you are back in the conversation. Clicking the page itself does not leave a room — a
-press on empty space does nothing here as it does everywhere.
+The pinned header at the top of a room says `esc/← main` in its own words, and unlike the
+legend it answers to a press: click it and you are back in the conversation. Clicking the
+page itself does not leave a room — a press on empty space does nothing here as it does
+everywhere.
 
 ## Why is one word in a line brighter than the rest — highlighted model names, keys and figures
 
@@ -764,8 +824,8 @@ the ones listed above are the ones that step up.
 
 ## Which folder am I in — where the workspace path and the git branch are shown
 
-The line above the message box used to carry the folder. It carries this conversation's
-name now, so the workspace path lives in two places, and both say it in full:
+The line above the message box carries this conversation's name, its model and the git
+branch, not the folder. The workspace path lives in two places, and both say it in full:
 
 - **`/status`** (aliases `/info`, `/context`) prints a `place` line — the whole path,
   then ` · ` and the branch with its `*` if the tree is dirty. On a remote session the
@@ -773,10 +833,12 @@ name now, so the workspace path lives in two places, and both say it in full:
 - **The status sheet**, which is `/status`'s own list on screen: the same `place` row,
   with the path abbreviated fish-style (`~/s/aforge-v2`) because a sheet row is one line.
 
-The **branch** is also on the legend — `chat-v3-task*` — so a glance above the box tells you
-which branch you are working on without opening anything. There is no branch on a
-session running over `--host`: the git probe would read *this* machine's repository at
-the other one's path, so nothing is shown rather than something possibly wrong.
+The **branch** is on the legend after the model — `… · glm-5.3-flash · main*` — so a
+glance above the box tells you which branch you are working on without opening anything.
+It is the first thing that line gives up when it is narrow, and it is dropped outright
+under 70 columns. There is no branch on a session running over `--host`: the git probe
+would read *this* machine's repository at the other one's path, so nothing is shown
+rather than something possibly wrong.
 
 If the answer is just the word `aforge`, this conversation has no project — it was
 started somewhere with nothing to borrow, and works in a directory of its own. `/status`
@@ -791,81 +853,89 @@ arrival order. A reply to something you just typed has no task line, and a task 
 recorded request shows its name without an empty quote. These lines return with the reply
 after `/resume`; the finished-task strip above the input is unchanged.
 
-## The status line at the bottom
+## The status line at the bottom — the numbers, grouped, and the state word
 
-One row at the bottom of the frame, in two clusters. **Identity on the left** — which
-conversation, and what is answering it. **Telemetry on the right** — what it costs, how
-full it is, whether it is alive. The gap between them is the only separator: no pipe,
-no bracket, no rule.
+One row at the bottom of the frame. **The ledger on the left**, grouped by the question
+each group answers; **aliveness on the right** — what the screen is doing, and for how
+long. The conversation's name and model are *not* on this row: they are on the legend
+line above the box (see "The line above the message box").
 
-Nothing crosses. A number never appears on the left; a name never appears on the right.
+```
+$0.27 · ⟲ saved $0.0038 · 58% cached   66.8k/1.3M · 5%   2 jobs   YOLO        38 tok/s · ⠹ working · 12s
+```
 
-The identity cluster reads like `porting the parser · gpt-4.1-mini:high`. The name is
-the one the session chose for itself, falling back to the workspace's base name until
-it has named itself, so it is never empty. The model is its **basename** — everything
-after the last `/` — because the vendor prefix is nine identical cells on the row where
-width is scarcest. The `:high` is the reasoning level, which is how the model is being
-run, not part of its address. The full routing address stays in the picker, in the
-`/model` note, in the session file and on the phone status sheet.
+Inside a group the parts are joined by ` · `; between groups there are three cells of
+nothing. Space is the separator — no pipe, no bracket, no rule. The groups, left to right:
 
-When the endpoint that answered is not already named by the model id, the segment gains
-` · via deepinfra`, and **while a turn is running** the measured rate rides beside it —
-` · via deepinfra · 92 tok/s`. The rate clears the moment the turn ends, because a rate
-is a claim about now; the attribution alone goes silent after **10 minutes**.
+- **the bill** — what this conversation and its tasks have spent, then what the cache gave
+  back: `⟲ saved $0.0038 · 58% cached`. The word *saved* is written out, and the *cached*
+  share beside it says which of the two percentages on the row is the cache's.
+- **the meter** — tokens carried over the model's window and the percentage,
+  `66.8k/1.3M · 5%`, and `compaction in ~3 turns` when that is close.
+- **elsewhere** — what is alive somewhere other than this conversation: `2 jobs · 1 watch`
+  for background work, absent when both counts are zero. The open-conversation count and
+  the standing count were in this group until 2026-09-09 and are not on the row at all
+  now: the **tab strip** above the transcript names every open conversation, and
+  `◦ 2 standing orders` is a line at the foot of the **task column** (see *The column on
+  the right*).
+- **the posture** — `YOLO`, drawn only when the gate is open. Absence is the safe state.
 
-Where aforge has timed the lane itself the same segment reads `via cloudflare · 0.6s ·
-61 t/s` — the wait before the first word, then the rate. Four more readings replace it for
-one answer at a time: `slow · trying coreweave…` while a slow answer is being asked of a
-second lane, `refused · trying coreweave…` when the first machine said it will not serve
-this model at all, `coreweave refused` when that second machine refused as well — the
-promise is withdrawn rather than left standing — and `via coreweave · rescued` when the
-second one won. `slow` is the only time this row calls anything slow, and it says it while
-something is already being done about it. The models page has the whole of it under "what
-rescued means".
+Across the gap, at the right edge: the live rate `38 tok/s` while the answer is being
+thought or written (or the phase's own words while the turn is in one that is producing
+nothing yet — `connecting · 1.2s`, `first word · 3.1s → parasail at 4.4s`, `paced · retry
+in 6s`), the connection on a `--host` session (`devbox · 3ms`), and last the state word
+with its clock — `idle`,
+`⠹ working · 4s`, `waiting · your call`, `stopping`, `interrupted`.
 
-Pressing the model segment opens the model picker, and it brightens under the pointer to
-say so. The **money figure** further along the row is a door in the same way: pressing
-`$0.14` opens the **Spending** tab of `/settings`, where every money limit is set. `/budget`
-is the keyboard door onto the same tab.
+**Most of the ledger is a door**, and each brightens under the pointer to say so:
 
-Across the gap, the telemetry begins with the **crew** word — `crew max`, `crew balanced`,
-`crew frugal`, or `crew custom` when you pinned one of the five yourself — so the two model
-dials sit side by side: the model you talk to on the left, the preset the five models aforge
-uses on its own behalf are on to its right. It is absent only on a **remote** session
-opened with `--host`, whose crew lives on the other machine, and it is one of the first
-segments a narrow row drops.
+| press | opens |
+| --- | --- |
+| `$0.27` or `⟲ saved …` | the **Spending** tab of `/settings` (`/budget` is the keyboard door) |
+| `66.8k/1.3M · 5%` or `compaction in …` | `/status`, one fact per line |
+| `YOLO` | `/permissions` |
 
-While a task **room** is open the cluster renames itself to the room chip and the room's
-model — `task <model>` — and **pressing it moves that task**, not the conversation: the
-same picker opens aimed at that node, and the task switches from its next turn onward. One
-`esc` restores both the name and the door. Where the pick could not land the name is drawn
-and simply does not react: a task that has finished, failed, been stopped or needs your
-look, one that has not started, an adaptive run's page, or a node inside a run. The tasks
-page says the whole of it under "Changing the model for one task while it is running".
+Jobs and watches are not a door — the column's `jobs` section is where they are read —
+and the rate, the connection and the state word are readings, not controls.
 
-Below width **100** the telemetry may take a row of its own, still right-aligned, and
-only when the two clusters would otherwise collide — a short session still fits on one
-row at 60 columns. If even the emptied line will not fit, the telemetry is what
-survives, the identity is not drawn, and nothing on the row is pressable.
+While a task **room** is open the row's left grows the room chip and the room's model —
+`⠋ Ship the parser fix · task glm-5.2` — in front of the ledger, and **pressing that name
+moves the task**, not the conversation: the same picker opens aimed at that node, and the
+task switches from its next turn onward. One `esc` restores the row. Where the pick could
+not land the name is drawn and simply does not react: a task that has finished, failed,
+been stopped or needs your look, one that has not started, an adaptive run's page, or a
+node inside a run. The tasks page says the whole of it under "Changing the model for one
+task while it is running".
+
+Below width **100** the right edge may take a row of its own, still right-aligned, and
+only when it would otherwise collide with the ledger — a quiet session still fits on one
+row at 60 columns. If even the emptied row will not fit, the state word is what survives.
+
+Until 2026-09-09 the name and the model were the left half of this row and every figure
+sat in one dotted run beside them; the crew word, the `Σ +128 −14` session delta, the
+`tok/s avg` burn, the context sparkline, `2 open · 1 waiting` and `◦ 2 standing orders`
+were on it too. None of those is on the line now — `/status` and the phone sheet still
+print all six, and the standing count is drawn at the foot of the task column.
 
 ## What each part of the status line means
 
-Twelve segments, right to left of the identity, joined by ` · ` in a fixed order:
+Nine segments, in a fixed order, grouped as the previous heading describes. Two more —
+`open` and `standing` — are still built and still reach `/status` and the phone sheet,
+and are listed here with the row they left:
 
 | # | segment | example | what the number is | when it is empty |
 | --- | --- | --- | --- | --- |
-| 0 | crew | `crew max` | which preset the five models aforge uses on its own behalf are on — `frugal`, `balanced`, `max`, or `custom` when you pinned one yourself; a setting, not a measurement, and the other dial beside the model on the left | absent only on a remote (`--host`) session, whose crew is the other machine's |
-| 1 | open | `2 open · 1 waiting` | how many conversations **this terminal** is holding, and how many of them are stopped on a question | absent whenever only one is open, which is the ordinary case; the `· N waiting` clause is absent when none is waiting |
-| 2 | ambient | `2 jobs · 1 watch` | background work this screen saw start and has not seen killed — a `bash` with `background:true`, a `watch` call | zero of both draws nothing |
-| 3 | delta | `Σ +128 −14` | lines added and removed by this whole session | only at width 120 or more; empty when both are 0 |
-| 4 | cost | `$0.14` | the session's running spend. **It is a door**: press it and the **Spending** tab of `/settings` opens, and it brightens under the pointer to say so. It takes the warm ink once this conversation has spent four fifths of its own `per conversation` limit — a bound about to be reached is not a failure and does not wear the failure hue | never empty |
-| 5 | context | `12.4k/128k · 10% ▁▂▃▅` | tokens the conversation is carrying, the model's window, the percentage, then a 6-reading sparkline | empty when nobody has said what the window is, or tokens are 0 |
-| 6 | cache | `⟲ saved $0.02 · 89% cached` | the session's cache hit rate, and what that share was worth in cash | empty until there is a cached share; on an unpriced model the cash half goes, leaving `⟲ 89% cached` |
-| 7 | burn | `1.2k tok/s avg` | output tokens over the wall time of **this** turn, including tool and model waiting time; the separate `via` provider rate measures generation | empty unless a turn is running and has run for at least 1 second |
-| 8 | eta | `compaction in ~3 turns` | forecast from average growth | empty when the conversation is not growing, when the answer is more than 5 turns out, or when compaction is already due |
-| 9 | yolo | `YOLO` | the `tools.approvalMode` row in your profile is `allow`, or the session was launched with `--yolo`, which forces that posture for the session without writing the row — over `--host` it is the far machine's row, carried once when the connection opens | empty in every other posture — absence is the safe state |
-| 10 | connection | `devbox · 3ms` | a rolling estimate of one empty round trip to the machine a `--host` conversation runs on; while the link is down this is replaced by `reconnecting to devbox — trying for up to 5 minutes` | empty on every local session and on a hosted one until the first measurement answers; never `0ms` |
-| 11 | state | `⠹ working · 4s` | what the screen is doing, and for how long | never empty |
+| 1 | cost | `$0.14` | the running spend of this conversation **and its tasks**. **It is a door**: press it and the **Spending** tab of `/settings` opens. It takes the warm ink once this conversation has spent four fifths of its own `per conversation` limit — a bound about to be reached is not a failure and does not wear the failure hue | never empty on a session in use |
+| 2 | cache | `⟲ saved $0.02 · 89% cached` | what the cache gave back in cash, and the session's cache hit rate. The same door as the cost | empty until there is a cached share; on an unpriced model the cash half goes, leaving `⟲ 89% cached` |
+| 3 | context | `12.4k/128k · 10%` | tokens the conversation is carrying, the model's window, the percentage. **A door onto `/status`** | empty when nobody has said what the window is, or tokens are 0; the percentage is dropped below 1% |
+| 4 | eta | `compaction in ~3 turns` | forecast from average growth; the same door | empty when the conversation is not growing, when the answer is more than 5 turns out, or when compaction is already due |
+| — | open | `2 open · 1 waiting` | how many conversations **this terminal** is holding, and how many of them are stopped on a question. **Off the row since 2026-09-09** — the tab strip names them all — and on `/status` and the phone sheet | absent whenever only one is open; the `· N waiting` clause is absent when none is waiting |
+| 5 | ambient | `2 jobs · 1 watch` | background work this screen saw start and has not seen killed — a `bash` with `background:true`, a `watch` call | zero of both draws nothing |
+| — | standing | `◦ 2 standing orders` | the active standing orders reaching this project; the mark moves while one is being acted on. **Off the row since 2026-09-09**: it is a line at the foot of the task column, still dim, still pressable, still opening `/standing` | absent when nothing stands here |
+| 6 | yolo | `YOLO` | the `tools.approvalMode` row in your profile is `allow`, or the session was launched with `--yolo`, which forces that posture for the session without writing the row — over `--host` it is the far machine's row, carried once when the connection opens. **A door onto `/permissions`** | empty in every other posture — absence is the safe state |
+| 7 | rate | `38 tok/s` | what the stream is producing **right now** — tokens over elapsed, measured on the live stream by the layer holding it — while the answer is being thought or written; or the phase's own words while the turn is in a phase that is producing nothing (`connecting · 1.2s`, `paced · retry in 6s`, `slow · trying coreweave…`) | empty unless that rate is being measured this instant: never the last answer's average, never the per-turn burn, and never `0 tok/s` |
+| 8 | connection | `devbox · 3ms` | a rolling estimate of one empty round trip to the machine a `--host` conversation runs on; while the link is down this is replaced by `reconnecting to devbox — trying for up to 5 minutes` | empty on every local session and on a hosted one until the first measurement answers; never `0ms` |
+| 9 | state | `⠹ working · 4s` | what the screen is doing, and for how long | never empty |
 
 The `N jobs` figure means "what you started". A background job that exited on its own is
 still counted, because nothing on the wire says otherwise. For the state of one job rather
@@ -877,6 +947,14 @@ terminals leave behind, so it never lags: a conversation that stops on a questio
 are looking at a different one is counted in `N waiting` on the next frame. `tab` over an
 empty box goes to the last one — see the keys page, and home's *Switch between projects
 without leaving*.
+
+**Six facts are on `/status` and the phone sheet but not on the row:** `crew` (the preset
+the five models aforge uses on its own behalf are on), `changes` (`Σ +128 −14`, lines
+added and removed by this session), `rate` (`1.2k tok/s avg`, this turn's output over
+this turn's whole wall time, waits and tool calls included — which is why it is not the
+figure at the right edge of the row), the compaction sparkline's readings, `open` and
+`watching` (the standing count, which is drawn at the foot of the task column). They were
+all on the row until 2026-09-09; none of them is something you act on from the line.
 
 ## How fast is the connection — host latency and round-trip time in the status line
 
@@ -1049,24 +1127,23 @@ When the segments do not fit, they are removed one at a time in a fixed order, b
 actionable each one is:
 
 ```
-delta → crew → open → cache → eta → burn → ambient → cost → context
+jobs → compaction eta → the cache's cash half → rate → cache → cost → context
 ```
 
-`crew` goes second because it is a setting rather than a measurement — it changes only when
-you change it, and `/status`, bare `/crew` and the hint under the model picker all say it in
-full. `open` goes early because it is the one segment that is not about the conversation in
-front: at forty columns what you need is what **this** conversation is doing.
+`jobs` goes first because it is the one segment left that is not about the conversation in
+front: at sixty columns what you need is what **this** conversation is doing. (The open
+count and the standing count were the first two rungs until 2026-09-09 and are off the row
+entirely now.) The cache segment has a shorter true spelling before it goes — `⟲ saved $0.02 · 89% cached` becomes
+`⟲ 89% cached` — and the live rate goes before the cache's hit rate because the clock on
+the state word already says the turn is alive.
 
 The **state word, the `YOLO` badge and the connection are not in that list at all**. One
 is why you are looking at the line, the second is why you should be, and the third is the
 reason none of the numbers beside it are moving.
 
-The burn rate is damped on purpose. It is recomputed every frame, but the string is
-held: the rate is rounded (steps of 5 under 100, two significant figures above) and the
-shown value is only replaced every **500ms**. Between replacements the segment is
-byte-identical. When a turn ends the empty value takes effect at once. The reason, in
-the code's own words: a number that moves faster than it can be read is not
-information, it is motion.
+Below 100 columns the right edge takes a row of its own before anything is dropped, so
+a narrow frame keeps its numbers and spends a row instead. The phone tier (under 60
+columns) is a different shape entirely — see "Does this work on my phone?".
 
 ## The context meter and its sparkline
 
@@ -1076,12 +1153,11 @@ the model's window — the threshold is the thing that actually happens to you.
 Three rungs: calm (dim), **near** (accent) past 80% of the threshold, and **due** (the
 bad hue) past the threshold itself.
 
-The sparkline is the last **6** turn-end readings, one glyph each from `▁▂▃▄▅▆▇`, also
-scaled to the threshold.
-
-No sparkline is drawn with fewer than two readings — one bar is not a trend, it is a
-bar. There is no sparkline in the ASCII glyph tier or the screen-reader tier, and none
-below width **70**. All three keep the number, which is the fact.
+**There is no sparkline on the status row any more.** The last **6** turn-end readings
+are still kept — they are what the `compaction in ~N turns` forecast is averaged over —
+but the row stopped drawing them as bars on 2026-09-09: a six-glyph chart beside a
+percentage was motion nobody read, and the number is the fact. Press the meter to open
+`/status`, which prints the window, the threshold and which rule set it.
 
 ## Does this work on my phone? Narrow terminals
 
@@ -1131,7 +1207,11 @@ Under 60 columns, eight things change shape:
    at most three wide targets: `open · new · ask here` on the inbox, `‹ back · open ·
    more` on a sheet. A tap **opens** — there is no second column to preview into, so
    there is no two-step — and mouse motion is ignored. Below width **24** the plain
-   hint line is drawn instead of the bar.
+   hint line is drawn instead of the bar. The rule over the box still says where the next
+   conversation goes, shortened to fit: `─ → ~/src/parser · glm-5.3-flash ───` with the
+   model dropped first and the folder abbreviated after it. The `new conversation in` lead
+   goes — the arrow is the whole of what it said — and no chord is named, because a phone
+   has no `alt` to press.
 8. **The task strip becomes one door, and the roster becomes cards.** The strip stops
    being a row of chips and becomes a single full-width door — `▸ 3 tasks · 1 running`
    — that a tap opens into the roster page; that page's rows become two-line cards a
@@ -1140,7 +1220,7 @@ Under 60 columns, eight things change shape:
 
 On top of those eight: preview blocks under a pending call are capped at 4 rows instead of
 12; there is no task rail column (that already went at 100); and the legend has already
-dropped its hint slot and its branch (that went at 70).
+dropped its branch (that went at 70).
 
 ## What the top line of home drops when it is narrow — the clock goes first
 
@@ -1184,9 +1264,8 @@ Beyond the four tiers, these are the exact points where parts of the screen give
 
 | what | threshold |
 | --- | --- |
-| session delta (`Σ +128 −14`) drawn at all | width 120 |
-| telemetry may wrap to its own row | below width 100 |
-| legend loses branch and hint slot; status keeps the conversation's name; no context sparkline | below width 70 |
+| the status row's right edge may wrap to its own row | below width 100 |
+| the legend drops the branch outright, and the ledger drops its compaction forecast | below width 70 |
 | full task rail, 30 columns off the conversation | width 120 |
 | slim task rail, 24 columns | width 100 |
 | no rail column at all — `alt+t` overlays the roster instead | below width 100 |
@@ -2749,8 +2828,9 @@ session, with the filter, the cards and the mention. Home (`/home`, or space twi
 empty box) is the other place old work is listed. Running work belonging to *other*
 windows is not on the column at all, and never was; `/history` carries that too.
 
-The footer is up to three dim lines of totals — `Σ $1.42 · 312k tok`, `3 running · 1 needs
-you` — and then up to three more dim lines, each of which is a button as well as a key:
+The footer is up to three dim lines of counts — `3 running · 1 needs you`, `148 parked ·
+12 done` — then the standing count `◦ 2 standing orders` when anything stands over this
+project, and then up to three more dim lines, each of which is a button as well as a key:
 
 ```
 ctrl+. earlier
@@ -2842,7 +2922,8 @@ standing
 
 ▸ jobs · 1 running · 4m12s
 
-Σ $1.42 · 312k tok
+1 running · 1 needs you
+◦ 2 standing orders
 ctrl+. earlier
 ❯ ctrl+g hide
 ```
@@ -3085,10 +3166,12 @@ tell you; everything else is read in whole seconds.
 
 **The phase is on exactly one row at a time, and never on two.** While the working line is
 drawn it owns the words; the moment it goes — an answer is streaming, a call is spinning,
-the turn has ended — the status line beside your model takes them up, where they stand in
-place of `via <machine>` (see *Models, context, and what it costs*). Before this the same
-sentence was drawn twice on one screen, verbatim, two rows apart, and the second copy was
-spending the cells the bill, the context meter and the watch count needed.
+the turn has ended — the **right edge of the status row** takes them up, where they stand
+in the live rate's own place: while the answer is being thought or written that spot is
+`38 tok/s` and nothing else, and in every phase that is producing nothing yet it is the
+phase's own words. Before this the same sentence was drawn twice on one screen, verbatim,
+two rows apart, and the second copy was spending the cells the bill and the context meter
+needed.
 
 **A turn also has waits of its own, between requests**, and they use the same line and the
 same clock:

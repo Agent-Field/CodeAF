@@ -901,20 +901,70 @@ func (r DecisionRecord) Words() string {
 // THE EMPTINESS LAW APPLIES TO EVERY SEGMENT. No change said, no `with:`; no
 // reason, no reason; an unknown decider, no attribution at all.
 func (r DecisionRecord) Line() string {
-	parts := []string{strings.TrimSpace(r.Head) + " → " + r.Words()}
+	clauses := r.LineClauses()
+	parts := make([]string, 0, len(clauses))
+	for _, clause := range clauses {
+		parts = append(parts, clause.Text)
+	}
+	return strings.Join(parts, DecisionSep)
+}
+
+// DecisionSep joins the clauses of a record's line, and it is the separator
+// every telemetry row on every surface uses.
+const DecisionSep = " · "
+
+// DecisionClause is one segment of [DecisionRecord.Line], with what it is worth
+// beside it.
+type DecisionClause struct {
+	// Text is the segment as it reads, with no separator on either end.
+	Text string
+	// GiveUp is the order a row too narrow for the whole line surrenders its
+	// clauses in — the HIGHEST number goes first, and zero is never given up.
+	//
+	// IT IS HERE RATHER THAN IN THE SURFACE THAT DOES THE GIVING UP, because a
+	// clause and what it is worth are one fact about the record. A surface that
+	// ranked them itself would be a second opinion about which half of a
+	// decision matters, kept in a file that never sees the other half.
+	GiveUp int
+}
+
+// LineClauses is [DecisionRecord.Line] before it is joined.
+//
+// A NARROW ROW GIVES UP A WHOLE CLAUSE AND NEVER CUTS THE LINE FROM THE RIGHT.
+// Cutting is what a receipt did before this existed, and the tail is where
+// everything a person cannot infer lives: at a hundred columns a long `with:`
+// clause took `· you · 14:02 · c change` off the end with it, so the one line
+// left behind by an answer stopped saying who gave it, when, or that it could
+// still be changed. The rank says what is actually worth keeping:
+//
+//   - the head and what was picked are the record itself and are never given
+//     up — a row with no room for them is cut rather than emptied;
+//   - WHO DECIDED is never given up either. It is the one thing on the line
+//     nobody can work out for themselves, and it is what keeps a receipt from
+//     reading as something this person did: `another window` and `aforge, on
+//     your settings` are the whole reason the field exists;
+//   - `cannot change` stays for the same kind of reason — it is a LIMIT rather
+//     than a detail, and a row that dropped it would read as a decision
+//     somebody could still walk back;
+//   - the change said beside the pick goes first, because it is the one clause
+//     the transcript and `decisions.jsonl` both still carry in full;
+//   - then the time, which is the only clause on the line a person can usually
+//     get from where the row is sitting.
+func (r DecisionRecord) LineClauses() []DecisionClause {
+	clauses := []DecisionClause{{Text: strings.TrimSpace(r.Head) + " → " + r.Words()}}
 	if change := strings.TrimSpace(r.Change); change != "" {
-		parts = append(parts, "with: "+change)
+		clauses = append(clauses, DecisionClause{Text: "with: " + change, GiveUp: 2})
 	}
 	if by := strings.TrimSpace(string(r.By)); by != "" {
-		parts = append(parts, decidedByWord(r.By))
+		clauses = append(clauses, DecisionClause{Text: decidedByWord(r.By)})
 	}
 	if !r.At.IsZero() {
-		parts = append(parts, r.At.Format("15:04"))
+		clauses = append(clauses, DecisionClause{Text: r.At.Format("15:04"), GiveUp: 1})
 	}
 	if !r.Reversible() {
-		parts = append(parts, "cannot change")
+		clauses = append(clauses, DecisionClause{Text: "cannot change"})
 	}
-	return strings.Join(parts, " · ")
+	return clauses
 }
 
 // decidedByWord is who decided, in the words a person would use rather than the
@@ -1649,6 +1699,14 @@ func ConsentScopeOf(action AnswerAction, answer Answer) ConsentScope {
 // the audit's reason: [Agent.TakeBackDecision] had no caller anywhere, so a
 // decision the model settled could not be undone by anybody.
 func (a *Agent) applyLanding(answer Answer, key, words string) error {
+	// A CONFLICT'S YES IS NOT AN ACCEPT, and this is the one arm where the two
+	// lanes part. `[a] resolve it` on a branch that would not fasten spends the
+	// merge round or the carry ([Agent.ResolveConflict]); accepting would offer
+	// the same branch to the same ground and be refused in the same words, which
+	// is what it did (docs/design/task-states/DESIGN.md's conflict row).
+	if answer.Kind == QuestionConflict && key == LandingYesKey {
+		return a.ResolveConflict(answer.ID)
+	}
 	switch key {
 	case LandingYesKey:
 		return a.ResolveUnverified(answer.ID, TaskAccept, words)
@@ -2263,10 +2321,10 @@ func (a *Agent) landingQuestion(pending PendingDecision) Question {
 		ID:      notice.ID,
 		Kind:    kind,
 		Ask:     AskLanding,
-		Form:    FormCard,
+		Form:    landingForm(status.Ask),
 		Asker:   Asker{Kind: AskerTask, Name: strings.TrimSpace(notice.Title)},
 		Head:    strings.TrimSpace(notice.Title),
-		Reason:  strings.TrimSpace(status.Ask.Reason),
+		Reason:  landingReason(status.Ask),
 		Subject: SubjectRef{Kind: SubjectNode, ID: notice.ID, Name: strings.TrimSpace(notice.Title)},
 		Options: landingOptions(status.Ask),
 		// ACCEPTING BRINGS A BRANCH HOME AND REFUSING KEEPS ONE. Neither is free
@@ -2285,6 +2343,57 @@ func (a *Agent) landingQuestion(pending PendingDecision) Question {
 		Policy: landingPolicy(status.Ask.Owner),
 	})
 }
+
+// landingForm is which shape a landing asks to be drawn in, and it is decided
+// by HOW MUCH EVIDENCE THIS PARTICULAR LANDING CARRIES rather than by the kind.
+//
+// THE TASK-STATES ROW IS UNCHANGED (docs/design/questions/DESIGN.md's defaults
+// table says exactly that beside this kind): `[a] <yes> · [n] <no> · [s] tell
+// it`, one row, the three columns in the one order — which is the line form,
+// because the card form spends a row per answer and never composes that row.
+// The landing's head, its facts and its reason are already drawn by the card
+// this surface lands in the transcript (internal/tui3's taskdone.go), so a
+// second head and a second reason above the box would be the two-renderings
+// defect rather than more evidence.
+//
+// ONE ROAD PROMOTES, and it is the road with something to say that no verb can
+// carry: a landing held by the person's own uncommitted copies, whose `[a]`
+// MOVES FILES OF THEIRS (task_status.go's [taskAskGroundConsequence]). A
+// consequence is drawn beside its answer on the card and nowhere on a row, and
+// forms promote and never demote — so the lane that knows the evidence is here
+// asks for the card exactly where the evidence exists.
+func landingForm(ask TaskAsk) QuestionForm {
+	if strings.TrimSpace(ask.Consequence) != "" {
+		return FormCard
+	}
+	return FormLine
+}
+
+// landingReason is the row's own sentence, plus WHO IS DECIDING where that is
+// not the person.
+//
+// THE CARD MUST SAY SO ON THE REASON LINE (docs/design/task-states/DESIGN.md).
+// Under `task.settle = auto`, and after somebody hands one card over, the model
+// is reading the work and will spend a verb on it — and a row that said nothing
+// about that is a person answering a question somebody else is already
+// answering. THE ANSWERS STAY DRAWN: the floor hands an unanswered question back
+// at the end of the turn anyway, and a card with a sentence and no handle is the
+// exact shape #767 was filed about. Answering it IS taking it back.
+func landingReason(ask TaskAsk) string {
+	reason := strings.TrimSpace(ask.Reason)
+	if ask.Owner != TaskAskOwnerModel {
+		return reason
+	}
+	if reason == "" {
+		return landingDecidingWord
+	}
+	return reason + " · " + landingDecidingWord
+}
+
+// landingDecidingWord is that clause, and it is a WHOLE CLAUSE rather than a
+// word: a row reading `nobody could check it · auto` would have told a person
+// the name of a setting instead of who is deciding.
+const landingDecidingWord = "aforge is deciding"
 
 // landingPolicy is [TaskAsk.Owner] as a [Policy], and it is the whole of this
 // wave's composition with the auto-settle floor.
@@ -2324,6 +2433,12 @@ func landingOptions(ask TaskAsk) []AnswerOption {
 			if word := strings.TrimSpace(ask.Yes); word != "" {
 				options[at].Label = word
 			}
+			// AND WHAT IT WILL DO, WHERE THE VERB DOES NOT SAY IT. One road carries
+			// a consequence — a landing held by the person's own untracked copies,
+			// whose `resolve it` moves files of theirs (task_status.go's
+			// [taskAskGroundConsequence]) — and every other ask leaves it empty,
+			// which is the emptiness law and draws no row.
+			options[at].Consequence = strings.TrimSpace(ask.Consequence)
 		case LandingNoKey:
 			if word := strings.TrimSpace(ask.No); word != "" {
 				options[at].Label = word

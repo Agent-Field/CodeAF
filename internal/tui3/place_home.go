@@ -137,7 +137,7 @@ func (h *homeView) buildSwitch() {
 		}
 		room = max(0, room)
 	}
-	h.reading = readSwitcher(world, h.items, switcherHere{session: h.here, project: h.bucket, coming: h.claim, hosted: h.far}, h.gone, h.seen, h.world.Read,
+	h.reading = readSwitcher(world, h.items, h.fired, switcherHere{session: h.here, project: h.bucket, coming: h.claim, hosted: h.far}, h.gone, h.seen, h.world.Read,
 		switcherView{grouped: h.grouped, hideQuiet: h.hideQuiet, all: h.moreOpen, room: room}, h.ledger)
 	// THE ERRANDS STAND OVER THE READING AND ARE NOT IN IT. An `ask here` errand
 	// is a live conversation with the person's own question in it and no row in
@@ -1209,6 +1209,19 @@ func (placeHome) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
 // the arrows moving a pane nobody is looking at ([app.settleExchangeFocus]).
 func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, took := a.homeSheetKeyFirst(msg); took {
+		return cmd, true
+	}
+	// THE TARGET IS READ NEXT, and it is read here rather than in [app.placeKey]
+	// because the router SWALLOWS its two chords for every place (placekeys.go's
+	// `case "alt+w", "alt+o"`). Home is the one place with something for them to
+	// do — the rule above its box states exactly the two facts they change — and
+	// the model list one of them opens has the whole keyboard while it is up
+	// (homedraft.go's [app.homeTargetKey]).
+	//
+	// IT LOSES TO THE PHONE SHEET AND WINS OVER EVERYTHING ELSE. The sheet is a
+	// full-frame card a thumb is in the middle of, and the phone's rule names no
+	// chord at all — there is no `alt` on a phone to press.
+	if cmd, took := a.homeTargetKey(msg); took {
 		return cmd, true
 	}
 	a.settleExchangeFocus()

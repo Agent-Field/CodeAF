@@ -49,7 +49,7 @@ import (
 //
 //	  for questions in this project
 //	  ask me everything · [tell me, then act] · just do it
-//	  it will tell me, then act
+//	  tell me, then act
 //
 // The reader tier never draws a dial as a picture — DESIGN.md: "the reader tier
 // never draws a dial (a number input instead)" — so at that tier the middle row
@@ -714,9 +714,10 @@ func (a *app) questionPairRows(width int) []string {
 	return out
 }
 
-// questionDialRows is the dial and the sentence under it saying what the setting
-// DOES — which DESIGN.md asks for by name, and which is the difference between
-// a slider and a decision.
+// questionDialRows is the dial and, under it, the reading: the face is the
+// SCALE — every notch this dial has — and the row beneath is where it is
+// standing, which is how every instrument a person has ever read is laid out.
+// It is the difference between a slider and a decision.
 func (a *app) questionDialRows(width int) []string {
 	room := a.qroom
 	in := room.input
@@ -776,20 +777,23 @@ func (a *app) questionDialFace(width int) string {
 	return bar.String() + a.pal.dim(" "+in.dialWord())
 }
 
-// questionDialSentence is what the notch MEANS, and it is the asker's own label
-// turned into a sentence about behaviour. A dial whose labels are already
-// sentences says them; one whose labels are words says the word and the page's
-// own framing around it.
+// questionDialSentence is what the notch MEANS, and it is THE ASKER'S OWN WORDS
+// RATHER THAN A SENTENCE THIS SURFACE BUILT AROUND THEM.
+//
+// It used to put `it will ` in front of any label short enough to look like a
+// verb phrase, and that is a guess about English grammar a renderer has no way
+// to make. `it will tell me, then act` reads; the labels of a how-many dial —
+// `once`, `three times`, `five times` — came out as `it will five times`, which
+// is the surface putting words in the asker's mouth and getting them wrong.
+//
+// The label is already the asker's account of what that notch does, so it is
+// said exactly as the asker wrote it, and a dial with no labels says nothing
+// here at all: its face already carries the number in its own units
+// ([app.questionDialFace]), and a row repeating that figure would be the
+// emptiness law broken with a fact rather than with a placeholder.
 func questionDialSentence(dial session.Dial, notch int) string {
 	if notch < 0 || notch >= len(dial.Labels) {
 		return ""
 	}
-	label := strings.TrimSpace(dial.Labels[notch])
-	if label == "" {
-		return ""
-	}
-	if strings.Contains(label, " ") && len(label) > 24 {
-		return label
-	}
-	return "it will " + label
+	return strings.TrimSpace(dial.Labels[notch])
 }

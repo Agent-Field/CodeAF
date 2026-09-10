@@ -365,6 +365,56 @@ emptying out — which is the truth, because the conversation is not moving eith
 `connection` segment says what is happening, and everything comes back up to date the
 moment the link does.
 
+## Make a hosted conversation think harder — ctrl+v, /effort and the thinking rung over --host
+
+**It works, and the rung is set on the machine the conversation is running on.** The line
+above your message box names it beside the model — `glm-5.3-flash · ⠿ high` — and all
+three doors reach across: `ctrl+v` walks it a step, pressing it walks it a step, and
+`/effort` opens the six rows or takes one outright (`/effort max`). A hosted conversation
+nobody has dialled reads `⠿ auto`, exactly as a local one does, and `/effort auto` clears
+it back there.
+
+The word you see is the rung **that machine** resolved, not the one this one would have
+picked: the ladder is decided where the turn is made, so a level dialled onto the model
+over there still wins over there. Setting it is one trip across; drawing it is none — it
+rides the same fact set the model and the money ride down on.
+
+An engine too old to know the ladder says so when the connection opens, and then there is
+**no rung on the line at all**, the chord does nothing, and `/effort` says
+`how hard this conversation thinks is unavailable — this session has no dial onto it`.
+That is the absence law rather than a knob that silently fails: update the engine on that
+machine and reconnect.
+
+A task's own rung is separate and also crosses — see "Change the model or thinking inside
+a task".
+
+## Do I still see the speed and which machine answered when the engine is elsewhere
+
+Yes. All of it crosses the connection, and it is the same row you read locally.
+
+- **The live rate at the right edge** — `38 tok/s` — while the answer is being written.
+- **`via <machine>`** beside the model on the line above the message box, once an answer
+  has come back: the lane that actually served it, and `via parasail · rescued` when a
+  second machine finished what the first one started.
+- **The phase words** on the row while a request is in flight: `connecting · 1.2s`,
+  `first word · 3.1s → parasail at 4.4s`, `thinking · 12s · friendli 38 t/s`,
+  `writing · 4s · friendli 61 t/s`, `paced · retry in 6s`, `trying again · 2 of 6`.
+- **The `served` row in `/status`** — the endpoint the last answer came from.
+
+**Nothing is measured on this machine.** Every one of those figures is taken where the
+request is made, which is the machine running the conversation, and pushed down to you
+the moment it changes. So the clock counts the real wait on that machine, and the rate is
+that machine's throughput rather than a guess made from when bytes reached your terminal.
+
+**The clocks are rebuilt against your own.** What crosses is *how long* — how long this
+phase has lasted, how long is left before something is done about the wait — never a
+timestamp, because two machines need not agree about what time it is. A phase you stop
+hearing about goes quiet on the row after fifteen seconds, exactly as it does locally.
+
+**A phase that goes missing is never a wrong one.** If the link is busy the odd reading is
+dropped rather than queued, because every one of them is a claim about *now* and the next
+one is a second away.
+
 ## What does not work over --host
 
 This is the first half of the whole list, so you know before you rely on it, with the
@@ -556,8 +606,9 @@ all work over `--host`. What to know is **whose machine they are on**:
 **Home and the standing place both work, and both are about the far machine.** Home lists
 that machine's projects with each one's `◦` item band under it and the `p`/`s` keys live on
 them; the standing place lists both what stands on this conversation and what stands anywhere
-else on that machine. The status line's `◦ keeping an eye on 2` counts the far machine's items
-for the workspace this window is on, because over `--host` that path is the far machine's own.
+else on that machine. The `◦ 2 standing orders` count at the foot of the task column counts
+the far machine's items for the workspace this window is on, because over `--host` that path
+is the far machine's own.
 
 Two readings are absent over a connection, and each says nothing rather than guessing:
 

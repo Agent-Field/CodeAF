@@ -256,11 +256,19 @@ func tierRowParts(status session.TaskStatus, title string, width, floor int) (st
 // tierWordShed drops the list a reason carries after its colon — the files a
 // conflict names, the gaps a check found — and leaves the sentence that says
 // what happened. A reason with no list is returned exactly as it stands.
+//
+// THE COLON GOES WITH THE LIST, and that is not a style note. `conflicts with
+// your branch:` is a sentence that has told nobody anything: it announces a list
+// and then does not have one, which reads as a row that was cut rather than a
+// row that gave ground on purpose — and it is exactly what a person read on the
+// rail while their task sat waiting for them (#767). So the colon is shed
+// wherever it ends what is left, whether the list went with it here or was lost
+// to a wrap somewhere downstream.
 func tierWordShed(word string) string {
 	if at := strings.Index(word, ": "); at > 0 {
 		return word[:at]
 	}
-	return word
+	return strings.TrimSuffix(strings.TrimRight(word, " "), ":")
 }
 
 // tierYourCallWord is the word a your-call row wears, for the few rows on this

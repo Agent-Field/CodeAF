@@ -462,8 +462,21 @@ func (a *app) deckItems() []deckItem {
 		if part.kind == segCrew {
 			continue
 		}
+		text := part.text
+		// AND THE SHAPE OF THE APPROACH RIDES THE METER HERE. The sparkline came
+		// off the status row on 2026-09-09 — a row that is read at a glance was
+		// spending six cells on a trend nobody acts on from the line — and this
+		// page is where a person who wants the trend asks for it. A conversation
+		// sitting at 60% for six turns and one that arrived there from 20% are
+		// the same figure and completely different situations, and this is the
+		// only place that difference is now written down ([app.ctxSpark]).
+		if part.kind == segCtx {
+			if spark := a.ctxSpark(); spark != "" {
+				text += " " + spark
+			}
+		}
 		if int(part.kind) < len(deckSegWords) {
-			add(deckSegWords[part.kind], part.text, deckActNone)
+			add(deckSegWords[part.kind], text, deckActNone)
 		}
 		// AND DIRECTLY UNDER THE METER, THE LINE THE METER IS MEASURED AGAINST.
 		// The context row says how full the conversation is; this one says how
@@ -517,7 +530,13 @@ func (a *app) deckItems() []deckItem {
 var deckSegWords = [segCount]string{
 	// The crew's word is here so the array is complete, and [app.deckItems] never
 	// reads it: the crew is written under the model in full instead.
-	segCrew:    "crew",
+	segCrew: "crew",
+	// The open count had NO word here either, for [segKeeping]'s reason and with
+	// the same result — an empty label with a figure hanging in the value column
+	// under nothing. It matters more now: the segment came off the status row on
+	// 2026-09-09 (foot.go's [groupOff]), so this page and /status are the only
+	// two places it is written down at all.
+	segOpen:    "open",
 	segAmbient: "background",
 	// phone lane: the standing side had NO word at all here, so its segment came
 	// out of the loop above with an empty label and hung in the value column
@@ -528,6 +547,7 @@ var deckSegWords = [segCount]string{
 	segCtx:     "context",
 	segCache:   "cache",
 	segBurn:    "rate",
+	segRate:    "speed",
 	segETA:     "compaction",
 	segYolo:    "approvals",
 	// phone lane: the link's healthy reading fits the row, while its reconnecting

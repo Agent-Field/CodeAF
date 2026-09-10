@@ -50,11 +50,42 @@ const (
 	// the one shape in the geometric register that says "this does not apply"
 	// without claiming an outcome.
 	GlyphWithdrawn = "⊘"
+	// GlyphAssumed is the ladder's SECOND rung drawn: the asker has taken
+	// something for granted, said so, and gone on — and everything on the card
+	// stands until somebody strikes it (docs/design/questions/DESIGN.md names
+	// this mark for the assumption kind).
+	//
+	// IT IS NOT [GlyphNeedsHuman], and that is the whole reason the slot exists.
+	// `?` means "waiting on a person" and is the one mark on this surface that
+	// is always amber; an assumptions card is waiting on nobody — it is going
+	// ahead, and the offer to strike a line is a courtesy rather than a gate.
+	// Drawing it with the attention mark told a person to answer something that
+	// was not asking them anything, which is the fastest way to make the amber
+	// mark stop meaning what it says.
+	//
+	// It is also not [GlyphEstimate]. A tilde is bound to a NUMBER — 10.2.8's
+	// "estimated number" — and this stands alone at the head of a card; the two
+	// are near neighbours in shape and say different things, which is exactly
+	// the distinction the one-glyph-one-meaning gate exists to keep.
+	GlyphAssumed = "≈"
 
 	// Disclosure and navigation.
 	GlyphCollapsed = "▸"
 	GlyphExpanded  = "▾"
 	GlyphScopeUp   = "‹" // scope header / go up
+
+	// GlyphTarget is WHERE THE NEXT THING GOES, and it is the one mark in this
+	// vocabulary about a destination rather than about a state. Home's rule wears
+	// it in front of the folder and the model the next conversation will open on
+	// (internal/tui3's homedraft.go), and the whole of its meaning is the
+	// difference between "where I am" and "where this is going" — which is why it
+	// is neither [GlyphScopeUp], a header pointing back up a tree, nor
+	// [GlyphPromptSteer], a composer's own prompt.
+	//
+	// IT IS GEOMETRY ON PURPOSE. An arrow is already the right character for a
+	// grid, exactly as the tree corners and the rails are, and a Font Awesome
+	// arrow in its place would buy nothing and spend a private-use codepoint.
+	GlyphTarget    = "→" // where the next thing goes
 	GlyphTruncated = "⋯" // clickable overflow; [GlyphEllipsis] marks static overflow
 
 	// GlyphEllipsis is §16's ONE ELLIPSIS GRAMMAR as a slot: the mark text
@@ -359,9 +390,11 @@ func Glyphs() []GlyphInfo {
 		{"NeedsHuman", GlyphNeedsHuman, '?', false},
 		{"WaitsOn", GlyphWaitsOn, '⚑', false},
 		{"Withdrawn", GlyphWithdrawn, '⊘', false},
+		{"Assumed", GlyphAssumed, '≈', true},
 		{"Collapsed", GlyphCollapsed, '▸', false},
 		{"Expanded", GlyphExpanded, '▾', false},
 		{"ScopeUp", GlyphScopeUp, '‹', false},
+		{"Target", GlyphTarget, '→', true},
 		{"Truncated", GlyphTruncated, '⋯', false},
 		{"Ellipsis", GlyphEllipsis, '…', true},
 		{"Cut", GlyphCut, '╌', false},

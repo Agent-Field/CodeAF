@@ -62,6 +62,32 @@ whole gesture is `/folder` then `enter`.
 `esc` leaves everything exactly as it was: your half-written message comes back untouched,
 and nothing has been chosen.
 
+## /folder on the home screen — choosing the folder the next conversation opens in
+
+**On home the same command opens the same sheet, aimed at a conversation that does not exist
+yet.** Home's box is a draft for the conversation `enter` will open, and the rule above it
+says where that will be: `→ new conversation in ~/src/parser · glm-5.3-flash`. `/folder`,
+`/place` and `/dir` typed there — bare, or with a path after them — open the browser to
+change that folder.
+
+Three things are different on that sheet, and they all come from the same fact:
+
+- The title reads **`the next conversation's folder`** instead of `add context`.
+- The action row reads **`open the next conversation in · ~/src/parser`** instead of
+  `add this folder`, and it never offers `remove this folder` — the conversation this is
+  choosing for has no folders yet.
+- `enter` **pins** the folder: home comes back with the rule already changed and says
+  `next conversation opens in ~/src/parser`. Nothing is registered with any session until you
+  actually start one.
+
+**`esc` comes back to home too**, having changed nothing — the browser only replaced home
+because a sheet takes the whole frame. Files chosen on that sheet still go where files go:
+onto the tray, which rides into the conversation home opens next.
+
+**`alt+w` is the same pin without the browser** — it walks the target round the projects this
+machine knows, one press at a time. The browser is what you want when the folder is not one
+of those.
+
 ## Type a word to filter, open a row to browse
 
 The box at the top of the sheet is a **search box**, and it is empty when the sheet opens —

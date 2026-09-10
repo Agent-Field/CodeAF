@@ -657,16 +657,16 @@ var settingUI = map[string]settingMeta{
 	// a setting a person can reach many ways has to read the same in all of them:
 	// this row and the same [effortKey] chord on home with the cursor at rest
 	// (homeeffort.go) both move THIS row, while the nearer scopes that outrank it
-	// — a conversation's own rung above the message box (effortchip.go), a task's
-	// (taskeffort.go), a standing item's (homeband_thinking.go) — take the same
-	// chord over their own surfaces. A row that set a default without saying the
-	// default could be overridden is a row people come back to confused.
+	// — a conversation's own rung on the seam beside the model (effortchip.go), a
+	// task's (taskeffort.go), a standing item's (homeband_thinking.go) — take the
+	// same chord over their own surfaces. A row that set a default without saying
+	// the default could be overridden is a row people come back to confused.
 	config.KeyEffort: {
 		tab: tabProviders, label: "thinking", widget: widgetCycle,
 		about: "how hard the model thinks, unless something nearer the work says " +
-			"otherwise. " + effortKey + " moves the rung of whatever you stand on — the chip " +
-			"above the message box for one conversation, a task, a standing item, or home " +
-			"with the cursor on no row, which is this same row.",
+			"otherwise. " + effortKey + " moves the rung of whatever you stand on — the rung " +
+			"beside the model above the message box for one conversation, a task, a standing " +
+			"item, or home with the cursor on no row, which is this same row.",
 	},
 	// It belongs on this tab and not under Session because it is a question
 	// about WHERE a request goes, not about what this conversation may do: one

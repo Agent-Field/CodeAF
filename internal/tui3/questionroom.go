@@ -295,9 +295,6 @@ type questionRoom struct {
 	// shown is when the page was first drawn, and it is the whole of the settle
 	// guard: a key that arrived less than [questionSettle] after it is dropped.
 	shown time.Time
-	// answered is the answer that was spent, once one was, so the page can say
-	// what it did before it closes. Nil is the ordinary open state.
-	answered *session.Answer
 	// refused is what the engine said when it would not take the answer. It is
 	// drawn where the foot was, because a refusal a person cannot see is an
 	// answer that silently did nothing.
@@ -746,12 +743,16 @@ func questionRightAlign(left, right string, width int) string {
 // The foot: what the answer would be, and the keys.
 
 // questionFootHeight is how many rows the pinned foot takes: two while the
-// question is open, one while it is reporting what was answered, none otherwise.
+// question is open, one while it is reporting a refusal, none otherwise.
+//
+// THERE IS NO ANSWERED HEIGHT, because an answered question has no page: the
+// page folds on the answer and the receipt is the block's ([app.questionAnswer]
+// says why).
 func (a *app) questionFootHeight() int {
 	if a.qroom == nil {
 		return 0
 	}
-	if a.qroom.answered != nil || a.qroom.refused != "" {
+	if a.qroom.refused != "" {
 		return 1
 	}
 	return 2
@@ -769,9 +770,6 @@ func (a *app) questionFootRows(width int) []string {
 	room := a.qroom
 	if room == nil || width <= 0 {
 		return nil
-	}
-	if room.answered != nil {
-		return []string{a.pal.dim(fit(a.questionAnsweredWord(*room.answered), width))}
 	}
 	if room.refused != "" {
 		return []string{a.pal.warn(fit(room.refused, width))}
@@ -957,29 +955,6 @@ func (a *app) questionSetDial() tea.Cmd {
 	room.refused = questionDecideKindDone
 	a.questionRoomTouched()
 	return nil
-}
-
-// questionAnsweredWord is the dim line that stays where the foot was, and it is
-// THE ANSWER IS THE RECORD said on this page: what was decided, what was said
-// beside it, and who decided.
-func (a *app) questionAnsweredWord(answer session.Answer) string {
-	room := a.qroom
-	parts := []string{"decided " + strings.TrimSpace(room.head.question.Head)}
-	if len(answer.Picked) > 0 {
-		parts = append(parts, "→ "+a.questionPickedWord())
-	}
-	if strings.TrimSpace(answer.Reframe) != "" {
-		parts = append(parts, "→ "+strings.TrimSpace(answer.Reframe))
-	}
-	if strings.TrimSpace(answer.Change) != "" {
-		parts = append(parts, questionWithWord+strings.TrimSpace(answer.Change))
-	}
-	if answer.DecidedBy == session.DecidedByAsker {
-		parts = append(parts, "it decided")
-	} else {
-		parts = append(parts, "you")
-	}
-	return strings.Join(parts, questionSep)
 }
 
 // questionOfferKeys is which of the grammar's keys this question offers, and it
@@ -1405,14 +1380,36 @@ func (a *app) questionAnswer(answer session.Answer) tea.Cmd {
 		a.questionRoomTouched()
 		return nil
 	}
+	if answer.DecidedBy == "" {
+		answer.DecidedBy = session.DecidedByPerson
+	}
 	if err := door.ResolveQuestion(answer); err != nil {
 		room.refused = strings.TrimSpace(err.Error())
 		a.questionRoomTouched()
 		return nil
 	}
 	a.input.reset()
-	room.answered = &answer
-	a.questionRoomTouched()
+	// THE ANSWER IS THE RECORD, AND THERE IS ONE RECORD.
+	//
+	// This page used to keep its own account of what was decided and leave it
+	// where the foot had been, while the block — which still held the question,
+	// because nothing here had told it otherwise — wrote the receipt as well. So
+	// one answer left two adjacent lines about itself, in two different
+	// spellings, and the block's said `another window` about a key pressed on
+	// this one: the answer came back down the questions lane, found the question
+	// still open here, and [app.foldOthersAnswer] read it — rightly — as
+	// somebody else's.
+	//
+	// The block's is the one that survives, because it is the one a person sees
+	// wherever they answered from: it is [session.DecisionRecord.Line], the
+	// engine's own rendering, so the model's record and the row above the box
+	// are one account of one decision (question.go's THE ANSWER IS THE RECORD).
+	// The page's whole job is over at this point, so it folds and the receipt is
+	// waiting underneath it. Measured on a real screen before either half of
+	// this landed: an answer given on this page, in this window, drew
+	// `another window` on its own receipt.
+	a.closeQuestion(room.head, answer)
+	a.closeQuestionRoom()
 	return nil
 }
 

@@ -129,6 +129,25 @@ var vocabulary = []GlyphBinding{
 		ASCII:     "-",
 		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
 	},
+	{
+		ID: GAssumed, Name: "Assumed", Meaning: "taken for granted and gone on with; strike it to change it",
+		// nf-fa-lightbulb_o is the ASKER'S OWN IDEA standing in for a fact
+		// nobody supplied, which is exactly what an assumption is — and the
+		// FA4.7 outline family is the one this table already ships beside
+		// nf-fa-question_circle_o and nf-fa-circle_o. The tier has no icon for
+		// `≈` itself: nf-md-approximately_equal lives above the BMP, which
+		// TestNerdFontIsBMPPrivateUse refuses, so the two sides are the
+		// mathematical and the pictographic spelling of one meaning rather than
+		// one shape at two weights.
+		//
+		// The tint is TERTIARY and never Amber, for [GWithdrawn]'s reason said
+		// about the other end of the same card: amber is a person being waited
+		// on, and an assumption is the asker NOT waiting.
+		Plain: GlyphAssumed, NerdFont: "\uF0EB", NFName: "nf-fa-lightbulb_o",
+		ASCII:          "~",
+		UsualTint:      TextTertiary,
+		PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
+	},
 
 	// -- disclosure and navigation -------------------------------------------
 	//
@@ -153,6 +172,13 @@ var vocabulary = []GlyphBinding{
 		// Tinted with the scope's identity where there is one, tertiary where
 		// there is not.
 		Plain: GlyphScopeUp, UsualTint: TextTertiary, Geometry: true,
+	},
+	{
+		ID: GTarget, Name: "Target", Meaning: "where the next thing goes — the destination of a draft",
+		// Tinted with the identity of the room the draft will land in, exactly as
+		// the steer prompt is: both of them are about somewhere that does not
+		// exist yet.
+		Plain: GlyphTarget, UsualTint: Identity0, PlainAmbiguous: true, Geometry: true,
 	},
 	{
 		ID: GTruncated, Name: "Truncated", Meaning: "clickable overflow — there is more, ask for it",

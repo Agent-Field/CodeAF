@@ -207,8 +207,15 @@ func TestTheDialSaysWhatTheSettingDoes(t *testing.T) {
 	if !strings.Contains(drawn, "[tell me, then act]") {
 		t.Errorf("the dial should mark where it sits:\n%s", drawn)
 	}
-	if !strings.Contains(drawn, "it will tell me, then act") {
-		t.Errorf("the dial should say what the setting does:\n%s", drawn)
+	// THE ROW UNDER IT IS THE ASKER'S OWN WORDS AND NOTHING ELSE. It used to
+	// read `it will tell me, then act` — a verb this surface supplied, which
+	// came out as `it will five times` the moment a dial's labels were a noun
+	// phrase.
+	if !strings.Contains(drawn, "\n"+questionIndent+"tell me, then act") {
+		t.Errorf("the dial should say what the setting does, in the asker's words:\n%s", drawn)
+	}
+	if strings.Contains(drawn, "it will ") {
+		t.Errorf("the dial built a sentence around the asker's label:\n%s", drawn)
 	}
 	tapNamed(a, tea.KeyRight, 0)
 	if drawn := pageText(a); !strings.Contains(drawn, "[just do it]") {
@@ -359,5 +366,33 @@ func TestEveryInputShapeFitsEveryWidth(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// A DIAL'S LABELS ARE NOT ALL VERB PHRASES, AND THE ROW MUST NOT PRETEND THEY
+// ARE.
+//
+// The reading under the face used to be `it will ` and the asker's label, a
+// sentence this surface built out of a guess about English grammar. It read on
+// `tell me, then act` and it read `it will five times` on the labels of a
+// how-many dial — the surface putting words in the asker's mouth and getting
+// them wrong.
+func TestADialWhoseLabelsAreNounPhrasesStillReadsAsEnglish(t *testing.T) {
+	q := demoQuestionDial()
+	q.Head = "how many times should it retry a machine that refuses?"
+	q.Input.Prompt = "retries before it gives up on a machine"
+	q.Input.Dial = &session.Dial{
+		Min: 1, Max: 5, Default: 5,
+		Labels: []string{"once", "three times", "five times"},
+	}
+	a, _ := standingInAQuestion(t, q)
+	a.qroom.input.notch = 2
+	a.qroom.dirty = true
+	drawn := pageText(a)
+	if strings.Contains(drawn, "it will ") {
+		t.Fatalf("the dial built a sentence around a noun phrase:\n%s", drawn)
+	}
+	if !strings.Contains(drawn, "\n"+questionIndent+"five times") {
+		t.Fatalf("the dial does not read out where it is standing:\n%s", drawn)
 	}
 }

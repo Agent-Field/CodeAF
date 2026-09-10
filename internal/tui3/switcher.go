@@ -192,7 +192,7 @@ type switcherGone map[string]bool
 // outranks everything; moving is Tasks.Running or a fresh PresenceWorking
 // conversation, and a standing item moves only while view.Running. An item's
 // own NeedsPerson likewise outranks its running marker.
-func readSwitcher(world session.World, items map[string][]StandingItemView, here switcherHere, gone switcherGone, seen time.Time, now time.Time, view switcherView, ledger switcherLedgerInput) switcherReading {
+func readSwitcher(world session.World, items map[string][]StandingItemView, fired []StandingItemView, here switcherHere, gone switcherGone, seen time.Time, now time.Time, view switcherView, ledger switcherLedgerInput) switcherReading {
 	r := switcherReading{view: view, now: now}
 	projectByDir := make(map[string]session.Project, len(world.Projects))
 	var all []switcherRow
@@ -264,7 +264,7 @@ func readSwitcher(world session.World, items map[string][]StandingItemView, here
 		}
 	}
 
-	r.addLedger(items, world, seen, ledger)
+	r.addLedger(items, fired, world, seen, ledger)
 	if view.grouped {
 		r.addGrouped(all, here.project, projectByDir)
 	} else {
@@ -374,8 +374,18 @@ func switcherConversationNote(row session.SessionRow, seen time.Time) string {
 		if line == "" {
 			return ""
 		}
+		// THE GATE'S OWN SENTENCE IS THE WHOLE NOTE, and this row adds not one
+		// word to it. The line a consent question carries is written once, by the
+		// lane that knows the tool, EXPRESSLY so that another window can say what
+		// this session is stopped on (session's consent.go: it is "the one line
+		// another window may answer this from") — and it is already a predicate
+		// about the conversation named beside it: `needs your ok to run bash`.
+		// This row used to prefix `wants to ` onto it, from the days when the
+		// engine handed over a bare action, and what a person actually read on
+		// home was `consentws wants to needs your ok to run bash`. One sentence,
+		// written in one place, repeated here exactly.
 		if row.Presence.Question.Kind == session.QuestionConsent {
-			return "wants to " + strings.TrimSpace(strings.TrimSuffix(line, "?"))
+			return line
 		}
 		return "asks: " + line
 	}
@@ -452,7 +462,18 @@ func switcherPlural(n int, one, many string) string {
 	return many
 }
 
-func (r *switcherReading) addLedger(items map[string][]StandingItemView, world session.World, seen time.Time, input switcherLedgerInput) {
+// addLedger builds the `since you left` block: what happened on its own while
+// nobody was looking.
+//
+// IT WALKS WHAT STANDS AND WHAT WENT, and it has to walk both. items is every
+// project's live band, which is the right answer for a watch that fired at six
+// and is still watching; fired is what the same reading found RETIRED with a
+// firing on it (homestanding.go's [app.standItems]). A one-off — the commonest
+// standing thing there is, `remind me in 1 minute` — retires in the pass that
+// fires it, so a block built off the bands alone was silent about exactly the
+// case it exists for: the reminder went off with the terminal shut, and the
+// screen a person came back to said nothing had happened.
+func (r *switcherReading) addLedger(items map[string][]StandingItemView, fired []StandingItemView, world session.World, seen time.Time, input switcherLedgerInput) {
 	// AND THE WHOLE BLOCK IS ABOUT A STRETCH OF TIME THAT MAY NOT EXIST YET. With
 	// no look stamp there is no "since", so there is nothing to say — the same
 	// first-look law [switcherConversationNote] keeps one function up.
@@ -464,22 +485,35 @@ func (r *switcherReading) addLedger(items map[string][]StandingItemView, world s
 	// project directory and a machine-wide watch is in every one of them, so a
 	// walk that did not remember what it had seen would say the same thing four
 	// times (homestanding.go's [app.readStandBands] keys them, and this is the
-	// reading's own half of that fact).
+	// reading's own half of that fact). The retired half is deduped against the
+	// same map, because an item that stood in two places went in two places.
 	said := make(map[string]bool)
+	add := func(view StandingItemView) {
+		if !view.Item.LastFired.After(seen) || said[view.Item.ID] {
+			return
+		}
+		said[view.Item.ID] = true
+		// THE ITEM'S OWN LAST-LOOK SENTENCE AND NEVER A SECOND ONE WRITTEN HERE.
+		// `fired 3 minutes ago · … — it told you` is [standing.LastLookLine], the
+		// one place that sentence is composed, and a retired one-off is told the
+		// same way a live watch is: what it did, when, and what came of it. The
+		// row does not say the thing has stood down, because the block is a list
+		// of what HAPPENED and not a roll-call of what still stands.
+		line := standing.LastLookLine(view.Item, r.now)
+		if line == "" {
+			line = switcherFirstLine(view.Item.LastCheckLine)
+		}
+		if line != "" {
+			events = append(events, switcherRow{kind: switcherLedger, item: view, title: line, place: "standing", at: view.Item.LastFired})
+		}
+	}
 	for _, views := range items {
 		for _, view := range views {
-			if !view.Item.LastFired.After(seen) || said[view.Item.ID] {
-				continue
-			}
-			said[view.Item.ID] = true
-			line := standing.LastLookLine(view.Item, r.now)
-			if line == "" {
-				line = switcherFirstLine(view.Item.LastCheckLine)
-			}
-			if line != "" {
-				events = append(events, switcherRow{kind: switcherLedger, item: view, title: line, place: "standing", at: view.Item.LastFired})
-			}
+			add(view)
 		}
+	}
+	for _, view := range fired {
+		add(view)
 	}
 	landed := 0
 	for _, row := range world.Sessions() {

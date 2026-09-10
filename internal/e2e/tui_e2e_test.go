@@ -291,9 +291,14 @@ func testHomeShape(t *testing.T) {
 	// pins it at every height): the row above the foot's rule is blank whatever
 	// the list did.
 	lines := r.lines()
+	// THE RULE ABOVE HOME'S BOX CARRIES WORDS NOW — `─ → new conversation in
+	// … · model ──── alt+w folder · alt+o model ─` (internal/tui3's
+	// homedraft.go, 2026-09-09) — so the foot is the last row that begins as a
+	// rule, whether or not it runs on as dashes; a finder that wanted four
+	// dashes walked up to the header's rule and read the nav row as the list.
 	foot := -1
 	for i := len(lines) - 1; i >= 0; i-- {
-		if strings.HasPrefix(strings.TrimSpace(lines[i]), "────") {
+		if row := strings.TrimSpace(lines[i]); strings.HasPrefix(row, "────") || strings.HasPrefix(row, "─ ") {
 			foot = i
 			break
 		}
@@ -696,9 +701,9 @@ func testFiringReachesThePerson(t *testing.T) {
 	// having a number for.
 	keepingAt := time.Now()
 	if _, ok := r.glimpse(time.Minute, say(t, "homeKeepingWord")); !ok {
-		t.Errorf("the status line never grew a `keeping an eye on N` segment while an item stands:\n%s", r.capture())
+		t.Errorf("the status line never grew a `◦ N standing orders` segment while an item stands:\n%s", r.capture())
 	} else {
-		t.Logf("the `keeping an eye on N` segment arrived %s after the item stood", time.Since(keepingAt).Round(time.Second))
+		t.Logf("the `◦ N standing orders` segment arrived %s after the item stood", time.Since(keepingAt).Round(time.Second))
 	}
 	r.lit("/status")
 	time.Sleep(700 * time.Millisecond)
@@ -706,7 +711,7 @@ func testFiringReachesThePerson(t *testing.T) {
 	status := r.waitFor(20*time.Second, say(t, "homeWatchLabel"))
 	t.Logf("/status while something stands:\n%s", status)
 	if !strings.Contains(status, say(t, "homeKeepingWord")) {
-		t.Errorf("/status says nothing about what is being kept an eye on:\n%s", status)
+		t.Errorf("/status says nothing about the orders standing here:\n%s", status)
 	}
 
 	// WHAT THE ITEM ITSELF SAYS IT WILL SAY. The model names the standing order
@@ -882,25 +887,29 @@ func testFiringReachesThePerson(t *testing.T) {
 			"one (workfold.go):\n%s", r2.capture())
 	}
 
-	// AND HOME'S OWN ACCOUNT OF IT IS RECORDED RATHER THAN DEMANDED. What happened
-	// while nobody was looking is a block at the top of the list, built from the
-	// standing items whose last firing is later than the look stamp
-	// (internal/tui3/switcher.go's addLedger) — and a ONE-OFF reminder retires the
-	// moment it fires, so by the time this window is up there is no live item left
-	// for the walk to find. That is a real hole in the block's arithmetic rather
-	// than a fact about this test, and it is written down here as a finding
-	// because the delivery it is about has already been proved above, twice.
+	// AND HOME'S OWN ACCOUNT OF IT IS DEMANDED. What happened while nobody was
+	// looking is a block at the top of the list, built from every standing item
+	// whose last firing is later than the look stamp — the ones that still stand
+	// AND the ones that stood down (internal/tui3/switcher.go's addLedger).
+	//
+	// THIS WAS A FINDING IN THIS SUBTEST'S OWN LOG FOR A WHILE, AND IT WAS A REAL
+	// HOLE. A one-off reminder retires in the pass that fires it, so by the time
+	// this window is up there is no live item left; a ledger that walked only the
+	// bands drew nothing at all about the reminder that had just gone off with the
+	// terminal shut — which is the commonest thing that happens while nobody is
+	// looking. The reading carries the retired firings out now
+	// (internal/tui3/homestanding.go's standItems), so the log is an assertion.
 	openHome(t, r2)
 	time.Sleep(3 * time.Second)
 	news := r2.capture()
-	switch {
-	case strings.Contains(news, say(t, "switcherSinceLeft")) && strings.Contains(news, say(t, "standingFiredWord")):
+	if !strings.Contains(news, say(t, "switcherSinceLeft")) {
+		t.Errorf("a watch fired while no window was open and home drew no `%s` block at all:\n%s",
+			say(t, "switcherSinceLeft"), news)
+	} else if !strings.Contains(news, say(t, "standingFiredWord")) {
+		t.Errorf("home drew a `%s` block that does not say the watch fired:\n%s",
+			say(t, "switcherSinceLeft"), news)
+	} else {
 		t.Logf("home's `since you left` block names the firing:\n%s", firstMatch(news, say(t, "standingFiredWord")))
-	case strings.Contains(news, say(t, "switcherSinceLeft")):
-		t.Logf("FINDING: home drew a `since you left` block that does not say the watch fired:\n%s", news)
-	default:
-		t.Logf("FINDING: a watch fired while no window was open and home drew no `since you left` block at all — "+
-			"a one-off item retires as it fires and the ledger walks only what still stands:\n%s", news)
 	}
 }
 
@@ -985,6 +994,19 @@ func testAnswerFromHome(t *testing.T) {
 		t.Errorf("home's answer band is missing the first chip's key:\n%s", row)
 	}
 	t.Logf("the chips home offered: %s", firstMatch(row, say(t, "answersAllowOnce")))
+
+	// AND THE ROW SAYS THE GATE'S OWN SENTENCE, WHOLE AND UNADORNED.
+	// internal/session's consent.go writes one line for exactly this purpose —
+	// the line another window may answer this from — and internal/tui3's switcher
+	// used to prefix `wants to ` onto it, from the days when the engine handed
+	// over a bare action. What this suite read on a real screen was
+	// `consentws wants to needs your ok to run bash`.
+	if !strings.Contains(row, say(t, "consentRowLine")) {
+		t.Errorf("home's row does not carry the gate's own sentence %q:\n%s", say(t, "consentRowLine"), row)
+	}
+	if strings.Contains(row, "wants to "+say(t, "consentRowLine")) {
+		t.Errorf("home's row wrote its own grammar around the gate's sentence:\n%s", firstMatch(row, say(t, "consentRowLine")))
+	}
 
 	// AND WITH SOMETHING ASKING, THE LIST WEARS ITS SECTION LINE — the one
 	// heading over the flat ranked list, with the two keys that change its shape

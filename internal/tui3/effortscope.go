@@ -118,7 +118,7 @@ func effortClause(rung effort.Rung) string {
 type effortMoved struct {
 	// where is the surface's own name for the scope, so a clause can ask whether
 	// the emphasis is ITS: a standing item's id for an item, and
-	// [effortScopeConversation] for the chip above the message box
+	// [effortScopeConversation] for the rung on the seam above the message box
 	// (effortchip.go). They cannot collide — the sentinel leads with a NUL no id
 	// can carry.
 	where string
@@ -129,11 +129,11 @@ type effortMoved struct {
 // can be, so a scope with a real id and this one can never be mistaken for one
 // another.
 //
-// THE CONVERSATION'S CHIP SHARES THE FIELD AND NOT THE TIMING. It records its
+// THE CONVERSATION'S RUNG SHARES THE FIELD AND NOT THE TIMING. It records its
 // move here so that only ONE rung on this window can be the newest fact — moving
-// a task's rung takes the emphasis off the chip and vice versa, which is the law
+// a task's rung takes the emphasis off the seam and vice versa, which is the law
 // [effortMoved] is written for — but the emphasis it then wears is its own: the
-// tray has one cell to say it in and says it with the selected ground for two
+// seam has one cell to say it in and says it with the selected ground for two
 // seconds ([app.effortFlashing]), where a card has a whole clause and lets it
 // fade down the reading ladder over the status line's ten.
 const effortScopeConversation = "\x00conversation"

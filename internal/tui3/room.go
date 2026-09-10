@@ -1737,14 +1737,16 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, taken := a.guardKey(msg); taken {
 		return cmd, true
 	}
-	// AND THE FOUR LETTERS THAT DECIDE ABOUT A NODE THAT NEEDS A LOOK, under the
-	// guard for the same reason, and only ever over an EMPTY box: the box in here
-	// steers the worker, and a letter that decided somebody's work was finished
-	// on the first keystroke of a sentence would be unforgivable
-	// (tasksettle.go's [app.roomSettleKey] holds every guard `x` has).
-	if a.roomSettleKey(msg) {
-		return nil, true
-	}
+	// THE LETTERS THAT DECIDE ABOUT A NODE THAT NEEDS A LOOK ARE NOT TAKEN HERE.
+	// A landed `your call` is a question, and the question block above the box
+	// answers it on every page with the one key grammar — which is read before
+	// this file is reached (input.go's key order, tasksettle.go says why).
+	//
+	// AND NEITHER IS A DESIGN WAITING TO BE JUDGED. It had two chords of its own
+	// pinned above the box in here (roomapproval.go, deleted) — one decision with
+	// two drawings and two grammars. It is the same question on the same block,
+	// answered by the same digits, and the two keys this file owns are untouched:
+	// esc leaves and enter steers.
 	// AND A RUN'S PAGE IS READ BEFORE THE ROOM'S OWN TWO KEYS (roomorch.go),
 	// because it has more levels than a room does: esc walks out of a chip's card
 	// and out of a nested run before it walks out of the page at all, and enter
@@ -1895,19 +1897,17 @@ func (a *app) roomHint() string {
 		// person reaching for esc actually wants. It is drawn only while there is
 		// something to stop, which is the emptiness law applied to a hint.
 		return roomStopHint
-	case a.roomSettleAsking():
+	case a.roomLandingAsking():
 		// THE ROOM'S ANSWER TO "IT SAYS LOOK IT OVER, NOW WHAT". The node has
-		// landed, so nothing above this is live, and the three answers are
-		// printed on the foot as well — but the foot is at the far end of a page
-		// somebody is reading, and this slot is the one place on the frame a
-		// person looks for the next keystroke (tasksettle.go).
+		// landed, so nothing above this is live, and the answers are on the
+		// question block above the box — but that block is at the other end of a
+		// page somebody is reading, and this slot is the one place on the frame a
+		// person looks for the next keystroke.
 		//
-		// AND IT IS SPELLED TO THE FRAME. The slot takes a line whole or not at
-		// all ([app.legend]), so the full sentence — four cells too long at sixty
-		// columns — left the narrowest terminal naming none of the keys that
-		// answer the question it was standing on. [app.settleHintAt] is the
-		// ranked prefix of it that fits, spelled from the card's own chips.
-		return a.settleHintAt(a.roomSettleCard(), a.width, "")
+		// AND IT IS SPELLED FROM THE QUESTION'S OWN ANSWERS, so the block, this
+		// slot and the roster's cannot name three different letters for one
+		// question ([app.landingHintAt]).
+		return a.landingHintAt(a.room.id, a.width, "")
 	}
 	return ""
 }
@@ -2177,6 +2177,16 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	// enters.
 	if line.more {
 		return a.showPage(pageTasks), true
+	}
+	// AND THE STANDING COUNT IS THE FOURTH, on the same terms: it is a line of
+	// the footer, it belongs to no node, and it opens the page a person reading
+	// that number is trying to find (standdoor.go). It is refused only where the
+	// page is already what they are looking at.
+	if line.keeping {
+		if a.at(pageStanding) {
+			return nil, true
+		}
+		return a.openStanding(), true
 	}
 	if line.hint {
 		a.railWiden(!a.railWide)
@@ -3268,6 +3278,23 @@ func (a *app) roomRows(width int) []row {
 	if a.roomGuestStale() {
 		out = append(out, row{text: a.pal.dim(fit(roomGuestStaleWord, inner)), entry: -1})
 	}
+	// AND A CONVERSATION THAT HAS STOPPED AND IS WAITING ON SOMEBODY SAYS SO,
+	// under what it has done so far. The roster cannot say it — a node sitting on
+	// a question is still `running` — so a page reading somebody else's work drew
+	// a clock over work that had not moved since somebody was asked something
+	// (taskowner.go's questions lane).
+	//
+	// IT IS DIM AND NOT AMBER, AND THAT IS THE HUE LAW RATHER THAN AN OVERSIGHT.
+	// Amber is waiting on YOU and nothing else (docs/design/questions/DESIGN.md);
+	// this question is waiting on the window that owns the work, this page has no
+	// key that would answer it, and a row here in the colour that means "press
+	// something" would be asking a person for a keystroke that does not exist.
+	if asked, waiting := a.roomGuest().waiting(); waiting {
+		if head := strings.TrimSpace(asked.Head); head != "" {
+			line := a.icon(tokens.GNeedsHuman) + " " + head + railSep + roomGuestAskedWord
+			out = append(out, row{text: a.pal.dim(fit(line, inner)), entry: -1})
+		}
+	}
 	if room.done {
 		// THE FOOT. A room on a node that has landed says so once, at the bottom,
 		// where the next thing would have appeared — which is the place a person
@@ -3277,13 +3304,13 @@ func (a *app) roomRows(width int) []row {
 		if closed && len(out) > 0 {
 			out = append(out, row{entry: -1})
 		}
-		// A NODE THAT NEEDS A LOOK ASKS HERE, in the place the foot would have
-		// said "finished": the same two rows its landed card draws, answering to
-		// the same keys and the same pointer, and the same receipt once answered
-		// (tasksettle.go's [app.roomSettleRows]). Every other landing keeps the
-		// foot it has.
-		var asked bool
-		if out, asked = a.roomSettleRows(out, inner); !asked {
+		// A NODE THAT NEEDS A LOOK DOES NOT SAY `finished` HERE. Its question is
+		// standing on the block above the box, in this room as on every other
+		// page (tasksettle.go), and a foot that read `this task has finished —
+		// say it to main` over it told a person the one thing that was not true
+		// about the page they were looking at (#767). Every other landing keeps
+		// the foot it has.
+		if !a.roomLandingAsking() {
 			// AND IT NAMES A DOOR (roomrefusal.go). `task finished — esc to
 			// return` was the whole of what this row said for a year, and esc is
 			// already on the legend and on the focus header above it; where the
@@ -3298,8 +3325,6 @@ func (a *app) roomRows(width int) []row {
 	// room's own foot is asked for by name because a node that needs a look draws
 	// its answers with no entry to hang them on, so the deck walk cannot reach it.
 	gutterPass(out, width)
-	a.gutterCards(room.deck(), width)
-	gutDoneCard(a.roomSettleCard(), textGutterCols(width))
 	// THE POINTER, LAST, exactly as in the conversation (render.go's layout).
 	a.hoverPass(out, width)
 	a.restoreRoomAnchor(reading, out)
@@ -3686,7 +3711,14 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 	// one never could, and the reading word is exactly as true of a landed task
 	// as of a running one. The foot beside it carries the owner-aware finished
 	// sentence ([app.roomDoneRefusal]), so nothing here has to.
-	if a.room.done && !a.roomIsGuest() {
+	// AND A NODE THAT IS STILL SOMEBODY'S CALL KEEPS ITS STEER LANE. The work has
+	// stopped, but the box has not: `[s] tell it` is one of the three answers
+	// standing on the block above it, and what it does is point this box at this
+	// task (tasksettle.go's [app.landingTell]). A placeholder reading `this task
+	// has finished — say it to main` over a question the person is being asked
+	// here would send them somewhere else to answer it, which is the room half of
+	// the screen #767 was filed about.
+	if a.room.done && !a.roomIsGuest() && !a.roomLandingAsking() {
 		lane = a.roomFinishedRefusal().fit(room)
 	}
 	// The attachment/effort tray can precede the draft. Put the placeholder

@@ -513,7 +513,11 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 		add("", -1)
 	}
 
-	add(pal.dim(rule(width)), -1)
+	// AND THE PHONE'S RULE SAYS THE TARGET TOO. It was the first thing this tier
+	// dropped — the scope chip is absent from the whole narrow frame — which left
+	// the one screen with the least room the one screen that never said where a
+	// sentence would land (homedraft.go's [app.targetPhoneRule]).
+	add(a.targetPhoneRule(width, pal), -1)
 	caretX, caretY := 0, 0
 	if a.home.box.empty() {
 		add(" "+pal.dim(hintFit(homeFootWord, width-2)), -1)

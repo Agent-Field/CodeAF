@@ -42,6 +42,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it went ahead by itself", "questions"},
 		{"make it ask me every time", "questions"},
 		{"it assumed something wrong", "questions"},
+		// The two marks a question can open with that are NOT the amber `?`, and
+		// the countdown that goes with one of them. Somebody meeting either has
+		// no name for it and describes the shape, so both are asked that way.
+		{"what is the squiggly line at the start of a card", "questions"},
+		{"why does a card say goes on in 9s", "questions"},
+		// And the receipt on a window too narrow for it, asked by somebody who
+		// has just noticed half of their own sentence is not on the line.
+		{"the decided line is missing what I typed", "questions"},
 		// The block (docs/design/questions/DESIGN.md, internal/tui3's
 		// question.go), asked the five ways somebody meets it: putting one off,
 		// finding it again, what happened when nobody pressed anything, taking
@@ -71,6 +79,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// together, one vanishing, two windows racing, and the setting that
 		// governs the whole thing.
 		{"how do I answer from home", "questions"},
+		// The proof wave: four sentences somebody says at the screen when what
+		// the wave built does not reach them. Each is a limit the corpus now
+		// states rather than a thing they have to find out by pressing.
+		{"I pressed the key on the home row and nothing happened", "questions"},
+		{"why is there no question when I run aforge normally", "questions"},
+		{"it printed asked with nobody to ask", "questions"},
+		{"there is no undo on the line saying what it did", "questions"},
 		{"it asked while I was away", "questions"},
 		{"why did several questions arrive at once", "questions"},
 		{"answer a whole batch of questions at once", "questions"},
@@ -107,6 +122,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I typed no to the task and it started anyway", "tasks"},
 		{"where did the model chips on the proposal go", "tasks"},
 		{"change which model a task runs on before it starts", "tasks"},
+		// The wire (docs/design/questions/DESIGN.md, internal/remote's
+		// questionlane.go). Somebody who has just met a question that did not
+		// appear asks about the ROAD, in the words the road is spelled in on
+		// each of them, and about the page that reads another conversation.
+		{"do questions work over the session host", "questions"},
+		{"the question never appeared over --host", "questions"},
+		{"can I answer a question on another machine", "questions"},
+		{"a question was raised while nothing was attached", "questions"},
+		{"why can I not answer the question on this task page", "questions"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},
 		// Lanes behind a base of the person's own: the question the hostname gate
@@ -364,6 +388,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I connect my Slack workspace", "accounts"},
 		{"which services can you connect to", "accounts"},
 		{"can I run this on my dev box over ssh", "running-on-another-machine"},
+		{"can I make a hosted conversation think harder", "running-on-another-machine"},
 		{"why is the task roster empty over host", "running-on-another-machine"},
 		{"can I start a task on the other machine", "running-on-another-machine"},
 		{"task says no task door", "running-on-another-machine"},
@@ -914,6 +939,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// and the worry that it will be sent as a message instead.
 		{"can I type /settings on home", "home"},
 		{"can I run a slash command from the home screen", "home"},
+		{"what will a slash command do on the home screen before I press enter", "home"},
+		{"does /compact open a conversation when I type it on home", "home"},
+		{"attach a file before starting a conversation", "home"},
+		{"how do I pick which folder my next conversation opens in", "home"},
 		{"typing /model on home starts a conversation instead of running it", "home"},
 		{"open another project from home", "home"},
 		{"enter does nothing on home", "home"},
@@ -1677,6 +1706,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// somebody who has met a rung name in the settings row and wants to know
 		// what it costs them.
 		{"how do I make it think less", "models-and-cost"},
+		{"is there a command for the effort level", "models-and-cost"},
 		{"how do I make it think deeper", "models-and-cost"},
 		{"how do I get faster answers from the model", "models-and-cost"},
 		{"what does xhigh mean", "models-and-cost"},
@@ -1689,13 +1719,26 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what temperature do you use", "models-and-cost"},
 		{"can I change the sampling settings", "models-and-cost"},
 
-		// And the CONVERSATION's own rung, which is a chip and a chord rather
-		// than a setting — so it is asked about as a thing on the screen ("what
-		// is that symbol above the box") and as a key somebody pressed by
-		// accident, neither of which reaches a page about models and cost.
+		// And the CONVERSATION's own rung, which is a cell on the seam, a chord
+		// and a command rather than a setting — so it is asked about as a thing
+		// on the screen ("what is that symbol above the box") and as a key
+		// somebody pressed by accident, neither of which reaches a page about
+		// models and cost. The last three are the doors that landed with the
+		// move onto the seam: the command, the rung typed straight in, and the
+		// press somebody tried because the model beside it is pressable.
 		{"what is the chip above the message box", "keys"},
 		{"what does ctrl+v do", "keys"},
 		{"how do I make this one chat think harder", "keys"},
+		{"set effort to max", "keys"},
+		{"can I click the thinking level", "keys"},
+		// And the word the cell says before anybody has dialled anything, which
+		// is what a shipped install draws — asked first by somebody reading it
+		// off the screen for the first time, and then by somebody who dialled a
+		// rung and wants the shipped state back. The wheel cannot get there, so
+		// the second one is a question the manual has to answer or the person is
+		// stuck pressing a key.
+		{"what does auto mean next to the model", "keys"},
+		{"how do I put thinking back to auto", "keys"},
 
 		// The eleventh wave: the ambient side — the things a conversation leaves
 		// behind that keep working after the window is closed. Every one of
