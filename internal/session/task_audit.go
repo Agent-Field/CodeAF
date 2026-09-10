@@ -2410,6 +2410,15 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 	if state := node.stateNow(); state != TaskUnverified {
 		return settledAlready(id, state)
 	}
+	// AND A SECOND PRESS IS NOT A SECOND HAND-OVER. On 2026-09-09 the card was
+	// pressed twice twenty-seven seconds apart and the model was handed the same
+	// decision twice, in two identical lines — a second instruction about a
+	// question it was already holding, which is an invitation to answer it twice.
+	// The honest answer to the second press is what is already true, and the card
+	// draws it exactly as it draws every other refusal these doors give.
+	if node.wasHandedOver() {
+		return fmt.Errorf("task %d is %s: %w", id, handedAlreadyWord, ErrTaskHandedOver)
+	}
 	// AND THE NODE RECORDS WHO IS HOLDING IT, so that the card in front of the
 	// person stops offering them chips they have just handed over and says who is
 	// deciding instead. It is the same mark `task.settle = auto` makes at the
@@ -2423,6 +2432,63 @@ func (a *Agent) HandUnverifiedToModel(id uint64) error {
 	return nil
 }
 
+// handedAlreadyWord is what a repeated hand-over answers with, in the person's
+// own vocabulary for the thing they pressed — the card says aforge is deciding,
+// so the refusal says the same word back rather than naming a field.
+const handedAlreadyWord = "already handed to aforge"
+
+// ErrTaskHandedOver says the second press changed nothing because the first one
+// already did it, and it is a SEPARATE sentinel from [ErrTaskDecided] because
+// the two are opposite facts about the card in front of somebody. A decided node
+// is over and its card stops asking; a handed-over one is still `your call`,
+// still waiting on an answer, and the only thing that moved is whose hands the
+// question is in — so a surface that drew "already answered" over it would be
+// reporting a decision nobody has made (internal/tui3's tasksettle.go).
+var ErrTaskHandedOver = errors.New("session: that task is already handed to aforge")
+
+// wasHandedOver reports that THIS DOOR has already given the model this node's
+// decision and nothing has taken it back.
+//
+// IT IS NOT "THE MODEL IS DECIDING", and the difference is the whole of why it
+// is its own fact. Under `task.settle = auto` — and in every headless run, where
+// nobody is there to be asked — a landing marks the model as the decider by
+// POLICY (task_run.go's [Agent.handToModelOnAuto]), which is not a press and
+// carries no note. Refusing the press on that would refuse the first one.
+//
+// IT IS IN MEMORY AND NEVER ON THE RECORD, for [taskRecord.Decider]'s own
+// reason: a hand-over lasts at most one turn — the floor takes it back at the
+// end of the model's turn and a resumed session takes it back on load — so a
+// receipt that survived either would refuse a press for a turn that is over.
+func (n *TaskNode) wasHandedOver() bool {
+	if n == nil || n.graph == nil {
+		return false
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.handed
+}
+
+// decidedBy reads who is holding one node's question, with the graph taken for
+// the read the way every other reader of a node's fields takes it.
+func (n *TaskNode) decidedBy() TaskAskOwner {
+	if n == nil || n.graph == nil {
+		return ""
+	}
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.decider
+}
+
+// givesBackLocked puts one node's question back in the person's hands, with the
+// graph held. It is a function because the receipt above has to move with the
+// owner wherever the owner moves, and there are three roads that move it: the
+// person taking it back, the end-of-turn floor, and a resumed session's load
+// (task_run.go). A road that wrote only the owner would leave a receipt behind
+// and refuse the next press.
+func (n *TaskNode) givesBackLocked() {
+	n.decider, n.handed = TaskAskOwnerPerson, false
+}
+
 // holdsDecision writes who is holding one node's question. It is the graph's
 // lock and one field, and it is here rather than beside the door because both
 // doors that move a decision — this one and the settle policy's — have to write
@@ -2433,7 +2499,15 @@ func (n *TaskNode) holdsDecision(owner TaskAskOwner) {
 	}
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	n.decider = owner
+	if owner != TaskAskOwnerModel {
+		n.givesBackLocked()
+		return
+	}
+	// AND THE RECEIPT IS WRITTEN WITH THE OWNER. A press that gets this far is
+	// the one that hands the model the note, and the next press on the same node
+	// is answered with what is already true rather than sending a second copy of
+	// one decision ([TaskNode.wasHandedOver]).
+	n.decider, n.handed = owner, true
 }
 
 // TakeBackDecision is [Agent.HandUnverifiedToModel] in reverse: the person
