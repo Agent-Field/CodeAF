@@ -88,6 +88,12 @@ save; nothing was written.` A cut that severs any **other** tool call — a
 `bash` command, an `edit` — never runs on a guessed tail: the call is refused
 with `nothing was run` and a suggestion to retry in smaller pieces.
 
+A long write is **not** cut for taking a long time: a `write` streaming at its endpoint's
+normal speed runs as long as it needs, up to 20 minutes. Only one that has slowed to a drip
+is cut, with `the reply ran past … without finishing and was cut`, and that cut saves
+nothing — the whole reply is thrown away and asked again (see *A reply that never
+finished*).
+
 `read` never asks your permission. `edit` and `write` follow whatever approval
 mode you are in, which asks by default.
 
