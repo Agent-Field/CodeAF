@@ -291,9 +291,14 @@ func testHomeShape(t *testing.T) {
 	// pins it at every height): the row above the foot's rule is blank whatever
 	// the list did.
 	lines := r.lines()
+	// THE RULE ABOVE HOME'S BOX CARRIES WORDS NOW — `─ → new conversation in
+	// … · model ──── alt+w folder · alt+o model ─` (internal/tui3's
+	// homedraft.go, 2026-09-09) — so the foot is the last row that begins as a
+	// rule, whether or not it runs on as dashes; a finder that wanted four
+	// dashes walked up to the header's rule and read the nav row as the list.
 	foot := -1
 	for i := len(lines) - 1; i >= 0; i-- {
-		if strings.HasPrefix(strings.TrimSpace(lines[i]), "────") {
+		if row := strings.TrimSpace(lines[i]); strings.HasPrefix(row, "────") || strings.HasPrefix(row, "─ ") {
 			foot = i
 			break
 		}
