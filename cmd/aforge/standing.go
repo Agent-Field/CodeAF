@@ -515,7 +515,7 @@ func standingCheck(out io.Writer, store *standing.Store) error {
 	for _, part := range []struct {
 		n    int
 		word string
-	}{{pass.Checked, "checked"}, {pass.Fired, "ran"}, {pass.NeedsYou, "need you"}, {pass.Skipped, "held back"}, {pass.Errors, "could not check"}} {
+	}{{pass.Checked, "checked"}, {pass.Fired, "ran"}, {pass.Failed, "did not finish"}, {pass.NeedsYou, "need you"}, {pass.Skipped, "held back"}, {pass.Errors, "could not check"}} {
 		if part.n > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", part.n, part.word))
 		}
@@ -527,6 +527,39 @@ func standingCheck(out io.Writer, store *standing.Store) error {
 	}
 	for _, note := range pass.Notes {
 		fmt.Fprintln(out, "  "+note)
+	}
+	// A PASS THAT LEFT WORK UNFINISHED DOES NOT EXIT 0. A script, or a person
+	// reading only the exit status, was told "done" by a pass whose run was cut
+	// off and whose report therefore stayed as it was (the live journey's first
+	// run, 2026-09-10). The ladder is the headless verbs' own (envelope.go): a
+	// run that did not finish is incomplete, and a run waiting on the person is
+	// unanswered.
+	var unfinished, waiting []string
+	if items, err := store.List(); err == nil {
+		for _, item := range items {
+			if item.LastChecked.Before(pass.At) || item.LastFired.Before(pass.At) {
+				continue
+			}
+			switch {
+			case item.NeedsPerson != "":
+				waiting = append(waiting, item.ID)
+			case item.LastOutcome == standing.OutcomeFailed:
+				unfinished = append(unfinished, item.ID)
+			}
+		}
+	}
+	outOfTime := ctx.Err() != nil
+	for _, id := range append(append([]string{}, unfinished...), waiting...) {
+		fmt.Fprintf(os.Stderr, "not finished: aforge standing show %s says why; its last good report is unchanged\n", id)
+	}
+	if outOfTime {
+		fmt.Fprintf(os.Stderr, "the check ran out of time (%s); what it did not finish is checked again on the next one\n", standing.TickWindow)
+	}
+	switch {
+	case pass.Failed > 0 || pass.Errors > 0 || outOfTime || len(unfinished) > 0:
+		return exitIncomplete
+	case pass.NeedsYou > 0 || len(waiting) > 0:
+		return exitUnanswered
 	}
 	return nil
 }
@@ -667,14 +700,17 @@ func writeStandingRecord(out io.Writer, record standingRecord) error {
 		fmt.Fprintln(out, "  "+line)
 	}
 	fmt.Fprintln(out, "  workspace: "+item.Workspace)
+	version := ""
+	if item.SpecRevision > 0 {
+		version = fmt.Sprintf(" (version %d)", item.SpecRevision)
+	}
 	if item.Does.Kind == standing.ActionTask {
-		fmt.Fprintln(out, "  instructions: "+oneLineOf(item.Does.Brief))
+		fmt.Fprintf(out, "  instructions%s: %s\n", version, oneLineOf(item.Does.Brief))
 		if item.Does.Report != "" {
 			fmt.Fprintln(out, "  report: "+item.Does.Report)
 		}
-	}
-	if item.SpecRevision > 0 {
-		fmt.Fprintf(out, "  instructions: version %d\n", item.SpecRevision)
+	} else if item.SpecRevision > 0 {
+		fmt.Fprintf(out, "  version %d\n", item.SpecRevision)
 	}
 	if item.Adoption != nil {
 		via := "a card in a conversation"
@@ -695,6 +731,9 @@ func writeStandingRecord(out io.Writer, record standingRecord) error {
 	}
 	if record.RulesError != "" {
 		fmt.Fprintln(out, "  rules could not be read: "+record.RulesError)
+	}
+	if item.NeedsPerson != "" {
+		fmt.Fprintln(out, "  waiting on you: "+oneLineOf(item.NeedsPerson))
 	}
 	if item.Runs > 0 {
 		line := fmt.Sprintf("  ran %d time(s); last came to %s", item.Runs, item.LastOutcome)
@@ -733,6 +772,27 @@ func writeStandingRecord(out io.Writer, record standingRecord) error {
 		}
 		if run.SupersededBy != "" {
 			fmt.Fprintln(out, "      interrupted; retried as "+run.SupersededBy)
+		}
+		if run.OutcomeText != "" {
+			fmt.Fprintln(out, "      came to: "+oneLineOf(run.OutcomeText))
+		}
+		if check := run.RuleCheck; check != nil {
+			line := fmt.Sprintf("      checked against %d rule(s): %s", len(check.Rules), check.Verdict)
+			if check.Rewrote {
+				line += " after one correction"
+			}
+			fmt.Fprintln(out, line)
+			if check.First != "" {
+				fmt.Fprintln(out, "      sent back once: "+oneLineOf(check.First))
+			}
+			if check.Verdict == "broken" {
+				fmt.Fprintln(out, "      still breaks: “"+oneLineOf(check.Rule)+"” — the report said “"+oneLineOf(check.Quote)+"”")
+			} else if check.Verdict != "kept" && check.Why != "" {
+				fmt.Fprintln(out, "      "+oneLineOf(check.Why))
+			}
+			if check.Held != "" {
+				fmt.Fprintln(out, "      held back, not published; draft: "+check.Held)
+			}
 		}
 		if run.USD > 0 {
 			fmt.Fprintf(out, "      cost $%.4f\n", run.USD)

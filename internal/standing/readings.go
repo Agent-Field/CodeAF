@@ -23,6 +23,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -44,10 +45,11 @@ func (s *Store) readingPath(id, digest string) string {
 }
 
 // keepReading writes this reading's manifest and removes every other manifest
-// except the one the document still names. Best effort: a manifest that could
-// not be written costs the next firing its change list ([Occurrence.ChangesUnknown])
-// and never the firing itself.
-func (s *Store) keepReading(id, digest, previous string, files map[string]fileEntry) {
+// except the ones named in keep — the reading the document still names, and
+// the one a run that did not finish was measured from ([Store.unreportedSince]).
+// Best effort: a manifest that could not be written costs the next firing its
+// change list ([Occurrence.ChangesUnknown]) and never the firing itself.
+func (s *Store) keepReading(id, digest string, files map[string]fileEntry, keep ...string) {
 	if checkID(id) != nil || digest == "" {
 		return
 	}
@@ -70,7 +72,7 @@ func (s *Store) keepReading(id, digest, previous string, files map[string]fileEn
 	}
 	for _, entry := range entries {
 		name := strings.TrimSuffix(entry.Name(), ".json")
-		if name == digest || name == previous || !strings.HasSuffix(entry.Name(), ".json") {
+		if name == digest || slices.Contains(keep, name) || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
 		_ = os.Remove(filepath.Join(dir, entry.Name()))
@@ -112,13 +114,44 @@ func (s *Store) changesSince(id, previous string, now map[string]fileEntry) ([]C
 	return changes, nil
 }
 
+// unreportedSince answers the reading a watch's change list is measured from.
+// It is the reading before this one — unless the last run DID NOT FINISH its
+// work over the changes it was woken for, in which case it is the reading that
+// run was measured from, so the next run is told about those changes too.
+//
+// A FAILED RUN USED UP ITS CHANGES. The watch moves on at every look, so the
+// occurrence after a failed one listed only what had changed since the failure
+// — and the files the failed run never reported were in no change list again.
+// The chain holds only while the last run's own reading is the one the item
+// still names; anything else is measured from the reading before, as always.
+func (s *Store) unreportedSince(id, previous string) string {
+	if previous == "" {
+		return previous
+	}
+	records, err := s.Occurrences(id, 1)
+	if err != nil || len(records) == 0 {
+		return previous
+	}
+	last := records[0]
+	unfinished := last.Outcome == OutcomeFailed || last.Outcome == OutcomeNeedsYou
+	if last.Phase != PhaseFinished || last.Published != nil || !unfinished || last.Since == "" || last.Reading != previous {
+		return previous
+	}
+	return last.Since
+}
+
 // changesText is the change list as a firing reads it, ahead of the listing.
-func changesText(changes []Change, unknown bool) string {
+// carried says the list reaches back past a run that did not finish.
+func changesText(changes []Change, unknown, carried bool) string {
 	if unknown {
 		return "WHAT CHANGED: unknown — the previous reading is not available, so compare against the listing below.\n"
 	}
 	var out strings.Builder
-	out.WriteString("WHAT CHANGED SINCE THE LAST READING (size or modification time):\n")
+	if carried {
+		out.WriteString("WHAT CHANGED SINCE THE LAST RUN THAT FINISHED — the run after it did not, so its changes are listed again (size or modification time):\n")
+	} else {
+		out.WriteString("WHAT CHANGED SINCE THE LAST READING (size or modification time):\n")
+	}
 	for _, change := range changes {
 		out.WriteString(change.Kind + "  " + change.Path + "\n")
 	}

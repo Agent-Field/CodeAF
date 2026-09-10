@@ -23,6 +23,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -101,6 +102,16 @@ func TestLocalWorkJourney(t *testing.T) {
 	}
 	j.expectPublished(first, "reports/inbox-report.md")
 	j.expectCause(first, []string{ruleLaunch}, []string{ruleMarketing})
+	// THE RULE IS KEPT IN WHAT IS PUBLISHED, not only shown to the run. The
+	// script's first draft quotes the address, as the live model's did; the
+	// check before publication found it, the run was sent back once with the
+	// quote, and only the corrected report was published.
+	if strings.Contains(report, "alice@example.com") || !strings.Contains(report, "[redacted]") {
+		t.Fatalf("a raw contact detail survived the Launch rule:\n%s", report)
+	}
+	if c := first.RuleCheck; c == nil || c.Verdict != "kept" || !c.Rewrote || !strings.Contains(c.First, "alice@example.com") {
+		t.Fatalf("the first report's rule check: %+v", first.RuleCheck)
+	}
 
 	// Nothing changed: another pass must not run or publish again.
 	calls := model.firings.Load()
@@ -166,6 +177,37 @@ func TestLocalWorkJourney(t *testing.T) {
 	j.check()
 	j.expectRuns(inbox, 5)
 
+	// ── a report that still breaks the rule is held back, and says so ─────
+	// The script will not correct a note marked KEEP-RAW, so the check finds
+	// the address again after the one correction. Nothing is published, the
+	// pass exits unanswered rather than 0, and the next run is told about the
+	// file the held run never reported.
+	kept := j.read("reports/inbox-report.md")
+	j.write("inbox/f.md", "Request: KEEP-RAW ask bob@example.com for the keys.\n")
+	out, code := j.checkExit()
+	if code != 4 || !strings.Contains(out, "1 need you") || !strings.Contains(out, "not finished: aforge standing show "+inbox) {
+		t.Fatalf("a held report did not make the check exit unanswered (4): code %d\n%s", code, out)
+	}
+	runs = j.expectRuns(inbox, 6)
+	if o := runs[0]; o.Phase != "finished" || o.Outcome != "needs-you" || o.Published != nil || o.RuleCheck == nil || o.RuleCheck.Verdict != "broken" || o.RuleCheck.Held == "" || !o.RuleCheck.Rewrote {
+		t.Fatalf("the held run: %+v checked %+v", o.occurrenceView, o.RuleCheck)
+	}
+	if got := j.read("reports/inbox-report.md"); got != kept || strings.Contains(got, "bob@example.com") {
+		t.Fatalf("a held report replaced the last good one:\n%s", got)
+	}
+	if show := j.ok("standing", "show", inbox); !strings.Contains(show, "held back, not published") || !strings.Contains(show, "waiting on you:") {
+		t.Fatalf("show does not say the report was held:\n%s", show)
+	}
+	// The person fixes the note; a new note arrives. The run lists both.
+	j.write("inbox/f.md", "Request: ask Bob for the keys.\n")
+	j.write("inbox/g.md", "Decision: keys handed over Monday.\n")
+	j.check()
+	runs = j.expectRuns(inbox, 7)
+	j.expectRun(runs[0], runExpect{spec: 2, attempt: 1, outcome: "landed", changes: []string{"added inbox/f.md", "added inbox/g.md"}})
+	if got := j.read("reports/inbox-report.md"); strings.Contains(got, "bob@example.com") || !strings.Contains(got, "added inbox/f.md") {
+		t.Fatalf("the run after the held one:\n%s", got)
+	}
+
 	// ── Product → Marketing on the same primitives ────────────────────────
 	review := j.addWork("When the product spec changes, review the launch copy against it.",
 		"Compare marketing/launch-copy.md with the changed product files and list claims they no longer support. Do not edit the copy. FOCUS: claims",
@@ -185,7 +227,7 @@ func TestLocalWorkJourney(t *testing.T) {
 		t.Fatalf("review notes did not get exactly the Marketing rule:\n%s", notes)
 	}
 	j.expectCause(reviews[0], []string{ruleMarketing}, []string{ruleLaunch})
-	runs = j.expectRuns(inbox, 6)
+	runs = j.expectRuns(inbox, 8)
 	j.expectCause(runs[0], []string{ruleLaunch}, []string{ruleMarketing})
 	if got := j.read("marketing/launch-copy.md"); got != copyText {
 		t.Fatalf("the review changed the copy it was only asked to review:\n%s", got)
@@ -195,9 +237,21 @@ func TestLocalWorkJourney(t *testing.T) {
 	j.ok("standing", "stop", inbox)
 	j.write("inbox/e.md", "Decision: nothing after stop.\n")
 	j.check()
-	j.expectRuns(inbox, 6)
+	j.expectRuns(inbox, 8)
 	if out, err := j.run("standing", "resume", inbox); err == nil || !strings.Contains(out, "set up afresh") {
 		t.Fatalf("a stopped item resumed: %v\n%s", err, out)
+	}
+
+	// A LAST PASS WITH NOTHING NEW RUNS NOTHING AND PUBLISHES NOTHING TWICE.
+	before = j.read("reports/inbox-report.md")
+	notesBefore := j.read("marketing/review-notes.md")
+	if out := j.ok("standing", "check"); !strings.Contains(out, "nothing was due") && !strings.Contains(out, "checked") {
+		t.Fatalf("the idle pass: %s", out)
+	}
+	j.expectRuns(inbox, 8)
+	j.expectRuns(review, 1)
+	if j.read("reports/inbox-report.md") != before || j.read("marketing/review-notes.md") != notesBefore {
+		t.Fatal("an idle pass rewrote a report")
 	}
 
 	// News for work with no conversation behind it waits in the project inbox.
@@ -206,7 +260,7 @@ func TestLocalWorkJourney(t *testing.T) {
 	}
 	t.Logf("SHOW inbox work:\n%s", j.ok("standing", "show", inbox))
 	t.Logf("SHOW review work:\n%s", j.ok("standing", "show", review))
-	t.Logf("LOCALWORK RECEIPT scripted model firings=%d (scripted model, not live-model acceptance)", model.firings.Load())
+	t.Logf("LOCALWORK RECEIPT scripted model firings=%d rule checks=%d (scripted model, not live-model acceptance)", model.firings.Load(), model.checks.Load())
 }
 
 // ── the journey's hands ─────────────────────────────────────────────────────
@@ -240,6 +294,13 @@ type occurrenceView struct {
 		Path   string `json:"path"`
 		SHA256 string `json:"sha256"`
 	} `json:"published"`
+	RuleCheck *struct {
+		Verdict string `json:"verdict"`
+		Quote   string `json:"quote"`
+		First   string `json:"first"`
+		Rewrote bool   `json:"rewrote"`
+		Held    string `json:"held"`
+	} `json:"ruleCheck"`
 }
 
 type showRecord struct {
@@ -291,6 +352,22 @@ func (j *journey) addWork(words, brief, watch, report, folder string) string {
 func (j *journey) check() {
 	j.t.Helper()
 	j.t.Logf("check: %s", strings.TrimSpace(j.ok("standing", "check")))
+}
+
+// checkExit runs one pass and answers its output and exit status, for the
+// passes that are meant to end unfinished.
+func (j *journey) checkExit() (string, int) {
+	j.t.Helper()
+	out, err := j.run("standing", "check")
+	var exit *exec.ExitError
+	switch {
+	case err == nil:
+		return out, 0
+	case errors.As(err, &exit):
+		return out, exit.ExitCode()
+	}
+	j.t.Fatalf("aforge standing check: %v\n%s", err, out)
+	return out, -1
 }
 
 func (j *journey) runs(id string) []runRecord {
@@ -489,12 +566,21 @@ func scriptedEnv(home, url string) []string {
 type scriptedModel struct {
 	url     string
 	firings atomic.Int64
+	checks  atomic.Int64
 	hang    atomic.Bool
 	hanging chan struct{}
 }
 
 var changeLine = regexp.MustCompile(`(?m)^(added|modified|removed)  (\S+)$`)
 var focusLine = regexp.MustCompile(`FOCUS: (\w+)`)
+
+// The script's reading of the one rule it knows how to check. It is the TEST'S
+// stand-in for a model's judgment, keyed to this fixture on purpose; aforge's
+// own check has no pattern in it and reads the rule's words with a model.
+var emailAddress = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
+
+// rulesCheckLead is the start of aforge's instruction to its report check.
+const rulesCheckLead = "You check one report against the rules"
 
 func newScriptedModel(t *testing.T) *scriptedModel {
 	m := &scriptedModel{hanging: make(chan struct{}, 4)}
@@ -552,6 +638,48 @@ func (m *scriptedModel) serve(w http.ResponseWriter, r *http.Request) {
 		if message.Role == "tool" && i > last {
 			answered = content
 		}
+	}
+	// THE CHECK BEFORE PUBLICATION: the script finds an address in the report
+	// when the Launch rule is among the rules it was given.
+	if len(body.Messages) > 0 && strings.HasPrefix(text(body.Messages[0].Content), rulesCheckLead) {
+		m.checks.Add(1)
+		draft := ask
+		if at := strings.Index(draft, "<<<\n"); at >= 0 {
+			draft = draft[at+4:]
+		}
+		if at := strings.Index(draft, "\n>>>"); at >= 0 {
+			draft = draft[:at]
+		}
+		if found := emailAddress.FindString(draft); found != "" && strings.Contains(ask, ruleLaunch) {
+			verdict, _ := json.Marshal(map[string]any{"kept": false, "rule": ruleLaunch, "quote": found, "why": "it quotes an email address"})
+			m.reply(w, body.Stream, "", "", string(verdict))
+			return
+		}
+		m.reply(w, body.Stream, "", "", `{"kept": true}`)
+		return
+	}
+	// THE ONE CORRECTION: the script redacts the quoted words from its last
+	// report — unless that report carries KEEP-RAW, which it will not change.
+	if len(body.Tools) > 0 && strings.HasPrefix(ask, "RULE CHECK:") {
+		previous := ""
+		for _, message := range body.Messages {
+			if message.Role == "assistant" {
+				if said := text(message.Content); strings.TrimSpace(said) != "" {
+					previous = said
+				}
+			}
+		}
+		quote := ""
+		for _, line := range strings.Split(ask, "\n") {
+			if strings.HasPrefix(line, "- the report says: ") {
+				quote = strings.TrimPrefix(line, "- the report says: ")
+			}
+		}
+		if quote != "" && !strings.Contains(previous, "KEEP-RAW") {
+			previous = strings.ReplaceAll(previous, quote, "[redacted]")
+		}
+		m.reply(w, body.Stream, "", "", previous)
+		return
 	}
 	// Only the firing's own turn is scripted: it carries tools and the report
 	// instruction. Everything else a session asks for gets a plain answer.
