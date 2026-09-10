@@ -77,7 +77,7 @@ The first step that fails prints `DEMO FAILED`, then the item's own account of t
 ## Receipts
 
 Source commits: `63609b5a4`, `3afdba568`, `b427dde07`, `62bd2f9fc`, `178db0eed`,
-`f651acd9a`, `d73ce259a`, `9cc7b638c`; docs and receipts follow in their own commits.
+`f651acd9a`, `d73ce259a`, `9cc7b638c`, and `c0de4d8f9` (final review 425); docs and receipts follow in their own commits.
 
 Deterministic, scripted model (not live-model acceptance):
 - Final focused validation: `validation/wave03-validate.log` (script `validation/wave03-validate.sh.txt`). **All 11 steps passed, STATUS 0, with 0 skips**, at `7c3312539`: tracked tree clean, source identical to `9cc7b638c`, 2026-09-10 20:49:33–20:51:17 UTC, host `spark`, aarch64, go1.26.5. The journey logged `firings=9 rule checks=11`. It records the revision, host, per-step PASS/FAIL and time for each step:
@@ -97,11 +97,49 @@ Real model (`deepseek/deepseek-v4-flash` on OpenRouter), one call at a time:
 | live3 | `f651acd9a` | `DEMO PASSED` with strict assertions; the rule check ran on every report (`kept`). Both reports opened with the model's narration in the same turn, which was fixed by the `<report>` delimiter in `d73ce259a`. | $0.0083 |
 | rules check | `d73ce259a` | The real model marked the live2 report broken, quoting `priya@example.com, +1 555 0100`. It kept the redacted version, and did not hold back a report on a rule about work that a report cannot show. | <$0.0001 |
 | live4 | `d73ce259a` | **The correction worked live.** The first draft quoted `priya@example.com`; the check found it, the run was sent back once, and the published report had no contact details. **`DEMO FAILED` at the Marketing review**, with check exit 4: the model wrote its report, then called `write` on the report path, was refused (unattended), and apologised, so the run waited on the person. Fixed in `9cc7b638c`. | $0.0135 (usage ledger) |
-| live5 | `9cc7b638c` | **`DEMO PASSED`**, every strict assertion held: rule check `kept` on all four reports, no contact details, a table after the edit, pause held back and resume caught up, the review cited spec lines, the copy was unchanged, stop was final, and an idle pass rewrote nothing. Both reports were clean, with no narration. | $0.0079 (13 calls) |
+| live5 | `9cc7b638c` | **`DEMO PASSED`**, every strict assertion held: rule check `kept` on all four reports, no contact details, a table after the edit, pause held back and resume caught up, the review cited spec lines, the copy was unchanged, stop was final, and an idle pass rewrote nothing. Both reports were clean, with no narration. Superseded by live6: final review 425 then found two publish-path blockers at this revision. | $0.0079 (13 calls) |
+| live6 | `1c7012818` (source `c0de4d8f9`) | **`DEMO PASSED`**, every strict assertion held (`validation/wave03-live6.log`). It also **re-observed the self-write live**: inbox run 0003 called `write` on `reports/inbox-report.md`, was refused, then replied with a closed `<report>` block, and aforge published that block, not the apology in front of it. Both reports were clean. | $0.0114 (13 calls) |
 
-Logs, ANSI-stripped, are in `validation/`: `wave03-live2.log` (the violation), `wave03-live3.log`, `wave03-live4.log` (the live correction and the failure), `wave03-live5.log` (the pass) and `wave03-rules-check-live.log`. Live spend in this wave is well under $0.10 of the $5 limit, with one call at a time. The model was `deepseek/deepseek-v4-flash` throughout.
+Logs, ANSI-stripped, are in `validation/`: `wave03-live2.log` (the violation), `wave03-live3.log`, `wave03-live4.log` (the live correction and the failure), `wave03-live5.log`, `wave03-live6.log` (the final pass) and `wave03-rules-check-live.log`. Paid usage across the wave, from the usage ledgers and logs, is about $0.055 (live1–live6 plus the rules check) of the $5 limit, with one call at a time. The model was `deepseek/deepseek-v4-flash` throughout.
 
-What live acceptance does and does not show: live5 shows the whole journey on a real model at `9cc7b638c`. The live correction was observed in live4, one commit earlier. The refused own-report write that live4 hit is fixed and covered by `TestARefusedWriteOfTheRunsOwnReport…` and by the binary journey's review step. live5's model did not repeat that behaviour, so the fix was not re-observed live. No run was repeated to get a pass: each rerun followed a fix made for the evidence of the run before.
+What live acceptance does and does not show: live6 shows the whole journey on a real model at the final source. It includes a live refused self-write that still published a closed report. The live rules correction was observed in live4. The publish-decision failures (a limit, an unclosed report, a self-write with no report) are shown by the deterministic regressions below, not live: a real model does not produce them on demand. No run was repeated to get a pass: each rerun followed a fix made for the evidence of the run before.
+
+## Final review 425 — who may publish, and on what evidence
+
+Two blockers were in the publish path at `9cc7b638c`:
+1. A refused write of the run's own report, followed by an apology with no report lines, published the apology.
+2. A run stopped at its step or spending limit published whatever it had written. The limit's interrupt ends the turn normally, not with an error, so the cut-off guard never saw it. The same held for a report opened and never closed, and for a limit reached during the rules correction, because the check received `capped` by value.
+
+**The shape chosen.** The run's evidence is now one value, `firingEnd` (`internal/session/standing_publish.go`). The run's one event reader fills it: last words, final words, the last report block and whether it was closed, the question for a person, the turn error, saved, limit, and a refused own-report write. One method, `firingEnd.withheld`, answers "may this run publish, and if not, why not" with a named reason: `withheldForAPerson`, `withheldCutOff`, `withheldAtALimit`, `withheldUnclosed`, `withheldSelfWrite` or `withheldNoReport`. The outcome and its person-facing line (`firingEnd.outcome` / `why`) read that answer, the publication requires it to be `notWithheld`, and it is read again after the correction turn.
+
+- A limit withholds even a closed report.
+- A closed report stands even beside a refused self-write.
+- An unclosed report is no report.
+- A run that said nothing and saved nothing comes to nothing, as before.
+
+No new persisted field, outcome kind or user-visible state was added: a withheld run is `failed`, with its reason's line in `outcomeText`.
+
+| Change | Effect | Evidence |
+| --- | --- | --- |
+| Refused own-report write, no closed report | `failed`: `the run tried to write its report instead of replying with it; the previous report is unchanged`. The write stays refused, and its content is never used. | `TestARefusedWriteOfItsOwnReportWithNoReportLinesPublishesNothing` |
+| Step or spending limit | `failed`: `the run reached its step or spending limit before it finished; the previous report is unchanged` | `TestARunStoppedAtItsStepLimitPublishesNothing`, `TestACorrectionStoppedAtTheStepLimitPublishesNothing` |
+| Unclosed `<report>` | `failed`: `the run's report was never finished — it has no closing line; …` | `TestAReportOpenedAndNeverClosedIsNotPublished`; `delimitedReport` table (the old "cut before the close" case now expects no report) |
+| Closed report beside a refused self-write | Still published (live4's case) | `TestARefusedWriteOfTheRunsOwnReportIsNotAQuestionForThePerson`; live6 run 0003 |
+| Recovered-record line | `whether its note was delivered, and what it cost, is not known` | `TestAnOccurrenceThatPublishedBeforeItsProcessDied…` |
+
+**Old logic.** The four new tests were run against `9cc7b638c` in a temporary detached worktree, with only the new test file copied in. All four FAIL there: the apology, the text written after the limit, and half a page were each published (`validation/wave03-publish-old-logic.log`). They pass at `c0de4d8f9`.
+
+**Commands and results at `1c7012818`** (tracked tree clean; source `c0de4d8f9`), Spark, `GOMAXPROCS=4 GOFLAGS=-p=2`:
+
+```sh
+bash validation/wave03-validate.sh.txt   # vet, vet -tags e2e, standing/workspace/workspaceview/manual,
+                                         # selected session + cmd tests, untagged e2e, make test-laws,
+                                         # make changelog-check, make build, make test-packed-manual,
+                                         # TestLocalWorkJourney
+DEMO_DIR=/tmp/opus-localwork/live6 scripts/demo-local-work.sh
+```
+
+11/11 PASS, STATUS 0, 0 skips, 22:20:35–22:21:54 UTC (`validation/wave03-validate-final.log`). live6: `DEMO PASSED`, $0.0114.
 
 ## Boundaries (stated, not hidden)
 
@@ -110,6 +148,7 @@ What live acceptance does and does not show: live5 shows the whole journey on a 
 - **A failed run is not retried automatically.** The next change starts a new run, and that run is told about the failed run's changes.
 - **Stop mid-run withholds only aforge's own last acts**, the report and the note. A tool effect that has already started is not cancelled or rolled back. A pause does not affect a run that was already admitted.
 - **An unattended run can read but cannot write or run shell commands**, because they need approval. That is why aforge publishes the report.
+- **Why a run did not publish is in `outcomeText`, not in a typed field.** A front end can read the outcome, but to learn the reason as a value it would have to parse the line. Persisting the reason is an open design question (see the lane report); it is not decided here.
 - Change detection uses size and modification time, not contents.
 - Terminal-made items do not install the background timer. They are checked by an open window, by a timer that is already on, or by `aforge standing check`.
 - T12d is only partial. Standing task runs now carry their causal parent. Tasks, forks and other executions still record `not_recorded`, and there is no global event graph.

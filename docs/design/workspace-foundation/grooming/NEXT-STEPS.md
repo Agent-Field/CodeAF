@@ -238,14 +238,20 @@ recorded after combined integration. All local builds/tests are prohibited (C25)
 ## Local-files ongoing-work wave — completed
 
 - Lane `codex/personal-e2e-opus`, base `72660bf57`, destination #662 through
-  `codex/personal-ai-backend`. Final source revision `9cc7b638c`; plan and
-  receipts are in [BUILD-WAVE-03.md](BUILD-WAVE-03.md).
-- Focused Spark validation at `7c3312539`: **PASS, STATUS 0**, 11 of 11 steps,
-  0 skips, 20:49:33–20:51:17 UTC ([receipt](validation/wave03-validate.log), which
-  records the revision, host and per-step PASS/FAIL). Deterministic binary journey `TestLocalWorkJourney`
+  `codex/personal-ai-backend`. Final source revision `c0de4d8f9`, after final
+  review 425's two publish-path blockers; plan and receipts are in
+  [BUILD-WAVE-03.md](BUILD-WAVE-03.md).
+- Focused Spark validation at `1c7012818` (source `c0de4d8f9`): **PASS, STATUS 0**,
+  11 of 11 steps, 0 skips, 22:20:35–22:21:54 UTC
+  ([receipt](validation/wave03-validate-final.log)). The earlier pass at
+  `7c3312539` is kept as [wave03-validate.log](validation/wave03-validate.log). Deterministic binary journey `TestLocalWorkJourney`
   ran with a scripted loopback model; that is not live-model acceptance.
 - Live, on `deepseek/deepseek-v4-flash`, one call at a time, well under $0.10 in total:
-  - live5 at `9cc7b638c`: `DEMO PASSED` ([log](validation/wave03-live5.log)).
+  - live6 at `1c7012818` (source `c0de4d8f9`): `DEMO PASSED`, $0.0114, including a
+    live refused self-write that published the closed report
+    ([log](validation/wave03-live6.log)).
+  - live5 at `9cc7b638c`: `DEMO PASSED` ([log](validation/wave03-live5.log)); review 425
+    then found the publish blockers at that revision.
   - live4 at `d73ce259a`: the report correction was observed live, then the demo
     failed on a refused self-write ([log](validation/wave03-live4.log)), which was fixed.
   - live2 at `b427dde07`: the privacy violation ([log](validation/wave03-live2.log));
@@ -253,7 +259,11 @@ recorded after combined integration. All local builds/tests are prohibited (C25)
   - Real-model rules check on that violation: PASS ([log](validation/wave03-rules-check-live.log)).
 - An independent review found blockers 1–2 and issues 3–5, and the symlinked-parent
   `MkdirAll` problem. All are fixed, each with a regression test; the blocker-1,
-  publish-crash and own-report-write tests fail on the old logic.
+  publish-crash and own-report-write tests fail on the old logic. Final review 425
+  found two more in the publish path: a self-write apology was published, and a
+  limit or an unclosed report still published. Both are fixed by one typed
+  publish decision; four regressions fail at `9cc7b638c`
+  ([receipt](validation/wave03-publish-old-logic.log)).
 - Boundaries kept open:
   - The rule check is a model's reading of the published report, not proof and
     not general enforcement.
