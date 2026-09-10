@@ -4,7 +4,8 @@ package session
 //
 // promptprofile.go is a second shape of fixed prefix rather than a second
 // product, so this file asks the two questions that keep it that way: is the
-// derivation the one the design named (window, seat, pin — in that order), and
+// derivation the one the ruling named (the pin, then the window, and NOTHING
+// else — no model name, no vendor, no crew seat), and
 // does each of the four doors it opens do what it says and nothing else. The
 // frontier arm's own guarantee is next door in prefixbudget_test.go
 // ([TestAFrontierShapeIsUntouchedByTheProfile]), where the number that would
@@ -72,26 +73,40 @@ func TestTheCatalogsWindowOutranksTheConfiguredOne(t *testing.T) {
 	}
 }
 
-// THE SEAT IS THE OTHER FACT, and it outranks a big window: an open-weight
-// worker model that claims a large one still reasons like a worker.
-func TestTheWorkerSeatIsLeanWhateverItsWindowClaims(t *testing.T) {
+// THE CREW'S WORKER SEAT IS NOT A TRIGGER, AND A BIG WINDOW ON IT GETS THE WHOLE
+// PAGE. An earlier draft went lean whenever the conversation rode the crew's
+// `worker` model, which is `deepseek/deepseek-v4-flash-0731` on the frugal preset
+// and `z-ai/glm-5.3-flash` on the balanced one — models served with a hundred and
+// twenty-eight thousand tokens of room. That would have dropped sections, shelved
+// `propose_task` and turned saved memories off for anybody who picked a preset and
+// then chose that same model in chat, with nothing on screen saying so. Open
+// weights are a licence, not a size.
+func TestTheWorkerSeatWithALargeWindowGetsTheFullPageByteForByte(t *testing.T) {
 	profileDir := t.TempDir()
 	seat := configpkg.TierModelAt(profileDir, configpkg.ModelTierWorker)
 	if strings.TrimSpace(seat) == "" {
 		t.Fatal("the crew has no worker model, so this test is asserting against nothing")
 	}
 
-	config := windowConfig(t, 1_000_000)
-	config.ProfileDir = profileDir
-	config.Model = seat
-	if got := config.promptProfile(); !got.lean() {
-		t.Errorf("a conversation on the worker seat %q with a million tokens of room resolved to %s", seat, got)
+	workspace := t.TempDir()
+	at := time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)
+	pageFor := func(model string) string {
+		t.Helper()
+		config := Config{Workspace: workspace, Model: model, ContextWindow: 128_000, ProfileDir: profileDir}
+		if got := config.promptProfile(); got.lean() {
+			t.Fatalf("a 128,000-token window on %q resolved to %s", model, got)
+		}
+		return renderSystemAt(config, at)
 	}
-	// AND NOTHING ELSE IS THE WORKER SEAT. The predicate is an exact match
-	// against the crew's own row, not a guess about which vendors are small.
-	config.Model = seat + "-not-the-seat"
-	if got := config.promptProfile(); got.lean() {
-		t.Errorf("%q was read as the worker seat", config.Model)
+	if pageFor(seat) != pageFor("test/model") {
+		t.Errorf("the crew's worker model %q renders a different page from any other 128k model", seat)
+	}
+
+	// AND THE WINDOW STILL DECIDES ON THAT SAME MODEL: served small, it is lean,
+	// because what makes a model lean is the room it has and nothing else.
+	small := Config{Workspace: workspace, Model: seat, ContextWindow: 8_192, ProfileDir: profileDir}
+	if got := small.promptProfile(); !got.lean() {
+		t.Errorf("%q on an 8,192-token window resolved to %s", seat, got)
 	}
 }
 
