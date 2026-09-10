@@ -17,8 +17,9 @@ import (
 )
 
 // Version 1 was collections and memberships. Version 2 adds shared sourced
-// context beside them, without touching a single version 1 row.
-const schemaVersion = 2
+// context beside them. Version 3 adds explicit governing placements, without
+// promoting any existing reference membership into governing scope.
+const schemaVersion = 3
 const applicationID = 0x4146434c // AFCL distinguishes this store from optional memory.
 
 // The version 1 tables, spelled exactly as version 1 created them. A store that
@@ -212,16 +213,21 @@ func (s *Store) initialize() error {
 			return err
 		}
 		return tx.Commit()
-	case app == applicationID && version == 1:
-		// AN UPGRADE MUST FIND THE OLD STORE INTACT BEFORE IT ADDS ANYTHING, so a
-		// database that claims version 1 with a damaged half of that schema is
-		// refused rather than quietly completed at the new version. The whole
-		// upgrade — the new tables and the version stamp — is this one immediate
-		// transaction, so an interrupted process leaves a working version 1 store.
-		if err := verifyCollectionSchema(tx); err != nil {
-			return fmt.Errorf("refusing to upgrade a damaged version 1 store: %w", err)
+	case app == applicationID && (version == 1 || version == 2):
+		// AN UPGRADE MUST FIND THE OLD STORE INTACT BEFORE IT ADDS ANYTHING.
+		// Every table addition and the version stamp share this immediate
+		// transaction, so a failed upgrade leaves the previous schema intact.
+		if version == 1 {
+			if err := verifyCollectionSchema(tx); err != nil {
+				return fmt.Errorf("refusing to upgrade a damaged version 1 store: %w", err)
+			}
+			if _, err := tx.Exec(contextSchema); err != nil {
+				return err
+			}
+		} else if err := verifyContextSchema(tx); err != nil {
+			return fmt.Errorf("refusing to upgrade a damaged version 2 store: %w", err)
 		}
-		if _, err := tx.Exec(contextSchema); err != nil {
+		if _, err := tx.Exec(placementSchema); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version=%d", schemaVersion)); err != nil {
@@ -240,7 +246,7 @@ func (s *Store) initialize() error {
 	if tables != 0 {
 		return errors.New("this database belongs to another feature; choose a separate collections database")
 	}
-	if _, err := tx.Exec(collectionSchema + contextSchema); err != nil {
+	if _, err := tx.Exec(collectionSchema + contextSchema + placementSchema); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d", applicationID, schemaVersion)); err != nil {
@@ -252,6 +258,14 @@ func (s *Store) initialize() error {
 // verifySchema reads every table this version depends on. A store is only
 // reported as open once all of them answer; a missing half is never an empty set.
 func verifySchema(q schemaReader) error {
+	if err := verifyContextSchema(q); err != nil {
+		return err
+	}
+	_, err := q.Exec("SELECT collection_id,kind,ref_id,session_id,target_collection FROM placements LIMIT 0")
+	return err
+}
+
+func verifyContextSchema(q schemaReader) error {
 	if err := verifyCollectionSchema(q); err != nil {
 		return err
 	}
