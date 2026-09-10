@@ -55,8 +55,11 @@ func TestATabWearsWhatChangedSinceYouLeftThatPlace(t *testing.T) {
 	if len(brain.asked) != 1 || !brain.asked[0].Truncate(time.Second).Equal(left.UTC().Truncate(time.Second)) {
 		t.Fatalf("the delta was measured from %v, want the look stamp %v", brain.asked, left)
 	}
-	if bar := plain(a.placeTabBar(160, false, a.pal)); !strings.Contains(bar, "memory 3") {
-		t.Fatalf("the bar does not carry the count: %q", bar)
+	// MEMORY IS OFF THE BAR, SO ITS NUMBER IS ON THE MAP — the one row that
+	// draws every place with its digit — and on the bar the moment you stand in
+	// it (pages.go's [barPages]).
+	if bar := plain(a.placeTabBar(160, true, a.pal)); !strings.Contains(bar, itoa(placeDigitOf(pageMemory))+" memory 3") {
+		t.Fatalf("the map does not carry the count: %q", bar)
 	}
 }
 
