@@ -15,6 +15,11 @@ __pycache__/
 *.aux
 harnesses/
 bench/swarm/results/
+# The prompt-diet bench keeps a whole worktree, a built binary and every screen
+# of a TUI run under its own label. It is evidence for one comparison, not
+# history: the numbers that outlive it are written into
+# docs/design/prompt-diet/BENCH.md by hand.
+bench/prompt-diet/out/
 # The manuals are generated for packed release builds. Their Markdown folders
 # are the tracked source; committing these shared binaries causes every branch
 # that documents a feature to conflict with every other one.
