@@ -227,3 +227,15 @@ A subsequent explicitly requested [baseline review](NEXT-STEPS.md) found the
 reviewed draft and dev standing tick/store files byte-identical. This strengthens
 the inference of shared exposure; it is not a fresh execution of the reproducer
 on dev. The baseline review also records actual integration overlap and conflicts.
+
+
+## First repair validated — 2026-09-10
+
+R1 and its related stale-control/configuration writeback cases are repaired in
+combined code/test revision `55bfc0118ff9371b9abd3a2524e8dbb3930bb04d`.
+Spark job `20260910-154640-000411` passed the small backend package suites,
+selected session integration/control cases and `make build`. See the
+[retained receipt](validation/lifecycle-functional-pass.log) and
+[updated checklist](NEXT-STEPS.md). This supersedes R1's earlier “not fixed”
+status, not its historical evidence or the remaining architecture findings.
+Broad tui3/UI/model/connector acceptance remains deferred at the user's request.

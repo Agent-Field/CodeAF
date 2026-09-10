@@ -1,0 +1,24 @@
+# job    20260910-154640-000411
+# cwd    /home/santosh/work/af-personal-ai-integration
+# cmd    GOMAXPROCS=4 GOFLAGS=-p=2 make test PKGS="./internal/standing ./internal/workspace ./internal/workspaceview" TEST_FLAGS="-count=1 -timeout=3m" BUILD_REV=55bfc0118 BUILD_DIRTY=false && GOMAXPROCS=4 GOFLAGS=-p=2 make test-focus PKGS=./internal/session RUN="^(TestOrganization|TestSharedContext|TestCompletionReaderSeesExactSmallWriteAndItsOutcome|TestWriteEvidence|TestTheLiveSearchPairTravelsOntoEveryKindOfChild|TestStandingOneDownRecordsThatYouStoppedIt|TestPauseIsAToggleAndAStoppedOrderIsNotResumedByIt|TestAnExceptionIsMadeAtYourAltitudeRelativeToTheOrder|TestStandingStopsByThePersonsOwnWords)" TEST_FLAGS="-count=1 -timeout=3m" BUILD_REV=55bfc0118 BUILD_DIRTY=false && GOMAXPROCS=4 GOFLAGS=-p=2 make build BUILD_REV=55bfc0118 BUILD_DIRTY=false
+# start  2026-09-10T15:46:42Z
+# ---
+[fleet-guard] cgroup memory cap 107G
+fatal: not a git repository: /Users/santoshkumar/Documents/agentfield/code/aforge-v2/.git/worktrees/af-personal-ai-integration
+fatal: not a git repository: /Users/santoshkumar/Documents/agentfield/code/aforge-v2/.git/worktrees/af-personal-ai-integration
+go test -timeout 15m -count=1 -timeout=3m -skip '^(TestEveryLockInTheGuardedTreeUnlocksFromADefer)$' ./internal/standing ./internal/workspace ./internal/workspaceview
+ok  	github.com/Agent-Field/aforge-v2/internal/standing	0.152s
+ok  	github.com/Agent-Field/aforge-v2/internal/workspace	5.547s
+ok  	github.com/Agent-Field/aforge-v2/internal/workspaceview	0.202s
+fatal: not a git repository: /Users/santoshkumar/Documents/agentfield/code/aforge-v2/.git/worktrees/af-personal-ai-integration
+fatal: not a git repository: /Users/santoshkumar/Documents/agentfield/code/aforge-v2/.git/worktrees/af-personal-ai-integration
+go test -timeout 15m -count=1 -timeout=3m -run '^(TestOrganization|TestSharedContext|TestCompletionReaderSeesExactSmallWriteAndItsOutcome|TestWriteEvidence|TestTheLiveSearchPairTravelsOntoEveryKindOfChild|TestStandingOneDownRecordsThatYouStoppedIt|TestPauseIsAToggleAndAStoppedOrderIsNotResumedByIt|TestAnExceptionIsMadeAtYourAltitudeRelativeToTheOrder|TestStandingStopsByThePersonsOwnWords)' -skip '^(TestEveryLockInTheGuardedTreeUnlocksFromADefer)$' ./internal/session
+ok  	github.com/Agent-Field/aforge-v2/internal/session	1.221s
+fatal: not a git repository: /Users/santoshkumar/Documents/agentfield/code/aforge-v2/.git/worktrees/af-personal-ai-integration
+fatal: not a git repository: /Users/santoshkumar/Documents/agentfield/code/aforge-v2/.git/worktrees/af-personal-ai-integration
+# Generators execute on the build host, even when aforge targets another OS.
+env -u GOOS -u GOARCH go generate ./internal/manual
+go build -tags=aforge_packed_manual -trimpath -ldflags="-s -w -X github.com/Agent-Field/aforge-v2/internal/buildinfo.rev=55bfc0118 -X github.com/Agent-Field/aforge-v2/internal/buildinfo.dirty=false -X github.com/Agent-Field/aforge-v2/internal/buildinfo.builtAt=2026-09-10T15:46:59Z" -o bin/aforge ./cmd/aforge
+# ---
+# exit   0
+# end    2026-09-10T15:47:11Z

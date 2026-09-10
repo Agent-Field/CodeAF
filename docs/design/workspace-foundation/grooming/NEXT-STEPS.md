@@ -14,14 +14,14 @@ A checked item means completed with the evidence named here, not merely discusse
 - [x] Run existing workspace/workspaceview/session/standing package suites on Spark:
   job `20260910-150118-000406` passed.
 - [x] Reproduce concurrent stop/pause overwrite on Spark:
-  job `20260910-150249-000407` failed as documented. **A candidate fix is implemented; fresh validation is pending.**
+  job `20260910-150249-000407` failed as documented. **The fix now passes the focused combined validation below.**
 
 ## Current: settle decisions and choose the baseline
 
 - [x] T01a — Complete two independent baseline reviews, including an isolated
   merge-tree simulation. Findings and differing recommendations are recorded below.
 - [x] T01b — Baseline route accepted: preserve the draft and integrate dev in an
-  isolated candidate. Implementation is in progress; parent draft remains intact.
+  isolated candidate. Integrated and validated; existing #662 remains the single implementation draft.
 - [x] T02a / D11 — Typed backend entities and composable components accepted (C19).
 - [ ] T02b / D12 — Independent persistent identities remain to settle.
 - [ ] T03 — Settle accepted direction, governing scope and conflicts (D01/D02).
@@ -45,12 +45,13 @@ A checked item means completed with the evidence named here, not merely discusse
   Runtime validation is tracked separately below.
 - [x] T11a — Candidate implementation and manual completed; owner operations,
   stale-write detection, runtime delta merge and schedule reconciliation reviewed.
-  Source commit `5186fda3e`, integrated as `3f57455ca`; not yet runtime-confirmed.
+  Source commit `5186fda3e`, integrated as `3f57455ca`; confirmed by the focused Spark run below.
 - [x] T11b1 — Independent regression suite written; baseline Spark job
   `20260910-153136-000409` fails all five top-level tests (13 scenarios), including
   unwanted subsequent execution. Test commit `8dedb0bb6`; runtime 0.020s.
-- [ ] T11b2 — Root validates the combined corrected candidate on Spark; tests may
-  adapt to the explicit production control API without weakening assertions.
+- [x] T11b2 — Combined candidate `55bfc0118` passed Spark job
+  `20260910-154640-000411`: small backend packages, selected session cases and
+  `make build`. Independent tests use the production status API.
 - [ ] T11c — Broader admission/cancellation/recovery contracts remain future work.
 - [ ] T12 — Unify governing context across chat, workers, independent checking and
   scheduled runs, with exact sources and revision-aware effective inputs.
@@ -65,7 +66,7 @@ A checked item means completed with the evidence named here, not merely discusse
 For each delivery item, record the exact candidate revision, Spark job, result,
 remaining failures and integration destination. Passing package tests is not
 passing model/connector acceptance. Existing draft/manual/release restrictions
-remain in force; no merge, release or replacement branch has been performed here.
+remain in force; no merge into dev, release or live deployment has been performed here.
 
 ## Decision session order
 
@@ -83,7 +84,7 @@ remain in force; no merge, release or replacement branch has been performed here
 User-facing names and presentation remain separate and open. This agenda does not
 reopen confirmed product behavior merely because its implementation is unsettled.
 
-## Baseline review — completed, route pending
+## Baseline review — completed, recommended route accepted
 
 The user explicitly requested both subagent reviews. The source-retention reviewer
 favored a fresh dev candidate with a selective final patch; the integration reviewer
@@ -145,29 +146,35 @@ branches/worktrees are temporary integration tools, not separate product drafts.
 
 Current baseline integration commit: `1cfdbd28be78e29d28eac6c63d25b1f766af95e3`,
 parents backend `c63e03b7` and dev `996117314`. Independent semantic review found
-no introduced merge regression; the build and functional checks remain pending.
+no introduced merge regression; the subsequent build and functional checks passed.
 
 The [independent old-behavior receipt](validation/lifecycle-baseline.log) is
 retained separately from the earlier two-case reproducer. It is failing baseline
 evidence, not a test result for the implementation candidate.
 
-## Current candidate and validation blocker
+## Completed first functional slice
 
-- Candidate: `codex/personal-ai-integration`, pushed without opening another PR.
+- Integrated through the temporary `codex/personal-ai-integration` candidate;
+  no additional PR was opened. The maintained destination is #662.
 - Exact code/test revision submitted: `55bfc0118ff9371b9abd3a2524e8dbb3930bb04d`.
 - Independent tests: original `8dedb0bb6`, follow-up `2234b58b2`; final fixture
   covers 17 scenarios, alongside seven narrow owner tests.
 - Spark job: `20260910-154640-000411`. Command runs small standing/workspace/view
   package suites, selected session control/context/history/evidence cases, then
   `make build`. No tui3 test or broad UI/E2E acceptance is included.
-- Retrieving its output hit a renewed Tailscale SSH authentication check. The
-  user has been given the sign-in link. Outcome remains **unknown**, not passing.
-- After authentication: retrieve the existing job (do not submit a duplicate),
-  fix any failures, update the existing #662 branch and close #663 only after
-  its records are retained there. The candidate already includes that history.
+- Result: **PASS**, exit 0, 2026-09-10 15:46:42–15:47:11 UTC (29 seconds).
+  Standing 0.152s, workspace 5.547s, workspaceview 0.202s, selected session 1.221s.
+  The remaining time includes compilation and the normal packed-manual build.
+- [Retained full receipt](validation/lifecycle-functional-pass.log). Build revision
+  is `55bfc0118`. Later bookkeeping changes affect documentation only; runtime
+  and test source remain identical to that revision.
+- Transported worktree metadata emitted Git-path warnings; the logged commands,
+  package results and binary build all completed successfully. This is not broad
+  merge acceptance or a live-model/connector E2E claim.
 - Deployment boundary: standing schema 2 reads legacy schema 1 and upgrades on
   write. Old engines/tickers must be stopped and restarted together; no live
   installation or user-state migration has been performed by this iteration.
 
-The main draft's description links this candidate and reports the pending result.
+The main draft's description records the integrated baseline, passing result and
+remaining target work. Grooming history is retained before closing superseded #663.
 Broad CI remains deferred under C21; candidate publication is not merge approval.

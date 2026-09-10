@@ -15,7 +15,9 @@ dev `996117314` has been integrated into an isolated candidate retaining backend
 history and control behavior is preserved alongside organization/context.
 
 The first functional fix addresses standing control-state writeback. Candidate
-validation and exact final revision are recorded in the checklist. Existing
+`55bfc0118` passed Spark job `20260910-154640-000411`: standing/workspace/view
+packages, selected session cases and `make build`. The full receipt and final
+bookkeeping state are recorded in the checklist. Existing
 historical receipts below do not validate the combined candidate automatically.
 The user explicitly deferred tui3 and similarly expensive broad UI/E2E tests;
 focused functional checks run on Spark. Keep broad acceptance visibly deferred.
