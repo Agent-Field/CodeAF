@@ -32,7 +32,8 @@ thirty-six blank rows and both `/help` and `/manual` were below the fold. It is 
 floor now: on a tall terminal the whole table is on the screen at once, on a short one the
 list is clamped so the status line and a row of conversation survive, and the list scrolls
 under the cursor either way. **Where rows are still hidden the list says how many**, in the
-same `▸ 25 more` line the search place and the spend place draw. At phone width fewer rows
+same `▸ 25 more` spelling the search place and the spend place draw, though there it is
+a door and here it is only a count. At phone width fewer rows
 show, each with its description on its own line. Rows highlight under the mouse pointer,
 but a click does not run a row — this list has no mouse commit.
 

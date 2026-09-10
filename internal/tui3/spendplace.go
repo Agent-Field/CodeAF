@@ -31,6 +31,9 @@ const (
 // The original lines are deliberately absent: once the window has been read,
 // no later draw should be able to count a line outside it by accident.
 type spendReading struct {
+	// unfolded is whether `what it was for` draws every subject rather than the
+	// first [spendSubjectCap] and a fold line ([spendReading.unfolding]).
+	unfolded bool
 	window   session.UsageWindow
 	now      time.Time
 	totals   session.DaySpend
@@ -203,6 +206,16 @@ type spendStop struct {
 	// (place_spend.go's [app.openSpendRow]). It is a flag and not a fourth
 	// subject kind because it is not a subject at all: nothing was spent on it.
 	rails bool
+	// fold marks the fold line under `what it was for`, whose `enter` opens the
+	// rest of the subjects or folds them back.
+	fold bool
+}
+
+// unfolding is this reading with the subjects' fold open or shut. It answers a
+// copy, for [spendReading.naming]'s reason.
+func (r spendReading) unfolding(open bool) spendReading {
+	r.unfolded = open
+	return r
 }
 
 // naming hands the reading the titles for the ids it is holding. It answers a
@@ -333,6 +346,7 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 	}
 	on := func(at int) bool { return lit != nil && lit(at) }
 	inner := width - len(placeLead)
+	fold := -1
 	var out []string
 	// doors are recorded BY THE INDEX THE ROW LANDED AT, taken as it is appended.
 	// [appendPlaceSection] eats a trailing blank before it writes a heading, so a
@@ -383,20 +397,27 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 	if len(r.subjects) > 0 {
 		out = appendPlaceSection(out, placeLead+placeHeading(fit(spendSubjectsWord, inner), pal))
 		shown := len(r.subjects)
-		if shown > spendSubjectCap {
+		if shown > spendSubjectCap && !r.unfolded {
 			shown = spendSubjectCap
 		}
 		for _, subject := range r.subjects[:shown] {
 			doors[len(out)] = subject
 			out = append(out, placeLead+spendSubjectRowLit(subject, r.name(subject), inner, on(len(out)), pal))
 		}
-		if more := len(r.subjects) - shown; more > 0 {
-			out = append(out, placeLead+pal.dim(fit(foldLine(more, ""), inner)))
+		// THE FOLD LINE IS A DOOR BOTH WAYS: `▸ 11 more` opens the rest where
+		// they stand and `▾ 11 fewer` puts them back, on `enter` or a click —
+		// the one fold grammar home's list and the tasks place already keep.
+		if hidden := len(r.subjects) - spendSubjectCap; hidden > 0 {
+			fold = len(out)
+			out = append(out, placeLead+placeFactInk(on(fold), pal)(fit(foldDoor(r.unfolded, hidden, ""), inner)))
 		}
 	}
 	stops := make([]spendStop, len(out))
 	for at, subject := range doors {
 		stops[at] = spendStop{subject: subject, ok: true}
+	}
+	if fold >= 0 {
+		stops[fold] = spendStop{ok: true, fold: true}
 	}
 	stops[rails] = spendStop{ok: true, rails: true}
 	return out, stops
