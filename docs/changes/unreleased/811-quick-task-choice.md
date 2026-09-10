@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: A wide READ is quick tasks and a wide CHANGE is one task — and independent pieces start in one breath
+title: A wide read is quick tasks, a wide change is one task, and independent pieces start in one breath
 pr: 811
 surface: [chat, engine, docs]
 invalidates:
