@@ -243,17 +243,51 @@ func TestAProjectOffersItsChatsAndItsFolder(t *testing.T) {
 	}
 }
 
-// `~` IS NEVER A PROJECT NAME: the home directory's row draws nothing where a
-// name would be, and so does a project that recorded no folder.
-func TestTheHomeDirectoryIsNotAProjectName(t *testing.T) {
-	if got := projectWord(session.Project{Name: "~", Path: "/home/pat"}, "/home/pat"); got != "" {
-		t.Fatalf("the home directory is called %q", got)
+// ON THE PROJECTS PANEL A FOLDER IS A PATH: the home directory's row reads `~`
+// there, because the rule that retired `~` is about a NAME standing alone on a
+// chat row — and a project that recorded no folder draws nothing.
+func TestTheHomeDirectoryIsAPathOnTheProjectsPanel(t *testing.T) {
+	if got := projectWord(session.Project{Name: "~", Path: "/home/pat"}, "/home/pat"); got != "~" {
+		t.Fatalf("the home directory's path cell reads %q, want ~", got)
 	}
 	if got := projectWord(session.Project{Name: "-bucket"}, "/home/pat"); got != "" {
 		t.Fatalf("a folderless project is called %q", got)
 	}
 	if got := projectWord(session.Project{Name: "site", Path: "/home/pat/site"}, "/home/pat"); got != "~/site" {
 		t.Fatalf("a project under home is called %q, want ~/site", got)
+	}
+}
+
+// THE LAUNCH FOLDER IS ALWAYS A ROW (DESIGN §4): a window opened in a folder
+// nobody has spoken in, on a machine with no conversations at all, still draws
+// `projects` with this folder under it — its path and no count clause.
+func TestProjectsDrawsTheLaunchFolderOverAnEmptyWorld(t *testing.T) {
+	lab := newHomeLab(t)
+	a := lab.app("")
+	a.workspace, a.tilde = lab.workspace("aforge-v2"), lab.work
+	a.width, a.height = 120, 45
+	a.openHome()
+	frame := homeText(a)
+	head, _ := homeRowOf(frame, "projects")
+	lines := strings.Split(frame, "\n")
+	if head < 0 || head+1 >= len(lines) {
+		t.Fatalf("projects is not drawn over an empty world:\n%s", frame)
+	}
+	row := lines[head+1]
+	if !strings.Contains(row, "~/aforge-v2") || strings.Contains(row, "chat") {
+		t.Fatalf("the launch folder is not the first project, bare of counts:\n%s", frame)
+	}
+	if got := len(panelRows(a, panelProjects)); got != 1 {
+		t.Fatalf("projects drew %d rows over an empty world, want the launch folder alone", got)
+	}
+}
+
+// A HEADING NEVER DRAWS OVER NOTHING: a panel with no rows and no whisper is not
+// on the page at all.
+func TestAPanelWithNoRowsAndNoWhisperDrawsNothing(t *testing.T) {
+	p := homeGridPanel{slot: homeSlotOf(panelProjects)}
+	if p.height() != 0 || len(p.lines()) != 0 {
+		t.Fatalf("an empty projects panel draws %d rows: %+v", p.height(), p.lines())
 	}
 }
 

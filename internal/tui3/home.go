@@ -662,6 +662,10 @@ type homeView struct {
 	// where [homeView.bucket] is the broad one, and the two are kept apart
 	// because the questions they answer are.
 	here string
+	// launch is the FOLDER this window is working in — the workspace the foot
+	// names — which the projects panel draws as its first row whether or not
+	// anybody has spoken there yet (homepanel_projects.go).
+	launch string
 	// gone is which project folders were NOT on the disk when the world was last
 	// read, keyed by the path [homeWhere] answers for a row. A path this map has
 	// never heard of is not gone: the map is filled from the world and only ever
@@ -895,6 +899,7 @@ func (a *app) raiseHome() tea.Cmd {
 		seen:   session.LastLook(a.looksRoot()),
 		bucket: homeBucketOf(a.file),
 		here:   homeSessionDirOf(a.file),
+		launch: a.workspace,
 		// AND THE CONVERSATION THIS WINDOW HAS ASKED FOR, if there is one.
 		// Raising home builds a fresh [homeView], and a claim that survived
 		// somebody walking to another page and back must survive with it —
@@ -1262,6 +1267,7 @@ func (a *app) newHomeView(world session.World, known bool) homeView {
 		// wears `here` instead of an age (place_home.go).
 		bucket:    homeBucketOf(a.file),
 		here:      homeSessionDirOf(a.file),
+		launch:    a.workspace,
 		tier:      a.homeTierNow(),
 		cols:      a.homeColsNow(),
 		tilde:     a.tilde,
