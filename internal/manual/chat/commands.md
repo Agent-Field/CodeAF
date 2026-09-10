@@ -987,60 +987,56 @@ conversation — drops into it. Home stays out of the way when you named a conve
 (`--session`, `aforge resume`), on a `--once` or `--host` run, and on a machine whose only
 conversation is the one already open. There is no welcome box when home greets you. Not
 greeting you is not the same as being out of reach: `/home`, or `space` twice on an empty
-box, opens it on a one-conversation machine and on an empty one alike — over `--host` it
-refuses.
+box, opens it on a one-conversation machine and on an empty one alike, and over `--host`
+it opens the far machine's.
 
 There is no argument form. There are three other ways in: **`alt+1`**, home being the first
-of seven places; **`space` twice** on an empty box; and **`tab`** from any other place. Projects are dim
-headings, one line per conversation under each: a glyph (`?` waiting on you, `◐` running,
-`✕` left unfinished, `○` at rest), the name, what it has going on, and how long since you
-spoke in it. A conversation stopped on a question sorts to the top of its project and the
-right half shows the line it is stopped on. Quiet
-conversations past the first four per project collapse to `▸ 3 more, quiet since 2d`. The
-right half shows whatever the cursor is on — its tasks, what it spent, the last thing said.
+of the four places on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
+other place.
 
-`↑`/`↓` walk, `enter` opens, `esc` closes back into the conversation you came from.
-**Typing does two things at once**: what you type is a new conversation waiting to be sent
-AND a live search over every project on the machine. The top row — `start a new
-conversation: "…"` — holds the cursor, so type-and-enter still starts a chat; one `↓` steps
-onto the matches and `enter` opens one instead. **A line that starts with `/` is the third
-thing typing can be**: it is a command, not a conversation — the command list opens over
-the box while it is typed, and enter runs it (see *Typing a slash to see the command list*).
-The foot reads exactly
-`type to search or start something new · ↑↓ pick · enter open`.
+**It is seven panels**, in one column under 110 cells, two from 110 and three from 170:
+`needs you` (every question waiting on you, a digit answers the top one from anywhere),
+`where you were` (this window's conversation, then the most recent, then
+`N more · type to find one`) and `projects` (every folder, `enter` starts a chat there) on
+the left; `running` (every task, job and firing watch), `since you left` (what landed while
+you were away), `spend` (today and the fortnight) and `next up` (reminders, soonest first)
+on the right. An empty panel keeps its heading and one dim line naming what arrives there.
+
+`↑`/`↓` walk a column, `←`/`→` cross columns, `enter` opens, `esc` closes back into the
+conversation you came from. **Typing does two things at once**: what you type is a new
+conversation waiting to be sent AND a live search over every project on the machine — the
+panels give way to the matches, with `start a new conversation: "…"` directly above the box
+holding the cursor, so type-and-enter still starts a chat. **A line that starts with `/` is
+the third thing typing can be**: a command, run rather than sent (see *Typing a slash to see
+the command list*). The foot reads exactly
+`type to search or start something new · ↑↓ pick · enter open · tab next place`.
 
 Search matches conversation names, project names, task titles and **what tasks came to** —
-the one-sentence outcome — so `postgres` finds the chat whose work mentioned it. A project
-folds its quiet conversations into `▸ 13 more, quiet since 1d`; that line is a door (`enter`
-or `→` opens it, `←` folds it), and searching sees through the fold.
+the one-sentence outcome — so `postgres` finds the chat whose work mentioned it, including
+the ones no panel is drawing.
 
-**`enter` opens any row on the screen, in any project.** The conversation you were in is
-left **open** behind it — still streaming, still running its tasks — and the new one is
-built on its own workspace with that project's own permissions, crew and spend ceiling.
-Nothing is carried across, because a second project is a second conversation rather than
-this one moving. `tab` over an empty message box goes back. Home's page has the whole of
-it under *Open another project from home*.
+**`enter` opens any conversation on the screen, in any project**, and `enter` on a
+`projects` row starts a fresh one in that folder. The conversation you were in is left
+**open** behind it — still streaming, still running its tasks — and the new one is built on
+its own workspace with that project's own permissions, crew and spend ceiling. Nothing is
+carried across, because a second project is a second conversation rather than this one
+moving. `tab` over an empty message box goes back. Home's page has the whole of it.
 
 Refusals, exactly as written:
 
 ```
-nothing here yet — say something and this fills up
 no conversation matches
 /new is unavailable here
 that folder is gone · <path>
 ```
 
-The first is not a refusal: it is what an empty home says where its rows will be, with the
-box and the keys at the foot still live — typing there offers
-`start a new conversation: "…"` as it does anywhere. It is said over `--host` too, where the
-rows are the **far** machine's and that machine may simply not have been used yet. `/new is
-unavailable here` is what the typing-to-start box says where no fresh-session seam exists.
-The last is `enter` on a project whose folder has been deleted or moved since its last
-conversation: home stays up and nothing is opened. **How many conversations this terminal
-already holds is never a refusal** — there is no cap on that.
-
-`that folder is gone` is never said over `--host`: the folders are the far machine's and this
-one cannot stat them, so nothing is claimed either way (the Places page has the whole of it).
+`no conversation matches` is a search that found nothing — the `start a new conversation`
+row is still there. `/new is unavailable here` is what the typing-to-start box says where no
+fresh-session seam exists. The last is `enter` on a row whose folder has been deleted or
+moved since its last conversation: home stays up and nothing is opened. **How many
+conversations this terminal already holds is never a refusal** — there is no cap on that.
+A task another window is running cannot be stopped from home: its `running` row says
+`another window` and offers no stop.
 
 ## /permissions — what runs without asking
 

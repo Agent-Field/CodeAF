@@ -1961,21 +1961,27 @@ conversation with `/new` changes nothing about it. It used to be shut until the 
 found somewhere else to go, and that rule is gone (the home page, *space space does
 nothing*).
 
-Once it is open: `esc` clears the box if anything is in it, and closes home otherwise ·
-`up`/`ctrl+p` and `down`/`ctrl+n` walk the rows, stepping over the headings and the section
-line · home opens with the cursor on **the conversation this window is holding**, and `↑`
-off the top of the list walks up onto **the tab bar**, from where the first `down` lands
-back on the row you left (*The tab bar is a row the cursor can stand on*) ·
-`pgup`/`pgdown` jump a screenful · `enter`
-acts on the row under the cursor · **`tab` is the next place** — home is one column now and
-there is nothing on it for `tab` to cycle · **`alt+g`** groups the list by project and
-**`alt+q`** hides everything that is neither asking nor moving, both remembered for as long
-as aforge is running and neither written to disk · `backspace`,
-`ctrl+u`, `ctrl+w`, `ctrl+b`, `ctrl+f` edit the box · with the box empty and the cursor on
-a conversation that is **waiting on you**, the digits on its chips answer that question
-where it stands (`1 allow once · 2 always · 3 deny`, and the like for the other two kinds
-— home's own page has the table) · **anything else you type goes into the box**, which
-searches the whole machine and offers to start a new conversation at the same time.
+Once it is open, **home is seven panels in one, two or three columns** (the home page has
+what each holds), and its keys are a small grammar:
+
+| Key | On home |
+| --- | --- |
+| `↑` / `↓` (`ctrl+p` / `ctrl+n`) | walk the column you are in, from one panel into the next; `↑` off the top of a column reaches **the tab bar** (*The tab bar is a row the cursor can stand on*) |
+| `←` / `→` | cross to the next column, onto the row nearest the one you left — only into a column with a row to stand on |
+| a digit | answers **the top question in `needs you`**, from anywhere on home, with no cursor move — its answers are drawn on its own row, `1 allow once  2 always  3 deny` |
+| `enter` | acts on the row under the cursor: a conversation opens, a project row starts a new chat in that folder, a `since you left` line opens its record, file or place, a spend or `next up` row opens spend or standing, a fold line opens the place it names |
+| `pgup` / `pgdown` | jump a screenful |
+| `tab` | **the next place** on the bar |
+| `esc` | clears the box if anything is in it, and closes home otherwise |
+| `alt+.` | the map |
+| anything else | goes into the box, which searches the whole machine and offers to start a new conversation at the same time |
+
+**Opening home puts the cursor on the chat you were in before this one**, so `space` `space`
+then `enter` is a switch back; a window with only one conversation opens on its own row,
+which says `here`. The panel holding the cursor marks its heading with the cursor's ground,
+which is how you tell which column your arrows are in. **`alt+g` and `alt+q` are unbound on
+home** — there is no list left to group or thin — and so is the answer strip above the box:
+the answers are on the `needs you` row itself.
 
 **`→` opens the row's verbs** on a strip drawn **directly under that row**, pushing the rest
 of the list down by its own height, and while that strip is drawn its letters are the verbs
@@ -1990,23 +1996,20 @@ While something is typed the two arrows move the caret in the box instead.
 **A letter always types**, unless the verb strip that names it is on screen — that visible
 strip is the one state where a printable key is a verb, and it is why it has to be drawn.
 Everywhere else "make me a site" comes out whole wherever the cursor is resting. The row's
-actions otherwise ride chords, which can never begin a word: **`ctrl+e` puts the
-conversation away** — it leaves the list, and typing its name is how you find it again, with
-`ctrl+e` on the found row bringing it back. **`ctrl+t`** starts a new conversation in that row's
-project (the browser's new-tab key — ctrl+n is the walk down), **`ctrl+o`** opens its
-folder, **`ctrl+y`** copies its path. On a `◦` row of the `keeping an eye on` list,
-**`ctrl+e` pauses** it, **`ctrl+x` stops it for good**, and **`ctrl+v` raises how hard that
-item thinks** one rung. **With the cursor on no row at all** — one `↑` up off the top row,
-where the card becomes the machine's own — **`ctrl+v` moves the machine-wide default**
-instead, which is the `thinking` row in `/settings`. Each chord acts on the card you are looking at — the row
-under your pointer when there is one, the cursor's row otherwise — and the card's own
-dim legend names the verbs, and the strip names the letters. The other printable exception
-is the digits on a waiting row's answer chips, which are drawn on the line above the box.
+actions otherwise ride chords, which can never begin a word, and they work from any column:
+**`ctrl+e` puts the conversation away** — it leaves `where you were`, and typing its name is
+how you find it again, with `ctrl+e` on the found row bringing it back. **`ctrl+o`** opens
+its folder and **`ctrl+y`** copies its path. **`ctrl+t`** on a conversation's row still
+starts a new one in that row's folder, though `enter` on a row of the `projects` panel is
+the way home offers now. On a standing item's row — in `needs you` while it asks, in
+`running` while it fires — **`ctrl+e` pauses** it, **`ctrl+x` stops it for good**, and
+**`ctrl+v` raises how hard that item thinks** one rung. Each chord acts on the row under
+your pointer when there is one, the cursor's row otherwise.
 
-With the mouse: a click puts the cursor on a row and a second click on that row opens it;
-a click on a `…13 more` line toggles it in one press. The wheel walks the list three rows a
-turn, and the **tab bar above the list is a control** — clicking a place's word goes there,
-and clicking a gap between two words does nothing.
+With the mouse: a click puts the cursor on a row and a second click on that row opens it.
+The wheel walks the list three rows a turn, and the **tab bar above the panels is a
+control** — clicking a place's word goes there, and clicking a gap between two words does
+nothing.
 
 **Under 60 columns those two clicks are one.** At phone width home is an inbox and a
 row's card is a full-frame sheet, so a tap selects and opens in one gesture; the sheet's
@@ -2021,42 +2024,32 @@ nowhere else**, and it says what the box is a draft *for*:
 — the folder the next conversation opens in, the model it will answer on, and the two chords
 that change them. `alt+w` walks the folder round the projects on this machine and `alt+o`
 opens the model list in home's own body; pressing either label does the same as its chord.
-The scope chip that used to sit against the right of the box row — `here ~/aforge-v2` — is
-gone from home, because the rule says the same fact better and `enter` honours this one. The
-other six places keep the chip. The line under the box is the foot, and **at rest it is
-exactly**
-`type to search or start something new · ↑↓ pick · enter open · tab next place`: four keys
-and no more. `esc` still closes home from anywhere; the resting foot does not spend a cell
-naming it, and `alt+.` draws the whole map when you want it.
+The line under the box is the foot, and **at rest it is exactly**
+`type to search or start something new · ↑↓ pick · enter open · tab next place`. `esc`
+still closes home from anywhere; the resting foot does not spend a cell naming it, and
+`alt+.` draws the whole map when you want it.
 
-On any other row the foot says what THAT row's keys do and gains the two that are true
-everywhere — `enter opens the place this happened in · alt+. map · tab next place · esc close`
-on a `since you left` line, `enter or → show them · alt+. map · tab next place · esc close`
-on the fold, and
+On a row with keys of its own the foot says what THAT row's keys do and gains the two that
+are true everywhere — `enter opens the place this happened in · alt+. map · tab next place ·
+esc close` on a `since you left` line, a spend or `next up` row, or a fold door, and
 `enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · alt+. map · tab next place · esc clear`
 on the action row — and
 `enter runs this command · ↑ ask here · ↑↑ pick a match · alt+. map · tab next place · esc clear`
-on that same row when what is typed is a slash command, because `enter` runs it rather than
-sending it (home's page has that rule whole).
+on that same row when what is typed is a slash command.
 
-**With nothing typed the list hangs from the top** and the cursor is on the conversation
-this window is in; a card stands beside it only at 136 columns and wider. **While anything
-is typed the list is a drop-up**: the action row — `start a new conversation: "…"` — is the LAST row of the list,
-with `ask here: "…"` directly above it, both directly above the box, and the matches rise
-above the pair **best one first**; the cursor starts on the action row, so one `↑` reaches
-`ask here` and a second lands on the strongest match, further `↑` walks into weaker ones,
-and `↓` walks back down toward the box. Clearing the box puts the list back at the
-top.
+**With nothing typed home is the panels**, hanging from the top. **While anything is typed
+it is one list, a drop-up**: the action row — `start a new conversation: "…"` — is the LAST
+row of the list, with `ask here: "…"` directly above it, both directly above the box, and
+the matches rise above the pair **best one first**; the cursor starts on the action row, so
+one `↑` reaches `ask here` and a second lands on the strongest match. Clearing the box puts
+the panels back. On a frame 136 columns or wider a card about the match under the cursor
+stands to the right of the list while you type; at rest there is no card.
 
-The right-hand preview is there in both shapes and never moves. It follows the cursor
-through a filter too, and is empty while the cursor is on the action row.
-
-**On an `ask here` row** — one of the `?` rows an errand leaves on the column — the preview
-is the exchange itself, and the line under the box reads
+**On an `ask here` row** — the `?` rows an errand leaves at the top of `where you were` —
+the line under the box reads
 `↑↓ move · enter or tab answer this ask here · esc close`. `enter` or `tab` hands the
-keyboard to the pane, where it reads `enter sends a follow-up · tab or esc back to the list`;
-`esc` or `tab` hands it back. On a window too narrow for two columns that pane is drawn over
-the list instead of beside it, and `esc` brings the list back (*Asking from home*).
+keyboard to the exchange's pane, where it reads `enter sends a follow-up · tab or esc back to the list`;
+`esc` or `tab` hands it back (*Asking from home*).
 
 Home is modal like the panels above: while it is up, every chord except `ctrl+c` belongs
 to it. `ctrl+c` does not close home — it arms the door, and a second press within 1.5
@@ -2703,7 +2696,7 @@ reading simply does not exist and the chord does nothing there.
 | Where | What it does |
 |---|---|
 | Message box, or the task roster holding the keyboard | Start a new chat — the start page the tab strip's `+` opens. The roster gives the keyboard back on the way |
-| Home | Start a fresh conversation **in the folder of the row under the cursor** |
+| Home | Start a fresh conversation **in the folder of the conversation row under the cursor** — `enter` on a `projects` row is the way home offers it |
 | Model picker only | Cycle the reasoning effort |
 
 It used to hand the keyboard to the task roster everywhere. **That is `alt+t` (`⌥t`) now** —
@@ -2762,7 +2755,7 @@ and it moves the rung of **the thing you are standing on**. One chord, three sco
 | The message box, typing or empty | **This conversation's** rung — the one on the legend above the box, beside the model, see *The thinking chip above the message box* |
 | The task roster holds the keyboard (`alt+t`) and the cursor is on a task | That task's rung |
 | You are inside a task's page | That task's rung |
-| Home, with the cursor on a `◦` standing item row or its card | That item's rung |
+| Home, with the cursor on a standing item's row — in `needs you` or `running` | That item's rung |
 
 Everywhere else it does nothing at all. A conversation row on home is deliberately not on
 the list: a conversation's rung belongs to the window that conversation is open in, where
@@ -2771,7 +2764,7 @@ by `/effort`.
 
 **The machine's own default is not one of the scopes.** It used to be — home had a state
 where the cursor stood on no row at all and the right-hand side became a card about the
-machine, and this chord moved the install's rung from there. `↑` off the top of home's list
+machine, and this chord moved the install's rung from there. `↑` off the top of a column on home
 reaches the **tab bar** now, so that card is gone. To change how hard this machine thinks by
 default, open `/settings` and walk to the **`thinking`** row, which is the setting both
 roads always wrote.

@@ -144,7 +144,7 @@ a press on the word you are already standing on does nothing.
 Three gestures, the same on all seven places:
 
 - **the pointer previews and the cursor selects.** Whatever your pointer is resting on is
-  what the card beside the list is about, and on home it is what the right-hand card shows.
+  what the card beside the list is about, and on home the row it lights.
   Moving the pointer moves nothing else — the cursor stays where you put it.
 - **a click on a row opens it**, exactly as `enter` on it would: on standing, spend and
   search the first press puts the cursor there and opens what the row names. **A click
@@ -287,7 +287,6 @@ of them, so they can never move a view out from under you while you are aiming a
 destination; pressed with no layer up, they do nothing.
 
 The last two classes are bound where there is something to bind. `alt+<letter>` today is
-`alt+g` and `alt+q` on home, which group the list by project and hide the quiet rows, and
 `alt+s` on the memory place, which changes which shelf it is showing. `shift+<arrow>` is a place's time
 window — `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is — and
 three places have one: **tasks** (when it ran), **standing** (when it fired) and **spend**
@@ -311,7 +310,10 @@ p pause   s stop   n not here
 On memory they are `c open the card`, `e fix the wording` and `f forget it`. On home the
 verbs are the row's own — a question's first two answers in its own words on
 `y` and `n`, `a put it away`, `t new chat here`, `o open folder`, `c copy path`, and
-`p pause it` or `r resume it` on a standing item.
+`p pause it` or `r resume it` on a standing item, `s stop` on a task this window runs,
+`its chats` and `open folder` on a project. On home's panels `→` opens them only where no
+column with rows lies to the right; elsewhere it crosses columns and the chords
+(`ctrl+e`, `ctrl+o`, `ctrl+y`) reach the same verbs.
 
 While that strip is drawn, **those letters are the verbs** and the composer is asleep. The
 strip pushes the rest of the list down by its own height — the frame stays the same height
@@ -353,7 +355,7 @@ has no `·` in it at all. The bracketed gloss goes first, because it explains a 
 still on the line; then the clause hanging off the dash; and what a 40-column terminal is
 left with is the statement, `open in another window`. It used to read
 `open in another window — enter again to move it here (it …`, which named a key and then ate
-it. That particular sentence is gone — moving a conversation asks with a card on home now,
+it. That particular sentence is gone — moving a conversation from a window with no engine asks first on home's foot line now,
 see *home* — but the rule it taught is what every foot on this surface is cut by.
 
 **A clause that begins `or` goes first, because it is an alternative and not a way out.**
@@ -404,16 +406,16 @@ it was always going to do. `esc` just takes it away.
 It is a chord rather than a hold because a terminal cannot tell a program that a modifier is
 being held down — it only reports what arrived.
 
-## home — what wants you
+## home — what wants you, as seven panels
 
-The first place, and the one aforge opens on. Every conversation on this machine, from
-every project, as **one flat ranked list** — what wants you first, then what is moving, then
-the rest — with the project as a tag on each row.
+The first place, and the one aforge opens on. Everything on this machine, from every
+project, as **seven panels** in one, two or three columns: `needs you`, `where you were` and
+`projects` on the left; `running`, `since you left`, `spend` and `next up` on the right. An
+empty panel keeps its heading and one dim line naming what arrives there.
 
-Its own keys are in the **Home** page. Under the tab bar: `tab` is the way to the next place
-rather than the way between home's old columns, the errand pane is taken into with `→`
-rather than `tab`, and home's two `alt+<letter>` keys are **`alt+g` group by project** and
-**`alt+q` hide the quiet ones**.
+Its own keys are in the **Home** page: `↑↓` walk a panel, `←→` cross columns, a digit
+answers the top question in `needs you`, and `enter` opens a row. `tab` is the way to the
+next place. Home has no `alt+<letter>` keys — `alt+g` and `alt+q` are unbound there.
 
 ## tasks — the tasks page, and how to get to it without a command
 
@@ -604,7 +606,7 @@ are not the bar's to give up):
 
 `▸ 3 more` where there are cells for the longer spelling, `▸ 3` where there are not — the
 same fold mark every other list on this surface puts over the rows it is not drawing, so a
-count on the bar reads as the same idea as `▸ 15 more` at the foot of home. The word gives
+count on the bar reads as the same idea as `▸ 11 more` at the foot of the spend place. The word gives
 way before the mark does: `▸` is what says there is more behind the row. **The
 count is a sign and not a button** — pressing it does nothing, because it stands for several
 places at once and no single one of them is the answer.

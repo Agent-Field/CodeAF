@@ -13,7 +13,7 @@ Yes. Type it on the home screen, press `↑` once — which lands on the row spe
  enter starts a new conversation and sends this · ↑ ask here · ↑↑ pick a match · esc clear
 ```
 
-What you get is **a row at the top of home's list and a pane holding the exchange**. The row
+What you get is **a row at the top of home's `where you were` panel and a pane holding the exchange**. The row
 stays there — with what the errand is doing written in its tail — until the errand is
 finished and you have read what it came to. The pane is the exchange itself: what you said,
 the reply as it streams, one line per tool call, and the card when one arrives. On an
@@ -41,10 +41,9 @@ Every `ask here` is one row, marked `?`, named with the first line of what you a
 - **`∙ stood`** — something now stands because of it.
 - **`∙ answered`** — it finished and nothing standing came of it.
 
-The rows sort the way everything else on this screen sorts: **what wants you first, then
-what is moving, then what is done**. They sit at the very **top of home's one list**, above
-everything the machine has to say for itself — an errand is a thing you asked for a minute
-ago.
+The rows sort among themselves: **what wants you first, then what is moving, then what is
+done**. They sit at the very **top of home's `where you were` panel**, above every
+conversation — an errand is a thing you asked for a minute ago.
 
 `enter` or `→` on the row hands the keyboard to the pane. The hint under the box says so:
 `↑↓ move · enter or tab answer this ask here · esc close`. (`tab` on the row was the way in
@@ -209,11 +208,11 @@ would do nothing.
 
 ## Ask here on a narrow window — the exchange takes the whole screen
 
-On a terminal too narrow for two columns — **under 136 columns** — home has no right-hand
-pane to put an exchange in. It does not refuse. The two
-zones are **stacked** instead of sat side by side:
+Home's panels have no right-hand pane to put an exchange in **at any width**, and a search
+under **136 columns** has none either. It does not refuse. The two are **stacked** instead
+of sat side by side:
 
-- the **list** is the screen until you enter an exchange;
+- the **panels** (or the list, while you type) are the screen until you enter an exchange;
 - the **exchange** is the screen while it holds the keyboard — the same pane, the same card,
   the same live strip, drawn at the full width;
 - **`esc`** or **`tab`** brings the list back, with the exchange's row still on it wearing

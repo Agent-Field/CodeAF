@@ -48,9 +48,10 @@ the strip along the top, and the legend's hint slot reads `ctrl+g tasks` once th
 session has tasks to come back to and no running-turn line owns that slot.
 
 **Seven places take the whole frame instead of sharing it**, at every width: home, tasks,
-standing, memory, spend, search and settings. `tab` walks between them, `alt+1` … `alt+7`
-(`⌥1` … `⌥7` on a Mac) jump straight to one from wherever you are standing — a place or a
-conversation — and each
+standing, memory, spend, search and settings. Four are on the tab bar — `home  tasks
+spend  settings` — and `tab` walks those; `alt+1` … `alt+7` (`⌥1` … `⌥7` on a Mac) jump
+straight to any of the seven from wherever you are standing — a place or a conversation —
+and each
 has commands of its own (`/home`, `/history`, `/standing`,
 `/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
 deliberately not one of the seven — it is something you do to this conversation rather than
@@ -60,7 +61,7 @@ While any of them is up nothing else is drawn — no conversation, no box, no st
 and `esc` gives the frame back. **Only one is ever up:** opening any one closes the rest.
 
 Every place is drawn in one frame, top to bottom: the machine's own top line, the tab bar
-naming the seven, a dim rule, the place's body, a rule, the place's own count or note, the
+naming the four (and the one you stand in, when it is off the bar), a dim rule, the place's body, a rule, the place's own count or note, the
 **composer** with its scope chip (`here ~/aforge-v2`) at the right of the box row, and the
 hint line last. See the **Places** page.
 
@@ -734,8 +735,8 @@ room for the name: the name is cut first, because the keys are written nowhere e
 **The key itself is drawn apart from the word beside it.** In `esc interrupt`, `esc`
 wears the soft cyan every highlighted fact wears and `interrupt` stays at the border's
 own dim — the thing you press reads at a glance and the explanation of it does not
-compete. It is the same in every hint the slot carries, in home's foot hint, in the keys
-legend at the bottom of a conversation's card on home, and on the task record's foot. See "Why is one word in a line brighter than the rest"
+compete. It is the same in every hint the slot carries, in home's foot hint, in the verbs
+line at the bottom of the card beside a search on home, and on the task record's foot. See "Why is one word in a line brighter than the rest"
 below.
 
 **At rest it carries the two doors out of the conversation.** With an empty box, it reads
@@ -993,7 +994,8 @@ expire on time.
 
 The last three rows of a list that runs on past the bottom of its window are drawn a step
 fainter each, fading toward the background. It happens on the task page (`/history`,
-`ctrl+.`), on the task column, and on home's list of projects and conversations.
+`ctrl+.`) and on the task column. Home's panels never fade: each one folds inside itself
+with `N more` instead.
 
 It means one thing: **there is more of this list below**. The head of the window is at
 full strength, the tail steps back, so a long list reads as sharp where you are and quiet
