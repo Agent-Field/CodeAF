@@ -50,7 +50,7 @@ func conflictedStoryNotice() session.TaskNotice {
 		Report: "its branch task/write-a-10-chapter-story-9c1a did not merge cleanly and was kept: " +
 			"story/chapters.md already holds work of your own\n" +
 			"error: Your local changes to the following files would be overwritten by merge:\n" +
-			"you looked at this yourself and took it as done",
+			"you took this as done",
 		Result: "**The Salt Road**\n\n## Chapter one\n\nThe cart came over the ridge at dawn.\n",
 	}
 }
@@ -152,7 +152,7 @@ func TestTheLandingsOwnDetailStaysOnTheCardUnderTheHeadline(t *testing.T) {
 	text := taskText(a)
 	for _, want := range []string{
 		"would be overwritten",
-		"you looked at this yourself and took it as done",
+		"you took this as done",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the open card dropped %q:\n%s", want, text)

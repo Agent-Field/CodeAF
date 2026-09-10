@@ -1549,7 +1549,7 @@ func TestDependentWaitsOnUnverifiedAndRunsWhenItIsAccepted(t *testing.T) {
 		t.Fatalf("an accepted node is %q, want done", state)
 	}
 	report := graph.node(first).notice().Report
-	if !strings.HasPrefix(report, "you looked at this yourself and took it as done") || !strings.Contains(report, "I read the diff myself") {
+	if !strings.HasPrefix(report, "you took this as done") || !strings.Contains(report, "I read the diff myself") {
 		t.Fatalf("report = %q, want the person's decision and their reason", report)
 	}
 	if started := ran.await(t); started.id != second {

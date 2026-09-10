@@ -224,7 +224,7 @@ func TestAConflictGetsOneRoundAndLandsWhenTheWorkerResolvesIt(t *testing.T) {
 
 	detail := conflictSentence(tree.branch, []string{"shared.txt"}, "")
 	state := agent.landConflicted(context.Background(), node, tree, []string{"shared.txt"},
-		"the shared file now carries the task's line", mergeConflicted, detail, io.Discard)
+		"the shared file now carries the task's line", mergeConflicted, detail, refusedByTheWork, io.Discard)
 
 	if state != TaskDone {
 		t.Fatalf("the round resolved the conflict and the node landed %q, want it done", state)
@@ -260,7 +260,7 @@ func TestAConflictTheRoundCannotResolveLandsOnTheCardWithTheFilesNamed(t *testin
 
 	detail := conflictSentence(tree.branch, []string{"shared.txt"}, "")
 	state := agent.landConflicted(context.Background(), node, tree, []string{"shared.txt"},
-		"the shared file now carries the task's line", mergeConflicted, detail, io.Discard)
+		"the shared file now carries the task's line", mergeConflicted, detail, refusedByTheWork, io.Discard)
 
 	if state != TaskUnverified {
 		t.Fatalf("a round that could not resolve the conflict landed %q, want it on the card", state)
@@ -297,7 +297,7 @@ func TestTheAutomaticMergeRoundIsSpentOnlyOnce(t *testing.T) {
 
 	detail := conflictSentence(tree.branch, []string{"shared.txt"}, "")
 	state := agent.landConflicted(context.Background(), node, tree, []string{"shared.txt"},
-		"the shared file now carries the task's line", mergeConflicted, detail, io.Discard)
+		"the shared file now carries the task's line", mergeConflicted, detail, refusedByTheWork, io.Discard)
 	if state != TaskUnverified {
 		t.Fatalf("a node with no round left landed %q", state)
 	}

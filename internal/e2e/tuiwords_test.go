@@ -393,16 +393,23 @@ var tuiWords = map[string]tuiWord{
 	},
 	"settleTellIt": {
 		screen: "[s] tell it",
-		source: " tell it",
+		source: "tell it",
+		pkg:    "internal/session",
 		why: "the third column on every one of these cards: say something to the task rather than answering. " +
-			"It must be drawn, because a person with something to say who finds only yes and no presses one of them",
+			"It must be drawn, because a person with something to say who finds only yes and no presses one of them. " +
+			"The WORD is the engine's now — one landing question's third answer (answers.go), drawn by the question " +
+			"block wherever that question is standing — and the key is still task-states' own",
 	},
 	"settleTookLine": {
 		screen: "you took this as done",
-		why:    "the receipt the card wears once the accept has been spent, which is how the pane proves the key landed",
+		pkg:    "internal/session",
+		why: "the receipt the card wears once the accept has been spent, which is how the pane proves the key landed. " +
+			"It NAMES WHO SPENT THE VERB (#767): the person's own press says `you`, and the model spending it under " +
+			"`task.settle = auto` says `aforge took this as done`, so a receipt is never a lie about whose call it was",
 	},
 	"settleNotRightLine": {
 		screen: "you said it is not finished",
+		pkg:    "internal/session",
 		why:    "the receipt proving the not-right answer reached the engine's settle door",
 	},
 	"taskIncompleteWord": {
@@ -566,16 +573,14 @@ var tuiWords = map[string]tuiWord{
 	},
 	"settleAnswersRow": {
 		screen: "[a] accept · [n] not right · [s] tell it",
-		source: " tell it",
+		source: "tell it",
+		pkg:    "internal/session",
 		why: "THE WHOLE ANSWERS ROW, in the one order every card draws it. It is waited for as one string " +
 			"because three separate searches would pass on a card that drew the columns on two rows, or in " +
-			"the other order, or without the third — and the third is the one the ruling is emphatic about",
-	},
-	"settleHandRow": {
-		screen: "[d] let aforge decide this one",
-		source: " let aforge decide this one",
-		why: "the one-time hand-over, drawn dimmer beside the answers. It replaced `decide these for me`, " +
-			"which was a standing preference disguised as an answer and changed a setting on the way past",
+			"the other order, or without the third — and the third is the one the ruling is emphatic about. " +
+			"The row is composed by the question block from the landing question's own answers now " +
+			"(docs/design/questions/DESIGN.md, `card / room (task-states row unchanged)`), so the WORDS are " +
+			"searched for where the engine spells them",
 	},
 	"settleConflictAnswers": {
 		screen: "[a] resolve it · [n] drop it",
@@ -605,14 +610,11 @@ var tuiWords = map[string]tuiWord{
 	},
 	"taskAutoDecidingWord": {
 		screen: "aforge is deciding",
+		pkg:    "internal/session",
 		why: "the auto-settle floor's own row. A card with no chips MUST say why it has none — that defect, " +
-			"a card with no choices and no explanation, is what the whole wave exists to close",
-	},
-	"taskTakeItBackWord": {
-		screen: "[t] take it back",
-		source: " take it back",
-		why: "the way back on that row, and the last thing it gives up at a narrow width: the reason is on " +
-			"the rail and in the record, and this key is only here",
+			"a card with no choices and no explanation, is what the whole wave exists to close. THE ANSWERS " +
+			"STAY DRAWN BESIDE IT (#767): the clause says who is deciding, and answering it is how a person " +
+			"takes the decision back",
 	},
 
 	// ── the front door, on a machine that has never run aforge ───────────────

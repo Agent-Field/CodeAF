@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -19,24 +18,6 @@ func TestAutomaticTaskCountdownDoesNotClaimTheUserMustAnswer(t *testing.T) {
 	a.task.deadline = time.Time{}
 	if word, _ := a.stateWord(); word != waitingWord {
 		t.Fatalf("a held proposal lost its required response: %q", word)
-	}
-}
-
-func TestGuestFinishedTaskCannotShowOrAnswerTheLocalSettleQuestion(t *testing.T) {
-	a, agent := roomSettleApp(t, session.TaskUnverified)
-	local := a.doneCardFor(7)
-	if !a.settleAsking(local) {
-		t.Fatal("fixture must have a real local decision")
-	}
-	a.room.guest = &taskGuest{session: "/another/conversation/session.jsonl", node: &taskNode{id: 7, title: "Someone else's result", state: session.TaskDone}}
-	if card := a.roomSettleCard(); card != nil {
-		t.Error("foreign task exposed the local decision card")
-	}
-	if a.roomSettleKey(key("a")) {
-		t.Error("foreign task consumed the local accept key")
-	}
-	if len(agent.resolved) != 0 || local.decided != "" {
-		t.Fatal("answering on the guest page resolved the local task")
 	}
 }
 
@@ -86,50 +67,6 @@ func TestKeepingATaskBranchDoesNotDemandAnUnrequestedMerge(t *testing.T) {
 	a.tasks[71].merge = "conflicted"
 	if !a.taskStatus(a.tasks[71]).Attention {
 		t.Fatal("a real conflict lost its attention flag")
-	}
-}
-
-func TestHandingReviewToTheModelStopsAskingTheUser(t *testing.T) {
-	a, agent := roomSettleApp(t, session.TaskUnverified)
-	card := a.doneCardFor(7)
-	node := a.tasks[7]
-	if !a.taskStatus(node).Attention {
-		t.Fatal("fixture has no human decision")
-	}
-	a.settleCard(card, settleHand)
-	if len(agent.handed) != 1 {
-		t.Fatal("handoff did not reach the engine")
-	}
-	status := a.taskStatus(node)
-	if status.Attention || a.railGroupOf(node) != railParked {
-		t.Fatalf("a handed-off review still needs the user: %+v", status)
-	}
-	// AND THE QUESTION IS STILL THE QUESTION. What the hand-off changes is WHO is
-	// holding it — the row keeps its tier, its word and its reason, because a
-	// person watching it is owed both (docs/design/task-states/DESIGN.md).
-	if status.Ask.Owner != session.TaskAskOwnerModel {
-		t.Fatalf("the hand-off did not reach the reading: %+v", status.Ask)
-	}
-	if status.Tier != session.TaskTierYourCall || status.RowWord() != tierYourCallWord+" · nobody could check it" {
-		t.Fatalf("a handed-off row stopped saying what it is asking: %+v", status)
-	}
-	// THE HEAD IS NEVER REWRITTEN AFTER LANDING — the receipt is what changes,
-	// and it says what the person did rather than what the machine reached.
-	if card.decided != settleHandedLine {
-		t.Fatalf("the card's receipt reads %q, want %q", card.decided, settleHandedLine)
-	}
-	if a.roomSettleAsking() {
-		t.Fatal("handed-off decision still accepts another answer")
-	}
-}
-
-func TestFailedReviewHandoffKeepsTheHumanDecision(t *testing.T) {
-	a, agent := roomSettleApp(t, session.TaskUnverified)
-	agent.refuse = errors.New("review unavailable")
-	card := a.doneCardFor(7)
-	a.settleCard(card, settleHand)
-	if card.decided != "" || !a.taskStatus(a.tasks[7]).Attention || !a.roomSettleAsking() {
-		t.Fatal("failed handoff hid the unresolved decision")
 	}
 }
 

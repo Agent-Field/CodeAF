@@ -177,7 +177,7 @@ func TestTwoResolutionsAtOnceLandExactlyOnce(t *testing.T) {
 	if state := node.stateNow(); state != TaskDone {
 		t.Fatalf("state = %q, want done", state)
 	}
-	if report := node.notice().Report; strings.Count(report, acceptedLine("")) != 1 {
+	if report := node.notice().Report; strings.Count(report, acceptedLine("", TaskAskOwnerPerson)) != 1 {
 		t.Fatalf("the node was accepted twice into one report:\n%s", report)
 	}
 }

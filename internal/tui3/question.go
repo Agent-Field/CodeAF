@@ -2426,6 +2426,14 @@ func (a *app) questionOptionKey(head questionShown, key string) (tea.Cmd, bool) 
 			// asked about, so it is the one worth asking how far.
 			return a.questionWiden(head, key), true
 		}
+		// AND `[s] tell it` ANSWERS NOTHING AND OPENS A PAGE. A steer never
+		// resolves a task by itself (docs/design/task-states/DESIGN.md), so the
+		// landing's third column points the box at the node's own room and leaves
+		// the question standing exactly where it was (tasksettle.go's
+		// [app.landingTell]).
+		if cmd, took := a.landingTell(head.question, key); took {
+			return cmd, true
+		}
 		return a.questionAnswerKey(head, key), true
 	}
 	return nil, false
@@ -3036,6 +3044,15 @@ func questionLabels(q session.Question, keys []string) []string {
 // which are done.
 func (a *app) questionDrawnHere(q session.Question) bool {
 	switch q.Kind {
+	case session.QuestionLanding:
+		// AND THE LANDED `your call`, which had an older block and has now lost
+		// it. Its card in the transcript still says how the work came home and
+		// what is being asked; what left the card is the ANSWERS ROW and its
+		// keys, because a question drawn twice on one screen is worse than a
+		// question drawn in the older place — and because a card frozen in the
+		// shape of a landing that has since been re-settled offered a person the
+		// wrong answers to the right question (#767, tasksettle.go).
+		return true
 	case session.QuestionSubharnessAsk, session.QuestionFuel, session.QuestionConflict:
 		// The three lanes the audit found with a resolver and NOTHING ANYWHERE
 		// that drew them: work stopped on a question no surface in this product

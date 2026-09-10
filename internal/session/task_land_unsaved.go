@@ -77,6 +77,15 @@ const (
 	refusedByTheWork
 	// refusedByTheTree is a refusal that will be the same refusal next time.
 	refusedByTheTree
+	// refusedByYourFiles is the one refusal ONLY THE PERSON CAN GET PAST: their
+	// own uncommitted copies of the very files the task wrote are sitting in the
+	// folder, so the merge would have to write over work nobody has looked at.
+	// The landing may not do that by itself — a landing that moved somebody's
+	// unfinished edits without being asked is the carry-and-leave groundcarry.go
+	// forbids — and asking again changes nothing. What changes it is the person
+	// saying `resolve it`, which is what spends the carry (task_merge_round.go's
+	// [Agent.ResolveConflict]).
+	refusedByYourFiles
 )
 
 // askTheTree asks THE REPOSITORY ITSELF whether it can still be written to, and

@@ -595,17 +595,81 @@ func (a *Agent) resolveOneTask(entry TaskIndexEntry, id uint64, here bool, resol
 		return fmt.Sprintf("Task %s ran in an earlier conversation, so there is no graph left to settle it in. Its work is at %s — read it, and propose what still needs doing.",
 			entry.ID, taskWhereWord(entry)), true, nil
 	}
-	if err := a.ResolveUnverified(id, resolution, why); err != nil {
+	// THE MODEL'S OWN VERB GOES THROUGH THE MODEL'S OWN DOOR, so the receipt on
+	// the work says who spent it (task_audit.go's [Agent.resolveUnverifiedBy]).
+	if err := a.resolveUnverifiedBy(id, resolution, why, TaskAskOwnerModel); err != nil {
 		return capitalized(err.Error()) + ".", true, nil
 	}
-	switch resolution {
-	case TaskAccept:
-		return fmt.Sprintf("accepted task %s as done on your reading of it, with nobody else's check behind it. Its branch has come home and anything waiting on it can start.", entry.ID), false, nil
-	case TaskRefute:
-		return fmt.Sprintf("refuted task %s. It is failed, its branch is kept, and anything waiting on it fails with it.", entry.ID), false, nil
-	default:
-		return fmt.Sprintf("a fresh checker is looking at task %s again. It stays waiting until that answer lands, and you will hear the outcome the way every other task lands.", entry.ID), false, nil
+	return resolvedReply(entry.ID, a.taskNode(id), resolution), false, nil
+}
+
+// resolvedReply is WHAT ACTUALLY HAPPENED, read off the node after the door
+// returned rather than written from what was asked for.
+//
+// ── THE RUN THIS WAS WRITTEN FROM ──
+//
+// A divided task landed `your call`, the model spent `accept` on it, and this
+// reply said "Its branch has come home and anything waiting on it can start."
+// The branch had not come home: the merge was refused by the person's own
+// uncommitted copies of the very files the task wrote, the node was still
+// unverified with its branch kept, and the model — told the work had landed —
+// told the person "Task 1 is done and accepted" (#767).
+//
+// ── THE LAW ──
+//
+// A TOOL REPLY IS A READING OF THE WORLD AND NEVER A RESTATEMENT OF THE REQUEST.
+// [Agent.acceptTask] can settle a node three ways — home and done, kept where it
+// is and done, or still somebody's call with the branch kept — and each of them
+// is a different next move for whoever reads this. So the state and the merge
+// are read back, the projection's own sentence says what is still being asked
+// (task_status.go's [TaskAsk]), and the words are the words every surface uses.
+func resolvedReply(id string, node *TaskNode, resolution TaskResolution) string {
+	if node == nil {
+		// The node went out from under the answer — another window, a late check.
+		// Nothing here can say what became of it, and saying anything would be a
+		// guess about somebody else's landing.
+		return fmt.Sprintf("task %s took that answer. Call tasks with its number to see where it stands.", id)
 	}
+	notice := node.notice()
+	status := ProjectTask(notice.StatusFacts())
+	if resolution == TaskReaudit {
+		return fmt.Sprintf("a fresh checker is looking at task %s again. It stays waiting until that answer lands, and you will hear the outcome the way every other task lands.", id)
+	}
+	// STILL SOMEBODY'S CALL IS THE HEADLINE WHEN IT IS TRUE. It is the one
+	// outcome a reader must not miss, whichever verb was spent: nothing merged,
+	// nothing failed, and the question is standing exactly where it was.
+	if status.Tier == TaskTierYourCall {
+		said := fmt.Sprintf("task %s is still your call", id)
+		if reason := strings.TrimSpace(status.Ask.Reason); reason != "" {
+			said += " — " + reason
+		}
+		if branch := strings.TrimSpace(notice.Branch); branch != "" {
+			said += " · its branch " + branch + " was kept"
+		}
+		return said + ". Nothing merged and nothing failed: say what is in the way and leave the choice with the person."
+	}
+	if resolution == TaskRefute {
+		said := fmt.Sprintf("task %s is incomplete on your word", id)
+		if branch := strings.TrimSpace(notice.Branch); branch != "" {
+			said += ": its branch " + branch + " is kept"
+		}
+		return said + ", and anything waiting on it stops with it."
+	}
+	said := fmt.Sprintf("accepted task %s as done on your reading of it, with nobody else's check behind it.", id)
+	if notice.Merge == mergeMerged {
+		if branch := strings.TrimSpace(notice.Branch); branch != "" {
+			return said + " Its branch " + branch + " merged into yours and anything waiting on it can start."
+		}
+		return said + " Its work is home and anything waiting on it can start."
+	}
+	// DONE WITHOUT A MERGE IS ITS OWN FACT AND IS SAID. A tree that would not take
+	// the work settles the node anyway rather than asking the same question again
+	// (task_audit.go), and where the work is sitting is the whole of what is left
+	// to say about it.
+	if branch := strings.TrimSpace(notice.Branch); branch != "" {
+		return said + " Its branch " + branch + " did not merge and was kept, so the work is there rather than in the person's checkout."
+	}
+	return said + " Anything waiting on it can start."
 }
 
 // continueNoGraph is the honest refusal when this session cannot re-arm the

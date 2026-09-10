@@ -187,6 +187,14 @@ type taskNode struct {
 	// under a conflicted merge is the emptiness law and not a claim that nothing
 	// clashed: git does not always say which files it was about.
 	conflicts []string
+	// shifted and groundHeld are WHICH ROAD put those names there: the ground
+	// moved under work that would have fastened, or the person's own untracked
+	// copies of the files the task wrote are sitting in the folder it lands into
+	// (session's TaskNotice.Shifted, .GroundHeld). All three roads ask the
+	// conflict's one question and each has its own sentence — which is a fact
+	// carried here rather than a reading of the report's prose.
+	shifted    bool
+	groundHeld bool
 	// decider is WHO HOLDS THIS NODE'S QUESTION right now (TaskNotice.Decider),
 	// and it is the whole of what `task.settle = auto`, a person handing one card
 	// over and the floor that hands it back at the end of a turn have to say to
@@ -3864,13 +3872,10 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// ([railHoldHint]).
 		return nil, true
 	}
-	// THE ANSWERS TO THE ONE QUESTION A ROW CAN BE ASKING, on the row that is
-	// asking it (tasksettle.go's [app.railSettleKey]). It is read last so that
-	// nothing above it changes meaning, and it takes the same three letters the
-	// card and the room take, under the same guard.
-	if a.railSettleKey(msg) {
-		return nil, true
-	}
+	// THE ANSWERS TO THE ONE QUESTION A ROW CAN BE ASKING ARE NOT TAKEN HERE.
+	// They are the landing question's own, on the block above the box, which is
+	// drawn on this page like every other and read before this file
+	// (tasksettle.go says why the column stopped keeping its own copy).
 	return nil, false
 }
 
@@ -4967,6 +4972,16 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		// card to find out what for.
 		status := a.taskStatus(node)
 		paint, text = tierInk(a.pal, status), status.RowWord()
+		// THE FILE LIST IS THE FIRST THING TO GO, and it goes WHOLE. This block
+		// is [railUnderRows] tall and a reason that names sixteen files is four
+		// rows of them, so a column that simply wrapped and cut left the person
+		// reading `your call · conflicts with your branch:` — the announcement of
+		// a list, with the list cut off underneath it, which is the one shape
+		// tasktier.go's [tierWordShed] exists to prevent. The list is on the card
+		// one keypress away; what the row is read for is what to do.
+		if len(railWrap(text, width)) > railUnderRows {
+			text = tierWordShed(text)
+		}
 	default:
 		switch node.merge {
 		case mergeWordKept:
@@ -5475,6 +5490,14 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		// is known and again after, in the same state, and the second one is the
 		// only chance this surface gets to learn what the work is called.
 		//
+		// AND A LANDING THAT CHANGED WHAT IT IS ASKING IS NEWS IN THE SAME STATE.
+		// A node the model accepted whose merge was then REFUSED settles again as
+		// `unverified` with a different merge word, a different file list and a
+		// different road — a different question, with different answers, now the
+		// person's — and a guard that only looked at the state threw that event
+		// away, which is why the card in front of somebody kept asking the
+		// question the first landing asked ([taskReasks], #767).
+		//
 		// AND A DECISION CHANGING HANDS IS THE QUIETEST NEWS OF ALL AND THE ONE
 		// NOBODY MAY MISS. The floor hands an unanswered question back to the person
 		// at the end of the model's turn by publishing a row whose state, span,
@@ -5486,7 +5509,8 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		if node == nil || (notice.CostUSD <= node.cost &&
 			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node) &&
 			!taskRenamesContext(notice, node) && !taskStops(notice, node) &&
-			!taskPauses(notice, node) && notice.Decider == node.decider && notice.NextModel == node.nextModel && notice.Thinking == node.thinking &&
+			!taskPauses(notice, node) && !taskReasks(notice, node) &&
+			notice.Decider == node.decider && notice.NextModel == node.nextModel && notice.Thinking == node.thinking &&
 			(notice.Brief == "" || notice.Brief == node.brief) &&
 			(notice.Acceptance == "" || notice.Acceptance == node.acceptance)) {
 			return nil
@@ -5629,6 +5653,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// this surface asking a question somebody has already answered
 	// (docs/design/task-states/DESIGN.md).
 	node.conflicts, node.decider = notice.Conflicts, notice.Decider
+	node.shifted, node.groundHeld = notice.Shifted, notice.GroundHeld
 	// The model is kept whenever an update carries one and never overwritten
 	// with an empty: it is a property of the work, settled at admission, and an
 	// update that says nothing about it is not an update that changed it.
@@ -5880,4 +5905,40 @@ func (a *app) redirectLane(rows []string, width int) []string {
 	out := append([]string(nil), rows...)
 	out[0] = lead + a.pal.dim(prompt) + a.pal.ask(fit(taskRedirectLane, room))
 	return out
+}
+
+// taskReasks reports that one notice asks a DIFFERENT question about a node
+// than the one this surface is already drawing about it.
+//
+// It is the de-dup guard's exception for a landing that was re-settled without
+// moving state ([app.taskUpdate]). The merge word, the files that clash and
+// which of the three roads put them there are exactly the facts a your-call
+// row's question is built from (session's [session.TaskAsk]), so a notice that
+// changes any of them is a notice that changes the question — and a person is
+// owed the one they are actually being asked.
+func taskReasks(notice *session.TaskNotice, node *taskNode) bool {
+	if notice == nil || node == nil {
+		return false
+	}
+	if notice.Merge != "" && notice.Merge != node.merge {
+		return true
+	}
+	if notice.Shifted != node.shifted || notice.GroundHeld != node.groundHeld {
+		return true
+	}
+	return !sameStrings(notice.Conflicts, node.conflicts)
+}
+
+// sameStrings is list equality for the one comparison above. An empty list and
+// a nil one are the same absence, which is the emptiness law said about a slice.
+func sameStrings(one, two []string) bool {
+	if len(one) != len(two) {
+		return false
+	}
+	for i := range one {
+		if one[i] != two[i] {
+			return false
+		}
+	}
+	return true
 }
