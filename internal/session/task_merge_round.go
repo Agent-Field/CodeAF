@@ -39,6 +39,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // mergeRoundLimit is how many resolver rounds one node buys itself. ONE — the
@@ -535,6 +537,19 @@ func (a *Agent) ResolveConflict(id uint64) error {
 	return nil
 }
 
+// carryOnTheirWord is the tree this node's branch lands into WITH THE PERSON'S
+// OWN WORD ON IT: their untracked copies of the files the task wrote may be
+// moved aside for the merge and put back afterwards.
+//
+// IT IS SET AT EXACTLY ONE DOOR and nowhere else. The mark travels on the tree
+// rather than on the node because the thing being authorised is a merge, and the
+// merge is what holds the tree (groundcarry.go's [taskTree.carryUntrackedGround]
+// states what it then does with them, and states that it never deletes one).
+func carryOnTheirWord(tree taskTree) taskTree {
+	tree.carry = true
+	return tree
+}
+
 // landResolved is what an on-demand round does with what it produced, and it is
 // the landing road rather than the run's: this node has already settled once, so
 // what a resolved branch reaches is a RESETTLE, exactly as an accept and a late
@@ -545,6 +560,15 @@ func (a *Agent) ResolveConflict(id uint64) error {
 // saying the same thing in the same words is the noise the design's one-question
 // law exists against.
 func (a *Agent) landResolved(ctx context.Context, node *TaskNode, tree taskTree, changed []string, report string, log io.Writer) {
+	// THE PERSON'S OWN UNTRACKED COPIES ARE NOT A MERGE ROUND'S PROBLEM, and a
+	// round spent on them is a worker and a model call spent on nothing: the round
+	// merges the person's BRANCH into the task's, and a file git is not watching
+	// is on no branch at all. So this road goes straight to the carry, on the word
+	// the person just gave by pressing it (groundcarry.go).
+	if node.groundHeldNow() {
+		a.landCarried(node, tree, changed, report, log)
+		return
+	}
 	outcome, ran := a.spendMergeRound(ctx, node, tree, changed, log)
 	if !ran || !outcome.resolved || ctx.Err() != nil {
 		return
@@ -559,7 +583,17 @@ func (a *Agent) landResolved(ctx context.Context, node *TaskNode, tree taskTree,
 		a.undoMergeRound(node, tree, log)
 		return
 	}
-	landed, merge, detail, _ := landHome(node, tree, outcome.changed)
+	landed, merge, detail, why := landHome(node, tree, outcome.changed)
+	if why == refusedByYourFiles {
+		// AND A ROUND THAT DISCOVERS THE OTHER ROAD ON ITS WAY HOME TAKES IT. A
+		// checkpoint written before this road had a name comes back with nothing
+		// marked, so the round is what finds out — and the person has already said
+		// `resolve it`, which is the one word this needs.
+		fmt.Fprintf(log, "merge round: it is your own copies in the way, not the branch\n")
+		node.heldByYourFiles()
+		a.landCarried(node, outcome.tree, outcome.changed, report, log)
+		return
+	}
 	if !cameHome(merge) {
 		fmt.Fprintf(log, "merge round: it still would not land — %s\n", detail)
 		return
@@ -567,5 +601,37 @@ func (a *Agent) landResolved(ctx context.Context, node *TaskNode, tree taskTree,
 	fmt.Fprintf(log, "merge round: resolved, and %s landed\n", tree.branch)
 	node.checkSaid(auditGrade(verdict), 0)
 	node.finish(withReport(report, withReport(verdict.doneOutcome(), detail)), landed, tree.branch, merge)
+	node.graph.resettle(node, TaskDone)
+}
+
+// landCarried is `[a] resolve it` on the one road a merge round cannot help:
+// the person's own untracked copies of the files the task wrote are sitting in
+// the folder the branch lands into (groundcarry.go).
+//
+// IT SPENDS NO MODEL CALL AND ASKS NO CHECKER. There is nothing to resolve
+// between two versions of a file when only one of them is on a branch: what the
+// person answered is whether their own copies may be moved for the merge, and
+// the answer was yes. So the landing is simply offered again with that word on
+// the tree, and the node settles on what comes back.
+//
+// A CARRY THAT WOULD NOT GO LEAVES THE NODE EXACTLY WHERE IT WAS. Their tree is
+// put back to the byte before this returns, the branch is still kept, and the
+// card is still asking — which is the same bargain every other road out of
+// [taskTree.comeHome] keeps.
+func (a *Agent) landCarried(node *TaskNode, tree taskTree, changed []string, report string, log io.Writer) {
+	landed, merge, detail, _ := landHome(node, carryOnTheirWord(tree), changed)
+	if !cameHome(merge) {
+		fmt.Fprintf(log, "resolve: your own copies could not be carried aside — %s\n", detail)
+		node.finish(withReport(withYourCallLead(node.landingFacts(merge), detail), report), landed, tree.branch, merge)
+		a.emitTaskUpdate(node.notice())
+		return
+	}
+	fmt.Fprintf(log, "resolve: %s landed, and your own copies were carried aside — %s\n", tree.branch, detail)
+	// AND IT SETTLES AS THE PERSON'S OWN CALL, because that is what it was: the
+	// check never answered on this node, nobody has read the work since, and the
+	// only new fact is that the branch is now home. The receipt says who
+	// (task_audit.go's [acceptedTookLine]).
+	node.checkSaid(provider.VerdictVerifiedSuccess, 0)
+	node.finish(withReport(acceptedLine("", TaskAskOwnerPerson), withReport(report, detail)), landed, tree.branch, merge)
 	node.graph.resettle(node, TaskDone)
 }

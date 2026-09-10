@@ -1631,6 +1631,14 @@ func ConsentScopeOf(action AnswerAction, answer Answer) ConsentScope {
 // the audit's reason: [Agent.TakeBackDecision] had no caller anywhere, so a
 // decision the model settled could not be undone by anybody.
 func (a *Agent) applyLanding(answer Answer, key, words string) error {
+	// A CONFLICT'S YES IS NOT AN ACCEPT, and this is the one arm where the two
+	// lanes part. `[a] resolve it` on a branch that would not fasten spends the
+	// merge round or the carry ([Agent.ResolveConflict]); accepting would offer
+	// the same branch to the same ground and be refused in the same words, which
+	// is what it did (docs/design/task-states/DESIGN.md's conflict row).
+	if answer.Kind == QuestionConflict && key == LandingYesKey {
+		return a.ResolveConflict(answer.ID)
+	}
 	switch key {
 	case LandingYesKey:
 		return a.ResolveUnverified(answer.ID, TaskAccept, words)
@@ -2166,6 +2174,12 @@ func landingOptions(ask TaskAsk) []AnswerOption {
 			if word := strings.TrimSpace(ask.Yes); word != "" {
 				options[at].Label = word
 			}
+			// AND WHAT IT WILL DO, WHERE THE VERB DOES NOT SAY IT. One road carries
+			// a consequence — a landing held by the person's own untracked copies,
+			// whose `resolve it` moves files of theirs (task_status.go's
+			// [taskAskGroundConsequence]) — and every other ask leaves it empty,
+			// which is the emptiness law and draws no row.
+			options[at].Consequence = strings.TrimSpace(ask.Consequence)
 		case LandingNoKey:
 			if word := strings.TrimSpace(ask.No); word != "" {
 				options[at].Label = word

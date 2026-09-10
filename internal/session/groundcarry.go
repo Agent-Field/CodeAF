@@ -52,6 +52,9 @@ package session
 // cleanly, and the person is told the branch was kept.
 
 import (
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -68,22 +71,38 @@ import (
 // reads on the landing; the list is what a row says out loud ("conflicts with your
 // branch: parser.go") and what a resolver round is aimed at, and reading it back
 // out of the sentence afterwards would be this program parsing its own writing.
-func (t taskTree) mergeIntoGround() (bool, string, []string) {
+func (t taskTree) mergeIntoGround() (bool, string, []string, landingRefusal) {
 	out, err := mergeTaskBranch(t.root, t.branch)
 	if err == nil {
-		return true, "", nil
+		return true, "", nil, refusedNothing
 	}
 	// THE ONE SHAPE WHERE THE INDEX KNOWS NOTHING. A merge git refused before it
 	// started never touched the index, so [conflictedPaths] is legitimately
 	// empty and git's own message is the only place the file list exists.
 	blocked, untracked := overwrittenPaths(out)
-	if len(blocked) == 0 || untracked {
-		// Either an ordinary conflict — the index has the names — or an untracked
-		// clash, which is the one this may not carry.
+	if untracked && len(blocked) > 0 {
+		// THE PERSON'S OWN COPIES OF THE VERY FILES THE TASK WROTE, sitting in
+		// their folder untracked. A landing may not move them by itself — that is
+		// the carry-and-leave this file forbids, said about work git is not even
+		// watching — so it refuses and NAMES THE ROAD, and the person's own
+		// `resolve it` is what spends the carry (task_merge_round.go's
+		// [Agent.ResolveConflict] hands this tree back with [taskTree.carry] set).
+		if t.carry {
+			return t.carryUntrackedGround(blocked)
+		}
 		said, clashing := t.refuseMerge(blocked, out)
-		return false, said, clashing
+		return false, said, clashing, refusedByYourFiles
 	}
-	return t.carryGroundWork(blocked)
+	if len(blocked) == 0 {
+		// An ordinary conflict — the index has the names.
+		said, clashing := t.refuseMerge(blocked, out)
+		return false, said, clashing, refusedByTheWork
+	}
+	landed, said, clashing := t.carryGroundWork(blocked)
+	if landed {
+		return true, said, clashing, refusedNothing
+	}
+	return false, said, clashing, refusedByTheWork
 }
 
 // refuseMerge is the sentence for a merge that was refused, and the move that
@@ -152,6 +171,144 @@ func (t taskTree) carryGroundWork(blocked []string) (bool, string, []string) {
 	// applies with no merge at all — and the branch is kept for them to look at.
 	t.putGroundWorkBack(stood)
 	return false, dirtyGroundSentence(t.branch, blocked), blocked
+}
+
+// carryUntrackedGround is the carry the person ASKED FOR, on the one road the
+// landing itself may not take.
+//
+// ── WHY IT IS A SECOND CARRY AND NOT THE FIRST ONE ──
+//
+// `git stash push` moves what git is already watching and leaves everything else
+// on the disk, so the tracked half of the law goes through [taskTree.carryGroundWork]
+// and this half cannot: a stash of an untracked file will not go back over
+// itself ("already exists, no checkout"), which is measured at the top of this
+// file. So the untracked copies are MOVED OUT OF THE TREE by hand, the branch
+// merges into the ground it was carved from, and every one of them is put back.
+//
+// ── NOTHING OF THE PERSON'S IS EVER DELETED ──
+//
+// A file the merge then wrote at the same path is the task's answer to the same
+// question, and both survive: the task's stands where it was written and the
+// person's is laid back beside it wearing [groundYoursSuffix]. Where the merge
+// wrote nothing at that path the person's copy simply goes back where it was.
+// A road that does not end in a landing puts every one of them back untouched
+// and leaves the tree exactly as it stood.
+func (t taskTree) carryUntrackedGround(blocked []string) (bool, string, []string, landingRefusal) {
+	stood, err := git(t.root, "rev-parse", "HEAD")
+	if err != nil {
+		said, clashing := t.refuseMerge(blocked, stood)
+		return false, said, clashing, refusedByYourFiles
+	}
+	stood = strings.TrimSpace(stood)
+	hold, err := os.MkdirTemp("", "aforge-your-copies-")
+	if err != nil {
+		said, clashing := t.refuseMerge(blocked, "")
+		return false, said, clashing, refusedByYourFiles
+	}
+	moved, problem := holdYourCopies(t.root, hold, blocked)
+	if problem != "" {
+		putYourCopiesBack(t.root, moved)
+		_ = os.RemoveAll(hold)
+		said, clashing := t.refuseMerge(blocked, "")
+		return false, said, clashing, refusedByYourFiles
+	}
+	if out, err := mergeTaskBranch(t.root, t.branch); err != nil {
+		// The names are read while the conflicted index still holds them, exactly
+		// as every other road here reads them ([conflictSentence]).
+		clashing := conflictedPaths(t.root)
+		abandonMerge(t.root)
+		_, _ = git(t.root, "reset", "--hard", stood)
+		putYourCopiesBack(t.root, moved)
+		_ = os.RemoveAll(hold)
+		return false, conflictSentence(t.branch, clashing, out), conflictNames(clashing, out), refusedByTheWork
+	}
+	beside := putYourCopiesBack(t.root, moved)
+	_ = os.RemoveAll(hold)
+	return true, carriedAsideSentence(t.branch, blocked, beside), nil, refusedNothing
+}
+
+// heldCopy is one of the person's own untracked files while it is out of the
+// tree: where it belongs, and where it is being kept.
+type heldCopy struct{ path, held string }
+
+// holdYourCopies moves each named file out of the tree into the holding
+// directory, answering what it moved and the first thing that would not go. The
+// caller puts back whatever moved on either answer, so a half-done move is never
+// left standing.
+func holdYourCopies(root, hold string, paths []string) ([]heldCopy, string) {
+	moved := make([]heldCopy, 0, len(paths))
+	for i, path := range paths {
+		from := filepath.Join(root, filepath.FromSlash(path))
+		if _, err := os.Lstat(from); err != nil {
+			// Not there any more: nothing of theirs is at risk and nothing is owed.
+			continue
+		}
+		held := filepath.Join(hold, strconv.Itoa(i)+"-"+filepath.Base(path))
+		if err := os.Rename(from, held); err != nil {
+			return moved, err.Error()
+		}
+		moved = append(moved, heldCopy{path: path, held: held})
+	}
+	return moved, ""
+}
+
+// putYourCopiesBack lays every held copy back into the tree and answers the ones
+// that had to go back BESIDE the task's rather than where they were.
+//
+// IT NEVER OVERWRITES AND NEVER DELETES. A path the merge has since written is
+// the task's answer, so the person's copy takes the next free `.yours` name
+// under it; a path the merge left alone takes the person's copy straight back.
+func putYourCopiesBack(root string, moved []heldCopy) []string {
+	var beside []string
+	for _, one := range moved {
+		home := filepath.Join(root, filepath.FromSlash(one.path))
+		if _, err := os.Lstat(home); err != nil {
+			_ = os.MkdirAll(filepath.Dir(home), 0o755)
+			if os.Rename(one.held, home) == nil {
+				continue
+			}
+		}
+		spare := freeYoursName(home)
+		_ = os.MkdirAll(filepath.Dir(spare), 0o755)
+		if os.Rename(one.held, spare) == nil {
+			beside = append(beside, one.path+groundYoursSuffix)
+		}
+	}
+	return beside
+}
+
+// groundYoursSuffix is what a person's own copy wears when the task's version
+// landed at the same path. It is said once because the sentence a person reads
+// names it and the file on their disk wears it, and those two must be the same
+// string.
+const groundYoursSuffix = ".yours"
+
+// freeYoursName is the first name beside a path that nothing is using: `a.md.yours`,
+// then `a.md.yours.2`, and so on. A carry that overwrote an older `.yours` would
+// be the delete this file forbids, one road further along.
+func freeYoursName(home string) string {
+	name := home + groundYoursSuffix
+	for n := 2; n < 100; n++ {
+		if _, err := os.Lstat(name); err != nil {
+			return name
+		}
+		name = home + groundYoursSuffix + "." + strconv.Itoa(n)
+	}
+	return name
+}
+
+// carriedAsideSentence is what a person reads when their own untracked copies
+// were carried aside on their own word and the branch went home. It NAMES what
+// happened to their files, because "your files were moved" with no account of
+// where is the sentence that sends somebody hunting through their own folder.
+func carriedAsideSentence(branch string, moved, beside []string) string {
+	said := "its branch " + branch + " merged into yours, and your own copies of " +
+		namedFew(moved, conflictNamesShown) + " were carried aside for it"
+	if len(beside) == 0 {
+		return said + " and put back exactly where they were"
+	}
+	return said + "; where the task wrote the same file your copy was kept beside it as " +
+		namedFew(beside, conflictNamesShown) + ", and nothing of yours was removed"
 }
 
 // putGroundWorkBack returns the ground to the commit it stood at and puts the
