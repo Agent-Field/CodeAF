@@ -279,7 +279,8 @@ func TestANodesOwnPhaseCrossesWithItsRoleOnIt(t *testing.T) {
 
 	session.TellPhase(session.PhaseNews{
 		Phase: session.PhaseRunning, Model: "openai/gpt-5", Role: lane.RoleLeafAttached,
-		Detail: "go test", Session: "conversation-one", At: time.Now(),
+		Detail: "go test", Session: "conversation-one",
+		Subject: session.NewsSubject("conversation-one", 9), At: time.Now(),
 	})
 
 	frame := l.await(func(f Frame) bool { return f.Kind == "phase" })
@@ -289,6 +290,26 @@ func TestANodesOwnPhaseCrossesWithItsRoleOnIt(t *testing.T) {
 	}
 	if wire.Role != string(lane.RoleLeafAttached) || wire.Detail != "go test" {
 		t.Fatalf("the node's phase crossed as %+v, want the node's own role and noun", wire)
+	}
+	// AND WHICH PIECE OF WORK IT IS ABOUT CROSSES WITH IT, which the role alone
+	// cannot say: two nodes of one conversation carry the same role, and a
+	// surface files news by subject ([PhaseWire.Subject]). Without this a hosted
+	// room drew whichever node had spoken last, on the model's own row.
+	want := session.NewsSubject("conversation-one", 9)
+	if wire.Subject != want {
+		t.Fatalf("the node's phase crossed as subject %q, want %q", wire.Subject, want)
+	}
+	// AND IT SURVIVES THE ROAD BACK, because the same frame is read by the
+	// surface's own side of this seam ([phaseNewsOf]).
+	if got := phaseNewsOf(wire, time.Now()); got.Subject != want {
+		t.Fatalf("the subject did not survive the read back: %+v", got)
+	}
+	// AND AN OLDER PEER, WHICH SENDS NONE, READS AS THE CONVERSATION — the
+	// absence every producer that predates the field means, so a surface talking
+	// to a build without it behaves exactly as it always did.
+	wire.Subject = ""
+	if got := phaseNewsOf(wire, time.Now()); got.Subject != "" {
+		t.Fatalf("a peer that sent no subject was given one: %q", got.Subject)
 	}
 }
 

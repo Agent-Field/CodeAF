@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
-	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -173,42 +172,6 @@ func TestAHostedWindowIsAskedNothingOnAnOrdinaryLaunch(t *testing.T) {
 }
 
 // ── 2. the install's own rung ───────────────────────────────────────────────
-
-// THE INSTALL'S EFFORT RUNG IS READ ON AN ORDINARY LAUNCH.
-//
-// The card's facts line states the rung work started from it would think at
-// (place_home.go's [app.homeCardFacts], SCREEN 1d). It reached the profile
-// through a guard that answered "no profile" on the ordinary launch, so the
-// clause was drawn on the rare launch that exported AFORGE_PROFILE_DIR and for
-// nobody else.
-func TestTheInstallsRungIsReadOnAnOrdinaryLaunch(t *testing.T) {
-	a := ordinaryLaunch(t, Options{}, nil)
-	dir, ok := a.effortProfile()
-	if !ok {
-		t.Fatal("an ordinary launch was told it has no profile to read a rung from")
-	}
-	if dir != a.profileDir {
-		t.Fatalf("effortProfile answered %q for a window whose profile is %q", dir, a.profileDir)
-	}
-	if got := effortClause(config.DefaultEffortAt(dir)); got != "" {
-		t.Fatalf("the install's rung reads %q on an ordinary launch, want the shipped rung", got)
-	}
-	// AND A ROW MOVED IN THAT PROFILE IS THE ROW READ BACK, which is the whole
-	// point of resolving the path rather than guarding on its emptiness.
-	writeOrdinaryRow(t, config.KeyEffort, effort.Low.String())
-	if got := effortClause(config.DefaultEffortAt(dir)); got != effortClauseWord+effort.Low.String() {
-		t.Fatalf("the rung a person set reads %q on the launch they set it from", got)
-	}
-}
-
-// AND THE HOSTED WINDOW STATES NO RUNG. The install whose rung that clause names
-// is the one the work runs on, and over --host that is the other machine's.
-func TestAHostedWindowStatesNoInstallRung(t *testing.T) {
-	a := ordinaryLaunch(t, Options{Host: "devbox"}, nil)
-	if _, ok := a.effortProfile(); ok {
-		t.Fatal("a connection offered to state this laptop's rung for somebody else's machine")
-	}
-}
 
 // ── 3. the approval posture, which is a safety claim ────────────────────────
 

@@ -512,7 +512,7 @@ If the conversation is about two folders and the work does not say which, you ar
 once — `this conversation is about two places — <one> and <other> — so say which one this
 task is about` — and the answer is remembered.
 
-## Work on two projects in one chat, switch folders, open another repo, change directory
+## Work on two projects in one chat, switch folders, open another repo, change directory — no new conversation needed for another project
 
 Four asks, four answers, and the first one is new.
 
@@ -551,10 +551,10 @@ model looking at the disk, which it could always do.
   `remove this folder · <path>`.
 - **`/folder`** — the first rows are this conversation's own folders, most recently used
   first. That is the whole set, on demand, in one keystroke.
-- **Home** — the row for a conversation that is about somewhere beyond the project it is
-  filed under ends `· also about <name>`, and `+2` when there are more; the card beside it
-  says `also about` and names them, three at a time with `▸ …N more folders` behind the
-  rest. Typing a folder's name into home's box finds conversations about it whichever
+- **Home** — while you type, a matching conversation that is about somewhere beyond the
+  project it is filed under ends `· also about <name>`, and `+2` when there are more; the
+  card beside a search says `also about` and names them, three at a time with
+  `▸ …N more folders` behind the rest. The resting panels do not carry the clause. Typing a folder's name into home's box finds conversations about it whichever
   project they were held in. *Home* has the whole screen.
 
 Sixteen folders is as many as one conversation keeps. Past that the oldest one it worked

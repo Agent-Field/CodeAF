@@ -148,6 +148,34 @@ func TestARollupWithAnUnverifiedNodeStopsSayingDone(t *testing.T) {
 	}
 }
 
+// AND A QUESTION ANSWERED IS NOT A QUESTION. When the decision lands straight
+// under the landing that asked it, the batch counts the node once and reads it
+// by its newest card — the tmux suite drew `? 3 tasks landed` over two tasks,
+// one of them already taken as done.
+func TestARollupCountsADecidedNodeOnceByItsNewestCard(t *testing.T) {
+	a, _, _ := taskApp(t)
+	drive(t, a,
+		streamEventMsg{gen: a.gen, ev: update(1, "Rebuild the index", session.TaskDone, session.TaskNotice{
+			Elapsed: time.Second, Merge: mergeWordMerged,
+		})},
+		streamEventMsg{gen: a.gen, ev: update(2, "Port the parser", session.TaskUnverified,
+			unverifiedNotice("finished, but needs your look — nobody could say either way"))},
+		streamEventMsg{gen: a.gen, ev: update(2, "Port the parser", session.TaskDone, session.TaskNotice{
+			Elapsed: time.Second, Merge: mergeWordMerged, Report: "you took this as done",
+		})},
+	)
+	text := taskText(a)
+	if !strings.Contains(text, "2"+doneRollupWord) {
+		t.Fatalf("the rollup does not count two tasks done:\n%s", text)
+	}
+	if strings.Contains(text, glyphAsk) {
+		t.Fatalf("the rollup still asks a question that was answered:\n%s", text)
+	}
+	if n := strings.Count(text, "Port the parser"); n != 1 {
+		t.Fatalf("the decided node is drawn %d times in its batch, want once:\n%s", n, text)
+	}
+}
+
 // THE "@" LIST IS THE OTHER PLACE A STATE IS READ IN ONE CELL, and its default
 // used to be the tick — which is the one answer an unverified row must not get
 // (taskmention.go).

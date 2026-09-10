@@ -54,8 +54,11 @@ func (placeSettings) body(a *app, width, room int) []placeRow {
 	s := &a.sheet
 	pal := a.pal
 	rows := make([]placeRow, 0, room)
+	// NO RULE UNDER THE SECTIONS' BAR. The frame's own rule is four rows up,
+	// and a second one inside the body drew the page as two frames stacked
+	// (PLACES-AUDIT.md finding 11); the filled chip and one blank row are the
+	// whole of what separates the bar from the rows.
 	rows = append(rows, placeRow{text: sheetTabBar(width, s.tab, pal), hit: sheetHit{kind: sheetHitTabs}})
-	rows = append(rows, placeRow{text: pal.dim(rule(width))})
 	rows = append(rows, placeRow{})
 	room -= len(rows)
 	if room < 1 {

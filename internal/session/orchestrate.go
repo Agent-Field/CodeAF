@@ -1655,8 +1655,12 @@ func (a *Agent) newOrchestrateFamily(goal, planner string, runID ...string) *orc
 		// on the row that closes it: this is the one seam that knows, because an
 		// adaptive run has no TaskNode to carry a kind for it
 		// (session's TaskKindAdaptive).
-		Kind:          TaskKindAdaptive,
-		Status:        string(TaskRunning),
+		Kind:   TaskKindAdaptive,
+		Status: string(TaskRunning),
+		// AND IT CARRIES ITS START, which is the one fact about a running row
+		// that does not go stale: every other window reads this line while the
+		// run goes, and [TaskIndexEntry.Duration] counts up from it.
+		StartedAt:     family.started,
 		SessionID:     session,
 		TranscriptURI: orchestrateFamilyURI(session, family.run),
 	})
@@ -2100,6 +2104,7 @@ func (f *orchestrateFamily) recordRoot(notice TaskNotice, snap orchestrate.Snaps
 		Cost:          snap.Fuel.Spent,
 		Model:         f.model,
 		DurationMS:    time.Since(f.started).Milliseconds(),
+		StartedAt:     f.started,
 		EndedAt:       time.Now(),
 		SessionID:     session,
 		TranscriptURI: orchestrateFamilyURI(session, f.run),

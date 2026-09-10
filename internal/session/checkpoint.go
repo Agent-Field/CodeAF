@@ -467,6 +467,20 @@ const checkpointResultArrow = " → "
 // accept work that a worker in its own copy cannot see, let alone accept. The
 // exclusion is stated in the ask, and the fold that reads it back is
 // [checkpointSketch.handsBack].
+//
+// AND IT SAYS THAT WHAT IS DONE IS NOT WHAT IS LEFT, which is a repair rather
+// than a tidiness. WHAT COMES BACK FROM HERE BECOMES THE FIRST PARAGRAPH OF THE
+// BRIEF, under the words "WHAT IS LEFT, AS PARTS" ([checkpointSketch.head]) — so
+// a reader that drew work the turn above it had ALREADY FINISHED handed the next
+// pair of hands a louder, earlier instruction to do it again, while the evidence
+// section further down that same document correctly said it was done and pointed
+// at what came back (admission.go). Measured 2026-09-10: a worker opened on
+// exactly that brief and spent its first minutes re-reading what the parent had
+// read and re-deriving what the handoff had already stated. The contradiction
+// cannot be repaired downstream, because by the time the two halves are in one
+// document they already disagree — so the reader that draws the line is the one
+// that has to be told, and the writer of the prose half is told the same thing in
+// the same change ([checkpointHandoffWriteAsk]).
 const checkpointSketchAsk = "[checkpoint] Above is what was asked and what has been done towards it. " +
 	"In one line, sketch what remains of the ask as parts and arrows: " +
 	"independent parts separated by ' | ', ordered steps joined by ' > '. " +
@@ -474,7 +488,9 @@ const checkpointSketchAsk = "[checkpoint] Above is what was asked and what has b
 	"Nothing else on that line. Then one sentence saying what each letter is. " +
 	"If nothing remains, that line is '(done)'. " +
 	"Work you have already handed out is not a part: if all that remains is waiting on it, " +
-	"reviewing what comes back or accepting it, that line is '(waiting)'."
+	"reviewing what comes back or accepting it, that line is '(waiting)'. " +
+	"Work that is already done is not a part either: what the account above shows finished is not " +
+	"what remains, and drawing it sends somebody to do it a second time."
 
 // checkpointSplitNote is the ONE line a person reads when a mark's sketch says
 // the work in front of it has parts.
@@ -617,10 +633,22 @@ const (
 // IT IS ASKED FOR PROSE AND NOT FOR HEADINGS. The reader of this document is a
 // worker opening on it cold, and a brief with four shouted headings over four
 // empty sections is a form somebody filled in.
+//
+// AND IT SAYS WHERE THE LINE BETWEEN THE FIRST TWO OF THE FOUR FALLS, because
+// the whole value of asking for both is lost when a thing lands on the wrong
+// side of it. The four things are ordered "what is left" then "what is already
+// known", and a writer that put a finished reading under the first has not
+// merely been untidy — it has written the instruction the worker obeys, ahead of
+// and louder than the evidence section that says the same reading is done
+// (admission.go). This is [checkpointSketchAsk]'s clause said in the third
+// person, landed in the same change and measured from the same run: a worker
+// opened on such a brief and spent its first minutes redoing finished work.
 const checkpointHandoffWriteAsk = "[write the handoff] The work above is being handed to somebody who will finish it, and they " +
 	"cannot see any of this — not the conversation, not the tool results, not the draft. Write their instruction " +
 	"and nothing else: what is left to do, what is already known that they would otherwise have to find out " +
-	"again, what has been ruled out, and how anybody could tell when it is done. Finish against the person's own " +
+	"again, what has been ruled out, and how anybody could tell when it is done. Nothing that is already done goes " +
+	"under what is left to do: what has already been read, run or found out is what they already know, and putting " +
+	"it under what is left sends them to do it again. Finish against the person's own " +
 	"words at the top, never against whatever the draft happens to be holding. Do not greet them, do not " +
 	"describe this conversation, and do not repeat yourself."
 

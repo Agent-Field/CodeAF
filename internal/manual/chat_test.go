@@ -2018,6 +2018,27 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I know which column I am in", "home"},
 		{"why is one project name darker than the others", "home"},
 		{"which section is my cursor in on home", "home"},
+		// The mission-control wave (#783) made home seven panels. These are the
+		// questions somebody asks standing in front of it: what is running, what
+		// today cost, what happened while they were away, how to start somewhere
+		// else, why a panel is only a dim line, and where the arrows and the old
+		// card went — and the two things home says it cannot do yet.
+		{"what is running on this machine right now", "home"},
+		{"what is running right now", "home"},
+		{"how much did today cost", "home"},
+		{"what did it do while I was away", "home"},
+		{"what is the since you left panel", "home"},
+		{"start a chat in another folder", "home"},
+		{"why is the home screen empty", "home"},
+		{"what does the dim line under a panel heading mean", "home"},
+		{"how do I move between the columns on home", "home"},
+		{"why is the cursor on my previous chat when I open home", "home"},
+		{"why did home cut off panels on a small terminal", "home"},
+		{"what does 3 older tasks mean on home", "home"},
+		{"where did the card on home go", "home"},
+		{"where did standing and memory go from the tab bar", "home"},
+		{"can I stop another window task from home", "home"},
+		{"is there a something is wrong panel", "home"},
 		// The wave that stopped guessing at the terminal's background and asked
 		// it. Three of these are somebody checking whether the surface knows what
 		// it is sitting on — the first two before switching to a light terminal,
