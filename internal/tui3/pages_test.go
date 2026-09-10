@@ -650,11 +650,10 @@ func TestWaitingOnYouIsOneColourOnHome(t *testing.T) {
 	if pal.warnBold(homeAskGlyph) == pal.askBold(homeAskGlyph) {
 		t.Fatal("the two hues are the same colour, so this test proves nothing")
 	}
-	// The one place the mark is painted now is the switcher's own row, where a
-	// row that needs a person wears the amber and nothing else on the screen
-	// does (switcher.go's [switcherPaintRow]).
-	row := switcherRow{kind: switcherConversation, title: "Asking", needs: true}
-	if !strings.Contains(switcherPaintRow(row, 60, pal, false, switcherPaint{}), pal.warn(tokens.GlyphNeedsHuman)) {
+	// The one place the mark is painted now is a grid row's lead, where a row
+	// that needs a person wears the amber and nothing else on the screen does
+	// (homecell.go's [app.homeCellLead]).
+	if lead := a.homeCellLead(&homeCell{mark: cellMarkNeeds}, -1, pal); !strings.Contains(lead, pal.warn(pal.glyph(tokens.GNeedsHuman))) {
 		t.Fatal("the needs-you row is not the waiting-on-you hue")
 	}
 	// AND MONEY HAS A HUE OF ITS OWN, which is not the hue of a finished tick.

@@ -103,17 +103,10 @@ func TestBelowTheCardTierTheRowCarriesTheFactInstead(t *testing.T) {
 	if tier := a.homeTierNow(); tier != homeTierList {
 		t.Fatalf("a %d-cell frame is tier %v, want the list", a.width, tier)
 	}
-	// AND THE FACT THE CARD CARRIED IS ON THE ROW'S OWN NOTE, which is why there
-	// is nothing to miss: the note is the reading, not a consolation for one.
-	// (What a running node is DOING rides beside it — `· reading filings` — and
-	// is never on disk, so no lab can put it there: [session.TaskIndexEntry]'s
-	// Activity is built live and marked `json:"-"`.)
-	text := homeText(a)
-	if !strings.Contains(text, "1 task running") {
-		t.Fatalf("the row does not carry the fact the card was for:\n%s", text)
-	}
-	if strings.Contains(text, "Read the filings") {
-		t.Fatalf("a card was drawn under the tier:\n%s", text)
+	// AND THE FACT THE CARD CARRIED IS ON THE GRID, which is why there is
+	// nothing to miss: the work is its own row of `running`, named after itself.
+	if text := homeText(a); !strings.Contains(text, "Read the filings") {
+		t.Fatalf("the grid does not carry the fact the card was for:\n%s", text)
 	}
 
 	// AND ONE CELL WIDER THERE IS ONE, about the same row.

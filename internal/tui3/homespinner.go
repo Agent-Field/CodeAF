@@ -100,17 +100,9 @@ func (h *homeView) newestMoving() int {
 // and when that movement began.
 //
 // IT IS READ OFF THE ROW AND NEVER OFF THE WORLD, so that a line and the mark it
-// wears can never disagree. On the resting list the reading has already made the
-// judgement and carries it ([switcherRow.moving]); under a query the line is the
-// drop-up's own and the two kinds that move are a conversation with nodes out
-// and an errand mid-turn.
+// wears can never disagree. Under a query the line is the drop-up's own and the
+// two kinds that move are a conversation with nodes out and an errand mid-turn.
 func homeMovingAt(line homeLine) (time.Time, bool) {
-	if line.sw != nil {
-		if row := line.sw.row; row != nil {
-			return row.at, row.moving
-		}
-		return time.Time{}, false
-	}
 	switch line.kind {
 	case homeSession:
 		if line.row.NeedsPerson() || line.row.Tasks.Running == 0 {
@@ -148,8 +140,8 @@ func (a *app) homeSpins(at int) bool {
 }
 
 // homeSpinCell is the turning cell for one line of the column, and "" on every
-// other line — the one door the reading paints its moving mark through
-// (switcher.go's [switcherPaint]).
+// other line — the one door a row paints its moving mark through (homecell.go's
+// [app.homeCellLead]).
 func (a *app) homeSpinCell(at int) string {
 	if !a.homeSpins(at) {
 		return ""

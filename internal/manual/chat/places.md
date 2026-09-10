@@ -287,8 +287,8 @@ of them, so they can never move a view out from under you while you are aiming a
 destination; pressed with no layer up, they do nothing.
 
 The last two classes are bound where there is something to bind. `alt+<letter>` today is
-`alt+g` and `alt+q` on home, which group the list by project and hide the quiet rows, and
-`alt+s` on the memory place, which changes which shelf it is showing. `shift+<arrow>` is a place's time
+`alt+s` on the memory place, which changes which shelf it is showing; home's panels have no
+second shape, so `alt+g` and `alt+q` do nothing there. `shift+<arrow>` is a place's time
 window — `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is — and
 three places have one: **tasks** (when it ran), **standing** (when it fired) and **spend**
 (which days). All three draw the same control on their own head row, at the right of the
@@ -406,14 +406,12 @@ being held down — it only reports what arrived.
 
 ## home — what wants you
 
-The first place, and the one aforge opens on. Every conversation on this machine, from
-every project, as **one flat ranked list** — what wants you first, then what is moving, then
-the rest — with the project as a tag on each row.
+The first place, and the one aforge opens on. The whole machine as **panels** — `needs you`,
+`where you were` and `projects` on the left, `running`, `since you left`, `spend` and `next up`
+on the right — each a door to the place that owns it.
 
-Its own keys are in the **Home** page. Under the tab bar: `tab` is the way to the next place
-rather than the way between home's old columns, the errand pane is taken into with `→`
-rather than `tab`, and home's two `alt+<letter>` keys are **`alt+g` group by project** and
-**`alt+q` hide the quiet ones**.
+Its own keys are in the **Home** page. Under the tab bar: `tab` is the way to the next place,
+`←` `→` cross home's columns, and the errand pane is taken into with `→` rather than `tab`.
 
 ## tasks — the tasks page, and how to get to it without a command
 

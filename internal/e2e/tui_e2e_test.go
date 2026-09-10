@@ -974,11 +974,10 @@ func testAnswerFromHome(t *testing.T) {
 	// from there. So B opens its own project, and A's conversation is a row on
 	// B's list like any other.
 	b := start(t, "afe2e_b", home, newWorkspace(t, "consentws-b", false), tuiPlain, 40)
-	// THE SECTION LINE IS WHAT SAYS A's ROW HAS ARRIVED. It is drawn only while
-	// a row of the ranked list is asking or moving ([switcherReading.hasAttention]),
-	// so waiting for it waits for exactly the fact this subtest is about rather
-	// than for a title no fixture chose.
-	b.waitFor(40*time.Second, say(t, "switcherSectionWord"))
+	// THE GATE'S SENTENCE IS WHAT SAYS A's ROW HAS ARRIVED. `needs you` draws
+	// a question's own line under its row, so waiting for it waits for exactly
+	// the fact this subtest is about rather than for a title no fixture chose.
+	b.waitFor(40*time.Second, say(t, "consentRowLine"))
 	// AND THE CURSOR IS WALKED ONTO IT, because the answer band belongs to the
 	// row UNDER THE CURSOR (homeband_answer.go) and B lands on its own project's
 	// row — the one it is sitting in. THE BAND IS THE ORACLE AND NOT A HINT: a
@@ -1008,17 +1007,12 @@ func testAnswerFromHome(t *testing.T) {
 		t.Errorf("home's row wrote its own grammar around the gate's sentence:\n%s", firstMatch(row, say(t, "consentRowLine")))
 	}
 
-	// AND WITH SOMETHING ASKING, THE LIST WEARS ITS SECTION LINE — the one
-	// heading over the flat ranked list, with the two keys that change its shape
-	// out at the right margin. It is drawn only while a row of the list is asking
-	// or moving ([switcherReading.hasAttention]), and window A's conversation,
-	// stopped on a consent card, is exactly such a row.
-	for _, want := range []string{
-		say(t, "switcherSectionWord"), say(t, "switcherGroupWord"), say(t, "switcherQuietWord"),
-	} {
-		if !strings.Contains(row, want) {
-			t.Errorf("the section line is missing %q while a conversation is asking:\n%s", want, row)
-		}
+	// AND THE ROW STANDS UNDER `needs you`, the panel every question on the
+	// machine lands in — window A's conversation, stopped on a consent card, is
+	// exactly such a row. The heading is matched with its count, because the
+	// bare word is also the front of the gate's own `needs your ok …`.
+	if head, line := strings.Index(row, say(t, "homeNeedsHeading")+" · "), strings.Index(row, say(t, "consentRowLine")); head < 0 || line < head {
+		t.Errorf("the asking row is not under %q:\n%s", say(t, "homeNeedsHeading"), row)
 	}
 
 	b.lit("1")

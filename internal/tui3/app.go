@@ -2087,16 +2087,6 @@ type app struct {
 	// sets it, because where sessions live is internal/session's answer and a
 	// second one would be a second place for it to be wrong.
 	homeRoot string
-	// switchGrouped is `alt+g` and switchQuiet is `alt+q`: the two views home's
-	// list can be shown in (place_home.go).
-	//
-	// THEY ARE ON THE APP BECAUSE THEY OUTLIVE THE SCREEN AND NOTHING ELSE. A
-	// person who grouped the list expects it grouped the next time they open home
-	// in this terminal, and expects to have chosen a view rather than to have
-	// found a preference they now own — so the flags live for as long as the
-	// process does, and nothing writes them to a disk.
-	switchGrouped bool
-	switchQuiet   bool
 	// composer is the COMPOSER LAYER: `alt+enter` over a composer with something
 	// in it, on any place (composerlayer.go, SCREEN 2e). It is the router's own
 	// layer rather than any one place's, which is why it is here beside `page`

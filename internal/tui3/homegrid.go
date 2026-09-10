@@ -273,23 +273,11 @@ type homeGridInput struct {
 func (h *homeView) gridInput() homeGridInput {
 	world := h.world
 	world.Projects = h.everyProject()
-	here := switcherHere{session: h.here, project: h.bucket, coming: h.claim, hosted: h.far}
-	reading := readSwitcher(world, h.items, h.fired, here, h.gone, h.seen, h.world.Read,
-		switcherView{all: true}, h.ledger)
-	in := homeGridInput{world: world, items: h.items, errands: h.switchExchanges(),
-		bucket: h.bucket, launch: h.launch, tilde: h.tilde, last: h.last, repos: h.repos, spend: h.spend,
-		seen: h.seen, now: h.world.Read}
-	for _, line := range reading.lines {
-		if line.row == nil || line.row.fold {
-			continue
-		}
-		if line.row.kind == switcherLedger {
-			in.ledger = append(in.ledger, *line.row)
-			continue
-		}
-		in.rows = append(in.rows, *line.row)
-	}
-	return in
+	here := switcherHere{session: h.here, coming: h.claim, hosted: h.far}
+	reading := readSwitcher(world, h.items, h.fired, here, h.gone, h.seen, h.world.Read, h.ledger)
+	return homeGridInput{rows: reading.rows, ledger: reading.ledger, world: world, items: h.items,
+		errands: h.switchExchanges(), bucket: h.bucket, launch: h.launch, tilde: h.tilde, last: h.last,
+		repos: h.repos, spend: h.spend, seen: h.seen, now: h.world.Read}
 }
 
 // ── what a panel hands back ────────────────────────────────────────────────
