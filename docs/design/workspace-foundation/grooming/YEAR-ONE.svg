@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1700" height="1180" viewBox="0 0 1700 1180" role="img" aria-labelledby="title desc"><title id="title">One year with aforge: a startup CTO's workspace</title><desc id="desc">Illustrative future view. Nested folder boxes organize chats, work, outputs and decisions. Selected labelled links connect related records across folders. App and production is expanded to show ongoing responsibility, current execution and links to other folders. Folder summaries distinguish running, waiting and your call. This is not an implemented interface or real user data.</desc><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#819496"/></marker></defs><style>text{font-family:Arial,sans-serif;fill:#263c40;font-size:21px}.title{font-size:35px;font-weight:700}.heading{font-size:26px;font-weight:700}.label{font-size:17px;letter-spacing:1.2px;font-weight:700;fill:#65797b}.small{font-size:18px;fill:#607578}.tiny{font-size:16px;fill:#607578}.edge{fill:none;stroke:#819496;stroke-width:1.6;stroke-dasharray:5 4;marker-end:url(#arrow)}.linklabel{font-size:16px;fill:#526e71;paint-order:stroke;stroke:#f1f5f3;stroke-width:7px}.green{fill:#267668}.amber{fill:#9a6625}</style><rect width="1700" height="1180" fill="#fafbf8"/>
+<text x="35" y="52" class="title">Your aforge, after one year</text>
+<text x="35" y="86" class="small">A startup CTO’s accumulated work, context and ongoing responsibilities — an illustrative future view.</text>
+<text x="35" y="123" class="label">BOXES = FOLDERS / CONTAINMENT</text>
+<text x="450" y="123" class="label">DASHED LINKS = SELECTED RELATIONS</text>
+<text x="960" y="123" class="label">STATUS = THE WORK INSIDE</text>
+<rect x="25" y="153" width="1085" height="610" rx="18" fill="#f1f5f3" stroke="#d3ddda"/>
+<text x="47" y="191" class="heading">Startup</text>
+<text x="195" y="191" class="small">Your work, organized by what you return to</text>
+<rect x="48" y="216" width="280" height="218" rx="12" fill="#fff" stroke="#ccd9d4"/>
+<text x="66" y="250" class="heading">Product</text>
+<text x="66" y="278" class="small">Plans, choices and discoveries</text>
+<text x="66" y="314">Release plan</text>
+<text x="66" y="345">Roadmap discussions</text>
+<text x="66" y="376">Research and prototypes</text>
+<text x="66" y="412" class="small">Earlier releases stay findable</text>
+<rect x="425" y="216" width="280" height="218" rx="12" fill="#f4faf7" stroke="#438f7c"/>
+<text x="443" y="250" class="heading">App &amp; production</text>
+<text x="443" y="278" class="small">Code, releases and reliability</text>
+<text x="443" y="314">Ship v1.8</text>
+<text x="443" y="345">Keep production healthy</text>
+<text x="443" y="376">Releases and decisions</text>
+<text x="443" y="412" class="small" style="fill:#267668">1 running · 1 waiting</text>
+<rect x="802" y="216" width="280" height="218" rx="12" fill="#fff" stroke="#ccd9d4"/>
+<text x="820" y="250" class="heading">Customers</text>
+<text x="820" y="278" class="small">Feedback and commitments</text>
+<text x="820" y="314">Acme pilot</text>
+<text x="820" y="345">Feedback and promises</text>
+<text x="820" y="376">Onboarding guide</text>
+<text x="820" y="412" class="small">1 your call</text>
+<rect x="48" y="508" width="280" height="218" rx="12" fill="#fff" stroke="#ccd9d4"/>
+<text x="66" y="542" class="heading">Launch &amp; growth</text>
+<text x="66" y="570" class="small">Campaigns, content and results</text>
+<text x="66" y="606">September launch</text>
+<text x="66" y="637">Weekly campaign review</text>
+<text x="66" y="668">Copy and past launches</text>
+<text x="66" y="704" class="small">1 waiting for next check</text>
+<rect x="425" y="508" width="280" height="218" rx="12" fill="#fff" stroke="#ccd9d4"/>
+<text x="443" y="542" class="heading">Company &amp; finance</text>
+<text x="443" y="570" class="small">Runway, records and planning</text>
+<text x="443" y="606">Budget decision</text>
+<text x="443" y="637">Monthly runway review</text>
+<text x="443" y="668">Reports and source sheets</text>
+<text x="443" y="704" class="small">1 waiting for month end</text>
+<rect x="802" y="508" width="280" height="218" rx="12" fill="#fff" stroke="#ccd9d4"/>
+<text x="820" y="542" class="heading">Hiring</text>
+<text x="820" y="570" class="small">People, interviews and choices</text>
+<text x="820" y="606">First engineering hire</text>
+<text x="820" y="637">Interview discussions</text>
+<text x="820" y="668">Role brief and scorecards</text>
+<text x="820" y="704" class="small">No active work</text>
+<path d="M328 313 H423" class="edge"/>
+<text x="344" y="300" class="linklabel">guides</text>
+<path d="M705 313 H800" class="edge"/>
+<text x="720" y="300" class="linklabel">supports</text>
+<path d="M188 434 V506" class="edge"/>
+<text x="203" y="476" class="linklabel">release plan informs launch</text>
+<path d="M705 606 H800" class="edge"/>
+<text x="715" y="593" class="linklabel">constrains</text>
+<text x="47" y="748" class="tiny">Only a few useful links are shown. Selecting a record reveals its exact sources and connections.</text>
+<rect x="25" y="784" width="1085" height="149" rx="18" fill="#fff" stroke="#d3ddda"/>
+<text x="47" y="821" class="heading">Personal</text>
+<text x="180" y="821" class="small">The same workspace also holds life outside the startup</text>
+<rect x="47" y="842" width="316" height="66" rx="12" fill="#fafbf8" stroke="#d3ddda"/>
+<text x="65" y="872">Travel</text>
+<text x="65" y="896" class="small">Conference trip · itinerary</text>
+<rect x="387" y="842" width="338" height="66" rx="12" fill="#fafbf8" stroke="#d3ddda"/>
+<text x="405" y="872">Learning</text>
+<text x="405" y="896" class="small">Reading · experiments · notes</text>
+<rect x="749" y="842" width="338" height="66" rx="12" fill="#fafbf8" stroke="#d3ddda"/>
+<text x="767" y="872">Home</text>
+<text x="767" y="896" class="small">Documents · recurring admin</text>
+<path d="M705 398 H750 V470 H1120 V416 H1129" class="edge"/>
+<text x="943" y="461" class="linklabel">expand folder</text>
+<rect x="1132" y="153" width="543" height="780" rx="18" fill="#fff" stroke="#80ac9e"/>
+<text x="1158" y="191" class="label">ZOOM INTO THE SAME FOLDER</text>
+<text x="1158" y="233" class="heading">Startup / App &amp; production</text>
+<text x="1158" y="265" class="small">The folder holds work; it does not run itself.</text>
+<rect x="1158" y="287" width="491" height="108" rx="12" fill="#fafbf8" stroke="#d3ddda"/>
+<text x="1176" y="318" class="heading">Chats &amp; outputs</text>
+<text x="1176" y="348">Deployment discussion · incident review</text>
+<text x="1176" y="377">Code · release notes · past outcomes</text>
+<rect x="1158" y="416" width="491" height="262" rx="12" fill="#f0f8f4" stroke="#acd0bf"/>
+<text x="1176" y="447" class="heading">Ongoing: keep production healthy</text>
+<text x="1176" y="478" class="small">Retains intent, limits and check history</text>
+<text x="1176" y="516" style="fill:#267668">Running now: investigate checkout errors</text>
+<text x="1176" y="550">Check logs</text>
+<text x="1340" y="550">↔</text>
+<text x="1380" y="550">Reproduce failure</text>
+<text x="1176" y="579" class="small">Temporary cooperating runs, when useful</text>
+<text x="1176" y="615">Between checks: waiting for its next wake</text>
+<text x="1176" y="651" class="small">Open history · inspect scope · pause or stop</text>
+<rect x="1158" y="699" width="491" height="117" rx="12" fill="#fafbf8" stroke="#d3ddda"/>
+<text x="1176" y="731" class="heading">Relevant decisions &amp; sources</text>
+<text x="1176" y="761">Release limits ← deployment discussion</text>
+<text x="1176" y="791">Budget constraint ← Company &amp; finance</text>
+<text x="1158" y="850" class="label">Other connections</text>
+<text x="1158" y="880">Release → Acme pilot → customer launch</text>
+<text x="1158" y="910" class="small">Follow a link to the same record, not a copy.</text>
+<rect x="25" y="960" width="1650" height="124" rx="18" fill="#eaf1ef" stroke="#d3ddda"/>
+<text x="47" y="997" class="heading">A daily overview is another view of this same workspace</text>
+<text x="47" y="1033" style="fill:#267668">Running: checkout investigation</text>
+<text x="520" y="1033" style="fill:#9a6625">Your call: Acme pilot scope</text>
+<text x="1040" y="1033">Changed: September launch plan</text>
+<text x="47" y="1063" class="small">Open an item → see its folder, sources, current result and controls. History stays available without flooding this view.</text>
+<text x="35" y="1122" class="small">Design proposal: start with an overview, navigate familiar folders, reveal relationships when useful.</text>
+<text x="35" y="1152" class="tiny">The zoomable map and this integrated experience are not built yet. Examples and statuses are fictional; ongoing does not mean constantly executing.</text>
+</svg>

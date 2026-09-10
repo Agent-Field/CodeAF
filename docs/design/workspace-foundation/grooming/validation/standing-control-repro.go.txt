@@ -1,0 +1,40 @@
+package standing
+
+import (
+ "context"
+ "testing"
+ "time"
+)
+
+// This runner saves a control change while the ticker is executing an admitted
+// action, reproducing the ordering without a timing-dependent goroutine race.
+type auditControlRunner struct { store *Store; status Status }
+func (r auditControlRunner) Probe(context.Context, Item) (string, error) { return "", nil }
+func (r auditControlRunner) Run(context.Context, Item, string, string) (Outcome, error) { return Outcome{}, nil }
+func (r auditControlRunner) Say(_ context.Context, item Item, _ string) (Outcome, error) {
+ current, err := r.store.Get(item.ID)
+ if err != nil { return Outcome{}, err }
+ current.Status = r.status
+ if r.status == StatusRetired { current.RetiredWhy = "stopped by you" }
+ if err = r.store.Save(current); err != nil { return Outcome{}, err }
+ return Outcome{Kind: "said"}, nil
+}
+func TestArchitectureAuditControlSurvivesFiring(t *testing.T) {
+ for _, status := range []Status{StatusPaused, StatusRetired} {
+  t.Run(string(status), func(t *testing.T) {
+   now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+   store := openStore(t, now)
+   item := reminder("Every 30 minutes report", time.Time{})
+   item.When = When{Kind: WhenEvery, Words: "every 30 minutes", Every: "30m"}
+   made, err := store.Create(item)
+   if err != nil { t.Fatal(err) }
+   later := now.Add(31*time.Minute)
+   store.clock = held(later)
+   ticker := newTicker(store, auditControlRunner{store, status}, later)
+   if _, err = ticker.Tick(context.Background()); err != nil { t.Fatal(err) }
+   got, err := store.Get(made.ID)
+   if err != nil { t.Fatal(err) }
+   if got.Status != status { t.Fatalf("control was overwritten: saved %s during firing, got %s", status, got.Status) }
+  })
+ }
+}
