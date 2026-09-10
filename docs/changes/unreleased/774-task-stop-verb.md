@@ -12,7 +12,6 @@ invalidates:
   - "`let aforge decide` could hand a decision the model's own `tasks … resolve` was then refused for — \"there is no graph left to settle it in\", naming another conversation's worktree — on every recovered task. The person's door and the model's reach the same node now."
   - "Pressing `let aforge decide` twice handed the model the same decision twice, in two identical lines. The second press answers `already handed to aforge` (`session.ErrTaskHandedOver`) and enqueues nothing; the card keeps reading `handed to aforge for this one` rather than `already answered`."
   - "A merge round in flight was in-memory only, so a session killed under one came back saying nothing about it. `taskRecord.Resolving` records the claim, the resume says `1 your call (its merge round was cut)`, the claim is dropped so the next press is taken — and nothing restarts the round."
-  - "`manualListCap` was a quarter of a read (12,800 bytes) and `tasks`'s headings had reached 12,798 of it, so the next `##` on that page dropped headings out of the cut notice and turned `TestEverySectionTheCutNamesComesBackWhole` red on dev for an unrelated change (#771). It is half a read."
 ---
 
 Four defects with one shape: the model's doors onto a task were narrower than the

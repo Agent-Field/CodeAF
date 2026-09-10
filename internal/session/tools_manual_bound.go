@@ -28,26 +28,16 @@ const (
 	// two numbers for one bargain drift apart.
 	manualPageCap = bare.ResultByteCap
 	// manualListCap bounds the lists that tell the model what to ask for next
-	// — the page names, a page's headings. HALF A PAGE, which is room for every
-	// heading of the longest page there is with a page's worth of growth left in
-	// it, so the list is whole in practice and cannot become the flood it exists
-	// to prevent.
-	//
-	// IT WAS A QUARTER, AND A QUARTER STOPPED BEING TRUE. `tasks` is the longest
-	// page and its headings — deliberately long, because a heading is the search
-	// index and people search in their own words — reached 12,798 bytes of a
-	// 12,800-byte budget. Two bytes. The next `##` anybody added to that page
-	// pushed four headings out of the cut notice and turned
-	// TestEverySectionTheCutNamesComesBackWhole red on dev, over a change that had
-	// nothing to do with this file (#771, 2026-09-09) — and a bound that fails a
-	// stranger's pull request for writing a manual section is a bound that will be
-	// worked around rather than read.
-	//
-	// THE LIST IS WHAT THE CUT IS FOR. A page held back with headings it will not
-	// name is a page whose rest is unreachable, which is the exact failure this
-	// whole file exists to stop; the notice is subtracted from the page text
-	// shown, so what a bigger list spends is prose the reader can ask for by name
-	// afterwards. That is the right way round.
+	// — the page names, a page's headings. THE LIST IS A CEILING, NOT AN
+	// ALLOWANCE: nothing is padded out to it, so raising it costs a reader
+	// nothing until a page actually has that many headings. Half a page is room
+	// for every heading of the longest page there is, twice over — tasks is
+	// that page, and its 138 headings come to a little under 13,000 bytes —
+	// so the list is whole in practice and still cannot become the flood it
+	// exists to prevent. It was a QUARTER of a page until 2026-09-09, which was
+	// the same claim measured against a tasks page half the size; the page grew
+	// past it, [TestEverySectionTheCutNamesComesBackWhole] went red on a section
+	// nobody had touched, and the number that was wrong was this one.
 	manualListCap = manualPageCap / 2
 )
 
