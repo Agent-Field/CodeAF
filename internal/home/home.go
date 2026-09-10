@@ -29,7 +29,24 @@ const EnvVar = "AFORGE_HOME"
 // directory at all — the same last resort the callers used before, kept so a
 // missing HOME degrades to a working directory instead of an error path that
 // no caller was written to handle.
+//
+// Inside a test binary it is that answer unless the answer is the root the
+// process was handed rather than one the test chose, in which case it is a
+// throwaway directory of this process's own. See undertest.go: a test may not
+// resolve the state of whoever ran it. Outside a test binary the gate is not
+// there at all and this is [resolve] exactly as it has always been.
 func Dir() string {
+	root := resolve()
+	if underTest && Contains(inherited, root) {
+		return quarantine
+	}
+	return root
+}
+
+// resolve is [Dir] without the gate — the plain rule, which the gate itself has
+// to be able to ask for so it can capture the root this process was started
+// with before any test moves anything.
+func resolve() string {
 	if override := strings.TrimSpace(os.Getenv(EnvVar)); override != "" {
 		return override
 	}
