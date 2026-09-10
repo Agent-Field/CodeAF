@@ -260,6 +260,21 @@ func (d streamDelta) thinking() bool {
 	return d.Reasoning != "" || d.ReasoningContent != "" || d.ReasoningText != "" || len(d.ReasoningDetails) > 0
 }
 
+// callText is the tool-call arguments this delta carried, every fragment's in
+// order. It is the part of a call being assembled that is the model's work —
+// the id and the name are labels on it — and it is ANSWER, not thought: see the
+// read loop's reading of it in client.go.
+func (d streamDelta) callText() string {
+	if len(d.ToolCalls) == 1 {
+		return d.ToolCalls[0].Function.Arguments
+	}
+	var text strings.Builder
+	for _, fragment := range d.ToolCalls {
+		text.WriteString(fragment.Function.Arguments)
+	}
+	return text.String()
+}
+
 // reasoningEvents keeps the field signature attached to each piece. Providers
 // use one spelling consistently; retaining all three here also makes an odd
 // mixed stream lossless instead of silently choosing one.

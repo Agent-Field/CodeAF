@@ -1600,6 +1600,10 @@ func (c *Client) completeWithMessagesStreaming(
 			// on: what the person is shown, what the response accumulates, what
 			// the babble guard reads, and what the phase clock calls this moment.
 			answerText, workingText := split.content(choice.Delta.Content)
+			// AND A TOOL CALL'S ARGUMENTS ARE ANSWER TOO, which is the other half
+			// of the same reading and the one the split cannot make: they arrive
+			// on their own field. See the reading below for why.
+			callText := choice.Delta.callText()
 			// Reasoning counts as the first token. It is the endpoint writing —
 			// billed, streamed, and the thing the person is waiting through —
 			// and a reasoning model that thinks for a minute before its first
@@ -1623,13 +1627,11 @@ func (c *Client) completeWithMessagesStreaming(
 				// THE TWO COUNTS ARE NOT INTERCHANGEABLE. A token of answer is
 				// text on the screen and is the only thing that can reset the
 				// deadline while its measured rate keeps up; a token of thought
-				// — or a fragment of a call being assembled — is billed,
-				// streamed work that shows nothing, so it keeps the stream alive
-				// and moves the phase without counting as progress a person
-				// could watch disappear. A
-				// reasoning delta reported as a first token is what let a stall
-				// sixty seconds into a run of thought wait on a transport bound
-				// two and a half minutes away.
+				// is billed, streamed work that shows nothing, so it keeps the
+				// stream alive and moves the phase without counting as progress
+				// a person could watch disappear. A reasoning delta reported as
+				// a first token is what let a stall sixty seconds into a run of
+				// thought wait on a transport bound two and a half minutes away.
 				//
 				// AND WHAT COUNTS AS ANSWER IS THE SPLIT'S ANSWER, not the
 				// channel the bytes arrived on (answer.go). A model whose
@@ -1638,9 +1640,22 @@ func (c *Client) completeWithMessagesStreaming(
 				// would reset the very clock that is supposed to be running
 				// through a run of thought. The split decides answer from
 				// working; this decides waiting.
+				//
+				// A TOOL CALL'S ARGUMENTS ARE THE ANSWER ARRIVING, AND THEY ARE
+				// NOT THOUGHT. A fragment of a call is billed and streamed exactly
+				// as answer text is, it is drawn as it forms (the forming event
+				// below), and a person waiting on a `write` is waiting on the
+				// answer — the file IS the reply. Thought is hidden because a
+				// rescue would not have to repeat it for anybody; a call's
+				// arguments are what a rescue would have to write again, which is
+				// the cost the controller prices ([control.Reading.Visible]).
+				// Reading them as hidden measured a ten-minute `write` against
+				// how long this model THINKS, judged the "thought" pathologically
+				// long, and raised a rescue that wrote eighteen thousand tokens
+				// nobody kept (2026-09-10).
 				visible, hidden := 0, 1
-				if answerText != "" {
-					visible, hidden = visibleProgress.add(answerText), 0
+				if answerText != "" || callText != "" {
+					visible, hidden = visibleProgress.add(answerText)+visibleProgress.add(callText), 0
 				}
 				watch.note(control.Reading{At: waitNow(), Visible: visible, Hidden: hidden})
 				// AND THE SAME PROGRESS MOVES THE PHASE CLOCK, which is the
@@ -1653,9 +1668,10 @@ func (c *Client) completeWithMessagesStreaming(
 				// THE CLOCK IS TOLD WHAT THE SPLIT DECIDED and not what channel
 				// the bytes arrived on (answer.go): a model whose working comes
 				// fenced inside `content` is THINKING, and a clock that read the
-				// channel would tell the person it was writing their reply.
+				// channel would tell the person it was writing their reply. A
+				// call being assembled is writing it, for the reason above.
 				if watch.speaking() {
-					if answerText != "" {
+					if answerText != "" || callText != "" {
 						phase.enter(PhaseWriting, "")
 					} else if workingText != "" || choice.Delta.thinking() {
 						phase.enter(PhaseThinking, "")
