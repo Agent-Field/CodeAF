@@ -420,28 +420,29 @@ func TestACardDrawsARowPerAnswerAndMarksTheAskersPick(t *testing.T) {
 	}
 }
 
-// TestEnterTakesThePickOnlyWhereThereIsOne is the emptiness law on a key: no
-// pick, no `enter →` line, and enter goes back to meaning whatever it meant.
-func TestEnterTakesThePickOnlyWhereThereIsOne(t *testing.T) {
+// ENTER TAKES THE POINTED ANSWER, AND THE POINTER STARTS ON THE PICK where the
+// asker named one and on the first answer where it did not — so enter alone
+// still takes the recommendation, and a question with no recommendation is
+// still one keystroke from its first answer, the way every picker a person
+// already knows works. (It used to do nothing without a pick.)
+func TestEnterTakesThePointedAnswerWhichStartsOnThePick(t *testing.T) {
 	lab := newQuestionLab(t)
 	ask := consentAsk()
 	ask.Form = session.FormCard
 	lab.raise(ask)
 	lab.tick(questionSettle)
-	if got := lab.plain(); strings.Contains(got, "take the pick") {
-		t.Fatalf("a question with no pick offered one:\n%s", got)
+	if got := lab.plain(); !strings.Contains(got, "[enter] take it") {
+		t.Fatalf("a question with answers does not offer enter:\n%s", got)
 	}
-	if lab.press("enter") {
-		t.Fatal("enter was taken by a question with no pick")
+	if !lab.press("enter") || len(lab.answer) != 1 || lab.answer[0].Key != "1" {
+		t.Fatalf("enter did not take the first answer · %+v", lab.answer)
 	}
-	ask.Pick = &session.Pick{Key: "1", Reason: "the narrow answer"}
+	ask.ID++
+	ask.Pick = &session.Pick{Key: "3", Reason: "the narrow answer"}
 	lab.raise(ask)
-	lab.rows()
-	if !lab.press("enter") {
-		t.Fatal("enter was not taken by a question WITH a pick")
-	}
-	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != "1" {
-		t.Fatalf("enter took something other than the pick: %+v", lab.answer)
+	lab.tick(questionSettle)
+	if !lab.press("enter") || len(lab.answer) != 2 || lab.answer[1].Key != "3" {
+		t.Fatalf("enter did not take the pick · %+v", lab.answer)
 	}
 }
 
@@ -1314,5 +1315,65 @@ func TestTheTaskRecordPageDrawsTheLandingQuestionAndTakesItsKeys(t *testing.T) {
 	lab.a.taskCardKey("enter")
 	if len(lab.answer) != 1 || lab.answer[0].Key != session.LandingNoKey {
 		t.Fatalf("enter did not take the pointed answer · %+v", lab.answer)
+	}
+}
+
+// `c` AND `?` POINT THE BOX AT THE QUESTION, VISIBLY. The answers row becomes
+// a prompt saying what the box is writing now, every letter types (a `d` is a
+// letter, not `you decide`), enter sends the words with the pointed answer
+// (`c`) or to the asker with the question still open (`?`), and esc points the
+// box back at the conversation. Before this the keys changed nothing on the
+// screen and the words went out as a chat message (the owner, 2026-09-10).
+func TestChangeAndAskBackTurnTheRowIntoAPromptAndEnterSendsTheWords(t *testing.T) {
+	lab := newQuestionLab(t)
+	lab.a.width = 120
+	lab.raise(session.Question{
+		ID: 47, Kind: session.QuestionAsk, Ask: session.AskChoice,
+		Asker: session.Asker{Kind: session.AskerModel}, Head: "How is the breath paced?",
+		Reason: "undefined", Stakes: session.StakesReversible,
+		Options: []session.AnswerOption{{Key: "1", Label: "Fixed"}, {Key: "2", Label: "Adaptive"}, {Key: "3", Label: "Free timer"}},
+		Pick:    &session.Pick{Key: "2", Reason: "most guidance"},
+	})
+	lab.tick(time.Second)
+	lab.press("c")
+	screen := lab.plain()
+	if !strings.Contains(screen, "change: say what you want different, then enter · it goes with [2] Adaptive · esc back") {
+		t.Fatalf("c did not turn the row into a prompt:\n%s", screen)
+	}
+	if strings.Contains(screen, "[d] you decide") {
+		t.Fatalf("the keys are still offered while the box is writing:\n%s", screen)
+	}
+	if lab.press("d") {
+		t.Fatal("a letter was taken as a verb while the box is writing")
+	}
+	if len(lab.answer) != 0 {
+		t.Fatalf("a letter answered: %+v", lab.answer)
+	}
+	lab.a.input.setText("keep the sensors optional")
+	lab.press("enter")
+	if len(lab.answer) != 1 || lab.answer[0].Key != "2" || lab.answer[0].Change != "keep the sensors optional" {
+		t.Fatalf("enter did not send the words with the pointed answer · %+v", lab.answer)
+	}
+	if lab.a.input.String() != "" {
+		t.Fatalf("the box kept the words: %q", lab.a.input.String())
+	}
+	// `?` — and esc points the box back.
+	lab.raise(session.Question{
+		ID: 48, Kind: session.QuestionAsk, Ask: session.AskChoice,
+		Asker: session.Asker{Kind: session.AskerModel}, Head: "Which store?",
+		Reason: "two fit", Stakes: session.StakesReversible,
+		Options: []session.AnswerOption{{Key: "1", Label: "sqlite"}, {Key: "2", Label: "postgres"}},
+	})
+	lab.tick(time.Second)
+	lab.press("?")
+	if screen = lab.plain(); !strings.Contains(screen, "ask back: type your question, then enter · the question stays open · esc back") {
+		t.Fatalf("? did not turn the row into a prompt:\n%s", screen)
+	}
+	lab.press("esc")
+	if screen = lab.plain(); !strings.Contains(screen, "[enter] take it") || strings.Contains(screen, "ask back: type") {
+		t.Fatalf("esc did not point the box back at the conversation:\n%s", screen)
+	}
+	if len(lab.a.questions) != 1 {
+		t.Fatal("esc folded the question instead of ending the prompt")
 	}
 }

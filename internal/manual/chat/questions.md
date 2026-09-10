@@ -422,8 +422,8 @@ the row.
 | `↑` `↓` `←` `→` | move the pointer (`↑↓` on a card, `←→` on a line; both pairs work on both) |
 | `esc` | later. Nothing is cancelled |
 | `o` | open it out into its own page, where there is more to see |
-| `c` | change — take an answer, but say what you want different |
-| `?` | ask back before answering |
+| `c` | change — take an answer, but say what you want different. The answers row becomes `change: say what you want different, then enter · it goes with [2] …`; type in the box below, `enter` sends the words with the pointed answer, `esc` gives the box back |
+| `?` | ask back before answering. The row becomes `ask back: type your question, then enter · the question stays open`; the reply lands in the conversation and the question is still there to answer |
 | `d` | you decide |
 | `D` | decide questions like this from now on |
 | `r` | make it a rule |
@@ -653,6 +653,23 @@ Where there is neither, `x` is not offered at all.
 Under eighty columns the table stacks: each answer gets its own heading with its
 readings underneath, because a column cut to nine characters is a column that
 lies. `x` again goes back to the answers.
+
+## Where do I type my answer — the box under the question, change and ask back, why typing did nothing
+
+There is no separate typing place: **the message box under the question is where
+the words go**, and the block says what they will mean. With nothing pressed,
+what you type is a message to the conversation and the question waits. Press
+`c` first and the answers row turns into `change: say what you want different,
+then enter · it goes with [2] Adaptive · esc back` — now the box is the
+question's: every letter types (even `d`), `enter` sends the sentence together
+with the answer the pointer is on, and `esc` turns the row back into the keys
+without answering. Press `?` and the row says `ask back: type your question,
+then enter · the question stays open`: `enter` sends the question to the asker,
+its reply lands in the conversation, and the block is still above the box to
+answer afterwards.
+
+If the row still shows the keys — `[enter] take it · [esc] later · …` — the box
+is the conversation's, and what you type there goes to the model as a message.
 
 ## Comment on one option
 

@@ -398,6 +398,17 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 		// EVERY QUESTION WITH ANSWERS HAS A POINTER AND ENTER TAKES IT
 		// ([questionPointerStart]); a question with none written down offers
 		// enter only when the asker recommended something.
+		if room := a.qroom; room != nil && room.head.token() == q.token() {
+			// THE ROOM'S ENTER SENDS WHAT THE ROOM HAS PICKED, and its foot
+			// says `nothing chosen yet` until something is; enter is offered
+			// there only when there is something for it to send.
+			return len(room.picked) > 0 || (q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != "")
+		}
+		if q.question.Kind == session.QuestionConnect {
+			// The connect offer's box is the answer, and enter over it empty
+			// takes nothing ([app.questionEnter]).
+			return q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != ""
+		}
 		if len(q.question.Options) > 0 {
 			return true
 		}
@@ -416,8 +427,13 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 	case needWalk:
 		// Every question with answers has the pointer ([questionPointerStart]);
 		// a checklist walks its own ticks with the same keys and says so on
-		// its `next row` line instead.
-		return len(q.question.Options) > 1 && q.question.Input.Kind != session.InputChecklist
+		// its `next row` line instead, and where `←→` move a hole
+		// ([needMoves]) the row says that — one key, one meaning — while the
+		// vertical pair still walks the pointer.
+		if q.question.Input.Kind == session.InputChecklist || a.questionOffers(q, needMoves) {
+			return false
+		}
+		return len(q.question.Options) > 1
 	case needHands:
 		if q.question.Ask == session.AskConfirmation ||
 			q.question.Stakes == session.StakesIrreversible {
