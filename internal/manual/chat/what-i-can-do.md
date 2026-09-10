@@ -1068,8 +1068,9 @@ when needed. `load_capability` adds one group to the tool list. The full descrip
 and arguments arrive on the next model request **within the same turn**; aforge
 continues without waiting for another message from you.
 
-There are up to three groups. The catalog lists only tools available on this machine:
+There are up to four groups. The catalog lists only tools available on this machine:
 
+- **`questions`** — `ask`, the model's own question to you (the questions page).
 - **`media`** — `generate_image`, `speak`, `generate_music`, `generate_video` and
   `edit_video`, where configured. `edit_video` needs ffmpeg; the generation tools
   each need a model. `view_image` stays directly available.
@@ -1085,6 +1086,13 @@ Deferring these descriptions reduces ordinary request size, at the cost of one
 extra model request on first use and a changed provider prefix when a group loads.
 The small catalog still travels with ordinary requests. This saves schema bytes;
 it does not guarantee a lower bill or a faster answer on every task.
+
+**If it loads a group and then stops without using it**, the turn is sent back once:
+the status line says `it loaded a tool and stopped before using it · asking it to go on`,
+and the model is told, in the same turn, that the tool is in its list and to call it or
+say why it no longer needs it. It happens once per turn; a model that stops again has
+decided, and the turn ends. It never happens when the model's last words were a question
+to you.
 
 **How long it lasts.** Loaded tools remain available while the engine runs. A group
 cannot be unloaded, and loading it again changes nothing. Reopening restores groups
