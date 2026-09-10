@@ -132,7 +132,6 @@ func (s hudSpan) shift(n int) hudSpan {
 // were off the end of the row. Each renderer sets its card's `gut` back to zero
 // beside the line that clears the old spans, so "what this card already carries"
 // is a fact the card states rather than one this pass has to infer.
-//
 func (a *app) gutterCards(d deck, width int) {
 	lead := textGutterCols(width)
 	for i := range d.entries {

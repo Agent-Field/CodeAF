@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -9,139 +8,140 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-// THE SETTLE QUESTION FOLLOWS THE PERSON INTO THE ROOM.
+// THE LANDED `your call` IS A QUESTION, AND IT FOLLOWS THE PERSON EVERYWHERE.
 //
 // A node that lands needing a look invites the person into its room — the
-// roster says `finished — look it over`, enter opens the page — and for a while
-// the page they arrived on had nothing to answer with: `task finished — esc to
-// return` at the foot, and the only choices back in the conversation on a card
-// that had to be walked to and selected. Everything here is about the room
-// asking the same question, answering to the same keys, and sharing ONE state
-// with the card in the conversation (tasksettle.go).
+// roster says `your call`, enter opens the page — and for a while the page they
+// arrived on had nothing to answer with: `this task has finished — say it to
+// main` at the foot, over work nobody had decided about (#767). The answers are
+// the landing question's now, on the block above the box, drawn on whichever
+// page a person is standing on; what is left to this file is that the room stops
+// claiming the work is finished, and that the frame's hint slot names the same
+// letters the block draws (tasksettle.go).
 
-// roomSettleFake is a room fake that can also be answered (tasksettle.go's
-// [settleAgent]). It is composed here rather than by embedding [settleFake]
-// beside [roomFake], because both of those embed the same tasker and Go would
-// promote none of its methods through two doors at once.
-type roomSettleFake struct {
+// roomQuestionFake is a room fake that also holds the questions lane, so the
+// block has its optional half ([questionAgent] states the law).
+type roomQuestionFake struct {
 	*roomFake
-	resolved []settleCall
-	handed   []uint64
-	back     []uint64
-	refuse   error
+	open   []session.Question
+	lane   chan session.Event
+	answer []session.Answer
 }
 
-func (f *roomSettleFake) ResolveUnverified(id uint64, resolution session.TaskResolution, why string) error {
-	if f.refuse != nil {
-		return f.refuse
+func (f *roomQuestionFake) OpenQuestions() []session.Question { return f.open }
+
+func (f *roomQuestionFake) WatchQuestions() (<-chan session.Event, func()) {
+	if f.lane == nil {
+		f.lane = make(chan session.Event, 8)
 	}
-	f.resolved = append(f.resolved, settleCall{id: id, answer: resolution})
+	return f.lane, func() {}
+}
+
+func (f *roomQuestionFake) ResolveQuestion(answer session.Answer) error {
+	f.answer = append(f.answer, answer)
 	return nil
 }
 
-func (f *roomSettleFake) HandUnverifiedToModel(id uint64) error {
-	if f.refuse != nil {
-		return f.refuse
+// landingAsk is the question the engine builds over a landing's own
+// [session.TaskAsk] (internal/session's landingQuestion), as a surface receives
+// it. The words are the ask's, exactly as landingOptions fills them in.
+func landingAsk(id uint64, kind session.QuestionKind, title, reason, yes, no string) session.Question {
+	options := session.AnswerOptions(session.QuestionLanding)
+	for at := range options {
+		switch options[at].Key {
+		case session.LandingYesKey:
+			options[at].Label = yes
+		case session.LandingNoKey:
+			options[at].Label = no
+		}
 	}
-	f.handed = append(f.handed, id)
-	return nil
+	return session.Question{
+		ID: id, Kind: kind, Ask: session.AskLanding, Form: session.FormCard,
+		Asker:   session.Asker{Kind: session.AskerTask, Name: title},
+		Head:    title,
+		Reason:  reason,
+		Subject: session.SubjectRef{Kind: session.SubjectNode, ID: id, Name: title},
+		Options: options,
+		Stakes:  session.StakesCostly,
+		Policy:  session.Policy{Kind: session.PolicyAsk},
+	}
 }
 
-func (f *roomSettleFake) TakeBackDecision(id uint64) error {
-	if f.refuse != nil {
-		return f.refuse
-	}
-	f.back = append(f.back, id)
-	return nil
-}
-
-// roomSettleApp is [roomApp] with a resolver under it and a profile of its own,
-// standing in the room of node 7 after it landed in the given state.
-func roomSettleApp(t *testing.T, state session.TaskState) (*app, *roomSettleFake) {
+// roomLandingApp is [roomApp] with the questions lane under it, standing in the
+// room of node 7 after it landed in the given state.
+func roomLandingApp(t *testing.T, state session.TaskState) (*app, *roomQuestionFake) {
 	t.Helper()
 	base, fake, _ := roomApp(t)
-	agent := &roomSettleFake{roomFake: fake}
+	agent := &roomQuestionFake{roomFake: fake}
 	base.agent = agent
 	base.profileDir = t.TempDir()
-	notice := unverifiedNotice("finished, but needs your look — nothing came back either way")
+	now := base.now()
+	base.clock = func() time.Time { return now }
+	// Somebody is at this keyboard (questiondelivery.go's [awayAfter]).
+	base.lastQuestionKey = now
+	if base.width < 80 {
+		base.width, base.height = 140, 30
+	}
+	notice := unverifiedNotice("nobody could check it — the checker never answered")
 	if state == session.TaskDone {
 		notice = session.TaskNotice{Elapsed: notice.Elapsed, Merge: mergeWordMerged}
 	}
 	drive(t, base, streamEventMsg{gen: base.gen, ev: update(7, "Fix the nil-map crash", state, notice)})
+	if state == session.TaskUnverified {
+		q := landingAsk(7, session.QuestionLanding, "Fix the nil-map crash", askCheckReason, "accept", "not right")
+		q.Asked = now
+		base.questionFold(session.Event{Kind: session.EventQuestion, Question: &q})
+		// Drawn, then aged past the block's settle guard (question.go).
+		base.questionRows(base.width)
+		now = now.Add(2 * questionSettle)
+	}
 	base.openRoom(7, "Fix the nil-map crash")
 	drive(t, base, roomClosedMsg{gen: base.room.gen})
 	return base, agent
 }
 
-// THE ROOM ASKS, in the place the foot used to say "finished": the ask line and
-// the four answers, and not the plain foot.
-func TestTheRoomOfANodeThatNeedsALookAsks(t *testing.T) {
-	a, _ := roomSettleApp(t, session.TaskUnverified)
+// THE ROOM OF A NODE THAT IS SOMEBODY'S CALL DOES NOT SAY IT HAS FINISHED. That
+// foot was the one sentence on the page that was not true about it.
+func TestTheRoomOfANodeThatNeedsALookDoesNotClaimItIsFinished(t *testing.T) {
+	a, _ := roomLandingApp(t, session.TaskUnverified)
 
-	page := roomText(a)
-	for _, want := range []string{
-		askCheckReason,
-		settleYesKey + " accept",
-		settleNoKey + " not right",
-		settleTellKey + settleTellWord,
-		settleHandKey + settleHandWord,
-	} {
-		if !strings.Contains(page, want) {
-			t.Fatalf("the room is missing %q:\n%s", want, page)
-		}
+	if !a.roomLandingAsking() {
+		t.Fatal("the room of a your-call node does not know it is asking")
 	}
-	if strings.Contains(page, roomFinishedRefusal.what) {
+	if page := roomText(a); strings.Contains(page, roomFinishedRefusal.what) {
 		t.Fatalf("the room says %q under a question it is asking:\n%s", roomFinishedRefusal.what, page)
 	}
-	if got := a.roomHint(); !strings.Contains(got, "a accept") {
-		t.Fatalf("the hint slot reads %q, want it to name the card's own chips", got)
+	if got := a.roomHint(); !strings.Contains(got, "a accept") || !strings.Contains(got, "n not right") {
+		t.Fatalf("the hint slot reads %q, want it to name the question's own answers", got)
 	}
 }
 
-// AND A NESTED ONE ASKS EXACTLY THE SAME (issue #268). The room reads the card
-// through [app.doneCardFor], and while the card was root-only this page said
-// "finished" over work nobody had decided about — the third of the three
-// surfaces that had no door for a nested gate.
-func TestTheRoomOfANestedDecisionAsks(t *testing.T) {
-	base, fake, _ := roomApp(t)
-	agent := &roomSettleFake{roomFake: fake}
-	base.agent = agent
-	base.profileDir = t.TempDir()
-	drive(t, base, streamEventMsg{gen: base.gen, ev: update(1, "Rebuild the index",
-		session.TaskRunning, session.TaskNotice{})})
-	notice := unverifiedNotice("finished, but needs your look — nobody could check it in 5m0s")
-	notice.Parent = 1
-	drive(t, base, streamEventMsg{gen: base.gen,
-		ev: update(7, "Port the parser", session.TaskUnverified, notice)})
-	base.openRoom(7, "Port the parser")
-	drive(t, base, roomClosedMsg{gen: base.room.gen})
+// AND THE ANSWERS ARE ON THE BLOCK, in the room exactly as in the conversation.
+func TestTheRoomsQuestionIsDrawnOnTheBlock(t *testing.T) {
+	a, agent := roomLandingApp(t, session.TaskUnverified)
 
-	if card := base.roomSettleCard(); card == nil || card.id != 7 {
-		t.Fatalf("the room of a nested decision offers nothing: %+v", card)
-	}
-	page := roomText(base)
-	for _, want := range []string{askCheckReason, settleYesKey + " accept"} {
-		if !strings.Contains(page, want) {
-			t.Fatalf("the room is missing %q:\n%s", want, page)
+	block := plain(strings.Join(a.questionRows(a.width), "\n"))
+	for _, want := range []string{"Fix the nil-map crash", askCheckReason, "accept", "not right", "tell it"} {
+		if !strings.Contains(block, want) {
+			t.Fatalf("the block is missing %q:\n%s", want, block)
 		}
 	}
-	drive(t, base, key("a"))
-	if len(agent.resolved) != 1 || agent.resolved[0].id != 7 ||
-		agent.resolved[0].answer != session.TaskAccept {
-		t.Fatalf("the accept reached the engine as %+v", agent.resolved)
+	drive(t, a, key("a"))
+	if len(agent.answer) != 1 || agent.answer[0].ID != 7 || agent.answer[0].FirstKey() != session.LandingYesKey {
+		t.Fatalf("the accept reached the one door as %+v", agent.answer)
 	}
 }
 
-// AND AN ORDINARY LANDING KEEPS THE FOOT IT HAS. Only the unverified case
-// changes: a done node's room still says finished, and offers nothing.
+// AN ORDINARY LANDING KEEPS THE FOOT IT HAS. Only a node waiting on somebody
+// changes: a done node's room still says finished, and asks nothing.
 func TestADoneNodeRoomKeepsThePlainFoot(t *testing.T) {
-	a, _ := roomSettleApp(t, session.TaskDone)
+	a, _ := roomLandingApp(t, session.TaskDone)
 
 	page := roomText(a)
 	if !strings.Contains(page, roomFinishedRefusal.what) {
 		t.Fatalf("a finished room lost its foot:\n%s", page)
 	}
-	if strings.Contains(page, askCheckReason) || strings.Contains(page, settleYesKey) {
+	if a.roomLandingAsking() {
 		t.Fatalf("a finished room asks to be decided about:\n%s", page)
 	}
 	if got := a.roomHint(); got != "" {
@@ -149,130 +149,38 @@ func TestADoneNodeRoomKeepsThePlainFoot(t *testing.T) {
 	}
 }
 
-// `a` IN THE ROOM ANSWERS THE ROOM'S OWN NODE — nothing selected, the room is
-// the selection — and the foot becomes the receipt. The card back in the
-// conversation is the same card, so it is decided too.
-func TestAcceptingFromTheRoomResolvesTheNodeAndTheCard(t *testing.T) {
-	a, agent := roomSettleApp(t, session.TaskUnverified)
-	_ = roomText(a)
-
-	drive(t, a, key("a"))
-
-	if len(agent.resolved) != 1 || agent.resolved[0].id != 7 ||
-		agent.resolved[0].answer != session.TaskAccept {
-		t.Fatalf("the accept reached the engine as %+v", agent.resolved)
+// A GUEST PAGE NEVER SHOWS THE LOCAL DECISION. A numeric id from another
+// conversation must not select this one's question.
+func TestAGuestRoomDoesNotAskTheLocalLandingsQuestion(t *testing.T) {
+	a, _ := roomLandingApp(t, session.TaskUnverified)
+	a.room.guest = &taskGuest{
+		session: "/another/conversation/session.jsonl",
+		node:    &taskNode{id: 7, title: "Someone else's result", state: session.TaskDone},
 	}
-	page := roomText(a)
-	if !strings.Contains(page, settleTookLine) {
-		t.Fatalf("the room does not say what was decided:\n%s", page)
-	}
-	for _, gone := range []string{askCheckReason, settleYesKey + " accept", roomFinishedRefusal.what} {
-		if strings.Contains(page, gone) {
-			t.Fatalf("an answered room still shows %q:\n%s", gone, page)
-		}
-	}
-	if got := a.roomHint(); got != "" {
-		t.Fatalf("the hint slot still offers %q after the answer", got)
-	}
-	card := a.doneCardFor(7)
-	if card == nil || card.decided != settleTookLine {
-		t.Fatalf("the conversation's card was not marked decided: %+v", card)
-	}
-	// A second letter finds nothing to answer.
-	drive(t, a, key("n"))
-	if len(agent.resolved) != 1 {
-		t.Fatalf("an answered room was answered again: %+v", agent.resolved)
+	if a.roomLandingAsking() {
+		t.Fatal("a foreign task exposed the local landing's question")
 	}
 }
 
-// AND THE OTHER WAY ROUND: the card answered from the conversation marks the
-// room's foot, because there is one state and not two.
-func TestAnsweringTheCardMarksTheRoomDecided(t *testing.T) {
-	a, agent := roomSettleApp(t, session.TaskUnverified)
-	_ = roomText(a)
-
-	a.settleCard(a.doneCardFor(7), settleNo)
-
-	if len(agent.resolved) != 1 || agent.resolved[0].answer != session.TaskRefute {
-		t.Fatalf("the refusal reached the engine as %+v", agent.resolved)
-	}
-	page := roomText(a)
-	if !strings.Contains(page, settleNotRightLine) || strings.Contains(page, askCheckReason) {
-		t.Fatalf("the room does not read as answered:\n%s", page)
-	}
-}
-
-// THE LETTERS NEVER FIRE WITH A SENTENCE IN THE BOX. The room's box steers the
-// worker, and a letter typed into it stays a letter.
-func TestTheLettersDoNothingWithASentenceInTheRoomBox(t *testing.T) {
-	a, agent := roomSettleApp(t, session.TaskUnverified)
-
-	drive(t, a, key("h"), key("a"))
-
-	if len(agent.resolved) != 0 {
-		t.Fatalf("typing answered the node: %+v", agent.resolved)
-	}
-	if got := a.input.String(); got != "ha" {
-		t.Fatalf("the box holds %q, want the letters that were typed", got)
-	}
-	if !strings.Contains(roomText(a), askCheckReason) {
-		t.Fatal("the room stopped asking while a sentence was being typed")
-	}
-}
-
-// THE POINTER ANSWERS THE SAME ROW, resolved to the room's node through the
-// same columns the card records.
-func TestAClickOnTheRoomsAnswersRowDecides(t *testing.T) {
-	a, agent := roomSettleApp(t, session.TaskUnverified)
-	_ = roomText(a)
-	card := a.doneCardFor(7)
-	if len(card.chips) != 4 {
-		t.Fatalf("the room's row recorded %d pressable answers, want 4", len(card.chips))
-	}
-	if !a.settlePress(-1, card.chips[1].span.from+1) {
-		t.Fatal("a press on the room's answers row was not taken")
-	}
-	if len(agent.resolved) != 1 || agent.resolved[0].answer != session.TaskRefute {
-		t.Fatalf("the second chip answered %+v", agent.resolved)
-	}
-}
-
-// SOMEBODY ELSE GOT THERE FIRST: the engine's refusal is the quiet refresh, in
-// the room exactly as on the card.
-func TestAnAlreadyAnsweredNodeRefreshesQuietlyInTheRoom(t *testing.T) {
-	a, agent := roomSettleApp(t, session.TaskUnverified)
-	agent.refuse = fmt.Errorf("task 7 is done, and only a task that needs a look is waiting on somebody to decide: %w",
-		session.ErrTaskDecided)
-
-	drive(t, a, key("a"))
-
-	page := roomText(a)
-	if !strings.Contains(page, settleGoneLine) || strings.Contains(page, askCheckReason) {
-		t.Fatalf("the room does not read as already answered:\n%s", page)
-	}
-	if strings.Contains(page, "waiting on somebody to decide") {
-		t.Fatalf("the engine's refusal was put on screen:\n%s", page)
-	}
-}
-
-// AND A NODE THAT RE-SETTLED WHILE THE ROOM WAS OPEN stops asking on the next
-// draw: the engine's second landing is the latest card, and it has no question
-// on it, so the foot is the plain one — never a dead answers row.
+// AND A NODE THAT SETTLED WHILE THE ROOM WAS OPEN stops asking on the next
+// draw: the engine takes its question back, and the foot is the plain one.
 func TestANodeSettledElsewhereStopsAskingInTheRoom(t *testing.T) {
-	a, _ := roomSettleApp(t, session.TaskUnverified)
-	if !strings.Contains(roomText(a), askCheckReason) {
+	a, _ := roomLandingApp(t, session.TaskUnverified)
+	if !a.roomLandingAsking() {
 		t.Fatal("the room is not asking to begin with")
 	}
 
+	gone := landingAsk(7, session.QuestionLanding, "Fix the nil-map crash", askCheckReason, "accept", "not right")
+	gone.Withdrawn = &session.Withdrawal{Reason: "the work settled"}
+	a.questionFold(session.Event{Kind: session.EventQuestionWithdrawn, Question: &gone})
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash", session.TaskDone,
 		session.TaskNotice{Elapsed: 400 * time.Second, Merge: mergeWordMerged})})
 	a.room.dirty = true
 
-	page := roomText(a)
-	if strings.Contains(page, askCheckReason) || strings.Contains(page, settleYesKey) {
-		t.Fatalf("the room still asks about work that has settled:\n%s", page)
+	if a.roomLandingAsking() {
+		t.Fatal("the room still asks about work that has settled")
 	}
-	if !strings.Contains(page, roomFinishedRefusal.what) {
+	if page := roomText(a); !strings.Contains(page, roomFinishedRefusal.what) {
 		t.Fatalf("the settled room lost its foot:\n%s", page)
 	}
 }
