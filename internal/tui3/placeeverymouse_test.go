@@ -182,8 +182,19 @@ func TestHoveringARowOfTheTasksPlaceLightsIt(t *testing.T) {
 // The tasks place is the one this matters most on: its tail fades with depth
 // (depthfade.go), which is a claim that there is more below — a claim a page
 // that could not scroll would be making falsely.
+//
+// HOME OWES THIS LAW NO LONGER. Its grid has no window: a panel's rows are
+// built for the room the frame has, a short frame squeezes and drops panels
+// rather than scrolling them, and what does not fit is behind the panel's own
+// `N more` fold (homegrid.go's [fitColumn], DESIGN §1 laws 5 and 9). So there
+// is no row below the frame for the cursor to walk onto, and the half of this
+// that home still owes — the cursor never walks off what was drawn — is
+// [TestWalkingPastTheWindowKeepsTheCursorOnTheFrame]'s.
 func TestWalkingPastTheWindowScrollsEveryPlacesList(t *testing.T) {
 	for _, place := range everyPlaceTable() {
+		if place.id == pageHome {
+			continue
+		}
 		t.Run(place.id.word(), func(t *testing.T) {
 			a := place.open(t)
 			// A SHORTER FRAME THAN THE LABS OPEN ON, because the law is only owed
