@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 func askTestAgent(t *testing.T, interactive bool) *Agent {
@@ -193,5 +195,68 @@ func TestAnAskWithWordKeysIsRenumberedAndAnsweredInTheAskersOwnKeys(t *testing.T
 	}
 	if got := askInTheirKeys(Answer{Key: "2", Picked: []string{"2"}}, Question{Options: plain}, nil); got.Key != "2" || got.Labels[0] != "no" {
 		t.Fatalf("a plain answer came back changed · %+v", got)
+	}
+}
+
+// A pick that names nothing is no pick — the model declining to recommend —
+// and the question opens; refusing it sent a well-formed checklist of eight
+// round for a comma on 2026-09-10.
+func TestAPickWithNoKeyIsNoPickAndTheQuestionOpens(t *testing.T) {
+	a := askTestAgent(t, true)
+	raw := json.RawMessage(`{"head":"Which genres?","kind":"choice","reason":"their taste decides it","stakes":"reversible","input":{"kind":"checklist"},"options":[{"key":"1","label":"landscapes"},{"key":"2","label":"portraits"}],"pick":{"key":"","reason":"their taste decides it"}}`)
+	done := make(chan string, 1)
+	go func() {
+		text, _, _ := a.executeAsk(context.Background(), raw)
+		done <- text
+	}()
+	deadline := time.After(time.Second)
+	for len(a.OpenQuestions()) == 0 {
+		select {
+		case text := <-done:
+			t.Fatalf("the ask came back instead of opening: %q", text)
+		case <-deadline:
+			t.Fatal("ask did not open")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	q := a.OpenQuestions()[0]
+	if q.Pick != nil {
+		t.Fatalf("an empty pick was kept: %+v", q.Pick)
+	}
+	if err := a.ResolveQuestion(Answer{Kind: QuestionAsk, ID: q.ID, Key: "1", Picked: []string{"1"}}); err != nil {
+		t.Fatal(err)
+	}
+	<-done
+}
+
+// A refusal says that nothing was shown, and the checkpoint reads that off the
+// transcript: an `ask` refused and never made again is sent back once with the
+// refusal in front of it.
+func TestARefusedAskSaysNothingWasShownAndTheTurnIsSentBackOnce(t *testing.T) {
+	a := askTestAgent(t, true)
+	text, _, _ := a.executeAsk(context.Background(), json.RawMessage(`{"head":"Which?","kind":"choice","options":[{"key":"1","label":"one"},{"key":"2","label":"two"}],"stakes":"reversible"}`))
+	if !strings.HasPrefix(text, askRefusedLead) {
+		t.Fatalf("the refusal does not say nothing was shown: %q", text)
+	}
+	messages := []ai.Message{
+		textMessage("user", "ask me which"),
+		{Role: "assistant", ToolCalls: []ai.ToolCall{{ID: "c1", Function: ai.ToolCallFunction{Name: "ask", Arguments: "{}"}}}},
+		{Role: "tool", ToolCallID: "c1", Content: []ai.ContentPart{{Text: text}}},
+		textMessage("assistant", "The form is presented above."),
+	}
+	refusal, ok := askRefusedAndNotRetried(messages)
+	if !ok || !strings.Contains(refusal, "needs a reason") || strings.HasPrefix(refusal, askRefusedLead) {
+		t.Fatalf("the refused ask was not read back: ok=%v %q", ok, refusal)
+	}
+	if !strings.Contains(checkpointAskNudgeLead(refusal), "needs a reason") {
+		t.Fatal("the nudge does not carry the refusal")
+	}
+	// An ask made after the refusal, answered, is the shape that is left alone.
+	answered := append(messages,
+		ai.Message{Role: "assistant", ToolCalls: []ai.ToolCall{{ID: "c2", Function: ai.ToolCallFunction{Name: "ask", Arguments: "{}"}}}},
+		ai.Message{Role: "tool", ToolCallID: "c2", Content: []ai.ContentPart{{Text: `{"kind":"ask","key":"1"}`}}})
+	if _, ok := askRefusedAndNotRetried(answered); ok {
+		t.Fatal("an ask that was made again and answered was nudged")
 	}
 }

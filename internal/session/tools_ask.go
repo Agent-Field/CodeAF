@@ -38,6 +38,14 @@ type askArguments struct {
 	Attach   []Block        `json:"attach"`
 }
 
+// askRefusedLead opens every refusal `ask` hands back. IT SAYS THAT NOTHING WAS
+// SHOWN, because a model reading a bare refusal has told the person "the form
+// is presented above — check whichever boxes you like" over a screen with
+// nothing on it (2026-09-10, deepseek-v4-flash). The lead is also the fact
+// [askRefusedAndNotRetried] reads off the transcript, so the two are one
+// string.
+const askRefusedLead = "nothing was asked and the person saw no question: "
+
 func (a *Agent) askTool() bare.Tool {
 	return bare.Tool{Name: "ask", Description: askDescription, Schema: json.RawMessage(askSchemaJSON), Execute: a.executeAsk}
 }
@@ -46,6 +54,14 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 	var in askArguments
 	if err := decodeToolArguments(raw, &in); err != nil {
 		return "Invalid arguments: " + err.Error(), true, nil
+	}
+	// A PICK WITH NO KEY IS NO PICK. A model that writes `pick: {key: ""}` with
+	// "their taste decides it" beside it has declined to recommend, which the
+	// object spells as a nil pick; refusing it as a pick that names nothing
+	// sends the model round again for a comma. Measured on 2026-09-10: a
+	// well-formed checklist of eight was refused for exactly this.
+	if in.Pick != nil && strings.TrimSpace(in.Pick.Key) == "" {
+		in.Pick = nil
 	}
 	id := a.askSeq.Add(1)
 	theirs := askDigitKeys(in.Options, in.Pick)
@@ -58,7 +74,7 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 		q.Deadline = time.Now().Add(q.Policy.After)
 	}
 	if err := q.Check(a.Decisions()); err != nil {
-		return err.Error(), false, nil
+		return askRefusedLead + err.Error(), false, nil
 	}
 	if !a.config.Interactive && q.Policy.Kind == PolicyAsk {
 		if q.Pick == nil {
@@ -93,7 +109,7 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 		a.mu.Lock()
 		delete(a.askWaits, id)
 		a.mu.Unlock()
-		return err.Error(), false, nil
+		return askRefusedLead + err.Error(), false, nil
 	}
 	defer forget()
 	var clock <-chan time.Time
