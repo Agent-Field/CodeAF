@@ -190,14 +190,6 @@ type questionShown struct {
 	// answered by its digit or by the asker's own pick, so there is no cursor
 	// to move and none is drawn.
 	pick int
-	// writing says the box below is writing to THIS question rather than to
-	// the conversation: [questionCommentKey] after `c` (the words go with the
-	// pointed answer as [session.Answer.Change]) or [questionAskBackKey] after
-	// `?` (the words go to the asker with the question still open). The
-	// block's answers row becomes a prompt saying so while it is set, because
-	// a box whose meaning changed silently was the owner's "typing does not
-	// work · is there a separate typing place?" (2026-09-10).
-	writing string
 	// rule says `r make it a rule` is on this question's answers row: the third
 	// same-shaped yes has been given ([app.questionRuleOffered]).
 	rule bool
@@ -589,16 +581,7 @@ func questionSameHoles(fresh, held questionInput) bool {
 // nothing for a confirmation, which is the one shape where enter must never
 // land on the act by default ([questionSafeAt], stop.go's law).
 func questionPointerStart(q session.Question) int {
-	// A DECISION NOBODY BUT A PERSON MAY MAKE OPENS ON THE ANSWER THAT LOSES
-	// NOTHING, and never on the asker's own pick ([questionHandsOnly]).
-	//
-	// IT IS THE HALF OF THE POINTER THAT KEEPS IT SAFE. `enter` takes the answer
-	// the pointer is on, so a pointer that started on the first answer of a
-	// consent gate made `enter` mean `allow once` — on a question the engine
-	// raised BECAUSE the call could not be taken back. Measured on the gate for
-	// `rm -rf *`: enter allowed it. It was stop.go's law on the confirmation
-	// kind alone, and the gate is the other shape it was always about.
-	if questionHandsOnly(q) {
+	if q.Ask == session.AskConfirmation {
 		return questionSafeAt(q)
 	}
 	if q.Pick != nil {
@@ -608,11 +591,28 @@ func questionPointerStart(q session.Question) int {
 			}
 		}
 	}
-	// AND EVERY OTHER QUESTION OPENS ON ITS FIRST ANSWER. The safe mark is NOT
-	// read here: on a question a person may hand back — a landing row, a
-	// proposal, a choice — the answer that loses nothing is usually the one that
-	// does nothing, and a pointer parked on it would make `enter` mean "no" on
-	// every card this surface draws.
+	// AND WHERE NOBODY RECOMMENDED ANYTHING AND NOBODY BUT A PERSON MAY ANSWER,
+	// THE POINTER OPENS ON THE ANSWER THAT LOSES NOTHING ([questionHandsOnly]).
+	//
+	// IT IS THE HALF OF THE POINTER THAT KEEPS IT SAFE. `enter` takes the answer
+	// the pointer is on, so a pointer that started on the first answer of a
+	// consent gate made `enter` mean `allow once` — on a question the engine
+	// raised BECAUSE the call could not be taken back. Measured on the gate for
+	// `rm -rf *`: enter allowed it.
+	//
+	// IT IS BELOW THE PICK AND NOT ABOVE IT, which is the whole of why a task
+	// proposal is unaffected: an asker that recommended an answer said so on the
+	// row a person is reading (`suggested`), and `enter` taking the
+	// recommendation IS the pointer's law. A gate recommends nothing — there is
+	// no pick on one — so the two conditions can never both be true, and the
+	// answer that loses nothing is the only honest place left to stand.
+	if questionHandsOnly(q) {
+		return questionSafeAt(q)
+	}
+	// AND EVERY OTHER QUESTION OPENS ON ITS FIRST ANSWER. The safe mark is not
+	// read for one of those: on a landing row or an ordinary choice the answer
+	// that loses nothing is the one that does nothing, and a pointer parked
+	// there would make `enter` mean "no" on every card this surface draws.
 	return 0
 }
 
@@ -1374,12 +1374,16 @@ func (a *app) questionCardOptionRows(q questionShown, at int, option session.Ans
 			out = append(out, paint(a.pal.ask(indent+wrapped)))
 		}
 	}
+	if say != "" {
+		for _, wrapped := range wrap(say, room) {
+			out = append(out, paint(a.pal.dim(indent+wrapped)))
+		}
+	}
 	if note != "" {
-		// THE NOTE READS IN THE PROSE INK, NOT THE DIM, AND FIRST: it is what
-		// the answer means, the sentence a person weighs, where the
-		// consequence is the aside that follows it. Two dim rows under one
-		// label read as one grey paragraph nobody could tell apart (the
-		// owner, 2026-09-10).
+		// THE NOTE READS IN THE PROSE INK, NOT THE DIM: it is what the answer
+		// means, the sentence a person weighs, where the consequence beside
+		// the label is the aside. Two dim rows under one label read as one
+		// grey paragraph nobody could tell apart (the owner, 2026-09-10).
 		rows := wrap(note, room)
 		if len(rows) > noteRows {
 			rows = rows[:noteRows]
@@ -1387,11 +1391,6 @@ func (a *app) questionCardOptionRows(q questionShown, at int, option session.Ans
 		}
 		for _, wrapped := range rows {
 			out = append(out, paint(a.pal.ink(indent+wrapped)))
-		}
-	}
-	if say != "" {
-		for _, wrapped := range wrap(say, room) {
-			out = append(out, paint(a.pal.dim(indent+wrapped)))
 		}
 	}
 	return out
@@ -1418,16 +1417,6 @@ func (a *app) questionOffer(q questionShown, lead string, form questionForms, ro
 	// dropped — it is the way out, and a row with no way off it is the modal
 	// block this one replaces — and no ANSWER is ever dropped at all, because an
 	// offer with an answer missing is an offer that hides an answer.
-	if q.writing != "" {
-		// THE ROW IS THE PROMPT WHILE THE BOX IS THE QUESTION'S. A line keeps
-		// its head in front of it; a card's head is already on its own row.
-		a.questionSpans, a.questionSpanRow = nil, row
-		line := a.questionWritingRow(q)
-		if lead != "" {
-			line = lead + " " + line
-		}
-		return a.questionPaint(q, []string{line}, "", form, -1), true
-	}
 	keys := a.questionAnswerKeys(q, form)
 	clock := a.questionClock(q)
 	terse := false
@@ -2588,9 +2577,6 @@ func (a *app) questionKeyOn(head questionShown, msg tea.KeyPressMsg) (tea.Cmd, b
 	if cmd, taken := a.questionBeatKey(head, key); taken {
 		return cmd, true
 	}
-	if open := a.questionHeld(head.token()); open != nil && open.writing != "" {
-		return a.questionWritingKey(head, key)
-	}
 	if key == questionLaterKey {
 		if head.question.Ask == session.AskConfirmation {
 			// esc ON A CONFIRMATION IS THE ANSWER THAT LOSES NOTHING, and never
@@ -2663,11 +2649,15 @@ func (a *app) questionEnter(head questionShown, typing bool) (tea.Cmd, bool) {
 	if head.holes.kind == session.InputChecklist {
 		return a.questionTickKey(head, questionEnterKey)
 	}
-	// A QUESTION WHOSE BOX IS ITS ANSWER TAKES NOTHING FROM AN EMPTY BOX. The
-	// connect offer's box is where a key is typed (connectkey.go), and enter
-	// over nothing typed is not an answer at all — not the pointer's, not a
-	// decline. It is the one kind whose answers are a sentence first.
-	if head.question.Kind == session.QuestionConnect {
+	// A QUESTION WHOSE ANSWER IS A SENTENCE TAKES NOTHING FROM AN EMPTY BOX.
+	// [session.InputText] is the asker stating that the answer IS words — a
+	// connect key, a correction, a running sub-harness's own question — and its
+	// options are the way OUT rather than something for a pointer to take. Enter
+	// over an empty box on one of those used to send an empty key, which reads
+	// as a decline; it does nothing, the question stands, and the way out is the
+	// answer that says so ([questionOwnsBox] is the same fact from the other
+	// side, and takes this key while there ARE words).
+	if head.question.Input.Kind == session.InputText {
 		return nil, false
 	}
 	// ENTER TAKES THE ANSWER THE POINTER IS ON, through the same door a digit
@@ -2682,96 +2672,6 @@ func (a *app) questionEnter(head questionShown, typing bool) (tea.Cmd, bool) {
 	}
 	return a.questionAnswerKey(head, strings.TrimSpace(head.question.Pick.Key)), true
 }
-
-// questionWritingKey is every key while the box is pointed at the question
-// ([questionShown.writing]): `enter` spends the sentence, `esc` points the box
-// back at the conversation, and EVERY OTHER KEY TYPES — a `d` typed into "do
-// not delete the old rows" that answered `you decide` instead would be the
-// modal trap this block exists to not have.
-func (a *app) questionWritingKey(head questionShown, key string) (tea.Cmd, bool) {
-	open := a.questionHeld(head.token())
-	if open == nil || open.writing == "" {
-		return nil, false
-	}
-	switch key {
-	case questionLaterKey:
-		open.writing = ""
-		a.touch()
-		return nil, true
-	case questionEnterKey:
-		words := strings.TrimSpace(a.input.String())
-		if words == "" {
-			open.writing = ""
-			a.touch()
-			return nil, true
-		}
-		writing := open.writing
-		open.writing = ""
-		a.input.reset()
-		if writing == questionAskBackKey {
-			// THE QUESTION STAYS OPEN WHILE THE ASKER ANSWERS, which is the
-			// room's own seam ([app.askBackCmd]): the sentence goes to the model
-			// as the next thing said, the reply lands in the conversation, and
-			// the block is still there to answer afterwards.
-			return a.submit(words), true
-		}
-		answer := session.Answer{Change: words}
-		if questionChangeCarriesThePointer(open.question) && open.pick >= 0 && open.pick < len(open.question.Options) {
-			answer.Key = strings.TrimSpace(open.question.Options[open.pick].Key)
-			answer.Picked = []string{answer.Key}
-		}
-		return a.answerQuestion(*open, answer), true
-	}
-	return nil, false
-}
-
-// questionWriting reports whether the box under the block is a question's
-// right now ([questionShown.writing]), which is what the seam's own hint asks
-// before naming enter and esc.
-func (a *app) questionWriting() bool {
-	for _, q := range a.questions {
-		if q.writing != "" {
-			return true
-		}
-	}
-	return false
-}
-
-// questionWritingRow is the answers row while the box is writing to the
-// question: what the box means now, which answer the words go with, and the
-// way back. It replaces the keys, because the keys are letters and every
-// letter types while this row is up.
-func (a *app) questionWritingRow(q questionShown) string {
-	if q.writing == questionAskBackKey {
-		return questionAskBackKeyWord + questionWritingGap + "the question stays open" + questionWritingGap + "esc back"
-	}
-	with := ""
-	if questionChangeCarriesThePointer(q.question) && q.pick >= 0 && q.pick < len(q.question.Options) {
-		key := strings.TrimSpace(q.question.Options[q.pick].Key)
-		with = questionWritingGap + "it goes with [" + key + "] " + questionAnswerWord(q.question.Options[q.pick], key, true)
-	}
-	return questionCommentKeyWord + with + questionWritingGap + "esc back"
-}
-
-// questionChangeCarriesThePointer says whether the words `c` sends travel
-// with the pointed answer's key. THEY DO FOR THE MODEL'S OWN ASK — "2, but
-// keep the sqlite file" is one answer with a rider, and the asker reads the
-// key — and for nothing else: a standing card's change is a correction of
-// when or where and approves nothing, a consent's is a sentence beside the
-// call, and each of those lanes has read a bare [session.Answer.Change] since
-// before the block had a pointer.
-func questionChangeCarriesThePointer(q session.Question) bool {
-	return q.Kind == session.QuestionAsk
-}
-
-// The words the writing row is made of. THEY END IN "then enter", because the
-// one fact the row exists to carry is that the box's next enter is the
-// question's and not the conversation's.
-const (
-	questionCommentKeyWord = "change: say what you want different, then enter"
-	questionAskBackKeyWord = "ask back: type your question, then enter"
-	questionWritingGap     = " · "
-)
 
 // questionOptionKey is a key that names one of the question's own answers: a
 // digit, or the letter a lane fixed on the option itself (task-states' `a`,
@@ -3088,20 +2988,16 @@ func (a *app) questionVerbKey(head questionShown, key string) (tea.Cmd, bool) {
 			head.commented()
 			a.touch()
 		}
-		// BOTH POINT THE BOX AT THE QUESTION RATHER THAN ANSWERING. `c` is "I
-		// will take one of these but not as it stands" and `?` is "answer me
-		// this first"; each needs a sentence, and the box is where sentences
-		// are typed on this surface. The question stays open, the answers row
-		// becomes a prompt saying what the box is writing now, and the words
-		// go with the next enter ([app.questionWritingKey]).
+		// BOTH OPEN THE BOX RATHER THAN ANSWERING. `c` is "I will take one of
+		// these but not as it stands" and `?` is "answer me this first"; each
+		// needs a sentence, and the box is where sentences are typed on this
+		// surface. The question stays open and the words go with the next
+		// enter ([app.questionEnter]).
 		//
-		// Nothing is opened: the box below is ALREADY live and always was,
-		// which is what NEVER MODAL means. What changes is what the box means,
-		// and the row says so.
-		if open := a.questionHeld(head.token()); open != nil {
-			open.writing = key
-			a.touch()
-		}
+		// Nothing is focused and nothing is opened: the box below is ALREADY
+		// live and always was, which is what NEVER MODAL means. The key's whole
+		// work is to be taken rather than to fall through and type its own
+		// letter into the sentence it is inviting.
 		return nil, true
 	}
 	return nil, false
