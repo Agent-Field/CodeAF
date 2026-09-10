@@ -177,7 +177,7 @@ func (a *Agent) landFinished(ctx context.Context, node *TaskNode, tree taskTree,
 	if shift, moved := a.groundShift(node, changed); shift != "" {
 		return a.landShifted(node, tree, changed, moved, withReport(head, tail), shift, log)
 	}
-	landed, merge, detail, _ := landHome(node, tree, changed)
+	landed, merge, detail, why := landHome(node, tree, changed)
 	fmt.Fprintf(log, "merge: %s %s%s\n", merge, detail, note)
 	// AND THE ONE QUESTION EVERY ROAD ASKS OF THE OUTCOME: did the work get where
 	// the person can see it ([cameHome], task_land_unsaved.go)? A branch that
@@ -187,7 +187,7 @@ func (a *Agent) landFinished(ctx context.Context, node *TaskNode, tree taskTree,
 	// two apart. Testing for a conflict by hand is exactly how the second reason
 	// walked past all five of these roads (#255).
 	if !cameHome(merge) {
-		return a.landConflicted(ctx, node, tree, landed, withReport(head, tail), merge, detail, log)
+		return a.landConflicted(ctx, node, tree, landed, withReport(head, tail), merge, detail, why, log)
 	}
 	// THE WORK'S OWN ACCOUNT LEADS, AND WHAT IT WAS CHECKED ON STANDS UNDER IT.
 	// Everything downstream reads this report from the top: the settle card quotes

@@ -132,16 +132,11 @@ func (s hudSpan) shift(n int) hudSpan {
 // were off the end of the row. Each renderer sets its card's `gut` back to zero
 // beside the line that clears the old spans, so "what this card already carries"
 // is a fact the card states rather than one this pass has to infer.
-//
-// The room's own foot is asked for separately by [app.roomRows]: a node that
-// needs a look draws its answers under a page with no entry to hang them on
-// (tasksettle.go's [app.roomSettleRows]), so it is not on the deck being walked.
 func (a *app) gutterCards(d deck, width int) {
 	lead := textGutterCols(width)
 	for i := range d.entries {
 		e := &d.entries[i]
 		gutStandingCard(e.stand, lead)
-		gutDoneCard(e.done, lead)
 	}
 }
 
@@ -150,17 +145,6 @@ func gutStandingCard(card *standingCard, lead int) {
 		return
 	}
 	shiftChoiceSpans(card.spans, lead-card.gut)
-	card.gut = lead
-}
-
-func gutDoneCard(card *taskDone, lead int) {
-	if card == nil || card.gut == lead {
-		return
-	}
-	by := lead - card.gut
-	for i := range card.chips {
-		card.chips[i].span = card.chips[i].span.shift(by)
-	}
 	card.gut = lead
 }
 
