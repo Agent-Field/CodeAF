@@ -262,6 +262,18 @@ func openChatV3Local(launch localLaunch) error {
 	defer closeErrands()
 	options.Errand = errand
 	options.StandingRoot = v3StandingRoot()
+	// AND A QUESTION IN ANOTHER WINDOW CAN BE ANSWERED FROM HOME. The answer is
+	// left in that session's OWN FOLDER and the session picks it up on its
+	// presence heartbeat (internal/session's answers.go), and home draws the chips
+	// only where there is a door to leave one through ([app.answeringHere] covers
+	// this window's own conversation and nothing else). It was set on the
+	// in-process door alone, so on this road home said which conversation was
+	// stopped on somebody and offered no way to answer it — the sign post without
+	// the other half of the band it is written beside.
+	//
+	// THIS ROAD AND NO OTHER, for [tui3.Options.EngineAnswers]' reason: the folder
+	// is on this machine's disk, which over --host it would not be.
+	options.Answer = session.WriteAnswer
 	// AND THE TASKS PAGE CAN LOOK INTO THE CONVERSATIONS NEXT DOOR. It is bound
 	// here rather than inside [hostOptions] because it is a second DIAL of this
 	// road and not a use of this client's connection, and this is the door that

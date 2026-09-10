@@ -680,8 +680,13 @@ func testFiringReachesThePerson(t *testing.T) {
 
 	// /status, while something stands: the derived `keeping watch` line and the
 	// status line's own segment.
-	if !strings.Contains(r.capture(), say(t, "homeKeepingWord")) {
-		t.Errorf("the status line has no `keeping an eye on N` segment while an item stands:\n%s", r.capture())
+	// IT IS WAITED FOR AND NOT READ IN THE SAME INSTANT. The count behind that
+	// segment is asked on the frame, so over a connection it is answered from a
+	// cache that refreshes behind itself — the seam's stated law rather than an
+	// optimization (cmd/aforge's hostStanding) — and an item that stood a second
+	// ago reaches it on the next beat.
+	if _, ok := r.glimpse(20*time.Second, say(t, "homeKeepingWord")); !ok {
+		t.Errorf("the status line never grew a `keeping an eye on N` segment while an item stands:\n%s", r.capture())
 	}
 	r.lit("/status")
 	time.Sleep(700 * time.Millisecond)
@@ -725,24 +730,47 @@ func testFiringReachesThePerson(t *testing.T) {
 	if drawnRow == "" {
 		t.Fatalf("the item that stood has no words to look for:\n%s", standingRecordsDump(t, home))
 	}
+	// AND THE ROAD IT TAKES IS THE MACHINE'S TO CHOOSE, WHICH IS WHY BOTH ARE
+	// WATCHED FOR. Roads 1 and 2 are "is it open HERE" — a map from session id to
+	// agent inside the process that ran the pass (session's standing_run.go) — so
+	// only a pass in the process holding this project's conversations can take
+	// one. On this machine that is the engine, and another pass can beat it to
+	// the item: the OS timer's `aforge tick` is a process of its own with an empty
+	// registry, and it reaches a person down road 4 instead, through the project's
+	// inbox. Both ends AT A PERSON, which is what this subtest is named for, and
+	// the second half below proves road 4 the whole way to the next window's
+	// screen. A subtest that demanded road 2 would be asserting which of two
+	// correct passes woke up first.
 	deadline := time.Now().Add(wait)
 	drawn := false
+	delivered, filed := false, false
+	journal := ""
 	for time.Now().Before(deadline) {
 		if screen := r.capture(); strings.Contains(screen, drawnRow) && strings.Contains(screen, said) {
 			drawn = true
+		}
+		for path, raw := range sessionTranscripts(t, home) {
+			if strings.Contains(raw, firstWords(item.Does.Say, 4)) {
+				delivered, journal = true, path
+			}
+		}
+		if strings.Contains(projectInbox(t, home, ws), firstWords(item.Does.Say, 4)) {
+			filed = true
+		}
+		if drawn || delivered || filed {
 			break
 		}
 		time.Sleep(2 * time.Second)
 	}
 	screen := r.capture()
-	delivered := false
-	for path, raw := range sessionTranscripts(t, home) {
-		if strings.Contains(raw, firstWords(item.Does.Say, 4)) {
-			delivered = true
-			t.Logf("the firing reached the conversation's journal: %s", path)
-		}
+	switch {
+	case delivered:
+		t.Logf("the firing reached the conversation's journal: %s", journal)
+	case filed:
+		t.Logf("the firing was filed under the project by a pass with no conversation open in it — "+
+			"road 4, which the second half below follows to the screen:\n%s", projectInbox(t, home, ws))
 	}
-	if !delivered {
+	if !delivered && !filed {
 		// AND THE SUITE SAYS WHY, RATHER THAN JUST THAT. An item whose expiry is
 		// not after its own moment is retired by rail one of the pass before
 		// anything is ever due (internal/standing/tick.go), so it can never fire —
@@ -756,15 +784,19 @@ func testFiringReachesThePerson(t *testing.T) {
 				later.Rails.Expires.Format(time.RFC3339), later.When.At.Format(time.RFC3339),
 				later.LastCheckLine, screen)
 		}
-		t.Fatalf("the firing never reached the person at all — nothing in any transcript.\nrecord:\n%s\nscreen:\n%s",
-			standingRecordsDump(t, home), screen)
+		t.Fatalf("the firing never reached the person at all — nothing in any transcript and nothing "+
+			"filed under the project.\nrecord:\n%s\nscreen:\n%s", standingRecordsDump(t, home), screen)
 	}
-	if !drawn {
+	switch {
+	case drawn:
+		t.Logf("the firing is drawn in the conversation:\n%s", screen)
+	case delivered:
 		t.Errorf("DEFECT: the firing reached the conversation but was never DRAWN in it.\n"+
 			"The journal holds the line as a session-authored note, and the model answered it, "+
 			"but no `%s … %s` row appears on the screen the person is looking at:\n%s", drawnRow, said, screen)
-	} else {
-		t.Logf("the firing is drawn in the conversation:\n%s", screen)
+	default:
+		t.Logf("FINDING: the pass that fired it was not the one holding this project's conversations, " +
+			"so there was no room for a row — the words went to the project's inbox instead")
 	}
 
 	// ── the second half: nobody is here when it fires ──
@@ -926,19 +958,19 @@ func testAnswerFromHome(t *testing.T) {
 	// so waiting for it waits for exactly the fact this subtest is about rather
 	// than for a title no fixture chose.
 	b.waitFor(40*time.Second, say(t, "switcherSectionWord"))
-	// AND THE CURSOR IS WALKED ONTO IT, because home's answer band and the line
-	// that says what the next enter would do both belong to the row UNDER THE
-	// CURSOR (homeband_answer.go, takeover.go) — B lands on its own project's
-	// row, which is the one it is sitting in.
-	if !walkTo(b, say(t, "notifyAskWord"), "Up") {
-		t.Fatalf("window B's home never put the cursor on the conversation A is waiting in:\n%s", b.capture())
+	// AND THE CURSOR IS WALKED ONTO IT, because the answer band belongs to the
+	// row UNDER THE CURSOR (homeband_answer.go) and B lands on its own project's
+	// row — the one it is sitting in. THE BAND IS THE ORACLE AND NOT A HINT: a
+	// row another window is holding wears that window in its tail rather than
+	// `waiting on you`, and the chips are the one thing on the frame that says
+	// the cursor is on a question this screen can answer.
+	if !walkTo(b, say(t, "answersAllowOnce"), "Up") {
+		t.Fatalf("window B's home never offered the answers to the conversation A is waiting in:\n%s", b.capture())
 	}
 	row := b.capture()
-	t.Logf("window B's home says A is waiting on somebody:\n%s", row)
-	for _, chip := range []string{"1 ", say(t, "answersAllowOnce")} {
-		if !strings.Contains(row, chip) {
-			t.Errorf("home's answer band is missing %q:\n%s", chip, row)
-		}
+	t.Logf("window B's home offers the answers to the question A is stopped on:\n%s", row)
+	if !strings.Contains(row, "1 ") {
+		t.Errorf("home's answer band is missing the first chip's key:\n%s", row)
 	}
 	t.Logf("the chips home offered: %s", firstMatch(row, say(t, "answersAllowOnce")))
 
