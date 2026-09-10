@@ -78,8 +78,9 @@ type quickTaskSpec struct {
 	done []bool
 	// waits is WHY THIS NODE WAS QUEUED BEHIND ANOTHER, kept from admission so
 	// the receipt the model reads can name the task and the path rather than
-	// making it work the collision out for itself. It is a record of the moment
-	// of admission and nothing reads it afterwards.
+	// making it work the collision out for itself. It is a record of that one
+	// moment: the edge itself lives on `dependsOn` like any other, and nothing
+	// past the receipt reads this.
 	waits []quickClaim
 }
 
@@ -319,8 +320,11 @@ func quickStartedWord(id uint64, spec taskSpec) string {
 // the frontier can still be told about it. Every running or queued quick node in
 // the same workspace whose claim overlaps this one has its id appended to
 // `depends_on`, and [TaskGraph.readinessLocked] does the waiting from there —
-// so two quick nodes that claim one path run one after the other with no lock,
-// no retry and nothing new in the frontier.
+// so two quick nodes that claim one path run one after the other with no retry
+// and nothing new in the frontier. The look and the admission are one move
+// under [TaskGraph.quickGate], which the door holds: a batch of calls runs
+// concurrently, and two doors that each looked before either admitted would
+// each have found the graph empty of the other.
 func (a *Agent) newQuickSpec(line string, items, files []string, dependsOn []uint64) (taskSpec, string) {
 	line = firstLine(strings.TrimSpace(line))
 	if line == "" {
