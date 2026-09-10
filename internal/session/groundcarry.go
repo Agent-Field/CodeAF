@@ -56,6 +56,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // mergeIntoGround merges the node's branch into the ground and answers whether
@@ -293,6 +294,12 @@ func freeYoursName(home string) string {
 			return name
 		}
 		name = home + groundYoursSuffix + "." + strconv.Itoa(n)
+	}
+	// A HUNDRED OF THEM AND STILL NOWHERE TO PUT IT is not a reason to write over
+	// the ninety-ninth. The clock gives a name nothing can already be holding, and
+	// a name nobody likes is worth more than a file nobody can get back.
+	if _, err := os.Lstat(name); err == nil {
+		name = home + groundYoursSuffix + "." + strconv.FormatInt(time.Now().UnixNano(), 10)
 	}
 	return name
 }
