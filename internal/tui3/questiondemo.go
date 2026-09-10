@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
 // THE FIXTURE DOOR ONTO THE QUESTION PAGE, and why one exists at all.
@@ -36,6 +37,25 @@ func (a *app) openDemoQuestion(env func(string) string) {
 	}
 	name := strings.TrimSpace(env(questionDemoEnv))
 	if name == "" {
+		return
+	}
+	if build, known := blockDemos[name]; known {
+		// AND THE BLOCK'S OWN FIXTURES, on the same terms and for the same
+		// reason. The five lanes that moved onto it in the questions wave — the
+		// standing card, the harness offer, a finished design, the connect offer
+		// and the key it asks for — are each raised by MINUTES of real work: a
+		// reminder proposed by a turn, a design written by a model, an account
+		// the session reached for. A screen capture that has to pay for all of
+		// that first is a screen capture nobody takes twice, and a renderer
+		// nobody has looked at is not done.
+		a.raiseQuestion(questionShown{question: build()})
+		// The DRAW is what stamps a question as seen, and the guard is measured
+		// from the stamp — so the fixture spends it up front, exactly as the
+		// page's own fixtures do below.
+		_ = a.questionRows(a.width)
+		for i := range a.questions {
+			a.questions[i].shown = a.questions[i].shown.Add(-questionSettle)
+		}
 		return
 	}
 	build, known := questionDemos[name]
@@ -215,4 +235,74 @@ func demoQuestionLayout() session.Question {
 			},
 		},
 	}
+}
+
+// ── the block's five, one per lane the questions wave moved ─────────────────
+
+// blockDemos is one fixture per lane that moved onto the block, named by the
+// case its screen is filed under. They build the question through the ENGINE'S
+// OWN BUILDERS wherever there is one, so a fixture cannot drift from the thing
+// it is a picture of.
+var blockDemos = map[string]func() session.Question{
+	"standing":      demoStandingCard,
+	"harness-offer": demoHarnessOffer,
+	"design":        demoHarnessDesign,
+	"connect":       demoConnectOffer,
+	"connect-key":   demoConnectKey,
+}
+
+// demoStandingCard is the reminder a turn proposed: a choice with four answers
+// and a correction lane under it.
+func demoStandingCard() session.Question {
+	return session.Question{
+		ID:     1,
+		Kind:   session.QuestionStanding,
+		Ask:    session.AskChoice,
+		Form:   session.FormCard,
+		Asker:  session.Asker{Kind: session.AskerModel},
+		Head:   session.StandingAskLead + "the release notes every Monday at 9am",
+		Reason: session.StandingAskReason,
+		Stakes: session.StakesReversible,
+		// THE WORDS ARE THE CARD'S OWN CONSTANTS and never a second spelling of
+		// them (standing.go, and the law a test in this package holds): a fixture
+		// that said the answers itself would be a picture of a card this program
+		// does not draw.
+		Options: []session.AnswerOption{
+			{Key: standYesKey, Label: standYesWord, Consequence: standYesCost},
+			{Key: session.StandingOnceKey, Label: standOnceWord, Consequence: standOnceCost},
+			{Key: session.StandingNoKey, Label: standNoWordChip, Safe: true, Consequence: standNoCost},
+		},
+		Input: session.InputShape{Kind: session.InputText, Prompt: standChangeCost},
+		Scope: []session.AnswerScope{session.ScopeOnce, session.ScopeAlways},
+	}
+}
+
+// demoHarnessOffer is the offer to run a saved program: one line, two answers.
+func demoHarnessOffer() session.Question {
+	return session.HarnessQuestion(2, session.Event{
+		Kind: session.EventHarnessOffer, ID: 2, Text: "research",
+		Model: "claude-opus-5", Hint: "finds an answer across sources and cites them",
+	})
+}
+
+// demoHarnessDesign is a finished page waiting to be judged: three answers, and
+// the page itself down in the conversation.
+func demoHarnessDesign() session.Question {
+	page := subharness.Harness{Id: subharness.Id{
+		Name: "research-helper", Desc: "Research a topic with cited sources",
+	}}
+	return session.HarnessQuestion(3, session.Event{
+		Kind: session.EventHarnessDesignDone, ID: 3, Text: "research a topic", Harness: &page,
+	})
+}
+
+// demoConnectOffer is the account the turn reached for, in a browser.
+func demoConnectOffer() session.Question {
+	return session.ConnectQuestion("demo-google", "Google", false, "", false)
+}
+
+// demoConnectKey is the same question about an account that has no sign-in page:
+// no yes to press, a way out, and the box under it collecting the key.
+func demoConnectKey() session.Question {
+	return session.ConnectQuestion("demo-notion", "Notion", true, "paste your Notion key", true)
 }

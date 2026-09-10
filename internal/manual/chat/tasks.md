@@ -2663,7 +2663,7 @@ Open `/history` or press `ctrl+.` to see earlier work. Select a past task and pr
 `enter`, or click its row once, to open its saved record. The card shows the result,
 originating conversation and available evidence. Press `esc` to return to the list.
 
-## Going inside an old task — see what a past task did, read a finished task's report
+## Going inside an old task — see what a past task did, read a finished task's report, where is the story my task wrote
 
 `enter` on any row of the task page (`ctrl+.`, `/history`) that this conversation did not
 run **goes inside that task**. A click does the same on the first press. The task column carries no rows of old

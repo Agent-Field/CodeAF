@@ -1737,19 +1737,16 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, taken := a.guardKey(msg); taken {
 		return cmd, true
 	}
-	// AND THE DESIGN'S APPROVAL CHORDS ARE READ UNDER THE GUARD, which is the
-	// right order for the one moment both are on screen: the guard is a question
-	// raised by a sentence the person just tried to send, and it has to be
-	// answered before anything else in the room means anything. These two take
-	// only ctrl+k and ctrl+x and let every other key past — a row that swallowed
-	// keys would make the box it points at unusable (roomapproval.go).
-	if a.roomApprovalKey(msg) {
-		return nil, true
-	}
 	// THE LETTERS THAT DECIDE ABOUT A NODE THAT NEEDS A LOOK ARE NOT TAKEN HERE.
 	// A landed `your call` is a question, and the question block above the box
 	// answers it on every page with the one key grammar — which is read before
 	// this file is reached (input.go's key order, tasksettle.go says why).
+	//
+	// AND NEITHER IS A DESIGN WAITING TO BE JUDGED. It had two chords of its own
+	// pinned above the box in here (roomapproval.go, deleted) — one decision with
+	// two drawings and two grammars. It is the same question on the same block,
+	// answered by the same digits, and the two keys this file owns are untouched:
+	// esc leaves and enter steers.
 	// AND A RUN'S PAGE IS READ BEFORE THE ROOM'S OWN TWO KEYS (roomorch.go),
 	// because it has more levels than a room does: esc walks out of a chip's card
 	// and out of a nested run before it walks out of the page at all, and enter
@@ -3328,7 +3325,6 @@ func (a *app) roomRows(width int) []row {
 	// room's own foot is asked for by name because a node that needs a look draws
 	// its answers with no entry to hang them on, so the deck walk cannot reach it.
 	gutterPass(out, width)
-	a.gutterCards(room.deck(), width)
 	// THE POINTER, LAST, exactly as in the conversation (render.go's layout).
 	a.hoverPass(out, width)
 	a.restoreRoomAnchor(reading, out)

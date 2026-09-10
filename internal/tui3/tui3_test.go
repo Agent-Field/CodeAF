@@ -602,6 +602,71 @@ func labLedger() string {
 	return labLedgerPath
 }
 
+// resolveThroughLanes is [session.Agent.applyToLane] in miniature, for the fakes
+// in this package that are answered through THE ONE DOOR.
+//
+// EVERY QUESTION ON THE BLOCK GOES THROUGH [questionResolver] and never through
+// the lane's own method (question.go's [app.answerQuestion]), which is the whole
+// point of there being one object — so a fake that carries only
+// `ResolveHarness` or `ResolveStanding` is a session no key on the block can
+// reach. This gives one to any fake that embeds it, by asking which lanes the
+// fake actually has: a real engine does the same switch over its own resolvers.
+func resolveThroughLanes(agent any, answer session.Answer) error {
+	key := answer.FirstKey()
+	switch answer.Kind {
+	case session.QuestionHarness:
+		door, ok := agent.(interface {
+			ResolveHarness(id uint64, run bool, model string)
+		})
+		if !ok {
+			return errNoSuchLane
+		}
+		if !session.AnswerResolves(answer) {
+			// `change it` on a design touches nothing (session's HarnessChangeKey).
+			return nil
+		}
+		door.ResolveHarness(answer.ID, key == session.HarnessSaveKey, answer.Comments[session.HarnessModelNote])
+		return nil
+	case session.QuestionConnect:
+		door, ok := agent.(interface {
+			ResolveConnect(id string, approve bool)
+			ResolveConnectKey(id string, key string)
+		})
+		if !ok {
+			return errNoSuchLane
+		}
+		// A YES TO A QUESTION THAT WANTED A TYPED ANSWER IS NOT AN ANSWER
+		// (session's applyToLane says it first): words go through the typed door
+		// and a bare pick through the other one.
+		if words := strings.TrimSpace(answer.Words()); words != "" {
+			door.ResolveConnectKey(answer.Ref, words)
+			return nil
+		}
+		door.ResolveConnect(answer.Ref, key == "1")
+		return nil
+	case session.QuestionStanding:
+		door, ok := agent.(standingAgent)
+		if !ok {
+			return errNoSuchLane
+		}
+		if words := strings.TrimSpace(answer.Words()); words != "" && key == "" {
+			door.ResolveStanding(answer.ID, session.StandingAnswer{Change: words})
+			return nil
+		}
+		action, found := session.AnswerFromKey(session.QuestionStanding, key)
+		if !found {
+			return errNoSuchLane
+		}
+		door.ResolveStanding(answer.ID, action.Standing)
+		return nil
+	}
+	return errNoSuchLane
+}
+
+// errNoSuchLane is what a fake answers about a lane it does not carry, which is
+// the engine's own refusal said in one word (session's errAnswerUnknownLane).
+var errNoSuchLane = errors.New("no such lane on this fake")
+
 func newTestApp(agent Agent) *app {
 	a := newApp(context.Background(), Options{
 		Agent: agent, Workspace: "/tmp/lab", UsageLedger: labLedger(),

@@ -905,14 +905,26 @@ func TestTheLaneRaisesOnlyWhatThisBlockHasTakenOver(t *testing.T) {
 		// deleted: task.go draws the ASSIGNMENT in the transcript, which is what
 		// the question is about rather than a second copy of the asking.
 		session.QuestionTask,
+		// AND THE STANDING CARD, whose chip row, cursor, digits and hint line are
+		// deleted: standing.go draws the CARD — the words, the bands, the meter —
+		// and the asking is here.
+		session.QuestionStanding,
+		// AND THE HARNESS LANE'S TWO QUESTIONS — the offer to run a saved program
+		// and the judgement on a finished design. Between them they had three
+		// grammars and three drawings (harness.go's row, harnesscard.go's card
+		// columns, roomapproval.go's pinned chords); all three are deleted.
+		session.QuestionHarness,
+		// AND THE ACCOUNT OFFER, whose own block, answers row, click targets and
+		// key router are deleted: connect.go keeps the lane's facts and the
+		// browser flow, which is a report and not a question.
+		session.QuestionConnect,
 	} {
 		if !a.questionDrawnHere(session.Question{Kind: kind}) {
 			t.Fatalf("%s has no other block and is not drawn here either", kind)
 		}
 	}
 	for _, kind := range []session.QuestionKind{
-		session.QuestionConnect, session.QuestionHarness,
-		session.QuestionStanding,
+		session.QuestionSubharness,
 	} {
 		if a.questionDrawnHere(session.Question{Kind: kind}) {
 			t.Fatalf("%s is drawn here AND by its own block; one decision, two rows", kind)

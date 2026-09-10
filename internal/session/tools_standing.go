@@ -1514,21 +1514,28 @@ func (a *Agent) standingAsk(id uint64, notice StandingNotice) Question {
 		Ask:     AskChoice,
 		Form:    FormCard,
 		Asker:   Asker{Kind: AskerModel},
-		Head:    standingAskLead + strings.TrimSpace(notice.Item.Words),
-		Reason:  standingAskReason,
+		Head:    StandingAskLead + strings.TrimSpace(notice.Item.Words),
+		Reason:  StandingAskReason,
+		Subject: SubjectRef{Kind: SubjectOrder, ID: id, Name: strings.TrimSpace(notice.Item.Words)},
 		Options: StandingOptions(notice.Item),
 		Stakes:  StakesReversible,
 		Scope:   []AnswerScope{ScopeOnce, ScopeAlways},
 	}
 }
 
-// standingAskLead opens the sentence a standing card asks with, and the
+// StandingAskLead opens the sentence a standing card asks with, and the
 // PERSON'S OWN WORDS close it ([standing.Item.Words]) — the anchor every
 // surface leads this item with. It is a constant so the card, the presence file
 // and the question object cannot become three accounts of one item.
-const standingAskLead = "wants to keep an eye on: "
+//
+// IT IS EXPORTED BECAUSE THE SURFACE BUILDS THE SAME QUESTION, for
+// [TaskProposalLead]'s reason exactly: a window has the notice before the
+// questions lane reaches it and raises the question from that, so two builders
+// that drifted would put two questions on screen about one proposal.
+const StandingAskLead = "wants to keep an eye on: "
 
-// standingAskReason is why the card is up, in the one sentence that is true of
+// StandingAskReason is why the card is up, in the one sentence that is true of
 // every standing card there is. The when and the cost are the card's to show, in
-// the window where there is room to read them.
-const standingAskReason = "nothing is set up until you say so"
+// the window where there is room to read them. It is exported for
+// [StandingAskLead]'s reason.
+const StandingAskReason = "nothing is set up until you say so"

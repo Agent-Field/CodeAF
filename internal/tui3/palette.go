@@ -1851,8 +1851,8 @@ func (a *app) overlayHeight() int {
 	// frame. The two reserved rows are the status line and one row of
 	// conversation — a list that left neither would be a list that took the
 	// screen.
-	room := height - 2 - a.inputHeight() - a.questionHeight() - a.connectAskHeight() -
-		a.harnessAskHeight() - a.followHeight() - a.landHeight() - a.parkedHeight()
+	room := height - 2 - a.inputHeight() - a.questionHeight() -
+		a.followHeight() - a.landHeight() - a.parkedHeight()
 	if commands {
 		want = a.menu.height(width, room)
 	}

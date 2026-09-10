@@ -249,11 +249,12 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		{"↑↓ recent · enter open", []string{"↑↓", "enter"}},
 		{"tab take · enter run · esc", []string{"tab", "enter", "esc"}},
 		{"enter answer · esc no", []string{"enter", "esc"}},
-		// `0 or esc, no` names two keys for one answer, and the comma after the
-		// second is punctuation rather than part of it. The line is built from
-		// the chips a card drew rather than written down (standing.go's
-		// [standHintFields]), so this asks for the full row's spelling of it.
-		{standAskHint(nil), []string{"1", "2", "3", "0", "esc"}},
+		// A standing card's answers under the errand pane's box, built from the
+		// question rather than written down (homeexchange.go's
+		// [exchangeAnswerWords]): the digits the card drew, then the key that
+		// asks for the box instead.
+		{"1 yes, set it up · 3 just once · 0 no · c change",
+			[]string{"1", "3", "0", "c"}},
 		{"1-3 shape · esc never mind", []string{"1-3", "esc"}},
 		{"y allow · n deny · a always", []string{"y", "n", "a"}},
 		{"↑↓ move · →← tree · enter open · alt+w wide · esc",
