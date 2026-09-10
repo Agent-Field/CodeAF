@@ -231,6 +231,29 @@ const (
 	// in its named-exceptions table so a THIRD `$` slot has to be argued for.
 	GlyphModel = "◇"
 	GlyphSpend = "$"
+
+	// The file kinds. A chip says WHAT KIND OF THING is on the end of a path
+	// before it says the path, and so does the gutter beside a call that made
+	// one or opened one; the four kinds a person can hand this program are the
+	// four here.
+	//
+	// GlyphFileDocument is [GlyphActionRead]'s byte on purpose — a page of text
+	// is a page of text whether a call opened it or a person dragged it in, and
+	// the tier draws the SAME icon for both rather than inventing a distinction
+	// the floor does not draw. It is the one collision in this block, and it is
+	// carried in glyphvocab_test.go's named-exceptions table.
+	//
+	// GlyphFileVideo is U+25B7 WHITE RIGHT-POINTING TRIANGLE and NOT the filled
+	// U+25B6 a chip used to draw: the filled triangle is [GlyphQueuePill]'s, one
+	// plain byte may upgrade exactly one way, and an outline triangle is the
+	// right weight beside three outlined file icons anyway.
+	//
+	// GlyphFileImage is U+233E APL FUNCTIONAL SYMBOL CIRCLE JOT and
+	// GlyphFileAudio is U+266A EIGHTH NOTE, both one cell under both rulers.
+	GlyphFileDocument = "▤"
+	GlyphFileImage    = "⌾"
+	GlyphFileAudio    = "♪"
+	GlyphFileVideo    = "▷"
 )
 
 // GaugeCells is the one-cell context gauge (5.17): context % as a single
@@ -384,6 +407,10 @@ func Glyphs() []GlyphInfo {
 		{"GitBranch", GlyphGitBranch, '⋔', false},
 		{"Model", GlyphModel, '◇', true},
 		{"Spend", GlyphSpend, '$', false},
+		{"FileDocument", GlyphFileDocument, '▤', true},
+		{"FileImage", GlyphFileImage, '⌾', false},
+		{"FileAudio", GlyphFileAudio, '♪', true},
+		{"FileVideo", GlyphFileVideo, '▷', true},
 		// The prose slots (code.go). They are named there because a slot is a
 		// MEANING and not a byte, and they are walked HERE because the width
 		// gate is the one place a glyph may not hide: GlyphCodeGutter arrived

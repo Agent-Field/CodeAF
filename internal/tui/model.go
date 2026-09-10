@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/thread"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	"github.com/Agent-Field/aforge-v2/internal/voice"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -843,6 +844,15 @@ type Model struct {
 	workspaceAsk     []workspaceQuestion
 	workspaceGen     uint64
 
+	// The glyph repertoire this window draws in, and the two facts it is folded
+	// from (icons.go). icons is the settled answer every drawing site reads
+	// through [Model.icon]; iconAuto is what the terminal can be trusted with
+	// and stays at the plain floor until [RunWithCommander] detects; iconMode is
+	// the person's own Display row.
+	icons    tokens.GlyphSet
+	iconAuto tokens.GlyphSet
+	iconMode string
+
 	// The two modal documents are laid out whole and shown a window at a time,
 	// so each is kept beside the shape it was laid out for. The settings sheet
 	// is not kept while a row is being edited: the cursor in the field is part
@@ -1013,6 +1023,10 @@ func (m *Model) adoptCommander(commander Commander) {
 		// capability probe that used to stand here did: a commander answers it
 		// or it does not exist, and there is no third state to preserve.
 		m.settingsRegistry = commander.Settings()
+		// AND THE DISPLAY ROW ARRIVES WITH IT. The step-icons setting lives in
+		// the profile the commander fronts, so the tier cannot be settled until
+		// there is one to read (icons.go).
+		m.adoptIcons()
 	} else {
 		m.voiceRecorder, m.voiceTranscriber = nil, nil
 		m.streamEvents = nil
@@ -1050,8 +1064,13 @@ func Run(backend Backend, sessionID string) error {
 // RunWithCommander starts a full-screen terminal session with live slash
 // commands enabled.
 func RunWithCommander(backend Backend, sessionID string, commander Commander) error {
+	m := NewWithCommander(backend, sessionID, commander)
+	// THE TIER IS DETECTED AT THE DOOR and nowhere else: this is the one place
+	// in the package that knows a real terminal is on the other end, so a window
+	// an embedder or a test builds keeps the designed plain floor (icons.go).
+	m.detectIcons(osEnv)
 	_, err := tea.NewProgram(
-		NewWithCommander(backend, sessionID, commander),
+		m,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 		// The renderer defaults to 60 wakeups a second forever. Nothing here

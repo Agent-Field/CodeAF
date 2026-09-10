@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/thread"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -651,13 +652,20 @@ func (m *Model) nodeDocumentHead(width int) []string {
 	lines := []string{mutedStyle.Faint(true).Render("BRIEF")}
 	lines = append(lines, strings.Split(m.renderNodeDetailsContent(width), "\n")...)
 	lines = append(lines, "", mutedStyle.Faint(true).Render(truncate(feedRule("execution", width), width)))
-	lines = append(lines, mutedStyle.Faint(true).Render(truncate(activityLegend, width)))
+	lines = append(lines, mutedStyle.Faint(true).Render(truncate(activityLegend(m.icons), width)))
 	return lines
 }
 
 // activityLegend teaches the feed's five voices once, in the scroll rather than
 // pinned above it: a legend is read on the first visit and never again.
-const activityLegend = "✳ model · $ shell · ✎ file · ⌕ web · › you · ⋯ expands"
+//
+// It is built from the SAME slots the feed draws with, so a legend cannot end
+// up teaching a shape the rows beside it no longer use (icons.go).
+func activityLegend(g tokens.GlyphSet) string {
+	return g.Glyph(tokens.GThought) + " model · " + g.Glyph(tokens.GShell) + " shell · " +
+		g.Glyph(tokens.GWrite) + " file · " + g.Glyph(tokens.GSearch) + " web · " +
+		g.Glyph(tokens.GPromptChat) + " you · " + g.Glyph(tokens.GTruncated) + " expands"
+}
 
 // feedRule is the one divider this surface draws: a named seam that runs to the
 // right edge. Turn rules, the thread rule, and the execution seam are all the
@@ -720,7 +728,7 @@ func (m *Model) renderActivityFeed(width int) string {
 	// The tail is whatever the worker has written since the last complete
 	// line, plus the thread — neither is settled, so neither is kept.
 	tail := m.feedTail
-	blocks = appendTraceBlocks(blocks, tail, width)
+	blocks = appendTraceBlocks(m.icons, blocks, tail, width)
 	blocks = appendMessageBlocks(blocks, m.nodeMessages, width)
 	references := append(append([]string(nil), media...), traceMediaReferences(tail)...)
 	if artifacts := m.renderMediaPaths(m.nodeViewID, references, width); artifacts != "" {
@@ -775,7 +783,7 @@ func (m *Model) settledTrace(width int) ([]feedBlock, []string, []string) {
 	if complete > 0 {
 		chunk := grown[:complete]
 		before := len(m.feedBlocksKept)
-		m.feedBlocksKept = appendTraceBlocks(m.feedBlocksKept, chunk, width)
+		m.feedBlocksKept = appendTraceBlocks(m.icons, m.feedBlocksKept, chunk, width)
 		m.feedKeysKept = appendFeedBlockKeys(m.feedKeysKept, m.feedOccurrences, m.feedBlocksKept[before:])
 		m.feedMediaKept = append(m.feedMediaKept, traceMediaReferences(chunk)...)
 		m.feedTraceParsed = trace[:len(m.feedTraceParsed)+complete]
@@ -893,7 +901,7 @@ func releaseFeedBlockKeys(occurrences map[uint64]int, blocks []feedBlock) {
 // appendTraceBlocks turns a run of whole log lines into blocks. It appends
 // rather than returning its own slice, because the feed hands it the blocks it
 // already has and the chunk that arrived since.
-func appendTraceBlocks(blocks []feedBlock, chunk string, width int) []feedBlock {
+func appendTraceBlocks(g tokens.GlyphSet, blocks []feedBlock, chunk string, width int) []feedBlock {
 	if chunk == "" {
 		return blocks
 	}
@@ -913,9 +921,9 @@ func appendTraceBlocks(blocks []feedBlock, chunk string, width int) []feedBlock 
 		case strings.HasPrefix(line, "text: "):
 			blocks = append(blocks, thoughtBlock(strings.TrimPrefix(line, "text: "), width))
 		case strings.HasPrefix(line, "call "):
-			blocks = append(blocks, toolCallBlock(strings.TrimPrefix(line, "call "), width))
+			blocks = append(blocks, toolCallBlock(g, strings.TrimPrefix(line, "call "), width))
 		case strings.HasPrefix(line, "  → "):
-			blocks = append(blocks, toolResultBlock(strings.TrimPrefix(line, "  → "), width))
+			blocks = append(blocks, toolResultBlock(g, strings.TrimPrefix(line, "  → "), width))
 		case strings.HasPrefix(line, "steered: "):
 			blocks = append(blocks, feedBlock{brief: []string{feedYou.Render("› you  ") +
 				inputTextStyle.Render(truncate(strings.TrimPrefix(line, "steered: "), max(1, width-7)))}})
@@ -969,26 +977,30 @@ func thoughtBlock(raw string, width int) feedBlock {
 // primary ink, and the JSON plumbing disappears. A leading blank line lets
 // each call breathe. Multi-line commands collapse to their first line with a
 // ⋯; the full command opens on click. Extraction tolerates truncated JSON.
-func toolCallBlock(rest string, width int) feedBlock {
+func toolCallBlock(g tokens.GlyphSet, rest string, width int) feedBlock {
 	name, args, _ := strings.Cut(rest, " ")
-	glyph, detail := "⚙", ""
+	// The gutter says what FAMILY of work a call is, and every mark it can say
+	// it with is a slot in the shared vocabulary (icons.go). The bucket — a
+	// call this surface knows nothing else about — is the work mark, which the
+	// nerd-font tier draws as the cog this line used to spell for itself.
+	slot, detail := tokens.GActionWork, ""
 	salient := map[string]string{"sh": "cmd", "write": "path", "edit": "path", "web": "q", "generate_image": "prompt", "generate_music": "prompt", "generate_video": "prompt", "speak": "text", "view_image": "path", "read_document": "path"}[name]
 	if salient != "" {
 		switch name {
 		case "sh":
-			glyph = "$"
+			slot = tokens.GShell
 		case "write", "edit":
-			glyph = "✎"
+			slot = tokens.GWrite
 		case "web":
-			glyph = "⌕"
+			slot = tokens.GSearch
 		case "generate_image", "view_image":
-			glyph = "⌾"
+			slot = tokens.GFileImage
 		case "generate_music", "speak":
-			glyph = "♪"
+			slot = tokens.GFileAudio
 		case "generate_video":
-			glyph = "▶"
+			slot = tokens.GFileVideo
 		case "read_document":
-			glyph = "▤"
+			slot = tokens.GFileDocument
 		}
 		if value, ok := extractStringField(args, salient); ok {
 			detail = value
@@ -1000,6 +1012,7 @@ func toolCallBlock(rest string, width int) feedBlock {
 		detail = strings.ReplaceAll(args, "⏎", " ")
 	}
 	detail = strings.TrimSpace(detail)
+	glyph := g.Glyph(slot)
 	head := feedToolName.Render(glyph+" "+name) + "  "
 	headWidth := lipgloss.Width(glyph+" "+name) + 2
 	lines := strings.Split(detail, "\n")
@@ -1026,7 +1039,7 @@ func renderToolDetail(name, detail string, width int) string {
 // behind a faint "│" gutter, collapsed to a few lines with the rest a click
 // away. Failure is a rose ✗ on the status position only — the output itself
 // never turns red.
-func toolResultBlock(rest string, width int) feedBlock {
+func toolResultBlock(g tokens.GlyphSet, rest string, width int) feedBlock {
 	size, content, _ := strings.Cut(rest, ": ")
 	failed := strings.HasSuffix(size, " ERROR")
 	size = strings.TrimSuffix(strings.TrimSuffix(size, " ERROR"), "B")
@@ -1036,7 +1049,7 @@ func toolResultBlock(rest string, width int) feedBlock {
 	gutter := feedGutter.Render("  │ ")
 	status := ""
 	if failed {
-		status = feedError.Render("✗ ")
+		status = feedError.Render(g.Glyph(tokens.GFailed) + " ")
 	}
 	wrapped := strings.Split(wrapText(strings.ReplaceAll(content, "⏎", "\n"), max(1, width-10)), "\n")
 	render := func(count int) []string {
