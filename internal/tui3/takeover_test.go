@@ -1083,3 +1083,103 @@ func TestTheTakeoverCardScreen(t *testing.T) {
 	a.homeKey(key("1"))
 	shot("takeover-card-picked")
 }
+
+// ── a held row that is asking something of its own ──────────────────────────
+
+// A ROW THAT IS WAITING ON A PERSON IS NOT ASKED ABOUT MOVING FIRST. The other
+// window's conversation stopped on the model's own question, and home draws
+// that question's answers on the row; a launch that lands here lands on those
+// answers, and the move stays one enter away.
+func TestALaunchOntoARowThatIsAskingLandsOnItsAnswersAndNotOnTheMove(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	where := lab.project("-tmp-alpha")
+	fresh := lab.session("-tmp-alpha", "aaaa000000000001", "the one the door built", where, now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", where, now.Add(-time.Hour))
+	lab.hold(theirs)
+	lab.asking("-tmp-alpha", "aaaa000000000002", askQuestion(9, "publish the draft?"), now)
+
+	sent := []sentAnswer{}
+	a := lab.app(fresh)
+	a.leaveAnswer = func(dir string, kind session.QuestionKind, id uint64, key string) error {
+		sent = append(sent, sentAnswer{dir: dir, kind: kind, id: id, key: key})
+		return nil
+	}
+	a.landTakeover(theirs)
+
+	line, ok := a.home.focusedLine()
+	if !ok || line.row.Transcript != theirs {
+		t.Fatalf("home opened on %+v, want the row that is asking", line.row.Transcript)
+	}
+	if _, up := a.homeAsking(); up {
+		t.Fatalf("the launch raised the move card over a row that is asking its own question:\n%s", homeText(a))
+	}
+	text := homeText(a)
+	if strings.Contains(text, takeoverAskWord) {
+		t.Fatalf("the move question is on the screen before anybody asked for it:\n%s", text)
+	}
+	for _, chip := range []string{"1 publish it", "2 hold it"} {
+		if !strings.Contains(text, chip) {
+			t.Fatalf("the row's own answers are not offered:\n%s", text)
+		}
+	}
+	// AND THE DIGIT IS THE ROW'S ANSWER, not a cursor on a move nobody raised.
+	a.homeKey(key("1"))
+	if len(sent) != 1 || sent[0].key != "1" || sent[0].id != 9 {
+		t.Fatalf("`1` did not leave the row's answer on the doorstep · sent=%+v", sent)
+	}
+	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); err == nil {
+		t.Fatal("`1` on the landed row asked the other window for the conversation")
+	}
+}
+
+// ONE KEYBOARD, ONE QUESTION. Once enter has raised the move card beside a row
+// that is asking, the row's own chips step aside — a card where `1` is `move it
+// here` and a chip saying `1 publish it` cannot share a screen — and they are
+// back the moment the card is put down.
+func TestTheMoveCardTakesTheRowsOwnAnswersOffTheScreenWhileItStands(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	where := lab.project("-tmp-alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "this window", where, now)
+	theirs := lab.session("-tmp-alpha", "aaaa000000000002", "the other terminal", where, now.Add(-time.Hour))
+	lab.hold(theirs)
+	lab.asking("-tmp-alpha", "aaaa000000000002", askQuestion(9, "publish the draft?"), now)
+
+	sent := []sentAnswer{}
+	a := lab.app(mine)
+	a.leaveAnswer = func(dir string, kind session.QuestionKind, id uint64, key string) error {
+		sent = append(sent, sentAnswer{dir: dir, kind: kind, id: id, key: key})
+		return nil
+	}
+	a.openHome()
+	a.home.point(theirs)
+	if text := homeText(a); !strings.Contains(text, "1 publish it") {
+		t.Fatalf("the row's answers are not offered before the card:\n%s", text)
+	}
+
+	a.homeKey(key("enter"))
+	if _, up := a.homeAsking(); !up {
+		t.Fatal("enter on the held row raised no move card")
+	}
+	text := homeText(a)
+	if strings.Contains(text, "publish it") {
+		t.Fatalf("the row's chips stayed on the screen under the move card:\n%s", text)
+	}
+	// A DIGIT NOW BELONGS TO THE CARD: it moves the cursor and answers nothing.
+	a.homeKey(key("1"))
+	if len(sent) != 0 {
+		t.Fatalf("`1` under the move card left an answer for the row · sent=%+v", sent)
+	}
+	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); err == nil {
+		t.Fatal("`1` under the move card moved the conversation by itself")
+	}
+
+	a.homeKey(key("esc"))
+	if _, up := a.homeAsking(); up {
+		t.Fatal("esc did not put the move card down")
+	}
+	if text := homeText(a); !strings.Contains(text, "1 publish it") {
+		t.Fatalf("the row's answers did not come back once the card was down:\n%s", text)
+	}
+}

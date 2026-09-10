@@ -529,6 +529,17 @@ func (a *app) landTakeover(transcript string) {
 		// place to have landed; there is simply nothing to arm.
 		return
 	}
+	// A ROW THAT IS WAITING ON A PERSON IS NOT ASKED ABOUT MOVING FIRST. The
+	// row under the cursor may be stopped on a question of its own — the
+	// model's, a consent, a standing card — and home draws that question's
+	// answers on the row's own keys (homeband_answer.go). Those answers are
+	// what wants somebody, and the move is one enter away as it always was;
+	// raising the move card here would put its `1 move it here` over the row's
+	// `1 publish it`, and there is ONE KEYBOARD. So the launch lands pointed
+	// and quiet, and enter asks about moving when the person asks for it.
+	if _, asking := answerable(line.row, time.Now()); asking {
+		return
+	}
 	a.home.armed = transcript
 	a.raiseHomeAsk(a.takeoverShown(line))
 	a.sayHomeAsk()

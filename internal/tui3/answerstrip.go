@@ -29,6 +29,9 @@ func (a *app) answerStrip(width int, now time.Time) []string {
 	if _, sent := a.answerSent(row, question); sent {
 		return nil
 	}
+	if a.answersStepAside(row) {
+		return nil
+	}
 	chips := answerChips(question)
 	if len(chips) == 0 {
 		return nil
