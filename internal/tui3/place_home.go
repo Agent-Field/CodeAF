@@ -101,120 +101,6 @@ const (
 	homeSwitchHead homeRowKind = 243
 )
 
-// ── the reading ─────────────────────────────────────────────────────────────
-
-// buildSwitch is the resting column: the errands, then the reading, as lines of
-// home's own list.
-//
-// EVERY FACT IN IT WAS ALREADY READ. The world, the standing bands and the look
-// stamp are the same three readings this screen has always been built from, on
-// the same three-second beat ([homeEvery]); the two memory figures come in
-// through [app.readSwitchLedger] on that same beat and never on a draw. This
-// function opens nothing and stats nothing.
-func (h *homeView) buildSwitch() {
-	// EVERY PROJECT, INCLUDING THE ONES HOME KNOWS ONLY THROUGH A WATCH. A
-	// workspace nobody has spoken in is exactly as able to need somebody as a busy
-	// one ([homeView.everyProject], homestanding.go's [app.readBareBands]), and a
-	// reading that walked the world alone would show a person nothing on the one
-	// screen that exists to say what is true — which is the defect that reader was
-	// written to close.
-	world := h.world
-	world.Projects = h.everyProject()
-	// THE ERRANDS ARE COUNTED BEFORE THE READING IS TAKEN, because they stand
-	// over it and spend its rows (they are appended below).
-	errands := h.switchExchanges()
-	// AND THE FRAME'S OWN HEIGHT GOES IN WITH THE FACTS. The list draws as many
-	// rows as the column can hold and never fewer than [switcherShown]; the room
-	// is what is left of the column under the errands, because those rows are
-	// spent before the reading gets any. `h.room` is what [placeHome.body] was
-	// handed and is ZERO UNTIL A FRAME HAS BEEN DRAWN — a reading with no room
-	// is exactly the reading this file made before it had one.
-	room := 0
-	if h.room > 0 {
-		room = h.room - len(errands)
-		if len(errands) > 0 {
-			room-- // the blank row between the errands and the list
-		}
-		room = max(0, room)
-	}
-	h.reading = readSwitcher(world, h.items, h.fired, switcherHere{session: h.here, project: h.bucket, coming: h.claim, hosted: h.far}, h.gone, h.seen, h.world.Read,
-		switcherView{grouped: h.grouped, hideQuiet: h.hideQuiet, all: h.moreOpen, room: room}, h.ledger)
-	// THE ERRANDS STAND OVER THE READING AND ARE NOT IN IT. An `ask here` errand
-	// is a live conversation with the person's own question in it and no row in
-	// the world at all ([homeExchange] — they are kept outside v3/projects on
-	// purpose), so the ranked list cannot hold one. They go where the thing you
-	// asked for a minute ago belongs: at the top, above everything the machine
-	// has to say for itself.
-	h.lines = append(h.lines, errands...)
-	if len(errands) > 0 && len(h.reading.lines) > 0 {
-		h.lines = append(h.lines, homeLine{kind: homeBlank})
-	}
-	for i := range h.reading.lines {
-		h.lines = append(h.lines, h.switchLine(&h.reading.lines[i]))
-	}
-	// A MACHINE WITH NOTHING ON IT STILL SAYS SO WHERE ITS FIRST ROW WOULD BE
-	// ([homeEmptyRow]) — an empty home is the same screen with fewer rows, never
-	// a different screen. A machine whose rows CANNOT be read from here says why
-	// instead, in the same slot and the same dim register ([homeView.why]).
-	//
-	// AND A WORLD THAT IS NOT AN ANSWER YET DRAWS NEITHER. Over --host the world
-	// comes from the other machine and the first frames are drawn before it has
-	// arrived; `nothing here yet — say something and this fills up` over a
-	// machine full of work would be the one wrong sentence this screen can say
-	// about somebody else's disk. Unknown renders as nothing, which is the
-	// emptiness law, and the zones, the bar and the composer are all still there
-	// ([homeView.known]).
-	if len(h.lines) == 0 {
-		var empty []string
-		switch {
-		case h.why != "":
-			empty = []string{h.why}
-		case h.known:
-			empty = homeEmptyLines()
-		}
-		for _, part := range empty {
-			h.lines = append(h.lines, homeLine{kind: homeEmptyRow, project: part})
-		}
-	}
-}
-
-// switchLine is one line of the reading as a line of home's column.
-//
-// A CONVERSATION'S ROW IS A [homeSession] ROW AND A WATCH'S IS A [homeItem] ROW,
-// and that is the whole reason this wave did not have to touch a single door.
-// enter, ctrl+t, ctrl+o, ctrl+y, ctrl+e, ctrl+x, the digits that answer a
-// question and the card the registry draws all ask the line what KIND it is, and
-// the answer is the same answer it has always been. What is new on the line is
-// [homeLine.sw], which is what paints it.
-func (h *homeView) switchLine(line *switcherLine) homeLine {
-	out := homeLine{sw: line}
-	if line.row == nil {
-		if line.blank {
-			out.kind = homeBlank
-			return out
-		}
-		out.kind = homeSwitchHead
-		return out
-	}
-	row := line.row
-	switch row.kind {
-	case switcherConversation:
-		out.kind, out.row, out.project = homeSession, row.session, row.project
-		out.dir = homeBucketOf(row.session.Transcript)
-	case switcherStanding:
-		out.kind, out.view, out.item, out.project = homeItem, row.item, row.item.Item, row.project
-	case switcherLedger:
-		// THE PLACE THE LINE IS A DOOR TO RIDES [homeLine.project], which is the
-		// same field an offered place carries its word in (homeplaces.go). One
-		// field, one meaning: the lowercase name of somewhere to go.
-		out.kind, out.project = homeLedger, row.place
-		out.view, out.item = row.item, row.item.Item
-	case switcherFold:
-		out.kind, out.folded, out.quiet = homeSwitchFold, !h.moreOpen, h.reading.hidden
-	}
-	return out
-}
-
 // switchExchanges is every errand this screen is holding, in the order the
 // project blocks used to draw them in: what wants you, then what is moving, then
 // what is done, older first inside each.
@@ -1051,6 +937,17 @@ func (placeHome) close(a *app)        { a.dropHome() }
 // body is home's own column, and the pane map beside it: two facts per row, so
 // the hit is a [homeMark] rather than a line number.
 func (placeHome) body(a *app, width, room int) []placeRow {
+	// AT REST THE BODY IS THE GRID (homegrid.go), and its shape is settled
+	// before it is drawn: the column count and the room both decide which rows
+	// exist, so either moving is a rebuild — the same one number compared, and
+	// the lines made again only when it moved.
+	if cols := homeGridCols(width); !a.home.searching() && !a.home.phone && (room != a.home.room || cols != a.home.cols) {
+		a.home.room, a.home.cols = room, cols
+		a.home.build()
+	}
+	if a.home.gridOn() {
+		return a.homeGridRows(width, room, a.pal)
+	}
 	left, right := homeColumns(width)
 	// THE HEIGHT REACHES THE READING HERE AND NOWHERE ELSE. It is the same law
 	// the width is settled under one layer up (home.go's [app.homeFrame]: the
@@ -1091,6 +988,12 @@ func (placeHome) ownFrame(a *app, width, height int) ([]string, []placeHit, int,
 // stops is every line of home's column the cursor may rest on: the walk
 // [homeView.move] takes, said as a list ([homeLine.stop] is the one rule).
 func (placeHome) stops(a *app) []int {
+	// ON THE GRID THE STOPS ARE THE CURSOR'S OWN COLUMN, which is what makes `↑`
+	// off the top of ANY column reach the tab bar (pages.go's [app.barReach]
+	// asks whether the cursor is on the first of these).
+	if a.home.gridOn() {
+		return a.home.columnStops(a.home.columnOf(a.home.cursor))
+	}
 	out := make([]int, 0, len(a.home.lines))
 	for i, line := range a.home.lines {
 		if line.stop() {
@@ -1106,6 +1009,19 @@ func (placeHome) stops(a *app) []int {
 // than read as a bare index (pages.go's [place.cursorRow] says why the rows are
 // handed in).
 func (placeHome) cursorRow(a *app, rows []placeRow) int {
+	// A GRID ROW HOLDS A LINE OF EVERY COLUMN, and the strip goes under the LAST
+	// screen row of the cursor's line, so a row with a line under it keeps the
+	// two together.
+	if a.home.gridOn() {
+		found := -1
+		for i, row := range rows {
+			col := a.home.columnOf(a.home.cursor)
+			if mark, ok := row.hit.(homeMark); ok && mark.grid && col >= 0 && mark.cells[col] == a.home.cursor {
+				found = i
+			}
+		}
+		return found
+	}
 	for i, row := range rows {
 		if mark, ok := row.hit.(homeMark); ok && mark.line == a.home.cursor {
 			return i
@@ -1227,7 +1143,9 @@ func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	a.settleExchangeFocus()
 	ex := a.paneExchange()
 	if ex == nil || !ex.focused {
-		return nil, false
+		// AND THE GRID'S TWO ARROWS, read before the router claims `→` for a
+		// row's verbs (homegrid.go's [app.homeGridCross] says why).
+		return nil, a.homeGridCross(msg)
 	}
 	a.home.say("", "")
 	cmd := a.exchangeKey(ex, msg)
