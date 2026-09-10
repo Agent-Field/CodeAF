@@ -64,6 +64,16 @@ const TaskKindHarness TaskKind = "harness"
 // — the row, the room, the id, the stop — it has for free.
 const TaskKindSubharness TaskKind = "subharness"
 
+// TaskKindQuick is a task that runs where its caller works: no worktree, no
+// audit, no landing. Its last message is its result.
+//
+// IT IS THE SMALL NOTION BESIDE THE BIG ONE (docs/design/quick-task/DESIGN.md).
+// An ordinary task gets a copy of the folder, is checked, and lands; a quick
+// node works in the caller's own workspace and hands back what it said. So it
+// has no branch, no merge and usually no changed list, and a surface that drew
+// any of those over one would be pointing at work that does not exist.
+const TaskKindQuick TaskKind = "quick"
+
 // TaskKindJob is a piece of BACKGROUND WORK this session started that is not an
 // agent at all (jobrow.go): a command running under `bash background:true`, a
 // foreground command that reached its bound and was promoted (promote.go), a
