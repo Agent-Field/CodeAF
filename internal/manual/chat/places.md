@@ -501,7 +501,7 @@ Three blocks: the window with its sparkline, `what ran it` by the model and the 
 model is **bound** to, and `what it was for`. `enter` on a row of the last one opens the
 thing the money went on — a task, a standing promise, or a conversation. The first three
 are shown; `enter` or a click on `▸ 11 more` draws the rest, and `▾ 11 fewer` folds them
-back. `shift+←` and `shift+→` move the window by its own length;
+back. The cursor arrives on the first of them — the biggest thing the money went on. `shift+←` and `shift+→` move the window by its own length;
 `shift+↑` and `shift+↓` change how coarse it is.
 
 **There is nothing to set here, and the page says where to go instead.** Its first line is

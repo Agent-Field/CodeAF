@@ -111,7 +111,29 @@ func (a *app) openSpend() tea.Cmd {
 		win: session.LastDays(now, spendWindowDays), hover: -1,
 		world: a.readWorld()}
 	a.readSpendLines(now)
+	a.spend.cursor = a.spendCenterOfMass()
 	return a.armPlaceClock()
+}
+
+// spendCenterOfMass is the row focus wakes on: THE FIRST THING THE MONEY WENT
+// ON, at the head of `what it was for` — the row this page exists to answer.
+// It woke on the pointer line, a door to the limits editor, so the first
+// `enter` on arrival left the bill for a settings tab (PLACES-AUDIT.md finding
+// 16). A page with no subjects wakes where it always did.
+func (a *app) spendCenterOfMass() int {
+	at := a.spend.cursor
+	if len(a.spend.reading.subjects) == 0 {
+		return at
+	}
+	first := spendSubjectKey(a.spend.reading.subjects[0])
+	// THE LAST ROW NAMING IT, because the loudest day above the table can name
+	// the same subject and the table's own row is the one under its heading.
+	for i, stop := range a.spend.stops {
+		if stop.ok && !stop.rails && !stop.fold && spendSubjectKey(stop.subject) == first {
+			at = i
+		}
+	}
+	return at
 }
 
 // spendCrewNow is WHO IS BOUND TO WHAT RIGHT NOW: the crew as the settings

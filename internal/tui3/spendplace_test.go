@@ -538,3 +538,21 @@ func TestTheSpendWindowMovesWithoutTouchingTheStandingStore(t *testing.T) {
 		t.Fatalf("the beat left the standing store read %d times, want a second read", reads)
 	}
 }
+
+// FOCUS WAKES AT THE CENTRE OF MASS. The spend place is asked "what did it cost,
+// and on what", so the cursor arrives on the first thing the money went on —
+// the head of `what it was for` — and not on the pointer line, whose `enter`
+// leaves the bill for the limits editor (PLACES-AUDIT.md finding 16).
+func TestSpendFocusWakesOnTheFirstThingTheMoneyWentOn(t *testing.T) {
+	a := spendLab(t, spendFixture())
+	stop := a.spendStopAt(a.spend.cursor)
+	if !stop.ok || stop.rails || stop.fold {
+		t.Fatalf("focus woke on body line %d, which is not a subject (%+v)", a.spend.cursor, stop)
+	}
+	if got, want := spendSubjectKey(stop.subject), spendSubjectKey(a.spend.reading.subjects[0]); got != want {
+		t.Fatalf("focus woke on %q, want the biggest subject %q", got, want)
+	}
+	if row := plainSpendRows(a.spend.reading.rows(120, newPalette(tokens.NoColor, false)))[a.spend.cursor]; strings.Contains(row, "loudest day") {
+		t.Fatalf("focus woke on the loudest day and not under `what it was for`: %q", row)
+	}
+}
