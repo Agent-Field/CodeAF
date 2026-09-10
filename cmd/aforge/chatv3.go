@@ -1376,6 +1376,16 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// law; taskaudit_law_test.go now makes a second reader or an unwired door fail
 	// on the day it lands.
 	cfg.TaskAudit = config.TaskAuditEnabledAt(profileDir)
+	// AND WHETHER AFORGE SIGNS THE GIT WORK IT DOES IN THE PERSON'S NAME, read
+	// here for the reason the audit row above it is read here: every v3 door
+	// comes through this function, and a row honoured in the conversation but
+	// not in a standing firing is a row the person cannot trust. PROFILE-ONLY —
+	// a repository that could turn this on would be putting its own advert in a
+	// visitor's commit by being cloned, and one that could turn it off would be
+	// stripping provenance the visitor asked for. The CONTRIBUTING file a
+	// repository writes still wins, but it wins by being read and obeyed, not by
+	// silently rewriting somebody's profile (internal/exec's AttributionLaw).
+	cfg.Attribution = config.AttributionAt(profileDir)
 	// Whether a reply that comes apart is cut and asked again. PROFILE-ONLY, and
 	// the reason is not trust this time but taste: it is a judgement about
 	// somebody's own replies, and a repository has no business turning off a

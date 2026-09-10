@@ -112,6 +112,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I pressed esc on the allow question and nothing happened", "permissions"},
 		{"the allow question turned into a card on my narrow terminal", "permissions"},
 		{"what does always this command write down", "permissions"},
+		// AND THE MARK AFORGE LEAVES ON WORK IT DID FOR YOU, asked the five ways
+		// somebody meets it: reading their own git log, reading a pull request
+		// they did not write the last line of, looking up a name they have never
+		// seen, and wanting it gone.
+		{"why is there a co-author on my commit", "permissions"},
+		{"does aforge sign my commits", "permissions"},
+		{"who is agentfield-bot", "permissions"},
+		{"what is the drafted with line at the bottom of my pull request", "permissions"},
+		{"stop adding a co-author trailer to my commits", "permissions"},
 		// AND THE TASK PROPOSAL AS IT IS DRAWN NOW that it is that block too
 		// (internal/tui3's task.go), asked the four ways somebody meets the
 		// keys that moved: the answers row that replaced the chips, the typed

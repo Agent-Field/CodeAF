@@ -133,6 +133,22 @@ func (c Config) mayFork() bool { return !c.inHand }
 // request of its short life.
 func (c Config) signsGitWork() bool { return c.Attribution && !c.inHand }
 
+// signsGitWork asked of a live agent, so that the harness's OWN commits and the
+// sentence the model is told come off one predicate. The commits a landing
+// writes are not on any belt — nobody is asked about them — and a build where
+// the model was told to sign while the landing quietly did not would be two
+// answers to one row (task_run.go's [signed]).
+func (a *Agent) signsGitWork() bool { return a.config.signsGitWork() }
+
+// attributionTrailer is [exec.AttributionTrailer] under a name the rest of this
+// package can say. The files where the harness writes its OWN commits —
+// task_run.go and task_branch_protection.go — both import os/exec as `exec`, so
+// neither can name internal/exec without an alias that reads as a second
+// package. This is a constant assignment and not a second copy: the bytes live
+// in one place, internal/exec's own test pins them, and a trailer reworded
+// there is reworded here by the compiler.
+const attributionTrailer = exec.AttributionTrailer
+
 // mayDesignHarness says whether the two harness hands belong on this belt
 // (tools_harness.go): a store to write the page into, a runner to run what was
 // written, and somebody watching who can answer the card. A design nobody can

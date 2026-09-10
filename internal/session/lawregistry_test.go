@@ -108,6 +108,13 @@ var lawRegistry = []lawUnit{
 	{id: "images.travel-with-the-message", class: lawCore, key: "ATTACHED PICTURES TRAVEL IN THE MESSAGE WITH YOU"},
 	{id: "elsewhere.other-windows", class: lawCore, key: "OTHER AFORGE WINDOWS ON THIS PROJECT ARE VISIBLE TO YOU"},
 
+	// ── the mark aforge leaves on work it did in somebody's name. It is core
+	// rather than verb: `bash` is where it happens, but `bash` is pi's own
+	// description and this law is aforge's, and it is stated in ONE place for
+	// both surfaces there are — the leaf loop's contract and this page read the
+	// same constant (internal/exec's [exec.AttributionLaw]).
+	{id: "attribution.sign-git-work", class: lawCore, key: "SIGN GIT WORK DONE FOR THEM."},
+
 	// ── and the laws the page gave up to the verb that owns them. Each of
 	// these was a page sentence until the diet; the description had said it all
 	// along, in more words and with the field names beside it.

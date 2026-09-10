@@ -647,6 +647,46 @@ auxiliary calls somewhere, set one of the five crew classes
 A row your environment has pinned refuses like it does everywhere else:
 `<label> is set by <NAME>`.
 
+## Does aforge sign my commits — why is there a co-author on my commit, who is agentfield-bot, how do I turn the trailer off
+
+Yes, unless you turn it off. When aforge commits on your behalf, the message ends
+with a blank line and one trailer:
+
+```
+Co-Authored-By: aforge <agentfield-bot@users.noreply.github.com>
+```
+
+`agentfield-bot` is aforge's own GitHub account, and the address is the one
+GitHub hands out for it. It is provenance — it says another pair of hands typed
+this — and it is the only mark left on your work.
+
+When aforge opens a pull request or an issue for you, the body ends with a line
+holding an em dash and then one sentence:
+
+```
+—
+Drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=pull_request&utm_campaign=drafted_with) · reviewed and owned by the author
+```
+
+On an issue that link reads `utm_medium=issue` instead. That is the whole of it.
+It never goes in a commit subject, in a code file, in a README, in anything
+aforge writes for you, or in its reply to you.
+
+**A repository that says no wins.** If a CONTRIBUTING file or a stated policy
+forbids AI trailers or generated-by lines, aforge leaves both out and tells you
+it did.
+
+**To turn it off**, open `/settings` and switch the **attribution** row off, or
+set `AFORGE_ATTRIBUTION=0` in your environment. It is on by default. aforge
+cannot change this row for you — ask it to and it says so and points you at
+`/settings` — because a signature is yours to decide. A change lands on the next
+piece of work.
+
+The commit a task writes when its work lands carries the same trailer. Those
+commits are authored as `aforge <aforge@localhost>` and always have been:
+aforge reads that name to tell its own commits from yours when it lands a
+branch. Your own commits are authored by you and are never touched.
+
 ## A timeout is not a deny — why it said "denied by the person" when nobody said no
 
 A wait that ends without an answer is not a person's no. The model used to be
