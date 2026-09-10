@@ -79,7 +79,126 @@ proves: the audit was measuring the same build the wave is about to change.
 The diet's own targets, from DESIGN.md §6, are **≤ 40,000 for the full profile
 and ≤ 10,000 for lean**, and the cap only ever ratchets down.
 
-<!-- BASELINE:LIVE -->
+### The model pin is not the one this wave started with
+
+The brief named `deepseek/deepseek-v4.1-flash`. That id is real — a bare curl to
+it answered three times out of three, from GMICloud and DeepInfra — but pinned
+to it, cells died mid-turn with the provider's own sentence:
+
+> 0 endpoints out of 1 requested are available matching your guardrail
+> restrictions and data policy … Paid model training violation (account
+> settings): 1 endpoint excluded
+
+Two things make that fatal to a comparison rather than merely annoying. This
+account's privacy settings exclude at least one endpoint serving that model, and
+**aforge asks for ONE endpoint per request and takes no fallback**, so drawing
+the excluded lane is a dead turn rather than a hop. It killed `research-brief`,
+which had passed twice that afternoon, and `code-fix`, on the same build within
+minutes — and it lands on whichever side happens to draw it, which is exactly
+the shape of noise a parity ruling cannot survive.
+
+**The pin is `deepseek/deepseek-v4-flash-0731`**: the same family, the id every
+historical row in `bench/conversation` and `bench/e2e` was measured on, and
+endpoints this account allows. Nothing failed that way again.
+
+That aforge turns an endpoint exclusion into a dead turn with no hop, while the
+failover ladder exists and works for other causes, looks like a defect worth its
+own issue. It is not this lane's to file blind: it needs the `--host`/lane owner
+to say whether the one-endpoint pin is deliberate here.
+
+## 1a. dev → diet, measured
+
+`dev` at `6aa6a946e` against `prompt-diet/integrate` at `2a90be7e8` (its tip when
+the run fetched it; the branch has moved since). Same rig, same pin, same cells,
+back to back on the Spark so the provider's weather fell on both. Layers A, C
+and D; **layer B is owed** — see §7.
+
+### The prefix
+
+| piece | dev | diet | Δ | |
+| --- | ---: | ---: | ---: | ---: |
+| page | 23,391 | 17,761 | −5,630 | −24.1% |
+| tool block | 24,044 | 22,171 | −1,873 | −7.8% |
+| **total** | **47,435** | **39,932** | **−7,503** | **−15.8%** |
+
+39,932 is already inside DESIGN.md §6's ≤ 40,000 target for the full profile.
+
+### Outcomes
+
+| cell | dev | diet | |
+| --- | --- | --- | --- |
+| `conversation/research-brief` | pass | pass | same |
+| `conversation/code-fix` | pass | pass | same |
+| `conversation/followup-while-working` | timeout | fail | same |
+| `conversation/work-result-recalled` | timeout | **pass** | better |
+| `e2e/lookup` | fail | fail | same |
+
+`work-result-recalled` is the one that moved: it ran out its 480-second cap on
+`dev` and passed in 78 seconds on the diet. `followup-while-working` stopped
+timing out and started failing an assertion instead — faster and a fifth of the
+tokens, but **not** an improvement, and the comparison says `same` for it on
+purpose (`compare.py`'s `RANK`).
+
+`e2e/lookup` fails on both sides for a reason that is neither branch's: its
+quality checks all pass and its **shape** check cannot run, because the run left
+no store to autopsy. That is a `bench/e2e` calibration gap in this environment,
+identical on both sides, and it is owed in §7.
+
+### Tokens per turn
+
+Over the requests that carry the belt — see §1b, which is why that qualifier is
+load-bearing.
+
+| | dev | diet | Δ | |
+| --- | ---: | ---: | ---: | ---: |
+| turn requests | 69 | 19 | −50 | −72.5% |
+| **median prompt tokens** | **17,815** | **13,962** | **−3,853** | **−21.6%** |
+| median cached tokens | 16,212 | 9,627 | −6,585 | −40.6% |
+| median completion tokens | 132 | 126 | −6 | −4.5% |
+| median request bytes | 79,946 | 58,774 | −21,172 | −26.5% |
+| median tools on the belt | 26 | 26 | 0 | — |
+| median tool block bytes | 40,660 | 38,769 | −1,891 | −4.7% |
+| asides (no belt) | 26 | 21 | −5 | −19.2% |
+| median aside prompt tokens | 689 | 595 | −94 | −13.6% |
+
+Recorded and not ruled on: total spend $0.0372 → $0.0085, summed cell wall 947s
+→ 236s, median call 9,473ms → 8,144ms.
+
+### The ruling
+
+**Parity: yes** — every outcome equal or better, on the cells that ran.
+**Efficiency: yes** — median prompt tokens per turn 17,815 → 13,962, −21.6%.
+
+Two honest qualifications. The prefix fell 15.8% and the per-turn prompt fell
+21.6%, so the diet is doing slightly better on the wire than on the scale — the
+dynamic fixes in DESIGN.md §5 showing up beside the page. And **the cached share
+fell 40.6%**, which is the frontier-bill risk DESIGN.md §0 names: on this
+open-weight pin it costs nothing, but it is the number to watch on the frontier
+arm in §4 before anybody calls this settled.
+
+## 1b. The number this bench nearly reported instead
+
+The first comparison it ever ran announced median prompt tokens falling
+**16,473 → 938, a 94% cut**. That was not a diet. It was a change of MIX.
+
+A conversation does not only send turns. A title call, a memory reflex, a judge
+and a router all go out on the same wire with a few hundred prompt tokens and no
+tool block at all. The candidate made 19 turn calls where the baseline made 67 —
+because it finished work the baseline timed out on — so its median landed among
+the asides that both runs make in roughly equal number. Over the requests that
+actually carry the prefix the same two runs read 17,815 → 13,962.
+
+The corrected figure is a quarter of the size of the one the average told, and
+the wrong one was the flattering one. `compare.py`'s `carries_the_belt` is the
+fix — a request with at least one tool definition is a turn, and nothing else on
+the wire carries a belt — and this section is here because the failure is not
+obvious from a table and would be made again by the next person to average
+something.
+
+Two more measurement errors were caught the same way and are written into the
+code that fixes them: a parent test counted beside its own children turned one
+broken subtest into two failures, and a `wall_s` that travelled as a JSON string
+was silently dropped by a numeric filter and printed as an em dash.
 
 ## 2. What is not covered, and why that is stated rather than fixed
 
@@ -97,6 +216,24 @@ bench that will be quoted as though it had none.
 | **a question asked of the person** | `TestQuestionsE2E` only (layer B) | **no bench cell exists** |
 | **a standing item** | `TestStandingE2E` only (layer B) | **no bench cell exists** |
 | **a media refusal** | **nothing** | no cell, no suite, nowhere |
+
+**Both interactive cells were dead when this lane found them, and are not now.**
+`bench/conversation`'s tmux door waits for `ARM_READY_RE` before it types
+anything, and for aforge that needle was `· idle`. After the seven-panel home
+landed, a fresh screen draws the state word at the right edge of the status row
+with nothing in front of it — the failed cell's own saved scrollback ends in a
+line reading `idle`, no separator — so the needle matched nothing, the door gave
+up at the ready wait, and both interactive scenarios recorded `unsupported`
+after 91 seconds. Two of the four cells in the first baseline proved nothing at
+all, and said so in a word that reads like a limitation of the suite rather than
+a broken calibration.
+
+This is the rot #184 named, in this suite rather than the e2e one: a calibration
+regex is a claim about a person-facing string, and a respelling ends the
+measurement without ending the run. Both spellings are accepted now, so no
+historical row changes meaning and a screen that goes back to the dot still
+reads. With it fixed the same two cells run for real — and one of them is the
+only outcome that moved between `dev` and the diet.
 
 **There is no question cell and there was never going to be one by accident.**
 Every arm of every battery under `bench/` runs unattended — `--yolo`, `pi -p`,
@@ -265,3 +402,52 @@ An outcome that is `incomplete` on either side is never called equal. A run cut
 off by its own timeout, or by an ssh pipe going away, measured nothing about the
 tests it never reached; `compare.py` reports those as **not proven** and neither
 as a pass nor as a regression.
+
+## 7. What is owed
+
+- **Layer B has not been run on either side.** It is the layer that decides
+  parity properly — `TestTUIE2E`'s fifteen subtests, `TestQuestionsE2E`'s
+  sixteen, `TestStandingE2E`'s seven — and it is the only coverage the question
+  and standing roads have at all. Budget about forty minutes a side plus a few
+  cents, sequentially and never beside another suite:
+
+  ```sh
+  ssh spark 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/.config/fleet/secrets.env; set +a
+    ~/bench-diet/rig/bench/prompt-diet/run.sh 6aa6a946e dev --layers b --reuse-worktree
+    ~/bench-diet/rig/bench/prompt-diet/run.sh prompt-diet/integrate diet --layers b --reuse-worktree'
+  ```
+
+  Until it has run, the ruling in §1a is parity **on the cells that ran** and not
+  parity on the wave.
+
+- **The frontier arm (§4) has not been run.** The cached share fell 40.6% on the
+  open-weight pin, and that is precisely the number DESIGN.md §0's first bill is
+  made of. It costs nothing on flash and everything on a frontier model.
+
+- **`bench/e2e`'s shape assertions do not work in this rig.** `lookup` passes
+  every quality check and fails `no journal — the run left no store to autopsy`
+  on both sides: `aforge do --keep` did not leave the `store kept at …` line the
+  autopsy greps for. Both sides fail identically so no comparison is harmed, but
+  the cell's real value — route, node count, edges — is unavailable, and
+  `bundle3`, the handoff-shape cell, is worth nothing without it. `bundle3` is
+  also 32 minutes a side, so it is off the default `--cells` and reachable with
+  the flag.
+
+- **A media-refusal cell.** §2 says why it matters more to this wave than the
+  other two gaps: lane E moves the media essay off the page and nothing in the
+  tree would notice if that changed what the chat says when somebody asks for a
+  picture. The shape is a `bench/conversation` print-door scenario asking for an
+  image, asserting the reply either loads the capability or says plainly it
+  cannot — and in particular does not invent a file path.
+
+- **A question cell and a standing cell**, which need a witness that does not
+  exist: every arm of every battery under `bench/` runs unattended, so there is
+  no assertion vocabulary for an agent→person `ask`.
+
+- **`AFORGE_PROMPT_ABLATE`**, from lane C or lane G. Without it, two of the ten
+  largest law units — standing and accounts — cannot be ablated at all (§5).
+
+- **An issue about the one-endpoint pin.** §1's model-pin note has the evidence:
+  an endpoint excluded by account policy ends a turn instead of hopping, while
+  the failover ladder handles other causes. It needs the lane that owns routing
+  to say whether that pin is deliberate before it is filed as a defect.
