@@ -290,7 +290,7 @@ func rowSaying(frame, word string) string {
 // four in flight, a hundred and twenty-three dollars spent of five hundred, and
 // a Thursday afternoon.
 //
-// THE FACTS ARE PUT STRAIGHT INTO THE MEMO [app.machineFactsAt] KEEPS, because
+// THE FACTS ARE PUT STRAIGHT INTO THE MEMO THE PULSE DRAWS ([app.machine]), because
 // the subject here is the LADDER and not the reading. A fixture that built
 // twelve waiting conversations and four running tasks on disk would be a slow
 // test of the counters, and the counters have their own (pulsemoney_test.go).
@@ -301,8 +301,7 @@ func pulseLab(t *testing.T) (*app, time.Time) {
 	mine := lab.session("-alpha", "aaaa000000000001", "porting the picker", lab.workspace("alpha"), now)
 	a := lab.app(mine)
 	a.clock = func() time.Time { return now }
-	a.home.machine = machineFacts{wants: 12, hands: 4, spent: 123.45, ceiling: 500}
-	a.home.machineAt = now
+	a.machine = machineFacts{wants: 12, hands: 4, spent: 123.45, ceiling: 500}
 	return a, now
 }
 
@@ -321,7 +320,7 @@ func TestTheTopLineGivesUpTheClockBeforeTheWorkCount(t *testing.T) {
 	// THE WIDE TIERS DID NOT MOVE. A fix for sixty columns that cost a hundred
 	// and sixty a segment would be a fix that made the common case worse.
 	for _, width := range []int{80, 120, 160} {
-		line := plain(a.pulseLine(width, a.pal))
+		line := plain(a.pulseLine(width, a.pal, pulseWhole))
 		for _, want := range []string{product, "12 want you", "4 moving", "$123.45 / " + railFigure(500), clock} {
 			if !strings.Contains(line, want) {
 				t.Fatalf("at %d columns the top line drew\n\t%q\nand lost %q; there is room for all of it:\n\t%q",
@@ -343,7 +342,7 @@ func TestTheTopLineGivesUpTheClockBeforeTheWorkCount(t *testing.T) {
 		{30, " " + product + "   12 want you"},
 		{16, " " + product},
 	} {
-		line := plain(a.pulseLine(one.width, a.pal))
+		line := plain(a.pulseLine(one.width, a.pal, pulseWhole))
 		if squash(line) != squash(one.want) {
 			t.Fatalf("at %d columns the top line drew\n\t%q\nand it should have dropped whole segments by rank:\n\t%q",
 				one.width, line, one.want)
@@ -356,8 +355,8 @@ func TestTheTopLineGivesUpTheClockBeforeTheWorkCount(t *testing.T) {
 	// lowest-ranked thing on the line and it is never EMPTY, which are two
 	// different laws: a machine with nothing stopped, nothing moving and nothing
 	// spent draws the name and the time.
-	a.home.machine = machineFacts{}
-	if line := plain(a.pulseLine(80, a.pal)); !strings.Contains(line, clock) {
+	a.machine = machineFacts{}
+	if line := plain(a.pulseLine(80, a.pal, pulseWhole)); !strings.Contains(line, clock) {
 		t.Fatalf("over a quiet morning the top line drew\n\t%q\nand it should be the name and the time:\n\t%q", line, " "+product+"   "+clock)
 	}
 }
@@ -371,7 +370,7 @@ func TestTheTopLineGivesUpTheClockBeforeTheWorkCount(t *testing.T) {
 func TestANarrowTopLineNeverSaysTheDayCostNothing(t *testing.T) {
 	a, _ := pulseLab(t)
 	for width := 12; width <= 160; width++ {
-		line := plain(a.pulseLine(width, a.pal))
+		line := plain(a.pulseLine(width, a.pal, pulseWhole))
 		switch {
 		case strings.Contains(line, "$0.00"):
 			t.Fatalf("at %d columns the top line drew\n\t%q\nover a day that spent $123.45; a dropped segment may not become a zero", width, line)

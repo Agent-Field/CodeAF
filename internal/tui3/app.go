@@ -1987,6 +1987,16 @@ type app struct {
 	// on (placecounts.go's [placeTickMsg]). Home has its own for the same reason
 	// and by the same device.
 	placeGen int
+	// machine is the MEMO of what this machine has to say about ITSELF — the
+	// reading the pulse at the top of every frame draws (homemachine.go's
+	// [app.readMachine]). It is written on a beat and at a door and read by the
+	// draw, which is how a frame paints the day's money without opening a file.
+	//
+	// IT LIVES ON THE APP AND NOT ON HOME. It used to be home's, and died with
+	// the screen — which was harmless while only places drew the pulse, and is
+	// not now that a conversation draws it too (pulsebeat.go). Every figure in it
+	// is read from the MACHINE, never from what a screen was holding (#525).
+	machine machineFacts
 	// compose is the composer on the places that have no box of their own — the
 	// standing place, spend and search. It is app-level rather than per-place on
 	// purpose: a sentence half typed on one place is still there after `tab`,
@@ -2840,6 +2850,9 @@ func (a *app) Init() tea.Cmd {
 	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
 		a.watchRuns(), a.watchQuestions(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
 		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor,
+		// AND THE PULSE'S OWN BEAT, whose first reading is taken now rather than
+		// ten seconds from now (pulsebeat.go).
+		pulseNow,
 		// AND THE SETUP SCREEN'S EXAMPLE PANEL, when the setup is the first frame
 		// and the controls screen is its first step. It answers nil in every other
 		// case, which is most launches (onboarding.go).
@@ -4114,6 +4127,15 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// AND THE PLACES THAT ARE NOT HOME HAVE THE SAME CLOCK, at the same
 		// period, re-armed only while one of them is standing (placecounts.go).
 		return a, a.placeBeat(msg.gen)
+
+	case pulseTickMsg:
+		// THE PULSE'S COUNTS, KEPT WHILE NO HOME IS OPEN: a walk of the world
+		// asked off the loop, and the next beat (pulsebeat.go).
+		return a, a.pulseBeat()
+
+	case pulseWorldMsg:
+		a.pulseCounted(msg)
+		return a, nil
 
 	case setupDemoMsg:
 		// One beat of the setup screen's example panel: the request typing itself
