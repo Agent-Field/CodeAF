@@ -51,28 +51,17 @@ const truncationContinuations = 2
 // ── what a cut stream is worth asking again ─────────────────────────────────
 //
 // A stream the guard cut (internal/provider's streamguard.go) is a different
-// kind of failure from a torn connection, and it gets its own budget rather than
-// spending the transport one above: the request never failed, so there is
-// nothing here to back off from, and the same three attempts that make sense for
-// a socket would keep a model that has lost the thread going four times over a
-// context that is only getting worse.
+// kind of failure from a torn connection, and it spends a different allowance:
+// the request never failed, so there is nothing here to back off from, and the
+// same four attempts that make sense for a socket would keep a model that has
+// lost the thread going four times over a context that is only getting worse.
 //
-// SILENCE IS WORTH ASKING TWICE. The endpoint is very often simply a bad draw
-// out of a router's pool, and the second try lands on a different one.
-//
-// DEGENERATION IS WORTH ASKING ONCE. If the same transcript produces soup twice,
-// the transcript is the problem and asking a third time spends the whole prompt
-// to be told so again — which is the point at which the person is told instead.
-//
-// AND A THIRD BUDGET, for the case where asking again reaches the same endpoint
-// every time. Two attempts that could only land in the same place are one
-// attempt with a wait in front of it, so the step stops asking sooner and moves
-// to another model instead. The whole rule is stated at [cutBudget].
-const (
-	silentRetries = 2
-	babbleRetries = 1
-	blindRetries  = 1
-)
+// THE NUMBERS ARE NOT HERE ANY MORE, and that is the point of the change they
+// moved in. They are [taxonomy.SilentCutAttempts] and its two neighbours, read
+// by the one policy that decides what any failed request is worth
+// (internal/taxonomy's transportBudget), so that a cut and a refusal are one
+// story told from one place rather than two budgets kept in two files that
+// answered "is there another model to ask" differently.
 
 const truncationContinuationNote = "Your last reply was cut off at the output limit. " +
 	"Continue the work in smaller parts. Use tool calls to save any large deliverable " +
@@ -1297,7 +1286,10 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// every generation from cutting them forever.
 		if cause != nil {
 			a.journalFailedCall(ctx, model, "", cause, attempt+1, a.requestEstimate())
-			hub.send(Event{Kind: EventRetrying, Text: cutShortNotice})
+			hub.send(Event{Kind: EventRetrying, Text: cutShortNotice, Retry: &RetryNews{
+				Model: model, Attempt: attempt + 1, Attempts: attempts,
+				Reason: "the reply was cut short",
+			}})
 			continue
 		}
 		// AND THE FAILURE IS WRITTEN DOWN BEFORE ANYTHING DECIDES WHAT TO DO
@@ -1307,51 +1299,45 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// turn that stopped. It is journaled per ATTEMPT, so a ladder of three
 		// reads as a ladder.
 		a.journalFailedCall(ctx, model, "", err, attempt+1, a.requestEstimate())
-		// AND THE BOUNDARY READS IT. The row above says WHAT the provider said;
-		// this says what the harness took it to MEAN, which is the only half of
-		// the record the money turns on (taxonomy_boundary.go). The verdict is
-		// read below rather than acted on here, because the two answers already
-		// in this loop — a guard cut and a refusal of our own bytes — are more
-		// specific than any class and must keep their own arms.
-		verdict := a.readCallFailure(err, model, "", attempt+1)
-		if provider.IsConnectionUnavailable(err) {
-			return nil, model, err
-		}
-		// THE GUARD'S CUT, ANSWERED HERE. The three resets at the top of this
-		// loop are exactly what a cut needs — the soup that was streamed, the
-		// reads it started, the calls it was half-way through asking for — so a
-		// cut re-enters the loop through the same door a fault does, and the junk
-		// is gone before the next request is assembled.
-		if cut, isCut := provider.CutFrom(err); isCut {
+		// A GUARD'S CUT IS A DIFFERENT KIND OF SPENDING, and it is counted apart
+		// from the outright failures rather than answered apart from them. The
+		// request was served and the REPLY came apart, so the loop's own attempt
+		// number does not advance for one: a cut is not evidence that the
+		// endpoint is failing, and it must not shorten the patience a real fault
+		// gets. The three resets at the top of this loop are exactly what a cut
+		// needs — the soup that was streamed, the reads it started, the calls it
+		// was half-way through asking for — so a cut re-enters through the same
+		// door a fault does with the junk already gone.
+		cut, isCut := provider.CutFrom(err)
+		if isCut {
 			if cut.Rerouted {
 				rerouted = true
 			}
-			if cuts >= cutBudget(cut, rerouted) {
-				// THE BUDGET IS SPENT, SO THE MODEL MOVES. Asking the same
-				// weights a fourth time is the one thing already known not to
-				// work; the chain is the same one an endpoint refusal walks
-				// (internal/provider's endpoints.go), and the hop is SAID rather
-				// than done quietly, because the rest of this reply arrives in a
-				// different voice and the person is watching it happen.
-				if next, moved := a.nextFallback(origin, hopped); moved {
-					hopped = append(hopped, next)
-					hub.send(Event{Kind: EventRetrying, Text: hopNotice(cut, next)})
-					model = next
-					rung = a.effortFor(model)
-					// A new model gets a whole budget of its own: what the last
-					// one did says nothing about this one, and a fallback that
-					// inherited a spent budget would be given up on before it had
-					// answered once.
-					cuts, rerouted = 0, false
-					attempt--
-					continue
-				}
-				return nil, model, cutFailure(cut, cuts+1, hopped)
-			}
 			cuts++
-			hub.send(Event{Kind: EventRetrying, Text: cutNotice(cut)})
-			attempt--
-			continue
+		}
+		// AND THE BOUNDARY READS IT. The row above says WHAT the provider said;
+		// this says what the harness took it to MEAN, which is the only half of
+		// the record the money turns on (taxonomy_boundary.go).
+		//
+		// ONE ROAD LEAVES THIS POINT. The verdict says ask again, move to the
+		// next model, or stop — and a cut stream and a refused request differ
+		// only in the evidence they arrive carrying. They used to differ in the
+		// CODE: the cut had its own three budgets and hopped on its own
+		// authority here, while a refusal walked the ladder and then ended the
+		// turn, so a chain the person configured was reachable from one road and
+		// invisible from the other. One 502 and three 429s inside seventy-five
+		// seconds ended a turn on 2026-09-10 with two other models sitting
+		// unasked in the same session, and that is the road this is.
+		next, haveFallback := a.nextFallback(origin, hopped)
+		verdict := a.readLadderFailure(err, model, "", transportLadder{
+			attempt:    attempt + 1,
+			cuts:       cuts,
+			degenerate: isCut && degenerateCut(cut),
+			rerouted:   rerouted,
+			fallback:   haveFallback,
+		})
+		if provider.IsConnectionUnavailable(err) {
+			return nil, model, err
 		}
 		// ── WHOSE MISTAKE WAS IT? ────────────────────────────────────────────
 		//
@@ -1374,11 +1360,31 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		if refusal, ok := provider.RefusalFrom(err); ok && refusal.OurRequest() {
 			return nil, model, err
 		}
-		errMsg := err.Error()
-		if isContextOverflow(errMsg) || !isRetryable(errMsg) {
-			return nil, model, err
+		// A CUT IS NEVER READ AS PROSE. It is a typed failure the guard raised
+		// about a stream that was served, so neither the overflow sentence nor
+		// the retryable-shape list has anything to say about it.
+		if !isCut {
+			errMsg := err.Error()
+			if isContextOverflow(errMsg) || !isRetryable(errMsg) {
+				return nil, model, err
+			}
 		}
-		if verdict.Retries() {
+
+		switch {
+		case verdict.EndsTurn():
+			// NOT THE WIRE AT ALL, so there is nothing here to ask again and
+			// nothing to move to: the provider read this request and answered
+			// about it. The error travels out exactly as it came, because the
+			// layers that read it decide by its type and not by our sentence
+			// (taxonomy_boundary.go's [providerCouldNotServe]).
+			return nil, model, err
+		case verdict.Retries():
+			if isCut {
+				hub.send(Event{Kind: EventRetrying, Text: cutNotice(cut),
+					Retry: retryNews(model, cuts, verdict, cut, "")})
+				attempt--
+				continue
+			}
 			// AND THE WAIT IS SAID OUT LOUD. This ladder is the longest silence
 			// in the whole request path — two seconds, then four, then eight,
 			// with a failed request in front of each of them — and until this
@@ -1388,23 +1394,96 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			// person's own arithmetic, so the line reads `trying again · 2 of 4`
 			// (internal/provider's phase.go spells the word).
 			a.tellPhase(provider.PhaseRetrying,
-				fmt.Sprintf("%d of %d", attempt+2, attempts), time.Now())
+				fmt.Sprintf("%d of %d", attempt+2, verdict.Attempts), time.Now())
 			waitErr := backoffWait(ctx, verdict.Backoff)
 			a.endPhase()
 			if waitErr != nil {
 				return nil, model, waitErr
 			}
+			// THE PAGE DISCARDS THE SAME ATTEMPT AS THE JOURNAL. The next loop
+			// resets partial, reasoning and forming before requesting a
+			// replacement; a phase-clock update alone cannot remove the old
+			// streamed answer. Say this only after the wait succeeds: a stop
+			// during backoff keeps its partial reply.
+			if hub != nil {
+				hub.send(Event{Kind: EventRetrying, Text: retryNotice,
+					Retry: retryNews(model, attempt+1, verdict, nil, "")})
+			}
+			continue
+		case verdict.Hops():
+			// THE BUDGET IS SPENT, SO THE MODEL MOVES. Asking the same weights
+			// again is the one thing already known not to work; the chain is the
+			// adapter's, the same one every other road in this build walks
+			// (internal/provider's endpoints.go), and the hop is SAID rather
+			// than done quietly, because the rest of this reply arrives in a
+			// different voice and the person is watching it happen.
+			hopped = append(hopped, next)
+			hub.send(Event{Kind: EventRetrying, Text: hopNotice(cut, verdict, next),
+				Retry: retryNews(model, spentOn(attempt, cuts, isCut), verdict, cut, next)})
+			model = next
+			rung = a.effortFor(model)
+			// A NEW MODEL GETS A WHOLE BUDGET OF ITS OWN — both kinds of it.
+			// What the last one did says nothing about this one, and a fallback
+			// that inherited a spent budget would be given up on before it had
+			// answered once. The attempt counter is put one BEHIND its first
+			// rung, because the loop's own post-statement is what advances it.
+			cuts, rerouted = 0, false
+			attempt = -1
+			continue
 		}
-		// THE PAGE DISCARDS THE SAME ATTEMPT AS THE JOURNAL. The next loop
-		// resets partial, reasoning and forming before requesting a replacement;
-		// a phase-clock update alone cannot remove the old streamed answer.
-		// Say this only after the wait succeeds and another attempt exists: a
-		// stop during backoff or an exhausted ladder keeps its partial reply.
-		if attempt+1 < attempts && hub != nil {
-			hub.send(Event{Kind: EventRetrying, Text: "the request failed — asking again"})
+		// NOWHERE LEFT TO ASK. The sentence names what happened in the person's
+		// own terms and, when a chain was actually walked, the models that also
+		// could not answer — because "try a different model" said to somebody who
+		// has just watched two of them fail is the surface not knowing what it did.
+		if isCut {
+			return nil, model, cutFailure(cut, cuts, hopped)
 		}
+		return nil, model, transportFailure(lastErr, verdict, origin, attempt+1, hopped)
 	}
 	return nil, model, fmt.Errorf("after %d retries: %w", attempts-1, lastErr)
+}
+
+// retryNotice is the dim line for a request that FAILED and is being sent again.
+// It says nothing about the shape of the failure, which is the honest register
+// for something the person can neither hurry nor answer; [RetryNews.Reason] on
+// the same event carries the shape for a surface that draws one.
+const retryNotice = "the request failed — asking again"
+
+// degenerateCut says a cut was the reply ceasing to be language rather than the
+// stream going quiet. The two spend different allowances and the reason is
+// stated where the allowance is (internal/taxonomy's transportBudget).
+func degenerateCut(cut *provider.StreamCut) bool {
+	return cut != nil && (cut.Reason == provider.CutBabble || cut.Reason == provider.CutMachinery)
+}
+
+// spentOn is how much of this model's budget is gone, in the units the verdict
+// counted it in: cut attempts for a cut, ladder attempts for anything else.
+func spentOn(attempt, cuts int, isCut bool) int {
+	if isCut {
+		return cuts
+	}
+	return attempt + 1
+}
+
+// retryNews is one [EventRetrying]'s payload (retrynews.go). `cut` is nil when
+// the attempt failed outright rather than being cut, and `next` is empty unless
+// the step is moving to another model.
+func retryNews(model string, spent int, verdict taxonomy.Verdict, cut *provider.StreamCut, next string) *RetryNews {
+	reason := transportWords(verdict)
+	if cut != nil {
+		// A CUT KNOWS MORE ABOUT ITSELF THAN ITS CLASS DOES. The taxonomy groups
+		// every quiet stream under one shape, which is right for a journal line
+		// counting a thousand of them and thin for a person who is owed the
+		// difference between a model that went quiet and one that ran on forever.
+		reason = cutWords(cut)
+	}
+	return &RetryNews{
+		Model:    model,
+		Attempt:  spent,
+		Attempts: verdict.Attempts,
+		Reason:   reason,
+		Next:     next,
+	}
 }
 
 // ── THE ENDPOINT-DIVERSITY GATE ─────────────────────────────────────────────
@@ -1440,35 +1519,17 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 // off are an empty chain and `--one-model`, and both make the hop ABSENT rather
 // than broken.
 
-// cutBudget is how many times a cut of this kind is worth asking again, given
-// what is known about whether the last attempts reached different endpoints.
-//
-// Degeneration is the one reason the gate says nothing about: soup is a claim
+// Degeneration is the one thing the gate says nothing about: soup is a claim
 // about the transcript and the weights reading it, never about which endpoint
-// delivered it, so it keeps its own single retry either way.
+// delivered it, so it keeps its own short allowance either way. A machinery leak
+// shares that allowance for the same reason — the answer came back wrong-shaped,
+// and asking the same lane again returns the same shape ([degenerateCut]).
 //
-// AN OVERRUN IS AN ENDPOINT CLAIM and shares the silence budget deliberately.
+// AN OVERRUN IS AN ENDPOINT CLAIM and shares the silence allowance deliberately.
 // A reply that ran past the wall its own lane earned is that lane failing to
 // finish, exactly as a reply that went quiet is — the ledger struck it either
 // way (internal/provider's noteCutProvider) — so the question "did anything
 // actually move" governs both.
-func cutBudget(cut *provider.StreamCut, rerouted bool) int {
-	if cut.Reason == provider.CutBabble {
-		return babbleRetries
-	}
-	// A machinery leak gets the babble budget for the babble reason: the answer
-	// came back wrong-shaped, and asking the same lane again returns the same
-	// shape. The one re-ask exists because the ledger struck the lane on the
-	// cut, so the next ask lands on a different endpoint serving the same
-	// model — where the same model usually answers in language.
-	if cut.Reason == provider.CutMachinery {
-		return babbleRetries
-	}
-	if !rerouted {
-		return blindRetries
-	}
-	return silentRetries
-}
 
 // nextFallback is the model this step moves to next, and false when there is
 // none left — an empty chain, a completer with no chain to offer, or a chain
@@ -1481,6 +1542,18 @@ func cutBudget(cut *provider.StreamCut, rerouted bool) int {
 // walks the same list rather than deriving a fresh chain from the fallback —
 // which is how a bounded chain of two becomes an unbounded walk.
 func (a *Agent) nextFallback(origin string, hopped []string) (string, bool) {
+	// AND `--one-model` IS A PERSON SAYING NO TO THIS, in the one file that has
+	// to honour it rather than only in the door that empties the chain. The flag
+	// already leaves the adapter with no fallbacks to offer, so this is belt and
+	// braces — and it is worth having: the promise is "every text call this
+	// session makes rides the model you named" ([Config.OneModel]), a completer
+	// that offers a chain anyway is a completer this session must refuse, and the
+	// law is stated in this file's own comment above [cutBudget]'s old home while
+	// being enforced nowhere in it. It is the same guard the checker's failover
+	// keeps for the same reason (taxonomy_boundary.go's failoverCheckerModel).
+	if a.config.OneModel {
+		return "", false
+	}
 	chain, ok := a.client.(modelChain)
 	if !ok {
 		return "", false
@@ -1521,6 +1594,26 @@ func cutNotice(cut *provider.StreamCut) string {
 	}
 }
 
+// cutWords is what a cut WAS, with nothing about what is being done next. It is
+// the shape [RetryNews.Reason] carries, and it is spelled apart from [cutNotice]
+// because a sentence and a fact are not the same thing: the line says "asking
+// again" because a person is watching a wait, and the fact is drawn into whatever
+// row a surface has already built.
+func cutWords(cut *provider.StreamCut) string {
+	switch cut.Reason {
+	case provider.CutBabble:
+		return "the reply lost its thread"
+	case provider.CutStalled:
+		return "the model went quiet mid-reply"
+	case provider.CutOverrun:
+		return "the reply kept going and never finished"
+	case provider.CutMachinery:
+		return "the model answered in its own internal markup instead of words"
+	default:
+		return "nothing came back from the model"
+	}
+}
+
 // hopNotice is the line the person reads when the step gives up on one model
 // and finishes the reply on another.
 //
@@ -1528,7 +1621,14 @@ func cutNotice(cut *provider.StreamCut) string {
 // the one difference that matters: it NAMES THE MODEL. The rest of the answer
 // will arrive in a different voice, at a different price, and somebody watching
 // text appear is owed the reason before it does.
-func hopNotice(cut *provider.StreamCut, next string) string {
+//
+// `cut` is nil when what spent the model's budget was the request FAILING rather
+// than the reply coming apart — a refusal, a reset, a deadline — and the verdict
+// is what says which of those it was (taxonomy_boundary.go's transportKeptWords).
+func hopNotice(cut *provider.StreamCut, verdict taxonomy.Verdict, next string) string {
+	if cut == nil {
+		return transportKeptWords(verdict) + " — finishing this one on " + next
+	}
 	switch cut.Reason {
 	case provider.CutBabble:
 		return "the reply kept losing its thread — finishing this one on " + next
@@ -1595,6 +1695,42 @@ type cutGaveUp struct {
 func (e *cutGaveUp) Error() string { return e.said }
 
 func (e *cutGaveUp) Unwrap() error { return e.cut }
+
+// transportFailure is the sentence a turn ends on when the request kept FAILING
+// — a refusal, a reset, a deadline — and there was nowhere left to ask.
+//
+// IT IS TWO SENTENCES, and which one it is turns on whether a chain was actually
+// walked. When one was, the models that also could not answer are named and the
+// advice to try another model is dropped, because it has already been taken
+// twice ([cutFailure] states the whole argument). When none was, the sentence is
+// the one this build has always ended on — `after 3 retries: …` — which is not
+// prose anybody loves and IS what several layers out and a good deal of the
+// record already read, so it is left exactly as it was.
+func transportFailure(err error, verdict taxonomy.Verdict, origin string, attempts int, hopped []string) error {
+	if len(hopped) == 0 {
+		return fmt.Errorf("after %d retries: %w", attempts-1, err)
+	}
+	return &transportGaveUp{
+		err: err,
+		said: fmt.Sprintf("%s: %s was asked %s, and %s. /model to pick another one yourself",
+			transportWords(verdict), origin, timesWord(attempts), alsoTried(hopped)),
+	}
+}
+
+// transportGaveUp is that sentence WITH the failure still reachable under it, on
+// [cutGaveUp]'s terms and for its reason: every layer that decides anything about
+// a provider failure decides it by the error's TYPE (taxonomy_boundary.go's
+// [providerCouldNotServe], task_run.go's [terminalProviderFailure]), and a
+// decision made by matching substrings of a sentence is a decision that breaks
+// the next time somebody rewords it.
+type transportGaveUp struct {
+	err  error
+	said string
+}
+
+func (e *transportGaveUp) Error() string { return e.said }
+
+func (e *transportGaveUp) Unwrap() error { return e.err }
 
 // alsoTried names the models a step actually moved to. It replaces the advice
 // to try another model, because "try another model" said to somebody who has
