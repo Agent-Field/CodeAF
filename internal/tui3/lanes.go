@@ -29,9 +29,10 @@ import (
 //     answer: the belief that combined them, aged to this moment. Two surfaces
 //     computing their own would drift the first time one was fixed.
 //   - UNKNOWN DRAWS NOTHING. A model whose lanes nobody has measured gets no
-//     speed on its row, no lanes to unfold and no `via`. A blank row is
-//     readable; an invented number is a router steering on a measurement
-//     nobody took (design-law-v2 §16).
+//     speed on its row and no machines in its fold — only the two answers
+//     that name none, `auto` and `openrouter` (palette.go's [picker.unfoldAt]).
+//     A blank row is readable; an invented number is a router steering on a
+//     measurement nobody took (design-law-v2 §16).
 //   - THE WORD "SLOW" IS ONLY SAID WHILE SOMETHING IS BEING DONE ABOUT IT.
 //     That is the whole of [app.laneRider]'s middle state.
 //
