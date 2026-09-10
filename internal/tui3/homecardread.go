@@ -67,6 +67,11 @@ func (a *app) refreshHomeCard(now time.Time) tea.Cmd {
 	if !a.at(pageHome) {
 		return nil
 	}
+	// THE GRID HAS NO CARD, and what it reads is about the rows it draws rather
+	// than about the one under the cursor (homegrid.go).
+	if a.home.gridOn() {
+		return a.refreshGridReadings(now)
+	}
 	line, ok := a.home.previewLine()
 	if !ok {
 		return nil
@@ -157,5 +162,10 @@ func (a *app) tookHomeLeftOff(msg homeLeftOffMsg) {
 		a.home.last = map[string]session.Summary{}
 	}
 	a.home.last[msg.transcript] = msg.summary
+	// THE GRID DRAWS IT UNDER A ROW, so its arrival changes which rows exist and
+	// the lines are made again (homepanel_recent.go).
+	if a.home.gridOn() {
+		a.home.build()
+	}
 	a.touch()
 }
