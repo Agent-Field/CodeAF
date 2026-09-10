@@ -2248,6 +2248,28 @@ func runChatV3Once(ctx context.Context, cfg session.Config, workspace, text, lev
 	}
 	defer func() { _ = agent.Close() }()
 
+	// A DECISION TAKEN ON NOBODY'S BEHALF IS SAID OUT LOUD.
+	//
+	// With nobody at a keyboard the question gate applies the policy and answers
+	// itself (internal/session's tools_ask.go), and DESIGN.md's HEADLESS law is
+	// that this is PRINTED: `asked: <head> → 1 (default · nobody to ask)`. The
+	// sentence rides the answer, and the answer rides the questions lane rather
+	// than the turn's stream, because a question outlives the turn that raised
+	// one — so it is read here, beside the turn, and written to stderr with the
+	// tool lines rather than into the reply a caller is piping somewhere.
+	questions, stopQuestions := agent.WatchQuestions()
+	defer stopQuestions()
+	go func() {
+		for event := range questions {
+			if event.Kind != session.EventQuestionAnswered || event.Answer == nil {
+				continue
+			}
+			if line := strings.TrimSpace(event.Answer.From); line != "" {
+				fmt.Fprintln(os.Stderr, line)
+			}
+		}
+	}()
+
 	events, err := agent.Submit(ctx, text)
 	if err != nil {
 		return reported(err)
