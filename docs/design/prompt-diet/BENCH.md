@@ -111,7 +111,7 @@ to say whether the one-endpoint pin is deliberate here.
 `dev` at `6aa6a946e` against `prompt-diet/integrate` at `2a90be7e8` (its tip when
 the run fetched it; the branch has moved since). Same rig, same pin, same cells,
 back to back on the Spark so the provider's weather fell on both. Layers A, C
-and D; **layer B is owed** — see §7.
+and D at first; layer B followed and is folded in below.
 
 ### The prefix
 
@@ -164,10 +164,54 @@ load-bearing.
 Recorded and not ruled on: total spend $0.0372 → $0.0085, summed cell wall 947s
 → 236s, median call 9,473ms → 8,144ms.
 
+### Suite outcomes (layer B) — and this is where parity actually failed
+
+44 subtests a side, run afterwards on the same two builds:
+
+| suite | dev | diet |
+| --- | --- | --- |
+| `TestTUIE2E` | 15 pass | 14 pass · **1 fail** |
+| `TestQuestionsE2E` | 16 pass · 1 fail | 15 pass · 2 fail |
+| `TestStandingE2E` | 11 pass | 11 pass |
+
+`TestQuestionsE2E/ASentenceWithHolesIsFilledIn` fails on **both** sides — a
+pre-existing red on `dev`, not this wave's, and not a regression.
+
+Two are regressions, and **neither was visible in layer C**:
+
+- **`TestTUIE2E/space_in_the_task_room_pages_the_card`** — passed on `dev` in
+  71.7s, failed on the diet in 249.3s. The trace says why and it is not the
+  feature the subtest is named for: the task landed
+  `your call · landed 1m ago · ran 2m 8s` where on `dev` it landed
+  `done · landed moments ago · ran 10s`, so two 30-second waits ahead of the
+  paging assertion blew before the thing under test was ever reached. Twelve
+  times slower and escalating to `your call` where it used to finish is a
+  behaviour difference; it may equally be the model taking a different road on a
+  nondeterministic flash model.
+- **`TestQuestionsE2E/TheOrdinaryRoadCarriesAQuestionAndItsAnswer`** — passed on
+  `dev`, failed on the diet asserting `the screen never said " · you · "`. The
+  captured screen says `· another window ·` in that position — and contains
+  `· you ·` elsewhere in the same dump — while the road itself plainly worked:
+  `They picked "delete it" (key 1). The build directory will be deleted.` This
+  is a **person-facing string**, which makes it lane I's neighbourhood (the
+  attribution row) rather than a byte-cut anywhere, and it may be a frame race
+  rather than a respelling.
+
+**Both are candidates, not verdicts.** One red on a suite that drives a real
+model against a real provider is not yet a regression, and this bench's own rule
+is #176's: reproduce it, do not rerun it in isolation and move on. Two more runs
+a side of each are queued (`~/bench-diet-repeat.sh`, results at
+`~/bench-diet-out/repeat-<name>-<side>-<n>.log`).
+
 ### The ruling
 
-**Parity: yes** — every outcome equal or better, on the cells that ran.
-**Efficiency: yes** — median prompt tokens per turn 17,815 → 13,962, −21.6%.
+**Parity: NO.** Two subtests that pass on `dev` fail on the diet — both in layer
+B, neither reachable by any cell in layer C. That is the whole reason layer B is
+in this bench, and it is the reason a wave cannot be signed off on the cells
+alone.
+
+**Efficiency: yes.** Median prompt tokens per turn 17,815 → 13,962, −21.6%, with
+every layer-C outcome equal or better.
 
 Two honest qualifications. The prefix fell 15.8% and the per-turn prompt fell
 21.6%, so the diet is doing slightly better on the wire than on the scale — the
@@ -467,20 +511,17 @@ as a pass nor as a regression.
 
 ## 7. What is owed
 
-- **Layer B has not been run on either side.** It is the layer that decides
-  parity properly — `TestTUIE2E`'s fifteen subtests, `TestQuestionsE2E`'s
-  sixteen, `TestStandingE2E`'s seven — and it is the only coverage the question
-  and standing roads have at all. Budget about forty minutes a side plus a few
-  cents, sequentially and never beside another suite:
+- **The two candidate regressions in §1a need their repeats read.** Queued on
+  the Spark as `~/bench-diet-repeat.sh`, two runs a side of each, logs at
+  `~/bench-diet-out/repeat-{taskroom,askroad}-{dev,diet}-{1,2}.log`. Two greens
+  a side clears one; a second red confirms it. Nothing merges past a confirmed
+  one.
 
-  ```sh
-  ssh spark 'export PATH=$HOME/.local/bin:$PATH; set -a; . ~/.config/fleet/secrets.env; set +a
-    ~/bench-diet/rig/bench/prompt-diet/run.sh 6aa6a946e dev --layers b --reuse-worktree
-    ~/bench-diet/rig/bench/prompt-diet/run.sh prompt-diet/integrate diet --layers b --reuse-worktree'
-  ```
-
-  Until it has run, the ruling in §1a is parity **on the cells that ran** and not
-  parity on the wave.
+- **The diet side was measured at `2a90be7e8`,** which is behind the integration
+  branch — deliberately, so that layers A, C and D and layer B are all one
+  revision pair. A run on the current tip is labelled `diet-tip` and queued
+  behind layer B (`~/bench-diet-tip.sh`); compare it with
+  `compare.py diet diet-tip` to see what the later lanes moved.
 
 - **The frontier arm (§4) has not been run.** The cached share fell 40.6% on the
   open-weight pin, and that is precisely the number DESIGN.md §0's first bill is
