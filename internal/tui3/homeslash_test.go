@@ -36,8 +36,10 @@ func TestHomeSlashOffersCommandRows(t *testing.T) {
 	if !strings.Contains(text, "/settings") {
 		t.Fatalf("typing /set did not offer the settings command row:\n%s", text)
 	}
-	if !strings.Contains(text, "a command") {
-		t.Fatalf("a command row does not say what it is:\n%s", text)
+	// AND THE ROW SAYS WHAT ENTER WOULD DO WITH IT HERE, which is the half a
+	// person standing on home cannot work out for themselves ([homeFate]).
+	if !strings.Contains(text, fatePlace) {
+		t.Fatalf("a command row does not say its fate at home:\n%s", text)
 	}
 
 	// "/clea" reaches /new through its clear alias, and the row that appears
@@ -510,10 +512,11 @@ func TestAltWCyclesWhereTheNextConversationOpens(t *testing.T) {
 	}
 }
 
-// TestResumeAndFolderAnswerOnHomesOwnLine: two commands whose answer home
-// already IS. Neither opens an overlay this screen cannot draw; each says the
-// gesture that does the thing here.
-func TestResumeAndFolderAnswerOnHomesOwnLine(t *testing.T) {
+// TestResumeAnswersOnHomesOwnLineAndFolderOpensTheBrowser: two commands home
+// used to answer in one line each. /resume still does — home already IS that
+// list — and /folder does not, because the thing it names is a real surface a
+// person can walk and one line naming a chord was not it.
+func TestResumeAnswersOnHomesOwnLineAndFolderOpensTheBrowser(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
 	a := lab.app(mine)
@@ -529,13 +532,20 @@ func TestResumeAndFolderAnswerOnHomesOwnLine(t *testing.T) {
 		t.Fatalf("/resume said %q, want %q", a.home.msg, homeIsTheResumeWord)
 	}
 
+	// /folder is the other half of this test's original claim and it moved: it
+	// used to answer in one line — `alt+w moves the next conversation · or type
+	// a path` — which named two gestures and drew neither. It opens the browser
+	// now, aimed at the target (folderplace.go), and the browser takes the frame.
 	typeHome(a, "/folder")
 	runCmd(a.key(key("enter")))
-	if a.folder.open {
-		t.Fatal("/folder at home opened the folder picker over a screen that cannot draw it")
+	if !a.folder.open {
+		t.Fatal("/folder at home did not open the folder browser")
 	}
-	if a.home.msg != homeMoveTheTargetWord {
-		t.Fatalf("/folder said %q, want %q", a.home.msg, homeMoveTheTargetWord)
+	if !a.folder.forTarget {
+		t.Fatal("the browser home opened is not aimed at the target")
+	}
+	if a.at(pageHome) {
+		t.Fatal("home is still drawn under a sheet that takes the frame")
 	}
 }
 

@@ -842,6 +842,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// and the worry that it will be sent as a message instead.
 		{"can I type /settings on home", "home"},
 		{"can I run a slash command from the home screen", "home"},
+		{"what will a slash command do on the home screen before I press enter", "home"},
+		{"does /compact open a conversation when I type it on home", "home"},
+		{"attach a file before starting a conversation", "home"},
+		{"how do I pick which folder my next conversation opens in", "home"},
 		{"typing /model on home starts a conversation instead of running it", "home"},
 		{"open another project from home", "home"},
 		{"enter does nothing on home", "home"},

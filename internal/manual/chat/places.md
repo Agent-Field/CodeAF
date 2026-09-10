@@ -180,6 +180,8 @@ nothing else — so the shared prompt was inviting an instruction into a slot th
 ever narrow a list. The moment you type, the box is your text on every place alike, and a
 click puts the caret where you clicked.
 
+## The scope chip — what is the here ~/aforge-v2 thing next to the box
+
 At the right of the box is the **scope chip** — the `here ~/aforge-v2` next to the box. It is where what you type
 will land — the project the cursor is on, or this window's own project. It is drawn even
 with nothing typed, because a verb that is always in reach has to always say where it goes.

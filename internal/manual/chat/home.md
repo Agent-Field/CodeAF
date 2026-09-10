@@ -1531,25 +1531,19 @@ in the box the action row reads `+ run /settings` in place of `+ start a new con
 "…"`, and the foot under the box reads `enter runs this command · ↑ ask here ·
 ↑↑ pick a match · esc clear`.
 
-**Every command has one of four fates here, and you can see all four.** Home is not a
-conversation, so a command that is *about* a conversation cannot simply act on one behind
-your back — which is what this used to do, silently, for twenty-six of them.
-
-| What you type | What happens |
-| --- | --- |
-| `/model` · `/model <slug>` | **pins the draft.** The list opens in home's own body; enter says `model · glm-5.3 · for the next conversation you start here`. Nothing behind home is touched. |
-| `/settings` `/set` `/config` · `/home` · `/search` · `/spend` · `/standing` · `/memory` `/memories` · `/history` · `/budget` | **opens that place**, exactly as before. A place replaces a place. |
-| `/resume` `/sessions` | **says `this list is /resume · enter opens a row`** — home *is* that list. |
-| `/folder` `/place` `/dir` (bare) | **says `alt+w moves the next conversation · or type a path`.** |
-| `/folder <path>` | **opens the context browser** at that folder, as it always did. |
-| `/files` · `/attach` · `/crew` (bare) · `/permissions` `/perms` · `/connect` · `/harness` · `/subharness` · `/copy` · `/select` · `/rewind` `/undo` `/back` · `/compact` · `/export` `/save` · `/image` · `/task` · `/standing <words>` | **opens a conversation at the target first** — the folder and model on the rule above the box — then runs there. Home closes, exactly as `enter` closes it. |
-| `/help` · `/manual` · `/status` · `/cost` · `/cache` · `/crew <preset>` · `/budget <n>` · a word nobody defined | **answers with a note**, and the first line of that note is put on home's own line under the box. `there is no command called /pricing · / lists them` is now something you can read. |
+**Every command has a FATE here, and the list says which before you press `enter`.** Each row
+of the `/` drop-up reads `<command>   <fate> · <what the command does>` — so `/compact` says
+it will open a conversation first and `/quit` says which conversation it closes. The row used
+to say `a command`, which every row in the list already proved by being there. The whole
+table is in *What each command does on home*, one section down.
 
 **Ten of them used to be dead.** `/model`, `/resume`, `/folder`, `/attach`, `/files`,
 `/crew`, `/permissions`, `/connect`, `/harness` and `/subharness` each opened an overlay
 that home cannot draw and the keyboard cannot reach — so nothing happened, and then the
 overlay appeared over the conversation you landed in when you pressed `esc`. That is what
-"it goes to an old chat" was.
+"it goes to an old chat" was. `/folder` then spent a wave answering in one line —
+`alt+w moves the next conversation · or type a path` — which named two gestures and drew
+neither; it opens the browser now.
 
 **The command list opens over home's box too.** Typing `/` raises the same ranked drop-up a
 chat shows — best match nearest the box — and `↑` walks up into it, `enter` runs the row
@@ -1566,6 +1560,58 @@ whole of that rule, and for the one word (`/home`) where the table wins.
 **You can ask about a command instead of running it.** Type it and press `↑` then `enter`
 — the `ask here` row — and the answer comes back in the pane on the right without the
 command being run (see *Asking from home*).
+
+## What each command does on home — the fate on every row of the / list
+
+Home is not a conversation, so a command that is *about* a conversation cannot simply act on
+one behind your back — which is what this used to do, silently, for twenty-six of them. This
+is every fate, in the words the drop-up draws them in.
+
+| The words on the row | What you type | What happens |
+| --- | --- | --- |
+| **`pins the next conversation's model`** | `/model` · `/model <slug>` | The list opens in home's own body; enter says `model · glm-5.3 · for the next conversation you start here`. Nothing behind home is touched. |
+| **`next conversation's folder`** | `/folder` `/place` `/dir` · `/folder <path>` | Opens the folder browser, **aimed at the next conversation**. Picking a folder pins it — home says `next conversation opens in ~/src/parser` and the rule above the box says it too. |
+| **`opens the page`** | `/settings` `/set` `/config` · `/home` · `/search` · `/spend` · `/standing` · `/memory` `/memories` · `/history` · `/task` (bare) | A place replaces a place, exactly as before. |
+| **`this list is /resume`** | `/resume` `/sessions` | Says `this list is /resume · enter opens a row` — home *is* that list. |
+| **`onto home's tray`** | `/attach <path>` · `/image <path>` | The file rides on home's own tray into the conversation you open next. Home says `attached · notes.md · rides with the next conversation`. A bare `/attach` says `type the path after /attach · or drop the file here`. |
+| **`opens a conversation here first`** | `/files` · `/crew` (bare) · `/permissions` `/perms` · `/connect` · `/harness` · `/subharness` · `/copy` · `/select` · `/rewind` `/undo` `/back` · `/compact` · `/export` `/save` · `/standing <words>` · `/task <brief>` | Opens a conversation at the target — the folder and model on the rule above the box — then runs there. Home closes, exactly as `enter` closes it. |
+| **`answers here`** | `/help` · `/manual` · `/status` · `/cost` · `/cache` · `/budget` · `/crew <preset>` · `/debug` · `/stop` · `/remember` · `/forget` · a word nobody defined | Answers with a note, and the first line of that note is put on home's own line under the box. `there is no command called /pricing · / lists them` is now something you can read. |
+| **`runs on the conversation behind home`** | `/land` · `/land <folder>` · `/workspace <path>` | Acts on the conversation this window is holding behind the screen — not on the one `enter` would open — and its answer is echoed onto home's line. |
+| **`a fresh conversation behind home`** | `/new` `/clear` `/clean` `/reset` | Replaces the conversation behind the screen and says `started a fresh conversation behind home`. It is not the same act as `enter`, which opens a conversation at the target. |
+| **`closes the conversation behind home`** | `/quit` `/exit` `/q` | Closes it and says `closed · <its name>`. When it was the last conversation this terminal was holding, aforge leaves. |
+
+**The fate is never the half that gets cut.** On a narrow window the command's own
+description gives way first, whole, and what `enter` will do stays on the row.
+
+## Attach a file before starting — /attach on home, the tray rides into the new conversation
+
+**`/attach ~/logs/server.log` typed on home puts the file on HOME's tray, and starts no
+conversation.** The chip appears on the row above home's box, and the line under it says
+`attached · server.log · rides with the next conversation`. When you then type a sentence and
+press `enter`, the conversation that opens has the file already attached to its first
+message. `/image ~/shots/shot.png` is the same road for a picture.
+
+**A drop does the same thing without a command.** Drag a file onto the window while home is
+up and it lands on the same tray. So does a paste.
+
+**A bare `/attach` asks for the path where you typed it**: `type the path after /attach · or
+drop the file here`. It used to open a conversation to hold a browser you had not asked for.
+If what you want is to *browse* for something, `/folder` opens the browser — see
+*Change the model before starting* for what that sheet does on home.
+
+**A folder after `/attach` is not a file.** `/attach ~/src/parser` on home pins the next
+conversation's folder — the same decision `/folder` makes — and says
+`next conversation opens in ~/src/parser`. In a conversation the same words attach the folder
+to that conversation instead; home has no conversation to attach one to yet.
+
+**The tray belongs to you, not to a conversation.** It survives walking into a conversation
+and back out to home, and the chips you put on it here are the chips the next conversation
+starts with.
+
+**Home's tray is a reading and not a target.** The row says what is being carried and nothing
+on it can be clicked — a chip comes off on the row above a conversation's own box, where the
+`x` is. At phone width home draws no tray row at all; the files are still there, and the
+conversation you open shows them.
 
 ## Change the model before starting — /model on home, alt+o, the arrow line above the box
 
@@ -1601,6 +1647,18 @@ opened there, the rule goes back to following the row under your cursor.
 the target walks to the next project on this machine, round again from the last. Home says
 `next conversation opens in ~/work/beta`. On a machine with one project there is nowhere to
 move to, and `alt+w folder` is simply not on the rule.
+
+**`/folder` is the third door onto the same pin, and it is the one that shows you the disk.**
+Typed on home — bare, or with a path after it — it opens the folder browser with the title
+`the next conversation's folder`, standing where the next conversation would open. Its action
+row reads `open the next conversation in · ~/src/parser` instead of `add this folder`, and
+`enter` there pins the target and drops you back on home with the rule already changed. `esc`
+comes back to home too, having changed nothing. `/place` and `/dir` are the same command.
+
+**Nothing on that sheet touches the conversation behind home.** It never offers
+`remove this folder`, because the conversation it is choosing for does not exist yet, and a
+folder chosen there is never registered with any session — it is one line on the rule until
+you start something.
 
 ## How do I see the collapsed sessions — 13 more
 

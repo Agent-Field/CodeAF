@@ -1,9 +1,11 @@
 package tui3
 
 import (
+	"os"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // THE COMMAND LIST IS THE ONE THING HOME'S COMPOSER DID NOT HAVE. Chat's box
@@ -31,10 +33,6 @@ import (
 // other lanes in the same wave, and a constant appended to it is a conflict
 // over a line that says nothing.
 const homeCommand homeRowKind = 250
-
-// commandRowWord is what a command row says it is in its right margin, the
-// way a place row says `a place` (homeplaces.go's [placeRowWord]).
-const commandRowWord = "a command"
 
 // commandLines is the command half of the drop-up: the ranked rows for the
 // /-word under the caret, or nothing when the caret is not in one.
@@ -71,15 +69,62 @@ func (h *homeView) commandLines() []homeLine {
 	return lines
 }
 
-// homeCommandRow paints one offered command: the word a person would type,
-// and in the right margin what it is and what it does — the same note the
-// chat menu's row carries (commands.go's [command.note]), so the two surfaces
-// teach the same sentence.
+// homeCommandRow paints one offered command: the word a person would type, and
+// in the right margin WHAT ENTER WILL DO WITH IT HERE, then the command's own
+// note (commands.go's [command.note]).
+//
+// THE MARGIN USED TO SAY `a command`, which every row of the list already
+// demonstrated by existing. What a person standing on home cannot know is the
+// thing this list is now the only place to learn: that `/compact` opens a
+// conversation before it runs, that `/model` changes a draft and touches nothing
+// behind the screen, that `/quit` closes a conversation they cannot see. The
+// owner asked for that to be readable BEFORE the key is pressed, including for
+// the commands that do nothing useful here — so the fate leads the margin and
+// the note follows it.
+//
+// AND THE FATE IS NEVER THE HALF THAT IS CUT. [overlayRow] fits the whole margin
+// to the room the label leaves, from the right, so a margin built as one string
+// would lose its tail — which on a narrow home would be the note on one row and
+// half the fate on the next. The two are budgeted here instead: the note takes
+// what is left after the fate, whole or not at all.
 func (a *app) homeCommandRow(line homeLine, at, width int, pal palette) string {
 	h := &a.home
-	return overlayRow(line.cmd.typed(), commandRowWord+" · "+line.cmd.note(),
+	label := line.cmd.typed()
+	return overlayRow(label, commandMargin(label, *line.cmd, width),
 		at == h.cursor, false, at == h.hover, width, pal)
 }
+
+// commandMargin is that margin: the fate, and the note if there is room for a
+// readable amount of it.
+func commandMargin(label string, c command, width int) string {
+	fate := homeFate(c.name, c.args)
+	note := c.note()
+	switch {
+	case fate == "":
+		// A COMMAND WITH NO FATE IS A PROGRAMMING MISTAKE and not a row that
+		// quietly says less than its neighbours ([TestEveryCommandHasAFateAtHome]
+		// fails the build on it). The list still draws what it can.
+		return note
+	case note == "":
+		return fate
+	}
+	spare := overlayNoteRoom(label, width) - ansi.StringWidth(fate) - ansi.StringWidth(commandFateJoin)
+	if spare < commandNoteFloor {
+		return fate
+	}
+	return fate + commandFateJoin + fit(note, spare)
+}
+
+const (
+	// commandFateJoin is the middot between the fate and the note, the same
+	// separator every other margin on this surface joins two clauses with.
+	commandFateJoin = " · "
+	// commandNoteFloor is the least room a command's own note is worth drawing
+	// in after the fate has taken its share. Under it the fate stands alone:
+	// three cells of a sentence with an ellipsis after them teach nobody
+	// anything, and what enter DOES here is the half a person came for.
+	commandNoteFloor = 12
+)
 
 // ── THE GATE: WHAT A COMMAND MEANS ON A SCREEN WITH NO CONVERSATION ─────────
 //
@@ -91,21 +136,120 @@ func (a *app) homeCommandRow(line homeLine, at, width int, pal palette) string {
 // nobody is looking at. So the same three characters did three different things
 // depending on which command they spelled, and two of the three were silence.
 //
-// FOUR FATES, AND EVERY ONE OF THEM IS VISIBLE:
+// EVERY COMMAND HAS A FATE HERE, IT IS WRITTEN DOWN ONCE, AND IT IS ON THE ROW
+// BEFORE THE KEY IS PRESSED. [homeFate] is that one place: the drop-up draws it
+// in the row's margin ([app.homeCommandRow]) and [app.homeSlash] switches on it,
+// so the list cannot promise something the dispatch does not do. A command added
+// to the table with no fate fails the build rather than drawing a blank margin
+// and quietly taking the last road ([TestEveryCommandHasAFateAtHome]).
 //
-//	configures the draft   /model — it acts on the target and says so on home's
-//	                       own line ([homeView.say])
-//	names a place          /settings /home /search /spend /standing /memory
-//	                       /history /budget — unchanged, a place replaces a place
-//	is about THIS screen   /resume and /folder, whose answers home already IS —
-//	                       one line each, naming the gesture that does it here
-//	needs a conversation   it opens one AT THE TARGET first (homedraft.go), then
-//	                       runs there, which is the same door `enter` uses
+//	pins the next conversation's model   /model — the target, and home says so
+//	next conversation's folder           /folder /place /dir — the browser, aimed
+//	                                     at the target (folderplace.go)
+//	opens the page                       a place replaces a place
+//	this list is /resume                 the thing asked for is on the screen
+//	onto home's tray                     /attach /image — the files home is
+//	                                     already carrying into the next one
+//	opens a conversation here first      it opens one AT THE TARGET (homedraft.go)
+//	                                     and runs there, the door `enter` uses
+//	answers here                         a note, echoed onto home's own line
+//	runs on the conversation behind home  /land /workspace — and they say so
+//	a fresh conversation behind home     /new
+//	closes the conversation behind home  /quit
 //
-// AND EVERYTHING ELSE STILL GOES TO THE ONE DISPATCHER, with its answer echoed
-// onto home's message line by [app.noteWritten] — so /help, /status, /cost,
-// /crew frugal, /budget 20 and `there is no command called /x · / lists them`
-// are all read where the person is standing.
+// AND EVERY ONE OF THEM LEAVES A SENTENCE ON HOME'S LINE. The three that act on
+// the conversation behind the screen are the ones this cost most: /new, /quit
+// and /land each did their work in a place nobody could see and said nothing at
+// all where the person was standing.
+
+// The fates. Each is a person-facing phrase drawn in the drop-up's margin and
+// quoted in the manual exactly as it is spelled here, so they are constants and
+// not string literals in two files.
+const (
+	fateTargetModel  = "pins the next conversation's model"
+	fateTargetFolder = "next conversation's folder"
+	fatePlace        = "opens the page"
+	fateResume       = "this list is /resume"
+	fateTray         = "onto home's tray"
+	fateNeedsChat    = "opens a conversation here first"
+	fateAnswers      = "answers here"
+	fateBehind       = "runs on the conversation behind home"
+	fateFresh        = "a fresh conversation behind home"
+	fateQuit         = "closes the conversation behind home"
+)
+
+// homeFate is what a command DOES on home, and it is the whole of the gate's
+// decision. It is a pure function of the word and its argument for two reasons:
+// the drop-up asks it about a row while a frame is being built, where nothing
+// may touch a disk or a door; and the test that walks [commands] can then ask it
+// about every row without an app.
+//
+// THE ARGUMENT IS PART OF THE QUESTION, because four commands mean two different
+// things with and without one: `/standing` is a page and `/standing <words>`
+// raises a card in a conversation; `/crew` is a picker and `/crew frugal` is a
+// note; `/task` is the task page and `/task <brief>` starts work; `/memory` is
+// the place and `/memory <query>` prints. A table keyed on the name alone would
+// send a person to the wrong one of each pair. The drop-up asks with the row's
+// own placeholder ([command.args]), which is empty on exactly the bare rows.
+//
+// A WORD NOBODY DEFINED HAS NO FATE, and the dispatch answers it the way it
+// always did — `there is no command called /x · / lists them`, on home's line.
+func homeFate(word, rest string) string {
+	rest = strings.TrimSpace(rest)
+	switch canonicalCommand(strings.ToLower(strings.TrimPrefix(word, "/"))) {
+	case "model":
+		return fateTargetModel
+	case "folder":
+		return fateTargetFolder
+	case "settings", "search", "spend", "history", "home":
+		return fatePlace
+	case "resume":
+		return fateResume
+	case "attach", "image":
+		return fateTray
+	case "quit":
+		return fateQuit
+	case "new":
+		return fateFresh
+	case "land", "workspace":
+		return fateBehind
+	case "files", "permissions", "connect", "harness", "subharness",
+		"copy", "select", "rewind", "compact", "export":
+		return fateNeedsChat
+	case "standing":
+		// Bare it is the standing place; with words it is a card raised in a
+		// conversation, and there has to be one.
+		if rest == "" {
+			return fatePlace
+		}
+		return fateNeedsChat
+	case "task":
+		// AND A BARE /task IS A PAGE AND NOT A USAGE LINE (commands.go's
+		// [app.runTaskCommand] says why). It used to open a conversation at the
+		// target and then open the task page over it, which is a conversation
+		// started for a question that never needed one.
+		if rest == "" {
+			return fatePlace
+		}
+		return fateNeedsChat
+	case "crew":
+		// Bare it is a picker this screen cannot draw; with a word it is a note.
+		if rest == "" {
+			return fateNeedsChat
+		}
+		return fateAnswers
+	case "memory", "memories":
+		// Bare it is the memory place; a query prints matching rows.
+		if rest == "" {
+			return fatePlace
+		}
+		return fateAnswers
+	case "help", "manual", "status", "cost", "budget", "cache", "debug",
+		"stop", "remember", "forget":
+		return fateAnswers
+	}
+	return ""
+}
 
 // The sentences the gate says. Each is quoted in the manual exactly as it is
 // spelled here.
@@ -115,16 +259,26 @@ const (
 	// than refusing, because the thing the person asked for is already in front
 	// of them.
 	homeIsTheResumeWord = "this list is /resume · enter opens a row"
-	// homeMoveTheTargetWord is /folder, /place and /dir, whose overlay this
-	// screen cannot draw and whose question home answers two better ways.
-	homeMoveTheTargetWord = "alt+w moves the next conversation · or type a path"
+	// homeTypeThePathWord is a bare /attach. The browser is /folder's door and
+	// this command's own is a path, so the line says the two ways a file gets
+	// onto home's tray rather than opening a sheet nobody asked for.
+	homeTypeThePathWord = "type the path after /attach · or drop the file here"
+	// homeRidesWord is the tail of the line a file attached at home leaves: the
+	// tray belongs to the person and travels into the conversation home opens
+	// next (home.go's [app.homeStart] carries it there).
+	homeRidesWord = " · rides with the next conversation"
+	// homeFreshBehindWord is /new said where a person can read it. The command
+	// replaces the conversation this window is holding behind home — which is
+	// not the conversation `enter` on home is about to open — and it used to do
+	// that in complete silence.
+	homeFreshBehindWord = "started a fresh conversation behind home"
 )
 
 // homeSlash is what enter does with a slash line on the action row: the line is
 // consumed the way chat's enter consumes it (input.go's [app.enterLine]) — the
-// box is emptied — and then the gate above decides which of the four fates it
-// has. A command that stays on this screen therefore leaves the composer empty
-// rather than leaving the person to erase what they said.
+// box is emptied — and then the fate above decides what happens. A command that
+// stays on this screen therefore leaves the composer empty rather than leaving
+// the person to erase what they said.
 func (a *app) homeSlash(line string) tea.Cmd {
 	h := &a.home
 	name, rest, _ := strings.Cut(strings.TrimPrefix(line, "/"), " ")
@@ -132,24 +286,39 @@ func (a *app) homeSlash(line string) tea.Cmd {
 	word := canonicalCommand(strings.ToLower(name))
 	h.box.reset()
 	h.build()
-	switch word {
-	case "model":
+	switch homeFate(word, rest) {
+	case fateTargetModel:
 		return a.homeModelCommand(rest)
-	case "resume":
+
+	case fateTargetFolder:
+		// THE BROWSER, AIMED AT THE TARGET (folderplace.go). Bare it opens where
+		// the next conversation would; with a path it opens on that path. Both
+		// forms answer one question — which folder does the next conversation open
+		// in — so both open the one surface that answers it, and picking a row
+		// pins the rule above home's box rather than moving the conversation
+		// behind the screen.
+		return a.openTargetFolderPick(rest)
+
+	case fateResume:
 		h.say(homeIsTheResumeWord, "")
 		return nil
-	case "folder":
-		// BARE, its overlay is one home cannot draw and its question is one home
-		// answers two better ways. WITH A PATH it is the context browser opened
-		// straight at that folder — a real gesture, and one this screen is a good
-		// door onto precisely because home has a composer of its own to type it
-		// into (foldercontext.go).
-		if rest == "" {
-			h.say(homeMoveTheTargetWord, "")
-			return nil
+
+	case fateTray:
+		return a.homeTrayCommand(word, rest)
+
+	case fateFresh:
+		// /new IS ABOUT THE CONVERSATION BEHIND THE SCREEN, and its own road says
+		// `new session · <path>` — true, and read on home as though it were about
+		// the conversation `enter` is going to open. So the line under the box
+		// says which conversation actually changed, and the refusals travel here
+		// through the seam [app.renewRefusing] exists for.
+		renewed, started := a.renewRefusing(func(text string) { h.say(text, "") })
+		if started {
+			h.say(homeFreshBehindWord, "")
 		}
-	}
-	if homeNeedsConversation(word, rest) {
+		return renewed
+
+	case fateNeedsChat:
 		// THE SAME DOOR `enter` TAKES, and it has to be: `/compact` typed at home
 		// used to compact a conversation behind the screen, and `/files` opened a
 		// shelf over one. Both are now about the conversation this line is
@@ -169,9 +338,71 @@ func (a *app) homeSlash(line string) tea.Cmd {
 	// behind this screen — true, kept, and unreadable until you leave. The flag
 	// puts the first line of it on home's own message line as well
 	// ([app.noteWritten]).
+	//
+	// /quit IS ON THIS ROAD AND NEEDS NOTHING ADDED TO IT. Closing the
+	// conversation behind home says `closed · <name>` through the same echo
+	// (keeper.go's [app.leaveFront]), and when that one was the last conversation
+	// this terminal held there is no line to write because aforge itself leaves.
 	a.echoHome = true
 	defer func() { a.echoHome = false }()
 	return a.slash(line)
+}
+
+// homeTrayCommand is /attach <path> and /image <path> at home: the tray HOME is
+// already carrying, and the line says which conversation those files are for.
+//
+// THE TRAY IS THE PERSON'S AND NOT THE CONVERSATION'S (attach.go's law, said
+// again by home.go's [app.homeStart], which carries the chips into the
+// conversation it opens). So these two commands needed no conversation to be
+// opened for them — /image opened one, ran there, and left home behind for a
+// picture that would have travelled anyway — and what they DID need was a
+// sentence: the chip appears on a row above the box, which is easy to miss on a
+// screen full of projects.
+//
+// A DIRECTORY AFTER /attach IS THE TARGET'S. The dispatcher hands one to
+// [app.referPlace], which gives it to the conversation behind home — invisibly,
+// where the person cannot read the answer. Here it is the same decision
+// `/folder` makes, said in the same words.
+func (a *app) homeTrayCommand(word, rest string) tea.Cmd {
+	if rest == "" {
+		if word == "image" {
+			// The dispatcher's own usage line, said where it was typed rather than
+			// in a conversation opened to hold it.
+			a.echoHome = true
+			defer func() { a.echoHome = false }()
+			return a.slash("/image")
+		}
+		a.home.say(homeTypeThePathWord, "")
+		return nil
+	}
+	// AND ONLY ON THIS MACHINE'S OWN DISK. Over a connection the directory this
+	// process can stat is the laptop's and the next conversation is on the other
+	// machine, so a pin taken here would name a folder it cannot open — which is
+	// [folderRemoteWord]'s argument. The dispatcher's own road answers it there.
+	if word == "attach" && !a.hosted() {
+		if path := a.resolvePath(rest); path != "" {
+			if info, err := os.Stat(path); err == nil && info.IsDir() {
+				a.target.where = path
+				a.home.say(targetMovedWord+a.hostedPath(shortPath(path, a.tilde, 0)), "")
+				a.touch()
+				return nil
+			}
+		}
+	}
+	held := len(a.chips)
+	a.echoHome = true
+	cmd := a.slash("/" + word + " " + rest)
+	a.echoHome = false
+	// A REFUSAL — no such file, not a picture, over the ceiling, already on the
+	// tray — has already put its own sentence on this line through the echo, and
+	// it is the truer one.
+	if len(a.chips) > held {
+		a.home.say(folderAttachedWord+a.chips[len(a.chips)-1].name()+homeRidesWord, "")
+	}
+	a.home.carrying = len(a.chips) > 0
+	a.home.build()
+	a.touch()
+	return cmd
 }
 
 // homeModelCommand is /model at home, and it is about the DRAFT.
@@ -214,31 +445,6 @@ func (a *app) homeModelCommand(rest string) tea.Cmd {
 	}
 	a.pinTargetModel(rest)
 	return nil
-}
-
-// homeNeedsConversation is the third fate: a command whose whole answer is
-// about a conversation, asked on a screen that is not in one.
-//
-// THE TEST IS THE COMMAND AND SOMETIMES ITS ARGUMENT, because two of them have
-// a bare form that is a place and a worded form that is work: `/standing` is
-// the standing place and `/standing <words>` raises a card in a conversation;
-// `/crew` is a picker and `/crew frugal` is a note. A table that keyed on the
-// name alone would send a person to the wrong one of each pair.
-func homeNeedsConversation(word, rest string) bool {
-	switch word {
-	case "files", "permissions", "connect", "harness", "subharness",
-		"copy", "select", "rewind", "compact", "export", "image", "task":
-		return true
-	case "attach", "crew":
-		// Bare, each of these opens an overlay this screen cannot draw. With
-		// words it writes a note, which the echo onto home's line now shows.
-		return rest == ""
-	case "standing":
-		// Bare it is the standing place; with words it is a card raised in a
-		// conversation, and there has to be one.
-		return rest != ""
-	}
-	return false
 }
 
 // homeRunCommand is enter on an offered command row, and it is LITERALLY chat's
