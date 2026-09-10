@@ -120,12 +120,14 @@ func TestHomeDrawsTheAnswersToAnotherWindowsQuestion(t *testing.T) {
 			t.Fatalf("the card does not offer %q:\n%s", chip, text)
 		}
 	}
-	// AND ONLY WHERE THE CURSOR IS. The band is the card's, and the card is the
-	// row under the cursor — a second row's chips would be two questions on
-	// screen with one keyboard between them.
+	// AND THEY STAY ON THEIR ROW WHEREVER THE CURSOR IS (DESIGN §1 law 7): a
+	// digit answers the top question from anywhere on home, so the key it sends
+	// is drawn where the question is and never follows the cursor. Only the top
+	// question draws them, which is what keeps one `1` on the screen
+	// (homepanel_needs.go).
 	lab.a.home.point(lab.a.file)
-	if text := homeText(lab.a); strings.Contains(text, "3 deny") {
-		t.Fatalf("the chips followed the cursor off the row they belong to:\n%s", text)
+	if text := homeText(lab.a); !strings.Contains(text, "3 deny") {
+		t.Fatalf("the chips left the question when the cursor moved:\n%s", text)
 	}
 }
 

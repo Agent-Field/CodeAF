@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -225,6 +226,8 @@ type homeGridInput struct {
 	last map[string]session.Summary
 	// repos is each workspace's last `git status` reading (homeband_repo.go).
 	repos map[string]homeRepoReading
+	// spend is the day's figure and the fortnight behind it (homepanel_spend.go).
+	spend homeSpendReading
 	seen  time.Time
 	now   time.Time
 }
@@ -238,7 +241,7 @@ func (h *homeView) gridInput() homeGridInput {
 	reading := readSwitcher(world, h.items, h.fired, here, h.gone, h.seen, h.world.Read,
 		switcherView{all: true}, h.ledger)
 	in := homeGridInput{world: world, items: h.items, errands: h.switchExchanges(),
-		bucket: h.bucket, tilde: h.tilde, last: h.last, repos: h.repos,
+		bucket: h.bucket, tilde: h.tilde, last: h.last, repos: h.repos, spend: h.spend,
 		seen: h.seen, now: h.world.Read}
 	for _, line := range reading.lines {
 		if line.row == nil || line.row.fold {
@@ -279,6 +282,10 @@ const (
 	cellHead
 	cellWhisper
 	cellFold
+	// cellBar and cellSpark are the spend panel's two drawings: the day against
+	// its allowance, and the fortnight.
+	cellBar
+	cellSpark
 )
 
 // homeCellMark is the one mark a row may wear. There are two (law 8): the
@@ -308,9 +315,18 @@ type homeCell struct {
 	note, tag, right string
 	// bold is this window's own conversation.
 	bold bool
+	// hold says the right-hand word is a fact about the DOOR — `folder gone`,
+	// `another window`, `coming here`, `here` — and is cut around rather than
+	// dropped, because it is what enter will do; door is the longer sentence a
+	// held row grows into under the cursor ([app.homeCellDoor]).
+	hold bool
+	door string
 	// sub is the line under the row, and subRight what that line carries at
 	// its right — the answers a digit sends.
 	sub, subRight string
+	// share is how full the spend bar is, and spark the fortnight's days.
+	share float64
+	spark []float64
 	// row is the switcher's own row behind a conversation or a watch, which is
 	// what its verbs are read from (place_home.go's [app.homeRowVerbs]).
 	row *switcherRow
@@ -455,9 +471,16 @@ func homeGridLayout(in *homeGridInput, cols, room int) [][]*homeGridPanel {
 // bottom, so a line's index still means what [homeView.cursor] has always
 // meant.
 func (h *homeView) buildGrid() {
-	in := h.gridInput()
 	cols := max(1, h.cols)
 	h.grid = homeGrid{cols: cols}
+	// A WORLD THAT IS NOT AN ANSWER YET DRAWS NOTHING. Over --host the first
+	// frames come before the far machine has replied, and a panel whispering
+	// what arrives there over a machine full of work would be a sentence about
+	// somebody else's disk that is not true ([homeView.known]).
+	if !h.known {
+		return
+	}
+	in := h.gridInput()
 	for at, column := range homeGridLayout(&in, cols, h.room) {
 		first := true
 		for _, p := range column {
@@ -641,7 +664,10 @@ func (h *homeView) gridCross(dir int) bool {
 // Nothing else that holds the arrows is overruled: the tab bar, an open strip, a
 // question this window raised about a row.
 func (a *app) homeGridCross(msg tea.KeyPressMsg) bool {
-	if a.bar.on || a.strip.open || a.home.ask != nil || !a.home.gridOn() {
+	// AN ERRAND'S ROW KEEPS ITS `→`, which takes the keyboard into the errand
+	// (home.go's [app.homeKey]) — the one row on home whose arrow already meant
+	// "into what is beside me".
+	if a.bar.on || a.strip.open || a.home.ask != nil || !a.home.gridOn() || a.paneExchange() != nil {
 		return false
 	}
 	dir := 0
@@ -736,10 +762,88 @@ func (a *app) homeGridAnswer(key string) (tea.Cmd, bool) {
 		return nil, false
 	}
 	for _, line := range a.home.lines {
-		if !needsAnswering(line.cell) {
+		if line.cell == nil || line.cell.panel != panelNeeds {
 			continue
 		}
-		return a.answerRowKey(a.homeTrue(line.row), key)
+		if words := a.homeRowAnswers(line); words != "" && words != answerWaitingWord && words != needsOpenWord {
+			return a.answerRowKey(a.homeTrue(line.row), key)
+		}
 	}
 	return nil, false
+}
+
+// homeRowAnswers is what a `needs you` row draws at the right of its question:
+// the answers, under the answer band's own four rules ([drawAnswerBand]) — the
+// question is fresh and offered answers, this window has somewhere to leave
+// one, it has not already sent one (the waiting word stands in for a moment
+// after it has), and no question this window raised about the row is standing
+// over it ([app.answersStepAside]). Every fact is in memory; nothing is read.
+//
+// A ROW THAT SAYS `enter` KEEPS SAYING IT. It is an instruction rather than an
+// answer — the row is not the top question, or its question has a paragraph —
+// and the gate is about answers (homepanel_needs.go).
+func (a *app) homeRowAnswers(line homeLine) string {
+	if line.cell == nil || line.cell.subRight == "" {
+		return ""
+	}
+	if line.cell.subRight == needsOpenWord {
+		return needsOpenWord
+	}
+	if line.kind != homeSession {
+		return ""
+	}
+	row, now := a.homeTrue(line.row), a.home.world.Read
+	question, ok := answerable(row, now)
+	if !ok {
+		return ""
+	}
+	if sent, ok := a.answerSent(row, question); ok {
+		if now.Sub(sent.at) < answerHoldFor {
+			return answerWaitingWord
+		}
+		return ""
+	}
+	if (a.leaveAnswer == nil && !a.answeringHere(row)) || a.answersStepAside(row) {
+		return ""
+	}
+	return line.cell.subRight
+}
+
+// ── the readings the grid asks for ─────────────────────────────────────────
+
+// refreshGridReadings asks for the two readings the resting grid draws that are
+// about one row rather than about the machine: the tail of this window's own
+// journal, for the line under its row, and each project's `git status`, for its
+// repository clause. Both come back as messages and rebuild the grid when they
+// land ([app.tookHomeLeftOff], [app.tookHomeRepo]); both are behind the caches
+// that keep a second ask from costing anything (homecardread.go,
+// homeband_repo.go).
+func (a *app) refreshGridReadings(now time.Time) tea.Cmd {
+	var asked []tea.Cmd
+	for _, line := range a.home.lines {
+		switch {
+		case line.kind == homeProjectRow:
+			asked = append(asked, a.refreshRepoOf(strings.TrimSpace(line.proj.Path), now))
+		case line.cell != nil && line.cell.bold:
+			asked = append(asked, a.askHomeLeftOff(line.row.Transcript))
+		}
+	}
+	return tea.Batch(asked...)
+}
+
+// homePreselect puts the cursor on THE CONVERSATION THIS WINDOW WAS IN BEFORE
+// THIS ONE (law 6): the most recent key on this window's own stack that is not
+// the one in front and is on the grid. Enter is then a switch in two keys, and
+// esc still goes back to the conversation behind home.
+func (a *app) homePreselect() {
+	if !a.home.gridOn() {
+		return
+	}
+	front := a.frontTabKey()
+	for at := len(a.prev) - 1; at >= 0; at-- {
+		if key := a.prev[at]; key != "" && key != front {
+			a.home.point(key)
+			return
+		}
+	}
 }

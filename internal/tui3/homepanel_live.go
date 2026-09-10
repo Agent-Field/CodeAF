@@ -24,20 +24,28 @@ func homeLiveFold(lines []homeLine) homePanelRows {
 	return out
 }
 
-// homeDoorTag is a row's margin word WHEN IT DECIDES WHAT ENTER WILL DO — the
-// folder is gone, the conversation is on its way here, another window is holding
-// it — and "" when enter simply opens it. The age stays in the right margin
-// beside it, and the tag gives way first on a narrow column ([homeCellBody]).
+// homeLiveMargin puts a row's facts at its right: its clock, and — when enter
+// will do something other than open it — THE DOOR WORD, which takes the margin
+// and is never dropped ([homeCell.hold]) while the clock beside it gives way
+// first. The folder is gone, the conversation is on its way here, another
+// window is holding it (and, under the cursor, `enter brings it here`): the
+// same words and the same order the list of conversations uses
+// ([switcherMarginWord], homepanel_recent.go).
 //
 // `here` IS NOT A DOOR WORD ON THESE PANELS. It marks this window's own row in
 // the list of conversations; on a panel about questions or work it would be a
 // tag on rows in this window's own folder, which the ruling retired (DESIGN §1,
 // "What is retired").
-func homeDoorTag(row switcherRow) string {
-	if word := switcherMarginWord(row); word != row.age && word != homeHereWord {
-		return word
+func homeLiveMargin(cell *homeCell, row switcherRow, clock string) {
+	cell.right = clock
+	word := switcherMarginWord(row)
+	if word == row.age || word == homeHereWord {
+		return
 	}
-	return ""
+	cell.tag, cell.right, cell.hold = clock, word, true
+	if row.door && word == homeHeldShort {
+		cell.door = takeoverHeldDoorWord
+	}
 }
 
 // cellKey is which of a conversation's pieces of work a grid row names, and ""

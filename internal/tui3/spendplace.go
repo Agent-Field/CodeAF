@@ -622,25 +622,36 @@ const spendSparkCells = 8
 // they are; how many CELLS each of them gets is the frame's answer, and this is
 // where it is given.
 func (r spendReading) sparkline(width int) string {
-	peak := 0.0
+	return sparkline(r.dayValues(), width)
+}
+
+// dayValues is each bucket's dollars, in order — the series both the spend
+// place's chart and home's spend panel draw.
+func (r spendReading) dayValues() []float64 {
+	values := make([]float64, 0, len(r.days))
 	for _, day := range r.days {
-		if day.USD > peak {
-			peak = day.USD
-		}
+		values = append(values, day.USD)
 	}
-	if peak <= 0 || width < 1 || len(r.days) == 0 {
+	return values
+}
+
+// sparkline is a series as one row of the vocabulary's spark cells, scaled to
+// its own peak and given as many cells per value as the width allows, up to
+// [spendSparkCells]. It is the one drawing of a spend series on this surface:
+// the spend place draws the window with it and home's spend panel the
+// fortnight (homepanel_spend.go).
+func sparkline(values []float64, width int) string {
+	peak := 0.0
+	for _, value := range values {
+		peak = max(peak, value)
+	}
+	if peak <= 0 || width < 1 || len(values) == 0 {
 		return ""
 	}
-	cells := width / len(r.days)
-	if cells > spendSparkCells {
-		cells = spendSparkCells
-	}
-	if cells < 1 {
-		cells = 1
-	}
+	cells := max(1, min(spendSparkCells, width/len(values)))
 	var b strings.Builder
-	for _, day := range r.days {
-		b.WriteString(strings.Repeat(tokens.Sparkline(day.USD/peak), cells))
+	for _, value := range values {
+		b.WriteString(strings.Repeat(tokens.Sparkline(value/peak), cells))
 	}
 	return fit(b.String(), width)
 }

@@ -70,8 +70,8 @@ func needsAsked(in *homeGridInput) []needsItem {
 		if !row.needs {
 			continue
 		}
-		cell := &homeCell{panel: panelNeeds, mark: cellMarkNeeds, title: row.title,
-			tag: homeDoorTag(row), right: sinceAt(row.at, in.now)}
+		cell := &homeCell{panel: panelNeeds, mark: cellMarkNeeds, title: row.title}
+		homeLiveMargin(cell, row, sinceAt(row.at, in.now))
 		item := needsItem{asked: row.at}
 		switch row.kind {
 		case switcherConversation:
@@ -191,30 +191,4 @@ func answersWord(question session.PresenceQuestion) string {
 		parts = append(parts, chip.text)
 	}
 	return strings.Join(parts, homeCellGap)
-}
-
-// needsAnswering reports that a grid cell is the row drawing its answers — the
-// one row a digit on home answers ([app.homeGridAnswer]).
-func needsAnswering(cell *homeCell) bool {
-	return cell != nil && cell.panel == panelNeeds && cell.subRight != "" && cell.subRight != needsOpenWord
-}
-
-// cellSubRight is what a row's second line carries at its right AS THIS WINDOW
-// CAN KEEP IT, asked at the paint for [drawAnswerBand]'s two reasons: a window
-// with nowhere to leave an answer draws no chips, because chips that did
-// nothing would be worse than the walk they promised to save; and a question
-// this window has already answered says so rather than offering the keys again.
-// Neither is a fact about the world, so neither is the reading's to decide.
-func (a *app) cellSubRight(cell *homeCell) string {
-	if !needsAnswering(cell) || cell.row == nil {
-		return cell.subRight
-	}
-	row := a.homeTrue(cell.row.session)
-	if a.leaveAnswer == nil && !a.answeringHere(row) {
-		return needsOpenWord
-	}
-	if _, sent := a.answerSent(row, row.Presence.Question); sent {
-		return answerWaitingWord
-	}
-	return cell.subRight
 }

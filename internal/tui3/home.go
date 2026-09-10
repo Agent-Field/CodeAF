@@ -138,7 +138,7 @@ func (a *app) homeBeat(gen int) tea.Cmd {
 	// THE BEAT REBUILDS THE LIST AND THE CURSOR FOLLOWS ITS CONVERSATION
 	// ([homeView.build]), so the row the card is about may be a row nothing has
 	// read for. It is an arrival like a key (homecardread.go).
-	asked := tea.Batch(a.refreshHomeCard(a.now()), a.askEngines())
+	asked := tea.Batch(a.refreshHomeCard(a.now()), a.refreshGridReadings(a.now()), a.askEngines())
 	// A task starting in another window arrives on this beat, and the spinner it
 	// earns needs the fast clock — woken here because this is the only moment
 	// home learns anything ([app.homeAnimating]; paint keeps it turning and lets
@@ -816,6 +816,7 @@ type homeView struct {
 	// are the pointer's half, written by the draw: where each column starts, and
 	// for each screen row which line every column drew there.
 	cols      int
+	spend     homeSpendReading
 	grid      homeGrid
 	tilde     string
 	gridX     []int
@@ -926,6 +927,8 @@ func (a *app) raiseHome() tea.Cmd {
 	// beat (place_home.go's [app.readSwitchLedger]).
 	a.readSwitchLedger()
 	a.readPlaceSummaries()
+	// AND WHAT THE MACHINE SPENT, for the spend panel (homepanel_spend.go).
+	a.readHomeSpend()
 	// AND THE FILES CONVERSATIONS HAVE MADE, as ONE reading for the whole screen
 	// rather than one per card (homeband_deliverables.go). It is taken here, with
 	// the other readings, because that index is a file and a card is a draw.
@@ -936,10 +939,13 @@ func (a *app) raiseHome() tea.Cmd {
 	a.home.readGone()
 	a.home.build()
 	a.home.openAt(a.file)
+	// AND THE CURSOR STANDS ON THE CONVERSATION BEFORE THIS ONE, where this
+	// window has one (homegrid.go's [app.homePreselect]).
+	a.homePreselect()
 	// AND THE CARD'S OWN READINGS ARE TAKEN AT THE ARRIVAL, never in the draw
 	// (homecardread.go). The repository among them is a command, so it is asked
 	// for rather than waited on and comes back as a message.
-	asked := a.refreshHomeCard(time.Now())
+	asked := tea.Batch(a.refreshHomeCard(time.Now()), a.refreshGridReadings(time.Now()))
 	a.touch()
 	// THE PAINT CLOCK JOINS THE SLOW TICK when a row on the column is running:
 	// the spinner and the count-up are claims about this instant, and a still
@@ -1364,6 +1370,7 @@ func (a *app) refreshHome() {
 	// it yet.
 	a.readStandBands()
 	a.readSwitchLedger()
+	a.readHomeSpend()
 	// AND THE DELIVERABLES INDEX, which costs ONE os.Stat on a beat where nothing
 	// has been written and re-reads the file only when something has
 	// (homeband_deliverables.go). A resting screen used to re-parse the whole
@@ -1994,7 +2001,7 @@ func (l homeLine) sameRow(other homeLine) bool {
 		return l.row.Transcript != "" && l.row.Transcript == other.row.Transcript && l.cellKey() == other.cellKey()
 	case homeItem:
 		return l.item.ID != "" && l.item.ID == other.item.ID
-	case homeQuiet, homeItemFold, homeProject:
+	case homeQuiet, homeItemFold, homeProject, homeProjectRow:
 		return l.dir != "" && l.dir == other.dir
 	case homeExchangeRow:
 		return l.ex != nil && l.ex == other.ex
@@ -2303,7 +2310,7 @@ func (h *homeView) itemLine(project session.Project, view StandingItemView) home
 func (l homeLine) stop() bool {
 	switch l.kind {
 	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold, homeAskHere,
-		homeProject, homeExchangeRow:
+		homeProject, homeExchangeRow, homeProjectRow:
 		return true
 	// the router's lane: an offered place is a door like every other door on this
 	// column (homeplaces.go), and an offered command is one too (homeslash.go).
@@ -3105,6 +3112,9 @@ func (a *app) homeEnter() tea.Cmd {
 	case homeSwitchFold:
 		h.foldSwitch(line.folded)
 		return nil
+	case homeProjectRow:
+		// A PROJECT ON THE GRID STARTS A CONVERSATION THERE (homepanel_projects.go).
+		return a.homeProjectEnter(line)
 	case homeItem:
 		// THE DOOR AN ITEM OFFERS IS ITS PROVENANCE and not itself: "why did I
 		// get this?" opens the conversation that asked for it
