@@ -3371,15 +3371,22 @@ time: the rescue in the section above is the only thing that ever puts two reque
 wire at once, and it asks a different machine rather than the same one. After a stream
 starts, two things get its request cut and replaced: the model stopped writing
 (see *Models, context, and what it costs* for the exact clocks), or the reply came apart
-into repetition or jumbled text. A dim line lands in the conversation saying which:
+into repetition or jumbled text. **A dim row lands in the conversation saying which**, and
+it stays there — the wait line is gone by the next redraw, and the row is not:
 
 ```
-  nothing came back from the model — asking again
-  the model went quiet mid-reply — asking again
-  the reply lost its thread — that text was dropped, asking again
+  nothing came back from the model · asking again · 2 of 4
+  the model went quiet · asking again · 3 of 4
+  the reply lost its thread · asking again · 2 of 6
 ```
 
-One more line reads the same way and is not a cut request: `the reply stopped when this
+Three parts, in that order: what went wrong, that the same model is being asked again, and
+which try this is out of how many that model gets. The count is the budget the request is
+actually walking rather than a number the screen holds, so it moves with your settings and
+with the kind of failure; a link to an older aforge that does not send it draws the reason
+and `asking again` with no count after it.
+
+One more row reads the same way and is not a cut request: `the reply stopped when this
 conversation moved — asking again` is a whole turn being asked again, in the window a
 conversation was moved to, because the turn it left behind had said nothing at all.
 
@@ -3390,14 +3397,30 @@ quiet, the retry avoids that endpoint and may reach another one serving the mode
 no grace on this one either — the plain wait hides its clock for four seconds, and this
 appears at once, because you have just watched something disappear and are owed the reason.
 
-**The one dim line that does name a model** is the last of them: when asking again has run
+**The one dim row that does name a model** is the last of them: when asking again has run
 out, aforge finishes the reply on a different model, and that is said before it happens.
 
 ```
-  nothing kept coming back from the model — finishing this one on openai/gpt-5-mini
-  the model kept going quiet mid-reply — finishing this one on openai/gpt-5-mini
-  the reply kept losing its thread — finishing this one on openai/gpt-5-mini
+  nothing kept coming back from the model · moving to gpt-5-mini
+  the model kept going quiet · moving to gpt-5-mini
+  the reply kept losing its thread · moving to gpt-5-mini
 ```
+
+The model is named by its own name without the vendor in front of it, the way every model
+is spelled on this surface. **A row that is moving carries no count.** The count belonged
+to the model being left — it is that model's patience, spent — and beside a new name it
+would read as the new model's.
+
+**And when there is nothing left to move to, one more row says so**, which is the row that
+used to be missing entirely:
+
+```
+  gave up after 4 tries · API error (429) rate limited
+```
+
+After the dot is what the provider actually said. A turn that failed on its first and only
+attempt draws `error: <what went wrong>` instead: "gave up" is a claim about a struggle,
+and one attempt is not one.
 
 The rest of the answer arrives from that model, at that model's price, and the wait line
 above it names it from then on. Your own model is unchanged and your next message goes back

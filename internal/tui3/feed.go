@@ -1330,7 +1330,7 @@ func (f *feed) retry(ev session.Event) {
 	// is one of several, and — when the ladder runs out — that it stopped. Both
 	// come off [failure], composed in the one place every surface composes them
 	// (failurerow.go).
-	f.lastAsk = retryFailure(ev.Text, f.countAsk())
+	f.lastAsk = retryFailure(ev, f.countAsk())
 	f.note(failureRow(f.lastAsk))
 }
 

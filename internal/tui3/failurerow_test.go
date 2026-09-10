@@ -243,6 +243,10 @@ func TestTheFailureRowSpellsEveryShape(t *testing.T) {
 		f:    failure{reason: "nobody answered in time", next: "moonshot/kimi-k3"},
 		want: "nobody answered in time · moving to kimi-k3",
 	}, {
+		name: "and a hop draws no arithmetic — the count belonged to the model it left",
+		f:    failure{reason: "nobody answered in time", next: "moonshot/kimi-k3", attempt: 4, attempts: 4},
+		want: "nobody answered in time · moving to kimi-k3",
+	}, {
 		name: "an ordinal with no total is not drawn — the emptiness law",
 		f:    failure{reason: "nobody answered in time", attempt: 3},
 		want: "nobody answered in time · asking again",
@@ -258,6 +262,55 @@ func TestTheFailureRowSpellsEveryShape(t *testing.T) {
 		if got := failureRow(c.f); got != c.want {
 			t.Errorf("%s:\n got %q\nwant %q", c.name, got, c.want)
 		}
+	}
+}
+
+// THE PARTS ARE PREFERRED OVER THE SENTENCE. The engine sends both on every
+// retry ([session.RetryNews]); the row built from the parts is the one that can
+// say the arithmetic and tell a hop from another try of the same model.
+func TestARetryRowIsBuiltFromTheEventsPartsWhenItHasThem(t *testing.T) {
+	a := newTestApp(&fakeAgent{})
+	a.state, a.turn = stateWorking, 1
+	a.event(session.Event{
+		Kind: session.EventRetrying,
+		Text: "the model went quiet mid-reply — asking again",
+		Retry: &session.RetryNews{
+			Model: "moonshot/kimi-k3", Attempt: 2, Attempts: 4,
+			Reason: "the model went quiet mid-reply",
+		},
+	})
+	a.event(session.Event{
+		Kind: session.EventRetrying,
+		Text: "the model kept going quiet mid-reply — finishing this one on glm-5.3",
+		Retry: &session.RetryNews{
+			Model: "moonshot/kimi-k3", Attempt: 4, Attempts: 4,
+			Reason: "the model kept going quiet mid-reply", Next: "z-ai/glm-5.3",
+		},
+	})
+	want := []string{
+		"the model went quiet mid-reply · asking again · 2 of 4",
+		"the model kept going quiet mid-reply · moving to glm-5.3",
+	}
+	if got := failureNotes(a.entries); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("the rows read\n%v\nwant\n%v", got, want)
+	}
+	// AND THE STATUS LINE IS THE SAME STRUCT, so the hop it shows is the hop the
+	// row shows.
+	if got := failureDetail(a.lastAsk); got != "moving to glm-5.3" {
+		t.Fatalf("the status line detail reads %q", got)
+	}
+}
+
+// AN ENGINE THAT SENDS NO PARTS still draws its sentence whole — an older build
+// on the far end of a `--host` link, and the shape this surface had before the
+// parts existed.
+func TestARetryWithNoPartsDrawsTheEnginesSentenceWhole(t *testing.T) {
+	a := newTestApp(&fakeAgent{})
+	a.state, a.turn = stateWorking, 1
+	a.event(session.Event{Kind: session.EventRetrying, Text: "the reply was cut short — asking again"})
+	notes := failureNotes(a.entries)
+	if len(notes) != 1 || notes[0] != "the reply was cut short — asking again" {
+		t.Fatalf("an engine with no parts drew %v", notes)
 	}
 }
 

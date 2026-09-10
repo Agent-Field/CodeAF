@@ -3,6 +3,8 @@ package tui3
 import (
 	"strconv"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // ── A REQUEST THAT FAILED IS A ROW ───────────────────────────────────────────
@@ -137,14 +139,15 @@ func failureRow(f failure) string {
 		}
 		return strings.Join(parts, partDot)
 	}
+	hop := modelBase(f.next) != ""
 	if told := strings.TrimSpace(f.told); told != "" {
 		parts = append(parts, told)
 	} else {
 		if reason != "" {
 			parts = append(parts, reason)
 		}
-		if next := modelBase(f.next); next != "" {
-			parts = append(parts, movingToWord+next)
+		if hop {
+			parts = append(parts, movingToWord+modelBase(f.next))
 		} else {
 			parts = append(parts, askingAgainWord)
 		}
@@ -153,7 +156,12 @@ func failureRow(f failure) string {
 	// already been told what happened and what is being done about it. It is the
 	// same spelling the phase line uses for the same fact (internal/provider's
 	// phase.go, `2 of 4`), so the two rows about one wait cannot drift.
-	if word := failureCountWord(f); word != "" {
+	//
+	// A HOP DRAWS NO ARITHMETIC. The count belongs to the model being LEFT — it
+	// is that model's patience, spent — and a person reading `moving to kimi-k3 ·
+	// 4 of 4` would reasonably take it for the new model's, which is the one
+	// thing on the row that would then be false. The move is the news.
+	if word := failureCountWord(f); word != "" && !hop {
 		parts = append(parts, word)
 	}
 	return strings.Join(parts, partDot)
@@ -191,28 +199,36 @@ func failureDetail(f failure) string {
 
 // ── WHERE THE STRUCT IS FILLED IN ────────────────────────────────────────────
 //
-// THIS IS THE SEAM, AND IT IS ONE FUNCTION WIDE ON PURPOSE.
+// THIS IS THE ONE PLACE THE EVENT'S SHAPE IS READ. Nothing else in this package
+// asks a retry event anything, so a field the engine grows is wired in here and
+// reaches all three surfaces at once.
 //
-// Today [session.EventRetrying] carries a sentence and nothing else: the engine
-// composes `the request failed — asking again`, `hopNotice`, `cutNotice` and
-// hands over the words (internal/session's loop.go). So the surface fills in
-// what it can see — the sentence as the reason, and the tries it has watched go
-// past — and leaves the arithmetic empty, which draws as nothing.
+// THE PARTS ARE PREFERRED AND THE SENTENCE IS THE FLOOR. [session.RetryNews]
+// says the same news as [session.Event.Text] in fields — why, on which model,
+// how far into its patience, and whether the step is MOVING — and a row built
+// from the parts can say the two things the sentence cannot: the arithmetic, and
+// the difference between asking again and hopping. The reason inside it is
+// already the person's own spelling (internal/session's taxonomy_boundary.go
+// writes it), so it is drawn as it stands and never re-worded here.
 //
-// The engine is growing the fields: `Event.Retry *RetryNews{Model, Attempt,
-// Attempts int, Reason, Next string}` is in flight beside this change. WHEN IT
-// LANDS, THE ONLY EDIT IS IN HERE — [retryFailure] reads ev.Retry instead of
-// ev.Text, the ordinals stop being empty, and every row in every surface gains
-// `· 2 of 4` and `· moving to <model>` without another line moving anywhere.
-// Nothing else in this package reads the event's shape.
-func retryFailure(text string, seen int) failure {
+// The sentence is still the answer for an engine that sends no parts — an older
+// build across a `--host` link — and drawing it whole is exactly right there:
+// see [failure.told].
+func retryFailure(ev session.Event, seen int) failure {
+	if news := ev.Retry; news != nil {
+		return failure{
+			reason:   strings.TrimSpace(news.Reason),
+			next:     strings.TrimSpace(news.Next),
+			attempt:  news.Attempt,
+			attempts: news.Attempts,
+		}
+	}
 	return failure{
 		// The engine's sentence is finished prose and is carried as such — see
 		// [failure.told] for why appending to it would say the same thing twice.
-		told: strings.TrimSpace(text),
-		// seen is what this surface has WATCHED, and it is carried even though
-		// nothing draws it yet: it is what the give-up below counts, and it is
-		// the field the engine's own attempt number replaces.
+		told: strings.TrimSpace(ev.Text),
+		// seen is what this surface WATCHED, and it stands in for the engine's
+		// own attempt number on a link that does not send one.
 		attempt: seen + 1,
 	}
 }
