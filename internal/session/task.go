@@ -382,6 +382,11 @@ type taskSpec struct {
 	// worker in a worktree with its one line as a brief — a copy of the folder, a
 	// branch and a check, for work whose whole promise was that it had none of
 	// those.
+	//
+	// IT IS NEVER SET BESIDE [taskSpec.drawn]. A drawing is an instruction to
+	// divide this work into children; the items ARE the division, done in order
+	// by one worker, so a spec carrying both would hand the same parts out twice
+	// (checkpoint_quick.go).
 	quick *quickTaskSpec
 	// parent, depth and owner are THE FAMILY this proposal was made in, and they
 	// are the whole of what nesting adds to the spec: 0, 0 and nil for the work
@@ -445,17 +450,6 @@ type taskSpec struct {
 	// it ever ran comes back as one worker, which is what a task whose reviewer
 	// refused already is. Neither is a loss worth a second way to spawn work.
 	drawn drawnDivision
-	// quick is set on A QUICK NODE and on nothing else, and it is what
-	// [taskSpec.kind] reads to answer `quick`: a line saying what to do, the
-	// ordered items it works through, and the paths it claims
-	// (docs/design/quick-task/DESIGN.md). It runs where the caller works, with no
-	// worktree, no audit and no landing — its last message is its result.
-	//
-	// IT IS NEVER SET BESIDE [taskSpec.drawn]. A drawing is an instruction to
-	// divide this work into children; the items ARE the division, done in order
-	// by one worker, so a spec carrying both would hand the same parts out twice
-	// (checkpoint_quick.go).
-	quick *quickTaskSpec
 }
 
 // taskOrigin is the pointer a worker is handed so it can find the person's

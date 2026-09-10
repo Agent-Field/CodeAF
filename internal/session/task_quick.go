@@ -751,3 +751,15 @@ func (a *Agent) landQuickNode(node *TaskNode, report string, changed []string, s
 	}
 	return state
 }
+
+// lastLine is the last non-empty line of a block — a quick node's last stated
+// intent, which is the sentence before the step its budget cut short.
+func lastLine(text string) string {
+	lines := strings.Split(text, "\n")
+	for index := len(lines) - 1; index >= 0; index-- {
+		if line := strings.TrimSpace(lines[index]); line != "" {
+			return line
+		}
+	}
+	return ""
+}
