@@ -371,7 +371,7 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 	refresh := a.serviceModelRefresh
 	return func() tea.Msg {
 		outcome, err := config.ConnectService(ctx, dir, draft.row, draft.source, authors)
-		var models []Model
+		models := modelsFromListedIDs(outcome.ModelIDs)
 		if err == nil && outcome.Kind == modelsource.OutcomeConnected && draft.source.Listing == modelsource.ListingModels {
 			// Resolve the row back through config after ConnectService writes it.
 			// That is the one door which owns key and address precedence; rebuilding
@@ -379,12 +379,23 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 			connected, found := config.ResolveSources(dir, "", "").ByID(draft.source.ID)
 			if found {
 				if refresh != nil {
-					models, _ = refresh(ctx, connected)
+					if refreshed, refreshErr := refresh(ctx, connected, models); refreshErr == nil && len(refreshed) > 0 {
+						models = refreshed
+					}
 				} else {
-					catalog := modelcatalog.Load(ctx, modelcatalog.Options{
+					seed := make([]modelcatalog.Model, 0, len(models))
+					for _, model := range models {
+						seed = append(seed, modelcatalog.Model{ID: model.ID})
+					}
+					_ = modelcatalog.Remember(modelcatalog.Options{
+						Source: draft.source.ID, BaseURL: connected.Address, Dir: dir,
+					}, seed)
+					catalog, refreshErr := modelcatalog.Refresh(ctx, modelcatalog.Options{
 						Source: draft.source.ID, BaseURL: connected.Address, APIKey: connected.Key, Dir: dir,
 					})
-					models = surfaceModels(catalog.ModelsNow())
+					if refreshed := surfaceModels(catalog.ModelsNow()); refreshErr == nil && len(refreshed) > 0 {
+						models = refreshed
+					}
 					_ = WriteModelCacheFor(draft.source.ID, connected.Address, models)
 				}
 			}
@@ -394,6 +405,14 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 			outcome: outcome, models: models, err: err,
 		}
 	}
+}
+
+func modelsFromListedIDs(ids []string) []Model {
+	models := make([]Model, 0, len(ids))
+	for _, id := range ids {
+		models = append(models, Model{ID: id})
+	}
+	return cleanModels(models)
 }
 
 func surfaceModels(rows []modelcatalog.Model) []Model {

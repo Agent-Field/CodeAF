@@ -217,6 +217,16 @@ func ConnectService(ctx context.Context, profileDir string, row PersistedSource,
 		}
 		outcome.Listed = true
 		outcome.Models = len(listing.Data)
+		for _, raw := range listing.Data {
+			var item struct {
+				ID string `json:"id"`
+			}
+			if json.Unmarshal(raw, &item) == nil {
+				if id := strings.TrimSpace(item.ID); id != "" {
+					outcome.ModelIDs = append(outcome.ModelIDs, id)
+				}
+			}
+		}
 	}
 	if err := persistConnectedSource(profileDir, row); err != nil {
 		return modelsource.Outcome{}, err

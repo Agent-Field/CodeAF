@@ -94,7 +94,7 @@ func (s *v3ModelShelf) modelsForService(service modelsource.Connected) []tui3.Mo
 // refreshService fetches a newly connected service into the same shelf /model
 // reads and writes both service-scoped caches. It is the connected-service twin
 // of refresh; the caller runs it as a command away from the event loop.
-func (s *v3ModelShelf) refreshService(ctx context.Context, service modelsource.Connected) ([]tui3.Model, error) {
+func (s *v3ModelShelf) refreshService(ctx context.Context, service modelsource.Connected, seed []tui3.Model) ([]tui3.Model, error) {
 	if s == nil {
 		return nil, errors.New("there is no model shelf")
 	}
@@ -102,8 +102,27 @@ func (s *v3ModelShelf) refreshService(ctx context.Context, service modelsource.C
 	options.Source = service.Source.ID
 	options.BaseURL = service.Address
 	options.APIKey = service.Key
+	if len(seed) > 0 {
+		minimal := make([]catalog.Model, 0, len(seed))
+		for _, model := range seed {
+			minimal = append(minimal, catalog.Model{ID: model.ID})
+		}
+		if err := catalog.Remember(options, minimal); err != nil {
+			return nil, err
+		}
+		id := strings.ToLower(strings.TrimSpace(service.Source.ID))
+		s.mu.Lock()
+		s.direct[id] = append([]tui3.Model(nil), seed...)
+		s.mu.Unlock()
+		if err := tui3.WriteModelCacheFor(service.Source.ID, service.Address, seed); err != nil {
+			return nil, err
+		}
+	}
 	fresh, err := catalog.Refresh(ctx, options)
 	if err != nil {
+		if len(seed) > 0 {
+			return append([]tui3.Model(nil), seed...), nil
+		}
 		return nil, v3FetchReason(err)
 	}
 	rows := v3Models(fresh)

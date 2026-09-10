@@ -299,6 +299,27 @@ func Refresh(ctx context.Context, options Options) (*Catalog, error) {
 	return &Catalog{ready: resolved}, err
 }
 
+// Remember writes rows already learned from a service's successful /models
+// response into that service-and-base compartment. It performs no network
+// request. A later Refresh may replace these minimal rows with richer catalog
+// facts, but a second read is never allowed to erase a listing the connection
+// probe just proved exists.
+func Remember(options Options, models []Model) error {
+	models = cleanModels(models)
+	if len(models) == 0 {
+		return nil
+	}
+	now := time.Now
+	if options.Now != nil {
+		now = options.Now
+	}
+	source := strings.TrimSpace(options.Source)
+	base := normalizeBase(options.BaseURL)
+	return writeCache(cachePath(options.Dir, source, base), cache{
+		FetchedAt: now().UTC(), Models: models, Source: source, Base: base,
+	})
+}
+
 // errUnreadable is what a fault inside discovery is reported as. The fault
 // itself goes to the guard's log; the person who asked is told only that the
 // list could not be read, which is the whole of what they can act on.

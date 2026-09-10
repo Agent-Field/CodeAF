@@ -20,7 +20,10 @@ func installModelServiceShelf(a *app, dir string) {
 	a.modelsForService = func(service modelsource.Connected) []Model {
 		return append([]Model(nil), held[service.Source.ID]...)
 	}
-	a.serviceModelRefresh = func(ctx context.Context, service modelsource.Connected) ([]Model, error) {
+	a.serviceModelRefresh = func(ctx context.Context, service modelsource.Connected, seed []Model) ([]Model, error) {
+		if len(seed) > 0 {
+			held[service.Source.ID] = append([]Model(nil), seed...)
+		}
 		models, err := modelcatalog.Refresh(ctx, modelcatalog.Options{
 			Source: service.Source.ID, BaseURL: service.Address, APIKey: service.Key, Dir: dir,
 		})
@@ -242,10 +245,20 @@ func TestAServiceWithNoListingDrawsNoCount(t *testing.T) {
 		[]Model{{ID: "openai/gpt-4.1-mini"}}, agent)
 	a.modelsForService = func(modelsource.Connected) []Model { return nil }
 	list := a.modelList()
-	if len(list) != 2 || !list[1].Unavailable || list[1].ID != noServiceModelListWord {
+	if len(list) != 2 || !list[1].Unavailable || list[1].ID != "" || list[1].Notice != noServiceModelListWord {
 		t.Fatalf("listing-less picker rows = %+v", list)
 	}
 	a.openPicker()
+	placeholder := -1
+	for at, hit := range a.pick.hits {
+		if a.pick.all[hit].Unavailable {
+			placeholder = at
+			break
+		}
+	}
+	if placeholder < 0 || a.pick.unfoldAt(placeholder, "", timeNow()) {
+		t.Fatal("the empty-group notice reached the lane-sheet door")
+	}
 	rendered := plain(strings.Join(a.pick.rows(100, a.pick.height(100), a.pal, -1, a.reasoningFor), "\n"))
 	if !strings.Contains(rendered, "z-ai") || !strings.Contains(rendered, noServiceModelListWord) {
 		t.Fatalf("listing-less group was not drawn:\n%s", rendered)
@@ -481,6 +494,11 @@ func TestADirectModelKeepsItsServiceInStatusAndCarriesNoLane(t *testing.T) {
 			drainModelServiceTurn(t, agent, "use direct")
 			if got := completionRequests(directServer); len(got) != 1 || got[0].Bearer != "Bearer sk-direct-1234567890" || completionModel(t, got[0]) != "fake-small" {
 				t.Fatalf("direct service request = %+v", got)
+			}
+			for _, request := range directServer.Requests() {
+				if request.Method != "POST" || !strings.HasSuffix(request.Path, modelsource.ChatCompletionsPath) {
+					t.Fatalf("direct service received lane-sheet or probe traffic: %+v", directServer.Requests())
+				}
 			}
 			if got := completionRequests(defaultServer); len(got) != 0 {
 				t.Fatalf("default service received the direct turn: %+v", got)

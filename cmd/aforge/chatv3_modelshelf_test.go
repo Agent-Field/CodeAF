@@ -7,10 +7,12 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/modelsource"
 	"github.com/Agent-Field/aforge-v2/internal/modelsource/sourcestub"
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -37,18 +39,28 @@ func TestAConnectedServiceRefreshLandsOnTheProcessShelf(t *testing.T) {
 	defer directHost.Close()
 	dir := t.TempDir()
 	defaultSource := modelsource.DefaultSource(defaultHost.URL())
-	directSource := modelsource.Source{
-		ID: "custom", Written: "localhost", Name: "Something else",
-		Address: directHost.URL(), Listing: modelsource.ListingModels,
-	}
 	defaultService := modelsource.Connected{Source: defaultSource, Key: "default-key", Address: defaultHost.URL()}
-	directService := modelsource.Connected{Source: directSource, Key: "direct-key", Address: directHost.URL()}
-	sources := modelsource.NewSet(defaultService, directService)
 	discovery := catalog.Options{BaseURL: defaultHost.URL(), APIKey: defaultService.Key, Dir: dir}
 	launch := catalog.Load(t.Context(), discovery)
 	shelf := newV3ModelShelf(launch, discovery)
+	custom := modelsource.Vendored()[4]
+	outcome, err := config.ConnectService(t.Context(), dir, config.PersistedSource{
+		ID: custom.ID, Written: "localhost", Address: directHost.URL(), Key: "direct-key", Order: 1,
+	}, custom, nil)
+	if err != nil || outcome.Kind != modelsource.OutcomeConnected || outcome.Models != 2 {
+		t.Fatalf("Something else connection = %+v, %v", outcome, err)
+	}
+	sources := config.ResolveSources(dir, defaultService.Key, defaultHost.URL())
+	directService, ok := sources.ByID("custom")
+	if !ok {
+		t.Fatal("the persisted Something else service did not resolve")
+	}
 	shelf.setSources(sources)
-	rows, err := shelf.refreshService(t.Context(), directService)
+	seed := make([]tui3.Model, 0, len(outcome.ModelIDs))
+	for _, id := range outcome.ModelIDs {
+		seed = append(seed, tui3.Model{ID: id})
+	}
+	rows, err := shelf.refreshService(t.Context(), directService, seed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,16 +70,12 @@ func TestAConnectedServiceRefreshLandsOnTheProcessShelf(t *testing.T) {
 	if cached := tui3.CachedModelsFor("custom", directHost.URL()); len(cached) != 2 {
 		t.Fatalf("picker cache rows = %+v", cached)
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
+	owner := catalog.CacheKey(custom.ID, directHost.URL())
+	if _, err := os.Stat(filepath.Join(dir, "model-catalog-"+owner+".json")); err != nil {
+		t.Fatalf("the connected service wrote no source-scoped catalog cache: %v", err)
 	}
-	foundCatalog := false
-	for _, entry := range entries {
-		foundCatalog = foundCatalog || strings.HasPrefix(entry.Name(), "model-catalog-")
-	}
-	if !foundCatalog {
-		t.Fatal("the connected service wrote no source-scoped catalog cache")
+	if _, err := os.Stat(tui3.ModelCachePathFor(custom.ID, directHost.URL())); err != nil {
+		t.Fatalf("the connected service wrote no source-scoped picker cache: %v", err)
 	}
 
 	agent, err := session.New(session.Config{Workspace: t.TempDir(), Model: "localhost/fake-small", Sources: sources})

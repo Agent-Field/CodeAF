@@ -305,6 +305,10 @@ type Outcome struct {
 	Kind       OutcomeKind
 	VendorSaid string
 	Models     int
+	// ModelIDs are the non-empty ids carried by an answered listing. Keeping
+	// them lets the surface retain the list it already paid for instead of
+	// making a second catalog-shaped response the only road to the picker.
+	ModelIDs   []string
 	Listed     bool
 	Suggestion string
 }
