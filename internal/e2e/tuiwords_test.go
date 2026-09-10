@@ -150,6 +150,11 @@ var tuiWords = map[string]tuiWord{
 		why:    "the fold at the foot counts what it stands over — `▸ 5 more, quiet since 6d`",
 		pkg:    tui3Pkg,
 	},
+	"foldFewerWord": {
+		screen: " fewer",
+		why:    "the same fold with it standing open — the way back, said as what pressing it does (#518)",
+		pkg:    tui3Pkg,
+	},
 	// The two fold hints are the CLAUSE THE ROW OWNS and not the whole drawn
 	// line, because the router puts its own `tab next place` in front of the
 	// `esc` clause on the way to the screen (pages.go's placeTailed) — so what a

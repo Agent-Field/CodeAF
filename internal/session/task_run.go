@@ -4193,6 +4193,18 @@ func (a *Agent) TaskUpdates() <-chan Event {
 //
 // stop is never nil and calling it twice is calling it once.
 func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
+	// AND A SURFACE ATTACHING IS THE OTHER MOMENT SOMEBODY CAME BACK. The
+	// inbox road ends in a drain that ran inside New ([Agent.drainStandingInbox]),
+	// which was the whole story while every window built its own engine. Since
+	// #653 an interactive launch joins this workspace's session host, and a host
+	// that outlived the last window hands the next one the SAME agent
+	// (internal/enginehost's Host.join) — so a firing filed under the project
+	// while nobody was here would sit in that file forever, read by nothing,
+	// because no agent was ever constructed to read it. Draining here is the
+	// same fold and the same rows, asked for by the surface rather than by the
+	// boot; the file is emptied as it is read, so a second lane finds nothing
+	// and this costs a stat on every attach.
+	a.drainStandingInbox()
 	stream := newEventStream()
 	a.mu.Lock()
 	if a.closed {

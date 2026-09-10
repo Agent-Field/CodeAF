@@ -1407,24 +1407,54 @@ func newHostLedger(far hostFar) *hostLedger {
 	far.arm(&h.duty, "reading what has been spent")
 	return h
 }
+
+// hostLedgerEvery is how stale a held reading of the far ledger is allowed to be
+// before the next reading asks for a fresh one behind itself.
+//
+// IT IS THE ONE THING THAT MADE THE SPEND PLACE A PHOTOGRAPH. What is held used
+// to be replaced only when a WIDER window was asked for, so a launch's prime
+// answered the whole fourteen days and every reading after it was served out of
+// that answer for the life of the process: a conversation that spent money in
+// front of somebody left `nothing spent yet — the first model call writes a line
+// here` on the page under it, because the only reading the surface ever took was
+// the one from before the call. The local seam re-reads the file on home's own
+// three-second beat (place_spend.go), and this is that beat said over a wire.
+//
+// It matches [hostWorldEvery] rather than [hostStandingEvery] because it answers
+// the same kind of question — a page a person is looking at right now, about
+// facts that move while they look — and because both are read on the frame.
+const hostLedgerEvery = 2 * time.Second
+
 func (h *hostLedger) prime() { h.start(time.Now().AddDate(0, 0, -14)) }
 func (h *hostLedger) read(since time.Time) ([]session.UsageLine, bool, bool) {
-	lines, held, known, need := h.snapshot(since)
-	if need {
+	lines, held, known, floor, need := h.snapshot(since)
+	switch {
+	case need:
+		h.start(since)
+	case h.duty.due("", hostLedgerEvery):
+		// AND THE REFRESH NEVER ASKS FOR LESS THAN IS ALREADY HELD. The floor is
+		// replaced by whatever the last trip asked for, so a beat that re-asked
+		// with the CURRENT view's `since` would throw away the fortnight the prime
+		// fetched every time somebody looked at today — and the next reading of the
+		// chart would find the window too narrow and fetch it all over again, on
+		// every beat, for ever.
+		if floor.Before(since) {
+			since = floor
+		}
 		h.start(since)
 	}
 	return lines, held, known
 }
 
-// snapshot is what is held and whether a wider window is wanted, under the lock
-// held from a defer.
-func (h *hostLedger) snapshot(since time.Time) (lines []session.UsageLine, held, known, need bool) {
+// snapshot is what is held, how far back it reaches and whether a wider window
+// is wanted, under the lock held from a defer.
+func (h *hostLedger) snapshot(since time.Time) (lines []session.UsageLine, held, known bool, floor time.Time, need bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	lines = append([]session.UsageLine(nil), h.lines...)
-	held, known = h.held, h.known
+	held, known, floor = h.held, h.known, h.floor
 	need = !known || since.Before(h.floor)
-	return lines, held, known, need
+	return lines, held, known, floor, need
 }
 func (h *hostLedger) start(since time.Time) {
 	h.duty.run("chatv3/host-ledger", "", func() {

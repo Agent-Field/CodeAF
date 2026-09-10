@@ -326,6 +326,21 @@ func (a *app) homeLedgerEnter(line homeLine) tea.Cmd {
 func (h *homeView) foldSwitch(open bool) {
 	h.moreOpen = open
 	h.build()
+	h.pointFold()
+}
+
+// pointFold puts the cursor back on the one fold at the foot of the list, and
+// leaves it where it was when the list has none.
+//
+// IT IS A FOLLOWER LIKE THE FOUR ABOVE IT (home.go's [homeView.build]) AND NOT
+// ONLY A DOOR'S TIDY-UP. [homeView.build] runs again every three seconds on
+// home's own beat, and a rebuild that could not find the fold sent the cursor to
+// the top of the list — so an opened fold stood for one beat and then threw the
+// hand away from it, which on a frame whose rows the fold's own count is
+// measured against ([switcherReading.capAtRest]) scrolls the rows it just
+// revealed, and the way back, straight off the bottom of the screen. Three
+// seconds after `→` a person had a longer list they could see none of.
+func (h *homeView) pointFold() {
 	for at, line := range h.lines {
 		if line.kind == homeSwitchFold {
 			h.cursor, h.picked = at, true

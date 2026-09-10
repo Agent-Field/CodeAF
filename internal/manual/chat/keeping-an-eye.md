@@ -221,6 +221,20 @@ as "in 1 minute — 23:11" lands at 23:11:11, and an end taken from the same wor
 lands at 23:11:00 — eleven seconds too early. That is why the refusal spells
 both stamps out to the second.
 
+**And the end has to outlive a check, not just the moment.** Nothing watches an
+item continuously: a check runs every five minutes, so an end that falls between
+the moment and the next check is found expired at the same instant it would have
+been found due. An end twenty-five seconds after a one-minute reminder is after
+the moment and still dead, and the second refusal says so:
+
+```
+Invalid arguments: rails.expires 21:05:00 -04:00 is less than one check after
+when.at 21:04:35 -04:00, so a check can find it out of time at the same moment
+it would have found it due. Checks are 5m0s apart. Put the end at least that far
+after the moment, or leave it out — a one-off retires as it fires and needs no
+end at all.
+```
+
 **A one-off reminder never needs an end.** It retires the moment it fires, and
 if nothing ever picks it up it stops being watched a day after its moment
 anyway.
