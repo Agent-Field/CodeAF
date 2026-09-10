@@ -3,6 +3,7 @@ package remote
 import (
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/effort"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -24,11 +25,15 @@ func (a *rungAgent) ResolvedEffort() string {
 	return a.stored
 }
 
+// It takes the words the real dial takes, absence among them: [effort.Parse]
+// lands `auto`, the legacy `off` and "" on [effort.None], and the surface's way
+// back to auto is a set of that empty word (internal/tui3's runEffort).
 func (a *rungAgent) SetConversationEffort(rung string) bool {
-	if rung != "low" && rung != "medium" && rung != "high" {
+	parsed, ok := effort.Parse(rung)
+	if !ok {
 		return false
 	}
-	a.stored = rung
+	a.stored = parsed.String()
 	return true
 }
 
@@ -115,3 +120,41 @@ func TestAnEngineWithoutTheDialAdvertisesNoneAndTakesNothing(t *testing.T) {
 
 // The actual engine, rather than only a fixture, must expose the dial.
 var _ effortDoor = (*session.Agent)(nil)
+
+// AUTO CROSSES THE WIRE LIKE ANY OTHER WORD, and it is the one that could not be
+// read off the type system: "" is a real answer here, so a hosted conversation
+// put back to auto must still have its dial. The surface draws `⠿ auto` off
+// exactly this pair — an empty resolved rung and a welcome that says there is a
+// dial — and a connection that lost the second would go back to drawing nothing.
+func TestPuttingAHostedConversationBackToAutoKeepsItsDial(t *testing.T) {
+	far := &rungAgent{fakeAgent: &fakeAgent{}, stored: "high"}
+	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
+		return &Engine{Agent: far, SessionFile: "/srv/session.jsonl"}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	agent := loop.Client.Agent()
+	if rung := agent.ResolvedEffort(); rung != "high" {
+		t.Fatalf("the welcome carried %q rather than the engine's rung", rung)
+	}
+	if !agent.SetConversationEffort("") {
+		t.Fatal("the engine refused absence, which is a word its dial takes")
+	}
+	if far.stored != "" {
+		t.Fatalf("the far conversation is still at %q, want absence", far.stored)
+	}
+	// The surface's own copy moved on the keystroke, as it does for a rung.
+	if rung := agent.ResolvedEffort(); rung != "" {
+		t.Fatalf("the surface still draws %q after the conversation was cleared", rung)
+	}
+	// AND THE DIAL IS STILL THERE. The word is empty and the capability is not:
+	// only the welcome can say which of the two an empty rung means.
+	if !agent.EffortSupported() {
+		t.Fatal("clearing the rung took the dial away with it")
+	}
+	if rung := agent.ConversationEffort(); rung != "" {
+		t.Fatalf("the stored rung read back as %q", rung)
+	}
+}
