@@ -1059,10 +1059,7 @@ func (a *Agent) newHandAgent(part forkPart, seed []ai.Message, system string, le
 	// wire (agent.go's sessionCompleter) and it was built with the fresh one this
 	// constructor minted.
 	hand.cacheKey = key
-	if wrapper, ok := hand.client.(sessionCompleter); ok {
-		wrapper.cacheKey = key
-		hand.client = wrapper
-	}
+	hand.setClientCacheKeyLocked(key)
 	hand.mu.Unlock()
 	return hand, nil
 }

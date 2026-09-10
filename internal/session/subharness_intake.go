@@ -148,7 +148,7 @@ func (a *Agent) fillSubharnessCard(card *SubharnessCard) {
 		// paying to make a decision the program already made.
 		return
 	}
-	if a.client == nil {
+	if !a.hasClient() {
 		return
 	}
 	material := a.intakeMaterial()

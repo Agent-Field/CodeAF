@@ -15,6 +15,7 @@ import (
 
 	lanes "github.com/Agent-Field/aforge-v2/internal/lane"
 	"github.com/Agent-Field/aforge-v2/internal/modelsource"
+	"github.com/Agent-Field/aforge-v2/internal/modelsource/sourcestub"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/standing"
@@ -302,6 +303,78 @@ func TestTheCrewNeverReachesAServiceThatDoesNotServeIt(t *testing.T) {
 					t.Fatalf("direct service received a non-chat request: %+v", directServer.allRequests())
 				}
 			}
+		})
+	}
+}
+
+// The memory reflex chooses between its own tier and the conversation model
+// after it has been bound. Each choice has to resolve its account at that
+// moment: resolving only the primary at bind time sends the fallback to the
+// wrong host, while binding the conversation client sends the primary there.
+func TestTheMemoryReflexResolvesEachActiveModelsService(t *testing.T) {
+	for attempt := 0; attempt < 5; attempt++ {
+		t.Run(fmt.Sprintf("attempt-%d", attempt+1), func(t *testing.T) {
+			defaultServer := sourcestub.New("crew/reflex")
+			directServer := sourcestub.New("fake-small")
+			t.Cleanup(defaultServer.Close)
+			t.Cleanup(directServer.Close)
+			defaultServer.Refuse(http.StatusOK, `{"model":"crew/reflex","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":" "}}]}`)
+			directServer.Refuse(http.StatusOK, `{"model":"fake-small","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"{\"inject\":[],\"cmd\":null}"}}]}`)
+
+			brain, err := store.Open(filepath.Join(t.TempDir(), "brain.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = brain.Close() })
+			if _, err := brain.AddMemory(store.Memory{
+				Type: store.MemoryFact, Scope: store.MemoryScopeUser,
+				Title: "the useful fact", Text: "the useful remembered fact",
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			defaultSource := modelsource.DefaultSource(defaultServer.URL())
+			directSource := modelsource.Source{ID: "direct", Written: "localhost", Address: directServer.URL()}
+			agent, err := New(Config{
+				Workspace: t.TempDir(), Model: "localhost/fake-small", Memory: brain,
+				Sources: modelsource.NewSet(
+					modelsource.Connected{Source: defaultSource, Key: "default-reflex-key", Address: defaultServer.URL()},
+					modelsource.Connected{Source: directSource, Key: "direct-chat-key", Address: directServer.URL()},
+				),
+				RolesSource: tierSettings(map[string]string{
+					roles.TierKey(roles.TierReflex): "crew/reflex",
+				}),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = agent.Close() })
+
+			// The first route gets an empty primary answer and moves to the
+			// conversation-model fallback. The second starts on that fallback.
+			agent.routedMemory(t.Context(), "use the useful fact", nil, false)
+			agent.routedMemory(t.Context(), "use the useful fact again", nil, false)
+
+			assertSourceRequests := func(server *sourcestub.Server, count int, bearer, model string) {
+				t.Helper()
+				requests := server.Requests()
+				if len(requests) != count {
+					t.Fatalf("%s host received %d requests, want %d: %+v", model, len(requests), count, requests)
+				}
+				for index, request := range requests {
+					var body struct {
+						Model string `json:"model"`
+					}
+					if err := json.Unmarshal(request.Body, &body); err != nil {
+						t.Fatalf("decode %s request %d: %v", model, index+1, err)
+					}
+					if request.Method != http.MethodPost || request.Bearer != "Bearer "+bearer || body.Model != model {
+						t.Fatalf("%s request %d = method %q bearer %q model %q", model, index+1, request.Method, request.Bearer, body.Model)
+					}
+				}
+			}
+			assertSourceRequests(defaultServer, 1, "default-reflex-key", "crew/reflex")
+			assertSourceRequests(directServer, 2, "direct-chat-key", "fake-small")
 		})
 	}
 }

@@ -1599,12 +1599,12 @@ func unbracket(stage string) string {
 // A session with no client at all is the same answer for the other reason.
 func (a *Agent) markReaderAbsent() bool {
 	a.mu.Lock()
-	source, client, floor := a.config.RolesSource, a.client, ""
+	source, floor := a.config.RolesSource, ""
 	if a.config.OneModel {
 		floor = a.model
 	}
 	a.mu.Unlock()
-	if client != nil {
+	if a.hasClient() {
 		if _, err := roles.Ladder(roles.Source(source), roles.RoleMarkReader, floor); err == nil {
 			return false
 		}

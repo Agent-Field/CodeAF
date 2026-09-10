@@ -66,13 +66,7 @@ func New(config Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
-	agent.managedClient = true
-	agent.clientAccount = accountFor(config, config.Model)
-	if wrapper, ok := agent.client.(sessionCompleter); ok {
-		agent.clientPool = newModelClientPool(config, config.Model, wrapper.inner)
-	} else {
-		agent.clientPool = newModelClientPool(config, config.Model, agent.client)
-	}
+	agent.manageClient(config)
 	return agent, nil
 }
 
@@ -81,13 +75,7 @@ func New(config Config) (*Agent, error) {
 // parent's account-keyed pool and resolve their own model before their first
 // request, rather than inheriting whichever adapter the parent last used.
 func (a *Agent) newChildAgent(config Config) (*Agent, error) {
-	if a == nil {
-		return nil, errNoCompleter
-	}
-	if !a.managedClient || a.clientPool == nil {
-		return newAgent(config, unwrapCompleter(a.client))
-	}
-	client, _, account, err := a.clientPool.clientFor(config.Model)
+	client, account, pool, managed, err := a.childClient(config)
 	if err != nil {
 		return nil, err
 	}
@@ -95,9 +83,9 @@ func (a *Agent) newChildAgent(config Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
-	child.managedClient = true
+	child.managedClient = managed
 	child.clientAccount = account
-	child.clientPool = a.clientPool
+	child.clientPool = pool
 	return child, nil
 }
 
@@ -354,25 +342,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// one place every request this agent makes passes through, so it is where
 	// the prompt-cache key is stamped. Wrapping earlier would have to read the
 	// key through the agent, which is a pointer cycle to save a line.
-	agent.client = sessionCompleter{
-		inner:    client,
-		cacheKey: agent.cacheKey,
-		// AND WHERE THE NODE'S PATIENCE IS STAMPED, for the reason the cache key
-		// is stamped here: this is the one place every request this agent makes
-		// passes through, and the adapter underneath is shared with the
-		// conversation that spawned the node (see [Agent.newTaskAgent], which
-		// hands the parent's own client down). A flag on the client would make
-		// the conversation patient too; a flag on the wrapper is a flag on this
-		// agent's calls and nobody else's.
-		patient: config.InTask,
-		pacing:  config.pacing,
-		// AND WHETHER THIS AGENT'S REPLIES ARE WATCHED FOR COMING APART
-		// (internal/provider's streamguard.go). The field is spelled as the OFF
-		// state so that a zero Config — every headless run, every test, every
-		// door that has not heard of the row — keeps the guard, which is the
-		// default the row itself has.
-		unguarded: config.ReplyGuardOff,
-	}
+	// The account door owns the field itself, while the construction facts stay
+	// here beside the lifecycle they describe.
+	agent.installSessionClient(client, config)
 	// AND THE WORK IS RECOVERED LAST, once this agent can actually run one. A
 	// resumed journal may have a task graph beside it — nodes that landed, a node
 	// that was still running when the process died, nodes waiting on them — and
@@ -722,15 +694,8 @@ func (a *Agent) SetAPIKey(key string) error {
 	// left the first model request on the empty bearer it opened with. Reach the
 	// same underlying client task children use, then update it before recording
 	// the key for workers spawned later.
-	inner := unwrapCompleter(a.client)
-	if a.managedClient && a.clientPool != nil {
-		if err := a.clientPool.setDefaultKey(key); err != nil {
-			return err
-		}
-	} else if keyed, ok := inner.(interface{ SetAPIKey(string) error }); ok {
-		if err := keyed.SetAPIKey(key); err != nil {
-			return err
-		}
+	if err := a.setDefaultClientKey(key); err != nil {
+		return err
 	}
 	a.config.APIKey = key
 	a.config.Sources = a.config.Sources.WithDefaultKey(key)

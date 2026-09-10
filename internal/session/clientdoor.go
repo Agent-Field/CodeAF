@@ -145,6 +145,150 @@ func newProviderClient(config Config, model string) (*provider.Client, error) {
 	return client, nil
 }
 
+// installSessionClient is the construction-time write of the completer every
+// request from this agent crosses. Keeping the field behind this file means no
+// caller can hand the raw conversation adapter to code that later pins another
+// account's model onto it.
+func (a *Agent) installSessionClient(client Completer, config Config) {
+	a.client = sessionCompleter{
+		inner:    client,
+		cacheKey: a.cacheKey,
+		// A task child waits out provider pacing while a watched conversation
+		// does not. The wrapper is per Agent even when the adapter underneath is
+		// shared, so this posture cannot leak from one side to the other.
+		patient: config.InTask,
+		pacing:  config.pacing,
+		// The field is spelled as the OFF state so a zero Config keeps the
+		// reply guard. Stamping it on the per-Agent wrapper also keeps one
+		// child's choice from changing another request on the shared adapter.
+		unguarded: config.ReplyGuardOff,
+	}
+}
+
+// manageClient gives a public session the account pool its construction-time
+// adapter belongs to. It runs before the Agent is published, so no lock is
+// needed around these initial facts.
+func (a *Agent) manageClient(config Config) {
+	a.managedClient = true
+	a.clientAccount = accountFor(config, config.Model)
+	initial := a.client
+	if wrapper, ok := initial.(sessionCompleter); ok {
+		initial = wrapper.inner
+	}
+	a.clientPool = newModelClientPool(config, config.Model, initial)
+}
+
+// childClient resolves the adapter a new production child starts with. The raw
+// fallback exists only for the scripted-completer seam used by tests; a managed
+// session always answers from the account pool before the child is constructed.
+func (a *Agent) childClient(config Config) (Completer, modelAccount, *modelClientPool, bool, error) {
+	if a == nil {
+		return nil, modelAccount{}, nil, false, errNoCompleter
+	}
+	a.mu.Lock()
+	managed, pool, current := a.managedClient, a.clientPool, a.client
+	a.mu.Unlock()
+	if !managed || pool == nil {
+		return unwrapCompleter(current), modelAccount{}, nil, false, nil
+	}
+	client, _, resolved, err := pool.clientFor(config.Model)
+	return client, resolved, pool, true, err
+}
+
+// setDefaultClientKey updates the adapter behind an existing first-run
+// session. The caller holds a.mu while it updates the matching config facts.
+func (a *Agent) setDefaultClientKey(key string) error {
+	inner := unwrapCompleter(a.client)
+	if a.managedClient && a.clientPool != nil {
+		return a.clientPool.setDefaultKey(key)
+	}
+	if keyed, ok := inner.(interface{ SetAPIKey(string) error }); ok {
+		return keyed.SetAPIKey(key)
+	}
+	return nil
+}
+
+// setClientCacheKeyLocked moves a fork hand's request wrapper to its new
+// lineage. The caller holds a.mu while it updates the Agent's matching key.
+func (a *Agent) setClientCacheKeyLocked(key string) {
+	if wrapper, ok := a.client.(sessionCompleter); ok {
+		wrapper.cacheKey = key
+		a.client = wrapper
+	}
+}
+
+// hasClient reports whether this Agent has any request road at all.
+func (a *Agent) hasClient() bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.client != nil
+}
+
+// modelRoutingCompleter is the only completer view of a live Agent that may
+// leave this file. A caller may pin any model onto it; the wrapper reads that
+// choice and resolves the model's account before forwarding the request.
+type modelRoutingCompleter struct{ agent *Agent }
+
+func (c modelRoutingCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	var request ai.Request
+	for _, option := range options {
+		if err := option(&request); err != nil {
+			return nil, err
+		}
+	}
+	model := strings.TrimSpace(request.Model)
+	if model == "" {
+		model = c.agent.Model()
+	}
+	return c.agent.completeWithModel(ctx, messages, model, options...)
+}
+
+// routedCompleter returns a completer safe to hand to a package that chooses a
+// model later. It returns nil when there is no underlying request road, keeping
+// conditional tools absent rather than installing a wrapper that always fails.
+func (a *Agent) routedCompleter() Completer {
+	if !a.hasClient() {
+		return nil
+	}
+	return modelRoutingCompleter{agent: a}
+}
+
+// fallbackModels reads the adapter's own ordered chain without exposing that
+// adapter to the caller.
+func (a *Agent) fallbackModels(model string) []string {
+	if a == nil {
+		return nil
+	}
+	a.mu.Lock()
+	client := a.client
+	a.mu.Unlock()
+	chain, ok := client.(modelChain)
+	if !ok {
+		return nil
+	}
+	return chain.FallbackModels(model)
+}
+
+// probeClientLanes asks the optional prober without exposing the conversation
+// completer. False means this client has no lane-probing capability.
+func (a *Agent) probeClientLanes(ctx context.Context, model string) bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	client := a.client
+	a.mu.Unlock()
+	prober, ok := client.(laneProber)
+	if !ok {
+		return false
+	}
+	prober.ProbeLanes(ctx, model)
+	return true
+}
+
 // rebindClientLocked moves a managed session to the account its current model
 // names. On a construction failure it installs a refusing completer instead of
 // retaining the old client: no later request may escape through a removed

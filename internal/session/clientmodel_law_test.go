@@ -68,6 +68,44 @@ func TestOnlyTheClientDoorCanOverrideAModel(t *testing.T) {
 	}
 }
 
+// THE SESSION CLIENT MAY BE READ ONLY THROUGH CLIENTDOOR.GO. A raw completer
+// can be handed to another package and pinned to a model from another account;
+// named doors expose the narrower operation, and the one completer that may
+// leave resolves every model option back through the account pool.
+func TestOnlyTheClientDoorReadsTheSessionClient(t *testing.T) {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reads := 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || filepath.Ext(name) != ".go" || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		files := token.NewFileSet()
+		file, err := parser.ParseFile(files, name, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", name, err)
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok || selector.Sel.Name != "client" {
+				return true
+			}
+			if name == "clientdoor.go" {
+				reads++
+			} else {
+				t.Errorf("%s:%d reads a session client outside clientdoor.go", name, files.Position(selector.Pos()).Line)
+			}
+			return true
+		})
+	}
+	if reads == 0 {
+		t.Error("clientdoor.go no longer reads the session client; move or remove this law with the field")
+	}
+}
+
 // Every production Agent is born through agent.go's account-aware doors.
 // newAgent remains the scripted-completer seam for tests, but calling it from
 // another production file recreates the unmanaged child that bypassed model
@@ -104,7 +142,7 @@ func TestEveryProductionAgentGetsTheAccountPool(t *testing.T) {
 			return true
 		})
 	}
-	if calls != 3 {
+	if calls != 2 {
 		t.Errorf("production contains %d newAgent calls, want only the public and child doors in agent.go", calls)
 	}
 }

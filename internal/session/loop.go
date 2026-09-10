@@ -1562,11 +1562,7 @@ func (a *Agent) nextFallback(origin string, hopped []string) (string, bool) {
 	if a.config.OneModel {
 		return "", false
 	}
-	chain, ok := a.client.(modelChain)
-	if !ok {
-		return "", false
-	}
-	options := chain.FallbackModels(origin)
+	options := a.fallbackModels(origin)
 	if len(hopped) >= len(options) {
 		return "", false
 	}

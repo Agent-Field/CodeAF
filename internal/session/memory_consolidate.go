@@ -240,7 +240,7 @@ func NewMemoryTidy(parent Config, brainPath, root string, idle standing.Idle) st
 		if built != nil {
 			return standing.Tidied{}, built
 		}
-		return tidyPass{brain: brain, client: client, model: model, root: root, mark: mark}.run(ctx)
+		return tidyPass{brain: brain, completer: client, model: model, root: root, mark: mark}.run(ctx)
 	}
 }
 
@@ -252,11 +252,11 @@ func NewMemoryTidy(parent Config, brainPath, root string, idle standing.Idle) st
 // to a provider — and this owns everything else. Splitting them there is what
 // lets the gate, the plan and every refusal be tested without either.
 type tidyPass struct {
-	brain  *store.Store
-	client Completer
-	model  string
-	root   string
-	mark   consolidateMark
+	brain     *store.Store
+	completer Completer
+	model     string
+	root      string
+	mark      consolidateMark
 }
 
 // run is the pass proper: read what is remembered, decide whether it is worth a
@@ -276,7 +276,7 @@ func (p tidyPass) run(ctx context.Context) (standing.Tidied, error) {
 	bounded, cancel := context.WithTimeout(ctx, consolidateWindow)
 	defer cancel()
 
-	plan, usd, err := consolidateAsk(bounded, p.client, p.model, batch)
+	plan, usd, err := consolidateAsk(bounded, p.completer, p.model, batch)
 	if err != nil {
 		return standing.Tidied{USD: usd}, err
 	}

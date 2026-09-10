@@ -8565,11 +8565,7 @@ func terminalProviderFailure(err error) bool {
 // Empty is A MOVE THAT IS ABSENT rather than one that fails: a build with no
 // chain, or `--one-model`, and the node fails on the error it always failed on.
 func (a *Agent) nextNodeModel(node *TaskNode) (string, bool) {
-	chain, ok := a.client.(modelChain)
-	if !ok {
-		return "", false
-	}
-	options := chain.FallbackModels(node.runModel())
+	options := a.fallbackModels(node.runModel())
 	if len(options) == 0 {
 		return "", false
 	}
