@@ -945,6 +945,9 @@ func (a *app) raiseHome() tea.Cmd {
 	a.home.readGone()
 	a.home.build()
 	a.home.openAt(a.file)
+	// AND THE CURSOR STANDS ON THE CONVERSATION BEFORE THIS ONE, where this
+	// window has one (homegrid.go's [app.homePreselect]).
+	a.homePreselect()
 	// AND THE CARD'S OWN READINGS ARE TAKEN AT THE ARRIVAL, never in the draw
 	// (homecardread.go). The repository among them is a command, so it is asked
 	// for rather than waited on and comes back as a message.

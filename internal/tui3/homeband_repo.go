@@ -61,6 +61,11 @@ func (a *app) tookHomeRepo(msg homeRepoMsg) {
 		a.home.repos = map[string]homeRepoReading{}
 	}
 	a.home.repos[msg.workspace] = homeRepoReading{at: a.now(), line: msg.line, branch: msg.branch}
+	// THE GRID DRAWS IT ON A PROJECT'S ROW, which is words taken when the lines
+	// are built (homepanel_projects.go).
+	if a.home.gridOn() {
+		a.home.build()
+	}
 	a.touch()
 }
 
