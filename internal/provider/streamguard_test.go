@@ -711,14 +711,21 @@ func streamAgainstCtx(ctx context.Context, t *testing.T, base string, observed *
 
 // ── the wall ────────────────────────────────────────────────────────────────
 
-// TestAStreamThatNeverStopsIsCutAtTheWall is the whole of the missing bound.
+// TestAStreamThatNeverStopsIsCutAtTheCeiling is the whole of the missing bound.
 // The endpoint writes a token, and another, and another, forever: every silence
 // bound in this file is reset by each one, the streaming client has no total
 // deadline (retry.go's clientFor), and before the wall existed nothing in this
 // process ended such a request. The cut also carries the three facts the journal
 // row needs — who served, how long, how much arrived.
-func TestAStreamThatNeverStopsIsCutAtTheWall(t *testing.T) {
-	defer shortenWall(t, 150*time.Millisecond, time.Second)()
+//
+// IT IS CUT AT THE CEILING AND NOT AT ITS FIRST WALL, because it keeps pace the
+// whole time and a wall that fires on a stream keeping pace re-arms
+// ([stallWatch.keptPace]). The ceiling is the one bound no evidence moves, so
+// the stream is cut there however well it is writing, and the sentence names
+// the ceiling because that is the figure the timer was last set to.
+func TestAStreamThatNeverStopsIsCutAtTheCeiling(t *testing.T) {
+	const ceiling = 600 * time.Millisecond
+	defer shortenWall(t, 150*time.Millisecond, ceiling)()
 
 	stop := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -743,7 +750,10 @@ func TestAStreamThatNeverStopsIsCutAtTheWall(t *testing.T) {
 	}))
 	defer func() { close(stop); server.Close() }()
 
-	_, err := streamAgainst(t, server.URL, nil)
+	// THE DEGENERATION GUARD IS OFF because the text is one phrase repeated on
+	// purpose: this test is about the wall, and a repetition that runs to the
+	// ceiling is soup the guard would rightly cut first.
+	_, err := streamAgainstCtx(WithoutBabbleGuard(context.Background()), t, server.URL, nil)
 	cut, ok := CutFrom(err)
 	if !ok {
 		t.Fatalf("err = %v, want a stream cut", err)
@@ -751,8 +761,11 @@ func TestAStreamThatNeverStopsIsCutAtTheWall(t *testing.T) {
 	if cut.Reason != CutOverrun {
 		t.Fatalf("reason = %d, want CutOverrun: the stream was never quiet", cut.Reason)
 	}
-	if cut.Waited != 150*time.Millisecond {
-		t.Fatalf("waited = %s, want the wall that fired", cut.Waited)
+	if cut.Waited != ceiling {
+		t.Fatalf("waited = %s, want the ceiling %s: a stream keeping pace is re-armed until it", cut.Waited, ceiling)
+	}
+	if cut.Ran < ceiling {
+		t.Fatalf("ran = %s, want the stream to have run to the ceiling %s", cut.Ran, ceiling)
 	}
 	if !strings.Contains(cut.Error(), "without finishing") {
 		t.Fatalf("sentence = %q", cut.Error())
@@ -922,7 +935,9 @@ func TestAWallCutStrikesTheLaneAndTheNextRequestRoutesAround(t *testing.T) {
 	client.velocity = newVelocityLedger()
 	client.velocity.brisk(model, "quicksilver")
 
-	ctx := WithStreamObserver(context.Background(), func(StreamEvent) {})
+	// The guard is off for [TestAStreamThatNeverStopsIsCutAtTheCeiling]'s
+	// reason: the repeated phrase is the fixture, and the wall is the subject.
+	ctx := WithStreamObserver(WithoutBabbleGuard(context.Background()), func(StreamEvent) {})
 	_, err = client.CompleteWithMessages(ctx, userMessages("hello"))
 	cut, ok := CutFrom(err)
 	if !ok || cut.Reason != CutOverrun {

@@ -275,6 +275,17 @@ func (d streamDelta) callText() string {
 	return text.String()
 }
 
+// written is how many bytes of the model's writing this delta carried: answer,
+// thought and call arguments alike. It is what the stream wall counts
+// ([stallWatch.progress]).
+func (d streamDelta) written() int {
+	bytes := len(d.Content) + len(d.Reasoning) + len(d.ReasoningContent) + len(d.ReasoningText)
+	for _, fragment := range d.ToolCalls {
+		bytes += len(fragment.Function.Arguments)
+	}
+	return bytes
+}
+
 // reasoningEvents keeps the field signature attached to each piece. Providers
 // use one spelling consistently; retaining all three here also makes an odd
 // mixed stream lossless instead of silently choosing one.

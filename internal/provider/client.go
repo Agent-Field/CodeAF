@@ -906,7 +906,7 @@ func (c *Client) completionInOnePiece(
 	// failure plane the streamed one does, and for the same reason — every
 	// headless worker answers whole, and a guard on one transport is a guard a
 	// change of default silently removes.
-	if cut := c.machineryCut(ctx, request, &response, served, began, responseText(&response)); cut != nil {
+	if cut := c.machineryCut(ctx, request, &response, served, began, tokensIn(responseText(&response))); cut != nil {
 		c.record(recordFacts{
 			ctx: ctx, request: request, knobs: knobs, stream: stream,
 			began: logBegan, status: status, served: served, err: cut,
@@ -1116,21 +1116,22 @@ func outputTokens(response *ai.Response, text string) int {
 }
 
 // stampCut writes onto a cut the three facts only the read loop holds: who the
-// stream said was serving it, how long it had been open, and how much answer had
-// arrived. See [StreamCut.Provider] for who reads them.
+// stream said was serving it, how long it had been open, and how much the model
+// had written. See [StreamCut.Provider] for who reads them.
 //
 // The token figure is the estimate, because a cut stream never delivered a usage
 // block — the provider counts at the end and there was no end. It is the same
 // estimator a finished stream falls back to (outputTokens), so a row that says
 // "eleven hundred tokens in eighteen minutes" is comparable with the call rows
-// beside it.
-func (c *Client) stampCut(cut *StreamCut, served string, began time.Time, text string) {
+// beside it — and on a guarded stream it is the stream wall's own count
+// ([stallWatch.tokens]), so the row and the decision it records are one figure.
+func (c *Client) stampCut(cut *StreamCut, served string, began time.Time, tokens int) {
 	if cut == nil {
 		return
 	}
 	cut.Provider = strings.TrimSpace(served)
 	cut.Ran = c.clock().Sub(began)
-	cut.Tokens = outputTokens(nil, text)
+	cut.Tokens = tokens
 }
 
 // machineryCut reads a COMPLETE answer for the fourth failure plane — the
@@ -1143,7 +1144,7 @@ func (c *Client) stampCut(cut *StreamCut, served string, began time.Time, text s
 // do, for the same reasons written at their site: the lane is struck so the
 // ladder's next ask lands somewhere else, and the endpoint pin is released
 // because an endpoint serving unparsed grammar is failing this lineage.
-func (c *Client) machineryCut(ctx context.Context, request *ai.Request, response *ai.Response, served string, began time.Time, text string) *StreamCut {
+func (c *Client) machineryCut(ctx context.Context, request *ai.Request, response *ai.Response, served string, began time.Time, tokens int) *StreamCut {
 	// It answers to the same switch the degeneration guard does, because it is
 	// the same kind of judgment — a reading of the reply's shape — and `reply
 	// guard off` promises the person sees whatever arrives.
@@ -1151,7 +1152,7 @@ func (c *Client) machineryCut(ctx context.Context, request *ai.Request, response
 		return nil
 	}
 	cut := &StreamCut{Reason: CutMachinery}
-	c.stampCut(cut, served, began, text)
+	c.stampCut(cut, served, began, tokens)
 	cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
 	// AND THE BELIEF LEARNS THAT THIS LANE SERVED SOMETHING UNUSABLE, which is
 	// the claim the strike above cannot make: a strike expires in five minutes
@@ -1170,7 +1171,7 @@ func (c *Client) machineryCut(ctx context.Context, request *ai.Request, response
 // It answers only on a rescue (`hedgeLane` is set). The primary of a
 // hedged race is judged in [hedgeRace.refuseCorrupt], because that is
 // the moment the race would otherwise name a winner.
-func (c *Client) rescuedStreamCut(ctx context.Context, request *ai.Request, response *ai.Response, served string, began time.Time, text string) *StreamCut {
+func (c *Client) rescuedStreamCut(ctx context.Context, request *ai.Request, response *ai.Response, served string, began time.Time, tokens int) *StreamCut {
 	if hedgeLaneFrom(ctx) == "" {
 		return nil
 	}
@@ -1182,7 +1183,7 @@ func (c *Client) rescuedStreamCut(ctx context.Context, request *ai.Request, resp
 	if !ok {
 		cut = &StreamCut{Reason: CutBabble}
 	}
-	c.stampCut(cut, served, began, text)
+	c.stampCut(cut, served, began, tokens)
 	cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
 	c.noteLaneOutcome(c.modelFor(request), served, cut.Reason.word(), false)
 	c.releaseEndpoint(ctx, c.modelFor(request))
@@ -1340,8 +1341,9 @@ func (c *Client) completeWithMessagesStreaming(
 	//
 	// AND THE WALL STARTS WITH IT (streamguard.go's THE WALL). It opens at the
 	// lineage's widest — no chunk has named a serving endpoint yet — and
-	// narrows to the lane's own the moment one does, below.
-	stall := newStallWatch(ctx, cutStream, c.streamWall(c.modelFor(request), ""))
+	// narrows to the lane's own the moment one does, below. The pace it is
+	// judged at when it fires travels with it, by the same rule.
+	stall := newStallWatch(ctx, cutStream, c.streamWall(c.modelFor(request), ""), c.streamPace(c.modelFor(request), ""))
 	defer stall.stop()
 	// THE MOMENT THE ENDPOINT OWES AN ANSWER is the moment this arm's wait
 	// really began, and it is taken from the reading above rather than from a
@@ -1470,7 +1472,7 @@ func (c *Client) completeWithMessagesStreaming(
 	// and none of it reaches the transcript.
 	soup := func() (*ai.Response, bool, error) {
 		cut := &StreamCut{Reason: CutBabble}
-		c.stampCut(cut, served, began, content.String())
+		c.stampCut(cut, served, began, stall.tokens())
 		cut.Rerouted = c.noteCutProvider(c.modelFor(request), served)
 		// Soup is the plainest possible statement that this lane's answers
 		// cannot be used, so it is the plainest thing the quality belief can
@@ -1499,7 +1501,7 @@ func (c *Client) completeWithMessagesStreaming(
 				// that cannot say who was serving or how much answer had
 				// arrived is the row that made this whole bound guesswork the
 				// first time ([StreamCut.Provider]).
-				c.stampCut(cut, served, began, content.String())
+				c.stampCut(cut, served, began, stall.tokens())
 				// Whether the ledger took the lane away travels ON the cut: the
 				// turn loop decides how many more times to ask this model from
 				// it, and it has no other way to know ([StreamCut.Rerouted]).
@@ -1552,7 +1554,7 @@ func (c *Client) completeWithMessagesStreaming(
 				// The first naming is what narrows the wall onto the lane that
 				// is actually serving; [stallWatch.rewall] does it once and
 				// measures the new bound from when the stream opened.
-				stall.rewall(c.streamWall(c.modelFor(request), chunk.Provider))
+				stall.rewall(c.streamWall(c.modelFor(request), chunk.Provider), c.streamPace(c.modelFor(request), chunk.Provider))
 				// And it narrows the SILENCE bound the same way, onto what this
 				// lane's measured rate says a gap between two tokens should be
 				// ([stallWatch.regap]). The two travel together because they
@@ -1621,7 +1623,9 @@ func (c *Client) completeWithMessagesStreaming(
 					widestGap = now.Sub(lastWrite)
 				}
 				lastWrite = now
-				stall.progress()
+				// The wall counts what was written and is not moved by it
+				// (streamguard.go's THE WALL BOUNDS A REPLY THAT IS NOT WORKING).
+				stall.progress(choice.Delta.written())
 				// AND THE SAME PROGRESS IS ONE READING FOR THE CONTROLLER.
 				//
 				// THE TWO COUNTS ARE NOT INTERCHANGEABLE. A token of answer is
@@ -1866,7 +1870,7 @@ func (c *Client) completeWithMessagesStreaming(
 	// not the answer was language. It sits on BOTH epilogues or on neither,
 	// exactly as the learning below: the leak is a property of the endpoint,
 	// not of the transport that carried it.
-	if cut := c.machineryCut(ctx, request, response, served, began, content.String()); cut != nil {
+	if cut := c.machineryCut(ctx, request, response, served, began, stall.tokens()); cut != nil {
 		c.record(recordFacts{
 			ctx: ctx, request: request, knobs: knobs, stream: true,
 			began: logBegan, status: httpResponse.StatusCode, served: served, err: cut,
@@ -1878,7 +1882,7 @@ func (c *Client) completeWithMessagesStreaming(
 	// to accept the first arm that closed, and F20 persisted the mojibake
 	// that arrived after a 429. The check is here, before StreamFinished,
 	// so a corrupt rescue leaves as a failed arm and never as a response.
-	if cut := c.rescuedStreamCut(ctx, request, response, served, began, content.String()); cut != nil {
+	if cut := c.rescuedStreamCut(ctx, request, response, served, began, stall.tokens()); cut != nil {
 		c.record(recordFacts{
 			ctx: ctx, request: request, knobs: knobs, stream: true,
 			began: logBegan, status: httpResponse.StatusCode, served: served, err: cut,
