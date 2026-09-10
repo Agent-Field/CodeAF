@@ -16,3 +16,8 @@ Storage and policy choices remain proposals where labeled. Historical delivery
 tracks are not new primitives or permission to build unsettled behavior.
 Confirmed slices return to the personal AI integration branch only after review
 and product-level evidence; the parent draft remains unmerged into dev.
+
+The critical review withdraws any implication that mapping journeys onto diagrams
+validates implementation. It records backend identity/authority/transition gaps,
+a source-pinned draft comparison and fresh Spark validation evidence. The target
+remains a proposal; backend records are independent of final product labels.
