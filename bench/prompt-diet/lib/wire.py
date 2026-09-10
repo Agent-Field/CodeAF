@@ -23,6 +23,14 @@ So the guard answers "what did this turn cost" for every arm, and the call log
 answers "how much of it was the tool block" for the aforge arm. A row from
 either carries `source` saying which, and the two are never added together.
 
+A call-log row also carries the PREFIX FINGERPRINTS — `system_bytes`,
+`system_sha`, `tool_block_bytes`, `tools_sha`, `prefix_sha` — which are what a
+byte-stability question is answered from: the same `prefix_sha` on every request
+of a conversation is a prefix that stayed cacheable, and a new one per turn is
+the frontier bill DESIGN.md §0 opens with. The whole body is NOT copied in here;
+one run's bodies are sixteen megabytes and this file is meant to be read as a
+table. `body_source` names the call log they are in, beside this file.
+
 The exact static split — page bytes against tool-block bytes — is not sampled
 here at all. It comes from layer A's budget test, which weighs the rendered page
 and the marshalled belt directly and is the scoreboard the wave commits against.
@@ -30,6 +38,7 @@ and the marshalled belt directly and is the scoreboard the wave commits against.
 Usage: wire.py <run-dir>   → JSON Lines on stdout
 """
 
+import hashlib
 import json
 import os
 import sys
@@ -122,18 +131,60 @@ def from_guard(path, cell):
     return out
 
 
-def tool_block_bytes(body):
-    """The marshalled size of just the `tools` array of a request body."""
+def digest(text):
+    """Twelve hex characters of SHA-256 — enough to tell two prefixes apart in a
+    table, short enough to read down a column."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
+
+def prefix_of(body):
+    """The size and the fingerprint of everything a request pays for twice.
+
+    BYTE-STABILITY IS A DIFFERENT QUESTION FROM SIZE, and it is the one the
+    frontier cached bill turns on (DESIGN.md §0): a prefix that is one byte
+    different from the last request's re-prices the whole conversation cold, so
+    a diet that shortened the page while making it vary per turn would look like
+    a win in every size column here and cost more in practice. These fields are
+    what answer it — the system message and the tool block, each weighed and
+    each fingerprinted, per request — so a reader can see at a glance whether
+    the same prefix travelled every time or a new one did.
+
+    Everything is computed from the request body the call log already keeps
+    under AFORGE_CALL_LOG_BODIES; nothing here needs a second capture. Absent
+    fields mean the body was not kept, never that the prefix was empty."""
+    out = {"tool_block_bytes": None, "tools_sha": None,
+           "system_bytes": None, "system_sha": None, "prefix_sha": None}
     if not body:
-        return None
+        return out
     try:
         payload = json.loads(body)
     except ValueError:
-        return None
+        return out
     tools = payload.get("tools")
-    if not isinstance(tools, list):
-        return None
-    return len(json.dumps(tools, separators=(",", ":")))
+    tools_text = ""
+    if isinstance(tools, list):
+        tools_text = json.dumps(tools, separators=(",", ":"), sort_keys=True)
+        out["tool_block_bytes"] = len(tools_text)
+        out["tools_sha"] = digest(tools_text)
+    # The system prompt is message[0] where the wire carries one, and some
+    # adapters put it in a top-level `system` field instead. Both are read, and
+    # a conversation that opens with an ordinary user message simply has none.
+    system_text = ""
+    messages = payload.get("messages")
+    if isinstance(messages, list) and messages:
+        first = messages[0]
+        if isinstance(first, dict) and first.get("role") == "system":
+            content = first.get("content")
+            system_text = content if isinstance(content, str) else json.dumps(
+                content, separators=(",", ":"), sort_keys=True)
+    if not system_text and isinstance(payload.get("system"), str):
+        system_text = payload["system"]
+    if system_text:
+        out["system_bytes"] = len(system_text)
+        out["system_sha"] = digest(system_text)
+    if tools_text or system_text:
+        out["prefix_sha"] = digest(system_text + "\x00" + tools_text)
+    return out
 
 
 def from_calllog(path, cell):
@@ -157,10 +208,15 @@ def from_calllog(path, cell):
             "request_bytes": len(row["request_body"]) if row.get("request_body") else None,
             "message_count": row.get("messages"),
             "tool_count": row.get("tools"),
-            "tool_block_bytes": tool_block_bytes(row.get("request_body")),
             "elapsed_ms": row.get("ms"),
             "outcome": row.get("finish"),
+            # WHERE THE WHOLE BODY IS, for anyone who needs the bytes rather
+            # than a fingerprint of them. It is deliberately not copied in here:
+            # one run's bodies are sixteen megabytes and this file is meant to
+            # be read as a table.
+            "body_source": os.path.basename(path),
         })
+        out[-1].update(prefix_of(row.get("request_body")))
     return out
 
 
