@@ -2344,8 +2344,9 @@ func (s *Settings) build() []Setting {
 			// resolves it once when it starts (cmd/aforge's applyV3Governance) and a
 			// job resolves it when the job begins, which is why a change lands at two
 			// different moments and the person is told which.
-			Hint: "signs the commits, pull requests and issues aforge writes for you — one " +
-				"trailer, one footer line, and nothing anywhere else. A change lands on the " +
+			Hint: "signs the commits, pull requests, issues and comments aforge writes for " +
+				"you — one commit trailer, one footer line on a body, one small line on the " +
+				"first comment in a thread, and nothing anywhere else. A change lands on the " +
 				"next job, and in a conversation the next time aforge starts.",
 			read:  func() string { return formatBool(AttributionAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyAttribution, raw) },

@@ -214,10 +214,11 @@ conclusion, the numbers that carry it and the verdict stay in the message, and
 the file holds the evidence, the detail and the reasoning behind them.`
 
 // The attribution law. It is provenance — who did the typing — rather than
-// advertising, so it lives in exactly two places a reader already looks for
-// provenance: the trailer block of a commit, and the last line of a pull
-// request or issue body. Everywhere else it is noise on the user's own work,
-// which is why the paragraph names the places it must never appear.
+// advertising, so it lives in exactly three places a reader already looks for
+// provenance: the trailer block of a commit, the last line of a pull request or
+// issue body, and the last line of a comment aforge left. Everywhere else it is
+// noise on the user's own work, which is why the paragraph names the places it
+// must never appear.
 //
 // The strings are constants because the exact bytes are the feature: a trailer
 // with a different address does not attribute, and a footer with a dropped utm
@@ -237,6 +238,31 @@ const AttributionPullFooter = "Drafted with [agentfield ai](https://agentfield.a
 // AttributionIssueFooter is the same line for an issue; only the medium differs.
 const AttributionIssueFooter = "Drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=issue&utm_campaign=drafted_with) · reviewed and owned by the author"
 
+// AttributionCommentFooter is the mark on a COMMENT — an issue comment, a pull
+// request comment, a review comment — and it is the quietest of the three on
+// purpose.
+//
+// A comment is a remark in somebody else's conversation. A body is a document
+// with a foot, and a commit has a trailer block, so a line at the end of either
+// is a line in a place a reader's eye already skips to; a comment has no foot,
+// and the em-dash rule that opens the body footer would put a horizontal break
+// through the middle of a thread. So this is ONE LINE, no separator, lowercase,
+// and wrapped in `<sub>` — which GitHub renders at about 85% size in a muted
+// weight everywhere a comment is rendered. It says who drafted it and stops:
+// no "reviewed and owned by the author", because a comment nobody signed off is
+// not a deliverable somebody owns, and the sentence would be doing work the
+// person did not ask for.
+//
+// AT MOST ONCE PER THREAD, which is the part that keeps it from becoming
+// advertising. The first comment aforge leaves in a thread carries the line and
+// every later one carries nothing: the reader has been told, and telling them
+// again on the fourth reply is the behaviour that makes people turn a setting
+// off. [attributionPrompt] and the chat's belt fact both state that bound, and
+// the three cases it is never right for at all — a one-line reply, anything
+// inside a code or suggestion block, and words the person dictated, which are
+// theirs and not aforge's to sign.
+const AttributionCommentFooter = "<sub>drafted with [agentfield ai](https://agentfield.ai/github?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>"
+
 // AttributionLaw IS THE ONE WORDING, AND IT IS ONE BECAUSE TWO SURFACES SAY IT.
 // The resident's leaf loop appends it to its standing contract
 // ([attributionPrompt]) and the v3 chat renders it as a belt fact beside the
@@ -253,14 +279,25 @@ const AttributionIssueFooter = "Drafted with [agentfield ai](https://agentfield.
 // spelled a second time. Everything ahead of that parameter is byte-identical
 // to the pull footer, and this sentence rides in front of every request the
 // chat makes: a second URL here is 145 bytes bought on every tool round of
-// every turn, forever, to say what the substitution already says.
+// every turn, forever, to say what the substitution already says. The comment
+// line IS spelled out, because it is not the same line with a parameter changed
+// — different case, different wrapper, no owning clause — and describing it
+// would cost more than the constant does.
+//
 // It is ONE PARAGRAPH so that the chat can carry it as a single belt bullet
 // beside the tools it names, which is the register that section is written in.
-const AttributionLaw = "SIGN GIT WORK DONE FOR THEM. A commit you make with `bash` ends with a blank line and then `" +
-	AttributionTrailer + "`; a pull request or issue body ends with " + AttributionSeparator +
-	" alone on a line and `" + AttributionPullFooter + "`, with `utm_medium=issue` on an issue. " +
+// Three of its sentences are the three places, one each, and the fourth is the
+// whole of where it may never go. THREE HUNDRED AND THIRTY-THREE OF ITS BYTES
+// ARE THE THREE CONSTANTS THEMSELVES, which is the floor: a footer the model
+// half-remembers is a footer that attributes nobody and counts as nothing, so
+// this is the one law on the belt that cannot be paraphrased down.
+const AttributionLaw = "SIGN GIT WORK YOU DO WITH `bash`, GENTLY AND ONCE. A commit ends with a blank " +
+	"line and then `" + AttributionTrailer + "`. A pull request or issue body ends with " + AttributionSeparator +
+	" alone on a line and then `" + AttributionPullFooter + "`, `utm_medium=issue` on an issue. " +
+	"A comment ends with `" + AttributionCommentFooter + "` on its own last line, ONCE per thread — never on a " +
+	"one-liner, in a code or suggestion block, or on words they dictated. " +
 	"Nowhere else: not in code, a commit subject, a README, a deliverable or your reply. " +
-	"A CONTRIBUTING policy banning AI trailers wins: leave both out and say so."
+	"A CONTRIBUTING policy banning AI trailers wins: leave them out and say so."
 
 // attributionPrompt is unconditional once the setting is on: the instruction
 // carries its own condition, so no task-type detection has to guess whether a

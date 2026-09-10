@@ -121,6 +121,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"who is agentfield-bot", "permissions"},
 		{"what is the drafted with line at the bottom of my pull request", "permissions"},
 		{"stop adding a co-author trailer to my commits", "permissions"},
+		{"does it sign every comment it leaves on my pull request", "permissions"},
+		{"what is the small drafted with line under its comment", "permissions"},
 		// AND THE TASK PROPOSAL AS IT IS DRAWN NOW that it is that block too
 		// (internal/tui3's task.go), asked the four ways somebody meets the
 		// keys that moved: the answers row that replaced the chips, the typed

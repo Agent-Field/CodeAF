@@ -34,6 +34,18 @@ func TestTheAttributionRowIsOnTheBeltOnlyWhenTheRowIsOn(t *testing.T) {
 	if !strings.Contains(on, exec.AttributionPullFooter) {
 		t.Fatalf("attribution is on and the page never spells the pull-request footer")
 	}
+	// AND THE COMMENT LINE, WHICH IS THE ONE WITH A BOUND ON IT. The chat is
+	// where comments get written, so a page that spelled the line without saying
+	// once-per-thread would be the page that turns provenance into a signature on
+	// every reply in somebody's thread.
+	if !strings.Contains(on, exec.AttributionCommentFooter) {
+		t.Fatalf("attribution is on and the page never spells the comment line")
+	}
+	for _, want := range []string{"ONCE per thread", "one-liner", "suggestion block", "dictated"} {
+		if !strings.Contains(on, want) {
+			t.Fatalf("the page spells the comment line without its bound: %q", want)
+		}
+	}
 	// AND THE PLACES IT MUST NOT GO ARE ON THE PAGE, because that half is the
 	// half a model gets wrong: a footer in the reply, a trailer in a README.
 	for _, want := range []string{"commit subject", "README", "CONTRIBUTING"} {
@@ -43,7 +55,8 @@ func TestTheAttributionRowIsOnTheBeltOnlyWhenTheRowIsOn(t *testing.T) {
 	}
 
 	off := promptWithBeltFacts(Config{Workspace: t.TempDir(), Model: "test/model"})
-	for _, unwanted := range []string{exec.AttributionTrailer, exec.AttributionPullFooter, "agentfield-bot", "Co-Authored-By"} {
+	for _, unwanted := range []string{exec.AttributionTrailer, exec.AttributionPullFooter,
+		exec.AttributionCommentFooter, "agentfield-bot", "Co-Authored-By", "drafted with"} {
 		if strings.Contains(off, unwanted) {
 			t.Fatalf("attribution is off and the page still says %q", unwanted)
 		}

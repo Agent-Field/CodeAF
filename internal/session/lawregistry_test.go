@@ -113,7 +113,7 @@ var lawRegistry = []lawUnit{
 	// description and this law is aforge's, and it is stated in ONE place for
 	// both surfaces there are — the leaf loop's contract and this page read the
 	// same constant (internal/exec's [exec.AttributionLaw]).
-	{id: "attribution.sign-git-work", class: lawCore, key: "SIGN GIT WORK DONE FOR THEM."},
+	{id: "attribution.sign-git-work", class: lawCore, key: "SIGN GIT WORK YOU DO WITH `bash`, GENTLY AND ONCE."},
 
 	// ── and the laws the page gave up to the verb that owns them. Each of
 	// these was a page sentence until the diet; the description had said it all

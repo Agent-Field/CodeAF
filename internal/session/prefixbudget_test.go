@@ -176,20 +176,27 @@ import (
 // build. On dev alone it was 23,391 → 21,202; landing after lane C's delete
 // pass it is 22,714 → 20,525, and the two together leave the prefix at 44,569,
 // which is 3,431 under. Neither raised the budget.
-// ATTRIBUTION COST 586 BYTES AND 207 OF THEM ARE THE FEATURE (2026-09-10). Lane
-// I of the prompt diet gave the chat the law the resident has had all along:
-// aforge signs the git work it does in somebody's name, one trailer on a commit
-// and one footer line on a pull request or issue. It is a law this page did not
-// state at all — nothing was deleted for it, because there was no second copy to
-// delete — and the belt fact is the SHORTEST form it can take: 207 of its bytes
-// are the trailer and the footer themselves, which are constants because the
-// exact bytes are what attributes (internal/exec's [exec.AttributionLaw]), and
-// the issue footer is named by the one utm parameter that differs rather than
-// spelled a second time. It is also CONDITIONAL — off with the row off, off in a
-// hand whose bash cannot commit — so this figure is the widest page and not
-// everybody's. On dev alone it was 22,714 → 23,300; landing after lane D's
-// event pass it is 20,525 → 21,111, the tool block is unmoved at 24,044, and the
-// prefix is 45,155 — 2,845 under, and the cap is untouched.
+// ATTRIBUTION COST 863 BYTES AND 333 OF THEM ARE THE FEATURE (2026-09-10). Lane
+// I of the prompt diet gave the chat the law the resident has had all along, and
+// a third case with it: aforge signs the git work it does in somebody's name —
+// one trailer on a commit, one footer line on a pull request or issue body, and
+// one small `<sub>` line on the FIRST comment it leaves in a thread and no later
+// one. It is a law this page did not state at all, so nothing was deleted for it;
+// there was no second copy to delete.
+//
+// THE FLOOR IS THE CONSTANTS AND THE FLOOR IS 333 BYTES. The trailer, the pull
+// footer and the comment line are constants because the exact bytes are what
+// attributes — a footer the model half-remembers counts as nothing — so this is
+// the one law on the belt that cannot be paraphrased down. What IS paid for: the
+// issue footer is named by the single utm parameter that differs rather than
+// spelled a second time (145 bytes), and the law is four sentences, three places
+// and one nowhere-else, with no example and no reasoning.
+//
+// It is also CONDITIONAL — off with the row off, off in a hand whose bash cannot
+// commit — so this figure is the widest page and not everybody's. On dev alone
+// the page was 22,714 → 23,577; landing after lane D's event pass it is
+// 20,525 → 21,389, the tool block is unmoved at 24,044, and the prefix is
+// 45,433 — 2,567 under, and the cap is untouched.
 // widestPage weighs the larger direct/deferred wording for each fact.
 const fixedPrefixBudget = 48_000
 
