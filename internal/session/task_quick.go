@@ -669,7 +669,7 @@ func (n *TaskNode) quickListChange(done int, add []string) (string, string) {
 }
 
 // quickListDoneWord is what the last tick's reply ends on.
-const quickListDoneWord = " · every item is ticked: your next message is your answer, and the last thing you say"
+const quickListDoneWord = " · every item is ticked: your next message is your answer, whole — what you found, in full, not that you are done — and it is the last thing you say"
 
 // ── the body ────────────────────────────────────────────────────────────────
 
