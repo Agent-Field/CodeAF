@@ -1740,6 +1740,11 @@ func alsoTried(hopped []string) string {
 }
 
 // timesWord counts the way a person counts. Small numbers have words.
+//
+// It runs to six because the ladder a person actually walks is four rungs by
+// default ([taxonomy.DefaultTransportAttempts]) and settings can lengthen it a
+// little, and `was asked 4 times` in the middle of a sentence somebody reads
+// while their turn is failing is the harness counting rather than speaking.
 func timesWord(n int) string {
 	switch n {
 	case 1:
@@ -1748,6 +1753,12 @@ func timesWord(n int) string {
 		return "twice"
 	case 3:
 		return "three times"
+	case 4:
+		return "four times"
+	case 5:
+		return "five times"
+	case 6:
+		return "six times"
 	}
 	return fmt.Sprintf("%d times", n)
 }

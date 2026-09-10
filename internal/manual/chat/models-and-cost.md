@@ -1246,9 +1246,59 @@ this did before:
 error: after 6 attempts: API error (429): rate limit exceeded
 ```
 
-This only covers *pacing*. A server fault — a `500`, a `503`, a torn connection — keeps the
-short patience it always had and never moves your model: a broken endpoint is not a claim
-that the model cannot answer.
+That patience is the *call's* own, inside one request. What happens when the whole request
+keeps failing — several 429s in a row, a `502` between them — is the next section.
+
+## The model kept refusing and aforge moved to another one — 429 and 502 in a row, my turn died while another model was working, does a refusal reach my fallback models
+
+Yes. **A model that will not take your request at all is given up on the same way a model
+that goes quiet is: aforge finishes the reply on the next model in your `fallback models`
+row**, or on the nearest same-class model in the catalog when you have written no row.
+
+This is what happens. A request that fails outright — a refusal from the machine serving
+your model, a `502`, a torn connection, a deadline — is sent again, up to **four times in
+all**, waiting 2s, then 4s, then 8s, with a dim line each time:
+
+```
+the request failed — asking again
+```
+
+When all four are gone, the turn does not end. It moves, and says so before the next words
+appear in a different voice:
+
+```
+the model kept turning the request away — finishing this one on openai/gpt-5-mini
+```
+
+The new model gets a full four tries of its own — what the last one did says nothing about
+this one — and the cost lands against the model that actually answered. **It is a rescue,
+not a choice you made**: your model is untouched, `/status` still shows it, and your next
+message goes back to it.
+
+**It did not use to.** Until this changed, only a *cut* reply reached your fallback models;
+a refusal walked the four tries and then ended the turn, so a measured conversation on
+2026-09-10 took one `502` and three `429`s inside seventy-five seconds and died — while a
+second model in the same session was answering every call put to it.
+
+Only when there is nowhere left to ask does the turn end. With no chain, it ends on the
+words it always did:
+
+```
+error: after 3 retries: API error (429): rate limit exceeded (via Together)
+```
+
+and when the chain was walked and could not answer either, the sentence names every model
+that was tried rather than advising a move you have already made:
+
+```
+error: the model kept turning the request away: deepseek/deepseek-v4.1-flash was asked four times, and openai/gpt-5-mini could not finish it either. /model to pick another one yourself
+```
+
+**Two things stop the move, and both make it absent rather than broken.** `--one-model`
+settles every call this run makes onto the model you named, so nothing is ever asked of
+another one. And a refusal your router made **on its own account** — a `400` that names no
+machine — is your request being read and rejected, which every model would do, so it stops
+at once with no retry and no move (see *"Provider returned error"* below).
 
 ## "Provider returned error" — a 400, what the error actually was, and why my reply just stopped
 
