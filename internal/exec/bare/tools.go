@@ -63,8 +63,10 @@ func AllToolsCapped(cwd string, caps Caps) []Tool {
 }
 
 // Tools returns the four default active pi tools in registry order: read,
-// bash, edit, write. Descriptions and schemas are the exact verbatim pi
-// strings. They go on the wire, so the bytes are pinned to pi's source.
+// bash, edit, write. The schemas are the exact verbatim pi strings and go on
+// the wire, so those bytes are pinned to pi's source; the descriptions are
+// this package's own where a cap or a contract had to move (see the block of
+// them below).
 func Tools(cwd string) []Tool { return ToolsCapped(cwd, DefaultCaps()) }
 
 // ToolsCapped is [Tools] with the belt's own result caps. See [AllToolsCapped].
@@ -131,10 +133,10 @@ const lsSchemaJSON = `{"type":"object","properties":{"path":{"type":"string","de
 // EVERY NUMBER IN A DESCRIPTION IS RENDERED FROM THE CAP IN FORCE. The figures
 // below are what the model plans its reading around — how much of a file it
 // gets, when to page — and a belt that quotes 50KB while cutting at 6 is a belt
-// that teaches the model a fact about the machine that is not true. So the
-// three descriptions that carry a limit are built at belt time from [Caps],
-// which is also the reason they are functions and their four neighbours are
-// still constants: edit, write, find and ls say nothing that can move.
+// that teaches the model a fact about the machine that is not true. So the five
+// descriptions that carry a limit — read, bash, grep, find and ls — are built at
+// belt time from [Caps], which is why they are functions and their two
+// neighbours are still constants: edit and write quote no number at all.
 //
 // They are also the CONTRACT and nothing else. What a tool is for, and which
 // road a piece of work belongs on, is the page's own table (beltfacts.go's

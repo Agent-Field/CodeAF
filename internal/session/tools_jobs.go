@@ -31,10 +31,10 @@ import (
 // and an exit code, and nothing else — is this tool's own contract, and it is
 // still here because it is the fact that decides whether a long thing belongs
 // on this door at all. Which road a piece of work belongs on is the page's
-// table, stated once (beltfacts.go's `## Work or words`, and the manual's
-// running-commands-and-background-jobs page); it used to be repeated here, in
-// front of every request of every turn, which is 200 bytes of routing policy
-// billed sixty times a task.
+// table, stated once (beltfacts.go's `## Work or words`, and at length in the
+// manual's own "A job is the wrong door for work whose result is a
+// deliverable"); it used to be repeated here, in front of every request of
+// every turn, which is 200 bytes of routing policy billed sixty times a task.
 //
 // AND THE ARRIVAL IS NOT SAID HERE AT ALL. That a finished job reports itself
 // and must never be polled for was in this sentence, in the timeout sentence
@@ -54,7 +54,7 @@ const backgroundSentence = " Run long-lived commands (servers, watchers, long bu
 // reasoning from "it will be killed" reasons wrongly: it hedges, splits the
 // command, or starts again from nothing when the answer was already running
 // (promote.go). What the promoted job then does — report itself, unpolled — is
-// [backgroundSentence]'s clause and is not repeated here.
+// the page's own law for the whole family and is not repeated here.
 //
 // The figure is interpolated from [BashCeilingSeconds] rather than typed, on
 // this codebase's one-source-of-truth law: a number in a description is read by
@@ -171,8 +171,8 @@ func withTimeoutLaw(args json.RawMessage) json.RawMessage {
 // IT SPELLS OUT THE SPAWN SEMANTICS, because that is the whole difference
 // between the two doors and the model has to be able to choose between them: a
 // foreground call WAITS and hands back the output, a background one FORKS and
-// hands back an id. What happens when the job ends is [backgroundSentence]'s
-// one clause, a few hundred bytes earlier in the same tool.
+// hands back an id. What happens when the job ends is the page's law for
+// everything handed off, and is not a third copy of it here.
 const backgroundProperty = `{"type":"boolean","description":"Spawn the command instead of waiting for it: the call returns a job id at once (default: false — the call waits and returns the output)"}`
 
 // backgroundBash wraps bare's bash: the same tool, with one optional argument.
