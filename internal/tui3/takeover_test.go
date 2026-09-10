@@ -909,7 +909,7 @@ func TestNoDoorOnTheMarginWhereEnterWouldRefuse(t *testing.T) {
 		{Bucket: "alpha", Dir: "/state/alpha", Path: "/work/alpha", Name: "alpha",
 			Sessions: []session.SessionRow{held, flat}}}}
 
-	local := readSwitcher(world, nil, switcherHere{}, nil, time.Time{}, now, switcherView{}, switcherLedgerInput{})
+	local := readSwitcher(world, nil, nil, switcherHere{}, nil, time.Time{}, now, switcherView{}, switcherLedgerInput{})
 	for _, row := range switcherStops(local) {
 		if !row.held {
 			t.Fatalf("%q is not held and this test needs it to be", row.title)
@@ -921,7 +921,7 @@ func TestNoDoorOnTheMarginWhereEnterWouldRefuse(t *testing.T) {
 			t.Fatal("an ordinary held conversation lost its door")
 		}
 	}
-	far := readSwitcher(world, nil, switcherHere{hosted: true}, nil, time.Time{}, now, switcherView{}, switcherLedgerInput{})
+	far := readSwitcher(world, nil, nil, switcherHere{hosted: true}, nil, time.Time{}, now, switcherView{}, switcherLedgerInput{})
 	for _, row := range switcherStops(far) {
 		if row.door {
 			t.Fatalf("%q was offered a move on another machine's home", row.title)

@@ -623,6 +623,16 @@ type homeView struct {
 	// beside the world rather than folded into it because the world is a
 	// reading of the projects root and these are not in it.
 	bare []homeBare
+	// fired is what is NOT in [homeView.items] and belongs on the screen anyway:
+	// standing things that went off and stood down since the look stamp, taken
+	// from the same reading (homestanding.go's [app.standItems]).
+	//
+	// A ONE-OFF RETIRES IN THE PASS THAT FIRES IT, so it is never in a band and
+	// never on the list — and the `since you left` block, which is the one place
+	// on this screen whose whole subject is what happened while nobody was
+	// looking, could not see the commonest thing that happens while nobody is
+	// looking. The bands say what is true now; this says what went.
+	fired []StandingItemView
 	// itemsOpen is the bands somebody opened by hand, by the same key. It is a
 	// second map and not a flag beside [homeView.expanded] because they are two
 	// folds over two different things, and a person who opened the watches
