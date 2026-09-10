@@ -190,28 +190,30 @@ var beltFacts = []beltFact{{
 	present: "- ON `propose_task` NEVER NAME THE METHOD: a task is always given its own copy, so \"work in this repo directly\", a branch or a checkout is never yours to specify.\n" +
 		"- Earlier work referred to but not pointed at (\"the reconciler task\", \"same as before\"): call `tasks` with their words BEFORE answering.\n" +
 		"- A `tasks` row is a citation, not the work: its transcript URI is the JSONL journal of all that node said, called and got back, and `read` takes a row's URIs exactly as printed, `file://` and all. `grep` a journal or `read` it with `offset`/`limit`, never expand an outcome line into work you did not read, and say so when a row prints no transcript. A `[Task reference: ...]` block already carries those URIs.\n" +
-		// THE `id` SENTENCE IS NOT REPEATED HERE EITHER, for the reason the one
-		// below states: [tasksDescription] already says an id reads, steers,
-		// continues or settles one piece of work and is how you look inside
-		// running work. What paid for `propose_task`'s `checks` field is this
-		// second copy of a law the model holds whenever it holds the verb.
+		// THE `id` AND `continue` SENTENCES ARE NOT REPEATED HERE.
+		// [tasksDescription] already says an id reads, steers, continues or settles
+		// one piece of work and is how you look inside running work, and the prefix
+		// is a budget: what paid for `propose_task`'s `checks` field, and for the
+		// handoff law in prompts/system.md, is this second copy of a law the model
+		// holds whenever it holds the verb.
+		//
 		// AND THE CLAUSE ABOUT `say` IS HERE BECAUSE THIS IS WHERE `say` IS NAMED.
 		// A model asked to stop a task and holding no stop verb reached for the
 		// nearest thing on the belt and said "stop, do not continue" into the work;
 		// it kept running, and the check read what came back as an ordinary
 		// unfinished run. The verb exists now ([tasksDescription] carries what it
 		// does), so what this line owes is the boundary between the two.
-		"- To send the person's current correction to a running task, use `tasks` with `id` and `forward: true`. `say` is your own coordination and ends nothing; `stop` ends a task.\n" +
-		// THE CONTINUE SENTENCE IS NOT REPEATED HERE. `tasks` own description
-		// carries it word for word ([tasksDescription]), and the prefix is a
-		// budget: what pays for the handoff law in prompts/system.md is this
-		// second copy of a law the model already holds whenever it holds the verb.
-		// THE FOUR WORDS ARE THE SURFACE'S OWN (task_status.go's tier words), so a
-		// model relaying a landing says what the person is already looking at. The
-		// verbs are the three the tool's schema takes ([TaskResolutions]) with the
-		// person's words for two of them beside, because "not right" is what the
-		// card says and `refute` is what the call takes.
-		"- A LANDED TASK SAYS `done`, `stopped`, `incomplete` (with the reason) or `your call`. On `your call` your verbs are `tasks` id `resolve` with accept, refute (say it is not right) or reaudit (have it checked again), plus `forward` to steer it; a CONFLICT is never yours to accept — say what clashes and leave the merge to them. If the tool says there is no graph, say so and point at the row's branch or working copy.",
+		//
+		// THE FOUR WORDS HAVE LEFT THIS PAGE, and so have the verbs a `your call`
+		// takes. A landing now announces itself: task_run.go's [landingNoteLead]
+		// carries the tier word and says to give it back, [settleClause] names the
+		// address with its verbs interpolated from [TaskResolutions], a clash with
+		// the person's own branch is refused where it happens ([conflictNotYours],
+		// [shiftNotYours]), and a verb reaching for a graph that has closed is
+		// refused in the tool's own reply (tools_tasks.go). Every one of those was
+		// bought on each request of every turn in order to be told a second time on
+		// the one turn it mattered (docs/design/prompt-diet/DESIGN.md §2).
+		"- To send the person's current correction to a running task, use `tasks` with `id` and `forward: true`. `say` is your own coordination and ends nothing; `stop` ends a task.",
 	absent: "- THE RECORD OF EARLIER WORK IS NOT REACHABLE FROM HERE and none of this work goes to anybody else: answer from the brief and from what is in front of you, and say plainly when something earlier is referred to that you cannot see. A `[Task reference: ...]` block you were handed carries transcript URIs, and `read` takes one exactly as printed, `file://` and all: `grep` a journal or `read` it with `offset`/`limit`, and never expand an outcome line into work you did not read.",
 }, {
 	tools:   []string{"search_conversations"},

@@ -160,6 +160,22 @@ import (
 // lawregistry_test.go is what keeps it there: every law above is filed under an
 // id and a class, and a second copy of one is now a build failure rather than a
 // thing the next audit finds.
+// AND THE EVENT LANE PAID NOTHING AND TOOK 2,189 BYTES BACK (2026-09-10). The
+// prompt diet's WITH THE EVENT pass (docs/design/prompt-diet/DESIGN.md §2): a
+// harness-authored message now carries its own reading instruction, so the page
+// stopped explaining messages it may never see. A landed task's note opens on
+// [landingNoteLead] — 234 bytes on the turn a task lands, with the tier word
+// interpolated — and a job's ending carries [jobExitNewsRule]. In exchange
+// `# Interrupts and steering` lost the woken-turn and `[carry on]` paragraphs
+// (the messages say all of it, and [checkpointCarryOnLead] has said its own
+// half since it was written), `# Session facts` lost the four-words, `your
+// call` and saying-stop bullets, and the belt's `tasks` fact lost its second
+// copy of the four words and the resolve verbs — [settleClause] interpolates
+// those from [TaskResolutions] on the note itself, and `tasks` own description
+// owns "To END running work use stop". Nothing was raised and no law left the
+// build. On dev alone it was 23,391 → 21,202; landing after lane C's delete
+// pass it is 22,714 → 20,525, and the two together leave the prefix at 44,569,
+// which is 3,431 under. Neither raised the budget.
 // THE DIET'S ON-DEMAND LANE PAID 3,854 BYTES BACK AND ASKED FOR NOTHING
 // (2026-09-10). Four runs of prose came off prompts/system.md and message[0]
 // stopped carrying any of them, because each one is already delivered by
@@ -183,9 +199,10 @@ import (
 //     `prompt` field, where it is read at the call.
 //
 // Nothing was raised and no law was dropped, and each of the four is filed in
-// lawregistry_test.go under class `demand` with the page that now owns it. On
-// top of the delete pass above, the page went 22,714 → 18,860, the tool block is
-// unchanged at 24,044, and the prefix is 42,904 — 5,096 under.
+// lawregistry_test.go under class `demand` with the place that now owns it. On
+// its own, on top of lane C's delete pass, it took the page 22,714 → 18,860;
+// landing beside the event lane above it leaves the page at 16,671, the tool
+// block unchanged at 24,044, and the prefix at 40,715 — 7,285 under.
 // widestPage weighs the larger direct/deferred wording for each fact.
 const fixedPrefixBudget = 48_000
 
