@@ -329,17 +329,6 @@ const (
 	MethodSetContext      = "SetContextWindow"       // legacy version-5 hint; current remote surfaces do not send it
 	MethodReasoningFor    = "ReasoningFor"           // string → string
 	MethodSetReasoningFor = "SetReasoningFor"        // ReasoningArgs → nothing
-	// The conversation's own place on the thinking ladder (internal/session's
-	// effort.go). Three doors and not one, because the stored rung and the
-	// resolved rung are two different answers: the dial DRAWS the resolved one
-	// and a person opening it CHOSE the stored one, and a wire that carried only
-	// one of them would make the surface derive the other.
-	//
-	// The resolved rung also rides [session.Facts] unasked, which is what a frame
-	// reads; these are the keystroke's doors (effort.go).
-	MethodEffort         = "Effort"         // nothing → string (the stored rung, "" for none)
-	MethodResolvedEffort = "ResolvedEffort" // nothing → string (the rung the next turn asks for)
-	MethodSetEffort      = "SetEffort"      // string → bool (false when the word is not a rung)
 	MethodConsent         = "ResolveConsent"         // ConsentArgs → nothing
 	MethodConsentRemember = "ResolveConsentRemember" // ConsentArgs → nothing
 	MethodStandingResolve = "ResolveStanding"        // StandingArgs → nothing
@@ -354,6 +343,17 @@ const (
 	MethodEarlier         = "EarlierHistory"         // nothing → session.EarlierHistory
 	MethodRewindPoints    = "RewindPoints"           // nothing → []session.RewindPoint
 	MethodRewindAt        = "RewindAt"               // int → []session.DisplayEntry
+	// The conversation's own place on the thinking ladder (internal/session's
+	// effort.go). Three doors and not one, because the stored rung and the
+	// resolved rung are two different answers: the dial DRAWS the resolved one
+	// and a person opening it CHOSE the stored one, and a wire that carried only
+	// one of them would make the surface derive the other.
+	//
+	// The resolved rung also rides [session.Facts] unasked, which is what a frame
+	// reads; these are the keystroke's doors (effort.go).
+	MethodEffort         = "Effort"         // nothing → string (the stored rung, "" for none)
+	MethodResolvedEffort = "ResolvedEffort" // nothing → string (the rung the next turn asks for)
+	MethodSetEffort      = "SetEffort"      // string → bool (false when the word is not a rung)
 
 	// Session doors.
 	MethodSessionsRecent = "Sessions.Recent" // nothing → []session.Summary
