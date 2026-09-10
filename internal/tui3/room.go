@@ -1179,6 +1179,16 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 		// through [feed.ingest] above), and a step that ran out of tries ends on
 		// `gave up after 2 tries · …` rather than on a page that goes on saying
 		// nothing has arrived yet ([roomYetWord]).
+		//
+		// AND IT CANNOT SAY THE SAME THING TWICE AS THE PHASE LINE. The line
+		// under the phase word (taskphase.go) is an ERRAND's ladder — a sizing
+		// reading, a review — which asks a DIFFERENT model at each rung and
+		// reports on the node's phase notice, never on its event stream
+		// (internal/session's auxiliary.go sends no event at all). These rows are
+		// the node's OWN turn being asked again. The two vocabularies are one
+		// vocabulary read against that difference: an errand says `asking
+		// <model>` because the model changes, and a turn says `asking again`
+		// because it does not.
 		a.roomNote(a.room.failureNote(ev.Err))
 	}
 	a.touch()
