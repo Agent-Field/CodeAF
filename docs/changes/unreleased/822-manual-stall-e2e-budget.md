@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a stalled check under load keeps its stall account, person manual labels match ##, and the e2e suite has honest timeouts
-pr: 820
+pr: 822
 surface: [chat, engine, docs]
 invalidates:
   - "A second checking attempt that could not be made (window already under the floor after building the checker) was folded into `asked twice` over `nobody could check it in …`, which claimed two calls when only one ran and erased the stall sentence. `secondAuditOutcome` keeps the first attempt's account and adds the window-closed clause (#803)."
