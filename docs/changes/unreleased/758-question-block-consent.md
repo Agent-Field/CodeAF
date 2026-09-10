@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: the approval question is the question block now, answered by digits, with esc meaning later
-pr: 740
+pr: 758
 surface: [chat]
 invalidates:
   - "internal/tui3/consent.go was a 1388-line block of its own — its own layout loop, its own key set, its own countdown, its own pointer targets, its own phone sheet. It is 470 lines and draws nothing. The question block (internal/tui3/question.go) draws every approval question, and what is left in consent.go is the three things that are the LANE'S: the transcript row the question is about, the widening yes written into the person's settings, and how long the reading clock runs."

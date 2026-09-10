@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: the stop card and the close-a-tab card are the question block now, answered by a cursor and enter
-pr: 740
+pr: 758
 surface: [chat]
 invalidates:
   - "internal/tui3/stop.go drew its own card — its own two-answer row, its own cursor, its own pointer targets, its own key set. It draws nothing. The question block (internal/tui3/question.go) draws it as a session.AskConfirmation, and what is left in stop.go is the LANE'S: which work `x` was pressed at, what stopping it does not take away, and the engine door that ends it."

@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: the task proposal is the question block now, answered by digits, and its card is the assignment
-pr: 740
+pr: 758
 surface: [chat]
 invalidates:
   - "The task proposal drew its own question in the transcript — a row of `[ yes ]  [ redirect ]  [ no ]` chips, a draining countdown meter, a row of model chips, and a claim on the keyboard. All four are deleted. The question block (internal/tui3/question.go) draws every proposal now, above the message box where every other decision on this surface is put, and what is left in the transcript is the ASSIGNMENT: the name, the sentence, where the work will run, what it will run on, and the brief behind ctrl+e."
