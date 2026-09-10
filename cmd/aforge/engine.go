@@ -733,7 +733,10 @@ func engineStandingSave(seam *session.Standing) func(standing.Item) error {
 	if seam == nil || seam.Store == nil {
 		return nil
 	}
-	return seam.Store.Save
+	return func(item standing.Item) error {
+		_, err := seam.Store.SetStatus(item.ID, item.Status, item.RetiredWhy)
+		return err
+	}
 }
 
 func engineStandingWatch(seam *session.Standing) func() (standing.WatchStatus, bool) {

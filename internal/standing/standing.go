@@ -82,7 +82,10 @@ import (
 // Schema is the document version every [Item] carries. Bump it when a field
 // changes meaning; a reader that meets a newer schema than it knows skips the
 // document and says so in the pass.
-const Schema = 1
+// Schema 2 adds revision-fenced writes. Older readers refuse these documents.
+// Deployment must stop old engines and tickers before restarting with this build:
+// a pre-upgrade process already holding an item can still overwrite its old copy.
+const Schema = 2
 
 // Interval is how often a pass runs, whether a window runs it or the OS timer
 // does. It is the cadence the ratification card quotes for "checked every …".
@@ -336,6 +339,8 @@ type Exception struct {
 type Item struct {
 	Schema int    `json:"schema"`
 	ID     string `json:"id"`
+	// Revision fences stale whole-document edits. Older documents begin at zero.
+	Revision uint64 `json:"revision,omitempty"`
 	// Words are the person's verbatim sentence. Permanent anchor; every
 	// surface leads with it.
 	Words string `json:"words"`

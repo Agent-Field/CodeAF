@@ -515,6 +515,11 @@ Three different things, and they are not the same:
   what it last saw. `p` again starts it.
 - **Not here.** `n`, when the order itself is right and this one place is the exception.
 
+Pausing or stopping preserves completed history, and a check or action finishing
+later cannot turn it back on. A check that notices a pause, stop or edit before
+starting its action leaves that old decision unused. An action already started
+may still finish; stopping does not undo an external action already taken.
+
 Anything you say in words needs no page at all; the page is there for when you want to
 see what is true before you decide.
 

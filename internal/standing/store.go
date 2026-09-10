@@ -43,6 +43,7 @@ func (s *Store) Create(item Item) (Item, error) {
 		return Item{}, err
 	}
 	item.Schema = Schema
+	item.Revision = 1
 	item.Status = StatusActive
 	item.RetiredWhy = ""
 	item.Created = now
@@ -79,18 +80,93 @@ func firstDue(item Item, now time.Time) (time.Time, error) {
 	return time.Time{}, nil
 }
 
-// Save rewrites one item's document, temp+rename under its flock, and stamps
-// Updated. It validates first.
+// ErrConflict means a whole-document edit was based on an older reading.
+// The caller must read again rather than overwrite newer control or progress.
+var ErrConflict = errors.New("standing item changed; read it again before editing")
+
+// Save replaces a document only while its revision is still current. Narrow
+// gestures use the owner operations below so unrelated progress cannot reject
+// a pause or be overwritten by one. It never recreates a missing item.
 func (s *Store) Save(item Item) error {
-	if err := item.Validate(); err != nil {
-		return err
+	_, err := s.mutate(item.ID, func(current *Item) error {
+		if current.Revision != item.Revision {
+			return ErrConflict
+		}
+		*current = item
+		return nil
+	})
+	return err
+}
+
+// mutate holds the item lock only while reading and replacing one document.
+// NO MODEL OR NETWORK CALL MAY RUN INSIDE THIS OPERATION.
+func (s *Store) mutate(id string, change func(*Item) error) (Item, error) {
+	if err := checkID(id); err != nil {
+		return Item{}, ErrNotFound
 	}
-	if err := checkID(item.ID); err != nil {
-		return err
-	}
-	item.Schema = Schema
-	item.Updated = s.now()
-	return s.write(item)
+	var result Item
+	err := s.underItemLock(id, func() error {
+		current, err := s.read(s.ItemPath(id))
+		if err != nil {
+			return err
+		}
+		revision := current.Revision
+		if err := change(&current); err != nil {
+			return err
+		}
+		if err := current.Validate(); err != nil {
+			return err
+		}
+		current.Schema = Schema
+		current.Revision = revision + 1
+		current.Updated = s.now()
+		if err := s.writeUnlocked(current); err != nil {
+			return err
+		}
+		result = current
+		return nil
+	})
+	return result, err
+}
+
+// SetStatus applies the person's control to the latest document, preserving
+// every configuration field and every completed run. Retired items stay retired.
+func (s *Store) SetStatus(id string, status Status, reason string) (Item, error) {
+	return s.mutate(id, func(item *Item) error {
+		if status != StatusActive && status != StatusPaused && status != StatusRetired {
+			return errors.New("unknown standing status")
+		}
+		if item.Status == StatusRetired && status != StatusRetired {
+			return errors.New("a stopped item must be set up afresh")
+		}
+		item.Status = status
+		item.RetiredWhy = ""
+		if status == StatusRetired {
+			item.RetiredWhy = reason
+		}
+		return nil
+	})
+}
+
+// AddException narrows the current item without replacing a concurrent edit or
+// runtime receipt. Its validation remains the item's own validation.
+func (s *Store) AddException(id string, exception Exception) error {
+	_, err := s.mutate(id, func(item *Item) error {
+		if !item.ExceptedFrom(exception.Workspace, exception.SessionID) {
+			item.Exceptions = append(item.Exceptions, exception)
+		}
+		return nil
+	})
+	return err
+}
+
+// FileExchange changes only the two paths moved by the home exchange filing.
+func (s *Store) FileExchange(id, directory, transcript string) (Item, error) {
+	return s.mutate(id, func(item *Item) error {
+		item.Origin.Exchange = directory
+		item.Origin.Transcript = transcript
+		return nil
+	})
 }
 
 // SetStandingEffort sets how hard one item's firings and its checks think, and
@@ -110,17 +186,11 @@ func (s *Store) SetStandingEffort(id string, rung effort.Rung) error {
 	if !rung.Valid() && rung != effort.None {
 		return fmt.Errorf("%q is not a thinking level", rung)
 	}
-	if err := checkID(id); err != nil {
-		return ErrNotFound
-	}
-	item, err := s.read(s.ItemPath(id))
-	if err != nil {
-		return err
-	}
-	item.Does.Effort = rung.String()
-	item.Schema = Schema
-	item.Updated = s.now()
-	return s.write(item)
+	_, err := s.mutate(id, func(item *Item) error {
+		item.Does.Effort = rung.String()
+		return nil
+	})
+	return err
 }
 
 // Get reads one item. A missing id is [ErrNotFound].
@@ -326,17 +396,19 @@ func (s *Store) read(path string) (Item, error) {
 }
 
 func (s *Store) write(item Item) error {
+	if err := os.MkdirAll(s.root, 0o700); err != nil {
+		return err
+	}
+	return s.underItemLock(item.ID, func() error { return s.writeUnlocked(item) })
+}
+
+// writeUnlocked is used only under the item's lock, including read-modify-write.
+func (s *Store) writeUnlocked(item Item) error {
 	data, err := json.MarshalIndent(item, "", "  ")
 	if err != nil {
 		return err
 	}
-	data = append(data, '\n')
-	if err := os.MkdirAll(s.root, 0o700); err != nil {
-		return err
-	}
-	return s.underItemLock(item.ID, func() error {
-		return writeAtomic(s.ItemPath(item.ID), data)
-	})
+	return writeAtomic(s.ItemPath(item.ID), append(data, '\n'))
 }
 
 // underItemLock holds the item's own flock for the length of one write. It

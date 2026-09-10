@@ -152,6 +152,9 @@ const standingBackgroundUpdate = "background"
 type standingStore interface {
 	Create(standing.Item) (standing.Item, error)
 	Save(standing.Item) error
+	SetStatus(string, standing.Status, string) (standing.Item, error)
+	AddException(string, standing.Exception) error
+	FileExchange(string, string, string) (standing.Item, error)
 	Get(id string) (standing.Item, error)
 	ForWorkspace(workspace string) ([]standing.Item, error)
 	Root() string
@@ -1039,9 +1042,9 @@ func (a *Agent) standingFileTheExchange(store standingStore, item standing.Item)
 		return item
 	}
 	filed := store.ExchangeDir(item.ID)
-	item.Origin.Exchange = filed
-	item.Origin.Transcript = filepath.Join(filed, placeTranscript)
-	_ = store.Save(item)
+	if updated, err := store.FileExchange(item.ID, filed, filepath.Join(filed, placeTranscript)); err == nil {
+		item = updated
+	}
 	return item
 }
 
@@ -1443,9 +1446,11 @@ func (a *Agent) standingMove(store standingStore, item standing.Item, status sta
 		// The person's own reason, in the words [standing.Item] reserves for it.
 		item.RetiredWhy = standingStoppedWhy
 	}
-	if err := store.Save(item); err != nil {
+	updated, err := store.SetStatus(item.ID, status, item.RetiredWhy)
+	if err != nil {
 		return item, word, err
 	}
+	item = updated
 	a.emitStandingUpdate(word, item, "")
 	return item, word, nil
 }

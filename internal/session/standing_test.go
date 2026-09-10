@@ -72,6 +72,33 @@ func (f *fakeStanding) Save(item standing.Item) error {
 	return nil
 }
 
+func (f *fakeStanding) SetStatus(id string, status standing.Status, reason string) (standing.Item, error) {
+	item, err := f.Get(id)
+	if err != nil {
+		return item, err
+	}
+	item.Status, item.RetiredWhy = status, reason
+	return item, f.Save(item)
+}
+
+func (f *fakeStanding) AddException(id string, exception standing.Exception) error {
+	item, err := f.Get(id)
+	if err != nil {
+		return err
+	}
+	item.Exceptions = append(item.Exceptions, exception)
+	return f.Save(item)
+}
+
+func (f *fakeStanding) FileExchange(id, directory, transcript string) (standing.Item, error) {
+	item, err := f.Get(id)
+	if err != nil {
+		return item, err
+	}
+	item.Origin.Exchange, item.Origin.Transcript = directory, transcript
+	return item, f.Save(item)
+}
+
 func (f *fakeStanding) Get(id string) (standing.Item, error) {
 	if item, found := f.items[id]; found {
 		return item, nil
