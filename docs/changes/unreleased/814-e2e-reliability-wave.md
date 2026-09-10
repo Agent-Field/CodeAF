@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: reopened rooms keep each call's duration, and the e2e suite stops false-failing around settle strips, ambient aforge, and the full-package budget
+title: reopened rooms keep each call's duration; e2e suite isolation and budget
 pr: 814
 surface: [chat, engine, docs]
 invalidates:
