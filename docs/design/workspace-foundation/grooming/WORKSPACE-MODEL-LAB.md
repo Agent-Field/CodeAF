@@ -67,3 +67,11 @@ not product E2E acceptance or a database performance benchmark.
 Next: use the five example entry points to compare navigation and inspector
 representations. Record missing information separately from confusing presentation;
 no backend change follows solely from a preferred graph layout.
+
+## Follow-up critique
+
+[Capability and run gaps](CAPABILITY-AND-RUN-GAPS.md) distinguishes store-level
+shapes from chat authoring actions, and identifies existing standing scope,
+exceptions and unattended session/child-task navigation missing from this mock.
+It also records the next proposed issue-to-completion grooming case. The prototype
+covers the simplified logical diagram, not every serialized runtime field.
