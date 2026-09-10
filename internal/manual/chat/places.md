@@ -146,10 +146,12 @@ Three gestures, the same on all seven places:
 - **the pointer previews and the cursor selects.** Whatever your pointer is resting on is
   what the card beside the list is about, and on home it is what the right-hand card shows.
   Moving the pointer moves nothing else — the cursor stays where you put it.
-- **a click puts the cursor on that row.** On the places it never acts: the verbs are keys
-  and `enter` leaves the conversation you are sitting in, so a click that opened something
-  would be a gesture nobody can aim. Home is the exception it always was — the first click
-  chooses the row, a second click on the same row opens it.
+- **a click on a row opens it**, exactly as `enter` on it would: on standing, spend and
+  search the first press puts the cursor there and opens what the row names. **A click
+  never spends**: on memory, where `enter` on a line asks the model about it, the press
+  opens the line's card instead, and on a shelf it folds the shelf. The verbs stay keys.
+  Home is the exception it always was — the first press chooses the row, a second on the
+  same row opens it — and settings only chooses, because its `enter` changes a value.
 - **the wheel walks the list**, three rows a turn, on every place. There is no separate
   scroll offset: the window follows the cursor, so scrolling and choosing are one gesture.
   Walking off the bottom with `↓` scrolls the same way.

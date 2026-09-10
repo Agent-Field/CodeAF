@@ -231,11 +231,18 @@ type place interface {
 	// lines are BUILT — on home's own three-second beat — because the seams
 	// behind it are the ones a draw may never touch (homeplaces.go).
 	summary(a *app) string
-	// press is a press on one of this place's body rows. It moves the cursor and
-	// never acts, which is the law every place keeps: every verb on these lists
-	// is a key, and `enter` leaves the conversation a person is sitting in, so a
-	// click that did either would be a gesture nobody can aim.
-	press(a *app, y int) bool
+	// press is a press on one of this place's body rows. A PRESS ON A ROW IS
+	// `enter` ON IT: the cursor lands on the row and the row's door opens, which
+	// is the one click grammar every list on this surface keeps — home's rows,
+	// the tasks place, a picker (PLACES-AUDIT.md finding 6). The pointer resting
+	// is the preview; the press is the choice. The bool is whether the place
+	// took the press, which it does for every row of its body, door or not.
+	//
+	// A CLICK NEVER SPENDS. Where `enter` would send words to a model on a
+	// person's behalf — memory's `ask me about it` — the press opens the row's
+	// own card instead, because a click that starts a paid turn is a gesture
+	// nobody can take back. Every verb stays a key.
+	press(a *app, y int) (tea.Cmd, bool)
 	// hover is the pointer resting over a body row: the row is previewed and the
 	// cursor is left where it is.
 	hover(a *app, y int) bool
@@ -282,7 +289,7 @@ func (placeBase) note(a *app, width int) []string         { return nil }
 func (placeBase) resting(a *app) string                   { return "" }
 func (placeBase) changed(a *app, since time.Time) int     { return 0 }
 func (placeBase) summary(a *app) string                   { return "" }
-func (placeBase) press(a *app, y int) bool                { return false }
+func (placeBase) press(a *app, y int) (tea.Cmd, bool)     { return nil, false }
 func (placeBase) hover(a *app, y int) bool                { return false }
 func (placeBase) wheel(a *app, delta int) bool            { return false }
 func (placeBase) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return nil }
@@ -2065,11 +2072,8 @@ func (a *app) pageShowing() bool { return a.showing() != nil }
 // arithmetic — a terminal row becoming a line of a body, a window that follows a
 // cursor — is placemouse.go's, because it is the same on every place.
 
-// placeBodyPress is a press on one place's own rows: it moves that place's
-// cursor and never acts, which is the law the standing place already stated for
-// all of them — every verb on these lists is a key, and `enter` leaves the
-// conversation a person is sitting in, so a click that did either would be a
-// gesture nobody can aim.
+// placeBodyPress is a press on one place's own rows: the row under it is
+// entered, exactly as `enter` on it would (the law is [place.press]'s).
 func (a *app) placeBodyPress(y int) (tea.Cmd, bool) {
 	pl := a.showing()
 	// AND NO GESTURE REACHES A PAGE THAT IS UNDER THE COMPOSER LAYER. Its rows are
@@ -2079,7 +2083,7 @@ func (a *app) placeBodyPress(y int) (tea.Cmd, bool) {
 	if pl == nil || a.composer.open {
 		return nil, false
 	}
-	return nil, pl.press(a, y)
+	return pl.press(a, y)
 }
 
 // placeBodyHover is the pointer resting over one place's rows: THE POINTER

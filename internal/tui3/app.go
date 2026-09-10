@@ -3495,8 +3495,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// AND THE FOUR PLACES THE ROUTER PROMOTED AT THE SAME RUNG AND FOR
 			// THE SAME REASON: each is the whole screen, so a press that fell
 			// through to the conversation underneath would open a tool call
-			// nobody can see. A press on one of their rows moves that place's
-			// cursor and never acts (pages.go's [app.placeBodyPress]).
+			// nobody can see. A press on one of their rows is `enter` on it
+			// (pages.go's [app.placeBodyPress]).
 			if cmd, took := a.placeBodyPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
