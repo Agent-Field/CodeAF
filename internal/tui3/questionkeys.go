@@ -260,7 +260,13 @@ var questionKeys = []questionVerb{
 	// and it is on the row at all because a person who thinks the question is
 	// wrong has no other way to say so without it reading as a refusal.
 	{key: questionReframeKey, word: "none of these", forms: formsRoom, needs: needOptions, giveUp: 8},
-	{key: questionWalkKey, word: "move it", forms: formsRoom, needs: needMoves},
+	// `←→ move it` IS ON THE CARD AS WELL AS IN THE ROOM, because the card draws
+	// the sentence with a hole in it too — a task proposal's model shortlist is
+	// exactly that shape ([session.TaskModelShape]). It is a second row on
+	// [questionWalkKey] rather than a second word on the first for the reason
+	// [needMoves] states: `pick` walks a cursor between two answers and `move it`
+	// changes the answer itself, and the two are never true at once.
+	{key: questionWalkKey, word: "move it", forms: formsCard | formsRoom, needs: needMoves},
 	// INSIDE THE ROOM `o` OPENS AN ANSWER RATHER THAN THE PAGE, which is why it
 	// is a second row rather than a second word: `[o] open it` on a card is a
 	// promise about a page, and repeating that promise on the page itself would

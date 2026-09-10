@@ -209,6 +209,22 @@ type questionShown struct {
 	// one is picked. A lane with one shape or none has no beat and its widening
 	// answer is given straight ([app.questionWiden]).
 	shapes func() []string
+	// holes is the small form this question carries, or the zero value for one
+	// that carries none — the same [questionInput] the room reads, so a hole is
+	// drawn and walked by one piece of code wherever it appears.
+	//
+	// THE BLOCK DRAWS ONLY THE BLANKS. A checklist, a run of pairs and a dial are
+	// the ROOM's shapes: each is several rows and a rhythm of its own, and a card
+	// pinned above the box has neither the height nor the keyboard for them
+	// ([app.questionCardRows] draws the sentence and nothing else). What the block
+	// does draw is the sentence with a hole in it, because that is one row — and
+	// because the task proposal's model shortlist is exactly that shape
+	// ([session.TaskModelShape]).
+	//
+	// IT LIVES ON THE QUESTION FOR THE BEAT'S REASON: a person half-way through
+	// changing a hole who is handed the next question in a queue must not find
+	// their choice sitting on somebody else's card.
+	holes questionInput
 	// beat is the shapes on screen RIGHT NOW, and it is non-empty only while
 	// somebody is part-way through choosing one.
 	//
@@ -381,6 +397,7 @@ func (a *app) raiseQuestion(q questionShown) {
 		q.question.Asked = a.now()
 	}
 	q.pick = questionSafeAt(q.question)
+	q.holes = newQuestionInput(q.question)
 	for i := range a.questions {
 		if a.questions[i].token() != q.token() {
 			continue
@@ -413,6 +430,13 @@ func (a *app) raiseQuestion(q questionShown) {
 		if q.clockFor == 0 {
 			q.clockAt, q.clockFor = a.questions[i].clockAt, a.questions[i].clockFor
 		}
+		// AND A HOLE SOMEBODY HAS MOVED KEEPS WHAT THEY MOVED IT TO. The bare
+		// object re-sent by a reattaching watcher carries the ASKER's default, so
+		// taking it whole would walk a person's model choice back to the closest
+		// match every few seconds — under their hand, with no key pressed.
+		if questionSameHoles(q.holes, a.questions[i].holes) {
+			q.holes = a.questions[i].holes
+		}
 		q.clockHeld = q.clockHeld || a.questions[i].clockHeld
 		a.questions[i] = q
 		a.touch()
@@ -422,6 +446,28 @@ func (a *app) raiseQuestion(q questionShown) {
 	a.questions = append(a.questions, q)
 	a.questionRule(&a.questions[len(a.questions)-1])
 	a.touch()
+}
+
+// questionSameHoles reports whether two readings of one question's small form
+// are asking the same thing — the same holes, each offering the same choices.
+//
+// It is what decides whether a re-sent question may keep the answers already put
+// into the holes on screen. An asker that CHANGED the shape is asking something
+// else, and carrying an old value into it would leave a person looking at a
+// choice they never made.
+func questionSameHoles(fresh, held questionInput) bool {
+	if fresh.kind != held.kind || len(fresh.blanks) != len(held.blanks) {
+		return false
+	}
+	for i := range fresh.blanks {
+		if fresh.blanks[i].blank.Label != held.blanks[i].blank.Label {
+			return false
+		}
+		if !sameAnswer(fresh.blanks[i].blank.Choices, held.blanks[i].blank.Choices) {
+			return false
+		}
+	}
+	return true
 }
 
 // questionSafeAt is the index of the answer the cursor starts on: the one
@@ -759,6 +805,13 @@ func (a *app) questionCardRows(q questionShown, width int) []string {
 	drawn := a.questionSubjectAt(q.question) >= 0
 	if line := a.questionAttribution(q.question, !drawn); line != "" {
 		out = append(out, a.pal.dim(fit("  "+line, width)))
+	}
+	// THE SENTENCE WITH A HOLE IN IT GOES ABOVE THE ANSWERS, because it is part
+	// of what the answers are about: `start it` on a proposal starts it on the
+	// model in the hole, so the hole has to be read before the answer is given.
+	// It is the room's own renderer (questioninput.go), not a second one.
+	if q.holes.kind == session.InputBlanks {
+		out = append(out, a.questionBlankRows(&q.holes, width)...)
 	}
 	options := q.question.Options
 	if len(options) > questionCardOptions {
@@ -1805,6 +1858,14 @@ func (a *app) answerQuestion(q questionShown, answer session.Answer) tea.Cmd {
 	if answer.DecidedBy == "" {
 		answer.DecidedBy = session.DecidedByPerson
 	}
+	// WHAT IS IN THE HOLES TRAVELS WITH THE ANSWER, and it travels whichever key
+	// gave it: a proposal approved with `1`, with `enter`, or with a click on the
+	// row all start the work on the model the card was showing. The filling is
+	// the shape's own ([questionInput.fill]), so the map's keys are the asker's
+	// labels rather than anything this file chose.
+	if q.holes.kind != session.InputNone {
+		q.holes.fill(&answer)
+	}
 	if q.answered != nil {
 		// THE LANE'S OWN HAND, BEFORE THE DOOR. Whatever this PROGRAM does about
 		// an answer happens here — a rule written into the person's settings, the
@@ -2105,6 +2166,16 @@ func (a *app) questionOptionKey(head questionShown, key string) (tea.Cmd, bool) 
 			return nil, true
 		}
 	}
+	if key == "left" || key == "right" {
+		// AND WHERE THERE IS NO CURSOR THE ARROWS MOVE THE HOLE. The two are
+		// never both on one question — [needWalk] is the confirmation kind and
+		// [needMoves] steps aside for it — so `←→` has one meaning on whatever
+		// card is in front of somebody, which the offer row spells out ("pick" or
+		// "move it") rather than leaving them to guess.
+		if a.moveQuestionHole(head, key) {
+			return nil, true
+		}
+	}
 	for at, option := range head.question.Options {
 		if strings.TrimSpace(option.Key) != key {
 			continue
@@ -2139,6 +2210,29 @@ func (a *app) moveQuestionPick(head questionShown, to int) {
 			return
 		}
 	}
+}
+
+// moveQuestionHole walks the choices in the hole this question's sentence
+// carries, and reports whether there was one to walk.
+//
+// IT MOVES THE CHOICE AND ANSWERS NOTHING. That is the whole bargain the model
+// shortlist was built on and it survives the move onto the block: a proposal
+// arrives with the closest match already in the hole and the countdown already
+// running, because one word fitting two models is the harness's ambiguity and
+// not the person's. What the arrows buy is the seconds in which that choice is
+// free to change — the proposal is not approved by changing it.
+func (a *app) moveQuestionHole(head questionShown, key string) bool {
+	for i := range a.questions {
+		if a.questions[i].token() != head.token() {
+			continue
+		}
+		if !questionWalkChoice(&a.questions[i].holes, key) {
+			return false
+		}
+		a.touch()
+		return true
+	}
+	return false
 }
 
 // questionPick answers with the option at an index, which is what the cursor

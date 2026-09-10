@@ -1461,7 +1461,9 @@ func (a *Agent) applyToLane(answer Answer) error {
 			// anything longer as a redirect, which meant one of the two
 			// answers was reachable by a word nothing on screen had named.
 			// The answers are on the row with their keys; the box is words.
-			a.ResolveTask(answer.ID, TaskAnswer{Approved: true, Redirect: words})
+			a.ResolveTask(answer.ID, TaskAnswer{
+				Approved: true, Redirect: words, Model: answer.Blanks[TaskModelBlank],
+			})
 			return nil
 		}
 		// The three lanes answers.go already mapped, through the mapping it
@@ -1475,7 +1477,16 @@ func (a *Agent) applyToLane(answer Answer) error {
 		case QuestionConsent:
 			a.ResolveConsentRemember(answer.ID, action.Allow, ConsentScopeOf(action, answer))
 		case QuestionTask:
-			a.ResolveTask(answer.ID, action.Task)
+			// AND THE HOLE IN THE SENTENCE IS PART OF THE YES. A proposal whose
+			// shortlist the harness could not settle carries one choice blank
+			// ([TaskModelShape]); what a person left in it travels on the answer
+			// they gave, so `start it` starts it on the model the card was
+			// showing them. [TaskAnswer.Model] states what an empty one means and
+			// what happens to a name outside the shortlist — both are the leading
+			// option, which is what the card was showing.
+			task := action.Task
+			task.Model = answer.Blanks[TaskModelBlank]
+			a.ResolveTask(answer.ID, task)
 		case QuestionStanding:
 			a.ResolveStanding(answer.ID, action.Standing)
 		}
@@ -1884,12 +1895,60 @@ func (a *Agent) proposalQuestion(id uint64, notice TaskNotice) Question {
 		Stakes:   StakesCostly,
 		Blocking: Blocking{Turn: true},
 		Deadline: notice.Deadline,
+		Input:    TaskModelShape(notice),
 	}
 	if !notice.Deadline.IsZero() {
 		built.Pick = &Pick{Key: "1", Reason: TaskProposalPickReason, Confidence: ConfidenceFairly}
 		built.Policy = Policy{Kind: PolicyRecommendThenAuto, After: time.Until(notice.Deadline)}
 	}
 	return a.said(QuestionTask, token, built)
+}
+
+// TaskModelBlank is the label of the hole a proposal carries when the harness
+// could not settle which model the work runs on, and it is the key the answer
+// carries the chosen one back under ([Answer.Blanks]).
+//
+// IT IS ONE NAME READ AT BOTH ENDS. The card fills that map by the blank's own
+// label (tui3's questioninput.go does the filling) and [Agent.applyToLane] reads
+// [TaskAnswer.Model] straight back out of it, so a label spelled twice would be
+// a choice somebody made and nothing acted on.
+const TaskModelBlank = "model"
+
+// TaskModelPrompt is the sentence the hole sits in, with `{model}` where the
+// hole goes — so what a person reads is `run it on [ anthropic/claude-opus-5 ▾ ]`
+// rather than a form with a field name over it.
+const TaskModelPrompt = "run it on {" + TaskModelBlank + "}"
+
+// TaskModelShape is the small form a proposal carries when — and only when — the
+// harness raised a shortlist it could not choose within
+// ([TaskNotice.ModelOptions]).
+//
+// ONE OPTION IS NOT A CHOICE, so an ordinary proposal carries no shape at all and
+// the card draws no hole: a row offering the one model the work was already going
+// to run on is a question that has answered itself. That is the same bound the
+// row of model chips this replaced kept, said once instead of in the renderer.
+//
+// IT IS EXPORTED BECAUSE THE SURFACE BUILDS THE SAME QUESTION, for the reason
+// [TaskProposalLead] states: two builders that drifted would put two questions on
+// screen about one proposal.
+func TaskModelShape(notice TaskNotice) InputShape {
+	if len(notice.ModelOptions) < 2 {
+		return InputShape{}
+	}
+	return InputShape{
+		Kind:   InputBlanks,
+		Prompt: TaskModelPrompt,
+		Blanks: []Blank{{
+			Label:   TaskModelBlank,
+			Kind:    BlankChoice,
+			Choices: append([]string(nil), notice.ModelOptions...),
+			// THE DEFAULT IS AN ANSWER ALREADY GIVEN ([Blank] says so). The
+			// leading option is the closest match, it is what the card shows, and
+			// it is what the clock settles on — so a person who changes nothing
+			// has confirmed the model the work was always going to run on.
+			Default: strings.TrimSpace(notice.Model),
+		}},
+	}
 }
 
 // TaskProposalLead opens the sentence a task proposal asks with, and it is

@@ -341,7 +341,7 @@ the row.
 | `D` | decide questions like this from now on |
 | `r` | make it a rule |
 | `u` | undo, while what was done is still real |
-| `←` `→` | walk the two answers of a confirmation |
+| `←` `→` | walk the two answers of a confirmation, or change what is in the hole where the question has one |
 | `s` | on a sheet: send what you answered, and let the rest take their own picks |
 | `g` | on a sheet: same answer for all like this |
 
@@ -563,7 +563,7 @@ there is nothing for it to decide, because the whole question is what you meant.
 asked and press enter; it goes back to the asker as a reframe rather than as a
 pick, and nothing is chosen.
 
-## Fill in the blanks
+## Fill in the blanks — the holes in a sentence, and what the arrows do on the question above your box
 
 Some questions are a sentence with holes in it rather than a list of answers:
 
@@ -577,6 +577,19 @@ Each hole opens on whatever the asker already knew, so you are not retyping it.
 Under the sentence, one dim line says what the hole you are in takes — a file or
 folder, a number, a time — or why what is in it will not do. Press enter when it
 reads right; the holes come back as fields, keyed by their own names.
+
+**A card can carry a hole too, not only a page.** The one you will meet is a task
+proposal whose model shortlist the harness could not settle: it draws
+
+```
+     run it on [ anthropic/claude-opus-5 ▾ ]
+```
+
+above the proposal's own answers, and `←→` walks the shortlist. **Moving what is
+in a hole answers nothing** — the countdown on the proposal keeps running, and
+what is in the hole when you answer travels with the answer. On a card the holes
+are `←→` only: `tab` is the page's key, and the sentence a card carries is one
+line with one hole in it.
 
 ## Pick several
 

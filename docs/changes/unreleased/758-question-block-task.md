@@ -10,7 +10,7 @@ invalidates:
   - "`esc` on a task proposal DECLINED it. It is LATER: the question folds to the chip `? 1 question · alt+a`, the proposal stays open, the engine stays waiting, and nothing is answered. Note the consequence — a proposal you esc and forget is a proposal the clock still starts."
   - "A COMPLETE BARE WORD TYPED INTO THE BOX ANSWERED THE PROPOSAL. `no`, `nope`, `n`, `stop`, `cancel`, `don't`, `dont` declined and `yes`, `y`, `ok`, `okay`, `go`, `sure` approved — thirteen answers, none of them drawn anywhere on the screen, each a different answer from the sentence that merely began with it. They are gone. Every sentence in the box is a correction, and a correction is a yes to the corrected version; the answers are on the row with their keys."
   - "session.Answer had no way to carry a task correction: the door read the key and dropped the words, so a typed answer to a proposal was refused as naming nothing. An answer with words and no key is now approve-with-redirect in session's applyToLane — the same reading task.go's own box had, said once, in the engine."
-  - "THE MODEL SHORTLIST IS NOT OFFERED ANY MORE, and this is a capability lost rather than moved. A word that fitted several models raised a row of chips answered by `1`–`4`; those digits are the question's answers now. The work runs on the closest match — what the chips opened on and what the clock would have taken — and the block's meta line names it. Correcting it from the proposal is OWED; until it lands, saying so in the words `c change` takes is the way."
+  - "THE MODEL SHORTLIST IS A HOLE IN A SENTENCE AND NO LONGER A ROW OF CHIPS. A word that fitted several models raised `[ 1 claude-opus-5 ]  [ 2 claude-opus-4.8 ]`, answered by `1`–`4` — and those digits are the question's ANSWERS now, so two readers for one keystroke had to end. The proposal carries one choice blank instead (session.TaskModelShape): the card draws `run it on [ anthropic/claude-opus-5 ▾ ]`, `←→` walks the shortlist, and the answer carries the chosen one back on session.Answer.Blanks[\"model\"] to TaskAnswer.Model. Moving it answers nothing — the countdown runs on — and a proposal whose shortlist has one member draws no hole at all."
   - "The countdown was app.taskMeter — a twenty-cell draining bar and `auto-starts in 3.2s`, which is machinery describing itself. It is the block's policy line: the pick's own word and the time, `start it in 9s`. A proposal with no clock said `starts on your word`; it says `waiting`, which is what every question on this block says while something is waiting on it."
   - "Only a typed rune or a paste held the proposal's clock (app.holdTask off input.go and app.paste). EVERY KEY THE QUESTION READS holds it now, through the block's own hold (questionShown.held) — the same one-way door F41's reading clock goes through, and the first place on this block where a hold has to cross a connection. The pick survives the hold: what a held proposal stops being is a question that answers itself, not one the asker has an opinion about."
   - "The block took keys from a question it had never drawn. app.questionKey now refuses one with no shown stamp, which is either a half-typed sentence in the box or a fullscreen page over the top — and while home was up over a question the block was swallowing the letters somebody was typing into home's own box."
@@ -23,10 +23,11 @@ invalidates:
 The proposal is the second block onto the one renderer and the first that had to
 give something up. Everything the block asks for it already had — the settle
 guard, the receipt, the chip, the never-modal keyboard, a typed answer — and
-what it had that the block has no room for was a row of model chips answered by
+what it had that the block had no shape for was a row of model chips answered by
 the same digits the block spends on answers. Two readers for one keystroke is
-the exact defect this wave exists to end, so the chips are gone and the loss is
-written down here rather than quietly absorbed.
+the exact defect this wave exists to end — so the chips are gone, and the choice
+they carried is a hole in a sentence instead. The object already had the shape;
+what was missing was a card that drew it.
 
 The other thing worth reading twice is `esc`. On this one question it used to be
 the outright no, which was the honest reading of "get this off my screen" while

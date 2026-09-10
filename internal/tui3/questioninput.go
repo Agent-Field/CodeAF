@@ -343,25 +343,42 @@ func (a *app) questionInputKey(key string) bool {
 			in.notch = questionClamp(in.notch+delta, 0, in.notches-1)
 			break
 		}
-		if in.kind != session.InputBlanks || in.focus >= len(in.blanks) {
+		if in.kind != session.InputBlanks {
 			return false
 		}
-		// ←→ ON A CHOICE BLANK WALKS ITS CHOICES, which is the same gesture as a
-		// dial one shape down: the hole has a short list and the arrows are how a
-		// person sees the list without opening anything.
-		hole := &in.blanks[in.focus]
-		if hole.blank.Kind != session.BlankChoice || len(hole.blank.Choices) == 0 {
-			return false
-		}
-		delta := -1
-		if key == "right" {
-			delta = 1
-		}
-		hole.at = questionClamp(hole.at+delta, 0, len(hole.blank.Choices)-1)
-		hole.value = hole.blank.Choices[hole.at]
+		return questionWalkChoice(in, key)
 	default:
 		return false
 	}
+	return true
+}
+
+// questionWalkChoice is `←` and `→` on a choice blank, and it reports whether
+// there was one under the cursor to walk.
+//
+// ←→ ON A CHOICE BLANK WALKS ITS CHOICES, which is the same gesture as a dial
+// one shape down: the hole has a short list and the arrows are how a person sees
+// the list without opening anything.
+//
+// IT IS A FUNCTION OF ITS OWN BECAUSE TWO PLACES DO IT. The room routes every
+// key a shape offers ([app.questionInputKey]); the block routes only the keys it
+// DRAWS, and on a task proposal's card that is these two and nothing else — so
+// the card reaches the move without inheriting `tab`, `space` and the pair keys
+// it never spelled.
+func questionWalkChoice(in *questionInput, key string) bool {
+	if in == nil || in.focus < 0 || in.focus >= len(in.blanks) {
+		return false
+	}
+	hole := &in.blanks[in.focus]
+	if hole.blank.Kind != session.BlankChoice || len(hole.blank.Choices) == 0 {
+		return false
+	}
+	delta := -1
+	if key == "right" {
+		delta = 1
+	}
+	hole.at = questionClamp(hole.at+delta, 0, len(hole.blank.Choices)-1)
+	hole.value = hole.blank.Choices[hole.at]
 	return true
 }
 
@@ -460,7 +477,7 @@ func (a *app) questionInputRows(width int) []string {
 	}
 	switch room.input.kind {
 	case session.InputBlanks:
-		return a.questionBlankRows(width)
+		return a.questionBlankRows(&room.input, width)
 	case session.InputChecklist:
 		return a.questionChecklistRows(width)
 	case session.InputPairs:
@@ -486,26 +503,30 @@ func (a *app) questionInputRows(width int) []string {
 // this shape read as a sentence rather than as a form; a prompt that names none
 // is drawn above the holes, and a shape with no prompt at all is the holes
 // alone. All three are the same rows underneath.
-func (a *app) questionBlankRows(width int) []string {
-	room := a.qroom
-	in := room.input
+//
+// IT TAKES THE SHAPE RATHER THAN READING THE ROOM, because the room is no longer
+// the only place a hole is drawn: a task proposal's card carries one choice blank
+// for the model the work runs on (task.go's [app.taskShown]), and a card that
+// drew its own hole beside this one would be the two-renderings defect the
+// question block exists to end.
+func (a *app) questionBlankRows(in *questionInput, width int) []string {
 	inner := max(1, width-len(questionIndent))
 	out := make([]string, 0, len(in.blanks)+3)
-	if sentence, inline := a.questionBlankSentence(inner); inline {
+	if sentence, inline := a.questionBlankSentence(in, inner); inline {
 		out = append(out, questionIndent+sentence)
 	} else {
 		if in.prompt != "" {
 			out = append(out, questionIndent+a.pal.ink(fit(in.prompt, inner)))
 		}
 		for i, hole := range in.blanks {
-			out = append(out, questionIndent+a.questionHole(i, hole))
+			out = append(out, questionIndent+a.questionHole(in, i, hole))
 		}
 	}
 	// The focused hole says what it takes, under the sentence: a hole whose kind
 	// is a path says so, and one that will not take what is in it says that
 	// instead. It is one row and it is about the hole the cursor is in, because
 	// a column of validation notes is a form shouting.
-	if note := a.questionHoleNote(); note != "" {
+	if note := a.questionHoleNote(in); note != "" {
 		out = append(out, questionIndent+a.pal.dim(fit(note, inner)))
 	}
 	return out
@@ -513,8 +534,7 @@ func (a *app) questionBlankRows(width int) []string {
 
 // questionBlankSentence draws the prompt with its holes substituted in, and
 // reports false where the prompt names none of them.
-func (a *app) questionBlankSentence(width int) (string, bool) {
-	in := a.qroom.input
+func (a *app) questionBlankSentence(in *questionInput, width int) (string, bool) {
 	if in.prompt == "" {
 		return "", false
 	}
@@ -525,7 +545,7 @@ func (a *app) questionBlankSentence(width int) (string, bool) {
 			continue
 		}
 		found = true
-		line = strings.Replace(line, token, a.questionHole(i, hole), 1)
+		line = strings.Replace(line, token, a.questionHole(in, i, hole), 1)
 	}
 	if !found {
 		return "", false
@@ -535,7 +555,7 @@ func (a *app) questionBlankSentence(width int) (string, bool) {
 
 // questionHole is one `[value ▾]` or `[value  ]`, painted so the one the cursor
 // is in is unmistakable.
-func (a *app) questionHole(i int, hole questionBlank) string {
+func (a *app) questionHole(in *questionInput, i int, hole questionBlank) string {
 	value := strings.TrimSpace(hole.value)
 	if value == "" {
 		value = strings.TrimSpace(hole.blank.Label)
@@ -545,7 +565,7 @@ func (a *app) questionHole(i int, hole questionBlank) string {
 		body = " " + value + " " + a.icon(tokens.GExpanded) + " "
 	}
 	text := "[" + body + "]"
-	if i == a.qroom.input.focus {
+	if i == in.focus {
 		return a.pal.askBold(text)
 	}
 	return a.pal.dim(text)
@@ -558,8 +578,7 @@ func (a *app) questionHole(i int, hole questionBlank) string {
 // number blank holding letters says so here rather than at the moment enter is
 // pressed, which is the difference between a form that helps and one that
 // scolds.
-func (a *app) questionHoleNote() string {
-	in := a.qroom.input
+func (a *app) questionHoleNote(in *questionInput) string {
 	if in.focus < 0 || in.focus >= len(in.blanks) {
 		return ""
 	}

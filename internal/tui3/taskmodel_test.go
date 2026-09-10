@@ -33,20 +33,16 @@ func TestAProposalNamesTheModelItWillRunOn(t *testing.T) {
 	}
 }
 
-// A PROPOSAL THE ENGINE COULD NOT RESOLVE TO ONE MODEL STATES THE ONE IT PICKED
-// AND ASKS NOTHING ABOUT IT.
+// A PROPOSAL THE ENGINE COULD NOT RESOLVE TO ONE MODEL OFFERS THEM, ON THE
+// QUESTION, AS A SENTENCE WITH A HOLE IN IT.
 //
-// THE SHORTLIST IS NOT DRAWN ANY MORE, and this test is what is left of it. A
-// word that fitted several models used to raise a row of chips on the card,
-// answered by the digits 1–4 — and the digits are the question block's answers
-// now (question.go's ONE KEY GRAMMAR), so a second reader for the same keystroke
-// is exactly what this wave exists to end. What runs is the closest match, which
-// is what those chips opened on and what the clock would have taken.
-//
-// CORRECTING IT FROM THE PROPOSAL IS OWED. Until it lands, the way to ask for
-// another model is to say so in the words `c change` takes, which the engine
-// appends to the brief verbatim.
-func TestAnAmbiguousProposalStatesTheModelAndDoesNotAskAboutIt(t *testing.T) {
+// THE SHORTLIST IS A HOLE AND NO LONGER A ROW OF CHIPS. The chips were answered
+// by the digits 1–4, and the digits are the question block's ANSWERS now
+// (question.go's ONE KEY GRAMMAR) — two readers for one keystroke is exactly
+// what this wave exists to end. So the choice moved onto the shape the object
+// already had for it ([session.TaskModelShape]): one row, `←→` to change it, and
+// nothing about it answers the question.
+func TestAnAmbiguousProposalOffersTheModelsInAHoleAndPicksTheClosest(t *testing.T) {
 	a, agent, _ := taskApp(t)
 	agent.pending = []uint64{7}
 	options := []string{"anthropic/claude-opus-5", "anthropic/claude-opus-4.8"}
@@ -54,25 +50,70 @@ func TestAnAmbiguousProposalStatesTheModelAndDoesNotAskAboutIt(t *testing.T) {
 	taskText(a)
 	settleAsk(a)
 
-	text := taskText(a)
-	if !strings.Contains(text, taskModelTag+"anthropic/claude-opus-5") {
+	if text := taskText(a); !strings.Contains(text, taskModelTag+options[0]) {
 		t.Fatalf("the proposal does not name the model it resolved to:\n%s", text)
 	}
-	for _, gone := range []string{"[ 1 claude-opus-5 ]", "claude-opus-4.8", "auto-starts in"} {
-		if strings.Contains(text, gone) {
-			t.Fatalf("the card still draws the shortlist (%q):\n%s", gone, text)
+	block := questionBlockText(a)
+	for _, want := range []string{"run it on", options[0], questionKeyWord(questionWalkKey)} {
+		if !strings.Contains(block, want) {
+			t.Fatalf("the proposal's question does not offer %q:\n%s", want, block)
 		}
 	}
-	// THE DIGITS ARE THE QUESTION'S. `2` is the decline and nothing else, which
-	// is the whole point of one grammar: a person who has learnt what a digit
-	// does on one question has learnt it on all of them.
-	drive(t, a, key("2"))
-	if len(agent.answered) != 1 || agent.answered[0].answer.Approved {
-		t.Fatalf("2 did not answer the question: %+v", agent.answered)
+	// The chips are gone from the card, and so is the second countdown they used
+	// to sit under: the question above the box owns both now.
+	for _, gone := range []string{"[ 1 claude-opus-5 ]", "auto-starts in"} {
+		if strings.Contains(taskText(a), gone) {
+			t.Fatalf("the card still draws the shortlist (%q):\n%s", gone, taskText(a))
+		}
 	}
-	if agent.answered[0].answer.Model != "" {
-		t.Fatalf("the answer named a model nobody was asked about: %+v", agent.answered[0].answer)
+
+	// `→` MOVES THE CHOICE AND ANSWERS NOTHING. The proposal is not approved by
+	// picking a model for it, which is the bargain the row of chips was built on
+	// and the reason the arrows are not one of the answers.
+	drive(t, a, key("right"))
+	if block := questionBlockText(a); !strings.Contains(block, options[1]) {
+		t.Fatalf("→ did not move the hole onto %q:\n%s", options[1], block)
 	}
+	if len(agent.answered) != 0 {
+		t.Fatalf("picking a model answered the proposal: %+v", agent.answered)
+	}
+
+	// And the answer carries it, so the node is admitted on what was picked.
+	drive(t, a, key("1"))
+	if len(agent.answered) != 1 {
+		t.Fatalf("the proposal was not answered: %+v", agent.answered)
+	}
+	got := agent.answered[0].answer
+	if !got.Approved || got.Model != options[1] {
+		t.Fatalf("the answer did not carry the chosen model: %+v", got)
+	}
+}
+
+// A PROPOSAL WITH ONE MODEL ASKS NOTHING ABOUT IT. One option is not a choice,
+// and a hole offering the model the work was already going to run on is a
+// question that has answered itself.
+func TestAnUnambiguousProposalDrawsNoModelHole(t *testing.T) {
+	a, agent, _ := taskApp(t)
+	agent.pending = []uint64{7}
+	drive(t, a, streamEventMsg{gen: a.gen, ev: modelProposal(a, 7, 4*time.Second, "anthropic/claude-opus-5", nil)})
+	taskText(a)
+	settleAsk(a)
+
+	if block := questionBlockText(a); strings.Contains(block, "run it on") {
+		t.Fatalf("a proposal with nothing to pick drew a model hole:\n%s", block)
+	}
+	drive(t, a, key("1"))
+	if len(agent.answered) != 1 {
+		t.Fatalf("the proposal was not answered: %+v", agent.answered)
+	}
+	if got := agent.answered[0].answer; got.Model != "" {
+		t.Fatalf("the answer named a model nobody was asked about: %+v", got)
+	}
+}
+
+// questionBlockText is the block above the box as a reader sees it.
+func questionBlockText(a *app) string {
+	return plain(strings.Join(a.questionRows(a.width), "\n"))
 }
 
 // THE NODE KEEPS ITS MODEL AFTERWARDS: the rail says it on the telemetry row

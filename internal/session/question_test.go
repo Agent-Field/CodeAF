@@ -599,3 +599,37 @@ func TestABankedRuleAnswersAsARuleAndNotAsAToolWideMemo(t *testing.T) {
 		t.Fatalf("an empty banked comment claimed a rule: %q", got)
 	}
 }
+
+// TestAProposalAsksAboutItsModelOnlyWhenThereIsSomethingToAsk is
+// [TaskModelShape]'s whole bound, and it is the emptiness law said about a
+// question: a hole offering the one model the work was already going to run on
+// is a question that has answered itself.
+func TestAProposalAsksAboutItsModelOnlyWhenThereIsSomethingToAsk(t *testing.T) {
+	options := []string{"anthropic/claude-opus-5", "anthropic/claude-opus-4.8"}
+	shape := TaskModelShape(TaskNotice{Model: options[0], ModelOptions: options})
+	if shape.Kind != InputBlanks || len(shape.Blanks) != 1 {
+		t.Fatalf("a shortlist of two did not become one blank: %+v", shape)
+	}
+	blank := shape.Blanks[0]
+	if blank.Label != TaskModelBlank || blank.Kind != BlankChoice {
+		t.Fatalf("the hole is not a choice called %q: %+v", TaskModelBlank, blank)
+	}
+	// THE DEFAULT IS AN ANSWER ALREADY GIVEN: the leading option is what the
+	// card shows and what the clock takes, so somebody who changes nothing has
+	// confirmed the model the work was always going to run on.
+	if blank.Default != options[0] {
+		t.Fatalf("the hole opens on %q, not on the closest match", blank.Default)
+	}
+	if !strings.Contains(shape.Prompt, "{"+TaskModelBlank+"}") {
+		t.Fatalf("the sentence has no hole in it: %q", shape.Prompt)
+	}
+	for _, none := range []TaskNotice{
+		{},
+		{Model: options[0]},
+		{Model: options[0], ModelOptions: options[:1]},
+	} {
+		if shape := TaskModelShape(none); shape.Kind != InputNone {
+			t.Fatalf("a proposal with nothing to ask carried %+v", shape)
+		}
+	}
+}

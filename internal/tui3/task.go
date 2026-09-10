@@ -1248,6 +1248,11 @@ func (a *app) taskQuestion(notice *session.TaskNotice) session.Question {
 		Blocking: session.Blocking{Turn: true},
 		Deadline: notice.Deadline,
 		Asked:    a.now(),
+		// THE MODEL SHORTLIST IS THE ENGINE'S SHAPE, ASKED FOR RATHER THAN
+		// REBUILT. A proposal whose `model` argument fit more than one model this
+		// install has carries a hole for it, and the answer's own map carries the
+		// chosen one back to [session.ResolveTask] — see [session.TaskModelShape].
+		Input: session.TaskModelShape(*notice),
 	}
 	if !notice.Deadline.IsZero() {
 		built.Pick = &session.Pick{

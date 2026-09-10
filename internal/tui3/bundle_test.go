@@ -2574,14 +2574,18 @@ func (f *taskFake) ResolveQuestion(answer session.Answer) error {
 		return nil
 	}
 	if words := answer.Words(); answer.FirstKey() == "" && words != "" {
-		f.ResolveTask(answer.ID, session.TaskAnswer{Approved: true, Redirect: words})
+		f.ResolveTask(answer.ID, session.TaskAnswer{
+			Approved: true, Redirect: words, Model: answer.Blanks[session.TaskModelBlank],
+		})
 		return nil
 	}
 	action, ok := session.AnswerFromKey(answer.Kind, answer.FirstKey())
 	if !ok {
 		return nil
 	}
-	f.ResolveTask(answer.ID, action.Task)
+	task := action.Task
+	task.Model = answer.Blanks[session.TaskModelBlank]
+	f.ResolveTask(answer.ID, task)
 	return nil
 }
 

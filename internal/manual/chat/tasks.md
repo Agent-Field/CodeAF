@@ -3978,13 +3978,23 @@ leading `~` are ignored. Three things can happen.
 **One match — it is used and nobody is asked.** The card's meta line names the full id,
 and the model's receipt reads `task 7 started on anthropic/claude-opus-5: <title>`.
 
-**A few matches — a shortlist on the card.** Two to four candidates become the models row.
-It is a correction, not a gate: the countdown is already running on the closest match,
-which is chip 1, and that is what silence takes. Click a chip or press its digit `1`–`4`.
-Picking a model answers nothing — the question is still whether the work goes at all. Only
-a chip on the row can win. Chips are spelled with the part after the vendor unless two
-vendors share a tail, in which case all of them keep their full id; a chip that does not fit
-is dropped rather than cut, and a row that would show one chip is not drawn at all.
+**A few matches — a hole in the question.** Two to four candidates put one line on the
+proposal, above its answers:
+
+```
+     run it on [ anthropic/claude-opus-5 ▾ ]
+```
+
+`←` and `→` walk the shortlist. It is a correction, not a gate: the countdown is already
+running on the closest match, which is what the hole opens on and what silence takes.
+**Moving it answers nothing** — the question is still whether the work goes at all, and the
+clock keeps running while you look. Whichever model is in the hole when you press `1` is
+the model the work starts on. Only a member of the shortlist can win, and a shortlist with
+one member draws no hole at all: there is nothing to ask.
+
+The digits are the question's answers and never the models — `1` is `start it`, `2` is
+`no`. That is the same grammar on every question aforge asks you, which is why the models
+moved off the digits and onto the arrows.
 
 Name nothing and the task runs on `task.model` if you have set it, otherwise on your crew's
 **worker** class (`hands` in the `/crew` line — `z-ai/glm-5.3-flash` on the shipped

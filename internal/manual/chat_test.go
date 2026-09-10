@@ -84,6 +84,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is there a countdown on this question", "questions"},
 		{"what does your rule mean on a question", "questions"},
 		{"can I answer a question over --host", "questions"},
+		// The hole on a CARD rather than on a page, which is where the task
+		// proposal's model shortlist went. People ask about the arrows and about
+		// whether moving one is an answer.
+		{"what do the arrows do on the question above my box", "questions"},
+		{"does changing the hole answer the question", "questions"},
 		// AND THE APPROVAL QUESTION AS IT IS DRAWN NOW that it is that block
 		// (internal/tui3's consent.go), asked the four ways somebody meets the
 		// keys that moved: the digits, the key that used to deny, the shape of
@@ -93,13 +98,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the allow question turned into a card on my narrow terminal", "permissions"},
 		{"what does always this command write down", "permissions"},
 		// AND THE TASK PROPOSAL AS IT IS DRAWN NOW that it is that block too
-		// (internal/tui3's task.go), asked the three ways somebody meets the
+		// (internal/tui3's task.go), asked the four ways somebody meets the
 		// keys that moved: the answers row that replaced the chips, the typed
-		// `no` that used to decline and now corrects, and the model shortlist
-		// that is not offered any more.
+		// `no` that used to decline and now corrects, and the model shortlist,
+		// which is a hole in a sentence walked with the arrows rather than a
+		// row of chips answered with the digits.
 		{"how do I say no to a task it wants to start", "tasks"},
 		{"I typed no to the task and it started anyway", "tasks"},
 		{"where did the model chips on the proposal go", "tasks"},
+		{"change which model a task runs on before it starts", "tasks"},
 		{"how do I group chats", "collections"},
 		{"where do I file a task", "collections"},
 		// Lanes behind a base of the person's own: the question the hostname gate
