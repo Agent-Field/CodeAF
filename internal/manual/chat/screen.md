@@ -2103,6 +2103,36 @@ so its steps draw the generic gear (`▪` in plain mode) rather than a guess.
 conversations without that information derive their icons from the saved tool names. Scrolling a finished turn back into view never changes a
 mark.
 
+## Why a finished step says `ran 2 commands` and a running one says `running 2 commands` — past and present on a step's title
+
+A step's title is written in the **present** while any of its calls is still
+going and in the **past** the moment every one of them has come back:
+
+| while it runs | once it has finished |
+| --- | --- |
+| `running 2 commands` | `ran 2 commands` |
+| `reading 3 files in internal/tui3` | `read 3 files in internal/tui3` |
+| `searching the tree` | `searched the tree` |
+| `editing 2 files and running the suite` | `edited 2 files and ran the suite` |
+| `building` | `built` |
+| `listing github issues` | `listed github issues` |
+
+The words are otherwise identical. The tense is the whole difference, and on a
+step with no clock beside it, it is the only thing that says whether the work is
+still happening.
+
+It matters most in the place it used to be wrong. A step whose calls had all
+come back — sitting under a turn that was waiting on the model's next reply —
+kept its present-tense title for as long as that wait lasted, so a turn that had
+failed four requests and given up altogether still read `running 2 commands`
+two minutes later, with nothing running anywhere. **If a title is in the
+present, something in that step is genuinely still open.**
+
+**A title the model wrote itself is left alone.** When the model narrates a step
+in its own words, those are its words: aforge draws them as written and does not
+re-tense them. Only the titles aforge composes from the calls themselves — the
+ones built out of the tool names and the files they were pointed at — change.
+
 ## The live work collapses when the answer finishes
 
 When the turn finishes, its work collapses even if you opened it while it ran.

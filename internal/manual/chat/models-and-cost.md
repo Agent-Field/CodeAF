@@ -1351,6 +1351,48 @@ different machine, which is what the next try asks for. Only when all four come 
 does the turn end. Before this, one empty reply ended a whole turn, and a measured run
 stopped eighteen minutes in with hours of budget unspent.
 
+## Where do I see that it is asking again — the retry rows in the conversation, gave up, moving to another model, and the request that did not answer in time
+
+**Every failed attempt at a request leaves a row where you are reading**, in the
+dim lane aforge writes everything about itself in. You do not have to be looking
+at the status line at the moment it happens, and you do not lose the story by
+looking away:
+
+```
+· the model went quiet mid-reply — asking again
+· the reply lost its thread — that text was dropped, asking again
+· the reply kept losing its thread — finishing this one on kimi-k3
+· gave up after 4 tries · API error (429) rate limited
+```
+
+The first three are **something still being done**: the request was cut or
+refused, nothing has been lost, and the same question is on its way to a
+provider again — sometimes to a different model, which the row names, because
+the rest of the answer will arrive in a different voice. `nothing came back from
+the model — asking again` is the row for a request that did not answer in time
+at all.
+
+The last one is **the end**. `gave up after 4 tries · …` is drawn when a turn
+that was asked again runs out of tries, and what follows the dot is what the
+provider actually said. It is the row that used to be missing: a turn could fail
+four requests over ninety seconds, give up, and leave nothing in the
+conversation at all except a two-word state on the status line, which is gone by
+the next redraw. If nothing is being done any more, a row says so.
+
+**An error nobody tried again for is still just an error.** A turn that failed
+on its first and only attempt — a request too large for the window, a refusal of
+the request itself — draws `error: <what went wrong>`. "Gave up" is a claim about
+a struggle, and aforge does not make it about a single attempt.
+
+**The status line has its own short form of the same event** while a second
+attempt is on the wire, with a count-up beside it — the words are in *The model
+went quiet, or stopped answering halfway through* above. The row and the status
+line are two readings of one moment, so they cannot disagree.
+
+**A task's own page draws the same rows.** A step of a task that is asked again,
+or that gives up, says so on the task's page in exactly these words, so a task
+whose work keeps failing is not a page that says nothing has arrived yet.
+
 ## My reply just stopped and nothing was said — a turn that ended with no answer, no error and no note, my answer disappeared when I opened the conversation in another window, who ended my reply, do I have to type my question again
 
 If a reply ends without arriving, aforge says one sentence about it. There is

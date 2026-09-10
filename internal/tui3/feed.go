@@ -74,6 +74,25 @@ type feed struct {
 	settledTurn int
 	// pendingReplyTags arrived before the first words of the answer they label.
 	pendingReplyTags []session.TaskReplyTag
+	// asked and askedTurn are HOW MANY TIMES THIS TURN HAS BEEN ASKED AGAIN, and
+	// the turn that count belongs to.
+	//
+	// IT IS THE ONLY COUNT OF A FAILING REQUEST THIS SURFACE HAS. The engine's
+	// retry event carries a sentence and no arithmetic today (failurerow.go
+	// states the seam), so what the give-up row says about how many tries were
+	// spent is what this reducer WATCHED go past — honest about being that, and
+	// counted here rather than on either surface so that the conversation and a
+	// node's page cannot answer the question differently.
+	//
+	// The turn is carried beside it because a count is per-request-ladder and a
+	// ladder belongs to one turn; comparing rather than resetting means no caller
+	// has to remember to clear it, which is exactly the kind of remembering that
+	// leaves the second turn of a session reporting the first one's failures.
+	asked, askedTurn int
+	// lastAsk is the retry this feed drew most recently, kept whole so that the
+	// row in the transcript and the word on the status line are two readings of
+	// ONE struct rather than two sentences about one moment (failurerow.go).
+	lastAsk failure
 	// col is this page's live token column — the books its lane has heard,
 	// and the pair in motion (tokencol.go). It is HERE and not on the surface
 	// because it is a fact about the transcript being grown: the conversation
@@ -1305,7 +1324,52 @@ func (f *feed) retry(ev session.Event) {
 	if f.hooks.retrying != nil {
 		f.hooks.retrying()
 	}
-	f.note(ev.Text)
+	// AND THE ATTEMPT THAT NEVER HAPPENED LEAVES A ROW WHERE THE PERSON IS
+	// READING. It used to leave the event's sentence and nothing else, which was
+	// nearly right and missed the two things the sentence cannot say: that this
+	// is one of several, and — when the ladder runs out — that it stopped. Both
+	// come off [failure], composed in the one place every surface composes them
+	// (failurerow.go).
+	f.lastAsk = retryFailure(ev.Text, f.countAsk())
+	f.note(failureRow(f.lastAsk))
+}
+
+// failureNote is what a surface writes when a turn ENDS on an error, and it is
+// here — in the reducer both surfaces share — so that the conversation and a
+// node's page cannot tell the same failure two different ways.
+//
+// A TURN THAT TRIED AGAIN GAVE UP; A TURN THAT DID NOT SIMPLY FAILED. The
+// give-up sentence is a claim about a ladder, and saying it over an error that
+// was raised on the first and only attempt — a request too big for the window, a
+// refusal of our own bytes — would be the surface inventing a struggle that
+// never happened. So the count decides the words, and with no count the line is
+// the plain one it has always been.
+func (f *feed) failureNote(err error) string {
+	text := errText(err)
+	if seen := f.asksSeen(); seen > 0 {
+		return failureRow(gaveUpFailure(text, seen))
+	}
+	return errorNoteWord + text
+}
+
+// countAsk records one more try of this turn's request and answers how many had
+// been counted before it — see [feed.asked] for why the count is here.
+func (f *feed) countAsk() int {
+	if f.askedTurn != f.turn {
+		f.askedTurn, f.asked = f.turn, 0
+	}
+	seen := f.asked
+	f.asked++
+	return seen
+}
+
+// asksSeen is that count read without adding to it: what the give-up row at the
+// end of the ladder is counting.
+func (f *feed) asksSeen() int {
+	if f.askedTurn != f.turn {
+		return 0
+	}
+	return f.asked
 }
 
 // dropLive throws away the assistant block the CURRENT attempt was streaming

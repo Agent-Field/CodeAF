@@ -89,7 +89,11 @@ func TestThinkingNeverBecomesACaption(t *testing.T) {
 		strings.Contains(got[0].text, "I should") {
 		t.Fatalf("thinking leaked into the step title: %#v", got[0])
 	}
-	if got[0].source != captionMade || got[0].text != "listing github issues" {
+	// The call carries `toolOK`, so the batch has CLOSED, and a floor caption
+	// about a batch that has closed is spelled in the past (caption.go's
+	// [captionPast]). The step is still the tool floor, which is what this test
+	// is about; the tense is asserted on its own in failurerow_test.go.
+	if got[0].source != captionMade || got[0].text != "listed github issues" {
 		t.Fatalf("want a tool floor step, got %#v", got[0])
 	}
 }
@@ -219,7 +223,10 @@ func TestALiveTurnKeepsPastCaptionsShutAndTheFrontierOpen(t *testing.T) {
 	// they have — the past steps shut, the step still running open.
 	showLiveWork(t, a)
 	page := strings.Join(plainRows(a), "\n")
-	if !strings.Contains(page, "reading 2 files") {
+	// PAST STEP, PAST TENSE. Both of this batch's reads have come back, so its
+	// floor caption reads `read 2 files` — the step still running below it keeps
+	// the present, which is the contrast this test is named for.
+	if !strings.Contains(page, "read 2 files") {
 		t.Fatalf("past caption missing:\n%s", page)
 	}
 	if !strings.Contains(page, "editing") {

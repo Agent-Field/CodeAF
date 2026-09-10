@@ -1173,7 +1173,13 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 		room.col.down += ev.Usage.Output
 
 	case session.EventError:
-		a.roomNote("error: " + errText(ev.Err))
+		// THE NODE'S OWN FAILURES ARE ROWS ON ITS PAGE, in the conversation's
+		// words for the same thing: a request that was asked again draws its
+		// reason as it happens ([feed.retry], which this page's reducer takes
+		// through [feed.ingest] above), and a step that ran out of tries ends on
+		// `gave up after 2 tries · …` rather than on a page that goes on saying
+		// nothing has arrived yet ([roomYetWord]).
+		a.roomNote(a.room.failureNote(ev.Err))
 	}
 	a.touch()
 	return tea.Batch(after, waitRoom(room.lane, room.gen), a.wake())
