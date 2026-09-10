@@ -25,3 +25,8 @@ remains a proposal; backend records are independent of final product labels.
 The active checklist now separates completed evidence, pending architecture
 decisions, baseline selection and future delivery. Read-only baseline subagents
 were explicitly requested; no baseline replacement has been selected.
+
+The user has accepted typed composition and starting parallel implementation.
+The first bounded slice integrates current dev and repairs standing control
+persistence. Broad UI/tui3 acceptance is explicitly deferred; existing draft #662
+will consolidate this record and #663 will then be closed as superseded.
