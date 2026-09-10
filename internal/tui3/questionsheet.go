@@ -426,7 +426,7 @@ func (a *app) questionSheetRow(s *questionSheet, at int, q session.Question, wid
 		return a.pal.ask(fit(text+"  "+tail, width))
 	}
 	gap := column - ansi.StringWidth(text)
-	// Painted in pieces rather than nested, for [app.questionOptionRow]'s
+	// Painted in pieces rather than nested, for [app.questionCardOptionRows]'s
 	// reason: these hues are raw SGR with an explicit reset, so a colour inside
 	// a colour ends the outer one early.
 	line := cursor + mark + a.pal.ask(" "+head) + strings.Repeat(" ", gap)

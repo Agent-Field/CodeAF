@@ -585,6 +585,11 @@ type Answer struct {
 	// mapping — goes on working unchanged; [Answer.Keys] is how this package
 	// reads either.
 	Picked []string `json:"picked,omitempty"`
+	// Labels are the words on the answers in Picked, in the same order. They
+	// are written only on the copy of an answer handed back to the asker that
+	// raised the question through `ask` (tools_ask.go), so a model reads what
+	// `2` meant without a table of its own; the record keeps the keys.
+	Labels []string `json:"labels,omitempty"`
 	// Change is what was said BESIDE the pick: "2, but keep the sqlite file as
 	// the source of truth". It is the half of an answer that carries the
 	// person's intent, and a lane that can take words does something with it —

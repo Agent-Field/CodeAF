@@ -2259,7 +2259,7 @@ raises a card, and the card is answered below.
 
 The tasks pages describe what rooms and the roster are for.
 
-## Stopping work with `x` — the confirmation card
+## Stopping work with `x` — the confirmation card, why the stop card needs enter as well as the number
 
 `x` raises one card above the message box:
 

@@ -21,7 +21,7 @@ import (
 
 const askDescription = "Ask only after the decision ladder is exhausted. Give a reason, stakes, structured answers before free text, your pick and what would change it. Returns the person's whole answer."
 
-const askSchemaJSON = `{"type":"object","properties":{"head":{"type":"string","description":"Decision in one sentence"},"kind":{"type":"string","enum":["permission","choice","judgement","clarification","confirmation","landing","assumption","ratify"],"description":"Decision kind; assumption options stand unless struck"},"form":{"type":"string","enum":["line","card","room","sheet"],"description":"Smallest form evidence needs"},"reason":{"type":"string","description":"Why ask now after cheaper rungs"},"subject":{"type":"object","description":"Existing subject","properties":{"kind":{"type":"string","enum":["call","task","page","run","account"],"description":"Subject kind"},"id":{"type":"integer","description":"Task id"},"callId":{"type":"string","description":"Call id"},"ref":{"type":"string","description":"String id"},"name":{"type":"string","description":"Visible name"}}},"options":{"type":"array","description":"Answers, or assumptions standing by default","items":{"type":"object","properties":{"key":{"type":"string","description":"Answer key"},"label":{"type":"string","description":"Short label"},"body":{"type":"string","description":"Meaning"},"consequence":{"type":"string","description":"What happens"},"safe":{"type":"boolean","description":"Changes nothing"},"widening":{"type":"boolean","description":"Grants more"},"blocks":{"type":"array","description":"Evidence","items":{"$ref":"#/$defs/block"}},"dimensions":{"type":"object","description":"Comparison axis values"}},"required":["key","label"]}},"input":{"type":"object","description":"Extra structured input","properties":{"kind":{"type":"string","enum":["text","blanks","checklist","pairs","dial"],"description":"Input kind"},"blanks":{"type":"array","description":"Named typed fields"},"pairs":{"type":"array","description":"Paired choices"},"dial":{"type":"object","description":"Numeric range and default"}}},"pick":{"type":"object","description":"Recommended answer","properties":{"key":{"type":"string","description":"Option key"},"reason":{"type":"string","description":"Why"},"confidence":{"type":"string","enum":["low","medium","high"],"description":"Certainty"},"wouldChange":{"type":"string","description":"What changes the pick"}},"required":["key"]},"stakes":{"type":"string","enum":["reversible","costly","irreversible"],"description":"Cost if wrong"},"blocking":{"type":"object","description":"What waits","properties":{"turn":{"type":"boolean","description":"Turn waits"},"tasks":{"type":"array","description":"Task names","items":{"type":"string"}}}},"scope":{"type":"array","description":"Allowed lifetimes","items":{"type":"string","enum":["once","task","project","always"]}},"attach":{"type":"array","description":"Evidence before answers","items":{"$ref":"#/$defs/block"}}},"required":["head","kind","reason","stakes"],"additionalProperties":false,"$defs":{"block":{"type":"object","description":"Evidence block","properties":{"kind":{"type":"string","enum":["text","diagram","table","diff","image","layout"],"description":"Block kind"},"title":{"type":"string","description":"Heading"},"body":{"type":"string","description":"Text or lines"},"rows":{"type":"array","description":"Table rows","items":{"type":"array","items":{"type":"string"}}},"path":{"type":"string","description":"Image path"}},"required":["kind"]}}}`
+const askSchemaJSON = `{"type":"object","properties":{"head":{"type":"string","description":"Decision in one sentence"},"kind":{"type":"string","enum":["permission","choice","judgement","clarification","confirmation","landing","assumption","ratify"],"description":"Decision kind; assumption options stand unless struck"},"form":{"type":"string","enum":["line","card","room","sheet"],"description":"Smallest form evidence needs"},"reason":{"type":"string","description":"Why ask now after cheaper rungs"},"subject":{"type":"object","description":"Existing subject","properties":{"kind":{"type":"string","enum":["call","task","page","run","account"],"description":"Subject kind"},"id":{"type":"integer","description":"Task id"},"callId":{"type":"string","description":"Call id"},"ref":{"type":"string","description":"String id"},"name":{"type":"string","description":"Visible name"}}},"options":{"type":"array","description":"Answers, or assumptions standing by default","items":{"type":"object","properties":{"key":{"type":"string","description":"Answer key: a single digit, 1 upward in order. Any other key is renumbered for the person and given back to you as you wrote it"},"label":{"type":"string","description":"Short label"},"body":{"type":"string","description":"Meaning"},"consequence":{"type":"string","description":"What happens"},"safe":{"type":"boolean","description":"Changes nothing"},"widening":{"type":"boolean","description":"Grants more"},"blocks":{"type":"array","description":"Evidence","items":{"$ref":"#/$defs/block"}},"dimensions":{"type":"object","description":"Comparison axis values"}},"required":["key","label"]}},"input":{"type":"object","description":"Extra structured input. checklist ticks several of the options at once (up to 8), so the answers stay in options; blanks, pairs and dial carry their own shape here","properties":{"kind":{"type":"string","enum":["text","blanks","checklist","pairs","dial"],"description":"Input kind"},"blanks":{"type":"array","description":"Named typed fields, kind blanks only"},"pairs":{"type":"array","description":"Paired choices"},"dial":{"type":"object","description":"Numeric range and default"}}},"pick":{"type":"object","description":"Recommended answer","properties":{"key":{"type":"string","description":"Option key"},"reason":{"type":"string","description":"Why"},"confidence":{"type":"string","enum":["low","medium","high"],"description":"Certainty"},"wouldChange":{"type":"string","description":"What changes the pick"}},"required":["key"]},"stakes":{"type":"string","enum":["reversible","costly","irreversible"],"description":"Cost if wrong"},"blocking":{"type":"object","description":"What waits","properties":{"turn":{"type":"boolean","description":"Turn waits"},"tasks":{"type":"array","description":"Task names","items":{"type":"string"}}}},"scope":{"type":"array","description":"Allowed lifetimes","items":{"type":"string","enum":["once","task","project","always"]}},"attach":{"type":"array","description":"Evidence before answers","items":{"$ref":"#/$defs/block"}}},"required":["head","kind","reason","stakes"],"additionalProperties":false,"$defs":{"block":{"type":"object","description":"Evidence block","properties":{"kind":{"type":"string","enum":["text","diagram","table","diff","image","layout"],"description":"Block kind"},"title":{"type":"string","description":"Heading"},"body":{"type":"string","description":"Text or lines"},"rows":{"type":"array","description":"Table rows","items":{"type":"array","items":{"type":"string"}}},"path":{"type":"string","description":"Image path"}},"required":["kind"]}}}`
 
 type askArguments struct {
 	Head     string         `json:"head"`
@@ -38,6 +38,14 @@ type askArguments struct {
 	Attach   []Block        `json:"attach"`
 }
 
+// askRefusedLead opens every refusal `ask` hands back. IT SAYS THAT NOTHING WAS
+// SHOWN, because a model reading a bare refusal has told the person "the form
+// is presented above — check whichever boxes you like" over a screen with
+// nothing on it (2026-09-10, deepseek-v4-flash). The lead is also the fact
+// [askRefusedAndNotRetried] reads off the transcript, so the two are one
+// string.
+const askRefusedLead = "nothing was asked and the person saw no question: "
+
 func (a *Agent) askTool() bare.Tool {
 	return bare.Tool{Name: "ask", Description: askDescription, Schema: json.RawMessage(askSchemaJSON), Execute: a.executeAsk}
 }
@@ -47,7 +55,16 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 	if err := decodeToolArguments(raw, &in); err != nil {
 		return "Invalid arguments: " + err.Error(), true, nil
 	}
+	// A PICK WITH NO KEY IS NO PICK. A model that writes `pick: {key: ""}` with
+	// "their taste decides it" beside it has declined to recommend, which the
+	// object spells as a nil pick; refusing it as a pick that names nothing
+	// sends the model round again for a comma. Measured on 2026-09-10: a
+	// well-formed checklist of eight was refused for exactly this.
+	if in.Pick != nil && strings.TrimSpace(in.Pick.Key) == "" {
+		in.Pick = nil
+	}
 	id := a.askSeq.Add(1)
+	theirs := askDigitKeys(in.Options, in.Pick)
 	q := Question{ID: id, Kind: QuestionAsk, Ask: in.Kind, Form: in.Form, Asker: Asker{Kind: AskerModel}, Head: in.Head, Reason: in.Reason, Subject: in.Subject, Options: in.Options, Input: in.Input, Pick: in.Pick, Stakes: in.Stakes, Blocking: in.Blocking, Scope: in.Scope, Attach: in.Attach}
 	q.Policy = a.autonomyFor(q.Ask)
 	if q.Stakes == StakesIrreversible {
@@ -57,7 +74,7 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 		q.Deadline = time.Now().Add(q.Policy.After)
 	}
 	if err := q.Check(a.Decisions()); err != nil {
-		return err.Error(), false, nil
+		return askRefusedLead + err.Error(), false, nil
 	}
 	if !a.config.Interactive && q.Policy.Kind == PolicyAsk {
 		if q.Pick == nil {
@@ -78,7 +95,7 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 		// a surface hearing this about a question it never drew does nothing
 		// with it, which is what [app.foldOthersAnswer] already does.
 		a.emitQuestion(EventQuestionAnswered, q, &answer)
-		return marshalAnswer(answer)
+		return marshalAnswer(askInTheirKeys(answer, q, theirs))
 	}
 	wait := make(chan Answer, 1)
 	a.mu.Lock()
@@ -92,7 +109,7 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 		a.mu.Lock()
 		delete(a.askWaits, id)
 		a.mu.Unlock()
-		return err.Error(), false, nil
+		return askRefusedLead + err.Error(), false, nil
 	}
 	defer forget()
 	var clock <-chan time.Time
@@ -103,17 +120,88 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 	}
 	select {
 	case answer := <-wait:
-		return marshalAnswer(answer)
+		return marshalAnswer(askInTheirKeys(answer, q, theirs))
 	case <-clock:
 		answer := defaultAnswer(q, "")
 		_ = a.ResolveQuestion(answer)
-		return marshalAnswer(answer)
+		return marshalAnswer(askInTheirKeys(answer, q, theirs))
 	case <-ctx.Done():
 		a.mu.Lock()
 		delete(a.askWaits, id)
 		a.mu.Unlock()
 		return "", false, ctx.Err()
 	}
+}
+
+// askDigitKeys makes every answer's key ONE DIGIT, in the order the asker gave
+// them, and hands back what the asker had called each one.
+//
+// THE KEY GRAMMAR IS THE SURFACE'S AND NOT THE ASKER'S. A model writes keys like
+// `landscape` and `still-life` because the schema said "key" and a word is what
+// a model reaches for; a person then sees `[landscape] Landscapes & seascapes`
+// on a row that has to hold eight of those, and there is no single key on the
+// keyboard that presses it. Every other question on this surface is answered
+// with `1`–`9` (questionkeys.go), so a question the model raises is too. The
+// asker's own names are kept beside the digits and given back on the answer
+// ([askInTheirKeys]), so the model reads its answer in the words it wrote and
+// the person never sees them.
+//
+// Keys that already are single digits in order are left exactly as they came,
+// so nothing moves under an asker that followed the grammar.
+func askDigitKeys(options []AnswerOption, pick *Pick) map[string]string {
+	ordered := true
+	for i, option := range options {
+		if strings.TrimSpace(option.Key) != itoaKey(i+1) {
+			ordered = false
+			break
+		}
+	}
+	if ordered {
+		return nil
+	}
+	theirs := make(map[string]string, len(options))
+	for i := range options {
+		digit := itoaKey(i + 1)
+		theirs[digit] = strings.TrimSpace(options[i].Key)
+		if pick != nil && strings.TrimSpace(pick.Key) == strings.TrimSpace(options[i].Key) {
+			pick.Key = digit
+		}
+		options[i].Key = digit
+	}
+	return theirs
+}
+
+func itoaKey(n int) string { return fmt.Sprintf("%d", n) }
+
+// askInTheirKeys is the answer as the asker reads it: every digit the person
+// pressed translated back to the name the asker gave that answer, and the
+// labels beside them, so the model needs no table of its own to know what
+// `2` meant.
+func askInTheirKeys(answer Answer, q Question, theirs map[string]string) Answer {
+	name := func(key string) string {
+		if own, ok := theirs[key]; ok && own != "" {
+			return own
+		}
+		return key
+	}
+	if answer.Key != "" {
+		answer.Key = name(answer.Key)
+	}
+	picked := make([]string, 0, len(answer.Picked))
+	for _, key := range answer.Picked {
+		picked = append(picked, name(key))
+	}
+	if len(picked) > 0 {
+		answer.Picked = picked
+	}
+	for _, key := range answer.Keys() {
+		for _, option := range q.Options {
+			if name(strings.TrimSpace(option.Key)) == key {
+				answer.Labels = append(answer.Labels, strings.TrimSpace(option.Label))
+			}
+		}
+	}
+	return answer
 }
 
 func defaultAnswer(q Question, from string) Answer {

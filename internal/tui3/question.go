@@ -99,13 +99,6 @@ const (
 	// offered on the first is the surface guessing at a habit somebody has not
 	// formed (DESIGN.md's RULES ARE OFFERED, VISIBLE, FORGETTABLE).
 	questionRuleAfter = 3
-	// questionCardOptions is how many answers a card draws a row apiece for.
-	// Past it the answers go on one row like the line's, because a block that
-	// can be nine rows tall is a block that pushes the conversation off a short
-	// screen — and the engine's own gate refuses more than four answers on
-	// anything but a checklist ([session.Question.Check]), so this is a floor
-	// under a bound that already exists rather than a second bound.
-	questionCardOptions = 4
 )
 
 // questionAgent is the questions half of the agent under this surface, when it
@@ -809,12 +802,39 @@ func (a *app) questionForm(q session.Question) questionForms {
 	case session.FormCard, session.FormRoom, session.FormSheet:
 		return formsCard
 	case session.FormLine:
-		return formsLine
+		// THE ASKER'S `line` IS A WISH AND THE EVIDENCE DECIDES. A model wrote
+		// `form: line` over eight checklist answers and the row that came out
+		// was `[landscape] Landscapes & seascapes · [portrait] … [surrealis…` —
+		// cut at the edge, nothing under a hand. A line holds plain answers and
+		// no structured input — ticks, blanks, pairs and a dial are rows by
+		// nature, and an answer with something to say beside it needs a row to
+		// say it on. How MANY plain answers a line holds is the width's to
+		// decide ([app.questionOffer] falls to the card when they do not fit),
+		// because a form is the size the evidence needs and not a style.
+		if questionFitsALine(q) {
+			return formsLine
+		}
+		return formsCard
 	}
 	if len(q.Options) > 2 || strings.TrimSpace(q.Reason) != "" {
 		return formsCard
 	}
 	return formsLine
+}
+
+// questionFitsALine is whether a question's evidence is the kind one row of
+// answers can hold: nothing to say beside any answer, and no blanks, ticks,
+// pairs or dial to walk. Width is judged where the row is drawn.
+func questionFitsALine(q session.Question) bool {
+	if q.Input.Kind != session.InputNone {
+		return false
+	}
+	for _, option := range q.Options {
+		if strings.TrimSpace(option.Consequence) != "" || strings.TrimSpace(option.Body) != "" || len(option.Blocks) > 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // questionMark is the one-cell glyph at the head of a question, and it is the
@@ -970,34 +990,33 @@ func (a *app) questionCardBody(q questionShown, width int) []string {
 	if q.holes.kind == session.InputBlanks {
 		out = append(out, a.questionCardBlankRows(&q.holes, width)...)
 	}
+	// EVERY ANSWER IS A ROW OF ITS OWN. The engine already bounds how many a
+	// question may carry ([session.Question.Check]); a second cap here once sent
+	// a checklist of eight onto one cut row with nothing pressable on it, which
+	// was the block at its most useless exactly where it was most needed.
 	options := q.question.Options
-	if len(options) > questionCardOptions {
-		// Past the card's own bound the answers go on one row, which is the
-		// line form's row drawn under a card's head. The digits are unchanged:
-		// what a person gives up is the consequence beside each word, which is
-		// the thing there is no room for rather than the thing they answer with.
-		options = nil
-	}
 	// The widest answer word on the card, which is the column every consequence
-	// beside it starts in ([app.questionOptionRow] says why).
+	// beside it starts in ([app.questionCardOptionRows] says why).
 	pad := 0
 	for _, option := range options {
 		if w := ansi.StringWidth(strings.TrimSpace(option.Label)); w > pad {
 			pad = w
 		}
 	}
+	noteRows := a.questionCardNoteRows(len(options), len(out))
 	for i, option := range options {
 		// EVERY ANSWER ROW IS PRESSABLE ALONG ITS WHOLE WIDTH, which is the
 		// sheet's own bargain applied to the card ([questionBand] says why it is
-		// a row and not a span). The card puts each answer on a row of its own,
-		// so a press is resolved BY ROW — and a pointer that could reach the
-		// answers on the line form and the sheet but not on the card would be an
-		// affordance the middle form quietly dropped.
-		row := len(out)
-		out = append(out, a.questionHovered(a.questionOptionRow(q, i, option, pad, width), row, width))
-		a.questionBands = append(a.questionBands, questionBand{
-			row: row, span: hudSpan{from: 0, to: width}, at: i,
-		})
+		// a row and not a span) — and EVERY ROW A LABEL WRAPS ONTO PRESSES THE
+		// SAME ANSWER, so a long answer is not a target that shrinks to its
+		// first line.
+		for _, line := range a.questionCardOptionRows(q, i, option, pad, width, noteRows) {
+			row := len(out)
+			out = append(out, a.questionHovered(line, row, width))
+			a.questionBands = append(a.questionBands, questionBand{
+				row: row, span: hudSpan{from: 0, to: width}, at: i,
+			})
+		}
 	}
 	// AND THE ONE LINE OVER A FREE-TEXT BOX IS THE LAST ROW OF THE CARD, because
 	// the box it is about is the row under the card ([session.InputShape.Prompt]
@@ -1197,7 +1216,7 @@ func questionAskerWord(asker session.Asker) string {
 	return ""
 }
 
-// questionOptionRow is one answer on a card: its key, its word, and what taking
+// questionCardOptionRows is one answer on a card: its key, its word, and what taking
 // it produces.
 //
 // THE ASKER'S PICK IS MARKED AND THE MARK IS NOT A CURSOR. [session.Pick] is
@@ -1206,15 +1225,53 @@ func questionAskerWord(asker session.Asker) string {
 // the confirmation kind has a cursor at all (see [questionSafeAt]), so on every
 // other card the one mark on the rows is the recommendation and cannot be
 // misread as "the key you are about to press".
-func (a *app) questionOptionRow(q questionShown, at int, option session.AnswerOption, pad, width int) string {
+// questionCardNoteRows is how many rows the note under one answer may take on
+// the card: two when the screen has them, one when it does not, never none.
+//
+// THE CARD MAY NOT PUSH ITS OWN HEAD OFF THE SCREEN. Eight answers with three
+// rows of note each is thirty rows, and on a thirty-six-row terminal the
+// question itself scrolled away above the first note (2026-09-10, a real
+// screen) — a card whose question cannot be read is a list of answers to
+// nothing. So the answers are given at most half the screen less what the head
+// already spent, shared evenly, and a note that does not fit ends in `…` with
+// `[o] open it` holding the rest. The floor is one row rather than none
+// because a note cut to nothing is an answer nobody can weigh, and the
+// ceiling is two because a note is a note and not the page.
+func (a *app) questionCardNoteRows(answers, spent int) int {
+	_, height := a.size()
+	if answers < 1 {
+		return 2
+	}
+	left := height/2 - spent - 1
+	return max(1, min(2, left/answers-1))
+}
+
+func (a *app) questionCardOptionRows(q questionShown, at int, option session.AnswerOption, pad, width, noteRows int) []string {
 	key := strings.TrimSpace(option.Key)
 	if key == "" {
 		key = itoa(at + 1)
 	}
 	picked := q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) == key
 	cursored := q.question.Ask == session.AskConfirmation && at == q.pick
+	// A CHECKLIST'S ROWS WEAR THEIR TICKS IN THE CARD, the way the page draws
+	// them (questioninput.go): the tick says what is ticked, the pointer says
+	// where `space` lands, and a digit toggles rather than answers. THE POINTER
+	// IS A MARK AND NOT ONLY A BAND, because the band is a background colour
+	// and a person on a plain screen — or reading a capture — was left to
+	// guess which row `tab` had reached. The asker's own pick does not wear
+	// the pointer here, where every other card gives it the pointer: on a
+	// checklist the pointer is the person's, and the pick is said in a word.
+	ticking := q.holes.kind == session.InputChecklist
+	ticked := ticking && at < len(q.holes.ticks) && q.holes.ticks[at]
+	if ticking && at == q.holes.focus {
+		cursored = true
+	}
 	mark, plainMark := "  ", "  "
-	if picked {
+	switch {
+	case ticked:
+		plainMark = a.icon(tokens.GSettled) + " "
+		mark = a.pal.askBold(plainMark)
+	case ticking && cursored, !ticking && picked:
 		plainMark = a.icon(tokens.GCollapsed) + " "
 		mark = a.pal.ask(plainMark)
 	}
@@ -1222,42 +1279,75 @@ func (a *app) questionOptionRow(q questionShown, at int, option session.AnswerOp
 	if word == "" {
 		word = key
 	}
+	suggested := ""
+	if ticking && picked {
+		suggested = " · " + questionSuggestedWord
+	}
 	say := strings.TrimSpace(option.Consequence)
-	// THE CONSEQUENCES STAND IN A COLUMN. Each answer's word is padded out to
-	// the widest word on the card, so what the three of them DO reads as a
-	// column of sentences rather than as three ragged tails — which is the
-	// alignment law said about the one place on this block where a second
-	// column exists (docs/design/questions/DESIGN.md). The padding is dropped
-	// when nothing on the card has a consequence, because a word padded out to
-	// meet nothing is trailing space.
-	tail := word
-	if say != "" {
+	// THE BODY IS DRAWN UNDER THE LABEL, dim and wrapped, because it is the
+	// note the asker wrote to tell one answer from the next — "what the tour
+	// would include" — and a card that drops it hands the person eight names
+	// and no way to weigh them. The line form has no room for it and is not
+	// chosen when there is one ([questionFitsALine]).
+	note := strings.TrimSpace(option.Body)
+	// THE LABEL WRAPS AND IS NEVER CUT. A row that fits keeps the consequence
+	// beside the label on the pad; one that does not puts the label on as many
+	// rows as it needs and the consequence dim on a row of its own under it —
+	// an answer whose words end in `…` is an answer nobody can weigh.
+	lead := "  " + plainMark + key + "  "
+	indent := strings.Repeat(" ", ansi.StringWidth(lead))
+	room := max(1, width-ansi.StringWidth(lead))
+	inline := say != "" && ansi.StringWidth(word) <= pad && pad+2+ansi.StringWidth(say) <= room
+	paint := func(text string) string {
+		if cursored {
+			return a.pal.background(text, 0, a.pal.ramp.selected)
+		}
+		return text
+	}
+	out := make([]string, 0, 4)
+	if inline && suggested == "" {
+		tail := word
 		for ansi.StringWidth(tail) < pad {
 			tail += " "
 		}
+		out = append(out, paint(a.pal.ask("  ")+mark+a.pal.askBold(key)+a.pal.ask("  "+tail)+a.pal.dim("  "+say)))
+		say = ""
+	} else {
+		for i, wrapped := range wrap(word+suggested, room) {
+			if i == 0 {
+				first := wrapped
+				if suggested != "" && strings.HasSuffix(first, suggested) {
+					first = a.pal.ask(strings.TrimSuffix(first, suggested)) + a.pal.dim(suggested)
+				} else {
+					first = a.pal.ask(first)
+				}
+				out = append(out, paint(a.pal.ask("  ")+mark+a.pal.askBold(key)+a.pal.ask("  ")+first))
+				continue
+			}
+			out = append(out, paint(a.pal.ask(indent+wrapped)))
+		}
 	}
-	text := "  " + plainMark + key + "  " + tail
 	if say != "" {
-		text += "  " + say
+		for _, wrapped := range wrap(say, room) {
+			out = append(out, paint(a.pal.dim(indent+wrapped)))
+		}
 	}
-	if ansi.StringWidth(text) > width {
-		return a.pal.ask(fit(text, width))
+	if note != "" {
+		rows := wrap(note, room)
+		if len(rows) > noteRows {
+			rows = rows[:noteRows]
+			rows[len(rows)-1] = ansi.Truncate(rows[len(rows)-1]+" "+glyphMore, room, glyphMore)
+		}
+		for _, wrapped := range rows {
+			out = append(out, paint(a.pal.dim(indent+wrapped)))
+		}
 	}
-	// The row is painted in pieces rather than nested, for the reason
-	// [app.paintIdentity] states: these hues are raw SGR with an explicit
-	// reset, so a colour inside a colour ends the outer one early.
-	line := a.pal.ask("  ") + mark + a.pal.askBold(key) + a.pal.ask("  "+tail)
-	if say != "" {
-		line += a.pal.dim("  " + say)
-	}
-	if cursored {
-		// THE EMPHASIS LAW, and pickrow.go's own two moves: the ground ladder's
-		// selected step behind exactly this row's cells, and nothing else. No
-		// ring, no second colour, and the row does not reflow.
-		return a.pal.background(line, 0, a.pal.ramp.selected)
-	}
-	return line
+	return out
 }
+
+// questionSuggestedWord is what a checklist card says beside the answer the
+// asker would tick, in place of the pointer every other card gives its pick.
+const questionSuggestedWord = "suggested"
 
 // questionOffer is the answers row: the digits that pick, then the keys from
 // [questionKeys] that this question actually offers, then the clock.
@@ -1329,7 +1419,7 @@ func (a *app) questionAnswerParts(q questionShown, lead string, form questionFor
 		parts = append(parts, lead)
 	}
 	spans := make([]choiceSpan, 0, len(q.question.Options))
-	if form == formsCard && len(q.question.Options) <= questionCardOptions {
+	if form == formsCard {
 		// The card already drew a row per answer, keys and all.
 		return parts, spans
 	}
@@ -2459,6 +2549,9 @@ func (a *app) questionKeyOn(head questionShown, msg tea.KeyPressMsg) (tea.Cmd, b
 		// there, still counted, still answerable the moment the box is clear.
 		return nil, false
 	}
+	if cmd, taken := a.questionTickKey(head, key); taken {
+		return cmd, true
+	}
 	if cmd, taken := a.questionOptionKey(head, key); taken {
 		return cmd, true
 	}
@@ -2486,6 +2579,11 @@ func (a *app) questionEnter(head questionShown, typing bool) (tea.Cmd, bool) {
 	}
 	if head.question.Ask == session.AskConfirmation {
 		return a.questionPick(head, head.pick), true
+	}
+	// A CHECKLIST'S ENTER SENDS WHAT IS TICKED, and nothing when nothing is
+	// ([app.questionTickKey]); it never takes a pick a checklist does not have.
+	if head.holes.kind == session.InputChecklist {
+		return a.questionTickKey(head, questionEnterKey)
 	}
 	if head.question.Pick == nil || strings.TrimSpace(head.question.Pick.Key) == "" {
 		return nil, false
@@ -2613,6 +2711,74 @@ func (a *app) questionOpenOn(kind session.QuestionKind, id uint64) *questionShow
 // running, because one word fitting two models is the harness's ambiguity and
 // not the person's. What the arrows buy is the seconds in which that choice is
 // free to change — the proposal is not approved by changing it.
+// questionTickKey is a checklist worked in the card: a digit ticks its row,
+// `space` ticks the row under the cursor, `tab` walks the cursor, and `enter`
+// sends what is ticked. It is the page's grammar (questioninput.go's
+// [app.questionInputKey]) on the block's own copy of the holes, so a person
+// who never opens the page can still answer a checklist — which is the whole
+// of what a card that draws the ticks is for.
+func (a *app) questionTickKey(head questionShown, key string) (tea.Cmd, bool) {
+	open := a.questionHeld(head.token())
+	if open == nil || open.holes.kind != session.InputChecklist {
+		return nil, false
+	}
+	in := &open.holes
+	switch key {
+	case questionToggleKey:
+		if in.focus < len(in.ticks) {
+			in.ticks[in.focus] = !in.ticks[in.focus]
+		}
+	case questionBlankKey:
+		in.focus = questionStep(in.focus, 1, in.count())
+	case "shift+tab":
+		in.focus = questionStep(in.focus, -1, in.count())
+	case questionEnterKey:
+		// THE ANSWER IS THE TICKED KEYS IN THE ORDER THE ROWS STAND, which is
+		// the page's own reading of a checklist (questionroom.go) made here.
+		var picked []string
+		for _, i := range in.walk() {
+			if i < len(in.ticks) && in.ticks[i] && i < len(open.question.Options) {
+				picked = append(picked, strings.TrimSpace(open.question.Options[i].Key))
+			}
+		}
+		if len(picked) > 0 {
+			return a.answerQuestion(*open, session.Answer{Picked: picked}), true
+		}
+		// NOTHING TICKED IS NOTHING TO SEND, and the key is taken rather than
+		// falling through to a pick the checklist does not have.
+		return nil, true
+	default:
+		for at, option := range open.question.Options {
+			if strings.TrimSpace(option.Key) != key || at >= len(in.ticks) {
+				continue
+			}
+			in.ticks[at] = !in.ticks[at]
+			in.focus = at
+			a.touch()
+			return nil, true
+		}
+		return nil, false
+	}
+	a.touch()
+	return nil, true
+}
+
+// forgetQuestions drops every question, record and page this window holds,
+// which is what a conversation switch owes the next one: the lane the new
+// conversation is watched on replays everything still open there
+// ([questionAgent.WatchQuestions]), and a question the OLD conversation was
+// asking — or the line saying it was withdrawn — drawn over the new one would
+// be a card about work that is not on the screen, answerable by a key aimed at
+// something else. Seen on 2026-09-10: a withdrawn `Which painting genres do you
+// like?` sat above the box of a conversation about something else entirely.
+func (a *app) forgetQuestions() {
+	a.questions = nil
+	a.questionRecords = nil
+	a.questionBands, a.questionSpans = nil, nil
+	a.qroom = nil
+	a.touch()
+}
+
 func (a *app) moveQuestionHole(head questionShown, key string) bool {
 	open := a.questionHeld(head.token())
 	if open == nil || !questionWalkChoice(&open.holes, key) {
