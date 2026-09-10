@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1520" height="1250" viewBox="0 0 1520 1250" role="img" aria-labelledby="title desc">
+<title id="title">Aforge: the current logical data model</title><desc id="desc">Four panels distinguish folder membership references, chat-owned sequences and task graphs, shared context revision history, and ongoing work and artifacts. Current implementation in the backend review branch; simplified fields, identifiers omitted.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#287d78"/></marker></defs>
+<rect x="0" y="0" width="1520" height="1250" rx="0" fill="#fcfdfb" stroke="#fcfdfb"/>
+<text x="40" y="49" fill="#243b44" font-size="34" font-weight="700" font-family="Inter, Arial, sans-serif">Aforge is structured records + typed references</text>
+<text x="40" y="81" fill="#61726f" font-size="18" font-weight="400" font-family="Inter, Arial, sans-serif">Current backend review branch · simplified logical shapes · identity fields omitted</text>
+<text x="40" y="113" fill="#61726f" font-size="18" font-weight="400" font-family="Inter, Arial, sans-serif">Inside a box = its fields / owned data.     Arrow = labeled reference or sequence order.</text>
+<rect x="40" y="140" width="700" height="420" rx="18" fill="#f4f7f4" stroke="#d4deda"/>
+<text x="62" y="174" fill="#287d78" font-size="17" font-weight="650" font-family="Inter, Arial, sans-serif">01</text>
+<text x="99" y="174" fill="#243b44" font-size="24" font-weight="650" font-family="Inter, Arial, sans-serif">Folder: an ordered list of references</text>
+<rect x="62" y="195" width="230" height="117" rx="12" fill="#ffffff" stroke="#d4deda"/>
+<text x="80" y="225" fill="#243b44" font-size="21" font-weight="650" font-family="Inter, Arial, sans-serif">Folder A</text>
+<path d="M62,239 L292,239" stroke="#a5b6b1" stroke-width="1.5" fill="none"/>
+<text x="80" y="263" fill="#243b44" font-size="18" font-weight="400" font-family="ui-monospace, Menlo, monospace">name</text>
+<text x="80" y="291" fill="#243b44" font-size="17" font-weight="400" font-family="ui-monospace, Menlo, monospace">members[]  (unique)</text>
+<rect x="510" y="200" width="200" height="42" rx="8" fill="#e9f3ed" stroke="#bacfc4"/>
+<text x="523" y="227" fill="#243b44" font-size="18" font-weight="550" font-family="Inter, Arial, sans-serif">Folder B</text>
+<rect x="510" y="284" width="200" height="42" rx="8" fill="#eaf0f9" stroke="#bacfc4"/>
+<text x="523" y="311" fill="#243b44" font-size="18" font-weight="550" font-family="Inter, Arial, sans-serif">Chat X</text>
+<path d="M292 262 H400 V221 H505" stroke="#287d78" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+<text x="311" y="247" fill="#287d78" font-size="16" font-weight="400" font-family="Inter, Arial, sans-serif">member →</text>
+<path d="M292 292 H400 V305 H505" stroke="#287d78" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+<path d="M650 242 V279" stroke="#287d78" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+<text x="538" y="268" fill="#287d78" font-size="16" font-weight="400" font-family="Inter, Arial, sans-serif">member →</text>
+<rect x="62" y="344" width="230" height="42" rx="8" fill="#eaf0f9" stroke="#bacfc4"/>
+<text x="75" y="371" fill="#243b44" font-size="18" font-weight="550" font-family="Inter, Arial, sans-serif">Chat Y (unfiled)</text>
+<text x="314" y="370" fill="#61726f" font-size="18" font-weight="400" font-family="Inter, Arial, sans-serif">Valid with no folder references.</text>
+<text x="62" y="421" fill="#243b44" font-size="17" font-weight="550" font-family="Inter, Arial, sans-serif">Allowed member → Folder | Chat | Task | Ongoing item | Artifact</text>
+<text x="62" y="455" fill="#243b44" font-size="19" font-weight="400" font-family="Inter, Arial, sans-serif">A and B reference the same Chat X; no copied chat.</text>
+<text x="62" y="488" fill="#243b44" font-size="17" font-weight="400" font-family="Inter, Arial, sans-serif">Folder → folder links cannot form a cycle; multiple parents are allowed.</text>
+<text x="62" y="529" fill="#287d78" font-size="17" font-weight="550" font-family="Inter, Arial, sans-serif">Shape: directed acyclic folder graph + shared item references.</text>
+<rect x="760" y="140" width="720" height="420" rx="18" fill="#f4f7f4" stroke="#d4deda"/>
+<text x="782" y="174" fill="#287d78" font-size="17" font-weight="650" font-family="Inter, Arial, sans-serif">02</text>
+<text x="819" y="174" fill="#243b44" font-size="24" font-weight="650" font-family="Inter, Arial, sans-serif">Chat: a sequence plus an owned task graph</text>
+<rect x="782" y="195" width="676" height="325" rx="12" fill="#ffffff" stroke="#d4deda"/>
+<text x="800" y="225" fill="#243b44" font-size="21" font-weight="650" font-family="Inter, Arial, sans-serif">Chat</text>
+<path d="M782,239 L1458,239" stroke="#a5b6b1" stroke-width="1.5" fill="none"/>
+<text x="802" y="268" fill="#243b44" font-size="18" font-weight="400" font-family="Inter, Arial, sans-serif">session metadata / current state</text>
+<text x="802" y="305" fill="#243b44" font-size="18" font-weight="550" font-family="Inter, Arial, sans-serif">journal[] — in order</text>
+<rect x="802" y="323" width="134" height="42" rx="8" fill="#eaf0f9" stroke="#bacfc4"/>
+<text x="815" y="350" fill="#243b44" font-size="18" font-weight="550" font-family="Inter, Arial, sans-serif">Message</text>
+<rect x="969" y="323" width="137" height="42" rx="8" fill="#eaf0f9" stroke="#bacfc4"/>
+<text x="982" y="350" fill="#243b44" font-size="18" font-weight="550" font-family="Inter, Arial, sans-serif">Tool call</text>
+<rect x="1139" y="323" width="149" height="42" rx="8" fill="#eaf0f9" stroke="#bacfc4"/>
+<text x="1152" y="350" fill="#243b44" font-size="18" font-weight="550" font-family="Inter, Arial, sans-serif">Tool result</text>
+<path d="M936 344 H963" stroke="#287d78" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+<path d="M1106 344 H1133" stroke="#287d78" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+<text x="1310" y="350" fill="#243b44" font-size="24" font-weight="400" font-family="Inter, Arial, sans-serif">…</text>
+<text x="802" y="402" fill="#243b44" font-size="18" font-weight="550" font-family="Inter, Arial, sans-serif">owned tasks</text>
+<rect x="802" y="418" width="155" height="42" rx="8" fill="#fcf1e3" stroke="#bacfc4"/>
+<text x="815" y="445" fill="#243b44" font-size="18" font-weight="550" font-family="Inter, Arial, sans-serif">Task A</text>
+<rect x="1264" y="418" width="173" height="42" rx="8" fill="#fcf1e3" stroke="#bacfc4"/>
+<text x="1277" y="445" fill="#243b44" font-size="18" font-weight="550" font-family="Inter, Arial, sans-serif">Task B</text>
+<path d="M1264 439 H963" stroke="#287d78" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+<text x="990" y="432" fill="#287d78" font-size="17" font-weight="400" font-family="Inter, Arial, sans-serif">depends on (waits for)</text>
+<text x="802" y="496" fill="#243b44" font-size="18" font-weight="400" font-family="Inter, Arial, sans-serif">Each task: brief · acceptance · state · journal · results</text>
+<text x="782" y="545" fill="#61726f" font-size="17" font-weight="400" font-family="Inter, Arial, sans-serif">Delegation parent is a separate relation: who spawned the subtask.</text>
+<rect x="40" y="580" width="700" height="430" rx="18" fill="#f4f7f4" stroke="#d4deda"/>
+<text x="62" y="614" fill="#287d78" font-size="17" font-weight="650" font-family="Inter, Arial, sans-serif">03</text>
+<text x="99" y="614" fill="#243b44" font-size="24" font-weight="650" font-family="Inter, Arial, sans-serif">Shared context: a versioned record</text>
+<rect x="62" y="635" width="656" height="187" rx="12" fill="#ffffff" stroke="#d4deda"/>
+<text x="80" y="665" fill="#243b44" font-size="21" font-weight="650" font-family="Inter, Arial, sans-serif">Context</text>
+<path d="M62,679 L718,679" stroke="#a5b6b1" stroke-width="1.5" fill="none"/>
+<text x="82" y="707" fill="#243b44" font-size="18" font-weight="400" font-family="ui-monospace, Menlo, monospace">revisions[]</text>
+<rect x="260" y="679" width="81" height="42" rx="8" fill="#e9f3ed" stroke="#bacfc4"/>
+<text x="273" y="706" fill="#243b44" font-size="18" font-weight="550" font-family="Inter, Arial, sans-serif">r1</text>
+<rect x="390" y="679" width="81" height="42" rx="8" fill="#e9f3ed" stroke="#bacfc4"/>
+<text x="403" y="706" fill="#243b44" font-size="18" font-weight="550" font-family="Inter, Arial, sans-serif">r2</text>
+<rect x="520" y="679" width="81" height="42" rx="8" fill="#e9f3ed" stroke="#bacfc4"/>
+<text x="533" y="706" fill="#243b44" font-size="18" font-weight="550" font-family="Inter, Arial, sans-serif">r3</text>
+<path d="M341 700 H384" stroke="#287d78" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+<path d="M471 700 H514" stroke="#287d78" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+<text x="531" y="751" fill="#287d78" font-size="17" font-weight="550" font-family="Inter, Arial, sans-serif">↑ current</text>
+<text x="82" y="748" fill="#61726f" font-size="16" font-weight="400" font-family="Inter, Arial, sans-serif">immutable entries</text>
+<text x="82" y="785" fill="#243b44" font-size="17" font-weight="400" font-family="Inter, Arial, sans-serif">Each revision: title · text · source · targets[] · withdrawn</text>
+<text x="62" y="851" fill="#243b44" font-size="18" font-weight="550" font-family="Inter, Arial, sans-serif">One source: Chat | Task | Artifact</text>
+<path d="M215 885 V859" stroke="#287d78" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+<text x="235" y="879" fill="#287d78" font-size="16" font-weight="400" font-family="Inter, Arial, sans-serif">references source</text>
+<rect x="62" y="889" width="240" height="42" rx="8" fill="#e9f3ed" stroke="#bacfc4"/>
+<text x="75" y="916" fill="#243b44" font-size="18" font-weight="550" font-family="Inter, Arial, sans-serif">Context revision</text>
+<path d="M302 910 H362" stroke="#287d78" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+<text x="313" y="897" fill="#287d78" font-size="15" font-weight="400" font-family="Inter, Arial, sans-serif">targets</text>
+<text x="378" y="905" fill="#243b44" font-size="18" font-weight="400" font-family="Inter, Arial, sans-serif">Folder | Chat | Task</text>
+<text x="378" y="931" fill="#243b44" font-size="18" font-weight="400" font-family="Inter, Arial, sans-serif">Ongoing item | Artifact</text>
+<text x="62" y="973" fill="#287d78" font-size="18" font-weight="550" font-family="Inter, Arial, sans-serif">Targeting a folder ≠ being a folder member.</text>
+<text x="62" y="997" fill="#61726f" font-size="16" font-weight="400" font-family="Inter, Arial, sans-serif">A source link ≠ proof that a run used it, or permission to act.</text>
+<rect x="760" y="580" width="720" height="430" rx="18" fill="#f4f7f4" stroke="#d4deda"/>
+<text x="782" y="614" fill="#287d78" font-size="17" font-weight="650" font-family="Inter, Arial, sans-serif">04</text>
+<text x="819" y="614" fill="#243b44" font-size="24" font-weight="650" font-family="Inter, Arial, sans-serif">Ongoing work and files have their own records</text>
+<rect x="782" y="635" width="397" height="283" rx="12" fill="#ffffff" stroke="#d4deda"/>
+<text x="800" y="665" fill="#243b44" font-size="21" font-weight="650" font-family="Inter, Arial, sans-serif">Ongoing item</text>
+<path d="M782,679 L1179,679" stroke="#a5b6b1" stroke-width="1.5" fill="none"/>
+<text x="803" y="707" fill="#287d78" font-size="18" font-weight="400" font-family="Inter, Arial, sans-serif">origin → chat / saved exchange</text>
+<text x="803" y="743" fill="#243b44" font-size="18" font-weight="400" font-family="Inter, Arial, sans-serif">original request</text>
+<text x="803" y="775" fill="#243b44" font-size="18" font-weight="550" font-family="Inter, Arial, sans-serif">wake condition + action</text>
+<text x="803" y="807" fill="#243b44" font-size="18" font-weight="400" font-family="Inter, Arial, sans-serif">grant + limits</text>
+<text x="803" y="839" fill="#243b44" font-size="18" font-weight="400" font-family="Inter, Arial, sans-serif">current state</text>
+<text x="803" y="883" fill="#243b44" font-size="18" font-weight="400" font-family="Inter, Arial, sans-serif">retained activity</text>
+<rect x="1200" y="635" width="258" height="183" rx="12" fill="#ffffff" stroke="#d4deda"/>
+<text x="1218" y="665" fill="#243b44" font-size="21" font-weight="650" font-family="Inter, Arial, sans-serif">Artifact reference</text>
+<path d="M1200,679 L1458,679" stroke="#a5b6b1" stroke-width="1.5" fill="none"/>
+<text x="1220" y="707" fill="#287d78" font-size="17" font-weight="400" font-family="Inter, Arial, sans-serif">path → file / directory</text>
+<text x="1220" y="747" fill="#243b44" font-size="17" font-weight="400" font-family="Inter, Arial, sans-serif">current availability</text>
+<text x="1220" y="787" fill="#61726f" font-size="16" font-weight="400" font-family="Inter, Arial, sans-serif">Payload stays in files.</text>
+<text x="1200" y="859" fill="#243b44" font-size="17" font-weight="550" font-family="Inter, Arial, sans-serif">Folder membership</text>
+<text x="1200" y="886" fill="#243b44" font-size="17" font-weight="400" font-family="Inter, Arial, sans-serif">can reference either.</text>
+<text x="782" y="953" fill="#287d78" font-size="17" font-weight="550" font-family="Inter, Arial, sans-serif">The wake condition belongs to the ongoing item, not the folder.</text>
+<text x="782" y="986" fill="#61726f" font-size="17" font-weight="400" font-family="Inter, Arial, sans-serif">Retained activity is not a complete forever audit log.</text>
+<text x="40" y="1058" fill="#243b44" font-size="24" font-weight="650" font-family="Inter, Arial, sans-serif">Where this lives today</text>
+<rect x="40" y="1079" width="448" height="100" rx="12" fill="#eef4ef" stroke="#d4deda"/>
+<text x="60" y="1109" fill="#243b44" font-size="20" font-weight="650" font-family="Inter, Arial, sans-serif">SQLite</text>
+<text x="60" y="1139" fill="#243b44" font-size="18" font-weight="400" font-family="Inter, Arial, sans-serif">Folders + membership references</text>
+<text x="60" y="1166" fill="#243b44" font-size="18" font-weight="400" font-family="Inter, Arial, sans-serif">Contexts + revisions + targets</text>
+<rect x="508" y="1079" width="534" height="100" rx="12" fill="#eef2f8" stroke="#d4deda"/>
+<text x="528" y="1109" fill="#243b44" font-size="20" font-weight="650" font-family="Inter, Arial, sans-serif">Existing engine-owned files</text>
+<text x="528" y="1139" fill="#243b44" font-size="18" font-weight="400" font-family="Inter, Arial, sans-serif">Chat journals + task checkpoints</text>
+<text x="528" y="1166" fill="#243b44" font-size="18" font-weight="400" font-family="Inter, Arial, sans-serif">Ongoing items + retained activity</text>
+<rect x="1062" y="1079" width="418" height="100" rx="12" fill="#f8f2e8" stroke="#d4deda"/>
+<text x="1082" y="1109" fill="#243b44" font-size="20" font-weight="650" font-family="Inter, Arial, sans-serif">Filesystem</text>
+<text x="1082" y="1139" fill="#243b44" font-size="18" font-weight="400" font-family="Inter, Arial, sans-serif">Artifact content</text>
+<text x="1082" y="1166" fill="#243b44" font-size="18" font-weight="400" font-family="Inter, Arial, sans-serif">Referenced by path</text>
+<text x="40" y="1219" fill="#243b44" font-size="19" font-weight="550" font-family="Inter, Arial, sans-serif">The graph is a view of these relations. It does not require turning every field into a node or choosing a graph database.</text>
+</svg>

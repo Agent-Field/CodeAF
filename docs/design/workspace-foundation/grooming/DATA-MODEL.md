@@ -5,6 +5,11 @@ of what folders and chats contain and whether that informs database choice.
 These are simplified logical shapes derived from current code, not replacement
 Go structs or a new storage design. Identity/address fields are omitted here.
 
+[Visual record-and-reference diagram](DATA-MODEL.svg) shows the same model in
+four panels: folder membership, chat-owned data, context revisions, and ongoing
+work/artifacts. Sequence arrows express order; reference arrows are labeled.
+The storage strip describes current ownership, not a proposed migration.
+
 ```text
 Member = Reference<Folder | Chat | Task | OngoingItem | Artifact>
 Folder = (name, ordered unique members)
