@@ -139,6 +139,30 @@ import (
 // saved procedure configured, the complete tool block is 40,595 bytes and
 // discovery carries 26,740, including its 708-byte loader. Measure whole JSON
 // arrays rather than adding separately encoded array sizes.
+// THE DIET'S ON-DEMAND LANE PAID 3,854 BYTES BACK AND ASKED FOR NOTHING
+// (2026-09-10). Four runs of prose came off prompts/system.md and message[0]
+// stopped carrying any of them, because each one is already delivered by
+// whoever needs it and only then (docs/design/prompt-diet/DESIGN.md §2):
+//   - the standing section, 2,482 bytes, is one existence line. Its mechanics
+//     are tools_standing.go's [standDescription] and [standSchemaJSON], beside
+//     the field each governs; its `[something you set up fired]` frame is
+//     standing_run.go's [standingNewsRule], already under the firing's own line;
+//     the rest is the chat manual's keeping-an-eye page.
+//   - the two paragraphs defining a saved recipe and a saved program are the
+//     `harnesses` group's own prose (tools_capabilities.go), emitted under the
+//     `Loaded:` line by the load that fetches the four verbs. The page keeps the
+//     routing line that names `list_harnesses` and `build_harness`.
+//   - the accounts block, 1,142 bytes over three bullets, is one existence line.
+//     [serviceRequestDescription] already names the address and says which half
+//     the person turned off; the send verbs already say they are asked about
+//     first and cannot be called back.
+//   - the media-making essay is the `media` group's prose, and the page keeps
+//     one line: anchor in a real medium, specify positively, `manual` for the
+//     rest. `generate_image` and `generate_video` state it a third time in the
+//     `prompt` field, where it is read at the call.
+//
+// Nothing was raised and no law was dropped. The page went 23,391 → 19,537, the
+// tool block is unchanged at 24,044, and the prefix is 43,581 — 4,419 under.
 // widestPage weighs the larger direct/deferred wording for each fact.
 const fixedPrefixBudget = 48_000
 
