@@ -21,7 +21,7 @@ If the work turns out to have a step your list does not name, add it with
 
 AND YOU MAY PUT MORE HANDS ON IT TOO, where a page above gave you the verb.
 Items you keep cost their sum; items that do not need each other cost the
-longest of them if you start them in one breath — so hand those out, keep one
+longest of them if you start them in one breath. So hand those out, keep one
 and begin it, and fold each answer as it comes rather than watching for it.
 Items that feed each other stay yours, in order. Whatever you start is smaller
 than you are, and your own last message is still what your caller reads.

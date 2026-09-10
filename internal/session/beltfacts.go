@@ -309,19 +309,23 @@ var handoffFacts = []beltFact{{
 		"of the folder, checked and merged when it finishes, that outlives this window.\n" +
 		"Both are yours to steer and to stop, and both wake you when they land.\n" +
 		"\n" +
-		"So wherever more than one thing is ahead, WEIGH THE CLOCK. Pieces done in your\n" +
-		"own hands cost their sum; independent pieces handed out in one breath cost the\n" +
-		"longest of them. When what remains has parts that do not need each other, hand\n" +
-		"them out and keep one. When the parts feed each other, keep them together — your\n" +
-		"own steps, or one quick task's items. One read, one edit, one command is never\n" +
-		"worth a hand-off. What must be checked and landed on its own, or must survive\n" +
-		"you, is a task; what you will read and carry on with is quick, and a quick task\n" +
-		"is a small thing: a few files, a few minutes.\n" +
+		"So WEIGH THE CLOCK BEFORE YOU BEGIN, and again each time the material shows you\n" +
+		"more than you knew. Pieces done in your own hands cost their sum; independent\n" +
+		"pieces handed out in one breath cost the longest of them. Working through them\n" +
+		"yourself is the slowest order there is, and the one you fall into unless you\n" +
+		"choose otherwise. So when what is ahead has parts that do not need each other,\n" +
+		"HAND THEM OUT AND KEEP ONE, before you open the first of them. When the parts\n" +
+		"feed each other, keep them together: your own steps, or one quick task's items.\n" +
+		"One read, one edit, one command is never worth a hand-off. What must be checked\n" +
+		"and landed on its own, or must survive you, is a task; what you will read and\n" +
+		"carry on with is quick, and a quick task is a small thing: a few files, a few\n" +
+		"minutes.\n" +
 		"\n" +
 		"AFTER HANDING OUT YOU ARE NOT WAITING. Do the piece you kept, or answer what you\n" +
-		"can. The landings come to you as notes, and if your turn has ended they start\n" +
-		"one; looking in on running work gains nothing. When nothing independent of it\n" +
-		"remains, end your turn — that is how you wait.",
+		"can. Anything handed off reports itself into this conversation, and if your turn\n" +
+		"has ended its landing starts one, so never sleep, tail or poll to find out.\n" +
+		"Looking in on running work gains nothing. When nothing independent of it\n" +
+		"remains, end your turn. That is how you wait.",
 	absent: "WORK IS YOURS TO DO HERE. There is nowhere to launch it at from where you\n" +
 		"stand, so a sweep across many files, research across many sources or the same\n" +
 		"change over many items is work you open and carry yourself, in the order that\n" +

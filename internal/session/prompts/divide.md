@@ -114,8 +114,8 @@ person to merge when they are ready.
 
 AND WHAT THIS HANDS OUT IS CHECKED AND LANDED, which is what a change needs and
 what reading never does. Where the width you found is material you will READ and
-fold, that is `quick_task` in your own folder instead — one per part, a few files
-and a few minutes each — and the deliverable is still yours to write out of what
+fold, that is `quick_task` in your own folder instead: one per part, a few files
+and a few minutes each, and the deliverable is still yours to write out of what
 they bring back.
 
 DIVIDE FOR WIDTH, NEVER FOR LENGTH. A long sequence is not wide. Two parts that

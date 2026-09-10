@@ -1624,19 +1624,19 @@ func TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner(t *testing.T) {
 	// ONE SOURCE OF TRUTH: the prompt may not advertise the planner as the way
 	// to parallelize while the belt says otherwise.
 	rendered := renderSystem(agent.config)
-	if !strings.Contains(rendered, "must be checked and landed on its own") || !strings.Contains(rendered, "with `wide`") {
+	if !strings.Contains(rendered, "and landed on its own") || !strings.Contains(rendered, "with `wide`") {
 		t.Error("prompts/system.md does not route a wide change to propose_task")
 	}
 	// AND THE OTHER HALF, WHICH IS THE HALF THAT WAS MISSING. A page that routes
 	// a wide change here and says nothing about the work whose answer comes back
 	// to be read leaves the model to generalise, and the generalisation it made
 	// was to buy a worktree for a survey.
-	if !strings.Contains(rendered, "what you will read and carry on with is quick") || !strings.Contains(rendered, "`"+quickTaskToolName+"`") {
+	if !strings.Contains(rendered, "carry on with is quick") || !strings.Contains(rendered, "`"+quickTaskToolName+"`") {
 		t.Error("prompts/system.md does not route work whose result is read back to a quick task")
 	}
 	// AND THE CLOCK, which is a decision and not a rule: a model that is never
 	// told what a hand-off buys does independent pieces one after another.
-	if !strings.Contains(rendered, "in one breath cost the") {
+	if !strings.Contains(rendered, "handed out in one breath cost the") {
 		t.Error("prompts/system.md never tells the model what handing pieces out in one breath buys")
 	}
 	// AND THE PROMPT SAYS THE ABSENCE OUTRIGHT. The page used to argue that the

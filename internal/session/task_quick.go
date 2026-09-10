@@ -192,7 +192,7 @@ var quickTaskDescription = "A task gets its own copy of the folder, is checked, 
 	"where you are and its last message is its answer. If you will read the result and carry on, it is quick. " +
 	"If it must be checked and merged on its own, or survive the window closing, it is a task. One edit, one " +
 	"read, one command is a step: do it yourself. Related steps that share what they learn are one quick " +
-	"task's items, not several quick tasks. KEEP ONE SMALL — a few files and a few minutes: reading is not " +
+	"task's items, not several quick tasks. KEEP ONE SMALL, a few files and a few minutes: reading is not " +
 	"progress, so " + strconv.Itoa(taskNoProgress) + " steps that only read end it."
 
 // quickTaskSchemaJSON is the wire schema. Every field but `line` is optional,

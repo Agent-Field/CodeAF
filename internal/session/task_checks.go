@@ -183,10 +183,9 @@ const (
 // must never go in it. The last clause is the whole of the fourth measured
 // failure above, said in the words a model writing a proposal can act on.
 const checksSchemaJSON = `"checks":{"type":"array","items":{"type":"string"},` +
-	`"description":"Optional. Commands that RE-ESTABLISH the result, each ONE simple command safe to run again: ` +
-	`a test, a build, a probe. The independent checker runs these and nothing else; work declaring none is judged ` +
-	`by reading. NEVER the work itself — a deploy, a send, a job asked for once — re-running that repeats the ` +
-	`effect"}`
+	`"description":"Optional. Commands that RE-ESTABLISH the result, each ONE simple command safe to run again. ` +
+	`The independent checker runs these and nothing else; work declaring none is judged by reading. NEVER the ` +
+	`work itself, since re-running that repeats the effect"}`
 
 // auditReadCommands is source (b): commands that PRINT and cannot change
 // the thing under judgement.

@@ -1243,14 +1243,15 @@ this one is; the schema's six fields carry one clause each, and `depends_on` and
 `model` give up their rules entirely to the identical fields next door. The
 measured prefix is **48,761**, which is 239 under the new cap.
 
-What is still owed, and where it should come from: the planner rule is in the
-prefix twice (`taskDescription` and prompts/system.md's own paragraph, both
-pinned by `TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner`). Paying it
-back lowers this cap again, and the cap only ever moves with this section in
-the same commit.
+What is still owed: the planner rule is in the prefix twice (`taskDescription`
+and prompts/system.md's own paragraph, both pinned by
+`TestTheBeltRoutesWideWorkToOneWorkerAndNotToAPlanner`), so paying it back is a
+change to that test's mind and not only to the bytes. The cap only ever moves
+with this section in the same commit.
 
-**The choice fix spent 515 of it and paid two debts (2026-09-10).** The cap did
-not move; the measured prefix went **46,635 → 47,150**, which is 1,850 under.
+**The choice wave paid it back and the cap is 48,000 again (2026-09-10).** The
+measured prefix is **45,961**, which is 2,039 under the restored cap and 674
+below where the day started.
 What it bought is one picture where three rule lists used to be. The belt's
 routing bullets sorted on WIDTH — and a real model read a read-only survey of
 four packages as wide work and bought it a worktree, a check and a landing — so
@@ -1262,14 +1263,25 @@ them. The clock was never stated at all before, and neither was the conduct
 after a hand-off; both are in the same fragment now, and it names no shapes of
 work, so nothing on it has to be kept true as the product changes.
 
-That fragment is a net saving over what it replaced, and two of the three
-duplicate rules named above paid the rest: prompts/system.md's `small work ...
-is answered here` sentence is gone, the routing call being one the picture makes
-better and in the place the call is made, and the `WIDE WORK` bullet's `never
-split related work` is gone with the bullet itself. What was ADDED to a
-description is one clause, in `quick_task`: the GRAIN, quoting `taskNoProgress`
-rather than a figure typed twice, because a quick task cut at twenty files died
-`out of rounds — stopped: 6 steps without progress` and cost $0.62 for nothing.
+That fragment is a net saving over what it replaced, and it states "never poll"
+ONCE for every road rather than once per verb. Two of the three duplicate rules
+named above paid more of it: prompts/system.md's `small work ... is answered
+here` sentence is gone, the routing call being one the picture makes better and
+in the place the call is made, and the `WIDE WORK` bullet's `never split related
+work` went with the bullet itself. What was ADDED to a description is one
+clause, in `quick_task`: the GRAIN, quoting `taskNoProgress` rather than a
+figure typed twice, because a quick task cut at twenty files died `out of rounds
+— stopped: 6 steps without progress` and cost $0.62 for nothing.
+
+**And `propose_task`'s schema went on the diet its description went on.**
+Fourteen fields carried 3,511 bytes of prose; they carry one clause each now.
+`brief` lost the dowry passage outright, because prompts/system.md teaches it
+(`AND WHAT YOU HAVE ALREADY LEARNED GOES WITH IT`) and a test pins it there, and
+a rule in two places is the cheapest thing in a budget to spend twice. `wide`,
+`no_progress`, `max_steps`, `depends_on`, `deliverable`, `acceptance`, `ground`,
+`expects` and `checks` each kept their rule and lost the paragraph around it;
+`model` is unchanged. Every em dash came out of every description string, small
+models tokenising them badly. The tool block went **23,369 → 21,916**.
 
 ## Following through on a completion claim
 
