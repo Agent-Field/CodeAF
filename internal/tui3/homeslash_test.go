@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // HOME'S COMPOSER ANSWERS A "/" THE WAY CHAT'S DOES: a ranked menu while typing
@@ -295,7 +297,16 @@ func TestHomesRuleGivesUpTheModelBeforeTheFolder(t *testing.T) {
 	// Narrow enough that the model cannot fit beside the folder, wide enough
 	// that the folder can. The keys survive: they are the cheapest true thing on
 	// the line and the label is what has too much to say.
-	room := ansi.StringWidth(targetLeadWord+short) + ansi.StringWidth(targetModelKeyWord) + 12
+	//
+	// THE ROOM IS MEASURED OFF THE PIECES THE RULE ACTUALLY DRAWS — the mark,
+	// the lead, the folder at its longest spelling, and every key on the right —
+	// plus four cells, which is less than the model needs. A room counted from
+	// a guess at those widths was true on macOS, where a temp path has nine
+	// components and its shortest spelling is `…/parser`, and false on Linux,
+	// where the same path has four and stays `/t/T/0/parser`: there the label
+	// could get no shorter and the rule, rightly, gave up a key instead.
+	left := a.icon(tokens.GTarget) + " " + targetLeadWord + short
+	room := ansi.StringWidth(left) + 3 + legendGap + ansi.StringWidth(a.targetLegendRight()) + 3 + 4
 	narrow, drew := a.targetLegend(room, a.pal)
 	if !drew {
 		t.Fatalf("a %d-column rule drew nothing at all", room)
