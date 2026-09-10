@@ -185,7 +185,7 @@ func TestAFailedFetchKeepsTheListAndSaysWhy(t *testing.T) {
 	if !strings.Contains(boxLine(t, a), refreshModelsHint) {
 		t.Fatalf("the key is not offered again: %q", boxLine(t, a))
 	}
-	want := modelsFetchFailed + " · dial tcp: lookup openrouter.ai: no such host"
+	want := ModelsFetchFailed + " · dial tcp: lookup openrouter.ai: no such host"
 	if got := plain(lastNote(t, a)); got != want {
 		t.Fatalf("the note reads %q, want %q — one line, as the door said it", got, want)
 	}

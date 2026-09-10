@@ -59,9 +59,10 @@ const (
 	modelsNoteHead   = "models"
 	modelsNewWord    = "new"
 	modelsNothingNew = "nothing new"
-	// modelsFetchFailed leads the note a failed fetch leaves, followed by what
-	// the door said went wrong.
-	modelsFetchFailed = "could not fetch the model list"
+	// ModelsFetchFailed leads the note a failed fetch leaves, followed by what
+	// the door said went wrong. It is exported for `aforge models --refresh`,
+	// which says the same sentence on stderr rather than a second spelling of it.
+	ModelsFetchFailed = "could not fetch the model list"
 )
 
 // modelsNewNamed is how many new ids the note names after the count. Three is
@@ -161,7 +162,7 @@ func (a *app) modelsFetched(msg modelsFetchedMsg) {
 		err = errNoModelList
 	}
 	if err != nil {
-		a.note(modelsFetchFailed + " · " + strings.Join(strings.Fields(err.Error()), " "))
+		a.note(ModelsFetchFailed + " · " + strings.Join(strings.Fields(err.Error()), " "))
 		return
 	}
 	if a.pick.open && a.pick.refresh {
