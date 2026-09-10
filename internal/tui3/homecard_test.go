@@ -245,9 +245,11 @@ func TestARunningCardLeadsTheRowWithItsState(t *testing.T) {
 	if !a.homeAnimating() {
 		t.Fatal("a row with work running did not earn the paint clock")
 	}
-	// THE ROW SAYS WHAT IT IS DOING, before any card is asked for — this is the
-	// reading the old `state` band was for, on the surface that carries it now.
-	if text := homeText(a); !strings.Contains(text, "1 task running") {
+	// THE WORK SAYS WHAT IT IS DOING, before any card is asked for — this is the
+	// reading the old `state` band was for, on the surface that carries it now:
+	// the running panel's row for the task, with its line under it
+	// (homepanel_running.go).
+	if text := homeText(a); !strings.Contains(text, "Port the picker") || !strings.Contains(homeLineAfter(text, "Port the picker"), tabSignalWord(tabWorking)) {
 		t.Fatalf("the row does not say what the conversation is doing:\n%s", text)
 	}
 	card := homeCardFor(t, a, other)

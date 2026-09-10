@@ -230,8 +230,8 @@ func TestRunningOffersStopOnlyOnThisWindowsOwnTask(t *testing.T) {
 		t.Fatalf("this window's own task offered no stop: %+v", verbs)
 	}
 	verbs[0].do()
-	if !a.stopping() {
-		t.Fatal("s did not raise the stop card")
+	if !a.stopping() || a.at(pageHome) || !strings.Contains(plain(mustFrame(a)), "Stop this task?") {
+		t.Fatalf("s did not raise the stop card where it can be read:\n%s", plain(mustFrame(a)))
 	}
 }
 

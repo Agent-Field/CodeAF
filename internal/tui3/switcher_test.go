@@ -216,7 +216,7 @@ func TestTheSwitcherSinceYouLeftLedgerDrawsOnlyRecordedDoors(t *testing.T) {
 	lab := newSwitcherLab()
 	r := lab.read(false, false, switcherLedgerInput{learned: 2, letGo: 1})
 	text := switcherText(r, 120)
-	for _, word := range []string{"since you left · 3h", "nothing had changed", "standing", "learned 2 things, let go of 1", "memory", "2 tasks landed", "tasks"} {
+	for _, word := range []string{"since you left · 3h", "nothing had changed", "standing", "learned 2 things, let go of 1", "memory", "Landed Chat", "Saved Run", "tasks"} {
 		if !strings.Contains(text, word) {
 			t.Fatalf("ledger lost %q:\n%s", word, text)
 		}

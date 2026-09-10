@@ -410,10 +410,10 @@ func TestHomeCallsARowRunningWhenTheSessionSaysItHasThatNodeOut(t *testing.T) {
 		t.Fatalf("rolled up %d running / %d incomplete, want 1 / 0", row.Tasks.Running, row.Tasks.Incomplete)
 	}
 	text := homeText(a)
-	// THE ROW'S OWN NOTE CARRIES THE COUNT, in the reading's words rather than
-	// the tree's — `1 task running`, which is the one fact a person reading the
-	// list without pointing at anything needs ([switcherConversationNote]).
-	if !strings.Contains(text, "1 task running") {
+	// THE RUNNING PANEL CARRIES THE WORK, one row per node the session says it
+	// has out (homepanel_running.go) — the one fact a person reading home
+	// without pointing at anything needs.
+	if !strings.Contains(text, "Port the thing") {
 		t.Fatalf("the row does not say what is running:\n%s", text)
 	}
 	// AND THE CARD SAYS WHAT IT IS AND WHOSE WINDOW HAS IT. The work band puts
