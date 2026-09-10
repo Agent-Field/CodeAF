@@ -607,10 +607,11 @@ func homeGridLayout(in *homeGridInput, cols, width, room int) [][]*homeGridPanel
 // homeWhisperLines is a whisper at one column's width, standing in a row's lead.
 //
 // A WHISPER WRAPS; IT IS NEVER CUT. It is the one sentence an empty panel has,
-// and the half after an ellipsis — `a digit answers them`, `"every morning at 9"`
-// — is the half that says what to do. So it takes the dim lines it needs, and
+// and the half after an ellipsis — `a digit answers them`, `"every morning at
+// 9"` — is the half that says what to do. So it takes the dim lines it needs, and
 // the panel's height is its heading and all of them. A build before the first
 // frame knows no width, and keeps the sentence on one line until one arrives.
+// A place's whisper is wrapped here too (placeprose.go's [placeWhisperLines]).
 func homeWhisperLines(text string, width int) []string {
 	if text == "" {
 		return nil

@@ -639,8 +639,8 @@ an hour ago, `alt+2`, `alt+5` and `alt+6` all open:
 - **search** with an empty box, headed `search`:
   `type a word · every conversation on this machine is searched`
 
-On a narrow window the line gives up its example — the part after the middle dot — before
-anything is cut. The moment the first thing arrives the line goes and the list begins under
+On a narrow window the line wraps onto a second or third dim line under the first; it is
+never cut, and never ends in `…`. The moment the first thing arrives the line goes and the list begins under
 the same heading; nothing above it moves.
 - **spend**, **search** and **memory** over `--host` each say one dim line where their rows
   would be — see *The places over --host* below for the exact words and why three of the

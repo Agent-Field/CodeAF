@@ -120,9 +120,9 @@ func TestAWindowIsBoundOnlyWhereItsControlIsDrawn(t *testing.T) {
 	}
 }
 
-// whisperOf is the first clause of one empty place's whisper — the part every
-// frame keeps, however narrow, because a whisper gives up its example before
-// it gives up what arrives ([placeWhisperLines]).
+// whisperOf is the first clause of one empty place's whisper — short enough to
+// sit on one line at every width these tests read a page at, where the whole
+// sentence might wrap ([placeWhisperLines]).
 func whisperOf(id page) string {
 	return strings.Split(placeWhisper[id].whisper, railSep)[0]
 }
@@ -146,14 +146,14 @@ func TestEveryEmptyPlaceDrawsItsHeadingAndOneWhisper(t *testing.T) {
 				body = append(body, strings.TrimRight(plain(line), " "))
 			}
 			want := placeWhisperLines(lab.id, a.width, newPalette(tokens.NoColor, false))
-			if len(body) < 2 || body[0] != want[0] || body[1] != want[1] {
+			if len(body) < len(want) || strings.Join(body[:len(want)], "\n") != strings.Join(want, "\n") {
 				t.Fatalf("the empty %s place at %dx%d does not open on its heading and whisper:\n%s",
 					lab.id.word(), size[0], size[1], strings.Join(body, "\n"))
 			}
-			for i, row := range body[2:] {
+			for i, row := range body[len(want):] {
 				if strings.TrimSpace(row) != "" {
-					t.Fatalf("the empty %s place at %dx%d says more than one line, row %d: %q",
-						lab.id.word(), size[0], size[1], i+2, row)
+					t.Fatalf("the empty %s place at %dx%d says more than its whisper, row %d: %q",
+						lab.id.word(), size[0], size[1], i+len(want), row)
 				}
 			}
 		}
