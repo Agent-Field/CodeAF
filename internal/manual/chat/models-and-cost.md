@@ -2129,7 +2129,8 @@ The `per conversation` row carries a receipt of its own, `this one $53.58`, and 
 **same figure the money segment on the status line draws** — this conversation and every
 piece of work it started, whether or not that work has finished. It used to say only what
 the conversation itself had spent, so the tab and the row a person pressed to get here
-disagreed while a task was running.
+disagreed while a task was running. It also counts a call whose receipt arrived after its
+turn ended, the same moment `today` does.
 
 **Four of the six are rows you can edit** — `per day`, `per conversation`, `per plan`,
 `practice`. `per task` and `per standing run` are **readings**: they are real rails, and

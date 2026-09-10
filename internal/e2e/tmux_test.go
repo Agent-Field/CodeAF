@@ -570,7 +570,7 @@ func (r *rig) dump() {
 		}
 		fmt.Fprintf(&b, "  %s (%d bytes)\n", rel, size)
 		switch filepath.Base(path) {
-		case "transcript.jsonl", "inbox.jsonl", "log", "wake.log":
+		case "transcript.jsonl", "inbox.jsonl", "log", "wake.log", "usage.jsonl", "calls.jsonl":
 			if raw, err := os.ReadFile(path); err == nil && len(raw) > 0 {
 				fmt.Fprintf(&b, "%s\n", clip(string(raw), 4000))
 			}
