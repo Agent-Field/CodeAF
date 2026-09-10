@@ -16,6 +16,9 @@ invalidates:
   - "A process killed mid-firing re-fired the same change with no link to the half-done run. The retry is `attempt 2` of the same occurrence and names the interrupted run; a finished but unrecorded run is not run again."
   - "One standing pass could last 120 seconds. It may now last one interval (5 minutes), and a run cut off mid-answer is failed rather than landed."
   - "Standing item documents are schema 4 (specification revision and report path). Older engines refuse them; stop old tickers and windows before upgrading."
+  - "A rule placed on a folder only reached a standing run's instructions; nothing checked what the run published. A report is now read against the rules that reached its run before it is published, sent back once on a quoted finding, and held back (draft kept, previous report unchanged, the item waiting on the person) if it still breaks one. It is a model's reading, not a proof."
+  - "`aforge standing check` exited 0 whatever its runs came to. It exits 2 when a run did not finish and 4 when one is waiting on the person."
+  - "A stop while a standing run was working still let it replace its report and send a note. A stopped item's in-flight run now publishes nothing and sends nothing; what it already did is not undone, and a pause still lets it finish."
 ---
 
 `collections` and `shared_context` are wired through the production binary.
@@ -95,7 +98,20 @@ publishes a task firing's final answer to, with a sha256 receipt in the run's
 question or is cut off leaves the previous report, and a report inside its own
 watch is refused. Terminal-made orders deliver their notes to the project inbox.
 The declining answer on a standing card no longer carries an adoption receipt.
-Rule exposure per run is recorded, not enforced: a live run quoted an address a
-folder rule forbade. `make test-local-work` drives `bin/aforge` with a scripted
+A live run quoted an address a folder rule forbade even though the journal showed
+the rule reached it, so a published report is now checked against the rules that
+reached its run (auditor role, fresh context, no tools; a finding must quote the
+report), corrected once, or held back; the check is recorded as `ruleCheck` in
+`occurrence.json`. It covers the published report only — not tool actions, notes
+or work without a report. Review fixes in the same wave: occurrence keys carry
+the run count (a folder returning to an earlier reading no longer recovers an old
+record forever), a report-only edit is an edit, a report in a watched folder is
+refused, a published-but-unrecorded run is recovered rather than rerun, report
+folders are contained before they are made, and a failed or held run's changes
+are listed again. The live reports opened with the model's own narration, so a
+run now writes its report between a `<report>` line and a `</report>` line and only
+that is published (an answer without them is still published whole).
+`make test-local-work` drives `bin/aforge` with a scripted
 model and `make demo-local-work` runs the same journey with a real model in a
-disposable `AFORGE_HOME`. No connector or account is used.
+disposable `AFORGE_HOME`, failing on the first step that does not hold. No
+connector or account is used.

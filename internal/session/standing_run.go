@@ -783,6 +783,9 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	// nothing leaves the last good report where it was rather than replacing
 	// it with a refusal or an empty page (internal/standing's Action.Report).
 	report := strings.TrimSpace(item.Does.Report)
+	if report != "" {
+		final = standingReportBody(final)
+	}
 	publish := report != "" && outcome.Kind == "landed" && needs == "" && final != ""
 	if publish {
 		// AND IT IS READ AGAINST THE RULES THAT REACHED THE RUN FIRST
@@ -890,6 +893,7 @@ func (r *standingRunner) checkAgainstRules(ctx context.Context, agent *Agent, ru
 		} else {
 			*final, *cut = "", nil
 			drain(next)
+			*final = standingReportBody(*final)
 			if *final != "" {
 				draft = *final
 			}
@@ -1019,11 +1023,50 @@ func standingOccurrenceBlock(occurrence standing.Occurrence) string {
 func standingReportBlock(item standing.Item, report string) string {
 	path := filepath.Join(item.Workspace, report)
 	line := "REPORT: your FINAL REPLY is the complete report. aforge publishes it to " + report +
-		" in the project, replacing the previous version. Write the whole report as your final reply, in Markdown, and nothing else — no preface about what you read or did; do not write that file yourself."
+		" in the project, replacing the previous version. Write the whole report in Markdown between a line " + standingReportOpen + " and a line " + standingReportClose +
+		"; only what is between them is published, so say nothing inside them about what you read or did. Do not write that file yourself."
 	if _, err := os.Stat(path); err == nil {
 		line += " The previous version is at " + report + "; read it if you need what it said."
 	}
 	return line
+}
+
+// The lines a run's report is written between ([standingReportBlock]).
+const (
+	standingReportOpen  = "<report>"
+	standingReportClose = "</report>"
+)
+
+// standingReportBody is the part of a run's final answer that is its report.
+//
+// THE REPORT IS DELIMITED, NOT GUESSED. The live journey's reports (2026-09-10)
+// opened with the sentence the model said on its way to writing them — "Now
+// let me check the standing order…" — in the same turn as the report, so no
+// tool call separated them and "the words after the last tool call" carried
+// both. Cutting at the first heading would be a guess about what a report
+// looks like; the run is instead asked to put the report between two exact
+// lines, and only those are read. A final answer with no opening line is taken
+// whole, as before, so a model that ignores the request still publishes — with
+// whatever else it said.
+func standingReportBody(final string) string {
+	lines := strings.Split(final, "\n")
+	open := -1
+	for i, line := range lines {
+		if strings.TrimSpace(line) == standingReportOpen {
+			open = i
+		}
+	}
+	if open < 0 {
+		return strings.TrimSpace(final)
+	}
+	body := lines[open+1:]
+	for i, line := range body {
+		if strings.TrimSpace(line) == standingReportClose {
+			body = body[:i]
+			break
+		}
+	}
+	return strings.TrimSpace(strings.Join(body, "\n"))
 }
 
 // publishStandingReport writes a run's report to its declared path inside the

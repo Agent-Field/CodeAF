@@ -189,5 +189,5 @@ func standingCorrection(verdict standingRuleVerdict) string {
 		"- rule: " + oneLine(verdict.rule) + "\n" +
 		"- the report says: " + oneLine(verdict.quote) + "\n" +
 		"- why: " + oneLine(verdict.why) + "\n\n" +
-		"Reply with the complete corrected report as your final reply, in Markdown, and nothing else. Keep everything that does not break a rule."
+		"Reply with the complete corrected report, in Markdown, between a line " + standingReportOpen + " and a line " + standingReportClose + ". Keep everything that does not break a rule."
 }

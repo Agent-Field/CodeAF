@@ -647,7 +647,9 @@ Honest limits, so you do not rely on something that is not built:
   report. So "never touch the public API" is in front of a task before it writes a line.
   What is **not** built is the other direction: nothing re-reads your orders *after* a
   change lands and starts work to put it right, so a change that slipped past one is
-  still yours to catch. That half is a later wave.
+  still yours to catch. That half is a later wave. The one exception is a report aforge
+  publishes for ongoing work: it is read against the rules before it is published
+  (*Does the report keep my folder's rules*).
 - **Rules are never silently omitted.** All governing holds are retained (up to 64 holds and 64 KiB of rendered governing text); optional appointments fill the remaining room up to eight ordinary rows. Oversized governing inputs stop execution with an explicit error.
 - **Money is not per order.** The card says it shares the day's allowance — the same
   machine-wide `daily_budget_usd` setting everything standing uses. If you named a
@@ -705,10 +707,15 @@ rule's folder. `aforge collections place|unplace <folder> standing <id>` changes
 placement later, while `aforge collections add` only files a reference.
 
 **An edit is a new version of the instructions.** `edit` prints `revised <id> to
-version N`; the next run uses it, a run already under way keeps what it started with,
-and each run's record keeps the brief it ran on. `--version N` refuses the edit if
-someone changed the instructions since you read version N. A stopped order cannot be
-resumed or edited: `a stopped item must be set up afresh`.
+version N: instructions`; the next run uses
+it, a run already under way keeps what it started with, and each run's record keeps the
+brief it ran on. `--version N` refuses the edit if someone changed the instructions
+since you read version N. A stopped order cannot be resumed or edited: `a stopped item
+must be set up afresh`.
+
+**Pause and stop while a run is working.** A pause lets that run finish and publish; it
+holds back the next one. A stop does not undo what the run already did, but its report
+is not published and no note is sent: `stopped while it ran`.
 
 This door never turns on the background timer. Its orders are checked when a window
 is open, when the timer is already on, or when you run `aforge standing check`. News
@@ -725,35 +732,61 @@ unknown, never that nothing changed.
 
 `--report <path>` names one file inside the workspace. The run's **final answer** is the
 report: aforge writes it there, replacing the previous version, and the run is told
-where the previous version is so it can carry things forward. The run does not write
+where the previous version is so it can carry things forward. The run is asked to put
+the report between a line `<report>` and a line `</report>`, and only that is
+published; an answer without them is published whole. The run does not write
 the file itself — an unattended run may only do what your approval rules allow without
 asking, and reading is allowed; shell commands are not. Only a run that came back
 clean publishes. A run cut off mid-answer says `the run was cut off before it finished`
 and one that ended without an answer says `the run ended without a report; the previous
 report is unchanged` — either way the last good report stays.
 
-A report inside its own watch is refused when you set it up, because every report
-would wake it again. Nothing here uses an account or a connector: the order reads
-local files and writes one local file.
+A report inside its own watch, or inside a folder the watch matches (`*` watching
+`reports`), is refused when you set it up, because every report would wake it again.
+A run that failed or was held back does not use up its changes: the next run is told
+about them again. Nothing here uses an account or a connector: the order reads local
+files and writes one local file.
 
 ## What woke each run and what it made — aforge standing show, check, and a run killed midway
 
 `aforge standing check` runs one pass now — the same pass the timer runs — and prints
 what it did: `2 checked · 1 ran`, or `nothing was due`. A pass may last up to 5 minutes.
+It exits 0 only when every run it started finished: **2** when a run did not finish
+(`1 did not finish`) and **4** when one is waiting on you (`1 need you`), each naming
+`not finished: aforge standing show <id> says why; its last good report is unchanged`.
 
 `aforge standing show <id>` prints the order, its folder, the rules that reach it, and
 every run newest first: which instructions version it ran on, what woke it, which
-files changed, the report it published with its size and sha256, its cost, and the
-run's journal. `--json` prints the same records. Each run folder holds
+files changed, what it came to, its check against the rules, the report it published
+with its size and sha256, its cost, and the run's journal. `--json` prints the same records. Each run folder holds
 `occurrence.json`, written **before** the run starts, and the run's own journal names
 that occurrence as its cause (`parent_cause: standing_occurrence`), so you can go from
 the order to the run and from the run back to the order.
 
 **If aforge is killed mid-run**, nothing is lost and nothing doubles. The next pass
 finds the half-done run, marks it `interrupted`, and retries the same change as
-`attempt 2`, naming the run it replaces. A run that finished but was not yet recorded
-is recorded, not run again.
+`attempt 2`, naming the run it replaces. A run that finished, or whose report was
+already published, but was not yet recorded is recorded, not run again.
 
 A run that fails is recorded as failed and is not retried by itself; the next change
-starts a new run. The record shows which rules were in front of a run, not that the
-model followed them.
+starts a new run.
+
+## Does the report keep my folder's rules — the check before a report is published
+
+When rules reach an order's work, its report is **checked against them before aforge
+publishes it**. A model in a fresh context, with no tools, is shown only those rules
+and the report. To say a rule is broken it has to quote the words in the report that
+break it; a finding that quotes nothing in the report is not taken.
+
+On a finding the run is sent back **once**, told the rule and the quoted words, and
+asked for the whole corrected report, which is checked again. If it still breaks the
+rule, or the check gave no answer twice, nothing is published: the previous report
+stays, the draft is kept as `held-report.md` in the run's folder, and the order waits
+on you — `report held back, not published: it breaks a rule placed on this work`.
+`aforge standing show` prints `checked against 1 rule(s): kept after one correction`,
+or `held back, not published` with the draft's path.
+
+What it is not: a proof. It is a model's reading, and it can miss a breach or see one
+that is not there. It reads the report aforge publishes, not what the run did with its
+tools and not the text of a note. It runs only when rules reached the run, and its cost
+is part of the run's cost.
