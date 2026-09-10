@@ -24,7 +24,7 @@ func TestANestedLandingAcceptWritesTheTookLine(t *testing.T) {
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(2, "Port the parser", session.TaskUnverified,
 		session.TaskNotice{
 			Parent: 1, Elapsed: 42 * time.Second, Merge: mergeWordMerged,
-			Report: "finished, but needs your look — nobody could check it in 5m0s",
+			Report:  "finished, but needs your look — nobody could check it in 5m0s",
 			Changed: []string{"parser.go"},
 		})})
 	if a.doneEntryFor(2) < 0 {
