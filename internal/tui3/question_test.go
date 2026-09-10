@@ -420,29 +420,38 @@ func TestACardDrawsARowPerAnswerAndMarksTheAskersPick(t *testing.T) {
 	}
 }
 
-// ENTER TAKES THE POINTED ANSWER, AND THE POINTER STARTS ON THE PICK where the
-// asker named one and on the first answer where it did not — so enter alone
-// still takes the recommendation, and a question with no recommendation is
-// still one keystroke from its first answer, the way every picker a person
-// already knows works. (It used to do nothing without a pick.)
-func TestEnterTakesThePointedAnswerWhichStartsOnThePick(t *testing.T) {
+// TestEnterTakesThePickAndOtherwiseTheAnswerThatLosesNothing is where the
+// pointer stands when the asker named no pick, and it is the half of the
+// pointer that keeps it safe.
+//
+// Enter takes the answer the pointer is on, so on a gate the engine raised
+// BECAUSE a call could not be taken back — `rm -rf *` — a pointer that started
+// on the first answer would make `enter` mean `allow once`. Measured: it did.
+// The lane already says which answer costs nothing ([session.AnswerOption.
+// Safe]) and that is the one the pointer opens on.
+func TestEnterTakesThePickAndOtherwiseTheAnswerThatLosesNothing(t *testing.T) {
 	lab := newQuestionLab(t)
 	ask := consentAsk()
 	ask.Form = session.FormCard
 	lab.raise(ask)
 	lab.tick(questionSettle)
-	if got := lab.plain(); !strings.Contains(got, "[enter] take it") {
-		t.Fatalf("a question with answers does not offer enter:\n%s", got)
+	if !lab.press("enter") {
+		t.Fatal("enter should take the answer the pointer is on")
 	}
-	if !lab.press("enter") || len(lab.answer) != 1 || lab.answer[0].Key != "1" {
-		t.Fatalf("enter did not take the first answer · %+v", lab.answer)
+	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != "3" {
+		t.Fatalf("enter on a gate with no pick should deny, not allow: %+v", lab.answer)
 	}
-	ask.ID++
-	ask.Pick = &session.Pick{Key: "3", Reason: "the narrow answer"}
+	lab.answer = nil
+	ask.Pick = &session.Pick{Key: "1", Reason: "the narrow answer"}
+	ask.Stakes = session.StakesReversible
 	lab.raise(ask)
 	lab.tick(questionSettle)
-	if !lab.press("enter") || len(lab.answer) != 2 || lab.answer[1].Key != "3" {
-		t.Fatalf("enter did not take the pick · %+v", lab.answer)
+	lab.rows()
+	if !lab.press("enter") {
+		t.Fatal("enter was not taken by a question WITH a pick")
+	}
+	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != "1" {
+		t.Fatalf("enter took something other than the pick: %+v", lab.answer)
 	}
 }
 

@@ -6009,6 +6009,17 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		}
 		a.dismissWelcome()
 	}
+	// A QUESTION'S PAGE ANSWERS FOR ITS OWN ROWS, above the run's page for the
+	// reason it owns the keyboard above it (questionroom.go): it is the body
+	// region while it is up, so a press resolved anywhere else would act on rows
+	// nobody can see. A press that lands on none of its answers falls through
+	// untouched and then does nothing, which is what the empty parts of any page
+	// on this surface do.
+	if a.questionRoomOpen() {
+		if cmd, took := a.questionRoomPress(y); took {
+			return cmd
+		}
+	}
 	// A RUN'S PAGE ANSWERS FOR ITS OWN ROWS, before the transcript's hit-testing
 	// is asked anything: its rows are chips and links and a gate rather than
 	// blocks, so a press on one is resolved by column against the targets the
