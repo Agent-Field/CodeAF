@@ -165,6 +165,16 @@ var lawRegistry = []lawUnit{
 	{id: "images.travel-with-the-message", class: lawCore, key: "ATTACHED PICTURES TRAVEL IN THE MESSAGE WITH YOU"},
 	{id: "elsewhere.other-windows", class: lawCore, key: "OTHER AFORGE WINDOWS ON THIS PROJECT ARE VISIBLE TO YOU"},
 
+	// ── the routing triggers, which are the page's own and nobody else's. A
+	// description says what a verb DOES; it cannot say when to reach for it
+	// without teaching every model that carries the belt a rule it did not ask
+	// for (docs/design/prompt-diet/DESIGN.md §4), so the trigger is core law and
+	// the contract is verb law, and these three came back to the page when lane
+	// F took the routing prose off the descriptions.
+	{id: "tasks.look-inside", class: lawCore, key: "Look inside running or landed work with `tasks` and its id"},
+	{id: "tasks.continue-is-not-a-new-task", class: lawCore, key: "never a fresh `propose_task`"},
+	{id: "read.what-read-cannot-turn-into-text", class: lawCore, key: "What `read` cannot turn into text → `read_document`"},
+
 	// ── and the laws the page gave up to the verb that owns them. Each of
 	// these was a page sentence until the diet; the description had said it all
 	// along, in more words and with the field names beside it.

@@ -189,6 +189,14 @@ var beltFacts = []beltFact{{
 	holds: Config.mayProposeTask,
 	present: "- ON `propose_task` NEVER NAME THE METHOD: a task is always given its own copy, so \"work in this repo directly\", a branch or a checkout is never yours to specify.\n" +
 		"- Earlier work referred to but not pointed at (\"the reconciler task\", \"same as before\"): call `tasks` with their words BEFORE answering.\n" +
+		// AND THE TWO TRIGGERS THAT LOST THEIR HOME when the tool descriptions
+		// gave up their routing prose (docs/design/prompt-diet/DESIGN.md §4).
+		// [tasksDescription] says what an id DOES; what it cannot say is when to
+		// reach for one, and the second half is a refusal: "continue task N" is
+		// the `continue` field on a task that already exists, and a model that
+		// answers it with a fresh proposal mints a second task with a fresh brief
+		// and a fresh working copy (task_continue.go, F23/F25).
+		"- Look inside running or landed work with `tasks` and its id; \"continue task N\" is that id with `continue`, never a fresh `propose_task`.\n" +
 		"- A `tasks` row is a citation, not the work: its transcript URI is the JSONL journal of all that node said, called and got back, and `read` takes a row's URIs exactly as printed, `file://` and all. `grep` a journal or `read` it with `offset`/`limit`, never expand an outcome line into work you did not read, and say so when a row prints no transcript. A `[Task reference: ...]` block already carries those URIs.\n" +
 		// THE `id` AND `continue` SENTENCES ARE NOT REPEATED HERE.
 		// [tasksDescription] already says an id reads, steers, continues or settles
