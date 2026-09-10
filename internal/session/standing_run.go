@@ -1021,13 +1021,9 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 			if built != nil {
 				return
 			}
-			client, built = provider.NewClient(provider.Config{
-				APIKey:  parent.APIKey,
-				BaseURL: parent.BaseURL,
-				Model:   model,
-				Timeout: providerTimeout,
-				Routing: provider.StaticRouting(parent.Routing),
-			})
+			settings := parent.clientConfig(model, providerTimeout)
+			settings.Routing = provider.StaticRouting(parent.Routing)
+			client, built = provider.NewClient(settings)
 		})
 		if built != nil {
 			return false, "", 0, built

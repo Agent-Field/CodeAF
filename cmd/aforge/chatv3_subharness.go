@@ -72,17 +72,17 @@ func v3Subharnesses(settings config.Config, models *catalog.Catalog, model, work
 	// (chatv3_harness.go, and internal/session's own agent.go): a plain adapter
 	// rather than [config.Config.Client]'s router. The router keeps a ledger that
 	// has to be flushed on the way out, and this surface has nowhere to hang that
-	// close — a conversation's registry lives as long as the process does.
+	// close — a conversation's registry lives as long as the process does. Its
+	// account settings still come through [config.Config.ClientConfig], so the
+	// key, base URL, model slug and thinking level have the same one source as
+	// every other client.
 	//
 	// The timeout is the harness node's, interpolated rather than restated: both
 	// are a backstop against a wedged endpoint on a non-streamed call, and a
 	// second number here would be the one that drifts.
-	client, err := provider.NewClient(provider.Config{
-		APIKey:  settings.APIKey,
-		BaseURL: settings.BaseURL,
-		Model:   model,
-		Timeout: harnessTimeout,
-	})
+	configured := settings.ClientConfig(model)
+	configured.Timeout = harnessTimeout
+	client, err := provider.NewClient(configured)
 	if err != nil {
 		return off
 	}

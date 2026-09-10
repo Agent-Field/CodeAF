@@ -92,15 +92,11 @@ type DocumentParser interface {
 // A missing key is an ERROR HERE and not a nil client, so the tool's refusal
 // can say which thing is missing instead of "not configured".
 var newDocClient = func(config Config) (DocumentParser, error) {
-	if strings.TrimSpace(config.APIKey) == "" {
+	settings := config.documentConfig(providerTimeout)
+	if strings.TrimSpace(settings.APIKey) == "" {
 		return nil, errors.New("this session has no API key")
 	}
-	client, err := provider.NewClient(provider.Config{
-		APIKey:  config.APIKey,
-		BaseURL: config.BaseURL,
-		Model:   config.Model,
-		Timeout: providerTimeout,
-	})
+	client, err := provider.NewClient(settings)
 	if err != nil {
 		return nil, err
 	}
