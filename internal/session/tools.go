@@ -57,6 +57,22 @@ import (
 // history, searchable, so that work handed off weeks ago is still findable by
 // the model that has to build on it.
 //
+// resultCaps is how much of one tool result this conversation's model can
+// afford to be handed, and it is the answer the whole belt is built with.
+//
+// IT FOLLOWS THE WINDOW. pi's flat caps — 2000 lines or 50KB — were measured
+// against a 128,000-token window, which is exactly what [Agent.window] answers
+// when no model card says otherwise, so a frontier conversation gets them
+// unchanged and is byte-identical to what it was. A model with a smaller window
+// gets a smaller share of it, because a read that fills 78% of everything the
+// model can hold leaves it the file and no room to think about the file.
+//
+// It reads [Agent.window] rather than [Agent.trustedWindow]: the caps are
+// rendered into the descriptions in message[0], and a bound that moved when
+// this process learned something about an endpoint would re-price the whole
+// conversation cold.
+func (a *Agent) resultCaps() bare.Caps { return bare.CapsFor(a.window()) }
+
 // build_harness and list_harnesses (tools_harness.go) are the ONE big machine
 // left on this belt and the list that says whether the thing about to be built
 // already exists: a saved procedure this project can be offered again. They are
@@ -116,7 +132,7 @@ import (
 // is exactly what the conversation has, which is the point: it is the same
 // worker, working somewhere quieter.
 func (a *Agent) belt() []bare.Tool {
-	tools := bare.AllTools(a.config.Workspace)
+	tools := bare.AllToolsCapped(a.config.Workspace, a.resultCaps())
 	for index, tool := range tools {
 		switch tool.Name {
 		case "bash":

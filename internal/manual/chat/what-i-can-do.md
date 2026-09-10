@@ -30,11 +30,21 @@ write*).
 | `write` | Creates or overwrites one file, making parent directories as needed; with `append:true` it adds to the end instead |
 | `edit` | Replaces exact strings inside one file |
 
-`read` output is cut at **2000 lines or 50KB**, whichever comes first, and the
+`read` output is cut at a line count or a size, whichever comes first, and the
 cut is announced so paging is possible:
 `[Showing lines 1-2000 of 5000. Use offset=2001 to continue.]`. An offset past
 the end is an error: `Offset 900 is beyond end of file (120 lines total)`.
-A single line over 50KB is reported, not shown.
+A single line over the size cap is reported, not shown.
+
+## How much of a file does one read give me, and what is the limit?
+
+**The limit follows the model's context window: a tenth of it, and never more
+than 2000 lines or 50KB.** That default pair is what a 128,000-token window gets
+and what every larger model gets, so on the frontier models nothing has changed.
+A smaller model gets proportionally less — a 16k model is cut at 250 lines or
+6.25KB — because one file may not fill most of what the model can hold. The
+description of each tool quotes the pair actually in force, and the cut always
+says how to continue.
 
 `read` also opens **PDFs** — it extracts the text layer locally and for free,
 with the same line and size caps.
@@ -132,8 +142,8 @@ directory. Default **500 entries**, and at the cap:
 `500 entries limit reached. Use limit=1000 for more`. A bad path answers
 `Path not found: <path>`.
 
-All three are capped at 50KB of output, and all three are pure reads, so none of
-them asks your permission.
+All three are capped at the same size as `read` — the model's own cap, 50KB by
+default — and all three are pure reads, so none of them asks your permission.
 
 ## Can you run tests for me or start a dev server?
 
@@ -150,7 +160,8 @@ with the environment aforge itself was started with.
 
 - stdout and stderr arrive interleaved in one buffer, in the order they were
   written.
-- Output is cut to the **last 2000 lines or 50KB**. When that happens the whole
+- Output is cut to the **last** lines that fit `read`'s own cap — 2000 lines or
+  50KB by default, less on a smaller model. When that happens the whole
   output is spilled to a temp file and the footer names it, e.g.
   `[Showing lines 900-1000 of 100000. Full output: /tmp/pi-bash-….log]`.
 - Empty output reads `(no output)`.
@@ -591,8 +602,9 @@ Limits, refused before anything is sent: **10MB** for an image, **25MB** for
 audio, **64MB** for video —
 `<path> is over the 25MB audio limit`.
 
-The answer is paged like any read — 2000 lines or 50KB, with
-`Use offset=… to continue.` — and it is **remembered for the conversation**, so
+The answer is paged like any read — the same cap, 2000 lines or 50KB by
+default — with `Use offset=… to continue.`, and it is **remembered for the
+conversation**, so
 paging through a long transcript costs nothing extra.
 
 When no model is set for a sense, `read` says so instead of showing you binary:
