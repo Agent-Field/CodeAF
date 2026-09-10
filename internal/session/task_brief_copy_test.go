@@ -241,6 +241,8 @@ func TestTheConversationsOwnFolderIsWrittenAsThePathInsideTheCopy(t *testing.T) 
 			"/s/work/notes.md", "/s/trees/1/notes.md"},
 		{"a work folder inside the copy is already the worker's own", newTaskCopy("/x/repo", "/s/trees/1", "/s/trees/1/work"),
 			"/s/trees/1/work/notes.md", "/s/trees/1/work/notes.md"},
+		{"a work folder that CONTAINS the copy is dropped, not applied", newTaskCopy("/x/repo", "/s/trees/1", "/s"),
+			"/x/repo/internal/widget.md", "/s/trees/1/internal/widget.md"},
 		{"the whole machine is not a session folder", newTaskCopy("/x/repo", "/s/trees/1", "/"),
 			"/etc/hosts", "/etc/hosts"},
 		{"a session that keeps no folder of its own binds nothing extra", newTaskCopy("/x/repo", "/s/trees/1", ""),
@@ -320,6 +322,44 @@ func TestTheCopyTakesTheConversationsFolderFromTheTree(t *testing.T) {
 	legacy.place = Place{}
 	if got := taskCopyFor(legacy).bind("/s/work/notes.md"); got != "/s/work/notes.md" {
 		t.Errorf("the legacy layout invented a session folder: %q", got)
+	}
+}
+
+// A PATH ALREADY INSIDE THE COPY STAYS PUT. This is the disagreement the
+// work-folder bind can invent: the ground rule writes `/s/trees/1/…`, a second
+// rule whose folder is an ancestor of that copy then moves it again, and the
+// worker following the address it was given is refused as outside the copy.
+//
+// THE CONSTRUCTOR DROPS THAT ANCESTOR, and this pins both the drop and the
+// ordinary sibling (`work/` next to `trees/`) so a path the guard will accept
+// cannot be rewritten into one it will not.
+func TestBindingTheConversationsFolderDoesNotMoveAPathAlreadyInsideTheCopy(t *testing.T) {
+	place := Place{Dir: "/s", Owned: true}
+	tree := taskTree{ground: "/x/repo", dir: "/s/trees/1", mode: TaskModeWorktree, place: place}
+	own := taskCopyFor(tree)
+	already := "/s/trees/1/internal/widget.md"
+	if got := own.bind(already); got != already {
+		t.Fatalf("a path already inside the copy was moved: bind(%q) = %q", already, got)
+	}
+	if got := own.bind("/x/repo/internal/widget.md"); got != already {
+		t.Fatalf("the ground path did not bind to the copy: %q", got)
+	}
+	if got := own.bind("/s/work/notes.md"); got != "/s/trees/1/work/notes.md" {
+		t.Fatalf("the conversation folder did not bind: %q", got)
+	}
+
+	// AND A FOLDER THAT CONTAINS THE COPY MUST NOT BE A SECOND MAP. Handing
+	// the session directory itself as work/ is the shape that rewrote
+	// `/s/trees/1/…` into `/s/trees/1/s/…` before the drop.
+	swallowed := newTaskCopy("/x/repo", "/s/trees/1", "/s")
+	if swallowed.work != "" {
+		t.Fatalf("a work folder that contains the copy was kept: %+v", swallowed)
+	}
+	if got := swallowed.bind(already); got != already {
+		t.Fatalf("an ancestor work folder moved a path already inside the copy: %q", got)
+	}
+	if got := swallowed.bind("/x/repo/internal/widget.md"); got != already {
+		t.Fatalf("dropping the ancestor also dropped the ground map: %q", got)
 	}
 }
 
